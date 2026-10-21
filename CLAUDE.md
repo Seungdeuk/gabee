@@ -1,4 +1,4 @@
-# family-secretary 공통 규칙
+# gabee 공통 규칙
 
 가족용 비서 앱. 하단 5개 탭(AI 채팅, 소통, 일정, 가계, 돌봄)과 로그인·가족 그룹. 기타 화면(가족 그룹·설정)은 AI 채팅 상단의 ⋮ 로 들어간다.
 여러 명이 Claude로 함께 개발한다. 협업 절차는 `CONTRIBUTING.md`, 코드 세부 규칙은 `CODING_RULES.md`를 따른다.
