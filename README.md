@@ -1,22 +1,23 @@
-# gabee_orj
+# family-secretary
 
-React Native(Expo) 앱 + FastAPI 서버 모노레포. 협업 규칙은 [CLAUDE.md](CLAUDE.md) 참고.
+가족용 비서 앱. React Native (Expo) + FastAPI 모노레포. 협업 규칙은 [CLAUDE.md](CLAUDE.md), [CONTRIBUTING.md](CONTRIBUTING.md) 참고.
 
-## 서버
+## 서버 (apps/api)
 
 ```bash
-cd server
-python -m venv .venv && source .venv/Scripts/activate   # macOS/Linux: .venv/bin/activate
+cd apps/api
+python -m venv .venv
+.venv\Scripts\activate            # cmd. Git Bash: source .venv/Scripts/activate / macOS·Linux: source .venv/bin/activate
 pip install -e ".[dev]"
-cp .env.example .env
-uvicorn src.main:app --reload     # http://localhost:8000/docs
+copy .env.example .env            # macOS·Linux·Git Bash: cp
+uvicorn app.main:app --reload     # http://localhost:8000/docs
 pytest
 ```
 
-## 앱
+## 앱 (apps/mobile)
 
 ```bash
-cd app
+cd apps/mobile
 npm install
 npx expo start
 ```
