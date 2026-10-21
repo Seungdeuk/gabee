@@ -12,7 +12,7 @@ import { checks, today } from "../mock";
 /** 돌봄 탭: 부모님의 오늘 상태(컨디션, 식사, 복약, 걷기) 종합. */
 export default function CareScreen() {
   return (
-    <Screen title="돌봄">
+    <Screen title="돌봄" subtitle="부모님의 오늘을 함께 살펴봐요">
       <Card tone="blue">
         <Text style={styles.date}>{today.date}</Text>
         <Text style={styles.heading}>{today.person}의 오늘을 함께 살펴봐요</Text>

@@ -11,7 +11,7 @@ import { expenses, summary } from "../mock";
 /** 가계 탭: 이번 달 공동 지출 요약과 내역. */
 export default function BillingScreen() {
   return (
-    <Screen title="가계">
+    <Screen title="가계" subtitle="가족이 함께 쓴 돈이에요">
       <Card tone="blue">
         <Text style={styles.label}>{summary.month} 공동 지출</Text>
         <Text style={styles.total}>{summary.total}</Text>

@@ -4,12 +4,12 @@ import { StyleSheet, Text, View } from "react-native";
 import { colors, font } from "@/theme";
 
 const iconTones = {
-  gray: { backgroundColor: colors.surfaceStrong, color: colors.textSub },
-  blue: { backgroundColor: colors.primarySoft, color: colors.primary },
+  gray: { backgroundColor: colors.honeySoft, color: colors.textMuted },
+  blue: { backgroundColor: colors.surfaceStrong, color: colors.text },
   green: { backgroundColor: colors.successSoft, color: colors.success },
-  orange: { backgroundColor: colors.warningSoft, color: colors.warning },
+  orange: { backgroundColor: colors.surfaceStrong, color: colors.accent },
   red: { backgroundColor: colors.dangerSoft, color: colors.danger },
-  purple: { backgroundColor: colors.purpleSoft, color: colors.purple },
+  purple: { backgroundColor: colors.peachSoft, color: colors.purple },
 };
 
 /**
@@ -45,7 +45,7 @@ const styles = StyleSheet.create({
   icon: {
     width: 40,
     height: 40,
-    borderRadius: 12,
+    borderRadius: 20,
     alignItems: "center",
     justifyContent: "center",
   },

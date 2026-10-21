@@ -15,7 +15,7 @@
 | billing (가계) | 지출 등록, 월 합계와 균등 분담 계산 | `billing/backend/billing_app/` (`expenses.py`, `settlements.py`, `splits.py`, `ledger.py`) | 영수증 인식, 분담 방식, 구독, 정산 승인·송금 확인 흐름 |
 | care (돌봄) | 컨디션·식사·약·걷기 기록(같은 날 덮어쓰기), 오늘 요약 | `checkin/backend/checkin_app/` (`models.py`, `routers/core.py`, `agent/`) | 병원 일정, 가족 요청, AI 안부 대화·제안 승인 |
 | ai-assistant (AI 비서) | AI 채팅(키 없으면 기본 안내), 사진 올리기 | `capture/rag/` (분류·OCR·문서 저장·질의), `agent/src/` (사진 수집, 주간 리포트, 위치), `common/gabi_llm.py` | 사진 분류·OCR, RAG 질의, 주간 리포트, 위치 기록, 사용자별 AI 호출 한도 |
-| more (기타 탭) | 오늘 요약·가족 그룹·설정 화면(임시 데이터) | `unified/index.html`의 홈, `checkin/frontend/src/app/(tabs)/` | 서버 연동, 자동 전송·위치 저장 동의 |
+| more (기타 화면) | 오늘 요약·가족 그룹·설정 화면(임시 데이터) | `unified/index.html`의 홈, `checkin/frontend/src/app/(tabs)/` | 서버 연동, 자동 전송·위치 저장 동의 |
 
 ## 원본 앱 화면(이미 Expo 였던 것)
 - 돌봄: `checkin/frontend/src/` (Expo Router, TypeScript)

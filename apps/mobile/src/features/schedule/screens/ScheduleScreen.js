@@ -14,6 +14,7 @@ export default function ScheduleScreen() {
   return (
     <Screen
       title="일정"
+      subtitle="함께하는 하루를 챙겨요"
       right={
         <Pressable accessibilityLabel="일정 추가" style={styles.add}>
           <Ionicons name="add" size={24} color={colors.text} />

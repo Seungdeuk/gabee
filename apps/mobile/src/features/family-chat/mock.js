@@ -1,11 +1,12 @@
-// 화면 확인용 임시 데이터. 서버 연동 시 api.js로 교체한다.
-export const members = [
-  { id: "1", name: "영희", relation: "어머니 김영희", status: "오늘 통화 · 보통이에요", tone: "blue" },
-  { id: "2", name: "정호", relation: "아버지 박정호", status: "오늘 미기록 · 최근 연락 10.10", tone: "purple" },
-  { id: "3", name: "수진", relation: "가족 수진", status: "함께 우리 가족을 챙겨요", tone: "green" },
+// 화면 확인용 임시 데이터. 서버 연동 시 api.js 로 교체한다.
+export const rooms = [
+  { id: "1", name: "우리 가족", last: "알겠어! 내가 같이 갈게.", time: "오후 2:30", unread: 3, tone: "blue" },
+  { id: "2", name: "엄마", last: "저녁은 맛있게 먹었니?", time: "어제", unread: 1, tone: "purple" },
+  { id: "3", name: "아빠", last: "주말에 같이 식사하자.", time: "월요일", unread: 0, tone: "orange" },
 ];
 
-export const suggestion = {
-  text: "토요일 산책은 어땠어요? 어떤 길로 걸으셨어요?",
-  source: "20분 산책 · 10.10 · 김영희 기록",
-};
+export const contacts = [
+  { id: "1", name: "엄마", tone: "purple" },
+  { id: "2", name: "아빠", tone: "orange" },
+  { id: "3", name: "나", tone: "blue" },
+];

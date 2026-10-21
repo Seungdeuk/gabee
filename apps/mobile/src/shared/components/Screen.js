@@ -3,18 +3,20 @@ import { SafeAreaView } from "react-native-safe-area-context";
 
 import { colors, spacing } from "@/theme";
 
-import ScreenHeader from "./ScreenHeader";
+import PageHeader from "./PageHeader";
 
 /**
- * 헤더 + 스크롤 본문으로 이루어진 기본 화면 틀.
- * @param {{ title: string, right?: import("react").ReactNode, children: import("react").ReactNode }} props
+ * 큰 제목 + 스크롤 본문으로 이루어진 탭 화면 틀.
+ * @param {{ title: string, subtitle?: string, left?: import("react").ReactNode, right?: import("react").ReactNode, children: import("react").ReactNode }} props
  */
-export default function Screen({ title, right, children }) {
+export default function Screen({ title, subtitle, left, right, children }) {
   return (
     <SafeAreaView style={styles.safe} edges={["top"]}>
-      <ScreenHeader title={title} right={right} />
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-        <View style={styles.body}>{children}</View>
+        <View style={styles.body}>
+          <PageHeader title={title} subtitle={subtitle} left={left} right={right} />
+          {children}
+        </View>
       </ScrollView>
     </SafeAreaView>
   );
@@ -30,7 +32,7 @@ const styles = StyleSheet.create({
   },
   body: {
     paddingHorizontal: spacing.xl,
-    paddingTop: spacing.sm,
+    paddingTop: spacing.xl,
     gap: spacing.xl,
   },
 });

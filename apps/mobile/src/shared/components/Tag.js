@@ -3,11 +3,11 @@ import { StyleSheet, Text } from "react-native";
 import { colors } from "@/theme";
 
 const tones = {
-  gray: { backgroundColor: colors.surfaceStrong, color: colors.textSub },
-  blue: { backgroundColor: colors.primarySoft, color: colors.primaryDark },
-  green: { backgroundColor: colors.successSoft, color: "#137A41" },
-  orange: { backgroundColor: colors.warningSoft, color: "#A35400" },
-  red: { backgroundColor: colors.dangerSoft, color: "#C62436" },
+  gray: { backgroundColor: colors.honeySoft, color: colors.textMuted },
+  blue: { backgroundColor: colors.surfaceStrong, color: colors.text },
+  green: { backgroundColor: colors.successSoft, color: colors.success },
+  orange: { backgroundColor: colors.surfaceStrong, color: colors.text },
+  red: { backgroundColor: colors.dangerSoft, color: colors.danger },
 };
 
 /**
@@ -23,8 +23,8 @@ const styles = StyleSheet.create({
   tag: {
     alignSelf: "flex-start",
     fontSize: 12,
-    fontWeight: "600",
-    paddingHorizontal: 8,
+    fontWeight: "700",
+    paddingHorizontal: 9,
     paddingVertical: 3,
     borderRadius: 6,
     overflow: "hidden",

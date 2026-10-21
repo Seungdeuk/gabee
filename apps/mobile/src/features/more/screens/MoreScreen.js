@@ -1,8 +1,10 @@
+import { useRouter } from "expo-router";
 import { useState } from "react";
 import { StyleSheet, Switch, Text, View } from "react-native";
 
 import Avatar from "@/shared/components/Avatar";
 import Card from "@/shared/components/Card";
+import IconButton from "@/shared/components/IconButton";
 import ListItem from "@/shared/components/ListItem";
 import Screen from "@/shared/components/Screen";
 import SectionTitle from "@/shared/components/SectionTitle";
@@ -30,12 +32,17 @@ function SettingRow({ title, subtitle, value, onValueChange }) {
 
 /** 기타 탭: 가족의 오늘 요약(원본 홈 화면), 가족 그룹, 설정. */
 export default function MoreScreen() {
+  const router = useRouter();
   // TODO: 동의 상태를 서버(자동 전송·위치 저장 설정)와 연결한다. 켤 때는 동의 확인이 필요하다.
   const [autoUpload, setAutoUpload] = useState(false);
   const [saveLocation, setSaveLocation] = useState(false);
 
   return (
-    <Screen title="기타">
+    <Screen
+      title="기타"
+      subtitle="가족 그룹과 설정"
+      left={<IconButton name="chevron-back" label="뒤로" onPress={() => router.back()} />}
+    >
       <Card tone="blue">
         <Text style={styles.label}>{today.date}</Text>
         <Text style={styles.heading}>우리 가족의 오늘</Text>

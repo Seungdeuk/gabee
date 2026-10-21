@@ -1,6 +1,6 @@
 # family-secretary 공통 규칙
 
-가족용 비서 앱. 하단 6개 탭(AI 비서, 소통, 일정, 가계, 돌봄, 기타)과 로그인·가족 그룹.
+가족용 비서 앱. 하단 5개 탭(AI 채팅, 소통, 일정, 가계, 돌봄)과 로그인·가족 그룹. 기타 화면(가족 그룹·설정)은 AI 채팅 상단의 ⋮ 로 들어간다.
 여러 명이 Claude로 함께 개발한다. 협업 절차는 `CONTRIBUTING.md`, 코드 세부 규칙은 `CODING_RULES.md`를 따른다.
 
 ## 스택
@@ -17,7 +17,8 @@
 apps/mobile/src/app/(tabs)/   라우트. 화면 파일은 얇게 (조립만)
 apps/mobile/src/features/     기능별 코드. 탭 이름과 동일 (하이픈: ai-assistant)
 apps/mobile/src/shared/       공통 UI·훅·유틸, shared/api (서버 호출 공통)
-apps/mobile/src/theme/        색상·간격·글자 크기 토큰
+apps/mobile/src/theme/        색상·간격·글자 크기 토큰 (디자인 값은 여기에만 둔다: 크림 바탕, 브라운 글자, 꿀색·복숭아색 포인트)
+apps/mobile/assets/images/    가비 캐릭터(gabee-mascot.png)와 앱 아이콘
 apps/api/app/features/<기능>/  router.py, service.py, repository.py, schemas.py, models.py, tests/
 apps/api/app/shared/          auth, errors, config, db, llm
 docs/contracts/openapi.json   API 명세 (자동 생성, 기준 파일)
@@ -28,7 +29,7 @@ docs/legacy/                  원본 프로젝트(family-secretary_prj) 참고 �
 ```
 
 기능: ai-assistant, family-chat, schedule, billing, care, family-group, more
-- `more`는 기타 탭(오늘 요약·가족 그룹·설정)이라 서버 기능이 따로 없다. 서버는 family_group, 나머지 5개 기능이 있다.
+- `more`는 기타 화면(오늘 요약·가족 그룹·설정)이라 서버 기능이 따로 없다. `start`는 시작 화면이다. 서버는 family_group, 나머지 5개 기능이 있다.
 - 앱 폴더는 하이픈(`family-chat`), 서버 폴더는 밑줄(`family_chat`)이다. 같은 기능이다.
 - family-group은 로그인·권한이라 모든 기능이 의존한다.
 

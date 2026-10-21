@@ -4,10 +4,10 @@ import { colors, radius } from "@/theme";
 
 const tones = {
   default: { backgroundColor: colors.surface },
-  white: { backgroundColor: colors.background, borderWidth: 1, borderColor: colors.border },
-  blue: { backgroundColor: "#F0F6FF" },
-  orange: { backgroundColor: "#FFF7EC" },
-  red: { backgroundColor: "#FFF2F3" },
+  white: { backgroundColor: colors.card, borderWidth: 1, borderColor: colors.divider },
+  blue: { backgroundColor: colors.surface }, // 강조 카드(옅은 꿀색)
+  orange: { backgroundColor: colors.peachSoft },
+  red: { backgroundColor: colors.peachSoft },
 };
 
 /**
@@ -20,7 +20,7 @@ export default function Card({ tone = "default", style, children }) {
 
 const styles = StyleSheet.create({
   card: {
-    borderRadius: radius.lg,
+    borderRadius: radius.card,
     paddingVertical: 16,
     paddingHorizontal: 18,
     gap: 10,
