@@ -2,6 +2,16 @@
 
 가족용 비서 앱. React Native (Expo) + FastAPI 모노레포. 협업 규칙은 [CLAUDE.md](CLAUDE.md), [CONTRIBUTING.md](CONTRIBUTING.md) 참고.
 
+## 브랜치와 맡는 기능
+
+| 브랜치 | 맡는 기능 |
+|---|---|
+| `ai_assistant-ingest` | AI 비서 정제화: 원본 전처리, 자동 분류 |
+| `ai_assistant-knowledge` | AI 비서 최적화: 데이터화, 벡터 DB |
+| `schedule` | 일정 |
+| `family_chat` | 소통(가족 채팅) |
+| `billing-care` | 가계, 돌봄 |
+
 ## 서버 (apps/api)
 
 ```bash
