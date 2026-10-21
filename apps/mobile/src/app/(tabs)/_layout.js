@@ -1,42 +1,13 @@
-import { Ionicons } from "@expo/vector-icons";
 import { Tabs } from "expo-router";
-
-import { colors, font } from "@/theme";
-
-const tabs = [
-  { name: "index", title: "AI 비서", icon: "chatbubble-ellipses" },
-  { name: "family-chat", title: "소통", icon: "people" },
-  { name: "schedule", title: "일정", icon: "calendar" },
-  { name: "billing", title: "가계", icon: "wallet" },
-  { name: "care", title: "돌봄", icon: "heart" },
-];
 
 export default function TabLayout() {
   return (
-    <Tabs
-      screenOptions={{
-        headerShown: false,
-        tabBarActiveTintColor: colors.text,
-        tabBarInactiveTintColor: colors.textMuted,
-        tabBarLabelStyle: { ...font.tab },
-        tabBarStyle: {
-          backgroundColor: colors.background,
-          borderTopColor: colors.surfaceStrong,
-        },
-      }}
-    >
-      {tabs.map(({ name, title, icon }) => (
-        <Tabs.Screen
-          key={name}
-          name={name}
-          options={{
-            title,
-            tabBarIcon: ({ color, size, focused }) => (
-              <Ionicons name={focused ? icon : `${icon}-outline`} size={size} color={color} />
-            ),
-          }}
-        />
-      ))}
+    <Tabs>
+      <Tabs.Screen name="index" options={{ title: "AI 비서" }} />
+      <Tabs.Screen name="family-chat" options={{ title: "소통" }} />
+      <Tabs.Screen name="schedule" options={{ title: "일정" }} />
+      <Tabs.Screen name="billing" options={{ title: "가계" }} />
+      <Tabs.Screen name="care" options={{ title: "돌봄" }} />
     </Tabs>
   );
 }
