@@ -28,3 +28,6 @@ Thumbs.db
 # claude (개인용)
 CLAUDE.local.md
 .claude/settings.local.json
+
+# 서버가 만드는 데이터(SQLite, 업로드)
+apps/api/data/

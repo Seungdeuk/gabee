@@ -5,7 +5,7 @@
 <!-- 변경 이유 / 관련 요구사항 (docs/requirements/...) -->
 
 ## 테스트
-- [ ] 서버: `uv run pytest`, `uv run ruff check .` 통과 (해당 시)
+- [ ] 서버: `pytest`, `ruff check .` 통과 (해당 시)
 - [ ] 앱: `npm run lint` 통과 (해당 시)
 - [ ] 직접 실행해서 확인함
 

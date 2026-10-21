@@ -1,13 +1,13 @@
 # family-secretary 공통 규칙
 
-가족용 비서 앱. 하단 5개 탭(AI 채팅, 소통, 일정, 가계, 돌봄)과 로그인·가족 그룹.
+가족용 비서 앱. 하단 6개 탭(AI 비서, 소통, 일정, 가계, 돌봄, 기타)과 로그인·가족 그룹.
 여러 명이 Claude로 함께 개발한다. 협업 절차는 `CONTRIBUTING.md`, 코드 세부 규칙은 `CODING_RULES.md`를 따른다.
 
 ## 스택
 
 - 앱: React Native (Expo SDK 58, Expo Router), JavaScript — `apps/mobile` (npm)
 - API: Python, FastAPI, Pydantic v2 — `apps/api`
-- DB: PostgreSQL (Supabase). 변경은 `supabase/migrations`의 SQL 파일로만. 접근 방식: TODO
+- DB: PostgreSQL (Supabase). 서버는 SQLAlchemy 2 로 접근한다. 개발 중에는 서버가 시작할 때 테이블을 만들고(`init_db`), 운영 스키마 변경은 `supabase/migrations`의 SQL 파일로만 한다.
 - 배포: API는 Docker + Caddy, 앱은 EAS Build
 - TypeScript는 사용하지 않는다.
 
@@ -18,15 +18,18 @@ apps/mobile/src/app/(tabs)/   라우트. 화면 파일은 얇게 (조립만)
 apps/mobile/src/features/     기능별 코드. 탭 이름과 동일 (하이픈: ai-assistant)
 apps/mobile/src/shared/       공통 UI·훅·유틸, shared/api (서버 호출 공통)
 apps/mobile/src/theme/        색상·간격·글자 크기 토큰
-apps/api/app/features/<기능>/  router.py, service.py, repository.py, schemas.py, tests/
+apps/api/app/features/<기능>/  router.py, service.py, repository.py, schemas.py, models.py, tests/
 apps/api/app/shared/          auth, errors, config, db, llm
 docs/contracts/openapi.json   API 명세 (자동 생성, 기준 파일)
 docs/requirements/            기능별 요구사항 (_template.md 참고)
 docs/features/                기능별 구현 현황
 docs/adr/                     기술 결정 기록
+docs/legacy/                  원본 프로젝트(family-secretary_prj) 참고 자료
 ```
 
-기능: ai-assistant, family-chat, schedule, billing, care, family-group
+기능: ai-assistant, family-chat, schedule, billing, care, family-group, more
+- `more`는 기타 탭(오늘 요약·가족 그룹·설정)이라 서버 기능이 따로 없다. 서버는 family_group, 나머지 5개 기능이 있다.
+- 지금 코드는 **뼈대(베이스 코드)** 다. 기능마다 TODO 로 남긴 것은 원본 프로젝트를 참고해서 채운다(아래 "원본 프로젝트").
 - 앱 폴더는 하이픈(`family-chat`), 서버 폴더는 밑줄(`family_chat`)이다. 같은 기능이다.
 - family-group은 로그인·권한이라 모든 기능이 의존한다.
 
@@ -39,11 +42,11 @@ pip install -e ".[dev]"
 uvicorn app.main:app --reload
 pytest
 ruff check . && ruff format --check .
-PYTHONPATH=. python scripts/export_openapi.py    # docs/contracts/openapi.json 갱신
+PYTHONPATH=. python scripts/export_openapi.py    # docs/contracts/openapi.json 갱신 (서버 API 를 바꾸면 같이 갱신)
 
 # 앱 (apps/mobile)
 npm install
-npx expo start
+npx expo start                 # 서버 주소: apps/mobile/.env 의 EXPO_PUBLIC_API_URL (없으면 임시 데이터)
 npx expo install <패키지>      # 의존성 추가는 npm install 대신 이걸로
 npm run lint
 
@@ -113,6 +116,11 @@ docker compose up --build      # 개발용 DB + API (루트 .env 필요)
 - TypeScript 파일(`.ts`, `.tsx`)이나 `tsconfig`를 추가하지 않는다.
 - 테스트를 통과시키려고 테스트를 삭제·약화하지 않는다.
 - `deploy/`, `.github/workflows/`는 요청 없이 수정하지 않는다 (운영에 바로 영향).
+
+## 원본 프로젝트 (참고용)
+
+이 레포의 기능 뼈대는 `family-secretary_prj`(원본)를 보고 만든 것이다. 원본 코드는 가져오지 않았고, 기능을 채울 때 해당 부분만 읽고 참고한다.
+기능별로 어느 파일을 보면 되는지는 `docs/legacy/original-reference.md`에 있다. 원본의 웹 화면은 앱 화면으로 다시 만들고, ADB/MTP(폰 USB 수집)는 쓰지 않는다.
 
 ## 결정 기록
 
