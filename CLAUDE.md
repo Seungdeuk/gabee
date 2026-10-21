@@ -5,7 +5,7 @@
 
 ## 스택
 
-- 앱: React Native (Expo SDK 58, Expo Router), JavaScript — `apps/mobile` (npm)
+- 앱: React Native (Expo SDK 54, Expo Router), JavaScript — `apps/mobile` (npm). SDK 는 아이폰 App Store 의 Expo Go 가 지원하는 54 에 맞춘다(올리기 전에 팀 Expo Go 를 확인)
 - API: Python, FastAPI, Pydantic v2 — `apps/api`
 - DB: PostgreSQL (Supabase). 서버는 SQLAlchemy 2 로 접근한다. 개발 중에는 서버가 시작할 때 테이블을 만들고(`init_db`), 운영 스키마 변경은 `supabase/migrations`의 SQL 파일로만 한다.
 - 배포: API는 Docker + Caddy, 앱은 EAS Build
