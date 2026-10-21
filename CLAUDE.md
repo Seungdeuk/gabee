@@ -29,7 +29,6 @@ docs/legacy/                  원본 프로젝트(family-secretary_prj) 참고 �
 
 기능: ai-assistant, family-chat, schedule, billing, care, family-group, more
 - `more`는 기타 탭(오늘 요약·가족 그룹·설정)이라 서버 기능이 따로 없다. 서버는 family_group, 나머지 5개 기능이 있다.
-- 지금 코드는 **뼈대(베이스 코드)** 다. 기능마다 TODO 로 남긴 것은 원본 프로젝트를 참고해서 채운다(아래 "원본 프로젝트").
 - 앱 폴더는 하이픈(`family-chat`), 서버 폴더는 밑줄(`family_chat`)이다. 같은 기능이다.
 - family-group은 로그인·권한이라 모든 기능이 의존한다.
 
