@@ -2,6 +2,7 @@
 
 서버는 SQLAlchemy 2 로 접근한다(`apps/api/app/shared/db.py`). 개발 중에는 서버가 시작할 때 테이블을 만들고(`init_db`), 운영 DB 스키마 변경은 `supabase/migrations`의 SQL 파일로만 한다. 테이블을 바꾸면 이 문서도 갱신한다.
 로컬 기본값은 SQLite(`apps/api/data/gabee.db`), docker compose 에서는 PostgreSQL 이다.
+docker compose 의 개발용 PostgreSQL 은 `pgvector/pgvector:pg16` 이미지를 써서 `pgvector` 확장을 쓸 수 있다(`init_db`가 시작 시 `CREATE EXTENSION IF NOT EXISTS vector` 실행). 아직 벡터 컬럼을 가진 테이블은 추가하지 않았다 — 아래 TODO 그대로 유효.
 
 | 테이블 | 기능 | 설명 |
 |---|---|---|

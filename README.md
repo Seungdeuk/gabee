@@ -28,8 +28,33 @@ pytest
 
 ```bash
 copy .env.example .env            # 값(DB 비밀번호 등)을 채운다
-docker compose up --build         # PostgreSQL + API  →  http://localhost:8000/docs
+docker compose up --build         # PostgreSQL(pgvector) + API  →  http://localhost:8000/docs
 ```
+
+DB 는 `pgvector/pgvector:pg16` 이미지를 쓰고, `127.0.0.1` 에만 포트를 연다(외부 공개 안 함). 서버가 시작할 때 `pgvector` 확장을 자동으로 켠다.
+
+pgvector 설치 확인 (PowerShell, `.env` 의 값을 그대로 쓴다):
+
+```powershell
+docker compose exec db psql -U postgres -d gabee -c "SELECT * FROM pg_extension WHERE extname='vector';"
+```
+
+DB 연결 확인:
+
+```powershell
+docker compose ps                 # db 가 healthy 인지 확인
+curl http://localhost:8000/health # {"status":"ok"} 면 API가 DB에 연결됨
+```
+
+Docker 없이 `uvicorn`으로 서버만 띄우면서 이 Postgres에 붙이려면 `apps/api/.env`의 `DATABASE_URL`을 `postgresql+psycopg://<POSTGRES_USER>:<POSTGRES_PASSWORD>@127.0.0.1:<POSTGRES_PORT>/<POSTGRES_DB>`로 바꾼다(기본값은 SQLite. `localhost`보다 `127.0.0.1`을 권장 — 아래 오류 참고).
+
+자주 발생하는 오류:
+- **포트 충돌(5432 가 이미 사용 중)**: 루트 `.env`의 `POSTGRES_PORT`를 다른 값(예: `5433`)으로 바꾸고 `docker compose up --build`를 다시 실행한다.
+- **`.env`를 안 만들고 실행**: `POSTGRES_USER` 등이 빈 값이 되어 DB가 뜨지 않는다. `copy .env.example .env`를 먼저 한다.
+- **이미 `postgres:16`(pgvector 없음)로 떠 있던 볼륨을 쓰던 경우**: 볼륨은 그대로 유지되고, 다음 `docker compose up` 때 이미지만 `pgvector/pgvector:pg16`으로 바뀌며 확장이 자동으로 켜진다. 데이터는 삭제되지 않는다.
+- **Windows 에서 `localhost:5432`로 접속이 멈추거나 느린 경우**: IPv6(`::1`)로 먼저 시도하다가 지연될 수 있다. `localhost` 대신 `127.0.0.1`을 쓴다(Docker는 `127.0.0.1`에만 바인딩하므로 어차피 이게 맞는 주소다).
+
+이 프로젝트의 DB/API 는 폴더명으로 컨테이너·볼륨·네트워크 이름이 접두사 처리되어, 다른 프로젝트의 PostgreSQL/Docker 볼륨과 자동으로 분리된다.
 
 ## 앱 (apps/mobile)
 
