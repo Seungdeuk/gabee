@@ -106,14 +106,33 @@ export default function SettleForm({ month, notify, onSettled }) {
           />
         ))}
 
-        <Text style={styles.label}>대상 태그</Text>
+        <View style={styles.rowBetween}>
+          <Text style={styles.label}>대상 태그</Text>
+          <Pressable
+            onPress={free ? backToFixed : turnOnFree}
+            accessibilityRole="switch"
+            accessibilityLabel="직접 고르기"
+            aria-checked={free}
+            hitSlop={8}
+            style={styles.toggle}
+            testID="free-toggle"
+          >
+            <View style={styles.toggleText}>
+              <Text style={styles.toggleTitle}>직접</Text>
+              <Text style={[styles.toggleHint, free && styles.toggleHintOn]}>{free ? "켜짐" : "켜기"}</Text>
+            </View>
+            <View style={[styles.track, free && styles.trackOn]}>
+              <View style={[styles.thumb, free && styles.thumbOn]} />
+            </View>
+          </Pressable>
+        </View>
         {free ? (
           <View style={styles.freeBanner} testID="free-banner">
-            <Text style={styles.freeText}>직접 고르는 중 · {fixed?.label ?? ""}에서 시작했어요</Text>
+            <Text style={styles.freeText}>직접 선택 중 · {fixed?.label ?? ""}에서</Text>
             <Button
               small
               variant="secondary"
-              label="← 고정 태그로 돌아가기"
+              label="← 고정 태그로"
               a11yLabel="고정 태그로 돌아가기"
               onPress={backToFixed}
             />
@@ -163,23 +182,6 @@ export default function SettleForm({ month, notify, onSettled }) {
           )}
         </View>
 
-        <Pressable
-          onPress={free ? backToFixed : turnOnFree}
-          accessibilityRole="switch"
-          accessibilityLabel="직접 고르기"
-          aria-checked={free}
-          style={[styles.toggle, free ? styles.toggleOn : styles.toggleOff]}
-          testID="free-toggle"
-        >
-          <View style={[styles.knob, free && styles.knobOn]} />
-          <View style={styles.toggleText}>
-            <Text style={styles.toggleTitle}>직접 고르기 {free ? "· 켜짐" : "· 눌러보세요"}</Text>
-            <Text style={styles.caption}>
-              {free ? "나눌 사람을 더하거나 빼는 중이에요" : "고정 태그로 채워진 인원에서 사람을 더하거나 뺄 수 있어요"}
-            </Text>
-          </View>
-        </Pressable>
-
         <Button label="정산하기" onPress={submit} disabled={!canSubmit} />
       </Card>
     </View>
@@ -194,13 +196,26 @@ const styles = StyleSheet.create({
   rowBetween: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   right: { alignItems: "flex-end", gap: 6 },
   chips: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
-  freeBanner: { backgroundColor: colors.surfaceStrong, borderRadius: 14, padding: 12, gap: 10 },
-  freeText: { ...font.bodyStrong, color: colors.text },
-  toggle: { flexDirection: "row", alignItems: "center", gap: 12, borderRadius: 16, padding: 12, borderWidth: 1.5 },
-  toggleOff: { borderStyle: "dashed", borderColor: colors.peach, backgroundColor: colors.card },
-  toggleOn: { borderColor: colors.peach, backgroundColor: colors.peachSoft },
-  toggleText: { flex: 1, gap: 2 },
-  toggleTitle: { ...font.bodyStrong, color: colors.text },
-  knob: { width: 22, height: 22, borderRadius: 11, backgroundColor: colors.disabled },
-  knobOn: { backgroundColor: colors.peach },
+  freeBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 8,
+    backgroundColor: colors.surfaceStrong,
+    borderRadius: 12,
+    paddingVertical: 6,
+    paddingLeft: 12,
+    paddingRight: 6,
+  },
+  freeText: { ...font.caption, fontWeight: "600", color: colors.text, flex: 1 },
+  // 작은 스위치: 라벨(+힌트)과 36x20 트랙
+  toggle: { flexDirection: "row", alignItems: "center", gap: 8 },
+  toggleText: { alignItems: "flex-end" },
+  toggleTitle: { fontSize: 13, fontWeight: "600", color: colors.text },
+  toggleHint: { fontSize: 11, color: colors.textMuted },
+  toggleHintOn: { color: colors.success, fontWeight: "700" },
+  track: { width: 36, height: 20, borderRadius: 10, backgroundColor: colors.disabled, justifyContent: "center", paddingHorizontal: 2 },
+  trackOn: { backgroundColor: colors.peach },
+  thumb: { width: 16, height: 16, borderRadius: 8, backgroundColor: colors.card },
+  thumbOn: { alignSelf: "flex-end" },
 });
