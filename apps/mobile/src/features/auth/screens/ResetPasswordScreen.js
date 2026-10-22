@@ -8,7 +8,7 @@ import { confirmPasswordReset } from "../api";
 import AuthLayout from "../components/AuthLayout";
 import Notice from "../components/Notice";
 import { errorMessage } from "../messages";
-import { extractToken } from "../tokenLink";
+import { extractToken, scrubTokenFromBrowserUrl } from "../tokenLink";
 import { checkPassword } from "../validation";
 
 const EXPIRED_CODES = ["reset_token_expired", "reset_token_used", "reset_token_invalid"];
@@ -34,7 +34,8 @@ export default function ResetPasswordScreen() {
   useEffect(() => {
     if (linkToken && !cleaned.current) {
       cleaned.current = true;
-      router.setParams({ token: undefined }); // 토큰이 주소/기록에 남지 않게 한다
+      router.setParams({ token: undefined }); // 토큰이 라우트 파라미터와 주소/기록에 남지 않게 한다
+      scrubTokenFromBrowserUrl();
     }
   }, [linkToken, router]);
 

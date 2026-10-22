@@ -2,6 +2,8 @@
 import assert from "node:assert/strict";
 import { afterEach, beforeEach, test } from "node:test";
 
+import { createTokenStore } from "../src/shared/auth/tokenStore.js";
+
 process.env.EXPO_PUBLIC_API_URL = "http://api.test";
 process.env.EXPO_PUBLIC_DEV_TOKEN = "legacy-dev-token";
 
@@ -195,4 +197,32 @@ test("서버 오류의 Retry-After 와 코드가 ApiError 에 담긴다", async 
   const api = await load();
   globalThis.fetch = async () => json(429, { code: "too_many_requests", message: "m" }, { "Retry-After": "42" });
   await assert.rejects(api.apiFetch("/x", { auth: false }), (e) => e.code === "too_many_requests" && e.retryAfter === 42);
+});
+
+test("세션 저장·복원: 회전된 Refresh Token 이 저장소에 남아 앱을 다시 켜도 이어진다", async () => {
+  const data = new Map();
+  const backend = {
+    getItemAsync: async (k) => data.get(k) ?? null,
+    setItemAsync: async (k, v) => void data.set(k, v),
+    deleteItemAsync: async (k) => void data.delete(k),
+  };
+  const store = createTokenStore(backend);
+  const api = await load();
+  const server = fakeServer();
+  api.configureAuth({ onRefreshTokenChanged: (t) => store.save(t), onSessionLost: () => store.clear() });
+  await store.save("refresh-1"); // 로그인 직후 저장
+  api.setSession({ accessToken: "expired", refreshToken: "refresh-1" });
+  await api.apiFetch("/care/records"); // 자동 갱신 → refresh-2 로 회전·저장
+  assert.equal(await createTokenStore(backend).load(), "refresh-2"); // 새 프로세스(앱 재실행)가 읽는 값
+
+  const reborn = await load(); // 앱 재실행: 모듈 상태가 비어 있고 저장소의 토큰으로 복원
+  reborn.configureAuth({ onRefreshTokenChanged: (t) => store.save(t), onSessionLost: () => store.clear() });
+  reborn.setSession({ refreshToken: await store.load() });
+  assert.equal((await reborn.apiFetch("/family-group/auth/me")).via, "bearer");
+  assert.equal(await store.load(), "refresh-3");
+
+  server.refreshFails = { status: 401, code: "refresh_reused" }; // 서버가 거부하면 저장된 토큰도 지운다
+  reborn.setSession({ accessToken: "expired", refreshToken: "refresh-3" });
+  await assert.rejects(reborn.apiFetch("/care/records"), { code: "session_expired" });
+  assert.equal(await store.load(), "");
 });

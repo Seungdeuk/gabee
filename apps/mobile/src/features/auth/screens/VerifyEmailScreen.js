@@ -11,7 +11,7 @@ import { confirmEmailVerification, requestEmailVerification } from "../api";
 import AuthLayout from "../components/AuthLayout";
 import Notice from "../components/Notice";
 import { errorMessage } from "../messages";
-import { extractToken } from "../tokenLink";
+import { extractToken, scrubTokenFromBrowserUrl } from "../tokenLink";
 
 const RESEND_COOLDOWN = 60; // 서버의 재발송 간격과 같다. 서버가 429 를 주면 그 안내를 따른다
 
@@ -56,6 +56,7 @@ export default function VerifyEmailScreen() {
     if (!linkToken || started.current) return;
     started.current = true;
     router.setParams({ token: undefined });
+    scrubTokenFromBrowserUrl();
     confirm(linkToken);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);

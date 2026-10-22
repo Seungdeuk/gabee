@@ -1,6 +1,6 @@
 # 구현 현황: 모바일 회원가입·로그인 (family-group 모바일)
 
-- 상태: 구현 완료(실제 기기 확인 전). 백엔드 PR #27(가입)·#28(로그인/JWT)·#29(이메일 인증·재설정)에 의존한다 — **#29 가 main 에 병합된 뒤에 병합한다.**
+- 상태: 구현 완료(실제 기기 확인 전). 백엔드 PR #27(가입)·#28(로그인/JWT)·#29(이메일 인증·재설정)가 모두 main 에 병합돼 있고, 이 브랜치는 최신 main 을 반영했다.
 - 요구사항: docs/requirements/family-group.md (PR 4-F 중 로그인·가입·이메일 인증·재설정 부분. 소셜 로그인, 초대 승인 화면은 제외)
 
 ## 화면 (모두 `apps/mobile/src/app/*.js` 라우트 → `features/auth/screens`)
@@ -36,7 +36,7 @@
 
 - `app.json` 의 `scheme` 을 `familysecretary` → **`gabee`** 로 변경(백엔드 `EMAIL_LINK_BASE=gabee://` 기본값과 일치, 코드에서 옛 스킴 참조 없음).
 - `gabee://verify-email?token=…` → `/verify-email`, `gabee://reset-password?token=…` → `/reset-password` (Expo Router 파일 경로가 곧 딥링크).
-- 토큰 보호: 화면이 열리자마자 토큰을 상태로 옮기고 `router.setParams({ token: undefined })` 로 라우트 파라미터에서 지운다. 앱 코드에 `console.*` 로그가 없고 분석 도구도 없다. 토큰을 에러 메시지에 넣지 않는다. 링크가 안 열리는 환경을 위해 메일에는 같은 토큰이 코드로도 적혀 있고 화면에서 붙여 넣을 수 있다(링크 전체를 붙여 넣어도 토큰만 추출).
+- 토큰 보호: 화면이 열리자마자 토큰을 상태로 옮기고 `router.setParams({ token: undefined })` 로 라우트 파라미터(React Navigation 상태)의 값을 덮어쓰고, 웹에서는 `scrubTokenFromBrowserUrl()` 로 주소창·기록의 `?token=` 도 새 기록 항목 없이 지운다. 네이티브에서 OS 가 앱을 연 원본 URL 은 앱이 지울 수 없다(앱은 저장·출력하지 않는다). 앱 코드에 `console.*` 로그가 없고 분석 도구도 없다. 토큰을 에러 메시지에 넣지 않는다. 링크가 안 열리는 환경을 위해 메일에는 같은 토큰이 코드로도 적혀 있고 화면에서 붙여 넣을 수 있다(링크 전체를 붙여 넣어도 토큰만 추출).
 
 ## 개발용 메일 (SMTP 없이 흐름 검증)
 

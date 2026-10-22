@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import { errorMessage, formatWait } from "../src/features/auth/messages.js";
-import { extractToken } from "../src/features/auth/tokenLink.js";
+import { extractToken, scrubTokenFromBrowserUrl } from "../src/features/auth/tokenLink.js";
 import { checkEmail, checkLoginId, checkName, checkPassword, normalizeLoginId } from "../src/features/auth/validation.js";
 import { createTokenStore } from "../src/shared/auth/tokenStore.js";
 
@@ -94,4 +94,19 @@ test("토큰 보관소: 저장·복원·삭제, 저장소 오류에도 앱은 �
   const web = createTokenStore(null); // 보안 저장소가 없는 환경: 이번 실행 동안만 메모리
   await web.save("w");
   assert.equal(await web.load(), "w");
+});
+
+test("웹 주소창의 ?token= 을 새 기록 항목 없이 지운다(다른 쿼리는 유지)", () => {
+  const calls = [];
+  const win = {
+    location: { href: "https://app.example/verify-email?sent=1&token=SECRETSECRETSECRET1234#top" },
+    history: { state: { k: 1 }, replaceState: (...args) => calls.push(args) },
+  };
+  assert.equal(scrubTokenFromBrowserUrl(win), true);
+  assert.deepEqual(calls, [[{ k: 1 }, "", "/verify-email?sent=1#top"]]);
+  assert.equal(JSON.stringify(calls).includes("SECRET"), false);
+  // 토큰이 없거나 브라우저가 아니면(네이티브) 아무것도 하지 않는다
+  assert.equal(scrubTokenFromBrowserUrl({ location: { href: "https://app.example/verify-email" }, history: { replaceState: () => assert.fail("호출되면 안 돼요") } }), false);
+  assert.equal(scrubTokenFromBrowserUrl(undefined), false);
+  assert.equal(scrubTokenFromBrowserUrl({}), false);
 });

@@ -20,3 +20,18 @@ export function extractToken(input) {
   }
   return /^[A-Za-z0-9_-]{16,256}$/.test(token) ? token : "";
 }
+
+/**
+ * 웹에서 주소창과 브라우저 기록에 남은 `?token=` 을 지운다(주소만 바꾸고 새 기록 항목을 만들지 않는다).
+ * 네이티브 앱에는 주소창이 없어서 아무 일도 하지 않는다. 라우트 파라미터는 화면이 router.setParams 로 따로 지운다.
+ * @param {{ location?: { href: string }, history?: { state: unknown, replaceState: (state: unknown, title: string, url: string) => void } } | undefined} [win]
+ * @returns {boolean} 주소를 고쳤으면 true
+ */
+export function scrubTokenFromBrowserUrl(win = globalThis.window) {
+  if (!win?.history?.replaceState || !win.location?.href) return false;
+  const url = new URL(win.location.href);
+  if (!url.searchParams.has("token")) return false;
+  url.searchParams.delete("token");
+  win.history.replaceState(win.history.state, "", `${url.pathname}${url.search}${url.hash}`);
+  return true;
+}
