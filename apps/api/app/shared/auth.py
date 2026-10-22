@@ -1,6 +1,8 @@
-"""요청자 신원. 로그인 없이 이름·역할로 가입하면 토큰을 받고, 이후 `X-Gyeot-Token` 헤더로 보낸다(원본 프로젝트와 같은 방식).
+"""요청자 신원.
 
-TODO: 소셜 로그인(Firebase 등)을 붙일 때 이 파일의 `current_user`만 바꾸면 된다.
+- 정식 회원(아이디/비밀번호 가입): 로그인으로 받은 Access Token(JWT) 을 `Authorization: Bearer` 로 보낸다.
+- 익명 계정(개발·전환기): 가입하면 받는 `X-Gyeot-Token`(원본 프로젝트와 같은 방식). `ALLOW_LEGACY_TOKEN_AUTH=false` 로 끈다.
+둘은 섞이지 않는다: Bearer 가 있으면 Bearer 만, 정식 회원은 레거시 토큰을 쓸 수 없다.
 """
 
 from typing import Annotated
@@ -11,22 +13,66 @@ from sqlalchemy.orm import Session
 
 from app.features.family_group.models import GroupMember, User
 
+from .config import settings
 from .db import get_db
 from .errors import ApiError, bad_request
+from .tokens import TokenError, verify_access_token
+
+
+def _bearer_token(authorization: str) -> str:
+    """`Authorization: Bearer <token>` 에서 토큰만 꺼낸다. 형식이 다르면 401."""
+    parts = authorization.split()
+    if len(parts) != 2 or parts[0].lower() != "bearer":
+        raise ApiError(401, "token_invalid", "Authorization 헤더는 'Bearer <토큰>' 형식이어야 해요")
+    return parts[1]
+
+
+def _user_from_bearer(authorization: str, db: Session) -> User:
+    try:
+        user_id = verify_access_token(_bearer_token(authorization))
+    except TokenError as exc:
+        if exc.expired:
+            raise ApiError(
+                401, "token_expired", "로그인이 만료됐어요. 다시 로그인해 주세요"
+            ) from exc
+        raise ApiError(401, "token_invalid", "토큰이 올바르지 않아요") from exc
+    # 권한 판단에 쓰는 값(role, 그룹)은 토큰 클레임이 아니라 요청마다 DB 에서 읽는다.
+    # 계정이 삭제됐으면 토큰이 유효해도 거부한다(users 에는 비활성 컬럼이 아직 없다).
+    user = db.get(User, user_id)
+    if user is None:
+        raise ApiError(401, "token_invalid", "토큰이 올바르지 않아요")
+    return user
+
+
+def bearer_user(
+    authorization: Annotated[str | None, Header()] = None,
+    db: Session = Depends(get_db),
+) -> User:
+    """Bearer(JWT) 로만 인증한다(레거시 토큰 불가). 정식 회원 전용 엔드포인트용."""
+    if authorization is None:
+        raise ApiError(401, "token_required", "로그인이 필요해요")
+    return _user_from_bearer(authorization, db)
 
 
 def current_user(
+    authorization: Annotated[str | None, Header()] = None,
     x_gyeot_token: Annotated[str | None, Header()] = None,
     db: Session = Depends(get_db),
 ) -> User:
+    """Authorization 헤더가 있으면 반드시 Bearer(JWT) 로 인증한다 — 검증에 실패해도 X-Gyeot-Token 으로
+    넘어가지 않는다(우회 방지). 없을 때만 레거시 X-Gyeot-Token 을 본다."""
+    if authorization is not None:
+        return _user_from_bearer(authorization, db)
     if not x_gyeot_token:
         raise ApiError(401, "token_required", "먼저 가입하거나 로그인해 주세요")
+    if not settings.allow_legacy_token_auth:
+        raise ApiError(401, "legacy_auth_disabled", "이 서버는 로그인(Bearer 토큰)이 필요해요")
     user = db.scalar(select(User).where(User.token == x_gyeot_token))
     if user is None:
         raise ApiError(401, "token_invalid", "토큰이 올바르지 않아요")
     if user.login_id is not None or user.password_hash is not None:
         # 아이디/비밀번호로 가입한 정식 회원은 레거시 고정 토큰으로 들어올 수 없다(레거시 인증은 익명 계정 전용).
-        # 정식 회원의 인증은 로그인으로 발급하는 Access 토큰만 쓴다. 존재 여부를 알려주지 않으려 같은 응답을 쓴다.
+        # 존재 여부를 알려주지 않으려 같은 응답을 쓴다.
         raise ApiError(401, "token_invalid", "토큰이 올바르지 않아요")
     return user
 

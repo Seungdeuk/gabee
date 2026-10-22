@@ -1,6 +1,6 @@
 # 구현 현황: family-group (통합 인증·가족 구성원)
 
-- 상태: 진행 중 (PR 4-A 스키마 완료, 4-B 중 회원가입 API 구현, 로그인·모바일은 아직)
+- 상태: 진행 중 (PR 4-A 스키마, 4-B 회원가입·로그인·JWT 세션 구현, 이메일 인증·소셜·모바일은 아직)
 - 담당: Seungdeuk (PR 4-A)
 - 요구사항: docs/requirements/family-group.md
 
@@ -24,9 +24,19 @@
   - **레거시 인증 우회 차단**: 정식 회원(`login_id`/`password_hash` 가 있는 계정)은 `X-Gyeot-Token` 으로 인증할 수 없다(`shared/auth.py`, 401 `token_invalid`). `users.token`(NOT NULL·unique) 에는 아무에게도 알려주지 않는 `nologin:` 무작위 값을 넣는다.
   - 테스트: `family_group/tests/test_signup_account.py`(SQLite 38건), `tests/test_signup_pg_e2e.py`(PG16 + 최신 head, 동시 가입 포함, `GABEE_PG16_E2E=1`).
 
+- **PR 4-B(일부) — 로그인·JWT 세션** (스키마 변경 없음, 기존 `refresh_tokens` 사용)
+  - `POST /family-group/auth/login` `{login_id, password, device_label?}` → 200 `{access_token, refresh_token, token_type:"bearer", expires_in, refresh_expires_in, user}`. 없는 아이디·틀린 비밀번호·비밀번호 없는 계정은 모두 401 `invalid_credentials`(같은 메시지, 없는 계정도 해시 검증 비용을 들임).
+  - `POST /family-group/auth/refresh` `{refresh_token}` → 200 `{access_token, refresh_token, ...}`. 회전: 쓴 토큰은 즉시 폐기, 폐기+발급은 한 트랜잭션, 조건부 UPDATE 로 동시 요청 중 하나만 성공. 모르는/만료 401 `refresh_invalid`, 폐기된 토큰 재사용 401 `refresh_reused`(폐기 10초 이후의 재사용은 탈취로 보고 그 사용자의 모든 세션을 폐기).
+  - `POST /family-group/auth/logout` `{refresh_token}` → 204. 이 세션만 폐기, 반복·모르는 토큰도 204(멱등). 전체 기기 로그아웃은 후속.
+  - `GET /family-group/auth/me` → `UserOut`. Bearer 전용(레거시 토큰 불가).
+  - Access Token: JWT HS256 고정, 필수 클레임 iss/aud/sub/iat/exp/jti/token_use(`access`), 기본 15분. 권한(role, 그룹)은 클레임이 아니라 요청마다 DB 로 확인. 만료 401 `token_expired`, 그 외 401 `token_invalid`. Refresh Token: JWT 가 아닌 무작위 48바이트, DB 에는 SHA-256 해시만, 기본 30일. 설정: `JWT_SECRET`(32자 이상, 비면 프로세스 임시 키), `ACCESS_TOKEN_TTL_SECONDS`, `REFRESH_TOKEN_TTL_SECONDS` (`.env.example`).
+  - 인증 의존성 `current_user`: `Authorization` 헤더가 있으면 Bearer 만 보고 실패해도 `X-Gyeot-Token` 으로 넘어가지 않는다. 헤더가 없을 때만 레거시 토큰(익명 계정 전용, `ALLOW_LEGACY_TOKEN_AUTH` 기본 true)을 본다. 정식 회원은 레거시 토큰 불가.
+  - 로그인 실패 제한: 아이디별 5회 / IP별 50회 (15분), 초과 429 `too_many_attempts` + `Retry-After`. 프로세스 메모리 기반(재시작 시 초기화, 워커별) — 기존에 쓸 수 있는 테이블(`invite_attempts` 는 초대 전용)이 없어 인프라 추가 없이 구현. 공유 한도가 필요하면 DB 테이블로 교체(후속).
+  - 테스트: `family_group/tests/test_login_jwt.py`(SQLite 27건), `tests/test_login_pg_e2e.py`(PG16 5건, 동시 갱신 8요청 → 성공 1건).
+
 ## 남은 것
 
-- PR 4-B(나머지): 로그인(Access/Refresh 발급, `current_user` Bearer 지원, 레거시 토큰 플래그 `allow_legacy_token_auth`·`allow_anonymous_signup`), 로그아웃·refresh, 이메일 인증·비밀번호 재설정, 가입 요청 레이트리밋. **지금은 익명 가입(`POST /family-group/users`)이 기본 허용 상태**라 레거시 경로가 열려 있다 — 모바일이 정식 가입/로그인으로 전환되는 시점에 플래그 기본값을 false 로 돌린다.
+- PR 4-B(나머지): 이메일 인증·비밀번호 재설정, 가입 요청 레이트리밋, 전체 기기 로그아웃, `allow_anonymous_signup` 플래그, 사용자 비활성 컬럼. **익명 가입(`POST /family-group/users`)과 레거시 토큰은 기본 허용 상태**라 모바일이 정식 가입/로그인으로 전환되는 시점에 `ALLOW_LEGACY_TOKEN_AUTH=false` 로 돌린다.
 - 공용 DB: 회원가입은 스키마 변경이 없고 `b6931fc30c66` 이상이면 동작한다(공용 DB 는 `6304cb91e46a` 로 확인됨).
 - PR 4-C: Google/Kakao 소셜 로그인 연동 API.
 - PR 4-D: 초대코드 보안 강화(관리자 승인, 레이트리밋, 만료/1회 정책) + 레거시 무제한 코드 폐기·자동 재발급.
