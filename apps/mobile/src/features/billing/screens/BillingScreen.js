@@ -10,6 +10,7 @@ import { colors, font } from "@/theme";
 import AllowanceTab from "../components/AllowanceTab";
 import BillingPreview from "../components/BillingPreview";
 import ExpenseTab from "../components/ExpenseTab";
+import ReminderBanner from "../components/ReminderBanner";
 import SettlementTab from "../components/SettlementTab";
 import SubscriptionTab from "../components/SubscriptionTab";
 import { currentMonth, shiftMonth } from "../format";
@@ -34,10 +35,12 @@ function BillingLive() {
   const [section, setSection] = useState("settle");
   const [month, setMonth] = useState(currentMonth());
   const [message, setMessage] = useState(null);
+  const [refreshKey, setRefreshKey] = useState(0); // 무언가 바뀌면 월말 알림도 다시 확인한다
   const timer = useRef(null);
 
   const notify = useCallback((text, isError = false) => {
     setMessage({ text, isError });
+    setRefreshKey((k) => k + 1);
     clearTimeout(timer.current);
     timer.current = setTimeout(() => setMessage(null), 3500);
   }, []);
@@ -56,6 +59,8 @@ function BillingLive() {
           <Ionicons name="chevron-forward" size={22} color={colors.text} />
         </Pressable>
       </View>
+
+      <ReminderBanner refreshKey={refreshKey} onOpen={() => setSection("settle")} />
 
       <Segmented options={SECTIONS} value={section} onChange={setSection} />
 

@@ -1047,6 +1047,179 @@
         }
       }
     },
+    "/billing/settlement/manager": {
+      "get": {
+        "tags": [
+          "billing"
+        ],
+        "summary": "Get Manager",
+        "description": "정산 담당자(월말 알림을 받는 사람). 지정하지 않았으면 그룹을 만든 사람.",
+        "operationId": "get_manager_billing_settlement_manager_get",
+        "parameters": [
+          {
+            "name": "x-gyeot-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Gyeot-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ManagerOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "billing"
+        ],
+        "summary": "Set Manager",
+        "operationId": "set_manager_billing_settlement_manager_put",
+        "parameters": [
+          {
+            "name": "x-gyeot-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Gyeot-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ManagerSet"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ManagerOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/billing/settlement/reminder": {
+      "get": {
+        "tags": [
+          "billing"
+        ],
+        "summary": "Settlement Reminder",
+        "description": "월말 정산 알림. 정산 담당자에게만 show=true 가 내려간다. `on` 은 화면 테스트용 날짜(YYYY-MM-DD).",
+        "operationId": "settlement_reminder_billing_settlement_reminder_get",
+        "parameters": [
+          {
+            "name": "on",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "On"
+            }
+          },
+          {
+            "name": "x-gyeot-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Gyeot-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Reminder"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/billing/settlement/payments": {
       "post": {
         "tags": [
@@ -2919,6 +3092,11 @@
             "type": "string",
             "title": "Target Tag",
             "default": "all"
+          },
+          "settled": {
+            "type": "boolean",
+            "title": "Settled",
+            "default": false
           }
         },
         "type": "object",
@@ -3187,6 +3365,42 @@
           "notice"
         ],
         "title": "LocationOut"
+      },
+      "ManagerOut": {
+        "properties": {
+          "manager_id": {
+            "type": "string",
+            "title": "Manager Id"
+          },
+          "manager_name": {
+            "type": "string",
+            "title": "Manager Name"
+          },
+          "is_me": {
+            "type": "boolean",
+            "title": "Is Me"
+          }
+        },
+        "type": "object",
+        "required": [
+          "manager_id",
+          "manager_name",
+          "is_me"
+        ],
+        "title": "ManagerOut"
+      },
+      "ManagerSet": {
+        "properties": {
+          "user_id": {
+            "type": "string",
+            "title": "User Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "user_id"
+        ],
+        "title": "ManagerSet"
       },
       "MealList": {
         "properties": {
@@ -3592,6 +3806,80 @@
           "value"
         ],
         "title": "RecordPut"
+      },
+      "Reminder": {
+        "properties": {
+          "show": {
+            "type": "boolean",
+            "title": "Show"
+          },
+          "is_manager": {
+            "type": "boolean",
+            "title": "Is Manager"
+          },
+          "manager_name": {
+            "type": "string",
+            "title": "Manager Name"
+          },
+          "kind": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "month_end",
+                  "overdue"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Kind"
+          },
+          "month": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Month"
+          },
+          "unsettled_count": {
+            "type": "integer",
+            "title": "Unsettled Count"
+          },
+          "unsettled_total": {
+            "type": "integer",
+            "title": "Unsettled Total"
+          },
+          "days_left": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Days Left"
+          }
+        },
+        "type": "object",
+        "required": [
+          "show",
+          "is_manager",
+          "manager_name",
+          "kind",
+          "month",
+          "unsettled_count",
+          "unsettled_total",
+          "days_left"
+        ],
+        "title": "Reminder",
+        "description": "월말 정산 알림. 정산 담당자에게만 show=true 로 내려간다."
       },
       "SettleRequest": {
         "properties": {

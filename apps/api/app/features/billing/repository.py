@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 from .models import (
     Allowance,
     AllowanceUse,
+    BillingSettings,
     Expense,
     SettlementPayment,
     SubscriptionItem,
@@ -121,3 +122,7 @@ def list_uses(db: Session, allowance_id: str) -> list[AllowanceUse]:
 def save_all(db: Session, objs: list) -> None:
     db.add_all(objs)
     db.commit()
+
+
+def get_settings(db: Session, group_id: str) -> BillingSettings | None:
+    return db.scalar(select(BillingSettings).where(BillingSettings.group_id == group_id))

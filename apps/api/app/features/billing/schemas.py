@@ -26,6 +26,7 @@ class ExpenseOut(BaseModel):
     paid_by_name: str = ""
     split_among: list[str] = []
     target_tag: str = "all"
+    settled: bool = False  # 정산하기를 누른 지출인지
 
 
 class Balance(BaseModel):
@@ -75,6 +76,29 @@ class SettleRequest(BaseModel):
     expense_ids: list[str] = Field(min_length=1)
     tag: TargetTag
     participants: list[str] | None = None  # 직접 고르기(custom)일 때만 쓴다
+
+
+class ManagerOut(BaseModel):
+    manager_id: str
+    manager_name: str
+    is_me: bool
+
+
+class ManagerSet(BaseModel):
+    user_id: str
+
+
+class Reminder(BaseModel):
+    """월말 정산 알림. 정산 담당자에게만 show=true 로 내려간다."""
+
+    show: bool
+    is_manager: bool
+    manager_name: str
+    kind: Literal["month_end", "overdue"] | None  # 월말(마지막 5일) / 지난 달 정산이 밀림(월초 5일)
+    month: str | None
+    unsettled_count: int
+    unsettled_total: int
+    days_left: int | None  # 월말까지 남은 일수(월말 알림일 때)
 
 
 class PaymentCreate(BaseModel):

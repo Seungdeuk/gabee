@@ -11,6 +11,7 @@ import { colors, font } from "@/theme";
 
 import { getExpenses, getMembers, getSettleTags, settleExpenses } from "../api";
 import { TAG_LABEL, won } from "../format";
+import ManagerRow from "./ManagerRow";
 import TagBadge from "./TagBadge";
 
 /**
@@ -72,6 +73,7 @@ export default function SettleForm({ month, notify, onSettled }) {
     <View style={styles.wrap}>
       <SectionTitle title="정산하기" />
       <Card tone="white">
+        <ManagerRow notify={notify} />
         <Text style={styles.caption}>정산할 지출을 고르고, 누구 몫인지 대상 태그를 걸어 주세요.</Text>
 
         <View style={styles.rowBetween}>
@@ -92,7 +94,7 @@ export default function SettleForm({ month, notify, onSettled }) {
             subtitle={`${e.date} · ${e.paid_by_name} 결제 · ${won(e.amount)}`}
             right={
               <View style={styles.right}>
-                <TagBadge tag={e.target_tag} />
+                <TagBadge tag={e.target_tag} settled={e.settled} />
                 <Button
                   small
                   variant="secondary"

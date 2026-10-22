@@ -26,8 +26,21 @@ class Expense(Base):
     split_among: Mapped[list[str]] = mapped_column(JSON, default=list)  # 나눌 사용자 id 들
     # 정산 대상 태그: parents(부모님 대상) | children(자녀 대상) | all(가족 전체) | custom(직접 고르기)
     target_tag: Mapped[str] = mapped_column(String(10), default="all", server_default="all")
+    # 정산하기를 누른 시각과 사람. 비어 있으면 아직 정산하지 않은(미정산) 지출이다.
+    settled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    settled_by: Mapped[str | None] = mapped_column(String(32), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class BillingSettings(Base):
+    """가족 그룹의 가계 설정. 정산 담당자(월말 알림을 받는 사람). 행이 없으면 그룹을 만든 사람이 담당자다."""
+
+    __tablename__ = "billing_settings"
+
+    group_id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    manager_id: Mapped[str] = mapped_column(String(32))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
 
 
 class SettlementPayment(Base):

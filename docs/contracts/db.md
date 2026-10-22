@@ -12,7 +12,8 @@ docker compose 의 개발용 PostgreSQL(`pgvector/pgvector:pg16` 이미지, `pgv
 | invites | family_group | 초대 코드(그룹, 만든 사람, 철회 여부) |
 | messages | family_chat | 그룹 대화 메시지 |
 | events | schedule | 가족 일정(제목, 시작 시각, 상태 pending/confirmed, 출처) |
-| expenses | billing | 공동 지출(제목, 금액, 날짜, 분류, 낸 사람, 나눌 사람 `split_among`, 정산 대상 태그 `target_tag`: parents/children/all/custom). 삭제는 `deleted_at` 소프트 삭제 |
+| expenses | billing | 공동 지출(제목, 금액, 날짜, 분류, 낸 사람, 나눌 사람 `split_among`, 정산 대상 태그 `target_tag`: parents/children/all/custom, 정산하기 시각·사람 `settled_at`·`settled_by`). 삭제는 `deleted_at` 소프트 삭제 |
+| billing_settings | billing | 가족 그룹의 가계 설정: 정산 담당자(월말 알림 대상). 행이 없으면 그룹을 만든 사람 |
 | settlement_payments | billing | '송금 완료'로 표시한 송금(월, 보낸 사람, 받은 사람, 금액). 송금 목록 자체는 매번 계산한다 |
 | subscription_items | billing | OTT·통신비 가족 할인 상태(check/available/active). 금액은 저장하지 않는다 |
 | allowances | billing | 자녀별 월 용돈 예산 |
