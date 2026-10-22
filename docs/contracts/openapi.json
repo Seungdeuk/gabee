@@ -47,6 +47,91 @@
         }
       }
     },
+    "/family-group/auth/signup": {
+      "post": {
+        "tags": [
+          "family-group"
+        ],
+        "summary": "Signup Account",
+        "description": "아이디·비밀번호·이메일로 회원가입한다(토큰 없이 부를 수 있다). 로그인은 별도 단계.",
+        "operationId": "signup_account_family_group_auth_signup_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AccountSignupIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountSignupOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/family-group/auth/login-id-available": {
+      "get": {
+        "tags": [
+          "family-group"
+        ],
+        "summary": "Login Id Available",
+        "description": "가입 화면의 아이디 중복 확인.",
+        "operationId": "login_id_available_family_group_auth_login_id_available_get",
+        "parameters": [
+          {
+            "name": "login_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Login Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LoginIdAvailableOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/family-group/me": {
       "get": {
         "tags": [
@@ -3114,6 +3199,61 @@
   },
   "components": {
     "schemas": {
+      "AccountSignupIn": {
+        "properties": {
+          "login_id": {
+            "type": "string",
+            "maxLength": 64,
+            "title": "Login Id"
+          },
+          "password": {
+            "type": "string",
+            "maxLength": 256,
+            "title": "Password"
+          },
+          "email": {
+            "type": "string",
+            "maxLength": 320,
+            "title": "Email"
+          },
+          "name": {
+            "type": "string",
+            "maxLength": 80,
+            "title": "Name"
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "parent",
+              "child",
+              "other"
+            ],
+            "title": "Role",
+            "default": "child"
+          }
+        },
+        "type": "object",
+        "required": [
+          "login_id",
+          "password",
+          "email",
+          "name"
+        ],
+        "title": "AccountSignupIn",
+        "description": "회원가입 요청. 형식·규칙 검사는 credentials.py 에서 하고(공통 에러 코드), 여기서는 과도한 크기만 막는다."
+      },
+      "AccountSignupOut": {
+        "properties": {
+          "user": {
+            "$ref": "#/components/schemas/UserOut"
+          }
+        },
+        "type": "object",
+        "required": [
+          "user"
+        ],
+        "title": "AccountSignupOut"
+      },
       "AllowanceBudget": {
         "properties": {
           "month": {
@@ -4312,6 +4452,24 @@
         ],
         "title": "LocationsLatest"
       },
+      "LoginIdAvailableOut": {
+        "properties": {
+          "login_id": {
+            "type": "string",
+            "title": "Login Id"
+          },
+          "available": {
+            "type": "boolean",
+            "title": "Available"
+          }
+        },
+        "type": "object",
+        "required": [
+          "login_id",
+          "available"
+        ],
+        "title": "LoginIdAvailableOut"
+      },
       "ManagerOut": {
         "properties": {
           "manager_id": {
@@ -5467,6 +5625,33 @@
           "location_consent": {
             "type": "boolean",
             "title": "Location Consent",
+            "default": false
+          },
+          "login_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Login Id"
+          },
+          "email": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Email"
+          },
+          "email_verified": {
+            "type": "boolean",
+            "title": "Email Verified",
             "default": false
           }
         },

@@ -10,6 +10,14 @@ def add_user(db: Session, user: User) -> User:
     return user
 
 
+def login_id_exists(db: Session, login_id: str) -> bool:
+    return db.scalar(select(User.id).where(User.login_id == login_id)) is not None
+
+
+def email_exists(db: Session, email: str) -> bool:
+    return db.scalar(select(User.id).where(User.email == email)) is not None
+
+
 def get_group(db: Session, group_id: str) -> Group | None:
     return db.get(Group, group_id)
 

@@ -1,15 +1,27 @@
 import secrets
 import uuid
 
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.shared.auth import ensure_group_member
-from app.shared.errors import bad_request, not_found
+from app.shared.errors import ApiError, bad_request, not_found
 from app.shared.location_consent import set_location_consent
+from app.shared.passwords import hash_password
 
+from . import credentials
 from . import repository as repo
 from .models import Group, Invite, User
-from .schemas import GroupOut, MemberOut, SignupOut, UserCreate, UserOut
+from .schemas import (
+    AccountSignupIn,
+    AccountSignupOut,
+    GroupOut,
+    LoginIdAvailableOut,
+    MemberOut,
+    SignupOut,
+    UserCreate,
+    UserOut,
+)
 
 _CODE_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"  # 헷갈리는 글자(0 O 1 I)는 뺀다
 
@@ -25,7 +37,55 @@ def user_out(user: User) -> UserOut:
         role=user.role,
         active_group_id=user.active_group_id,
         location_consent=user.location_consent_at is not None,
+        login_id=user.login_id,
+        email=user.email,
+        email_verified=user.email_verified_at is not None,
     )
+
+
+def _unusable_legacy_token() -> str:
+    """`users.token` 은 NOT NULL·unique 라 정식 회원에게도 값이 필요하다. 아무에게도 알려주지 않는 무작위 값이고,
+    그와 별개로 shared/auth.py 가 정식 회원(login_id/password_hash 가 있는 계정)의 X-Gyeot-Token 인증을 거부한다."""
+    return "nologin:" + secrets.token_urlsafe(32)
+
+
+def signup_account(db: Session, body: AccountSignupIn) -> AccountSignupOut:
+    """아이디/비밀번호/이메일 회원가입. 로그인(토큰 발급)은 하지 않는다 — 다음 단계(로그인 API)에서 한다."""
+    login_id = credentials.normalize_login_id(body.login_id)
+    email = credentials.normalize_email(body.email)
+    name = credentials.normalize_name(body.name)
+    credentials.validate_password(body.password, login_id, email)
+    _ensure_available(db, login_id, email)
+    user = User(
+        id=_uid(),
+        name=name,
+        role=body.role,
+        token=_unusable_legacy_token(),
+        login_id=login_id,
+        email=email,
+        email_verified_at=None,  # 이메일 인증 전
+        password_hash=hash_password(body.password),
+    )
+    try:
+        repo.add_user(db, user)
+    except IntegrityError:
+        # 위 확인과 저장 사이에 같은 아이디/이메일이 먼저 저장된 경우(동시 가입) — DB 의 unique 제약이 최종 방어선이다.
+        db.rollback()
+        _ensure_available(db, login_id, email)
+        raise
+    return AccountSignupOut(user=user_out(user))
+
+
+def _ensure_available(db: Session, login_id: str, email: str) -> None:
+    if repo.login_id_exists(db, login_id):
+        raise ApiError(409, "login_id_taken", "이미 사용 중인 아이디예요")
+    if repo.email_exists(db, email):
+        raise ApiError(409, "email_taken", "이미 가입된 이메일이에요")
+
+
+def login_id_available(db: Session, raw: str) -> LoginIdAvailableOut:
+    login_id = credentials.normalize_login_id(raw)
+    return LoginIdAvailableOut(login_id=login_id, available=not repo.login_id_exists(db, login_id))
 
 
 def signup(db: Session, body: UserCreate) -> SignupOut:
