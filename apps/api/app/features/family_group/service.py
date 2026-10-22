@@ -1,3 +1,4 @@
+import logging
 import secrets
 import uuid
 from datetime import UTC, datetime, timedelta
@@ -121,9 +122,12 @@ def group_out(db: Session, group: Group) -> GroupOut:
 
 def _require_verified_email(user: User) -> None:
     """이메일 미인증 정식 회원은 가족 데이터와 관련된 행동(그룹 생성·참여)을 못 한다.
-    익명 계정(login_id 없음)과 소셜 계정은 대상이 아니다. REQUIRE_EMAIL_VERIFICATION=false 면 끈다."""
+    익명 계정(login_id 없음)과 소셜 계정은 대상이 아니다. REQUIRE_EMAIL_VERIFICATION=false 이거나 메일 발송이 설정되지
+    않은 환경(인증할 방법이 없음)에서는 적용하지 않는다 — 메일을 설정하는 순간부터 자동으로 적용된다."""
     if (
         settings.require_email_verification
+        and mailer.get_mailer()
+        is not None  # 인증 메일을 보낼 수 없는 환경에서는 막지 않는다(가입 후 막다른 길 방지)
         and user.login_id is not None
         and user.email_verified_at is None
     ):
@@ -206,7 +210,9 @@ def _issue_tokens(db: Session, user: User, device_label: str | None, now: dateti
             device_label=device_label,
         ),
     )
-    access, access_ttl = tokens.create_access_token(user.id, now)
+    access, access_ttl = tokens.create_access_token(
+        user.id, now, tokens.password_version(user.password_hash)
+    )
     return TokenOut(
         access_token=access, refresh_token=refresh, expires_in=access_ttl, refresh_expires_in=ttl
     )
@@ -289,6 +295,7 @@ def logout(db: Session, body: RefreshIn) -> None:
 # ---------- 이메일 인증 · 비밀번호 재설정 ----------
 mail_limiter = FailureLimiter()  # 메일 요청 횟수(프로세스 메모리, login_limiter 와 같은 한계)
 _HOUR = 3600
+log = logging.getLogger(__name__)
 
 
 def _link(path: str, token: str) -> str:
@@ -322,13 +329,17 @@ def _check_rate(key: str, limit: int, window: int) -> None:
         )
 
 
-def deliver(mail: mailer.Mail) -> None:
-    """백그라운드 발송(응답 뒤). 실패해도 요청자에게 알리지 않는다 — 계정 존재 여부가 응답으로 새지 않게 하려는 것이고,
-    실패는 서버 로그에 남는다(내용·수신자 제외)."""
+def deliver(mail: mailer.Mail, kind: str = "mail") -> None:
+    """백그라운드 발송(응답 뒤). 실패해도 요청자에게 알리지 않는다 — 계정 존재 여부가 응답으로 새지 않게 하려는 것이다.
+    대신 실패는 서버 로그에 ERROR 로 남긴다(`mail_delivery_failed kind=... reason=...`, 수신자·본문·토큰 제외)."""
     try:
         mailer.ensure_mail_configured().send(mail)
-    except (mailer.MailSendError, ApiError):
-        pass
+    except mailer.MailSendError as exc:
+        log.error("mail_delivery_failed kind=%s reason=%s", kind, exc)
+    except ApiError:
+        log.error("mail_delivery_failed kind=%s reason=not_configured", kind)
+    except Exception as exc:  # noqa: BLE001 - 백그라운드 작업의 예외는 어디에도 전달되지 않으므로 반드시 기록한다
+        log.error("mail_delivery_failed kind=%s reason=%s", kind, type(exc).__name__)
 
 
 def request_email_verification(db: Session, user: User) -> None:

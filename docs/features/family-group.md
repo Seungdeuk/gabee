@@ -39,8 +39,10 @@
   - `POST /family-group/auth/email/verify/confirm` `{token}` → 200 `{email_verified:true}`. 토큰이 자격이라 로그인 없이 호출(메일 링크를 다른 기기에서 열어도 됨). 400 `verification_invalid`/`verification_used`/`verification_expired`. 토큰은 발급 당시의 이메일에 묶여 있어 이메일이 바뀌었으면 인증되지 않는다.
   - `POST /family-group/auth/password/reset/request` `{email}` → **항상 204**(계정 유무와 무관, 발송은 응답 뒤 백그라운드). 이메일별 시간당 3회·IP별 시간당 20회 초과 429(없는 이메일도 똑같이 제한), 메일 설정 없음 503(계정과 무관). 익명 계정·없는 이메일에는 메일을 보내지 않는다. 새 요청은 이전 링크를 무효화한다.
   - `POST /family-group/auth/password/reset/confirm` `{token, new_password}` → 204. 새 비밀번호는 가입과 같은 규칙(약하면 400 `weak_password`, 이때 토큰은 소비되지 않음)으로 Argon2id 해시, **모든 기기의 Refresh Token 폐기**, 같은 사용자의 다른 재설정 링크 무효, 로그인 잠금 해제. 400 `reset_token_invalid`/`reset_token_used`/`reset_token_expired`.
+  - **재설정 후 Access Token**: Refresh Token 폐기에 더해, Access Token 에 비밀번호 버전(`pv`, 비밀번호 해시에서 파생한 16자리 값)을 넣고 요청마다 현재 값과 비교하므로 **비밀번호가 바뀌면 이전에 발급된 Access Token 이 만료(15분)를 기다리지 않고 즉시 401 `token_invalid`** 가 된다(DB 변경 없음). 다른 사용자의 토큰은 영향 없음. 이 변경 이전에 발급된(`pv` 없는) 토큰은 거부되어 한 번 다시 로그인해야 한다. 로그아웃은 해당 Refresh Token 만 폐기하므로 Access Token 은 만료까지 유효하다(아래 한계 참고).
+  - **백그라운드 발송 실패**: 재설정 메일은 응답 뒤에 보내 계정 존재 여부가 응답·시간으로 새지 않게 한다. 발송이 실패하면 요청자에게는 알리지 않지만 서버 로그에 `ERROR mail_delivery_failed kind=password_reset reason=<오류 종류>` 로 남는다(수신자·본문·토큰·SMTP 응답 제외, 예기치 못한 예외 포함). 운영에서는 이 로그 키로 알림을 건다. 인증 메일은 요청자가 로그인한 본인이라 동기 발송하고 실패를 503 으로 알린다.
   - 토큰: `secrets.token_urlsafe(48)` 원문은 메일에만, DB 에는 SHA-256 해시만. 일회용(조건부 UPDATE 한 문장으로 소비 → 동시 요청 중 하나만 성공). 유효 기간: 인증 24시간(`EMAIL_VERIFY_TTL_SECONDS`), 재설정 30분(`PASSWORD_RESET_TTL_SECONDS`).
-  - **미인증 계정 정책**: 로그인·내 정보 조회·인증 메일 재요청·비밀번호 변경(재설정)은 허용, **가족 그룹 생성·참여(`POST /groups`, `/groups/join`)는 403 `email_not_verified`**. 익명 계정(모바일 현재 방식)은 영향 없음. 메일 설정 전 임시로 `REQUIRE_EMAIL_VERIFICATION=false`.
+  - **미인증 계정 정책**: 로그인·내 정보 조회·인증 메일 재요청·비밀번호 변경(재설정)은 허용, **가족 그룹 생성·참여(`POST /groups`, `/groups/join`)는 403 `email_not_verified`**. 익명 계정(모바일 현재 방식)은 영향 없음. **메일 발송이 설정되지 않은 환경(SMTP 없음, 인증 메일을 보낼 수 없음)에서는 이 정책을 적용하지 않는다** — 가입 후 막다른 길을 막기 위함이며, `MAIL_BACKEND` 를 설정하는 순간부터 자동으로 적용된다. `REQUIRE_EMAIL_VERIFICATION=false` 로 메일이 있어도 끌 수 있다(기본 true).
   - **메일 발송**: 표준 라이브러리 smtplib(새 의존성·인프라 없음). `MAIL_BACKEND=smtp`+`SMTP_*`(실제), `console`(개발 전용, 로컬 SQLite/DEBUG=true 에서만, 메일 내용을 로그에 출력), 기본 꺼짐(503, 성공으로 처리하지 않음). 발송 실패 로그에는 수신자·본문·서버 응답 내용을 남기지 않는다. 링크는 `EMAIL_LINK_BASE`(기본 `gabee://`) + `verify-email`/`reset-password` + `?token=` — 모바일 딥링크 연동 시 확정.
   - **이메일 선점(pre-hijacking) 검토**: 공격자가 피해자 이메일로 미리 미인증 계정을 만들어도 ① 미인증이라 가족 그룹에 들어갈 수 없고 ② 피해자가 그 이메일로 비밀번호 재설정을 하면 공격자의 비밀번호·세션이 모두 사라지며(재설정 링크는 메일함 주인에게만 가고 성공하면 이메일 인증 처리됨) 피해자가 계정을 갖는다. 공격자는 메일함이 없어 인증 토큰을 얻을 수 없다. 인증 메일은 계정에 등록된 주소로만 가며 요청 본문으로 주소를 받지 않는다. 남는 한계: 가입 시 `email_taken`(409)이 계정 존재를 알려주고, 선점당한 사용자는 가입이 막힌 채 재설정으로 되찾아야 한다.
   - 테스트: `family_group/tests/test_email_flows.py`(SQLite 28건, 메일은 가짜 발송기로 가로챔), `tests/test_email_pg_e2e.py`(PG16 4건, 동시 소비 8요청 → 성공 1건).
@@ -52,7 +54,7 @@
 - **로그인 횟수 제한의 한계**: 프로세스 메모리 기반이라 ① 서버 재시작 시 초기화 ② 워커·서버가 여러 개면 프로세스별로 집계(한도가 사실상 늘어남) ③ 아이디별 제한은 공격자가 남의 아이디를 일부러 틀려 일시적으로 잠글 수 있음(15분, `Retry-After`) ④ IP 제한은 `request.client.host` 기준이라, **리버스 프록시(Caddy) 뒤에서 uvicorn 을 `--proxy-headers --forwarded-allow-ips=<프록시 IP>` 없이 실행하면 모든 사용자가 프록시 IP 하나로 집계**된다 — 그 경우 `LOGIN_MAX_FAILURES_PER_IP=0` 으로 IP 제한을 끈다. 오래된 기록은 주기적으로 청소하므로 없는 아이디를 무작위로 시도해도 메모리가 계속 늘지 않는다. 공유·영구 한도가 필요하면 DB 테이블(마이그레이션)로 교체한다.
 - Refresh Token 재사용은 폐기 10초 이후면 탈취로 보고 그 사용자의 모든 세션을 폐기한다(10초 이내는 동시 갱신 경쟁으로 보고 해당 요청만 거부).
 - 이메일 중복 응답(409 `email_taken`)은 계정 존재 여부를 알려준다(가입 레이트리밋과 함께 후속).
-- 메일 요청 횟수 제한(인증 재발송·재설정)도 로그인 제한과 같이 프로세스 메모리 기반이다(재시작 시 초기화, 워커별). `created_at` 컬럼이 없어 DB 로 셀 수 없고 마이그레이션 없이 구현했다. 재설정으로 Refresh Token 을 폐기해도 이미 발급된 Access Token 은 만료(기본 15분)까지 유효하다.
+- 메일 요청 횟수 제한(인증 재발송·재설정)도 로그인 제한과 같이 프로세스 메모리 기반이다(재시작 시 초기화, 워커별). `created_at` 컬럼이 없어 DB 로 셀 수 없고 마이그레이션 없이 구현했다. 로그인 직후 해시 파라미터 갱신(`needs_rehash`)도 비밀번호 버전을 바꾸므로 다른 기기의 Access Token 이 한 번 거부될 수 있다(Refresh 로 다시 받으면 된다).
 
 ## 남은 것
 

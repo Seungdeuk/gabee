@@ -93,7 +93,7 @@ def password_reset_request(
     ip = request.client.host if request.client else "unknown"
     mail = service.request_password_reset(db, body, ip)
     if mail is not None:
-        background.add_task(service.deliver, mail)
+        background.add_task(service.deliver, mail, "password_reset")
     return Response(status_code=204)
 
 

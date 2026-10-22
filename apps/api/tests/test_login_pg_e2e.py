@@ -9,6 +9,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 import pytest
 
+from app.shared import mailer
 from tests import test_signup_pg_e2e as _base
 
 rows = _base.rows
@@ -50,6 +51,9 @@ def session(client):
 
 def test_signup_login_me_and_existing_api_on_postgres(pg_client):
     client, pg = pg_client
+    mailer.set_mailer(
+        type("M", (), {"send": lambda self, mail: None})()
+    )  # 메일이 설정된 환경(인증 정책 적용)
     data = session(client)
     auth = {"Authorization": f"Bearer {data['access_token']}"}
     assert client.get(ME, headers=auth).json()["login_id"] == "jimin_kim"

@@ -290,6 +290,23 @@ def test_unverified_member_cannot_create_or_join_a_family_but_can_use_the_accoun
     assert joined.status_code == 200
 
 
+def test_without_mail_configuration_the_policy_does_not_block_new_members(client):
+    """SMTP 가 없으면 인증할 방법이 없으므로 가입 후 막다른 길이 되지 않게 정책을 적용하지 않는다."""
+    register(client)
+    headers = bearer_for(client)
+    assert client.post(VERIFY_REQ, headers=headers).status_code == 503  # 인증 메일은 못 보낸다
+    assert (
+        client.post("/family-group/groups", json={"name": "가족"}, headers=headers).status_code
+        == 201
+    )
+
+
+def test_policy_starts_applying_as_soon_as_mail_is_configured(client, outbox):
+    register(client)
+    r = client.post("/family-group/groups", json={"name": "가족"}, headers=bearer_for(client))
+    assert r.status_code == 403 and r.json()["code"] == "email_not_verified"
+
+
 def test_anonymous_accounts_are_not_affected_by_the_verification_policy(client):
     headers = signup(client, "익명")  # 기존 모바일 앱 방식
     assert (
@@ -458,6 +475,59 @@ def test_concurrent_reset_confirmations_only_one_wins_and_sessions_end_revoked(c
     assert client.post(REFRESH, json={"refresh_token": session["refresh_token"]}).status_code == 401
     with SessionLocal() as db:
         assert all(r.revoked_at is not None for r in db.scalars(select(RefreshToken)))
+
+
+def test_password_reset_invalidates_existing_access_tokens_immediately(client, outbox):
+    register(client)
+    old_access = login(client).json()["access_token"]
+    old = {"Authorization": f"Bearer {old_access}"}
+    assert client.get(ME, headers=old).status_code == 200
+    request_reset(client)
+    client.post(RESET_CONFIRM, json={"token": outbox.last_token(), "new_password": NEW_PASSWORD})
+    stale = client.get(ME, headers=old)  # 만료(15분)를 기다리지 않고 바로 거부
+    assert stale.status_code == 401 and stale.json()["code"] == "token_invalid"
+    assert client.get("/family-group/me", headers=old).status_code == 401
+    fresh = {
+        "Authorization": f"Bearer {login(client, password=NEW_PASSWORD).json()['access_token']}"
+    }
+    assert client.get(ME, headers=fresh).status_code == 200
+
+
+def test_other_users_access_tokens_survive_someones_password_reset(client, outbox):
+    register(client)
+    register(client, "other_user", "other@example.com")
+    other = bearer_for(client, "other_user")
+    request_reset(client)
+    client.post(RESET_CONFIRM, json={"token": outbox.last_token(), "new_password": NEW_PASSWORD})
+    assert client.get(ME, headers=other).status_code == 200
+
+
+def test_background_send_failure_is_logged_but_the_response_stays_uniform(client, caplog):
+    mailer.set_mailer(Outbox(fail=True))
+    register(client)
+    with caplog.at_level("ERROR"):
+        known = request_reset(client, "jimin@example.com")
+        unknown = request_reset(client, "ghost@example.com")
+    assert known.status_code == unknown.status_code == 204 and known.content == unknown.content
+    failures = [r.getMessage() for r in caplog.records if "mail_delivery_failed" in r.getMessage()]
+    assert failures == [
+        "mail_delivery_failed kind=password_reset reason=boom"
+    ]  # 존재하는 계정 1건만 시도·기록
+    assert "jimin@example.com" not in caplog.text and "token" not in caplog.text.lower().replace(
+        "kind", ""
+    )
+
+
+def test_unexpected_exception_in_background_send_is_logged_too(client, caplog):
+    class Exploding:
+        def send(self, mail):
+            raise RuntimeError("unexpected")
+
+    mailer.set_mailer(Exploding())
+    register(client)
+    with caplog.at_level("ERROR"):
+        assert request_reset(client).status_code == 204
+    assert "mail_delivery_failed kind=password_reset reason=RuntimeError" in caplog.text
 
 
 def test_successful_reset_also_clears_the_login_lockout(client, outbox):

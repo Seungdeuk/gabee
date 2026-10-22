@@ -9,7 +9,7 @@ from sqlalchemy import select
 
 from app.features.family_group import service
 from app.features.family_group.models import RefreshToken, User
-from app.shared import tokens
+from app.shared import mailer, tokens
 from app.shared.config import settings
 from app.shared.db import SessionLocal
 from tests.helpers import signup
@@ -20,6 +20,11 @@ REFRESH = "/family-group/auth/refresh"
 LOGOUT = "/family-group/auth/logout"
 ME = "/family-group/auth/me"
 PASSWORD = "Sunny-day-2026"
+
+
+class _NullMailer:
+    def send(self, mail):
+        pass
 
 
 def register(client, login_id="jimin_kim", email="jimin@example.com", **over):
@@ -110,6 +115,7 @@ def test_successful_login_resets_the_failure_count(client):
 
 # ---------- Bearer 인증 ----------
 def test_bearer_authenticates_me_and_existing_apis(client):
+    mailer.set_mailer(_NullMailer())  # 메일이 설정된 환경(이메일 인증 정책 적용)
     register(client)
     access = login(client).json()["access_token"]
     me = client.get(ME, headers=bearer(access))
@@ -157,6 +163,10 @@ def _forge(claims_over=None, secret=None, algorithm="HS256", drop=()):
         "iat": now, "exp": now + timedelta(minutes=5), "jti": "j", "token_use": "access",
     }  # fmt: skip
     claims.update(claims_over or {})
+    if "pv" not in claims:  # 비밀번호 버전: 실제 사용자가 있으면 현재 값, 없으면 빈 값
+        with SessionLocal() as db:
+            user = db.get(User, claims["sub"])
+        claims["pv"] = tokens.password_version(user.password_hash) if user else ""
     for k in drop:
         claims.pop(k)
     return jwt.encode(claims, secret or settings.jwt_secret, algorithm=algorithm)
@@ -174,6 +184,8 @@ def test_forged_and_wrongly_scoped_jwts_are_rejected(client):
         "sub 없음": _forge({}, drop=("sub",)),
         "exp 없음": _forge({"sub": uid}, drop=("exp",)),
         "jti 없음": _forge({"sub": uid}, drop=("jti",)),
+        "pv 없음": _forge({"sub": uid}, drop=("pv",)),
+        "pv 다름(비밀번호가 바뀐 뒤의 토큰)": _forge({"sub": uid, "pv": "0" * 16}),
         "아직 유효하지 않음(iat 미래)": _forge({"sub": uid, "iat": future}),
         "알고리즘 HS512": _forge({"sub": uid}, algorithm="HS512"),
     }  # fmt: skip
