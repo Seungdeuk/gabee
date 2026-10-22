@@ -67,7 +67,12 @@ def pg16():
     )
     try:
         for _ in range(60):
-            if docker("exec", name, "pg_isready", "-U", "postgres", check=False).returncode == 0:
+            if (
+                docker(
+                    "exec", name, "pg_isready", "-h", "127.0.0.1", "-U", "postgres", check=False
+                ).returncode
+                == 0
+            ):
                 break
             time.sleep(1)
         time.sleep(2)

@@ -465,6 +465,8 @@ class Deployer:
                             "exec",
                             name,
                             "pg_isready",
+                            "-h",
+                            "127.0.0.1",  # 초기화용 임시 서버(유닉스 소켓만)가 아니라 최종 서버(TCP)만 통과
                             "-U",
                             "gabee_rehearsal",
                             "-d",

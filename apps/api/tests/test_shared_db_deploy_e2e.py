@@ -91,7 +91,12 @@ def fake_shared(tmp_path_factory):
     )
     try:
         for _ in range(60):
-            if docker("exec", name, "pg_isready", "-U", "postgres", check=False).returncode == 0:
+            if (
+                docker(
+                    "exec", name, "pg_isready", "-h", "127.0.0.1", "-U", "postgres", check=False
+                ).returncode
+                == 0
+            ):
                 break
             subprocess.run(["python", "-c", "import time; time.sleep(1)"])
         port = int(
@@ -237,7 +242,16 @@ def restore_into_fresh_pg16(dump: Path) -> dict:
         for _ in range(60):
             if (
                 docker(
-                    "exec", name, "pg_isready", "-U", "restore", "-d", "restore", check=False
+                    "exec",
+                    name,
+                    "pg_isready",
+                    "-h",
+                    "127.0.0.1",
+                    "-U",
+                    "restore",
+                    "-d",
+                    "restore",
+                    check=False,
                 ).returncode
                 == 0
             ):
