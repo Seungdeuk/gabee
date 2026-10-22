@@ -63,12 +63,14 @@ def ingest(
     source_path: str | None = None,
     occurred_on: date | None = None,
     sensitivity: str | None = None,
+    item_id: str | None = None,
 ) -> KnowledgeItem:
     """전처리가 넘긴 기록 한 건을 조각내고 임베딩해서 저장한다."""
     embedder = _embedder(db)
     pieces = split_markdown(body_md)
     vectors = embedder.embed_passages([p.text for p in pieces])
     item = KnowledgeItem(
+        **({"id": item_id} if item_id else {}),
         group_id=group_id,
         created_by=user_id,
         kind_label=kind_label,

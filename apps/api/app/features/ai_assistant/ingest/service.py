@@ -14,6 +14,7 @@ from collections import Counter
 from pathlib import PurePath
 
 from . import converters, masking
+from .caption import Captioner
 from .classify import Jev, Llm, classify
 from .converters import BrokenFile, Ocr
 from .detect import Unsupported, decode_text, detect
@@ -48,6 +49,7 @@ def ingest_file(
     llm: Llm | None = None,
     jev: Jev | None = None,
     faces: Faces | None = None,
+    captioner: Captioner | None = None,
 ) -> PreprocessResult:
     """원본을 원본 데이터 센터에 그대로 보관하고, 가린 결과와 (가린 글자로 한) 분류를 돌려준다.
     지원하지 않는 형식도 원본은 보관한다(나중에 지원되면 다시 처리할 수 있게)."""
@@ -67,6 +69,16 @@ def ingest_file(
         update["display_path"] = store.put_copy(
             group_id, src.sha256, "display", ".webp", display
         ).path
+    # 글자 없는 사진은 이미지 모델이 설명을 붙인다(captioner 를 준 경우만 — 테스트는 모델을 부르지 않는다)
+    if (
+        captioner is not None
+        and src.kind == "image"
+        and result.quality.status != "failed"
+        and not result.content.text.strip()
+    ):
+        caption = captioner.describe(data)
+        if caption is not None:
+            update["caption"] = caption
     # 가족 공유 사진만 찍힌 사람을 찾는다(문서 사진의 증명사진 등은 찾지 않음). 서버 안에서만 처리
     if src.kind == "image" and c is not None and c.route == "daily_share":
         finder = faces or default_faces()

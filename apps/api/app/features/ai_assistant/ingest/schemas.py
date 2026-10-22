@@ -87,6 +87,14 @@ class People(BaseModel):
     faces: list[FaceSpot] = Field(default_factory=list)
 
 
+class Caption(BaseModel):
+    """글자 없는 사진에 로컬 이미지 모델이 붙인 설명. 사실과 다를 수 있어서 자동으로 만든 것임을 남긴다."""
+
+    description: str
+    keywords: list[str] = Field(default_factory=list)
+    by: Literal["local_vlm"] = "local_vlm"
+
+
 class PreprocessResult(BaseModel):
     """원본 전처리 결과. content 는 이미 가린 글자다. 다음 단계(자동 분류)와 knowledge 가 이 모양만 본다."""
 
@@ -95,6 +103,7 @@ class PreprocessResult(BaseModel):
     quality: Quality
     privacy: Privacy = Field(default_factory=Privacy)
     classification: Classification | None = None  # ingest_file 에서 가린 뒤에 붙는다
+    caption: Caption | None = None  # 글자 없는 사진의 자동 설명 (이미지 모델이 있을 때)
     people: People | None = None  # 가족 공유 사진의 찍힌 사람 (얼굴 모델이 있을 때)
     raw_path: str | None = None  # 원본 데이터 센터 안의 위치 (ingest_file 로 저장했을 때)
     display_path: str | None = None  # 사진의 화면용 사본(1080px WebP, 위치 정보 없음)

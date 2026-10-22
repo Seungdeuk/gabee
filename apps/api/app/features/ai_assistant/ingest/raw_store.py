@@ -23,7 +23,7 @@ class RawRef(BaseModel):
 
 class LocalRawStore:
     def __init__(self, root: str | Path | None = None) -> None:
-        self.root = Path(root or Path(settings.data_dir) / "raw")
+        self.root = Path(root or settings.raw_dir or Path(settings.data_dir) / "raw")
 
     def _path(self, group_id: str, sha256: str, ext: str) -> Path:
         if not _GROUP_ID.match(group_id) or not re.fullmatch(r"[0-9a-f]{64}", sha256):

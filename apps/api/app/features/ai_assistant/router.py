@@ -1,13 +1,14 @@
-from fastapi import APIRouter, Depends, File, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Depends, File, UploadFile
 from sqlalchemy.orm import Session
 
 from app.shared.auth import current_group_id, current_user
 from app.shared.db import get_db
+from app.shared.errors import not_found
 
-from . import repository, service
+from . import files, repository, service
 from .knowledge.router import router as knowledge_router
 from .models import Photo
-from .schemas import ChatIn, ChatOut, PhotoOut
+from .schemas import ChatIn, ChatOut, FileOut, FileStatusOut, PhotoOut
 
 router = APIRouter(prefix="/ai-assistant", tags=["ai-assistant"])
 router.include_router(knowledge_router)  # /ai-assistant/knowledge/*
@@ -37,3 +38,32 @@ def list_photos(
     group_id: str = Depends(current_group_id), db: Session = Depends(get_db)
 ) -> list[Photo]:
     return repository.list_photos(db, group_id)
+
+
+@router.post("/files", response_model=FileOut, status_code=201)
+async def upload_file(
+    background: BackgroundTasks,
+    file: UploadFile = File(...),
+    user=Depends(current_user),
+    group_id: str = Depends(current_group_id),
+    db: Session = Depends(get_db),
+) -> Photo:
+    """사진·PDF·PPT·엑셀·워드 등 어떤 파일이든 받는다. 바로 `received` 로 응답하고 읽기·분류·저장은 뒤에서 한다."""
+    data = await file.read(
+        service.MAX_BYTES + 1
+    )  # 25MB 를 넘는 파일을 통째로 메모리에 올리지 않는다
+    photo = service.receive_file(
+        db, group_id, user.id, file.filename or "file", file.content_type or "", data
+    )
+    background.add_task(files.process_file, photo.id, group_id, user.id, data, photo.filename)
+    return photo
+
+
+@router.get("/files/{file_id}", response_model=FileStatusOut)
+def file_status(
+    file_id: str, group_id: str = Depends(current_group_id), db: Session = Depends(get_db)
+) -> FileStatusOut:
+    out = files.status(db, group_id, file_id)
+    if out is None:
+        raise not_found("파일")
+    return out
