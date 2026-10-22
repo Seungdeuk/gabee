@@ -30,6 +30,21 @@ main 병합 → CI Check 완료(workflow_run) → [1] 커밋·CI 검증 → [2] 
 
 **남는 위험(수용)**: 개인 저장소에서는 러너 그룹을 쓸 수 없어, 저장소에 쓰기 권한이 있는 협업자가 자기 브랜치에서 `gabee-db-deploy` 라벨을 쓰는 워크플로우를 만들면 그 러너에서 코드를 실행할 수 있다(러너 PC 의 pgpass 접근 가능). 신뢰하는 5명이라는 전제에서 수용하고 다음으로 완화한다: 러너 전용 저권한 OS 계정과 전용 PC 사용, `gabee_migrator` 권한을 DB `gabee` 로 한정(`family-secretary` 접속 불가), `pg_hba.conf` 로 러너 IP 만 허용. GitHub Pro/Team 으로 올리면 브랜치 보호(필수 상태 검사)와 Environment(main 한정 비밀) 로 보강할 수 있다 — 지금은 `main` 병합 차단이 강제되지 않으므로, 배포 게이트를 PR 병합이 아니라 **main 커밋의 CI 성공**에 걸었다.
 
+## 러너 격리 정책 — 활성화 전 선행 조건
+
+**문제**: 개인 저장소(Free)는 러너 그룹·Environment·브랜치 보호를 쓸 수 없다. 쓰기 권한이 있는 협업자 누구든 자기 브랜치에 `runs-on: [self-hosted, gabee-db-deploy]` 워크플로우를 만들어 push 하면 그 러너에서 임의 코드를 실행할 수 있고, 러너 PC 에 있는 pgpass 를 읽어 `gabee_migrator` 비밀번호를 얻을 수 있다. `main` 의 정적 검사나 이 워크플로우의 `if` 조건은 **다른 브랜치의 워크플로우 파일**을 막지 못한다(`workflow_dispatch` 도 브랜치별 파일을 쓴다).
+
+**결정**: 격리 정책이 확정·적용되기 전에는 자동 적용을 활성화하지 않는다. 코드로도 강제한다 — 배포 Job 은 `SHARED_DB_DEPLOY_ENABLED` 외에 `SHARED_DB_RUNNER_ISOLATION_APPROVED` 가 `true` 여야 실행된다(둘 다 저장소 변수, 기본 없음). 후자는 아래 중 하나 이상을 적용했다는 사람의 명시적 확인이다.
+
+| 선택지 | 효과 | 비용·한계 |
+|---|---|---|
+| A. GitHub Pro/Team + **Environment(`main` 브랜치 한정)** + 브랜치 보호 | 비밀을 `main` 배포 Job 에만 전달, 협업자 브랜치 워크플로우는 비밀·승인된 러너에 접근 불가. 필수 상태 검사도 강제 가능 | 유료 플랜. 러너 자체가 협업자 워크플로우에 호출될 수 있는 점은 남으므로 B 와 병행 권장 |
+| B. **권한 분리 실행기**: pgpass 는 별도 OS 계정(`gabee-deployer`)만 읽을 수 있고, 러너 계정은 그 계정으로 고정 위치(러너 계정이 쓰기 불가)에 설치된 검증된 배포 스크립트만 실행하는 작업 스케줄러 작업을 트리거한다 | 협업자 코드가 러너에서 실행돼도 비밀번호 파일을 읽을 수 없다 | 설치·갱신 절차 필요, 배포 스크립트 버전 고정·서명 확인 설계 필요 |
+| C. 전용 러너 PC·계정 + DB 측 제한 | 노출돼도 피해 범위를 DB `gabee` 로 한정(`family-secretary` 접근 불가, `pg_hba.conf` 로 러너 IP 만) | 비밀번호 노출 자체는 막지 못함 — 단독으로는 충분하지 않다 |
+| D. 배포 직전 일회성 비밀번호 발급·배포 후 폐기 | 파일에 남는 장기 비밀번호가 없다 | 발급 권한을 가진 별도 계정·절차 필요 |
+
+C 는 어떤 경우에도 적용하고(피해 범위 한정), A 또는 B 를 더해 비밀번호 접근 자체를 막는 구성을 권장한다. 선택과 적용 결과는 이 문서에 날짜와 함께 기록한 뒤 변수를 켠다.
+
 ## 마이그레이션 안전성
 
 | 상황 | 동작 |
@@ -68,6 +83,6 @@ main 병합 → CI Check 완료(workflow_run) → [1] 커밋·CI 검증 → [2] 
 
 ## 활성화 상태와 후속
 
-- 이 PR 로 코드와 워크플로우는 추가되지만 **비활성**이다(`SHARED_DB_DEPLOY_ENABLED` 변수가 없으면 Job 이 건너뛰어짐). 최초 설정·단계적 활성화 절차는 README "팀 공용 PostgreSQL 에 연결하기" 참고.
+- 이 PR 로 코드와 워크플로우는 추가되지만 **비활성**이다(`SHARED_DB_DEPLOY_ENABLED` 와 `SHARED_DB_RUNNER_ISOLATION_APPROVED` 변수가 없으면 Job 이 건너뛰어짐). 최초 설정·단계적 활성화 절차는 README "팀 공용 PostgreSQL 에 연결하기" 참고.
 - 검증: 격리 PostgreSQL 16 컨테이너를 가짜 공용 DB 로 쓰는 e2e(`tests/test_shared_db_deploy_e2e.py`, `GABEE_DEPLOY_E2E=1`)와 Docker 불필요한 단위 테스트(CI 에서 실행)로 위 표의 상황을 확인했다. 실제 공용 DB 에는 접속하지 않았다.
 - 후속: GitHub 플랜 상향 후 필수 상태 검사·Environment 적용, 파괴적 변경 린트를 PR 단계 CI 에도 추가.

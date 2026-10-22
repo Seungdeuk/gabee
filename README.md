@@ -133,11 +133,13 @@ curl http://localhost:8000/health   # {"status":"ok"} 면 공용 DB에 연결됨
 
 **자동 배포 최초 설정·활성화(인프라 소유자, 한 번만)** — 설계와 보안 모델은 [docs/adr/0007-shared-db-auto-migration.md](docs/adr/0007-shared-db-auto-migration.md) 참고.
 
+> **활성화 전 선행 조건(필수) — 배포 러너 격리 정책**: 개인 저장소에서는 러너 그룹을 쓸 수 없어, 저장소에 쓰기 권한이 있는 팀원이 **자기 브랜치**에서 `gabee-db-deploy` 러너를 요청하는 워크플로우를 만들 수 있다. 그러면 그 코드가 러너 PC 의 pgpass(`gabee_migrator` 비밀번호)를 읽을 수 있다. `main` 의 검사(`tests/test_workflow_safety.py`)는 이를 막지 못한다. 따라서 [docs/adr/0007-shared-db-auto-migration.md](docs/adr/0007-shared-db-auto-migration.md)의 "러너 격리 정책 — 활성화 전 선행 조건" 중 최소 한 가지 이상(권장: GitHub Pro/Team 의 Environment + 브랜치 보호, 또는 권한 분리 실행기)을 적용하고 팀이 합의하기 전에는 자동 배포를 켜지 않는다. 적용을 마쳤다면 저장소 변수 `SHARED_DB_RUNNER_ISOLATION_APPROVED=true` 로 명시적으로 확인한다(이 변수가 없으면 `SHARED_DB_DEPLOY_ENABLED` 만 켜도 Job 은 실행되지 않는다).
+
 1. 러너 PC(Windows, Docker Desktop 실행 중)에 GitHub Actions self-hosted 러너를 **전용 저권한 계정**으로 설치하고 라벨 `gabee-db-deploy`를 붙인다. Python 3.12+와 `pgvector/pgvector:pg16` 이미지(`docker pull`)가 필요하다. 이 라벨은 `deploy-shared-db.yml`에서만 쓴다.
 2. `gabee_migrator` 비밀번호는 **GitHub에 저장하지 않고** 러너 PC의 pgpass 파일(`192.168.0.44:5432:gabee:gabee_migrator:<비밀번호>`, 소유자만 읽기 가능)에만 둔다. 파일은 편집기로 직접 만들고 PowerShell 명령줄에 비밀번호를 입력하지 않는다.
 3. 공용 DB 서버(`pg_hba.conf`)에서 `gabee_migrator`는 러너 PC IP의 DB `gabee`만 허용하고, `family-secretary`에는 접속 권한이 없어야 한다. `gabee_app`에는 DDL(`public` 스키마 CREATE)이 없고, `gabee_migrator`가 만드는 새 테이블·시퀀스에 대한 기본 권한(`ALTER DEFAULT PRIVILEGES`)이 설정돼 있어야 한다(배포 후 점검이 확인한다).
 4. 저장소 변수(Settings → Variables)에 `SHARED_DB_BACKUP_DIR`(백업 폴더), `SHARED_DB_STATE_DIR`(로그·`HALT` 파일 폴더), `SHARED_DB_PGPASS`(pgpass 경로)를 설정한다.
-5. **단계적 활성화**: ① `SHARED_DB_DEPLOY_ENABLED=true`만 설정 → dry-run(백업·복원 검증·리허설까지, 공용 DB 미변경)으로 결과 확인 ② 문제가 없으면 `SHARED_DB_DEPLOY_APPLY=true` 추가 → 실제 적용. 즉시 끄려면 `SHARED_DB_DEPLOY_ENABLED`를 지운다.
+5. **단계적 활성화**(위 선행 조건과 `SHARED_DB_RUNNER_ISOLATION_APPROVED=true` 후): ① `SHARED_DB_DEPLOY_ENABLED=true`만 추가 → dry-run(백업·복원 검증·리허설까지, 공용 DB 미변경)으로 결과 확인 ② 문제가 없으면 `SHARED_DB_DEPLOY_APPLY=true` 추가 → 실제 적용. 즉시 끄려면 `SHARED_DB_DEPLOY_ENABLED`를 지운다.
 6. 실패하면 이후 배포가 멈춘다(`<STATE_DIR>\HALT`). 원인을 고친 뒤 HALT 파일을 지우고 Actions에서 `Deploy Shared DB`를 `Run workflow`(main)로 다시 실행한다. 자동 롤백은 하지 않는다 — 필요하면 백업(`<BACKUP_DIR>\gabee_pg16_deploy_*.dump`)으로 새 DB에 복원해 사람이 판단한다.
 
 백업은 날짜·시각과 리비전 범위가 들어간 파일(`gabee_pg16_deploy_<UTC시각>_<이전>-to-<이후>.dump` + `.sha256`)로 저장되고, 사람이 만든 기존 백업(`gabee_pg16.dump` 등 이름이 다른 파일)은 건드리지 않는다. 최근 14개만 보관하고 Git에는 올리지 않는다(`.gitignore`의 `*.dump`). 백업에는 공용 DB의 실제 데이터가 들어 있으므로 폴더 접근 권한을 소유자로 제한하고, 외부 클라우드 동기화 폴더에 두지 않는다.

@@ -1,6 +1,8 @@
 # 팀 공용 PostgreSQL(gabee)에 Alembic 마이그레이션을 자동 적용한다. 설계·보안 모델: docs/adr/0006-shared-db-auto-migration.md
 #
-# - 기본은 꺼져 있다: 저장소 변수 SHARED_DB_DEPLOY_ENABLED 가 'true' 가 아니면 Job 이 건너뛰어진다.
+# - 기본은 꺼져 있다: 저장소 변수 SHARED_DB_DEPLOY_ENABLED 와 SHARED_DB_RUNNER_ISOLATION_APPROVED 가 둘 다 'true' 가
+#   아니면 Job 이 건너뛰어진다. 뒤의 변수는 "배포 러너 격리 정책(ADR 0007)이 확정·적용됐다"는 명시적 확인이며,
+#   그 전에는 켜지 않는다(러너가 협업자 브랜치의 워크플로우에도 호출될 수 있어 pgpass 가 노출될 위험이 있음).
 # - 처음에는 dry-run 만 한다(백업·복원 검증·리허설까지): SHARED_DB_DEPLOY_APPLY 가 'true' 가 되어야 실제 적용.
 # - 트리거는 main 의 CI Check 완료(workflow_run)와 수동 재실행(workflow_dispatch, main 한정)뿐이다.
 #   pull_request 계열 트리거는 절대 쓰지 않는다(PR 코드가 내부망 DB·러너에 닿지 못하게 함).
@@ -33,6 +35,7 @@ jobs:
   deploy:
     if: >-
       vars.SHARED_DB_DEPLOY_ENABLED == 'true' &&
+      vars.SHARED_DB_RUNNER_ISOLATION_APPROVED == 'true' &&
       (
         (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') ||
         (github.event_name == 'workflow_run' &&

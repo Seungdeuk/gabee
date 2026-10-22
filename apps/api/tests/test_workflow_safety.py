@@ -44,6 +44,7 @@ def test_deploy_job_is_gated_by_kill_switch_ci_conclusion_and_main():
     condition = job["if"]
     for required in (
         "vars.SHARED_DB_DEPLOY_ENABLED == 'true'",
+        "vars.SHARED_DB_RUNNER_ISOLATION_APPROVED == 'true'",
         "github.event.workflow_run.conclusion == 'success'",
         "github.event.workflow_run.event == 'push'",
         "github.event.workflow_run.head_branch == 'main'",
