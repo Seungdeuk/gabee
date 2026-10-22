@@ -52,9 +52,18 @@ function CareLive() {
   useEffect(() => () => clearTimeout(timer.current), []);
 
   return (
-    <Screen title="돌봄" subtitle="데일리 체크 · 추천 · 식단 · 위치" pinned={<MealBar meals={daily.data?.meals ?? []} />}>
-      <Segmented options={SECTIONS} value={section} onChange={setSection} />
-
+    <Screen
+      title="돌봄"
+      subtitle="데일리 체크 · 추천 · 식단 · 위치"
+      pinned={
+        <View>
+          <View style={styles.tabsRow}>
+            <Segmented options={SECTIONS} value={section} onChange={setSection} />
+          </View>
+          <MealBar meals={daily.data?.meals ?? []} />
+        </View>
+      }
+    >
       {message ? (
         <View style={[styles.message, message.isError && styles.messageError]} accessibilityLiveRegion="polite" testID="message">
           <Text style={[styles.messageText, message.isError && styles.messageTextError]}>{message.text}</Text>
@@ -71,6 +80,7 @@ function CareLive() {
 }
 
 const styles = StyleSheet.create({
+  tabsRow: { paddingHorizontal: 20, paddingTop: 4, backgroundColor: colors.background },
   message: { backgroundColor: colors.successSoft, borderRadius: 14, paddingHorizontal: 14, paddingVertical: 10 },
   messageError: { backgroundColor: colors.dangerSoft },
   messageText: { ...font.caption, color: colors.success, fontWeight: "600" },

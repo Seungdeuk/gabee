@@ -52,8 +52,11 @@ export default function DailyCheckTab({ daily, reload, notify }) {
     <View style={styles.wrap}>
       <Card tone="blue">
         <Text style={styles.notice}>누락은 아직 기록되지 않았다는 뜻이에요. 건강에 이상이 있다는 뜻은 아니에요.</Text>
+        <View style={styles.clockRow}>
+          <Text style={styles.caption}>기준 시각</Text>
+          <Text style={styles.statValue}>{daily.now}</Text>
+        </View>
         <View style={styles.stats}>
-          <Stat label="기준 시각" value={daily.now} />
           <Stat label="완료" value={`${done.length}/${daily.items.length}`} testID="done-count" />
           <Stat label="누락" value={String(cleanup.length)} testID="missing-count" />
         </View>
@@ -176,6 +179,7 @@ const styles = StyleSheet.create({
   caption: { ...font.caption, color: colors.textMuted },
   label: { fontSize: 14, fontWeight: "500", color: colors.text },
   notice: { ...font.caption, color: colors.text },
+  clockRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   stats: { flexDirection: "row", justifyContent: "space-between" },
   stat: { flex: 1, alignItems: "center", gap: 4 },
   statValue: { ...font.bodyStrong, fontWeight: "700", color: colors.text },
