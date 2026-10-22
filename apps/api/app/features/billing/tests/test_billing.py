@@ -35,3 +35,35 @@ def test_billing_validation(client, family):
         client.get("/billing/summary", params={"month": "2026-13"}, headers=a).json()["code"]
         == "invalid_month"
     )
+
+
+def test_billing_is_scoped_to_group(client, family, other_family):
+    a, _, _ = family
+    client.post(
+        "/billing/expenses",
+        json={"title": "진료비", "amount": 30000, "date": "2026-10-12"},
+        headers=a,
+    )
+    assert client.get("/billing/expenses", headers=other_family).json() == []
+    other_summary = client.get(
+        "/billing/summary", params={"month": "2026-10"}, headers=other_family
+    ).json()
+    assert other_summary["total"] == 0 and other_summary["count"] == 0
+
+
+def test_billing_ignores_client_supplied_paid_by(client, family):
+    a, b, _ = family
+    a_id = client.get("/family-group/me", headers=a).json()["id"]
+    b_id = client.get("/family-group/me", headers=b).json()["id"]
+    r = client.post(
+        "/billing/expenses",
+        json={
+            "title": "몰래 남 이름으로",
+            "amount": 1000,
+            "date": "2026-10-12",
+            "paid_by": b_id,  # 스키마에 없는 필드 — 무시되고 실제 로그인한 사람(a)이 되어야 한다
+        },
+        headers=a,
+    )
+    assert r.status_code == 201
+    assert r.json()["paid_by"] == a_id

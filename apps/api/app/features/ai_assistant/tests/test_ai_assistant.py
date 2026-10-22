@@ -112,3 +112,13 @@ def test_chat_history_is_sent_in_order_and_limit_is_enforced(client, family, mon
     assert third.status_code == 429 and third.json()["code"] == "daily_limit"
     too_long = {"message": "a", "history": [{"role": "user", "text": "x"}] * 11}
     assert client.post("/ai-assistant/chat", json=too_long, headers=a).status_code == 422
+
+
+def test_photos_scoped_to_group(client, family, other_family):
+    a, _, _ = family
+    client.post(
+        "/ai-assistant/photos",
+        files={"file": ("a.jpg", b"\xff\xd8\xff" + b"0" * 20, "image/jpeg")},
+        headers=a,
+    )
+    assert client.get("/ai-assistant/photos", headers=other_family).json() == []

@@ -13,8 +13,7 @@ def add(db: Session, event: Event) -> Event:
 
 
 def get(db: Session, group_id: str, event_id: str) -> Event | None:
-    event = db.get(Event, event_id)
-    return event if event and event.group_id == group_id else None
+    return db.scalar(select(Event).where(Event.id == event_id, Event.group_id == group_id))
 
 
 def list_from(db: Session, group_id: str, since: datetime | None) -> list[Event]:

@@ -7,7 +7,8 @@
  */
 const BASE_URL = (process.env.EXPO_PUBLIC_API_URL ?? "").replace(/\/+$/, "");
 
-let token = "";
+// 로그인 화면이 붙기 전까지 개발용으로 쓰는 토큰(EXPO_PUBLIC_DEV_TOKEN). 가입·로그인이 setToken 을 부르면 그 값으로 바뀐다.
+let token = process.env.EXPO_PUBLIC_DEV_TOKEN ?? "";
 
 export const isApiConfigured = () => BASE_URL !== "";
 

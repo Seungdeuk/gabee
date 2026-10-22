@@ -7,7 +7,7 @@
 
 - 앱: React Native (Expo SDK 54, Expo Router), JavaScript — `apps/mobile` (npm). SDK 는 아이폰 App Store 의 Expo Go 가 지원하는 54 에 맞춘다(올리기 전에 팀 Expo Go 를 확인)
 - API: Python, FastAPI, Pydantic v2 — `apps/api`
-- DB: PostgreSQL (Supabase). 서버는 SQLAlchemy 2 로 접근한다. 개발 중에는 서버가 시작할 때 테이블을 만들고(`init_db`), 운영 스키마 변경은 `supabase/migrations`의 SQL 파일로만 한다.
+- DB: PostgreSQL (Supabase). 서버는 SQLAlchemy 2 로 접근한다. 로컬 SQLite는 서버가 시작할 때 테이블을 만들고(`init_db`), PostgreSQL 스키마 변경은 **Alembic**(`apps/api/alembic/`, `alembic upgrade head`)로만 한다 — `supabase/migrations`는 더 이상 쓰지 않는다.
 - 배포: API는 Docker + Caddy, 앱은 EAS Build
 - TypeScript는 사용하지 않는다.
 
@@ -17,7 +17,7 @@
 apps/mobile/src/app/(tabs)/   라우트. 화면 파일은 얇게 (조립만)
 apps/mobile/src/features/     기능별 코드. 탭 이름과 동일 (하이픈: ai-assistant)
 apps/mobile/src/shared/       공통 UI·훅·유틸, shared/api (서버 호출 공통)
-apps/mobile/src/theme/        색상·간격·글자 크기 토큰 (디자인 값은 여기에만 둔다: 크림 바탕, 브라운 글자, 꿀색·복숭아색 포인트)
+apps/mobile/src/theme/        색상·간격·글자 크기 토큰 (디자인 값은 여기에만 둔다: 크림 바탕, 브라운 글자, 꿀색·복숭아색 포인트). 디자인 파일 기준 공통 규칙은 `docs/contracts/ui.md`
 apps/mobile/assets/images/    가비 캐릭터(gabee-mascot.png)와 앱 아이콘
 apps/api/app/features/<기능>/  router.py, service.py, repository.py, schemas.py, models.py, tests/
 apps/api/app/shared/          auth, errors, config, db, llm
@@ -71,7 +71,7 @@ docker compose up --build      # 개발용 DB + API (루트 .env 필요)
 - 서버 폴더명은 밑줄(snake_case)만 쓴다. 하이픈은 import가 안 된다.
 - 다른 기능의 내부 파일을 직접 import하지 않는다. 공통 코드는 `app/shared/`로 올린다.
 - 에러 응답은 `app/shared/errors.py`의 공통 형식만 쓴다.
-- 인증·권한은 `app/shared/auth.py`를 거친다. 권한 규칙은 `docs/contracts/permissions.md`가 기준이다.
+- 인증·권한은 `app/shared/auth.py`를 거친다. 권한 규칙은 `docs/contracts/permissions.md`가 기준이다. 그룹 데이터를 다루는 라우터는 `group_id`를 요청에서 직접 받지 않고 `Depends(current_group_id)`로만 받는다(이 함수가 `group_members` 기준 실제 멤버십까지 확인한다). 라우터를 거치지 않고 Service를 직접 호출하는 코드(향후 AI Agent 포함)는 호출 전에 `ensure_group_member(db, user_id, group_id)`를 먼저 실행해야 한다.
 - LLM 호출은 `app/shared/llm` 래퍼로만 한다. 기능 코드에서 SDK를 직접 호출하지 않는다.
 - 새 엔드포인트에는 해당 기능의 `tests/`에 테스트를 최소 1개 함께 작성한다.
 
@@ -94,10 +94,11 @@ docker compose up --build      # 개발용 DB + API (루트 .env 필요)
 
 ## DB
 
-- 스키마 변경은 `supabase/migrations`에 새 SQL 파일로만 한다. 병합된 마이그레이션은 수정하지 않고 새 파일을 추가한다.
+- PostgreSQL 스키마 변경은 `apps/api/alembic/`의 Alembic 리비전으로만 한다(`alembic revision --autogenerate` 후 직접 리뷰, `alembic upgrade head`로 적용). 적용된 리비전은 수정하지 않고 새 리비전을 추가한다. `supabase/migrations`는 더 이상 스키마 변경에 쓰지 않는다.
 - 컬럼·테이블 삭제 등 데이터가 사라지는 변경은 PR에 적고 팀에 공유한 뒤 진행한다.
 - 변경하면 `docs/contracts/db.md`도 갱신한다.
 - `supabase/seed`에는 가짜 데이터만 둔다. 실제 사용자 데이터를 넣지 않는다.
+- 팀 공용 PostgreSQL(`192.168.0.44:5432/gabee`)의 스키마 변경(`alembic upgrade`/`downgrade`/`stamp`)은 마이그레이션 담당자가 `gabee_migrator` 계정으로, PR이 병합되고 검증된 뒤 명시적으로 승인받아서만 실행한다. 일반 실행은 `gabee_app` 계정을 쓴다(DDL 권한 없음 — 단 데이터 CRUD 권한은 있으니 공용 DB 데이터를 직접 조작할 때도 주의한다). 같은 서버의 기존 MVP `family-secretary` database는 어떤 경우에도 건드리지 않는다. 자세한 내용은 `README.md`("팀 공용 PostgreSQL 에 연결하기")와 `docs/adr/0005-shared-postgres-env.md` 참고.
 
 ## Git
 
