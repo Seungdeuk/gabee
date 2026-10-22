@@ -1,7 +1,7 @@
 """billing settled and manager
 
 Revision ID: 6304cb91e46a
-Revises: 9e28d84c1686
+Revises: b6931fc30c66
 Create Date: 2026-10-22 14:18:23.298245
 
 """
@@ -14,7 +14,7 @@ from alembic import op
 
 # revision identifiers, used by Alembic.
 revision: str = "6304cb91e46a"
-down_revision: str | Sequence[str] | None = "9e28d84c1686"
+down_revision: str | Sequence[str] | None = "b6931fc30c66"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
