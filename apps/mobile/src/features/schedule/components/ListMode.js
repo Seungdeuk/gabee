@@ -18,9 +18,9 @@ const countOf = (items) => `${items.filter((item) => item.checked).length}/${ite
 /**
  * 목록 모드: 오늘 → 다가오는 것(월 구분선) → 지난 것. 구역 제목을 누르면 각각 접고 편다.
  * 오늘은 비어 있어도 항상 보이고, 지난 것은 기본 접힘이며 없으면 숨긴다.
- * @param {{ items: import("../model").ScheduleItem[], today: string, onToggleItem: (id: string) => void }} props
+ * @param {{ items: import("../model").ScheduleItem[], today: string, onToggleItem: (id: string) => void, onAddToday?: () => void }} props
  */
-export default function ListMode({ items, today, onToggleItem }) {
+export default function ListMode({ items, today, onToggleItem, onAddToday }) {
   const [fold, setFold] = useState({ today: false, upcoming: false, past: true });
   const [morePast, setMorePast] = useState(false);
   const toggleFold = (key) => setFold((f) => ({ ...f, [key]: !f[key] }));
@@ -35,7 +35,7 @@ export default function ListMode({ items, today, onToggleItem }) {
           count={parts.today.length > 0 ? countOf(parts.today) : undefined}
           collapsed={fold.today}
           onToggle={() => toggleFold("today")}
-          right={<AddButton label="오늘 추가" />}
+          right={<AddButton label="오늘 추가" onPress={onAddToday} />}
         />
         {fold.today ? null : parts.today.length === 0 ? (
           <Text style={styles.empty}>오늘은 등록된 일정이 없어요</Text>

@@ -34,6 +34,16 @@ export function addDays(key, days) {
 export const todayKey = () => toDateKey(new Date());
 
 /**
+ * 오늘 이후(오늘 포함) 처음 오는 해당 요일. 이미 지났으면 다음 주.
+ * @param {string} from "YYYY-MM-DD" 기준일
+ * @param {number} weekday 0(일)~6(토)
+ * @returns {string}
+ */
+export function nextWeekday(from, weekday) {
+  return addDays(from, (weekday - fromDateKey(from).getDay() + 7) % 7);
+}
+
+/**
  * 선택한 날짜가 속한 주의 날짜 키 7개.
  * @param {string} key
  * @param {boolean} [mondayStart] true 면 월~일(메인), false 면 일~토(달력)

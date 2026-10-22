@@ -19,7 +19,7 @@ const TOGETHER_SAMPLES = ["장 같이 봐줘", "병원 같이 가줘"];
 
 /**
  * 일정 탭 메인: 헤더 + 주간 스트립 / 오늘·내일 / 함께하기 / 먼저 권해드려요 / 채팅 입력.
- * 등록·상세·같이·채팅으로 가는 이동은 각 화면을 만들 때 연결한다.
+ * 상세·같이·채팅으로 가는 이동은 각 화면을 만들 때 연결한다.
  */
 export default function ScheduleScreen() {
   const router = useRouter();
@@ -38,6 +38,10 @@ export default function ScheduleScreen() {
   const addLater = (id) => setLater((prev) => [...prev, id]);
   const confirmTodo = ({ type, id }) => (type === "todo" ? toggleChecked(id) : setCarryDone((prev) => [...prev, id]));
   const openCalendar = (date) => router.push({ pathname: "/schedule/calendar", params: { date } });
+  const openRegister = (params) => router.push({ pathname: "/schedule/register", params });
+  // 제안으로 여는 등록 화면은 형태·제목·날짜가 미리 채워지고, 저장은 사용자가 확인한 뒤에만 된다.
+  const openSuggested = (draft) => openRegister({ ...draft, suggested: "1" });
+  const carryTitle = (id) => MOCK_CARRY.find((c) => c.id === id)?.title ?? "";
 
   return (
     <SafeAreaView style={styles.safe} edges={["top"]}>
@@ -75,7 +79,7 @@ export default function ScheduleScreen() {
               items={items.filter((item) => item.date === tomorrow)}
               onToggleItem={toggleChecked}
             />
-            <Pressable style={styles.addButton} accessibilityRole="button">
+            <Pressable onPress={() => openRegister({})} style={styles.addButton} accessibilityRole="button">
               <Text style={styles.addText}>+ 약속 · 할 일 추가하기</Text>
             </Pressable>
           </View>
@@ -113,7 +117,11 @@ export default function ScheduleScreen() {
                   primary={todoCard.label}
                   secondary={todoCard.laterLabel}
                   onPrimary={() => confirmTodo(todoCard.target)}
-                  onSecondary={() => addLater(todoCard.target.id)}
+                  onSecondary={() =>
+                    todoCard.target.type === "carry"
+                      ? openSuggested({ kind: "todo", title: carryTitle(todoCard.target.id), date: today })
+                      : addLater(todoCard.target.id)
+                  }
                 />
               ) : null}
               {showAdd ? (
@@ -121,6 +129,13 @@ export default function ScheduleScreen() {
                   text={MOCK_ADD.text}
                   primary="추가"
                   secondary="나중에"
+                  onPrimary={() =>
+                    openSuggested({
+                      kind: MOCK_ADD.draft.kind,
+                      title: MOCK_ADD.draft.title,
+                      date: addDays(today, MOCK_ADD.draft.daysFromToday),
+                    })
+                  }
                   onSecondary={() => addLater(MOCK_ADD.id)}
                 />
               ) : null}
