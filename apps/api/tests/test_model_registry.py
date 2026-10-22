@@ -1,0 +1,30 @@
+"""import_all_models() 가 app/features 아래 모든 models 모듈을 등록하는지 검사한다.
+
+등록이 빠지면 alembic autogenerate 가 그 테이블을 "삭제 대상"으로 보고, 스키마 일치 검사도 그 테이블을 건너뛴다.
+"""
+
+import os
+import subprocess
+import sys
+from pathlib import Path
+
+API_ROOT = Path(__file__).resolve().parents[1]
+
+
+def test_every_feature_models_module_is_registered_by_import_all_models():
+    expected = sorted(
+        ".".join(path.relative_to(API_ROOT).with_suffix("").parts)
+        for path in (API_ROOT / "app" / "features").rglob("models.py")
+    )
+    assert "app.features.ai_assistant.knowledge.models" in expected
+    code = (
+        "import sys;from app.shared.db import import_all_models;"
+        "before=set(sys.modules);import_all_models();"
+        f"missing=[m for m in {expected!r} if m not in sys.modules];print(missing)"
+    )
+    out = subprocess.run(
+        [sys.executable, "-I", "-c", code], cwd=API_ROOT, capture_output=True, text=True,
+        env={"PYTHONPATH": str(API_ROOT), "DATABASE_URL": "sqlite:///:memory:", "SYSTEMROOT": os.environ.get("SYSTEMROOT", "")},
+    )  # fmt: skip
+    assert out.returncode == 0, out.stderr[-500:]
+    assert out.stdout.strip().splitlines()[-1] == "[]", out.stdout
