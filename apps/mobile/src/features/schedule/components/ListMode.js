@@ -18,9 +18,9 @@ const countOf = (items) => `${items.filter((item) => item.checked).length}/${ite
 /**
  * 목록 모드: 오늘 → 다가오는 것(월 구분선) → 지난 것. 구역 제목을 누르면 각각 접고 편다.
  * 오늘은 비어 있어도 항상 보이고, 지난 것은 기본 접힘이며 없으면 숨긴다.
- * @param {{ items: import("../model").ScheduleItem[], today: string, onToggleItem: (id: string) => void, onAddToday?: () => void }} props
+ * @param {{ items: import("../model").ScheduleItem[], today: string, onToggleItem: (id: string) => void, onPressItem?: (id: string) => void, onAddToday?: () => void }} props
  */
-export default function ListMode({ items, today, onToggleItem, onAddToday }) {
+export default function ListMode({ items, today, onToggleItem, onPressItem, onAddToday }) {
   const [fold, setFold] = useState({ today: false, upcoming: false, past: true });
   const [morePast, setMorePast] = useState(false);
   const toggleFold = (key) => setFold((f) => ({ ...f, [key]: !f[key] }));
@@ -40,7 +40,7 @@ export default function ListMode({ items, today, onToggleItem, onAddToday }) {
         {fold.today ? null : parts.today.length === 0 ? (
           <Text style={styles.empty}>오늘은 등록된 일정이 없어요</Text>
         ) : (
-          <Rows items={parts.today} today={today} onToggleItem={onToggleItem} />
+          <Rows items={parts.today} today={today} onToggleItem={onToggleItem} onPressItem={onPressItem} />
         )}
       </View>
 
@@ -56,7 +56,7 @@ export default function ListMode({ items, today, onToggleItem, onAddToday }) {
             : groupByMonth(parts.upcoming).map((group) => (
                 <View key={group.key} style={styles.section}>
                   <Text style={styles.month}>{group.label}</Text>
-                  <Rows items={group.items} today={today} onToggleItem={onToggleItem} />
+                  <Rows items={group.items} today={today} onToggleItem={onToggleItem} onPressItem={onPressItem} />
                 </View>
               ))}
         </View>
@@ -67,7 +67,7 @@ export default function ListMode({ items, today, onToggleItem, onAddToday }) {
           <SectionHeader title="지난 것" collapsed={fold.past} onToggle={() => toggleFold("past")} />
           {fold.past ? null : (
             <>
-              <Rows items={pastShown} today={today} past />
+              <Rows items={pastShown} today={today} past onPressItem={onPressItem} />
               {!morePast && parts.past.length > PAST_PREVIEW ? (
                 <Pressable onPress={() => setMorePast(true)} style={styles.more} accessibilityRole="button">
                   <Text style={styles.moreText}>이전 기록 {parts.past.length - PAST_PREVIEW}개 더 보기</Text>
@@ -82,7 +82,7 @@ export default function ListMode({ items, today, onToggleItem, onAddToday }) {
 }
 
 /** 날짜 열(일 + 요일 또는 "오늘") + 카드. 같은 날짜가 이어지면 날짜는 첫 줄에만 보인다. */
-function Rows({ items, today, past = false, onToggleItem }) {
+function Rows({ items, today, past = false, onToggleItem, onPressItem }) {
   return (
     <View style={styles.rows}>
       {items.map((item, index) => {
@@ -106,6 +106,7 @@ function Rows({ items, today, past = false, onToggleItem }) {
                 item={item}
                 variant="detailed"
                 past={past}
+                onPress={onPressItem ? () => onPressItem(item.id) : undefined}
                 onToggleCheck={onToggleItem ? () => onToggleItem(item.id) : undefined}
               />
             </View>

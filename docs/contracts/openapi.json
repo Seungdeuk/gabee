@@ -3062,6 +3062,30 @@
         }
       }
     },
+    "/health/db": {
+      "get": {
+        "tags": [
+          "health"
+        ],
+        "summary": "Db Health",
+        "description": "DB 연결·리비전·스키마 준비 상태. 최신 상태를 다시 점검한다(짧은 간격 제한 있음).\n비밀번호·접속 주소·테이블/컬럼 이름은 응답에 싣지 않는다.",
+        "operationId": "db_health_health_db_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Db Health Health Db Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/health": {
       "get": {
         "tags": [

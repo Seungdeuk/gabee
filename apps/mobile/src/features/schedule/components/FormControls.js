@@ -5,7 +5,7 @@ import { colors, font, spacing } from "@/theme";
 import { DOT_COLOR } from "../constants";
 
 /**
- * 등록 화면의 입력 한 칸: 라벨(+ 작은 안내) 줄 아래에 입력 칸. 라벨 줄 오른쪽에 글자 버튼을 둘 수 있다.
+ * 등록 화면의 입력 한 칸: 라벨 옆에 작은 안내(필수)나 글자 버튼(시간 없음)이 붙고, 그 아래에 입력 칸이 온다.
  * @param {{ label: string, hint?: string, action?: string, onAction?: () => void, children: import("react").ReactNode }} props
  */
 export function FormField({ label, hint, action, onAction, children }) {
@@ -15,12 +15,12 @@ export function FormField({ label, hint, action, onAction, children }) {
         <Text style={styles.label}>
           {label}
           {hint ? <Text style={styles.hint}>{`  ${hint}`}</Text> : null}
+          {action ? (
+            <Text style={styles.action} onPress={onAction} accessibilityRole="button">
+              {`  ${action}`}
+            </Text>
+          ) : null}
         </Text>
-        {action ? (
-          <Pressable onPress={onAction} accessibilityRole="button">
-            <Text style={styles.action}>{action}</Text>
-          </Pressable>
-        ) : null}
       </View>
       {children}
     </View>
