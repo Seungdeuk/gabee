@@ -122,3 +122,43 @@ def test_photos_scoped_to_group(client, family, other_family):
         headers=a,
     )
     assert client.get("/ai-assistant/photos", headers=other_family).json() == []
+
+
+def test_chat_citation_numbers_match_the_source_chips(client, family, monkeypatch):
+    """LLM 이 검색 결과의 ref 로 [n] 을 달면, 그 번호가 앱 출처 칩의 번호와 같다."""
+    import json
+
+    from app.features.ai_assistant.knowledge import rag_chat
+    from app.shared.config import settings
+
+    a, _, _ = family
+    for kind, title in [("전기요금 고지서", "10월 전기요금"), ("수도요금 고지서", "10월 수도요금")]:
+        body = f"# {title}\n분류: {kind}\n- 금액 있음"
+        client.post(
+            "/ai-assistant/knowledge/items",
+            json={"kind_label": kind, "title": title, "body_md": body},
+            headers=a,
+        )
+    steps = []
+
+    def fake_post(body):
+        steps.append(1)
+        if len(steps) == 1:
+            call = {
+                "type": "tool_use",
+                "id": "t",
+                "name": "search_knowledge",
+                "input": {"query": "요금"},
+            }
+            return {"content": [call]}
+        found = json.loads(body["messages"][-1]["content"][0]["content"])["results"]
+        ref = next(r["ref"] for r in found if r["title"] == "10월 수도요금")
+        return {
+            "content": [{"type": "text", "text": f"수도요금이 있어요 [{ref}]"}]
+        }  # 제목 없이 번호만
+
+    monkeypatch.setattr(settings, "anthropic_api_key", "test-key")
+    monkeypatch.setattr(rag_chat, "_post", fake_post)
+    r = client.post("/ai-assistant/chat", json={"message": "수도"}, headers=a).json()
+    assert [s["title"] for s in r["sources"]] == ["10월 수도요금"]
+    assert f"[{r['sources'][0]['n']}]" in r["reply"]

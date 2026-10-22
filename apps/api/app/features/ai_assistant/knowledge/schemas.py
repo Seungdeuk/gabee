@@ -63,6 +63,7 @@ class AskIn(BaseModel):
 
 
 class SourceOut(BaseModel):
+    n: int
     item_id: str
     title: str
     kind_label: str

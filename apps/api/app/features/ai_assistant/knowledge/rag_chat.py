@@ -22,7 +22,11 @@ SYSTEM_PROMPT = (
     "질문 낱말로 못 찾으면 다른 낱말(예: 비행기→항공권)로 한 번 더 찾아보세요. "
     "근거가 없으면 지어내지 말고 찾지 못했다고 말하세요. 답에는 기록 제목을 함께 알려 주세요. "
     "has_unread_parts 가 true 인 기록은 원본에서 읽지 못한 부분이 있으니 값을 단정하지 말고 확인을 권하세요. "
-    "sensitive 가 true 인 기록(가족관계, 병원 등)은 필요한 만큼만 말하세요. 의료 진단은 하지 않습니다."
+    "sensitive 가 true 인 기록(가족관계, 병원 등)은 필요한 만큼만 말하세요. 의료 진단은 하지 않습니다. "
+    # 앱 답변 화면(AnswerView)이 그릴 수 있는 형식만 쓴다: 문단, '## 제목', '- 목록', '**굵게**', [번호]
+    "답은 앱 화면에 맞춰 짧은 문단으로 쓰고, 필요하면 '- ' 목록과 '**굵게**'만 쓰세요. "
+    "### 제목, 표, 이모지는 쓰지 마세요. 제목이 필요하면 '## 제목' 한 줄만 쓰세요. "
+    "기록에서 가져온 내용 문장 끝에는 그 기록의 ref 번호를 [1] 처럼 붙이세요."
 )
 MAX_STEPS = 4
 
@@ -58,8 +62,10 @@ def _run_tool(db: Session, group_id: str, name: str, args: dict) -> dict:
     raise ValueError(f"알 수 없는 함수: {name}")
 
 
-def _source(result: dict) -> dict:
+def _source(result: dict, n: int) -> dict:
+    """n 은 답 안의 [n] 표시와 앱 출처 칩의 번호(검색 결과의 ref)다."""
     return {
+        "n": n,
         "item_id": result["item_id"],
         "title": result["title"],
         "kind_label": result["kind_label"],
@@ -77,7 +83,7 @@ def _fallback(db: Session, group_id: str, question: str) -> AskResult:
     return AskResult(
         "AI 연결이 꺼져 있어서 찾은 기록만 보여드려요.\n" + "\n".join(lines),
         "fallback",
-        [_source(r) for r in found],
+        [_source(r, i) for i, r in enumerate(found, 1)],
     )
 
 
@@ -114,6 +120,7 @@ def ask(
     messages = _messages(question, history)
     result = AskResult("", "ai")
     seen: set[str] = set()
+    refs: dict[str, int] = {}
     try:
         for _ in range(MAX_STEPS):
             reply = post(
@@ -143,9 +150,12 @@ def ask(
                 except (ValueError, ApiError, TypeError) as e:
                     data, err = {"error": str(e)}, True
                 for r in data.get("results", []) + ([data] if "item_id" in data else []):
+                    r["ref"] = refs.setdefault(
+                        r["item_id"], len(refs) + 1
+                    )  # LLM 이 [ref] 로 인용한다
                     if r["item_id"] not in seen:
                         seen.add(r["item_id"])
-                        result.sources.append(_source(r))
+                        result.sources.append(_source(r, r["ref"]))
                 outputs.append(
                     {
                         "type": "tool_result",
@@ -159,8 +169,10 @@ def ask(
         return _fallback(db, group_id, question)
     if not result.answer:
         return _fallback(db, group_id, question)
-    # 검색에 걸렸어도 답에 쓰지 않은 기록은 출처에서 뺀다(제목이 답에 나온 것만). 하나도 없으면 전부 둔다.
-    used = [s for s in result.sources if s["title"] in result.answer]
+    # 검색에 걸렸어도 답에 쓰지 않은 기록은 출처에서 뺀다(제목이나 [번호]가 답에 나온 것만). 하나도 없으면 전부 둔다.
+    used = [
+        s for s in result.sources if s["title"] in result.answer or f"[{s['n']}]" in result.answer
+    ]
     if used:
         result.sources = used
     return result

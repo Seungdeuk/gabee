@@ -52,8 +52,10 @@ def chat(
             _check_daily_limit(user_id)
         r = rag_chat.ask(db, group_id, message, history=history)
         sources = [
-            ChatSource(n=i, title=s["title"], item_id=s["item_id"], source_path=s["source_path"])
-            for i, s in enumerate(r.sources, 1)
+            ChatSource(
+                n=s["n"], title=s["title"], item_id=s["item_id"], source_path=s["source_path"]
+            )
+            for s in r.sources
         ]
         return ChatOut(reply=r.answer, source=r.source, sources=sources)
     try:
