@@ -1505,6 +1505,56 @@
         }
       }
     },
+    "/billing/subscriptions/catalog": {
+      "get": {
+        "tags": [
+          "billing"
+        ],
+        "summary": "Subscription Catalog",
+        "description": "고를 수 있는 OTT·통신비 서비스 목록. 골라서 `POST /subscriptions` 로 추가한다.",
+        "operationId": "subscription_catalog_billing_subscriptions_catalog_get",
+        "parameters": [
+          {
+            "name": "x-gyeot-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Gyeot-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SubscriptionCatalog"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/billing/subscriptions/monthly": {
       "get": {
         "tags": [
@@ -3656,6 +3706,33 @@
         ],
         "title": "Body_upload_photo_ai_assistant_photos_post"
       },
+      "CatalogEntry": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "ott",
+              "telecom"
+            ],
+            "title": "Kind"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "added": {
+            "type": "boolean",
+            "title": "Added"
+          }
+        },
+        "type": "object",
+        "required": [
+          "kind",
+          "name",
+          "added"
+        ],
+        "title": "CatalogEntry"
+      },
       "ChatIn": {
         "properties": {
           "message": {
@@ -5775,6 +5852,22 @@
         ],
         "title": "SourceOut"
       },
+      "SubscriptionCatalog": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/CatalogEntry"
+            },
+            "type": "array",
+            "title": "Items"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items"
+        ],
+        "title": "SubscriptionCatalog"
+      },
       "SubscriptionCreate": {
         "properties": {
           "kind": {
@@ -5821,6 +5914,19 @@
               }
             ],
             "title": "Monthly Fee"
+          },
+          "discount_amount": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 10000000.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Discount Amount"
           },
           "billing_day": {
             "anyOf": [
@@ -5884,6 +5990,11 @@
           "monthly_total": {
             "type": "integer",
             "title": "Monthly Total"
+          },
+          "discount_total": {
+            "type": "integer",
+            "title": "Discount Total",
+            "default": 0
           }
         },
         "type": "object",
@@ -5949,6 +6060,28 @@
               }
             ],
             "title": "Monthly Fee"
+          },
+          "discount_amount": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Discount Amount"
+          },
+          "list_price": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "List Price"
           },
           "billing_day": {
             "anyOf": [
@@ -6056,6 +6189,19 @@
               }
             ],
             "title": "Monthly Fee"
+          },
+          "discount_amount": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 10000000.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Discount Amount"
           },
           "billing_day": {
             "anyOf": [

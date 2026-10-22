@@ -15,15 +15,47 @@ def _add(client, headers, **body):
     return client.post("/billing/subscriptions", json=body, headers=headers)
 
 
-def test_defaults_have_no_money_and_a_zero_total(client, family):
+def test_list_starts_empty_and_services_are_picked_from_the_catalog(client, family):
     a, _, _ = family
     data = _list(client, a)
-    assert len(data["items"]) == 5 and data["monthly_total"] == 0
-    assert all(
-        i["monthly_fee"] is None and i["billing_day"] is None and i["carrier"] is None
-        for i in data["items"]
-    )
+    assert data["items"] == [] and data["monthly_total"] == 0 and data["discount_total"] == 0
     assert "예시, 실제 적용은 통신사에서 확인" in data["notice"]
+    cat = client.get("/billing/subscriptions/catalog", headers=a).json()["items"]
+    names = {(c["kind"], c["name"]) for c in cat}
+    assert ("ott", "넷플릭스") in names and ("telecom", "가족 결합 할인") in names
+    assert not any(c["added"] for c in cat)  # 아직 아무것도 고르지 않았다
+    assert _add(client, a, kind="ott", name="넷플릭스").status_code == 201
+    cat = client.get("/billing/subscriptions/catalog", headers=a).json()["items"]
+    assert {c["name"]: c["added"] for c in cat if c["kind"] == "ott"}["넷플릭스"] is True
+    assert [i["name"] for i in _list(client, a)["items"]] == ["넷플릭스"]  # 고른 것만 화면에 뜬다
+
+
+def test_discount_is_entered_by_hand_and_list_price_is_fee_plus_discount(client, family):
+    a, _, _ = family
+    item = _add(
+        client,
+        a,
+        kind="telecom",
+        name="가족 결합 할인",
+        carrier="skt",
+        monthly_fee=55000,
+        discount_amount=11000,
+    ).json()
+    assert item["monthly_fee"] == 55000 and item["discount_amount"] == 11000
+    assert item["list_price"] == 66000  # 정가 = 청구 금액 + 할인 금액
+    data = _list(client, a)
+    assert data["monthly_total"] == 55000 and data["discount_total"] == 11000
+    r = client.patch(
+        f"/billing/subscriptions/{item['id']}", json={"discount_amount": 9000}, headers=a
+    )
+    assert r.json()["discount_amount"] == 9000 and r.json()["list_price"] == 64000
+    assert r.json()["monthly_fee"] == 55000  # 보내지 않은 값은 그대로
+    r = client.patch(
+        f"/billing/subscriptions/{item['id']}", json={"discount_amount": None}, headers=a
+    )
+    assert r.json()["discount_amount"] is None and r.json()["list_price"] == 55000
+    for bad in (-1, 10_000_001):
+        assert _add(client, a, kind="ott", name="x", discount_amount=bad).status_code == 422
 
 
 def test_add_ott_and_telecom_with_fee_day_and_carrier(client, family):
@@ -68,7 +100,7 @@ def test_add_validation(client, family):
     assert _add(client, a, kind="ott", name="").status_code == 422
     assert _add(client, a, kind="ott", name="   ").json()["code"] == "invalid_name"
     assert _add(client, a, kind="video", name="x").status_code == 422
-    assert len(_list(client, a)["items"]) == 5  # 실패한 요청은 아무것도 만들지 않는다
+    assert len(_list(client, a)["items"]) == 0  # 실패한 요청은 아무것도 만들지 않는다
 
 
 def test_patch_changes_only_the_sent_fields_and_null_clears(client, family):
@@ -115,7 +147,7 @@ def test_carrier_can_only_be_set_on_telecom_items(client, family):
     )
 
 
-def test_delete_is_soft_and_defaults_do_not_come_back(client, family):
+def test_delete_is_soft_and_nothing_comes_back(client, family):
     a, _, _ = family
     extra = _add(client, a, kind="ott", name="지울 것", monthly_fee=1000).json()
     assert client.delete(f"/billing/subscriptions/{extra['id']}", headers=a).status_code == 204
@@ -134,13 +166,10 @@ def test_delete_is_soft_and_defaults_do_not_come_back(client, family):
         row = db.scalar(select(SubscriptionItem).where(SubscriptionItem.id == extra["id"]))
     assert row is not None and row.deleted_at is not None  # 행은 남는다
 
-    for i in _list(client, a)["items"]:  # 전부 지워도 기본 항목을 다시 만들지 않는다
+    for i in _list(client, a)["items"]:  # 전부 지워도 다시 만들어지지 않는다
         client.delete(f"/billing/subscriptions/{i['id']}", headers=a)
-    assert _list(client, a) == {
-        "notice": _list(client, a)["notice"],
-        "items": [],
-        "monthly_total": 0,
-    }
+    data = _list(client, a)
+    assert data["items"] == [] and data["monthly_total"] == 0 and data["discount_total"] == 0
     assert _add(client, a, kind="ott", name="새로 시작").status_code == 201
     assert len(_list(client, a)["items"]) == 1
 
@@ -165,8 +194,8 @@ def test_other_families_cannot_see_or_change_items(client, family):
 
 
 def test_item_limit(client, family):
-    a, _, _ = family  # 기본 5개
-    for n in range(25):
+    a, _, _ = family  # 처음엔 비어 있다
+    for n in range(30):
         assert _add(client, a, kind="ott", name=f"항목{n}").status_code == 201
     r = _add(client, a, kind="ott", name="31번째")
     assert r.status_code == 400 and r.json()["code"] == "too_many"

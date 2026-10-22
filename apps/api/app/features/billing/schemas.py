@@ -124,7 +124,9 @@ class SubscriptionOut(BaseModel):
     name: str
     status: SubscriptionStatus
     carrier: Carrier | None = None
-    monthly_fee: int | None = None  # 사용자가 입력한 월 금액(원). 할인은 반영하지 않는다.
+    monthly_fee: int | None = None  # 월 청구 금액(원): 청구서의 실제 금액(할인이 이미 빠진 값)
+    discount_amount: int | None = None  # 결합 할인 금액(원): 직접 입력한 참고 값
+    list_price: int | None = None  # 정가 = 월 청구 금액 + 할인 금액(둘 중 하나라도 입력했을 때)
     billing_day: int | None = None  # 매월 결제일
     payer_id: str | None = None  # 구독료 지출의 결제한 사람
     payer_name: str = ""
@@ -136,7 +138,18 @@ class SubscriptionOut(BaseModel):
 class SubscriptionList(BaseModel):
     notice: str
     items: list[SubscriptionOut]
-    monthly_total: int  # 입력한 월 금액의 합(할인 미반영)
+    monthly_total: int  # 월 청구 금액의 합(할인이 이미 빠진 값)
+    discount_total: int = 0  # 직접 입력한 결합 할인 금액의 합
+
+
+class CatalogEntry(BaseModel):
+    kind: Literal["ott", "telecom"]
+    name: str
+    added: bool  # 이미 항목으로 추가했는지
+
+
+class SubscriptionCatalog(BaseModel):
+    items: list[CatalogEntry]
 
 
 class SubscriptionCreate(BaseModel):
@@ -144,6 +157,7 @@ class SubscriptionCreate(BaseModel):
     name: str = Field(min_length=1, max_length=60)
     carrier: Carrier | None = None  # 통신비 항목만
     monthly_fee: int | None = Field(default=None, ge=0, le=10_000_000)
+    discount_amount: int | None = Field(default=None, ge=0, le=10_000_000)
     billing_day: int | None = Field(default=None, ge=1, le=31)
     payer_id: str | None = (
         None  # 보내지 않으면 요청한 사람, null 이면 결제한 사람 없음(지출을 만들지 않는다)
@@ -158,6 +172,7 @@ class SubscriptionPatch(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=60)
     carrier: Carrier | None = None
     monthly_fee: int | None = Field(default=None, ge=0, le=10_000_000)
+    discount_amount: int | None = Field(default=None, ge=0, le=10_000_000)
     billing_day: int | None = Field(default=None, ge=1, le=31)
     payer_id: str | None = None
     split_among: list[str] | None = None

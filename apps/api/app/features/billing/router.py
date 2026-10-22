@@ -22,6 +22,7 @@ from .schemas import (
     Settlement,
     SettleRequest,
     SettleTagOut,
+    SubscriptionCatalog,
     SubscriptionCreate,
     SubscriptionList,
     SubscriptionOut,
@@ -159,6 +160,14 @@ def list_subscriptions(
     group_id: str = Depends(current_group_id), db: Session = Depends(get_db)
 ) -> SubscriptionList:
     return service.list_subscriptions(db, group_id)
+
+
+@router.get("/subscriptions/catalog", response_model=SubscriptionCatalog)
+def subscription_catalog(
+    group_id: str = Depends(current_group_id), db: Session = Depends(get_db)
+) -> SubscriptionCatalog:
+    """고를 수 있는 OTT·통신비 서비스 목록. 골라서 `POST /subscriptions` 로 추가한다."""
+    return service.subscription_catalog(db, group_id)
 
 
 @router.post("/subscriptions", response_model=SubscriptionOut, status_code=201)

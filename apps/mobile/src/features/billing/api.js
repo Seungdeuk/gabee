@@ -7,7 +7,7 @@ import { apiFetch } from "@/shared/api/client";
  * @typedef {Transfer & { id: string }} Payment
  * @typedef {{ month: string, balances: Balance[], transfers: Transfer[], completed: Payment[], unsettled_count: number, unsettled_total: number }} Settlement
  * @typedef {{ id: string, title: string, amount: number, date: string, category: string, subscription_id: string | null, paid_by: string, paid_by_name: string, split_among: string[], target_tag: "parents" | "children" | "all" | "custom", settled: boolean }} Expense
- * @typedef {{ id: string, kind: "ott" | "telecom", name: string, status: "check" | "available" | "active", carrier: "skt" | "kt" | "lgu" | "mvno" | "other" | null, monthly_fee: number | null, billing_day: number | null, payer_id: string | null, payer_name: string, split_among: string[] }} Subscription
+ * @typedef {{ id: string, kind: "ott" | "telecom", name: string, status: "check" | "available" | "active", carrier: "skt" | "kt" | "lgu" | "mvno" | "other" | null, monthly_fee: number | null, discount_amount: number | null, list_price: number | null, billing_day: number | null, payer_id: string | null, payer_name: string, split_among: string[] }} Subscription
  * @typedef {{ id: string, name: string, kind: "ott" | "telecom", amount: number | null, date: string, payer_name: string, split_count: number, state: "ready" | "created" | "no_fee" | "no_payer" }} MonthlyItem
  * @typedef {{ month: string, items: MonthlyItem[], ready_count: number, ready_total: number }} MonthlyPlan
  * @typedef {{ id: string, amount: number, memo: string, date: string }} AllowanceUse
@@ -57,12 +57,15 @@ export async function getMembers() {
   return group.members;
 }
 
-/** @returns {Promise<{ notice: string, items: Subscription[], monthly_total: number }>} 월 합계는 입력한 금액의 합(할인 미반영) */
+/** @returns {Promise<{ notice: string, items: Subscription[], monthly_total: number, discount_total: number }>} 월 합계는 월 청구 금액의 합(할인이 이미 빠진 값), 할인 합계는 직접 입력한 값의 합 */
 export const getSubscriptions = () => apiFetch("/billing/subscriptions");
+
+/** @returns {Promise<{ items: { kind: "ott" | "telecom", name: string, added: boolean }[] }>} 고를 수 있는 서비스 목록(이미 추가한 것은 added) */
+export const getSubscriptionCatalog = () => apiFetch("/billing/subscriptions/catalog");
 
 /**
  * OTT·통신비 항목 추가. 월 금액·결제일은 사용자가 입력한 값만 저장한다(할인 금액은 계산하지 않는다).
- * @param {{ kind: "ott" | "telecom", name: string, carrier?: Subscription["carrier"], monthly_fee?: number | null, billing_day?: number | null, payer_id?: string | null, split_among?: string[] }} body 결제한 사람을 안 보내면 등록한 사람, 나눌 사람이 비어 있으면 가족 전체
+ * @param {{ kind: "ott" | "telecom", name: string, carrier?: Subscription["carrier"], monthly_fee?: number | null, discount_amount?: number | null, billing_day?: number | null, payer_id?: string | null, split_among?: string[] }} body 결제한 사람을 안 보내면 등록한 사람, 나눌 사람이 비어 있으면 가족 전체
  * @returns {Promise<Subscription>}
  */
 export const createSubscription = (body) => apiFetch("/billing/subscriptions", { method: "POST", body });
@@ -70,7 +73,7 @@ export const createSubscription = (body) => apiFetch("/billing/subscriptions", {
 /**
  * 보낸 필드만 바꾼다(status, name, carrier, monthly_fee, billing_day). 금액·결제일·통신사는 null 을 보내면 지운다.
  * @param {string} id
- * @param {Partial<Pick<Subscription, "status" | "name" | "carrier" | "monthly_fee" | "billing_day" | "payer_id" | "split_among">>} patch
+ * @param {Partial<Pick<Subscription, "status" | "name" | "carrier" | "monthly_fee" | "discount_amount" | "billing_day" | "payer_id" | "split_among">>} patch
  * @returns {Promise<Subscription>}
  */
 export const updateSubscription = (id, patch) => apiFetch(`/billing/subscriptions/${id}`, { method: "PATCH", body: patch });

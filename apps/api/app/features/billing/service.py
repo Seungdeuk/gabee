@@ -8,7 +8,6 @@ from sqlalchemy.orm import Session
 from app.features.family_group import repository as group_repo
 from app.features.family_group.models import User
 from app.shared.errors import ApiError, bad_request, not_found
-from app.shared.seed_lock import seed_lock
 
 from . import repository as repo
 from .models import (
@@ -24,6 +23,7 @@ from .schemas import (
     AllowanceUseCreate,
     AllowanceUseOut,
     Balance,
+    CatalogEntry,
     ExpenseCreate,
     ExpenseOut,
     ManagerOut,
@@ -36,6 +36,7 @@ from .schemas import (
     Settlement,
     SettleRequest,
     SettleTagOut,
+    SubscriptionCatalog,
     SubscriptionCreate,
     SubscriptionList,
     SubscriptionOut,
@@ -49,11 +50,18 @@ _MONTH = re.compile(r"^\d{4}-(0[1-9]|1[0-2])$")
 KST = timezone(timedelta(hours=9))
 
 SUBSCRIPTION_NOTICE = "예시, 실제 적용은 통신사에서 확인"
-# 처음 열 때 만들어 두는 항목. 할인 금액은 다루지 않고 상태만 기록한다.
-DEFAULT_SUBSCRIPTIONS = (
+# 고를 수 있는 목록. 화면에는 사용자가 골라 추가한 항목만 나오고, 아직 안 쓰는 서비스는 이 목록에만 있다.
+SUBSCRIPTION_CATALOG = (
     ("ott", "넷플릭스"),
     ("ott", "유튜브 프리미엄"),
     ("ott", "디즈니+"),
+    ("ott", "티빙"),
+    ("ott", "웨이브"),
+    ("ott", "쿠팡플레이"),
+    ("ott", "왓챠"),
+    ("ott", "애플 TV+"),
+    ("ott", "스포티파이"),
+    ("ott", "멜론"),
     ("telecom", "가족 결합 할인"),
     ("telecom", "요금제 결합 할인"),
 )
@@ -427,6 +435,10 @@ def _subscription_out(i: SubscriptionItem, members: list[User]) -> SubscriptionO
         status=i.status,
         carrier=i.carrier,
         monthly_fee=i.monthly_fee,
+        discount_amount=i.discount_amount,
+        list_price=None
+        if i.monthly_fee is None and i.discount_amount is None
+        else (i.monthly_fee or 0) + (i.discount_amount or 0),
         billing_day=i.billing_day,
         payer_id=i.payer_id,
         payer_name=names.get(i.payer_id, ""),
@@ -434,32 +446,22 @@ def _subscription_out(i: SubscriptionItem, members: list[User]) -> SubscriptionO
     )
 
 
-def _ensure_default_subscriptions(db: Session, group_id: str) -> None:
-    """처음 열 때 기본 항목을 만든다. 사용자가 다 지워도 다시 만들지 않는다."""
-    if repo.has_subscriptions(db, group_id):
-        return
-    with seed_lock(db, f"subscriptions:{group_id}"):  # 동시 요청이 둘 다 만들지 않게 잠근다
-        if repo.has_subscriptions(db, group_id):
-            return
-        repo.add_subscriptions(
-            db,
-            [
-                SubscriptionItem(
-                    id=uuid.uuid4().hex[:12], group_id=group_id, kind=k, name=n, sort_order=i
-                )
-                for i, (k, n) in enumerate(DEFAULT_SUBSCRIPTIONS)
-            ],
-        )
+def subscription_catalog(db: Session, group_id: str) -> SubscriptionCatalog:
+    """고를 수 있는 서비스 목록. 이미 추가한 것은 `added` 로 표시한다(이름 기준)."""
+    have = {(i.kind, i.name) for i in repo.list_subscriptions(db, group_id)}
+    return SubscriptionCatalog(
+        items=[CatalogEntry(kind=k, name=n, added=(k, n) in have) for k, n in SUBSCRIPTION_CATALOG]
+    )
 
 
 def list_subscriptions(db: Session, group_id: str) -> SubscriptionList:
-    _ensure_default_subscriptions(db, group_id)
     items = repo.list_subscriptions(db, group_id)
     members = group_repo.members(db, group_id)
     return SubscriptionList(
         notice=SUBSCRIPTION_NOTICE,
         items=[_subscription_out(i, members) for i in items],
         monthly_total=sum(i.monthly_fee or 0 for i in items),
+        discount_total=sum(i.discount_amount or 0 for i in items),
     )
 
 
@@ -493,7 +495,6 @@ def _clean_split(split: list[str] | None, member_ids: list[str]) -> list[str]:
 def create_subscription(
     db: Session, group_id: str, user: User, body: SubscriptionCreate
 ) -> SubscriptionOut:
-    _ensure_default_subscriptions(db, group_id)
     _check_carrier(body.kind, body.carrier)
     members = group_repo.members(db, group_id)
     ids = [m.id for m in members]
@@ -512,6 +513,7 @@ def create_subscription(
             name=_clean_name(body.name),
             carrier=body.carrier,
             monthly_fee=body.monthly_fee,
+            discount_amount=body.discount_amount,
             billing_day=body.billing_day,
             payer_id=payer_id,
             split_among=split,
@@ -542,6 +544,8 @@ def update_subscription(
         item.carrier = body.carrier
     if "monthly_fee" in sent:
         item.monthly_fee = body.monthly_fee
+    if "discount_amount" in sent:
+        item.discount_amount = body.discount_amount
     if "billing_day" in sent:
         item.billing_day = body.billing_day
     if "payer_id" in sent:
@@ -574,7 +578,6 @@ def _due_date(month: str, billing_day: int | None) -> str:
 def monthly_plan(db: Session, group_id: str, month: str) -> MonthlyPlan:
     """이번 달에 구독료 지출로 만들 수 있는 항목. 금액이 있고 결제한 사람이 있으며 아직 안 만든 항목만 ready 다."""
     month = check_month(month)
-    _ensure_default_subscriptions(db, group_id)
     members = group_repo.members(db, group_id)
     ids = [m.id for m in members]
     names = {m.id: m.name for m in members}

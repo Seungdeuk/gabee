@@ -15,6 +15,7 @@ import {
   getMembers,
   getMonthlyPlan,
   getMyId,
+  getSubscriptionCatalog,
   getSubscriptions,
   updateSubscription,
 } from "../api";
@@ -44,7 +45,8 @@ const carrierLabel = (key) => CARRIERS.find((c) => c.key === key)?.label;
 function summaryText(item) {
   const parts = [];
   if (item.carrier) parts.push(carrierLabel(item.carrier));
-  parts.push(item.monthly_fee == null ? "금액 미입력" : `월 ${won(item.monthly_fee)}`);
+  parts.push(item.monthly_fee == null ? "청구 금액 미입력" : `월 ${won(item.monthly_fee)} 청구`);
+  if (item.discount_amount) parts.push(`결합 할인 ${won(item.discount_amount)}`);
   if (item.billing_day != null) parts.push(`매월 ${item.billing_day}일 결제`);
   parts.push(item.payer_name ? `${item.payer_name} 결제` : "결제한 사람 없음");
   parts.push(`${item.split_among.length}명 분담`);
@@ -52,8 +54,9 @@ function summaryText(item) {
 }
 
 /**
- * 구독·통신비 관리: 항목 추가·수정·삭제, 월 금액·결제일·통신사, 결제한 사람·나눌 사람, 가족 할인 상태,
- * 그리고 "이번 달 구독료 지출 만들기". 금액은 사용자가 입력한 값만 합산하고 할인 금액은 계산하지도 보장하지도 않는다.
+ * 구독·통신비 관리: 항목 추가·수정·삭제, 월 청구 금액·결합 할인 금액(청구서를 보고 직접 입력)·결제일·통신사, 결제한 사람·나눌 사람, 가족 할인 상태,
+ * 그리고 "이번 달 구독료 지출 만들기". 쓰지 않는 서비스는 한꺼번에 늘어놓지 않고, 목록에서 골라 추가한 것만 화면에 나온다.
+ * 할인 금액은 계산하지도 보장하지도 않는다.
  * 만든 지출은 미정산이라 정산 탭에서 정산하기를 눌러야 잔액에 들어간다.
  * @param {{ month: string, notify: (text: string, isError?: boolean) => void }} props
  */
@@ -63,10 +66,12 @@ export default function SubscriptionTab({ month, notify }) {
   const plan = useResource(loadPlan);
   const members = useResource(getMembers);
   const me = useResource(getMyId);
-  const [editing, setEditing] = useState(null); // { kind } 추가 | { id } 수정
+  const catalog = useResource(getSubscriptionCatalog);
+  const [picking, setPicking] = useState(null); // 서비스 목록을 연 종류("ott" | "telecom")
+  const [editing, setEditing] = useState(null); // { kind, name? } 추가 | { id } 수정
   const [busy, setBusy] = useState(false);
 
-  const refresh = () => Promise.all([reload(), plan.reload()]);
+  const refresh = () => Promise.all([reload(), plan.reload(), catalog.reload()]);
   const run = async (fn, done) => {
     setBusy(true);
     try {
@@ -87,7 +92,10 @@ export default function SubscriptionTab({ month, notify }) {
       () => (editing.id ? updateSubscription(editing.id, values) : createSubscription({ kind: editing.kind, ...values })),
       editing.id ? "항목을 수정했어요" : "항목을 추가했어요",
     );
-    if (ok) setEditing(null);
+    if (ok) {
+      setEditing(null);
+      setPicking(null);
+    }
   };
 
   const generate = () =>
@@ -102,7 +110,10 @@ export default function SubscriptionTab({ month, notify }) {
   const people = members.data ?? [];
   const planItems = (plan.data?.items ?? []).filter((i) => i.state !== "no_fee");
   const skipped = (plan.data?.items ?? []).length - planItems.length;
-  const formProps = { people, meId: me.data ?? null, busy, onSubmit: save, onCancel: () => setEditing(null), notify };
+  const formProps = { people, meId: me.data ?? null, busy, onSubmit: save, onCancel: () => {
+      setEditing(null);
+      setPicking(null);
+    }, notify };
 
   return (
     <View style={styles.wrap}>
@@ -120,7 +131,12 @@ export default function SubscriptionTab({ month, notify }) {
             {won(data.monthly_total)}
           </Text>
         </View>
-        <Text style={styles.caption}>입력한 월 금액의 합이에요. 할인은 반영하지 않아요.</Text>
+        <Text style={styles.caption}>청구서 금액의 합이에요(할인이 이미 빠진 금액).</Text>
+        {data.discount_total > 0 ? (
+          <Text style={styles.caption} testID="discount-total">
+            직접 입력한 결합 할인 {won(data.discount_total)} · 정가 {won(data.monthly_total + data.discount_total)}
+          </Text>
+        ) : null}
       </Card>
 
       <SectionTitle title={`${month} 구독료 지출`} />
@@ -149,8 +165,22 @@ export default function SubscriptionTab({ month, notify }) {
 
       {GROUPS.map((g) => (
         <View key={g.kind} style={styles.wrap}>
-          <SectionTitle title={g.title} action="+ 추가" onAction={() => setEditing({ kind: g.kind })} />
-          {editing && !editing.id && editing.kind === g.kind ? <SubscriptionForm kind={g.kind} {...formProps} /> : null}
+          <SectionTitle title={g.title} action={picking === g.kind ? "닫기" : "+ 추가"} onAction={() => { setEditing(null); setPicking(picking === g.kind ? null : g.kind); }} />
+          {picking === g.kind && !editing ? (
+            <Card tone="white" testID={`catalog-${g.kind}`}>
+              <Text style={styles.name}>구독 중인 서비스를 골라 주세요</Text>
+              <View style={styles.options}>
+                {(catalog.data?.items ?? [])
+                  .filter((c) => c.kind === g.kind && !c.added)
+                  .map((c) => (
+                    <Button key={c.name} small variant="secondary" label={c.name} a11yLabel={`${c.name} 고르기`} onPress={() => setEditing({ kind: g.kind, name: c.name })} />
+                  ))}
+                <Button small variant="ghost" label="직접 입력" a11yLabel={`${g.title} 직접 입력`} onPress={() => setEditing({ kind: g.kind, name: "" })} />
+              </View>
+            </Card>
+          ) : null}
+          {editing && !editing.id && editing.kind === g.kind ? <SubscriptionForm kind={g.kind} presetName={editing.name} {...formProps} /> : null}
+          {data.items.filter((i) => i.kind === g.kind).length === 0 && picking !== g.kind ? <Text style={styles.muted}>아직 추가한 항목이 없어요. + 추가에서 골라 주세요</Text> : null}
           {data.items
             .filter((i) => i.kind === g.kind)
             .map((item) =>
