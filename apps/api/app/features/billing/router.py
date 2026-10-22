@@ -11,7 +11,10 @@ from .schemas import (
     AllowanceUseCreate,
     ExpenseCreate,
     ExpenseOut,
+    ManagerOut,
+    ManagerSet,
     PaymentCreate,
+    Reminder,
     Settlement,
     SettleRequest,
     SettleTagOut,
@@ -80,10 +83,44 @@ def settle_tags(
 
 @router.post("/settlement/tag", response_model=Settlement)
 def settle(
-    body: SettleRequest, group_id: str = Depends(current_group_id), db: Session = Depends(get_db)
+    body: SettleRequest,
+    user=Depends(current_user),
+    group_id: str = Depends(current_group_id),
+    db: Session = Depends(get_db),
 ) -> Settlement:
     """'정산하기': 고른 지출에 대상 태그와 나눌 사람을 정하고 바뀐 정산 결과를 돌려준다."""
-    return service.settle(db, group_id, body)
+    return service.settle(db, group_id, user.id, body)
+
+
+@router.get("/settlement/manager", response_model=ManagerOut)
+def get_manager(
+    user=Depends(current_user),
+    group_id: str = Depends(current_group_id),
+    db: Session = Depends(get_db),
+) -> ManagerOut:
+    """정산 담당자(월말 알림을 받는 사람). 지정하지 않았으면 그룹을 만든 사람."""
+    return service.get_manager(db, group_id, user)
+
+
+@router.put("/settlement/manager", response_model=ManagerOut)
+def set_manager(
+    body: ManagerSet,
+    user=Depends(current_user),
+    group_id: str = Depends(current_group_id),
+    db: Session = Depends(get_db),
+) -> ManagerOut:
+    return service.set_manager(db, group_id, user, body.user_id)
+
+
+@router.get("/settlement/reminder", response_model=Reminder)
+def settlement_reminder(
+    on: str | None = None,
+    user=Depends(current_user),
+    group_id: str = Depends(current_group_id),
+    db: Session = Depends(get_db),
+) -> Reminder:
+    """월말 정산 알림. 정산 담당자에게만 show=true 가 내려간다. `on` 은 화면 테스트용 날짜(YYYY-MM-DD)."""
+    return service.reminder(db, group_id, user, on)
 
 
 @router.post("/settlement/payments", response_model=Settlement, status_code=201)

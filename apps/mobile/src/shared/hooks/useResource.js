@@ -6,9 +6,10 @@ import { useCallback, useEffect, useRef, useState } from "react";
  *
  * @template T
  * @param {() => Promise<T>} loader 데이터를 돌려주는 함수. useCallback 으로 감싸서 넘긴다.
+ * @param {unknown} [refreshKey] 바뀌면 다시 불러온다(다른 곳에서 값이 바뀐 걸 알릴 때).
  * @returns {{ data: T | null, error: string, loading: boolean, reload: () => Promise<void> }}
  */
-export default function useResource(loader) {
+export default function useResource(loader, refreshKey) {
   const [state, setState] = useState({ data: null, error: "", loading: true });
   const latest = useRef(0);
 
@@ -24,7 +25,7 @@ export default function useResource(loader) {
 
   useEffect(() => {
     reload();
-  }, [reload]);
+  }, [reload, refreshKey]);
 
   return { ...state, reload };
 }

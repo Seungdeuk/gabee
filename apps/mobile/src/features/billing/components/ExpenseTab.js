@@ -76,7 +76,7 @@ export default function ExpenseTab({ month, notify }) {
             right={
               <View style={styles.right}>
                 <Text style={styles.amount}>{won(e.amount)}</Text>
-                <TagBadge tag={e.target_tag} />
+                <TagBadge tag={e.target_tag} settled={e.settled} />
                 <Button small variant="ghost" label="삭제" a11yLabel={`${e.title} 삭제`} onPress={() => remove(e.id)} />
               </View>
             }

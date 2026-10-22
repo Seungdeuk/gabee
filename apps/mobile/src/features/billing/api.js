@@ -6,7 +6,7 @@ import { apiFetch } from "@/shared/api/client";
  * @typedef {{ from_user_id: string, from_name: string, to_user_id: string, to_name: string, amount: number }} Transfer
  * @typedef {Transfer & { id: string }} Payment
  * @typedef {{ month: string, balances: Balance[], transfers: Transfer[], completed: Payment[] }} Settlement
- * @typedef {{ id: string, title: string, amount: number, date: string, category: string, paid_by: string, paid_by_name: string, split_among: string[], target_tag: "parents" | "children" | "all" | "custom" }} Expense
+ * @typedef {{ id: string, title: string, amount: number, date: string, category: string, paid_by: string, paid_by_name: string, split_among: string[], target_tag: "parents" | "children" | "all" | "custom", settled: boolean }} Expense
  * @typedef {{ id: string, kind: "ott" | "telecom", name: string, status: "check" | "available" | "active" }} Subscription
  * @typedef {{ id: string, amount: number, memo: string, date: string }} AllowanceUse
  * @typedef {{ child_id: string, name: string, month: string, budget: number | null, used: number, remaining: number, uses: AllowanceUse[] }} Allowance
@@ -90,3 +90,21 @@ export const getSettleTags = () => apiFetch("/billing/settlement/tags");
  * @returns {Promise<Settlement>}
  */
 export const settleExpenses = (body) => apiFetch("/billing/settlement/tag", { method: "POST", body });
+
+/**
+ * 정산 담당자(월말 알림을 받는 사람). 지정하지 않았으면 그룹을 만든 사람.
+ * @returns {Promise<{ manager_id: string, manager_name: string, is_me: boolean }>}
+ */
+export const getManager = () => apiFetch("/billing/settlement/manager");
+
+/** 담당자 변경: 지금 담당자나 그룹을 만든 사람만 할 수 있다. @param {string} userId */
+export const setManager = (userId) => apiFetch("/billing/settlement/manager", { method: "PUT", body: { user_id: userId } });
+
+// 개발용: 월말 알림을 확인할 때 오늘 날짜를 바꾼다(EXPO_PUBLIC_DEV_TODAY=YYYY-MM-DD). 비우면 실제 오늘.
+const DEV_TODAY = process.env.EXPO_PUBLIC_DEV_TODAY ?? "";
+
+/**
+ * 월말 정산 알림. 정산 담당자에게만 show 가 true 다(월말 마지막 5일, 월초 5일은 지난 달이 밀렸을 때).
+ * @returns {Promise<{ show: boolean, is_manager: boolean, manager_name: string, kind: "month_end" | "overdue" | null, month: string | null, unsettled_count: number, unsettled_total: number, days_left: number | null }>}
+ */
+export const getReminder = () => apiFetch(`/billing/settlement/reminder${DEV_TODAY ? `?on=${DEV_TODAY}` : ""}`);

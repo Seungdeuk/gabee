@@ -1,3 +1,4 @@
+import calendar
 import re
 import uuid
 from datetime import UTC, datetime, timedelta, timezone
@@ -6,12 +7,13 @@ from sqlalchemy.orm import Session
 
 from app.features.family_group import repository as group_repo
 from app.features.family_group.models import User
-from app.shared.errors import bad_request, not_found
+from app.shared.errors import ApiError, bad_request, not_found
 
 from . import repository as repo
 from .models import (
     Allowance,
     AllowanceUse,
+    BillingSettings,
     Expense,
     SettlementPayment,
     SubscriptionItem,
@@ -23,8 +25,10 @@ from .schemas import (
     Balance,
     ExpenseCreate,
     ExpenseOut,
+    ManagerOut,
     PaymentCreate,
     PaymentOut,
+    Reminder,
     Settlement,
     SettleRequest,
     SettleTagOut,
@@ -57,6 +61,9 @@ FIXED_TAGS = (
 )
 
 
+REMINDER_DAYS = 5  # 월말 알림: 마지막 5일, 지난 달 지연 알림: 월초 5일
+
+
 def check_month(month: str) -> str:
     if not _MONTH.match(month):
         raise bad_request("invalid_month", "월은 YYYY-MM 형식이어야 해요")
@@ -85,6 +92,7 @@ def _expense_out(e: Expense, names: dict[str, str], member_ids: list[str]) -> Ex
         paid_by_name=names.get(e.paid_by, ""),
         split_among=e.split_among or member_ids,
         target_tag=e.target_tag,
+        settled=e.settled_at is not None,
     )
 
 
@@ -214,7 +222,7 @@ def settle_tags(db: Session, group_id: str) -> list[SettleTagOut]:
     ]
 
 
-def settle(db: Session, group_id: str, body: SettleRequest) -> Settlement:
+def settle(db: Session, group_id: str, user_id: str, body: SettleRequest) -> Settlement:
     """'정산하기': 고른 지출에 대상 태그를 걸고 나눌 사람을 정한다. 잔액과 송금 목록은 기존 계산을 그대로 쓴다.
     고정 태그는 역할로 나눌 사람을 채우고, 직접 고르기(custom)는 보낸 사람 목록을 그대로 쓴다."""
     month = check_month(body.month)
@@ -240,10 +248,74 @@ def settle(db: Session, group_id: str, body: SettleRequest) -> Settlement:
     if unknown:
         raise bad_request("unknown_expense", "이 달에 없는 지출이 들어 있어요")
     chosen = [by_id[i] for i in dict.fromkeys(body.expense_ids)]
+    now = datetime.now(UTC)
     for e in chosen:
         e.target_tag, e.split_among = body.tag, participants
+        e.settled_at, e.settled_by = now, user_id
     repo.save_all(db, chosen)
     return settlement(db, group_id, month)
+
+
+# ---- 정산 담당자와 월말 알림 ----
+
+
+def _manager_id(db: Session, group_id: str) -> str:
+    """정산 담당자 id. 지정하지 않았으면 그룹을 만든 사람이다."""
+    row = repo.get_settings(db, group_id)
+    if row is not None:
+        return row.manager_id
+    return group_repo.get_group(db, group_id).owner_id
+
+
+def get_manager(db: Session, group_id: str, user: User) -> ManagerOut:
+    manager_id = _manager_id(db, group_id)
+    name = next((m.name for m in group_repo.members(db, group_id) if m.id == manager_id), "")
+    return ManagerOut(manager_id=manager_id, manager_name=name, is_me=manager_id == user.id)
+
+
+def set_manager(db: Session, group_id: str, user: User, new_id: str) -> ManagerOut:
+    """담당자 변경은 지금 담당자나 그룹을 만든 사람만 할 수 있다."""
+    owner_id = group_repo.get_group(db, group_id).owner_id
+    if user.id not in (_manager_id(db, group_id), owner_id):
+        raise ApiError(403, "not_manager", "정산 담당자나 그룹을 만든 사람만 바꿀 수 있어요")
+    if new_id not in [m.id for m in group_repo.members(db, group_id)]:
+        raise bad_request("invalid_manager", "정산 담당자는 가족 구성원이어야 해요")
+    row = repo.get_settings(db, group_id) or BillingSettings(group_id=group_id, manager_id=new_id)
+    row.manager_id, row.updated_at = new_id, datetime.now(UTC)
+    repo.save(db, row)
+    return get_manager(db, group_id, user)
+
+
+def reminder(db: Session, group_id: str, user: User, on: str | None) -> Reminder:
+    """월말(마지막 5일)에는 이번 달, 월초(5일까지)에는 지난 달의 '정산하기를 안 한 지출'을 정산 담당자에게만 알린다.
+    `on`(YYYY-MM-DD)을 주면 그 날짜를 오늘로 본다(화면 테스트용)."""
+    try:
+        today = datetime.strptime(on, "%Y-%m-%d").date() if on else datetime.now(KST).date()
+    except ValueError:
+        raise bad_request("invalid_date", "날짜는 YYYY-MM-DD 형식이어야 해요") from None
+    last_day = calendar.monthrange(today.year, today.month)[1]
+    days_left = last_day - today.day
+    if days_left < REMINDER_DAYS:
+        kind, month = "month_end", today.strftime("%Y-%m")
+    elif today.day <= REMINDER_DAYS:
+        prev = (today.replace(day=1) - timedelta(days=1)).strftime("%Y-%m")
+        kind, month, days_left = "overdue", prev, None
+    else:
+        kind, month, days_left = None, None, None
+    unsettled = (
+        [e for e in repo.list_month(db, group_id, month) if e.settled_at is None] if month else []
+    )
+    manager = get_manager(db, group_id, user)
+    return Reminder(
+        show=manager.is_me and kind is not None and len(unsettled) > 0,
+        is_manager=manager.is_me,
+        manager_name=manager.manager_name,
+        kind=kind,
+        month=month,
+        unsettled_count=len(unsettled),
+        unsettled_total=sum(e.amount for e in unsettled),
+        days_left=days_left if kind == "month_end" else None,
+    )
 
 
 def mark_paid(db: Session, group_id: str, body: PaymentCreate) -> Settlement:

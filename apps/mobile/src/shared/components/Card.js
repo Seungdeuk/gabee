@@ -12,10 +12,14 @@ const tones = {
 
 /**
  * 둥근 카드 컨테이너.
- * @param {{ tone?: keyof typeof tones, style?: object, children: import("react").ReactNode }} props
+ * @param {{ tone?: keyof typeof tones, style?: object, testID?: string, children: import("react").ReactNode }} props
  */
-export default function Card({ tone = "default", style, children }) {
-  return <View style={[styles.card, tones[tone], style]}>{children}</View>;
+export default function Card({ tone = "default", style, testID, children }) {
+  return (
+    <View style={[styles.card, tones[tone], style]} testID={testID}>
+      {children}
+    </View>
+  );
 }
 
 const styles = StyleSheet.create({
