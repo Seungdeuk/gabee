@@ -34,6 +34,14 @@
   - 로그인 실패 제한: 아이디별 5회 / IP별 50회 (15분), 초과 429 `too_many_attempts` + `Retry-After`. 프로세스 메모리 기반(재시작 시 초기화, 워커별) — 기존에 쓸 수 있는 테이블(`invite_attempts` 는 초대 전용)이 없어 인프라 추가 없이 구현. 공유 한도가 필요하면 DB 테이블로 교체(후속).
   - 테스트: `family_group/tests/test_login_jwt.py`(SQLite 27건), `tests/test_login_pg_e2e.py`(PG16 5건, 동시 갱신 8요청 → 성공 1건).
 
+### 로그인·JWT 운영 참고와 알려진 한계
+
+- **JWT_SECRET**: 32자 이상 무작위 값을 서버 `.env` 에만 둔다(코드·Git 금지). 비어 있을 때 로컬 SQLite 나 `DEBUG=true` 에서만 프로세스 임시 키를 쓴다(재시작하면 로그인이 풀림). **PostgreSQL(공용·운영)에서 DEBUG 없이 비어 있거나 32자 미만이면 로그인·갱신·Bearer 인증이 503 `auth_not_configured`** 이고, 서버 시작·`/health`·레거시 토큰 인증(모바일 현재 방식)·가입 등 나머지 API 는 그대로 동작한다. 공용 DB 에 붙여 개발하는 팀원은 `.env` 에 `JWT_SECRET`(개발용 아무 32자 이상 값) 또는 `DEBUG=true` 를 둔다.
+- **로그아웃해도 Access Token 은 만료(기본 15분)까지 유효**하다. Access Token 은 서버에 상태를 두지 않는 JWT 라 폐기 목록이 없다. 로그아웃은 Refresh Token 만 폐기하므로 더 이상 갱신은 되지 않는다. 즉시 차단이 필요하면 만료 시간(`ACCESS_TOKEN_TTL_SECONDS`)을 줄이거나, 후속으로 `users` 에 토큰 버전/비활성 컬럼을 두고 요청마다 확인한다(마이그레이션 필요). 계정이 삭제되면 남은 Access Token 도 거부된다.
+- **로그인 횟수 제한의 한계**: 프로세스 메모리 기반이라 ① 서버 재시작 시 초기화 ② 워커·서버가 여러 개면 프로세스별로 집계(한도가 사실상 늘어남) ③ 아이디별 제한은 공격자가 남의 아이디를 일부러 틀려 일시적으로 잠글 수 있음(15분, `Retry-After`) ④ IP 제한은 `request.client.host` 기준이라, **리버스 프록시(Caddy) 뒤에서 uvicorn 을 `--proxy-headers --forwarded-allow-ips=<프록시 IP>` 없이 실행하면 모든 사용자가 프록시 IP 하나로 집계**된다 — 그 경우 `LOGIN_MAX_FAILURES_PER_IP=0` 으로 IP 제한을 끈다. 오래된 기록은 주기적으로 청소하므로 없는 아이디를 무작위로 시도해도 메모리가 계속 늘지 않는다. 공유·영구 한도가 필요하면 DB 테이블(마이그레이션)로 교체한다.
+- Refresh Token 재사용은 폐기 10초 이후면 탈취로 보고 그 사용자의 모든 세션을 폐기한다(10초 이내는 동시 갱신 경쟁으로 보고 해당 요청만 거부).
+- 이메일 중복 응답(409 `email_taken`)은 계정 존재 여부를 알려준다(가입 레이트리밋과 함께 후속).
+
 ## 남은 것
 
 - PR 4-B(나머지): 이메일 인증·비밀번호 재설정, 가입 요청 레이트리밋, 전체 기기 로그아웃, `allow_anonymous_signup` 플래그, 사용자 비활성 컬럼. **익명 가입(`POST /family-group/users`)과 레거시 토큰은 기본 허용 상태**라 모바일이 정식 가입/로그인으로 전환되는 시점에 `ALLOW_LEGACY_TOKEN_AUTH=false` 로 돌린다.

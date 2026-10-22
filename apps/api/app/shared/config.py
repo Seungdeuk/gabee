@@ -23,8 +23,8 @@ class Settings(BaseSettings):
     schema_force_min_interval_seconds: float = 1  # /health/db 가 강제 재점검할 수 있는 최소 간격
 
     # 로그인/JWT(PR 4-B). JWT_SECRET 은 환경변수(.env)로만 준다 — 코드·Git 에 넣지 않는다.
-    # 비어 있으면 프로세스마다 임시 무작위 비밀키를 쓴다(재시작하면 발급한 Access Token 이 무효가 되고, 워커가 여러 개면 서로 검증 못 한다).
-    # 운영에서는 32자 이상 무작위 값을 반드시 설정한다 (예: python -c "import secrets;print(secrets.token_urlsafe(48))").
+    # 비어 있으면: 로컬 SQLite 나 DEBUG=true 에서만 프로세스 임시 키를 쓴다(재시작하면 로그인이 풀림). PostgreSQL(공용·운영)에서는
+    # 로그인/Bearer 인증이 503 auth_not_configured 가 된다(서버 시작·레거시 인증·다른 API 는 그대로). 32자 이상 무작위 값을 설정한다 (예: python -c "import secrets;print(secrets.token_urlsafe(48))").
     jwt_secret: str = ""
     jwt_issuer: str = "gabee-api"
     jwt_audience: str = "gabee-app"
@@ -35,7 +35,9 @@ class Settings(BaseSettings):
     allow_legacy_token_auth: bool = True
     # 로그인 실패 제한(프로세스 메모리, 재시작하면 초기화): 아이디별/IP별 실패 횟수와 집계 시간
     login_max_failures_per_id: int = 5
-    login_max_failures_per_ip: int = 50
+    login_max_failures_per_ip: int = (
+        50  # 0 이면 IP 제한을 끈다(리버스 프록시 뒤에서 uvicorn --proxy-headers 없이 쓸 때)
+    )
     login_failure_window_seconds: int = 15 * 60
 
     model_config = SettingsConfigDict(env_file=_ENV_FILE, extra="ignore")

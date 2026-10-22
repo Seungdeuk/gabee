@@ -354,3 +354,100 @@ def test_errors_use_the_common_error_shape(client, path):
     body = {"login_id": "nobody_x", "password": "x"} if path == LOGIN else {"refresh_token": "x"}
     r = client.post(path, json=body)
     assert r.status_code == 401 and set(r.json()) == {"code", "message"}
+
+
+# ---------- JWT_SECRET 정책 ----------
+def test_without_a_secret_on_postgres_login_and_bearer_are_unavailable_but_the_rest_works(
+    client, monkeypatch
+):
+    register(client)
+    legacy = signup(client, "익명")
+    good_access = login(client).json()["access_token"]  # 설정이 있을 때 받은 토큰
+    monkeypatch.setattr(settings, "jwt_secret", "")
+    monkeypatch.setattr(settings, "database_url", "postgresql+psycopg://u@db/gabee")
+    monkeypatch.setattr(settings, "debug", False)
+    monkeypatch.setattr(tokens, "_ephemeral_secret", None)
+
+    for r in (
+        login(client),
+        client.post(REFRESH, json={"refresh_token": "x"}),
+        client.get(ME, headers=bearer(good_access)),
+    ):
+        assert r.status_code == 503 and r.json()["code"] == "auth_not_configured"
+        assert set(r.json()) == {"code", "message"}
+    assert tokens._ephemeral_secret is None  # 임시 키를 만들지 않았다
+    assert (
+        client.get("/family-group/me", headers=legacy).status_code == 200
+    )  # 레거시 인증은 영향 없음
+    assert client.get("/health").status_code == 200
+    assert (
+        client.post(
+            SIGNUP,
+            json={
+                "login_id": "second_id",
+                "password": PASSWORD,
+                "email": "s@example.com",
+                "name": "둘",
+            },
+        ).status_code
+        == 201
+    )
+
+
+def test_ephemeral_secret_is_allowed_for_sqlite_or_debug_only(client, monkeypatch):
+    register(client)
+    monkeypatch.setattr(settings, "jwt_secret", "")
+    monkeypatch.setattr(tokens, "_ephemeral_secret", None)
+    monkeypatch.setattr(settings, "debug", False)
+    monkeypatch.setattr(settings, "database_url", "sqlite:///./x.db")
+    first = login(client)
+    assert (
+        first.status_code == 200
+        and client.get(ME, headers=bearer(first.json()["access_token"])).status_code == 200
+    )
+    monkeypatch.setattr(settings, "database_url", "postgresql+psycopg://u@db/gabee")
+    monkeypatch.setattr(tokens, "_ephemeral_secret", None)
+    assert login(client).status_code == 503
+    monkeypatch.setattr(settings, "debug", True)  # DEBUG=true 이면 공용 DB 에서도 개발용으로 허용
+    assert login(client).status_code == 200
+
+
+def test_too_short_secret_is_refused_not_used(client, monkeypatch):
+    register(client)
+    monkeypatch.setattr(settings, "jwt_secret", "short-secret")
+    assert login(client).json()["code"] == "auth_not_configured"
+
+
+def test_unconfigured_login_does_not_count_as_a_failed_attempt(client, monkeypatch):
+    register(client)
+    monkeypatch.setattr(settings, "jwt_secret", "")
+    monkeypatch.setattr(settings, "database_url", "postgresql+psycopg://u@db/gabee")
+    monkeypatch.setattr(settings, "debug", False)
+    for _ in range(settings.login_max_failures_per_id + 1):
+        assert login(client, password="Wrong-pass-1").status_code == 503
+    assert service.login_limiter.retry_after("id:jimin_kim", 1, 900) == 0
+
+
+# ---------- 로그인 실패 제한기 ----------
+def test_ip_limit_can_be_disabled_and_id_limit_still_applies(client, monkeypatch):
+    register(client)
+    monkeypatch.setattr(settings, "login_max_failures_per_ip", 0)
+    for i in range(12):  # 서로 다른 아이디로 12번 실패해도 IP 제한은 없다
+        assert login(client, login_id=f"nobody_{i:02d}", password="x").status_code == 401
+    for _ in range(settings.login_max_failures_per_id):
+        login(client, password="Wrong-pass-1")
+    assert login(client).status_code == 429
+
+
+def test_limiter_sweeps_stale_keys_so_random_ids_cannot_fill_memory():
+    from app.shared.rate_limit import FailureLimiter
+
+    now = [0.0]
+    limiter = FailureLimiter(clock=lambda: now[0], retention=100, sweep_every=10)
+    for i in range(30):
+        limiter.record(f"id:ghost{i}")
+    assert len(limiter._failures) == 30
+    now[0] = 1000.0  # 보관 기간이 지났다
+    for i in range(10):
+        limiter.record(f"id:new{i}")  # 기록이 쌓이는 것만으로 오래된 키가 청소된다
+    assert len(limiter._failures) == 10

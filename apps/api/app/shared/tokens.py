@@ -14,6 +14,7 @@ from datetime import UTC, datetime, timedelta
 import jwt
 
 from .config import settings
+from .errors import ApiError
 
 log = logging.getLogger(__name__)
 
@@ -32,18 +33,38 @@ class TokenError(Exception):
         self.expired = expired
 
 
+def _ephemeral_allowed() -> bool:
+    """임시 비밀키는 로컬 개발(SQLite)이나 DEBUG=true 일 때만 허용한다. PostgreSQL(공용·운영)에서 DEBUG 없이
+    JWT_SECRET 이 없으면 임시 키로 인증을 제공하지 않는다(재시작·다중 워커에서 깨지고, 설정 누락을 숨기기 때문)."""
+    return settings.debug or settings.database_url.startswith("sqlite")
+
+
 def _secret() -> str:
+    """서명 비밀키. 쓸 수 없으면 503 `auth_not_configured` — 서버 시작과 레거시 인증·다른 API 는 영향이 없다."""
     global _ephemeral_secret
     if settings.jwt_secret:
         if len(settings.jwt_secret) < MIN_SECRET_LENGTH:
-            raise RuntimeError(f"JWT_SECRET 은 {MIN_SECRET_LENGTH}자 이상이어야 합니다")
+            log.error(
+                "JWT_SECRET 이 %d자 미만이라 로그인/Bearer 인증을 쓸 수 없습니다", MIN_SECRET_LENGTH
+            )
+            raise ApiError(503, "auth_not_configured", "로그인 기능이 아직 설정되지 않았어요")
         return settings.jwt_secret
+    if not _ephemeral_allowed():
+        log.error(
+            "JWT_SECRET 이 설정되지 않아 로그인/Bearer 인증을 쓸 수 없습니다(운영·공용 DB 에서는 임시 키를 쓰지 않음)"
+        )
+        raise ApiError(503, "auth_not_configured", "로그인 기능이 아직 설정되지 않았어요")
     if _ephemeral_secret is None:
         _ephemeral_secret = secrets.token_urlsafe(48)
         log.warning(
             "JWT_SECRET 이 설정되지 않아 임시 비밀키를 씁니다(재시작하면 로그인이 풀려요). .env 에 설정하세요"
         )
     return _ephemeral_secret
+
+
+def ensure_configured() -> None:
+    """서명 비밀키를 쓸 수 있는지 확인한다(안 되면 503 auth_not_configured)."""
+    _secret()
 
 
 def create_access_token(user_id: str, now: datetime | None = None) -> tuple[str, int]:

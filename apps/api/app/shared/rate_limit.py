@@ -10,8 +10,13 @@ from collections import defaultdict, deque
 
 
 class FailureLimiter:
-    def __init__(self, clock=time.monotonic) -> None:
+    def __init__(
+        self, clock=time.monotonic, retention: float = 3600, sweep_every: int = 500
+    ) -> None:
         self._clock = clock
+        self._retention = retention  # 이보다 오래된 기록은 조회가 없어도 청소한다(없는 아이디를 무작위로 시도해 메모리를 채우는 공격 방지)
+        self._sweep_every = sweep_every
+        self._records = 0
         self._lock = threading.Lock()
         self._failures: dict[str, deque[float]] = defaultdict(deque)
 
@@ -35,6 +40,11 @@ class FailureLimiter:
     def record(self, key: str) -> None:
         with self._lock:
             self._failures[key].append(self._clock())
+            self._records += 1
+            if self._records % self._sweep_every == 0:
+                cutoff = self._clock() - self._retention
+                for stale in [k for k, e in self._failures.items() if not e or e[-1] <= cutoff]:
+                    del self._failures[stale]
 
     def clear(self, key: str) -> None:
         with self._lock:

@@ -196,6 +196,7 @@ def _issue_tokens(db: Session, user: User, device_label: str | None, now: dateti
 
 
 def login(db: Session, body: LoginIn, ip: str) -> LoginOut:
+    tokens.ensure_configured()  # 로그인을 제공할 수 없는 설정이면 실패 횟수를 늘리기 전에 503
     ip_key = f"ip:{ip}"
     try:
         login_id = credentials.normalize_login_id(body.login_id)
@@ -204,9 +205,10 @@ def login(db: Session, body: LoginIn, ip: str) -> LoginOut:
         raise _invalid_credentials() from None
     id_key = f"id:{login_id}"
     window = settings.login_failure_window_seconds
+    limit_ip = settings.login_max_failures_per_ip
     wait = max(
         login_limiter.retry_after(id_key, settings.login_max_failures_per_id, window),
-        login_limiter.retry_after(ip_key, settings.login_max_failures_per_ip, window),
+        login_limiter.retry_after(ip_key, limit_ip, window) if limit_ip else 0,
     )
     if wait:
         raise ApiError(
@@ -236,6 +238,7 @@ def login(db: Session, body: LoginIn, ip: str) -> LoginOut:
 def refresh_session(db: Session, body: RefreshIn) -> TokenOut:
     """Refresh Token 회전: 쓴 토큰은 즉시 폐기하고 새 토큰을 발급한다(폐기+발급은 한 트랜잭션).
     같은 토큰으로 동시에 여러 요청이 와도 조건부 UPDATE 를 성공한 하나만 통과한다."""
+    tokens.ensure_configured()
     now = datetime.now(UTC)
     row = repo.find_refresh_token(db, tokens.hash_refresh_token(body.refresh_token))
     if row is None or _aware(row.expires_at) <= now:
