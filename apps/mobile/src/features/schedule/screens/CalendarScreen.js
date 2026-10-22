@@ -1,9 +1,10 @@
 import { Ionicons } from "@expo/vector-icons";
-import { useLocalSearchParams } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import { useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
+import IconButton from "@/shared/components/IconButton";
 import { colors, font, spacing } from "@/theme";
 
 import { buildMarks, itemsOnDate } from "../calendar";
@@ -34,6 +35,7 @@ const toggle = (list, id) => (list.includes(id) ? list.filter((x) => x !== id) :
  * 등록(+)·상세(카드 터치) 이동도 해당 화면을 만들 때 연결한다.
  */
 export default function CalendarScreen() {
+  const router = useRouter();
   const { date } = useLocalSearchParams();
   const items = useScheduleItems();
   const [selected, setSelected] = useState(/^\d{4}-\d{2}-\d{2}$/.test(date ?? "") ? date : todayKey());
@@ -47,6 +49,8 @@ export default function CalendarScreen() {
   const visible = kind === "all" ? dayItems : dayItems.filter((item) => item.kind === kind);
   const done = dayItems.filter((item) => item.checked).length;
 
+  // 일정 메인으로 돌아간다. 주소를 직접 열어 쌓인 화면이 없어도 같은 곳으로 간다.
+  const goBack = () => router.dismissTo("/(tabs)/schedule");
   const shift = (delta) => setSelected(collapsed ? addDays(selected, delta * 7) : shiftMonthKey(selected, delta));
 
   return (
@@ -54,9 +58,12 @@ export default function CalendarScreen() {
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         <View style={styles.body}>
           <View style={styles.top}>
-            <Text style={styles.title} accessibilityRole="header">
-              한눈에 보는 한 달
-            </Text>
+            <View style={styles.titleBox}>
+              <IconButton name="chevron-back" label="뒤로" onPress={goBack} />
+              <Text style={styles.title} accessibilityRole="header">
+                한눈에 보는 한 달
+              </Text>
+            </View>
             <SegmentedControl options={VIEW_OPTIONS} value={view} onChange={setView} />
           </View>
 
@@ -113,6 +120,7 @@ const styles = StyleSheet.create({
   content: { paddingBottom: spacing.xxl },
   body: { paddingHorizontal: spacing.xxl, paddingTop: spacing.xl, gap: 14 },
   top: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10 },
+  titleBox: { flexDirection: "row", alignItems: "center", flexShrink: 1, marginLeft: -spacing.sm },
   title: { ...font.page, color: colors.text, flexShrink: 1 },
   section: { gap: spacing.md },
   dayHead: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
