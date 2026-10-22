@@ -22,16 +22,19 @@ export default function useChat() {
   const [messages, setMessages] = useState([]);
   const [phase, setPhase] = useState("idle");
   const nextId = useRef(0);
+  const messagesRef = useRef([]);
+  messagesRef.current = messages;
   const id = () => String(nextId.current++);
 
   const send = useCallback(async (text, { voice = false } = {}) => {
     const trimmed = text.trim();
     if (!trimmed) return;
 
+    const history = messagesRef.current.map(({ role, text: t }) => ({ role, text: t }));
     setMessages((prev) => [...prev, { id: id(), role: "user", text: trimmed, voice }]);
     setPhase("thinking");
     try {
-      const { reply, sources = [], draft = null } = await sendMessage(trimmed);
+      const { reply, sources = [], draft = null } = await sendMessage(trimmed, history);
       setMessages((prev) => [
         ...prev,
         { id: id(), role: "assistant", text: reply, sources, draft, draftText: draft?.text },
