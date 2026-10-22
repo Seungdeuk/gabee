@@ -10,10 +10,11 @@ import DateSheet from "../components/DateSheet";
 import FilterChip from "../components/FilterChip";
 import { FormField, PressBox, TextBox } from "../components/FormControls";
 import SegmentedControl from "../components/SegmentedControl";
+import TimeSheet from "../components/TimeSheet";
 import { KIND, KIND_LABEL } from "../constants";
 import { ME_ID, members, topics } from "../mock";
 import { addItem } from "../store";
-import { formatDateLong } from "../utils/date";
+import { formatDateWithYear, formatTimeConfirmed } from "../utils/date";
 
 const KIND_OPTIONS = [KIND.appointment, KIND.todo].map((key) => ({ key, label: KIND_LABEL[key] }));
 const OTHERS = members.filter((m) => m.id !== ME_ID);
@@ -24,7 +25,6 @@ const toggle = (list, id) => (list.includes(id) ? list.filter((x) => x !== id) :
 /**
  * 약속·할 일 등록 화면. 약속과 할 일의 입력 항목은 같고 형태만 고른다. 필수는 제목과 날짜, 나머지는 선택. 저장하면 진입했던 화면으로 돌아가고,
  * 취소하면 아무것도 만들어지지 않는다. 제안으로 열리면(suggested) 안내 문구와 함께 미리 채워진다.
- * 시간 선택과 날짜 직접 입력은 다음 PR에서 붙인다.
  */
 export default function RegisterScreen() {
   const router = useRouter();
@@ -37,7 +37,9 @@ export default function RegisterScreen() {
   const [date, setDate] = useState(/^\d{4}-\d{2}-\d{2}$/.test(params.date ?? "") ? params.date : "");
   const [place, setPlace] = useState("");
   const [memo, setMemo] = useState("");
+  const [time, setTime] = useState({ allDay: false, startTime: null, endTime: null });
   const [dateOpen, setDateOpen] = useState(false);
+  const [timeOpen, setTimeOpen] = useState(false);
   const [triedSave, setTriedSave] = useState(false);
 
   const valid = title.trim() !== "" && date !== "";
@@ -54,9 +56,7 @@ export default function RegisterScreen() {
       kind,
       title: title.trim(),
       date,
-      startTime: null,
-      endTime: null,
-      allDay: false,
+      ...time,
       place: place.trim(),
       memo: memo.trim(),
       whoIds,
@@ -122,10 +122,18 @@ export default function RegisterScreen() {
 
           <View style={styles.group}>
             <FormField label="날짜" hint="필수">
-              <PressBox value={date ? formatDateLong(date) : ""} placeholder="날짜를 선택해 주세요" onPress={() => setDateOpen(true)} />
+              <PressBox value={date ? formatDateWithYear(date) : ""} placeholder="날짜를 선택해 주세요" onPress={() => setDateOpen(true)} />
             </FormField>
-            <FormField label="시간" action="시간 없음">
-              <PressBox placeholder="시간 없음" />
+            <FormField
+              label="시간"
+              action="시간 없음"
+              onAction={() => setTime({ allDay: false, startTime: null, endTime: null })}
+            >
+              <PressBox
+                value={formatTimeConfirmed(time)}
+                placeholder="시간 없음"
+                onPress={() => setTimeOpen(true)}
+              />
             </FormField>
             <FormField label="장소">
               <TextBox value={place} onChangeText={setPlace} />
@@ -143,6 +151,17 @@ export default function RegisterScreen() {
         </View>
       </ScrollView>
 
+      {timeOpen ? (
+        <TimeSheet
+          visible
+          value={time}
+          onClose={() => setTimeOpen(false)}
+          onSelect={(picked) => {
+            setTime(picked);
+            setTimeOpen(false);
+          }}
+        />
+      ) : null}
       {dateOpen ? (
         <DateSheet
           visible
