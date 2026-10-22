@@ -311,3 +311,60 @@ def test_real_onnx_model_understands_meaning_beyond_words():
     q = e.embed_query("물값 얼마 나왔어")  # 같은 낱말이 거의 없는 질문
     assert len(q) == e.dim == 384 and abs(embedding.cosine(q, q) - 1) < 1e-3
     assert embedding.cosine(q, pw) > embedding.cosine(q, pp)
+
+
+def test_renumber_makes_citation_numbers_start_at_one_in_order_of_appearance():
+    src = lambda n, t: {"n": n, "title": t, "item_id": f"i{n}", "kind_label": "x"}  # noqa: E731
+    r = rag_chat.AskResult(
+        answer="관리비 [11] 와 전기 [14] 그리고 수도 [3], 다시 관리비 [11]",
+        source="ai",
+        sources=[src(3, "수도"), src(11, "관리비"), src(14, "전기")],
+    )
+    rag_chat._renumber(r)
+    assert r.answer == "관리비 [1] 와 전기 [2] 그리고 수도 [3], 다시 관리비 [1]"
+    assert [(s["n"], s["title"]) for s in r.sources] == [(1, "관리비"), (2, "전기"), (3, "수도")]
+
+
+def test_ask_renumbers_sources_after_several_searches(client, seeded):
+    import json
+
+    _, _, group = seeded
+    steps = []
+
+    def fake_post(body):
+        steps.append(1)
+        if len(steps) <= 2:  # 검색을 두 번 해서 ref 번호를 키운다
+            call = {
+                "type": "tool_use",
+                "id": f"t{len(steps)}",
+                "name": "search_knowledge",
+                "input": {"query": "요금"},
+            }
+            return {"content": [call]}
+        found = json.loads(body["messages"][-1]["content"][0]["content"])["results"]
+        water = next(r["ref"] for r in found if r["title"] == "10월 수도요금")
+        power = next(r["ref"] for r in found if r["title"] == "10월 전기요금")
+        return {"content": [{"type": "text", "text": f"수도 [{water}], 전기 [{power}]"}]}
+
+    with SessionLocal() as db:
+        r = rag_chat.ask(db, group["id"], "요금 정리", post=fake_post)
+    assert r.answer == "수도 [1], 전기 [2]"
+    assert [(s["n"], s["title"]) for s in r.sources] == [(1, "10월 수도요금"), (2, "10월 전기요금")]
+
+
+def test_demo_seed_has_receipts_for_expense_reports(client, family):
+    from app.features.ai_assistant.knowledge.seed import seed_demo
+
+    _, _, group = family
+    with SessionLocal() as db:
+        user_id = db.scalar(__import__("sqlalchemy").text("select id from users limit 1"))
+        seed_demo(db, group["id"], user_id)
+        kinds = ["마트 영수증", "쇼핑 영수증", "카페 영수증", "택시 영수증"]
+        titles = [
+            i["title"]
+            for k in kinds
+            for i in tools.list_items(db, group["id"], kind_label=k)["items"]
+        ]
+        assert len(titles) == 4
+        top = tools.search_knowledge(db, group["id"], "영수증", top_k=20)["results"]
+        assert sum("영수증" in r["kind_label"] for r in top) == 4

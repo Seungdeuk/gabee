@@ -4,6 +4,7 @@ LLM 은 `tools.TOOL_SPECS` 의 함수만 부를 수 있고, 어느 가족 그룹
 키가 없거나 호출이 실패하면 LLM 없이 검색 결과만 보여 준다. 공용 `shared/llm` 은 건드리지 않고 같은 설정을 쓴다."""
 
 import json
+import re
 from collections.abc import Callable
 from dataclasses import dataclass, field
 
@@ -26,7 +27,11 @@ SYSTEM_PROMPT = (
     # 앱 답변 화면(AnswerView)이 그릴 수 있는 형식만 쓴다: 문단, '## 제목', '- 목록', '**굵게**', [번호]
     "답은 앱 화면에 맞춰 짧은 문단으로 쓰고, 필요하면 '- ' 목록과 '**굵게**'만 쓰세요. "
     "### 제목, 표, 이모지는 쓰지 마세요. 제목이 필요하면 '## 제목' 한 줄만 쓰세요. "
-    "기록에서 가져온 내용 문장 끝에는 그 기록의 ref 번호를 [1] 처럼 붙이세요."
+    "기록에서 가져온 내용 문장 끝에는 그 기록의 ref 번호를 [1] 처럼 붙이세요. "
+    # 여러 건을 모아 보여 줘야 하는 요청(지출·영수증 보고서, 공과금 정리 등)
+    "'보고서'나 '정리'처럼 여러 기록을 모아야 하는 요청은 search_knowledge 의 top_k 를 20 까지 키워 "
+    "해당 기록을 빠짐없이 찾고, '## 제목' 아래에 항목별 금액을 '- ' 목록으로, 마지막에 합계를 적으세요. "
+    "합계는 찾은 기록의 금액만 더하고, 기록에 없는 항목은 없다고 말하세요."
 )
 MAX_STEPS = 4
 
@@ -175,4 +180,23 @@ def ask(
     ]
     if used:
         result.sources = used
+    _renumber(result)
     return result
+
+
+def _renumber(result: AskResult) -> None:
+    """출처 번호를 답에 처음 나온 순서대로 1번부터 다시 매기고, 답 안의 [번호]도 같이 바꾼다.
+
+    검색을 여러 번 하면 ref 가 [11] 처럼 커지는데, 앱 출처 칩에는 1, 2, 3… 으로 보이는 게 자연스럽다."""
+    answer = result.answer
+
+    def first_seen(source: dict) -> int:
+        pos = answer.find(f"[{source['n']}]")
+        return pos if pos >= 0 else len(answer) + source["n"]  # 번호 없이 제목만 나온 기록은 뒤로
+
+    ordered = sorted(result.sources, key=first_seen)
+    mapping = {s["n"]: i for i, s in enumerate(ordered, 1)}
+    result.answer = re.sub(
+        r"\[(\d+)\]", lambda m: f"[{mapping.get(int(m.group(1)), m.group(1))}]", answer
+    )
+    result.sources = [{**s, "n": mapping[s["n"]]} for s in ordered]
