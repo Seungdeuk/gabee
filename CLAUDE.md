@@ -7,7 +7,7 @@
 
 - 앱: React Native (Expo SDK 54, Expo Router), JavaScript — `apps/mobile` (npm). SDK 는 아이폰 App Store 의 Expo Go 가 지원하는 54 에 맞춘다(올리기 전에 팀 Expo Go 를 확인)
 - API: Python, FastAPI, Pydantic v2 — `apps/api`
-- DB: PostgreSQL (Supabase). 서버는 SQLAlchemy 2 로 접근한다. 개발 중에는 서버가 시작할 때 테이블을 만들고(`init_db`), 운영 스키마 변경은 `supabase/migrations`의 SQL 파일로만 한다.
+- DB: PostgreSQL (Supabase). 서버는 SQLAlchemy 2 로 접근한다. 로컬 SQLite는 서버가 시작할 때 테이블을 만들고(`init_db`), PostgreSQL 스키마 변경은 **Alembic**(`apps/api/alembic/`, `alembic upgrade head`)로만 한다 — `supabase/migrations`는 더 이상 쓰지 않는다.
 - 배포: API는 Docker + Caddy, 앱은 EAS Build
 - TypeScript는 사용하지 않는다.
 
@@ -94,7 +94,7 @@ docker compose up --build      # 개발용 DB + API (루트 .env 필요)
 
 ## DB
 
-- 스키마 변경은 `supabase/migrations`에 새 SQL 파일로만 한다. 병합된 마이그레이션은 수정하지 않고 새 파일을 추가한다.
+- PostgreSQL 스키마 변경은 `apps/api/alembic/`의 Alembic 리비전으로만 한다(`alembic revision --autogenerate` 후 직접 리뷰, `alembic upgrade head`로 적용). 적용된 리비전은 수정하지 않고 새 리비전을 추가한다. `supabase/migrations`는 더 이상 스키마 변경에 쓰지 않는다.
 - 컬럼·테이블 삭제 등 데이터가 사라지는 변경은 PR에 적고 팀에 공유한 뒤 진행한다.
 - 변경하면 `docs/contracts/db.md`도 갱신한다.
 - `supabase/seed`에는 가짜 데이터만 둔다. 실제 사용자 데이터를 넣지 않는다.

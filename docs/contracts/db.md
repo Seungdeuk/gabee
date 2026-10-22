@@ -1,7 +1,8 @@
 # DB 구조
 
-서버는 SQLAlchemy 2 로 접근한다(`apps/api/app/shared/db.py`). 개발 중에는 서버가 시작할 때 테이블을 만들고(`init_db`), 운영 DB 스키마 변경은 `supabase/migrations`의 SQL 파일로만 한다. 테이블을 바꾸면 이 문서도 갱신한다.
-로컬 기본값은 SQLite(`apps/api/data/gabee.db`), docker compose 에서는 PostgreSQL 이다.
+서버는 SQLAlchemy 2 로 접근한다(`apps/api/app/shared/db.py`).
+로컬 기본값은 SQLite(`apps/api/data/gabee.db`) — 테스트와 로컬 간단 실행용으로 `init_db()`가 시작 시 `create_all()`로 테이블을 만든다.
+docker compose 의 개발용 PostgreSQL(`pgvector/pgvector:pg16` 이미지, `pgvector` 확장 포함)은 **Alembic**(`apps/api/alembic/`)이 스키마를 전담한다 — `init_db()`는 PostgreSQL에서 테이블을 만들거나 바꾸지 않고, `alembic_version`이 최신인지만 확인한다(아니면 기동을 막는 에러). `supabase/migrations`는 더 이상 스키마 변경에 쓰지 않는다. 새 마이그레이션 만드는 법은 [README.md](../../README.md) 참고. 테이블을 바꾸면 이 문서도 갱신한다.
 
 | 테이블 | 기능 | 설명 |
 |---|---|---|
@@ -17,4 +18,4 @@
 
 모든 기능 테이블은 `group_id`로 가족 그룹을 구분하고, 다른 그룹의 데이터는 볼 수 없다.
 
-TODO: Supabase 마이그레이션 SQL 로 옮기기, 원본의 pgvector 테이블(문서·사진 임베딩).
+TODO: 원본의 pgvector 테이블(문서·사진 임베딩) — 실제 추가 시 `pgvector-python` 의존성과 `Vector` 컬럼 타입, 새 Alembic 리비전을 함께 추가한다.
