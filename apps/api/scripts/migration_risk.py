@@ -15,6 +15,26 @@ from pathlib import Path
 
 APPROVAL_RE = re.compile(r"^\s*destructive-approved:\s*PR\s*#\d+\b", re.IGNORECASE | re.MULTILINE)
 
+UNSAFE_APPROVAL_RE = re.compile(
+    r"^\s*unsafe-python-approved:\s*PR\s*#\d+\b", re.IGNORECASE | re.MULTILINE
+)
+
+# 마이그레이션은 DB 자격증명이 있는 프로세스에서 파이썬으로 실행된다. DB 스키마 변경에 필요한 모듈만 허용하고,
+# 파일·네트워크·프로세스·동적 코드 실행으로 이어지는 코드는 막는다(리뷰된 예외는 unsafe-python-approved: PR #번호).
+_ALLOWED_IMPORTS = {
+    "__future__", "alembic", "sqlalchemy", "pgvector", "typing", "collections", "datetime",
+    "decimal", "enum", "json", "uuid", "re", "math", "string", "itertools", "functools", "dataclasses",
+}  # fmt: skip
+_UNSAFE_CALLS = {"open", "eval", "exec", "compile", "__import__", "input", "breakpoint"}
+_UNSAFE_ATTRS = {
+    "__subclasses__",
+    "__globals__",
+    "__builtins__",
+    "__code__",
+    "__bases__",
+    "__mro__",
+}
+
 _DESTRUCTIVE_CALLS = {"drop_table", "drop_column", "rename_table"}
 _SQL_DESTRUCTIVE = re.compile(
     r"\b(DROP\s+(TABLE|COLUMN|SCHEMA|TYPE)|TRUNCATE|DELETE\s+FROM)\b", re.I
@@ -78,15 +98,51 @@ def _table_arg(call: ast.Call, call_name: str) -> str | None:
     return None
 
 
+def _unsafe_python(tree: ast.AST, revision: str, approved: bool) -> list[Finding]:
+    findings: list[Finding] = []
+
+    def add(code: str, message: str, node: ast.AST) -> None:
+        severity = "warn" if approved else "block"
+        suffix = " (unsafe-python-approved 표기로 허용)" if approved else ""
+        findings.append(
+            Finding(revision, severity, code, message + suffix, getattr(node, "lineno", 0))
+        )
+
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            names = [a.name for a in node.names]
+        elif isinstance(node, ast.ImportFrom):
+            names = [node.module or ""] if node.level == 0 else ["(상대 import)"]
+        else:
+            names = []
+        for name in names:
+            if name.split(".")[0] not in _ALLOWED_IMPORTS:
+                add(
+                    "unsafe-import",
+                    f"허용되지 않은 import: {name} (파일·네트워크·프로세스 접근 가능)",
+                    node,
+                )
+        if (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Name)
+            and node.func.id in _UNSAFE_CALLS
+        ):
+            add("unsafe-call", f"위험한 내장 함수 호출: {node.func.id}()", node)
+        if isinstance(node, ast.Attribute) and node.attr in _UNSAFE_ATTRS:
+            add("unsafe-introspection", f"파이썬 내부 구조 접근: {node.attr}", node)
+    return findings
+
+
 def scan_source(source: str, revision: str) -> list[Finding]:
     tree = ast.parse(source)
     docstring = ast.get_docstring(tree) or ""
     approved = bool(APPROVAL_RE.search(docstring))
+    unsafe = _unsafe_python(tree, revision, bool(UNSAFE_APPROVAL_RE.search(docstring)))
     upgrade = next(
         (n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == "upgrade"), None
     )
     if upgrade is None:
-        return [Finding(revision, "block", "no-upgrade", "upgrade() 함수가 없습니다", 1)]
+        return [Finding(revision, "block", "no-upgrade", "upgrade() 함수가 없습니다", 1), *unsafe]
 
     calls = list(_op_calls(upgrade))
     created_here = {_first_str(c) for name, c in calls if name == "create_table"} - {None}
@@ -166,7 +222,7 @@ def scan_source(source: str, revision: str) -> list[Finding]:
     for node in ast.walk(upgrade):
         if isinstance(node, ast.Attribute) and node.attr == "autocommit_block":
             add("block", "autocommit-block", "autocommit_block 은 원자적 롤백을 깨뜨림", node)
-    return findings
+    return [*findings, *unsafe]
 
 
 def scan_file(path: Path, revision: str) -> list[Finding]:

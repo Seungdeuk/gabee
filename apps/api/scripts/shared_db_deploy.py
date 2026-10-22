@@ -1,6 +1,6 @@
 """팀 공용 PostgreSQL(192.168.0.44:5432/gabee)에 Alembic 마이그레이션을 자동 적용한다.
 
-.github/workflows/deploy-shared-db.yml 이 self-hosted 러너에서 호출한다. 설계와 보안 모델은
+공용 DB PC 의 Pull Agent(deploy_agent.py)가 고정된 복사본으로 호출한다(self-hosted 러너 없음, ADR 0008). 설계와 보안 모델은
 docs/adr/0006-shared-db-auto-migration.md 참고. 핵심 원칙:
 
 - CI 가 통과한 main 최신 커밋만 배포한다. CI 확인은 GitHub API 로만 하고, 이를 건너뛰는 옵션은 없다.
@@ -29,6 +29,7 @@ import subprocess
 import sys
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 from collections.abc import Callable
 from pathlib import Path
@@ -46,6 +47,11 @@ BACKUP_NAME_RE = re.compile(r"^gabee_pg16_deploy_\d{8}T\d{6}Z_[0-9a-f]+-to-[0-9a
 ADVISORY_LOCK_KEY = 727_005_001  # 공용 DB 마이그레이션 전용 잠금 키
 REQUIRED_PG_MAJOR = 16
 PG_IMAGE = "pgvector/pgvector:pg16"
+# 공용 DB PC 에서 백업·리허설이 DB 서버 성능을 떨어뜨리지 않도록 컨테이너 자원을 제한한다.
+CONTAINER_LIMITS = ["--memory", "512m", "--cpus", "1"]
+CI_PENDING_GRACE = dt.timedelta(
+    minutes=30
+)  # 병합 직후 CI 실행이 아직 보이지 않아도 이 시간까지는 대기로 본다
 CI_WORKFLOW_PATH = ".github/workflows/ci-check.yml"
 CI_REQUIRED_JOBS = ("api", "api-postgres", "mobile")
 
@@ -73,9 +79,20 @@ class Refused(Exception):
     """잘못된 대상·사용법. DB 에 연결하기 전에 거부한다(종료 코드 2)."""
 
 
+def api_base() -> str:
+    """GitHub API 주소. 테스트에서만 루프백(127.0.0.1/localhost)으로 바꿀 수 있고, 그 밖의 주소는 거부한다."""
+    url = os.environ.get("GITHUB_API_URL", "https://api.github.com").rstrip("/")
+    if url != "https://api.github.com" and urllib.parse.urlparse(url).hostname not in (
+        "127.0.0.1",
+        "localhost",
+    ):
+        raise Refused(f"GITHUB_API_URL 은 api.github.com 또는 루프백만 허용합니다: {url}")
+    return url
+
+
 @dataclasses.dataclass
 class CiVerdict:
-    status: str  # ok | not_green | stale | unknown
+    status: str  # ok | pending | not_green | stale | unknown
     reason: str = ""
 
 
@@ -88,7 +105,7 @@ class GitHubCiVerifier:
 
     def _http_get(self, path: str) -> dict:
         req = urllib.request.Request(
-            f"https://api.github.com{path}",
+            f"{api_base()}{path}",
             headers={
                 "Authorization": f"Bearer {self._token}",
                 "Accept": "application/vnd.github+json",
@@ -97,6 +114,10 @@ class GitHubCiVerifier:
         )
         with urllib.request.urlopen(req, timeout=30) as resp:  # noqa: S310
             return json.load(resp)
+
+    def main_tip(self) -> str:
+        """main 브랜치 최신 커밋 SHA(Pull Agent 가 배포 대상을 정할 때 쓴다)."""
+        return self._fetch(f"/repos/{self.repo}/branches/main")["commit"]["sha"]
 
     def verify(self, sha: str) -> CiVerdict:
         try:
@@ -108,17 +129,29 @@ class GitHubCiVerifier:
             runs = self._fetch(
                 f"/repos/{self.repo}/actions/runs?head_sha={sha}&event=push&branch=main&per_page=30"
             ).get("workflow_runs", [])
-            candidates = [
+            same_run = [
                 r
                 for r in runs
                 if r.get("path", "").startswith(CI_WORKFLOW_PATH)
                 and r.get("head_sha") == sha
                 and r.get("head_branch") == "main"
                 and r.get("event") == "push"
-                and r.get("status") == "completed"
                 and (r.get("head_repository") or {}).get("full_name") == self.repo
             ]
+            candidates = [r for r in same_run if r.get("status") == "completed"]
             if not candidates:
+                if same_run:
+                    return CiVerdict("pending", "CI Check 가 아직 진행 중입니다")
+                committed = self._fetch(f"/repos/{self.repo}/commits/{sha}")["commit"]["committer"][
+                    "date"
+                ]
+                age = dt.datetime.now(dt.UTC) - dt.datetime.fromisoformat(
+                    committed.replace("Z", "+00:00")
+                )
+                if age < CI_PENDING_GRACE:
+                    return CiVerdict(
+                        "pending", "병합 직후라 CI Check 실행이 아직 시작되지 않았습니다"
+                    )
                 return CiVerdict(
                     "not_green", "이 커밋의 완료된 CI Check(push, main) 실행을 찾을 수 없습니다"
                 )
@@ -345,7 +378,7 @@ class Deployer:
         name = f"{BACKUP_PREFIX}{stamp}_{from_rev}-to-{to_rev}.dump"
         final, partial = self.backup_dir / name, self.backup_dir / f"{name}.partial"
         t = self.target
-        cmd = ["docker", "run", "--rm"]
+        cmd = ["docker", "run", "--rm", *CONTAINER_LIMITS]
         if t.docker_network:
             cmd += ["--network", t.docker_network]
         cmd += [
@@ -407,6 +440,7 @@ class Deployer:
                 "docker",
                 "run",
                 "--rm",
+                *CONTAINER_LIMITS,
                 "-v",
                 f"{self._docker_mount(dump.parent)}:/backup:ro",
                 "--entrypoint",
@@ -437,6 +471,7 @@ class Deployer:
                 "run",
                 "-d",
                 "--rm",
+                *CONTAINER_LIMITS,
                 "--name",
                 name,
                 "-e",
@@ -448,6 +483,13 @@ class Deployer:
                 "-p",
                 "127.0.0.1::5432",
                 self.image,
+                "postgres",  # 버려질 임시 서버라 메모리·디스크 동기화 부담을 줄인다
+                "-c",
+                "shared_buffers=64MB",
+                "-c",
+                "max_connections=20",
+                "-c",
+                "fsync=off",
             ],
             env=env,
         )
@@ -732,7 +774,7 @@ class Deployer:
                 self._checkout_ok()
             verdict = self.ci.verify(self.sha)
             self.log("ci-verify", verdict.status, verdict.reason)
-            if verdict.status == "stale":
+            if verdict.status in ("stale", "pending"):
                 raise Failure("skipped", verdict.reason)
             if verdict.status != "ok":
                 raise Failure(
@@ -773,7 +815,7 @@ class Deployer:
             verdict = self.ci.verify(self.sha)
             if verdict.status != "ok":
                 raise Failure(
-                    "skipped" if verdict.status == "stale" else "blocked",
+                    "skipped" if verdict.status in ("stale", "pending") else "blocked",
                     f"적용 직전 재검증 실패: {verdict.reason}",
                 )
             if self._halt_path().exists():
@@ -874,7 +916,7 @@ def notify(result: dict, repo: str, token: str, run_url: str, fetch=None) -> Non
     """팀원이 상태를 볼 수 있게 GitHub 이슈(`db-deploy-failed`)로 표시한다.
     blocked/failed 이면 이슈를 만들거나(열린 이슈가 있으면 댓글), success/noop 이면 열린 실패 이슈를 해결로 닫는다."""
     outcome = result.get("outcome")
-    if outcome not in ("blocked", "failed", "success", "noop"):
+    if outcome not in ("blocked", "failed", "held", "success", "noop"):
         return
     api = fetch or _github_request
     open_issues = (
@@ -932,7 +974,7 @@ def _github_request(
     method: str, path: str, payload: dict | None, ok_codes: tuple[int, ...] = (200, 201)
 ):
     req = urllib.request.Request(
-        f"https://api.github.com{path}",
+        f"{api_base()}{path}",
         method=method,
         data=json.dumps(payload).encode() if payload is not None else None,
         headers={
@@ -950,6 +992,26 @@ def _github_request(
         raise
 
 
+def target_from_env() -> Target:
+    """기본은 SHARED. 테스트에서만 루프백(127.0.0.1/localhost) 대상으로 바꿀 수 있다 — 실제 공용 DB(192.168.0.44)나
+    그 밖의 호스트로는 바꿀 수 없다. 형식: host,port,db,user,tools_host,tools_port,docker_network"""
+    spec = os.environ.get("GABEE_DEPLOY_LOOPBACK_TARGET")
+    if not spec:
+        return SHARED
+    host, port, database, user, tools_host, tools_port, network = spec.split(",")
+    if host not in ("127.0.0.1", "localhost"):
+        raise Refused("GABEE_DEPLOY_LOOPBACK_TARGET 은 루프백 호스트만 허용합니다")
+    return Target(
+        host,
+        int(port),
+        database,
+        user,
+        tools_host or None,
+        int(tools_port) or None,
+        network or None,
+    )
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     sub = parser.add_subparsers(dest="command", required=True)
@@ -961,6 +1023,9 @@ def main(argv: list[str] | None = None) -> int:
     run.add_argument("--state-dir", required=True, type=Path)
     run.add_argument("--pgpass", required=True, type=Path)
     run.add_argument("--dry-run", action="store_true")
+    run.add_argument(
+        "--api-root", type=Path, default=API_ROOT, help="마이그레이션·모델이 있는 apps/api 체크아웃"
+    )
     run.add_argument("--result-file", type=Path)
     run.add_argument("--no-notify", action="store_true")
     args = parser.parse_args(argv)
@@ -969,9 +1034,15 @@ def main(argv: list[str] | None = None) -> int:
     if not token:
         print("[REFUSED] GITHUB_TOKEN 이 없어 CI 통과 여부를 확인할 수 없습니다.")
         return 2
+    try:
+        target = target_from_env()
+    except Refused as exc:
+        print(f"[REFUSED] {exc}")
+        return 2
     deployer = Deployer(
-        target=SHARED,
-        trusted_targets=(SHARED,),
+        target=target,
+        trusted_targets=(target,),
+        api_root=args.api_root,
         sha=args.sha,
         backup_dir=args.backup_dir,
         state_dir=args.state_dir,
@@ -990,8 +1061,13 @@ def main(argv: list[str] | None = None) -> int:
             os.environ.get("GITHUB_SERVER_URL", "https://github.com"),
             os.environ.get("GITHUB_RUN_ID", ""),
         )
+        run_url = (
+            f"{server}/{args.repo}/actions/runs/{run_id}"
+            if run_id
+            else f"{server}/{args.repo}/commit/{args.sha}"  # Actions 밖(Pull Agent)에서는 배포한 커밋 링크
+        )
         try:
-            notify(result, args.repo, token, f"{server}/{args.repo}/actions/runs/{run_id}")
+            notify(result, args.repo, token, run_url)
         except (urllib.error.URLError, OSError) as exc:
             print(f"[warn] 이슈 알림에 실패했습니다: {type(exc).__name__}")
     return {"refused": 2}.get(
