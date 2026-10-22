@@ -1451,7 +1451,7 @@
           "billing"
         ],
         "summary": "Create Subscription",
-        "description": "OTT·통신비 항목 추가. 월 금액·결제일은 사용자가 입력한 값만 저장한다.",
+        "description": "OTT·통신비 항목 추가. 월 금액·결제일은 사용자가 입력한 값만 저장한다. 결제한 사람을 안 보내면 등록한 사람이다.",
         "operationId": "create_subscription_billing_subscriptions_post",
         "parameters": [
           {
@@ -1488,6 +1488,130 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/SubscriptionOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/billing/subscriptions/monthly": {
+      "get": {
+        "tags": [
+          "billing"
+        ],
+        "summary": "Monthly Plan",
+        "description": "그 달 구독료 지출로 만들 수 있는 항목(만들 수 있음 / 이미 만듦 / 금액 없음 / 결제한 사람 없음).",
+        "operationId": "monthly_plan_billing_subscriptions_monthly_get",
+        "parameters": [
+          {
+            "name": "month",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Month"
+            }
+          },
+          {
+            "name": "x-gyeot-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Gyeot-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MonthlyPlan"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "billing"
+        ],
+        "summary": "Generate Monthly",
+        "description": "'이번 달 구독료 지출 만들기': 금액이 있는 항목만 미정산 지출로 만든다. 같은 달에 다시 불러도 중복으로 만들지 않는다.",
+        "operationId": "generate_monthly_billing_subscriptions_monthly_post",
+        "parameters": [
+          {
+            "name": "x-gyeot-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Gyeot-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MonthlyGenerate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MonthlyResult"
                 }
               }
             }
@@ -2253,6 +2377,72 @@
                 }
               }
             }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "care"
+        ],
+        "summary": "Delete Entry",
+        "description": "오늘(또는 date)의 기록·건너뛰기를 지워 되돌린다.",
+        "operationId": "delete_entry_care_items__item_id__entry_delete",
+        "parameters": [
+          {
+            "name": "item_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Item Id"
+            }
+          },
+          {
+            "name": "date",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Date"
+            }
+          },
+          {
+            "name": "x-gyeot-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Gyeot-Token"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
           },
           "422": {
             "description": "Validation Error",
@@ -3165,6 +3355,46 @@
             },
             "type": "array",
             "title": "Missing Ids"
+          },
+          "meals": {
+            "items": {
+              "$ref": "#/components/schemas/MealStatus"
+            },
+            "type": "array",
+            "title": "Meals",
+            "default": []
+          },
+          "upcoming_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Upcoming Ids",
+            "default": []
+          },
+          "cleanup_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Cleanup Ids",
+            "default": []
+          },
+          "skipped_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Skipped Ids",
+            "default": []
+          },
+          "done_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Done Ids",
+            "default": []
           }
         },
         "type": "object",
@@ -3219,6 +3449,16 @@
             "type": "string",
             "format": "date-time",
             "title": "Recorded At"
+          },
+          "skipped": {
+            "type": "boolean",
+            "title": "Skipped",
+            "default": false
+          },
+          "late": {
+            "type": "boolean",
+            "title": "Late",
+            "default": false
           }
         },
         "type": "object",
@@ -3284,6 +3524,11 @@
               }
             ],
             "title": "Condition"
+          },
+          "skipped": {
+            "type": "boolean",
+            "title": "Skipped",
+            "default": false
           }
         },
         "type": "object",
@@ -3472,6 +3717,17 @@
             "type": "boolean",
             "title": "Settled",
             "default": false
+          },
+          "subscription_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Subscription Id"
           }
         },
         "type": "object",
@@ -3679,6 +3935,34 @@
             "type": "boolean",
             "title": "Missing",
             "default": false
+          },
+          "skipped": {
+            "type": "boolean",
+            "title": "Skipped",
+            "default": false
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "done",
+              "skipped",
+              "missing",
+              "due",
+              "upcoming"
+            ],
+            "title": "Status",
+            "default": "upcoming"
+          },
+          "minutes_until": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Minutes Until"
           }
         },
         "type": "object",
@@ -3921,6 +4205,66 @@
         ],
         "title": "MealOut"
       },
+      "MealStatus": {
+        "properties": {
+          "meal": {
+            "type": "string",
+            "enum": [
+              "breakfast",
+              "lunch",
+              "dinner"
+            ],
+            "title": "Meal"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "item_id": {
+            "type": "string",
+            "title": "Item Id"
+          },
+          "scheduled_time": {
+            "type": "string",
+            "title": "Scheduled Time"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "done",
+              "skipped",
+              "missing",
+              "due",
+              "upcoming"
+            ],
+            "title": "Status"
+          },
+          "answer": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "yes",
+                  "no"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Answer"
+          }
+        },
+        "type": "object",
+        "required": [
+          "meal",
+          "label",
+          "item_id",
+          "scheduled_time",
+          "status"
+        ],
+        "title": "MealStatus"
+      },
       "MemberLocation": {
         "properties": {
           "user_id": {
@@ -4092,6 +4436,135 @@
           "user_ids"
         ],
         "title": "MinorsSet"
+      },
+      "MonthlyGenerate": {
+        "properties": {
+          "month": {
+            "type": "string",
+            "title": "Month"
+          }
+        },
+        "type": "object",
+        "required": [
+          "month"
+        ],
+        "title": "MonthlyGenerate"
+      },
+      "MonthlyItem": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "ott",
+              "telecom"
+            ],
+            "title": "Kind"
+          },
+          "amount": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Amount"
+          },
+          "date": {
+            "type": "string",
+            "title": "Date"
+          },
+          "payer_name": {
+            "type": "string",
+            "title": "Payer Name"
+          },
+          "split_count": {
+            "type": "integer",
+            "title": "Split Count"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "ready",
+              "created",
+              "no_fee",
+              "no_payer"
+            ],
+            "title": "State"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "kind",
+          "amount",
+          "date",
+          "payer_name",
+          "split_count",
+          "state"
+        ],
+        "title": "MonthlyItem"
+      },
+      "MonthlyPlan": {
+        "properties": {
+          "month": {
+            "type": "string",
+            "title": "Month"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/MonthlyItem"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "ready_count": {
+            "type": "integer",
+            "title": "Ready Count"
+          },
+          "ready_total": {
+            "type": "integer",
+            "title": "Ready Total"
+          }
+        },
+        "type": "object",
+        "required": [
+          "month",
+          "items",
+          "ready_count",
+          "ready_total"
+        ],
+        "title": "MonthlyPlan"
+      },
+      "MonthlyResult": {
+        "properties": {
+          "created": {
+            "items": {
+              "$ref": "#/components/schemas/ExpenseOut"
+            },
+            "type": "array",
+            "title": "Created"
+          },
+          "plan": {
+            "$ref": "#/components/schemas/MonthlyPlan"
+          }
+        },
+        "type": "object",
+        "required": [
+          "created",
+          "plan"
+        ],
+        "title": "MonthlyResult"
       },
       "PaymentCreate": {
         "properties": {
@@ -4635,6 +5108,31 @@
               }
             ],
             "title": "Billing Day"
+          },
+          "payer_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Payer Id"
+          },
+          "split_among": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Split Among"
           }
         },
         "type": "object",
@@ -4736,6 +5234,30 @@
               }
             ],
             "title": "Billing Day"
+          },
+          "payer_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Payer Id"
+          },
+          "payer_name": {
+            "type": "string",
+            "title": "Payer Name",
+            "default": ""
+          },
+          "split_among": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Split Among",
+            "default": []
           }
         },
         "type": "object",
@@ -4821,6 +5343,31 @@
               }
             ],
             "title": "Billing Day"
+          },
+          "payer_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Payer Id"
+          },
+          "split_among": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Split Among"
           }
         },
         "type": "object",
