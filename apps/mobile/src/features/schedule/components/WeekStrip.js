@@ -1,27 +1,36 @@
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
-import { colors, font } from "@/theme";
+import { colors, font, radius } from "@/theme";
 
-import { WEEKDAYS } from "../constants";
+import { DOT_COLOR, WEEKDAYS } from "../constants";
 import { fromDateKey, todayKey, weekOf } from "../utils/date";
 
 /**
- * 한 주(일~토) 날짜 줄. 오늘은 진하게, 선택한 날짜는 알약 바탕.
- * @param {{ selected: string, onSelect: (dateKey: string) => void }} props
+ * 한 주(월~일) 날짜 줄. 오늘은 갈색 바탕에 밝은 글자, 일정 있는 날은 아래에 점.
+ * @param {{ selected: string, markedDates?: Set<string>, onSelect?: (dateKey: string) => void }} props
  */
-export default function WeekStrip({ selected, onSelect }) {
+export default function WeekStrip({ selected, markedDates, onSelect }) {
   const today = todayKey();
   return (
     <View style={styles.row}>
       {weekOf(selected).map((key) => {
         const d = fromDateKey(key);
-        const isSelected = key === selected;
+        const isToday = key === today;
         return (
-          <Pressable key={key} onPress={() => onSelect(key)} style={styles.cell} accessibilityRole="button">
-            <Text style={styles.weekday}>{WEEKDAYS[d.getDay()]}</Text>
-            <View style={[styles.day, isSelected && styles.daySelected]}>
-              <Text style={[styles.dayText, key === today && styles.today]}>{d.getDate()}</Text>
-            </View>
+          <Pressable
+            key={key}
+            onPress={() => onSelect?.(key)}
+            style={[styles.day, isToday && styles.today]}
+            accessibilityRole="button"
+          >
+            <Text style={[styles.weekday, isToday && styles.todayText]}>{WEEKDAYS[d.getDay()]}</Text>
+            <Text style={[styles.date, isToday && styles.todayDate]}>{d.getDate()}</Text>
+            <View
+              style={[
+                styles.dot,
+                markedDates?.has(key) && { backgroundColor: isToday ? colors.peach : DOT_COLOR },
+              ]}
+            />
           </Pressable>
         );
       })}
@@ -30,11 +39,19 @@ export default function WeekStrip({ selected, onSelect }) {
 }
 
 const styles = StyleSheet.create({
-  row: { flexDirection: "row", justifyContent: "space-between" },
-  cell: { flex: 1, alignItems: "center", gap: 4 },
+  row: { flexDirection: "row", gap: 4 },
+  day: {
+    flex: 1,
+    alignItems: "center",
+    gap: 2,
+    paddingTop: 9,
+    paddingBottom: 8,
+    borderRadius: radius.button,
+  },
+  today: { backgroundColor: colors.text },
   weekday: { ...font.caption, color: colors.textMuted },
-  day: { width: 36, height: 36, borderRadius: 18, alignItems: "center", justifyContent: "center" },
-  daySelected: { backgroundColor: colors.surfaceStrong },
-  dayText: { ...font.bodyStrong, color: colors.textSub },
-  today: { color: colors.text, fontWeight: "800" },
+  date: { fontSize: 17, fontWeight: "500", color: colors.text },
+  todayText: { color: colors.background },
+  todayDate: { color: colors.background, fontWeight: "700" },
+  dot: { width: 4, height: 4, borderRadius: 2 },
 });

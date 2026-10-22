@@ -11,7 +11,7 @@ import { KIND } from "./constants";
  * @typedef {Object} Topic
  * @property {string} id
  * @property {string} name
- * @property {"honey" | "peach" | "green" | "brown"} color
+ * @property {"rose" | "amber"} color 제목 옆 글자색 (constants 의 TOPIC_TEXT 키)
  */
 
 /**

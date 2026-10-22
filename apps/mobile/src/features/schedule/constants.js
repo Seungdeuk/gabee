@@ -20,12 +20,8 @@ export const KIND_COLOR = {
   [KIND.todo]: colors.success,
 };
 
-// 주제 색. 이것도 UI Kit 미정의 임시 값.
-export const TOPIC_COLORS = {
-  honey: { bg: colors.honeySoft, fg: colors.accent },
-  peach: { bg: colors.peachSoft, fg: colors.danger },
-  green: { bg: colors.successSoft, fg: colors.success },
-  brown: { bg: colors.surfaceStrong, fg: colors.text },
-};
+// 제목 옆 주제 글자색과 일정 있는 날 점 색. 이것도 UI Kit 미정의라 와이어프레임 값을 임시로 쓴다.
+export const TOPIC_TEXT = { rose: "#B5527A", amber: "#A5651A" };
+export const DOT_COLOR = "#F08F6C";
 
 export const WEEKDAYS = ["일", "월", "화", "수", "목", "금", "토"];

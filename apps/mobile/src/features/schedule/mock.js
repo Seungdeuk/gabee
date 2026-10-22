@@ -2,13 +2,6 @@ import { addDays, todayKey } from "./utils/date";
 
 // 화면 확인용 임시 데이터. 서버 연동 시 api.js로 교체한다.
 
-// 기존 임시 화면(ScheduleScreen)이 쓰는 목록. 메인 화면을 새로 만들 때 함께 지운다.
-export const events = [
-  { id: "1", when: "오늘 19:00", title: "아버지 안부 전화", note: "지민 담당 · 수진 확인", tone: "blue", icon: "call" },
-  { id: "2", when: "내일 14:00", title: "한결의원", note: "어머니 김영희 · 동행 확인", tone: "green", icon: "medkit" },
-  { id: "3", when: "10.18 토요일", title: "가족 모임", note: "전원 참석 예정", tone: "orange", icon: "people" },
-];
-
 export const ME_ID = "me";
 
 /** @type {import("./model").Member[]} */
@@ -20,8 +13,8 @@ export const members = [
 
 /** @type {import("./model").Topic[]} */
 export const topics = [
-  { id: "ceremony", name: "경조사", color: "peach" },
-  { id: "hospital", name: "병원", color: "green" },
+  { id: "ceremony", name: "경조사", color: "rose" },
+  { id: "hospital", name: "병원", color: "amber" },
 ];
 
 /** 오늘 기준 상대 날짜로 만든 샘플. @returns {import("./model").ScheduleItem[]} */

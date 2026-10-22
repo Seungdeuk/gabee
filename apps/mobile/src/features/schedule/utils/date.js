@@ -34,12 +34,12 @@ export function addDays(key, days) {
 export const todayKey = () => toDateKey(new Date());
 
 /**
- * 선택한 날짜가 속한 주(일~토)의 날짜 키 7개.
+ * 선택한 날짜가 속한 주(월~일)의 날짜 키 7개.
  * @param {string} key
  * @returns {string[]}
  */
 export function weekOf(key) {
-  const start = addDays(key, -fromDateKey(key).getDay());
+  const start = addDays(key, -((fromDateKey(key).getDay() + 6) % 7));
   return Array.from({ length: 7 }, (_, i) => addDays(start, i));
 }
 
@@ -65,6 +65,25 @@ export function monthCells(year, month) {
 export function formatDateLong(key) {
   const d = fromDateKey(key);
   return `${d.getMonth() + 1}월 ${d.getDate()}일 ${WEEKDAYS[d.getDay()]}요일`;
+}
+
+/**
+ * @param {string} key
+ * @returns {string} 예: "10월 22일"
+ */
+export function formatMonthDay(key) {
+  const d = fromDateKey(key);
+  return `${d.getMonth() + 1}월 ${d.getDate()}일`;
+}
+
+/**
+ * 카드 오른쪽에 쓰는 24시간 표기. 종일이거나 시간이 없으면 빈 글자.
+ * @param {{ allDay: boolean, startTime: string | null, endTime: string | null }} item
+ * @returns {string} 예: "09:00–10:00"
+ */
+export function formatClockRange({ allDay, startTime, endTime }) {
+  if (allDay || !startTime) return "";
+  return endTime ? `${startTime}–${endTime}` : startTime;
 }
 
 /**
