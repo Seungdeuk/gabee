@@ -19,7 +19,7 @@ const TOGETHER_SAMPLES = ["장 같이 봐줘", "병원 같이 가줘"];
 
 /**
  * 일정 탭 메인: 헤더 + 주간 스트립 / 오늘·내일 / 함께하기 / 먼저 권해드려요 / 채팅 입력.
- * 상세·같이·채팅으로 가는 이동은 각 화면을 만들 때 연결한다.
+ * 카드를 누르면 상세로 간다. 같이·채팅으로 가는 이동은 각 화면을 만들 때 연결한다.
  */
 export default function ScheduleScreen() {
   const router = useRouter();
@@ -38,6 +38,7 @@ export default function ScheduleScreen() {
   const addLater = (id) => setLater((prev) => [...prev, id]);
   const confirmTodo = ({ type, id }) => (type === "todo" ? toggleChecked(id) : setCarryDone((prev) => [...prev, id]));
   const openCalendar = (date) => router.push({ pathname: "/schedule/calendar", params: { date } });
+  const openDetail = (id) => router.push({ pathname: "/schedule/detail", params: { id } });
   const openRegister = (params) => router.push({ pathname: "/schedule/register", params });
   // 제안으로 여는 등록 화면은 형태·제목·날짜가 미리 채워지고, 저장은 사용자가 확인한 뒤에만 된다.
   const openSuggested = (draft) => openRegister({ ...draft, suggested: "1" });
@@ -72,11 +73,13 @@ export default function ScheduleScreen() {
             <DaySection
               label="오늘"
               items={items.filter((item) => item.date === today)}
+              onPressItem={openDetail}
               onToggleItem={toggleChecked}
             />
             <DaySection
               label={`내일 · ${formatMonthDay(tomorrow)}`}
               items={items.filter((item) => item.date === tomorrow)}
+              onPressItem={openDetail}
               onToggleItem={toggleChecked}
             />
             <Pressable onPress={() => openRegister({})} style={styles.addButton} accessibilityRole="button">

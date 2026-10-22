@@ -39,7 +39,7 @@ const hasFilter = (filter) => filter.whoIds.length > 0 || filter.topicIds.length
  * 달력 화면: [달력 | 목록] 두 가지 보기.
  * - 필터(누구·주제)를 하나라도 켜면 자동으로 목록, 모두 해제하면 달력으로 돌아온다. 버튼으로 직접 바꿀 수도 있다.
  * - 달력 모드에서 목록을 아래로 스크롤하면 달력이 접히고, 맨 위로 오면 다시 펴진다.
- * 날짜 옆 +와 목록의 오늘 옆 +는 등록 화면으로 간다. 상세(카드 터치) 이동은 해당 화면을 만들 때 연결한다.
+ * 날짜 옆 +와 목록의 오늘 옆 +는 등록 화면으로, 카드를 누르면 상세로 간다.
  */
 export default function CalendarScreen() {
   const router = useRouter();
@@ -66,6 +66,7 @@ export default function CalendarScreen() {
   // 일정 메인으로 돌아간다. 주소를 직접 열어 쌓인 화면이 없어도 같은 곳으로 간다.
   const goBack = () => router.dismissTo("/(tabs)/schedule");
   // 그 날짜가 미리 채워진 등록 화면을 연다. 저장하면 이 화면으로 돌아온다.
+  const openDetail = (id) => router.push({ pathname: "/schedule/detail", params: { id } });
   const openRegister = (dateKey) => router.push({ pathname: "/schedule/register", params: { date: dateKey } });
   const shift = (delta) => setSelected(collapsed ? addDays(selected, delta * 7) : shiftMonthKey(selected, delta));
   const toggleCollapse = () => {
@@ -138,7 +139,13 @@ export default function CalendarScreen() {
                     </Text>
                   ) : null}
                   {visible.map((item) => (
-                    <EventCard key={item.id} item={item} variant="detailed" onToggleCheck={() => toggleChecked(item.id)} />
+                    <EventCard
+                      key={item.id}
+                      item={item}
+                      variant="detailed"
+                      onPress={() => openDetail(item.id)}
+                      onToggleCheck={() => toggleChecked(item.id)}
+                    />
                   ))}
                 </View>
               </View>
@@ -151,6 +158,7 @@ export default function CalendarScreen() {
                 items={byKind(filtered)}
                 today={today}
                 onToggleItem={toggleChecked}
+                onPressItem={openDetail}
                 onAddToday={() => openRegister(today)}
               />
             </>
