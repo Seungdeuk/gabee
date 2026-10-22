@@ -1,20 +1,25 @@
-from datetime import UTC, datetime
-
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Response
 from sqlalchemy.orm import Session
 
 from app.shared.auth import current_group_id, current_user
 from app.shared.db import get_db
 
-from . import repository, service
-from .models import Expense
-from .schemas import ExpenseCreate, ExpenseOut, Summary
+from . import service
+from .schemas import (
+    AllowanceBudget,
+    AllowanceOut,
+    AllowanceUseCreate,
+    ExpenseCreate,
+    ExpenseOut,
+    PaymentCreate,
+    Settlement,
+    SubscriptionList,
+    SubscriptionOut,
+    SubscriptionPatch,
+    Summary,
+)
 
 router = APIRouter(prefix="/billing", tags=["billing"])
-
-
-def _this_month() -> str:
-    return datetime.now(UTC).strftime("%Y-%m")
 
 
 @router.get("/expenses", response_model=list[ExpenseOut])
@@ -22,8 +27,8 @@ def list_expenses(
     month: str | None = None,
     group_id: str = Depends(current_group_id),
     db: Session = Depends(get_db),
-) -> list[Expense]:
-    return repository.list_month(db, group_id, service.check_month(month or _this_month()))
+) -> list[ExpenseOut]:
+    return service.list_expenses(db, group_id, service.check_month(month or service.this_month()))
 
 
 @router.post("/expenses", response_model=ExpenseOut, status_code=201)
@@ -32,8 +37,17 @@ def create_expense(
     user=Depends(current_user),
     group_id: str = Depends(current_group_id),
     db: Session = Depends(get_db),
-) -> Expense:
+) -> ExpenseOut:
     return service.create(db, group_id, user.id, body)
+
+
+@router.delete("/expenses/{expense_id}", status_code=204)
+def delete_expense(
+    expense_id: str, group_id: str = Depends(current_group_id), db: Session = Depends(get_db)
+) -> Response:
+    """소프트 삭제: 행은 남기고 `deleted_at` 만 채운다."""
+    service.delete_expense(db, group_id, expense_id)
+    return Response(status_code=204)
 
 
 @router.get("/summary", response_model=Summary)
@@ -42,4 +56,75 @@ def month_summary(
     group_id: str = Depends(current_group_id),
     db: Session = Depends(get_db),
 ) -> Summary:
-    return service.summary(db, group_id, service.check_month(month or _this_month()))
+    return service.summary(db, group_id, service.check_month(month or service.this_month()))
+
+
+@router.get("/settlement", response_model=Settlement)
+def get_settlement(
+    month: str | None = None,
+    group_id: str = Depends(current_group_id),
+    db: Session = Depends(get_db),
+) -> Settlement:
+    return service.settlement(db, group_id, service.check_month(month or service.this_month()))
+
+
+@router.post("/settlement/payments", response_model=Settlement, status_code=201)
+def mark_paid(
+    body: PaymentCreate, group_id: str = Depends(current_group_id), db: Session = Depends(get_db)
+) -> Settlement:
+    """송금 목록에 있는 송금 하나를 '송금 완료'로 표시한다."""
+    return service.mark_paid(db, group_id, body)
+
+
+@router.delete("/settlement/payments/{payment_id}", response_model=Settlement)
+def undo_paid(
+    payment_id: str, group_id: str = Depends(current_group_id), db: Session = Depends(get_db)
+) -> Settlement:
+    return service.undo_paid(db, group_id, payment_id)
+
+
+@router.get("/subscriptions", response_model=SubscriptionList)
+def list_subscriptions(
+    group_id: str = Depends(current_group_id), db: Session = Depends(get_db)
+) -> SubscriptionList:
+    return service.list_subscriptions(db, group_id)
+
+
+@router.patch("/subscriptions/{item_id}", response_model=SubscriptionOut)
+def set_subscription_status(
+    item_id: str,
+    body: SubscriptionPatch,
+    group_id: str = Depends(current_group_id),
+    db: Session = Depends(get_db),
+) -> SubscriptionOut:
+    return service.set_subscription_status(db, group_id, item_id, body.status)
+
+
+@router.get("/allowances", response_model=list[AllowanceOut])
+def list_allowances(
+    month: str | None = None,
+    group_id: str = Depends(current_group_id),
+    db: Session = Depends(get_db),
+) -> list[AllowanceOut]:
+    return service.list_allowances(db, group_id, service.check_month(month or service.this_month()))
+
+
+@router.put("/allowances/{child_id}", response_model=AllowanceOut)
+def set_budget(
+    child_id: str,
+    body: AllowanceBudget,
+    group_id: str = Depends(current_group_id),
+    db: Session = Depends(get_db),
+) -> AllowanceOut:
+    month = service.check_month(body.month or service.this_month())
+    return service.set_budget(db, group_id, child_id, month, body.budget)
+
+
+@router.post("/allowances/{child_id}/uses", response_model=AllowanceOut, status_code=201)
+def add_use(
+    child_id: str,
+    body: AllowanceUseCreate,
+    group_id: str = Depends(current_group_id),
+    db: Session = Depends(get_db),
+) -> AllowanceOut:
+    return service.add_use(db, group_id, child_id, body)

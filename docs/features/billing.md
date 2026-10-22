@@ -1,0 +1,34 @@
+# 구현 현황: 가계 (billing)
+
+- 상태: 진행 중 (서버·앱 화면 연결과 브라우저 클릭 검증 완료, 실기기 미검증)
+- 요구사항: `docs/requirements/billing.md` 없음. 2026-10-21 요청 메시지의 명세를 기준으로 구현했다.
+- 브랜치: `billing-care`
+
+## 구현된 것
+### 서버 (`apps/api/app/features/billing`)
+- 지출 추가·내역: 항목, 금액(정수 원), 낸 사람, 나눌 사람. 삭제는 `deleted_at` 소프트 삭제.
+- 비용 정산 `GET /billing/settlement`: 구성원별 잔액, 최소 송금 목록, 송금 완료 표시(`POST /billing/settlement/payments`)와 취소.
+  - 지출마다 나눌 사람끼리 정수로 나누고 나머지 원은 앞 사람(가족 그룹 가입 순서)부터 1원씩 더한다. 잔액 합계는 항상 0.
+  - 송금 목록은 큰 금액부터 맞추는 방식이라 송금 횟수가 최대 (사람 수 - 1)번이다. 수학적 최소 횟수는 보장하지 않는다.
+- 용돈: 자녀별 월 예산, 사용 기록, 남은 금액. 남은 금액보다 큰 사용은 저장하지 않는다(`over_budget`). 이미 쓴 금액보다 예산을 낮출 수 없다.
+- 구독·통신비 가족 할인 상태: 확인 필요/적용 가능/적용 중. 금액을 계산하거나 보장하지 않고 "예시, 실제 적용은 통신사에서 확인" 문구를 응답(`notice`)에 담는다.
+- 테스트: `tests/test_billing.py`, `tests/test_billing_features.py`. DB: Alembic 리비전 `9e28d84c1686`.
+
+### 앱 (`apps/mobile/src/features/billing`)
+- `BillingScreen`: 월 이동, 정산·지출·용돈·구독·통신 4구역(`components/*Tab.js`), 서버 호출은 `api.js`.
+- 서버 주소(`EXPO_PUBLIC_API_URL`)가 없으면 기존 임시 데이터 화면(`BillingPreview`)을 그대로 보여 준다.
+- 공통으로 `shared/components`(Button, Field, Segmented)와 `shared/hooks/useResource`를 추가했다.
+
+## 확인 방법
+- 서버 확인용 화면: `apps/api/scripts/dev_console.py` → `/console`.
+- 앱: `EXPO_PUBLIC_API_URL=http://<서버> EXPO_PUBLIC_DEV_TOKEN=<토큰> npx expo start --web`. 로그인 화면이 붙기 전까지 `EXPO_PUBLIC_DEV_TOKEN`(개발용 토큰)으로 인증한다.
+- 2026-10-22 Edge 브라우저(Expo 웹)에서 정산·지출·용돈·구독 클릭 흐름 검증(서버 응답까지 대조).
+
+## 정한 것 (확인 필요)
+- 용돈 대상 "자녀" = 가족 그룹에서 역할이 `parent`가 아닌 구성원. 예산을 누가 정할 수 있는지는 `docs/contracts/permissions.md`가 비어 있어 제한하지 않았다.
+- 송금 완료 후 지출을 삭제하면 완료한 송금은 그대로 남고 남은 잔액이 반대 부호가 될 수 있다.
+- 월 기준은 한국 시간(서버). 앱의 월 이동은 기기 시간 기준으로 시작한다.
+
+## 남은 것
+- 로그인·가족 그룹 화면 연결(현재는 개발용 토큰), 실기기(Expo Go) 확인.
+- 구독 항목 추가·삭제, 영수증 연결, 균등이 아닌 분담.
