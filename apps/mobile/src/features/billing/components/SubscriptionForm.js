@@ -16,16 +16,21 @@ export const CARRIERS = [
 
 /**
  * OTT·통신비 항목 입력 양식(추가·수정 공용). 월 금액과 결제일은 비워 둘 수 있다.
- * 금액은 사용자가 입력한 값만 저장하고, 가족 할인 금액은 계산하지 않는다.
- * @param {{ kind: "ott" | "telecom", initial?: import("../api").Subscription, busy?: boolean, onSubmit: (values: { name: string, carrier: string | null, monthly_fee: number | null, billing_day: number | null }) => void, onCancel: () => void, notify: (text: string, isError?: boolean) => void }} props
+ * 금액은 사용자가 입력한 값만 저장하고 가족 할인 금액은 계산하지 않는다.
+ * 결제한 사람과 나눌 사람은 "이번 달 구독료 지출 만들기"가 만드는 지출에 쓰인다(나눌 사람 기본은 가족 전체).
+ * @param {{ kind: "ott" | "telecom", initial?: import("../api").Subscription, people: { id: string, name: string }[], meId: string | null, busy?: boolean, onSubmit: (values: object) => void, onCancel: () => void, notify: (text: string, isError?: boolean) => void }} props
  */
-export default function SubscriptionForm({ kind, initial, busy = false, onSubmit, onCancel, notify }) {
+export default function SubscriptionForm({ kind, initial, people, meId, busy = false, onSubmit, onCancel, notify }) {
   const [name, setName] = useState(initial?.name ?? "");
   const [carrier, setCarrier] = useState(initial?.carrier ?? null);
   const [fee, setFee] = useState(initial?.monthly_fee == null ? "" : String(initial.monthly_fee));
   const [day, setDay] = useState(initial?.billing_day == null ? "" : String(initial.billing_day));
+  const [payer, setPayer] = useState(initial ? initial.payer_id : meId); // 새 항목은 등록하는 나
+  const [split, setSplit] = useState(initial?.split_among?.length ? initial.split_among : people.map((p) => p.id));
   const editing = Boolean(initial);
   const subject = kind === "ott" ? "OTT" : "통신비";
+
+  const toggleSplit = (id) => setSplit(split.includes(id) ? split.filter((x) => x !== id) : [...split, id]);
 
   const submit = () => {
     if (!name.trim()) return notify("이름을 입력해 주세요", true);
@@ -33,11 +38,14 @@ export default function SubscriptionForm({ kind, initial, busy = false, onSubmit
     if (day.trim() && !(/^\d+$/.test(day.trim()) && Number(day) >= 1 && Number(day) <= 31)) {
       return notify("결제일은 1~31 사이 숫자로 입력해 주세요", true);
     }
+    if (split.length === 0) return notify("나눌 사람을 한 명 이상 골라 주세요", true);
     onSubmit({
       name: name.trim(),
       carrier: kind === "telecom" ? carrier : null,
       monthly_fee: fee.trim() ? Number(fee.trim()) : null,
       billing_day: day.trim() ? Number(day.trim()) : null,
+      payer_id: payer,
+      split_among: split.length === people.length ? [] : split, // 전원이면 비워서 가족 전체로 저장
     });
   };
 
@@ -67,7 +75,40 @@ export default function SubscriptionForm({ kind, initial, busy = false, onSubmit
       ) : null}
       <Field label="월 금액 (원, 선택)" value={fee} onChangeText={setFee} placeholder="숫자만" keyboardType="numeric" />
       <Field label="매월 결제일 (1~31, 선택)" value={day} onChangeText={setDay} placeholder="예: 5" keyboardType="numeric" />
-      <Text style={styles.caption}>할인 금액은 계산하지 않아요. 입력한 금액을 그대로 합산해요.</Text>
+
+      <View style={styles.block}>
+        <Text style={styles.label}>결제한 사람</Text>
+        <View style={styles.chips}>
+          {people.map((p) => (
+            <Button
+              key={p.id}
+              small
+              variant="secondary"
+              selected={payer === p.id}
+              label={p.name}
+              a11yLabel={`결제한 사람 ${p.name}`}
+              onPress={() => setPayer(payer === p.id ? null : p.id)}
+            />
+          ))}
+        </View>
+      </View>
+      <View style={styles.block}>
+        <Text style={styles.label}>나눌 사람 (기본 가족 전체)</Text>
+        <View style={styles.chips}>
+          {people.map((p) => (
+            <Button
+              key={p.id}
+              small
+              variant="secondary"
+              selected={split.includes(p.id)}
+              label={p.name}
+              a11yLabel={`구독 나눌 사람 ${p.name}`}
+              onPress={() => toggleSplit(p.id)}
+            />
+          ))}
+        </View>
+      </View>
+      <Text style={styles.caption}>할인 금액은 계산하지 않아요. 입력한 금액을 그대로 합산하고, 결제한 사람이 없으면 지출을 만들지 않아요.</Text>
       <View style={styles.actions}>
         <Button small variant="secondary" label="취소" a11yLabel={`${subject} ${editing ? "수정" : "추가"} 취소`} onPress={onCancel} />
         <Button small label="저장" a11yLabel={`${subject} ${editing ? "수정" : "추가"} 저장`} onPress={submit} disabled={busy} />

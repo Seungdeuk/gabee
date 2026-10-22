@@ -28,6 +28,7 @@ class ExpenseOut(BaseModel):
     split_among: list[str] = []
     target_tag: str = "all"
     settled: bool = False  # 정산하기를 누른 지출인지
+    subscription_id: str | None = None  # 구독료로 만든 지출이면 그 항목 id
 
 
 class Balance(BaseModel):
@@ -125,6 +126,11 @@ class SubscriptionOut(BaseModel):
     carrier: Carrier | None = None
     monthly_fee: int | None = None  # 사용자가 입력한 월 금액(원). 할인은 반영하지 않는다.
     billing_day: int | None = None  # 매월 결제일
+    payer_id: str | None = None  # 구독료 지출의 결제한 사람
+    payer_name: str = ""
+    split_among: list[
+        str
+    ] = []  # 나눌 사람(비어 있으면 가족 전체가 아니라 실제 전원 id 로 풀어서 내려준다)
 
 
 class SubscriptionList(BaseModel):
@@ -139,6 +145,10 @@ class SubscriptionCreate(BaseModel):
     carrier: Carrier | None = None  # 통신비 항목만
     monthly_fee: int | None = Field(default=None, ge=0, le=10_000_000)
     billing_day: int | None = Field(default=None, ge=1, le=31)
+    payer_id: str | None = (
+        None  # 보내지 않으면 요청한 사람, null 이면 결제한 사람 없음(지출을 만들지 않는다)
+    )
+    split_among: list[str] | None = None  # 비우면 가족 전체
 
 
 class SubscriptionPatch(BaseModel):
@@ -149,6 +159,37 @@ class SubscriptionPatch(BaseModel):
     carrier: Carrier | None = None
     monthly_fee: int | None = Field(default=None, ge=0, le=10_000_000)
     billing_day: int | None = Field(default=None, ge=1, le=31)
+    payer_id: str | None = None
+    split_among: list[str] | None = None
+
+
+class MonthlyItem(BaseModel):
+    id: str
+    name: str
+    kind: Literal["ott", "telecom"]
+    amount: int | None
+    date: str  # 지출 날짜(결제일, 달 길이에 맞춰 줄인다. 결제일이 없으면 1일)
+    payer_name: str
+    split_count: int
+    state: Literal[
+        "ready", "created", "no_fee", "no_payer"
+    ]  # 만들 수 있음 / 이미 만듦 / 금액 없음 / 결제한 사람 없음
+
+
+class MonthlyPlan(BaseModel):
+    month: str
+    items: list[MonthlyItem]
+    ready_count: int
+    ready_total: int
+
+
+class MonthlyGenerate(BaseModel):
+    month: str
+
+
+class MonthlyResult(BaseModel):
+    created: list[ExpenseOut]
+    plan: MonthlyPlan  # 만든 뒤의 상태
 
 
 class AllowanceBudget(BaseModel):

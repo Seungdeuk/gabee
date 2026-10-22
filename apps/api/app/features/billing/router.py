@@ -14,6 +14,9 @@ from .schemas import (
     ManagerOut,
     ManagerSet,
     MinorsSet,
+    MonthlyGenerate,
+    MonthlyPlan,
+    MonthlyResult,
     PaymentCreate,
     Reminder,
     Settlement,
@@ -161,11 +164,32 @@ def list_subscriptions(
 @router.post("/subscriptions", response_model=SubscriptionOut, status_code=201)
 def create_subscription(
     body: SubscriptionCreate,
+    user=Depends(current_user),
     group_id: str = Depends(current_group_id),
     db: Session = Depends(get_db),
 ) -> SubscriptionOut:
-    """OTT·통신비 항목 추가. 월 금액·결제일은 사용자가 입력한 값만 저장한다."""
-    return service.create_subscription(db, group_id, body)
+    """OTT·통신비 항목 추가. 월 금액·결제일은 사용자가 입력한 값만 저장한다. 결제한 사람을 안 보내면 등록한 사람이다."""
+    return service.create_subscription(db, group_id, user, body)
+
+
+@router.get("/subscriptions/monthly", response_model=MonthlyPlan)
+def monthly_plan(
+    month: str | None = None,
+    group_id: str = Depends(current_group_id),
+    db: Session = Depends(get_db),
+) -> MonthlyPlan:
+    """그 달 구독료 지출로 만들 수 있는 항목(만들 수 있음 / 이미 만듦 / 금액 없음 / 결제한 사람 없음)."""
+    return service.monthly_plan(db, group_id, month or service.this_month())
+
+
+@router.post("/subscriptions/monthly", response_model=MonthlyResult, status_code=201)
+def generate_monthly(
+    body: MonthlyGenerate,
+    group_id: str = Depends(current_group_id),
+    db: Session = Depends(get_db),
+) -> MonthlyResult:
+    """'이번 달 구독료 지출 만들기': 금액이 있는 항목만 미정산 지출로 만든다. 같은 달에 다시 불러도 중복으로 만들지 않는다."""
+    return service.generate_monthly(db, group_id, body.month)
 
 
 @router.patch("/subscriptions/{item_id}", response_model=SubscriptionOut)

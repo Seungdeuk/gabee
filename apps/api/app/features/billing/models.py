@@ -29,6 +29,8 @@ class Expense(Base):
     # 정산하기를 누른 시각과 사람. 비어 있으면 아직 정산하지 않은(미정산) 지출이다.
     settled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     settled_by: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    # 구독 항목에서 만든 지출이면 그 항목 id. 같은 달에 같은 항목으로 두 번 만들지 않는 데 쓴다.
+    subscription_id: Mapped[str | None] = mapped_column(String(32), nullable=True, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
@@ -80,6 +82,10 @@ class SubscriptionItem(Base):
     billing_day: Mapped[int | None] = mapped_column(Integer, nullable=True)  # 매월 결제일 1~31
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    # 매달 '구독료 지출 만들기'가 이 항목으로 만드는 지출의 결제한 사람과 나눌 사람.
+    # split_among 이 비어 있으면 가족 전체다. payer_id 가 없으면 지출을 만들지 않는다.
+    payer_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    split_among: Mapped[list[str]] = mapped_column(JSON, default=list, server_default="[]")
 
 
 class Allowance(Base):
