@@ -1,0 +1,334 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>GaBee · 가계·돌봄 테스트 화면</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>:root{--cream:#FEECBF;--brown:#553B29;--peach:#FEB49A;--ivory:#FFFCF7;--green:#456C57;--red:#AD4949;--ink:#553B29;--muted:#8b7a6c;--line:#eadfce;--soft:#f6f0e6;--disabled:#EBE7E1;--complete-bg:#e3eee6;--shadow:0 4px 16px rgba(85,59,41,.09)}
+*{box-sizing:border-box}
+body{margin:0;font-family:'Noto Sans KR',system-ui,sans-serif;color:var(--ink);background:#f1ece3;min-height:100dvh;display:flex;justify-content:center;align-items:center}
+button,input,select{font:inherit;color:inherit}button{cursor:pointer}
+.phone{width:406px;height:min(872px,calc(100dvh - 24px));background:var(--ivory);border:8px solid #302d2b;border-radius:43px;overflow:hidden;box-shadow:0 22px 75px rgba(58,41,24,.17);display:flex;flex-direction:column;position:relative}
+.status-space{height:max(44px,env(safe-area-inset-top));flex-shrink:0}
+.head{padding:8px 24px 16px;flex-shrink:0}
+.head-top{display:flex;align-items:flex-start;justify-content:space-between}
+.head h2{margin:0;color:var(--brown);font-size:22px;font-weight:700}
+.sub{font-size:13px;color:var(--muted);margin-top:2px}
+.icons{display:flex;gap:4px}.icon-btn{width:36px;height:36px;border:0;background:none;border-radius:12px;display:grid;place-items:center;color:var(--brown)}
+.tools{display:flex;gap:8px;margin-top:16px;align-items:center;background:var(--soft);border-radius:14px;padding:6px}
+.tools select,.tools input{flex:1;min-width:0;height:34px;border:1px solid var(--line);border-radius:10px;padding:0 8px;background:#fff;font-size:13px}
+.content{flex:1;min-height:0;overflow:auto;padding:8px 24px 40px;scrollbar-width:none}
+.content::-webkit-scrollbar{display:none}
+.bottom{height:74px;padding:8px 8px 10px;display:grid;grid-template-columns:repeat(5,1fr);border-top:1px solid var(--line);background:var(--ivory);flex-shrink:0}
+.tab{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;border:0;background:none;color:var(--brown);font-size:11px;font-weight:500;padding:0}
+.tab .ico{width:56px;height:32px;display:grid;place-items:center;border-radius:16px}
+.tab.active{font-weight:700}.tab.active .ico{background:var(--cream)}
+.tab svg{display:block}
+.segment{display:flex;background:var(--soft);border-radius:14px;padding:4px;margin:8px 0 24px}
+.segment button{border:0;flex:1;background:none;color:var(--muted);padding:9px 0;border-radius:11px;font-size:13px;font-weight:500}
+.segment button.selected{background:#fff;color:var(--brown);font-weight:700;box-shadow:var(--shadow)}
+.title{font-size:20px;font-weight:700;color:var(--brown);margin:40px 0 16px;display:flex;justify-content:space-between;align-items:center}
+.card{background:#fff;border:1px solid var(--line);border-radius:22px;padding:20px 16px;margin:16px 0;box-shadow:var(--shadow)}
+.card.ai{background:#fff8e4;border-color:#f3dfa8}
+.row{display:flex;align-items:center;gap:16px}.grow{flex:1;min-width:0}
+.name{font-size:16px;font-weight:600;color:var(--brown)}.desc{font-size:13px;color:var(--muted);margin-top:4px;line-height:1.6}
+.pill{display:inline-flex;font-size:12px;padding:5px 10px;border-radius:99px;background:var(--complete-bg);color:var(--green);font-weight:600;white-space:nowrap}
+.pill.peach{background:var(--cream);color:var(--brown)}.pill.red{background:#f6e2e2;color:var(--red)}.pill.gray{background:var(--disabled);color:#7b6f64}
+.btn{height:40px;border-radius:16px;font-size:14px;font-weight:700;padding:0 16px;border:0;background:var(--peach);color:var(--brown);white-space:nowrap}
+.btn.full{width:100%;height:56px;font-size:16px}
+.btn.secondary{background:#fff;color:var(--brown);border:1px solid var(--line)}
+.btn.ghost{background:var(--disabled);color:#7b6f64}.btn.sm{height:34px;font-size:13px;padding:0 12px;border-radius:12px}
+.btn:disabled{background:var(--disabled);color:#9a8f85}
+.field{display:flex;flex-direction:column;gap:6px;margin:16px 0;font-size:14px;font-weight:500;color:var(--brown)}
+.field input,.field select,.input{height:46px;border:1px solid var(--line);border-radius:14px;padding:0 12px;background:#fff;font-weight:400;font-size:15px}
+.field input:focus,.field select:focus,.input:focus,.tools input:focus,.tools select:focus{outline:0;border-color:var(--brown);box-shadow:0 0 0 1px var(--brown)}
+.input{min-width:0}
+.checks{display:flex;flex-wrap:wrap;gap:8px;margin-top:4px;font-weight:400}.checks label{display:flex;gap:6px;align-items:center;border:1px solid var(--line);border-radius:12px;padding:8px 10px;background:#fff;font-size:13px}
+.notice{background:var(--cream);color:var(--brown);border-radius:16px;padding:12px 14px;font-size:13px;line-height:1.6;margin:8px 0 24px}
+.notice.example{background:#fff1e9;border:1px solid #f6cdb8}
+.stat{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:8px}.stat div{background:#fff;border:1px solid var(--line);border-radius:18px;padding:12px 8px;text-align:center;box-shadow:var(--shadow)}
+.stat b{display:block;font-size:16px;color:var(--brown);margin-top:3px}.stat span{font-size:12px;color:var(--muted)}
+.pos{color:var(--green)}.neg{color:var(--red)}
+.opts{display:flex;gap:8px;margin-top:16px;flex-wrap:wrap}.opts .btn{flex:0 0 auto}
+.bar-track{height:8px;background:#eee6d9;border-radius:6px;overflow:hidden;margin:16px 0 8px}.bar-fill{height:100%;background:var(--green)}
+.toast{position:absolute;left:50%;bottom:86px;transform:translateX(-50%);max-width:90%;width:max-content;background:#3a2f27;color:#fff;padding:12px 16px;font-size:13px;border-radius:14px;display:none;z-index:9}
+.toast.show{display:block}.toast.err{background:var(--red)}
+.empty{text-align:center;color:var(--muted);font-size:13px;padding:32px 0}
+.mascot{width:40px;height:40px;border-radius:14px;object-fit:cover;background:var(--cream)}
+.map{height:150px;border-radius:16px;background:repeating-linear-gradient(45deg,#f1ece0,#f1ece0 12px,#f8f4ec 12px,#f8f4ec 24px);display:grid;place-items:center;color:#a1988b;font-size:13px;margin-top:12px}
+@media(max-width:500px){.phone{width:100vw;height:100dvh;border-width:0;border-radius:0}}
+.content>.title:first-child,.segment+.title{margin-top:8px}
+</style>
+</head>
+<body>
+<div class="phone">
+  <div class="status-space" aria-hidden="true"></div>
+  <header class="head">
+    <div class="head-top"><div><h2 id="pageTitle">가계</h2><div class="sub" id="pageSub"></div></div>
+      <div class="icons"><button class="icon-btn" data-note="검색은 이 테스트 화면에서 동작하지 않아요" aria-label="검색"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg></button><button class="icon-btn" data-note="알림은 이 테스트 화면에서 동작하지 않아요" aria-label="알림"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9ZM10 21h4"/></svg></button></div></div>
+    <div class="tools" title="테스트용 도구">
+      <select id="who" aria-label="사용자"></select>
+      <input id="month" type="month" aria-label="월">
+      <input id="at" type="time" title="비우면 실제 현재 시각. 돌봄 누락 계산 테스트용" aria-label="지금 시각(테스트용)">
+    </div>
+  </header>
+  <main class="content" id="view"></main>
+  <nav class="bottom" aria-label="하단 탭"><button class="tab" data-tab="chat"><span class="ico"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 11.5a8.4 8.4 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.4 8.4 0 0 1-3.8-.9L3 21l1.9-5.7a8.4 8.4 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.4 8.4 0 0 1 3.8-.9h.5A8.5 8.5 0 0 1 21 11v.5Z"/><path d="m12 8.5.9 2.1 2.1.9-2.1.9-.9 2.1-.9-2.1-2.1-.9 2.1-.9z"/></svg></span>AI 채팅</button><button class="tab" data-tab="talk"><span class="ico"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8ZM22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg></span>소통</button><button class="tab" data-tab="schedule"><span class="ico"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M16 2v4M8 2v4M3 10h18M12 13v4M10.5 15h3"/></svg></span>일정</button><button class="tab active" data-tab="billing"><span class="ico"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 7V5a1 1 0 0 0-1-1H5a2 2 0 0 0 0 4h14a1 1 0 0 1 1 1v3M20 12v7a1 1 0 0 1-1 1H5a2 2 0 0 1-2-2V6"/><path d="M16 14h4v3h-4a1.5 1.5 0 0 1 0-3Z"/></svg></span>가계</button><button class="tab" data-tab="care"><span class="ico"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1.1-1.1a5.5 5.5 0 0 0-7.8 7.8L12 21l8.8-8.6a5.5 5.5 0 0 0 0-7.8Z"/></svg></span>돌봄</button></nav>
+  <div class="toast" id="toast"></div>
+</div>
+<script>
+const $ = (s) => document.querySelector(s);
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const won = (n) => Number(n).toLocaleString('ko-KR') + '원';
+const STATUS = {check: '확인 필요', available: '적용 가능', active: '✓ 적용 중'};
+const CONDITION = {good: '좋음', normal: '보통', bad: '나쁨'};
+const MEAL_KEY = {breakfast: '아침', lunch: '점심', dinner: '저녁'};
+const state = {users: [], me: null, tab: 'billing', bill: 'settle', care: 'check', mealIndex: {}, recs: null, subs: null, splitPick: null};
+let toastTimer;
+
+function toast(text, err) {
+  const t = $('#toast'); t.textContent = text; t.className = 'toast show' + (err ? ' err' : '');
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => (t.className = 'toast'), 2600);
+}
+
+async function api(method, path, body) {
+  const res = await fetch(path, {
+    method,
+    headers: {'Content-Type': 'application/json', 'X-Gyeot-Token': state.me.token},
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+  if (res.status === 204) return null;
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const msg = data.message || (Array.isArray(data.detail) ? '입력값을 확인해 주세요' : '요청에 실패했어요');
+    throw new Error(msg);
+  }
+  return data;
+}
+const run = async (fn) => { try { await fn(); } catch (e) { toast(e.message, true); } };
+const month = () => $('#month').value;
+const q = () => '?month=' + month();
+
+function seg(list, cur, key) {
+  return `<div class="segment">${list.map(([k, label]) => `<button class="${k === cur ? 'selected' : ''}" data-seg="${key}:${k}">${label}</button>`).join('')}</div>`;
+}
+
+/* ---------- 가계 ---------- */
+async function viewBilling() {
+  const tabs = seg([['settle','정산'],['expense','지출'],['allow','용돈'],['subs','구독·통신']], state.bill, 'bill');
+  let body = '';
+  if (state.bill === 'settle') body = await settleHtml();
+  if (state.bill === 'expense') body = await expenseHtml();
+  if (state.bill === 'allow') body = await allowHtml();
+  if (state.bill === 'subs') body = await subsHtml();
+  $('#view').innerHTML = tabs + body;
+}
+
+async function settleHtml() {
+  const s = await api('GET', '/billing/settlement' + q());
+  state.transfers = s.transfers;
+  const total = s.balances.reduce((a, b) => a + b.balance, 0);
+  const remain = s.balances.reduce((a, b) => a + b.remaining, 0);
+  return `
+  <div class="stat"><div><span>구성원 수</span><b>${s.balances.length}명</b></div><div><span>잔액 합계</span><b>${won(total)}</b></div><div><span>남은 잔액 합계</span><b>${won(remain)}</b></div></div>
+  <div class="title">구성원별 잔액</div>
+  ${s.balances.map((b) => `<div class="card row"><div class="grow"><div class="name">${esc(b.name)}</div><div class="desc">낸 돈 ${won(b.paid)} · 내 몫 ${won(b.share)}</div></div>
+    <div style="text-align:right"><div class="name ${b.balance >= 0 ? 'pos' : 'neg'}">${b.balance >= 0 ? '+' : ''}${won(b.balance)}</div><div class="desc">남은 ${won(b.remaining)}</div></div></div>`).join('')}
+  <div class="title">보낼 돈 (최소 송금)</div>
+  ${s.transfers.length ? s.transfers.map((t, i) => `<div class="card row"><div class="grow"><div class="name">${esc(t.from_name)} → ${esc(t.to_name)}</div><div class="desc">${won(t.amount)}</div></div><button class="btn sm" data-pay="${i}">송금 완료</button></div>`).join('') : '<div class="empty">보낼 돈이 없어요</div>'}
+  <div class="title">송금 완료</div>
+  ${s.completed.length ? s.completed.map((p) => `<div class="card row"><div class="grow"><div class="name">${esc(p.from_name)} → ${esc(p.to_name)}</div><div class="desc">${won(p.amount)}</div></div><span class="pill">✓ 완료</span><button class="btn sm ghost" data-unpay="${p.id}">취소</button></div>`).join('') : '<div class="empty">아직 없어요</div>'}`
+;
+}
+
+async function expenseHtml() {
+  const [list, grp] = await Promise.all([api('GET', '/billing/expenses' + q()), api('GET', '/family-group/groups/me')]);
+  const pick = state.splitPick || grp.members.map((m) => m.id);
+  return `
+  <div class="title">지출 추가</div>
+  <div class="card">
+    <div class="field">항목<input id="exTitle" placeholder="예: 장보기" maxlength="120"></div>
+    <div class="field">금액 (원)<input id="exAmount" type="number" min="1" step="1" inputmode="numeric"></div>
+    <div class="field">낸 사람<select id="exPayer">${grp.members.map((m) => `<option value="${m.id}" ${m.id === state.me.id ? 'selected' : ''}>${esc(m.name)}</option>`).join('')}</select></div>
+    <div class="field">나눌 사람<div class="checks">${grp.members.map((m) => `<label><input type="checkbox" class="exSplit" value="${m.id}" ${pick.includes(m.id) ? 'checked' : ''}>${esc(m.name)}</label>`).join('')}</div></div>
+    <div class="field">날짜<input id="exDate" type="date" value="${month()}-${String(new Date().getDate()).padStart(2, '0')}"></div>
+    <button class="btn full" id="exAdd">지출 추가</button>
+  </div>
+  <div class="title">${month()} 내역 <span class="pill gray">${list.length}건</span></div>
+  ${list.length ? list.map((e) => `<div class="card row"><div class="grow"><div class="name">${esc(e.title)}</div><div class="desc">${e.date} · ${esc(e.paid_by_name)} 결제 · ${e.split_among.length}명이 나눔</div></div><div class="name">${won(e.amount)}</div><button class="btn sm ghost" data-delex="${e.id}">삭제</button></div>`).join('') : '<div class="empty">이 달 지출이 없어요</div>'}`;
+}
+
+async function allowHtml() {
+  const list = await api('GET', '/billing/allowances' + q());
+  if (!list.length) return '<div class="empty">자녀(부모 역할이 아닌 구성원)가 없어요</div>';
+  return list.map((c) => {
+    const pct = c.budget ? Math.min(100, Math.round((c.used / c.budget) * 100)) : 0;
+    return `<div class="card">
+      <div class="row"><div class="grow"><div class="name">${esc(c.name)}</div><div class="desc">${c.month} 예산 ${c.budget === null ? '미설정' : won(c.budget)}</div></div>
+        <div style="text-align:right"><div class="desc">남은 금액</div><div class="name ${c.remaining > 0 ? 'pos' : 'neg'}">${won(c.remaining)}</div></div></div>
+      <div class="bar-track"><div class="bar-fill" style="width:${pct}%"></div></div><div class="desc">사용 ${won(c.used)}</div>
+      <div class="row" style="margin-top:16px"><input id="bud-${c.child_id}" type="number" min="0" placeholder="예산(원)" class="input" style="flex:1;height:40px" value="${c.budget ?? ''}"><button class="btn sm" data-budget="${c.child_id}">예산 저장</button></div>
+      <div class="row" style="margin-top:12px"><input id="useAmt-${c.child_id}" type="number" min="1" placeholder="사용 금액" class="input" style="width:110px;height:40px"><input id="useMemo-${c.child_id}" placeholder="메모" class="input" style="flex:1;height:40px"><button class="btn sm secondary" data-use="${c.child_id}">기록</button></div>
+      ${c.uses.map((u) => `<div class="desc" style="margin-top:8px">${u.date} · ${esc(u.memo) || '사용'} · ${won(u.amount)}</div>`).join('')}
+    </div>`;
+  }).join('');
+}
+
+async function subsHtml() {
+  state.subs = await api('GET', '/billing/subscriptions');
+  const group = (kind, label) => `<div class="title">${label}</div>` + state.subs.items.filter((i) => i.kind === kind).map((i) => `
+    <div class="card"><div class="row"><div class="grow name">${esc(i.name)}</div><span class="pill ${i.status === 'active' ? '' : i.status === 'available' ? 'peach' : 'gray'}">${STATUS[i.status]}</span></div>
+    <div class="opts">${Object.entries(STATUS).map(([k, v]) => `<button class="btn sm ${i.status === k ? '' : 'secondary'}" data-sub="${i.id}:${k}">${v}</button>`).join('')}</div></div>`).join('');
+  return `<div class="notice">${esc(state.subs.notice)}. 할인 금액은 계산하거나 보장하지 않아요.</div>` + group('ott', 'OTT') + group('telecom', '통신비 가족 할인');
+}
+
+/* ---------- 돌봄 ---------- */
+async function viewCare() {
+  const tabs = seg([['check','데일리 체크'],['recs','추천'],['meal','식단'],['loc','위치']], state.care, 'care');
+  let body = '';
+  if (state.care === 'check') body = await checkHtml();
+  if (state.care === 'recs') body = recsHtml();
+  if (state.care === 'meal') body = await mealHtml();
+  if (state.care === 'loc') body = await locHtml();
+  $('#view').innerHTML = tabs + body;
+}
+
+function entryText(it) {
+  const e = it.entry; if (!e) return '기록 없음';
+  if (it.mode === 'yesno') return e.done ? '예' : '아니오';
+  if (it.mode === 'number') return `${e.number}${it.unit}`;
+  return CONDITION[e.condition];
+}
+
+async function checkHtml() {
+  const at = $('#at').value;
+  const d = await api('GET', '/care/daily' + (at ? '?at=' + at : ''));
+  const miss = d.items.filter((i) => i.missing).length;
+  return `
+  <div class="notice">누락은 아직 기록되지 않았다는 뜻이에요. 건강에 이상이 있다는 뜻은 아니에요.</div>
+  <div class="stat"><div><span>기준 시각</span><b>${d.now}</b></div><div><span>완료</span><b>${d.items.filter((i) => i.completed).length}/${d.items.length}</b></div><div><span>누락</span><b class="${miss ? 'neg' : ''}">${miss}</b></div></div>
+  ${d.items.map((it) => {
+    const tag = it.missing ? '<span class="pill peach">미기록 · 누락</span>' : it.completed ? '<span class="pill">✓ 완료</span>' : '<span class="pill gray">대기</span>';
+    let input = '';
+    if (it.mode === 'yesno') input = `<div class="opts"><button class="btn sm ${it.entry?.done === true ? '' : 'secondary'}" data-yn="${it.id}:1">예</button><button class="btn sm ${it.entry?.done === false ? '' : 'secondary'}" data-yn="${it.id}:0">아니오</button></div>`;
+    if (it.mode === 'number') input = `<div class="row" style="margin-top:16px"><input id="num-${it.id}" type="number" min="0" placeholder="${it.unit}" value="${it.entry?.number ?? ''}" class="input" style="flex:1;height:40px"><button class="btn sm" data-num="${it.id}">저장</button></div>`;
+    if (it.mode === 'condition') input = `<div class="opts">${Object.entries(CONDITION).map(([k, v]) => `<button class="btn sm ${it.entry?.condition === k ? '' : 'secondary'}" data-cond="${it.id}:${k}">${v}</button>`).join('')}</div>`;
+    return `<div class="card"><div class="row"><div class="grow"><div class="name">${esc(it.name)}</div><div class="desc">${it.scheduled_time} 예정${it.target ? ` · 목표 ${it.target}${it.unit}` : ''} · ${entryText(it)}</div></div>${tag}<button class="btn sm ghost" data-delitem="${it.id}" aria-label="삭제">삭제</button></div>${input}</div>`;
+  }).join('')}
+  <div class="title">항목 추가</div>
+  <div class="card">
+    <div class="field">이름<input id="itName" maxlength="40"></div>
+    <div class="field">기록 방식<select id="itMode"><option value="yesno">예/아니오</option><option value="number">수치(목표 있음)</option><option value="condition">컨디션(좋음/보통/나쁨)</option></select></div>
+    <div class="row"><div class="field grow">단위<input id="itUnit" maxlength="8" placeholder="수치만"></div><div class="field grow">목표<input id="itTarget" type="number" min="1" placeholder="수치만"></div></div>
+    <div class="field">예정 시각<input id="itTime" type="time" value="12:00"></div>
+    <div class="field">끼니(식단 추천용)<select id="itMeal"><option value="">없음</option><option value="breakfast">아침</option><option value="lunch">점심</option><option value="dinner">저녁</option></select></div>
+    <button class="btn full" id="itAdd">항목 추가</button>
+  </div>`;
+}
+
+function recsHtml() {
+  const list = state.recs
+    ? '<div class="title">오늘의 추천</div>' + state.recs.map((r) => `<div class="card ai"><div class="row"><img class="mascot" src="/console/mascot.png" alt=""><div class="grow"><div class="name" style="font-size:14px">가비의 다정한 제안</div><div class="desc" style="margin-top:0">규칙 기반 · 참고용</div></div><span class="pill peach">${esc(r.rule)}</span></div><div class="desc" style="color:var(--brown);font-size:15px;margin-top:10px">${esc(r.text)}</div></div>`).join('')
+    : '<div class="empty">버튼을 누르면 지금 기록을 보고 규칙 기반 추천을 보여 줘요</div>';
+  return '<button class="btn full" id="recBtn">추천 보기</button>' + list;
+}
+
+async function mealHtml() {
+  const d = await api('GET', '/care/meals');
+  if (!d.meals.length) return '<div class="empty">모든 끼니가 기록됐어요</div>';
+  return `<div class="notice">아직 기록되지 않은 끼니만 보여 줘요.</div>` + await Promise.all(d.meals.map(async (m) => {
+    const idx = state.mealIndex[m.meal] ?? 0;
+    const cur = idx === 0 ? m : await api('GET', `/care/meals/${m.meal}?index=${idx}`);
+    return `<div class="card row"><div class="grow"><div class="desc">${cur.label}</div><div class="name" style="font-size:16px;margin-top:3px">${esc(cur.menu)}</div><div class="desc">${cur.index + 1} / ${cur.total}</div></div><button class="btn sm secondary" data-nextmeal="${m.meal}:${cur.next_index}">다른 메뉴</button></div>`;
+  })).then((a) => a.join(''));
+}
+
+async function locHtml() {
+  const l = await api('GET', '/care/location');
+  return `<div class="notice example"><b>예시 화면</b> · ${esc(l.notice)}</div>
+  <div class="card"><div class="row"><div class="grow"><div class="name">${esc(l.place)}</div><div class="desc">${l.lat}, ${l.lng}</div></div><span class="pill peach">예시</span></div><div class="map">지도 없음 · 예시 위치</div></div>`;
+}
+
+/* ---------- 공통 ---------- */
+async function render() {
+  const titles = {billing: ['가계', '정산 · 지출 · 용돈 · 가족 할인 상태'], care: ['돌봄', '데일리 체크 · 추천 · 식단 · 위치']};
+  $('#pageTitle').textContent = titles[state.tab][0]; $('#pageSub').textContent = titles[state.tab][1];
+  $('#month').style.display = state.tab === 'billing' ? '' : 'none';
+  $('#at').style.display = state.tab === 'care' && state.care === 'check' ? '' : 'none';
+  document.querySelectorAll('.tab').forEach((t) => t.classList.toggle('active', t.dataset.tab === state.tab));
+  const top = $('#view').scrollTop;
+  await run(() => (state.tab === 'billing' ? viewBilling() : viewCare()));
+  $('#view').scrollTop = top;
+}
+
+const localMonth = () => { const n = new Date(); return n.getFullYear() + '-' + String(n.getMonth() + 1).padStart(2, '0'); };
+const val = (id) => document.getElementById(id).value;
+
+document.addEventListener('click', (e) => {
+  const b = e.target.closest('button'); if (!b) return;
+  const d = b.dataset;
+  run(async () => {
+    if (d.note) { toast(d.note); return; }
+    if (d.tab) {
+      if (!['billing', 'care'].includes(d.tab)) { toast('이 테스트 화면에서는 가계·돌봄 탭만 동작해요'); return; }
+      state.tab = d.tab; $('#view').scrollTop = 0;
+    }
+    else if (d.seg) { const [k, v] = d.seg.split(':'); state[k] = v; $('#view').scrollTop = 0; }
+    else if (d.pay !== undefined) {
+      const t = state.transfers[d.pay];
+      await api('POST', '/billing/settlement/payments', {month: month(), from_user_id: t.from_user_id, to_user_id: t.to_user_id, amount: t.amount});
+      toast('송금 완료로 표시했어요');
+    } else if (d.unpay) { await api('DELETE', '/billing/settlement/payments/' + d.unpay); toast('송금 완료를 취소했어요'); }
+    else if (b.id === 'exAdd') {
+      const split = [...document.querySelectorAll('.exSplit:checked')].map((c) => c.value);
+      state.splitPick = [...document.querySelectorAll('.exSplit')].map((c) => c.value);
+      await api('POST', '/billing/expenses', {title: val('exTitle'), amount: parseInt(val('exAmount'), 10), date: val('exDate'), paid_by: val('exPayer'), split_among: split});
+      state.splitPick = null; toast('지출을 추가했어요');
+    } else if (d.delex) { await api('DELETE', '/billing/expenses/' + d.delex); toast('삭제했어요 (기록은 남아 있어요)'); }
+    else if (d.budget) { await api('PUT', `/billing/allowances/${d.budget}`, {month: month(), budget: parseInt(val('bud-' + d.budget) || '0', 10)}); toast('예산을 저장했어요'); }
+    else if (d.use) { await api('POST', `/billing/allowances/${d.use}/uses`, {amount: parseInt(val('useAmt-' + d.use), 10), memo: val('useMemo-' + d.use), date: month() === localMonth() ? undefined : month() + '-01'}); toast('사용 기록을 추가했어요'); }
+    else if (d.sub) { const [id, status] = d.sub.split(':'); await api('PATCH', '/billing/subscriptions/' + id, {status}); toast('상태를 바꿨어요'); }
+    else if (d.yn) { const [id, v] = d.yn.split(':'); await api('PUT', `/care/items/${id}/entry`, {done: v === '1'}); }
+    else if (d.num) { await api('PUT', `/care/items/${d.num}/entry`, {number: parseInt(val('num-' + d.num), 10)}); toast('저장했어요'); }
+    else if (d.cond) { const [id, v] = d.cond.split(':'); await api('PUT', `/care/items/${id}/entry`, {condition: v}); }
+    else if (d.delitem) { await api('DELETE', '/care/items/' + d.delitem); toast('항목을 삭제했어요'); }
+    else if (b.id === 'itAdd') {
+      const mode = val('itMode');
+      await api('POST', '/care/items', {name: val('itName'), mode, unit: mode === 'number' ? val('itUnit') : '', target: mode === 'number' && val('itTarget') ? parseInt(val('itTarget'), 10) : null, scheduled_time: val('itTime'), meal_type: mode === 'yesno' && val('itMeal') ? val('itMeal') : null});
+      toast('항목을 추가했어요');
+    } else if (b.id === 'recBtn') { state.recs = (await api('GET', '/care/recommendations')).recommendations; }
+    else if (d.nextmeal) { const [m, i] = d.nextmeal.split(':'); state.mealIndex[m] = parseInt(i, 10); }
+    else return;
+    await render();
+  });
+});
+
+$('#who').addEventListener('change', () => { state.me = state.users.find((u) => u.id === $('#who').value); state.recs = null; render(); });
+$('#month').addEventListener('change', render);
+$('#at').addEventListener('change', render);
+
+
+const OLD_SPACING = `.content{padding:4px 24px 24px}.head{padding:4px 24px 8px}.tools{margin-top:12px}
+.segment{margin:8px 0 16px}.title{margin:24px 0 12px}.card{padding:16px;margin:12px 0}.row{gap:12px}
+.desc{margin-top:3px}.field{margin:12px 0}.notice{margin:8px 0 12px}.stat{gap:8px}.opts{margin-top:12px}
+.bar-track{margin:10px 0 4px}.empty{padding:20px 0}`;
+(async function init() {
+  const params = new URLSearchParams(location.search);
+  if (params.get('spacing') === 'old') {
+    const st = document.createElement('style'); st.textContent = OLD_SPACING + '.content>.title:first-child,.segment+.title{margin-top:8px}';
+    document.head.appendChild(st);
+  }
+  if (params.get('tab')) state.tab = params.get('tab');
+  if (params.get('bill')) state.bill = params.get('bill');
+  if (params.get('care')) state.care = params.get('care');
+
+  const res = await fetch('/console/session');
+  state.users = (await res.json()).users;
+  state.me = state.users[1] || state.users[0];
+  $('#who').innerHTML = state.users.map((u) => `<option value="${u.id}" ${u.id === state.me.id ? 'selected' : ''}>${esc(u.name)} (${u.role})</option>`).join('');
+  $('#month').value = localMonth();
+  render();
+})();
+</script>
+</body>
+</html>
