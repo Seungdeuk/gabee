@@ -2,6 +2,7 @@ import { useRouter } from "expo-router";
 import { useState } from "react";
 import { StyleSheet, Switch, Text, View } from "react-native";
 
+import AccountCard from "@/shared/auth/AccountCard";
 import Avatar from "@/shared/components/Avatar";
 import Card from "@/shared/components/Card";
 import IconButton from "@/shared/components/IconButton";
@@ -43,6 +44,9 @@ export default function MoreScreen() {
       subtitle="가족 그룹과 설정"
       left={<IconButton name="chevron-back" label="뒤로" onPress={() => router.back()} />}
     >
+      <SectionTitle title="계정" />
+      <AccountCard />
+
       <Card tone="blue">
         <Text style={styles.label}>{today.date}</Text>
         <Text style={styles.heading}>우리 가족의 오늘</Text>
