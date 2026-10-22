@@ -18,11 +18,15 @@ from tests.helpers import signup  # noqa: E402
 
 @pytest.fixture(autouse=True)
 def _reset_login_limiter():
-    from app.features.family_group.service import login_limiter
+    from app.features.family_group.service import login_limiter, mail_limiter
+    from app.shared import mailer
 
     login_limiter.reset()
+    mail_limiter.reset()
     yield
     login_limiter.reset()
+    mail_limiter.reset()
+    mailer.set_mailer(None)
 
 
 @pytest.fixture

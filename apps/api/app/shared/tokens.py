@@ -67,8 +67,14 @@ def ensure_configured() -> None:
     _secret()
 
 
-def create_access_token(user_id: str, now: datetime | None = None) -> tuple[str, int]:
-    """(JWT, 유효 초) 를 돌려준다."""
+def password_version(password_hash: str | None) -> str:
+    """비밀번호 해시에서 파생한 짧은 값(해시 자체는 아니다). Access Token 에 넣어 두었다가 요청마다 현재 값과 비교하므로,
+    비밀번호가 바뀌면(재설정·변경) 그 전에 발급된 Access Token 이 만료를 기다리지 않고 바로 무효가 된다."""
+    return hashlib.sha256(("pv:" + (password_hash or "")).encode("utf-8")).hexdigest()[:16]
+
+
+def create_access_token(user_id: str, now: datetime | None = None, pv: str = "") -> tuple[str, int]:
+    """(JWT, 유효 초) 를 돌려준다. pv 는 password_version(사용자의 현재 password_hash)."""
     issued = now or datetime.now(UTC)
     ttl = settings.access_token_ttl_seconds
     claims = {
@@ -79,12 +85,13 @@ def create_access_token(user_id: str, now: datetime | None = None) -> tuple[str,
         "exp": issued + timedelta(seconds=ttl),
         "jti": secrets.token_hex(8),
         "token_use": ACCESS_USE,
+        "pv": pv,
     }
     return jwt.encode(claims, _secret(), algorithm=ALGORITHM), ttl
 
 
-def verify_access_token(token: str) -> str:
-    """유효한 Access Token 이면 사용자 id(sub) 를 돌려주고, 아니면 TokenError."""
+def verify_access_token(token: str) -> tuple[str, str]:
+    """유효한 Access Token 이면 (사용자 id(sub), 비밀번호 버전(pv)) 을 돌려주고, 아니면 TokenError."""
     try:
         claims = jwt.decode(
             token,
@@ -92,7 +99,7 @@ def verify_access_token(token: str) -> str:
             algorithms=[ALGORITHM],
             audience=settings.jwt_audience,
             issuer=settings.jwt_issuer,
-            options={"require": ["iss", "aud", "sub", "iat", "exp", "jti", "token_use"]},
+            options={"require": ["iss", "aud", "sub", "iat", "exp", "jti", "token_use", "pv"]},
         )
     except jwt.ExpiredSignatureError as exc:
         raise TokenError(expired=True) from exc
@@ -101,9 +108,15 @@ def verify_access_token(token: str) -> str:
     ) as exc:  # 서명 불일치, alg 불일치, 클레임 누락, 형식 오류, 아직 유효하지 않음 등
         raise TokenError from exc
     sub = claims["sub"]
-    if claims["token_use"] != ACCESS_USE or not isinstance(sub, str) or not sub:
+    pv = claims["pv"]
+    if (
+        claims["token_use"] != ACCESS_USE
+        or not isinstance(sub, str)
+        or not sub
+        or not isinstance(pv, str)
+    ):
         raise TokenError
-    return sub
+    return sub, pv
 
 
 def new_refresh_token() -> str:
