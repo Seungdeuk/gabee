@@ -8,7 +8,7 @@ docker compose 의 개발용 PostgreSQL(`pgvector/pgvector:pg16` 이미지, `pgv
 
 | 테이블 | 기능 | 설명 |
 |---|---|---|
-| users | family_group | 이름, 역할(parent/child/other), 로그인 토큰, 현재 가족 그룹, (PR 4-A, 스키마만) `login_id`/`email`/`email_verified_at`/`password_hash` — 전부 nullable, 익명 계정은 전부 NULL |
+| users | family_group | 이름, 역할(parent/child/other), 로그인 토큰, 현재 가족 그룹, (PR 4-A, 스키마만) `login_id`/`email`/`email_verified_at`/`password_hash` — 전부 nullable, 익명 계정은 전부 NULL. 위치 공유 동의 시각 `location_consent_at`(없으면 미동의) |
 | groups | family_group | 가족 그룹(이름, 소유자) |
 | group_members | family_group | 그룹 구성원(그룹+사용자가 기본키). (PR 4-A, 스키마만) `role`(owner/admin/member, 그룹당 owner 최대 1명을 부분 유니크 인덱스로 강제), `family_relation`/`family_relation_detail`/`display_name` |
 | invites | family_group | 초대 코드(그룹, 만든 사람, 철회 여부). (PR 4-A, 스키마만) 서로게이트 `id`(UNIQUE, join_requests/invite_attempts 가 참조), `expires_at`/`max_uses`/`use_count` |
@@ -22,12 +22,14 @@ docker compose 의 개발용 PostgreSQL(`pgvector/pgvector:pg16` 이미지, `pgv
 | messages | family_chat | 그룹 대화 메시지 |
 | events | schedule | 가족 일정(제목, 시작 시각, 상태 pending/confirmed, 출처) |
 | expenses | billing | 공동 지출(제목, 금액, 날짜, 분류, 낸 사람, 나눌 사람 `split_among`, 정산 대상 태그 `target_tag`: parents/children/all/custom, 정산하기 시각·사람 `settled_at`·`settled_by`). 삭제는 `deleted_at` 소프트 삭제 |
-| billing_settings | billing | 가족 그룹의 가계 설정: 정산 담당자(월말 알림 대상). 행이 없으면 그룹을 만든 사람 |
+| billing_settings | billing | 가족 그룹의 가계 설정: 정산 담당자(월말 알림 대상, 행이 없으면 그룹을 만든 사람)와 미성년 자녀 목록 `minor_ids` |
 | settlement_payments | billing | '송금 완료'로 표시한 송금(월, 보낸 사람, 받은 사람, 금액). 송금 목록 자체는 매번 계산한다 |
 | subscription_items | billing | OTT·통신비 가족 할인 상태(check/available/active). 금액은 저장하지 않는다 |
 | allowances | billing | 자녀별 월 용돈 예산 |
 | allowance_uses | billing | 용돈 사용 기록 |
 | care_records | care | 돌봄 기록(대상, 종류, 값, 날짜). 같은 그룹·대상·종류·날짜는 하나만 둔다 |
+| care_locations | care | 동의한 사람이 보낸 위치(좌표·정확도·잰 시각). 7일이 지나면 삭제, 동의 철회 시 즉시 삭제. 좌표는 로그에 남기지 않는다 |
+| location_consent_events | shared | 위치 공유 동의·철회 이력(사용자, 동의 여부, 경로, 시각). 좌표 없음 |
 | care_items | care | 데일리 체크 항목(기록 방식, 목표, 예정 시각, 끼니). 삭제는 `deleted_at` 소프트 삭제 |
 | care_entries | care | 항목의 하루 기록. 같은 항목·날짜는 하나만 둔다 |
 | photos | ai_assistant | 앱이 올린 사진(파일은 `DATA_DIR/photos`에 저장) |

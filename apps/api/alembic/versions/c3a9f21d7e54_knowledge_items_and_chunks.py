@@ -1,7 +1,7 @@
 """knowledge items and chunks (pgvector)
 
 Revision ID: c3a9f21d7e54
-Revises: 6304cb91e46a
+Revises: c245f7ecc68d
 Create Date: 2026-10-22 18:30:00.000000
 
 """
@@ -15,7 +15,7 @@ from alembic import op
 
 # revision identifiers, used by Alembic.
 revision: str = "c3a9f21d7e54"
-down_revision: str | Sequence[str] | None = "6304cb91e46a"
+down_revision: str | Sequence[str] | None = "c245f7ecc68d"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

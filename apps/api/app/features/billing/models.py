@@ -40,6 +40,8 @@ class BillingSettings(Base):
 
     group_id: Mapped[str] = mapped_column(String(32), primary_key=True)
     manager_id: Mapped[str] = mapped_column(String(32))
+    # 미성년 자녀 id 들. 있으면 '자녀 대상' 정산은 부모님이 부담한다(가족 구성원 모델에 나이 정보가 아직 없어 여기에 둔다).
+    minor_ids: Mapped[list[str]] = mapped_column(JSON, default=list, server_default="[]")
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
 
 

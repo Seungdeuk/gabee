@@ -14,9 +14,9 @@ import SettleForm from "./SettleForm";
 
 /**
  * 비용 정산: 구성원별 잔액, 최소 송금 목록, 송금 완료 표시.
- * @param {{ month: string, notify: (text: string, isError?: boolean) => void }} props
+ * @param {{ month: string, notify: (text: string, isError?: boolean) => void, refreshKey?: number }} props
  */
-export default function SettlementTab({ month, notify }) {
+export default function SettlementTab({ month, notify, refreshKey }) {
   const load = useCallback(() => getSettlement(month), [month]);
   const { data, error, loading, reload } = useResource(load);
 
@@ -46,6 +46,12 @@ export default function SettlementTab({ month, notify }) {
         </View>
       </Card>
 
+      {data.unsettled_count > 0 ? (
+        <Text style={styles.unsettled} testID="unsettled-note">
+          정산하기 전 지출 {data.unsettled_count}건({won(data.unsettled_total)})은 아래 잔액에 아직 포함되지 않아요
+        </Text>
+      ) : null}
+
       <SectionTitle title="구성원별 잔액" />
       <Card tone="white">
         {data.balances.map((b) => (
@@ -66,7 +72,7 @@ export default function SettlementTab({ month, notify }) {
         ))}
       </Card>
 
-      <SettleForm month={month} notify={notify} onSettled={reload} />
+      <SettleForm month={month} notify={notify} onSettled={reload} refreshKey={refreshKey} />
 
       <SectionTitle title="보낼 돈 (최소 송금)" />
       <Card tone="white">
@@ -133,6 +139,7 @@ const styles = StyleSheet.create({
   stat: { flex: 1, alignItems: "center", gap: 4 },
   statValue: { ...font.bodyStrong, fontWeight: "700", color: colors.text },
   caption: { ...font.caption, color: colors.textMuted },
+  unsettled: { ...font.caption, color: colors.textMuted, textAlign: "center" },
   muted: { ...font.caption, color: colors.textMuted, textAlign: "center", paddingVertical: 8 },
   error: { ...font.body, color: colors.danger },
   amountBox: { alignItems: "flex-end" },

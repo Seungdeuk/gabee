@@ -62,6 +62,9 @@ class Settlement(BaseModel):
     balances: list[Balance]
     transfers: list[Transfer]  # 아직 보내지 않은 최소 송금 목록
     completed: list[PaymentOut]  # 송금 완료로 표시한 것
+    # 잔액·송금 목록에는 '정산하기'를 마친 지출만 들어간다. 아직 정산하지 않은 지출은 여기에 센다.
+    unsettled_count: int = 0
+    unsettled_total: int = 0
 
 
 class SettleTagOut(BaseModel):
@@ -82,6 +85,11 @@ class ManagerOut(BaseModel):
     manager_id: str
     manager_name: str
     is_me: bool
+    minor_ids: list[str] = []  # 미성년 자녀(자녀 대상 정산은 부모님이 부담)
+
+
+class MinorsSet(BaseModel):
+    user_ids: list[str]
 
 
 class ManagerSet(BaseModel):

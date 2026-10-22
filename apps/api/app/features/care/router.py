@@ -6,12 +6,16 @@ from app.shared.db import get_db
 
 from . import service
 from .schemas import (
+    ConsentOut,
+    ConsentSet,
     DailyOut,
     EntryOut,
     EntryPut,
     ItemCreate,
     ItemOut,
-    LocationOut,
+    LocationBatch,
+    LocationSaved,
+    LocationsLatest,
     MealList,
     MealOut,
     PutResult,
@@ -114,7 +118,36 @@ def meal_menu(meal: str, index: int = 0, _: str = Depends(current_group_id)) -> 
     return service.meal_menu(meal, index)
 
 
-@router.get("/location", response_model=LocationOut)
-def location(_: str = Depends(current_group_id)) -> LocationOut:
-    """예시 위치. 실제 GPS 를 쓰지 않는다."""
-    return service.location()
+@router.get("/location/consent", response_model=ConsentOut)
+def get_location_consent(user=Depends(current_user)) -> ConsentOut:
+    """내 위치 공유 동의 상태."""
+    return service.location_consent(user)
+
+
+@router.put("/location/consent", response_model=ConsentOut)
+def put_location_consent(
+    body: ConsentSet, user=Depends(current_user), db: Session = Depends(get_db)
+) -> ConsentOut:
+    """위치 공유에 동의하거나 철회한다. 철회하면 저장된 내 위치를 바로 지운다."""
+    return service.set_consent(db, user, body.consent)
+
+
+@router.post("/locations", response_model=LocationSaved, status_code=201)
+def post_locations(
+    body: LocationBatch,
+    user=Depends(current_user),
+    _: str = Depends(current_group_id),
+    db: Session = Depends(get_db),
+) -> LocationSaved:
+    """동의한 사람이 위치를 보낸다(앱이 주기적으로 보낸다). 동의하지 않았으면 403 consent_required."""
+    return service.save_locations(db, user, body)
+
+
+@router.get("/locations/latest", response_model=LocationsLatest)
+def locations_latest(
+    user=Depends(current_user),
+    group_id: str = Depends(current_group_id),
+    db: Session = Depends(get_db),
+) -> LocationsLatest:
+    """가족 구성원의 최신 위치. 동의한 구성원의 위치만 좌표가 내려간다."""
+    return service.latest_locations(db, group_id, user)

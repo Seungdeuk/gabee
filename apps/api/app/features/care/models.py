@@ -1,6 +1,6 @@
 from datetime import UTC, datetime
 
-from sqlalchemy import Boolean, DateTime, Integer, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, DateTime, Float, Index, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.shared.db import Base
@@ -68,5 +68,22 @@ class CareEntry(Base):
     condition: Mapped[str | None] = mapped_column(String(10), nullable=True)  # 컨디션 항목
     recorded_by: Mapped[str] = mapped_column(String(32))
     recorded_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(UTC)
+    )
+
+
+class CareLocation(Base):
+    """동의한 사람이 보낸 위치. 좌표는 로그에 남기지 않고, LOCATION_RETENTION_DAYS 가 지나면 지운다."""
+
+    __tablename__ = "care_locations"
+    __table_args__ = (Index("ix_care_locations_user_recorded", "user_id", "recorded_at"),)
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    user_id: Mapped[str] = mapped_column(String(32), index=True)
+    lat: Mapped[float] = mapped_column(Float)
+    lng: Mapped[float] = mapped_column(Float)
+    accuracy_m: Mapped[float | None] = mapped_column(Float, nullable=True)
+    recorded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))  # 기기에서 잰 시각
+    received_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(UTC)
     )

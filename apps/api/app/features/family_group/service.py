@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.shared.auth import ensure_group_member
 from app.shared.errors import bad_request, not_found
+from app.shared.location_consent import set_location_consent
 
 from . import repository as repo
 from .models import Group, Invite, User
@@ -18,13 +19,21 @@ def _uid() -> str:
 
 
 def user_out(user: User) -> UserOut:
-    return UserOut(id=user.id, name=user.name, role=user.role, active_group_id=user.active_group_id)
+    return UserOut(
+        id=user.id,
+        name=user.name,
+        role=user.role,
+        active_group_id=user.active_group_id,
+        location_consent=user.location_consent_at is not None,
+    )
 
 
 def signup(db: Session, body: UserCreate) -> SignupOut:
     user = repo.add_user(
         db, User(id=_uid(), name=body.name.strip(), role=body.role, token=secrets.token_urlsafe(24))
     )
+    if body.location_consent:
+        set_location_consent(db, user, True, source="signup")
     return SignupOut(user=user_out(user), token=user.token)
 
 

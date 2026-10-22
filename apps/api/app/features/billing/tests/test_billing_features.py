@@ -43,9 +43,28 @@ def test_settlement_balances_sum_to_zero_and_payment_flow(client, family):
     a, _, group = family
     c = _third(client, group)
     ids = _ids(client, a)
-    _expense(client, a, 10000)  # 3명이 나누면 3334 / 3333 / 3333
-    _expense(client, c, 5000, split_among=[ids["지민"], ids["수진"]])
+    e1 = _expense(client, a, 10000)  # 3명이 나누면 3334 / 3333 / 3333
+    e2 = _expense(client, c, 5000)
+    # 정산하기 전의 미정산 지출은 잔액·송금 목록에서 제외된다
+    before = client.get("/billing/settlement", params={"month": "2026-10"}, headers=a).json()
+    assert before["transfers"] == [] and all(b["balance"] == 0 for b in before["balances"])
+    assert (before["unsettled_count"], before["unsettled_total"]) == (2, 15000)
+    tag = {"month": "2026-10"}
+    client.post(
+        "/billing/settlement/tag", json={**tag, "expense_ids": [e1["id"]], "tag": "all"}, headers=a
+    )
+    client.post(
+        "/billing/settlement/tag",
+        json={
+            **tag,
+            "expense_ids": [e2["id"]],
+            "tag": "custom",
+            "participants": [ids["지민"], ids["수진"]],
+        },
+        headers=a,
+    )
     s = client.get("/billing/settlement", params={"month": "2026-10"}, headers=a).json()
+    assert s["unsettled_count"] == 0
     assert sum(b["balance"] for b in s["balances"]) == 0
     assert sum(b["remaining"] for b in s["balances"]) == 0
     assert all(isinstance(b["balance"], int) for b in s["balances"])
