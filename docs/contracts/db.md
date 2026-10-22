@@ -2,7 +2,7 @@
 
 서버는 SQLAlchemy 2 로 접근한다(`apps/api/app/shared/db.py`).
 로컬 기본값은 SQLite(`apps/api/data/gabee.db`) — 테스트와 로컬 간단 실행용으로 `init_db()`가 시작 시 `create_all()`로 테이블을 만든다.
-docker compose 의 개발용 PostgreSQL(`pgvector/pgvector:pg16` 이미지, `pgvector` 확장 포함)은 **Alembic**(`apps/api/alembic/`)이 스키마를 전담한다 — `init_db()`는 PostgreSQL에서 테이블을 만들거나 바꾸지 않고, `alembic_version`이 최신인지만 확인한다(아니면 기동을 막는 에러). `supabase/migrations`는 더 이상 스키마 변경에 쓰지 않는다. 새 마이그레이션 만드는 법은 [README.md](../../README.md) 참고. 테이블을 바꾸면 이 문서도 갱신한다.
+docker compose 의 개발용 PostgreSQL(`pgvector/pgvector:pg16` 이미지, `pgvector` 확장 포함)은 **Alembic**(`apps/api/alembic/`)이 스키마를 전담한다 — `init_db()`는 PostgreSQL에서 테이블을 만들거나 바꾸지 않는다. DB가 코드보다 뒤처져도 서버는 시작하고, 기능별로 실제 스키마(테이블·컬럼)를 점검해 준비되지 않은 기능의 API만 503을 돌려준다(`GET /health/db`로 상태 확인, [ADR 0006](../adr/0006-schema-gate-degraded-start.md)). `supabase/migrations`는 더 이상 스키마 변경에 쓰지 않는다. 새 마이그레이션 만드는 법은 [README.md](../../README.md) 참고. 테이블을 바꾸면 이 문서도 갱신한다.
 
 개인 로컬 Docker DB와 팀 공용 DB의 구분, 계정 역할(`gabee_app`/`gabee_migrator`)은 [README.md](../../README.md)의 "팀 공용 PostgreSQL 에 연결하기"와 [docs/adr/0005-shared-postgres-env.md](../adr/0005-shared-postgres-env.md) 참고.
 

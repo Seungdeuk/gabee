@@ -17,6 +17,10 @@ class Settings(BaseSettings):
     cors_origins: str = "*"
     anthropic_api_key: str = ""
     llm_model: str = "claude-haiku-5-5"
+    # DB 스키마 준비 상태 재점검 주기(초): 준비된 동안은 드물게, 준비 안 됐으면(자동 배포 진행 중) 자주
+    schema_recheck_ready_seconds: int = 30
+    schema_recheck_not_ready_seconds: int = 2
+    schema_force_min_interval_seconds: float = 1  # /health/db 가 강제 재점검할 수 있는 최소 간격
 
     model_config = SettingsConfigDict(env_file=_ENV_FILE, extra="ignore")
 

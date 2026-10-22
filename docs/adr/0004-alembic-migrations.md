@@ -7,3 +7,4 @@
 - 기존 개발 DB 인수: 이미 `create_all()`로 9개 테이블이 만들어져 있던 로컬 개발 DB는, `apps/api/scripts/check_schema_matches_models.py`로 실제 스키마와 모델이 일치함을 먼저 확인한 뒤에만 `alembic stamp head`로 이력을 등록했다(테이블 재생성·데이터 삭제 없음).
 - 영향: Docker 이미지(`apps/api/Dockerfile`)에 `alembic.ini`/`alembic/`을 포함해, `docker compose run --rm api alembic upgrade head`로 명시적으로 마이그레이션을 적용한다. `api` 서비스 기동 자체는 스키마를 바꾸지 않으며, 마이그레이션이 안 되어 있으면 기동 시 에러로 알려준다.
 - 알려진 제약: Windows(cp949 로캘)에서 `alembic.ini`에 비-ASCII 문자가 있으면 `configparser`가 깨진다 — 이 파일은 ASCII만 쓴다.
+- **(2026-10-22 갱신)** 위의 "마이그레이션이 최신이 아니면 오류로 기동을 막는다"는 [0006](0006-schema-gate-degraded-start.md)에서 "서버는 시작하고 스키마가 준비되지 않은 기능만 503"으로 대체됐다. Alembic 이 스키마 변경의 유일한 수단이라는 결정은 그대로다.
