@@ -1,0 +1,25 @@
+# 공용 DB PC 가 Linux 인 경우에만 쓴다(현재 추정: Windows → install.ps1 의 작업 스케줄러 사용).
+# 설치: /opt/gabee-deploy 에 agent/·repo/·venv/·secrets/ 를 만들고(소유자 gabee-deploy, 로그인 불가 계정),
+#       /etc/gabee-deploy/agent.env 를 agent.env.example 대로 작성한 뒤 이 유닛과 timer 를 /etc/systemd/system 에 복사한다.
+[Unit]
+Description=GaBee 공용 DB 자동 마이그레이션 Pull Agent (1회 실행)
+After=network-online.target docker.service
+
+[Service]
+Type=oneshot
+User=gabee-deploy
+Group=gabee-deploy
+WorkingDirectory=/opt/gabee-deploy
+ExecStart=/opt/gabee-deploy/venv/bin/python /opt/gabee-deploy/agent/deploy_agent.py --env-file /etc/gabee-deploy/agent.env run-once
+# DB 서버 성능 보호: 낮은 우선순위, CPU·메모리 상한
+Nice=10
+IOSchedulingClass=idle
+CPUQuota=50%
+MemoryMax=1G
+TimeoutStartSec=3600
+# 최소 권한
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/gabee-deploy /var/backups/gabee-deploy

@@ -1,5 +1,6 @@
 """scripts/shared_db_deploy.py 단위 테스트(Docker·DB 없이). 전체 흐름은 test_shared_db_deploy_e2e.py."""
 
+import datetime as dt
 import shutil
 import sys
 from pathlib import Path
@@ -133,15 +134,20 @@ def ci_responses(
     jobs=None,
     event="push",
     path=".github/workflows/ci-check.yml@refs/heads/main",
+    status="completed",
+    no_runs=False,
+    commit_date="2020-01-01T00:00:00Z",
 ):
     jobs = jobs or {"api": "success", "api-postgres": "success", "mobile": "success"}
-    run = {"id": 9, "run_number": 1, "head_sha": SHA, "head_branch": "main", "event": event, "status": "completed", "conclusion": conclusion, "path": path, "head_repository": {"full_name": "o/r"}}  # fmt: skip
+    run = {"id": 9, "run_number": 1, "head_sha": SHA, "head_branch": "main", "event": event, "status": status, "conclusion": conclusion, "path": path, "head_repository": {"full_name": "o/r"}}  # fmt: skip
 
     def fetch(url):
         if "/branches/main" in url:
             return {"commit": {"sha": tip}}
         if "/actions/runs?" in url:
-            return {"workflow_runs": [run]}
+            return {"workflow_runs": [] if no_runs else [run]}
+        if "/commits/" in url:
+            return {"commit": {"committer": {"date": commit_date}}}
         if "/jobs" in url:
             return {"jobs": [{"name": n, "conclusion": c} for n, c in jobs.items()]}
         raise AssertionError(url)
@@ -151,6 +157,48 @@ def ci_responses(
 
 def verdict(**kw):
     return deploy.GitHubCiVerifier("o/r", "t", fetch=ci_responses(**kw)).verify(SHA)
+
+
+def test_ci_verifier_waits_while_ci_is_running_or_not_started_yet():
+    assert verdict(status="in_progress", conclusion=None).status == "pending"
+    assert verdict(status="queued", conclusion=None).status == "pending"
+    recent = dt.datetime.now(dt.UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+    assert (
+        verdict(no_runs=True, commit_date=recent).status == "pending"
+    )  # 병합 직후, 실행이 아직 안 보임
+    assert (
+        verdict(no_runs=True).status == "not_green"
+    )  # 오래된 커밋인데 CI 실행이 없으면 대기가 아니라 실패
+
+
+def test_deployer_treats_pending_ci_as_skipped_not_failure(dirs, monkeypatch):
+    forbid_connect(monkeypatch)
+    result = make(dirs, ci=FakeCi("pending", "CI 진행 중")).run()
+    assert result["outcome"] == "skipped"
+
+
+def test_github_api_address_can_only_be_github_or_loopback(monkeypatch):
+    monkeypatch.setenv("GITHUB_API_URL", "https://evil.example.com")
+    with pytest.raises(deploy.Refused):
+        deploy.api_base()
+    monkeypatch.setenv("GITHUB_API_URL", "http://127.0.0.1:9999")
+    assert deploy.api_base() == "http://127.0.0.1:9999"
+    monkeypatch.delenv("GITHUB_API_URL")
+    assert deploy.api_base() == "https://api.github.com"
+
+
+def test_loopback_target_override_never_points_at_the_real_shared_host(monkeypatch):
+    monkeypatch.delenv("GABEE_DEPLOY_LOOPBACK_TARGET", raising=False)
+    assert deploy.target_from_env() == deploy.SHARED
+    monkeypatch.setenv("GABEE_DEPLOY_LOOPBACK_TARGET", "192.168.0.44,5432,gabee,gabee_migrator,,0,")
+    with pytest.raises(deploy.Refused):
+        deploy.target_from_env()
+    monkeypatch.setenv(
+        "GABEE_DEPLOY_LOOPBACK_TARGET", "127.0.0.1,5555,gabee,gabee_migrator,db,5432,net"
+    )
+    assert deploy.target_from_env() == deploy.Target(
+        "127.0.0.1", 5555, "gabee", "gabee_migrator", "db", 5432, "net"
+    )
 
 
 def test_ci_verifier_accepts_fully_green_commit():
@@ -382,6 +430,8 @@ def test_ci_run_must_belong_to_the_same_sha():
         if "/actions/runs?" in url:
             run = {"id": 1, "run_number": 1, "head_sha": "d" * 40, "head_branch": "main", "event": "push", "status": "completed", "conclusion": "success", "path": ".github/workflows/ci-check.yml@refs/heads/main", "head_repository": {"full_name": "o/r"}}  # fmt: skip
             return {"workflow_runs": [run]}
+        if "/commits/" in url:
+            return {"commit": {"committer": {"date": "2020-01-01T00:00:00Z"}}}
         raise AssertionError(url)
 
     assert deploy.GitHubCiVerifier("o/r", "t", fetch=fetch).verify(SHA).status == "not_green"

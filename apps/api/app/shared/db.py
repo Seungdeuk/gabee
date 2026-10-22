@@ -43,6 +43,7 @@ def import_all_models() -> None:
     """모든 기능의 models 모듈을 불러와 Base.metadata 에 테이블을 등록한다.
     init_db() 와 alembic/env.py 가 함께 쓴다."""
     from app.features.ai_assistant import models as _ai  # noqa: F401
+    from app.features.ai_assistant.knowledge import models as _knowledge  # noqa: F401
     from app.features.billing import models as _billing  # noqa: F401
     from app.features.care import models as _care  # noqa: F401
     from app.features.family_chat import models as _chat  # noqa: F401
