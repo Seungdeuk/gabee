@@ -5,15 +5,18 @@ from app.shared.auth import current_group_id, current_user
 from app.shared.db import get_db
 
 from . import repository, service
+from .knowledge.router import router as knowledge_router
 from .models import Photo
 from .schemas import ChatIn, ChatOut, PhotoOut
 
 router = APIRouter(prefix="/ai-assistant", tags=["ai-assistant"])
+router.include_router(knowledge_router)  # /ai-assistant/knowledge/*
 
 
 @router.post("/chat", response_model=ChatOut)
-def chat(body: ChatIn, user=Depends(current_user)) -> ChatOut:
-    return service.chat(body.message)
+def chat(body: ChatIn, user=Depends(current_user), db: Session = Depends(get_db)) -> ChatOut:
+    history = [t.model_dump() for t in body.history]
+    return service.chat(db, user.active_group_id, user.id, body.message, history)
 
 
 @router.post("/photos", response_model=PhotoOut, status_code=201)

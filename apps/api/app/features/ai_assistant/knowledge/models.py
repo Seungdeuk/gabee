@@ -1,0 +1,64 @@
+import uuid
+from datetime import UTC, date, datetime
+
+from pgvector.sqlalchemy import Vector
+from sqlalchemy import JSON, Boolean, Date, DateTime, ForeignKey, Index, Integer, String, Text
+from sqlalchemy.orm import Mapped, mapped_column
+
+from app.shared.db import Base
+
+EMBED_DIM = 384  # PostgreSQL 의 vector(N) 칸 크기. 파인튜닝 e5-small 의 벡터 길이와 같다
+
+
+def new_id() -> str:
+    return uuid.uuid4().hex
+
+
+class KnowledgeItem(Base):
+    """전처리가 넘긴 기록 한 건(마크다운 글). 원본 파일은 서버 PC에 있고 `source_path` 로 가리킨다."""
+
+    __tablename__ = "knowledge_items"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    group_id: Mapped[str] = mapped_column(String(32), index=True)
+    created_by: Mapped[str] = mapped_column(String(32))
+    kind_label: Mapped[str] = mapped_column(String(100), index=True)
+    title: Mapped[str] = mapped_column(String(200))
+    body_md: Mapped[str] = mapped_column(Text)
+    source_path: Mapped[str | None] = mapped_column(String(500), default=None)
+    occurred_on: Mapped[date | None] = mapped_column(Date, default=None, index=True)
+    has_unread_parts: Mapped[bool] = mapped_column(Boolean, default=False)
+    sensitivity: Mapped[str] = mapped_column(String(16), default="normal")  # normal | sensitive
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(UTC)
+    )
+
+
+class KnowledgeChunk(Base):
+    """기록을 쪽·슬라이드·길이로 자른 조각. 검색은 조각 단위로 하고 결과는 기록 단위로 묶는다.
+
+    embedding 은 PostgreSQL 에서는 pgvector 의 vector(384), SQLite(테스트·로컬)에서는 JSON 숫자 목록이다.
+    PostgreSQL 에는 코사인 거리용 HNSW 인덱스가 붙는다(Alembic 리비전에서 만든다)."""
+
+    __tablename__ = "knowledge_chunks"
+    __table_args__ = (
+        Index(
+            "ix_knowledge_chunks_embedding_hnsw",
+            "embedding",
+            postgresql_using="hnsw",
+            postgresql_ops={"embedding": "vector_cosine_ops"},
+        ).ddl_if(dialect="postgresql"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    item_id: Mapped[str] = mapped_column(
+        String(32), ForeignKey("knowledge_items.id", ondelete="CASCADE"), index=True
+    )
+    group_id: Mapped[str] = mapped_column(String(32), index=True)
+    seq: Mapped[int] = mapped_column(Integer)
+    page_label: Mapped[str | None] = mapped_column(String(80), default=None)
+    text: Mapped[str] = mapped_column(Text)
+    embedding: Mapped[list[float]] = mapped_column(
+        JSON().with_variant(Vector(EMBED_DIM), "postgresql")
+    )
+    embedding_model: Mapped[str] = mapped_column(String(60), index=True)

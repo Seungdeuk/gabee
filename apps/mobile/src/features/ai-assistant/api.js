@@ -45,18 +45,20 @@ function mockReply(text) {
 /**
  * AI 비서에게 메시지를 보내고 답변을 받는다.
  * 서버 주소(EXPO_PUBLIC_API_URL)가 없으면 화면 확인용 임시(mock) 답변을 돌려준다.
- * TODO: 서버가 출처와 메시지 초안을 함께 돌려주면 여기서 AssistantReply 모양으로 맞춘다.
+ * 서버는 답과 출처(sources)를 돌려준다. 메시지 초안(draft)은 아직 서버가 만들지 않는다.
  *
  * @param {string} text 사용자가 입력한 메시지
+ * @param {{ role: "user" | "assistant", text: string }[]} [history] 앞 대화(오래된 것부터, 서버는 최근 10개만 받는다)
  * @returns {Promise<AssistantReply>}
  */
-export async function sendMessage(text) {
+export async function sendMessage(text, history = []) {
   if (!isApiConfigured()) {
     await new Promise((resolve) => setTimeout(resolve, 2400));
     return mockReply(text);
   }
-  const res = await apiFetch("/ai-assistant/chat", { method: "POST", body: { message: text } });
-  return { reply: res.reply, sources: [], draft: null };
+  const res = await apiFetch("/ai-assistant/chat", { method: "POST", body: { message: text, history: history.slice(-10) } });
+  const sources = (res.sources ?? []).map(({ n, title }) => ({ n, title }));
+  return { reply: res.reply, sources, draft: null };
 }
 
 /**
