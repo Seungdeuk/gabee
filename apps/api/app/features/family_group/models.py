@@ -45,6 +45,11 @@ class User(Base):
     )
     password_hash: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
+    # 위치 공유 동의(돌봄). 동의한 시각, 없으면 미동의. 바꾸는 방법은 app/shared/location_consent.py.
+    location_consent_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
     __table_args__ = (
         # 이름을 명시하지 않으면 Alembic autogenerate 가 downgrade 에서 drop_constraint()
         # 를 못 만든다(이름 없는 제약은 나중에 못 찾음) — 전부 명시적으로 이름을 둔다.

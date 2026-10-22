@@ -2357,14 +2357,14 @@
         }
       }
     },
-    "/care/location": {
+    "/care/location/consent": {
       "get": {
         "tags": [
           "care"
         ],
-        "summary": "Location",
-        "description": "예시 위치. 실제 GPS 를 쓰지 않는다.",
-        "operationId": "location_care_location_get",
+        "summary": "Get Location Consent",
+        "description": "내 위치 공유 동의 상태.",
+        "operationId": "get_location_consent_care_location_consent_get",
         "parameters": [
           {
             "name": "x-gyeot-token",
@@ -2389,7 +2389,175 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/LocationOut"
+                  "$ref": "#/components/schemas/ConsentOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "care"
+        ],
+        "summary": "Put Location Consent",
+        "description": "위치 공유에 동의하거나 철회한다. 철회하면 저장된 내 위치를 바로 지운다.",
+        "operationId": "put_location_consent_care_location_consent_put",
+        "parameters": [
+          {
+            "name": "x-gyeot-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Gyeot-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConsentSet"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConsentOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/care/locations": {
+      "post": {
+        "tags": [
+          "care"
+        ],
+        "summary": "Post Locations",
+        "description": "동의한 사람이 위치를 보낸다(앱이 주기적으로 보낸다). 동의하지 않았으면 403 consent_required.",
+        "operationId": "post_locations_care_locations_post",
+        "parameters": [
+          {
+            "name": "x-gyeot-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Gyeot-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LocationBatch"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LocationSaved"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/care/locations/latest": {
+      "get": {
+        "tags": [
+          "care"
+        ],
+        "summary": "Locations Latest",
+        "description": "가족 구성원의 최신 위치. 동의한 구성원의 위치만 좌표가 내려간다.",
+        "operationId": "locations_latest_care_locations_latest_get",
+        "parameters": [
+          {
+            "name": "x-gyeot-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Gyeot-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LocationsLatest"
                 }
               }
             }
@@ -2826,6 +2994,44 @@
           "source"
         ],
         "title": "ChatOut"
+      },
+      "ConsentOut": {
+        "properties": {
+          "consent": {
+            "type": "boolean",
+            "title": "Consent"
+          },
+          "since": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Since"
+          }
+        },
+        "type": "object",
+        "required": [
+          "consent"
+        ],
+        "title": "ConsentOut"
+      },
+      "ConsentSet": {
+        "properties": {
+          "consent": {
+            "type": "boolean",
+            "title": "Consent"
+          }
+        },
+        "type": "object",
+        "required": [
+          "consent"
+        ],
+        "title": "ConsentSet"
       },
       "DailyOut": {
         "properties": {
@@ -3393,38 +3599,103 @@
         ],
         "title": "JoinIn"
       },
-      "LocationOut": {
+      "LocationBatch": {
         "properties": {
-          "is_example": {
-            "type": "boolean",
-            "title": "Is Example"
-          },
-          "place": {
-            "type": "string",
-            "title": "Place"
-          },
-          "lat": {
-            "type": "number",
-            "title": "Lat"
-          },
-          "lng": {
-            "type": "number",
-            "title": "Lng"
-          },
-          "notice": {
-            "type": "string",
-            "title": "Notice"
+          "points": {
+            "items": {
+              "$ref": "#/components/schemas/LocationPoint"
+            },
+            "type": "array",
+            "maxItems": 50,
+            "minItems": 1,
+            "title": "Points"
           }
         },
         "type": "object",
         "required": [
-          "is_example",
-          "place",
+          "points"
+        ],
+        "title": "LocationBatch"
+      },
+      "LocationPoint": {
+        "properties": {
+          "lat": {
+            "type": "number",
+            "maximum": 90.0,
+            "minimum": -90.0,
+            "title": "Lat"
+          },
+          "lng": {
+            "type": "number",
+            "maximum": 180.0,
+            "minimum": -180.0,
+            "title": "Lng"
+          },
+          "accuracy_m": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 100000.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Accuracy M"
+          },
+          "recorded_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Recorded At"
+          }
+        },
+        "type": "object",
+        "required": [
           "lat",
           "lng",
-          "notice"
+          "recorded_at"
         ],
-        "title": "LocationOut"
+        "title": "LocationPoint"
+      },
+      "LocationSaved": {
+        "properties": {
+          "saved": {
+            "type": "integer",
+            "title": "Saved"
+          },
+          "skipped": {
+            "type": "integer",
+            "title": "Skipped"
+          }
+        },
+        "type": "object",
+        "required": [
+          "saved",
+          "skipped"
+        ],
+        "title": "LocationSaved"
+      },
+      "LocationsLatest": {
+        "properties": {
+          "members": {
+            "items": {
+              "$ref": "#/components/schemas/MemberLocation"
+            },
+            "type": "array",
+            "title": "Members"
+          },
+          "retention_days": {
+            "type": "integer",
+            "title": "Retention Days"
+          }
+        },
+        "type": "object",
+        "required": [
+          "members",
+          "retention_days"
+        ],
+        "title": "LocationsLatest"
       },
       "ManagerOut": {
         "properties": {
@@ -3540,6 +3811,90 @@
           "total"
         ],
         "title": "MealOut"
+      },
+      "MemberLocation": {
+        "properties": {
+          "user_id": {
+            "type": "string",
+            "title": "User Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "is_me": {
+            "type": "boolean",
+            "title": "Is Me"
+          },
+          "sharing": {
+            "type": "boolean",
+            "title": "Sharing"
+          },
+          "lat": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lat"
+          },
+          "lng": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lng"
+          },
+          "accuracy_m": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Accuracy M"
+          },
+          "recorded_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recorded At"
+          },
+          "minutes_ago": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Minutes Ago"
+          }
+        },
+        "type": "object",
+        "required": [
+          "user_id",
+          "name",
+          "is_me",
+          "sharing"
+        ],
+        "title": "MemberLocation"
       },
       "MemberOut": {
         "properties": {
@@ -4298,6 +4653,11 @@
             ],
             "title": "Role",
             "default": "child"
+          },
+          "location_consent": {
+            "type": "boolean",
+            "title": "Location Consent",
+            "default": false
           }
         },
         "type": "object",
@@ -4330,6 +4690,11 @@
               }
             ],
             "title": "Active Group Id"
+          },
+          "location_consent": {
+            "type": "boolean",
+            "title": "Location Consent",
+            "default": false
           }
         },
         "type": "object",

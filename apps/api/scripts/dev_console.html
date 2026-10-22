@@ -244,9 +244,13 @@ async function mealHtml() {
 }
 
 async function locHtml() {
-  const l = await api('GET', '/care/location');
-  return `<div class="notice example"><b>예시 화면</b> · ${esc(l.notice)}</div>
-  <div class="card"><div class="row"><div class="grow"><div class="name">${esc(l.place)}</div><div class="desc">${l.lat}, ${l.lng}</div></div><span class="pill peach">예시</span></div><div class="map">지도 없음 · 예시 위치</div></div>`;
+  const [c, l] = await Promise.all([api('GET', '/care/location/consent'), api('GET', '/care/locations/latest')]);
+  return `<div class="notice">위치는 개인정보예요. 동의한 사람의 위치만 같은 가족에게 보이고, ${l.retention_days}일이 지나면 지워져요. 위치는 앱이 보내요(이 화면은 조회만).</div>
+  <div class="card row"><div class="grow"><div class="name">내 위치 공유</div><div class="desc">${c.consent ? '동의함' : '동의 안 함'}</div></div>
+    <button class="btn sm ${c.consent ? 'secondary' : ''}" data-consent="${c.consent ? 0 : 1}">${c.consent ? '철회(위치 삭제)' : '동의'}</button></div>
+  ${l.members.map((m) => `<div class="card row"><div class="grow"><div class="name">${esc(m.name)}${m.is_me ? ' (나)' : ''}</div>
+    <div class="desc">${m.sharing ? (m.lat === null ? '아직 받은 위치가 없어요' : `${m.lat.toFixed(5)}, ${m.lng.toFixed(5)} · ${m.minutes_ago}분 전`) : '위치를 공유하지 않아요'}</div></div>
+    <span class="pill ${m.sharing ? '' : 'gray'}">${m.sharing ? '공유 중' : '공유 안 함'}</span></div>`).join('')}`;
 }
 
 /* ---------- 공통 ---------- */
@@ -297,6 +301,7 @@ document.addEventListener('click', (e) => {
       await api('POST', '/care/items', {name: val('itName'), mode, unit: mode === 'number' ? val('itUnit') : '', target: mode === 'number' && val('itTarget') ? parseInt(val('itTarget'), 10) : null, scheduled_time: val('itTime'), meal_type: mode === 'yesno' && val('itMeal') ? val('itMeal') : null});
       toast('항목을 추가했어요');
     } else if (b.id === 'recBtn') { state.recs = (await api('GET', '/care/recommendations')).recommendations; }
+    else if (d.consent !== undefined) { await api('PUT', '/care/location/consent', {consent: d.consent === '1'}); toast(d.consent === '1' ? '위치 공유에 동의했어요' : '철회했어요(저장된 위치 삭제)'); }
     else if (d.nextmeal) { const [m, i] = d.nextmeal.split(':'); state.mealIndex[m] = parseInt(i, 10); }
     else return;
     await render();

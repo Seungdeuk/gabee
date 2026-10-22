@@ -44,6 +44,7 @@ def import_all_models() -> None:
     from app.features.family_chat import models as _chat  # noqa: F401
     from app.features.family_group import models as _group  # noqa: F401
     from app.features.schedule import models as _schedule  # noqa: F401
+    from app.shared import location_consent as _consent  # noqa: F401
 
 
 def _current_alembic_head() -> str | None:

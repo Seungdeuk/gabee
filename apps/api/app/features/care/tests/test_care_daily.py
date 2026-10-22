@@ -1,4 +1,4 @@
-"""데일리 체크, 누락 계산, 규칙 기반 추천, 식단 추천, 예시 위치."""
+"""데일리 체크, 누락 계산, 규칙 기반 추천, 식단 추천. (위치 공유는 test_care_location.py)"""
 
 TODAY = "/care/daily"
 
@@ -118,9 +118,3 @@ def test_meals_only_unrecorded_and_cycle(client, family):
         index = m["next_index"]
     assert len(set(seen[:-1])) == first[0]["total"] and seen[-1] == seen[0]  # 한 바퀴 돌면 처음으로
     assert client.get("/care/meals/snack", headers=a).status_code == 404
-
-
-def test_location_is_always_marked_as_example(client, family):
-    a, _, _ = family
-    loc = client.get("/care/location", headers=a).json()
-    assert loc["is_example"] is True and "예시" in loc["notice"] and "예시" in loc["place"]
