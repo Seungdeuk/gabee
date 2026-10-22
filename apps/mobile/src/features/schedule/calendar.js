@@ -1,5 +1,6 @@
 import { KIND } from "./constants";
 import { compareItems } from "./model";
+import { formatYearMonth } from "./utils/date";
 
 /** 달력 점의 최대 개수 (날짜당). */
 const MAX_DOTS = 3;
@@ -50,4 +51,36 @@ export function dotsFor(mark) {
  */
 export function itemsOnDate(items, date) {
   return items.filter((item) => item.date === date).sort(compareItems);
+}
+
+/**
+ * 목록 모드용 시간 구분. 오늘 / 다가오는 것(가까운 날부터) / 지난 것(최근 날부터).
+ * @param {import("./model").ScheduleItem[]} items
+ * @param {string} today "YYYY-MM-DD"
+ * @returns {{ today: import("./model").ScheduleItem[], upcoming: import("./model").ScheduleItem[], past: import("./model").ScheduleItem[] }}
+ */
+export function splitByTime(items, today) {
+  const asc = [...items].sort((a, b) => a.date.localeCompare(b.date) || compareItems(a, b));
+  const desc = [...items].sort((a, b) => b.date.localeCompare(a.date) || compareItems(a, b));
+  return {
+    today: asc.filter((item) => item.date === today),
+    upcoming: asc.filter((item) => item.date > today),
+    past: desc.filter((item) => item.date < today),
+  };
+}
+
+/**
+ * 월 구분선용으로 순서를 지킨 채 같은 달끼리 묶는다.
+ * @param {import("./model").ScheduleItem[]} items 날짜순으로 정렬된 항목
+ * @returns {{ key: string, label: string, items: import("./model").ScheduleItem[] }[]}
+ */
+export function groupByMonth(items) {
+  const groups = [];
+  items.forEach((item) => {
+    const key = item.date.slice(0, 7);
+    const last = groups[groups.length - 1];
+    if (last && last.key === key) last.items.push(item);
+    else groups.push({ key, label: formatYearMonth(item.date), items: [item] });
+  });
+  return groups;
 }
