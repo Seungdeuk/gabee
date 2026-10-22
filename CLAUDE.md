@@ -71,7 +71,7 @@ docker compose up --build      # 개발용 DB + API (루트 .env 필요)
 - 서버 폴더명은 밑줄(snake_case)만 쓴다. 하이픈은 import가 안 된다.
 - 다른 기능의 내부 파일을 직접 import하지 않는다. 공통 코드는 `app/shared/`로 올린다.
 - 에러 응답은 `app/shared/errors.py`의 공통 형식만 쓴다.
-- 인증·권한은 `app/shared/auth.py`를 거친다. 권한 규칙은 `docs/contracts/permissions.md`가 기준이다.
+- 인증·권한은 `app/shared/auth.py`를 거친다. 권한 규칙은 `docs/contracts/permissions.md`가 기준이다. 그룹 데이터를 다루는 라우터는 `group_id`를 요청에서 직접 받지 않고 `Depends(current_group_id)`로만 받는다(이 함수가 `group_members` 기준 실제 멤버십까지 확인한다). 라우터를 거치지 않고 Service를 직접 호출하는 코드(향후 AI Agent 포함)는 호출 전에 `ensure_group_member(db, user_id, group_id)`를 먼저 실행해야 한다.
 - LLM 호출은 `app/shared/llm` 래퍼로만 한다. 기능 코드에서 SDK를 직접 호출하지 않는다.
 - 새 엔드포인트에는 해당 기능의 `tests/`에 테스트를 최소 1개 함께 작성한다.
 
