@@ -24,6 +24,10 @@ def current_user(
     user = db.scalar(select(User).where(User.token == x_gyeot_token))
     if user is None:
         raise ApiError(401, "token_invalid", "토큰이 올바르지 않아요")
+    if user.login_id is not None or user.password_hash is not None:
+        # 아이디/비밀번호로 가입한 정식 회원은 레거시 고정 토큰으로 들어올 수 없다(레거시 인증은 익명 계정 전용).
+        # 정식 회원의 인증은 로그인으로 발급하는 Access 토큰만 쓴다. 존재 여부를 알려주지 않으려 같은 응답을 쓴다.
+        raise ApiError(401, "token_invalid", "토큰이 올바르지 않아요")
     return user
 
 
