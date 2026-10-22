@@ -97,6 +97,7 @@ docker compose up --build      # 개발용 DB + API (루트 .env 필요)
 - PostgreSQL 스키마 변경은 `apps/api/alembic/`의 Alembic 리비전으로만 한다(`alembic revision --autogenerate` 후 직접 리뷰, `alembic upgrade head`로 적용). 적용된 리비전은 수정하지 않고 새 리비전을 추가한다. `supabase/migrations`는 더 이상 스키마 변경에 쓰지 않는다.
 - 컬럼·테이블 삭제 등 데이터가 사라지는 변경은 PR에 적고 팀에 공유한 뒤 진행한다.
 - 변경하면 `docs/contracts/db.md`도 갱신한다.
+- 서버는 DB가 코드보다 뒤처졌거나 연결이 안 돼도 시작한다. 각 기능 router 는 `main.py`에서 `schema_ready(<기능>)` 의존성과 함께 등록되어, 그 기능 모델이 쓰는 테이블·컬럼이 DB에 없을 때만 503(`schema_not_ready`/`db_unavailable`)을 돌려준다. 새 모델을 `app/shared`에 두면 `schema.py`의 `SHARED_MODEL_FEATURES`에 쓰는 기능을 등록한다(미등록이면 모든 기능의 전제로 본다). 상태는 `GET /health/db`로 확인한다(`docs/adr/0006-schema-gate-degraded-start.md`).
 - `supabase/seed`에는 가짜 데이터만 둔다. 실제 사용자 데이터를 넣지 않는다.
 - 팀 공용 PostgreSQL(`192.168.0.44:5432/gabee`)의 스키마 변경(`alembic upgrade`/`downgrade`/`stamp`)은 마이그레이션 담당자가 `gabee_migrator` 계정으로, PR이 병합되고 검증된 뒤 명시적으로 승인받아서만 실행한다. 일반 실행은 `gabee_app` 계정을 쓴다(DDL 권한 없음 — 단 데이터 CRUD 권한은 있으니 공용 DB 데이터를 직접 조작할 때도 주의한다). 같은 서버의 기존 MVP `family-secretary` database는 어떤 경우에도 건드리지 않는다. 자세한 내용은 `README.md`("팀 공용 PostgreSQL 에 연결하기")와 `docs/adr/0005-shared-postgres-env.md` 참고.
 
