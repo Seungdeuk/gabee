@@ -2,8 +2,13 @@ import { KIND } from "./constants";
 import { compareItems } from "./model";
 
 // 챙길 것은 에이전트가 오늘 일정에서 유추해 묻는 내용(예: 여행이 있으면 여권)이라, 서버가 붙기 전까지 임시 문장이다.
-export const MOCK_CARRY = [{ id: "passport", text: "11월 3일 제주 여행, 여권 챙기셨어요?" }];
-export const MOCK_ADD = { id: "add", text: "관리비 납부 일정을 추가해 드릴까요?" };
+// title 은 "아직이요"를 눌렀을 때 할 일 등록 화면에 미리 채울 제목, draft 는 "추가"를 눌렀을 때 미리 채울 내용이다.
+export const MOCK_CARRY = [{ id: "passport", text: "11월 3일 제주 여행, 여권 챙기셨어요?", title: "여권 챙기기" }];
+export const MOCK_ADD = {
+  id: "add",
+  text: "관리비 납부 일정을 추가해 드릴까요?",
+  draft: { kind: "todo", title: "관리비 납부", daysFromToday: 6 },
+};
 
 const byTime = (a, b) => (a.startTime ?? "99:99").localeCompare(b.startTime ?? "99:99");
 
