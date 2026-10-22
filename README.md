@@ -55,7 +55,7 @@ Docker 없이 `uvicorn`으로 서버만 띄우면서 이 Postgres에 붙이려�
 - **`.env`를 안 만들고 실행**: `POSTGRES_USER` 등이 빈 값이 되어 DB가 뜨지 않는다. `copy .env.example .env`를 먼저 한다.
 - **이미 `postgres:16`(pgvector 없음)로 떠 있던 볼륨을 쓰던 경우**: 볼륨은 그대로 유지된다. 이미지만 `pgvector/pgvector:pg16`으로 바뀌고, `alembic upgrade head`(기존에 테이블이 있었다면 `alembic stamp head` — 아래 참고)를 실행하면 확장이 켜진다. 데이터는 삭제되지 않는다.
 - **Windows 에서 `localhost:5432`로 접속이 멈추거나 느린 경우**: IPv6(`::1`)로 먼저 시도하다가 지연될 수 있다. `localhost` 대신 `127.0.0.1`을 쓴다(Docker는 `127.0.0.1`에만 바인딩하므로 어차피 이게 맞는 주소다).
-- **일부 API 가 `503 schema_not_ready` / `db_unavailable` 을 돌려주는 경우**: 서버는 떠 있지만 DB 스키마가 그 기능의 코드보다 뒤처졌거나 DB 에 연결할 수 없는 상태다. `GET /health/db` 로 DB 리비전·코드 head·기능별 준비 상태를 확인한다(비밀번호·접속 주소는 나오지 않는다). 개인 DB 는 `docker compose run --rm api alembic upgrade head` 를, 공용 DB 는 마이그레이션 적용을 마치면 서버 재시작 없이 몇 초 안에 열린다. DB 가 코드보다 앞서 있어도(다른 브랜치의 새 마이그레이션) 실제 스키마가 맞는 기능은 계속 열리고, 맞지 않는 기능만 503 이다.
+- **일부 API 가 `503 schema_not_ready` / `db_unavailable` 을 돌려주는 경우**: 서버는 떠 있지만 DB 스키마가 그 기능의 코드보다 뒤처졌거나 DB 에 연결할 수 없는 상태다. `GET /health/db` 로 DB 리비전·코드 head·기능별 준비 상태를 확인한다. 개인 DB 는 `docker compose run --rm api alembic upgrade head` 를 실행하면 서버 재시작 없이 몇 초 안에 열린다. 공용 DB 는 자동 배포(`Deploy Shared DB`)가 끝나면 저절로 열리고, 실패했다면 `db-deploy-failed` 이슈를 확인한다.
 - **`apps/api/alembic.ini`를 수정했는데 `UnicodeDecodeError`가 나는 경우**: Windows 한글 로캘(cp949)에서 이 파일에 한글(비-ASCII) 문자가 있으면 `configparser`가 깨진다. `alembic.ini`에는 영어만 쓴다.
 
 이 프로젝트의 DB/API 는 폴더명으로 컨테이너·볼륨·네트워크 이름이 접두사 처리되어, 다른 프로젝트의 PostgreSQL/Docker 볼륨과 자동으로 분리된다.
@@ -101,7 +101,7 @@ SQLite 테스트(`pytest`)와 PostgreSQL/Alembic 경로는 서로 분리되어 �
 | 환경 | 주소 | 용도 | 쓰는 계정 |
 |---|---|---|---|
 | 개인 로컬 Docker DB | `127.0.0.1:5433`(`docker-compose.yml`, 위 절 참고) | 각자 혼자 쓰는 개발·실험용 | `.env`의 `POSTGRES_USER`(기본 `postgres`) |
-| **팀 공용 DB** | `192.168.0.44:5432`, DB 이름 `gabee` | 팀 5명이 같이 쓰는 개발 DB | 일반 실행: `gabee_app` / 마이그레이션: `gabee_migrator`(담당자만) |
+| **팀 공용 DB** | `192.168.0.44:5432`, DB 이름 `gabee` | 팀 5명이 같이 쓰는 개발 DB | 일반 실행: `gabee_app` / 마이그레이션: 자동 배포 워크플로우가 `gabee_migrator`로 적용(사람이 직접 실행하지 않음) |
 | 기존 MVP DB | `192.168.0.44:5432`, DB 이름 `family-secretary` | 레거시, **절대 건드리지 않는다** | (해당 없음 — 접근하지 않음) |
 
 팀 공용 DB와 기존 MVP DB는 **같은 PostgreSQL 서버(같은 PC)에서 database 단위로만 분리**되어 있다 — 서로 다른 서버가 아니다. 공용 `gabee` DB 작업이 `family-secretary` DB의 데이터를 직접 바꾸지는 않지만, 같은 서버 프로세스를 쓰므로 서버 자체를 재시작·종료하거나 디스크를 가득 채우는 등의 작업은 두 DB 모두에 영향을 줄 수 있다 — 그런 작업은 하지 않는다.
@@ -123,32 +123,36 @@ uvicorn app.main:app --reload
 curl http://localhost:8000/health   # {"status":"ok"} 면 공용 DB에 연결됨
 ```
 
-**마이그레이션(`gabee_migrator` 계정, 담당자만, PR 병합·검증 후 승인받아서만)**: 역시 `.env` 파일을 그때만 공용 DB의 `gabee_migrator` 계정으로 바꿔서 실행하고, 끝나면 즉시 원래 값(로컬 SQLite 또는 개인 Docker DB)으로 되돌린다.
+**마이그레이션은 사람이 공용 DB에 직접 실행하지 않는다.** `main`에 병합된 커밋의 `CI Check`가 모두 성공하면 `Deploy Shared DB` 워크플로우(`.github/workflows/deploy-shared-db.yml`)가 러너 PC에서 자동으로 적용한다 — 새 백업 생성 → 무결성 확인 → 임시 PostgreSQL 16에 복원 검증 → 복사본에 먼저 적용(리허설) → `gabee_migrator`로 적용 → 리비전·스키마·`gabee_app` 권한 검증 순서이고, 하나라도 실패하면 공용 DB를 건드리지 않고 중단한 뒤 이슈(`db-deploy-failed`)로 알린다. 새 마이그레이션이 필요한 개발자는 아래 순서만 지키면 된다(별도 승인 없음).
 
-```powershell
-notepad apps\api\.env
-# DATABASE_URL=postgresql+psycopg://gabee_migrator:<비밀번호>@192.168.0.44:5432/gabee
+1. `git fetch` 후 최신 `main`에서 브랜치를 만들고 `alembic heads`가 1개인지 확인한다.
+2. 모델 수정 → **격리 PostgreSQL**(임시 컨테이너)에서 `alembic revision --autogenerate`, DDL 직접 리뷰, `alembic upgrade head`, `scripts/check_alembic_migrations.py`·`check_schema_matches_models.py` 검증.
+3. PR의 `api-postgres` Job이 단일 head·전체 upgrade·스키마 일치를 다시 검증한다.
+4. 컬럼·테이블 삭제, 이름·타입 변경, `CONCURRENTLY` 같은 **파괴적·트랜잭션 밖 변경**은 자동 적용되지 않는다. 의도한 변경이면 리비전 docstring에 `destructive-approved: PR #<번호>`를 적어 PR 리뷰에서 승인받는다.
+5. 병합 뒤 공용 DB 반영 결과는 Actions의 `Deploy Shared DB` 실행 요약과 `db-deploy-failed` 이슈로 확인한다(성공하면 이슈는 자동으로 닫힌다). 반영이 끝나기 전에 `main`을 받아 서버를 띄워도 서버는 시작하고, 새 스키마가 필요한 기능만 잠시 `503` 이다가 배포가 끝나면 재시작 없이 열린다(`GET /health/db` 로 확인).
 
-cd apps\api
-.venv\Scripts\activate
-alembic current        # 공용 DB에 지금 적용된 리비전 확인 — 고정된 값으로 추측하지 않는다
-alembic upgrade head    # 승인받은 뒤에만 실행
+**자동 배포 최초 설정·활성화(인프라 소유자, 한 번만)** — 설계와 보안 모델은 [docs/adr/0007-shared-db-auto-migration.md](docs/adr/0007-shared-db-auto-migration.md) 참고.
 
-# 끝나면 바로 되돌린다
-notepad apps\api\.env   # DATABASE_URL 을 로컬 값으로 다시 바꾼다
-```
+1. 러너 PC(Windows, Docker Desktop 실행 중)에 GitHub Actions self-hosted 러너를 **전용 저권한 계정**으로 설치하고 라벨 `gabee-db-deploy`를 붙인다. Python 3.12+와 `pgvector/pgvector:pg16` 이미지(`docker pull`)가 필요하다. 이 라벨은 `deploy-shared-db.yml`에서만 쓴다.
+2. `gabee_migrator` 비밀번호는 **GitHub에 저장하지 않고** 러너 PC의 pgpass 파일(`192.168.0.44:5432:gabee:gabee_migrator:<비밀번호>`, 소유자만 읽기 가능)에만 둔다. 파일은 편집기로 직접 만들고 PowerShell 명령줄에 비밀번호를 입력하지 않는다.
+3. 공용 DB 서버(`pg_hba.conf`)에서 `gabee_migrator`는 러너 PC IP의 DB `gabee`만 허용하고, `family-secretary`에는 접속 권한이 없어야 한다. `gabee_app`에는 DDL(`public` 스키마 CREATE)이 없고, `gabee_migrator`가 만드는 새 테이블·시퀀스에 대한 기본 권한(`ALTER DEFAULT PRIVILEGES`)이 설정돼 있어야 한다(배포 후 점검이 확인한다).
+4. 저장소 변수(Settings → Variables)에 `SHARED_DB_BACKUP_DIR`(백업 폴더), `SHARED_DB_STATE_DIR`(로그·`HALT` 파일 폴더), `SHARED_DB_PGPASS`(pgpass 경로)를 설정한다.
+5. **단계적 활성화**: ① `SHARED_DB_DEPLOY_ENABLED=true`만 설정 → dry-run(백업·복원 검증·리허설까지, 공용 DB 미변경)으로 결과 확인 ② 문제가 없으면 `SHARED_DB_DEPLOY_APPLY=true` 추가 → 실제 적용. 즉시 끄려면 `SHARED_DB_DEPLOY_ENABLED`를 지운다.
+6. 실패하면 이후 배포가 멈춘다(`<STATE_DIR>\HALT`). 원인을 고친 뒤 HALT 파일을 지우고 Actions에서 `Deploy Shared DB`를 `Run workflow`(main)로 다시 실행한다. 자동 롤백은 하지 않는다 — 필요하면 백업(`<BACKUP_DIR>\gabee_pg16_deploy_*.dump`)으로 새 DB에 복원해 사람이 판단한다.
+
+백업은 날짜·시각과 리비전 범위가 들어간 파일(`gabee_pg16_deploy_<UTC시각>_<이전>-to-<이후>.dump` + `.sha256`)로 저장되고, 사람이 만든 기존 백업(`gabee_pg16.dump` 등 이름이 다른 파일)은 건드리지 않는다. 최근 14개만 보관하고 Git에는 올리지 않는다(`.gitignore`의 `*.dump`). 백업에는 공용 DB의 실제 데이터가 들어 있으므로 폴더 접근 권한을 소유자로 제한하고, 외부 클라우드 동기화 폴더에 두지 않는다.
 
 **리비전 확인(시점에 따라 달라짐)**: 2026-10-22 기준으로는 개인 로컬 Docker DB가 `355a1a748ec5`, 공용 DB가 `b6931fc30c66`에 있었지만, 이 값들은 **그 순간의 상태일 뿐**이다 — `main`에 새 리비전이 계속 추가되므로, 실제로 어떤 DB가 어느 리비전에 있는지는 항상 `alembic current`(연결된 DB 기준)나 `alembic heads`(코드 기준 최신)로 직접 확인하고, 이 문서나 다른 문서에 적힌 리비전 ID를 "지금의 최신"이라고 가정하지 않는다.
 
 **공용 DB 안전 규칙**
-- 공용 DB 스키마 변경(`alembic upgrade`/`downgrade`/`stamp`)은 **마이그레이션 담당자만 `gabee_migrator` 계정으로**, PR이 병합되고 검증된 뒤 **명시적 승인을 받아서만** 실행한다.
+- 공용 DB 스키마 변경(`alembic upgrade`/`downgrade`/`stamp`)을 사람이 직접 실행하지 않는다. `main`에서 CI를 통과한 커밋만 `Deploy Shared DB` 워크플로우가 `gabee_migrator`로 자동 적용한다(백업·복원 검증·리허설·사후 검증 포함). 파괴적 변경은 `destructive-approved` 표기가 있어야 한다.
 - 일반 FastAPI 실행에는 `gabee_app`을 쓴다. 이 계정은 DDL(테이블 생성·변경) 권한이 없지만, **데이터 CRUD 권한은 있다** — 즉 실수로 다른 팀원이 넣은 행을 지우거나 고칠 수 있는 위험은 여전히 남아 있으니 공용 DB의 데이터를 직접 조작하는 작업은 신중하게 한다.
 - `pytest`나 마이그레이션 실험은 공용 DB가 아니라 개인 로컬 Docker DB 또는 별도 격리 DB에서 한다.
 - 공용 DB를 테스트용으로 초기화·삭제하지 않는다.
 - 기존 MVP `family-secretary` DB는 어떤 경우에도 변경하지 않는다.
 - DB 비밀번호·`.env`·연결 문자열에 들어간 인증정보는 명령 이력·커밋·문서에 남기지 않는다.
 
-배경과 결정 이유는 [docs/adr/0005-shared-postgres-env.md](docs/adr/0005-shared-postgres-env.md) 참고.
+배경과 결정 이유는 [docs/adr/0005-shared-postgres-env.md](docs/adr/0005-shared-postgres-env.md), 자동 배포는 [docs/adr/0007-shared-db-auto-migration.md](docs/adr/0007-shared-db-auto-migration.md) 참고.
 
 ## 앱 (apps/mobile)
 
