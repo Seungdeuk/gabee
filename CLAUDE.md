@@ -17,7 +17,7 @@
 apps/mobile/src/app/(tabs)/   라우트. 화면 파일은 얇게 (조립만)
 apps/mobile/src/features/     기능별 코드. 탭 이름과 동일 (하이픈: ai-assistant)
 apps/mobile/src/shared/       공통 UI·훅·유틸, shared/api (서버 호출 공통)
-apps/mobile/src/theme/        색상·간격·글자 크기 토큰 (디자인 값은 여기에만 둔다: 크림 바탕, 브라운 글자, 꿀색·복숭아색 포인트)
+apps/mobile/src/theme/        색상·간격·글자 크기 토큰 (디자인 값은 여기에만 둔다: 크림 바탕, 브라운 글자, 꿀색·복숭아색 포인트). 디자인 파일 기준 공통 규칙은 `docs/contracts/ui.md`
 apps/mobile/assets/images/    가비 캐릭터(gabee-mascot.png)와 앱 아이콘
 apps/api/app/features/<기능>/  router.py, service.py, repository.py, schemas.py, models.py, tests/
 apps/api/app/shared/          auth, errors, config, db, llm
