@@ -60,7 +60,8 @@ class SettlementPayment(Base):
 
 
 class SubscriptionItem(Base):
-    """OTT·통신비 항목의 가족 할인 상태. 금액은 다루지 않는다."""
+    """OTT·통신비 항목과 가족 할인 상태. 월 금액·결제일은 사용자가 입력한 값만 저장하고,
+    할인 금액은 계산하지도 보장하지도 않는다. 삭제는 `deleted_at` 소프트 삭제다."""
 
     __tablename__ = "subscription_items"
 
@@ -70,6 +71,14 @@ class SubscriptionItem(Base):
     name: Mapped[str] = mapped_column(String(60))
     status: Mapped[str] = mapped_column(String(12), default="check")  # check | available | active
     sort_order: Mapped[int] = mapped_column(Integer, default=0)
+    carrier: Mapped[str | None] = mapped_column(
+        String(8), nullable=True
+    )  # skt | kt | lgu | mvno | other (통신비만)
+    monthly_fee: Mapped[int | None] = mapped_column(
+        Integer, nullable=True
+    )  # 사용자가 입력한 월 금액(원)
+    billing_day: Mapped[int | None] = mapped_column(Integer, nullable=True)  # 매월 결제일 1~31
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
 
 

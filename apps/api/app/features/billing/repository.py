@@ -72,8 +72,24 @@ def list_subscriptions(db: Session, group_id: str) -> list[SubscriptionItem]:
     return list(
         db.scalars(
             select(SubscriptionItem)
-            .where(SubscriptionItem.group_id == group_id)
+            .where(SubscriptionItem.group_id == group_id, SubscriptionItem.deleted_at.is_(None))
             .order_by(SubscriptionItem.sort_order)
+        )
+    )
+
+
+def has_subscriptions(db: Session, group_id: str) -> bool:
+    """삭제한 항목까지 포함해서 확인한다(다 지워도 기본 항목을 다시 만들지 않기 위해)."""
+    return (
+        db.scalar(select(SubscriptionItem.id).where(SubscriptionItem.group_id == group_id).limit(1))
+        is not None
+    )
+
+
+def max_subscription_order(db: Session, group_id: str) -> int:
+    return db.scalar(
+        select(func.coalesce(func.max(SubscriptionItem.sort_order), -1)).where(
+            SubscriptionItem.group_id == group_id
         )
     )
 
@@ -86,7 +102,9 @@ def add_subscriptions(db: Session, items: list[SubscriptionItem]) -> None:
 def get_subscription(db: Session, group_id: str, item_id: str) -> SubscriptionItem | None:
     return db.scalar(
         select(SubscriptionItem).where(
-            SubscriptionItem.id == item_id, SubscriptionItem.group_id == group_id
+            SubscriptionItem.id == item_id,
+            SubscriptionItem.group_id == group_id,
+            SubscriptionItem.deleted_at.is_(None),
         )
     )
 

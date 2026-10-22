@@ -4,6 +4,7 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 SubscriptionStatus = Literal["check", "available", "active"]  # 확인 필요 / 적용 가능 / 적용 중
+Carrier = Literal["skt", "kt", "lgu", "mvno", "other"]  # SKT / KT / LG U+ / 알뜰폰 / 기타
 FixedTag = Literal["parents", "children", "all"]
 TargetTag = Literal["parents", "children", "all", "custom"]  # custom: 직접 고르기
 
@@ -121,15 +122,33 @@ class SubscriptionOut(BaseModel):
     kind: Literal["ott", "telecom"]
     name: str
     status: SubscriptionStatus
+    carrier: Carrier | None = None
+    monthly_fee: int | None = None  # 사용자가 입력한 월 금액(원). 할인은 반영하지 않는다.
+    billing_day: int | None = None  # 매월 결제일
 
 
 class SubscriptionList(BaseModel):
     notice: str
     items: list[SubscriptionOut]
+    monthly_total: int  # 입력한 월 금액의 합(할인 미반영)
+
+
+class SubscriptionCreate(BaseModel):
+    kind: Literal["ott", "telecom"]
+    name: str = Field(min_length=1, max_length=60)
+    carrier: Carrier | None = None  # 통신비 항목만
+    monthly_fee: int | None = Field(default=None, ge=0, le=10_000_000)
+    billing_day: int | None = Field(default=None, ge=1, le=31)
 
 
 class SubscriptionPatch(BaseModel):
-    status: SubscriptionStatus
+    """보낸 필드만 바꾼다. 금액·결제일·통신사는 null 을 보내면 지운다."""
+
+    status: SubscriptionStatus | None = None
+    name: str | None = Field(default=None, min_length=1, max_length=60)
+    carrier: Carrier | None = None
+    monthly_fee: int | None = Field(default=None, ge=0, le=10_000_000)
+    billing_day: int | None = Field(default=None, ge=1, le=31)
 
 
 class AllowanceBudget(BaseModel):

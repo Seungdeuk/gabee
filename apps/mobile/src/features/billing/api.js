@@ -7,7 +7,7 @@ import { apiFetch } from "@/shared/api/client";
  * @typedef {Transfer & { id: string }} Payment
  * @typedef {{ month: string, balances: Balance[], transfers: Transfer[], completed: Payment[], unsettled_count: number, unsettled_total: number }} Settlement
  * @typedef {{ id: string, title: string, amount: number, date: string, category: string, paid_by: string, paid_by_name: string, split_among: string[], target_tag: "parents" | "children" | "all" | "custom", settled: boolean }} Expense
- * @typedef {{ id: string, kind: "ott" | "telecom", name: string, status: "check" | "available" | "active" }} Subscription
+ * @typedef {{ id: string, kind: "ott" | "telecom", name: string, status: "check" | "available" | "active", carrier: "skt" | "kt" | "lgu" | "mvno" | "other" | null, monthly_fee: number | null, billing_day: number | null }} Subscription
  * @typedef {{ id: string, amount: number, memo: string, date: string }} AllowanceUse
  * @typedef {{ child_id: string, name: string, month: string, budget: number | null, used: number, remaining: number, uses: AllowanceUse[] }} Allowance
  */
@@ -55,12 +55,26 @@ export async function getMembers() {
   return group.members;
 }
 
-/** @returns {Promise<{ notice: string, items: Subscription[] }>} */
+/** @returns {Promise<{ notice: string, items: Subscription[], monthly_total: number }>} 월 합계는 입력한 금액의 합(할인 미반영) */
 export const getSubscriptions = () => apiFetch("/billing/subscriptions");
 
-/** @param {string} id @param {Subscription["status"]} status @returns {Promise<Subscription>} */
-export const setSubscriptionStatus = (id, status) =>
-  apiFetch(`/billing/subscriptions/${id}`, { method: "PATCH", body: { status } });
+/**
+ * OTT·통신비 항목 추가. 월 금액·결제일은 사용자가 입력한 값만 저장한다(할인 금액은 계산하지 않는다).
+ * @param {{ kind: "ott" | "telecom", name: string, carrier?: Subscription["carrier"], monthly_fee?: number | null, billing_day?: number | null }} body
+ * @returns {Promise<Subscription>}
+ */
+export const createSubscription = (body) => apiFetch("/billing/subscriptions", { method: "POST", body });
+
+/**
+ * 보낸 필드만 바꾼다(status, name, carrier, monthly_fee, billing_day). 금액·결제일·통신사는 null 을 보내면 지운다.
+ * @param {string} id
+ * @param {Partial<Pick<Subscription, "status" | "name" | "carrier" | "monthly_fee" | "billing_day">>} patch
+ * @returns {Promise<Subscription>}
+ */
+export const updateSubscription = (id, patch) => apiFetch(`/billing/subscriptions/${id}`, { method: "PATCH", body: patch });
+
+/** 소프트 삭제. @param {string} id */
+export const deleteSubscription = (id) => apiFetch(`/billing/subscriptions/${id}`, { method: "DELETE" });
 
 /** @param {string} month @returns {Promise<Allowance[]>} */
 export const getAllowances = (month) => apiFetch(`/billing/allowances${monthQuery(month)}`);

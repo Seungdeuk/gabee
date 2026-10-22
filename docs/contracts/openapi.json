@@ -1445,6 +1445,64 @@
             }
           }
         }
+      },
+      "post": {
+        "tags": [
+          "billing"
+        ],
+        "summary": "Create Subscription",
+        "description": "OTT·통신비 항목 추가. 월 금액·결제일은 사용자가 입력한 값만 저장한다.",
+        "operationId": "create_subscription_billing_subscriptions_post",
+        "parameters": [
+          {
+            "name": "x-gyeot-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Gyeot-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SubscriptionCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SubscriptionOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
       }
     },
     "/billing/subscriptions/{item_id}": {
@@ -1452,8 +1510,9 @@
         "tags": [
           "billing"
         ],
-        "summary": "Set Subscription Status",
-        "operationId": "set_subscription_status_billing_subscriptions__item_id__patch",
+        "summary": "Update Subscription",
+        "description": "상태·이름·통신사·월 금액·결제일 중 보낸 것만 바꾼다.",
+        "operationId": "update_subscription_billing_subscriptions__item_id__patch",
         "parameters": [
           {
             "name": "item_id",
@@ -1501,6 +1560,56 @@
                 }
               }
             }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "billing"
+        ],
+        "summary": "Delete Subscription",
+        "description": "소프트 삭제: 항목은 목록에서 빠지고 행은 남는다.",
+        "operationId": "delete_subscription_billing_subscriptions__item_id__delete",
+        "parameters": [
+          {
+            "name": "item_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Item Id"
+            }
+          },
+          {
+            "name": "x-gyeot-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Gyeot-Token"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
           },
           "422": {
             "description": "Validation Error",
@@ -4467,6 +4576,74 @@
         ],
         "title": "SignupOut"
       },
+      "SubscriptionCreate": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "ott",
+              "telecom"
+            ],
+            "title": "Kind"
+          },
+          "name": {
+            "type": "string",
+            "maxLength": 60,
+            "minLength": 1,
+            "title": "Name"
+          },
+          "carrier": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "skt",
+                  "kt",
+                  "lgu",
+                  "mvno",
+                  "other"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Carrier"
+          },
+          "monthly_fee": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 10000000.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Monthly Fee"
+          },
+          "billing_day": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 31.0,
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Billing Day"
+          }
+        },
+        "type": "object",
+        "required": [
+          "kind",
+          "name"
+        ],
+        "title": "SubscriptionCreate"
+      },
       "SubscriptionList": {
         "properties": {
           "notice": {
@@ -4479,12 +4656,17 @@
             },
             "type": "array",
             "title": "Items"
+          },
+          "monthly_total": {
+            "type": "integer",
+            "title": "Monthly Total"
           }
         },
         "type": "object",
         "required": [
           "notice",
-          "items"
+          "items",
+          "monthly_total"
         ],
         "title": "SubscriptionList"
       },
@@ -4514,6 +4696,46 @@
               "active"
             ],
             "title": "Status"
+          },
+          "carrier": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "skt",
+                  "kt",
+                  "lgu",
+                  "mvno",
+                  "other"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Carrier"
+          },
+          "monthly_fee": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Monthly Fee"
+          },
+          "billing_day": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Billing Day"
           }
         },
         "type": "object",
@@ -4528,20 +4750,82 @@
       "SubscriptionPatch": {
         "properties": {
           "status": {
-            "type": "string",
-            "enum": [
-              "check",
-              "available",
-              "active"
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "check",
+                  "available",
+                  "active"
+                ]
+              },
+              {
+                "type": "null"
+              }
             ],
             "title": "Status"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 60,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "carrier": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "skt",
+                  "kt",
+                  "lgu",
+                  "mvno",
+                  "other"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Carrier"
+          },
+          "monthly_fee": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 10000000.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Monthly Fee"
+          },
+          "billing_day": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 31.0,
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Billing Day"
           }
         },
         "type": "object",
-        "required": [
-          "status"
-        ],
-        "title": "SubscriptionPatch"
+        "title": "SubscriptionPatch",
+        "description": "보낸 필드만 바꾼다. 금액·결제일·통신사는 null 을 보내면 지운다."
       },
       "Summary": {
         "properties": {

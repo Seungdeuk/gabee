@@ -32,8 +32,10 @@ from .schemas import (
     Settlement,
     SettleRequest,
     SettleTagOut,
+    SubscriptionCreate,
     SubscriptionList,
     SubscriptionOut,
+    SubscriptionPatch,
     Summary,
     Transfer,
 )
@@ -401,31 +403,110 @@ def undo_paid(db: Session, group_id: str, payment_id: str) -> Settlement:
 # ---- 구독·통신비 가족 할인 상태 ----
 
 
+MAX_SUBSCRIPTIONS = 30
+
+
 def _subscription_out(i: SubscriptionItem) -> SubscriptionOut:
-    return SubscriptionOut(id=i.id, kind=i.kind, name=i.name, status=i.status)
+    return SubscriptionOut(
+        id=i.id,
+        kind=i.kind,
+        name=i.name,
+        status=i.status,
+        carrier=i.carrier,
+        monthly_fee=i.monthly_fee,
+        billing_day=i.billing_day,
+    )
 
 
-def list_subscriptions(db: Session, group_id: str) -> SubscriptionList:
-    items = repo.list_subscriptions(db, group_id)
-    if not items:
-        items = [
+def _ensure_default_subscriptions(db: Session, group_id: str) -> None:
+    """처음 열 때 기본 항목을 만든다. 사용자가 다 지워도 다시 만들지 않는다."""
+    if repo.has_subscriptions(db, group_id):
+        return
+    repo.add_subscriptions(
+        db,
+        [
             SubscriptionItem(
                 id=uuid.uuid4().hex[:12], group_id=group_id, kind=k, name=n, sort_order=i
             )
             for i, (k, n) in enumerate(DEFAULT_SUBSCRIPTIONS)
-        ]
-        repo.add_subscriptions(db, items)
-    return SubscriptionList(notice=SUBSCRIPTION_NOTICE, items=[_subscription_out(i) for i in items])
+        ],
+    )
 
 
-def set_subscription_status(
-    db: Session, group_id: str, item_id: str, status: str
+def list_subscriptions(db: Session, group_id: str) -> SubscriptionList:
+    _ensure_default_subscriptions(db, group_id)
+    items = repo.list_subscriptions(db, group_id)
+    return SubscriptionList(
+        notice=SUBSCRIPTION_NOTICE,
+        items=[_subscription_out(i) for i in items],
+        monthly_total=sum(i.monthly_fee or 0 for i in items),
+    )
+
+
+def _check_carrier(kind: str, carrier: str | None) -> None:
+    if carrier is not None and kind != "telecom":
+        raise bad_request("invalid_carrier", "통신사는 통신비 항목에만 지정할 수 있어요")
+
+
+def _clean_name(name: str) -> str:
+    name = name.strip()
+    if not name:
+        raise bad_request("invalid_name", "이름을 입력해 주세요")
+    return name
+
+
+def create_subscription(db: Session, group_id: str, body: SubscriptionCreate) -> SubscriptionOut:
+    _ensure_default_subscriptions(db, group_id)
+    _check_carrier(body.kind, body.carrier)
+    if len(repo.list_subscriptions(db, group_id)) >= MAX_SUBSCRIPTIONS:
+        raise bad_request("too_many", f"항목은 {MAX_SUBSCRIPTIONS}개까지 만들 수 있어요")
+    item = repo.save(
+        db,
+        SubscriptionItem(
+            id=uuid.uuid4().hex[:12],
+            group_id=group_id,
+            kind=body.kind,
+            name=_clean_name(body.name),
+            carrier=body.carrier,
+            monthly_fee=body.monthly_fee,
+            billing_day=body.billing_day,
+            sort_order=repo.max_subscription_order(db, group_id) + 1,
+        ),
+    )
+    return _subscription_out(item)
+
+
+def update_subscription(
+    db: Session, group_id: str, item_id: str, body: SubscriptionPatch
 ) -> SubscriptionOut:
+    """보낸 필드만 바꾼다(금액·결제일·통신사는 null 을 보내면 지운다)."""
+    sent = body.model_fields_set
+    if not sent:
+        raise bad_request("empty_patch", "바꿀 내용을 보내 주세요")
     item = repo.get_subscription(db, group_id, item_id)
     if item is None:
         raise not_found("항목")
-    item.status, item.updated_at = status, datetime.now(UTC)
+    if "status" in sent and body.status is not None:
+        item.status = body.status
+    if "name" in sent and body.name is not None:
+        item.name = _clean_name(body.name)
+    if "carrier" in sent:
+        _check_carrier(item.kind, body.carrier)
+        item.carrier = body.carrier
+    if "monthly_fee" in sent:
+        item.monthly_fee = body.monthly_fee
+    if "billing_day" in sent:
+        item.billing_day = body.billing_day
+    item.updated_at = datetime.now(UTC)
     return _subscription_out(repo.save(db, item))
+
+
+def delete_subscription(db: Session, group_id: str, item_id: str) -> None:
+    item = repo.get_subscription(db, group_id, item_id)
+    if item is None:
+        raise not_found("항목")
+    item.deleted_at = datetime.now(UTC)
+    repo.save(db, item)
 
 
 # ---- 용돈 ----
