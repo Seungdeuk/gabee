@@ -9,6 +9,8 @@ import {
 import { Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 
+// 백그라운드 위치 작업은 앱이 깨어날 때도 등록돼 있어야 해서 전역에서 불러온다(동의한 사람만 켜진다)
+import "@/features/care/location/task";
 import { colors } from "@/theme";
 
 export default function RootLayout() {

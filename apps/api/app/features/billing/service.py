@@ -53,12 +53,24 @@ DEFAULT_SUBSCRIPTIONS = (
 )
 
 
-# 정산 대상 태그. 나눌 사람은 역할로 정한다. 규칙을 바꾸려면 여기만 고친다.
-FIXED_TAGS = (
-    ("parents", "부모님 대상", "부모님 몫을 자녀들이 나눠 내요", lambda m: m.role != "parent"),
-    ("children", "자녀 대상", "자녀끼리 나눠 내요", lambda m: m.role == "child"),
-    ("all", "가족 전체", "가족 모두가 나눠 내요", lambda m: True),
-)
+def _fixed_tags(members: list[User], minor_ids: list[str]):
+    """정산 대상 고정 태그와 태그별 나눌 사람. 규칙을 바꾸려면 여기만 고친다.
+    - 부모님 대상: 부모 역할이 아닌 구성원이 나눠 낸다.
+    - 자녀 대상: 미성년 자녀가 있으면 부모님이 부담하고, 없으면 성인 자녀(child)끼리 나눈다.
+    - 가족 전체: 모두."""
+    has_minor = any(m.id in minor_ids for m in members)
+    children = [m for m in members if m.role == ("parent" if has_minor else "child")]
+    children_desc = "미성년 자녀 몫은 부모님이 부담해요" if has_minor else "성인 자녀끼리 나눠 내요"
+    return (
+        (
+            "parents",
+            "부모님 대상",
+            "부모님 몫을 자녀들이 나눠 내요",
+            [m for m in members if m.role != "parent"],
+        ),
+        ("children", "자녀 대상", children_desc, children),
+        ("all", "가족 전체", "가족 모두가 나눠 내요", list(members)),
+    )
 
 
 REMINDER_DAYS = 5  # 월말 알림: 마지막 5일, 지난 달 지연 알림: 월초 5일
@@ -142,9 +154,12 @@ def delete_expense(db: Session, group_id: str, expense_id: str) -> None:
 # ---- 정산 ----
 
 
-def summary(db: Session, group_id: str, month: str) -> Summary:
-    """그 달 지출을 지출마다 '나눌 사람'끼리 정수 원으로 나눈 사람별 잔액. 합계는 항상 0이다."""
+def summary(db: Session, group_id: str, month: str, settled_only: bool = False) -> Summary:
+    """그 달 지출을 지출마다 '나눌 사람'끼리 정수 원으로 나눈 사람별 잔액. 합계는 항상 0이다.
+    settled_only=True 면 '정산하기'를 마친 지출만 센다(정산 화면). 기본은 미정산 지출까지 포함한 월 요약이다."""
     expenses = repo.list_month(db, group_id, month)
+    if settled_only:
+        expenses = [e for e in expenses if e.settled_at is not None]
     members = group_repo.members(db, group_id)
     ids = [m.id for m in members]
     paid = dict.fromkeys(ids, 0)
@@ -174,7 +189,7 @@ def summary(db: Session, group_id: str, month: str) -> Summary:
 
 def _remaining(db: Session, group_id: str, month: str):
     """송금 완료분을 반영한 남은 잔액. 보낸 사람은 잔액이 늘고 받은 사람은 줄어 합계는 그대로 0이다."""
-    base = summary(db, group_id, month)
+    base = summary(db, group_id, month, settled_only=True)
     remaining = {b.user_id: b.balance for b in base.balances}
     payments = repo.list_payments(db, group_id, month)
     for p in payments:
@@ -200,9 +215,12 @@ def settlement(db: Session, group_id: str, month: str) -> Settlement:
             amount=amount,
         )
 
+    unsettled = [e for e in repo.list_month(db, group_id, month) if e.settled_at is None]
     return Settlement(
         month=month,
         balances=base.balances,
+        unsettled_count=len(unsettled),
+        unsettled_total=sum(e.amount for e in unsettled),
         transfers=[transfer(*t) for t in minimal_transfers(remaining)],
         completed=[
             PaymentOut(id=p.id, **transfer(p.from_user_id, p.to_user_id, p.amount).model_dump())
@@ -215,10 +233,8 @@ def settle_tags(db: Session, group_id: str) -> list[SettleTagOut]:
     """고정 태그와, 태그를 고르면 기본으로 채워지는 나눌 사람."""
     members = group_repo.members(db, group_id)
     return [
-        SettleTagOut(
-            key=key, label=label, description=desc, participants=[m.id for m in members if pick(m)]
-        )
-        for key, label, desc, pick in FIXED_TAGS
+        SettleTagOut(key=key, label=label, description=desc, participants=[m.id for m in people])
+        for key, label, desc, people in _fixed_tags(members, _minor_ids(db, group_id))
     ]
 
 
@@ -235,8 +251,10 @@ def settle(db: Session, group_id: str, user_id: str, body: SettleRequest) -> Set
             raise bad_request("invalid_split", "나눌 사람은 가족 구성원이어야 해요")
         participants = [u for u in ids if u in set(body.participants)]
     else:
-        pick = next(f[3] for f in FIXED_TAGS if f[0] == body.tag)
-        participants = [m.id for m in members if pick(m)]
+        people = next(
+            f[3] for f in _fixed_tags(members, _minor_ids(db, group_id)) if f[0] == body.tag
+        )
+        participants = [m.id for m in people]
         if not participants:
             raise bad_request("no_participants", "이 태그에 해당하는 구성원이 없어요")
     if repo.list_payments(db, group_id, month):
@@ -267,21 +285,53 @@ def _manager_id(db: Session, group_id: str) -> str:
     return group_repo.get_group(db, group_id).owner_id
 
 
+def _minor_ids(db: Session, group_id: str) -> list[str]:
+    row = repo.get_settings(db, group_id)
+    return list(row.minor_ids or []) if row is not None else []
+
+
+def _ensure_can_manage(db: Session, group_id: str, user: User) -> None:
+    """정산 설정(담당자·미성년 표시) 변경은 지금 담당자나 그룹을 만든 사람만 할 수 있다."""
+    owner_id = group_repo.get_group(db, group_id).owner_id
+    if user.id not in (_manager_id(db, group_id), owner_id):
+        raise ApiError(403, "not_manager", "정산 담당자나 그룹을 만든 사람만 바꿀 수 있어요")
+
+
 def get_manager(db: Session, group_id: str, user: User) -> ManagerOut:
     manager_id = _manager_id(db, group_id)
-    name = next((m.name for m in group_repo.members(db, group_id) if m.id == manager_id), "")
-    return ManagerOut(manager_id=manager_id, manager_name=name, is_me=manager_id == user.id)
+    members = group_repo.members(db, group_id)
+    name = next((m.name for m in members if m.id == manager_id), "")
+    minors = [m.id for m in members if m.id in _minor_ids(db, group_id)]
+    return ManagerOut(
+        manager_id=manager_id, manager_name=name, is_me=manager_id == user.id, minor_ids=minors
+    )
 
 
 def set_manager(db: Session, group_id: str, user: User, new_id: str) -> ManagerOut:
     """담당자 변경은 지금 담당자나 그룹을 만든 사람만 할 수 있다."""
-    owner_id = group_repo.get_group(db, group_id).owner_id
-    if user.id not in (_manager_id(db, group_id), owner_id):
-        raise ApiError(403, "not_manager", "정산 담당자나 그룹을 만든 사람만 바꿀 수 있어요")
+    _ensure_can_manage(db, group_id, user)
     if new_id not in [m.id for m in group_repo.members(db, group_id)]:
         raise bad_request("invalid_manager", "정산 담당자는 가족 구성원이어야 해요")
     row = repo.get_settings(db, group_id) or BillingSettings(group_id=group_id, manager_id=new_id)
     row.manager_id, row.updated_at = new_id, datetime.now(UTC)
+    repo.save(db, row)
+    return get_manager(db, group_id, user)
+
+
+def set_minors(db: Session, group_id: str, user: User, user_ids: list[str]) -> ManagerOut:
+    """미성년 자녀 표시. 부모 역할이 아닌 구성원만 고를 수 있다. 이 표시가 있으면 '자녀 대상' 정산은 부모님이 부담한다."""
+    _ensure_can_manage(db, group_id, user)
+    members = group_repo.members(db, group_id)
+    allowed = {m.id for m in members if m.role != "parent"}
+    if any(u not in allowed for u in user_ids):
+        raise bad_request(
+            "invalid_minor", "미성년 표시는 부모 역할이 아닌 가족 구성원만 할 수 있어요"
+        )
+    row = repo.get_settings(db, group_id) or BillingSettings(
+        group_id=group_id, manager_id=_manager_id(db, group_id)
+    )
+    row.minor_ids = [m.id for m in members if m.id in set(user_ids)]
+    row.updated_at = datetime.now(UTC)
     repo.save(db, row)
     return get_manager(db, group_id, user)
 

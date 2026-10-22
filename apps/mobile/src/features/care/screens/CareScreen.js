@@ -53,7 +53,7 @@ function CareLive() {
       {section === "check" ? <DailyCheckTab notify={notify} /> : null}
       {section === "recommend" ? <RecommendTab notify={notify} /> : null}
       {section === "meal" ? <MealTab notify={notify} /> : null}
-      {section === "location" ? <LocationTab /> : null}
+      {section === "location" ? <LocationTab notify={notify} /> : null}
     </Screen>
   );
 }

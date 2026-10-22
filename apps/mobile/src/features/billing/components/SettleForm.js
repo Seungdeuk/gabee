@@ -18,12 +18,12 @@ import TagBadge from "./TagBadge";
  * 정산하기: 정산하는 사람이 지출을 고르고 대상 태그를 걸어 정산한다. 태그는 이 버튼을 누를 때 걸린다.
  * 기본은 고정 태그(부모님 대상·자녀 대상·가족 전체)이고, "직접 고르기"를 켜면 고정 태그로 채워진 인원을
  * 그대로 두고 사람을 더하거나 뺄 수 있다. 고정 태그로 돌아오는 버튼이 늘 보인다.
- * @param {{ month: string, notify: (text: string, isError?: boolean) => void, onSettled: () => Promise<void> | void }} props
+ * @param {{ month: string, notify: (text: string, isError?: boolean) => void, onSettled: () => Promise<void> | void, refreshKey?: number }} props
  */
-export default function SettleForm({ month, notify, onSettled }) {
+export default function SettleForm({ month, notify, onSettled, refreshKey }) {
   const loadExpenses = useCallback(() => getExpenses(month), [month]);
   const expenses = useResource(loadExpenses);
-  const tags = useResource(getSettleTags);
+  const tags = useResource(getSettleTags, refreshKey); // 미성년 표시가 바뀌면 태그별 나눌 사람도 바뀐다
   const members = useResource(getMembers);
 
   const [selected, setSelected] = useState([]); // 정산할 지출 id

@@ -49,10 +49,7 @@ MEAL_MENUS = {
     "dinner": ["미역국과 밥", "두부조림 정식", "채소 볶음밥", "북엇국", "된장찌개 정식"],
 }
 
-# 위치 확인은 아직 실제 GPS 를 쓰지 않는다. 항상 같은 예시 위치를 돌려준다.
-EXAMPLE_LOCATION = {
-    "place": "집 근처 공원 (예시)",
-    "lat": 37.5665,
-    "lng": 126.9780,
-    "notice": "예시 위치예요. 실제 GPS 가 아니에요.",
-}
+# 위치 공유 정책. 동의한 사람의 위치만 받고, 가족 구성원만 볼 수 있다.
+LOCATION_RETENTION_DAYS = 7  # 이보다 오래된 위치는 지운다
+LOCATION_MAX_POINTS = 50  # 한 번에 보낼 수 있는 위치 개수
+LOCATION_FUTURE_SKEW_MINUTES = 5  # 기기 시계 오차로 이만큼 미래인 시각까지는 받는다

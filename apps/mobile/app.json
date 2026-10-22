@@ -32,7 +32,17 @@
         }
       ],
       "expo-font",
-      "expo-web-browser"
+      "expo-web-browser",
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "가비가 내가 동의한 가족에게만 내 위치를 공유하려고 위치를 사용해요.",
+          "locationWhenInUsePermission": "가비가 내가 동의한 가족에게만 내 위치를 공유하려고 위치를 사용해요.",
+          "isAndroidBackgroundLocationEnabled": true,
+          "isAndroidForegroundServiceEnabled": true,
+          "isIosBackgroundLocationEnabled": true
+        }
+      ]
     ],
     "experiments": {
       "reactCompiler": true

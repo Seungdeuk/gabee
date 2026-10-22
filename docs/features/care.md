@@ -12,12 +12,19 @@
   - `at=HH:MM`을 주면 그 시각을 '지금'으로 본다(화면 테스트용).
 - 추천 `GET /care/recommendations`: 물, 산책, 컨디션, 영양제 규칙. 모델을 쓰지 않는다.
 - 식단 추천 `GET /care/meals`, `GET /care/meals/{meal}?index=`: 기록이 없는 끼니만, "다른 메뉴"는 `next_index`로 순환. 메뉴는 `care/config.py`.
-- 위치 `GET /care/location`: 실제 GPS 없이 예시 위치만 돌려주고 `is_example: true`와 안내 문구를 포함한다.
+- **위치 공유(실제 GPS, 개인정보)**: 동의한 사람만 위치를 보내고 같은 가족 구성원만 본다.
+  - 동의: 정본은 `users.location_consent_at`(없으면 미동의). 가입 API가 `location_consent`를 받고(`POST /family-group/users`), 이후 `GET·PUT /care/location/consent`로 바꾼다. 동의·철회 이력은 `location_consent_events`(좌표 없음)에 남는다. 두 경로 모두 `app/shared/location_consent.py` 한 함수를 쓴다.
+  - `POST /care/locations`(최대 50개): 동의하지 않았으면 403 `consent_required`. 보관 기간(7일)을 넘었거나 5분 넘게 미래인 점은 버리고, 쓸 때 보관 기간이 지난 위치를 함께 지운다.
+  - `GET /care/locations/latest`: 가족 구성원의 최신 위치. 동의하지 않은 사람은 좌표 없이 `sharing=false`.
+  - **동의를 철회하면 저장된 내 위치를 바로 지운다.** 좌표는 로그에 남기지 않고 외부 서비스로 보내지 않는다(역지오코딩·지도 호출 없음).
+  - 정책 값은 `care/config.py`(`LOCATION_RETENTION_DAYS` 등).
 - 기존 `/care/records`(종류별 하루 기록)는 그대로 두었다.
 - 테스트: `tests/test_care.py`, `tests/test_care_daily.py`. DB: Alembic 리비전 `9e28d84c1686`.
 
 ### 앱 (`apps/mobile/src/features/care`)
 - `CareScreen`: 데일리 체크·추천·식단·위치 4구역(`components/*Tab.js`), 서버 호출은 `api.js`.
+- 항목의 예정 시각은 글자 입력이 아니라 **휠 시간 선택기**(`shared/components/TimePicker.js`: 오전/오후·시·분(5분 단위)을 세로로 돌려 고르고, 칸을 눌러도 선택)로 정한다. 새 의존성 없이 웹·앱에서 동작하며 목록에는 "오전 7:30 예정"처럼 표시한다.
+- 위치 탭: 내 위치 공유 스위치(동의·철회), "지금 내 위치 보내기", 가족 최신 위치 목록. 기기에서는 `expo-location` + `expo-task-manager`로 **백그라운드에서 약 15분마다 또는 200m 이동 시** 보내고(`features/care/location/`), 웹·Expo Go에서는 앱을 열었을 때만 보낸다. 앱 설정(`app.json`)에 `expo-location` 플러그인(백그라운드 위치)을 넣었다.
 - 누락은 "미기록 · 누락" 크림색 배지로 보이고, 건강 이상이 아니라는 안내 문구를 함께 둔다.
 - 서버 주소(`EXPO_PUBLIC_API_URL`)가 없으면 기존 임시 데이터 화면(`CarePreview`)을 그대로 보여 준다.
 
@@ -34,4 +41,8 @@
 
 ## 남은 것
 - 로그인·가족 그룹 화면 연결(현재는 개발용 토큰), 실기기(Expo Go) 확인.
-- 실제 GPS 위치, 병원 일정·가족 요청·AI 안부.
+- **백그라운드 위치 수집은 이 개발 환경에서 검증하지 못했다.** Expo Go에서는 동작하지 않아 전용 개발 빌드(EAS)와 실기기가 필요하다. 백그라운드 작업은 로그인 화면이 붙기 전까지 `EXPO_PUBLIC_DEV_TOKEN`으로만 서버에 인증한다(앱이 꺼진 상태의 토큰 보관은 팀의 PR 4-F `expo-secure-store` 도입 뒤).
+- 가입 화면이 아직 없어 동의는 돌봄 탭에서 받는다. 가입 화면(PR 4-F)이 생기면 가입 API의 `location_consent`로 같은 동의를 받는다.
+- 출시 전 검토: 개인위치정보 수집·이용의 법적 요건(별도 동의, 만 14세 미만 보호자 동의, 사업자 신고 등)은 확인하지 못했다. Android `ACCESS_BACKGROUND_LOCATION`은 스토어 심사 대상이다.
+- 사용자가 여러 가족 그룹에 속하면 위치가 모든 그룹 구성원에게 보인다(동의는 사용자 단위).
+- 병원 일정·가족 요청·AI 안부.
