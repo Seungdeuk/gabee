@@ -9,11 +9,13 @@ def _family(client, family):
     mom = signup(client, "엄마", role="parent")
     client.post("/family-group/groups/join", json={"code": group["invite_code"]}, headers=mom)
     members = client.get("/family-group/groups/me", headers=a).json()["members"]
-    return a, mom, {m["name"]: m["id"] for m in members}
+    ids = {m["name"]: m["id"] for m in members}
+    return a, {"지민": a, "수진": b, "엄마": mom}, ids
 
 
-def _expense(client, headers, amount, payer, **extra):
-    body = {"title": "병원비", "amount": amount, "date": "2026-10-12", "paid_by": payer, **extra}
+def _expense(client, headers, amount, **extra):
+    """낸 사람은 요청한 사람(headers)이다."""
+    body = {"title": "병원비", "amount": amount, "date": "2026-10-12", **extra}
     r = client.post("/billing/expenses", json=body, headers=headers)
     assert r.status_code == 201, r.text
     return r.json()
@@ -27,7 +29,7 @@ def _settle(client, headers, ids, tag, participants=None):
 
 
 def test_fixed_tags_fill_participants_by_role(client, family):
-    a, _, ids = _family(client, family)
+    a, hdr, ids = _family(client, family)
     tags = {t["key"]: t for t in client.get("/billing/settlement/tags", headers=a).json()}
     assert set(tags) == {"parents", "children", "all"}
     assert set(tags["parents"]["participants"]) == {ids["지민"], ids["수진"]}  # 자녀들이 부담
@@ -37,8 +39,8 @@ def test_fixed_tags_fill_participants_by_role(client, family):
 
 
 def test_settle_with_fixed_tag_keeps_balances_summing_to_zero(client, family):
-    a, _, ids = _family(client, family)
-    e = _expense(client, a, 30001, ids["엄마"])  # 엄마가 낸 부모님 병원비
+    a, hdr, ids = _family(client, family)
+    e = _expense(client, hdr["엄마"], 30001)  # 엄마가 낸 부모님 병원비
     assert e["target_tag"] == "all"  # 정산하기 전에는 기본 가족 전체
     r = _settle(client, a, [e["id"]], "parents")
     assert r.status_code == 200, r.text
@@ -57,8 +59,8 @@ def test_settle_with_fixed_tag_keeps_balances_summing_to_zero(client, family):
 
 
 def test_custom_mode_uses_the_chosen_people(client, family):
-    a, _, ids = _family(client, family)
-    e = _expense(client, a, 9000, ids["수진"])
+    a, hdr, ids = _family(client, family)
+    e = _expense(client, hdr["수진"], 9000)
     r = _settle(client, a, [e["id"]], "custom", [ids["지민"], ids["엄마"]])
     s = r.json()
     bal = {b["name"]: b["balance"] for b in s["balances"]}
@@ -72,9 +74,9 @@ def test_custom_mode_uses_the_chosen_people(client, family):
 
 
 def test_fixed_tag_ignores_sent_participants_and_each_expense_can_differ(client, family):
-    a, _, ids = _family(client, family)
-    e1 = _expense(client, a, 3000, ids["엄마"])
-    e2 = _expense(client, a, 6000, ids["지민"])
+    a, hdr, ids = _family(client, family)
+    e1 = _expense(client, hdr["엄마"], 3000)
+    e2 = _expense(client, hdr["지민"], 6000)
     _settle(client, a, [e1["id"]], "parents", [ids["엄마"]])  # 고정 태그는 보낸 사람 목록을 무시
     _settle(client, a, [e2["id"]], "all")
     by_title = {
@@ -88,8 +90,8 @@ def test_fixed_tag_ignores_sent_participants_and_each_expense_can_differ(client,
 
 
 def test_settle_rejects_bad_input(client, family):
-    a, _, ids = _family(client, family)
-    e = _expense(client, a, 3000, ids["지민"])
+    a, hdr, ids = _family(client, family)
+    e = _expense(client, hdr["지민"], 3000)
     assert _settle(client, a, [e["id"]], "custom", []).json()["code"] == "empty_split"
     assert _settle(client, a, [e["id"]], "custom").json()["code"] == "empty_split"
     assert _settle(client, a, [e["id"]], "custom", ["nobody"]).json()["code"] == "invalid_split"
@@ -106,8 +108,8 @@ def test_settle_rejects_bad_input(client, family):
 
 
 def test_settle_is_locked_after_a_payment_is_marked(client, family):
-    a, _, ids = _family(client, family)
-    e = _expense(client, a, 6000, ids["엄마"])
+    a, hdr, ids = _family(client, family)
+    e = _expense(client, hdr["엄마"], 6000)
     s = _settle(client, a, [e["id"]], "all").json()
     t = s["transfers"][0]
     paid = client.post(
@@ -126,8 +128,8 @@ def test_settle_is_locked_after_a_payment_is_marked(client, family):
 
 
 def test_expense_created_with_a_subset_is_marked_custom(client, family):
-    a, _, ids = _family(client, family)
-    e = _expense(client, a, 4000, ids["지민"], split_among=[ids["지민"], ids["수진"]])
+    a, hdr, ids = _family(client, family)
+    e = _expense(client, hdr["지민"], 4000, split_among=[ids["지민"], ids["수진"]])
     assert e["target_tag"] == "custom"
-    full = _expense(client, a, 4000, ids["지민"], split_among=list(ids.values()))
+    full = _expense(client, hdr["지민"], 4000, split_among=list(ids.values()))
     assert full["target_tag"] == "all"

@@ -101,11 +101,9 @@ def test_expense_soft_delete_hides_it_and_keeps_row(client, family):
         assert row is not None and row.deleted_at is not None
 
 
-def test_expense_rejects_unknown_payer_and_empty_split(client, family):
+def test_expense_rejects_empty_split(client, family):
     a, _, _ = family
     body = {"title": "x", "amount": 1000, "date": "2026-10-12"}
-    r = client.post("/billing/expenses", json={**body, "paid_by": "nobody"}, headers=a)
-    assert r.json()["code"] == "invalid_payer"
     r = client.post("/billing/expenses", json={**body, "split_among": []}, headers=a)
     assert r.json()["code"] == "empty_split"
 
@@ -153,3 +151,24 @@ def test_subscription_status_change_and_notice(client, family):
     assert r.json()["status"] == "active"
     bad = client.patch(f"/billing/subscriptions/{item['id']}", json={"status": "free"}, headers=a)
     assert bad.status_code == 422
+
+
+def test_paid_by_is_always_the_logged_in_user_even_if_the_body_claims_another(client, family):
+    a, b, _ = family
+    ids = _ids(client, a)
+    body = {
+        "title": "대신 냈다고 주장",
+        "amount": 3000,
+        "date": "2026-10-12",
+        "paid_by": ids["지민"],
+    }
+    r = client.post("/billing/expenses", json=body, headers=b)  # 수진이 요청
+    assert r.status_code == 201
+    assert r.json()["paid_by"] == ids["수진"] and r.json()["paid_by_name"] == "수진"
+    s = client.get("/billing/summary", params={"month": "2026-10"}, headers=a).json()
+    assert {x["name"]: x["paid"] for x in s["balances"]} == {"지민": 0, "수진": 3000}
+
+
+def test_expense_request_schema_has_no_paid_by(client):
+    schema = client.get("/openapi.json").json()["components"]["schemas"]["ExpenseCreate"]
+    assert "paid_by" not in schema["properties"]

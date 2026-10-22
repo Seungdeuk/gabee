@@ -45,6 +45,7 @@ def _seed() -> None:
                 headers={"X-Gyeot-Token": t["token"]},
             )
         ids = {t["name"]: t["id"] for t in tokens}
+        by_name = {t["name"]: t for t in tokens}
         month = c.get("/billing/settlement", headers=owner).json()["month"]
         for title, amount, payer, split in (
             ("병원비", 32000, "지민", None),
@@ -58,10 +59,9 @@ def _seed() -> None:
                     "title": title,
                     "amount": amount,
                     "date": f"{month}-01",
-                    "paid_by": ids[payer],
                     "split_among": [ids[n] for n in split] if split else None,
                 },
-                headers=owner,
+                headers={"X-Gyeot-Token": by_name[payer]["token"]},  # 낸 사람은 요청한 사람
             )
         DEMO_USER_INFO.extend(tokens)
 

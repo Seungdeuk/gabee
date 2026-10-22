@@ -13,7 +13,6 @@ class ExpenseCreate(BaseModel):
     amount: int = Field(gt=0)
     date: _date
     category: str = "기타"
-    paid_by: str | None = None  # 비우면 요청한 사람
     split_among: list[str] | None = None  # 비우면 가족 전원
 
 

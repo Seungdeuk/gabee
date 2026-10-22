@@ -91,9 +91,6 @@ def _expense_out(e: Expense, names: dict[str, str], member_ids: list[str]) -> Ex
 def create(db: Session, group_id: str, user_id: str, body: ExpenseCreate) -> ExpenseOut:
     members = group_repo.members(db, group_id)
     ids = [m.id for m in members]
-    paid_by = body.paid_by or user_id
-    if paid_by not in ids:
-        raise bad_request("invalid_payer", "낸 사람은 가족 구성원이어야 해요")
     if body.split_among is None:
         split = ids
     else:
@@ -108,7 +105,7 @@ def create(db: Session, group_id: str, user_id: str, body: ExpenseCreate) -> Exp
         Expense(
             id=uuid.uuid4().hex[:12],
             group_id=group_id,
-            paid_by=paid_by,
+            paid_by=user_id,  # 요청 바디의 값은 받지 않는다: 로그인한 사용자가 낸 사람이다
             title=body.title.strip(),
             amount=body.amount,
             date=body.date.isoformat(),

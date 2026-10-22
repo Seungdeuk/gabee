@@ -149,7 +149,7 @@ async function expenseHtml() {
   <div class="card">
     <div class="field">항목<input id="exTitle" placeholder="예: 장보기" maxlength="120"></div>
     <div class="field">금액 (원)<input id="exAmount" type="number" min="1" step="1" inputmode="numeric"></div>
-    <div class="field">낸 사람<select id="exPayer">${grp.members.map((m) => `<option value="${m.id}" ${m.id === state.me.id ? 'selected' : ''}>${esc(m.name)}</option>`).join('')}</select></div>
+    <div class="notice">낸 사람은 위에서 고른 사용자(나)로 기록돼요.</div>
     <div class="field">나눌 사람<div class="checks">${grp.members.map((m) => `<label><input type="checkbox" class="exSplit" value="${m.id}" ${pick.includes(m.id) ? 'checked' : ''}>${esc(m.name)}</label>`).join('')}</div></div>
     <div class="field">날짜<input id="exDate" type="date" value="${month()}-${String(new Date().getDate()).padStart(2, '0')}"></div>
     <button class="btn full" id="exAdd">지출 추가</button>
@@ -282,7 +282,7 @@ document.addEventListener('click', (e) => {
     else if (b.id === 'exAdd') {
       const split = [...document.querySelectorAll('.exSplit:checked')].map((c) => c.value);
       state.splitPick = [...document.querySelectorAll('.exSplit')].map((c) => c.value);
-      await api('POST', '/billing/expenses', {title: val('exTitle'), amount: parseInt(val('exAmount'), 10), date: val('exDate'), paid_by: val('exPayer'), split_among: split});
+      await api('POST', '/billing/expenses', {title: val('exTitle'), amount: parseInt(val('exAmount'), 10), date: val('exDate'), split_among: split});
       state.splitPick = null; toast('지출을 추가했어요');
     } else if (d.delex) { await api('DELETE', '/billing/expenses/' + d.delex); toast('삭제했어요 (기록은 남아 있어요)'); }
     else if (d.budget) { await api('PUT', `/billing/allowances/${d.budget}`, {month: month(), budget: parseInt(val('bud-' + d.budget) || '0', 10)}); toast('예산을 저장했어요'); }

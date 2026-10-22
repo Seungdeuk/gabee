@@ -41,7 +41,7 @@ export const undoPaid = (paymentId) => apiFetch(`/billing/settlement/payments/${
 export const getExpenses = (month) => apiFetch(`/billing/expenses${monthQuery(month)}`);
 
 /**
- * @param {{ title: string, amount: number, date: string, paid_by: string, split_among: string[] }} body
+ * @param {{ title: string, amount: number, date: string }} body 낸 사람은 서버가 로그인한 사용자로 정한다
  * @returns {Promise<Expense>}
  */
 export const createExpense = (body) => apiFetch("/billing/expenses", { method: "POST", body });

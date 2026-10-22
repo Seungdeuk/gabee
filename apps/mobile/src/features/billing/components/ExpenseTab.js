@@ -9,26 +9,21 @@ import SectionTitle from "@/shared/components/SectionTitle";
 import useResource from "@/shared/hooks/useResource";
 import { colors, font } from "@/theme";
 
-import { createExpense, deleteExpense, getExpenses, getMembers } from "../api";
+import { createExpense, deleteExpense, getExpenses } from "../api";
 import { parseWon, won } from "../format";
 import TagBadge from "./TagBadge";
 
 /**
- * 지출 추가와 내역. 낸 사람을 고르고, 삭제는 소프트 삭제다.
+ * 지출 추가와 내역. 낸 사람은 로그인한 나로 서버가 정하고, 삭제는 소프트 삭제다.
  * 누구 몫으로 나눌지(대상 태그)는 정산 탭의 "정산하기"에서 정한다. 그 전까지는 가족 전체로 나눈다.
  * @param {{ month: string, notify: (text: string, isError?: boolean) => void }} props
  */
 export default function ExpenseTab({ month, notify }) {
   const loadList = useCallback(() => getExpenses(month), [month]);
   const list = useResource(loadList);
-  const members = useResource(getMembers);
 
   const [title, setTitle] = useState("");
   const [amount, setAmount] = useState("");
-  const [payer, setPayer] = useState(null);
-
-  const people = members.data ?? [];
-  const payerId = payer ?? people[0]?.id ?? null;
 
   const submit = async () => {
     const value = parseWon(amount);
@@ -36,7 +31,7 @@ export default function ExpenseTab({ month, notify }) {
     if (!(value > 0)) return notify("금액은 1원 이상의 정수로 입력해 주세요", true);
     const date = `${month}-${String(new Date().getDate()).padStart(2, "0")}`;
     try {
-      await createExpense({ title: title.trim(), amount: value, date, paid_by: payerId });
+      await createExpense({ title: title.trim(), amount: value, date });
       setTitle("");
       setAmount("");
       notify("지출을 추가했어요");
@@ -62,12 +57,7 @@ export default function ExpenseTab({ month, notify }) {
       <Card tone="white">
         <Field label="항목" value={title} onChangeText={setTitle} placeholder="예: 장보기" />
         <Field label="금액 (원)" value={amount} onChangeText={setAmount} placeholder="숫자만" keyboardType="numeric" />
-        <Text style={styles.label}>낸 사람</Text>
-        <View style={styles.chips}>
-          {people.map((m) => (
-            <Button key={m.id} small variant="secondary" label={m.name} a11yLabel={`낸 사람 ${m.name}`} selected={payerId === m.id} onPress={() => setPayer(m.id)} />
-          ))}
-        </View>
+        <Text style={styles.caption}>낸 사람은 로그인한 나로 기록돼요.</Text>
         <Text style={styles.caption}>{"누구 몫인지는 정산 탭의 \"정산하기\"에서 정해요."}</Text>
         <Button label="지출 추가" onPress={submit} />
       </Card>
@@ -99,9 +89,7 @@ export default function ExpenseTab({ month, notify }) {
 
 const styles = StyleSheet.create({
   wrap: { gap: 20 },
-  label: { fontSize: 14, fontWeight: "500", color: colors.text },
   caption: { ...font.caption, color: colors.textMuted },
-  chips: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
   muted: { ...font.caption, color: colors.textMuted, textAlign: "center", paddingVertical: 8 },
   right: { alignItems: "flex-end", gap: 6 },
   amount: { ...font.bodyStrong, fontWeight: "700", color: colors.text },

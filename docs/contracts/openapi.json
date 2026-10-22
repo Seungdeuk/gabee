@@ -2853,17 +2853,6 @@
             "title": "Category",
             "default": "기타"
           },
-          "paid_by": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Paid By"
-          },
           "split_among": {
             "anyOf": [
               {
