@@ -5,7 +5,7 @@ import { apiFetch } from "@/shared/api/client";
  * @typedef {{ user_id: string, name: string, paid: number, share: number, balance: number, remaining: number }} Balance
  * @typedef {{ from_user_id: string, from_name: string, to_user_id: string, to_name: string, amount: number }} Transfer
  * @typedef {Transfer & { id: string }} Payment
- * @typedef {{ month: string, balances: Balance[], transfers: Transfer[], completed: Payment[] }} Settlement
+ * @typedef {{ month: string, balances: Balance[], transfers: Transfer[], completed: Payment[], unsettled_count: number, unsettled_total: number }} Settlement
  * @typedef {{ id: string, title: string, amount: number, date: string, category: string, paid_by: string, paid_by_name: string, split_among: string[], target_tag: "parents" | "children" | "all" | "custom", settled: boolean }} Expense
  * @typedef {{ id: string, kind: "ott" | "telecom", name: string, status: "check" | "available" | "active" }} Subscription
  * @typedef {{ id: string, amount: number, memo: string, date: string }} AllowanceUse
@@ -93,12 +93,19 @@ export const settleExpenses = (body) => apiFetch("/billing/settlement/tag", { me
 
 /**
  * 정산 담당자(월말 알림을 받는 사람). 지정하지 않았으면 그룹을 만든 사람.
- * @returns {Promise<{ manager_id: string, manager_name: string, is_me: boolean }>}
+ * @returns {Promise<{ manager_id: string, manager_name: string, is_me: boolean, minor_ids: string[] }>}
  */
 export const getManager = () => apiFetch("/billing/settlement/manager");
 
 /** 담당자 변경: 지금 담당자나 그룹을 만든 사람만 할 수 있다. @param {string} userId */
 export const setManager = (userId) => apiFetch("/billing/settlement/manager", { method: "PUT", body: { user_id: userId } });
+
+/**
+ * 미성년 자녀 표시(정산 담당자·그룹을 만든 사람만). 표시가 있으면 '자녀 대상' 정산은 부모님이 부담한다.
+ * @param {string[]} userIds 미성년 자녀 id 들(부모 역할은 고를 수 없다)
+ */
+export const setMinors = (userIds) =>
+  apiFetch("/billing/settlement/minors", { method: "PUT", body: { user_ids: userIds } });
 
 // 개발용: 월말 알림을 확인할 때 오늘 날짜를 바꾼다(EXPO_PUBLIC_DEV_TODAY=YYYY-MM-DD). 비우면 실제 오늘.
 const DEV_TODAY = process.env.EXPO_PUBLIC_DEV_TODAY ?? "";

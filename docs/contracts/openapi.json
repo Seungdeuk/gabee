@@ -1154,6 +1154,66 @@
         }
       }
     },
+    "/billing/settlement/minors": {
+      "put": {
+        "tags": [
+          "billing"
+        ],
+        "summary": "Set Minors",
+        "description": "미성년 자녀 표시(정산 담당자·그룹을 만든 사람만). 있으면 '자녀 대상' 정산은 부모님이 부담한다.",
+        "operationId": "set_minors_billing_settlement_minors_put",
+        "parameters": [
+          {
+            "name": "x-gyeot-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Gyeot-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MinorsSet"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ManagerOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/billing/settlement/reminder": {
       "get": {
         "tags": [
@@ -3379,6 +3439,14 @@
           "is_me": {
             "type": "boolean",
             "title": "Is Me"
+          },
+          "minor_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Minor Ids",
+            "default": []
           }
         },
         "type": "object",
@@ -3544,6 +3612,22 @@
           "created_at"
         ],
         "title": "MessageOut"
+      },
+      "MinorsSet": {
+        "properties": {
+          "user_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "User Ids"
+          }
+        },
+        "type": "object",
+        "required": [
+          "user_ids"
+        ],
+        "title": "MinorsSet"
       },
       "PaymentCreate": {
         "properties": {
@@ -3990,6 +4074,16 @@
             },
             "type": "array",
             "title": "Completed"
+          },
+          "unsettled_count": {
+            "type": "integer",
+            "title": "Unsettled Count",
+            "default": 0
+          },
+          "unsettled_total": {
+            "type": "integer",
+            "title": "Unsettled Total",
+            "default": 0
           }
         },
         "type": "object",

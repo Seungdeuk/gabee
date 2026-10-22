@@ -13,6 +13,7 @@ from .schemas import (
     ExpenseOut,
     ManagerOut,
     ManagerSet,
+    MinorsSet,
     PaymentCreate,
     Reminder,
     Settlement,
@@ -110,6 +111,17 @@ def set_manager(
     db: Session = Depends(get_db),
 ) -> ManagerOut:
     return service.set_manager(db, group_id, user, body.user_id)
+
+
+@router.put("/settlement/minors", response_model=ManagerOut)
+def set_minors(
+    body: MinorsSet,
+    user=Depends(current_user),
+    group_id: str = Depends(current_group_id),
+    db: Session = Depends(get_db),
+) -> ManagerOut:
+    """미성년 자녀 표시(정산 담당자·그룹을 만든 사람만). 있으면 '자녀 대상' 정산은 부모님이 부담한다."""
+    return service.set_minors(db, group_id, user, body.user_ids)
 
 
 @router.get("/settlement/reminder", response_model=Reminder)
