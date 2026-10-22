@@ -1,7 +1,7 @@
 """billing subscription details
 
 Revision ID: 2661b06aa224
-Revises: c245f7ecc68d
+Revises: c3a9f21d7e54
 Create Date: 2026-10-22 18:30:00.000000
 
 구독·통신비 항목 관리: 통신사, 사용자가 입력한 월 금액, 매월 결제일, 소프트 삭제 시각.
@@ -16,7 +16,7 @@ from alembic import op
 
 # revision identifiers, used by Alembic.
 revision: str = "2661b06aa224"
-down_revision: str | Sequence[str] | None = "c245f7ecc68d"
+down_revision: str | Sequence[str] | None = "c3a9f21d7e54"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

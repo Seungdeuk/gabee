@@ -2,7 +2,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { Image } from "expo-image";
 import { useRouter } from "expo-router";
 import { useRef, useState } from "react";
-import { FlatList, KeyboardAvoidingView, Platform, Pressable, StyleSheet, Text, View } from "react-native";
+import { FlatList, KeyboardAvoidingView, Pressable, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import AppHeader from "@/shared/components/AppHeader";
@@ -61,7 +61,8 @@ export default function AiAssistantScreen() {
     <SafeAreaView style={styles.safe} edges={["top"]}>
       <AppHeader onNew={reset} onMore={() => router.push("/more")} />
 
-      <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === "ios" ? "padding" : undefined}>
+      {/* Android(SDK 54)는 화면 전체 모드라 키보드가 화면을 줄여 주지 않는다. 양쪽 모두 직접 피한다. */}
+      <KeyboardAvoidingView style={styles.flex} behavior="padding">
         <View style={styles.main}>
           {listening ? (
             <>

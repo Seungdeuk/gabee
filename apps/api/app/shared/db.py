@@ -1,9 +1,9 @@
 from collections.abc import Iterator
 from pathlib import Path
 
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine
 from sqlalchemy.engine import make_url
-from sqlalchemy.exc import OperationalError, ProgrammingError
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
 from .config import settings
@@ -20,6 +20,10 @@ def _make_engine(url: str):
         kwargs["connect_args"] = {"check_same_thread": False}
         if parsed.database and parsed.database != ":memory:":
             Path(parsed.database).parent.mkdir(parents=True, exist_ok=True)
+    else:
+        # DB 가 응답하지 않을 때 요청이 오래 붙잡히지 않게 하고, 재시작·배포로 끊긴 연결은 자동으로 버린다
+        kwargs["connect_args"] = {"connect_timeout": 5}
+        kwargs["pool_pre_ping"] = True
     return create_engine(url, **kwargs)
 
 
@@ -47,43 +51,28 @@ def import_all_models() -> None:
     from app.shared import location_consent as _consent  # noqa: F401
 
 
-def _current_alembic_head() -> str | None:
+def _script_directory():
     from alembic.config import Config
     from alembic.script import ScriptDirectory
 
     api_root = Path(__file__).resolve().parents[2]
     cfg = Config()
     cfg.set_main_option("script_location", str(api_root / "alembic"))
-    return ScriptDirectory.from_config(cfg).get_current_head()
-
-
-def _check_postgres_migrations() -> None:
-    """PostgreSQL 스키마는 Alembic 이 전담한다. 서버는 테이블을 만들지 않고
-    마이그레이션이 최신인지만 확인한다(자동으로 고치지 않음)."""
-    head = _current_alembic_head()
-    try:
-        with engine.connect() as conn:
-            current = conn.execute(text("SELECT version_num FROM alembic_version")).scalar()
-    except ProgrammingError:
-        current = None
-
-    if current != head:
-        safe_url = engine.url.render_as_string(hide_password=True)
-        raise RuntimeError(
-            f"DB 마이그레이션이 최신이 아닙니다 ({safe_url}, 현재: {current}, 최신: {head}). "
-            "`alembic upgrade head` 를 먼저 실행하세요."
-        )
+    return ScriptDirectory.from_config(cfg)
 
 
 def init_db() -> None:
-    """SQLite(테스트): 모델 테이블을 바로 만든다.
-    PostgreSQL: 테이블은 Alembic 이 관리하므로 마이그레이션이 적용됐는지만 확인한다."""
+    """SQLite(테스트·로컬): 모델 테이블을 바로 만든다.
+    PostgreSQL: 테이블은 Alembic 이 관리한다. DB 가 코드보다 뒤처졌거나 연결에 실패해도 서버는 시작하고,
+    스키마가 준비되지 않은 기능의 API 만 503 을 돌려준다(shared/schema.py, schema_gate.py)."""
     import_all_models()
-    try:
-        if engine.dialect.name == "sqlite":
+    if engine.dialect.name == "sqlite":
+        try:
             Base.metadata.create_all(engine)
-        else:
-            _check_postgres_migrations()
-    except OperationalError as exc:
-        safe_url = engine.url.render_as_string(hide_password=True)
-        raise RuntimeError(f"데이터베이스 연결에 실패했습니다 ({safe_url}): {exc}") from exc
+        except OperationalError as exc:
+            safe_url = engine.url.render_as_string(hide_password=True)
+            raise RuntimeError(f"데이터베이스 초기화에 실패했습니다 ({safe_url}): {exc}") from exc
+    from .schema import monitor
+
+    monitor.reset()
+    monitor.status(force=True)  # 시작 시 상태를 로그에 남긴다(실패해도 시작은 계속)

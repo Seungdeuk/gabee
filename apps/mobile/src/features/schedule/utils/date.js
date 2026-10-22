@@ -81,6 +81,14 @@ export function formatDateLong(key) {
 
 /**
  * @param {string} key
+ * @returns {string} 예: "2026년 10월 24일 토요일"
+ */
+export function formatDateWithYear(key) {
+  return `${fromDateKey(key).getFullYear()}년 ${formatDateLong(key)}`;
+}
+
+/**
+ * @param {string} key
  * @returns {string} 예: "10월 22일"
  */
 export function formatMonthDay(key) {
@@ -143,12 +151,24 @@ export function formatTime(time) {
 }
 
 /**
- * 카드에 쓰는 시간 범위. 종일이면 "종일", 시간이 없으면 빈 글자.
+ * 시간 범위를 오전·오후로 풀어 쓴 글자. 종일이면 "종일", 시간이 없으면 빈 글자.
  * @param {{ allDay: boolean, startTime: string | null, endTime: string | null }} item
- * @returns {string}
+ * @param {string} [separator] 시작과 끝 사이 글자
+ * @returns {string} 예: "오전 8:00 – 오후 4:00"
  */
-export function formatTimeRange({ allDay, startTime, endTime }) {
+export function formatTimeRange({ allDay, startTime, endTime }, separator = " ~ ") {
   if (allDay) return "종일";
   if (!startTime) return "";
-  return endTime ? `${formatTime(startTime)} ~ ${formatTime(endTime)}` : formatTime(startTime);
+  return endTime ? `${formatTime(startTime)}${separator}${formatTime(endTime)}` : formatTime(startTime);
+}
+
+/**
+ * 등록 화면에서 확정된 시간을 보여 주는 글자. 24시간 표기 옆에 오전·오후로 풀어 쓴 글자를 괄호로 덧붙여 어르신도 알아보기 쉽게 한다.
+ * @param {{ allDay: boolean, startTime: string | null, endTime: string | null }} item
+ * @returns {string} 예: "14:00 – 16:00 (오후 2:00 – 오후 4:00)". 종일이면 "종일", 시간이 없으면 빈 글자
+ */
+export function formatTimeConfirmed(item) {
+  if (item.allDay) return "종일";
+  if (!item.startTime) return "";
+  return `${formatClockRange(item, " – ")} (${formatTimeRange(item, " – ")})`;
 }

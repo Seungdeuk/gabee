@@ -33,7 +33,7 @@ docker compose run --rm api alembic upgrade head   # 스키마 적용(최초 1�
 docker compose up -d --build api              # API 기동 → http://localhost:8000/docs
 ```
 
-DB 는 `pgvector/pgvector:pg16` 이미지를 쓰고, `127.0.0.1` 에만 포트를 연다(외부 공개 안 함). **스키마(테이블 생성·변경)는 Alembic 이 전담하고, API 는 서버 시작 시 스키마를 바꾸지 않는다** — 마이그레이션이 안 되어 있으면 API가 명확한 에러를 내고 기동하지 않는다. 그래서 `db` → `alembic upgrade head` → `api` 순서를 지켜야 한다.
+DB 는 `pgvector/pgvector:pg16` 이미지를 쓰고, `127.0.0.1` 에만 포트를 연다(외부 공개 안 함). **스키마(테이블 생성·변경)는 Alembic 이 전담하고, API 는 서버 시작 시 스키마를 바꾸지 않는다.** 마이그레이션이 덜 된 DB 에서도 서버는 시작하되, 그 스키마가 필요한 기능의 API 만 `503`(`schema_not_ready`)을 돌려준다(아래 오류 항목, `GET /health/db`). 개인 DB 는 `db` → `alembic upgrade head` → `api` 순서로 맞춰 두면 전부 열린다.
 
 pgvector 설치 확인 (PowerShell, `.env` 의 값을 그대로 쓴다):
 
@@ -55,7 +55,7 @@ Docker 없이 `uvicorn`으로 서버만 띄우면서 이 Postgres에 붙이려�
 - **`.env`를 안 만들고 실행**: `POSTGRES_USER` 등이 빈 값이 되어 DB가 뜨지 않는다. `copy .env.example .env`를 먼저 한다.
 - **이미 `postgres:16`(pgvector 없음)로 떠 있던 볼륨을 쓰던 경우**: 볼륨은 그대로 유지된다. 이미지만 `pgvector/pgvector:pg16`으로 바뀌고, `alembic upgrade head`(기존에 테이블이 있었다면 `alembic stamp head` — 아래 참고)를 실행하면 확장이 켜진다. 데이터는 삭제되지 않는다.
 - **Windows 에서 `localhost:5432`로 접속이 멈추거나 느린 경우**: IPv6(`::1`)로 먼저 시도하다가 지연될 수 있다. `localhost` 대신 `127.0.0.1`을 쓴다(Docker는 `127.0.0.1`에만 바인딩하므로 어차피 이게 맞는 주소다).
-- **API가 "DB 마이그레이션이 최신이 아닙니다" 에러로 기동에 실패하는 경우**: `docker compose run --rm api alembic upgrade head`를 실행하지 않고 `api`를 먼저 띄운 경우다. 위 순서대로 다시 실행한다.
+- **일부 API 가 `503 schema_not_ready` / `db_unavailable` 을 돌려주는 경우**: 서버는 떠 있지만 DB 스키마가 그 기능의 코드보다 뒤처졌거나 DB 에 연결할 수 없는 상태다. `GET /health/db` 로 DB 리비전·코드 head·기능별 준비 상태를 확인한다(비밀번호·접속 주소는 나오지 않는다). 개인 DB 는 `docker compose run --rm api alembic upgrade head` 를, 공용 DB 는 마이그레이션 적용을 마치면 서버 재시작 없이 몇 초 안에 열린다. DB 가 코드보다 앞서 있어도(다른 브랜치의 새 마이그레이션) 실제 스키마가 맞는 기능은 계속 열리고, 맞지 않는 기능만 503 이다.
 - **`apps/api/alembic.ini`를 수정했는데 `UnicodeDecodeError`가 나는 경우**: Windows 한글 로캘(cp949)에서 이 파일에 한글(비-ASCII) 문자가 있으면 `configparser`가 깨진다. `alembic.ini`에는 영어만 쓴다.
 
 이 프로젝트의 DB/API 는 폴더명으로 컨테이너·볼륨·네트워크 이름이 접두사 처리되어, 다른 프로젝트의 PostgreSQL/Docker 볼륨과 자동으로 분리된다.

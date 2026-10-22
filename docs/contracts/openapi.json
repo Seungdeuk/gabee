@@ -2252,7 +2252,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ItemOut"
+                  "$ref": "#/components/schemas/app__features__care__schemas__ItemOut"
                 }
               }
             }
@@ -2874,6 +2874,324 @@
         }
       }
     },
+    "/ai-assistant/knowledge/items": {
+      "post": {
+        "tags": [
+          "ai-assistant",
+          "ai-assistant-knowledge"
+        ],
+        "summary": "Create Item",
+        "operationId": "create_item_ai_assistant_knowledge_items_post",
+        "parameters": [
+          {
+            "name": "x-gyeot-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Gyeot-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ItemIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/app__features__ai_assistant__knowledge__schemas__ItemOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "ai-assistant",
+          "ai-assistant-knowledge"
+        ],
+        "summary": "List Items",
+        "operationId": "list_items_ai_assistant_knowledge_items_get",
+        "parameters": [
+          {
+            "name": "kind_label",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Kind Label"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 50,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "x-gyeot-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Gyeot-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/app__features__ai_assistant__knowledge__schemas__ItemOut"
+                  },
+                  "title": "Response List Items Ai Assistant Knowledge Items Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/ai-assistant/knowledge/items/{item_id}": {
+      "get": {
+        "tags": [
+          "ai-assistant",
+          "ai-assistant-knowledge"
+        ],
+        "summary": "Get Item",
+        "operationId": "get_item_ai_assistant_knowledge_items__item_id__get",
+        "parameters": [
+          {
+            "name": "item_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Item Id"
+            }
+          },
+          {
+            "name": "x-gyeot-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Gyeot-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ItemDetailOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/ai-assistant/knowledge/ask": {
+      "post": {
+        "tags": [
+          "ai-assistant",
+          "ai-assistant-knowledge"
+        ],
+        "summary": "Ask",
+        "description": "knowledge 시험용 채팅: LLM 이 검색 함수를 불러 기록을 근거로 답한다.",
+        "operationId": "ask_ai_assistant_knowledge_ask_post",
+        "parameters": [
+          {
+            "name": "x-gyeot-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Gyeot-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AskIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AskOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/ai-assistant/knowledge/search": {
+      "post": {
+        "tags": [
+          "ai-assistant",
+          "ai-assistant-knowledge"
+        ],
+        "summary": "Search",
+        "operationId": "search_ai_assistant_knowledge_search_post",
+        "parameters": [
+          {
+            "name": "x-gyeot-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Gyeot-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SearchIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SearchOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/ai-assistant/chat": {
       "post": {
         "tags": [
@@ -3036,6 +3354,30 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/health/db": {
+      "get": {
+        "tags": [
+          "health"
+        ],
+        "summary": "Db Health",
+        "description": "DB 연결·리비전·스키마 준비 상태. 최신 상태를 다시 점검한다(짧은 간격 제한 있음).\n비밀번호·접속 주소·테이블/컬럼 이름은 응답에 싣지 않는다.",
+        "operationId": "db_health_health_db_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Db Health Health Db Get"
                 }
               }
             }
@@ -3209,6 +3551,59 @@
         ],
         "title": "AllowanceUseOut"
       },
+      "AskIn": {
+        "properties": {
+          "question": {
+            "type": "string",
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Question"
+          }
+        },
+        "type": "object",
+        "required": [
+          "question"
+        ],
+        "title": "AskIn"
+      },
+      "AskOut": {
+        "properties": {
+          "answer": {
+            "type": "string",
+            "title": "Answer"
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "ai",
+              "fallback"
+            ],
+            "title": "Source"
+          },
+          "sources": {
+            "items": {
+              "$ref": "#/components/schemas/SourceOut"
+            },
+            "type": "array",
+            "title": "Sources"
+          },
+          "tool_calls": {
+            "items": {
+              "$ref": "#/components/schemas/ToolCallOut"
+            },
+            "type": "array",
+            "title": "Tool Calls"
+          }
+        },
+        "type": "object",
+        "required": [
+          "answer",
+          "source",
+          "sources",
+          "tool_calls"
+        ],
+        "title": "AskOut"
+      },
       "Balance": {
         "properties": {
           "user_id": {
@@ -3268,6 +3663,14 @@
             "maxLength": 4000,
             "minLength": 1,
             "title": "Message"
+          },
+          "history": {
+            "items": {
+              "$ref": "#/components/schemas/ChatTurn"
+            },
+            "type": "array",
+            "maxItems": 10,
+            "title": "History"
           }
         },
         "type": "object",
@@ -3285,6 +3688,14 @@
           "source": {
             "type": "string",
             "title": "Source"
+          },
+          "sources": {
+            "items": {
+              "$ref": "#/components/schemas/ChatSource"
+            },
+            "type": "array",
+            "title": "Sources",
+            "default": []
           }
         },
         "type": "object",
@@ -3293,6 +3704,70 @@
           "source"
         ],
         "title": "ChatOut"
+      },
+      "ChatSource": {
+        "properties": {
+          "n": {
+            "type": "integer",
+            "title": "N"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "item_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Item Id"
+          },
+          "source_path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Path"
+          }
+        },
+        "type": "object",
+        "required": [
+          "n",
+          "title"
+        ],
+        "title": "ChatSource",
+        "description": "답이 근거로 쓴 기록. n 은 앱 출처 칩의 번호(1부터)."
+      },
+      "ChatTurn": {
+        "properties": {
+          "role": {
+            "type": "string",
+            "enum": [
+              "user",
+              "assistant"
+            ],
+            "title": "Role"
+          },
+          "text": {
+            "type": "string",
+            "maxLength": 4000,
+            "title": "Text"
+          }
+        },
+        "type": "object",
+        "required": [
+          "role",
+          "text"
+        ],
+        "title": "ChatTurn"
       },
       "ConsentOut": {
         "properties": {
@@ -3344,7 +3819,7 @@
           },
           "items": {
             "items": {
-              "$ref": "#/components/schemas/ItemOut"
+              "$ref": "#/components/schemas/app__features__care__schemas__ItemOut"
             },
             "type": "array",
             "title": "Items"
@@ -3806,6 +4281,86 @@
         "type": "object",
         "title": "HTTPValidationError"
       },
+      "HitOut": {
+        "properties": {
+          "item_id": {
+            "type": "string",
+            "title": "Item Id"
+          },
+          "kind_label": {
+            "type": "string",
+            "title": "Kind Label"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "snippet": {
+            "type": "string",
+            "title": "Snippet"
+          },
+          "page_label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Page Label"
+          },
+          "score": {
+            "type": "number",
+            "title": "Score"
+          },
+          "source_path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Path"
+          },
+          "occurred_on": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Occurred On"
+          },
+          "has_unread_parts": {
+            "type": "boolean",
+            "title": "Has Unread Parts"
+          },
+          "sensitivity": {
+            "type": "string",
+            "title": "Sensitivity"
+          }
+        },
+        "type": "object",
+        "required": [
+          "item_id",
+          "kind_label",
+          "title",
+          "snippet",
+          "page_label",
+          "score",
+          "source_path",
+          "occurred_on",
+          "has_unread_parts",
+          "sensitivity"
+        ],
+        "title": "HitOut"
+      },
       "ItemCreate": {
         "properties": {
           "name": {
@@ -3872,40 +4427,21 @@
         ],
         "title": "ItemCreate"
       },
-      "ItemOut": {
+      "ItemDetailOut": {
         "properties": {
           "id": {
             "type": "string",
             "title": "Id"
           },
-          "name": {
+          "kind_label": {
             "type": "string",
-            "title": "Name"
+            "title": "Kind Label"
           },
-          "mode": {
+          "title": {
             "type": "string",
-            "title": "Mode"
+            "title": "Title"
           },
-          "unit": {
-            "type": "string",
-            "title": "Unit"
-          },
-          "target": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Target"
-          },
-          "scheduled_time": {
-            "type": "string",
-            "title": "Scheduled Time"
-          },
-          "meal_type": {
+          "source_path": {
             "anyOf": [
               {
                 "type": "string"
@@ -3914,68 +4450,119 @@
                 "type": "null"
               }
             ],
-            "title": "Meal Type"
+            "title": "Source Path"
           },
-          "entry": {
+          "occurred_on": {
             "anyOf": [
               {
-                "$ref": "#/components/schemas/EntryOut"
+                "type": "string",
+                "format": "date"
               },
               {
                 "type": "null"
               }
-            ]
+            ],
+            "title": "Occurred On"
           },
-          "completed": {
+          "has_unread_parts": {
             "type": "boolean",
-            "title": "Completed",
-            "default": false
+            "title": "Has Unread Parts"
           },
-          "missing": {
-            "type": "boolean",
-            "title": "Missing",
-            "default": false
-          },
-          "skipped": {
-            "type": "boolean",
-            "title": "Skipped",
-            "default": false
-          },
-          "status": {
+          "sensitivity": {
             "type": "string",
-            "enum": [
-              "done",
-              "skipped",
-              "missing",
-              "due",
-              "upcoming"
-            ],
-            "title": "Status",
-            "default": "upcoming"
+            "title": "Sensitivity"
           },
-          "minutes_until": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Minutes Until"
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "body_md": {
+            "type": "string",
+            "title": "Body Md"
           }
         },
         "type": "object",
         "required": [
           "id",
-          "name",
-          "mode",
-          "unit",
-          "target",
-          "scheduled_time",
-          "meal_type"
+          "kind_label",
+          "title",
+          "source_path",
+          "occurred_on",
+          "has_unread_parts",
+          "sensitivity",
+          "created_at",
+          "body_md"
         ],
-        "title": "ItemOut"
+        "title": "ItemDetailOut"
+      },
+      "ItemIn": {
+        "properties": {
+          "kind_label": {
+            "type": "string",
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Kind Label"
+          },
+          "title": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Title"
+          },
+          "body_md": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Body Md"
+          },
+          "source_path": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 500
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Path"
+          },
+          "occurred_on": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Occurred On"
+          },
+          "sensitivity": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "normal",
+                  "sensitive"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sensitivity"
+          }
+        },
+        "type": "object",
+        "required": [
+          "kind_label",
+          "title",
+          "body_md"
+        ],
+        "title": "ItemIn",
+        "description": "전처리가 넘기는 기록. 문서는 마크다운 글, 글자 없는 사진은 분류 이름과 경로만 온다."
       },
       "JoinIn": {
         "properties": {
@@ -4902,6 +5489,84 @@
         "title": "Reminder",
         "description": "월말 정산 알림. 정산 담당자에게만 show=true 로 내려간다."
       },
+      "SearchIn": {
+        "properties": {
+          "query": {
+            "type": "string",
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Query"
+          },
+          "top_k": {
+            "type": "integer",
+            "maximum": 20.0,
+            "minimum": 1.0,
+            "title": "Top K",
+            "default": 5
+          },
+          "kind_label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Kind Label"
+          },
+          "date_from": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Date From"
+          },
+          "date_to": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Date To"
+          },
+          "include_sensitive": {
+            "type": "boolean",
+            "title": "Include Sensitive",
+            "default": true
+          }
+        },
+        "type": "object",
+        "required": [
+          "query"
+        ],
+        "title": "SearchIn"
+      },
+      "SearchOut": {
+        "properties": {
+          "hits": {
+            "items": {
+              "$ref": "#/components/schemas/HitOut"
+            },
+            "type": "array",
+            "title": "Hits"
+          }
+        },
+        "type": "object",
+        "required": [
+          "hits"
+        ],
+        "title": "SearchOut"
+      },
       "SettleRequest": {
         "properties": {
           "month": {
@@ -5048,6 +5713,67 @@
           "token"
         ],
         "title": "SignupOut"
+      },
+      "SourceOut": {
+        "properties": {
+          "n": {
+            "type": "integer",
+            "title": "N"
+          },
+          "item_id": {
+            "type": "string",
+            "title": "Item Id"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "kind_label": {
+            "type": "string",
+            "title": "Kind Label"
+          },
+          "page": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Page"
+          },
+          "source_path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Path"
+          },
+          "date": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Date"
+          }
+        },
+        "type": "object",
+        "required": [
+          "n",
+          "item_id",
+          "title",
+          "kind_label"
+        ],
+        "title": "SourceOut"
       },
       "SubscriptionCreate": {
         "properties": {
@@ -5434,6 +6160,25 @@
         ],
         "title": "TodaySummary"
       },
+      "ToolCallOut": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "input": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Input"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "input"
+        ],
+        "title": "ToolCallOut"
+      },
       "Transfer": {
         "properties": {
           "from_user_id": {
@@ -5575,6 +6320,175 @@
           "type"
         ],
         "title": "ValidationError"
+      },
+      "app__features__ai_assistant__knowledge__schemas__ItemOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "kind_label": {
+            "type": "string",
+            "title": "Kind Label"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "source_path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Path"
+          },
+          "occurred_on": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Occurred On"
+          },
+          "has_unread_parts": {
+            "type": "boolean",
+            "title": "Has Unread Parts"
+          },
+          "sensitivity": {
+            "type": "string",
+            "title": "Sensitivity"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "kind_label",
+          "title",
+          "source_path",
+          "occurred_on",
+          "has_unread_parts",
+          "sensitivity",
+          "created_at"
+        ],
+        "title": "ItemOut"
+      },
+      "app__features__care__schemas__ItemOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "mode": {
+            "type": "string",
+            "title": "Mode"
+          },
+          "unit": {
+            "type": "string",
+            "title": "Unit"
+          },
+          "target": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target"
+          },
+          "scheduled_time": {
+            "type": "string",
+            "title": "Scheduled Time"
+          },
+          "meal_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Meal Type"
+          },
+          "entry": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EntryOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "completed": {
+            "type": "boolean",
+            "title": "Completed",
+            "default": false
+          },
+          "missing": {
+            "type": "boolean",
+            "title": "Missing",
+            "default": false
+          },
+          "skipped": {
+            "type": "boolean",
+            "title": "Skipped",
+            "default": false
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "done",
+              "skipped",
+              "missing",
+              "due",
+              "upcoming"
+            ],
+            "title": "Status",
+            "default": "upcoming"
+          },
+          "minutes_until": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Minutes Until"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "mode",
+          "unit",
+          "target",
+          "scheduled_time",
+          "meal_type"
+        ],
+        "title": "ItemOut"
       }
     }
   }
