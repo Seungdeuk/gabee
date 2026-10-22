@@ -61,12 +61,48 @@ export async function sendMessage(text, history = []) {
   return { reply: res.reply, sources, draft: null };
 }
 
+const MOCK_ANALYZE_MS = 2500;
+const mockUploads = new Map(); // 서버가 없을 때 id → 올린 시각
+
 /**
- * 사진 한 장을 가족 기록으로 올린다. TODO: 자동 전송 동의 확인, 분류 결과 표시.
+ * 파일 한 개(사진·문서 등)를 가족 기록으로 올린다. 서버는 바로 받았다고 답하고 뒤에서 분석한다.
+ * 분석 결과는 getFileStatus 로 확인한다. 용량·네트워크 오류는 ApiError 메시지를 그대로 쓴다.
  * @param {{ uri: string, name?: string, type?: string }} file expo-image-picker 등에서 받은 파일
+ * @returns {Promise<{ id: string, filename: string, size?: number, status: string }>}
  */
-export function uploadPhoto(file) {
+export async function uploadFile(file) {
+  const filename = file.name ?? "photo.jpg";
+  if (!isApiConfigured()) {
+    await new Promise((resolve) => setTimeout(resolve, 600));
+    const id = `mock-${Date.now()}`;
+    mockUploads.set(id, Date.now());
+    return { id, filename, status: "received" };
+  }
   const form = new FormData();
-  form.append("file", { uri: file.uri, name: file.name ?? "photo.jpg", type: file.type ?? "image/jpeg" });
-  return apiFetch("/ai-assistant/photos", { method: "POST", body: form });
+  form.append("file", { uri: file.uri, name: filename, type: file.type ?? "image/jpeg" });
+  return apiFetch("/ai-assistant/files", { method: "POST", body: form });
 }
+
+/**
+ * 올린 파일의 분석 상태.
+ * status: received | analyzed(저장 완료) | needs_review(저장했지만 확인 필요) | failed(읽지 못함, message 에 이유)
+ * @param {string} id
+ * @returns {Promise<{ id: string, status: string, title?: string, kind_label?: string, description?: string, message?: string }>}
+ */
+export async function getFileStatus(id) {
+  if (!isApiConfigured()) {
+    const startedAt = mockUploads.get(id) ?? 0;
+    if (Date.now() - startedAt < MOCK_ANALYZE_MS) return { id, status: "received" };
+    return {
+      id,
+      status: "analyzed",
+      kind_label: "영수증",
+      title: "동대문마트 영수증",
+      description: "2026-10-15 · 2,950원",
+    };
+  }
+  return apiFetch(`/ai-assistant/files/${encodeURIComponent(id)}`);
+}
+
+/** 예전 이름. uploadFile 과 같다. */
+export const uploadPhoto = uploadFile;

@@ -24,14 +24,14 @@ import mascot from "../../../../assets/images/gabee-mascot.png";
  */
 export default function AiAssistantScreen() {
   const router = useRouter();
-  const { messages, phase, send, startListening, stopListening, editDraft, reset } = useChat();
+  const { messages, phase, send, sendPhoto, startListening, stopListening, editDraft, reset } = useChat();
   const listRef = useRef(null);
   const [atBottom, setAtBottom] = useState(true);
   const stick = useRef(true); // 맨 아래를 따라가는 중인지(사용자가 위로 올리면 멈춘다)
 
   const empty = messages.length === 0 && phase === "idle";
   const listening = phase === "listening";
-  const inputMode = phase === "thinking" ? "disabled" : listening ? "listening" : "idle";
+  const inputMode = phase === "thinking" || phase === "reading" ? "disabled" : listening ? "listening" : "idle";
 
   const scrollToEnd = () => {
     stick.current = true;
@@ -44,7 +44,7 @@ export default function AiAssistantScreen() {
   };
 
   const renderItem = ({ item, index }) => {
-    if (item.role === "user") return <UserBubble text={item.text} voice={item.voice} />;
+    if (item.role === "user") return <UserBubble text={item.text} voice={item.voice} imageUri={item.imageUri} />;
     const isReport = item.sources.length > 1; // 여러 기록을 모은 답에는 저장·복사 버튼을 붙인다
     return (
       <View style={styles.answer}>
@@ -100,6 +100,10 @@ export default function AiAssistantScreen() {
                     <View style={styles.footer}>
                       <ThinkingSteps />
                     </View>
+                  ) : phase === "reading" ? (
+                    <View style={styles.footer}>
+                      <Text style={styles.listening}>읽는 중…</Text>
+                    </View>
                   ) : listening ? (
                     <View style={[styles.footer, styles.centerRow]}>
                       <WaveBars />
@@ -131,7 +135,7 @@ export default function AiAssistantScreen() {
           {listening ? (
             <Text style={styles.note}>폰 기본 음성 인식으로 받아 적어요. 말이 끝나면 보내기를 눌러 주세요.</Text>
           ) : null}
-          <ChatInput mode={inputMode} onSend={send} onMic={listening ? stopListening : startListening} />
+          <ChatInput mode={inputMode} onSend={send} onAttach={sendPhoto} onMic={listening ? stopListening : startListening} />
         </View>
       </KeyboardAvoidingView>
     </SafeAreaView>
