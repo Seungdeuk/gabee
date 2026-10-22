@@ -6,15 +6,16 @@ import { colors } from "@/theme";
 
 /**
  * 하단 둥근 입력창.
- * - idle: 옅은 꿀색 바탕, 마이크(말로 묻기)와 음성 대화 버튼
- * - listening: 흰 바탕에 진한 테두리, 받아 적은 글자 옆에 복숭아색 보내기 버튼
+ * - idle: 옅은 꿀색 바탕, 마이크(말로 묻기)와 보내기 버튼(글자가 있을 때 켜진다)
+ * - listening: 흰 바탕에 진한 테두리, 마이크 자리가 닫기(×)로 바뀌고 보내기는 그대로
  * - disabled: 가비가 답하는 동안 입력을 막는다
  *
  * TODO: 음성 인식은 폰 키보드의 받아쓰기를 쓴다. 앱 안에서 직접 인식하려면 음성 인식 모듈을 붙인다.
+ * TODO: 음성 대화(말로 주고받기) 버튼은 기능이 생기면 다시 둔다. 지금은 마이크와 같은 동작이라 뺐다.
  *
- * @param {{ mode: "idle" | "listening" | "disabled", onSend: (text: string, options: { voice: boolean }) => void, onMic: () => void, onVoice?: () => void }} props
+ * @param {{ mode: "idle" | "listening" | "disabled", onSend: (text: string, options: { voice: boolean }) => void, onMic: () => void }} props
  */
-export default function ChatInput({ mode, onSend, onMic, onVoice }) {
+export default function ChatInput({ mode, onSend, onMic }) {
   const [text, setText] = useState("");
   const inputRef = useRef(null);
   const listening = mode === "listening";
@@ -50,23 +51,16 @@ export default function ChatInput({ mode, onSend, onMic, onVoice }) {
         accessibilityLabel="가비에게 묻기"
       />
 
-      {listening ? (
-        <Pressable onPress={submit} disabled={!canSend} accessibilityLabel="보내기" style={styles.hit}>
-          <View style={[styles.send, !canSend && styles.sendOff]}>
-            <Ionicons name="arrow-up" size={20} color={colors.text} />
-          </View>
-        </Pressable>
-      ) : null}
-
+      {/* 오른쪽 끝은 항상 보내기. 마이크(음성 입력 중에는 닫기)는 그 왼쪽에 둔다. */}
       <Pressable onPress={onMic} disabled={disabled} accessibilityLabel={listening ? "음성 입력 끝내기" : "말로 묻기"} style={styles.hit}>
         <Ionicons name={listening ? "close" : "mic-outline"} size={22} color={disabled ? colors.disabled : listening ? colors.textMuted : colors.text} />
       </Pressable>
 
-      {!listening ? (
-        <Pressable onPress={onVoice} disabled={disabled} accessibilityLabel="음성 대화" style={styles.hit}>
-          <Ionicons name="pulse-outline" size={22} color={disabled ? colors.disabled : colors.text} />
-        </Pressable>
-      ) : null}
+      <Pressable onPress={submit} disabled={!canSend} accessibilityLabel="보내기" style={styles.hit}>
+        <View style={[styles.send, !canSend && styles.sendOff]}>
+          <Ionicons name="arrow-up" size={20} color={colors.text} />
+        </View>
+      </Pressable>
     </View>
   );
 }

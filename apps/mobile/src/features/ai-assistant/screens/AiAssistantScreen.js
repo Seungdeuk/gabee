@@ -131,12 +131,7 @@ export default function AiAssistantScreen() {
           {listening ? (
             <Text style={styles.note}>폰 기본 음성 인식으로 받아 적어요. 말이 끝나면 보내기를 눌러 주세요.</Text>
           ) : null}
-          <ChatInput
-            mode={inputMode}
-            onSend={send}
-            onMic={listening ? stopListening : startListening}
-            onVoice={startListening}
-          />
+          <ChatInput mode={inputMode} onSend={send} onMic={listening ? stopListening : startListening} />
         </View>
       </KeyboardAvoidingView>
     </SafeAreaView>
