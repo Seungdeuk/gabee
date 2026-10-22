@@ -3,7 +3,8 @@ import uuid
 
 from sqlalchemy.orm import Session
 
-from app.shared.errors import ApiError, bad_request, not_found
+from app.shared.auth import ensure_group_member
+from app.shared.errors import bad_request, not_found
 
 from . import repository as repo
 from .models import Group, Invite, User
@@ -59,7 +60,8 @@ def join_group(db: Session, user: User, code: str) -> GroupOut:
 def my_group(db: Session, user: User) -> GroupOut:
     if not user.active_group_id:
         raise not_found("가족 그룹")
+    ensure_group_member(db, user.id, user.active_group_id)
     group = repo.get_group(db, user.active_group_id)
-    if group is None or not repo.is_member(db, group.id, user.id):
-        raise ApiError(403, "not_member", "이 그룹의 구성원이 아니에요")
+    if group is None:
+        raise not_found("가족 그룹")
     return group_out(db, group)

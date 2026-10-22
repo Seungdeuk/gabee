@@ -20,3 +20,15 @@ def test_care_record_overwrites_same_day_and_summarizes(client, family):
     }
     assert s["missing"] == ["medication", "walk"]
     assert client.put("/care/records", json={**body, "kind": "bogus"}, headers=a).status_code == 422
+
+
+def test_care_records_scoped_to_group(client, family, other_family):
+    a, _, _ = family
+    client.put(
+        "/care/records",
+        json={"subject": "어머니", "kind": "condition", "value": "보통이에요"},
+        headers=a,
+    )
+    assert client.get("/care/records", headers=other_family).json() == []
+    other_summary = client.get("/care/summary/today", headers=other_family).json()
+    assert other_summary["records"] == []
