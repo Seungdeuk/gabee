@@ -6,6 +6,7 @@ import Card from "@/shared/components/Card";
 import Field from "@/shared/components/Field";
 import SectionTitle from "@/shared/components/SectionTitle";
 import Tag from "@/shared/components/Tag";
+import TimePicker, { formatTime } from "@/shared/components/TimePicker";
 import useResource from "@/shared/hooks/useResource";
 import { colors, font } from "@/theme";
 
@@ -77,7 +78,7 @@ export default function DailyCheckTab({ notify }) {
             <View style={styles.grow}>
               <Text style={styles.name}>{item.name}</Text>
               <Text style={styles.caption}>
-                {item.scheduled_time} 예정{item.target ? ` · 목표 ${item.target}${item.unit}` : ""} · {entryText(item)}
+                {formatTime(item.scheduled_time)} 예정{item.target ? ` · 목표 ${item.target}${item.unit}` : ""} · {entryText(item)}
               </Text>
             </View>
             {item.missing ? (
@@ -142,7 +143,6 @@ function AddItemForm({ notify, onAdded }) {
 
   const submit = async () => {
     if (!name.trim()) return notify("이름을 입력해 주세요", true);
-    if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(time)) return notify("예정 시각은 HH:MM 형식으로 입력해 주세요", true);
     try {
       await addItem({
         name: name.trim(),
@@ -179,7 +179,7 @@ function AddItemForm({ notify, onAdded }) {
             <Field style={styles.grow} label="목표" value={target} onChangeText={setTarget} placeholder="숫자" keyboardType="numeric" />
           </View>
         ) : null}
-        <Field label="예정 시각 (HH:MM)" value={time} onChangeText={setTime} placeholder="12:00" />
+        <TimePicker label="예정 시각" value={time} onChange={setTime} />
         {mode === "yesno" ? (
           <>
             <Text style={styles.label}>끼니 (식단 추천용)</Text>

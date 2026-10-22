@@ -18,6 +18,7 @@
 
 ### 앱 (`apps/mobile/src/features/care`)
 - `CareScreen`: 데일리 체크·추천·식단·위치 4구역(`components/*Tab.js`), 서버 호출은 `api.js`.
+- 항목의 예정 시각은 글자 입력이 아니라 **휠 시간 선택기**(`shared/components/TimePicker.js`: 오전/오후·시·분(5분 단위)을 세로로 돌려 고르고, 칸을 눌러도 선택)로 정한다. 새 의존성 없이 웹·앱에서 동작하며 목록에는 "오전 7:30 예정"처럼 표시한다.
 - 누락은 "미기록 · 누락" 크림색 배지로 보이고, 건강 이상이 아니라는 안내 문구를 함께 둔다.
 - 서버 주소(`EXPO_PUBLIC_API_URL`)가 없으면 기존 임시 데이터 화면(`CarePreview`)을 그대로 보여 준다.
 
