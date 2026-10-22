@@ -1,7 +1,7 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request, Response
 from sqlalchemy.orm import Session
 
-from app.shared.auth import current_user
+from app.shared.auth import bearer_user, current_user
 from app.shared.db import get_db
 
 from . import service
@@ -13,7 +13,11 @@ from .schemas import (
     GroupOut,
     JoinIn,
     LoginIdAvailableOut,
+    LoginIn,
+    LoginOut,
+    RefreshIn,
     SignupOut,
+    TokenOut,
     UserCreate,
     UserOut,
 )
@@ -37,6 +41,32 @@ def signup_account(body: AccountSignupIn, db: Session = Depends(get_db)) -> Acco
 def login_id_available(login_id: str, db: Session = Depends(get_db)) -> LoginIdAvailableOut:
     """가입 화면의 아이디 중복 확인."""
     return service.login_id_available(db, login_id)
+
+
+@router.post("/auth/login", response_model=LoginOut)
+def login(body: LoginIn, request: Request, db: Session = Depends(get_db)) -> LoginOut:
+    """아이디·비밀번호로 로그인해 Access/Refresh Token 을 받는다."""
+    ip = request.client.host if request.client else "unknown"
+    return service.login(db, body, ip)
+
+
+@router.post("/auth/refresh", response_model=TokenOut)
+def refresh(body: RefreshIn, db: Session = Depends(get_db)) -> TokenOut:
+    """Refresh Token 으로 새 Access/Refresh Token 을 받는다(쓴 Refresh Token 은 즉시 폐기)."""
+    return service.refresh_session(db, body)
+
+
+@router.post("/auth/logout", status_code=204)
+def logout(body: RefreshIn, db: Session = Depends(get_db)) -> Response:
+    """이 세션의 Refresh Token 을 폐기한다. 이미 폐기됐거나 모르는 토큰이어도 204."""
+    service.logout(db, body)
+    return Response(status_code=204)
+
+
+@router.get("/auth/me", response_model=UserOut)
+def auth_me(user: User = Depends(bearer_user)) -> UserOut:
+    """Bearer(JWT) 로 인증한 현재 사용자(레거시 토큰은 받지 않는다)."""
+    return service.user_out(user)
 
 
 @router.get("/me", response_model=UserOut)

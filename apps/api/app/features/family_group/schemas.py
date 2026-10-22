@@ -36,6 +36,30 @@ class AccountSignupOut(BaseModel):
     user: UserOut
 
 
+class LoginIn(BaseModel):
+    login_id: str = Field(max_length=64)
+    password: str = Field(max_length=256)
+    device_label: str | None = Field(
+        default=None, max_length=60
+    )  # 세션 구분용 이름(예: "지민의 iPhone")
+
+
+class TokenOut(BaseModel):
+    access_token: str
+    refresh_token: str
+    token_type: str = "bearer"
+    expires_in: int  # Access Token 유효 시간(초)
+    refresh_expires_in: int  # Refresh Token 유효 시간(초)
+
+
+class LoginOut(TokenOut):
+    user: UserOut
+
+
+class RefreshIn(BaseModel):
+    refresh_token: str = Field(max_length=1024)
+
+
 class LoginIdAvailableOut(BaseModel):
     login_id: str  # 정규화(공백 제거·소문자)된 값
     available: bool
