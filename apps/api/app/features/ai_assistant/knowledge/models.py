@@ -1,10 +1,13 @@
 import uuid
 from datetime import UTC, date, datetime
 
-from sqlalchemy import JSON, Boolean, Date, DateTime, ForeignKey, Integer, String, Text
+from pgvector.sqlalchemy import Vector
+from sqlalchemy import JSON, Boolean, Date, DateTime, ForeignKey, Index, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.shared.db import Base
+
+EMBED_DIM = 384  # PostgreSQL 의 vector(N) 칸 크기. 파인튜닝 e5-small 의 벡터 길이와 같다
 
 
 def new_id() -> str:
@@ -34,10 +37,18 @@ class KnowledgeItem(Base):
 class KnowledgeChunk(Base):
     """기록을 쪽·슬라이드·길이로 자른 조각. 검색은 조각 단위로 하고 결과는 기록 단위로 묶는다.
 
-    embedding 은 지금은 JSON 숫자 목록이다. PostgreSQL 에서는 pgvector 의 vector(N) 칸으로 옮긴다
-    (supabase/migrations 에서 처리, 승인 후)."""
+    embedding 은 PostgreSQL 에서는 pgvector 의 vector(384), SQLite(테스트·로컬)에서는 JSON 숫자 목록이다.
+    PostgreSQL 에는 코사인 거리용 HNSW 인덱스가 붙는다(Alembic 리비전에서 만든다)."""
 
     __tablename__ = "knowledge_chunks"
+    __table_args__ = (
+        Index(
+            "ix_knowledge_chunks_embedding_hnsw",
+            "embedding",
+            postgresql_using="hnsw",
+            postgresql_ops={"embedding": "vector_cosine_ops"},
+        ).ddl_if(dialect="postgresql"),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     item_id: Mapped[str] = mapped_column(
@@ -47,5 +58,7 @@ class KnowledgeChunk(Base):
     seq: Mapped[int] = mapped_column(Integer)
     page_label: Mapped[str | None] = mapped_column(String(80), default=None)
     text: Mapped[str] = mapped_column(Text)
-    embedding: Mapped[list[float]] = mapped_column(JSON)
+    embedding: Mapped[list[float]] = mapped_column(
+        JSON().with_variant(Vector(EMBED_DIM), "postgresql")
+    )
     embedding_model: Mapped[str] = mapped_column(String(60), index=True)
