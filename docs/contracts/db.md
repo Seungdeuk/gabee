@@ -32,7 +32,7 @@ docker compose 의 개발용 PostgreSQL(`pgvector/pgvector:pg16` 이미지, `pgv
 | care_entries | care | 항목의 하루 기록. 같은 항목·날짜는 하나만 둔다 |
 | photos | ai_assistant | 앱이 올린 사진(파일은 `DATA_DIR/photos`에 저장) |
 | knowledge_items | ai_assistant/knowledge | 전처리가 넘긴 기록 한 건(분류 이름, 제목, 마크다운 전체, 원본 경로, 날짜, 민감도) |
-| knowledge_chunks | ai_assistant/knowledge | 기록을 쪽·슬라이드·길이로 자른 조각과 임베딩 벡터(PostgreSQL 은 pgvector ector(384) + 코사인 HNSW 인덱스, SQLite 는 JSON). Alembic 리비전 c3a9f21d7e54 |
+| knowledge_chunks | ai_assistant/knowledge | 기록을 쪽·슬라이드·길이로 자른 조각과 임베딩 벡터(PostgreSQL 은 pgvector `vector(384)` + 코사인 HNSW 인덱스, SQLite 는 JSON). Alembic 리비전 c3a9f21d7e54 |
 
 모든 기능 테이블은 `group_id`로 가족 그룹을 구분하고, 다른 그룹의 데이터는 볼 수 없다.
 
