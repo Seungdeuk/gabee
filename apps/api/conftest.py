@@ -35,3 +35,11 @@ def family(client):
         == 200
     )
     return a, b, group
+
+
+@pytest.fixture
+def other_family(client):
+    """family 와 전혀 무관한 다른 가족(구성원 한 명: 남). 교차-그룹 격리 테스트용."""
+    outsider = signup(client, "남")
+    client.post("/family-group/groups", json={"name": "다른 가족"}, headers=outsider)
+    return outsider

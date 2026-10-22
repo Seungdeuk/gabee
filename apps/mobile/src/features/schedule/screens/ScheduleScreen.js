@@ -1,60 +1,169 @@
 import { Ionicons } from "@expo/vector-icons";
-import { Pressable, StyleSheet, Text } from "react-native";
+import { useState } from "react";
+import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 
-import Card from "@/shared/components/Card";
-import ListItem from "@/shared/components/ListItem";
-import Screen from "@/shared/components/Screen";
-import SectionTitle from "@/shared/components/SectionTitle";
-import { colors, font } from "@/theme";
+import { colors, font, radius, spacing } from "@/theme";
 
-import { events } from "../mock";
+import ChatInputBar from "../components/ChatInputBar";
+import DaySection from "../components/DaySection";
+import SuggestionCard from "../components/SuggestionCard";
+import TogetherRow from "../components/TogetherRow";
+import WeekStrip from "../components/WeekStrip";
+import { toggleChecked, useScheduleItems } from "../store";
+import { MOCK_ADD, MOCK_CARRY, pickAppointmentCard, pickTodoCard } from "../suggestions";
+import { addDays, formatDateLong, formatMonthDay, todayKey } from "../utils/date";
 
-/** 일정 탭: 가족 공동 일정 목록. */
+const TOGETHER_SAMPLES = ["장 같이 봐줘", "병원 같이 가줘"];
+
+/**
+ * 일정 탭 메인: 헤더 + 주간 스트립 / 오늘·내일 / 함께하기 / 먼저 권해드려요 / 채팅 입력.
+ * 달력·등록·상세·같이·채팅으로 가는 이동은 각 화면을 만들 때 연결한다.
+ */
 export default function ScheduleScreen() {
-  return (
-    <Screen
-      title="일정"
-      subtitle="함께하는 하루를 챙겨요"
-      right={
-        <Pressable accessibilityLabel="일정 추가" style={styles.add}>
-          <Ionicons name="add" size={24} color={colors.text} />
-        </Pressable>
-      }
-    >
-      <SectionTitle title="오늘과 내일 일정" action="전체 보기" />
-      <Card tone="white">
-        {events.map((event) => (
-          <ListItem
-            key={event.id}
-            icon={event.icon}
-            tone={event.tone}
-            title={`${event.when} · ${event.title}`}
-            subtitle={event.note}
-          />
-        ))}
-      </Card>
+  const items = useScheduleItems();
+  const today = todayKey();
+  const tomorrow = addDays(today, 1);
 
-      <Card tone="orange">
-        <Text style={styles.cardTitle}>확인이 필요한 일 1건</Text>
-        <Text style={styles.cardSub}>10.11 저녁 약 복용 여부 미확인. 미확인은 미복용을 뜻하지 않아요.</Text>
-      </Card>
-    </Screen>
+  // "나중에"를 누른 카드는 그대로 남고, 새로고침하면 다른 항목으로 바뀌거나 사라진다.
+  const [later, setLater] = useState([]);
+  const [skipped, setSkipped] = useState([]);
+  const [carryDone, setCarryDone] = useState([]);
+
+  const appointmentCard = pickAppointmentCard(items, today, skipped);
+  const todoCard = pickTodoCard(items, today, MOCK_CARRY, carryDone, skipped);
+  const showAdd = !skipped.includes(MOCK_ADD.id);
+  const addLater = (id) => setLater((prev) => [...prev, id]);
+  const confirmTodo = ({ type, id }) => (type === "todo" ? toggleChecked(id) : setCarryDone((prev) => [...prev, id]));
+
+  return (
+    <SafeAreaView style={styles.safe} edges={["top"]}>
+      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+        <View style={styles.body}>
+          <View style={styles.section}>
+            <View style={styles.head}>
+              <View style={styles.headText}>
+                <Text style={styles.greeting}>바쁜 날도, 여유로운 날도</Text>
+                <Text style={styles.title} accessibilityRole="header">
+                  오늘도 차근차근
+                </Text>
+              </View>
+              <Pressable accessibilityRole="button" accessibilityLabel="달력 열기" style={styles.plus}>
+                <Ionicons name="add" size={28} color={colors.text} />
+              </Pressable>
+            </View>
+            <WeekStrip selected={today} markedDates={new Set(items.map((item) => item.date))} />
+          </View>
+
+          <View style={styles.section}>
+            <Text style={styles.heading}>{formatDateLong(today)}</Text>
+            <DaySection
+              label="오늘"
+              items={items.filter((item) => item.date === today)}
+              onToggleItem={toggleChecked}
+            />
+            <DaySection
+              label={`내일 · ${formatMonthDay(tomorrow)}`}
+              items={items.filter((item) => item.date === tomorrow)}
+              onToggleItem={toggleChecked}
+            />
+            <Pressable style={styles.addButton} accessibilityRole="button">
+              <Text style={styles.addText}>+ 약속 · 할 일 추가하기</Text>
+            </Pressable>
+          </View>
+
+          <View style={styles.section}>
+            <Text style={styles.heading}>함께하기</Text>
+            <TogetherRow samples={TOGETHER_SAMPLES} />
+          </View>
+
+          <View style={styles.section}>
+            <View style={styles.caption}>
+              <Text style={styles.heading}>먼저 권해드려요</Text>
+              <Pressable
+                onPress={() => setSkipped(later)}
+                accessibilityRole="button"
+                accessibilityLabel="새로고침"
+                style={styles.refresh}
+              >
+                <Ionicons name="refresh" size={18} color={colors.text} />
+              </Pressable>
+            </View>
+            <View style={styles.feed}>
+              {appointmentCard ? (
+                <SuggestionCard
+                  text={appointmentCard.text}
+                  primary={appointmentCard.label}
+                  secondary={appointmentCard.itemId ? "나중에" : undefined}
+                  onPrimary={() => toggleChecked(appointmentCard.itemId)}
+                  onSecondary={() => addLater(appointmentCard.itemId)}
+                />
+              ) : null}
+              {todoCard ? (
+                <SuggestionCard
+                  text={todoCard.text}
+                  primary={todoCard.label}
+                  secondary={todoCard.laterLabel}
+                  onPrimary={() => confirmTodo(todoCard.target)}
+                  onSecondary={() => addLater(todoCard.target.id)}
+                />
+              ) : null}
+              {showAdd ? (
+                <SuggestionCard
+                  text={MOCK_ADD.text}
+                  primary="추가"
+                  secondary="나중에"
+                  onSecondary={() => addLater(MOCK_ADD.id)}
+                />
+              ) : null}
+            </View>
+            <Text style={styles.notice}>제안은 참고용이에요. 내용을 확인 후 저장해 주세요 📝</Text>
+          </View>
+
+          <ChatInputBar />
+        </View>
+      </ScrollView>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  add: {
-    width: 44,
-    height: 44,
+  safe: { flex: 1, backgroundColor: colors.background },
+  content: { paddingBottom: spacing.xxl },
+  body: { paddingHorizontal: spacing.xxl, paddingTop: spacing.xl, gap: 28 },
+  section: { gap: spacing.md },
+  head: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", gap: spacing.md },
+  headText: { flex: 1 },
+  greeting: { ...font.caption, color: colors.textMuted },
+  title: { ...font.page, color: colors.text, marginTop: 2 },
+  plus: {
+    width: 48,
+    height: 48,
+    borderRadius: radius.button,
     alignItems: "center",
     justifyContent: "center",
+    backgroundColor: colors.peach,
   },
-  cardTitle: {
-    ...font.cardTitle,
-    color: colors.text,
+  heading: { ...font.title, color: colors.text },
+  addButton: {
+    minHeight: 56,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: radius.button,
+    backgroundColor: colors.peach,
   },
-  cardSub: {
-    ...font.body,
-    color: colors.textSub,
+  addText: { fontSize: 16, fontWeight: "700", color: colors.text },
+  caption: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  refresh: {
+    width: 32,
+    height: 32,
+    borderRadius: radius.md,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: colors.card,
+    borderWidth: 1,
+    borderColor: colors.border,
   },
+  feed: { gap: 10 },
+  notice: { ...font.caption, color: colors.textMuted, textAlign: "center" },
 });

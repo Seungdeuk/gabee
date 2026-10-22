@@ -31,3 +31,13 @@ def test_photo_upload_rules(client, family):
     assert [p["filename"] for p in client.get("/ai-assistant/photos", headers=b).json()] == [
         "a.jpg"
     ]
+
+
+def test_photos_scoped_to_group(client, family, other_family):
+    a, _, _ = family
+    client.post(
+        "/ai-assistant/photos",
+        files={"file": ("a.jpg", b"\xff\xd8\xff" + b"0" * 20, "image/jpeg")},
+        headers=a,
+    )
+    assert client.get("/ai-assistant/photos", headers=other_family).json() == []

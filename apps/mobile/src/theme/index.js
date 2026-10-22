@@ -56,19 +56,23 @@ export const radius = {
   pill: 999,
 };
 
-// 로고(Ga + Bee)에 쓰는 글꼴 이름. 앱을 시작할 때 app/_layout.js 에서 불러온다.
+// 로고(Ga + Bee)에 쓰는 글꼴 이름과 본문 글꼴(Noto Sans KR). 앱을 시작할 때 app/_layout.js 에서 불러온다.
 export const fonts = {
   logo: "Fredoka_600SemiBold",
+  regular: "NotoSansKR_400Regular",
+  medium: "NotoSansKR_500Medium",
+  semiBold: "NotoSansKR_600SemiBold",
+  bold: "NotoSansKR_700Bold",
 };
 
 export const font = {
-  h1: { fontSize: 24, lineHeight: 34, fontWeight: "700" },
-  page: { fontSize: 26, fontWeight: "700" },
-  title: { fontSize: 20, fontWeight: "700" },
-  section: { fontSize: 17, fontWeight: "700" },
-  cardTitle: { fontSize: 16, fontWeight: "700" },
-  body: { fontSize: 15, lineHeight: 24 },
-  bodyStrong: { fontSize: 15, fontWeight: "600" },
-  caption: { fontSize: 13, lineHeight: 20 },
-  tab: { fontSize: 11 },
+  h1: { fontSize: 24, lineHeight: 34, fontFamily: fonts.bold },
+  page: { fontSize: 26, fontFamily: fonts.bold },
+  title: { fontSize: 20, fontFamily: fonts.bold },
+  section: { fontSize: 17, fontFamily: fonts.bold },
+  cardTitle: { fontSize: 16, fontFamily: fonts.bold },
+  body: { fontSize: 15, lineHeight: 24, fontFamily: fonts.regular },
+  bodyStrong: { fontSize: 15, fontFamily: fonts.semiBold },
+  caption: { fontSize: 13, lineHeight: 20, fontFamily: fonts.regular },
+  tab: { fontSize: 11, fontFamily: fonts.regular },
 };
