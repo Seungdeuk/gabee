@@ -1,5 +1,7 @@
 """가입, 가족 그룹, 초대 코드, 토큰 검사."""
 
+from app.features.family_group.models import GroupMember, Invite
+from app.shared.db import SessionLocal
 from tests.helpers import signup
 
 
@@ -42,3 +44,24 @@ def test_group_features_need_a_group(client):
     for path in ("/family-chat/messages", "/schedule/events", "/billing/expenses", "/care/records"):
         r = client.get(path, headers=a)
         assert r.status_code == 400 and r.json()["code"] == "no_group", path
+
+
+def test_create_group_assigns_invite_id_and_owner_role(client):
+    """PR 4-A 회귀 테스트: invites.id 가 비어 있어도(기존 호출부 그대로) INSERT 가 성공하고
+    (ORM default=_uid), 그룹 생성자는 group_members.role='owner' 로 저장돼야 한다
+    (repository.add_group() 이 명시적으로 role="owner" 를 넘기는지)."""
+    a = signup(client, "지민")
+    me = client.get("/family-group/me", headers=a).json()
+    g = client.post("/family-group/groups", json={"name": "우리 가족"}, headers=a).json()
+    assert g["invite_code"] and len(g["invite_code"]) >= 8
+
+    db = SessionLocal()
+    try:
+        invite = db.query(Invite).filter_by(group_id=g["id"]).one()
+        assert invite.id is not None and len(invite.id) > 0
+
+        membership = db.get(GroupMember, (g["id"], me["id"]))
+        assert membership is not None
+        assert membership.role == "owner"
+    finally:
+        db.close()

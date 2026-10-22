@@ -173,6 +173,13 @@ invites 1───* invite_attempts (invite_id FK nullable, 원문 코드 비저
 
 리비전을 기능별로 쪼갤지 한 PR(4-A)에 한 번에 담을지는 미정(9번 참고). `users.token` 컬럼 삭제는 **이 계획에 포함하지 않는다**(전환 완료 후 별도 후속 마이그레이션 — 결정됨).
 
+**4-A 구현 완료(2026-10-22, 리비전 `b6931fc30c66`)**: 위 계획대로 `apps/api/app/features/family_group/models.py`에 4개 기존 테이블 컬럼 추가 + 7개 신규 테이블을 구현했다. 구현 중 발견·반영한 사항:
+
+- **버그 발견 — 그룹 생성자가 member로 저장될 뻔함**: `repository.add_group()`이 `GroupMember(group_id=.., user_id=owner.id)`를 만들 때 `role`을 넘기지 않아서, `role`의 ORM 기본값(`default="member"`)이 그대로 적용되면 **그룹을 만든 사람(owner)이 `role='member'`로 저장되는 버그**가 생겼을 것이다. `add_group()`에 `role="owner"`를 명시하는 1줄로 고쳤다(새 API 추가 아님, 기존 동작을 의도대로 맞추는 호환성 수정). `test_family_group.py`에 `test_create_group_assigns_invite_id_and_owner_role` 회귀 테스트를 추가해 "그룹 생성자의 `group_members.role`이 `'owner'`인지"를 확인한다.
+- **`invites.id` ORM 기본값**: `Invite.id`에 `default=_uid`(기존 `service.py`의 `_uid()`와 동일한 `uuid.uuid4().hex[:12]`)를 지정해, `repository.add_group()`이 `id`를 넘기지 않는 기존 호출부 그대로도 INSERT가 성공한다. 신규 테이블 7개의 PK `id`도 전부 같은 `default=_uid`로 통일했다(혼용 없음).
+- **`group_members.role`/`invites.id` 백필 순서**: 자동 생성된 Alembic 리비전을 그대로 쓰지 않고 직접 재작성했다 — `invites.id`를 참조하는 `join_requests`/`invite_attempts`는 `invites.id`가 백필·검증·`NOT NULL`+`UNIQUE` 제약까지 전부 끝난 뒤에 만들도록 순서를 바꿨고(자동 생성은 이 순서를 몰라 FK 생성이 실패했을 것), `group_members.role`도 nullable 추가 → 백필(전부 `'member'` 후 `groups.owner_id`와 일치하는 행만 `'owner'`) → `NOT NULL` 순서로 직접 작성했다. 마이그레이션 시작 시 모든 `groups.owner_id`가 실제 `group_members` 행을 갖는지 사전 검증하고, 하나라도 없으면 임의로 복구하지 않고 해당 그룹 id 목록과 함께 예외를 던져 마이그레이션을 중단한다.
+- **검증**: 빈 테스트 DB(스키마 일치·idempotent), 대표 데이터(그룹 2·사용자 3)를 PR 4-A 이전 스키마 모양으로 넣고 업그레이드한 뒤 role 백필·`invites.id` 고유성·기존 9개 테이블 행 수 보존을 확인, 제약 위반 5건(owner 중복/pending 중복/소셜계정 중복/비멤버 별명 대상 거부·실제 멤버 허용)을 Postgres에서 직접 확인, owner-멤버십 없는 그룹이 있는 경우 마이그레이션이 트랜잭션 전체를 롤백하며 중단되는지도 확인했다 — 전부 격리된 테스트 DB에서만 수행, 실제 `gabee` DB는 변경하지 않았다(해당 시점 기준 `users`/`groups`/`group_members`/`invites` 전부 0행이라 owner-멤버십 무결성 문제 자체가 없었다).
+
 **보완 — 레거시 초대코드 폐기 시점(결정됨, 변경, 2026-10-22)**: 폐기는 **4-A가 아니라 4-D에서** 한다. 4-D 배포(새 승인·보안 로직이 이미 코드에 있는 시점)의 **같은 트랜잭션/같은 배포 단계**에서, 그 시점까지 "무만료·무제한"으로 남아있는 모든 활성 코드를 ① `revoked=true` 처리하고 **즉시 같은 단계에서** 그룹마다 새 정책(24시간·1회)의 대체 코드를 자동 발급한다 — 폐기와 재발급을 분리하지 않고 한 번에 묶어서, "활성 코드가 하나도 없는 공백 시간"이 생기지 않게 한다(요구사항의 "서비스 중단 없이"). 새 코드는 기존 `GroupOut`/`group_out()`이 이미 "그 그룹의 비폐기 초대"를 조회해 보여주는 구조라, owner/admin이 다음에 가족 그룹 화면을 열면 자동으로 새 코드가 보인다 — 별도 알림 설계가 필요 없다.
 **레거시 코드가 신규 보안 정책을 우회하지 않는 이유**: 4-D의 `POST /groups/join`은 **어떤 초대코드로 들어오든**(레거시든 신규든) 반드시 `join_requests`에 pending 행을 만들고 owner/admin 승인을 거치게 돼 있다(승인 절차는 코드 자체의 `expires_at`/`max_uses`와 무관하게 전부 적용). 레거시 코드가 실제로 우회할 수 있는 것은 "무만료·무제한"이라는 코드 고유 제약뿐이고, 그마저도 4-D 배포 순간 위 자동 교체로 즉시 없어진다 — 그 사이(4-A~4-C 기간)에는 애초에 승인 플로우 자체가 아직 배포 안 됐으므로 "신규 보안 정책 우회"라는 개념 자체가 성립하지 않는다(우회할 신규 정책이 아직 없음).
 

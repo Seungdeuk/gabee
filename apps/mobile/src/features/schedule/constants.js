@@ -23,5 +23,6 @@ export const KIND_COLOR = {
 // 제목 옆 주제 글자색과 일정 있는 날 점 색. 이것도 UI Kit 미정의라 와이어프레임 값을 임시로 쓴다.
 export const TOPIC_TEXT = { rose: "#B5527A", amber: "#A5651A" };
 export const DOT_COLOR = "#F08F6C";
+export const SELECTED_TODO_DOT = "#8FC4A6";
 
 export const WEEKDAYS = ["일", "월", "화", "수", "목", "금", "토"];

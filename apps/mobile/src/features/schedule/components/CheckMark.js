@@ -7,9 +7,9 @@ import { CHECK_LABEL, KIND, KIND_COLOR } from "../constants";
 
 /**
  * 카드의 체크 표시. 약속은 동그라미(확인, 복숭아 바탕 + 갈색 체크), 할 일은 네모(완료, 초록 바탕 + 흰 체크).
- * @param {{ kind: "appointment" | "todo", checked: boolean, onPress?: () => void, disabled?: boolean }} props
+ * @param {{ kind: "appointment" | "todo", checked: boolean, onPress?: () => void, disabled?: boolean, size?: number }} props
  */
-export default function CheckMark({ kind, checked, onPress, disabled = false }) {
+export default function CheckMark({ kind, checked, onPress, disabled = false, size = 18 }) {
   const isAppointment = kind === KIND.appointment;
   return (
     <Pressable
@@ -21,24 +21,22 @@ export default function CheckMark({ kind, checked, onPress, disabled = false }) 
       accessibilityLabel={CHECK_LABEL[kind]}
       style={[
         styles.box,
-        isAppointment ? styles.round : styles.square,
+        { width: size, height: size, borderRadius: isAppointment ? size / 2 : size * 0.28 },
         checked && { backgroundColor: KIND_COLOR[kind], borderColor: KIND_COLOR[kind] },
       ]}
     >
-      {checked ? <Ionicons name="checkmark" size={14} color={isAppointment ? colors.text : colors.onDark} /> : null}
+      {checked ? (
+        <Ionicons name="checkmark" size={size - 4} color={isAppointment ? colors.text : colors.onDark} />
+      ) : null}
     </Pressable>
   );
 }
 
 const styles = StyleSheet.create({
   box: {
-    width: 18,
-    height: 18,
     borderWidth: 1.5,
     borderColor: colors.textMuted,
     alignItems: "center",
     justifyContent: "center",
   },
-  round: { borderRadius: 9 },
-  square: { borderRadius: 5 },
 });
