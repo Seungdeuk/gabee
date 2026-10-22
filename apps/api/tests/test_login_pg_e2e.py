@@ -12,6 +12,7 @@ import pytest
 from tests import test_signup_pg_e2e as _base
 
 rows = _base.rows
+admin = _base.admin
 pg16 = _base.pg16  # 픽스처를 이 모듈에서도 쓰기 위해 이름을 다시 연결한다
 pg_client = _base.pg_client
 
@@ -52,6 +53,10 @@ def test_signup_login_me_and_existing_api_on_postgres(pg_client):
     data = session(client)
     auth = {"Authorization": f"Bearer {data['access_token']}"}
     assert client.get(ME, headers=auth).json()["login_id"] == "jimin_kim"
+    blocked = client.post("/family-group/groups", json={"name": "가족"}, headers=auth)
+    assert blocked.status_code == 403  # 이메일 미인증 정식 회원은 가족 그룹을 만들 수 없다
+    with admin(pg) as c:
+        c.execute("UPDATE users SET email_verified_at = now()")
     assert (
         client.post("/family-group/groups", json={"name": "가족"}, headers=auth).status_code == 201
     )

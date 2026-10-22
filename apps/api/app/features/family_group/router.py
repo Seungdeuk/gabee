@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, Request, Response
+from fastapi import APIRouter, BackgroundTasks, Depends, Request, Response
 from sqlalchemy.orm import Session
 
 from app.shared.auth import bearer_user, current_user
@@ -9,14 +9,18 @@ from .models import User
 from .schemas import (
     AccountSignupIn,
     AccountSignupOut,
+    EmailRequestIn,
+    EmailVerifiedOut,
     GroupCreate,
     GroupOut,
     JoinIn,
     LoginIdAvailableOut,
     LoginIn,
     LoginOut,
+    PasswordResetConfirmIn,
     RefreshIn,
     SignupOut,
+    TokenIn,
     TokenOut,
     UserCreate,
     UserOut,
@@ -60,6 +64,43 @@ def refresh(body: RefreshIn, db: Session = Depends(get_db)) -> TokenOut:
 def logout(body: RefreshIn, db: Session = Depends(get_db)) -> Response:
     """이 세션의 Refresh Token 을 폐기한다. 이미 폐기됐거나 모르는 토큰이어도 204."""
     service.logout(db, body)
+    return Response(status_code=204)
+
+
+@router.post("/auth/email/verify/request", status_code=204)
+def email_verify_request(
+    user: User = Depends(bearer_user), db: Session = Depends(get_db)
+) -> Response:
+    """로그인한 사용자에게 인증 메일을 보낸다(재발송 겸용, 이전 링크는 무효)."""
+    service.request_email_verification(db, user)
+    return Response(status_code=204)
+
+
+@router.post("/auth/email/verify/confirm", response_model=EmailVerifiedOut)
+def email_verify_confirm(body: TokenIn, db: Session = Depends(get_db)) -> EmailVerifiedOut:
+    """메일의 토큰으로 이메일 인증을 완료한다(토큰이 자격이라 로그인 없이 부를 수 있다)."""
+    return service.confirm_email_verification(db, body)
+
+
+@router.post("/auth/password/reset/request", status_code=204)
+def password_reset_request(
+    body: EmailRequestIn,
+    request: Request,
+    background: BackgroundTasks,
+    db: Session = Depends(get_db),
+) -> Response:
+    """재설정 메일을 요청한다. 계정이 있든 없든 같은 204(발송은 응답 뒤)."""
+    ip = request.client.host if request.client else "unknown"
+    mail = service.request_password_reset(db, body, ip)
+    if mail is not None:
+        background.add_task(service.deliver, mail)
+    return Response(status_code=204)
+
+
+@router.post("/auth/password/reset/confirm", status_code=204)
+def password_reset_confirm(body: PasswordResetConfirmIn, db: Session = Depends(get_db)) -> Response:
+    """메일의 토큰과 새 비밀번호로 재설정한다. 모든 기기의 Refresh Token 이 폐기된다."""
+    service.confirm_password_reset(db, body)
     return Response(status_code=204)
 
 

@@ -1,6 +1,6 @@
 # 구현 현황: family-group (통합 인증·가족 구성원)
 
-- 상태: 진행 중 (PR 4-A 스키마, 4-B 회원가입·로그인·JWT 세션 구현, 이메일 인증·소셜·모바일은 아직)
+- 상태: 진행 중 (PR 4-A 스키마, 4-B 회원가입·로그인·JWT 세션·이메일 인증·비밀번호 재설정 구현, 소셜·모바일은 아직)
 - 담당: Seungdeuk (PR 4-A)
 - 요구사항: docs/requirements/family-group.md
 
@@ -34,6 +34,17 @@
   - 로그인 실패 제한: 아이디별 5회 / IP별 50회 (15분), 초과 429 `too_many_attempts` + `Retry-After`. 프로세스 메모리 기반(재시작 시 초기화, 워커별) — 기존에 쓸 수 있는 테이블(`invite_attempts` 는 초대 전용)이 없어 인프라 추가 없이 구현. 공유 한도가 필요하면 DB 테이블로 교체(후속).
   - 테스트: `family_group/tests/test_login_jwt.py`(SQLite 27건), `tests/test_login_pg_e2e.py`(PG16 5건, 동시 갱신 8요청 → 성공 1건).
 
+- **PR 4-B(일부) — 이메일 인증·비밀번호 재설정** (스키마 변경 없음, 기존 `email_verifications`/`password_resets` 사용)
+  - `POST /family-group/auth/email/verify/request` (Bearer) → 204. 인증 메일을 가입한 주소로 보낸다(재발송 겸용, 이전 링크는 즉시 무효). 간격 60초·시간당 5회 초과 429 `too_many_requests`+`Retry-After`, 이미 인증됨 409 `email_already_verified`, 이메일 없는 계정 400 `no_email`, 메일 설정 없음 503 `mail_not_configured`, 발송 실패 503 `mail_send_failed`.
+  - `POST /family-group/auth/email/verify/confirm` `{token}` → 200 `{email_verified:true}`. 토큰이 자격이라 로그인 없이 호출(메일 링크를 다른 기기에서 열어도 됨). 400 `verification_invalid`/`verification_used`/`verification_expired`. 토큰은 발급 당시의 이메일에 묶여 있어 이메일이 바뀌었으면 인증되지 않는다.
+  - `POST /family-group/auth/password/reset/request` `{email}` → **항상 204**(계정 유무와 무관, 발송은 응답 뒤 백그라운드). 이메일별 시간당 3회·IP별 시간당 20회 초과 429(없는 이메일도 똑같이 제한), 메일 설정 없음 503(계정과 무관). 익명 계정·없는 이메일에는 메일을 보내지 않는다. 새 요청은 이전 링크를 무효화한다.
+  - `POST /family-group/auth/password/reset/confirm` `{token, new_password}` → 204. 새 비밀번호는 가입과 같은 규칙(약하면 400 `weak_password`, 이때 토큰은 소비되지 않음)으로 Argon2id 해시, **모든 기기의 Refresh Token 폐기**, 같은 사용자의 다른 재설정 링크 무효, 로그인 잠금 해제. 400 `reset_token_invalid`/`reset_token_used`/`reset_token_expired`.
+  - 토큰: `secrets.token_urlsafe(48)` 원문은 메일에만, DB 에는 SHA-256 해시만. 일회용(조건부 UPDATE 한 문장으로 소비 → 동시 요청 중 하나만 성공). 유효 기간: 인증 24시간(`EMAIL_VERIFY_TTL_SECONDS`), 재설정 30분(`PASSWORD_RESET_TTL_SECONDS`).
+  - **미인증 계정 정책**: 로그인·내 정보 조회·인증 메일 재요청·비밀번호 변경(재설정)은 허용, **가족 그룹 생성·참여(`POST /groups`, `/groups/join`)는 403 `email_not_verified`**. 익명 계정(모바일 현재 방식)은 영향 없음. 메일 설정 전 임시로 `REQUIRE_EMAIL_VERIFICATION=false`.
+  - **메일 발송**: 표준 라이브러리 smtplib(새 의존성·인프라 없음). `MAIL_BACKEND=smtp`+`SMTP_*`(실제), `console`(개발 전용, 로컬 SQLite/DEBUG=true 에서만, 메일 내용을 로그에 출력), 기본 꺼짐(503, 성공으로 처리하지 않음). 발송 실패 로그에는 수신자·본문·서버 응답 내용을 남기지 않는다. 링크는 `EMAIL_LINK_BASE`(기본 `gabee://`) + `verify-email`/`reset-password` + `?token=` — 모바일 딥링크 연동 시 확정.
+  - **이메일 선점(pre-hijacking) 검토**: 공격자가 피해자 이메일로 미리 미인증 계정을 만들어도 ① 미인증이라 가족 그룹에 들어갈 수 없고 ② 피해자가 그 이메일로 비밀번호 재설정을 하면 공격자의 비밀번호·세션이 모두 사라지며(재설정 링크는 메일함 주인에게만 가고 성공하면 이메일 인증 처리됨) 피해자가 계정을 갖는다. 공격자는 메일함이 없어 인증 토큰을 얻을 수 없다. 인증 메일은 계정에 등록된 주소로만 가며 요청 본문으로 주소를 받지 않는다. 남는 한계: 가입 시 `email_taken`(409)이 계정 존재를 알려주고, 선점당한 사용자는 가입이 막힌 채 재설정으로 되찾아야 한다.
+  - 테스트: `family_group/tests/test_email_flows.py`(SQLite 28건, 메일은 가짜 발송기로 가로챔), `tests/test_email_pg_e2e.py`(PG16 4건, 동시 소비 8요청 → 성공 1건).
+
 ### 로그인·JWT 운영 참고와 알려진 한계
 
 - **JWT_SECRET**: 32자 이상 무작위 값을 서버 `.env` 에만 둔다(코드·Git 금지). 비어 있을 때 로컬 SQLite 나 `DEBUG=true` 에서만 프로세스 임시 키를 쓴다(재시작하면 로그인이 풀림). **PostgreSQL(공용·운영)에서 DEBUG 없이 비어 있거나 32자 미만이면 로그인·갱신·Bearer 인증이 503 `auth_not_configured`** 이고, 서버 시작·`/health`·레거시 토큰 인증(모바일 현재 방식)·가입 등 나머지 API 는 그대로 동작한다. 공용 DB 에 붙여 개발하는 팀원은 `.env` 에 `JWT_SECRET`(개발용 아무 32자 이상 값) 또는 `DEBUG=true` 를 둔다.
@@ -41,10 +52,11 @@
 - **로그인 횟수 제한의 한계**: 프로세스 메모리 기반이라 ① 서버 재시작 시 초기화 ② 워커·서버가 여러 개면 프로세스별로 집계(한도가 사실상 늘어남) ③ 아이디별 제한은 공격자가 남의 아이디를 일부러 틀려 일시적으로 잠글 수 있음(15분, `Retry-After`) ④ IP 제한은 `request.client.host` 기준이라, **리버스 프록시(Caddy) 뒤에서 uvicorn 을 `--proxy-headers --forwarded-allow-ips=<프록시 IP>` 없이 실행하면 모든 사용자가 프록시 IP 하나로 집계**된다 — 그 경우 `LOGIN_MAX_FAILURES_PER_IP=0` 으로 IP 제한을 끈다. 오래된 기록은 주기적으로 청소하므로 없는 아이디를 무작위로 시도해도 메모리가 계속 늘지 않는다. 공유·영구 한도가 필요하면 DB 테이블(마이그레이션)로 교체한다.
 - Refresh Token 재사용은 폐기 10초 이후면 탈취로 보고 그 사용자의 모든 세션을 폐기한다(10초 이내는 동시 갱신 경쟁으로 보고 해당 요청만 거부).
 - 이메일 중복 응답(409 `email_taken`)은 계정 존재 여부를 알려준다(가입 레이트리밋과 함께 후속).
+- 메일 요청 횟수 제한(인증 재발송·재설정)도 로그인 제한과 같이 프로세스 메모리 기반이다(재시작 시 초기화, 워커별). `created_at` 컬럼이 없어 DB 로 셀 수 없고 마이그레이션 없이 구현했다. 재설정으로 Refresh Token 을 폐기해도 이미 발급된 Access Token 은 만료(기본 15분)까지 유효하다.
 
 ## 남은 것
 
-- PR 4-B(나머지): 이메일 인증·비밀번호 재설정, 가입 요청 레이트리밋, 전체 기기 로그아웃, `allow_anonymous_signup` 플래그, 사용자 비활성 컬럼. **익명 가입(`POST /family-group/users`)과 레거시 토큰은 기본 허용 상태**라 모바일이 정식 가입/로그인으로 전환되는 시점에 `ALLOW_LEGACY_TOKEN_AUTH=false` 로 돌린다.
+- PR 4-B(나머지): 가입 요청 레이트리밋, 전체 기기 로그아웃, `allow_anonymous_signup` 플래그, 사용자 비활성 컬럼. **익명 가입(`POST /family-group/users`)과 레거시 토큰은 기본 허용 상태**라 모바일이 정식 가입/로그인으로 전환되는 시점에 `ALLOW_LEGACY_TOKEN_AUTH=false` 로 돌린다.
 - 공용 DB: 회원가입은 스키마 변경이 없고 `b6931fc30c66` 이상이면 동작한다(공용 DB 는 `6304cb91e46a` 로 확인됨).
 - PR 4-C: Google/Kakao 소셜 로그인 연동 API.
 - PR 4-D: 초대코드 보안 강화(관리자 승인, 레이트리밋, 만료/1회 정책) + 레거시 무제한 코드 폐기·자동 재발급.

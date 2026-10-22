@@ -119,6 +119,15 @@ def test_bearer_authenticates_me_and_existing_apis(client):
         "login_id", "email", "email_verified",
     }  # fmt: skip
     assert client.get("/family-group/me", headers=bearer(access)).status_code == 200
+    blocked = client.post(
+        "/family-group/groups", json={"name": "우리 가족"}, headers=bearer(access)
+    )
+    assert (
+        blocked.status_code == 403 and blocked.json()["code"] == "email_not_verified"
+    )  # 미인증 회원은 그룹을 못 만든다
+    with SessionLocal() as db:
+        db.get(User, me.json()["id"]).email_verified_at = datetime.now(UTC)
+        db.commit()
     group = client.post("/family-group/groups", json={"name": "우리 가족"}, headers=bearer(access))
     assert group.status_code == 201
     for path in ("/family-chat/messages", "/schedule/events", "/billing/expenses", "/care/records"):

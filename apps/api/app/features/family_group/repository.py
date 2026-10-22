@@ -3,7 +3,15 @@ from datetime import datetime
 from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
-from .models import Group, GroupMember, Invite, RefreshToken, User
+from .models import (
+    EmailVerification,
+    Group,
+    GroupMember,
+    Invite,
+    PasswordReset,
+    RefreshToken,
+    User,
+)
 
 
 def add_user(db: Session, user: User) -> User:
@@ -94,3 +102,92 @@ def revoke_all_refresh_tokens(db: Session, user_id: str, when: datetime) -> None
         .values(revoked_at=when)
         .execution_options(synchronize_session=False)
     )
+
+
+def get_user_by_email(db: Session, email: str) -> User | None:
+    return db.scalar(select(User).where(User.email == email))
+
+
+# ---------- 이메일 인증 · 비밀번호 재설정 토큰 (원문은 저장하지 않고 해시만 다룬다) ----------
+# 토큰은 한 번만 쓸 수 있고, 소비는 조건부 UPDATE 한 문장이라 동시 요청 중 하나만 성공한다(commit 은 호출한 서비스).
+
+
+def supersede_email_verifications(db: Session, user_id: str, when: datetime) -> None:
+    """새 인증 메일을 보내기 전에, 아직 쓰지 않은 이전 토큰을 만료시킨다(최신 메일의 토큰만 유효)."""
+    db.execute(
+        update(EmailVerification)
+        .where(
+            EmailVerification.user_id == user_id,
+            EmailVerification.verified_at.is_(None),
+            EmailVerification.expires_at > when,
+        )
+        .values(expires_at=when)
+        .execution_options(synchronize_session=False)
+    )
+
+
+def add_email_verification(db: Session, row: EmailVerification) -> None:
+    db.add(row)
+
+
+def find_email_verification(db: Session, token_hash: str) -> EmailVerification | None:
+    return db.scalar(select(EmailVerification).where(EmailVerification.token_hash == token_hash))
+
+
+def consume_email_verification(db: Session, row_id: str, when: datetime) -> bool:
+    result = db.execute(
+        update(EmailVerification)
+        .where(
+            EmailVerification.id == row_id,
+            EmailVerification.verified_at.is_(None),
+            EmailVerification.expires_at > when,
+        )
+        .values(verified_at=when)
+        .execution_options(synchronize_session=False)
+    )
+    return result.rowcount == 1
+
+
+def mark_email_verified(db: Session, user_id: str, email: str, when: datetime) -> None:
+    """토큰을 발급한 그 이메일이 아직 계정의 이메일일 때만 인증 처리한다."""
+    db.execute(
+        update(User)
+        .where(User.id == user_id, User.email == email, User.email_verified_at.is_(None))
+        .values(email_verified_at=when)
+        .execution_options(synchronize_session=False)
+    )
+
+
+def supersede_password_resets(db: Session, user_id: str, when: datetime) -> None:
+    db.execute(
+        update(PasswordReset)
+        .where(
+            PasswordReset.user_id == user_id,
+            PasswordReset.used_at.is_(None),
+            PasswordReset.expires_at > when,
+        )
+        .values(used_at=when)
+        .execution_options(synchronize_session=False)
+    )
+
+
+def add_password_reset(db: Session, row: PasswordReset) -> None:
+    db.add(row)
+
+
+def find_password_reset(db: Session, token_hash: str) -> PasswordReset | None:
+    return db.scalar(select(PasswordReset).where(PasswordReset.token_hash == token_hash))
+
+
+def consume_password_reset(db: Session, row_id: str, when: datetime) -> bool:
+    result = db.execute(
+        update(PasswordReset)
+        .where(
+            PasswordReset.id == row_id,
+            PasswordReset.used_at.is_(None),
+            PasswordReset.expires_at > when,
+        )
+        .values(used_at=when)
+        .execution_options(synchronize_session=False)
+    )
+    return result.rowcount == 1
