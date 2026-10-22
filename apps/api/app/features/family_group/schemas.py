@@ -60,6 +60,23 @@ class RefreshIn(BaseModel):
     refresh_token: str = Field(max_length=1024)
 
 
+class EmailRequestIn(BaseModel):
+    email: str = Field(max_length=320)
+
+
+class TokenIn(BaseModel):
+    token: str = Field(max_length=256)
+
+
+class EmailVerifiedOut(BaseModel):
+    email_verified: bool = True
+
+
+class PasswordResetConfirmIn(BaseModel):
+    token: str = Field(max_length=256)
+    new_password: str = Field(max_length=256)
+
+
 class LoginIdAvailableOut(BaseModel):
     login_id: str  # 정규화(공백 제거·소문자)된 값
     available: bool

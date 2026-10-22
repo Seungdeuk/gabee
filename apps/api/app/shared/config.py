@@ -40,6 +40,28 @@ class Settings(BaseSettings):
     )
     login_failure_window_seconds: int = 15 * 60
 
+    # 이메일 인증·비밀번호 재설정(PR 4-B). 메일 설정이 없으면(기본) 관련 API 는 503 mail_not_configured 이고 발송 성공으로 처리하지 않는다.
+    # MAIL_BACKEND: "smtp"(실제 발송, SMTP_* 필요) | "console"(개발 전용: 메일 내용을 서버 로그에 출력, 로컬 SQLite/DEBUG=true 에서만) | ""(꺼짐)
+    mail_backend: str = ""
+    smtp_host: str = ""
+    smtp_port: int = 587
+    smtp_user: str = ""
+    smtp_password: str = ""  # .env 에만 둔다
+    smtp_from: str = ""  # 보내는 사람 주소(예: no-reply@example.com)
+    smtp_security: str = "starttls"  # starttls | ssl | none(로컬 테스트 서버 전용)
+    smtp_timeout_seconds: int = 10
+    # 메일 링크의 앱 주소(모바일 딥링크 또는 웹 주소). 링크는 <base>verify-email?token=..., <base>reset-password?token=...
+    email_link_base: str = "gabee://"
+    email_verify_ttl_seconds: int = 24 * 3600
+    password_reset_ttl_seconds: int = 30 * 60
+    # 이메일 미인증 정식 회원의 가족 그룹 생성·참여를 막는다(docs/requirements/family-group.md). 메일 설정 전 임시로 끌 수 있다
+    require_email_verification: bool = True
+    # 메일 요청 제한(프로세스 메모리, login 제한과 같은 한계): 인증 메일 재발송 간격/시간당, 재설정 메일 이메일별/IP별 시간당
+    verify_resend_cooldown_seconds: int = 60
+    verify_max_per_hour: int = 5
+    reset_max_per_email_per_hour: int = 3
+    reset_max_per_ip_per_hour: int = 20  # 0 이면 IP 제한 끔
+
     model_config = SettingsConfigDict(env_file=_ENV_FILE, extra="ignore")
 
 

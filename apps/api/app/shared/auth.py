@@ -16,7 +16,7 @@ from app.features.family_group.models import GroupMember, User
 from .config import settings
 from .db import get_db
 from .errors import ApiError, bad_request
-from .tokens import TokenError, verify_access_token
+from .tokens import TokenError, password_version, verify_access_token
 
 
 def _bearer_token(authorization: str) -> str:
@@ -29,7 +29,7 @@ def _bearer_token(authorization: str) -> str:
 
 def _user_from_bearer(authorization: str, db: Session) -> User:
     try:
-        user_id = verify_access_token(_bearer_token(authorization))
+        user_id, pv = verify_access_token(_bearer_token(authorization))
     except TokenError as exc:
         if exc.expired:
             raise ApiError(
@@ -41,6 +41,9 @@ def _user_from_bearer(authorization: str, db: Session) -> User:
     user = db.get(User, user_id)
     if user is None:
         raise ApiError(401, "token_invalid", "토큰이 올바르지 않아요")
+    if pv != password_version(user.password_hash):
+        # 토큰 발급 뒤 비밀번호가 바뀌었다(재설정 등) — 이전 Access Token 은 즉시 무효. 클라이언트는 다시 로그인한다.
+        raise ApiError(401, "token_invalid", "비밀번호가 바뀌어 다시 로그인해야 해요")
     return user
 
 
