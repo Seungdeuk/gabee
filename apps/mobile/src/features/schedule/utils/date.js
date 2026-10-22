@@ -34,12 +34,14 @@ export function addDays(key, days) {
 export const todayKey = () => toDateKey(new Date());
 
 /**
- * 선택한 날짜가 속한 주(월~일)의 날짜 키 7개.
+ * 선택한 날짜가 속한 주의 날짜 키 7개.
  * @param {string} key
+ * @param {boolean} [mondayStart] true 면 월~일(메인), false 면 일~토(달력)
  * @returns {string[]}
  */
-export function weekOf(key) {
-  const start = addDays(key, -((fromDateKey(key).getDay() + 6) % 7));
+export function weekOf(key, mondayStart = true) {
+  const day = fromDateKey(key).getDay();
+  const start = addDays(key, -(mondayStart ? (day + 6) % 7 : day));
   return Array.from({ length: 7 }, (_, i) => addDays(start, i));
 }
 
@@ -79,11 +81,34 @@ export function formatMonthDay(key) {
 /**
  * 카드 오른쪽에 쓰는 24시간 표기. 종일이거나 시간이 없으면 빈 글자.
  * @param {{ allDay: boolean, startTime: string | null, endTime: string | null }} item
+ * @param {string} [separator] 시작과 끝 사이 글자
  * @returns {string} 예: "09:00–10:00"
  */
-export function formatClockRange({ allDay, startTime, endTime }) {
+export function formatClockRange({ allDay, startTime, endTime }, separator = "–") {
   if (allDay || !startTime) return "";
-  return endTime ? `${startTime}–${endTime}` : startTime;
+  return endTime ? `${startTime}${separator}${endTime}` : startTime;
+}
+
+/**
+ * @param {string} key
+ * @returns {string} 예: "2026년 10월"
+ */
+export function formatYearMonth(key) {
+  const d = fromDateKey(key);
+  return `${d.getFullYear()}년 ${d.getMonth() + 1}월`;
+}
+
+/**
+ * 다른 달로 옮길 때 고를 날짜. 오늘이 그 달이면 오늘, 아니면 1일.
+ * @param {string} key 지금 선택한 날짜
+ * @param {number} delta 옮길 달 수 (음수 가능)
+ * @returns {string}
+ */
+export function shiftMonthKey(key, delta) {
+  const d = fromDateKey(key);
+  const target = toDateKey(new Date(d.getFullYear(), d.getMonth() + delta, 1));
+  const today = todayKey();
+  return today.slice(0, 7) === target.slice(0, 7) ? today : target;
 }
 
 /**

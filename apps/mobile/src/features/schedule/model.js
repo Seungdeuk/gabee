@@ -74,13 +74,18 @@ export function whoLabels(whoIds, members) {
 
 /**
  * 누구·주제 필터. 같은 줄은 "또는", 줄끼리는 "그리고", 비어 있으면 전체.
+ * 누구 칩 "parents"(부모님)는 엄마와 아빠가 모두 들어 있는 항목에 맞는다.
  * @param {ScheduleItem[]} items
  * @param {{ whoIds: string[], topicIds: string[] }} filter
  * @returns {ScheduleItem[]}
  */
 export function applyFilter(items, { whoIds, topicIds }) {
+  const matches = (item, chipId) => {
+    const ids = effectiveWhoIds(item);
+    return chipId === "parents" ? ids.includes("mom") && ids.includes("dad") : ids.includes(chipId);
+  };
   return items.filter((item) => {
-    const whoOk = whoIds.length === 0 || effectiveWhoIds(item).some((id) => whoIds.includes(id));
+    const whoOk = whoIds.length === 0 || whoIds.some((chipId) => matches(item, chipId));
     const topicOk = topicIds.length === 0 || (item.topicId !== null && topicIds.includes(item.topicId));
     return whoOk && topicOk;
   });

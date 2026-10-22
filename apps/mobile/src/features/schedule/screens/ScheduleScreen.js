@@ -1,4 +1,5 @@
 import { Ionicons } from "@expo/vector-icons";
+import { useRouter } from "expo-router";
 import { useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -18,9 +19,10 @@ const TOGETHER_SAMPLES = ["장 같이 봐줘", "병원 같이 가줘"];
 
 /**
  * 일정 탭 메인: 헤더 + 주간 스트립 / 오늘·내일 / 함께하기 / 먼저 권해드려요 / 채팅 입력.
- * 달력·등록·상세·같이·채팅으로 가는 이동은 각 화면을 만들 때 연결한다.
+ * 등록·상세·같이·채팅으로 가는 이동은 각 화면을 만들 때 연결한다.
  */
 export default function ScheduleScreen() {
+  const router = useRouter();
   const items = useScheduleItems();
   const today = todayKey();
   const tomorrow = addDays(today, 1);
@@ -35,6 +37,7 @@ export default function ScheduleScreen() {
   const showAdd = !skipped.includes(MOCK_ADD.id);
   const addLater = (id) => setLater((prev) => [...prev, id]);
   const confirmTodo = ({ type, id }) => (type === "todo" ? toggleChecked(id) : setCarryDone((prev) => [...prev, id]));
+  const openCalendar = (date) => router.push({ pathname: "/schedule/calendar", params: { date } });
 
   return (
     <SafeAreaView style={styles.safe} edges={["top"]}>
@@ -48,11 +51,16 @@ export default function ScheduleScreen() {
                   오늘도 차근차근
                 </Text>
               </View>
-              <Pressable accessibilityRole="button" accessibilityLabel="달력 열기" style={styles.plus}>
+              <Pressable
+                onPress={() => openCalendar(today)}
+                accessibilityRole="button"
+                accessibilityLabel="달력 열기"
+                style={styles.plus}
+              >
                 <Ionicons name="add" size={28} color={colors.text} />
               </Pressable>
             </View>
-            <WeekStrip selected={today} markedDates={new Set(items.map((item) => item.date))} />
+            <WeekStrip selected={today} markedDates={new Set(items.map((item) => item.date))} onSelect={openCalendar} />
           </View>
 
           <View style={styles.section}>
