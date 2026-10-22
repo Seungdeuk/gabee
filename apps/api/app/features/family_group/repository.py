@@ -15,7 +15,9 @@ def get_group(db: Session, group_id: str) -> Group | None:
 
 
 def add_group(db: Session, group: Group, owner: User, invite: Invite) -> Group:
-    db.add_all([group, GroupMember(group_id=group.id, user_id=owner.id), invite])
+    # role 을 명시하지 않으면 GroupMember 의 기본값("member")이 적용돼 생성자가
+    # owner 로 저장되지 않는다 — 반드시 role="owner" 를 직접 넘긴다.
+    db.add_all([group, GroupMember(group_id=group.id, user_id=owner.id, role="owner"), invite])
     owner.active_group_id = group.id
     db.commit()
     return group
