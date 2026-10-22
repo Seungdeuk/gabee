@@ -933,6 +933,120 @@
         }
       }
     },
+    "/billing/settlement/tags": {
+      "get": {
+        "tags": [
+          "billing"
+        ],
+        "summary": "Settle Tags",
+        "description": "정산 대상 고정 태그와 태그별 기본 나눌 사람.",
+        "operationId": "settle_tags_billing_settlement_tags_get",
+        "parameters": [
+          {
+            "name": "x-gyeot-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Gyeot-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/SettleTagOut"
+                  },
+                  "title": "Response Settle Tags Billing Settlement Tags Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/billing/settlement/tag": {
+      "post": {
+        "tags": [
+          "billing"
+        ],
+        "summary": "Settle",
+        "description": "'정산하기': 고른 지출에 대상 태그와 나눌 사람을 정하고 바뀐 정산 결과를 돌려준다.",
+        "operationId": "settle_billing_settlement_tag_post",
+        "parameters": [
+          {
+            "name": "x-gyeot-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Gyeot-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SettleRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Settlement"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/billing/settlement/payments": {
       "post": {
         "tags": [
@@ -2811,6 +2925,11 @@
             "type": "array",
             "title": "Split Among",
             "default": []
+          },
+          "target_tag": {
+            "type": "string",
+            "title": "Target Tag",
+            "default": "all"
           }
         },
         "type": "object",
@@ -3484,6 +3603,89 @@
           "value"
         ],
         "title": "RecordPut"
+      },
+      "SettleRequest": {
+        "properties": {
+          "month": {
+            "type": "string",
+            "title": "Month"
+          },
+          "expense_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "minItems": 1,
+            "title": "Expense Ids"
+          },
+          "tag": {
+            "type": "string",
+            "enum": [
+              "parents",
+              "children",
+              "all",
+              "custom"
+            ],
+            "title": "Tag"
+          },
+          "participants": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Participants"
+          }
+        },
+        "type": "object",
+        "required": [
+          "month",
+          "expense_ids",
+          "tag"
+        ],
+        "title": "SettleRequest"
+      },
+      "SettleTagOut": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "enum": [
+              "parents",
+              "children",
+              "all"
+            ],
+            "title": "Key"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "description": {
+            "type": "string",
+            "title": "Description"
+          },
+          "participants": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Participants"
+          }
+        },
+        "type": "object",
+        "required": [
+          "key",
+          "label",
+          "description",
+          "participants"
+        ],
+        "title": "SettleTagOut"
       },
       "Settlement": {
         "properties": {

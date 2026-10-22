@@ -11,9 +11,11 @@ import { colors, font } from "@/theme";
 
 import { createExpense, deleteExpense, getExpenses, getMembers } from "../api";
 import { parseWon, won } from "../format";
+import TagBadge from "./TagBadge";
 
 /**
- * 지출 추가와 내역. 낸 사람과 나눌 사람을 고르고, 삭제는 소프트 삭제다.
+ * 지출 추가와 내역. 낸 사람을 고르고, 삭제는 소프트 삭제다.
+ * 누구 몫으로 나눌지(대상 태그)는 정산 탭의 "정산하기"에서 정한다. 그 전까지는 가족 전체로 나눈다.
  * @param {{ month: string, notify: (text: string, isError?: boolean) => void }} props
  */
 export default function ExpenseTab({ month, notify }) {
@@ -24,22 +26,17 @@ export default function ExpenseTab({ month, notify }) {
   const [title, setTitle] = useState("");
   const [amount, setAmount] = useState("");
   const [payer, setPayer] = useState(null);
-  const [split, setSplit] = useState(null); // null 이면 전원
 
   const people = members.data ?? [];
   const payerId = payer ?? people[0]?.id ?? null;
-  const splitIds = split ?? people.map((m) => m.id);
-
-  const toggle = (id) => setSplit(splitIds.includes(id) ? splitIds.filter((x) => x !== id) : [...splitIds, id]);
 
   const submit = async () => {
-    const won_ = parseWon(amount);
+    const value = parseWon(amount);
     if (!title.trim()) return notify("항목을 입력해 주세요", true);
-    if (!(won_ > 0)) return notify("금액은 1원 이상의 정수로 입력해 주세요", true);
-    if (splitIds.length === 0) return notify("나눌 사람을 한 명 이상 골라 주세요", true);
+    if (!(value > 0)) return notify("금액은 1원 이상의 정수로 입력해 주세요", true);
     const date = `${month}-${String(new Date().getDate()).padStart(2, "0")}`;
     try {
-      await createExpense({ title: title.trim(), amount: won_, date, paid_by: payerId, split_among: splitIds });
+      await createExpense({ title: title.trim(), amount: value, date, paid_by: payerId });
       setTitle("");
       setAmount("");
       notify("지출을 추가했어요");
@@ -71,12 +68,7 @@ export default function ExpenseTab({ month, notify }) {
             <Button key={m.id} small variant="secondary" label={m.name} a11yLabel={`낸 사람 ${m.name}`} selected={payerId === m.id} onPress={() => setPayer(m.id)} />
           ))}
         </View>
-        <Text style={styles.label}>나눌 사람</Text>
-        <View style={styles.chips}>
-          {people.map((m) => (
-            <Button key={m.id} small variant="secondary" label={m.name} a11yLabel={`나눌 사람 ${m.name}`} selected={splitIds.includes(m.id)} onPress={() => toggle(m.id)} />
-          ))}
-        </View>
+        <Text style={styles.caption}>{"누구 몫인지는 정산 탭의 \"정산하기\"에서 정해요."}</Text>
         <Button label="지출 추가" onPress={submit} />
       </Card>
 
@@ -94,6 +86,7 @@ export default function ExpenseTab({ month, notify }) {
             right={
               <View style={styles.right}>
                 <Text style={styles.amount}>{won(e.amount)}</Text>
+                <TagBadge tag={e.target_tag} />
                 <Button small variant="ghost" label="삭제" a11yLabel={`${e.title} 삭제`} onPress={() => remove(e.id)} />
               </View>
             }
@@ -107,6 +100,7 @@ export default function ExpenseTab({ month, notify }) {
 const styles = StyleSheet.create({
   wrap: { gap: 20 },
   label: { fontSize: 14, fontWeight: "500", color: colors.text },
+  caption: { ...font.caption, color: colors.textMuted },
   chips: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
   muted: { ...font.caption, color: colors.textMuted, textAlign: "center", paddingVertical: 8 },
   right: { alignItems: "flex-end", gap: 6 },

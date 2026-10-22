@@ -116,3 +116,8 @@ def list_uses(db: Session, allowance_id: str) -> list[AllowanceUse]:
             .order_by(AllowanceUse.date.desc(), AllowanceUse.created_at.desc())
         )
     )
+
+
+def save_all(db: Session, objs: list) -> None:
+    db.add_all(objs)
+    db.commit()

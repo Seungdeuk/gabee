@@ -16,7 +16,7 @@ export default function Segmented({ options, value, onChange }) {
             key={o.key}
             onPress={() => onChange(o.key)}
             accessibilityRole="tab"
-            accessibilityState={{ selected: active }}
+            aria-selected={active}
             style={[styles.item, active && styles.itemActive]}
           >
             <Text style={[styles.label, active && styles.labelActive]}>{o.label}</Text>

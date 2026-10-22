@@ -30,7 +30,8 @@ export default function Button({
       testID={testID}
       accessibilityRole="button"
       accessibilityLabel={a11yLabel ?? label}
-      accessibilityState={{ disabled, selected }}
+      aria-disabled={disabled}
+      aria-selected={selected}
       style={({ pressed }) => [
         styles.button,
         small ? styles.small : styles.large,

@@ -10,6 +10,7 @@ import { colors, font } from "@/theme";
 
 import { getSettlement, markPaid, undoPaid } from "../api";
 import { won } from "../format";
+import SettleForm from "./SettleForm";
 
 /**
  * 비용 정산: 구성원별 잔액, 최소 송금 목록, 송금 완료 표시.
@@ -64,6 +65,8 @@ export default function SettlementTab({ month, notify }) {
           />
         ))}
       </Card>
+
+      <SettleForm month={month} notify={notify} onSettled={reload} />
 
       <SectionTitle title="보낼 돈 (최소 송금)" />
       <Card tone="white">

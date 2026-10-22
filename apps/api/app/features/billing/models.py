@@ -24,6 +24,8 @@ class Expense(Base):
     category: Mapped[str] = mapped_column(String(16), default="기타")
     paid_by: Mapped[str] = mapped_column(String(32))  # 결제한 사용자 id
     split_among: Mapped[list[str]] = mapped_column(JSON, default=list)  # 나눌 사용자 id 들
+    # 정산 대상 태그: parents(부모님 대상) | children(자녀 대상) | all(가족 전체) | custom(직접 고르기)
+    target_tag: Mapped[str] = mapped_column(String(10), default="all", server_default="all")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 

@@ -26,6 +26,8 @@ from .schemas import (
     PaymentCreate,
     PaymentOut,
     Settlement,
+    SettleRequest,
+    SettleTagOut,
     SubscriptionList,
     SubscriptionOut,
     Summary,
@@ -44,6 +46,14 @@ DEFAULT_SUBSCRIPTIONS = (
     ("ott", "디즈니+"),
     ("telecom", "가족 결합 할인"),
     ("telecom", "요금제 결합 할인"),
+)
+
+
+# 정산 대상 태그. 나눌 사람은 역할로 정한다. 규칙을 바꾸려면 여기만 고친다.
+FIXED_TAGS = (
+    ("parents", "부모님 대상", "부모님 몫을 자녀들이 나눠 내요", lambda m: m.role != "parent"),
+    ("children", "자녀 대상", "자녀끼리 나눠 내요", lambda m: m.role == "child"),
+    ("all", "가족 전체", "가족 모두가 나눠 내요", lambda m: True),
 )
 
 
@@ -74,6 +84,7 @@ def _expense_out(e: Expense, names: dict[str, str], member_ids: list[str]) -> Ex
         paid_by=e.paid_by,
         paid_by_name=names.get(e.paid_by, ""),
         split_among=e.split_among or member_ids,
+        target_tag=e.target_tag,
     )
 
 
@@ -91,6 +102,7 @@ def create(db: Session, group_id: str, user_id: str, body: ExpenseCreate) -> Exp
         if any(u not in ids for u in body.split_among):
             raise bad_request("invalid_split", "나눌 사람은 가족 구성원이어야 해요")
         split = [u for u in ids if u in set(body.split_among)]  # 구성원 순서로 맞춰 둔다
+    tag = "all" if body.split_among is None or set(split) == set(ids) else "custom"
     expense = repo.add(
         db,
         Expense(
@@ -102,6 +114,7 @@ def create(db: Session, group_id: str, user_id: str, body: ExpenseCreate) -> Exp
             date=body.date.isoformat(),
             category=body.category,
             split_among=split,
+            target_tag=tag,
         ),
     )
     return _expense_out(expense, {m.id: m.name for m in members}, ids)
@@ -191,6 +204,49 @@ def settlement(db: Session, group_id: str, month: str) -> Settlement:
             for p in payments
         ],
     )
+
+
+def settle_tags(db: Session, group_id: str) -> list[SettleTagOut]:
+    """고정 태그와, 태그를 고르면 기본으로 채워지는 나눌 사람."""
+    members = group_repo.members(db, group_id)
+    return [
+        SettleTagOut(
+            key=key, label=label, description=desc, participants=[m.id for m in members if pick(m)]
+        )
+        for key, label, desc, pick in FIXED_TAGS
+    ]
+
+
+def settle(db: Session, group_id: str, body: SettleRequest) -> Settlement:
+    """'정산하기': 고른 지출에 대상 태그를 걸고 나눌 사람을 정한다. 잔액과 송금 목록은 기존 계산을 그대로 쓴다.
+    고정 태그는 역할로 나눌 사람을 채우고, 직접 고르기(custom)는 보낸 사람 목록을 그대로 쓴다."""
+    month = check_month(body.month)
+    members = group_repo.members(db, group_id)
+    ids = [m.id for m in members]
+    if body.tag == "custom":
+        if not body.participants:
+            raise bad_request("empty_split", "나눌 사람을 한 명 이상 골라 주세요")
+        if any(u not in ids for u in body.participants):
+            raise bad_request("invalid_split", "나눌 사람은 가족 구성원이어야 해요")
+        participants = [u for u in ids if u in set(body.participants)]
+    else:
+        pick = next(f[3] for f in FIXED_TAGS if f[0] == body.tag)
+        participants = [m.id for m in members if pick(m)]
+        if not participants:
+            raise bad_request("no_participants", "이 태그에 해당하는 구성원이 없어요")
+    if repo.list_payments(db, group_id, month):
+        raise bad_request(
+            "settlement_locked", "송금 완료 표시가 있는 달은 먼저 송금 완료를 취소해 주세요"
+        )
+    by_id = {e.id: e for e in repo.list_month(db, group_id, month)}
+    unknown = [i for i in body.expense_ids if i not in by_id]
+    if unknown:
+        raise bad_request("unknown_expense", "이 달에 없는 지출이 들어 있어요")
+    chosen = [by_id[i] for i in dict.fromkeys(body.expense_ids)]
+    for e in chosen:
+        e.target_tag, e.split_among = body.tag, participants
+    repo.save_all(db, chosen)
+    return settlement(db, group_id, month)
 
 
 def mark_paid(db: Session, group_id: str, body: PaymentCreate) -> Settlement:

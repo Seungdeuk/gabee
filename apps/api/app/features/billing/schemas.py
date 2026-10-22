@@ -4,6 +4,8 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 SubscriptionStatus = Literal["check", "available", "active"]  # 확인 필요 / 적용 가능 / 적용 중
+FixedTag = Literal["parents", "children", "all"]
+TargetTag = Literal["parents", "children", "all", "custom"]  # custom: 직접 고르기
 
 
 class ExpenseCreate(BaseModel):
@@ -24,6 +26,7 @@ class ExpenseOut(BaseModel):
     paid_by: str
     paid_by_name: str = ""
     split_among: list[str] = []
+    target_tag: str = "all"
 
 
 class Balance(BaseModel):
@@ -59,6 +62,20 @@ class Settlement(BaseModel):
     balances: list[Balance]
     transfers: list[Transfer]  # 아직 보내지 않은 최소 송금 목록
     completed: list[PaymentOut]  # 송금 완료로 표시한 것
+
+
+class SettleTagOut(BaseModel):
+    key: FixedTag
+    label: str
+    description: str
+    participants: list[str]  # 이 태그를 고르면 기본으로 채워지는 나눌 사람
+
+
+class SettleRequest(BaseModel):
+    month: str
+    expense_ids: list[str] = Field(min_length=1)
+    tag: TargetTag
+    participants: list[str] | None = None  # 직접 고르기(custom)일 때만 쓴다
 
 
 class PaymentCreate(BaseModel):

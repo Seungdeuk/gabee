@@ -6,7 +6,7 @@ import { apiFetch } from "@/shared/api/client";
  * @typedef {{ from_user_id: string, from_name: string, to_user_id: string, to_name: string, amount: number }} Transfer
  * @typedef {Transfer & { id: string }} Payment
  * @typedef {{ month: string, balances: Balance[], transfers: Transfer[], completed: Payment[] }} Settlement
- * @typedef {{ id: string, title: string, amount: number, date: string, category: string, paid_by: string, paid_by_name: string, split_among: string[] }} Expense
+ * @typedef {{ id: string, title: string, amount: number, date: string, category: string, paid_by: string, paid_by_name: string, split_among: string[], target_tag: "parents" | "children" | "all" | "custom" }} Expense
  * @typedef {{ id: string, kind: "ott" | "telecom", name: string, status: "check" | "available" | "active" }} Subscription
  * @typedef {{ id: string, amount: number, memo: string, date: string }} AllowanceUse
  * @typedef {{ child_id: string, name: string, month: string, budget: number | null, used: number, remaining: number, uses: AllowanceUse[] }} Allowance
@@ -77,3 +77,16 @@ export const setBudget = (childId, month, budget) =>
  */
 export const addAllowanceUse = (childId, body) =>
   apiFetch(`/billing/allowances/${childId}/uses`, { method: "POST", body });
+
+/**
+ * 정산 대상 고정 태그와 태그별 기본 나눌 사람.
+ * @returns {Promise<{ key: "parents" | "children" | "all", label: string, description: string, participants: string[] }[]>}
+ */
+export const getSettleTags = () => apiFetch("/billing/settlement/tags");
+
+/**
+ * '정산하기': 고른 지출에 대상 태그와 나눌 사람을 정한다. 직접 고르기는 tag 를 "custom" 으로 보내고 participants 를 함께 보낸다.
+ * @param {{ month: string, expense_ids: string[], tag: "parents" | "children" | "all" | "custom", participants?: string[] }} body
+ * @returns {Promise<Settlement>}
+ */
+export const settleExpenses = (body) => apiFetch("/billing/settlement/tag", { method: "POST", body });

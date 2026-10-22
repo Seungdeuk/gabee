@@ -13,6 +13,8 @@ from .schemas import (
     ExpenseOut,
     PaymentCreate,
     Settlement,
+    SettleRequest,
+    SettleTagOut,
     SubscriptionList,
     SubscriptionOut,
     SubscriptionPatch,
@@ -66,6 +68,22 @@ def get_settlement(
     db: Session = Depends(get_db),
 ) -> Settlement:
     return service.settlement(db, group_id, service.check_month(month or service.this_month()))
+
+
+@router.get("/settlement/tags", response_model=list[SettleTagOut])
+def settle_tags(
+    group_id: str = Depends(current_group_id), db: Session = Depends(get_db)
+) -> list[SettleTagOut]:
+    """정산 대상 고정 태그와 태그별 기본 나눌 사람."""
+    return service.settle_tags(db, group_id)
+
+
+@router.post("/settlement/tag", response_model=Settlement)
+def settle(
+    body: SettleRequest, group_id: str = Depends(current_group_id), db: Session = Depends(get_db)
+) -> Settlement:
+    """'정산하기': 고른 지출에 대상 태그와 나눌 사람을 정하고 바뀐 정산 결과를 돌려준다."""
+    return service.settle(db, group_id, body)
 
 
 @router.post("/settlement/payments", response_model=Settlement, status_code=201)
