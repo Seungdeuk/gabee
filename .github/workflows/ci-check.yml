@@ -49,7 +49,16 @@ jobs:
         with:
           python-version: "3.12"
       - run: pip install -e ".[dev]"
-      - run: alembic upgrade head
+      - name: Alembic head 가 정확히 1개인지 확인
+        run: python scripts/check_alembic_migrations.py heads
+      - name: 임시 테스트 DB 가 빈 상태인지 확인
+        run: python scripts/check_alembic_migrations.py assert-empty
+      - name: 처음부터 최신 head 까지 전체 마이그레이션 실행 (실패하면 바로 위 "Running upgrade A -> B" 로그가 문제 리비전)
+        run: alembic upgrade head
+      - name: 적용된 리비전이 코드 head 와 같은지 확인
+        run: python scripts/check_alembic_migrations.py assert-at-head
+      - name: 모델과 DB 스키마 일치 확인
+        run: python scripts/check_schema_matches_models.py
       - run: pytest tests/test_pgvector.py -v
       - name: FastAPI health check against PostgreSQL
         run: |
