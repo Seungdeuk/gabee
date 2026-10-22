@@ -8,6 +8,7 @@
 import logging
 import threading
 from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy.orm import Session
 
@@ -25,6 +26,9 @@ logger = logging.getLogger(__name__)
 
 # 한 번에 처리하는 파일 수(OCR 은 CPU, 이미지 모델은 GPU 를 쓴다). 넘치면 순서를 기다린다.
 _SLOTS = threading.BoundedSemaphore(2)
+
+# 처리 도중 서버가 꺼지면 received 로 영영 남으므로, 이 시간이 지나도록 끝나지 않은 파일은 실패로 본다
+STUCK_AFTER = timedelta(minutes=15)
 
 MESSAGES = {
     "received": "읽는 중이에요",
@@ -84,6 +88,9 @@ def status(db: Session, group_id: str, photo_id: str) -> FileStatusOut | None:
     photo = repo.get_photo(db, group_id, photo_id)
     if photo is None:
         return None
+    if photo.status == "received" and _age(photo.created_at) > STUCK_AFTER:
+        repo.set_status(db, photo.id, "failed")
+        photo.status = "failed"
     out = FileStatusOut(
         id=photo.id,
         filename=photo.filename,
@@ -109,3 +116,8 @@ def _describe(body_md: str) -> str | None:
         if line.strip() and not line.startswith("- ") and not line.startswith("[읽지"):
             plain.append(line.strip())
     return plain[0][:120] if plain else None
+
+
+def _age(created: datetime) -> timedelta:
+    created = created if created.tzinfo else created.replace(tzinfo=UTC)
+    return datetime.now(UTC) - created

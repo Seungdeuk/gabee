@@ -217,3 +217,29 @@ def test_document_upload_converts_to_text(client, family, pipeline):
         "/ai-assistant/knowledge/search", json={"query": "제주 렌터카"}, headers=a
     ).json()["hits"]
     assert hits[0]["item_id"] == up["id"]
+
+
+def test_a_file_stuck_in_received_is_reported_as_failed(client, family, pipeline):
+    """처리 도중 서버가 꺼져 상태가 received 로 남은 파일은 오래되면 실패로 알려 준다."""
+    from datetime import UTC, datetime, timedelta
+
+    from app.features.ai_assistant.models import Photo
+    from app.shared.db import SessionLocal
+
+    a, _, group = family
+    with SessionLocal() as db:
+        db.add(
+            Photo(
+                id="stuck0000001",
+                group_id=group["id"],
+                uploaded_by="u",
+                filename="x.png",
+                content_type="image/png",
+                size=1,
+                status="received",
+                created_at=datetime.now(UTC) - timedelta(minutes=30),
+            )
+        )
+        db.commit()
+    st = client.get("/ai-assistant/files/stuck0000001", headers=a).json()
+    assert st["status"] == "failed" and st["message"]
