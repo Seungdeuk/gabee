@@ -98,6 +98,7 @@ docker compose up --build      # 개발용 DB + API (루트 .env 필요)
 - 컬럼·테이블 삭제 등 데이터가 사라지는 변경은 PR에 적고 팀에 공유한 뒤 진행한다.
 - 변경하면 `docs/contracts/db.md`도 갱신한다.
 - `supabase/seed`에는 가짜 데이터만 둔다. 실제 사용자 데이터를 넣지 않는다.
+- 팀 공용 PostgreSQL(`192.168.0.44:5432/gabee`)의 스키마 변경(`alembic upgrade`/`downgrade`/`stamp`)은 마이그레이션 담당자가 `gabee_migrator` 계정으로, PR이 병합되고 검증된 뒤 명시적으로 승인받아서만 실행한다. 일반 실행은 `gabee_app` 계정을 쓴다(DDL 권한 없음 — 단 데이터 CRUD 권한은 있으니 공용 DB 데이터를 직접 조작할 때도 주의한다). 같은 서버의 기존 MVP `family-secretary` database는 어떤 경우에도 건드리지 않는다. 자세한 내용은 `README.md`("팀 공용 PostgreSQL 에 연결하기")와 `docs/adr/0005-shared-postgres-env.md` 참고.
 
 ## Git
 

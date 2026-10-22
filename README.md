@@ -94,6 +94,62 @@ pgvector 확장은 초기 리비전(`alembic/versions/355a1a748ec5_initial_schem
 
 SQLite 테스트(`pytest`)와 PostgreSQL/Alembic 경로는 서로 분리되어 있다 — `apps/api/conftest.py`가 테스트 시작 전에 `DATABASE_URL`을 임시 SQLite 파일로 강제 지정하므로, 테스트는 Alembic이나 실제 Postgres에 전혀 영향받지 않는다. Docker의 `api` 서비스가 의도치 않게 SQLite로 떠 있다면 `DATABASE_URL` 환경변수가 `postgresql+...`로 제대로 전달되는지 `docker compose config`로 확인한다.
 
+## 팀 공용 PostgreSQL 에 연결하기
+
+지금 "DB"라고 부를 수 있는 환경이 세 가지라서 혼동하기 쉽다 — 아래 표로 구분한다.
+
+| 환경 | 주소 | 용도 | 쓰는 계정 |
+|---|---|---|---|
+| 개인 로컬 Docker DB | `127.0.0.1:5433`(`docker-compose.yml`, 위 절 참고) | 각자 혼자 쓰는 개발·실험용 | `.env`의 `POSTGRES_USER`(기본 `postgres`) |
+| **팀 공용 DB** | `192.168.0.44:5432`, DB 이름 `gabee` | 팀 5명이 같이 쓰는 개발 DB | 일반 실행: `gabee_app` / 마이그레이션: `gabee_migrator`(담당자만) |
+| 기존 MVP DB | `192.168.0.44:5432`, DB 이름 `family-secretary` | 레거시, **절대 건드리지 않는다** | (해당 없음 — 접근하지 않음) |
+
+팀 공용 DB와 기존 MVP DB는 **같은 PostgreSQL 서버(같은 PC)에서 database 단위로만 분리**되어 있다 — 서로 다른 서버가 아니다. 공용 `gabee` DB 작업이 `family-secretary` DB의 데이터를 직접 바꾸지는 않지만, 같은 서버 프로세스를 쓰므로 서버 자체를 재시작·종료하거나 디스크를 가득 채우는 등의 작업은 두 DB 모두에 영향을 줄 수 있다 — 그런 작업은 하지 않는다.
+
+**일반 FastAPI 실행(`gabee_app` 계정)**: 비밀번호를 PowerShell 창에 직접 입력하면 `PSReadLine`이 명령 이력을 디스크에 남기므로, 비밀번호는 커맨드가 아니라 **`apps/api/.env` 파일에만** 적는다(이미 `.gitignore`에 올라 있어 커밋되지 않는다).
+
+```powershell
+notepad apps\api\.env
+# DATABASE_URL=postgresql+psycopg://gabee_app:<비밀번호>@192.168.0.44:5432/gabee 로 한 줄만 바꾼다
+
+cd apps\api
+.venv\Scripts\activate
+uvicorn app.main:app --reload
+```
+
+다른 PowerShell 창에서 연결 확인(비밀번호 노출 없음):
+
+```powershell
+curl http://localhost:8000/health   # {"status":"ok"} 면 공용 DB에 연결됨
+```
+
+**마이그레이션(`gabee_migrator` 계정, 담당자만, PR 병합·검증 후 승인받아서만)**: 역시 `.env` 파일을 그때만 공용 DB의 `gabee_migrator` 계정으로 바꿔서 실행하고, 끝나면 즉시 원래 값(로컬 SQLite 또는 개인 Docker DB)으로 되돌린다.
+
+```powershell
+notepad apps\api\.env
+# DATABASE_URL=postgresql+psycopg://gabee_migrator:<비밀번호>@192.168.0.44:5432/gabee
+
+cd apps\api
+.venv\Scripts\activate
+alembic current        # 공용 DB에 지금 적용된 리비전 확인 — 고정된 값으로 추측하지 않는다
+alembic upgrade head    # 승인받은 뒤에만 실행
+
+# 끝나면 바로 되돌린다
+notepad apps\api\.env   # DATABASE_URL 을 로컬 값으로 다시 바꾼다
+```
+
+**리비전 확인(시점에 따라 달라짐)**: 2026-10-22 기준으로는 개인 로컬 Docker DB가 `355a1a748ec5`, 공용 DB가 `b6931fc30c66`에 있었지만, 이 값들은 **그 순간의 상태일 뿐**이다 — `main`에 새 리비전이 계속 추가되므로, 실제로 어떤 DB가 어느 리비전에 있는지는 항상 `alembic current`(연결된 DB 기준)나 `alembic heads`(코드 기준 최신)로 직접 확인하고, 이 문서나 다른 문서에 적힌 리비전 ID를 "지금의 최신"이라고 가정하지 않는다.
+
+**공용 DB 안전 규칙**
+- 공용 DB 스키마 변경(`alembic upgrade`/`downgrade`/`stamp`)은 **마이그레이션 담당자만 `gabee_migrator` 계정으로**, PR이 병합되고 검증된 뒤 **명시적 승인을 받아서만** 실행한다.
+- 일반 FastAPI 실행에는 `gabee_app`을 쓴다. 이 계정은 DDL(테이블 생성·변경) 권한이 없지만, **데이터 CRUD 권한은 있다** — 즉 실수로 다른 팀원이 넣은 행을 지우거나 고칠 수 있는 위험은 여전히 남아 있으니 공용 DB의 데이터를 직접 조작하는 작업은 신중하게 한다.
+- `pytest`나 마이그레이션 실험은 공용 DB가 아니라 개인 로컬 Docker DB 또는 별도 격리 DB에서 한다.
+- 공용 DB를 테스트용으로 초기화·삭제하지 않는다.
+- 기존 MVP `family-secretary` DB는 어떤 경우에도 변경하지 않는다.
+- DB 비밀번호·`.env`·연결 문자열에 들어간 인증정보는 명령 이력·커밋·문서에 남기지 않는다.
+
+배경과 결정 이유는 [docs/adr/0005-shared-postgres-env.md](docs/adr/0005-shared-postgres-env.md) 참고.
+
 ## 앱 (apps/mobile)
 
 ```bash
