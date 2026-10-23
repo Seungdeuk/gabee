@@ -62,8 +62,11 @@ def register_and_login(client):
 
 
 def test_verification_on_postgres_stores_only_the_hash_and_unlocks_family_creation(
-    pg_client, outbox
+    pg_client, outbox, monkeypatch
 ):
+    from app.shared.config import settings
+
+    monkeypatch.setattr(settings, "require_email_verification", True)  # 선택 정책을 켠 환경
     client, pg = pg_client
     session = register_and_login(client)
     auth = {"Authorization": f"Bearer {session['access_token']}"}

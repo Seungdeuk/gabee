@@ -55,6 +55,7 @@ export default function ForgotPasswordScreen() {
         testID="forgot-email"
       />
       <Notice tone="error" text={error} />
+      <Notice text="가입할 때 이메일을 적지 않았다면 비밀번호를 찾을 수 없어요" />
       {sent ? (
         <Notice tone="success" text="가입된 이메일이라면 재설정 메일을 보냈어요. 메일함을 확인해 주세요 (30분 안에 한 번만 쓸 수 있어요)" />
       ) : null}

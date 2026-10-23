@@ -62,7 +62,11 @@ def test_full_flow_and_simultaneous_decisions_on_postgres(pg_client):
     assert rows(pg, "SELECT status FROM join_requests") == [("approved",)]
 
 
-def test_one_use_code_is_consumed_once_under_concurrent_submissions(pg_client):
+def test_one_use_code_is_consumed_once_under_concurrent_submissions(pg_client, monkeypatch):
+    from app.shared.config import settings
+
+    # 이 시험은 한 IP 에서 틀린 제출 7번이 나오도록 만든다 — 시도 제한(15분 5회)에 걸려 429 가 섞이지 않게 한도를 넉넉히 둔다
+    monkeypatch.setattr(settings, "invite_max_failures", 100)
     client, pg = pg_client
     owner = account(client, "owner_kim")
     group = client.post(f"{P}/groups", json={"name": "우리 가족"}, headers=owner).json()

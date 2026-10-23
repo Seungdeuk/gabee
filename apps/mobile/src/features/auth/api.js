@@ -6,7 +6,7 @@ import { normalizeEmail, normalizeLoginId } from "./validation";
 
 /**
  * 아이디/비밀번호/이메일로 회원가입한다(로그인은 하지 않는다).
- * @param {{ loginId: string, password: string, email: string, name: string, role?: "parent" | "child" | "other", roleDetail?: string }} form
+ * @param {{ loginId: string, password: string, email?: string, name: string, role?: "parent" | "child" | "other", roleDetail?: string }} form
  * @returns {Promise<{ user: object }>}
  */
 export const signupAccount = ({ loginId, password, email, name, role = "child", roleDetail = "" }) =>
@@ -16,7 +16,7 @@ export const signupAccount = ({ loginId, password, email, name, role = "child", 
     body: {
       login_id: normalizeLoginId(loginId),
       password,
-      email: normalizeEmail(email),
+      ...(email && email.trim() ? { email: normalizeEmail(email) } : {}), // 이메일은 선택
       name: name.trim(),
       role,
       ...(role === "other" && roleDetail.trim() ? { role_detail: roleDetail.trim() } : {}),

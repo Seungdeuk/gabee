@@ -130,7 +130,7 @@ def test_database_unique_constraint_is_the_last_line_of_defense(client, monkeypa
         ("email", "a@@example.com", "invalid_email"),
         ("email", "a..b@example.com", "invalid_email"),
         ("email", "a@example..com", "invalid_email"),
-        ("email", "", "invalid_email"),
+        # 이메일 칸이 비어 있으면(빈 문자열·공백) 이제 "이메일 없음"이라 가입된다 — tests/test_optional_email.py 참고
         ("name", "   ", "invalid_name"),
         ("name", "가" * 41, "invalid_name"),
         ("password", "Short1", "weak_password"),  # 8자 미만

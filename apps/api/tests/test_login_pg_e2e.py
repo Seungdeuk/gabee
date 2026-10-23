@@ -49,7 +49,10 @@ def session(client):
     return r.json()
 
 
-def test_signup_login_me_and_existing_api_on_postgres(pg_client):
+def test_signup_login_me_and_existing_api_on_postgres(pg_client, monkeypatch):
+    from app.shared.config import settings
+
+    monkeypatch.setattr(settings, "require_email_verification", True)  # 선택 정책을 켠 환경
     client, pg = pg_client
     mailer.set_mailer(
         type("M", (), {"send": lambda self, mail: None})()
