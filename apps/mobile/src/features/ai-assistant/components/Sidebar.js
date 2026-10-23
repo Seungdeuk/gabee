@@ -15,14 +15,31 @@ const TABS = [
 
 /**
  * 왼쪽에서 열리는 작은 패널. 위에서 "대화"(이전 대화 목록)와 "기록"(올린 사진·파일)을 바꿔 본다.
- * @param {{ open: boolean, onClose: () => void, sessions: object[], currentId: string | null, onNew: () => void, onOpenSession: (id: string) => void, onDeleteSession: (id: string) => void }} props
+ * reviewCount: 확인이 필요한 기록 수("기록" 탭에 숫자로 표시) / focusRecordId: 열자마자 상세를 띄울 기록(채팅의 "지금 확인하기")
+ * @param {{ open: boolean, onClose: () => void, sessions: object[], currentId: string | null, onNew: () => void, onOpenSession: (id: string) => void, onDeleteSession: (id: string) => void, reviewCount?: number, focusRecordId?: string | null, onFocusHandled?: () => void, onRecordsLoaded?: (items: object[]) => void }} props
  */
-export default function Sidebar({ open, onClose, sessions, currentId, onNew, onOpenSession, onDeleteSession }) {
+export default function Sidebar({
+  open,
+  onClose,
+  sessions,
+  currentId,
+  onNew,
+  onOpenSession,
+  onDeleteSession,
+  reviewCount = 0,
+  focusRecordId = null,
+  onFocusHandled,
+  onRecordsLoaded,
+}) {
   const { width } = useWindowDimensions();
   const panelWidth = Math.min(320, Math.round(width * 0.78));
   const slide = useRef(new Animated.Value(-panelWidth)).current;
   const [shown, setShown] = useState(false); // 닫는 애니메이션이 끝날 때까지 화면에 둔다
   const [tab, setTab] = useState("chats");
+
+  useEffect(() => {
+    if (open && focusRecordId) setTab("records");
+  }, [open, focusRecordId]);
 
   useEffect(() => {
     if (open) {
@@ -55,6 +72,11 @@ export default function Sidebar({ open, onClose, sessions, currentId, onNew, onO
                   style={[styles.tab, tab === t.key && styles.tabOn]}
                 >
                   <Text style={[styles.tabText, tab === t.key && styles.tabTextOn]}>{t.label}</Text>
+                  {t.key === "records" && reviewCount > 0 ? (
+                    <View style={styles.count}>
+                      <Text style={styles.countText}>{reviewCount}</Text>
+                    </View>
+                  ) : null}
                 </Pressable>
               ))}
             </View>
@@ -75,7 +97,7 @@ export default function Sidebar({ open, onClose, sessions, currentId, onNew, onO
                   onDelete={onDeleteSession}
                 />
               ) : (
-                <RecordsList active={open && tab === "records"} />
+                <RecordsList active={open && tab === "records"} focusId={focusRecordId} onFocusHandled={onFocusHandled} onLoaded={onRecordsLoaded} />
               )}
             </View>
           </SafeAreaView>
@@ -95,7 +117,9 @@ const styles = StyleSheet.create({
   title: { fontSize: 18, fontWeight: "700", color: colors.text },
   close: { width: 44, height: 44, alignItems: "center", justifyContent: "center" },
   tabs: { flexDirection: "row", gap: 8, paddingHorizontal: 14, paddingBottom: 10 },
-  tab: { flex: 1, minHeight: 38, borderRadius: 19, alignItems: "center", justifyContent: "center", backgroundColor: colors.surface },
+  tab: { flex: 1, minHeight: 38, borderRadius: 19, flexDirection: "row", gap: 6, alignItems: "center", justifyContent: "center", backgroundColor: colors.surface },
+  count: { minWidth: 20, height: 20, paddingHorizontal: 5, borderRadius: 10, backgroundColor: colors.peach, alignItems: "center", justifyContent: "center" },
+  countText: { fontSize: 11, fontWeight: "700", color: colors.text },
   tabOn: { backgroundColor: colors.surfaceStrong },
   tabText: { fontSize: 14, color: colors.textMuted },
   tabTextOn: { fontWeight: "700", color: colors.text },

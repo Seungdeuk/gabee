@@ -60,7 +60,7 @@ export default function useChat() {
   /** 사진을 올리고, 서버가 분석을 끝낼 때까지 2초 간격으로 확인한다(최대 2분). */
   const sendPhoto = useCallback(async (file) => {
     const myRun = ++runId.current;
-    const say = (text) => setMessages((prev) => [...prev, { id: id(), role: "assistant", text, sources: [] }]);
+    const say = (text, extra = {}) => setMessages((prev) => [...prev, { id: id(), role: "assistant", text, sources: [], ...extra }]);
     const isImage = file.isImage !== false;
     setMessages((prev) => [
       ...prev,
@@ -96,7 +96,11 @@ export default function useChat() {
           .filter(Boolean)
           .join("\n");
         const head = result.status === "needs_review" ? "저장했지만 내용을 한 번 확인해 주세요." : "저장했어요.";
-        say(`${head}${detail ? `\n${detail}` : ""}\n이어서 궁금한 걸 물어보세요.`);
+        const review = result.status === "needs_review";
+        say(
+          `${head}${detail ? `\n${detail}` : ""}\n${review ? "원본과 비교해서 맞는지 확인해 주세요." : "이어서 궁금한 걸 물어보세요."}`,
+          review ? { reviewId: fileId } : {},
+        );
       }
     } catch (e) {
       if (runId.current === myRun) say(e?.message || "사진을 올리지 못했어요. 잠시 후 다시 시도해 주세요.");

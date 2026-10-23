@@ -117,14 +117,27 @@ export function originalImageSource(id) {
 
 /**
  * 가족이 올린 기록 목록(최근 순). 사이드바의 "기록" 탭에서 쓴다.
- * @returns {Promise<{ id: string, title: string, kind_label: string, occurred_on: string | null, has_unread_parts: boolean, hasOriginal: boolean }[]>}
+ * needs_review: 읽다 만 부분이 있거나 종류가 애매해서 사용자가 확인해야 하는 기록. 확인이 필요한 것이 앞에 온다.
+ * @returns {Promise<{ id: string, title: string, kind_label: string, occurred_on: string | null, has_unread_parts: boolean, needs_review: boolean, hasOriginal: boolean }[]>}
  */
 export async function listRecords() {
   if (!isApiConfigured()) {
-    return [{ id: "mock-1", title: "동대문마트 영수증", kind_label: "영수증", occurred_on: "2026-10-15", has_unread_parts: false, hasOriginal: false }];
+    return [{ id: "mock-1", title: "동대문마트 영수증", kind_label: "영수증", occurred_on: "2026-10-15", has_unread_parts: false, needs_review: true, hasOriginal: false }];
   }
   const items = await apiFetch("/ai-assistant/knowledge/items?limit=50");
-  return items.map((i) => ({ ...i, hasOriginal: Boolean(i.source_path) }));
+  const records = items.map((i) => ({ ...i, hasOriginal: Boolean(i.source_path) }));
+  return records.sort((a, b) => Number(b.needs_review) - Number(a.needs_review)); // 확인 필요한 기록을 맨 위로(나머지는 서버 순서 유지)
+}
+
+/**
+ * 기록을 확인하며 고친다. 보낸 칸만 바뀌고, 빈 객체를 보내면 "고칠 것 없이 확인했어요"가 된다.
+ * 저장하면 확인 필요 표시가 사라지고 검색에도 고친 내용이 반영된다.
+ * @param {string} id
+ * @param {{ title?: string, kind_label?: string, occurred_on?: string | null, body_md?: string }} changes
+ */
+export async function updateRecord(id, changes = {}) {
+  if (!isApiConfigured()) return { id, ...changes, needs_review: false };
+  return apiFetch(`/ai-assistant/knowledge/items/${encodeURIComponent(id)}`, { method: "PATCH", body: changes });
 }
 
 /** 기록 한 건의 읽어 낸 글(개인정보는 가려진 상태). */

@@ -1,7 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import { Image } from "expo-image";
 import { useRouter } from "expo-router";
-import { useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { FlatList, KeyboardAvoidingView, Pressable, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
@@ -18,6 +18,7 @@ import UserBubble from "../components/UserBubble";
 import WaveBars from "../components/WaveBars";
 import useChat from "../hooks/useChat";
 import useSessions from "../hooks/useSessions";
+import { listRecords } from "../api";
 import mascot from "../../../../assets/images/gabee-mascot.png";
 
 /**
@@ -29,6 +30,16 @@ export default function AiAssistantScreen() {
   const { messages, phase, send, sendPhoto, startListening, stopListening, editDraft, reset, load } = useChat();
   const { sessions, currentId, startNew, open, remove } = useSessions({ messages, load, reset });
   const [menuOpen, setMenuOpen] = useState(false);
+  const [reviewCount, setReviewCount] = useState(0); // 확인이 필요한 기록 수(메뉴 점·기록 탭 숫자)
+  const [focusRecordId, setFocusRecordId] = useState(null);
+
+  const countReview = useCallback((items) => setReviewCount(items.filter((r) => r.needs_review).length), []);
+  const refreshReview = useCallback(() => {
+    listRecords().then(countReview).catch(() => {}); // 서버가 안 되면 점만 못 띄운다
+  }, [countReview]);
+  useEffect(() => {
+    if (phase === "idle") refreshReview(); // 처음 열 때와, 파일을 올려 읽기가 끝난 뒤에 새로 센다
+  }, [phase, refreshReview]);
   const listRef = useRef(null);
   const [atBottom, setAtBottom] = useState(true);
   const stick = useRef(true); // 맨 아래를 따라가는 중인지(사용자가 위로 올리면 멈춘다)
@@ -57,13 +68,26 @@ export default function AiAssistantScreen() {
             <DraftCard to={item.draft.to} text={item.draftText} onChangeText={(t) => editDraft(item.id, t)} />
           ) : null}
         </AnswerView>
+        {item.reviewId ? (
+          <Pressable
+            onPress={() => {
+              setFocusRecordId(item.reviewId);
+              setMenuOpen(true);
+            }}
+            accessibilityRole="button"
+            style={styles.reviewBtn}
+          >
+            <Ionicons name="create-outline" size={16} color={colors.text} />
+            <Text style={styles.reviewBtnText}>지금 확인하기</Text>
+          </Pressable>
+        ) : null}
       </View>
     );
   };
 
   return (
     <SafeAreaView style={styles.safe} edges={["top"]}>
-      <AppHeader onMenu={() => setMenuOpen(true)} onNew={startNew} onMore={() => router.push("/more")} />
+      <AppHeader onMenu={() => setMenuOpen(true)} onNew={startNew} onMore={() => router.push("/more")} menuBadge={reviewCount > 0} />
       <Sidebar
         open={menuOpen}
         onClose={() => setMenuOpen(false)}
@@ -72,6 +96,10 @@ export default function AiAssistantScreen() {
         onNew={startNew}
         onOpenSession={open}
         onDeleteSession={remove}
+        reviewCount={reviewCount}
+        focusRecordId={focusRecordId}
+        onFocusHandled={() => setFocusRecordId(null)}
+        onRecordsLoaded={countReview}
       />
 
       {/* Android(SDK 54)는 화면 전체 모드라 키보드가 화면을 줄여 주지 않는다. 양쪽 모두 직접 피한다. */}
@@ -169,6 +197,8 @@ const styles = StyleSheet.create({
   list: { paddingHorizontal: 20, paddingTop: 12, paddingBottom: 24 },
   gap: { height: 24 },
   answer: { gap: 16 },
+  reviewBtn: { alignSelf: "flex-start", minHeight: 40, paddingHorizontal: 16, borderRadius: 20, backgroundColor: colors.peach, flexDirection: "row", alignItems: "center", gap: 6 },
+  reviewBtnText: { fontSize: 14, fontWeight: "600", color: colors.text },
   footer: { marginTop: 24 },
   toBottom: {
     position: "absolute",
