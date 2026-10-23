@@ -7,6 +7,7 @@ from app.features.ai_assistant.router import router as ai_assistant_router
 from app.features.billing.router import router as billing_router
 from app.features.care.router import router as care_router
 from app.features.family_chat.router import router as family_chat_router
+from app.features.family_group.photo_limit import PhotoBodyLimitMiddleware
 from app.features.family_group.router import router as family_group_router
 from app.features.schedule.router import router as schedule_router
 from app.shared.config import settings
@@ -23,6 +24,9 @@ async def lifespan(_: FastAPI):
 
 app = FastAPI(title=settings.app_name, debug=settings.debug, lifespan=lifespan)
 
+app.add_middleware(
+    PhotoBodyLimitMiddleware
+)  # 사진 업로드 경로만: multipart 파싱 전에 본문 크기로 거절
 origins = [o.strip() for o in settings.cors_origins.split(",") if o.strip()]
 app.add_middleware(CORSMiddleware, allow_origins=origins, allow_methods=["*"], allow_headers=["*"])
 register_error_handlers(app)

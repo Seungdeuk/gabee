@@ -8,7 +8,7 @@ docker compose 의 개발용 PostgreSQL(`pgvector/pgvector:pg16` 이미지, `pgv
 
 | 테이블 | 기능 | 설명 |
 |---|---|---|
-| users | family_group | 이름, 역할(parent/child/other), 로그인 토큰, 현재 가족 그룹, (PR 4-A, 스키마만) `login_id`/`email`/`email_verified_at`/`password_hash` — 전부 nullable, 익명 계정은 전부 NULL. 가입 시 역할이 기타일 때 직접 적은 관계 `role_detail`(nullable, 40자). 위치 공유 동의 시각 `location_consent_at`(없으면 미동의) |
+| users | family_group | 이름, 역할(parent/child/other), 로그인 토큰, 현재 가족 그룹, (PR 4-A, 스키마만) `login_id`/`email`/`email_verified_at`/`password_hash` — 전부 nullable, 익명 계정은 전부 NULL. 가입 시 역할이 기타일 때 직접 적은 관계 `role_detail`(nullable, 40자). 위치 공유 동의 시각 `location_consent_at`(없으면 미동의)프로필 사진(PR B) `profile_photo_path`(상대 경로 `profile_photos/<user_id>.jpg`, 서버가 정함, nullable 255자)·`profile_photo_updated_at`(바꾼 시각, 캐시 무효화용, nullable) — 파일은 DB 가 아니라 `DATA_DIR/profile_photos/` 에 있고 둘 다 NULL 이면 사진 없음 |
 | groups | family_group | 가족 그룹(이름, 소유자) |
 | group_members | family_group | 그룹 구성원(그룹+사용자가 기본키). (PR 4-A, 스키마만) `role`(owner/admin/member, 그룹당 owner 최대 1명을 부분 유니크 인덱스로 강제), `family_relation`/`family_relation_detail`/`display_name` |
 | invites | family_group | 초대 코드(그룹, 만든 사람, 철회 여부). (PR 4-A, 스키마만) 서로게이트 `id`(UNIQUE, join_requests/invite_attempts 가 참조), `expires_at`/`max_uses`/`use_count` |
