@@ -2,13 +2,16 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
 
 import { isApiConfigured } from "@/shared/api/client";
+import useResource from "@/shared/hooks/useResource";
 import Screen from "@/shared/components/Screen";
 import Segmented from "@/shared/components/Segmented";
 import { colors, font } from "@/theme";
 
+import { getDaily } from "../api";
 import CarePreview from "../components/CarePreview";
 import DailyCheckTab from "../components/DailyCheckTab";
 import LocationTab from "../components/LocationTab";
+import MealBar from "../components/MealBar";
 import MealTab from "../components/MealTab";
 import RecommendTab from "../components/RecommendTab";
 
@@ -32,6 +35,14 @@ function CareLive() {
   const [section, setSection] = useState("check");
   const [message, setMessage] = useState(null);
   const timer = useRef(null);
+  const daily = useResource(getDaily); // 상단 고정 끼니 바와 데일리 체크가 같이 쓴다
+  const { reload: reloadDaily } = daily;
+
+  // 시각에 따라 다가오는 일정·누락이 바뀌므로 1분마다 다시 불러온다
+  useEffect(() => {
+    const id = setInterval(reloadDaily, 60 * 1000);
+    return () => clearInterval(id);
+  }, [reloadDaily]);
 
   const notify = useCallback((text, isError = false) => {
     setMessage({ text, isError });
@@ -41,16 +52,26 @@ function CareLive() {
   useEffect(() => () => clearTimeout(timer.current), []);
 
   return (
-    <Screen title="돌봄" subtitle="데일리 체크 · 추천 · 식단 · 위치">
-      <Segmented options={SECTIONS} value={section} onChange={setSection} />
-
+    <Screen
+      title="돌봄"
+      subtitle="데일리 체크 · 추천 · 식단 · 위치"
+      pinned={
+        <View>
+          <View style={styles.tabsRow}>
+            <Segmented options={SECTIONS} value={section} onChange={setSection} />
+          </View>
+          <MealBar meals={daily.data?.meals ?? []} />
+        </View>
+      }
+    >
       {message ? (
         <View style={[styles.message, message.isError && styles.messageError]} accessibilityLiveRegion="polite" testID="message">
           <Text style={[styles.messageText, message.isError && styles.messageTextError]}>{message.text}</Text>
         </View>
       ) : null}
 
-      {section === "check" ? <DailyCheckTab notify={notify} /> : null}
+      {section === "check" && !daily.data ? <Text style={styles.muted}>{daily.error || "불러오는 중…"}</Text> : null}
+      {section === "check" && daily.data ? <DailyCheckTab daily={daily.data} reload={reloadDaily} notify={notify} /> : null}
       {section === "recommend" ? <RecommendTab notify={notify} /> : null}
       {section === "meal" ? <MealTab notify={notify} /> : null}
       {section === "location" ? <LocationTab notify={notify} /> : null}
@@ -59,8 +80,10 @@ function CareLive() {
 }
 
 const styles = StyleSheet.create({
+  tabsRow: { paddingHorizontal: 20, paddingTop: 4, backgroundColor: colors.background },
   message: { backgroundColor: colors.successSoft, borderRadius: 14, paddingHorizontal: 14, paddingVertical: 10 },
   messageError: { backgroundColor: colors.dangerSoft },
   messageText: { ...font.caption, color: colors.success, fontWeight: "600" },
   messageTextError: { color: colors.danger },
+  muted: { ...font.caption, color: colors.textMuted, textAlign: "center", paddingVertical: 8 },
 });

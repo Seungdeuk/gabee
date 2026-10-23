@@ -72,21 +72,39 @@ def list_subscriptions(db: Session, group_id: str) -> list[SubscriptionItem]:
     return list(
         db.scalars(
             select(SubscriptionItem)
-            .where(SubscriptionItem.group_id == group_id)
+            .where(SubscriptionItem.group_id == group_id, SubscriptionItem.deleted_at.is_(None))
             .order_by(SubscriptionItem.sort_order)
         )
     )
 
 
-def add_subscriptions(db: Session, items: list[SubscriptionItem]) -> None:
-    db.add_all(items)
-    db.commit()
+def max_subscription_order(db: Session, group_id: str) -> int:
+    return db.scalar(
+        select(func.coalesce(func.max(SubscriptionItem.sort_order), -1)).where(
+            SubscriptionItem.group_id == group_id
+        )
+    )
+
+
+def subscription_ids_with_expense(db: Session, group_id: str, month: str) -> set[str]:
+    """그 달에 이미 지출을 만든 구독 항목 id 들(삭제한 지출은 세지 않는다)."""
+    rows = db.scalars(
+        select(Expense.subscription_id).where(
+            Expense.group_id == group_id,
+            Expense.subscription_id.is_not(None),
+            Expense.date.like(f"{month}-%"),
+            Expense.deleted_at.is_(None),
+        )
+    )
+    return set(rows)
 
 
 def get_subscription(db: Session, group_id: str, item_id: str) -> SubscriptionItem | None:
     return db.scalar(
         select(SubscriptionItem).where(
-            SubscriptionItem.id == item_id, SubscriptionItem.group_id == group_id
+            SubscriptionItem.id == item_id,
+            SubscriptionItem.group_id == group_id,
+            SubscriptionItem.deleted_at.is_(None),
         )
     )
 

@@ -163,9 +163,11 @@ def test_subscription_status_change_and_notice(client, family):
     a, _, _ = family
     data = client.get("/billing/subscriptions", headers=a).json()
     assert "예시, 실제 적용은 통신사에서 확인" in data["notice"]
-    assert {i["kind"] for i in data["items"]} == {"ott", "telecom"}
-    assert {i["status"] for i in data["items"]} == {"check"}
-    item = data["items"][0]
+    assert data["items"] == []  # 고르기 전에는 비어 있다(카탈로그에서 골라 추가)
+    item = client.post(
+        "/billing/subscriptions", json={"kind": "ott", "name": "넷플릭스"}, headers=a
+    ).json()
+    assert item["status"] == "check"
     r = client.patch(f"/billing/subscriptions/{item['id']}", json={"status": "active"}, headers=a)
     assert r.json()["status"] == "active"
     bad = client.patch(f"/billing/subscriptions/{item['id']}", json={"status": "free"}, headers=a)

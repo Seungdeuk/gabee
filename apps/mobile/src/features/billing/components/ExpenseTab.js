@@ -6,6 +6,7 @@ import Card from "@/shared/components/Card";
 import Field from "@/shared/components/Field";
 import ListItem from "@/shared/components/ListItem";
 import SectionTitle from "@/shared/components/SectionTitle";
+import Tag from "@/shared/components/Tag";
 import useResource from "@/shared/hooks/useResource";
 import { colors, font } from "@/theme";
 
@@ -76,6 +77,7 @@ export default function ExpenseTab({ month, notify }) {
             right={
               <View style={styles.right}>
                 <Text style={styles.amount}>{won(e.amount)}</Text>
+                {e.subscription_id ? <Tag label="구독" tone="blue" /> : null}
                 <TagBadge tag={e.target_tag} settled={e.settled} />
                 <Button small variant="ghost" label="삭제" a11yLabel={`${e.title} 삭제`} onPress={() => remove(e.id)} />
               </View>

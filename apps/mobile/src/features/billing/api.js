@@ -6,8 +6,10 @@ import { apiFetch } from "@/shared/api/client";
  * @typedef {{ from_user_id: string, from_name: string, to_user_id: string, to_name: string, amount: number }} Transfer
  * @typedef {Transfer & { id: string }} Payment
  * @typedef {{ month: string, balances: Balance[], transfers: Transfer[], completed: Payment[], unsettled_count: number, unsettled_total: number }} Settlement
- * @typedef {{ id: string, title: string, amount: number, date: string, category: string, paid_by: string, paid_by_name: string, split_among: string[], target_tag: "parents" | "children" | "all" | "custom", settled: boolean }} Expense
- * @typedef {{ id: string, kind: "ott" | "telecom", name: string, status: "check" | "available" | "active" }} Subscription
+ * @typedef {{ id: string, title: string, amount: number, date: string, category: string, subscription_id: string | null, paid_by: string, paid_by_name: string, split_among: string[], target_tag: "parents" | "children" | "all" | "custom", settled: boolean }} Expense
+ * @typedef {{ id: string, kind: "ott" | "telecom", name: string, status: "check" | "available" | "active", carrier: "skt" | "kt" | "lgu" | "mvno" | "other" | null, monthly_fee: number | null, discount_amount: number | null, list_price: number | null, billing_day: number | null, payer_id: string | null, payer_name: string, split_among: string[] }} Subscription
+ * @typedef {{ id: string, name: string, kind: "ott" | "telecom", amount: number | null, date: string, payer_name: string, split_count: number, state: "ready" | "created" | "no_fee" | "no_payer" }} MonthlyItem
+ * @typedef {{ month: string, items: MonthlyItem[], ready_count: number, ready_total: number }} MonthlyPlan
  * @typedef {{ id: string, amount: number, memo: string, date: string }} AllowanceUse
  * @typedef {{ child_id: string, name: string, month: string, budget: number | null, used: number, remaining: number, uses: AllowanceUse[] }} Allowance
  */
@@ -55,12 +57,42 @@ export async function getMembers() {
   return group.members;
 }
 
-/** @returns {Promise<{ notice: string, items: Subscription[] }>} */
+/** @returns {Promise<{ notice: string, items: Subscription[], monthly_total: number, discount_total: number }>} 월 합계는 월 청구 금액의 합(할인이 이미 빠진 값), 할인 합계는 직접 입력한 값의 합 */
 export const getSubscriptions = () => apiFetch("/billing/subscriptions");
 
-/** @param {string} id @param {Subscription["status"]} status @returns {Promise<Subscription>} */
-export const setSubscriptionStatus = (id, status) =>
-  apiFetch(`/billing/subscriptions/${id}`, { method: "PATCH", body: { status } });
+/** @returns {Promise<{ items: { kind: "ott" | "telecom", name: string, added: boolean }[] }>} 고를 수 있는 서비스 목록(이미 추가한 것은 added) */
+export const getSubscriptionCatalog = () => apiFetch("/billing/subscriptions/catalog");
+
+/**
+ * OTT·통신비 항목 추가. 월 금액·결제일은 사용자가 입력한 값만 저장한다(할인 금액은 계산하지 않는다).
+ * @param {{ kind: "ott" | "telecom", name: string, carrier?: Subscription["carrier"], monthly_fee?: number | null, discount_amount?: number | null, billing_day?: number | null, payer_id?: string | null, split_among?: string[] }} body 결제한 사람을 안 보내면 등록한 사람, 나눌 사람이 비어 있으면 가족 전체
+ * @returns {Promise<Subscription>}
+ */
+export const createSubscription = (body) => apiFetch("/billing/subscriptions", { method: "POST", body });
+
+/**
+ * 보낸 필드만 바꾼다(status, name, carrier, monthly_fee, billing_day). 금액·결제일·통신사는 null 을 보내면 지운다.
+ * @param {string} id
+ * @param {Partial<Pick<Subscription, "status" | "name" | "carrier" | "monthly_fee" | "discount_amount" | "billing_day" | "payer_id" | "split_among">>} patch
+ * @returns {Promise<Subscription>}
+ */
+export const updateSubscription = (id, patch) => apiFetch(`/billing/subscriptions/${id}`, { method: "PATCH", body: patch });
+
+/** 그 달에 구독료 지출로 만들 수 있는 항목. @param {string} month YYYY-MM @returns {Promise<MonthlyPlan>} */
+export const getMonthlyPlan = (month) => apiFetch(`/billing/subscriptions/monthly?month=${encodeURIComponent(month)}`);
+
+/**
+ * '이번 달 구독료 지출 만들기': 금액이 있는 항목만 미정산 지출로 만든다. 같은 달에 다시 불러도 중복으로 만들지 않는다.
+ * @param {string} month YYYY-MM
+ * @returns {Promise<{ created: Expense[], plan: MonthlyPlan }>}
+ */
+export const generateMonthly = (month) => apiFetch("/billing/subscriptions/monthly", { method: "POST", body: { month } });
+
+/** 내 사용자 id(결제한 사람 기본값). @returns {Promise<string>} */
+export const getMyId = async () => (await apiFetch("/family-group/me")).id;
+
+/** 소프트 삭제. @param {string} id */
+export const deleteSubscription = (id) => apiFetch(`/billing/subscriptions/${id}`, { method: "DELETE" });
 
 /** @param {string} month @returns {Promise<Allowance[]>} */
 export const getAllowances = (month) => apiFetch(`/billing/allowances${monthQuery(month)}`);

@@ -23,17 +23,24 @@ from .schemas import (
     AllowanceUseCreate,
     AllowanceUseOut,
     Balance,
+    CatalogEntry,
     ExpenseCreate,
     ExpenseOut,
     ManagerOut,
+    MonthlyItem,
+    MonthlyPlan,
+    MonthlyResult,
     PaymentCreate,
     PaymentOut,
     Reminder,
     Settlement,
     SettleRequest,
     SettleTagOut,
+    SubscriptionCatalog,
+    SubscriptionCreate,
     SubscriptionList,
     SubscriptionOut,
+    SubscriptionPatch,
     Summary,
     Transfer,
 )
@@ -43,11 +50,18 @@ _MONTH = re.compile(r"^\d{4}-(0[1-9]|1[0-2])$")
 KST = timezone(timedelta(hours=9))
 
 SUBSCRIPTION_NOTICE = "예시, 실제 적용은 통신사에서 확인"
-# 처음 열 때 만들어 두는 항목. 할인 금액은 다루지 않고 상태만 기록한다.
-DEFAULT_SUBSCRIPTIONS = (
+# 고를 수 있는 목록. 화면에는 사용자가 골라 추가한 항목만 나오고, 아직 안 쓰는 서비스는 이 목록에만 있다.
+SUBSCRIPTION_CATALOG = (
     ("ott", "넷플릭스"),
     ("ott", "유튜브 프리미엄"),
     ("ott", "디즈니+"),
+    ("ott", "티빙"),
+    ("ott", "웨이브"),
+    ("ott", "쿠팡플레이"),
+    ("ott", "왓챠"),
+    ("ott", "애플 TV+"),
+    ("ott", "스포티파이"),
+    ("ott", "멜론"),
     ("telecom", "가족 결합 할인"),
     ("telecom", "요금제 결합 할인"),
 )
@@ -105,6 +119,7 @@ def _expense_out(e: Expense, names: dict[str, str], member_ids: list[str]) -> Ex
         split_among=e.split_among or member_ids,
         target_tag=e.target_tag,
         settled=e.settled_at is not None,
+        subscription_id=e.subscription_id,
     )
 
 
@@ -401,31 +416,236 @@ def undo_paid(db: Session, group_id: str, payment_id: str) -> Settlement:
 # ---- 구독·통신비 가족 할인 상태 ----
 
 
-def _subscription_out(i: SubscriptionItem) -> SubscriptionOut:
-    return SubscriptionOut(id=i.id, kind=i.kind, name=i.name, status=i.status)
+MAX_SUBSCRIPTIONS = 30
+SUBSCRIPTION_CATEGORY = "구독"
+
+
+def _split_ids(split: list[str] | None, member_ids: list[str]) -> list[str]:
+    """저장된 나눌 사람(비어 있으면 가족 전체)을 현재 구성원 순서로 풀어 낸다."""
+    wanted = set(split or member_ids)
+    return [u for u in member_ids if u in wanted] or member_ids
+
+
+def _subscription_out(i: SubscriptionItem, members: list[User]) -> SubscriptionOut:
+    names = {m.id: m.name for m in members}
+    return SubscriptionOut(
+        id=i.id,
+        kind=i.kind,
+        name=i.name,
+        status=i.status,
+        carrier=i.carrier,
+        monthly_fee=i.monthly_fee,
+        discount_amount=i.discount_amount,
+        list_price=None
+        if i.monthly_fee is None and i.discount_amount is None
+        else (i.monthly_fee or 0) + (i.discount_amount or 0),
+        billing_day=i.billing_day,
+        payer_id=i.payer_id,
+        payer_name=names.get(i.payer_id, ""),
+        split_among=_split_ids(i.split_among, [m.id for m in members]),
+    )
+
+
+def subscription_catalog(db: Session, group_id: str) -> SubscriptionCatalog:
+    """고를 수 있는 서비스 목록. 이미 추가한 것은 `added` 로 표시한다(이름 기준)."""
+    have = {(i.kind, i.name) for i in repo.list_subscriptions(db, group_id)}
+    return SubscriptionCatalog(
+        items=[CatalogEntry(kind=k, name=n, added=(k, n) in have) for k, n in SUBSCRIPTION_CATALOG]
+    )
 
 
 def list_subscriptions(db: Session, group_id: str) -> SubscriptionList:
     items = repo.list_subscriptions(db, group_id)
-    if not items:
-        items = [
-            SubscriptionItem(
-                id=uuid.uuid4().hex[:12], group_id=group_id, kind=k, name=n, sort_order=i
-            )
-            for i, (k, n) in enumerate(DEFAULT_SUBSCRIPTIONS)
-        ]
-        repo.add_subscriptions(db, items)
-    return SubscriptionList(notice=SUBSCRIPTION_NOTICE, items=[_subscription_out(i) for i in items])
+    members = group_repo.members(db, group_id)
+    return SubscriptionList(
+        notice=SUBSCRIPTION_NOTICE,
+        items=[_subscription_out(i, members) for i in items],
+        monthly_total=sum(i.monthly_fee or 0 for i in items),
+        discount_total=sum(i.discount_amount or 0 for i in items),
+    )
 
 
-def set_subscription_status(
-    db: Session, group_id: str, item_id: str, status: str
+def _check_carrier(kind: str, carrier: str | None) -> None:
+    if carrier is not None and kind != "telecom":
+        raise bad_request("invalid_carrier", "통신사는 통신비 항목에만 지정할 수 있어요")
+
+
+def _clean_name(name: str) -> str:
+    name = name.strip()
+    if not name:
+        raise bad_request("invalid_name", "이름을 입력해 주세요")
+    return name
+
+
+def _check_payer(payer_id: str | None, member_ids: list[str]) -> None:
+    if payer_id is not None and payer_id not in member_ids:
+        raise bad_request("invalid_payer", "결제한 사람은 가족 구성원이어야 해요")
+
+
+def _clean_split(split: list[str] | None, member_ids: list[str]) -> list[str]:
+    """비어 있으면(가족 전체) 빈 목록으로 저장한다. 구성원이 아닌 id 는 거절한다."""
+    if not split:
+        return []
+    if any(u not in member_ids for u in split):
+        raise bad_request("invalid_split", "나눌 사람은 가족 구성원이어야 해요")
+    chosen = [u for u in member_ids if u in set(split)]
+    return [] if len(chosen) == len(member_ids) else chosen
+
+
+def create_subscription(
+    db: Session, group_id: str, user: User, body: SubscriptionCreate
 ) -> SubscriptionOut:
+    _check_carrier(body.kind, body.carrier)
+    members = group_repo.members(db, group_id)
+    ids = [m.id for m in members]
+    # 보내지 않으면 등록한 사람이 결제하는 것으로 보고, null 을 명시하면 '결제한 사람 없음'으로 저장한다
+    payer_id = body.payer_id if "payer_id" in body.model_fields_set else user.id
+    _check_payer(payer_id, ids)
+    split = _clean_split(body.split_among, ids)
+    if len(repo.list_subscriptions(db, group_id)) >= MAX_SUBSCRIPTIONS:
+        raise bad_request("too_many", f"항목은 {MAX_SUBSCRIPTIONS}개까지 만들 수 있어요")
+    item = repo.save(
+        db,
+        SubscriptionItem(
+            id=uuid.uuid4().hex[:12],
+            group_id=group_id,
+            kind=body.kind,
+            name=_clean_name(body.name),
+            carrier=body.carrier,
+            monthly_fee=body.monthly_fee,
+            discount_amount=body.discount_amount,
+            billing_day=body.billing_day,
+            payer_id=payer_id,
+            split_among=split,
+            sort_order=repo.max_subscription_order(db, group_id) + 1,
+        ),
+    )
+    return _subscription_out(item, members)
+
+
+def update_subscription(
+    db: Session, group_id: str, item_id: str, body: SubscriptionPatch
+) -> SubscriptionOut:
+    """보낸 필드만 바꾼다(금액·결제일·통신사·결제한 사람은 null 을 보내면 지운다, 나눌 사람은 빈 목록이면 가족 전체)."""
+    sent = body.model_fields_set
+    if not sent:
+        raise bad_request("empty_patch", "바꿀 내용을 보내 주세요")
     item = repo.get_subscription(db, group_id, item_id)
     if item is None:
         raise not_found("항목")
-    item.status, item.updated_at = status, datetime.now(UTC)
-    return _subscription_out(repo.save(db, item))
+    members = group_repo.members(db, group_id)
+    ids = [m.id for m in members]
+    if "status" in sent and body.status is not None:
+        item.status = body.status
+    if "name" in sent and body.name is not None:
+        item.name = _clean_name(body.name)
+    if "carrier" in sent:
+        _check_carrier(item.kind, body.carrier)
+        item.carrier = body.carrier
+    if "monthly_fee" in sent:
+        item.monthly_fee = body.monthly_fee
+    if "discount_amount" in sent:
+        item.discount_amount = body.discount_amount
+    if "billing_day" in sent:
+        item.billing_day = body.billing_day
+    if "payer_id" in sent:
+        _check_payer(body.payer_id, ids)
+        item.payer_id = body.payer_id
+    if "split_among" in sent:
+        item.split_among = _clean_split(body.split_among, ids)
+    item.updated_at = datetime.now(UTC)
+    return _subscription_out(repo.save(db, item), members)
+
+
+def delete_subscription(db: Session, group_id: str, item_id: str) -> None:
+    item = repo.get_subscription(db, group_id, item_id)
+    if item is None:
+        raise not_found("항목")
+    item.deleted_at = datetime.now(UTC)
+    repo.save(db, item)
+
+
+# ---- 구독료를 월별 지출로 만들기 ----
+
+
+def _due_date(month: str, billing_day: int | None) -> str:
+    """지출 날짜. 결제일이 없으면 1일, 그 달에 없는 날(예: 2월 31일)이면 그 달의 마지막 날이다."""
+    year, mon = (int(x) for x in month.split("-"))
+    last = calendar.monthrange(year, mon)[1]
+    return f"{month}-{min(billing_day or 1, last):02d}"
+
+
+def monthly_plan(db: Session, group_id: str, month: str) -> MonthlyPlan:
+    """이번 달에 구독료 지출로 만들 수 있는 항목. 금액이 있고 결제한 사람이 있으며 아직 안 만든 항목만 ready 다."""
+    month = check_month(month)
+    members = group_repo.members(db, group_id)
+    ids = [m.id for m in members]
+    names = {m.id: m.name for m in members}
+    made = repo.subscription_ids_with_expense(db, group_id, month)
+    entries: list[MonthlyItem] = []
+    for i in repo.list_subscriptions(db, group_id):
+        if not i.monthly_fee:
+            state = "no_fee"
+        elif i.payer_id not in names:
+            state = "no_payer"
+        elif i.id in made:
+            state = "created"
+        else:
+            state = "ready"
+        entries.append(
+            MonthlyItem(
+                id=i.id,
+                name=i.name,
+                kind=i.kind,
+                amount=i.monthly_fee,
+                date=_due_date(month, i.billing_day),
+                payer_name=names.get(i.payer_id, ""),
+                split_count=len(_split_ids(i.split_among, ids)),
+                state=state,
+            )
+        )
+    ready = [e for e in entries if e.state == "ready"]
+    return MonthlyPlan(
+        month=month,
+        items=entries,
+        ready_count=len(ready),
+        ready_total=sum(e.amount or 0 for e in ready),
+    )
+
+
+def generate_monthly(db: Session, group_id: str, month: str) -> MonthlyResult:
+    """'이번 달 구독료 지출 만들기'. ready 인 항목만 지출로 만들고(미정산 상태), 같은 달에 다시 눌러도 중복으로 만들지 않는다."""
+    plan = monthly_plan(db, group_id, month)
+    members = group_repo.members(db, group_id)
+    ids = [m.id for m in members]
+    names = {m.id: m.name for m in members}
+    items = {i.id: i for i in repo.list_subscriptions(db, group_id)}
+    created: list[Expense] = []
+    for entry in plan.items:
+        if entry.state != "ready":
+            continue
+        item = items[entry.id]
+        split = _split_ids(item.split_among, ids)
+        created.append(
+            Expense(
+                id=uuid.uuid4().hex[:12],
+                group_id=group_id,
+                title=f"{item.name} 구독료",
+                amount=item.monthly_fee,
+                date=entry.date,
+                category=SUBSCRIPTION_CATEGORY,
+                paid_by=item.payer_id,
+                split_among=split,
+                target_tag="all" if set(split) == set(ids) else "custom",
+                subscription_id=item.id,
+            )
+        )
+    if created:
+        repo.save_all(db, created)
+    return MonthlyResult(
+        created=[_expense_out(e, names, ids) for e in created],
+        plan=monthly_plan(db, group_id, month),
+    )
 
 
 # ---- 용돈 ----

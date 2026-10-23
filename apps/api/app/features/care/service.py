@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from app.features.family_group import repository as group_repo
 from app.shared.errors import ApiError, bad_request, not_found
 from app.shared.location_consent import set_location_consent
+from app.shared.seed_lock import seed_lock
 
 from . import config
 from . import repository as repo
@@ -23,6 +24,7 @@ from .schemas import (
     LocationsLatest,
     MealList,
     MealOut,
+    MealStatus,
     MemberLocation,
     PutResult,
     RecommendationList,
@@ -93,24 +95,27 @@ def _minutes(hhmm: str) -> int:
 def _ensure_sample_items(db: Session, group_id: str) -> None:
     if repo.has_items(db, group_id):
         return
-    repo.add_items(
-        db,
-        [
-            CareItem(
-                id=uuid.uuid4().hex[:12],
-                group_id=group_id,
-                name=s["name"],
-                mode=s["mode"],
-                unit=s.get("unit", ""),
-                target=s.get("target"),
-                scheduled_time=s["time"],
-                meal_type=s.get("meal_type"),
-                rule_key=s.get("rule_key"),
-                sort_order=i,
-            )
-            for i, s in enumerate(config.SAMPLE_ITEMS)
-        ],
-    )
+    with seed_lock(db, f"care-items:{group_id}"):  # 동시 요청이 둘 다 만들지 않게 잠근다
+        if repo.has_items(db, group_id):
+            return
+        repo.add_items(
+            db,
+            [
+                CareItem(
+                    id=uuid.uuid4().hex[:12],
+                    group_id=group_id,
+                    name=s["name"],
+                    mode=s["mode"],
+                    unit=s.get("unit", ""),
+                    target=s.get("target"),
+                    scheduled_time=s["time"],
+                    meal_type=s.get("meal_type"),
+                    rule_key=s.get("rule_key"),
+                    sort_order=i,
+                )
+                for i, s in enumerate(config.SAMPLE_ITEMS)
+            ],
+        )
 
 
 def is_completed(item: CareItem, entry: CareEntry | None) -> bool:
@@ -135,6 +140,32 @@ def is_missing(item: CareItem, completed: bool, day: str, today: str, now_min: i
     return now_min > _minutes(item.scheduled_time) + config.MISSING_GRACE_MINUTES
 
 
+def item_status(
+    item: CareItem, entry: CareEntry | None, completed: bool, day: str, today: str, now_min: int
+) -> str:
+    """done 완료 / skipped 건너뜀 / missing 누락 / due 예정 시각이 지났지만 60분 안 / upcoming 아직 전."""
+    if entry is not None and entry.skipped:
+        return "skipped"
+    if completed:
+        return "done"
+    if is_missing(item, completed, day, today, now_min):
+        return "missing"
+    if day == today and now_min >= _minutes(item.scheduled_time):
+        return "due"
+    return "upcoming"
+
+
+def _is_late(entry: CareEntry, item: CareItem) -> bool:
+    """예정 시각 + 60분이 지난 뒤에 기록했으면 소급 입력이다."""
+    if entry.skipped:
+        return False
+    hh, mm = (int(x) for x in item.scheduled_time.split(":"))
+    due = datetime.fromisoformat(entry.date).replace(hour=hh, minute=mm, tzinfo=KST) + timedelta(
+        minutes=config.MISSING_GRACE_MINUTES
+    )
+    return _aware(entry.recorded_at).astimezone(KST) > due
+
+
 def _clock(at: str | None) -> tuple[str, int, str]:
     """(오늘, 지금(분), 지금 HH:MM). `at` 이 있으면 그 시각을 지금으로 본다(화면 테스트용)."""
     now = datetime.now(KST)
@@ -145,17 +176,19 @@ def _clock(at: str | None) -> tuple[str, int, str]:
     return now.date().isoformat(), now.hour * 60 + now.minute, now.strftime("%H:%M")
 
 
-def _entry_out(e: CareEntry) -> EntryOut:
+def _entry_out(e: CareEntry, item: CareItem | None = None) -> EntryOut:
     return EntryOut(
         done=e.done,
         number=e.number,
         condition=e.condition,
         recorded_by=e.recorded_by,
         recorded_at=e.recorded_at,
+        skipped=bool(e.skipped),
+        late=_is_late(e, item) if item is not None else False,
     )
 
 
-def _item_out(it: CareItem, entry: CareEntry | None = None, **flags: bool) -> ItemOut:
+def _item_out(it: CareItem, entry: CareEntry | None = None, **extra) -> ItemOut:
     return ItemOut(
         id=it.id,
         name=it.name,
@@ -164,8 +197,8 @@ def _item_out(it: CareItem, entry: CareEntry | None = None, **flags: bool) -> It
         target=it.target,
         scheduled_time=it.scheduled_time,
         meal_type=it.meal_type,
-        entry=_entry_out(entry) if entry else None,
-        **flags,
+        entry=_entry_out(entry, it) if entry else None,
+        **extra,
     )
 
 
@@ -178,16 +211,47 @@ def daily(db: Session, group_id: str, day: str | None, at: str | None) -> DailyO
     for it in repo.list_items(db, group_id):
         entry = entries.get(it.id)
         completed = is_completed(it, entry)
+        status = item_status(it, entry, completed, day, today, now_min)
         items.append(
             _item_out(
                 it,
                 entry,
                 completed=completed,
-                missing=is_missing(it, completed, day, today, now_min),
+                missing=status == "missing",
+                skipped=status == "skipped",
+                status=status,
+                minutes_until=_minutes(it.scheduled_time) - now_min if day == today else None,
             )
         )
+
+    by_time = sorted(items, key=lambda i: i.scheduled_time)
+    meals = [
+        MealStatus(
+            meal=m,
+            label=config.MEAL_LABELS[m],
+            item_id=i.id,
+            scheduled_time=i.scheduled_time,
+            status=i.status,
+            answer=None
+            if i.entry is None or i.entry.done is None
+            else ("yes" if i.entry.done else "no"),
+        )
+        for m in config.MEAL_MENUS
+        for i in [next((x for x in by_time if x.meal_type == m), None)]
+        if i is not None
+    ]
+    upcoming = [i for i in by_time if i.status in ("due", "upcoming")]
+    upcoming.sort(key=lambda i: (i.status != "due", i.scheduled_time))  # 지금 해야 할 것 먼저
     return DailyOut(
-        date=day, now=now_text, items=items, missing_ids=[i.id for i in items if i.missing]
+        date=day,
+        now=now_text,
+        items=items,
+        missing_ids=[i.id for i in items if i.missing],
+        meals=meals,
+        upcoming_ids=[i.id for i in upcoming],
+        cleanup_ids=[i.id for i in by_time if i.status == "missing"],
+        skipped_ids=[i.id for i in by_time if i.status == "skipped"],
+        done_ids=[i.id for i in by_time if i.status == "done"],
     )
 
 
@@ -223,24 +287,36 @@ def delete_item(db: Session, group_id: str, item_id: str) -> None:
 
 
 def put_entry(db: Session, group_id: str, user_id: str, item_id: str, body: EntryPut) -> EntryOut:
+    """오늘(또는 date)의 기록. skipped=true 면 값 없이 '건너뛰기'로 기록하고, 아니면 기록 방식에 맞는 값이 필요하다."""
     item = repo.get_item(db, group_id, item_id)
     if item is None:
         raise not_found("항목")
-    if item.mode == "yesno" and body.done is None:
-        raise bad_request("value_required", "예/아니오 항목은 done 값이 필요해요")
-    if item.mode == "number" and body.number is None:
-        raise bad_request("value_required", "수치 항목은 number 값이 필요해요")
-    if item.mode == "condition" and body.condition is None:
-        raise bad_request("value_required", "컨디션 항목은 condition 값이 필요해요")
+    if not body.skipped:
+        if item.mode == "yesno" and body.done is None:
+            raise bad_request("value_required", "예/아니오 항목은 done 값이 필요해요")
+        if item.mode == "number" and body.number is None:
+            raise bad_request("value_required", "수치 항목은 number 값이 필요해요")
+        if item.mode == "condition" and body.condition is None:
+            raise bad_request("value_required", "컨디션 항목은 condition 값이 필요해요")
     day = (body.date or datetime.now(KST).date()).isoformat()
     entry = repo.get_entry(db, item.id, day) or CareEntry(
         id=uuid.uuid4().hex[:12], group_id=group_id, item_id=item.id, date=day
     )
-    entry.done = body.done if item.mode == "yesno" else None
-    entry.number = body.number if item.mode == "number" else None
-    entry.condition = body.condition if item.mode == "condition" else None
+    entry.skipped = body.skipped
+    entry.done = body.done if item.mode == "yesno" and not body.skipped else None
+    entry.number = body.number if item.mode == "number" and not body.skipped else None
+    entry.condition = body.condition if item.mode == "condition" and not body.skipped else None
     entry.recorded_by, entry.recorded_at = user_id, datetime.now(UTC)
-    return _entry_out(repo.save_obj(db, entry))
+    return _entry_out(repo.save_obj(db, entry), item)
+
+
+def delete_entry(db: Session, group_id: str, item_id: str, day: str | None) -> None:
+    """기록(또는 건너뛰기)을 지워 되돌린다."""
+    item = repo.get_item(db, group_id, item_id)
+    if item is None:
+        raise not_found("항목")
+    if not repo.delete_entry(db, item.id, day or today_kst()):
+        raise not_found("기록")
 
 
 # ---- 추천 ----
@@ -259,6 +335,8 @@ def recommend(db: Session, group_id: str, day: str | None) -> RecommendationList
 
     for it in repo.list_items(db, group_id):
         entry = entries.get(it.id)
+        if entry is not None and entry.skipped:
+            continue  # 일부러 건너뛴 항목은 다시 권하지 않는다
         if it.rule_key in ("water", "walk"):
             rule = it.rule_key
             if entry is None or entry.number is None:

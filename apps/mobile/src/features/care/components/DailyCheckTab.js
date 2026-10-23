@@ -3,91 +3,81 @@ import { StyleSheet, Text, View } from "react-native";
 
 import Button from "@/shared/components/Button";
 import Card from "@/shared/components/Card";
-import Field from "@/shared/components/Field";
 import SectionTitle from "@/shared/components/SectionTitle";
 import Tag from "@/shared/components/Tag";
-import TimePicker, { formatTime } from "@/shared/components/TimePicker";
-import useResource from "@/shared/hooks/useResource";
+import { formatTime } from "@/shared/components/TimePicker";
 import { colors, font } from "@/theme";
 
-import { addItem, deleteItem, getDaily, putEntry } from "../api";
-
-const CONDITIONS = [
-  { key: "good", label: "좋음" },
-  { key: "normal", label: "보통" },
-  { key: "bad", label: "나쁨" },
-];
-const MODES = [
-  { key: "yesno", label: "예/아니오" },
-  { key: "number", label: "수치(목표)" },
-  { key: "condition", label: "컨디션" },
-];
-const MEALS = [
-  { key: "", label: "끼니 없음" },
-  { key: "breakfast", label: "아침" },
-  { key: "lunch", label: "점심" },
-  { key: "dinner", label: "저녁" },
-];
-
-function entryText(item) {
-  const e = item.entry;
-  if (!e) return "기록 없음";
-  if (item.mode === "yesno") return e.done ? "예" : "아니오";
-  if (item.mode === "number") return `${e.number}${item.unit}`;
-  return CONDITIONS.find((c) => c.key === e.condition)?.label ?? "";
-}
+import { deleteEntry, deleteItem, putEntry } from "../api";
+import { agoText, toMinutes, untilText } from "../format";
+import AddItemForm from "./AddItemForm";
+import ItemInput, { entryText } from "./ItemInput";
 
 /**
- * 데일리 체크: 항목별 기록(예/아니오, 수치, 컨디션), 누락 표시, 항목 추가·삭제.
- * 누락은 서버가 예정 시각 + 60분을 기준으로 계산한다. 건강 이상을 뜻하지 않는다.
- * @param {{ notify: (text: string, isError?: boolean) => void }} props
+ * 데일리 체크. 위에서부터
+ * 1) 다가오는 일정: 지금 해야 할 것 → 곧 다가오는 순서(현재 시각 기준, 서버가 정렬)
+ * 2) 완료한 항목
+ * 3) 지난 시간 정리: 예정 시각이 지났는데 기록이 없는 항목을 모아 소급 입력 또는 건너뛰기로 처리한다
+ * 누락은 예정 시각 + 60분을 기준으로 서버가 계산한다. 건강 이상을 뜻하지 않는다.
+ * @param {{ daily: import("../api").Daily, reload: () => Promise<void>, notify: (text: string, isError?: boolean) => void }} props
  */
-export default function DailyCheckTab({ notify }) {
-  const { data, error, loading, reload } = useResource(getDaily);
+export default function DailyCheckTab({ daily, reload, notify }) {
+  const [retro, setRetro] = useState(null); // 소급 입력을 펼친 항목 id
 
-  const act = async (run, done) => {
+  const act = async (run, doneText) => {
     try {
       await run();
-      if (done) notify(done);
+      if (doneText) notify(doneText);
+      setRetro(null);
       await reload();
     } catch (e) {
       notify(e.message, true);
     }
   };
 
-  if (loading && !data) return <Text style={styles.muted}>불러오는 중…</Text>;
-  if (!data) return <Text style={styles.error}>{error || "체크 항목을 불러오지 못했어요"}</Text>;
+  const byId = Object.fromEntries(daily.items.map((i) => [i.id, i]));
+  const pick = (ids) => ids.map((id) => byId[id]).filter(Boolean);
+  const upcoming = pick(daily.upcoming_ids);
+  const done = pick(daily.done_ids);
+  const cleanup = pick(daily.cleanup_ids);
+  const skipped = pick(daily.skipped_ids);
+  const nowMin = toMinutes(daily.now);
 
-  const missing = data.items.filter((i) => i.missing).length;
-  const done = data.items.filter((i) => i.completed).length;
+  const skipAll = () =>
+    act(async () => {
+      for (const i of cleanup) await putEntry(i.id, { skipped: true });
+    }, `${cleanup.length}개를 모두 건너뛰었어요`);
 
   return (
     <View style={styles.wrap}>
       <Card tone="blue">
         <Text style={styles.notice}>누락은 아직 기록되지 않았다는 뜻이에요. 건강에 이상이 있다는 뜻은 아니에요.</Text>
+        <View style={styles.clockRow}>
+          <Text style={styles.caption}>기준 시각</Text>
+          <Text style={styles.statValue}>{daily.now}</Text>
+        </View>
         <View style={styles.stats}>
-          <Stat label="기준 시각" value={data.now} />
-          <Stat label="완료" value={`${done}/${data.items.length}`} testID="done-count" />
-          <Stat label="누락" value={String(missing)} testID="missing-count" />
+          <Stat label="완료" value={`${done.length}/${daily.items.length}`} testID="done-count" />
+          <Stat label="누락" value={String(cleanup.length)} testID="missing-count" />
         </View>
       </Card>
 
-      {data.items.map((item) => (
-        <Card key={item.id} tone="white">
+      <SectionTitle title="다가오는 일정" />
+      {upcoming.length === 0 ? <Text style={styles.muted}>남은 일정이 없어요</Text> : null}
+      {upcoming.map((item, index) => (
+        <Card key={item.id} tone="white" testID={`feed-${item.name}`}>
           <View style={styles.head}>
             <View style={styles.grow}>
               <Text style={styles.name}>{item.name}</Text>
               <Text style={styles.caption}>
-                {formatTime(item.scheduled_time)} 예정{item.target ? ` · 목표 ${item.target}${item.unit}` : ""} · {entryText(item)}
+                {formatTime(item.scheduled_time)} 예정{item.target ? ` · 목표 ${item.target}${item.unit}` : ""}
+                {item.entry ? ` · 기록: ${entryText(item)}` : ""}
               </Text>
             </View>
-            {item.missing ? (
-              <Tag label="미기록 · 누락" tone="orange" />
-            ) : item.completed ? (
-              <Tag label="✓ 완료" tone="green" />
-            ) : (
-              <Tag label="대기" tone="gray" />
-            )}
+            <Tag
+              label={item.status === "due" ? `지금 · ${untilText(item.minutes_until)}` : `${index === 0 ? "다음 · " : ""}${untilText(item.minutes_until)}`}
+              tone={item.status === "due" ? "orange" : "gray"}
+            />
           </View>
           <ItemInput item={item} act={act} notify={notify} />
           <View style={styles.rowEnd}>
@@ -96,102 +86,76 @@ export default function DailyCheckTab({ notify }) {
         </Card>
       ))}
 
-      <AddItemForm notify={notify} onAdded={reload} />
-    </View>
-  );
-}
+      {done.length > 0 ? (
+        <>
+          <SectionTitle title={`완료한 항목 (${done.length})`} />
+          <Card tone="white" testID="done-list">
+            {done.map((item) => (
+              <View key={item.id} style={styles.doneRow}>
+                <View style={styles.grow}>
+                  <Text style={styles.name}>{item.name}</Text>
+                  <Text style={styles.caption}>
+                    {formatTime(item.scheduled_time)} 예정 · {entryText(item)}
+                  </Text>
+                </View>
+                {item.entry?.late ? <Tag label="소급" tone="orange" /> : null}
+                <Tag label="✓ 완료" tone="green" />
+                <Button small variant="ghost" label="기록 지우기" a11yLabel={`${item.name} 기록 지우기`} onPress={() => act(() => deleteEntry(item.id), "기록을 지웠어요")} />
+              </View>
+            ))}
+          </Card>
+        </>
+      ) : null}
 
-function ItemInput({ item, act, notify }) {
-  const [value, setValue] = useState(item.entry?.number == null ? "" : String(item.entry.number));
-
-  if (item.mode === "yesno") {
-    return (
-      <View style={styles.options}>
-        <Button small variant="secondary" label="예" a11yLabel={`${item.name} 예`} selected={item.entry?.done === true} onPress={() => act(() => putEntry(item.id, { done: true }))} />
-        <Button small variant="secondary" label="아니오" a11yLabel={`${item.name} 아니오`} selected={item.entry?.done === false} onPress={() => act(() => putEntry(item.id, { done: false }))} />
-      </View>
-    );
-  }
-  if (item.mode === "condition") {
-    return (
-      <View style={styles.options}>
-        {CONDITIONS.map((c) => (
-          <Button key={c.key} small variant="secondary" label={c.label} a11yLabel={`${item.name} ${c.label}`} selected={item.entry?.condition === c.key} onPress={() => act(() => putEntry(item.id, { condition: c.key }))} />
+      <SectionTitle title={`지난 시간 정리 (${cleanup.length})`} />
+      <Card tone="white" testID="cleanup">
+        <Text style={styles.caption}>예정 시각이 지났는데 기록이 없는 항목이에요. 지금 기록하거나(소급 입력) 건너뛸 수 있어요.</Text>
+        {cleanup.length === 0 ? <Text style={styles.muted}>정리할 항목이 없어요</Text> : null}
+        {cleanup.map((item) => (
+          <View key={item.id} style={styles.cleanRow} testID={`cleanup-${item.name}`}>
+            <View style={styles.head}>
+              <View style={styles.grow}>
+                <Text style={styles.name}>{item.name}</Text>
+                <Text style={styles.caption}>
+                  {formatTime(item.scheduled_time)} 예정 · {agoText(nowMin - toMinutes(item.scheduled_time))}
+                  {item.entry ? ` · 기록: ${entryText(item)}` : ""}
+                </Text>
+              </View>
+              <Tag label="미기록 · 누락" tone="orange" />
+            </View>
+            <View style={styles.rowEnd}>
+              <Button small label="소급 입력" a11yLabel={`${item.name} 소급 입력`} onPress={() => setRetro(retro === item.id ? null : item.id)} />
+              <Button small variant="secondary" label="건너뛰기" a11yLabel={`${item.name} 건너뛰기`} onPress={() => act(() => putEntry(item.id, { skipped: true }), `건너뛰었어요 · ${item.name}`)} />
+              <Button small variant="ghost" label="삭제" a11yLabel={`${item.name} 삭제`} onPress={() => act(() => deleteItem(item.id), "항목을 삭제했어요")} />
+            </View>
+            {retro === item.id ? (
+              <View style={styles.retro}>
+                <Text style={styles.caption}>지금 기록하면 늦게 기록한 것으로 표시돼요</Text>
+                <ItemInput item={item} act={act} notify={notify} doneText="소급해서 기록했어요" />
+              </View>
+            ) : null}
+          </View>
         ))}
-      </View>
-    );
-  }
-  const save = () => {
-    if (!/^\d+$/.test(value.trim())) return notify("숫자만 입력해 주세요", true);
-    act(() => putEntry(item.id, { number: parseInt(value.trim(), 10) }), "저장했어요");
-  };
-  return (
-    <View style={styles.line}>
-      <Field style={styles.grow} value={value} onChangeText={setValue} placeholder={`${item.name} (${item.unit})`} keyboardType="numeric" />
-      <Button small label="저장" a11yLabel={`${item.name} 저장`} onPress={save} />
-    </View>
-  );
-}
+        {cleanup.length >= 2 ? <Button small variant="secondary" label="모두 건너뛰기" a11yLabel="지난 항목 모두 건너뛰기" onPress={skipAll} /> : null}
 
-function AddItemForm({ notify, onAdded }) {
-  const [name, setName] = useState("");
-  const [mode, setMode] = useState("yesno");
-  const [unit, setUnit] = useState("");
-  const [target, setTarget] = useState("");
-  const [time, setTime] = useState("12:00");
-  const [meal, setMeal] = useState("");
-
-  const submit = async () => {
-    if (!name.trim()) return notify("이름을 입력해 주세요", true);
-    try {
-      await addItem({
-        name: name.trim(),
-        mode,
-        unit: mode === "number" ? unit.trim() : "",
-        target: mode === "number" && target.trim() ? parseInt(target.trim(), 10) : null,
-        scheduled_time: time,
-        meal_type: mode === "yesno" && meal ? meal : null,
-      });
-      setName("");
-      setUnit("");
-      setTarget("");
-      notify("항목을 추가했어요");
-      await onAdded();
-    } catch (e) {
-      notify(e.message, true);
-    }
-  };
-
-  return (
-    <View style={styles.wrap}>
-      <SectionTitle title="항목 추가" />
-      <Card tone="white">
-        <Field label="이름" value={name} onChangeText={setName} placeholder="예: 혈압 재기" />
-        <Text style={styles.label}>기록 방식</Text>
-        <View style={styles.options}>
-          {MODES.map((m) => (
-            <Button key={m.key} small variant="secondary" label={m.label} a11yLabel={`방식 ${m.label}`} selected={mode === m.key} onPress={() => setMode(m.key)} />
-          ))}
-        </View>
-        {mode === "number" ? (
-          <View style={styles.line}>
-            <Field style={styles.grow} label="단위" value={unit} onChangeText={setUnit} placeholder="예: ml" />
-            <Field style={styles.grow} label="목표" value={target} onChangeText={setTarget} placeholder="숫자" keyboardType="numeric" />
+        {skipped.length > 0 ? (
+          <View style={styles.skippedBox} testID="skipped-list">
+            <Text style={styles.label}>건너뛴 항목 ({skipped.length})</Text>
+            {skipped.map((item) => (
+              <View key={item.id} style={styles.doneRow}>
+                <View style={styles.grow}>
+                  <Text style={styles.name}>{item.name}</Text>
+                  <Text style={styles.caption}>{formatTime(item.scheduled_time)} 예정</Text>
+                </View>
+                <Tag label="건너뜀" tone="gray" />
+                <Button small variant="secondary" label="되돌리기" a11yLabel={`${item.name} 되돌리기`} onPress={() => act(() => deleteEntry(item.id), "건너뛰기를 되돌렸어요")} />
+              </View>
+            ))}
           </View>
         ) : null}
-        <TimePicker label="예정 시각" value={time} onChange={setTime} />
-        {mode === "yesno" ? (
-          <>
-            <Text style={styles.label}>끼니 (식단 추천용)</Text>
-            <View style={styles.options}>
-              {MEALS.map((m) => (
-                <Button key={m.key || "none"} small variant="secondary" label={m.label} a11yLabel={`끼니 ${m.label}`} selected={meal === m.key} onPress={() => setMeal(m.key)} />
-              ))}
-            </View>
-          </>
-        ) : null}
-        <Button label="항목 추가" onPress={submit} />
       </Card>
+
+      <AddItemForm notify={notify} onAdded={reload} />
     </View>
   );
 }
@@ -210,17 +174,19 @@ function Stat({ label, value, testID }) {
 const styles = StyleSheet.create({
   wrap: { gap: 16 },
   head: { flexDirection: "row", alignItems: "center", gap: 12 },
-  grow: { flex: 1 },
+  grow: { flex: 1, gap: 2 },
   name: { ...font.cardTitle, color: colors.text },
   caption: { ...font.caption, color: colors.textMuted },
   label: { fontSize: 14, fontWeight: "500", color: colors.text },
   notice: { ...font.caption, color: colors.text },
+  clockRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   stats: { flexDirection: "row", justifyContent: "space-between" },
   stat: { flex: 1, alignItems: "center", gap: 4 },
   statValue: { ...font.bodyStrong, fontWeight: "700", color: colors.text },
-  options: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
-  line: { flexDirection: "row", alignItems: "flex-end", gap: 8 },
-  rowEnd: { flexDirection: "row", justifyContent: "flex-end" },
+  rowEnd: { flexDirection: "row", justifyContent: "flex-end", gap: 8, flexWrap: "wrap" },
+  doneRow: { flexDirection: "row", alignItems: "center", gap: 8, paddingVertical: 6 },
+  cleanRow: { gap: 10, paddingVertical: 12, borderTopWidth: 1, borderTopColor: colors.divider },
+  retro: { gap: 8, padding: 12, borderRadius: 14, backgroundColor: colors.surface },
+  skippedBox: { gap: 4, paddingTop: 12, borderTopWidth: 1, borderTopColor: colors.divider },
   muted: { ...font.caption, color: colors.textMuted, textAlign: "center", paddingVertical: 8 },
-  error: { ...font.body, color: colors.danger },
 });
