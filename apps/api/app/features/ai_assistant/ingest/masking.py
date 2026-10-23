@@ -5,7 +5,7 @@
     신분증         + 카드·전화·이메일·계좌·이름, 라벨 없는 이름 줄, 운전면허·여권 번호, 주소
     통장           + 카드·전화·이메일·이름, 라벨 없는 계좌번호·이름 줄, 주소
     가족관계증명서  + 가족 이름(구분 칸 옆), 출생연월일, 등록기준지, 이름 줄
-    그 밖(영수증·가정통신문·엑셀 …)  주민번호 말고는 가리지 않는다 (담당자 결정 2026-10-22)
+    그 밖(영수증·가정통신문·엑셀 …)  + 카드·전화·이메일·계좌 번호, 라벨 있는 이름·주소(외부 모델로 나가므로 확대)
 
 처방전의 약 이름·용법·투약일수는 복약 챙기기에 필요해서 남긴다. 금액·날짜는 가리지 않는다.
 """
@@ -16,7 +16,12 @@ from typing import Literal
 
 Sensitive = Literal["none", "prescription", "id_card", "bankbook", "family_cert"]
 
-_RRN = re.compile(r"(?<!\d)\d{6}[ \t]*-[ \t]*[1-8][\d*]{6}(?![\d*])")
+# 구분은 하이픈·점·긴 대시·공백 모두, 구분 없는 13자리는 생년월일 모양(월 01~12, 일 01~31)일 때만
+_RRN = re.compile(
+    r"(?<!\d)\d{6}[ \t]*[-.·‐-―][ \t]*[1-8][\d*]{6}(?![\d*])"
+    r"|(?<![\d*])\d{2}(?:0[1-9]|1[0-2])(?:0[1-9]|[12]\d|3[01])[ \t]*[1-8]\d{6}(?!\d)"
+)
+_FULLWIDTH_DIGITS = str.maketrans("０１２３４５６７８９", "0123456789")
 # 라벨 뒤는 형태와 상관없이 가린다: OCR 이 숫자를 x 로 잘못 읽거나("5x0101-2****") 일부만 가려진 경우
 _RRN_LABEL = re.compile(
     r"((?:주민\s*(?:등록)?\s*번호|외국인\s*등록\s*번호)[ \t]*[:：]?[ \t]*)([0-9A-Za-z*][0-9A-Za-z* \t-]{4,15}[0-9A-Za-z*])"
@@ -26,7 +31,7 @@ _PHONE = re.compile(r"(?<!\d)(0\d{1,2})[-) .]?\d{3,4}[- .]?\d{4}(?!\d)")
 _EMAIL = re.compile(r"\b([A-Za-z0-9])[A-Za-z0-9._%+-]*@([A-Za-z0-9.-]+\.[A-Za-z]{2,})")
 _ACCOUNT = re.compile(r"((?:계좌|입금|예금)\s*(?:번호)?\s*[:：]?\s*)(\d[\d -]{7,}\d)")
 _NAME = re.compile(
-    r"((?:성\s*명|이\s*름|환\s*자\s*명|수\s*진\s*자|고\s*객\s*명|예\s*금\s*주|수\s*신\s*인)\s*[:：]?\s*)([가-힣]{2,4})"
+    r"((?:성\s*명|이\s*름|환\s*자(?:\s*명)?|수\s*진\s*자|고\s*객\s*명|예\s*금\s*주|수\s*신\s*인)\s*[:：]?\s*)([가-힣]{2,4})"
 )
 # 처방전 전용
 _DISEASE = re.compile(
@@ -139,6 +144,7 @@ def sensitive_kind(text: str) -> Sensitive:
 def mask_text(text: str, kind: Sensitive = "none", *, counts: Counter | None = None) -> str:
     """kind 가 none 이면 주민·외국인등록번호만, 처방전·신분증·통장이면 개인정보를 모두 가린다."""
     counts = Counter() if counts is None else counts
+    text = text.translate(_FULLWIDTH_DIGITS)
 
     def sub(name: str, pattern: re.Pattern, repl) -> None:
         nonlocal text
@@ -148,7 +154,15 @@ def mask_text(text: str, kind: Sensitive = "none", *, counts: Counter | None = N
     # 라벨 쪽을 먼저: 가린 결과(******-*******)는 숫자가 없어 아래 패턴에 다시 걸리지 않는다
     sub("rrn", _RRN_LABEL, lambda m: m.group(1) + "******-*******")
     sub("rrn", _RRN, "******-*******")
-    if kind == "none":
+    if (
+        kind == "none"
+    ):  # 일반 문서도 연락처·카드·계좌·이메일·라벨 있는 이름·주소는 가린다(외부 모델로 나가므로)
+        sub("card", _CARD, lambda m: f"{m.group(1)}-****-****-{m.group(2)[-4:]}")
+        sub("phone", _PHONE, lambda m: f"{m.group(1)}-****-****")
+        sub("email", _EMAIL, lambda m: f"{m.group(1)}***@{m.group(2)}")
+        sub("account", _ACCOUNT, lambda m: m.group(1) + re.sub(r"\d", "*", m.group(2)))
+        sub("name", _NAME, lambda m: m.group(1) + m.group(2)[0] + "*" * (len(m.group(2)) - 1))
+        sub("address", _ADDRESS, lambda m: m.group(1) + "[주소 가림]")
         return text
     if kind == "id_card":  # 카드번호 패턴보다 먼저: 면허번호(12자리)가 카드번호로 잘못 걸리지 않게
         sub("license", _DRIVER, "**-**-******-**")

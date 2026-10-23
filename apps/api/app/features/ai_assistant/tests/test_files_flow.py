@@ -120,7 +120,7 @@ def test_text_photos_do_not_call_the_caption_model(client, family, pipeline):
     assert pipeline.captioner.calls == 0
 
 
-def test_sensitive_documents_are_hidden_from_the_chat_model_by_default(
+def test_sensitive_documents_reach_the_chat_model_only_masked_unless_excluded(
     client, family, pipeline, monkeypatch
 ):
     from app.features.ai_assistant.knowledge import rag_chat
@@ -158,12 +158,13 @@ def test_sensitive_documents_are_hidden_from_the_chat_model_by_default(
     monkeypatch.setattr(settings, "anthropic_api_key", "test-key")
     monkeypatch.setattr(rag_chat, "_post", fake_post)
     client.post("/ai-assistant/chat", json={"message": "처방전 약 알려줘"}, headers=a)
-    assert "소염진통제" not in seen[1]  # 기본값: 민감 기록 내용은 Claude 에게 가지 않는다
+    assert "소염진통제" in seen[1]  # 기본값: 가려진 글자가 Claude 에게 간다
+    assert "900101-2345678" not in seen[1] and "김영희" not in seen[1]
 
     seen.clear()
-    monkeypatch.setattr(settings, "chat_include_sensitive", True)
+    monkeypatch.setattr(settings, "chat_include_sensitive", False)
     client.post("/ai-assistant/chat", json={"message": "처방전 약 알려줘"}, headers=a)
-    assert "소염진통제" in seen[1]
+    assert "소염진통제" not in seen[1]  # 끄면 민감 기록은 가지 않는다
 
 
 def test_broken_and_empty_uploads_fail_cleanly(client, family, pipeline):

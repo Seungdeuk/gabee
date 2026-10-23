@@ -72,7 +72,7 @@ def test_model_gets_text_with_rrn_masked_and_no_filename(tmp_path):
     sent = "".join(llm.prompts)
     assert "현장체험학습" in sent  # 분류에 필요한 내용은 간다
     assert "3234567" not in sent  # 주민등록번호는 어떤 문서든 가린다
-    assert "010-1234-5678" in sent  # 처방전·신분증이 아니면 그 밖의 정보는 가리지 않는다
+    assert "010-1234-5678" not in sent  # 일반 문서도 연락처는 가려서 보낸다
     assert "지민" not in sent  # 파일 이름도 안 간다
     assert r.classification.doc_type == "학교 가정통신문"
     assert r.classification.by == "model" and r.classification.route == "document"

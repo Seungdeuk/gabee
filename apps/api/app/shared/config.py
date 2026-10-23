@@ -39,7 +39,7 @@ class Settings(BaseSettings):
     caption_timeout: float = 180.0
     ollama_keep_alive: str = "30m"  # 모델을 메모리에 올려 두는 시간(처음 불러오는 데 1분쯤 걸린다)
     # 채팅(외부 Claude)이 근거로 읽을 수 있는 기록에 민감 기록(처방전·신분증·통장·인물 사진 등)을 넣을지
-    chat_include_sensitive: bool = False
+    chat_include_sensitive: bool = True
 
     model_config = SettingsConfigDict(env_file=_ENV_FILE, extra="ignore")
 

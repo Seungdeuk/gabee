@@ -364,7 +364,7 @@ def test_numbered_markdown_masks_rrn_before_numbering():
     r = preprocess(buf.getvalue(), "연락처.xlsx")
     text = r.content.text
     assert "## 시트 1: 연락처" in text and "900101-1234567" not in text
-    assert "010-1234-5678" in text  # 처방전·신분증이 아니면 전화번호는 그대로
+    assert "010-1234-5678" not in text and "010-****-****" in text  # 일반 문서도 전화번호는 가린다
 
 
 # ---------- 개인정보 가리기 ----------
@@ -376,15 +376,16 @@ PERSONAL = (
 )
 
 
-def test_ordinary_documents_mask_only_rrn():
+def test_ordinary_documents_mask_contacts_too():
     from app.features.ai_assistant.ingest.masking import mask_text
 
     counts = __import__("collections").Counter()
     out = mask_text(PERSONAL, counts=counts)
     assert "900101-1234567" not in out and "******-*******" in out
-    for kept in ("홍길동", "5598-6912-3456-8002", "010-1234-5678", "jimin.park@example.com"):
-        assert kept in out
-    assert +counts == {"rrn": 1}
+    for gone in ("5598-6912-3456-8002", "010-1234-5678", "jimin.park@example.com"):
+        assert gone not in out
+    assert "홍**" in out and "5598-****-****-8002" in out
+    assert counts["rrn"] == 1 and counts["card"] == 1 and counts["phone"] == 1
 
 
 def test_sensitive_documents_mask_everything_but_amounts_or_dates():
@@ -428,8 +429,8 @@ def test_documents_are_masked_before_blocks():
         "신청서.docx",
     )
     block = r.content.blocks[0].text
-    assert "1234567" not in block and "박지민" in block and "010-9876-5432" in block
-    assert r.privacy.sensitive == "none" and r.privacy.masked == {"rrn": 1}
+    assert "1234567" not in block and "010-9876-5432" not in block and "박**" in block
+    assert r.privacy.sensitive == "none" and r.privacy.masked["rrn"] == 1
 
 
 def test_id_card_is_fully_masked_then_sent_to_classify():
