@@ -5,7 +5,7 @@ from app.shared.errors import bad_request
 
 from . import repository as repo
 from .models import Message
-from .schemas import MessageOut
+from .schemas import MessageOut, ReadPosition, ReadStateOut, UnreadOut
 
 
 def _out(m: Message, user_name: str) -> MessageOut:
@@ -15,9 +15,10 @@ def _out(m: Message, user_name: str) -> MessageOut:
 
 
 def post(db: Session, user: User, group_id: str, text: str) -> MessageOut:
-    return _out(
-        repo.add(db, Message(group_id=group_id, user_id=user.id, text=text.strip())), user.name
-    )
+    message = repo.add(db, Message(group_id=group_id, user_id=user.id, text=text.strip()))
+    out = _out(message, user.name)
+    repo.advance_read(db, group_id, user.id, message.id)  # 내가 보낸 메시지는 읽은 것으로
+    return out
 
 
 def list_messages(
@@ -36,3 +37,24 @@ def list_messages(
     else:
         rows = repo.list_after(db, group_id, after_id, limit)
     return [_out(m, name) for m, name in rows]
+
+
+def mark_read(db: Session, user: User, group_id: str, message_id: int) -> ReadPosition:
+    """내 읽음 위치를 올린다(앞으로만). 이 그룹의 메시지가 아니면 거절한다."""
+    if not repo.message_in_group(db, group_id, message_id):
+        raise bad_request("invalid_message", "이 대화방의 메시지가 아니에요")
+    return ReadPosition(last_read_message_id=repo.advance_read(db, group_id, user.id, message_id))
+
+
+def read_states(db: Session, group_id: str) -> list[ReadStateOut]:
+    return [
+        ReadStateOut(user_id=uid, last_read_message_id=last)
+        for uid, last in repo.read_states(db, group_id)
+    ]
+
+
+def unread(db: Session, user: User, group_id: str) -> UnreadOut:
+    last = repo.get_last_read(db, group_id, user.id)
+    return UnreadOut(
+        unread=repo.count_unread(db, group_id, user.id, last), last_read_message_id=last
+    )

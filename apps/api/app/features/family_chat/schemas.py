@@ -13,3 +13,21 @@ class MessageOut(BaseModel):
     user_name: str
     text: str
     created_at: datetime
+
+
+class ReadMark(BaseModel):
+    message_id: int = Field(ge=1, le=2**31 - 1)
+
+
+class ReadPosition(BaseModel):
+    last_read_message_id: int
+
+
+class ReadStateOut(BaseModel):
+    user_id: str
+    last_read_message_id: int
+
+
+class UnreadOut(BaseModel):
+    unread: int
+    last_read_message_id: int
