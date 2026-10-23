@@ -31,7 +31,7 @@ _PHONE = re.compile(r"(?<!\d)(0\d{1,2})[-) .]?\d{3,4}[- .]?\d{4}(?!\d)")
 _EMAIL = re.compile(r"\b([A-Za-z0-9])[A-Za-z0-9._%+-]*@([A-Za-z0-9.-]+\.[A-Za-z]{2,})")
 _ACCOUNT = re.compile(r"((?:계좌|입금|예금)\s*(?:번호)?\s*[:：]?\s*)(\d[\d -]{7,}\d)")
 _NAME = re.compile(
-    r"((?:성\s*명|이\s*름|환\s*자(?:\s*명)?|수\s*진\s*자|고\s*객\s*명|예\s*금\s*주|수\s*신\s*인)\s*[:：]?\s*)([가-힣]{2,4})"
+    r"((?:성\s*명|이\s*름|환\s*자(?:\s*명)?|수\s*진\s*자|고\s*객\s*명|예\s*금\s*주|수\s*신\s*인|수\s*검\s*자|수\s*강\s*생|학\s*생\s*명|보\s*호\s*자|신\s*청\s*인|신\s*청\s*자|임\s*차\s*인|임\s*대\s*인|원\s*장|대\s*표\s*자)\s*[:：]?\s*)([가-힣]{2,4})"
 )
 # 처방전 전용
 _DISEASE = re.compile(
@@ -125,8 +125,14 @@ def is_bankbook(text: str) -> bool:
 
 
 def is_family_cert(text: str) -> bool:
+    """증명서 이름이 보이고, 증명서에만 있는 칸(등록기준지, 출생연월일+주민등록번호)이 하나 더 있으면.
+    제출 서류 안내처럼 이름만 언급한 문서는 증명서로 보지 않는다(짧은 낱말이 이름으로 잘못 가려진다)."""
     flat = re.sub(r"\s+", "", text)
-    return any(w in flat for w in _FAMILY_WORDS)
+    if not any(w in flat for w in _FAMILY_WORDS):
+        return False
+    return "등록기준지" in flat or (
+        "주민등록번호" in flat and ("출생연월일" in flat or "성명" in flat)
+    )
 
 
 def sensitive_kind(text: str) -> Sensitive:

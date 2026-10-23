@@ -155,11 +155,13 @@ def _from_document(source: SourceInfo, data: bytes, ocr: Ocr | None = None) -> P
         markdown = decode_text(data) or ""
     elif source.kind in ("csv", "html"):  # 한국 엑셀·메모장 CSV 는 CP949 라서 UTF-8 로 바꿔 넘긴다
         markdown = converters.to_markdown((decode_text(data) or "").encode("utf-8"), source.kind)
+    elif source.kind == "pdf":
+        # 쪽별 글자 층을 pdfium 으로 읽는다(한글 표 PDF 에서 MarkItDown 보다 읽는 순서가 정확하다)
+        markdown, ocr_note = _read_pdf(data, ocr)
     else:
         markdown = converters.to_markdown(data, source.kind)
-    ocr_note: str | None = None
-    if source.kind == "pdf":
-        markdown, ocr_note = _read_pdf(data, markdown, ocr)
+    if source.kind != "pdf":
+        ocr_note = None
     markdown, privacy = _mask(markdown)
     blocks, pages = converters.markdown_blocks(markdown, source.kind)
     if source.kind in ("pptx", "xlsx"):  # 슬라이드·시트 번호와 블록 번호를 붙여 넘긴다
@@ -182,18 +184,16 @@ def _from_document(source: SourceInfo, data: bytes, ocr: Ocr | None = None) -> P
     )
 
 
-def _read_pdf(data: bytes, markdown: str, ocr: Ocr | None) -> tuple[str, str | None]:
+def _read_pdf(data: bytes, ocr: Ocr | None) -> tuple[str, str | None]:
     """글자 층이 있는 쪽은 그대로 두고, 글자가 없는 쪽(스캔·사진)만 그림으로 바꿔 OCR 한다.
     (쪽을 \\f 로 이은 글, 확인이 필요한 이유). 스캔 쪽이 없으면 입력 글을 그대로 돌려준다."""
     texts = converters.pdf_page_texts(data)
     scan = [
         i for i, t in enumerate(texts) if len(re.sub(r"\s+", "", t)) < converters.PDF_MIN_PAGE_CHARS
     ]
+    pages = list(texts)
     if not scan:
-        return markdown, None
-    pages = markdown.split("\f")
-    if len(pages) != len(texts):  # 쪽 나눔이 어긋나면 쪽별 글자 층을 쓴다(표 모양은 잃는다)
-        pages = texts
+        return "\f".join(pages), None
     todo = scan[: converters.PDF_OCR_MAX_PAGES]
     reader = ocr or converters.default_ocr()
     for i, image in zip(todo, converters.pdf_page_images(data, todo), strict=True):

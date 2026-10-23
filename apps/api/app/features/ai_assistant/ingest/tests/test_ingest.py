@@ -671,3 +671,11 @@ def test_pdf_with_text_pages_and_scanned_pages_reads_only_the_scanned_ones():
         text.index("Electricity") < text.index("7,700원") < text.index("Second text")
     )  # 쪽 순서 유지
     assert r.content.pages == 3 and r.quality.status == "partial"
+
+
+def test_a_document_that_only_mentions_the_certificate_is_not_masked_as_one():
+    from app.features.ai_assistant.ingest.masking import mask_text, sensitive_kind
+
+    notice = "출석인정일수 안내\n제출 서류: 가족관계증명서, 청첩장, 진단서\n결혼 5일\n사망 3일\n출산 10일\n"
+    assert sensitive_kind(notice) == "none"
+    assert mask_text(notice, "none") == notice  # 짧은 낱말이 이름으로 가려지지 않는다
