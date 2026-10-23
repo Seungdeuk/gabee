@@ -17,7 +17,7 @@ try:  # 아이폰 HEIC 사진
 except ImportError:  # pragma: no cover
     pass
 
-OCR_MAX_SIDE = 1280
+OCR_MAX_SIDE = 2048
 OCR_MIN_SHORT = 720  # 긴 영수증: 짧은 변이 너무 작아지면 글자를 못 읽는다
 
 
