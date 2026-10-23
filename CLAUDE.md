@@ -99,10 +99,45 @@ docker compose up --build      # 개발용 DB + API (루트 .env 필요)
 - 변경하면 `docs/contracts/db.md`도 갱신한다.
 - 서버는 DB가 코드보다 뒤처졌거나 연결이 안 돼도 시작한다. 각 기능 router 는 `main.py`에서 `schema_ready(<기능>)` 의존성과 함께 등록되어, 그 기능 모델이 쓰는 테이블·컬럼이 DB에 없을 때만 503(`schema_not_ready`/`db_unavailable`)을 돌려준다. 새 모델을 `app/shared`에 두면 `schema.py`의 `SHARED_MODEL_FEATURES`에 쓰는 기능을 등록한다(미등록이면 모든 기능의 전제로 본다). 상태는 `GET /health/db`로 확인한다(`docs/adr/0006-schema-gate-degraded-start.md`).
 - `supabase/seed`에는 가짜 데이터만 둔다. 실제 사용자 데이터를 넣지 않는다.
-- 마이그레이션은 각자의 Claude Code가 별도 승인 없이 작성·검증한다: 최신 `main`에서 브랜치를 만들고 `alembic heads`로 단일 head를 확인한 뒤, 모델 수정 → **격리 PostgreSQL**(임시 컨테이너)에서 `alembic revision --autogenerate`, DDL 직접 리뷰, `alembic upgrade head`, `scripts/check_alembic_migrations.py`·`check_schema_matches_models.py` 검증 순으로 진행한다. 검증 대상은 임시 DB뿐이며 공용 DB·개인 `gabee` DB·MVP DB에는 연결하지 않는다. PR의 `ci-check`(`api-postgres`)가 단일 head·전체 upgrade·스키마 일치를 다시 검증한다.
-- 팀 공용 PostgreSQL(`192.168.0.44:5432/gabee`)에는 사람이나 Claude Code가 직접 `alembic upgrade`/`downgrade`/`stamp`를 실행하지 않는다. `main`에서 `CI Check`가 통과한 커밋만 공용 DB PC 의 Pull Agent(`apps/api/scripts/deploy_agent.py`, 러너 없음)가 `gabee_migrator`로 자동 적용한다(새 백업·복원 검증·리허설·사후 검증 포함, `docs/adr/0007-shared-db-auto-migration.md`, `0008-shared-db-pull-agent.md`). 일반 실행은 `gabee_app`(DDL 불가, 단 데이터 CRUD 권한은 있으니 공용 DB 데이터를 직접 조작할 때 주의)을 쓴다. 기존 MVP `family-secretary` database는 어떤 경우에도 건드리지 않는다.
-- 데이터가 사라지는 변경(drop, 이름·타입 변경 등)과 `CONCURRENTLY` 같은 트랜잭션 밖 변경은 자동 적용되지 않는다. 의도한 변경이면 리비전 docstring에 `destructive-approved: PR #<번호>`를 적어 PR 리뷰에서 승인받는다.
+- 마이그레이션은 각자의 Claude Code가 별도 승인 없이 작성·검증한다: 최신 `main`에서 브랜치를 만들고 `alembic heads`로 단일 head를 확인한 뒤, 모델 수정 → **격리 PostgreSQL**(임시 컨테이너)에서 `alembic revision --autogenerate`, DDL 직접 리뷰, `alembic upgrade head`, `scripts/check_alembic_migrations.py`·`check_schema_matches_models.py` 검증 순으로 진행한다. Claude Code는 임시 DB에서만 검증하고 공용 DB·MVP DB에는 연결하지 않으며, 개발자의 개인 로컬 DB는 사용자가 요청할 때만 쓴다. PR의 `ci-check`(`api-postgres`)가 단일 head·전체 upgrade·스키마 일치를 다시 검증한다.
+- **개발은 각자 로컬 DB에서 한다**(`docker compose`의 개인 Docker DB, `alembic upgrade head`로 최신화). 팀 공용 PostgreSQL(`192.168.0.44:5432/gabee`)은 **통합 확인용**이다(`docs/adr/0009-local-first-db-workflow.md`). 공용 DB에는 사람이나 Claude Code가 직접 `alembic upgrade`/`downgrade`/`stamp`를 실행하지 않는다. 공용 DB 스키마 변경은 `main` 병합 뒤 **통합 때 DB 담당자가** 공용 DB PC 에서 Pull Agent(`apps/api/scripts/deploy_agent.py`)를 수동으로 한 번 실행해서만 반영한다. 에이전트의 자동 주기 적용은 꺼 두었다(`GABEE_AGENT_ENABLED=false`). 수동 실행에도 `CI Check` 통과 확인·새 백업·복원 검증·리허설·사후 검증이 그대로 적용된다(README "팀 공용 PostgreSQL 에 연결하기", `docs/adr/0007-shared-db-auto-migration.md`, `0008-shared-db-pull-agent.md`). 일반 실행은 `gabee_app`(DDL 불가, 단 데이터 CRUD 권한은 있으니 공용 DB 데이터를 직접 조작할 때 주의)을 쓴다. 기존 MVP `family-secretary` database는 어떤 경우에도 건드리지 않는다.
+- 데이터가 사라지는 변경(drop, 이름·타입 변경 등)과 `CONCURRENTLY` 같은 트랜잭션 밖 변경은 에이전트가 적용하지 않는다. 의도한 변경이면 PR 리뷰에서 DB 담당자의 승인을 받고, 리비전 docstring에 `destructive-approved: PR #<번호>`를 적는다.
 - 리비전은 병렬로 작성하되 PR 병합 직전에 최신 `main` 을 받아 `alembic heads` 가 1개인지 다시 확인한다(다른 PR 이 먼저 병합돼 head 가 둘이 되면 CI 가 실패하며, 나중에 병합되는 쪽이 `down_revision` 을 현재 head 로 옮긴다). 구 코드와 호환되지 않는 변경은 expand(추가) → 코드 전환 → contract(제거) 로 나눠 여러 PR 에 걸쳐 한다.
+
+### 공용 PostgreSQL 마이그레이션 규칙 (필수)
+
+**1. 기본 원칙**
+
+- 모든 DB 스키마 변경은 Alembic 마이그레이션 파일로 관리한다.
+- 개발과 마이그레이션 실험은 각자의 로컬 DB에서 한다. 공용 PostgreSQL에는 마이그레이션을 직접 실행하지 않는다.
+- 공용 DB 스키마 변경은 main 병합 후 통합 때 DB 담당자가 Pull Agent를 수동으로 실행해서만 반영한다(자동 주기 적용은 꺼져 있다).
+- 안전한 마이그레이션도 같은 통합 절차를 따른다. Claude Code는 통합 절차(공용 DB 반영)를 임의로 실행하지 않고, DB 담당자가 요청할 때만 안내·지원한다.
+
+**2. 위험한 마이그레이션** — 다음 변경은 반드시 DB 담당자의 사전 승인이 필요하다.
+
+- 테이블 또는 컬럼 삭제
+- 테이블 또는 컬럼 이름 변경
+- 기존 컬럼 타입 변경
+- 대량 데이터 삭제 및 초기화
+- 기타 `apps/api/scripts/migration_risk.py`에서 block으로 분류하는 변경
+
+**3. 승인 규칙**
+
+- DB 담당자의 명시적인 승인 없이 위험 변경을 승인된 것으로 표시하지 않는다.
+- `destructive-approved: PR #번호` 문구를 임의로 추가하지 않는다.
+- `unsafe-python-approved: PR #번호` 문구도 동일하게 취급한다.
+- 존재하지 않는 PR 번호나 관련 없는 PR 번호를 승인 근거로 사용하지 않는다.
+- 승인 여부가 불확실하면 작업을 중단하고 DB 담당자에게 확인한다.
+- 승인받지 않은 위험 변경은 main에 병합하지 않는다.
+
+**4. Claude Code 작업 규칙**
+
+- 마이그레이션 작성 전 기존 Alembic 리비전과 DB 구조를 확인한다.
+- 마이그레이션 작성 후 위험도 검사 및 관련 테스트를 수행한다.
+- 위험 변경이 발견되면 변경 내용, 데이터 영향, 롤백 가능성을 사용자에게 보고한다.
+- Claude Code는 DB 담당자의 승인을 임의로 추정하거나 대신하지 않는다.
+- 승인 문구를 추가하기 전 반드시 승인 근거를 확인한다.
+- 공용 DB에 직접 DDL을 실행하지 않는다.
 
 ## Git
 

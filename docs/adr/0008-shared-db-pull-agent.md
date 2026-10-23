@@ -1,3 +1,5 @@
+> **자동 주기 적용 중지(2026-10-23): 에이전트는 설치된 채로 꺼 두고(`GABEE_AGENT_ENABLED=false`), 통합 때 담당자가 수동으로 한 번 실행한다 — [0009](0009-local-first-db-workflow.md).** 아래 구조·보안 모델·`held`/`bless` 는 수동 실행에도 그대로 쓴다.
+
 # 0008. 공용 DB 자동 배포를 Self-hosted Runner 대신 공용 DB PC 의 Pull Agent 로 한다
 
 - 날짜: 2026-10-22
