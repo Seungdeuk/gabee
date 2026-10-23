@@ -295,8 +295,10 @@ def test_python_migration_that_touches_files_or_network_is_never_run(world):
         "from alembic import op", "import os\nfrom alembic import op"
     )
     github.tip = commit(origin, {"apps/api/alembic/versions/e1_evil.py": evil}, "악성 마이그레이션")
-    blocked = agent.run_once()
-    assert blocked["outcome"] == "blocked" and "unsafe-import" in blocked["message"]
+    # 오케스트레이터가 리비전 파일을 불러오기(=최상위 코드 실행) 전에 에이전트가 정적 검사로 멈춘다
+    held = agent.run_once()
+    assert held["outcome"] == "held" and "unsafe-import" in held["message"]
+    assert len(github.issues) == 1 and "held" in github.issues[0]["body"]
     assert revision_of(fs) == [PRIOR] and deploy_backups(world["tmp"]) == []
 
 

@@ -310,6 +310,8 @@ class Deployer:
                 "PGCONNECT_TIMEOUT": "10",
                 "PGAPPNAME": "gabee-auto-migrate",
                 "PYTHONIOENCODING": "utf-8",
+                # app 은 api_root 에서만 불러온다(_py 의 -P 로 스크립트 폴더·현재 폴더는 경로에 넣지 않는다)
+                "PYTHONPATH": str(self.api_root),
             }
         )
         if passfile:
@@ -336,7 +338,7 @@ class Deployer:
         )
 
     def _py(self, args: list[str], env: dict[str, str]) -> subprocess.CompletedProcess:
-        return self._run([sys.executable, *args], env=env, cwd=self.api_root)
+        return self._run([sys.executable, "-P", *args], env=env, cwd=self.api_root)
 
     def _alembic_upgrade(self, env: dict[str, str]) -> subprocess.CompletedProcess:
         """배포기가 분석·검사한 바로 그 리비전 폴더(self.alembic_dir)로 upgrade head 를 실행한다
