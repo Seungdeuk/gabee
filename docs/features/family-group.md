@@ -92,6 +92,17 @@
   - `GroupOut` 에 `my_id`(응답을 받는 사람의 id)가 추가되고 `MemberOut` 에 `display_name`/`family_relation`/`family_relation_detail` 이 추가됐다(전부 선택 필드, 하위 호환). 기존 익명 계정도 같은 API 를 쓸 수 있다.
   - 코드: `profile_router/service/repository/schemas.py`(기존 파일은 `group_out`·`MemberOut`·라우터 포함 한 줄만 수정). 테스트: `tests/test_family_profile.py`(SQLite 13건), `tests/test_profile_pg_e2e.py`(PG16 3건).
 
+- **프로필 사진 업로드** (로드맵 PR B, 서버·DB — 모바일 화면은 별도 PR)
+  - 스키마: `users.profile_photo_path`(String 255)·`profile_photo_updated_at`(DateTime tz), 둘 다 nullable 인 expand 변경(리비전 `a7d3e1c94b52`, ADD COLUMN 만). 기존 사용자는 NULL.
+  - `POST /family-group/me/photo`(multipart `file`, 로그인 필요) → `{photo_url, photo_updated_at}`. JPEG/PNG/WebP 만, 2MB 초과 413 `photo_too_large`, 이미지가 아니거나 깨진/위장 파일·다른 형식(GIF 등)·긴 변 8000px 초과 400 `invalid_image`, 사용자당 분당 5회 초과 429 `too_many_uploads`(+`Retry-After`). 서버가 EXIF 회전을 반영한 뒤 **EXIF·GPS 등 메타데이터를 모두 버리고**, 가운데 정사각형 크롭 → 최대 512x512 JPEG(quality 85)로 다시 만들어 `DATA_DIR/profile_photos/<user_id>_<버전>.jpg` 에 임시 파일 → `os.replace` 로 저장한다. 파일 이름은 사용자 id·시각으로만 만들고 사용자 입력(업로드 파일명 등)은 경로에 쓰지 않는다.
+  - `DELETE /family-group/me/photo`(204, 사진이 없어도 204): 파일 삭제 + 칼럼 NULL.
+  - `GET /family-group/users/{user_id}/photo`(로그인 필요): **요청자와 대상이 같은 가족 그룹 구성원(본인 포함)일 때만** 이미지(`image/jpeg`)를 준다. 다른 가족·가족 없음·없는 사용자·사진 없음은 모두 같은 404 라 존재 여부를 알 수 없다. `Cache-Control: private, max-age=3600`, `ETag`(바꾼 시각 밀리초, `If-None-Match` 일치 시 304), `X-Content-Type-Options: nosniff`.
+  - `UserOut`(`GET /me` 등)과 `MemberOut`(구성원 목록)에 **추가 필드** `photo_url`(없으면 null, 있으면 상대 경로 `/family-group/users/{id}/photo?v=<바꾼 시각 밀리초>`)이 생겼다(하위 호환). 앱은 서버 주소 뒤에 붙이고 인증 헤더를 함께 보내 요청한다(이미지 요청이라 `?v=` 가 바뀌면 캐시가 새로 받는다).
+  - 방어(검토 반영): 디코딩 전에 긴 변 8000px·총 1600만 화소 초과를 400 `invalid_image` 로 거절하고, JPEG 는 `draft` 축소 디코딩·그 외는 `thumbnail`(1024px)로 먼저 줄인 뒤 회전·변환·크롭한다. 동시 처리 업로드는 2건(`BoundedSemaphore`), 초과는 대기 없이 503 `photo_busy`. 업로드 경로(`POST /family-group/me/photo`)만 순수 ASGI 미들웨어(`photo_limit.py`)가 multipart 파싱 전에 Content-Length 2.1MB 초과(chunked 는 읽은 바이트 수)를 413 `photo_too_large` 로 거절한다. 사용자 행을 `FOR UPDATE` 로 잠가(+프로세스 락) 업로드·삭제를 직렬화하고, 파일은 `<user_id>_<버전>.jpg` 로 새로 쓴 뒤 DB 커밋이 성공한 후에만 이전 파일을 지운다(커밋 실패 시 새 파일 삭제).
+  - 배포 권고: Caddy 에도 업로드 경로에 `request_body { max_size 2.2MB }` 를 두면 앱에 닿기 전에 큰 본문을 막을 수 있다(`deploy/` 는 이 PR 에서 수정하지 않음).
+  - 사진 내용·경로는 로그에 남기지 않고 외부 서비스(LLM 포함)로 보내지 않는다. 저장 위치는 `DATA_DIR`(기본 `./data`)이라 운영 배포에서는 이 폴더가 컨테이너 볼륨에 있어야 사진이 유지된다.
+  - 코드: `photo_router/service/repository/schemas.py`. 테스트: `tests/test_profile_photo.py`(SQLite 16건, `tmp_path` 를 `DATA_DIR` 로 지정).
+
 ## 남은 것
 
 - **가족 초대·승인의 후속**: 승인 대기 요청의 자동 만료, 승인/거절 알림(푸시), 신청자에게 보여줄 거절 사유, 목록에 신청자가 가입 때 적은 관계(`role_detail`, 별도 PR 병합 후)·이메일 인증 여부 표시, 레거시(제한 없는) 초대 코드 일괄 폐기·자동 재발급은 공용 DB 배포 단계가 필요해 하지 않았다(익명 계정 호환 때문에 즉시 참여 경로도 남아 있다 — `ALLOW_LEGACY_TOKEN_AUTH=false` 전환 때 함께 닫는다).

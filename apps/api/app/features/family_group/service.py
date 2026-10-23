@@ -16,7 +16,7 @@ from app.shared.location_consent import set_location_consent
 from app.shared.passwords import hash_password, needs_rehash, verify_password
 from app.shared.rate_limit import FailureLimiter
 
-from . import credentials, join_service
+from . import credentials, join_service, photo_service
 from . import join_repository as jrepo
 from . import repository as repo
 from . import social_repository as srepo
@@ -61,6 +61,7 @@ def user_out(user: User) -> UserOut:
         login_id=user.login_id,
         email=user.email,
         email_verified=user.email_verified_at is not None,
+        photo_url=photo_service.photo_url(user),
     )
 
 
@@ -132,6 +133,7 @@ def _member_out(user: User, row) -> MemberOut:
         display_name=row.display_name if row else None,
         family_relation=row.family_relation if row else None,
         family_relation_detail=row.family_relation_detail if row else None,
+        photo_url=photo_service.photo_url(user),
     )
 
 
