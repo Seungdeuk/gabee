@@ -1,4 +1,5 @@
 from datetime import date as _date
+from datetime import datetime
 from typing import Literal
 
 from pydantic import BaseModel, Field
@@ -261,10 +262,42 @@ class AllowanceEntryOut(BaseModel):
     amount: int
     memo: str
     date: str
-    source: Literal["manual", "plan_auto", "plan_remind"]
+    source: Literal["manual", "plan_auto", "plan_remind", "request"]
     by_name: str  # 기록한 사람(자동이면 "자동 지급")
     voided: bool
     balance_after: int | None  # 이 줄까지 반영한 잔액(취소된 줄은 None)
+
+
+class AllowanceRequestIn(BaseModel):
+    amount: int = Field(gt=0, le=10_000_000)
+    memo: str = Field(default="", max_length=120)
+
+
+class AllowanceApproveIn(BaseModel):
+    amount: int | None = Field(default=None, gt=0, le=10_000_000)  # 비우면 요청한 금액 그대로
+    note: str = Field(default="", max_length=120)
+
+
+class AllowanceRejectIn(BaseModel):
+    note: str = Field(default="", max_length=120)
+
+
+class AllowanceRequestOut(BaseModel):
+    id: str
+    amount: int
+    memo: str
+    status: Literal["pending", "approved", "rejected", "cancelled"]
+    created_at: datetime
+    decided_by_name: str = ""
+    decided_at: datetime | None = None
+    approved_amount: int | None = None
+    decision_note: str = ""
+
+
+class AllowanceMonth(BaseModel):
+    month: str  # YYYY-MM
+    credit: int  # 그 달에 받은 용돈(취소 제외)
+    use: int  # 그 달에 쓴 돈(취소 제외)
 
 
 class AllowancePending(BaseModel):
@@ -283,3 +316,8 @@ class AllowanceOut(BaseModel):
     entries: list[AllowanceEntryOut]  # 최신순
     can_manage: bool  # 지금 사용자가 주기·지급·취소를 할 수 있는지(부모 역할 또는 그룹을 만든 사람)
     can_record_use: bool  # 지금 사용자가 사용 내역을 기록할 수 있는지(본인 또는 관리 권한자)
+    can_request: bool = False  # 지금 사용자가 이 자녀의 용돈을 요청할 수 있는지(본인만)
+    requests: list[
+        AllowanceRequestOut
+    ] = []  # 대기 중인 요청 먼저, 그 뒤 최근 처리한 요청(최대 10건)
+    months: list[AllowanceMonth] = []  # 최근 6개월 받은 돈·쓴 돈(최신 달부터)

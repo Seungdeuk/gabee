@@ -29,6 +29,7 @@ docker compose 의 개발용 PostgreSQL(`pgvector/pgvector:pg16` 이미지, `pgv
 | allowance_uses | billing | (이전 방식, 더는 쓰지 않음) 월 예산의 사용 기록 |
 | allowance_plans | billing | 자녀별 고정 용돈 주기(매주/매월, 금액, 자동/리마인드, 시작일). 자녀당 1개 |
 | allowance_entries | billing | 용돈 장부(입금 credit·사용 use, 취소는 `voided_at`). 주기 입금은 `plan_due_date`로 같은 지급일 중복 방지(unique) |
+| allowance_requests | billing | 자녀의 용돈 요청(금액, 사유, 상태 pending/approved/rejected/cancelled, 처리한 사람, 승인 금액, 승인으로 생긴 장부 줄 `entry_id`) |
 | care_records | care | 돌봄 기록(대상, 종류, 값, 날짜). 같은 그룹·대상·종류·날짜는 하나만 둔다 |
 | care_locations | care | 동의한 사람이 보낸 위치(좌표·정확도·잰 시각). 7일이 지나면 삭제, 동의 철회 시 즉시 삭제. 좌표는 로그에 남기지 않는다 |
 | location_consent_events | shared | 위치 공유 동의·철회 이력(사용자, 동의 여부, 경로, 시각). 좌표 없음 |

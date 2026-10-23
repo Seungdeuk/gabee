@@ -11,8 +11,9 @@ import { apiFetch } from "@/shared/api/client";
  * @typedef {{ id: string, name: string, kind: "ott" | "telecom", amount: number | null, date: string, payer_name: string, split_count: number, state: "ready" | "created" | "no_fee" | "no_payer" }} MonthlyItem
  * @typedef {{ month: string, items: MonthlyItem[], ready_count: number, ready_total: number }} MonthlyPlan
  * @typedef {{ cycle: "weekly" | "monthly", day: number, amount: number, mode: "auto" | "remind", start_date: string, next_due: string }} AllowancePlan
- * @typedef {{ id: string, kind: "credit" | "use", amount: number, memo: string, date: string, source: "manual" | "plan_auto" | "plan_remind", by_name: string, voided: boolean, balance_after: number | null }} AllowanceEntry
- * @typedef {{ child_id: string, name: string, balance: number, total_credit: number, total_use: number, plan: AllowancePlan | null, pending: { due_date: string, amount: number }[], entries: AllowanceEntry[], can_manage: boolean, can_record_use: boolean }} Allowance
+ * @typedef {{ id: string, kind: "credit" | "use", amount: number, memo: string, date: string, source: "manual" | "plan_auto" | "plan_remind" | "request", by_name: string, voided: boolean, balance_after: number | null }} AllowanceEntry
+ * @typedef {{ id: string, amount: number, memo: string, status: "pending" | "approved" | "rejected" | "cancelled", created_at: string, decided_by_name: string, decided_at: string | null, approved_amount: number | null, decision_note: string }} AllowanceRequest
+ * @typedef {{ child_id: string, name: string, balance: number, total_credit: number, total_use: number, plan: AllowancePlan | null, pending: { due_date: string, amount: number }[], entries: AllowanceEntry[], can_manage: boolean, can_record_use: boolean, can_request: boolean, requests: AllowanceRequest[], months: { month: string, credit: number, use: number }[] }} Allowance
  */
 
 const monthQuery = (month) => `?month=${encodeURIComponent(month)}`;
@@ -132,6 +133,30 @@ export const addAllowanceCredit = (childId, body) => apiFetch(`/billing/allowanc
  * @returns {Promise<Allowance>}
  */
 export const addAllowanceUse = (childId, body) => apiFetch(`/billing/allowances/${childId}/uses`, { method: "POST", body });
+
+/**
+ * 용돈 요청(자녀 본인만, 대기 5건까지).
+ * @param {string} childId
+ * @param {{ amount: number, memo?: string }} body
+ * @returns {Promise<Allowance>}
+ */
+export const requestAllowance = (childId, body) => apiFetch(`/billing/allowances/${childId}/requests`, { method: "POST", body });
+
+/**
+ * 요청 승인(부모·그룹을 만든 사람): 장부에 입금이 기록된다. amount 를 안 보내면 요청한 금액이다.
+ * @param {string} childId @param {string} requestId @param {{ amount?: number, note?: string }} body
+ * @returns {Promise<Allowance>}
+ */
+export const approveAllowanceRequest = (childId, requestId, body) =>
+  apiFetch(`/billing/allowances/${childId}/requests/${requestId}/approve`, { method: "POST", body });
+
+/** 요청 거절(부모·그룹을 만든 사람). @param {string} childId @param {string} requestId @param {{ note?: string }} body @returns {Promise<Allowance>} */
+export const rejectAllowanceRequest = (childId, requestId, body) =>
+  apiFetch(`/billing/allowances/${childId}/requests/${requestId}/reject`, { method: "POST", body });
+
+/** 자기 대기 요청 취소(자녀 본인). @param {string} childId @param {string} requestId @returns {Promise<Allowance>} */
+export const cancelAllowanceRequest = (childId, requestId) =>
+  apiFetch(`/billing/allowances/${childId}/requests/${requestId}`, { method: "DELETE" });
 
 /** 장부 내역 취소(지우지 않고 취소 표시). @param {string} childId @param {string} entryId @returns {Promise<Allowance>} */
 export const voidAllowanceEntry = (childId, entryId) =>

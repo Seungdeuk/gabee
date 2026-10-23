@@ -3252,6 +3252,362 @@
         }
       }
     },
+    "/billing/allowances/{child_id}/requests": {
+      "post": {
+        "tags": [
+          "billing"
+        ],
+        "summary": "Request Allowance",
+        "description": "자녀 본인이 용돈을 요청한다(대기 5건까지).",
+        "operationId": "request_allowance_billing_allowances__child_id__requests_post",
+        "parameters": [
+          {
+            "name": "child_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Child Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-gyeot-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Gyeot-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AllowanceRequestIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AllowanceOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/billing/allowances/{child_id}/requests/{request_id}/approve": {
+      "post": {
+        "tags": [
+          "billing"
+        ],
+        "summary": "Approve Request",
+        "description": "승인(부모·그룹을 만든 사람): 장부에 입금이 기록된다. 금액을 바꿔 승인할 수 있다.",
+        "operationId": "approve_request_billing_allowances__child_id__requests__request_id__approve_post",
+        "parameters": [
+          {
+            "name": "child_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Child Id"
+            }
+          },
+          {
+            "name": "request_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Request Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-gyeot-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Gyeot-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AllowanceApproveIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AllowanceOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/billing/allowances/{child_id}/requests/{request_id}/reject": {
+      "post": {
+        "tags": [
+          "billing"
+        ],
+        "summary": "Reject Request",
+        "operationId": "reject_request_billing_allowances__child_id__requests__request_id__reject_post",
+        "parameters": [
+          {
+            "name": "child_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Child Id"
+            }
+          },
+          {
+            "name": "request_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Request Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-gyeot-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Gyeot-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AllowanceRejectIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AllowanceOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/billing/allowances/{child_id}/requests/{request_id}": {
+      "delete": {
+        "tags": [
+          "billing"
+        ],
+        "summary": "Cancel Request",
+        "description": "자녀가 자기 대기 요청을 취소한다.",
+        "operationId": "cancel_request_billing_allowances__child_id__requests__request_id__delete",
+        "parameters": [
+          {
+            "name": "child_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Child Id"
+            }
+          },
+          {
+            "name": "request_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Request Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-gyeot-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Gyeot-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AllowanceOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/billing/allowances/{child_id}/entries/{entry_id}": {
       "delete": {
         "tags": [
@@ -5460,6 +5816,31 @@
         ],
         "title": "AccountSignupOut"
       },
+      "AllowanceApproveIn": {
+        "properties": {
+          "amount": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 10000000.0,
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Amount"
+          },
+          "note": {
+            "type": "string",
+            "maxLength": 120,
+            "title": "Note",
+            "default": ""
+          }
+        },
+        "type": "object",
+        "title": "AllowanceApproveIn"
+      },
       "AllowanceEntryOut": {
         "properties": {
           "id": {
@@ -5491,7 +5872,8 @@
             "enum": [
               "manual",
               "plan_auto",
-              "plan_remind"
+              "plan_remind",
+              "request"
             ],
             "title": "Source"
           },
@@ -5562,6 +5944,29 @@
         ],
         "title": "AllowanceMoneyIn"
       },
+      "AllowanceMonth": {
+        "properties": {
+          "month": {
+            "type": "string",
+            "title": "Month"
+          },
+          "credit": {
+            "type": "integer",
+            "title": "Credit"
+          },
+          "use": {
+            "type": "integer",
+            "title": "Use"
+          }
+        },
+        "type": "object",
+        "required": [
+          "month",
+          "credit",
+          "use"
+        ],
+        "title": "AllowanceMonth"
+      },
       "AllowanceOut": {
         "properties": {
           "child_id": {
@@ -5615,6 +6020,27 @@
           "can_record_use": {
             "type": "boolean",
             "title": "Can Record Use"
+          },
+          "can_request": {
+            "type": "boolean",
+            "title": "Can Request",
+            "default": false
+          },
+          "requests": {
+            "items": {
+              "$ref": "#/components/schemas/AllowanceRequestOut"
+            },
+            "type": "array",
+            "title": "Requests",
+            "default": []
+          },
+          "months": {
+            "items": {
+              "$ref": "#/components/schemas/AllowanceMonth"
+            },
+            "type": "array",
+            "title": "Months",
+            "default": []
           }
         },
         "type": "object",
@@ -5748,6 +6174,112 @@
           "next_due"
         ],
         "title": "AllowancePlanOut"
+      },
+      "AllowanceRejectIn": {
+        "properties": {
+          "note": {
+            "type": "string",
+            "maxLength": 120,
+            "title": "Note",
+            "default": ""
+          }
+        },
+        "type": "object",
+        "title": "AllowanceRejectIn"
+      },
+      "AllowanceRequestIn": {
+        "properties": {
+          "amount": {
+            "type": "integer",
+            "maximum": 10000000.0,
+            "exclusiveMinimum": 0.0,
+            "title": "Amount"
+          },
+          "memo": {
+            "type": "string",
+            "maxLength": 120,
+            "title": "Memo",
+            "default": ""
+          }
+        },
+        "type": "object",
+        "required": [
+          "amount"
+        ],
+        "title": "AllowanceRequestIn"
+      },
+      "AllowanceRequestOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "amount": {
+            "type": "integer",
+            "title": "Amount"
+          },
+          "memo": {
+            "type": "string",
+            "title": "Memo"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "approved",
+              "rejected",
+              "cancelled"
+            ],
+            "title": "Status"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "decided_by_name": {
+            "type": "string",
+            "title": "Decided By Name",
+            "default": ""
+          },
+          "decided_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decided At"
+          },
+          "approved_amount": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Approved Amount"
+          },
+          "decision_note": {
+            "type": "string",
+            "title": "Decision Note",
+            "default": ""
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "amount",
+          "memo",
+          "status",
+          "created_at"
+        ],
+        "title": "AllowanceRequestOut"
       },
       "AskIn": {
         "properties": {
