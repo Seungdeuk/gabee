@@ -9,20 +9,23 @@ import SectionTitle from "@/shared/components/SectionTitle";
 import Tag from "@/shared/components/Tag";
 import { colors, font } from "@/theme";
 
-import { reissueInvite, revokeInvite } from "../api";
+import { approveJoinRequest, reissueInvite, rejectJoinRequest, revokeInvite } from "../api";
 import FamilyFrame from "../components/FamilyFrame";
 import Notice from "../components/Notice";
 import { expiryText, familyErrorMessage, roleLabel } from "../messages";
 import { relationText, shownName } from "../relations";
 import useFamilyState from "../useFamilyState";
 
+const POLL_MS = 8000;
+const ROLE_TEXT = { parent: "부모", child: "자녀", other: "기타" };
+
 /**
  * 내 가족 그룹. 그룹이 없으면 만들기/참여, 승인 대기 중이면 대기 화면으로 안내하고,
- * 구성원이면 가족 목록을 보여 준다. 가족 관리자(소유자·관리자)에게는 초대 코드 발급·공유·폐기와 가입 요청이 더 보인다.
+ * 구성원이면 가족 목록을 보여 준다. 가족 관리자(소유자·관리자)에게는 초대 코드 발급·공유·폐기와, 들어온 가입 요청이 바로 보이고 여기서 승인·거절할 수 있다.
  */
 export default function FamilyScreen() {
   const router = useRouter();
-  const family = useFamilyState();
+  const family = useFamilyState({ pollMs: POLL_MS }); // 가입 요청이 들어오거나 승인되는 것을 바로 보여 주려고 몇 초마다 확인한다
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
@@ -138,8 +141,33 @@ export default function FamilyScreen() {
           </Card>
           <SectionTitle title="가입 요청" />
           <Card tone={family.pendingCount > 0 ? "orange" : "white"}>
-            <Text style={styles.sub}>{family.pendingCount > 0 ? `승인을 기다리는 요청이 ${family.pendingCount}건 있어요` : "기다리는 가입 요청이 없어요"}</Text>
-            <Button label={family.pendingCount > 0 ? "가입 요청 확인" : "가입 요청 보기"} variant={family.pendingCount > 0 ? "primary" : "secondary"} onPress={() => router.push("/family-requests")} testID="open-requests" />
+            {family.pendingCount === 0 ? (
+              <Text style={styles.sub}>기다리는 가입 요청이 없어요. 요청이 들어오면 여기에 바로 나타나요.</Text>
+            ) : (
+              <>
+                <Text style={styles.sub}>승인을 기다리는 요청이 {family.pendingCount}건 있어요</Text>
+                {family.pendingRequests.map((row) => (
+                  <View key={row.id} style={styles.request}>
+                    <View style={styles.requestWho}>
+                      <Avatar name={row.user_name} size={36} />
+                      <View style={styles.text}>
+                        <Text style={styles.name}>{row.user_name}</Text>
+                        <Text style={styles.relation}>{ROLE_TEXT[row.user_role] ?? "구성원"} · 참여 요청</Text>
+                      </View>
+                    </View>
+                    <View style={styles.buttons}>
+                      <View style={styles.grow}>
+                        <Button label="승인" small onPress={() => run(() => approveJoinRequest(row.id), `${row.user_name}님을 가족으로 받았어요`)} disabled={busy} testID={`approve-${row.id}`} />
+                      </View>
+                      <View style={styles.grow}>
+                        <Button label="거절" small variant="secondary" onPress={() => run(() => rejectJoinRequest(row.id), `${row.user_name}님의 요청을 거절했어요`)} disabled={busy} testID={`reject-${row.id}`} />
+                      </View>
+                    </View>
+                  </View>
+                ))}
+              </>
+            )}
+            <Button label="가입 요청 화면 열기" variant="secondary" small onPress={() => router.push("/family-requests")} testID="open-requests" />
           </Card>
         </>
       ) : null}
@@ -156,5 +184,7 @@ const styles = StyleSheet.create({
   relation: { ...font.caption, color: colors.textMuted },
   code: { ...font.h1, color: colors.text, letterSpacing: 2, textAlign: "center", paddingVertical: 8 },
   buttons: { flexDirection: "row", gap: 8 },
+  request: { gap: 8, paddingVertical: 8 },
+  requestWho: { flexDirection: "row", alignItems: "center", gap: 12 },
   grow: { flex: 1 },
 });
