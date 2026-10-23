@@ -67,7 +67,12 @@ def pg16():
     )
     try:
         for _ in range(60):
-            if docker("exec", name, "pg_isready", "-U", "postgres", check=False).returncode == 0:
+            if (
+                docker(
+                    "exec", name, "pg_isready", "-h", "127.0.0.1", "-U", "postgres", check=False
+                ).returncode
+                == 0
+            ):
                 break
             time.sleep(1)
         time.sleep(2)
@@ -189,9 +194,25 @@ def test_server_starts_one_migration_behind_and_opens_after_upgrade_without_rest
     assert report["db_connected"] is True and report["revision_state"] == "behind"
     assert report["pending_revisions"] == [HEAD] and report["status"] == "degraded"
     assert pg16["password"] not in client.get("/health/db").text
-    blocked = client.get("/family-group/me", headers=HEADERS)
-    assert blocked.status_code == 503 and blocked.json()["code"] == "schema_not_ready"
-    assert blocked.headers["retry-after"] == "5"
+
+    # 최신 마이그레이션이 무엇을 바꾸는지에 의존하지 않는다: 코드가 필요로 하는 스키마가 아직 없는 기능만 막힌다
+    not_ready = {name for name, f in report["features"].items() if not f["ready"]}
+    assert not_ready, "대기 중인 마이그레이션의 스키마를 쓰는 기능이 막혀 있어야 한다"
+    checked = {
+        "family_group": "/family-group/me",
+        "schedule": "/schedule/events",
+        "care": "/care/records",
+        "family_chat": "/family-chat/messages",
+        "billing": "/billing/expenses",
+    }
+    for feature, path in checked.items():
+        response = client.get(path, headers=HEADERS)
+        if feature in not_ready or "family_group" in not_ready:
+            assert response.status_code == 503, path
+            assert response.json()["code"] == "schema_not_ready"
+            assert response.headers["retry-after"] == "5"
+        else:
+            assert response.status_code == 200, path  # 준비된 기능은 영향이 없다
 
     migrate(pg16, "head")  # 마이그레이션(자동 배포) 완료 — 서버는 재시작하지 않는다
     assert codes(client) == [200, 200, 200, 200]

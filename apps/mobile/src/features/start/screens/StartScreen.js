@@ -1,8 +1,9 @@
 import { Image } from "expo-image";
-import { useRouter } from "expo-router";
+import { Redirect, useRouter } from "expo-router";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
+import { useAuth } from "@/shared/auth/AuthProvider";
 import Logo from "@/shared/components/Logo";
 import { colors } from "@/theme";
 
@@ -10,11 +11,16 @@ import mascot from "../../../../assets/images/gabee-mascot.png";
 
 /**
  * 시작 화면. 큰 원 안에 가비(꿀벌)가 있고, 시작하기로 AI 채팅 홈에 들어간다.
- * TODO: 이미 가입한 사람은(저장된 토큰이 있으면) 이 화면을 건너뛰고, "로그인"은 가족 그룹 로그인으로 연결한다.
+ * 로그인 세션이 저장돼 있으면 이 화면을 건너뛰고 홈으로 간다. "시작하기"는 기존처럼 로그인 없이 들어가고(익명/개발용 토큰),
+ * 정식 회원은 로그인·회원가입으로 들어간다.
  */
 export default function StartScreen() {
   const router = useRouter();
+  const { status } = useAuth();
   const enter = () => router.replace("/chat");
+
+  if (status === "loading") return null; // 저장된 로그인 세션을 확인하는 동안(스플래시 직후 잠깐)
+  if (status === "authenticated") return <Redirect href="/chat" />;
 
   return (
     <SafeAreaView style={styles.safe}>
@@ -36,9 +42,13 @@ export default function StartScreen() {
           <Text style={styles.buttonText}>시작하기</Text>
         </Pressable>
         <Text style={styles.login}>
-          이미 가족 그룹이 있나요?{" "}
-          <Text style={styles.loginLink} onPress={enter} accessibilityRole="link">
+          이미 계정이 있나요?{" "}
+          <Text style={styles.loginLink} onPress={() => router.push("/login")} accessibilityRole="link">
             로그인
+          </Text>
+          {"  ·  "}
+          <Text style={styles.loginLink} onPress={() => router.push("/signup")} accessibilityRole="link">
+            회원가입
           </Text>
         </Text>
       </View>
