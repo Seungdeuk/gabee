@@ -52,8 +52,10 @@ class Settings(BaseSettings):
     smtp_timeout_seconds: int = 10
     # 메일 링크의 앱 주소(모바일 딥링크 또는 웹 주소). 링크는 <base>verify-email?token=..., <base>reset-password?token=...
     email_link_base: str = "gabee://"
-    email_verify_ttl_seconds: int = 24 * 3600
+    email_verify_ttl_seconds: int = 3 * 60  # 인증번호·링크 유효 시간: 3분
     password_reset_ttl_seconds: int = 30 * 60
+    # 6자리 코드: 코드(메일 1통)마다 틀려도 되는 횟수. 넘으면 그 코드는 못 쓰고 메일을 다시 받아야 한다
+    code_max_attempts: int = 5
     # 이메일 미인증 정식 회원의 가족 그룹 생성·참여를 막는다(docs/requirements/family-group.md). 메일 설정 전 임시로 끌 수 있다
     require_email_verification: bool = True
     # 메일 요청 제한(프로세스 메모리, login 제한과 같은 한계): 인증 메일 재발송 간격/시간당, 재설정 메일 이메일별/IP별 시간당

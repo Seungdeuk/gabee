@@ -9,6 +9,7 @@ from .models import User
 from .schemas import (
     AccountSignupIn,
     AccountSignupOut,
+    CodeIn,
     EmailRequestIn,
     EmailVerifiedOut,
     GroupCreate,
@@ -17,6 +18,7 @@ from .schemas import (
     LoginIdAvailableOut,
     LoginIn,
     LoginOut,
+    PasswordResetCodeConfirmIn,
     PasswordResetConfirmIn,
     RefreshIn,
     SignupOut,
@@ -82,6 +84,14 @@ def email_verify_confirm(body: TokenIn, db: Session = Depends(get_db)) -> EmailV
     return service.confirm_email_verification(db, body)
 
 
+@router.post("/auth/email/verify/confirm-code", response_model=EmailVerifiedOut)
+def email_verify_confirm_code(
+    body: CodeIn, user: User = Depends(bearer_user), db: Session = Depends(get_db)
+) -> EmailVerifiedOut:
+    """메일의 6자리 코드로 이메일 인증을 완료한다(로그인한 본인만. 코드마다 틀릴 수 있는 횟수가 제한된다)."""
+    return service.confirm_email_code(db, user, body)
+
+
 @router.post("/auth/password/reset/request", status_code=204)
 def password_reset_request(
     body: EmailRequestIn,
@@ -132,3 +142,12 @@ def join_group(
 @router.get("/groups/me", response_model=GroupOut)
 def my_group(user: User = Depends(current_user), db: Session = Depends(get_db)) -> GroupOut:
     return service.my_group(db, user)
+
+
+@router.post("/auth/password/reset/confirm-code", status_code=204)
+def password_reset_confirm_code(
+    body: PasswordResetCodeConfirmIn, db: Session = Depends(get_db)
+) -> Response:
+    """메일의 6자리 코드와 이메일, 새 비밀번호로 재설정한다. 틀린 코드·없는 이메일은 같은 응답이다."""
+    service.confirm_password_reset_code(db, body)
+    return Response(status_code=204)

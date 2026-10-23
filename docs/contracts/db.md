@@ -8,14 +8,14 @@ docker compose 의 개발용 PostgreSQL(`pgvector/pgvector:pg16` 이미지, `pgv
 
 | 테이블 | 기능 | 설명 |
 |---|---|---|
-| users | family_group | 이름, 역할(parent/child/other), 로그인 토큰, 현재 가족 그룹, (PR 4-A, 스키마만) `login_id`/`email`/`email_verified_at`/`password_hash` — 전부 nullable, 익명 계정은 전부 NULL. 위치 공유 동의 시각 `location_consent_at`(없으면 미동의) |
+| users | family_group | 이름, 역할(parent/child/other), 로그인 토큰, 현재 가족 그룹, (PR 4-A, 스키마만) `login_id`/`email`/`email_verified_at`/`password_hash` — 전부 nullable, 익명 계정은 전부 NULL. 가입 시 역할이 기타일 때 직접 적은 관계 `role_detail`(nullable, 40자). 위치 공유 동의 시각 `location_consent_at`(없으면 미동의) |
 | groups | family_group | 가족 그룹(이름, 소유자) |
 | group_members | family_group | 그룹 구성원(그룹+사용자가 기본키). (PR 4-A, 스키마만) `role`(owner/admin/member, 그룹당 owner 최대 1명을 부분 유니크 인덱스로 강제), `family_relation`/`family_relation_detail`/`display_name` |
 | invites | family_group | 초대 코드(그룹, 만든 사람, 철회 여부). (PR 4-A, 스키마만) 서로게이트 `id`(UNIQUE, join_requests/invite_attempts 가 참조), `expires_at`/`max_uses`/`use_count` |
 | social_accounts | family_group | (PR 4-A, 스키마만) Google/Kakao 소셜 로그인 연동(`provider`+`provider_uid` 유니크) |
 | refresh_tokens | family_group | (PR 4-A, 스키마만) 로그인 세션(토큰 원문 대신 `token_hash`만 저장) |
-| password_resets | family_group | (PR 4-A, 스키마만) 비밀번호 재설정 토큰(해시만 저장) |
-| email_verifications | family_group | (PR 4-A, 스키마만) 이메일 인증 토큰(해시만 저장) |
+| password_resets | family_group | 비밀번호 재설정 토큰(해시만 저장) + 6자리 코드 해시(`code_hash`)·틀린 횟수(`failed_attempts`) |
+| email_verifications | family_group | 이메일 인증 토큰(해시만 저장) + 6자리 코드 해시(`code_hash`)·틀린 횟수(`failed_attempts`) |
 | member_nicknames | family_group | (PR 4-A, 스키마만) 구성원이 다른 구성원에게 붙이는 개인별 별명·메모. `(group_id,owner_user_id)`/`(group_id,target_user_id)` 둘 다 `group_members`를 참조하는 복합 FK — 실제 그룹 멤버만 작성자/대상이 될 수 있다 |
 | join_requests | family_group | (PR 4-A, 스키마만) 초대코드로 참여 신청 후 관리자 승인 대기(`status` pending/approved/rejected). 같은 `(group_id,user_id)`로 pending 중복 금지(부분 유니크) |
 | invite_attempts | family_group | (PR 4-A, 스키마만) 초대코드 레이트리밋용 시도 기록(ip/user_id/invite_id, 성공 여부) — 코드 원문·해시는 저장하지 않는다 |

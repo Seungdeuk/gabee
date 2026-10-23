@@ -19,6 +19,8 @@ const lastMailToken = (kind) => {
   return matches.at(-1)?.[1];
 };
 
+const lastMailCode = () => [...readFileSync(MAIL_LOG, "utf-8").matchAll(/코드: (\d{6})/g)].at(-1)?.[1];
+
 describe("모바일 API 클라이언트 ↔ 실제 서버", { skip }, () => {
   let api;
   let auth;
@@ -134,3 +136,39 @@ describe("모바일 API 클라이언트 ↔ 실제 서버", { skip }, () => {
     assert.equal(bad.status, 401);
   });
 });
+
+describe("6자리 인증번호 ↔ 실제 서버", { skip }, () => {
+  test("가입(관계 입력) → 인증번호로 인증 → 틀린 번호·한도 → 재설정 코드", async () => {
+    const api = await import("../src/shared/api/client.js");
+    const auth = await import("../src/features/auth/api.js");
+    const sessionApi = await import("../src/shared/auth/sessionApi.js");
+    const suffix = `c${Date.now().toString(36)}`;
+    const form = { loginId: `code_${suffix}`, password: "Sunny-day-2026", email: `code_${suffix}@example.com`, name: "코드", role: "other", roleDetail: "이모" };
+
+    const signed = await auth.signupAccount(form);
+    assert.equal(signed.user.role, "other");
+    assert.equal(signed.user.role_detail, "이모"); // 기타를 고르고 적은 관계가 저장된다
+    const login = await sessionApi.login(form.loginId, form.password);
+    api.setSession({ accessToken: login.access_token, refreshToken: login.refresh_token });
+
+    await auth.requestEmailVerification();
+    const code = lastMailCode();
+    assert.match(code, /^\d{6}$/);
+    const wrong = code === "000000" ? "111111" : "000000";
+    await assert.rejects(auth.confirmEmailCode(wrong), { code: "verification_code_invalid" });
+    assert.deepEqual(await auth.confirmEmailCode(code), { email_verified: true });
+    assert.equal((await sessionApi.getMe()).email_verified, true);
+
+    // 재설정: 이메일 + 6자리 코드, 성공하면 이전 세션이 끝난다
+    await auth.requestPasswordReset(form.email);
+    await new Promise((r) => setTimeout(r, 500)); // 메일은 응답 뒤 백그라운드로 나간다
+    const resetCode = lastMailCode();
+    await assert.rejects(auth.confirmPasswordResetCode(form.email, resetCode === "000000" ? "111111" : "000000", "Brand-new-pass-77"), {
+      code: "reset_code_invalid",
+    });
+    await auth.confirmPasswordResetCode(form.email, resetCode, "Brand-new-pass-77");
+    await assert.rejects(sessionApi.login(form.loginId, form.password), { code: "invalid_credentials" });
+    assert.ok((await sessionApi.login(form.loginId, "Brand-new-pass-77")).access_token);
+  });
+});
+
