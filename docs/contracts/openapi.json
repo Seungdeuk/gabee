@@ -5,6 +5,486 @@
     "version": "0.1.0"
   },
   "paths": {
+    "/family-group/groups/invites/reissue": {
+      "post": {
+        "tags": [
+          "family-group"
+        ],
+        "summary": "Reissue Invite",
+        "description": "새 초대 코드를 만든다(24시간·1회). 기존 코드는 폐기된다. 가족 관리자(owner/admin)만.",
+        "operationId": "reissue_invite_family_group_groups_invites_reissue_post",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-gyeot-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Gyeot-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InviteOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/family-group/groups/invites/revoke": {
+      "post": {
+        "tags": [
+          "family-group"
+        ],
+        "summary": "Revoke Invite",
+        "description": "지금 쓸 수 있는 초대 코드를 모두 폐기한다. 가족 관리자만.",
+        "operationId": "revoke_invite_family_group_groups_invites_revoke_post",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-gyeot-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Gyeot-Token"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/family-group/groups/me/join-requests": {
+      "get": {
+        "tags": [
+          "family-group"
+        ],
+        "summary": "Pending Join Requests",
+        "description": "내 가족 그룹의 승인 대기 요청 목록. 가족 관리자만.",
+        "operationId": "pending_join_requests_family_group_groups_me_join_requests_get",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-gyeot-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Gyeot-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/PendingJoinOut"
+                  },
+                  "title": "Response Pending Join Requests Family Group Groups Me Join Requests Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/family-group/groups/join-requests/mine": {
+      "get": {
+        "tags": [
+          "family-group"
+        ],
+        "summary": "My Join Request",
+        "description": "내가 낸 가장 최근 가입 요청(승인 대기·승인·거절·취소). 없으면 null.",
+        "operationId": "my_join_request_family_group_groups_join_requests_mine_get",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-gyeot-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Gyeot-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/JoinRequestOut"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "title": "Response My Join Request Family Group Groups Join Requests Mine Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/family-group/groups/join-requests/{request_id}/approve": {
+      "post": {
+        "tags": [
+          "family-group"
+        ],
+        "summary": "Approve Join Request",
+        "description": "승인한다. 이때 비로소 구성원(member)이 된다. 가족 관리자만.",
+        "operationId": "approve_join_request_family_group_groups_join_requests__request_id__approve_post",
+        "parameters": [
+          {
+            "name": "request_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Request Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-gyeot-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Gyeot-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GroupOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/family-group/groups/join-requests/{request_id}/reject": {
+      "post": {
+        "tags": [
+          "family-group"
+        ],
+        "summary": "Reject Join Request",
+        "description": "거절한다. 가족 관리자만.",
+        "operationId": "reject_join_request_family_group_groups_join_requests__request_id__reject_post",
+        "parameters": [
+          {
+            "name": "request_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Request Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-gyeot-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Gyeot-Token"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/family-group/groups/join-requests/{request_id}/cancel": {
+      "post": {
+        "tags": [
+          "family-group"
+        ],
+        "summary": "Cancel Join Request",
+        "description": "내 대기 요청을 취소한다.",
+        "operationId": "cancel_join_request_family_group_groups_join_requests__request_id__cancel_post",
+        "parameters": [
+          {
+            "name": "request_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Request Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-gyeot-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Gyeot-Token"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/family-group/users": {
       "post": {
         "tags": [
@@ -602,6 +1082,7 @@
           "family-group"
         ],
         "summary": "Join Group",
+        "description": "초대 코드로 참여한다. 정식 회원은 승인 대기 요청(JoinRequestOut, status=pending)이 만들어지고, 기존 익명 계정은 호환을 위해 바로 GroupOut.",
         "operationId": "join_group_family_group_groups_join_post",
         "parameters": [
           {
@@ -653,7 +1134,15 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GroupOut"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/GroupOut"
+                    },
+                    {
+                      "$ref": "#/components/schemas/JoinRequestOut"
+                    }
+                  ],
+                  "title": "Response Join Group Family Group Groups Join Post"
                 }
               }
             }
@@ -6261,6 +6750,29 @@
             ],
             "title": "Invite Code"
           },
+          "invite_expires_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Invite Expires At"
+          },
+          "my_role": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "My Role"
+          },
           "members": {
             "items": {
               "$ref": "#/components/schemas/MemberOut"
@@ -6369,6 +6881,31 @@
           "sensitivity"
         ],
         "title": "HitOut"
+      },
+      "InviteOut": {
+        "properties": {
+          "invite_code": {
+            "type": "string",
+            "title": "Invite Code"
+          },
+          "expires_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expires At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "invite_code"
+        ],
+        "title": "InviteOut"
       },
       "ItemCreate": {
         "properties": {
@@ -6587,6 +7124,53 @@
           "code"
         ],
         "title": "JoinIn"
+      },
+      "JoinRequestOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "group_id": {
+            "type": "string",
+            "title": "Group Id"
+          },
+          "group_name": {
+            "type": "string",
+            "title": "Group Name"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "requested_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Requested At"
+          },
+          "decided_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decided At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "group_id",
+          "group_name",
+          "status",
+          "requested_at"
+        ],
+        "title": "JoinRequestOut",
+        "description": "내가 낸 가입 요청. status: pending(승인 대기) | approved | rejected | cancelled."
       },
       "LocationBatch": {
         "properties": {
@@ -7045,6 +7629,11 @@
           "role": {
             "type": "string",
             "title": "Role"
+          },
+          "group_role": {
+            "type": "string",
+            "title": "Group Role",
+            "default": "member"
           }
         },
         "type": "object",
@@ -7335,6 +7924,41 @@
           "id"
         ],
         "title": "PaymentOut"
+      },
+      "PendingJoinOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "user_id": {
+            "type": "string",
+            "title": "User Id"
+          },
+          "user_name": {
+            "type": "string",
+            "title": "User Name"
+          },
+          "user_role": {
+            "type": "string",
+            "title": "User Role"
+          },
+          "requested_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Requested At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "user_id",
+          "user_name",
+          "user_role",
+          "requested_at"
+        ],
+        "title": "PendingJoinOut",
+        "description": "관리자가 보는 승인 대기 요청."
       },
       "PhotoOut": {
         "properties": {

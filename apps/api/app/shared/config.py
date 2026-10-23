@@ -62,6 +62,13 @@ class Settings(BaseSettings):
     reset_max_per_email_per_hour: int = 3
     reset_max_per_ip_per_hour: int = 20  # 0 이면 IP 제한 끔
 
+    # 가족 초대·가입 승인(PR 4-B): 새로 발급하는 초대 코드는 24시간·1회. 코드를 틀리게 입력한 실패가 이 횟수에 이르면
+    # 계정별·IP별로 막고(invite_attempts, 슬라이딩 윈도우), 윈도우가 지나면 다시 시도할 수 있다.
+    invite_ttl_seconds: int = 24 * 3600
+    invite_max_uses: int = 1
+    invite_max_failures: int = 5
+    invite_failure_window_seconds: int = 15 * 60
+
     model_config = SettingsConfigDict(env_file=_ENV_FILE, extra="ignore")
 
 

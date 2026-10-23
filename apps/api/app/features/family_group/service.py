@@ -9,14 +9,16 @@ from sqlalchemy.orm import Session
 from app.shared import mailer, tokens
 from app.shared.auth import ensure_group_member
 from app.shared.config import settings
-from app.shared.errors import ApiError, bad_request, not_found
+from app.shared.errors import ApiError, not_found
 from app.shared.location_consent import set_location_consent
 from app.shared.passwords import hash_password, needs_rehash, verify_password
 from app.shared.rate_limit import FailureLimiter
 
-from . import credentials
+from . import credentials, join_service
+from . import join_repository as jrepo
 from . import repository as repo
-from .models import EmailVerification, Group, Invite, PasswordReset, RefreshToken, User
+from .join_schemas import JoinRequestOut
+from .models import EmailVerification, Group, JoinRequest, PasswordReset, RefreshToken, User
 from .schemas import (
     AccountSignupIn,
     AccountSignupOut,
@@ -110,13 +112,25 @@ def signup(db: Session, body: UserCreate) -> SignupOut:
     return SignupOut(user=user_out(user), token=user.token)
 
 
-def group_out(db: Session, group: Group) -> GroupOut:
-    invite = repo.active_invite(db, group.id)
+def group_out(db: Session, group: Group, viewer_id: str | None = None) -> GroupOut:
+    """viewer_id 는 응답을 받는 사람. 초대 코드는 그 사람이 가족 관리자(owner/admin)일 때만 담긴다."""
+    roles = jrepo.member_roles(db, group.id)
+    my_role = roles.get(viewer_id) if viewer_id else None
+    invite = (
+        jrepo.active_invite(db, group.id, datetime.now(UTC))
+        if my_role in join_service.MANAGER_ROLES
+        else None
+    )
     return GroupOut(
         id=group.id,
         name=group.name,
         invite_code=invite.code if invite else None,
-        members=[MemberOut(id=m.id, name=m.name, role=m.role) for m in repo.members(db, group.id)],
+        invite_expires_at=invite.expires_at if invite else None,
+        my_role=my_role,
+        members=[
+            MemberOut(id=m.id, name=m.name, role=m.role, group_role=roles.get(m.id, "member"))
+            for m in repo.members(db, group.id)
+        ],
     )
 
 
@@ -137,22 +151,45 @@ def _require_verified_email(user: User) -> None:
 def create_group(db: Session, user: User, name: str) -> GroupOut:
     _require_verified_email(user)
     group = Group(id=_uid(), name=name.strip(), owner_id=user.id)
-    invite = Invite(
-        code="".join(secrets.choice(_CODE_CHARS) for _ in range(8)),
-        group_id=group.id,
-        created_by=user.id,
+    # 정식 회원: 24시간·1회 코드(+승인). 기존 익명 계정: 호환을 위해 예전 방식(제한 없는 코드, 바로 참여)
+    invite = join_service.new_invite(
+        group.id, user.id, datetime.now(UTC), legacy=user.login_id is None
     )
     repo.add_group(db, group, user, invite)
-    return group_out(db, group)
+    return group_out(db, group, user.id)
 
 
-def join_group(db: Session, user: User, code: str) -> GroupOut:
+def join_group(
+    db: Session, user: User, code: str, ip: str = "unknown"
+) -> GroupOut | JoinRequestOut:
+    """초대 코드로 참여한다. 새 정책 코드(24시간·1회)는 누구든 승인 대기 요청이 만들어지고 관리자 승인 후 구성원이 된다.
+    기존 익명 계정이 기존 방식 코드(만료·횟수 제한 없음)를 쓸 때만 호환을 위해 승인 없이 바로 참여한다."""
     _require_verified_email(user)
-    invite = repo.find_invite(db, code.strip().upper())
-    if invite is None:
-        raise bad_request("invalid_invite", "초대 코드가 올바르지 않거나 더 이상 쓸 수 없어요")
-    repo.join(db, invite.group_id, user)
-    return group_out(db, repo.get_group(db, invite.group_id))
+    if user.login_id is None:
+        invite = jrepo.find_usable_invite(db, code.strip().upper(), datetime.now(UTC))
+        if invite is None or (invite.expires_at is None and invite.max_uses is None):
+            group_id = join_service.join_immediately(db, user, code, ip)
+            return group_out(db, repo.get_group(db, group_id), user.id)
+    row, group = join_service.request_to_join(db, user, code, ip)
+    return join_request_out(row, group)
+
+
+def join_request_out(row: JoinRequest, group: Group) -> JoinRequestOut:
+    return JoinRequestOut(
+        id=row.id,
+        group_id=row.group_id,
+        group_name=group.name,
+        status=row.status,
+        requested_at=row.requested_at,
+        decided_at=row.decided_at,
+    )
+
+
+def group_out_by_id(db: Session, group_id: str, viewer_id: str) -> GroupOut:
+    group = repo.get_group(db, group_id)
+    if group is None:
+        raise not_found("가족 그룹")
+    return group_out(db, group, viewer_id)
 
 
 def my_group(db: Session, user: User) -> GroupOut:
@@ -162,7 +199,7 @@ def my_group(db: Session, user: User) -> GroupOut:
     group = repo.get_group(db, user.active_group_id)
     if group is None:
         raise not_found("가족 그룹")
-    return group_out(db, group)
+    return group_out(db, group, user.id)
 
 
 # ---------- 로그인 · 세션(Access/Refresh) ----------

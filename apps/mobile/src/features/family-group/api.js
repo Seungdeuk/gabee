@@ -20,3 +20,32 @@ export const joinGroup = (code) => apiFetch("/family-group/groups/join", { metho
 
 /** 내 가족 그룹과 구성원 목록. */
 export const getMyGroup = () => apiFetch("/family-group/groups/me");
+
+/**
+ * 초대 코드로 참여한다. 정식 회원은 승인 대기 요청({ status: "pending", ... })이, 기존 익명 계정은 바로 GroupOut 이 온다.
+ * @param {string} code
+ * @returns {Promise<{ status: "pending", id: string, group_name: string } | { id: string, name: string, members: object[] }>}
+ */
+export const requestJoin = (code) => apiFetch("/family-group/groups/join", { method: "POST", body: { code } });
+
+/** 내가 낸 가장 최근 가입 요청(없으면 null). status: pending | approved | rejected | cancelled */
+export const getMyJoinRequest = () => apiFetch("/family-group/groups/join-requests/mine");
+
+/** 내 대기 요청을 취소한다. */
+export const cancelJoinRequest = (id) => apiFetch(`/family-group/groups/join-requests/${id}/cancel`, { method: "POST" });
+
+/** 새 초대 코드를 만든다(24시간·1회, 기존 코드는 폐기). 가족 관리자만. */
+export const reissueInvite = () => apiFetch("/family-group/groups/invites/reissue", { method: "POST" });
+
+/** 지금 쓸 수 있는 초대 코드를 모두 폐기한다. 가족 관리자만. */
+export const revokeInvite = () => apiFetch("/family-group/groups/invites/revoke", { method: "POST" });
+
+/** 승인 대기 중인 가입 요청 목록. 가족 관리자만. */
+export const listJoinRequests = () => apiFetch("/family-group/groups/me/join-requests");
+
+/** 가입 요청을 승인한다(승인된 사람은 구성원이 된다). 가족 관리자만. */
+export const approveJoinRequest = (id) =>
+  apiFetch(`/family-group/groups/join-requests/${id}/approve`, { method: "POST" });
+
+/** 가입 요청을 거절한다. 가족 관리자만. */
+export const rejectJoinRequest = (id) => apiFetch(`/family-group/groups/join-requests/${id}/reject`, { method: "POST" });
