@@ -73,6 +73,7 @@ def search_knowledge(
         date_to=_day(date_to),
         include_sensitive=include_sensitive,
     )
+    hits = _one_per_file(hits)
     return {
         "results": [
             {
@@ -91,6 +92,20 @@ def search_knowledge(
         ],
         "note": "has_unread_parts 가 true 이면 원본에서 읽지 못한 부분이 있으니 값을 단정하지 말고 확인을 권하세요.",
     }
+
+
+def _one_per_file(hits: list) -> list:
+    """같은 원본 파일에서 나온 기록은 점수가 높은 하나만 남긴다(같은 파일을 두 번 올렸을 때 출처가 겹치지 않게)."""
+    seen: set[str] = set()
+    out = []
+    for h in hits:
+        path = h.item.source_path
+        if path and path in seen:
+            continue
+        if path:
+            seen.add(path)
+        out.append(h)
+    return out
 
 
 def get_item(db: Session, group_id: str, item_id: str, include_sensitive: bool = True) -> dict:

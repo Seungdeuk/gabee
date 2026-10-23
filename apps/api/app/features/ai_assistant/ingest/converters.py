@@ -189,6 +189,44 @@ def pdf_page_texts(data: bytes) -> list[str]:
         doc.close()
 
 
+VIEW_MAX_SIDE = 1600  # 앱에서 원본 PDF 를 볼 때 쪽 그림의 긴 변
+VIEW_MAX_PAGES = 100  # 한 PDF 에서 앱으로 보여 주는 최대 쪽 수
+
+
+def pdf_page_count(data: bytes) -> int:
+    import pypdfium2 as pdfium
+
+    try:
+        doc = pdfium.PdfDocument(data)
+    except Exception as e:
+        raise BrokenFile(f"PDF 를 열 수 없어요 ({type(e).__name__})") from None
+    try:
+        return min(len(doc), VIEW_MAX_PAGES)
+    finally:
+        doc.close()
+
+
+def pdf_page_jpeg(data: bytes, index: int) -> bytes:
+    """PDF 한 쪽(0부터)을 사람이 보는 용도의 JPEG 로 그린다. 범위를 벗어나면 IndexError."""
+    import pypdfium2 as pdfium
+
+    try:
+        doc = pdfium.PdfDocument(data)
+    except Exception as e:
+        raise BrokenFile(f"PDF 를 열 수 없어요 ({type(e).__name__})") from None
+    try:
+        if not 0 <= index < min(len(doc), VIEW_MAX_PAGES):
+            raise IndexError(index)
+        page = doc[index]
+        w, h = page.get_size()
+        image = page.render(scale=min(3.0, VIEW_MAX_SIDE / max(w, h, 1.0))).to_pil().convert("RGB")
+        out = io.BytesIO()
+        image.save(out, "JPEG", quality=85)
+        return out.getvalue()
+    finally:
+        doc.close()
+
+
 def pdf_page_images(data: bytes, indexes: list[int]) -> list[Image.Image]:
     """고른 쪽(0부터)을 OCR 하기 좋은 이미지로 바꾼다."""
     import pypdfium2 as pdfium

@@ -3305,6 +3305,133 @@
         }
       }
     },
+    "/ai-assistant/files/{file_id}/original/pages": {
+      "get": {
+        "tags": [
+          "ai-assistant"
+        ],
+        "summary": "File Original Pages",
+        "description": "원본이 PDF 일 때 앱에서 쪽별로 보여 줄 쪽 수. PDF 가 아니거나 다른 가족의 파일이면 404.",
+        "operationId": "file_original_pages_ai_assistant_files__file_id__original_pages_get",
+        "parameters": [
+          {
+            "name": "file_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "File Id"
+            }
+          },
+          {
+            "name": "x-gyeot-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Gyeot-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response File Original Pages Ai Assistant Files  File Id  Original Pages Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/ai-assistant/files/{file_id}/original/pages/{page}": {
+      "get": {
+        "tags": [
+          "ai-assistant"
+        ],
+        "summary": "File Original Page",
+        "description": "원본 PDF 의 한 쪽(1부터)을 그림으로 돌려준다. 앱이 PDF 를 열 수 없어서 서버가 대신 그린다.",
+        "operationId": "file_original_page_ai_assistant_files__file_id__original_pages__page__get",
+        "parameters": [
+          {
+            "name": "file_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "File Id"
+            }
+          },
+          {
+            "name": "page",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Page"
+            }
+          },
+          {
+            "name": "x-gyeot-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Gyeot-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/health/db": {
       "get": {
         "tags": [

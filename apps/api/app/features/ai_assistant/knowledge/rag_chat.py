@@ -231,8 +231,19 @@ def _renumber(result: AskResult) -> None:
         return pos if pos >= 0 else len(answer) + source["n"]  # 번호 없이 제목만 나온 기록은 뒤로
 
     ordered = sorted(result.sources, key=first_seen)
-    mapping = {s["n"]: i for i, s in enumerate(ordered, 1)}
-    result.answer = re.sub(
-        r"\[(\d+)\]", lambda m: f"[{mapping.get(int(m.group(1)), m.group(1))}]", answer
-    )
-    result.sources = [{**s, "n": mapping[s["n"]]} for s in ordered]
+    # 같은 원본 파일에서 나온 기록(같은 파일을 두 번 올린 경우)은 출처 하나로 합친다
+    mapping: dict[int, int] = {}
+    kept: list[dict] = []
+    number_of_path: dict[str, int] = {}
+    for s in ordered:
+        path = s.get("source_path")
+        if path and path in number_of_path:
+            mapping[s["n"]] = number_of_path[path]
+            continue
+        mapping[s["n"]] = len(kept) + 1
+        kept.append({**s, "n": len(kept) + 1})
+        if path:
+            number_of_path[path] = len(kept)
+    answer = re.sub(r"\[(\d+)\]", lambda m: f"[{mapping.get(int(m.group(1)), m.group(1))}]", answer)
+    result.answer = re.sub(r"(\[\d+\])(?:\s*\1)+", r"\1", answer)  # [1][1] 처럼 겹친 번호는 하나로
+    result.sources = kept

@@ -96,3 +96,32 @@ def file_original(
             "Content-Security-Policy": "sandbox",
         },
     )
+
+
+@router.get("/files/{file_id}/original/pages")
+def file_original_pages(
+    file_id: str, group_id: str = Depends(current_group_id), db: Session = Depends(get_db)
+) -> dict:
+    """원본이 PDF 일 때 앱에서 쪽별로 보여 줄 쪽 수. PDF 가 아니거나 다른 가족의 파일이면 404."""
+    count = files.original_pdf_pages(db, group_id, file_id)
+    if count is None:
+        raise not_found("원본 PDF")
+    return {"count": count}
+
+
+@router.get("/files/{file_id}/original/pages/{page}")
+def file_original_page(
+    file_id: str,
+    page: int,
+    group_id: str = Depends(current_group_id),
+    db: Session = Depends(get_db),
+) -> Response:
+    """원본 PDF 의 한 쪽(1부터)을 그림으로 돌려준다. 앱이 PDF 를 열 수 없어서 서버가 대신 그린다."""
+    image = files.original_pdf_page(db, group_id, file_id, page)
+    if image is None:
+        raise not_found("원본 PDF 쪽")
+    return Response(
+        content=image,
+        media_type="image/jpeg",
+        headers={"Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff"},
+    )

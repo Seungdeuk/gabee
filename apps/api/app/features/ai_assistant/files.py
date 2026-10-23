@@ -16,6 +16,7 @@ from sqlalchemy.orm import Session
 from app.shared.db import SessionLocal
 
 from . import repository as repo
+from .ingest import converters
 from .ingest import service as ingest_service
 from .ingest.caption import Captioner, default_captioner
 from .ingest.raw_store import LocalRawStore
@@ -121,6 +122,28 @@ def original(db: Session, group_id: str, photo_id: str) -> tuple[bytes, str, str
         return None
     ctype = mimetypes.guess_type(item.source_path)[0] or "application/octet-stream"
     return data, photo.filename, ctype
+
+
+def original_pdf_pages(db: Session, group_id: str, photo_id: str) -> int | None:
+    """원본이 PDF 면 앱에서 보여 줄 쪽 수, PDF 가 아니거나 이 가족의 파일이 아니면 None."""
+    found = original(db, group_id, photo_id)
+    if found is None or found[2] != "application/pdf":
+        return None
+    try:
+        return converters.pdf_page_count(found[0])
+    except converters.BrokenFile:
+        return None
+
+
+def original_pdf_page(db: Session, group_id: str, photo_id: str, page: int) -> bytes | None:
+    """원본 PDF 의 한 쪽(1부터)을 JPEG 로 그린 것. 없는 쪽이거나 이 가족의 파일이 아니면 None."""
+    found = original(db, group_id, photo_id)
+    if found is None or found[2] != "application/pdf":
+        return None
+    try:
+        return converters.pdf_page_jpeg(found[0], page - 1)
+    except (IndexError, converters.BrokenFile):
+        return None
 
 
 def _describe(body_md: str) -> str | None:

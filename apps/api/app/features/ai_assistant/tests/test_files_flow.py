@@ -2,6 +2,7 @@
 
 import hashlib
 import io
+import json
 from pathlib import Path
 
 import pytest
@@ -360,3 +361,75 @@ def test_other_family_cannot_edit_a_record(client, family, pipeline):
     assert client.patch(url, json={"title": "해킹"}, headers=stranger).status_code == 404
     assert client.patch(url, json={"title": "익명"}).status_code in (401, 403)
     assert client.get(url, headers=a).json()["title"] != "해킹"
+
+
+def _pdf_bytes(pages: int) -> bytes:
+    from PIL import Image
+
+    imgs = [Image.new("RGB", (300, 400), (200 - i * 20, 220, 240)) for i in range(pages)]
+    out = io.BytesIO()
+    imgs[0].save(out, "PDF", save_all=True, append_images=imgs[1:])
+    return out.getvalue()
+
+
+def test_original_pdf_is_served_as_page_images_for_the_same_family(client, family, pipeline):
+    a, b, _ = family
+    up = upload(client, a, _pdf_bytes(3), "scan.pdf", "application/pdf")
+    base = f"/ai-assistant/files/{up['id']}/original/pages"
+    assert client.get(base, headers=b).json() == {"count": 3}
+    page = client.get(f"{base}/2", headers=b)
+    assert page.status_code == 200 and page.headers["content-type"] == "image/jpeg"
+    assert page.content[:2] == b"\xff\xd8"
+    assert client.get(f"{base}/4", headers=a).status_code == 404  # 없는 쪽
+    assert client.get(f"{base}/0", headers=a).status_code == 404
+
+
+def test_original_pdf_pages_are_hidden_from_others_and_non_pdf(client, family, pipeline):
+    from tests.helpers import signup
+
+    a, _, _ = family
+    pdf = upload(client, a, _pdf_bytes(1), "p.pdf", "application/pdf")
+    photo = upload(client, a, png((1, 2, 3)), "p.png")
+    stranger = signup(client, "철수")
+    client.post("/family-group/groups", json={"name": "남의 가족"}, headers=stranger)
+    pages = f"/ai-assistant/files/{pdf['id']}/original/pages"
+    assert client.get(pages, headers=stranger).status_code == 404
+    assert client.get(f"{pages}/1", headers=stranger).status_code == 404
+    assert client.get(pages).status_code in (401, 403)
+    assert (
+        client.get(f"/ai-assistant/files/{photo['id']}/original/pages", headers=a).status_code
+        == 404
+    )
+
+
+def test_the_same_file_uploaded_twice_is_one_source(client, family, pipeline, monkeypatch):
+    from app.features.ai_assistant.knowledge import rag_chat
+
+    a, _, _ = family
+    pipeline.ocr = FakeOcr([("동대문마트", 0.95), ("합계 34,950원", 0.93)])
+    data = png((9, 9, 200))
+    first = upload(client, a, data, "r1.png")
+    second = upload(client, a, data, "r2.png")  # 같은 파일을 한 번 더
+    assert first["id"] != second["id"]
+    state = {"calls": 0, "refs": []}
+
+    def fake_post(body):
+        state["calls"] += 1
+        if state["calls"] == 1:
+            call = {
+                "type": "tool_use",
+                "id": "t",
+                "name": "search_knowledge",
+                "input": {"query": "마트 합계"},
+            }
+            return {"content": [call]}
+        results = json.loads(body["messages"][-1]["content"][0]["content"])["results"]
+        state["refs"] = [r["ref"] for r in results]
+        refs = "".join(f"[{r}]" for r in state["refs"])
+        return {"content": [{"type": "text", "text": f"합계는 34,950원이에요 {refs}"}]}
+
+    monkeypatch.setattr(settings, "anthropic_api_key", "test-key")
+    monkeypatch.setattr(rag_chat, "_post", fake_post)
+    out = client.post("/ai-assistant/chat", json={"message": "마트 합계 얼마야?"}, headers=a).json()
+    assert len(state["refs"]) == 1  # Claude 에게도 같은 파일은 한 번만 간다
+    assert len(out["sources"]) == 1 and "[1][1]" not in out["reply"]
