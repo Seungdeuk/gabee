@@ -58,7 +58,7 @@
 | **로컬 모델(Ollama) + 모델 받기** | 분류와 사진 설명을 돌린다 | 서버가 도는 PC 에서 `ollama pull qwen2.5vl:3b`(약 3.2GB) |
 | **원본 보관 폴더** | 원본이 저장되는 곳 | `RAW_DIR` 폴더를 만들고 쓰기 권한·백업 계획을 정한다(없으면 서버가 `DATA_DIR/raw` 에 만든다) |
 
-선택: 얼굴 찾기 모델(`FACE_MODEL_DIR`)은 없으면 건너뛴다.
+**얼굴 인식은 이번 범위에서 뺐다.** `FACE_ENABLED=false` 가 기본이라 얼굴 모델 파일이 있어도 돌지 않으므로 팀원은 얼굴 모델을 받을 필요가 없다(생체정보라 가족 동의·삭제 연동이 정해진 뒤에 켠다).
 
 ### `.env` 에 새로 생긴 항목 (`apps/api/.env.example` 참고)
 
@@ -70,6 +70,7 @@
 | `LOCAL_LLM_MODEL` | `qwen2.5:7b` | **`qwen2.5vl:3b` 로 바꿔 쓰는 것을 권장**(분류+사진 설명 모두 이 모델로 시험함) |
 | `CAPTION_MODEL` | `qwen2.5vl:3b` | 사진 설명 모델. `CAPTION_ENABLED=false` 로 끈다 |
 | `CHAT_INCLUDE_SENSITIVE` | `true` | 가린 민감 기록(처방전·신분증 등)을 Claude 근거에 넣을지. `false` 면 제외 |
+| `FACE_ENABLED` | `false` | 얼굴 찾기. 기본 꺼짐(이번 범위 제외) |
 | `TYPESAFE_API_KEY` | (비움) | 있으면 분류에 외부 Jev 를 쓴다(가린 글만 보냄). 없으면 로컬 모델 |
 | `ANTHROPIC_API_KEY` | (비움) | 채팅 답변. 없으면 검색 결과만 보여 준다 |
 

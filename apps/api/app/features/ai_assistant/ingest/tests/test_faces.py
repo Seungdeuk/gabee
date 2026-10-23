@@ -119,3 +119,17 @@ def test_ingest_finds_people_only_in_shared_photos(tmp_path):
         faces=Faces(engine, tmp_path / "faces"),
     )
     assert receipt.people is None and engine.calls == 0  # 문서 사진은 얼굴을 찾지 않는다
+
+
+def test_faces_stay_off_by_default_even_when_model_files_exist(tmp_path, monkeypatch):
+    from app.features.ai_assistant.ingest import faces
+    from app.shared.config import settings
+
+    for name in (faces.DETECTOR, faces.RECOGNIZER):
+        (tmp_path / name).write_bytes(b"x")
+    monkeypatch.setattr(settings, "face_model_dir", str(tmp_path))
+    monkeypatch.setattr(faces, "_default", None)
+    assert settings.face_enabled is False
+    assert (
+        faces.default_faces() is None
+    )  # 모델 파일이 있어도 FACE_ENABLED 가 꺼져 있으면 얼굴을 찾지 않는다

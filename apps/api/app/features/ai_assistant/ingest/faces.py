@@ -226,9 +226,9 @@ _default_lock = threading.Lock()
 
 
 def default_faces() -> Faces | None:
-    """모델 파일이 있으면 공용 Faces, 없으면 None(얼굴 찾기를 건너뜀)."""
+    """FACE_ENABLED 가 켜져 있고 모델 파일이 있으면 공용 Faces, 아니면 None(얼굴 찾기를 건너뜀)."""
     global _default
-    if not available():
+    if not settings.face_enabled or not available():
         return None
     with _default_lock:
         if _default is None:

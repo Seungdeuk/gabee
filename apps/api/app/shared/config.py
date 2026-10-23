@@ -31,6 +31,8 @@ class Settings(BaseSettings):
     jev_timeout: float = 15.0
     # 얼굴 찾기 모델(YuNet·SFace) 폴더. 비우면 DATA_DIR/models/faces. 모델이 없으면 얼굴 찾기를 건너뛴다
     face_model_dir: str = ""
+    # 얼굴 찾기 사용 여부. 기본은 꺼짐: 얼굴은 생체정보라 가족 동의·삭제 연동이 정해지기 전에는 모델 파일이 있어도 돌리지 않는다
+    face_enabled: bool = False
     # 원본 파일(가리기 전)을 그대로 보관하는 폴더. 비우면 DATA_DIR/raw. 접근을 제한해야 하는 곳이라 서버만 읽는다
     raw_dir: str = ""
     # 글자 없는 사진 설명(Ollama 이미지 모델). 사진은 서버 밖으로 나가지 않는다
