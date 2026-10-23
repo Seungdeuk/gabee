@@ -16,9 +16,10 @@ function titleOf(messages) {
 /**
  * 대화 목록을 기기에 저장하고 불러온다.
  * 지금 대화(messages)가 바뀌면 잠깐 뒤 자동 저장하고, 목록에서 고른 대화는 chat.load 로 채팅 화면에 넣는다.
- * @param {{ messages: object[], load: (messages: object[]) => void, reset: () => void }} chat useChat 의 값
+ * scope: 저장 키에 붙일 사용자 구분 값. null 이면 로그인 확인이 끝나지 않은 것이라 아직 불러오지도 저장하지도 않는다.
+ * @param {{ messages: object[], load: (messages: object[]) => void, reset: () => void, scope: string | null }} chat useChat 의 값과 scope
  */
-export default function useSessions({ messages, load, reset }) {
+export default function useSessions({ messages, load, reset, scope }) {
   const [sessions, setSessions] = useState([]);
   const [currentId, setCurrentId] = useState(null);
   const idRef = useRef(null);
@@ -26,24 +27,28 @@ export default function useSessions({ messages, load, reset }) {
   const timer = useRef(null);
 
   useEffect(() => {
-    loadSessions().then(setSessions);
-  }, []);
+    // 사용자가 바뀌면(로그아웃·다른 계정 로그인) 앞사람의 대화를 지우고 새 사용자의 것을 불러온다
+    idRef.current = null;
+    setCurrentId(null);
+    setSessions([]);
+    if (scope) loadSessions(scope).then(setSessions);
+  }, [scope]);
 
   useEffect(() => {
     if (skipSave.current) {
       skipSave.current = false;
       return undefined;
     }
-    if (messages.length === 0) return undefined;
+    if (!scope || messages.length === 0) return undefined;
     if (!idRef.current) {
       idRef.current = newId();
       setCurrentId(idRef.current);
     }
     const session = { id: idRef.current, title: titleOf(messages), updatedAt: Date.now(), messages };
     clearTimeout(timer.current);
-    timer.current = setTimeout(() => saveSession(session).then(setSessions), SAVE_DELAY_MS);
+    timer.current = setTimeout(() => saveSession(scope, session).then(setSessions), SAVE_DELAY_MS);
     return () => clearTimeout(timer.current);
-  }, [messages]);
+  }, [messages, scope]);
 
   const startNew = useCallback(() => {
     idRef.current = null;
@@ -65,10 +70,10 @@ export default function useSessions({ messages, load, reset }) {
 
   const remove = useCallback(
     async (id) => {
-      setSessions(await deleteSession(id));
+      if (scope) setSessions(await deleteSession(scope, id));
       if (idRef.current === id) startNew();
     },
-    [startNew],
+    [scope, startNew],
   );
 
   return { sessions, currentId, startNew, open, remove };

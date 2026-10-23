@@ -5,6 +5,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { FlatList, KeyboardAvoidingView, Pressable, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
+import { legacyStorageScope } from "@/shared/api/client";
+import { useAuth } from "@/shared/auth/AuthProvider";
 import AppHeader from "@/shared/components/AppHeader";
 import { colors } from "@/theme";
 
@@ -30,7 +32,10 @@ import mascot from "../../../../assets/images/gabee-mascot.png";
 export default function AiAssistantScreen() {
   const router = useRouter();
   const { messages, phase, readingSince, confirmDoubts, send, sendPhoto, startListening, stopListening, editDraft, reset, load } = useChat();
-  const { sessions, currentId, startNew, open, remove } = useSessions({ messages, load, reset });
+  const auth = useAuth();
+  // 대화 저장 키: 로그인한 회원은 사용자 id, 익명 계정(개발용 토큰)은 토큰에서 만든 값. 로그인 확인 중에는 null
+  const scope = auth.status === "loading" ? null : auth.user?.id ? `user-${auth.user.id}` : legacyStorageScope();
+  const { sessions, currentId, startNew, open, remove } = useSessions({ messages, load, reset, scope });
   const [menuOpen, setMenuOpen] = useState(false);
   const [reviewCount, setReviewCount] = useState(0); // 확인이 필요한 기록 수(메뉴 점·기록 탭 숫자)
   const [focusRecordId, setFocusRecordId] = useState(null);

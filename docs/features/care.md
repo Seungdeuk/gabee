@@ -6,6 +6,9 @@
 
 ## 구현된 것
 ### 서버 (`apps/api/app/features/care`)
+- **화면 구조(데일리 체크)**: 위에서부터 ① 상단 고정 영역 — 아침·점심·저녁 상태(끼니가 지정된 항목, 다른 탭에서도 고정) ② 중단 피드 — 현재 시각 기준 지금 해야 할 것(`due`) → 다가오는 순서(`upcoming`) ③ 완료한 항목 ④ 하단 "지난 시간 정리" — 시간이 지난 미기록·누락 항목을 모아 **소급 입력** 또는 **건너뛰기**(개별·모두), 건너뛴 항목은 "되돌리기". 서버가 상태·순서를 계산한다.
+  - 상태: `done` 완료 / `skipped` 건너뜀 / `missing` 누락(예정 + 60분 초과) / `due` 예정 시각이 지났지만 60분 안 / `upcoming` 아직 전. 응답에 `meals`, `upcoming_ids`, `cleanup_ids`, `skipped_ids`, `done_ids`, 항목별 `status`·`minutes_until`, 기록별 `late`(예정 + 60분 뒤에 기록한 소급 입력)가 있다.
+  - 건너뛰기: `PUT /care/items/{id}/entry {skipped: true}`(값 없이), 되돌리기: `DELETE /care/items/{id}/entry`. 건너뛴 항목은 누락·추천(다시 권하기)에서 제외된다. 앱은 1분마다 다시 불러온다.
 - 데일리 체크 `GET /care/daily`: 샘플 7개(아침 식사, 영양제, 컨디션, 점심 식사, 물 ml, 산책 분, 저녁 식사)를 처음 열 때 만든다. 항목 추가(`POST /care/items`)·삭제(소프트 삭제). 기록 방식은 예/아니오, 수치(목표 있음), 컨디션(좋음/보통/나쁨). 기록은 `PUT /care/items/{id}/entry`(같은 날 덮어씀).
 - 누락 확인: 서버가 계산한다. 완료되지 않았고 현재 시각이 예정 시각 + 60분을 **넘으면** 누락(정각 +60분은 아직 아님). 지난 날의 미완료는 모두 누락.
   - 완료 기준: 예/아니오는 '예', 목표 있는 수치는 목표 이상, 목표 없는 수치·컨디션은 기록 있음.
@@ -27,6 +30,13 @@
 - 위치 탭: 내 위치 공유 스위치(동의·철회), "지금 내 위치 보내기", 가족 최신 위치 목록. 기기에서는 `expo-location` + `expo-task-manager`로 **백그라운드에서 약 15분마다 또는 200m 이동 시** 보내고(`features/care/location/`), 웹·Expo Go에서는 앱을 열었을 때만 보낸다. 앱 설정(`app.json`)에 `expo-location` 플러그인(백그라운드 위치)을 넣었다.
 - 누락은 "미기록 · 누락" 크림색 배지로 보이고, 건강 이상이 아니라는 안내 문구를 함께 둔다.
 - 서버 주소(`EXPO_PUBLIC_API_URL`)가 없으면 기존 임시 데이터 화면(`CarePreview`)을 그대로 보여 준다.
+
+## 개발 빌드(EAS) — 백그라운드 위치용
+Expo Go 는 백그라운드 위치를 지원하지 않아 실기기 확인에는 개발 빌드가 필요하다. 설정은 준비됐고, **빌드는 아직 한 번도 돌리지 않았다**(EAS 로그인·Apple 계정 필요).
+- 준비된 것: `apps/mobile/eas.json`(profiles `development`·`development-simulator`·`preview`·`production`), `expo-dev-client`(`npx expo install`로 추가, SDK 54 용 ~6.0.21), `app.json`의 `ios.bundleIdentifier`·`android.package` = `com.kangminhun.gabee`(**임시 값 — 첫 스토어 배포 전에 팀이 확정**; 개발 빌드만 쓸 때는 바꿔도 무방). `expo-doctor` 18/18 통과.
+- 위치 권한은 막지 않았다: 백그라운드 수집이 이 기능의 요구라 `expo-location` 플러그인의 백그라운드·포그라운드 서비스 설정을 그대로 둔다(동의한 본인 위치만 가족에게 공유, 7일 보관, 철회 시 삭제).
+- 빌드: `npm i -g eas-cli && eas login` 후 `eas build --platform android --profile development`(iOS 실기기는 유료 Apple Developer 계정 필요, 시뮬레이터는 `development-simulator`). 설치한 뒤 `npx expo start --dev-client` 로 연결한다.
+- 서버 주소는 `eas.json`에 넣지 않았다(`EXPO_PUBLIC_API_URL` 은 배포 주소가 정해지면 프로필별 `env` 로 추가; 비밀값 금지). 개발용 토큰(`EXPO_PUBLIC_DEV_TOKEN`)은 빌드에 넣지 않는다 — 로그인은 main 의 모바일 인증 화면을 쓴다.
 
 ## 확인 방법
 - 서버 확인용 화면: `apps/api/scripts/dev_console.py` → `/console`.

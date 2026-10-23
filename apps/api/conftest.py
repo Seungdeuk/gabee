@@ -6,6 +6,7 @@ _tmp = tempfile.mkdtemp(prefix="gabee-test-")
 os.environ["DATABASE_URL"] = f"sqlite:///{_tmp}/test.db"
 os.environ["DATA_DIR"] = _tmp
 os.environ["ANTHROPIC_API_KEY"] = ""
+os.environ["JWT_SECRET"] = "test-only-jwt-secret-not-for-production-0123456789"  # 테스트 전용 값
 
 import pytest  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
@@ -13,6 +14,19 @@ from fastapi.testclient import TestClient  # noqa: E402
 from app.main import app  # noqa: E402
 from app.shared.db import Base, engine  # noqa: E402
 from tests.helpers import signup  # noqa: E402
+
+
+@pytest.fixture(autouse=True)
+def _reset_login_limiter():
+    from app.features.family_group.service import login_limiter, mail_limiter
+    from app.shared import mailer
+
+    login_limiter.reset()
+    mail_limiter.reset()
+    yield
+    login_limiter.reset()
+    mail_limiter.reset()
+    mailer.set_mailer(None)
 
 
 @pytest.fixture

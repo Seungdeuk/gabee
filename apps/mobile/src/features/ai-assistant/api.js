@@ -1,4 +1,4 @@
-import { apiFetch, apiUrl, authHeaders, isApiConfigured } from "@/shared/api/client";
+import { apiFetch, apiUrl, authHeaders, ensureFreshAccess, isApiConfigured } from "@/shared/api/client";
 
 /**
  * 가비의 답변 한 건.
@@ -125,6 +125,7 @@ const IMAGE_EXT = /\.(jpe?g|png|webp|gif|bmp|heic|heif)$/i;
  * @returns {Promise<{ sources: { uri: string, headers: Record<string, string> }[], message?: string }>}
  */
 export async function openOriginal(id, sourcePath) {
+  await ensureFreshAccess().catch(() => {}); // 이미지는 apiFetch 를 거치지 않아 토큰을 미리 갱신한다
   const source = originalImageSource(id);
   if (!source) return { sources: [], message: "서버에 연결되지 않아 원본을 볼 수 없어요." };
   if (!sourcePath) return { sources: [], message: "이 기록에는 원본 파일이 없어요." };
@@ -151,6 +152,7 @@ export async function listRecords() {
     return [{ id: "mock-1", title: "동대문마트 영수증", kind_label: "영수증", occurred_on: "2026-10-15", has_unread_parts: false, needs_review: true, hasOriginal: false }];
   }
   const items = await apiFetch("/ai-assistant/knowledge/items?limit=50");
+  await ensureFreshAccess().catch(() => {}); // 목록의 작은 사진도 같은 토큰으로 받는다
   const records = items.map((i) => ({ ...i, hasOriginal: Boolean(i.source_path) }));
   return records.sort((a, b) => Number(b.needs_review) - Number(a.needs_review)); // 확인 필요한 기록을 맨 위로(나머지는 서버 순서 유지)
 }

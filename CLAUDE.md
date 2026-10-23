@@ -99,7 +99,10 @@ docker compose up --build      # 개발용 DB + API (루트 .env 필요)
 - 변경하면 `docs/contracts/db.md`도 갱신한다.
 - 서버는 DB가 코드보다 뒤처졌거나 연결이 안 돼도 시작한다. 각 기능 router 는 `main.py`에서 `schema_ready(<기능>)` 의존성과 함께 등록되어, 그 기능 모델이 쓰는 테이블·컬럼이 DB에 없을 때만 503(`schema_not_ready`/`db_unavailable`)을 돌려준다. 새 모델을 `app/shared`에 두면 `schema.py`의 `SHARED_MODEL_FEATURES`에 쓰는 기능을 등록한다(미등록이면 모든 기능의 전제로 본다). 상태는 `GET /health/db`로 확인한다(`docs/adr/0006-schema-gate-degraded-start.md`).
 - `supabase/seed`에는 가짜 데이터만 둔다. 실제 사용자 데이터를 넣지 않는다.
-- 팀 공용 PostgreSQL(`192.168.0.44:5432/gabee`)의 스키마 변경(`alembic upgrade`/`downgrade`/`stamp`)은 마이그레이션 담당자가 `gabee_migrator` 계정으로, PR이 병합되고 검증된 뒤 명시적으로 승인받아서만 실행한다. 일반 실행은 `gabee_app` 계정을 쓴다(DDL 권한 없음 — 단 데이터 CRUD 권한은 있으니 공용 DB 데이터를 직접 조작할 때도 주의한다). 같은 서버의 기존 MVP `family-secretary` database는 어떤 경우에도 건드리지 않는다. 자세한 내용은 `README.md`("팀 공용 PostgreSQL 에 연결하기")와 `docs/adr/0005-shared-postgres-env.md` 참고.
+- 마이그레이션은 각자의 Claude Code가 별도 승인 없이 작성·검증한다: 최신 `main`에서 브랜치를 만들고 `alembic heads`로 단일 head를 확인한 뒤, 모델 수정 → **격리 PostgreSQL**(임시 컨테이너)에서 `alembic revision --autogenerate`, DDL 직접 리뷰, `alembic upgrade head`, `scripts/check_alembic_migrations.py`·`check_schema_matches_models.py` 검증 순으로 진행한다. 검증 대상은 임시 DB뿐이며 공용 DB·개인 `gabee` DB·MVP DB에는 연결하지 않는다. PR의 `ci-check`(`api-postgres`)가 단일 head·전체 upgrade·스키마 일치를 다시 검증한다.
+- 팀 공용 PostgreSQL(`192.168.0.44:5432/gabee`)에는 사람이나 Claude Code가 직접 `alembic upgrade`/`downgrade`/`stamp`를 실행하지 않는다. `main`에서 `CI Check`가 통과한 커밋만 공용 DB PC 의 Pull Agent(`apps/api/scripts/deploy_agent.py`, 러너 없음)가 `gabee_migrator`로 자동 적용한다(새 백업·복원 검증·리허설·사후 검증 포함, `docs/adr/0007-shared-db-auto-migration.md`, `0008-shared-db-pull-agent.md`). 일반 실행은 `gabee_app`(DDL 불가, 단 데이터 CRUD 권한은 있으니 공용 DB 데이터를 직접 조작할 때 주의)을 쓴다. 기존 MVP `family-secretary` database는 어떤 경우에도 건드리지 않는다.
+- 데이터가 사라지는 변경(drop, 이름·타입 변경 등)과 `CONCURRENTLY` 같은 트랜잭션 밖 변경은 자동 적용되지 않는다. 의도한 변경이면 리비전 docstring에 `destructive-approved: PR #<번호>`를 적어 PR 리뷰에서 승인받는다.
+- 리비전은 병렬로 작성하되 PR 병합 직전에 최신 `main` 을 받아 `alembic heads` 가 1개인지 다시 확인한다(다른 PR 이 먼저 병합돼 head 가 둘이 되면 CI 가 실패하며, 나중에 병합되는 쪽이 `down_revision` 을 현재 head 로 옮긴다). 구 코드와 호환되지 않는 변경은 expand(추가) → 코드 전환 → contract(제거) 로 나눠 여러 PR 에 걸쳐 한다.
 
 ## Git
 

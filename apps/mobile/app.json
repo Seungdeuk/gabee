@@ -5,12 +5,14 @@
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "familysecretary",
+    "scheme": "gabee",
     "userInterfaceStyle": "light",
     "ios": {
-      "icon": "./assets/images/icon.png"
+      "icon": "./assets/images/icon.png",
+      "bundleIdentifier": "com.kangminhun.gabee"
     },
     "android": {
+      "package": "com.kangminhun.gabee",
       "adaptiveIcon": {
         "backgroundColor": "#FFF7E3",
         "foregroundImage": "./assets/images/android-icon-foreground.png"
@@ -49,7 +51,8 @@
           "isAndroidForegroundServiceEnabled": true,
           "isIosBackgroundLocationEnabled": true
         }
-      ]
+      ],
+      "expo-secure-store"
     ],
     "experiments": {
       "reactCompiler": true

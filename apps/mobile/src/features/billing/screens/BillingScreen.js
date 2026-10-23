@@ -11,6 +11,7 @@ import AllowanceTab from "../components/AllowanceTab";
 import BillingPreview from "../components/BillingPreview";
 import ExpenseTab from "../components/ExpenseTab";
 import ReminderBanner from "../components/ReminderBanner";
+import UpcomingBanner from "../components/UpcomingBanner";
 import SettlementTab from "../components/SettlementTab";
 import SubscriptionTab from "../components/SubscriptionTab";
 import { currentMonth, shiftMonth } from "../format";
@@ -61,6 +62,7 @@ function BillingLive() {
       </View>
 
       <ReminderBanner refreshKey={refreshKey} onOpen={() => setSection("settle")} />
+      <UpcomingBanner refreshKey={`${refreshKey}-${section}`} onOpen={() => setSection("subscription")} />
 
       <Segmented options={SECTIONS} value={section} onChange={setSection} />
 
@@ -72,8 +74,8 @@ function BillingLive() {
 
       {section === "settle" ? <SettlementTab month={month} notify={notify} refreshKey={refreshKey} /> : null}
       {section === "expense" ? <ExpenseTab month={month} notify={notify} /> : null}
-      {section === "allowance" ? <AllowanceTab month={month} notify={notify} /> : null}
-      {section === "subscription" ? <SubscriptionTab notify={notify} /> : null}
+      {section === "allowance" ? <AllowanceTab notify={notify} /> : null}
+      {section === "subscription" ? <SubscriptionTab month={month} notify={notify} /> : null}
     </Screen>
   );
 }

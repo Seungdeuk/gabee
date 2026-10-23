@@ -2,7 +2,7 @@
 
 ## 인증과 권한은 다르다
 
-- **인증(누구인가)**: `X-Gyeot-Token` 헤더 → `app.shared.auth.current_user()`가 토큰으로 `User`를 찾는다. 토큰이 없거나 틀리면 401.
+- **인증(누구인가)**: `Authorization: Bearer <Access Token(JWT)>` 가 있으면 `app.shared.auth.current_user()`가 JWT 를 검증해 `User`를 찾는다(실패해도 레거시로 넘어가지 않는다). 헤더가 없을 때만 익명 계정용 `X-Gyeot-Token`. 토큰이 없거나 틀리거나 만료면 401. role·그룹은 JWT 가 아니라 DB 에서 확인한다. 아이디/비밀번호로 가입한 정식 회원은 이 레거시 토큰으로 인증할 수 없다(401) — 정식 회원 인증은 로그인 API(PR 4-B 후속)가 발급하는 Access 토큰만 쓴다.
 - **권한(이 가족 그룹에 접근할 자격이 있는가)**: `app.shared.auth.current_group_id()`가 요청자의 `user.active_group_id`를 돌려주는데, **단순히 그 값이 있다는 것만으로 허용하지 않는다** — `group_members` 테이블로 실제 소속인지 확인한 뒤에만 그룹 id를 돌려준다. 멤버가 아니면 403 `not_member`.
 
 `active_group_id`는 "지금 선택된 그룹"을 가리키는 캐시값일 뿐, 그 자체가 접근 권한의 증거가 아니다. 접근 권한의 유일한 근거는 **`group_members` 테이블**이다.

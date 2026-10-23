@@ -31,3 +31,9 @@ CLAUDE.local.md
 
 # 서버가 만드는 데이터(SQLite, 업로드)
 apps/api/data/
+
+# DB 백업(실제 데이터 포함) — 절대 커밋하지 않는다
+*.dump
+*.dump.sha256
+*.dump.partial
+gabee-backups/

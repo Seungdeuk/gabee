@@ -34,14 +34,14 @@ EXPECTED_USER = "gabee_ci"
 _ALLOWED_EXTENSIONS = {"plpgsql", "vector"}
 
 
-def _script_directory() -> ScriptDirectory:
+def _script_directory(alembic_dir: Path | None = None) -> ScriptDirectory:
     cfg = Config()
-    cfg.set_main_option("script_location", str(API_ROOT / "alembic"))
+    cfg.set_main_option("script_location", str(alembic_dir or API_ROOT / "alembic"))
     return ScriptDirectory.from_config(cfg)
 
 
-def check_heads() -> bool:
-    script = _script_directory()
+def check_heads(alembic_dir: Path | None = None) -> bool:
+    script = _script_directory(alembic_dir)
     heads = script.get_heads()
     if len(heads) == 1:
         print(f"[OK] Alembic head 1개: {heads[0]}")

@@ -12,6 +12,7 @@
     "expo": "~54.0.0",
     "expo-clipboard": "~8.0.8",
     "expo-constants": "~18.0.14",
+    "expo-dev-client": "~6.0.21",
     "expo-device": "~8.0.10",
     "expo-document-picker": "~14.0.8",
     "expo-font": "~14.0.12",
@@ -21,6 +22,7 @@
     "expo-linking": "~8.0.12",
     "expo-location": "~19.0.8",
     "expo-router": "~6.0.24",
+    "expo-secure-store": "~15.0.8",
     "expo-splash-screen": "~31.0.13",
     "expo-status-bar": "~3.0.9",
     "expo-symbols": "~1.0.8",
@@ -45,7 +47,8 @@
     "android": "expo start --android",
     "ios": "expo start --ios",
     "web": "expo start --web",
-    "lint": "expo lint"
+    "lint": "expo lint",
+    "test": "node --import ./tests/register-alias.mjs --test \"tests/*.test.js\""
   },
   "private": true
 }

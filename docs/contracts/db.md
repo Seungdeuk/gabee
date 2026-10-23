@@ -21,17 +21,19 @@ docker compose 의 개발용 PostgreSQL(`pgvector/pgvector:pg16` 이미지, `pgv
 | invite_attempts | family_group | (PR 4-A, 스키마만) 초대코드 레이트리밋용 시도 기록(ip/user_id/invite_id, 성공 여부) — 코드 원문·해시는 저장하지 않는다 |
 | messages | family_chat | 그룹 대화 메시지 |
 | events | schedule | 가족 일정(제목, 시작 시각, 상태 pending/confirmed, 출처) |
-| expenses | billing | 공동 지출(제목, 금액, 날짜, 분류, 낸 사람, 나눌 사람 `split_among`, 정산 대상 태그 `target_tag`: parents/children/all/custom, 정산하기 시각·사람 `settled_at`·`settled_by`). 삭제는 `deleted_at` 소프트 삭제 |
+| expenses | billing | 공동 지출(제목, 금액, 날짜, 분류, 낸 사람, 나눌 사람 `split_among`, 정산 대상 태그 `target_tag`: parents/children/all/custom, 정산하기 시각·사람 `settled_at`·`settled_by`). 삭제는 `deleted_at` 소프트 삭제. 구독 항목으로 만든 지출이면 `subscription_id`(같은 달 중복 방지) |
 | billing_settings | billing | 가족 그룹의 가계 설정: 정산 담당자(월말 알림 대상, 행이 없으면 그룹을 만든 사람)와 미성년 자녀 목록 `minor_ids` |
 | settlement_payments | billing | '송금 완료'로 표시한 송금(월, 보낸 사람, 받은 사람, 금액). 송금 목록 자체는 매번 계산한다 |
-| subscription_items | billing | OTT·통신비 가족 할인 상태(check/available/active). 금액은 저장하지 않는다 |
-| allowances | billing | 자녀별 월 용돈 예산 |
-| allowance_uses | billing | 용돈 사용 기록 |
+| subscription_items | billing | OTT·통신비 항목(이름, 통신사 `carrier`, 사용자가 입력한 월 청구 금액 `monthly_fee`·결합 할인 금액 `discount_amount`, 결제일 `billing_day`)과 가족 할인 상태(check/available/active). 할인은 계산하지 않고 입력값만 저장한다. 삭제는 `deleted_at` 소프트 삭제. 구독료 지출용 결제한 사람 `payer_id`·나눌 사람 `split_among`(빈 목록이면 가족 전체) |
+| allowances | billing | (이전 방식, 더는 쓰지 않음) 자녀별 월 용돈 예산. 장부(`allowance_entries`)로 복사 완료(719215db61ba). 제거는 `destructive-approved` 를 받는 후속 PR |
+| allowance_uses | billing | (이전 방식, 더는 쓰지 않음) 월 예산의 사용 기록 |
+| allowance_plans | billing | 자녀별 고정 용돈 주기(매주/매월, 금액, 자동/리마인드, 시작일). 자녀당 1개 |
+| allowance_entries | billing | 용돈 장부(입금 credit·사용 use, 취소는 `voided_at`). 주기 입금은 `plan_due_date`로 같은 지급일 중복 방지(unique) |
 | care_records | care | 돌봄 기록(대상, 종류, 값, 날짜). 같은 그룹·대상·종류·날짜는 하나만 둔다 |
 | care_locations | care | 동의한 사람이 보낸 위치(좌표·정확도·잰 시각). 7일이 지나면 삭제, 동의 철회 시 즉시 삭제. 좌표는 로그에 남기지 않는다 |
 | location_consent_events | shared | 위치 공유 동의·철회 이력(사용자, 동의 여부, 경로, 시각). 좌표 없음 |
 | care_items | care | 데일리 체크 항목(기록 방식, 목표, 예정 시각, 끼니). 삭제는 `deleted_at` 소프트 삭제 |
-| care_entries | care | 항목의 하루 기록. 같은 항목·날짜는 하나만 둔다 |
+| care_entries | care | 항목의 하루 기록. 같은 항목·날짜는 하나만 둔다. 건너뛰기 `skipped`(누락으로 세지 않음, 값 없음) |
 | photos | ai_assistant | 앱이 올린 사진(파일은 `DATA_DIR/photos`에 저장) |
 | knowledge_items | ai_assistant/knowledge | 전처리가 넘긴 기록 한 건(분류 이름, 제목, 마크다운 전체, 원본 경로, 날짜, 민감도) |
 | knowledge_chunks | ai_assistant/knowledge | 기록을 쪽·슬라이드·길이로 자른 조각과 임베딩 벡터(PostgreSQL 은 pgvector `vector(384)` + 코사인 HNSW 인덱스, SQLite 는 JSON). Alembic 리비전 c3a9f21d7e54 |

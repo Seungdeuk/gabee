@@ -1,6 +1,16 @@
 from datetime import UTC, datetime
 
-from sqlalchemy import Boolean, DateTime, Float, Index, Integer, String, Text, UniqueConstraint
+from sqlalchemy import (
+    Boolean,
+    DateTime,
+    Float,
+    Index,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+    false,
+)
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.shared.db import Base
@@ -66,6 +76,8 @@ class CareEntry(Base):
     done: Mapped[bool | None] = mapped_column(Boolean, nullable=True)  # 예/아니오 항목
     number: Mapped[int | None] = mapped_column(Integer, nullable=True)  # 수치 항목
     condition: Mapped[str | None] = mapped_column(String(10), nullable=True)  # 컨디션 항목
+    # 건너뛰기: 일부러 기록하지 않기로 한 항목. 누락으로 세지 않고 완료도 아니다.
+    skipped: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false())
     recorded_by: Mapped[str] = mapped_column(String(32))
     recorded_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(UTC)

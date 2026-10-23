@@ -108,3 +108,9 @@ def purge_locations_before(db: Session, cutoff) -> int:
     n = db.query(CareLocation).filter(CareLocation.recorded_at < cutoff).delete()
     db.commit()
     return n
+
+
+def delete_entry(db: Session, item_id: str, date: str) -> bool:
+    n = db.query(CareEntry).filter(CareEntry.item_id == item_id, CareEntry.date == date).delete()
+    db.commit()
+    return n > 0

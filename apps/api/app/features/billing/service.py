@@ -1,41 +1,57 @@
 import calendar
 import re
 import uuid
-from datetime import UTC, datetime, timedelta, timezone
+from datetime import UTC, date, datetime, timedelta, timezone
 
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.features.family_group import repository as group_repo
 from app.features.family_group.models import User
 from app.shared.errors import ApiError, bad_request, not_found
+from app.shared.seed_lock import seed_lock
 
+from . import allowance
 from . import repository as repo
 from .models import (
-    Allowance,
-    AllowanceUse,
+    AllowanceEntry,
+    AllowancePlan,
     BillingSettings,
     Expense,
     SettlementPayment,
     SubscriptionItem,
 )
 from .schemas import (
+    AllowanceEntryOut,
+    AllowanceMoneyIn,
     AllowanceOut,
-    AllowanceUseCreate,
-    AllowanceUseOut,
+    AllowancePayIn,
+    AllowancePending,
+    AllowancePlanIn,
+    AllowancePlanOut,
     Balance,
+    CatalogEntry,
     ExpenseCreate,
     ExpenseOut,
     ManagerOut,
+    MonthlyItem,
+    MonthlyPlan,
+    MonthlyResult,
     PaymentCreate,
     PaymentOut,
     Reminder,
     Settlement,
     SettleRequest,
     SettleTagOut,
+    SubscriptionCatalog,
+    SubscriptionCreate,
     SubscriptionList,
     SubscriptionOut,
+    SubscriptionPatch,
     Summary,
     Transfer,
+    UpcomingPayment,
+    UpcomingPayments,
 )
 from .settlement import minimal_transfers, split_equally
 
@@ -43,11 +59,18 @@ _MONTH = re.compile(r"^\d{4}-(0[1-9]|1[0-2])$")
 KST = timezone(timedelta(hours=9))
 
 SUBSCRIPTION_NOTICE = "예시, 실제 적용은 통신사에서 확인"
-# 처음 열 때 만들어 두는 항목. 할인 금액은 다루지 않고 상태만 기록한다.
-DEFAULT_SUBSCRIPTIONS = (
+# 고를 수 있는 목록. 화면에는 사용자가 골라 추가한 항목만 나오고, 아직 안 쓰는 서비스는 이 목록에만 있다.
+SUBSCRIPTION_CATALOG = (
     ("ott", "넷플릭스"),
     ("ott", "유튜브 프리미엄"),
     ("ott", "디즈니+"),
+    ("ott", "티빙"),
+    ("ott", "웨이브"),
+    ("ott", "쿠팡플레이"),
+    ("ott", "왓챠"),
+    ("ott", "애플 TV+"),
+    ("ott", "스포티파이"),
+    ("ott", "멜론"),
     ("telecom", "가족 결합 할인"),
     ("telecom", "요금제 결합 할인"),
 )
@@ -74,6 +97,7 @@ def _fixed_tags(members: list[User], minor_ids: list[str]):
 
 
 REMINDER_DAYS = 5  # 월말 알림: 마지막 5일, 지난 달 지연 알림: 월초 5일
+UPCOMING_DAYS = 3  # 결제일 알림: 결제일 3일 전부터(오늘 포함)
 
 
 def check_month(month: str) -> str:
@@ -105,6 +129,7 @@ def _expense_out(e: Expense, names: dict[str, str], member_ids: list[str]) -> Ex
         split_among=e.split_among or member_ids,
         target_tag=e.target_tag,
         settled=e.settled_at is not None,
+        subscription_id=e.subscription_id,
     )
 
 
@@ -401,71 +426,274 @@ def undo_paid(db: Session, group_id: str, payment_id: str) -> Settlement:
 # ---- 구독·통신비 가족 할인 상태 ----
 
 
-def _subscription_out(i: SubscriptionItem) -> SubscriptionOut:
-    return SubscriptionOut(id=i.id, kind=i.kind, name=i.name, status=i.status)
+MAX_SUBSCRIPTIONS = 30
+SUBSCRIPTION_CATEGORY = "구독"
+
+
+def _split_ids(split: list[str] | None, member_ids: list[str]) -> list[str]:
+    """저장된 나눌 사람(비어 있으면 가족 전체)을 현재 구성원 순서로 풀어 낸다."""
+    wanted = set(split or member_ids)
+    return [u for u in member_ids if u in wanted] or member_ids
+
+
+def _subscription_out(i: SubscriptionItem, members: list[User]) -> SubscriptionOut:
+    names = {m.id: m.name for m in members}
+    return SubscriptionOut(
+        id=i.id,
+        kind=i.kind,
+        name=i.name,
+        status=i.status,
+        carrier=i.carrier,
+        monthly_fee=i.monthly_fee,
+        discount_amount=i.discount_amount,
+        list_price=None
+        if i.monthly_fee is None and i.discount_amount is None
+        else (i.monthly_fee or 0) + (i.discount_amount or 0),
+        billing_day=i.billing_day,
+        payer_id=i.payer_id,
+        payer_name=names.get(i.payer_id, ""),
+        split_among=_split_ids(i.split_among, [m.id for m in members]),
+    )
+
+
+def subscription_catalog(db: Session, group_id: str) -> SubscriptionCatalog:
+    """고를 수 있는 서비스 목록. 이미 추가한 것은 `added` 로 표시한다(이름 기준)."""
+    have = {(i.kind, i.name) for i in repo.list_subscriptions(db, group_id)}
+    return SubscriptionCatalog(
+        items=[CatalogEntry(kind=k, name=n, added=(k, n) in have) for k, n in SUBSCRIPTION_CATALOG]
+    )
 
 
 def list_subscriptions(db: Session, group_id: str) -> SubscriptionList:
     items = repo.list_subscriptions(db, group_id)
-    if not items:
-        items = [
-            SubscriptionItem(
-                id=uuid.uuid4().hex[:12], group_id=group_id, kind=k, name=n, sort_order=i
+    members = group_repo.members(db, group_id)
+    return SubscriptionList(
+        notice=SUBSCRIPTION_NOTICE,
+        items=[_subscription_out(i, members) for i in items],
+        monthly_total=sum(i.monthly_fee or 0 for i in items),
+        discount_total=sum(i.discount_amount or 0 for i in items),
+    )
+
+
+def upcoming_payments(db: Session, group_id: str, user: User, on: str | None) -> UpcomingPayments:
+    """결제일이 3일 안(오늘 포함)으로 다가온 구독을 **결제한 사람에게만** 알린다.
+    결제일이 없거나 결제한 사람이 없는 항목은 대상이 아니다. `on`(YYYY-MM-DD)은 화면 테스트용 오늘 날짜."""
+    try:
+        today = datetime.strptime(on, "%Y-%m-%d").date() if on else datetime.now(KST).date()
+    except ValueError:
+        raise bad_request("invalid_date", "날짜는 YYYY-MM-DD 형식이어야 해요") from None
+    items: list[UpcomingPayment] = []
+    for i in repo.list_subscriptions(db, group_id):
+        if i.payer_id != user.id or i.billing_day is None:
+            continue
+        due = allowance.next_due("monthly", i.billing_day, today)  # 매월 같은 날(없으면 말일) 규칙
+        days_left = (due - today).days
+        if days_left > UPCOMING_DAYS:
+            continue
+        made = i.id in repo.subscription_ids_with_expense(db, group_id, due.strftime("%Y-%m"))
+        items.append(
+            UpcomingPayment(
+                id=i.id,
+                kind=i.kind,
+                name=i.name,
+                amount=i.monthly_fee,
+                due_date=due.isoformat(),
+                days_left=days_left,
+                expense_made=made,
             )
-            for i, (k, n) in enumerate(DEFAULT_SUBSCRIPTIONS)
-        ]
-        repo.add_subscriptions(db, items)
-    return SubscriptionList(notice=SUBSCRIPTION_NOTICE, items=[_subscription_out(i) for i in items])
+        )
+    items.sort(key=lambda x: (x.days_left, x.name))
+    return UpcomingPayments(show=bool(items), within_days=UPCOMING_DAYS, items=items)
 
 
-def set_subscription_status(
-    db: Session, group_id: str, item_id: str, status: str
+def _check_carrier(kind: str, carrier: str | None) -> None:
+    if carrier is not None and kind != "telecom":
+        raise bad_request("invalid_carrier", "통신사는 통신비 항목에만 지정할 수 있어요")
+
+
+def _clean_name(name: str) -> str:
+    name = name.strip()
+    if not name:
+        raise bad_request("invalid_name", "이름을 입력해 주세요")
+    return name
+
+
+def _check_payer(payer_id: str | None, member_ids: list[str]) -> None:
+    if payer_id is not None and payer_id not in member_ids:
+        raise bad_request("invalid_payer", "결제한 사람은 가족 구성원이어야 해요")
+
+
+def _clean_split(split: list[str] | None, member_ids: list[str]) -> list[str]:
+    """비어 있으면(가족 전체) 빈 목록으로 저장한다. 구성원이 아닌 id 는 거절한다."""
+    if not split:
+        return []
+    if any(u not in member_ids for u in split):
+        raise bad_request("invalid_split", "나눌 사람은 가족 구성원이어야 해요")
+    chosen = [u for u in member_ids if u in set(split)]
+    return [] if len(chosen) == len(member_ids) else chosen
+
+
+def create_subscription(
+    db: Session, group_id: str, user: User, body: SubscriptionCreate
 ) -> SubscriptionOut:
+    _check_carrier(body.kind, body.carrier)
+    members = group_repo.members(db, group_id)
+    ids = [m.id for m in members]
+    # 보내지 않으면 등록한 사람이 결제하는 것으로 보고, null 을 명시하면 '결제한 사람 없음'으로 저장한다
+    payer_id = body.payer_id if "payer_id" in body.model_fields_set else user.id
+    _check_payer(payer_id, ids)
+    split = _clean_split(body.split_among, ids)
+    if len(repo.list_subscriptions(db, group_id)) >= MAX_SUBSCRIPTIONS:
+        raise bad_request("too_many", f"항목은 {MAX_SUBSCRIPTIONS}개까지 만들 수 있어요")
+    item = repo.save(
+        db,
+        SubscriptionItem(
+            id=uuid.uuid4().hex[:12],
+            group_id=group_id,
+            kind=body.kind,
+            name=_clean_name(body.name),
+            carrier=body.carrier,
+            monthly_fee=body.monthly_fee,
+            discount_amount=body.discount_amount,
+            billing_day=body.billing_day,
+            payer_id=payer_id,
+            split_among=split,
+            sort_order=repo.max_subscription_order(db, group_id) + 1,
+        ),
+    )
+    return _subscription_out(item, members)
+
+
+def update_subscription(
+    db: Session, group_id: str, item_id: str, body: SubscriptionPatch
+) -> SubscriptionOut:
+    """보낸 필드만 바꾼다(금액·결제일·통신사·결제한 사람은 null 을 보내면 지운다, 나눌 사람은 빈 목록이면 가족 전체)."""
+    sent = body.model_fields_set
+    if not sent:
+        raise bad_request("empty_patch", "바꿀 내용을 보내 주세요")
     item = repo.get_subscription(db, group_id, item_id)
     if item is None:
         raise not_found("항목")
-    item.status, item.updated_at = status, datetime.now(UTC)
-    return _subscription_out(repo.save(db, item))
+    members = group_repo.members(db, group_id)
+    ids = [m.id for m in members]
+    if "status" in sent and body.status is not None:
+        item.status = body.status
+    if "name" in sent and body.name is not None:
+        item.name = _clean_name(body.name)
+    if "carrier" in sent:
+        _check_carrier(item.kind, body.carrier)
+        item.carrier = body.carrier
+    if "monthly_fee" in sent:
+        item.monthly_fee = body.monthly_fee
+    if "discount_amount" in sent:
+        item.discount_amount = body.discount_amount
+    if "billing_day" in sent:
+        item.billing_day = body.billing_day
+    if "payer_id" in sent:
+        _check_payer(body.payer_id, ids)
+        item.payer_id = body.payer_id
+    if "split_among" in sent:
+        item.split_among = _clean_split(body.split_among, ids)
+    item.updated_at = datetime.now(UTC)
+    return _subscription_out(repo.save(db, item), members)
 
 
-# ---- 용돈 ----
+def delete_subscription(db: Session, group_id: str, item_id: str) -> None:
+    item = repo.get_subscription(db, group_id, item_id)
+    if item is None:
+        raise not_found("항목")
+    item.deleted_at = datetime.now(UTC)
+    repo.save(db, item)
+
+
+# ---- 구독료를 월별 지출로 만들기 ----
+
+
+def _due_date(month: str, billing_day: int | None) -> str:
+    """지출 날짜. 결제일이 없으면 1일, 그 달에 없는 날(예: 2월 31일)이면 그 달의 마지막 날이다."""
+    year, mon = (int(x) for x in month.split("-"))
+    last = calendar.monthrange(year, mon)[1]
+    return f"{month}-{min(billing_day or 1, last):02d}"
+
+
+def monthly_plan(db: Session, group_id: str, month: str) -> MonthlyPlan:
+    """이번 달에 구독료 지출로 만들 수 있는 항목. 금액이 있고 결제한 사람이 있으며 아직 안 만든 항목만 ready 다."""
+    month = check_month(month)
+    members = group_repo.members(db, group_id)
+    ids = [m.id for m in members]
+    names = {m.id: m.name for m in members}
+    made = repo.subscription_ids_with_expense(db, group_id, month)
+    entries: list[MonthlyItem] = []
+    for i in repo.list_subscriptions(db, group_id):
+        if not i.monthly_fee:
+            state = "no_fee"
+        elif i.payer_id not in names:
+            state = "no_payer"
+        elif i.id in made:
+            state = "created"
+        else:
+            state = "ready"
+        entries.append(
+            MonthlyItem(
+                id=i.id,
+                name=i.name,
+                kind=i.kind,
+                amount=i.monthly_fee,
+                date=_due_date(month, i.billing_day),
+                payer_name=names.get(i.payer_id, ""),
+                split_count=len(_split_ids(i.split_among, ids)),
+                state=state,
+            )
+        )
+    ready = [e for e in entries if e.state == "ready"]
+    return MonthlyPlan(
+        month=month,
+        items=entries,
+        ready_count=len(ready),
+        ready_total=sum(e.amount or 0 for e in ready),
+    )
+
+
+def generate_monthly(db: Session, group_id: str, month: str) -> MonthlyResult:
+    """'이번 달 구독료 지출 만들기'. ready 인 항목만 지출로 만들고(미정산 상태), 같은 달에 다시 눌러도 중복으로 만들지 않는다."""
+    plan = monthly_plan(db, group_id, month)
+    members = group_repo.members(db, group_id)
+    ids = [m.id for m in members]
+    names = {m.id: m.name for m in members}
+    items = {i.id: i for i in repo.list_subscriptions(db, group_id)}
+    created: list[Expense] = []
+    for entry in plan.items:
+        if entry.state != "ready":
+            continue
+        item = items[entry.id]
+        split = _split_ids(item.split_among, ids)
+        created.append(
+            Expense(
+                id=uuid.uuid4().hex[:12],
+                group_id=group_id,
+                title=f"{item.name} 구독료",
+                amount=item.monthly_fee,
+                date=entry.date,
+                category=SUBSCRIPTION_CATEGORY,
+                paid_by=item.payer_id,
+                split_among=split,
+                target_tag="all" if set(split) == set(ids) else "custom",
+                subscription_id=item.id,
+            )
+        )
+    if created:
+        repo.save_all(db, created)
+    return MonthlyResult(
+        created=[_expense_out(e, names, ids) for e in created],
+        plan=monthly_plan(db, group_id, month),
+    )
+
+
+# ---- 용돈(장부) ----
 
 
 def _children(db: Session, group_id: str) -> list[User]:
     return [m for m in group_repo.members(db, group_id) if m.role != "parent"]
-
-
-def _allowance_out(db: Session, child: User, month: str, allowance: Allowance | None):
-    if allowance is None:
-        return AllowanceOut(
-            child_id=child.id,
-            name=child.name,
-            month=month,
-            budget=None,
-            used=0,
-            remaining=0,
-            uses=[],
-        )
-    used = repo.allowance_used(db, allowance.id)
-    return AllowanceOut(
-        child_id=child.id,
-        name=child.name,
-        month=month,
-        budget=allowance.budget,
-        used=used,
-        remaining=allowance.budget - used,
-        uses=[
-            AllowanceUseOut(id=u.id, amount=u.amount, memo=u.memo, date=u.date)
-            for u in repo.list_uses(db, allowance.id)
-        ],
-    )
-
-
-def list_allowances(db: Session, group_id: str, month: str) -> list[AllowanceOut]:
-    return [
-        _allowance_out(db, c, month, repo.get_allowance(db, group_id, c.id, month))
-        for c in _children(db, group_id)
-    ]
 
 
 def _child(db: Session, group_id: str, child_id: str) -> User:
@@ -475,39 +703,275 @@ def _child(db: Session, group_id: str, child_id: str) -> User:
     return child
 
 
-def set_budget(db: Session, group_id: str, child_id: str, month: str, budget: int) -> AllowanceOut:
-    child = _child(db, group_id, child_id)
-    allowance = repo.get_allowance(db, group_id, child_id, month)
-    if allowance is None:
-        allowance = Allowance(
-            id=uuid.uuid4().hex[:12], group_id=group_id, child_id=child_id, month=month, budget=0
-        )
-    elif budget < repo.allowance_used(db, allowance.id):
-        raise bad_request("budget_below_used", "이미 쓴 금액보다 예산을 낮출 수 없어요")
-    allowance.budget = budget
-    return _allowance_out(db, child, month, repo.save(db, allowance))
+def _can_manage_allowance(db: Session, group_id: str, user: User) -> bool:
+    """주기 설정·지급·취소는 부모 역할이거나 그룹을 만든 사람만 한다."""
+    return user.role == "parent" or group_repo.get_group(db, group_id).owner_id == user.id
 
 
-def add_use(db: Session, group_id: str, child_id: str, body: AllowanceUseCreate) -> AllowanceOut:
-    child = _child(db, group_id, child_id)
-    day = body.date.isoformat() if body.date else today_kst()
-    month = day[:7]
-    allowance = repo.get_allowance(db, group_id, child_id, month)
-    if allowance is None:
-        raise bad_request("no_budget", f"{month} 용돈 예산을 먼저 정해 주세요")
-    remaining = allowance.budget - repo.allowance_used(db, allowance.id)
-    if body.amount > remaining:
-        raise bad_request(
-            "over_budget", f"남은 금액({remaining:,}원)보다 큰 사용은 저장할 수 없어요"
+def _ensure_manage_allowance(db: Session, group_id: str, user: User) -> None:
+    if not _can_manage_allowance(db, group_id, user):
+        raise ApiError(403, "not_allowance_manager", "부모님이나 그룹을 만든 사람만 할 수 있어요")
+
+
+def _credit(
+    child_id: str, group_id: str, plan: AllowancePlan, due: str, source: str, by: str | None
+) -> AllowanceEntry:
+    return AllowanceEntry(
+        id=uuid.uuid4().hex[:12],
+        group_id=group_id,
+        child_id=child_id,
+        kind="credit",
+        amount=plan.amount,
+        memo="정기 용돈",
+        date=due,
+        source=source,
+        plan_due_date=due,
+        created_by=by,
+    )
+
+
+def _due_list(plan: AllowancePlan, today: date) -> list[str]:
+    start = date.fromisoformat(plan.start_date)
+    return [d.isoformat() for d in allowance.due_dates(plan.cycle, plan.day, start, today)]
+
+
+def _post_auto(db: Session, group_id: str, plan: AllowancePlan, today: date) -> None:
+    """자동 방식: 지급일이 지난 분을 장부에 입금으로 기록한다. 서버에 정해진 시간에 도는 작업이 없어서
+    화면을 열 때 기록하며, 같은 지급일은 한 번만 기록된다(unique)."""
+    if plan.mode != "auto":
+        return
+    with seed_lock(db, f"allowance:{plan.child_id}"):  # 동시에 열어도 둘 다 기록하지 않게 잠근다
+        done = repo.posted_due_dates(db, plan.child_id)
+        new = [d for d in _due_list(plan, today) if d not in done]
+        if not new:
+            return
+        try:
+            repo.save_all(
+                db, [_credit(plan.child_id, group_id, plan, d, "plan_auto", None) for d in new]
+            )
+        except IntegrityError:  # 다른 요청이 먼저 기록함
+            db.rollback()
+
+
+def _by_name(e: AllowanceEntry, names: dict[str, str]) -> str:
+    """기록한 사람. 자동 지급은 "자동 지급", 이전 월 예산 방식에서 옮겨 온 줄은 "이전 기록"."""
+    if e.created_by:
+        return names.get(e.created_by, "")
+    return "자동 지급" if e.source == "plan_auto" else "이전 기록"
+
+
+def _entries_out(entries: list[AllowanceEntry], names: dict[str, str]):
+    """오래된 순 목록으로 잔액을 차례로 계산해, (현재 잔액, 최신순 목록)을 돌려준다."""
+    balance = 0
+    out = []
+    for e in entries:
+        voided = e.voided_at is not None
+        if not voided:
+            balance += e.amount if e.kind == "credit" else -e.amount
+        out.append(
+            AllowanceEntryOut(
+                id=e.id,
+                kind=e.kind,
+                amount=e.amount,
+                memo=e.memo,
+                date=e.date,
+                source=e.source,
+                by_name=_by_name(e, names),
+                voided=voided,
+                balance_after=None if voided else balance,
+            )
         )
+    return balance, list(reversed(out))
+
+
+def _allowance_out(
+    db: Session, group_id: str, user: User, child: User, names: dict[str, str], today: date
+) -> AllowanceOut:
+    plan = repo.get_plan(db, group_id, child.id)
+    if plan is not None:
+        _post_auto(db, group_id, plan, today)
+    entries = repo.list_entries(db, group_id, child.id)
+    balance, rows = _entries_out(entries, names)
+    live = [e for e in entries if e.voided_at is None]
+    can_manage = _can_manage_allowance(db, group_id, user)
+    pending: list[AllowancePending] = []
+    plan_out = None
+    if plan is not None:
+        if plan.mode == "remind" and can_manage:  # 지급 알림은 지급할 수 있는 사람에게만 보인다
+            done = repo.posted_due_dates(db, child.id)
+            pending = [
+                AllowancePending(due_date=d, amount=plan.amount)
+                for d in _due_list(plan, today)
+                if d not in done
+            ]
+        plan_out = AllowancePlanOut(
+            cycle=plan.cycle,
+            day=plan.day,
+            amount=plan.amount,
+            mode=plan.mode,
+            start_date=plan.start_date,
+            next_due=allowance.next_due(plan.cycle, plan.day, today).isoformat(),
+        )
+    return AllowanceOut(
+        child_id=child.id,
+        name=child.name,
+        balance=balance,
+        total_credit=sum(e.amount for e in live if e.kind == "credit"),
+        total_use=sum(e.amount for e in live if e.kind == "use"),
+        plan=plan_out,
+        pending=pending,
+        entries=rows[:100],
+        can_manage=can_manage,
+        can_record_use=can_manage or user.id == child.id,
+    )
+
+
+def _today() -> date:
+    return date.fromisoformat(today_kst())
+
+
+def _names(db: Session, group_id: str) -> dict[str, str]:
+    return {m.id: m.name for m in group_repo.members(db, group_id)}
+
+
+def list_allowances(db: Session, group_id: str, user: User) -> list[AllowanceOut]:
+    names, today = _names(db, group_id), _today()
+    return [_allowance_out(db, group_id, user, c, names, today) for c in _children(db, group_id)]
+
+
+def _one(db: Session, group_id: str, user: User, child_id: str) -> AllowanceOut:
+    child = _child(db, group_id, child_id)
+    return _allowance_out(db, group_id, user, child, _names(db, group_id), _today())
+
+
+def set_plan(
+    db: Session, group_id: str, user: User, child_id: str, body: AllowancePlanIn
+) -> AllowanceOut:
+    _child(db, group_id, child_id)
+    _ensure_manage_allowance(db, group_id, user)
+    if body.cycle == "weekly" and not 0 <= body.day <= 6:
+        raise bad_request("invalid_day", "요일은 월(0)부터 일(6)까지예요")
+    if body.cycle == "monthly" and not 1 <= body.day <= 31:
+        raise bad_request("invalid_day", "지급일은 1~31 사이여야 해요")
+    plan = repo.get_plan(db, group_id, child_id)
+    if plan is None:
+        plan = AllowancePlan(id=uuid.uuid4().hex[:12], group_id=group_id, child_id=child_id)
+    # 설정을 바꾸면 오늘부터 새 주기로 센다(이미 기록한 입금은 그대로, 지난 날짜를 소급해 만들지 않는다)
+    plan.cycle, plan.day, plan.amount, plan.mode = body.cycle, body.day, body.amount, body.mode
+    plan.start_date = today_kst()
+    repo.save(db, plan)
+    return _one(db, group_id, user, child_id)
+
+
+def delete_plan(db: Session, group_id: str, user: User, child_id: str) -> AllowanceOut:
+    _child(db, group_id, child_id)
+    _ensure_manage_allowance(db, group_id, user)
+    plan = repo.get_plan(db, group_id, child_id)
+    if plan is None:
+        raise not_found("용돈 주기")
+    repo.delete(db, plan)  # 장부 내역은 그대로 남는다
+    return _one(db, group_id, user, child_id)
+
+
+def _entry_date(day: date | None) -> str:
+    today = today_kst()
+    value = day.isoformat() if day else today
+    if value > today:
+        raise bad_request("future_date", "오늘 이후 날짜는 기록할 수 없어요")
+    return value
+
+
+def _balance(db: Session, group_id: str, child_id: str) -> int:
+    return _entries_out(repo.list_entries(db, group_id, child_id), {})[0]
+
+
+def add_credit(
+    db: Session, group_id: str, user: User, child_id: str, body: AllowanceMoneyIn
+) -> AllowanceOut:
+    """수동 지급(부모가 직접 입금으로 기록)."""
+    _child(db, group_id, child_id)
+    _ensure_manage_allowance(db, group_id, user)
     repo.save(
         db,
-        AllowanceUse(
+        AllowanceEntry(
             id=uuid.uuid4().hex[:12],
-            allowance_id=allowance.id,
+            group_id=group_id,
+            child_id=child_id,
+            kind="credit",
             amount=body.amount,
-            memo=body.memo.strip(),
-            date=day,
+            memo=body.memo.strip() or "용돈",
+            date=_entry_date(body.date),
+            source="manual",
+            created_by=user.id,
         ),
     )
-    return _allowance_out(db, child, month, allowance)
+    return _one(db, group_id, user, child_id)
+
+
+def pay_due(
+    db: Session, group_id: str, user: User, child_id: str, body: AllowancePayIn
+) -> AllowanceOut:
+    """리마인드 방식: "지급했어요" 를 누르면 그 지급일의 입금을 장부에 기록한다."""
+    _child(db, group_id, child_id)
+    _ensure_manage_allowance(db, group_id, user)
+    plan = repo.get_plan(db, group_id, child_id)
+    if plan is None or plan.mode != "remind":
+        raise bad_request("not_remind", "리마인드 방식 주기가 아니에요")
+    due = body.due_date.isoformat()
+    if due not in _due_list(plan, _today()):
+        raise bad_request("invalid_due", "지급 알림이 있는 날짜가 아니에요")
+    try:
+        repo.save(db, _credit(child_id, group_id, plan, due, "plan_remind", user.id))
+    except IntegrityError:
+        db.rollback()
+        raise bad_request("already_paid", "이미 지급 기록이 있어요") from None
+    return _one(db, group_id, user, child_id)
+
+
+def add_use(
+    db: Session, group_id: str, user: User, child_id: str, body: AllowanceMoneyIn
+) -> AllowanceOut:
+    """사용 내역 기록. 본인이나 관리 권한자만, 잔액보다 큰 사용은 저장하지 않는다."""
+    _child(db, group_id, child_id)
+    if user.id != child_id and not _can_manage_allowance(db, group_id, user):
+        raise ApiError(403, "not_allowed", "본인이나 부모님만 사용 내역을 기록할 수 있어요")
+    day = _entry_date(body.date)
+    with seed_lock(db, f"allowance:{child_id}"):  # 동시에 두 번 써서 잔액을 넘기지 않게 잠근다
+        balance = _balance(db, group_id, child_id)
+        if body.amount > balance:
+            raise bad_request("over_balance", f"잔액({balance:,}원)보다 큰 사용은 저장할 수 없어요")
+        repo.save(
+            db,
+            AllowanceEntry(
+                id=uuid.uuid4().hex[:12],
+                group_id=group_id,
+                child_id=child_id,
+                kind="use",
+                amount=body.amount,
+                memo=body.memo.strip(),
+                date=day,
+                source="manual",
+                created_by=user.id,
+            ),
+        )
+    return _one(db, group_id, user, child_id)
+
+
+def void_entry(
+    db: Session, group_id: str, user: User, child_id: str, entry_id: str
+) -> AllowanceOut:
+    """장부 줄 취소(지우지 않고 취소 표시). 입금을 취소해 잔액이 음수가 되면 거절한다."""
+    _child(db, group_id, child_id)
+    entry = repo.get_entry(db, group_id, child_id, entry_id)
+    if entry is None:
+        raise not_found("장부 내역")
+    if user.id != entry.created_by and not _can_manage_allowance(db, group_id, user):
+        raise ApiError(403, "not_allowed", "기록한 사람이나 부모님만 취소할 수 있어요")
+    if entry.voided_at is not None:
+        raise bad_request("already_voided", "이미 취소한 내역이에요")
+    with seed_lock(db, f"allowance:{child_id}"):
+        if entry.kind == "credit" and _balance(db, group_id, child_id) - entry.amount < 0:
+            raise bad_request("balance_negative", "이 입금을 취소하면 잔액이 모자라져요")
+        entry.voided_at = datetime.now(UTC)
+        repo.save(db, entry)
+    return _one(db, group_id, user, child_id)

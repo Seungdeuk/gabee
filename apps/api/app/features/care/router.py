@@ -94,6 +94,18 @@ def put_entry(
     return service.put_entry(db, group_id, user.id, item_id, body)
 
 
+@router.delete("/items/{item_id}/entry", status_code=204)
+def delete_entry(
+    item_id: str,
+    date: str | None = None,
+    group_id: str = Depends(current_group_id),
+    db: Session = Depends(get_db),
+) -> Response:
+    """오늘(또는 date)의 기록·건너뛰기를 지워 되돌린다."""
+    service.delete_entry(db, group_id, item_id, date)
+    return Response(status_code=204)
+
+
 @router.get("/recommendations", response_model=RecommendationList)
 def recommendations(
     date: str | None = None,

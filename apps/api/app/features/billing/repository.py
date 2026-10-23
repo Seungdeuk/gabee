@@ -2,8 +2,8 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from .models import (
-    Allowance,
-    AllowanceUse,
+    AllowanceEntry,
+    AllowancePlan,
     BillingSettings,
     Expense,
     SettlementPayment,
@@ -72,49 +72,79 @@ def list_subscriptions(db: Session, group_id: str) -> list[SubscriptionItem]:
     return list(
         db.scalars(
             select(SubscriptionItem)
-            .where(SubscriptionItem.group_id == group_id)
+            .where(SubscriptionItem.group_id == group_id, SubscriptionItem.deleted_at.is_(None))
             .order_by(SubscriptionItem.sort_order)
         )
     )
 
 
-def add_subscriptions(db: Session, items: list[SubscriptionItem]) -> None:
-    db.add_all(items)
-    db.commit()
+def max_subscription_order(db: Session, group_id: str) -> int:
+    return db.scalar(
+        select(func.coalesce(func.max(SubscriptionItem.sort_order), -1)).where(
+            SubscriptionItem.group_id == group_id
+        )
+    )
+
+
+def subscription_ids_with_expense(db: Session, group_id: str, month: str) -> set[str]:
+    """그 달에 이미 지출을 만든 구독 항목 id 들(삭제한 지출은 세지 않는다)."""
+    rows = db.scalars(
+        select(Expense.subscription_id).where(
+            Expense.group_id == group_id,
+            Expense.subscription_id.is_not(None),
+            Expense.date.like(f"{month}-%"),
+            Expense.deleted_at.is_(None),
+        )
+    )
+    return set(rows)
 
 
 def get_subscription(db: Session, group_id: str, item_id: str) -> SubscriptionItem | None:
     return db.scalar(
         select(SubscriptionItem).where(
-            SubscriptionItem.id == item_id, SubscriptionItem.group_id == group_id
+            SubscriptionItem.id == item_id,
+            SubscriptionItem.group_id == group_id,
+            SubscriptionItem.deleted_at.is_(None),
         )
     )
 
 
-def get_allowance(db: Session, group_id: str, child_id: str, month: str) -> Allowance | None:
+def get_plan(db: Session, group_id: str, child_id: str) -> AllowancePlan | None:
     return db.scalar(
-        select(Allowance).where(
-            Allowance.group_id == group_id,
-            Allowance.child_id == child_id,
-            Allowance.month == month,
+        select(AllowancePlan).where(
+            AllowancePlan.group_id == group_id, AllowancePlan.child_id == child_id
         )
     )
 
 
-def allowance_used(db: Session, allowance_id: str) -> int:
-    return db.scalar(
-        select(func.coalesce(func.sum(AllowanceUse.amount), 0)).where(
-            AllowanceUse.allowance_id == allowance_id
-        )
-    )
-
-
-def list_uses(db: Session, allowance_id: str) -> list[AllowanceUse]:
+def list_entries(db: Session, group_id: str, child_id: str) -> list[AllowanceEntry]:
+    """오래된 순(잔액을 차례로 계산하기 위해)."""
     return list(
         db.scalars(
-            select(AllowanceUse)
-            .where(AllowanceUse.allowance_id == allowance_id)
-            .order_by(AllowanceUse.date.desc(), AllowanceUse.created_at.desc())
+            select(AllowanceEntry)
+            .where(AllowanceEntry.group_id == group_id, AllowanceEntry.child_id == child_id)
+            .order_by(AllowanceEntry.date, AllowanceEntry.created_at, AllowanceEntry.id)
+        )
+    )
+
+
+def get_entry(db: Session, group_id: str, child_id: str, entry_id: str) -> AllowanceEntry | None:
+    return db.scalar(
+        select(AllowanceEntry).where(
+            AllowanceEntry.id == entry_id,
+            AllowanceEntry.group_id == group_id,
+            AllowanceEntry.child_id == child_id,
+        )
+    )
+
+
+def posted_due_dates(db: Session, child_id: str) -> set[str]:
+    """주기 지급으로 이미 기록한 지급일(취소한 줄도 센다: 같은 지급일을 다시 만들지 않는다)."""
+    return set(
+        db.scalars(
+            select(AllowanceEntry.plan_due_date).where(
+                AllowanceEntry.child_id == child_id, AllowanceEntry.plan_due_date.is_not(None)
+            )
         )
     )
 
