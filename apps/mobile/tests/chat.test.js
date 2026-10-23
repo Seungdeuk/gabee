@@ -10,6 +10,7 @@ import {
   remainingText,
   resultCaption,
   scheduleMissingNote,
+  shouldLoadSettings,
 } from "../src/features/family-chat/messages.js";
 
 process.env.EXPO_PUBLIC_API_URL = "http://api.test";
@@ -135,4 +136,10 @@ test("일정 후보 등록: EventCreate 본문으로 POST /schedule/events, 날�
   assert.equal(api.scheduleEventBody({ title: "병원", date: "2026-11-02", time: "25:00" }), null);
   await assert.rejects(() => api.registerScheduleCandidate({ title: "병원", date: null, time: null }));
   assert.equal(calls.length, 1);
+});
+
+test("AI 패널 호출 규칙: 닫혀 있으면 호출 없음, 열려도 설정만(분석·추천은 버튼)", () => {
+  assert.equal(shouldLoadSettings(false), false);
+  assert.equal(shouldLoadSettings(undefined), false);
+  assert.equal(shouldLoadSettings(true), true);
 });

@@ -1,9 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
-import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Modal, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 
 import Button from "@/shared/components/Button";
-import Card from "@/shared/components/Card";
-import { colors, font, spacing } from "@/theme";
+import { colors, font, radius, spacing } from "@/theme";
 
 import { analyzeChat, getAiSettings, registerScheduleCandidate, setAiEnabled, suggestReplies, suggestTopics } from "../api";
 import {
@@ -14,16 +13,19 @@ import {
   remainingText,
   resultCaption,
   scheduleMissingNote,
+  shouldLoadSettings,
 } from "../messages";
 
 /** 후보 한 줄에 붙는 보조 글(날짜·시간·장소 등). */
 const joinParts = (parts) => parts.filter(Boolean).join(" · ");
 
 /**
- * 가족 대화 AI 카드. 동의가 켜져 있어야 하고, 버튼을 누를 때만 서버가 최근 대화를 AI 로 보낸다(대화·결과는 저장되지 않음).
- * 분석·답장 추천·주제 추천은 각각 따로 눌러야 호출된다.
+ * 채팅방 안 AI 대화 도우미 시트. 열릴 때 설정만 한 번 읽고, 분석·추천은 버튼을 누를 때만 호출한다(대화·결과는 서버에 저장되지 않음).
+ * 닫아도 컴포넌트는 유지되어 마지막 결과를 다시 열면 보여 준다. 닫혀 있는 동안에는 아무 호출도 하지 않는다.
+ * @param {{ visible: boolean, onClose: () => void, onPickReply: (text: string) => void }} props
+ * @returns {JSX.Element}
  */
-export default function AiCard() {
+export default function AiPanel({ visible, onClose, onPickReply }) {
   const [settings, setSettings] = useState(null); // parseAiSettings 결과
   const [loadError, setLoadError] = useState("");
   const [busy, setBusy] = useState(""); // "settings" | "analysis" | "replies" | "topics" | ""
@@ -43,8 +45,8 @@ export default function AiCard() {
   }, []);
 
   useEffect(() => {
-    loadSettings();
-  }, [loadSettings]);
+    if (shouldLoadSettings(visible)) loadSettings();
+  }, [visible, loadSettings]);
 
   /** 요청 하나를 실행하고 오류는 문구로 바꾼다. 끝나면 남은 횟수를 새로 읽는다. */
   const run = async (name, call, onDone) => {
@@ -69,10 +71,10 @@ export default function AiCard() {
     }
   };
 
+  const content = (() => {
   if (!settings) {
     return (
-      <Card tone="blue" testID="chat-ai">
-        <Text style={styles.title}>AI 대화 도우미</Text>
+      <>
         {loadError ? (
           <>
             <Text style={styles.error} accessibilityRole="alert">
@@ -83,14 +85,13 @@ export default function AiCard() {
         ) : (
           <ActivityIndicator color={colors.accent} />
         )}
-      </Card>
+      </>
     );
   }
 
   if (!settings.enabled) {
     return (
-      <Card tone="blue" testID="chat-ai">
-        <Text style={styles.title}>AI 대화 도우미</Text>
+      <>
         <Text style={styles.sub}>
           켜면 대화 분석·답장 추천·대화 주제 추천을 쓸 수 있어요. 버튼을 눌렀을 때만 최근 대화 일부가 AI로 전달되고, 결과와 대화는 저장되지 않아요.
         </Text>
@@ -112,14 +113,13 @@ export default function AiCard() {
             가족 소유자나 관리자가 켜야 해요
           </Text>
         )}
-      </Card>
+      </>
     );
   }
 
   const disabled = busy !== "";
   return (
-    <Card tone="blue" testID="chat-ai">
-      <Text style={styles.title}>AI 대화 도우미</Text>
+    <>
       <Text style={styles.sub}>누를 때만 최근 대화가 AI로 전달되고, 결과는 저장되지 않아요.</Text>
       {remainingText(settings) ? <Text style={styles.caption}>{remainingText(settings)}</Text> : null}
       {error ? (
@@ -230,9 +230,19 @@ export default function AiCard() {
         <View style={styles.result} testID="chat-ai-replies-result">
           <Text style={styles.section}>답장 추천</Text>
           {replies.replies.map((text, i) => (
-            <Text key={i} style={styles.body} selectable>
-              {`• ${text}`}
-            </Text>
+            <Pressable
+              key={i}
+              style={styles.pick}
+              onPress={() => {
+                onPickReply(text);
+                onClose();
+              }}
+              accessibilityRole="button"
+              accessibilityLabel={`이 답장을 입력창에 넣기: ${text}`}
+              testID={`chat-ai-reply-${i}`}
+            >
+              <Text style={styles.body}>{text}</Text>
+            </Pressable>
           ))}
           <Text style={styles.caption}>{resultCaption(replies.meta)}</Text>
         </View>
@@ -241,18 +251,64 @@ export default function AiCard() {
         <View style={styles.result} testID="chat-ai-topics-result">
           <Text style={styles.section}>대화 주제 추천</Text>
           {topics.topics.map((text, i) => (
-            <Text key={i} style={styles.body} selectable>
-              {`• ${text}`}
-            </Text>
+            <Pressable
+              key={i}
+              style={styles.pick}
+              onPress={() => {
+                onPickReply(text);
+                onClose();
+              }}
+              accessibilityRole="button"
+              accessibilityLabel={`이 주제를 입력창에 넣기: ${text}`}
+              testID={`chat-ai-topic-${i}`}
+            >
+              <Text style={styles.body}>{text}</Text>
+            </Pressable>
           ))}
           <Text style={styles.caption}>{resultCaption(topics.meta)}</Text>
         </View>
       ) : null}
-    </Card>
+    </>
+  );
+  })();
+
+  return (
+    <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
+      <View style={styles.root}>
+        <Pressable style={styles.backdrop} onPress={onClose} accessibilityRole="button" accessibilityLabel="AI 대화 도우미 닫기" testID="chat-ai-backdrop" />
+        <View style={styles.sheet} testID="chat-ai">
+          <View style={styles.handle} />
+          <View style={styles.header}>
+            <Text style={styles.title} accessibilityRole="header">
+              AI 대화 도우미
+            </Text>
+            <Pressable onPress={onClose} hitSlop={spacing.sm} accessibilityRole="button" accessibilityLabel="닫기" testID="chat-ai-close">
+              <Text style={styles.close}>닫기</Text>
+            </Pressable>
+          </View>
+          <ScrollView contentContainerStyle={styles.content}>{content}</ScrollView>
+        </View>
+      </View>
+    </Modal>
   );
 }
 
 const styles = StyleSheet.create({
+  root: { flex: 1, justifyContent: "flex-end" },
+  backdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: colors.text, opacity: 0.4 },
+  sheet: {
+    maxHeight: "85%",
+    backgroundColor: colors.background,
+    borderTopLeftRadius: radius.card,
+    borderTopRightRadius: radius.card,
+    paddingTop: spacing.sm,
+  },
+  handle: { alignSelf: "center", width: 40, height: spacing.xs, borderRadius: radius.pill, backgroundColor: colors.disabled },
+  header: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: spacing.lg, paddingVertical: spacing.md },
+  close: { ...font.bodyStrong, color: colors.accent },
+  content: { gap: spacing.sm, paddingHorizontal: spacing.lg, paddingBottom: spacing.xxl },
+  pick: { backgroundColor: colors.peachSoft, borderRadius: radius.md, padding: spacing.md },
+
   title: { ...font.cardTitle, color: colors.text },
   sub: { ...font.caption, color: colors.textSub },
   section: { ...font.bodyStrong, color: colors.text, marginTop: spacing.xs },
