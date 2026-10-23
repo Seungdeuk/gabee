@@ -291,3 +291,72 @@ def test_receipt_title_skips_a_leading_phone_line(client, family, pipeline):
     up = upload(client, a, png((7, 7, 7)), "r.png")
     st = client.get(f"/ai-assistant/files/{up['id']}", headers=a).json()
     assert st["title"] == "하나로마트 동대문점"
+
+
+def _blurry_upload(client, a, pipeline):
+    pipeline.ocr = FakeOcr([("동대문마트", 0.5), ("합계 34,950원", 0.5)])  # 글자가 흐려 확인 필요
+    up = upload(client, a, png((4, 5, 6)), "blur.png")
+    item = client.get(f"/ai-assistant/knowledge/items/{up['id']}", headers=a).json()
+    assert item["needs_review"] is True
+    return up["id"]
+
+
+def test_blurry_files_are_listed_as_needing_review_and_editing_clears_it(client, family, pipeline):
+    a, _, _ = family
+    fid = _blurry_upload(client, a, pipeline)
+    listed = client.get("/ai-assistant/knowledge/items", headers=a).json()
+    assert [i["needs_review"] for i in listed if i["id"] == fid] == [True]
+
+    detail = client.get(f"/ai-assistant/knowledge/items/{fid}", headers=a).json()
+    fixed = detail["body_md"].replace("34,950", "43,950")
+    r = client.patch(
+        f"/ai-assistant/knowledge/items/{fid}",
+        json={"title": "하나로마트 영수증", "body_md": fixed},
+        headers=a,
+    )
+    assert r.status_code == 200, r.text
+    out = r.json()
+    assert out["needs_review"] is False and out["title"] == "하나로마트 영수증"
+    assert "43,950" in out["body_md"] and "34,950" not in out["body_md"]
+    assert out["body_md"].startswith("# 하나로마트 영수증")
+    assert client.get(f"/ai-assistant/files/{fid}", headers=a).json()["status"] == "analyzed"
+    hits = client.post(
+        "/ai-assistant/knowledge/search", json={"query": "43,950원 합계"}, headers=a
+    ).json()["hits"]
+    assert hits and hits[0]["item_id"] == fid
+
+
+def test_confirming_without_changes_clears_the_review_mark(client, family, pipeline):
+    a, _, _ = family
+    fid = _blurry_upload(client, a, pipeline)
+    r = client.patch(f"/ai-assistant/knowledge/items/{fid}", json={}, headers=a)
+    assert r.status_code == 200 and r.json()["needs_review"] is False
+    assert client.get(f"/ai-assistant/files/{fid}", headers=a).json()["status"] == "analyzed"
+
+
+def test_edited_text_is_masked_again_and_empty_text_is_refused(client, family, pipeline):
+    a, _, _ = family
+    fid = _blurry_upload(client, a, pipeline)
+    url = f"/ai-assistant/knowledge/items/{fid}"
+    r = client.patch(
+        url,
+        json={"body_md": "# 메모\n분류: 영수증\n주민번호 900101-1234567 전화 010-1234-5678"},
+        headers=a,
+    )
+    assert r.status_code == 200
+    body = r.json()["body_md"]
+    assert "900101-1234567" not in body and "010-1234-5678" not in body
+    assert client.patch(url, json={"body_md": ""}, headers=a).status_code == 422
+
+
+def test_other_family_cannot_edit_a_record(client, family, pipeline):
+    from tests.helpers import signup
+
+    a, _, _ = family
+    fid = _blurry_upload(client, a, pipeline)
+    stranger = signup(client, "철수")
+    client.post("/family-group/groups", json={"name": "남의 가족"}, headers=stranger)
+    url = f"/ai-assistant/knowledge/items/{fid}"
+    assert client.patch(url, json={"title": "해킹"}, headers=stranger).status_code == 404
+    assert client.patch(url, json={"title": "익명"}).status_code in (401, 403)
+    assert client.get(url, headers=a).json()["title"] != "해킹"

@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 from app.shared.auth import current_group_id, current_user
 from app.shared.db import get_db
 
+from .. import repository as photo_repo
 from . import rag_chat, service
 from .models import KnowledgeItem
 from .schemas import (
@@ -13,6 +14,7 @@ from .schemas import (
     ItemDetailOut,
     ItemIn,
     ItemOut,
+    ItemUpdateIn,
     SearchIn,
     SearchOut,
 )
@@ -39,14 +41,28 @@ def list_items(
     group_id: str = Depends(current_group_id),
     db: Session = Depends(get_db),
 ) -> list[KnowledgeItem]:
-    return service.list_items(db, group_id, kind_label, min(max(limit, 1), 200))
+    items = service.list_items(db, group_id, kind_label, min(max(limit, 1), 200))
+    return _mark_review(db, group_id, items)
 
 
 @router.get("/items/{item_id}", response_model=ItemDetailOut)
 def get_item(
     item_id: str, group_id: str = Depends(current_group_id), db: Session = Depends(get_db)
 ) -> KnowledgeItem:
-    return service.get_item(db, group_id, item_id)
+    return _mark_review(db, group_id, [service.get_item(db, group_id, item_id)])[0]
+
+
+@router.patch("/items/{item_id}", response_model=ItemDetailOut)
+def update_item(
+    item_id: str,
+    body: ItemUpdateIn,
+    group_id: str = Depends(current_group_id),
+    db: Session = Depends(get_db),
+) -> KnowledgeItem:
+    """확인하며 고친 값으로 기록을 바꾼다. 가족 그룹이 다르면 없는 기록처럼 404 다."""
+    item = service.update_item(db, group_id, item_id, body.model_dump(exclude_unset=True))
+    photo_repo.set_status(db, item.id, "analyzed")  # 올린 파일이면 확인 필요 표시를 끈다
+    return _mark_review(db, group_id, [item])[0]
 
 
 @router.post("/ask", response_model=AskOut)
@@ -89,3 +105,11 @@ def search(
             for h in hits
         ]
     )
+
+
+def _mark_review(db: Session, group_id: str, items: list[KnowledgeItem]) -> list[KnowledgeItem]:
+    """응답에 needs_review 를 채운다(올린 파일이 확인 필요 상태이거나 읽지 못한 부분이 있는 기록)."""
+    waiting = photo_repo.review_ids(db, group_id)
+    for item in items:
+        item.needs_review = item.id in waiting or item.has_unread_parts
+    return items

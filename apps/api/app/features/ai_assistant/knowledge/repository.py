@@ -1,7 +1,7 @@
 from datetime import date
 
 from pgvector.sqlalchemy import Vector
-from sqlalchemy import Float, String, cast, literal, select
+from sqlalchemy import Float, String, cast, delete, literal, select
 from sqlalchemy.orm import Session
 
 from .embedding import cosine
@@ -11,6 +11,16 @@ from .models import EMBED_DIM, KnowledgeChunk, KnowledgeItem
 def add_item(db: Session, item: KnowledgeItem, chunks: list[KnowledgeChunk]) -> KnowledgeItem:
     db.add(item)
     db.flush()  # item.id 확정
+    for chunk in chunks:
+        chunk.item_id = item.id
+        db.add(chunk)
+    db.commit()
+    return item
+
+
+def replace_chunks(db: Session, item: KnowledgeItem, chunks: list[KnowledgeChunk]) -> KnowledgeItem:
+    """기록의 조각을 새 것으로 바꾼다(이전 조각 삭제와 새 조각 저장이 한 번에 반영된다)."""
+    db.execute(delete(KnowledgeChunk).where(KnowledgeChunk.item_id == item.id))
     for chunk in chunks:
         chunk.item_id = item.id
         db.add(chunk)

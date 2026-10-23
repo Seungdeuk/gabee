@@ -2770,6 +2770,74 @@
             }
           }
         }
+      },
+      "patch": {
+        "tags": [
+          "ai-assistant",
+          "ai-assistant-knowledge"
+        ],
+        "summary": "Update Item",
+        "description": "확인하며 고친 값으로 기록을 바꾼다. 가족 그룹이 다르면 없는 기록처럼 404 다.",
+        "operationId": "update_item_ai_assistant_knowledge_items__item_id__patch",
+        "parameters": [
+          {
+            "name": "item_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Item Id"
+            }
+          },
+          {
+            "name": "x-gyeot-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Gyeot-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ItemUpdateIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ItemDetailOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
       }
     },
     "/ai-assistant/knowledge/ask": {
@@ -4401,6 +4469,11 @@
             "format": "date-time",
             "title": "Created At"
           },
+          "needs_review": {
+            "type": "boolean",
+            "title": "Needs Review",
+            "default": false
+          },
           "body_md": {
             "type": "string",
             "title": "Body Md"
@@ -4487,6 +4560,64 @@
         ],
         "title": "ItemIn",
         "description": "전처리가 넘기는 기록. 문서는 마크다운 글, 글자 없는 사진은 분류 이름과 경로만 온다."
+      },
+      "ItemUpdateIn": {
+        "properties": {
+          "title": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 200,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          },
+          "kind_label": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 100,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Kind Label"
+          },
+          "occurred_on": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Occurred On"
+          },
+          "body_md": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 50000,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Body Md"
+          }
+        },
+        "type": "object",
+        "title": "ItemUpdateIn",
+        "description": "사용자가 확인하며 고친 값. 보낸 칸만 바뀌고, 하나도 안 보내면 \"확인했어요\"로 처리한다."
       },
       "JoinIn": {
         "properties": {
@@ -5856,6 +5987,11 @@
             "type": "string",
             "format": "date-time",
             "title": "Created At"
+          },
+          "needs_review": {
+            "type": "boolean",
+            "title": "Needs Review",
+            "default": false
           }
         },
         "type": "object",
