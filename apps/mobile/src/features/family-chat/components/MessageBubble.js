@@ -4,15 +4,17 @@ import UserAvatar from "@/shared/components/UserAvatar";
 import { colors, font, radius, spacing } from "@/theme";
 
 import { formatTime } from "../chatUtils";
+import { unreadByA11yLabel } from "../listUtils";
 
 const AVATAR = 36;
 
 /**
  * 말풍선 한 줄. 내 말은 오른쪽(복숭아색, 시각은 왼쪽 아래), 상대는 왼쪽(아바타·이름·카드색, 시각은 오른쪽 아래).
+ * 내 말풍선은 아직 읽지 않은 사람이 있을 때만 시각 위에 작은 숫자(unread)를 보여 준다(모두 읽으면 표시 없음).
  * 전송 중이면 "전송 중…", 실패하면 "전송 실패 · 다시 보내기"(누르면 재전송, 길게 누르거나 "삭제" 로 지움).
- * @param {{ message: object, mine: boolean, showName: boolean, showTime?: boolean, photoUrl?: string | null, onRetry?: (clientId: string) => void, onDiscard?: (clientId: string) => void }} props
+ * @param {{ message: object, mine: boolean, showName: boolean, showTime?: boolean, unread?: number, photoUrl?: string | null, onRetry?: (clientId: string) => void, onDiscard?: (clientId: string) => void }} props
  */
-export default function MessageBubble({ message, mine, showName, showTime = true, photoUrl, onRetry, onDiscard }) {
+export default function MessageBubble({ message, mine, showName, showTime = true, unread = 0, photoUrl, onRetry, onDiscard }) {
   const failed = message.status === "failed";
   const sending = message.status === "sending";
 
@@ -48,10 +50,22 @@ export default function MessageBubble({ message, mine, showName, showTime = true
     meta = <Text style={styles.time}>{formatTime(message.created_at)}</Text>;
   }
 
+  const unreadNode =
+    mine && !failed && !sending && unread > 0 ? (
+      <Text style={styles.unread} accessibilityLabel={unreadByA11yLabel(unread)}>
+        {unread}
+      </Text>
+    ) : null;
+
   if (mine) {
     return (
       <View style={[styles.row, styles.mineRow]}>
-        {meta ? <View style={styles.metaMine}>{meta}</View> : null}
+        {meta || unreadNode ? (
+          <View style={styles.metaMine}>
+            {unreadNode}
+            {meta}
+          </View>
+        ) : null}
         {bubble}
       </View>
     );
@@ -83,6 +97,7 @@ const styles = StyleSheet.create({
   dim: { opacity: 0.6 },
   text: { ...font.body, color: colors.text, userSelect: "text" },
   time: { ...font.tab, color: colors.textMuted },
+  unread: { ...font.tab, fontFamily: font.bodyStrong.fontFamily, color: colors.accent },
   metaMine: { alignItems: "flex-end", justifyContent: "flex-end", flexShrink: 0 },
   metaOther: { justifyContent: "flex-end", flexShrink: 0 },
   failRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
