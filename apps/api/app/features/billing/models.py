@@ -1,6 +1,6 @@
 from datetime import UTC, datetime
 
-from sqlalchemy import JSON, DateTime, Integer, String
+from sqlalchemy import JSON, DateTime, Integer, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.shared.db import Base
@@ -92,7 +92,8 @@ class SubscriptionItem(Base):
 
 
 class Allowance(Base):
-    """자녀별 월 용돈 예산."""
+    """(이전 방식) 자녀별 월 용돈 예산. 장부 방식(AllowancePlan·AllowanceEntry)으로 바뀌어 더는 쓰지 않는다.
+    데이터가 사라지지 않도록 테이블은 남겨 두고, 제거는 destructive 승인을 받는 후속 PR 에서 한다."""
 
     __tablename__ = "allowances"
 
@@ -104,6 +105,8 @@ class Allowance(Base):
 
 
 class AllowanceUse(Base):
+    """(이전 방식) 월 예산에 대한 사용 기록. Allowance 와 같이 더는 쓰지 않는다."""
+
     __tablename__ = "allowance_uses"
 
     id: Mapped[str] = mapped_column(String(32), primary_key=True)
@@ -112,3 +115,43 @@ class AllowanceUse(Base):
     memo: Mapped[str] = mapped_column(String(120), default="")
     date: Mapped[str] = mapped_column(String(10))  # YYYY-MM-DD
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+
+class AllowancePlan(Base):
+    """자녀별 고정 용돈 주기. 자녀마다 하나. `auto` 는 지급일이 지난 분을 장부에 입금으로 자동 기록하고,
+    `remind` 는 지급자에게 "지급했어요" 를 누르라고 알린다. 은행·계좌와 연결하지 않는다(앱 안 장부일 뿐)."""
+
+    __tablename__ = "allowance_plans"
+    __table_args__ = (UniqueConstraint("group_id", "child_id", name="uq_allowance_plan_child"),)
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    group_id: Mapped[str] = mapped_column(String(32), index=True)
+    child_id: Mapped[str] = mapped_column(String(32), index=True)
+    cycle: Mapped[str] = mapped_column(String(8))  # weekly | monthly
+    day: Mapped[int] = mapped_column(
+        Integer
+    )  # weekly: 0(월)~6(일), monthly: 1~31(없는 날이면 말일)
+    amount: Mapped[int] = mapped_column(Integer)  # 한 번에 지급하는 금액(원)
+    mode: Mapped[str] = mapped_column(String(8))  # auto | remind
+    start_date: Mapped[str] = mapped_column(String(10))  # 이 날부터의 지급일만 센다(YYYY-MM-DD)
+
+
+class AllowanceEntry(Base):
+    """용돈 장부 한 줄. 입금(credit)과 사용(use). 지우지 않고 `voided_at` 으로 취소 표시만 한다(내역 투명성).
+    `plan_due_date` 는 주기 지급으로 기록한 입금의 지급일이며, 같은 자녀·같은 지급일은 한 번만 기록된다."""
+
+    __tablename__ = "allowance_entries"
+    __table_args__ = (UniqueConstraint("child_id", "plan_due_date", name="uq_allowance_entry_due"),)
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    group_id: Mapped[str] = mapped_column(String(32), index=True)
+    child_id: Mapped[str] = mapped_column(String(32), index=True)
+    kind: Mapped[str] = mapped_column(String(8))  # credit | use
+    amount: Mapped[int] = mapped_column(Integer)  # 원, 항상 양수
+    memo: Mapped[str] = mapped_column(String(120), default="")
+    date: Mapped[str] = mapped_column(String(10))  # YYYY-MM-DD
+    source: Mapped[str] = mapped_column(String(12))  # manual | plan_auto | plan_remind
+    plan_due_date: Mapped[str | None] = mapped_column(String(10), nullable=True)
+    created_by: Mapped[str | None] = mapped_column(String(32), nullable=True)  # 자동 기록이면 없음
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    voided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

@@ -152,6 +152,24 @@ class SubscriptionCatalog(BaseModel):
     items: list[CatalogEntry]
 
 
+class UpcomingPayment(BaseModel):
+    id: str  # 구독 항목 id
+    kind: Literal["ott", "telecom"]
+    name: str
+    amount: int | None  # 월 청구 금액(입력하지 않았으면 None)
+    due_date: str  # 다음 결제일
+    days_left: int  # 0 이면 오늘 결제
+    expense_made: bool  # 그 달 구독료 지출을 이미 만들었는지
+
+
+class UpcomingPayments(BaseModel):
+    """결제일이 가까운 구독. 그 항목의 결제한 사람에게만 내려간다(`items` 가 비면 알림이 없다)."""
+
+    show: bool
+    within_days: int  # 이만큼 안에 결제일이 오는 항목만 담는다
+    items: list[UpcomingPayment]
+
+
 class SubscriptionCreate(BaseModel):
     kind: Literal["ott", "telecom"]
     name: str = Field(min_length=1, max_length=60)
@@ -207,29 +225,61 @@ class MonthlyResult(BaseModel):
     plan: MonthlyPlan  # 만든 뒤의 상태
 
 
-class AllowanceBudget(BaseModel):
-    month: str | None = None  # 비우면 이번 달
-    budget: int = Field(ge=0)
+AllowanceCycle = Literal["weekly", "monthly"]
+AllowanceMode = Literal["auto", "remind"]
 
 
-class AllowanceUseCreate(BaseModel):
-    amount: int = Field(gt=0)
+class AllowancePlanIn(BaseModel):
+    cycle: AllowanceCycle
+    day: int = Field(ge=0, le=31)  # weekly: 0(월)~6(일), monthly: 1~31
+    amount: int = Field(gt=0, le=10_000_000)
+    mode: AllowanceMode
+
+
+class AllowancePlanOut(BaseModel):
+    cycle: AllowanceCycle
+    day: int
+    amount: int
+    mode: AllowanceMode
+    start_date: str
+    next_due: str  # 다음 지급일(오늘 포함)
+
+
+class AllowanceMoneyIn(BaseModel):
+    amount: int = Field(gt=0, le=10_000_000)
     memo: str = Field(default="", max_length=120)
-    date: _date | None = None  # 비우면 오늘(한국 시간)
+    date: _date | None = None  # 비우면 오늘(한국 시간). 미래 날짜는 안 된다.
 
 
-class AllowanceUseOut(BaseModel):
+class AllowancePayIn(BaseModel):
+    due_date: _date  # 리마인드로 알린 지급일
+
+
+class AllowanceEntryOut(BaseModel):
     id: str
+    kind: Literal["credit", "use"]
     amount: int
     memo: str
     date: str
+    source: Literal["manual", "plan_auto", "plan_remind"]
+    by_name: str  # 기록한 사람(자동이면 "자동 지급")
+    voided: bool
+    balance_after: int | None  # 이 줄까지 반영한 잔액(취소된 줄은 None)
+
+
+class AllowancePending(BaseModel):
+    due_date: str
+    amount: int
 
 
 class AllowanceOut(BaseModel):
     child_id: str
     name: str
-    month: str
-    budget: int | None  # 아직 정하지 않았으면 None
-    used: int
-    remaining: int
-    uses: list[AllowanceUseOut]
+    balance: int  # 지금 잔액(취소된 줄 제외)
+    total_credit: int
+    total_use: int
+    plan: AllowancePlanOut | None = None
+    pending: list[AllowancePending]  # 리마인드 방식에서 아직 "지급했어요"를 누르지 않은 지급일
+    entries: list[AllowanceEntryOut]  # 최신순
+    can_manage: bool  # 지금 사용자가 주기·지급·취소를 할 수 있는지(부모 역할 또는 그룹을 만든 사람)
+    can_record_use: bool  # 지금 사용자가 사용 내역을 기록할 수 있는지(본인 또는 관리 권한자)

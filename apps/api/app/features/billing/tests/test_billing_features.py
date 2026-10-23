@@ -1,4 +1,4 @@
-"""정산(정수 원·나머지·최소 송금), 지출 소프트 삭제, 용돈, 가족 할인 상태."""
+"""정산(정수 원·나머지·최소 송금), 지출 소프트 삭제, 가족 할인 상태(용돈은 test_billing_allowance.py)."""
 
 from app.features.billing.settlement import minimal_transfers, split_equally
 from tests.helpers import signup
@@ -125,38 +125,6 @@ def test_expense_rejects_empty_split(client, family):
     body = {"title": "x", "amount": 1000, "date": "2026-10-12"}
     r = client.post("/billing/expenses", json={**body, "split_among": []}, headers=a)
     assert r.json()["code"] == "empty_split"
-
-
-def test_allowance_blocks_use_over_remaining(client, family):
-    a, _, _ = family
-    ids = _ids(client, a)
-    child = ids["수진"]
-    use = {"amount": 1000, "date": "2026-10-12"}
-    no_budget = client.post(f"/billing/allowances/{child}/uses", json=use, headers=a)
-    assert no_budget.json()["code"] == "no_budget"
-
-    client.put(f"/billing/allowances/{child}", json={"month": "2026-10", "budget": 5000}, headers=a)
-    ok = client.post(f"/billing/allowances/{child}/uses", json={**use, "amount": 3000}, headers=a)
-    assert ok.status_code == 201 and ok.json()["remaining"] == 2000
-    over = client.post(f"/billing/allowances/{child}/uses", json={**use, "amount": 2001}, headers=a)
-    assert over.status_code == 400 and over.json()["code"] == "over_budget"
-    exact = client.post(
-        f"/billing/allowances/{child}/uses", json={**use, "amount": 2000}, headers=a
-    )
-    assert exact.json()["remaining"] == 0
-
-    low = client.put(
-        f"/billing/allowances/{child}", json={"month": "2026-10", "budget": 4000}, headers=a
-    )
-    assert low.json()["code"] == "budget_below_used"
-    listed = client.get("/billing/allowances", params={"month": "2026-10"}, headers=a).json()
-    mine = next(x for x in listed if x["child_id"] == child)
-    assert (mine["budget"], mine["used"], mine["remaining"], len(mine["uses"])) == (
-        5000,
-        5000,
-        0,
-        2,
-    )
 
 
 def test_subscription_status_change_and_notice(client, family):

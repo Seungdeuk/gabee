@@ -2380,6 +2380,88 @@
         }
       }
     },
+    "/billing/subscriptions/upcoming": {
+      "get": {
+        "tags": [
+          "billing"
+        ],
+        "summary": "Upcoming Payments",
+        "description": "결제일이 3일 안으로 다가온 구독(결제한 사람에게만). `on=YYYY-MM-DD`는 화면 테스트용 오늘 날짜.",
+        "operationId": "upcoming_payments_billing_subscriptions_upcoming_get",
+        "parameters": [
+          {
+            "name": "on",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "On"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-gyeot-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Gyeot-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UpcomingPayments"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/billing/subscriptions/monthly": {
       "get": {
         "tags": [
@@ -2693,24 +2775,9 @@
           "billing"
         ],
         "summary": "List Allowances",
+        "description": "자녀별 용돈 장부(잔액·내역·주기). 자동 방식은 지급일이 지난 분을 입금으로 기록한 뒤 돌려준다.",
         "operationId": "list_allowances_billing_allowances_get",
         "parameters": [
-          {
-            "name": "month",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Month"
-            }
-          },
           {
             "name": "authorization",
             "in": "header",
@@ -2772,13 +2839,14 @@
         }
       }
     },
-    "/billing/allowances/{child_id}": {
+    "/billing/allowances/{child_id}/plan": {
       "put": {
         "tags": [
           "billing"
         ],
-        "summary": "Set Budget",
-        "operationId": "set_budget_billing_allowances__child_id__put",
+        "summary": "Set Plan",
+        "description": "고정 용돈 주기 설정(부모·그룹을 만든 사람). 자동 지급 또는 리마인드.",
+        "operationId": "set_plan_billing_allowances__child_id__plan_put",
         "parameters": [
           {
             "name": "child_id",
@@ -2827,13 +2895,256 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/AllowanceBudget"
+                "$ref": "#/components/schemas/AllowancePlanIn"
               }
             }
           }
         },
         "responses": {
           "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AllowanceOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "billing"
+        ],
+        "summary": "Delete Plan",
+        "description": "주기를 없앤다. 장부 내역은 그대로 남는다.",
+        "operationId": "delete_plan_billing_allowances__child_id__plan_delete",
+        "parameters": [
+          {
+            "name": "child_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Child Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-gyeot-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Gyeot-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AllowanceOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/billing/allowances/{child_id}/plan/pay": {
+      "post": {
+        "tags": [
+          "billing"
+        ],
+        "summary": "Pay Due",
+        "description": "리마인드 방식에서 \"지급했어요\": 그 지급일의 입금을 장부에 기록한다.",
+        "operationId": "pay_due_billing_allowances__child_id__plan_pay_post",
+        "parameters": [
+          {
+            "name": "child_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Child Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-gyeot-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Gyeot-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AllowancePayIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AllowanceOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/billing/allowances/{child_id}/credits": {
+      "post": {
+        "tags": [
+          "billing"
+        ],
+        "summary": "Add Credit",
+        "description": "수동 지급 기록(부모·그룹을 만든 사람).",
+        "operationId": "add_credit_billing_allowances__child_id__credits_post",
+        "parameters": [
+          {
+            "name": "child_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Child Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-gyeot-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Gyeot-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AllowanceMoneyIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
             "description": "Successful Response",
             "content": {
               "application/json": {
@@ -2862,6 +3173,7 @@
           "billing"
         ],
         "summary": "Add Use",
+        "description": "사용 내역 기록(본인 또는 부모). 잔액보다 큰 사용은 거절한다.",
         "operationId": "add_use_billing_allowances__child_id__uses_post",
         "parameters": [
           {
@@ -2911,13 +3223,97 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/AllowanceUseCreate"
+                "$ref": "#/components/schemas/AllowanceMoneyIn"
               }
             }
           }
         },
         "responses": {
           "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AllowanceOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/billing/allowances/{child_id}/entries/{entry_id}": {
+      "delete": {
+        "tags": [
+          "billing"
+        ],
+        "summary": "Void Entry",
+        "description": "장부 내역 취소(지우지 않고 취소 표시).",
+        "operationId": "void_entry_billing_allowances__child_id__entries__entry_id__delete",
+        "parameters": [
+          {
+            "name": "child_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Child Id"
+            }
+          },
+          {
+            "name": "entry_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Entry Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-gyeot-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Gyeot-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
             "description": "Successful Response",
             "content": {
               "application/json": {
@@ -4823,46 +5219,50 @@
         ],
         "title": "AccountSignupOut"
       },
-      "AllowanceBudget": {
+      "AllowanceEntryOut": {
         "properties": {
-          "month": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "credit",
+              "use"
             ],
-            "title": "Month"
+            "title": "Kind"
           },
-          "budget": {
+          "amount": {
             "type": "integer",
-            "minimum": 0.0,
-            "title": "Budget"
-          }
-        },
-        "type": "object",
-        "required": [
-          "budget"
-        ],
-        "title": "AllowanceBudget"
-      },
-      "AllowanceOut": {
-        "properties": {
-          "child_id": {
-            "type": "string",
-            "title": "Child Id"
+            "title": "Amount"
           },
-          "name": {
+          "memo": {
             "type": "string",
-            "title": "Name"
+            "title": "Memo"
           },
-          "month": {
+          "date": {
             "type": "string",
-            "title": "Month"
+            "title": "Date"
           },
-          "budget": {
+          "source": {
+            "type": "string",
+            "enum": [
+              "manual",
+              "plan_auto",
+              "plan_remind"
+            ],
+            "title": "Source"
+          },
+          "by_name": {
+            "type": "string",
+            "title": "By Name"
+          },
+          "voided": {
+            "type": "boolean",
+            "title": "Voided"
+          },
+          "balance_after": {
             "anyOf": [
               {
                 "type": "integer"
@@ -4871,40 +5271,28 @@
                 "type": "null"
               }
             ],
-            "title": "Budget"
-          },
-          "used": {
-            "type": "integer",
-            "title": "Used"
-          },
-          "remaining": {
-            "type": "integer",
-            "title": "Remaining"
-          },
-          "uses": {
-            "items": {
-              "$ref": "#/components/schemas/AllowanceUseOut"
-            },
-            "type": "array",
-            "title": "Uses"
+            "title": "Balance After"
           }
         },
         "type": "object",
         "required": [
-          "child_id",
-          "name",
-          "month",
-          "budget",
-          "used",
-          "remaining",
-          "uses"
+          "id",
+          "kind",
+          "amount",
+          "memo",
+          "date",
+          "source",
+          "by_name",
+          "voided",
+          "balance_after"
         ],
-        "title": "AllowanceOut"
+        "title": "AllowanceEntryOut"
       },
-      "AllowanceUseCreate": {
+      "AllowanceMoneyIn": {
         "properties": {
           "amount": {
             "type": "integer",
+            "maximum": 10000000.0,
             "exclusiveMinimum": 0.0,
             "title": "Amount"
           },
@@ -4931,35 +5319,194 @@
         "required": [
           "amount"
         ],
-        "title": "AllowanceUseCreate"
+        "title": "AllowanceMoneyIn"
       },
-      "AllowanceUseOut": {
+      "AllowanceOut": {
         "properties": {
-          "id": {
+          "child_id": {
             "type": "string",
-            "title": "Id"
+            "title": "Child Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "balance": {
+            "type": "integer",
+            "title": "Balance"
+          },
+          "total_credit": {
+            "type": "integer",
+            "title": "Total Credit"
+          },
+          "total_use": {
+            "type": "integer",
+            "title": "Total Use"
+          },
+          "plan": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AllowancePlanOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "pending": {
+            "items": {
+              "$ref": "#/components/schemas/AllowancePending"
+            },
+            "type": "array",
+            "title": "Pending"
+          },
+          "entries": {
+            "items": {
+              "$ref": "#/components/schemas/AllowanceEntryOut"
+            },
+            "type": "array",
+            "title": "Entries"
+          },
+          "can_manage": {
+            "type": "boolean",
+            "title": "Can Manage"
+          },
+          "can_record_use": {
+            "type": "boolean",
+            "title": "Can Record Use"
+          }
+        },
+        "type": "object",
+        "required": [
+          "child_id",
+          "name",
+          "balance",
+          "total_credit",
+          "total_use",
+          "pending",
+          "entries",
+          "can_manage",
+          "can_record_use"
+        ],
+        "title": "AllowanceOut"
+      },
+      "AllowancePayIn": {
+        "properties": {
+          "due_date": {
+            "type": "string",
+            "format": "date",
+            "title": "Due Date"
+          }
+        },
+        "type": "object",
+        "required": [
+          "due_date"
+        ],
+        "title": "AllowancePayIn"
+      },
+      "AllowancePending": {
+        "properties": {
+          "due_date": {
+            "type": "string",
+            "title": "Due Date"
+          },
+          "amount": {
+            "type": "integer",
+            "title": "Amount"
+          }
+        },
+        "type": "object",
+        "required": [
+          "due_date",
+          "amount"
+        ],
+        "title": "AllowancePending"
+      },
+      "AllowancePlanIn": {
+        "properties": {
+          "cycle": {
+            "type": "string",
+            "enum": [
+              "weekly",
+              "monthly"
+            ],
+            "title": "Cycle"
+          },
+          "day": {
+            "type": "integer",
+            "maximum": 31.0,
+            "minimum": 0.0,
+            "title": "Day"
+          },
+          "amount": {
+            "type": "integer",
+            "maximum": 10000000.0,
+            "exclusiveMinimum": 0.0,
+            "title": "Amount"
+          },
+          "mode": {
+            "type": "string",
+            "enum": [
+              "auto",
+              "remind"
+            ],
+            "title": "Mode"
+          }
+        },
+        "type": "object",
+        "required": [
+          "cycle",
+          "day",
+          "amount",
+          "mode"
+        ],
+        "title": "AllowancePlanIn"
+      },
+      "AllowancePlanOut": {
+        "properties": {
+          "cycle": {
+            "type": "string",
+            "enum": [
+              "weekly",
+              "monthly"
+            ],
+            "title": "Cycle"
+          },
+          "day": {
+            "type": "integer",
+            "title": "Day"
           },
           "amount": {
             "type": "integer",
             "title": "Amount"
           },
-          "memo": {
+          "mode": {
             "type": "string",
-            "title": "Memo"
+            "enum": [
+              "auto",
+              "remind"
+            ],
+            "title": "Mode"
           },
-          "date": {
+          "start_date": {
             "type": "string",
-            "title": "Date"
+            "title": "Start Date"
+          },
+          "next_due": {
+            "type": "string",
+            "title": "Next Due"
           }
         },
         "type": "object",
         "required": [
-          "id",
+          "cycle",
+          "day",
           "amount",
-          "memo",
-          "date"
+          "mode",
+          "start_date",
+          "next_due"
         ],
-        "title": "AllowanceUseOut"
+        "title": "AllowancePlanOut"
       },
       "AskIn": {
         "properties": {
@@ -7910,6 +8457,87 @@
           "amount"
         ],
         "title": "Transfer"
+      },
+      "UpcomingPayment": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "ott",
+              "telecom"
+            ],
+            "title": "Kind"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "amount": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Amount"
+          },
+          "due_date": {
+            "type": "string",
+            "title": "Due Date"
+          },
+          "days_left": {
+            "type": "integer",
+            "title": "Days Left"
+          },
+          "expense_made": {
+            "type": "boolean",
+            "title": "Expense Made"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "kind",
+          "name",
+          "amount",
+          "due_date",
+          "days_left",
+          "expense_made"
+        ],
+        "title": "UpcomingPayment"
+      },
+      "UpcomingPayments": {
+        "properties": {
+          "show": {
+            "type": "boolean",
+            "title": "Show"
+          },
+          "within_days": {
+            "type": "integer",
+            "title": "Within Days"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/UpcomingPayment"
+            },
+            "type": "array",
+            "title": "Items"
+          }
+        },
+        "type": "object",
+        "required": [
+          "show",
+          "within_days",
+          "items"
+        ],
+        "title": "UpcomingPayments",
+        "description": "결제일이 가까운 구독. 그 항목의 결제한 사람에게만 내려간다(`items` 가 비면 알림이 없다)."
       },
       "UserCreate": {
         "properties": {

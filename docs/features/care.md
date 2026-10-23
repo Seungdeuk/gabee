@@ -31,6 +31,13 @@
 - 누락은 "미기록 · 누락" 크림색 배지로 보이고, 건강 이상이 아니라는 안내 문구를 함께 둔다.
 - 서버 주소(`EXPO_PUBLIC_API_URL`)가 없으면 기존 임시 데이터 화면(`CarePreview`)을 그대로 보여 준다.
 
+## 개발 빌드(EAS) — 백그라운드 위치용
+Expo Go 는 백그라운드 위치를 지원하지 않아 실기기 확인에는 개발 빌드가 필요하다. 설정은 준비됐고, **빌드는 아직 한 번도 돌리지 않았다**(EAS 로그인·Apple 계정 필요).
+- 준비된 것: `apps/mobile/eas.json`(profiles `development`·`development-simulator`·`preview`·`production`), `expo-dev-client`(`npx expo install`로 추가, SDK 54 용 ~6.0.21), `app.json`의 `ios.bundleIdentifier`·`android.package` = `com.kangminhun.gabee`(**임시 값 — 첫 스토어 배포 전에 팀이 확정**; 개발 빌드만 쓸 때는 바꿔도 무방). `expo-doctor` 18/18 통과.
+- 위치 권한은 막지 않았다: 백그라운드 수집이 이 기능의 요구라 `expo-location` 플러그인의 백그라운드·포그라운드 서비스 설정을 그대로 둔다(동의한 본인 위치만 가족에게 공유, 7일 보관, 철회 시 삭제).
+- 빌드: `npm i -g eas-cli && eas login` 후 `eas build --platform android --profile development`(iOS 실기기는 유료 Apple Developer 계정 필요, 시뮬레이터는 `development-simulator`). 설치한 뒤 `npx expo start --dev-client` 로 연결한다.
+- 서버 주소는 `eas.json`에 넣지 않았다(`EXPO_PUBLIC_API_URL` 은 배포 주소가 정해지면 프로필별 `env` 로 추가; 비밀값 금지). 개발용 토큰(`EXPO_PUBLIC_DEV_TOKEN`)은 빌드에 넣지 않는다 — 로그인은 main 의 모바일 인증 화면을 쓴다.
+
 ## 확인 방법
 - 서버 확인용 화면: `apps/api/scripts/dev_console.py` → `/console`.
 - 앱: `EXPO_PUBLIC_API_URL=http://<서버> EXPO_PUBLIC_DEV_TOKEN=<토큰> npx expo start --web`.
