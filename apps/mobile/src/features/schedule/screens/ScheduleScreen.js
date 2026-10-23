@@ -19,7 +19,7 @@ const TOGETHER_SAMPLES = ["장 같이 봐줘", "병원 같이 가줘"];
 
 /**
  * 일정 탭 메인: 헤더 + 주간 스트립 / 오늘·내일 / 함께하기 / 먼저 권해드려요 / 채팅 입력.
- * 카드를 누르면 상세로 간다. 같이·채팅으로 가는 이동은 각 화면을 만들 때 연결한다.
+ * 카드를 누르면 상세로, 함께하기의 샘플·같이하기는 같이 보내기로, "주고 받은"은 같이의 메인 화면(주고 받은)으로 간다. 채팅으로 가는 이동은 채팅을 만들 때 연결한다.
  */
 export default function ScheduleScreen() {
   const router = useRouter();
@@ -39,6 +39,7 @@ export default function ScheduleScreen() {
   const confirmTodo = ({ type, id }) => (type === "todo" ? toggleChecked(id) : setCarryDone((prev) => [...prev, id]));
   const openCalendar = (date) => router.push({ pathname: "/schedule/calendar", params: { date } });
   const openDetail = (id) => router.push({ pathname: "/schedule/detail", params: { id } });
+  const openTogether = (params) => router.push({ pathname: "/schedule/together", params });
   const openRegister = (params) => router.push({ pathname: "/schedule/register", params });
   // 제안으로 여는 등록 화면은 형태·제목·날짜가 미리 채워지고, 저장은 사용자가 확인한 뒤에만 된다.
   const openSuggested = (draft) => openRegister({ ...draft, suggested: "1" });
@@ -88,8 +89,17 @@ export default function ScheduleScreen() {
           </View>
 
           <View style={styles.section}>
-            <Text style={styles.heading}>함께하기</Text>
-            <TogetherRow samples={TOGETHER_SAMPLES} />
+            <View style={styles.caption}>
+              <Text style={styles.heading}>함께하기</Text>
+              <Pressable onPress={() => router.push("/schedule/together-status")} hitSlop={10} accessibilityRole="button">
+                <Text style={styles.statusLink}>주고 받은 ›</Text>
+              </Pressable>
+            </View>
+            <TogetherRow
+              samples={TOGETHER_SAMPLES}
+              onPressSample={(sample) => openTogether({ title: sample, suggested: "1" })}
+              onPressTogether={() => openTogether({})}
+            />
           </View>
 
           <View style={styles.section}>
@@ -192,4 +202,5 @@ const styles = StyleSheet.create({
   },
   feed: { gap: 10 },
   notice: { ...font.caption, color: colors.textMuted, textAlign: "center" },
+  statusLink: { ...font.bodyStrong, fontWeight: "500", color: colors.textMuted },
 });
