@@ -174,3 +174,9 @@ const DEV_TODAY = process.env.EXPO_PUBLIC_DEV_TODAY ?? "";
  * @returns {Promise<{ show: boolean, is_manager: boolean, manager_name: string, kind: "month_end" | "overdue" | null, month: string | null, unsettled_count: number, unsettled_total: number, days_left: number | null }>}
  */
 export const getReminder = () => apiFetch(`/billing/settlement/reminder${DEV_TODAY ? `?on=${DEV_TODAY}` : ""}`);
+
+/**
+ * 구독 결제일 알림: 결제일이 3일 안(오늘 포함)으로 다가온 구독. 그 항목의 결제한 사람에게만 내려간다.
+ * @returns {Promise<{ show: boolean, within_days: number, items: { id: string, kind: "ott" | "telecom", name: string, amount: number | null, due_date: string, days_left: number, expense_made: boolean }[] }>}
+ */
+export const getUpcomingPayments = () => apiFetch(`/billing/subscriptions/upcoming${DEV_TODAY ? `?on=${DEV_TODAY}` : ""}`);

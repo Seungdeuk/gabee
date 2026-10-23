@@ -2380,6 +2380,88 @@
         }
       }
     },
+    "/billing/subscriptions/upcoming": {
+      "get": {
+        "tags": [
+          "billing"
+        ],
+        "summary": "Upcoming Payments",
+        "description": "결제일이 3일 안으로 다가온 구독(결제한 사람에게만). `on=YYYY-MM-DD`는 화면 테스트용 오늘 날짜.",
+        "operationId": "upcoming_payments_billing_subscriptions_upcoming_get",
+        "parameters": [
+          {
+            "name": "on",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "On"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-gyeot-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Gyeot-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UpcomingPayments"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/billing/subscriptions/monthly": {
       "get": {
         "tags": [
@@ -8375,6 +8457,87 @@
           "amount"
         ],
         "title": "Transfer"
+      },
+      "UpcomingPayment": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "ott",
+              "telecom"
+            ],
+            "title": "Kind"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "amount": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Amount"
+          },
+          "due_date": {
+            "type": "string",
+            "title": "Due Date"
+          },
+          "days_left": {
+            "type": "integer",
+            "title": "Days Left"
+          },
+          "expense_made": {
+            "type": "boolean",
+            "title": "Expense Made"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "kind",
+          "name",
+          "amount",
+          "due_date",
+          "days_left",
+          "expense_made"
+        ],
+        "title": "UpcomingPayment"
+      },
+      "UpcomingPayments": {
+        "properties": {
+          "show": {
+            "type": "boolean",
+            "title": "Show"
+          },
+          "within_days": {
+            "type": "integer",
+            "title": "Within Days"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/UpcomingPayment"
+            },
+            "type": "array",
+            "title": "Items"
+          }
+        },
+        "type": "object",
+        "required": [
+          "show",
+          "within_days",
+          "items"
+        ],
+        "title": "UpcomingPayments",
+        "description": "결제일이 가까운 구독. 그 항목의 결제한 사람에게만 내려간다(`items` 가 비면 알림이 없다)."
       },
       "UserCreate": {
         "properties": {

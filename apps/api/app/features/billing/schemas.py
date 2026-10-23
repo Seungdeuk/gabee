@@ -152,6 +152,24 @@ class SubscriptionCatalog(BaseModel):
     items: list[CatalogEntry]
 
 
+class UpcomingPayment(BaseModel):
+    id: str  # 구독 항목 id
+    kind: Literal["ott", "telecom"]
+    name: str
+    amount: int | None  # 월 청구 금액(입력하지 않았으면 None)
+    due_date: str  # 다음 결제일
+    days_left: int  # 0 이면 오늘 결제
+    expense_made: bool  # 그 달 구독료 지출을 이미 만들었는지
+
+
+class UpcomingPayments(BaseModel):
+    """결제일이 가까운 구독. 그 항목의 결제한 사람에게만 내려간다(`items` 가 비면 알림이 없다)."""
+
+    show: bool
+    within_days: int  # 이만큼 안에 결제일이 오는 항목만 담는다
+    items: list[UpcomingPayment]
+
+
 class SubscriptionCreate(BaseModel):
     kind: Literal["ott", "telecom"]
     name: str = Field(min_length=1, max_length=60)

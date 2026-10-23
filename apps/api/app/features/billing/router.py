@@ -29,6 +29,7 @@ from .schemas import (
     SubscriptionOut,
     SubscriptionPatch,
     Summary,
+    UpcomingPayments,
 )
 
 router = APIRouter(prefix="/billing", tags=["billing"])
@@ -180,6 +181,17 @@ def create_subscription(
 ) -> SubscriptionOut:
     """OTT·통신비 항목 추가. 월 금액·결제일은 사용자가 입력한 값만 저장한다. 결제한 사람을 안 보내면 등록한 사람이다."""
     return service.create_subscription(db, group_id, user, body)
+
+
+@router.get("/subscriptions/upcoming", response_model=UpcomingPayments)
+def upcoming_payments(
+    on: str | None = None,
+    user=Depends(current_user),
+    group_id: str = Depends(current_group_id),
+    db: Session = Depends(get_db),
+) -> UpcomingPayments:
+    """결제일이 3일 안으로 다가온 구독(결제한 사람에게만). `on=YYYY-MM-DD`는 화면 테스트용 오늘 날짜."""
+    return service.upcoming_payments(db, group_id, user, on)
 
 
 @router.get("/subscriptions/monthly", response_model=MonthlyPlan)

@@ -50,6 +50,8 @@ from .schemas import (
     SubscriptionPatch,
     Summary,
     Transfer,
+    UpcomingPayment,
+    UpcomingPayments,
 )
 from .settlement import minimal_transfers, split_equally
 
@@ -95,6 +97,7 @@ def _fixed_tags(members: list[User], minor_ids: list[str]):
 
 
 REMINDER_DAYS = 5  # 월말 알림: 마지막 5일, 지난 달 지연 알림: 월초 5일
+UPCOMING_DAYS = 3  # 결제일 알림: 결제일 3일 전부터(오늘 포함)
 
 
 def check_month(month: str) -> str:
@@ -470,6 +473,37 @@ def list_subscriptions(db: Session, group_id: str) -> SubscriptionList:
         monthly_total=sum(i.monthly_fee or 0 for i in items),
         discount_total=sum(i.discount_amount or 0 for i in items),
     )
+
+
+def upcoming_payments(db: Session, group_id: str, user: User, on: str | None) -> UpcomingPayments:
+    """결제일이 3일 안(오늘 포함)으로 다가온 구독을 **결제한 사람에게만** 알린다.
+    결제일이 없거나 결제한 사람이 없는 항목은 대상이 아니다. `on`(YYYY-MM-DD)은 화면 테스트용 오늘 날짜."""
+    try:
+        today = datetime.strptime(on, "%Y-%m-%d").date() if on else datetime.now(KST).date()
+    except ValueError:
+        raise bad_request("invalid_date", "날짜는 YYYY-MM-DD 형식이어야 해요") from None
+    items: list[UpcomingPayment] = []
+    for i in repo.list_subscriptions(db, group_id):
+        if i.payer_id != user.id or i.billing_day is None:
+            continue
+        due = allowance.next_due("monthly", i.billing_day, today)  # 매월 같은 날(없으면 말일) 규칙
+        days_left = (due - today).days
+        if days_left > UPCOMING_DAYS:
+            continue
+        made = i.id in repo.subscription_ids_with_expense(db, group_id, due.strftime("%Y-%m"))
+        items.append(
+            UpcomingPayment(
+                id=i.id,
+                kind=i.kind,
+                name=i.name,
+                amount=i.monthly_fee,
+                due_date=due.isoformat(),
+                days_left=days_left,
+                expense_made=made,
+            )
+        )
+    items.sort(key=lambda x: (x.days_left, x.name))
+    return UpcomingPayments(show=bool(items), within_days=UPCOMING_DAYS, items=items)
 
 
 def _check_carrier(kind: str, carrier: str | None) -> None:
