@@ -72,7 +72,7 @@ function BillingLive() {
 
       {section === "settle" ? <SettlementTab month={month} notify={notify} refreshKey={refreshKey} /> : null}
       {section === "expense" ? <ExpenseTab month={month} notify={notify} /> : null}
-      {section === "allowance" ? <AllowanceTab month={month} notify={notify} /> : null}
+      {section === "allowance" ? <AllowanceTab notify={notify} /> : null}
       {section === "subscription" ? <SubscriptionTab month={month} notify={notify} /> : null}
     </Screen>
   );

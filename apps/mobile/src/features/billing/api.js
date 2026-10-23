@@ -10,8 +10,9 @@ import { apiFetch } from "@/shared/api/client";
  * @typedef {{ id: string, kind: "ott" | "telecom", name: string, status: "check" | "available" | "active", carrier: "skt" | "kt" | "lgu" | "mvno" | "other" | null, monthly_fee: number | null, discount_amount: number | null, list_price: number | null, billing_day: number | null, payer_id: string | null, payer_name: string, split_among: string[] }} Subscription
  * @typedef {{ id: string, name: string, kind: "ott" | "telecom", amount: number | null, date: string, payer_name: string, split_count: number, state: "ready" | "created" | "no_fee" | "no_payer" }} MonthlyItem
  * @typedef {{ month: string, items: MonthlyItem[], ready_count: number, ready_total: number }} MonthlyPlan
- * @typedef {{ id: string, amount: number, memo: string, date: string }} AllowanceUse
- * @typedef {{ child_id: string, name: string, month: string, budget: number | null, used: number, remaining: number, uses: AllowanceUse[] }} Allowance
+ * @typedef {{ cycle: "weekly" | "monthly", day: number, amount: number, mode: "auto" | "remind", start_date: string, next_due: string }} AllowancePlan
+ * @typedef {{ id: string, kind: "credit" | "use", amount: number, memo: string, date: string, source: "manual" | "plan_auto" | "plan_remind", by_name: string, voided: boolean, balance_after: number | null }} AllowanceEntry
+ * @typedef {{ child_id: string, name: string, balance: number, total_credit: number, total_use: number, plan: AllowancePlan | null, pending: { due_date: string, amount: number }[], entries: AllowanceEntry[], can_manage: boolean, can_record_use: boolean }} Allowance
  */
 
 const monthQuery = (month) => `?month=${encodeURIComponent(month)}`;
@@ -94,21 +95,47 @@ export const getMyId = async () => (await apiFetch("/family-group/me")).id;
 /** 소프트 삭제. @param {string} id */
 export const deleteSubscription = (id) => apiFetch(`/billing/subscriptions/${id}`, { method: "DELETE" });
 
-/** @param {string} month @returns {Promise<Allowance[]>} */
-export const getAllowances = (month) => apiFetch(`/billing/allowances${monthQuery(month)}`);
-
-/** @param {string} childId @param {string} month @param {number} budget @returns {Promise<Allowance>} */
-export const setBudget = (childId, month, budget) =>
-  apiFetch(`/billing/allowances/${childId}`, { method: "PUT", body: { month, budget } });
+/**
+ * 자녀별 용돈 장부(잔액·내역·주기). 자동 방식은 지급일이 지난 분을 서버가 입금으로 기록한 뒤 돌려준다.
+ * 은행·계좌와 연결하지 않는 앱 안 장부다.
+ * @returns {Promise<Allowance[]>}
+ */
+export const getAllowances = () => apiFetch("/billing/allowances");
 
 /**
- * 용돈 사용 기록. 남은 금액보다 크면 서버가 over_budget 오류로 거절한다.
+ * 고정 용돈 주기 설정(부모·그룹을 만든 사람). weekly 의 day 는 0(월)~6(일), monthly 는 1~31.
  * @param {string} childId
- * @param {{ amount: number, memo: string, date?: string }} body
+ * @param {{ cycle: "weekly" | "monthly", day: number, amount: number, mode: "auto" | "remind" }} body
  * @returns {Promise<Allowance>}
  */
-export const addAllowanceUse = (childId, body) =>
-  apiFetch(`/billing/allowances/${childId}/uses`, { method: "POST", body });
+export const setAllowancePlan = (childId, body) => apiFetch(`/billing/allowances/${childId}/plan`, { method: "PUT", body });
+
+/** 주기를 없앤다(장부 내역은 남는다). @param {string} childId @returns {Promise<Allowance>} */
+export const deleteAllowancePlan = (childId) => apiFetch(`/billing/allowances/${childId}/plan`, { method: "DELETE" });
+
+/** 리마인드 방식의 "지급했어요". @param {string} childId @param {string} dueDate YYYY-MM-DD @returns {Promise<Allowance>} */
+export const payAllowanceDue = (childId, dueDate) =>
+  apiFetch(`/billing/allowances/${childId}/plan/pay`, { method: "POST", body: { due_date: dueDate } });
+
+/**
+ * 수동 지급 기록(부모·그룹을 만든 사람).
+ * @param {string} childId
+ * @param {{ amount: number, memo?: string }} body
+ * @returns {Promise<Allowance>}
+ */
+export const addAllowanceCredit = (childId, body) => apiFetch(`/billing/allowances/${childId}/credits`, { method: "POST", body });
+
+/**
+ * 용돈 사용 기록(본인 또는 부모). 잔액보다 크면 서버가 over_balance 오류로 거절한다.
+ * @param {string} childId
+ * @param {{ amount: number, memo?: string }} body
+ * @returns {Promise<Allowance>}
+ */
+export const addAllowanceUse = (childId, body) => apiFetch(`/billing/allowances/${childId}/uses`, { method: "POST", body });
+
+/** 장부 내역 취소(지우지 않고 취소 표시). @param {string} childId @param {string} entryId @returns {Promise<Allowance>} */
+export const voidAllowanceEntry = (childId, entryId) =>
+  apiFetch(`/billing/allowances/${childId}/entries/${entryId}`, { method: "DELETE" });
 
 /**
  * 정산 대상 고정 태그와 태그별 기본 나눌 사람.

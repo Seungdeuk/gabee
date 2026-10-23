@@ -6,9 +6,10 @@ from app.shared.db import get_db
 
 from . import service
 from .schemas import (
-    AllowanceBudget,
+    AllowanceMoneyIn,
     AllowanceOut,
-    AllowanceUseCreate,
+    AllowancePayIn,
+    AllowancePlanIn,
     ExpenseCreate,
     ExpenseOut,
     ManagerOut,
@@ -223,29 +224,80 @@ def delete_subscription(
 
 @router.get("/allowances", response_model=list[AllowanceOut])
 def list_allowances(
-    month: str | None = None,
+    user=Depends(current_user),
     group_id: str = Depends(current_group_id),
     db: Session = Depends(get_db),
 ) -> list[AllowanceOut]:
-    return service.list_allowances(db, group_id, service.check_month(month or service.this_month()))
+    """자녀별 용돈 장부(잔액·내역·주기). 자동 방식은 지급일이 지난 분을 입금으로 기록한 뒤 돌려준다."""
+    return service.list_allowances(db, group_id, user)
 
 
-@router.put("/allowances/{child_id}", response_model=AllowanceOut)
-def set_budget(
+@router.put("/allowances/{child_id}/plan", response_model=AllowanceOut)
+def set_plan(
     child_id: str,
-    body: AllowanceBudget,
+    body: AllowancePlanIn,
+    user=Depends(current_user),
     group_id: str = Depends(current_group_id),
     db: Session = Depends(get_db),
 ) -> AllowanceOut:
-    month = service.check_month(body.month or service.this_month())
-    return service.set_budget(db, group_id, child_id, month, body.budget)
+    """고정 용돈 주기 설정(부모·그룹을 만든 사람). 자동 지급 또는 리마인드."""
+    return service.set_plan(db, group_id, user, child_id, body)
+
+
+@router.delete("/allowances/{child_id}/plan", response_model=AllowanceOut)
+def delete_plan(
+    child_id: str,
+    user=Depends(current_user),
+    group_id: str = Depends(current_group_id),
+    db: Session = Depends(get_db),
+) -> AllowanceOut:
+    """주기를 없앤다. 장부 내역은 그대로 남는다."""
+    return service.delete_plan(db, group_id, user, child_id)
+
+
+@router.post("/allowances/{child_id}/plan/pay", response_model=AllowanceOut, status_code=201)
+def pay_due(
+    child_id: str,
+    body: AllowancePayIn,
+    user=Depends(current_user),
+    group_id: str = Depends(current_group_id),
+    db: Session = Depends(get_db),
+) -> AllowanceOut:
+    """리마인드 방식에서 "지급했어요": 그 지급일의 입금을 장부에 기록한다."""
+    return service.pay_due(db, group_id, user, child_id, body)
+
+
+@router.post("/allowances/{child_id}/credits", response_model=AllowanceOut, status_code=201)
+def add_credit(
+    child_id: str,
+    body: AllowanceMoneyIn,
+    user=Depends(current_user),
+    group_id: str = Depends(current_group_id),
+    db: Session = Depends(get_db),
+) -> AllowanceOut:
+    """수동 지급 기록(부모·그룹을 만든 사람)."""
+    return service.add_credit(db, group_id, user, child_id, body)
 
 
 @router.post("/allowances/{child_id}/uses", response_model=AllowanceOut, status_code=201)
 def add_use(
     child_id: str,
-    body: AllowanceUseCreate,
+    body: AllowanceMoneyIn,
+    user=Depends(current_user),
     group_id: str = Depends(current_group_id),
     db: Session = Depends(get_db),
 ) -> AllowanceOut:
-    return service.add_use(db, group_id, child_id, body)
+    """사용 내역 기록(본인 또는 부모). 잔액보다 큰 사용은 거절한다."""
+    return service.add_use(db, group_id, user, child_id, body)
+
+
+@router.delete("/allowances/{child_id}/entries/{entry_id}", response_model=AllowanceOut)
+def void_entry(
+    child_id: str,
+    entry_id: str,
+    user=Depends(current_user),
+    group_id: str = Depends(current_group_id),
+    db: Session = Depends(get_db),
+) -> AllowanceOut:
+    """장부 내역 취소(지우지 않고 취소 표시)."""
+    return service.void_entry(db, group_id, user, child_id, entry_id)
