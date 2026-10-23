@@ -84,6 +84,26 @@ class CareEntry(Base):
     )
 
 
+class CareMealLog(Base):
+    """식단 기록: 그날 아침·점심·저녁에 무엇을 드셨는지. 같은 날·같은 끼니는 하나만 두고 덮어쓴다.
+    기록하면 그 끼니의 데일리 체크 항목도 완료로 맞춘다(서비스)."""
+
+    __tablename__ = "care_meal_logs"
+    __table_args__ = (UniqueConstraint("group_id", "date", "meal", name="uq_care_meal_log"),)
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    group_id: Mapped[str] = mapped_column(String(32), index=True)
+    date: Mapped[str] = mapped_column(String(10), index=True)  # YYYY-MM-DD
+    meal: Mapped[str] = mapped_column(String(10))  # breakfast | lunch | dinner
+    menu: Mapped[str] = mapped_column(String(60))
+    note: Mapped[str] = mapped_column(String(120), default="")
+    source: Mapped[str] = mapped_column(String(12), default="typed")  # typed | recommended
+    recorded_by: Mapped[str] = mapped_column(String(32))
+    recorded_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(UTC)
+    )
+
+
 class CareLocation(Base):
     """동의한 사람이 보낸 위치. 좌표는 로그에 남기지 않고, LOCATION_RETENTION_DAYS 가 지나면 지운다."""
 
