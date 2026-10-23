@@ -49,3 +49,21 @@ export const approveJoinRequest = (id) =>
 
 /** 가입 요청을 거절한다. 가족 관리자만. */
 export const rejectJoinRequest = (id) => apiFetch(`/family-group/groups/join-requests/${id}/reject`, { method: "POST" });
+
+/**
+ * 내 가족 프로필(표시 이름·관계)을 바꾼다. 보낸 항목만 바뀌고 null 은 지운다. 응답은 갱신된 GroupOut.
+ * @param {{ display_name?: string | null, family_relation?: string | null, family_relation_detail?: string | null }} fields
+ */
+export const updateMyProfile = (fields) => apiFetch("/family-group/groups/me/profile", { method: "PUT", body: fields });
+
+/** 구성원을 관리자로 지정하거나("admin") 구성원으로 되돌린다("member"). 가족 소유자만. */
+export const setMemberRole = (userId, role) =>
+  apiFetch(`/family-group/groups/members/${userId}/role`, { method: "PUT", body: { role } });
+
+/** 내가 다른 구성원에게 붙인 별명·메모(내가 쓴 것만). */
+export const listNicknames = () => apiFetch("/family-group/groups/me/nicknames");
+
+/** 별명·메모를 정한다. 둘 다 비우면 지워진다. 나에게만 보인다. */
+export const setNickname = (userId, { nickname, memo }) =>
+  apiFetch(`/family-group/groups/me/nicknames/${userId}`, { method: "PUT", body: { nickname: nickname || null, memo: memo || null } });
+

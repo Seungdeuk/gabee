@@ -121,10 +121,22 @@ def signup(db: Session, body: UserCreate) -> SignupOut:
     return SignupOut(user=user_out(user), token=user.token)
 
 
+def _member_out(user: User, row) -> MemberOut:
+    return MemberOut(
+        id=user.id,
+        name=user.name,
+        role=user.role,
+        group_role=row.role if row else "member",
+        display_name=row.display_name if row else None,
+        family_relation=row.family_relation if row else None,
+        family_relation_detail=row.family_relation_detail if row else None,
+    )
+
+
 def group_out(db: Session, group: Group, viewer_id: str | None = None) -> GroupOut:
     """viewer_id 는 응답을 받는 사람. 초대 코드는 그 사람이 가족 관리자(owner/admin)일 때만 담긴다."""
-    roles = jrepo.member_roles(db, group.id)
-    my_role = roles.get(viewer_id) if viewer_id else None
+    rows = jrepo.members_by_user(db, group.id)
+    my_role = rows[viewer_id].role if viewer_id in rows else None
     invite = (
         jrepo.active_invite(db, group.id, datetime.now(UTC))
         if my_role in join_service.MANAGER_ROLES
@@ -135,11 +147,9 @@ def group_out(db: Session, group: Group, viewer_id: str | None = None) -> GroupO
         name=group.name,
         invite_code=invite.code if invite else None,
         invite_expires_at=invite.expires_at if invite else None,
+        my_id=viewer_id if viewer_id in rows else None,
         my_role=my_role,
-        members=[
-            MemberOut(id=m.id, name=m.name, role=m.role, group_role=roles.get(m.id, "member"))
-            for m in repo.members(db, group.id)
-        ],
+        members=[_member_out(m, rows.get(m.id)) for m in repo.members(db, group.id)],
     )
 
 
