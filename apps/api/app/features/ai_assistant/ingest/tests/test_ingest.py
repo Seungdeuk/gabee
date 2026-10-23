@@ -603,3 +603,47 @@ def test_rrn_after_label_is_masked_even_if_ocr_garbled(line):
 
     out = mask_text(line)
     assert out.endswith("******-*******") and "0101" not in out
+
+
+def _scanned_pdf(pages: int) -> bytes:
+    from PIL import Image
+
+    imgs = [Image.new("RGB", (600, 800), "white") for _ in range(pages)]
+    out = io.BytesIO()
+    imgs[0].save(out, "PDF", save_all=True, append_images=imgs[1:])
+    return out.getvalue()
+
+
+def test_scanned_pdf_pages_are_read_with_ocr_and_masked():
+    class PerPageOcr:
+        def __init__(self):
+            self.calls = 0
+
+        def read(self, image):
+            self.calls += 1
+            return [
+                converters.OcrLine(f"스캔 문서 {self.calls}쪽 합계 12,000원", 0.9),
+                converters.OcrLine("주민등록번호 900101-1234567", 0.9),
+            ]
+
+    ocr = PerPageOcr()
+    r = preprocess(_scanned_pdf(2), "scan.pdf", ocr=ocr)
+    assert (
+        ocr.calls == 2 and r.quality.status == "partial"
+    )  # OCR 로 읽은 글은 확인이 필요하다고 표시
+    assert "스캔 문서 1쪽" in r.content.text and "스캔 문서 2쪽" in r.content.text
+    assert "1234567" not in r.content.text and r.content.pages == 2
+    assert any("OCR" in w for w in r.quality.warnings)
+
+
+def test_scanned_pdf_reads_only_the_first_pages():
+    class OneLine:
+        calls = 0
+
+        def read(self, image):
+            OneLine.calls += 1
+            return [converters.OcrLine("스캔 내용입니다 합계 1,000원", 0.9)]
+
+    r = preprocess(_scanned_pdf(23), "long.pdf", ocr=OneLine())
+    assert OneLine.calls == converters.PDF_OCR_MAX_PAGES
+    assert any("앞 20쪽" in w for w in r.quality.warnings)

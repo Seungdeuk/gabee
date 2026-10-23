@@ -10,6 +10,7 @@ DB 저장·업로드 경로·자동 분류는 정해지지 않아 여기서 하�
 """
 
 import hashlib
+import re
 from collections import Counter
 from pathlib import PurePath
 
@@ -108,7 +109,7 @@ def preprocess(data: bytes, filename: str = "", *, ocr: Ocr | None = None) -> Pr
     try:
         if source.kind == "image":
             return _from_image(source, data, ocr or converters.default_ocr())
-        return _from_document(source, data)
+        return _from_document(source, data, ocr)
     except BrokenFile as e:
         return _failed(source, "broken_file", str(e))
 
@@ -149,13 +150,16 @@ def _from_image(source: SourceInfo, data: bytes, ocr: Ocr) -> PreprocessResult:
     )
 
 
-def _from_document(source: SourceInfo, data: bytes) -> PreprocessResult:
+def _from_document(source: SourceInfo, data: bytes, ocr: Ocr | None = None) -> PreprocessResult:
     if source.kind == "text":
         markdown = decode_text(data) or ""
     elif source.kind in ("csv", "html"):  # 한국 엑셀·메모장 CSV 는 CP949 라서 UTF-8 로 바꿔 넘긴다
         markdown = converters.to_markdown((decode_text(data) or "").encode("utf-8"), source.kind)
     else:
         markdown = converters.to_markdown(data, source.kind)
+    ocr_note: str | None = None
+    if source.kind == "pdf" and len(re.sub(r"\s+", "", markdown)) < MIN_PDF_CHARS:
+        markdown, ocr_note = _ocr_scanned_pdf(data, ocr or converters.default_ocr())
     markdown, privacy = _mask(markdown)
     blocks, pages = converters.markdown_blocks(markdown, source.kind)
     if source.kind in ("pptx", "xlsx"):  # 슬라이드·시트 번호와 블록 번호를 붙여 넘긴다
@@ -163,7 +167,9 @@ def _from_document(source: SourceInfo, data: bytes) -> PreprocessResult:
     else:
         text = "\n\n".join(b.text for b in blocks)
     if source.kind == "pdf" and len(text) < MIN_PDF_CHARS:
-        status, warnings = "partial", ["글자 층이 없는 PDF(스캔본)예요. 쪽별 OCR 은 다음 단계예요"]
+        status, warnings = "partial", ["스캔본 PDF 에서 글자를 거의 읽지 못했어요"]
+    elif ocr_note:
+        status, warnings = "partial", [ocr_note]
     elif not text:
         status, warnings = "partial", ["문서에 글자가 없어요"]
     else:
@@ -174,6 +180,16 @@ def _from_document(source: SourceInfo, data: bytes) -> PreprocessResult:
         quality=Quality(status=status, warnings=warnings),
         privacy=privacy,
     )
+
+
+def _ocr_scanned_pdf(data: bytes, ocr: Ocr) -> tuple[str, str | None]:
+    """글자 층이 없는 PDF 의 쪽을 그림으로 바꿔 OCR 한다. (쪽을 \f 로 이은 글, 확인이 필요한 이유)."""
+    images, total = converters.pdf_page_images(data)
+    pages = ["\n".join(ln.text for ln in ocr.read(img)) for img in images]
+    note = "스캔본 PDF 라서 OCR 로 읽었어요(틀린 글자가 있을 수 있어요)"
+    if total > len(images):
+        note += f". {total}쪽 중 앞 {len(images)}쪽만 읽었어요"
+    return "".join(pages), note
 
 
 def _failed(source: SourceInfo, code: str, message: str) -> PreprocessResult:

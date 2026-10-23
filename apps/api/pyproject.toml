@@ -21,6 +21,7 @@ dependencies = [
     "rapidocr>=3.4",
     "onnxruntime>=1.20",
     "markitdown[docx,xlsx,pptx,pdf]>=0.1",
+    "pypdfium2>=4",  # 스캔본 PDF 의 쪽을 그림으로 바꿔 OCR 한다
     # 찍힌 사람 찾기(YuNet·SFace). rapidocr 가 이미 같이 설치하는 것을 이름만 적는다
     "opencv-python-headless>=4.10",
 ]

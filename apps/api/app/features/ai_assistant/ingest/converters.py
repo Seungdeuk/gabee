@@ -17,7 +17,7 @@ try:  # 아이폰 HEIC 사진
 except ImportError:  # pragma: no cover
     pass
 
-OCR_MAX_SIDE = 1600
+OCR_MAX_SIDE = 1280
 OCR_MIN_SHORT = 720  # 긴 영수증: 짧은 변이 너무 작아지면 글자를 못 읽는다
 
 
@@ -35,6 +35,10 @@ def prepare_image(data: bytes) -> Image.Image:
             img = ImageOps.exif_transpose(opened).convert("RGB")
     except Exception as e:  # Pillow 는 깨진 파일에 여러 종류의 예외를 낸다
         raise BrokenFile(f"사진을 열 수 없어요 ({type(e).__name__})") from None
+    return _fit_for_ocr(img)
+
+
+def _fit_for_ocr(img: Image.Image) -> Image.Image:
     w, h = img.size
     long_, short = max(w, h), min(w, h)
     scale = min(1.0, OCR_MAX_SIDE / long_)
@@ -157,6 +161,34 @@ def default_ocr() -> KoreanOcr:
 
 
 # ---------- 오피스 · PDF · 텍스트 ----------
+
+PDF_OCR_MAX_PAGES = 20  # 스캔 PDF 는 앞쪽부터 이만큼만 OCR 한다(처리 시간 상한)
+
+
+def pdf_page_images(data: bytes) -> tuple[list[Image.Image], int]:
+    """스캔 PDF 의 쪽을 OCR 하기 좋은 이미지로 바꾼다. (앞 PDF_OCR_MAX_PAGES 쪽의 이미지, 전체 쪽 수)."""
+    import pypdfium2 as pdfium
+
+    try:
+        doc = pdfium.PdfDocument(data)
+    except Exception as e:  # 암호가 걸렸거나 깨진 PDF
+        raise BrokenFile(f"PDF 를 열 수 없어요 ({type(e).__name__})") from None
+    try:
+        total = len(doc)
+        images = []
+        for i in range(min(total, PDF_OCR_MAX_PAGES)):
+            page = doc[i]
+            w, h = page.get_size()  # 단위는 pt(1/72 인치)
+            scale = min(3.0, OCR_MAX_SIDE / max(w, h, 1.0))
+            images.append(_fit_for_ocr(page.render(scale=scale).to_pil().convert("RGB")))
+        return images, total
+    except BrokenFile:
+        raise
+    except Exception as e:
+        raise BrokenFile(f"PDF 쪽을 그림으로 바꿀 수 없어요 ({type(e).__name__})") from None
+    finally:
+        doc.close()
+
 
 DOC_EXT = {
     "pdf": ".pdf",
