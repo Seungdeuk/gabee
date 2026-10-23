@@ -679,3 +679,11 @@ def test_a_document_that_only_mentions_the_certificate_is_not_masked_as_one():
     notice = "출석인정일수 안내\n제출 서류: 가족관계증명서, 청첩장, 진단서\n결혼 5일\n사망 3일\n출산 10일\n"
     assert sensitive_kind(notice) == "none"
     assert mask_text(notice, "none") == notice  # 짧은 낱말이 이름으로 가려지지 않는다
+
+
+def test_a_name_label_at_the_end_of_a_line_does_not_mask_the_next_line():
+    from app.features.ai_assistant.ingest.masking import mask_text
+
+    text = "가게 이름\n합계 1,000원\n성명 홍길동\n"
+    out = mask_text(text, "none")
+    assert "합계 1,000원" in out and "홍**" in out  # 같은 줄의 이름만 가린다

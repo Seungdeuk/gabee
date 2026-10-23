@@ -487,3 +487,37 @@ def test_other_family_cannot_delete_a_record(client, family, pipeline):
     assert client.delete(url).status_code in (401, 403)
     assert client.get(url, headers=a).status_code == 200
     assert client.get(f"/ai-assistant/files/{up['id']}/original", headers=a).status_code == 200
+
+
+def test_blurry_lines_are_marked_asked_about_and_cleared_when_confirmed(client, family, pipeline):
+    a, _, _ = family
+    pipeline.ocr = FakeOcr(
+        [("하나로마트 동대문점", 0.95), ("우유 2,95O원", 0.55), ("합계 9,900원", 0.93)]
+    )
+    up = upload(client, a, png((5, 50, 5)), "doubt.png")
+    status = client.get(f"/ai-assistant/files/{up['id']}", headers=a).json()
+    assert status["status"] == "needs_review"
+    assert status["doubts"] == ["우유 2,95O원"]  # 흐린 줄만 물어본다
+    assert status["title"] == "하나로마트 동대문점"  # 제목에는 표시가 섞이지 않는다
+    body = client.get(f"/ai-assistant/knowledge/items/{up['id']}", headers=a).json()["body_md"]
+    assert "우유 2,95O원 [불확실]" in body and "합계 9,900원 [불확실]" not in body
+
+    # 사용자가 줄을 고쳐서 저장하면 표시가 사라지고 확인 필요도 사라진다
+    fixed = body.replace("우유 2,95O원 [불확실]", "우유 2,950원")
+    r = client.patch(
+        f"/ai-assistant/knowledge/items/{up['id']}", json={"body_md": fixed}, headers=a
+    ).json()
+    assert (
+        "[불확실]" not in r["body_md"] and "2,950원" in r["body_md"] and r["needs_review"] is False
+    )
+    after = client.get(f"/ai-assistant/files/{up['id']}", headers=a).json()
+    assert after["status"] == "analyzed" and after["doubts"] == []
+
+
+def test_confirming_without_changes_also_clears_the_doubt_marks(client, family, pipeline):
+    a, _, _ = family
+    pipeline.ocr = FakeOcr([("가게 이름", 0.95), ("합계 1,000원", 0.4)])
+    up = upload(client, a, png((50, 5, 5)), "doubt2.png")
+    assert client.get(f"/ai-assistant/files/{up['id']}", headers=a).json()["doubts"]
+    r = client.patch(f"/ai-assistant/knowledge/items/{up['id']}", json={}, headers=a).json()
+    assert "[불확실]" not in r["body_md"] and "합계 1,000원" in r["body_md"]

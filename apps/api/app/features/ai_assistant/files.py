@@ -22,6 +22,7 @@ from .ingest.caption import Captioner, default_captioner
 from .ingest.raw_store import LocalRawStore
 from .knowledge import from_ingest
 from .knowledge import service as knowledge_service
+from .knowledge.chunking import DOUBT_MARK
 from .knowledge.repository import delete_item as knowledge_delete
 from .knowledge.repository import get_item, path_in_use
 from .schemas import FileStatusOut
@@ -108,6 +109,7 @@ def status(db: Session, group_id: str, photo_id: str) -> FileStatusOut | None:
     if item is not None:
         out.title, out.kind_label = item.title, item.kind_label
         out.description = _describe(item.body_md)
+        out.doubts = _doubts(item.body_md)
     return out
 
 
@@ -167,6 +169,15 @@ def original_pdf_page(db: Session, group_id: str, photo_id: str, page: int) -> b
         return converters.pdf_page_jpeg(found[0], page - 1)
     except (IndexError, converters.BrokenFile):
         return None
+
+
+def _doubts(body_md: str) -> list[str]:
+    """[불확실] 이 붙은 줄(표시는 뺀 글)."""
+    return [
+        ln.removesuffix(DOUBT_MARK).strip()
+        for ln in body_md.splitlines()
+        if ln.rstrip().endswith(DOUBT_MARK)
+    ]
 
 
 def _describe(body_md: str) -> str | None:

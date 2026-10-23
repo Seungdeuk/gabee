@@ -10,12 +10,14 @@ from datetime import date
 
 from app.features.ai_assistant.ingest.schemas import PreprocessResult
 
-from .chunking import UNREAD_MARK
+from .chunking import DOUBT_MARK, UNREAD_MARK
 
 _BLOCK_NUMBER = re.compile(
     r"^\[(\d+)\]", re.M
 )  # 전처리의 블록 번호 [3] 은 답의 출처 번호 [n] 과 헷갈리므로 바꾼다
 _TITLE_LIMIT = 50
+DOUBT_BELOW = 0.8  # 글자 인식 확신도가 이보다 낮은 줄은 [불확실] 로 표시한다
+MAX_DOUBTS = 6  # 표시하는 줄 수 상한(질문이 너무 많아지지 않게 가장 흐린 것부터)
 # 전화번호·가려진 번호·날짜로 시작하는 줄은 제목으로 쓰지 않는다(영수증 맨 윗줄이 가게 전화번호인 경우가 많다)
 _NOT_A_TITLE = re.compile(
     r"^(?:전화|TEL|Tel|tel|T\.|연락처)|^[\d\s\-:.*]+$|^\d{4}[-./]\d{1,2}[-./]\d{1,2}"
@@ -25,13 +27,14 @@ _NOT_A_TITLE = re.compile(
 def to_item(result: PreprocessResult) -> dict:
     """knowledge.service.ingest 에 그대로 넘길 인자들을 만든다."""
     c = result.classification
-    text = _body_text(result.content.text)
+    plain = _body_text(result.content.text)
+    text = _mark_doubts(plain, result)  # 본문에는 [불확실] 표시를, 제목에는 표시 없는 글을 쓴다
     caption = result.caption
     kind = (
         c.doc_type if c and c.doc_type else ("사진" if result.source.kind == "image" else "문서")
     ).strip()
     occurred = _first_date(c.dates if c else [])
-    title = _title(text, caption.description if caption else "", kind, occurred)
+    title = _title(plain, caption.description if caption else "", kind, occurred)
 
     lines = [f"# {title}", f"분류: {kind}"]
     if c:
@@ -65,9 +68,33 @@ def to_item(result: PreprocessResult) -> dict:
     }
 
 
+def _mark_doubts(text: str, result: PreprocessResult) -> str:
+    """사진 글자 인식(OCR)에서 확신도가 낮은 줄 끝에 [불확실] 을 붙인다. 줄 수가 맞지 않으면 붙이지 않는다."""
+    blocks = [b for b in result.content.blocks if b.type == "ocr_line"]
+    lines = text.split("\n")
+    if not blocks or len(blocks) != len(lines):
+        return text
+    doubtful = sorted(
+        (
+            i
+            for i, b in enumerate(blocks)
+            if b.confidence is not None and b.confidence < DOUBT_BELOW
+        ),
+        key=lambda i: blocks[i].confidence,
+    )[:MAX_DOUBTS]
+    for i in doubtful:
+        if lines[i].strip():
+            lines[i] = f"{lines[i]} {DOUBT_MARK}"
+    return "\n".join(lines)
+
+
 def needs_review(result: PreprocessResult) -> bool:
     c = result.classification
-    return bool(c and c.needs_review) or result.quality.status == "partial"
+    return bool(c and c.needs_review) or result.quality.status == "partial" or _has_doubts(result)
+
+
+def _has_doubts(result: PreprocessResult) -> bool:
+    return DOUBT_MARK in _mark_doubts(_body_text(result.content.text), result)
 
 
 def _add(lines: list[str], label: str, value: str) -> None:

@@ -31,8 +31,10 @@ _PHONE = re.compile(r"(?<!\d)(0\d{1,2})[-) .]?\d{3,4}[- .]?\d{4}(?!\d)")
 _EMAIL = re.compile(r"\b([A-Za-z0-9])[A-Za-z0-9._%+-]*@([A-Za-z0-9.-]+\.[A-Za-z]{2,})")
 _ACCOUNT = re.compile(r"((?:계좌|입금|예금)\s*(?:번호)?\s*[:：]?\s*)(\d[\d -]{7,}\d)")
 _NAME = re.compile(
-    r"((?:성\s*명|이\s*름|환\s*자(?:\s*명)?|수\s*진\s*자|고\s*객\s*명|예\s*금\s*주|수\s*신\s*인|수\s*검\s*자|수\s*강\s*생|학\s*생\s*명|보\s*호\s*자|신\s*청\s*인|신\s*청\s*자|임\s*차\s*인|임\s*대\s*인|원\s*장|대\s*표\s*자)\s*[:：]?\s*)([가-힣]{2,4})"
+    r"((?:성\s*명|이\s*름|환\s*자(?:\s*명)?|수\s*진\s*자|고\s*객\s*명|예\s*금\s*주|수\s*신\s*인|수\s*검\s*자|수\s*강\s*생|학\s*생\s*명|보\s*호\s*자|신\s*청\s*인|신\s*청\s*자|임\s*차\s*인|임\s*대\s*인|원\s*장|대\s*표\s*자)[ \t]*[:：]?[ \t]*)([가-힣]{2,4})"
 )
+# 처방전·신분증처럼 표 모양 문서는 라벨 칸과 값 칸이 줄로 나뉘어 읽히므로 다음 줄의 이름까지 가린다
+_NAME_MULTILINE = re.compile(_NAME.pattern.replace(")[ \\t]*[:：]?[ \\t]*)", ")\\s*[:：]?\\s*)"))
 # 처방전 전용
 _DISEASE = re.compile(
     r"((?:질병\s*분류\s*기호|상병\s*코드|진단\s*코드)\s*[:：]?\s*)([A-Z]\d{2}(?:\.\d{1,2})?(?:\s*[,/]\s*[A-Z]\d{2}(?:\.\d{1,2})?)*)"
@@ -192,7 +194,11 @@ def mask_text(text: str, kind: Sensitive = "none", *, counts: Counter | None = N
     sub("phone", _PHONE, lambda m: f"{m.group(1)}-****-****")
     sub("email", _EMAIL, lambda m: f"{m.group(1)}***@{m.group(2)}")
     sub("account", _ACCOUNT, lambda m: m.group(1) + re.sub(r"\d", "*", m.group(2)))
-    sub("name", _NAME, lambda m: m.group(1) + m.group(2)[0] + "*" * (len(m.group(2)) - 1))
+    sub(
+        "name",
+        _NAME_MULTILINE,
+        lambda m: m.group(1) + m.group(2)[0] + "*" * (len(m.group(2)) - 1),
+    )
     sub("address", _ADDRESS, lambda m: m.group(1) + "[주소 가림]")
     if kind == "prescription":
         sub("disease_code", _DISEASE, lambda m: m.group(1) + "[병명 코드 가림]")

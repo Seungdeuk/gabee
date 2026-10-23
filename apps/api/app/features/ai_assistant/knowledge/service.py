@@ -7,7 +7,7 @@ from app.shared.errors import ApiError, not_found
 
 from ..ingest import masking
 from . import repository as repo
-from .chunking import UNREAD_MARK, split_markdown
+from .chunking import DOUBT_MARK, UNREAD_MARK, split_markdown
 from .embedding import TextEmbedder, get_embedder
 from .models import EMBED_DIM, KnowledgeChunk, KnowledgeItem
 
@@ -110,7 +110,11 @@ def update_item(db: Session, group_id: str, item_id: str, changes: dict) -> Know
     kind = changes.get("kind_label") or item.kind_label
     body = changes.get("body_md") or item.body_md
     body = masking.mask_text(body, masking.sensitive_kind(body))
-    lines = [ln for ln in body.split("\n") if ln.strip() != UNREAD_MARK]
+    lines = [
+        ln.removesuffix(DOUBT_MARK).rstrip()  # 사용자가 확인했으니 [불확실] 표시는 지운다
+        for ln in body.split("\n")
+        if ln.strip() != UNREAD_MARK
+    ]
     if lines and lines[0].startswith("# "):  # 제목·분류 줄은 고친 값과 맞춘다
         lines[0] = f"# {title}"
     if len(lines) > 1 and lines[1].startswith("분류:"):
