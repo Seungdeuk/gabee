@@ -1,5 +1,5 @@
-import { useRouter } from "expo-router";
-import { useState } from "react";
+import { useLocalSearchParams, useRouter } from "expo-router";
+import { useEffect, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
@@ -9,7 +9,7 @@ import { colors, font, radius, spacing } from "@/theme";
 import SegmentedControl from "../components/SegmentedControl";
 import StatusBadge from "../components/StatusBadge";
 import { ME_ID, members } from "../mock";
-import { sentStatus } from "../model";
+import { receivedStatus, sentStatus } from "../model";
 import { useRequests } from "../requests";
 import { formatDateLong, todayKey } from "../utils/date";
 
@@ -24,40 +24,52 @@ const PAST_PREVIEW = 3;
 const nameOf = (id) => members.find((m) => m.id === id)?.name ?? "";
 
 /**
- * 주고 받은(전 현황): 같이의 메인 화면. [받은 | 보낸] 두 탭, 구역은 "답을 기다려요" / "함께해요"(수락됐고 아직 날짜가 안 지난 것) / "지난"(숫자 없이 최근 몇 개 + 이전 기록 더 보기).
- * 오른쪽 위 "같이하기"로 새로 보내고, ‹는 일정 메인으로 돌아간다. 지금은 보낸 쪽만 있고 받은 쪽(받기)은 다음 PR에서 붙인다.
+ * 주고 받은(전 현황): 같이의 메인 화면. [받은 | 보낸] 두 탭(처음엔 받은), 구역은 "답을 기다려요" / "함께해요"(수락됐고 아직 날짜가 안 지난 것) / "지난"(숫자 없이 최근 몇 개 + 이전 기록 더 보기).
+ * 받은 탭의 카드는 받기 화면으로, 보낸 탭의 카드는 보낸 것 상세로 간다. 오른쪽 위 "같이하기"로 새로 보내고, ‹는 일정 메인으로 돌아간다.
+ * 보내기에서 돌아오면 tab=sent 로 열려 방금 보낸 것이 보인다.
  */
 export default function TogetherStatusScreen() {
   const router = useRouter();
+  const params = useLocalSearchParams();
   const requests = useRequests();
-  const [tab, setTab] = useState("sent");
+  const [tab, setTab] = useState(params.tab === "sent" ? "sent" : "received");
   const [morePast, setMorePast] = useState(false);
 
-  const sent = requests.filter((r) => r.fromId === ME_ID);
+  // 보내기 화면에서 돌아올 때마다(at 이 바뀔 때) 보낸 탭으로 옮긴다.
+  useEffect(() => {
+    if (params.tab === "sent" || params.tab === "received") setTab(params.tab);
+  }, [params.tab, params.at]);
+
   const today = todayKey();
-  const waiting = sent.filter((r) => sentStatus(r) === "pending");
-  // 수락됐고 아직 날짜가 지나지 않은 것은 함께해요, 날짜가 지났거나 취소된 것은 지난에 둔다.
-  const together = sent
-    .filter((r) => sentStatus(r) === "accepted" && r.date >= today)
-    .sort((a, b) => a.date.localeCompare(b.date));
-  const past = sent
-    .filter((r) => sentStatus(r) === "cancelled" || (sentStatus(r) === "accepted" && r.date < today))
-    .sort((a, b) => b.date.localeCompare(a.date));
+  const isSent = tab === "sent";
+  const mine = requests
+    .filter((r) => (isSent ? r.fromId === ME_ID : r.fromId !== ME_ID && r.toIds.includes(ME_ID) && !r.cancelled))
+    .map((r) => ({ request: r, status: isSent ? sentStatus(r) : receivedStatus(r, ME_ID) }));
+  const waiting = mine.filter(({ status }) => status === "pending");
+  // 답했고(수락이든 어렵다든) 아직 날짜가 지나지 않은 것은 함께해요에 둔다. 아직 바꿀 수 있기 때문이다.
+  // 지난은 날짜가 지난 것과 보낸 사람이 취소한 것이다.
+  const answered = ({ status }) => status === "accepted" || status === "declined";
+  const together = mine
+    .filter((m) => answered(m) && m.request.date >= today)
+    .sort((a, b) => a.request.date.localeCompare(b.request.date));
+  const past = mine
+    .filter((m) => m.status === "cancelled" || (answered(m) && m.request.date < today))
+    .sort((a, b) => b.request.date.localeCompare(a.request.date));
   const pastShown = morePast ? past : past.slice(0, PAST_PREVIEW);
 
   // 일정 메인에서 들어왔으므로 ‹는 일정 메인으로 간다.
   const leave = () => router.dismissTo("/(tabs)/schedule");
-  const open = (id) => router.push({ pathname: "/schedule/together-detail", params: { id } });
+  const open = (id) => router.push({ pathname: isSent ? "/schedule/together-detail" : "/schedule/together-receive", params: { id } });
 
-  const card = (r) => (
+  const card = ({ request: r, status }) => (
     <Pressable key={r.id} onPress={() => open(r.id)} style={styles.card} accessibilityRole="button">
       <View style={styles.cardMain}>
         <Text style={styles.cardTitle}>{r.title}</Text>
         <Text style={styles.cardSub}>
-          {`${r.toIds.map(nameOf).join(", ")} · ${formatDateLong(r.date)}${r.startTime ? ` ${r.startTime}` : ""}`}
+          {`${isSent ? r.toIds.map(nameOf).join(", ") : nameOf(r.fromId)} · ${formatDateLong(r.date)}${r.startTime ? ` ${r.startTime}` : ""}`}
         </Text>
       </View>
-      <StatusBadge status={sentStatus(r)} />
+      <StatusBadge status={status} />
     </Pressable>
   );
 
@@ -83,8 +95,8 @@ export default function TogetherStatusScreen() {
 
           <SegmentedControl options={TAB_OPTIONS} value={tab} onChange={setTab} full dark />
 
-          {tab === "received" ? (
-            <Text style={styles.empty}>받은 게 아직 없어요</Text>
+          {mine.length === 0 ? (
+            <Text style={styles.empty}>{isSent ? "보낸 게 아직 없어요" : "받은 게 아직 없어요"}</Text>
           ) : (
             <>
               <View style={styles.section}>
