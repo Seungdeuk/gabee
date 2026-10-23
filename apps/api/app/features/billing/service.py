@@ -16,19 +16,25 @@ from . import repository as repo
 from .models import (
     AllowanceEntry,
     AllowancePlan,
+    AllowanceRequest,
     BillingSettings,
     Expense,
     SettlementPayment,
     SubscriptionItem,
 )
 from .schemas import (
+    AllowanceApproveIn,
     AllowanceEntryOut,
     AllowanceMoneyIn,
+    AllowanceMonth,
     AllowanceOut,
     AllowancePayIn,
     AllowancePending,
     AllowancePlanIn,
     AllowancePlanOut,
+    AllowanceRejectIn,
+    AllowanceRequestIn,
+    AllowanceRequestOut,
     Balance,
     CatalogEntry,
     ExpenseCreate,
@@ -784,6 +790,45 @@ def _entries_out(entries: list[AllowanceEntry], names: dict[str, str]):
     return balance, list(reversed(out))
 
 
+def _months(live: list[AllowanceEntry], today: date) -> list[AllowanceMonth]:
+    """최근 6개월(이번 달 포함, 최신 달부터)의 받은 돈·쓴 돈. 취소한 줄은 이미 빠져 있다."""
+    keys = []
+    year, month = today.year, today.month
+    for _ in range(6):
+        keys.append(f"{year}-{month:02d}")
+        year, month = (year - 1, 12) if month == 1 else (year, month - 1)
+    totals = {k: [0, 0] for k in keys}
+    for e in live:
+        bucket = totals.get(e.date[:7])
+        if bucket is not None:
+            bucket[0 if e.kind == "credit" else 1] += e.amount
+    return [AllowanceMonth(month=k, credit=totals[k][0], use=totals[k][1]) for k in keys]
+
+
+def _request_out(r: AllowanceRequest, names: dict[str, str]) -> AllowanceRequestOut:
+    return AllowanceRequestOut(
+        id=r.id,
+        amount=r.amount,
+        memo=r.memo,
+        status=r.status,
+        created_at=r.created_at,
+        decided_by_name=names.get(r.decided_by, "") if r.decided_by else "",
+        decided_at=r.decided_at,
+        approved_amount=r.approved_amount,
+        decision_note=r.decision_note,
+    )
+
+
+def _requests_out(
+    db: Session, group_id: str, child_id: str, names: dict[str, str]
+) -> list[AllowanceRequestOut]:
+    """대기 중인 요청(오래된 순) 다음에 최근 처리한 요청(최신순, 최대 10건)."""
+    rows = repo.list_requests(db, group_id, child_id)
+    waiting = [r for r in reversed(rows) if r.status == "pending"]
+    done = [r for r in rows if r.status != "pending"][:10]
+    return [_request_out(r, names) for r in [*waiting, *done]]
+
+
 def _allowance_out(
     db: Session, group_id: str, user: User, child: User, names: dict[str, str], today: date
 ) -> AllowanceOut:
@@ -823,6 +868,9 @@ def _allowance_out(
         entries=rows[:100],
         can_manage=can_manage,
         can_record_use=can_manage or user.id == child.id,
+        can_request=user.id == child.id,
+        requests=_requests_out(db, group_id, child.id, names),
+        months=_months(live, today),
     )
 
 
@@ -954,6 +1002,107 @@ def add_use(
                 created_by=user.id,
             ),
         )
+    return _one(db, group_id, user, child_id)
+
+
+def request_allowance(
+    db: Session, group_id: str, user: User, child_id: str, body: AllowanceRequestIn
+) -> AllowanceOut:
+    """자녀 본인이 용돈을 요청한다(부모가 대신 요청하지 않는다 — 부모는 바로 지급 기록을 쓴다)."""
+    _child(db, group_id, child_id)
+    if user.id != child_id:
+        raise ApiError(403, "not_allowed", "본인의 용돈만 요청할 수 있어요")
+    with seed_lock(db, f"allowance-request:{child_id}"):
+        waiting = [r for r in repo.list_requests(db, group_id, child_id) if r.status == "pending"]
+        if len(waiting) >= repo.MAX_PENDING_REQUESTS:
+            raise bad_request(
+                "too_many_requests",
+                f"대기 중인 요청은 {repo.MAX_PENDING_REQUESTS}건까지예요. 처리된 뒤에 다시 요청해 주세요",
+            )
+        repo.save(
+            db,
+            AllowanceRequest(
+                id=uuid.uuid4().hex[:12],
+                group_id=group_id,
+                child_id=child_id,
+                amount=body.amount,
+                memo=body.memo.strip(),
+            ),
+        )
+    return _one(db, group_id, user, child_id)
+
+
+def _pending_request(
+    db: Session, group_id: str, child_id: str, request_id: str
+) -> AllowanceRequest:
+    req = repo.get_request(db, group_id, child_id, request_id)
+    if req is None:
+        raise not_found("용돈 요청")
+    if req.status != "pending":
+        raise bad_request("not_pending", "이미 처리된 요청이에요")
+    return req
+
+
+def approve_request(
+    db: Session,
+    group_id: str,
+    user: User,
+    child_id: str,
+    request_id: str,
+    body: AllowanceApproveIn,
+) -> AllowanceOut:
+    """승인하면 장부에 입금 한 줄이 생긴다(금액을 바꿔 승인할 수 있다). 한 요청은 한 번만 승인된다."""
+    _child(db, group_id, child_id)
+    _ensure_manage_allowance(db, group_id, user)
+    with seed_lock(db, f"allowance-request:{child_id}"):
+        req = _pending_request(db, group_id, child_id, request_id)
+        amount = body.amount or req.amount
+        entry = AllowanceEntry(
+            id=uuid.uuid4().hex[:12],
+            group_id=group_id,
+            child_id=child_id,
+            kind="credit",
+            amount=amount,
+            memo=(f"용돈 요청: {req.memo}" if req.memo else "용돈 요청")[:120],
+            date=today_kst(),
+            source="request",
+            created_by=user.id,
+        )
+        req.status, req.decided_by, req.decided_at = "approved", user.id, datetime.now(UTC)
+        req.approved_amount, req.decision_note, req.entry_id = amount, body.note.strip(), entry.id
+        repo.save_all(db, [entry, req])  # 입금과 승인 표시를 한 번에 저장한다
+    return _one(db, group_id, user, child_id)
+
+
+def reject_request(
+    db: Session,
+    group_id: str,
+    user: User,
+    child_id: str,
+    request_id: str,
+    body: AllowanceRejectIn,
+) -> AllowanceOut:
+    _child(db, group_id, child_id)
+    _ensure_manage_allowance(db, group_id, user)
+    with seed_lock(db, f"allowance-request:{child_id}"):
+        req = _pending_request(db, group_id, child_id, request_id)
+        req.status, req.decided_by, req.decided_at = "rejected", user.id, datetime.now(UTC)
+        req.decision_note = body.note.strip()
+        repo.save(db, req)
+    return _one(db, group_id, user, child_id)
+
+
+def cancel_request(
+    db: Session, group_id: str, user: User, child_id: str, request_id: str
+) -> AllowanceOut:
+    """자녀가 자기 대기 요청을 취소한다."""
+    _child(db, group_id, child_id)
+    if user.id != child_id:
+        raise ApiError(403, "not_allowed", "본인의 요청만 취소할 수 있어요")
+    with seed_lock(db, f"allowance-request:{child_id}"):
+        req = _pending_request(db, group_id, child_id, request_id)
+        req.status, req.decided_by, req.decided_at = "cancelled", user.id, datetime.now(UTC)
+        repo.save(db, req)
     return _one(db, group_id, user, child_id)
 
 

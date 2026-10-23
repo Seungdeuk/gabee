@@ -150,8 +150,34 @@ class AllowanceEntry(Base):
     amount: Mapped[int] = mapped_column(Integer)  # 원, 항상 양수
     memo: Mapped[str] = mapped_column(String(120), default="")
     date: Mapped[str] = mapped_column(String(10))  # YYYY-MM-DD
-    source: Mapped[str] = mapped_column(String(12))  # manual | plan_auto | plan_remind
+    source: Mapped[str] = mapped_column(
+        String(12)
+    )  # manual | plan_auto | plan_remind | request(요청 승인)
     plan_due_date: Mapped[str | None] = mapped_column(String(10), nullable=True)
     created_by: Mapped[str | None] = mapped_column(String(32), nullable=True)  # 자동 기록이면 없음
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
     voided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class AllowanceRequest(Base):
+    """자녀의 용돈 요청. 부모(또는 그룹을 만든 사람)가 승인하면 장부에 입금 한 줄이 생기고(entry_id), 거절하거나
+    자녀가 취소할 수 있다. 승인·거절·취소는 한 번뿐이다(pending 일 때만)."""
+
+    __tablename__ = "allowance_requests"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    group_id: Mapped[str] = mapped_column(String(32), index=True)
+    child_id: Mapped[str] = mapped_column(String(32), index=True)
+    amount: Mapped[int] = mapped_column(Integer)  # 요청 금액(원)
+    memo: Mapped[str] = mapped_column(String(120), default="")
+    status: Mapped[str] = mapped_column(
+        String(10), default="pending"
+    )  # pending|approved|rejected|cancelled
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    decided_by: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    approved_amount: Mapped[int | None] = mapped_column(
+        Integer, nullable=True
+    )  # 승인할 때 바꾼 금액
+    decision_note: Mapped[str] = mapped_column(String(120), default="")
+    entry_id: Mapped[str | None] = mapped_column(String(32), nullable=True)  # 승인으로 생긴 장부 줄

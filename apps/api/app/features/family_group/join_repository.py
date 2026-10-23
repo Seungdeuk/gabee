@@ -59,12 +59,12 @@ def active_invite(db: Session, group_id: str, now: datetime) -> Invite | None:
 
 
 # ---------- 멤버십 ----------
-def member_roles(db: Session, group_id: str) -> dict[str, str]:
-    return dict(
-        db.execute(
-            select(GroupMember.user_id, GroupMember.role).where(GroupMember.group_id == group_id)
-        ).all()
-    )
+def members_by_user(db: Session, group_id: str) -> dict[str, GroupMember]:
+    """그룹 구성원의 멤버십 행(권한·표시 이름·가족 관계). user_id → GroupMember."""
+    return {
+        m.user_id: m
+        for m in db.scalars(select(GroupMember).where(GroupMember.group_id == group_id))
+    }
 
 
 def get_membership(db: Session, group_id: str, user_id: str) -> GroupMember | None:

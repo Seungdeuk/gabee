@@ -6,10 +6,13 @@ from app.shared.db import get_db
 
 from . import service
 from .schemas import (
+    AllowanceApproveIn,
     AllowanceMoneyIn,
     AllowanceOut,
     AllowancePayIn,
     AllowancePlanIn,
+    AllowanceRejectIn,
+    AllowanceRequestIn,
     ExpenseCreate,
     ExpenseOut,
     ManagerOut,
@@ -301,6 +304,55 @@ def add_use(
 ) -> AllowanceOut:
     """사용 내역 기록(본인 또는 부모). 잔액보다 큰 사용은 거절한다."""
     return service.add_use(db, group_id, user, child_id, body)
+
+
+@router.post("/allowances/{child_id}/requests", response_model=AllowanceOut, status_code=201)
+def request_allowance(
+    child_id: str,
+    body: AllowanceRequestIn,
+    user=Depends(current_user),
+    group_id: str = Depends(current_group_id),
+    db: Session = Depends(get_db),
+) -> AllowanceOut:
+    """자녀 본인이 용돈을 요청한다(대기 5건까지)."""
+    return service.request_allowance(db, group_id, user, child_id, body)
+
+
+@router.post("/allowances/{child_id}/requests/{request_id}/approve", response_model=AllowanceOut)
+def approve_request(
+    child_id: str,
+    request_id: str,
+    body: AllowanceApproveIn,
+    user=Depends(current_user),
+    group_id: str = Depends(current_group_id),
+    db: Session = Depends(get_db),
+) -> AllowanceOut:
+    """승인(부모·그룹을 만든 사람): 장부에 입금이 기록된다. 금액을 바꿔 승인할 수 있다."""
+    return service.approve_request(db, group_id, user, child_id, request_id, body)
+
+
+@router.post("/allowances/{child_id}/requests/{request_id}/reject", response_model=AllowanceOut)
+def reject_request(
+    child_id: str,
+    request_id: str,
+    body: AllowanceRejectIn,
+    user=Depends(current_user),
+    group_id: str = Depends(current_group_id),
+    db: Session = Depends(get_db),
+) -> AllowanceOut:
+    return service.reject_request(db, group_id, user, child_id, request_id, body)
+
+
+@router.delete("/allowances/{child_id}/requests/{request_id}", response_model=AllowanceOut)
+def cancel_request(
+    child_id: str,
+    request_id: str,
+    user=Depends(current_user),
+    group_id: str = Depends(current_group_id),
+    db: Session = Depends(get_db),
+) -> AllowanceOut:
+    """자녀가 자기 대기 요청을 취소한다."""
+    return service.cancel_request(db, group_id, user, child_id, request_id)
 
 
 @router.delete("/allowances/{child_id}/entries/{entry_id}", response_model=AllowanceOut)

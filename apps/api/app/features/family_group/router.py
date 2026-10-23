@@ -8,6 +8,7 @@ from . import service
 from .join_router import router as join_router
 from .join_schemas import JoinRequestOut
 from .models import User
+from .profile_router import router as profile_router
 from .schemas import (
     AccountSignupIn,
     AccountSignupOut,
@@ -34,6 +35,7 @@ from .social_router import router as social_router
 router = APIRouter(prefix="/family-group", tags=["family-group"])
 router.include_router(join_router)  # 초대·가입 승인(PR 4-B)
 router.include_router(social_router)  # Google·Kakao 로그인·연동(PR 4-D)
+router.include_router(profile_router)  # 가족 프로필·별명·관리자 지정(PR 4-C)
 
 
 @router.post("/users", response_model=SignupOut, status_code=201)
