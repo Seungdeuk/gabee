@@ -44,6 +44,12 @@ export default function TogetherScreen() {
   const goBack = () => (router.canGoBack() ? router.back() : router.replace("/(tabs)/schedule"));
   // 메인에서 열었으면 이 화면을 현황으로 바꿔 끼워 "메인 → 현황"만 남기고, 현황에서 열었으면 그 현황으로 돌아간다.
   const toStatus = () => (params.from === "status" ? router.back() : router.replace("/schedule/together-status"));
+  // 보낸 뒤에는 방금 보낸 것이 보이도록 보낸 탭으로 연다(at 은 같은 탭이어도 다시 옮기게 하는 표시).
+  const toSent = () => {
+    const target = { pathname: "/schedule/together-status", params: { tab: "sent", at: String(Date.now()) } };
+    if (params.from === "status") router.dismissTo(target);
+    else router.replace(target);
+  };
   const send = () => {
     if (!valid) {
       setTriedSend(true);
@@ -52,7 +58,7 @@ export default function TogetherScreen() {
     // 받는 사람을 하나도 고르지 않으면 모두에게 간다.
     const receivers = toIds.length > 0 ? toIds : RECEIVERS.map((m) => m.id);
     sendRequest({ fromId: ME_ID, toIds: receivers, title: title.trim(), date, ...time, place: place.trim(), memo: memo.trim(), whoIds });
-    toStatus();
+    toSent();
   };
 
   return (

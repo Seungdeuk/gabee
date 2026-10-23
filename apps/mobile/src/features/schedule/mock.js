@@ -48,7 +48,7 @@ export function createMockItems() {
 }
 
 /**
- * 같이 샘플(오늘 기준 상대 날짜). 내가 보낸 것: 기다리는 것 하나, 엄마가 수락한 것 하나, 취소한 것 하나.
+ * 같이 샘플(오늘 기준 상대 날짜). 내가 보낸 것: 기다리는 것 하나, 엄마가 수락한 것 하나, 취소한 것 하나. 내가 받은 것은 아래에 따로 있다.
  * @returns {import("./model").TogetherRequest[]}
  */
 export function createMockRequests() {
@@ -59,5 +59,12 @@ export function createMockRequests() {
     { ...base, id: "q4", title: "김장 같이 해줘", toIds: ["mom", "dad"], date: addDays(today, 6), startTime: "10:00", endTime: "14:00", place: "본가", replies: { mom: "accepted" } },
     { ...base, id: "q2", title: "병원 같이 가줘", toIds: ["mom"], date: addDays(today, -2), startTime: "09:00", endTime: "10:00", place: "한결의원", whoIds: ["mom"], replies: { mom: "accepted" } },
     { ...base, id: "q3", title: "이삿짐 도와줘", toIds: ["dad"], date: addDays(today, -12), startTime: "10:00", endTime: "12:00", replies: {}, cancelled: true },
+    // 내가 받은 것: 기다리는 것 둘(하나는 내 일정과 시간이 겹치고 아빠가 이미 수락), 수락한 지난 것, 어렵다고 한 지난 것
+    { ...base, id: "r1", fromId: "mom", title: "마트 같이 가줘", toIds: ["me", "dad"], date: addDays(today, 2), startTime: "15:00", endTime: "17:00", place: "동네 마트", memo: "과일이랑 반찬 사야 해요", replies: { dad: "accepted" } },
+    { ...base, id: "r2", fromId: "dad", title: "병원 모시고 가줘", toIds: ["me"], date: addDays(today, 5), startTime: "09:00", endTime: "10:00", place: "한결의원", whoIds: ["mom"], replies: {} },
+    { ...base, id: "r3", fromId: "mom", title: "반찬 받아 와줘", toIds: ["me"], date: addDays(today, -3), startTime: "18:00", endTime: "19:00", place: "본가", replies: { me: "accepted" } },
+    { ...base, id: "r4", fromId: "dad", title: "차 정비소 같이 가줘", toIds: ["me", "mom"], date: addDays(today, -9), startTime: "10:00", endTime: "12:00", replies: { me: "declined" } },
+    // 어렵다고 했지만 날짜가 아직 남아 답을 바꿀 수 있는 것
+    { ...base, id: "r5", fromId: "mom", title: "김치 담그기 도와줘", toIds: ["me"], date: addDays(today, 4), startTime: "10:00", endTime: "13:00", place: "본가", replies: { me: "declined" } },
   ];
 }

@@ -11,6 +11,7 @@ import DaySection from "../components/DaySection";
 import SuggestionCard from "../components/SuggestionCard";
 import TogetherRow from "../components/TogetherRow";
 import WeekStrip from "../components/WeekStrip";
+import { useNewReceivedCount } from "../requests";
 import { toggleChecked, useScheduleItems } from "../store";
 import { MOCK_ADD, MOCK_CARRY, pickAppointmentCard, pickTodoCard } from "../suggestions";
 import { addDays, formatDateLong, formatMonthDay, todayKey } from "../utils/date";
@@ -24,6 +25,7 @@ const TOGETHER_SAMPLES = ["장 같이 봐줘", "병원 같이 가줘"];
 export default function ScheduleScreen() {
   const router = useRouter();
   const items = useScheduleItems();
+  const newCount = useNewReceivedCount();
   const today = todayKey();
   const tomorrow = addDays(today, 1);
 
@@ -91,7 +93,18 @@ export default function ScheduleScreen() {
           <View style={styles.section}>
             <View style={styles.caption}>
               <Text style={styles.heading}>함께하기</Text>
-              <Pressable onPress={() => router.push("/schedule/together-status")} hitSlop={10} accessibilityRole="button">
+              <Pressable
+                onPress={() => router.push("/schedule/together-status")}
+                hitSlop={10}
+                style={styles.statusPress}
+                accessibilityRole="button"
+                accessibilityLabel={newCount > 0 ? `주고 받은, 새로 받은 ${newCount}개` : "주고 받은"}
+              >
+                {newCount > 0 ? (
+                  <View style={styles.newBadge}>
+                    <Text style={styles.newBadgeText}>{newCount}</Text>
+                  </View>
+                ) : null}
                 <Text style={styles.statusLink}>주고 받은 ›</Text>
               </Pressable>
             </View>
@@ -202,5 +215,16 @@ const styles = StyleSheet.create({
   },
   feed: { gap: 10 },
   notice: { ...font.caption, color: colors.textMuted, textAlign: "center" },
+  statusPress: { flexDirection: "row", alignItems: "center", gap: 6 },
   statusLink: { ...font.bodyStrong, fontWeight: "500", color: colors.textMuted },
+  newBadge: {
+    minWidth: 20,
+    height: 20,
+    paddingHorizontal: 6,
+    borderRadius: radius.pill,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: colors.peach,
+  },
+  newBadgeText: { fontSize: 12, fontWeight: "700", color: colors.text },
 });
