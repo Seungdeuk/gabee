@@ -1801,6 +1801,82 @@
         }
       }
     },
+    "/family-chat/summary": {
+      "post": {
+        "tags": [
+          "family-chat"
+        ],
+        "summary": "Summarize",
+        "description": "이 가족 그룹의 최근 대화를 AI 로 요약한다(눌렀을 때만 외부 AI 로 보내고, 요약·대화는 저장하지 않는다).\n대화가 너무 적으면 400 too_few_messages, AI 설정이 없으면 503 llm_unavailable, 호출 실패는 503 llm_failed, 너무 잦으면 429.",
+        "operationId": "summarize_family_chat_summary_post",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-gyeot-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Gyeot-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SummaryIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SummaryOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/schedule/events": {
       "get": {
         "tags": [
@@ -11493,6 +11569,65 @@
           "balances"
         ],
         "title": "Summary"
+      },
+      "SummaryIn": {
+        "properties": {
+          "limit": {
+            "type": "integer",
+            "maximum": 300.0,
+            "minimum": 1.0,
+            "title": "Limit",
+            "default": 200
+          },
+          "after_id": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "After Id",
+            "default": 0
+          }
+        },
+        "type": "object",
+        "title": "SummaryIn",
+        "description": "요약할 범위. after_id 를 주면 그 뒤의 대화, 아니면 최근 limit 개(둘 다 주면 after_id 뒤의 최근 limit 개)."
+      },
+      "SummaryOut": {
+        "properties": {
+          "summary": {
+            "type": "string",
+            "title": "Summary"
+          },
+          "message_count": {
+            "type": "integer",
+            "title": "Message Count"
+          },
+          "from_message_id": {
+            "type": "integer",
+            "title": "From Message Id"
+          },
+          "to_message_id": {
+            "type": "integer",
+            "title": "To Message Id"
+          },
+          "model": {
+            "type": "string",
+            "title": "Model"
+          },
+          "generated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Generated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "summary",
+          "message_count",
+          "from_message_id",
+          "to_message_id",
+          "model",
+          "generated_at"
+        ],
+        "title": "SummaryOut"
       },
       "TodaySummary": {
         "properties": {

@@ -9,6 +9,7 @@ import SectionTitle from "@/shared/components/SectionTitle";
 import { colors } from "@/theme";
 
 import RoomRow from "../components/RoomRow";
+import SummaryCard from "../components/SummaryCard";
 import { contacts, rooms } from "../mock";
 
 /** 소통 탭: 가족 채팅방 목록과 가족 연락처. TODO: 방을 누르면 대화 화면, 검색은 메시지 내용까지. */
@@ -41,6 +42,8 @@ export default function FamilyChatScreen() {
           accessibilityLabel="채팅 검색"
         />
       </View>
+
+      <SummaryCard />
 
       <View>
         <SectionTitle title="채팅방" action="새 대화 +" />

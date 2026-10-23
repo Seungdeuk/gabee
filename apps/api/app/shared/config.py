@@ -1,5 +1,6 @@
 from pathlib import Path
 
+from pydantic import AliasChoices, Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # apps/api 의 .env 를 가리킨다. 상대경로(".env")로 두면 실행 위치(cwd)에 따라
@@ -16,7 +17,10 @@ class Settings(BaseSettings):
     data_dir: str = "./data"
     cors_origins: str = "*"
     anthropic_api_key: str = ""
-    llm_model: str = "claude-haiku-5-5"
+    # Anthropic 모델은 환경변수 ANTHROPIC_MODEL 로 고른다(예전 이름 LLM_MODEL 도 읽는다). 비우면 기본값.
+    llm_model: str = Field(
+        default="claude-haiku-5-5", validation_alias=AliasChoices("ANTHROPIC_MODEL", "LLM_MODEL")
+    )
     # DB 스키마 준비 상태 재점검 주기(초): 준비된 동안은 드물게, 준비 안 됐으면(자동 배포 진행 중) 자주
     schema_recheck_ready_seconds: int = 30
     schema_recheck_not_ready_seconds: int = 2
@@ -90,7 +94,17 @@ class Settings(BaseSettings):
     invite_max_failures: int = 5
     invite_failure_window_seconds: int = 15 * 60
 
-    model_config = SettingsConfigDict(env_file=_ENV_FILE, extra="ignore")
+    # 가족 채팅 대화 요약(AI): 사용자가 요약을 눌렀을 때만 최근 대화를 Anthropic 으로 보낸다. 요약은 저장하지 않는다.
+    # 한 번에 보내는 글자 수와 사용자별 시간당 호출 수를 제한한다.
+    chat_summary_max_chars: int = 12000
+    chat_summary_max_per_hour: int = 10
+
+    model_config = SettingsConfigDict(env_file=_ENV_FILE, extra="ignore", populate_by_name=True)
+
+    @field_validator("llm_model")
+    @classmethod
+    def _llm_model_default_when_blank(cls, value: str) -> str:
+        return value.strip() or "claude-haiku-5-5"
 
 
 settings = Settings()
