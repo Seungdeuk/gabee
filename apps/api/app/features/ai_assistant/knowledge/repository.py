@@ -1,7 +1,7 @@
 from datetime import date
 
 from pgvector.sqlalchemy import Vector
-from sqlalchemy import Float, String, cast, literal, select
+from sqlalchemy import Float, String, cast, delete, literal, select
 from sqlalchemy.orm import Session
 
 from .embedding import cosine
@@ -16,6 +16,35 @@ def add_item(db: Session, item: KnowledgeItem, chunks: list[KnowledgeChunk]) -> 
         db.add(chunk)
     db.commit()
     return item
+
+
+def replace_chunks(db: Session, item: KnowledgeItem, chunks: list[KnowledgeChunk]) -> KnowledgeItem:
+    """기록의 조각을 새 것으로 바꾼다(이전 조각 삭제와 새 조각 저장이 한 번에 반영된다)."""
+    db.execute(delete(KnowledgeChunk).where(KnowledgeChunk.item_id == item.id))
+    for chunk in chunks:
+        chunk.item_id = item.id
+        db.add(chunk)
+    db.commit()
+    return item
+
+
+def delete_item(db: Session, item: KnowledgeItem) -> None:
+    """기록과 그 조각을 함께 지운다."""
+    db.execute(delete(KnowledgeChunk).where(KnowledgeChunk.item_id == item.id))
+    db.delete(item)
+    db.commit()
+
+
+def path_in_use(db: Session, group_id: str, source_path: str) -> bool:
+    """같은 원본 파일을 가리키는 다른 기록이 남아 있는지(같은 파일을 두 번 올린 경우)."""
+    return (
+        db.scalar(
+            select(KnowledgeItem.id)
+            .where(KnowledgeItem.group_id == group_id, KnowledgeItem.source_path == source_path)
+            .limit(1)
+        )
+        is not None
+    )
 
 
 def get_item(db: Session, group_id: str, item_id: str) -> KnowledgeItem | None:

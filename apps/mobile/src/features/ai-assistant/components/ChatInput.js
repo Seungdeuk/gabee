@@ -1,21 +1,28 @@
 import { Ionicons } from "@expo/vector-icons";
+import * as DocumentPicker from "expo-document-picker";
+import * as ImagePicker from "expo-image-picker";
 import { useEffect, useRef, useState } from "react";
-import { Pressable, StyleSheet, TextInput, View } from "react-native";
+import { Alert, Pressable, StyleSheet, TextInput, View } from "react-native";
 
 import { colors } from "@/theme";
 
+import AttachSheet from "./AttachSheet";
+
 /**
  * 하단 둥근 입력창.
- * - idle: 옅은 꿀색 바탕, 마이크(말로 묻기)와 음성 대화 버튼
- * - listening: 흰 바탕에 진한 테두리, 받아 적은 글자 옆에 복숭아색 보내기 버튼
+ * - idle: 옅은 꿀색 바탕, 마이크(말로 묻기)와 보내기 버튼(글자가 있을 때 켜진다)
+ * - listening: 흰 바탕에 진한 테두리, 마이크 자리가 닫기(×)로 바뀌고 보내기는 그대로
+ * - 왼쪽 + 버튼: 앨범/카메라에서 사진을, 또는 파일(PDF·문서 등)을 골라 onAttach 로 넘긴다
  * - disabled: 가비가 답하는 동안 입력을 막는다
  *
  * TODO: 음성 인식은 폰 키보드의 받아쓰기를 쓴다. 앱 안에서 직접 인식하려면 음성 인식 모듈을 붙인다.
+ * TODO: 음성 대화(말로 주고받기) 버튼은 기능이 생기면 다시 둔다. 지금은 마이크와 같은 동작이라 뺐다.
  *
- * @param {{ mode: "idle" | "listening" | "disabled", onSend: (text: string, options: { voice: boolean }) => void, onMic: () => void, onVoice?: () => void }} props
+ * @param {{ mode: "idle" | "listening" | "disabled", onSend: (text: string, options: { voice: boolean }) => void, onMic: () => void, onAttach: (file: { uri: string, name?: string, type?: string, isImage: boolean }) => void }} props
  */
-export default function ChatInput({ mode, onSend, onMic, onVoice }) {
+export default function ChatInput({ mode, onSend, onMic, onAttach }) {
   const [text, setText] = useState("");
+  const [sheet, setSheet] = useState(false);
   const inputRef = useRef(null);
   const listening = mode === "listening";
   const disabled = mode === "disabled";
@@ -29,6 +36,44 @@ export default function ChatInput({ mode, onSend, onMic, onVoice }) {
     return () => clearTimeout(timer);
   }, [listening]);
 
+  const pick = async (fromCamera) => {
+    try {
+      const ask = fromCamera ? ImagePicker.requestCameraPermissionsAsync : ImagePicker.requestMediaLibraryPermissionsAsync;
+      const { granted } = await ask();
+      if (!granted) {
+        Alert.alert("권한이 필요해요", `${fromCamera ? "카메라" : "앨범"} 접근을 허용해야 사진을 올릴 수 있어요. 폰 설정에서 허용해 주세요.`);
+        return;
+      }
+      const launch = fromCamera ? ImagePicker.launchCameraAsync : ImagePicker.launchImageLibraryAsync;
+      const result = await launch({ mediaTypes: ["images"], quality: 0.8 });
+      if (result.canceled || !result.assets?.length) return;
+      const asset = result.assets[0];
+      onAttach({ uri: asset.uri, name: asset.fileName ?? undefined, type: asset.mimeType ?? undefined, isImage: true });
+    } catch {
+      Alert.alert("사진을 가져오지 못했어요", "잠시 후 다시 시도해 주세요.");
+    }
+  };
+
+  const pickFile = async () => {
+    try {
+      const result = await DocumentPicker.getDocumentAsync({ type: "*/*", copyToCacheDirectory: true, multiple: false });
+      if (result.canceled || !result.assets?.length) return;
+      const asset = result.assets[0];
+      const isImage = (asset.mimeType ?? "").startsWith("image/");
+      onAttach({ uri: asset.uri, name: asset.name, type: asset.mimeType ?? "application/octet-stream", isImage });
+    } catch {
+      Alert.alert("파일을 가져오지 못했어요", "잠시 후 다시 시도해 주세요.");
+    }
+  };
+
+  const attach = () => setSheet(true);
+
+  /** 시트를 닫은 뒤에 고른 창을 연다(두 창이 겹쳐 뜨면 일부 폰에서 열리지 않는다). */
+  const choose = (key) => {
+    setSheet(false);
+    setTimeout(() => (key === "file" ? pickFile() : pick(key === "camera")), 350);
+  };
+
   const submit = () => {
     if (!canSend) return;
     onSend(text, { voice: listening });
@@ -37,6 +82,9 @@ export default function ChatInput({ mode, onSend, onMic, onVoice }) {
 
   return (
     <View style={[styles.bar, listening && styles.barListening]}>
+      <Pressable onPress={attach} disabled={disabled} accessibilityLabel="사진이나 파일 올리기" style={styles.hit}>
+        <Ionicons name="add" size={26} color={disabled ? colors.disabled : colors.text} />
+      </Pressable>
       <TextInput
         ref={inputRef}
         style={[styles.input, disabled && styles.inputDisabled]}
@@ -50,23 +98,17 @@ export default function ChatInput({ mode, onSend, onMic, onVoice }) {
         accessibilityLabel="가비에게 묻기"
       />
 
-      {listening ? (
-        <Pressable onPress={submit} disabled={!canSend} accessibilityLabel="보내기" style={styles.hit}>
-          <View style={[styles.send, !canSend && styles.sendOff]}>
-            <Ionicons name="arrow-up" size={20} color={colors.text} />
-          </View>
-        </Pressable>
-      ) : null}
-
+      {/* 오른쪽 끝은 항상 보내기. 마이크(음성 입력 중에는 닫기)는 그 왼쪽에 둔다. */}
       <Pressable onPress={onMic} disabled={disabled} accessibilityLabel={listening ? "음성 입력 끝내기" : "말로 묻기"} style={styles.hit}>
         <Ionicons name={listening ? "close" : "mic-outline"} size={22} color={disabled ? colors.disabled : listening ? colors.textMuted : colors.text} />
       </Pressable>
 
-      {!listening ? (
-        <Pressable onPress={onVoice} disabled={disabled} accessibilityLabel="음성 대화" style={styles.hit}>
-          <Ionicons name="pulse-outline" size={22} color={disabled ? colors.disabled : colors.text} />
-        </Pressable>
-      ) : null}
+      <Pressable onPress={submit} disabled={!canSend} accessibilityLabel="보내기" style={styles.hit}>
+        <View style={[styles.send, !canSend && styles.sendOff]}>
+          <Ionicons name="arrow-up" size={20} color={colors.text} />
+        </View>
+      </Pressable>
+      <AttachSheet visible={sheet} onClose={() => setSheet(false)} onPick={choose} />
     </View>
   );
 }
@@ -79,7 +121,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surface,
     flexDirection: "row",
     alignItems: "center",
-    paddingLeft: 20,
+    paddingLeft: 6,
     paddingRight: 6,
     gap: 2,
   },

@@ -53,6 +53,46 @@ export function clearSession() {
 export const hasSession = () => refreshToken !== "" || accessToken !== "";
 export const getRefreshToken = () => refreshToken;
 
+/** 이미지 등을 서버에서 직접 받을 때 쓰는 주소. */
+export const apiUrl = (path) => `${BASE_URL}${path}`;
+
+/**
+ * 이미지처럼 apiFetch 를 거치지 않고 직접 받는 요청에 붙일 인증 헤더(토큰은 주소에 넣지 않는다).
+ * 로그인 세션이 있으면 Bearer, 없으면 익명 계정 토큰이다. 만료 직전이면 먼저 ensureFreshAccess() 를 부른다.
+ */
+export function authHeaders() {
+  if (accessToken) return { Authorization: `Bearer ${accessToken}` };
+  if (legacyToken) return { "X-Gyeot-Token": legacyToken };
+  return {};
+}
+
+/** Access Token(JWT)의 만료 시각(초). 읽지 못하면 0. */
+function accessExpiry() {
+  try {
+    const part = accessToken.split(".")[1].replace(/-/g, "+").replace(/_/g, "/");
+    return Number(JSON.parse(globalThis.atob(part)).exp) || 0;
+  } catch {
+    return 0;
+  }
+}
+
+/**
+ * 직접 받는 요청(이미지)을 보내기 전에 Access Token 이 없거나 1분 안에 만료되면 미리 갱신해 둔다.
+ * apiFetch 는 이 일을 스스로 하지만 이미지 요청은 거치지 않기 때문이다. 세션이 없으면 아무것도 하지 않는다.
+ */
+export async function ensureFreshAccess() {
+  if (!refreshToken) return;
+  if (!accessToken || accessExpiry() - Date.now() / 1000 < 60) await refreshSession();
+}
+
+/** 기기에 저장하는 값의 이름에 붙일 구분 값. 로그인 전 익명 계정 토큰으로만 만든다(로그인한 사람은 사용자 id 를 쓴다). */
+export function legacyStorageScope() {
+  if (!legacyToken) return "anonymous";
+  let h = 5381;
+  for (let i = 0; i < legacyToken.length; i += 1) h = ((h * 33) ^ legacyToken.charCodeAt(i)) >>> 0;
+  return `legacy-${h.toString(36)}`;
+}
+
 /** 서버가 {code, message} 로 돌려준 오류. retryAfter 는 429 의 Retry-After(초). */
 export class ApiError extends Error {
   constructor(status, code, message, retryAfter = 0) {

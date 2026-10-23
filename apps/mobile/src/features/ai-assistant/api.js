@@ -1,10 +1,10 @@
-import { apiFetch, isApiConfigured } from "@/shared/api/client";
+import { apiFetch, apiUrl, authHeaders, ensureFreshAccess, isApiConfigured } from "@/shared/api/client";
 
 /**
  * 가비의 답변 한 건.
  * @typedef {object} AssistantReply
  * @property {string} reply 답변 본문(간단한 마크다운: `## 제목`, `- 목록`, `**굵게**`, `[1]` 출처 번호)
- * @property {{ n: number, title: string }[]} [sources] 답변이 근거로 쓴 기록
+ * @property {{ n: number, title: string, itemId?: string, sourcePath?: string | null }[]} [sources] 답변이 근거로 쓴 기록(itemId 가 있으면 원본을 열 수 있다)
  * @property {{ to: string, text: string } | null} [draft] 가족에게 보낼 메시지 초안(승인 전)
  */
 
@@ -57,16 +57,131 @@ export async function sendMessage(text, history = []) {
     return mockReply(text);
   }
   const res = await apiFetch("/ai-assistant/chat", { method: "POST", body: { message: text, history: history.slice(-10) } });
-  const sources = (res.sources ?? []).map(({ n, title }) => ({ n, title }));
+  const sources = (res.sources ?? []).map(({ n, title, item_id: itemId, source_path: sourcePath }) => ({ n, title, itemId, sourcePath }));
   return { reply: res.reply, sources, draft: null };
 }
 
+const MOCK_ANALYZE_MS = 2500;
+const mockUploads = new Map(); // 서버가 없을 때 id → 올린 시각
+
 /**
- * 사진 한 장을 가족 기록으로 올린다. TODO: 자동 전송 동의 확인, 분류 결과 표시.
+ * 파일 한 개(사진·문서 등)를 가족 기록으로 올린다. 서버는 바로 받았다고 답하고 뒤에서 분석한다.
+ * 분석 결과는 getFileStatus 로 확인한다. 용량·네트워크 오류는 ApiError 메시지를 그대로 쓴다.
  * @param {{ uri: string, name?: string, type?: string }} file expo-image-picker 등에서 받은 파일
+ * @returns {Promise<{ id: string, filename: string, size?: number, status: string }>}
  */
-export function uploadPhoto(file) {
+export async function uploadFile(file) {
+  const filename = file.name ?? "photo.jpg";
+  if (!isApiConfigured()) {
+    await new Promise((resolve) => setTimeout(resolve, 600));
+    const id = `mock-${Date.now()}`;
+    mockUploads.set(id, Date.now());
+    return { id, filename, status: "received" };
+  }
   const form = new FormData();
-  form.append("file", { uri: file.uri, name: file.name ?? "photo.jpg", type: file.type ?? "image/jpeg" });
-  return apiFetch("/ai-assistant/photos", { method: "POST", body: form });
+  form.append("file", { uri: file.uri, name: filename, type: file.type ?? "application/octet-stream" });
+  return apiFetch("/ai-assistant/files", { method: "POST", body: form });
 }
+
+/**
+ * 올린 파일의 분석 상태.
+ * status: received | analyzed(저장 완료) | needs_review(저장했지만 확인 필요) | failed(읽지 못함, message 에 이유)
+ * @param {string} id
+ * @returns {Promise<{ id: string, status: string, title?: string, kind_label?: string, description?: string, message?: string }>}
+ */
+export async function getFileStatus(id) {
+  if (!isApiConfigured()) {
+    const startedAt = mockUploads.get(id) ?? 0;
+    if (Date.now() - startedAt < MOCK_ANALYZE_MS) return { id, status: "received" };
+    return {
+      id,
+      status: "analyzed",
+      kind_label: "영수증",
+      title: "동대문마트 영수증",
+      description: "2026-10-15 · 2,950원",
+    };
+  }
+  return apiFetch(`/ai-assistant/files/${encodeURIComponent(id)}`);
+}
+
+/**
+ * 올린 원본 파일을 화면에 띄울 이미지 소스. 서버가 가족 확인을 하므로 로그인 헤더를 같이 보낸다.
+ * 서버가 없으면(mock) null.
+ * @param {string} id
+ * @returns {{ uri: string, headers: Record<string, string> } | null}
+ */
+export function originalImageSource(id) {
+  if (!isApiConfigured()) return null;
+  return { uri: apiUrl(`/ai-assistant/files/${encodeURIComponent(id)}/original`), headers: authHeaders() };
+}
+
+const IMAGE_EXT = /\.(jpe?g|png|webp|gif|bmp|heic|heif)$/i;
+
+/**
+ * 원본을 앱 안에서 볼 수 있게 이미지 소스 목록으로 바꾼다. 사진은 한 장, PDF 는 서버가 쪽별로 그린 그림 여러 장이다.
+ * 그 밖의 형식(워드·엑셀·PPT 등)은 앱에서 열 수 없어 sources 가 비고 안내 문구만 돌려준다.
+ * @param {string} id 기록(파일) id
+ * @param {string | null | undefined} sourcePath 서버가 알려 준 원본 경로(확장자로 종류를 안다)
+ * @returns {Promise<{ sources: { uri: string, headers: Record<string, string> }[], message?: string }>}
+ */
+export async function openOriginal(id, sourcePath) {
+  await ensureFreshAccess().catch(() => {}); // 이미지는 apiFetch 를 거치지 않아 토큰을 미리 갱신한다
+  const source = originalImageSource(id);
+  if (!source) return { sources: [], message: "서버에 연결되지 않아 원본을 볼 수 없어요." };
+  if (!sourcePath) return { sources: [], message: "이 기록에는 원본 파일이 없어요." };
+  if (IMAGE_EXT.test(sourcePath)) return { sources: [source] };
+  if (/\.pdf$/i.test(sourcePath)) {
+    try {
+      const { count } = await apiFetch(`/ai-assistant/files/${encodeURIComponent(id)}/original/pages`);
+      const base = `/ai-assistant/files/${encodeURIComponent(id)}/original/pages`;
+      return { sources: Array.from({ length: count }, (_, i) => ({ uri: apiUrl(`${base}/${i + 1}`), headers: authHeaders() })) };
+    } catch (e) {
+      return { sources: [], message: e?.message || "PDF 를 불러오지 못했어요." };
+    }
+  }
+  return { sources: [], message: "이 형식의 파일은 아직 앱에서 열 수 없어요. 읽어 낸 글로 확인해 주세요." };
+}
+
+/**
+ * 가족이 올린 기록 목록(최근 순). 사이드바의 "기록" 탭에서 쓴다.
+ * needs_review: 읽다 만 부분이 있거나 종류가 애매해서 사용자가 확인해야 하는 기록. 확인이 필요한 것이 앞에 온다.
+ * @returns {Promise<{ id: string, title: string, kind_label: string, occurred_on: string | null, has_unread_parts: boolean, needs_review: boolean, hasOriginal: boolean }[]>}
+ */
+export async function listRecords() {
+  if (!isApiConfigured()) {
+    return [{ id: "mock-1", title: "동대문마트 영수증", kind_label: "영수증", occurred_on: "2026-10-15", has_unread_parts: false, needs_review: true, hasOriginal: false }];
+  }
+  const items = await apiFetch("/ai-assistant/knowledge/items?limit=50");
+  await ensureFreshAccess().catch(() => {}); // 목록의 작은 사진도 같은 토큰으로 받는다
+  const records = items.map((i) => ({ ...i, hasOriginal: Boolean(i.source_path) }));
+  return records.sort((a, b) => Number(b.needs_review) - Number(a.needs_review)); // 확인 필요한 기록을 맨 위로(나머지는 서버 순서 유지)
+}
+
+/**
+ * 기록을 확인하며 고친다. 보낸 칸만 바뀌고, 빈 객체를 보내면 "고칠 것 없이 확인했어요"가 된다.
+ * 저장하면 확인 필요 표시가 사라지고 검색에도 고친 내용이 반영된다.
+ * @param {string} id
+ * @param {{ title?: string, kind_label?: string, occurred_on?: string | null, body_md?: string }} changes
+ */
+export async function updateRecord(id, changes = {}) {
+  if (!isApiConfigured()) return { id, ...changes, needs_review: false };
+  return apiFetch(`/ai-assistant/knowledge/items/${encodeURIComponent(id)}`, { method: "PATCH", body: changes });
+}
+
+/** 기록 한 건의 읽어 낸 글(개인정보는 가려진 상태). */
+export async function getRecord(id) {
+  if (!isApiConfigured()) return { id, body_md: "# 동대문마트 영수증\n분류: 영수증\n합계 2,950원" };
+  return apiFetch(`/ai-assistant/knowledge/items/${encodeURIComponent(id)}`);
+}
+
+/**
+ * 기록을 지운다. 읽어 낸 글과 검색용 조각, 서버에 둔 원본 파일까지 지워지고 되돌릴 수 없다.
+ * @param {string} id
+ */
+export async function deleteRecord(id) {
+  if (!isApiConfigured()) return;
+  await apiFetch(`/ai-assistant/knowledge/items/${encodeURIComponent(id)}`, { method: "DELETE" });
+}
+
+/** 예전 이름. uploadFile 과 같다. */
+export const uploadPhoto = uploadFile;

@@ -5,8 +5,9 @@ from sqlalchemy.orm import Session
 
 from app.shared.errors import ApiError, not_found
 
+from ..ingest import masking
 from . import repository as repo
-from .chunking import UNREAD_MARK, split_markdown
+from .chunking import DOUBT_MARK, UNREAD_MARK, split_markdown
 from .embedding import TextEmbedder, get_embedder
 from .models import EMBED_DIM, KnowledgeChunk, KnowledgeItem
 
@@ -63,12 +64,12 @@ def ingest(
     source_path: str | None = None,
     occurred_on: date | None = None,
     sensitivity: str | None = None,
+    item_id: str | None = None,
 ) -> KnowledgeItem:
     """전처리가 넘긴 기록 한 건을 조각내고 임베딩해서 저장한다."""
     embedder = _embedder(db)
-    pieces = split_markdown(body_md)
-    vectors = embedder.embed_passages([p.text for p in pieces])
     item = KnowledgeItem(
+        **({"id": item_id} if item_id else {}),
         group_id=group_id,
         created_by=user_id,
         kind_label=kind_label,
@@ -79,7 +80,13 @@ def ingest(
         has_unread_parts=UNREAD_MARK in body_md,
         sensitivity=_sensitivity(kind_label, sensitivity),
     )
-    chunks = [
+    return repo.add_item(db, item, _chunks(embedder, group_id, body_md))
+
+
+def _chunks(embedder: TextEmbedder, group_id: str, body_md: str) -> list[KnowledgeChunk]:
+    pieces = split_markdown(body_md)
+    vectors = embedder.embed_passages([p.text for p in pieces])
+    return [
         KnowledgeChunk(
             group_id=group_id,
             seq=p.seq,
@@ -90,7 +97,42 @@ def ingest(
         )
         for p, v in zip(pieces, vectors, strict=True)
     ]
-    return repo.add_item(db, item, chunks)
+
+
+def update_item(db: Session, group_id: str, item_id: str, changes: dict) -> KnowledgeItem:
+    """사용자가 확인하며 고친 값으로 기록을 바꾸고 검색용 조각을 다시 만든다.
+
+    changes 에는 고친 칸만 있다(title, kind_label, occurred_on, body_md). 비어 있으면 고치지 않고 "확인했다"는 뜻이다.
+    글은 다시 개인정보 가리기를 거치고, 읽지 못한 부분 표시는 사용자가 확인했으므로 지운다."""
+    item = get_item(db, group_id, item_id)
+    embedder = _embedder(db)
+    title = changes.get("title") or item.title
+    kind = changes.get("kind_label") or item.kind_label
+    body = changes.get("body_md") or item.body_md
+    body = masking.mask_text(body, masking.sensitive_kind(body))
+    lines = [
+        ln.removesuffix(DOUBT_MARK).rstrip()  # 사용자가 확인했으니 [불확실] 표시는 지운다
+        for ln in body.split("\n")
+        if ln.strip() != UNREAD_MARK
+    ]
+    if lines and lines[0].startswith("# "):  # 제목·분류 줄은 고친 값과 맞춘다
+        lines[0] = f"# {title}"
+    if len(lines) > 1 and lines[1].startswith("분류:"):
+        lines[1] = f"분류: {kind}"
+    body = "\n".join(lines).strip()
+    if not body:
+        raise ApiError(422, "empty_body", "내용이 비어 있어요")
+    sensitive = (
+        item.sensitivity == "sensitive"
+        or masking.sensitive_kind(body) != "none"
+        or _sensitivity(kind, None) == "sensitive"
+    )
+    item.title, item.kind_label, item.body_md = title, kind, body
+    if "occurred_on" in changes:
+        item.occurred_on = changes["occurred_on"]
+    item.has_unread_parts = False
+    item.sensitivity = "sensitive" if sensitive else "normal"
+    return repo.replace_chunks(db, item, _chunks(embedder, group_id, body))
 
 
 def search(

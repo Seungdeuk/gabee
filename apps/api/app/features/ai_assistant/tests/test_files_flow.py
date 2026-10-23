@@ -1,0 +1,523 @@
+"""업로드 → 전처리(가짜 OCR·가짜 모델) → knowledge 저장 → 검색·채팅 흐름. 모델이나 인터넷 없이 돈다."""
+
+import hashlib
+import io
+import json
+from pathlib import Path
+
+import pytest
+from PIL import Image
+
+from app.features.ai_assistant import files
+from app.features.ai_assistant.ingest.converters import OcrLine
+from app.features.ai_assistant.ingest.schemas import Caption
+from app.shared.config import settings
+
+
+class FakeOcr:
+    def __init__(self, lines=()):
+        self.lines = [OcrLine(t, c) for t, c in lines]
+
+    def read(self, image):
+        return list(self.lines)
+
+
+class FakeCaptioner:
+    def __init__(
+        self,
+        caption=Caption(
+            description="푸른 바다와 모래사장이 보이는 풍경", keywords=["바다", "해변"]
+        ),
+    ):
+        self.caption = caption
+        self.calls = 0
+
+    def describe(self, image):
+        self.calls += 1
+        return self.caption
+
+
+def png(color=(120, 160, 200)) -> bytes:
+    out = io.BytesIO()
+    Image.new("RGB", (400, 300), color).save(out, "PNG")
+    return out.getvalue()
+
+
+@pytest.fixture
+def pipeline():
+    old = files.processors
+    files.processors = files.Processors(
+        ocr=FakeOcr(),
+        llm=lambda *a, **k: {
+            "doc_type": "학교 가정통신문",
+            "is_document": True,
+            "tags": ["학교"],
+            "confidence": 0.9,
+        },
+        captioner=FakeCaptioner(),
+        default_captioner=False,
+    )
+    yield files.processors
+    files.processors = old
+
+
+def upload(client, headers, data, name="a.png", ctype="image/png"):
+    r = client.post("/ai-assistant/files", files={"file": (name, data, ctype)}, headers=headers)
+    assert r.status_code == 201, r.text
+    return r.json()
+
+
+def test_receipt_photo_is_read_masked_saved_and_findable(client, family, pipeline):
+    a, _, group = family
+    pipeline.ocr = FakeOcr(
+        [
+            ("동대문마트", 0.95),
+            ("2026-10-15", 0.92),
+            ("합계 34,950원", 0.93),
+            ("영수증 주민 900101-1234567", 0.9),
+        ]
+    )
+    data = png()
+    up = upload(client, a, data, "영수증.png")
+    assert up["status"] == "received"
+    # 테스트 클라이언트는 응답 뒤 백그라운드 작업이 끝나야 돌아온다
+    st = client.get(f"/ai-assistant/files/{up['id']}", headers=a).json()
+    assert st["status"] == "analyzed" and st["kind_label"] == "영수증"
+    item = client.get(f"/ai-assistant/knowledge/items/{up['id']}", headers=a).json()
+    assert "34,950" in item["body_md"]
+    assert (
+        "900101-1234567" not in item["body_md"] and "******-*******" in item["body_md"]
+    )  # 주민번호는 가려져 저장
+    hits = client.post(
+        "/ai-assistant/knowledge/search", json={"query": "마트 영수증 합계"}, headers=a
+    ).json()["hits"]
+    assert hits and hits[0]["item_id"] == up["id"]
+    # 원본은 그대로(바이트 동일) 원본 폴더에 있다
+    sha = hashlib.sha256(data).hexdigest()
+    raw = Path(settings.data_dir) / "raw" / group["id"] / sha[:2] / f"{sha}.png"
+    assert raw.read_bytes() == data and item["source_path"] == f"{group['id']}/{sha[:2]}/{sha}.png"
+
+
+def test_photo_without_text_gets_a_description_and_is_found_by_it(client, family, pipeline):
+    a, _, _ = family
+    up = upload(client, a, png((10, 90, 200)), "sea.png")
+    st = client.get(f"/ai-assistant/files/{up['id']}", headers=a).json()
+    assert st["status"] == "analyzed" and st["kind_label"] == "사진"
+    assert "푸른 바다" in st["description"]
+    hits = client.post(
+        "/ai-assistant/knowledge/search", json={"query": "바다 사진"}, headers=a
+    ).json()["hits"]
+    assert hits[0]["item_id"] == up["id"]
+    body = client.get(f"/ai-assistant/knowledge/items/{up['id']}", headers=a).json()["body_md"]
+    assert "자동 설명" in body and "틀릴 수 있어요" in body  # 자동으로 만든 설명임을 남긴다
+    assert pipeline.captioner.calls == 1
+
+
+def test_text_photos_do_not_call_the_caption_model(client, family, pipeline):
+    a, _, _ = family
+    pipeline.ocr = FakeOcr([("가정통신문", 0.95), ("현장체험학습 안내", 0.9)])
+    up = upload(client, a, png((9, 9, 9)))
+    assert client.get(f"/ai-assistant/files/{up['id']}", headers=a).json()["status"] == "analyzed"
+    assert pipeline.captioner.calls == 0
+
+
+def test_sensitive_documents_reach_the_chat_model_only_masked_unless_excluded(
+    client, family, pipeline, monkeypatch
+):
+    from app.features.ai_assistant.knowledge import rag_chat
+
+    a, _, _ = family
+    pipeline.ocr = FakeOcr(
+        [
+            ("처방전", 0.95),
+            ("환자 김영희", 0.9),
+            ("조제약 소염진통제", 0.9),
+            ("주민 900101-2345678", 0.9),
+        ]
+    )
+    up = upload(client, a, png((5, 5, 5)), "rx.png")
+    st = client.get(f"/ai-assistant/files/{up['id']}", headers=a).json()
+    assert st["status"] in ("analyzed", "needs_review")
+    item = client.get(f"/ai-assistant/knowledge/items/{up['id']}", headers=a).json()
+    assert item["sensitivity"] == "sensitive" and "900101-2345678" not in item["body_md"]
+
+    seen = []
+
+    def fake_post(body):
+        if len(seen) == 0:
+            seen.append(1)
+            call = {
+                "type": "tool_use",
+                "id": "t",
+                "name": "search_knowledge",
+                "input": {"query": "처방전 약"},
+            }
+            return {"content": [call]}
+        seen.append(body["messages"][-1]["content"][0]["content"])
+        return {"content": [{"type": "text", "text": "확인했어요."}]}
+
+    monkeypatch.setattr(settings, "anthropic_api_key", "test-key")
+    monkeypatch.setattr(rag_chat, "_post", fake_post)
+    client.post("/ai-assistant/chat", json={"message": "처방전 약 알려줘"}, headers=a)
+    assert "소염진통제" in seen[1]  # 기본값: 가려진 글자가 Claude 에게 간다
+    assert "900101-2345678" not in seen[1] and "김영희" not in seen[1]
+
+    seen.clear()
+    monkeypatch.setattr(settings, "chat_include_sensitive", False)
+    client.post("/ai-assistant/chat", json={"message": "처방전 약 알려줘"}, headers=a)
+    assert "소염진통제" not in seen[1]  # 끄면 민감 기록은 가지 않는다
+
+
+def test_broken_and_empty_uploads_fail_cleanly(client, family, pipeline):
+    a, b, _ = family
+    assert (
+        client.post(
+            "/ai-assistant/files", files={"file": ("e.txt", b"", "text/plain")}, headers=a
+        ).json()["code"]
+        == "empty_file"
+    )
+    up = upload(client, a, b"\xff\xd8\xff" + b"garbage" * 10, "broken.jpg", "image/jpeg")
+    st = client.get(f"/ai-assistant/files/{up['id']}", headers=a).json()
+    assert st["status"] == "failed" and st["message"]
+    assert (
+        client.get(f"/ai-assistant/knowledge/items/{up['id']}", headers=a).status_code == 404
+    )  # 저장된 기록 없음
+    assert (
+        client.get(f"/ai-assistant/files/{up['id']}", headers=b).status_code == 200
+    )  # 같은 가족은 본다
+
+
+def test_other_family_cannot_see_the_file_or_record(client, family, pipeline):
+    from tests.helpers import signup
+
+    a, _, _ = family
+    up = upload(client, a, png((1, 2, 3)))
+    stranger = signup(client, "철수")
+    client.post("/family-group/groups", json={"name": "남의 가족"}, headers=stranger)
+    assert client.get(f"/ai-assistant/files/{up['id']}", headers=stranger).status_code == 404
+    assert (
+        client.get(f"/ai-assistant/knowledge/items/{up['id']}", headers=stranger).status_code == 404
+    )
+    hits = client.post(
+        "/ai-assistant/knowledge/search", json={"query": "사진"}, headers=stranger
+    ).json()["hits"]
+    assert hits == []
+
+
+def test_document_upload_converts_to_text(client, family, pipeline):
+    a, _, _ = family
+    up = upload(
+        client,
+        a,
+        "# 제주 여행 계획\n\n- 11월 2일 출발\n- 렌터카 예약\n".encode(),
+        "plan.md",
+        "text/markdown",
+    )
+    st = client.get(f"/ai-assistant/files/{up['id']}", headers=a).json()
+    assert st["status"] in ("analyzed", "needs_review")
+    hits = client.post(
+        "/ai-assistant/knowledge/search", json={"query": "제주 렌터카"}, headers=a
+    ).json()["hits"]
+    assert hits[0]["item_id"] == up["id"]
+
+
+def test_a_file_stuck_in_received_is_reported_as_failed(client, family, pipeline):
+    """처리 도중 서버가 꺼져 상태가 received 로 남은 파일은 오래되면 실패로 알려 준다."""
+    from datetime import UTC, datetime, timedelta
+
+    from app.features.ai_assistant.models import Photo
+    from app.shared.db import SessionLocal
+
+    a, _, group = family
+    with SessionLocal() as db:
+        db.add(
+            Photo(
+                id="stuck0000001",
+                group_id=group["id"],
+                uploaded_by="u",
+                filename="x.png",
+                content_type="image/png",
+                size=1,
+                status="received",
+                created_at=datetime.now(UTC) - timedelta(minutes=30),
+            )
+        )
+        db.commit()
+    st = client.get("/ai-assistant/files/stuck0000001", headers=a).json()
+    assert st["status"] == "failed" and st["message"]
+
+
+def test_original_file_comes_back_byte_identical_for_the_same_family(client, family, pipeline):
+    a, b, _ = family
+    data = png((33, 44, 55))
+    up = upload(client, a, data, "원본.png")
+    r = client.get(f"/ai-assistant/files/{up['id']}/original", headers=b)  # 같은 가족 다른 구성원
+    assert r.status_code == 200 and r.content == data
+    assert r.headers["content-type"] == "image/png"
+    assert r.headers["cache-control"] == "private, no-store"
+    assert r.headers["content-disposition"].startswith("inline")
+
+
+def test_original_file_is_hidden_from_other_families_and_strangers(client, family, pipeline):
+    from tests.helpers import signup
+
+    a, _, _ = family
+    up = upload(client, a, png((1, 1, 1)))
+    stranger = signup(client, "철수")
+    client.post("/family-group/groups", json={"name": "남의 가족"}, headers=stranger)
+    url = f"/ai-assistant/files/{up['id']}/original"
+    assert client.get(url, headers=stranger).status_code == 404
+    assert client.get(url).status_code in (401, 403)
+    assert client.get("/ai-assistant/files/nope/original", headers=a).status_code == 404
+
+
+def test_original_file_refuses_a_source_path_pointing_at_another_group(client, family, pipeline):
+    from app.features.ai_assistant.knowledge.models import KnowledgeItem
+    from app.shared.db import SessionLocal
+
+    a, _, _ = family
+    up = upload(client, a, png((9, 8, 7)))
+    with SessionLocal() as db:
+        item = db.get(KnowledgeItem, up["id"])
+        item.source_path = "othergroup00/../" + item.source_path
+        db.commit()
+    assert client.get(f"/ai-assistant/files/{up['id']}/original", headers=a).status_code == 404
+
+
+def test_receipt_title_skips_a_leading_phone_line(client, family, pipeline):
+    a, _, _ = family
+    pipeline.ocr = FakeOcr(
+        [("전화 02-555-0123", 0.9), ("하나로마트 동대문점", 0.95), ("합계 9,900원", 0.93)]
+    )
+    up = upload(client, a, png((7, 7, 7)), "r.png")
+    st = client.get(f"/ai-assistant/files/{up['id']}", headers=a).json()
+    assert st["title"] == "하나로마트 동대문점"
+
+
+def _blurry_upload(client, a, pipeline):
+    pipeline.ocr = FakeOcr([("동대문마트", 0.5), ("합계 34,950원", 0.5)])  # 글자가 흐려 확인 필요
+    up = upload(client, a, png((4, 5, 6)), "blur.png")
+    item = client.get(f"/ai-assistant/knowledge/items/{up['id']}", headers=a).json()
+    assert item["needs_review"] is True
+    return up["id"]
+
+
+def test_blurry_files_are_listed_as_needing_review_and_editing_clears_it(client, family, pipeline):
+    a, _, _ = family
+    fid = _blurry_upload(client, a, pipeline)
+    listed = client.get("/ai-assistant/knowledge/items", headers=a).json()
+    assert [i["needs_review"] for i in listed if i["id"] == fid] == [True]
+
+    detail = client.get(f"/ai-assistant/knowledge/items/{fid}", headers=a).json()
+    fixed = detail["body_md"].replace("34,950", "43,950")
+    r = client.patch(
+        f"/ai-assistant/knowledge/items/{fid}",
+        json={"title": "하나로마트 영수증", "body_md": fixed},
+        headers=a,
+    )
+    assert r.status_code == 200, r.text
+    out = r.json()
+    assert out["needs_review"] is False and out["title"] == "하나로마트 영수증"
+    assert "43,950" in out["body_md"] and "34,950" not in out["body_md"]
+    assert out["body_md"].startswith("# 하나로마트 영수증")
+    assert client.get(f"/ai-assistant/files/{fid}", headers=a).json()["status"] == "analyzed"
+    hits = client.post(
+        "/ai-assistant/knowledge/search", json={"query": "43,950원 합계"}, headers=a
+    ).json()["hits"]
+    assert hits and hits[0]["item_id"] == fid
+
+
+def test_confirming_without_changes_clears_the_review_mark(client, family, pipeline):
+    a, _, _ = family
+    fid = _blurry_upload(client, a, pipeline)
+    r = client.patch(f"/ai-assistant/knowledge/items/{fid}", json={}, headers=a)
+    assert r.status_code == 200 and r.json()["needs_review"] is False
+    assert client.get(f"/ai-assistant/files/{fid}", headers=a).json()["status"] == "analyzed"
+
+
+def test_edited_text_is_masked_again_and_empty_text_is_refused(client, family, pipeline):
+    a, _, _ = family
+    fid = _blurry_upload(client, a, pipeline)
+    url = f"/ai-assistant/knowledge/items/{fid}"
+    r = client.patch(
+        url,
+        json={"body_md": "# 메모\n분류: 영수증\n주민번호 900101-1234567 전화 010-1234-5678"},
+        headers=a,
+    )
+    assert r.status_code == 200
+    body = r.json()["body_md"]
+    assert "900101-1234567" not in body and "010-1234-5678" not in body
+    assert client.patch(url, json={"body_md": ""}, headers=a).status_code == 422
+
+
+def test_other_family_cannot_edit_a_record(client, family, pipeline):
+    from tests.helpers import signup
+
+    a, _, _ = family
+    fid = _blurry_upload(client, a, pipeline)
+    stranger = signup(client, "철수")
+    client.post("/family-group/groups", json={"name": "남의 가족"}, headers=stranger)
+    url = f"/ai-assistant/knowledge/items/{fid}"
+    assert client.patch(url, json={"title": "해킹"}, headers=stranger).status_code == 404
+    assert client.patch(url, json={"title": "익명"}).status_code in (401, 403)
+    assert client.get(url, headers=a).json()["title"] != "해킹"
+
+
+def _pdf_bytes(pages: int) -> bytes:
+    from PIL import Image
+
+    imgs = [Image.new("RGB", (300, 400), (200 - i * 20, 220, 240)) for i in range(pages)]
+    out = io.BytesIO()
+    imgs[0].save(out, "PDF", save_all=True, append_images=imgs[1:])
+    return out.getvalue()
+
+
+def test_original_pdf_is_served_as_page_images_for_the_same_family(client, family, pipeline):
+    a, b, _ = family
+    up = upload(client, a, _pdf_bytes(3), "scan.pdf", "application/pdf")
+    base = f"/ai-assistant/files/{up['id']}/original/pages"
+    assert client.get(base, headers=b).json() == {"count": 3}
+    page = client.get(f"{base}/2", headers=b)
+    assert page.status_code == 200 and page.headers["content-type"] == "image/jpeg"
+    assert page.content[:2] == b"\xff\xd8"
+    assert client.get(f"{base}/4", headers=a).status_code == 404  # 없는 쪽
+    assert client.get(f"{base}/0", headers=a).status_code == 404
+
+
+def test_original_pdf_pages_are_hidden_from_others_and_non_pdf(client, family, pipeline):
+    from tests.helpers import signup
+
+    a, _, _ = family
+    pdf = upload(client, a, _pdf_bytes(1), "p.pdf", "application/pdf")
+    photo = upload(client, a, png((1, 2, 3)), "p.png")
+    stranger = signup(client, "철수")
+    client.post("/family-group/groups", json={"name": "남의 가족"}, headers=stranger)
+    pages = f"/ai-assistant/files/{pdf['id']}/original/pages"
+    assert client.get(pages, headers=stranger).status_code == 404
+    assert client.get(f"{pages}/1", headers=stranger).status_code == 404
+    assert client.get(pages).status_code in (401, 403)
+    assert (
+        client.get(f"/ai-assistant/files/{photo['id']}/original/pages", headers=a).status_code
+        == 404
+    )
+
+
+def test_the_same_file_uploaded_twice_is_one_source(client, family, pipeline, monkeypatch):
+    from app.features.ai_assistant.knowledge import rag_chat
+
+    a, _, _ = family
+    pipeline.ocr = FakeOcr([("동대문마트", 0.95), ("합계 34,950원", 0.93)])
+    data = png((9, 9, 200))
+    first = upload(client, a, data, "r1.png")
+    second = upload(client, a, data, "r2.png")  # 같은 파일을 한 번 더
+    assert first["id"] != second["id"]
+    state = {"calls": 0, "refs": []}
+
+    def fake_post(body):
+        state["calls"] += 1
+        if state["calls"] == 1:
+            call = {
+                "type": "tool_use",
+                "id": "t",
+                "name": "search_knowledge",
+                "input": {"query": "마트 합계"},
+            }
+            return {"content": [call]}
+        results = json.loads(body["messages"][-1]["content"][0]["content"])["results"]
+        state["refs"] = [r["ref"] for r in results]
+        refs = "".join(f"[{r}]" for r in state["refs"])
+        return {"content": [{"type": "text", "text": f"합계는 34,950원이에요 {refs}"}]}
+
+    monkeypatch.setattr(settings, "anthropic_api_key", "test-key")
+    monkeypatch.setattr(rag_chat, "_post", fake_post)
+    out = client.post("/ai-assistant/chat", json={"message": "마트 합계 얼마야?"}, headers=a).json()
+    assert len(state["refs"]) == 1  # Claude 에게도 같은 파일은 한 번만 간다
+    assert len(out["sources"]) == 1 and "[1][1]" not in out["reply"]
+
+
+def _raw_files(group_id: str) -> list[Path]:
+    root = Path(settings.data_dir) / "raw" / group_id
+    return [p for p in root.rglob("*") if p.is_file()] if root.exists() else []
+
+
+def test_deleting_a_record_removes_text_search_and_original(client, family, pipeline):
+    a, _, group = family
+    pipeline.ocr = FakeOcr([("동대문마트", 0.95), ("합계 34,950원", 0.93)])
+    up = upload(client, a, png((77, 7, 7)), "del.png")
+    assert _raw_files(group["id"])  # 원본과 화면용 사본이 있다
+    r = client.delete(f"/ai-assistant/knowledge/items/{up['id']}", headers=a)
+    assert r.status_code == 204
+    assert client.get(f"/ai-assistant/knowledge/items/{up['id']}", headers=a).status_code == 404
+    assert client.get(f"/ai-assistant/files/{up['id']}", headers=a).status_code == 404
+    assert client.get(f"/ai-assistant/files/{up['id']}/original", headers=a).status_code == 404
+    assert [i["id"] for i in client.get("/ai-assistant/knowledge/items", headers=a).json()] == []
+    hits = client.post(
+        "/ai-assistant/knowledge/search", json={"query": "마트 합계"}, headers=a
+    ).json()["hits"]
+    assert hits == []
+    assert _raw_files(group["id"]) == []  # 서버에 둔 원본도 지워졌다
+    assert client.delete(f"/ai-assistant/knowledge/items/{up['id']}", headers=a).status_code == 404
+
+
+def test_original_stays_while_another_record_uses_the_same_file(client, family, pipeline):
+    a, _, group = family
+    data = png((1, 77, 7))
+    first = upload(client, a, data, "x1.png")
+    second = upload(client, a, data, "x2.png")  # 같은 파일을 한 번 더
+    assert (
+        client.delete(f"/ai-assistant/knowledge/items/{first['id']}", headers=a).status_code == 204
+    )
+    assert _raw_files(group["id"])  # 두 번째 기록이 아직 쓰는 원본은 그대로
+    assert client.get(f"/ai-assistant/files/{second['id']}/original", headers=a).status_code == 200
+    assert (
+        client.delete(f"/ai-assistant/knowledge/items/{second['id']}", headers=a).status_code == 204
+    )
+    assert _raw_files(group["id"]) == []
+
+
+def test_other_family_cannot_delete_a_record(client, family, pipeline):
+    from tests.helpers import signup
+
+    a, _, _ = family
+    up = upload(client, a, png((7, 7, 77)), "keep.png")
+    stranger = signup(client, "철수")
+    client.post("/family-group/groups", json={"name": "남의 가족"}, headers=stranger)
+    url = f"/ai-assistant/knowledge/items/{up['id']}"
+    assert client.delete(url, headers=stranger).status_code == 404
+    assert client.delete(url).status_code in (401, 403)
+    assert client.get(url, headers=a).status_code == 200
+    assert client.get(f"/ai-assistant/files/{up['id']}/original", headers=a).status_code == 200
+
+
+def test_blurry_lines_are_marked_asked_about_and_cleared_when_confirmed(client, family, pipeline):
+    a, _, _ = family
+    pipeline.ocr = FakeOcr(
+        [("하나로마트 동대문점", 0.95), ("우유 2,95O원", 0.55), ("합계 9,900원", 0.93)]
+    )
+    up = upload(client, a, png((5, 50, 5)), "doubt.png")
+    status = client.get(f"/ai-assistant/files/{up['id']}", headers=a).json()
+    assert status["status"] == "needs_review"
+    assert status["doubts"] == ["우유 2,95O원"]  # 흐린 줄만 물어본다
+    assert status["title"] == "하나로마트 동대문점"  # 제목에는 표시가 섞이지 않는다
+    body = client.get(f"/ai-assistant/knowledge/items/{up['id']}", headers=a).json()["body_md"]
+    assert "우유 2,95O원 [불확실]" in body and "합계 9,900원 [불확실]" not in body
+
+    # 사용자가 줄을 고쳐서 저장하면 표시가 사라지고 확인 필요도 사라진다
+    fixed = body.replace("우유 2,95O원 [불확실]", "우유 2,950원")
+    r = client.patch(
+        f"/ai-assistant/knowledge/items/{up['id']}", json={"body_md": fixed}, headers=a
+    ).json()
+    assert (
+        "[불확실]" not in r["body_md"] and "2,950원" in r["body_md"] and r["needs_review"] is False
+    )
+    after = client.get(f"/ai-assistant/files/{up['id']}", headers=a).json()
+    assert after["status"] == "analyzed" and after["doubts"] == []
+
+
+def test_confirming_without_changes_also_clears_the_doubt_marks(client, family, pipeline):
+    a, _, _ = family
+    pipeline.ocr = FakeOcr([("가게 이름", 0.95), ("합계 1,000원", 0.4)])
+    up = upload(client, a, png((50, 5, 5)), "doubt2.png")
+    assert client.get(f"/ai-assistant/files/{up['id']}", headers=a).json()["doubts"]
+    r = client.patch(f"/ai-assistant/knowledge/items/{up['id']}", json={}, headers=a).json()
+    assert "[불확실]" not in r["body_md"] and "합계 1,000원" in r["body_md"]

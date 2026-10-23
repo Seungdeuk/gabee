@@ -5,6 +5,9 @@ import { Pressable, Share, StyleSheet, Text, View } from "react-native";
 
 import { colors } from "@/theme";
 
+import useOriginal from "../hooks/useOriginal";
+import OriginalViewer from "./OriginalViewer";
+
 /** 한 줄 안의 **굵게** 와 [1] 출처 번호를 글자 조각으로 나눈다. */
 function inline(text, keyBase) {
   return text.split(/(\*\*[^*]+\*\*|\[\d+\])/).filter(Boolean).map((part, i) => {
@@ -42,12 +45,13 @@ export function parseBlocks(text) {
 
 /**
  * 가비의 답변. 문단·제목·목록을 보여 주고, 아래에 출처 칩과 저장·복사 버튼을 둔다.
- * @param {{ text: string, sources?: { n: number, title: string }[], showActions?: boolean, children?: import("react").ReactNode }} props
+ * @param {{ text: string, sources?: { n: number, title: string, itemId?: string, sourcePath?: string | null }[], showActions?: boolean, children?: import("react").ReactNode }} props
  * children: 본문 아래, 출처 칩 위에 놓을 것(메시지 초안 카드 등)
  */
 export default function AnswerView({ text, sources = [], showActions = false, children }) {
   const [openSources, setOpenSources] = useState(false);
   const [copied, setCopied] = useState(false);
+  const original = useOriginal();
   const blocks = parseBlocks(text);
 
   const copy = async () => {
@@ -88,13 +92,29 @@ export default function AnswerView({ text, sources = [], showActions = false, ch
               {sources.length === 1 ? ` · ${sources[0].title}` : ""}
             </Text>
           </Pressable>
-          {openSources && sources.length > 1 ? (
+          {openSources || sources.length === 1 ? (
             <View style={styles.sourceList}>
-              {sources.map((s) => (
-                <Text key={s.n} style={styles.source}>
-                  {s.n}. {s.title}
-                </Text>
-              ))}
+              {sources.map((s) => {
+                return (
+                  <View key={s.n} style={styles.sourceRow}>
+                    {sources.length > 1 ? (
+                      <Text style={styles.source}>
+                        {s.n}. {s.title}
+                      </Text>
+                    ) : null}
+                    {s.itemId ? (
+                      <Pressable
+                        onPress={() => original.open(s.itemId, s.sourcePath, s.title)}
+                        style={styles.action}
+                        accessibilityRole="button"
+                      >
+                        <Ionicons name="image-outline" size={15} color={colors.textSub} />
+                        <Text style={styles.actionText}>원본 보기</Text>
+                      </Pressable>
+                    ) : null}
+                  </View>
+                );
+              })}
             </View>
           ) : null}
         </>
@@ -112,6 +132,8 @@ export default function AnswerView({ text, sources = [], showActions = false, ch
           </Pressable>
         </View>
       ) : null}
+
+      <OriginalViewer state={original.state} onClose={original.close} />
     </View>
   );
 }
@@ -140,7 +162,8 @@ const styles = StyleSheet.create({
     gap: 5,
   },
   chipText: { fontSize: 13, fontWeight: "500", color: colors.text },
-  sourceList: { gap: 4, paddingLeft: 4 },
+  sourceList: { gap: 6, paddingLeft: 4 },
+  sourceRow: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 8 },
   source: { fontSize: 13, color: colors.textSub },
   actions: { flexDirection: "row", gap: 8 },
   action: {

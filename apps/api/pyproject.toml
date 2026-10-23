@@ -13,9 +13,17 @@ dependencies = [
     "httpx>=0.27",
     # knowledge: 임베딩(ONNX)과 pgvector
     "numpy>=1.26",
-    "onnxruntime>=1.18",
     "tokenizers>=0.19",
     "pgvector>=0.3",
+    # ai_assistant/ingest: 원본 전처리 (사진 회전·축소, HEIC, 한국어 OCR, 오피스·PDF → 마크다운)
+    "pillow>=10.4",
+    "pillow-heif>=0.18",
+    "rapidocr>=3.4",
+    "onnxruntime>=1.20",
+    "markitdown[docx,xlsx,pptx,pdf]>=0.1",
+    "pypdfium2>=4",  # 스캔본 PDF 의 쪽을 그림으로 바꿔 OCR 한다
+    # 찍힌 사람 찾기(YuNet·SFace). rapidocr 가 이미 같이 설치하는 것을 이름만 적는다
+    "opencv-python-headless>=4.10",
     # 회원가입 비밀번호 해시(Argon2id)
     "argon2-cffi>=23.1",
     # 로그인 Access Token(JWT)

@@ -7,6 +7,8 @@ import re
 from dataclasses import dataclass
 
 UNREAD_MARK = "[읽지 못한 부분]"
+DOUBT_MARK = "[불확실]"  # 글자 인식이 흐린 줄 끝에 붙인다. 사용자가 확인하면 지운다
+
 PAGE_RE = re.compile(r"^\[p\.(\d+)\]\s*$")
 HEAD_RE = re.compile(r"^##\s+(.+?)\s*$")
 DEFAULT_MAX_CHARS = 700  # e5 계열은 512 토큰이 한계이고 한국어는 한 토큰이 1.5자쯤이라 여유를 둔 값

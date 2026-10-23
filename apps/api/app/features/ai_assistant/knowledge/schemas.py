@@ -15,6 +15,15 @@ class ItemIn(BaseModel):
     sensitivity: Literal["normal", "sensitive"] | None = None  # 비우면 분류 이름으로 정한다
 
 
+class ItemUpdateIn(BaseModel):
+    """사용자가 확인하며 고친 값. 보낸 칸만 바뀌고, 하나도 안 보내면 "확인했어요"로 처리한다."""
+
+    title: str | None = Field(default=None, min_length=1, max_length=200)
+    kind_label: str | None = Field(default=None, min_length=1, max_length=100)
+    occurred_on: date | None = None
+    body_md: str | None = Field(default=None, min_length=1, max_length=50000)
+
+
 class ItemOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -26,6 +35,7 @@ class ItemOut(BaseModel):
     has_unread_parts: bool
     sensitivity: str
     created_at: datetime
+    needs_review: bool = False  # 읽다 만 부분이 있거나 종류가 애매해서 사용자가 확인해야 하는 기록
 
 
 class ItemDetailOut(ItemOut):
