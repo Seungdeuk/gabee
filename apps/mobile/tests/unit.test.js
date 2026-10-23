@@ -2,6 +2,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
+import { digitsOnly, formatClock, parseCode } from "../src/features/auth/code.js";
 import { errorMessage, formatWait } from "../src/features/auth/messages.js";
 import { extractToken, scrubTokenFromBrowserUrl } from "../src/features/auth/tokenLink.js";
 import { checkEmail, checkLoginId, checkName, checkPassword, normalizeLoginId } from "../src/features/auth/validation.js";
@@ -109,4 +110,28 @@ test("웹 주소창의 ?token= 을 새 기록 항목 없이 지운다(다른 쿼
   assert.equal(scrubTokenFromBrowserUrl({ location: { href: "https://app.example/verify-email" }, history: { replaceState: () => assert.fail("호출되면 안 돼요") } }), false);
   assert.equal(scrubTokenFromBrowserUrl(undefined), false);
   assert.equal(scrubTokenFromBrowserUrl({}), false);
+});
+
+test("인증번호: 숫자만 6자리로, 6자리가 아니면 비어 있다", () => {
+  assert.equal(digitsOnly(" 482-913 "), "482913");
+  assert.equal(digitsOnly("4829137"), "482913"); // 붙여 넣기로 넘쳐도 6자리까지
+  assert.equal(digitsOnly("abc"), "");
+  assert.equal(digitsOnly(null), "");
+  assert.equal(parseCode("482 913"), "482913");
+  assert.equal(parseCode("48291"), "");
+  assert.equal(parseCode(undefined), "");
+});
+
+test("남은 시간 표시: 02:48 형식, 음수는 00:00", () => {
+  assert.equal(formatClock(168), "02:48");
+  assert.equal(formatClock(180), "03:00");
+  assert.equal(formatClock(9), "00:09");
+  assert.equal(formatClock(-5), "00:00");
+});
+
+test("인증번호 오류 문구", () => {
+  assert.match(errorMessage({ code: "verification_code_invalid" }), /인증번호가 맞지 않아요/);
+  assert.match(errorMessage({ code: "verification_code_locked" }), /다시 받아/);
+  assert.match(errorMessage({ code: "reset_code_invalid" }), /만료/);
+  assert.match(errorMessage({ code: "invalid_role_detail" }), /40자/);
 });

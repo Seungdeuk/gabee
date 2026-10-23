@@ -211,3 +211,27 @@ def test_credentials_helpers():
         credentials.validate_password("password1", "someone", "other@example.com")
         credentials.validate_password("abc12345", "abc12345", "x@y.com")
     assert exc.value.code == "weak_password"
+
+
+# ---------- 관계 직접 입력(역할=기타) ----------
+def test_other_role_keeps_the_typed_relation(client):
+    r = client.post(URL, json=body(role="other", role_detail="  이모   "))
+    assert r.status_code == 201, r.text
+    assert r.json()["user"]["role"] == "other" and r.json()["user"]["role_detail"] == "이모"
+    assert stored("jimin_kim").role_detail == "이모"
+
+
+def test_relation_is_ignored_unless_the_role_is_other(client):
+    r = client.post(URL, json=body(role="parent", role_detail="이모"))
+    assert r.status_code == 201 and r.json()["user"]["role_detail"] is None
+    assert (
+        client.post(URL, json=body(login_id="a_user1", email="a@example.com", role="other")).json()[
+            "user"
+        ]["role_detail"]
+        is None
+    )  # 비워 두어도 가입된다
+
+
+def test_too_long_relation_is_rejected(client):
+    r = client.post(URL, json=body(role="other", role_detail="가" * 41))
+    assert r.status_code == 400 and r.json()["code"] == "invalid_role_detail"

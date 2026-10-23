@@ -336,6 +336,66 @@
         }
       }
     },
+    "/family-group/auth/email/verify/confirm-code": {
+      "post": {
+        "tags": [
+          "family-group"
+        ],
+        "summary": "Email Verify Confirm Code",
+        "description": "메일의 6자리 코드로 이메일 인증을 완료한다(로그인한 본인만. 코드마다 틀릴 수 있는 횟수가 제한된다).",
+        "operationId": "email_verify_confirm_code_family_group_auth_email_verify_confirm_code_post",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CodeIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EmailVerifiedOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/family-group/auth/password/reset/request": {
       "post": {
         "tags": [
@@ -722,6 +782,41 @@
                 }
               }
             }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/family-group/auth/password/reset/confirm-code": {
+      "post": {
+        "tags": [
+          "family-group"
+        ],
+        "summary": "Password Reset Confirm Code",
+        "description": "메일의 6자리 코드와 이메일, 새 비밀번호로 재설정한다. 틀린 코드·없는 이메일은 같은 응답이다.",
+        "operationId": "password_reset_confirm_code_family_group_auth_password_reset_confirm_code_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PasswordResetCodeConfirmIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Successful Response"
           },
           "422": {
             "description": "Validation Error",
@@ -5195,6 +5290,18 @@
             ],
             "title": "Role",
             "default": "child"
+          },
+          "role_detail": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 80
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Role Detail"
           }
         },
         "type": "object",
@@ -5752,6 +5859,20 @@
           "text"
         ],
         "title": "ChatTurn"
+      },
+      "CodeIn": {
+        "properties": {
+          "code": {
+            "type": "string",
+            "pattern": "^\\d{6}$",
+            "title": "Code"
+          }
+        },
+        "type": "object",
+        "required": [
+          "code"
+        ],
+        "title": "CodeIn"
       },
       "ConsentOut": {
         "properties": {
@@ -7249,6 +7370,32 @@
         ],
         "title": "MonthlyResult"
       },
+      "PasswordResetCodeConfirmIn": {
+        "properties": {
+          "email": {
+            "type": "string",
+            "maxLength": 320,
+            "title": "Email"
+          },
+          "code": {
+            "type": "string",
+            "pattern": "^\\d{6}$",
+            "title": "Code"
+          },
+          "new_password": {
+            "type": "string",
+            "maxLength": 256,
+            "title": "New Password"
+          }
+        },
+        "type": "object",
+        "required": [
+          "email",
+          "code",
+          "new_password"
+        ],
+        "title": "PasswordResetCodeConfirmIn"
+      },
       "PasswordResetConfirmIn": {
         "properties": {
           "token": {
@@ -8582,6 +8729,17 @@
           "role": {
             "type": "string",
             "title": "Role"
+          },
+          "role_detail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Role Detail"
           },
           "active_group_id": {
             "anyOf": [
