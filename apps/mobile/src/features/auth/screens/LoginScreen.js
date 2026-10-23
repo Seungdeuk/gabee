@@ -8,13 +8,14 @@ import { colors } from "@/theme";
 
 import AuthLayout from "../components/AuthLayout";
 import Notice from "../components/Notice";
+import SocialLogin from "../components/SocialLogin";
 import { errorMessage } from "../messages";
 import { useAuth } from "@/shared/auth/AuthProvider";
 
 /** 아이디·비밀번호 로그인. 성공하면 홈으로 가고, 이메일 인증이 안 된 회원은 홈에서 안내를 받는다. */
 export default function LoginScreen() {
   const router = useRouter();
-  const { signIn } = useAuth();
+  const { signIn, signInWithSession } = useAuth();
   const [loginId, setLoginId] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -66,6 +67,12 @@ export default function LoginScreen() {
       />
       <Notice tone="error" text={error} />
       <Button label={busy ? "로그인 중..." : "로그인"} onPress={submit} disabled={busy} testID="login-submit" />
+      <SocialLogin
+        onSession={async (res) => {
+          const user = await signInWithSession(res);
+          router.replace(user.email && !user.email_verified ? "/verify-email" : "/chat");
+        }}
+      />
       <View style={styles.links}>
         <Text style={styles.link} onPress={() => router.push("/forgot-password")} accessibilityRole="link">
           비밀번호를 잊으셨나요?

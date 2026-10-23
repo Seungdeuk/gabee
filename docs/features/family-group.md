@@ -76,6 +76,15 @@
   - **시도 제한**: 틀린 코드 입력을 `invite_attempts` 에 남기고(코드 원문·해시는 저장하지 않고, 성공했을 때만 `invite_id`), 최근 15분 실패가 5회 이상이면 계정별·IP별로 429 `too_many_attempts` + `Retry-After`(슬라이딩 윈도우, `INVITE_MAX_FAILURES`/`INVITE_FAILURE_WINDOW_SECONDS`). 이메일 미인증 정식 회원은 이전과 같이 참여를 요청할 수 없다(403 `email_not_verified`, 메일이 설정된 환경에서만).
   - 코드: `join_router.py`/`join_service.py`/`join_repository.py`/`join_schemas.py`(기존 파일은 `group_out`·`create_group`·`join_group` 호출부만 수정). 테스트: `tests/test_join_approval.py`(SQLite 15건), `tests/test_join_pg_e2e.py`(PG16 3건).
 
+- **Google·Kakao 로그인·계정 연동** (로드맵 PR 4-D, 스키마 변경 없음 — 4-A 의 `social_accounts` 사용)
+  - `POST /family-group/auth/social/{google|kakao} {provider_token, role?, device_label?}` → `LoginOut`(로그인·신규 가입) 또는 `{candidate_account: true, masked_email}`. provider_token 은 Google=ID 토큰, Kakao=액세스 토큰. 이미 연동된 (provider, uid) 면 그 계정으로 로그인, 아니면 **같은 이메일의 기존 계정이 있을 때 자동으로 합치지 않고** 마스킹한 이메일(`j***@example.com`)만 돌려준다(기존 방식으로 로그인한 뒤 연동). 없으면 소셜 전용 계정(비밀번호·아이디 없음)을 새로 만든다. 제공자가 검증한 이메일만 저장하고 그 계정은 이메일 인증이 끝난 것으로 본다(이메일이 없어도 가입된다).
+  - `POST .../auth/social/{provider}/link {provider_token, password?}`(Bearer, 204): 내 계정에 연결. **비밀번호가 있는 계정은 비밀번호를 다시 확인**(없으면 400 `password_required`, 틀리면 401 `invalid_credentials` 이고 로그인 실패 제한에 센다). 다른 계정에 이미 연결된 소셜 계정은 409 `social_already_linked`, 같은 종류를 또 연결하면 409 `social_provider_already_linked`, 같은 계정 재연결은 204(멱등).
+  - `GET .../auth/social`(내 연동 목록), `DELETE .../auth/social/{provider}`(204): **마지막 로그인 수단 보호** — 연동 수 + (비밀번호가 있으면 1)이 1 이하면 403 `last_login_method`. 사용자 행을 `SELECT … FOR UPDATE` 로 잠가 동시 해제를 한 줄로 세운다(PG16: 동시 해제 2건 → `[204, 403]`). 연동되지 않은 제공자는 404.
+  - **제공자 검증**(`social_providers.py`): Google 은 Google 의 `tokeninfo` 로 ID 토큰 서명을 확인하고 서버가 aud(`GOOGLE_CLIENT_IDS` 중 하나)·iss·만료를 다시 본다. 로컬 JWKS 서명 검증은 `cryptography` 패키지(의존성 승인)가 필요해 그때 같은 `Identity` 를 돌려주도록 바꾼다. Kakao 는 `access_token_info`(우리 앱의 `KAKAO_APP_ID` 인지 확인) → `v2/user/me`. 설정이 비어 있으면 503 `social_not_configured`, 토큰 오류 401 `social_token_invalid`(IP별 실패 제한), 제공자 서버 오류 503 `social_unavailable`. 토큰은 로그·오류에 남기지 않는다. **MVP 의 Firebase 로그인 토큰(iss `securetoken.google.com`)은 받지 않는다** — 일반 Google OAuth 클라이언트의 ID 토큰만 받는다.
+  - 소셜 계정은 정식 회원이다: 이메일 인증 정책 대상이 아니고(검증된 이메일), 그룹 생성은 새 정책 초대 코드, 참여는 승인 흐름을 따른다(익명 계정 호환 경로를 쓰지 않는다).
+  - 설정(`.env`): `GOOGLE_CLIENT_IDS`(쉼표로 여러 개), `KAKAO_APP_ID`, `SOCIAL_HTTP_TIMEOUT_SECONDS`. 앱 키는 서버 `.env` 에만 둔다.
+  - 코드: `social_router/service/repository/providers/schemas.py`. 테스트: `tests/test_social_login.py`(SQLite 19건, 제공자 응답 해석은 네트워크 없이), `tests/test_social_pg_e2e.py`(PG16 3건).
+
 ## 남은 것
 
 - **가족 초대·승인의 후속**: 승인 대기 요청의 자동 만료, 승인/거절 알림(푸시), 신청자에게 보여줄 거절 사유, 목록에 신청자가 가입 때 적은 관계(`role_detail`, 별도 PR 병합 후)·이메일 인증 여부 표시, 레거시(제한 없는) 초대 코드 일괄 폐기·자동 재발급은 공용 DB 배포 단계가 필요해 하지 않았다(익명 계정 호환 때문에 즉시 참여 경로도 남아 있다 — `ALLOW_LEGACY_TOKEN_AUTH=false` 전환 때 함께 닫는다).

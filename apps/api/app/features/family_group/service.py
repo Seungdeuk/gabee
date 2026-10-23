@@ -19,6 +19,7 @@ from app.shared.rate_limit import FailureLimiter
 from . import credentials, join_service
 from . import join_repository as jrepo
 from . import repository as repo
+from . import social_repository as srepo
 from .join_schemas import JoinRequestOut
 from .models import EmailVerification, Group, JoinRequest, PasswordReset, RefreshToken, User
 from .schemas import (
@@ -162,7 +163,10 @@ def create_group(db: Session, user: User, name: str) -> GroupOut:
     group = Group(id=_uid(), name=name.strip(), owner_id=user.id)
     # 정식 회원: 24시간·1회 코드(+승인). 기존 익명 계정: 호환을 위해 예전 방식(제한 없는 코드, 바로 참여)
     invite = join_service.new_invite(
-        group.id, user.id, datetime.now(UTC), legacy=user.login_id is None
+        group.id,
+        user.id,
+        datetime.now(UTC),
+        legacy=user.login_id is None and not srepo.has_account(db, user.id),
     )
     repo.add_group(db, group, user, invite)
     return group_out(db, group, user.id)
@@ -174,7 +178,9 @@ def join_group(
     """초대 코드로 참여한다. 새 정책 코드(24시간·1회)는 누구든 승인 대기 요청이 만들어지고 관리자 승인 후 구성원이 된다.
     기존 익명 계정이 기존 방식 코드(만료·횟수 제한 없음)를 쓸 때만 호환을 위해 승인 없이 바로 참여한다."""
     _require_verified_email(user)
-    if user.login_id is None:
+    if user.login_id is None and not srepo.has_account(
+        db, user.id
+    ):  # 익명 계정(소셜 계정은 정식 회원)
         invite = jrepo.find_usable_invite(db, code.strip().upper(), datetime.now(UTC))
         if invite is None or (invite.expires_at is None and invite.max_uses is None):
             group_id = join_service.join_immediately(db, user, code, ip)

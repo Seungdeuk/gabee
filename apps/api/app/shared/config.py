@@ -90,6 +90,13 @@ class Settings(BaseSettings):
     invite_max_failures: int = 5
     invite_failure_window_seconds: int = 15 * 60
 
+    # Google·Kakao 로그인(PR 4-D). 비어 있으면 그 제공자 로그인은 503 social_not_configured 로 막힌다. 비밀키·앱 키는 .env 에만 둔다.
+    # GOOGLE_CLIENT_IDS: 앱이 ID 토큰을 받을 때 쓴 Google OAuth 클라이언트 ID(웹/iOS/Android 여러 개면 쉼표로). ID 토큰의 aud 가 이 중 하나여야 한다.
+    # KAKAO_APP_ID: Kakao 개발자 콘솔의 앱 ID(숫자). 액세스 토큰이 우리 앱에서 발급된 것인지 확인한다.
+    google_client_ids: str = ""
+    kakao_app_id: str = ""
+    social_http_timeout_seconds: int = 5
+
     model_config = SettingsConfigDict(env_file=_ENV_FILE, extra="ignore")
 
 

@@ -29,9 +29,11 @@ from .schemas import (
     UserCreate,
     UserOut,
 )
+from .social_router import router as social_router
 
 router = APIRouter(prefix="/family-group", tags=["family-group"])
 router.include_router(join_router)  # 초대·가입 승인(PR 4-B)
+router.include_router(social_router)  # Google·Kakao 로그인·연동(PR 4-D)
 
 
 @router.post("/users", response_model=SignupOut, status_code=201)

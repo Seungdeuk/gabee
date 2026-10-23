@@ -26,6 +26,13 @@
 - 저장: **Refresh Token 만** `expo-secure-store`(iOS Keychain / Android Keystore)에 저장. Access Token 은 메모리에만. 웹은 보안 저장소가 없어 메모리만(새로고침하면 로그아웃).
 - 로그아웃: 서버 `POST /auth/logout`(이 세션만 폐기, 실패해도 계속) → 로컬 토큰 삭제.
 
+## Google·카카오 로그인 (PR 4-D)
+
+- 로그인 화면에 설정된 제공자의 버튼만 보인다(`EXPO_PUBLIC_GOOGLE_*_CLIENT_ID`, `EXPO_PUBLIC_KAKAO_REST_API_KEY` — `apps/mobile/.env.example`). 비어 있으면 버튼이 없어서 기존 로그인은 그대로다. 시스템 브라우저 OAuth(PKCE, `expo-auth-session`)로 Google ID 토큰·카카오 코드→액세스 토큰을 받아 서버에 넘긴다(앱 시크릿은 앱에 넣지 않는다).
+- 같은 이메일의 기존 계정이 있으면 합치지 않고 안내만 보여 준다("기타 탭의 소셜 계정 연동에서 연결"). 기타 탭 계정 카드 → `/social-accounts`: 연결·해제(비밀번호가 있는 계정은 비밀번호 확인, 마지막 로그인 수단은 서버가 거부).
+- `AuthProvider.signInWithSession(loginResponse)`: 소셜 로그인 응답으로 세션을 시작한다(아이디 로그인과 같은 저장·복원 경로).
+- **실제 Google·카카오 앱 등록과 기기 동작은 확인하지 못했다**(앱 키 필요, 카카오는 아직 앱 등록 전). 자동 시험은 호출 경로·설정·후보 응답 처리까지.
+
 ## 기존 익명 계정과의 호환 (`ALLOW_LEGACY_TOKEN_AUTH` 는 건드리지 않음)
 
 - 로그인하지 않으면 기존과 똑같이 동작한다(개발용 토큰/익명 가입의 `X-Gyeot-Token`). `family-group/api.js`의 익명 `signup`/`setToken` 은 그대로다.

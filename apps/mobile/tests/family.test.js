@@ -78,3 +78,50 @@ test("가족 API 호출: 경로·메서드·본문, 로그인 세션이 있으�
   assert.ok(calls.every((c) => c.headers.Authorization === "Bearer access-1" && c.headers["X-Gyeot-Token"] === undefined));
   assert.ok(calls.slice(1).every((c) => c.body === null));
 });
+
+test("소셜 로그인 설정: 값이 있는 제공자만 켜지고, 후보 응답을 알아본다", async () => {
+  const social = await import("../src/features/auth/social.js");
+  const saved = { ...process.env };
+  try {
+    for (const k of Object.keys(process.env)) if (k.startsWith("EXPO_PUBLIC_GOOGLE") || k.startsWith("EXPO_PUBLIC_KAKAO")) delete process.env[k];
+    assert.deepEqual(social.enabledProviders(), []); // 아무 설정이 없으면 버튼이 없다
+    process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID = "web-id";
+    assert.deepEqual(social.enabledProviders(), ["google"]);
+    process.env.EXPO_PUBLIC_KAKAO_REST_API_KEY = "rest-key";
+    assert.deepEqual(social.enabledProviders(), ["google", "kakao"]);
+  } finally {
+    for (const k of Object.keys(process.env)) if (!(k in saved)) delete process.env[k];
+    Object.assign(process.env, saved);
+  }
+  assert.equal(social.isCandidate({ candidate_account: true, masked_email: "j***@example.com" }), true);
+  assert.equal(social.isCandidate({ access_token: "a", candidate_account: true }), false);
+  assert.equal(social.isCandidate(null), false);
+});
+
+test("소셜 API 호출 경로와 본문(토큰은 본문에만, 비밀번호는 있을 때만)", async () => {
+  const calls = [];
+  globalThis.fetch = async (url, init = {}) => {
+    calls.push({ path: new URL(url).pathname, method: init.method ?? "GET", body: init.body ? JSON.parse(init.body) : null, headers: init.headers ?? {} });
+    return json(200, {});
+  };
+  const api = await import("../src/features/auth/api.js");
+  const client = await import("../src/shared/api/client.js");
+  client.setSession({ accessToken: "access-1", refreshToken: "refresh-1" });
+  await api.socialLogin("google", "id-token-value");
+  await api.listSocialAccounts();
+  await api.linkSocialAccount("kakao", "kakao-token", "Sunny-day-2026");
+  await api.linkSocialAccount("google", "id-token-value");
+  await api.unlinkSocialAccount("kakao");
+  assert.deepEqual(calls.map((c) => `${c.method} ${c.path}`), [
+    "POST /family-group/auth/social/google",
+    "GET /family-group/auth/social",
+    "POST /family-group/auth/social/kakao/link",
+    "POST /family-group/auth/social/google/link",
+    "DELETE /family-group/auth/social/kakao",
+  ]);
+  assert.deepEqual(calls[0].body, { provider_token: "id-token-value", role: "child" });
+  assert.equal(calls[0].headers.Authorization, undefined); // 로그인 전 호출이라 인증 헤더가 없다
+  assert.deepEqual(calls[2].body, { provider_token: "kakao-token", password: "Sunny-day-2026" });
+  assert.deepEqual(calls[3].body, { provider_token: "id-token-value" });
+  assert.equal(calls[2].headers.Authorization, "Bearer access-1");
+});
