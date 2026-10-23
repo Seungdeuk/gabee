@@ -25,7 +25,7 @@ docker compose 의 개발용 PostgreSQL(`pgvector/pgvector:pg16` 이미지, `pgv
 | billing_settings | billing | 가족 그룹의 가계 설정: 정산 담당자(월말 알림 대상, 행이 없으면 그룹을 만든 사람)와 미성년 자녀 목록 `minor_ids` |
 | settlement_payments | billing | '송금 완료'로 표시한 송금(월, 보낸 사람, 받은 사람, 금액). 송금 목록 자체는 매번 계산한다 |
 | subscription_items | billing | OTT·통신비 항목(이름, 통신사 `carrier`, 사용자가 입력한 월 청구 금액 `monthly_fee`·결합 할인 금액 `discount_amount`, 결제일 `billing_day`)과 가족 할인 상태(check/available/active). 할인은 계산하지 않고 입력값만 저장한다. 삭제는 `deleted_at` 소프트 삭제. 구독료 지출용 결제한 사람 `payer_id`·나눌 사람 `split_among`(빈 목록이면 가족 전체) |
-| allowances | billing | (이전 방식, 더는 쓰지 않음) 자녀별 월 용돈 예산. 데이터 보존을 위해 남겨 두며 제거는 후속 PR |
+| allowances | billing | (이전 방식, 더는 쓰지 않음) 자녀별 월 용돈 예산. 장부(`allowance_entries`)로 복사 완료(719215db61ba). 제거는 `destructive-approved` 를 받는 후속 PR |
 | allowance_uses | billing | (이전 방식, 더는 쓰지 않음) 월 예산의 사용 기록 |
 | allowance_plans | billing | 자녀별 고정 용돈 주기(매주/매월, 금액, 자동/리마인드, 시작일). 자녀당 1개 |
 | allowance_entries | billing | 용돈 장부(입금 credit·사용 use, 취소는 `voided_at`). 주기 입금은 `plan_due_date`로 같은 지급일 중복 방지(unique) |

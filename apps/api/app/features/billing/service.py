@@ -753,6 +753,13 @@ def _post_auto(db: Session, group_id: str, plan: AllowancePlan, today: date) -> 
             db.rollback()
 
 
+def _by_name(e: AllowanceEntry, names: dict[str, str]) -> str:
+    """기록한 사람. 자동 지급은 "자동 지급", 이전 월 예산 방식에서 옮겨 온 줄은 "이전 기록"."""
+    if e.created_by:
+        return names.get(e.created_by, "")
+    return "자동 지급" if e.source == "plan_auto" else "이전 기록"
+
+
 def _entries_out(entries: list[AllowanceEntry], names: dict[str, str]):
     """오래된 순 목록으로 잔액을 차례로 계산해, (현재 잔액, 최신순 목록)을 돌려준다."""
     balance = 0
@@ -769,7 +776,7 @@ def _entries_out(entries: list[AllowanceEntry], names: dict[str, str]):
                 memo=e.memo,
                 date=e.date,
                 source=e.source,
-                by_name=names.get(e.created_by, "") if e.created_by else "자동 지급",
+                by_name=_by_name(e, names),
                 voided=voided,
                 balance_after=None if voided else balance,
             )

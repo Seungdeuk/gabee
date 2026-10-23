@@ -356,3 +356,33 @@ def test_auto_credit_voided_is_not_posted_again(client, home, today):
     client.delete(f"/billing/allowances/{child}/entries/{first['entries'][0]['id']}", headers=a)
     after = _ledger(client, a, child)
     assert after["balance"] == 0 and len(after["entries"]) == 1  # 같은 지급일을 다시 만들지 않는다
+
+
+def test_rows_copied_from_the_old_budget_system_are_labelled_as_previous_records(
+    client, home, today
+):
+    from datetime import UTC, datetime
+
+    from app.features.billing.models import AllowanceEntry
+    from app.shared.db import SessionLocal
+
+    a, _, _, ids = home
+    child = ids["수진"]
+    with SessionLocal() as db:
+        db.add(
+            AllowanceEntry(
+                id="mcold1",
+                group_id=client.get("/family-group/groups/me", headers=a).json()["id"],
+                child_id=child,
+                kind="credit",
+                amount=5000,
+                memo="월 용돈 (이전 방식)",
+                date="2026-09-01",
+                source="manual",
+                created_by=None,
+                created_at=datetime.now(UTC),
+            )
+        )
+        db.commit()
+    row = _ledger(client, a, child)["entries"][0]
+    assert (row["by_name"], row["source"], row["balance_after"]) == ("이전 기록", "manual", 5000)
