@@ -65,11 +65,22 @@
 - 이메일 중복 응답(409 `email_taken`)은 계정 존재 여부를 알려준다(가입 레이트리밋과 함께 후속).
 - 메일 요청 횟수 제한(인증 재발송·재설정)도 로그인 제한과 같이 프로세스 메모리 기반이다(재시작 시 초기화, 워커별). `created_at` 컬럼이 없어 DB 로 셀 수 없고 마이그레이션 없이 구현했다. 로그인 직후 해시 파라미터 갱신(`needs_rehash`)도 비밀번호 버전을 바꾸므로 다른 기기의 Access Token 이 한 번 거부될 수 있다(Refresh 로 다시 받으면 된다).
 
+- **가족 초대·가입 승인** (로드맵 PR 4-B, 스키마 변경 없음 — 4-A 의 `invites`/`join_requests`/`invite_attempts`/`group_members.role` 사용)
+  - **초대 코드**: 정식 회원이 만들거나 재발급하는 코드는 10자 난수·24시간·1회(`INVITE_TTL_SECONDS`, `INVITE_MAX_USES`). **기존 익명 계정이 만드는 그룹은 호환을 위해 예전 코드(8자·제한 없음)와 즉시 참여를 그대로 유지**한다(다른 기능의 기존 흐름·테스트가 한 코드로 여러 익명 계정을 가입시킨다). 폐기는 `revoked=true`(삭제하지 않음).
+  - `POST /family-group/groups/invites/reissue`(→ `{invite_code, expires_at}`), `POST .../invites/revoke`(204): **owner/admin 만**. 기존 코드는 폐기되고 새 코드가 만들어진다. 구성원은 403 `not_manager`, 그룹 없음 400 `no_group`.
+  - `POST /family-group/groups/join {code}`: **정식 회원, 그리고 새 정책 코드를 쓰는 모든 사람**은 멤버십이 아니라 승인 대기 요청이 만들어진다(`JoinRequestOut`, `status:"pending"`). 기존 익명 계정이 예전 방식 코드(만료·횟수 제한 없음)를 쓸 때만 기존처럼 바로 `GroupOut`(호환). 이미 구성원이면 409 `already_member`(익명 호환 경로는 기존처럼 조용히 통과). 같은 그룹에 이미 내 대기 요청이 있으면 그 요청을 그대로 돌려주고 사용 횟수를 다시 쓰지 않는다. 없는 코드·폐기·만료·소진은 모두 같은 400 `invalid_invite`. 응답 형태가 `GroupOut | JoinRequestOut` 으로 넓어졌다(하위 호환: 기존 익명 흐름의 응답은 그대로).
+  - `GET /family-group/groups/me/join-requests`(owner/admin, 승인 대기 목록), `POST .../join-requests/{id}/approve`(→ `GroupOut`), `POST .../join-requests/{id}/reject`(204): 승인해야 비로소 `group_members` 행이 생기고(**항상 `member`**) 신청자의 `active_group_id` 가 그 그룹으로 바뀐다. 다른 그룹의 요청은 404(있는지조차 알려주지 않음), 같은 그룹의 일반 구성원은 403 `not_manager`, 이미 처리된 요청은 409 `join_request_already_decided`. 거절돼도 사용 횟수는 돌려주지 않는다.
+  - `GET /family-group/groups/join-requests/mine`(내 최근 요청 또는 null), `POST .../join-requests/{id}/cancel`(신청자 본인만, 204): 승인 대기 화면이 쓴다. status: `pending | approved | rejected | cancelled`.
+  - **권한 상승 방지**: 요청 본문에는 role 을 받는 곳이 없다(보내도 무시). 승인된 사람은 항상 member 이고, 관리자 판단은 DB 의 `group_members.role` 만 본다. `GroupOut` 은 `my_role` 과 구성원별 `group_role` 을 내려주고, **초대 코드(`invite_code`/`invite_expires_at`)는 owner/admin 에게만** 담긴다(일반 구성원·승인 대기자에게는 null).
+  - **동시성**: 사용 횟수 증가(`UPDATE invites SET use_count = use_count + 1 WHERE … 만료 전·미폐기·횟수 남음`)와 요청 결정(`UPDATE join_requests … WHERE status='pending'`)은 조건부 UPDATE 한 문장이다. 동시 승인 8건 → 성공 1·409 7, 1회용 코드를 8명이 동시에 제출 → 요청 1건·사용 횟수 1(PG16 시험), 같은 사람의 동시 중복 제출 → 부분 유니크 인덱스(`uq_join_requests_pending_per_user`)로 요청 1건.
+  - **시도 제한**: 틀린 코드 입력을 `invite_attempts` 에 남기고(코드 원문·해시는 저장하지 않고, 성공했을 때만 `invite_id`), 최근 15분 실패가 5회 이상이면 계정별·IP별로 429 `too_many_attempts` + `Retry-After`(슬라이딩 윈도우, `INVITE_MAX_FAILURES`/`INVITE_FAILURE_WINDOW_SECONDS`). 이메일 미인증 정식 회원은 이전과 같이 참여를 요청할 수 없다(403 `email_not_verified`, 메일이 설정된 환경에서만).
+  - 코드: `join_router.py`/`join_service.py`/`join_repository.py`/`join_schemas.py`(기존 파일은 `group_out`·`create_group`·`join_group` 호출부만 수정). 테스트: `tests/test_join_approval.py`(SQLite 15건), `tests/test_join_pg_e2e.py`(PG16 3건).
+
 ## 남은 것
 
+- **가족 초대·승인의 후속**: 승인 대기 요청의 자동 만료, 승인/거절 알림(푸시), 신청자에게 보여줄 거절 사유, 목록에 신청자가 가입 때 적은 관계(`role_detail`, 별도 PR 병합 후)·이메일 인증 여부 표시, 레거시(제한 없는) 초대 코드 일괄 폐기·자동 재발급은 공용 DB 배포 단계가 필요해 하지 않았다(익명 계정 호환 때문에 즉시 참여 경로도 남아 있다 — `ALLOW_LEGACY_TOKEN_AUTH=false` 전환 때 함께 닫는다).
 - PR 4-B(나머지): 가입 요청 레이트리밋, 전체 기기 로그아웃, `allow_anonymous_signup` 플래그, 사용자 비활성 컬럼. **익명 가입(`POST /family-group/users`)과 레거시 토큰은 기본 허용 상태**라 모바일이 정식 가입/로그인으로 전환되는 시점에 `ALLOW_LEGACY_TOKEN_AUTH=false` 로 돌린다.
 - 공용 DB: 회원가입은 스키마 변경이 없고 `b6931fc30c66` 이상이면 동작한다(공용 DB 는 `6304cb91e46a` 로 확인됨).
 - PR 4-C: Google/Kakao 소셜 로그인 연동 API.
-- PR 4-D: 초대코드 보안 강화(관리자 승인, 레이트리밋, 만료/1회 정책) + 레거시 무제한 코드 폐기·자동 재발급.
 - PR 4-E: 가족 관계·표시 이름·구성원별 별명 지정 API, owner/admin 권한 관리 API.
 - PR 4-F: 모바일 화면 — 로그인·회원가입·이메일 인증·비밀번호 재설정은 구현(docs/features/mobile-auth.md). 남은 것: 소셜 연동, 초대 승인, 가족 프로필.

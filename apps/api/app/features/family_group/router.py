@@ -5,6 +5,8 @@ from app.shared.auth import bearer_user, current_user
 from app.shared.db import get_db
 
 from . import service
+from .join_router import router as join_router
+from .join_schemas import JoinRequestOut
 from .models import User
 from .schemas import (
     AccountSignupIn,
@@ -29,6 +31,7 @@ from .schemas import (
 )
 
 router = APIRouter(prefix="/family-group", tags=["family-group"])
+router.include_router(join_router)  # 초대·가입 승인(PR 4-B)
 
 
 @router.post("/users", response_model=SignupOut, status_code=201)
@@ -132,11 +135,16 @@ def create_group(
     return service.create_group(db, user, body.name)
 
 
-@router.post("/groups/join", response_model=GroupOut)
+@router.post("/groups/join", response_model=GroupOut | JoinRequestOut)
 def join_group(
-    body: JoinIn, user: User = Depends(current_user), db: Session = Depends(get_db)
-) -> GroupOut:
-    return service.join_group(db, user, body.code)
+    body: JoinIn,
+    request: Request,
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+) -> GroupOut | JoinRequestOut:
+    """초대 코드로 참여한다. 정식 회원은 승인 대기 요청(JoinRequestOut, status=pending)이 만들어지고, 기존 익명 계정은 호환을 위해 바로 GroupOut."""
+    ip = request.client.host if request.client else "unknown"
+    return service.join_group(db, user, body.code, ip)
 
 
 @router.get("/groups/me", response_model=GroupOut)

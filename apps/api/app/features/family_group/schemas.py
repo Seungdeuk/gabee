@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import Literal
 
 from pydantic import BaseModel, Field
@@ -110,11 +111,14 @@ class JoinIn(BaseModel):
 class MemberOut(BaseModel):
     id: str
     name: str
-    role: str
+    role: str  # 가입할 때 고른 역할(parent/child/other)
+    group_role: str = "member"  # 이 가족 안의 권한(owner/admin/member). 요청으로 바꿀 수 없다
 
 
 class GroupOut(BaseModel):
     id: str
     name: str
-    invite_code: str | None = None
+    invite_code: str | None = None  # 가족 관리자(owner/admin)에게만 보인다
+    invite_expires_at: datetime | None = None
+    my_role: str | None = None  # 이 응답을 받는 사람의 이 가족 안 권한(owner/admin/member)
     members: list[MemberOut]
