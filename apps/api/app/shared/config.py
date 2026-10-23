@@ -102,10 +102,31 @@ class Settings(BaseSettings):
     kakao_app_id: str = ""
     social_http_timeout_seconds: int = 5
 
-    # 가족 채팅 대화 요약(AI): 사용자가 요약을 눌렀을 때만 최근 대화를 Anthropic 으로 보낸다. 요약은 저장하지 않는다.
-    # 한 번에 보내는 글자 수와 사용자별 시간당 호출 수를 제한한다.
-    chat_summary_max_chars: int = 12000
-    chat_summary_max_per_hour: int = 10
+    # Anthropic(AI) 호출 비용 관리. 키·모델은 서버 환경변수(ANTHROPIC_API_KEY / ANTHROPIC_MODEL)로만 정한다(앱에는 두지 않는다).
+    # 일반 채팅 메시지 전송에서는 AI 를 부르지 않고, 구성원이 AI 기능을 눌렀을 때만 최소한으로 부른다.
+    anthropic_max_tokens: int = (
+        2048  # ANTHROPIC_MAX_TOKENS: 한 번의 응답에서 쓸 수 있는 출력 토큰 상한
+    )
+    ai_effort: str = "low"  # 추론 비용을 줄이려고 낮게 둔다(low|medium|high)
+    ai_auto_analysis_enabled: bool = (
+        False  # 설계만 있고 기본 꺼짐(켜도 메시지마다 부르지 않고 시간·새 메시지 수로 모아서)
+    )
+    ai_auto_analysis_min_new_messages: int = 30
+    ai_auto_analysis_min_interval_seconds: int = 3600
+    ai_max_calls_per_user_per_day: int = 10  # 사용자별 하루 AI 호출 수(캐시 적중은 세지 않는다)
+    ai_max_calls_per_group_per_day: int = 30  # 가족 그룹별 하루 AI 호출 수
+    ai_request_cooldown_seconds: int = 30  # 같은 사용자의 AI 호출 사이 최소 간격
+    ai_result_cache_ttl_seconds: int = (
+        600  # 같은 요청의 결과를 다시 쓰는 시간(가족 그룹별로 따로 보관)
+    )
+    ai_max_concurrent_requests_per_group: int = (
+        1  # 한 가족 그룹에서 동시에 진행할 수 있는 AI 호출 수
+    )
+    ai_inflight_stale_seconds: int = 120  # 이 시간이 지난 진행 표시는 죽은 요청으로 보고 치운다
+    ai_analysis_max_chars: int = (
+        12000  # 한 번에 AI 로 보내는 대화 글자 수(넘으면 오래된 것부터 뺀다)
+    )
+    ai_day_utc_offset_hours: int = 9  # 하루 한도를 세는 날짜 경계(기본 한국 시간 자정)
 
     model_config = SettingsConfigDict(env_file=_ENV_FILE, extra="ignore", populate_by_name=True)
 

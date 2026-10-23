@@ -1875,6 +1875,374 @@
         }
       }
     },
+    "/family-chat/ai/settings": {
+      "get": {
+        "tags": [
+          "family-chat"
+        ],
+        "summary": "Get Settings",
+        "description": "우리 가족의 AI 사용 동의 여부, 한도, 오늘 사용량.",
+        "operationId": "get_settings_family_chat_ai_settings_get",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-gyeot-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Gyeot-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AiSettingsOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "family-chat"
+        ],
+        "summary": "Put Settings",
+        "description": "가족 소유자·관리자가 AI 기능 사용에 동의(켜기)하거나 끈다. 꺼져 있으면 AI 요청은 403 ai_not_enabled.",
+        "operationId": "put_settings_family_chat_ai_settings_put",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-gyeot-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Gyeot-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AiSettingsIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AiSettingsOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/family-chat/ai/analysis": {
+      "post": {
+        "tags": [
+          "family-chat"
+        ],
+        "summary": "Analyze",
+        "description": "최근 대화를 한 번의 AI 호출로 분석한다: 요약·중요 메시지·일정 후보·할 일 후보(구조화 출력). 일정·할 일은 후보일 뿐 사용자가 확인해야 등록된다.",
+        "operationId": "analyze_family_chat_ai_analysis_post",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-gyeot-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Gyeot-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RangeIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnalysisOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/family-chat/ai/replies": {
+      "post": {
+        "tags": [
+          "family-chat"
+        ],
+        "summary": "Replies",
+        "description": "마지막 메시지에 이어 보낼 답장 후보(요청할 때만).",
+        "operationId": "replies_family_chat_ai_replies_post",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-gyeot-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Gyeot-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RangeIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RepliesOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/family-chat/ai/topics": {
+      "post": {
+        "tags": [
+          "family-chat"
+        ],
+        "summary": "Topics",
+        "description": "이어갈 대화 주제 추천(요청할 때만).",
+        "operationId": "topics_family_chat_ai_topics_post",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-gyeot-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Gyeot-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RangeIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TopicsOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/family-chat/messages": {
       "get": {
         "tags": [
@@ -2023,82 +2391,6 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/MessageOut"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/family-chat/summary": {
-      "post": {
-        "tags": [
-          "family-chat"
-        ],
-        "summary": "Summarize",
-        "description": "이 가족 그룹의 최근 대화를 AI 로 요약한다(눌렀을 때만 외부 AI 로 보내고, 요약·대화는 저장하지 않는다).\n대화가 너무 적으면 400 too_few_messages, AI 설정이 없으면 503 llm_unavailable, 호출 실패는 503 llm_failed, 너무 잦으면 429.",
-        "operationId": "summarize_family_chat_summary_post",
-        "parameters": [
-          {
-            "name": "authorization",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Authorization"
-            }
-          },
-          {
-            "name": "x-gyeot-token",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Gyeot-Token"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/SummaryIn"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/SummaryOut"
                 }
               }
             }
@@ -6950,6 +7242,236 @@
         }
       }
     },
+    "/ai-assistant/knowledge/find": {
+      "post": {
+        "tags": [
+          "ai-assistant",
+          "ai-assistant-knowledge"
+        ],
+        "summary": "Find",
+        "description": "글자 일치 찾기(LLM 호출 없음). 없고 semantic=true 일 때만 의미 검색.",
+        "operationId": "find_ai_assistant_knowledge_find_post",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-gyeot-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Gyeot-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FindIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FindOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/ai-assistant/knowledge/items/{item_id}/summary": {
+      "post": {
+        "tags": [
+          "ai-assistant",
+          "ai-assistant-knowledge"
+        ],
+        "summary": "Summarize Item",
+        "description": "기록 한 건 AI 요약(동의·캐시·한도 가드를 거쳐 LLM 1회).",
+        "operationId": "summarize_item_ai_assistant_knowledge_items__item_id__summary_post",
+        "parameters": [
+          {
+            "name": "item_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Item Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-gyeot-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Gyeot-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocSummaryOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/ai-assistant/knowledge/answer": {
+      "post": {
+        "tags": [
+          "ai-assistant",
+          "ai-assistant-knowledge"
+        ],
+        "summary": "Answer",
+        "description": "기록을 근거로 질문에 답한다(LLM 1회, 근거가 없으면 호출하지 않는다).",
+        "operationId": "answer_ai_assistant_knowledge_answer_post",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-gyeot-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Gyeot-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DocAnswerIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocAnswerOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/ai-assistant/chat": {
       "post": {
         "tags": [
@@ -7674,6 +8196,175 @@
         ],
         "title": "AccountSignupOut"
       },
+      "AiLimitsOut": {
+        "properties": {
+          "user_per_day": {
+            "type": "integer",
+            "title": "User Per Day"
+          },
+          "group_per_day": {
+            "type": "integer",
+            "title": "Group Per Day"
+          },
+          "cooldown_seconds": {
+            "type": "integer",
+            "title": "Cooldown Seconds"
+          },
+          "cache_ttl_seconds": {
+            "type": "integer",
+            "title": "Cache Ttl Seconds"
+          }
+        },
+        "type": "object",
+        "required": [
+          "user_per_day",
+          "group_per_day",
+          "cooldown_seconds",
+          "cache_ttl_seconds"
+        ],
+        "title": "AiLimitsOut"
+      },
+      "AiMeta": {
+        "properties": {
+          "cached": {
+            "type": "boolean",
+            "title": "Cached"
+          },
+          "api_calls": {
+            "type": "integer",
+            "title": "Api Calls"
+          },
+          "input_tokens": {
+            "type": "integer",
+            "title": "Input Tokens"
+          },
+          "output_tokens": {
+            "type": "integer",
+            "title": "Output Tokens"
+          },
+          "model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model"
+          },
+          "message_count": {
+            "type": "integer",
+            "title": "Message Count"
+          },
+          "from_message_id": {
+            "type": "integer",
+            "title": "From Message Id"
+          },
+          "to_message_id": {
+            "type": "integer",
+            "title": "To Message Id"
+          },
+          "generated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Generated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "cached",
+          "api_calls",
+          "input_tokens",
+          "output_tokens",
+          "message_count",
+          "from_message_id",
+          "to_message_id",
+          "generated_at"
+        ],
+        "title": "AiMeta"
+      },
+      "AiRunMeta": {
+        "properties": {
+          "cached": {
+            "type": "boolean",
+            "title": "Cached"
+          },
+          "api_calls": {
+            "type": "integer",
+            "title": "Api Calls"
+          }
+        },
+        "type": "object",
+        "required": [
+          "cached",
+          "api_calls"
+        ],
+        "title": "AiRunMeta",
+        "description": "AI 호출 정보. cached 면 이번 요청에서 Anthropic 을 부르지 않았다."
+      },
+      "AiSettingsIn": {
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "title": "Enabled"
+          }
+        },
+        "type": "object",
+        "required": [
+          "enabled"
+        ],
+        "title": "AiSettingsIn"
+      },
+      "AiSettingsOut": {
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "title": "Enabled"
+          },
+          "can_manage": {
+            "type": "boolean",
+            "title": "Can Manage"
+          },
+          "auto_analysis": {
+            "type": "boolean",
+            "title": "Auto Analysis"
+          },
+          "limits": {
+            "$ref": "#/components/schemas/AiLimitsOut"
+          },
+          "usage": {
+            "$ref": "#/components/schemas/AiUsageOut"
+          }
+        },
+        "type": "object",
+        "required": [
+          "enabled",
+          "can_manage",
+          "auto_analysis",
+          "limits",
+          "usage"
+        ],
+        "title": "AiSettingsOut"
+      },
+      "AiUsageOut": {
+        "properties": {
+          "user_today": {
+            "type": "integer",
+            "title": "User Today"
+          },
+          "group_today": {
+            "type": "integer",
+            "title": "Group Today"
+          }
+        },
+        "type": "object",
+        "required": [
+          "user_today",
+          "group_today"
+        ],
+        "title": "AiUsageOut"
+      },
       "AllowanceApproveIn": {
         "properties": {
           "amount": {
@@ -8139,6 +8830,47 @@
         ],
         "title": "AllowanceRequestOut"
       },
+      "AnalysisOut": {
+        "properties": {
+          "summary": {
+            "type": "string",
+            "title": "Summary"
+          },
+          "important_messages": {
+            "items": {
+              "$ref": "#/components/schemas/ImportantMessage"
+            },
+            "type": "array",
+            "title": "Important Messages"
+          },
+          "schedule_candidates": {
+            "items": {
+              "$ref": "#/components/schemas/ScheduleCandidate"
+            },
+            "type": "array",
+            "title": "Schedule Candidates"
+          },
+          "todo_candidates": {
+            "items": {
+              "$ref": "#/components/schemas/TodoCandidate"
+            },
+            "type": "array",
+            "title": "Todo Candidates"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/AiMeta"
+          }
+        },
+        "type": "object",
+        "required": [
+          "summary",
+          "important_messages",
+          "schedule_candidates",
+          "todo_candidates",
+          "meta"
+        ],
+        "title": "AnalysisOut"
+      },
       "AskIn": {
         "properties": {
           "question": {
@@ -8523,6 +9255,101 @@
           "missing_ids"
         ],
         "title": "DailyOut"
+      },
+      "DocAnswerIn": {
+        "properties": {
+          "question": {
+            "type": "string",
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Question"
+          },
+          "item_ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array",
+                "maxItems": 20
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Item Ids"
+          }
+        },
+        "type": "object",
+        "required": [
+          "question"
+        ],
+        "title": "DocAnswerIn"
+      },
+      "DocAnswerOut": {
+        "properties": {
+          "answer": {
+            "type": "string",
+            "title": "Answer"
+          },
+          "grounded": {
+            "type": "boolean",
+            "title": "Grounded"
+          },
+          "sources": {
+            "items": {
+              "$ref": "#/components/schemas/SourceOut"
+            },
+            "type": "array",
+            "title": "Sources"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/AiRunMeta"
+          }
+        },
+        "type": "object",
+        "required": [
+          "answer",
+          "grounded",
+          "sources",
+          "meta"
+        ],
+        "title": "DocAnswerOut"
+      },
+      "DocSummaryOut": {
+        "properties": {
+          "item_id": {
+            "type": "string",
+            "title": "Item Id"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "summary": {
+            "type": "string",
+            "title": "Summary"
+          },
+          "key_points": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Key Points"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/AiRunMeta"
+          }
+        },
+        "type": "object",
+        "required": [
+          "item_id",
+          "title",
+          "summary",
+          "key_points",
+          "meta"
+        ],
+        "title": "DocSummaryOut"
       },
       "EmailRequestIn": {
         "properties": {
@@ -8992,6 +9819,71 @@
         ],
         "title": "FileStatusOut"
       },
+      "FindIn": {
+        "properties": {
+          "query": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Query"
+          },
+          "limit": {
+            "type": "integer",
+            "maximum": 30.0,
+            "minimum": 1.0,
+            "title": "Limit",
+            "default": 10
+          },
+          "kind_label": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 100
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Kind Label"
+          },
+          "semantic": {
+            "type": "boolean",
+            "title": "Semantic",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "query"
+        ],
+        "title": "FindIn",
+        "description": "입력할 때마다 불러도 되는 찾기(LLM·외부 API 를 부르지 않는다)."
+      },
+      "FindOut": {
+        "properties": {
+          "method": {
+            "type": "string",
+            "enum": [
+              "keyword",
+              "semantic"
+            ],
+            "title": "Method"
+          },
+          "hits": {
+            "items": {
+              "$ref": "#/components/schemas/HitOut"
+            },
+            "type": "array",
+            "title": "Hits"
+          }
+        },
+        "type": "object",
+        "required": [
+          "method",
+          "hits"
+        ],
+        "title": "FindOut"
+      },
       "FrequentMeal": {
         "properties": {
           "meal": {
@@ -9219,6 +10111,24 @@
           "sensitivity"
         ],
         "title": "HitOut"
+      },
+      "ImportantMessage": {
+        "properties": {
+          "message_id": {
+            "type": "integer",
+            "title": "Message Id"
+          },
+          "reason": {
+            "type": "string",
+            "title": "Reason"
+          }
+        },
+        "type": "object",
+        "required": [
+          "message_id",
+          "reason"
+        ],
+        "title": "ImportantMessage"
       },
       "InviteOut": {
         "properties": {
@@ -10854,6 +11764,26 @@
         ],
         "title": "PutResult"
       },
+      "RangeIn": {
+        "properties": {
+          "limit": {
+            "type": "integer",
+            "maximum": 200.0,
+            "minimum": 1.0,
+            "title": "Limit",
+            "default": 100
+          },
+          "after_id": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "After Id",
+            "default": 0
+          }
+        },
+        "type": "object",
+        "title": "RangeIn",
+        "description": "분석할 범위. after_id 를 주면 그 뒤의 대화, 아니면 최근 limit 개(둘 다 주면 after_id 뒤의 최근 limit 개)."
+      },
       "RecommendationList": {
         "properties": {
           "date": {
@@ -11086,6 +12016,26 @@
         "title": "Reminder",
         "description": "월말 정산 알림. 정산 담당자에게만 show=true 로 내려간다."
       },
+      "RepliesOut": {
+        "properties": {
+          "replies": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Replies"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/AiMeta"
+          }
+        },
+        "type": "object",
+        "required": [
+          "replies",
+          "meta"
+        ],
+        "title": "RepliesOut"
+      },
       "RoleIn": {
         "properties": {
           "role": {
@@ -11103,6 +12053,61 @@
         ],
         "title": "RoleIn",
         "description": "owner 로 올리는 값은 받지 않는다(소유권 이전은 이번 범위 밖)."
+      },
+      "ScheduleCandidate": {
+        "properties": {
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "date": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Date"
+          },
+          "time": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Time"
+          },
+          "place": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Place"
+          },
+          "source_message_ids": {
+            "items": {
+              "type": "integer"
+            },
+            "type": "array",
+            "title": "Source Message Ids",
+            "default": []
+          }
+        },
+        "type": "object",
+        "required": [
+          "title"
+        ],
+        "title": "ScheduleCandidate",
+        "description": "일정 후보. 날짜·시간·장소가 대화에 없으면 null 이다(AI 가 지어내지 않는다). 사용자가 확인해야 일정으로 등록된다."
       },
       "SearchIn": {
         "properties": {
@@ -11919,65 +12924,6 @@
         ],
         "title": "Summary"
       },
-      "SummaryIn": {
-        "properties": {
-          "limit": {
-            "type": "integer",
-            "maximum": 300.0,
-            "minimum": 1.0,
-            "title": "Limit",
-            "default": 200
-          },
-          "after_id": {
-            "type": "integer",
-            "minimum": 0.0,
-            "title": "After Id",
-            "default": 0
-          }
-        },
-        "type": "object",
-        "title": "SummaryIn",
-        "description": "요약할 범위. after_id 를 주면 그 뒤의 대화, 아니면 최근 limit 개(둘 다 주면 after_id 뒤의 최근 limit 개)."
-      },
-      "SummaryOut": {
-        "properties": {
-          "summary": {
-            "type": "string",
-            "title": "Summary"
-          },
-          "message_count": {
-            "type": "integer",
-            "title": "Message Count"
-          },
-          "from_message_id": {
-            "type": "integer",
-            "title": "From Message Id"
-          },
-          "to_message_id": {
-            "type": "integer",
-            "title": "To Message Id"
-          },
-          "model": {
-            "type": "string",
-            "title": "Model"
-          },
-          "generated_at": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Generated At"
-          }
-        },
-        "type": "object",
-        "required": [
-          "summary",
-          "message_count",
-          "from_message_id",
-          "to_message_id",
-          "model",
-          "generated_at"
-        ],
-        "title": "SummaryOut"
-      },
       "TodaySummary": {
         "properties": {
           "date": {
@@ -12006,6 +12952,50 @@
           "missing"
         ],
         "title": "TodaySummary"
+      },
+      "TodoCandidate": {
+        "properties": {
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "assignee_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Assignee Name"
+          },
+          "due": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Due"
+          },
+          "source_message_ids": {
+            "items": {
+              "type": "integer"
+            },
+            "type": "array",
+            "title": "Source Message Ids",
+            "default": []
+          }
+        },
+        "type": "object",
+        "required": [
+          "title"
+        ],
+        "title": "TodoCandidate",
+        "description": "할 일·부탁 후보. 담당자·기한이 불명확하면 null 이다. 사용자가 확인해야 등록된다."
       },
       "TokenIn": {
         "properties": {
@@ -12072,6 +13062,26 @@
           "input"
         ],
         "title": "ToolCallOut"
+      },
+      "TopicsOut": {
+        "properties": {
+          "topics": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Topics"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/AiMeta"
+          }
+        },
+        "type": "object",
+        "required": [
+          "topics",
+          "meta"
+        ],
+        "title": "TopicsOut"
       },
       "Transfer": {
         "properties": {
