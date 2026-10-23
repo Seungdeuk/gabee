@@ -1,37 +1,79 @@
+import { Ionicons } from "@expo/vector-icons";
 import { Image } from "expo-image";
-import { useEffect, useState } from "react";
-import { Modal, Pressable, StyleSheet, Text } from "react-native";
+import { useState } from "react";
+import { ActivityIndicator, Modal, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
+
+/** 쪽 그림 한 장. 불러온 뒤 실제 가로세로 비율로 맞추고, 못 불러오면 안내를 보인다. */
+function Page({ source, label }) {
+  const [ratio, setRatio] = useState(0.72); // 불러오기 전에는 A4 정도 비율
+  const [failed, setFailed] = useState(false);
+  if (failed) {
+    return (
+      <View style={[styles.page, styles.pageFail]}>
+        <Text style={styles.message}>{label} 을(를) 불러오지 못했어요.</Text>
+      </View>
+    );
+  }
+  return (
+    <Image
+      source={source}
+      style={[styles.page, { aspectRatio: ratio }]}
+      contentFit="contain"
+      onLoad={(e) => e?.source?.width && e?.source?.height && setRatio(e.source.width / e.source.height)}
+      onError={() => setFailed(true)}
+      accessibilityLabel={label}
+    />
+  );
+}
 
 /**
- * 올린 원본 사진을 전체 화면으로 띄운다. 눌러서 닫는다.
- * 사진이 아니거나 원본을 못 찾으면 안내 문구를 보여 준다(PDF 등은 앱 안에서 열지 못한다).
- * @param {{ source: { uri: string, headers?: Record<string, string> } | null, title?: string, onClose: () => void }} props
+ * 올린 원본을 전체 화면으로 본다. 사진은 한 장, PDF 는 쪽마다 한 장씩 위아래로 넘겨 본다.
+ * @param {{ state: null | { title?: string, loading?: boolean, sources?: { uri: string, headers?: Record<string, string> }[], message?: string }, onClose: () => void }} props
+ * state 가 null 이면 닫혀 있다. sources 가 비면 message(앱에서 열 수 없는 이유)를 보여 준다.
  */
-export default function OriginalViewer({ source, title = "", onClose }) {
-  const [failed, setFailed] = useState(false);
-  useEffect(() => setFailed(false), [source]);
-
+export default function OriginalViewer({ state, onClose }) {
+  const sources = state?.sources ?? [];
   return (
-    <Modal visible={source !== null} transparent animationType="fade" onRequestClose={onClose}>
-      <Pressable style={styles.viewer} onPress={onClose} accessibilityLabel="원본 닫기">
-        {source && !failed ? (
-          <Image
-            source={source}
-            style={styles.image}
-            contentFit="contain"
-            onError={() => setFailed(true)}
-            accessibilityLabel={`${title} 원본`}
-          />
+    <Modal visible={state !== null} animationType="fade" onRequestClose={onClose}>
+      <SafeAreaView style={styles.safe}>
+        <View style={styles.top}>
+          <Text style={styles.title} numberOfLines={1}>
+            {state?.title ?? "원본"}
+            {sources.length > 1 ? ` · ${sources.length}쪽` : ""}
+          </Text>
+          <Pressable onPress={onClose} accessibilityRole="button" accessibilityLabel="원본 닫기" style={styles.close}>
+            <Ionicons name="close" size={24} color="#fff" />
+          </Pressable>
+        </View>
+        {state?.loading ? (
+          <View style={styles.center}>
+            <ActivityIndicator color="#fff" />
+          </View>
+        ) : sources.length === 0 ? (
+          <View style={styles.center}>
+            <Text style={styles.message}>{state?.message ?? "원본을 찾지 못했어요."}</Text>
+          </View>
         ) : (
-          <Text style={styles.text}>이 파일은 앱 안에서 열 수 없어요. 사진이 아니거나 원본을 찾지 못했어요.</Text>
+          <ScrollView contentContainerStyle={styles.pages} maximumZoomScale={3} minimumZoomScale={1}>
+            {sources.map((s, i) => (
+              <Page key={s.uri} source={s} label={sources.length > 1 ? `${i + 1}쪽` : "원본"} />
+            ))}
+          </ScrollView>
         )}
-      </Pressable>
+      </SafeAreaView>
     </Modal>
   );
 }
 
 const styles = StyleSheet.create({
-  viewer: { flex: 1, backgroundColor: "rgba(0,0,0,0.9)", alignItems: "center", justifyContent: "center", padding: 16 },
-  image: { width: "100%", height: "100%" },
-  text: { color: "#fff", fontSize: 15, textAlign: "center", lineHeight: 24 },
+  safe: { flex: 1, backgroundColor: "#111" },
+  top: { height: 52, flexDirection: "row", alignItems: "center", paddingLeft: 16, paddingRight: 6 },
+  title: { flex: 1, fontSize: 15, fontWeight: "600", color: "#fff" },
+  close: { width: 44, height: 44, alignItems: "center", justifyContent: "center" },
+  center: { flex: 1, alignItems: "center", justifyContent: "center", padding: 24 },
+  message: { color: "#fff", fontSize: 15, textAlign: "center", lineHeight: 24 },
+  pages: { paddingHorizontal: 8, paddingBottom: 24, gap: 10 },
+  page: { width: "100%", backgroundColor: "#222" },
+  pageFail: { minHeight: 160, alignItems: "center", justifyContent: "center" },
 });

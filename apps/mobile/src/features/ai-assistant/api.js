@@ -4,7 +4,7 @@ import { apiFetch, apiUrl, authHeaders, isApiConfigured } from "@/shared/api/cli
  * 가비의 답변 한 건.
  * @typedef {object} AssistantReply
  * @property {string} reply 답변 본문(간단한 마크다운: `## 제목`, `- 목록`, `**굵게**`, `[1]` 출처 번호)
- * @property {{ n: number, title: string, itemId?: string }[]} [sources] 답변이 근거로 쓴 기록(itemId 가 있으면 원본을 열 수 있다)
+ * @property {{ n: number, title: string, itemId?: string, sourcePath?: string | null }[]} [sources] 답변이 근거로 쓴 기록(itemId 가 있으면 원본을 열 수 있다)
  * @property {{ to: string, text: string } | null} [draft] 가족에게 보낼 메시지 초안(승인 전)
  */
 
@@ -57,7 +57,7 @@ export async function sendMessage(text, history = []) {
     return mockReply(text);
   }
   const res = await apiFetch("/ai-assistant/chat", { method: "POST", body: { message: text, history: history.slice(-10) } });
-  const sources = (res.sources ?? []).map(({ n, title, item_id: itemId }) => ({ n, title, itemId }));
+  const sources = (res.sources ?? []).map(({ n, title, item_id: itemId, source_path: sourcePath }) => ({ n, title, itemId, sourcePath }));
   return { reply: res.reply, sources, draft: null };
 }
 
@@ -113,6 +113,32 @@ export async function getFileStatus(id) {
 export function originalImageSource(id) {
   if (!isApiConfigured()) return null;
   return { uri: apiUrl(`/ai-assistant/files/${encodeURIComponent(id)}/original`), headers: authHeaders() };
+}
+
+const IMAGE_EXT = /\.(jpe?g|png|webp|gif|bmp|heic|heif)$/i;
+
+/**
+ * 원본을 앱 안에서 볼 수 있게 이미지 소스 목록으로 바꾼다. 사진은 한 장, PDF 는 서버가 쪽별로 그린 그림 여러 장이다.
+ * 그 밖의 형식(워드·엑셀·PPT 등)은 앱에서 열 수 없어 sources 가 비고 안내 문구만 돌려준다.
+ * @param {string} id 기록(파일) id
+ * @param {string | null | undefined} sourcePath 서버가 알려 준 원본 경로(확장자로 종류를 안다)
+ * @returns {Promise<{ sources: { uri: string, headers: Record<string, string> }[], message?: string }>}
+ */
+export async function openOriginal(id, sourcePath) {
+  const source = originalImageSource(id);
+  if (!source) return { sources: [], message: "서버에 연결되지 않아 원본을 볼 수 없어요." };
+  if (!sourcePath) return { sources: [], message: "이 기록에는 원본 파일이 없어요." };
+  if (IMAGE_EXT.test(sourcePath)) return { sources: [source] };
+  if (/\.pdf$/i.test(sourcePath)) {
+    try {
+      const { count } = await apiFetch(`/ai-assistant/files/${encodeURIComponent(id)}/original/pages`);
+      const base = `/ai-assistant/files/${encodeURIComponent(id)}/original/pages`;
+      return { sources: Array.from({ length: count }, (_, i) => ({ uri: apiUrl(`${base}/${i + 1}`), headers: authHeaders() })) };
+    } catch (e) {
+      return { sources: [], message: e?.message || "PDF 를 불러오지 못했어요." };
+    }
+  }
+  return { sources: [], message: "이 형식의 파일은 아직 앱에서 열 수 없어요. 읽어 낸 글로 확인해 주세요." };
 }
 
 /**

@@ -18,6 +18,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { colors } from "@/theme";
 
 import { getRecord, originalImageSource, updateRecord } from "../api";
+import useOriginal from "../hooks/useOriginal";
 import OriginalViewer from "./OriginalViewer";
 
 const DATE_FORMAT = /^\d{4}-\d{2}-\d{2}$/;
@@ -31,7 +32,7 @@ const DATE_FORMAT = /^\d{4}-\d{2}-\d{2}$/;
 export default function RecordDetail({ record, onClose, onChanged }) {
   const [detail, setDetail] = useState(null);
   const [error, setError] = useState("");
-  const [viewer, setViewer] = useState(null);
+  const viewer = useOriginal();
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState({ title: "", kind_label: "", occurred_on: "", body: "" });
   const [saving, setSaving] = useState(false);
@@ -50,7 +51,8 @@ export default function RecordDetail({ record, onClose, onChanged }) {
     };
   }, [record]);
 
-  const original = record?.hasOriginal ? originalImageSource(record.id) : null;
+  const isImage = /\.(jpe?g|png|webp|gif|bmp|heic|heif)$/i.test(record?.source_path ?? "");
+  const preview = record?.hasOriginal && isImage ? originalImageSource(record.id) : null;
   const needsReview = detail ? detail.needs_review : record?.needs_review;
 
   const startEdit = () => {
@@ -118,10 +120,15 @@ export default function RecordDetail({ record, onClose, onChanged }) {
               </View>
             ) : null}
 
-            {original ? (
-              <Pressable onPress={() => setViewer(original)} accessibilityRole="button" accessibilityLabel="원본 크게 보기">
-                <Image source={original} style={styles.preview} contentFit="contain" />
+            {preview ? (
+              <Pressable onPress={() => viewer.open(record.id, record.source_path, record.title)} accessibilityRole="button" accessibilityLabel="원본 크게 보기">
+                <Image source={preview} style={styles.preview} contentFit="contain" />
                 <Text style={styles.previewHint}>눌러서 원본 크게 보기</Text>
+              </Pressable>
+            ) : record?.hasOriginal ? (
+              <Pressable onPress={() => viewer.open(record.id, record.source_path, record.title)} accessibilityRole="button" style={styles.originalBtn}>
+                <Ionicons name="document-text-outline" size={18} color={colors.text} />
+                <Text style={styles.originalText}>원본 보기</Text>
               </Pressable>
             ) : null}
 
@@ -189,7 +196,7 @@ export default function RecordDetail({ record, onClose, onChanged }) {
             )}
           </ScrollView>
         </KeyboardAvoidingView>
-        <OriginalViewer source={viewer} title={record?.title} onClose={() => setViewer(null)} />
+        <OriginalViewer state={viewer.state} onClose={viewer.close} />
       </SafeAreaView>
     </Modal>
   );
@@ -205,6 +212,8 @@ const styles = StyleSheet.create({
   review: { flexDirection: "row", gap: 8, padding: 12, borderRadius: 12, backgroundColor: colors.honeySoft },
   reviewText: { flex: 1, fontSize: 13, lineHeight: 20, color: colors.text },
   preview: { width: "100%", height: 220, borderRadius: 12, backgroundColor: colors.surface },
+  originalBtn: { alignSelf: "flex-start", minHeight: 40, paddingHorizontal: 14, borderRadius: 20, backgroundColor: colors.surface, flexDirection: "row", alignItems: "center", gap: 6 },
+  originalText: { fontSize: 14, fontWeight: "600", color: colors.text },
   previewHint: { marginTop: 4, textAlign: "center", fontSize: 12, color: colors.textMuted },
   meta: { fontSize: 13, color: colors.textMuted },
   warn: { fontSize: 13, lineHeight: 20, color: colors.warning },
