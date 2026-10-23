@@ -6,6 +6,7 @@
 """
 
 import logging
+import mimetypes
 import threading
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
@@ -17,6 +18,7 @@ from app.shared.db import SessionLocal
 from . import repository as repo
 from .ingest import service as ingest_service
 from .ingest.caption import Captioner, default_captioner
+from .ingest.raw_store import LocalRawStore
 from .knowledge import from_ingest
 from .knowledge import service as knowledge_service
 from .knowledge.repository import get_item
@@ -105,6 +107,20 @@ def status(db: Session, group_id: str, photo_id: str) -> FileStatusOut | None:
         out.title, out.kind_label = item.title, item.kind_label
         out.description = _describe(item.body_md)
     return out
+
+
+def original(db: Session, group_id: str, photo_id: str) -> tuple[bytes, str, str] | None:
+    """올린 원본 파일 (바이트, 파일 이름, content_type). 이 가족의 것이 아니거나 없으면 None."""
+    photo = repo.get_photo(db, group_id, photo_id)
+    item = get_item(db, group_id, photo_id)
+    if photo is None or item is None or not item.source_path:
+        return None
+    try:
+        data = LocalRawStore().get_for_group(group_id, item.source_path)
+    except (ValueError, OSError):
+        return None
+    ctype = mimetypes.guess_type(item.source_path)[0] or "application/octet-stream"
+    return data, photo.filename, ctype
 
 
 def _describe(body_md: str) -> str | None:

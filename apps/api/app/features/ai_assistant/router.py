@@ -1,4 +1,6 @@
-from fastapi import APIRouter, BackgroundTasks, Depends, File, UploadFile
+from urllib.parse import quote
+
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Response, UploadFile
 from sqlalchemy.orm import Session
 
 from app.shared.auth import current_group_id, current_user
@@ -67,3 +69,30 @@ def file_status(
     if out is None:
         raise not_found("파일")
     return out
+
+
+@router.get("/files/{file_id}/original")
+def file_original(
+    file_id: str, group_id: str = Depends(current_group_id), db: Session = Depends(get_db)
+) -> Response:
+    """올린 원본 파일 그대로. 요청자의 가족 그룹이 맞을 때만 준다(다른 가족이면 없는 파일처럼 404)."""
+    found = files.original(db, group_id, file_id)
+    if found is None:
+        raise not_found("원본 파일")
+    data, filename, content_type = found
+    # 이미지·PDF 말고는 브라우저가 열지 않고 내려받게 한다(올린 HTML 이 실행되지 않게)
+    shown = (
+        "inline"
+        if content_type.startswith("image/") or content_type == "application/pdf"
+        else "attachment"
+    )
+    return Response(
+        content=data,
+        media_type=content_type,
+        headers={
+            "Cache-Control": "private, no-store",
+            "Content-Disposition": f"{shown}; filename*=UTF-8''{quote(filename)}",
+            "X-Content-Type-Options": "nosniff",
+            "Content-Security-Policy": "sandbox",
+        },
+    )

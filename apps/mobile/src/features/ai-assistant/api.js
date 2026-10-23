@@ -1,10 +1,10 @@
-import { apiFetch, isApiConfigured } from "@/shared/api/client";
+import { apiFetch, apiUrl, authHeaders, isApiConfigured } from "@/shared/api/client";
 
 /**
  * 가비의 답변 한 건.
  * @typedef {object} AssistantReply
  * @property {string} reply 답변 본문(간단한 마크다운: `## 제목`, `- 목록`, `**굵게**`, `[1]` 출처 번호)
- * @property {{ n: number, title: string }[]} [sources] 답변이 근거로 쓴 기록
+ * @property {{ n: number, title: string, itemId?: string }[]} [sources] 답변이 근거로 쓴 기록(itemId 가 있으면 원본을 열 수 있다)
  * @property {{ to: string, text: string } | null} [draft] 가족에게 보낼 메시지 초안(승인 전)
  */
 
@@ -57,7 +57,7 @@ export async function sendMessage(text, history = []) {
     return mockReply(text);
   }
   const res = await apiFetch("/ai-assistant/chat", { method: "POST", body: { message: text, history: history.slice(-10) } });
-  const sources = (res.sources ?? []).map(({ n, title }) => ({ n, title }));
+  const sources = (res.sources ?? []).map(({ n, title, item_id: itemId }) => ({ n, title, itemId }));
   return { reply: res.reply, sources, draft: null };
 }
 
@@ -102,6 +102,17 @@ export async function getFileStatus(id) {
     };
   }
   return apiFetch(`/ai-assistant/files/${encodeURIComponent(id)}`);
+}
+
+/**
+ * 올린 원본 파일을 화면에 띄울 이미지 소스. 서버가 가족 확인을 하므로 로그인 헤더를 같이 보낸다.
+ * 서버가 없으면(mock) null.
+ * @param {string} id
+ * @returns {{ uri: string, headers: Record<string, string> } | null}
+ */
+export function originalImageSource(id) {
+  if (!isApiConfigured()) return null;
+  return { uri: apiUrl(`/ai-assistant/files/${encodeURIComponent(id)}/original`), headers: authHeaders() };
 }
 
 /** 예전 이름. uploadFile 과 같다. */

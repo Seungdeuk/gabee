@@ -17,6 +17,10 @@ export function setToken(next) {
   token = next ?? "";
 }
 
+/** 이미지 등을 서버에서 직접 받을 때 쓰는 주소와 로그인 헤더(토큰은 주소에 넣지 않는다). */
+export const apiUrl = (path) => `${BASE_URL}${path}`;
+export const authHeaders = () => (token ? { "X-Gyeot-Token": token } : {});
+
 /** 서버가 {code, message} 로 돌려준 오류. */
 export class ApiError extends Error {
   constructor(status, code, message) {

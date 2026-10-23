@@ -244,3 +244,40 @@ def test_a_file_stuck_in_received_is_reported_as_failed(client, family, pipeline
         db.commit()
     st = client.get("/ai-assistant/files/stuck0000001", headers=a).json()
     assert st["status"] == "failed" and st["message"]
+
+
+def test_original_file_comes_back_byte_identical_for_the_same_family(client, family, pipeline):
+    a, b, _ = family
+    data = png((33, 44, 55))
+    up = upload(client, a, data, "원본.png")
+    r = client.get(f"/ai-assistant/files/{up['id']}/original", headers=b)  # 같은 가족 다른 구성원
+    assert r.status_code == 200 and r.content == data
+    assert r.headers["content-type"] == "image/png"
+    assert r.headers["cache-control"] == "private, no-store"
+    assert r.headers["content-disposition"].startswith("inline")
+
+
+def test_original_file_is_hidden_from_other_families_and_strangers(client, family, pipeline):
+    from tests.helpers import signup
+
+    a, _, _ = family
+    up = upload(client, a, png((1, 1, 1)))
+    stranger = signup(client, "철수")
+    client.post("/family-group/groups", json={"name": "남의 가족"}, headers=stranger)
+    url = f"/ai-assistant/files/{up['id']}/original"
+    assert client.get(url, headers=stranger).status_code == 404
+    assert client.get(url).status_code in (401, 403)
+    assert client.get("/ai-assistant/files/nope/original", headers=a).status_code == 404
+
+
+def test_original_file_refuses_a_source_path_pointing_at_another_group(client, family, pipeline):
+    from app.features.ai_assistant.knowledge.models import KnowledgeItem
+    from app.shared.db import SessionLocal
+
+    a, _, _ = family
+    up = upload(client, a, png((9, 8, 7)))
+    with SessionLocal() as db:
+        item = db.get(KnowledgeItem, up["id"])
+        item.source_path = "othergroup00/../" + item.source_path
+        db.commit()
+    assert client.get(f"/ai-assistant/files/{up['id']}/original", headers=a).status_code == 404
