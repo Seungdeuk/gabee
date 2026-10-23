@@ -20,7 +20,8 @@
 
 - 서버 호출은 `features/family-group/api.js`만(`shared/api/client.js`의 Bearer/자동 갱신/익명 `X-Gyeot-Token` 호환을 그대로 쓴다). 오류 문구는 `messages.js`(`invalid_invite`·`too_many_attempts`(남은 시간)·`not_manager`·`already_member`·`join_request_already_decided` 등).
 - 구성원 목록은 `별명(나만 보임) > 표시 이름 > 계정 이름` 순으로 이름을 보여 주고(`relations.js`의 `shownName`), 관계 문구를 함께 보여 준다. 구성원을 누르면 `/family-member`로 간다.
-- `useFamilyState`: `GET /groups/me` + `GET /groups/join-requests/mine`로 loading / none / pending / member / error를 정하고, 관리자면 대기 요청 수를 센다.
+- `useFamilyState({ pollMs })`: `GET /groups/me` + `GET /groups/join-requests/mine`로 loading / none / pending / member / error를 정하고, 관리자면 승인 대기 요청 목록(`pendingRequests`)과 수를 가져온다. **화면이 다시 보일 때마다, 그리고 `pollMs` 간격(가족 화면 8초, 기타 탭 카드 10초)으로 로딩 표시 없이 조용히 다시 불러와** 새 가입 요청이나 승인 결과가 바로 보인다(겹친 요청은 건너뛰지 않고 끝난 뒤 한 번 더 불러와 방금 한 승인·거절이 늦게 반영되지 않는다).
+- 가족 화면의 "가입 요청" 카드에는 들어온 요청이 이름과 함께 **바로 나타나고 승인·거절 버튼**이 있다("가입 요청 화면 열기"는 전체 목록 화면으로 간다). 요청이 없으면 "요청이 들어오면 여기에 바로 나타나요"라고 안내한다.
 - 권한 판단은 서버가 한다. 화면은 `my_role`로 관리자 영역을 보여 줄 뿐이고, 요청에 role 을 실어 보내지 않는다.
 - 기존 디자인 토큰·공통 컴포넌트(`Screen`, `Card`, `Tag`, `Avatar`, `Button`, `Field`)만 쓴다. 기타 탭의 가족 그룹 영역은 임시 데이터(`mock.js`) 대신 실제 데이터로 바뀌었다.
 

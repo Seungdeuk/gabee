@@ -13,7 +13,7 @@ import useFamilyState from "../useFamilyState";
 /** 기타 탭의 가족 그룹 카드: 내 가족 요약과 가족 화면으로 가는 버튼. 가족 관리자에게는 기다리는 가입 요청 수도 보인다. */
 export default function FamilyGroupCard() {
   const router = useRouter();
-  const family = useFamilyState();
+  const family = useFamilyState({ pollMs: 10000 }); // 가입 요청 수·승인 결과를 몇 초마다 새로 확인한다
 
   if (family.status === "loading") {
     return (
