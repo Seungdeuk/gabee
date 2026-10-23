@@ -1,6 +1,6 @@
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
-import Avatar from "@/shared/components/Avatar";
+import UserAvatar from "@/shared/components/UserAvatar";
 import { colors, font, radius, spacing } from "@/theme";
 
 import { formatTime } from "../chatUtils";
@@ -10,9 +10,9 @@ const AVATAR = 36;
 /**
  * 말풍선 한 줄. 내 말은 오른쪽(복숭아색, 시각은 왼쪽 아래), 상대는 왼쪽(아바타·이름·카드색, 시각은 오른쪽 아래).
  * 전송 중이면 "전송 중…", 실패하면 "전송 실패 · 다시 보내기"(누르면 재전송, 길게 누르거나 "삭제" 로 지움).
- * @param {{ message: object, mine: boolean, showName: boolean, showTime?: boolean, onRetry?: (clientId: string) => void, onDiscard?: (clientId: string) => void }} props
+ * @param {{ message: object, mine: boolean, showName: boolean, showTime?: boolean, photoUrl?: string | null, onRetry?: (clientId: string) => void, onDiscard?: (clientId: string) => void }} props
  */
-export default function MessageBubble({ message, mine, showName, showTime = true, onRetry, onDiscard }) {
+export default function MessageBubble({ message, mine, showName, showTime = true, photoUrl, onRetry, onDiscard }) {
   const failed = message.status === "failed";
   const sending = message.status === "sending";
 
@@ -58,7 +58,7 @@ export default function MessageBubble({ message, mine, showName, showTime = true
   }
   return (
     <View style={styles.row}>
-      {showName ? <Avatar name={message.user_name || "?"} userId={message.user_id} size={AVATAR} /> : <View style={styles.spacer} />}
+      {showName ? <UserAvatar name={message.user_name || "?"} userId={message.user_id} photoUrl={photoUrl} size={AVATAR} /> : <View style={styles.spacer} />}
       <View style={styles.column}>
         {showName ? <Text style={styles.name}>{message.user_name}</Text> : null}
         <View style={styles.line}>

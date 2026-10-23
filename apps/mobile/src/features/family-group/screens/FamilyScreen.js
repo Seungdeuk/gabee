@@ -2,7 +2,7 @@ import { useRouter } from "expo-router";
 import { useState } from "react";
 import { Pressable, Share, StyleSheet, Text, View } from "react-native";
 
-import Avatar from "@/shared/components/Avatar";
+import UserAvatar from "@/shared/components/UserAvatar";
 import Button from "@/shared/components/Button";
 import Card from "@/shared/components/Card";
 import SectionTitle from "@/shared/components/SectionTitle";
@@ -101,7 +101,7 @@ export default function FamilyScreen() {
       <Card tone="white">
         {group.members.map((m) => (
           <Pressable key={m.id} style={styles.member} onPress={() => router.push({ pathname: "/family-member", params: { userId: m.id } })} accessibilityRole="button" accessibilityLabel={`${shownName(m, family.nicknames[m.id])} 보기`} testID={`member-${m.id}`}>
-            <Avatar name={shownName(m, family.nicknames[m.id])} userId={m.id} />
+            <UserAvatar name={shownName(m, family.nicknames[m.id])} userId={m.id} photoUrl={m.photo_url} />
             <View style={styles.text}>
               <Text style={styles.name}>{shownName(m, family.nicknames[m.id])}</Text>
               {relationText(m) ? <Text style={styles.relation}>{relationText(m)}</Text> : null}
@@ -149,7 +149,7 @@ export default function FamilyScreen() {
                 {family.pendingRequests.map((row) => (
                   <View key={row.id} style={styles.request}>
                     <View style={styles.requestWho}>
-                      <Avatar name={row.user_name} userId={row.user_id} size={36} />
+                      <UserAvatar name={row.user_name} userId={row.user_id} size={36} />
                       <View style={styles.text}>
                         <Text style={styles.name}>{row.user_name}</Text>
                         <Text style={styles.relation}>{ROLE_TEXT[row.user_role] ?? "구성원"} · 참여 요청</Text>

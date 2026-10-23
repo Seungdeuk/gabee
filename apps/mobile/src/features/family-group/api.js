@@ -1,5 +1,7 @@
 import { apiFetch, setToken } from "@/shared/api/client";
 
+import { photoFileName, photoMimeType } from "./photo";
+
 /**
  * 이름·역할로 가입하고 토큰을 기억한다.
  * @param {string} name
@@ -67,3 +69,27 @@ export const listNicknames = () => apiFetch("/family-group/groups/me/nicknames")
 export const setNickname = (userId, { nickname, memo }) =>
   apiFetch(`/family-group/groups/me/nicknames/${userId}`, { method: "PUT", body: { nickname: nickname || null, memo: memo || null } });
 
+
+/**
+ * 내 프로필 사진을 올린다(POST /family-group/me/photo, multipart 'file'). 서버가 512px 정사각형 JPEG 로 다시 만든다.
+ * 웹은 asset.file(없으면 asset.uri 의 blob)을 그대로, 네이티브는 {uri, name, type} 으로 보낸다. Content-Type 은 fetch 가 boundary 와 함께 붙인다.
+ * @param {{ uri: string, file?: Blob, fileName?: string | null, mimeType?: string }} asset expo-image-picker 가 돌려준 asset
+ * @returns {Promise<{ photo_url: string | null, photo_updated_at: string | null }>}
+ */
+export async function uploadMyPhoto(asset) {
+  const name = photoFileName(asset);
+  const type = photoMimeType(asset);
+  const form = new FormData();
+  if (asset.file) {
+    form.append("file", asset.file, name);
+  } else if (/^(blob|data):/.test(asset.uri)) {
+    const blob = await (await fetch(asset.uri)).blob();
+    form.append("file", blob, name);
+  } else {
+    form.append("file", { uri: asset.uri, name, type });
+  }
+  return apiFetch("/family-group/me/photo", { method: "POST", body: form });
+}
+
+/** 내 프로필 사진을 지운다(없어도 성공). */
+export const deleteMyPhoto = () => apiFetch("/family-group/me/photo", { method: "DELETE" });

@@ -2,7 +2,7 @@ import { useRouter } from "expo-router";
 import { useCallback, useEffect, useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
 
-import Avatar from "@/shared/components/Avatar";
+import UserAvatar from "@/shared/components/UserAvatar";
 import Button from "@/shared/components/Button";
 import Card from "@/shared/components/Card";
 import { colors, font } from "@/theme";
@@ -67,7 +67,7 @@ export default function JoinRequestsScreen() {
         rows.map((row) => (
           <Card key={row.id} tone="white">
             <View style={styles.who}>
-              <Avatar name={row.user_name} userId={row.user_id} />
+              <UserAvatar name={row.user_name} userId={row.user_id} />
               <View style={styles.text}>
                 <Text style={styles.name}>{row.user_name}</Text>
                 <Text style={styles.sub}>{ROLE_TEXT[row.user_role] ?? "구성원"} · 참여 요청</Text>

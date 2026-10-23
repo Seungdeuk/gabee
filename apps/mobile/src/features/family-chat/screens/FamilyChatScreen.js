@@ -4,7 +4,7 @@ import { useCallback, useMemo, useState } from "react";
 import { ScrollView, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
-import Avatar from "@/shared/components/Avatar";
+import UserAvatar from "@/shared/components/UserAvatar";
 import Button from "@/shared/components/Button";
 import SectionTitle from "@/shared/components/SectionTitle";
 import { colors, font, radius, spacing } from "@/theme";
@@ -58,7 +58,7 @@ export default function FamilyChatScreen() {
           time: message ? formatRoomTime(message.created_at) : "",
           count: Array.isArray(group.members) ? group.members.length : 0,
           tone: "blue",
-          members: Array.isArray(group.members) ? group.members.map((m) => ({ id: m.id, name: m.display_name || m.name })) : [],
+          members: Array.isArray(group.members) ? group.members.map((m) => ({ id: m.id, name: m.display_name || m.name, photoUrl: m.photo_url ?? null })) : [],
         },
       });
     } catch (e) {
@@ -121,7 +121,7 @@ export default function FamilyChatScreen() {
               <View style={styles.stack}>
                 {members.slice(0, 5).map((m, i) => (
                   <View key={m.id} style={i > 0 && styles.overlap}>
-                    <Avatar name={m.name} userId={m.id} size={40} ring />
+                    <UserAvatar name={m.name} userId={m.id} photoUrl={m.photoUrl} size={40} ring />
                   </View>
                 ))}
               </View>
