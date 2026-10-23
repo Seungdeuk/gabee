@@ -1,7 +1,7 @@
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from .models import CareEntry, CareItem, CareLocation, CareRecord
+from .models import CareEntry, CareItem, CareLocation, CareMealLog, CareRecord
 
 
 def find(db: Session, group_id: str, subject: str, kind: str, date: str) -> CareRecord | None:
@@ -112,5 +112,35 @@ def purge_locations_before(db: Session, cutoff) -> int:
 
 def delete_entry(db: Session, item_id: str, date: str) -> bool:
     n = db.query(CareEntry).filter(CareEntry.item_id == item_id, CareEntry.date == date).delete()
+    db.commit()
+    return n > 0
+
+
+def get_meal_log(db: Session, group_id: str, date: str, meal: str) -> CareMealLog | None:
+    return db.scalar(
+        select(CareMealLog).where(
+            CareMealLog.group_id == group_id, CareMealLog.date == date, CareMealLog.meal == meal
+        )
+    )
+
+
+def list_meal_logs(db: Session, group_id: str, start: str, end: str) -> list[CareMealLog]:
+    return list(
+        db.scalars(
+            select(CareMealLog).where(
+                CareMealLog.group_id == group_id, CareMealLog.date >= start, CareMealLog.date <= end
+            )
+        )
+    )
+
+
+def delete_meal_log(db: Session, group_id: str, date: str, meal: str) -> bool:
+    n = (
+        db.query(CareMealLog)
+        .filter(
+            CareMealLog.group_id == group_id, CareMealLog.date == date, CareMealLog.meal == meal
+        )
+        .delete()
+    )
     db.commit()
     return n > 0

@@ -11,7 +11,7 @@ from app.shared.seed_lock import seed_lock
 
 from . import config
 from . import repository as repo
-from .models import KINDS, CareEntry, CareItem, CareLocation, CareRecord
+from .models import KINDS, CareEntry, CareItem, CareLocation, CareMealLog, CareRecord
 from .schemas import (
     ConsentOut,
     DailyOut,
@@ -23,6 +23,11 @@ from .schemas import (
     LocationSaved,
     LocationsLatest,
     MealList,
+    MealLogDay,
+    MealLogList,
+    MealLogOut,
+    MealLogPut,
+    MealLogSlot,
     MealOut,
     MealStatus,
     MemberLocation,
@@ -397,6 +402,95 @@ def meal_menu(meal: str, index: int) -> MealOut:
     if meal not in config.MEAL_MENUS:
         raise not_found("끼니")
     return _meal(meal, None, index)
+
+
+# ---- 식단 기록 ----
+
+MEAL_LOG_MAX_DAYS = 31  # 한 번에 볼 수 있는 기간
+
+
+def _log_out(db: Session, log: CareMealLog, names: dict[str, str]) -> MealLogOut:
+    return MealLogOut(
+        date=log.date,
+        meal=log.meal,
+        label=config.MEAL_LABELS[log.meal],
+        menu=log.menu,
+        note=log.note,
+        source=log.source,
+        recorded_by_name=names.get(log.recorded_by, ""),
+        recorded_at=log.recorded_at,
+    )
+
+
+def _names(db: Session, group_id: str) -> dict[str, str]:
+    return {m.id: m.name for m in group_repo.members(db, group_id)}
+
+
+def put_meal_log(db: Session, group_id: str, user_id: str, body: MealLogPut) -> MealLogOut:
+    """그날 끼니에 먹은 메뉴를 기록한다(같은 끼니는 덮어쓴다). 그 끼니의 데일리 체크 항목도 완료로 맞춘다."""
+    today = today_kst()
+    day = body.date.isoformat() if body.date else today
+    if day > today:
+        raise bad_request("future_date", "오늘 이후 날짜는 기록할 수 없어요")
+    menu = body.menu.strip()
+    if not menu:
+        raise bad_request("invalid_menu", "메뉴를 입력해 주세요")
+    log = repo.get_meal_log(db, group_id, day, body.meal) or CareMealLog(
+        id=uuid.uuid4().hex[:12], group_id=group_id, date=day, meal=body.meal
+    )
+    log.menu, log.note, log.source = menu, body.note.strip(), body.source
+    log.recorded_by, log.recorded_at = user_id, datetime.now(UTC)
+    repo.save_obj(db, log)
+
+    # 먹었다고 기록했으니 끼니 체크("아침 식사" 등)도 '예'로 맞춘다. 직전에 '아니오'/건너뛰기였어도 덮어쓴다.
+    _ensure_sample_items(db, group_id)
+    item = next((i for i in repo.list_items(db, group_id) if i.meal_type == body.meal), None)
+    if item is not None:
+        entry = repo.get_entry(db, item.id, day) or CareEntry(
+            id=uuid.uuid4().hex[:12], group_id=group_id, item_id=item.id, date=day
+        )
+        entry.done, entry.skipped = True, False
+        entry.number = entry.condition = None
+        entry.recorded_by, entry.recorded_at = user_id, datetime.now(UTC)
+        repo.save_obj(db, entry)
+    return _log_out(db, log, _names(db, group_id))
+
+
+def list_meal_logs(db: Session, group_id: str, days: int, end: str | None) -> MealLogList:
+    """end(기본 오늘)까지 days 일의 식단 기록. 날짜마다 아침·점심·저녁 칸이 있고 기록이 없으면 비어 있다."""
+    if not 1 <= days <= MEAL_LOG_MAX_DAYS:
+        raise bad_request("invalid_days", f"기간은 1~{MEAL_LOG_MAX_DAYS}일이어야 해요")
+    try:
+        last = datetime.strptime(end, "%Y-%m-%d").date() if end else datetime.now(KST).date()
+    except ValueError:
+        raise bad_request("invalid_date", "날짜는 YYYY-MM-DD 형식이어야 해요") from None
+    first = last - timedelta(days=days - 1)
+    names = _names(db, group_id)
+    by_key = {
+        (log.date, log.meal): log
+        for log in repo.list_meal_logs(db, group_id, first.isoformat(), last.isoformat())
+    }
+    out = []
+    for offset in range(days):
+        day = (last - timedelta(days=offset)).isoformat()
+        slots = [
+            MealLogSlot(
+                meal=m,
+                label=config.MEAL_LABELS[m],
+                log=_log_out(db, by_key[(day, m)], names) if (day, m) in by_key else None,
+            )
+            for m in config.MEAL_LABELS
+        ]
+        out.append(MealLogDay(date=day, slots=slots))
+    return MealLogList(start=first.isoformat(), end=last.isoformat(), days=out)
+
+
+def delete_meal_log(db: Session, group_id: str, day: str, meal: str) -> None:
+    """기록을 지운다. 데일리 체크의 끼니 항목은 그대로 둔다(먹은 사실까지 지우지 않는다)."""
+    if meal not in config.MEAL_LABELS:
+        raise not_found("끼니")
+    if not repo.delete_meal_log(db, group_id, day, meal):
+        raise not_found("식단 기록")
 
 
 # ---- 위치 공유 ----

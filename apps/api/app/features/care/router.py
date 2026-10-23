@@ -17,6 +17,9 @@ from .schemas import (
     LocationSaved,
     LocationsLatest,
     MealList,
+    MealLogList,
+    MealLogOut,
+    MealLogPut,
     MealOut,
     PutResult,
     RecommendationList,
@@ -128,6 +131,40 @@ def meals(
 def meal_menu(meal: str, index: int = 0, _: str = Depends(current_group_id)) -> MealOut:
     """'다른 메뉴': 직전 응답의 `next_index` 를 `index` 로 보내면 다음 메뉴가 나온다."""
     return service.meal_menu(meal, index)
+
+
+@router.get("/meal-log", response_model=MealLogList)
+def list_meal_log(
+    days: int = 7,
+    end: str | None = None,
+    group_id: str = Depends(current_group_id),
+    db: Session = Depends(get_db),
+) -> MealLogList:
+    """식단 기록: end(기본 오늘)까지 days 일(1~31, 기본 7). 날짜마다 아침·점심·저녁 칸이 있다."""
+    return service.list_meal_logs(db, group_id, days, end)
+
+
+@router.put("/meal-log", response_model=MealLogOut)
+def put_meal_log(
+    body: MealLogPut,
+    user=Depends(current_user),
+    group_id: str = Depends(current_group_id),
+    db: Session = Depends(get_db),
+) -> MealLogOut:
+    """그날 끼니에 먹은 메뉴를 기록한다(같은 끼니는 덮어쓴다). 그 끼니의 데일리 체크도 완료로 맞춘다."""
+    return service.put_meal_log(db, group_id, user.id, body)
+
+
+@router.delete("/meal-log", status_code=204)
+def delete_meal_log(
+    date: str,
+    meal: str,
+    group_id: str = Depends(current_group_id),
+    db: Session = Depends(get_db),
+) -> Response:
+    """식단 기록을 지운다(데일리 체크는 그대로)."""
+    service.delete_meal_log(db, group_id, date, meal)
+    return Response(status_code=204)
 
 
 @router.get("/location/consent", response_model=ConsentOut)

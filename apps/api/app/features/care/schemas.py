@@ -134,6 +134,45 @@ class MealList(BaseModel):
     meals: list[MealOut]  # 아직 기록되지 않은 끼니만
 
 
+# ---- 식단 기록 ----
+
+
+class MealLogPut(BaseModel):
+    date: _date | None = None  # 비우면 오늘(한국 시간). 미래 날짜는 안 된다.
+    meal: MealType
+    menu: str = Field(min_length=1, max_length=60)
+    note: str = Field(default="", max_length=120)
+    source: Literal["typed", "recommended"] = "typed"  # 직접 입력 / 추천 메뉴로 기록
+
+
+class MealLogOut(BaseModel):
+    date: str
+    meal: MealType
+    label: str
+    menu: str
+    note: str
+    source: Literal["typed", "recommended"]
+    recorded_by_name: str
+    recorded_at: datetime
+
+
+class MealLogSlot(BaseModel):
+    meal: MealType
+    label: str
+    log: MealLogOut | None = None  # 기록이 없으면 None
+
+
+class MealLogDay(BaseModel):
+    date: str
+    slots: list[MealLogSlot]  # 아침·점심·저녁 순
+
+
+class MealLogList(BaseModel):
+    start: str
+    end: str
+    days: list[MealLogDay]  # 최신 날짜부터
+
+
 # ---- 위치 공유 ----
 
 

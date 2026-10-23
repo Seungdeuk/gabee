@@ -4215,6 +4215,247 @@
         }
       }
     },
+    "/care/meal-log": {
+      "get": {
+        "tags": [
+          "care"
+        ],
+        "summary": "List Meal Log",
+        "description": "식단 기록: end(기본 오늘)까지 days 일(1~31, 기본 7). 날짜마다 아침·점심·저녁 칸이 있다.",
+        "operationId": "list_meal_log_care_meal_log_get",
+        "parameters": [
+          {
+            "name": "days",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 7,
+              "title": "Days"
+            }
+          },
+          {
+            "name": "end",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "End"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-gyeot-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Gyeot-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MealLogList"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "care"
+        ],
+        "summary": "Put Meal Log",
+        "description": "그날 끼니에 먹은 메뉴를 기록한다(같은 끼니는 덮어쓴다). 그 끼니의 데일리 체크도 완료로 맞춘다.",
+        "operationId": "put_meal_log_care_meal_log_put",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-gyeot-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Gyeot-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MealLogPut"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MealLogOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "care"
+        ],
+        "summary": "Delete Meal Log",
+        "description": "식단 기록을 지운다(데일리 체크는 그대로).",
+        "operationId": "delete_meal_log_care_meal_log_delete",
+        "parameters": [
+          {
+            "name": "date",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Date"
+            }
+          },
+          {
+            "name": "meal",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Meal"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-gyeot-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Gyeot-Token"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/care/location/consent": {
       "get": {
         "tags": [
@@ -6837,6 +7078,196 @@
           "meals"
         ],
         "title": "MealList"
+      },
+      "MealLogDay": {
+        "properties": {
+          "date": {
+            "type": "string",
+            "title": "Date"
+          },
+          "slots": {
+            "items": {
+              "$ref": "#/components/schemas/MealLogSlot"
+            },
+            "type": "array",
+            "title": "Slots"
+          }
+        },
+        "type": "object",
+        "required": [
+          "date",
+          "slots"
+        ],
+        "title": "MealLogDay"
+      },
+      "MealLogList": {
+        "properties": {
+          "start": {
+            "type": "string",
+            "title": "Start"
+          },
+          "end": {
+            "type": "string",
+            "title": "End"
+          },
+          "days": {
+            "items": {
+              "$ref": "#/components/schemas/MealLogDay"
+            },
+            "type": "array",
+            "title": "Days"
+          }
+        },
+        "type": "object",
+        "required": [
+          "start",
+          "end",
+          "days"
+        ],
+        "title": "MealLogList"
+      },
+      "MealLogOut": {
+        "properties": {
+          "date": {
+            "type": "string",
+            "title": "Date"
+          },
+          "meal": {
+            "type": "string",
+            "enum": [
+              "breakfast",
+              "lunch",
+              "dinner"
+            ],
+            "title": "Meal"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "menu": {
+            "type": "string",
+            "title": "Menu"
+          },
+          "note": {
+            "type": "string",
+            "title": "Note"
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "typed",
+              "recommended"
+            ],
+            "title": "Source"
+          },
+          "recorded_by_name": {
+            "type": "string",
+            "title": "Recorded By Name"
+          },
+          "recorded_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Recorded At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "date",
+          "meal",
+          "label",
+          "menu",
+          "note",
+          "source",
+          "recorded_by_name",
+          "recorded_at"
+        ],
+        "title": "MealLogOut"
+      },
+      "MealLogPut": {
+        "properties": {
+          "date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Date"
+          },
+          "meal": {
+            "type": "string",
+            "enum": [
+              "breakfast",
+              "lunch",
+              "dinner"
+            ],
+            "title": "Meal"
+          },
+          "menu": {
+            "type": "string",
+            "maxLength": 60,
+            "minLength": 1,
+            "title": "Menu"
+          },
+          "note": {
+            "type": "string",
+            "maxLength": 120,
+            "title": "Note",
+            "default": ""
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "typed",
+              "recommended"
+            ],
+            "title": "Source",
+            "default": "typed"
+          }
+        },
+        "type": "object",
+        "required": [
+          "meal",
+          "menu"
+        ],
+        "title": "MealLogPut"
+      },
+      "MealLogSlot": {
+        "properties": {
+          "meal": {
+            "type": "string",
+            "enum": [
+              "breakfast",
+              "lunch",
+              "dinner"
+            ],
+            "title": "Meal"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "log": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MealLogOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "meal",
+          "label"
+        ],
+        "title": "MealLogSlot"
       },
       "MealOut": {
         "properties": {

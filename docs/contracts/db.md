@@ -34,6 +34,7 @@ docker compose 의 개발용 PostgreSQL(`pgvector/pgvector:pg16` 이미지, `pgv
 | location_consent_events | shared | 위치 공유 동의·철회 이력(사용자, 동의 여부, 경로, 시각). 좌표 없음 |
 | care_items | care | 데일리 체크 항목(기록 방식, 목표, 예정 시각, 끼니). 삭제는 `deleted_at` 소프트 삭제 |
 | care_entries | care | 항목의 하루 기록. 같은 항목·날짜는 하나만 둔다. 건너뛰기 `skipped`(누락으로 세지 않음, 값 없음) |
+| care_meal_logs | care | 식단 기록(그날 끼니에 먹은 메뉴, 메모, 직접 입력/추천 구분, 기록한 사람). 그룹·날짜·끼니당 하나(덮어쓰기) |
 | photos | ai_assistant | 앱이 올린 사진(파일은 `DATA_DIR/photos`에 저장) |
 | knowledge_items | ai_assistant/knowledge | 전처리가 넘긴 기록 한 건(분류 이름, 제목, 마크다운 전체, 원본 경로, 날짜, 민감도) |
 | knowledge_chunks | ai_assistant/knowledge | 기록을 쪽·슬라이드·길이로 자른 조각과 임베딩 벡터(PostgreSQL 은 pgvector `vector(384)` + 코사인 HNSW 인덱스, SQLite 는 JSON). Alembic 리비전 c3a9f21d7e54 |

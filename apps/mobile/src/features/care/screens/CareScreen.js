@@ -73,7 +73,7 @@ function CareLive() {
       {section === "check" && !daily.data ? <Text style={styles.muted}>{daily.error || "불러오는 중…"}</Text> : null}
       {section === "check" && daily.data ? <DailyCheckTab daily={daily.data} reload={reloadDaily} notify={notify} /> : null}
       {section === "recommend" ? <RecommendTab notify={notify} /> : null}
-      {section === "meal" ? <MealTab notify={notify} /> : null}
+      {section === "meal" ? <MealTab notify={notify} onChanged={reloadDaily} /> : null}
       {section === "location" ? <LocationTab notify={notify} /> : null}
     </Screen>
   );
