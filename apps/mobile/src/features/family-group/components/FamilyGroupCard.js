@@ -62,7 +62,7 @@ export default function FamilyGroupCard() {
       </View>
       <View style={styles.row}>
         {group.members.slice(0, 5).map((m) => (
-          <Avatar key={m.id} name={m.name} size={36} />
+          <Avatar key={m.id} name={m.name} userId={m.id} size={36} />
         ))}
         <Text style={styles.sub}>구성원 {group.members.length}명</Text>
       </View>

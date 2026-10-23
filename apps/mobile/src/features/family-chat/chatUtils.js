@@ -208,19 +208,6 @@ export function nextPollDelay(failures) {
   return Math.min(POLL_MAX_MS, POLL_BASE_MS * 2 ** failures);
 }
 
-const TONES = ["blue", "purple", "orange", "green"];
-
-/**
- * 사람마다 같은 아바타 색을 고른다.
- * @param {string} userId
- * @returns {"blue" | "purple" | "orange" | "green"}
- */
-export function toneFor(userId) {
-  let h = 0;
-  for (const ch of String(userId ?? "")) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
-  return TONES[h % TONES.length];
-}
-
 const BY_CODE = {
   network_error: "서버에 연결하지 못했어요. 인터넷 연결을 확인해 주세요",
   api_not_configured: "서버 주소가 설정되지 않아 대화를 불러올 수 없어요",

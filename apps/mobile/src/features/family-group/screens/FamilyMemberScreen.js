@@ -81,7 +81,7 @@ export default function FamilyMemberScreen() {
       <Notice tone="success" text={notice} />
       <Card tone="white">
         <View style={styles.who}>
-          <Avatar name={shownName(member, family.nicknames[member.id])} size={52} />
+          <Avatar name={shownName(member, family.nicknames[member.id])} userId={member.id} size={52} />
           <View style={styles.text}>
             <Text style={styles.name}>{member.display_name || member.name}</Text>
             {member.display_name ? <Text style={styles.sub}>계정 이름 {member.name}</Text> : null}

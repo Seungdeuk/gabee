@@ -67,7 +67,7 @@ export default function JoinRequestsScreen() {
         rows.map((row) => (
           <Card key={row.id} tone="white">
             <View style={styles.who}>
-              <Avatar name={row.user_name} />
+              <Avatar name={row.user_name} userId={row.user_id} />
               <View style={styles.text}>
                 <Text style={styles.name}>{row.user_name}</Text>
                 <Text style={styles.sub}>{ROLE_TEXT[row.user_role] ?? "구성원"} · 참여 요청</Text>

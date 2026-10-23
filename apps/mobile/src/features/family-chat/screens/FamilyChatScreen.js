@@ -15,7 +15,6 @@ import ChatListHeader from "../components/ChatListHeader";
 import EmptyChats from "../components/EmptyChats";
 import RoomRow from "../components/RoomRow";
 import { formatRoomTime, matchesQuery } from "../listUtils";
-import { contacts } from "../mock";
 
 /** 로딩 중 행 모양 뼈대. */
 function Skeleton() {
@@ -59,6 +58,7 @@ export default function FamilyChatScreen() {
           time: message ? formatRoomTime(message.created_at) : "",
           count: Array.isArray(group.members) ? group.members.length : 0,
           tone: "blue",
+          members: Array.isArray(group.members) ? group.members.map((m) => ({ id: m.id, name: m.display_name || m.name })) : [],
         },
       });
     } catch (e) {
@@ -72,6 +72,7 @@ export default function FamilyChatScreen() {
     }, [load]),
   );
 
+  const members = state.room?.members ?? [];
   const shown = useMemo(() => (state.room && matchesQuery(state.room.name, query) ? [state.room] : []), [query, state.room]);
 
   const toggleSearch = () => {
@@ -113,23 +114,25 @@ export default function FamilyChatScreen() {
           )}
         </View>
 
-        <View style={styles.contacts}>
-          <SectionTitle title="가족 연락처" action="전체 보기 →" />
-          <View style={styles.contactCard}>
-            <View style={styles.stack}>
-              {contacts.map((c, i) => (
-                <View key={c.id} style={i > 0 && styles.overlap}>
-                  <Avatar name={c.name} tone={c.tone} size={40} ring />
-                </View>
-              ))}
+        {members.length > 0 ? (
+          <View style={styles.contacts}>
+            <SectionTitle title="가족 연락처" action="전체 보기 →" />
+            <View style={styles.contactCard}>
+              <View style={styles.stack}>
+                {members.slice(0, 5).map((m, i) => (
+                  <View key={m.id} style={i > 0 && styles.overlap}>
+                    <Avatar name={m.name} userId={m.id} size={40} ring />
+                  </View>
+                ))}
+              </View>
+              <Text style={styles.contactText}>
+                <Text style={styles.contactStrong}>가족 {members.length}명</Text>
+                <Text style={styles.contactMuted}> 등록됨</Text>
+              </Text>
+              <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
             </View>
-            <Text style={styles.contactText}>
-              <Text style={styles.contactStrong}>가족 {contacts.length}명</Text>
-              <Text style={styles.contactMuted}> 등록됨</Text>
-            </Text>
-            <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
           </View>
-        </View>
+        ) : null}
       </ScrollView>
     </SafeAreaView>
   );

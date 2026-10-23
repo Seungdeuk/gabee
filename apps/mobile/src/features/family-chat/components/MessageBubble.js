@@ -3,7 +3,7 @@ import { Pressable, StyleSheet, Text, View } from "react-native";
 import Avatar from "@/shared/components/Avatar";
 import { colors, font, radius, spacing } from "@/theme";
 
-import { formatTime, toneFor } from "../chatUtils";
+import { formatTime } from "../chatUtils";
 
 const AVATAR = 36;
 
@@ -58,7 +58,7 @@ export default function MessageBubble({ message, mine, showName, showTime = true
   }
   return (
     <View style={styles.row}>
-      {showName ? <Avatar name={message.user_name || "?"} tone={toneFor(message.user_id)} size={AVATAR} /> : <View style={styles.spacer} />}
+      {showName ? <Avatar name={message.user_name || "?"} userId={message.user_id} size={AVATAR} /> : <View style={styles.spacer} />}
       <View style={styles.column}>
         {showName ? <Text style={styles.name}>{message.user_name}</Text> : null}
         <View style={styles.line}>
