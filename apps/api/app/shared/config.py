@@ -1,5 +1,6 @@
 from pathlib import Path
 
+from pydantic import AliasChoices, Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # apps/api 의 .env 를 가리킨다. 상대경로(".env")로 두면 실행 위치(cwd)에 따라
@@ -16,7 +17,10 @@ class Settings(BaseSettings):
     data_dir: str = "./data"
     cors_origins: str = "*"
     anthropic_api_key: str = ""
-    llm_model: str = "claude-haiku-5-5"
+    # Anthropic 모델은 환경변수 ANTHROPIC_MODEL 로 고른다(예전 이름 LLM_MODEL 도 읽는다). 비우면 기본값.
+    llm_model: str = Field(
+        default="claude-haiku-5-5", validation_alias=AliasChoices("ANTHROPIC_MODEL", "LLM_MODEL")
+    )
     # DB 스키마 준비 상태 재점검 주기(초): 준비된 동안은 드물게, 준비 안 됐으면(자동 배포 진행 중) 자주
     schema_recheck_ready_seconds: int = 30
     schema_recheck_not_ready_seconds: int = 2
@@ -98,7 +102,38 @@ class Settings(BaseSettings):
     kakao_app_id: str = ""
     social_http_timeout_seconds: int = 5
 
-    model_config = SettingsConfigDict(env_file=_ENV_FILE, extra="ignore")
+    # Anthropic(AI) 호출 비용 관리. 키·모델은 서버 환경변수(ANTHROPIC_API_KEY / ANTHROPIC_MODEL)로만 정한다(앱에는 두지 않는다).
+    # 일반 채팅 메시지 전송에서는 AI 를 부르지 않고, 구성원이 AI 기능을 눌렀을 때만 최소한으로 부른다.
+    anthropic_max_tokens: int = (
+        2048  # ANTHROPIC_MAX_TOKENS: 한 번의 응답에서 쓸 수 있는 출력 토큰 상한
+    )
+    ai_effort: str = "low"  # 추론 비용을 줄이려고 낮게 둔다(low|medium|high)
+    ai_auto_analysis_enabled: bool = (
+        False  # 설계만 있고 기본 꺼짐(켜도 메시지마다 부르지 않고 시간·새 메시지 수로 모아서)
+    )
+    ai_auto_analysis_min_new_messages: int = 30
+    ai_auto_analysis_min_interval_seconds: int = 3600
+    ai_max_calls_per_user_per_day: int = 10  # 사용자별 하루 AI 호출 수(캐시 적중은 세지 않는다)
+    ai_max_calls_per_group_per_day: int = 30  # 가족 그룹별 하루 AI 호출 수
+    ai_request_cooldown_seconds: int = 30  # 같은 사용자의 AI 호출 사이 최소 간격
+    ai_result_cache_ttl_seconds: int = (
+        600  # 같은 요청의 결과를 다시 쓰는 시간(가족 그룹별로 따로 보관)
+    )
+    ai_max_concurrent_requests_per_group: int = (
+        1  # 한 가족 그룹에서 동시에 진행할 수 있는 AI 호출 수
+    )
+    ai_inflight_stale_seconds: int = 120  # 이 시간이 지난 진행 표시는 죽은 요청으로 보고 치운다
+    ai_analysis_max_chars: int = (
+        12000  # 한 번에 AI 로 보내는 대화 글자 수(넘으면 오래된 것부터 뺀다)
+    )
+    ai_day_utc_offset_hours: int = 9  # 하루 한도를 세는 날짜 경계(기본 한국 시간 자정)
+
+    model_config = SettingsConfigDict(env_file=_ENV_FILE, extra="ignore", populate_by_name=True)
+
+    @field_validator("llm_model")
+    @classmethod
+    def _llm_model_default_when_blank(cls, value: str) -> str:
+        return value.strip() or "claude-haiku-5-5"
 
 
 settings = Settings()

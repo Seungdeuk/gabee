@@ -32,7 +32,10 @@ CORE_FEATURE = "family_group"  # 모든 기능이 로그인·그룹 멤버십을
 _FEATURE_RE = re.compile(r"^app\.features\.(\w+)\.")
 _SHARED_RE = re.compile(r"^app\.shared\.(\w+)$")
 # app/shared 의 공통 모델이 어떤 기능에서 쓰이는지. 등록되지 않은 공통 모델은 모든 기능의 전제(family_group)로 본다.
-SHARED_MODEL_FEATURES = {"location_consent": ("family_group", "care")}
+SHARED_MODEL_FEATURES = {
+    "location_consent": ("family_group", "care"),
+    "ai_usage": ("family_chat", "ai_assistant"),  # AI 호출 한도·캐시·사용 기록
+}
 
 
 def feature_tables() -> dict[str, dict[str, Table]]:

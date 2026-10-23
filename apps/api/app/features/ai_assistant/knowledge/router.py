@@ -7,11 +7,16 @@ from app.shared.errors import not_found
 
 from .. import files
 from .. import repository as photo_repo
-from . import rag_chat, service
+from . import lookup, rag_chat, service
 from .models import KnowledgeItem
 from .schemas import (
     AskIn,
     AskOut,
+    DocAnswerIn,
+    DocAnswerOut,
+    DocSummaryOut,
+    FindIn,
+    FindOut,
     HitOut,
     ItemDetailOut,
     ItemIn,
@@ -117,6 +122,43 @@ def search(
             for h in hits
         ]
     )
+
+
+@router.post("/find", response_model=FindOut)
+def find(
+    body: FindIn, group_id: str = Depends(current_group_id), db: Session = Depends(get_db)
+) -> FindOut:
+    """글자 일치 찾기(LLM 호출 없음). 없고 semantic=true 일 때만 의미 검색."""
+    return lookup.find(
+        db,
+        group_id,
+        body.query,
+        limit=body.limit,
+        kind_label=body.kind_label,
+        semantic=body.semantic,
+    )
+
+
+@router.post("/items/{item_id}/summary", response_model=DocSummaryOut)
+def summarize_item(
+    item_id: str,
+    user=Depends(current_user),
+    group_id: str = Depends(current_group_id),
+    db: Session = Depends(get_db),
+) -> DocSummaryOut:
+    """기록 한 건 AI 요약(동의·캐시·한도 가드를 거쳐 LLM 1회)."""
+    return lookup.summarize(db, group_id, user.id, item_id)
+
+
+@router.post("/answer", response_model=DocAnswerOut)
+def answer(
+    body: DocAnswerIn,
+    user=Depends(current_user),
+    group_id: str = Depends(current_group_id),
+    db: Session = Depends(get_db),
+) -> DocAnswerOut:
+    """기록을 근거로 질문에 답한다(LLM 1회, 근거가 없으면 호출하지 않는다)."""
+    return lookup.answer(db, group_id, user.id, body.question, body.item_ids)
 
 
 def _mark_review(db: Session, group_id: str, items: list[KnowledgeItem]) -> list[KnowledgeItem]:

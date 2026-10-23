@@ -20,6 +20,10 @@ docker compose 의 개발용 PostgreSQL(`pgvector/pgvector:pg16` 이미지, `pgv
 | join_requests | family_group | (PR 4-A, 스키마만) 초대코드로 참여 신청 후 관리자 승인 대기(`status` pending/approved/rejected). 같은 `(group_id,user_id)`로 pending 중복 금지(부분 유니크) |
 | invite_attempts | family_group | (PR 4-A, 스키마만) 초대코드 레이트리밋용 시도 기록(ip/user_id/invite_id, 성공 여부) — 코드 원문·해시는 저장하지 않는다 |
 | messages | family_chat | 그룹 대화 메시지 |
+| ai_group_settings | family_chat, ai_assistant | 가족 그룹의 AI 기능 사용 동의(`enabled`, 켠 사람). 기본은 꺼짐. 소유자·관리자만 바꾼다 |
+| ai_usage_logs | family_chat, ai_assistant | AI 요청별 사용 기록(기능, API 호출 수, 입력·출력 토큰, 캐시 적중, 상태, 오류 코드, 모델). **대화·문서 원문과 API 키는 저장하지 않는다.** 하루 한도·쿨다운 계산에 쓰고 90일이 지난 기록은 정리한다 |
+| ai_result_cache | family_chat, ai_assistant | 같은 AI 요청의 검증된 결과(가족 그룹·기능·키로 유일). 만료 시각까지만 재사용하고 새 결과를 저장할 때 만료된 행을 지우며, 동의를 끄면 그 가족의 행을 모두 지운다 |
+| ai_inflight | family_chat, ai_assistant | 가족 그룹에서 진행 중인 AI 호출 표시((group_id, slot) 기본키, 소유 `token`). 동시 실행을 여러 워커에서도 막는다. 오래된 표시는 치운다 |
 | events | schedule | 가족 일정(제목, 시작 시각, 상태 pending/confirmed, 출처) |
 | expenses | billing | 공동 지출(제목, 금액, 날짜, 분류, 낸 사람, 나눌 사람 `split_among`, 정산 대상 태그 `target_tag`: parents/children/all/custom, 정산하기 시각·사람 `settled_at`·`settled_by`). 삭제는 `deleted_at` 소프트 삭제. 구독 항목으로 만든 지출이면 `subscription_id`(같은 달 중복 방지) |
 | billing_settings | billing | 가족 그룹의 가계 설정: 정산 담당자(월말 알림 대상, 행이 없으면 그룹을 만든 사람)와 미성년 자녀 목록 `minor_ids` |

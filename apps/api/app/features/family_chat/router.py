@@ -6,9 +6,11 @@ from app.shared.auth import current_group_id, current_user
 from app.shared.db import get_db
 
 from . import service
+from .ai_router import router as ai_router
 from .schemas import MessageCreate, MessageOut
 
 router = APIRouter(prefix="/family-chat", tags=["family-chat"])
+router.include_router(ai_router)  # AI 대화 분석·추천(사용할 때만 AI 호출)
 
 
 @router.get("/messages", response_model=list[MessageOut])
