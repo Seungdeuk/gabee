@@ -16,7 +16,7 @@ const CHOICES = [
  */
 export default function AttachSheet({ visible, onClose, onPick }) {
   return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+    <Modal visible={visible} transparent animationType="none" statusBarTranslucent onRequestClose={onClose}>
       <View style={styles.root}>
         <Pressable style={styles.backdrop} onPress={onClose} accessibilityLabel="닫기" />
         <SafeAreaView edges={["bottom"]} style={styles.sheet}>
