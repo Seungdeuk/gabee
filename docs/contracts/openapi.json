@@ -485,6 +485,245 @@
         }
       }
     },
+    "/family-group/auth/social/{provider}": {
+      "post": {
+        "tags": [
+          "family-group"
+        ],
+        "summary": "Social Login",
+        "description": "Google(ID 토큰)·Kakao(액세스 토큰)로 로그인하거나 처음이면 가입한다. 같은 이메일의 기존 계정이 있으면 자동으로 합치지 않고\n`{candidate_account: true, masked_email}` 만 돌려준다(기존 방식으로 로그인한 뒤 연동).",
+        "operationId": "social_login_family_group_auth_social__provider__post",
+        "parameters": [
+          {
+            "name": "provider",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "enum": [
+                "google",
+                "kakao"
+              ],
+              "type": "string",
+              "title": "Provider"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SocialLoginIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/LoginOut"
+                    },
+                    {
+                      "$ref": "#/components/schemas/SocialCandidateOut"
+                    }
+                  ],
+                  "title": "Response Social Login Family Group Auth Social  Provider  Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "family-group"
+        ],
+        "summary": "Unlink Account",
+        "description": "소셜 연동을 해제한다. 로그인 수단이 하나도 남지 않게 되면 403 last_login_method.",
+        "operationId": "unlink_account_family_group_auth_social__provider__delete",
+        "parameters": [
+          {
+            "name": "provider",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "enum": [
+                "google",
+                "kakao"
+              ],
+              "type": "string",
+              "title": "Provider"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/family-group/auth/social": {
+      "get": {
+        "tags": [
+          "family-group"
+        ],
+        "summary": "Linked Accounts",
+        "description": "내 계정에 연결된 소셜 계정 목록.",
+        "operationId": "linked_accounts_family_group_auth_social_get",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/SocialAccountOut"
+                  },
+                  "title": "Response Linked Accounts Family Group Auth Social Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/family-group/auth/social/{provider}/link": {
+      "post": {
+        "tags": [
+          "family-group"
+        ],
+        "summary": "Link Account",
+        "description": "로그인한 내 계정에 소셜 계정을 연결한다. 비밀번호가 있는 계정은 비밀번호를 한 번 더 확인한다.",
+        "operationId": "link_account_family_group_auth_social__provider__link_post",
+        "parameters": [
+          {
+            "name": "provider",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "enum": [
+                "google",
+                "kakao"
+              ],
+              "type": "string",
+              "title": "Provider"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SocialLinkIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/family-group/groups/me/profile": {
       "put": {
         "tags": [
@@ -11013,6 +11252,110 @@
           "token"
         ],
         "title": "SignupOut"
+      },
+      "SocialAccountOut": {
+        "properties": {
+          "provider": {
+            "type": "string",
+            "title": "Provider"
+          },
+          "linked_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Linked At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "provider",
+          "linked_at"
+        ],
+        "title": "SocialAccountOut"
+      },
+      "SocialCandidateOut": {
+        "properties": {
+          "candidate_account": {
+            "type": "boolean",
+            "title": "Candidate Account",
+            "default": true
+          },
+          "masked_email": {
+            "type": "string",
+            "title": "Masked Email"
+          }
+        },
+        "type": "object",
+        "required": [
+          "masked_email"
+        ],
+        "title": "SocialCandidateOut",
+        "description": "같은 이메일의 기존 계정이 있다 — 자동으로 합치지 않는다. 기존 방식으로 로그인한 뒤 연동해야 한다."
+      },
+      "SocialLinkIn": {
+        "properties": {
+          "provider_token": {
+            "type": "string",
+            "maxLength": 4096,
+            "minLength": 10,
+            "title": "Provider Token"
+          },
+          "password": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 256
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Password"
+          }
+        },
+        "type": "object",
+        "required": [
+          "provider_token"
+        ],
+        "title": "SocialLinkIn",
+        "description": "이미 로그인한 계정에 소셜 계정을 연결한다. 비밀번호가 있는 계정은 비밀번호를 다시 확인한다."
+      },
+      "SocialLoginIn": {
+        "properties": {
+          "provider_token": {
+            "type": "string",
+            "maxLength": 4096,
+            "minLength": 10,
+            "title": "Provider Token"
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "parent",
+              "child",
+              "other"
+            ],
+            "title": "Role",
+            "default": "child"
+          },
+          "device_label": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 60
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Device Label"
+          }
+        },
+        "type": "object",
+        "required": [
+          "provider_token"
+        ],
+        "title": "SocialLoginIn",
+        "description": "provider_token: Google=ID 토큰(JWT), Kakao=액세스 토큰. 처음 가입할 때만 role 을 쓴다."
       },
       "SourceOut": {
         "properties": {
