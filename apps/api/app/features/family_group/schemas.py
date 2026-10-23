@@ -29,7 +29,9 @@ class AccountSignupIn(BaseModel):
 
     login_id: str = Field(max_length=64)
     password: str = Field(max_length=256)
-    email: str = Field(max_length=320)
+    email: str | None = Field(
+        default=None, max_length=320
+    )  # 선택. 없으면 이메일 인증·비밀번호 재설정 메일을 쓸 수 없다
     name: str = Field(max_length=80)
     role: Literal["parent", "child", "other"] = "child"
     role_detail: str | None = Field(default=None, max_length=80)  # role=other 일 때만 저장

@@ -79,8 +79,9 @@ class Settings(BaseSettings):
     password_reset_ttl_seconds: int = 30 * 60
     # 6자리 코드: 코드(메일 1통)마다 틀려도 되는 횟수. 넘으면 그 코드는 못 쓰고 메일을 다시 받아야 한다
     code_max_attempts: int = 5
-    # 이메일 미인증 정식 회원의 가족 그룹 생성·참여를 막는다(docs/requirements/family-group.md). 메일 설정 전 임시로 끌 수 있다
-    require_email_verification: bool = True
+    # 이메일은 가입 때 선택이고, 인증하지 않아도 가족 그룹을 만들고 참여할 수 있다(기본). true 로 켜면 이메일이 있는데 미인증인 정식 회원의
+    # 그룹 생성·참여를 막는다(메일 발송이 설정된 환경에서만). 이메일이 없는 계정은 켜도 막지 않는다.
+    require_email_verification: bool = False
     # 메일 요청 제한(프로세스 메모리, login 제한과 같은 한계): 인증 메일 재발송 간격/시간당, 재설정 메일 이메일별/IP별 시간당
     verify_resend_cooldown_seconds: int = 60
     verify_max_per_hour: int = 5
@@ -93,6 +94,13 @@ class Settings(BaseSettings):
     invite_max_uses: int = 1
     invite_max_failures: int = 5
     invite_failure_window_seconds: int = 15 * 60
+
+    # Google·Kakao 로그인(PR 4-D). 비어 있으면 그 제공자 로그인은 503 social_not_configured 로 막힌다. 비밀키·앱 키는 .env 에만 둔다.
+    # GOOGLE_CLIENT_IDS: 앱이 ID 토큰을 받을 때 쓴 Google OAuth 클라이언트 ID(웹/iOS/Android 여러 개면 쉼표로). ID 토큰의 aud 가 이 중 하나여야 한다.
+    # KAKAO_APP_ID: Kakao 개발자 콘솔의 앱 ID(숫자). 액세스 토큰이 우리 앱에서 발급된 것인지 확인한다.
+    google_client_ids: str = ""
+    kakao_app_id: str = ""
+    social_http_timeout_seconds: int = 5
 
     # 가족 채팅 대화 요약(AI): 사용자가 요약을 눌렀을 때만 최근 대화를 Anthropic 으로 보낸다. 요약은 저장하지 않는다.
     # 한 번에 보내는 글자 수와 사용자별 시간당 호출 수를 제한한다.

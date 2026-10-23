@@ -135,3 +135,32 @@ test("인증번호 오류 문구", () => {
   assert.match(errorMessage({ code: "reset_code_invalid" }), /만료/);
   assert.match(errorMessage({ code: "invalid_role_detail" }), /40자/);
 });
+
+test("이메일 선택 칸: 비어 있으면 통과, 적었다면 형식을 본다", async () => {
+  const { checkOptionalEmail } = await import("../src/features/auth/validation.js");
+  assert.equal(checkOptionalEmail(""), "");
+  assert.equal(checkOptionalEmail("   "), "");
+  assert.equal(checkOptionalEmail("jimin@example.com"), "");
+  assert.notEqual(checkOptionalEmail("nope"), "");
+});
+
+test("회원가입 요청: 이메일이 비어 있으면 본문에서 뺀다", async () => {
+  const calls = [];
+  const realFetch = globalThis.fetch;
+  process.env.EXPO_PUBLIC_API_URL = "http://api.test";
+  globalThis.fetch = async (url, init = {}) => {
+    calls.push(JSON.parse(init.body));
+    return new Response(JSON.stringify({ user: {} }), { status: 201, headers: { "Content-Type": "application/json" } });
+  };
+  try {
+    const { signupAccount } = await import("../src/features/auth/api.js");
+    await signupAccount({ loginId: "Jimin_Kim", password: "Sunny-day-2026", email: "  ", name: "지민" });
+    await signupAccount({ loginId: "jimin2", password: "Sunny-day-2026", email: " A@B.com ", name: "지민", role: "other", roleDetail: "이모" });
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+  assert.equal("email" in calls[0], false);
+  assert.equal(calls[0].login_id, "jimin_kim");
+  assert.equal(calls[1].email, "a@b.com");
+  assert.equal(calls[1].role_detail, "이모");
+});

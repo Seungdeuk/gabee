@@ -47,6 +47,7 @@ export default function AccountCard() {
       <Text style={styles.sub}>{user?.email ?? user?.login_id}</Text>
       <View style={styles.row}>
         {verified ? null : <Button label="이메일 인증하기" small onPress={() => router.push("/verify-email")} />}
+        <Button label="소셜 계정 연동" small variant="secondary" onPress={() => router.push("/social-accounts")} />
         <Button
           label={busy ? "로그아웃 중..." : "로그아웃"}
           small
