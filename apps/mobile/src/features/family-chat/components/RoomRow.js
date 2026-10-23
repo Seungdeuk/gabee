@@ -1,56 +1,56 @@
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import Avatar from "@/shared/components/Avatar";
-import { colors } from "@/theme";
+import { colors, font, radius, spacing } from "@/theme";
+
+import { roomA11yLabel } from "../listUtils";
 
 /**
- * 채팅방 한 줄: 아바타, 이름과 마지막 말, 시각과 읽지 않은 개수.
- * @param {{ room: { name: string, last: string, time: string, unread: number, tone: string }, last?: boolean, onPress?: () => void }} props
+ * 채팅방 한 줄(메신저 목록 모양): 큰 원형 프로필, 방 이름+구성원 수, 마지막 말 한 줄, 오른쪽 위 시각.
+ * 읽지 않은 수는 서버가 없어 보여주지 않는다.
+ * @param {{ room: { name: string, last: string, time: string, tone: string, count?: number }, onPress?: () => void }} props
  */
-export default function RoomRow({ room, last = false, onPress }) {
+export default function RoomRow({ room, onPress }) {
   return (
     <Pressable
       onPress={onPress}
       disabled={!onPress}
       accessibilityRole={onPress ? "button" : undefined}
-      accessibilityLabel={onPress ? `${room.name} 채팅방 열기` : undefined}
-      style={[styles.row, !last && styles.divider]}
+      accessibilityLabel={roomA11yLabel(room.last)}
+      style={({ pressed }) => [styles.row, pressed && styles.pressed]}
     >
-      <Avatar name={room.name} tone={room.tone} />
+      <Avatar name={room.name} tone={room.tone} size={56} />
       <View style={styles.main}>
-        <Text style={styles.name}>{room.name}</Text>
+        <View style={styles.titleLine}>
+          <Text style={styles.name} numberOfLines={1}>
+            {room.name}
+          </Text>
+          {room.count ? <Text style={styles.count}>{room.count}</Text> : null}
+        </View>
         <Text style={styles.last} numberOfLines={1}>
           {room.last}
         </Text>
       </View>
-      <View style={styles.side}>
-        <Text style={styles.time}>{room.time}</Text>
-        {room.unread > 0 ? (
-          <View style={styles.badge}>
-            <Text style={styles.badgeText}>{room.unread}</Text>
-          </View>
-        ) : null}
-      </View>
+      <Text style={styles.time}>{room.time}</Text>
     </Pressable>
   );
 }
 
 const styles = StyleSheet.create({
-  row: { flexDirection: "row", alignItems: "center", gap: 14, paddingVertical: 12 },
-  divider: { borderBottomWidth: 1, borderBottomColor: colors.divider },
-  main: { flex: 1, minWidth: 0, gap: 3 },
-  name: { fontSize: 15, fontWeight: "700", color: colors.text },
-  last: { fontSize: 13, color: colors.textSub },
-  side: { alignItems: "flex-end", gap: 6 },
-  time: { fontSize: 12, color: colors.textMuted },
-  badge: {
-    minWidth: 20,
-    height: 20,
-    paddingHorizontal: 6,
-    borderRadius: 10,
-    backgroundColor: colors.peach,
-    alignItems: "center",
-    justifyContent: "center",
+  row: {
+    minHeight: 72,
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: spacing.md,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.sm,
+    borderRadius: radius.lg,
   },
-  badgeText: { fontSize: 11, fontWeight: "700", color: colors.text },
+  pressed: { backgroundColor: colors.surface },
+  main: { flex: 1, minWidth: 0, gap: spacing.xs, paddingTop: spacing.xs },
+  titleLine: { flexDirection: "row", alignItems: "center", gap: 6 },
+  name: { ...font.cardTitle, color: colors.text, flexShrink: 1 },
+  count: { ...font.caption, color: colors.textMuted },
+  last: { ...font.caption, color: colors.textSub },
+  time: { ...font.caption, color: colors.textMuted, paddingTop: spacing.xs },
 });

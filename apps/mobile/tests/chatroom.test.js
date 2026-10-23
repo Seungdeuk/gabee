@@ -16,6 +16,7 @@ import {
   previewText,
   roomErrorMessage,
   shouldShowName,
+  shouldShowTime,
   toneFor,
   trimDraft,
 } from "../src/features/family-chat/chatUtils.js";
@@ -157,4 +158,16 @@ test("메시지 API: 경로·쿼리·본문, 대화 글자는 쿼리에 없고 B
   assert.equal(calls[0].headers.Authorization, "Bearer access-1");
   assert.equal(calls[0].headers["X-Gyeot-Token"], undefined);
   client.clearSession();
+});
+
+test("shouldShowTime: 같은 사람이 같은 분에 이어 보내면 마지막에만", () => {
+  const m = (id, u, h, mi) => msg(id, u, "x", at(2026, 10, 23, h, mi));
+  assert.equal(shouldShowTime(m(1, "a", 8, 0), undefined), true);
+  assert.equal(shouldShowTime(m(1, "a", 8, 0), m(2, "a", 8, 0)), false);
+  assert.equal(shouldShowTime(m(1, "a", 8, 0), m(2, "a", 8, 1)), true);
+  assert.equal(shouldShowTime(m(1, "a", 8, 0), m(2, "b", 8, 0)), true);
+  assert.equal(shouldShowTime(m(1, "a", 8, 0), { ...m(2, "a", 8, 0), status: "sending" }), true); // 전송 중·실패 메시지는 묶음을 끊는다
+  assert.equal(shouldShowTime(m(1, "a", 8, 0), { ...m(2, "a", 8, 0), status: "failed" }), true);
+  const items = buildItems([m(1, "a", 8, 0), m(2, "a", 8, 0), m(3, "a", 8, 5)]);
+  assert.deepEqual(items.filter((i) => i.type === "message").map((i) => i.showTime), [false, true, true]);
 });
