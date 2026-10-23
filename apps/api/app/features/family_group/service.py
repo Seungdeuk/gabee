@@ -72,9 +72,10 @@ def _unusable_legacy_token() -> str:
 def signup_account(db: Session, body: AccountSignupIn) -> AccountSignupOut:
     """아이디/비밀번호/이메일 회원가입. 로그인(토큰 발급)은 하지 않는다 — 다음 단계(로그인 API)에서 한다."""
     login_id = credentials.normalize_login_id(body.login_id)
-    email = credentials.normalize_email(body.email)
+    # 이메일은 선택: 비어 있거나 공백뿐이면 없는 것으로 본다(적었다면 형식·중복은 그대로 검사한다)
+    email = credentials.normalize_email(body.email) if body.email and body.email.strip() else None
     name = credentials.normalize_name(body.name)
-    credentials.validate_password(body.password, login_id, email)
+    credentials.validate_password(body.password, login_id, email or "")
     role_detail = " ".join((body.role_detail or "").split()) if body.role == "other" else ""
     if len(role_detail) > 40:
         raise ApiError(400, "invalid_role_detail", "관계는 40자 이내로 적어 주세요")
@@ -100,10 +101,10 @@ def signup_account(db: Session, body: AccountSignupIn) -> AccountSignupOut:
     return AccountSignupOut(user=user_out(user))
 
 
-def _ensure_available(db: Session, login_id: str, email: str) -> None:
+def _ensure_available(db: Session, login_id: str, email: str | None) -> None:
     if repo.login_id_exists(db, login_id):
         raise ApiError(409, "login_id_taken", "이미 사용 중인 아이디예요")
-    if repo.email_exists(db, email):
+    if email is not None and repo.email_exists(db, email):
         raise ApiError(409, "email_taken", "이미 가입된 이메일이에요")
 
 
@@ -144,14 +145,15 @@ def group_out(db: Session, group: Group, viewer_id: str | None = None) -> GroupO
 
 
 def _require_verified_email(user: User) -> None:
-    """이메일 미인증 정식 회원은 가족 데이터와 관련된 행동(그룹 생성·참여)을 못 한다.
-    익명 계정(login_id 없음)과 소셜 계정은 대상이 아니다. REQUIRE_EMAIL_VERIFICATION=false 이거나 메일 발송이 설정되지
-    않은 환경(인증할 방법이 없음)에서는 적용하지 않는다 — 메일을 설정하는 순간부터 자동으로 적용된다."""
+    """선택 정책(REQUIRE_EMAIL_VERIFICATION=true, 기본은 꺼짐 — 이메일이 없거나 인증하지 않아도 가족에 참여할 수 있다).
+    켜면 이메일을 적었지만 인증하지 않은 정식 회원은 가족 그룹 생성·참여를 못 한다. 이메일이 없는 계정, 익명 계정, 메일 발송이
+    설정되지 않은 환경(인증할 방법이 없음)에서는 켜도 적용하지 않는다."""
     if (
         settings.require_email_verification
         and mailer.get_mailer()
         is not None  # 인증 메일을 보낼 수 없는 환경에서는 막지 않는다(가입 후 막다른 길 방지)
         and user.login_id is not None
+        and user.email is not None  # 이메일이 없는 계정은 인증할 수단이 없어 막지 않는다
         and user.email_verified_at is None
     ):
         raise ApiError(403, "email_not_verified", "이메일 인증을 먼저 완료해 주세요")

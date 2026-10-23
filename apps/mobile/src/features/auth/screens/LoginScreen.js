@@ -11,7 +11,7 @@ import Notice from "../components/Notice";
 import { errorMessage } from "../messages";
 import { useAuth } from "@/shared/auth/AuthProvider";
 
-/** 아이디·비밀번호 로그인. 성공하면 홈으로 가고, 이메일 인증이 안 된 회원은 홈에서 안내를 받는다. */
+/** 아이디·비밀번호 로그인. 성공하면 홈으로 간다(이메일 인증은 선택이라 로그인을 막거나 인증 화면으로 보내지 않는다). */
 export default function LoginScreen() {
   const router = useRouter();
   const { signIn } = useAuth();
@@ -28,8 +28,8 @@ export default function LoginScreen() {
     setBusy(true);
     setError("");
     try {
-      const user = await signIn(loginId, password);
-      router.replace(user.email && !user.email_verified ? "/verify-email" : "/chat");
+      await signIn(loginId, password);
+      router.replace("/chat");
     } catch (e) {
       setError(errorMessage(e));
       setPassword(""); // 실패한 비밀번호는 화면에 남기지 않는다

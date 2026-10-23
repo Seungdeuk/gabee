@@ -6983,8 +6983,15 @@
             "title": "Password"
           },
           "email": {
-            "type": "string",
-            "maxLength": 320,
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 320
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "Email"
           },
           "name": {
@@ -7019,7 +7026,6 @@
         "required": [
           "login_id",
           "password",
-          "email",
           "name"
         ],
         "title": "AccountSignupIn",

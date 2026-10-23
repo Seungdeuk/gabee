@@ -75,8 +75,9 @@ class Settings(BaseSettings):
     password_reset_ttl_seconds: int = 30 * 60
     # 6자리 코드: 코드(메일 1통)마다 틀려도 되는 횟수. 넘으면 그 코드는 못 쓰고 메일을 다시 받아야 한다
     code_max_attempts: int = 5
-    # 이메일 미인증 정식 회원의 가족 그룹 생성·참여를 막는다(docs/requirements/family-group.md). 메일 설정 전 임시로 끌 수 있다
-    require_email_verification: bool = True
+    # 이메일은 가입 때 선택이고, 인증하지 않아도 가족 그룹을 만들고 참여할 수 있다(기본). true 로 켜면 이메일이 있는데 미인증인 정식 회원의
+    # 그룹 생성·참여를 막는다(메일 발송이 설정된 환경에서만). 이메일이 없는 계정은 켜도 막지 않는다.
+    require_email_verification: bool = False
     # 메일 요청 제한(프로세스 메모리, login 제한과 같은 한계): 인증 메일 재발송 간격/시간당, 재설정 메일 이메일별/IP별 시간당
     verify_resend_cooldown_seconds: int = 60
     verify_max_per_hour: int = 5

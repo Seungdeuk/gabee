@@ -114,7 +114,8 @@ def test_successful_login_resets_the_failure_count(client):
 
 
 # ---------- Bearer 인증 ----------
-def test_bearer_authenticates_me_and_existing_apis(client):
+def test_bearer_authenticates_me_and_existing_apis(client, monkeypatch):
+    monkeypatch.setattr(settings, "require_email_verification", True)  # 선택 정책을 켠 환경
     mailer.set_mailer(_NullMailer())  # 메일이 설정된 환경(이메일 인증 정책 적용)
     register(client)
     access = login(client).json()["access_token"]

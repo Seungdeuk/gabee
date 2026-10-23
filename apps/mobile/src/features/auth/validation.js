@@ -27,6 +27,15 @@ export function checkLoginId(value) {
   return "";
 }
 
+/**
+ * 이메일이 선택인 칸: 비어 있으면 문제 없음(""), 적었다면 형식을 본다.
+ * @param {string} value
+ * @returns {string}
+ */
+export function checkOptionalEmail(value) {
+  return value.trim() ? checkEmail(value) : "";
+}
+
 /** @param {string} value */
 export function checkEmail(value) {
   const email = normalizeEmail(value);
