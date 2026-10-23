@@ -1,20 +1,21 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ActivityIndicator, FlatList, KeyboardAvoidingView, Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import Button from "@/shared/components/Button";
 import IconButton from "@/shared/components/IconButton";
-import { colors, font, spacing } from "@/theme";
+import { colors, font, radius, spacing } from "@/theme";
 
-import { buildItems, canSend, trimDraft } from "../chatUtils";
+import { buildItems, canSend, lastId, trimDraft } from "../chatUtils";
 import AiPanel from "../components/AiPanel";
 import Composer from "../components/Composer";
 import MessageBubble from "../components/MessageBubble";
 import useChatMessages, { useRoomInfo } from "../useChatMessages";
 
 const NEAR = 120; // 바닥/맨 위에서 이 정도 안이면 "근처"로 본다
+const FAR = 400; // 바닥에서 이 이상 올라와 있으면 "맨 아래로" 버튼을 보여 준다
 
 /** 가운데 안내(로딩·오류·그룹 없음). */
 function Center({ children }) {
@@ -32,6 +33,10 @@ export default function ChatRoomScreen() {
   const nearBottom = useRef(true);
   const scrollPos = useRef({ y: 0, height: 0 }); // 웹은 maintainVisibleContentPosition 이 없어 이전 대화가 위에 붙을 때 위치를 직접 지킨다
   const olderRequested = useRef(false);
+  const [far, setFar] = useState(false); // 바닥에서 멀리 올라와 있는지
+  const [hasNew, setHasNew] = useState(false); // 올라와 있는 동안 새 메시지가 왔는지
+  const [menuNotice, setMenuNotice] = useState(false);
+  const newestId = useRef(0);
 
   const back = () => (router.canGoBack() ? router.back() : router.replace("/family-chat"));
 
@@ -39,7 +44,10 @@ export default function ChatRoomScreen() {
 
   const onScroll = useCallback(
     ({ nativeEvent: { contentOffset, contentSize, layoutMeasurement } }) => {
-      nearBottom.current = contentSize.height - (contentOffset.y + layoutMeasurement.height) < NEAR;
+      const fromBottom = contentSize.height - (contentOffset.y + layoutMeasurement.height);
+      nearBottom.current = fromBottom < NEAR;
+      setFar(fromBottom > FAR);
+      if (fromBottom <= FAR) setHasNew(false);
       scrollPos.current.y = contentOffset.y;
       if (contentOffset.y < NEAR) {
         olderRequested.current = true;
@@ -62,20 +70,45 @@ export default function ChatRoomScreen() {
     setAiOpen(false);
   };
 
+  useEffect(() => {
+    const newest = lastId(chat.messages);
+    if (newest > newestId.current && newestId.current > 0 && !nearBottom.current) setHasNew(true);
+    newestId.current = Math.max(newestId.current, newest);
+  }, [chat.messages]);
+
+  const jumpToEnd = () => {
+    nearBottom.current = true;
+    setHasNew(false);
+    setFar(false);
+    scrollToEnd(true);
+  };
+
   const items = buildItems(chat.messages);
   const members = info.room?.members?.length ?? 0;
 
   const header = (
-    <View style={styles.bar}>
-      <IconButton name="chevron-back" label="뒤로" onPress={back} />
-      <View style={styles.titleBox}>
-        <Text style={styles.title} numberOfLines={1}>
-          {info.room?.name ?? "가족 채팅"}
-        </Text>
-        {info.room ? <Text style={styles.subtitle}>구성원 {members}명</Text> : null}
+    <>
+      <View style={styles.bar}>
+        <IconButton name="chevron-back" label="뒤로" onPress={back} />
+        <View style={styles.titleBox}>
+          <Text style={styles.title} numberOfLines={1}>
+            {info.room?.name ?? "가족 채팅"}
+          </Text>
+          {info.room ? (
+            <Text style={styles.count} accessibilityLabel={`구성원 ${members}명`}>
+              {members}
+            </Text>
+          ) : null}
+        </View>
+        <IconButton name="sparkles-outline" label="AI 도우미 열기" onPress={() => setAiOpen(true)} disabled={info.status !== "ready"} />
+        <IconButton name="ellipsis-vertical" label="메뉴" onPress={() => setMenuNotice((v) => !v)} />
       </View>
-      <IconButton name="sparkles-outline" label="AI 도우미 열기" onPress={() => setAiOpen(true)} disabled={info.status !== "ready"} />
-    </View>
+      {menuNotice ? (
+        <View style={styles.menuNotice} accessibilityLiveRegion="polite">
+          <Text style={styles.menuNoticeText}>준비 중이에요</Text>
+        </View>
+      ) : null}
+    </>
   );
 
   let body;
@@ -127,6 +160,7 @@ export default function ChatRoomScreen() {
             </Pressable>
           </View>
         ) : null}
+        <View style={styles.listArea}>
         <FlatList
           ref={listRef}
           style={styles.list}
@@ -135,13 +169,16 @@ export default function ChatRoomScreen() {
           renderItem={({ item }) =>
             item.type === "day" ? (
               <View style={styles.dayWrap}>
-                <Text style={styles.day}>{item.label}</Text>
+                <Text style={styles.day} accessibilityRole="header">
+                  {item.label}
+                </Text>
               </View>
             ) : (
               <MessageBubble
                 message={item.message}
                 mine={item.message.user_id === info.me?.id}
                 showName={item.showName}
+                showTime={item.showTime}
                 onRetry={chat.resend}
                 onDiscard={chat.discard}
               />
@@ -170,6 +207,17 @@ export default function ChatRoomScreen() {
           keyboardShouldPersistTaps="handled"
           contentContainerStyle={styles.listContent}
         />
+        {far ? (
+          <Pressable
+            onPress={jumpToEnd}
+            accessibilityRole="button"
+            accessibilityLabel={hasNew ? "새 메시지, 맨 아래로" : "맨 아래로"}
+            style={[styles.jump, hasNew && styles.jumpNew]}
+          >
+            <Ionicons name="arrow-down" size={20} color={colors.text} />
+          </Pressable>
+        ) : null}
+        </View>
         <Composer value={draft} onChangeText={setDraft} onSend={onSend} />
       </>
     );
@@ -197,18 +245,35 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: colors.divider,
   },
-  titleBox: { flex: 1, minWidth: 0, alignItems: "center" },
-  title: { ...font.cardTitle, color: colors.text },
-  subtitle: { ...font.tab, color: colors.textMuted },
+  titleBox: { flex: 1, minWidth: 0, flexDirection: "row", alignItems: "center", gap: spacing.xs },
+  title: { ...font.cardTitle, color: colors.text, flexShrink: 1 },
+  count: { ...font.caption, color: colors.textMuted },
+  menuNotice: { alignItems: "center", paddingVertical: spacing.sm, backgroundColor: colors.honeySoft },
+  menuNoticeText: { ...font.caption, color: colors.textSub },
+  listArea: { flex: 1 },
+  jump: {
+    position: "absolute",
+    right: spacing.lg,
+    bottom: spacing.lg,
+    width: 40,
+    height: 40,
+    borderRadius: radius.pill,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: colors.card,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  jumpNew: { backgroundColor: colors.peach, borderColor: colors.peach },
   center: { flex: 1, alignItems: "center", justifyContent: "center", gap: spacing.md, padding: spacing.xxl },
   emptyTitle: { ...font.cardTitle, color: colors.text, textAlign: "center" },
   emptyText: { ...font.body, color: colors.textSub, textAlign: "center" },
   emptyList: { alignItems: "center", gap: spacing.sm, paddingVertical: spacing.xxl * 2 },
-  list: { flex: 1 },
+  list: { flex: 1, backgroundColor: colors.background },
   listContent: { paddingVertical: spacing.md },
   older: { paddingVertical: spacing.md },
   dayWrap: { alignItems: "center", paddingVertical: spacing.md },
-  day: { ...font.tab, color: colors.textMuted, backgroundColor: colors.honeySoft, paddingHorizontal: spacing.md, paddingVertical: spacing.xs, borderRadius: 12, overflow: "hidden" },
+  day: { ...font.tab, color: colors.textMuted, backgroundColor: colors.surface, paddingHorizontal: spacing.md, paddingVertical: spacing.xs, borderRadius: radius.pill, overflow: "hidden" },
   banner: { flexDirection: "row", alignItems: "center", gap: spacing.sm, paddingHorizontal: spacing.lg, paddingVertical: spacing.sm, backgroundColor: colors.dangerSoft },
   bannerText: { flex: 1, ...font.caption, color: colors.danger },
   bannerBtn: { minHeight: 36, justifyContent: "center" },

@@ -133,9 +133,24 @@ export function shouldShowName(prev, cur) {
 }
 
 /**
+ * 시각을 보여 줄지: 같은 사람이 같은 분 안에 이어서 보내면 마지막 메시지에만 보여 준다.
+ * @param {object} cur
+ * @param {object | undefined} next 바로 다음 메시지(같은 날짜일 때만 넘긴다)
+ * @returns {boolean}
+ */
+export function shouldShowTime(cur, next) {
+  if (!next || next.user_id !== cur.user_id) return true;
+  if (next.status === "sending" || next.status === "failed") return true;
+  const a = parseTime(cur.created_at);
+  const b = parseTime(next.created_at);
+  if (Number.isNaN(a.getTime()) || Number.isNaN(b.getTime())) return true;
+  return a.getFullYear() !== b.getFullYear() || a.getMonth() !== b.getMonth() || a.getDate() !== b.getDate() || a.getHours() !== b.getHours() || a.getMinutes() !== b.getMinutes();
+}
+
+/**
  * FlatList 에 넣을 줄 목록: 날짜 구분선과 메시지.
  * @param {object[]} messages 오름차순
- * @returns {({ type: "day", key: string, label: string } | { type: "message", key: string, message: object, showName: boolean })[]}
+ * @returns {({ type: "day", key: string, label: string } | { type: "message", key: string, message: object, showName: boolean, showTime: boolean })[]}
  */
 export function buildItems(messages) {
   const items = [];
@@ -147,6 +162,7 @@ export function buildItems(messages) {
         key: `m-${message.clientId ?? message.id}`,
         message,
         showName: shouldShowName(g.messages[i - 1], message),
+        showTime: shouldShowTime(message, g.messages[i + 1]),
       });
     });
   }
