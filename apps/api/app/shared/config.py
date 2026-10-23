@@ -36,7 +36,7 @@ class Settings(BaseSettings):
     # 글자 없는 사진 설명(Ollama 이미지 모델). 사진은 서버 밖으로 나가지 않는다
     caption_enabled: bool = True
     caption_model: str = "qwen2.5vl:3b"
-    caption_timeout: float = 180.0
+    caption_timeout: float = 60.0
     ollama_keep_alive: str = "30m"  # 모델을 메모리에 올려 두는 시간(처음 불러오는 데 1분쯤 걸린다)
     # 채팅(외부 Claude)이 근거로 읽을 수 있는 기록에 민감 기록(처방전·신분증·통장·인물 사진 등)을 넣을지
     chat_include_sensitive: bool = True

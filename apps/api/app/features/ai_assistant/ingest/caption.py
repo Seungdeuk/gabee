@@ -24,12 +24,17 @@ MAX_SIDE = 768  # 모델에 보내기 전 긴 변을 줄인다(속도를 크게 
 MAX_DESCRIPTION = 200
 MAX_KEYWORDS = 5
 PROMPT = (
-    "이 사진을 보고 JSON 객체 하나로만 답하세요.\n"
-    '{"description": "사진에 실제로 보이는 장소·사물·동물·사람 수와 하는 일을 한국어 한 문장으로", '
-    '"keywords": ["검색에 쓸 한국어 낱말 5개 이하"]}\n'
-    "보이지 않는 것은 쓰지 마세요. 확실하지 않으면 쓰지 마세요. 사람의 이름·나이·직업을 추측하지 마세요. "
-    "사진 속 글자는 옮겨 적지 말고 무엇인지만 말하세요."
+    "이 사진을 보고 JSON 객체 하나로만 답하세요. description 에는 사진에 실제로 보이는 장소·사물·동물·"
+    "사람 수와 하는 일을 한국어 한 문장으로 쓰고, keywords 에는 검색에 쓸 한국어 낱말을 5개 이하로 넣으세요.\n"
+    '예: {"description": "공원 벤치에서 두 사람이 책을 읽고 있다", "keywords": ["공원", "벤치", "독서"]}\n'
+    "예시를 그대로 따라 쓰지 말고 이 사진에 보이는 것만 쓰세요. 확실하지 않으면 쓰지 마세요. "
+    "사람의 이름·나이·직업을 추측하지 마세요. 사진 속 글자는 옮겨 적지 말고 무엇인지만 말하세요."
 )
+MAX_TOKENS = (
+    200  # 모델이 같은 말을 되풀이하며 끝나지 않는 경우를 끊는다(한국어 한 문장은 보통 60토큰 안쪽)
+)
+# 지시문이나 예시를 설명으로 되돌려 주는 경우를 걸러낸다
+_ECHOES = ("사진에 실제로 보이는", "검색에 쓸", "공원 벤치에서 두 사람이 책을")
 
 
 class Captioner(Protocol):
@@ -47,7 +52,7 @@ class OllamaCaptioner:
             "stream": False,
             "format": "json",
             "keep_alive": settings.ollama_keep_alive,
-            "options": {"temperature": 0},
+            "options": {"temperature": 0, "num_predict": MAX_TOKENS},
             "messages": [
                 {
                     "role": "user",
@@ -93,7 +98,7 @@ def _clean(data) -> Caption | None:
     if not isinstance(data, dict):
         return None
     description = _text(data.get("description"), MAX_DESCRIPTION)
-    if not description:
+    if not description or description.startswith(_ECHOES):
         return None
     raw = data.get("keywords")
     words = [_text(w, 20) for w in raw] if isinstance(raw, list) else []
