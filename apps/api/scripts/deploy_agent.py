@@ -6,9 +6,11 @@ GitHub Self-hosted Runner 없이, 공용 DB PC 가 스스로 최신 main 을 확
 
 1. 최신 main 커밋을 읽기 전용 토큰으로 확인하고, 이미 처리한 커밋이면 건너뛴다.
 2. 그 정확한 커밋만 전용 클론에 체크아웃한다(PR·다른 브랜치 코드는 가져오지 않는다).
-3. 배포 도구(이 파일, shared_db_deploy.py, migration_risk.py)와 alembic/env.py 등이 관리자가 검토(bless)한 것과
-   다르면 자격증명으로 실행하지 않고 `held` 로 멈춘다 — 배포 기계 자체의 변경은 사람이 한 번 확인한다.
-4. 오케스트레이터를 *고정된 복사본*(agent/ 폴더)으로 실행하고 결과를 상태 파일에 기록한다.
+3. 배포 도구(이 파일, shared_db_deploy.py, migration_risk.py), alembic/env.py·pyproject.toml 등, 그리고 env.py 가
+   import 로 실행하게 될 app 모듈(기능 모델 제외)이 관리자가 검토(bless)한 것과 다르면 `held` 로 멈춘다.
+   리비전·기능 모델은 main 의 리뷰·CI 를 전제로 신뢰하되 위험한 import·호출을 정적으로 검사한다. 판단할 수 없으면 멈춘다.
+4. 그 커밋의 필수 CI 가 성공했는지 먼저 확인한 뒤에만 의존성을 설치하고, 오케스트레이터를 *고정된 복사본*(agent/ 폴더)으로
+   실행해 결과를 상태 파일에 기록한다.
 
 비밀(DB 비밀번호, GitHub 토큰)은 파일로만 받고 명령줄·로그에 쓰지 않는다. 설정은 agent.env(KEY=VALUE)와 환경변수.
 """
@@ -16,6 +18,7 @@ GitHub Self-hosted Runner 없이, 공용 DB PC 가 스스로 최신 main 을 확
 from __future__ import annotations
 
 import argparse
+import ast
 import base64
 import dataclasses
 import datetime as dt
@@ -32,6 +35,7 @@ from contextlib import contextmanager
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+import migration_risk  # noqa: E402
 import shared_db_deploy as deploy  # noqa: E402  (같은 폴더의 고정된 복사본을 쓴다)
 
 # 관리자가 검토해 agent/ 폴더에 고정해 둔 배포 도구. 체크아웃의 같은 파일과 다르면 held.
@@ -40,12 +44,23 @@ TOOL_FILES = (
     "apps/api/scripts/shared_db_deploy.py",
     "apps/api/scripts/migration_risk.py",
 )
-# 체크아웃에서 실행되지만 DB 자격증명이 있는 프로세스에서 도는 파일. bless 때 해시를 기록해 두고 바뀌면 held.
+# 체크아웃에서 실행되지만 DB 자격증명이 있는 프로세스에서 도는 파일과 의존성·빌드 정의. bless 때 해시를 기록해 두고
+# 바뀌면 held. 없는 파일은 '없음'으로 기록한다(setup.py 가 새로 생겨도 held).
 TRUST_FILES = (
     "apps/api/alembic/env.py",
     "apps/api/alembic.ini",
     "apps/api/scripts/check_schema_matches_models.py",
+    "apps/api/pyproject.toml",
+    "apps/api/setup.py",
+    "apps/api/setup.cfg",
 )
+# 자격증명 프로세스가 실행하는 파이썬의 시작점. 여기서 import 로 닿는 app 모듈을 정적으로 따라가 해시로 고정한다.
+IMPORT_ROOTS = ("apps/api/alembic/env.py", "apps/api/scripts/check_schema_matches_models.py")
+# 위 범위 중 main 의 PR 리뷰·CI 를 전제로 신뢰하는 코드(기능 모델·패키지 __init__). 기능 개발마다 bless 하지 않도록
+# 해시로 고정하지 않고, 리비전처럼 위험한 import·호출만 정적으로 막는다(app 모듈 import 는 허용하고 따라간다).
+REVIEWED_PREFIX, REVIEWED_NAMES = "apps/api/app/features/", ("models.py", "__init__.py")
+# 오케스트레이터가 apps/api 를 import 경로에 두므로, 여기의 다른 모듈·패키지는 라이브러리를 가릴 수 있다.
+TOP_LEVEL_ALLOWED = {"app", "tests", "conftest.py"}
 # 자식 프로세스(git, 오케스트레이터)에 넘기는 환경변수. 그 밖의 변수(다른 비밀 포함)는 넘기지 않는다.
 BASE_ENV_KEYS = (
     "PATH", "PATHEXT", "SYSTEMROOT", "WINDIR", "COMSPEC", "TEMP", "TMP", "HOME", "USERPROFILE",
@@ -53,6 +68,10 @@ BASE_ENV_KEYS = (
     "LANG", "LC_ALL", "XDG_RUNTIME_DIR", "DOCKER_HOST", "DOCKER_CONFIG", "DOCKER_CONTEXT",
 )  # fmt: skip
 OK_OUTCOMES = {"disabled", "idle", "skipped", "success", "noop", "dry_run_ok"}
+HELD_HINT = (
+    " — 배포 도구·신뢰 파일 변경이면 리뷰한 뒤 공용 DB PC 에서 `deploy_agent.py bless --sha <커밋> --yes` 를 실행하고,"
+    " 위험한 파이썬·모듈 문제면 main 에서 코드를 고치세요."
+)
 RETRY_BLOCKED_SECONDS = 30 * 60  # blocked(백업 실패 등)는 이 간격 이전에는 다시 시도하지 않는다
 
 
@@ -205,6 +224,13 @@ class Agent:
             return {}
 
     def trust_problems(self) -> list[str]:
+        """비어 있어야 자격증명으로 실행한다. 검사 중 오류가 나면 판단할 수 없으므로 문제로 본다(fail-closed)."""
+        try:
+            return self._trust_problems()
+        except Exception as exc:  # noqa: BLE001
+            return [f"신뢰 검사를 할 수 없음({type(exc).__name__}): {str(exc)[:200]}"]
+
+    def _trust_problems(self) -> list[str]:
         problems = []
         for rel in TOOL_FILES:
             fresh, pinned = self.repo / rel, self.tools_dir / Path(rel).name
@@ -213,13 +239,90 @@ class Agent:
             elif not pinned.is_file() or sha256_file(fresh) != sha256_file(pinned):
                 problems.append(f"배포 도구가 바뀜: {Path(rel).name}")
         trust = self._load_trust()
-        for rel in TRUST_FILES:
-            fresh = self.repo / rel
+        pinned_now, static = self._scan_code()
+        for rel, digest in pinned_now.items():
             if rel not in trust:
                 problems.append(f"검토(bless)되지 않음: {rel}")
-            elif not fresh.is_file() or sha256_file(fresh) != trust[rel]:
+            elif digest != trust[rel]:
                 problems.append(f"배포 신뢰 파일이 바뀜: {rel}")
-        return problems
+        return problems + static
+
+    def _scan_code(self) -> tuple[dict[str, str | None], list[str]]:
+        """자격증명 프로세스(alembic env.py, 스키마 검사)가 import 로 실행하게 될 app 모듈을 AST 로 따라간다.
+        반환: (해시로 고정할 파일 → sha256, 없으면 None), 정적 검사 문제. 동적 실행을 완전히 찾아내지는 못한다."""
+        api = self.repo / "apps/api"
+        digest = lambda p: sha256_file(p) if p.is_file() else None  # noqa: E731
+        pinned = {rel: digest(self.repo / rel) for rel in TRUST_FILES}
+        problems = [
+            f"apps/api 최상위의 import 가능한 파일이 라이브러리를 가릴 수 있음: {e.name}"
+            for e in sorted(api.iterdir())
+            if e.name not in TOP_LEVEL_ALLOWED
+            and f"apps/api/{e.name}" not in TRUST_FILES  # setup.py 등은 해시로 따로 고정한다
+            and (e.suffix == ".py" or (e.is_dir() and (e / "__init__.py").exists()))
+        ]
+        for path in sorted((api / "alembic" / "versions").glob("*.py")):
+            problems += [
+                f"리비전의 위험한 파이썬: {f}"
+                for f in migration_risk.unsafe_python(path.read_text(encoding="utf-8"), path.name)
+            ]
+        queue, seen = [self.repo / rel for rel in IMPORT_ROOTS], set()
+        while queue:
+            path = queue.pop()
+            rel = path.relative_to(self.repo).as_posix()
+            if rel in seen:
+                continue
+            seen.add(rel)
+            source = path.read_text(encoding="utf-8")
+            if rel.startswith(REVIEWED_PREFIX) and path.name in REVIEWED_NAMES:
+                problems += [
+                    f"모델 코드의 위험한 파이썬: {f}"
+                    for f in migration_risk.unsafe_python(source, rel, extra_allowed={"app"})
+                ]
+            elif rel not in pinned:
+                pinned[rel] = sha256_file(path)
+            for module, required in self._app_imports(api, path, source):
+                files = self._module_files(api, module)
+                if files is None:
+                    if required:
+                        problems.append(f"찾을 수 없는 app 모듈: {module} ({rel})")
+                    continue
+                queue += files
+        return pinned, problems
+
+    @staticmethod
+    def _app_imports(api: Path, path: Path, source: str) -> Iterator[tuple[str, bool]]:
+        """(모듈 이름, 반드시 있어야 하는지). `from a import b` 의 b 는 하위 모듈일 수도 있어 후보로만 낸다."""
+        package = list(path.relative_to(api).parts[:-1])  # 상대 import 의 기준 패키지
+        for node in ast.walk(ast.parse(source)):
+            if isinstance(node, ast.Import):
+                names = [(a.name, True) for a in node.names]
+            elif isinstance(node, ast.ImportFrom):
+                base = (node.module or "").split(".") if node.module else []
+                if node.level:
+                    base = package[: len(package) - node.level + 1] + base
+                module = ".".join(base)
+                names = [(module, True)] + [(f"{module}.{a.name}", False) for a in node.names]
+            else:
+                continue
+            for name, required in names:
+                if name == "app" or name.startswith("app."):
+                    yield name, required
+
+    @staticmethod
+    def _module_files(api: Path, module: str) -> list[Path] | None:
+        """모듈을 불러올 때 실행되는 파일(상위 패키지 __init__ 포함). 모듈이 없으면 None."""
+        parts = module.split(".")
+        files = [
+            api.joinpath(*parts[:i], "__init__.py")
+            for i in range(1, len(parts))
+            if api.joinpath(*parts[:i], "__init__.py").is_file()
+        ]
+        target = api.joinpath(*parts)
+        if target.with_suffix(".py").is_file():
+            return [*files, target.with_suffix(".py")]
+        if (target / "__init__.py").is_file():
+            return [*files, target / "__init__.py"]
+        return files if target.is_dir() else None
 
     def bless(self, sha: str, token: str | None = None) -> list[str]:
         """관리자가 검토한 커밋의 배포 도구를 agent/ 에 고정하고 신뢰 파일 해시를 기록한다."""
@@ -233,7 +336,7 @@ class Agent:
                     tmp = dst.with_suffix(dst.suffix + ".new")
                     shutil.copyfile(src, tmp)
                     tmp.replace(dst)
-        trust = {rel: sha256_file(self.repo / rel) for rel in TRUST_FILES}
+        trust, _ = self._scan_code()
         self.state_dir.mkdir(parents=True, exist_ok=True)
         self._trust_path().write_text(json.dumps(trust, indent=2), encoding="utf-8")
         self.save_state(held_reason=None, blessed_sha=sha)
@@ -384,15 +487,31 @@ class Agent:
 
         problems = self.trust_problems()
         if problems:
-            first = self.load_state().get("held_sha") != tip
             self.save_state(last_sha=tip, last_outcome="held", held_reason=problems, held_sha=tip)
-            if first:  # 같은 커밋으로 이슈를 반복해서 만들지 않는다
-                self._notify_held(token, tip, problems)
-            return self._finish(
-                "held",
-                "배포 도구/신뢰 파일이 검토(bless)된 것과 다릅니다: " + "; ".join(problems),
-                tip,
+            message = (
+                "배포 코드가 검토(bless)된 것과 다르거나 검사를 통과하지 못했습니다: "
+                + "; ".join(problems)
             )
+            # 같은 커밋으로 이슈를 반복해서 만들지 않는다. 알림이 실패하면 다음 주기에 다시 알린다(배포는 계속 멈춤)
+            if self.load_state().get("held_notified_sha") != tip:
+                if self._notify(token, tip, "held", message + HELD_HINT):
+                    self.save_state(held_notified_sha=tip)
+            return self._finish("held", message, tip)
+
+        # 의존성 설치(=체크아웃 코드 실행) 전에 그 커밋의 필수 CI 성공을 먼저 확인한다. 오케스트레이터가 다시 확인한다.
+        verdict = deploy.GitHubCiVerifier(self.cfg.repo, token).verify(tip)
+        if verdict.status in ("stale", "pending"):
+            return self._finish("skipped", verdict.reason, tip)
+        if verdict.status != "ok":
+            message = f"CI 검증을 통과하지 않아 의존성 설치·배포를 하지 않습니다: {verdict.reason}"
+            self.save_state(
+                last_sha=tip,
+                last_outcome="blocked",
+                last_mode="apply" if self.cfg.apply else "dry",
+                retry_after=time.time() + RETRY_BLOCKED_SECONDS,
+            )
+            self._notify(token, tip, "blocked", message)
+            return self._finish("blocked", message, tip)
 
         failure = self._deps_sync(self.load_state())
         if failure:
@@ -420,15 +539,18 @@ class Agent:
         self.save_state(**updates)
         return self._finish(outcome, result.get("message", ""), tip)
 
-    def _notify_held(self, token: str, tip: str, problems: list[str]) -> None:
-        body = {"outcome": "held", "message": "배포 도구/신뢰 파일이 검토(bless)된 것과 달라 자동 적용을 멈췄습니다: " + "; ".join(problems) + " — 변경을 리뷰한 뒤 공용 DB PC 에서 `deploy_agent.py bless --sha <커밋> --yes` 를 실행하세요.", "sha": tip, "from": None, "to": None, "backup": None}  # fmt: skip
+    def _notify(self, token: str, tip: str, outcome: str, message: str) -> bool:
+        """GitHub 이슈로 알린다. 실패해도 배포 여부에는 영향이 없고(이미 멈춘 상태) 로컬 로그에 남긴다."""
+        body = {"outcome": outcome, "message": message, "sha": tip, "from": None, "to": None, "backup": None}  # fmt: skip
         try:
             os.environ["GITHUB_TOKEN"] = token
             deploy.notify(
                 body, self.cfg.repo, token, f"https://github.com/{self.cfg.repo}/commit/{tip}"
             )
-        except (urllib.error.URLError, OSError, KeyError) as exc:
-            self.log(f"[warn] held 알림에 실패했습니다: {type(exc).__name__}")
+            return True
+        except Exception as exc:  # noqa: BLE001  알림 실패는 원인과 무관하게 '멈춘 채로' 둔다
+            self.log(f"[warn] {outcome} 알림에 실패했습니다: {type(exc).__name__}")
+            return False
         finally:
             os.environ.pop("GITHUB_TOKEN", None)
 
@@ -468,6 +590,10 @@ def main(argv: list[str] | None = None) -> int:
     bless = sub.add_parser("bless", help="검토한 커밋의 배포 도구를 고정하고 신뢰 파일을 승인")
     bless.add_argument("--sha", required=True)
     bless.add_argument("--yes", action="store_true", help="코드를 검토했음을 확인")
+    check = sub.add_parser(
+        "check", help="체크아웃이 그 커밋이고 배포 코드가 검토(bless)된 그대로인지 확인"
+    )
+    check.add_argument("--sha", required=True)
     args = parser.parse_args(argv)
     try:
         agent = Agent(Config.load(args.env_file))
@@ -493,7 +619,21 @@ def main(argv: list[str] | None = None) -> int:
             token = None
         changed = agent.bless(args.sha, token)
         print("고정한 배포 도구:", ", ".join(changed) or "(변경 없음)")
-        return 0
+        # bless 로 해결되지 않는 문제(위험한 파이썬 등)는 main 에서 고쳐야 한다
+        problems = agent.trust_problems()
+        for problem in problems:
+            print(f"[HELD] {problem}")
+        return 1 if problems else 0
+    if args.command == "check":
+        try:
+            head = agent._git("rev-parse", "HEAD")
+        except (RuntimeError, OSError) as exc:
+            head = f"(확인 불가: {exc})"
+        problems = ([] if head == args.sha else [f"체크아웃 {head[:12]} 이 대상 {args.sha[:12]} 과 다름"]) + agent.trust_problems()  # fmt: skip
+        for problem in problems:
+            print(f"[HELD] {problem}")
+        print("확인 완료: 검토한 커밋 그대로입니다." if not problems else "확인 실패")
+        return 1 if problems else 0
 
     outcome = agent.run_once()["outcome"]
     return 2 if outcome == "refused" else (0 if outcome in OK_OUTCOMES else 1)
