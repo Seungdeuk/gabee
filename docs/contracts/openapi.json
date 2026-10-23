@@ -4812,6 +4812,98 @@
         }
       }
     },
+    "/care/meal-log/summary": {
+      "get": {
+        "tags": [
+          "care"
+        ],
+        "summary": "Meal Log Summary",
+        "description": "최근 days 일(기본 7)에 기록한 끼니 수와, 최근 30일 끼니별 자주 먹은 메뉴 5개(빠른 입력용).",
+        "operationId": "meal_log_summary_care_meal_log_summary_get",
+        "parameters": [
+          {
+            "name": "days",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 7,
+              "title": "Days"
+            }
+          },
+          {
+            "name": "end",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "End"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-gyeot-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Gyeot-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MealLogSummary"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/care/location/consent": {
       "get": {
         "tags": [
@@ -6998,6 +7090,55 @@
         ],
         "title": "ExpenseOut"
       },
+      "FrequentMeal": {
+        "properties": {
+          "meal": {
+            "type": "string",
+            "enum": [
+              "breakfast",
+              "lunch",
+              "dinner"
+            ],
+            "title": "Meal"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "menus": {
+            "items": {
+              "$ref": "#/components/schemas/FrequentMenu"
+            },
+            "type": "array",
+            "title": "Menus"
+          }
+        },
+        "type": "object",
+        "required": [
+          "meal",
+          "label",
+          "menus"
+        ],
+        "title": "FrequentMeal"
+      },
+      "FrequentMenu": {
+        "properties": {
+          "menu": {
+            "type": "string",
+            "title": "Menu"
+          },
+          "count": {
+            "type": "integer",
+            "title": "Count"
+          }
+        },
+        "type": "object",
+        "required": [
+          "menu",
+          "count"
+        ],
+        "title": "FrequentMenu"
+      },
       "GroupCreate": {
         "properties": {
           "name": {
@@ -7611,6 +7752,34 @@
         ],
         "title": "MealList"
       },
+      "MealLogCount": {
+        "properties": {
+          "meal": {
+            "type": "string",
+            "enum": [
+              "breakfast",
+              "lunch",
+              "dinner"
+            ],
+            "title": "Meal"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "logged": {
+            "type": "integer",
+            "title": "Logged"
+          }
+        },
+        "type": "object",
+        "required": [
+          "meal",
+          "label",
+          "logged"
+        ],
+        "title": "MealLogCount"
+      },
       "MealLogDay": {
         "properties": {
           "date": {
@@ -7800,6 +7969,55 @@
           "label"
         ],
         "title": "MealLogSlot"
+      },
+      "MealLogSummary": {
+        "properties": {
+          "start": {
+            "type": "string",
+            "title": "Start"
+          },
+          "end": {
+            "type": "string",
+            "title": "End"
+          },
+          "days": {
+            "type": "integer",
+            "title": "Days"
+          },
+          "logged": {
+            "type": "integer",
+            "title": "Logged"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          },
+          "per_meal": {
+            "items": {
+              "$ref": "#/components/schemas/MealLogCount"
+            },
+            "type": "array",
+            "title": "Per Meal"
+          },
+          "frequent": {
+            "items": {
+              "$ref": "#/components/schemas/FrequentMeal"
+            },
+            "type": "array",
+            "title": "Frequent"
+          }
+        },
+        "type": "object",
+        "required": [
+          "start",
+          "end",
+          "days",
+          "logged",
+          "total",
+          "per_meal",
+          "frequent"
+        ],
+        "title": "MealLogSummary"
       },
       "MealOut": {
         "properties": {

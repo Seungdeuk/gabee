@@ -173,6 +173,33 @@ class MealLogList(BaseModel):
     days: list[MealLogDay]  # 최신 날짜부터
 
 
+class MealLogCount(BaseModel):
+    meal: MealType
+    label: str
+    logged: int  # 기간 안에 기록한 날 수
+
+
+class FrequentMenu(BaseModel):
+    menu: str
+    count: int  # 최근 30일 동안 기록한 횟수
+
+
+class FrequentMeal(BaseModel):
+    meal: MealType
+    label: str
+    menus: list[FrequentMenu]  # 많이 먹은 순(같으면 최근에 먹은 순), 최대 5개
+
+
+class MealLogSummary(BaseModel):
+    start: str
+    end: str
+    days: int
+    logged: int  # 기간 안에 기록한 끼니 수
+    total: int  # 기간 안의 전체 끼니 수(days x 3)
+    per_meal: list[MealLogCount]
+    frequent: list[FrequentMeal]  # 끼니별 자주 먹은 메뉴(빠른 입력용)
+
+
 # ---- 위치 공유 ----
 
 

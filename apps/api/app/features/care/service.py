@@ -17,17 +17,21 @@ from .schemas import (
     DailyOut,
     EntryOut,
     EntryPut,
+    FrequentMeal,
+    FrequentMenu,
     ItemCreate,
     ItemOut,
     LocationBatch,
     LocationSaved,
     LocationsLatest,
     MealList,
+    MealLogCount,
     MealLogDay,
     MealLogList,
     MealLogOut,
     MealLogPut,
     MealLogSlot,
+    MealLogSummary,
     MealOut,
     MealStatus,
     MemberLocation,
@@ -483,6 +487,63 @@ def list_meal_logs(db: Session, group_id: str, days: int, end: str | None) -> Me
         ]
         out.append(MealLogDay(date=day, slots=slots))
     return MealLogList(start=first.isoformat(), end=last.isoformat(), days=out)
+
+
+FREQUENT_DAYS = 30  # 자주 먹은 메뉴를 세는 기간
+FREQUENT_LIMIT = 5  # 끼니마다 보여 줄 메뉴 수
+
+
+def _top_menus(seen: dict[str, list]) -> list[tuple[str, int]]:
+    """{메뉴: [횟수, 마지막으로 먹은 날]} -> 많이 먹은 순(같으면 최근, 그래도 같으면 가나다순) 상위 5개."""
+    ranked = sorted(seen.items(), key=lambda kv: kv[0])
+    ranked.sort(key=lambda kv: kv[1][1], reverse=True)
+    ranked.sort(key=lambda kv: kv[1][0], reverse=True)
+    return [(menu, n) for menu, (n, _) in ranked[:FREQUENT_LIMIT]]
+
+
+def meal_log_summary(db: Session, group_id: str, days: int, end: str | None) -> MealLogSummary:
+    """최근 days 일에 기록한 끼니 수(끼니별 포함)와, 최근 30일 기준 끼니별로 자주 먹은 메뉴 5개."""
+    if not 1 <= days <= MEAL_LOG_MAX_DAYS:
+        raise bad_request("invalid_days", f"기간은 1~{MEAL_LOG_MAX_DAYS}일이어야 해요")
+    try:
+        last = datetime.strptime(end, "%Y-%m-%d").date() if end else datetime.now(KST).date()
+    except ValueError:
+        raise bad_request("invalid_date", "날짜는 YYYY-MM-DD 형식이어야 해요") from None
+    first = last - timedelta(days=days - 1)
+    frequent_first = last - timedelta(days=FREQUENT_DAYS - 1)
+    logs = repo.list_meal_logs(
+        db, group_id, min(first, frequent_first).isoformat(), last.isoformat()
+    )
+    in_range = [log for log in logs if log.date >= first.isoformat()]
+    counts: dict[str, dict[str, list]] = {m: {} for m in config.MEAL_LABELS}
+    for log in logs:
+        if log.date >= frequent_first.isoformat():
+            seen = counts[log.meal].setdefault(log.menu, [0, ""])
+            seen[0] += 1
+            seen[1] = max(seen[1], log.date)
+    return MealLogSummary(
+        start=first.isoformat(),
+        end=last.isoformat(),
+        days=days,
+        logged=len(in_range),
+        total=days * len(config.MEAL_LABELS),
+        per_meal=[
+            MealLogCount(
+                meal=m,
+                label=config.MEAL_LABELS[m],
+                logged=sum(1 for log in in_range if log.meal == m),
+            )
+            for m in config.MEAL_LABELS
+        ],
+        frequent=[
+            FrequentMeal(
+                meal=m,
+                label=config.MEAL_LABELS[m],
+                menus=[FrequentMenu(menu=menu, count=n) for menu, n in _top_menus(counts[m])],
+            )
+            for m in config.MEAL_LABELS
+        ],
+    )
 
 
 def delete_meal_log(db: Session, group_id: str, day: str, meal: str) -> None:

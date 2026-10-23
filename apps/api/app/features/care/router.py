@@ -20,6 +20,7 @@ from .schemas import (
     MealLogList,
     MealLogOut,
     MealLogPut,
+    MealLogSummary,
     MealOut,
     PutResult,
     RecommendationList,
@@ -142,6 +143,17 @@ def list_meal_log(
 ) -> MealLogList:
     """식단 기록: end(기본 오늘)까지 days 일(1~31, 기본 7). 날짜마다 아침·점심·저녁 칸이 있다."""
     return service.list_meal_logs(db, group_id, days, end)
+
+
+@router.get("/meal-log/summary", response_model=MealLogSummary)
+def meal_log_summary(
+    days: int = 7,
+    end: str | None = None,
+    group_id: str = Depends(current_group_id),
+    db: Session = Depends(get_db),
+) -> MealLogSummary:
+    """최근 days 일(기본 7)에 기록한 끼니 수와, 최근 30일 끼니별 자주 먹은 메뉴 5개(빠른 입력용)."""
+    return service.meal_log_summary(db, group_id, days, end)
 
 
 @router.put("/meal-log", response_model=MealLogOut)

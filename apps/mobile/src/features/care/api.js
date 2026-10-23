@@ -85,3 +85,10 @@ export const putMealLog = (body) => apiFetch("/care/meal-log", { method: "PUT", 
 
 /** 식단 기록을 지운다(데일리 체크는 그대로). @param {string} date YYYY-MM-DD @param {string} meal */
 export const deleteMealLog = (date, meal) => apiFetch(`/care/meal-log?date=${date}&meal=${meal}`, { method: "DELETE" });
+
+/**
+ * 식단 기록 요약: 최근 days 일에 기록한 끼니 수(끼니별)와, 최근 30일 끼니별로 자주 먹은 메뉴 5개(빠른 입력용).
+ * @param {number} [days]
+ * @returns {Promise<{ start: string, end: string, days: number, logged: number, total: number, per_meal: { meal: string, label: string, logged: number }[], frequent: { meal: MealLogEntry["meal"], label: string, menus: { menu: string, count: number }[] }[] }>}
+ */
+export const getMealLogSummary = (days = 7) => apiFetch(`/care/meal-log/summary?days=${days}`);

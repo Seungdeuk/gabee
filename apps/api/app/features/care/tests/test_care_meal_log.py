@@ -195,3 +195,85 @@ def test_recorded_at_is_set_by_the_server(client, family):
         datetime.fromisoformat(log["recorded_at"].replace("Z", "+00:00")).replace(tzinfo=UTC)
         >= before
     )
+
+
+# ---------- 요약·자주 먹은 메뉴 ----------
+def _summary(client, headers, **params):
+    r = client.get("/care/meal-log/summary", params=params, headers=headers)
+    assert r.status_code == 200, r.text
+    return r.json()
+
+
+def test_summary_counts_logged_meals_in_the_range_and_per_meal(client, family):
+    a, _, _ = family
+    empty = _summary(client, a)
+    assert (empty["days"], empty["logged"], empty["total"]) == (7, 0, 21)
+    assert [(c["meal"], c["logged"]) for c in empty["per_meal"]] == [
+        ("breakfast", 0),
+        ("lunch", 0),
+        ("dinner", 0),
+    ]
+    _put(client, a, meal="breakfast", menu="야채죽")
+    _put(client, a, meal="lunch", menu="비빔밥")
+    _put(client, a, meal="lunch", menu="비빔밥", date=_day(1))
+    _put(client, a, meal="dinner", menu="북엇국", date=_day(6))  # 7일 안의 마지막 날
+    _put(client, a, meal="dinner", menu="오래된 저녁", date=_day(7))  # 7일 밖
+    got = _summary(client, a)
+    assert (got["logged"], got["total"]) == (4, 21)
+    assert {c["meal"]: c["logged"] for c in got["per_meal"]} == {
+        "breakfast": 1,
+        "lunch": 2,
+        "dinner": 1,
+    }
+    assert got["start"] == _day(6) and got["end"] == _today()
+    short = _summary(client, a, days=2)
+    assert (short["logged"], short["total"]) == (3, 6)
+
+
+def test_frequent_menus_are_ranked_by_count_then_recency_then_name_per_meal(client, family):
+    a, _, _ = family
+    for offset in (0, 1, 2):
+        _put(client, a, meal="lunch", menu="비빔밥", date=_day(offset))
+    for offset in (3, 4):
+        _put(client, a, meal="lunch", menu="잔치국수", date=_day(offset))
+    _put(
+        client, a, meal="lunch", menu="닭죽", date=_day(10)
+    )  # 2회: 잔치국수와 같은 횟수지만 더 예전
+    _put(client, a, meal="lunch", menu="닭죽", date=_day(11))
+    _put(client, a, meal="lunch", menu="가지볶음", date=_day(12))  # 1회
+    _put(client, a, meal="lunch", menu="김치찌개", date=_day(13))  # 1회
+    _put(client, a, meal="lunch", menu="된장찌개", date=_day(14))
+    _put(client, a, meal="lunch", menu="너무 오래됨", date=_day(31))  # 30일 밖
+    _put(client, a, meal="dinner", menu="북엇국")
+    freq = {
+        f["meal"]: [(m["menu"], m["count"]) for m in f["menus"]]
+        for f in _summary(client, a)["frequent"]
+    }
+    assert freq["lunch"] == [
+        ("비빔밥", 3),
+        ("잔치국수", 2),
+        ("닭죽", 2),
+        ("가지볶음", 1),
+        ("김치찌개", 1),
+    ]
+    assert freq["dinner"] == [("북엇국", 1)] and freq["breakfast"] == []
+    assert len(freq["lunch"]) == 5  # 최대 5개
+
+
+def test_overwritten_menu_counts_once_and_summary_is_family_scoped(client, family, other_family):
+    a, b, _ = family
+    _put(client, a, meal="lunch", menu="비빔밥")
+    _put(client, b, meal="lunch", menu="닭죽")  # 같은 끼니를 덮어씀
+    freq = {f["meal"]: f["menus"] for f in _summary(client, a)["frequent"]}
+    assert [(m["menu"], m["count"]) for m in freq["lunch"]] == [("닭죽", 1)]
+    other = _summary(client, other_family)
+    assert other["logged"] == 0 and all(f["menus"] == [] for f in other["frequent"])
+
+
+def test_summary_validation(client, family):
+    a, _, _ = family
+    for bad in (0, 32):
+        r = client.get("/care/meal-log/summary", params={"days": bad}, headers=a)
+        assert r.status_code == 400 and r.json()["code"] == "invalid_days"
+    r = client.get("/care/meal-log/summary", params={"end": "2026-02-31"}, headers=a)
+    assert r.status_code == 400 and r.json()["code"] == "invalid_date"
