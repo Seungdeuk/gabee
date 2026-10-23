@@ -113,6 +113,9 @@ class MemberOut(BaseModel):
     name: str
     role: str  # 가입할 때 고른 역할(parent/child/other)
     group_role: str = "member"  # 이 가족 안의 권한(owner/admin/member). 요청으로 바꿀 수 없다
+    display_name: str | None = None  # 이 가족에서 쓰는 표시 이름(없으면 name). 본인만 바꿀 수 있다
+    family_relation: str | None = None  # mom|dad|son|daughter|grandma|grandpa|other
+    family_relation_detail: str | None = None  # 관계가 other 일 때 직접 적은 관계
 
 
 class GroupOut(BaseModel):
@@ -120,5 +123,6 @@ class GroupOut(BaseModel):
     name: str
     invite_code: str | None = None  # 가족 관리자(owner/admin)에게만 보인다
     invite_expires_at: datetime | None = None
+    my_id: str | None = None  # 이 응답을 받는 사람의 사용자 id(구성원 목록에서 나를 찾을 때)
     my_role: str | None = None  # 이 응답을 받는 사람의 이 가족 안 권한(owner/admin/member)
     members: list[MemberOut]

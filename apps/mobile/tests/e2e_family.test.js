@@ -71,3 +71,49 @@ describe("가족 초대·승인 ↔ 실제 서버", { skip }, () => {
     assert.equal((await family.getMyJoinRequest()).status, "cancelled");
   });
 });
+
+describe("가족 프로필·별명·관리자 지정 ↔ 실제 서버", { skip }, () => {
+  test("관계·이름 수정, 나만 보는 별명, 소유자의 관리자 지정", async () => {
+    const client = await import("../src/shared/api/client.js");
+    const auth = await import("../src/features/auth/api.js");
+    const sessionApi = await import("../src/shared/auth/sessionApi.js");
+    const family = await import("../src/features/family-group/api.js");
+    const suffix = `p${Date.now().toString(36)}`;
+    const as = async (id, name) => {
+      const form = { loginId: `${id}_${suffix}`, password: "Sunny-day-2026", email: `${id}_${suffix}@example.com`, name };
+      await auth.signupAccount(form);
+      const login = await sessionApi.login(form.loginId, form.password);
+      return () => client.setSession({ accessToken: login.access_token, refreshToken: login.refresh_token });
+    };
+    const owner = await as("mom", "엄마");
+    const guest = await as("jimin", "지민");
+
+    owner();
+    const group = await family.createGroup("우리 가족");
+    guest();
+    const req = await family.requestJoin(group.invite_code);
+    owner();
+    const joined = await family.approveJoinRequest(req.id);
+    const ownerId = group.my_id;
+    const guestId = joined.members.find((m) => m.id !== ownerId).id;
+
+    guest();
+    const mine = await family.updateMyProfile({ display_name: "우리 지민", family_relation: "other", family_relation_detail: "조카" });
+    const me = mine.members.find((m) => m.id === mine.my_id);
+    assert.deepEqual([me.display_name, me.family_relation, me.family_relation_detail], ["우리 지민", "other", "조카"]);
+    await assert.rejects(family.updateMyProfile({ family_relation_detail: "x".repeat(41) }), { code: "invalid_relation_detail" });
+
+    await family.setNickname(ownerId, { nickname: "엄마님", memo: "메모" });
+    assert.deepEqual((await family.listNicknames()).map((n) => n.nickname), ["엄마님"]);
+    owner();
+    assert.deepEqual(await family.listNicknames(), []); // 별명은 쓴 사람에게만 보인다
+    assert.equal((await family.getMyGroup()).members.find((m) => m.id === guestId).name, "지민"); // 가족 전체 프로필은 그대로
+
+    await assert.rejects(family.setMemberRole(ownerId, "member"), { code: "cannot_change_owner" });
+    const promoted = await family.setMemberRole(guestId, "admin");
+    assert.equal(promoted.members.find((m) => m.id === guestId).group_role, "admin");
+    guest();
+    await assert.rejects(family.setMemberRole(ownerId, "admin"), { code: "not_owner" }); // 관리자는 관리자를 지정할 수 없다
+    assert.ok((await family.reissueInvite()).invite_code); // 관리자는 초대 코드를 만들 수 있다
+  });
+});

@@ -1,6 +1,6 @@
 import { useRouter } from "expo-router";
 import { useState } from "react";
-import { Share, StyleSheet, Text, View } from "react-native";
+import { Pressable, Share, StyleSheet, Text, View } from "react-native";
 
 import Avatar from "@/shared/components/Avatar";
 import Button from "@/shared/components/Button";
@@ -13,6 +13,7 @@ import { reissueInvite, revokeInvite } from "../api";
 import FamilyFrame from "../components/FamilyFrame";
 import Notice from "../components/Notice";
 import { expiryText, familyErrorMessage, roleLabel } from "../messages";
+import { relationText, shownName } from "../relations";
 import useFamilyState from "../useFamilyState";
 
 /**
@@ -96,15 +97,17 @@ export default function FamilyScreen() {
       <SectionTitle title="가족" />
       <Card tone="white">
         {group.members.map((m) => (
-          <View key={m.id} style={styles.member}>
-            <Avatar name={m.name} />
+          <Pressable key={m.id} style={styles.member} onPress={() => router.push({ pathname: "/family-member", params: { userId: m.id } })} accessibilityRole="button" accessibilityLabel={`${shownName(m, family.nicknames[m.id])} 보기`} testID={`member-${m.id}`}>
+            <Avatar name={shownName(m, family.nicknames[m.id])} />
             <View style={styles.text}>
-              <Text style={styles.name}>{m.name}</Text>
+              <Text style={styles.name}>{shownName(m, family.nicknames[m.id])}</Text>
+              {relationText(m) ? <Text style={styles.relation}>{relationText(m)}</Text> : null}
             </View>
             <Tag label={roleLabel(m.group_role)} tone={m.group_role === "member" ? "gray" : "blue"} />
-          </View>
+          </Pressable>
         ))}
       </Card>
+      <Button label="내 프로필 (이름·가족 관계)" variant="secondary" onPress={() => router.push("/family-profile")} testID="open-profile" />
 
       {family.isManager ? (
         <>
@@ -150,6 +153,7 @@ const styles = StyleSheet.create({
   member: { flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 8 },
   text: { flex: 1 },
   name: { ...font.bodyStrong, color: colors.text },
+  relation: { ...font.caption, color: colors.textMuted },
   code: { ...font.h1, color: colors.text, letterSpacing: 2, textAlign: "center", paddingVertical: 8 },
   buttons: { flexDirection: "row", gap: 8 },
   grow: { flex: 1 },

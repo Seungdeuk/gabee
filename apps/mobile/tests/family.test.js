@@ -78,3 +78,40 @@ test("가족 API 호출: 경로·메서드·본문, 로그인 세션이 있으�
   assert.ok(calls.every((c) => c.headers.Authorization === "Bearer access-1" && c.headers["X-Gyeot-Token"] === undefined));
   assert.ok(calls.slice(1).every((c) => c.body === null));
 });
+
+test("가족 관계·이름 표시 규칙: 별명 > 표시 이름 > 계정 이름", async () => {
+  const { relationText, shownName, RELATIONS } = await import("../src/features/family-group/relations.js");
+  assert.deepEqual(RELATIONS.map((r) => r.label), ["엄마", "아빠", "아들", "딸", "할머니", "할아버지", "기타"]);
+  assert.equal(relationText({ family_relation: "mom" }), "엄마");
+  assert.equal(relationText({ family_relation: "other", family_relation_detail: "이모" }), "이모");
+  assert.equal(relationText({ family_relation: "other" }), "기타");
+  assert.equal(relationText({}), "");
+  assert.equal(relationText(null), "");
+  assert.equal(shownName({ name: "지민", display_name: "우리 지민" }, { nickname: "딸" }), "딸");
+  assert.equal(shownName({ name: "지민", display_name: "우리 지민" }, undefined), "우리 지민");
+  assert.equal(shownName({ name: "지민", display_name: null }, { nickname: null }), "지민");
+});
+
+test("프로필·별명·권한 API 호출 경로와 본문", async () => {
+  const calls = [];
+  globalThis.fetch = async (url, init = {}) => {
+    calls.push({ path: new URL(url).pathname, method: init.method ?? "GET", body: init.body ? JSON.parse(init.body) : null });
+    return json(200, {});
+  };
+  const api = await import("../src/features/family-group/api.js");
+  await api.updateMyProfile({ display_name: "지민", family_relation: "other", family_relation_detail: "이모" });
+  await api.setMemberRole("u1", "admin");
+  await api.listNicknames();
+  await api.setNickname("u2", { nickname: "삼촌", memo: "" });
+  await api.setNickname("u2", { nickname: "", memo: "" });
+  assert.deepEqual(calls.map((c) => `${c.method} ${c.path}`), [
+    "PUT /family-group/groups/me/profile",
+    "PUT /family-group/groups/members/u1/role",
+    "GET /family-group/groups/me/nicknames",
+    "PUT /family-group/groups/me/nicknames/u2",
+    "PUT /family-group/groups/me/nicknames/u2",
+  ]);
+  assert.deepEqual(calls[1].body, { role: "admin" }); // owner 로 올리는 값은 보내지 않는다
+  assert.deepEqual(calls[3].body, { nickname: "삼촌", memo: null }); // 빈 값은 null(지우기)
+  assert.deepEqual(calls[4].body, { nickname: null, memo: null });
+});
