@@ -22,6 +22,7 @@ class UserOut(BaseModel):
     login_id: str | None = None
     email: str | None = None
     email_verified: bool = False
+    photo_url: str | None = None  # 프로필 사진의 상대 경로(없으면 null). 같은 가족만 받을 수 있다
 
 
 class AccountSignupIn(BaseModel):
@@ -118,6 +119,7 @@ class MemberOut(BaseModel):
     display_name: str | None = None  # 이 가족에서 쓰는 표시 이름(없으면 name). 본인만 바꿀 수 있다
     family_relation: str | None = None  # mom|dad|son|daughter|grandma|grandpa|other
     family_relation_detail: str | None = None  # 관계가 other 일 때 직접 적은 관계
+    photo_url: str | None = None  # 프로필 사진의 상대 경로(없으면 null)
 
 
 class GroupOut(BaseModel):

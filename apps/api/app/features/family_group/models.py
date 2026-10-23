@@ -52,6 +52,13 @@ class User(Base):
         DateTime(timezone=True), nullable=True
     )
 
+    # 프로필 사진(PR B). 파일은 DATA_DIR 아래 profile_photos/<user_id>.jpg 로 서버가 정한 이름으로만 저장하고, 여기에는 그 상대 경로와
+    # 바꾼 시각(캐시 무효화용)만 둔다. 사진이 없으면 둘 다 null.
+    profile_photo_path: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    profile_photo_updated_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
     __table_args__ = (
         # 이름을 명시하지 않으면 Alembic autogenerate 가 downgrade 에서 drop_constraint()
         # 를 못 만든다(이름 없는 제약은 나중에 못 찾음) — 전부 명시적으로 이름을 둔다.

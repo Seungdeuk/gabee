@@ -1040,6 +1040,210 @@
         }
       }
     },
+    "/family-group/me/photo": {
+      "post": {
+        "tags": [
+          "family-group"
+        ],
+        "summary": "Upload Photo",
+        "description": "내 프로필 사진을 올린다(multipart `file`). JPEG/PNG/WebP 2MB 이하, 서버가 512px 정사각형 JPEG 로 다시 만든다.",
+        "operationId": "upload_photo_family_group_me_photo_post",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-gyeot-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Gyeot-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_upload_photo_family_group_me_photo_post"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfilePhotoOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "family-group"
+        ],
+        "summary": "Delete Photo",
+        "description": "내 프로필 사진을 지운다(없어도 204).",
+        "operationId": "delete_photo_family_group_me_photo_delete",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-gyeot-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Gyeot-Token"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/family-group/users/{user_id}/photo": {
+      "get": {
+        "tags": [
+          "family-group"
+        ],
+        "summary": "Get Photo",
+        "description": "같은 가족 구성원의 프로필 사진. 가족이 아니거나 사진이 없으면 404. ETag 로 다시 받기를 줄인다.",
+        "operationId": "get_photo_family_group_users__user_id__photo_get",
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "User Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-gyeot-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Gyeot-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "프로필 사진(JPEG)",
+            "content": {
+              "image/jpeg": {}
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/family-group/users": {
       "post": {
         "tags": [
@@ -9017,6 +9221,20 @@
         ],
         "title": "Body_upload_photo_ai_assistant_photos_post"
       },
+      "Body_upload_photo_family_group_me_photo_post": {
+        "properties": {
+          "file": {
+            "type": "string",
+            "contentMediaType": "application/octet-stream",
+            "title": "File"
+          }
+        },
+        "type": "object",
+        "required": [
+          "file"
+        ],
+        "title": "Body_upload_photo_family_group_me_photo_post"
+      },
       "CatalogEntry": {
         "properties": {
           "kind": {
@@ -11272,6 +11490,17 @@
               }
             ],
             "title": "Family Relation Detail"
+          },
+          "photo_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Photo Url"
           }
         },
         "type": "object",
@@ -11773,6 +12002,35 @@
         "type": "object",
         "title": "ProfileIn",
         "description": "내 가족 프로필 수정. 보낸 항목만 바꾸고(보내지 않은 항목은 그대로), null/빈 문자열은 지운다."
+      },
+      "ProfilePhotoOut": {
+        "properties": {
+          "photo_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Photo Url"
+          },
+          "photo_updated_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Photo Updated At"
+          }
+        },
+        "type": "object",
+        "title": "ProfilePhotoOut"
       },
       "PutResult": {
         "properties": {
@@ -13321,6 +13579,17 @@
             "type": "boolean",
             "title": "Email Verified",
             "default": false
+          },
+          "photo_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Photo Url"
           }
         },
         "type": "object",
