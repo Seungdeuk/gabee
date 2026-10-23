@@ -46,20 +46,32 @@ def agent(tmp_path, monkeypatch):
         return a.fake["tip"]
 
     monkeypatch.setattr(deploy.GitHubCiVerifier, "main_tip", main_tip)
+    a.fake["ci"] = deploy.CiVerdict("ok", "CI 성공")
+    monkeypatch.setattr(deploy.GitHubCiVerifier, "verify", lambda self, sha: a.fake["ci"])
     monkeypatch.setattr(
         a, "_git_sync", lambda sha, token=None: a.calls.__setitem__("sync", a.calls["sync"] + 1)
     )
     monkeypatch.setattr(a, "trust_problems", lambda: [])
-    monkeypatch.setattr(a, "_deps_sync", lambda state: None)
+    a.calls["deps"] = 0
+
+    def deps_sync(state):
+        a.calls["deps"] += 1
+
+    monkeypatch.setattr(a, "_deps_sync", deps_sync)
 
     def orchestrator(tip, token):
         a.calls["orchestrator"] += 1
         return dict(a.fake["result"])
 
     monkeypatch.setattr(a, "_orchestrator", orchestrator)
-    monkeypatch.setattr(
-        a, "_notify_held", lambda *args: a.calls.__setitem__("held", a.calls["held"] + 1)
-    )
+    a.fake["notify_ok"], a.notified = True, []
+
+    def notify(token, tip, outcome, message):
+        a.calls["held"] += outcome == "held"
+        a.notified.append((outcome, message))
+        return a.fake["notify_ok"]
+
+    monkeypatch.setattr(a, "_notify", notify)
     return a
 
 
@@ -88,7 +100,7 @@ def test_env_file_is_read_but_real_environment_wins(tmp_path):
 def test_disabled_agent_does_nothing(agent):
     agent.cfg.enabled = False
     assert agent.run_once()["outcome"] == "disabled"
-    assert agent.calls == {"tip": 0, "sync": 0, "orchestrator": 0, "held": 0}
+    assert agent.calls == {"tip": 0, "sync": 0, "orchestrator": 0, "held": 0, "deps": 0}
 
 
 def test_halt_stops_everything_without_calling_github(agent):
@@ -219,6 +231,137 @@ def test_bless_pins_the_reviewed_tools_and_clears_held(agent, monkeypatch):
     assert changed == ["migration_risk.py"]
     assert (agent.tools_dir / "migration_risk.py").read_text(encoding="utf-8") == "# 검토한 새 버전"
     assert agent.trust_problems() == [] and agent.load_state()["held_reason"] is None
+
+
+def write(root, files):
+    for rel, text in files.items():
+        path = root / rel
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(text, encoding="utf-8")
+
+
+def real_checkout(agent, monkeypatch):
+    """env.py → app.shared.db → .config, 기능 모델로 이어지는 실제와 같은 모양의 체크아웃을 bless 해 둔다."""
+    monkeypatch.delattr(agent, "trust_problems")  # 실제 검사 사용
+    make_checkout(agent)
+    write(agent.repo / "apps/api", {
+        "alembic/env.py": "from app.shared.db import Base, import_all_models" + NL,
+        "app/__init__.py": "", "app/shared/__init__.py": "", "app/features/__init__.py": "",
+        "app/shared/db.py": "from .config import settings" + NL + "def import_all_models():" + NL + "    from app.features.billing import models" + NL,
+        "app/shared/config.py": "settings = 1" + NL,
+        "app/shared/mailer.py": "import smtplib" + NL,
+        "app/features/billing/__init__.py": "",
+        "app/features/billing/models.py": "from sqlalchemy import String" + NL + "from app.shared.db import Base" + NL,
+        "alembic/versions/r1.py": '"""r1"""' + NL + "from alembic import op" + NL + "def upgrade():" + NL + "    pass" + NL,
+    })  # fmt: skip
+    monkeypatch.setattr(agent, "_git_sync", lambda sha, token=None: None)
+    agent.bless(TIP)
+    assert agent.trust_problems() == []
+    return agent.repo / "apps/api"
+
+
+def test_feature_models_change_freely_but_shared_code_reached_from_env_is_pinned(
+    agent, monkeypatch
+):
+    api = real_checkout(agent, monkeypatch)
+    write(api, {
+        "app/features/billing/models.py": "from sqlalchemy import Integer" + NL + "from app.shared.db import Base" + NL,
+        "app/shared/mailer.py": "import os" + NL,  # env.py 에서 닿지 않는 공통 코드는 고정 대상이 아니다
+        "alembic/versions/r2.py": '"""r2"""' + NL + "from alembic import op" + NL + "def upgrade():" + NL + "    pass" + NL,
+    })  # fmt: skip
+    assert agent.trust_problems() == []  # 평소 기능·마이그레이션 개발은 bless 가 필요 없다
+    write(api, {"app/shared/config.py": "import os" + NL + "os.system('x')" + NL})
+    assert any(
+        "배포 신뢰 파일이 바뀜: apps/api/app/shared/config.py" in p for p in agent.trust_problems()
+    )
+
+
+def test_model_that_pulls_in_other_code_or_unsafe_python_is_held(agent, monkeypatch):
+    api = real_checkout(agent, monkeypatch)
+    models = api / "app/features/billing/models.py"
+    write(api, {"app/features/billing/service.py": "x = 1" + NL})
+    models.write_text("from app.features.billing import service" + NL, encoding="utf-8")
+    assert any(
+        "검토(bless)되지 않음: apps/api/app/features/billing/service.py" in p
+        for p in agent.trust_problems()
+    )  # 모델이 끌어들인 코드는 고정 대상이 된다
+    models.write_text("import subprocess" + NL, encoding="utf-8")
+    assert any("unsafe-import" in p for p in agent.trust_problems())
+    models.write_text("import app.nowhere" + NL, encoding="utf-8")
+    assert any("찾을 수 없는 app 모듈: app.nowhere" in p for p in agent.trust_problems())
+
+
+def test_unsafe_revision_or_library_shadowing_module_is_held(agent, monkeypatch):
+    api = real_checkout(agent, monkeypatch)
+    write(
+        api, {"alembic/versions/r2.py": "import os" + NL + "def upgrade():" + NL + "    pass" + NL}
+    )
+    assert any(
+        "리비전의 위험한 파이썬" in p and "unsafe-import" in p for p in agent.trust_problems()
+    )
+    (api / "alembic/versions/r2.py").unlink()
+    write(api, {"sqlalchemy.py": "import os" + NL})
+    assert any("라이브러리를 가릴 수 있음: sqlalchemy.py" in p for p in agent.trust_problems())
+
+
+def test_dependency_or_build_change_is_held_before_pip_or_orchestrator_runs(agent, monkeypatch):
+    api = real_checkout(agent, monkeypatch)
+    original = (api / "pyproject.toml").read_text(encoding="utf-8")
+    write(api, {"pyproject.toml": "[project]" + NL + "dependencies = ['evil']" + NL})
+    held = agent.run_once()
+    assert held["outcome"] == "held" and "pyproject.toml" in held["message"]
+    assert agent.calls["deps"] == 0 and agent.calls["orchestrator"] == 0
+    # 빌드 스크립트가 새로 생김
+    write(api, {"pyproject.toml": original, "setup.py": "import os" + NL})
+    held = agent.run_once()
+    assert held["outcome"] == "held" and "setup.py" in held["message"]
+    assert agent.calls["deps"] == 0 and agent.calls["orchestrator"] == 0
+
+
+def test_unparsable_or_failing_trust_check_is_fail_closed(agent, monkeypatch):
+    api = real_checkout(agent, monkeypatch)
+    write(api, {"app/features/billing/models.py": "def (" + NL})
+    held = agent.run_once()
+    assert held["outcome"] == "held" and "신뢰 검사를 할 수 없음(SyntaxError)" in held["message"]
+    assert agent.calls["deps"] == 0 and agent.calls["orchestrator"] == 0
+
+
+def test_held_notification_failure_keeps_holding_and_retries_the_issue(agent, monkeypatch):
+    monkeypatch.setattr(agent, "trust_problems", lambda: ["배포 도구가 바뀜: x"])
+    agent.fake["notify_ok"] = False  # GitHub 이슈 생성 실패
+    assert agent.run_once()["outcome"] == "held" and agent.run_once()["outcome"] == "held"
+    assert agent.calls["held"] == 2  # 알림이 실패했으므로 다음 주기에 다시 알린다
+    agent.fake["notify_ok"] = True
+    agent.run_once()
+    agent.run_once()
+    assert agent.calls["held"] == 3
+    # 그동안 배포는 하지 않았다
+    assert agent.calls["deps"] == 0 and agent.calls["orchestrator"] == 0
+
+
+def test_notify_failure_of_any_kind_is_logged_and_not_raised(agent, monkeypatch):
+    monkeypatch.undo()
+
+    def boom(*args, **kwargs):
+        raise ValueError("GitHub 응답 이상")
+
+    monkeypatch.setattr(deploy, "notify", boom)
+    assert agent._notify("t", TIP, "held", "m") is False
+    assert "GITHUB_TOKEN" not in __import__("os").environ
+
+
+def test_dependencies_are_installed_only_after_the_commit_ci_is_green(agent):
+    agent.fake["ci"] = deploy.CiVerdict("pending", "CI 진행 중")
+    assert agent.run_once()["outcome"] == "skipped"
+    for status in ("not_green", "unknown"):  # CI 실패, GitHub API 오류
+        agent.save_state(last_sha=None)
+        agent.fake["ci"] = deploy.CiVerdict(status, "확인 실패")
+        assert agent.run_once()["outcome"] == "blocked" and agent.notified[-1][0] == "blocked"
+    assert agent.calls["deps"] == 0 and agent.calls["orchestrator"] == 0
+    agent.save_state(retry_after=0)
+    agent.fake["ci"] = deploy.CiVerdict("ok", "CI 성공")
+    assert agent.run_once()["outcome"] == "success"
+    assert agent.calls["deps"] == 1 and agent.calls["orchestrator"] == 1
 
 
 # ---------- 비밀 처리 ----------

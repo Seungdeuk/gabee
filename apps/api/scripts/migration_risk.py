@@ -98,8 +98,11 @@ def _table_arg(call: ast.Call, call_name: str) -> str | None:
     return None
 
 
-def _unsafe_python(tree: ast.AST, revision: str, approved: bool) -> list[Finding]:
+def _unsafe_python(
+    tree: ast.AST, revision: str, approved: bool, extra_allowed: frozenset[str] = frozenset()
+) -> list[Finding]:
     findings: list[Finding] = []
+    allowed = _ALLOWED_IMPORTS | extra_allowed
 
     def add(code: str, message: str, node: ast.AST) -> None:
         severity = "warn" if approved else "block"
@@ -116,7 +119,7 @@ def _unsafe_python(tree: ast.AST, revision: str, approved: bool) -> list[Finding
         else:
             names = []
         for name in names:
-            if name.split(".")[0] not in _ALLOWED_IMPORTS:
+            if name.split(".")[0] not in allowed:
                 add(
                     "unsafe-import",
                     f"허용되지 않은 import: {name} (파일·네트워크·프로세스 접근 가능)",
@@ -223,6 +226,14 @@ def scan_source(source: str, revision: str) -> list[Finding]:
         if isinstance(node, ast.Attribute) and node.attr == "autocommit_block":
             add("block", "autocommit-block", "autocommit_block 은 원자적 롤백을 깨뜨림", node)
     return [*findings, *unsafe]
+
+
+def unsafe_python(source: str, name: str, extra_allowed: Iterable[str] = ()) -> list[Finding]:
+    """파일 전체(최상위 코드 포함)의 위험한 파이썬(block)만 찾는다. 리비전·모델 파일을 자격증명이 있는 프로세스가
+    불러오기 *전에* 쓴다. 정적 검사라 모든 우회를 막지는 못한다(리뷰·CI 가 전제)."""
+    tree = ast.parse(source)
+    approved = bool(UNSAFE_APPROVAL_RE.search(ast.get_docstring(tree) or ""))
+    return blocking(_unsafe_python(tree, name, approved, frozenset(extra_allowed)))
 
 
 def scan_file(path: Path, revision: str) -> list[Finding]:
