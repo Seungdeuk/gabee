@@ -90,3 +90,32 @@ export function applyFilter(items, { whoIds, topicIds }) {
     return whoOk && topicOk;
   });
 }
+
+/**
+ * 같이(함께 해 달라는 요청) 하나. 보낸 사람이 정한 내용·날짜·시간·장소·메모와 받는 사람별 답을 담는다.
+ * @typedef {Object} TogetherRequest
+ * @property {string} id
+ * @property {string} fromId 보낸 사람 id
+ * @property {string[]} toIds 받는 사람 id(1명 이상)
+ * @property {string} title 내용
+ * @property {string} date "YYYY-MM-DD"
+ * @property {string | null} startTime
+ * @property {string | null} endTime
+ * @property {boolean} allDay
+ * @property {string} place
+ * @property {string} memo
+ * @property {string[]} whoIds 누구(관련된 사람, 선택). 받는 사람 일정의 이름표가 된다
+ * @property {Record<string, "accepted" | "declined">} replies 받는 사람별 답. 답이 없으면 기다리는 중
+ * @property {boolean} cancelled 보낸 사람이 답을 기다리는 동안 취소했는지
+ */
+
+/**
+ * 보낸 사람이 보는 상태. 취소했으면 "cancelled", 한 명이라도 수락했으면 "accepted", 아니면 "pending".
+ * "어렵겠어요"는 보낸 사람에게 알리지 않으므로 상태에 반영하지 않는다.
+ * @param {TogetherRequest} request
+ * @returns {"cancelled" | "accepted" | "pending"}
+ */
+export function sentStatus(request) {
+  if (request.cancelled) return "cancelled";
+  return Object.values(request.replies).includes("accepted") ? "accepted" : "pending";
+}

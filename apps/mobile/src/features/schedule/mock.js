@@ -46,3 +46,18 @@ export function createMockItems() {
     { ...base, id: "p4", kind: "appointment", title: "친구 결혼식", date: addDays(today, -35), startTime: "13:00", endTime: "15:00", allDay: false, topicId: "ceremony", checked: true },
   ];
 }
+
+/**
+ * 같이 샘플(오늘 기준 상대 날짜). 내가 보낸 것: 기다리는 것 하나, 엄마가 수락한 것 하나, 취소한 것 하나.
+ * @returns {import("./model").TogetherRequest[]}
+ */
+export function createMockRequests() {
+  const today = todayKey();
+  const base = { fromId: ME_ID, startTime: null, endTime: null, allDay: false, place: "", memo: "", whoIds: [], cancelled: false };
+  return [
+    { ...base, id: "q1", title: "장 같이 봐줘", toIds: ["mom", "dad"], date: addDays(today, 3), startTime: "15:00", endTime: "17:00", place: "동네 마트", memo: "과일이랑 반찬 사야 해요", replies: {} },
+    { ...base, id: "q4", title: "김장 같이 해줘", toIds: ["mom", "dad"], date: addDays(today, 6), startTime: "10:00", endTime: "14:00", place: "본가", replies: { mom: "accepted" } },
+    { ...base, id: "q2", title: "병원 같이 가줘", toIds: ["mom"], date: addDays(today, -2), startTime: "09:00", endTime: "10:00", place: "한결의원", whoIds: ["mom"], replies: { mom: "accepted" } },
+    { ...base, id: "q3", title: "이삿짐 도와줘", toIds: ["dad"], date: addDays(today, -12), startTime: "10:00", endTime: "12:00", replies: {}, cancelled: true },
+  ];
+}
