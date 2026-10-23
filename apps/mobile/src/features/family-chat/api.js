@@ -75,3 +75,31 @@ export const registerScheduleCandidate = async (candidate) => {
   if (!body) throw new Error("날짜와 시간이 모두 있는 후보만 등록할 수 있어요");
   return apiFetch("/schedule/events", { method: "POST", body });
 };
+
+/**
+ * 채팅 메시지 조회. 결과는 항상 오래된 순이다. 대화 글자는 쿼리에 넣지 않는다(숫자 범위만).
+ * - latest: 가장 최근 limit 개 / beforeId: 그 id 보다 오래된 것 중 가장 최근 limit 개 / afterId: 그 id 뒤의 새 메시지
+ * @param {{ latest?: boolean, beforeId?: number, afterId?: number, limit?: number }} [options] limit 기본 100, 최대 200
+ * @returns {Promise<{ id: number, user_id: string, user_name: string, text: string, created_at: string }[]>}
+ */
+export function listMessages({ latest = false, beforeId, afterId, limit = 100 } = {}) {
+  const params = [];
+  if (latest) params.push("latest=true");
+  if (beforeId != null) params.push(`before_id=${Number(beforeId)}`);
+  if (afterId != null) params.push(`after_id=${Number(afterId)}`);
+  params.push(`limit=${Number(limit)}`);
+  return apiFetch(`/family-chat/messages?${params.join("&")}`);
+}
+
+/**
+ * 메시지를 보낸다(일반 전송은 AI 를 부르지 않는다).
+ * @param {string} text 1~2000자
+ * @returns {Promise<{ id: number, user_id: string, user_name: string, text: string, created_at: string }>}
+ */
+export const sendMessage = (text) => apiFetch("/family-chat/messages", { method: "POST", body: { text } });
+
+/**
+ * 내 가족 그룹 정보(이름·구성원·내 id). 그룹이 없으면 404.
+ * @returns {Promise<{ id: string, name: string, my_id: string | null, members: { id: string, name: string, display_name?: string | null }[] }>}
+ */
+export const getRoomInfo = () => apiFetch("/family-group/groups/me");

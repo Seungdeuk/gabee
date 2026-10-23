@@ -105,3 +105,12 @@ export function remainingText({ userLeft, groupLeft }) {
   if (userLeft === null || groupLeft === null) return "";
   return `오늘 남은 횟수: 나 ${userLeft}번 · 가족 ${groupLeft}번`;
 }
+
+/**
+ * AI 패널이 설정을 불러와야 하는지. 패널이 닫혀 있으면 어떤 호출도 하지 않는다(분석·추천은 버튼에서만).
+ * @param {boolean} visible 패널이 열려 있는지
+ * @returns {boolean}
+ */
+export function shouldLoadSettings(visible) {
+  return visible === true;
+}

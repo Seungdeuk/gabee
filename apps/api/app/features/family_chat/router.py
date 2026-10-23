@@ -17,10 +17,12 @@ router.include_router(ai_router)  # AI 대화 분석·추천(사용할 때만 AI
 def list_messages(
     after_id: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=200),
+    latest: bool = Query(False),
+    before_id: int | None = Query(None, ge=1),
     group_id: str = Depends(current_group_id),
     db: Session = Depends(get_db),
 ) -> list[MessageOut]:
-    return service.list_messages(db, group_id, after_id, limit)
+    return service.list_messages(db, group_id, after_id, limit, latest, before_id)
 
 
 @router.post("/messages", response_model=MessageOut, status_code=201)

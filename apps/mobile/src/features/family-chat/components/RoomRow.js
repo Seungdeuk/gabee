@@ -1,15 +1,21 @@
-import { StyleSheet, Text, View } from "react-native";
+import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import Avatar from "@/shared/components/Avatar";
 import { colors } from "@/theme";
 
 /**
  * 채팅방 한 줄: 아바타, 이름과 마지막 말, 시각과 읽지 않은 개수.
- * @param {{ room: { name: string, last: string, time: string, unread: number, tone: string }, last?: boolean }} props
+ * @param {{ room: { name: string, last: string, time: string, unread: number, tone: string }, last?: boolean, onPress?: () => void }} props
  */
-export default function RoomRow({ room, last = false }) {
+export default function RoomRow({ room, last = false, onPress }) {
   return (
-    <View style={[styles.row, !last && styles.divider]}>
+    <Pressable
+      onPress={onPress}
+      disabled={!onPress}
+      accessibilityRole={onPress ? "button" : undefined}
+      accessibilityLabel={onPress ? `${room.name} 채팅방 열기` : undefined}
+      style={[styles.row, !last && styles.divider]}
+    >
       <Avatar name={room.name} tone={room.tone} />
       <View style={styles.main}>
         <Text style={styles.name}>{room.name}</Text>
@@ -25,7 +31,7 @@ export default function RoomRow({ room, last = false }) {
           </View>
         ) : null}
       </View>
-    </View>
+    </Pressable>
   );
 }
 
