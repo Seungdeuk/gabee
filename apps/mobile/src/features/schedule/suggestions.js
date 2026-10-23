@@ -1,58 +1,40 @@
 import { KIND } from "./constants";
 import { compareItems } from "./model";
 
-// 챙길 것은 에이전트가 오늘 일정에서 유추해 묻는 내용(예: 여행이 있으면 여권)이라, 서버가 붙기 전까지 임시 문장이다.
-// title 은 "아직이요"를 눌렀을 때 할 일 등록 화면에 미리 채울 제목, draft 는 "추가"를 눌렀을 때 미리 채울 내용이다.
-export const MOCK_CARRY = [{ id: "passport", text: "11월 3일 제주 여행, 여권 챙기셨어요?", title: "여권 챙기기" }];
-export const MOCK_ADD = {
-  id: "add",
-  text: "관리비 납부 일정을 추가해 드릴까요?",
-  draft: { kind: "todo", title: "관리비 납부", daysFromToday: 6 },
-};
+// 내 약속·할 일에 없는 추천(추가 카드). 서버가 붙기 전까지 임시 문장이다.
+// name 은 카드 문장에 쓰는 줄인 이름(관련 일정이 있으면 함께 적음), draft 는 "추가"를 눌렀을 때 등록 화면에 미리 채울 내용이다.
+// 등록 화면은 draft.kind(약속·할 일)로 열리고, 카드 문장은 형태를 구분하지 않고 "일정으로 추가해 드릴까요?"로 통일한다.
+export const MOCK_SUGGESTIONS = [
+  { id: "passport", name: "제주 여행 여권 챙기기", draft: { kind: KIND.todo, title: "여권 챙기기", daysFromToday: 10 } },
+  { id: "add-todo", name: "관리비 납부", draft: { kind: KIND.todo, title: "관리비 납부", daysFromToday: 6 } },
+  { id: "add-appointment", name: "정기 검진", draft: { kind: KIND.appointment, title: "정기 검진", daysFromToday: 14 } },
+];
 
-const byTime = (a, b) => (a.startTime ?? "99:99").localeCompare(b.startTime ?? "99:99");
+// 오늘 줄 추천을 다 보여 준 뒤 추가 카드에 남기는 마무리 문장. 하루 추천 개수 제한(15개)에 닿았을 때도 같은 문장을 쓴다.
+export const SUGGESTIONS_DONE_TEXT = "오늘 추천은 여기까지, 내일도 챙겨 드릴게요 💛";
 
 /**
- * 약속 확인 카드. 오늘 약속 중 아직 확인하지 않은 것을 시간 빠른 순으로 하나 묻는다.
- * 하나도 확인하지 않았으면 안내 문장만, 전부 확인했으면 완료 문장을 남기고, 오늘 약속이 없으면 null(카드 숨김).
+ * 확인 카드 하나. 내 약속·할 일 중 오늘 것을 한 장에서 하나씩 묻는다: 약속 먼저(시간 빠른 순), 그다음 할 일.
+ * 확인하면 다음 항목으로 바뀌고, 카드의 새로고침(cursor 를 하나 올림)은 확인하지 않고 다른 항목을 보여 준다.
+ * 전부 확인하면 "오늘 일정을 모두 확인했어요 👏"를 남기고, 오늘 일정이 없으면 null(카드 숨김).
  * @param {import("./model").ScheduleItem[]} items 전체 항목
  * @param {string} today "YYYY-MM-DD"
- * @param {string[]} skippedIds 새로고침 때 "나중에"로 건너뛸 항목 id
- * @returns {{ text: string, itemId?: string, label?: string } | null}
+ * @param {number} cursor 새로고침 횟수. 확인할 항목이 남은 개수로 돌려 가며 보여 준다
+ * @returns {{ text: string, count: number, target?: { type: "item", id: string }, label?: string, laterLabel?: string } | null}
  */
-export function pickAppointmentCard(items, today, skippedIds = []) {
-  const todays = items.filter((i) => i.kind === KIND.appointment && i.date === today).sort(compareItems);
+export function pickCheckCard(items, today, cursor = 0) {
+  const todays = items.filter((i) => i.date === today).sort(compareItems);
   if (todays.length === 0) return null;
-  const rest = todays.filter((i) => !i.checked);
-  if (rest.length === 0) return { text: "오늘 약속을 모두 확인했어요" };
-  if (rest.length === todays.length) return { text: "오늘 약속 체크해주세요" };
-  const sorted = [...rest].sort(byTime);
-  const next = sorted.find((i) => !skippedIds.includes(i.id)) ?? sorted[0];
-  return { itemId: next.id, text: `${next.title} 기억하고 계시지요?`, label: "기억해요" };
-}
 
-/**
- * 할 일 확인 카드. 오늘 할 일과 에이전트가 권하는 챙길 것을 함께 다룬다.
- * 챙길 것은 바로 구체적으로 묻고, 전부 끝내도 "오늘 할 일을 모두 확인했어요"를 남긴다.
- * @param {import("./model").ScheduleItem[]} items 전체 항목
- * @param {string} today "YYYY-MM-DD"
- * @param {{ id: string, text: string }[]} carry 챙길 것 후보
- * @param {string[]} carryDoneIds "챙겼어요"를 누른 챙길 것 id
- * @param {string[]} skippedIds 새로고침 때 "나중에"로 건너뛸 id (할 일·챙길 것 공통)
- * @returns {{ text: string, target?: { type: "todo" | "carry", id: string }, label?: string, laterLabel?: string } | null}
- */
-export function pickTodoCard(items, today, carry, carryDoneIds = [], skippedIds = []) {
-  const todos = items.filter((i) => i.kind === KIND.todo && i.date === today);
-  const total = todos.length + carry.length;
-  if (total === 0) return null;
-
-  const pending = [
-    ...todos.filter((i) => !i.checked).sort(byTime).map((i) => ({ type: "todo", id: i.id, text: `${i.title} 하셨어요?`, label: "했어요", laterLabel: "나중에" })),
-    ...carry
-      .filter((c) => !carryDoneIds.includes(c.id))
-      .map((c) => ({ type: "carry", id: c.id, text: c.text, label: "챙겼어요", laterLabel: "아직이요" })),
-  ];
-  if (pending.length === 0) return { text: "오늘 할 일을 모두 확인했어요" };
-  const next = pending.find((p) => !skippedIds.includes(p.id)) ?? pending[0];
-  return { target: { type: next.type, id: next.id }, text: next.text, label: next.label, laterLabel: next.laterLabel };
+  const pending = todays.filter((i) => !i.checked);
+  if (pending.length === 0) return { text: "오늘 일정을 모두 확인했어요 👏", count: 0 };
+  const next = pending[cursor % pending.length];
+  const appointment = next.kind === KIND.appointment;
+  return {
+    target: { type: "item", id: next.id },
+    text: appointment ? `${next.title} 기억하고 계시지요?` : `${next.title} 하셨어요?`,
+    label: appointment ? "기억해요" : "했어요",
+    laterLabel: "나중에",
+    count: pending.length,
+  };
 }

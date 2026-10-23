@@ -97,6 +97,16 @@ export function formatMonthDay(key) {
 }
 
 /**
+ * 카드 문장에 쓰는 줄인 날짜.
+ * @param {string} key "YYYY-MM-DD"
+ * @returns {string} 예: "1/2"
+ */
+export function formatSlashDate(key) {
+  const d = fromDateKey(key);
+  return `${d.getMonth() + 1}/${d.getDate()}`;
+}
+
+/**
  * 카드 오른쪽에 쓰는 24시간 표기. 종일이거나 시간이 없으면 빈 글자.
  * @param {{ allDay: boolean, startTime: string | null, endTime: string | null }} item
  * @param {string} [separator] 시작과 끝 사이 글자
