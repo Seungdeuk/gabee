@@ -29,6 +29,17 @@ function Dot({ delay }) {
   return <Animated.View style={[styles.dot, { opacity: v, transform: [{ scale: v.interpolate({ inputRange: [0.25, 1], outputRange: [0.8, 1.25] }) }] }]} />;
 }
 
+/** 깜빡이는 점 세 개. 일하는 중이라는 표시로 여러 곳에서 쓴다. */
+export function PulseDots() {
+  return (
+    <View style={styles.dots}>
+      <Dot delay={0} />
+      <Dot delay={120} />
+      <Dot delay={240} />
+    </View>
+  );
+}
+
 /**
  * 올린 파일을 읽는 동안 보이는 표시: 통통 튀는 가비, 깜빡이는 점, 지나간 시간.
  * 서버가 단계를 알려 주지 않아서 가짜 단계는 보이지 않고, 지금까지 걸린 시간과 보통 걸리는 시간만 알려 준다.
@@ -63,11 +74,7 @@ export default function ReadingStatus({ since }) {
       <View style={styles.texts}>
         <View style={styles.line}>
           <Text style={styles.title}>읽는 중</Text>
-          <View style={styles.dots}>
-            <Dot delay={0} />
-            <Dot delay={120} />
-            <Dot delay={240} />
-          </View>
+          <PulseDots />
         </View>
         <Text style={styles.hint}>
           {seconds !== null ? `${formatSeconds(seconds)} 지났어요 · ` : ""}보통 5~30초 걸려요

@@ -10,6 +10,7 @@ import { colors } from "@/theme";
 
 import AnswerView from "../components/AnswerView";
 import ChatInput from "../components/ChatInput";
+import DoubtCard from "../components/DoubtCard";
 import DraftCard from "../components/DraftCard";
 import PromptChips from "../components/PromptChips";
 import ReadingStatus from "../components/ReadingStatus";
@@ -28,7 +29,7 @@ import mascot from "../../../../assets/images/gabee-mascot.png";
  */
 export default function AiAssistantScreen() {
   const router = useRouter();
-  const { messages, phase, readingSince, send, sendPhoto, startListening, stopListening, editDraft, reset, load } = useChat();
+  const { messages, phase, readingSince, confirmDoubts, send, sendPhoto, startListening, stopListening, editDraft, reset, load } = useChat();
   const { sessions, currentId, startNew, open, remove } = useSessions({ messages, load, reset });
   const [menuOpen, setMenuOpen] = useState(false);
   const [reviewCount, setReviewCount] = useState(0); // 확인이 필요한 기록 수(메뉴 점·기록 탭 숫자)
@@ -69,6 +70,16 @@ export default function AiAssistantScreen() {
             <DraftCard to={item.draft.to} text={item.draftText} onChangeText={(t) => editDraft(item.id, t)} />
           ) : null}
         </AnswerView>
+        {item.doubts ? (
+          <DoubtCard
+            lines={item.doubts.lines}
+            done={item.doubts.done}
+            onSubmit={async (edits) => {
+              await confirmDoubts(item.id, edits);
+              refreshReview();
+            }}
+          />
+        ) : null}
         {item.reviewId ? (
           <Pressable
             onPress={() => {

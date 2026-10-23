@@ -6,6 +6,8 @@ import { Alert, Pressable, StyleSheet, TextInput, View } from "react-native";
 
 import { colors } from "@/theme";
 
+import AttachSheet from "./AttachSheet";
+
 /**
  * 하단 둥근 입력창.
  * - idle: 옅은 꿀색 바탕, 마이크(말로 묻기)와 보내기 버튼(글자가 있을 때 켜진다)
@@ -20,6 +22,7 @@ import { colors } from "@/theme";
  */
 export default function ChatInput({ mode, onSend, onMic, onAttach }) {
   const [text, setText] = useState("");
+  const [sheet, setSheet] = useState(false);
   const inputRef = useRef(null);
   const listening = mode === "listening";
   const disabled = mode === "disabled";
@@ -63,13 +66,12 @@ export default function ChatInput({ mode, onSend, onMic, onAttach }) {
     }
   };
 
-  const attach = () => {
-    Alert.alert("올리기", "무엇을 올릴까요?", [
-      { text: "앨범에서 사진 고르기", onPress: () => pick(false) },
-      { text: "카메라로 찍기", onPress: () => pick(true) },
-      { text: "파일 고르기 (PDF·문서·엑셀)", onPress: pickFile },
-      { text: "취소", style: "cancel" },
-    ]);
+  const attach = () => setSheet(true);
+
+  /** 시트를 닫은 뒤에 고른 창을 연다(두 창이 겹쳐 뜨면 일부 폰에서 열리지 않는다). */
+  const choose = (key) => {
+    setSheet(false);
+    setTimeout(() => (key === "file" ? pickFile() : pick(key === "camera")), 350);
   };
 
   const submit = () => {
@@ -106,6 +108,7 @@ export default function ChatInput({ mode, onSend, onMic, onAttach }) {
           <Ionicons name="arrow-up" size={20} color={colors.text} />
         </View>
       </Pressable>
+      <AttachSheet visible={sheet} onClose={() => setSheet(false)} onPick={choose} />
     </View>
   );
 }

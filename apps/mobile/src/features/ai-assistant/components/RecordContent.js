@@ -47,10 +47,11 @@ export function parseRecord(md) {
       continue;
     }
     seenTableHead = false;
-    const text = raw.replace(BLOCK_NO, "").replace(SLIDE_NO, "");
+    const doubt = raw.endsWith("[불확실]");
+    const text = (doubt ? raw.slice(0, -"[불확실]".length) : raw).trim().replace(BLOCK_NO, "").replace(SLIDE_NO, "");
     if (!text) continue;
     if (text.startsWith("## ")) lines.push({ type: "heading", text: text.slice(3) });
-    else lines.push({ type: "text", text: text.replace(/^#+\s*/, "") });
+    else lines.push({ type: "text", text: text.replace(/^#+\s*/, ""), doubt });
   }
   return { fields, tags, lines, unread };
 }
@@ -111,8 +112,9 @@ export default function RecordContent({ markdown }) {
                 ))}
               </View>
             ) : (
-              <Text key={idx} style={styles.line} selectable>
+              <Text key={idx} style={[styles.line, l.doubt && styles.lineDoubt]} selectable>
                 {l.text}
+                {l.doubt ? <Text style={styles.doubtTag}>  확인 필요</Text> : null}
               </Text>
             ),
           )}
@@ -138,6 +140,8 @@ const styles = StyleSheet.create({
   body: { gap: 6 },
   heading: { marginTop: 4, fontSize: 15, fontWeight: "700", color: colors.text },
   line: { fontSize: 14, lineHeight: 21, color: colors.text },
+  lineDoubt: { backgroundColor: colors.honeySoft },
+  doubtTag: { fontSize: 11, fontWeight: "700", color: colors.warning },
   tableRow: { flexDirection: "row", gap: 8, paddingVertical: 4, borderBottomWidth: 1, borderBottomColor: colors.divider },
   tableHead: { borderBottomColor: colors.border },
   cell: { flex: 1, minWidth: 0, fontSize: 13, lineHeight: 19, color: colors.text },

@@ -1,6 +1,6 @@
 import { useCallback, useRef, useState } from "react";
 
-import { getFileStatus, sendMessage, uploadFile } from "../api";
+import { getFileStatus, getRecord, sendMessage, updateRecord, uploadFile } from "../api";
 import { formatSeconds } from "../components/ReadingStatus";
 
 const POLL_INTERVAL_MS = 2000;
@@ -18,6 +18,7 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
  *   messages: object[],
  *   phase: "idle" | "listening" | "thinking" | "reading",
  *   readingSince: number | null,
+ *   confirmDoubts: (messageId: string, edits: string[]) => Promise<void>,   // 흐린 줄 확인 카드의 결과 반영
  *   send: (text: string, options?: { voice?: boolean }) => Promise<void>,
  *   sendPhoto: (file: { uri: string, name?: string, type?: string, isImage?: boolean }) => Promise<void>,   // 사진·문서 모두 올린다
  *   startListening: () => void,
@@ -103,9 +104,14 @@ export default function useChat() {
           .join("\n");
         const head = result.status === "needs_review" ? "저장했지만 내용을 한 번 확인해 주세요." : "저장했어요.";
         const review = result.status === "needs_review";
+        const doubts = result.doubts ?? [];
         say(
           `${head}${detail ? `\n${detail}` : ""}\n${review ? "원본과 비교해서 맞는지 확인해 주세요." : "이어서 궁금한 걸 물어보세요."}\n(걸린 시간 ${took()})`,
-          review ? { reviewId: fileId } : {},
+          doubts.length > 0
+            ? { doubts: { recordId: fileId, lines: doubts, done: false } }
+            : review
+              ? { reviewId: fileId }
+              : {},
         );
       }
     } catch (e) {
@@ -115,6 +121,34 @@ export default function useChat() {
         setPhase("idle");
         setReadingSince(null);
       }
+    }
+  }, []);
+
+  /**
+   * 채팅 카드에서 흐린 줄을 확인한 결과를 기록에 반영한다. 고친 줄이 없으면 확인만 한다.
+   * @param {string} messageId 카드가 붙은 메시지
+   * @param {string[]} edits 줄마다 사용자가 확인한(고친) 글
+   */
+  const confirmDoubts = useCallback(async (messageId, edits) => {
+    const card = messagesRef.current.find((m) => m.id === messageId)?.doubts;
+    if (!card) return;
+    try {
+      const changed = card.lines.some((line, i) => edits[i] !== line);
+      if (changed) {
+        let body = (await getRecord(card.recordId)).body_md;
+        card.lines.forEach((line, i) => {
+          if (edits[i] !== line) body = body.replace(`${line} [불확실]`, edits[i]);
+        });
+        await updateRecord(card.recordId, { body_md: body });
+      } else {
+        await updateRecord(card.recordId, {});
+      }
+      setMessages((prev) => prev.map((m) => (m.id === messageId ? { ...m, doubts: { ...card, done: true } } : m)));
+    } catch (e) {
+      setMessages((prev) => [
+        ...prev,
+        { id: id(), role: "assistant", text: e?.message || "저장하지 못했어요. 잠시 후 다시 시도해 주세요.", sources: [] },
+      ]);
     }
   }, []);
 
@@ -140,5 +174,5 @@ export default function useChat() {
     setPhase("idle");
   }, []);
 
-  return { messages, phase, readingSince, send, sendPhoto, startListening, stopListening, editDraft, reset, load };
+  return { messages, phase, readingSince, confirmDoubts, send, sendPhoto, startListening, stopListening, editDraft, reset, load };
 }
