@@ -274,7 +274,12 @@ def test_pdf_pages_and_scanned_pdf():
     r = preprocess(pdf(["Electricity bill 48200 KRW", "Due date 2026-10-25"]), "bill.pdf")
     assert r.quality.status == "ok" and r.content.pages == 2
     assert {b.page for b in r.content.blocks} == {1, 2}
-    scanned = preprocess(pdf(["", ""]), "scan.pdf")
+
+    class NoText:
+        def read(self, image):
+            return []
+
+    scanned = preprocess(pdf(["", ""]), "scan.pdf", ocr=NoText())
     assert scanned.quality.status == "partial" and "스캔본" in scanned.quality.warnings[0]
 
 
@@ -647,3 +652,22 @@ def test_scanned_pdf_reads_only_the_first_pages():
     r = preprocess(_scanned_pdf(23), "long.pdf", ocr=OneLine())
     assert OneLine.calls == converters.PDF_OCR_MAX_PAGES
     assert any("앞 20쪽" in w for w in r.quality.warnings)
+
+
+def test_pdf_with_text_pages_and_scanned_pages_reads_only_the_scanned_ones():
+    class OnlyScan:
+        calls = 0
+
+        def read(self, image):
+            OnlyScan.calls += 1
+            return [converters.OcrLine("스캔된 쪽의 영수증 합계 7,700원", 0.9)]
+
+    data = pdf(["Electricity bill 48200 KRW for October", "", "Second text page due 2026-10-25"])
+    r = preprocess(data, "mixed.pdf", ocr=OnlyScan())
+    assert OnlyScan.calls == 1  # 글자 층이 있는 쪽은 OCR 하지 않는다
+    text = r.content.text
+    assert "Electricity bill" in text and "7,700원" in text and "Second text page" in text
+    assert (
+        text.index("Electricity") < text.index("7,700원") < text.index("Second text")
+    )  # 쪽 순서 유지
+    assert r.content.pages == 3 and r.quality.status == "partial"

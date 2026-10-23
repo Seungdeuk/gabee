@@ -162,11 +162,14 @@ def default_ocr() -> KoreanOcr:
 
 # ---------- 오피스 · PDF · 텍스트 ----------
 
-PDF_OCR_MAX_PAGES = 20  # 스캔 PDF 는 앞쪽부터 이만큼만 OCR 한다(처리 시간 상한)
+PDF_OCR_MAX_PAGES = 20  # 스캔 PDF 는 글자 없는 쪽을 앞에서부터 이만큼만 OCR 한다(처리 시간 상한)
+PDF_MIN_PAGE_CHARS = (
+    8  # 쪽에 글자가 이보다 적으면 스캔 쪽으로 본다(쪽 번호·워터마크 정도는 글자로 치지 않는다)
+)
 
 
-def pdf_page_images(data: bytes) -> tuple[list[Image.Image], int]:
-    """스캔 PDF 의 쪽을 OCR 하기 좋은 이미지로 바꾼다. (앞 PDF_OCR_MAX_PAGES 쪽의 이미지, 전체 쪽 수)."""
+def pdf_page_texts(data: bytes) -> list[str]:
+    """PDF 의 쪽별 글자 층(스캔 쪽은 빈 글). 쪽 수는 PDF 자체의 쪽 수다."""
     import pypdfium2 as pdfium
 
     try:
@@ -174,16 +177,34 @@ def pdf_page_images(data: bytes) -> tuple[list[Image.Image], int]:
     except Exception as e:  # 암호가 걸렸거나 깨진 PDF
         raise BrokenFile(f"PDF 를 열 수 없어요 ({type(e).__name__})") from None
     try:
-        total = len(doc)
+        out = []
+        for i in range(len(doc)):
+            textpage = doc[i].get_textpage()
+            out.append((textpage.get_text_bounded() or "").strip())
+            textpage.close()
+        return out
+    except Exception as e:
+        raise BrokenFile(f"PDF 글자를 읽을 수 없어요 ({type(e).__name__})") from None
+    finally:
+        doc.close()
+
+
+def pdf_page_images(data: bytes, indexes: list[int]) -> list[Image.Image]:
+    """고른 쪽(0부터)을 OCR 하기 좋은 이미지로 바꾼다."""
+    import pypdfium2 as pdfium
+
+    try:
+        doc = pdfium.PdfDocument(data)
+    except Exception as e:
+        raise BrokenFile(f"PDF 를 열 수 없어요 ({type(e).__name__})") from None
+    try:
         images = []
-        for i in range(min(total, PDF_OCR_MAX_PAGES)):
+        for i in indexes:
             page = doc[i]
             w, h = page.get_size()  # 단위는 pt(1/72 인치)
             scale = min(3.0, OCR_MAX_SIDE / max(w, h, 1.0))
             images.append(_fit_for_ocr(page.render(scale=scale).to_pil().convert("RGB")))
-        return images, total
-    except BrokenFile:
-        raise
+        return images
     except Exception as e:
         raise BrokenFile(f"PDF 쪽을 그림으로 바꿀 수 없어요 ({type(e).__name__})") from None
     finally:
