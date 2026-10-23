@@ -17,7 +17,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 
 import { colors } from "@/theme";
 
-import { getRecord, originalImageSource, updateRecord } from "../api";
+import { deleteRecord, getRecord, originalImageSource, updateRecord } from "../api";
 import useOriginal from "../hooks/useOriginal";
 import OriginalViewer from "./OriginalViewer";
 
@@ -83,6 +83,31 @@ export default function RecordDetail({ record, onClose, onChanged }) {
       setSaving(false);
     }
   };
+
+  const confirmDelete = () =>
+    Alert.alert(
+      "기록을 지울까요?",
+      "읽어 낸 글과 서버에 둔 원본 파일이 모두 지워지고 되돌릴 수 없어요. 가족 모두에게서 사라져요.",
+      [
+        { text: "취소", style: "cancel" },
+        {
+          text: "지우기",
+          style: "destructive",
+          onPress: async () => {
+            setSaving(true);
+            try {
+              await deleteRecord(record.id);
+              onChanged?.();
+              onClose();
+            } catch (e) {
+              Alert.alert("지우지 못했어요", e?.message || "잠시 후 다시 시도해 주세요.");
+            } finally {
+              setSaving(false);
+            }
+          },
+        },
+      ],
+    );
 
   const save = () => {
     const day = draft.occurred_on.trim();
@@ -192,6 +217,10 @@ export default function RecordDetail({ record, onClose, onChanged }) {
                     </Pressable>
                   ) : null}
                 </View>
+                <Pressable onPress={confirmDelete} disabled={!detail || saving} accessibilityRole="button" style={styles.deleteBtn}>
+                  <Ionicons name="trash-outline" size={16} color={colors.danger} />
+                  <Text style={styles.deleteText}>이 기록 지우기</Text>
+                </Pressable>
               </>
             )}
           </ScrollView>
@@ -212,6 +241,8 @@ const styles = StyleSheet.create({
   review: { flexDirection: "row", gap: 8, padding: 12, borderRadius: 12, backgroundColor: colors.honeySoft },
   reviewText: { flex: 1, fontSize: 13, lineHeight: 20, color: colors.text },
   preview: { width: "100%", height: 220, borderRadius: 12, backgroundColor: colors.surface },
+  deleteBtn: { alignSelf: "center", marginTop: 16, minHeight: 40, paddingHorizontal: 14, flexDirection: "row", alignItems: "center", gap: 6 },
+  deleteText: { fontSize: 14, color: colors.danger },
   originalBtn: { alignSelf: "flex-start", minHeight: 40, paddingHorizontal: 14, borderRadius: 20, backgroundColor: colors.surface, flexDirection: "row", alignItems: "center", gap: 6 },
   originalText: { fontSize: 14, fontWeight: "600", color: colors.text },
   previewHint: { marginTop: 4, textAlign: "center", fontSize: 12, color: colors.textMuted },

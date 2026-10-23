@@ -1,9 +1,11 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Response
 from sqlalchemy.orm import Session
 
 from app.shared.auth import current_group_id, current_user
 from app.shared.db import get_db
+from app.shared.errors import not_found
 
+from .. import files
 from .. import repository as photo_repo
 from . import rag_chat, service
 from .models import KnowledgeItem
@@ -43,6 +45,16 @@ def list_items(
 ) -> list[KnowledgeItem]:
     items = service.list_items(db, group_id, kind_label, min(max(limit, 1), 200))
     return _mark_review(db, group_id, items)
+
+
+@router.delete("/items/{item_id}", status_code=204)
+def delete_item(
+    item_id: str, group_id: str = Depends(current_group_id), db: Session = Depends(get_db)
+) -> Response:
+    """기록과 원본 파일을 지운다(되돌릴 수 없음). 가족 그룹이 다르면 없는 기록처럼 404 다."""
+    if not files.delete_record(db, group_id, item_id):
+        raise not_found("기록")
+    return Response(status_code=204)
 
 
 @router.get("/items/{item_id}", response_model=ItemDetailOut)

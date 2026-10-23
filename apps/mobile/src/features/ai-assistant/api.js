@@ -172,5 +172,14 @@ export async function getRecord(id) {
   return apiFetch(`/ai-assistant/knowledge/items/${encodeURIComponent(id)}`);
 }
 
+/**
+ * 기록을 지운다. 읽어 낸 글과 검색용 조각, 서버에 둔 원본 파일까지 지워지고 되돌릴 수 없다.
+ * @param {string} id
+ */
+export async function deleteRecord(id) {
+  if (!isApiConfigured()) return;
+  await apiFetch(`/ai-assistant/knowledge/items/${encodeURIComponent(id)}`, { method: "DELETE" });
+}
+
 /** 예전 이름. uploadFile 과 같다. */
 export const uploadPhoto = uploadFile;

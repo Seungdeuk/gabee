@@ -1,11 +1,11 @@
 import { Ionicons } from "@expo/vector-icons";
 import { Image } from "expo-image";
 import { useCallback, useEffect, useState } from "react";
-import { ActivityIndicator, FlatList, Pressable, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Alert, FlatList, Pressable, StyleSheet, Text, View } from "react-native";
 
 import { colors } from "@/theme";
 
-import { listRecords, originalImageSource } from "../api";
+import { deleteRecord, listRecords, originalImageSource } from "../api";
 import RecordDetail from "./RecordDetail";
 
 /**
@@ -44,6 +44,19 @@ export default function RecordsList({ active, focusId = null, onFocusHandled, on
     onFocusHandled?.();
   }, [focusId, items]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  const confirmDelete = (item) =>
+    Alert.alert("기록을 지울까요?", `"${item.title}" 의 읽어 낸 글과 원본 파일이 모두 지워지고 되돌릴 수 없어요.`, [
+      { text: "취소", style: "cancel" },
+      {
+        text: "지우기",
+        style: "destructive",
+        onPress: () =>
+          deleteRecord(item.id)
+            .then(refresh)
+            .catch((e) => Alert.alert("지우지 못했어요", e?.message || "잠시 후 다시 시도해 주세요.")),
+      },
+    ]);
+
   if (items === null) {
     return (
       <View style={styles.center}>
@@ -76,7 +89,7 @@ export default function RecordsList({ active, focusId = null, onFocusHandled, on
         renderItem={({ item }) => {
           const thumb = item.hasOriginal ? originalImageSource(item.id) : null;
           return (
-            <Pressable onPress={() => setSelected(item)} accessibilityRole="button" style={[styles.row, item.needs_review && styles.rowReview]}>
+            <Pressable onPress={() => setSelected(item)} onLongPress={() => confirmDelete(item)} accessibilityRole="button" accessibilityHint="길게 누르면 지울 수 있어요" style={[styles.row, item.needs_review && styles.rowReview]}>
               <View style={styles.thumb}>
                 {thumb ? (
                   <Image source={thumb} style={styles.thumbImg} contentFit="cover" recyclingKey={item.id} />

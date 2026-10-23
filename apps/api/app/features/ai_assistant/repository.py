@@ -21,6 +21,13 @@ def set_status(db: Session, photo_id: str, status: str) -> None:
         db.commit()
 
 
+def delete_photo(db: Session, photo_id: str) -> None:
+    photo = db.get(Photo, photo_id)
+    if photo is not None:
+        db.delete(photo)
+        db.commit()
+
+
 def review_ids(db: Session, group_id: str) -> set[str]:
     """확인이 필요한 채로 저장된 파일 id (knowledge 기록 id 와 같다)."""
     return set(

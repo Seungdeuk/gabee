@@ -64,6 +64,13 @@ class LocalRawStore:
     def delete(self, ref_path: str) -> None:
         self._resolve(ref_path).unlink(missing_ok=True)
 
+    def delete_for_group(self, group_id: str, ref_path: str) -> None:
+        """경로의 첫 칸이 요청한 가족 그룹일 때만 지운다(다른 가족의 원본을 지우지 못하게)."""
+        first, _, rest = ref_path.partition("/")
+        if first != group_id or not rest:
+            raise ValueError("이 가족의 원본이 아니에요")
+        self.delete(ref_path)
+
     def _resolve(self, ref_path: str) -> Path:
         path = (self.root / ref_path).resolve()
         if self.root.resolve() not in path.parents:

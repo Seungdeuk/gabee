@@ -433,3 +433,57 @@ def test_the_same_file_uploaded_twice_is_one_source(client, family, pipeline, mo
     out = client.post("/ai-assistant/chat", json={"message": "마트 합계 얼마야?"}, headers=a).json()
     assert len(state["refs"]) == 1  # Claude 에게도 같은 파일은 한 번만 간다
     assert len(out["sources"]) == 1 and "[1][1]" not in out["reply"]
+
+
+def _raw_files(group_id: str) -> list[Path]:
+    root = Path(settings.data_dir) / "raw" / group_id
+    return [p for p in root.rglob("*") if p.is_file()] if root.exists() else []
+
+
+def test_deleting_a_record_removes_text_search_and_original(client, family, pipeline):
+    a, _, group = family
+    pipeline.ocr = FakeOcr([("동대문마트", 0.95), ("합계 34,950원", 0.93)])
+    up = upload(client, a, png((77, 7, 7)), "del.png")
+    assert _raw_files(group["id"])  # 원본과 화면용 사본이 있다
+    r = client.delete(f"/ai-assistant/knowledge/items/{up['id']}", headers=a)
+    assert r.status_code == 204
+    assert client.get(f"/ai-assistant/knowledge/items/{up['id']}", headers=a).status_code == 404
+    assert client.get(f"/ai-assistant/files/{up['id']}", headers=a).status_code == 404
+    assert client.get(f"/ai-assistant/files/{up['id']}/original", headers=a).status_code == 404
+    assert [i["id"] for i in client.get("/ai-assistant/knowledge/items", headers=a).json()] == []
+    hits = client.post(
+        "/ai-assistant/knowledge/search", json={"query": "마트 합계"}, headers=a
+    ).json()["hits"]
+    assert hits == []
+    assert _raw_files(group["id"]) == []  # 서버에 둔 원본도 지워졌다
+    assert client.delete(f"/ai-assistant/knowledge/items/{up['id']}", headers=a).status_code == 404
+
+
+def test_original_stays_while_another_record_uses_the_same_file(client, family, pipeline):
+    a, _, group = family
+    data = png((1, 77, 7))
+    first = upload(client, a, data, "x1.png")
+    second = upload(client, a, data, "x2.png")  # 같은 파일을 한 번 더
+    assert (
+        client.delete(f"/ai-assistant/knowledge/items/{first['id']}", headers=a).status_code == 204
+    )
+    assert _raw_files(group["id"])  # 두 번째 기록이 아직 쓰는 원본은 그대로
+    assert client.get(f"/ai-assistant/files/{second['id']}/original", headers=a).status_code == 200
+    assert (
+        client.delete(f"/ai-assistant/knowledge/items/{second['id']}", headers=a).status_code == 204
+    )
+    assert _raw_files(group["id"]) == []
+
+
+def test_other_family_cannot_delete_a_record(client, family, pipeline):
+    from tests.helpers import signup
+
+    a, _, _ = family
+    up = upload(client, a, png((7, 7, 77)), "keep.png")
+    stranger = signup(client, "철수")
+    client.post("/family-group/groups", json={"name": "남의 가족"}, headers=stranger)
+    url = f"/ai-assistant/knowledge/items/{up['id']}"
+    assert client.delete(url, headers=stranger).status_code == 404
+    assert client.delete(url).status_code in (401, 403)
+    assert client.get(url, headers=a).status_code == 200
+    assert client.get(f"/ai-assistant/files/{up['id']}/original", headers=a).status_code == 200

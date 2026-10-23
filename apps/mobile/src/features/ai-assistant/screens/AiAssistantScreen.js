@@ -12,6 +12,7 @@ import AnswerView from "../components/AnswerView";
 import ChatInput from "../components/ChatInput";
 import DraftCard from "../components/DraftCard";
 import PromptChips from "../components/PromptChips";
+import ReadingStatus from "../components/ReadingStatus";
 import Sidebar from "../components/Sidebar";
 import ThinkingSteps from "../components/ThinkingSteps";
 import UserBubble from "../components/UserBubble";
@@ -27,7 +28,7 @@ import mascot from "../../../../assets/images/gabee-mascot.png";
  */
 export default function AiAssistantScreen() {
   const router = useRouter();
-  const { messages, phase, send, sendPhoto, startListening, stopListening, editDraft, reset, load } = useChat();
+  const { messages, phase, readingSince, send, sendPhoto, startListening, stopListening, editDraft, reset, load } = useChat();
   const { sessions, currentId, startNew, open, remove } = useSessions({ messages, load, reset });
   const [menuOpen, setMenuOpen] = useState(false);
   const [reviewCount, setReviewCount] = useState(0); // 확인이 필요한 기록 수(메뉴 점·기록 탭 숫자)
@@ -143,7 +144,7 @@ export default function AiAssistantScreen() {
                     </View>
                   ) : phase === "reading" ? (
                     <View style={styles.footer}>
-                      <Text style={styles.listening}>읽는 중…</Text>
+                      <ReadingStatus since={readingSince} />
                     </View>
                   ) : listening ? (
                     <View style={[styles.footer, styles.centerRow]}>

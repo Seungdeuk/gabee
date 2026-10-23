@@ -1,6 +1,7 @@
 import { useCallback, useRef, useState } from "react";
 
 import { getFileStatus, sendMessage, uploadFile } from "../api";
+import { formatSeconds } from "../components/ReadingStatus";
 
 const POLL_INTERVAL_MS = 2000;
 const POLL_TIMEOUT_MS = 120000;
@@ -16,6 +17,7 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
  * @returns {{
  *   messages: object[],
  *   phase: "idle" | "listening" | "thinking" | "reading",
+ *   readingSince: number | null,
  *   send: (text: string, options?: { voice?: boolean }) => Promise<void>,
  *   sendPhoto: (file: { uri: string, name?: string, type?: string, isImage?: boolean }) => Promise<void>,   // 사진·문서 모두 올린다
  *   startListening: () => void,
@@ -28,6 +30,7 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 export default function useChat() {
   const [messages, setMessages] = useState([]);
   const [phase, setPhase] = useState("idle");
+  const [readingSince, setReadingSince] = useState(null); // 파일 읽기를 시작한 시각(ms), 읽는 중이 아니면 null
   const nextId = useRef(0);
   const messagesRef = useRef([]);
   messagesRef.current = messages;
@@ -68,7 +71,10 @@ export default function useChat() {
         ? { id: id(), role: "user", text: "사진 올렸어요", imageUri: file.uri }
         : { id: id(), role: "user", text: `파일 올렸어요: ${file.name ?? "문서"}` },
     ]);
+    const startedAt = Date.now();
+    setReadingSince(startedAt);
     setPhase("reading");
+    const took = () => formatSeconds((Date.now() - startedAt) / 1000);
     try {
       const { id: fileId } = await uploadFile(file);
       const deadline = Date.now() + POLL_TIMEOUT_MS;
@@ -98,14 +104,17 @@ export default function useChat() {
         const head = result.status === "needs_review" ? "저장했지만 내용을 한 번 확인해 주세요." : "저장했어요.";
         const review = result.status === "needs_review";
         say(
-          `${head}${detail ? `\n${detail}` : ""}\n${review ? "원본과 비교해서 맞는지 확인해 주세요." : "이어서 궁금한 걸 물어보세요."}`,
+          `${head}${detail ? `\n${detail}` : ""}\n${review ? "원본과 비교해서 맞는지 확인해 주세요." : "이어서 궁금한 걸 물어보세요."}\n(걸린 시간 ${took()})`,
           review ? { reviewId: fileId } : {},
         );
       }
     } catch (e) {
       if (runId.current === myRun) say(e?.message || "사진을 올리지 못했어요. 잠시 후 다시 시도해 주세요.");
     } finally {
-      if (runId.current === myRun) setPhase("idle");
+      if (runId.current === myRun) {
+        setPhase("idle");
+        setReadingSince(null);
+      }
     }
   }, []);
 
@@ -131,5 +140,5 @@ export default function useChat() {
     setPhase("idle");
   }, []);
 
-  return { messages, phase, send, sendPhoto, startListening, stopListening, editDraft, reset, load };
+  return { messages, phase, readingSince, send, sendPhoto, startListening, stopListening, editDraft, reset, load };
 }
