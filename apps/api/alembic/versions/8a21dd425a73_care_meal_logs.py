@@ -1,7 +1,7 @@
 """care meal logs
 
 Revision ID: 8a21dd425a73
-Revises: 719215db61ba
+Revises: 52fe05184992
 Create Date: 2026-10-23 21:00:00.000000
 
 식단 기록: 그날 아침·점심·저녁에 무엇을 드셨는지(care_meal_logs). 새 테이블만 추가하며 데이터가 사라지는 변경은 없다.
@@ -15,7 +15,7 @@ from alembic import op
 
 # revision identifiers, used by Alembic.
 revision: str = "8a21dd425a73"
-down_revision: str | Sequence[str] | None = "719215db61ba"
+down_revision: str | Sequence[str] | None = "52fe05184992"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

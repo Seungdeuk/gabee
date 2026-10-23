@@ -27,7 +27,7 @@ const ROLES = [
 export default function SignupScreen() {
   const router = useRouter();
   const { signIn } = useAuth();
-  const [form, setForm] = useState({ loginId: "", name: "", email: "", password: "", password2: "", role: "child" });
+  const [form, setForm] = useState({ loginId: "", name: "", email: "", password: "", password2: "", role: "child", roleDetail: "" });
   const [errors, setErrors] = useState({});
   const [idState, setIdState] = useState({ checked: "", available: null, busy: false, message: "" });
   const [formError, setFormError] = useState("");
@@ -122,6 +122,17 @@ export default function SignupScreen() {
         <Text style={styles.roleLabel}>가족 안에서의 역할</Text>
         <Segmented options={ROLES} value={form.role} onChange={set("role")} />
       </View>
+      {form.role === "other" ? (
+        <Field
+          label="가족과의 관계"
+          value={form.roleDetail}
+          onChangeText={set("roleDetail")}
+          maxLength={40}
+          placeholder="예: 이모, 할머니, 삼촌"
+          hint="적어 두면 가족에게 이 관계로 보여요 (선택)"
+          testID="signup-role-detail"
+        />
+      ) : null}
       <Field
         label="이메일"
         value={form.email}

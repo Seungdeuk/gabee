@@ -34,7 +34,8 @@
 
 ## 아직 없는 기능 (이번 PR에서 만들지 않음)
 
-- **가족 탈퇴**, **활성 그룹 전환**, **초대 코드 조회/취소** API는 코드에 없다. 나중에 만들 때는 `GroupMember` 행 삭제(또는 생성)와 `active_group_id` 갱신을 같은 트랜잭션에서 함께 처리해야 한다 — 다만 이제 `current_group_id`가 `group_members`를 직접 확인하므로, 둘이 어긋나더라도(예: 탈퇴 로직이 `active_group_id`를 못 지우는 버그) 권한 검증 자체는 여전히 안전하다. `apps/api/tests/test_membership_enforcement.py`가 이 상황(멤버십은 없는데 `active_group_id`는 남은 상태)을 직접 시뮬레이션해서 막히는지 확인한다.
+- **초대 코드 발급·폐기와 가입 요청 승인·거절은 가족 관리자(`group_members.role` 이 owner/admin)만** 할 수 있다(`join_service.require_manager`). 권한은 요청값이 아니라 DB 의 role 로만 판단하고, 승인된 사람은 항상 member 로 들어간다. 다른 그룹의 가입 요청은 404 로 존재 자체를 숨긴다. 자세한 내용은 `docs/features/family-group.md`.
+- **가족 탈퇴**, **활성 그룹 전환** API는 코드에 없다. 나중에 만들 때는 `GroupMember` 행 삭제(또는 생성)와 `active_group_id` 갱신을 같은 트랜잭션에서 함께 처리해야 한다 — 다만 이제 `current_group_id`가 `group_members`를 직접 확인하므로, 둘이 어긋나더라도(예: 탈퇴 로직이 `active_group_id`를 못 지우는 버그) 권한 검증 자체는 여전히 안전하다. `apps/api/tests/test_membership_enforcement.py`가 이 상황(멤버십은 없는데 `active_group_id`는 남은 상태)을 직접 시뮬레이션해서 막히는지 확인한다.
 
 ## 기존 인증 방식의 잔여 위험
 

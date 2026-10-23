@@ -21,6 +21,25 @@ class Settings(BaseSettings):
     schema_recheck_ready_seconds: int = 30
     schema_recheck_not_ready_seconds: int = 2
     schema_force_min_interval_seconds: float = 1  # /health/db 가 강제 재점검할 수 있는 최소 간격
+    # 로컬 언어 모델(Ollama). 개인정보가 섞일 수 있는 글자는 외부 대신 여기로 보낸다
+    local_llm_url: str = "http://localhost:11434"
+    local_llm_model: str = "qwen2.5:7b"
+    local_llm_timeout: float = 120.0
+    # TypeSafe Jev — 정해진 보기 중 고르기·예/아니오 판단. 가린 글자만 보낸다
+    typesafe_api_key: str = ""
+    jev_model: str = "jev-latest"
+    jev_timeout: float = 15.0
+    # 얼굴 찾기 모델(YuNet·SFace) 폴더. 비우면 DATA_DIR/models/faces. 모델이 없으면 얼굴 찾기를 건너뛴다
+    face_model_dir: str = ""
+    # 원본 파일(가리기 전)을 그대로 보관하는 폴더. 비우면 DATA_DIR/raw. 접근을 제한해야 하는 곳이라 서버만 읽는다
+    raw_dir: str = ""
+    # 글자 없는 사진 설명(Ollama 이미지 모델). 사진은 서버 밖으로 나가지 않는다
+    caption_enabled: bool = True
+    caption_model: str = "qwen2.5vl:3b"
+    caption_timeout: float = 60.0
+    ollama_keep_alive: str = "30m"  # 모델을 메모리에 올려 두는 시간(처음 불러오는 데 1분쯤 걸린다)
+    # 채팅(외부 Claude)이 근거로 읽을 수 있는 기록에 민감 기록(처방전·신분증·통장·인물 사진 등)을 넣을지
+    chat_include_sensitive: bool = True
 
     # 로그인/JWT(PR 4-B). JWT_SECRET 은 환경변수(.env)로만 준다 — 코드·Git 에 넣지 않는다.
     # 비어 있으면: 로컬 SQLite 나 DEBUG=true 에서만 프로세스 임시 키를 쓴다(재시작하면 로그인이 풀림). PostgreSQL(공용·운영)에서는
@@ -52,8 +71,10 @@ class Settings(BaseSettings):
     smtp_timeout_seconds: int = 10
     # 메일 링크의 앱 주소(모바일 딥링크 또는 웹 주소). 링크는 <base>verify-email?token=..., <base>reset-password?token=...
     email_link_base: str = "gabee://"
-    email_verify_ttl_seconds: int = 24 * 3600
+    email_verify_ttl_seconds: int = 3 * 60  # 인증번호·링크 유효 시간: 3분
     password_reset_ttl_seconds: int = 30 * 60
+    # 6자리 코드: 코드(메일 1통)마다 틀려도 되는 횟수. 넘으면 그 코드는 못 쓰고 메일을 다시 받아야 한다
+    code_max_attempts: int = 5
     # 이메일 미인증 정식 회원의 가족 그룹 생성·참여를 막는다(docs/requirements/family-group.md). 메일 설정 전 임시로 끌 수 있다
     require_email_verification: bool = True
     # 메일 요청 제한(프로세스 메모리, login 제한과 같은 한계): 인증 메일 재발송 간격/시간당, 재설정 메일 이메일별/IP별 시간당
@@ -61,6 +82,13 @@ class Settings(BaseSettings):
     verify_max_per_hour: int = 5
     reset_max_per_email_per_hour: int = 3
     reset_max_per_ip_per_hour: int = 20  # 0 이면 IP 제한 끔
+
+    # 가족 초대·가입 승인(PR 4-B): 새로 발급하는 초대 코드는 24시간·1회. 코드를 틀리게 입력한 실패가 이 횟수에 이르면
+    # 계정별·IP별로 막고(invite_attempts, 슬라이딩 윈도우), 윈도우가 지나면 다시 시도할 수 있다.
+    invite_ttl_seconds: int = 24 * 3600
+    invite_max_uses: int = 1
+    invite_max_failures: int = 5
+    invite_failure_window_seconds: int = 15 * 60
 
     model_config = SettingsConfigDict(env_file=_ENV_FILE, extra="ignore")
 

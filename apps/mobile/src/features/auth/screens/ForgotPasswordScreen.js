@@ -39,7 +39,7 @@ export default function ForgotPasswordScreen() {
   };
 
   return (
-    <AuthLayout title="비밀번호 재설정" subtitle="가입할 때 쓴 이메일로 재설정 링크를 보내 드려요">
+    <AuthLayout title="비밀번호 재설정" subtitle="가입할 때 쓴 이메일로 재설정 코드와 링크를 보내 드려요">
       <Field
         label="이메일"
         value={email}
@@ -59,7 +59,11 @@ export default function ForgotPasswordScreen() {
         <Notice tone="success" text="가입된 이메일이라면 재설정 메일을 보냈어요. 메일함을 확인해 주세요 (30분 안에 한 번만 쓸 수 있어요)" />
       ) : null}
       <Button label={busy ? "보내는 중..." : sent ? "다시 보내기" : "재설정 메일 보내기"} onPress={submit} disabled={busy} testID="forgot-submit" />
-      <Button label="메일의 링크나 코드가 있어요" variant="secondary" onPress={() => router.push("/reset-password")} />
+      <Button
+        label="메일의 재설정 코드를 입력할게요"
+        variant="secondary"
+        onPress={() => router.push({ pathname: "/reset-password", params: email.trim() ? { email: email.trim() } : {} })}
+      />
     </AuthLayout>
   );
 }

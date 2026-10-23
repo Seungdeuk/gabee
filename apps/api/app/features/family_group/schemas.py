@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import Literal
 
 from pydantic import BaseModel, Field
@@ -14,6 +15,7 @@ class UserOut(BaseModel):
     id: str
     name: str
     role: str
+    role_detail: str | None = None  # 역할이 other 일 때 직접 적은 관계
     active_group_id: str | None = None
     location_consent: bool = False
     # 정식 회원(아이디/비밀번호 가입) 정보. 개발용 익명 계정은 null / false.
@@ -30,6 +32,7 @@ class AccountSignupIn(BaseModel):
     email: str = Field(max_length=320)
     name: str = Field(max_length=80)
     role: Literal["parent", "child", "other"] = "child"
+    role_detail: str | None = Field(default=None, max_length=80)  # role=other 일 때만 저장
 
 
 class AccountSignupOut(BaseModel):
@@ -68,12 +71,22 @@ class TokenIn(BaseModel):
     token: str = Field(max_length=256)
 
 
+class CodeIn(BaseModel):
+    code: str = Field(pattern=r"^\d{6}$")  # 메일의 6자리 인증 코드
+
+
 class EmailVerifiedOut(BaseModel):
     email_verified: bool = True
 
 
 class PasswordResetConfirmIn(BaseModel):
     token: str = Field(max_length=256)
+    new_password: str = Field(max_length=256)
+
+
+class PasswordResetCodeConfirmIn(BaseModel):
+    email: str = Field(max_length=320)
+    code: str = Field(pattern=r"^\d{6}$")
     new_password: str = Field(max_length=256)
 
 
@@ -98,11 +111,14 @@ class JoinIn(BaseModel):
 class MemberOut(BaseModel):
     id: str
     name: str
-    role: str
+    role: str  # 가입할 때 고른 역할(parent/child/other)
+    group_role: str = "member"  # 이 가족 안의 권한(owner/admin/member). 요청으로 바꿀 수 없다
 
 
 class GroupOut(BaseModel):
     id: str
     name: str
-    invite_code: str | None = None
+    invite_code: str | None = None  # 가족 관리자(owner/admin)에게만 보인다
+    invite_expires_at: datetime | None = None
+    my_role: str | None = None  # 이 응답을 받는 사람의 이 가족 안 권한(owner/admin/member)
     members: list[MemberOut]

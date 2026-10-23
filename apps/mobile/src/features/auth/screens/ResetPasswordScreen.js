@@ -1,26 +1,31 @@
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect, useRef, useState } from "react";
+import { StyleSheet, Text, View } from "react-native";
 
 import Button from "@/shared/components/Button";
 import Field from "@/shared/components/Field";
+import { colors } from "@/theme";
 
-import { confirmPasswordReset } from "../api";
+import { confirmPasswordReset, confirmPasswordResetCode } from "../api";
+import { parseCode } from "../code";
 import AuthLayout from "../components/AuthLayout";
+import CodeBoxes from "../components/CodeBoxes";
 import Notice from "../components/Notice";
 import { errorMessage } from "../messages";
 import { extractToken, scrubTokenFromBrowserUrl } from "../tokenLink";
-import { checkPassword } from "../validation";
+import { checkEmail, checkPassword } from "../validation";
 
 const EXPIRED_CODES = ["reset_token_expired", "reset_token_used", "reset_token_invalid"];
 
 /**
  * 새 비밀번호 설정. 메일 링크(gabee://reset-password?token=...)로 열면 토큰이 이미 들어 있고(주소에서는 바로 지운다),
- * 아니면 메일의 코드나 링크를 붙여 넣는다. 성공하면 모든 기기가 로그아웃되므로 로그인 화면으로 보낸다.
+ * 아니면 메일의 6자리 재설정 코드와 이메일을 입력한다. 성공하면 모든 기기가 로그아웃되므로 로그인 화면으로 보낸다.
  */
 export default function ResetPasswordScreen() {
   const router = useRouter();
   const params = useLocalSearchParams();
   const [linkToken] = useState(() => extractToken(typeof params.token === "string" ? params.token : ""));
+  const [email, setEmail] = useState(() => (typeof params.email === "string" ? params.email : ""));
   const [code, setCode] = useState("");
   const [password, setPassword] = useState("");
   const [password2, setPassword2] = useState("");
@@ -40,9 +45,10 @@ export default function ResetPasswordScreen() {
   }, [linkToken, router]);
 
   const submit = async () => {
-    const token = linkToken || extractToken(code);
+    const digits = parseCode(code);
     const next = {
-      code: token ? "" : "메일에 있는 코드나 링크를 그대로 붙여 넣어 주세요",
+      email: linkToken ? "" : checkEmail(email),
+      code: linkToken || digits ? "" : "메일에 있는 재설정 코드 6자리를 입력해 주세요",
       password: checkPassword(password),
       password2: password === password2 ? "" : "비밀번호가 서로 달라요",
     };
@@ -51,10 +57,12 @@ export default function ResetPasswordScreen() {
     if (Object.values(next).some(Boolean)) return;
     setBusy(true);
     try {
-      await confirmPasswordReset(token, password);
+      if (linkToken) await confirmPasswordReset(linkToken, password);
+      else await confirmPasswordResetCode(email, digits, password);
       setDone(true);
     } catch (e) {
-      if (EXPIRED_CODES.includes(e.code)) setExpired(true);
+      if (EXPIRED_CODES.includes(e.code) || e.code === "reset_code_invalid") setExpired(true);
+      if (e.code === "reset_code_invalid") setCode("");
       if (e.code === "weak_password") setErrors((prev) => ({ ...prev, password: errorMessage(e) }));
       else setFormError(errorMessage(e));
     } finally {
@@ -75,16 +83,28 @@ export default function ResetPasswordScreen() {
   return (
     <AuthLayout title="새 비밀번호" subtitle="새로 사용할 비밀번호를 입력해 주세요">
       {linkToken ? null : (
-        <Field
-          label="재설정 코드"
-          value={code}
-          onChangeText={setCode}
-          autoCapitalize="none"
-          autoCorrect={false}
-          placeholder="메일에 적힌 코드 또는 링크"
-          error={errors.code}
-          testID="reset-code"
-        />
+        <>
+          <Field
+            label="이메일"
+            value={email}
+            onChangeText={setEmail}
+            keyboardType="email-address"
+            autoCapitalize="none"
+            autoCorrect={false}
+            autoComplete="email"
+            error={errors.email}
+            testID="reset-email"
+          />
+          <View style={styles.codeBlock}>
+            <Text style={styles.codeLabel}>재설정 코드 6자리</Text>
+            <CodeBoxes value={code} onChange={setCode} error={Boolean(errors.code)} disabled={busy} testID="reset-code" />
+            {errors.code ? (
+              <Text style={styles.codeError} accessibilityRole="alert">
+                {errors.code}
+              </Text>
+            ) : null}
+          </View>
+        </>
       )}
       <Field
         label="새 비밀번호"
@@ -116,3 +136,9 @@ export default function ResetPasswordScreen() {
     </AuthLayout>
   );
 }
+
+const styles = StyleSheet.create({
+  codeBlock: { gap: 8 },
+  codeLabel: { fontSize: 14, fontWeight: "500", color: colors.text },
+  codeError: { fontSize: 13, color: colors.danger },
+});

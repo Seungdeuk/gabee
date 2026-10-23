@@ -36,6 +36,13 @@
       "expo-font",
       "expo-web-browser",
       [
+        "expo-image-picker",
+        {
+          "photosPermission": "가비가 가족 기록으로 저장할 사진을 고르려고 앨범을 사용해요.",
+          "cameraPermission": "가비가 가족 기록으로 저장할 사진을 찍으려고 카메라를 사용해요."
+        }
+      ],
+      [
         "expo-location",
         {
           "locationAlwaysAndWhenInUsePermission": "가비가 내가 동의한 가족에게만 내 위치를 공유하려고 위치를 사용해요.",

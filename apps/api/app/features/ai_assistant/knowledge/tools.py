@@ -61,6 +61,7 @@ def search_knowledge(
     kind_label: str | None = None,
     date_from: str | None = None,
     date_to: str | None = None,
+    include_sensitive: bool = True,
 ) -> dict:
     hits = service.search(
         db,
@@ -70,7 +71,9 @@ def search_knowledge(
         kind_label=kind_label,
         date_from=_day(date_from),
         date_to=_day(date_to),
+        include_sensitive=include_sensitive,
     )
+    hits = _one_per_file(hits)
     return {
         "results": [
             {
@@ -91,8 +94,27 @@ def search_knowledge(
     }
 
 
-def get_item(db: Session, group_id: str, item_id: str) -> dict:
+def _one_per_file(hits: list) -> list:
+    """같은 원본 파일에서 나온 기록은 점수가 높은 하나만 남긴다(같은 파일을 두 번 올렸을 때 출처가 겹치지 않게)."""
+    seen: set[str] = set()
+    out = []
+    for h in hits:
+        path = h.item.source_path
+        if path and path in seen:
+            continue
+        if path:
+            seen.add(path)
+        out.append(h)
+    return out
+
+
+def get_item(db: Session, group_id: str, item_id: str, include_sensitive: bool = True) -> dict:
     item = service.get_item(db, group_id, item_id)
+    if item.sensitivity == "sensitive" and not include_sensitive:
+        # 존재는 알리되 내용은 주지 않는다(LLM 이 "없다"고 오해하지 않게)
+        return {
+            "error": "민감한 기록이라 이 대화에서는 내용을 볼 수 없어요. 앱의 기록 화면에서 직접 확인해 주세요."
+        }
     return {
         "item_id": item.id,
         "kind_label": item.kind_label,
@@ -105,8 +127,16 @@ def get_item(db: Session, group_id: str, item_id: str) -> dict:
     }
 
 
-def list_items(db: Session, group_id: str, kind_label: str | None = None, limit: int = 20) -> dict:
+def list_items(
+    db: Session,
+    group_id: str,
+    kind_label: str | None = None,
+    limit: int = 20,
+    include_sensitive: bool = True,
+) -> dict:
     items = service.list_items(db, group_id, kind_label, min(max(limit, 1), 50))
+    if not include_sensitive:
+        items = [i for i in items if i.sensitivity != "sensitive"]
     return {
         "items": [
             {

@@ -88,3 +88,24 @@ def save_photo(
             size=len(data),
         ),
     )
+
+
+def receive_file(
+    db: Session, group_id: str, user_id: str, filename: str, content_type: str, data: bytes
+) -> Photo:
+    """어떤 종류의 파일이든 받아서 기록(`received`)만 남긴다. 읽고 분류하는 일은 `files.process_file` 이 뒤에서 한다."""
+    if not data:
+        raise bad_request("empty_file", "파일이 비어 있어요")
+    if len(data) > MAX_BYTES:
+        raise bad_request("too_large", "파일이 너무 커요(25MB 이하)")
+    return repo.add(
+        db,
+        Photo(
+            id=uuid.uuid4().hex[:12],
+            group_id=group_id,
+            uploaded_by=user_id,
+            filename=Path(filename or "file").name[:200],
+            content_type=(content_type or "application/octet-stream")[:60],
+            size=len(data),
+        ),
+    )

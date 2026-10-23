@@ -121,7 +121,7 @@ def test_bearer_authenticates_me_and_existing_apis(client):
     me = client.get(ME, headers=bearer(access))
     assert me.status_code == 200 and me.json()["login_id"] == "jimin_kim"
     assert set(me.json()) == {
-        "id", "name", "role", "active_group_id", "location_consent",
+        "id", "name", "role", "role_detail", "active_group_id", "location_consent",
         "login_id", "email", "email_verified",
     }  # fmt: skip
     assert client.get("/family-group/me", headers=bearer(access)).status_code == 200
