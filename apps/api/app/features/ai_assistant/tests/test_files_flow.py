@@ -281,3 +281,13 @@ def test_original_file_refuses_a_source_path_pointing_at_another_group(client, f
         item.source_path = "othergroup00/../" + item.source_path
         db.commit()
     assert client.get(f"/ai-assistant/files/{up['id']}/original", headers=a).status_code == 404
+
+
+def test_receipt_title_skips_a_leading_phone_line(client, family, pipeline):
+    a, _, _ = family
+    pipeline.ocr = FakeOcr(
+        [("전화 02-555-0123", 0.9), ("하나로마트 동대문점", 0.95), ("합계 9,900원", 0.93)]
+    )
+    up = upload(client, a, png((7, 7, 7)), "r.png")
+    st = client.get(f"/ai-assistant/files/{up['id']}", headers=a).json()
+    assert st["title"] == "하나로마트 동대문점"

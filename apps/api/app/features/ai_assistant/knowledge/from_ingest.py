@@ -16,6 +16,10 @@ _BLOCK_NUMBER = re.compile(
     r"^\[(\d+)\]", re.M
 )  # 전처리의 블록 번호 [3] 은 답의 출처 번호 [n] 과 헷갈리므로 바꾼다
 _TITLE_LIMIT = 50
+# 전화번호·가려진 번호·날짜로 시작하는 줄은 제목으로 쓰지 않는다(영수증 맨 윗줄이 가게 전화번호인 경우가 많다)
+_NOT_A_TITLE = re.compile(
+    r"^(?:전화|TEL|Tel|tel|T\.|연락처)|^[\d\s\-:.*]+$|^\d{4}[-./]\d{1,2}[-./]\d{1,2}"
+)
 
 
 def to_item(result: PreprocessResult) -> dict:
@@ -79,7 +83,7 @@ def _title(text: str, description: str, kind: str, day: date | None) -> str:
     for raw in text.splitlines():
         line = re.sub(r"^\(블록 \d+\)\s*", "", raw).strip()
         line = re.sub(r"^[#>*\-\s|]+", "", line).replace("**", "").strip()
-        if len(line) >= 2:
+        if len(line) >= 2 and not _NOT_A_TITLE.match(line):
             return line[:_TITLE_LIMIT]
     if description:
         return description[:_TITLE_LIMIT]
