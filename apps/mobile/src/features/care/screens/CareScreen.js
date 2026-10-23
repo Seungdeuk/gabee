@@ -13,6 +13,7 @@ import DailyCheckTab from "../components/DailyCheckTab";
 import LocationTab from "../components/LocationTab";
 import MealBar from "../components/MealBar";
 import MealTab from "../components/MealTab";
+import MissingBanner from "../components/MissingBanner";
 import RecommendTab from "../components/RecommendTab";
 
 const SECTIONS = [
@@ -70,6 +71,7 @@ function CareLive() {
         </View>
       ) : null}
 
+      {section !== "check" && daily.data ? <MissingBanner daily={daily.data} onOpen={() => setSection("check")} /> : null}
       {section === "check" && !daily.data ? <Text style={styles.muted}>{daily.error || "불러오는 중…"}</Text> : null}
       {section === "check" && daily.data ? <DailyCheckTab daily={daily.data} reload={reloadDaily} notify={notify} /> : null}
       {section === "recommend" ? <RecommendTab notify={notify} /> : null}
