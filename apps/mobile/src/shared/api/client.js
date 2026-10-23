@@ -21,6 +21,14 @@ export function setToken(next) {
 export const apiUrl = (path) => `${BASE_URL}${path}`;
 export const authHeaders = () => (token ? { "X-Gyeot-Token": token } : {});
 
+/** 기기에 저장하는 값의 이름에 붙일 구분 값. 로그인한 사람마다 달라서 다른 사람의 저장값이 섞이지 않는다(토큰 자체는 쓰지 않는다). */
+export function storageScope() {
+  if (!token) return "anonymous";
+  let h = 5381;
+  for (let i = 0; i < token.length; i += 1) h = ((h * 33) ^ token.charCodeAt(i)) >>> 0;
+  return h.toString(36);
+}
+
 /** 서버가 {code, message} 로 돌려준 오류. */
 export class ApiError extends Error {
   constructor(status, code, message) {

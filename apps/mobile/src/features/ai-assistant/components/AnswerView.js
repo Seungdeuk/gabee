@@ -1,12 +1,12 @@
 import { Ionicons } from "@expo/vector-icons";
 import * as Clipboard from "expo-clipboard";
 import { useState } from "react";
-import { Image } from "expo-image";
-import { Modal, Pressable, Share, StyleSheet, Text, View } from "react-native";
+import { Pressable, Share, StyleSheet, Text, View } from "react-native";
 
 import { colors } from "@/theme";
 
 import { originalImageSource } from "../api";
+import OriginalViewer from "./OriginalViewer";
 
 /** 한 줄 안의 **굵게** 와 [1] 출처 번호를 글자 조각으로 나눈다. */
 function inline(text, keyBase) {
@@ -52,7 +52,6 @@ export default function AnswerView({ text, sources = [], showActions = false, ch
   const [openSources, setOpenSources] = useState(false);
   const [copied, setCopied] = useState(false);
   const [original, setOriginal] = useState(null); // 열어 보는 원본 { source, title }
-  const [originalFailed, setOriginalFailed] = useState(false);
   const blocks = parseBlocks(text);
 
   const copy = async () => {
@@ -107,7 +106,6 @@ export default function AnswerView({ text, sources = [], showActions = false, ch
                     {source ? (
                       <Pressable
                         onPress={() => {
-                          setOriginalFailed(false);
                           setOriginal({ source, title: s.title });
                         }}
                         style={styles.action}
@@ -138,21 +136,7 @@ export default function AnswerView({ text, sources = [], showActions = false, ch
         </View>
       ) : null}
 
-      <Modal visible={original !== null} transparent animationType="fade" onRequestClose={() => setOriginal(null)}>
-        <Pressable style={styles.viewer} onPress={() => setOriginal(null)} accessibilityLabel="원본 닫기">
-          {original && !originalFailed ? (
-            <Image
-              source={original.source}
-              style={styles.viewerImage}
-              contentFit="contain"
-              onError={() => setOriginalFailed(true)}
-              accessibilityLabel={`${original.title} 원본`}
-            />
-          ) : (
-            <Text style={styles.viewerText}>이 파일은 앱 안에서 열 수 없어요. 사진이 아니거나 원본을 찾지 못했어요.</Text>
-          )}
-        </Pressable>
-      </Modal>
+      <OriginalViewer source={original?.source ?? null} title={original?.title} onClose={() => setOriginal(null)} />
     </View>
   );
 }
@@ -183,9 +167,6 @@ const styles = StyleSheet.create({
   chipText: { fontSize: 13, fontWeight: "500", color: colors.text },
   sourceList: { gap: 6, paddingLeft: 4 },
   sourceRow: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 8 },
-  viewer: { flex: 1, backgroundColor: "rgba(0,0,0,0.9)", alignItems: "center", justifyContent: "center", padding: 16 },
-  viewerImage: { width: "100%", height: "100%" },
-  viewerText: { color: "#fff", fontSize: 15, textAlign: "center", lineHeight: 24 },
   source: { fontSize: 13, color: colors.textSub },
   actions: { flexDirection: "row", gap: 8 },
   action: {

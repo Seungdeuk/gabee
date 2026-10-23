@@ -12,10 +12,12 @@ import AnswerView from "../components/AnswerView";
 import ChatInput from "../components/ChatInput";
 import DraftCard from "../components/DraftCard";
 import PromptChips from "../components/PromptChips";
+import Sidebar from "../components/Sidebar";
 import ThinkingSteps from "../components/ThinkingSteps";
 import UserBubble from "../components/UserBubble";
 import WaveBars from "../components/WaveBars";
 import useChat from "../hooks/useChat";
+import useSessions from "../hooks/useSessions";
 import mascot from "../../../../assets/images/gabee-mascot.png";
 
 /**
@@ -24,7 +26,9 @@ import mascot from "../../../../assets/images/gabee-mascot.png";
  */
 export default function AiAssistantScreen() {
   const router = useRouter();
-  const { messages, phase, send, sendPhoto, startListening, stopListening, editDraft, reset } = useChat();
+  const { messages, phase, send, sendPhoto, startListening, stopListening, editDraft, reset, load } = useChat();
+  const { sessions, currentId, startNew, open, remove } = useSessions({ messages, load, reset });
+  const [menuOpen, setMenuOpen] = useState(false);
   const listRef = useRef(null);
   const [atBottom, setAtBottom] = useState(true);
   const stick = useRef(true); // 맨 아래를 따라가는 중인지(사용자가 위로 올리면 멈춘다)
@@ -59,7 +63,16 @@ export default function AiAssistantScreen() {
 
   return (
     <SafeAreaView style={styles.safe} edges={["top"]}>
-      <AppHeader onNew={reset} onMore={() => router.push("/more")} />
+      <AppHeader onMenu={() => setMenuOpen(true)} onNew={startNew} onMore={() => router.push("/more")} />
+      <Sidebar
+        open={menuOpen}
+        onClose={() => setMenuOpen(false)}
+        sessions={sessions}
+        currentId={currentId}
+        onNew={startNew}
+        onOpenSession={open}
+        onDeleteSession={remove}
+      />
 
       {/* Android(SDK 54)는 화면 전체 모드라 키보드가 화면을 줄여 주지 않는다. 양쪽 모두 직접 피한다. */}
       <KeyboardAvoidingView style={styles.flex} behavior="padding">

@@ -79,7 +79,7 @@ export async function uploadFile(file) {
     return { id, filename, status: "received" };
   }
   const form = new FormData();
-  form.append("file", { uri: file.uri, name: filename, type: file.type ?? "image/jpeg" });
+  form.append("file", { uri: file.uri, name: filename, type: file.type ?? "application/octet-stream" });
   return apiFetch("/ai-assistant/files", { method: "POST", body: form });
 }
 
@@ -113,6 +113,24 @@ export async function getFileStatus(id) {
 export function originalImageSource(id) {
   if (!isApiConfigured()) return null;
   return { uri: apiUrl(`/ai-assistant/files/${encodeURIComponent(id)}/original`), headers: authHeaders() };
+}
+
+/**
+ * 가족이 올린 기록 목록(최근 순). 사이드바의 "기록" 탭에서 쓴다.
+ * @returns {Promise<{ id: string, title: string, kind_label: string, occurred_on: string | null, has_unread_parts: boolean, hasOriginal: boolean }[]>}
+ */
+export async function listRecords() {
+  if (!isApiConfigured()) {
+    return [{ id: "mock-1", title: "동대문마트 영수증", kind_label: "영수증", occurred_on: "2026-10-15", has_unread_parts: false, hasOriginal: false }];
+  }
+  const items = await apiFetch("/ai-assistant/knowledge/items?limit=50");
+  return items.map((i) => ({ ...i, hasOriginal: Boolean(i.source_path) }));
+}
+
+/** 기록 한 건의 읽어 낸 글(개인정보는 가려진 상태). */
+export async function getRecord(id) {
+  if (!isApiConfigured()) return { id, body_md: "# 동대문마트 영수증\n분류: 영수증\n합계 2,950원" };
+  return apiFetch(`/ai-assistant/knowledge/items/${encodeURIComponent(id)}`);
 }
 
 /** 예전 이름. uploadFile 과 같다. */

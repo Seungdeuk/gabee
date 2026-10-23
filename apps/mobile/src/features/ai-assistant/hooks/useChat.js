@@ -17,11 +17,12 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
  *   messages: object[],
  *   phase: "idle" | "listening" | "thinking" | "reading",
  *   send: (text: string, options?: { voice?: boolean }) => Promise<void>,
- *   sendPhoto: (file: { uri: string, name?: string, type?: string }) => Promise<void>,
+ *   sendPhoto: (file: { uri: string, name?: string, type?: string, isImage?: boolean }) => Promise<void>,   // 사진·문서 모두 올린다
  *   startListening: () => void,
  *   stopListening: () => void,
  *   editDraft: (id: string, text: string) => void,
  *   reset: () => void,
+ *   load: (messages: object[]) => void,   // 저장된 대화를 불러와 이어서 쓴다
  * }}
  */
 export default function useChat() {
@@ -60,7 +61,13 @@ export default function useChat() {
   const sendPhoto = useCallback(async (file) => {
     const myRun = ++runId.current;
     const say = (text) => setMessages((prev) => [...prev, { id: id(), role: "assistant", text, sources: [] }]);
-    setMessages((prev) => [...prev, { id: id(), role: "user", text: "사진 올렸어요", imageUri: file.uri }]);
+    const isImage = file.isImage !== false;
+    setMessages((prev) => [
+      ...prev,
+      isImage
+        ? { id: id(), role: "user", text: "사진 올렸어요", imageUri: file.uri }
+        : { id: id(), role: "user", text: `파일 올렸어요: ${file.name ?? "문서"}` },
+    ]);
     setPhase("reading");
     try {
       const { id: fileId } = await uploadFile(file);
@@ -112,5 +119,13 @@ export default function useChat() {
     setPhase("idle");
   }, []);
 
-  return { messages, phase, send, sendPhoto, startListening, stopListening, editDraft, reset };
+  /** 저장된 대화로 바꾼다. 진행 중이던 파일 확인은 멈춘다. */
+  const load = useCallback((saved) => {
+    runId.current += 1;
+    nextId.current = saved.reduce((max, m) => Math.max(max, Number(m.id) + 1 || 0), nextId.current);
+    setMessages(saved);
+    setPhase("idle");
+  }, []);
+
+  return { messages, phase, send, sendPhoto, startListening, stopListening, editDraft, reset, load };
 }
