@@ -70,23 +70,6 @@ class Classification(BaseModel):
     fields: dict[str, str] = Field(default_factory=dict)  # 종류별 폼 칸 ("제출 기한": "2026-10-20")
 
 
-class FaceSpot(BaseModel):
-    box: list[int]  # x, y, w, h
-    name: str | None = None  # 가족 얼굴 DB 에서 찾은 이름. None = 모르는 사람
-    similarity: float = 0.0
-    profile: bool = False  # 옆얼굴(기준을 높여 비교)
-    too_small: bool = False  # 너무 작아 이름을 붙이지 않음
-
-
-class People(BaseModel):
-    """찍힌 사람. 얼굴 숫자(생체정보)는 담지 않는다."""
-
-    count: int = 0
-    names: list[str] = Field(default_factory=list)
-    unknown: int = 0
-    faces: list[FaceSpot] = Field(default_factory=list)
-
-
 class Caption(BaseModel):
     """글자 없는 사진에 로컬 이미지 모델이 붙인 설명. 사실과 다를 수 있어서 자동으로 만든 것임을 남긴다."""
 
@@ -104,7 +87,6 @@ class PreprocessResult(BaseModel):
     privacy: Privacy = Field(default_factory=Privacy)
     classification: Classification | None = None  # ingest_file 에서 가린 뒤에 붙는다
     caption: Caption | None = None  # 글자 없는 사진의 자동 설명 (이미지 모델이 있을 때)
-    people: People | None = None  # 가족 공유 사진의 찍힌 사람 (얼굴 모델이 있을 때)
     raw_path: str | None = None  # 원본 데이터 센터 안의 위치 (ingest_file 로 저장했을 때)
     display_path: str | None = None  # 사진의 화면용 사본(1080px WebP, 위치 정보 없음)
     processor_version: str = PROCESSOR_VERSION

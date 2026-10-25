@@ -1,7 +1,7 @@
 """전처리 결과(PreprocessResult)를 knowledge 기록 한 건으로 바꾼다.
 
 글은 전처리가 이미 개인정보를 가린 뒤의 것(`content.text`)만 쓰고, 원본 글자나 파일 이름은 쓰지 않는다
-(파일 이름에 이름 같은 개인정보가 들어 있을 수 있다). 글자 없는 사진은 분류 이름·날짜·찍힌 사람·자동 설명으로
+(파일 이름에 이름 같은 개인정보가 들어 있을 수 있다). 글자 없는 사진은 분류 이름·날짜·자동 설명으로
 검색되게 글을 만들어 준다.
 """
 
@@ -44,11 +44,6 @@ def to_item(result: PreprocessResult) -> dict:
         _add(lines, "장소", ", ".join(c.places))
         for key, value in c.fields.items():
             _add(lines, key, value)
-    people = result.people
-    if people and (people.names or people.unknown):
-        _add(lines, "찍힌 사람", ", ".join(people.names) or "가족이 아닌 사람")
-        if people.unknown and people.names:
-            _add(lines, "그 밖의 사람", f"{people.unknown}명")
     if caption:
         _add(lines, "자동 설명", f"{caption.description} (자동으로 만든 설명이라 틀릴 수 있어요)")
         _add(lines, "키워드", ", ".join(caption.keywords))
@@ -57,7 +52,7 @@ def to_item(result: PreprocessResult) -> dict:
     if result.quality.status == "partial":
         lines.append(UNREAD_MARK)
 
-    sensitive = result.privacy.sensitive != "none" or bool(people and people.count)
+    sensitive = result.privacy.sensitive != "none"
     return {
         "kind_label": kind[:100],
         "title": title,

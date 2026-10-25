@@ -569,7 +569,7 @@ def test_ingest_file_keeps_original_and_adds_display_copy(tmp_path):
 
     store = LocalRawStore(tmp_path)
     data = png((2000, 1500))
-    r = ingest_file("g01", data, "a.png", store=store, ocr=FakeOcr(), faces=None)
+    r = ingest_file("g01", data, "a.png", store=store, ocr=FakeOcr())
     assert store.get(r.raw_path) == data  # 원본은 손대지 않음
     assert r.display_path.endswith(".display.webp")
     assert Image.open(io.BytesIO(store.get(r.display_path))).size == (1080, 810)
