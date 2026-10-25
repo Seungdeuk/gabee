@@ -9,11 +9,12 @@ import Button from "@/shared/components/Button";
 import SectionTitle from "@/shared/components/SectionTitle";
 import { colors, font, radius, spacing } from "@/theme";
 
-import { getRoomInfo, listMessages } from "../api";
+import { getRoomInfo, getUnread, listMessages } from "../api";
 import { isNoGroup, previewText, roomErrorMessage } from "../chatUtils";
 import ChatListHeader from "../components/ChatListHeader";
 import EmptyChats from "../components/EmptyChats";
 import RoomRow from "../components/RoomRow";
+import { waitForPendingMarkRead } from "../pendingRead";
 import { formatRoomTime, matchesQuery } from "../listUtils";
 
 /** 로딩 중 행 모양 뼈대. */
@@ -46,8 +47,13 @@ export default function FamilyChatScreen() {
 
   const load = useCallback(async () => {
     try {
-      const group = await getRoomInfo();
-      const rows = await listMessages({ latest: true, limit: 1 }).catch(() => []);
+      await waitForPendingMarkRead(); // 방을 막 나왔다면 읽음 올리기가 끝난 뒤에 숫자를 가져온다
+      // 화면이 올 때마다 한 번만(폴링 없음). 메시지·안 읽은 수는 실패해도 목록은 보여 준다.
+      const [group, rows, unread] = await Promise.all([
+        getRoomInfo(),
+        listMessages({ latest: true, limit: 1 }).catch(() => []),
+        getUnread().catch(() => null),
+      ]);
       const message = rows[rows.length - 1];
       setState({
         status: "ready",
@@ -57,6 +63,7 @@ export default function FamilyChatScreen() {
           last: previewText(message, group.my_id),
           time: message ? formatRoomTime(message.created_at) : "",
           count: Array.isArray(group.members) ? group.members.length : 0,
+          unread: Number(unread?.unread) || 0,
           tone: "blue",
           members: Array.isArray(group.members) ? group.members.map((m) => ({ id: m.id, name: m.display_name || m.name, photoUrl: m.photo_url ?? null })) : [],
         },

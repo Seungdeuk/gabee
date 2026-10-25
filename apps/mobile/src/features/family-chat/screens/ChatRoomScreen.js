@@ -8,11 +8,12 @@ import Button from "@/shared/components/Button";
 import IconButton from "@/shared/components/IconButton";
 import { colors, font, radius, spacing } from "@/theme";
 
-import { buildItems, canSend, lastId, trimDraft } from "../chatUtils";
+import { buildItems, canSend, lastId, trimDraft, unreadCount } from "../chatUtils";
 import AiPanel from "../components/AiPanel";
 import Composer from "../components/Composer";
 import MessageBubble from "../components/MessageBubble";
 import useChatMessages, { useRoomInfo } from "../useChatMessages";
+import useReadMarker from "../useReadMarker";
 
 const NEAR = 120; // 바닥/맨 위에서 이 정도 안이면 "근처"로 본다
 const FAR = 400; // 바닥에서 이 이상 올라와 있으면 "맨 아래로" 버튼을 보여 준다
@@ -27,6 +28,7 @@ export default function ChatRoomScreen() {
   const router = useRouter();
   const info = useRoomInfo();
   const chat = useChatMessages({ me: info.me, enabled: info.status === "ready" });
+  useReadMarker({ messages: chat.messages, myId: info.me?.id, enabled: info.status === "ready" });
   const [draft, setDraft] = useState("");
   const [aiOpen, setAiOpen] = useState(false);
   const listRef = useRef(null);
@@ -39,6 +41,7 @@ export default function ChatRoomScreen() {
   const newestId = useRef(0);
   // 채팅 메시지 응답에는 사진 주소가 없어서 구성원 목록에서 user_id 로 찾는다
   const photoById = useMemo(() => Object.fromEntries((info.room?.members ?? []).map((m) => [m.id, m.photo_url ?? null])), [info.room]);
+
 
   const back = () => (router.canGoBack() ? router.back() : router.replace("/family-chat"));
 
@@ -181,6 +184,7 @@ export default function ChatRoomScreen() {
                 mine={item.message.user_id === info.me?.id}
                 showName={item.showName}
                 showTime={item.showTime}
+                unread={unreadCount(item.message, info.me, chat.readStates)}
                 photoUrl={photoById[item.message.user_id]}
                 onRetry={chat.resend}
                 onDiscard={chat.discard}

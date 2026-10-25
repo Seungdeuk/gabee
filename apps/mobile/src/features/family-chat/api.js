@@ -103,3 +103,22 @@ export const sendMessage = (text) => apiFetch("/family-chat/messages", { method:
  * @returns {Promise<{ id: string, name: string, my_id: string | null, members: { id: string, name: string, display_name?: string | null }[] }>}
  */
 export const getRoomInfo = () => apiFetch("/family-group/groups/me");
+
+/**
+ * 내 읽음 위치를 올린다(서버는 단조 증가만 허용). 대화 글자는 보내지 않고 메시지 번호만 보낸다. AI 를 부르지 않는다.
+ * @param {number} messageId 내가 읽은 가장 큰 서버 메시지 id(1 이상)
+ * @returns {Promise<{ last_read_message_id: number }>}
+ */
+export const markRead = (messageId) => apiFetch("/family-chat/read", { method: "POST", body: { message_id: Number(messageId) } });
+
+/**
+ * 현재 구성원 전원의 읽음 위치. AI 를 부르지 않는다.
+ * @returns {Promise<{ user_id: string, last_read_message_id: number }[]>}
+ */
+export const getReadStates = () => apiFetch("/family-chat/read-states");
+
+/**
+ * 내가 아직 읽지 않은 다른 사람의 메시지 수(서버가 최대 1000 까지 센다). AI 를 부르지 않는다.
+ * @returns {Promise<{ unread: number, last_read_message_id: number }>}
+ */
+export const getUnread = () => apiFetch("/family-chat/unread");

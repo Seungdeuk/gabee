@@ -199,8 +199,8 @@ export function previewText(message, myId = null) {
 }
 
 /**
- * 다음 폴링까지 기다릴 시간: 정상이면 3초, 연속 실패마다 두 배로 늘어 최대 30초.
- * @param {number} failures 연속 실패 횟수
+ * 다음 폴링까지 기다릴 시간: 정상이면 3초, 메시지 조회가 연속 실패할 때마다 두 배로 늘어 최대 30초(읽음 조회 실패는 반영하지 않는다).
+ * @param {number} failures 메시지 조회 연속 실패 횟수
  * @returns {number} 밀리초
  */
 export function nextPollDelay(failures) {
@@ -233,3 +233,54 @@ export function roomErrorMessage(error) {
  * @returns {boolean}
  */
 export const isNoGroup = (error) => error?.status === 404 || error?.code === "no_group";
+
+/**
+ * 내 메시지를 아직 읽지 않은 사람 수. 내가 보낸 서버 메시지(임시·실패 제외)에만 값이 있고, 그 외에는 0(표시 안 함).
+ * 서버 read-states 가 현재 구성원 전원(합류 기준선 포함)을 주므로 그 user_id 만으로 센다: 나를 제외하고 last_read_message_id 가 메시지 id 보다 작은 사람.
+ * 읽음 상태를 한 번도 못 받았으면(null) 0 이라 숫자를 숨긴다.
+ * @param {object} message
+ * @param {{ id: string } | string | null | undefined} me 나(객체 또는 id)
+ * @param {{ user_id: string, last_read_message_id: number }[] | null | undefined} readStates
+ * @returns {number}
+ */
+export function unreadCount(message, me, readStates) {
+  const myId = typeof me === "string" ? me : me?.id;
+  if (!Array.isArray(readStates) || !message || !myId || message.user_id !== myId || isTemp(message)) return 0;
+  const id = serverId(message);
+  if (!Number.isFinite(id)) return 0;
+  return readStates.filter((s) => s.user_id !== myId && (Number(s.last_read_message_id) || 0) < id).length;
+}
+
+export const READ_SKIP_MAX_TICKS = 10;
+
+/**
+ * 읽음 조회를 이번 틱에 할지: 실패가 없으면 매 틱, 연속 실패 n 번이면 2^n 틱(최대 10틱)마다 한 번.
+ * @param {number} ticksSinceLast 마지막 조회 시도 뒤 지난 틱 수(이번 틱 포함)
+ * @param {number} failures 읽음 조회 연속 실패 횟수
+ * @returns {boolean}
+ */
+export function readStatesDue(ticksSinceLast, failures) {
+  if (!failures || failures < 1) return true;
+  return Number(ticksSinceLast) >= Math.min(READ_SKIP_MAX_TICKS, 2 ** failures);
+}
+
+/**
+ * 화면을 떠날 때 지금 바로 올려야 할 읽음 id. 대기 중인 값이 올린 값보다 크고 같은 id 를 보내는 중이 아닐 때만, 없으면 0.
+ * @param {number} target 목록의 가장 큰 서버 메시지 id
+ * @param {number} lastMarked 올렸거나 서버가 반영한 값
+ * @param {number} sendingId 지금 보내는 중인 id(없으면 0)
+ * @returns {number}
+ */
+export function flushTarget(target, lastMarked, sendingId) {
+  const t = Number(target) || 0;
+  return t >= 1 && t > Number(lastMarked || 0) && t !== Number(sendingId || 0) ? t : 0;
+}
+
+/**
+ * 읽음 위치를 서버에 올려야 하는지: 보이는 상태이고, 목록의 가장 큰 서버 id 가 지금까지 올린 값보다 클 때만.
+ * @param {number} current 목록의 가장 큰 서버 메시지 id(임시 제외)
+ * @param {number} lastMarked 지금까지 올린(또는 서버가 이미 반영한) 값
+ * @param {boolean} enabled 화면이 보이고 앱이 앞에 있는지
+ * @returns {boolean}
+ */
+export const shouldMarkRead = (current, lastMarked, enabled) => Boolean(enabled) && Number(current) >= 1 && Number(current) > Number(lastMarked || 0);
