@@ -21,6 +21,9 @@ def _drop_membership(group_id: str, user_id: str) -> None:
 GROUP_ENDPOINTS = (
     ("get", "/family-chat/messages", None),
     ("post", "/family-chat/messages", {"text": "몰래"}),
+    ("get", "/family-chat/unread", None),
+    ("get", "/family-chat/read-states", None),
+    ("post", "/family-chat/read", {"message_id": 1}),
     ("get", "/schedule/events", None),
     ("post", "/schedule/events", {"title": "몰래", "starts_at": "2026-12-01T00:00:00Z"}),
     ("get", "/billing/expenses", None),
