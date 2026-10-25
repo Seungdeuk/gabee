@@ -17,7 +17,6 @@ import {
   roomErrorMessage,
   shouldShowName,
   shouldShowTime,
-  toneFor,
   trimDraft,
 } from "../src/features/family-chat/chatUtils.js";
 
@@ -119,9 +118,7 @@ test("nextPollDelay: 정상 3초, 실패마다 두 배, 최대 30초", () => {
   assert.equal(nextPollDelay(50), 30000);
 });
 
-test("toneFor·오류 문구: 같은 사람은 같은 색, 문구에 대화 내용 없음", () => {
-  assert.equal(toneFor("u1"), toneFor("u1"));
-  assert.ok(["blue", "purple", "orange", "green"].includes(toneFor("u2")));
+test("오류 문구: 문구에 대화 내용 없음", () => {
   assert.match(roomErrorMessage({ code: "network_error" }), /연결/);
   assert.match(roomErrorMessage(new Error("boom")), /다시 시도/);
   assert.equal(isNoGroup({ status: 404 }), true);

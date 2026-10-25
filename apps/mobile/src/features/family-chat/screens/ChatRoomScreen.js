@@ -1,6 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ActivityIndicator, FlatList, KeyboardAvoidingView, Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
@@ -37,6 +37,8 @@ export default function ChatRoomScreen() {
   const [hasNew, setHasNew] = useState(false); // 올라와 있는 동안 새 메시지가 왔는지
   const [menuNotice, setMenuNotice] = useState(false);
   const newestId = useRef(0);
+  // 채팅 메시지 응답에는 사진 주소가 없어서 구성원 목록에서 user_id 로 찾는다
+  const photoById = useMemo(() => Object.fromEntries((info.room?.members ?? []).map((m) => [m.id, m.photo_url ?? null])), [info.room]);
 
   const back = () => (router.canGoBack() ? router.back() : router.replace("/family-chat"));
 
@@ -179,6 +181,7 @@ export default function ChatRoomScreen() {
                 mine={item.message.user_id === info.me?.id}
                 showName={item.showName}
                 showTime={item.showTime}
+                photoUrl={photoById[item.message.user_id]}
                 onRetry={chat.resend}
                 onDiscard={chat.discard}
               />

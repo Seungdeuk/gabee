@@ -2,7 +2,7 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect, useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
 
-import Avatar from "@/shared/components/Avatar";
+import UserAvatar from "@/shared/components/UserAvatar";
 import Button from "@/shared/components/Button";
 import Card from "@/shared/components/Card";
 import Field from "@/shared/components/Field";
@@ -81,7 +81,7 @@ export default function FamilyMemberScreen() {
       <Notice tone="success" text={notice} />
       <Card tone="white">
         <View style={styles.who}>
-          <Avatar name={shownName(member, family.nicknames[member.id])} size={52} />
+          <UserAvatar name={shownName(member, family.nicknames[member.id])} userId={member.id} photoUrl={member.photo_url} size={52} />
           <View style={styles.text}>
             <Text style={styles.name}>{member.display_name || member.name}</Text>
             {member.display_name ? <Text style={styles.sub}>계정 이름 {member.name}</Text> : null}

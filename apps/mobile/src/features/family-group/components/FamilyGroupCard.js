@@ -1,7 +1,7 @@
 import { useRouter } from "expo-router";
 import { StyleSheet, Text, View } from "react-native";
 
-import Avatar from "@/shared/components/Avatar";
+import UserAvatar from "@/shared/components/UserAvatar";
 import Button from "@/shared/components/Button";
 import Card from "@/shared/components/Card";
 import Tag from "@/shared/components/Tag";
@@ -62,7 +62,7 @@ export default function FamilyGroupCard() {
       </View>
       <View style={styles.row}>
         {group.members.slice(0, 5).map((m) => (
-          <Avatar key={m.id} name={m.name} size={36} />
+          <UserAvatar key={m.id} name={m.name} userId={m.id} photoUrl={m.photo_url} size={36} />
         ))}
         <Text style={styles.sub}>구성원 {group.members.length}명</Text>
       </View>
