@@ -33,7 +33,7 @@
 
 | 경로 | 설명 |
 |---|---|
-| `POST /ai-assistant/knowledge/items` | 기록 한 건 저장(`kind_label`, `title`, `body_md`, `source_path`, `occurred_on`, `sensitivity`) |
+| `POST /ai-assistant/knowledge/items` | 기록 한 건 저장(`kind_label`, `title`, `body_md`, `occurred_on`, `sensitivity`; `source_path` 를 보내도 서버가 무시한다 — 원본 참조는 업로드 처리가 서버에서 만든다) |
 | `GET /ai-assistant/knowledge/items` | 기록 목록(분류 이름 필터) |
 | `GET /ai-assistant/knowledge/items/{id}` | 기록 상세(마크다운 전체) |
 | `POST /ai-assistant/knowledge/search` | 질문으로 찾기(`query`, `top_k`, `kind_label`, `date_from/to`, `include_sensitive`) |
