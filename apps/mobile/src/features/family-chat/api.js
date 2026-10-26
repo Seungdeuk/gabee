@@ -282,3 +282,17 @@ export async function downloadPhoto(path) {
   if (!res.ok) throw new Error("photo_unavailable");
   return res.blob();
 }
+
+
+/**
+ * 네이티브 저장용: 사진 원본을 내려받을 주소와 로그인 헤더를 만든다(토큰은 주소가 아니라 헤더에만 있다).
+ * 서버가 준 사진 경로만 받고, 아니면 던진다. 실제 내려받기는 savePhoto.js 가 파일 시스템으로 한다.
+ * @param {string} path 서버가 준 attachment.url
+ * @returns {Promise<{ url: string, headers: Record<string, string> }>}
+ */
+export async function photoDownloadRequest(path) {
+  const safe = photoPath(path);
+  if (!safe || !isApiConfigured()) throw new Error("photo_unavailable");
+  await ensureFreshAccess().catch(() => {});
+  return { url: apiUrl(safe), headers: { ...authHeaders() } };
+}
