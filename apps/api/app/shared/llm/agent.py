@@ -50,6 +50,15 @@ def _post(body: dict) -> dict:
     return res.json()
 
 
+def _status_detail(res: httpx.Response) -> str:
+    """HTTP 상태 코드와 API 가 준 오류 종류·메시지(요청에 쓴 키는 응답에 없다). 크레딧 부족 같은 원인을 알 수 있게 한다."""
+    try:
+        err = res.json().get("error") or {}
+        return f"HTTP {res.status_code} {err.get('type', '')}: {err.get('message', '')}".strip()
+    except ValueError:
+        return f"HTTP {res.status_code}"
+
+
 def _result_text(data: dict) -> str:
     text = json.dumps(data, ensure_ascii=False, default=str)
     if len(text) <= MAX_TOOL_RESULT_CHARS:
@@ -110,6 +119,8 @@ def run_agent(
                     }
                 )
             messages.append({"role": "user", "content": outputs})
+    except httpx.HTTPStatusError as e:
+        raise LLMUnavailable(f"AI 호출에 실패했어요 ({_status_detail(e.response)})") from None
     except (httpx.HTTPError, ValueError, KeyError) as e:
         raise LLMUnavailable(f"AI 호출에 실패했어요 ({type(e).__name__})") from None
     raise LLMUnavailable("AI 가 정해진 횟수 안에 답을 끝내지 못했어요")

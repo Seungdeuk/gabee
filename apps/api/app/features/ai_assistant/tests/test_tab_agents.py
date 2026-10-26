@@ -167,3 +167,23 @@ def test_chat_without_api_key_still_falls_back(client, family):
     a, _, _ = family
     r = client.post("/ai-assistant/chat", json={"message": "이번 달 지출은?"}, headers=a).json()
     assert r["source"] == "fallback" and r["reply"]
+
+
+def test_http_error_detail_is_reported(client, family):
+    import httpx
+
+    def refused(body):
+        req = httpx.Request("POST", "https://example.test")
+        res = httpx.Response(
+            400,
+            json={
+                "error": {"type": "invalid_request_error", "message": "credit balance is too low"}
+            },
+            request=req,
+        )
+        raise httpx.HTTPStatusError("bad", request=req, response=res)
+
+    with SessionLocal() as db:
+        me = _user(db, "지민")
+        reply = billing_agent.ask(db, me.active_group_id, me, "지출은?", refused)
+    assert not reply.can_answer and "HTTP 400" in reply.answer and "credit balance" in reply.answer
