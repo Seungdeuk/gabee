@@ -282,3 +282,27 @@ export async function downloadPhoto(path) {
   if (!res.ok) throw new Error("photo_unavailable");
   return res.blob();
 }
+
+/**
+ * 이 방에 고정된 메시지(최근 고정 2개, 최신순). 서버 계약은 별도 PR 의 `GET /family-chat/pins`. AI 를 부르지 않는다. 고정 내용은 기록하지 않는다.
+ * @param {{ roomId?: string | null }} [options] roomId 가 없으면 가족 전체방
+ * @returns {Promise<{ items: { message_id: number, text: string, text_truncated: boolean, user_id: string, user_name: string, created_at: string, pinned_by: string, pinned_by_name: string, pinned_at: string }[] }>}
+ */
+export const listPins = ({ roomId } = {}) => apiFetch(roomId ? `/family-chat/pins?${roomParam(roomId)}` : "/family-chat/pins");
+
+/**
+ * 메시지를 공지로 고정한다(방 안의 누구나, 텍스트 메시지만). 방당 최대 2개라 3번째면 가장 오래된 고정이 풀린다.
+ * 오류: 400 invalid_message(그 방의 메시지 아님) / not_pinnable(사진이 있거나 빈 글), 404, 429(분당 30회).
+ * @param {{ roomId?: string | null, messageId: number }} options roomId 가 없으면 가족 전체방
+ * @returns {Promise<{ item: object, replaced_message_id: number | null, already_pinned: boolean }>}
+ */
+export const pinMessage = ({ roomId, messageId }) =>
+  apiFetch("/family-chat/pins", { method: "POST", body: roomId ? { room_id: roomId, message_id: Number(messageId) } : { message_id: Number(messageId) } });
+
+/**
+ * 고정을 푼다(방 안의 누구나). 메시지는 그대로 남는다. 고정이 아니면 404.
+ * @param {{ roomId?: string | null, messageId: number }} options roomId 가 없으면 가족 전체방
+ * @returns {Promise<null>} 성공하면 본문 없음(204)
+ */
+export const unpinMessage = ({ roomId, messageId }) =>
+  apiFetch(`/family-chat/pins/${Number(messageId)}${roomId ? `?${roomParam(roomId)}` : ""}`, { method: "DELETE" });
