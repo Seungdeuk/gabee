@@ -76,6 +76,8 @@ class MaskResult:
     text: str
     counts_by_kind: dict[str, int] = field(default_factory=dict)
     blocked: bool = False
+    # apply_values 만 채운다: 메시지 통째 제외 대신 값만 자리표시로 바꾼 고위험(점수 >= block_min_score) 탐지 수
+    blocked_values: int = 0
 
 
 @dataclass(frozen=True)
@@ -225,6 +227,34 @@ class Pseudonymizer:
             pos = s.end
         out.append(_neutralize(text[pos:]))
         return MaskResult("".join(out), counts, False)
+
+    def apply_values(
+        self, text: str, policy: Policy, known_names: tuple[str, ...] | list[str] = ()
+    ) -> MaskResult:
+        """자유 글용 ``apply``: **메시지 통째 제외 없이** 탐지된 값만 자리표시로 바꾼다.
+
+        MASK 종류는 번호 있는 토큰(복원 가능), BLOCK 종류는 점수와 관계없이 번호 없는 고정 토큰(``[RRN]`` 등, 복원 불가)이다.
+        점수가 block_min_score 이상인 BLOCK 탐지 수는 ``blocked_values`` 로 알린다(``blocked`` 는 항상 False).
+        """
+        if self._closed:
+            raise RuntimeError("이미 닫힌 Pseudonymizer 다")
+        text = text or ""
+        counts: dict[str, int] = {}
+        high = 0
+        out: list[str] = []
+        pos = 0
+        for s in detect(text, known_names):
+            action = policy.action_for(s.kind)
+            if action is Action.KEEP:
+                continue
+            counts[s.kind.value] = counts.get(s.kind.value, 0) + 1
+            if action is Action.BLOCK and s.score >= policy.block_min_score:
+                high += 1
+            out.append(_neutralize(text[pos : s.start]))
+            out.append(self.token_for(s.kind, s.canonical or text[s.start : s.end]))
+            pos = s.end
+        out.append(_neutralize(text[pos:]))
+        return MaskResult("".join(out), counts, False, high)
 
     # ----- 복원 -----
     def restore(

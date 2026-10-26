@@ -36,6 +36,13 @@ class Policy:
     # 응답에서 원래 값으로 되돌리는 종류. 나머지 종류의 토큰은 일반화 문구로 바꾼다(요약에 전화·이메일이 되살아나
     # AI 결과 캐시와 모든 구성원 화면에 들어가는 것을 막는다).
     restore_kinds: frozenset[Kind] = frozenset({Kind.PERSON, Kind.ADDRESS, Kind.PHONE, Kind.EMAIL})
+    # 자유 글·JSON API(``prepare_json``)에서 숫자 값(금액 등)을 어떻게 할지: keep(그대로) / round(유효숫자 2자리로 뭉갬).
+    # 가족 채팅 ``prepare_transcript`` 는 쓰지 않는다.
+    number_mode: str = "keep"
+
+    def __post_init__(self) -> None:
+        if self.number_mode not in ("keep", "round"):
+            raise ValueError("number_mode 는 keep 또는 round 다")
 
     def action_for(self, kind: Kind) -> Action:
         return self.actions.get(kind, Action.KEEP)
@@ -66,4 +73,11 @@ TOPICS = Policy(
     "topics", dict(_STRICT_ACTIONS), max_context_lines=30, restore_kinds=frozenset({Kind.PERSON})
 )
 
-POLICIES: dict[str, Policy] = {p.name: p for p in (ANALYSIS, REPLY, TOPICS)}
+# AI 어시스턴트 질문·앞 대화·도구 결과(자유 글·JSON)용. 전부 가리되 고위험(점수 >= block_min_score)은 메시지 통째 제외가 아니라
+# **그 값만** 고정 자리표시(``[RRN]`` 등)로 바꾼다(``prepare_text``/``prepare_json`` 은 항상 값 단위다). 복원은 이름·주소만이고
+# 전화·이메일은 응답에서 ``(연락처)``·``(이메일)`` 이 된다. 숫자(금액)는 그대로 둔다.
+ASSISTANT = Policy(
+    "assistant", dict(_STRICT_ACTIONS), restore_kinds=frozenset({Kind.PERSON, Kind.ADDRESS})
+)
+
+POLICIES: dict[str, Policy] = {p.name: p for p in (ANALYSIS, REPLY, TOPICS, ASSISTANT)}
