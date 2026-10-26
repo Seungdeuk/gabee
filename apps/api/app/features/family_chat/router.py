@@ -7,6 +7,7 @@ from app.shared.db import get_db
 
 from . import service
 from .ai_router import router as ai_router
+from .media_router import router as media_router
 from .photo_router import router as photo_router
 from .schemas import (
     DirectRoomCreate,
@@ -22,6 +23,7 @@ from .todo_router import router as todo_router
 
 router = APIRouter(prefix="/family-chat", tags=["family-chat"])
 router.include_router(photo_router)  # 사진 보내기·보기(AI 를 부르지 않는다)
+router.include_router(media_router)  # 사진·파일·동영상 모음(읽기 전용)
 router.include_router(todo_router)  # 공동 할 일(가족 전체 공유, AI 를 부르지 않는다)
 router.include_router(ai_router)  # AI 대화 분석·추천(사용할 때만 AI 호출, 가족 전체방만)
 

@@ -2232,6 +2232,138 @@
         }
       }
     },
+    "/family-chat/media": {
+      "get": {
+        "tags": [
+          "family-chat"
+        ],
+        "summary": "List Media",
+        "description": "그 방에서 공유된 첨부를 최신순으로. 방에 들어갈 수 없으면 404. 지금은 사진(image)만 있다.",
+        "operationId": "list_media_family_chat_media_get",
+        "parameters": [
+          {
+            "name": "room_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 32
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "대화방 id. 없으면 가족 전체방",
+              "title": "Room Id"
+            },
+            "description": "대화방 id. 없으면 가족 전체방"
+          },
+          {
+            "name": "kind",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "image",
+                "file",
+                "video",
+                "all"
+              ],
+              "type": "string",
+              "default": "all",
+              "title": "Kind"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "default": 40,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "before_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "이 메시지 id 보다 오래된 것(다음 쪽)",
+              "title": "Before Id"
+            },
+            "description": "이 메시지 id 보다 오래된 것(다음 쪽)"
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-gyeot-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Gyeot-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaPage"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/family-chat/todos": {
       "get": {
         "tags": [
@@ -12568,6 +12700,158 @@
           "status"
         ],
         "title": "MealStatus"
+      },
+      "MediaCounts": {
+        "properties": {
+          "image": {
+            "type": "integer",
+            "title": "Image"
+          },
+          "file": {
+            "type": "integer",
+            "title": "File"
+          },
+          "video": {
+            "type": "integer",
+            "title": "Video"
+          }
+        },
+        "type": "object",
+        "required": [
+          "image",
+          "file",
+          "video"
+        ],
+        "title": "MediaCounts"
+      },
+      "MediaItem": {
+        "properties": {
+          "attachment_id": {
+            "type": "string",
+            "title": "Attachment Id"
+          },
+          "message_id": {
+            "type": "integer",
+            "title": "Message Id"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "image",
+              "file",
+              "video"
+            ],
+            "title": "Kind"
+          },
+          "user_id": {
+            "type": "string",
+            "title": "User Id"
+          },
+          "user_name": {
+            "type": "string",
+            "title": "User Name"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "url": {
+            "type": "string",
+            "title": "Url"
+          },
+          "thumb_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Thumb Url"
+          },
+          "width": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Width"
+          },
+          "height": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Height"
+          },
+          "size_bytes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Size Bytes"
+          }
+        },
+        "type": "object",
+        "required": [
+          "attachment_id",
+          "message_id",
+          "kind",
+          "user_id",
+          "user_name",
+          "created_at",
+          "url",
+          "thumb_url",
+          "width",
+          "height",
+          "size_bytes"
+        ],
+        "title": "MediaItem"
+      },
+      "MediaPage": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/MediaItem"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "next_before_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Before Id"
+          },
+          "counts": {
+            "$ref": "#/components/schemas/MediaCounts"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items",
+          "next_before_id",
+          "counts"
+        ],
+        "title": "MediaPage"
       },
       "MemberLocation": {
         "properties": {
