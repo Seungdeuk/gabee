@@ -51,6 +51,21 @@
 - 종류 확장: 종류는 `media_service.attachment_kind()` 한 곳에서만 정한다. 지금은 서버가 받는 첨부가 사진뿐이라 모두 `image` 이고, `kind=file|video` 는 빈 목록, `counts.file/video` 는 0 이다. 파일·동영상 업로드는 **미구현**이다. 생기면 `message_attachments` 에 종류 칼럼(Alembic)을 추가하고 `attachment_kind`·목록·개수의 SQL 필터를 그 칼럼으로 바꾼다.
 - 파일: `media_router.py`·`media_service.py`·`media_repository.py`·`media_schemas.py`. 시험: `tests/test_chat_media.py`(최신순·커서·종류 필터·개수·방 분리·권한 격리·URL 로 사진 받기·429).
 
+### 고정 메시지 (서버)
+
+채팅방 위에 공지처럼 띄워 두는 **메시지 고정**. 가족 전체방과 1:1 방 모두 쓴다. 서버만 구현했고 앱 화면은 아직 없다.
+
+- 규칙(사용자 결정): **방 안의 모든 구성원이 고정·해제**할 수 있다(쓴 사람·고정한 사람이 아니어도). **방당 최대 2개**이고 3번째를 고정하면 가장 오래된 고정이 **자동으로 풀린다**(오류 없음, 응답의 `replaced_message_id` 로 알린다). **텍스트 메시지만** 고정한다(사진 첨부가 있거나 글이 비어 있으면 400 `not_pinnable`; 사진 고정은 이후 검토). 고정은 메시지를 가리키기만 하고 메시지를 지우거나 바꾸지 않는다(본문은 복사하지 않고 조회할 때 `messages` 와 join).
+- `GET /family-chat/pins?room_id=` — `{items:[{message_id, text, text_truncated, user_id, user_name, created_at, pinned_by, pinned_by_name, pinned_at}]}`. 최근 고정 2개, 고정 시각 최신순. `room_id` 가 없으면 가족 전체방. `text` 는 메시지 본문을 200자로 자른 것이고(말줄임 없음) 잘렸으면 `text_truncated=true`.
+- `POST /family-chat/pins {room_id?, message_id}` — `{item, replaced_message_id: int|null, already_pinned: bool}`(새 고정도 이미 고정된 경우도 200). 그 방의 메시지가 아니거나 없는 id 면 400 `invalid_message`. **같은 메시지를 다시 고정하면 멱등**: 새로 만들지 않고 기존 고정(고정한 사람·고정 시각)을 그대로 두며 `already_pinned=true`, 순서도 바뀌지 않는다.
+- `DELETE /family-chat/pins/{message_id}?room_id=` — 204. 고정돼 있지 않으면 404 `not_found`.
+- 권한: 인증과 `current_group_id` 필수, 방은 `resolve_room` 으로 확인한다. 다른 가족의 방·내가 참여하지 않은 1:1 방·없는 방은 조회/고정/해제 모두 같은 404 라 존재 단서가 없다(`room_id` 가 없는 옛 메시지는 가족 전체방 메시지로 고정할 수 있다). 메시지-방 일치는 SQL 조건(`room_messages`)으로 확인한다.
+- 제한: 고정·해제(POST/DELETE) 합쳐 사용자별 분당 30회(429 `too_many_requests` + `Retry-After`, 프로세스 메모리 `FailureLimiter`). 조회에는 제한이 없다.
+- **동시성**: 같은 방의 고정 변경은 방 행(`chat_rooms`)을 `SELECT ... FOR NO KEY UPDATE`(SQLAlchemy `with_for_update(key_share=True)`)로 잠가 고정끼리 한 번에 하나씩 처리한다. 일반 `FOR UPDATE` 는 같은 방 메시지 INSERT(FK 검사의 KEY SHARE)를 잠깐 막지만 `FOR NO KEY UPDATE` 는 막지 않아 메시지 전송·읽음은 고정 중에도 지연되지 않는다(PostgreSQL 에서 확인). SQLite 는 FOR UPDATE 가 없어 무시되지만 쓰기가 원래 직렬이다. 잠근 뒤 다시 읽고, 새 고정을 추가한 같은 트랜잭션에서 최근 2개를 넘는 오래된 고정을 지우고 **응답 항목도 commit 전에(잠금 안에서) 만들어** commit 하므로(commit 뒤 재조회로 인한 끼어든 해제와의 충돌·500 이 없다) 동시 요청에도 2개를 넘는 상태가 남지 않는다. 같은 메시지를 동시에 고정하는 경우는 `(room_id, message_id)` 유니크 제약이 막고 한 요청만 새 고정, 나머지는 `already_pinned=true`. 사후 정리 방식 대신 잠금을 택한 이유: 고정은 방별 쓰기 빈도가 낮아 잠금 경합이 문제가 되지 않고, 잠깐이라도 3개가 보이는 구간이 없다.
+- **AI·외부로 보내지 않는다**: 고정은 AI 를 부르지 않고 고정된 메시지가 AI 분석 입력에 따로 들어가지도 않는다. 로그에 메시지 글자를 남기지 않는다.
+- 테이블 `chat_pinned_messages`(Alembic `e8c1f4a7b903`, 새 테이블만 추가하는 expand 리비전). 스키마 게이트에서는 `family_chat` 기능의 전제로 자동 잡힌다(기능 `models.py` 의 모델).
+- 파일: `pin_router.py`·`pin_service.py`·`pin_repository.py`·`pin_schemas.py`. 시험: `app/features/family_chat/tests/test_pins.py`(고정·해제·멱등·자동 교체·최신순 2개·텍스트만·다른 방 메시지·모든 구성원·권한 격리·속도 제한·로그·동시성), `tests/test_membership_enforcement.py`(엔드포인트 목록). PostgreSQL 동시성은 임시 컨테이너에서 별도 스크립트로 확인했다(12개 스레드가 같은 방에 동시에 고정 x5회, 항상 2개).
+
 ### 대화 검색 (서버)
 
 카카오톡 돋보기처럼 **글자 일치(키워드) 검색만** 한다(사용자 결정). 임베딩·벡터·AI 를 쓰지 않고 외부 호출도 없다. 스키마 변경(Alembic)도 없다.

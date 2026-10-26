@@ -28,6 +28,9 @@ GROUP_ENDPOINTS = (
     ("get", "/family-chat/media", None),
     ("get", "/family-chat/search?q=%EB%AA%B0%EB%9E%98", None),
     ("get", "/family-chat/todos", None),
+    ("get", "/family-chat/pins", None),
+    ("post", "/family-chat/pins", {"message_id": 1}),
+    ("delete", "/family-chat/pins/1", None),
     ("post", "/family-chat/ai/preview", {}),
     ("post", "/family-chat/todos", {"title": "몰래"}),
     ("get", "/schedule/events", None),
@@ -44,7 +47,11 @@ GROUP_ENDPOINTS = (
 
 def test_unauthenticated_requests_blocked_across_domains(client):
     for method, path, body in GROUP_ENDPOINTS:
-        r = getattr(client, method)(path, json=body) if body is not None else client.get(path)
+        r = (
+            getattr(client, method)(path, json=body)
+            if body is not None
+            else getattr(client, method)(path)
+        )
         assert r.status_code == 401 and r.json()["code"] == "token_required", path
 
 
@@ -60,7 +67,7 @@ def test_non_member_blocked_even_with_stale_active_group_id(client, family):
         r = (
             getattr(client, method)(path, json=body, headers=b)
             if body is not None
-            else (client.get(path, headers=b))
+            else (getattr(client, method)(path, headers=b))
         )
         assert r.status_code == 403 and r.json()["code"] == "not_member", (path, r.json())
 
