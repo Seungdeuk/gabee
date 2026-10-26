@@ -12,6 +12,7 @@ from app.features.ai_assistant import files
 from app.features.ai_assistant.ingest.converters import OcrLine
 from app.features.ai_assistant.ingest.schemas import Caption
 from app.shared.config import settings
+from tests.helpers import allow_ai
 
 
 class FakeOcr:
@@ -158,12 +159,15 @@ def test_sensitive_documents_reach_the_chat_model_only_masked_unless_excluded(
 
     monkeypatch.setattr(settings, "anthropic_api_key", "test-key")
     monkeypatch.setattr(rag_chat, "_post", fake_post)
+    allow_ai(client, a, monkeypatch)
+    monkeypatch.setattr(settings, "chat_include_sensitive", True)  # 기본값은 false — 켠 가족만
     client.post("/ai-assistant/chat", json={"message": "처방전 약 알려줘"}, headers=a)
-    assert "소염진통제" in seen[1]  # 기본값: 가려진 글자가 Claude 에게 간다
+    assert "소염진통제" in seen[1]  # 켜면: 가려진 글자가 Claude 에게 간다
     assert "900101-2345678" not in seen[1] and "김영희" not in seen[1]
 
     seen.clear()
     monkeypatch.setattr(settings, "chat_include_sensitive", False)
+    monkeypatch.setattr(settings, "ai_max_calls_per_user_per_day", 100)
     client.post("/ai-assistant/chat", json={"message": "처방전 약 알려줘"}, headers=a)
     assert "소염진통제" not in seen[1]  # 끄면 민감 기록은 가지 않는다
 
@@ -430,6 +434,7 @@ def test_the_same_file_uploaded_twice_is_one_source(client, family, pipeline, mo
 
     monkeypatch.setattr(settings, "anthropic_api_key", "test-key")
     monkeypatch.setattr(rag_chat, "_post", fake_post)
+    allow_ai(client, a, monkeypatch)
     out = client.post("/ai-assistant/chat", json={"message": "마트 합계 얼마야?"}, headers=a).json()
     assert len(state["refs"]) == 1  # Claude 에게도 같은 파일은 한 번만 간다
     assert len(out["sources"]) == 1 and "[1][1]" not in out["reply"]

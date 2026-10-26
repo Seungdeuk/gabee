@@ -11,6 +11,7 @@ import AppHeader from "@/shared/components/AppHeader";
 import { colors } from "@/theme";
 
 import AnswerView from "../components/AnswerView";
+import AiOffCard from "../components/AiOffCard";
 import ChatInput from "../components/ChatInput";
 import DoubtCard from "../components/DoubtCard";
 import DraftCard from "../components/DraftCard";
@@ -31,7 +32,7 @@ import mascot from "../../../../assets/images/gabee-mascot.png";
  */
 export default function AiAssistantScreen() {
   const router = useRouter();
-  const { messages, phase, readingSince, confirmDoubts, send, sendPhoto, startListening, stopListening, editDraft, reset, load } = useChat();
+  const { messages, phase, readingSince, confirmDoubts, markAiEnabled, send, sendPhoto, startListening, stopListening, editDraft, reset, load } = useChat();
   const auth = useAuth();
   // 대화 저장 키: 로그인한 회원은 사용자 id, 익명 계정(개발용 토큰)은 토큰에서 만든 값. 로그인 확인 중에는 null
   const scope = auth.status === "loading" ? null : auth.user?.id ? `user-${auth.user.id}` : legacyStorageScope();
@@ -67,6 +68,7 @@ export default function AiAssistantScreen() {
 
   const renderItem = ({ item, index }) => {
     if (item.role === "user") return <UserBubble text={item.text} voice={item.voice} imageUri={item.imageUri} />;
+    if (item.aiOff) return <AiOffCard onEnabled={() => markAiEnabled(item.id)} />;
     const isReport = item.sources.length > 1; // 여러 기록을 모은 답에는 저장·복사 버튼을 붙인다
     return (
       <View style={styles.answer}>
