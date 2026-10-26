@@ -3,7 +3,7 @@
 from app.shared import ai_guard
 from app.shared.config import settings
 
-CHAT_FEATURES = ("schedule_intent", "schedule_chat")
+CHAT_FEATURES = ("schedule_chat",)
 CARD_FEATURES = ("schedule_card",)
 
 

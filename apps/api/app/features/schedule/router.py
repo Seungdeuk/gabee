@@ -5,10 +5,12 @@ from app.shared.auth import current_group_id, current_user
 from app.shared.db import get_db
 
 from . import service
+from .agent.router import router as agent_router
 from .models import Event
 from .schemas import EventCreate, EventOut
 
 router = APIRouter(prefix="/schedule", tags=["schedule"])
+router.include_router(agent_router)
 
 
 @router.get("/events", response_model=list[EventOut])

@@ -3520,6 +3520,81 @@
         }
       }
     },
+    "/schedule/agent": {
+      "post": {
+        "tags": [
+          "schedule"
+        ],
+        "summary": "Ask Agent",
+        "operationId": "ask_agent_schedule_agent_post",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-gyeot-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Gyeot-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AgentRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/schedule/events": {
       "get": {
         "tags": [
@@ -9308,6 +9383,74 @@
         ],
         "title": "AccountSignupOut"
       },
+      "AgentRequest": {
+        "properties": {
+          "text": {
+            "type": "string",
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Text"
+          },
+          "channel": {
+            "type": "string",
+            "enum": [
+              "personal",
+              "family"
+            ],
+            "title": "Channel"
+          }
+        },
+        "type": "object",
+        "required": [
+          "text",
+          "channel"
+        ],
+        "title": "AgentRequest"
+      },
+      "AgentResponse": {
+        "properties": {
+          "intent": {
+            "type": "string",
+            "enum": [
+              "query",
+              "recommend",
+              "register",
+              "edit",
+              "delete",
+              "check",
+              "not_schedule"
+            ],
+            "title": "Intent"
+          },
+          "text": {
+            "type": "string",
+            "title": "Text",
+            "default": ""
+          },
+          "cards": {
+            "items": {
+              "$ref": "#/components/schemas/Card"
+            },
+            "type": "array",
+            "title": "Cards"
+          },
+          "pending_action": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PendingAction"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "intent"
+        ],
+        "title": "AgentResponse"
+      },
       "AiLimitsOut": {
         "properties": {
           "user_per_day": {
@@ -10179,6 +10322,31 @@
           "file"
         ],
         "title": "Body_upload_photo_family_group_me_photo_post"
+      },
+      "Card": {
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "event_list",
+              "registered",
+              "edit_confirm",
+              "delete_confirm",
+              "suggestion"
+            ],
+            "title": "Type"
+          },
+          "data": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Data"
+          }
+        },
+        "type": "object",
+        "required": [
+          "type"
+        ],
+        "title": "Card"
       },
       "CatalogEntry": {
         "properties": {
@@ -12864,6 +13032,34 @@
           "id"
         ],
         "title": "PaymentOut"
+      },
+      "PendingAction": {
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "edit",
+              "delete"
+            ],
+            "title": "Type"
+          },
+          "event_id": {
+            "type": "string",
+            "title": "Event Id"
+          },
+          "changes": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Changes"
+          }
+        },
+        "type": "object",
+        "required": [
+          "type",
+          "event_id"
+        ],
+        "title": "PendingAction",
+        "description": "수정·삭제 확인 카드가 들고 있는 실행 정보. 서버는 저장하지 않고(stateless) 확인 요청에 그대로 돌려받는다."
       },
       "PendingJoinOut": {
         "properties": {

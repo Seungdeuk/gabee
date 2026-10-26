@@ -34,7 +34,10 @@
 - 확인 실행: 수정·삭제 확인 카드의 버튼을 누르면 앱이 `pending_action`을 그대로 돌려보내고, 서버가 실행한다. 서버는 상태를 저장하지 않는다(stateless). 실행 직전에 그룹 구성원과 만든 사람을 다시 검사한다.
 - 카드 호출: 일정 체크·추천 카드는 앱이 직접 호출한다.
 - 서버 `schedule`에 일정 수정(update)을 추가한다.
-- 엔드포인트 경로와 필드 이름은 구현 단계에서 정한다.
+- 입구(메인이 생기기 전까지): `POST /schedule/agent` — 요청 `{text, channel("personal"|"family")}`, 응답 `{intent, text, cards[{type, data}], pending_action}`. 사용자와 그룹은 로그인 정보로 정한다.
+- 요청 종류와 답은 한 번의 LLM 호출로 함께 받는다(질문 1회 = 호출 1회). 코드가 돌려받은 `intent` 로 종류별 처리를 정하고 결과(대상 일정 id 등)를 검증한다. 일정 목록은 개인정보를 가린 뒤 보낸다. 가리는 함수는 `ai_assistant` 기능 폴더의 `app/features/ai_assistant/ingest/masking.py` 에 있는 `mask_text` 하나를 가져다 쓴다(`features/schedule/agent/chat.py`). 이 함수의 위치나 이름을 바꾸면 일정 쪽도 고쳐야 한다.
+- 지금 처리하는 종류는 질의(`query`: 문장과 `event_list` 카드)뿐이고, 나머지 종류는 "아직 처리할 수 없어요"를 돌려준다.
+- 나머지 엔드포인트(확인 실행 등)와 필드 이름은 구현 단계에서 정한다.
 - LLM 호출은 `app/shared/llm` 래퍼로만 한다. 래퍼에 선택 인자 `model` 하나를 추가하며 안 주면 기존 동작이다. tool use는 쓰지 않는다. 일정 전용 프롬프트와 규칙은 `features/schedule/agent/`에 둔다.
 
 ## 데이터
