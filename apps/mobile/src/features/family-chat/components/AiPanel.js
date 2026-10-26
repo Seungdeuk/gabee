@@ -1,10 +1,10 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ActivityIndicator, Modal, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 
 import Button from "@/shared/components/Button";
 import { colors, font, radius, spacing } from "@/theme";
 
-import { analyzeChat, getAiSettings, registerScheduleCandidate, setAiEnabled, suggestReplies, suggestTopics } from "../api";
+import { analyzeChat, createTodo, getAiSettings, getRoomInfo, registerScheduleCandidate, setAiEnabled, suggestReplies, suggestTopics } from "../api";
 import {
   canRegisterSchedule,
   chatErrorMessage,
@@ -15,6 +15,8 @@ import {
   scheduleMissingNote,
   shouldLoadSettings,
 } from "../messages";
+import { candidateToTodoBody, todoErrorMessage } from "../todoUtils";
+import TodoCandidateRow from "./TodoCandidateRow";
 
 /** 후보 한 줄에 붙는 보조 글(날짜·시간·장소 등). */
 const joinParts = (parts) => parts.filter(Boolean).join(" · ");
@@ -34,6 +36,8 @@ export default function AiPanel({ visible, onClose, onPickReply }) {
   const [replies, setReplies] = useState(null);
   const [topics, setTopics] = useState(null);
   const [registered, setRegistered] = useState({}); // 후보 순번 -> "ok" | "sending" | 오류 문구
+  const [todoRegistered, setTodoRegistered] = useState({}); // 할 일 후보 순번 -> 같은 형태
+  const todoBusy = useRef(new Set()); // 등록 중이거나 등록된 할 일 후보 순번: 같은 후보를 두 번 등록하지 않는다
 
   const loadSettings = useCallback(async () => {
     try {
@@ -68,6 +72,23 @@ export default function AiPanel({ visible, onClose, onPickReply }) {
       setRegistered((r) => ({ ...r, [index]: "ok" }));
     } catch (e) {
       setRegistered((r) => ({ ...r, [index]: chatErrorMessage(e) }));
+    }
+  };
+
+  /** 사용자가 누른 할 일 후보 하나만 등록한다(서버 AI 를 부르지 않는다). 담당자는 이름이 정확히 같을 때만 정한다. */
+  const registerTodo = async (index, candidate) => {
+    if (todoBusy.current.has(index)) return;
+    todoBusy.current.add(index);
+    setTodoRegistered((r) => ({ ...r, [index]: "sending" }));
+    try {
+      const group = await getRoomInfo();
+      const body = candidateToTodoBody(candidate, group.members);
+      if (!body) throw Object.assign(new Error("invalid_title"), { code: "invalid_title" });
+      await createTodo(body);
+      setTodoRegistered((r) => ({ ...r, [index]: "ok" }));
+    } catch (e) {
+      todoBusy.current.delete(index); // 실패하면 다시 누를 수 있다
+      setTodoRegistered((r) => ({ ...r, [index]: e?.code ? todoErrorMessage(e) : "등록하지 못했어요. 다시 시도해 주세요" }));
     }
   };
 
@@ -141,6 +162,8 @@ export default function AiPanel({ visible, onClose, onPickReply }) {
           run("analysis", analyzeChat, (res) => {
             setAnalysis(res);
             setRegistered({});
+            setTodoRegistered({});
+            todoBusy.current.clear();
           })
         }
         disabled={disabled}
@@ -204,17 +227,9 @@ export default function AiPanel({ visible, onClose, onPickReply }) {
           {analysis.todo_candidates.length === 0 ? (
             <Text style={styles.caption}>할 일 후보가 없어요</Text>
           ) : (
-            <>
-              {analysis.todo_candidates.map((t, i) => (
-                <View key={`${t.title}-${i}`} style={styles.candidate}>
-                  <Text style={styles.bodyStrong}>{t.title}</Text>
-                  <Text style={styles.caption}>
-                    {joinParts([t.assignee_name && `담당 ${t.assignee_name}`, t.due && `기한 ${t.due}`]) || "담당자·기한이 정해지지 않았어요"}
-                  </Text>
-                </View>
-              ))}
-              <Text style={styles.note}>공동 할 일은 준비 중이에요</Text>
-            </>
+            analysis.todo_candidates.map((t, i) => (
+              <TodoCandidateRow key={`${t.title}-${i}`} candidate={t} state={todoRegistered[i]} onRegister={() => registerTodo(i, t)} testID={`chat-ai-todo-${i}`} />
+            ))
           )}
 
           <Text style={styles.caption}>{[rangeCaption(analysis.meta), resultCaption(analysis.meta)].filter(Boolean).join(" · ")}</Text>
