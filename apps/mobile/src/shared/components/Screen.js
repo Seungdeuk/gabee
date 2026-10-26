@@ -8,10 +8,11 @@ import PageHeader from "./PageHeader";
 /**
  * 큰 제목 + 스크롤 본문으로 이루어진 탭 화면 틀.
  * `pinned` 를 주면 제목 아래에 고정되는 영역(스크롤해도 화면 위에 남는다)이 생긴다.
- * @param {{ title: string, subtitle?: string, left?: import("react").ReactNode, right?: import("react").ReactNode, pinned?: import("react").ReactNode, children: import("react").ReactNode }} props
+ * settings 를 주면 제목 줄 오른쪽 맨 끝에 설정 버튼이 붙는다(탭 화면용).
+ * @param {{ title: string, subtitle?: string, left?: import("react").ReactNode, right?: import("react").ReactNode, pinned?: import("react").ReactNode, settings?: boolean, children: import("react").ReactNode }} props
  */
-export default function Screen({ title, subtitle, left, right, pinned, children }) {
-  const header = <PageHeader title={title} subtitle={subtitle} left={left} right={right} />;
+export default function Screen({ title, subtitle, left, right, pinned, settings = false, children }) {
+  const header = <PageHeader title={title} subtitle={subtitle} left={left} right={right} settings={settings} />;
   return (
     <SafeAreaView style={styles.safe} edges={["top"]}>
       <ScrollView

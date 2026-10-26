@@ -6,6 +6,7 @@
 
 ## 구현된 것
 ### 서버 (`apps/api/app/features/care`)
+- **누락 알림 배너**: 추천·식단·위치 탭에서도 기록하지 못한 항목(서버가 계산한 `missing_ids`, 예정 + 60분 초과)이 있으면 위쪽에 "기록하지 못한 항목 N개"와 항목 이름을 보여 주고, "확인하기"로 데일리 체크의 지난 시간 정리로 이동한다. 앱 안 배너만이며 푸시는 후속이다. 서버 변경은 없다.
 - **화면 구조(데일리 체크)**: 위에서부터 ① 상단 고정 영역 — 아침·점심·저녁 상태(끼니가 지정된 항목, 다른 탭에서도 고정) ② 중단 피드 — 현재 시각 기준 지금 해야 할 것(`due`) → 다가오는 순서(`upcoming`) ③ 완료한 항목 ④ 하단 "지난 시간 정리" — 시간이 지난 미기록·누락 항목을 모아 **소급 입력** 또는 **건너뛰기**(개별·모두), 건너뛴 항목은 "되돌리기". 서버가 상태·순서를 계산한다.
   - 상태: `done` 완료 / `skipped` 건너뜀 / `missing` 누락(예정 + 60분 초과) / `due` 예정 시각이 지났지만 60분 안 / `upcoming` 아직 전. 응답에 `meals`, `upcoming_ids`, `cleanup_ids`, `skipped_ids`, `done_ids`, 항목별 `status`·`minutes_until`, 기록별 `late`(예정 + 60분 뒤에 기록한 소급 입력)가 있다.
   - 건너뛰기: `PUT /care/items/{id}/entry {skipped: true}`(값 없이), 되돌리기: `DELETE /care/items/{id}/entry`. 건너뛴 항목은 누락·추천(다시 권하기)에서 제외된다. 앱은 1분마다 다시 불러온다.
@@ -15,6 +16,8 @@
   - `at=HH:MM`을 주면 그 시각을 '지금'으로 본다(화면 테스트용).
 - 추천 `GET /care/recommendations`: 물, 산책, 컨디션, 영양제 규칙. 모델을 쓰지 않는다.
 - 식단 추천 `GET /care/meals`, `GET /care/meals/{meal}?index=`: 기록이 없는 끼니만, "다른 메뉴"는 `next_index`로 순환. 메뉴는 `care/config.py`.
+- **식단 기록** `GET·PUT·DELETE /care/meal-log`: 그날 아침·점심·저녁에 **무엇을 드셨는지** 남긴다. `PUT {date?, meal, menu, note?, source}`(`source`: `typed` 직접 입력 / `recommended` 추천 메뉴로 기록)는 같은 날·같은 끼니를 덮어쓰고, 그 끼니의 데일리 체크 항목을 **완료(예)로 맞춘다**(직전에 아니오·건너뛰기였어도). `GET ?days=7&end=`는 최신 날짜부터 날짜마다 아침·점심·저녁 칸(`log` 없으면 null)을 돌려주고 기간은 1~31일이다. `DELETE ?date=&meal=`은 기록만 지우고 데일리 체크는 그대로 둔다. 미래 날짜는 안 된다(`future_date`). 돌봄 대상은 그룹 단위라 가족 누구나 기록하고 모두 볼 수 있으며 기록한 사람 이름이 함께 나온다. 사진·칼로리·영양 정보는 다루지 않는다(후속). 식단 탭의 추천 카드에는 "이걸로 먹었어요" 버튼이 있다.
+  - 요약 `GET /care/meal-log/summary?days=7&end=`: 최근 `days`일에 기록한 끼니 수(`logged`/`total`=days×3, 끼니별 `per_meal`)와 **최근 30일 끼니별 자주 먹은 메뉴 5개**(`frequent`, 많이 먹은 순 → 같으면 최근 → 가나다순; 덮어쓴 끼니는 한 번만 센다). 앱은 식단 기록 위에 "최근 7일 N/21끼 기록"을 보여 주고, 고른 끼니의 자주 먹은 메뉴를 칩으로 눌러 입력칸을 채운다.
 - **위치 공유(실제 GPS, 개인정보)**: 동의한 사람만 위치를 보내고 같은 가족 구성원만 본다.
   - 동의: 정본은 `users.location_consent_at`(없으면 미동의). 가입 API가 `location_consent`를 받고(`POST /family-group/users`), 이후 `GET·PUT /care/location/consent`로 바꾼다. 동의·철회 이력은 `location_consent_events`(좌표 없음)에 남는다. 두 경로 모두 `app/shared/location_consent.py` 한 함수를 쓴다.
   - `POST /care/locations`(최대 50개): 동의하지 않았으면 403 `consent_required`. 보관 기간(7일)을 넘었거나 5분 넘게 미래인 점은 버리고, 쓸 때 보관 기간이 지난 위치를 함께 지운다.
@@ -25,6 +28,7 @@
 - 테스트: `tests/test_care.py`, `tests/test_care_daily.py`. DB: Alembic 리비전 `9e28d84c1686`.
 
 ### 앱 (`apps/mobile/src/features/care`)
+- `MealTab`/`MealLog`: 추천 메뉴("다른 메뉴"·"이걸로 먹었어요")와 식단 기록(끼니 칩·메뉴·메모, 최근 7일 날짜별 카드, 지우기).
 - `CareScreen`: 데일리 체크·추천·식단·위치 4구역(`components/*Tab.js`), 서버 호출은 `api.js`.
 - 항목의 예정 시각은 글자 입력이 아니라 **휠 시간 선택기**(`shared/components/TimePicker.js`: 오전/오후·시·분(5분 단위)을 세로로 돌려 고르고, 칸을 눌러도 선택)로 정한다. 새 의존성 없이 웹·앱에서 동작하며 목록에는 "오전 7:30 예정"처럼 표시한다.
 - 위치 탭: 내 위치 공유 스위치(동의·철회), "지금 내 위치 보내기", 가족 최신 위치 목록. 기기에서는 `expo-location` + `expo-task-manager`로 **백그라운드에서 약 15분마다 또는 200m 이동 시** 보내고(`features/care/location/`), 웹·Expo Go에서는 앱을 열었을 때만 보낸다. 앱 설정(`app.json`)에 `expo-location` 플러그인(백그라운드 위치)을 넣었다.

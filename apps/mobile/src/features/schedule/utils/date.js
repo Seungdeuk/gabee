@@ -97,6 +97,23 @@ export function formatMonthDay(key) {
 }
 
 /**
+ * 채팅 기록에 쓰는 시각 글자. 오늘은 시각만, 어제는 "어제 + 시각", 그보다 앞은 날짜만 보여 준다.
+ * @param {number} timestamp 밀리초
+ * @param {number} [now] 기준 시각(밀리초)
+ * @returns {string} 예: "오전 10:12", "어제 오후 6:40", "10월 18일"
+ */
+export function formatChatTime(timestamp, now = Date.now()) {
+  const d = new Date(timestamp);
+  const key = toDateKey(d);
+  const today = toDateKey(new Date(now));
+  const hour = d.getHours();
+  const clock = `${hour < 12 ? "오전" : "오후"} ${hour % 12 === 0 ? 12 : hour % 12}:${pad(d.getMinutes())}`;
+  if (key === today) return clock;
+  if (key === addDays(today, -1)) return `어제 ${clock}`;
+  return `${d.getMonth() + 1}월 ${d.getDate()}일`;
+}
+
+/**
  * 카드 문장에 쓰는 줄인 날짜.
  * @param {string} key "YYYY-MM-DD"
  * @returns {string} 예: "1/2"

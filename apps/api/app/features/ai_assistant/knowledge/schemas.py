@@ -92,3 +92,45 @@ class AskOut(BaseModel):
     source: Literal["ai", "fallback"]
     sources: list[SourceOut]
     tool_calls: list[ToolCallOut]
+
+
+# ---------- 키워드 찾기 · 문서 요약 · 문서 질문 답변 (lookup.py) ----------
+class FindIn(BaseModel):
+    """입력할 때마다 불러도 되는 찾기(LLM·외부 API 를 부르지 않는다)."""
+
+    query: str = Field(min_length=1, max_length=200)
+    limit: int = Field(default=10, ge=1, le=30)
+    kind_label: str | None = Field(default=None, max_length=100)
+    semantic: bool = False  # True 이고 글자 일치가 없을 때만 의미 검색(pgvector)을 쓴다
+
+
+class FindOut(BaseModel):
+    method: Literal["keyword", "semantic"]
+    hits: list[HitOut]
+
+
+class AiRunMeta(BaseModel):
+    """AI 호출 정보. cached 면 이번 요청에서 Anthropic 을 부르지 않았다."""
+
+    cached: bool
+    api_calls: int
+
+
+class DocSummaryOut(BaseModel):
+    item_id: str
+    title: str
+    summary: str
+    key_points: list[str]
+    meta: AiRunMeta
+
+
+class DocAnswerIn(BaseModel):
+    question: str = Field(min_length=1, max_length=500)
+    item_ids: list[str] | None = Field(default=None, max_length=20)
+
+
+class DocAnswerOut(BaseModel):
+    answer: str
+    grounded: bool  # False 면 근거를 찾지 못해 LLM 을 부르지 않았다
+    sources: list[SourceOut]
+    meta: AiRunMeta

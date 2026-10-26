@@ -2,8 +2,8 @@ import { useRouter } from "expo-router";
 import { useState } from "react";
 import { StyleSheet, Switch, Text, View } from "react-native";
 
+import FamilyGroupCard from "@/features/family-group/components/FamilyGroupCard";
 import AccountCard from "@/shared/auth/AccountCard";
-import Avatar from "@/shared/components/Avatar";
 import Card from "@/shared/components/Card";
 import IconButton from "@/shared/components/IconButton";
 import ListItem from "@/shared/components/ListItem";
@@ -12,7 +12,7 @@ import SectionTitle from "@/shared/components/SectionTitle";
 import Tag from "@/shared/components/Tag";
 import { colors, font } from "@/theme";
 
-import { group, today } from "../mock";
+import { today } from "../mock";
 
 function SettingRow({ title, subtitle, value, onValueChange }) {
   return (
@@ -40,8 +40,8 @@ export default function MoreScreen() {
 
   return (
     <Screen
-      title="기타"
-      subtitle="가족 그룹과 설정"
+      title="설정"
+      subtitle="계정과 가족 그룹"
       left={<IconButton name="chevron-back" label="뒤로" onPress={() => router.back()} />}
     >
       <SectionTitle title="계정" />
@@ -69,19 +69,8 @@ export default function MoreScreen() {
         <Text style={styles.notice}>{today.notice}</Text>
       </Card>
 
-      <SectionTitle title={`가족 그룹 · ${group.name}`} action="초대" />
-      <Card tone="white">
-        {group.members.map((m) => (
-          <View key={m.id} style={styles.member}>
-            <Avatar name={m.name} />
-            <View style={styles.settingText}>
-              <Text style={styles.settingTitle}>{m.name}</Text>
-              <Text style={styles.settingSub}>{m.role}</Text>
-            </View>
-          </View>
-        ))}
-        <Text style={styles.invite}>초대 코드 {group.inviteCode}</Text>
-      </Card>
+      <SectionTitle title="가족 그룹" />
+      <FamilyGroupCard />
 
       <SectionTitle title="설정" />
       <Card tone="white">
@@ -107,8 +96,6 @@ const styles = StyleSheet.create({
   heading: { ...font.h1, color: colors.text },
   sub: { ...font.body, color: colors.textSub },
   notice: { ...font.body, color: colors.textSub },
-  member: { flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 8 },
-  invite: { ...font.caption, color: colors.textMuted, marginTop: 4 },
   setting: { flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 8 },
   settingText: { flex: 1, gap: 2 },
   settingTitle: { ...font.bodyStrong, color: colors.text },

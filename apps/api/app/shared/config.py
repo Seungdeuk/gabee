@@ -1,5 +1,6 @@
 from pathlib import Path
 
+from pydantic import AliasChoices, Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # apps/api 의 .env 를 가리킨다. 상대경로(".env")로 두면 실행 위치(cwd)에 따라
@@ -16,7 +17,10 @@ class Settings(BaseSettings):
     data_dir: str = "./data"
     cors_origins: str = "*"
     anthropic_api_key: str = ""
-    llm_model: str = "claude-haiku-5-5"
+    # Anthropic 모델은 환경변수 ANTHROPIC_MODEL 로 고른다(예전 이름 LLM_MODEL 도 읽는다). 비우면 기본값.
+    llm_model: str = Field(
+        default="claude-haiku-5-5", validation_alias=AliasChoices("ANTHROPIC_MODEL", "LLM_MODEL")
+    )
     # DB 스키마 준비 상태 재점검 주기(초): 준비된 동안은 드물게, 준비 안 됐으면(자동 배포 진행 중) 자주
     schema_recheck_ready_seconds: int = 30
     schema_recheck_not_ready_seconds: int = 2
@@ -37,7 +41,9 @@ class Settings(BaseSettings):
     caption_timeout: float = 60.0
     ollama_keep_alive: str = "30m"  # 모델을 메모리에 올려 두는 시간(처음 불러오는 데 1분쯤 걸린다)
     # 채팅(외부 Claude)이 근거로 읽을 수 있는 기록에 민감 기록(처방전·신분증·통장·인물 사진 등)을 넣을지
-    chat_include_sensitive: bool = True
+    chat_include_sensitive: bool = (
+        True  # 가린 글만 채팅 근거로 쓴다. 끄려면 CHAT_INCLUDE_SENSITIVE=false
+    )
 
     # 로그인/JWT(PR 4-B). JWT_SECRET 은 환경변수(.env)로만 준다 — 코드·Git 에 넣지 않는다.
     # 비어 있으면: 로컬 SQLite 나 DEBUG=true 에서만 프로세스 임시 키를 쓴다(재시작하면 로그인이 풀림). PostgreSQL(공용·운영)에서는
@@ -69,17 +75,78 @@ class Settings(BaseSettings):
     smtp_timeout_seconds: int = 10
     # 메일 링크의 앱 주소(모바일 딥링크 또는 웹 주소). 링크는 <base>verify-email?token=..., <base>reset-password?token=...
     email_link_base: str = "gabee://"
-    email_verify_ttl_seconds: int = 24 * 3600
+    email_verify_ttl_seconds: int = 3 * 60  # 인증번호·링크 유효 시간: 3분
     password_reset_ttl_seconds: int = 30 * 60
-    # 이메일 미인증 정식 회원의 가족 그룹 생성·참여를 막는다(docs/requirements/family-group.md). 메일 설정 전 임시로 끌 수 있다
-    require_email_verification: bool = True
+    # 6자리 코드: 코드(메일 1통)마다 틀려도 되는 횟수. 넘으면 그 코드는 못 쓰고 메일을 다시 받아야 한다
+    code_max_attempts: int = 5
+    # 이메일은 가입 때 선택이고, 인증하지 않아도 가족 그룹을 만들고 참여할 수 있다(기본). true 로 켜면 이메일이 있는데 미인증인 정식 회원의
+    # 그룹 생성·참여를 막는다(메일 발송이 설정된 환경에서만). 이메일이 없는 계정은 켜도 막지 않는다.
+    require_email_verification: bool = False
     # 메일 요청 제한(프로세스 메모리, login 제한과 같은 한계): 인증 메일 재발송 간격/시간당, 재설정 메일 이메일별/IP별 시간당
     verify_resend_cooldown_seconds: int = 60
     verify_max_per_hour: int = 5
     reset_max_per_email_per_hour: int = 3
     reset_max_per_ip_per_hour: int = 20  # 0 이면 IP 제한 끔
 
-    model_config = SettingsConfigDict(env_file=_ENV_FILE, extra="ignore")
+    # 가족 초대·가입 승인(PR 4-B): 새로 발급하는 초대 코드는 24시간·1회. 코드를 틀리게 입력한 실패가 이 횟수에 이르면
+    # 계정별·IP별로 막고(invite_attempts, 슬라이딩 윈도우), 윈도우가 지나면 다시 시도할 수 있다.
+    invite_ttl_seconds: int = 24 * 3600
+    invite_max_uses: int = 1
+    invite_max_failures: int = 5
+    invite_failure_window_seconds: int = 15 * 60
+
+    # Google·Kakao 로그인(PR 4-D). 비어 있으면 그 제공자 로그인은 503 social_not_configured 로 막힌다. 비밀키·앱 키는 .env 에만 둔다.
+    # GOOGLE_CLIENT_IDS: 앱이 ID 토큰을 받을 때 쓴 Google OAuth 클라이언트 ID(웹/iOS/Android 여러 개면 쉼표로). ID 토큰의 aud 가 이 중 하나여야 한다.
+    # KAKAO_APP_ID: Kakao 개발자 콘솔의 앱 ID(숫자). 액세스 토큰이 우리 앱에서 발급된 것인지 확인한다.
+    google_client_ids: str = ""
+    kakao_app_id: str = ""
+    social_http_timeout_seconds: int = 5
+
+    # Anthropic(AI) 호출 비용 관리. 키·모델은 서버 환경변수(ANTHROPIC_API_KEY / ANTHROPIC_MODEL)로만 정한다(앱에는 두지 않는다).
+    # 일반 채팅 메시지 전송에서는 AI 를 부르지 않고, 구성원이 AI 기능을 눌렀을 때만 최소한으로 부른다.
+    anthropic_max_tokens: int = (
+        2048  # ANTHROPIC_MAX_TOKENS: 한 번의 응답에서 쓸 수 있는 출력 토큰 상한
+    )
+    ai_effort: str = "low"  # 추론 비용을 줄이려고 낮게 둔다(low|medium|high)
+    ai_auto_analysis_enabled: bool = (
+        False  # 설계만 있고 기본 꺼짐(켜도 메시지마다 부르지 않고 시간·새 메시지 수로 모아서)
+    )
+    ai_auto_analysis_min_new_messages: int = 30
+    ai_auto_analysis_min_interval_seconds: int = 3600
+    ai_max_calls_per_user_per_day: int = 10  # 사용자별 하루 AI 호출 수(캐시 적중은 세지 않는다)
+    ai_max_calls_per_group_per_day: int = 30  # 가족 그룹별 하루 AI 호출 수
+    ai_request_cooldown_seconds: int = 30  # 같은 사용자의 AI 호출 사이 최소 간격
+    ai_result_cache_ttl_seconds: int = (
+        600  # 같은 요청의 결과를 다시 쓰는 시간(가족 그룹별로 따로 보관)
+    )
+    ai_max_concurrent_requests_per_group: int = (
+        1  # 한 가족 그룹에서 동시에 진행할 수 있는 AI 호출 수
+    )
+    ai_inflight_stale_seconds: int = 120  # 이 시간이 지난 진행 표시는 죽은 요청으로 보고 치운다
+    ai_analysis_max_chars: int = (
+        12000  # 한 번에 AI 로 보내는 대화 글자 수(넘으면 오래된 것부터 뺀다)
+    )
+    ai_day_utc_offset_hours: int = 9  # 하루 한도를 세는 날짜 경계(기본 한국 시간 자정)
+    # 일정 에이전트는 위 기본 한도와 따로 센다(ai_guard.register_bucket). 채팅은 한 번에 두 번(분류·답변) 부르므로 쿨다운을 두지 않는다.
+    ai_schedule_chat_cooldown_seconds: int = 0
+    ai_schedule_chat_max_calls_per_user_per_day: int = 30
+    ai_schedule_chat_max_calls_per_group_per_day: int = 100
+    # 먼저 권해드려요 카드 공급(미리 만들어 저장): 하루 3번(5개씩 15개), 요청 간격 5초
+    ai_schedule_card_cooldown_seconds: int = 5
+    ai_schedule_card_max_calls_per_user_per_day: int = 3
+    ai_schedule_card_max_calls_per_group_per_day: int = 15
+
+    # AI 어시스턴트(채팅·기록 질문)도 기본 한도와 따로 센다. 예전 값(사용자 100회/일, 쿨다운 없음)을 유지하고, 가족 상한은 넉넉히 둔 새 값
+    ai_assistant_cooldown_seconds: int = 0
+    ai_assistant_max_calls_per_user_per_day: int = 100
+    ai_assistant_max_calls_per_group_per_day: int = 300
+
+    model_config = SettingsConfigDict(env_file=_ENV_FILE, extra="ignore", populate_by_name=True)
+
+    @field_validator("llm_model")
+    @classmethod
+    def _llm_model_default_when_blank(cls, value: str) -> str:
+        return value.strip() or "claude-haiku-5-5"
 
 
 settings = Settings()

@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 from .models import (
     AllowanceEntry,
     AllowancePlan,
+    AllowanceRequest,
     BillingSettings,
     Expense,
     SettlementPayment,
@@ -156,3 +157,29 @@ def save_all(db: Session, objs: list) -> None:
 
 def get_settings(db: Session, group_id: str) -> BillingSettings | None:
     return db.scalar(select(BillingSettings).where(BillingSettings.group_id == group_id))
+
+
+MAX_PENDING_REQUESTS = 5  # 자녀 한 명이 동시에 올려 둘 수 있는 대기 요청
+
+
+def list_requests(db: Session, group_id: str, child_id: str) -> list[AllowanceRequest]:
+    """최신순."""
+    return list(
+        db.scalars(
+            select(AllowanceRequest)
+            .where(AllowanceRequest.group_id == group_id, AllowanceRequest.child_id == child_id)
+            .order_by(AllowanceRequest.created_at.desc(), AllowanceRequest.id.desc())
+        )
+    )
+
+
+def get_request(
+    db: Session, group_id: str, child_id: str, request_id: str
+) -> AllowanceRequest | None:
+    return db.scalar(
+        select(AllowanceRequest).where(
+            AllowanceRequest.id == request_id,
+            AllowanceRequest.group_id == group_id,
+            AllowanceRequest.child_id == child_id,
+        )
+    )

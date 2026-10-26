@@ -6,7 +6,7 @@ import pytest
 
 from app.features.billing import service
 from app.features.billing.allowance import MAX_CATCH_UP, due_dates, next_due
-from tests.helpers import signup
+from tests.helpers import join_family, signup
 
 
 def _ids(client, headers) -> dict[str, str]:
@@ -34,7 +34,7 @@ def home(client, family):
     """지민(그룹을 만든 사람)·수진(자녀)·엄마(부모). (지민 헤더, 수진 헤더, 엄마 헤더, id 들)"""
     a, b, group = family
     mom = signup(client, "엄마", role="parent")
-    client.post("/family-group/groups/join", json={"code": group["invite_code"]}, headers=mom)
+    join_family(client, a, group["invite_code"], mom)
     return a, b, mom, _ids(client, a)
 
 

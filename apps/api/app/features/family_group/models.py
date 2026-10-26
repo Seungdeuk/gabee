@@ -33,6 +33,8 @@ class User(Base):
     id: Mapped[str] = mapped_column(String(32), primary_key=True)
     name: Mapped[str] = mapped_column(String(40))
     role: Mapped[str] = mapped_column(String(16), default="child")  # parent | child | other
+    # role 이 other 일 때 가입 화면에서 직접 적은 관계(예: 이모). 그룹별 관계(4-C)와는 별개인 가입 시 입력값.
+    role_detail: Mapped[str | None] = mapped_column(String(40), nullable=True)
     token: Mapped[str] = mapped_column(String(64), unique=True, index=True)
     active_group_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
@@ -47,6 +49,13 @@ class User(Base):
 
     # 위치 공유 동의(돌봄). 동의한 시각, 없으면 미동의. 바꾸는 방법은 app/shared/location_consent.py.
     location_consent_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+    # 프로필 사진(PR B). 파일은 DATA_DIR 아래 profile_photos/<user_id>.jpg 로 서버가 정한 이름으로만 저장하고, 여기에는 그 상대 경로와
+    # 바꾼 시각(캐시 무효화용)만 둔다. 사진이 없으면 둘 다 null.
+    profile_photo_path: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    profile_photo_updated_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
 
@@ -160,6 +169,10 @@ class PasswordReset(Base):
     token_hash: Mapped[str] = mapped_column(String(128), unique=True, index=True)
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    code_hash: Mapped[str | None] = mapped_column(
+        String(128), nullable=True
+    )  # 6자리 코드(행 id 를 섞은 SHA-256)
+    failed_attempts: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
 
 
 class EmailVerification(Base):
@@ -173,6 +186,10 @@ class EmailVerification(Base):
     token_hash: Mapped[str] = mapped_column(String(128), unique=True, index=True)
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    code_hash: Mapped[str | None] = mapped_column(
+        String(128), nullable=True
+    )  # 6자리 코드(행 id 를 섞은 SHA-256)
+    failed_attempts: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
 
 
 class MemberNickname(Base):
