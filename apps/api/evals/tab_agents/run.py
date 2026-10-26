@@ -69,6 +69,7 @@ def main() -> int:
                         )
                         answer, can_answer, calls = r.answer, r.source == "ai", r.tool_calls
                         used = [c["name"] for c in calls if c["name"].startswith("ask_")]
+                        n_proposals = len(r.proposals)
                         want = case.get("main_tools")  # 없으면 도구 선택은 채점하지 않는다
                         tool_ok = want is None or set(used) == set(want)
                     else:
@@ -77,7 +78,11 @@ def main() -> int:
                         )
                         answer, can_answer = reply.answer, reply.can_answer
                         used = [c["name"] for c in reply.tool_calls]
-                        tool_ok = (case["tool"] in used) if case["tool"] else not used
+                        n_proposals = len(reply.proposals)
+                        if case.get("tool_any"):
+                            tool_ok = any(t in used for t in case["tool_any"])
+                        else:
+                            tool_ok = (case["tool"] in used) if case["tool"] else not used
                 text_ok = (
                     all(_contains(answer, t) for t in case["expect_contains"])
                     and (
@@ -89,7 +94,10 @@ def main() -> int:
                         answer.strip().endswith(t) for t in case.get("expect_not_endswith", [])
                     )
                 )
-                ok = can_answer and tool_ok and text_ok
+                proposals_ok = n_proposals == case.get(
+                    "expect_proposals", 0
+                )  # 쓰기는 요청했을 때만
+                ok = can_answer and tool_ok and text_ok and proposals_ok
                 passed, total = passed + ok, total + 1
                 per_case.setdefault(case["id"], []).append(ok)
                 print(f"[{'PASS' if ok else 'FAIL'}] {case['id']} tools={used}")

@@ -8,6 +8,7 @@ from app.features.family_group.models import User
 from app.shared.config import settings
 from app.shared.errors import ApiError, bad_request
 from app.shared.llm import client as llm
+from app.shared.llm.agent_chat import to_out as to_proposal_out
 
 from . import repository as repo
 from .knowledge import rag_chat
@@ -63,7 +64,9 @@ def chat(
             )
             for s in r.sources
         ]
-        return ChatOut(reply=r.answer, source=r.source, sources=sources)
+        return ChatOut(
+            reply=r.answer, source=r.source, sources=sources, proposals=to_proposal_out(r.proposals)
+        )
     try:
         return ChatOut(reply=llm.complete(message, system=SYSTEM_PROMPT), source="ai")
     except llm.LLMUnavailable:

@@ -41,6 +41,9 @@ class AgentReply:
     answer: str
     can_answer: bool = True
     tool_calls: list[dict] = field(default_factory=list)
+    proposals: list = field(
+        default_factory=list
+    )  # proposals.Proposal: 사용자 확인을 기다리는 쓰기 제안
 
 
 def _post(body: dict) -> dict:
@@ -151,11 +154,14 @@ def ask_agent(
     post: Post | None = None,
     max_steps: int = 4,
     history: list[dict] | None = None,
+    proposals: list | None = None,
 ) -> AgentReply:
     """run_agent 를 부르되 실패하면 예외 대신 can_answer=False 인 답을 돌려준다(부른 에이전트가 이어서 말하도록)."""
     try:
-        return run_agent(
+        reply = run_agent(
             system, build_messages(question, history), tools, post=post, max_steps=max_steps
         )
+        reply.proposals = list(proposals or [])
+        return reply
     except LLMUnavailable as e:
         return AgentReply(f"담당 에이전트가 답하지 못했어요: {e}", can_answer=False)

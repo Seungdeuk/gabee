@@ -27,12 +27,16 @@ def test_case_ids_are_unique_and_tools_exist(client, family):
     with SessionLocal() as db:
         me = db.scalars(select(User).where(User.name == "지민")).first()
         for agent_name, module in AGENTS.items():
-            names = {t.name for t in module.build_tools(db, me.active_group_id, me)}
+            names = {t.name for t in module.build_tools(db, me.active_group_id, me, [])}
             for c in (c for c in CASES if c["agent"] == agent_name and c["tool"]):
                 assert c["tool"] in names, c["id"]
 
 
-@pytest.mark.parametrize("case", [c for c in CASES if c["tool"]], ids=lambda c: c["id"])
+@pytest.mark.parametrize(
+    "case",
+    [c for c in CASES if c["tool"] and not c["tool"].startswith("propose_")],
+    ids=lambda c: c["id"],
+)
 def test_expected_values_appear_in_tool_output(client, family, case):
     a, b, _ = family
     seed(client, a, b)

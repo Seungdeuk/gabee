@@ -4,7 +4,12 @@ from sqlalchemy.orm import Session
 from app.shared.auth import current_group_id, current_user
 from app.shared.db import get_db
 from app.shared.llm import agent_chat as agent_chat_service
-from app.shared.llm.schemas import AgentChatIn, AgentChatOut
+from app.shared.llm.schemas import (
+    AgentChatIn,
+    AgentChatOut,
+    AgentConfirmIn,
+    AgentConfirmOut,
+)
 
 from . import agent, service
 from .schemas import (
@@ -223,5 +228,16 @@ def agent_chat(
     group_id: str = Depends(current_group_id),
     db: Session = Depends(get_db),
 ) -> AgentChatOut:
-    """돌봄 에이전트와 직접 대화한다(메인 에이전트를 거치지 않는다). 읽기 전용이라 데이터를 바꾸지 않는다."""
+    """돌봄 에이전트와 직접 대화한다(메인 에이전트를 거치지 않는다). 조회는 바로 답하고, 쓰기는 응답의 proposals 로 제안만 한다(agent/confirm 으로 확인해야 실행)."""
     return agent_chat_service.chat(db, group_id, user, body, agent.ask)
+
+
+@router.post("/agent/confirm", response_model=AgentConfirmOut)
+def agent_confirm(
+    body: AgentConfirmIn,
+    user=Depends(current_user),
+    group_id: str = Depends(current_group_id),
+    db: Session = Depends(get_db),
+) -> AgentConfirmOut:
+    """에이전트가 제안한 돌봄 쓰기를 사용자가 확인했을 때 실행한다. 토큰은 제안받은 본인·가족·탭에서 10분 안에 한 번만 쓸 수 있다."""
+    return agent_chat_service.confirm(db, group_id, user, body, "care", agent.execute)

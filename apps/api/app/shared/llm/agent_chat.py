@@ -11,8 +11,9 @@ from app.shared.config import settings
 from app.shared.errors import ApiError
 from app.shared.rate_limit import FailureLimiter
 
+from . import proposals
 from .agent import AgentReply
-from .schemas import AgentChatIn, AgentChatOut
+from .schemas import AgentChatIn, AgentChatOut, AgentConfirmIn, AgentConfirmOut, ProposalOut
 
 DAILY_LIMIT = 100  # 사용자 한 명이 하루에 탭 에이전트와 직접 나눌 수 있는 대화 수
 DAY = 86400
@@ -39,4 +40,26 @@ def chat(db: Session, group_id: str, user: User, body: AgentChatIn, ask: AskFn) 
         reply=reply.answer,
         source="ai" if reply.can_answer else "fallback",
         tool_calls=[c["name"] for c in reply.tool_calls],
+        proposals=to_out(reply.proposals),
     )
+
+
+def to_out(items: list) -> list[ProposalOut]:
+    return [ProposalOut(token=p.token, summary=p.summary, tab=p.tab) for p in items]
+
+
+ExecuteFn = Callable[[Session, str, User, str, dict], None]
+
+
+def confirm(
+    db: Session, group_id: str, user: User, body: AgentConfirmIn, tab: str, execute: ExecuteFn
+) -> AgentConfirmOut:
+    """사용자가 확인한 제안을 실행한다. 토큰이 이 사용자·이 가족·이 탭의 것인지, 만료·재사용이 아닌지 먼저 본다.
+    인자는 실행 직전에 해당 탭의 스키마로 다시 검증한다."""
+    claims = proposals.consume(body.token, tab, user.id, group_id)
+    try:
+        execute(db, group_id, user, claims["act"], claims["args"])
+    except Exception:
+        proposals.release(claims["jti"])
+        raise
+    return AgentConfirmOut(ok=True, summary=claims["summary"])

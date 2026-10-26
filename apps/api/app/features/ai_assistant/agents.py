@@ -23,7 +23,9 @@ PROMPT_NOTE = (
     "지출·정산·구독·용돈 질문은 ask_billing, 돌봄 항목·식단·위치 질문은 ask_care 로 담당 에이전트에게 물어보세요. "
     "당신은 가계·돌봄 데이터를 직접 볼 수 없으니 추측하지 말고, 질문 내용을 한국어 문장으로 그대로 넘기세요(기간이나 "
     "사람 이름이 있으면 포함). 돌려받은 답의 숫자와 사실은 바꾸지 말고 전하세요. 두 탭에 걸친 질문이면 둘 다 물어보세요. "
-    "can_answer 가 false 면 답을 지어내지 말고 지금은 확인하지 못했다고 알려 주세요."
+    "can_answer 가 false 면 답을 지어내지 말고 지금은 확인하지 못했다고 알려 주세요. "
+    "등록·기록 요청도 같은 담당 에이전트에게 넘기세요. pending_confirmation 이 있으면 아직 실행된 것이 아니라 "
+    "사용자가 화면의 확인 버튼을 눌러야 반영된다고 알려 주세요."
 )
 
 
@@ -53,10 +55,13 @@ def is_agent_tool(name: str) -> bool:
 
 def call(
     db: Session, group_id: str, user: User, name: str, args: dict, post: Post | None
-) -> tuple[dict, list[dict]]:
-    """탭 에이전트에게 묻고 (메인에게 줄 결과, 탭 에이전트가 부른 도구 기록) 을 돌려준다."""
+) -> tuple[dict, list[dict], list]:
+    """탭 에이전트에게 묻고 (메인에게 줄 결과, 탭 에이전트가 부른 도구 기록, 쓰기 제안) 을 돌려준다."""
     question = str(args.get("question", "")).strip()
     if not question:
         raise ValueError("question 이 비어 있어요")
     reply = AGENTS[name][1](db, group_id, user, question, post)
-    return {"answer": reply.answer, "can_answer": reply.can_answer}, reply.tool_calls
+    result = {"answer": reply.answer, "can_answer": reply.can_answer}
+    if reply.proposals:  # 사용자 화면에 확인 버튼이 뜬다. 메인은 등록됐다고 말하면 안 된다
+        result["pending_confirmation"] = [p.summary for p in reply.proposals]
+    return result, reply.tool_calls, reply.proposals

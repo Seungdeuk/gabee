@@ -70,6 +70,7 @@ class AskResult:
     source: str  # ai | fallback
     sources: list[dict] = field(default_factory=list)
     tool_calls: list[dict] = field(default_factory=list)
+    proposals: list = field(default_factory=list)  # 사용자 확인을 기다리는 쓰기 제안
 
 
 def _post(body: dict) -> dict:
@@ -196,9 +197,10 @@ def ask(
                 result.tool_calls.append(record)
                 try:
                     if user is not None and agents.is_agent_tool(call["name"]):
-                        data, record["agent_tool_calls"] = agents.call(
+                        data, record["agent_tool_calls"], made = agents.call(
                             db, group_id, user, call["name"], args, post
                         )
+                        result.proposals.extend(made)
                     else:
                         data = _run_tool(db, group_id, call["name"], args)
                     err = False
