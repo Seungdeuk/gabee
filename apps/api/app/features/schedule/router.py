@@ -6,8 +6,8 @@ from app.shared.db import get_db
 
 from . import service
 from .agent.router import router as agent_router
-from .models import Event
-from .schemas import CheckBody, EventCreate, EventOut, EventUpdate
+from .models import Event, EventTopic
+from .schemas import CheckBody, EventCreate, EventOut, EventUpdate, TopicCreate, TopicOut
 
 router = APIRouter(prefix="/schedule", tags=["schedule"])
 router.include_router(agent_router)
@@ -74,3 +74,33 @@ def set_event_checked(
     db: Session = Depends(get_db),
 ) -> Event:
     return service.set_checked(db, group_id, user.id, event_id, body.checked)
+
+
+@router.get("/topics", response_model=list[TopicOut])
+def list_topics(
+    user=Depends(current_user),
+    group_id: str = Depends(current_group_id),
+    db: Session = Depends(get_db),
+) -> list[EventTopic]:
+    return service.list_topics(db, group_id, user.id)
+
+
+@router.post("/topics", response_model=TopicOut, status_code=201)
+def create_topic(
+    body: TopicCreate,
+    user=Depends(current_user),
+    group_id: str = Depends(current_group_id),
+    db: Session = Depends(get_db),
+) -> EventTopic:
+    return service.create_topic(db, group_id, user.id, body)
+
+
+@router.delete("/topics/{topic_id}", status_code=204)
+def delete_topic(
+    topic_id: str,
+    user=Depends(current_user),
+    group_id: str = Depends(current_group_id),
+    db: Session = Depends(get_db),
+) -> Response:
+    service.remove_topic(db, group_id, user.id, topic_id)
+    return Response(status_code=204)

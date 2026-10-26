@@ -1,11 +1,11 @@
 from datetime import UTC, datetime
 
-from sqlalchemy import or_, select
+from sqlalchemy import or_, select, update
 from sqlalchemy.orm import Session
 
 from app.features.family_group.models import GroupMember
 
-from .models import Event
+from .models import Event, EventTopic
 
 
 def _visible(user_id: str | None) -> list:
@@ -52,4 +52,48 @@ def member_ids(db: Session, group_id: str, user_ids: list[str]) -> set[str]:
 
 def soft_delete(db: Session, event: Event) -> None:
     event.deleted_at = datetime.now(UTC)
+    db.commit()
+
+
+def topics_of(db: Session, group_id: str, user_id: str) -> list[EventTopic]:
+    return list(
+        db.scalars(
+            select(EventTopic)
+            .where(
+                EventTopic.group_id == group_id,
+                EventTopic.user_id == user_id,
+                EventTopic.deleted_at.is_(None),
+            )
+            .order_by(EventTopic.created_at, EventTopic.id)
+        )
+    )
+
+
+def has_any_topic(db: Session, group_id: str, user_id: str) -> bool:
+    """지운 주제까지 포함해 한 번이라도 만든 적이 있는가(기본 주제를 다시 만들지 않기 위해)."""
+    return (
+        db.scalar(
+            select(EventTopic.id)
+            .where(EventTopic.group_id == group_id, EventTopic.user_id == user_id)
+            .limit(1)
+        )
+        is not None
+    )
+
+
+def get_topic(db: Session, group_id: str, user_id: str, topic_id: str) -> EventTopic | None:
+    return db.scalar(
+        select(EventTopic).where(
+            EventTopic.id == topic_id,
+            EventTopic.group_id == group_id,
+            EventTopic.user_id == user_id,
+            EventTopic.deleted_at.is_(None),
+        )
+    )
+
+
+def delete_topic(db: Session, topic: EventTopic) -> None:
+    """주제를 소프트 삭제하고, 그 주제를 붙인 일정의 topic_id 는 비운다."""
+    topic.deleted_at = datetime.now(UTC)
+    db.execute(update(Event).where(Event.topic_id == topic.id).values(topic_id=None))
     db.commit()

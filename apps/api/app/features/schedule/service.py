@@ -6,8 +6,9 @@ from sqlalchemy.orm import Session
 from app.shared.errors import ApiError, bad_request, not_found
 
 from . import repository as repo
-from .models import Event
-from .schemas import EventCreate, EventUpdate
+from .constants import DEFAULT_TOPIC_COLOR, DEFAULT_TOPIC_NAME
+from .models import Event, EventTopic
+from .schemas import EventCreate, EventUpdate, TopicCreate
 from .timeutil import local_tz
 
 
@@ -40,6 +41,7 @@ def create(db: Session, group_id: str, user_id: str, body: EventCreate) -> Event
     starts_at, start_date, start_time, end_time = _when(body)
     memo = body.memo if body.memo is not None else body.note
     targets = _share_targets(db, group_id, user_id, body.share_with)
+    _check_topic(db, group_id, user_id, body.topic_id)
     fields = dict(
         group_id=group_id,
         created_by=user_id,
@@ -56,7 +58,8 @@ def create(db: Session, group_id: str, user_id: str, body: EventCreate) -> Event
         start_time=start_time,
         end_time=end_time,
     )
-    original = Event(id=_new_id(), user_id=user_id, **fields)
+    # 주제는 사람마다 따로라 복사본에는 붙이지 않는다(받는 사람이 직접 붙인다)
+    original = Event(id=_new_id(), user_id=user_id, topic_id=body.topic_id, **fields)
     copies = [Event(id=_new_id(), user_id=t, origin_id=original.id, **fields) for t in targets]
     repo.add_all(db, [original, *copies])
     return original
@@ -103,6 +106,9 @@ def update(db: Session, group_id: str, user_id: str, event_id: str, body: EventU
         event.note = body.memo
     if body.who_ids is not None:
         event.who_ids = list(dict.fromkeys(body.who_ids))
+    if "topic_id" in sent:
+        _check_topic(db, group_id, user_id, body.topic_id)
+        event.topic_id = body.topic_id
 
     if sent & {"start_date", "start_time", "end_time"}:
         _apply_when(event, body, sent)
@@ -166,3 +172,41 @@ def set_checked(db: Session, group_id: str, user_id: str, event_id: str, checked
     event.checked = checked
     db.commit()
     return event
+
+
+def _check_topic(db: Session, group_id: str, user_id: str, topic_id: str | None) -> None:
+    """붙이려는 주제가 내 주제인지 확인한다(없는 주제·남의 주제·지운 주제는 400)."""
+    if topic_id is not None and repo.get_topic(db, group_id, user_id, topic_id) is None:
+        raise bad_request("invalid_topic", "내 주제가 아니에요")
+
+
+def list_topics(db: Session, group_id: str, user_id: str) -> list[EventTopic]:
+    """내 주제 목록. 한 번도 주제를 만든 적이 없으면 기본 주제(경조사)를 먼저 만든다."""
+    if not repo.has_any_topic(db, group_id, user_id):
+        db.add(
+            EventTopic(
+                group_id=group_id,
+                user_id=user_id,
+                name=DEFAULT_TOPIC_NAME,
+                color=DEFAULT_TOPIC_COLOR,
+            )
+        )
+        db.commit()
+    return repo.topics_of(db, group_id, user_id)
+
+
+def create_topic(db: Session, group_id: str, user_id: str, body: TopicCreate) -> EventTopic:
+    if any(t.name == body.name for t in repo.topics_of(db, group_id, user_id)):
+        raise ApiError(409, "topic_exists", "같은 이름의 주제가 있어요")
+    topic = EventTopic(group_id=group_id, user_id=user_id, name=body.name, color=body.color)
+    db.add(topic)
+    db.commit()
+    return topic
+
+
+def remove_topic(db: Session, group_id: str, user_id: str, topic_id: str) -> None:
+    """내 주제를 지운다. 그 주제를 붙였던 일정은 지우지 않고 주제만 뗀다."""
+    topic = repo.get_topic(db, group_id, user_id, topic_id)
+    if topic is None:
+        raise not_found("주제")
+    repo.delete_topic(db, topic)

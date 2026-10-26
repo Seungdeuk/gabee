@@ -28,6 +28,10 @@
 - `PUT /schedule/events/{id}/checked`: 요청 `{checked: true|false}`. 내 줄의 확인(약속)·완료(할 일) 표시를 정한다. 같은 값을 다시 보내도 그대로이고, 내 줄이 아니거나 지워진 일정은 404. 체크는 각자 자기 줄에서 하고(공유받은 복사본은 따로), 일정을 고친 것이 아니라서 `edited_at` 은 바뀌지 않는다.
 - `DELETE /schedule/events/{id}`: 그 줄의 주인만 지운다(삭제 시각 `deleted_at` 만 채움). 주인이 아니면 403 `not_owner`, 내 줄이 아니면 404.
 - `PATCH /schedule/events/{id}`: 그 줄의 주인만 고친다(아니면 403 `not_owner`, 내 줄이 아니거나 지워진 것은 404). 바꿀 값만 보낸다: `title`, `start_date`, `start_time`, `end_time`, `kind`, `place`, `memo`, `who_ids`. 보내지 않은 값은 그대로이고, 시간(`start_time`·`end_time`)은 `null` 로 보내면 지운다(시간 없음, 시작이 없어지면 끝도 없어진다). 끝나는 시간이 시작보다 늦지 않으면 400 `invalid_time`, 보낸 값이 하나도 없으면 400 `nothing_to_update`. 고친 시각 `edited_at` 을 남기고 옛 컬럼(`starts_at`·`note`)도 맞춘다. 공유 대상은 고칠 수 없다. 원본을 고쳐도 복사본은 그대로이고, 복사본은 받은 사람이 자기 줄에서 고친다.
+- 주제는 사람마다 자기 것이다. 이름(`name`, 30자)과 색(`color`, 지금은 `rose`·`amber`)을 가진다. 기본 주제 "경조사"는 사람마다 처음 목록을 읽을 때 만들고, 지운 뒤에는 다시 만들지 않는다. 같은 사람의 지우지 않은 주제끼리는 이름이 겹칠 수 없다.
+  - `GET /schedule/topics`: 내 주제 목록(지운 것 제외). `POST /schedule/topics`: `{name, color}` 로 만든다. 이름이 겹치면 409 `topic_exists`.
+  - `DELETE /schedule/topics/{id}`: 내 주제만 지운다(`deleted_at` 만 채움). 그 주제를 붙였던 내 일정은 `topic_id` 를 비운다.
+  - 일정 `POST`·`PATCH` 는 `topic_id` 를 받고 일정 응답에도 `topic_id` 가 있다. `PATCH` 에서 `null` 이면 주제를 지운다. 없거나 지웠거나 남의 주제면 400 `invalid_topic`. 공유 복사본에는 주제를 붙이지 않는다.
 - 옛 컬럼(`starts_at`·`note`·`created_by`·`status`)은 당분간 새 컬럼과 함께 채운다. 제거는 별도 PR(담당자 승인 후).
 - 에이전트(`POST /schedule/agent`)도 호출한 사람의 일정만 읽는다.
 

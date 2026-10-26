@@ -343,3 +343,73 @@ def test_set_checked_rejects_unknown_or_others_rows(client, family):
         ).status_code
         == 404
     )
+
+
+def _topics(client, headers) -> list[dict]:
+    return client.get("/schedule/topics", headers=headers).json()
+
+
+def _add_topic(client, headers, name, color="rose"):
+    return client.post("/schedule/topics", json={"name": name, "color": color}, headers=headers)
+
+
+def test_topics_start_with_default_and_are_mine(client, family):
+    a, b, _ = family
+    assert [(t["name"], t["color"]) for t in _topics(client, a)] == [("경조사", "rose")]
+    r = _add_topic(client, a, " 병원 ", "amber")
+    assert r.status_code == 201 and r.json()["name"] == "병원"
+    assert [t["name"] for t in _topics(client, a)] == ["경조사", "병원"]
+    assert [t["name"] for t in _topics(client, b)] == ["경조사"]  # 사람마다 따로
+
+
+def test_topic_rejects_duplicate_blank_and_unknown_color(client, family):
+    a, _, _ = family
+    assert _add_topic(client, a, "병원").status_code == 201
+    dup = _add_topic(client, a, "병원", "amber")
+    assert dup.status_code == 409 and dup.json()["code"] == "topic_exists"
+    assert _add_topic(client, a, "  ").status_code == 422
+    assert _add_topic(client, a, "x", "blue").status_code == 422
+
+
+def test_event_takes_my_topic_and_patch_can_change_and_clear_it(client, family):
+    a, b, _ = family
+    topic = _topics(client, a)[0]
+    ev = _new(client, a, topic_id=topic["id"])
+    assert ev["topic_id"] == topic["id"]
+    other = _add_topic(client, a, "병원", "amber").json()
+    assert _patch(client, a, ev["id"], topic_id=other["id"]).json()["topic_id"] == other["id"]
+    assert _patch(client, a, ev["id"], title="새 제목").json()["topic_id"] == other["id"]
+    assert _patch(client, a, ev["id"], topic_id=None).json()["topic_id"] is None
+
+    b_topic = _topics(client, b)[0]
+    bad = client.post(
+        "/schedule/events",
+        json={"title": "x", "start_date": "2030-01-05", "topic_id": b_topic["id"]},
+        headers=a,
+    )
+    assert bad.status_code == 400 and bad.json()["code"] == "invalid_topic"
+    assert _patch(client, a, ev["id"], topic_id="nope").status_code == 400
+
+
+def test_share_copy_has_no_topic(client, family):
+    a, b, _ = family
+    topic = _topics(client, a)[0]
+    _new(client, a, topic_id=topic["id"], share_with=[_me(client, b)])
+    [mine] = client.get("/schedule/events", headers=a).json()
+    [copy] = client.get("/schedule/events", headers=b).json()
+    assert mine["topic_id"] == topic["id"]
+    assert copy["topic_id"] is None
+
+
+def test_deleting_topic_keeps_events_and_does_not_recreate_default(client, family):
+    a, b, _ = family
+    topic = _topics(client, a)[0]
+    ev = _new(client, a, topic_id=topic["id"])
+    assert client.delete(f"/schedule/topics/{topic['id']}", headers=a).status_code == 204
+    assert _topics(client, a) == []  # 지운 기본 주제는 다시 생기지 않는다
+    [got] = client.get("/schedule/events", headers=a).json()
+    assert got["id"] == ev["id"] and got["topic_id"] is None
+    assert _patch(client, a, ev["id"], topic_id=topic["id"]).status_code == 400
+    assert client.delete(f"/schedule/topics/{topic['id']}", headers=a).status_code == 404
+    b_topic = _topics(client, b)[0]
+    assert client.delete(f"/schedule/topics/{b_topic['id']}", headers=a).status_code == 404

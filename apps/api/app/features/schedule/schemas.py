@@ -1,7 +1,7 @@
 from datetime import date, datetime, time
 from typing import Literal
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 
 class EventCreate(BaseModel):
@@ -22,6 +22,7 @@ class EventCreate(BaseModel):
     place: str = Field(default="", max_length=200)
     who_ids: list[str] = Field(default_factory=list, max_length=20)  # 관련된 사람
     share_with: list[str] = Field(default_factory=list, max_length=20)
+    topic_id: str | None = None  # 내 주제. 공유 복사본에는 붙지 않는다(받는 사람이 직접 붙인다)
 
     @model_validator(mode="after")
     def _needs_when(self) -> "EventCreate":
@@ -42,6 +43,7 @@ class EventUpdate(BaseModel):
     place: str | None = Field(default=None, max_length=200)
     memo: str | None = None
     who_ids: list[str] | None = Field(default=None, max_length=20)
+    topic_id: str | None = None  # null 로 보내면 주제를 뗀다
 
 
 class EventOut(BaseModel):
@@ -62,6 +64,7 @@ class EventOut(BaseModel):
     memo: str
     checked: bool
     origin_id: str | None
+    topic_id: str | None
     edited_at: datetime | None
 
 
@@ -69,3 +72,23 @@ class CheckBody(BaseModel):
     """확인(약속)·완료(할 일) 표시. 같은 값을 다시 보내도 그대로다."""
 
     checked: bool
+
+
+class TopicCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=30)
+    color: Literal["rose", "amber"]  # constants.TOPIC_COLORS
+
+    @field_validator("name")
+    @classmethod
+    def _strip(cls, v: str) -> str:
+        v = v.strip()
+        if not v:
+            raise ValueError("주제 이름이 비었어요")
+        return v
+
+
+class TopicOut(BaseModel):
+    id: str
+    name: str
+    color: str
+    created_at: datetime

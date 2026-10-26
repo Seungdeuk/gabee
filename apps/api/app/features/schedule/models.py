@@ -63,6 +63,9 @@ class Event(Base):
     origin_id: Mapped[str | None] = mapped_column(
         ForeignKey("events.id"), nullable=True, index=True
     )
+    topic_id: Mapped[str | None] = mapped_column(
+        ForeignKey("events_topics.id"), nullable=True, index=True
+    )
     suggestion_id: Mapped[str | None] = mapped_column(
         ForeignKey("events_suggestions.id"), nullable=True
     )
@@ -73,6 +76,22 @@ class Event(Base):
         ForeignKey("events_request_recipients.id"), nullable=True
     )
     edited_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class EventTopic(Base):
+    """주제(경조사·병원 같은 일정 분류). 사람마다 자기 주제를 만들고 색을 고른다.
+    지우면 `deleted_at` 만 채우고, 그 주제를 붙였던 일정은 `topic_id` 를 비운다."""
+
+    __tablename__ = "events_topics"
+    __table_args__ = (Index("ix_events_topics_group_user", "group_id", "user_id"),)
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uid)
+    group_id: Mapped[str] = mapped_column(ForeignKey("groups.id"))
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id"))
+    name: Mapped[str] = mapped_column(String(30))
+    color: Mapped[str] = mapped_column(String(16))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
