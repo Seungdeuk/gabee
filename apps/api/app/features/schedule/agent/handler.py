@@ -11,9 +11,10 @@ from sqlalchemy.orm import Session
 from app.features.schedule.models import Event
 from app.shared.auth import ensure_group_member
 
-from . import chat, reader
+from . import chat, reader, register
+from . import members as members_mod
 from . import period as period_mod
-from .schemas import AgentRequest, AgentResponse, Card
+from .schemas import AgentRequest, AgentResponse, Card, ConfirmRequest
 
 NOT_READY = "이 요청은 아직 처리할 수 없어요"
 
@@ -24,25 +25,33 @@ def _brief(event: Event) -> dict:
         "id": event.id,
         "title": event.title,
         "date": f"{local:%Y-%m-%d}",
-        "time": f"{local:%H:%M}",
+        "time": f"{local:%H:%M}" if reader.has_time(event) else "",
+        "end_time": f"{event.end_time:%H:%M}" if event.end_time else "",
         "note": event.note,
         "status": event.status,
     }
 
 
-def _ask(db, user_id, group_id, text, local_now, shown, omitted, scope, final) -> chat.ChatResult:
-    lines = [chat.event_line(e.id, reader.to_local(e.starts_at), e.title) for e in shown]
+def _ask(
+    db, user_id, group_id, request, local_now, shown, omitted, scope, final, members
+) -> chat.ChatResult:
+    lines = [
+        chat.event_line(e.id, reader.to_local(e.starts_at), e.title, reader.time_text(e))
+        for e in shown
+    ]
     return chat.converse(
         db,
         user_id,
         group_id,
-        text,
+        request.text,
         local_now,
         lines,
         omitted,
         scope,
         {e.id for e in shown},
         final,
+        members,
+        request.draft,
     )
 
 
@@ -63,7 +72,8 @@ def handle(db: Session, user_id: str, group_id: str, request: AgentRequest) -> A
     period = period_mod.extract(request.text, local_now.date())  # 문장의 기간(없으면 None)
     shown, omitted = reader.select_for_prompt(data.events, now, period)
     scope = f"문장에서 읽은 기간 {period.widened().label()}" if period else None
-    result = _ask(db, user_id, group_id, request.text, local_now, shown, omitted, scope, False)
+    members = members_mod.load(db, group_id)
+    result = _ask(db, user_id, group_id, request, local_now, shown, omitted, scope, False, members)
     if result.need_wider:
         # 목록이 부족하다고 모델이 표시하면, 모델이 돌려준 기간·키워드로 이미 읽어 둔 일정 안에서 다시 걸러 한 번 더 묻는다
         model_period = period_mod.from_model(
@@ -74,15 +84,20 @@ def handle(db: Session, user_id: str, group_id: str, request: AgentRequest) -> A
             db,
             user_id,
             group_id,
-            request.text,
+            request,
             local_now,
             shown,
             omitted,
             _wider_scope(model_period, result.keyword),
             True,
+            members,
         )
     if result.intent == "not_schedule":
         return AgentResponse(intent=result.intent)
+    if result.intent == "register":
+        return register.respond(
+            db, user_id, group_id, request.draft, result.register, result.reply, members
+        )
     if result.intent == "query":
         by_id = {e.id: e for e in shown}
         picked = [by_id[i] for i in result.event_ids if i in by_id]
@@ -94,3 +109,10 @@ def handle(db: Session, user_id: str, group_id: str, request: AgentRequest) -> A
         text = result.reply or "해당하는 일정을 찾지 못했어요"
         return AgentResponse(intent=result.intent, text=text, cards=cards)
     return AgentResponse(intent=result.intent, text=NOT_READY)
+
+
+def confirm(db: Session, user_id: str, group_id: str, body: ConfirmRequest) -> AgentResponse:
+    """확인 카드의 버튼. AI 를 부르지 않는다. 앱이 돌려준 내용은 믿지 않고 처음부터 다시 검증한다."""
+    ensure_group_member(db, user_id, group_id)
+    members = members_mod.load(db, group_id)
+    return register.confirm(db, user_id, group_id, body.action, body.share, members)

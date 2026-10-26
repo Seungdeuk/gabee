@@ -49,6 +49,13 @@ class FileStatusOut(FileOut):
     description: str | None = None
     message: str | None = None
     doubts: list[str] = []  # 글자 인식이 흐려서 사용자에게 맞는지 물어볼 줄(가려진 상태의 글)
+    needs_description: bool = False  # 글자가 안 읽힌 사진인데 사용자가 단 설명이 아직 없다
+
+
+class DescriptionIn(BaseModel):
+    model_config = ConfigDict(str_strip_whitespace=True)
+
+    text: str = Field(min_length=1, max_length=200)  # 앞뒤 공백을 뺀 길이로 센다
 
 
 class PhotoOut(BaseModel):

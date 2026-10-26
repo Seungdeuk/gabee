@@ -30,6 +30,20 @@ class EventCreate(BaseModel):
         return self
 
 
+class EventUpdate(BaseModel):
+    """바꿀 값만 보낸다. 보내지 않은 값은 그대로 둔다. 시간(start_time·end_time)은 null 로 보내면 지운다(시간 없음).
+    공유 대상은 고칠 수 없다(공유는 만들 때만, 복사본은 받은 사람의 일정이다)."""
+
+    title: str | None = Field(default=None, min_length=1, max_length=120)
+    start_date: date | None = None
+    start_time: time | None = None
+    end_time: time | None = None
+    kind: Literal[1, 2] | None = None
+    place: str | None = Field(default=None, max_length=200)
+    memo: str | None = None
+    who_ids: list[str] | None = Field(default=None, max_length=20)
+
+
 class EventOut(BaseModel):
     id: str
     title: str
@@ -48,3 +62,4 @@ class EventOut(BaseModel):
     memo: str
     checked: bool
     origin_id: str | None
+    edited_at: datetime | None

@@ -10,7 +10,6 @@ from PIL import Image
 
 from app.features.ai_assistant import files
 from app.features.ai_assistant.ingest.converters import OcrLine
-from app.features.ai_assistant.ingest.schemas import Caption
 from app.shared.config import settings
 from tests.helpers import allow_ai
 
@@ -23,21 +22,6 @@ class FakeOcr:
         return list(self.lines)
 
 
-class FakeCaptioner:
-    def __init__(
-        self,
-        caption=Caption(
-            description="푸른 바다와 모래사장이 보이는 풍경", keywords=["바다", "해변"]
-        ),
-    ):
-        self.caption = caption
-        self.calls = 0
-
-    def describe(self, image):
-        self.calls += 1
-        return self.caption
-
-
 def png(color=(120, 160, 200)) -> bytes:
     out = io.BytesIO()
     Image.new("RGB", (400, 300), color).save(out, "PNG")
@@ -47,17 +31,7 @@ def png(color=(120, 160, 200)) -> bytes:
 @pytest.fixture
 def pipeline():
     old = files.processors
-    files.processors = files.Processors(
-        ocr=FakeOcr(),
-        llm=lambda *a, **k: {
-            "doc_type": "학교 가정통신문",
-            "is_document": True,
-            "tags": ["학교"],
-            "confidence": 0.9,
-        },
-        captioner=FakeCaptioner(),
-        default_captioner=False,
-    )
+    files.processors = files.Processors(ocr=FakeOcr())
     yield files.processors
     files.processors = old
 
@@ -99,27 +73,104 @@ def test_receipt_photo_is_read_masked_saved_and_findable(client, family, pipelin
     assert raw.read_bytes() == data and item["source_path"] == f"{group['id']}/{sha[:2]}/{sha}.png"
 
 
-def test_photo_without_text_gets_a_description_and_is_found_by_it(client, family, pipeline):
+def _plain_photo(client, a, color=(10, 90, 200)):
+    return upload(client, a, png(color), "sea.png")
+
+
+def test_photo_without_text_asks_for_a_description(client, family, pipeline):
     a, _, _ = family
-    up = upload(client, a, png((10, 90, 200)), "sea.png")
+    up = _plain_photo(client, a)
     st = client.get(f"/ai-assistant/files/{up['id']}", headers=a).json()
     assert st["status"] == "analyzed" and st["kind_label"] == "사진"
-    assert "푸른 바다" in st["description"]
+    assert st["needs_description"] is True
+    item = client.get(f"/ai-assistant/knowledge/items/{up['id']}", headers=a).json()
+    assert item["needs_description"] is True and "- 설명:" not in item["body_md"]
+    listed = client.get("/ai-assistant/knowledge/items", headers=a).json()
+    assert [i["needs_description"] for i in listed if i["id"] == up["id"]] == [True]
+
+
+def test_saving_a_description_makes_the_photo_searchable(client, family, pipeline):
+    a, _, _ = family
+    up = _plain_photo(client, a)
+    url = f"/ai-assistant/files/{up['id']}/description"
+    r = client.post(url, json={"text": "  제주 바닷가에서 찍은 가족 사진  "}, headers=a)
+    assert r.status_code == 200, r.text
+    out = r.json()
+    assert out["needs_description"] is False and out["status"] == "analyzed"
+    assert out["description"] == "제주 바닷가에서 찍은 가족 사진"
+    assert out["title"] == "제주 바닷가에서 찍은 가족 사진"  # 기본 제목이었으므로 설명으로 바뀐다
+    item = client.get(f"/ai-assistant/knowledge/items/{up['id']}", headers=a).json()
+    assert "- 설명: 제주 바닷가에서 찍은 가족 사진" in item["body_md"]
+    assert item["needs_description"] is False
     hits = client.post(
-        "/ai-assistant/knowledge/search", json={"query": "바다 사진"}, headers=a
+        "/ai-assistant/knowledge/search", json={"query": "제주 바닷가 사진"}, headers=a
     ).json()["hits"]
-    assert hits[0]["item_id"] == up["id"]
+    assert hits and hits[0]["item_id"] == up["id"]
+
+    # 다시 달면 덮어쓰고, 줄은 하나만 남는다
+    r = client.post(url, json={"text": "설악산 단풍"}, headers=a)
+    assert r.status_code == 200
     body = client.get(f"/ai-assistant/knowledge/items/{up['id']}", headers=a).json()["body_md"]
-    assert "자동 설명" in body and "틀릴 수 있어요" in body  # 자동으로 만든 설명임을 남긴다
-    assert pipeline.captioner.calls == 1
+    assert body.count("- 설명:") == 1 and "설악산 단풍" in body and "제주" not in body
 
 
-def test_text_photos_do_not_call_the_caption_model(client, family, pipeline):
+def test_description_is_masked_before_saving(client, family, pipeline):
+    a, _, _ = family
+    up = _plain_photo(client, a, (3, 3, 3))
+    r = client.post(
+        f"/ai-assistant/files/{up['id']}/description",
+        json={"text": "주민번호 900101-1234567 적힌 서류"},
+        headers=a,
+    )
+    assert r.status_code == 200
+    body = client.get(f"/ai-assistant/knowledge/items/{up['id']}", headers=a).json()["body_md"]
+    assert "900101-1234567" not in body
+
+
+def test_description_is_refused_for_other_family_missing_and_non_photo(client, family, pipeline):
+    from tests.helpers import signup
+
+    a, _, _ = family
+    photo = _plain_photo(client, a)
+    pipeline.ocr = FakeOcr([("동대문마트", 0.95), ("합계 34,950원", 0.93)])
+    receipt = upload(client, a, png((8, 8, 80)), "r.png")
+    stranger = signup(client, "철수")
+    client.post("/family-group/groups", json={"name": "남의 가족"}, headers=stranger)
+    url = f"/ai-assistant/files/{photo['id']}/description"
+    assert client.post(url, json={"text": "내 사진"}, headers=stranger).status_code == 404
+    assert client.post(url, json={"text": "내 사진"}).status_code in (401, 403)
+    missing = client.post("/ai-assistant/files/nope/description", json={"text": "x"}, headers=a)
+    assert missing.status_code == 404 and missing.json()["code"] == "not_found"
+    r = client.post(
+        f"/ai-assistant/files/{receipt['id']}/description", json={"text": "영수증"}, headers=a
+    )
+    assert r.status_code == 409 and r.json()["code"] == "not_a_photo"
+    other = client.get(f"/ai-assistant/knowledge/items/{photo['id']}", headers=a).json()
+    assert "- 설명:" not in other["body_md"]  # 거절된 요청은 아무것도 바꾸지 않는다
+
+
+def test_description_length_is_validated(client, family, pipeline):
+    a, _, _ = family
+    up = _plain_photo(client, a)
+    url = f"/ai-assistant/files/{up['id']}/description"
+    assert client.post(url, json={"text": "가" * 201}, headers=a).status_code == 422
+    assert client.post(url, json={"text": ""}, headers=a).status_code == 422
+    assert client.post(url, json={"text": "   "}, headers=a).status_code == 422
+    assert client.post(url, json={"text": "가" * 200}, headers=a).status_code == 200
+
+
+def test_text_photos_do_not_need_a_description(client, family, pipeline, monkeypatch):
+    from app.features.ai_assistant.ingest import doc_classifier
+    from app.features.ai_assistant.ingest.doc_classifier import Prediction
+
+    # 분류기 파일(data/models/doc-classifier)은 저장소에 없다. CI 처럼 파일이 없으면 분류가 "확인 필요"가 되어
+    # 상태가 달라지므로, 진짜 분류기에 기대지 않게 확신하는 가짜를 끼운다(이 시험이 보는 것은 설명 필요 여부).
+    monkeypatch.setattr(doc_classifier, "predict", lambda text: Prediction("학교 가정통신문", 0.93))
     a, _, _ = family
     pipeline.ocr = FakeOcr([("가정통신문", 0.95), ("현장체험학습 안내", 0.9)])
     up = upload(client, a, png((9, 9, 9)))
-    assert client.get(f"/ai-assistant/files/{up['id']}", headers=a).json()["status"] == "analyzed"
-    assert pipeline.captioner.calls == 0
+    st = client.get(f"/ai-assistant/files/{up['id']}", headers=a).json()
+    assert st["status"] == "analyzed" and st["needs_description"] is False
 
 
 def test_sensitive_documents_reach_the_chat_model_only_masked_unless_excluded(

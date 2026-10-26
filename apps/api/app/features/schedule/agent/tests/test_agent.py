@@ -185,6 +185,7 @@ def test_other_intents_are_not_ready_yet(client, ids, fake):
         "text": handler.NOT_READY,
         "cards": [],
         "pending_action": None,
+        "draft": None,
     }
 
 
@@ -227,3 +228,37 @@ def test_handle_rejects_non_member(client, ids, fake):
                 db, "nobody", group_id, AgentRequest(text="일정 알려줘", channel="personal")
             )
     assert e.value.code == "not_member"
+
+
+def test_event_times_are_sent_as_set_or_not_set(client, ids, fake):
+    """날짜만 있는 일정은 00:00 이 아니라 '시간 미정', 시작만 있으면 '종료 시간 미정'으로 모델에 보낸다."""
+    from app.features.schedule.models import Event
+
+    user_id, group_id, headers = ids
+    _enable(user_id, group_id)
+    day = (datetime.now(UTC) + timedelta(days=1)).date().isoformat()
+
+    def make(title, **times):
+        body = {"title": title, "start_date": day, **times}
+        r = client.post("/schedule/events", json=body, headers=headers)
+        assert r.status_code == 201, r.text
+        return r.json()["id"]
+
+    both = make("회의", start_time="10:00:00", end_time="12:00:00")
+    start_only = make("치과", start_time="14:00:00")
+    none = make("장보기")
+    with SessionLocal() as db:
+        text = {i: reader.time_text(db.get(Event, i)) for i in (both, start_only, none)}
+    assert text[both] == "10:00~12:00"
+    assert text[start_only] == "14:00~(종료 시간 미정)"
+    assert text[none] == "시간 미정"
+
+    fake.data = {"intent": "query", "reply": "", "event_ids": [none, both]}
+    body = client.post(
+        "/schedule/agent", json={"text": "내일 일정 알려줘", "channel": "personal"}, headers=headers
+    ).json()
+    prompt = fake.calls[0]["prompt"]
+    assert "10:00~12:00" in prompt and "시간 미정" in prompt and "00:00" not in prompt
+    shown = {e["title"]: e for e in body["cards"][0]["data"]["events"]}
+    assert shown["장보기"]["time"] == "" and shown["장보기"]["end_time"] == ""
+    assert shown["회의"]["time"] == "10:00" and shown["회의"]["end_time"] == "12:00"

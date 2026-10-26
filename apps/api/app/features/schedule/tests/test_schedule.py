@@ -188,3 +188,113 @@ def test_include_past(client, family):
     client.post("/schedule/events", json={"title": "어제", "starts_at": _soon(-1)}, headers=a)
     assert _titles(client, a) == ["내일"]
     assert _titles(client, a, include_past=True) == ["어제", "내일"]
+
+
+def _new(client, headers, **fields):
+    body = {"title": "장보기", "start_date": "2030-01-05", **fields}
+    r = client.post("/schedule/events", json=body, headers=headers)
+    assert r.status_code == 201, r.text
+    return r.json()
+
+
+def _patch(client, headers, event_id, **fields):
+    return client.patch(f"/schedule/events/{event_id}", json=fields, headers=headers)
+
+
+def test_update_changes_values_and_keeps_old_columns_in_sync(client, family):
+    a, _, _ = family
+    e = _new(client, a, start_time="10:00:00", end_time="11:00:00", place="마트")
+    assert e["edited_at"] is None
+    r = _patch(
+        client,
+        a,
+        e["id"],
+        title="  시장 보기 ",
+        start_time="11:00:00",
+        end_time="12:30:00",
+        place="시장",
+        memo="우유",
+        kind=2,
+        who_ids=["u1", "u1"],
+    )
+    assert r.status_code == 200, r.text
+    out = r.json()
+    assert out["title"] == "시장 보기" and out["place"] == "시장" and out["kind"] == 2
+    assert out["memo"] == "우유" and out["note"] == "우유" and out["who_ids"] == ["u1"]
+    assert (out["start_time"], out["end_time"]) == ("11:00:00", "12:30:00")
+    assert out["starts_at"].startswith("2030-01-05T02:00:00")  # 한국 시간 11시 = UTC 2시
+    assert out["edited_at"] is not None
+
+
+def test_update_keeps_what_was_not_sent(client, family):
+    a, _, _ = family
+    e = _new(client, a, start_time="10:00:00", end_time="11:00:00", place="마트", memo="우유")
+    out = _patch(client, a, e["id"], start_date="2030-02-01").json()
+    assert out["start_date"] == "2030-02-01"
+    assert (out["start_time"], out["end_time"]) == ("10:00:00", "11:00:00")
+    assert out["place"] == "마트" and out["memo"] == "우유" and out["title"] == "장보기"
+    assert out["starts_at"].startswith("2030-02-01T01:00:00")
+
+
+def test_update_can_clear_the_time(client, family):
+    a, _, _ = family
+    e = _new(client, a, start_time="10:00:00", end_time="11:00:00")
+    out = _patch(client, a, e["id"], start_time=None).json()
+    assert out["start_time"] is None and out["end_time"] is None  # 시간 없음
+    assert out["starts_at"].startswith("2030-01-04T15:00:00")  # 그날 0시(한국 시간)
+
+
+def test_update_rejects_bad_input(client, family):
+    a, _, _ = family
+    e = _new(client, a, start_time="10:00:00", end_time="11:00:00")
+    r = _patch(client, a, e["id"], end_time="09:00:00")
+    assert r.status_code == 400 and r.json()["code"] == "invalid_time"
+    r = _patch(client, a, e["id"])
+    assert r.status_code == 400 and r.json()["code"] == "nothing_to_update"
+    assert _patch(client, a, e["id"], title="").status_code == 422
+    assert _patch(client, a, e["id"], kind=7).status_code == 422
+    assert client.get("/schedule/events", headers=a).json()[0]["end_time"] == "11:00:00"
+
+
+def test_update_does_not_spread_between_original_and_copy(client, family):
+    a, b, _ = family
+    original = _new(client, a, share_with=[_me(client, b)])
+    copy = client.get("/schedule/events", headers=b).json()[0]
+    _patch(client, a, original["id"], title="원본 수정")
+    assert _titles(client, b) == ["장보기"]  # 원본을 고쳐도 복사본은 그대로
+    assert (
+        _patch(client, b, copy["id"], title="내 것").status_code == 200
+    )  # 복사본은 받은 사람이 고친다
+    assert _titles(client, a) == ["원본 수정"]
+
+
+def test_update_only_by_the_owner_of_the_row(client, family):
+    a, b, group = family
+    e = _new(client, a)
+    assert (
+        _patch(client, b, e["id"], title="남의 것").status_code == 404
+    )  # 내 줄이 아니면 보이지 않는다
+    with SessionLocal() as db:
+        db.add(
+            Event(
+                id="old2",
+                group_id=group["id"],
+                title="옛 일정",
+                starts_at=datetime.now(UTC) + timedelta(days=1),
+                created_by=_me(client, a),
+            )
+        )
+        db.commit()
+    r = _patch(client, b, "old2", title="가로채기")
+    assert (
+        r.status_code == 403 and r.json()["code"] == "not_owner"
+    )  # 주인이 없던 옛 일정은 만든 사람만
+    assert _patch(client, a, "old2", title="고침").status_code == 200
+    assert _patch(client, a, "old2", start_time="09:00:00", end_time="10:00:00").status_code == 200
+
+
+def test_update_of_deleted_event_is_not_found(client, family):
+    a, _, _ = family
+    e = _new(client, a)
+    client.delete(f"/schedule/events/{e['id']}", headers=a)
+    assert _patch(client, a, e["id"], title="되살리기").status_code == 404
