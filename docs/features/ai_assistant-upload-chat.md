@@ -29,6 +29,7 @@
 - 앱: `+` 올리기 시트(앨범·카메라·파일), 읽는 중 애니메이션과 걸린 시간, 흐린 줄 확인 카드, 사이드바(대화 목록·기록 탭), 기록 상세(읽어 낸 글 보기·고치기·확인 완료·지우기), 원본 보기(사진, PDF 는 서버가 쪽별 그림으로 제공)
 - 개인정보 가리기 확대(일반 문서도 카드·전화·이메일·계좌·라벨 있는 이름·주소), 민감 기록은 가린 상태로 채팅 근거에 사용(`CHAT_INCLUDE_SENSITIVE`)
 - 스캔 PDF 는 글자 없는 쪽만 OCR, 같은 파일은 출처 하나로 합침
+- 글자 없는 사진은 사용자가 한 줄 설명을 직접 단다(채팅 카드, 기록 상세에서 나중에도 가능). 문서 종류는 로컬 분류기(앱 임베딩 + 글자 TF-IDF)가 정하고 애매하면 Jev 또는 "확인 필요". qwen·Ollama 는 쓰지 않는다
 - 테스트: 서버 462개 통과(병합 후), 앱 린트·Android 번들 빌드 통과
 
 ## 남은 것
@@ -46,6 +47,7 @@
 - 변경 규모: main 대비 28커밋, 61파일, +7,178 / -150줄 → 팀 권장(400줄 이하)을 크게 넘는다. 리뷰어와 나눠 올릴지 정한다.
 - DB: 이 브랜치에 **새 마이그레이션은 없다.** `c3a9f21d7e54`(knowledge 테이블)는 이미 main 에 있다. Alembic head 는 1개.
 - API 형식이 바뀐 곳(앱도 같이 바꿈): `GET /ai-assistant/knowledge/items` 응답에 `needs_review` 추가, `GET /ai-assistant/files/{id}` 응답에 `doubts` 추가. 기존 필드는 그대로라 하위 호환이다.
+- 2026-10-26 추가(브랜치 `feature/kang-user-description-classifier`): `POST /ai-assistant/files/{id}/description`(사진 설명 저장, 사진이 아니면 409, 다른 가족·없음은 404, 1~200자 밖은 422)과 파일 상태·기록 목록·상세 응답의 `needs_description`. 추가만 있어서 하위 호환이다. qwen 자동 설명과 로컬 언어 모델 분류는 없앴다.
 
 ## 팀원이 받아 가야 할 것 (깃에 없는 것)
 
@@ -55,7 +57,7 @@
 | --- | --- | --- |
 | **임베딩 모델 파일 2개** | 없으면 기본 임베더(해시)로 돌아가서 검색 품질이 크게 떨어지고, PostgreSQL 에서는 503 `embedding_model_missing` | 아래 "임베딩 모델 전달" |
 | **`.env` 비밀 값** | Claude 키, DB 주소 등 | 깃·단체방 대신 안전한 방법으로 각자에게 전달. `.env.example` 에 항목 이름이 있다 |
-| **로컬 모델(Ollama) + 모델 받기** | 분류와 사진 설명을 돌린다 | 서버가 도는 PC 에서 `ollama pull qwen2.5vl:3b`(약 3.2GB) |
+| **문서 분류기 파일** | 문서 종류를 정한다. 없으면 분류기를 건너뛰고(Jev 키가 있으면 Jev, 없으면) "기타 문서 + 확인 필요"로 저장된다 | 아래 "문서 분류기 전달". Ollama·qwen 은 더 이상 쓰지 않는다 |
 | **원본 보관 폴더** | 원본이 저장되는 곳 | `RAW_DIR` 폴더를 만들고 쓰기 권한·백업 계획을 정한다(없으면 서버가 `DATA_DIR/raw` 에 만든다) |
 
 **얼굴 인식은 삭제했다.** 코드·테스트·설정(`FACE_MODEL_DIR`, `FACE_ENABLED`)을 모두 지웠으니 얼굴 모델을 받을 필요가 없다(생체정보라 가족 동의·삭제 연동이 정해지기 전에는 만들지 않는다).
@@ -66,11 +68,11 @@
 | --- | --- | --- |
 | `EMBED_MODEL_DIR` | `<DATA_DIR>/models/e5-small-ft` | 임베딩 모델 폴더 |
 | `RAW_DIR` | (비움 → `DATA_DIR/raw`) | 원본 보관 폴더 |
-| `LOCAL_LLM_URL` | `http://localhost:11434` | Ollama 주소 |
-| `LOCAL_LLM_MODEL` | `qwen2.5:7b` | **`qwen2.5vl:3b` 로 바꿔 쓰는 것을 권장**(분류+사진 설명 모두 이 모델로 시험함) |
-| `CAPTION_MODEL` | `qwen2.5vl:3b` | 사진 설명 모델. `CAPTION_ENABLED=false` 로 끈다 |
+| `DOC_CLASSIFIER_DIR` | `<DATA_DIR>/models/doc-classifier` | 문서 분류기 폴더(`.env.example` 에는 없고 환경변수로만 쓴다) |
 | `CHAT_INCLUDE_SENSITIVE` | `true` | 가린 민감 기록(처방전·신분증 등)을 Claude 근거에 넣을지. `false` 면 제외 |
-| `TYPESAFE_API_KEY` | (비움) | 있으면 분류에 외부 Jev 를 쓴다(가린 글만 보냄). 없으면 로컬 모델 |
+| `TYPESAFE_API_KEY` | (비움) | 있으면 로컬 분류기가 확신하지 못한 문서만 외부 Jev 로 분류한다(가린 글만 보냄). 없으면 "기타 문서 + 확인 필요" |
+
+**삭제된 설정**: `LOCAL_LLM_URL`·`LOCAL_LLM_MODEL`·`LOCAL_LLM_TIMEOUT`·`CAPTION_ENABLED`·`CAPTION_MODEL`·`CAPTION_TIMEOUT`·`OLLAMA_KEEP_ALIVE`. 예전 `.env` 에 남아 있어도 무시된다.
 | `ANTHROPIC_API_KEY` | (비움) | 채팅 답변. 없으면 검색 결과만 보여 준다 |
 
 공용 PostgreSQL 로 서버를 켜려면 `JWT_SECRET`(로그인 서명 키)도 필요하다. `.env.example` 의 로그인 항목을 따른다.
@@ -104,6 +106,19 @@
 
 **서버 PC(공용 PostgreSQL)에서는 반드시 필요하다.** 벡터 칸이 384차원으로 고정이라 모델이 없으면 저장·검색이 503 으로 막힌다. 모델을 바꾸면 기존 기록은 다시 색인해야 한다(`knowledge.service.reindex`).
 
+## 문서 분류기 전달
+
+문서 종류를 정하는 작은 분류기다(앱 임베딩 e5-small + 글자 TF-IDF → 로지스틱, 종류 46개, 폴더 약 6MB). qwen 을 대신한다.
+
+| 파일(폴더 `doc-classifier` 안) | 설명 |
+| --- | --- |
+| `classes.json` `coef.npy` `intercept.npy` `vocab.json` `idf.npy` `config.json` | numpy 만으로 읽는다(scikit-learn 불필요). 확률이 0.7 이상이면 확정 |
+
+- 압축본: `doc-classifier.zip`(약 4.3MB, SHA-256 `36AC8C7202947F00EA27C983FF4D783F1B57F86086DBB252B39CF0077FEF53C6`). 풀어서 `apps/api/data/models/doc-classifier/` 에 둔다(다른 곳이면 `DOC_CLASSIFIER_DIR`). `apps/api/data/` 는 `.gitignore` 라 깃에 올라가지 않는다.
+- 없거나 깨져도 서버는 죽지 않는다. 분류기를 건너뛰고 Jev(키가 있을 때) → "기타 문서 + 확인 필요" 순서로 간다.
+- 다시 학습하려면 `apps/api/scripts/train_doc_classifier.py`(개발용, scikit-learn 필요, 프로젝트 의존성에는 넣지 않았다)를 쓴다. 학습 데이터는 저장소에 없고 `--data` 로 넘긴다.
+- 한계: 실제 파이프라인 기록 10건 중 8건(80%)만 맞는다. 엑셀·CSV 같은 표 형식 예시가 적다. 새 종류가 생기면 예시를 모아 다시 학습해야 한다. 기존 qwen 이 만들던 장소·중요 칸(`fields`) 추출은 사라졌다(날짜·금액은 그대로 규칙이 한다).
+
 ## 받아서 테스트하는 방법
 
 ### 0. 준비
@@ -132,9 +147,9 @@ cd ../mobile && npm run lint
 
 ```bash
 cd apps/api
-# (선택) 임베딩 모델과 Ollama 를 쓰려면 환경변수로 지정
-#   PowerShell: $env:EMBED_MODEL_DIR="C:\경로\e5-small-ft"; $env:LOCAL_LLM_MODEL="qwen2.5vl:3b"
-#   bash:       export EMBED_MODEL_DIR=/경로/e5-small-ft LOCAL_LLM_MODEL=qwen2.5vl:3b
+# (선택) 임베딩 모델·분류기를 기본 위치가 아닌 곳에 두었다면 환경변수로 지정
+#   PowerShell: $env:EMBED_MODEL_DIR="C:\경로\e5-small-ft"; $env:DOC_CLASSIFIER_DIR="C:\경로\doc-classifier"
+#   bash:       export EMBED_MODEL_DIR=/경로/e5-small-ft DOC_CLASSIFIER_DIR=/경로/doc-classifier
 uvicorn app.features.ai_assistant.knowledge.dev_app:app --host 0.0.0.0 --port 8001
 ```
 
@@ -165,7 +180,7 @@ npx expo start --lan
 1. `+` → 앨범에서 영수증 사진 → "읽는 중(통통 튀는 가비, 지난 시간)" → "저장했어요 (걸린 시간 N초)".
 2. 글이 흐리면 채팅에 **흐린 줄 확인 카드**가 뜬다 → 고치거나 "모두 맞아요".
 3. 채팅에 "방금 올린 영수증 합계 얼마야?" → 답과 출처 → **원본 보기**.
-4. 글자 없는 풍경·동물 사진을 올려 설명글이 생기는지.
+4. 글자 없는 풍경·동물 사진을 올리면 채팅에 "이 사진은 어떤 사진인가요?" 카드가 뜬다 → 한 줄 설명을 쓰고 저장(또는 "나중에 할게요") → 설명 낱말로 질문하면 그 사진이 찾아지는지. 건너뛴 사진은 기록 목록에 "설명 없음"이 보이고, 기록 상세의 "설명 추가"로 나중에 달 수 있다.
 5. `+` → 파일 → PDF/워드/엑셀 올리기. 스캔 PDF 는 "확인 필요"로 표시된다.
 6. ☰ → **기록** 탭: 목록, "확인 필요" 표시, 기록 눌러서 고치기/확인 완료/지우기(길게 누르기도 가능).
 7. ☰ → **대화** 탭: 새 대화(+) 후 이전 대화가 목록에 남고 다시 열리는지.
@@ -193,8 +208,8 @@ SELECT item_id, seq, embedding_model, vector_dims(embedding) AS dim, left(text, 
 | --- | --- |
 | 503 `schema_not_ready` | DB 마이그레이션이 아직 적용되지 않음. 담당자가 `c3a9f21d7e54` 까지 적용 |
 | 503 `embedding_model_missing` | PostgreSQL 인데 임베딩 모델 폴더가 없음. 위 "임베딩 모델 전달" |
-| 사진 설명이 안 생김 | Ollama 가 꺼져 있거나 `qwen2.5vl:3b` 를 받지 않음. 설명 없이도 사진은 분류·날짜로 검색된다 |
-| 사진 하나가 처음에 오래 걸림 | 이미지 모델이 처음 메모리에 올라가는 시간(이후 약 3초). `OLLAMA_KEEP_ALIVE`(기본 30m)로 유지 |
+| 글자 없는 사진이 "설명 없음"으로 남음 | 정상. 사용자가 설명을 달 때까지 분류·날짜로만 검색된다(자동 설명은 없앴다) |
+| 문서가 계속 "기타 문서 + 확인 필요"가 됨 | 분류기 폴더가 없거나 `DOC_CLASSIFIER_DIR` 이 틀림, 또는 아직 배우지 않은 종류. "문서 분류기 전달" 확인 |
 | 채팅이 "찾지 못했어요"만 함 | 글자가 흐려 값이 `[불확실]`/없음. 기록 상세에서 고치거나 흐린 줄 카드로 확인 |
 | 폰이 접속 못 함 | 같은 와이파이인지, PC 방화벽이 8001·8081 을 막는지 확인(방화벽 설정은 각자 PC 에서) |
 | 기록에 `******-*******` 가 보임 | 정상(주민번호 가림). 원본은 원본 보기로 확인 |

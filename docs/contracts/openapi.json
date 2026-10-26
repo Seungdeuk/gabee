@@ -5413,6 +5413,91 @@
         }
       }
     },
+    "/ai-assistant/files/{file_id}/description": {
+      "post": {
+        "tags": [
+          "ai-assistant"
+        ],
+        "summary": "File Description",
+        "description": "글자가 안 읽힌 사진에 한 줄 설명을 달거나 고친다. 다른 가족의 파일이면 404, 사진이 아니면 409.",
+        "operationId": "file_description_ai_assistant_files__file_id__description_post",
+        "parameters": [
+          {
+            "name": "file_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "File Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-gyeot-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Gyeot-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DescriptionIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FileStatusOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/ai-assistant/files/{file_id}/original": {
       "get": {
         "tags": [
@@ -6412,6 +6497,21 @@
         ],
         "title": "DailyOut"
       },
+      "DescriptionIn": {
+        "properties": {
+          "text": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Text"
+          }
+        },
+        "type": "object",
+        "required": [
+          "text"
+        ],
+        "title": "DescriptionIn"
+      },
       "EmailRequestIn": {
         "properties": {
           "email": {
@@ -6869,6 +6969,11 @@
             "type": "array",
             "title": "Doubts",
             "default": []
+          },
+          "needs_description": {
+            "type": "boolean",
+            "title": "Needs Description",
+            "default": false
           }
         },
         "type": "object",
@@ -7144,6 +7249,11 @@
           "needs_review": {
             "type": "boolean",
             "title": "Needs Review",
+            "default": false
+          },
+          "needs_description": {
+            "type": "boolean",
+            "title": "Needs Description",
             "default": false
           },
           "body_md": {
@@ -9446,6 +9556,11 @@
           "needs_review": {
             "type": "boolean",
             "title": "Needs Review",
+            "default": false
+          },
+          "needs_description": {
+            "type": "boolean",
+            "title": "Needs Description",
             "default": false
           }
         },
