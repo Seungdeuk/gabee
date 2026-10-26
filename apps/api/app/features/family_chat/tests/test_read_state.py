@@ -4,7 +4,7 @@ import httpx
 import pytest
 
 from app.features.family_chat import repository as chat_repo
-from app.features.family_chat.models import ChatReadState
+from app.features.family_chat.models import ChatRoomRead
 from app.features.family_group.models import GroupMember
 from app.shared.db import SessionLocal
 from app.shared.llm import client as llm
@@ -164,7 +164,7 @@ def test_first_save_primary_key_conflict_is_handled(client, family, monkeypatch)
     assert r.status_code == 200, r.text
     assert r.json() == {"last_read_message_id": m2}
     with SessionLocal() as db:
-        rows = db.query(ChatReadState).all()
+        rows = db.query(ChatRoomRead).all()
         assert sorted(x.last_read_message_id for x in rows if x.user_id != _user_id(client, a)) == [
             m2
         ]

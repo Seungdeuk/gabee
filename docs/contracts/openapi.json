@@ -2447,6 +2447,150 @@
         }
       }
     },
+    "/family-chat/rooms": {
+      "get": {
+        "tags": [
+          "family-chat"
+        ],
+        "summary": "List Rooms",
+        "operationId": "list_rooms_family_chat_rooms_get",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-gyeot-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Gyeot-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/RoomOut"
+                  },
+                  "title": "Response List Rooms Family Chat Rooms Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/family-chat/rooms/direct": {
+      "post": {
+        "tags": [
+          "family-chat"
+        ],
+        "summary": "Open Direct Room",
+        "operationId": "open_direct_room_family_chat_rooms_direct_post",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-gyeot-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Gyeot-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DirectRoomCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RoomOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/family-chat/messages": {
       "get": {
         "tags": [
@@ -2504,6 +2648,25 @@
               ],
               "title": "Before Id"
             }
+          },
+          {
+            "name": "room_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 32
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "대화방 id. 없으면 가족 전체방",
+              "title": "Room Id"
+            },
+            "description": "대화방 id. 없으면 가족 전체방"
           },
           {
             "name": "authorization",
@@ -2723,6 +2886,25 @@
         "operationId": "read_states_family_chat_read_states_get",
         "parameters": [
           {
+            "name": "room_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 32
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "대화방 id. 없으면 가족 전체방",
+              "title": "Room Id"
+            },
+            "description": "대화방 id. 없으면 가족 전체방"
+          },
+          {
             "name": "authorization",
             "in": "header",
             "required": false,
@@ -2791,6 +2973,25 @@
         "summary": "Unread",
         "operationId": "unread_family_chat_unread_get",
         "parameters": [
+          {
+            "name": "room_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 32
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "대화방 id. 없으면 가족 전체방",
+              "title": "Room Id"
+            },
+            "description": "대화방 id. 없으면 가족 전체방"
+          },
           {
             "name": "authorization",
             "in": "header",
@@ -9710,6 +9911,21 @@
         ],
         "title": "DailyOut"
       },
+      "DirectRoomCreate": {
+        "properties": {
+          "user_id": {
+            "type": "string",
+            "maxLength": 32,
+            "minLength": 1,
+            "title": "User Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "user_id"
+        ],
+        "title": "DirectRoomCreate"
+      },
       "DocAnswerIn": {
         "properties": {
           "question": {
@@ -11727,6 +11943,18 @@
             "maxLength": 2000,
             "minLength": 1,
             "title": "Text"
+          },
+          "room_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 32
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Room Id"
           }
         },
         "type": "object",
@@ -12285,6 +12513,18 @@
             "maximum": 2147483647.0,
             "minimum": 1.0,
             "title": "Message Id"
+          },
+          "room_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 32
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Room Id"
           }
         },
         "type": "object",
@@ -12593,6 +12833,52 @@
         ],
         "title": "RoleIn",
         "description": "owner 로 올리는 값은 받지 않는다(소유권 이전은 이번 범위 밖)."
+      },
+      "RoomOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "kind": {
+            "type": "string",
+            "title": "Kind"
+          },
+          "peer_user_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Peer User Id"
+          },
+          "last_message": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MessageOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "unread": {
+            "type": "integer",
+            "title": "Unread"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "kind",
+          "peer_user_id",
+          "last_message",
+          "unread"
+        ],
+        "title": "RoomOut"
       },
       "ScheduleCandidate": {
         "properties": {

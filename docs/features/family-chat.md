@@ -10,6 +10,19 @@
 - `GET /family-chat/messages`(`latest`·`before_id`·`after_id`·`limit`, 결과는 항상 오래된 순), `POST /family-chat/messages` — 가족 그룹 단체 대화(`messages` 테이블). 일반 전송은 AI 를 부르지 않는다. 쿼리 규칙은 아래 "채팅방" 절.
 - 모바일 소통 탭: 채팅방 줄은 서버의 가족 그룹 정보와 최근 메시지 한 줄로 그린다. 가족 연락처 카드만 아직 임시 데이터(`mock.js`)다.
 
+### 대화방 (서버, Chat 2)
+
+- 가족마다 **가족 전체방**(kind=family) 하나, 가족 구성원 둘의 **1:1 방**(kind=direct)을 여러 개 둘 수 있다. 테이블 `chat_rooms`·`chat_room_members`·`chat_room_reads`, `messages.room_id`(Alembic `b6e2c9f4a187`, expand 만). 마이그레이션이 가족마다 전체방을 만들고 기존 메시지를 그 방에 연결하며 옛 읽음 위치를 `chat_room_reads` 로 복사한다. 옛 `chat_read_states` 는 지우지 않고 남겨 둔다.
+- `GET /family-chat/rooms`: 가족 전체방(맨 위)과 내가 참여한 1:1 방(최근 메시지 순). 방마다 `{id, kind, peer_user_id, last_message, unread}`.
+- `POST /family-chat/rooms/direct {user_id}`: 같은 가족 구성원과의 1:1 방을 돌려준다(없으면 만든다, 같은 두 사람의 방은 하나뿐). 자기 자신·가족이 아닌 사람은 400 `invalid_member`.
+- 기존 `messages`·`read`·`read-states`·`unread` 는 **`room_id`(쿼리/본문, 선택)** 를 받는다. 생략하면 가족 전체방이라 기존 앱은 그대로 동작한다. 다른 가족의 방, 내가 참여자가 아닌 1:1 방, 없는 방은 모두 404(존재 여부를 숨김). 다른 방의 메시지 id 로 읽음 위치를 올리면 400 `invalid_message`.
+- 읽음·안 읽은 수는 방별로 센다. 가족 전체방만 합류 시점 기준선을 쓰고, 1:1 방은 기준선 0 이다.
+- `room_id` 가 비어 있는 옛 메시지(배포 중 구 서버가 쓴 것 포함)는 가족 전체방으로 본다.
+- **1:1 대화는 AI 로 보내지 않는다**: AI 분석·추천은 가족 전체방 메시지만 쓴다(`ai_repository.recent_messages`). 시험: `tests/test_rooms.py`.
+- 방 목록은 1:1 방 수와 상관없이 쿼리 수가 일정하다(`rooms_summary` 가 마지막 메시지·안 읽은 수·상대를 묶어서 조회).
+- 알려진 한계: 상대가 가족을 나가도 1:1 방과 대화는 남는다(같은 가족에 다시 들어오면 다시 보임, 정책 미정). 구 서버 코드로 되돌리면 1:1 메시지가 가족 전체방 조회와 AI 분석에 섞이므로 롤백 전에 1:1 메시지를 먼저 처리해야 한다. 배포 중 구 서버가 `chat_read_states` 에 쓴 읽음 위치는 반영되지 않는다.
+- 모바일의 방 목록·1:1 화면은 아직 없다(다음 PR).
+
 ### 읽음 상태 (서버, PR C)
 
 - `POST /family-chat/read {message_id}`: 내 읽음 위치를 올린다. 앞으로만 간다(더 작은 값은 무시하고 현재 값을 돌려줌). 이 그룹의 메시지가 아니면 400 `invalid_message`. 최초 저장이 동시에 겹쳐 기본키가 충돌하면 다시 읽어 갱신한다. 응답 `{last_read_message_id}`.
