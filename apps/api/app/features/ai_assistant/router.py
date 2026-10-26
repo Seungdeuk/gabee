@@ -19,7 +19,7 @@ router.include_router(knowledge_router)  # /ai-assistant/knowledge/*
 @router.post("/chat", response_model=ChatOut)
 def chat(body: ChatIn, user=Depends(current_user), db: Session = Depends(get_db)) -> ChatOut:
     history = [t.model_dump() for t in body.history]
-    return service.chat(db, user.active_group_id, user.id, body.message, history)
+    return service.chat(db, user.active_group_id, user.id, body.message, history, user=user)
 
 
 @router.post("/photos", response_model=PhotoOut, status_code=201)

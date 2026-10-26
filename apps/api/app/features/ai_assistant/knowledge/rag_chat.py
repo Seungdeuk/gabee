@@ -11,10 +11,12 @@ from dataclasses import dataclass, field
 import httpx
 from sqlalchemy.orm import Session
 
+from app.features.family_group.models import User
 from app.shared.config import settings
 from app.shared.errors import ApiError
 from app.shared.llm.client import API_URL, API_VERSION
 
+from .. import agents
 from . import tools
 
 SYSTEM_PROMPT = (
@@ -49,9 +51,11 @@ SENSITIVE_MASKED_NOTE = (
 )
 
 
-def system_prompt() -> str:
-    return SYSTEM_PROMPT + (
-        SENSITIVE_MASKED_NOTE if settings.chat_include_sensitive else SENSITIVE_HIDDEN_NOTE
+def system_prompt(with_agents: bool = False) -> str:
+    return (
+        SYSTEM_PROMPT
+        + (SENSITIVE_MASKED_NOTE if settings.chat_include_sensitive else SENSITIVE_HIDDEN_NOTE)
+        + (agents.PROMPT_NOTE if with_agents else "")
     )
 
 
@@ -153,8 +157,11 @@ def ask(
     question: str,
     post: Post | None = None,
     history: list[dict] | None = None,
+    user: User | None = None,
 ) -> AskResult:
-    """질문 하나에 답한다. `post` 는 테스트에서 가짜 LLM 을 끼우는 자리다."""
+    """질문 하나에 답한다. `post` 는 테스트에서 가짜 LLM 을 끼우는 자리다.
+
+    `user` 가 있으면 정산·돌봄 탭 에이전트에게 물어볼 수 있다(DB 는 탭 에이전트만 읽는다)."""
     if post is None:
         if not settings.anthropic_api_key:
             return _fallback(db, group_id, question)
@@ -169,8 +176,8 @@ def ask(
                 {
                     "model": settings.llm_model,
                     "max_tokens": 1024,
-                    "system": system_prompt(),
-                    "tools": tools.TOOL_SPECS,
+                    "system": system_prompt(user is not None),
+                    "tools": tools.TOOL_SPECS + (agents.tool_specs() if user else []),
                     "messages": messages,
                 }
             )
@@ -185,9 +192,15 @@ def ask(
             outputs = []
             for call in calls:
                 args = call.get("input") or {}
-                result.tool_calls.append({"name": call["name"], "input": args})
+                record = {"name": call["name"], "input": args}
+                result.tool_calls.append(record)
                 try:
-                    data = _run_tool(db, group_id, call["name"], args)
+                    if user is not None and agents.is_agent_tool(call["name"]):
+                        data, record["agent_tool_calls"] = agents.call(
+                            db, group_id, user, call["name"], args, post
+                        )
+                    else:
+                        data = _run_tool(db, group_id, call["name"], args)
                     err = False
                 except (ValueError, ApiError, TypeError) as e:
                     data, err = {"error": str(e)}, True

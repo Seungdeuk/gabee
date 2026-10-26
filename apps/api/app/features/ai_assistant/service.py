@@ -4,6 +4,7 @@ from pathlib import Path
 
 from sqlalchemy.orm import Session
 
+from app.features.family_group.models import User
 from app.shared.config import settings
 from app.shared.errors import ApiError, bad_request
 from app.shared.llm import client as llm
@@ -42,7 +43,12 @@ def _check_daily_limit(user_id: str) -> None:
 
 
 def chat(
-    db: Session, group_id: str | None, user_id: str, message: str, history: list[dict] | None = None
+    db: Session,
+    group_id: str | None,
+    user_id: str,
+    message: str,
+    history: list[dict] | None = None,
+    user: User | None = None,
 ) -> ChatOut:
     """가족 그룹이 있으면 저장된 기록(knowledge)을 검색해서 근거로 답한다. 그룹이 없으면 기록 없이 답한다.
 
@@ -50,7 +56,7 @@ def chat(
     if group_id:
         if settings.anthropic_api_key:
             _check_daily_limit(user_id)
-        r = rag_chat.ask(db, group_id, message, history=history)
+        r = rag_chat.ask(db, group_id, message, history=history, user=user)
         sources = [
             ChatSource(
                 n=s["n"], title=s["title"], item_id=s["item_id"], source_path=s["source_path"]
