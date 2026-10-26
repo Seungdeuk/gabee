@@ -26,7 +26,7 @@ from app.features.family_group.models import User  # noqa: E402
 from app.main import app  # noqa: E402
 from app.shared.config import settings  # noqa: E402
 from app.shared.db import SessionLocal  # noqa: E402
-from evals.tab_agents.seed import seed  # noqa: E402
+from evals.tab_agents.seed import seed, seed_other_family  # noqa: E402
 from tests.helpers import signup  # noqa: E402
 
 CASES = json.loads((Path(__file__).parent / "cases.json").read_text("utf-8"))
@@ -54,16 +54,23 @@ def main() -> int:
         b = signup(client, "수진")
         client.post("/family-group/groups/join", json={"code": group["invite_code"]}, headers=b)
         seed(client, a, b)
+        seed_other_family(client, signup(client, "남"))
         for case in cases:
             for _ in range(args.repeat):
                 with SessionLocal() as db:
                     me = db.scalars(select(User).where(User.name == "지민")).first()
                     if case["agent"] == "main":  # 메인이 맞는 탭 에이전트를 골라 묻는지
-                        r = rag_chat.ask(db, me.active_group_id, case["question"], user=me)
+                        r = rag_chat.ask(
+                            db,
+                            me.active_group_id,
+                            case["question"],
+                            history=case.get("history"),
+                            user=me,
+                        )
                         answer, can_answer, calls = r.answer, r.source == "ai", r.tool_calls
                         used = [c["name"] for c in calls if c["name"].startswith("ask_")]
-                        want = case["main_tools"]
-                        tool_ok = set(used) == set(want)
+                        want = case.get("main_tools")  # 없으면 도구 선택은 채점하지 않는다
+                        tool_ok = want is None or set(used) == set(want)
                     else:
                         reply = AGENTS[case["agent"]].ask(
                             db, me.active_group_id, me, case["question"]
@@ -71,7 +78,17 @@ def main() -> int:
                         answer, can_answer = reply.answer, reply.can_answer
                         used = [c["name"] for c in reply.tool_calls]
                         tool_ok = (case["tool"] in used) if case["tool"] else not used
-                text_ok = all(_contains(answer, t) for t in case["expect_contains"])
+                text_ok = (
+                    all(_contains(answer, t) for t in case["expect_contains"])
+                    and (
+                        not case.get("expect_any")
+                        or any(_contains(answer, t) for t in case["expect_any"])
+                    )
+                    and not any(_contains(answer, t) for t in case.get("expect_not_contains", []))
+                    and not any(
+                        answer.strip().endswith(t) for t in case.get("expect_not_endswith", [])
+                    )
+                )
                 ok = can_answer and tool_ok and text_ok
                 passed, total = passed + ok, total + 1
                 per_case.setdefault(case["id"], []).append(ok)
