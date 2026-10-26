@@ -19,8 +19,11 @@ docker compose 의 개발용 PostgreSQL(`pgvector/pgvector:pg16` 이미지, `pgv
 | member_nicknames | family_group | (PR 4-A, 스키마만) 구성원이 다른 구성원에게 붙이는 개인별 별명·메모. `(group_id,owner_user_id)`/`(group_id,target_user_id)` 둘 다 `group_members`를 참조하는 복합 FK — 실제 그룹 멤버만 작성자/대상이 될 수 있다 |
 | join_requests | family_group | (PR 4-A, 스키마만) 초대코드로 참여 신청 후 관리자 승인 대기(`status` pending/approved/rejected). 같은 `(group_id,user_id)`로 pending 중복 금지(부분 유니크) |
 | invite_attempts | family_group | (PR 4-A, 스키마만) 초대코드 레이트리밋용 시도 기록(ip/user_id/invite_id, 성공 여부) — 코드 원문·해시는 저장하지 않는다 |
-| messages | family_chat | 그룹 대화 메시지. `(group_id, id)` 복합 인덱스(`ix_messages_group_id_id`, 안 읽은 수·읽음 위치 조회용). 단일 인덱스 `ix_messages_group_id` 는 복합 인덱스에 포함되므로 후속 contract PR 에서 정리(이번에는 삭제하지 않음) |
-| chat_read_states | family_chat | 구성원별 대화 읽음 위치. `(group_id, user_id)` 기본키(각각 `groups`·`users` 참조), `last_read_message_id`(앞으로만 증가, 행이 없으면 0), `updated_at`. 리비전 `d4b8f2a6c013` |
+| messages | family_chat | 대화방 메시지. `room_id`(비어 있을 수 있음, `chat_rooms` 참조; 비어 있으면 가족 전체방으로 본다)·`(room_id, id)` 인덱스(`ix_messages_room_id_id`) 추가. `(group_id, id)` 복합 인덱스(`ix_messages_group_id_id`, 안 읽은 수·읽음 위치 조회용). 단일 인덱스 `ix_messages_group_id` 는 복합 인덱스에 포함되므로 후속 contract PR 에서 정리(이번에는 삭제하지 않음) |
+| chat_read_states | family_chat | (옛 구조, 더 이상 읽고 쓰지 않음 — `chat_room_reads` 로 이전, 이후 contract 리비전에서 정리) 구성원별 가족 대화 읽음 위치. `(group_id, user_id)` 기본키(각각 `groups`·`users` 참조), `last_read_message_id`(앞으로만 증가, 행이 없으면 0), `updated_at`. 리비전 `d4b8f2a6c013` |
+| chat_rooms | family_chat | 대화방. `kind` family(가족 전체방, 가족마다 하나: 부분 유니크 인덱스 `uq_chat_rooms_one_family_per_group`)·direct(1:1). 1:1 방은 `direct_key`(두 사용자 id 를 정렬해 `:` 로 이은 값)와 `(group_id, direct_key)` 유니크로 같은 두 사람의 방을 하나만 허용. 리비전 `b6e2c9f4a187` |
+| chat_room_members | family_chat | 1:1 방 참여자 `(room_id, user_id)`. 가족 전체방은 가족 구성원 전원이라 행이 없다 |
+| chat_room_reads | family_chat | 방별 구성원 읽음 위치 `(room_id, user_id)` 기본키, `last_read_message_id`(앞으로만 증가, 행이 없으면 0), `updated_at`. 옛 `chat_read_states` 값은 리비전에서 복사했다 |
 | ai_group_settings | family_chat, ai_assistant | 가족 그룹의 AI 기능 사용 동의(`enabled`, 켠 사람). 기본은 꺼짐. 소유자·관리자만 바꾼다 |
 | ai_usage_logs | family_chat, ai_assistant | AI 요청별 사용 기록(기능, API 호출 수, 입력·출력 토큰, 캐시 적중, 상태, 오류 코드, 모델). **대화·문서 원문과 API 키는 저장하지 않는다.** 하루 한도·쿨다운 계산에 쓰고 90일이 지난 기록은 정리한다 |
 | ai_result_cache | family_chat, ai_assistant | 같은 AI 요청의 검증된 결과(가족 그룹·기능·키로 유일). 만료 시각까지만 재사용하고 새 결과를 저장할 때 만료된 행을 지우며, 동의를 끄면 그 가족의 행을 모두 지운다 |
