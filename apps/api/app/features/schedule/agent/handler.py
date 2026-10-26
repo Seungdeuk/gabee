@@ -1,35 +1,21 @@
 """일정 에이전트 진입점. 메인 오케스트레이터(개인·가족 채팅)가 부르고, 그 전에는 일정 라우터가 부른다.
 
-한 번의 LLM 호출로 요청 종류와 답을 함께 받고(chat.py), 코드가 종류별로 처리한다. 지금은 질의(query)만 처리하고
-나머지(추천·등록·수정·삭제·체크)는 다음 단계에서 채운다. 일정 요청이 아니면 `not_schedule` 로 돌려줘 메인이 직접 답하게 한다.
+한 번의 LLM 호출로 요청 종류와 답을 함께 받고(chat.py), 코드가 종류별로 처리한다. 지금은 질의·등록·수정·삭제를 처리하고
+나머지(추천·체크)는 다음 단계에서 채운다. 수정·삭제는 확인 카드를 거친 뒤 `confirm` 에서 실행한다. 일정 요청이 아니면 `not_schedule` 로 돌려줘 메인이 직접 답하게 한다.
 """
 
 from datetime import UTC, datetime
 
 from sqlalchemy.orm import Session
 
-from app.features.schedule.models import Event
 from app.shared.auth import ensure_group_member
 
-from . import chat, reader, register
+from . import chat, modify, reader, register
 from . import members as members_mod
 from . import period as period_mod
 from .schemas import AgentRequest, AgentResponse, Card, ConfirmRequest
 
 NOT_READY = "이 요청은 아직 처리할 수 없어요"
-
-
-def _brief(event: Event) -> dict:
-    local = reader.to_local(event.starts_at)
-    return {
-        "id": event.id,
-        "title": event.title,
-        "date": f"{local:%Y-%m-%d}",
-        "time": f"{local:%H:%M}" if reader.has_time(event) else "",
-        "end_time": f"{event.end_time:%H:%M}" if event.end_time else "",
-        "note": event.note,
-        "status": event.status,
-    }
 
 
 def _ask(
@@ -98,11 +84,17 @@ def handle(db: Session, user_id: str, group_id: str, request: AgentRequest) -> A
         return register.respond(
             db, user_id, group_id, request.draft, result.register, result.reply, members
         )
+    by_id = {e.id: e for e in shown}
+    if result.intent == "edit":
+        return modify.respond_edit(
+            user_id, result.target_id, result.changes, by_id, register.today()
+        )
+    if result.intent == "delete":
+        return modify.respond_delete(user_id, result.target_id, by_id)
     if result.intent == "query":
-        by_id = {e.id: e for e in shown}
         picked = [by_id[i] for i in result.event_ids if i in by_id]
         cards = (
-            [Card(type="event_list", data={"events": [_brief(e) for e in picked]})]
+            [Card(type="event_list", data={"events": [reader.brief(e) for e in picked]})]
             if picked
             else []
         )
@@ -114,5 +106,10 @@ def handle(db: Session, user_id: str, group_id: str, request: AgentRequest) -> A
 def confirm(db: Session, user_id: str, group_id: str, body: ConfirmRequest) -> AgentResponse:
     """확인 카드의 버튼. AI 를 부르지 않는다. 앱이 돌려준 내용은 믿지 않고 처음부터 다시 검증한다."""
     ensure_group_member(db, user_id, group_id)
+    action = body.action
+    if action.type == "edit":
+        return modify.confirm_edit(db, user_id, group_id, action)
+    if action.type == "delete":
+        return modify.confirm_delete(db, user_id, group_id, action)
     members = members_mod.load(db, group_id)
-    return register.confirm(db, user_id, group_id, body.action, body.share, members)
+    return register.confirm(db, user_id, group_id, action, body.share, members)

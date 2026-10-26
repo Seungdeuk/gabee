@@ -217,9 +217,13 @@ def test_confirm_does_not_trust_the_returned_draft(client, setup, fake):
     r = client.post("/schedule/agent/confirm", json={"action": bad}, headers=a)
     assert r.status_code == 400 and r.json()["code"] == "draft_incomplete"
     r = client.post(
-        "/schedule/agent/confirm", json={"action": {"type": "delete", "event_id": "x"}}, headers=a
-    )
+        "/schedule/agent/confirm", json={"action": {"type": "register"}}, headers=a
+    )  # 등록 확인인데 초안이 없다
     assert r.status_code == 400 and r.json()["code"] == "invalid_action"
+    r = client.post(
+        "/schedule/agent/confirm", json={"action": {"type": "delete", "event_id": "x"}}, headers=a
+    )  # 삭제 확인은 이제 처리하며, 없는 일정은 404
+    assert r.status_code == 404
 
 
 def test_personal_info_is_masked_out_and_restored_on_save(client, setup, fake):

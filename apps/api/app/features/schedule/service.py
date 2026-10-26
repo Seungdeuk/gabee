@@ -75,7 +75,7 @@ def confirm(db: Session, group_id: str, user_id: str, event_id: str) -> Event:
     return event
 
 
-def _owns(event: Event, user_id: str) -> bool:
+def owns(event: Event, user_id: str) -> bool:
     """그 줄의 주인인가. 주인이 없던 옛 줄은 만든 사람이 주인이다."""
     return event.user_id == user_id or (event.user_id is None and event.created_by == user_id)
 
@@ -86,7 +86,7 @@ def update(db: Session, group_id: str, user_id: str, event_id: str, body: EventU
     event = repo.get(db, group_id, event_id, user_id)
     if event is None:
         raise not_found("일정")
-    if not _owns(event, user_id):
+    if not owns(event, user_id):
         raise ApiError(403, "not_owner", "내 일정만 고칠 수 있어요")
     sent = body.model_fields_set
     if not sent:
@@ -111,21 +111,34 @@ def update(db: Session, group_id: str, user_id: str, event_id: str, body: EventU
     return event
 
 
-def _apply_when(event: Event, body: EventUpdate, sent: set[str]) -> None:
-    """날짜·시간을 고친다. 보내지 않은 값은 그대로 두고, 시작 시간이 없어지면 끝 시간도 없앤다(시간 없음)."""
-    tz = local_tz()
-    if event.start_date is None:  # 새 구조 이전에 만든 옛 일정: 시각에서 날짜·시작 시간을 읽는다
-        local = event.starts_at.replace(tzinfo=event.starts_at.tzinfo or UTC).astimezone(tz)
-        base_date, base_start = local.date(), local.time().replace(second=0, microsecond=0)
-    else:
-        base_date, base_start = event.start_date, event.start_time
+def current_when(event: Event) -> tuple[date, time | None, time | None]:
+    """지금 저장된 (날짜, 시작 시간, 끝 시간). 새 구조 이전에 만든 옛 일정은 시각에서 날짜·시작 시간을 읽는다."""
+    if event.start_date is None:
+        local = event.starts_at.replace(tzinfo=event.starts_at.tzinfo or UTC).astimezone(local_tz())
+        return local.date(), local.time().replace(second=0, microsecond=0), event.end_time
+    return event.start_date, event.start_time, event.end_time
+
+
+def resolve_when(
+    event: Event, body: EventUpdate, sent: set[str]
+) -> tuple[date, time | None, time | None]:
+    """고친 뒤의 (날짜, 시작 시간, 끝 시간)을 계산한다(저장하지 않는다). 보내지 않은 값은 그대로 두고,
+    시작 시간이 없어지면 끝 시간도 없앤다(시간 없음). 끝이 시작보다 늦지 않으면 400."""
+    base_date, base_start, base_end = current_when(event)
     start_date = body.start_date or base_date
     start_time = body.start_time if "start_time" in sent else base_start
-    end_time = body.end_time if "end_time" in sent else event.end_time
+    end_time = body.end_time if "end_time" in sent else base_end
     if start_time is None:
         end_time = None
     if start_time and end_time and end_time <= start_time:
         raise bad_request("invalid_time", "끝나는 시간은 시작하는 시간보다 늦어야 해요")
+    return start_date, start_time, end_time
+
+
+def _apply_when(event: Event, body: EventUpdate, sent: set[str]) -> None:
+    """날짜·시간을 고친다."""
+    tz = local_tz()
+    start_date, start_time, end_time = resolve_when(event, body, sent)
     event.start_date = start_date
     event.start_time = start_time
     event.end_time = end_time
@@ -139,6 +152,6 @@ def remove(db: Session, group_id: str, user_id: str, event_id: str) -> None:
     event = repo.get(db, group_id, event_id, user_id)
     if event is None:
         raise not_found("일정")
-    if not _owns(event, user_id):
+    if not owns(event, user_id):
         raise ApiError(403, "not_owner", "내 일정만 지울 수 있어요")
     repo.soft_delete(db, event)

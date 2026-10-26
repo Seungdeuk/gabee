@@ -96,7 +96,7 @@ def today() -> date:
     return datetime.now(UTC).astimezone(local_tz()).date()
 
 
-def _valid_date(value: str, now: date) -> str:
+def valid_date(value: str, now: date) -> str:
     try:
         parsed = date.fromisoformat(value)
     except ValueError:
@@ -104,11 +104,11 @@ def _valid_date(value: str, now: date) -> str:
     return value if abs((parsed - now).days) <= DATE_SPAN_DAYS else ""
 
 
-def _valid_time(value: str) -> str:
+def valid_time(value: str) -> str:
     return value if _TIME.match(value) else ""
 
 
-def _plus_hour(value: str) -> str:
+def plus_hour(value: str) -> str:
     start = datetime.strptime(value, "%H:%M")
     end = start + timedelta(minutes=DEFAULT_MINUTES)
     return "23:59" if end.day != start.day else end.strftime("%H:%M")
@@ -116,14 +116,14 @@ def _plus_hour(value: str) -> str:
 
 def normalize(draft: Draft, member_ids: set[str], me: str, now: date) -> Draft:
     """초안을 등록 가능한 모양으로 다듬는다: 시간은 둘 다 있거나 둘 다 없게, 공유 대상에서 나는 뺀다."""
-    start = _valid_time(draft.start_time)
-    end = _valid_time(draft.end_time) if start else ""
+    start = valid_time(draft.start_time)
+    end = valid_time(draft.end_time) if start else ""
     if start and (not end or end <= start):
-        end = _plus_hour(start)
+        end = plus_hour(start)
     return draft.model_copy(
         update={
             "title": draft.title.strip(),
-            "date": _valid_date(draft.date, now),
+            "date": valid_date(draft.date, now),
             "start_time": start,
             "end_time": end,
             "place": draft.place.strip(),

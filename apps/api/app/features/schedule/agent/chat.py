@@ -20,7 +20,7 @@ from app.shared.errors import bad_request
 from app.shared.llm import client as llm
 from app.shared.privacy import Action, Kind, Policy, Row, prepare_transcript, restore_json
 
-from . import limits, prompts, register  # noqa: F401  (limits: 일정 호출 한도를 따로 세도록 등록)
+from . import limits, modify, prompts, register  # noqa: F401  (limits: 일정 호출 한도를 따로 세도록 등록)
 from .members import Member, line, names
 from .schemas import INTENTS, Draft, Intent
 
@@ -57,6 +57,8 @@ class ChatResult:
     period_end: str = ""
     keyword: str = ""
     register: dict = field(default_factory=dict)  # intent 가 register 일 때 모델이 읽은 값(검증 끝)
+    target_id: str = ""  # intent 가 edit·delete 일 때 모델이 고른 일정 id(보여 준 목록에 있는 것만)
+    changes: dict = field(default_factory=dict)  # intent 가 edit 일 때 모델이 읽은 바뀔 값(검증 끝)
 
 
 def clean_result(data: dict, allowed_ids: set[str], member_ids: set[str] | None = None) -> dict:
@@ -69,6 +71,7 @@ def clean_result(data: dict, allowed_ids: set[str], member_ids: set[str] | None 
     reply = reply.strip()[:MAX_REPLY_CHARS] if isinstance(reply, str) else ""
     ids = data.get("event_ids")
     ids = ids if isinstance(ids, list) else []
+    target = data.get("target_id")
     seen: list[str] = []
     for value in ids:
         if isinstance(value, str) and value in allowed_ids and value not in seen:
@@ -82,6 +85,8 @@ def clean_result(data: dict, allowed_ids: set[str], member_ids: set[str] | None 
         "period_end": _short(data.get("period_end"), 10),
         "keyword": _short(data.get("keyword"), MAX_KEYWORD_CHARS),
         "register": register.clean_fields(data.get("register"), member_ids or set()),
+        "target_id": target if isinstance(target, str) and target in allowed_ids else "",
+        "changes": modify.clean_changes(data.get("changes")),
     }
 
 
@@ -164,10 +169,15 @@ def converse(
         cleaned = clean_result(outcome.result, allowed_ids, member_ids)
         restored = restore_json(
             prep,
-            {"reply": cleaned["reply"], "register": cleaned["register"]},
+            {
+                "reply": cleaned["reply"],
+                "register": cleaned["register"],
+                "changes": cleaned["changes"],
+            },
             generalize_unknown=True,
             scrub=True,
         ).value
     cleaned["reply"] = restored["reply"]
     cleaned["register"] = register.clean_fields(restored["register"], member_ids)
+    cleaned["changes"] = modify.clean_changes(restored["changes"])
     return ChatResult(**cleaned)

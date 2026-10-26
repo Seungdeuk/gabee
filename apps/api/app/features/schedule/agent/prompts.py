@@ -37,6 +37,23 @@ REGISTER_SCHEMA: dict = {
     "additionalProperties": False,
 }
 
+# edit 일 때만 채운다: 바꿀 값만 쓰고 바꾸지 않는 값은 빈 문자열·0·빈 배열. clear 는 지워 달라는 항목(time·place·memo)
+CHANGES_SCHEMA: dict = {
+    "type": "object",
+    "properties": {
+        "title": {"type": "string"},
+        "date": {"type": "string"},
+        "start_time": {"type": "string"},
+        "end_time": {"type": "string"},
+        "kind": {"type": "integer", "enum": [0, 1, 2]},
+        "place": {"type": "string"},
+        "memo": {"type": "string"},
+        "clear": {"type": "array", "items": {"type": "string", "enum": ["time", "place", "memo"]}},
+    },
+    "required": ["title", "date", "start_time", "end_time", "kind", "place", "memo", "clear"],
+    "additionalProperties": False,
+}
+
 CHAT_SCHEMA: dict = {
     "type": "object",
     "properties": {
@@ -49,6 +66,9 @@ CHAT_SCHEMA: dict = {
         "period_end": {"type": "string"},
         "keyword": {"type": "string"},
         "register": REGISTER_SCHEMA,
+        # edit·delete 일 때 대상 일정의 id(없으면 빈 문자열)와, edit 일 때 바뀔 값
+        "target_id": {"type": "string"},
+        "changes": CHANGES_SCHEMA,
     },
     "required": [
         "intent",
@@ -59,6 +79,8 @@ CHAT_SCHEMA: dict = {
         "period_end",
         "keyword",
         "register",
+        "target_id",
+        "changes",
     ],
     "additionalProperties": False,
 }
@@ -102,7 +124,15 @@ CHAT_SYSTEM = (
     "- [등록 초안] 이 있으면 지금 등록을 진행하는 중이다. 사용자 문장('내일', '엄마 생일 파티'처럼 짧은 말도)은 빠진 값에 "
     "대한 답이므로 intent 는 register 로 한다. 초안과 전혀 상관없는 요청이 분명할 때만 다른 intent 를 고른다. "
     "초안의 값을 유지하고 새 문장으로 채운 전체를 register 에 쓴다.\n"
-    "- id 는 [가족 구성원] 목록에 있는 것만 쓴다."
+    "- id 는 [가족 구성원] 목록에 있는 것만 쓴다.\n"
+    "edit·delete 일 때는 target_id 와 changes 를 채운다(아니면 target_id 는 빈 문자열, changes 는 비운다):\n"
+    "- target_id: [일정 목록] 에서 사용자가 말한 일정의 id 를 그대로 쓴다. 같은 이름의 일정이 여럿이면 되묻지 말고 지금과 "
+    "가장 가까운 하나를 고른다(앞으로 올 일정을 먼저, 없으면 가장 최근에 지난 일정). 목록에 없으면 빈 문자열이다.\n"
+    "- changes(edit 일 때만): 사용자가 바꾸라고 한 것만 쓰고 나머지는 빈 문자열, kind 는 0, clear 는 빈 배열로 둔다. "
+    "date 는 YYYY-MM-DD([지금] 기준으로 계산), start_time·end_time 은 HH:MM, kind 는 1 약속·2 할 일. "
+    "시간을 없애 달라고 하면 clear 에 'time', 장소나 메모를 지워 달라고 하면 'place'·'memo' 를 넣는다. "
+    "'3시로' 처럼 시작 시간만 말하면 start_time 만 쓴다(끝 시간은 코드가 맞춘다). 누구와 공유는 바꿀 수 없다.\n"
+    "- edit·delete 일 때 reply 는 빈 문자열이다. 확인 카드는 코드가 만든다."
 )
 
 WEEKDAYS = "월화수목금토일"

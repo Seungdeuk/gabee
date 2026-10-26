@@ -67,6 +67,20 @@ def to_local(value: datetime) -> datetime:
     return aware(value).astimezone(local_tz())
 
 
+def brief(event: Event) -> dict:
+    """채팅 카드에 싣는 일정 요약. 시간이 정해지지 않은 일정은 time·end_time 이 빈 문자열이다."""
+    local = to_local(event.starts_at)
+    return {
+        "id": event.id,
+        "title": event.title,
+        "date": f"{local:%Y-%m-%d}",
+        "time": f"{local:%H:%M}" if has_time(event) else "",
+        "end_time": f"{event.end_time:%H:%M}" if event.end_time else "",
+        "note": event.note,
+        "status": event.status,
+    }
+
+
 def has_time(event: Event) -> bool:
     """시작 시간이 정해진 일정인가. 날짜만 있는 일정은 시작 시각이 0시로 저장돼 있어 시간이 아니다.
     새 구조의 날짜 칸이 없는 옛 일정은 시각이 있었던 것으로 본다."""
