@@ -25,6 +25,7 @@ GROUP_ENDPOINTS = (
     ("get", "/family-chat/read-states", None),
     ("post", "/family-chat/read", {"message_id": 1}),
     ("get", "/family-chat/rooms", None),
+    ("get", "/family-chat/media", None),
     ("get", "/family-chat/search?q=%EB%AA%B0%EB%9E%98", None),
     ("get", "/family-chat/todos", None),
     ("post", "/family-chat/ai/preview", {}),
