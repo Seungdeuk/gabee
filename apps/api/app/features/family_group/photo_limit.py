@@ -11,15 +11,16 @@ from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 MAX_BODY_BYTES = 2 * 1024 * 1024 + 100 * 1024  # 사진 2MB + multipart 여유 약 100KB
 PHOTO_PATH_SUFFIX = "/family-group/me/photo"
+PHOTO_TOO_LARGE_MESSAGE = "사진은 2MB 이하만 올릴 수 있어요"
 
 
 class _TooLarge(Exception):
     pass
 
 
-async def _reject(send: Send) -> None:
+async def _reject(send: Send, message: str = PHOTO_TOO_LARGE_MESSAGE) -> None:
     body = json.dumps(
-        {"code": "photo_too_large", "message": "사진은 2MB 이하만 올릴 수 있어요"},
+        {"code": "photo_too_large", "message": message},
         ensure_ascii=False,
     ).encode()
     await send(
@@ -37,15 +38,23 @@ async def _reject(send: Send) -> None:
 
 
 class PhotoBodyLimitMiddleware:
-    def __init__(self, app: ASGIApp, max_bytes: int = MAX_BODY_BYTES) -> None:
+    def __init__(
+        self,
+        app: ASGIApp,
+        max_bytes: int = MAX_BODY_BYTES,
+        path_suffix: str = PHOTO_PATH_SUFFIX,
+        message: str = PHOTO_TOO_LARGE_MESSAGE,
+    ) -> None:
         self.app = app
         self.max_bytes = max_bytes
+        self.path_suffix = path_suffix  # 이 경로로 끝나는 POST 에만 적용(채팅 사진 업로드 경로도 같은 방식으로 쓴다)
+        self.message = message
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         if (
             scope["type"] != "http"
             or scope["method"] != "POST"
-            or not scope["path"].rstrip("/").endswith(PHOTO_PATH_SUFFIX)
+            or not scope["path"].rstrip("/").endswith(self.path_suffix)
         ):
             await self.app(scope, receive, send)
             return
@@ -56,7 +65,7 @@ class PhotoBodyLimitMiddleware:
                 except ValueError:
                     declared = 0
                 if declared > self.max_bytes:
-                    await _reject(send)
+                    await _reject(send, self.message)
                     return
         received = 0
         exceeded = False
@@ -80,4 +89,4 @@ class PhotoBodyLimitMiddleware:
         except _TooLarge:
             pass
         if exceeded:
-            await _reject(send)
+            await _reject(send, self.message)

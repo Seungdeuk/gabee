@@ -4,14 +4,38 @@ from app.features.family_group.models import User
 from app.shared.errors import bad_request, not_found
 
 from . import repository as repo
-from .models import FAMILY, ChatRoom, Message
-from .schemas import MessageOut, ReadPosition, ReadStateOut, RoomOut, UnreadOut
+from .models import FAMILY, ChatRoom, Message, MessageAttachment
+from .schemas import AttachmentOut, MessageOut, ReadPosition, ReadStateOut, RoomOut, UnreadOut
 
 
-def _out(m: Message, user_name: str) -> MessageOut:
-    return MessageOut(
-        id=m.id, user_id=m.user_id, user_name=user_name, text=m.text, created_at=m.created_at
+def _attachment_out(a: MessageAttachment) -> AttachmentOut:
+    return AttachmentOut(
+        id=a.id,
+        kind="image",
+        url=f"/family-chat/photos/{a.id}",
+        thumb_url=f"/family-chat/photos/{a.id}?size=thumb",
+        width=a.width,
+        height=a.height,
     )
+
+
+def message_out(
+    m: Message, user_name: str, attachment: MessageAttachment | None = None
+) -> MessageOut:
+    return MessageOut(
+        id=m.id,
+        user_id=m.user_id,
+        user_name=user_name,
+        text=m.text,
+        created_at=m.created_at,
+        attachment=_attachment_out(attachment) if attachment else None,
+    )
+
+
+def _outs(db: Session, rows: list[tuple[Message, str]]) -> list[MessageOut]:
+    """메시지들을 응답 모양으로(첨부는 한 번의 쿼리로 모아 붙인다)."""
+    attachments = repo.attachments_for(db, [m.id for m, _ in rows])
+    return [message_out(m, name, attachments.get(m.id)) for m, name in rows]
 
 
 def resolve_room(db: Session, user: User, group_id: str, room_id: str | None) -> ChatRoom:
@@ -34,7 +58,7 @@ def post(
     message = repo.add(
         db, Message(group_id=group_id, room_id=room.id, user_id=user.id, text=text.strip())
     )
-    out = _out(message, user.name)
+    out = message_out(message, user.name)
     repo.advance_read(db, room.id, user.id, message.id)  # 내가 보낸 메시지는 읽은 것으로
     return out
 
@@ -57,7 +81,7 @@ def list_messages(
         rows = repo.list_recent(db, room, limit, before_id)
     else:
         rows = repo.list_after(db, room, after_id, limit)
-    return [_out(m, name) for m, name in rows]
+    return _outs(db, rows)
 
 
 def mark_read(
@@ -89,25 +113,18 @@ def unread(db: Session, user: User, group_id: str, room_id: str | None = None) -
 # ── 대화방 목록·1:1 방 ────────────────────────────────
 
 
-def _family_room_out(db: Session, user: User, room: ChatRoom) -> RoomOut:
-    last = repo.last_message(db, room)
-    unread_count = repo.count_unread(db, room, user.id, repo.get_last_read(db, room, user.id))
-    return RoomOut(
-        id=room.id,
-        kind=room.kind,
-        peer_user_id=None,
-        last_message=_out(*last) if last else None,
-        unread=unread_count,
-    )
-
-
-def _direct_room_out(room: ChatRoom, summary) -> RoomOut:
-    last, unread_count, peer = summary
+def _room_out(
+    room: ChatRoom,
+    last: tuple[Message, str] | None,
+    unread_count: int,
+    peer: str | None,
+    attachments: dict[int, MessageAttachment],
+) -> RoomOut:
     return RoomOut(
         id=room.id,
         kind=room.kind,
         peer_user_id=peer,
-        last_message=_out(*last) if last else None,
+        last_message=message_out(last[0], last[1], attachments.get(last[0].id)) if last else None,
         unread=unread_count,
     )
 
@@ -117,9 +134,18 @@ def list_rooms(db: Session, user: User, group_id: str) -> list[RoomOut]:
     family = repo.get_family_room(db, group_id)
     rooms = repo.my_direct_rooms(db, group_id, user.id)
     summary = repo.rooms_summary(db, user.id, rooms)
-    directs = [_direct_room_out(r, summary[r.id]) for r in rooms]
+    family_last = repo.last_message(db, family)
+    family_unread = repo.count_unread(db, family, user.id, repo.get_last_read(db, family, user.id))
+    lasts = [summary[r.id][0] for r in rooms if summary[r.id][0]] + (
+        [family_last] if family_last else []
+    )
+    attachments = repo.attachments_for(db, [m.id for m, _ in lasts])
+    directs = [
+        _room_out(r, summary[r.id][0], summary[r.id][1], summary[r.id][2], attachments)
+        for r in rooms
+    ]
     directs.sort(key=lambda r: r.last_message.id if r.last_message else 0, reverse=True)
-    return [_family_room_out(db, user, family), *directs]
+    return [_room_out(family, family_last, family_unread, None, attachments), *directs]
 
 
 def open_direct_room(db: Session, user: User, group_id: str, peer_id: str) -> RoomOut:
@@ -132,4 +158,6 @@ def open_direct_room(db: Session, user: User, group_id: str, peer_id: str) -> Ro
     room = repo.get_direct_room(db, group_id, key) or repo.create_direct_room(
         db, group_id, key, [user.id, peer_id]
     )
-    return _direct_room_out(room, repo.rooms_summary(db, user.id, [room])[room.id])
+    last, unread_count, peer = repo.rooms_summary(db, user.id, [room])[room.id]
+    attachments = repo.attachments_for(db, [last[0].id] if last else [])
+    return _room_out(room, last, unread_count, peer, attachments)

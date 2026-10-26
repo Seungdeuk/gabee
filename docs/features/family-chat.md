@@ -23,6 +23,17 @@
 - 알려진 한계: 상대가 가족을 나가도 1:1 방과 대화는 남는다(같은 가족에 다시 들어오면 다시 보임, 정책 미정). 구 서버 코드로 되돌리면 1:1 메시지가 가족 전체방 조회와 AI 분석에 섞이므로 롤백 전에 1:1 메시지를 먼저 처리해야 한다. 배포 중 구 서버가 `chat_read_states` 에 쓴 읽음 위치는 반영되지 않는다.
 - 모바일의 방 목록·1:1 화면은 아직 없다(다음 PR).
 
+### 사진 보내기 (서버, Chat 3)
+
+- `POST /family-chat/photos`(multipart `file`, 선택 `room_id`): 사진 메시지를 보낸다. JPEG/PNG/WebP 8MB 이하(초과 413 `photo_too_large`), 긴 변 12000px·2500만 화소 이하, 실제 이미지가 아니면 400 `invalid_image`. 서버가 EXIF 회전을 반영한 뒤 **EXIF·GPS 등 메타데이터를 모두 지우고** 긴 변 1600px 이하 JPEG와 400px 이하 썸네일로 다시 만들어 저장한다. 응답은 `MessageOut` 이고 `text` 는 빈 문자열, `attachment` 에 `{id, kind, url, thumb_url, width, height}`.
+- `GET /family-chat/photos/{id}?size=full|thumb`: 그 방에 들어갈 수 있는 사람만 본다(가족 전체방은 가족 구성원, 1:1 방은 두 사람). 못 들어가는 방·다른 가족·없는 사진은 모두 같은 404. 사진은 바뀌지 않으므로 `Cache-Control: private, max-age=31536000, immutable`, ETag(304), `nosniff`.
+- 메시지 목록·방 목록의 마지막 메시지에 `attachment`(없으면 null)가 붙는다(첨부는 한 번의 쿼리로 모아 조회). 사진 메시지도 안 읽은 수에 센다.
+- **AI 로 가지 않는다**: 사진 파일은 AI 에 보내지 않고, 글자 없는 사진 메시지는 AI 분석 대화에서 제외한다. 사진 보내기·보기는 AI 를 부르지 않는다.
+- 저장: `DATA_DIR/chat_photos/<첨부 id>.jpg`, `<첨부 id>_t.jpg`(파일 이름은 서버가 만든 id, DB 경로가 서버가 만든 형태가 아니면 읽지 않는다). 파일을 먼저 쓰고 메시지·첨부를 한 번에 저장하며, 저장에 실패하면 파일을 지운다. 테이블 `message_attachments`(Alembic `c9a4d7e2b605`).
+- 방어: 디코딩 전 크기·화소 거절, 축소 디코딩, 동시 처리 2건(초과 503 `photo_busy`), 사용자당 분당 20장(429 + `Retry-After`), 인증 전 큰 본문은 Content-Length 8MB(+여유) 초과 시 파싱 전에 413(해당 경로 한정 ASGI 미들웨어, 프로필 사진 미들웨어를 경로·한도만 바꿔 재사용).
+- **운영 확인 필요**: `DATA_DIR` 이 컨테이너 볼륨에 있어야 사진이 유지된다(프로필 사진과 같다). Caddy 를 쓴다면 `/family-chat/photos` 업로드 경로에 `request_body { max_size 8.2MB }` 를 권고한다(`deploy/` 는 요청 없이 수정하지 않아 문서에만 적는다). 사진 저장량 한도·정리(삭제)는 아직 없다.
+- 시험: `tests/test_chat_photos.py`. 모바일의 사진 고르기·보내기·보기는 아직 없다(다음 PR).
+
 ### 읽음 상태 (서버, PR C)
 
 - `POST /family-chat/read {message_id}`: 내 읽음 위치를 올린다. 앞으로만 간다(더 작은 값은 무시하고 현재 값을 돌려줌). 이 그룹의 메시지가 아니면 400 `invalid_message`. 최초 저장이 동시에 겹쳐 기본키가 충돌하면 다시 읽어 갱신한다. 응답 `{last_read_message_id}`.

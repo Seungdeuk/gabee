@@ -24,6 +24,7 @@ docker compose 의 개발용 PostgreSQL(`pgvector/pgvector:pg16` 이미지, `pgv
 | chat_rooms | family_chat | 대화방. `kind` family(가족 전체방, 가족마다 하나: 부분 유니크 인덱스 `uq_chat_rooms_one_family_per_group`)·direct(1:1). 1:1 방은 `direct_key`(두 사용자 id 를 정렬해 `:` 로 이은 값)와 `(group_id, direct_key)` 유니크로 같은 두 사람의 방을 하나만 허용. 리비전 `b6e2c9f4a187` |
 | chat_room_members | family_chat | 1:1 방 참여자 `(room_id, user_id)`. 가족 전체방은 가족 구성원 전원이라 행이 없다 |
 | chat_room_reads | family_chat | 방별 구성원 읽음 위치 `(room_id, user_id)` 기본키, `last_read_message_id`(앞으로만 증가, 행이 없으면 0), `updated_at`. 옛 `chat_read_states` 값은 리비전에서 복사했다 |
+| message_attachments | family_chat | 채팅 사진 첨부. 메시지 하나에 사진 하나(`message_id` 유니크, `messages` 참조), `group_id`·`room_id`(각각 `groups`·`chat_rooms` 참조), 서버가 정한 상대 경로 `path`·`thumb_path`, `width`·`height`·`size_bytes`. 사진 메시지의 `messages.text` 는 빈 문자열. 리비전 `c9a4d7e2b605` |
 | ai_group_settings | family_chat, ai_assistant | 가족 그룹의 AI 기능 사용 동의(`enabled`, 켠 사람). 기본은 꺼짐. 소유자·관리자만 바꾼다 |
 | ai_usage_logs | family_chat, ai_assistant | AI 요청별 사용 기록(기능, API 호출 수, 입력·출력 토큰, 캐시 적중, 상태, 오류 코드, 모델). **대화·문서 원문과 API 키는 저장하지 않는다.** 하루 한도·쿨다운 계산에 쓰고 90일이 지난 기록은 정리한다 |
 | ai_result_cache | family_chat, ai_assistant | 같은 AI 요청의 검증된 결과(가족 그룹·기능·키로 유일). 만료 시각까지만 재사용하고 새 결과를 저장할 때 만료된 행을 지우며, 동의를 끄면 그 가족의 행을 모두 지운다 |

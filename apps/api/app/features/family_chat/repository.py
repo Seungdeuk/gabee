@@ -6,7 +6,15 @@ from sqlalchemy.orm import Session
 
 from app.features.family_group.models import GroupMember, User
 
-from .models import DIRECT, FAMILY, ChatRoom, ChatRoomMember, ChatRoomRead, Message
+from .models import (
+    DIRECT,
+    FAMILY,
+    ChatRoom,
+    ChatRoomMember,
+    ChatRoomRead,
+    Message,
+    MessageAttachment,
+)
 
 UNREAD_CAP = 1000  # 안 읽은 수를 세는 상한(앱이 99+ 로 줄여 보여준다)
 
@@ -329,3 +337,36 @@ def rooms_summary(
         rid: (last_by_id.get(rid), min(unread.get(rid, 0), UNREAD_CAP), peers.get(rid))
         for rid in ids
     }
+
+
+# ── 첨부(사진) ───────────────────────────────────────────
+
+
+def add_photo_message(
+    db: Session, message: Message, attachment: MessageAttachment
+) -> tuple[Message, MessageAttachment]:
+    """사진 메시지와 첨부를 한 번에 저장한다(둘 다 되거나 둘 다 안 된다)."""
+    try:
+        db.add(message)
+        db.flush()
+        attachment.message_id = message.id
+        db.add(attachment)
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+    return message, attachment
+
+
+def attachments_for(db: Session, message_ids: list[int]) -> dict[int, MessageAttachment]:
+    """메시지 id 들의 첨부를 한 번의 쿼리로."""
+    if not message_ids:
+        return {}
+    rows = db.scalars(
+        select(MessageAttachment).where(MessageAttachment.message_id.in_(message_ids))
+    )
+    return {a.message_id: a for a in rows}
+
+
+def get_attachment(db: Session, attachment_id: str) -> MessageAttachment | None:
+    return db.get(MessageAttachment, attachment_id)
