@@ -1,12 +1,12 @@
 """정산(정수 원·나머지·최소 송금), 지출 소프트 삭제, 가족 할인 상태(용돈은 test_billing_allowance.py)."""
 
 from app.features.billing.settlement import minimal_transfers, split_equally
-from tests.helpers import signup
+from tests.helpers import join_family, signup
 
 
-def _third(client, group):
+def _third(client, owner, group):
     c = signup(client, "민준")
-    client.post("/family-group/groups/join", json={"code": group["invite_code"]}, headers=c)
+    join_family(client, owner, group["invite_code"], c)
     return c
 
 
@@ -41,7 +41,7 @@ def test_minimal_transfers_settles_everything():
 
 def test_settlement_balances_sum_to_zero_and_payment_flow(client, family):
     a, _, group = family
-    c = _third(client, group)
+    c = _third(client, a, group)
     ids = _ids(client, a)
     e1 = _expense(client, a, 10000)  # 3명이 나누면 3334 / 3333 / 3333
     e2 = _expense(client, c, 5000)

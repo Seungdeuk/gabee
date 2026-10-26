@@ -175,7 +175,7 @@ def _require_verified_email(user: User) -> None:
 def create_group(db: Session, user: User, name: str) -> GroupOut:
     _require_verified_email(user)
     group = Group(id=_uid(), name=name.strip(), owner_id=user.id)
-    # 정식 회원: 24시간·1회 코드(+승인). 기존 익명 계정: 호환을 위해 예전 방식(제한 없는 코드, 바로 참여)
+    # 정식 회원: 24시간·1회 코드. 기존 익명 계정: 호환을 위해 예전 방식 코드(만료·횟수 제한 없음). 어느 쪽이든 참여는 관리자 승인을 거친다
     invite = join_service.new_invite(
         group.id,
         user.id,
@@ -186,19 +186,10 @@ def create_group(db: Session, user: User, name: str) -> GroupOut:
     return group_out(db, group, user.id)
 
 
-def join_group(
-    db: Session, user: User, code: str, ip: str = "unknown"
-) -> GroupOut | JoinRequestOut:
-    """초대 코드로 참여한다. 새 정책 코드(24시간·1회)는 누구든 승인 대기 요청이 만들어지고 관리자 승인 후 구성원이 된다.
-    기존 익명 계정이 기존 방식 코드(만료·횟수 제한 없음)를 쓸 때만 호환을 위해 승인 없이 바로 참여한다."""
+def join_group(db: Session, user: User, code: str, ip: str = "unknown") -> JoinRequestOut:
+    """초대 코드로 참여를 신청한다. 정식 회원이든 익명(레거시 토큰) 계정이든, 어떤 코드(레거시 코드 포함)를 쓰든 멤버십이 아니라
+    승인 대기 요청만 만들어지고 관리자(owner/admin)가 승인해야 구성원이 된다. 승인 전에는 그룹 데이터에 접근할 수 없다."""
     _require_verified_email(user)
-    if user.login_id is None and not srepo.has_account(
-        db, user.id
-    ):  # 익명 계정(소셜 계정은 정식 회원)
-        invite = jrepo.find_usable_invite(db, code.strip().upper(), datetime.now(UTC))
-        if invite is None or (invite.expires_at is None and invite.max_uses is None):
-            group_id = join_service.join_immediately(db, user, code, ip)
-            return group_out(db, repo.get_group(db, group_id), user.id)
     row, group = join_service.request_to_join(db, user, code, ip)
     return join_request_out(row, group)
 

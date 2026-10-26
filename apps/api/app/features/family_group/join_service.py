@@ -33,7 +33,7 @@ def _aware(value: datetime) -> datetime:
 # ---------- 초대 코드 ----------
 def new_invite(group_id: str, created_by: str, now: datetime, *, legacy: bool = False) -> Invite:
     """새 정책(10자·24시간·1회)의 초대 코드. 저장은 호출한 쪽이 한다.
-    legacy=True 는 기존 익명 계정이 만드는 그룹 전용 호환 코드(8자·만료/횟수 제한 없음, 승인 없이 바로 참여) — 익명 계정이 사라지면 쓰지 않는다."""
+    legacy=True 는 기존 익명 계정이 만드는 그룹 전용 호환 코드(8자·만료/횟수 제한 없음). 이 코드로도 참여는 관리자 승인을 거친다 — 익명 계정이 사라지면 쓰지 않는다."""
     if legacy:
         return Invite(
             code=_random_code(LEGACY_CODE_LENGTH), group_id=group_id, created_by=created_by
@@ -153,23 +153,6 @@ def request_to_join(db: Session, user: User, code: str, ip: str) -> tuple[JoinRe
             raise
         return existing, group
     return row, group
-
-
-def join_immediately(db: Session, user: User, code: str, ip: str) -> str:
-    """기존 익명(레거시 토큰) 계정의 호환 경로: 승인 없이 바로 참여한다(그룹 id 반환). 전환이 끝나면(ALLOW_LEGACY_TOKEN_AUTH=false) 쓰이지 않는다.
-    새 코드 정책(만료·횟수·시도 제한)은 똑같이 적용한다."""
-    now = datetime.now(UTC)
-    _check_attempt_limit(db, user.id, ip, now)
-    code = code.strip().upper()
-    invite = jrepo.find_usable_invite(db, code, now)
-    if invite is None or not jrepo.consume_invite_use(db, code, now):
-        db.rollback()
-        raise _fail_invalid(db, user, ip)
-    group_id = invite.group_id
-    jrepo.record_attempt(db, ip, user.id, invite.id, True)
-    db.flush()
-    repo.join(db, group_id, user)  # commit 포함. 이미 구성원이면 조용히 넘어간다(기존 동작)
-    return group_id
 
 
 # ---------- 승인 · 거절 · 취소 ----------
