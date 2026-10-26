@@ -1,9 +1,9 @@
 import { Ionicons } from "@expo/vector-icons";
-import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, Platform, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 
 import { colors, font, radius, spacing } from "@/theme";
 
-import { canSend, MAX_TEXT } from "../chatUtils";
+import { canSend, MAX_TEXT, shouldSendOnEnter } from "../chatUtils";
 
 const LINE_HEIGHT = font.body.lineHeight;
 const MAX_LINES = 5;
@@ -15,6 +15,12 @@ const MAX_LINES = 5;
  */
 export default function Composer({ value, onChangeText, onSend, onPickPhoto, photoBusy = false, photoError = "", onDismissPhotoError }) {
   const ok = canSend(value);
+  // 웹(키보드)에서는 Enter 로 보내고 Shift+Enter 로 줄을 바꾼다. 폰 화면 키보드의 Enter 는 줄바꿈 그대로
+  const onKeyPress = (event) => {
+    if (!shouldSendOnEnter(event.nativeEvent, Platform.OS)) return;
+    event.preventDefault?.();
+    if (ok) onSend();
+  };
   return (
     <View style={styles.wrap}>
       {photoError ? (
@@ -48,6 +54,7 @@ export default function Composer({ value, onChangeText, onSend, onPickPhoto, pho
           placeholder="메시지를 입력하세요"
           placeholderTextColor={colors.placeholder}
           multiline
+          onKeyPress={onKeyPress}
           accessibilityLabel="메시지 입력"
         />
         <Pressable

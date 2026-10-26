@@ -55,6 +55,7 @@ function CareLive() {
   return (
     <Screen
       title="돌봄"
+      settings
       subtitle="데일리 체크 · 추천 · 식단 · 위치"
       pinned={
         <View>

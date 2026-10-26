@@ -2,6 +2,8 @@ import { Ionicons } from "@expo/vector-icons";
 import { Tabs } from "expo-router";
 import { StyleSheet, Text, View } from "react-native";
 
+import useTotalUnread from "@/features/family-chat/useTotalUnread";
+import { unreadBadgeText } from "@/features/family-chat/listUtils";
 import { colors, font } from "@/theme";
 
 // 디자인의 하단 탭 5개. 기타(가족 그룹·설정)는 탭이 아니라 상단 ⋮ 메뉴로 들어간다.
@@ -14,6 +16,8 @@ const tabs = [
 ];
 
 export default function TabLayout() {
+  // 소통 탭 아이콘에 모든 방의 안 읽은 메시지 수를 보인다(0 이면 숨김, 99 넘으면 99+)
+  const unread = useTotalUnread();
   return (
     <Tabs
       screenOptions={{
@@ -34,6 +38,8 @@ export default function TabLayout() {
           name={name}
           options={{
             title,
+            tabBarBadge: name === "family-chat" && unread > 0 ? unreadBadgeText(unread) : undefined,
+            tabBarBadgeStyle: styles.badge,
             tabBarLabel: ({ focused, color }) => (
               <Text style={[styles.label, { color }, focused && styles.labelActive]}>{title}</Text>
             ),
@@ -61,4 +67,5 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   pillActive: { backgroundColor: colors.surfaceStrong },
+  badge: { backgroundColor: colors.peach, color: colors.text, ...font.tab },
 });

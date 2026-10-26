@@ -4,6 +4,7 @@ import { useRef, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
+import SettingsButton from "@/shared/components/SettingsButton";
 import { colors, font, radius, spacing } from "@/theme";
 
 import ChatInputBar from "../components/ChatInputBar";
@@ -107,6 +108,7 @@ export default function ScheduleScreen() {
               >
                 <Ionicons name="add" size={28} color={colors.text} />
               </Pressable>
+              <SettingsButton />
             </View>
             <WeekStrip selected={today} markedDates={new Set(items.map((item) => item.date))} onSelect={openCalendar} />
           </View>
