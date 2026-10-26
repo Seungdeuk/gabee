@@ -189,7 +189,19 @@
 - **인증 이미지**: 공용 `shared/components/AuthImage.js` 가 `useProfilePhoto`(네이티브 expo-image 헤더, 웹 blob 캐시)로 받는다. `shared/photoCache.js` 의 `photoPath` 는 프로필 사진 경로에 더해 서버가 준 `/family-chat/photos/<id>` 와 `?size=thumb|full` 형태만 허용한다(그 밖의 주소에는 로그인 헤더가 나가지 않는다). 채팅 사진은 바뀌지 않으므로 캐시에서 원본·썸네일을 서로 밀어내지 않는다. 토큰은 주소·캐시 키에 들어가지 않는다. `UserAvatar` 동작은 그대로다.
 - **미리보기**: 마지막 메시지가 사진(글자 없음)이면 소통 탭 방 목록과 접근성 라벨에 "사진"(내 것은 "나: 사진")으로 보인다(`chatUtils.previewText`, `buildRoomRows` 가 이를 사용).
 - 시험: `apps/mobile/tests/chatphotos.test.js`(미리보기, 경로 허용/거부, 캐시 키, `sendPhoto` 요청 모양, 오류 문구, 표시 크기, 파일 형식·한도). 실기기·웹의 파일 선택, canvas 줄이기, 네이티브 헤더 로딩, 전체 화면 보기는 아직 직접 확인하지 못했다.
-- 아직 없는 것: 여러 장 한 번에 보내기, 사진 저장·공유, 동영상·파일, 사진 업로드 취소.
+- 아직 없는 것: 여러 장 한 번에 보내기, 네이티브 사진 저장·공유(웹 저장은 위 "채팅방 서랍 · 사진 모음" 절), 동영상·파일, 사진 업로드 취소.
+
+### 채팅방 서랍 · 사진 모음 (앱)
+
+- **서랍**(`components/RoomDrawer.js`): 채팅방 상단 ⋮ 를 누르면 오른쪽에서 열린다(React Native `Modal` 투명 + `Animated`, 폭은 화면의 85% 최대 360, 180ms). 어두운 덮개·X·안드로이드 뒤로가기로 닫는다. AI 는 기존 ✨ 버튼에 그대로 있다. 위에서부터 방 이름(가족 전체방은 가족 이름, 1:1 은 상대 표시 이름)과 X, 구성원 줄(`MemberStrip`: "가족 구성원 N명"과 사진/이니셜 아바타 가로 스크롤, 나 먼저·표시 이름 우선 / 1:1 은 "대화 상대"와 상대 한 명), "채팅 관리"·"채팅방 설정" 두 구역. 행 정의와 방 종류별 차이는 순수 함수 `mediaUtils.buildDrawerSections`·`drawerMembers`·`drawerTitle` 에 있다.
+- **동작하는 행**: 사진 · 동영상(→ `/chat-media`), 구성원 초대 · 관리(가족 전체방만 → 기존 `/family`), 대화 내용 검색(채팅방 안 돋보기 검색 바를 연다 — `onOpenSearch`, 헤더 돋보기와 같은 기능).
+- **서랍 이동은 한 번만**: 이동 행(사진 · 동영상, 구성원 초대 · 관리, 검색)은 한 번 누르면 즉시 잠기고 닫히는 180ms 동안의 연속 누름은 무시한다(`canNavigateFromDrawer`). 서랍은 방 이름을 주소에 싣지 않고 `roomId`·`peer` 만 넘긴다.
+- **준비 중인 행**(제목 옆 "준비 중" 배지, 누르면 서랍 안에 "준비 중이에요" 안내만): 고정 메시지, 공유 문서, 가족 일정 · 할 일, 알림 설정, AI · 개인정보 보호 설정, 채팅방 정보 수정. **채팅방 나가기**(빨간 글자): 가족 전체방은 가족 탈퇴 기능이 없어 "가족 채팅방은 나갈 수 없어요", 1:1 은 "준비 중이에요" 안내만 한다.
+- **1:1 방에서 숨기는 행**: 구성원 초대 · 관리(가족 전체의 일), 공유 문서, AI · 개인정보 보호 설정(1:1 대화는 AI 로 보내지 않는다). 나머지는 가족 전체방과 같다.
+- **사진 · 동영상 모음**(`/chat-media`, `screens/ChatMediaScreen.js`, 경로 인자 `roomId`(없으면 가족 전체방)·`peer`(1:1 상대 id). 방 이름은 주소(웹 주소창·기록)에 싣지 않고 화면 안에서 구성원 정보로 계산한다): 탭 "사진 N · 파일 N · 동영상 N"(개수는 서버 `counts`), 사진 탭은 3열 정사각 썸네일 격자(`AuthImage`, 월별 헤더 "2026년 10월"), 끝에 가까워지면 `next_before_id` 커서로 다음 쪽을 자동으로 불러온다(`useChatMedia.js`; 응답을 받아들일지 정하는 상태 전이는 순수 함수 `mediaState.js` 에 있어, 탭·방이 바뀌면 옛 응답은 버려지고 다음 쪽 실패 뒤에도 목록은 남은 채 "다시 시도"할 수 있다). `thumb_url`·`width`·`height`·`size_bytes` 는 서버 스키마상 null 일 수 있어 썸네일은 `thumb_url ?? url` 로 대신한다. `before_id` 는 1 이상일 때만 보낸다. 로딩·오류("다시 시도"; 다음 쪽 오류는 목록 끝에서 다시 시도)·빈 상태("아직 공유된 사진이 없어요")를 처리한다. 파일·동영상 탭은 같은 경로로 불러오고(서버가 빈 목록을 준다) 빈 상태 문구만 "아직 파일은 보낼 수 없어요. 사진부터 모아 둘게요"처럼 다르다.
+- **전체 화면 보기·저장**(`components/MediaViewer.js`): 원본, 닫기, 보낸 사람(별명 우선)·날짜·시각, "저장" 버튼(저장 중·결과 문구는 사진별로 기억해서 다른 사진으로 넘어가면 새 사진에는 보이지 않는다). **웹**은 `api.downloadPhoto` 가 로그인 헤더로 받은 blob 을 a 태그 `download` 로 내려받는다(파일명 `gabee-YYYYMMDD-HHmmss-<id>.jpg`, 서버가 준 사진 경로만 받는다). **네이티브 저장은 아직 없다** — `savePhoto.js` 가 플랫폼별로 나뉘어 있고 네이티브는 "이 기기에서는 곧 지원돼요" 안내만 한다. expo-file-system 사용 승인 후 사진을 캐시 파일로 받아 expo-media-library 로 앨범에 저장하는 코드를 `saveOnNative` 자리에 넣는다(`expo-media-library` 는 package.json 에 있으나 아직 import 하지 않는다).
+- **서버 계약(별도 PR)**: `GET /family-chat/media?room_id=<선택>&kind=image|file|video|all&limit=<1~100, 기본 40>&before_id=<선택>` → `{items:[{attachment_id, message_id, kind, user_id, user_name, created_at, url, thumb_url, width, height, size_bytes}], next_before_id, counts:{image, file, video}}`. 오류 404(권한 없는 방)·429(분당 60회)·401. 앱 래퍼는 `api.listMedia`. 서버 PR 이 병합되기 전에는 모음 화면이 오류("사진을 불러오지 못했어요" 등)로 보인다.
+- 시험: `apps/mobile/tests/chatmedia.test.js`(월 그룹핑 경계·격자 줄·이어 붙이기·counts·빈 상태/오류 문구·캡션·저장 파일명, 서랍 행 구성(가족방/1:1 차이·준비 중·나가기 문구·검색 연결), `listMedia` 경로·쿼리·커서·오류, `savePhoto` 분기). 실기기·웹 화면, 애니메이션, 서버 연동, 웹 내려받기는 아직 직접 확인하지 못했다.
 
 ### 대화 검색 (돋보기, 앱)
 

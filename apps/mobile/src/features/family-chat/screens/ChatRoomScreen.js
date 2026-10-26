@@ -15,6 +15,7 @@ import ChatSearchResults from "../components/ChatSearchResults";
 import Composer from "../components/Composer";
 import LiveReturnButton from "../components/LiveReturnButton";
 import MessageBubble from "../components/MessageBubble";
+import RoomDrawer from "../components/RoomDrawer";
 import { parseFocusParam, roomSearchOptions, shouldLoadNewer } from "../searchUtils";
 import useChatMessages, { useRoomInfo } from "../useChatMessages";
 import useChatSearch, { useFamilyRoomId } from "../useChatSearch";
@@ -69,7 +70,7 @@ export default function ChatRoomScreen() {
   const [pickingUi, setPicking] = useState(false);
   const [far, setFar] = useState(false); // 바닥에서 멀리 올라와 있는지
   const [hasNew, setHasNew] = useState(false); // 올라와 있는 동안 새 메시지가 왔는지
-  const [menuNotice, setMenuNotice] = useState(false);
+  const [drawerOpen, setDrawerOpen] = useState(false);
   const newestId = useRef(0);
   // 채팅 메시지 응답에는 사진 주소가 없어서 구성원 목록에서 user_id 로 찾는다
   const photoById = useMemo(() => Object.fromEntries((info.room?.members ?? []).map((m) => [m.id, m.photo_url ?? null])), [info.room]);
@@ -229,13 +230,8 @@ export default function ChatRoomScreen() {
         </View>
         <IconButton name="search-outline" label="대화 검색" onPress={() => setSearchOpen(true)} disabled={info.status !== "ready"} />
         {direct ? null : <IconButton name="sparkles-outline" label="AI 도우미 열기" onPress={() => setAiOpen(true)} disabled={info.status !== "ready"} />}
-        <IconButton name="ellipsis-vertical" label="메뉴" onPress={() => setMenuNotice((v) => !v)} />
+        <IconButton name="ellipsis-vertical" label="채팅방 메뉴" onPress={() => setDrawerOpen(true)} />
       </View>
-      {menuNotice ? (
-        <View style={styles.menuNotice} accessibilityLiveRegion="polite">
-          <Text style={styles.menuNoticeText}>준비 중이에요</Text>
-        </View>
-      ) : null}
     </>
   );
 
@@ -375,6 +371,7 @@ export default function ChatRoomScreen() {
           </View>
         ) : null}
       </KeyboardAvoidingView>
+      <RoomDrawer visible={drawerOpen} onClose={() => setDrawerOpen(false)} room={info.room} roomId={roomId} peerId={peerId} myId={info.me?.id} onOpenSearch={() => setSearchOpen(true)} />
       {direct ? null : <AiPanel visible={aiOpen} onClose={() => setAiOpen(false)} onPickReply={pickReply} />}
     </SafeAreaView>
   );
@@ -395,8 +392,6 @@ const styles = StyleSheet.create({
   titleBox: { flex: 1, minWidth: 0, flexDirection: "row", alignItems: "center", gap: spacing.xs },
   title: { ...font.cardTitle, color: colors.text, flexShrink: 1 },
   count: { ...font.caption, color: colors.textMuted },
-  menuNotice: { alignItems: "center", paddingVertical: spacing.sm, backgroundColor: colors.honeySoft },
-  menuNoticeText: { ...font.caption, color: colors.textSub },
   listArea: { flex: 1 },
   jump: {
     position: "absolute",
