@@ -1,6 +1,7 @@
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import Avatar from "@/shared/components/Avatar";
+import UserAvatar from "@/shared/components/UserAvatar";
 import { colors, font, radius, spacing } from "@/theme";
 
 import { roomA11yLabel, unreadBadgeText } from "../listUtils";
@@ -8,7 +9,8 @@ import { roomA11yLabel, unreadBadgeText } from "../listUtils";
 /**
  * 채팅방 한 줄(메신저 목록 모양): 큰 원형 프로필, 방 이름+구성원 수, 마지막 말 한 줄, 오른쪽 위 시각.
  * 안 읽은 메시지가 있으면 오른쪽 아래에 복숭아색 원 배지(99 넘으면 "99+")를 보이고 마지막 말을 굵게 한다.
- * @param {{ room: { name: string, last: string, time: string, tone: string, count?: number, unread?: number }, onPress?: () => void }} props
+ * 1:1 방(peerId 가 있음)은 상대의 프로필 사진/이니셜, 가족 전체방은 가족 아바타를 보인다.
+ * @param {{ room: { name: string, last: string, time: string, tone?: string, count?: number, unread?: number, peerId?: string, photoUrl?: string | null, a11yTitle?: string }, onPress?: () => void }} props
  */
 export default function RoomRow({ room, onPress }) {
   const unread = room.unread ?? 0;
@@ -18,10 +20,10 @@ export default function RoomRow({ room, onPress }) {
       onPress={onPress}
       disabled={!onPress}
       accessibilityRole={onPress ? "button" : undefined}
-      accessibilityLabel={roomA11yLabel(room.last, unread)}
+      accessibilityLabel={roomA11yLabel(room.last, unread, room.a11yTitle)}
       style={({ pressed }) => [styles.row, pressed && styles.pressed]}
     >
-      <Avatar name={room.name} tone={room.tone} size={56} />
+      {room.peerId ? <UserAvatar name={room.name} userId={room.peerId} photoUrl={room.photoUrl} size={56} /> : <Avatar name={room.name} tone={room.tone} size={56} />}
       <View style={styles.main}>
         <View style={styles.titleLine}>
           <Text style={styles.name} numberOfLines={1}>

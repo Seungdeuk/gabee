@@ -64,6 +64,40 @@ def set_enabled(db: Session, group_id: str, user_id: str, enabled: bool) -> None
 
 
 # ---------- 한도 ----------
+@dataclass(frozen=True)
+class Limits:
+    """기능 묶음 하나의 쿨다운(초)과 하루 한도. 묶음마다 따로 센다."""
+
+    cooldown_seconds: int
+    per_user_per_day: int
+    per_group_per_day: int
+
+
+_BUCKETS: dict[str, tuple[Limits, tuple[str, ...]]] = {}
+
+
+def register_bucket(name: str, limits: Limits, features: tuple[str, ...]) -> None:
+    """features 에 든 기능은 기본 한도와 따로 센다. 이 기능들의 호출은 기본 묶음의 쿨다운·하루 한도·사용 횟수에서 빠진다.
+    같은 이름으로 다시 부르면 덮어쓴다. 등록하지 않은 기능은 지금까지처럼 설정의 기본 한도를 함께 쓴다."""
+    _BUCKETS[name] = (limits, features)
+
+
+def _bucket_of(feature: str) -> tuple[Limits | None, tuple[str, ...] | None]:
+    """(한도, 그 묶음의 기능들). 등록된 묶음이 아니면 (None, None) — 설정의 기본 한도를 쓴다."""
+    for limits, features in _BUCKETS.values():
+        if feature in features:
+            return limits, features
+    return None, None
+
+
+def _only_bucket(query, features: tuple[str, ...] | None):
+    """features 를 주면 그 묶음의 기록만, 안 주면 따로 센다고 등록된 기능을 뺀 나머지(기본 묶음)만 남긴다."""
+    if features is not None:
+        return query.where(AiUsageLog.feature.in_(features))
+    separate = [f for _, fs in _BUCKETS.values() for f in fs]
+    return query.where(AiUsageLog.feature.not_in(separate)) if separate else query
+
+
 def day_start(now: datetime) -> datetime:
     """하루 한도를 세는 날짜 경계(기본 한국 시간 자정)를 UTC 로."""
     offset = timedelta(hours=settings.ai_day_utc_offset_hours)
@@ -71,10 +105,18 @@ def day_start(now: datetime) -> datetime:
     return local.replace(hour=0, minute=0, second=0, microsecond=0) - offset
 
 
-def _calls_since(db: Session, since: datetime, *, user_id: str | None, group_id: str | None) -> int:
+def _calls_since(
+    db: Session,
+    since: datetime,
+    *,
+    user_id: str | None,
+    group_id: str | None,
+    features: tuple[str, ...] | None = None,
+) -> int:
     query = select(func.coalesce(func.sum(AiUsageLog.api_calls), 0)).where(
         AiUsageLog.created_at >= since, AiUsageLog.api_calls > 0
     )
+    query = _only_bucket(query, features)
     if user_id is not None:
         query = query.where(AiUsageLog.user_id == user_id)
     if group_id is not None:
@@ -96,9 +138,10 @@ def _aware(value: datetime) -> datetime:
 
 
 def _check_cooldown(
-    db: Session, user_id: str, now: datetime, exclude_id: int | None = None
+    db: Session, user_id: str, now: datetime, feature: str, exclude_id: int | None = None
 ) -> None:
-    cooldown = settings.ai_request_cooldown_seconds
+    limits, features = _bucket_of(feature)
+    cooldown = limits.cooldown_seconds if limits else settings.ai_request_cooldown_seconds
     if cooldown <= 0:
         return
     query = select(func.max(AiUsageLog.created_at)).where(
@@ -106,6 +149,7 @@ def _check_cooldown(
         AiUsageLog.api_calls > 0,
         AiUsageLog.created_at > now - timedelta(seconds=cooldown),
     )
+    query = _only_bucket(query, features)
     if exclude_id is not None:  # 방금 내가 남긴 기록은 쿨다운 대상이 아니다
         query = query.where(AiUsageLog.id != exclude_id)
     last = db.scalar(query)
@@ -119,17 +163,24 @@ def _check_cooldown(
         )
 
 
-def _check_daily_limits(db: Session, user_id: str, group_id: str, reserved: int = 0) -> None:
+def _check_daily_limits(
+    db: Session, user_id: str, group_id: str, feature: str, reserved: int = 0
+) -> None:
     """reserved: 이미 내 기록(호출 1)이 들어 있어 한도 비교에서 빼야 하는 수(기록 뒤 재확인용)."""
-    user_calls, group_calls = usage_today(db, user_id, group_id)
+    limits, features = _bucket_of(feature)
+    since = day_start(datetime.now(UTC))
+    user_calls = _calls_since(db, since, user_id=user_id, group_id=None, features=features)
+    group_calls = _calls_since(db, since, user_id=None, group_id=group_id, features=features)
     user_calls, group_calls = user_calls - reserved, group_calls - reserved
-    if user_calls >= settings.ai_max_calls_per_user_per_day:
+    max_user = limits.per_user_per_day if limits else settings.ai_max_calls_per_user_per_day
+    max_group = limits.per_group_per_day if limits else settings.ai_max_calls_per_group_per_day
+    if user_calls >= max_user:
         raise ApiError(
             429,
             "ai_daily_limit_user",
             "오늘 쓸 수 있는 AI 요청 횟수를 모두 썼어요. 내일 다시 이용해 주세요",
         )
-    if group_calls >= settings.ai_max_calls_per_group_per_day:
+    if group_calls >= max_group:
         raise ApiError(
             429,
             "ai_daily_limit_group",
@@ -282,9 +333,9 @@ def run(
     if not llm.available():
         raise ApiError(503, "llm_unavailable", "AI 기능이 아직 서버에 설정되지 않았어요")
     _check_cooldown(
-        db, user_id, now
+        db, user_id, now, feature
     )  # 빠른 거절(경합이 있어도 아래에서 칸을 잡은 뒤 다시 확인한다)
-    _check_daily_limits(db, user_id, group_id)
+    _check_daily_limits(db, user_id, group_id, feature)
     slot, token = _acquire_slot(db, group_id, user_id, feature, now)
     try:
         # 칸을 잡는 사이 같은 결과를 다른 요청이 먼저 만들었을 수 있다 — AI 를 부르기 전에 한 번 더 본다
@@ -296,8 +347,8 @@ def run(
             db, group_id=group_id, user_id=user_id, feature=feature, api_calls=1, status="pending"
         )
         try:  # 기록(예약)을 남긴 뒤 한도·쿨다운을 다시 센다: 확인과 기록 사이에 끼어든 요청이 한도를 넘기지 못하게
-            _check_cooldown(db, user_id, now, exclude_id=log.id)
-            _check_daily_limits(db, user_id, group_id, reserved=1)
+            _check_cooldown(db, user_id, now, feature, exclude_id=log.id)
+            _check_daily_limits(db, user_id, group_id, feature, reserved=1)
         except ApiError:
             db.rollback()
             log.api_calls, log.status = 0, "rejected"

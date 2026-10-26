@@ -17,7 +17,9 @@ def recent_messages(
     rows = db.execute(
         select(Message, User.name)
         .join(User, User.id == Message.user_id)
-        .where(family_messages(group_id), Message.id > after_id)
+        .where(
+            family_messages(group_id), Message.id > after_id, Message.text != ""
+        )  # 사진 메시지(글자 없음)는 제외
         .order_by(Message.id.desc())
         .limit(limit)
     ).all()

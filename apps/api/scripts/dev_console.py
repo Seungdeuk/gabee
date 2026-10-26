@@ -39,11 +39,24 @@ def _seed() -> None:
             "/family-group/groups", json={"name": "우리 가족(예시)"}, headers=owner
         ).json()
         for t in tokens[1:]:
-            c.post(
+            # 익명 계정도 가입 요청 → 소유자(엄마) 승인을 거친다
+            joined = c.post(
                 "/family-group/groups/join",
                 json={"code": group["invite_code"]},
                 headers={"X-Gyeot-Token": t["token"]},
             )
+            req_id = joined.json().get("id") if joined.status_code == 200 else None
+            approved = (
+                c.post(f"/family-group/groups/join-requests/{req_id}/approve", headers=owner)
+                if req_id
+                else None
+            )
+            if approved is None or approved.status_code != 200:
+                raise SystemExit(
+                    f"!!! 데모 시드 실패: {t['name']} 가입/승인 실패 "
+                    f"(join={joined.status_code} {joined.text}, "
+                    f"approve={approved.status_code if approved is not None else None})"
+                )
         ids = {t["name"]: t["id"] for t in tokens}
         by_name = {t["name"]: t for t in tokens}
         month = c.get("/billing/settlement", headers=owner).json()["month"]

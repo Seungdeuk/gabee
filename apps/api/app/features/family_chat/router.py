@@ -7,6 +7,7 @@ from app.shared.db import get_db
 
 from . import service
 from .ai_router import router as ai_router
+from .photo_router import router as photo_router
 from .schemas import (
     DirectRoomCreate,
     MessageCreate,
@@ -17,8 +18,11 @@ from .schemas import (
     RoomOut,
     UnreadOut,
 )
+from .todo_router import router as todo_router
 
 router = APIRouter(prefix="/family-chat", tags=["family-chat"])
+router.include_router(photo_router)  # 사진 보내기·보기(AI 를 부르지 않는다)
+router.include_router(todo_router)  # 공동 할 일(가족 전체 공유, AI 를 부르지 않는다)
 router.include_router(ai_router)  # AI 대화 분석·추천(사용할 때만 AI 호출, 가족 전체방만)
 
 # room_id 를 생략하면 가족 전체방이다(방 구조가 생기기 전 앱과 같은 동작).

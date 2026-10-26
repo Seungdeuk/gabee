@@ -56,20 +56,29 @@ class LocalRawStore:
 
     def get_for_group(self, group_id: str, ref_path: str) -> bytes:
         """경로의 첫 칸이 요청한 가족 그룹일 때만 읽는다(다른 가족의 원본을 읽지 못하게)."""
-        first, _, rest = ref_path.partition("/")
-        if first != group_id or not rest:
-            raise ValueError("이 가족의 원본이 아니에요")
-        return self.get(ref_path)
+        return self._resolve_for_group(group_id, ref_path).read_bytes()
 
     def delete(self, ref_path: str) -> None:
         self._resolve(ref_path).unlink(missing_ok=True)
 
     def delete_for_group(self, group_id: str, ref_path: str) -> None:
         """경로의 첫 칸이 요청한 가족 그룹일 때만 지운다(다른 가족의 원본을 지우지 못하게)."""
-        first, _, rest = ref_path.partition("/")
-        if first != group_id or not rest:
+        self._resolve_for_group(group_id, ref_path).unlink(missing_ok=True)
+
+    def _resolve_for_group(self, group_id: str, ref_path: str) -> Path:
+        """그 가족의 폴더(root/group_id) 안의 파일만 허용한다. `..`·절대경로·백슬래시·널 문자는 거부."""
+        if not _GROUP_ID.match(group_id) or not isinstance(ref_path, str):
             raise ValueError("이 가족의 원본이 아니에요")
-        self.delete(ref_path)
+        if not ref_path.strip() or "\\" in ref_path or "\x00" in ref_path:
+            raise ValueError("이 가족의 원본이 아니에요")
+        parts = ref_path.split("/")
+        if parts[0] != group_id or len(parts) < 2 or any(p in ("", ".", "..") for p in parts):
+            raise ValueError("이 가족의 원본이 아니에요")
+        # 참고: Windows 개발 환경에서는 CON 같은 장치 이름이 읽기에서 멈출 수 있다. 파일 이름은 서버가 sha256 으로만 만든다.
+        path = (self.root / ref_path).resolve()
+        if (self.root / group_id).resolve() not in path.parents:
+            raise ValueError("이 가족의 원본이 아니에요")
+        return path
 
     def _resolve(self, ref_path: str) -> Path:
         path = (self.root / ref_path).resolve()

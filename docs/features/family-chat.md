@@ -8,7 +8,7 @@
 ### 기존 (뼈대)
 
 - `GET /family-chat/messages`(`latest`·`before_id`·`after_id`·`limit`, 결과는 항상 오래된 순), `POST /family-chat/messages` — 가족 그룹 단체 대화(`messages` 테이블). 일반 전송은 AI 를 부르지 않는다. 쿼리 규칙은 아래 "채팅방" 절.
-- 모바일 소통 탭: 채팅방 줄은 서버의 가족 그룹 정보와 최근 메시지 한 줄로 그린다. 가족 연락처 카드만 아직 임시 데이터(`mock.js`)다.
+- 모바일 소통 탭: 방 목록(가족 전체방 + 1:1 방)은 서버의 `GET /family-chat/rooms` 로 그리고, 가족 연락처 카드는 실제 가족 구성원이다.
 
 ### 대화방 (서버, Chat 2)
 
@@ -22,6 +22,26 @@
 - 방 목록은 1:1 방 수와 상관없이 쿼리 수가 일정하다(`rooms_summary` 가 마지막 메시지·안 읽은 수·상대를 묶어서 조회).
 - 알려진 한계: 상대가 가족을 나가도 1:1 방과 대화는 남는다(같은 가족에 다시 들어오면 다시 보임, 정책 미정). 구 서버 코드로 되돌리면 1:1 메시지가 가족 전체방 조회와 AI 분석에 섞이므로 롤백 전에 1:1 메시지를 먼저 처리해야 한다. 배포 중 구 서버가 `chat_read_states` 에 쓴 읽음 위치는 반영되지 않는다.
 - 모바일의 방 목록·1:1 화면은 아직 없다(다음 PR).
+
+### 공동 할 일 (서버, Chat 4)
+
+- **가족 전체가 공유**한다: 같은 가족 구성원이면 누구나 보고, 추가하고, 고치고, 완료·되돌리기를 할 수 있다. 지우는 것은 만든 사람이나 가족 관리자(owner/admin)만 한다(그 밖은 403 `not_allowed`). 다른 가족의 할 일은 모두 404.
+- 필드: 제목(1~120자, 공백 정리), 담당자 0~1명(같은 가족 구성원만, 아니면 400 `invalid_member`), 기한(날짜만, 선택), 완료 여부(`done`, `done_at`, `done_by`), 만든 사람, `source`(`manual` 직접 / `chat` AI 후보를 사용자가 확인해 등록). 반복·알림·하위 항목·댓글은 없다.
+- `GET /family-chat/todos?status=open|done|all&limit=`: 안 끝난 일은 기한 빠른 순(기한 없는 것은 뒤), 끝난 일은 최근 순, `all` 은 안 끝난 것 다음 끝난 것. `POST /family-chat/todos`, `PATCH /family-chat/todos/{id}`(보낸 항목만 바꿈, `assignee_id`·`due_date` 에 null 을 보내면 비움, `done` true/false 로 완료·되돌리기, 빈 본문은 400 `empty_update`), `DELETE /family-chat/todos/{id}`(204).
+- 가족당 최대 300개(완료 포함, 넘으면 400 `todo_limit`). 만든 사람 등은 요청 본문에서 받지 않고 로그인한 사용자에서 유도한다.
+- **일정과의 구분**: 날짜와 시간이 있는 약속은 기존 일정(`/schedule/events`), 날짜가 없거나 "언제까지"만 있는 부탁·할 일은 여기에 둔다. AI 분석의 일정 후보는 일정으로, 할 일 후보는 확인 후 할 일로 등록한다(AI 가 직접 등록하지 않는다).
+- AI 를 부르지 않는다. 테이블 `family_todos`(Alembic `d7b3a9f1c248`), 시험 `tests/test_todos.py`. 모바일 화면은 아직 없다(다음 PR).
+
+### 사진 보내기 (서버, Chat 3)
+
+- `POST /family-chat/photos`(multipart `file`, 선택 `room_id`): 사진 메시지를 보낸다. JPEG/PNG/WebP 8MB 이하(초과 413 `photo_too_large`), 긴 변 12000px·2500만 화소 이하, 실제 이미지가 아니면 400 `invalid_image`. 서버가 EXIF 회전을 반영한 뒤 **EXIF·GPS 등 메타데이터를 모두 지우고** 긴 변 1600px 이하 JPEG와 400px 이하 썸네일로 다시 만들어 저장한다. 응답은 `MessageOut` 이고 `text` 는 빈 문자열, `attachment` 에 `{id, kind, url, thumb_url, width, height}`.
+- `GET /family-chat/photos/{id}?size=full|thumb`: 그 방에 들어갈 수 있는 사람만 본다(가족 전체방은 가족 구성원, 1:1 방은 두 사람). 못 들어가는 방·다른 가족·없는 사진은 모두 같은 404. 사진은 바뀌지 않으므로 `Cache-Control: private, max-age=31536000, immutable`, ETag(304), `nosniff`.
+- 메시지 목록·방 목록의 마지막 메시지에 `attachment`(없으면 null)가 붙는다(첨부는 한 번의 쿼리로 모아 조회). 사진 메시지도 안 읽은 수에 센다.
+- **AI 로 가지 않는다**: 사진 파일은 AI 에 보내지 않고, 글자 없는 사진 메시지는 AI 분석 대화에서 제외한다. 사진 보내기·보기는 AI 를 부르지 않는다.
+- 저장: `DATA_DIR/chat_photos/<첨부 id>.jpg`, `<첨부 id>_t.jpg`(파일 이름은 서버가 만든 id, DB 경로가 서버가 만든 형태가 아니면 읽지 않는다). 파일을 먼저 쓰고 메시지·첨부를 한 번에 저장하며, 저장에 실패하면 파일을 지운다. 테이블 `message_attachments`(Alembic `c9a4d7e2b605`).
+- 방어: 디코딩 전 크기·화소 거절, 축소 디코딩, 동시 처리 2건(초과 503 `photo_busy`), 사용자당 분당 20장(429 + `Retry-After`), 인증 전 큰 본문은 Content-Length 8MB(+여유) 초과 시 파싱 전에 413(해당 경로 한정 ASGI 미들웨어, 프로필 사진 미들웨어를 경로·한도만 바꿔 재사용).
+- **운영 확인 필요**: `DATA_DIR` 이 컨테이너 볼륨에 있어야 사진이 유지된다(프로필 사진과 같다). Caddy 를 쓴다면 `/family-chat/photos` 업로드 경로에 `request_body { max_size 8.2MB }` 를 권고한다(`deploy/` 는 요청 없이 수정하지 않아 문서에만 적는다). 사진 저장량 한도·정리(삭제)는 아직 없다.
+- 시험: `tests/test_chat_photos.py`. 모바일의 사진 고르기·보내기·보기는 아직 없다(다음 PR).
 
 ### 읽음 상태 (서버, PR C)
 
@@ -37,7 +57,7 @@
 **화면 흐름**
 
 - 소통 탭(`src/app/(tabs)/family-chat.js` → `screens/FamilyChatScreen.js`)의 "채팅방" 아래 실제 가족 채팅방 한 줄(가족 이름, 마지막 메시지 한 줄, 시각)을 누르면 `router.push("/chat-room")` 로 간다. `src/app/chat-room.js` 는 `screens/ChatRoomScreen.js` 를 다시 내보낸다.
-- 소통 탭은 화면에 올 때마다 가족 정보(`GET /family-group/groups/me`)와 최근 메시지 1개(`latest=true&limit=1`)를 한 번 읽는다. 폴링은 없다. 상단 검색창은 가족 이름으로 거른다.
+- 소통 탭은 화면에 올 때마다 가족 정보(`GET /family-group/groups/me`)와 대화방 목록(`GET /family-chat/rooms`: 마지막 메시지·안 읽은 수 포함)을 한 번 읽는다. 폴링은 없다. 상단 검색창은 방 이름으로 거른다.
 - 채팅방 상단: 뒤로가기, 가족 이름과 "구성원 N명", ✨ AI 도우미 버튼. 가족 정보를 아직 읽지 못했으면 ✨ 는 꺼져 있다. 가족이 없으면 "가족 만들기 · 참여하기" 버튼을 보여 준다.
 
 **메시지 목록·전송** (`useChatMessages.js`, `chatUtils.js`, `components/MessageBubble.js`, `components/Composer.js`)
@@ -82,6 +102,14 @@
 - 앱 `apps/mobile/tests/chat.test.js`(7개): AI 오류 문구, 결과 설명, 일정 후보 등록 판정, 설정 응답 해석, AI 호출 경로·본문(대화 글자 없음), 일정 등록 호출 조건, 패널 호출 규칙(닫혀 있으면 호출 없음).
 - 서버 `apps/api/app/features/family_chat/tests/test_message_paging.py`(5개): latest 오름차순, latest 가 limit 보다 적을 때, before_id 로 빈틈·중복 없이 넘기기, before_id 가 그 id 를 빼는지, after_id 기존 동작.
 
+### 대화방·1:1 채팅 (앱, 서버 `GET /family-chat/rooms`·`POST /family-chat/rooms/direct` 계약 사용)
+
+- **소통 탭**(`FamilyChatScreen`): 서버 방 목록을 `buildRoomRows`(`listUtils.js`)로 행으로 바꿔 보인다. 가족 전체방이 맨 위, 1:1 방은 서버 순서(최근 메시지 순). 1:1 행은 상대 프로필 사진/이니셜(`UserAvatar`)과 상대 이름(별명 우선), 마지막 메시지 미리보기, 안 읽은 수 배지를 보인다. 상대가 구성원 목록에 없으면 이름을 "가족"으로 둔다. 접근성 라벨은 "<이름>님과 1:1 대화, …".
+- **새 대화**(상단 ✎ 버튼): 나를 뺀 가족 구성원 목록(`NewChatPicker`)을 펼치고, 한 명을 누르면 `POST /family-chat/rooms/direct` 로 1:1 방을 열거나(없으면 만들고) 그 방으로 간다. 열고 있는 동안 다른 줄은 눌리지 않고, 실패하면 목록 아래에 오류 문구를 보인다.
+- **채팅방**(`ChatRoomScreen`): 경로 인자 `roomId`(없으면 가족 전체방)와 `peer`(1:1 상대 id, 방 이름을 정하는 데만 사용)를 받는다. 1:1 방에는 구성원 수와 **AI 도우미(✨) 버튼·패널이 없다** — 1:1 대화는 AI 로 보내지 않는다. 메시지 조회/전송, 읽음 올리기, 읽음 상태 조회가 모두 `roomId` 를 같이 보낸다(`api.js`; `roomId` 가 없으면 이전과 같은 요청). 안 읽은 사람 수는 그 방의 읽음 상태(1:1 이면 두 사람)로 센다.
+- 시험: `tests/rooms.test.js`(행 만들기·상대 이름/사진·나간 상대·후보 목록·접근성 라벨·API 경로와 본문).
+- 아직 없는 것: 1:1 방 나가기/삭제, 방 이름 바꾸기, 두 명 넘는 그룹 방.
+
 ### 읽음 표시·안 읽은 수 (앱, 서버 PR #54 계약 사용)
 
 - **자동 읽음 처리**(`useReadMarker.js`): 눌러서가 아니라 채팅방 화면이 보이는 동안(포커스 + 앱이 앞에 있을 때) 목록의 가장 큰 서버 메시지 id 가 지금까지 올린 값보다 커졌을 때만 `POST /family-chat/read {message_id}` 를 보낸다. 연속 변화는 약 0.8초 모아 한 번만 보내고, 낙관적 임시 메시지는 제외하며, 같은 id 는 다시 보내지 않는다. 내가 보낸 메시지가 가장 최신이면 서버가 이미 내 읽음 위치를 올렸으므로 호출하지 않는다. 실패하면 조용히 두고 다음에 id 가 바뀔 때 다시 시도하며(폴링 간격은 건드리지 않음), 화면이 안 보이게 되거나 닫힐 때 대기 중인 값이 있으면 디바운스를 기다리지 않고 즉시 한 번 올린다(flush). 진행 중인 호출은 `pendingRead.js` 에 추적해, 소통 탭이 `GET /unread` 를 부르기 전에 기다린다(배지가 옛 숫자로 남지 않게).
@@ -91,6 +119,34 @@
 - **소통 탭 방 행**(`RoomRow`, `FamilyChatScreen`): 화면이 올 때마다 한 번 `GET /family-chat/unread` 를 `getRoomInfo`·`listMessages` 와 함께 부른다(폴링 없음, 실패해도 목록은 그대로). 오른쪽 아래에 복숭아색 원 배지(99 초과는 "99+", 0 이면 숨김)를 보이고 안 읽은 수가 있으면 마지막 메시지를 굵게 한다. 접근성 라벨에 수가 들어간다. 채팅방에서 돌아오면(포커스) 다시 불러 갱신된다.
 - 대화 글자는 이 호출들에 없다(메시지 번호와 사용자 id 만 오간다). 일반 전송과 읽음 처리는 AI 를 부르지 않는다.
 - 시험: `apps/mobile/tests/readreceipts.test.js`(`unreadCount` 경계, `shouldMarkRead`, 배지 문구 "99+", 접근성 라벨, API 경로·본문·Bearer). 실제 기기·웹 화면에서의 동작(포커스 전환, 배지 갱신 등)은 아직 직접 확인하지 못했다.
+
+### 공동 할 일·가족 연락처 (앱, Chat 4)
+
+서버 계약은 PR #62(`/family-chat/todos`, 위 서버 절 참고)와 기존 `GET/PUT /family-group/groups/me/nicknames` 를 따른다. 앱은 `api.js` 에서 공통 래퍼로 직접 호출한다(다른 기능의 내부 파일은 가져오지 않음). 이 호출들은 AI 를 부르지 않는다.
+
+- **가족 할 일 화면**(`/family-todos`, `FamilyTodosScreen`, 상태는 `useTodos.js`): 안 끝난 일 목록(체크 원, 제목, 담당자, 기한 라벨 — 지난 기한은 danger 색 "지남 · M월 D일"), 접이식 "완료한 일"(펼칠 때 처음 `status=done` 을 불러오며, 불러오기 전에는 개수를 쓰지 않고 불러온 뒤 "완료한 일 N"), 하단 추가줄(제목 입력 + 담당자 칩 + 기한 칩). 화면이 보일 때(`useFocusEffect`)와 당겨서 새로고침할 때만 불러온다(폴링 없음).
+- **완료·되돌리기는 낙관적 갱신**: 먼저 화면에 반영하고 `PATCH {done}` 을 보낸다. 실패하면 원래 항목으로 되돌리고 오류 문구를 띄운다(404 면 목록에서 뺀다). 같은 항목의 요청 중 중복 누름은 막는다(보내기 버튼도 ref 로 막음).
+- **기한 칩**: 기한 없음/오늘/내일/3일 뒤/1주일 뒤. 날짜 선택 라이브러리는 쓰지 않고 기기 시간대의 날짜를 `YYYY-MM-DD` 로 계산한다(월말·연말은 `Date` 가 넘김). 칩에 없는 기존 기한은 고치기 창에서 "현재 …" 칩으로 남아 건드리지 않으면 그대로다.
+- **고치기 창**(`TodoEditModal`): 행을 누르면 열린다. 바뀐 항목만 `PATCH` 로 보내고(`buildEditPatch`), 담당자 없음·기한 없음은 `null` 로 비운다. 지우기는 확인 단계 뒤 `DELETE`, 403 이면 "만든 사람이나 가족 관리자만 지울 수 있어요".
+- **소통 탭**(`FamilyChatScreen`): 방 목록과 가족 연락처 카드 사이에 "가족 할 일" 카드(`TodoCard`)를 둔다. 화면이 올 때마다 `listTodos('open', 200)` 한 번(목록 로딩과 별개, 실패하면 카드만 조용히 숨김)으로 안 끝난 일 개수와 기한 빠른 앞 두 제목을 보인다. 가족 연락처 카드와 "전체 보기 →" 는 `/family-contacts` 로 간다.
+- **AI 패널의 할 일 후보**(`AiPanel`, `TodoCandidateRow`): 각 후보에 "할 일로 등록" 버튼. 사용자가 누를 때만 `POST /family-chat/todos`(`source: "chat"`)를 보내고 AI 는 직접 등록하지 않는다. 후보마다 결과(등록됨/오류)를 보이고 같은 후보의 중복 등록을 막는다(실패하면 다시 누를 수 있음). **담당자 매칭**: 후보의 `assignee_name` 이 구성원의 이름 또는 표시 이름과 정확히 같고 그런 구성원이 한 명뿐일 때만 `assignee_id` 로 쓰고, 아니면 null(짐작하지 않음). 기한은 실제 있는 `YYYY-MM-DD` 일 때만 쓴다(`candidateToTodoBody`). 등록을 누를 때 `GET /family-group/groups/me` 로 구성원을 한 번 읽는다. 기존 일정 후보 등록은 그대로다.
+- **가족 연락처 화면**(`/family-contacts`, `FamilyContactsScreen`): 구성원의 사진·이름(표시 이름 우선)·관계 라벨(`contactUtils.relationLabel`, other 는 직접 적은 관계 또는 "가족")·메모 한 줄. 내가 붙인 별명이 있으면 별명이 크고 본래 이름이 작게 보인다. 나 자신 줄에는 "대화하기"와 별명 편집이 없다. "대화하기"는 `openDirectRoom` 후 `/chat-room` 으로 가며 중복 누름은 ref 로 막는다. 줄을 누르면 별명·메모 편집 창(별명 40자, 메모 1000자 — 서버 규칙, 둘 다 비우고 저장하면 서버가 지움). 별명·메모는 나에게만 보인다(서버 규칙). **전화번호는 다루지 않는다.** 별명 조회가 실패해도 연락처는 보인다.
+- 순수 함수: `todoUtils.js`(기한 칩·라벨, 정렬/분리, 낙관적 갱신, 고치기 본문, 후보 매핑, 오류 문구), `contactUtils.js`(관계 라벨, 별명 표시 규칙, 검사). 시험: `apps/mobile/tests/familytodos.test.js`(순수 함수, API 경로·메서드·본문·쿼리, 토큰이 URL 에 없음, null 로 비우기).
+- 직접 확인하지 못한 것: 실제 기기·웹 화면 동작(모달, 키보드, 당겨서 새로고침, 칩 스크롤), 서버 연동 실호출.
+- 아직 없는 것: 할 일 알림·반복·하위 항목·댓글(요구사항에서 제외), 날짜 직접 고르기, 연락처 전화번호.
+
+### 사진 보내기 (앱, Chat 3)
+
+서버 계약(`POST /family-chat/photos`, `GET /family-chat/photos/{id}?size=full|thumb`, 메시지의 `attachment`)은 PR #60 의 서버 절을 참고한다(이 브랜치에는 서버 문서가 없다).
+
+- **보내기**: 입력줄의 + 버튼이 갤러리(시스템 선택기, 권한 요청 없음)에서 사진 한 장 고르기로 바뀌었다(`components/Composer.js`, `pickPhoto.js`). 웹은 올리기 전에 긴 변 2048px 이하 JPEG(0.85)로 줄이고(`shared/shrinkImage.js`, 실패하면 원본), 네이티브는 선택기 `quality` 0.8 로 줄인다. 8MB 를 넘는 것이 분명하면 올리지 않고 안내한다. `api.js` 의 `sendPhoto(asset, roomId)` 가 multipart `file`(+ `roomId` 가 있을 때만 form `room_id`)로 보낸다(Content-Type 은 직접 지정하지 않는다). 1:1 방에서도 같은 방 id 로 동작한다.
+- **진행·오류**: 고르는 동안·보내는 동안 + 버튼이 비활성(진행 표시)이고, 중복 누름은 ref 로 막는다(`ChatRoomScreen` 의 `picking`, `useChatMessages` 의 `photoLock`). 실패하면 입력줄 위에 오류 문구를 보이고(닫기 가능), 다시 + 를 눌러 고르면 재시도다. 문구는 `chatUtils.photoSendErrorMessage`(413 `photo_too_large`, 400 `invalid_image`, 429 `too_many_uploads`, 503 `photo_busy`, 404 방 없음). 사진·대화 내용은 문구·로그에 넣지 않는다.
+- **목록 반영**: 성공하면 서버가 돌려준 메시지를 `useChatMessages.sendImage` 가 `mergeMessages` 로 병합하고 아래로 스크롤한다(임시 "전송 중" 메시지는 없다. 폴링이 먼저 가져와도 id 로 중복 제거).
+- **보기**: `MessageBubble` 이 `attachment` 가 있으면 말풍선 안에 썸네일(`thumb_url`)을 보인다. 크기는 `attachment.width/height` 로 `photo.fitSize` 가 미리 계산한다(최대 220x280, 확대 없음, 크기를 모르면 정사각형이라 레이아웃이 점프하지 않는다). 누르면 `PhotoViewer`(Modal, 원본 `attachment.url`, contain, "사진 닫기" 버튼)로 전체 화면으로 본다. 시각·읽음 숫자는 기존 규칙 그대로다.
+- **인증 이미지**: 공용 `shared/components/AuthImage.js` 가 `useProfilePhoto`(네이티브 expo-image 헤더, 웹 blob 캐시)로 받는다. `shared/photoCache.js` 의 `photoPath` 는 프로필 사진 경로에 더해 서버가 준 `/family-chat/photos/<id>` 와 `?size=thumb|full` 형태만 허용한다(그 밖의 주소에는 로그인 헤더가 나가지 않는다). 채팅 사진은 바뀌지 않으므로 캐시에서 원본·썸네일을 서로 밀어내지 않는다. 토큰은 주소·캐시 키에 들어가지 않는다. `UserAvatar` 동작은 그대로다.
+- **미리보기**: 마지막 메시지가 사진(글자 없음)이면 소통 탭 방 목록과 접근성 라벨에 "사진"(내 것은 "나: 사진")으로 보인다(`chatUtils.previewText`, `buildRoomRows` 가 이를 사용).
+- 시험: `apps/mobile/tests/chatphotos.test.js`(미리보기, 경로 허용/거부, 캐시 키, `sendPhoto` 요청 모양, 오류 문구, 표시 크기, 파일 형식·한도). 실기기·웹의 파일 선택, canvas 줄이기, 네이티브 헤더 로딩, 전체 화면 보기는 아직 직접 확인하지 못했다.
+- 아직 없는 것: 여러 장 한 번에 보내기, 사진 저장·공유, 동영상·파일, 사진 업로드 취소.
 
 ### AI 기능 (서버, `/family-chat/ai` 아래)
 
@@ -196,13 +252,12 @@
 
 - 소통 탭의 AI 카드(`AiCard.js`)는 없어졌다(작업 트리에서 파일 삭제). AI 기능은 채팅방 안의 `AiPanel`(`components/AiPanel.js`)로 옮겼고, `/family-chat/ai/*` 를 부른다(동의 켜기, 분석, 답장·주제 추천, 일정 후보 등록, 남은 횟수).
 - 채팅방 화면(`screens/ChatRoomScreen.js`)은 서버 메시지와 연결돼 있다(Chat 1, 폴링). 자세한 내용은 위 "채팅방" 절.
-- 할 일 후보 등록 화면은 아직 없다. 패널에는 "공동 할 일은 준비 중이에요"만 보인다.
+- 할 일 후보는 패널에서 "할 일로 등록" 으로 등록한다(위 "공동 할 일·가족 연락처 (앱, Chat 4)" 절).
 
 ## 남은 것
 
-- 1:1 채팅, 사진·파일 공유, 공동 할 일, 가족 연락처 관리는 아직 구현되지 않았다(Chat 2~4).
+- 사진·파일 공유는 앱에서 아직 구현되지 않았다(1:1 채팅·공동 할 일·가족 연락처 앱 화면은 위 절 참고).
 - 푸시 알림은 없다. 새 메시지 확인은 채팅방이 열려 있고 앱이 앞에 있을 때만 3초마다 하는 폴링이며, 실시간 소켓이 아니다.
-- 할 일 후보 등록 API·화면은 없다.
 - 자동 분석(설계는 요구사항 문서 참고): 열린 질문 결정 후 구현, 마지막 분석 범위를 저장할 컬럼 추가(Alembic) 필요.
 - @가비 문서 검색(키워드 우선, pgvector 필요 시), 문서 요약, 문서 질문 답변.
 - `docs/contracts/openapi.json` 과 `docs/contracts/db.md` 갱신(서버 변경 후 스크립트로 생성).

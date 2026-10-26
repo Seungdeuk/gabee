@@ -521,3 +521,92 @@ def test_confirming_without_changes_also_clears_the_doubt_marks(client, family, 
     assert client.get(f"/ai-assistant/files/{up['id']}", headers=a).json()["doubts"]
     r = client.patch(f"/ai-assistant/knowledge/items/{up['id']}", json={}, headers=a).json()
     assert "[불확실]" not in r["body_md"] and "합계 1,000원" in r["body_md"]
+
+
+def test_raw_store_refuses_paths_that_leave_the_group_folder(tmp_path):
+    from app.features.ai_assistant.ingest.raw_store import LocalRawStore
+
+    store = LocalRawStore(tmp_path)
+    other = tmp_path / "g2" / "ab"
+    other.mkdir(parents=True)
+    victim = other / "x.png"
+    victim.write_bytes(b"secret")
+    mine = tmp_path / "g1" / "ab"
+    mine.mkdir(parents=True)
+    ok = mine / "y.png"
+    ok.write_bytes(b"mine")
+
+    bad = [
+        "g1/../g2/ab/x.png",
+        "g1/ab/../../g2/ab/x.png",
+        "g1/./../g2/ab/x.png",
+        str(victim),
+        "/g2/ab/x.png",
+        "g1\\..\\g2\\ab\\x.png",
+        "g1/ab/x.png\x00",
+        "g1//../g2/ab/x.png",
+        "g2/ab/x.png",
+        "g1",
+        "g1/",
+        "",
+        "  ",
+    ]
+    for ref in bad:
+        with pytest.raises(ValueError):
+            store.get_for_group("g1", ref)
+        with pytest.raises(ValueError):
+            store.delete_for_group("g1", ref)
+    assert victim.read_bytes() == b"secret"
+    with pytest.raises(OSError):
+        store.get_for_group("g1", "g1/%2e%2e/g2/ab/x.png")
+    assert store.get_for_group("g1", "g1/ab/y.png") == b"mine"
+    store.delete_for_group("g1", "g1/ab/y.png")
+    assert not ok.exists() and victim.exists()
+
+
+def test_forged_source_path_cannot_delete_another_familys_original(client, family, pipeline):
+    from tests.helpers import signup
+
+    a, _, group = family
+    stranger = signup(client, "철수")
+    other_group = client.post(
+        "/family-group/groups", json={"name": "남의 가족"}, headers=stranger
+    ).json()
+    theirs = upload(client, stranger, png((200, 1, 1)), "theirs.png")
+    their_files = _raw_files(other_group["id"])
+    assert their_files
+    their_item = client.get(
+        f"/ai-assistant/knowledge/items/{theirs['id']}", headers=stranger
+    ).json()
+    victim_path = their_item["source_path"]
+
+    # 클라이언트가 보낸 source_path 는 무시된다
+    forged = f"{group['id']}/../{victim_path}"
+    r = client.post(
+        "/ai-assistant/knowledge/items",
+        json={"kind_label": "메모", "title": "위조", "body_md": "내용", "source_path": forged},
+        headers=a,
+    )
+    assert r.status_code == 201 and r.json()["source_path"] is None
+    assert (
+        client.delete(f"/ai-assistant/knowledge/items/{r.json()['id']}", headers=a).status_code
+        == 204
+    )
+
+    # DB 에 이미 위조 경로가 들어 있어도(예전 데이터) 지울 때 남의 원본은 남는다
+    from app.features.ai_assistant.knowledge.models import KnowledgeItem
+    from app.shared.db import SessionLocal
+
+    mine = upload(client, a, png((9, 9, 9)), "mine.png")
+    with SessionLocal() as db:
+        db.get(KnowledgeItem, mine["id"]).source_path = forged
+        db.commit()
+    assert client.get(f"/ai-assistant/files/{mine['id']}/original", headers=a).status_code == 404
+    assert (
+        client.delete(f"/ai-assistant/knowledge/items/{mine['id']}", headers=a).status_code == 204
+    )
+    assert sorted(_raw_files(other_group["id"])) == sorted(their_files)
+    assert (
+        client.get(f"/ai-assistant/files/{theirs['id']}/original", headers=stranger).status_code
+        == 200
+    )

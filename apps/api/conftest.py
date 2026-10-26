@@ -16,7 +16,7 @@ from fastapi.testclient import TestClient  # noqa: E402
 
 from app.main import app  # noqa: E402
 from app.shared.db import Base, engine  # noqa: E402
-from tests.helpers import signup  # noqa: E402
+from tests.helpers import join_family, signup  # noqa: E402
 
 
 @pytest.fixture(autouse=True)
@@ -45,12 +45,7 @@ def family(client):
     a = signup(client, "지민")
     group = client.post("/family-group/groups", json={"name": "우리 가족"}, headers=a).json()
     b = signup(client, "수진")
-    assert (
-        client.post(
-            "/family-group/groups/join", json={"code": group["invite_code"]}, headers=b
-        ).status_code
-        == 200
-    )
+    join_family(client, a, group["invite_code"], b)  # 익명 계정도 가입 요청 → 소유자 승인
     return a, b, group
 
 

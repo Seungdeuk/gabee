@@ -35,15 +35,21 @@ def _add(client, headers, **kw):
 @pytest.fixture
 def seeded(client, family):
     a, b, group = family
-    _add(
+    bill = _add(
         client,
         a,
         kind_label="전기요금 고지서",
         title="10월 전기요금",
         body_md=BILL,
         occurred_on="2026-10-01",
-        source_path="/files/2026/10/bill1.jpg",
+        source_path="/files/2026/10/bill1.jpg",  # 요청으로는 저장되지 않는다(서버가 만든 참조만)
     )
+    assert bill["source_path"] is None
+    from app.features.ai_assistant.knowledge.models import KnowledgeItem
+
+    with SessionLocal() as db:  # 서버가 만든 원본 참조는 업로드 처리가 넣는다. 여기서는 직접 넣는다
+        db.get(KnowledgeItem, bill["id"]).source_path = "/files/2026/10/bill1.jpg"
+        db.commit()
     _add(
         client,
         a,

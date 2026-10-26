@@ -2,11 +2,14 @@ import { StyleSheet, Text, View } from "react-native";
 
 import { colors, font } from "@/theme";
 
+import SettingsButton from "./SettingsButton";
+
 /**
  * 탭 화면의 큰 제목: 왼쪽에 제목과 한 줄 설명, 오른쪽에 아이콘 버튼들.
- * @param {{ title: string, subtitle?: string, right?: import("react").ReactNode, left?: import("react").ReactNode }} props
+ * settings 가 true 면 오른쪽 맨 끝에 설정 버튼을 붙인다(탭 화면).
+ * @param {{ title: string, subtitle?: string, right?: import("react").ReactNode, left?: import("react").ReactNode, settings?: boolean }} props
  */
-export default function PageHeader({ title, subtitle, right, left }) {
+export default function PageHeader({ title, subtitle, right, left, settings = false }) {
   return (
     <View style={styles.header}>
       {left ? <View style={styles.left}>{left}</View> : null}
@@ -16,7 +19,10 @@ export default function PageHeader({ title, subtitle, right, left }) {
         </Text>
         {subtitle ? <Text style={styles.subtitle}>{subtitle}</Text> : null}
       </View>
-      <View style={styles.right}>{right}</View>
+      <View style={styles.right}>
+        {right}
+        {settings ? <SettingsButton /> : null}
+      </View>
     </View>
   );
 }

@@ -48,7 +48,7 @@ function BillingLive() {
   useEffect(() => () => clearTimeout(timer.current), []);
 
   return (
-    <Screen title="가계" subtitle="정산 · 지출 · 용돈 · 가족 할인 상태">
+    <Screen title="가계" subtitle="정산 · 지출 · 용돈 · 가족 할인 상태" settings>
       <View style={styles.monthRow}>
         <Pressable onPress={() => setMonth(shiftMonth(month, -1))} accessibilityRole="button" accessibilityLabel="이전 달" style={styles.arrow}>
           <Ionicons name="chevron-back" size={22} color={colors.text} />

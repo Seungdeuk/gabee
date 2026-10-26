@@ -1,7 +1,7 @@
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 
-from sqlalchemy import DateTime, ForeignKey, Index, Integer, String, Text, text
+from sqlalchemy import Date, DateTime, ForeignKey, Index, Integer, String, Text, text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.shared.db import Base
@@ -92,6 +92,51 @@ class ChatRoomRead(Base):
     room_id: Mapped[str] = mapped_column(ForeignKey("chat_rooms.id"), primary_key=True)
     user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), primary_key=True)
     last_read_message_id: Mapped[int] = mapped_column(Integer, default=0)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(UTC)
+    )
+
+
+class MessageAttachment(Base):
+    """사진 메시지의 첨부. 메시지 하나에 사진 하나. 파일은 DATA_DIR 아래 서버가 정한 이름으로만 저장하고
+    여기에는 상대 경로와 크기만 둔다(원본 EXIF·GPS 는 저장 전에 버린다). 사진 메시지의 text 는 빈 문자열이다."""
+
+    __tablename__ = "message_attachments"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uid)
+    message_id: Mapped[int] = mapped_column(ForeignKey("messages.id"), unique=True)
+    group_id: Mapped[str] = mapped_column(ForeignKey("groups.id"), index=True)
+    room_id: Mapped[str] = mapped_column(ForeignKey("chat_rooms.id"), index=True)
+    path: Mapped[str] = mapped_column(String(80))
+    thumb_path: Mapped[str] = mapped_column(String(80))
+    width: Mapped[int] = mapped_column(Integer)
+    height: Mapped[int] = mapped_column(Integer)
+    size_bytes: Mapped[int] = mapped_column(Integer)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(UTC)
+    )
+
+
+class FamilyTodo(Base):
+    """가족이 함께 보는 할 일(공동 할 일). 가족 전체가 보고 고칠 수 있다. 날짜·시간이 있는 약속은 일정(schedule)이고,
+    날짜가 없거나 '언제까지'만 있는 부탁·할 일이 여기에 온다. 담당자는 한 명(없을 수 있다), 완료는 done_at 으로 표시한다."""
+
+    __tablename__ = "family_todos"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uid)
+    group_id: Mapped[str] = mapped_column(ForeignKey("groups.id"), index=True)
+    title: Mapped[str] = mapped_column(String(120))
+    assignee_id: Mapped[str | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    due_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    done_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    done_by: Mapped[str | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    created_by: Mapped[str] = mapped_column(ForeignKey("users.id"))
+    source: Mapped[str] = mapped_column(
+        String(10), default="manual"
+    )  # manual | chat(AI 후보를 확인해 등록)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(UTC)
+    )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(UTC)
     )

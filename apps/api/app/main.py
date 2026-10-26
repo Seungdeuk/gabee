@@ -27,6 +27,12 @@ app = FastAPI(title=settings.app_name, debug=settings.debug, lifespan=lifespan)
 app.add_middleware(
     PhotoBodyLimitMiddleware
 )  # 사진 업로드 경로만: multipart 파싱 전에 본문 크기로 거절
+app.add_middleware(
+    PhotoBodyLimitMiddleware,
+    max_bytes=8 * 1024 * 1024 + 100 * 1024,
+    path_suffix="/family-chat/photos",
+    message="사진은 8MB 이하만 보낼 수 있어요",
+)  # 채팅 사진(8MB + multipart 여유)
 origins = [o.strip() for o in settings.cors_origins.split(",") if o.strip()]
 app.add_middleware(CORSMiddleware, allow_origins=origins, allow_methods=["*"], allow_headers=["*"])
 register_error_handlers(app)

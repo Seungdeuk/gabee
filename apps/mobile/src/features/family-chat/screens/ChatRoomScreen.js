@@ -1,5 +1,5 @@
 import { Ionicons } from "@expo/vector-icons";
-import { useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ActivityIndicator, FlatList, KeyboardAvoidingView, Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -8,11 +8,13 @@ import Button from "@/shared/components/Button";
 import IconButton from "@/shared/components/IconButton";
 import { colors, font, radius, spacing } from "@/theme";
 
-import { buildItems, canSend, lastId, trimDraft, unreadCount } from "../chatUtils";
+import { buildItems, canSend, lastId, photoSendErrorMessage, trimDraft, unreadCount } from "../chatUtils";
 import AiPanel from "../components/AiPanel";
 import Composer from "../components/Composer";
 import MessageBubble from "../components/MessageBubble";
 import useChatMessages, { useRoomInfo } from "../useChatMessages";
+import { memberName } from "../listUtils";
+import { pickChatPhoto } from "../pickPhoto";
 import useReadMarker from "../useReadMarker";
 
 const NEAR = 120; // 바닥/맨 위에서 이 정도 안이면 "근처"로 본다
@@ -23,18 +25,28 @@ function Center({ children }) {
   return <View style={styles.center}>{children}</View>;
 }
 
-/** 실제 가족 채팅방: 메시지 목록, 입력창, AI 도우미(✨) 시트. */
+/**
+ * 실제 채팅방: 메시지 목록, 입력창, AI 도우미(✨) 시트.
+ * 경로 인자 roomId 가 없으면 가족 전체방이고, 있으면 그 방(1:1)이다. peer 는 1:1 상대의 id 로 방 이름을 정하는 데만 쓴다.
+ * 1:1 대화는 AI 로 보내지 않아서 1:1 방에는 AI 도우미 버튼이 없다.
+ */
 export default function ChatRoomScreen() {
   const router = useRouter();
+  const params = useLocalSearchParams();
+  const roomId = typeof params.roomId === "string" && params.roomId ? params.roomId : null;
+  const peerId = typeof params.peer === "string" ? params.peer : null;
+  const direct = roomId != null;
   const info = useRoomInfo();
-  const chat = useChatMessages({ me: info.me, enabled: info.status === "ready" });
-  useReadMarker({ messages: chat.messages, myId: info.me?.id, enabled: info.status === "ready" });
+  const chat = useChatMessages({ me: info.me, enabled: info.status === "ready", roomId });
+  useReadMarker({ messages: chat.messages, myId: info.me?.id, enabled: info.status === "ready", roomId });
   const [draft, setDraft] = useState("");
   const [aiOpen, setAiOpen] = useState(false);
   const listRef = useRef(null);
   const nearBottom = useRef(true);
   const scrollPos = useRef({ y: 0, height: 0 }); // 웹은 maintainVisibleContentPosition 이 없어 이전 대화가 위에 붙을 때 위치를 직접 지킨다
   const olderRequested = useRef(false);
+  const picking = useRef(false); // 사진 고르는 중 중복 누름 방지(ref)
+  const [pickingUi, setPicking] = useState(false);
   const [far, setFar] = useState(false); // 바닥에서 멀리 올라와 있는지
   const [hasNew, setHasNew] = useState(false); // 올라와 있는 동안 새 메시지가 왔는지
   const [menuNotice, setMenuNotice] = useState(false);
@@ -70,6 +82,25 @@ export default function ChatRoomScreen() {
     chat.send(text);
   };
 
+  /** 갤러리에서 사진 한 장을 골라 보낸다. 고르는 동안·보내는 동안은 다시 누를 수 없다. */
+  const onPickPhoto = async () => {
+    if (picking.current || chat.photoBusy) return;
+    picking.current = true;
+    setPicking(true);
+    chat.setPhotoError("");
+    try {
+      const asset = await pickChatPhoto();
+      if (!asset) return;
+      nearBottom.current = true;
+      if (await chat.sendImage(asset)) scrollToEnd(true);
+    } catch (e) {
+      chat.setPhotoError(photoSendErrorMessage(e));
+    } finally {
+      picking.current = false;
+      setPicking(false);
+    }
+  };
+
   const pickReply = (text) => {
     setDraft((prev) => (prev.trim() ? `${prev} ${text}` : text));
     setAiOpen(false);
@@ -90,6 +121,8 @@ export default function ChatRoomScreen() {
 
   const items = buildItems(chat.messages);
   const members = info.room?.members?.length ?? 0;
+  const peer = direct ? info.room?.members?.find((m) => m.id === peerId) : null;
+  const title = direct ? (info.room ? memberName(peer) : "1:1 대화") : (info.room?.name ?? "가족 채팅");
 
   const header = (
     <>
@@ -97,15 +130,15 @@ export default function ChatRoomScreen() {
         <IconButton name="chevron-back" label="뒤로" onPress={back} />
         <View style={styles.titleBox}>
           <Text style={styles.title} numberOfLines={1}>
-            {info.room?.name ?? "가족 채팅"}
+            {title}
           </Text>
-          {info.room ? (
+          {info.room && !direct ? (
             <Text style={styles.count} accessibilityLabel={`구성원 ${members}명`}>
               {members}
             </Text>
           ) : null}
         </View>
-        <IconButton name="sparkles-outline" label="AI 도우미 열기" onPress={() => setAiOpen(true)} disabled={info.status !== "ready"} />
+        {direct ? null : <IconButton name="sparkles-outline" label="AI 도우미 열기" onPress={() => setAiOpen(true)} disabled={info.status !== "ready"} />}
         <IconButton name="ellipsis-vertical" label="메뉴" onPress={() => setMenuNotice((v) => !v)} />
       </View>
       {menuNotice ? (
@@ -225,7 +258,15 @@ export default function ChatRoomScreen() {
           </Pressable>
         ) : null}
         </View>
-        <Composer value={draft} onChangeText={setDraft} onSend={onSend} />
+        <Composer
+          value={draft}
+          onChangeText={setDraft}
+          onSend={onSend}
+          onPickPhoto={onPickPhoto}
+          photoBusy={pickingUi || chat.photoBusy}
+          photoError={chat.photoError}
+          onDismissPhotoError={() => chat.setPhotoError("")}
+        />
       </>
     );
   }
@@ -236,7 +277,7 @@ export default function ChatRoomScreen() {
       <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === "ios" ? "padding" : "height"}>
         {body}
       </KeyboardAvoidingView>
-      <AiPanel visible={aiOpen} onClose={() => setAiOpen(false)} onPickReply={pickReply} />
+      {direct ? null : <AiPanel visible={aiOpen} onClose={() => setAiOpen(false)} onPickReply={pickReply} />}
     </SafeAreaView>
   );
 }

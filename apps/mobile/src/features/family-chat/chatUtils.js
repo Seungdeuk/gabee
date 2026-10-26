@@ -194,7 +194,7 @@ export function canSend(text) {
  */
 export function previewText(message, myId = null) {
   if (!message) return "아직 대화가 없어요";
-  const body = String(message.text ?? "").replace(/\s+/g, " ").trim();
+  const body = String(message.text ?? "").replace(/\s+/g, " ").trim() || (message.attachment ? "사진" : "");
   return myId && message.user_id === myId ? `나: ${body}` : body;
 }
 
@@ -216,6 +216,12 @@ const BY_CODE = {
   token_required: "로그인이 필요해요",
   token_invalid: "로그인이 필요해요",
   session_expired: "로그인이 만료됐어요. 다시 로그인해 주세요",
+  invalid_member: "같은 가족 구성원과만 1:1 대화를 할 수 있어요",
+  not_found: "대화방을 찾을 수 없어요",
+  photo_too_large: "사진이 너무 커요. 더 작은 사진을 골라 주세요",
+  invalid_image: "이 사진은 보낼 수 없어요. JPEG·PNG·WebP 사진(2500만 화소 이하)을 골라 주세요",
+  too_many_uploads: "사진을 너무 자주 보냈어요. 잠시 후 다시 해 주세요",
+  photo_busy: "지금 사진을 처리하는 요청이 많아요. 잠시 후 다시 해 주세요",
 };
 
 /**
@@ -225,6 +231,19 @@ const BY_CODE = {
  */
 export function roomErrorMessage(error) {
   return BY_CODE[error?.code] ?? "잠시 문제가 생겼어요. 다시 시도해 주세요";
+}
+
+/**
+ * 사진 보내기 오류를 사용자 문장으로. 코드가 없어도 상태(413 크기 초과, 429 너무 잦음)로 알아본다. 사진·대화 내용은 넣지 않는다.
+ * @param {{ code?: string, status?: number } | null | undefined} error
+ * @returns {string}
+ */
+export function photoSendErrorMessage(error) {
+  if (!error?.code || !BY_CODE[error.code]) {
+    if (error?.status === 413) return BY_CODE.photo_too_large;
+    if (error?.status === 429) return BY_CODE.too_many_uploads;
+  }
+  return roomErrorMessage(error);
 }
 
 /**
@@ -284,3 +303,17 @@ export function flushTarget(target, lastMarked, sendingId) {
  * @returns {boolean}
  */
 export const shouldMarkRead = (current, lastMarked, enabled) => Boolean(enabled) && Number(current) >= 1 && Number(current) > Number(lastMarked || 0);
+
+/**
+ * 입력칸에서 Enter 로 보내야 하는지: 웹(키보드 연결)에서 Shift 없이 Enter 를 눌렀고 한글 등 글자 조합 중이 아닐 때만.
+ * Shift+Enter 는 줄바꿈, 폰 화면 키보드(네이티브)의 Enter 도 줄바꿈을 유지한다.
+ * @param {{ key?: string, shiftKey?: boolean, isComposing?: boolean, keyCode?: number } | null | undefined} event 키 이벤트의 nativeEvent
+ * @param {string} platform Platform.OS ("web" | "ios" | "android")
+ * @returns {boolean}
+ */
+export function shouldSendOnEnter(event, platform) {
+  if (platform !== "web" || !event) return false;
+  if (event.key !== "Enter" || event.shiftKey) return false;
+  if (event.isComposing || event.keyCode === 229) return false; // 한글·일본어 입력 조합 중의 Enter 는 글자 확정용
+  return true;
+}

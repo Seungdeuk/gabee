@@ -40,8 +40,8 @@ export default function MoreScreen() {
 
   return (
     <Screen
-      title="기타"
-      subtitle="가족 그룹과 설정"
+      title="설정"
+      subtitle="계정과 가족 그룹"
       left={<IconButton name="chevron-back" label="뒤로" onPress={() => router.back()} />}
     >
       <SectionTitle title="계정" />
