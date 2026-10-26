@@ -43,7 +43,7 @@ POST /ai-assistant/chat
 
 ## 평가셋 (evals/tab_agents)
 
-- `cases.json`: 정산 6·돌봄 4 사례(질문, 기대 도구, 답에 있어야 할 값). 쓰기 요청은 도구 없이 "직접 해 주세요"로 안내하는지 본다.
+- `cases.json`: 정산 6·돌봄 4 사례 + 메인 라우팅 4 사례(agent=main)(질문, 기대 도구, 답에 있어야 할 값). 쓰기 요청은 도구 없이 "직접 해 주세요"로 안내하는지 본다.
 - `seed.py`: 가짜 가족 데이터. `tests/test_tab_agent_eval_cases.py` 가 기대 도구의 실제 출력에 기대값이 있는지 LLM 없이 확인한다(평가셋 자체의 정답 검증).
-- `run.py`: 실제 LLM 평가(`cd apps/api && python -m evals.tab_agents.run [--case id] [--repeat n]`, ANTHROPIC_API_KEY 필요, 임시 SQLite 만 사용). 키가 없으면 건너뛴다. 2026-10-26 Haiku 5.5 로 1회 실행: 10/10 통과(사례 10개, 반복 1회). 안정성(반복)·메인 라우팅은 미측정.
-- 한계: 탭 에이전트를 직접 평가하며 메인의 라우팅(어느 탭에 묻는지)은 포함하지 않는다. 사례가 적어 통계적 결론은 못 낸다.
+- `run.py`: 실제 LLM 평가(`cd apps/api && python -m evals.tab_agents.run [--case id] [--repeat n]`, ANTHROPIC_API_KEY 필요, 임시 SQLite 만 사용). 키가 없으면 건너뛴다. 2026-10-26 Haiku 5.5: 탭 에이전트 직접 10개 + 메인 라우팅 4개, 각 3회 반복 = 42/42 통과(메인 라우팅: ask_billing / ask_care / 둘 다 / 스몰톡은 탭 에이전트 호출 없음). 사례 수가 적고 문장 품질은 채점하지 않는다.
+- 한계: 탭 에이전트 직접 평가와 메인 라우팅 평가를 모두 포함하지만 사례가 적어 통계적 결론은 못 낸다.

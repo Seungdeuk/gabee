@@ -20,6 +20,10 @@ AGENTS = {"billing": billing_agent, "care": care_agent}
 
 def test_case_ids_are_unique_and_tools_exist(client, family):
     assert len({c["id"] for c in CASES}) == len(CASES)
+    from app.features.ai_assistant.agents import AGENTS as MAIN_AGENT_TOOLS
+
+    for c in (c for c in CASES if c["agent"] == "main"):
+        assert set(c["main_tools"]) <= set(MAIN_AGENT_TOOLS), c["id"]
     with SessionLocal() as db:
         me = db.scalars(select(User).where(User.name == "지민")).first()
         for agent_name, module in AGENTS.items():

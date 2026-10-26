@@ -19,6 +19,7 @@ os.environ["DATA_DIR"] = _tmp
 from fastapi.testclient import TestClient  # noqa: E402
 from sqlalchemy import select  # noqa: E402
 
+from app.features.ai_assistant.knowledge import rag_chat  # noqa: E402
 from app.features.billing import agent as billing_agent  # noqa: E402
 from app.features.care import agent as care_agent  # noqa: E402
 from app.features.family_group.models import User  # noqa: E402
@@ -46,6 +47,7 @@ def main() -> int:
         return 2
     cases = [c for c in CASES if not args.case or c["id"] in args.case]
     passed = total = 0
+    per_case: dict[str, list[bool]] = {}
     with TestClient(app) as client:
         a = signup(client, "지민")
         group = client.post("/family-group/groups", json={"name": "평가 가족"}, headers=a).json()
@@ -56,15 +58,29 @@ def main() -> int:
             for _ in range(args.repeat):
                 with SessionLocal() as db:
                     me = db.scalars(select(User).where(User.name == "지민")).first()
-                    reply = AGENTS[case["agent"]].ask(db, me.active_group_id, me, case["question"])
-                used = [c["name"] for c in reply.tool_calls]
-                tool_ok = (case["tool"] in used) if case["tool"] else not used
-                text_ok = all(_contains(reply.answer, t) for t in case["expect_contains"])
-                ok = reply.can_answer and tool_ok and text_ok
+                    if case["agent"] == "main":  # 메인이 맞는 탭 에이전트를 골라 묻는지
+                        r = rag_chat.ask(db, me.active_group_id, case["question"], user=me)
+                        answer, can_answer, calls = r.answer, r.source == "ai", r.tool_calls
+                        used = [c["name"] for c in calls if c["name"].startswith("ask_")]
+                        want = case["main_tools"]
+                        tool_ok = set(used) == set(want)
+                    else:
+                        reply = AGENTS[case["agent"]].ask(
+                            db, me.active_group_id, me, case["question"]
+                        )
+                        answer, can_answer = reply.answer, reply.can_answer
+                        used = [c["name"] for c in reply.tool_calls]
+                        tool_ok = (case["tool"] in used) if case["tool"] else not used
+                text_ok = all(_contains(answer, t) for t in case["expect_contains"])
+                ok = can_answer and tool_ok and text_ok
                 passed, total = passed + ok, total + 1
+                per_case.setdefault(case["id"], []).append(ok)
                 print(f"[{'PASS' if ok else 'FAIL'}] {case['id']} tools={used}")
                 if not ok:
-                    print(f"    답: {reply.answer[:200]}")
+                    print(f"    답: {answer[:200]}")
+        print(chr(10) + "사례별 통과율")
+        for cid, results in per_case.items():
+            print(f"  {cid}: {sum(results)}/{len(results)}")
     print(f"\n통과 {passed}/{total} (모델 {settings.llm_model})")
     return 0 if passed == total else 1
 
