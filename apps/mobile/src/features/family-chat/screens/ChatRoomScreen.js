@@ -1,5 +1,5 @@
 import { Ionicons } from "@expo/vector-icons";
-import { useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ActivityIndicator, FlatList, KeyboardAvoidingView, Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -13,6 +13,7 @@ import AiPanel from "../components/AiPanel";
 import Composer from "../components/Composer";
 import MessageBubble from "../components/MessageBubble";
 import useChatMessages, { useRoomInfo } from "../useChatMessages";
+import { memberName } from "../listUtils";
 import useReadMarker from "../useReadMarker";
 
 const NEAR = 120; // 바닥/맨 위에서 이 정도 안이면 "근처"로 본다
@@ -23,12 +24,20 @@ function Center({ children }) {
   return <View style={styles.center}>{children}</View>;
 }
 
-/** 실제 가족 채팅방: 메시지 목록, 입력창, AI 도우미(✨) 시트. */
+/**
+ * 실제 채팅방: 메시지 목록, 입력창, AI 도우미(✨) 시트.
+ * 경로 인자 roomId 가 없으면 가족 전체방이고, 있으면 그 방(1:1)이다. peer 는 1:1 상대의 id 로 방 이름을 정하는 데만 쓴다.
+ * 1:1 대화는 AI 로 보내지 않아서 1:1 방에는 AI 도우미 버튼이 없다.
+ */
 export default function ChatRoomScreen() {
   const router = useRouter();
+  const params = useLocalSearchParams();
+  const roomId = typeof params.roomId === "string" && params.roomId ? params.roomId : null;
+  const peerId = typeof params.peer === "string" ? params.peer : null;
+  const direct = roomId != null;
   const info = useRoomInfo();
-  const chat = useChatMessages({ me: info.me, enabled: info.status === "ready" });
-  useReadMarker({ messages: chat.messages, myId: info.me?.id, enabled: info.status === "ready" });
+  const chat = useChatMessages({ me: info.me, enabled: info.status === "ready", roomId });
+  useReadMarker({ messages: chat.messages, myId: info.me?.id, enabled: info.status === "ready", roomId });
   const [draft, setDraft] = useState("");
   const [aiOpen, setAiOpen] = useState(false);
   const listRef = useRef(null);
@@ -90,6 +99,8 @@ export default function ChatRoomScreen() {
 
   const items = buildItems(chat.messages);
   const members = info.room?.members?.length ?? 0;
+  const peer = direct ? info.room?.members?.find((m) => m.id === peerId) : null;
+  const title = direct ? (info.room ? memberName(peer) : "1:1 대화") : (info.room?.name ?? "가족 채팅");
 
   const header = (
     <>
@@ -97,15 +108,15 @@ export default function ChatRoomScreen() {
         <IconButton name="chevron-back" label="뒤로" onPress={back} />
         <View style={styles.titleBox}>
           <Text style={styles.title} numberOfLines={1}>
-            {info.room?.name ?? "가족 채팅"}
+            {title}
           </Text>
-          {info.room ? (
+          {info.room && !direct ? (
             <Text style={styles.count} accessibilityLabel={`구성원 ${members}명`}>
               {members}
             </Text>
           ) : null}
         </View>
-        <IconButton name="sparkles-outline" label="AI 도우미 열기" onPress={() => setAiOpen(true)} disabled={info.status !== "ready"} />
+        {direct ? null : <IconButton name="sparkles-outline" label="AI 도우미 열기" onPress={() => setAiOpen(true)} disabled={info.status !== "ready"} />}
         <IconButton name="ellipsis-vertical" label="메뉴" onPress={() => setMenuNotice((v) => !v)} />
       </View>
       {menuNotice ? (
@@ -236,7 +247,7 @@ export default function ChatRoomScreen() {
       <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === "ios" ? "padding" : "height"}>
         {body}
       </KeyboardAvoidingView>
-      <AiPanel visible={aiOpen} onClose={() => setAiOpen(false)} onPickReply={pickReply} />
+      {direct ? null : <AiPanel visible={aiOpen} onClose={() => setAiOpen(false)} onPickReply={pickReply} />}
     </SafeAreaView>
   );
 }

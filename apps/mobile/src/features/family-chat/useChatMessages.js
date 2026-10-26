@@ -48,10 +48,10 @@ export function useRoomInfo() {
  * 같은 3초 틱에서 구성원별 읽음 위치(readStates)도 함께 조회한다(별도 타이머 없음). 메시지 조회 오류만 확인 간격을 늘린다(최대 30초).
  * 읽음 조회는 실패하면 자체 횟수에 따라 틱을 건너뛰며 재시도하고(2^n 틱, 최대 10틱), 404 면 이 세션 동안 끈다. 한 번도 못 받았거나 실패 중이면 readStates 는 null 이라 숫자를 표시하지 않는다.
  * 메시지 전송·확인·읽음 조회는 AI 를 부르지 않는다.
- * @param {{ me: { id: string, name: string } | null, enabled?: boolean }} options enabled 가 false 면 아무것도 부르지 않는다
+ * @param {{ me: { id: string, name: string } | null, enabled?: boolean, roomId?: string | null }} options enabled 가 false 면 아무것도 부르지 않는다, roomId 가 없으면 가족 전체방(방이 바뀌면 화면을 새로 연다)
  * @returns {{ messages: object[], readStates: { user_id: string, last_read_message_id: number }[] | null, status: "loading" | "ready" | "error", error: string, hasMore: boolean, loadingOlder: boolean, loadOlder: () => Promise<void>, send: (text: string) => Promise<void>, resend: (clientId: string) => Promise<void>, discard: (clientId: string) => void, retry: () => void }}
  */
-export default function useChatMessages({ me, enabled = true }) {
+export default function useChatMessages({ me, enabled = true, roomId = null }) {
   const [messages, setMessages] = useState([]);
   const [readStates, setReadStates] = useState(null);
   const [status, setStatus] = useState("loading");
@@ -75,6 +75,8 @@ export default function useChatMessages({ me, enabled = true }) {
   const cursor = useRef(0); // 새 메시지 확인 기준: 서버 조회로 실제 받은 가장 큰 id 만 반영한다(내가 보낸 메시지의 id 는 제외)
   const meRef = useRef(me);
   meRef.current = me;
+  const roomRef = useRef(roomId); // 방은 화면이 열려 있는 동안 바뀌지 않는다
+  roomRef.current = roomId;
 
   useEffect(() => {
     alive.current = true;
@@ -101,7 +103,7 @@ export default function useChatMessages({ me, enabled = true }) {
       try {
         const after = cursor.current;
         const first = after === 0;
-        const rows = await listMessages(first ? { latest: true, limit: FIRST_PAGE } : { afterId: after, limit: POLL_PAGE });
+        const rows = await listMessages(first ? { latest: true, limit: FIRST_PAGE, roomId: roomRef.current } : { afterId: after, limit: POLL_PAGE, roomId: roomRef.current });
         update((prev) => mergeMessages(prev, rows));
         cursor.current = Math.max(cursor.current, lastId(rows));
         if (first && alive.current) setHasMore(rows.length >= FIRST_PAGE);
@@ -133,7 +135,7 @@ export default function useChatMessages({ me, enabled = true }) {
     if (readOff.current) return;
     readTicks.current = 0;
     try {
-      const rows = await getReadStates();
+      const rows = await getReadStates(roomRef.current);
       readFailures.current = 0;
       if (alive.current && Array.isArray(rows)) setReadStates(rows);
     } catch (e) {
@@ -187,7 +189,7 @@ export default function useChatMessages({ me, enabled = true }) {
     older.current = true;
     setLoadingOlder(true);
     try {
-      const rows = await listMessages({ beforeId: before, limit: FIRST_PAGE });
+      const rows = await listMessages({ beforeId: before, limit: FIRST_PAGE, roomId: roomRef.current });
       update((prev) => mergeMessages(prev, rows));
       if (alive.current && rows.length < FIRST_PAGE) setHasMore(false);
     } catch (e) {
@@ -201,7 +203,7 @@ export default function useChatMessages({ me, enabled = true }) {
   const deliver = useCallback(
     async (clientId, text) => {
       try {
-        const saved = await sendMessage(text);
+        const saved = await sendMessage(text, roomRef.current);
         // 임시 메시지를 지우고 서버 메시지를 id 로 병합한다(폴링이 먼저 가져왔어도 중복되지 않는다)
         update((prev) => mergeMessages(prev.filter((m) => m.clientId !== clientId), [saved]));
       } catch {

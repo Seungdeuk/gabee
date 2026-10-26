@@ -8,7 +8,7 @@
 ### 기존 (뼈대)
 
 - `GET /family-chat/messages`(`latest`·`before_id`·`after_id`·`limit`, 결과는 항상 오래된 순), `POST /family-chat/messages` — 가족 그룹 단체 대화(`messages` 테이블). 일반 전송은 AI 를 부르지 않는다. 쿼리 규칙은 아래 "채팅방" 절.
-- 모바일 소통 탭: 채팅방 줄은 서버의 가족 그룹 정보와 최근 메시지 한 줄로 그린다. 가족 연락처 카드만 아직 임시 데이터(`mock.js`)다.
+- 모바일 소통 탭: 방 목록(가족 전체방 + 1:1 방)은 서버의 `GET /family-chat/rooms` 로 그리고, 가족 연락처 카드는 실제 가족 구성원이다.
 
 ### 대화방 (서버, Chat 2)
 
@@ -37,7 +37,7 @@
 **화면 흐름**
 
 - 소통 탭(`src/app/(tabs)/family-chat.js` → `screens/FamilyChatScreen.js`)의 "채팅방" 아래 실제 가족 채팅방 한 줄(가족 이름, 마지막 메시지 한 줄, 시각)을 누르면 `router.push("/chat-room")` 로 간다. `src/app/chat-room.js` 는 `screens/ChatRoomScreen.js` 를 다시 내보낸다.
-- 소통 탭은 화면에 올 때마다 가족 정보(`GET /family-group/groups/me`)와 최근 메시지 1개(`latest=true&limit=1`)를 한 번 읽는다. 폴링은 없다. 상단 검색창은 가족 이름으로 거른다.
+- 소통 탭은 화면에 올 때마다 가족 정보(`GET /family-group/groups/me`)와 대화방 목록(`GET /family-chat/rooms`: 마지막 메시지·안 읽은 수 포함)을 한 번 읽는다. 폴링은 없다. 상단 검색창은 방 이름으로 거른다.
 - 채팅방 상단: 뒤로가기, 가족 이름과 "구성원 N명", ✨ AI 도우미 버튼. 가족 정보를 아직 읽지 못했으면 ✨ 는 꺼져 있다. 가족이 없으면 "가족 만들기 · 참여하기" 버튼을 보여 준다.
 
 **메시지 목록·전송** (`useChatMessages.js`, `chatUtils.js`, `components/MessageBubble.js`, `components/Composer.js`)
@@ -81,6 +81,14 @@
 - 앱 `apps/mobile/tests/chatroom.test.js`(11개): 메시지 병합·중복 제거, 임시 메시지 정리, 마지막·처음 id, 시각 표시, 날짜 묶기·이름 생략, 입력 판정, 미리보기, 폴링 간격, 오류 문구, 메시지 API 경로·쿼리.
 - 앱 `apps/mobile/tests/chat.test.js`(7개): AI 오류 문구, 결과 설명, 일정 후보 등록 판정, 설정 응답 해석, AI 호출 경로·본문(대화 글자 없음), 일정 등록 호출 조건, 패널 호출 규칙(닫혀 있으면 호출 없음).
 - 서버 `apps/api/app/features/family_chat/tests/test_message_paging.py`(5개): latest 오름차순, latest 가 limit 보다 적을 때, before_id 로 빈틈·중복 없이 넘기기, before_id 가 그 id 를 빼는지, after_id 기존 동작.
+
+### 대화방·1:1 채팅 (앱, 서버 `GET /family-chat/rooms`·`POST /family-chat/rooms/direct` 계약 사용)
+
+- **소통 탭**(`FamilyChatScreen`): 서버 방 목록을 `buildRoomRows`(`listUtils.js`)로 행으로 바꿔 보인다. 가족 전체방이 맨 위, 1:1 방은 서버 순서(최근 메시지 순). 1:1 행은 상대 프로필 사진/이니셜(`UserAvatar`)과 상대 이름(별명 우선), 마지막 메시지 미리보기, 안 읽은 수 배지를 보인다. 상대가 구성원 목록에 없으면 이름을 "가족"으로 둔다. 접근성 라벨은 "<이름>님과 1:1 대화, …".
+- **새 대화**(상단 ✎ 버튼): 나를 뺀 가족 구성원 목록(`NewChatPicker`)을 펼치고, 한 명을 누르면 `POST /family-chat/rooms/direct` 로 1:1 방을 열거나(없으면 만들고) 그 방으로 간다. 열고 있는 동안 다른 줄은 눌리지 않고, 실패하면 목록 아래에 오류 문구를 보인다.
+- **채팅방**(`ChatRoomScreen`): 경로 인자 `roomId`(없으면 가족 전체방)와 `peer`(1:1 상대 id, 방 이름을 정하는 데만 사용)를 받는다. 1:1 방에는 구성원 수와 **AI 도우미(✨) 버튼·패널이 없다** — 1:1 대화는 AI 로 보내지 않는다. 메시지 조회/전송, 읽음 올리기, 읽음 상태 조회가 모두 `roomId` 를 같이 보낸다(`api.js`; `roomId` 가 없으면 이전과 같은 요청). 안 읽은 사람 수는 그 방의 읽음 상태(1:1 이면 두 사람)로 센다.
+- 시험: `tests/rooms.test.js`(행 만들기·상대 이름/사진·나간 상대·후보 목록·접근성 라벨·API 경로와 본문).
+- 아직 없는 것: 1:1 방 나가기/삭제, 방 이름 바꾸기, 두 명 넘는 그룹 방.
 
 ### 읽음 표시·안 읽은 수 (앱, 서버 PR #54 계약 사용)
 
