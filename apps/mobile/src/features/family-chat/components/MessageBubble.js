@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
 
 import AuthImage from "@/shared/components/AuthImage";
 import UserAvatar from "@/shared/components/UserAvatar";
@@ -8,6 +8,7 @@ import { colors, font, radius, spacing } from "@/theme";
 import { formatTime } from "../chatUtils";
 import { unreadByA11yLabel } from "../listUtils";
 import { fitSize } from "../photo";
+import { bubbleSelectable, bubbleTextStyle } from "../pinUtils";
 import PhotoViewer from "./PhotoViewer";
 
 const AVATAR = 36;
@@ -17,17 +18,31 @@ const AVATAR = 36;
  * 내 말풍선은 아직 읽지 않은 사람이 있을 때만 시각 위에 작은 숫자(unread)를 보여 준다(모두 읽으면 표시 없음).
  * 사진 메시지(attachment)는 글자 대신 썸네일을 말풍선 안에 보여 주고(원본 비율로 크기를 미리 정해 레이아웃이 점프하지 않는다), 누르면 전체 화면으로 본다.
  * 전송 중이면 "전송 중…", 실패하면 "전송 실패 · 다시 보내기"(누르면 재전송, 길게 누르거나 "삭제" 로 지움).
- * @param {{ message: object, mine: boolean, showName: boolean, showTime?: boolean, unread?: number, photoUrl?: string | null, onRetry?: (clientId: string) => void, onDiscard?: (clientId: string) => void }} props
+ * 검색 결과로 이동했을 때 그 메시지는 highlighted 로 잠깐 배경색을 입힌다.
+ * onActions 가 있으면(서버에 저장된 텍스트 메시지) 말풍선을 길게 눌러 메뉴(복사·고정)를 연다. 네이티브에서는 길게 누르기가 글자 선택과 겹치지 않도록 이 경우 글자 선택을 끈다(복사는 메뉴에서 한다).
+ * @param {{ message: object, mine: boolean, showName: boolean, showTime?: boolean, unread?: number, photoUrl?: string | null, highlighted?: boolean, onRetry?: (clientId: string) => void, onDiscard?: (clientId: string) => void, onActions?: (message: object) => void }} props
  */
-export default function MessageBubble({ message, mine, showName, showTime = true, unread = 0, photoUrl, onRetry, onDiscard }) {
+export default function MessageBubble({ message, mine, showName, showTime = true, unread = 0, photoUrl, highlighted = false, onRetry, onDiscard, onActions }) {
   const failed = message.status === "failed";
   const sending = message.status === "sending";
   const attachment = message.attachment ?? null;
   const [viewing, setViewing] = useState(false);
   const size = attachment ? fitSize(attachment.width, attachment.height) : null;
 
+  const selectable = bubbleSelectable({ canAct: Boolean(onActions), os: Platform.OS });
+  const Box = onActions ? Pressable : View;
+  const boxProps = onActions
+    ? {
+        onLongPress: () => onActions(message),
+        accessibilityHint: "길게 누르면 메뉴가 열려요",
+        accessibilityActions: [{ name: "menu", label: "메뉴 열기" }],
+        onAccessibilityAction: (e) => {
+          if (e.nativeEvent.actionName === "menu") onActions(message);
+        },
+      }
+    : null;
   const bubble = (
-    <View style={[styles.bubble, attachment && styles.photoBubble, mine ? styles.mineBubble : styles.otherBubble, sending && styles.dim]}>
+    <Box {...boxProps} style={[styles.bubble, attachment && styles.photoBubble, mine ? styles.mineBubble : styles.otherBubble, sending && styles.dim]}>
       {attachment ? (
         <>
           <Pressable onPress={() => setViewing(true)} accessibilityRole="imagebutton" accessibilityLabel="사진, 누르면 크게 봐요">
@@ -37,11 +52,11 @@ export default function MessageBubble({ message, mine, showName, showTime = true
         </>
       ) : null}
       {message.text ? (
-        <Text style={[styles.text, attachment && styles.photoText]} selectable>
+        <Text style={bubbleTextStyle({ selectable, base: styles.text, photo: attachment ? styles.photoText : null, noSelect: styles.noSelect })} selectable={selectable}>
           {message.text}
         </Text>
       ) : null}
-    </View>
+    </Box>
   );
 
   let meta = null;
@@ -77,7 +92,7 @@ export default function MessageBubble({ message, mine, showName, showTime = true
 
   if (mine) {
     return (
-      <View style={[styles.row, styles.mineRow]}>
+      <View style={[styles.row, styles.mineRow, highlighted && styles.highlight]}>
         {meta || unreadNode ? (
           <View style={styles.metaMine}>
             {unreadNode}
@@ -89,7 +104,7 @@ export default function MessageBubble({ message, mine, showName, showTime = true
     );
   }
   return (
-    <View style={styles.row}>
+    <View style={[styles.row, highlighted && styles.highlight]}>
       {showName ? <UserAvatar name={message.user_name || "?"} userId={message.user_id} photoUrl={photoUrl} size={AVATAR} /> : <View style={styles.spacer} />}
       <View style={styles.column}>
         {showName ? <Text style={styles.name}>{message.user_name}</Text> : null}
@@ -105,6 +120,7 @@ export default function MessageBubble({ message, mine, showName, showTime = true
 const styles = StyleSheet.create({
   row: { flexDirection: "row", alignItems: "flex-end", gap: spacing.sm, paddingHorizontal: spacing.md, paddingVertical: 2 },
   mineRow: { justifyContent: "flex-end" },
+  highlight: { backgroundColor: colors.honeySoft },
   spacer: { width: AVATAR },
   column: { flexShrink: 1, gap: spacing.xs, alignItems: "flex-start" },
   line: { flexDirection: "row", alignItems: "flex-end", gap: spacing.xs, maxWidth: "100%" },
@@ -116,6 +132,7 @@ const styles = StyleSheet.create({
   photo: { maxWidth: "100%", borderRadius: radius.md }, // 좁은 화면에서는 말풍선 안으로 비율을 지키며 줄어든다
   photoText: { paddingHorizontal: spacing.sm, paddingVertical: spacing.xs },
   dim: { opacity: 0.6 },
+  noSelect: { userSelect: "none" }, // styles.text 의 userSelect 가 selectable prop 을 이기므로 스타일에서도 끈다
   text: { ...font.body, color: colors.text, userSelect: "text" },
   time: { ...font.tab, color: colors.textMuted },
   unread: { ...font.tab, fontFamily: font.bodyStrong.fontFamily, color: colors.accent },

@@ -1,7 +1,17 @@
 import uuid
 from datetime import UTC, date, datetime
 
-from sqlalchemy import Date, DateTime, ForeignKey, Index, Integer, String, Text, text
+from sqlalchemy import (
+    Date,
+    DateTime,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+    text,
+)
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.shared.db import Base
@@ -138,5 +148,26 @@ class FamilyTodo(Base):
         DateTime(timezone=True), default=lambda: datetime.now(UTC)
     )
     updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(UTC)
+    )
+
+
+class ChatPinnedMessage(Base):
+    """채팅방에 고정한(공지) 메시지. 메시지를 가리키기만 하고 본문은 복사하지 않는다(조회할 때 messages 와 join).
+    방당 최근 2개만 남기고(3번째를 고정하면 가장 오래된 것이 풀린다), 같은 메시지는 한 번만 고정된다.
+    가족 전체방도 방 id 를 쓴다(room_id 가 비어 있는 옛 메시지도 가족 전체방 id 로 고정한다)."""
+
+    __tablename__ = "chat_pinned_messages"
+    __table_args__ = (
+        UniqueConstraint("room_id", "message_id", name="uq_chat_pins_room_message"),
+        Index("ix_chat_pins_room_pinned_at", "room_id", "pinned_at"),
+    )
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uid)
+    group_id: Mapped[str] = mapped_column(ForeignKey("groups.id"), index=True)
+    room_id: Mapped[str] = mapped_column(ForeignKey("chat_rooms.id"))
+    message_id: Mapped[int] = mapped_column(ForeignKey("messages.id"))
+    pinned_by: Mapped[str] = mapped_column(ForeignKey("users.id"))
+    pinned_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(UTC)
     )

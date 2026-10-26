@@ -6,6 +6,8 @@
     통장           + 카드·전화·이메일·이름, 라벨 없는 계좌번호·이름 줄, 주소
     가족관계증명서  + 가족 이름(구분 칸 옆), 출생연월일, 등록기준지, 이름 줄
     그 밖(영수증·가정통신문·엑셀 …)  + 카드·전화·이메일·계좌 번호, 라벨 있는 이름·주소(외부 모델로 나가므로 확대)
+    모든 문서(2026-10-26 보강)      + 라벨 있는 번호(고객·증권·계약·가입자·회원·환자·등록 번호), 은행 이름이 낀 계좌,
+                                     줄 중간 라벨의 주소, 동·호까지 있는 주거지 주소. 승인·주문·사업자등록 번호는 그대로 둔다
 
 처방전의 약 이름·용법·투약일수는 복약 챙기기에 필요해서 남긴다. 금액·날짜는 가리지 않는다.
 """
@@ -29,18 +31,41 @@ _RRN_LABEL = re.compile(
 _CARD = re.compile(r"(?<!\d)(\d{4})[- ]?[\d*]{4}[- ]?[\d*]{4}[- ]?([\d*]{3,4})(?![\d*])")
 _PHONE = re.compile(r"(?<!\d)(0\d{1,2})[-) .]?\d{3,4}[- .]?\d{4}(?!\d)")
 _EMAIL = re.compile(r"\b([A-Za-z0-9])[A-Za-z0-9._%+-]*@([A-Za-z0-9.-]+\.[A-Za-z]{2,})")
-_ACCOUNT = re.compile(r"((?:계좌|입금|예금)\s*(?:번호)?\s*[:：]?\s*)(\d[\d -]{7,}\d)")
-_NAME = re.compile(
-    r"((?:성\s*명|이\s*름|환\s*자(?:\s*명)?|수\s*진\s*자|고\s*객\s*명|예\s*금\s*주|수\s*신\s*인|수\s*검\s*자|수\s*강\s*생|학\s*생\s*명|보\s*호\s*자|신\s*청\s*인|신\s*청\s*자|임\s*차\s*인|임\s*대\s*인|원\s*장|대\s*표\s*자)[ \t]*[:：]?[ \t]*)([가-힣]{2,4})"
+# 라벨과 숫자 사이에 은행 이름이 끼어도("납부계좌 가나은행987-654-321098") 가린다
+_ACCOUNT = re.compile(
+    r"((?:계좌|입금|예금)\s*(?:번호)?\s*[:：]?\s*(?:[가-힣A-Za-z]{2,8}(?:은행|뱅크|농협|신협|새마을금고|우체국)\s*)?)(\d[\d -]{7,}\d)"
 )
+_NAME_LABELS = (
+    r"성\s*명|이\s*름|환\s*자(?:\s*명)?|수\s*진\s*자|고\s*객\s*명|예\s*금\s*주|수\s*신\s*인|수\s*검\s*자|수\s*강\s*생|학\s*생\s*명|보\s*호\s*자|"
+    r"신\s*청\s*인|신\s*청\s*자|임\s*차\s*인|임\s*대\s*인|원\s*장|대\s*표\s*자|"
+    r"가\s*입\s*자|피\s*보\s*험\s*자|계\s*약\s*자|수\s*익\s*자|납\s*부\s*자|청\s*구\s*인|세\s*대\s*주|"
+    r"예\s*약\s*자|투\s*숙\s*객|탑\s*승\s*자|주\s*문\s*자|수\s*령\s*인|수\s*취\s*인"
+)
+# 라벨이 이어져도("환자 성명 김영희") 마지막 라벨 뒤의 값을 이름으로 본다
+_NAME = re.compile(r"((?:(?:" + _NAME_LABELS + r")[ \t]*[:：]?[ \t]*)+)([가-힣]{2,4})")
 # 처방전·신분증처럼 표 모양 문서는 라벨 칸과 값 칸이 줄로 나뉘어 읽히므로 다음 줄의 이름까지 가린다
-_NAME_MULTILINE = re.compile(_NAME.pattern.replace(")[ \\t]*[:：]?[ \\t]*)", ")\\s*[:：]?\\s*)"))
+_NAME_MULTILINE = re.compile(r"((?:(?:" + _NAME_LABELS + r")\s*[:：]?\s*)+)([가-힣]{2,4})")
+# 라벨이 붙은 번호(고객·증권·계약·환자·등록 번호 …). 주민·외국인·사업자 등록번호는 다른 규칙이라 뺀다.
+# 승인번호·주문번호처럼 개인을 가리키지 않는 번호는 가리지 않는다
+_LABELED_NO = re.compile(
+    r"((?<!주민)(?<!외국인)(?<!사업자)(?:고\s*객|증\s*권|보험\s*증권|계\s*약|가\s*입\s*자?|회\s*원|환\s*자|등\s*록|수\s*용\s*가|납\s*부\s*자)"
+    r"\s*번\s*호[ \t]*[:：]?[ \t]*)([A-Za-z0-9][A-Za-z0-9*-]{4,}[A-Za-z0-9*])"
+)
+_REGIONS = "서울|부산|대구|인천|광주|대전|울산|세종|경기|강원|충청|충북|충남|전라|전북|전남|경상|경북|경남|제주"
+# 줄 중간에 라벨이 있는 주소("성명 … 사용 주소 서울특별시 …"). 가게 주소도 라벨이 있으면 가려진다
+_ADDRESS_INLINE = re.compile(r"(주\s*소(?!록)(?:지)?\s*[:：]?\s*)((?:" + _REGIONS + r")[^\n]*)")
+# 라벨 없는 주거지 주소: 도로명에 동·호 번호까지 있는 것만(동·호가 없는 가게 주소는 남긴다)
+_RESIDENCE = re.compile(
+    r"(?:(?:"
+    + _REGIONS
+    + r")[가-힣]*\s+)?[가-힣]+(?:시|군|구)\s+[가-힣0-9]+(?:로|길)\s*\d[\d-]*(?:\s*,\s*|\s+)?\d+\s*동\s*\d+\s*호"
+)
 # 처방전 전용
 _DISEASE = re.compile(
     r"((?:질병\s*분류\s*기호|상병\s*코드|진단\s*코드)\s*[:：]?\s*)([A-Z]\d{2}(?:\.\d{1,2})?(?:\s*[,/]\s*[A-Z]\d{2}(?:\.\d{1,2})?)*)"
 )
 _LICENSE = re.compile(r"(면허\s*번호\s*[:：]?\s*제?\s*)(\d+)")
-_ADDRESS = re.compile(r"((?:^|\n)\s*주\s*소\s*[:：]?\s*)([^\n]+)")
+_ADDRESS = re.compile(r"((?:^|\n)\s*주\s*소(?!록)\s*[:：]?\s*)([^\n]+)")
 _PRESCRIPTION_WORDS = (
     "처방전",
     "처방의약품",
@@ -170,7 +195,10 @@ def mask_text(text: str, kind: Sensitive = "none", *, counts: Counter | None = N
         sub("email", _EMAIL, lambda m: f"{m.group(1)}***@{m.group(2)}")
         sub("account", _ACCOUNT, lambda m: m.group(1) + re.sub(r"\d", "*", m.group(2)))
         sub("name", _NAME, lambda m: m.group(1) + m.group(2)[0] + "*" * (len(m.group(2)) - 1))
+        sub("number", _LABELED_NO, lambda m: m.group(1) + re.sub(r"[A-Za-z0-9]", "*", m.group(2)))
         sub("address", _ADDRESS, lambda m: m.group(1) + "[주소 가림]")
+        sub("address", _ADDRESS_INLINE, lambda m: m.group(1) + "[주소 가림]")
+        sub("address", _RESIDENCE, "[주소 가림]")
         return text
     if kind == "id_card":  # 카드번호 패턴보다 먼저: 면허번호(12자리)가 카드번호로 잘못 걸리지 않게
         sub("license", _DRIVER, "**-**-******-**")
@@ -199,7 +227,10 @@ def mask_text(text: str, kind: Sensitive = "none", *, counts: Counter | None = N
         _NAME_MULTILINE,
         lambda m: m.group(1) + m.group(2)[0] + "*" * (len(m.group(2)) - 1),
     )
+    sub("number", _LABELED_NO, lambda m: m.group(1) + re.sub(r"[A-Za-z0-9]", "*", m.group(2)))
     sub("address", _ADDRESS, lambda m: m.group(1) + "[주소 가림]")
+    sub("address", _ADDRESS_INLINE, lambda m: m.group(1) + "[주소 가림]")
+    sub("address", _RESIDENCE, "[주소 가림]")
     if kind == "prescription":
         sub("disease_code", _DISEASE, lambda m: m.group(1) + "[병명 코드 가림]")
         sub("license", _LICENSE, lambda m: m.group(1) + "*" * len(m.group(2)))

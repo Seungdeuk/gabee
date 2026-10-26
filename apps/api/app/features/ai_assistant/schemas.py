@@ -3,6 +3,8 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.shared.llm.schemas import ProposalOut
+
 
 class ChatTurn(BaseModel):
     role: Literal["user", "assistant"]
@@ -27,6 +29,9 @@ class ChatOut(BaseModel):
     reply: str
     source: str  # ai: AI 가 답함 | fallback: AI 를 쓸 수 없어 기본 안내를 보냄
     sources: list[ChatSource] = []
+    proposals: list[
+        ProposalOut
+    ] = []  # 정산·돌봄 에이전트가 제안한 쓰기. 사용자가 확인해야 실행된다
 
 
 class FileOut(BaseModel):

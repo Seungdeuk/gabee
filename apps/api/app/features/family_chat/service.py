@@ -68,15 +68,28 @@ def list_messages(
     user: User,
     group_id: str,
     after_id: int = 0,
-    limit: int = 100,
+    limit: int | None = None,
     latest: bool = False,
     before_id: int | None = None,
     room_id: str | None = None,
+    around_id: int | None = None,
 ) -> list[MessageOut]:
-    """latest·before_id·after_id(>0) 는 하나만 쓸 수 있다. 모두 없으면 가장 오래된 것부터."""
-    if sum([latest, before_id is not None, after_id > 0]) > 1:
-        raise bad_request("invalid_range", "latest, before_id, after_id 는 함께 쓸 수 없어요")
+    """latest·before_id·after_id(>0)·around_id 는 하나만 쓸 수 있다. 모두 없으면 가장 오래된 것부터.
+    around_id 는 그 메시지와 앞뒤 limit//2 개(기본 limit 50)를 오래된 순으로 돌려준다."""
+    if sum([latest, before_id is not None, after_id > 0, around_id is not None]) > 1:
+        raise bad_request(
+            "invalid_range", "latest, before_id, after_id, around_id 는 함께 쓸 수 없어요"
+        )
     room = resolve_room(db, user, group_id, room_id)
+    if around_id is not None:
+        half = (50 if limit is None else limit) // 2
+        center = repo.get_in_room(db, room, around_id)
+        if center is None:
+            raise bad_request("invalid_message", "이 대화방의 메시지가 아니에요")
+        before = repo.list_recent(db, room, half, around_id) if half else []
+        after = repo.list_after(db, room, around_id, half) if half else []
+        return _outs(db, [*before, center, *after])
+    limit = 100 if limit is None else limit
     if latest or before_id is not None:
         rows = repo.list_recent(db, room, limit, before_id)
     else:
