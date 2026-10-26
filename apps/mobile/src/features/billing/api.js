@@ -104,7 +104,7 @@ export const deleteSubscription = (id) => apiFetch(`/billing/subscriptions/${id}
 export const getAllowances = () => apiFetch("/billing/allowances");
 
 /**
- * 고정 용돈 주기 설정(가족 소유자·관리자. 관리자는 본인 용돈 불가). weekly 의 day 는 0(월)~6(일), monthly 는 1~31.
+ * 고정 용돈 주기 설정(부모·그룹을 만든 사람). weekly 의 day 는 0(월)~6(일), monthly 는 1~31.
  * @param {string} childId
  * @param {{ cycle: "weekly" | "monthly", day: number, amount: number, mode: "auto" | "remind" }} body
  * @returns {Promise<Allowance>}
@@ -119,7 +119,7 @@ export const payAllowanceDue = (childId, dueDate) =>
   apiFetch(`/billing/allowances/${childId}/plan/pay`, { method: "POST", body: { due_date: dueDate } });
 
 /**
- * 수동 지급 기록(가족 소유자·관리자. 관리자는 본인 용돈 불가).
+ * 수동 지급 기록(부모·그룹을 만든 사람).
  * @param {string} childId
  * @param {{ amount: number, memo?: string }} body
  * @returns {Promise<Allowance>}
@@ -127,7 +127,7 @@ export const payAllowanceDue = (childId, dueDate) =>
 export const addAllowanceCredit = (childId, body) => apiFetch(`/billing/allowances/${childId}/credits`, { method: "POST", body });
 
 /**
- * 용돈 사용 기록(본인 또는 가족 소유자·관리자). 잔액보다 크면 서버가 over_balance 오류로 거절한다.
+ * 용돈 사용 기록(본인 또는 부모). 잔액보다 크면 서버가 over_balance 오류로 거절한다.
  * @param {string} childId
  * @param {{ amount: number, memo?: string }} body
  * @returns {Promise<Allowance>}
@@ -143,14 +143,14 @@ export const addAllowanceUse = (childId, body) => apiFetch(`/billing/allowances/
 export const requestAllowance = (childId, body) => apiFetch(`/billing/allowances/${childId}/requests`, { method: "POST", body });
 
 /**
- * 요청 승인(가족 소유자·관리자. 관리자는 본인 용돈 불가): 장부에 입금이 기록된다. amount 를 안 보내면 요청한 금액이다.
+ * 요청 승인(부모·그룹을 만든 사람): 장부에 입금이 기록된다. amount 를 안 보내면 요청한 금액이다.
  * @param {string} childId @param {string} requestId @param {{ amount?: number, note?: string }} body
  * @returns {Promise<Allowance>}
  */
 export const approveAllowanceRequest = (childId, requestId, body) =>
   apiFetch(`/billing/allowances/${childId}/requests/${requestId}/approve`, { method: "POST", body });
 
-/** 요청 거절(가족 소유자·관리자. 관리자는 본인 용돈 불가). @param {string} childId @param {string} requestId @param {{ note?: string }} body @returns {Promise<Allowance>} */
+/** 요청 거절(부모·그룹을 만든 사람). @param {string} childId @param {string} requestId @param {{ note?: string }} body @returns {Promise<Allowance>} */
 export const rejectAllowanceRequest = (childId, requestId, body) =>
   apiFetch(`/billing/allowances/${childId}/requests/${requestId}/reject`, { method: "POST", body });
 

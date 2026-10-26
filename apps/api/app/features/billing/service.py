@@ -709,23 +709,14 @@ def _child(db: Session, group_id: str, child_id: str) -> User:
     return child
 
 
-def _can_manage_allowance(db: Session, group_id: str, user: User, child_id: str) -> bool:
-    """주기 설정·지급·승인·취소는 가족 안에서 소유자(owner)나 관리자(admin)인 사람만 한다.
-
-    가입 때 스스로 고른 users.role(parent 등)은 권한이 아니다. group_members.role 만 본다.
-    관리자(admin)는 용돈 대상이 자기 자신이면 못 한다(자기 용돈을 스스로 지급·승인 금지). 소유자는 예외."""
-    role = group_repo.member_role(db, group_id, user.id)
-    if role == "owner":
-        return True
-    return role == "admin" and user.id != child_id
+def _can_manage_allowance(db: Session, group_id: str, user: User) -> bool:
+    """주기 설정·지급·취소는 부모 역할이거나 그룹을 만든 사람만 한다."""
+    return user.role == "parent" or group_repo.get_group(db, group_id).owner_id == user.id
 
 
-def _ensure_manage_allowance(db: Session, group_id: str, user: User, child_id: str) -> None:
-    if _can_manage_allowance(db, group_id, user, child_id):
-        return
-    if user.id == child_id and group_repo.member_role(db, group_id, user.id) == "admin":
-        raise ApiError(403, "not_allowance_manager", "본인의 용돈은 직접 지급·승인할 수 없어요")
-    raise ApiError(403, "not_allowance_manager", "가족 소유자나 관리자만 할 수 있어요")
+def _ensure_manage_allowance(db: Session, group_id: str, user: User) -> None:
+    if not _can_manage_allowance(db, group_id, user):
+        raise ApiError(403, "not_allowance_manager", "부모님이나 그룹을 만든 사람만 할 수 있어요")
 
 
 def _credit(
@@ -847,7 +838,7 @@ def _allowance_out(
     entries = repo.list_entries(db, group_id, child.id)
     balance, rows = _entries_out(entries, names)
     live = [e for e in entries if e.voided_at is None]
-    can_manage = _can_manage_allowance(db, group_id, user, child.id)
+    can_manage = _can_manage_allowance(db, group_id, user)
     pending: list[AllowancePending] = []
     plan_out = None
     if plan is not None:
@@ -905,7 +896,7 @@ def set_plan(
     db: Session, group_id: str, user: User, child_id: str, body: AllowancePlanIn
 ) -> AllowanceOut:
     _child(db, group_id, child_id)
-    _ensure_manage_allowance(db, group_id, user, child_id)
+    _ensure_manage_allowance(db, group_id, user)
     if body.cycle == "weekly" and not 0 <= body.day <= 6:
         raise bad_request("invalid_day", "요일은 월(0)부터 일(6)까지예요")
     if body.cycle == "monthly" and not 1 <= body.day <= 31:
@@ -922,7 +913,7 @@ def set_plan(
 
 def delete_plan(db: Session, group_id: str, user: User, child_id: str) -> AllowanceOut:
     _child(db, group_id, child_id)
-    _ensure_manage_allowance(db, group_id, user, child_id)
+    _ensure_manage_allowance(db, group_id, user)
     plan = repo.get_plan(db, group_id, child_id)
     if plan is None:
         raise not_found("용돈 주기")
@@ -947,7 +938,7 @@ def add_credit(
 ) -> AllowanceOut:
     """수동 지급(부모가 직접 입금으로 기록)."""
     _child(db, group_id, child_id)
-    _ensure_manage_allowance(db, group_id, user, child_id)
+    _ensure_manage_allowance(db, group_id, user)
     repo.save(
         db,
         AllowanceEntry(
@@ -970,7 +961,7 @@ def pay_due(
 ) -> AllowanceOut:
     """리마인드 방식: "지급했어요" 를 누르면 그 지급일의 입금을 장부에 기록한다."""
     _child(db, group_id, child_id)
-    _ensure_manage_allowance(db, group_id, user, child_id)
+    _ensure_manage_allowance(db, group_id, user)
     plan = repo.get_plan(db, group_id, child_id)
     if plan is None or plan.mode != "remind":
         raise bad_request("not_remind", "리마인드 방식 주기가 아니에요")
@@ -990,7 +981,7 @@ def add_use(
 ) -> AllowanceOut:
     """사용 내역 기록. 본인이나 관리 권한자만, 잔액보다 큰 사용은 저장하지 않는다."""
     _child(db, group_id, child_id)
-    if user.id != child_id and not _can_manage_allowance(db, group_id, user, child_id):
+    if user.id != child_id and not _can_manage_allowance(db, group_id, user):
         raise ApiError(403, "not_allowed", "본인이나 부모님만 사용 내역을 기록할 수 있어요")
     day = _entry_date(body.date)
     with seed_lock(db, f"allowance:{child_id}"):  # 동시에 두 번 써서 잔액을 넘기지 않게 잠근다
@@ -1062,7 +1053,7 @@ def approve_request(
 ) -> AllowanceOut:
     """승인하면 장부에 입금 한 줄이 생긴다(금액을 바꿔 승인할 수 있다). 한 요청은 한 번만 승인된다."""
     _child(db, group_id, child_id)
-    _ensure_manage_allowance(db, group_id, user, child_id)
+    _ensure_manage_allowance(db, group_id, user)
     with seed_lock(db, f"allowance-request:{child_id}"):
         req = _pending_request(db, group_id, child_id, request_id)
         amount = body.amount or req.amount
@@ -1092,7 +1083,7 @@ def reject_request(
     body: AllowanceRejectIn,
 ) -> AllowanceOut:
     _child(db, group_id, child_id)
-    _ensure_manage_allowance(db, group_id, user, child_id)
+    _ensure_manage_allowance(db, group_id, user)
     with seed_lock(db, f"allowance-request:{child_id}"):
         req = _pending_request(db, group_id, child_id, request_id)
         req.status, req.decided_by, req.decided_at = "rejected", user.id, datetime.now(UTC)
@@ -1123,7 +1114,7 @@ def void_entry(
     entry = repo.get_entry(db, group_id, child_id, entry_id)
     if entry is None:
         raise not_found("장부 내역")
-    if user.id != entry.created_by and not _can_manage_allowance(db, group_id, user, child_id):
+    if user.id != entry.created_by and not _can_manage_allowance(db, group_id, user):
         raise ApiError(403, "not_allowed", "기록한 사람이나 부모님만 취소할 수 있어요")
     if entry.voided_at is not None:
         raise bad_request("already_voided", "이미 취소한 내역이에요")
