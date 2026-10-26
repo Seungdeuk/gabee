@@ -50,7 +50,6 @@ class Processors:
     ocr: object | None = None
     llm: object | None = None
     jev: object | None = None
-    faces: object | None = None
     captioner: Captioner | None = None
     default_captioner: bool = True
 
@@ -73,7 +72,6 @@ def process_file(photo_id: str, group_id: str, user_id: str, data: bytes, filena
                 ocr=processors.ocr,
                 llm=processors.llm,
                 jev=processors.jev,
-                faces=processors.faces,
                 captioner=captioner,
             )
             if result.quality.status != "failed":

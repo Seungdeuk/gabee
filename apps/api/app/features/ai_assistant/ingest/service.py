@@ -19,9 +19,8 @@ from .caption import Captioner
 from .classify import Jev, Llm, classify
 from .converters import BrokenFile, Ocr
 from .detect import Unsupported, decode_text, detect
-from .faces import Faces, default_faces
 from .raw_store import LocalRawStore
-from .schemas import Block, Content, People, PreprocessResult, Privacy, Quality, SourceInfo
+from .schemas import Block, Content, PreprocessResult, Privacy, Quality, SourceInfo
 
 MAX_BYTES = 25 * 1024 * 1024
 MIN_PDF_CHARS = 20  # 이보다 글자가 적은 PDF 는 스캔본으로 본다
@@ -49,7 +48,6 @@ def ingest_file(
     ocr: Ocr | None = None,
     llm: Llm | None = None,
     jev: Jev | None = None,
-    faces: Faces | None = None,
     captioner: Captioner | None = None,
 ) -> PreprocessResult:
     """원본을 원본 데이터 센터에 그대로 보관하고, 가린 결과와 (가린 글자로 한) 분류를 돌려준다.
@@ -80,11 +78,6 @@ def ingest_file(
         caption = captioner.describe(data)
         if caption is not None:
             update["caption"] = caption
-    # 가족 공유 사진만 찍힌 사람을 찾는다(문서 사진의 증명사진 등은 찾지 않음). 서버 안에서만 처리
-    if src.kind == "image" and c is not None and c.route == "daily_share":
-        finder = faces or default_faces()
-        if finder is not None:
-            update["people"] = People.model_validate(finder.identify(group_id, data))
     return result.model_copy(update=update)
 
 

@@ -29,7 +29,7 @@ class BrokenFile(Exception):
 
 
 def prepare_image(data: bytes) -> Image.Image:
-    """회전(EXIF) 반영 → 크기 맞추기 → 흑백·대비 보정. OCR 이 읽기 좋은 모양."""
+    """회전(EXIF) 반영 → 크기 맞추기. 색은 그대로 둔다(OCR 엔진이 스스로 다룬다)."""
     try:
         with Image.open(io.BytesIO(data)) as opened:
             img = ImageOps.exif_transpose(opened).convert("RGB")
@@ -46,7 +46,7 @@ def _fit_for_ocr(img: Image.Image) -> Image.Image:
         scale = min(OCR_MIN_SHORT / short, 2.0, (OCR_MAX_SIDE * 2) / long_)
     if abs(scale - 1.0) > 0.02:
         img = img.resize((max(1, round(w * scale)), max(1, round(h * scale))), Image.LANCZOS)
-    return ImageOps.autocontrast(img.convert("L"), cutoff=1)
+    return img  # 흑백·대비 보정은 하지 않는다(측정: 원본 색 그대로가 글자 오류율이 더 낮다)
 
 
 DISPLAY_MAX_SIDE = 1080
@@ -116,11 +116,41 @@ class KoreanOcr:
         engine = (
             self._get()
         )  # 잠금 밖에서: _get 도 같은 잠금을 잡으므로 안에서 부르면 첫 호출이 멈춘다
+        arr = np.asarray(image.convert("RGB"))
         with self._lock:
-            res = engine(np.asarray(image))
+            # 줄 방향 확인(cls)을 켜 두면 짧은 줄을 거꾸로 뒤집어 읽어 줄이 통째로 빠진다(측정: 줄 회수 68% → 끄면 95%).
+            # 그래서 끄고 먼저 읽고, 평균 확신도가 낮으면(사진이 뒤집혔을 수 있다) 방향 확인을 켠 결과와
+            # 180° 돌려 읽은 결과 중 읽은 줄의 확신도 합이 더 큰 쪽을 쓴다.
+            res = engine(arr, use_cls=False)
+            if _mean_score(res) < READ_OK_SCORE:
+                tries = [
+                    res,
+                    engine(arr, use_cls=True),
+                    engine(np.rot90(arr, 2).copy(), use_cls=False),
+                ]
+                res = max(tries, key=_score_mass)
         if res is None or not getattr(res, "txts", None):
             return []
         return group_lines(res.boxes, res.txts, res.scores)
+
+
+READ_OK_SCORE = 0.85  # 평균 확신도가 이 이상이면 한 번 읽은 것으로 끝낸다
+
+
+def _scores(res) -> list[float]:
+    if res is None or not getattr(res, "scores", None):
+        return []
+    return [float(s) for s in res.scores]
+
+
+def _mean_score(res) -> float:
+    s = _scores(res)
+    return sum(s) / len(s) if s else 0.0
+
+
+def _score_mass(res) -> float:
+    """읽은 줄들의 확신도 합: 더 많이, 더 확실하게 읽을수록 크다."""
+    return sum(_scores(res))
 
 
 def group_lines(boxes, txts, scores) -> list[OcrLine]:

@@ -2,7 +2,7 @@ import { Ionicons } from "@expo/vector-icons";
 import * as DocumentPicker from "expo-document-picker";
 import * as ImagePicker from "expo-image-picker";
 import { useEffect, useRef, useState } from "react";
-import { Alert, Pressable, StyleSheet, TextInput, View } from "react-native";
+import { Alert, InteractionManager, Pressable, StyleSheet, TextInput, View } from "react-native";
 
 import { colors } from "@/theme";
 
@@ -49,8 +49,9 @@ export default function ChatInput({ mode, onSend, onMic, onAttach }) {
       if (result.canceled || !result.assets?.length) return;
       const asset = result.assets[0];
       onAttach({ uri: asset.uri, name: asset.fileName ?? undefined, type: asset.mimeType ?? undefined, isImage: true });
-    } catch {
-      Alert.alert("사진을 가져오지 못했어요", "잠시 후 다시 시도해 주세요.");
+    } catch (e) {
+      Alert.alert("사진을 가져오지 못했어요", `잠시 후 다시 시도해 주세요.
+(${e?.message ?? "알 수 없는 오류"})`);
     }
   };
 
@@ -61,8 +62,9 @@ export default function ChatInput({ mode, onSend, onMic, onAttach }) {
       const asset = result.assets[0];
       const isImage = (asset.mimeType ?? "").startsWith("image/");
       onAttach({ uri: asset.uri, name: asset.name, type: asset.mimeType ?? "application/octet-stream", isImage });
-    } catch {
-      Alert.alert("파일을 가져오지 못했어요", "잠시 후 다시 시도해 주세요.");
+    } catch (e) {
+      Alert.alert("파일을 가져오지 못했어요", `잠시 후 다시 시도해 주세요.
+(${e?.message ?? "알 수 없는 오류"})`);
     }
   };
 
@@ -71,7 +73,10 @@ export default function ChatInput({ mode, onSend, onMic, onAttach }) {
   /** 시트를 닫은 뒤에 고른 창을 연다(두 창이 겹쳐 뜨면 일부 폰에서 열리지 않는다). */
   const choose = (key) => {
     setSheet(false);
-    setTimeout(() => (key === "file" ? pickFile() : pick(key === "camera")), 350);
+    // 시트 창이 완전히 사라진 뒤에 연다. 안드로이드는 창이 겹쳐 있으면 갤러리가 열리지 않는 경우가 있다
+    InteractionManager.runAfterInteractions(() => {
+      setTimeout(() => (key === "file" ? pickFile() : pick(key === "camera")), 500);
+    });
   };
 
   const submit = () => {

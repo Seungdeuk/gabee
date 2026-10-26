@@ -33,8 +33,6 @@ class Settings(BaseSettings):
     typesafe_api_key: str = ""
     jev_model: str = "jev-latest"
     jev_timeout: float = 15.0
-    # 얼굴 찾기 모델(YuNet·SFace) 폴더. 비우면 DATA_DIR/models/faces. 모델이 없으면 얼굴 찾기를 건너뛴다
-    face_model_dir: str = ""
     # 원본 파일(가리기 전)을 그대로 보관하는 폴더. 비우면 DATA_DIR/raw. 접근을 제한해야 하는 곳이라 서버만 읽는다
     raw_dir: str = ""
     # 글자 없는 사진 설명(Ollama 이미지 모델). 사진은 서버 밖으로 나가지 않는다
@@ -43,7 +41,9 @@ class Settings(BaseSettings):
     caption_timeout: float = 60.0
     ollama_keep_alive: str = "30m"  # 모델을 메모리에 올려 두는 시간(처음 불러오는 데 1분쯤 걸린다)
     # 채팅(외부 Claude)이 근거로 읽을 수 있는 기록에 민감 기록(처방전·신분증·통장·인물 사진 등)을 넣을지
-    chat_include_sensitive: bool = False  # 기본은 뺀다(필요한 가족만 CHAT_INCLUDE_SENSITIVE=true)
+    chat_include_sensitive: bool = (
+        True  # 가린 글만 채팅 근거로 쓴다. 끄려면 CHAT_INCLUDE_SENSITIVE=false
+    )
 
     # 로그인/JWT(PR 4-B). JWT_SECRET 은 환경변수(.env)로만 준다 — 코드·Git 에 넣지 않는다.
     # 비어 있으면: 로컬 SQLite 나 DEBUG=true 에서만 프로세스 임시 키를 쓴다(재시작하면 로그인이 풀림). PostgreSQL(공용·운영)에서는
