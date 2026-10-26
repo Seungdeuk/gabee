@@ -1,3 +1,4 @@
+import datetime as dt
 import uuid
 from datetime import UTC, date, datetime
 
@@ -9,6 +10,7 @@ from sqlalchemy import (
     Integer,
     String,
     Text,
+    Time,
     UniqueConstraint,
     text,
 )
@@ -169,5 +171,34 @@ class ChatPinnedMessage(Base):
     message_id: Mapped[int] = mapped_column(ForeignKey("messages.id"))
     pinned_by: Mapped[str] = mapped_column(ForeignKey("users.id"))
     pinned_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(UTC)
+    )
+
+
+class ChatMessageLink(Base):
+    """채팅 메시지와 그 메시지에서 등록한 일정·할 일의 연결. 본문은 복사하지 않고(조회할 때 messages 와 join),
+    제목·날짜·시간만 등록 시점의 복사본으로 둔다. 일정(schedule)은 다른 기능이라 target_id 의 존재를 검증하지 않는다
+    (일정이 나중에 지워지거나 바뀌어도 목록은 복사본을 보여준다). 할 일(todo)은 같은 가족의 family_todos 만 가리킨다.
+    가족 전체방도 방 id 를 쓴다(room_id 가 비어 있는 옛 메시지도 가족 전체방 id 로 저장한다)."""
+
+    __tablename__ = "chat_message_links"
+    __table_args__ = (
+        UniqueConstraint(
+            "room_id", "message_id", "kind", "target_id", name="uq_chat_links_room_msg_target"
+        ),
+        Index("ix_chat_links_room_created_at", "room_id", "created_at"),
+    )
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uid)
+    group_id: Mapped[str] = mapped_column(ForeignKey("groups.id"), index=True)
+    room_id: Mapped[str] = mapped_column(ForeignKey("chat_rooms.id"))
+    message_id: Mapped[int] = mapped_column(ForeignKey("messages.id"))
+    kind: Mapped[str] = mapped_column(String(8))  # event | todo
+    target_id: Mapped[str] = mapped_column(String(32))
+    title: Mapped[str] = mapped_column(String(120))
+    date: Mapped[dt.date | None] = mapped_column(Date, nullable=True)
+    time: Mapped[dt.time | None] = mapped_column(Time, nullable=True)
+    created_by: Mapped[str] = mapped_column(ForeignKey("users.id"))
+    created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(UTC)
     )

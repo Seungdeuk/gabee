@@ -66,6 +66,22 @@
 - 테이블 `chat_pinned_messages`(Alembic `e8c1f4a7b903`, 새 테이블만 추가하는 expand 리비전). 스키마 게이트에서는 `family_chat` 기능의 전제로 자동 잡힌다(기능 `models.py` 의 모델).
 - 파일: `pin_router.py`·`pin_service.py`·`pin_repository.py`·`pin_schemas.py`. 시험: `app/features/family_chat/tests/test_pins.py`(고정·해제·멱등·자동 교체·최신순 2개·텍스트만·다른 방 메시지·모든 구성원·권한 격리·속도 제한·로그·동시성), `tests/test_membership_enforcement.py`(엔드포인트 목록). PostgreSQL 동시성은 임시 컨테이너에서 별도 스크립트로 확인했다(12개 스레드가 같은 방에 동시에 고정 x5회, 항상 2개).
 
+### 메시지-일정 연결 (서버)
+
+채팅에서 AI 후보를 확인해 **일정/할 일로 등록**할 때 원본 대화 메시지와의 연결을 저장한다. 서랍의 "가족 일정 · 할 일" 목록, 말풍선 "등록됨" 표시, 원본 메시지로 이동에 쓴다. 서버만 구현했고 앱 화면은 아직 없다(이번 PR 은 채팅 쪽만).
+
+- 저장 위치: `chat_message_links`(family_chat). **일정(schedule) 테이블·모델은 건드리지 않고 import 하지도 않는다**(다른 기능 담당·교차 import 금지). 연결은 `(방, 메시지, 종류 event|todo, 대상 id)` 한 줄이고, 등록 시점의 제목·날짜·시간 **복사본**과 만든 사람을 가진다. 원본 메시지 본문은 복사하지 않고 조회할 때 `messages` 와 join 으로만 가져온다.
+- `POST /family-chat/links {room_id?, message_id, kind:"event"|"todo", target_id, title, date?: "YYYY-MM-DD"|null, time?: "HH:MM"|null}` — 201 `LinkOut`. **멱등**: 같은 (방, 메시지, 종류, 대상)이 이미 있으면 새로 만들지 않고 기존 연결(제목 등 그대로)을 **200** 으로 돌려준다(겹친 요청은 유니크 제약이 막는다). `message_id` 는 그 방의 **텍스트 메시지**여야 한다(다른 방·없는 id·사진·빈 글은 400 `invalid_message`). `title` 은 공백을 정리한 뒤 1~120자(아니면 422), `time` 은 `HH:MM`. `kind="todo"` 면 `target_id` 가 **이 가족의** `family_todos` 에 있어야 한다(없거나 다른 가족 것이면 같은 400 `invalid_target` 이라 존재 단서가 없다). 방당 연결은 최대 200개(초과 400 `too_many_links`, 방 행 잠금 아래에서 세어 동시 요청에도 지킨다).
+- `GET /family-chat/links?room_id=&kind=&target_id=&limit=` — `{items:[LinkOut]}` 최신순(시각이 같으면 id 큰 쪽). `limit` 1~100(기본 50), `kind`·`target_id` 는 선택 필터. 조회에는 속도 제한이 없다.
+- `DELETE /family-chat/links/{link_id}?room_id=` — 204. **연결을 만든 사람만** 지운다(같은 방의 다른 구성원은 403 `forbidden`, 없는 id 는 404). 메시지·일정·할 일은 그대로 남는다.
+- `LinkOut`: `{id, room_id, message_id, kind, target_id, title, date, time("HH:MM"), created_by, created_by_name, created_at, message_text(원본 앞 100자), message_user_name}`.
+- 권한: 인증과 `current_group_id` 필수, 방은 `resolve_room` 으로 확인하고 모든 조회·삭제는 그 방 id 를 SQL 조건에 넣는다. 다른 가족의 방·참여하지 않은 1:1 방·없는 방은 조회/생성/삭제 모두 같은 404 다(가족 전체방은 방 id 로 저장하고 `room_id` 가 비어 있는 옛 메시지도 연결할 수 있다).
+- 제한: 생성·삭제 합쳐 사용자별 분당 30회(429 `too_many_requests` + `Retry-After`, 프로세스 메모리 `FailureLimiter`).
+- **한계(복사본)**: `kind="event"` 는 일정 기능을 import 할 수 없어 `target_id` 의 존재를 검증하지 않는다. 일정이 나중에 지워지거나 바뀌어도 연결 목록은 등록 시점의 복사본(제목·날짜·시간)을 그대로 보여준다. 할 일도 연결을 만든 뒤 제목을 고치거나 지우면 복사본과 달라질 수 있고 연결은 자동으로 지워지지 않는다(앱이 최신 대상과 맞추거나 연결을 지운다).
+- **일정 화면에서 '원본 대화 보기'(이번 범위 아님)**: 일정 앱이 일정의 원본 대화로 가려면 `GET /family-chat/links?kind=event&target_id=<일정 id>`(가족 전체방은 `room_id` 생략, 1:1 방은 `room_id`)로 `message_id`·`room_id` 를 찾고 채팅의 `focusOn(message_id)`(around_id 조회)로 이동하면 된다. 이를 위해 `target_id` 필터를 서버에 미리 넣어 두었다. 방마다 조회해야 하는 한계는 있다(여러 방을 한 번에 찾는 조회는 필요해지면 추가).
+- **AI·외부로 보내지 않는다**: AI 를 부르지 않고 로그에 제목·메시지 글자를 남기지 않는다.
+- 파일: `link_router.py`·`link_service.py`·`link_repository.py`·`link_schemas.py`, 리비전 `c4d8a2e6b157`(새 테이블만, expand). 시험: `app/features/family_chat/tests/test_links.py`(생성·멱등·목록 최신순·필터·limit·삭제 권한·검증·todo 대상·200개 제한·권한 격리·1:1 방·속도 제한·로그·join 본문), `tests/test_membership_enforcement.py`(엔드포인트 목록).
+
 ### 대화 검색 (서버)
 
 카카오톡 돋보기처럼 **글자 일치(키워드) 검색만** 한다(사용자 결정). 임베딩·벡터·AI 를 쓰지 않고 외부 호출도 없다. 스키마 변경(Alembic)도 없다.
