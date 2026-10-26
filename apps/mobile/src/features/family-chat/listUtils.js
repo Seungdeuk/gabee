@@ -101,3 +101,16 @@ export function buildRoomRows(rooms, group, preview, timeLabel) {
  */
 export const pickableMembers = (members, myId) =>
   (Array.isArray(members) ? members : []).filter((m) => m.id !== myId).map((m) => ({ id: m.id, name: memberName(m), photoUrl: m.photo_url ?? null }));
+
+/**
+ * 모든 방의 안 읽은 수 합계(소통 탭 아이콘 배지). 숫자가 아닌 값은 0 으로 본다.
+ * @param {{ unread?: number }[] | null | undefined} rooms
+ * @returns {number}
+ */
+export function totalUnread(rooms) {
+  if (!Array.isArray(rooms)) return 0;
+  return rooms.reduce((sum, room) => {
+    const n = Number(room?.unread);
+    return sum + (Number.isFinite(n) && n > 0 ? Math.floor(n) : 0);
+  }, 0);
+}
