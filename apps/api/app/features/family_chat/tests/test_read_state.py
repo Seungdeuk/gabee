@@ -8,7 +8,7 @@ from app.features.family_chat.models import ChatRoomRead
 from app.features.family_group.models import GroupMember
 from app.shared.db import SessionLocal
 from app.shared.llm import client as llm
-from tests.helpers import signup
+from tests.helpers import join_family, signup
 
 MSG = "/family-chat/messages"
 READ = "/family-chat/read"
@@ -194,12 +194,7 @@ def test_late_joiner_baseline_is_join_time(client, family):
     for i in range(30):
         _send(client, a, f"옛 메시지 {i}")
     c = signup(client, "삼촌")
-    assert (
-        client.post(
-            "/family-group/groups/join", json={"code": group["invite_code"]}, headers=c
-        ).status_code
-        == 200
-    )
+    assert join_family(client, a, group["invite_code"], c).status_code == 200
     uid_c = _user_id(client, c)
     got = client.get(UNREAD, headers=c).json()
     assert got["unread"] == 0 and got["last_read_message_id"] > 0

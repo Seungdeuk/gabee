@@ -4,14 +4,14 @@ from sqlalchemy import select
 
 from app.features.billing.models import Expense
 from app.shared.db import SessionLocal
-from tests.helpers import signup
+from tests.helpers import join_family, signup
 
 
 def _family(client, family):
     """엄마(parent) + 지민·수진(child). (지민 헤더, 헤더 모음, id 모음)."""
     a, b, group = family
     mom = signup(client, "엄마", role="parent")
-    client.post("/family-group/groups/join", json={"code": group["invite_code"]}, headers=mom)
+    join_family(client, a, group["invite_code"], mom)
     members = client.get("/family-group/groups/me", headers=a).json()["members"]
     return a, {"지민": a, "수진": b, "엄마": mom}, {m["name"]: m["id"] for m in members}
 

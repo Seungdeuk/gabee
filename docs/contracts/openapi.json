@@ -1901,7 +1901,7 @@
           "family-group"
         ],
         "summary": "Join Group",
-        "description": "초대 코드로 참여한다. 정식 회원은 승인 대기 요청(JoinRequestOut, status=pending)이 만들어지고, 기존 익명 계정은 호환을 위해 바로 GroupOut.",
+        "description": "초대 코드로 참여를 신청한다. 모든 계정(익명 포함)에 승인 대기 요청(JoinRequestOut, status=pending)이 만들어지고, 관리자 승인 뒤 구성원이 된다.",
         "operationId": "join_group_family_group_groups_join_post",
         "parameters": [
           {
@@ -1953,15 +1953,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "anyOf": [
-                    {
-                      "$ref": "#/components/schemas/GroupOut"
-                    },
-                    {
-                      "$ref": "#/components/schemas/JoinRequestOut"
-                    }
-                  ],
-                  "title": "Response Join Group Family Group Groups Join Post"
+                  "$ref": "#/components/schemas/JoinRequestOut"
                 }
               }
             }

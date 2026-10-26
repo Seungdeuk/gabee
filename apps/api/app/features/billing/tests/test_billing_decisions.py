@@ -1,13 +1,13 @@
 """정산 규칙: 미정산 지출은 잔액·송금에서 제외, 자녀 대상 정산은 미성년 자녀가 있을 때만 부모님이 부담."""
 
-from tests.helpers import signup
+from tests.helpers import join_family, signup
 
 
 def _family(client, family):
     """엄마(parent) + 지민·수진(child). (지민 헤더, 헤더 모음, id 모음)."""
     a, b, group = family
     mom = signup(client, "엄마", role="parent")
-    client.post("/family-group/groups/join", json={"code": group["invite_code"]}, headers=mom)
+    join_family(client, a, group["invite_code"], mom)
     members = client.get("/family-group/groups/me", headers=a).json()["members"]
     ids = {m["name"]: m["id"] for m in members}
     return a, {"지민": a, "수진": b, "엄마": mom}, ids

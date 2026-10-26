@@ -8,7 +8,7 @@ from app.features.family_chat import ai_repository
 from app.features.family_chat.models import DIRECT, FAMILY, ChatRoom, Message
 from app.shared.db import SessionLocal
 from app.shared.llm import client as llm
-from tests.helpers import signup
+from tests.helpers import join_family, signup
 
 MSG = "/family-chat/messages"
 ROOMS = "/family-chat/rooms"
@@ -32,7 +32,7 @@ def trio(client, family):
     """같은 가족 구성원 셋(지민 a, 수진 b, 삼촌 c)."""
     a, b, group = family
     c = signup(client, "삼촌")
-    r = client.post("/family-group/groups/join", json={"code": group["invite_code"]}, headers=c)
+    r = join_family(client, a, group["invite_code"], c)
     assert r.status_code == 200
     return a, b, c
 
@@ -225,7 +225,7 @@ def test_late_joiner_baseline_ignores_direct_room_messages(client, trio):
     for i in range(3):
         _send(client, a, f"둘만 {i}", room_id=room)  # 가족 메시지보다 id 가 큰 1:1 메시지
     d = signup(client, "이모")
-    r = client.post("/family-group/groups/join", json={"code": group["invite_code"]}, headers=d)
+    r = join_family(client, a, group["invite_code"], d)
     assert r.status_code == 200
     got = client.get(UNREAD, headers=d).json()
     assert got == {"unread": 0, "last_read_message_id": family_msg}  # 1:1 메시지 id 가 아니다

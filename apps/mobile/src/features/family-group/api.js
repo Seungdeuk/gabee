@@ -17,16 +17,13 @@ export async function signup(name, role = "child") {
 /** 가족 그룹을 만든다. 응답에 초대 코드(invite_code)가 들어 있다. */
 export const createGroup = (name) => apiFetch("/family-group/groups", { method: "POST", body: { name } });
 
-/** 초대 코드로 가족 그룹에 참여한다. */
-export const joinGroup = (code) => apiFetch("/family-group/groups/join", { method: "POST", body: { code } });
-
 /** 내 가족 그룹과 구성원 목록. */
 export const getMyGroup = () => apiFetch("/family-group/groups/me");
 
 /**
- * 초대 코드로 참여한다. 정식 회원은 승인 대기 요청({ status: "pending", ... })이, 기존 익명 계정은 바로 GroupOut 이 온다.
+ * 초대 코드로 참여를 신청한다. 모든 계정(익명 포함)에 승인 대기 요청(status: "pending")이 온다. 관리자가 승인해야 구성원이 된다.
  * @param {string} code
- * @returns {Promise<{ status: "pending", id: string, group_name: string } | { id: string, name: string, members: object[] }>}
+ * @returns {Promise<{ status: "pending", id: string, group_id: string, group_name: string }>}
  */
 export const requestJoin = (code) => apiFetch("/family-group/groups/join", { method: "POST", body: { code } });
 

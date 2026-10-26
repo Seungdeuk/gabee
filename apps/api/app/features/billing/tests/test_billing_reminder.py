@@ -1,6 +1,6 @@
 """정산 담당자와 월말 정산 알림: 정산하기를 안 한 지출을 월말(마지막 5일)·월초 지연(5일까지)에 담당자에게만 알린다."""
 
-from tests.helpers import signup
+from tests.helpers import join_family, signup
 
 
 def _add(client, headers, amount=1000, date="2026-10-12", title="장보기"):
@@ -36,7 +36,7 @@ def test_set_manager_rules(client, family):
     a, b, group = family
     ids = _ids(client, a)
     c = signup(client, "민준")
-    client.post("/family-group/groups/join", json={"code": group["invite_code"]}, headers=c)
+    join_family(client, a, group["invite_code"], c)
 
     # 담당자가 아니고 그룹을 만든 사람도 아니면 바꿀 수 없다
     denied = client.put("/billing/settlement/manager", json={"user_id": ids["수진"]}, headers=b)
