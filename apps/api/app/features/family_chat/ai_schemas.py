@@ -36,6 +36,13 @@ class RangeIn(BaseModel):
     after_id: int = Field(default=0, ge=0)
 
 
+class PrivacyMeta(BaseModel):
+    """AI 로 보낸 대화에서 개인정보를 어떻게 처리했는지의 **개수만**(글자·값·토큰 없음)."""
+
+    masked: dict[str, int] = {}  # 종류별 가린 개수. 예: {"PHONE": 2, "PERSON": 5}
+    blocked_messages: int = 0  # 민감정보가 있어 통째로 제외한 메시지 수
+
+
 class AiMeta(BaseModel):
     cached: bool  # True 면 저장된 결과를 다시 보여 준 것이고 AI 를 부르지 않았다
     api_calls: int  # 이번 요청에서 실제로 AI 를 부른 횟수(0 또는 1)
@@ -46,6 +53,27 @@ class AiMeta(BaseModel):
     from_message_id: int
     to_message_id: int
     generated_at: datetime
+    privacy: PrivacyMeta | None = None  # 개인정보 처리 요약(개수만). 구 응답과 호환되도록 선택 필드
+
+
+class PreviewLine(BaseModel):
+    """AI(Claude)가 실제로 받게 될 한 줄. 개인정보는 토큰으로 가려져 있고 차단된 메시지는 자리표시 문구다."""
+
+    id: int
+    speaker: str  # 가명화된 발화자(예: [PERSON_1]). 가족 호칭(엄마·아빠)은 그대로
+    text: str
+    blocked: bool
+
+
+class PreviewOut(BaseModel):
+    """AI 를 부르기 전에 무엇이 나가는지 보여 주는 미리보기. 원문 개인정보·대응표는 담지 않는다."""
+
+    message_count: int
+    masked: dict[str, int]
+    blocked_messages: int
+    lines: list[PreviewLine]
+    ai_enabled: bool  # 우리 가족이 AI 기능에 동의했는지(미리보기는 동의와 무관하게 볼 수 있다)
+    sendable: bool  # 차단되지 않은 메시지가 AI 에 보낼 만큼(3개 이상) 있는지. False 면 분석·답장·주제는 400 too_few_messages
 
 
 class ImportantMessage(BaseModel):

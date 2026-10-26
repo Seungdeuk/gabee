@@ -13,7 +13,7 @@ from typing import Any
 
 from .detectors import KINSHIP_TERMS
 from .policy import Policy
-from .pseudonymizer import Pseudonymizer
+from .pseudonymizer import Pseudonymizer, scrub_leftovers
 from .types import Kind
 
 
@@ -73,24 +73,37 @@ class JsonRestoreResult:
 
 def prepare_transcript(
     rows: Iterable[Row | Sequence],
-    member_names: Iterable[str],
+    member_names: Iterable[str | Sequence[str]],
     policy: Policy,
     speaker_tokens: bool = True,
 ) -> Prepared:
     """줄마다 글자를 가명화한다. 발화자 이름도 PERSON 토큰으로 바꾼다(speaker_tokens=True).
 
-    member_names 는 그 가족 구성원의 실제 이름·표시 이름이다. 발화자 이름도 이름 사전에 자동으로 더한다.
+    member_names 는 그 가족 구성원의 이름 사전이다. 원소는 이름 하나(str)이거나, **같은 사람의 표기 묶음**(실제 이름, 표시 이름 ...;
+    첫 번째가 대표 이름)이다. 묶음의 어느 표기로 불러도 발화자(실제 이름)와 같은 토큰이 되고 복원하면 대표 이름이 나온다.
+    발화자 이름도 이름 사전에 자동으로 더한다.
     BLOCK 대상이 있는 줄은 글자 전체가 자리표시로 바뀌고(id·순서는 유지) blocked_ids 에 들어간다.
     counts_by_kind 는 글자 속에서 찾은 개인정보 수다(발화자 토큰은 세지 않는다).
     """
     normalized = [r if isinstance(r, Row) else Row(*r) for r in rows]
-    names = list(dict.fromkeys(" ".join(str(n).split()) for n in member_names if n))
+    groups: list[tuple[str, ...]] = []
+    for item in member_names:
+        parts = [item] if isinstance(item, str) else list(item)
+        group = tuple(dict.fromkeys(" ".join(str(x).split()) for x in parts if x))
+        if group:
+            groups.append(group)
+    names = list(dict.fromkeys(n for g in groups for n in g))
+    aliases: dict[str, str] = {}
+    for g in groups:
+        for alias in g[1:]:
+            aliases.setdefault(alias, g[0])
     for r in normalized:
         speaker = " ".join((r.speaker_name or "").split())
         if speaker and speaker not in names:
             names.append(speaker)
     known = tuple(names)
     pz = Pseudonymizer()
+    pz.set_aliases(aliases)
     lines: list[PreparedLine] = []
     blocked_ids: list[int] = []
     counts: dict[str, int] = {}
@@ -113,23 +126,28 @@ def prepare_transcript(
 
 
 def restore_value(
-    prep: Prepared, value: str, generalize_unknown: bool = False
+    prep: Prepared, value: str, generalize_unknown: bool = False, scrub: bool = False
 ) -> JsonRestoreResult:
     """문자열 하나를 복원한다. 정책의 restore_kinds 에 있는 종류만 원래 값으로 되돌리고 나머지는 일반화 문구로 바꾼다."""
     result = prep.pseudonymizer.restore(
         value, prep.policy.restore_kinds, generalize_unknown=generalize_unknown
     )
+    text = scrub_leftovers(result.text) if scrub else result.text
     return JsonRestoreResult(
-        result.text, result.restored_tokens, result.unknown_tokens, result.generalized_tokens
+        text, result.restored_tokens, result.unknown_tokens, result.generalized_tokens
     )
 
 
-def restore_json(prep: Prepared, obj: Any, generalize_unknown: bool = False) -> JsonRestoreResult:
+def restore_json(
+    prep: Prepared, obj: Any, generalize_unknown: bool = False, scrub: bool = False
+) -> JsonRestoreResult:
     """응답 JSON 의 문자열을 재귀로 복원한다(dict 의 값과 **키**, list·tuple·set 의 원소 모두).
 
     문자열이 아닌 값(숫자·불리언·None)은 그대로 둔다. 복원 범위는 prep.policy.restore_kinds 이고, 그 밖 종류의 토큰은 일반화
     문구로 바뀐다. unknown_tokens 에는 이 요청이 만들지 않은 토큰 모양이 모인다(generalize_unknown=True 면 그 자리도 일반화 문구).
-    호출부는 이 함수를 응답 검증(clean_analysis 등)보다 먼저 불러야 이름 검증이 복원된 값으로 이뤄진다.
+    scrub=True 면 복원 뒤에도 남은 무력화 토큰(``‹PERSON_2›``)과 복원 불가 고정 토큰(``[RRN]`` 등)을 일반 문구로 바꾼다.
+    가족 채팅 AI 는 응답 검증(clean_analysis)을 **토큰 상태에서 먼저** 하고 캐시에 토큰 상태로 저장한 뒤, 사용자에게 돌려줄 때 이 함수로
+    복원한다. 검증을 복원된 값 기준으로 하려면 이 함수를 먼저 부른다(캐시에 복원된 값이 들어가므로 권하지 않는다).
     """
     restored: list[str] = []
     unknown: list[str] = []
@@ -143,7 +161,7 @@ def restore_json(prep: Prepared, obj: Any, generalize_unknown: bool = False) -> 
             restored.extend(r.restored_tokens)
             unknown.extend(r.unknown_tokens)
             generalized.extend(r.generalized_tokens)
-            return r.text
+            return scrub_leftovers(r.text) if scrub else r.text
         if isinstance(node, list):
             return [walk(x) for x in node]
         if isinstance(node, tuple):

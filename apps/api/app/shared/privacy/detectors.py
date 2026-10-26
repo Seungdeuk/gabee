@@ -398,6 +398,20 @@ _HONORIFIC_STOP = frozenset(
     "가장 주부 문의 정리 박수 한분 기자 간사 감사 장교 선배 후배 조교 소장 이장 사감 의원 부인 주민 안내 "
     "하나 박사 형수 목사 변호 부처 도련 강사 사범 서기 주치 신도 방문 성인 도사 성모 전문 한의".split()
 )
+# 호칭 앞에 공백이 있는 꼴('사용자 님', '모두 님')은 이름이 아닌 일반어일 가능성이 커서 더 엄격하게 거른다.
+_SPACED_STOP = frozenset("모두 손주 손자 배송 최고 신청 노인 어르신 조부모 조부 손녀 모든".split())
+
+
+def _spaced_generic(name: str) -> bool:
+    """'사용자 님'·'정대표 님' 같은 역할·직함 말(끝이 '자', 뒤쪽이 직함 불용어, 일반어 목록)이면 True."""
+    return (
+        name[-1] == "자"
+        or name in _SPACED_STOP
+        or name[1:] in _HONORIFIC_STOP
+        or name[:2] in _SPACED_STOP
+    )
+
+
 _PARTICLES = tuple(
     sorted(
         [
@@ -417,7 +431,7 @@ COMMON_WORD_ALIASES = frozenset(
 )
 _TITLE_NEXT = _PARTICLES + ("께서", "이", "가")
 _HONORIFIC_RE = re.compile(
-    rf"(?<![가-힣])(?P<n>[{''.join(sorted(SURNAMES))}][가-힣]{{1,2}})(?P<t>선생님|님|씨|군|양)"
+    rf"(?<![가-힣])(?P<n>[{''.join(sorted(SURNAMES))}][가-힣]{{1,2}})(?P<sp> ?)(?P<t>선생님|님|씨|군|양)"
 )
 
 
@@ -468,6 +482,13 @@ def _detect_person_honorific(text: str) -> list[Span]:
     for m in _HONORIFIC_RE.finditer(text):
         name, title = m.group("n"), m.group("t")
         if name in _HONORIFIC_STOP or name[:2] in _HONORIFIC_STOP:
+            continue
+        if m.group("sp") and _spaced_generic(name):
+            continue
+        if m.group("sp") and title in (
+            "군",
+            "양",
+        ):  # 띄어 쓴 '군'·'양'은 '고추장 양이 많아' 같은 일반 문장과 구분이 안 되어 제외
             continue
         if title in ("씨", "군", "양") and len(name) != 3:  # '고추씨', '오이씨' 같은 말 방지
             continue

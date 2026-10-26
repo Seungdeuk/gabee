@@ -26,6 +26,7 @@ GROUP_ENDPOINTS = (
     ("post", "/family-chat/read", {"message_id": 1}),
     ("get", "/family-chat/rooms", None),
     ("get", "/family-chat/todos", None),
+    ("post", "/family-chat/ai/preview", {}),
     ("post", "/family-chat/todos", {"title": "몰래"}),
     ("get", "/schedule/events", None),
     ("post", "/schedule/events", {"title": "몰래", "starts_at": "2026-12-01T00:00:00Z"}),

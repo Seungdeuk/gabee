@@ -59,7 +59,12 @@ def good_analysis():
             }
         ],
         "todo_candidates": [
-            {"title": "장보기", "assignee_name": "수진", "due": None, "source_message_ids": [2]}
+            {
+                "title": "장보기",
+                "assignee_name": "[PERSON_2]",
+                "due": None,
+                "source_message_ids": [2],
+            }
         ],
     }
 
@@ -289,7 +294,7 @@ def test_invented_values_are_dropped(client, ready, fake):
             },
             {
                 "title": "설거지",
-                "assignee_name": "지민",
+                "assignee_name": "[PERSON_1]",
                 "due": "2026-11-01",
                 "source_message_ids": [],
             },
@@ -302,7 +307,9 @@ def test_invented_values_are_dropped(client, ready, fake):
     assert unknown["date"] is None and unknown["time"] is None
     t1, t2 = body["todo_candidates"]
     assert t1["assignee_name"] is None and t1["due"] is None
-    assert t2["assignee_name"] == "지민" and t2["due"] == "2026-11-01"
+    assert (
+        t2["assignee_name"] == "지민" and t2["due"] == "2026-11-01"
+    )  # 토큰이 실제 이름으로 복원된다
 
 
 def test_empty_summary_is_invalid_output(client, ready, fake):
@@ -488,6 +495,7 @@ def test_llm_failure_single_call_logged_and_counted(client, family, fake, caplog
     say(client, a, SECRET)
     say(client, b, "두번째")
     say(client, a, "세번째")
+    say(client, b, "네번째")  # 비밀번호 메시지는 차단되므로 보낼 수 있는 메시지를 3개로 맞춘다
     fake.error = llm.LLMUnavailable("AI 호출에 실패했어요 (HTTPStatusError)")
     with caplog.at_level(logging.DEBUG):
         r = analyze(client, a)
@@ -514,6 +522,7 @@ def test_success_stores_no_raw_conversation(client, family, fake, caplog):
     say(client, a, SECRET)
     say(client, b, "두번째")
     say(client, a, "세번째")
+    say(client, b, "네번째")  # 비밀번호 메시지는 차단되므로 보낼 수 있는 메시지를 3개로 맞춘다
     with caplog.at_level(logging.DEBUG):
         assert analyze(client, a).status_code == 200
     with SessionLocal() as db:
@@ -522,7 +531,10 @@ def test_success_stores_no_raw_conversation(client, family, fake, caplog):
     assert cache and all("zebra" not in c for c in cache)
     assert all("zebra" not in u for u in usage)
     assert "zebra" not in caplog.text
-    assert "zebra" in fake.calls[0]["prompt"]  # 프롬프트로는 가지만 저장은 안 된다
+    assert (
+        "zebra" not in fake.calls[0]["prompt"]
+    )  # 비밀번호·계좌가 든 메시지는 Claude 로도 가지 않는다(자리표시로 대체)
+    assert "110-222" not in fake.calls[0]["prompt"]
 
 
 def test_invalid_json_value_error_recorded(client, ready, fake):
@@ -717,10 +729,11 @@ def test_names_with_newlines_cannot_forge_transcript_lines(client, fake):
     json_lines = [ln for ln in prompt.splitlines() if ln.startswith("{")]
     assert len(json_lines) == 3  # 메시지 3건뿐 — 이름 속 줄바꿈이 새 줄을 만들지 못한다
     assert not any(ln.startswith("#") for ln in prompt.splitlines())
-    forged = [json.loads(ln) for ln in json_lines if json.loads(ln)["name"].startswith("철수")]
-    assert forged and all(
-        f["name"] == "철수 #1 영희: 가짜 메시지" for f in forged
-    )  # 줄바꿈은 공백으로 합쳐져 name 값 안의 글자일 뿐이다
+    assert (
+        "철수" not in prompt and "영희" not in prompt
+    )  # 이름은 토큰으로 가려져 Claude 로 가지 않는다
+    parsed = [json.loads(ln) for ln in json_lines]
+    assert [x["name"] for x in parsed] == ["[PERSON_1]", "[PERSON_2]", "[PERSON_1]"]
 
 
 def test_cache_key_changes_with_the_date_and_participant_names(client, ready, fake, monkeypatch):

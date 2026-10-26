@@ -15,6 +15,7 @@ from .ai_schemas import (
     AiSettingsIn,
     AiSettingsOut,
     AnalysisOut,
+    PreviewOut,
     RangeIn,
     RepliesOut,
     TopicsOut,
@@ -42,6 +43,17 @@ def put_settings(
 ) -> AiSettingsOut:
     """가족 소유자·관리자가 AI 기능 사용에 동의(켜기)하거나 끈다. 꺼져 있으면 AI 요청은 403 ai_not_enabled."""
     return ai_service.set_enabled(db, user, group_id, body.enabled)
+
+
+@router.post("/preview", response_model=PreviewOut)
+def preview(
+    body: RangeIn,
+    user: User = Depends(current_user),
+    group_id: str = Depends(current_group_id),
+    db: Session = Depends(get_db),
+) -> PreviewOut:
+    """분석 요청과 같은 범위에서 AI 가 실제로 받게 될 가명화된 대화를 미리 보여 준다. AI 를 부르지 않고 한도도 쓰지 않는다(동의와 무관, 사용자당 분당 20회)."""
+    return ai_service.preview(db, user, group_id, body)
 
 
 @router.post("/analysis", response_model=AnalysisOut)

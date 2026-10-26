@@ -158,6 +158,7 @@
 |---|---|---|---|
 | `GET /family-chat/ai/settings` | — | `AiSettingsOut` | 동의 여부, 내가 켤 수 있는지, 자동 분석 설정, 한도, 오늘 사용량. AI 를 부르지 않는다 |
 | `PUT /family-chat/ai/settings` | `{enabled: bool}` | `AiSettingsOut` | 가족 소유자·관리자만 AI 기능을 켜고 끈다. AI 를 부르지 않는다 |
+| `POST /family-chat/ai/preview` | `RangeIn` | `PreviewOut` | Claude 가 **실제로 받게 될 가명화된 대화**를 미리 보여 준다. **AI 를 부르지 않고** 하루·쿨다운 한도도 쓰지 않으며, 가족 AI 동의와 무관하게 볼 수 있다(`ai_enabled` 로 동의 여부를 알림). 사용자당 분당 20회, 넘으면 429 `too_many_previews` |
 | `POST /family-chat/ai/analysis` | `RangeIn` | `AnalysisOut` | 통합 분석: 요약·중요 메시지·일정 후보·할 일 후보를 한 번에 |
 | `POST /family-chat/ai/replies` | `RangeIn` | `RepliesOut` | 마지막 메시지에 이어 보낼 답장 후보(3개) |
 | `POST /family-chat/ai/topics` | `RangeIn` | `TopicsOut` | 이어갈 대화 주제 추천(3~5개) |
@@ -165,7 +166,18 @@
 - `RangeIn`: `limit`(기본 100, 1~200), `after_id`(기본 0). `after_id` 뒤의 최근 `limit` 개를 쓴다. 분석은 최대 200개, 답장은 최대 15개, 주제는 최대 30개까지 본다.
 - `AnalysisOut`: `summary`, `important_messages[{message_id, reason}]`, `schedule_candidates[{title, date, time, place, source_message_ids}]`, `todo_candidates[{title, assignee_name, due, source_message_ids}]`, `meta`.
 - `RepliesOut`: `replies[]`, `meta`. `TopicsOut`: `topics[]`, `meta`.
-- `meta`(`AiMeta`): `cached`, `api_calls`(0 또는 1), `input_tokens`, `output_tokens`, `model`, `message_count`, `from_message_id`, `to_message_id`, `generated_at`.
+- `meta`(`AiMeta`): `cached`, `api_calls`(0 또는 1), `input_tokens`, `output_tokens`, `model`, `message_count`, `from_message_id`, `to_message_id`, `generated_at`, `privacy`(선택, `{masked: {종류: 개수}, blocked_messages: 개수}` — 글자·값 없이 개수만, 캐시 적중에도 같은 값).
+- `PreviewOut`: `message_count`, `masked{종류: 개수}`, `blocked_messages`, `lines[{id, speaker, text, blocked}]`, `ai_enabled`, `sendable`(차단되지 않은 메시지가 3개 이상이라 AI 에 보낼 수 있는지. False 면 분석·답장·주제가 400 `too_few_messages` 이므로 앱은 요청 버튼을 막고 "민감정보가 있어 제외된 메시지가 많아요" 같은 안내를 보인다). `lines` 는 분석 요청이 Claude 로 보내는 줄과 같은 가명화된 줄(토큰 상태, 예: `[PERSON_1]`·`[PHONE_1]`, 차단된 메시지는 `[민감정보가 있어 제외된 메시지]`)이다. 원문 개인정보와 토큰 대응표는 담지 않는다. 답장(최근 15개)·주제(최근 30개)는 같은 규칙을 더 짧은 범위에 적용하므로 토큰 번호가 다를 수 있다.
+
+**개인정보 가명화 (`app/shared/privacy`, 분석·답장·주제 공통)**
+
+- 서버가 DB 에서 읽은 대화를 Claude 로 보내기 전에 가명화한다(앱은 대화 글자를 보내지 않는 기존 구조 그대로). 전화·이메일·주소·이름은 `[PHONE_1]`·`[EMAIL_1]`·`[ADDR_1]`·`[PERSON_1]` 토큰으로, 주민번호·카드·계좌·비밀번호가 든 메시지는 통째로 자리표시로 바꿔 보낸다. 이름 사전은 그 가족 구성원의 실제 이름·표시 이름이다. 종단간 암호화(E2EE)가 아니며 서버는 원문을 읽는다. 탐지는 규칙 기반이라 놓칠 수 있다(`docs/security/PRIVACY_PIPELINE_MODULE.md`).
+- 한 사람의 실제 이름과 표시 이름(`group_members.display_name`)은 같은 토큰으로 묶는다(대표 이름은 실제 이름). 차단된 줄은 시각을 비워 보낸다(발화자 토큰은 간다). 차단되지 않은 메시지가 3개 미만이면 AI 를 부르지 않고 400 `too_few_messages`(미리보기는 `sendable: false`). 담당자는 복원 뒤에도 이 가족 구성원의 이름·표시 이름과 일치할 때만 남기고 아니면 null(후보는 유지). 응답에 남은 `‹PERSON_2›`·`[RRN]` 같은 토큰 모양은 `(알 수 없는 항목)`·`(민감 정보)` 로 바꾼다. 글자 수 한도는 재가명화 뒤에도 다시 확인한다(최대 5회 더 줄임).
+- 프롬프트는 토큰을 풀어쓰지 말고 글자 그대로 복사하라고 지시한다(`PROMPT_VERSION` v3).
+- **캐시에는 토큰 상태의 결과**를 저장한다(DB 의 `ai_result_cache` 에 실제 이름·전화·이메일·주소가 남지 않는다). 응답할 때마다(캐시 적중 포함) 같은 대화 범위를 다시 가명화해 같은 대응표를 만들고(같은 입력이면 같은 토큰 번호) 복원한다. 대응표는 요청 메모리에만 있고 DB·캐시·로그·응답에 넣지 않는다.
+- 복원 범위는 정책(`restore_kinds`)을 따른다. 분석: 이름·주소만 복원(담당자 연결, 일정 장소), 전화·이메일 토큰은 `(연락처)`·`(이메일)`. 답장·주제: 이름만 복원, 나머지는 `(연락처)`·`(주소)` 등 일반화.
+- 담당자(`assignee_name`)는 **대화에 나온 `[PERSON_n]` 토큰일 때만** 인정하고 복원된 실제 이름이 응답에 담긴다(앱의 구성원 이름 매칭은 그대로). 차단된 메시지 id 는 `important_messages`·`source_message_ids` 에서 뺀다.
+- 위조·변형 토큰(이 요청이 만들지 않은 `[PERSON_9]`, `[phone_1]` 등): 일정·할 일 후보의 제목·장소·담당자에 있으면 그 후보를 버리고, 요약·이유·답장·주제 문장에서는 `(알 수 없는 항목)` 으로 바꾼다.
 - 날짜·시간·담당자·기한은 대화에 없으면 null 이다. `schedule_candidates`·`todo_candidates` 는 **후보**이며 사용자가 확인해야 등록된다. AI 서버 쪽에는 등록 API 가 없고, 앱이 확인한 일정 후보를 기존 `POST /schedule/events` 로 등록한다(날짜·시간이 있는 후보만). 할 일 후보의 등록 경로는 아직 없다.
 
 **오류 코드**
@@ -176,6 +188,7 @@
 | 403 | `ai_not_enabled` | 가족 그룹이 AI 기능을 켜지 않음 (분석·답장·주제) |
 | 400 | `too_few_messages` | 분석 범위의 대화가 3개 미만(AI 를 부르지 않는다) |
 | 409 | `ai_busy` | 같은 가족 그룹에서 다른 AI 호출이 진행 중(동시 실행 제한 초과). 자동 재시도 없음 |
+| 429 | `too_many_previews` | 미리보기를 사용자당 분당 20회 넘게 요청. `Retry-After` 헤더 (AI 한도와 별개) |
 | 429 | `ai_cooldown` | 같은 사용자의 직전 AI 호출 뒤 쿨다운 안. `Retry-After` 헤더 |
 | 429 | `ai_daily_limit_user` | 사용자 하루 한도 초과 |
 | 429 | `ai_daily_limit_group` | 가족 그룹 하루 한도 초과 |
@@ -198,8 +211,8 @@
 7. **사용 기록 선기록**: `api_calls=1` 로 먼저 남겨, 한도 계산에 바로 반영한다.
 8. **호출 1번**: `complete_json`(구조화 출력, 호출 1번). 실패하면 재시도 없이 503 `llm_failed`(한도에는 센다). 성공하면 토큰·모델을 기록하고 결과를 캐시에 저장한다.
 
-- **캐시 키**: 프롬프트 버전, 기능, 모델 이름, 분석 범위의 첫 메시지 id·마지막 메시지 id·개수의 해시. **새 메시지가 범위에 들어오면 마지막 id 가 바뀌어 키가 달라지므로** 결과가 새로 만들어진다. 프롬프트를 바꾸면 버전을 올려 옛 캐시를 쓰지 않는다.
-- **글자 수 한도**: `AI_ANALYSIS_MAX_CHARS`(기본 12,000자)를 넘으면 가장 오래된 메시지부터 뺀다. 실제로 쓴 범위는 `meta.message_count`, `from_message_id`, `to_message_id` 로 알려 준다.
+- **캐시 키**: 프롬프트 버전, 가명화 모듈 버전·정책(이름·차단 점수·복원 종류), 기능, 모델 이름, 날짜, 분석 범위의 첫 메시지 id·마지막 메시지 id·개수, **가명화된 줄의 해시**(원문 해시 아님). **새 메시지가 범위에 들어오면 마지막 id 가 바뀌어 키가 달라지므로** 결과가 새로 만들어진다. 프롬프트를 바꾸면 버전을 올려 옛 캐시를 쓰지 않는다.
+- **글자 수 한도**: `AI_ANALYSIS_MAX_CHARS`(기본 12,000자)를 **가명화된 줄 기준**으로 넘으면 가장 오래된 메시지부터 뺀다. 실제로 쓴 범위는 `meta.message_count`, `from_message_id`, `to_message_id` 로 알려 준다.
 - 일반 메시지 전송은 이 가드를 거치지 않는다(AI 호출 0).
 
 ### 호출 횟수 (동작별 AI 호출 수)
@@ -209,6 +222,7 @@
 | 일반 채팅 메시지 전송 (`POST /family-chat/messages`) | **0** | 구현됨 |
 | 설정 조회·변경 (`GET`/`PUT /ai/settings`) | 0 | 구현됨 |
 | 대화 분석 (`POST /ai/analysis`) | 최대 **1**, 캐시 적중이면 **0** | 구현됨 |
+| 보낼 내용 미리보기 (`POST /ai/preview`) | **0** (한도·동의와 무관, 분당 20회) | 구현됨 |
 | 답장 추천 (`POST /ai/replies`) | **1**, 캐시 적중이면 0 | 구현됨 |
 | 주제 추천 (`POST /ai/topics`) | **1**, 캐시 적중이면 0 | 구현됨 |
 | @가비 키워드 검색 | **0** (PostgreSQL 키워드 검색 우선, 필요할 때만 pgvector) | 예정 |

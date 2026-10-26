@@ -9,7 +9,11 @@ from .policy import ANALYSIS, REPLY, TOPICS, Action, Policy
 from .pseudonymizer import MaskResult, Pseudonymizer, RestoreResult
 from .types import Kind, Risk, Span
 
+# 탐지·정책·토큰 규칙을 바꾸면 올린다. AI 결과 캐시 키에 들어가 규칙이 바뀐 뒤에는 옛 캐시(옛 토큰 번호)를 쓰지 않는다.
+MODULE_VERSION = "1"
+
 __all__ = [
+    "MODULE_VERSION",
     "ANALYSIS",
     "REPLY",
     "TOPICS",
