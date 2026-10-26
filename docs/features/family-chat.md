@@ -23,6 +23,15 @@
 - 알려진 한계: 상대가 가족을 나가도 1:1 방과 대화는 남는다(같은 가족에 다시 들어오면 다시 보임, 정책 미정). 구 서버 코드로 되돌리면 1:1 메시지가 가족 전체방 조회와 AI 분석에 섞이므로 롤백 전에 1:1 메시지를 먼저 처리해야 한다. 배포 중 구 서버가 `chat_read_states` 에 쓴 읽음 위치는 반영되지 않는다.
 - 모바일의 방 목록·1:1 화면은 아직 없다(다음 PR).
 
+### 공동 할 일 (서버, Chat 4)
+
+- **가족 전체가 공유**한다: 같은 가족 구성원이면 누구나 보고, 추가하고, 고치고, 완료·되돌리기를 할 수 있다. 지우는 것은 만든 사람이나 가족 관리자(owner/admin)만 한다(그 밖은 403 `not_allowed`). 다른 가족의 할 일은 모두 404.
+- 필드: 제목(1~120자, 공백 정리), 담당자 0~1명(같은 가족 구성원만, 아니면 400 `invalid_member`), 기한(날짜만, 선택), 완료 여부(`done`, `done_at`, `done_by`), 만든 사람, `source`(`manual` 직접 / `chat` AI 후보를 사용자가 확인해 등록). 반복·알림·하위 항목·댓글은 없다.
+- `GET /family-chat/todos?status=open|done|all&limit=`: 안 끝난 일은 기한 빠른 순(기한 없는 것은 뒤), 끝난 일은 최근 순, `all` 은 안 끝난 것 다음 끝난 것. `POST /family-chat/todos`, `PATCH /family-chat/todos/{id}`(보낸 항목만 바꿈, `assignee_id`·`due_date` 에 null 을 보내면 비움, `done` true/false 로 완료·되돌리기, 빈 본문은 400 `empty_update`), `DELETE /family-chat/todos/{id}`(204).
+- 가족당 최대 300개(완료 포함, 넘으면 400 `todo_limit`). 만든 사람 등은 요청 본문에서 받지 않고 로그인한 사용자에서 유도한다.
+- **일정과의 구분**: 날짜와 시간이 있는 약속은 기존 일정(`/schedule/events`), 날짜가 없거나 "언제까지"만 있는 부탁·할 일은 여기에 둔다. AI 분석의 일정 후보는 일정으로, 할 일 후보는 확인 후 할 일로 등록한다(AI 가 직접 등록하지 않는다).
+- AI 를 부르지 않는다. 테이블 `family_todos`(Alembic `d7b3a9f1c248`), 시험 `tests/test_todos.py`. 모바일 화면은 아직 없다(다음 PR).
+
 ### 사진 보내기 (서버, Chat 3)
 
 - `POST /family-chat/photos`(multipart `file`, 선택 `room_id`): 사진 메시지를 보낸다. JPEG/PNG/WebP 8MB 이하(초과 413 `photo_too_large`), 긴 변 12000px·2500만 화소 이하, 실제 이미지가 아니면 400 `invalid_image`. 서버가 EXIF 회전을 반영한 뒤 **EXIF·GPS 등 메타데이터를 모두 지우고** 긴 변 1600px 이하 JPEG와 400px 이하 썸네일로 다시 만들어 저장한다. 응답은 `MessageOut` 이고 `text` 는 빈 문자열, `attachment` 에 `{id, kind, url, thumb_url, width, height}`.
