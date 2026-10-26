@@ -30,6 +30,14 @@ const rangeBody = ({ limit = 100, afterId = 0 } = {}) => ({ limit, after_id: aft
 export const analyzeChat = (range) => apiFetch("/family-chat/ai/analysis", { method: "POST", body: rangeBody(range) });
 
 /**
+ * AI 에 보내기 전 미리보기: 같은 범위를 가명화한 결과(가려진 개수·제외 메시지 수·보낼 줄)를 받는다. AI 를 부르지 않고 한도도 쓰지 않는다.
+ * 서버 계약: POST /family-chat/ai/preview (별도 PR). 오류 400 too_few_messages / no_group, 401 등.
+ * @param {{ limit?: number, afterId?: number }} [range] 분석·추천 요청과 같은 범위
+ * @returns {Promise<{ message_count: number, masked: Record<string, number>, blocked_messages: number, lines: { id: number, speaker: string, text: string, blocked: boolean }[], ai_enabled: boolean }>}
+ */
+export const previewAiRange = (range) => apiFetch("/family-chat/ai/preview", { method: "POST", body: rangeBody(range) });
+
+/**
  * 답장 추천(분석과 별개 요청).
  * @param {{ limit?: number, afterId?: number }} [range]
  * @returns {Promise<{ replies: string[], meta: object }>}
