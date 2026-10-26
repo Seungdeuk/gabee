@@ -5,13 +5,13 @@
 """
 
 from dataclasses import dataclass, field
-from datetime import UTC, datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy.orm import Session
 
 from app.features.schedule import repository as schedule_repo
 from app.features.schedule.models import Event
-from app.shared.config import settings
+from app.features.schedule.timeutil import local_tz
 
 from .period import Period
 from .schemas import Channel
@@ -41,7 +41,14 @@ def aware(value: datetime) -> datetime:
     return value if value.tzinfo else value.replace(tzinfo=UTC)
 
 
-def read(db: Session, group_id: str, channel: Channel, now: datetime | None = None) -> AgentData:
+def read(
+    db: Session,
+    group_id: str,
+    channel: Channel,
+    now: datetime | None = None,
+    user_id: str | None = None,
+) -> AgentData:
+    """user_id 를 주면 그 사람의 일정(과 주인이 없던 옛 일정)만 읽는다. 에이전트는 항상 호출한 사람 몫만 본다."""
     now = now or datetime.now(UTC)
     sources = allowed_sources(channel)
     data = AgentData(sources=sources)
@@ -49,14 +56,11 @@ def read(db: Session, group_id: str, channel: Channel, now: datetime | None = No
         since = now - READ_SPAN
         until = now + READ_SPAN
         data.events = [
-            e for e in schedule_repo.list_from(db, group_id, since) if aware(e.starts_at) <= until
+            e
+            for e in schedule_repo.list_from(db, group_id, since, user_id)
+            if aware(e.starts_at) <= until
         ]
     return data
-
-
-def local_tz() -> timezone:
-    """서비스 기준 시간대(기본 한국 시간)."""
-    return timezone(timedelta(hours=settings.ai_day_utc_offset_hours))
 
 
 def to_local(value: datetime) -> datetime:

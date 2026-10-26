@@ -11934,14 +11934,68 @@
             "title": "Title"
           },
           "starts_at": {
-            "type": "string",
-            "format": "date-time",
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "Starts At"
+          },
+          "start_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Start Date"
+          },
+          "start_time": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Start Time"
+          },
+          "end_time": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "End Time"
           },
           "note": {
             "type": "string",
             "title": "Note",
             "default": ""
+          },
+          "memo": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Memo"
           },
           "status": {
             "type": "string",
@@ -11957,18 +12011,50 @@
             "enum": [
               "manual",
               "chat",
-              "photo"
+              "photo",
+              "request"
             ],
             "title": "Source",
             "default": "manual"
+          },
+          "kind": {
+            "type": "integer",
+            "enum": [
+              1,
+              2
+            ],
+            "title": "Kind",
+            "default": 1
+          },
+          "place": {
+            "type": "string",
+            "maxLength": 200,
+            "title": "Place",
+            "default": ""
+          },
+          "who_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 20,
+            "title": "Who Ids"
+          },
+          "share_with": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 20,
+            "title": "Share With"
           }
         },
         "type": "object",
         "required": [
-          "title",
-          "starts_at"
+          "title"
         ],
-        "title": "EventCreate"
+        "title": "EventCreate",
+        "description": "시각은 두 방식 중 하나로 준다. 새 방식은 start_date(+ start_time, end_time),\n옛 방식은 starts_at. 둘 다 오면 start_date 를 쓴다. 메모도 memo 가 note 의 새 이름이다.\nshare_with 에 든 가족 구성원마다 그 사람 몫의 복사본이 생기고, 비워 두면 나만 가진다."
       },
       "EventOut": {
         "properties": {
@@ -12000,6 +12086,87 @@
           "created_by": {
             "type": "string",
             "title": "Created By"
+          },
+          "user_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "User Id"
+          },
+          "kind": {
+            "type": "integer",
+            "title": "Kind"
+          },
+          "who_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Who Ids"
+          },
+          "place": {
+            "type": "string",
+            "title": "Place"
+          },
+          "start_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Start Date"
+          },
+          "start_time": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Start Time"
+          },
+          "end_time": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "End Time"
+          },
+          "memo": {
+            "type": "string",
+            "title": "Memo"
+          },
+          "checked": {
+            "type": "boolean",
+            "title": "Checked"
+          },
+          "origin_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Origin Id"
           }
         },
         "type": "object",
@@ -12010,7 +12177,17 @@
           "note",
           "status",
           "source",
-          "created_by"
+          "created_by",
+          "user_id",
+          "kind",
+          "who_ids",
+          "place",
+          "start_date",
+          "start_time",
+          "end_time",
+          "memo",
+          "checked",
+          "origin_id"
         ],
         "title": "EventOut"
       },
