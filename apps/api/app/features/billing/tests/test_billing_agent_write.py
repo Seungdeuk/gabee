@@ -118,7 +118,12 @@ def test_invalid_or_excess_proposals_are_not_created(client, family, monkeypatch
         calls.append(1)
         if len(calls) == 1:
             blocks = [
-                {"type": "tool_use", "id": f"t{i}", "name": "propose_add_expense", "input": EXPENSE}
+                {
+                    "type": "tool_use",
+                    "id": f"t{i}",
+                    "name": "propose_add_expense",
+                    "input": {**EXPENSE, "title": f"치과 {i}"},  # 서로 다른 지출 5건
+                }
                 for i in range(5)
             ]
             return {"content": blocks}

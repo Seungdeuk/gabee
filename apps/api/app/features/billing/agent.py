@@ -33,21 +33,47 @@ def _dump(model) -> dict:
     return model.model_dump(mode="json")
 
 
+def _resolve_members(db: Session, group_id: str, names: list) -> tuple[list[str], list[str]]:
+    """나눌 사람의 이름을 가족 구성원 id 로 바꾼다. 가족이 아닌 이름·같은 이름의 구성원이 여럿인 경우는 거절한다."""
+    if not isinstance(names, list) or not names or not all(isinstance(n, str) for n in names):
+        raise ValueError("split_among 은 나눌 사람의 이름 목록이어야 해요(비우려면 항목을 빼세요)")
+    by_id = service._names(db, group_id)
+    ids: list[str] = []
+    for name in names:
+        found = [i for i, n in by_id.items() if n == name.strip()]
+        if not found:
+            raise ValueError(
+                f"가족 구성원에 '{name}' 이(가) 없어요. 구성원: {', '.join(by_id.values())}"
+            )
+        if len(found) > 1:
+            raise ValueError(
+                f"'{name}' 이름의 구성원이 여럿이라 정할 수 없어요. 사용자에게 누구인지 물어보세요"
+            )
+        if found[0] not in ids:
+            ids.append(found[0])
+    return ids, [by_id[i] for i in ids]
+
+
 def _propose_expense(db: Session, group_id: str, user: User, proposed: list, args: dict) -> dict:
     """지출 등록을 '제안'만 한다. 실제 등록은 사용자가 확인 버튼을 눌러 confirm 이 execute 를 부를 때 일어난다."""
-    if len(proposed) >= proposals.MAX_PER_ANSWER:
-        raise ValueError("한 번에 제안할 수 있는 수를 넘었어요")
     data = {
         k: args[k] for k in ("title", "amount", "date", "category") if args.get(k) not in (None, "")
     }
     data.setdefault("date", service.today_kst())
+    split_names = None
+    if args.get("split_among") is not None:  # 나눌 사람을 말했을 때만. 비우면 가족 전원
+        data["split_among"], split_names = _resolve_members(db, group_id, args["split_among"])
     body = ExpenseCreate.model_validate(data)
-    clean = body.model_dump(mode="json", exclude={"split_among"})
+    clean = body.model_dump(mode="json")
+    who = f"{'·'.join(split_names)}이(가) 나눠요" if split_names else "가족 전원이 나눠요"
     summary = (
         f"지출 등록: {body.title.strip()} {body.amount:,}원 ({body.date.isoformat()}, {body.category})"
-        f" — 낸 사람 {user.name}, 가족 전원이 나눠요"
+        f" — 낸 사람 {user.name}, {who}"
     )
-    proposed.append(proposals.create(NAME, "add_expense", clean, summary, user.id, group_id))
+    key = f"expense|{body.title.strip()}|{body.amount}|{body.date.isoformat()}"
+    if len(proposed) >= proposals.MAX_PER_ANSWER and all(p.key != key for p in proposed):
+        raise ValueError("한 번에 제안할 수 있는 수를 넘었어요")
+    proposals.add(proposed, NAME, "add_expense", clean, summary, user.id, group_id, key)
     return {
         "status": "proposed",
         "summary": summary,
@@ -71,7 +97,8 @@ def build_tools(db: Session, group_id: str, user: User, proposed: list | None = 
             Tool(
                 "propose_add_expense",
                 "지출 등록을 제안한다(실행 아님). 사용자가 이 대화에서 직접 지출 등록을 요청했을 때만 쓴다. "
-                "날짜를 말하지 않았으면 date 를 비운다.",
+                "날짜를 말하지 않았으면 date 를 비운다. 한 번의 요청에는 제안을 하나만 만든다. 사용자가 나눌 사람을 말했을 때만 split_among 에 이름을 넣고(낸 사람 본인도 "
+                "나누는 사람이면 본인 이름을 포함한다), 말하지 않았으면 비워 가족 전원이 나누게 한다. 이름이 모호하면 사용자에게 먼저 물어본다.",
                 {
                     "type": "object",
                     "properties": {
@@ -79,6 +106,11 @@ def build_tools(db: Session, group_id: str, user: User, proposed: list | None = 
                         "amount": {"type": "integer", "minimum": 1, "description": "금액(원)"},
                         "date": {"type": "string", "description": "YYYY-MM-DD. 비우면 오늘"},
                         "category": {"type": "string", "description": "카테고리. 비우면 기타"},
+                        "split_among": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "description": '나눌 사람의 이름 목록(예: ["지민", "수진"]). 비우면 가족 전원',
+                        },
                     },
                     "required": ["title", "amount"],
                 },
@@ -138,13 +170,18 @@ def build_tools(db: Session, group_id: str, user: User, proposed: list | None = 
     ]
 
 
-def system_prompt() -> str:
+def system_prompt(user_name: str = "") -> str:
     return (
         "당신은 가족 비서 '가비'의 가계(정산) 담당 에이전트입니다. 다른 에이전트가 사용자의 질문을 넘겨 주면 "
         "도구로 가계 데이터를 읽어서 답합니다. 오늘은 "
         + service.today_kst()
         + " 입니다(한국 시간). "
-        "반드시 도구로 확인한 값만 쓰고, 없거나 모르는 값은 지어내지 말고 없다고 말하세요. "
+        + (
+            f"질문한 사람은 '{user_name}' 입니다('나', '내가' 는 이 사람을 가리킵니다). "
+            if user_name
+            else ""
+        )
+        + "반드시 도구로 확인한 값만 쓰고, 없거나 모르는 값은 지어내지 말고 없다고 말하세요. "
         "정산 결과(get_settlement)의 잔액·송금 목록에는 앱에서 '정산하기'를 마친 지출만 들어갑니다. unsettled_count 가 있으면 "
         "정산 전인 지출이 있다는 뜻이라 송금 목록이 비는 것이 정상이니, 데이터가 이상하다고 말하지 말고 '아직 정산하기를 하지 않은 "
         "지출이 N건(합계 X원)이라 송금할 내역이 없어요. 가계 탭에서 정산하기를 먼저 해 주세요'라고 안내하세요. 전체 지출 기준으로 "
@@ -175,7 +212,7 @@ def ask(
         group_id,
         agent_guard.BILLING_FEATURE,
         lambda: ask_agent(
-            system_prompt(),
+            system_prompt(user.name),
             question,
             build_tools(db, group_id, user, proposed),
             post=post,

@@ -37,20 +37,17 @@ MEAL_LABEL = {"breakfast": "아침", "lunch": "점심", "dinner": "저녁"}
 CONDITION_LABEL = {"good": "좋음", "normal": "보통", "bad": "나쁨"}
 
 
-def _check_budget(proposed: list) -> None:
-    if len(proposed) >= proposals.MAX_PER_ANSWER:
-        raise ValueError("한 번에 제안할 수 있는 수를 넘었어요")
-
-
 def _propose_meal(db: Session, group_id: str, user: User, proposed: list, args: dict) -> dict:
-    _check_budget(proposed)
     data = {k: args[k] for k in ("date", "meal", "menu", "note") if args.get(k) not in (None, "")}
     body = MealLogPut.model_validate(data)
     day = body.date.isoformat() if body.date else service.today_kst()
     clean = body.model_dump(mode="json", exclude={"source"})
     clean["date"] = day
     summary = f"식단 기록: {day} {MEAL_LABEL[body.meal]} {body.menu.strip()}"
-    proposed.append(proposals.create(NAME, "record_meal", clean, summary, user.id, group_id))
+    key = f"meal|{day}|{body.meal}"
+    if len(proposed) >= proposals.MAX_PER_ANSWER and all(p.key != key for p in proposed):
+        raise ValueError("한 번에 제안할 수 있는 수를 넘었어요")
+    proposals.add(proposed, NAME, "record_meal", clean, summary, user.id, group_id, key)
     return {
         "status": "proposed",
         "summary": summary,
@@ -59,7 +56,6 @@ def _propose_meal(db: Session, group_id: str, user: User, proposed: list, args: 
 
 
 def _propose_item(db: Session, group_id: str, user: User, proposed: list, args: dict) -> dict:
-    _check_budget(proposed)
     item = repo.get_item(db, group_id, str(args.get("item_id", "")))
     if item is None:
         raise ValueError("항목을 찾을 수 없어요. get_daily 로 항목 id 를 확인하세요")
@@ -83,7 +79,10 @@ def _propose_item(db: Session, group_id: str, user: User, proposed: list, args: 
         what = CONDITION_LABEL[body.condition]
     clean = {**body.model_dump(mode="json", exclude={"date"}), "date": day, "item_id": item.id}
     summary = f"돌봄 기록: {day} {item.name} — {what}"
-    proposed.append(proposals.create(NAME, "record_item", clean, summary, user.id, group_id))
+    key = f"item|{day}|{item.id}"
+    if len(proposed) >= proposals.MAX_PER_ANSWER and all(p.key != key for p in proposed):
+        raise ValueError("한 번에 제안할 수 있는 수를 넘었어요")
+    proposals.add(proposed, NAME, "record_item", clean, summary, user.id, group_id, key)
     return {
         "status": "proposed",
         "summary": summary,
@@ -209,13 +208,18 @@ def build_tools(db: Session, group_id: str, user: User, proposed: list | None = 
     ]
 
 
-def system_prompt() -> str:
+def system_prompt(user_name: str = "") -> str:
     return (
         "당신은 가족 비서 '가비'의 돌봄 담당 에이전트입니다. 다른 에이전트가 사용자의 질문을 넘겨 주면 "
         "도구로 돌봄 데이터를 읽어서 답합니다. 오늘은 "
         + service.today_kst()
         + " 입니다(한국 시간). "
-        "반드시 도구로 확인한 값만 쓰고, 기록이 없으면 '기록이 없어요'라고 말하세요. 기록이 없는 것과 하지 않은 것은 다르니 "
+        + (
+            f"질문한 사람은 '{user_name}' 입니다('나', '내가' 는 이 사람을 가리킵니다). "
+            if user_name
+            else ""
+        )
+        + "반드시 도구로 확인한 값만 쓰고, 기록이 없으면 '기록이 없어요'라고 말하세요. 기록이 없는 것과 하지 않은 것은 다르니 "
         "단정하지 마세요. 의료 진단이나 약 복용 조언은 하지 않습니다. "
         "수치 항목(물 등)에 기록이 있는데 목표보다 적으면 '기록 없음'이 아니라 '목표 미달'이라고 구분해 말하고, "
         "예정 시각 전인 항목은 판단하지 마세요. "
@@ -246,7 +250,7 @@ def ask(
         group_id,
         agent_guard.CARE_FEATURE,
         lambda: ask_agent(
-            system_prompt(),
+            system_prompt(user.name),
             question,
             build_tools(db, group_id, user, proposed),
             post=post,

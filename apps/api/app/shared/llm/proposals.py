@@ -33,6 +33,28 @@ class Proposal:
     token: str
     summary: str
     tab: str  # 확인 요청을 보낼 탭: billing | care
+    key: str = (
+        ""  # 같은 대상의 제안을 가려내는 값(같은 답변에서 고쳐 낸 제안이 앞선 것을 대신하게 한다)
+    )
+
+
+def add(
+    proposed: list,
+    tab: str,
+    action: str,
+    args: dict,
+    summary: str,
+    user_id: str,
+    group_id: str,
+    key: str,
+) -> Proposal:
+    """제안을 만들어 목록에 넣는다. 같은 답변에서 같은 대상(key)을 다시 제안하면 앞선 제안은 목록에서 빼서,
+    잘못 낸 제안이 확인 버튼으로 남지 않게 한다(빠진 토큰은 사용자에게 가지 않는다)."""
+    proposed[:] = [p for p in proposed if p.key != key]
+    made = create(tab, action, args, summary, user_id, group_id)
+    made.key = key
+    proposed.append(made)
+    return made
 
 
 def create(

@@ -385,5 +385,41 @@
   "expect_not_contains": [
    "앞뒤가 맞지"
   ]
+ },
+ {
+  "id": "b-write-split",
+  "agent": "billing",
+  "question": "오늘 택시비 12000원 나왔는데 수진이랑 둘이서 반씩 나눠 내기로 했어. 등록해줘",
+  "tool": "propose_add_expense",
+  "tool_args": {},
+  "expect_contains": [],
+  "expect_proposals": 1,
+  "expect_in_proposal": [
+   "지민·수진이(가) 나눠요"
+  ]
+ },
+ {
+  "id": "b-write-split-unknown",
+  "agent": "billing",
+  "question": "오늘 택시비 12000원 나왔는데 철수랑 반씩 나눠 내기로 했어. 등록해줘",
+  "tool": "propose_add_expense",
+  "tool_args": {},
+  "expect_contains": [],
+  "expect_not_contains": [
+   "철수이(가) 나눠요"
+  ],
+  "expect_proposals": 0
+ },
+ {
+  "id": "b-write-all",
+  "agent": "billing",
+  "question": "오늘 점심 외식비 40000원 등록해줘",
+  "tool": "propose_add_expense",
+  "tool_args": {},
+  "expect_contains": [],
+  "expect_proposals": 1,
+  "expect_in_proposal": [
+   "가족 전원이 나눠요"
+  ]
  }
 ]
