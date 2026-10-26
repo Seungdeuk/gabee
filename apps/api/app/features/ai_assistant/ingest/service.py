@@ -15,8 +15,7 @@ from collections import Counter
 from pathlib import PurePath
 
 from . import converters, masking
-from .caption import Captioner
-from .classify import Jev, Llm, classify
+from .classify import Jev, classify
 from .converters import BrokenFile, Ocr
 from .detect import Unsupported, decode_text, detect
 from .raw_store import LocalRawStore
@@ -46,9 +45,7 @@ def ingest_file(
     *,
     store: LocalRawStore | None = None,
     ocr: Ocr | None = None,
-    llm: Llm | None = None,
     jev: Jev | None = None,
-    captioner: Captioner | None = None,
 ) -> PreprocessResult:
     """원본을 원본 데이터 센터에 그대로 보관하고, 가린 결과와 (가린 글자로 한) 분류를 돌려준다.
     지원하지 않는 형식도 원본은 보관한다(나중에 지원되면 다시 처리할 수 있게)."""
@@ -60,7 +57,7 @@ def ingest_file(
     store = store or LocalRawStore()
     ref = store.put(group_id, src.sha256, ext, data)
     # 분류는 반드시 가린 뒤에: classify 는 result.content(가린 글자)만 본다
-    c = classify(result, llm, jev)
+    c = classify(result, jev=jev)
     update = {"raw_path": ref.path, "classification": c}
     # 사진: 원본은 그대로 두고 앱 화면용 사본(1080px WebP, 위치 정보 없음)을 원본 옆에 만든다
     if src.kind == "image" and result.quality.status != "failed":
@@ -68,16 +65,6 @@ def ingest_file(
         update["display_path"] = store.put_copy(
             group_id, src.sha256, "display", ".webp", display
         ).path
-    # 글자 없는 사진은 이미지 모델이 설명을 붙인다(captioner 를 준 경우만 — 테스트는 모델을 부르지 않는다)
-    if (
-        captioner is not None
-        and src.kind == "image"
-        and result.quality.status != "failed"
-        and not result.content.text.strip()
-    ):
-        caption = captioner.describe(data)
-        if caption is not None:
-            update["caption"] = caption
     return result.model_copy(update=update)
 
 

@@ -106,7 +106,8 @@ export async function uploadFile(file) {
  * 올린 파일의 분석 상태.
  * status: received | analyzed(저장 완료) | needs_review(저장했지만 확인 필요) | failed(읽지 못함, message 에 이유)
  * @param {string} id
- * @returns {Promise<{ id: string, status: string, title?: string, kind_label?: string, description?: string, message?: string }>}
+ * @returns {Promise<{ id: string, status: string, title?: string, kind_label?: string, description?: string, message?: string, needs_description?: boolean, doubts?: string[] }>}
+ * needs_description: 분석이 끝난 글자 없는 사진이라 사용자가 한 줄 설명을 달아야 하면 true(값이 없으면 false 로 본다)
  */
 export async function getFileStatus(id) {
   if (!isApiConfigured()) {
@@ -121,6 +122,18 @@ export async function getFileStatus(id) {
     };
   }
   return apiFetch(`/ai-assistant/files/${encodeURIComponent(id)}`);
+}
+
+/**
+ * 글자 없는 사진에 사용자가 한 줄 설명을 단다. 저장하면 그 설명으로 검색된다.
+ * 서버는 공백을 뺀 1~200자만 받는다. 실패하면 ApiError 메시지를 그대로 쓴다.
+ * @param {string} id 파일(기록) id
+ * @param {string} text 사용자가 적은 설명
+ * @returns {Promise<{ id: string, status: string, needs_description: boolean }>}
+ */
+export async function submitDescription(id, text) {
+  if (!isApiConfigured()) return { id, status: "analyzed", needs_description: false };
+  return apiFetch(`/ai-assistant/files/${encodeURIComponent(id)}/description`, { method: "POST", body: { text } });
 }
 
 /**
@@ -164,15 +177,15 @@ export async function openOriginal(id, sourcePath) {
 /**
  * 가족이 올린 기록 목록(최근 순). 사이드바의 "기록" 탭에서 쓴다.
  * needs_review: 읽다 만 부분이 있거나 종류가 애매해서 사용자가 확인해야 하는 기록. 확인이 필요한 것이 앞에 온다.
- * @returns {Promise<{ id: string, title: string, kind_label: string, occurred_on: string | null, has_unread_parts: boolean, needs_review: boolean, hasOriginal: boolean }[]>}
+ * @returns {Promise<{ id: string, title: string, kind_label: string, occurred_on: string | null, has_unread_parts: boolean, needs_review: boolean, needs_description: boolean, hasOriginal: boolean }[]>}
  */
 export async function listRecords() {
   if (!isApiConfigured()) {
-    return [{ id: "mock-1", title: "동대문마트 영수증", kind_label: "영수증", occurred_on: "2026-10-15", has_unread_parts: false, needs_review: true, hasOriginal: false }];
+    return [{ id: "mock-1", title: "동대문마트 영수증", kind_label: "영수증", occurred_on: "2026-10-15", has_unread_parts: false, needs_review: true, needs_description: false, hasOriginal: false }];
   }
   const items = await apiFetch("/ai-assistant/knowledge/items?limit=50");
   await ensureFreshAccess().catch(() => {}); // 목록의 작은 사진도 같은 토큰으로 받는다
-  const records = items.map((i) => ({ ...i, hasOriginal: Boolean(i.source_path) }));
+  const records = items.map((i) => ({ ...i, needs_description: Boolean(i.needs_description), hasOriginal: Boolean(i.source_path) }));
   return records.sort((a, b) => Number(b.needs_review) - Number(a.needs_review)); // 확인 필요한 기록을 맨 위로(나머지는 서버 순서 유지)
 }
 

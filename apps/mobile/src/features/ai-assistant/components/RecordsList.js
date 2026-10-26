@@ -110,6 +110,11 @@ export default function RecordsList({ active, focusId = null, onFocusHandled, on
                   <Text style={styles.tagText}>확인 필요</Text>
                 </View>
               ) : null}
+              {item.needs_description === true ? (
+                <View style={styles.tag}>
+                  <Text style={styles.tagText}>설명 없음</Text>
+                </View>
+              ) : null}
             </Pressable>
           );
         }}
