@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 from app.shared import ai_guard
 from app.shared.llm import client as llm
 
-from . import prompts
+from . import limits, prompts  # noqa: F401  (limits: 일정 호출 한도를 따로 세도록 등록)
 from .schemas import INTENTS, Intent
 
 
