@@ -43,6 +43,50 @@
 - **운영 확인 필요**: `DATA_DIR` 이 컨테이너 볼륨에 있어야 사진이 유지된다(프로필 사진과 같다). Caddy 를 쓴다면 `/family-chat/photos` 업로드 경로에 `request_body { max_size 8.2MB }` 를 권고한다(`deploy/` 는 요청 없이 수정하지 않아 문서에만 적는다). 사진 저장량 한도·정리(삭제)는 아직 없다.
 - 시험: `tests/test_chat_photos.py`. 모바일의 사진 고르기·보내기·보기는 아직 없다(다음 PR).
 
+### 사진·파일 모음 (서버)
+
+- `GET /family-chat/media?room_id=&kind=image|file|video|all&limit=&before_id=` — 채팅방 설정(⋮)의 모음 화면용. 인증 필수, 그룹은 `current_group_id`. `room_id` 가 없으면 가족 전체방(옛 NULL room 메시지 포함), 있으면 `resolve_room` 으로 확인하고 못 들어가는 방(다른 가족·참여하지 않은 1:1·없는 방)은 모두 404.
+- 응답: `{items:[{attachment_id, message_id, kind, user_id, user_name, created_at, url, thumb_url, width, height, size_bytes}], next_before_id, counts:{image, file, video}}`. 최신순이고 `before_id`(메시지 id) 커서로 다음 쪽을 받는다(`next_before_id` 가 null 이면 끝). `limit` 1~100(기본 40). `counts` 는 쪽과 상관없는 그 방 전체 개수. `url`·`thumb_url` 은 기존 `/family-chat/photos/{id}[?size=thumb]` 이고 권한 검사는 그 엔드포인트가 그대로 한다.
+- 권한은 SQL 조건이다: 첨부를 메시지에 join 하고 그 방의 메시지 조건으로만 조회해, 다른 방 첨부는 목록과 `counts` 어디에도 나오지 않는다. 사용자별 분당 60회 제한(초과 429 `too_many_requests`). AI·외부 호출 없음, 로그에 사용자 데이터 없음.
+- 종류 확장: 종류는 `media_service.attachment_kind()` 한 곳에서만 정한다. 지금은 서버가 받는 첨부가 사진뿐이라 모두 `image` 이고, `kind=file|video` 는 빈 목록, `counts.file/video` 는 0 이다. 파일·동영상 업로드는 **미구현**이다. 생기면 `message_attachments` 에 종류 칼럼(Alembic)을 추가하고 `attachment_kind`·목록·개수의 SQL 필터를 그 칼럼으로 바꾼다.
+- 파일: `media_router.py`·`media_service.py`·`media_repository.py`·`media_schemas.py`. 시험: `tests/test_chat_media.py`(최신순·커서·종류 필터·개수·방 분리·권한 격리·URL 로 사진 받기·429).
+
+### 고정 메시지 (서버)
+
+채팅방 위에 공지처럼 띄워 두는 **메시지 고정**. 가족 전체방과 1:1 방 모두 쓴다. 서버만 구현했고 앱 화면은 아직 없다.
+
+- 규칙(사용자 결정): **방 안의 모든 구성원이 고정·해제**할 수 있다(쓴 사람·고정한 사람이 아니어도). **방당 최대 2개**이고 3번째를 고정하면 가장 오래된 고정이 **자동으로 풀린다**(오류 없음, 응답의 `replaced_message_id` 로 알린다). **텍스트 메시지만** 고정한다(사진 첨부가 있거나 글이 비어 있으면 400 `not_pinnable`; 사진 고정은 이후 검토). 고정은 메시지를 가리키기만 하고 메시지를 지우거나 바꾸지 않는다(본문은 복사하지 않고 조회할 때 `messages` 와 join).
+- `GET /family-chat/pins?room_id=` — `{items:[{message_id, text, text_truncated, user_id, user_name, created_at, pinned_by, pinned_by_name, pinned_at}]}`. 최근 고정 2개, 고정 시각 최신순. `room_id` 가 없으면 가족 전체방. `text` 는 메시지 본문을 200자로 자른 것이고(말줄임 없음) 잘렸으면 `text_truncated=true`.
+- `POST /family-chat/pins {room_id?, message_id}` — `{item, replaced_message_id: int|null, already_pinned: bool}`(새 고정도 이미 고정된 경우도 200). 그 방의 메시지가 아니거나 없는 id 면 400 `invalid_message`. **같은 메시지를 다시 고정하면 멱등**: 새로 만들지 않고 기존 고정(고정한 사람·고정 시각)을 그대로 두며 `already_pinned=true`, 순서도 바뀌지 않는다.
+- `DELETE /family-chat/pins/{message_id}?room_id=` — 204. 고정돼 있지 않으면 404 `not_found`.
+- 권한: 인증과 `current_group_id` 필수, 방은 `resolve_room` 으로 확인한다. 다른 가족의 방·내가 참여하지 않은 1:1 방·없는 방은 조회/고정/해제 모두 같은 404 라 존재 단서가 없다(`room_id` 가 없는 옛 메시지는 가족 전체방 메시지로 고정할 수 있다). 메시지-방 일치는 SQL 조건(`room_messages`)으로 확인한다.
+- 제한: 고정·해제(POST/DELETE) 합쳐 사용자별 분당 30회(429 `too_many_requests` + `Retry-After`, 프로세스 메모리 `FailureLimiter`). 조회에는 제한이 없다.
+- **동시성**: 같은 방의 고정 변경은 방 행(`chat_rooms`)을 `SELECT ... FOR NO KEY UPDATE`(SQLAlchemy `with_for_update(key_share=True)`)로 잠가 고정끼리 한 번에 하나씩 처리한다. 일반 `FOR UPDATE` 는 같은 방 메시지 INSERT(FK 검사의 KEY SHARE)를 잠깐 막지만 `FOR NO KEY UPDATE` 는 막지 않아 메시지 전송·읽음은 고정 중에도 지연되지 않는다(PostgreSQL 에서 확인). SQLite 는 FOR UPDATE 가 없어 무시되지만 쓰기가 원래 직렬이다. 잠근 뒤 다시 읽고, 새 고정을 추가한 같은 트랜잭션에서 최근 2개를 넘는 오래된 고정을 지우고 **응답 항목도 commit 전에(잠금 안에서) 만들어** commit 하므로(commit 뒤 재조회로 인한 끼어든 해제와의 충돌·500 이 없다) 동시 요청에도 2개를 넘는 상태가 남지 않는다. 같은 메시지를 동시에 고정하는 경우는 `(room_id, message_id)` 유니크 제약이 막고 한 요청만 새 고정, 나머지는 `already_pinned=true`. 사후 정리 방식 대신 잠금을 택한 이유: 고정은 방별 쓰기 빈도가 낮아 잠금 경합이 문제가 되지 않고, 잠깐이라도 3개가 보이는 구간이 없다.
+- **AI·외부로 보내지 않는다**: 고정은 AI 를 부르지 않고 고정된 메시지가 AI 분석 입력에 따로 들어가지도 않는다. 로그에 메시지 글자를 남기지 않는다.
+- 테이블 `chat_pinned_messages`(Alembic `e8c1f4a7b903`, 새 테이블만 추가하는 expand 리비전). 스키마 게이트에서는 `family_chat` 기능의 전제로 자동 잡힌다(기능 `models.py` 의 모델).
+- 파일: `pin_router.py`·`pin_service.py`·`pin_repository.py`·`pin_schemas.py`. 시험: `app/features/family_chat/tests/test_pins.py`(고정·해제·멱등·자동 교체·최신순 2개·텍스트만·다른 방 메시지·모든 구성원·권한 격리·속도 제한·로그·동시성), `tests/test_membership_enforcement.py`(엔드포인트 목록). PostgreSQL 동시성은 임시 컨테이너에서 별도 스크립트로 확인했다(12개 스레드가 같은 방에 동시에 고정 x5회, 항상 2개).
+
+### 대화 검색 (서버)
+
+카카오톡 돋보기처럼 **글자 일치(키워드) 검색만** 한다(사용자 결정). 임베딩·벡터·AI 를 쓰지 않고 외부 호출도 없다. 스키마 변경(Alembic)도 없다.
+
+- `GET /family-chat/search?q=&room_id=&limit=&before_id=`
+  - `q`: 공백 정리 후 1~100자(아니면 422 `invalid_query`). 공백으로 나눈 **모든 낱말**이 글자로 들어 있는 텍스트 메시지를 최신순으로 돌려준다. 대소문자는 구분하지 않는다(PostgreSQL `ILIKE`, SQLite `LIKE`). `%`, `_`, `\` 는 와일드카드가 아니라 글자 그대로 찾는다(`ESCAPE`). 사진 메시지(글자 없음)는 제외.
+  - `room_id`: 있으면 그 방만(권한이 없거나 없는 방은 404). 없으면 접근 가능한 모든 방 = 가족 전체방 + 내가 참여한 1:1 방(`room_id` 가 없는 옛 메시지는 가족 전체방).
+  - `limit` 1~50(기본 20), `before_id`: 이 id 보다 오래된 결과(다음 쪽 커서).
+  - 응답 `{items:[{id, room_id, room_kind:"family"|"direct", peer_user_id, user_id, user_name, text, created_at}], next_before_id}`. `room_id` 는 가족 전체방 메시지도 그 방 id 로 채운다. `next_before_id` 는 더 있으면 마지막 항목의 id, 없으면 null.
+- 권한은 **SQL 조건**이다(`group_id` + `room_id IN (접근 가능한 방)` + 가족방이면 `room_id IS NULL`). 가져온 뒤 숨기지 않는다. 그룹은 `current_group_id` 로만 받는다(탈퇴자는 403). 스캔 상한 없이 `messages(room_id, id)`·`(group_id, id)` 인덱스를 따라 최신 쪽부터 훑는다. `%글자%` 일치는 인덱스로 못 좁히므로 가족 하나의 메시지가 아주 많아지면 느려질 수 있다(그때 PostgreSQL `pg_trgm` 인덱스를 별도 리비전으로 검토).
+- 사용자별 분당 30회 제한(429 `too_many_searches`, `Retry-After`; 프로세스 메모리 `FailureLimiter`). 검색어와 결과 글자는 로그에 남기지 않는다.
+- `GET /family-chat/messages?around_id=<메시지 id>`: 검색 결과로 점프할 때 쓴다. **가운데 1개 + 앞뒤 각 `limit//2`개**(기본 `limit` 50, 최대 200이면 201개, `limit` 이 짝수면 `limit+1`개)를 오래된 순으로 돌려준다(사진 첨부 포함). `latest`·`before_id`·`after_id` 와 함께 쓰면 400 `invalid_range`, 그 방의 메시지가 아니면(`room_id` 와 안 맞거나 없는 id) 400 `invalid_message`, 방 권한은 기존과 같다(404). `limit` 을 주지 않으면 기존대로 100(around_id 일 때 50).
+- `q` 에 NUL 등 제어문자(C0/C1, 탭·줄바꿈 제외)가 있으면 DB 를 부르기 전에 422 `invalid_query`. 탭·줄바꿈·전각 공백은 공백으로 정리한다.
+- 시험: `app/features/family_chat/tests/test_search.py`, `tests/test_membership_enforcement.py`(엔드포인트 목록).
+
+**알려진 한계**
+- (a) `q` 가 쿼리 문자열이라 uvicorn 접근 로그(Dockerfile 기본)에 퍼센트 인코딩된 채 남을 수 있다. 앱 로거는 남기지 않지만 접근 로그는 `deploy/`·uvicorn 설정 소관이며 이번 PR 에서는 바꾸지 않았다(운영 확인 항목: 접근 로그에서 쿼리 문자열 제거 또는 비활성화). `test_no_query_or_text_in_logs` 는 앱 로거(caplog)만 검사한다.
+- (b) `%글자%` 검색은 인덱스를 타지 못한다. 가족 전체방을 포함한 검색은 `OR room_id IS NULL` 때문에 순차 스캔이며, 6만 건 PostgreSQL 16 에서 드문 낱말 약 30ms, 1:1 방을 지정하면 약 9ms 였다. 100만 건 규모가 되면 `pg_trgm` GIN 인덱스를 별도 리비전으로 검토한다.
+- (c) 속도 제한은 프로세스 메모리 기반이라 워커별로 센다.
+- (d) SQLite 시험 환경은 비ASCII 대소문자 비교가 PostgreSQL 과 다르다(운영 PostgreSQL 기준으로 정상).
+
 ### 읽음 상태 (서버, PR C)
 
 - `POST /family-chat/read {message_id}`: 내 읽음 위치를 올린다. 앞으로만 간다(더 작은 값은 무시하고 현재 값을 돌려줌). 이 그룹의 메시지가 아니면 400 `invalid_message`. 최초 저장이 동시에 겹쳐 기본키가 충돌하면 다시 읽어 갱신한다. 응답 `{last_read_message_id}`.
@@ -160,7 +204,41 @@
 - **인증 이미지**: 공용 `shared/components/AuthImage.js` 가 `useProfilePhoto`(네이티브 expo-image 헤더, 웹 blob 캐시)로 받는다. `shared/photoCache.js` 의 `photoPath` 는 프로필 사진 경로에 더해 서버가 준 `/family-chat/photos/<id>` 와 `?size=thumb|full` 형태만 허용한다(그 밖의 주소에는 로그인 헤더가 나가지 않는다). 채팅 사진은 바뀌지 않으므로 캐시에서 원본·썸네일을 서로 밀어내지 않는다. 토큰은 주소·캐시 키에 들어가지 않는다. `UserAvatar` 동작은 그대로다.
 - **미리보기**: 마지막 메시지가 사진(글자 없음)이면 소통 탭 방 목록과 접근성 라벨에 "사진"(내 것은 "나: 사진")으로 보인다(`chatUtils.previewText`, `buildRoomRows` 가 이를 사용).
 - 시험: `apps/mobile/tests/chatphotos.test.js`(미리보기, 경로 허용/거부, 캐시 키, `sendPhoto` 요청 모양, 오류 문구, 표시 크기, 파일 형식·한도). 실기기·웹의 파일 선택, canvas 줄이기, 네이티브 헤더 로딩, 전체 화면 보기는 아직 직접 확인하지 못했다.
-- 아직 없는 것: 여러 장 한 번에 보내기, 사진 저장·공유, 동영상·파일, 사진 업로드 취소.
+- 아직 없는 것: 여러 장 한 번에 보내기, 네이티브 사진 공유(저장은 위 "채팅방 서랍 · 사진 모음" 절), 동영상·파일, 사진 업로드 취소.
+
+### 채팅방 서랍 · 사진 모음 (앱)
+
+- **서랍**(`components/RoomDrawer.js`): 채팅방 상단 ⋮ 를 누르면 오른쪽에서 열린다(React Native `Modal` 투명 + `Animated`, 폭은 화면의 85% 최대 360, 180ms). 어두운 덮개·X·안드로이드 뒤로가기로 닫는다. AI 는 기존 ✨ 버튼에 그대로 있다. 위에서부터 방 이름(가족 전체방은 가족 이름, 1:1 은 상대 표시 이름)과 X, 구성원 줄(`MemberStrip`: "가족 구성원 N명"과 사진/이니셜 아바타 가로 스크롤, 나 먼저·표시 이름 우선 / 1:1 은 "대화 상대"와 상대 한 명), "채팅 관리"·"채팅방 설정" 두 구역. 행 정의와 방 종류별 차이는 순수 함수 `mediaUtils.buildDrawerSections`·`drawerMembers`·`drawerTitle` 에 있다.
+- **동작하는 행**: 사진 · 동영상(→ `/chat-media`), 구성원 초대 · 관리(가족 전체방만 → 기존 `/family`), 대화 내용 검색(채팅방 안 돋보기 검색 바를 연다 — `onOpenSearch`, 헤더 돋보기와 같은 기능). 고정 메시지(서랍을 닫고 채팅방 위 고정 바를 펼친다 — `onOpenPins`, 고정이 없으면 "고정된 메시지가 없어요" 안내).
+- **서랍 이동은 한 번만**: 이동 행(사진 · 동영상, 구성원 초대 · 관리, 검색, 고정 메시지)은 한 번 누르면 즉시 잠기고 닫히는 180ms 동안의 연속 누름은 무시한다(`canNavigateFromDrawer`). 서랍은 방 이름을 주소에 싣지 않고 `roomId`·`peer` 만 넘긴다.
+- **준비 중인 행**(제목 옆 "준비 중" 배지, 누르면 서랍 안에 "준비 중이에요" 안내만): 공유 문서, 가족 일정 · 할 일, 알림 설정, AI · 개인정보 보호 설정, 채팅방 정보 수정. **채팅방 나가기**(빨간 글자): 가족 전체방은 가족 탈퇴 기능이 없어 "가족 채팅방은 나갈 수 없어요", 1:1 은 "준비 중이에요" 안내만 한다.
+- **1:1 방에서 숨기는 행**: 구성원 초대 · 관리(가족 전체의 일), 공유 문서, AI · 개인정보 보호 설정(1:1 대화는 AI 로 보내지 않는다). 나머지는 가족 전체방과 같다.
+- **사진 · 동영상 모음**(`/chat-media`, `screens/ChatMediaScreen.js`, 경로 인자 `roomId`(없으면 가족 전체방)·`peer`(1:1 상대 id). 방 이름은 주소(웹 주소창·기록)에 싣지 않고 화면 안에서 구성원 정보로 계산한다): 탭 "사진 N · 파일 N · 동영상 N"(개수는 서버 `counts`), 사진 탭은 3열 정사각 썸네일 격자(`AuthImage`, 월별 헤더 "2026년 10월"), 끝에 가까워지면 `next_before_id` 커서로 다음 쪽을 자동으로 불러온다(`useChatMedia.js`; 응답을 받아들일지 정하는 상태 전이는 순수 함수 `mediaState.js` 에 있어, 탭·방이 바뀌면 옛 응답은 버려지고 다음 쪽 실패 뒤에도 목록은 남은 채 "다시 시도"할 수 있다). `thumb_url`·`width`·`height`·`size_bytes` 는 서버 스키마상 null 일 수 있어 썸네일은 `thumb_url ?? url` 로 대신한다. `before_id` 는 1 이상일 때만 보낸다. 로딩·오류("다시 시도"; 다음 쪽 오류는 목록 끝에서 다시 시도)·빈 상태("아직 공유된 사진이 없어요")를 처리한다. 파일·동영상 탭은 같은 경로로 불러오고(서버가 빈 목록을 준다) 빈 상태 문구만 "아직 파일은 보낼 수 없어요. 사진부터 모아 둘게요"처럼 다르다.
+- **전체 화면 보기·저장**(`components/MediaViewer.js`): 원본, 닫기, 보낸 사람(별명 우선)·날짜·시각, "저장" 버튼(저장 중·결과 문구는 사진별로 기억해서 다른 사진으로 넘어가면 새 사진에는 보이지 않는다). **웹**은 `api.downloadPhoto` 가 로그인 헤더로 받은 blob 을 a 태그 `download` 로 내려받는다(파일명 `gabee-YYYYMMDD-HHmmss-<id>.jpg`, 서버가 준 사진 경로만 받는다). **네이티브(iOS/Android)**는 사진 앱에 저장한다(`savePhoto.js` 의 `savePhotoNative`): ① `photoDownloadRequest`(api.js)가 서버가 준 사진 경로만 받아 주소와 로그인 헤더를 만든다(토큰은 주소에 없다, 낯선 주소는 권한 요청 전에 거절) ② `expo-media-library` **쓰기 전용 권한**(`getPermissionsAsync(true)` → 거절이면 `requestPermissionsAsync(true)`)을 확인한다. 거절·영구 거절이면 "사진 저장 권한이 필요해요. 설정에서 허용해 주세요" ③ `expo-file-system` 새 객체형 API(`File.downloadFileAsync(url, new File(Paths.cache, ...), { headers })`)로 앱 캐시 폴더의 임시 파일에 받는다 ④ `MediaLibrary.saveToLibraryAsync` 로 저장 ⑤ 임시 파일은 성공·실패 모두 `finally` 에서 지운다. 앨범("가비")은 만들지 않는다: `createAlbumAsync` 는 라이브러리 읽기 권한까지 요구해 권한 범위가 커지고, 쓰기 전용 권한이면 충분하기 때문이다. 모듈이 없거나 권한 API 가 실패하는 환경(Expo Go 의 미디어 라이브러리 제한 등)은 "이 환경에서는 저장할 수 없어요" 로 안내하고 앱은 멈추지 않는다. expo 모듈은 웹 번들에 섞이지 않도록 네이티브 분기 안에서 동적 import 한다. 시험은 의존성 주입 가짜 객체로 권한 허용·거절·영구 거절, 받기·저장 실패, 임시 파일 삭제, 낯선 경로, 모듈 없음, 웹 분기를 본다. 임시 파일 이름은 작업마다 시각+난수로 달라서 같은 사진을 동시에 저장해도 서로의 파일을 덮어쓰거나 지우지 않고, 화면은 저장 중인 사진 id 를 모두 기억해 같은 사진의 동시 재저장을 막는다. 인증 헤더는 권한을 받은 뒤 다운로드 직전에 만든다(경로 검증은 권한 창보다 먼저). **의존성**: `expo-file-system ~19.0.24`(SDK 54 호환, 사용자 승인으로 추가)와 `expo-media-library ~18.2.1`(앱 권한 문구는 app.json). **Expo Go 제한 가능성**: expo-media-library 가 "Expo Go 는 Android 권한 정책 때문에 미디어 라이브러리 전체 접근을 제공하지 못한다" 고 경고하므로 Expo Go 에서는 저장이 막힐 수 있다(막히면 위 안내 문구) — **개발 빌드(expo-dev-client)에서 확인을 권장한다.** **실기기(iOS·Android, 개발 빌드와 Expo Go)에서의 저장·권한 창은 아직 확인하지 못했다.**
+- **서버 계약(별도 PR)**: `GET /family-chat/media?room_id=<선택>&kind=image|file|video|all&limit=<1~100, 기본 40>&before_id=<선택>` → `{items:[{attachment_id, message_id, kind, user_id, user_name, created_at, url, thumb_url, width, height, size_bytes}], next_before_id, counts:{image, file, video}}`. 오류 404(권한 없는 방)·429(분당 60회)·401. 앱 래퍼는 `api.listMedia`. 서버 PR 이 병합되기 전에는 모음 화면이 오류("사진을 불러오지 못했어요" 등)로 보인다.
+- 시험: `apps/mobile/tests/chatmedia.test.js`(월 그룹핑 경계·격자 줄·이어 붙이기·counts·빈 상태/오류 문구·캡션·저장 파일명, 서랍 행 구성(가족방/1:1 차이·준비 중·나가기 문구·검색 연결), `listMedia` 경로·쿼리·커서·오류, `savePhoto` 분기). 실기기·웹 화면, 애니메이션, 서버 연동, 웹 내려받기는 아직 직접 확인하지 못했다.
+
+### 고정 메시지 (앱)
+
+- **규칙(사용자 확정)**: 방 안 모든 구성원이 고정·해제할 수 있고, 방당 최대 2개다(3번째를 고정하면 가장 오래된 것이 자동 해제 — 앱이 "가장 오래된 고정이 해제됐어요"를 알린다). 텍스트 메시지만 고정한다(사진이 있거나 글이 없는 메시지, 전송 중·실패 메시지에는 고정 메뉴가 없다). 가족 전체방과 1:1 방 모두 같다.
+- **길게 누르기 메뉴**(`components/MessageActionSheet.js`, 이전에는 일반 메시지에 길게 누르기 동작이 없었다): 서버에 저장된 텍스트 메시지의 말풍선을 길게 누르면 아래에서 작은 메뉴(React Native `Modal`, 웹에서도 같다)가 열린다 — "복사"(`expo-clipboard`), "공지로 고정" 또는 이미 고정된 메시지면 "고정 해제", "닫기". 이 메시지 말풍선은 네이티브에서 글자 선택을 끄고(`selectable` prop 과 스타일 `userSelect` 를 함께 — 스타일이 prop 을 이기므로, 판단은 `pinUtils.bubbleSelectable`) 복사를 메뉴로 옮겼다. 복사 결과는 "복사했어요"/"복사하지 못했어요"로 알리고, 말풍선에는 접근성 동작 "메뉴 열기"가 있다. 메뉴 아래 여백은 안전 영역 inset(없으면 플랫폼 기본값)을 따른다. 웹은 선택을 그대로 둔다. 전송 실패 메시지의 길게 누르기(삭제)는 그대로다.
+- **고정 바**(`components/PinnedBar.js`): 헤더 아래에 최근 고정을 한 줄씩(핀 아이콘, 보낸 사람 이름, 본문 한 줄 말줄임). 고정이 없으면 그리지 않는다. 기본 펼침이고 오른쪽 화살표로 접으면 가장 최근 1개만 보인다(고정이 2개일 때만 화살표). 펼친 상태에서는 줄 아래에 "엄마 고정 · 10월 24일 오후 3:20" 보조 줄이 있고, 접근성 라벨에도 보낸 사람·고정한 사람·시각이 들어간다. 줄을 누르면, 라이브 상태이고 그 메시지가 이미 목록에 있으면 그 자리로 스크롤+잠깐 강조만 하고(`pinTapAction`), 목록에 없거나 과거 창을 보는 중이면 기존 `focusOn(messageId)`(그 위치 창 불러오기)를 쓴다. 과거(포커스) 모드에서도 유지되고, 검색 바가 열려 있는 동안은 숨는다. 고정·해제 결과 안내(3.5초)도 이 바 아래에 나온다.
+- **서랍의 "고정 메시지" 행**: 동작 행(부제 "중요 공지와 약속 모아보기"). 누르면 서랍을 닫고 고정 바를 펼친다(고정이 없으면 안내만). 별도 목록 시트를 만들지 않고 고정 바를 재사용하는 쪽이 단순해서 골랐다 — 고정은 방당 최대 2개라 바에서 해제 메뉴(말풍선 길게 누르기)까지 모두 닿는다. 해제 버튼이 있는 전용 시트는 없다(해제는 그 메시지를 길게 눌러서 한다. 고정 바 줄로 이동 → 길게 누르기).
+- **데이터 갱신**(`useChatPins.js`, 순수 규칙은 `pinUtils.js`): 방에 들어오면 불러오고, 고정·해제는 먼저 화면에 반영(낙관적)한 뒤 실패하면 그 동작만 거꾸로 적용해 되돌리고(고정 실패는 그 항목을 빼고 교체로 빠진 항목 복원, 해제 실패는 그 항목만 복원 — 겹친 요청이 서로 덮어쓰지 않는다) 문구를 둔다. 새 고정은 기기 시계와 무관하게 항상 맨 앞에 둔다. 같은 메시지를 처리 중에 또 누르면 "처리 중이에요"를 알린다(해제 중 404 는 "이미 해제된 고정이에요"로 목록에서 뺀 채 둔다). 요청이 끝나면 서버 기준으로 한 번 더 맞추고(조회 중이면 끝난 뒤 한 번 더), 안내는 iOS 에서 `announceForAccessibility` 로도 읽어 준다. 다른 구성원의 변경은 별도 타이머로 30초마다 조용히 다시 조회해 반영한다(화면이 보이고 앱이 앞에 있을 때만, 연속 실패마다 간격을 두 배로 늘려 최대 2분, 언마운트·백그라운드에서 정리). 메시지 폴링(3초)에 얹지 않은 이유는 그 훅이 과거 모드에서 폴링을 멈추는데 고정 바는 과거 모드에서도 유지돼야 해서다. 조회는 순번(seq)을 달아 내가 그 뒤에 바꾼 것이 있거나 바꾸는 중이면 오래된 응답을 버린다.
+- **서버 계약(별도 PR, 미병합)**: `GET /family-chat/pins?room_id=<선택>` → `{items:[{message_id, text, text_truncated, user_id, user_name, created_at, pinned_by, pinned_by_name, pinned_at}]}`(최근 고정 최대 2개, 최신순, 본문은 앞 200자) / `POST /family-chat/pins {room_id?, message_id}` → `{item, replaced_message_id|null, already_pinned}` / `DELETE /family-chat/pins/{message_id}?room_id=` → 204. 오류: 400 `invalid_message`(그 방의 메시지 아님)·`not_pinnable`(사진이 있거나 빈 글), 404, 429(쓰기 분당 30회). 앱 래퍼는 `api.listPins`·`pinMessage`·`unpinMessage`, 오류 문구는 `chatUtils.pinErrorMessage`.
+- 시험: `apps/mobile/tests/chatpins.test.js`(고정 가능 판정, 목록 정리·최대 2개, 낙관적 고정/해제·되돌리기·오래된 응답 버림 reducer, replaced_message_id 처리, 안내·오류 문구, 접기 보기, 폴링 간격, API 경로·메서드·본문, 서랍 행). 실기기·웹 화면(길게 누르기가 웹에서 글자 드래그 선택과 부딪치는지 포함), 메뉴·고정 바 모양, 서버 연동은 아직 직접 확인하지 못했다.
+
+### 대화 검색 (돋보기, 앱)
+
+서버 계약은 **별도 PR** 의 `GET /family-chat/search`(`q`·`room_id`·`limit`·`before_id`, 응답 `{items, next_before_id}`)와 `GET /family-chat/messages?around_id=`(그 메시지를 가운데로 앞뒤 창)다. 이 브랜치에는 서버가 없어 가짜 fetch 로만 시험했다. **키워드(글자 일치) 전용**이며 임베딩·AI 를 쓰지 않는다. 검색어·결과 글자는 요청 주소 외에는 로그·저장소·오류 문구 어디에도 남기지 않는다.
+
+- **채팅방 안 검색**(`ChatRoomScreen`): 상단 바의 돋보기(접근성 라벨 "대화 검색")를 누르면 상단이 검색 바(`ChatSearchBar`)로 바뀌고 메시지 목록 위에 결과(`ChatSearchResults`)가 덮인다(목록은 그대로라 닫아도 보던 위치가 유지된다). 입력은 300ms 쉬었다가 한 번 부르고(`useChatSearch`), 공백만이면 부르지 않으며, 같은 검색어는 다시 부르지 않고, 더 새 요청이 시작되면 오래된 응답은 버린다. 결과는 최신순: 보낸 사람, 시각(오늘이면 시각 / 올해 월일 / 다른 해 연월일), 두 줄 미리보기(`Highlighted`: 낱말 모두 굵게+옅은 꿀색 바탕, 대소문자 무시), 결과 개수("N개", 더 있으면 "N개 이상"), 끝에 닿으면 `next_before_id` 로 다음 쪽 자동 불러오기(또는 "더 보기" 버튼). 없음·오류(429 "너무 자주 검색", 422 검색어 길이)·로딩 상태가 있다.
+- **소통 탭 검색**(`FamilyChatScreen`, `ChatListHeader`): 기존 입력에 글자를 넣으면 방 이름 일치 행 아래에 "대화 내용" 섹션(`ContentSearchSection`)이 나온다. 모든 방(가족 전체방 + 내 1:1)에서 찾고, 각 결과에 방 이름(가족 전체방은 가족 이름, 1:1 은 상대 표시 이름, 모르면 "대화")을 붙인다. 결과를 누르면 `/chat-room` 으로 가며(가족 전체방은 `focus` 만, 1:1 은 `roomId`·`peer`·`focus`) 그 메시지 위치로 열린다. `src/app/chat-room.js` 의 화면 key 가 `방:focus` 라 같은 방이라도 focus 가 다르면 새로 열린다.
+- **과거 보기(포커스 모드)**(`useChatMessages`): 결과를 누르면 `focusOn(id)` 이 `listMessages({aroundId})` 로 앞뒤 50개 창을 받아 서버 메시지를 **통째로 교체**(임시 전송 중/실패 메시지는 유지, 떨어진 구간이 이어 붙지 않게)하고, 화면이 해당 메시지로 스크롤하며 2초간 배경색(`honeySoft`)으로 강조한다. 이 동안 새 메시지 확인(폴링)은 멈추고 확인 기준(cursor)은 라이브 끝에 그대로 둔다(읽음 상태 조회는 계속). 위로 스크롤하면 `loadOlder`, 아래 끝에 닿으면 `loadNewer`(after_id)로 이어 받고, 요청한 개수보다 적게 오면 라이브 끝에 닿은 것이라 자동으로 라이브로 돌아간다. 화면 아래의 "최신 대화로 이동" 버튼은 최근 50개를 다시 받아 라이브(폴링 재개)로 돌아간다. 과거 보기에서 글·사진을 보내면 먼저 라이브로 돌아간 뒤 보낸다. 포커스 요청이 실패(400 `invalid_message`/404)하면 최근 대화로 열고 안내 문구를 띄운다. 모드가 바뀔 때 올라가는 세대 번호(`modeGen`)로, 바뀌기 전에 시작한 요청의 응답은 버린다.
+- **읽음 처리**: 과거 창을 보는 동안은 `useReadMarker` 에 빈 목록을 넘겨 읽음 위치를 올리지 않는다(보고 있지 않은 최신 메시지를 읽음 처리하지 않기 위해). 라이브로 돌아오면 평소처럼 최신 id 로 올린다.
+- 순수 함수는 `searchUtils.js`(낱말 분리·정규화, 강조 구간, 시각 라벨, 결과 병합, 방 라벨, 이동 경로, 창 교체, 라이브 끝 판단), 오류 문구는 `chatUtils.searchErrorMessage`·`focusErrorMessage`, API 는 `api.js` 의 `searchMessages`·`listMessages({aroundId})` 다.
+- 시험: `apps/mobile/tests/chatsearch.test.js`(낱말 분리, 중복 호출·오래된 응답 판단, 강조 구간(여러 낱말·겹침·특수문자·한글·이모지), 시각 라벨, 결과 병합, 방 라벨, 이동 경로·focus 파싱, 창 교체·라이브 복귀 판단, 오류 문구, API 경로·인코딩·커서·`around_id`). 실기기·웹 화면의 스크롤 이동(`scrollToIndex`)·강조·키보드 동작과 실제 서버 연동은 아직 직접 확인하지 못했다.
+- 아직 없는 것: 사진 메시지 검색(서버가 제외), 날짜로 이동, 검색어 기록, 결과 개수 전체 표시(서버가 전체 개수를 주지 않아 "N개 이상").
 
 ### AI 기능 (서버, `/family-chat/ai` 아래)
 
