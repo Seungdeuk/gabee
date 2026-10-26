@@ -874,9 +874,14 @@ def test_user_without_family_cannot_use_group_endpoints(api, fake, world, method
 
 
 def test_no_group_expectation_table_is_exact():
-    """예외 표가 실제 경로와 맞고(105개는 400 no_group, 2개는 404), 낡은 항목이 없다."""
+    """예외 표가 실제 경로와 맞고 낡은 항목이 없다. 예외(approve·reject 404)를 뺀 모든 그룹 경로는 400 no_group 이다 —
+    새 라우트가 생기면 자동으로 그 규칙에 포함되고, 새 예외가 생기면 위 시험이 실패한다(개수를 하드코딩하지 않는다)."""
+    assert set(NO_GROUP_EXPECT) == {
+        ("POST", "/family-group/groups/join-requests/{request_id}/approve"),
+        ("POST", "/family-group/groups/join-requests/{request_id}/reject"),
+    }
     assert set(NO_GROUP_EXPECT) <= {(m, p) for m, p, _ in GROUP_OPS}
-    assert len(GROUP_OPS) - len(NO_GROUP_EXPECT) == 105
+    assert all(v == (404, "not_found") for v in NO_GROUP_EXPECT.values())
 
 
 def test_ai_assistant_chat_without_family_returns_notice_without_llm(api, fake, world):
@@ -1677,8 +1682,6 @@ OUTBOUND_FILES = {
     "shared/llm/jev.py": "Jev(TypeSafe) 외부 서비스 래퍼 — 아래 xfail 참고",
     "features/family_group/social_providers.py": "소셜 로그인 공급자 서버 호출(AI 아님, 로그인 전용)",
     "shared/mailer.py": "인증·비밀번호 재설정 메일 SMTP 발송(AI 아님)",
-    "shared/llm/local.py": "로컬 Ollama(서버 밖으로 나가지 않음)",
-    "features/ai_assistant/ingest/caption.py": "로컬 Ollama 이미지 설명(서버 밖으로 나가지 않음)",
     "features/ai_assistant/knowledge/rag_chat.py": "Anthropic 도구 루프(ask_guarded 가 ai_guard.run 으로 감싼다)",
 }
 LLM_CALLER_FILES = {
@@ -1722,7 +1725,6 @@ def test_every_llm_caller_goes_through_a_guard():
         "shared/llm/client.py",
         "shared/llm/agent.py",
         "shared/llm/jev.py",
-        "shared/llm/local.py",
         "shared/llm/agent_chat.py",
     }
     callers = {
@@ -1896,13 +1898,24 @@ def test_schedule_agent_masks_user_text_and_event_titles(api, fake):
     )
     _enable_ai(api, fam)
     fake.reset()
-    text = f"내 번호 {PHONE} 메일 {EMAIL} 주민번호 {RRN} 카드 {CARD} 일정 알려줘"
+    # 주민번호·카드·계좌가 든 문장은 외부로 보내지 않고 거절한다(400, AI 호출 0, 한도 소모 없음)
+    for sensitive in (
+        f"주민번호 {RRN} 일정 알려줘",
+        f"카드 {CARD} 일정 알려줘",
+        f"계좌 {ACCOUNT} 일정 알려줘",
+    ):
+        r = api.post("/schedule/agent", json={"text": sensitive, "channel": "personal"}, headers=h)
+        assert r.status_code == 400 and r.json()["code"] == "sensitive_content", r.text
+    assert fake.calls == []
+    # 전화·이메일은 가려서 보낸다(일정 제목의 전화·계좌도 가려짐)
+    text = f"내 번호 {PHONE} 메일 {EMAIL} 일정 알려줘"
     r = api.post("/schedule/agent", json={"text": text, "channel": "personal"}, headers=h)
     assert r.status_code == 200, r.text
     assert len(fake.anthropic) == 1
     _assert_no_raw(
         fake.anthropic[0].text,
         raw=(PHONE, EMAIL, RRN, "4539 1488", "1488 0343", "123456-04-123456"),
+        names=(fam.owner.name,),
     )
 
 
