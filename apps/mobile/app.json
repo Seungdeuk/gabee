@@ -43,6 +43,14 @@
         }
       ],
       [
+        "expo-media-library",
+        {
+          "photosPermission": "가비가 채팅방 사진을 내 앨범에 저장하려고 앨범을 사용해요.",
+          "savePhotosPermission": "가비가 채팅방 사진을 내 앨범에 저장하려고 앨범에 쓰기 권한을 사용해요.",
+          "isAccessMediaLocationEnabled": false
+        }
+      ],
+      [
         "expo-location",
         {
           "locationAlwaysAndWhenInUsePermission": "가비가 내가 동의한 가족에게만 내 위치를 공유하려고 위치를 사용해요.",
