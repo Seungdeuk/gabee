@@ -125,5 +125,9 @@ def test_real_classifier_knows_common_documents_and_doubts_strange_ones():
         "가정통신문\n학부모님께\n3학년 현장체험학습을 국립중앙박물관으로 갑니다. 참가 신청서를 담임선생님께 제출해 주세요."
     )
     assert notice.kind == "학교 가정통신문" and notice.confidence >= 0.7
-    odd = ask("오늘 저녁은 김치찌개! 다들 일찍 와")
+    memo = ask("오늘 저녁은 김치찌개! 다들 일찍 와")
+    assert memo.kind == "일상 메모" and memo.confidence >= 0.7  # 2026-10-26 에 가르친 종류
+    odd = ask(
+        "김치찌개 레시피\n재료 김치 300g 돼지고기 200g 두부 1모\n1. 고기를 볶는다 2. 김치를 넣고 끓인다"
+    )
     assert odd.confidence < 0.7  # 학습한 어떤 종류도 아니면 확정하지 않는다

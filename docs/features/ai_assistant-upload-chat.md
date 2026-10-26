@@ -108,16 +108,16 @@
 
 ## 문서 분류기 전달
 
-문서 종류를 정하는 작은 분류기다(앱 임베딩 e5-small + 글자 TF-IDF → 로지스틱, 종류 46개, 폴더 약 6MB). qwen 을 대신한다.
+문서 종류를 정하는 작은 분류기다(앱 임베딩 e5-small + 글자 TF-IDF → 로지스틱, 종류 52개, 폴더 약 7MB). qwen 을 대신한다.
 
 | 파일(폴더 `doc-classifier` 안) | 설명 |
 | --- | --- |
 | `classes.json` `coef.npy` `intercept.npy` `vocab.json` `idf.npy` `config.json` | numpy 만으로 읽는다(scikit-learn 불필요). 확률이 0.7 이상이면 확정 |
 
-- 압축본: `doc-classifier.zip`(약 4.3MB, SHA-256 `36AC8C7202947F00EA27C983FF4D783F1B57F86086DBB252B39CF0077FEF53C6`). 풀어서 `apps/api/data/models/doc-classifier/` 에 둔다(다른 곳이면 `DOC_CLASSIFIER_DIR`). `apps/api/data/` 는 `.gitignore` 라 깃에 올라가지 않는다.
+- 압축본: `doc-classifier.zip`(4,823,602바이트, SHA-256 `A3BB41B506657B79BF8EA157804762D727DD1BC9B59815A43736F71C89FFA82A`). 풀어서 `apps/api/data/models/doc-classifier/` 에 둔다(다른 곳이면 `DOC_CLASSIFIER_DIR`). `apps/api/data/` 는 `.gitignore` 라 깃에 올라가지 않는다.
 - 없거나 깨져도 서버는 죽지 않는다. 분류기를 건너뛰고 Jev(키가 있을 때) → "기타 문서 + 확인 필요" 순서로 간다.
 - 다시 학습하려면 `apps/api/scripts/train_doc_classifier.py`(개발용, scikit-learn 필요, 프로젝트 의존성에는 넣지 않았다)를 쓴다. 학습 데이터는 저장소에 없고 `--data` 로 넘긴다.
-- 한계: 실제 파이프라인 기록 10건 중 8건(80%)만 맞는다. 엑셀·CSV 같은 표 형식 예시가 적다. 새 종류가 생기면 예시를 모아 다시 학습해야 한다. 기존 qwen 이 만들던 장소·중요 칸(`fields`) 추출은 사라졌다(날짜·금액은 그대로 규칙이 한다).
+- 한계: 새로 직접 쓴 독립 문서 30개에서 28개(93%)를 맞혔지만 작은 시험이라 실제 사용 점수는 아니다. 처음 보는 종류와 학습 글과 다른 모양은 "확인 필요"가 된다. 새 종류가 생기면 예시를 모아 다시 학습해야 한다(자료와 방법: ADR 0007 "정정과 개선"). 기존 qwen 이 만들던 장소·중요 칸(`fields`) 추출은 사라졌다(날짜·금액은 그대로 규칙이 한다).
 
 ## 받아서 테스트하는 방법
 

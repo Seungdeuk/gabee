@@ -16,6 +16,7 @@ scikit-learn·scipy·onnxruntime·tokenizers 가 있는 환경에서 돌린다(�
 
 import argparse
 import json
+import re
 import urllib.parse
 from pathlib import Path
 
@@ -31,6 +32,20 @@ THRESHOLD = 0.7
 C = 20
 MAX_CHARS = 3000  # 서버가 분류기에 넘기는 글자 수와 같다
 UNKNOWN = "(모름)"
+
+# 학습·시험 글에는 "분류: <정답>"·"- 태그:" 줄이 들어 있었다. 서비스에서 분류기가 받는 글(가린 본문)에는 없는 줄이라
+# 그대로 두면 정답을 베껴 점수가 부풀려진다 → 모든 글에서 지운다. 스캔 문서 본문에는 제목 줄(# …)도 없어서 제목 없는 글도 같이 배운다
+_LEAK = re.compile(r"(?m)^(?:분류\s*:|-\s*태그\s*:).*\n?")
+_TITLE = re.compile(r"\A#[^\n]*\n")
+
+
+def clean_text(text: str) -> str:
+    return _LEAK.sub("", text)
+
+
+def untitled(text: str) -> str:
+    return _TITLE.sub("", clean_text(text), count=1)
+
 
 # 실제 기록(pool_d_raw.json) 중 정답이 있는 파일. None 이면 학습 종류에 없는 문서("모름"이 정답)
 REAL_GOLD = {
@@ -135,8 +150,10 @@ def load_json(path: str) -> dict:
     return json.loads(Path(path).read_text(encoding="utf-8"))
 
 
-def training_set(old: dict, big: dict | None, with_held_out: bool):
-    """(글, 종류) 목록. 학습 문서 + 변형 2개씩. 최종 모드는 held-out 종류의 test_unseen 문서도 넣는다."""
+def training_set(old: dict, big: dict | None, with_held_out: bool, extra: list[dict] = ()):
+    """(글, 종류) 목록. 학습 문서 + 변형 2개씩 + `--extra` 새 종류 문서(split=train).
+
+    최종 모드는 held-out 종류의 test_unseen 문서도 넣는다. 정답 줄은 지우고, 제목 줄이 있는 글은 제목 없는 복사본도 더한다."""
     rows = [(d["text"], d["label"]) for d in old["docs"] if d["split"] == "train"]
     for d in old["docs"]:
         if d["split"] == "train":
@@ -148,6 +165,10 @@ def training_set(old: dict, big: dict | None, with_held_out: bool):
                 rows += [
                     (d["text"], d["label"]) for d in data["docs"] if d["split"] == "test_unseen"
                 ]
+    for data in extra:
+        rows += [(d["text"], d["label"]) for d in data["docs"] if d["split"] == "train"]
+    rows = [(clean_text(t), y) for t, y in rows]
+    rows += [(untitled(t), y) for t, y in list(rows) if _TITLE.match(t)]
     return rows, n_base
 
 
@@ -160,13 +181,12 @@ def get_embeddings(
     return E5(embedder_dir).passages(texts)
 
 
-def run_eval(args, old: dict, big: dict) -> None:
-    vocab = {k["label"] for k in old["kinds"] if not k["hold"]}
-    train, _ = training_set(old, big, with_held_out=False)
-    cache = None
-    if args.emb_cache:
-        z = np.load(args.emb_cache)
-        cache = {k: z[k] for k in z.files}
+def run_eval(args, old: dict, big: dict, extra: list[dict]) -> None:
+    vocab = {k["label"] for k in old["kinds"] if not k["hold"]} | {
+        label for data in extra for label in data["kinds"]
+    }
+    train, _ = training_set(old, big, with_held_out=False, extra=extra)
+    cache = None  # 정답 줄을 지운 글로 다시 계산하므로 예전 임베딩 캐시는 쓰지 않는다
     rng = np.random.RandomState(0)
     big_test = [d["text"] for d in big["docs"] if d["split"] == "test"]
     big_unseen = [d["text"] for d in big["docs"] if d["split"] == "test_unseen"]
@@ -182,15 +202,20 @@ def run_eval(args, old: dict, big: dict) -> None:
             if f in REAL_GOLD:
                 real.append((r["text"], REAL_GOLD[f]))
     pools = {
-        "모름합성": ([t for t in unseen], [None] * len(unseen)),
-        "B": ([t for t, _ in hand], [g for _, g in hand]),
-        "D": ([t for t, _ in real], [g for _, g in real]),
+        "모름합성": ([clean_text(t) for t in unseen], [None] * len(unseen)),
+        "B": ([clean_text(t) for t, _ in hand], [g for _, g in hand]),
+        "D": ([clean_text(t) for t, _ in real], [g for _, g in real]),
     }
+    new_test = [
+        (d["text"], d["label"]) for data in extra for d in data["docs"] if d["split"] == "test"
+    ]
+    if new_test:  # 새 종류의 처음 보는 글 모양(학습에 쓰지 않은 모양)
+        pools["새종류"] = ([t for t, _ in new_test], [g for _, g in new_test])
     print(f"학습 {len(train)}건 / 종류 {len(vocab)}개", flush=True)
     # 캐시의 풀 이름은 한글 키라 그대로 맞춘다(구 / 신 은 평가에 쓰지 않는다)
     tr_emb = get_embeddings(args.embed_dir, [t for t, _ in train], cache, "tr")
     pool_emb = {p: get_embeddings(args.embed_dir, v[0], cache, p) for p, v in pools.items()}
-    big_test_texts = [big_test[i] for i in bi]
+    big_test_texts = [clean_text(big_test[i]) for i in bi]
     big_emb = get_embeddings(args.embed_dir, big_test_texts, cache, "신")
     for mf in args.max_features:
         tv, model = fit([t for t, _ in train], tr_emb, [y for _, y in train], mf)
@@ -218,21 +243,10 @@ def run_eval(args, old: dict, big: dict) -> None:
             print(f"  저장: {args.save_eval}")
 
 
-def run_final(args, old: dict, big: dict | None) -> None:
-    train, n_base = training_set(old, big, with_held_out=True)
-    cache = None
-    if args.emb_cache:
-        z = np.load(args.emb_cache)
-        cache = {k: z[k] for k in z.files}
-    print(f"학습 {len(train)}건 (기본 {n_base} + held-out {len(train) - n_base})", flush=True)
-    embedder = E5(args.embed_dir)
-    base = (
-        cache["tr"]
-        if cache is not None and len(cache["tr"]) == n_base
-        else embedder.passages([t for t, _ in train[:n_base]])
-    )
-    extra = embedder.passages([t for t, _ in train[n_base:]])
-    emb = np.vstack([base, extra])
+def run_final(args, old: dict, big: dict | None, extra: list[dict]) -> None:
+    train, n_base = training_set(old, big, with_held_out=True, extra=extra)
+    print(f"학습 {len(train)}건 (기본 {n_base} + 나머지 {len(train) - n_base})", flush=True)
+    emb = E5(args.embed_dir).passages([t for t, _ in train])
     mf = args.max_features[0]
     tv, model = fit([t for t, _ in train], emb, [y for _, y in train], mf)
     save(Path(args.out), tv, model, len(train))
@@ -308,7 +322,10 @@ def main() -> None:
     ap.add_argument("--out", default=str(DEFAULT_OUT), help="분류기 출력 폴더")
     ap.add_argument("--eval", action="store_true", help="종류 40개로 학습해 점수를 출력한다")
     ap.add_argument("--real", help="평가용 실제 파이프라인 기록(pool_d_raw.json)")
-    ap.add_argument("--emb-cache", help="학습·평가 임베딩 캐시(.npz). 없으면 e5 모델로 계산한다")
+    ap.add_argument(
+        "--extra", nargs="*", default=[], help="새 종류 학습 JSON(kinds, docs[label,text,split])"
+    )
+    ap.add_argument("--emb-cache", help="(쓰지 않음) 정답 줄을 지운 글을 매번 다시 임베딩한다")
     ap.add_argument("--embed-dir", type=Path, default=DEFAULT_EMBED_DIR, help="e5 ONNX 모델 폴더")
     ap.add_argument(
         "--max-features",
@@ -329,12 +346,13 @@ def main() -> None:
         ap.error("--data 가 필요하다")
     old = load_json(args.data[0])
     big = load_json(args.data[1]) if len(args.data) > 1 else None
+    extra = [load_json(p) for p in args.extra]
     if args.eval:
         if big is None:
             ap.error("--eval 에는 --data 두 개(ft_data.json, ft_data_big.json)가 필요하다")
-        run_eval(args, old, big)
+        run_eval(args, old, big, extra)
     else:
-        run_final(args, old, big)
+        run_final(args, old, big, extra)
 
 
 if __name__ == "__main__":
