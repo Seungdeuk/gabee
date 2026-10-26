@@ -369,5 +369,21 @@
    "3,000"
   ],
   "expect_proposals": 0
+ },
+ {
+  "id": "b-settlement-unsettled",
+  "agent": "billing",
+  "question": "2026년 10월 지금 정산하면 누가 누구한테 얼마를 보내야 해?",
+  "tool": "get_settlement",
+  "tool_args": {
+   "month": "2026-10"
+  },
+  "expect_contains": [],
+  "expect_any": [
+   "정산하기"
+  ],
+  "expect_not_contains": [
+   "앞뒤가 맞지"
+  ]
  }
 ]
