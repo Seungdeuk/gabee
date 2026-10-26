@@ -17,7 +17,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 
 import { colors } from "@/theme";
 
-import { deleteRecord, getRecord, originalImageSource, updateRecord } from "../api";
+import { deleteRecord, getRecord, originalImageSource, submitDescription, updateRecord } from "../api";
 import useOriginal from "../hooks/useOriginal";
 import OriginalViewer from "./OriginalViewer";
 
@@ -36,11 +36,15 @@ export default function RecordDetail({ record, onClose, onChanged }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState({ title: "", kind_label: "", occurred_on: "", body: "" });
   const [saving, setSaving] = useState(false);
+  const [descText, setDescText] = useState(""); // "설명 추가" 칸의 글
+  const [described, setDescribed] = useState(false); // 이 화면에서 설명을 저장했는지(저장하면 영역을 숨긴다)
 
   useEffect(() => {
     setDetail(null);
     setError("");
     setEditing(false);
+    setDescText("");
+    setDescribed(false);
     if (!record) return undefined;
     let alive = true;
     getRecord(record.id)
@@ -54,6 +58,7 @@ export default function RecordDetail({ record, onClose, onChanged }) {
   const isImage = /\.(jpe?g|png|webp|gif|bmp|heic|heif)$/i.test(record?.source_path ?? "");
   const preview = record?.hasOriginal && isImage ? originalImageSource(record.id) : null;
   const needsReview = detail ? detail.needs_review : record?.needs_review;
+  const needsDescription = !described && (detail ? detail.needs_description : record?.needs_description) === true;
 
   const startEdit = () => {
     if (!detail) return;
@@ -77,6 +82,21 @@ export default function RecordDetail({ record, onClose, onChanged }) {
     setSaving(true);
     try {
       finish(await updateRecord(record.id, changes));
+    } catch (e) {
+      Alert.alert("저장하지 못했어요", e?.message || "잠시 후 다시 시도해 주세요.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  /** 글자 없는 사진에 한 줄 설명을 단다. 저장하면 목록을 새로 불러오고 상세는 다시 읽는다. */
+  const saveDescription = async () => {
+    setSaving(true);
+    try {
+      await submitDescription(record.id, descText.trim());
+      setDescribed(true);
+      setDetail(await getRecord(record.id));
+      onChanged?.();
     } catch (e) {
       Alert.alert("저장하지 못했어요", e?.message || "잠시 후 다시 시도해 주세요.");
     } finally {
@@ -142,6 +162,33 @@ export default function RecordDetail({ record, onClose, onChanged }) {
                 <Text style={styles.reviewText}>
                   {"글자가 흐리거나 종류가 확실하지 않아요. 원본과 비교해서 맞으면 '확인 완료', 틀렸으면 고쳐 주세요."}
                 </Text>
+              </View>
+            ) : null}
+
+            {needsDescription && !editing ? (
+              <View style={styles.describe}>
+                <Text style={styles.label}>설명 추가</Text>
+                <Text style={styles.note}>글자가 없는 사진이에요. 한 줄로 알려 주시면 나중에 말로 찾을 수 있어요.</Text>
+                <TextInput
+                  style={styles.input}
+                  value={descText}
+                  onChangeText={setDescText}
+                  editable={!saving}
+                  maxLength={200}
+                  placeholder="예: 할머니 생신 케이크"
+                  placeholderTextColor={colors.placeholder}
+                  accessibilityLabel="사진 설명 입력"
+                />
+                <Text style={styles.count}>{200 - descText.length}자 남음</Text>
+                <Pressable
+                  onPress={saveDescription}
+                  disabled={saving || descText.trim().length === 0}
+                  accessibilityRole="button"
+                  accessibilityLabel="설명 저장"
+                  style={[styles.btn, styles.btnMain, (saving || descText.trim().length === 0) && styles.off]}
+                >
+                  {saving ? <ActivityIndicator color={colors.onDark} /> : <Text style={styles.btnMainText}>저장</Text>}
+                </Pressable>
               </View>
             ) : null}
 
@@ -251,6 +298,9 @@ const styles = StyleSheet.create({
   section: { marginTop: 8, fontSize: 13, fontWeight: "700", color: colors.textSub },
   content: { fontSize: 14, lineHeight: 22, color: colors.text },
   note: { fontSize: 12, lineHeight: 18, color: colors.textMuted },
+  describe: { gap: 8, padding: 12, borderRadius: 12, backgroundColor: colors.honeySoft },
+  count: { alignSelf: "flex-end", fontSize: 11, color: colors.textMuted },
+  off: { opacity: 0.4 },
   form: { gap: 8 },
   label: { marginTop: 4, fontSize: 13, fontWeight: "600", color: colors.textSub },
   input: { minHeight: 44, paddingHorizontal: 12, borderRadius: 12, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.card, fontSize: 15, color: colors.text },

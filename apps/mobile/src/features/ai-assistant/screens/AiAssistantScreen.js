@@ -12,6 +12,7 @@ import { colors } from "@/theme";
 
 import AnswerView from "../components/AnswerView";
 import ChatInput from "../components/ChatInput";
+import DescribeCard from "../components/DescribeCard";
 import DoubtCard from "../components/DoubtCard";
 import DraftCard from "../components/DraftCard";
 import PromptChips from "../components/PromptChips";
@@ -31,7 +32,7 @@ import mascot from "../../../../assets/images/gabee-mascot.png";
  */
 export default function AiAssistantScreen() {
   const router = useRouter();
-  const { messages, phase, readingSince, confirmDoubts, send, sendPhoto, startListening, stopListening, editDraft, reset, load } = useChat();
+  const { messages, phase, readingSince, confirmDoubts, saveDescription, skipDescription, send, sendPhoto, startListening, stopListening, editDraft, reset, load } = useChat();
   const auth = useAuth();
   // 대화 저장 키: 로그인한 회원은 사용자 id, 익명 계정(개발용 토큰)은 토큰에서 만든 값. 로그인 확인 중에는 null
   const scope = auth.status === "loading" ? null : auth.user?.id ? `user-${auth.user.id}` : legacyStorageScope();
@@ -83,6 +84,16 @@ export default function AiAssistantScreen() {
               await confirmDoubts(item.id, edits);
               refreshReview();
             }}
+          />
+        ) : null}
+        {item.describe ? (
+          <DescribeCard
+            mode={item.describe.status === "pending" ? "edit" : item.describe.status}
+            onSubmit={async (text) => {
+              await saveDescription(item.id, text);
+              refreshReview();
+            }}
+            onSkip={() => skipDescription(item.id)}
           />
         ) : null}
         {item.reviewId ? (
