@@ -8,12 +8,13 @@ import Button from "@/shared/components/Button";
 import IconButton from "@/shared/components/IconButton";
 import { colors, font, radius, spacing } from "@/theme";
 
-import { buildItems, canSend, lastId, trimDraft, unreadCount } from "../chatUtils";
+import { buildItems, canSend, lastId, photoSendErrorMessage, trimDraft, unreadCount } from "../chatUtils";
 import AiPanel from "../components/AiPanel";
 import Composer from "../components/Composer";
 import MessageBubble from "../components/MessageBubble";
 import useChatMessages, { useRoomInfo } from "../useChatMessages";
 import { memberName } from "../listUtils";
+import { pickChatPhoto } from "../pickPhoto";
 import useReadMarker from "../useReadMarker";
 
 const NEAR = 120; // 바닥/맨 위에서 이 정도 안이면 "근처"로 본다
@@ -44,6 +45,8 @@ export default function ChatRoomScreen() {
   const nearBottom = useRef(true);
   const scrollPos = useRef({ y: 0, height: 0 }); // 웹은 maintainVisibleContentPosition 이 없어 이전 대화가 위에 붙을 때 위치를 직접 지킨다
   const olderRequested = useRef(false);
+  const picking = useRef(false); // 사진 고르는 중 중복 누름 방지(ref)
+  const [pickingUi, setPicking] = useState(false);
   const [far, setFar] = useState(false); // 바닥에서 멀리 올라와 있는지
   const [hasNew, setHasNew] = useState(false); // 올라와 있는 동안 새 메시지가 왔는지
   const [menuNotice, setMenuNotice] = useState(false);
@@ -77,6 +80,25 @@ export default function ChatRoomScreen() {
     setDraft("");
     nearBottom.current = true;
     chat.send(text);
+  };
+
+  /** 갤러리에서 사진 한 장을 골라 보낸다. 고르는 동안·보내는 동안은 다시 누를 수 없다. */
+  const onPickPhoto = async () => {
+    if (picking.current || chat.photoBusy) return;
+    picking.current = true;
+    setPicking(true);
+    chat.setPhotoError("");
+    try {
+      const asset = await pickChatPhoto();
+      if (!asset) return;
+      nearBottom.current = true;
+      if (await chat.sendImage(asset)) scrollToEnd(true);
+    } catch (e) {
+      chat.setPhotoError(photoSendErrorMessage(e));
+    } finally {
+      picking.current = false;
+      setPicking(false);
+    }
   };
 
   const pickReply = (text) => {
@@ -236,7 +258,15 @@ export default function ChatRoomScreen() {
           </Pressable>
         ) : null}
         </View>
-        <Composer value={draft} onChangeText={setDraft} onSend={onSend} />
+        <Composer
+          value={draft}
+          onChangeText={setDraft}
+          onSend={onSend}
+          onPickPhoto={onPickPhoto}
+          photoBusy={pickingUi || chat.photoBusy}
+          photoError={chat.photoError}
+          onDismissPhotoError={() => chat.setPhotoError("")}
+        />
       </>
     );
   }

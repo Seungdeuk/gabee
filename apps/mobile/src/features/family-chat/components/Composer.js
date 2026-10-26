@@ -1,6 +1,5 @@
 import { Ionicons } from "@expo/vector-icons";
-import { useState } from "react";
-import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 
 import { colors, font, radius, spacing } from "@/theme";
 
@@ -10,18 +9,18 @@ const LINE_HEIGHT = font.body.lineHeight;
 const MAX_LINES = 5;
 
 /**
- * 메시지 입력줄: 왼쪽 + 버튼(사진·파일은 준비 중 안내), 둥근 여러 줄 입력칸(최대 5줄), 글자가 있을 때만 켜지는 보내기 버튼.
- * @param {{ value: string, onChangeText: (text: string) => void, onSend: () => void }} props
+ * 메시지 입력줄: 왼쪽 + 버튼(갤러리에서 사진 한 장 보내기, 보내는 중에는 진행 표시·비활성), 둥근 여러 줄 입력칸(최대 5줄), 글자가 있을 때만 켜지는 보내기 버튼.
+ * 사진을 보내지 못하면 입력줄 위에 오류 문구를 보인다(다시 + 를 눌러 고르면 재시도).
+ * @param {{ value: string, onChangeText: (text: string) => void, onSend: () => void, onPickPhoto: () => void, photoBusy?: boolean, photoError?: string, onDismissPhotoError?: () => void }} props
  */
-export default function Composer({ value, onChangeText, onSend }) {
+export default function Composer({ value, onChangeText, onSend, onPickPhoto, photoBusy = false, photoError = "", onDismissPhotoError }) {
   const ok = canSend(value);
-  const [notice, setNotice] = useState(false);
   return (
     <View style={styles.wrap}>
-      {notice ? (
+      {photoError ? (
         <View style={styles.notice} accessibilityLiveRegion="polite">
-          <Text style={styles.noticeText}>사진·파일 보내기는 준비 중이에요</Text>
-          <Pressable onPress={() => setNotice(false)} accessibilityRole="button" accessibilityLabel="안내 닫기" hitSlop={8}>
+          <Text style={styles.noticeText}>{photoError}</Text>
+          <Pressable onPress={onDismissPhotoError} accessibilityRole="button" accessibilityLabel="안내 닫기" hitSlop={8}>
             <Ionicons name="close" size={18} color={colors.textMuted} />
           </Pressable>
         </View>
@@ -33,12 +32,14 @@ export default function Composer({ value, onChangeText, onSend }) {
       ) : null}
       <View style={styles.row}>
         <Pressable
-          onPress={() => setNotice((v) => !v)}
+          onPress={onPickPhoto}
+          disabled={photoBusy}
           accessibilityRole="button"
-          accessibilityLabel="사진·파일 추가 (준비 중)"
-          style={({ pressed }) => [styles.plus, pressed && styles.pressed]}
+          accessibilityLabel={photoBusy ? "사진을 보내는 중" : "사진 보내기"}
+          aria-disabled={photoBusy}
+          style={({ pressed }) => [styles.plus, pressed && !photoBusy && styles.pressed]}
         >
-          <Ionicons name="add" size={26} color={colors.textSub} />
+          {photoBusy ? <ActivityIndicator color={colors.accent} /> : <Ionicons name="add" size={26} color={colors.textSub} />}
         </Pressable>
         <TextInput
           style={styles.input}
@@ -96,9 +97,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
     borderRadius: radius.md,
-    backgroundColor: colors.honeySoft,
+    backgroundColor: colors.dangerSoft,
   },
-  noticeText: { ...font.caption, color: colors.textSub },
+  noticeText: { ...font.caption, color: colors.danger, flexShrink: 1 },
   count: { ...font.tab, color: colors.textMuted, textAlign: "right" },
   over: { color: colors.danger },
 });
