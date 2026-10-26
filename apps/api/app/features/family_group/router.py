@@ -141,14 +141,14 @@ def create_group(
     return service.create_group(db, user, body.name)
 
 
-@router.post("/groups/join", response_model=GroupOut | JoinRequestOut)
+@router.post("/groups/join", response_model=JoinRequestOut)
 def join_group(
     body: JoinIn,
     request: Request,
     user: User = Depends(current_user),
     db: Session = Depends(get_db),
-) -> GroupOut | JoinRequestOut:
-    """초대 코드로 참여한다. 정식 회원은 승인 대기 요청(JoinRequestOut, status=pending)이 만들어지고, 기존 익명 계정은 호환을 위해 바로 GroupOut."""
+) -> JoinRequestOut:
+    """초대 코드로 참여를 신청한다. 모든 계정(익명 포함)에 승인 대기 요청(JoinRequestOut, status=pending)이 만들어지고, 관리자 승인 뒤 구성원이 된다."""
     ip = request.client.host if request.client else "unknown"
     return service.join_group(db, user, body.code, ip)
 

@@ -311,18 +311,118 @@ def test_wrong_codes_lock_the_account_for_the_window_then_unlock(client):
         assert db.query(InviteAttempt).filter_by(success=True).one().invite_id is not None
 
 
-# ---------- 기존 익명 계정 호환 ----------
-def test_anonymous_accounts_keep_the_old_behavior(client):
+# ---------- 익명(레거시 토큰) 계정도 승인 대기를 거친다 ----------
+GROUP_APIS = ("/family-chat/messages", "/schedule/events", "/billing/expenses", "/care/records")
+
+
+def test_anonymous_accounts_need_approval_even_with_a_legacy_code(client):
     a = signup(client, "지민")
     group = client.post(f"{P}/groups", json={"name": "우리 가족"}, headers=a).json()
-    assert len(group["invite_code"]) == 8  # 기존 방식 코드: 제한 없음
+    assert len(group["invite_code"]) == 8  # 기존 방식 코드(만료·횟수 제한 없음)는 그대로 발급된다
     b, c = signup(client, "수진"), signup(client, "엄마")
-    for headers in (b, c):  # 같은 코드로 여러 명, 승인 없이 바로
-        joined = client.post(
-            f"{P}/groups/join", json={"code": group["invite_code"]}, headers=headers
-        )
-        assert joined.status_code == 200 and "members" in joined.json()
-    assert len(members_of(group["id"])) == 3
+    reqs = {}
+    for name, headers in (("수진", b), ("엄마", c)):  # 같은 코드로 여러 명이 신청해도 전부 대기
+        joined = join(client, headers, group["invite_code"])
+        assert joined.status_code == 200 and joined.json()["status"] == "pending"
+        assert "members" not in joined.json()
+        reqs[name] = joined.json()["id"]
+    assert len(members_of(group["id"])) == 1  # 승인 전에는 소유자뿐
+    assert client.get(f"{P}/groups/me", headers=b).status_code == 404
+    pending = client.get(f"{P}/groups/me/join-requests", headers=a).json()
+    assert {p["user_name"] for p in pending} == {"수진", "엄마"}
+
+
+def test_pending_anonymous_account_cannot_reach_group_data(client):
+    a = signup(client, "지민")
+    group = client.post(f"{P}/groups", json={"name": "우리 가족"}, headers=a).json()
+    b = signup(client, "수진")
+    req = join(client, b, group["invite_code"]).json()
+    for path in GROUP_APIS:
+        r = client.get(path, headers=b)
+        assert r.status_code == 400 and r.json()["code"] == "no_group", path
+    assert client.post("/family-chat/messages", json={"text": "안녕"}, headers=b).status_code == 400
+    # 승인 전에 활성 그룹을 가리키고 있어도(예: 과거 데이터) 멤버십이 없으면 막힌다
+    with SessionLocal() as db:
+        from app.features.family_group.models import User
+
+        db.get(User, client.get(f"{P}/me", headers=b).json()["id"]).active_group_id = group["id"]
+        db.commit()
+    for path in GROUP_APIS:
+        r = client.get(path, headers=b)
+        assert r.status_code == 403 and r.json()["code"] == "not_member", path
+    assert (
+        client.post(f"{P}/groups/join-requests/{req['id']}/approve", headers=b).status_code == 404
+    )  # 본인은 스스로 승인할 수 없다(구성원이 아니면 요청 존재 자체를 숨긴다)
+
+
+def test_approved_anonymous_account_can_use_group_data(client):
+    a = signup(client, "지민")
+    group = client.post(f"{P}/groups", json={"name": "우리 가족"}, headers=a).json()
+    b = signup(client, "수진")
+    req = join(client, b, group["invite_code"]).json()
+    assert (
+        client.post(f"{P}/groups/join-requests/{req['id']}/approve", headers=a).status_code == 200
+    )
+    for path in GROUP_APIS:
+        assert client.get(path, headers=b).status_code == 200, path
+    assert members_of(group["id"])[client.get(f"{P}/me", headers=b).json()["id"]] == "member"
+
+
+def test_rejected_anonymous_account_stays_out(client):
+    a = signup(client, "지민")
+    group = client.post(f"{P}/groups", json={"name": "우리 가족"}, headers=a).json()
+    b = signup(client, "수진")
+    req = join(client, b, group["invite_code"]).json()
+    assert client.post(f"{P}/groups/join-requests/{req['id']}/reject", headers=a).status_code == 204
+    for path in GROUP_APIS:
+        assert client.get(path, headers=b).status_code == 400, path
+    assert client.get(f"{P}/groups/join-requests/mine", headers=b).json()["status"] == "rejected"
+    assert len(members_of(group["id"])) == 1
+
+
+def test_anonymous_join_edge_cases_match_formal_accounts(client):
+    a = signup(client, "지민")
+    group = client.post(f"{P}/groups", json={"name": "우리 가족"}, headers=a).json()
+    b = signup(client, "수진")
+    bad = join(client, b, "WRONGCODE")  # 무효 코드
+    assert bad.status_code == 400 and bad.json()["code"] == "invalid_invite"
+    first = join(client, b, group["invite_code"]).json()
+    again = join(client, b, group["invite_code"]).json()  # 이미 대기 중이면 같은 요청
+    assert again["id"] == first["id"] and again["status"] == "pending"
+    client.post(f"{P}/groups/join-requests/{first['id']}/approve", headers=a)
+    dup = join(client, b, group["invite_code"])  # 이미 구성원
+    assert dup.status_code == 409 and dup.json()["code"] == "already_member"
+    owner_dup = join(client, a, group["invite_code"])  # 소유자 본인도 마찬가지
+    assert owner_dup.status_code == 409
+
+
+def test_anonymous_join_attempts_are_rate_limited(client):
+    a = signup(client, "지민")
+    client.post(f"{P}/groups", json={"name": "우리 가족"}, headers=a)
+    guest = signup(client, "손님")
+    for _ in range(settings.invite_max_failures):
+        assert join(client, guest, "WRONGCODE").json()["code"] == "invalid_invite"
+    blocked = join(client, guest, "WRONGCODE")
+    assert blocked.status_code == 429 and blocked.json()["code"] == "too_many_attempts"
+
+
+def test_anonymous_requester_cannot_use_another_familys_code_to_get_into_a_third(client):
+    a, other = signup(client, "지민"), signup(client, "다른집")
+    group_a = client.post(f"{P}/groups", json={"name": "A"}, headers=a).json()
+    group_b = client.post(f"{P}/groups", json={"name": "B"}, headers=other).json()
+    guest = signup(client, "손님")
+    req = join(client, guest, group_a["invite_code"]).json()
+    # 다른 가족(B)의 관리자는 A 의 요청을 처리할 수 없고(404), 손님은 B 데이터에도 접근할 수 없다
+    assert (
+        client.post(f"{P}/groups/join-requests/{req['id']}/approve", headers=other).status_code
+        == 404
+    )
+    assert (
+        client.post(f"{P}/groups/join-requests/{req['id']}/reject", headers=other).status_code
+        == 404
+    )
+    assert members_of(group_a["id"]).get(client.get(f"{P}/me", headers=guest).json()["id"]) is None
+    assert group_b["id"] not in {client.get(f"{P}/me", headers=guest).json()["active_group_id"]}
 
 
 def test_new_policy_codes_need_approval_even_for_anonymous_accounts(client):

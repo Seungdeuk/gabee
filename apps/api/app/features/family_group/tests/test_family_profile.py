@@ -6,7 +6,7 @@ from sqlalchemy import select
 
 from app.features.family_group.models import GroupMember, MemberNickname
 from app.shared.db import SessionLocal
-from tests.helpers import signup
+from tests.helpers import join_family, signup
 
 from .test_join_approval import P, account, create_group, join
 
@@ -281,7 +281,7 @@ def test_nickname_target_must_be_in_my_group(client):
 def test_anonymous_accounts_can_use_profile_and_nicknames(client):
     a, b = signup(client, "지민"), signup(client, "수진")
     group = client.post(f"{P}/groups", json={"name": "우리 가족"}, headers=a).json()
-    client.post(f"{P}/groups/join", json={"code": group["invite_code"]}, headers=b)
+    join_family(client, a, group["invite_code"], b)
     me = client.get("/family-group/me", headers=b).json()
     r = put(client, b, "/groups/me/profile", {"display_name": "수진이", "family_relation": "mom"})
     assert member(r.json(), me["id"])["family_relation"] == "mom"

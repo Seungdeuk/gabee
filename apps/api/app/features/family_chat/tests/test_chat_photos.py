@@ -14,7 +14,7 @@ from app.features.family_chat.models import Message, MessageAttachment
 from app.shared.config import settings
 from app.shared.db import SessionLocal
 from app.shared.llm import client as llm
-from tests.helpers import signup
+from tests.helpers import join_family, signup
 
 PHOTOS = "/family-chat/photos"
 MSG = "/family-chat/messages"
@@ -40,7 +40,7 @@ def _isolated(monkeypatch, tmp_path):
 def trio(client, family):
     a, b, group = family
     c = signup(client, "삼촌")
-    r = client.post("/family-group/groups/join", json={"code": group["invite_code"]}, headers=c)
+    r = join_family(client, a, group["invite_code"], c)
     assert r.status_code == 200
     return a, b, c
 

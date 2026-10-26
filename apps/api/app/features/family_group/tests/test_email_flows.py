@@ -290,7 +290,7 @@ def test_unverified_member_cannot_create_or_join_a_family_when_the_policy_is_on(
     joined = client.post(
         "/family-group/groups/join", json={"code": group["invite_code"]}, headers=headers
     )
-    assert joined.status_code == 200
+    assert joined.status_code == 200 and joined.json()["status"] == "pending"
 
 
 def test_without_mail_configuration_the_policy_does_not_block_new_members(client, monkeypatch):
@@ -320,10 +320,8 @@ def test_anonymous_accounts_are_not_affected_by_the_verification_policy(client):
     )
     other = signup(client, "다른 익명")
     code = client.get("/family-group/groups/me", headers=headers).json()["invite_code"]
-    assert (
-        client.post("/family-group/groups/join", json={"code": code}, headers=other).status_code
-        == 200
-    )
+    joined = client.post("/family-group/groups/join", json={"code": code}, headers=other)
+    assert joined.status_code == 200 and joined.json()["status"] == "pending"  # 익명도 승인 대기
 
 
 def test_unverified_members_can_create_a_family_by_default(client, outbox):
