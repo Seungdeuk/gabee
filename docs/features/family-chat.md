@@ -43,6 +43,27 @@
 - **운영 확인 필요**: `DATA_DIR` 이 컨테이너 볼륨에 있어야 사진이 유지된다(프로필 사진과 같다). Caddy 를 쓴다면 `/family-chat/photos` 업로드 경로에 `request_body { max_size 8.2MB }` 를 권고한다(`deploy/` 는 요청 없이 수정하지 않아 문서에만 적는다). 사진 저장량 한도·정리(삭제)는 아직 없다.
 - 시험: `tests/test_chat_photos.py`. 모바일의 사진 고르기·보내기·보기는 아직 없다(다음 PR).
 
+### 대화 검색 (서버)
+
+카카오톡 돋보기처럼 **글자 일치(키워드) 검색만** 한다(사용자 결정). 임베딩·벡터·AI 를 쓰지 않고 외부 호출도 없다. 스키마 변경(Alembic)도 없다.
+
+- `GET /family-chat/search?q=&room_id=&limit=&before_id=`
+  - `q`: 공백 정리 후 1~100자(아니면 422 `invalid_query`). 공백으로 나눈 **모든 낱말**이 글자로 들어 있는 텍스트 메시지를 최신순으로 돌려준다. 대소문자는 구분하지 않는다(PostgreSQL `ILIKE`, SQLite `LIKE`). `%`, `_`, `\` 는 와일드카드가 아니라 글자 그대로 찾는다(`ESCAPE`). 사진 메시지(글자 없음)는 제외.
+  - `room_id`: 있으면 그 방만(권한이 없거나 없는 방은 404). 없으면 접근 가능한 모든 방 = 가족 전체방 + 내가 참여한 1:1 방(`room_id` 가 없는 옛 메시지는 가족 전체방).
+  - `limit` 1~50(기본 20), `before_id`: 이 id 보다 오래된 결과(다음 쪽 커서).
+  - 응답 `{items:[{id, room_id, room_kind:"family"|"direct", peer_user_id, user_id, user_name, text, created_at}], next_before_id}`. `room_id` 는 가족 전체방 메시지도 그 방 id 로 채운다. `next_before_id` 는 더 있으면 마지막 항목의 id, 없으면 null.
+- 권한은 **SQL 조건**이다(`group_id` + `room_id IN (접근 가능한 방)` + 가족방이면 `room_id IS NULL`). 가져온 뒤 숨기지 않는다. 그룹은 `current_group_id` 로만 받는다(탈퇴자는 403). 스캔 상한 없이 `messages(room_id, id)`·`(group_id, id)` 인덱스를 따라 최신 쪽부터 훑는다. `%글자%` 일치는 인덱스로 못 좁히므로 가족 하나의 메시지가 아주 많아지면 느려질 수 있다(그때 PostgreSQL `pg_trgm` 인덱스를 별도 리비전으로 검토).
+- 사용자별 분당 30회 제한(429 `too_many_searches`, `Retry-After`; 프로세스 메모리 `FailureLimiter`). 검색어와 결과 글자는 로그에 남기지 않는다.
+- `GET /family-chat/messages?around_id=<메시지 id>`: 검색 결과로 점프할 때 쓴다. **가운데 1개 + 앞뒤 각 `limit//2`개**(기본 `limit` 50, 최대 200이면 201개, `limit` 이 짝수면 `limit+1`개)를 오래된 순으로 돌려준다(사진 첨부 포함). `latest`·`before_id`·`after_id` 와 함께 쓰면 400 `invalid_range`, 그 방의 메시지가 아니면(`room_id` 와 안 맞거나 없는 id) 400 `invalid_message`, 방 권한은 기존과 같다(404). `limit` 을 주지 않으면 기존대로 100(around_id 일 때 50).
+- `q` 에 NUL 등 제어문자(C0/C1, 탭·줄바꿈 제외)가 있으면 DB 를 부르기 전에 422 `invalid_query`. 탭·줄바꿈·전각 공백은 공백으로 정리한다.
+- 시험: `app/features/family_chat/tests/test_search.py`, `tests/test_membership_enforcement.py`(엔드포인트 목록).
+
+**알려진 한계**
+- (a) `q` 가 쿼리 문자열이라 uvicorn 접근 로그(Dockerfile 기본)에 퍼센트 인코딩된 채 남을 수 있다. 앱 로거는 남기지 않지만 접근 로그는 `deploy/`·uvicorn 설정 소관이며 이번 PR 에서는 바꾸지 않았다(운영 확인 항목: 접근 로그에서 쿼리 문자열 제거 또는 비활성화). `test_no_query_or_text_in_logs` 는 앱 로거(caplog)만 검사한다.
+- (b) `%글자%` 검색은 인덱스를 타지 못한다. 가족 전체방을 포함한 검색은 `OR room_id IS NULL` 때문에 순차 스캔이며, 6만 건 PostgreSQL 16 에서 드문 낱말 약 30ms, 1:1 방을 지정하면 약 9ms 였다. 100만 건 규모가 되면 `pg_trgm` GIN 인덱스를 별도 리비전으로 검토한다.
+- (c) 속도 제한은 프로세스 메모리 기반이라 워커별로 센다.
+- (d) SQLite 시험 환경은 비ASCII 대소문자 비교가 PostgreSQL 과 다르다(운영 PostgreSQL 기준으로 정상).
+
 ### 읽음 상태 (서버, PR C)
 
 - `POST /family-chat/read {message_id}`: 내 읽음 위치를 올린다. 앞으로만 간다(더 작은 값은 무시하고 현재 값을 돌려줌). 이 그룹의 메시지가 아니면 400 `invalid_message`. 최초 저장이 동시에 겹쳐 기본키가 충돌하면 다시 읽어 갱신한다. 응답 `{last_read_message_id}`.
