@@ -1,3 +1,4 @@
+import { Ionicons } from "@expo/vector-icons";
 import { useState } from "react";
 import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
 
@@ -19,10 +20,11 @@ const AVATAR = 36;
  * 사진 메시지(attachment)는 글자 대신 썸네일을 말풍선 안에 보여 주고(원본 비율로 크기를 미리 정해 레이아웃이 점프하지 않는다), 누르면 전체 화면으로 본다.
  * 전송 중이면 "전송 중…", 실패하면 "전송 실패 · 다시 보내기"(누르면 재전송, 길게 누르거나 "삭제" 로 지움).
  * 검색 결과로 이동했을 때 그 메시지는 highlighted 로 잠깐 배경색을 입힌다.
+ * linkBadges 가 있으면(이 메시지에서 일정·할 일로 등록됨) 글 아래에 작은 표시를 붙인다(표시만, 눌러도 아무 일 없다).
  * onActions 가 있으면(서버에 저장된 텍스트 메시지) 말풍선을 길게 눌러 메뉴(복사·고정)를 연다. 네이티브에서는 길게 누르기가 글자 선택과 겹치지 않도록 이 경우 글자 선택을 끈다(복사는 메뉴에서 한다).
- * @param {{ message: object, mine: boolean, showName: boolean, showTime?: boolean, unread?: number, photoUrl?: string | null, highlighted?: boolean, onRetry?: (clientId: string) => void, onDiscard?: (clientId: string) => void, onActions?: (message: object) => void }} props
+ * @param {{ message: object, mine: boolean, showName: boolean, showTime?: boolean, unread?: number, photoUrl?: string | null, highlighted?: boolean, onRetry?: (clientId: string) => void, onDiscard?: (clientId: string) => void, onActions?: (message: object) => void, linkBadges?: { kind: "event" | "todo", label: string }[] }} props
  */
-export default function MessageBubble({ message, mine, showName, showTime = true, unread = 0, photoUrl, highlighted = false, onRetry, onDiscard, onActions }) {
+export default function MessageBubble({ message, mine, showName, showTime = true, unread = 0, photoUrl, highlighted = false, onRetry, onDiscard, onActions, linkBadges }) {
   const failed = message.status === "failed";
   const sending = message.status === "sending";
   const attachment = message.attachment ?? null;
@@ -56,6 +58,12 @@ export default function MessageBubble({ message, mine, showName, showTime = true
           {message.text}
         </Text>
       ) : null}
+      {(linkBadges ?? []).map((b) => (
+        <View key={b.kind} style={styles.linkChip} accessible accessibilityLabel={b.label}>
+          <Ionicons name={b.kind === "event" ? "calendar-outline" : "checkbox-outline"} size={12} color={colors.accent} />
+          <Text style={styles.linkChipText}>{b.label}</Text>
+        </View>
+      ))}
     </Box>
   );
 
@@ -132,6 +140,8 @@ const styles = StyleSheet.create({
   photo: { maxWidth: "100%", borderRadius: radius.md }, // 좁은 화면에서는 말풍선 안으로 비율을 지키며 줄어든다
   photoText: { paddingHorizontal: spacing.sm, paddingVertical: spacing.xs },
   dim: { opacity: 0.6 },
+  linkChip: { flexDirection: "row", alignItems: "center", gap: spacing.xs, alignSelf: "flex-start", marginTop: spacing.xs, paddingHorizontal: spacing.sm, paddingVertical: 2, borderRadius: radius.pill, backgroundColor: colors.honeySoft },
+  linkChipText: { ...font.tab, color: colors.accent },
   noSelect: { userSelect: "none" }, // styles.text 의 userSelect 가 selectable prop 을 이기므로 스타일에서도 끈다
   text: { ...font.body, color: colors.text, userSelect: "text" },
   time: { ...font.tab, color: colors.textMuted },

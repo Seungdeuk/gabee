@@ -1,8 +1,8 @@
 """전처리 결과(PreprocessResult)를 knowledge 기록 한 건으로 바꾼다.
 
 글은 전처리가 이미 개인정보를 가린 뒤의 것(`content.text`)만 쓰고, 원본 글자나 파일 이름은 쓰지 않는다
-(파일 이름에 이름 같은 개인정보가 들어 있을 수 있다). 글자 없는 사진은 분류 이름·날짜·자동 설명으로
-검색되게 글을 만들어 준다.
+(파일 이름에 이름 같은 개인정보가 들어 있을 수 있다). 글자 없는 사진은 분류 이름·날짜로 검색되게 글을 만들고,
+사용자가 한 줄 설명을 달면 `- 설명:` 줄로 넣는다(없으면 "설명 필요").
 """
 
 import re
@@ -29,12 +29,11 @@ def to_item(result: PreprocessResult) -> dict:
     c = result.classification
     plain = _body_text(result.content.text)
     text = _mark_doubts(plain, result)  # 본문에는 [불확실] 표시를, 제목에는 표시 없는 글을 쓴다
-    caption = result.caption
     kind = (
         c.doc_type if c and c.doc_type else ("사진" if result.source.kind == "image" else "문서")
     ).strip()
     occurred = _first_date(c.dates if c else [])
-    title = _title(plain, caption.description if caption else "", kind, occurred)
+    title = _title(plain, kind, occurred)
 
     lines = [f"# {title}", f"분류: {kind}"]
     if c:
@@ -44,9 +43,6 @@ def to_item(result: PreprocessResult) -> dict:
         _add(lines, "장소", ", ".join(c.places))
         for key, value in c.fields.items():
             _add(lines, key, value)
-    if caption:
-        _add(lines, "자동 설명", f"{caption.description} (자동으로 만든 설명이라 틀릴 수 있어요)")
-        _add(lines, "키워드", ", ".join(caption.keywords))
     if text:
         lines.append(text)
     if result.quality.status == "partial":
@@ -61,6 +57,45 @@ def to_item(result: PreprocessResult) -> dict:
         "occurred_on": occurred,
         "sensitivity": "sensitive" if sensitive else None,
     }
+
+
+PHOTO_KIND = "사진"
+DESCRIPTION_LABEL = "- 설명:"
+DESCRIPTION_MAX = 200
+
+
+def needs_description(kind_label: str, body_md: str) -> bool:
+    """글자가 안 읽힌 사진(분류가 "사진")인데 사용자가 단 설명(`- 설명:` 줄)이 아직 없는 기록."""
+    return kind_label == PHOTO_KIND and not any(
+        ln.startswith(DESCRIPTION_LABEL) for ln in body_md.splitlines()
+    )
+
+
+def current_description(body_md: str) -> str | None:
+    for ln in body_md.splitlines():
+        if ln.startswith(DESCRIPTION_LABEL):
+            return ln.removeprefix(DESCRIPTION_LABEL).strip()
+    return None
+
+
+def with_description(body_md: str, text: str) -> str:
+    """본문에 `- 설명: <text>` 줄을 넣거나(없을 때) 바꾼다(있을 때). 머리글(제목·분류·`- ` 줄들) 끝에 둔다."""
+    new = f"{DESCRIPTION_LABEL} {text}"
+    lines = body_md.split("\n")
+    for i, ln in enumerate(lines):
+        if ln.startswith(DESCRIPTION_LABEL):
+            lines[i] = new
+            return "\n".join(lines)
+    at = min(2, len(lines))
+    while at < len(lines) and lines[at].startswith("- "):
+        at += 1
+    lines.insert(at, new)
+    return "\n".join(lines)
+
+
+def is_default_title(title: str, kind_label: str) -> bool:
+    """제목이 글에서 뽑지 못해 붙은 기본값("사진", "사진 2026-10-15")인지."""
+    return bool(re.fullmatch(rf"{re.escape(kind_label)}(?: \d{{4}}-\d{{2}}-\d{{2}})?", title))
 
 
 def _mark_doubts(text: str, result: PreprocessResult) -> str:
@@ -101,14 +136,12 @@ def _body_text(text: str) -> str:
     return _BLOCK_NUMBER.sub(lambda m: f"(블록 {m.group(1)})", text.strip())
 
 
-def _title(text: str, description: str, kind: str, day: date | None) -> str:
+def _title(text: str, kind: str, day: date | None) -> str:
     for raw in text.splitlines():
         line = re.sub(r"^\(블록 \d+\)\s*", "", raw).strip()
         line = re.sub(r"^[#>*\-\s|]+", "", line).replace("**", "").strip()
         if len(line) >= 2 and not _NOT_A_TITLE.match(line):
             return line[:_TITLE_LIMIT]
-    if description:
-        return description[:_TITLE_LIMIT]
     return f"{kind} {day.isoformat()}" if day else kind
 
 

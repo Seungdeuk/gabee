@@ -1,6 +1,6 @@
 import { useCallback, useRef, useState } from "react";
 
-import { getFileStatus, getRecord, sendMessage, updateRecord, uploadFile } from "../api";
+import { getFileStatus, getRecord, sendMessage, submitDescription, updateRecord, uploadFile } from "../api";
 import { formatSeconds } from "../components/ReadingStatus";
 import { AI_ON_DONE, errorMessage, historyForServer } from "../errors";
 
@@ -12,7 +12,8 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
  * 채팅 상태와 동작을 관리한다.
  *
  * phase: idle(대기) | listening(음성 입력 중) | thinking(가비가 답을 만드는 중) | reading(올린 파일을 읽는 중)
- * 메시지: { id, role: "user" | "assistant", text, voice?, imageUri?, sources?, draft?, draftText? }
+ * 메시지: { id, role: "user" | "assistant", text, voice?, imageUri?, sources?, draft?, draftText?, doubts?, describe? }
+ * describe: 글자 없는 사진의 설명 카드 { recordId, status: "pending" | "done" | "skipped" }. 메시지에 들어 있어서 대화와 함께 저장된다.
  * 읽는 중 표시는 메시지가 아니라 phase 로만 보여 줘서 서버로 보내는 대화 이력에 섞이지 않는다.
  *
  * @returns {{
@@ -20,6 +21,8 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
  *   phase: "idle" | "listening" | "thinking" | "reading",
  *   readingSince: number | null,
  *   confirmDoubts: (messageId: string, edits: string[]) => Promise<void>,   // 흐린 줄 확인 카드의 결과 반영
+ *   saveDescription: (messageId: string, text: string) => Promise<void>,   // 설명 카드 저장(실패하면 던진다. 카드가 오류를 보여 준다)
+ *   skipDescription: (messageId: string) => void,   // 설명 카드 "나중에 할게요"
  *   markAiEnabled: (messageId: string) => void,   // AI 켜기 안내 카드를 '켰어요' 안내로 바꾼다
  *   send: (text: string, options?: { voice?: boolean }) => Promise<void>,
  *   sendPhoto: (file: { uri: string, name?: string, type?: string, isImage?: boolean }) => Promise<void>,   // 사진·문서 모두 올린다
@@ -109,13 +112,15 @@ export default function useChat() {
         const head = result.status === "needs_review" ? "저장했지만 내용을 한 번 확인해 주세요." : "저장했어요.";
         const review = result.status === "needs_review";
         const doubts = result.doubts ?? [];
+        // 같은 파일에 설명 카드가 이미 있으면 또 만들지 않는다
+        const needsDescription =
+          result.needs_description === true && !messagesRef.current.some((m) => m.describe?.recordId === fileId);
         say(
           `${head}${detail ? `\n${detail}` : ""}\n${review ? "원본과 비교해서 맞는지 확인해 주세요." : "이어서 궁금한 걸 물어보세요."}\n(걸린 시간 ${took()})`,
-          doubts.length > 0
-            ? { doubts: { recordId: fileId, lines: doubts, done: false } }
-            : review
-              ? { reviewId: fileId }
-              : {},
+          {
+            ...(doubts.length > 0 ? { doubts: { recordId: fileId, lines: doubts, done: false } } : review ? { reviewId: fileId } : {}),
+            ...(needsDescription ? { describe: { recordId: fileId, status: "pending" } } : {}),
+          },
         );
       }
     } catch (e) {
@@ -156,6 +161,20 @@ export default function useChat() {
     }
   }, []);
 
+  /** 설명 카드의 글을 서버에 저장한다. 실패하면 던져서 카드 안에 오류가 보이게 한다. */
+  const saveDescription = useCallback(async (messageId, text) => {
+    const card = messagesRef.current.find((m) => m.id === messageId)?.describe;
+    if (!card) return;
+    await submitDescription(card.recordId, text);
+    setMessages((prev) => prev.map((m) => (m.id === messageId ? { ...m, describe: { ...card, status: "done" } } : m)));
+  }, []);
+
+  const skipDescription = useCallback((messageId) => {
+    setMessages((prev) =>
+      prev.map((m) => (m.id === messageId && m.describe ? { ...m, describe: { ...m.describe, status: "skipped" } } : m)),
+    );
+  }, []);
+
   const startListening = useCallback(() => setPhase("listening"), []);
   const stopListening = useCallback(() => setPhase((p) => (p === "listening" ? "idle" : p)), []);
 
@@ -178,5 +197,5 @@ export default function useChat() {
     setPhase("idle");
   }, []);
 
-  return { messages, phase, readingSince, confirmDoubts, markAiEnabled, send, sendPhoto, startListening, stopListening, editDraft, reset, load };
+  return { messages, phase, readingSince, confirmDoubts, markAiEnabled, saveDescription, skipDescription, send, sendPhoto, startListening, stopListening, editDraft, reset, load };
 }

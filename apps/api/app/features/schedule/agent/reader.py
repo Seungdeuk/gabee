@@ -67,6 +67,22 @@ def to_local(value: datetime) -> datetime:
     return aware(value).astimezone(local_tz())
 
 
+def has_time(event: Event) -> bool:
+    """시작 시간이 정해진 일정인가. 날짜만 있는 일정은 시작 시각이 0시로 저장돼 있어 시간이 아니다.
+    새 구조의 날짜 칸이 없는 옛 일정은 시각이 있었던 것으로 본다."""
+    return event.start_time is not None or event.start_date is None
+
+
+def time_text(event: Event) -> str:
+    """LLM 에 보내는 시간 표기: 14:00~15:00 / 14:00~(종료 시간 미정) / 시간 미정."""
+    if not has_time(event):
+        return "시간 미정"
+    start = (
+        f"{event.start_time:%H:%M}" if event.start_time else f"{to_local(event.starts_at):%H:%M}"
+    )
+    return f"{start}~{event.end_time:%H:%M}" if event.end_time else f"{start}~(종료 시간 미정)"
+
+
 def select_for_prompt(
     events: list[Event], now: datetime, period: Period | None, limit: int = PROMPT_EVENT_LIMIT
 ) -> tuple[list[Event], int]:

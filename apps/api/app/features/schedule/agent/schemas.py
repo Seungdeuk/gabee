@@ -20,13 +20,36 @@ INTENTS: tuple[str, ...] = (
     "not_schedule",
 )
 
-# 채팅 안 카드 종류: 일정 목록 / 등록 완료 / 수정 확인 / 삭제 확인 / 추천
-CardType = Literal["event_list", "registered", "edit_confirm", "delete_confirm", "suggestion"]
+# 채팅 안 카드 종류: 일정 목록 / 등록 완료 / 공유 등록 확인 / 수정 확인 / 삭제 확인 / 추천
+CardType = Literal[
+    "event_list", "registered", "register_confirm", "edit_confirm", "delete_confirm", "suggestion"
+]
+
+
+class Draft(BaseModel):
+    """등록하려는 일정의 초안. 필수(제목·날짜)가 빠져 되물을 때 응답에 실어 주고, 사용자가 답하면 앱이 그대로 돌려보낸다.
+    서버는 저장하지 않는다(stateless). 사용자가 보낸 값이므로 받을 때마다 다시 검증한다."""
+
+    title: str = Field(default="", max_length=120)
+    date: str = Field(default="", max_length=10)  # YYYY-MM-DD
+    start_time: str = Field(default="", max_length=5)  # HH:MM
+    end_time: str = Field(default="", max_length=5)
+    kind: Literal[0, 1, 2] = 0  # 0 아직 모름, 1 약속, 2 할 일
+    place: str = Field(default="", max_length=200)
+    memo: str = Field(default="", max_length=1000)
+    who_ids: list[str] = Field(
+        default_factory=list, max_length=20
+    )  # 관련된 사람(사용자가 따로 말했을 때만)
+    share_ids: list[str] = Field(
+        default_factory=list, max_length=20
+    )  # 공유할 사람(사용자가 요청했을 때만)
+    asks: int = Field(default=0, ge=0, le=5)  # 지금까지 되물은 횟수
 
 
 class AgentRequest(BaseModel):
     text: str = Field(min_length=1, max_length=2000)
     channel: Channel
+    draft: Draft | None = None  # 직전 응답이 되물으며 준 초안(없으면 새 요청)
 
 
 class Card(BaseModel):
@@ -35,11 +58,19 @@ class Card(BaseModel):
 
 
 class PendingAction(BaseModel):
-    """수정·삭제 확인 카드가 들고 있는 실행 정보. 서버는 저장하지 않고(stateless) 확인 요청에 그대로 돌려받는다."""
+    """확인 카드가 들고 있는 실행 정보. 서버는 저장하지 않고(stateless) 확인 요청에 그대로 돌려받는다."""
 
-    type: Literal["edit", "delete"]
-    event_id: str
+    type: Literal["edit", "delete", "register"]
+    event_id: str = ""  # 수정·삭제 대상(등록은 비어 있음)
     changes: dict = Field(default_factory=dict)  # 수정일 때 바뀌는 값
+    draft: Draft | None = None  # 등록(공유 확인)일 때 등록할 내용
+
+
+class ConfirmRequest(BaseModel):
+    """확인 카드의 버튼을 눌렀을 때. AI 를 부르지 않는다."""
+
+    action: PendingAction
+    share: bool = True  # 등록일 때 false 면 공유 대상을 빼고 내 일정만 만든다
 
 
 class AgentResponse(BaseModel):
@@ -47,3 +78,4 @@ class AgentResponse(BaseModel):
     text: str = ""
     cards: list[Card] = Field(default_factory=list)
     pending_action: PendingAction | None = None
+    draft: Draft | None = None  # 되묻는 응답에만

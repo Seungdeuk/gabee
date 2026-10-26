@@ -308,6 +308,46 @@ export const unpinMessage = ({ roomId, messageId }) =>
   apiFetch(`/family-chat/pins/${Number(messageId)}${roomId ? `?${roomParam(roomId)}` : ""}`, { method: "DELETE" });
 
 /**
+ * 이 방에서 등록한 일정·할 일과 원본 메시지의 연결(최신순). 서버 계약은 별도 PR 의 `GET /family-chat/links`. AI 를 부르지 않는다. 제목·본문은 기록하지 않는다.
+ * @param {{ roomId?: string | null, kind?: "event" | "todo" | null, limit?: number }} [options] roomId 가 없으면 가족 전체방, limit 1~100(기본 50)
+ * @returns {Promise<{ items: { id: string, room_id: string, message_id: number, kind: "event" | "todo", target_id: string, title: string, date: string | null, time: string | null, created_by: string, created_by_name: string, created_at: string, message_text: string, message_user_name: string }[] }>}
+ */
+export function listLinks({ roomId, kind, limit = 50 } = {}) {
+  const params = [];
+  if (roomId) params.push(roomParam(roomId));
+  if (kind === "event" || kind === "todo") params.push(`kind=${kind}`);
+  params.push(`limit=${Math.min(100, Math.max(1, Math.floor(Number(limit)) || 50))}`);
+  return apiFetch(`/family-chat/links?${params.join("&")}`);
+}
+
+/**
+ * 등록한 일정·할 일을 원본 메시지에 연결한다(멱등: 이미 있으면 200 으로 그 연결). 새로 만들면 201.
+ * 오류: 400 invalid_message(그 방의 텍스트 메시지 아님) / invalid_target / too_many_links, 404, 422, 429(분당 30회).
+ * @param {{ roomId?: string | null, messageId: number, kind: "event" | "todo", targetId: string, title: string, date?: string | null, time?: string | null }} options roomId 가 없으면 가족 전체방, title 1~120자, date YYYY-MM-DD, time HH:MM
+ * @returns {Promise<object>} 연결(LinkOut)
+ */
+export const createLink = ({ roomId, messageId, kind, targetId, title, date, time }) =>
+  apiFetch("/family-chat/links", {
+    method: "POST",
+    body: {
+      ...(roomId ? { room_id: roomId } : {}),
+      message_id: Number(messageId),
+      kind,
+      target_id: String(targetId),
+      title,
+      ...(date ? { date } : {}),
+      ...(time ? { time } : {}),
+    },
+  });
+
+/**
+ * 연결을 지운다(만든 사람만, 다른 구성원은 403 forbidden). 일정·할 일 자체와 메시지는 그대로 남는다. 없으면 404.
+ * @param {{ roomId?: string | null, linkId: string }} options roomId 가 없으면 가족 전체방
+ * @returns {Promise<null>} 성공하면 본문 없음(204)
+ */
+export const deleteLink = ({ roomId, linkId }) => apiFetch(`/family-chat/links/${encodeURIComponent(linkId)}${roomId ? `?${roomParam(roomId)}` : ""}`, { method: "DELETE" });
+
+/**
  * 네이티브 저장용: 사진 원본을 내려받을 주소와 로그인 헤더를 만든다(토큰은 주소가 아니라 헤더에만 있다).
  * 서버가 준 사진 경로만 받고, 아니면 던진다. 실제 내려받기는 savePhoto.js 가 파일 시스템으로 한다.
  * @param {string} path 서버가 준 attachment.url

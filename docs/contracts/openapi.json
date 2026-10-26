@@ -3056,6 +3056,302 @@
         }
       }
     },
+    "/family-chat/links": {
+      "get": {
+        "tags": [
+          "family-chat"
+        ],
+        "summary": "List Links",
+        "description": "이 방의 연결을 최신순으로. kind·target_id 로 거를 수 있다(일정 화면이 원본 대화를 찾을 때 target_id 를 쓴다).",
+        "operationId": "list_links_family_chat_links_get",
+        "parameters": [
+          {
+            "name": "room_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 32
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "대화방 id. 없으면 가족 전체방",
+              "title": "Room Id"
+            },
+            "description": "대화방 id. 없으면 가족 전체방"
+          },
+          {
+            "name": "kind",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "event",
+                    "todo"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Kind"
+            }
+          },
+          {
+            "name": "target_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 32
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Target Id"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "default": 50,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-gyeot-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Gyeot-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LinksOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "family-chat"
+        ],
+        "summary": "Create Link",
+        "description": "메시지와 등록한 일정·할 일을 연결한다(방 안의 누구나). 이미 있으면 새로 만들지 않고 기존 연결을 200 으로 돌려준다.",
+        "operationId": "create_link_family_chat_links_post",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-gyeot-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Gyeot-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LinkCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LinkOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/family-chat/links/{link_id}": {
+      "delete": {
+        "tags": [
+          "family-chat"
+        ],
+        "summary": "Delete Link",
+        "description": "연결을 지운다(만든 사람만). 메시지·일정·할 일은 그대로 남는다.",
+        "operationId": "delete_link_family_chat_links__link_id__delete",
+        "parameters": [
+          {
+            "name": "link_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Link Id"
+            }
+          },
+          {
+            "name": "room_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 32
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "대화방 id. 없으면 가족 전체방",
+              "title": "Room Id"
+            },
+            "description": "대화방 id. 없으면 가족 전체방"
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-gyeot-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Gyeot-Token"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/family-chat/ai/settings": {
       "get": {
         "tags": [
@@ -4204,6 +4500,82 @@
         }
       }
     },
+    "/schedule/agent/confirm": {
+      "post": {
+        "tags": [
+          "schedule"
+        ],
+        "summary": "Confirm Agent Action",
+        "description": "확인 카드(공유해서 등록 등)의 버튼. AI 를 부르지 않고 한도도 쓰지 않는다.",
+        "operationId": "confirm_agent_action_schedule_agent_confirm_post",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-gyeot-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Gyeot-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConfirmRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/schedule/events": {
       "get": {
         "tags": [
@@ -4431,6 +4803,88 @@
       }
     },
     "/schedule/events/{event_id}": {
+      "patch": {
+        "tags": [
+          "schedule"
+        ],
+        "summary": "Update Event",
+        "operationId": "update_event_schedule_events__event_id__patch",
+        "parameters": [
+          {
+            "name": "event_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Event Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-gyeot-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Gyeot-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EventUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EventOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
       "delete": {
         "tags": [
           "schedule"
@@ -9939,6 +10393,91 @@
         }
       }
     },
+    "/ai-assistant/files/{file_id}/description": {
+      "post": {
+        "tags": [
+          "ai-assistant"
+        ],
+        "summary": "File Description",
+        "description": "글자가 안 읽힌 사진에 한 줄 설명을 달거나 고친다. 다른 가족의 파일이면 404, 사진이 아니면 409.",
+        "operationId": "file_description_ai_assistant_files__file_id__description_post",
+        "parameters": [
+          {
+            "name": "file_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "File Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-gyeot-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Gyeot-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DescriptionIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FileStatusOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/ai-assistant/files/{file_id}/original": {
       "get": {
         "tags": [
@@ -10428,6 +10967,16 @@
               "family"
             ],
             "title": "Channel"
+          },
+          "draft": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Draft"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "type": "object",
@@ -10468,6 +11017,16 @@
             "anyOf": [
               {
                 "$ref": "#/components/schemas/PendingAction"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "draft": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Draft"
               },
               {
                 "type": "null"
@@ -11370,6 +11929,7 @@
             "enum": [
               "event_list",
               "registered",
+              "register_confirm",
               "edit_confirm",
               "delete_confirm",
               "suggestion"
@@ -11550,6 +12110,24 @@
         ],
         "title": "CodeIn"
       },
+      "ConfirmRequest": {
+        "properties": {
+          "action": {
+            "$ref": "#/components/schemas/PendingAction"
+          },
+          "share": {
+            "type": "boolean",
+            "title": "Share",
+            "default": true
+          }
+        },
+        "type": "object",
+        "required": [
+          "action"
+        ],
+        "title": "ConfirmRequest",
+        "description": "확인 카드의 버튼을 눌렀을 때. AI 를 부르지 않는다."
+      },
       "ConsentOut": {
         "properties": {
           "consent": {
@@ -11662,6 +12240,21 @@
         ],
         "title": "DailyOut"
       },
+      "DescriptionIn": {
+        "properties": {
+          "text": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Text"
+          }
+        },
+        "type": "object",
+        "required": [
+          "text"
+        ],
+        "title": "DescriptionIn"
+      },
       "DirectRoomCreate": {
         "properties": {
           "user_id": {
@@ -11771,6 +12364,82 @@
           "meta"
         ],
         "title": "DocSummaryOut"
+      },
+      "Draft": {
+        "properties": {
+          "title": {
+            "type": "string",
+            "maxLength": 120,
+            "title": "Title",
+            "default": ""
+          },
+          "date": {
+            "type": "string",
+            "maxLength": 10,
+            "title": "Date",
+            "default": ""
+          },
+          "start_time": {
+            "type": "string",
+            "maxLength": 5,
+            "title": "Start Time",
+            "default": ""
+          },
+          "end_time": {
+            "type": "string",
+            "maxLength": 5,
+            "title": "End Time",
+            "default": ""
+          },
+          "kind": {
+            "type": "integer",
+            "enum": [
+              0,
+              1,
+              2
+            ],
+            "title": "Kind",
+            "default": 0
+          },
+          "place": {
+            "type": "string",
+            "maxLength": 200,
+            "title": "Place",
+            "default": ""
+          },
+          "memo": {
+            "type": "string",
+            "maxLength": 1000,
+            "title": "Memo",
+            "default": ""
+          },
+          "who_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 20,
+            "title": "Who Ids"
+          },
+          "share_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 20,
+            "title": "Share Ids"
+          },
+          "asks": {
+            "type": "integer",
+            "maximum": 5.0,
+            "minimum": 0.0,
+            "title": "Asks",
+            "default": 0
+          }
+        },
+        "type": "object",
+        "title": "Draft",
+        "description": "등록하려는 일정의 초안. 필수(제목·날짜)가 빠져 되물을 때 응답에 실어 주고, 사용자가 답하면 앱이 그대로 돌려보낸다.\n서버는 저장하지 않는다(stateless). 사용자가 보낸 값이므로 받을 때마다 다시 검증한다."
       },
       "EmailRequestIn": {
         "properties": {
@@ -12167,6 +12836,18 @@
               }
             ],
             "title": "Origin Id"
+          },
+          "edited_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Edited At"
           }
         },
         "type": "object",
@@ -12187,9 +12868,119 @@
           "end_time",
           "memo",
           "checked",
-          "origin_id"
+          "origin_id",
+          "edited_at"
         ],
         "title": "EventOut"
+      },
+      "EventUpdate": {
+        "properties": {
+          "title": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 120,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          },
+          "start_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Start Date"
+          },
+          "start_time": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Start Time"
+          },
+          "end_time": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "End Time"
+          },
+          "kind": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "enum": [
+                  1,
+                  2
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Kind"
+          },
+          "place": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 200
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Place"
+          },
+          "memo": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Memo"
+          },
+          "who_ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array",
+                "maxItems": 20
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Who Ids"
+          }
+        },
+        "type": "object",
+        "title": "EventUpdate",
+        "description": "바꿀 값만 보낸다. 보내지 않은 값은 그대로 둔다. 시간(start_time·end_time)은 null 로 보내면 지운다(시간 없음).\n공유 대상은 고칠 수 없다(공유는 만들 때만, 복사본은 받은 사람의 일정이다)."
       },
       "ExpenseCreate": {
         "properties": {
@@ -12406,6 +13197,11 @@
             "type": "array",
             "title": "Doubts",
             "default": []
+          },
+          "needs_description": {
+            "type": "boolean",
+            "title": "Needs Description",
+            "default": false
           }
         },
         "type": "object",
@@ -12874,6 +13670,11 @@
             "title": "Needs Review",
             "default": false
           },
+          "needs_description": {
+            "type": "boolean",
+            "title": "Needs Description",
+            "default": false
+          },
           "body_md": {
             "type": "string",
             "title": "Body Md"
@@ -13080,6 +13881,192 @@
         ],
         "title": "JoinRequestOut",
         "description": "내가 낸 가입 요청. status: pending(승인 대기) | approved | rejected | cancelled."
+      },
+      "LinkCreate": {
+        "properties": {
+          "room_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 32
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Room Id",
+            "description": "대화방 id. 없으면 가족 전체방"
+          },
+          "message_id": {
+            "type": "integer",
+            "maximum": 2147483647.0,
+            "minimum": 1.0,
+            "title": "Message Id"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "event",
+              "todo"
+            ],
+            "title": "Kind"
+          },
+          "target_id": {
+            "type": "string",
+            "maxLength": 32,
+            "minLength": 1,
+            "title": "Target Id",
+            "description": "일정 또는 할 일 id"
+          },
+          "title": {
+            "type": "string",
+            "maxLength": 200,
+            "title": "Title",
+            "description": "등록한 제목 복사본(공백 정리 후 1~120자)"
+          },
+          "date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Date"
+          },
+          "time": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Time",
+            "description": "HH:MM"
+          }
+        },
+        "type": "object",
+        "required": [
+          "message_id",
+          "kind",
+          "target_id",
+          "title"
+        ],
+        "title": "LinkCreate"
+      },
+      "LinkOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "room_id": {
+            "type": "string",
+            "title": "Room Id"
+          },
+          "message_id": {
+            "type": "integer",
+            "title": "Message Id"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "event",
+              "todo"
+            ],
+            "title": "Kind"
+          },
+          "target_id": {
+            "type": "string",
+            "title": "Target Id"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Date"
+          },
+          "time": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Time"
+          },
+          "created_by": {
+            "type": "string",
+            "title": "Created By"
+          },
+          "created_by_name": {
+            "type": "string",
+            "title": "Created By Name"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "message_text": {
+            "type": "string",
+            "title": "Message Text"
+          },
+          "message_user_name": {
+            "type": "string",
+            "title": "Message User Name"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "room_id",
+          "message_id",
+          "kind",
+          "target_id",
+          "title",
+          "date",
+          "time",
+          "created_by",
+          "created_by_name",
+          "created_at",
+          "message_text",
+          "message_user_name"
+        ],
+        "title": "LinkOut"
+      },
+      "LinksOut": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/LinkOut"
+            },
+            "type": "array",
+            "title": "Items"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items"
+        ],
+        "title": "LinksOut"
       },
       "LocationBatch": {
         "properties": {
@@ -14416,27 +15403,38 @@
             "type": "string",
             "enum": [
               "edit",
-              "delete"
+              "delete",
+              "register"
             ],
             "title": "Type"
           },
           "event_id": {
             "type": "string",
-            "title": "Event Id"
+            "title": "Event Id",
+            "default": ""
           },
           "changes": {
             "additionalProperties": true,
             "type": "object",
             "title": "Changes"
+          },
+          "draft": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Draft"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "type": "object",
         "required": [
-          "type",
-          "event_id"
+          "type"
         ],
         "title": "PendingAction",
-        "description": "수정·삭제 확인 카드가 들고 있는 실행 정보. 서버는 저장하지 않고(stateless) 확인 요청에 그대로 돌려받는다."
+        "description": "확인 카드가 들고 있는 실행 정보. 서버는 저장하지 않고(stateless) 확인 요청에 그대로 돌려받는다."
       },
       "PendingJoinOut": {
         "properties": {
@@ -16855,6 +17853,11 @@
           "needs_review": {
             "type": "boolean",
             "title": "Needs Review",
+            "default": false
+          },
+          "needs_description": {
+            "type": "boolean",
+            "title": "Needs Description",
             "default": false
           }
         },
