@@ -13,9 +13,9 @@ export const READ_DEBOUNCE_MS = 800;
  * 목록의 가장 큰 서버 메시지 id 가 지금까지 올린 값보다 커졌을 때만, 약 0.8초 모았다가 한 번 보낸다.
  * 화면이 안 보이게 되거나 닫힐 때 대기 중인 값이 있으면 기다리지 않고 즉시 한 번 올린다(앱이 백그라운드로 가는 경우 포함).
  * 실패하면 조용히 두고 다음에 id 가 바뀔 때 다시 시도한다(폴링 간격과 무관). 대화 글자는 보내지 않는다.
- * @param {{ messages: object[], myId: string | null | undefined, enabled?: boolean }} options
+ * @param {{ messages: object[], myId: string | null | undefined, enabled?: boolean, roomId?: string | null }} options roomId 가 없으면 가족 전체방
  */
-export default function useReadMarker({ messages, myId, enabled = true }) {
+export default function useReadMarker({ messages, myId, enabled = true, roomId = null }) {
   const [visible, setVisible] = useState(false);
   const marked = useRef(0); // 올렸거나 서버가 이미 반영한 가장 큰 id
   const sending = useRef(0); // 지금 보내는 중인 id(같은 id 중복 호출 방지)
@@ -41,14 +41,14 @@ export default function useReadMarker({ messages, myId, enabled = true }) {
   const send = useCallback(async (id) => {
     sending.current = id;
     try {
-      await trackMarkRead(markRead(id));
+      await trackMarkRead(markRead(id, roomId));
       marked.current = Math.max(marked.current, id);
     } catch {
       // 조용히 넘어가고 다음 변화 때 다시 시도한다
     } finally {
       if (sending.current === id) sending.current = 0;
     }
-  }, []);
+  }, [roomId]);
 
   useEffect(() => {
     // 내가 보낸 메시지가 가장 최신이면 서버가 보낼 때 이미 내 읽음 위치를 올렸다

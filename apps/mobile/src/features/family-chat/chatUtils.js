@@ -216,6 +216,8 @@ const BY_CODE = {
   token_required: "로그인이 필요해요",
   token_invalid: "로그인이 필요해요",
   session_expired: "로그인이 만료됐어요. 다시 로그인해 주세요",
+  invalid_member: "같은 가족 구성원과만 1:1 대화를 할 수 있어요",
+  not_found: "대화방을 찾을 수 없어요",
 };
 
 /**
