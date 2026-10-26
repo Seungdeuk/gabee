@@ -209,22 +209,173 @@ test("API listMedia: 404·429 는 ApiError 상태로 올라오고 문구로 바�
   }
 });
 
-test("savePhoto: 네이티브는 안내만 하고 네트워크를 쓰지 않으며, 웹은 낯선 경로를 받지 않는다", async () => {
+test("savePhoto: 웹은 낯선 경로를 받지 않는다(인증 헤더가 낯선 주소로 나가지 않는다)", async () => {
   let called = 0;
   globalThis.fetch = async () => {
     called += 1;
     return json(200, {});
   };
-  const { savePhoto, SAVE_FAIL_MESSAGE, SAVE_SOON_MESSAGE } = await import("../src/features/family-chat/savePhoto.js");
-  const ok = photo("a", local(2026, 10, 3));
-
-  assert.deepEqual(await savePhoto(ok, "a.jpg", "ios"), { ok: false, message: SAVE_SOON_MESSAGE });
-  assert.equal(SAVE_SOON_MESSAGE, "이 기기에서는 곧 지원돼요");
-  assert.deepEqual(await savePhoto(ok, "a.jpg", "android"), { ok: false, message: SAVE_SOON_MESSAGE });
-  assert.equal(called, 0);
-
+  const { savePhoto, SAVE_FAIL_MESSAGE } = await import("../src/features/family-chat/savePhoto.js");
   assert.deepEqual(await savePhoto({ url: "https://evil.test/x.jpg" }, "a.jpg", "web"), { ok: false, message: SAVE_FAIL_MESSAGE });
-  assert.equal(called, 0); // 인증 헤더가 낯선 주소로 나가지 않는다
+  assert.equal(called, 0);
+});
+
+test("saveTarget·permissionOutcome·permissionMessage: 분기와 권한 해석", async () => {
+  const m = await import("../src/features/family-chat/savePhoto.js");
+  assert.equal(m.saveTarget("web"), "web");
+  assert.equal(m.saveTarget("ios"), "native");
+  assert.equal(m.saveTarget("android"), "native");
+  assert.equal(m.permissionOutcome({ granted: true, canAskAgain: true }), "granted");
+  assert.equal(m.permissionOutcome({ granted: false, canAskAgain: true }), "denied");
+  assert.equal(m.permissionOutcome({ granted: false, canAskAgain: false }), "blocked");
+  assert.equal(m.permissionOutcome(undefined), "denied");
+  assert.equal(m.permissionMessage("granted"), "");
+  assert.equal(m.permissionMessage("blocked"), "사진 저장 권한이 필요해요. 설정에서 허용해 주세요");
+});
+
+/**
+ * 네이티브 저장용 가짜 의존성. 호출 순서와 임시 파일 삭제 횟수를 기록한다.
+ * @param {object} [over] 덮어쓸 의존성
+ * @returns {{ deps: object, log: { calls: string[], removed: number, saved: string[], downloaded: { url: string, headers: object, fileName: string }[] } }}
+ */
+function fakeNative(over = {}) {
+  const log = { calls: [], removed: 0, saved: [], downloaded: [] };
+  const deps = {
+    photoRequest: async (path) => {
+      log.calls.push("request");
+      return { url: `http://api.test${path}`, headers: { "X-Gyeot-Token": "t" } };
+    },
+    getPermission: async () => {
+      log.calls.push("get");
+      return { granted: false, canAskAgain: true };
+    },
+    requestPermission: async () => {
+      log.calls.push("ask");
+      return { granted: true, canAskAgain: true };
+    },
+    saveToLibrary: async (uri) => {
+      log.calls.push("save");
+      log.saved.push(uri);
+    },
+    download: async (url, headers, fileName) => {
+      log.calls.push("download");
+      log.downloaded.push({ url, headers, fileName });
+      return {
+        fetch: async () => {
+          log.calls.push("fetch");
+          return "file:///cache/tmp.jpg";
+        },
+        remove: () => {
+          log.removed += 1;
+        },
+      };
+    },
+    ...over,
+  };
+  return { deps, log };
+}
+
+test("savePhoto 네이티브 성공: 권한 요청 -> 헤더로 받기 -> 저장, 임시 파일 삭제", async () => {
+  const { savePhoto } = await import("../src/features/family-chat/savePhoto.js");
+  const { deps, log } = fakeNative();
+  const r = await savePhoto({ url: "/family-chat/photos/a1" }, "a.jpg", "ios", deps);
+  assert.deepEqual(r, { ok: true, message: "저장했어요" });
+  assert.deepEqual(log.calls, ["get", "ask", "request", "download", "fetch", "save"]); // 헤더(request)는 권한 뒤에
+  assert.deepEqual(log.downloaded, [{ url: "http://api.test/family-chat/photos/a1", headers: { "X-Gyeot-Token": "t" }, fileName: "a.jpg" }]);
+  assert.deepEqual(log.saved, ["file:///cache/tmp.jpg"]);
+  assert.equal(log.removed, 1);
+});
+
+test("savePhoto 네이티브: 이미 허용이면 다시 묻지 않는다", async () => {
+  const { savePhoto } = await import("../src/features/family-chat/savePhoto.js");
+  const { deps, log } = fakeNative({ getPermission: async () => ({ granted: true, canAskAgain: true }) });
+  assert.equal((await savePhoto({ url: "/family-chat/photos/a1" }, "a.jpg", "android", deps)).ok, true);
+  assert.ok(!log.calls.includes("ask"));
+});
+
+test("savePhoto 네이티브: 권한 거절·영구 거절이면 받지도 저장하지도 않고 안내한다", async () => {
+  const { savePhoto, SAVE_DENIED_MESSAGE } = await import("../src/features/family-chat/savePhoto.js");
+  for (const resp of [{ granted: false, canAskAgain: true }, { granted: false, canAskAgain: false }]) {
+    const { deps, log } = fakeNative({ requestPermission: async () => resp });
+    const r = await savePhoto({ url: "/family-chat/photos/a1" }, "a.jpg", "ios", deps);
+    assert.deepEqual(r, { ok: false, message: SAVE_DENIED_MESSAGE });
+    assert.ok(!log.calls.includes("download") && !log.calls.includes("save"));
+    assert.equal(log.removed, 0);
+  }
+  // 영구 거절이면 요청 창을 다시 띄우지 않는다
+  const { deps, log } = fakeNative({ getPermission: async () => ({ granted: false, canAskAgain: false }) });
+  assert.equal((await savePhoto({ url: "/family-chat/photos/a1" }, "a.jpg", "ios", deps)).message, SAVE_DENIED_MESSAGE);
+  assert.ok(!log.calls.includes("ask"));
+});
+
+test("savePhoto 네이티브: 받기·저장 실패여도 임시 파일은 지운다", async () => {
+  const { savePhoto, SAVE_FAIL_MESSAGE } = await import("../src/features/family-chat/savePhoto.js");
+  const dl = fakeNative();
+  dl.deps.download = async () => ({
+    fetch: async () => {
+      throw new Error("net");
+    },
+    remove: () => {
+      dl.log.removed += 1;
+    },
+  });
+  assert.deepEqual(await savePhoto({ url: "/family-chat/photos/a1" }, "a.jpg", "ios", dl.deps), { ok: false, message: SAVE_FAIL_MESSAGE });
+  assert.equal(dl.log.removed, 1);
+  assert.ok(!dl.log.calls.includes("save"));
+
+  const sv = fakeNative({
+    saveToLibrary: async () => {
+      throw new Error("disk");
+    },
+  });
+  assert.deepEqual(await savePhoto({ url: "/family-chat/photos/a1" }, "a.jpg", "android", sv.deps), { ok: false, message: SAVE_FAIL_MESSAGE });
+  assert.equal(sv.log.removed, 1);
+
+  // 지우기 자체가 실패해도 성공 결과는 그대로
+  const rm = fakeNative();
+  const base = rm.deps.download;
+  rm.deps.download = async (...a) => {
+    const job = await base(...a);
+    return {
+      ...job,
+      remove: () => {
+        throw new Error("rm");
+      },
+    };
+  };
+  assert.equal((await savePhoto({ url: "/family-chat/photos/a1" }, "a.jpg", "ios", rm.deps)).ok, true);
+});
+
+test("savePhoto 네이티브: 낯선 경로는 권한·헤더·네트워크 전에 거절한다(경로 검사는 실제 photoPath)", async () => {
+  const { savePhoto, SAVE_FAIL_MESSAGE } = await import("../src/features/family-chat/savePhoto.js");
+  const { deps, log } = fakeNative();
+  assert.deepEqual(await savePhoto({ url: "https://evil.test/x.jpg" }, "a.jpg", "ios", deps), { ok: false, message: SAVE_FAIL_MESSAGE });
+  assert.deepEqual(await savePhoto({ url: "/family-chat/photos/../x" }, "a.jpg", "ios", deps), { ok: false, message: SAVE_FAIL_MESSAGE });
+  assert.deepEqual(log.calls, []);
+  assert.deepEqual(await savePhoto(undefined, "a.jpg", "ios", deps), { ok: false, message: SAVE_FAIL_MESSAGE });
+});
+
+test("savePhoto 네이티브: 권한 API 가 던지면(모듈 없음·Expo Go 제한) 앱이 죽지 않고 안내한다", async () => {
+  const { savePhoto, SAVE_UNAVAILABLE_MESSAGE } = await import("../src/features/family-chat/savePhoto.js");
+  const { deps, log } = fakeNative({
+    getPermission: async () => {
+      throw new Error("native module missing");
+    },
+  });
+  assert.deepEqual(await savePhoto({ url: "/family-chat/photos/a1" }, "a.jpg", "ios", deps), { ok: false, message: SAVE_UNAVAILABLE_MESSAGE });
+  assert.ok(!log.calls.includes("download"));
+  assert.equal(SAVE_UNAVAILABLE_MESSAGE, "이 환경에서는 저장할 수 없어요");
+});
+
+test("savePhoto 네이티브: 모듈을 불러오지 못하면(loader 실패) 던지지 않고 안내한다", async () => {
+  const { savePhotoNative, importNativeModules, SAVE_UNAVAILABLE_MESSAGE } = await import("../src/features/family-chat/savePhoto.js");
+  const r = await savePhotoNative("/family-chat/photos/a1", "a.jpg", undefined, async () => {
+    throw new Error("Cannot find module");
+  });
+  assert.deepEqual(r, { ok: false, message: SAVE_UNAVAILABLE_MESSAGE });
+  // node 에는 실제 expo 네이티브 모듈이 없어 진짜 import 도 실패한다(위 결과가 이 실패 때문임을 확인)
+  await assert.rejects(importNativeModules());
+  assert.deepEqual(await savePhotoNative("/family-chat/photos/a1", "a.jpg"), { ok: false, message: SAVE_UNAVAILABLE_MESSAGE });
 });
 
 test("서버 시각에 시간대 표시가 없으면 UTC 로 읽어 월 경계를 계산한다(기기 UTC+9)", () => {

@@ -51,6 +51,21 @@
 - 종류 확장: 종류는 `media_service.attachment_kind()` 한 곳에서만 정한다. 지금은 서버가 받는 첨부가 사진뿐이라 모두 `image` 이고, `kind=file|video` 는 빈 목록, `counts.file/video` 는 0 이다. 파일·동영상 업로드는 **미구현**이다. 생기면 `message_attachments` 에 종류 칼럼(Alembic)을 추가하고 `attachment_kind`·목록·개수의 SQL 필터를 그 칼럼으로 바꾼다.
 - 파일: `media_router.py`·`media_service.py`·`media_repository.py`·`media_schemas.py`. 시험: `tests/test_chat_media.py`(최신순·커서·종류 필터·개수·방 분리·권한 격리·URL 로 사진 받기·429).
 
+### 고정 메시지 (서버)
+
+채팅방 위에 공지처럼 띄워 두는 **메시지 고정**. 가족 전체방과 1:1 방 모두 쓴다. 서버만 구현했고 앱 화면은 아직 없다.
+
+- 규칙(사용자 결정): **방 안의 모든 구성원이 고정·해제**할 수 있다(쓴 사람·고정한 사람이 아니어도). **방당 최대 2개**이고 3번째를 고정하면 가장 오래된 고정이 **자동으로 풀린다**(오류 없음, 응답의 `replaced_message_id` 로 알린다). **텍스트 메시지만** 고정한다(사진 첨부가 있거나 글이 비어 있으면 400 `not_pinnable`; 사진 고정은 이후 검토). 고정은 메시지를 가리키기만 하고 메시지를 지우거나 바꾸지 않는다(본문은 복사하지 않고 조회할 때 `messages` 와 join).
+- `GET /family-chat/pins?room_id=` — `{items:[{message_id, text, text_truncated, user_id, user_name, created_at, pinned_by, pinned_by_name, pinned_at}]}`. 최근 고정 2개, 고정 시각 최신순. `room_id` 가 없으면 가족 전체방. `text` 는 메시지 본문을 200자로 자른 것이고(말줄임 없음) 잘렸으면 `text_truncated=true`.
+- `POST /family-chat/pins {room_id?, message_id}` — `{item, replaced_message_id: int|null, already_pinned: bool}`(새 고정도 이미 고정된 경우도 200). 그 방의 메시지가 아니거나 없는 id 면 400 `invalid_message`. **같은 메시지를 다시 고정하면 멱등**: 새로 만들지 않고 기존 고정(고정한 사람·고정 시각)을 그대로 두며 `already_pinned=true`, 순서도 바뀌지 않는다.
+- `DELETE /family-chat/pins/{message_id}?room_id=` — 204. 고정돼 있지 않으면 404 `not_found`.
+- 권한: 인증과 `current_group_id` 필수, 방은 `resolve_room` 으로 확인한다. 다른 가족의 방·내가 참여하지 않은 1:1 방·없는 방은 조회/고정/해제 모두 같은 404 라 존재 단서가 없다(`room_id` 가 없는 옛 메시지는 가족 전체방 메시지로 고정할 수 있다). 메시지-방 일치는 SQL 조건(`room_messages`)으로 확인한다.
+- 제한: 고정·해제(POST/DELETE) 합쳐 사용자별 분당 30회(429 `too_many_requests` + `Retry-After`, 프로세스 메모리 `FailureLimiter`). 조회에는 제한이 없다.
+- **동시성**: 같은 방의 고정 변경은 방 행(`chat_rooms`)을 `SELECT ... FOR NO KEY UPDATE`(SQLAlchemy `with_for_update(key_share=True)`)로 잠가 고정끼리 한 번에 하나씩 처리한다. 일반 `FOR UPDATE` 는 같은 방 메시지 INSERT(FK 검사의 KEY SHARE)를 잠깐 막지만 `FOR NO KEY UPDATE` 는 막지 않아 메시지 전송·읽음은 고정 중에도 지연되지 않는다(PostgreSQL 에서 확인). SQLite 는 FOR UPDATE 가 없어 무시되지만 쓰기가 원래 직렬이다. 잠근 뒤 다시 읽고, 새 고정을 추가한 같은 트랜잭션에서 최근 2개를 넘는 오래된 고정을 지우고 **응답 항목도 commit 전에(잠금 안에서) 만들어** commit 하므로(commit 뒤 재조회로 인한 끼어든 해제와의 충돌·500 이 없다) 동시 요청에도 2개를 넘는 상태가 남지 않는다. 같은 메시지를 동시에 고정하는 경우는 `(room_id, message_id)` 유니크 제약이 막고 한 요청만 새 고정, 나머지는 `already_pinned=true`. 사후 정리 방식 대신 잠금을 택한 이유: 고정은 방별 쓰기 빈도가 낮아 잠금 경합이 문제가 되지 않고, 잠깐이라도 3개가 보이는 구간이 없다.
+- **AI·외부로 보내지 않는다**: 고정은 AI 를 부르지 않고 고정된 메시지가 AI 분석 입력에 따로 들어가지도 않는다. 로그에 메시지 글자를 남기지 않는다.
+- 테이블 `chat_pinned_messages`(Alembic `e8c1f4a7b903`, 새 테이블만 추가하는 expand 리비전). 스키마 게이트에서는 `family_chat` 기능의 전제로 자동 잡힌다(기능 `models.py` 의 모델).
+- 파일: `pin_router.py`·`pin_service.py`·`pin_repository.py`·`pin_schemas.py`. 시험: `app/features/family_chat/tests/test_pins.py`(고정·해제·멱등·자동 교체·최신순 2개·텍스트만·다른 방 메시지·모든 구성원·권한 격리·속도 제한·로그·동시성), `tests/test_membership_enforcement.py`(엔드포인트 목록). PostgreSQL 동시성은 임시 컨테이너에서 별도 스크립트로 확인했다(12개 스레드가 같은 방에 동시에 고정 x5회, 항상 2개).
+
 ### 대화 검색 (서버)
 
 카카오톡 돋보기처럼 **글자 일치(키워드) 검색만** 한다(사용자 결정). 임베딩·벡터·AI 를 쓰지 않고 외부 호출도 없다. 스키마 변경(Alembic)도 없다.
@@ -189,7 +204,7 @@
 - **인증 이미지**: 공용 `shared/components/AuthImage.js` 가 `useProfilePhoto`(네이티브 expo-image 헤더, 웹 blob 캐시)로 받는다. `shared/photoCache.js` 의 `photoPath` 는 프로필 사진 경로에 더해 서버가 준 `/family-chat/photos/<id>` 와 `?size=thumb|full` 형태만 허용한다(그 밖의 주소에는 로그인 헤더가 나가지 않는다). 채팅 사진은 바뀌지 않으므로 캐시에서 원본·썸네일을 서로 밀어내지 않는다. 토큰은 주소·캐시 키에 들어가지 않는다. `UserAvatar` 동작은 그대로다.
 - **미리보기**: 마지막 메시지가 사진(글자 없음)이면 소통 탭 방 목록과 접근성 라벨에 "사진"(내 것은 "나: 사진")으로 보인다(`chatUtils.previewText`, `buildRoomRows` 가 이를 사용).
 - 시험: `apps/mobile/tests/chatphotos.test.js`(미리보기, 경로 허용/거부, 캐시 키, `sendPhoto` 요청 모양, 오류 문구, 표시 크기, 파일 형식·한도). 실기기·웹의 파일 선택, canvas 줄이기, 네이티브 헤더 로딩, 전체 화면 보기는 아직 직접 확인하지 못했다.
-- 아직 없는 것: 여러 장 한 번에 보내기, 네이티브 사진 저장·공유(웹 저장은 위 "채팅방 서랍 · 사진 모음" 절), 동영상·파일, 사진 업로드 취소.
+- 아직 없는 것: 여러 장 한 번에 보내기, 네이티브 사진 공유(저장은 위 "채팅방 서랍 · 사진 모음" 절), 동영상·파일, 사진 업로드 취소.
 
 ### 채팅방 서랍 · 사진 모음 (앱)
 
@@ -199,7 +214,7 @@
 - **준비 중인 행**(제목 옆 "준비 중" 배지, 누르면 서랍 안에 "준비 중이에요" 안내만): 공유 문서, 가족 일정 · 할 일, 알림 설정, AI · 개인정보 보호 설정, 채팅방 정보 수정. **채팅방 나가기**(빨간 글자): 가족 전체방은 가족 탈퇴 기능이 없어 "가족 채팅방은 나갈 수 없어요", 1:1 은 "준비 중이에요" 안내만 한다.
 - **1:1 방에서 숨기는 행**: 구성원 초대 · 관리(가족 전체의 일), 공유 문서, AI · 개인정보 보호 설정(1:1 대화는 AI 로 보내지 않는다). 나머지는 가족 전체방과 같다.
 - **사진 · 동영상 모음**(`/chat-media`, `screens/ChatMediaScreen.js`, 경로 인자 `roomId`(없으면 가족 전체방)·`peer`(1:1 상대 id). 방 이름은 주소(웹 주소창·기록)에 싣지 않고 화면 안에서 구성원 정보로 계산한다): 탭 "사진 N · 파일 N · 동영상 N"(개수는 서버 `counts`), 사진 탭은 3열 정사각 썸네일 격자(`AuthImage`, 월별 헤더 "2026년 10월"), 끝에 가까워지면 `next_before_id` 커서로 다음 쪽을 자동으로 불러온다(`useChatMedia.js`; 응답을 받아들일지 정하는 상태 전이는 순수 함수 `mediaState.js` 에 있어, 탭·방이 바뀌면 옛 응답은 버려지고 다음 쪽 실패 뒤에도 목록은 남은 채 "다시 시도"할 수 있다). `thumb_url`·`width`·`height`·`size_bytes` 는 서버 스키마상 null 일 수 있어 썸네일은 `thumb_url ?? url` 로 대신한다. `before_id` 는 1 이상일 때만 보낸다. 로딩·오류("다시 시도"; 다음 쪽 오류는 목록 끝에서 다시 시도)·빈 상태("아직 공유된 사진이 없어요")를 처리한다. 파일·동영상 탭은 같은 경로로 불러오고(서버가 빈 목록을 준다) 빈 상태 문구만 "아직 파일은 보낼 수 없어요. 사진부터 모아 둘게요"처럼 다르다.
-- **전체 화면 보기·저장**(`components/MediaViewer.js`): 원본, 닫기, 보낸 사람(별명 우선)·날짜·시각, "저장" 버튼(저장 중·결과 문구는 사진별로 기억해서 다른 사진으로 넘어가면 새 사진에는 보이지 않는다). **웹**은 `api.downloadPhoto` 가 로그인 헤더로 받은 blob 을 a 태그 `download` 로 내려받는다(파일명 `gabee-YYYYMMDD-HHmmss-<id>.jpg`, 서버가 준 사진 경로만 받는다). **네이티브 저장은 아직 없다** — `savePhoto.js` 가 플랫폼별로 나뉘어 있고 네이티브는 "이 기기에서는 곧 지원돼요" 안내만 한다. expo-file-system 사용 승인 후 사진을 캐시 파일로 받아 expo-media-library 로 앨범에 저장하는 코드를 `saveOnNative` 자리에 넣는다(`expo-media-library` 는 package.json 에 있으나 아직 import 하지 않는다).
+- **전체 화면 보기·저장**(`components/MediaViewer.js`): 원본, 닫기, 보낸 사람(별명 우선)·날짜·시각, "저장" 버튼(저장 중·결과 문구는 사진별로 기억해서 다른 사진으로 넘어가면 새 사진에는 보이지 않는다). **웹**은 `api.downloadPhoto` 가 로그인 헤더로 받은 blob 을 a 태그 `download` 로 내려받는다(파일명 `gabee-YYYYMMDD-HHmmss-<id>.jpg`, 서버가 준 사진 경로만 받는다). **네이티브(iOS/Android)**는 사진 앱에 저장한다(`savePhoto.js` 의 `savePhotoNative`): ① `photoDownloadRequest`(api.js)가 서버가 준 사진 경로만 받아 주소와 로그인 헤더를 만든다(토큰은 주소에 없다, 낯선 주소는 권한 요청 전에 거절) ② `expo-media-library` **쓰기 전용 권한**(`getPermissionsAsync(true)` → 거절이면 `requestPermissionsAsync(true)`)을 확인한다. 거절·영구 거절이면 "사진 저장 권한이 필요해요. 설정에서 허용해 주세요" ③ `expo-file-system` 새 객체형 API(`File.downloadFileAsync(url, new File(Paths.cache, ...), { headers })`)로 앱 캐시 폴더의 임시 파일에 받는다 ④ `MediaLibrary.saveToLibraryAsync` 로 저장 ⑤ 임시 파일은 성공·실패 모두 `finally` 에서 지운다. 앨범("가비")은 만들지 않는다: `createAlbumAsync` 는 라이브러리 읽기 권한까지 요구해 권한 범위가 커지고, 쓰기 전용 권한이면 충분하기 때문이다. 모듈이 없거나 권한 API 가 실패하는 환경(Expo Go 의 미디어 라이브러리 제한 등)은 "이 환경에서는 저장할 수 없어요" 로 안내하고 앱은 멈추지 않는다. expo 모듈은 웹 번들에 섞이지 않도록 네이티브 분기 안에서 동적 import 한다. 시험은 의존성 주입 가짜 객체로 권한 허용·거절·영구 거절, 받기·저장 실패, 임시 파일 삭제, 낯선 경로, 모듈 없음, 웹 분기를 본다. 임시 파일 이름은 작업마다 시각+난수로 달라서 같은 사진을 동시에 저장해도 서로의 파일을 덮어쓰거나 지우지 않고, 화면은 저장 중인 사진 id 를 모두 기억해 같은 사진의 동시 재저장을 막는다. 인증 헤더는 권한을 받은 뒤 다운로드 직전에 만든다(경로 검증은 권한 창보다 먼저). **의존성**: `expo-file-system ~19.0.24`(SDK 54 호환, 사용자 승인으로 추가)와 `expo-media-library ~18.2.1`(앱 권한 문구는 app.json). **Expo Go 제한 가능성**: expo-media-library 가 "Expo Go 는 Android 권한 정책 때문에 미디어 라이브러리 전체 접근을 제공하지 못한다" 고 경고하므로 Expo Go 에서는 저장이 막힐 수 있다(막히면 위 안내 문구) — **개발 빌드(expo-dev-client)에서 확인을 권장한다.** **실기기(iOS·Android, 개발 빌드와 Expo Go)에서의 저장·권한 창은 아직 확인하지 못했다.**
 - **서버 계약(별도 PR)**: `GET /family-chat/media?room_id=<선택>&kind=image|file|video|all&limit=<1~100, 기본 40>&before_id=<선택>` → `{items:[{attachment_id, message_id, kind, user_id, user_name, created_at, url, thumb_url, width, height, size_bytes}], next_before_id, counts:{image, file, video}}`. 오류 404(권한 없는 방)·429(분당 60회)·401. 앱 래퍼는 `api.listMedia`. 서버 PR 이 병합되기 전에는 모음 화면이 오류("사진을 불러오지 못했어요" 등)로 보인다.
 - 시험: `apps/mobile/tests/chatmedia.test.js`(월 그룹핑 경계·격자 줄·이어 붙이기·counts·빈 상태/오류 문구·캡션·저장 파일명, 서랍 행 구성(가족방/1:1 차이·준비 중·나가기 문구·검색 연결), `listMedia` 경로·쿼리·커서·오류, `savePhoto` 분기). 실기기·웹 화면, 애니메이션, 서버 연동, 웹 내려받기는 아직 직접 확인하지 못했다.
 
