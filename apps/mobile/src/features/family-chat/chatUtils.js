@@ -338,3 +338,18 @@ export function shouldSendOnEnter(event, platform) {
   if (event.isComposing || event.keyCode === 229) return false; // 한글·일본어 입력 조합 중의 Enter 는 글자 확정용
   return true;
 }
+
+/**
+ * 고정·해제 오류를 사용자 문장으로(메시지 글자는 넣지 않는다). 서버 코드 이름에 기대지 않고 상태로도 알아본다.
+ * @param {{ code?: string, status?: number } | null | undefined} error
+ * @param {"pin" | "unpin"} [action] 해제 중 404 는 "이미 해제된 고정"이다
+ * @returns {string}
+ */
+export function pinErrorMessage(error, action = "pin") {
+  if (error?.code === "not_pinnable") return "사진이나 빈 메시지는 고정할 수 없어요";
+  if (error?.code === "invalid_message") return "이 대화방의 메시지가 아니라 고정할 수 없어요";
+  if (error?.status === 429) return "너무 자주 바꿨어요. 잠시 뒤에 다시 해 주세요";
+  if (error?.code === "pin_changed" || error?.status === 409) return "다른 사람이 방금 바꿨어요. 다시 확인해 주세요";
+  if (error?.status === 404) return action === "unpin" ? "이미 해제된 고정이에요" : "대화방을 찾을 수 없거나 권한이 없어요";
+  return roomErrorMessage(error);
+}
