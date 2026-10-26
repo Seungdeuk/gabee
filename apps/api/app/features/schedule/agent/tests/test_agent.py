@@ -176,12 +176,14 @@ def test_not_schedule_returns_no_cards(client, ids, fake):
 def test_other_intents_are_not_ready_yet(client, ids, fake):
     user_id, group_id, headers = ids
     _enable(user_id, group_id)
-    fake.data = {"intent": "check", "reply": "", "event_ids": []}
+    fake.data = {"intent": "recommend", "reply": "", "event_ids": []}
     r = client.post(
-        "/schedule/agent", json={"text": "치과 확인했어", "channel": "personal"}, headers=headers
+        "/schedule/agent",
+        json={"text": "추가할 일정 추천해줘", "channel": "personal"},
+        headers=headers,
     )
     assert r.json() == {
-        "intent": "check",
+        "intent": "recommend",
         "text": handler.NOT_READY,
         "cards": [],
         "pending_action": None,

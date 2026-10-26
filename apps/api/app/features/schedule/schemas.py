@@ -63,3 +63,9 @@ class EventOut(BaseModel):
     checked: bool
     origin_id: str | None
     edited_at: datetime | None
+
+
+class CheckBody(BaseModel):
+    """확인(약속)·완료(할 일) 표시. 같은 값을 다시 보내도 그대로다."""
+
+    checked: bool

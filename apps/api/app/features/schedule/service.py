@@ -155,3 +155,14 @@ def remove(db: Session, group_id: str, user_id: str, event_id: str) -> None:
     if not owns(event, user_id):
         raise ApiError(403, "not_owner", "내 일정만 지울 수 있어요")
     repo.soft_delete(db, event)
+
+
+def set_checked(db: Session, group_id: str, user_id: str, event_id: str, checked: bool) -> Event:
+    """내 줄의 확인·완료 표시를 정한다(약속은 '확인했어요', 할 일은 '완료했어요'). 체크는 각자 자기 줄에서 하고,
+    같은 값을 다시 보내도 그대로다. 일정을 고친 것이 아니라서 edited_at 은 건드리지 않는다."""
+    event = repo.get(db, group_id, event_id, user_id)
+    if event is None:
+        raise not_found("일정")
+    event.checked = checked
+    db.commit()
+    return event

@@ -69,6 +69,8 @@ CHAT_SCHEMA: dict = {
         # edit·delete 일 때 대상 일정의 id(없으면 빈 문자열)와, edit 일 때 바뀔 값
         "target_id": {"type": "string"},
         "changes": CHANGES_SCHEMA,
+        # check 일 때만: mark 확인·완료로 표시 / unmark 표시 취소 / list 확인하지 않은 일정 보기 (아니면 빈 문자열)
+        "check_action": {"type": "string", "enum": ["", "mark", "unmark", "list"]},
     },
     "required": [
         "intent",
@@ -81,6 +83,7 @@ CHAT_SCHEMA: dict = {
         "register",
         "target_id",
         "changes",
+        "check_action",
     ],
     "additionalProperties": False,
 }
@@ -104,7 +107,7 @@ CHAT_SYSTEM = (
     "말한다(예: '종료 시간은 정해 주지 않으셨어요', '시간은 정해 주지 않으셨어요'). 00:00 같은 시각이나 일정 길이를 "
     "지어내지 않는다. 빈 시간을 물으면 시작~종료가 있는 일정만 막힌 시간으로 계산하고, 종료 시간이 정해지지 않은 일정은 "
     "그 뒤가 비었는지 단정하지 말고 종료 시간을 정해 주지 않았다고 알려 준다.\n"
-    "- query 도 register 도 아니면 reply 는 빈 문자열, event_ids 는 빈 배열로 둔다.\n"
+    "- query·register·check 가 아니면 reply 는 빈 문자열, event_ids 는 빈 배열로 둔다.\n"
     "- 사용자가 말한 일정이나 기간이 [일정 목록] 에 없거나 목록으로는 답할 수 없으면 need_wider 를 true 로 하고, "
     "찾아야 할 기간을 period_start·period_end(YYYY-MM-DD)로, 일정 제목에 들어갈 말을 keyword 로 적는다(모르면 빈 문자열). "
     "이때 reply 는 빈 문자열이다. 목록으로 답할 수 있으면 need_wider 는 false, 나머지는 빈 문자열이다.\n"
@@ -132,7 +135,13 @@ CHAT_SYSTEM = (
     "date 는 YYYY-MM-DD([지금] 기준으로 계산), start_time·end_time 은 HH:MM, kind 는 1 약속·2 할 일. "
     "시간을 없애 달라고 하면 clear 에 'time', 장소나 메모를 지워 달라고 하면 'place'·'memo' 를 넣는다. "
     "'3시로' 처럼 시작 시간만 말하면 start_time 만 쓴다(끝 시간은 코드가 맞춘다). 누구와 공유는 바꿀 수 없다.\n"
-    "- edit·delete 일 때 reply 는 빈 문자열이다. 확인 카드는 코드가 만든다."
+    "- edit·delete 일 때 reply 는 빈 문자열이다. 확인 카드는 코드가 만든다.\n"
+    "check 일 때는 check_action 을 채운다(아니면 빈 문자열):\n"
+    "- mark: 일정을 확인했다거나 할 일을 끝냈다는 말('치과 확인했어', '세탁물 다 했어', '오늘 일정 다 확인했어'). "
+    "대상 일정의 id 를 event_ids 에 모두 넣는다(같은 이름이 여럿이면 지금과 가장 가까운 하나만).\n"
+    "- unmark: 체크를 취소하거나 아직 안 했다는 말('치과 확인 취소해줘', '아직 못 했어'). 대상 id 를 event_ids 에 넣는다.\n"
+    "- list: 아직 확인하지 않은 일정을 보여 달라는 말. event_ids 는 빈 배열로 둔다(코드가 찾는다).\n"
+    "- check 일 때 reply 는 빈 문자열이다. 답은 코드가 만든다."
 )
 
 WEEKDAYS = "월화수목금토일"

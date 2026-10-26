@@ -78,6 +78,7 @@ def brief(event: Event) -> dict:
         "end_time": f"{event.end_time:%H:%M}" if event.end_time else "",
         "note": event.note,
         "status": event.status,
+        "checked": bool(event.checked),
     }
 
 

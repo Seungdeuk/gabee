@@ -25,6 +25,7 @@
 - 복사본은 만들어진 뒤로는 받은 사람의 일정이다(`origin_id` 는 출처 표시일 뿐). 원본을 고치거나 지워도 복사본은 그대로이고, 복사본의 확인·삭제는 받은 사람이 자기 줄에서 한다.
 - `GET /schedule/events`: 내 줄만 준다(삭제된 것 제외). 주인이 없는 옛 일정(`user_id` 없음)은 그룹 전체가 본다.
 - `POST /schedule/events/{id}/confirm`: 내 줄만 확인한다.
+- `PUT /schedule/events/{id}/checked`: 요청 `{checked: true|false}`. 내 줄의 확인(약속)·완료(할 일) 표시를 정한다. 같은 값을 다시 보내도 그대로이고, 내 줄이 아니거나 지워진 일정은 404. 체크는 각자 자기 줄에서 하고(공유받은 복사본은 따로), 일정을 고친 것이 아니라서 `edited_at` 은 바뀌지 않는다.
 - `DELETE /schedule/events/{id}`: 그 줄의 주인만 지운다(삭제 시각 `deleted_at` 만 채움). 주인이 아니면 403 `not_owner`, 내 줄이 아니면 404.
 - `PATCH /schedule/events/{id}`: 그 줄의 주인만 고친다(아니면 403 `not_owner`, 내 줄이 아니거나 지워진 것은 404). 바꿀 값만 보낸다: `title`, `start_date`, `start_time`, `end_time`, `kind`, `place`, `memo`, `who_ids`. 보내지 않은 값은 그대로이고, 시간(`start_time`·`end_time`)은 `null` 로 보내면 지운다(시간 없음, 시작이 없어지면 끝도 없어진다). 끝나는 시간이 시작보다 늦지 않으면 400 `invalid_time`, 보낸 값이 하나도 없으면 400 `nothing_to_update`. 고친 시각 `edited_at` 을 남기고 옛 컬럼(`starts_at`·`note`)도 맞춘다. 공유 대상은 고칠 수 없다. 원본을 고쳐도 복사본은 그대로이고, 복사본은 받은 사람이 자기 줄에서 고친다.
 - 옛 컬럼(`starts_at`·`note`·`created_by`·`status`)은 당분간 새 컬럼과 함께 채운다. 제거는 별도 PR(담당자 승인 후).

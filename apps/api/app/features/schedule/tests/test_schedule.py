@@ -298,3 +298,48 @@ def test_update_of_deleted_event_is_not_found(client, family):
     e = _new(client, a)
     client.delete(f"/schedule/events/{e['id']}", headers=a)
     assert _patch(client, a, e["id"], title="되살리기").status_code == 404
+
+
+def test_set_checked_marks_only_my_row(client, family):
+    a, b, _ = family
+    original = _new(client, a, share_with=[_me(client, b)])
+    assert original["checked"] is False
+    r = client.put(f"/schedule/events/{original['id']}/checked", json={"checked": True}, headers=a)
+    assert r.status_code == 200 and r.json()["checked"] is True
+    assert r.json()["edited_at"] is None  # 일정을 고친 것이 아니다
+    again = client.put(
+        f"/schedule/events/{original['id']}/checked", json={"checked": True}, headers=a
+    )
+    assert again.json()["checked"] is True  # 같은 값을 다시 보내도 그대로
+    copy = client.get("/schedule/events", headers=b).json()[0]
+    assert copy["checked"] is False  # 체크는 각자 자기 줄에서 한다
+    done = client.put(f"/schedule/events/{copy['id']}/checked", json={"checked": True}, headers=b)
+    assert done.json()["checked"] is True
+    off = client.put(
+        f"/schedule/events/{original['id']}/checked", json={"checked": False}, headers=a
+    )
+    assert off.json()["checked"] is False
+    assert client.get("/schedule/events", headers=b).json()[0]["checked"] is True
+
+
+def test_set_checked_rejects_unknown_or_others_rows(client, family):
+    a, b, _ = family
+    e = _new(client, a)
+    assert (
+        client.put(
+            f"/schedule/events/{e['id']}/checked", json={"checked": True}, headers=b
+        ).status_code
+        == 404
+    )
+    assert (
+        client.put("/schedule/events/nope/checked", json={"checked": True}, headers=a).status_code
+        == 404
+    )
+    assert client.put(f"/schedule/events/{e['id']}/checked", json={}, headers=a).status_code == 422
+    client.delete(f"/schedule/events/{e['id']}", headers=a)
+    assert (
+        client.put(
+            f"/schedule/events/{e['id']}/checked", json={"checked": True}, headers=a
+        ).status_code
+        == 404
+    )

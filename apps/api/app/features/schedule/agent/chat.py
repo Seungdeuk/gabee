@@ -59,6 +59,7 @@ class ChatResult:
     register: dict = field(default_factory=dict)  # intent 가 register 일 때 모델이 읽은 값(검증 끝)
     target_id: str = ""  # intent 가 edit·delete 일 때 모델이 고른 일정 id(보여 준 목록에 있는 것만)
     changes: dict = field(default_factory=dict)  # intent 가 edit 일 때 모델이 읽은 바뀔 값(검증 끝)
+    check_action: str = ""  # intent 가 check 일 때 mark / unmark / list (아니면 빈 문자열)
 
 
 def clean_result(data: dict, allowed_ids: set[str], member_ids: set[str] | None = None) -> dict:
@@ -72,6 +73,7 @@ def clean_result(data: dict, allowed_ids: set[str], member_ids: set[str] | None 
     ids = data.get("event_ids")
     ids = ids if isinstance(ids, list) else []
     target = data.get("target_id")
+    action = data.get("check_action")
     seen: list[str] = []
     for value in ids:
         if isinstance(value, str) and value in allowed_ids and value not in seen:
@@ -87,6 +89,7 @@ def clean_result(data: dict, allowed_ids: set[str], member_ids: set[str] | None 
         "register": register.clean_fields(data.get("register"), member_ids or set()),
         "target_id": target if isinstance(target, str) and target in allowed_ids else "",
         "changes": modify.clean_changes(data.get("changes")),
+        "check_action": action if action in ("mark", "unmark", "list") else "",
     }
 
 

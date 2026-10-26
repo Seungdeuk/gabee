@@ -1,7 +1,7 @@
 """일정 에이전트 진입점. 메인 오케스트레이터(개인·가족 채팅)가 부르고, 그 전에는 일정 라우터가 부른다.
 
-한 번의 LLM 호출로 요청 종류와 답을 함께 받고(chat.py), 코드가 종류별로 처리한다. 지금은 질의·등록·수정·삭제를 처리하고
-나머지(추천·체크)는 다음 단계에서 채운다. 수정·삭제는 확인 카드를 거친 뒤 `confirm` 에서 실행한다. 일정 요청이 아니면 `not_schedule` 로 돌려줘 메인이 직접 답하게 한다.
+한 번의 LLM 호출로 요청 종류와 답을 함께 받고(chat.py), 코드가 종류별로 처리한다. 지금은 질의·등록·수정·삭제·체크를 처리하고
+나머지(추천)는 다음 단계에서 채운다. 수정·삭제는 확인 카드를 거친 뒤 `confirm` 에서 실행한다. 일정 요청이 아니면 `not_schedule` 로 돌려줘 메인이 직접 답하게 한다.
 """
 
 from datetime import UTC, datetime
@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.shared.auth import ensure_group_member
 
-from . import chat, modify, reader, register
+from . import chat, checks, modify, reader, register
 from . import members as members_mod
 from . import period as period_mod
 from .schemas import AgentRequest, AgentResponse, Card, ConfirmRequest
@@ -91,6 +91,18 @@ def handle(db: Session, user_id: str, group_id: str, request: AgentRequest) -> A
         )
     if result.intent == "delete":
         return modify.respond_delete(user_id, result.target_id, by_id)
+    if result.intent == "check":
+        return checks.respond(
+            db,
+            user_id,
+            group_id,
+            result.check_action,
+            result.event_ids,
+            by_id,
+            data.events,
+            period,
+            register.today(),
+        )
     if result.intent == "query":
         picked = [by_id[i] for i in result.event_ids if i in by_id]
         cards = (
