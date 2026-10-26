@@ -47,6 +47,7 @@ class AgentReply:
     input_tokens: int = 0  # 이 답을 만들며 쓴 토큰 합(여러 번 부른 호출의 합, 사용 기록용)
     output_tokens: int = 0
     model: str = ""
+    calls: int = 0  # 모델을 실제로 부른 횟수(관문의 사용 기록·한도에 센다)
 
 
 def _post(body: dict) -> dict:
@@ -88,9 +89,10 @@ def run_agent(
     by_name = {t.name: t for t in tools}
     messages = list(messages)
     calls_log: list[dict] = []
-    tokens_in = tokens_out = 0
+    tokens_in = tokens_out = steps = 0
     try:
         for _ in range(max_steps):
+            steps += 1
             reply = post(
                 {
                     "model": settings.llm_model,
@@ -116,6 +118,7 @@ def run_agent(
                     input_tokens=tokens_in,
                     output_tokens=tokens_out,
                     model=settings.llm_model,
+                    calls=steps,
                 )
             messages.append({"role": "assistant", "content": content})
             outputs = []

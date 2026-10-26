@@ -43,7 +43,7 @@ class Settings(BaseSettings):
     caption_timeout: float = 60.0
     ollama_keep_alive: str = "30m"  # 모델을 메모리에 올려 두는 시간(처음 불러오는 데 1분쯤 걸린다)
     # 채팅(외부 Claude)이 근거로 읽을 수 있는 기록에 민감 기록(처방전·신분증·통장·인물 사진 등)을 넣을지
-    chat_include_sensitive: bool = True
+    chat_include_sensitive: bool = False  # 기본은 뺀다(필요한 가족만 CHAT_INCLUDE_SENSITIVE=true)
 
     # 로그인/JWT(PR 4-B). JWT_SECRET 은 환경변수(.env)로만 준다 — 코드·Git 에 넣지 않는다.
     # 비어 있으면: 로컬 SQLite 나 DEBUG=true 에서만 프로세스 임시 키를 쓴다(재시작하면 로그인이 풀림). PostgreSQL(공용·운영)에서는
@@ -139,6 +139,11 @@ class Settings(BaseSettings):
     ai_schedule_card_cooldown_seconds: int = 5
     ai_schedule_card_max_calls_per_user_per_day: int = 3
     ai_schedule_card_max_calls_per_group_per_day: int = 15
+
+    # AI 어시스턴트(채팅·기록 질문)도 기본 한도와 따로 센다. 예전 값(사용자 100회/일, 쿨다운 없음)을 유지하고, 가족 상한은 넉넉히 둔 새 값
+    ai_assistant_cooldown_seconds: int = 0
+    ai_assistant_max_calls_per_user_per_day: int = 100
+    ai_assistant_max_calls_per_group_per_day: int = 300
 
     model_config = SettingsConfigDict(env_file=_ENV_FILE, extra="ignore", populate_by_name=True)
 

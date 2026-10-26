@@ -60,7 +60,9 @@ def call(
     question = str(args.get("question", "")).strip()
     if not question:
         raise ValueError("question 이 비어 있어요")
-    reply = AGENTS[name][1](db, group_id, user, question, post)
+    reply = AGENTS[name][1](
+        db, group_id, user, question, post, guarded=False
+    )  # 메인 질문의 관문 한 번에 함께 센다
     result = {"answer": reply.answer, "can_answer": reply.can_answer}
     if reply.proposals:  # 사용자 화면에 확인 버튼이 뜬다. 메인은 등록됐다고 말하면 안 된다
         result["pending_confirmation"] = [p.summary for p in reply.proposals]

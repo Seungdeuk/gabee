@@ -1,4 +1,5 @@
-import { apiFetch } from "@/shared/api/client";
+import { apiFetch, apiUrl, authHeaders, ensureFreshAccess, isApiConfigured } from "@/shared/api/client";
+import { photoPath } from "@/shared/photoCache";
 
 import { chatPhotoFileName, chatPhotoMimeType } from "./photo";
 
@@ -28,6 +29,14 @@ const rangeBody = ({ limit = 100, afterId = 0 } = {}) => ({ limit, after_id: aft
  * @returns {Promise<{ summary: string, important_messages: object[], schedule_candidates: object[], todo_candidates: object[], meta: object }>}
  */
 export const analyzeChat = (range) => apiFetch("/family-chat/ai/analysis", { method: "POST", body: rangeBody(range) });
+
+/**
+ * AI 에 보내기 전 미리보기: 같은 범위를 가명화한 결과(가려진 개수·제외 메시지 수·보낼 줄)를 받는다. AI 를 부르지 않고 한도도 쓰지 않는다.
+ * 서버 계약: POST /family-chat/ai/preview (별도 PR). 오류 400 too_few_messages / no_group, 401 등.
+ * @param {{ limit?: number, afterId?: number }} [range] 분석·추천 요청과 같은 범위
+ * @returns {Promise<{ message_count: number, masked: Record<string, number>, blocked_messages: number, lines: { id: number, speaker: string, text: string, blocked: boolean }[], ai_enabled: boolean }>}
+ */
+export const previewAiRange = (range) => apiFetch("/family-chat/ai/preview", { method: "POST", body: rangeBody(range) });
 
 /**
  * 답장 추천(분석과 별개 요청).
@@ -101,17 +110,37 @@ export const openDirectRoom = (userId) => apiFetch("/family-chat/rooms/direct", 
 /**
  * 채팅 메시지 조회. 결과는 항상 오래된 순이다. 대화 글자는 쿼리에 넣지 않는다(숫자 범위만).
  * - latest: 가장 최근 limit 개 / beforeId: 그 id 보다 오래된 것 중 가장 최근 limit 개 / afterId: 그 id 뒤의 새 메시지
- * @param {{ latest?: boolean, beforeId?: number, afterId?: number, limit?: number, roomId?: string | null }} [options] limit 기본 100, 최대 200, roomId 가 없으면 가족 전체방
+ * - aroundId: 그 메시지를 가운데로 앞뒤 메시지(검색 결과로 이동할 때). 서버 계약은 별도 PR 의 `around_id` 이고, 다른 범위 옵션과 함께 쓰지 않아 aroundId 가 있으면 나머지 범위는 무시한다.
+ * @param {{ latest?: boolean, beforeId?: number, afterId?: number, aroundId?: number, limit?: number, roomId?: string | null }} [options] limit 기본 100, 최대 200, roomId 가 없으면 가족 전체방
  * @returns {Promise<{ id: number, user_id: string, user_name: string, text: string, created_at: string, attachment?: { id: string, kind: string, url: string, thumb_url: string, width: number, height: number } | null }[]>}
  */
-export function listMessages({ latest = false, beforeId, afterId, limit = 100, roomId } = {}) {
+export function listMessages({ latest = false, beforeId, afterId, aroundId, limit = 100, roomId } = {}) {
   const params = [];
-  if (latest) params.push("latest=true");
-  if (beforeId != null) params.push(`before_id=${Number(beforeId)}`);
-  if (afterId != null) params.push(`after_id=${Number(afterId)}`);
+  if (aroundId != null) {
+    params.push(`around_id=${Number(aroundId)}`);
+  } else {
+    if (latest) params.push("latest=true");
+    if (beforeId != null) params.push(`before_id=${Number(beforeId)}`);
+    if (afterId != null) params.push(`after_id=${Number(afterId)}`);
+  }
   params.push(`limit=${Number(limit)}`);
   if (roomId) params.push(roomParam(roomId));
   return apiFetch(`/family-chat/messages?${params.join("&")}`);
+}
+
+/**
+ * 대화 글자 검색(키워드 일치만, 임베딩·AI 없음). 서버 계약은 별도 PR 의 `GET /family-chat/search` 다.
+ * 공백으로 나눈 모든 낱말이 글자로 포함된 텍스트 메시지만(사진 메시지 제외) 최신순으로 온다. roomId 가 없으면 내가 접근할 수 있는 모든 방.
+ * 검색어는 요청 주소에만 들어가고(인코딩) 앱은 어디에도 기록하지 않는다. 오류: 422(검색어 길이), 429(분당 횟수), 404(권한 없는 방), 401.
+ * @param {{ q: string, roomId?: string | null, limit?: number, beforeId?: number | null }} options q 1~100자, limit 1~50(기본 20), beforeId 는 직전 응답의 next_before_id
+ * @returns {Promise<{ items: { id: number, room_id: string, room_kind: "family" | "direct", peer_user_id: string | null, user_id: string, user_name: string, text: string, created_at: string }[], next_before_id: number | null }>}
+ */
+export function searchMessages({ q, roomId, limit = 20, beforeId } = {}) {
+  const params = [`q=${encodeURIComponent(String(q ?? ""))}`];
+  if (roomId) params.push(roomParam(roomId));
+  params.push(`limit=${Number(limit)}`);
+  if (beforeId != null) params.push(`before_id=${Number(beforeId)}`);
+  return apiFetch(`/family-chat/search?${params.join("&")}`);
 }
 
 /**
@@ -224,3 +253,32 @@ export const setNickname = (targetUserId, { nickname = "", memo = "" } = {}) =>
     method: "PUT",
     body: { nickname: nickname.trim() || null, memo: memo.trim() || null },
   });
+
+/**
+ * 채팅방의 사진 모음(최신 먼저, 커서 방식). 서버 계약은 별도 PR 이며 이 형태를 기준으로 한다. AI 를 부르지 않는다.
+ * 오류: 404(들어갈 수 없는 방), 429(분당 60회), 401.
+ * @param {{ roomId?: string | null, kind?: "image" | "file" | "video" | "all", limit?: number, beforeId?: number | null }} [options] roomId 가 없으면 가족 전체방, limit 1~100(기본 40), beforeId 는 이전 응답의 next_before_id
+ * @returns {Promise<{ items: { attachment_id: string, message_id: number, kind: "image", user_id: string, user_name: string, created_at: string, url: string, thumb_url: string | null, width: number | null, height: number | null, size_bytes: number | null }[], next_before_id: number | null, counts: { image: number, file: number, video: number } }>}
+ */
+export function listMedia({ roomId, kind = "image", limit = 40, beforeId } = {}) {
+  const params = [];
+  if (roomId) params.push(roomParam(roomId));
+  params.push(`kind=${["image", "file", "video", "all"].includes(kind) ? kind : "image"}`);
+  params.push(`limit=${Math.min(100, Math.max(1, Math.floor(Number(limit)) || 40))}`);
+  if (beforeId != null && Number(beforeId) >= 1) params.push(`before_id=${Math.floor(Number(beforeId))}`); // 서버는 1 이상만 받는다
+  return apiFetch(`/family-chat/media?${params.join("&")}`);
+}
+
+/**
+ * 사진 원본을 로그인 헤더로 받아 Blob 으로 돌려준다(웹 저장용). 서버가 준 사진 경로만 받고, 토큰은 주소에 넣지 않는다.
+ * @param {string} path 서버가 준 attachment.url
+ * @returns {Promise<Blob>}
+ */
+export async function downloadPhoto(path) {
+  const safe = photoPath(path);
+  if (!safe || !isApiConfigured()) throw new Error("photo_unavailable");
+  await ensureFreshAccess().catch(() => {});
+  const res = await fetch(apiUrl(safe), { headers: authHeaders() });
+  if (!res.ok) throw new Error("photo_unavailable");
+  return res.blob();
+}

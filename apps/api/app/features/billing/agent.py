@@ -202,6 +202,7 @@ def ask(
     question: str,
     post: Post | None = None,
     history: list[dict] | None = None,
+    guarded: bool = True,
 ) -> AgentReply:
     ensure_group_member(db, user.id, group_id)
     proposed: list = []
@@ -219,4 +220,5 @@ def ask(
             history=history,
             proposals=proposed,
         ),
+        guarded=guarded,
     )

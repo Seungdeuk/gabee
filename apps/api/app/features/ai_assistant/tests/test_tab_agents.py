@@ -5,7 +5,6 @@ import json
 import pytest
 from sqlalchemy import select
 
-from app.features.ai_assistant import service
 from app.features.ai_assistant.knowledge import rag_chat
 from app.features.billing import agent as billing_agent
 from app.features.care import agent as care_agent
@@ -67,7 +66,6 @@ def test_main_asks_billing_agent_and_never_gets_db_tools(client, family, monkeyp
 
     monkeypatch.setattr(settings, "anthropic_api_key", "test-key")
     monkeypatch.setattr(rag_chat, "_post", fake_post)
-    service._calls.clear()
     r = client.post("/ai-assistant/chat", json={"message": "이번 달 얼마 썼어?"}, headers=a).json()
     assert r["source"] == "ai" and "40,000원" in r["reply"]
     assert sub_results[0]["total"] == 40000
@@ -98,7 +96,6 @@ def test_main_asks_care_agent(client, family, monkeypatch):
 
     monkeypatch.setattr(settings, "anthropic_api_key", "test-key")
     monkeypatch.setattr(rag_chat, "_post", fake_post)
-    service._calls.clear()
     r = client.post("/ai-assistant/chat", json={"message": "오늘 돌봄 어때?"}, headers=a).json()
     assert r["source"] == "ai" and "오늘 돌봄 기록" in r["reply"]
     assert "error" not in seen["sub"]
@@ -215,17 +212,10 @@ def test_ai_must_be_enabled_for_the_family(client, family, monkeypatch):
     monkeypatch.setattr(llm_agent, "_post", lambda body: _text("호출되면 안 됨"))
     r = client.post("/billing/agent/chat", json={"message": "지출은?"}, headers=a)
     assert (r.status_code, r.json()["code"]) == (403, "ai_not_enabled")
-    # 메인 채팅은 탭 에이전트 도구를 아예 주지 않는다(가계·위치가 외부로 나가지 않게)
-    seen = []
-
-    def fake(body):
-        seen.append([t["name"] for t in body["tools"]])
-        return _text("네")
-
-    monkeypatch.setattr(rag_chat, "_post", fake)
-    service._calls.clear()
-    assert client.post("/ai-assistant/chat", json={"message": "안녕"}, headers=a).status_code == 200
-    assert not {"ask_billing", "ask_care"} & set(seen[0])
+    # 메인 채팅도 같은 관문에서 막힌다. 탭 에이전트 도구(가계·위치)는 가족이 AI 를 켠 뒤에만 주어진다
+    monkeypatch.setattr(rag_chat, "_post", lambda body: _text("호출되면 안 됨"))
+    r = client.post("/ai-assistant/chat", json={"message": "안녕"}, headers=a)
+    assert (r.status_code, r.json()["code"]) == (403, "ai_not_enabled")
 
 
 def test_usage_is_logged_with_tokens_and_answers_are_not_cached(client, family, monkeypatch):

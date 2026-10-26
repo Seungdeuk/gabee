@@ -15,9 +15,13 @@ from app.features.family_group.models import User
 from app.shared import ai_guard
 from app.shared.config import settings
 from app.shared.errors import ApiError
+from app.shared.llm import client as llm
 from app.shared.llm.client import API_URL, API_VERSION
 
-from .. import agents
+from .. import (
+    agents,
+    limits,  # noqa: F401  (limits: 어시스턴트 호출 한도를 따로 세도록 등록)
+)
 from . import tools
 
 SYSTEM_PROMPT = (
@@ -163,7 +167,8 @@ def ask(
 ) -> AskResult:
     """질문 하나에 답한다. `post` 는 테스트에서 가짜 LLM 을 끼우는 자리다.
 
-    `user` 가 있으면 정산·돌봄 탭 에이전트에게 물어볼 수 있다(DB 는 탭 에이전트만 읽는다)."""
+    `user` 가 있으면 정산·돌봄 탭 에이전트에게 물어볼 수 있다(DB 는 탭 에이전트만 읽는다). 탭 에이전트의 모델 호출도
+    같은 `post` 를 쓰므로 `ask_guarded` 의 관문 한 번에 함께 센다."""
     if post is None:
         if not settings.anthropic_api_key:
             return _fallback(db, group_id, question)
@@ -237,6 +242,66 @@ def ask(
         result.sources = used
     _renumber(result)
     return result
+
+
+@dataclass(frozen=True)
+class _Usage:
+    """ai_guard.run 이 쓰는 응답 요약(JsonResult 와 같은 이름 + 실제 호출 수 calls)."""
+
+    data: dict
+    input_tokens: int
+    output_tokens: int
+    model: str
+    calls: int
+
+
+def ask_guarded(
+    db: Session,
+    user_id: str,
+    group_id: str,
+    question: str,
+    *,
+    feature: str,
+    history: list[dict] | None = None,
+    post: Post | None = None,
+    user: User | None = None,
+) -> AskResult:
+    """`ask` 를 동의·쿨다운·하루 한도·동시 실행 제한(ai_guard.run) 아래에서 부른다.
+
+    키가 없으면 Anthropic 을 부르지 않는 검색 결과만 돌려주므로 관문 없이 바로 `ask`(fallback)다.
+    한 요청이 도구 루프로 여러 번 부르면 실제 호출 수를 사용 기록·한도에 센다. 결과는 캐시하지 않는다(대화 원문을 남기지 않는다).
+    그룹 구성원 확인(ensure_group_member)은 호출한 쪽(라우터)이 한다."""
+    if post is None and not settings.anthropic_api_key:
+        return ask(db, group_id, question, history=history)
+    send = post or _post
+    used = {"calls": 0, "in": 0, "out": 0, "model": settings.llm_model}
+    box: list[AskResult] = []
+
+    failed: list[Exception] = []  # ask 가 삼키는 외부 호출 실패를 기억해 둔다
+
+    def counting(body: dict) -> dict:
+        used["calls"] += 1
+        try:
+            reply = send(body)
+        except (httpx.HTTPError, ValueError, KeyError) as exc:
+            failed.append(exc)
+            raise
+        usage = reply.get("usage") or {}
+        used["in"] += int(usage.get("input_tokens") or 0)
+        used["out"] += int(usage.get("output_tokens") or 0)
+        used["model"] = str(reply.get("model") or used["model"])
+        return reply
+
+    def call() -> tuple[dict, _Usage]:
+        box.append(ask(db, group_id, question, post=counting, history=history, user=user))
+        if failed:  # 외부 호출이 실패했는데 fallback 을 성공으로 세지 않는다 → 503 llm_failed + 기록 status="error"
+            error = llm.LLMUnavailable(f"AI 호출에 실패했어요 ({type(failed[0]).__name__})")
+            error.calls = max(1, used["calls"])  # 실패한 호출도 한도에 센다
+            raise error
+        return {}, _Usage({}, used["in"], used["out"], used["model"], max(1, used["calls"]))
+
+    ai_guard.run(db, user_id=user_id, group_id=group_id, feature=feature, cache_key=None, call=call)
+    return box[0]
 
 
 def _renumber(result: AskResult) -> None:

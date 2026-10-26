@@ -1,13 +1,11 @@
 import uuid
-from datetime import date
 from pathlib import Path
 
 from sqlalchemy.orm import Session
 
 from app.features.family_group.models import User
 from app.shared.config import settings
-from app.shared.errors import ApiError, bad_request
-from app.shared.llm import client as llm
+from app.shared.errors import bad_request
 from app.shared.llm.agent_chat import to_out as to_proposal_out
 
 from . import repository as repo
@@ -15,32 +13,12 @@ from .knowledge import rag_chat
 from .models import Photo
 from .schemas import ChatOut, ChatSource
 
-SYSTEM_PROMPT = (
-    "당신은 가족 비서 '가비'입니다. 멀리 사는 가족, 특히 부모님의 건강·일정·생활비를 돌보는 일을 돕습니다. "
-    "짧고 따뜻한 한국어로 답하고, 모르는 것은 모른다고 말하세요. 의료 진단은 하지 않습니다."
+NO_GROUP_REPLY = (
+    "가족 그룹에 먼저 참여하면 가비가 가족의 기록을 바탕으로 도와드릴 수 있어요. "
+    "더보기(⋮)의 가족 그룹에서 그룹을 만들거나 초대 코드로 참여해 주세요."
 )
-FALLBACK_REPLY = (
-    "지금은 AI 연결이 꺼져 있어서 기본 안내만 드려요. 일정, 가계, 돌봄 탭에서 기록을 확인해 보세요."
-)
-DAILY_LIMIT = 100  # 사용자 한 명이 하루에 부를 수 있는 AI 답변 수
-_calls: dict[str, tuple[date, int]] = {}
 ALLOWED_TYPES = {"image/jpeg", "image/png"}
 MAX_BYTES = 25 * 1024 * 1024
-
-
-def _check_daily_limit(user_id: str) -> None:
-    """사용자별 하루 AI 호출 한도(서버 프로세스 메모리 기준이라 재시작하면 0 으로 돌아간다)."""
-    today = date.today()
-    day, count = _calls.get(user_id, (today, 0))
-    if day != today:
-        count = 0
-    if count >= DAILY_LIMIT:
-        raise ApiError(
-            429,
-            "daily_limit",
-            "오늘은 가비에게 물어볼 수 있는 횟수를 모두 썼어요. 내일 다시 물어봐 주세요",
-        )
-    _calls[user_id] = (today, count + 1)
 
 
 def chat(
@@ -51,26 +29,26 @@ def chat(
     history: list[dict] | None = None,
     user: User | None = None,
 ) -> ChatOut:
-    """가족 그룹이 있으면 저장된 기록(knowledge)을 검색해서 근거로 답한다. 그룹이 없으면 기록 없이 답한다.
+    """가족 그룹이 있으면 저장된 기록(knowledge)을 검색해서 근거로 답한다.
+
+    외부 AI 는 가족 그룹이 AI 동의를 켠 경우에만, 쿨다운·하루 한도(ai_guard) 아래에서 부른다.
+    그룹이 없으면 동의를 받을 가족이 없으니 외부 AI 를 부르지 않고 안내만 돌려준다.
+    group_id 는 호출한 쪽(라우터)이 실제 구성원인지 확인한 값이어야 한다.
+    `user` 가 있으면 정산·돌봄 탭 에이전트에게 물어 답할 수 있고, 에이전트가 제안한 쓰기는 `proposals` 로 돌려준다.
 
     TODO: 일정·지출·돌봄 기록도 검색 대상에 넣는다(원본의 capture/qa 참고)."""
-    if group_id:
-        if settings.anthropic_api_key:
-            _check_daily_limit(user_id)
-        r = rag_chat.ask(db, group_id, message, history=history, user=user)
-        sources = [
-            ChatSource(
-                n=s["n"], title=s["title"], item_id=s["item_id"], source_path=s["source_path"]
-            )
-            for s in r.sources
-        ]
-        return ChatOut(
-            reply=r.answer, source=r.source, sources=sources, proposals=to_proposal_out(r.proposals)
-        )
-    try:
-        return ChatOut(reply=llm.complete(message, system=SYSTEM_PROMPT), source="ai")
-    except llm.LLMUnavailable:
-        return ChatOut(reply=FALLBACK_REPLY, source="fallback")
+    if not group_id:
+        return ChatOut(reply=NO_GROUP_REPLY, source="fallback")
+    r = rag_chat.ask_guarded(
+        db, user_id, group_id, message, feature="assistant_chat", history=history, user=user
+    )
+    sources = [
+        ChatSource(n=s["n"], title=s["title"], item_id=s["item_id"], source_path=s["source_path"])
+        for s in r.sources
+    ]
+    return ChatOut(
+        reply=r.answer, source=r.source, sources=sources, proposals=to_proposal_out(r.proposals)
+    )
 
 
 def save_photo(

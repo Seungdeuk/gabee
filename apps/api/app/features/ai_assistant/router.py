@@ -3,7 +3,7 @@ from urllib.parse import quote
 from fastapi import APIRouter, BackgroundTasks, Depends, File, Response, UploadFile
 from sqlalchemy.orm import Session
 
-from app.shared.auth import current_group_id, current_user
+from app.shared.auth import current_group_id, current_user, ensure_group_member
 from app.shared.db import get_db
 from app.shared.errors import not_found
 
@@ -19,7 +19,10 @@ router.include_router(knowledge_router)  # /ai-assistant/knowledge/*
 @router.post("/chat", response_model=ChatOut)
 def chat(body: ChatIn, user=Depends(current_user), db: Session = Depends(get_db)) -> ChatOut:
     history = [t.model_dump() for t in body.history]
-    return service.chat(db, user.active_group_id, user.id, body.message, history, user=user)
+    group_id = user.active_group_id
+    if group_id:  # 캐시값만 믿지 않고 실제 구성원인지 확인한다(아니면 403 not_member)
+        ensure_group_member(db, user.id, group_id)
+    return service.chat(db, group_id, user.id, body.message, history, user=user)
 
 
 @router.post("/photos", response_model=PhotoOut, status_code=201)

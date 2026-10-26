@@ -2232,6 +2232,138 @@
         }
       }
     },
+    "/family-chat/media": {
+      "get": {
+        "tags": [
+          "family-chat"
+        ],
+        "summary": "List Media",
+        "description": "그 방에서 공유된 첨부를 최신순으로. 방에 들어갈 수 없으면 404. 지금은 사진(image)만 있다.",
+        "operationId": "list_media_family_chat_media_get",
+        "parameters": [
+          {
+            "name": "room_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 32
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "대화방 id. 없으면 가족 전체방",
+              "title": "Room Id"
+            },
+            "description": "대화방 id. 없으면 가족 전체방"
+          },
+          {
+            "name": "kind",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "image",
+                "file",
+                "video",
+                "all"
+              ],
+              "type": "string",
+              "default": "all",
+              "title": "Kind"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "default": 40,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "before_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "이 메시지 id 보다 오래된 것(다음 쪽)",
+              "title": "Before Id"
+            },
+            "description": "이 메시지 id 보다 오래된 것(다음 쪽)"
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-gyeot-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Gyeot-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaPage"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/family-chat/todos": {
       "get": {
         "tags": [
@@ -2550,6 +2682,134 @@
         }
       }
     },
+    "/family-chat/search": {
+      "get": {
+        "tags": [
+          "family-chat"
+        ],
+        "summary": "Search Messages",
+        "description": "가족 전체방과 내가 참여한 1:1 방에서 글자가 일치하는 텍스트 메시지를 최신순으로 찾는다(사진 메시지 제외).",
+        "operationId": "search_messages_family_chat_search_get",
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 500,
+              "description": "검색어(공백 정리 후 1~100자). 공백으로 나눈 모든 낱말이 들어 있는 메시지",
+              "title": "Q"
+            },
+            "description": "검색어(공백 정리 후 1~100자). 공백으로 나눈 모든 낱말이 들어 있는 메시지"
+          },
+          {
+            "name": "room_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 32
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "이 방만 검색. 없으면 접근 가능한 모든 방",
+              "title": "Room Id"
+            },
+            "description": "이 방만 검색. 없으면 접근 가능한 모든 방"
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 50,
+              "minimum": 1,
+              "default": 20,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "before_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "이 id 보다 오래된 결과(다음 쪽)",
+              "title": "Before Id"
+            },
+            "description": "이 id 보다 오래된 결과(다음 쪽)"
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-gyeot-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Gyeot-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/app__features__family_chat__search_schemas__SearchOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/family-chat/ai/settings": {
       "get": {
         "tags": [
@@ -2673,6 +2933,82 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/AiSettingsOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/family-chat/ai/preview": {
+      "post": {
+        "tags": [
+          "family-chat"
+        ],
+        "summary": "Preview",
+        "description": "분석 요청과 같은 범위에서 AI 가 실제로 받게 될 가명화된 대화를 미리 보여 준다. AI 를 부르지 않고 한도도 쓰지 않는다(동의와 무관, 사용자당 분당 20회).",
+        "operationId": "preview_family_chat_ai_preview_post",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-gyeot-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Gyeot-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RangeIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PreviewOut"
                 }
               }
             }
@@ -3086,12 +3422,20 @@
             "in": "query",
             "required": false,
             "schema": {
-              "type": "integer",
-              "maximum": 200,
-              "minimum": 1,
-              "default": 100,
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "maximum": 200,
+                  "minimum": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "기본 100, around_id 일 때 50",
               "title": "Limit"
-            }
+            },
+            "description": "기본 100, around_id 일 때 50"
           },
           {
             "name": "latest",
@@ -3119,6 +3463,25 @@
               ],
               "title": "Before Id"
             }
+          },
+          {
+            "name": "around_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "가운데 1개 + 앞뒤 각 limit//2 개(검색 결과로 점프할 때)",
+              "title": "Around Id"
+            },
+            "description": "가운데 1개 + 앞뒤 각 limit//2 개(검색 결과로 점프할 때)"
           },
           {
             "name": "room_id",
@@ -8587,7 +8950,7 @@
           "ai-assistant-knowledge"
         ],
         "summary": "Ask",
-        "description": "knowledge 시험용 채팅: LLM 이 검색 함수를 불러 기록을 근거로 답한다.",
+        "description": "knowledge 시험용 채팅: LLM 이 검색 함수를 불러 기록을 근거로 답한다(가족 AI 동의·쿨다운·하루 한도 가드를 거친다).",
         "operationId": "ask_ai_assistant_knowledge_ask_post",
         "parameters": [
           {
@@ -8715,7 +9078,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/SearchOut"
+                  "$ref": "#/components/schemas/app__features__ai_assistant__knowledge__schemas__SearchOut"
                 }
               }
             }
@@ -9945,6 +10308,16 @@
             "type": "string",
             "format": "date-time",
             "title": "Generated At"
+          },
+          "privacy": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PrivacyMeta"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "type": "object",
@@ -12912,6 +13285,158 @@
         ],
         "title": "MealStatus"
       },
+      "MediaCounts": {
+        "properties": {
+          "image": {
+            "type": "integer",
+            "title": "Image"
+          },
+          "file": {
+            "type": "integer",
+            "title": "File"
+          },
+          "video": {
+            "type": "integer",
+            "title": "Video"
+          }
+        },
+        "type": "object",
+        "required": [
+          "image",
+          "file",
+          "video"
+        ],
+        "title": "MediaCounts"
+      },
+      "MediaItem": {
+        "properties": {
+          "attachment_id": {
+            "type": "string",
+            "title": "Attachment Id"
+          },
+          "message_id": {
+            "type": "integer",
+            "title": "Message Id"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "image",
+              "file",
+              "video"
+            ],
+            "title": "Kind"
+          },
+          "user_id": {
+            "type": "string",
+            "title": "User Id"
+          },
+          "user_name": {
+            "type": "string",
+            "title": "User Name"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "url": {
+            "type": "string",
+            "title": "Url"
+          },
+          "thumb_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Thumb Url"
+          },
+          "width": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Width"
+          },
+          "height": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Height"
+          },
+          "size_bytes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Size Bytes"
+          }
+        },
+        "type": "object",
+        "required": [
+          "attachment_id",
+          "message_id",
+          "kind",
+          "user_id",
+          "user_name",
+          "created_at",
+          "url",
+          "thumb_url",
+          "width",
+          "height",
+          "size_bytes"
+        ],
+        "title": "MediaItem"
+      },
+      "MediaPage": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/MediaItem"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "next_before_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Before Id"
+          },
+          "counts": {
+            "$ref": "#/components/schemas/MediaCounts"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items",
+          "next_before_id",
+          "counts"
+        ],
+        "title": "MediaPage"
+      },
       "MemberLocation": {
         "properties": {
           "user_id": {
@@ -13559,6 +14084,100 @@
         ],
         "title": "PhotoOut"
       },
+      "PreviewLine": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "speaker": {
+            "type": "string",
+            "title": "Speaker"
+          },
+          "text": {
+            "type": "string",
+            "title": "Text"
+          },
+          "blocked": {
+            "type": "boolean",
+            "title": "Blocked"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "speaker",
+          "text",
+          "blocked"
+        ],
+        "title": "PreviewLine",
+        "description": "AI(Claude)가 실제로 받게 될 한 줄. 개인정보는 토큰으로 가려져 있고 차단된 메시지는 자리표시 문구다."
+      },
+      "PreviewOut": {
+        "properties": {
+          "message_count": {
+            "type": "integer",
+            "title": "Message Count"
+          },
+          "masked": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "type": "object",
+            "title": "Masked"
+          },
+          "blocked_messages": {
+            "type": "integer",
+            "title": "Blocked Messages"
+          },
+          "lines": {
+            "items": {
+              "$ref": "#/components/schemas/PreviewLine"
+            },
+            "type": "array",
+            "title": "Lines"
+          },
+          "ai_enabled": {
+            "type": "boolean",
+            "title": "Ai Enabled"
+          },
+          "sendable": {
+            "type": "boolean",
+            "title": "Sendable"
+          }
+        },
+        "type": "object",
+        "required": [
+          "message_count",
+          "masked",
+          "blocked_messages",
+          "lines",
+          "ai_enabled",
+          "sendable"
+        ],
+        "title": "PreviewOut",
+        "description": "AI 를 부르기 전에 무엇이 나가는지 보여 주는 미리보기. 원문 개인정보·대응표는 담지 않는다."
+      },
+      "PrivacyMeta": {
+        "properties": {
+          "masked": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "type": "object",
+            "title": "Masked",
+            "default": {}
+          },
+          "blocked_messages": {
+            "type": "integer",
+            "title": "Blocked Messages",
+            "default": 0
+          }
+        },
+        "type": "object",
+        "title": "PrivacyMeta",
+        "description": "AI 로 보낸 대화에서 개인정보를 어떻게 처리했는지의 **개수만**(글자·값·토큰 없음)."
+      },
       "ProfileIn": {
         "properties": {
           "display_name": {
@@ -14195,21 +14814,64 @@
         ],
         "title": "SearchIn"
       },
-      "SearchOut": {
+      "SearchItem": {
         "properties": {
-          "hits": {
-            "items": {
-              "$ref": "#/components/schemas/HitOut"
-            },
-            "type": "array",
-            "title": "Hits"
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "room_id": {
+            "type": "string",
+            "title": "Room Id"
+          },
+          "room_kind": {
+            "type": "string",
+            "enum": [
+              "family",
+              "direct"
+            ],
+            "title": "Room Kind"
+          },
+          "peer_user_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Peer User Id"
+          },
+          "user_id": {
+            "type": "string",
+            "title": "User Id"
+          },
+          "user_name": {
+            "type": "string",
+            "title": "User Name"
+          },
+          "text": {
+            "type": "string",
+            "title": "Text"
+          },
+          "created_at": {
+            "type": "string",
+            "title": "Created At"
           }
         },
         "type": "object",
         "required": [
-          "hits"
+          "id",
+          "room_id",
+          "room_kind",
+          "peer_user_id",
+          "user_id",
+          "user_name",
+          "text",
+          "created_at"
         ],
-        "title": "SearchOut"
+        "title": "SearchItem"
       },
       "SettleRequest": {
         "properties": {
@@ -15659,6 +16321,22 @@
         ],
         "title": "ItemOut"
       },
+      "app__features__ai_assistant__knowledge__schemas__SearchOut": {
+        "properties": {
+          "hits": {
+            "items": {
+              "$ref": "#/components/schemas/HitOut"
+            },
+            "type": "array",
+            "title": "Hits"
+          }
+        },
+        "type": "object",
+        "required": [
+          "hits"
+        ],
+        "title": "SearchOut"
+      },
       "app__features__care__schemas__ItemOut": {
         "properties": {
           "id": {
@@ -15763,6 +16441,34 @@
           "meal_type"
         ],
         "title": "ItemOut"
+      },
+      "app__features__family_chat__search_schemas__SearchOut": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/SearchItem"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "next_before_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Before Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items",
+          "next_before_id"
+        ],
+        "title": "SearchOut"
       }
     }
   }
