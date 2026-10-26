@@ -8216,7 +8216,7 @@
           "ai-assistant-knowledge"
         ],
         "summary": "Ask",
-        "description": "knowledge 시험용 채팅: LLM 이 검색 함수를 불러 기록을 근거로 답한다.",
+        "description": "knowledge 시험용 채팅: LLM 이 검색 함수를 불러 기록을 근거로 답한다(가족 AI 동의·쿨다운·하루 한도 가드를 거친다).",
         "operationId": "ask_ai_assistant_knowledge_ask_post",
         "parameters": [
           {

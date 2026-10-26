@@ -84,10 +84,13 @@ def update_item(
 
 @router.post("/ask", response_model=AskOut)
 def ask(
-    body: AskIn, group_id: str = Depends(current_group_id), db: Session = Depends(get_db)
+    body: AskIn,
+    user=Depends(current_user),
+    group_id: str = Depends(current_group_id),
+    db: Session = Depends(get_db),
 ) -> AskOut:
-    """knowledge 시험용 채팅: LLM 이 검색 함수를 불러 기록을 근거로 답한다."""
-    r = rag_chat.ask(db, group_id, body.question)
+    """knowledge 시험용 채팅: LLM 이 검색 함수를 불러 기록을 근거로 답한다(가족 AI 동의·쿨다운·하루 한도 가드를 거친다)."""
+    r = rag_chat.ask_guarded(db, user.id, group_id, body.question, feature="knowledge_ask")
     return AskOut(answer=r.answer, source=r.source, sources=r.sources, tool_calls=r.tool_calls)
 
 

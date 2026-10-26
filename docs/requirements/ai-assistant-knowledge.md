@@ -60,7 +60,7 @@ LLM 키는 `apps/api/.env` 의 `ANTHROPIC_API_KEY`.
 - [x] 파인튜닝 모델을 서버용(ONNX int8, 118MB)으로 바꾸고 점수 재측정(3위 안 97.9% / 96.6% / 100%). 모델 파일은 저장소에 넣지 않고 서버 PC 의 EMBED_MODEL_DIR 에 둔다.
 - [x] **Alembic 리비전**(`c3a9f21d7e54`)으로 `knowledge_items`·`knowledge_chunks`(벡터는 pgvector `Vector(384)`)를 추가하고, `alembic/env.py` 가 모델을 알도록 `import_all_models()` 에 knowledge 를 등록했다. 로컬에서는 SQL 생성(`alembic upgrade 6304cb91e46a:head --sql`)까지 확인했고, 실제 PostgreSQL 실행 확인(`PGVECTOR_TEST_DATABASE_URL` 통합 테스트)은 도커가 있는 곳에서 한다. 공용 DB(`gabee`)에는 담당자가 `gabee_migrator` 로 승인 후 적용한다.
 - [ ] 전처리와 입력 방식 합의 및 연결
-- [x] 채팅(`POST /ai-assistant/chat`)이 가족 그룹의 기록을 검색해서 답하고, 답에 쓴 기록을 `sources: [{n, title, item_id, source_path}]` 로 돌려준다(그룹이 없으면 기록 없이 답). 앱 출처 칩 연결(`api.js`)은 남아 있다.
+- [x] 채팅(`POST /ai-assistant/chat`)이 가족 그룹의 기록을 검색해서 답하고, 답에 쓴 기록을 `sources: [{n, title, item_id, source_path}]` 로 돌려준다(그룹이 없으면 외부 AI 를 부르지 않고 고정 안내 문장만 돌려준다). 앱 출처 칩 연결(`api.js`)은 남아 있다.
 
 ## 협의·미정
 1. 전처리가 knowledge 로 넘기는 방식(함수 호출 / HTTP / DB 테이블 공유)과 필드, 새 기록 알림 방식.

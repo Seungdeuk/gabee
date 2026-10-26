@@ -6,7 +6,7 @@
  3. 사용자 쿨다운, 사용자·가족 그룹별 하루 호출 한도
  4. 가족 그룹 동시 실행 제한(진행 중 표시를 DB 에 남겨 여러 워커에서도 같다)
  5. 사용 기록을 먼저 남겨(호출 수 1) 한도에 바로 반영 → 호출 → 토큰·결과로 기록 갱신, 결과 캐시 저장
-호출은 한 번만 한다. 실패해도 다시 시도하지 않고(한도에는 센다) 안전한 오류로 돌려준다.
+호출은 기본 한 번이다(어시스턴트 채팅처럼 도구 루프를 쓰는 기능은 한 요청이 최대 4번 부르고 모두 센다). 실패해도 다시 시도하지 않고(한도에는 센다) 안전한 오류로 돌려준다.
 모든 상태는 PostgreSQL(없으면 SQLite)에 있어 Redis 같은 새 인프라가 필요 없다. 대화·문서 원문과 API 키는 어디에도 저장·기록하지 않는다.
 """
 
@@ -30,7 +30,7 @@ from app.shared.llm import client as llm
 class Outcome:
     result: dict
     cached: bool  # True 면 캐시에서 꺼냈고 Anthropic 을 부르지 않았다
-    api_calls: int  # 이번 요청에서 실제로 부른 횟수(0 또는 1)
+    api_calls: int  # 이번 요청에서 실제로 부른 횟수(캐시 적중 0, 보통 1, 도구 루프 기능은 최대 4)
     input_tokens: int
     output_tokens: int
     model: str | None
@@ -263,11 +263,13 @@ def run(
     user_id: str,
     group_id: str,
     feature: str,
-    cache_key: str,
+    cache_key: str | None,
     call: Callable[[], tuple[dict, llm.JsonResult]],
 ) -> Outcome:
     """AI 기능 하나를 가드 아래에서 실행한다. call() 은 (검증이 끝난 결과, LLM 응답)을 돌려주고, 실패하면 llm.LLMUnavailable 이나 ValueError.
-    cache_key 는 같은 요청이면 같아야 하고, 분석 범위가 바뀌면(새 메시지 등) 달라져야 한다(그래야 캐시가 갱신된다)."""
+    cache_key 는 같은 요청이면 같아야 하고, 분석 범위가 바뀌면(새 메시지 등) 달라져야 한다(그래야 캐시가 갱신된다).
+    cache_key=None 이면 결과를 캐시에 읽지도 쓰지도 않는다(대화처럼 같은 요청이 없고 원문을 남기면 안 되는 기능).
+    call() 이 돌려준 응답에 `calls`(실제 Anthropic 호출 수, 1 이상)가 있으면 그 수를 사용 기록·한도에 센다(도구 루프처럼 한 요청이 여러 번 부르는 경우)."""
     if not is_enabled(db, group_id):
         raise ApiError(
             403,
@@ -275,7 +277,7 @@ def run(
             "가족 그룹에서 AI 기능을 아직 켜지 않았어요. 가족 소유자나 관리자가 켤 수 있어요",
         )
     now = datetime.now(UTC)
-    cached = _find_cache(db, group_id, feature, cache_key, now)
+    cached = _find_cache(db, group_id, feature, cache_key, now) if cache_key is not None else None
     if cached is not None:
         _log_cached(db, user_id, group_id, feature, now)
         return Outcome(cached, True, 0, 0, 0, None)
@@ -288,7 +290,11 @@ def run(
     slot, token = _acquire_slot(db, group_id, user_id, feature, now)
     try:
         # 칸을 잡는 사이 같은 결과를 다른 요청이 먼저 만들었을 수 있다 — AI 를 부르기 전에 한 번 더 본다
-        cached = _find_cache(db, group_id, feature, cache_key, datetime.now(UTC))
+        cached = (
+            _find_cache(db, group_id, feature, cache_key, datetime.now(UTC))
+            if cache_key is not None
+            else None
+        )
         if cached is not None:
             _log_cached(db, user_id, group_id, feature, now)
             return Outcome(cached, True, 0, 0, 0, None)
@@ -308,17 +314,20 @@ def run(
         except (llm.LLMUnavailable, ValueError) as exc:
             db.rollback()
             log.status = "error"
+            log.api_calls = max(1, int(getattr(exc, "calls", 1)))  # 실패 전까지 부른 횟수
             log.error_code = "invalid_output" if isinstance(exc, ValueError) else "llm_failed"
             db.commit()
             raise ApiError(
                 503, "llm_failed", "AI 요청을 처리하지 못했어요. 잠시 후 다시 시도해 주세요"
             ) from None
-        log.status, log.model = "ok", response.model
+        calls = max(1, int(getattr(response, "calls", 1)))
+        log.status, log.model, log.api_calls = "ok", response.model, calls
         log.input_tokens, log.output_tokens = response.input_tokens, response.output_tokens
         db.commit()
-        _store_cache(db, group_id, feature, cache_key, result, now)
+        if cache_key is not None:
+            _store_cache(db, group_id, feature, cache_key, result, now)
         return Outcome(
-            result, False, 1, response.input_tokens, response.output_tokens, response.model
+            result, False, calls, response.input_tokens, response.output_tokens, response.model
         )
     finally:
         _release_slot(db, group_id, slot, token)
