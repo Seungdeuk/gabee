@@ -3,7 +3,7 @@
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.features.family_group.models import User
+from app.features.family_group.models import GroupMember, User
 
 from .models import Message
 from .repository import family_messages
@@ -24,3 +24,22 @@ def recent_messages(
         .limit(limit)
     ).all()
     return [(m, name) for m, name in reversed(rows)]
+
+
+def member_names(db: Session, group_id: str) -> list[tuple[str, ...]]:
+    """이 그룹 구성원의 이름 사전. 구성원마다 (실제 이름, 표시 이름) 묶음 하나이고(표시 이름이 없거나 같으면 이름만),
+    첫 번째가 대표 이름이다. 가명화가 한 사람의 모든 표기를 같은 토큰으로 묶는다. 정렬해서 돌려줘 같은 구성이면 항상 같은 순서다."""
+    rows = db.execute(
+        select(User.name, GroupMember.display_name)
+        .join(GroupMember, GroupMember.user_id == User.id)
+        .where(GroupMember.group_id == group_id)
+    ).all()
+    people: set[tuple[str, ...]] = set()
+    for name, display in rows:
+        real = " ".join((name or "").split())
+        shown = " ".join((display or "").split())
+        if real:
+            people.add((real, shown) if shown and shown != real else (real,))
+        elif shown:
+            people.add((shown,))
+    return sorted(people)

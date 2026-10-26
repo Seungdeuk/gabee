@@ -43,6 +43,7 @@ GENERIC_TEXT: dict[Kind, str] = {
     Kind.PERSON: "(사람)",
 }
 UNKNOWN_TEXT = "(알 수 없는 항목)"
+SENSITIVE_TEXT = "(민감 정보)"
 
 _ALL_NAMES = "PHONE|EMAIL|ADDR|PERSON|SECRET|RRN|CARD|ACCOUNT"
 # 괄호(반각·전각·【】)로 감싼 짧은 글자만 후보로 잡는다. 안쪽 길이 제한 때문에 입력 길이에 선형이다.
@@ -53,6 +54,19 @@ _INNER = re.compile(rf"\s*(?:{_ALL_NAMES})[\s_]*[0-9０-９]*\s*", re.IGNORECASE
 
 def _tokenish(raw: str) -> bool:
     return bool(_INNER.fullmatch(raw[1:-1]))
+
+
+_NEUTRALIZED = re.compile(r"‹[^‹›\n]{0,32}›")
+
+
+def scrub_leftovers(text: str) -> str:
+    """응답에 남은 무력화 토큰(``‹PERSON_2›``: 사용자가 대화에 직접 쓴 토큰 모양)과 복원 불가 고정 토큰(``[RRN]`` 등)을
+    일반 문구로 바꾼다. 사용자에게 보이는 글자에서 토큰 모양이 그대로 나오지 않게 하는 후처리다."""
+    for fixed in _FIXED_TOKENS:
+        text = text.replace(fixed, SENSITIVE_TEXT)
+    return _NEUTRALIZED.sub(
+        lambda m: UNKNOWN_TEXT if _tokenish("[" + m.group(0)[1:-1] + "]") else m.group(0), text
+    )
 
 
 @dataclass(frozen=True)
@@ -93,7 +107,7 @@ def _neutralize(text: str) -> str:
 class Pseudonymizer:
     """한 요청 안에서만 쓰는 가명화기. 같은 원본 값은 같은 토큰을 받고 번호는 처음 나온 순서다."""
 
-    __slots__ = ("_closed", "_counters", "_forward", "_kind", "_reverse")
+    __slots__ = ("_aliases", "_closed", "_counters", "_forward", "_kind", "_reverse")
 
     def __init__(self) -> None:
         self._forward: dict[tuple[Kind, str], str] = {}  # (종류, 정규화 값) -> 토큰
@@ -101,6 +115,15 @@ class Pseudonymizer:
         self._kind: dict[str, Kind] = {}  # 토큰 -> 종류
         self._counters: dict[Kind, int] = {}
         self._closed = False
+        self._aliases: dict[
+            str, str
+        ] = {}  # 같은 사람의 다른 표기(표시 이름) -> 대표 이름. PERSON 토큰 키를 하나로 묶는다
+
+    def set_aliases(self, aliases: dict[str, str]) -> None:
+        """같은 사람의 다른 표기를 대표 이름으로 묶는다(예: 표시 이름 '수진이' -> 실제 이름 '이수진'). PERSON 토큰에만 쓰인다."""
+        self._aliases = {
+            " ".join(k.split()): " ".join(v.split()) for k, v in aliases.items() if k and v
+        }
 
     # ----- 수명 -----
     def __enter__(self) -> "Pseudonymizer":
@@ -116,6 +139,7 @@ class Pseudonymizer:
         self._reverse.clear()
         self._kind.clear()
         self._counters.clear()
+        self._aliases.clear()
         self._closed = True
 
     @property
@@ -153,6 +177,8 @@ class Pseudonymizer:
             return _NEVER_STORE_TOKEN[kind]
         if self._closed:
             raise RuntimeError("이미 닫힌 Pseudonymizer 다")
+        if kind is Kind.PERSON:
+            value = self._aliases.get(" ".join(value.split()), value)
         key = (kind, _norm_key(kind, value))
         token = self._forward.get(key)
         if token is None:
