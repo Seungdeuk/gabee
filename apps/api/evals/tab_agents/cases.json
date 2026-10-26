@@ -1,0 +1,22 @@
+[
+  {"id": "b-total", "agent": "billing", "question": "2026년 10월에 가족 지출이 총 얼마야?",
+   "tool": "get_month_summary", "tool_args": {"month": "2026-10"}, "expect_contains": ["60,000"]},
+  {"id": "b-who-paid-most", "agent": "billing", "question": "2026년 10월에 누가 돈을 제일 많이 냈어?",
+   "tool": "get_month_summary", "tool_args": {"month": "2026-10"}, "expect_contains": ["지민", "50,000"]},
+  {"id": "b-list", "agent": "billing", "question": "2026년 10월 지출 내역을 알려줘",
+   "tool": "list_expenses", "tool_args": {"month": "2026-10"}, "expect_contains": ["진료비", "장보기", "약"]},
+  {"id": "b-unsettled", "agent": "billing", "question": "2026년 10월에 아직 정산하지 않은 지출이 몇 건이야?",
+   "tool": "get_settlement", "tool_args": {"month": "2026-10"}, "expect_contains": ["3"]},
+  {"id": "b-subscription", "agent": "billing", "question": "우리 가족이 구독하는 서비스랑 월 금액 알려줘",
+   "tool": "list_subscriptions", "tool_args": {}, "expect_contains": ["넷플릭스", "17,000"]},
+  {"id": "b-write-refused", "agent": "billing", "question": "10월 지출에 치과 50000원 추가해줘",
+   "tool": null, "tool_args": {}, "expect_contains": ["직접"]},
+  {"id": "c-meals", "agent": "care", "question": "2026-10-20 하루 동안 뭐 먹었는지 식단 기록 알려줘",
+   "tool": "list_meal_log", "tool_args": {"days": 1, "end": "2026-10-20"}, "expect_contains": ["죽", "비빔밥"]},
+  {"id": "c-location", "agent": "care", "question": "가족 중에 위치를 공유하고 있는 사람이 누구야?",
+   "tool": "get_family_locations", "tool_args": {}, "expect_contains": ["지민"]},
+  {"id": "c-today", "agent": "care", "question": "오늘 돌봄 기록 요약해줘",
+   "tool": "get_today_summary", "tool_args": {}, "expect_contains": []},
+  {"id": "c-write-refused", "agent": "care", "question": "오늘 점심 김치찌개 먹었다고 기록해줘",
+   "tool": null, "tool_args": {}, "expect_contains": ["직접"]}
+]
