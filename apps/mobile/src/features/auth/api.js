@@ -6,14 +6,21 @@ import { normalizeEmail, normalizeLoginId } from "./validation";
 
 /**
  * 아이디/비밀번호/이메일로 회원가입한다(로그인은 하지 않는다).
- * @param {{ loginId: string, password: string, email: string, name: string, role?: "parent" | "child" | "other" }} form
+ * @param {{ loginId: string, password: string, email?: string, name: string, role?: "parent" | "child" | "other", roleDetail?: string }} form
  * @returns {Promise<{ user: object }>}
  */
-export const signupAccount = ({ loginId, password, email, name, role = "child" }) =>
+export const signupAccount = ({ loginId, password, email, name, role = "child", roleDetail = "" }) =>
   apiFetch("/family-group/auth/signup", {
     method: "POST",
     auth: false,
-    body: { login_id: normalizeLoginId(loginId), password, email: normalizeEmail(email), name: name.trim(), role },
+    body: {
+      login_id: normalizeLoginId(loginId),
+      password,
+      ...(email && email.trim() ? { email: normalizeEmail(email) } : {}), // 이메일은 선택
+      name: name.trim(),
+      role,
+      ...(role === "other" && roleDetail.trim() ? { role_detail: roleDetail.trim() } : {}),
+    },
   });
 
 /**
@@ -33,6 +40,10 @@ export const requestEmailVerification = () => apiFetch("/family-group/auth/email
 export const confirmEmailVerification = (token) =>
   apiFetch("/family-group/auth/email/verify/confirm", { method: "POST", auth: false, body: { token } });
 
+/** 메일의 6자리 인증번호로 이메일 인증을 완료한다(로그인한 본인만). */
+export const confirmEmailCode = (code) =>
+  apiFetch("/family-group/auth/email/verify/confirm-code", { method: "POST", body: { code } });
+
 /** 비밀번호 재설정 메일을 요청한다. 가입된 주소인지와 상관없이 같은 응답이다. */
 export const requestPasswordReset = (email) =>
   apiFetch("/family-group/auth/password/reset/request", {
@@ -48,3 +59,40 @@ export const confirmPasswordReset = (token, newPassword) =>
     auth: false,
     body: { token, new_password: newPassword },
   });
+
+/** 메일의 6자리 코드와 이메일, 새 비밀번호로 재설정한다. 모든 기기가 로그아웃된다. */
+export const confirmPasswordResetCode = (email, code, newPassword) =>
+  apiFetch("/family-group/auth/password/reset/confirm-code", {
+    method: "POST",
+    auth: false,
+    body: { email: normalizeEmail(email), code, new_password: newPassword },
+  });
+
+/**
+ * Google(ID 토큰)·카카오(액세스 토큰)로 로그인하거나 처음이면 가입한다. 같은 이메일의 기존 계정이 있으면 합치지 않고
+ * { candidate_account: true, masked_email } 만 돌려준다.
+ * @param {"google" | "kakao"} provider
+ * @param {string} providerToken
+ * @param {"parent" | "child" | "other"} [role] 처음 가입할 때만 쓴다
+ */
+export const socialLogin = (provider, providerToken, role = "child") =>
+  apiFetch(`/family-group/auth/social/${provider}`, { method: "POST", auth: false, body: { provider_token: providerToken, role } });
+
+/** 내 계정에 연결된 소셜 계정 목록. */
+export const listSocialAccounts = () => apiFetch("/family-group/auth/social");
+
+/**
+ * 로그인한 내 계정에 소셜 계정을 연결한다. 비밀번호가 있는 계정은 비밀번호를 한 번 더 보낸다.
+ * @param {"google" | "kakao"} provider
+ * @param {string} providerToken
+ * @param {string} [password]
+ */
+export const linkSocialAccount = (provider, providerToken, password) =>
+  apiFetch(`/family-group/auth/social/${provider}/link`, {
+    method: "POST",
+    body: { provider_token: providerToken, ...(password ? { password } : {}) },
+  });
+
+/** 소셜 연동을 해제한다. 마지막 로그인 수단이면 서버가 거부한다. */
+export const unlinkSocialAccount = (provider) => apiFetch(`/family-group/auth/social/${provider}`, { method: "DELETE" });
+

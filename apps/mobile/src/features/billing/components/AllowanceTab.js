@@ -19,8 +19,9 @@ import {
 } from "../api";
 import { parseWon, won } from "../format";
 import AllowancePlanForm, { planText } from "./AllowancePlanForm";
+import AllowanceRequests from "./AllowanceRequests";
 
-const SOURCE_LABEL = { manual: "직접", plan_auto: "자동 지급", plan_remind: "리마인드" };
+const SOURCE_LABEL = { manual: "직접", plan_auto: "자동 지급", plan_remind: "리마인드", request: "요청 승인" };
 
 /**
  * 용돈 장부: 자녀별 잔액, 고정 주기(자동 지급 또는 리마인드), 입금·사용 내역. 은행·계좌와 연결하지 않고
@@ -156,6 +157,15 @@ function ChildLedger({ item, notify, onChanged }) {
           <Button small variant="secondary" label="사용 기록" a11yLabel={`${item.name} 사용 기록`} onPress={saveUse} disabled={busy} />
         </View>
       ) : null}
+
+      <AllowanceRequests item={item} notify={notify} onChanged={onChanged} />
+
+      <Text style={styles.label}>월별 요약</Text>
+      {item.months.map((m) => (
+        <Text key={m.month} style={styles.caption} testID={`month-${item.name}-${m.month}`}>
+          {m.month} · 받은 용돈 {won(m.credit)} · 쓴 돈 {won(m.use)}
+        </Text>
+      ))}
 
       <Text style={styles.label}>내역</Text>
       {item.entries.length === 0 ? <Text style={styles.caption}>아직 내역이 없어요</Text> : null}

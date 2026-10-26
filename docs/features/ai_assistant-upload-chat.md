@@ -18,7 +18,7 @@
 앱 + → POST /ai-assistant/files (바로 received 응답)
         └ 뒤에서: 원본 보관 → OCR/문서 읽기 → 개인정보 가리기 → 분류(로컬 모델) → 사진 설명(로컬 모델)
                   → knowledge 저장(조각 + 임베딩) → 상태 analyzed / needs_review / failed
-앱 채팅 → POST /ai-assistant/chat → Claude 가 search_knowledge 도구로 기록 검색 → 답 + 출처
+앱 채팅 → POST /ai-assistant/chat → (가족 AI 동의·쿨다운·하루 한도: ai_guard) → Claude 가 search_knowledge 도구로 기록 검색 → 답 + 출처
 ```
 
 원본 사진·파일과 가리기 전 글자는 **서버 밖으로 나가지 않는다.** 외부(Claude)로는 **가린 글자**만 간다.
@@ -69,7 +69,7 @@
 | `EMBED_MODEL_DIR` | `<DATA_DIR>/models/e5-small-ft` | 임베딩 모델 폴더 |
 | `RAW_DIR` | (비움 → `DATA_DIR/raw`) | 원본 보관 폴더 |
 | `DOC_CLASSIFIER_DIR` | `<DATA_DIR>/models/doc-classifier` | 문서 분류기 폴더(`.env.example` 에는 없고 환경변수로만 쓴다) |
-| `CHAT_INCLUDE_SENSITIVE` | `true` | 가린 민감 기록(처방전·신분증 등)을 Claude 근거에 넣을지. `false` 면 제외 |
+| `CHAT_INCLUDE_SENSITIVE` | `true` | 가린 민감 기록(처방전·신분증 등)을 Claude 근거에 넣을지. `false` 면 채팅 검색·`get_item`·`list_items`·@가비 문서 질문에서 제외. 서버 전체에 적용되는 값이고 가족·사용자별 설정이 아니다 |
 | `TYPESAFE_API_KEY` | (비움) | 있으면 로컬 분류기가 확신하지 못한 문서만 외부 Jev 로 분류한다(가린 글만 보냄). 없으면 "기타 문서 + 확인 필요" |
 
 **삭제된 설정**: `LOCAL_LLM_URL`·`LOCAL_LLM_MODEL`·`LOCAL_LLM_TIMEOUT`·`CAPTION_ENABLED`·`CAPTION_MODEL`·`CAPTION_TIMEOUT`·`OLLAMA_KEEP_ALIVE`. 예전 `.env` 에 남아 있어도 무시된다.
@@ -214,6 +214,30 @@ SELECT item_id, seq, embedding_model, vector_dims(embedding) AS dim, left(text, 
 | 폰이 접속 못 함 | 같은 와이파이인지, PC 방화벽이 8001·8081 을 막는지 확인(방화벽 설정은 각자 PC 에서) |
 | 기록에 `******-*******` 가 보임 | 정상(주민번호 가림). 원본은 원본 보기로 확인 |
 
+## 채팅·기록 질문의 동의·한도 (ai_guard)
+
+`POST /ai-assistant/chat`(기능 `assistant_chat`)과 `POST /ai-assistant/knowledge/ask`(`knowledge_ask`)는 가족 채팅 AI 와 같은 `ai_guard.run` 을 거친다. 가족 그룹이 AI 를 켜야 하고(소유자·관리자), 결과는 캐시하지 않는다. 그룹이 없는 사용자의 chat 은 외부 AI 를 부르지 않고 고정 안내(200, `source="fallback"`)만 돌려준다. 키가 없으면 외부 호출 없이 검색 결과만 보여 준다.
+
+| 상황 | 응답 |
+|---|---|
+| 가족 AI 동의 꺼짐 | 403 `ai_not_enabled` |
+| 가족 구성원이 아님(`active_group_id` 만 남음) | 403 `not_member` |
+| 쿨다운 안(기본 없음) | 429 `ai_cooldown` |
+| 사용자 하루 한도 | 429 `ai_daily_limit_user` |
+| 가족 하루 한도 | 429 `ai_daily_limit_group` |
+| 같은 가족의 다른 AI 요청 처리 중 | 409 `ai_busy` |
+| 외부 AI 호출 실패 | 503 `llm_failed` (사용 기록 `status="error"`, 한도에는 센다) |
+
+- 한도 값: 어시스턴트는 가족 채팅 AI 의 기본 한도(사용자 10회/일, 가족 30회/일, 쿨다운 30초)와 **따로** 센다(`ai_guard.register_bucket`, `ai_assistant/limits.py`). 예전 값을 유지해 사용자 **100회/일**, 쿨다운 **없음**이고, 가족 상한은 예전에 없던 새 값 **300회/일**이다(`AI_ASSISTANT_MAX_CALLS_PER_USER_PER_DAY`, `AI_ASSISTANT_MAX_CALLS_PER_GROUP_PER_DAY`, `AI_ASSISTANT_COOLDOWN_SECONDS`). 동시 실행은 가족당 1건 그대로(409 `ai_busy`). 문서 요약·답변(`doc_summary`·`doc_answer`)은 기본 한도를 쓴다.
+- 질문 1건이 도구 루프로 Anthropic 을 1~4번 부르고, 실제 호출 수를 한도에 센다.
+- 한도 초과 폭: 요청 시작 때는 1회만 예약하고 끝나면 실제 횟수로 고치므로, 한도 직전의 마지막 요청은 최대 3회(4-1)까지 더 셀 수 있다.
+
+## 앱 안내 화면 (AI 채팅 탭)
+
+- 서버 오류 코드를 말풍선 안내로 바꾼다(`features/ai-assistant/errors.js`, 시험 `apps/mobile/tests/assistanterrors.test.js`): `ai_cooldown`·`ai_busy` "조금 뒤에 다시 물어봐 주세요", `ai_daily_limit_*` "오늘 AI 사용 한도에 도달했어요", `llm_failed` "AI 연결에 문제가 있어요", `not_member` 가족 참여 안내, 그 밖에는 서버 문구.
+- `ai_not_enabled` 는 말풍선 대신 안내 카드(`AiOffCard`): "AI 도우미가 꺼져 있어요", 질문하면 관련 가족 기록 일부가 외부 AI(Anthropic)로 전송된다는 설명(민감 기록은 기본 제외). 설정은 `GET /family-chat/ai/settings` 로 확인하고, `can_manage` 이면 "AI 사용 켜기" 버튼(`PUT /family-chat/ai/settings {enabled:true}`, 누를 때만 호출), 아니면 소유자·관리자에게 요청하라는 안내. 켜면 카드가 "AI를 켰어요. 방금 질문을 다시 보내 주세요." 로 바뀌고 질문은 자동으로 다시 보내지 않는다.
+- 오류 말풍선과 그 오류를 부른 질문은 다음 요청의 `history` 에서 빠진다(오류 문구가 외부 AI 로 실려 가지 않는다).
+
 ## 팀이 정해야 할 것
 
 1. **외부로 나가는 글**: 가린 글자는 Claude(외부 API)로 전송된다. ingest 문서의 "어떤 모델에도 보내지 않는다" 문구를 고칠지, 민감 기록은 기본 제외(`CHAT_INCLUDE_SENSITIVE=false`)로 할지, 동의 절차를 둘지.
@@ -223,6 +247,10 @@ SELECT item_id, seq, embedding_model, vector_dims(embedding) AS dim, left(text, 
 5. **원본 보관**: 보관 기간, 삭제 요청 시 일괄 삭제, 건강정보 별도 동의, 14세 미만 자녀 동의.
 6. **PR 나누기**: 한 번에 크다.
 
+## 원본 경로 보안 수정
+
+`LocalRawStore.get_for_group`/`delete_for_group` 는 경로 첫 칸이 그룹 id 인지만 보고 `<내그룹>/../<남의그룹>/…` 를 통과시켰다. 이제 `..`·`.`·빈 칸·절대경로·백슬래시·널 문자를 거부하고, 해석한 결과가 그 그룹 폴더(`raw/<group_id>`) 안일 때만 읽고 지운다. 또 `POST /ai-assistant/knowledge/items` 의 `source_path` 는 클라이언트가 임의로 넣을 수 없다. 요청 필드는 호환을 위해 남겨 두되 값은 **무시**하고(400 으로 깨지지 않음) 원본 참조는 업로드 처리(`files.py`)가 서버에서 만든 것만 쓴다.
+
 ## 보안 점검에서 아직 열린 것 (이 브랜치에서 고치지 않음)
 
-압축·화소 폭탄 상한, 원본 동시 저장 오류(같은 파일 동시에 올릴 때), 하루 호출 한도가 `/knowledge/ask` 로 우회되는 것, 업로드 대기 상한, 처리 중 서버 재시작 시 재처리. 팀에 공개하기 전에 우선순위를 정하는 것이 좋다.
+압축·화소 폭탄 상한, 원본 동시 저장 오류(같은 파일 동시에 올릴 때), 업로드 대기 상한, 처리 중 서버 재시작 시 재처리. 팀에 공개하기 전에 우선순위를 정하는 것이 좋다.

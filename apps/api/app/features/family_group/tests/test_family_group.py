@@ -18,8 +18,15 @@ def test_signup_group_invite_and_join(client):
         ]
         == "invalid_invite"
     )
-    joined = client.post(
+    pending = client.post(
         "/family-group/groups/join", json={"code": g["invite_code"].lower()}, headers=b
+    ).json()
+    assert pending["status"] == "pending" and pending["group_id"] == g["id"]
+    assert (
+        client.get("/family-group/groups/me", headers=b).status_code == 404
+    )  # 승인 전에는 구성원이 아니다
+    joined = client.post(
+        f"/family-group/groups/join-requests/{pending['id']}/approve", headers=a
     ).json()
     assert {m["name"] for m in joined["members"]} == {"지민", "수진"}
     assert client.get("/family-group/me", headers=b).json()["active_group_id"] == g["id"]

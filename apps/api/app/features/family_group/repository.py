@@ -49,17 +49,6 @@ def active_invite(db: Session, group_id: str) -> Invite | None:
     return db.scalar(select(Invite).where(Invite.group_id == group_id, Invite.revoked.is_(False)))
 
 
-def is_member(db: Session, group_id: str, user_id: str) -> bool:
-    return db.get(GroupMember, (group_id, user_id)) is not None
-
-
-def join(db: Session, group_id: str, user: User) -> None:
-    if not is_member(db, group_id, user.id):
-        db.add(GroupMember(group_id=group_id, user_id=user.id))
-    user.active_group_id = group_id
-    db.commit()
-
-
 def members(db: Session, group_id: str) -> list[User]:
     return list(
         db.scalars(
@@ -188,6 +177,68 @@ def consume_password_reset(db: Session, row_id: str, when: datetime) -> bool:
             PasswordReset.expires_at > when,
         )
         .values(used_at=when)
+        .execution_options(synchronize_session=False)
+    )
+    return result.rowcount == 1
+
+
+# ---------- 6자리 코드 ----------
+# 코드 확인은 "시도 횟수를 먼저 한 문장으로 올린 뒤" 비교한다 — 동시에 여러 번 찍어도 전체가 한도(failed_attempts < max)를 넘지 못한다.
+
+
+def latest_active_email_verification(
+    db: Session, user_id: str, when: datetime
+) -> EmailVerification | None:
+    return db.scalar(
+        select(EmailVerification)
+        .where(
+            EmailVerification.user_id == user_id,
+            EmailVerification.verified_at.is_(None),
+            EmailVerification.expires_at > when,
+        )
+        .order_by(EmailVerification.expires_at.desc())
+        .limit(1)
+    )
+
+
+def bump_email_code_attempt(db: Session, row_id: str, when: datetime, max_attempts: int) -> bool:
+    result = db.execute(
+        update(EmailVerification)
+        .where(
+            EmailVerification.id == row_id,
+            EmailVerification.verified_at.is_(None),
+            EmailVerification.expires_at > when,
+            EmailVerification.failed_attempts < max_attempts,
+        )
+        .values(failed_attempts=EmailVerification.failed_attempts + 1)
+        .execution_options(synchronize_session=False)
+    )
+    return result.rowcount == 1
+
+
+def latest_active_password_reset(db: Session, user_id: str, when: datetime) -> PasswordReset | None:
+    return db.scalar(
+        select(PasswordReset)
+        .where(
+            PasswordReset.user_id == user_id,
+            PasswordReset.used_at.is_(None),
+            PasswordReset.expires_at > when,
+        )
+        .order_by(PasswordReset.expires_at.desc())
+        .limit(1)
+    )
+
+
+def bump_reset_code_attempt(db: Session, row_id: str, when: datetime, max_attempts: int) -> bool:
+    result = db.execute(
+        update(PasswordReset)
+        .where(
+            PasswordReset.id == row_id,
+            PasswordReset.used_at.is_(None),
+            PasswordReset.expires_at > when,
+            PasswordReset.failed_attempts < max_attempts,
+        )
+        .values(failed_attempts=PasswordReset.failed_attempts + 1)
         .execution_options(synchronize_session=False)
     )
     return result.rowcount == 1

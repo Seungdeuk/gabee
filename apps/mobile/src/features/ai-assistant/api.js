@@ -61,6 +61,25 @@ export async function sendMessage(text, history = []) {
   return { reply: res.reply, sources, draft: null };
 }
 
+/**
+ * 우리 가족의 AI 사용 설정(켜져 있는지, 내가 켤 수 있는지). 가족 채팅 AI 설정과 같은 서버 API 를 계약대로 부른다.
+ * @returns {Promise<{ enabled: boolean, canManage: boolean }>}
+ */
+export async function getAiSettings() {
+  if (!isApiConfigured()) return { enabled: true, canManage: true };
+  const res = await apiFetch("/family-chat/ai/settings");
+  return { enabled: res?.enabled === true, canManage: res?.can_manage === true };
+}
+
+/**
+ * 우리 가족의 AI 사용을 켠다(소유자·관리자만, 아니면 서버가 403). 사용자가 버튼을 눌렀을 때만 부른다.
+ * @returns {Promise<void>}
+ */
+export async function enableAi() {
+  if (!isApiConfigured()) return;
+  await apiFetch("/family-chat/ai/settings", { method: "PUT", body: { enabled: true } });
+}
+
 const MOCK_ANALYZE_MS = 2500;
 const mockUploads = new Map(); // 서버가 없을 때 id → 올린 시각
 

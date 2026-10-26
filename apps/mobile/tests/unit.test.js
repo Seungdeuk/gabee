@@ -2,6 +2,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
+import { digitsOnly, formatClock, parseCode } from "../src/features/auth/code.js";
 import { errorMessage, formatWait } from "../src/features/auth/messages.js";
 import { extractToken, scrubTokenFromBrowserUrl } from "../src/features/auth/tokenLink.js";
 import { checkEmail, checkLoginId, checkName, checkPassword, normalizeLoginId } from "../src/features/auth/validation.js";
@@ -109,4 +110,57 @@ test("웹 주소창의 ?token= 을 새 기록 항목 없이 지운다(다른 쿼
   assert.equal(scrubTokenFromBrowserUrl({ location: { href: "https://app.example/verify-email" }, history: { replaceState: () => assert.fail("호출되면 안 돼요") } }), false);
   assert.equal(scrubTokenFromBrowserUrl(undefined), false);
   assert.equal(scrubTokenFromBrowserUrl({}), false);
+});
+
+test("인증번호: 숫자만 6자리로, 6자리가 아니면 비어 있다", () => {
+  assert.equal(digitsOnly(" 482-913 "), "482913");
+  assert.equal(digitsOnly("4829137"), "482913"); // 붙여 넣기로 넘쳐도 6자리까지
+  assert.equal(digitsOnly("abc"), "");
+  assert.equal(digitsOnly(null), "");
+  assert.equal(parseCode("482 913"), "482913");
+  assert.equal(parseCode("48291"), "");
+  assert.equal(parseCode(undefined), "");
+});
+
+test("남은 시간 표시: 02:48 형식, 음수는 00:00", () => {
+  assert.equal(formatClock(168), "02:48");
+  assert.equal(formatClock(180), "03:00");
+  assert.equal(formatClock(9), "00:09");
+  assert.equal(formatClock(-5), "00:00");
+});
+
+test("인증번호 오류 문구", () => {
+  assert.match(errorMessage({ code: "verification_code_invalid" }), /인증번호가 맞지 않아요/);
+  assert.match(errorMessage({ code: "verification_code_locked" }), /다시 받아/);
+  assert.match(errorMessage({ code: "reset_code_invalid" }), /만료/);
+  assert.match(errorMessage({ code: "invalid_role_detail" }), /40자/);
+});
+
+test("이메일 선택 칸: 비어 있으면 통과, 적었다면 형식을 본다", async () => {
+  const { checkOptionalEmail } = await import("../src/features/auth/validation.js");
+  assert.equal(checkOptionalEmail(""), "");
+  assert.equal(checkOptionalEmail("   "), "");
+  assert.equal(checkOptionalEmail("jimin@example.com"), "");
+  assert.notEqual(checkOptionalEmail("nope"), "");
+});
+
+test("회원가입 요청: 이메일이 비어 있으면 본문에서 뺀다", async () => {
+  const calls = [];
+  const realFetch = globalThis.fetch;
+  process.env.EXPO_PUBLIC_API_URL = "http://api.test";
+  globalThis.fetch = async (url, init = {}) => {
+    calls.push(JSON.parse(init.body));
+    return new Response(JSON.stringify({ user: {} }), { status: 201, headers: { "Content-Type": "application/json" } });
+  };
+  try {
+    const { signupAccount } = await import("../src/features/auth/api.js");
+    await signupAccount({ loginId: "Jimin_Kim", password: "Sunny-day-2026", email: "  ", name: "지민" });
+    await signupAccount({ loginId: "jimin2", password: "Sunny-day-2026", email: " A@B.com ", name: "지민", role: "other", roleDetail: "이모" });
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+  assert.equal("email" in calls[0], false);
+  assert.equal(calls[0].login_id, "jimin_kim");
+  assert.equal(calls[1].email, "a@b.com");
+  assert.equal(calls[1].role_detail, "이모");
 });

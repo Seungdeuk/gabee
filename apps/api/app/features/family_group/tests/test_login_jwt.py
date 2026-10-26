@@ -114,15 +114,16 @@ def test_successful_login_resets_the_failure_count(client):
 
 
 # ---------- Bearer 인증 ----------
-def test_bearer_authenticates_me_and_existing_apis(client):
+def test_bearer_authenticates_me_and_existing_apis(client, monkeypatch):
+    monkeypatch.setattr(settings, "require_email_verification", True)  # 선택 정책을 켠 환경
     mailer.set_mailer(_NullMailer())  # 메일이 설정된 환경(이메일 인증 정책 적용)
     register(client)
     access = login(client).json()["access_token"]
     me = client.get(ME, headers=bearer(access))
     assert me.status_code == 200 and me.json()["login_id"] == "jimin_kim"
     assert set(me.json()) == {
-        "id", "name", "role", "active_group_id", "location_consent",
-        "login_id", "email", "email_verified",
+        "id", "name", "role", "role_detail", "active_group_id", "location_consent",
+        "login_id", "email", "email_verified", "photo_url",
     }  # fmt: skip
     assert client.get("/family-group/me", headers=bearer(access)).status_code == 200
     blocked = client.post(

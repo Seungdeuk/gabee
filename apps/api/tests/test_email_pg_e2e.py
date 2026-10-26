@@ -35,6 +35,9 @@ class Outbox:
     def token(self):
         return re.search(r"token=([\w-]+)", self.mails[-1].body).group(1)
 
+    def code(self):
+        return re.search(r"코드: (\d{6})", self.mails[-1].body).group(1)
+
 
 @pytest.fixture
 def outbox():
@@ -59,8 +62,11 @@ def register_and_login(client):
 
 
 def test_verification_on_postgres_stores_only_the_hash_and_unlocks_family_creation(
-    pg_client, outbox
+    pg_client, outbox, monkeypatch
 ):
+    from app.shared.config import settings
+
+    monkeypatch.setattr(settings, "require_email_verification", True)  # 선택 정책을 켠 환경
     client, pg = pg_client
     session = register_and_login(client)
     auth = {"Authorization": f"Bearer {session['access_token']}"}
@@ -157,4 +163,61 @@ def test_eight_simultaneous_resets_of_one_token_only_one_wins(pg_client, outbox)
     assert (
         client.post(f"{P}/refresh", json={"refresh_token": session["refresh_token"]}).status_code
         == 401
+    )
+
+
+def test_six_digit_code_on_postgres_verifies_and_is_stored_only_as_a_hash(pg_client, outbox):
+    client, pg = pg_client
+    session = register_and_login(client)
+    auth = {"Authorization": f"Bearer {session['access_token']}"}
+    assert client.post(f"{P}/email/verify/request", headers=auth).status_code == 204
+    code = outbox.code()
+    ((code_hash, attempts),) = rows(
+        pg, "SELECT code_hash, failed_attempts FROM email_verifications"
+    )
+    assert len(code_hash) == 64 and code not in code_hash and attempts == 0
+    ok = client.post(f"{P}/email/verify/confirm-code", json={"code": code}, headers=auth)
+    assert ok.status_code == 200 and ok.json() == {"email_verified": True}
+    assert rows(pg, "SELECT email_verified_at IS NOT NULL FROM users") == [(True,)]
+
+
+def test_simultaneous_wrong_codes_never_exceed_the_attempt_limit(pg_client, outbox):
+    client, pg = pg_client
+    session = register_and_login(client)
+    auth = {"Authorization": f"Bearer {session['access_token']}"}
+    client.post(f"{P}/email/verify/request", headers=auth)
+    right = outbox.code()
+    wrong = "000000" if right != "000000" else "111111"
+
+    def go(_):
+        r = client.post(f"{P}/email/verify/confirm-code", json={"code": wrong}, headers=auth)
+        return r.json()["code"]
+
+    with ThreadPoolExecutor(max_workers=10) as pool:
+        results = list(pool.map(go, range(10)))
+    assert results.count("verification_code_invalid") == 5, (
+        results
+    )  # 한도(5) 만큼만 실제로 비교된다
+    assert results.count("verification_code_locked") == 5, results
+    assert rows(pg, "SELECT failed_attempts FROM email_verifications") == [(5,)]
+    locked = client.post(f"{P}/email/verify/confirm-code", json={"code": right}, headers=auth)
+    assert locked.json()["code"] == "verification_code_locked"  # 맞는 코드도 한도 뒤에는 못 쓴다
+
+
+def test_reset_with_the_code_on_postgres(pg_client, outbox):
+    client, pg = pg_client
+    register_and_login(client)
+    client.post(f"{P}/password/reset/request", json={"email": "j@example.com"})
+    code = outbox.code()
+    ((code_hash,),) = rows(pg, "SELECT code_hash FROM password_resets")
+    assert len(code_hash) == 64 and code not in code_hash
+    new = "Brand-new-pass-77"
+    r = client.post(
+        f"{P}/password/reset/confirm-code",
+        json={"email": "j@example.com", "code": code, "new_password": new},
+    )
+    assert r.status_code == 204
+    assert (
+        client.post(f"{P}/login", json={"login_id": "jimin_kim", "password": new}).status_code
+        == 200
     )

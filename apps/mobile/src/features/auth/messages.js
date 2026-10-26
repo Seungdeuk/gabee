@@ -20,11 +20,22 @@ const BY_CODE = {
   email_not_verified: "이메일 인증을 먼저 완료해 주세요",
   verification_invalid: "인증 링크(코드)가 올바르지 않아요",
   verification_used: "이미 사용된 인증 링크예요",
-  verification_expired: "인증 링크가 만료됐어요. 인증 메일을 다시 받아 주세요",
+  verification_expired: "인증번호가 만료됐어요. 인증번호를 다시 받아 주세요",
+  verification_code_invalid: "인증번호가 맞지 않아요. 다시 확인해 주세요",
+  verification_code_locked: "틀린 횟수를 넘었어요. 인증번호를 다시 받아 주세요",
+  reset_code_invalid: "재설정 코드가 맞지 않거나 만료됐어요. 재설정 메일을 다시 받아 주세요",
+  invalid_role_detail: "관계는 40자 이내로 적어 주세요",
   reset_token_invalid: "재설정 링크(코드)가 올바르지 않아요",
   reset_token_used: "이미 사용된 재설정 링크예요. 필요하면 다시 요청해 주세요",
   reset_token_expired: "재설정 링크가 만료됐어요. 다시 요청해 주세요",
   session_expired: "로그인이 만료됐어요. 다시 로그인해 주세요",
+  social_not_configured: "이 로그인 방식은 아직 서버에 설정되지 않았어요",
+  social_token_invalid: "로그인 정보가 올바르지 않아요. 다시 시도해 주세요",
+  social_unavailable: "로그인 서버에 연결하지 못했어요. 잠시 후 다시 시도해 주세요",
+  social_already_linked: "이 소셜 계정은 이미 다른 가비 계정에 연결돼 있어요",
+  social_provider_already_linked: "이미 같은 종류의 소셜 계정이 연결돼 있어요",
+  last_login_method: "마지막 로그인 방법이라 해제할 수 없어요. 비밀번호를 만들거나 다른 계정을 먼저 연결해 주세요",
+  password_required: "계정 보안을 위해 비밀번호를 한 번 더 입력해 주세요",
 };
 
 /** 초를 "45초" / "3분" 으로. */

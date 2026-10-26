@@ -12,7 +12,7 @@ import { checkLoginIdAvailable, requestEmailVerification, signupAccount } from "
 import AuthLayout from "../components/AuthLayout";
 import Notice from "../components/Notice";
 import { errorMessage } from "../messages";
-import { checkEmail, checkLoginId, checkName, checkPassword, normalizeLoginId } from "../validation";
+import { checkLoginId, checkName, checkOptionalEmail, checkPassword, normalizeLoginId } from "../validation";
 
 const ROLES = [
   { key: "parent", label: "부모" },
@@ -21,13 +21,13 @@ const ROLES = [
 ];
 
 /**
- * 회원가입. 가입이 끝나면 바로 로그인하고 인증 메일을 보낸 뒤 이메일 인증 화면으로 간다.
+ * 회원가입. 이메일은 선택이다. 가입이 끝나면 바로 로그인하고, 이메일을 적었다면 인증 메일을 보낸 뒤 인증 화면으로("나중에 할게요"로 건너뛸 수 있다), 없으면 바로 홈으로 간다.
  * 메일 설정이 없는 서버에서는 인증 메일을 못 보내도 가입·로그인은 완료된다.
  */
 export default function SignupScreen() {
   const router = useRouter();
   const { signIn } = useAuth();
-  const [form, setForm] = useState({ loginId: "", name: "", email: "", password: "", password2: "", role: "child" });
+  const [form, setForm] = useState({ loginId: "", name: "", email: "", password: "", password2: "", role: "child", roleDetail: "" });
   const [errors, setErrors] = useState({});
   const [idState, setIdState] = useState({ checked: "", available: null, busy: false, message: "" });
   const [formError, setFormError] = useState("");
@@ -38,7 +38,7 @@ export default function SignupScreen() {
     const next = {
       loginId: checkLoginId(form.loginId),
       name: checkName(form.name),
-      email: checkEmail(form.email),
+      email: checkOptionalEmail(form.email),
       password: checkPassword(form.password, form.loginId, form.email),
       password2: form.password === form.password2 ? "" : "비밀번호가 서로 달라요",
     };
@@ -84,6 +84,11 @@ export default function SignupScreen() {
       router.replace("/login"); // 가입은 됐지만 자동 로그인에 실패: 로그인 화면에서 직접 들어간다
       return;
     }
+    if (!form.email.trim()) {
+      setBusy(false);
+      router.replace("/chat"); // 이메일은 선택이라 없으면 인증 단계 없이 바로 시작한다
+      return;
+    }
     let sent = "0";
     try {
       await requestEmailVerification();
@@ -122,8 +127,19 @@ export default function SignupScreen() {
         <Text style={styles.roleLabel}>가족 안에서의 역할</Text>
         <Segmented options={ROLES} value={form.role} onChange={set("role")} />
       </View>
+      {form.role === "other" ? (
+        <Field
+          label="가족과의 관계"
+          value={form.roleDetail}
+          onChangeText={set("roleDetail")}
+          maxLength={40}
+          placeholder="예: 이모, 할머니, 삼촌"
+          hint="적어 두면 가족에게 이 관계로 보여요 (선택)"
+          testID="signup-role-detail"
+        />
+      ) : null}
       <Field
-        label="이메일"
+        label="이메일 (선택)"
         value={form.email}
         onChangeText={set("email")}
         keyboardType="email-address"
@@ -131,7 +147,7 @@ export default function SignupScreen() {
         autoCorrect={false}
         autoComplete="email"
         error={errors.email}
-        hint="인증 메일을 받을 주소예요"
+        hint="비밀번호를 잊었을 때 찾는 데 써요. 없어도 가입하고 가족에 참여할 수 있어요"
         testID="signup-email"
       />
       <Field
