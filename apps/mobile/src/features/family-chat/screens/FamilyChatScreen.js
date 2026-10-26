@@ -12,6 +12,7 @@ import { colors, font, radius, spacing } from "@/theme";
 import { getRoomInfo, listRooms, listTodos, openDirectRoom } from "../api";
 import { isNoGroup, previewText, roomErrorMessage } from "../chatUtils";
 import ChatListHeader from "../components/ChatListHeader";
+import ContentSearchSection from "../components/ContentSearchSection";
 import EmptyChats from "../components/EmptyChats";
 import NewChatPicker from "../components/NewChatPicker";
 import RoomRow from "../components/RoomRow";
@@ -19,6 +20,8 @@ import TodoCard from "../components/TodoCard";
 import { waitForPendingMarkRead } from "../pendingRead";
 import { OPEN_PREVIEW_LIMIT, openPreview } from "../todoUtils";
 import { buildRoomRows, formatRoomTime, matchesQuery, pickableMembers } from "../listUtils";
+import { focusRoute, searchRoomLabel } from "../searchUtils";
+import useChatSearch from "../useChatSearch";
 
 /** 로딩 중 행 모양 뼈대. */
 function Skeleton() {
@@ -40,10 +43,12 @@ function Skeleton() {
 /**
  * 소통 탭: 메신저 채팅 목록 모양의 가족 전체방과 1:1 방, 가족 연락처.
  * 화면에 올 때마다 한 번만 불러온다(폴링 없음). 줄을 누르면 채팅방으로 들어가고, 새 대화 버튼으로 가족 구성원과 1:1 방을 연다.
+ * 돋보기 검색은 방 이름 일치 아래에 "대화 내용" 검색 결과(서버 글자 일치)를 함께 보여 주고, 결과를 누르면 그 방의 해당 메시지 위치로 열린다.
  */
 export default function FamilyChatScreen() {
   const router = useRouter();
-  const [query, setQuery] = useState("");
+  const search = useChatSearch();
+  const query = search.query;
   const [searching, setSearching] = useState(false);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [opening, setOpening] = useState(null); // 1:1 방을 여는 중인 상대 id
@@ -106,7 +111,7 @@ export default function FamilyChatScreen() {
   };
 
   const toggleSearch = () => {
-    if (searching) setQuery("");
+    if (searching) search.reset();
     setSearching((v) => !v);
   };
 
@@ -116,7 +121,7 @@ export default function FamilyChatScreen() {
         <ChatListHeader
           searching={searching}
           query={query}
-          onQuery={setQuery}
+          onQuery={search.setQuery}
           onToggleSearch={toggleSearch}
           onNew={() => {
             if (state.status !== "ready") return; // 가족 정보를 읽기 전에는 상대 목록이 없다
@@ -143,11 +148,15 @@ export default function FamilyChatScreen() {
               <Button label="다시 시도" small onPress={load} />
             </View>
           ) : shown.length === 0 ? (
-            <Text style={styles.empty}>찾는 대화가 없어요</Text>
+            query.trim() ? null : <Text style={styles.empty}>찾는 대화가 없어요</Text>
           ) : (
             shown.map((room) => <RoomRow key={room.id} room={room} onPress={() => openRoom(room)} />)
           )}
         </View>
+
+        {state.status === "ready" && searching && query.trim() ? (
+          <ContentSearchSection search={search} roomLabel={(item) => searchRoomLabel(item, state.rooms, members)} onPick={(item) => router.push(focusRoute(item))} />
+        ) : null}
 
         {state.status === "ready" && todoPreview ? <TodoCard preview={todoPreview} onPress={() => router.push("/family-todos")} /> : null}
 

@@ -109,17 +109,37 @@ export const openDirectRoom = (userId) => apiFetch("/family-chat/rooms/direct", 
 /**
  * 채팅 메시지 조회. 결과는 항상 오래된 순이다. 대화 글자는 쿼리에 넣지 않는다(숫자 범위만).
  * - latest: 가장 최근 limit 개 / beforeId: 그 id 보다 오래된 것 중 가장 최근 limit 개 / afterId: 그 id 뒤의 새 메시지
- * @param {{ latest?: boolean, beforeId?: number, afterId?: number, limit?: number, roomId?: string | null }} [options] limit 기본 100, 최대 200, roomId 가 없으면 가족 전체방
+ * - aroundId: 그 메시지를 가운데로 앞뒤 메시지(검색 결과로 이동할 때). 서버 계약은 별도 PR 의 `around_id` 이고, 다른 범위 옵션과 함께 쓰지 않아 aroundId 가 있으면 나머지 범위는 무시한다.
+ * @param {{ latest?: boolean, beforeId?: number, afterId?: number, aroundId?: number, limit?: number, roomId?: string | null }} [options] limit 기본 100, 최대 200, roomId 가 없으면 가족 전체방
  * @returns {Promise<{ id: number, user_id: string, user_name: string, text: string, created_at: string, attachment?: { id: string, kind: string, url: string, thumb_url: string, width: number, height: number } | null }[]>}
  */
-export function listMessages({ latest = false, beforeId, afterId, limit = 100, roomId } = {}) {
+export function listMessages({ latest = false, beforeId, afterId, aroundId, limit = 100, roomId } = {}) {
   const params = [];
-  if (latest) params.push("latest=true");
-  if (beforeId != null) params.push(`before_id=${Number(beforeId)}`);
-  if (afterId != null) params.push(`after_id=${Number(afterId)}`);
+  if (aroundId != null) {
+    params.push(`around_id=${Number(aroundId)}`);
+  } else {
+    if (latest) params.push("latest=true");
+    if (beforeId != null) params.push(`before_id=${Number(beforeId)}`);
+    if (afterId != null) params.push(`after_id=${Number(afterId)}`);
+  }
   params.push(`limit=${Number(limit)}`);
   if (roomId) params.push(roomParam(roomId));
   return apiFetch(`/family-chat/messages?${params.join("&")}`);
+}
+
+/**
+ * 대화 글자 검색(키워드 일치만, 임베딩·AI 없음). 서버 계약은 별도 PR 의 `GET /family-chat/search` 다.
+ * 공백으로 나눈 모든 낱말이 글자로 포함된 텍스트 메시지만(사진 메시지 제외) 최신순으로 온다. roomId 가 없으면 내가 접근할 수 있는 모든 방.
+ * 검색어는 요청 주소에만 들어가고(인코딩) 앱은 어디에도 기록하지 않는다. 오류: 422(검색어 길이), 429(분당 횟수), 404(권한 없는 방), 401.
+ * @param {{ q: string, roomId?: string | null, limit?: number, beforeId?: number | null }} options q 1~100자, limit 1~50(기본 20), beforeId 는 직전 응답의 next_before_id
+ * @returns {Promise<{ items: { id: number, room_id: string, room_kind: "family" | "direct", peer_user_id: string | null, user_id: string, user_name: string, text: string, created_at: string }[], next_before_id: number | null }>}
+ */
+export function searchMessages({ q, roomId, limit = 20, beforeId } = {}) {
+  const params = [`q=${encodeURIComponent(String(q ?? ""))}`];
+  if (roomId) params.push(roomParam(roomId));
+  params.push(`limit=${Number(limit)}`);
+  if (beforeId != null) params.push(`before_id=${Number(beforeId)}`);
+  return apiFetch(`/family-chat/search?${params.join("&")}`);
 }
 
 /**
