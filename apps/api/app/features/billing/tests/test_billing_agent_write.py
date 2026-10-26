@@ -4,7 +4,6 @@ from datetime import timedelta
 
 import jwt
 
-from app.features.ai_assistant import service as chat_service
 from app.features.ai_assistant.knowledge import rag_chat
 from app.shared import tokens
 from app.shared.config import settings
@@ -148,7 +147,6 @@ def test_main_chat_passes_proposal_to_user(client, family, monkeypatch):
 
     _setup(monkeypatch, fake)
     monkeypatch.setattr(rag_chat, "_post", fake)
-    chat_service._calls.clear()
     r = client.post("/ai-assistant/chat", json={"message": "치과 5만원 등록해줘"}, headers=a).json()
     assert r["source"] == "ai" and len(r["proposals"]) == 1
     assert r["proposals"][0]["tab"] == "billing" and _expenses(client, a) == []
