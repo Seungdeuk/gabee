@@ -31,6 +31,7 @@ Jev = Callable[[dict, dict], dict]  # (state, questions) -> answers
 MAX_CHARS = 3000  # 분류기·Jev 에 넘기는 글자 수(앞부분이 종류를 가장 잘 말해 준다)
 CLASSIFIER_CONFIDENT = 0.7  # 분류기 최고 확률이 이 이상이면 확정, 미만이면 Jev 로 넘긴다
 REVIEW_BELOW = 0.6
+MIN_PHOTO_TEXT = 6  # 사진에서 읽은 글자(한글·영문·숫자)가 이보다 적으면 글자 없는 사진으로 본다
 _RULES = (  # (종류, 낱말들) — 위에서부터 먼저 맞는 것
     ("고지서", ("고지서", "납기", "납부", "청구금액", "사용량", "관리비", "자동이체")),
     ("영수증", ("영수증", "합계", "승인번호", "카드", "부가세", "결제금액", "판매")),
@@ -95,9 +96,13 @@ def classify(result: PreprocessResult, jev: Jev | None = None) -> Classification
     if result.quality.status == "failed":
         return None
     text = result.content.text.strip()
+    # 글자 없는 사진도 OCR 이 간판·무늬에서 "ak" 같은 찌꺼기를 읽어 오므로, 의미 있는 글자가 거의 없으면 글자 없는 사진으로 본다
+    if (
+        result.source.kind == "image"
+        and len(re.sub(r"[^0-9A-Za-z가-힣]", "", text)) < MIN_PHOTO_TEXT
+    ):
+        return Classification(doc_type="사진", route="daily_share", confidence=0.9, by="rule")
     if not text:
-        if result.source.kind == "image":
-            return Classification(doc_type="사진", route="daily_share", confidence=0.9, by="rule")
         return _review("빈 문서")
     if result.privacy.sensitive == "prescription":
         return _by_rule("처방전", 0.9, text)

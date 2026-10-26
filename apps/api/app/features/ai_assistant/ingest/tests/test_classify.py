@@ -158,6 +158,18 @@ def test_photo_without_text_and_failed_file(fake_classifier):
     assert clf.texts == []
 
 
+def test_ocr_garbage_on_a_photo_is_still_a_photo_without_text(fake_classifier):
+    # 풍경 사진에서 OCR 이 "ak" 같은 찌꺼기를 읽어도 일상 메모 같은 짧은 글 종류로 끌려가면 안 된다
+    clf = fake_classifier(kind="일상 메모", confidence=0.95)
+    garbage = preprocess(png(), "p.png", ocr=FakeOcr(["ak", "-"]))
+    c = classify(garbage)
+    assert c.doc_type == "사진" and c.route == "daily_share" and c.by == "rule"
+    assert clf.texts == []
+    # 글자가 충분히 있는 사진은 그대로 분류기로 간다
+    sign = preprocess(png(), "p.png", ocr=FakeOcr(["새봄초등학교 가정통신문", "현장체험학습 안내"]))
+    assert classify(sign).by == "classifier" and len(clf.texts) == 1
+
+
 class FakeJev:
     def __init__(self, answers=None, error=False):
         self.answers = answers or {}
