@@ -5840,6 +5840,82 @@
         }
       }
     },
+    "/billing/agent/chat": {
+      "post": {
+        "tags": [
+          "billing"
+        ],
+        "summary": "Agent Chat",
+        "description": "정산(가계) 에이전트와 직접 대화한다(메인 에이전트를 거치지 않는다). 읽기 전용이라 데이터를 바꾸지 않는다.",
+        "operationId": "agent_chat_billing_agent_chat_post",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-gyeot-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Gyeot-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AgentChatIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentChatOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/care/records": {
       "put": {
         "tags": [
@@ -7317,6 +7393,82 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/LocationsLatest"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/care/agent/chat": {
+      "post": {
+        "tags": [
+          "care"
+        ],
+        "summary": "Agent Chat",
+        "description": "돌봄 에이전트와 직접 대화한다(메인 에이전트를 거치지 않는다). 읽기 전용이라 데이터를 바꾸지 않는다.",
+        "operationId": "agent_chat_care_agent_chat_post",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-gyeot-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Gyeot-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AgentChatIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentChatOut"
                 }
               }
             }
@@ -8836,6 +8988,82 @@
           "user"
         ],
         "title": "AccountSignupOut"
+      },
+      "AgentChatIn": {
+        "properties": {
+          "message": {
+            "type": "string",
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Message"
+          },
+          "history": {
+            "items": {
+              "$ref": "#/components/schemas/AgentChatTurn"
+            },
+            "type": "array",
+            "maxItems": 10,
+            "title": "History"
+          }
+        },
+        "type": "object",
+        "required": [
+          "message"
+        ],
+        "title": "AgentChatIn"
+      },
+      "AgentChatOut": {
+        "properties": {
+          "reply": {
+            "type": "string",
+            "title": "Reply"
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "ai",
+              "fallback"
+            ],
+            "title": "Source"
+          },
+          "tool_calls": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Tool Calls"
+          }
+        },
+        "type": "object",
+        "required": [
+          "reply",
+          "source",
+          "tool_calls"
+        ],
+        "title": "AgentChatOut"
+      },
+      "AgentChatTurn": {
+        "properties": {
+          "role": {
+            "type": "string",
+            "enum": [
+              "user",
+              "assistant"
+            ],
+            "title": "Role"
+          },
+          "text": {
+            "type": "string",
+            "maxLength": 4000,
+            "title": "Text"
+          }
+        },
+        "type": "object",
+        "required": [
+          "role",
+          "text"
+        ],
+        "title": "AgentChatTurn"
       },
       "AiLimitsOut": {
         "properties": {

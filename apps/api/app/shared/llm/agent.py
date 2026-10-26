@@ -126,13 +126,36 @@ def run_agent(
     raise LLMUnavailable("AI 가 정해진 횟수 안에 답을 끝내지 못했어요")
 
 
+def build_messages(question: str, history: list[dict] | None) -> list[dict]:
+    """앞 대화를 LLM 형식으로 바꾼다(user 로 시작하고 user/assistant 가 번갈아 나오게 맞춘다)."""
+    out: list[dict] = []
+    for turn in (history or [])[-10:]:
+        role, text = turn["role"], turn["text"].strip()
+        if not text or (not out and role != "user"):
+            continue
+        if out and out[-1]["role"] == role:
+            out[-1]["content"] += chr(10) + text
+        else:
+            out.append({"role": role, "content": text})
+    if out and out[-1]["role"] == "user":
+        out[-1]["content"] += chr(10) + question
+    else:
+        out.append({"role": "user", "content": question})
+    return out
+
+
 def ask_agent(
-    system: str, question: str, tools: list[Tool], post: Post | None = None, max_steps: int = 4
+    system: str,
+    question: str,
+    tools: list[Tool],
+    post: Post | None = None,
+    max_steps: int = 4,
+    history: list[dict] | None = None,
 ) -> AgentReply:
     """run_agent 를 부르되 실패하면 예외 대신 can_answer=False 인 답을 돌려준다(부른 에이전트가 이어서 말하도록)."""
     try:
         return run_agent(
-            system, [{"role": "user", "content": question}], tools, post=post, max_steps=max_steps
+            system, build_messages(question, history), tools, post=post, max_steps=max_steps
         )
     except LLMUnavailable as e:
         return AgentReply(f"담당 에이전트가 답하지 못했어요: {e}", can_answer=False)

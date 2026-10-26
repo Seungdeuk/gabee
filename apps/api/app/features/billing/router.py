@@ -3,8 +3,10 @@ from sqlalchemy.orm import Session
 
 from app.shared.auth import current_group_id, current_user
 from app.shared.db import get_db
+from app.shared.llm import agent_chat as agent_chat_service
+from app.shared.llm.schemas import AgentChatIn, AgentChatOut
 
-from . import service
+from . import agent, service
 from .schemas import (
     AllowanceApproveIn,
     AllowanceMoneyIn,
@@ -365,3 +367,14 @@ def void_entry(
 ) -> AllowanceOut:
     """장부 내역 취소(지우지 않고 취소 표시)."""
     return service.void_entry(db, group_id, user, child_id, entry_id)
+
+
+@router.post("/agent/chat", response_model=AgentChatOut)
+def agent_chat(
+    body: AgentChatIn,
+    user=Depends(current_user),
+    group_id: str = Depends(current_group_id),
+    db: Session = Depends(get_db),
+) -> AgentChatOut:
+    """정산(가계) 에이전트와 직접 대화한다(메인 에이전트를 거치지 않는다). 읽기 전용이라 데이터를 바꾸지 않는다."""
+    return agent_chat_service.chat(db, group_id, user, body, agent.ask)

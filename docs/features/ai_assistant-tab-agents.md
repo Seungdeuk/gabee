@@ -19,6 +19,13 @@ POST /ai-assistant/chat
 - 공통 도구 호출 루프는 `app/shared/llm/agent.py`(Anthropic Messages API, 모델은 `ANTHROPIC_MODEL`, 기본 Haiku). 새 의존성은 없다.
 - 탭 에이전트가 실패하면 `can_answer: false` 로 돌려주고 메인이 확인하지 못했다고 안내한다.
 
+## 탭 에이전트와 직접 대화 (멘토링: "서브 에이전트는 채팅이 되도록 만들어 통째로 메인에 붙인다")
+
+- `POST /billing/agent/chat`, `POST /care/agent/chat` — 요청 `{message, history[≤10]}`, 응답 `{reply, source(ai|fallback), tool_calls[]}`. 메인 에이전트를 거치지 않고 그 탭 에이전트에게 바로 묻는다(읽기 전용).
+- 가족 구성원만 쓴다(`current_group_id`). 하루 100회 한도는 사용자별 프로세스 메모리 기준(`shared/llm/agent_chat.py`), 초과 시 429 `daily_limit`. API 키가 없으면 200 + `source: fallback`.
+- 처리 공통 코드는 `shared/llm/agent_chat.py`, 요청·응답은 `shared/llm/schemas.py`, 탭별 `ask(..., history=)` 가 앞 대화를 LLM 에 전달한다.
+- 실제 LLM 으로 이 엔드포인트를 호출해 보는 시험은 아직 안 했다(테스트는 가짜 LLM). 앱 화면·웹 테스트 페이지는 없다.
+
 ## 도구
 
 | 에이전트 | 도구 |
@@ -37,7 +44,7 @@ POST /ai-assistant/chat
 ## 아직 안 한 것 (다음 단계)
 
 - 쓰기 도구(지출 등록, 용돈 승인 등): "제안 → 사용자 확인 → 실행" 두 단계로 추가. 멘토링은 서브 에이전트가 등록도 할 수 있어야 한다고 했다.
-- 탭 에이전트 단독 채팅 엔드포인트(멘토링의 "서브 에이전트는 채팅으로 테스트")와 질문 평가셋.
+- 앱/웹 테스트 화면(단독 채팅 엔드포인트는 만들었다), 평가셋 확대(후속 질문·주입 사례 추가는 완료).
 - 일정·소통·자료정리 에이전트, 여러 탭의 데이터를 종합하는 추천.
 - 채팅 응답에 어느 에이전트·도구를 썼는지 표시.
 

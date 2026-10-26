@@ -97,7 +97,14 @@ def system_prompt() -> str:
 
 
 def ask(
-    db: Session, group_id: str, user: User, question: str, post: Post | None = None
+    db: Session,
+    group_id: str,
+    user: User,
+    question: str,
+    post: Post | None = None,
+    history: list[dict] | None = None,
 ) -> AgentReply:
     ensure_group_member(db, user.id, group_id)
-    return ask_agent(system_prompt(), question, build_tools(db, group_id, user), post=post)
+    return ask_agent(
+        system_prompt(), question, build_tools(db, group_id, user), post=post, history=history
+    )
