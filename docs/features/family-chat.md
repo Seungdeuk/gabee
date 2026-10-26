@@ -77,6 +77,8 @@
 - `LinkOut`: `{id, room_id, message_id, kind, target_id, title, date, time("HH:MM"), created_by, created_by_name, created_at, message_text(원본 앞 100자), message_user_name}`.
 - 권한: 인증과 `current_group_id` 필수, 방은 `resolve_room` 으로 확인하고 모든 조회·삭제는 그 방 id 를 SQL 조건에 넣는다. 다른 가족의 방·참여하지 않은 1:1 방·없는 방은 조회/생성/삭제 모두 같은 404 다(가족 전체방은 방 id 로 저장하고 `room_id` 가 비어 있는 옛 메시지도 연결할 수 있다).
 - 제한: 생성·삭제 합쳐 사용자별 분당 30회(429 `too_many_requests` + `Retry-After`, 프로세스 메모리 `FailureLimiter`).
+- 입력 검사: 제목·`target_id`·`room_id`·`link_id` 에 NUL 을 포함한 제어문자(C0/C1, 탭·개행 제외)가 있으면 DB 를 부르기 전에 422(`invalid_title`/`invalid_query`)로 거절한다(PostgreSQL 에서 500 이 되고 로그에 입력이 남는 것을 막는다). 제목은 보이지 않는 글자(Cf, 예: ZWSP)를 뺀 뒤 비면 422 `invalid_title`.
+- **동시성**: 생성과 삭제 모두 같은 방 행 잠금(`FOR NO KEY UPDATE`) 아래에서 확인·변경하고 commit 은 서비스에서 한다(이미 지워진 연결을 200 으로 돌려주는 경쟁을 막기 위함). SQLite 시험으로는 이 경쟁을 재현하지 못했고 PostgreSQL 동시 실행은 이번에 직접 확인하지 못했다.
 - **한계(복사본)**: `kind="event"` 는 일정 기능을 import 할 수 없어 `target_id` 의 존재를 검증하지 않는다. 일정이 나중에 지워지거나 바뀌어도 연결 목록은 등록 시점의 복사본(제목·날짜·시간)을 그대로 보여준다. 할 일도 연결을 만든 뒤 제목을 고치거나 지우면 복사본과 달라질 수 있고 연결은 자동으로 지워지지 않는다(앱이 최신 대상과 맞추거나 연결을 지운다).
 - **일정 화면에서 '원본 대화 보기'(이번 범위 아님)**: 일정 앱이 일정의 원본 대화로 가려면 `GET /family-chat/links?kind=event&target_id=<일정 id>`(가족 전체방은 `room_id` 생략, 1:1 방은 `room_id`)로 `message_id`·`room_id` 를 찾고 채팅의 `focusOn(message_id)`(around_id 조회)로 이동하면 된다. 이를 위해 `target_id` 필터를 서버에 미리 넣어 두었다. 방마다 조회해야 하는 한계는 있다(여러 방을 한 번에 찾는 조회는 필요해지면 추가).
 - **AI·외부로 보내지 않는다**: AI 를 부르지 않고 로그에 제목·메시지 글자를 남기지 않는다.
