@@ -6995,6 +6995,158 @@
         }
       }
     },
+    "/billing/agent/chat": {
+      "post": {
+        "tags": [
+          "billing"
+        ],
+        "summary": "Agent Chat",
+        "description": "정산(가계) 에이전트와 직접 대화한다(메인 에이전트를 거치지 않는다). 조회는 바로 답하고, 쓰기는 응답의 proposals 로 제안만 한다(agent/confirm 으로 확인해야 실행).",
+        "operationId": "agent_chat_billing_agent_chat_post",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-gyeot-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Gyeot-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AgentChatIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentChatOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/billing/agent/confirm": {
+      "post": {
+        "tags": [
+          "billing"
+        ],
+        "summary": "Agent Confirm",
+        "description": "에이전트가 제안한 가계 쓰기를 사용자가 확인했을 때 실행한다. 토큰은 제안받은 본인·가족·탭에서 10분 안에 한 번만 쓸 수 있다.",
+        "operationId": "agent_confirm_billing_agent_confirm_post",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-gyeot-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Gyeot-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AgentConfirmIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentConfirmOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/care/records": {
       "put": {
         "tags": [
@@ -8472,6 +8624,158 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/LocationsLatest"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/care/agent/chat": {
+      "post": {
+        "tags": [
+          "care"
+        ],
+        "summary": "Agent Chat",
+        "description": "돌봄 에이전트와 직접 대화한다(메인 에이전트를 거치지 않는다). 조회는 바로 답하고, 쓰기는 응답의 proposals 로 제안만 한다(agent/confirm 으로 확인해야 실행).",
+        "operationId": "agent_chat_care_agent_chat_post",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-gyeot-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Gyeot-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AgentChatIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentChatOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/care/agent/confirm": {
+      "post": {
+        "tags": [
+          "care"
+        ],
+        "summary": "Agent Confirm",
+        "description": "에이전트가 제안한 돌봄 쓰기를 사용자가 확인했을 때 실행한다. 토큰은 제안받은 본인·가족·탭에서 10분 안에 한 번만 쓸 수 있다.",
+        "operationId": "agent_confirm_care_agent_confirm_post",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-gyeot-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Gyeot-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AgentConfirmIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentConfirmOut"
                 }
               }
             }
@@ -9992,6 +10296,123 @@
         ],
         "title": "AccountSignupOut"
       },
+      "AgentChatIn": {
+        "properties": {
+          "message": {
+            "type": "string",
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Message"
+          },
+          "history": {
+            "items": {
+              "$ref": "#/components/schemas/AgentChatTurn"
+            },
+            "type": "array",
+            "maxItems": 10,
+            "title": "History"
+          }
+        },
+        "type": "object",
+        "required": [
+          "message"
+        ],
+        "title": "AgentChatIn"
+      },
+      "AgentChatOut": {
+        "properties": {
+          "reply": {
+            "type": "string",
+            "title": "Reply"
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "ai",
+              "fallback"
+            ],
+            "title": "Source"
+          },
+          "tool_calls": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Tool Calls"
+          },
+          "proposals": {
+            "items": {
+              "$ref": "#/components/schemas/ProposalOut"
+            },
+            "type": "array",
+            "title": "Proposals",
+            "default": []
+          }
+        },
+        "type": "object",
+        "required": [
+          "reply",
+          "source",
+          "tool_calls"
+        ],
+        "title": "AgentChatOut"
+      },
+      "AgentChatTurn": {
+        "properties": {
+          "role": {
+            "type": "string",
+            "enum": [
+              "user",
+              "assistant"
+            ],
+            "title": "Role"
+          },
+          "text": {
+            "type": "string",
+            "maxLength": 4000,
+            "title": "Text"
+          }
+        },
+        "type": "object",
+        "required": [
+          "role",
+          "text"
+        ],
+        "title": "AgentChatTurn"
+      },
+      "AgentConfirmIn": {
+        "properties": {
+          "token": {
+            "type": "string",
+            "maxLength": 4000,
+            "minLength": 10,
+            "title": "Token"
+          }
+        },
+        "type": "object",
+        "required": [
+          "token"
+        ],
+        "title": "AgentConfirmIn"
+      },
+      "AgentConfirmOut": {
+        "properties": {
+          "ok": {
+            "type": "boolean",
+            "title": "Ok"
+          },
+          "summary": {
+            "type": "string",
+            "title": "Summary"
+          }
+        },
+        "type": "object",
+        "required": [
+          "ok",
+          "summary"
+        ],
+        "title": "AgentConfirmOut"
+      },
       "AgentRequest": {
         "properties": {
           "text": {
@@ -11033,6 +11454,14 @@
             },
             "type": "array",
             "title": "Sources",
+            "default": []
+          },
+          "proposals": {
+            "items": {
+              "$ref": "#/components/schemas/ProposalOut"
+            },
+            "type": "array",
+            "title": "Proposals",
             "default": []
           }
         },
@@ -14201,6 +14630,34 @@
         },
         "type": "object",
         "title": "ProfilePhotoOut"
+      },
+      "ProposalOut": {
+        "properties": {
+          "token": {
+            "type": "string",
+            "title": "Token"
+          },
+          "summary": {
+            "type": "string",
+            "title": "Summary"
+          },
+          "tab": {
+            "type": "string",
+            "enum": [
+              "billing",
+              "care"
+            ],
+            "title": "Tab"
+          }
+        },
+        "type": "object",
+        "required": [
+          "token",
+          "summary",
+          "tab"
+        ],
+        "title": "ProposalOut",
+        "description": "에이전트가 제안한 쓰기 동작. 사용자가 확인하면 `POST /<tab>/agent/confirm` 에 token 을 보낸다."
       },
       "PutResult": {
         "properties": {

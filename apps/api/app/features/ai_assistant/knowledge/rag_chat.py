@@ -11,13 +11,17 @@ from dataclasses import dataclass, field
 import httpx
 from sqlalchemy.orm import Session
 
+from app.features.family_group.models import User
 from app.shared import ai_guard
 from app.shared.config import settings
 from app.shared.errors import ApiError
 from app.shared.llm import client as llm
 from app.shared.llm.client import API_URL, API_VERSION
 
-from .. import limits  # noqa: F401  (limits: 어시스턴트 호출 한도를 따로 세도록 등록)
+from .. import (
+    agents,
+    limits,  # noqa: F401  (limits: 어시스턴트 호출 한도를 따로 세도록 등록)
+)
 from . import tools
 
 SYSTEM_PROMPT = (
@@ -52,9 +56,11 @@ SENSITIVE_MASKED_NOTE = (
 )
 
 
-def system_prompt() -> str:
-    return SYSTEM_PROMPT + (
-        SENSITIVE_MASKED_NOTE if settings.chat_include_sensitive else SENSITIVE_HIDDEN_NOTE
+def system_prompt(with_agents: bool = False) -> str:
+    return (
+        SYSTEM_PROMPT
+        + (SENSITIVE_MASKED_NOTE if settings.chat_include_sensitive else SENSITIVE_HIDDEN_NOTE)
+        + (agents.PROMPT_NOTE if with_agents else "")
     )
 
 
@@ -69,6 +75,7 @@ class AskResult:
     source: str  # ai | fallback
     sources: list[dict] = field(default_factory=list)
     tool_calls: list[dict] = field(default_factory=list)
+    proposals: list = field(default_factory=list)  # 사용자 확인을 기다리는 쓰기 제안
 
 
 def _post(body: dict) -> dict:
@@ -156,13 +163,19 @@ def ask(
     question: str,
     post: Post | None = None,
     history: list[dict] | None = None,
+    user: User | None = None,
 ) -> AskResult:
-    """질문 하나에 답한다. `post` 는 테스트에서 가짜 LLM 을 끼우는 자리다."""
+    """질문 하나에 답한다. `post` 는 테스트에서 가짜 LLM 을 끼우는 자리다.
+
+    `user` 가 있으면 정산·돌봄 탭 에이전트에게 물어볼 수 있다(DB 는 탭 에이전트만 읽는다). 탭 에이전트의 모델 호출도
+    같은 `post` 를 쓰므로 `ask_guarded` 의 관문 한 번에 함께 센다."""
     if post is None:
         if not settings.anthropic_api_key:
             return _fallback(db, group_id, question)
         post = _post
     messages = _messages(question, history)
+    # 가족 그룹이 AI 를 켠 경우에만 정산·돌봄 에이전트에게 물을 수 있다(가계·위치가 담당 에이전트를 거쳐 외부로 나가므로)
+    with_agents = user is not None and ai_guard.is_enabled(db, group_id)
     result = AskResult("", "ai")
     seen: set[str] = set()
     refs: dict[str, int] = {}
@@ -172,8 +185,8 @@ def ask(
                 {
                     "model": settings.llm_model,
                     "max_tokens": 1024,
-                    "system": system_prompt(),
-                    "tools": tools.TOOL_SPECS,
+                    "system": system_prompt(with_agents),
+                    "tools": tools.TOOL_SPECS + (agents.tool_specs() if with_agents else []),
                     "messages": messages,
                 }
             )
@@ -188,9 +201,16 @@ def ask(
             outputs = []
             for call in calls:
                 args = call.get("input") or {}
-                result.tool_calls.append({"name": call["name"], "input": args})
+                record = {"name": call["name"], "input": args}
+                result.tool_calls.append(record)
                 try:
-                    data = _run_tool(db, group_id, call["name"], args)
+                    if with_agents and agents.is_agent_tool(call["name"]):
+                        data, record["agent_tool_calls"], made = agents.call(
+                            db, group_id, user, call["name"], args, post
+                        )
+                        result.proposals.extend(made)
+                    else:
+                        data = _run_tool(db, group_id, call["name"], args)
                     err = False
                 except (ValueError, ApiError, TypeError) as e:
                     data, err = {"error": str(e)}, True
@@ -244,6 +264,7 @@ def ask_guarded(
     feature: str,
     history: list[dict] | None = None,
     post: Post | None = None,
+    user: User | None = None,
 ) -> AskResult:
     """`ask` 를 동의·쿨다운·하루 한도·동시 실행 제한(ai_guard.run) 아래에서 부른다.
 
@@ -272,7 +293,7 @@ def ask_guarded(
         return reply
 
     def call() -> tuple[dict, _Usage]:
-        box.append(ask(db, group_id, question, post=counting, history=history))
+        box.append(ask(db, group_id, question, post=counting, history=history, user=user))
         if failed:  # 외부 호출이 실패했는데 fallback 을 성공으로 세지 않는다 → 503 llm_failed + 기록 status="error"
             error = llm.LLMUnavailable(f"AI 호출에 실패했어요 ({type(failed[0]).__name__})")
             error.calls = max(1, used["calls"])  # 실패한 호출도 한도에 센다
