@@ -16,10 +16,11 @@ router.include_router(agent_router)
 @router.get("/events", response_model=list[EventOut])
 def list_events(
     include_past: bool = False,
+    user=Depends(current_user),
     group_id: str = Depends(current_group_id),
     db: Session = Depends(get_db),
 ) -> list[Event]:
-    return service.upcoming(db, group_id, include_past)
+    return service.upcoming(db, group_id, user.id, include_past)
 
 
 @router.post("/events", response_model=EventOut, status_code=201)
@@ -34,14 +35,20 @@ def create_event(
 
 @router.post("/events/{event_id}/confirm", response_model=EventOut)
 def confirm_event(
-    event_id: str, group_id: str = Depends(current_group_id), db: Session = Depends(get_db)
+    event_id: str,
+    user=Depends(current_user),
+    group_id: str = Depends(current_group_id),
+    db: Session = Depends(get_db),
 ) -> Event:
-    return service.confirm(db, group_id, event_id)
+    return service.confirm(db, group_id, user.id, event_id)
 
 
 @router.delete("/events/{event_id}", status_code=204)
 def delete_event(
-    event_id: str, group_id: str = Depends(current_group_id), db: Session = Depends(get_db)
+    event_id: str,
+    user=Depends(current_user),
+    group_id: str = Depends(current_group_id),
+    db: Session = Depends(get_db),
 ) -> Response:
-    service.remove(db, group_id, event_id)
+    service.remove(db, group_id, user.id, event_id)
     return Response(status_code=204)
