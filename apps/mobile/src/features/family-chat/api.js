@@ -1,4 +1,5 @@
-import { apiFetch } from "@/shared/api/client";
+import { apiFetch, apiUrl, authHeaders, ensureFreshAccess, isApiConfigured } from "@/shared/api/client";
+import { photoPath } from "@/shared/photoCache";
 
 import { chatPhotoFileName, chatPhotoMimeType } from "./photo";
 
@@ -232,3 +233,32 @@ export const setNickname = (targetUserId, { nickname = "", memo = "" } = {}) =>
     method: "PUT",
     body: { nickname: nickname.trim() || null, memo: memo.trim() || null },
   });
+
+/**
+ * 채팅방의 사진 모음(최신 먼저, 커서 방식). 서버 계약은 별도 PR 이며 이 형태를 기준으로 한다. AI 를 부르지 않는다.
+ * 오류: 404(들어갈 수 없는 방), 429(분당 60회), 401.
+ * @param {{ roomId?: string | null, kind?: "image" | "file" | "video" | "all", limit?: number, beforeId?: number | null }} [options] roomId 가 없으면 가족 전체방, limit 1~100(기본 40), beforeId 는 이전 응답의 next_before_id
+ * @returns {Promise<{ items: { attachment_id: string, message_id: number, kind: "image", user_id: string, user_name: string, created_at: string, url: string, thumb_url: string | null, width: number | null, height: number | null, size_bytes: number | null }[], next_before_id: number | null, counts: { image: number, file: number, video: number } }>}
+ */
+export function listMedia({ roomId, kind = "image", limit = 40, beforeId } = {}) {
+  const params = [];
+  if (roomId) params.push(roomParam(roomId));
+  params.push(`kind=${["image", "file", "video", "all"].includes(kind) ? kind : "image"}`);
+  params.push(`limit=${Math.min(100, Math.max(1, Math.floor(Number(limit)) || 40))}`);
+  if (beforeId != null && Number(beforeId) >= 1) params.push(`before_id=${Math.floor(Number(beforeId))}`); // 서버는 1 이상만 받는다
+  return apiFetch(`/family-chat/media?${params.join("&")}`);
+}
+
+/**
+ * 사진 원본을 로그인 헤더로 받아 Blob 으로 돌려준다(웹 저장용). 서버가 준 사진 경로만 받고, 토큰은 주소에 넣지 않는다.
+ * @param {string} path 서버가 준 attachment.url
+ * @returns {Promise<Blob>}
+ */
+export async function downloadPhoto(path) {
+  const safe = photoPath(path);
+  if (!safe || !isApiConfigured()) throw new Error("photo_unavailable");
+  await ensureFreshAccess().catch(() => {});
+  const res = await fetch(apiUrl(safe), { headers: authHeaders() });
+  if (!res.ok) throw new Error("photo_unavailable");
+  return res.blob();
+}
