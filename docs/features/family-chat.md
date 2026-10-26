@@ -100,6 +100,19 @@
 - 대화 글자는 이 호출들에 없다(메시지 번호와 사용자 id 만 오간다). 일반 전송과 읽음 처리는 AI 를 부르지 않는다.
 - 시험: `apps/mobile/tests/readreceipts.test.js`(`unreadCount` 경계, `shouldMarkRead`, 배지 문구 "99+", 접근성 라벨, API 경로·본문·Bearer). 실제 기기·웹 화면에서의 동작(포커스 전환, 배지 갱신 등)은 아직 직접 확인하지 못했다.
 
+### 사진 보내기 (앱, Chat 3)
+
+서버 계약(`POST /family-chat/photos`, `GET /family-chat/photos/{id}?size=full|thumb`, 메시지의 `attachment`)은 PR #60 의 서버 절을 참고한다(이 브랜치에는 서버 문서가 없다).
+
+- **보내기**: 입력줄의 + 버튼이 갤러리(시스템 선택기, 권한 요청 없음)에서 사진 한 장 고르기로 바뀌었다(`components/Composer.js`, `pickPhoto.js`). 웹은 올리기 전에 긴 변 2048px 이하 JPEG(0.85)로 줄이고(`shared/shrinkImage.js`, 실패하면 원본), 네이티브는 선택기 `quality` 0.8 로 줄인다. 8MB 를 넘는 것이 분명하면 올리지 않고 안내한다. `api.js` 의 `sendPhoto(asset, roomId)` 가 multipart `file`(+ `roomId` 가 있을 때만 form `room_id`)로 보낸다(Content-Type 은 직접 지정하지 않는다). 1:1 방에서도 같은 방 id 로 동작한다.
+- **진행·오류**: 고르는 동안·보내는 동안 + 버튼이 비활성(진행 표시)이고, 중복 누름은 ref 로 막는다(`ChatRoomScreen` 의 `picking`, `useChatMessages` 의 `photoLock`). 실패하면 입력줄 위에 오류 문구를 보이고(닫기 가능), 다시 + 를 눌러 고르면 재시도다. 문구는 `chatUtils.photoSendErrorMessage`(413 `photo_too_large`, 400 `invalid_image`, 429 `too_many_uploads`, 503 `photo_busy`, 404 방 없음). 사진·대화 내용은 문구·로그에 넣지 않는다.
+- **목록 반영**: 성공하면 서버가 돌려준 메시지를 `useChatMessages.sendImage` 가 `mergeMessages` 로 병합하고 아래로 스크롤한다(임시 "전송 중" 메시지는 없다. 폴링이 먼저 가져와도 id 로 중복 제거).
+- **보기**: `MessageBubble` 이 `attachment` 가 있으면 말풍선 안에 썸네일(`thumb_url`)을 보인다. 크기는 `attachment.width/height` 로 `photo.fitSize` 가 미리 계산한다(최대 220x280, 확대 없음, 크기를 모르면 정사각형이라 레이아웃이 점프하지 않는다). 누르면 `PhotoViewer`(Modal, 원본 `attachment.url`, contain, "사진 닫기" 버튼)로 전체 화면으로 본다. 시각·읽음 숫자는 기존 규칙 그대로다.
+- **인증 이미지**: 공용 `shared/components/AuthImage.js` 가 `useProfilePhoto`(네이티브 expo-image 헤더, 웹 blob 캐시)로 받는다. `shared/photoCache.js` 의 `photoPath` 는 프로필 사진 경로에 더해 서버가 준 `/family-chat/photos/<id>` 와 `?size=thumb|full` 형태만 허용한다(그 밖의 주소에는 로그인 헤더가 나가지 않는다). 채팅 사진은 바뀌지 않으므로 캐시에서 원본·썸네일을 서로 밀어내지 않는다. 토큰은 주소·캐시 키에 들어가지 않는다. `UserAvatar` 동작은 그대로다.
+- **미리보기**: 마지막 메시지가 사진(글자 없음)이면 소통 탭 방 목록과 접근성 라벨에 "사진"(내 것은 "나: 사진")으로 보인다(`chatUtils.previewText`, `buildRoomRows` 가 이를 사용).
+- 시험: `apps/mobile/tests/chatphotos.test.js`(미리보기, 경로 허용/거부, 캐시 키, `sendPhoto` 요청 모양, 오류 문구, 표시 크기, 파일 형식·한도). 실기기·웹의 파일 선택, canvas 줄이기, 네이티브 헤더 로딩, 전체 화면 보기는 아직 직접 확인하지 못했다.
+- 아직 없는 것: 여러 장 한 번에 보내기, 사진 저장·공유, 동영상·파일, 사진 업로드 취소.
+
 ### AI 기능 (서버, `/family-chat/ai` 아래)
 
 코드: `ai_router.py`(경로) → `ai_service.py`(업무 규칙) → `ai_repository.py`(DB 접근), 스키마는 `ai_schemas.py`. 모든 호출은 `app/shared/ai_guard.py` 의 `run` 을 거친다.

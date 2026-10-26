@@ -1,5 +1,7 @@
 import { apiFetch } from "@/shared/api/client";
 
+import { chatPhotoFileName, chatPhotoMimeType } from "./photo";
+
 /**
  * 가족 채팅 AI 호출. 대화 글자는 앱이 보내지 않는다 — 범위(개수·시작 id)만 보내고 서버가 직접 읽는다.
  * 응답 형태는 서버 ai_schemas.py 가 기준이다.
@@ -100,7 +102,7 @@ export const openDirectRoom = (userId) => apiFetch("/family-chat/rooms/direct", 
  * 채팅 메시지 조회. 결과는 항상 오래된 순이다. 대화 글자는 쿼리에 넣지 않는다(숫자 범위만).
  * - latest: 가장 최근 limit 개 / beforeId: 그 id 보다 오래된 것 중 가장 최근 limit 개 / afterId: 그 id 뒤의 새 메시지
  * @param {{ latest?: boolean, beforeId?: number, afterId?: number, limit?: number, roomId?: string | null }} [options] limit 기본 100, 최대 200, roomId 가 없으면 가족 전체방
- * @returns {Promise<{ id: number, user_id: string, user_name: string, text: string, created_at: string }[]>}
+ * @returns {Promise<{ id: number, user_id: string, user_name: string, text: string, created_at: string, attachment?: { id: string, kind: string, url: string, thumb_url: string, width: number, height: number } | null }[]>}
  */
 export function listMessages({ latest = false, beforeId, afterId, limit = 100, roomId } = {}) {
   const params = [];
@@ -116,9 +118,32 @@ export function listMessages({ latest = false, beforeId, afterId, limit = 100, r
  * 메시지를 보낸다(일반 전송은 AI 를 부르지 않는다).
  * @param {string} text 1~2000자
  * @param {string | null} [roomId] 대화방 id, 없으면 가족 전체방
- * @returns {Promise<{ id: number, user_id: string, user_name: string, text: string, created_at: string }>}
+ * @returns {Promise<{ id: number, user_id: string, user_name: string, text: string, created_at: string, attachment?: { id: string, kind: string, url: string, thumb_url: string, width: number, height: number } | null }>}
  */
 export const sendMessage = (text, roomId) => apiFetch("/family-chat/messages", { method: "POST", body: roomId ? { text, room_id: roomId } : { text } });
+
+/**
+ * 사진 메시지를 보낸다(POST /family-chat/photos, multipart 'file' + 선택 form 필드 room_id). 8MB 이하 JPEG/PNG/WebP, 서버가 다시 만든다. AI 를 부르지 않는다.
+ * 웹은 asset.file(없으면 asset.uri 의 blob)을 그대로, 네이티브는 {uri, name, type} 으로 보낸다. Content-Type 은 fetch 가 boundary 와 함께 붙인다.
+ * @param {{ uri: string, file?: Blob, fileName?: string | null, mimeType?: string }} asset expo-image-picker 가 돌려준 asset
+ * @param {string | null} [roomId] 대화방 id, 없으면 가족 전체방(form 에 넣지 않는다)
+ * @returns {Promise<{ id: number, user_id: string, user_name: string, text: string, created_at: string, attachment: { id: string, kind: "image", url: string, thumb_url: string, width: number, height: number } | null }>}
+ */
+export async function sendPhoto(asset, roomId) {
+  const name = chatPhotoFileName(asset);
+  const type = chatPhotoMimeType(asset);
+  const form = new FormData();
+  if (asset.file) {
+    form.append("file", asset.file, name);
+  } else if (/^(blob|data):/.test(asset.uri)) {
+    const blob = await (await fetch(asset.uri)).blob();
+    form.append("file", blob, name);
+  } else {
+    form.append("file", { uri: asset.uri, name, type });
+  }
+  if (roomId) form.append("room_id", roomId);
+  return apiFetch("/family-chat/photos", { method: "POST", body: form });
+}
 
 /**
  * 내 가족 그룹 정보(이름·구성원·내 id). 그룹이 없으면 404.
