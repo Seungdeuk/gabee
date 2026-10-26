@@ -1,7 +1,7 @@
 """chat pinned messages
 
 Revision ID: e8c1f4a7b903
-Revises: d7b3a9f1c248
+Revises: a3c7e9d15f42
 Create Date: 2026-10-26 15:38:32.214898
 
 채팅방 고정 메시지(chat_pinned_messages) 새 테이블만 추가한다(expand). 데이터가 사라지는 변경은 없다.
@@ -15,7 +15,7 @@ from alembic import op
 
 # revision identifiers, used by Alembic.
 revision: str = "e8c1f4a7b903"
-down_revision: str | Sequence[str] | None = "d7b3a9f1c248"
+down_revision: str | Sequence[str] | None = "a3c7e9d15f42"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
