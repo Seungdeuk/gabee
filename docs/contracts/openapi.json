@@ -4500,6 +4500,82 @@
         }
       }
     },
+    "/schedule/agent/confirm": {
+      "post": {
+        "tags": [
+          "schedule"
+        ],
+        "summary": "Confirm Agent Action",
+        "description": "확인 카드(공유해서 등록 등)의 버튼. AI 를 부르지 않고 한도도 쓰지 않는다.",
+        "operationId": "confirm_agent_action_schedule_agent_confirm_post",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-gyeot-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Gyeot-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConfirmRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/schedule/events": {
       "get": {
         "tags": [
@@ -10809,6 +10885,16 @@
               "family"
             ],
             "title": "Channel"
+          },
+          "draft": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Draft"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "type": "object",
@@ -10849,6 +10935,16 @@
             "anyOf": [
               {
                 "$ref": "#/components/schemas/PendingAction"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "draft": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Draft"
               },
               {
                 "type": "null"
@@ -11751,6 +11847,7 @@
             "enum": [
               "event_list",
               "registered",
+              "register_confirm",
               "edit_confirm",
               "delete_confirm",
               "suggestion"
@@ -11930,6 +12027,24 @@
           "code"
         ],
         "title": "CodeIn"
+      },
+      "ConfirmRequest": {
+        "properties": {
+          "action": {
+            "$ref": "#/components/schemas/PendingAction"
+          },
+          "share": {
+            "type": "boolean",
+            "title": "Share",
+            "default": true
+          }
+        },
+        "type": "object",
+        "required": [
+          "action"
+        ],
+        "title": "ConfirmRequest",
+        "description": "확인 카드의 버튼을 눌렀을 때. AI 를 부르지 않는다."
       },
       "ConsentOut": {
         "properties": {
@@ -12167,6 +12282,82 @@
           "meta"
         ],
         "title": "DocSummaryOut"
+      },
+      "Draft": {
+        "properties": {
+          "title": {
+            "type": "string",
+            "maxLength": 120,
+            "title": "Title",
+            "default": ""
+          },
+          "date": {
+            "type": "string",
+            "maxLength": 10,
+            "title": "Date",
+            "default": ""
+          },
+          "start_time": {
+            "type": "string",
+            "maxLength": 5,
+            "title": "Start Time",
+            "default": ""
+          },
+          "end_time": {
+            "type": "string",
+            "maxLength": 5,
+            "title": "End Time",
+            "default": ""
+          },
+          "kind": {
+            "type": "integer",
+            "enum": [
+              0,
+              1,
+              2
+            ],
+            "title": "Kind",
+            "default": 0
+          },
+          "place": {
+            "type": "string",
+            "maxLength": 200,
+            "title": "Place",
+            "default": ""
+          },
+          "memo": {
+            "type": "string",
+            "maxLength": 1000,
+            "title": "Memo",
+            "default": ""
+          },
+          "who_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 20,
+            "title": "Who Ids"
+          },
+          "share_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 20,
+            "title": "Share Ids"
+          },
+          "asks": {
+            "type": "integer",
+            "maximum": 5.0,
+            "minimum": 0.0,
+            "title": "Asks",
+            "default": 0
+          }
+        },
+        "type": "object",
+        "title": "Draft",
+        "description": "등록하려는 일정의 초안. 필수(제목·날짜)가 빠져 되물을 때 응답에 실어 주고, 사용자가 답하면 앱이 그대로 돌려보낸다.\n서버는 저장하지 않는다(stateless). 사용자가 보낸 값이므로 받을 때마다 다시 검증한다."
       },
       "EmailRequestIn": {
         "properties": {
@@ -15008,27 +15199,38 @@
             "type": "string",
             "enum": [
               "edit",
-              "delete"
+              "delete",
+              "register"
             ],
             "title": "Type"
           },
           "event_id": {
             "type": "string",
-            "title": "Event Id"
+            "title": "Event Id",
+            "default": ""
           },
           "changes": {
             "additionalProperties": true,
             "type": "object",
             "title": "Changes"
+          },
+          "draft": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Draft"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "type": "object",
         "required": [
-          "type",
-          "event_id"
+          "type"
         ],
         "title": "PendingAction",
-        "description": "수정·삭제 확인 카드가 들고 있는 실행 정보. 서버는 저장하지 않고(stateless) 확인 요청에 그대로 돌려받는다."
+        "description": "확인 카드가 들고 있는 실행 정보. 서버는 저장하지 않고(stateless) 확인 요청에 그대로 돌려받는다."
       },
       "PendingJoinOut": {
         "properties": {
