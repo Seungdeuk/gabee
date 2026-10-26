@@ -7,6 +7,7 @@ import json
 import re
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from datetime import UTC, datetime, timedelta, timezone
 
 import httpx
 from sqlalchemy.orm import Session
@@ -56,9 +57,24 @@ SENSITIVE_MASKED_NOTE = (
 )
 
 
-def system_prompt(with_agents: bool = False) -> str:
+WEEKDAYS = "월화수목금토일"
+
+
+def today_note(now: datetime | None = None) -> str:
+    """모델은 오늘 날짜를 모르므로 서비스 시간대 기준의 오늘을 알려 준다('최근'·'이번 주'·'곧' 판단에 쓴다)."""
+    day = (now or datetime.now(UTC)).astimezone(
+        timezone(timedelta(hours=settings.ai_day_utc_offset_hours))
+    )
+    return (
+        f"오늘은 {day.date().isoformat()}({WEEKDAYS[day.weekday()]}요일)입니다. "
+        "'지난달', '최근', '이번 주', '곧', '이미 지난' 같은 시간 표현은 이 날짜를 기준으로 판단하세요. "
+    )
+
+
+def system_prompt(with_agents: bool = False, now: datetime | None = None) -> str:
     return (
         SYSTEM_PROMPT
+        + today_note(now)
         + (SENSITIVE_MASKED_NOTE if settings.chat_include_sensitive else SENSITIVE_HIDDEN_NOTE)
         + (agents.PROMPT_NOTE if with_agents else "")
     )
