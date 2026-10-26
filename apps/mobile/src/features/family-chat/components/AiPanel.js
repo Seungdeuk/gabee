@@ -27,10 +27,11 @@ const joinParts = (parts) => parts.filter(Boolean).join(" · ");
  * 채팅방 안 AI 대화 도우미 시트. 열릴 때 설정만 한 번 읽는다. 분석·추천 버튼은 먼저 미리보기(AI 호출 없음)로 "AI에 보내기 전 확인"을 보이고,
  * 사용자가 "AI에 보내기"를 누를 때만 AI 를 부른다. 결과는 서버에 잠시(약 10분) 저장돼 같은 요청에 다시 쓰인다.
  * 닫아도 컴포넌트는 유지되어 마지막 결과를 다시 열면 보여 준다. 닫혀 있는 동안에는 아무 호출도 하지 않는다.
- * @param {{ visible: boolean, onClose: () => void, onPickReply: (text: string) => void }} props
+ * 일정·할 일 후보를 등록하면 onLinked 로 알려 원본 메시지와의 연결을 저장하게 한다(연결 저장이 실패해도 등록은 성공으로 둔다).
+ * @param {{ visible: boolean, onClose: () => void, onPickReply: (text: string) => void, onLinked?: (link: { kind: "event" | "todo", targetId: string, candidate: object }) => void }} props
  * @returns {JSX.Element}
  */
-export default function AiPanel({ visible, onClose, onPickReply }) {
+export default function AiPanel({ visible, onClose, onPickReply, onLinked }) {
   const [settings, setSettings] = useState(null); // parseAiSettings 결과
   const [loadError, setLoadError] = useState("");
   const [busy, setBusy] = useState(""); // "settings" | "analysis" | "replies" | "topics" | ""
@@ -111,11 +112,21 @@ export default function AiPanel({ visible, onClose, onPickReply }) {
     }
   };
 
+  /** 등록이 끝난 뒤 원본 메시지 연결을 부탁한다. 연결은 부가 기능이라 여기서 나는 오류는 등록 결과에 영향을 주지 않는다. */
+  const notifyLinked = (link) => {
+    try {
+      onLinked?.(link);
+    } catch {
+      // 무시
+    }
+  };
+
   const register = async (index, candidate) => {
     setRegistered((r) => ({ ...r, [index]: "sending" }));
     try {
-      await registerScheduleCandidate(candidate);
+      const created = await registerScheduleCandidate(candidate);
       setRegistered((r) => ({ ...r, [index]: "ok" }));
+      notifyLinked({ kind: "event", targetId: created?.id, candidate });
     } catch (e) {
       setRegistered((r) => ({ ...r, [index]: chatErrorMessage(e) }));
     }
@@ -130,8 +141,9 @@ export default function AiPanel({ visible, onClose, onPickReply }) {
       const group = await getRoomInfo();
       const body = candidateToTodoBody(candidate, group.members);
       if (!body) throw Object.assign(new Error("invalid_title"), { code: "invalid_title" });
-      await createTodo(body);
+      const created = await createTodo(body);
       setTodoRegistered((r) => ({ ...r, [index]: "ok" }));
+      notifyLinked({ kind: "todo", targetId: created?.id, candidate });
     } catch (e) {
       todoBusy.current.delete(index); // 실패하면 다시 누를 수 있다
       setTodoRegistered((r) => ({ ...r, [index]: e?.code ? todoErrorMessage(e) : "등록하지 못했어요. 다시 시도해 주세요" }));
