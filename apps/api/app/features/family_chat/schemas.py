@@ -1,4 +1,5 @@
-from datetime import datetime
+from datetime import date, datetime
+from typing import Literal
 
 from pydantic import BaseModel, Field
 
@@ -55,3 +56,34 @@ class RoomOut(BaseModel):
 
 class DirectRoomCreate(BaseModel):
     user_id: str = Field(min_length=1, max_length=32)
+
+
+class TodoCreate(BaseModel):
+    """created_by 같은 값은 받지 않는다(로그인한 사용자에서 유도)."""
+
+    title: str = Field(min_length=1, max_length=120)
+    assignee_id: str | None = Field(default=None, max_length=32)
+    due_date: date | None = None
+    source: Literal["manual", "chat"] = "manual"
+
+
+class TodoUpdate(BaseModel):
+    """보낸 항목만 바꾼다. assignee_id·due_date 에 null 을 보내면 비운다. done 은 완료(true)·되돌리기(false)."""
+
+    title: str | None = Field(default=None, min_length=1, max_length=120)
+    assignee_id: str | None = Field(default=None, max_length=32)
+    due_date: date | None = None
+    done: bool | None = None
+
+
+class TodoOut(BaseModel):
+    id: str
+    title: str
+    assignee_id: str | None
+    due_date: date | None
+    done: bool
+    done_at: datetime | None
+    done_by: str | None
+    created_by: str
+    source: str
+    created_at: datetime
