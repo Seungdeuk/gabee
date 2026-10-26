@@ -303,3 +303,17 @@ export function flushTarget(target, lastMarked, sendingId) {
  * @returns {boolean}
  */
 export const shouldMarkRead = (current, lastMarked, enabled) => Boolean(enabled) && Number(current) >= 1 && Number(current) > Number(lastMarked || 0);
+
+/**
+ * 입력칸에서 Enter 로 보내야 하는지: 웹(키보드 연결)에서 Shift 없이 Enter 를 눌렀고 한글 등 글자 조합 중이 아닐 때만.
+ * Shift+Enter 는 줄바꿈, 폰 화면 키보드(네이티브)의 Enter 도 줄바꿈을 유지한다.
+ * @param {{ key?: string, shiftKey?: boolean, isComposing?: boolean, keyCode?: number } | null | undefined} event 키 이벤트의 nativeEvent
+ * @param {string} platform Platform.OS ("web" | "ios" | "android")
+ * @returns {boolean}
+ */
+export function shouldSendOnEnter(event, platform) {
+  if (platform !== "web" || !event) return false;
+  if (event.key !== "Enter" || event.shiftKey) return false;
+  if (event.isComposing || event.keyCode === 229) return false; // 한글·일본어 입력 조합 중의 Enter 는 글자 확정용
+  return true;
+}

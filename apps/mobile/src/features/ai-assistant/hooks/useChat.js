@@ -2,6 +2,7 @@ import { useCallback, useRef, useState } from "react";
 
 import { getFileStatus, getRecord, sendMessage, updateRecord, uploadFile } from "../api";
 import { formatSeconds } from "../components/ReadingStatus";
+import { AI_ON_DONE, errorMessage, historyForServer } from "../errors";
 
 const POLL_INTERVAL_MS = 2000;
 const POLL_TIMEOUT_MS = 120000;
@@ -19,6 +20,7 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
  *   phase: "idle" | "listening" | "thinking" | "reading",
  *   readingSince: number | null,
  *   confirmDoubts: (messageId: string, edits: string[]) => Promise<void>,   // 흐린 줄 확인 카드의 결과 반영
+ *   markAiEnabled: (messageId: string) => void,   // AI 켜기 안내 카드를 '켰어요' 안내로 바꾼다
  *   send: (text: string, options?: { voice?: boolean }) => Promise<void>,
  *   sendPhoto: (file: { uri: string, name?: string, type?: string, isImage?: boolean }) => Promise<void>,   // 사진·문서 모두 올린다
  *   startListening: () => void,
@@ -42,7 +44,7 @@ export default function useChat() {
     const trimmed = text.trim();
     if (!trimmed) return;
 
-    const history = messagesRef.current.map(({ role, text: t }) => ({ role, text: t }));
+    const history = historyForServer(messagesRef.current); // 오류 말풍선과 답을 못 받은 질문은 외부 AI 로 보내지 않는다
     setMessages((prev) => [...prev, { id: id(), role: "user", text: trimmed, voice }]);
     setPhase("thinking");
     try {
@@ -52,13 +54,15 @@ export default function useChat() {
         { id: id(), role: "assistant", text: reply, sources, draft, draftText: draft?.text },
       ]);
     } catch (e) {
-      setMessages((prev) => [
-        ...prev,
-        { id: id(), role: "assistant", text: e?.message || "답변을 가져오지 못했어요. 잠시 후 다시 시도해 주세요.", sources: [] },
-      ]);
+      setMessages((prev) => [...prev, errorMessage(id(), e)]);
     } finally {
       setPhase("idle");
     }
+  }, []);
+
+  /** 안내 카드에서 AI 를 켠 뒤: 카드를 안내 문장으로 바꾼다(질문은 자동으로 다시 보내지 않는다). */
+  const markAiEnabled = useCallback((messageId) => {
+    setMessages((prev) => prev.map((m) => (m.id === messageId ? { ...m, aiOff: false, text: AI_ON_DONE } : m)));
   }, []);
 
   /** 사진을 올리고, 서버가 분석을 끝낼 때까지 2초 간격으로 확인한다(최대 2분). */
@@ -174,5 +178,5 @@ export default function useChat() {
     setPhase("idle");
   }, []);
 
-  return { messages, phase, readingSince, confirmDoubts, send, sendPhoto, startListening, stopListening, editDraft, reset, load };
+  return { messages, phase, readingSince, confirmDoubts, markAiEnabled, send, sendPhoto, startListening, stopListening, editDraft, reset, load };
 }

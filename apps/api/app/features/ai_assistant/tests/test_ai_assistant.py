@@ -3,6 +3,19 @@
 from tests.helpers import allow_ai
 
 
+def set_assistant_limits(monkeypatch, cooldown=0, per_user=100, per_group=300) -> None:
+    """어시스턴트 묶음 한도를 시험용 값으로 다시 등록한다(시험이 끝나면 묶음 표도 원래대로 돌아간다)."""
+    from app.features.ai_assistant import limits
+    from app.shared import ai_guard
+    from app.shared.config import settings
+
+    monkeypatch.setattr(ai_guard, "_BUCKETS", dict(ai_guard._BUCKETS))
+    monkeypatch.setattr(settings, "ai_assistant_cooldown_seconds", cooldown)
+    monkeypatch.setattr(settings, "ai_assistant_max_calls_per_user_per_day", per_user)
+    monkeypatch.setattr(settings, "ai_assistant_max_calls_per_group_per_day", per_group)
+    limits.register()
+
+
 def test_ai_chat_falls_back_without_api_key(client, family):
     a, _, _ = family
     r = client.post("/ai-assistant/chat", json={"message": "오늘 일정 알려줘"}, headers=a).json()
@@ -93,7 +106,7 @@ def test_chat_history_is_sent_in_order_and_limit_is_enforced(client, family, mon
     monkeypatch.setattr(settings, "anthropic_api_key", "test-key")
     monkeypatch.setattr(rag_chat, "_post", fake_post)
     allow_ai(client, a, monkeypatch)
-    monkeypatch.setattr(settings, "ai_max_calls_per_user_per_day", 2)
+    set_assistant_limits(monkeypatch, per_user=2)
     history = [
         {"role": "assistant", "text": "안녕하세요"},  # user 로 시작하지 않는 앞부분은 버린다
         {"role": "user", "text": "전기요금 알려줘"},
@@ -272,12 +285,11 @@ def test_ai_consent_on_answers_and_records_real_call_count(client, family, monke
 
 
 def test_ai_daily_limit_applies_to_chat_and_ask_together(client, family, monkeypatch):
-    from app.shared.config import settings
 
     a, _, _ = family
     post = _fake_ai(monkeypatch)
     allow_ai(client, a, monkeypatch)
-    monkeypatch.setattr(settings, "ai_max_calls_per_user_per_day", 2)
+    set_assistant_limits(monkeypatch, per_user=2)
     assert client.post(*ENTRIES[0][:1], json=ENTRIES[0][1], headers=a).status_code == 200
     assert client.post(*ENTRIES[1][:1], json=ENTRIES[1][1], headers=a).status_code == 200
     for path, body, _ in ENTRIES:
@@ -287,12 +299,11 @@ def test_ai_daily_limit_applies_to_chat_and_ask_together(client, family, monkeyp
 
 
 def test_ai_cooldown_applies_to_chat(client, family, monkeypatch):
-    from app.shared.config import settings
 
     a, _, _ = family
     post = _fake_ai(monkeypatch)
     allow_ai(client, a, monkeypatch)
-    monkeypatch.setattr(settings, "ai_request_cooldown_seconds", 60)
+    set_assistant_limits(monkeypatch, cooldown=60)
     assert client.post("/ai-assistant/chat", json={"message": "하나"}, headers=a).status_code == 200
     r = client.post("/ai-assistant/chat", json={"message": "둘"}, headers=a)
     assert r.status_code == 429 and r.json()["code"] == "ai_cooldown"
@@ -427,14 +438,64 @@ def test_chat_is_busy_while_another_ai_request_holds_the_family_slot(client, fam
 
 
 def test_cooldown_applies_to_knowledge_ask(client, family, monkeypatch):
-    from app.shared.config import settings
 
     a, _, _ = family
     post = _fake_ai(monkeypatch)
     allow_ai(client, a, monkeypatch)
-    monkeypatch.setattr(settings, "ai_request_cooldown_seconds", 60)
+    set_assistant_limits(monkeypatch, cooldown=60)
     path, body, _ = ENTRIES[1]
     assert client.post(path, json=body, headers=a).status_code == 200
     r = client.post(path, json=body, headers=a)
     assert r.status_code == 429 and r.json()["code"] == "ai_cooldown"
+    assert len(post.bodies) == 1
+
+
+def test_assistant_limits_are_separate_from_family_chat_ai_limits(client, family, monkeypatch):
+    """어시스턴트는 쿨다운 없이 100회/일, 가족 채팅 AI 는 여전히 쿨다운·10회/일 — 서로 세지 않는다."""
+    from app.features.ai_assistant import limits
+    from app.shared import ai_guard
+    from app.shared.config import settings
+
+    a, _, _ = family
+    assert (
+        settings.ai_assistant_cooldown_seconds,
+        settings.ai_assistant_max_calls_per_user_per_day,
+        settings.ai_assistant_max_calls_per_group_per_day,
+    ) == (0, 100, 300)
+    assert (
+        settings.ai_request_cooldown_seconds,
+        settings.ai_max_calls_per_user_per_day,
+        settings.ai_max_calls_per_group_per_day,
+    ) == (30, 10, 30)
+    limits.register()
+    assert ai_guard.Limits(0, 100, 300) in [b[0] for b in ai_guard._BUCKETS.values()]
+    post = _fake_ai(monkeypatch)
+    allow_ai(client, a, monkeypatch)
+    monkeypatch.setattr(settings, "ai_request_cooldown_seconds", 30)  # 가족 채팅 AI 쿨다운은 그대로
+    for i in range(12):  # 쿨다운 없이 연속으로, 기본 한도 10 을 넘겨도 통과
+        r = client.post("/ai-assistant/chat", json={"message": f"질문 {i}"}, headers=a)
+        assert r.status_code == 200, (i, r.text)
+    assert len(post.bodies) == 12
+    # 어시스턴트 호출은 가족 채팅 AI 의 쿨다운·하루 한도 계산(기본 묶음)에 들어가지 않는다
+    from datetime import UTC, datetime
+
+    from app.shared.db import SessionLocal
+
+    with SessionLocal() as db:
+        me = client.get("/family-group/me", headers=a).json()["id"]
+        group_id = client.get("/family-group/groups/me", headers=a).json()["id"]
+        assert ai_guard.usage_today(db, me, group_id) == (0, 0)
+        ai_guard._check_cooldown(
+            db, me, datetime.now(UTC), "analysis"
+        )  # 기본 쿨다운 30초에도 걸리지 않는다
+
+
+def test_assistant_daily_group_limit_code(client, family, monkeypatch):
+    a, _, _ = family
+    post = _fake_ai(monkeypatch)
+    allow_ai(client, a, monkeypatch)
+    set_assistant_limits(monkeypatch, per_user=100, per_group=1)
+    assert client.post("/ai-assistant/chat", json={"message": "하나"}, headers=a).status_code == 200
+    r = client.post("/ai-assistant/chat", json={"message": "둘"}, headers=a)
+    assert r.status_code == 429 and r.json()["code"] == "ai_daily_limit_group"
     assert len(post.bodies) == 1

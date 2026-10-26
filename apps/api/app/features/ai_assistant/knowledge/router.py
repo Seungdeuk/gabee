@@ -38,7 +38,8 @@ def create_item(
     group_id: str = Depends(current_group_id),
     db: Session = Depends(get_db),
 ) -> KnowledgeItem:
-    return service.ingest(db, group_id, user.id, **body.model_dump())
+    # source_path 는 서버가 만든 원본 참조만 쓴다. 클라이언트가 보낸 값은 무시한다(남의 원본을 가리켜 지우게 하는 것을 막기 위해).
+    return service.ingest(db, group_id, user.id, **body.model_dump(exclude={"source_path"}))
 
 
 @router.get("/items", response_model=list[ItemOut])

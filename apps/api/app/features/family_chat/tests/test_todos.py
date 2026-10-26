@@ -8,7 +8,7 @@ from app.features.family_chat import todo_repository
 from app.features.family_chat.models import FamilyTodo
 from app.shared.db import SessionLocal
 from app.shared.llm import client as llm
-from tests.helpers import signup
+from tests.helpers import join_family, signup
 
 TODOS = "/family-chat/todos"
 
@@ -178,7 +178,7 @@ def test_delete_permission_creator_or_manager(client, trio_family):
 def trio_family(client, family):
     a, b, group = family
     c = signup(client, "삼촌")
-    r = client.post("/family-group/groups/join", json={"code": group["invite_code"]}, headers=c)
+    r = join_family(client, a, group["invite_code"], c)
     assert r.status_code == 200
     return a, b, c  # 지민(소유자), 수진, 삼촌(일반 구성원)
 

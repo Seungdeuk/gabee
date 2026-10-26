@@ -1,12 +1,12 @@
 """구독 결제일 알림: 결제일 3일 전부터 결제한 사람에게만, 이미 지출을 만든 달은 표시."""
 
-from tests.helpers import signup
+from tests.helpers import join_family, signup
 
 
 def _family(client, family):
     a, b, group = family
     mom = signup(client, "엄마", role="parent")
-    client.post("/family-group/groups/join", json={"code": group["invite_code"]}, headers=mom)
+    join_family(client, a, group["invite_code"], mom)
     members = client.get("/family-group/groups/me", headers=a).json()["members"]
     return {"지민": a, "수진": b, "엄마": mom}, {m["name"]: m["id"] for m in members}
 

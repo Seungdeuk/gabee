@@ -41,7 +41,7 @@ export default function SocialLogin({ onSession }) {
       <Text style={styles.or}>또는</Text>
       <SocialButtons onToken={onToken} onFail={(p) => setError(`${PROVIDER_LABEL[p]} 로그인을 마치지 못했어요`)} disabled={busy} />
       <Notice tone="error" text={error} />
-      <Notice text={candidate ? `이미 ${candidate} 이메일로 가입한 계정이 있어요. 아이디·비밀번호로 로그인한 뒤 기타 탭의 "소셜 계정 연동"에서 연결해 주세요.` : ""} />
+      <Notice text={candidate ? `이미 ${candidate} 이메일로 가입한 계정이 있어요. 아이디·비밀번호로 로그인한 뒤 설정(우측 상단 ⋮)의 "소셜 계정 연동"에서 연결해 주세요.` : ""} />
     </View>
   );
 }

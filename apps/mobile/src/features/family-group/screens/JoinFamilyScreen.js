@@ -12,7 +12,7 @@ import { familyErrorMessage } from "../messages";
 const normalize = (value) => value.replace(/\s/g, "").toUpperCase();
 
 /**
- * 초대 코드 입력. 정식 회원은 가족 관리자의 승인을 기다리는 화면으로, 기존 익명 계정은 바로 가족 화면으로 간다.
+ * 초대 코드 입력. 모든 계정(익명 포함)이 가족 관리자의 승인을 기다리는 화면으로 간다.
  * 코드는 화면 상태에만 두고 로그로 남기지 않는다.
  */
 export default function JoinFamilyScreen() {
@@ -30,6 +30,7 @@ export default function JoinFamilyScreen() {
     setError("");
     try {
       const res = await requestJoin(code);
+      // 서버는 항상 pending 을 돌려준다. "/family" 분기는 도달하지 않는 방어용이다.
       router.replace(res.status === "pending" ? "/family-pending" : "/family");
     } catch (e) {
       setError(familyErrorMessage(e));

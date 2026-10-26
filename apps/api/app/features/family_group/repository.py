@@ -49,17 +49,6 @@ def active_invite(db: Session, group_id: str) -> Invite | None:
     return db.scalar(select(Invite).where(Invite.group_id == group_id, Invite.revoked.is_(False)))
 
 
-def is_member(db: Session, group_id: str, user_id: str) -> bool:
-    return db.get(GroupMember, (group_id, user_id)) is not None
-
-
-def join(db: Session, group_id: str, user: User) -> None:
-    if not is_member(db, group_id, user.id):
-        db.add(GroupMember(group_id=group_id, user_id=user.id))
-    user.active_group_id = group_id
-    db.commit()
-
-
 def members(db: Session, group_id: str) -> list[User]:
     return list(
         db.scalars(

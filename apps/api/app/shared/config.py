@@ -136,6 +136,11 @@ class Settings(BaseSettings):
     ai_schedule_card_max_calls_per_user_per_day: int = 3
     ai_schedule_card_max_calls_per_group_per_day: int = 15
 
+    # AI 어시스턴트(채팅·기록 질문)도 기본 한도와 따로 센다. 예전 값(사용자 100회/일, 쿨다운 없음)을 유지하고, 가족 상한은 넉넉히 둔 새 값
+    ai_assistant_cooldown_seconds: int = 0
+    ai_assistant_max_calls_per_user_per_day: int = 100
+    ai_assistant_max_calls_per_group_per_day: int = 300
+
     model_config = SettingsConfigDict(env_file=_ENV_FILE, extra="ignore", populate_by_name=True)
 
     @field_validator("llm_model")

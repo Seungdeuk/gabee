@@ -17,6 +17,7 @@ from app.shared.errors import ApiError
 from app.shared.llm import client as llm
 from app.shared.llm.client import API_URL, API_VERSION
 
+from .. import limits  # noqa: F401  (limits: 어시스턴트 호출 한도를 따로 세도록 등록)
 from . import tools
 
 SYSTEM_PROMPT = (

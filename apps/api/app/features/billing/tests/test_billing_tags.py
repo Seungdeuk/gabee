@@ -1,13 +1,13 @@
 """정산하기: 대상 태그(고정 3개 + 직접 고르기)로 나눌 사람을 정하고 기존 잔액·송금 계산을 그대로 쓴다."""
 
-from tests.helpers import signup
+from tests.helpers import join_family, signup
 
 
 def _family(client, family):
     """엄마(parent) 추가: 지민·수진(child) + 엄마. 구성원 id 를 이름으로 돌려준다."""
     a, b, group = family
     mom = signup(client, "엄마", role="parent")
-    client.post("/family-group/groups/join", json={"code": group["invite_code"]}, headers=mom)
+    join_family(client, a, group["invite_code"], mom)
     members = client.get("/family-group/groups/me", headers=a).json()["members"]
     ids = {m["name"]: m["id"] for m in members}
     return a, {"지민": a, "수진": b, "엄마": mom}, ids

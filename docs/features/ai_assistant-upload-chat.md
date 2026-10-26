@@ -207,15 +207,21 @@ SELECT item_id, seq, embedding_model, vector_dims(embedding) AS dim, left(text, 
 |---|---|
 | 가족 AI 동의 꺼짐 | 403 `ai_not_enabled` |
 | 가족 구성원이 아님(`active_group_id` 만 남음) | 403 `not_member` |
-| 쿨다운(30초) 안 | 429 `ai_cooldown` |
+| 쿨다운 안(기본 없음) | 429 `ai_cooldown` |
 | 사용자 하루 한도 | 429 `ai_daily_limit_user` |
 | 가족 하루 한도 | 429 `ai_daily_limit_group` |
 | 같은 가족의 다른 AI 요청 처리 중 | 409 `ai_busy` |
 | 외부 AI 호출 실패 | 503 `llm_failed` (사용 기록 `status="error"`, 한도에는 센다) |
 
-- 한도 값: 사용자 10회/일, 가족 30회/일, 쿨다운 30초(`AI_MAX_CALLS_PER_USER_PER_DAY`, `AI_MAX_CALLS_PER_GROUP_PER_DAY`, `AI_REQUEST_COOLDOWN_SECONDS`).
+- 한도 값: 어시스턴트는 가족 채팅 AI 의 기본 한도(사용자 10회/일, 가족 30회/일, 쿨다운 30초)와 **따로** 센다(`ai_guard.register_bucket`, `ai_assistant/limits.py`). 예전 값을 유지해 사용자 **100회/일**, 쿨다운 **없음**이고, 가족 상한은 예전에 없던 새 값 **300회/일**이다(`AI_ASSISTANT_MAX_CALLS_PER_USER_PER_DAY`, `AI_ASSISTANT_MAX_CALLS_PER_GROUP_PER_DAY`, `AI_ASSISTANT_COOLDOWN_SECONDS`). 동시 실행은 가족당 1건 그대로(409 `ai_busy`). 문서 요약·답변(`doc_summary`·`doc_answer`)은 기본 한도를 쓴다.
 - 질문 1건이 도구 루프로 Anthropic 을 1~4번 부르고, 실제 호출 수를 한도에 센다.
 - 한도 초과 폭: 요청 시작 때는 1회만 예약하고 끝나면 실제 횟수로 고치므로, 한도 직전의 마지막 요청은 최대 3회(4-1)까지 더 셀 수 있다.
+
+## 앱 안내 화면 (AI 채팅 탭)
+
+- 서버 오류 코드를 말풍선 안내로 바꾼다(`features/ai-assistant/errors.js`, 시험 `apps/mobile/tests/assistanterrors.test.js`): `ai_cooldown`·`ai_busy` "조금 뒤에 다시 물어봐 주세요", `ai_daily_limit_*` "오늘 AI 사용 한도에 도달했어요", `llm_failed` "AI 연결에 문제가 있어요", `not_member` 가족 참여 안내, 그 밖에는 서버 문구.
+- `ai_not_enabled` 는 말풍선 대신 안내 카드(`AiOffCard`): "AI 도우미가 꺼져 있어요", 질문하면 관련 가족 기록 일부가 외부 AI(Anthropic)로 전송된다는 설명(민감 기록은 기본 제외). 설정은 `GET /family-chat/ai/settings` 로 확인하고, `can_manage` 이면 "AI 사용 켜기" 버튼(`PUT /family-chat/ai/settings {enabled:true}`, 누를 때만 호출), 아니면 소유자·관리자에게 요청하라는 안내. 켜면 카드가 "AI를 켰어요. 방금 질문을 다시 보내 주세요." 로 바뀌고 질문은 자동으로 다시 보내지 않는다.
+- 오류 말풍선과 그 오류를 부른 질문은 다음 요청의 `history` 에서 빠진다(오류 문구가 외부 AI 로 실려 가지 않는다).
 
 ## 팀이 정해야 할 것
 
@@ -225,6 +231,10 @@ SELECT item_id, seq, embedding_model, vector_dims(embedding) AS dim, left(text, 
 4. **대화 저장**: 지금은 기기에만. 서버 저장은 테이블·마이그레이션·보관/삭제 정책이 필요하다.
 5. **원본 보관**: 보관 기간, 삭제 요청 시 일괄 삭제, 얼굴·건강정보 별도 동의, 14세 미만 자녀 동의.
 6. **PR 나누기**: 한 번에 크다.
+
+## 원본 경로 보안 수정
+
+`LocalRawStore.get_for_group`/`delete_for_group` 는 경로 첫 칸이 그룹 id 인지만 보고 `<내그룹>/../<남의그룹>/…` 를 통과시켰다. 이제 `..`·`.`·빈 칸·절대경로·백슬래시·널 문자를 거부하고, 해석한 결과가 그 그룹 폴더(`raw/<group_id>`) 안일 때만 읽고 지운다. 또 `POST /ai-assistant/knowledge/items` 의 `source_path` 는 클라이언트가 임의로 넣을 수 없다. 요청 필드는 호환을 위해 남겨 두되 값은 **무시**하고(400 으로 깨지지 않음) 원본 참조는 업로드 처리(`files.py`)가 서버에서 만든 것만 쓴다.
 
 ## 보안 점검에서 아직 열린 것 (이 브랜치에서 고치지 않음)
 
