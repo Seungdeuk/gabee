@@ -247,6 +247,27 @@ export function photoSendErrorMessage(error) {
 }
 
 /**
+ * 대화 검색 오류를 사용자 문장으로. 서버 코드 이름에 기대지 않고 상태로도 알아본다(429 너무 잦음, 422 검색어 길이). 검색어·결과 글자는 넣지 않는다.
+ * @param {{ code?: string, status?: number } | null | undefined} error
+ * @returns {string}
+ */
+export function searchErrorMessage(error) {
+  if (error?.status === 429) return "검색을 너무 자주 했어요. 잠시 후 다시 해 주세요";
+  if (error?.status === 422) return "검색어는 1자에서 100자 사이로 입력해 주세요";
+  return roomErrorMessage(error);
+}
+
+/**
+ * 검색 결과 위치로 이동하다 실패했을 때의 문장(그 방의 메시지가 아니거나 없는 경우 등).
+ * @param {{ code?: string, status?: number } | null | undefined} error
+ * @returns {string}
+ */
+export function focusErrorMessage(error) {
+  if (error?.code === "invalid_message" || error?.status === 400 || error?.status === 404) return "그 메시지를 찾지 못해 최근 대화를 보여 드려요";
+  return roomErrorMessage(error);
+}
+
+/**
  * 가족이 없다는 응답(404 또는 no_group)인지.
  * @param {{ status?: number, code?: string } | null | undefined} error
  * @returns {boolean}

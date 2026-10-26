@@ -17,9 +17,10 @@ const AVATAR = 36;
  * 내 말풍선은 아직 읽지 않은 사람이 있을 때만 시각 위에 작은 숫자(unread)를 보여 준다(모두 읽으면 표시 없음).
  * 사진 메시지(attachment)는 글자 대신 썸네일을 말풍선 안에 보여 주고(원본 비율로 크기를 미리 정해 레이아웃이 점프하지 않는다), 누르면 전체 화면으로 본다.
  * 전송 중이면 "전송 중…", 실패하면 "전송 실패 · 다시 보내기"(누르면 재전송, 길게 누르거나 "삭제" 로 지움).
- * @param {{ message: object, mine: boolean, showName: boolean, showTime?: boolean, unread?: number, photoUrl?: string | null, onRetry?: (clientId: string) => void, onDiscard?: (clientId: string) => void }} props
+ * 검색 결과로 이동했을 때 그 메시지는 highlighted 로 잠깐 배경색을 입힌다.
+ * @param {{ message: object, mine: boolean, showName: boolean, showTime?: boolean, unread?: number, photoUrl?: string | null, highlighted?: boolean, onRetry?: (clientId: string) => void, onDiscard?: (clientId: string) => void }} props
  */
-export default function MessageBubble({ message, mine, showName, showTime = true, unread = 0, photoUrl, onRetry, onDiscard }) {
+export default function MessageBubble({ message, mine, showName, showTime = true, unread = 0, photoUrl, highlighted = false, onRetry, onDiscard }) {
   const failed = message.status === "failed";
   const sending = message.status === "sending";
   const attachment = message.attachment ?? null;
@@ -77,7 +78,7 @@ export default function MessageBubble({ message, mine, showName, showTime = true
 
   if (mine) {
     return (
-      <View style={[styles.row, styles.mineRow]}>
+      <View style={[styles.row, styles.mineRow, highlighted && styles.highlight]}>
         {meta || unreadNode ? (
           <View style={styles.metaMine}>
             {unreadNode}
@@ -89,7 +90,7 @@ export default function MessageBubble({ message, mine, showName, showTime = true
     );
   }
   return (
-    <View style={styles.row}>
+    <View style={[styles.row, highlighted && styles.highlight]}>
       {showName ? <UserAvatar name={message.user_name || "?"} userId={message.user_id} photoUrl={photoUrl} size={AVATAR} /> : <View style={styles.spacer} />}
       <View style={styles.column}>
         {showName ? <Text style={styles.name}>{message.user_name}</Text> : null}
@@ -105,6 +106,7 @@ export default function MessageBubble({ message, mine, showName, showTime = true
 const styles = StyleSheet.create({
   row: { flexDirection: "row", alignItems: "flex-end", gap: spacing.sm, paddingHorizontal: spacing.md, paddingVertical: 2 },
   mineRow: { justifyContent: "flex-end" },
+  highlight: { backgroundColor: colors.honeySoft },
   spacer: { width: AVATAR },
   column: { flexShrink: 1, gap: spacing.xs, alignItems: "flex-start" },
   line: { flexDirection: "row", alignItems: "flex-end", gap: spacing.xs, maxWidth: "100%" },
