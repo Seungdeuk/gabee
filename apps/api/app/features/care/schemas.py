@@ -134,6 +134,72 @@ class MealList(BaseModel):
     meals: list[MealOut]  # 아직 기록되지 않은 끼니만
 
 
+# ---- 식단 기록 ----
+
+
+class MealLogPut(BaseModel):
+    date: _date | None = None  # 비우면 오늘(한국 시간). 미래 날짜는 안 된다.
+    meal: MealType
+    menu: str = Field(min_length=1, max_length=60)
+    note: str = Field(default="", max_length=120)
+    source: Literal["typed", "recommended"] = "typed"  # 직접 입력 / 추천 메뉴로 기록
+
+
+class MealLogOut(BaseModel):
+    date: str
+    meal: MealType
+    label: str
+    menu: str
+    note: str
+    source: Literal["typed", "recommended"]
+    recorded_by_name: str
+    recorded_at: datetime
+
+
+class MealLogSlot(BaseModel):
+    meal: MealType
+    label: str
+    log: MealLogOut | None = None  # 기록이 없으면 None
+
+
+class MealLogDay(BaseModel):
+    date: str
+    slots: list[MealLogSlot]  # 아침·점심·저녁 순
+
+
+class MealLogList(BaseModel):
+    start: str
+    end: str
+    days: list[MealLogDay]  # 최신 날짜부터
+
+
+class MealLogCount(BaseModel):
+    meal: MealType
+    label: str
+    logged: int  # 기간 안에 기록한 날 수
+
+
+class FrequentMenu(BaseModel):
+    menu: str
+    count: int  # 최근 30일 동안 기록한 횟수
+
+
+class FrequentMeal(BaseModel):
+    meal: MealType
+    label: str
+    menus: list[FrequentMenu]  # 많이 먹은 순(같으면 최근에 먹은 순), 최대 5개
+
+
+class MealLogSummary(BaseModel):
+    start: str
+    end: str
+    days: int
+    logged: int  # 기간 안에 기록한 끼니 수
+    total: int  # 기간 안의 전체 끼니 수(days x 3)
+    per_meal: list[MealLogCount]
+    frequent: list[FrequentMeal]  # 끼니별 자주 먹은 메뉴(빠른 입력용)
+
+
 # ---- 위치 공유 ----
 
 

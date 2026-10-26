@@ -79,14 +79,21 @@ export function AuthProvider({ children }) {
     restore();
   }, [restore]);
 
-  const signIn = useCallback(async (loginId, password) => {
-    const label = (Device.deviceName ?? Device.modelName ?? Platform.OS).slice(0, 60);
-    const res = await login(loginId, password, label);
+  // 로그인 응답(아이디/비밀번호든 소셜이든)을 받은 뒤 세션을 시작한다
+  const signInWithSession = useCallback(async (res) => {
     setSession({ accessToken: res.access_token, refreshToken: res.refresh_token });
     await store.save(res.refresh_token);
     setState({ status: "authenticated", user: res.user });
     return res.user;
   }, []);
+
+  const signIn = useCallback(
+    async (loginId, password) => {
+      const label = (Device.deviceName ?? Device.modelName ?? Platform.OS).slice(0, 60);
+      return signInWithSession(await login(loginId, password, label));
+    },
+    [signInWithSession],
+  );
 
   const signOut = useCallback(async () => {
     const refreshToken = getRefreshToken();
@@ -109,13 +116,13 @@ export function AuthProvider({ children }) {
   }, []);
 
   const value = useMemo(
-    () => ({ ...state, signIn, signOut, refreshUser, restore }),
-    [state, signIn, signOut, refreshUser, restore],
+    () => ({ ...state, signIn, signInWithSession, signOut, refreshUser, restore }),
+    [state, signIn, signInWithSession, signOut, refreshUser, restore],
   );
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 
-/** @returns {{ status: "loading" | "authenticated" | "anonymous" | "unreachable", user: object | null, signIn: (loginId: string, password: string) => Promise<object>, signOut: () => Promise<void>, refreshUser: () => Promise<object>, restore: () => Promise<void> }} */
+/** @returns {{ status: "loading" | "authenticated" | "anonymous" | "unreachable", user: object | null, signIn: (loginId: string, password: string) => Promise<object>, signInWithSession: (loginResponse: object) => Promise<object>, signOut: () => Promise<void>, refreshUser: () => Promise<object>, restore: () => Promise<void> }} */
 export function useAuth() {
   const value = useContext(AuthContext);
   if (!value) throw new Error("useAuth 는 AuthProvider 안에서만 쓸 수 있어요");

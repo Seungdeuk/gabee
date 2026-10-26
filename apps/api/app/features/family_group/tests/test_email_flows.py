@@ -269,7 +269,10 @@ def test_concurrent_confirmations_only_one_succeeds(client, outbox):
 
 
 # ---------- 미인증 계정 권한 정책 ----------
-def test_unverified_member_cannot_create_or_join_a_family_but_can_use_the_account(client, outbox):
+def test_unverified_member_cannot_create_or_join_a_family_when_the_policy_is_on(
+    client, outbox, monkeypatch
+):
+    monkeypatch.setattr(settings, "require_email_verification", True)  # 선택 정책(기본은 꺼짐)
     owner = signup(client, "주인")
     group = client.post("/family-group/groups", json={"name": "가족"}, headers=owner).json()
     register(client)
@@ -287,11 +290,12 @@ def test_unverified_member_cannot_create_or_join_a_family_but_can_use_the_accoun
     joined = client.post(
         "/family-group/groups/join", json={"code": group["invite_code"]}, headers=headers
     )
-    assert joined.status_code == 200
+    assert joined.status_code == 200 and joined.json()["status"] == "pending"
 
 
-def test_without_mail_configuration_the_policy_does_not_block_new_members(client):
-    """SMTP 가 없으면 인증할 방법이 없으므로 가입 후 막다른 길이 되지 않게 정책을 적용하지 않는다."""
+def test_without_mail_configuration_the_policy_does_not_block_new_members(client, monkeypatch):
+    """SMTP 가 없으면 인증할 방법이 없으므로 정책을 켜 두어도 가입 후 막다른 길이 되지 않는다."""
+    monkeypatch.setattr(settings, "require_email_verification", True)
     register(client)
     headers = bearer_for(client)
     assert client.post(VERIFY_REQ, headers=headers).status_code == 503  # 인증 메일은 못 보낸다
@@ -301,7 +305,8 @@ def test_without_mail_configuration_the_policy_does_not_block_new_members(client
     )
 
 
-def test_policy_starts_applying_as_soon_as_mail_is_configured(client, outbox):
+def test_policy_applies_when_it_is_on_and_mail_is_configured(client, outbox, monkeypatch):
+    monkeypatch.setattr(settings, "require_email_verification", True)
     register(client)
     r = client.post("/family-group/groups", json={"name": "가족"}, headers=bearer_for(client))
     assert r.status_code == 403 and r.json()["code"] == "email_not_verified"
@@ -315,15 +320,13 @@ def test_anonymous_accounts_are_not_affected_by_the_verification_policy(client):
     )
     other = signup(client, "다른 익명")
     code = client.get("/family-group/groups/me", headers=headers).json()["invite_code"]
-    assert (
-        client.post("/family-group/groups/join", json={"code": code}, headers=other).status_code
-        == 200
-    )
+    joined = client.post("/family-group/groups/join", json={"code": code}, headers=other)
+    assert joined.status_code == 200 and joined.json()["status"] == "pending"  # 익명도 승인 대기
 
 
-def test_verification_policy_can_be_switched_off(client, monkeypatch):
+def test_unverified_members_can_create_a_family_by_default(client, outbox):
+    """기본 설정: 메일이 설정돼 있어도 이메일을 인증하지 않은 회원이 가족을 만들고 참여할 수 있다."""
     register(client)
-    monkeypatch.setattr(settings, "require_email_verification", False)
     r = client.post("/family-group/groups", json={"name": "가족"}, headers=bearer_for(client))
     assert r.status_code == 201
 

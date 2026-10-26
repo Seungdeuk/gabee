@@ -21,6 +21,13 @@ def _drop_membership(group_id: str, user_id: str) -> None:
 GROUP_ENDPOINTS = (
     ("get", "/family-chat/messages", None),
     ("post", "/family-chat/messages", {"text": "몰래"}),
+    ("get", "/family-chat/unread", None),
+    ("get", "/family-chat/read-states", None),
+    ("post", "/family-chat/read", {"message_id": 1}),
+    ("get", "/family-chat/rooms", None),
+    ("get", "/family-chat/todos", None),
+    ("post", "/family-chat/ai/preview", {}),
+    ("post", "/family-chat/todos", {"title": "몰래"}),
     ("get", "/schedule/events", None),
     ("post", "/schedule/events", {"title": "몰래", "starts_at": "2026-12-01T00:00:00Z"}),
     ("get", "/billing/expenses", None),
@@ -28,6 +35,8 @@ GROUP_ENDPOINTS = (
     ("get", "/care/records", None),
     ("get", "/care/summary/today", None),
     ("get", "/ai-assistant/photos", None),
+    ("post", "/ai-assistant/chat", {"message": "몰래"}),
+    ("post", "/ai-assistant/knowledge/ask", {"question": "몰래"}),
 )
 
 
@@ -66,3 +75,35 @@ def test_my_group_also_rejects_stale_membership(client, family):
     assert r.status_code == 403 and r.json()["code"] == "not_member"
     # 토큰 자체는 여전히 유효하므로 /me(신원 확인)는 그대로 동작해야 한다.
     assert client.get("/family-group/me", headers=b).status_code == 200
+
+
+def test_stale_active_group_cannot_read_family_records_through_ai_chat(client, family, monkeypatch):
+    """멤버십은 없고 active_group_id 만 남은 사용자는 AI 채팅으로도 가족 기록을 못 보고, 외부 AI 도 불리지 않는다."""
+    import httpx
+
+    from app.features.ai_assistant.knowledge import rag_chat
+    from app.shared.config import settings
+    from tests.helpers import allow_ai
+
+    a, b, group = family
+    client.post(
+        "/ai-assistant/knowledge/items",
+        json={"kind_label": "전기요금 고지서", "title": "비밀 고지서", "body_md": "청구 48,200원"},
+        headers=a,
+    )
+    sent = []
+    monkeypatch.setattr(settings, "anthropic_api_key", "test-key")
+    monkeypatch.setattr(rag_chat, "_post", lambda body: sent.append(body) or {"content": []})
+    monkeypatch.setattr(httpx, "post", lambda *x, **k: sent.append("http"))
+    allow_ai(client, a, monkeypatch)
+
+    b_id = client.get("/family-group/me", headers=b).json()["id"]
+    _drop_membership(group["id"], b_id)
+    for path, body in (
+        ("/ai-assistant/chat", {"message": "전기요금"}),
+        ("/ai-assistant/knowledge/ask", {"question": "전기요금"}),
+    ):
+        r = client.post(path, json=body, headers=b)
+        assert r.status_code == 403 and r.json()["code"] == "not_member", path
+        assert "비밀" not in r.text
+    assert sent == []  # 외부 AI 호출 0회

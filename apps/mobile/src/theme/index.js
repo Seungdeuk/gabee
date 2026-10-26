@@ -37,6 +37,16 @@ export const colors = {
   purpleSoft: "#FFEDE5",
 };
 
+// 사람마다 다른 아바타 색(바탕, 글자). 같은 사람은 항상 같은 칸을 쓴다(shared/avatarTone.js).
+export const avatarPalette = [
+  { backgroundColor: colors.peach, color: colors.text }, // 복숭아
+  { backgroundColor: "#F6D06B", color: colors.text }, // 꿀
+  { backgroundColor: "#B5DCC1", color: colors.text }, // 연두
+  { backgroundColor: "#BCD9EC", color: colors.text }, // 하늘
+  { backgroundColor: "#DACBEC", color: colors.text }, // 연보라
+  { backgroundColor: "#F5BCCB", color: colors.text }, // 분홍
+];
+
 export const spacing = {
   xs: 4,
   sm: 8,
