@@ -467,7 +467,7 @@ def test_id_card_is_fully_masked_then_sent_to_classify():
             "domain": {"choice": "행정·공공", "confidence": 0.9},
         }
 
-    c = classify(r, None, jev)
+    c = classify(r, jev)
     assert sent == [text]  # 가린 글자만 간다
     assert c.doc_type == "주민등록증" and c.by == "jev"
 
@@ -526,11 +526,11 @@ def test_ingest_file_keeps_raw_original_and_masks_result(tmp_path):
     store = LocalRawStore(tmp_path)
     data = png()
     ocr = FakeOcr([("주민등록번호 900101-2345678", 0.9)])
-    r = ingest_file("g01", data, "a.png", store=store, ocr=ocr, llm=lambda p, system: {})
+    r = ingest_file("g01", data, "a.png", store=store, ocr=ocr)
     assert "2345678" not in r.content.text  # 결과는 가린 글자
     assert store.get(r.raw_path) == data  # 원본은 그대로
     assert r.raw_path.startswith("g01/") and r.raw_path.endswith(".png")
-    again = ingest_file("g01", data, "b.png", store=store, ocr=ocr, llm=lambda p, system: {})
+    again = ingest_file("g01", data, "b.png", store=store, ocr=ocr)
     assert (
         again.raw_path == r.raw_path and len(list(tmp_path.rglob("*.png"))) == 1
     )  # 같은 원본은 한 번만
@@ -573,7 +573,7 @@ def test_ingest_file_keeps_original_and_adds_display_copy(tmp_path):
     assert store.get(r.raw_path) == data  # 원본은 손대지 않음
     assert r.display_path.endswith(".display.webp")
     assert Image.open(io.BytesIO(store.get(r.display_path))).size == (1080, 810)
-    doc = ingest_file("g01", "메모".encode(), "a.txt", store=store, llm=lambda p, system: {})
+    doc = ingest_file("g01", "메모".encode(), "a.txt", store=store)
     assert doc.display_path is None  # 사진이 아니면 사본 없음
     with __import__("pytest").raises(ValueError):
         store.put_copy("g01", "0" * 64, "../x", ".webp", b"")

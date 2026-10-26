@@ -7,7 +7,7 @@ from app.shared.errors import not_found
 
 from .. import files
 from .. import repository as photo_repo
-from . import rag_chat, service
+from . import from_ingest, rag_chat, service
 from .models import KnowledgeItem
 from .schemas import (
     AskIn,
@@ -124,4 +124,5 @@ def _mark_review(db: Session, group_id: str, items: list[KnowledgeItem]) -> list
     waiting = photo_repo.review_ids(db, group_id)
     for item in items:
         item.needs_review = item.id in waiting or item.has_unread_parts
+        item.needs_description = from_ingest.needs_description(item.kind_label, item.body_md)
     return items

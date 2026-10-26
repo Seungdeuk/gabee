@@ -36,6 +36,7 @@ class ItemOut(BaseModel):
     sensitivity: str
     created_at: datetime
     needs_review: bool = False  # 읽다 만 부분이 있거나 종류가 애매해서 사용자가 확인해야 하는 기록
+    needs_description: bool = False  # 글자가 안 읽힌 사진인데 사용자가 단 설명이 아직 없는 기록
 
 
 class ItemDetailOut(ItemOut):

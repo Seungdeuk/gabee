@@ -61,21 +61,13 @@ class Classification(BaseModel):
     route: Route  # 앱 화면 이동: 문서 화면 / 가족 공유 / 사람 확인
     confidence: float = 0.0
     needs_review: bool = False
-    # 누가 정했나: 규칙 / Jev(가린 글자) / 로컬 언어 모델 / 못 정함
-    by: Literal["rule", "jev", "model", "none"] = "none"
+    # 누가 정했나: 규칙 / Jev(가린 글자) / 문서 분류기(임베딩+TF-IDF) / (예전) 로컬 언어 모델 / 못 정함
+    by: Literal["rule", "jev", "classifier", "model", "none"] = "none"
     tags: list[str] = Field(default_factory=list)
     dates: list[str] = Field(default_factory=list)  # YYYY-MM-DD
     amounts: list[Amount] = Field(default_factory=list)
     places: list[str] = Field(default_factory=list)
     fields: dict[str, str] = Field(default_factory=dict)  # 종류별 폼 칸 ("제출 기한": "2026-10-20")
-
-
-class Caption(BaseModel):
-    """글자 없는 사진에 로컬 이미지 모델이 붙인 설명. 사실과 다를 수 있어서 자동으로 만든 것임을 남긴다."""
-
-    description: str
-    keywords: list[str] = Field(default_factory=list)
-    by: Literal["local_vlm"] = "local_vlm"
 
 
 class PreprocessResult(BaseModel):
@@ -86,7 +78,6 @@ class PreprocessResult(BaseModel):
     quality: Quality
     privacy: Privacy = Field(default_factory=Privacy)
     classification: Classification | None = None  # ingest_file 에서 가린 뒤에 붙는다
-    caption: Caption | None = None  # 글자 없는 사진의 자동 설명 (이미지 모델이 있을 때)
     raw_path: str | None = None  # 원본 데이터 센터 안의 위치 (ingest_file 로 저장했을 때)
     display_path: str | None = None  # 사진의 화면용 사본(1080px WebP, 위치 정보 없음)
     processor_version: str = PROCESSOR_VERSION
