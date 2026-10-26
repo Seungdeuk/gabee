@@ -31,6 +31,13 @@ GROUP_ENDPOINTS = (
     ("get", "/family-chat/pins", None),
     ("post", "/family-chat/pins", {"message_id": 1}),
     ("delete", "/family-chat/pins/1", None),
+    ("get", "/family-chat/links", None),
+    (
+        "post",
+        "/family-chat/links",
+        {"message_id": 1, "kind": "todo", "target_id": "x", "title": "몰래"},
+    ),
+    ("delete", "/family-chat/links/x", None),
     ("post", "/family-chat/ai/preview", {}),
     ("post", "/family-chat/todos", {"title": "몰래"}),
     ("get", "/schedule/events", None),

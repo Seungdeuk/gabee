@@ -3056,6 +3056,302 @@
         }
       }
     },
+    "/family-chat/links": {
+      "get": {
+        "tags": [
+          "family-chat"
+        ],
+        "summary": "List Links",
+        "description": "이 방의 연결을 최신순으로. kind·target_id 로 거를 수 있다(일정 화면이 원본 대화를 찾을 때 target_id 를 쓴다).",
+        "operationId": "list_links_family_chat_links_get",
+        "parameters": [
+          {
+            "name": "room_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 32
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "대화방 id. 없으면 가족 전체방",
+              "title": "Room Id"
+            },
+            "description": "대화방 id. 없으면 가족 전체방"
+          },
+          {
+            "name": "kind",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "event",
+                    "todo"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Kind"
+            }
+          },
+          {
+            "name": "target_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 32
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Target Id"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "default": 50,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-gyeot-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Gyeot-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LinksOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "family-chat"
+        ],
+        "summary": "Create Link",
+        "description": "메시지와 등록한 일정·할 일을 연결한다(방 안의 누구나). 이미 있으면 새로 만들지 않고 기존 연결을 200 으로 돌려준다.",
+        "operationId": "create_link_family_chat_links_post",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-gyeot-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Gyeot-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LinkCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LinkOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/family-chat/links/{link_id}": {
+      "delete": {
+        "tags": [
+          "family-chat"
+        ],
+        "summary": "Delete Link",
+        "description": "연결을 지운다(만든 사람만). 메시지·일정·할 일은 그대로 남는다.",
+        "operationId": "delete_link_family_chat_links__link_id__delete",
+        "parameters": [
+          {
+            "name": "link_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Link Id"
+            }
+          },
+          {
+            "name": "room_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 32
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "대화방 id. 없으면 가족 전체방",
+              "title": "Room Id"
+            },
+            "description": "대화방 id. 없으면 가족 전체방"
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-gyeot-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Gyeot-Token"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/family-chat/ai/settings": {
       "get": {
         "tags": [
@@ -13190,6 +13486,192 @@
         ],
         "title": "JoinRequestOut",
         "description": "내가 낸 가입 요청. status: pending(승인 대기) | approved | rejected | cancelled."
+      },
+      "LinkCreate": {
+        "properties": {
+          "room_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 32
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Room Id",
+            "description": "대화방 id. 없으면 가족 전체방"
+          },
+          "message_id": {
+            "type": "integer",
+            "maximum": 2147483647.0,
+            "minimum": 1.0,
+            "title": "Message Id"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "event",
+              "todo"
+            ],
+            "title": "Kind"
+          },
+          "target_id": {
+            "type": "string",
+            "maxLength": 32,
+            "minLength": 1,
+            "title": "Target Id",
+            "description": "일정 또는 할 일 id"
+          },
+          "title": {
+            "type": "string",
+            "maxLength": 200,
+            "title": "Title",
+            "description": "등록한 제목 복사본(공백 정리 후 1~120자)"
+          },
+          "date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Date"
+          },
+          "time": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Time",
+            "description": "HH:MM"
+          }
+        },
+        "type": "object",
+        "required": [
+          "message_id",
+          "kind",
+          "target_id",
+          "title"
+        ],
+        "title": "LinkCreate"
+      },
+      "LinkOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "room_id": {
+            "type": "string",
+            "title": "Room Id"
+          },
+          "message_id": {
+            "type": "integer",
+            "title": "Message Id"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "event",
+              "todo"
+            ],
+            "title": "Kind"
+          },
+          "target_id": {
+            "type": "string",
+            "title": "Target Id"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Date"
+          },
+          "time": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Time"
+          },
+          "created_by": {
+            "type": "string",
+            "title": "Created By"
+          },
+          "created_by_name": {
+            "type": "string",
+            "title": "Created By Name"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "message_text": {
+            "type": "string",
+            "title": "Message Text"
+          },
+          "message_user_name": {
+            "type": "string",
+            "title": "Message User Name"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "room_id",
+          "message_id",
+          "kind",
+          "target_id",
+          "title",
+          "date",
+          "time",
+          "created_by",
+          "created_by_name",
+          "created_at",
+          "message_text",
+          "message_user_name"
+        ],
+        "title": "LinkOut"
+      },
+      "LinksOut": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/LinkOut"
+            },
+            "type": "array",
+            "title": "Items"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items"
+        ],
+        "title": "LinksOut"
       },
       "LocationBatch": {
         "properties": {
