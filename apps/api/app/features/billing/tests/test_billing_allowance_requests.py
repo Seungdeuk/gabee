@@ -5,7 +5,7 @@ from datetime import date
 import pytest
 
 from app.features.billing import service
-from tests.helpers import signup
+from tests.helpers import promote_admin, signup
 
 
 def _ids(client, headers) -> dict[str, str]:
@@ -32,6 +32,7 @@ def home(client, family):
     a, b, group = family
     mom = signup(client, "엄마", role="parent")
     client.post("/family-group/groups/join", json={"code": group["invite_code"]}, headers=mom)
+    promote_admin(client, a, "엄마")
     return a, b, mom, _ids(client, a)
 
 

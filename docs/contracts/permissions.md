@@ -32,6 +32,10 @@
 - 사용자가 직접 선택하지 않은 그룹(`active_group_id`가 아닌 그룹)에 대해 쓰기 작업을 하려면, 왜 그 그룹을 대상으로 하는지와 `ensure_group_member` 검사를 통과했는지를 호출 지점에서 분명히 해야 한다.
 - 이 규칙을 지키지 않고 Service를 직접 호출하는 PR은 리뷰에서 반려한다.
 
+## 용돈(billing) 권한
+
+- 용돈 주기 설정·지급·요청 승인/거절·내역 취소는 가족 안의 소유자(owner)·관리자(admin, `group_members.role`)만 한다. 가입 때 고른 `users.role` 은 권한이 아니다. 관리자는 본인 용돈을 직접 지급·승인할 수 없다(소유자는 예외). 본인 사용 기록·요청은 본인이 한다.
+
 ## 아직 없는 기능 (이번 PR에서 만들지 않음)
 
 - **초대 코드 발급·폐기와 가입 요청 승인·거절은 가족 관리자(`group_members.role` 이 owner/admin)만** 할 수 있다(`join_service.require_manager`). 권한은 요청값이 아니라 DB 의 role 로만 판단하고, 승인된 사람은 항상 member 로 들어간다. 다른 그룹의 가입 요청은 404 로 존재 자체를 숨긴다. 자세한 내용은 `docs/features/family-group.md`.

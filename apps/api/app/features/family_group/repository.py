@@ -53,6 +53,12 @@ def is_member(db: Session, group_id: str, user_id: str) -> bool:
     return db.get(GroupMember, (group_id, user_id)) is not None
 
 
+def member_role(db: Session, group_id: str, user_id: str) -> str | None:
+    """그룹 안에서의 권한(owner/admin/member). 구성원이 아니면 None."""
+    row = db.get(GroupMember, (group_id, user_id))
+    return row.role if row else None
+
+
 def join(db: Session, group_id: str, user: User) -> None:
     if not is_member(db, group_id, user.id):
         db.add(GroupMember(group_id=group_id, user_id=user.id))

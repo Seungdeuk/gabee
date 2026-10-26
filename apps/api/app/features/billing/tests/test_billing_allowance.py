@@ -6,7 +6,7 @@ import pytest
 
 from app.features.billing import service
 from app.features.billing.allowance import MAX_CATCH_UP, due_dates, next_due
-from tests.helpers import signup
+from tests.helpers import promote_admin, signup
 
 
 def _ids(client, headers) -> dict[str, str]:
@@ -35,6 +35,7 @@ def home(client, family):
     a, b, group = family
     mom = signup(client, "엄마", role="parent")
     client.post("/family-group/groups/join", json={"code": group["invite_code"]}, headers=mom)
+    promote_admin(client, a, "엄마")
     return a, b, mom, _ids(client, a)
 
 
@@ -148,9 +149,42 @@ def test_parents_are_not_children_and_unknown_ids_are_404(client, home, today):
 
 
 # ---------- 권한 ----------
-def test_only_parents_or_the_group_owner_manage_but_children_record_their_own_use(
-    client, home, today
-):
+def test_signing_up_as_parent_does_not_grant_allowance_management(client, family, today):
+    """가입 때 스스로 고른 role=parent 는 권한이 아니다. 가족 안의 owner/admin 만 지급·취소한다."""
+    a, b, group = family
+    fake_parent = signup(client, "가짜부모", role="parent")
+    client.post(
+        "/family-group/groups/join", json={"code": group["invite_code"]}, headers=fake_parent
+    )
+    child = _ids(client, a)["수진"]
+    r = client.post(
+        f"/billing/allowances/{child}/credits", json={"amount": 5000}, headers=fake_parent
+    )
+    assert r.status_code == 403 and r.json()["code"] == "not_allowance_manager"
+    assert (
+        client.put(
+            f"/billing/allowances/{child}/plan", json=_plan(), headers=fake_parent
+        ).status_code
+        == 403
+    )
+    # 소유자가 지급한 내역을 가짜 부모는 취소하지 못한다
+    entry = client.post(
+        f"/billing/allowances/{child}/credits", json={"amount": 5000}, headers=a
+    ).json()
+    rows = client.get("/billing/allowances", headers=a).json()
+    entry_id = next(r for r in rows if r["child_id"] == child)["entries"][0]["id"]
+    assert entry  # 지급은 소유자라서 성공
+    gone = client.delete(f"/billing/allowances/{child}/entries/{entry_id}", headers=fake_parent)
+    assert gone.status_code == 403
+    # 관리자(admin)로 지정되면 지급할 수 있다
+    promote_admin(client, a, "가짜부모")
+    ok = client.post(
+        f"/billing/allowances/{child}/credits", json={"amount": 1000}, headers=fake_parent
+    )
+    assert ok.status_code == 201
+
+
+def test_only_owner_or_admin_manage_but_children_record_their_own_use(client, home, today):
     a, b, mom, ids = home  # a=지민(그룹을 만든 사람), b=수진(자녀), mom=엄마(부모)
     child = ids["수진"]
     # 수진은 자기 용돈 주기·입금·남의 장부를 바꿀 수 없다
@@ -191,6 +225,47 @@ def test_other_families_cannot_see_or_change_the_ledger(client, home, other_fami
     ):
         r = getattr(client, method)(path, json=body, headers=other_family)
         assert r.status_code in (403, 404), (path, r.status_code)
+
+
+def test_admin_cannot_pay_or_approve_their_own_allowance_but_owner_and_others_can(
+    client, family, today
+):
+    """관리자(admin)는 대상이 자기 자신인 지급·주기·승인·취소를 못 한다. 소유자와 다른 자녀 대상은 가능."""
+    a, b, group = family
+    ids = _ids(client, a)
+    promote_admin(client, a, "수진")  # 수진(role=child 인 성인 자녀)이 관리자가 된다
+    me, other = ids["수진"], ids["지민"]
+    # 수진 본인 장부: 지급·주기·승인 모두 거부
+    r = client.post(f"/billing/allowances/{me}/credits", json={"amount": 5000}, headers=b)
+    assert r.status_code == 403 and r.json()["code"] == "not_allowance_manager"
+    assert "본인의 용돈" in r.json()["message"]
+    assert client.put(f"/billing/allowances/{me}/plan", json=_plan(), headers=b).status_code == 403
+    req = client.post(f"/billing/allowances/{me}/requests", json={"amount": 3000}, headers=b)
+    assert req.status_code == 201
+    rid = next(x for x in req.json()["requests"] if x["status"] == "pending")["id"]
+    ap = client.post(f"/billing/allowances/{me}/requests/{rid}/approve", json={}, headers=b)
+    assert ap.status_code == 403 and ap.json()["code"] == "not_allowance_manager"
+    # 소유자는 수진의 지급·승인을 할 수 있다(기존 동작)
+    assert (
+        client.post(
+            f"/billing/allowances/{me}/credits", json={"amount": 5000}, headers=a
+        ).status_code
+        == 201
+    )
+    ok = client.post(f"/billing/allowances/{me}/requests/{rid}/approve", json={}, headers=a)
+    assert ok.status_code == 200
+    # 관리자가 자기 입금을 취소하는 것도 못 한다
+    entry_id = _ledger(client, a, me)["entries"][0]["id"]
+    assert (
+        client.delete(f"/billing/allowances/{me}/entries/{entry_id}", headers=b).status_code == 403
+    )
+    # 남의 장부에는 관리자도 지급할 수 있다
+    assert (
+        client.post(
+            f"/billing/allowances/{other}/credits", json={"amount": 1000}, headers=b
+        ).status_code
+        == 201
+    )
 
 
 # ---------- 고정 주기: 자동 지급 ----------

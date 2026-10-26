@@ -16,7 +16,7 @@ export function planText(plan) {
 }
 
 /**
- * 고정 용돈 주기 입력(부모·그룹을 만든 사람). 자동 지급은 지급일이 지난 분을 장부에 입금으로 기록하고,
+ * 고정 용돈 주기 입력(가족 소유자·관리자. 관리자는 본인 용돈 불가). 자동 지급은 지급일이 지난 분을 장부에 입금으로 기록하고,
  * 리마인드는 지급자에게 "지급했어요" 를 누르라고 알린다. 돈이 실제로 오가지는 않는다(앱 안 장부).
  * @param {{ name: string, initial: import("../api").AllowancePlan | null, busy?: boolean, onSubmit: (body: object) => void, onCancel: () => void, notify: (text: string, isError?: boolean) => void }} props
  */

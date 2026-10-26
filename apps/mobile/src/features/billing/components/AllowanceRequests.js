@@ -17,7 +17,7 @@ const STATUS = {
 };
 
 /**
- * 용돈 요청: 자녀 본인이 금액과 사유를 적어 요청하고(대기 5건까지), 부모(또는 그룹을 만든 사람)가 승인·거절한다.
+ * 용돈 요청: 자녀 본인이 금액과 사유를 적어 요청하고(대기 5건까지), 가족 소유자·관리자가 승인·거절한다(관리자는 본인 요청 불가).
  * 승인하면 장부에 입금이 기록되고 금액을 바꿔 승인할 수도 있다. 자녀는 대기 중인 자기 요청을 취소할 수 있다.
  * @param {{ item: import("../api").Allowance, notify: (text: string, isError?: boolean) => void, onChanged: () => Promise<void> | void }} props
  */
