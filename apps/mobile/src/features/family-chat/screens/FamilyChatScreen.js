@@ -1,7 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect, useRouter } from "expo-router";
 import { useCallback, useMemo, useRef, useState } from "react";
-import { ScrollView, StyleSheet, Text, View } from "react-native";
+import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import UserAvatar from "@/shared/components/UserAvatar";
@@ -9,13 +9,15 @@ import Button from "@/shared/components/Button";
 import SectionTitle from "@/shared/components/SectionTitle";
 import { colors, font, radius, spacing } from "@/theme";
 
-import { getRoomInfo, listRooms, openDirectRoom } from "../api";
+import { getRoomInfo, listRooms, listTodos, openDirectRoom } from "../api";
 import { isNoGroup, previewText, roomErrorMessage } from "../chatUtils";
 import ChatListHeader from "../components/ChatListHeader";
 import EmptyChats from "../components/EmptyChats";
 import NewChatPicker from "../components/NewChatPicker";
 import RoomRow from "../components/RoomRow";
+import TodoCard from "../components/TodoCard";
 import { waitForPendingMarkRead } from "../pendingRead";
+import { OPEN_PREVIEW_LIMIT, openPreview } from "../todoUtils";
 import { buildRoomRows, formatRoomTime, matchesQuery, pickableMembers } from "../listUtils";
 
 /** 로딩 중 행 모양 뼈대. */
@@ -48,6 +50,7 @@ export default function FamilyChatScreen() {
   const [pickError, setPickError] = useState("");
   const openingRef = useRef(false); // 상태는 다시 그려진 뒤에야 바뀌어서, 같은 순간의 두 번째 누름은 ref 로 막는다
   const [listError, setListError] = useState("");
+  const [todoPreview, setTodoPreview] = useState(null); // 가족 할 일 카드(실패하면 null 이라 카드만 숨는다)
   const [state, setState] = useState({ status: "loading", rooms: [], members: [], pickable: [], error: "" });
 
   const load = useCallback(async () => {
@@ -55,6 +58,10 @@ export default function FamilyChatScreen() {
       await waitForPendingMarkRead(); // 방을 막 나왔다면 읽음 올리기가 끝난 뒤에 숫자를 가져온다
       // 화면이 올 때마다 한 번만(폴링 없음).
       // 가족 정보는 필수(없으면 가족 없음/오류 화면), 방 목록이 실패해도 연락처는 보여 주고 다시 시도 안내를 띄운다
+      // 가족 할 일 카드는 따로 불러 목록 로딩에 영향을 주지 않는다(실패하면 카드만 숨긴다)
+      listTodos("open", OPEN_PREVIEW_LIMIT)
+        .then((todos) => setTodoPreview(openPreview(todos)))
+        .catch(() => setTodoPreview(null));
       const [group, rooms] = await Promise.all([getRoomInfo(), listRooms().catch((e) => ({ failed: e }))]);
       setListError(Array.isArray(rooms) ? "" : roomErrorMessage(rooms.failed));
       const people = Array.isArray(group.members) ? group.members : [];
@@ -142,10 +149,12 @@ export default function FamilyChatScreen() {
           )}
         </View>
 
+        {state.status === "ready" && todoPreview ? <TodoCard preview={todoPreview} onPress={() => router.push("/family-todos")} /> : null}
+
         {members.length > 0 ? (
           <View style={styles.contacts}>
-            <SectionTitle title="가족 연락처" action="전체 보기 →" />
-            <View style={styles.contactCard}>
+            <SectionTitle title="가족 연락처" action="전체 보기 →" onAction={() => router.push("/family-contacts")} />
+            <Pressable onPress={() => router.push("/family-contacts")} accessibilityRole="button" accessibilityLabel={`가족 연락처, 가족 ${members.length}명`} style={styles.contactCard}>
               <View style={styles.stack}>
                 {members.slice(0, 5).map((m, i) => (
                   <View key={m.id} style={i > 0 && styles.overlap}>
@@ -158,7 +167,7 @@ export default function FamilyChatScreen() {
                 <Text style={styles.contactMuted}> 등록됨</Text>
               </Text>
               <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
-            </View>
+            </Pressable>
           </View>
         ) : null}
       </ScrollView>
