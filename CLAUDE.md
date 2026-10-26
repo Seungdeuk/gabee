@@ -145,7 +145,8 @@ docker compose up --build      # 개발용 DB + API (루트 .env 필요)
 - 브랜치: `feature/<이름>-<기능>`, `fix/<이름>-<내용>`. 최신 `main`에서 시작한다.
 - 커밋·PR 제목: `feat:` `fix:` `refactor:` `docs:` `chore:` + 한 줄 요약.
 - PR은 작게(약 400줄 이하), 한 PR에 한 목적. CI 통과 + 리뷰 승인 후 Squash 병합.
-- force push, `reset --hard`, 브랜치 삭제는 사용자가 명시적으로 요청할 때만 한다.
+- force push, `reset --hard`는 사용자가 명시적으로 요청할 때만 한다. 브랜치 삭제는 아래 "브랜치 정리"에 해당하는 경우가 아니면 사용자가 명시적으로 요청할 때만 한다.
+- 브랜치 정리: 내 작업 브랜치의 PR이 `main`에 병합되면(`gh pr view <번호> --json state,mergedAt`로 확인. Squash 병합은 `git branch --merged`에 잡히지 않는다) 그 브랜치를 로컬과 원격에서 모두 삭제하고 연결된 임시 worktree도 지운다. 열린 PR이 있는 브랜치, 아직 병합되지 않은 커밋이 있는 브랜치, 다른 사람이 만든 브랜치는 지우지 않는다. 남기는 브랜치는 진행 중인 것(최신)뿐이다. GitHub 저장소 설정의 "Automatically delete head branches"를 켜 두면 원격은 자동으로 지워진다(저장소 관리자가 설정).
 
 ## 하지 말 것
 
