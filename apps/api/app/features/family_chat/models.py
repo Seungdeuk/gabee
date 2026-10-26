@@ -95,3 +95,23 @@ class ChatRoomRead(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(UTC)
     )
+
+
+class MessageAttachment(Base):
+    """사진 메시지의 첨부. 메시지 하나에 사진 하나. 파일은 DATA_DIR 아래 서버가 정한 이름으로만 저장하고
+    여기에는 상대 경로와 크기만 둔다(원본 EXIF·GPS 는 저장 전에 버린다). 사진 메시지의 text 는 빈 문자열이다."""
+
+    __tablename__ = "message_attachments"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uid)
+    message_id: Mapped[int] = mapped_column(ForeignKey("messages.id"), unique=True)
+    group_id: Mapped[str] = mapped_column(ForeignKey("groups.id"), index=True)
+    room_id: Mapped[str] = mapped_column(ForeignKey("chat_rooms.id"), index=True)
+    path: Mapped[str] = mapped_column(String(80))
+    thumb_path: Mapped[str] = mapped_column(String(80))
+    width: Mapped[int] = mapped_column(Integer)
+    height: Mapped[int] = mapped_column(Integer)
+    size_bytes: Mapped[int] = mapped_column(Integer)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(UTC)
+    )

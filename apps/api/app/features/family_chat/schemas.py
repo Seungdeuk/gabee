@@ -8,12 +8,22 @@ class MessageCreate(BaseModel):
     room_id: str | None = Field(default=None, max_length=32)  # 없으면 가족 전체방
 
 
+class AttachmentOut(BaseModel):
+    id: str
+    kind: str  # 지금은 image 만
+    url: str  # 원본(최대 1600px JPEG) 경로. 로그인이 필요하다
+    thumb_url: str  # 목록용 작은 그림 경로
+    width: int
+    height: int
+
+
 class MessageOut(BaseModel):
     id: int
     user_id: str
     user_name: str
-    text: str
+    text: str  # 사진 메시지는 빈 문자열
     created_at: datetime
+    attachment: AttachmentOut | None = None
 
 
 class ReadMark(BaseModel):
