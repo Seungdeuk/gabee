@@ -1,5 +1,5 @@
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { Platform, Pressable, StyleSheet, Text, View, useWindowDimensions } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
@@ -19,7 +19,7 @@ const MAX_WIDTH = 600; // 웹처럼 넓은 화면에서 격자가 지나치게 �
 /**
  * 사진 · 동영상 모음. 경로 인자 roomId(없으면 가족 전체방)와 peer(1:1 상대 id). 방 이름은 주소에 싣지 않고 화면 안에서 계산한다.
  * 탭은 사진 · 파일 · 동영상이고 개수는 서버 counts 다. 파일·동영상은 아직 보낼 수 없어 안내만 보인다.
- * 사진을 누르면 전체 화면으로 보고 저장할 수 있다(웹은 내려받기, 네이티브는 곧 지원).
+ * 사진을 누르면 전체 화면으로 보고 저장할 수 있다(웹은 내려받기, 네이티브는 사진 앱에 저장).
  */
 export default function ChatMediaScreen() {
   const router = useRouter();
@@ -33,6 +33,8 @@ export default function ChatMediaScreen() {
   const info = useRoomInfo();
   const [viewing, setViewing] = useState(null);
   const [saveState, setSaveState] = useState({ id: null, saving: false, notice: "" }); // 저장은 사진(id)별로 기억한다
+
+  const savingIds = useRef(new Set()); // 저장 중인 모든 사진 id: 다른 사진을 보다 돌아와도 같은 사진을 동시에 두 번 저장하지 않는다
 
   const nameOf = useMemo(() => {
     const byId = Object.fromEntries((info.room?.members ?? []).map((m) => [m.id, memberName(m)]));
@@ -51,10 +53,16 @@ export default function ChatMediaScreen() {
 
   /** 보고 있는 사진을 저장한다. 결과는 저장을 시작한 사진에만 붙고, 그 사이 다른 사진으로 넘어갔다면 새 사진에는 보이지 않는다. */
   const save = async () => {
-    if (!viewing || (saveState.saving && saveState.id === viewing.attachment_id)) return;
+    if (!viewing || savingIds.current.has(viewing.attachment_id)) return;
     const id = viewing.attachment_id;
+    savingIds.current.add(id);
     setSaveState({ id, saving: true, notice: "" });
-    const result = await savePhoto(viewing, saveFileName(viewing), Platform.OS);
+    let result;
+    try {
+      result = await savePhoto(viewing, saveFileName(viewing), Platform.OS);
+    } finally {
+      savingIds.current.delete(id);
+    }
     setSaveState((prev) => (prev.id === id ? { id, saving: false, notice: result.message } : prev));
   };
   const current = saveState.id === viewing?.attachment_id ? saveState : { saving: false, notice: "" };
