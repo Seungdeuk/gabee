@@ -3,7 +3,8 @@
 import json
 
 from app.shared.config import settings
-from app.shared.llm import agent, agent_chat
+from app.shared.llm import agent
+from tests.ai_consent import enable_ai_for_user
 
 
 def _fake_llm(seen):
@@ -40,7 +41,7 @@ def test_agent_chat_answers_from_billing_data_and_sends_history(client, family, 
     seen = []
     monkeypatch.setattr(settings, "anthropic_api_key", "test-key")
     monkeypatch.setattr(agent, "_post", _fake_llm(seen))
-    agent_chat.limiter.reset()
+    enable_ai_for_user()
     body = {
         "message": "합계는?",
         "history": [
@@ -64,16 +65,14 @@ def test_agent_chat_without_api_key_falls_back(client, family):
     assert r["source"] == "fallback" and r["reply"] and r["tool_calls"] == []
 
 
-def test_agent_chat_daily_limit_and_membership(client, family, other_family, monkeypatch):
+def test_agent_chat_requires_a_family_and_a_message(client, family, monkeypatch):
     a, _, _ = family
     monkeypatch.setattr(settings, "anthropic_api_key", "test-key")
     monkeypatch.setattr(agent, "_post", lambda body: {"content": [{"type": "text", "text": "네"}]})
-    monkeypatch.setattr(agent_chat, "DAILY_LIMIT", 1)
-    agent_chat.limiter.reset()
-    ok = client.post("/billing/agent/chat", json={"message": "안녕"}, headers=a)
-    assert ok.status_code == 200
-    again = client.post("/billing/agent/chat", json={"message": "또"}, headers=a)
-    assert again.status_code == 429 and again.json()["code"] == "daily_limit"
+    enable_ai_for_user()
+    assert (
+        client.post("/billing/agent/chat", json={"message": "안녕"}, headers=a).status_code == 200
+    )
     # 가족 그룹이 없는 사람은 쓸 수 없다
     from tests.helpers import signup
 

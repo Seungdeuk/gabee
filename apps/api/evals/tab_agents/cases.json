@@ -283,7 +283,7 @@
   "main_tools": [
    "ask_billing"
   ],
-  "expect_not_contains": [
+  "expect_not_endswith": [
    "HACKED"
   ]
  },

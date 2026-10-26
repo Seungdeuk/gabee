@@ -1,7 +1,8 @@
 """돌봄 에이전트의 쓰기: 식단·항목 기록도 제안만 하고, 확인(agent/confirm)해야 실행된다."""
 
 from app.shared.config import settings
-from app.shared.llm import agent, agent_chat, proposals
+from app.shared.llm import agent, proposals
+from tests.ai_consent import enable_ai_for_user
 
 
 def _tool_use(name, args, id_="t1"):
@@ -23,7 +24,7 @@ def _llm(name, args):
 def _setup(monkeypatch, fake):
     monkeypatch.setattr(settings, "anthropic_api_key", "test-key")
     monkeypatch.setattr(agent, "_post", fake)
-    agent_chat.limiter.reset()
+    enable_ai_for_user()
     proposals.reset()
 
 

@@ -3,7 +3,8 @@
 import json
 
 from app.shared.config import settings
-from app.shared.llm import agent, agent_chat
+from app.shared.llm import agent
+from tests.ai_consent import enable_ai_for_user
 
 
 def test_agent_chat_reads_meal_log_and_only_has_care_tools(client, family, monkeypatch):
@@ -24,7 +25,7 @@ def test_agent_chat_reads_meal_log_and_only_has_care_tools(client, family, monke
 
     monkeypatch.setattr(settings, "anthropic_api_key", "test-key")
     monkeypatch.setattr(agent, "_post", fake)
-    agent_chat.limiter.reset()
+    enable_ai_for_user()
     r = client.post("/care/agent/chat", json={"message": "20일 점심은?"}, headers=a).json()
     assert r["source"] == "ai" and r["reply"] == "비빔밥" and r["tool_calls"] == ["list_meal_log"]
     assert "get_month_summary" not in [t["name"] for t in seen[0]["tools"]]

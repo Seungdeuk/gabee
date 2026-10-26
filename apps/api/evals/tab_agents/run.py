@@ -7,6 +7,7 @@
 
 import argparse
 import json
+import logging
 import os
 import sys
 import tempfile
@@ -24,10 +25,14 @@ from app.features.billing import agent as billing_agent  # noqa: E402
 from app.features.care import agent as care_agent  # noqa: E402
 from app.features.family_group.models import User  # noqa: E402
 from app.main import app  # noqa: E402
+from app.shared import ai_guard  # noqa: E402
 from app.shared.config import settings  # noqa: E402
 from app.shared.db import SessionLocal  # noqa: E402
+from app.shared.errors import ApiError  # noqa: E402
+from app.shared.llm import agent_guard  # noqa: E402
+from app.shared.llm.agent import AgentReply  # noqa: E402
 from evals.tab_agents.seed import seed, seed_other_family  # noqa: E402
-from tests.helpers import signup  # noqa: E402
+from tests.helpers import join_family, signup  # noqa: E402
 
 CASES = json.loads((Path(__file__).parent / "cases.json").read_text("utf-8"))
 AGENTS = {"billing": billing_agent, "care": care_agent}
@@ -38,6 +43,7 @@ def _contains(answer: str, text: str) -> bool:
 
 
 def main() -> int:
+    logging.basicConfig(level=logging.WARNING)  # 모델 호출 실패 원인(서버 로그)을 보여 준다
     parser = argparse.ArgumentParser()
     parser.add_argument("--case", action="append", help="사례 id(여러 번 가능). 비우면 전체")
     parser.add_argument("--repeat", type=int, default=1, help="사례마다 반복 횟수")
@@ -46,14 +52,21 @@ def main() -> int:
         print("ANTHROPIC_API_KEY 가 설정되지 않아 실제 평가를 건너뜁니다.")
         return 2
     cases = [c for c in CASES if not args.case or c["id"] in args.case]
+    # 평가는 한 사용자가 짧은 시간에 많이 부르므로 하루 한도를 넉넉히 한다(실서비스 설정은 그대로)
+    settings.ai_tab_agent_max_calls_per_user_per_day = 100000
+    settings.ai_tab_agent_max_calls_per_group_per_day = 100000
+    agent_guard.register()
     passed = total = 0
     per_case: dict[str, list[bool]] = {}
     with TestClient(app) as client:
         a = signup(client, "지민")
         group = client.post("/family-group/groups", json={"name": "평가 가족"}, headers=a).json()
         b = signup(client, "수진")
-        client.post("/family-group/groups/join", json={"code": group["invite_code"]}, headers=b)
+        join_family(client, a, group["invite_code"], b)  # 가입 요청 → 소유자 승인
         seed(client, a, b)
+        with SessionLocal() as db:  # 가족이 AI 를 켠 상태로 평가한다
+            me = db.scalars(select(User).where(User.name == "지민")).first()
+            ai_guard.set_enabled(db, me.active_group_id, me.id, True)
         seed_other_family(client, signup(client, "남"))
         for case in cases:
             for _ in range(args.repeat):
@@ -73,9 +86,14 @@ def main() -> int:
                         want = case.get("main_tools")  # 없으면 도구 선택은 채점하지 않는다
                         tool_ok = want is None or set(used) == set(want)
                     else:
-                        reply = AGENTS[case["agent"]].ask(
-                            db, me.active_group_id, me, case["question"]
-                        )
+                        try:
+                            reply = AGENTS[case["agent"]].ask(
+                                db, me.active_group_id, me, case["question"]
+                            )
+                        except ApiError as e:  # 관문이 막은 경우(동의·한도·모델 실패)도 실패로 센다
+                            reply = AgentReply(
+                                f"[{e.status} {e.code}] {e.message}", can_answer=False
+                            )
                         answer, can_answer = reply.answer, reply.can_answer
                         used = [c["name"] for c in reply.tool_calls]
                         n_proposals = len(reply.proposals)

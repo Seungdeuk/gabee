@@ -128,6 +128,10 @@ class Settings(BaseSettings):
     )
     ai_day_utc_offset_hours: int = 9  # 하루 한도를 세는 날짜 경계(기본 한국 시간 자정)
     # 일정 에이전트는 위 기본 한도와 따로 센다(ai_guard.register_bucket). 채팅은 한 번에 두 번(분류·답변) 부르므로 쿨다운을 두지 않는다.
+    # 정산·돌봄 탭 에이전트(질문 1번 = 호출 묶음 1번으로 센다). 기본 한도·일정과 따로 센다
+    ai_tab_agent_cooldown_seconds: int = 0
+    ai_tab_agent_max_calls_per_user_per_day: int = 60
+    ai_tab_agent_max_calls_per_group_per_day: int = 200
     ai_schedule_chat_cooldown_seconds: int = 0
     ai_schedule_chat_max_calls_per_user_per_day: int = 30
     ai_schedule_chat_max_calls_per_group_per_day: int = 100

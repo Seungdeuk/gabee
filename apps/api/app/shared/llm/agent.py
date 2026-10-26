@@ -44,6 +44,9 @@ class AgentReply:
     proposals: list = field(
         default_factory=list
     )  # proposals.Proposal: 사용자 확인을 기다리는 쓰기 제안
+    input_tokens: int = 0  # 이 답을 만들며 쓴 토큰 합(여러 번 부른 호출의 합, 사용 기록용)
+    output_tokens: int = 0
+    model: str = ""
 
 
 def _post(body: dict) -> dict:
@@ -85,6 +88,7 @@ def run_agent(
     by_name = {t.name: t for t in tools}
     messages = list(messages)
     calls_log: list[dict] = []
+    tokens_in = tokens_out = 0
     try:
         for _ in range(max_steps):
             reply = post(
@@ -96,13 +100,23 @@ def run_agent(
                     "messages": messages,
                 }
             )
+            usage = reply.get("usage") or {}
+            tokens_in += int(usage.get("input_tokens") or 0)
+            tokens_out += int(usage.get("output_tokens") or 0)
             content = reply.get("content") or []
             calls = [c for c in content if c.get("type") == "tool_use"]
             if not calls:
                 text = "".join(c.get("text", "") for c in content if c.get("type") == "text")
                 if not text.strip():
                     raise LLMUnavailable("AI 응답이 비어 있어요")
-                return AgentReply(text.strip(), True, calls_log)
+                return AgentReply(
+                    text.strip(),
+                    True,
+                    calls_log,
+                    input_tokens=tokens_in,
+                    output_tokens=tokens_out,
+                    model=settings.llm_model,
+                )
             messages.append({"role": "assistant", "content": content})
             outputs = []
             for call in calls:

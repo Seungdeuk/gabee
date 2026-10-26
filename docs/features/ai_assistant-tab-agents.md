@@ -19,10 +19,21 @@ POST /ai-assistant/chat
 - 공통 도구 호출 루프는 `app/shared/llm/agent.py`(Anthropic Messages API, 모델은 `ANTHROPIC_MODEL`, 기본 Haiku). 새 의존성은 없다.
 - 탭 에이전트가 실패하면 `can_answer: false` 로 돌려주고 메인이 확인하지 못했다고 안내한다.
 
+## AI 공통 관문(ai_guard) 연동
+
+main 에 들어온 팀 공통 관문(`shared/ai_guard.py`, 일정 에이전트 #66~#72)에 맞췄다. 정산·돌봄 에이전트의 질문 하나는 `agent_guard.run_turn` 으로 `ai_guard.run` 아래에서 실행된다.
+
+- **가족 AI 동의**: 소유자·관리자가 AI 를 켠 가족만 쓸 수 있다. 꺼져 있으면 직접 대화는 403 `ai_not_enabled`, 메인 채팅은 `ask_billing`/`ask_care` 도구를 아예 주지 않는다(가계·위치가 외부로 나가지 않게).
+- **한도·기록**: `ai_tab_agent_*` 설정(기본 사용자 60·가족 200/일, 정산·돌봄 한 묶음, 기본 한도·일정과 별도). 질문 하나에 모델을 여러 번 불러도 1회로 센다. 사용 기록(`ai_usage_logs`: 기능·토큰·상태, 원문 없음)이 남고, 가족 동시 실행 제한도 적용된다. 이전의 프로세스 메모리 한도는 없앴다.
+- **캐시 없음**: `ai_guard.run(..., use_cache=False)` 를 새로 추가했다(그때그때 읽은 답과 일회용 제안 토큰을 캐시에 복사하지 않으려고). 기본값이 True 라 다른 기능은 그대로다.
+- **마스킹**: 사용자 문장과 앞 대화는 일정 에이전트와 같은 `mask_text` 로 개인정보를 가린 뒤 보낸다. 도구 결과(이름·금액·좌표)는 답에 필요해서 가리지 않는다.
+- 모델 호출이 실패하면 503 `llm_failed`(원인은 서버 로그 WARNING). 메인 채팅에서는 탭 에이전트 오류가 도구 오류로 메인에게 전달돼 "확인하지 못했다"고 답한다.
+- `ai_usage` 테이블이 필요하다: main 의 리비전에 있으며, 공용 DB 에는 DB 담당자가 통합 때 적용한다.
+
 ## 탭 에이전트와 직접 대화 (멘토링: "서브 에이전트는 채팅이 되도록 만들어 통째로 메인에 붙인다")
 
 - `POST /billing/agent/chat`, `POST /care/agent/chat` — 요청 `{message, history[≤10]}`, 응답 `{reply, source(ai|fallback), tool_calls[], proposals[]}`. 메인 에이전트를 거치지 않고 그 탭 에이전트에게 바로 묻는다.
-- 가족 구성원만 쓴다(`current_group_id`). 하루 100회 한도는 사용자별 프로세스 메모리 기준(`shared/llm/agent_chat.py`), 초과 시 429 `daily_limit`. API 키가 없으면 200 + `source: fallback`.
+- 가족 구성원만 쓴다(`current_group_id`). AI 동의·한도·사용 기록은 위 'AI 공통 관문'이 처리한다(초과 429 `ai_daily_limit_user|group`, 동의 꺼짐 403). API 키가 없으면 200 + `source: fallback`.
 - 처리 공통 코드는 `shared/llm/agent_chat.py`, 요청·응답은 `shared/llm/schemas.py`, 탭별 `ask(..., history=)` 가 앞 대화를 LLM 에 전달한다.
 - 실제 LLM 으로 이 엔드포인트를 호출해 보는 시험은 아직 안 했다(테스트는 가짜 LLM). 앱 화면·웹 테스트 페이지는 없다.
 
@@ -53,7 +64,7 @@ POST /ai-assistant/chat
 
 - **외부 전송**: 탭 에이전트의 도구 결과(지출 내역·금액·구성원 이름·용돈 장부·돌봄 기록·동의한 구성원의 위치 좌표)가 가려지지 않은 채 Claude API 로 간다. 업로드 기록(knowledge)은 가린 글자만 가는 것과 다르다. 위치는 동의한 사람의 좌표만 나간다(`care.service.latest_locations`).
 - 일부 읽기 함수는 화면을 열 때와 같은 부수 효과가 있다: `list_allowances` 는 지급일이 지난 자동 용돈을 입금으로 기록하고, 돌봄 `daily` 는 기본 항목이 없으면 만든다.
-- 하루 AI 호출 한도(`DAILY_LIMIT`)는 채팅 요청 1건을 1회로 센다. 탭 에이전트 호출은 메인 도구 호출 횟수(`MAX_STEPS=4`) × 탭 에이전트 단계(4)로 제한된다.
+- 메인 채팅 자체(`rag_chat`)의 호출은 기존 `DAILY_LIMIT`(프로세스 메모리)로 세고, 탭 에이전트 호출은 위 관문이 따로 센다. 메인 도구 호출 횟수(`MAX_STEPS=4`) × 탭 에이전트 단계(4)가 한 질문의 상한이다.
 - `service.chat` 은 `active_group_id` 를 그대로 쓰지만, 탭 에이전트는 `group_members` 로 멤버십을 다시 확인한다.
 - 질문 분류와 "무조건 탭 에이전트를 쓴다"는 프롬프트 기반이라 강제는 아니다. 평가셋은 evals/tab_agents 에 27개(작음).
 

@@ -10,10 +10,13 @@ from app.features.ai_assistant.knowledge import rag_chat
 from app.features.billing import agent as billing_agent
 from app.features.care import agent as care_agent
 from app.features.family_group.models import User
+from app.shared.ai_usage import AiResultCache, AiUsageLog
 from app.shared.config import settings
 from app.shared.db import SessionLocal
 from app.shared.errors import ApiError
-from app.shared.llm.agent import AgentReply
+from app.shared.llm import agent as llm_agent
+from app.shared.llm import agent_guard
+from tests.ai_consent import enable_ai
 
 
 def _tool_use(name, args, id_="t1"):
@@ -42,7 +45,8 @@ def _spend(client, headers, title, amount, date="2026-10-12"):
 
 
 def test_main_asks_billing_agent_and_never_gets_db_tools(client, family, monkeypatch):
-    a, b, _ = family
+    a, b, group = family
+    enable_ai(group["id"])
     _spend(client, a, "진료비", 30000)
     _spend(client, b, "약", 10000)
     main_tools, sub_results = [], []
@@ -78,7 +82,8 @@ def test_main_asks_billing_agent_and_never_gets_db_tools(client, family, monkeyp
 
 
 def test_main_asks_care_agent(client, family, monkeypatch):
-    a, _, _ = family
+    a, _, group = family
+    enable_ai(group["id"])
     seen = {}
 
     def fake_post(body):
@@ -122,8 +127,10 @@ def test_tab_agent_refuses_non_member(client, family, other_family):
             assert (e.value.status, e.value.code) == (403, "not_member")
 
 
-def test_bad_tool_arguments_are_returned_to_the_agent_as_errors(client, family):
-    a, _, _ = family
+def test_bad_tool_arguments_are_returned_to_the_agent_as_errors(client, family, monkeypatch):
+    a, _, group = family
+    enable_ai(group["id"])
+    monkeypatch.setattr(settings, "anthropic_api_key", "test-key")
     calls = []
 
     def fake_post(body):
@@ -153,14 +160,21 @@ def test_care_locations_hide_coordinates_without_consent(client, family):
     assert by_name["수진"]["lat"] is None and by_name["수진"]["lng"] is None
 
 
-def test_tab_agent_reports_failure_instead_of_raising(client, family):
+def test_model_failure_becomes_a_safe_503_and_is_logged(client, family, monkeypatch):
+    _, _, group = family
+    enable_ai(group["id"])
+    monkeypatch.setattr(settings, "anthropic_api_key", "test-key")
+
     def broken_post(body):
         raise ValueError("boom")
 
     with SessionLocal() as db:
         me = _user(db, "지민")
-        reply = billing_agent.ask(db, me.active_group_id, me, "지출은?", broken_post)
-    assert isinstance(reply, AgentReply) and reply.can_answer is False
+        with pytest.raises(ApiError) as e:
+            billing_agent.ask(db, me.active_group_id, me, "지출은?", broken_post)
+        assert (e.value.status, e.value.code) == (503, "llm_failed")
+        row = db.scalars(select(AiUsageLog)).one()
+        assert (row.feature, row.status) == ("billing_agent", "error")
 
 
 def test_chat_without_api_key_still_falls_back(client, family):
@@ -170,6 +184,7 @@ def test_chat_without_api_key_still_falls_back(client, family):
 
 
 def test_http_error_detail_is_reported(client, family):
+    """가드 아래에서는 사용자에게 일반 오류만 보이므로, 원인(상태 코드·API 메시지)은 에이전트 응답에서 확인한다."""
     import httpx
 
     def refused(body):
@@ -183,7 +198,85 @@ def test_http_error_detail_is_reported(client, family):
         )
         raise httpx.HTTPStatusError("bad", request=req, response=res)
 
-    with SessionLocal() as db:
-        me = _user(db, "지민")
-        reply = billing_agent.ask(db, me.active_group_id, me, "지출은?", refused)
+    reply = llm_agent.ask_agent("system", "질문", [], post=refused)
     assert not reply.can_answer and "HTTP 400" in reply.answer and "credit balance" in reply.answer
+
+
+def _ready(monkeypatch, group):
+    monkeypatch.setattr(settings, "anthropic_api_key", "test-key")
+    enable_ai(group["id"])
+
+
+def test_ai_must_be_enabled_for_the_family(client, family, monkeypatch):
+    a, _, _ = family
+    monkeypatch.setattr(
+        settings, "anthropic_api_key", "test-key"
+    )  # 키는 있지만 가족이 AI 를 켜지 않았다
+    monkeypatch.setattr(llm_agent, "_post", lambda body: _text("호출되면 안 됨"))
+    r = client.post("/billing/agent/chat", json={"message": "지출은?"}, headers=a)
+    assert (r.status_code, r.json()["code"]) == (403, "ai_not_enabled")
+    # 메인 채팅은 탭 에이전트 도구를 아예 주지 않는다(가계·위치가 외부로 나가지 않게)
+    seen = []
+
+    def fake(body):
+        seen.append([t["name"] for t in body["tools"]])
+        return _text("네")
+
+    monkeypatch.setattr(rag_chat, "_post", fake)
+    service._calls.clear()
+    assert client.post("/ai-assistant/chat", json={"message": "안녕"}, headers=a).status_code == 200
+    assert not {"ask_billing", "ask_care"} & set(seen[0])
+
+
+def test_usage_is_logged_with_tokens_and_answers_are_not_cached(client, family, monkeypatch):
+    a, _, group = family
+    _ready(monkeypatch, group)
+    reply = {
+        "content": [{"type": "text", "text": "네"}],
+        "usage": {"input_tokens": 120, "output_tokens": 7},
+    }
+    monkeypatch.setattr(llm_agent, "_post", lambda body: reply)
+    assert (
+        client.post("/care/agent/chat", json={"message": "오늘은?"}, headers=a).status_code == 200
+    )
+    with SessionLocal() as db:
+        row = db.scalars(select(AiUsageLog)).one()
+        assert (row.feature, row.api_calls, row.status) == ("care_agent", 1, "ok")
+        assert (row.input_tokens, row.output_tokens) == (120, 7)
+        assert (
+            db.scalars(select(AiResultCache)).all() == []
+        )  # 가계·위치가 든 답을 캐시에 복사하지 않는다
+
+
+def test_personal_info_in_the_question_is_masked_before_it_leaves(client, family, monkeypatch):
+    a, _, group = family
+    _ready(monkeypatch, group)
+    sent = []
+
+    def fake(body):
+        sent.append(str(body["messages"]))
+        return _text("네")
+
+    monkeypatch.setattr(llm_agent, "_post", fake)
+    body = {"message": "내 번호는 010-1234-5678 이야. 지출은?"}
+    assert client.post("/billing/agent/chat", json=body, headers=a).status_code == 200
+    assert "010-1234-5678" not in sent[0] and "지출은" in sent[0]
+
+
+def test_tab_agent_daily_limit_uses_the_shared_guard(client, family, monkeypatch):
+    a, _, group = family
+    _ready(monkeypatch, group)
+    monkeypatch.setattr(llm_agent, "_post", lambda body: _text("네"))
+    monkeypatch.setattr(settings, "ai_tab_agent_max_calls_per_user_per_day", 1)
+    agent_guard.register()  # 바뀐 설정을 한도에 반영한다
+    try:
+        assert (
+            client.post("/billing/agent/chat", json={"message": "a"}, headers=a).status_code == 200
+        )
+        again = client.post(
+            "/care/agent/chat", json={"message": "b"}, headers=a
+        )  # 정산·돌봄이 한 묶음
+        assert (again.status_code, again.json()["code"]) == (429, "ai_daily_limit_user")
+    finally:
+        monkeypatch.undo()
+        agent_guard.register()

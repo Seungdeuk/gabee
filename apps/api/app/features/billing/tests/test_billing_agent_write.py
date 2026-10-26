@@ -8,7 +8,8 @@ from app.features.ai_assistant import service as chat_service
 from app.features.ai_assistant.knowledge import rag_chat
 from app.shared import tokens
 from app.shared.config import settings
-from app.shared.llm import agent, agent_chat, proposals
+from app.shared.llm import agent, proposals
+from tests.ai_consent import enable_ai_for_user
 from tests.helpers import signup
 
 EXPENSE = {"title": "치과", "amount": 50000, "date": "2026-10-12"}
@@ -36,7 +37,7 @@ def _proposing_llm(args=None, times=1):
 def _setup(monkeypatch, fake):
     monkeypatch.setattr(settings, "anthropic_api_key", "test-key")
     monkeypatch.setattr(agent, "_post", fake)
-    agent_chat.limiter.reset()
+    enable_ai_for_user()
     proposals.reset()
 
 

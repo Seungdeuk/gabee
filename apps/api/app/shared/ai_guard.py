@@ -316,9 +316,11 @@ def run(
     feature: str,
     cache_key: str,
     call: Callable[[], tuple[dict, llm.JsonResult]],
+    use_cache: bool = True,
 ) -> Outcome:
     """AI 기능 하나를 가드 아래에서 실행한다. call() 은 (검증이 끝난 결과, LLM 응답)을 돌려주고, 실패하면 llm.LLMUnavailable 이나 ValueError.
-    cache_key 는 같은 요청이면 같아야 하고, 분석 범위가 바뀌면(새 메시지 등) 달라져야 한다(그래야 캐시가 갱신된다)."""
+    cache_key 는 같은 요청이면 같아야 하고, 분석 범위가 바뀌면(새 메시지 등) 달라져야 한다(그래야 캐시가 갱신된다).
+    use_cache=False 는 결과를 캐시에 읽지도 저장하지도 않는다(그때그때 DB 를 읽는 답이나 일회용 토큰이 든 결과용)."""
     if not is_enabled(db, group_id):
         raise ApiError(
             403,
@@ -326,7 +328,7 @@ def run(
             "가족 그룹에서 AI 기능을 아직 켜지 않았어요. 가족 소유자나 관리자가 켤 수 있어요",
         )
     now = datetime.now(UTC)
-    cached = _find_cache(db, group_id, feature, cache_key, now)
+    cached = _find_cache(db, group_id, feature, cache_key, now) if use_cache else None
     if cached is not None:
         _log_cached(db, user_id, group_id, feature, now)
         return Outcome(cached, True, 0, 0, 0, None)
@@ -339,7 +341,9 @@ def run(
     slot, token = _acquire_slot(db, group_id, user_id, feature, now)
     try:
         # 칸을 잡는 사이 같은 결과를 다른 요청이 먼저 만들었을 수 있다 — AI 를 부르기 전에 한 번 더 본다
-        cached = _find_cache(db, group_id, feature, cache_key, datetime.now(UTC))
+        cached = (
+            _find_cache(db, group_id, feature, cache_key, datetime.now(UTC)) if use_cache else None
+        )
         if cached is not None:
             _log_cached(db, user_id, group_id, feature, now)
             return Outcome(cached, True, 0, 0, 0, None)
@@ -367,7 +371,8 @@ def run(
         log.status, log.model = "ok", response.model
         log.input_tokens, log.output_tokens = response.input_tokens, response.output_tokens
         db.commit()
-        _store_cache(db, group_id, feature, cache_key, result, now)
+        if use_cache:
+            _store_cache(db, group_id, feature, cache_key, result, now)
         return Outcome(
             result, False, 1, response.input_tokens, response.output_tokens, response.model
         )

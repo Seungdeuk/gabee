@@ -12,6 +12,7 @@ import httpx
 from sqlalchemy.orm import Session
 
 from app.features.family_group.models import User
+from app.shared import ai_guard
 from app.shared.config import settings
 from app.shared.errors import ApiError
 from app.shared.llm.client import API_URL, API_VERSION
@@ -168,6 +169,8 @@ def ask(
             return _fallback(db, group_id, question)
         post = _post
     messages = _messages(question, history)
+    # 가족 그룹이 AI 를 켠 경우에만 정산·돌봄 에이전트에게 물을 수 있다(가계·위치가 담당 에이전트를 거쳐 외부로 나가므로)
+    with_agents = user is not None and ai_guard.is_enabled(db, group_id)
     result = AskResult("", "ai")
     seen: set[str] = set()
     refs: dict[str, int] = {}
@@ -177,8 +180,8 @@ def ask(
                 {
                     "model": settings.llm_model,
                     "max_tokens": 1024,
-                    "system": system_prompt(user is not None),
-                    "tools": tools.TOOL_SPECS + (agents.tool_specs() if user else []),
+                    "system": system_prompt(with_agents),
+                    "tools": tools.TOOL_SPECS + (agents.tool_specs() if with_agents else []),
                     "messages": messages,
                 }
             )
@@ -196,7 +199,7 @@ def ask(
                 record = {"name": call["name"], "input": args}
                 result.tool_calls.append(record)
                 try:
-                    if user is not None and agents.is_agent_tool(call["name"]):
+                    if with_agents and agents.is_agent_tool(call["name"]):
                         data, record["agent_tool_calls"], made = agents.call(
                             db, group_id, user, call["name"], args, post
                         )

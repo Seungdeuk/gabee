@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 from app.features.family_group.models import User
 from app.shared.auth import ensure_group_member
 from app.shared.errors import bad_request
-from app.shared.llm import proposals
+from app.shared.llm import agent_guard, proposals
 from app.shared.llm.agent import AgentReply, Post, Tool, ask_agent
 
 from . import repository as repo
@@ -237,11 +237,18 @@ def ask(
 ) -> AgentReply:
     ensure_group_member(db, user.id, group_id)
     proposed: list = []
-    return ask_agent(
-        system_prompt(),
-        question,
-        build_tools(db, group_id, user, proposed),
-        post=post,
-        history=history,
-        proposals=proposed,
+    question, history = agent_guard.prepare(question, history)
+    return agent_guard.run_turn(
+        db,
+        user.id,
+        group_id,
+        agent_guard.CARE_FEATURE,
+        lambda: ask_agent(
+            system_prompt(),
+            question,
+            build_tools(db, group_id, user, proposed),
+            post=post,
+            history=history,
+            proposals=proposed,
+        ),
     )
