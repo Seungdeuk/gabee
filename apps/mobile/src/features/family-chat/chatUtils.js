@@ -353,3 +353,19 @@ export function pinErrorMessage(error, action = "pin") {
   if (error?.status === 404) return action === "unpin" ? "이미 해제된 고정이에요" : "대화방을 찾을 수 없거나 권한이 없어요";
   return roomErrorMessage(error);
 }
+
+/**
+ * 일정·할 일 연결 오류를 사용자 문장으로(제목·본문은 넣지 않는다). 상태로도 알아본다(403 만든 사람만, 404, 429).
+ * @param {{ code?: string, status?: number } | null | undefined} error
+ * @param {"create" | "delete"} [action]
+ * @returns {string}
+ */
+export function linkErrorMessage(error, action = "create") {
+  if (error?.code === "invalid_message") return "이 메시지는 연결할 수 없어요";
+  if (error?.code === "invalid_target") return "연결할 일정·할 일을 찾을 수 없어요";
+  if (error?.code === "too_many_links") return "연결이 너무 많아요";
+  if (error?.status === 403 || error?.code === "forbidden") return "만든 사람만 지울 수 있어요";
+  if (error?.status === 429) return "너무 자주 했어요. 잠시 뒤에 다시 해 주세요";
+  if (error?.status === 404) return action === "delete" ? "이미 지워진 연결이에요" : "대화방을 찾을 수 없거나 권한이 없어요";
+  return roomErrorMessage(error);
+}
