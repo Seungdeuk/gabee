@@ -6995,6 +6995,158 @@
         }
       }
     },
+    "/billing/agent/chat": {
+      "post": {
+        "tags": [
+          "billing"
+        ],
+        "summary": "Agent Chat",
+        "description": "정산(가계) 에이전트와 직접 대화한다(메인 에이전트를 거치지 않는다). 조회는 바로 답하고, 쓰기는 응답의 proposals 로 제안만 한다(agent/confirm 으로 확인해야 실행).",
+        "operationId": "agent_chat_billing_agent_chat_post",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-gyeot-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Gyeot-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AgentChatIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentChatOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/billing/agent/confirm": {
+      "post": {
+        "tags": [
+          "billing"
+        ],
+        "summary": "Agent Confirm",
+        "description": "에이전트가 제안한 가계 쓰기를 사용자가 확인했을 때 실행한다. 토큰은 제안받은 본인·가족·탭에서 10분 안에 한 번만 쓸 수 있다.",
+        "operationId": "agent_confirm_billing_agent_confirm_post",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-gyeot-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Gyeot-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AgentConfirmIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentConfirmOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/care/records": {
       "put": {
         "tags": [
@@ -8489,6 +8641,158 @@
         }
       }
     },
+    "/care/agent/chat": {
+      "post": {
+        "tags": [
+          "care"
+        ],
+        "summary": "Agent Chat",
+        "description": "돌봄 에이전트와 직접 대화한다(메인 에이전트를 거치지 않는다). 조회는 바로 답하고, 쓰기는 응답의 proposals 로 제안만 한다(agent/confirm 으로 확인해야 실행).",
+        "operationId": "agent_chat_care_agent_chat_post",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-gyeot-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Gyeot-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AgentChatIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentChatOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/care/agent/confirm": {
+      "post": {
+        "tags": [
+          "care"
+        ],
+        "summary": "Agent Confirm",
+        "description": "에이전트가 제안한 돌봄 쓰기를 사용자가 확인했을 때 실행한다. 토큰은 제안받은 본인·가족·탭에서 10분 안에 한 번만 쓸 수 있다.",
+        "operationId": "agent_confirm_care_agent_confirm_post",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-gyeot-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Gyeot-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AgentConfirmIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentConfirmOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/ai-assistant/knowledge/items": {
       "post": {
         "tags": [
@@ -9635,6 +9939,91 @@
         }
       }
     },
+    "/ai-assistant/files/{file_id}/description": {
+      "post": {
+        "tags": [
+          "ai-assistant"
+        ],
+        "summary": "File Description",
+        "description": "글자가 안 읽힌 사진에 한 줄 설명을 달거나 고친다. 다른 가족의 파일이면 404, 사진이 아니면 409.",
+        "operationId": "file_description_ai_assistant_files__file_id__description_post",
+        "parameters": [
+          {
+            "name": "file_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "File Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-gyeot-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Gyeot-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DescriptionIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FileStatusOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/ai-assistant/files/{file_id}/original": {
       "get": {
         "tags": [
@@ -9991,6 +10380,123 @@
           "user"
         ],
         "title": "AccountSignupOut"
+      },
+      "AgentChatIn": {
+        "properties": {
+          "message": {
+            "type": "string",
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Message"
+          },
+          "history": {
+            "items": {
+              "$ref": "#/components/schemas/AgentChatTurn"
+            },
+            "type": "array",
+            "maxItems": 10,
+            "title": "History"
+          }
+        },
+        "type": "object",
+        "required": [
+          "message"
+        ],
+        "title": "AgentChatIn"
+      },
+      "AgentChatOut": {
+        "properties": {
+          "reply": {
+            "type": "string",
+            "title": "Reply"
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "ai",
+              "fallback"
+            ],
+            "title": "Source"
+          },
+          "tool_calls": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Tool Calls"
+          },
+          "proposals": {
+            "items": {
+              "$ref": "#/components/schemas/ProposalOut"
+            },
+            "type": "array",
+            "title": "Proposals",
+            "default": []
+          }
+        },
+        "type": "object",
+        "required": [
+          "reply",
+          "source",
+          "tool_calls"
+        ],
+        "title": "AgentChatOut"
+      },
+      "AgentChatTurn": {
+        "properties": {
+          "role": {
+            "type": "string",
+            "enum": [
+              "user",
+              "assistant"
+            ],
+            "title": "Role"
+          },
+          "text": {
+            "type": "string",
+            "maxLength": 4000,
+            "title": "Text"
+          }
+        },
+        "type": "object",
+        "required": [
+          "role",
+          "text"
+        ],
+        "title": "AgentChatTurn"
+      },
+      "AgentConfirmIn": {
+        "properties": {
+          "token": {
+            "type": "string",
+            "maxLength": 4000,
+            "minLength": 10,
+            "title": "Token"
+          }
+        },
+        "type": "object",
+        "required": [
+          "token"
+        ],
+        "title": "AgentConfirmIn"
+      },
+      "AgentConfirmOut": {
+        "properties": {
+          "ok": {
+            "type": "boolean",
+            "title": "Ok"
+          },
+          "summary": {
+            "type": "string",
+            "title": "Summary"
+          }
+        },
+        "type": "object",
+        "required": [
+          "ok",
+          "summary"
+        ],
+        "title": "AgentConfirmOut"
       },
       "AgentRequest": {
         "properties": {
@@ -11034,6 +11540,14 @@
             "type": "array",
             "title": "Sources",
             "default": []
+          },
+          "proposals": {
+            "items": {
+              "$ref": "#/components/schemas/ProposalOut"
+            },
+            "type": "array",
+            "title": "Proposals",
+            "default": []
           }
         },
         "type": "object",
@@ -11232,6 +11746,21 @@
           "missing_ids"
         ],
         "title": "DailyOut"
+      },
+      "DescriptionIn": {
+        "properties": {
+          "text": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Text"
+          }
+        },
+        "type": "object",
+        "required": [
+          "text"
+        ],
+        "title": "DescriptionIn"
       },
       "DirectRoomCreate": {
         "properties": {
@@ -11505,14 +12034,68 @@
             "title": "Title"
           },
           "starts_at": {
-            "type": "string",
-            "format": "date-time",
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "Starts At"
+          },
+          "start_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Start Date"
+          },
+          "start_time": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Start Time"
+          },
+          "end_time": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "End Time"
           },
           "note": {
             "type": "string",
             "title": "Note",
             "default": ""
+          },
+          "memo": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Memo"
           },
           "status": {
             "type": "string",
@@ -11528,18 +12111,50 @@
             "enum": [
               "manual",
               "chat",
-              "photo"
+              "photo",
+              "request"
             ],
             "title": "Source",
             "default": "manual"
+          },
+          "kind": {
+            "type": "integer",
+            "enum": [
+              1,
+              2
+            ],
+            "title": "Kind",
+            "default": 1
+          },
+          "place": {
+            "type": "string",
+            "maxLength": 200,
+            "title": "Place",
+            "default": ""
+          },
+          "who_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 20,
+            "title": "Who Ids"
+          },
+          "share_with": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 20,
+            "title": "Share With"
           }
         },
         "type": "object",
         "required": [
-          "title",
-          "starts_at"
+          "title"
         ],
-        "title": "EventCreate"
+        "title": "EventCreate",
+        "description": "시각은 두 방식 중 하나로 준다. 새 방식은 start_date(+ start_time, end_time),\n옛 방식은 starts_at. 둘 다 오면 start_date 를 쓴다. 메모도 memo 가 note 의 새 이름이다.\nshare_with 에 든 가족 구성원마다 그 사람 몫의 복사본이 생기고, 비워 두면 나만 가진다."
       },
       "EventOut": {
         "properties": {
@@ -11571,6 +12186,87 @@
           "created_by": {
             "type": "string",
             "title": "Created By"
+          },
+          "user_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "User Id"
+          },
+          "kind": {
+            "type": "integer",
+            "title": "Kind"
+          },
+          "who_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Who Ids"
+          },
+          "place": {
+            "type": "string",
+            "title": "Place"
+          },
+          "start_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Start Date"
+          },
+          "start_time": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Start Time"
+          },
+          "end_time": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "End Time"
+          },
+          "memo": {
+            "type": "string",
+            "title": "Memo"
+          },
+          "checked": {
+            "type": "boolean",
+            "title": "Checked"
+          },
+          "origin_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Origin Id"
           }
         },
         "type": "object",
@@ -11581,7 +12277,17 @@
           "note",
           "status",
           "source",
-          "created_by"
+          "created_by",
+          "user_id",
+          "kind",
+          "who_ids",
+          "place",
+          "start_date",
+          "start_time",
+          "end_time",
+          "memo",
+          "checked",
+          "origin_id"
         ],
         "title": "EventOut"
       },
@@ -11800,6 +12506,11 @@
             "type": "array",
             "title": "Doubts",
             "default": []
+          },
+          "needs_description": {
+            "type": "boolean",
+            "title": "Needs Description",
+            "default": false
           }
         },
         "type": "object",
@@ -12266,6 +12977,11 @@
           "needs_review": {
             "type": "boolean",
             "title": "Needs Review",
+            "default": false
+          },
+          "needs_description": {
+            "type": "boolean",
+            "title": "Needs Description",
             "default": false
           },
           "body_md": {
@@ -14201,6 +14917,34 @@
         },
         "type": "object",
         "title": "ProfilePhotoOut"
+      },
+      "ProposalOut": {
+        "properties": {
+          "token": {
+            "type": "string",
+            "title": "Token"
+          },
+          "summary": {
+            "type": "string",
+            "title": "Summary"
+          },
+          "tab": {
+            "type": "string",
+            "enum": [
+              "billing",
+              "care"
+            ],
+            "title": "Tab"
+          }
+        },
+        "type": "object",
+        "required": [
+          "token",
+          "summary",
+          "tab"
+        ],
+        "title": "ProposalOut",
+        "description": "에이전트가 제안한 쓰기 동작. 사용자가 확인하면 `POST /<tab>/agent/confirm` 에 token 을 보낸다."
       },
       "PutResult": {
         "properties": {
@@ -16221,6 +16965,11 @@
           "needs_review": {
             "type": "boolean",
             "title": "Needs Review",
+            "default": false
+          },
+          "needs_description": {
+            "type": "boolean",
+            "title": "Needs Description",
             "default": false
           }
         },

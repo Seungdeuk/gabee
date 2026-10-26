@@ -3,8 +3,10 @@ from pathlib import Path
 
 from sqlalchemy.orm import Session
 
+from app.features.family_group.models import User
 from app.shared.config import settings
 from app.shared.errors import bad_request
+from app.shared.llm.agent_chat import to_out as to_proposal_out
 
 from . import repository as repo
 from .knowledge import rag_chat
@@ -20,25 +22,33 @@ MAX_BYTES = 25 * 1024 * 1024
 
 
 def chat(
-    db: Session, group_id: str | None, user_id: str, message: str, history: list[dict] | None = None
+    db: Session,
+    group_id: str | None,
+    user_id: str,
+    message: str,
+    history: list[dict] | None = None,
+    user: User | None = None,
 ) -> ChatOut:
     """가족 그룹이 있으면 저장된 기록(knowledge)을 검색해서 근거로 답한다.
 
     외부 AI 는 가족 그룹이 AI 동의를 켠 경우에만, 쿨다운·하루 한도(ai_guard) 아래에서 부른다.
     그룹이 없으면 동의를 받을 가족이 없으니 외부 AI 를 부르지 않고 안내만 돌려준다.
     group_id 는 호출한 쪽(라우터)이 실제 구성원인지 확인한 값이어야 한다.
+    `user` 가 있으면 정산·돌봄 탭 에이전트에게 물어 답할 수 있고, 에이전트가 제안한 쓰기는 `proposals` 로 돌려준다.
 
     TODO: 일정·지출·돌봄 기록도 검색 대상에 넣는다(원본의 capture/qa 참고)."""
     if not group_id:
         return ChatOut(reply=NO_GROUP_REPLY, source="fallback")
     r = rag_chat.ask_guarded(
-        db, user_id, group_id, message, feature="assistant_chat", history=history
+        db, user_id, group_id, message, feature="assistant_chat", history=history, user=user
     )
     sources = [
         ChatSource(n=s["n"], title=s["title"], item_id=s["item_id"], source_path=s["source_path"])
         for s in r.sources
     ]
-    return ChatOut(reply=r.answer, source=r.source, sources=sources)
+    return ChatOut(
+        reply=r.answer, source=r.source, sources=sources, proposals=to_proposal_out(r.proposals)
+    )
 
 
 def save_photo(

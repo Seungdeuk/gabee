@@ -324,12 +324,18 @@ def test_chat_without_a_group_never_calls_the_external_ai(client, monkeypatch):
     assert post.bodies == []
 
 
-def test_chat_include_sensitive_defaults_to_off_and_keeps_sensitive_records_out(
-    client, family, monkeypatch
-):
+def test_chat_include_sensitive_defaults_to_on():
+    # 2026-10-26 사용자 결정: 가린 글만 채팅 근거로 쓰는 것이 기본이고, 끄려면 CHAT_INCLUDE_SENSITIVE=false.
+    # (분리 설계 — 서버 허용 / 개인 선택 — 는 채팅 담당과 따로 정한다)
     from app.shared.config import Settings
 
-    assert Settings.model_fields["chat_include_sensitive"].default is False
+    assert Settings.model_fields["chat_include_sensitive"].default is True
+
+
+def test_chat_include_sensitive_off_keeps_sensitive_records_out(client, family, monkeypatch):
+    from app.shared.config import settings
+
+    monkeypatch.setattr(settings, "chat_include_sensitive", False)
     a, _, _ = family
     for title, kind, sens, text in [
         ("처방전", "처방전", "sensitive", "조제약 소염진통제"),
@@ -343,7 +349,7 @@ def test_chat_include_sensitive_defaults_to_off_and_keeps_sensitive_records_out(
         assert r.status_code == 201, r.text
     post = _fake_ai(monkeypatch, tool_query="소염진통제")
     allow_ai(client, a, monkeypatch)
-    # 설정을 건드리지 않은 기본값 그대로 호출한다
+    # 설정이 꺼져 있을 때 민감 기록이 Claude 로 가지 않는다
     assert client.post("/ai-assistant/chat", json={"message": "약"}, headers=a).status_code == 200
     sent = str(post.bodies)
     assert "조제약" not in sent and "처방전" not in sent.split("tool_result")[-1]

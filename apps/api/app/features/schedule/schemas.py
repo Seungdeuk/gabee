@@ -1,15 +1,33 @@
-from datetime import datetime
+from datetime import date, datetime, time
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 class EventCreate(BaseModel):
+    """시각은 두 방식 중 하나로 준다. 새 방식은 start_date(+ start_time, end_time),
+    옛 방식은 starts_at. 둘 다 오면 start_date 를 쓴다. 메모도 memo 가 note 의 새 이름이다.
+    share_with 에 든 가족 구성원마다 그 사람 몫의 복사본이 생기고, 비워 두면 나만 가진다."""
+
     title: str = Field(min_length=1, max_length=120)
-    starts_at: datetime
+    starts_at: datetime | None = None
+    start_date: date | None = None
+    start_time: time | None = None
+    end_time: time | None = None
     note: str = ""
+    memo: str | None = None
     status: Literal["pending", "confirmed"] = "confirmed"
-    source: Literal["manual", "chat", "photo"] = "manual"
+    source: Literal["manual", "chat", "photo", "request"] = "manual"
+    kind: Literal[1, 2] = 1  # 1 약속 · 2 할 일
+    place: str = Field(default="", max_length=200)
+    who_ids: list[str] = Field(default_factory=list, max_length=20)  # 관련된 사람
+    share_with: list[str] = Field(default_factory=list, max_length=20)
+
+    @model_validator(mode="after")
+    def _needs_when(self) -> "EventCreate":
+        if self.starts_at is None and self.start_date is None:
+            raise ValueError("starts_at 또는 start_date 가 필요해요")
+        return self
 
 
 class EventOut(BaseModel):
@@ -20,3 +38,13 @@ class EventOut(BaseModel):
     status: str
     source: str
     created_by: str
+    user_id: str | None
+    kind: int
+    who_ids: list[str]
+    place: str
+    start_date: date | None
+    start_time: time | None
+    end_time: time | None
+    memo: str
+    checked: bool
+    origin_id: str | None

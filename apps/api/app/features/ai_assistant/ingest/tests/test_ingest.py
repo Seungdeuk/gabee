@@ -196,7 +196,7 @@ def test_broken_image_fails():
 def test_image_rotated_scaled_and_ocr_lines():
     ocr = FakeOcr([("동대문마트", 0.95), ("합계 2,950", 0.91)])
     r = preprocess(png(size=(400, 300), exif_orientation=6), "receipt.jpg", ocr=ocr)
-    assert ocr.seen.mode == "L"  # 흑백
+    assert ocr.seen.mode == "RGB"  # 색은 그대로(흑백·대비 보정은 글자 오류율이 더 높아서 뺐다)
     assert ocr.seen.size[0] < ocr.seen.size[1]  # EXIF 6 → 세로로 돌림
     assert ocr.seen.size == (600, 800)  # 작은 사진은 키운다(최대 2배)
     assert [b.type for b in r.content.blocks] == ["ocr_line", "ocr_line"]
@@ -228,7 +228,7 @@ def test_ocr_first_read_without_warmup_does_not_deadlock(monkeypatch):
         def __init__(self, params=None):
             pass
 
-        def __call__(self, arr):
+        def __call__(self, arr, use_cls=True):
             return types.SimpleNamespace(boxes=[], txts=[], scores=[])
 
     fake = types.SimpleNamespace(
@@ -467,7 +467,7 @@ def test_id_card_is_fully_masked_then_sent_to_classify():
             "domain": {"choice": "행정·공공", "confidence": 0.9},
         }
 
-    c = classify(r, None, jev)
+    c = classify(r, jev)
     assert sent == [text]  # 가린 글자만 간다
     assert c.doc_type == "주민등록증" and c.by == "jev"
 
@@ -526,11 +526,11 @@ def test_ingest_file_keeps_raw_original_and_masks_result(tmp_path):
     store = LocalRawStore(tmp_path)
     data = png()
     ocr = FakeOcr([("주민등록번호 900101-2345678", 0.9)])
-    r = ingest_file("g01", data, "a.png", store=store, ocr=ocr, llm=lambda p, system: {})
+    r = ingest_file("g01", data, "a.png", store=store, ocr=ocr)
     assert "2345678" not in r.content.text  # 결과는 가린 글자
     assert store.get(r.raw_path) == data  # 원본은 그대로
     assert r.raw_path.startswith("g01/") and r.raw_path.endswith(".png")
-    again = ingest_file("g01", data, "b.png", store=store, ocr=ocr, llm=lambda p, system: {})
+    again = ingest_file("g01", data, "b.png", store=store, ocr=ocr)
     assert (
         again.raw_path == r.raw_path and len(list(tmp_path.rglob("*.png"))) == 1
     )  # 같은 원본은 한 번만
@@ -569,11 +569,11 @@ def test_ingest_file_keeps_original_and_adds_display_copy(tmp_path):
 
     store = LocalRawStore(tmp_path)
     data = png((2000, 1500))
-    r = ingest_file("g01", data, "a.png", store=store, ocr=FakeOcr(), faces=None)
+    r = ingest_file("g01", data, "a.png", store=store, ocr=FakeOcr())
     assert store.get(r.raw_path) == data  # 원본은 손대지 않음
     assert r.display_path.endswith(".display.webp")
     assert Image.open(io.BytesIO(store.get(r.display_path))).size == (1080, 810)
-    doc = ingest_file("g01", "메모".encode(), "a.txt", store=store, llm=lambda p, system: {})
+    doc = ingest_file("g01", "메모".encode(), "a.txt", store=store)
     assert doc.display_path is None  # 사진이 아니면 사본 없음
     with __import__("pytest").raises(ValueError):
         store.put_copy("g01", "0" * 64, "../x", ".webp", b"")
@@ -687,3 +687,56 @@ def test_a_name_label_at_the_end_of_a_line_does_not_mask_the_next_line():
     text = "가게 이름\n합계 1,000원\n성명 홍길동\n"
     out = mask_text(text, "none")
     assert "합계 1,000원" in out and "홍**" in out  # 같은 줄의 이름만 가린다
+
+
+class _Res:
+    def __init__(self, texts, scores):
+        self.txts = texts
+        self.scores = scores
+        self.boxes = [
+            [[0, 10 * i], [50, 10 * i], [50, 10 * i + 8], [0, 10 * i + 8]]
+            for i in range(len(texts))
+        ]
+
+
+class _FakeEngine:
+    """방향 확인 없이 읽은 결과가 낮을 때 어떤 재시도를 하는지 보려는 가짜 엔진."""
+
+    def __init__(self, plain, with_cls, rotated):
+        self.plain, self.with_cls, self.rotated = plain, with_cls, rotated
+        self.calls = []
+
+    def __call__(self, arr, use_cls=True):
+        flipped = bool(
+            arr[0, 0, 0] == 7
+        )  # 180° 돌린 이미지는 왼쪽 위 칸 값이 7(아래 이미지 구성 참고)
+        self.calls.append(("rot" if flipped else "plain", use_cls))
+        if flipped:
+            return self.rotated
+        return self.with_cls if use_cls else self.plain
+
+
+def _read_with(engine):
+    ocr = KoreanOcr()
+    ocr._engine = engine
+    img = Image.new("RGB", (20, 20), (0, 0, 0))
+    img.putpixel((19, 19), (7, 0, 0))  # 180° 돌리면 왼쪽 위로 온다
+    return ocr.read(img)
+
+
+def test_ocr_reads_once_without_direction_check_when_confident():
+    good = _Res(["합계 34,950원", "카드결제"], [0.96, 0.93])
+    engine = _FakeEngine(good, _Res(["x"], [0.5]), _Res(["y"], [0.5]))
+    assert [ln.text for ln in _read_with(engine)] == ["합계 34,950원", "카드결제"]
+    assert engine.calls == [("plain", False)]  # 방향 확인을 끈 채 한 번만 읽는다
+
+
+def test_ocr_retries_with_direction_check_or_a_half_turn_when_unsure():
+    weak = _Res(["ㅎ"], [0.4])
+    flipped_ok = _Res(["영수증", "합계 9,900원"], [0.95, 0.9])
+    engine = _FakeEngine(weak, _Res(["ㅎ"], [0.45]), flipped_ok)
+    assert [ln.text for ln in _read_with(engine)] == [
+        "영수증",
+        "합계 9,900원",
+    ]  # 뒤집힌 사진은 돌려서 읽은 쪽
+    assert ("plain", True) in engine.calls and ("rot", False) in engine.calls

@@ -20,7 +20,14 @@
 - 화면별 상세 규칙은 프로젝트 위키 `schedule-*` 문서를 따른다.
 
 ## API
-- 서버 `features/schedule`(현재 제목·시작·메모·상태·출처만 있음)는 위 규칙을 담지 못한다. 앱은 우선 mock 데이터로 만들고, 서버 변경은 별도로 합의한다.
+- 서버 일정은 사람마다 자기 줄(`user_id`)을 가진다. 앱은 우선 mock 데이터로 만들고, 서버 연동은 별도로 합의한다.
+- `POST /schedule/events`: 제목과 시각(`start_date` + 선택 `start_time`·`end_time`, 또는 옛 방식 `starts_at`) 외에 형태 `kind`(1 약속·2 할 일), `place`, 누구 `who_ids`, `memo`(옛 이름 `note`), 공유 대상 `share_with`(가족 구성원 id 목록)를 받는다. 공유 대상을 고르지 않으면 나만 갖고, 고르면 그 사람마다 복사본이 생긴다. 구성원이 아닌 사람이 있으면 400 `invalid_share_target`.
+- 복사본은 만들어진 뒤로는 받은 사람의 일정이다(`origin_id` 는 출처 표시일 뿐). 원본을 고치거나 지워도 복사본은 그대로이고, 복사본의 확인·삭제는 받은 사람이 자기 줄에서 한다.
+- `GET /schedule/events`: 내 줄만 준다(삭제된 것 제외). 주인이 없는 옛 일정(`user_id` 없음)은 그룹 전체가 본다.
+- `POST /schedule/events/{id}/confirm`: 내 줄만 확인한다.
+- `DELETE /schedule/events/{id}`: 그 줄의 주인만 지운다(삭제 시각 `deleted_at` 만 채움). 주인이 아니면 403 `not_owner`, 내 줄이 아니면 404.
+- 옛 컬럼(`starts_at`·`note`·`created_by`·`status`)은 당분간 새 컬럼과 함께 채운다. 제거는 별도 PR(담당자 승인 후).
+- 에이전트(`POST /schedule/agent`)도 호출한 사람의 일정만 읽는다.
 
 ## 데이터
 - 항목: 형태, 제목, 날짜(필수), 시작·종료 시간(선택), 종일, 장소(직접 입력), 메모, 누구(여러 명), 주제, 공유 대상, 만든 사람, 확인·완료 여부.

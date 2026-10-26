@@ -10,7 +10,7 @@ from app.shared.errors import not_found
 from . import files, repository, service
 from .knowledge.router import router as knowledge_router
 from .models import Photo
-from .schemas import ChatIn, ChatOut, FileOut, FileStatusOut, PhotoOut
+from .schemas import ChatIn, ChatOut, DescriptionIn, FileOut, FileStatusOut, PhotoOut
 
 router = APIRouter(prefix="/ai-assistant", tags=["ai-assistant"])
 router.include_router(knowledge_router)  # /ai-assistant/knowledge/*
@@ -22,7 +22,7 @@ def chat(body: ChatIn, user=Depends(current_user), db: Session = Depends(get_db)
     group_id = user.active_group_id
     if group_id:  # 캐시값만 믿지 않고 실제 구성원인지 확인한다(아니면 403 not_member)
         ensure_group_member(db, user.id, group_id)
-    return service.chat(db, group_id, user.id, body.message, history)
+    return service.chat(db, group_id, user.id, body.message, history, user=user)
 
 
 @router.post("/photos", response_model=PhotoOut, status_code=201)
@@ -69,6 +69,20 @@ def file_status(
     file_id: str, group_id: str = Depends(current_group_id), db: Session = Depends(get_db)
 ) -> FileStatusOut:
     out = files.status(db, group_id, file_id)
+    if out is None:
+        raise not_found("파일")
+    return out
+
+
+@router.post("/files/{file_id}/description", response_model=FileStatusOut)
+def file_description(
+    file_id: str,
+    body: DescriptionIn,
+    group_id: str = Depends(current_group_id),
+    db: Session = Depends(get_db),
+) -> FileStatusOut:
+    """글자가 안 읽힌 사진에 한 줄 설명을 달거나 고친다. 다른 가족의 파일이면 404, 사진이 아니면 409."""
+    out = files.set_description(db, group_id, file_id, body.text)
     if out is None:
         raise not_found("파일")
     return out

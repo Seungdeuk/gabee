@@ -3,6 +3,8 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.shared.llm.schemas import ProposalOut
+
 
 class ChatTurn(BaseModel):
     role: Literal["user", "assistant"]
@@ -27,6 +29,9 @@ class ChatOut(BaseModel):
     reply: str
     source: str  # ai: AI 가 답함 | fallback: AI 를 쓸 수 없어 기본 안내를 보냄
     sources: list[ChatSource] = []
+    proposals: list[
+        ProposalOut
+    ] = []  # 정산·돌봄 에이전트가 제안한 쓰기. 사용자가 확인해야 실행된다
 
 
 class FileOut(BaseModel):
@@ -44,6 +49,13 @@ class FileStatusOut(FileOut):
     description: str | None = None
     message: str | None = None
     doubts: list[str] = []  # 글자 인식이 흐려서 사용자에게 맞는지 물어볼 줄(가려진 상태의 글)
+    needs_description: bool = False  # 글자가 안 읽힌 사진인데 사용자가 단 설명이 아직 없다
+
+
+class DescriptionIn(BaseModel):
+    model_config = ConfigDict(str_strip_whitespace=True)
+
+    text: str = Field(min_length=1, max_length=200)  # 앞뒤 공백을 뺀 길이로 센다
 
 
 class PhotoOut(BaseModel):

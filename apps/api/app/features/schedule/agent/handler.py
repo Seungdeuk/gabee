@@ -59,7 +59,7 @@ def handle(db: Session, user_id: str, group_id: str, request: AgentRequest) -> A
     ensure_group_member(db, user_id, group_id)  # 라우터 밖에서 service 를 부르므로 직접 확인한다
     now = datetime.now(UTC)
     local_now = now.astimezone(reader.local_tz())
-    data = reader.read(db, group_id, request.channel, now)  # 서버에서는 과거·미래 1년
+    data = reader.read(db, group_id, request.channel, now, user_id)  # 내 일정만, 과거·미래 1년
     period = period_mod.extract(request.text, local_now.date())  # 문장의 기간(없으면 None)
     shown, omitted = reader.select_for_prompt(data.events, now, period)
     scope = f"문장에서 읽은 기간 {period.widened().label()}" if period else None

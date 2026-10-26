@@ -25,25 +25,16 @@ class Settings(BaseSettings):
     schema_recheck_ready_seconds: int = 30
     schema_recheck_not_ready_seconds: int = 2
     schema_force_min_interval_seconds: float = 1  # /health/db 가 강제 재점검할 수 있는 최소 간격
-    # 로컬 언어 모델(Ollama). 개인정보가 섞일 수 있는 글자는 외부 대신 여기로 보낸다
-    local_llm_url: str = "http://localhost:11434"
-    local_llm_model: str = "qwen2.5:7b"
-    local_llm_timeout: float = 120.0
     # TypeSafe Jev — 정해진 보기 중 고르기·예/아니오 판단. 가린 글자만 보낸다
     typesafe_api_key: str = ""
     jev_model: str = "jev-latest"
     jev_timeout: float = 15.0
-    # 얼굴 찾기 모델(YuNet·SFace) 폴더. 비우면 DATA_DIR/models/faces. 모델이 없으면 얼굴 찾기를 건너뛴다
-    face_model_dir: str = ""
     # 원본 파일(가리기 전)을 그대로 보관하는 폴더. 비우면 DATA_DIR/raw. 접근을 제한해야 하는 곳이라 서버만 읽는다
     raw_dir: str = ""
-    # 글자 없는 사진 설명(Ollama 이미지 모델). 사진은 서버 밖으로 나가지 않는다
-    caption_enabled: bool = True
-    caption_model: str = "qwen2.5vl:3b"
-    caption_timeout: float = 60.0
-    ollama_keep_alive: str = "30m"  # 모델을 메모리에 올려 두는 시간(처음 불러오는 데 1분쯤 걸린다)
     # 채팅(외부 Claude)이 근거로 읽을 수 있는 기록에 민감 기록(처방전·신분증·통장·인물 사진 등)을 넣을지
-    chat_include_sensitive: bool = False  # 기본은 뺀다(필요한 가족만 CHAT_INCLUDE_SENSITIVE=true)
+    chat_include_sensitive: bool = (
+        True  # 가린 글만 채팅 근거로 쓴다. 끄려면 CHAT_INCLUDE_SENSITIVE=false
+    )
 
     # 로그인/JWT(PR 4-B). JWT_SECRET 은 환경변수(.env)로만 준다 — 코드·Git 에 넣지 않는다.
     # 비어 있으면: 로컬 SQLite 나 DEBUG=true 에서만 프로세스 임시 키를 쓴다(재시작하면 로그인이 풀림). PostgreSQL(공용·운영)에서는
@@ -128,6 +119,10 @@ class Settings(BaseSettings):
     )
     ai_day_utc_offset_hours: int = 9  # 하루 한도를 세는 날짜 경계(기본 한국 시간 자정)
     # 일정 에이전트는 위 기본 한도와 따로 센다(ai_guard.register_bucket). 채팅은 한 번에 두 번(분류·답변) 부르므로 쿨다운을 두지 않는다.
+    # 정산·돌봄 탭 에이전트(질문 1번 = 호출 묶음 1번으로 센다). 기본 한도·일정과 따로 센다
+    ai_tab_agent_cooldown_seconds: int = 0
+    ai_tab_agent_max_calls_per_user_per_day: int = 60
+    ai_tab_agent_max_calls_per_group_per_day: int = 200
     ai_schedule_chat_cooldown_seconds: int = 0
     ai_schedule_chat_max_calls_per_user_per_day: int = 30
     ai_schedule_chat_max_calls_per_group_per_day: int = 100
