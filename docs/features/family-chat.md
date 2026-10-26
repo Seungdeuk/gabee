@@ -146,7 +146,11 @@
 **채팅방 안 AI 패널** (`components/AiPanel.js`, ✨ 버튼으로 연다)
 
 - 아래에서 올라오는 시트(React Native Modal). 열 때만 `GET /family-chat/ai/settings` 로 동의·권한·남은 횟수를 읽는다. 패널이 닫혀 있으면 AI 호출은 한 번도 없다.
-- **동의가 꺼져 있으면**: 설명과 "AI 기능 켜기" 버튼(`PUT /family-chat/ai/settings`)을 보인다. 버튼은 소유자·관리자에게만 보이고, 그 밖의 구성원에게는 "가족 소유자나 관리자가 켜야 해요"를 보인다.
+- **동의가 꺼져 있으면**: 동의 안내 카드(`AiConsentCard`: 제목 + 요약 3줄 + 접어 둔 "자세히 보기")와 "AI 기능 켜기" 버튼을 보인다. 버튼은 소유자·관리자에게만 보이고, 그 밖의 구성원에게는 "가족 소유자나 관리자만 켜고 끌 수 있어요. 구성원 개인이 다른 사람 대신 동의할 수 없어요"를 보인다(서버도 403 `not_manager`).
+- **켜기 직전 확인**: "AI 기능 켜기"를 누르면 바로 `PUT /family-chat/ai/settings` 를 보내지 않고 같은 카드가 "확인하고 켜기"/"취소"와 함께 나온다. "확인하고 켜기"를 눌러야 PUT 한다. 이미 켜져 있는 가족에는 이 단계가 없다(`needsEnableConfirm`: 꺼짐 -> 켬 에서만 true). 확인 단계에서는 상세를 펼쳐 둔다.
+- **끄기**: 동의가 켜진 상태의 패널에서 소유자·관리자에게만 "AI 끄기" 버튼을 보이고(구성원에게는 "가족 소유자나 관리자만 AI 기능을 끌 수 있어요" 안내만), 누르면 "끄면 AI 비서·문서 질문·일정·가계·돌봄 도우미까지 모두 멈추고 저장된 분석 결과가 지워져요" 확인 뒤 "끄기"/"취소". "끄기"에서만 `PUT {enabled:false}` 를 보낸다. 켜기·끄기 확인 버튼은 빠른 두 번 누름을 ref 로 막는다.
+- **알려진 우회(팀 영역)**: `features/ai-assistant/components/AiOffCard.js`(`enableAi`)는 같은 PUT 을 확인 카드 없이 보낸다. `tests/privacycopy.test.js` 가 PUT 호출 위치를 허용 목록으로 검사해 새 우회가 생기면 실패한다. 담당 팀과 확인 카드를 shared 로 올려 통합해야 한다.
+- **동의 문구의 근거와 한 곳 관리**: 문구는 `features/family-chat/privacyCopy.js` 상수에만 있다. 서버에서 이 동의(`ai_guard.is_enabled`/`run` 의 동의 단계)는 가족 채팅 AI(analysis·reply·topics, 가명화), AI 비서(`assistant_chat`: 질문·찾은 문서가 가려지지 않음), 문서 질문(`doc_summary`·`doc_answer`, 문서 글은 저장 시 정규식 마스킹만), 일정(`schedule` 질문·일정 제목 정규식 마스킹), 가계·돌봄 도우미(`billing_agent`·`care_agent`: 질문만 `mask_text`, 조회 결과의 이름·금액·위치는 가려지지 않음)에 모두 쓰인다. 그래서 안내는 "대화 분석·답장 추천만 가려서 보내고 나머지는 가려지지 않을 수 있다"고 쓴다. 서버가 다른 기능에도 가명화를 넓히면 `privacyCopy.js` 만 고친다. 시험 `tests/privacycopy.test.js`.
 - **켜져 있으면**: "오늘 남은 횟수: 나 N번 · 가족 N번"을 보인다(`parseAiSettings`). 호출이 끝날 때마다 설정을 다시 읽는다.
 - **대화 분석하기** → `POST /family-chat/ai/analysis`: 요약, 중요 메시지(이유 목록), 일정 후보, 할 일 후보를 보인다. 결과 아래에 "대화 N개 기준 · 시각"과 "방금 분석 · AI 호출 N번 · 토큰 N" 또는 "저장된 결과(AI 호출 없음)"를 보인다.
   - 일정 후보는 날짜·시간이 모두 있어야 "일정으로 등록"이 켜진다. 누르면 기존 `POST /schedule/events` 로 등록한다(`scheduleEventBody`: 날짜·시간은 기기 시간대로 해석해 UTC 로 보내고, 장소는 메모에 "장소: …"로 넣는다). 등록 결과는 후보마다 따로 보인다.

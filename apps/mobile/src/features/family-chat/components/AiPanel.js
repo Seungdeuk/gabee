@@ -17,7 +17,19 @@ import {
 } from "../messages";
 import { parsePreview, previewErrorMessage, privacyCaption } from "../privacyPreview";
 import { candidateToTodoBody, todoErrorMessage } from "../todoUtils";
+import {
+  CONSENT_CANCEL_LABEL,
+  CONSENT_DISABLE_BODY,
+  CONSENT_DISABLE_CONFIRM_LABEL,
+  CONSENT_DISABLE_LABEL,
+  CONSENT_DISABLE_TITLE,
+  CONSENT_ENABLE_LABEL,
+  CONSENT_NEED_MANAGER,
+  CONSENT_ON_MEMBER_NOTE,
+  needsEnableConfirm,
+} from "../privacyCopy";
 import AiConfirmCard from "./AiConfirmCard";
+import AiConsentCard from "./AiConsentCard";
 import TodoCandidateRow from "./TodoCandidateRow";
 
 /** 후보 한 줄에 붙는 보조 글(날짜·시간·장소 등). */
@@ -41,6 +53,9 @@ export default function AiPanel({ visible, onClose, onPickReply, onLinked }) {
   const [topics, setTopics] = useState(null);
   const [registered, setRegistered] = useState({}); // 후보 순번 -> "ok" | "sending" | 오류 문구
   const [todoRegistered, setTodoRegistered] = useState({}); // 할 일 후보 순번 -> 같은 형태
+  const [confirmingEnable, setConfirmingEnable] = useState(false); // 켜기 직전 안내 확인 중
+  const [confirmingDisable, setConfirmingDisable] = useState(false); // 끄기 직전 확인 중
+  const settingBusy = useRef(false); // 켜기·끄기 확인 버튼을 빠르게 두 번 눌러도 한 번만 보낸다
   const [pending, setPending] = useState(null); // 보내기 전 확인: { action, status: "loading"|"ready"|"error", preview, error }
   const previewSeq = useRef(0); // 취소·재요청 뒤에 늦게 온 미리보기 응답을 버린다
   const todoBusy = useRef(new Set()); // 등록 중이거나 등록된 할 일 후보 순번: 같은 후보를 두 번 등록하지 않는다
@@ -57,6 +72,24 @@ export default function AiPanel({ visible, onClose, onPickReply, onLinked }) {
   useEffect(() => {
     if (shouldLoadSettings(visible)) loadSettings();
   }, [visible, loadSettings]);
+
+  /** "AI 기능 켜기" 버튼: 바로 켜지 않고 확인 카드를 연다(이미 켜져 있으면 아무 일도 없다). */
+  const startEnable = () => {
+    if (needsEnableConfirm(settings?.enabled, true)) setConfirmingEnable(true);
+  };
+
+  /** 확인 카드에서 "확인하고 켜기"/"끄기"를 눌렀을 때만 설정을 바꾼다. */
+  const changeEnabled = async (enabled) => {
+    if (settingBusy.current) return;
+    settingBusy.current = true;
+    try {
+      await run("settings", () => setAiEnabled(enabled), () => {});
+    } finally {
+      settingBusy.current = false;
+      setConfirmingEnable(false);
+      setConfirmingDisable(false);
+    }
+  };
 
   /** 요청 하나를 실행하고 오류는 문구로 바꾼다. 끝나면 남은 횟수를 새로 읽는다. */
   const run = async (name, call, onDone) => {
@@ -171,27 +204,36 @@ export default function AiPanel({ visible, onClose, onPickReply, onLinked }) {
   if (!settings.enabled) {
     return (
       <>
-        <Text style={styles.sub}>
-          켜면 대화 분석·답장 추천·대화 주제 추천을 쓸 수 있어요. 버튼을 누르면 먼저 보낼 내용을 확인하는 화면이 나오고, 개인정보를 가린 최근 대화 일부가 AI로 전달돼요. 분석 결과는 잠시(약 10분) 저장돼 같은 요청에 다시 쓰여요.
-        </Text>
+        {confirmingEnable ? (
+          <AiConsentCard
+            busy={busy === "settings"}
+            defaultOpen
+            onConfirm={() => changeEnabled(true)}
+            onCancel={() => setConfirmingEnable(false)}
+          />
+        ) : (
+          <>
+            <AiConsentCard />
+            {settings.canManage ? (
+              <Button
+                label={CONSENT_ENABLE_LABEL}
+                small
+                onPress={startEnable}
+                disabled={busy !== ""}
+                testID="chat-ai-enable"
+              />
+            ) : (
+              <Text style={styles.note} testID="chat-ai-need-manager">
+                {CONSENT_NEED_MANAGER}
+              </Text>
+            )}
+          </>
+        )}
         {error ? (
           <Text style={styles.error} accessibilityRole="alert">
             {error}
           </Text>
         ) : null}
-        {settings.canManage ? (
-          <Button
-            label={busy === "settings" ? "켜는 중..." : "AI 기능 켜기"}
-            small
-            onPress={() => run("settings", () => setAiEnabled(true), () => {})}
-            disabled={busy !== ""}
-            testID="chat-ai-enable"
-          />
-        ) : (
-          <Text style={styles.note} testID="chat-ai-need-manager">
-            가족 소유자나 관리자가 켜야 해요
-          </Text>
-        )}
       </>
     );
   }
@@ -200,6 +242,26 @@ export default function AiPanel({ visible, onClose, onPickReply, onLinked }) {
   return (
     <>
       <Text style={styles.sub}>확인 후 &ldquo;AI에 보내기&rdquo;를 누를 때만 개인정보를 가린 최근 대화가 AI로 전달돼요. 분석 결과는 잠시(약 10분) 저장돼 같은 요청에 다시 쓰여요.</Text>
+      {settings.canManage ? (
+        confirmingDisable ? (
+          <View style={styles.offCard} testID="chat-ai-disable-confirm">
+            <Text style={styles.bodyStrong} accessibilityRole="header">
+              {CONSENT_DISABLE_TITLE}
+            </Text>
+            <Text style={styles.sub}>{CONSENT_DISABLE_BODY}</Text>
+            <View style={styles.row}>
+              <Button label={busy === "settings" ? "끄는 중..." : CONSENT_DISABLE_CONFIRM_LABEL} small onPress={() => changeEnabled(false)} disabled={busy !== ""} testID="chat-ai-disable-confirm-yes" />
+              <Button label={CONSENT_CANCEL_LABEL} small variant="secondary" onPress={() => setConfirmingDisable(false)} disabled={busy !== ""} testID="chat-ai-disable-confirm-no" />
+            </View>
+          </View>
+        ) : (
+          <Button label={CONSENT_DISABLE_LABEL} small variant="secondary" onPress={() => setConfirmingDisable(true)} disabled={busy !== ""} testID="chat-ai-disable" />
+        )
+      ) : (
+        <Text style={styles.note} testID="chat-ai-on-member-note">
+          {CONSENT_ON_MEMBER_NOTE}
+        </Text>
+      )}
       {remainingText(settings) ? <Text style={styles.caption}>{remainingText(settings)}</Text> : null}
       {error ? (
         <Text style={styles.error} accessibilityRole="alert">
@@ -402,5 +464,6 @@ const styles = StyleSheet.create({
   loading: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
   row: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
   result: { gap: spacing.xs, backgroundColor: colors.card, borderRadius: 14, padding: spacing.md },
+  offCard: { gap: spacing.xs, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, padding: spacing.md },
   candidate: { gap: spacing.xs, paddingVertical: spacing.xs },
 });
