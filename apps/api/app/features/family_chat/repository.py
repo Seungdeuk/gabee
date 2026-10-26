@@ -164,6 +164,16 @@ def last_message(db: Session, room: ChatRoom) -> tuple[Message, str] | None:
     return rows[0] if rows else None
 
 
+def get_in_room(db: Session, room: ChatRoom, message_id: int) -> tuple[Message, str] | None:
+    """이 방의 메시지 하나와 보낸 사람 이름. 이 방의 메시지가 아니면 None."""
+    row = db.execute(
+        select(Message, User.name)
+        .join(User, User.id == Message.user_id)
+        .where(room_messages(room), Message.id == message_id)
+    ).first()
+    return (row[0], row[1]) if row else None
+
+
 def message_in_room(db: Session, room: ChatRoom, message_id: int) -> bool:
     """message_id 가 이 방의 실제 메시지인지."""
     found = db.scalar(select(Message.id).where(room_messages(room), Message.id == message_id))

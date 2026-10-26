@@ -2682,6 +2682,134 @@
         }
       }
     },
+    "/family-chat/search": {
+      "get": {
+        "tags": [
+          "family-chat"
+        ],
+        "summary": "Search Messages",
+        "description": "가족 전체방과 내가 참여한 1:1 방에서 글자가 일치하는 텍스트 메시지를 최신순으로 찾는다(사진 메시지 제외).",
+        "operationId": "search_messages_family_chat_search_get",
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 500,
+              "description": "검색어(공백 정리 후 1~100자). 공백으로 나눈 모든 낱말이 들어 있는 메시지",
+              "title": "Q"
+            },
+            "description": "검색어(공백 정리 후 1~100자). 공백으로 나눈 모든 낱말이 들어 있는 메시지"
+          },
+          {
+            "name": "room_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 32
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "이 방만 검색. 없으면 접근 가능한 모든 방",
+              "title": "Room Id"
+            },
+            "description": "이 방만 검색. 없으면 접근 가능한 모든 방"
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 50,
+              "minimum": 1,
+              "default": 20,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "before_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "이 id 보다 오래된 결과(다음 쪽)",
+              "title": "Before Id"
+            },
+            "description": "이 id 보다 오래된 결과(다음 쪽)"
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-gyeot-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Gyeot-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/app__features__family_chat__search_schemas__SearchOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/family-chat/ai/settings": {
       "get": {
         "tags": [
@@ -3294,12 +3422,20 @@
             "in": "query",
             "required": false,
             "schema": {
-              "type": "integer",
-              "maximum": 200,
-              "minimum": 1,
-              "default": 100,
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "maximum": 200,
+                  "minimum": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "기본 100, around_id 일 때 50",
               "title": "Limit"
-            }
+            },
+            "description": "기본 100, around_id 일 때 50"
           },
           {
             "name": "latest",
@@ -3327,6 +3463,25 @@
               ],
               "title": "Before Id"
             }
+          },
+          {
+            "name": "around_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "가운데 1개 + 앞뒤 각 limit//2 개(검색 결과로 점프할 때)",
+              "title": "Around Id"
+            },
+            "description": "가운데 1개 + 앞뒤 각 limit//2 개(검색 결과로 점프할 때)"
           },
           {
             "name": "room_id",
@@ -8619,7 +8774,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/SearchOut"
+                  "$ref": "#/components/schemas/app__features__ai_assistant__knowledge__schemas__SearchOut"
                 }
               }
             }
@@ -14202,21 +14357,64 @@
         ],
         "title": "SearchIn"
       },
-      "SearchOut": {
+      "SearchItem": {
         "properties": {
-          "hits": {
-            "items": {
-              "$ref": "#/components/schemas/HitOut"
-            },
-            "type": "array",
-            "title": "Hits"
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "room_id": {
+            "type": "string",
+            "title": "Room Id"
+          },
+          "room_kind": {
+            "type": "string",
+            "enum": [
+              "family",
+              "direct"
+            ],
+            "title": "Room Kind"
+          },
+          "peer_user_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Peer User Id"
+          },
+          "user_id": {
+            "type": "string",
+            "title": "User Id"
+          },
+          "user_name": {
+            "type": "string",
+            "title": "User Name"
+          },
+          "text": {
+            "type": "string",
+            "title": "Text"
+          },
+          "created_at": {
+            "type": "string",
+            "title": "Created At"
           }
         },
         "type": "object",
         "required": [
-          "hits"
+          "id",
+          "room_id",
+          "room_kind",
+          "peer_user_id",
+          "user_id",
+          "user_name",
+          "text",
+          "created_at"
         ],
-        "title": "SearchOut"
+        "title": "SearchItem"
       },
       "SettleRequest": {
         "properties": {
@@ -15666,6 +15864,22 @@
         ],
         "title": "ItemOut"
       },
+      "app__features__ai_assistant__knowledge__schemas__SearchOut": {
+        "properties": {
+          "hits": {
+            "items": {
+              "$ref": "#/components/schemas/HitOut"
+            },
+            "type": "array",
+            "title": "Hits"
+          }
+        },
+        "type": "object",
+        "required": [
+          "hits"
+        ],
+        "title": "SearchOut"
+      },
       "app__features__care__schemas__ItemOut": {
         "properties": {
           "id": {
@@ -15770,6 +15984,34 @@
           "meal_type"
         ],
         "title": "ItemOut"
+      },
+      "app__features__family_chat__search_schemas__SearchOut": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/SearchItem"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "next_before_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Before Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items",
+          "next_before_id"
+        ],
+        "title": "SearchOut"
       }
     }
   }

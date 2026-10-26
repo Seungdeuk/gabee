@@ -19,12 +19,14 @@ from .schemas import (
     RoomOut,
     UnreadOut,
 )
+from .search_router import router as search_router
 from .todo_router import router as todo_router
 
 router = APIRouter(prefix="/family-chat", tags=["family-chat"])
 router.include_router(photo_router)  # 사진 보내기·보기(AI 를 부르지 않는다)
 router.include_router(media_router)  # 사진·파일·동영상 모음(읽기 전용)
 router.include_router(todo_router)  # 공동 할 일(가족 전체 공유, AI 를 부르지 않는다)
+router.include_router(search_router)  # 대화 검색(글자 일치, AI 를 부르지 않는다)
 router.include_router(ai_router)  # AI 대화 분석·추천(사용할 때만 AI 호출, 가족 전체방만)
 
 # room_id 를 생략하면 가족 전체방이다(방 구조가 생기기 전 앱과 같은 동작).
@@ -53,15 +55,20 @@ def open_direct_room(
 @router.get("/messages", response_model=list[MessageOut])
 def list_messages(
     after_id: int = Query(0, ge=0),
-    limit: int = Query(100, ge=1, le=200),
+    limit: int | None = Query(None, ge=1, le=200, description="기본 100, around_id 일 때 50"),
     latest: bool = Query(False),
     before_id: int | None = Query(None, ge=1),
+    around_id: int | None = Query(
+        None, ge=1, description="가운데 1개 + 앞뒤 각 limit//2 개(검색 결과로 점프할 때)"
+    ),
     room_id: str | None = ROOM_ID,
     user: User = Depends(current_user),
     group_id: str = Depends(current_group_id),
     db: Session = Depends(get_db),
 ) -> list[MessageOut]:
-    return service.list_messages(db, user, group_id, after_id, limit, latest, before_id, room_id)
+    return service.list_messages(
+        db, user, group_id, after_id, limit, latest, before_id, room_id, around_id
+    )
 
 
 @router.post("/messages", response_model=MessageOut, status_code=201)
