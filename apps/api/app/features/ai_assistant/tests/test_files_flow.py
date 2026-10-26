@@ -159,7 +159,13 @@ def test_description_length_is_validated(client, family, pipeline):
     assert client.post(url, json={"text": "가" * 200}, headers=a).status_code == 200
 
 
-def test_text_photos_do_not_need_a_description(client, family, pipeline):
+def test_text_photos_do_not_need_a_description(client, family, pipeline, monkeypatch):
+    from app.features.ai_assistant.ingest import doc_classifier
+    from app.features.ai_assistant.ingest.doc_classifier import Prediction
+
+    # 분류기 파일(data/models/doc-classifier)은 저장소에 없다. CI 처럼 파일이 없으면 분류가 "확인 필요"가 되어
+    # 상태가 달라지므로, 진짜 분류기에 기대지 않게 확신하는 가짜를 끼운다(이 시험이 보는 것은 설명 필요 여부).
+    monkeypatch.setattr(doc_classifier, "predict", lambda text: Prediction("학교 가정통신문", 0.93))
     a, _, _ = family
     pipeline.ocr = FakeOcr([("가정통신문", 0.95), ("현장체험학습 안내", 0.9)])
     up = upload(client, a, png((9, 9, 9)))
