@@ -1,0 +1,73 @@
+"""메인 에이전트(가비 채팅)가 일정 요청을 넘길 때 쓰는 입구. 정산·돌봄 탭 에이전트의 `ask` 와 같은 모양이다.
+
+메인이 `ask_schedule` 도구로 사용자의 일정 문장을 넘기면 `handler.handle` 에 그대로 보내고, 돌려받은 응답을 메인이 사용자에게
+전할 글로 바꾼다. 일정 에이전트는 자기 모델 호출을 자기 관문(`ai_guard`, 일정 한도)으로 세므로, 메인 질문의 관문 한 번에 묶지 않고
+따로 센다(`guarded` 인자는 다른 탭 에이전트와 호출 모양을 맞추려는 자리다).
+
+이 대화에서 하는 일: 조회와 등록(제목·날짜가 있으면 내 일정으로 바로 만들고, 없으면 되묻는다).
+이 대화에서 하지 않는 일: 수정·삭제·가족에게 공유하는 등록은 확인 카드가 필요해서 실행하지 않고 일정 화면으로 안내한다.
+되묻는 초안은 서버가 저장하지 않으므로 메인이 앞 대화 내용을 합쳐 완전한 문장으로 다시 넘긴다."""
+
+from sqlalchemy.orm import Session
+
+from app.features.family_group.models import User
+from app.shared.llm.agent import AgentReply, Post
+
+from . import handler
+from .schemas import AgentRequest, AgentResponse
+
+DESCRIPTION = (
+    "일정 탭 담당. 일정 탭에 이미 입력된 내 일정을 조회하고, 사용자가 일정에 넣어 달라고 분명히 말한 새 일정을 등록한다. "
+    "제목과 날짜가 있으면 바로 등록하고, 빠졌으면 되묻는 질문을 돌려준다. "
+    "올려 둔 문서(학교 안내문·항공권·예약 확인서 등)에 적힌 날짜는 알지 못하니 그런 질문에는 쓰지 않는다. "
+    "일정 수정·삭제와 다른 가족에게 공유해서 등록하는 것은 이 대화에서 실행하지 못하고 일정 화면에서 확인해야 한다. "
+    "'내일 오후 3시 엄마 생신 일정으로 등록해줘'처럼 날짜·시간 표현과 제목을 담은 완전한 문장으로 넘긴다."
+)
+
+NOT_EXECUTED = "아직 실행되지 않았어요. 이 요청은 확인이 필요해서 일정 화면에서 직접 확인해 주세요."
+ASK_BACK = "일정을 등록하려면 정보가 더 필요해요. 사용자에게 이 질문을 그대로 전하고, 답을 받으면 앞의 내용을 합쳐 다시 넘기세요: "
+NOT_SCHEDULE = "일정과 관련된 요청이 아니에요."
+MAX_EVENTS_SHOWN = 10
+
+
+def _event_line(event: dict) -> str:
+    # 등록 카드는 start_time, 목록 카드(brief)는 time 이라는 이름을 쓴다
+    clock = event.get("start_time") or event.get("time") or ""
+    when = " ".join(x for x in (event.get("date", ""), clock) if x)
+    return f"- {when} {event.get('title', '')}".strip()
+
+
+def _reply(response: AgentResponse) -> AgentReply:
+    """일정 에이전트의 응답을 메인이 사용자에게 전할 글로 바꾼다. 실행되지 않은 일을 실행됐다고 말하게 하지 않는다."""
+    if response.intent == "not_schedule":
+        return AgentReply(NOT_SCHEDULE, can_answer=False)
+    if response.pending_action is not None:  # 공유 등록·수정·삭제: 확인 카드가 필요하다
+        return AgentReply(f"{NOT_EXECUTED} ({response.text})")
+    if response.draft is not None:  # 제목이나 날짜가 빠져 되묻는 중
+        return AgentReply(f"{ASK_BACK}{response.text}")
+    registered = next((c for c in response.cards if c.type == "registered"), None)
+    if registered is not None:
+        line = _event_line(registered.data)
+        return AgentReply(f"일정을 등록했어요.\n{line}")
+    listed = next((c for c in response.cards if c.type == "event_list"), None)
+    if listed is not None:
+        events = listed.data.get("events", [])[:MAX_EVENTS_SHOWN]
+        lines = "\n".join(_event_line(e) for e in events)
+        return AgentReply(f"{response.text}\n{lines}".strip())
+    if response.text:
+        return AgentReply(response.text)
+    return AgentReply("이 요청은 아직 처리할 수 없어요.", can_answer=False)
+
+
+def ask(
+    db: Session,
+    group_id: str,
+    user: User,
+    question: str,
+    post: Post | None = None,
+    history: list[dict] | None = None,
+    guarded: bool = False,
+) -> AgentReply:
+    """`post`·`history`·`guarded` 는 정산·돌봄 에이전트와 호출 모양을 맞추는 자리다(일정 에이전트는 쓰지 않는다)."""
+    request = AgentRequest(text=question.strip()[:2000], channel="personal")
+    return _reply(handler.handle(db, user.id, group_id, request))
