@@ -3,7 +3,9 @@
 각 탭 에이전트의 코드는 그 기능 폴더(billing/agent.py, care/agent.py, schedule/agent/ask.py)에 있고, 여기는 이름·설명·호출만 모은다.
 탭을 더 붙일 때는 `AGENTS` 에 한 줄을 더하면 된다."""
 
+import re
 from collections.abc import Callable
+from dataclasses import replace
 
 from sqlalchemy.orm import Session
 
@@ -60,10 +62,11 @@ PROMPT_NOTE = (
     "올려 둔 영수증·고지서로 지출을 등록하거나 정산해 달라고 하면, 또는 '소아과 진료비 정산해줘'처럼 병원·약국·학원 같은 지출을 '영수증'이라는 말 없이 정산·등록해 달라고 해도, 먼저 search_knowledge 로 그 문서가 있는지 찾아 날짜·금액·제목을 읽고, "
     "그 값을 담은 완전한 문장('2026-10-24 치과 128,000원 지출로 등록해줘')을 ask_billing 에 넘기세요. 문서에 나온 날짜를 쓰고 오늘 날짜로 "
     "바꾸지 마세요. 영수증이 둘 이상이라 어느 것인지 모르면 어느 것인지 물어보세요. 정산 내역을 묻는 것이 아니라 영수증을 장부에 올리라는 뜻이면 "
-    "조회가 아니라 등록으로 넘기세요. 질문과 관계없는 도구는 함께 부르지 마세요. 지출·금액을 묻는 질문은 검색만 하고 끝내지 말고 ask_billing 으로도 확인하세요. "
+    "조회가 아니라 등록으로 넘기세요. 질문과 관계없는 도구는 함께 부르지 마세요. 지출·금액을 묻는 질문은 반드시 ask_billing 으로 확인하고, search_knowledge 는 사용자가 영수증·고지서·문서를 말했을 때만 함께 쓰세요. "
     "pending_confirmation 이 결과에 없으면 제안이나 확인 카드가 만들어졌다고 말하지 마세요. "
     "'약속들 전부 넣어줘'처럼 후보 여러 개를 넣을 때는 일정 후보만 넣고 장보기·재활용 같은 할 일 후보는 넣지 마세요. "
-    "'마지막 거'는 날짜가 정해진 일정 후보 중 마지막을 뜻합니다."
+    "'마지막 거'는 날짜가 정해진 일정 후보 중 마지막을 뜻합니다. 무엇을 넣으라는 말 없이 '넣어줘'라고만 하면 후보를 다시 보여 주고 어느 것인지 물어보세요. "
+    "'전부'·'모두'·'약속들'처럼 전체를 뜻하는 말이 있을 때만 여러 개를 한꺼번에 넣으세요."
 )
 
 
@@ -91,6 +94,23 @@ def is_agent_tool(name: str) -> bool:
     return name in AGENTS
 
 
+PROPOSAL_CLAIM = re.compile(r"확인\s*버튼|제안(합니다|했|해\s*두)")
+NO_PROPOSAL_TEXT = "등록 제안이 만들어지지 않았어요. 금액·날짜·항목을 함께 다시 말씀해 주세요."
+
+
+def _without_false_proposal(name: str, reply: AgentReply) -> AgentReply:
+    """정산·돌봄 에이전트의 답이 '확인 버튼을 눌러야 등록돼요'라고 하는데 실제 제안(토큰)이 없으면, 그 말을 사용자에게 전하지 않는다.
+    모델이 제안 도구를 부르지 않거나 실패하고도 제안했다고 글로 쓰는 경우가 있다(메인은 도구 결과의 글을 믿고 그대로 전한다)."""
+    if (
+        name in ("ask_billing", "ask_care")
+        and reply.can_answer
+        and not reply.proposals
+        and PROPOSAL_CLAIM.search(reply.answer)
+    ):
+        return replace(reply, answer=NO_PROPOSAL_TEXT, can_answer=False)
+    return reply
+
+
 def call(
     db: Session, group_id: str, user: User, name: str, args: dict, post: Post | None
 ) -> tuple[dict, list[dict], list, list[dict]]:
@@ -101,6 +121,7 @@ def call(
     reply = AGENTS[name][1](
         db, group_id, user, question, post, guarded=False
     )  # 메인 질문의 관문 한 번에 함께 센다
+    reply = _without_false_proposal(name, reply)
     result = {"answer": reply.answer, "can_answer": reply.can_answer}
     if (
         reply.proposals or reply.confirmations
