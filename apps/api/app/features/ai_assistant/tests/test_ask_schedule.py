@@ -248,3 +248,33 @@ def test_main_chat_ignores_the_schedule_cooldown_and_daily_limit(
     _main_llm(monkeypatch, "내일 2시 치과 일정 잡아줘", [])
     reply = _chat(client, a, "내일 2시 치과 일정 잡아줘")
     assert "일정을 등록했어요" in reply["reply"]
+
+
+def test_same_request_twice_registers_only_once(client, family, schedule_llm, monkeypatch):
+    a, _, group = family
+    enable_ai(group["id"])
+    schedule_llm.data = _register_data(title="치과", date=_tomorrow(), start_time="15:00:00")
+    _main_llm(monkeypatch, "내일 3시 치과 일정 잡아줘", [])
+    first = _chat(client, a, "내일 3시 치과 일정 잡아줘")
+    second = _chat(client, a, "내일 3시 치과 일정 잡아줘")
+    assert "일정을 등록했어요" in first["reply"]
+    assert "이미 같은 일정이 있어요" in second["reply"]
+    assert [e["title"] for e in _events(client, a)] == ["치과"]
+
+
+def test_new_complete_request_does_not_inherit_the_old_draft(
+    client, family, schedule_llm, monkeypatch
+):
+    """되묻다 만 초안(시간 14:00)이 있어도, 제목과 날짜를 모두 말한 새 요청에는 그 시간이 섞이지 않는다."""
+    a, _, group = family
+    enable_ai(group["id"])
+    schedule_llm.data = _register_data(date=_tomorrow(), start_time="14:00:00")
+    _main_llm(monkeypatch, "내일 2시 일정 잡아줘", [])
+    asked = _chat(client, a, "내일 2시 일정 잡아줘")
+    assert "제목" in asked["reply"]
+    schedule_llm.data = _register_data(title="엄마 생신", date=_tomorrow())  # 시간 말 안 함
+    _main_llm(monkeypatch, "내일 엄마 생신 일정 잡아줘", [])
+    _chat(client, a, "내일 엄마 생신 일정 잡아줘")
+    saved = _events(client, a)
+    assert [e["title"] for e in saved] == ["엄마 생신"]
+    assert not saved[0].get("start_time")
