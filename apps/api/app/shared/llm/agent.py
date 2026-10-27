@@ -12,6 +12,7 @@ import httpx
 
 from app.shared.config import settings
 from app.shared.errors import ApiError
+from app.shared.privacy.ner import PrivacyUnavailable
 
 from .client import API_URL, API_VERSION, LLMUnavailable
 
@@ -130,6 +131,8 @@ def run_agent(
                 try:
                     tool = by_name[call["name"]]
                     data, err = tool.run(args), False
+                except PrivacyUnavailable:
+                    raise  # 개인정보 보호 엔진을 못 쓰면(required) 도구 오류로 숨기지 않고 503 으로 끝낸다
                 except (KeyError, ValueError, TypeError, ApiError) as e:
                     data, err = {"error": getattr(e, "message", None) or str(e)}, True
                 outputs.append(

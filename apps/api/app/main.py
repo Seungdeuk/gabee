@@ -14,6 +14,7 @@ from app.shared.config import settings
 from app.shared.db import init_db
 from app.shared.errors import register_error_handlers
 from app.shared.high_risk_guard import GUARDED_FEATURES, high_risk_guard
+from app.shared.privacy import ner as privacy_ner
 from app.shared.route_switch import RouteSwitchMiddleware
 from app.shared.schema_gate import health_router, schema_ready
 
@@ -21,6 +22,7 @@ from app.shared.schema_gate import health_router, schema_ready
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     init_db()
+    privacy_ner.start_preload()  # NER 모델을 백그라운드로 미리 불러온다(off 면 아무 일도 안 함, 실패해도 기동은 계속)
     yield
 
 

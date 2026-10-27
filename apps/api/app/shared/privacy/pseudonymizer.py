@@ -14,7 +14,7 @@
 import re
 from dataclasses import dataclass, field
 
-from .detectors import detect
+from .ner import detect_with_ner
 from .policy import BLOCKED_PLACEHOLDER, Action, Policy
 from .types import Kind, Span
 
@@ -203,7 +203,7 @@ class Pseudonymizer:
         if self._closed:
             raise RuntimeError("이미 닫힌 Pseudonymizer 다")
         text = text or ""
-        spans = detect(text, known_names)
+        spans = detect_with_ner(text, known_names)
         counts: dict[str, int] = {}
         blocked = False
         masked: list[Span] = []
@@ -243,7 +243,7 @@ class Pseudonymizer:
         high = 0
         out: list[str] = []
         pos = 0
-        for s in detect(text, known_names):
+        for s in detect_with_ner(text, known_names):
             action = policy.action_for(s.kind)
             if action is Action.KEEP:
                 continue
