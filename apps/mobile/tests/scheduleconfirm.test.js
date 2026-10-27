@@ -7,7 +7,9 @@ import {
   CARD_PENDING,
   cardButtons,
   confirmResultText,
+  mapChatCards,
   mapConfirmCards,
+  mapProposals,
 } from "../src/features/ai-assistant/scheduleCard.js";
 
 process.env.EXPO_PUBLIC_API_URL = "http://api.test";
@@ -119,4 +121,79 @@ test("askAssistantInRoom: 방에서 부른 요청의 확인 카드도 돌려준�
   assert.equal(res.postedMessageId, null);
   assert.equal(res.confirmCards.length, 1);
   assert.equal(res.confirmCards[0].action, "register");
+});
+
+const proposal = (extra = {}) => ({ token: "signed.token.value", summary: "지출 등록: 치과 50,000원", tab: "billing", ...extra });
+
+test("정산·돌봄 제안을 카드로 바꾸고, 토큰이 없거나 모르는 탭은 버린다", () => {
+  const cards = mapProposals([proposal(), proposal({ tab: "care", summary: "식단 기록: 점심 김치찌개" }), proposal({ token: "" }), proposal({ tab: "schedule" }), null]);
+  assert.equal(cards.length, 2);
+  assert.deepEqual(cards[0], {
+    kind: "proposal",
+    action: "propose",
+    tab: "billing",
+    title: "정산 에이전트의 제안",
+    lines: ["지출 등록: 치과 50,000원"],
+    sharedWith: [],
+    token: "signed.token.value",
+    status: CARD_PENDING,
+    resultText: "",
+  });
+  assert.equal(cards[1].title, "돌봄 에이전트의 제안");
+  assert.deepEqual(mapProposals(undefined), []);
+  assert.deepEqual(mapProposals("x"), []);
+});
+
+test("제안 카드의 버튼은 확인/취소이고, 채팅 카드는 일정 카드 뒤에 제안이 온다", () => {
+  const [card] = mapProposals([proposal()]);
+  assert.deepEqual(cardButtons(card).map((b) => b.key), ["ok", "cancel"]);
+  const all = mapChatCards({ confirm_cards: [serverCard()], proposals: [proposal()] });
+  assert.deepEqual(all.map((c) => c.kind), ["schedule", "proposal"]);
+  assert.deepEqual(mapChatCards({}), []);
+  assert.deepEqual(mapChatCards(null), []);
+});
+
+test("sendMessage: 정산·돌봄 제안도 확인 카드로 돌려준다", async () => {
+  const api = await import("../src/features/ai-assistant/api.js");
+  globalThis.fetch = async () => json(200, { reply: "등록할까요?", sources: [], confirm_cards: [], proposals: [proposal()] });
+  const res = await api.sendMessage("치과 5만원 지출 등록해줘");
+  assert.equal(res.confirmCards.length, 1);
+  assert.equal(res.confirmCards[0].kind, "proposal");
+});
+
+test("confirmCardAction: 제안은 그 탭의 확인 요청에 token 만 보낸다", async () => {
+  const api = await import("../src/features/ai-assistant/api.js");
+  const calls = [];
+  globalThis.fetch = async (url, init = {}) => {
+    calls.push({ url: String(url), body: JSON.parse(init.body) });
+    return json(200, { ok: true, summary: "지출 등록: 치과 50,000원" });
+  };
+  const [billing] = mapProposals([proposal()]);
+  const out = await api.confirmCardAction(billing, true);
+  assert.equal(calls[0].url, "http://api.test/billing/agent/confirm");
+  assert.deepEqual(calls[0].body, { token: "signed.token.value" });
+  assert.equal(out.text, "반영했어요 · 지출 등록: 치과 50,000원");
+  const [care] = mapProposals([proposal({ tab: "care" })]);
+  await api.confirmCardAction(care, false);
+  assert.equal(calls[1].url, "http://api.test/care/agent/confirm");
+});
+
+test("confirmCardAction: 일정 카드는 예전처럼 일정 확인 요청으로 간다", async () => {
+  const api = await import("../src/features/ai-assistant/api.js");
+  const calls = [];
+  globalThis.fetch = async (url, init = {}) => {
+    calls.push({ url: String(url), body: JSON.parse(init.body) });
+    return json(200, { text: "등록했어요.", cards: [] });
+  };
+  const [card] = mapConfirmCards([serverCard()]);
+  await api.confirmCardAction(card, true);
+  assert.equal(calls[0].url, "http://api.test/schedule/agent/confirm");
+  assert.equal(calls[0].body.share, true);
+});
+
+test("confirmCardAction: 서버가 거절하면(만료·이미 처리) 그 메시지를 그대로 던진다", async () => {
+  const api = await import("../src/features/ai-assistant/api.js");
+  globalThis.fetch = async () => json(409, { code: "proposal_used", message: "이미 처리한 요청이에요" });
+  const [card] = mapProposals([proposal()]);
+  await assert.rejects(() => api.confirmCardAction(card, false), (e) => /이미 처리/.test(e.message));
 });
