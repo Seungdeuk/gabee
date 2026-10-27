@@ -12,7 +12,8 @@
 
 import json
 import uuid
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
@@ -41,6 +42,33 @@ class Outcome:
 _slot_held_groups: ContextVar[frozenset[str]] = ContextVar(
     "ai_slot_held_groups", default=frozenset()
 )
+
+# 메인 채팅이 질문 하나의 모델 호출 수·토큰을 세는 곳. 그 안에서 관문 없이 모델을 부르는 탭 에이전트(일정)가 여기에 더한다
+_tally: ContextVar[dict | None] = ContextVar("ai_nested_tally", default=None)
+
+
+@contextmanager
+def tally_scope(used: dict) -> Iterator[None]:
+    """이 안에서 `count_nested` 로 센 호출은 `used`(calls·in·out·model)에 더해져 바깥 질문의 사용 기록·한도로 간다."""
+    token = _tally.set(used)
+    try:
+        yield
+    finally:
+        _tally.reset(token)
+
+
+def count_nested(response=None, calls: int = 1) -> bool:
+    """바깥 질문(메인 채팅)이 세는 중이면 이 호출을 거기에 더하고 True. 아니면 아무것도 하지 않고 False.
+    response 는 JsonResult 처럼 input_tokens·output_tokens·model 을 가진 응답(실패한 호출은 None)."""
+    used = _tally.get()
+    if used is None:
+        return False
+    used["calls"] += max(1, int(getattr(response, "calls", calls)))
+    used["in"] += int(getattr(response, "input_tokens", 0) or 0)
+    used["out"] += int(getattr(response, "output_tokens", 0) or 0)
+    used["model"] = str(getattr(response, "model", "") or used["model"])
+    return True
+
 
 USAGE_RETENTION_DAYS = 90  # 사용 기록(원문 없음)을 남겨 두는 기간
 CACHED_LOG_DEDUPE_SECONDS = 60  # 같은 사용자의 같은 캐시 적중 기록은 이 시간 안에 한 줄만 남긴다(반복 요청으로 표가 부푸는 것을 막는다)

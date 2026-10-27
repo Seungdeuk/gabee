@@ -26,7 +26,6 @@ GENERIC = "주민등록번호·카드·계좌번호·비밀번호는 AI 비서�
 TARGETS = [
     ("/ai-assistant/chat", lambda t: {"message": t}),
     ("/ai-assistant/knowledge/ask", lambda t: {"question": t}),
-    ("/ai-assistant/knowledge/answer", lambda t: {"question": t}),
     ("/ai-assistant/knowledge/items", lambda t: {"kind_label": "메모", "title": "x", "body_md": t}),
     ("/ai-assistant/knowledge/items", lambda t: {"kind_label": "메모", "title": t, "body_md": "x"}),
     ("/care/agent/chat", lambda t: {"message": t}),

@@ -41,7 +41,6 @@
 | POST /ai-assistant/chat | assistant_chat (100/300) | `ask_guarded` → `ai_guard.run` |
 | POST /ai-assistant/knowledge/ask | knowledge_ask (100/300) | `ask_guarded` |
 | POST /ai-assistant/knowledge/items/{id}/summary | doc_summary (기본 묶음) | `ai_guard.run` |
-| POST /ai-assistant/knowledge/answer | doc_answer (기본 묶음) | `ai_guard.run` |
 | POST /billing/agent/chat · /care/agent/chat | billing_agent · care_agent (60/200) | `agent_guard.run_turn` → `ai_guard.run` |
 
 각각에 대해: (a) 동의 꺼짐 → 403 `ai_not_enabled`, LLM 0회 (b) 사용자·가족 일일 한도(코드의 버킷 값을 읽어 사용) 초과 → 429, LLM 0회 (c) 동의 켜짐 정상 호출 → LLM 정확히 1회 (d) 서버 키 없음 → 외부 요청 0.

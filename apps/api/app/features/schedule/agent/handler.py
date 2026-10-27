@@ -28,7 +28,7 @@ def suggestion_out(s) -> SuggestionOut:
 
 
 def _ask(
-    db, user_id, group_id, request, local_now, shown, omitted, scope, final, members
+    db, user_id, group_id, request, local_now, shown, omitted, scope, final, members, guarded=True
 ) -> chat.ChatResult:
     lines = [
         chat.event_line(e.id, reader.to_local(e.starts_at), e.title, reader.time_text(e))
@@ -47,6 +47,7 @@ def _ask(
         final,
         members,
         request.draft,
+        guarded,
     )
 
 
@@ -60,7 +61,12 @@ def _wider_scope(period: period_mod.Period | None, keyword: str) -> str | None:
 
 
 def handle(
-    db: Session, user_id: str, group_id: str, request: AgentRequest, share_all: bool = False
+    db: Session,
+    user_id: str,
+    group_id: str,
+    request: AgentRequest,
+    share_all: bool = False,
+    guarded: bool = True,
 ) -> AgentResponse:
     ensure_group_member(db, user_id, group_id)  # 라우터 밖에서 service 를 부르므로 직접 확인한다
     now = datetime.now(UTC)
@@ -70,7 +76,9 @@ def handle(
     shown, omitted = reader.select_for_prompt(data.events, now, period)
     scope = f"문장에서 읽은 기간 {period.widened().label()}" if period else None
     members = members_mod.load(db, group_id)
-    result = _ask(db, user_id, group_id, request, local_now, shown, omitted, scope, False, members)
+    result = _ask(
+        db, user_id, group_id, request, local_now, shown, omitted, scope, False, members, guarded
+    )
     if result.need_wider:
         # 목록이 부족하다고 모델이 표시하면, 모델이 돌려준 기간·키워드로 이미 읽어 둔 일정 안에서 다시 걸러 한 번 더 묻는다
         model_period = period_mod.from_model(
@@ -88,6 +96,7 @@ def handle(
             _wider_scope(model_period, result.keyword),
             True,
             members,
+            guarded,
         )
     if result.intent == "not_schedule":
         return AgentResponse(intent=result.intent)

@@ -39,7 +39,6 @@ GUARDED_FEATURES = frozenset({"ai_assistant", "care", "billing"})
 _TARGETS: dict[str, tuple[tuple[str, ...], int]] = {
     "/ai-assistant/chat": (("message", "history"), MAX_SCAN_BYTES),
     "/ai-assistant/knowledge/ask": (("question",), MAX_SCAN_BYTES),
-    "/ai-assistant/knowledge/answer": (("question",), MAX_SCAN_BYTES),
     "/ai-assistant/knowledge/items": (("title", "body_md"), MAX_SCAN_BYTES_ITEMS),
     "/care/agent/chat": (("message", "history"), MAX_SCAN_BYTES),
     "/billing/agent/chat": (("message", "history"), MAX_SCAN_BYTES),
