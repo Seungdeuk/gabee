@@ -92,6 +92,11 @@ class AskResult:
     sources: list[dict] = field(default_factory=list)
     tool_calls: list[dict] = field(default_factory=list)
     proposals: list = field(default_factory=list)  # 사용자 확인을 기다리는 쓰기 제안
+    confirmations: list = field(
+        default_factory=list
+    )  # 앱이 확인 카드로 보여 줄 일정 공유·수정·삭제 등
+    # 답에 쓰인(인용된) 근거 중 민감 기록이 있다(가족 채팅방에 올릴지 판단에 쓴다). 검색에 걸렸어도 답에 안 쓴 기록은 세지 않는다
+    used_sensitive: bool = False
 
 
 def _post(body: dict) -> dict:
@@ -138,6 +143,7 @@ def _source(result: dict, n: int) -> dict:
         "page": result.get("page"),
         "source_path": result.get("source_path"),
         "date": result.get("date"),
+        "sensitive": bool(result.get("sensitive")),
     }
 
 
@@ -221,10 +227,11 @@ def ask(
                 result.tool_calls.append(record)
                 try:
                     if with_agents and agents.is_agent_tool(call["name"]):
-                        data, record["agent_tool_calls"], made = agents.call(
+                        data, record["agent_tool_calls"], made, cards = agents.call(
                             db, group_id, user, call["name"], args, post
                         )
                         result.proposals.extend(made)
+                        result.confirmations.extend(cards)
                     else:
                         data = _run_tool(db, group_id, call["name"], args)
                     err = False
@@ -256,6 +263,7 @@ def ask(
     ]
     if used:
         result.sources = used
+    result.used_sensitive = any(s.get("sensitive") for s in result.sources)
     _renumber(result)
     return result
 

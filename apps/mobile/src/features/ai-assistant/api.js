@@ -1,5 +1,7 @@
 import { apiFetch, apiUrl, authHeaders, ensureFreshAccess, isApiConfigured } from "@/shared/api/client";
 
+import { confirmResultText, mapConfirmCards } from "./scheduleCard";
+
 /**
  * 가비의 답변 한 건.
  * @typedef {object} AssistantReply
@@ -58,7 +60,19 @@ export async function sendMessage(text, history = []) {
   }
   const res = await apiFetch("/ai-assistant/chat", { method: "POST", body: { message: text, history: history.slice(-10) } });
   const sources = (res.sources ?? []).map(({ n, title, item_id: itemId, source_path: sourcePath }) => ({ n, title, itemId, sourcePath }));
-  return { reply: res.reply, sources, draft: null };
+  return { reply: res.reply, sources, draft: null, confirmCards: mapConfirmCards(res.confirm_cards) };
+}
+
+/**
+ * 채팅의 일정 확인 카드(가족 공유 등록·수정·삭제)의 버튼을 눌렀을 때. AI 를 부르지 않고, 서버는 돌려받은 내용을 처음부터 다시 검증한다.
+ * @param {{ pendingAction: object }} card mapConfirmCards 가 만든 카드
+ * @param {boolean} share 등록일 때 true 면 공유 대상에게도 등록, false 면 내 일정만
+ * @returns {Promise<{ text: string }>} 사용자에게 보여 줄 결과 한 줄
+ */
+export async function confirmScheduleAction(card, share) {
+  if (!isApiConfigured()) return { text: "(임시) 반영했어요." };
+  const res = await apiFetch("/schedule/agent/confirm", { method: "POST", body: { action: card.pendingAction, share: Boolean(share) } });
+  return { text: confirmResultText(res) };
 }
 
 /**

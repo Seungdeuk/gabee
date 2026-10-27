@@ -10,6 +10,7 @@ import { formatTime } from "../chatUtils";
 import { unreadByA11yLabel } from "../listUtils";
 import { fitSize } from "../photo";
 import { bubbleSelectable, bubbleTextStyle } from "../pinUtils";
+import AssistantAvatar from "./AssistantAvatar";
 import PhotoViewer from "./PhotoViewer";
 
 const AVATAR = 36;
@@ -19,6 +20,7 @@ const AVATAR = 36;
  * 내 말풍선은 아직 읽지 않은 사람이 있을 때만 시각 위에 작은 숫자(unread)를 보여 준다(모두 읽으면 표시 없음).
  * 사진 메시지(attachment)는 글자 대신 썸네일을 말풍선 안에 보여 주고(원본 비율로 크기를 미리 정해 레이아웃이 점프하지 않는다), 누르면 전체 화면으로 본다.
  * 전송 중이면 "전송 중…", 실패하면 "전송 실패 · 다시 보내기"(누르면 재전송, 길게 누르거나 "삭제" 로 지움).
+ * 가비(AI)가 @가비 호출에 답해 올린 메시지(is_assistant)는 반짝이 아바타와 꿀색 말풍선으로 사람과 구분한다.
  * 검색 결과로 이동했을 때 그 메시지는 highlighted 로 잠깐 배경색을 입힌다.
  * linkBadges 가 있으면(이 메시지에서 일정·할 일로 등록됨) 글 아래에 작은 표시를 붙인다(표시만, 눌러도 아무 일 없다).
  * onActions 가 있으면(서버에 저장된 텍스트 메시지) 말풍선을 길게 눌러 메뉴(복사·고정)를 연다. 네이티브에서는 길게 누르기가 글자 선택과 겹치지 않도록 이 경우 글자 선택을 끈다(복사는 메뉴에서 한다).
@@ -44,7 +46,7 @@ export default function MessageBubble({ message, mine, showName, showTime = true
       }
     : null;
   const bubble = (
-    <Box {...boxProps} style={[styles.bubble, attachment && styles.photoBubble, mine ? styles.mineBubble : styles.otherBubble, sending && styles.dim]}>
+    <Box {...boxProps} style={[styles.bubble, attachment && styles.photoBubble, mine ? styles.mineBubble : styles.otherBubble, message.is_assistant && styles.assistantBubble, sending && styles.dim]}>
       {attachment ? (
         <>
           <Pressable onPress={() => setViewing(true)} accessibilityRole="imagebutton" accessibilityLabel="사진, 누르면 크게 봐요">
@@ -113,7 +115,15 @@ export default function MessageBubble({ message, mine, showName, showTime = true
   }
   return (
     <View style={[styles.row, highlighted && styles.highlight]}>
-      {showName ? <UserAvatar name={message.user_name || "?"} userId={message.user_id} photoUrl={photoUrl} size={AVATAR} /> : <View style={styles.spacer} />}
+      {showName ? (
+        message.is_assistant ? (
+          <AssistantAvatar size={AVATAR} />
+        ) : (
+          <UserAvatar name={message.user_name || "?"} userId={message.user_id} photoUrl={photoUrl} size={AVATAR} />
+        )
+      ) : (
+        <View style={styles.spacer} />
+      )}
       <View style={styles.column}>
         {showName ? <Text style={styles.name}>{message.user_name}</Text> : null}
         <View style={styles.line}>
@@ -136,6 +146,7 @@ const styles = StyleSheet.create({
   bubble: { flexShrink: 1, maxWidth: "70%", paddingHorizontal: spacing.md, paddingVertical: spacing.sm + 2, borderRadius: radius.bubble },
   mineBubble: { backgroundColor: colors.peach, borderBottomRightRadius: spacing.xs },
   otherBubble: { maxWidth: "100%", backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border, borderTopLeftRadius: spacing.xs },
+  assistantBubble: { backgroundColor: colors.honeySoft, borderColor: colors.accent },
   photoBubble: { paddingHorizontal: spacing.xs, paddingVertical: spacing.xs }, // 위쪽 bubble 의 가로·세로 여백(longhand)이 padding 보다 우선해서 같은 방향으로 덮어쓴다
   photo: { maxWidth: "100%", borderRadius: radius.md }, // 좁은 화면에서는 말풍선 안으로 비율을 지키며 줄어든다
   photoText: { paddingHorizontal: spacing.sm, paddingVertical: spacing.xs },

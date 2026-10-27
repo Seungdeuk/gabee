@@ -1,0 +1,68 @@
+"""가족 채팅방에서 @가비 로 부른 질문의 답을 '가비' 이름으로 가족 전체방에 저장한다.
+
+- 가비는 사람이 아니라서 사용자 테이블에 계정을 하나 둔다(`ASSISTANT_USER_ID`). 메시지의 보낸 사람 칸을 비울 수 있게 바꾸지 않으므로
+  마이그레이션이 없고, 보낸 사람 이름을 조인해 읽는 기존 조회가 그대로 동작한다.
+- 이 계정은 로그인할 수 없다: 로그인 아이디·이메일·비밀번호가 없고 토큰은 서버가 만든 임의 값이며 아무에게도 주지 않는다.
+- 가족 구성원(group_members)에 넣지 않는다. 구성원 목록·할 일 담당자·읽음 계산에 나오지 않는다.
+- 저장은 서버가 AI 답을 만든 직후에만 한다. 앱이 "이 글을 가비 이름으로 올려 줘"라고 요청하는 입구는 두지 않는다(아무 글이나 가비 이름으로 올리는 것을 막는다).
+- 가족 전체방에만 저장한다. 1:1 방에는 저장하지 않는다."""
+
+import re
+import secrets
+
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import Session
+
+from app.features.family_group.models import User
+
+from . import repository as repo
+from .models import ASSISTANT_NAME, ASSISTANT_USER_ID, Message
+from .schemas import MessageOut
+from .service import message_out
+
+MAX_TEXT = 2000  # 사람이 보내는 메시지의 길이 제한과 같다
+
+
+def get_or_create_assistant(db: Session) -> User:
+    """가비 계정. 없으면 만든다(동시에 만들다 겹치면 먼저 만들어진 것을 쓴다)."""
+    user = db.get(User, ASSISTANT_USER_ID)
+    if user is not None:
+        return user
+    try:
+        user = User(
+            id=ASSISTANT_USER_ID,
+            name=ASSISTANT_NAME,
+            role="other",
+            token=secrets.token_urlsafe(32),
+        )
+        db.add(user)
+        db.commit()
+        return user
+    except IntegrityError:
+        db.rollback()
+        return db.get(User, ASSISTANT_USER_ID)
+
+
+_CITATION = re.compile(r"\s*\[\d+\]")
+_HEADING = re.compile(r"^[ 	]{0,3}#{1,6}[ 	]*", re.MULTILINE)
+
+
+def plain(text: str) -> str:
+    """방 메시지는 일반 글이라 개인 대화 화면이 그리는 마크다운 표시('## 제목', '**굵게**')를 글자 그대로 보이지 않게 뺀다. 목록의 '- '는 그대로 둔다."""
+    return _HEADING.sub("", text).replace("**", "")
+
+
+def clip(text: str) -> str:
+    """방에 올릴 글로 다듬는다: 출처 번호([1])는 개인 대화의 출처 칩과 이어지는 표시라 방 메시지에서는 뺀다. 마크다운 표시도 뺀다. 길면 줄인다."""
+    text = plain(_CITATION.sub("", text)).strip()
+    return text if len(text) <= MAX_TEXT else text[: MAX_TEXT - 1].rstrip() + "…"
+
+
+def post_as_assistant(db: Session, group_id: str, text: str) -> MessageOut:
+    """가족 전체방에 가비 이름으로 메시지를 올린다. group_id 는 호출한 쪽이 실제 구성원인지 확인한 값이어야 한다."""
+    assistant = get_or_create_assistant(db)
+    room = repo.get_family_room(db, group_id)
+    message = repo.add(
+        db, Message(group_id=group_id, room_id=room.id, user_id=assistant.id, text=clip(text))
+    )
+    return message_out(message, assistant.name)

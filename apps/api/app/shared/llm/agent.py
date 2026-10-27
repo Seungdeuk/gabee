@@ -44,6 +44,8 @@ class AgentReply:
     proposals: list = field(
         default_factory=list
     )  # proposals.Proposal: 사용자 확인을 기다리는 쓰기 제안
+    # 앱이 확인 카드로 보여 줄 실행 정보(예: 일정 공유 등록·수정·삭제). 사용자가 버튼을 눌러야 실행되고, 서버는 돌려받은 값을 다시 검증한다
+    confirmations: list[dict] = field(default_factory=list)
     input_tokens: int = 0  # 이 답을 만들며 쓴 토큰 합(여러 번 부른 호출의 합, 사용 기록용)
     output_tokens: int = 0
     model: str = ""

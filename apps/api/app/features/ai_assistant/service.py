@@ -3,15 +3,17 @@ from pathlib import Path
 
 from sqlalchemy.orm import Session
 
+from app.features.family_chat import assistant as family_assistant
 from app.features.family_group.models import User
 from app.shared.config import settings
 from app.shared.errors import bad_request
 from app.shared.llm.agent_chat import to_out as to_proposal_out
 
 from . import repository as repo
+from . import room_visibility
 from .knowledge import rag_chat
 from .models import Photo
-from .schemas import ChatOut, ChatSource
+from .schemas import ChatOut, ChatSource, ConfirmCardOut
 
 NO_GROUP_REPLY = (
     "가족 그룹에 먼저 참여하면 가비가 가족의 기록을 바탕으로 도와드릴 수 있어요. "
@@ -28,6 +30,7 @@ def chat(
     message: str,
     history: list[dict] | None = None,
     user: User | None = None,
+    audience: str = "me",
 ) -> ChatOut:
     """가족 그룹이 있으면 저장된 기록(knowledge)을 검색해서 근거로 답한다.
 
@@ -46,9 +49,29 @@ def chat(
         ChatSource(n=s["n"], title=s["title"], item_id=s["item_id"], source_path=s["source_path"])
         for s in r.sources
     ]
-    return ChatOut(
-        reply=r.answer, source=r.source, sources=sources, proposals=to_proposal_out(r.proposals)
+    out = ChatOut(
+        reply=r.answer,
+        source=r.source,
+        sources=sources,
+        proposals=to_proposal_out(r.proposals),
+        confirm_cards=[ConfirmCardOut(**c) for c in r.confirmations],
     )
+    if audience == "room":
+        judged = room_visibility.judge(
+            r.tool_calls, r.used_sensitive, bool(r.proposals) or bool(r.confirmations)
+        )
+        if (
+            r.source != "ai"
+        ):  # AI 가 아닌 기본 안내·검색 결과는 어떤 기록이 섞였는지 알 수 없어 방에 올리지 않는다
+            judged.add("AI 가 답하지 못해 기록 검색 결과만 있어요")
+        if any(turn.get("private") for turn in history or []):
+            # 앞서 질문한 사람에게만 보였던 개인용 답이 맥락에 있으면, 도구를 안 쓴 짧은 후속 답에도 그 내용이 섞일 수 있다
+            judged.add("앞서 개인 정보가 있는 답이 있었어요")
+        out.visibility, out.private_reasons = judged.visibility, judged.reasons
+        if out.visibility == room_visibility.ROOM and out.reply.strip():
+            # 방에 올려도 되는 답은 서버가 직접 가비 이름으로 저장한다(앱이 아무 글이나 가비 이름으로 올리는 입구는 없다)
+            out.posted_message_id = family_assistant.post_as_assistant(db, group_id, out.reply).id
+    return out
 
 
 def save_photo(

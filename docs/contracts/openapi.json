@@ -12723,6 +12723,15 @@
             "type": "array",
             "maxItems": 10,
             "title": "History"
+          },
+          "audience": {
+            "type": "string",
+            "enum": [
+              "me",
+              "room"
+            ],
+            "title": "Audience",
+            "default": "me"
           }
         },
         "type": "object",
@@ -12756,6 +12765,42 @@
             "type": "array",
             "title": "Proposals",
             "default": []
+          },
+          "visibility": {
+            "type": "string",
+            "enum": [
+              "room",
+              "private"
+            ],
+            "title": "Visibility",
+            "default": "private"
+          },
+          "private_reasons": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Private Reasons",
+            "default": []
+          },
+          "confirm_cards": {
+            "items": {
+              "$ref": "#/components/schemas/ConfirmCardOut"
+            },
+            "type": "array",
+            "title": "Confirm Cards",
+            "default": []
+          },
+          "posted_message_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Posted Message Id"
           }
         },
         "type": "object",
@@ -12820,6 +12865,11 @@
             "type": "string",
             "maxLength": 4000,
             "title": "Text"
+          },
+          "private": {
+            "type": "boolean",
+            "title": "Private",
+            "default": false
           }
         },
         "type": "object",
@@ -12856,6 +12906,58 @@
           "code"
         ],
         "title": "CodeIn"
+      },
+      "ConfirmCardOut": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "schedule",
+            "title": "Kind"
+          },
+          "action": {
+            "type": "string",
+            "enum": [
+              "register",
+              "edit",
+              "delete"
+            ],
+            "title": "Action"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "lines": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Lines",
+            "default": []
+          },
+          "shared_with": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Shared With",
+            "default": []
+          },
+          "pending_action": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Pending Action"
+          }
+        },
+        "type": "object",
+        "required": [
+          "kind",
+          "action",
+          "title",
+          "pending_action"
+        ],
+        "title": "ConfirmCardOut",
+        "description": "사용자가 버튼을 눌러야 실행되는 일정 요청(가족 공유 등록·수정·삭제). 앱은 `POST /schedule/agent/confirm` 에\n`{action: pending_action, share}` 를 보낸다. 서버는 돌려받은 pending_action 을 믿지 않고 처음부터 다시 검증한다."
       },
       "ConfirmRequest": {
         "properties": {
@@ -15854,6 +15956,11 @@
                 "type": "null"
               }
             ]
+          },
+          "is_assistant": {
+            "type": "boolean",
+            "title": "Is Assistant",
+            "default": false
           }
         },
         "type": "object",

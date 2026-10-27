@@ -8,23 +8,27 @@
 이 대화에서 하지 않는 일: 수정·삭제·가족에게 공유하는 등록은 확인 카드가 필요해서 실행하지 않고 일정 화면으로 안내한다.
 되묻는 초안은 서버가 저장하지 않으므로 메인이 앞 대화 내용을 합쳐 완전한 문장으로 다시 넘긴다."""
 
+import re
+
 from sqlalchemy.orm import Session
 
 from app.features.family_group.models import User
 from app.shared.llm.agent import AgentReply, Post
 
 from . import handler
+from . import members as members_mod
 from .schemas import AgentRequest, AgentResponse
 
 DESCRIPTION = (
     "일정 탭 담당. 일정 탭에 이미 입력된 내 일정을 조회하고, 사용자가 일정에 넣어 달라고 분명히 말한 새 일정을 등록한다. "
     "제목과 날짜가 있으면 바로 등록하고, 빠졌으면 되묻는 질문을 돌려준다. "
     "올려 둔 문서(학교 안내문·항공권·예약 확인서 등)에 적힌 날짜는 알지 못하니 그런 질문에는 쓰지 않는다. "
-    "일정 수정·삭제와 다른 가족에게 공유해서 등록하는 것은 이 대화에서 실행하지 못하고 일정 화면에서 확인해야 한다. "
+    "일정 수정·삭제와 다른 가족에게 공유해서 등록하는 것은 사용자 화면에 확인 카드가 나타나고 버튼을 눌러야 반영된다. "
+    "'가족 모두에게 공유'도 그대로 넘긴다. "
     "'내일 오후 3시 엄마 생신 일정으로 등록해줘'처럼 날짜·시간 표현과 제목을 담은 완전한 문장으로 넘긴다."
 )
 
-NOT_EXECUTED = "아직 실행되지 않았어요. 이 요청은 확인이 필요해서 일정 화면에서 직접 확인해 주세요."
+CARD_SHOWN = "아직 실행되지 않았어요. 사용자 화면에 확인 카드가 나타났고, 사용자가 카드의 버튼을 눌러야 반영돼요."
 ASK_BACK = "일정을 등록하려면 정보가 더 필요해요. 사용자에게 이 질문을 그대로 전하고, 답을 받으면 앞의 내용을 합쳐 다시 넘기세요: "
 NOT_SCHEDULE = "일정과 관련된 요청이 아니에요."
 MAX_EVENTS_SHOWN = 10
@@ -37,12 +41,66 @@ def _event_line(event: dict) -> str:
     return f"- {when} {event.get('title', '')}".strip()
 
 
+WHOLE_FAMILY = re.compile(
+    r"가족\s*(모두|전체|전원|다)|온\s*가족|식구\s*(모두|전체)|다\s*같이|모두에게|모두한테"
+)
+
+
+def wants_whole_family(text: str) -> bool:
+    return "공유" in text and bool(WHOLE_FAMILY.search(text))
+
+
+def with_whole_family(text: str, db: Session, group_id: str, user_id: str) -> str:
+    """'가족 모두에게 공유해서'처럼 가족 전체를 말하면 공유 대상 이름을 질문 뒤에 밝혀 넘긴다. 모델이 일부만 고르는 일을 막는다.
+    말한 사람(나)은 뺀다(코드가 어차피 자기 자신에게는 공유하지 않는다)."""
+    if not wants_whole_family(text):
+        return text
+    others = [m.label for m in members_mod.load(db, group_id) if m.id != user_id]
+    return f"{text} (공유 대상: {', '.join(others)})" if others else text
+
+
+def _change_line(change) -> str:
+    """수정 카드의 바뀌는 내용 한 줄. 일정 에이전트는 {label, before, after} 로 준다."""
+    if isinstance(change, dict):
+        return f"{change.get('label', '')}: {change.get('before', '')} → {change.get('after', '')}"
+    return str(change)
+
+
+def _confirmation(response: AgentResponse) -> dict:
+    """앱이 그리는 확인 카드. pending_action 은 버튼을 누를 때 그대로 돌려받아 서버가 처음부터 다시 검증한다."""
+    action = response.pending_action
+    card = next((c for c in response.cards if c.type.endswith("_confirm")), None)
+    data = card.data if card else {}
+    lines: list[str] = []
+    shared: list[str] = []
+    if action.type == "register":
+        lines.append(_event_line(data).removeprefix("- "))
+        if data.get("place"):
+            lines.append(f"장소 {data['place']}")
+        shared = [w["name"] for w in data.get("share", [])]
+    else:
+        event = data.get("event", {})
+        lines.append(_event_line(event).removeprefix("- "))
+        lines.extend(_change_line(x) for x in data.get("changes", []))
+    return {
+        "kind": "schedule",
+        "action": action.type,
+        "title": response.text,
+        "lines": [x for x in lines if x],
+        "shared_with": shared,
+        "pending_action": action.model_dump(mode="json"),
+    }
+
+
 def _reply(response: AgentResponse) -> AgentReply:
     """일정 에이전트의 응답을 메인이 사용자에게 전할 글로 바꾼다. 실행되지 않은 일을 실행됐다고 말하게 하지 않는다."""
     if response.intent == "not_schedule":
         return AgentReply(NOT_SCHEDULE, can_answer=False)
-    if response.pending_action is not None:  # 공유 등록·수정·삭제: 확인 카드가 필요하다
-        return AgentReply(f"{NOT_EXECUTED} ({response.text})")
+    if (
+        response.pending_action is not None
+    ):  # 공유 등록·수정·삭제: 앱이 확인 카드로 보여 주고 버튼으로 실행한다
+        card = _confirmation(response)
+        return AgentReply(f"{CARD_SHOWN} ({card['title']})", confirmations=[card])
     if response.draft is not None:  # 제목이나 날짜가 빠져 되묻는 중
         return AgentReply(f"{ASK_BACK}{response.text}")
     registered = next((c for c in response.cards if c.type == "registered"), None)
@@ -69,5 +127,8 @@ def ask(
     guarded: bool = False,
 ) -> AgentReply:
     """`post`·`history`·`guarded` 는 정산·돌봄 에이전트와 호출 모양을 맞추는 자리다(일정 에이전트는 쓰지 않는다)."""
-    request = AgentRequest(text=question.strip()[:2000], channel="personal")
-    return _reply(handler.handle(db, user.id, group_id, request))
+    text = with_whole_family(question.strip(), db, group_id, user.id)
+    request = AgentRequest(text=text[:2000], channel="personal")
+    return _reply(
+        handler.handle(db, user.id, group_id, request, share_all=wants_whole_family(question))
+    )

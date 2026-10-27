@@ -24,6 +24,7 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
  *   saveDescription: (messageId: string, text: string) => Promise<void>,   // 설명 카드 저장(실패하면 던진다. 카드가 오류를 보여 준다)
  *   skipDescription: (messageId: string) => void,   // 설명 카드 "나중에 할게요"
  *   markAiEnabled: (messageId: string) => void,   // AI 켜기 안내 카드를 '켰어요' 안내로 바꾼다
+ *   resolveConfirm: (messageId: string, index: number, status: "done" | "cancelled", text: string) => void, // 일정 확인 카드를 결과 한 줄로 바꾼다
  *   send: (text: string, options?: { voice?: boolean }) => Promise<void>,
  *   sendPhoto: (file: { uri: string, name?: string, type?: string, isImage?: boolean }) => Promise<void>,   // 사진·문서 모두 올린다
  *   startListening: () => void,
@@ -51,10 +52,10 @@ export default function useChat() {
     setMessages((prev) => [...prev, { id: id(), role: "user", text: trimmed, voice }]);
     setPhase("thinking");
     try {
-      const { reply, sources = [], draft = null } = await sendMessage(trimmed, history);
+      const { reply, sources = [], draft = null, confirmCards = [] } = await sendMessage(trimmed, history);
       setMessages((prev) => [
         ...prev,
-        { id: id(), role: "assistant", text: reply, sources, draft, draftText: draft?.text },
+        { id: id(), role: "assistant", text: reply, sources, draft, draftText: draft?.text, ...(confirmCards.length > 0 ? { confirmCards } : {}) },
       ]);
     } catch (e) {
       setMessages((prev) => [...prev, errorMessage(id(), e)]);
@@ -66,6 +67,13 @@ export default function useChat() {
   /** 안내 카드에서 AI 를 켠 뒤: 카드를 안내 문장으로 바꾼다(질문은 자동으로 다시 보내지 않는다). */
   const markAiEnabled = useCallback((messageId) => {
     setMessages((prev) => prev.map((m) => (m.id === messageId ? { ...m, aiOff: false, text: AI_ON_DONE } : m)));
+  }, []);
+
+  /** 일정 확인 카드를 눌러 처리했거나 취소했을 때: 카드를 결과 한 줄로 바꾼다(대화에 저장돼 다시 열어도 두 번 실행되지 않는다). */
+  const resolveConfirm = useCallback((messageId, index, status, text) => {
+    setMessages((prev) =>
+      prev.map((m) => (m.id === messageId ? { ...m, confirmCards: (m.confirmCards ?? []).map((c, i) => (i === index ? { ...c, status, resultText: text } : c)) } : m)),
+    );
   }, []);
 
   /** 사진을 올리고, 서버가 분석을 끝낼 때까지 2초 간격으로 확인한다(최대 2분). */
@@ -197,5 +205,5 @@ export default function useChat() {
     setPhase("idle");
   }, []);
 
-  return { messages, phase, readingSince, confirmDoubts, markAiEnabled, saveDescription, skipDescription, send, sendPhoto, startListening, stopListening, editDraft, reset, load };
+  return { messages, phase, readingSince, confirmDoubts, markAiEnabled, resolveConfirm, saveDescription, skipDescription, send, sendPhoto, startListening, stopListening, editDraft, reset, load };
 }

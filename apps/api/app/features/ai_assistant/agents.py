@@ -40,8 +40,9 @@ PROMPT_NOTE = (
     "그 내용을 담은 완전한 문장으로 ask_schedule 에 넘기세요. "
     "ask_schedule 이 정보가 더 필요하다며 질문을 돌려주면 그 질문을 사용자에게 그대로 전하고, 사용자가 답하면 앞서 말한 "
     "날짜·시간·제목을 합쳐 하나의 완전한 문장으로 다시 넘기세요. 이미 등록한 일정을 같은 요청으로 다시 등록하지 마세요. "
-    "ask_schedule 이 등록했다고 답하기 전에는 등록했다고 말하지 마세요. 일정 수정·삭제와 가족에게 공유하는 등록은 이 대화에서 "
-    "실행되지 않으니 일정 화면에서 확인해 달라고 안내하세요."
+    "ask_schedule 이 등록했다고 답하기 전에는 등록했다고 말하지 마세요. 일정 수정·삭제와 가족에게 공유하는 등록은 확인 카드가 "
+    "사용자 화면에 나타나니, 카드의 버튼을 눌러야 반영된다고 짧게 안내하고 실행됐다고 말하지 마세요. '가족 모두에게 공유'처럼 "
+    "여럿에게 공유하는 일정도 그대로 ask_schedule 로 넘기세요."
 )
 
 
@@ -71,8 +72,8 @@ def is_agent_tool(name: str) -> bool:
 
 def call(
     db: Session, group_id: str, user: User, name: str, args: dict, post: Post | None
-) -> tuple[dict, list[dict], list]:
-    """탭 에이전트에게 묻고 (메인에게 줄 결과, 탭 에이전트가 부른 도구 기록, 쓰기 제안) 을 돌려준다."""
+) -> tuple[dict, list[dict], list, list[dict]]:
+    """탭 에이전트에게 묻고 (메인에게 줄 결과, 탭 에이전트가 부른 도구 기록, 쓰기 제안, 확인 카드) 를 돌려준다."""
     question = str(args.get("question", "")).strip()
     if not question:
         raise ValueError("question 이 비어 있어요")
@@ -80,6 +81,10 @@ def call(
         db, group_id, user, question, post, guarded=False
     )  # 메인 질문의 관문 한 번에 함께 센다
     result = {"answer": reply.answer, "can_answer": reply.can_answer}
-    if reply.proposals:  # 사용자 화면에 확인 버튼이 뜬다. 메인은 등록됐다고 말하면 안 된다
-        result["pending_confirmation"] = [p.summary for p in reply.proposals]
-    return result, reply.tool_calls, reply.proposals
+    if (
+        reply.proposals or reply.confirmations
+    ):  # 사용자 화면에 확인 버튼이 뜬다. 메인은 등록됐다고 말하면 안 된다
+        result["pending_confirmation"] = [p.summary for p in reply.proposals] + [
+            c["title"] for c in reply.confirmations
+        ]
+    return result, reply.tool_calls, reply.proposals, reply.confirmations
