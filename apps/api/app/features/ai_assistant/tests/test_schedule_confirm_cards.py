@@ -81,7 +81,10 @@ def test_share_register_comes_back_as_a_card_and_the_button_creates_both_calenda
         card["kind"] == "schedule" and "수진" in card["title"] and card["shared_with"] == ["수진"]
     )
     assert any("가족 모임" in line for line in card["lines"])
-    assert "pending_confirmation" in seen["tool_result"]  # 메인은 실행됐다고 말하면 안 된다
+    assert (
+        "tool_result" not in seen
+    )  # 직통 응답: 메인이 다시 말을 붙이지 않고 카드 제목이 그대로 답이다
+    assert out["reply"] == card["title"]
     assert (
         _events(client, a) == [] and _events(client, b) == []
     )  # 버튼을 누르기 전에는 만들지 않는다

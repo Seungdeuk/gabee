@@ -25,7 +25,10 @@ AGENTS: dict[str, tuple[str, AskFn]] = {
 
 # 답이 사용자에게 그대로 전할 수 있는 글인 탭 에이전트. 한 질문에 이것 하나만 불렀고 답이 완결이면 메인이 다시 모델을 부르지 않는다.
 # (일정 에이전트의 답은 메인에게 주는 안내 글이 섞여 있어 제외한다)
-DIRECT_REPLY_AGENTS = frozenset({"ask_billing", "ask_care", "ask_family_chat"})
+DIRECT_REPLY_AGENTS = frozenset({"ask_billing", "ask_care", "ask_family_chat", "ask_schedule"})
+USER_TEXT_AGENTS = frozenset(
+    {"ask_schedule"}
+)  # 직통 응답에 answer 가 아니라 사용자에게 줄 글(direct_answer)을 쓰는 에이전트
 
 PROMPT_NOTE = (
     "지출·정산·구독·용돈 질문은 ask_billing, 돌봄 항목·식단·위치 질문은 ask_care 로 담당 에이전트에게 물어보세요. "
@@ -90,6 +93,8 @@ def call(
         db, group_id, user, question, post, guarded=False
     )  # 메인 질문의 관문 한 번에 함께 센다
     result = {"answer": reply.answer, "can_answer": reply.can_answer}
+    if reply.user_text:
+        result["direct_answer"] = reply.user_text
     if (
         reply.proposals or reply.confirmations
     ):  # 사용자 화면에 확인 버튼이 뜬다. 메인은 등록됐다고 말하면 안 된다

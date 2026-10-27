@@ -95,9 +95,8 @@ def test_birthday_sentence_registers_own_event(client, family, schedule_llm, mon
     results = []
     _main_llm(monkeypatch, "내일 3시 엄마 생신이야", results)
     reply = _chat(client, a, "내일 3시 엄마 생신이야")
-    assert "error" not in results[0], results[0]
-    assert results[0]["can_answer"] is True and "일정을 등록했어요" in results[0]["answer"]
-    assert "엄마 생신" in reply["reply"]
+    assert results == []  # 직통 응답: 메인은 일정 에이전트의 답을 다시 다듬지 않는다
+    assert "일정을 등록했어요" in reply["reply"] and "엄마 생신" in reply["reply"]
     saved = _events(client, a)
     assert [e["title"] for e in saved] == ["엄마 생신"]
 
@@ -110,15 +109,20 @@ def test_missing_title_asks_back_then_full_sentence_registers(
     schedule_llm.data = _register_data(date=_tomorrow(), start_time="14:00:00")
     results = []
     _main_llm(monkeypatch, "내일 2시 일정 잡아줘", results)
-    _chat(client, a, "내일 2시 일정 잡아줘")
-    assert results[0]["can_answer"] is True and "제목" in results[0]["answer"]
+    first = _chat(client, a, "내일 2시 일정 잡아줘")
+    assert "제목" in first["reply"] and "정보가 더 필요해요" not in first["reply"]
     assert _events(client, a) == []  # 되묻는 동안에는 만들지 않는다
 
     schedule_llm.data = _register_data(title="치과", date=_tomorrow(), start_time="14:00:00")
     results.clear()
     _main_llm(monkeypatch, "내일 2시 치과 일정 잡아줘", results)
-    _chat(client, a, "치과야")
-    assert "일정을 등록했어요" in results[0]["answer"]
+    second = _chat(
+        client, a, "치과야"
+    )  # 서버가 되묻던 초안을 기억해 두므로 메인이 앞 말을 합치지 않아도 이어진다
+    assert "일정을 등록했어요" in second["reply"]
+    assert (
+        "시작: 14:00" in schedule_llm.calls[-1]
+    )  # 이어 받은 초안이 일정 에이전트에 실제로 전달됐다
     assert [e["title"] for e in _events(client, a)] == ["치과"]
 
 
@@ -131,8 +135,8 @@ def test_share_register_is_not_executed_in_chat(client, family, schedule_llm, mo
     )
     results = []
     _main_llm(monkeypatch, "내일 가족 모임 수진에게도 공유해서 등록해줘", results)
-    _chat(client, a, "내일 가족 모임 수진에게도 공유해서 등록해줘")
-    assert "아직 실행되지 않았어요" in results[0]["answer"]
+    reply = _chat(client, a, "내일 가족 모임 수진에게도 공유해서 등록해줘")
+    assert "공유해서 등록할까요" in reply["reply"] and len(reply["confirm_cards"]) == 1
     assert _events(client, a) == [] and _events(client, b) == []
 
 
@@ -162,8 +166,8 @@ def test_delete_is_not_executed_in_chat(client, family, schedule_llm, monkeypatc
     }
     results = []
     _main_llm(monkeypatch, "치과 일정 지워줘", results)
-    _chat(client, a, "치과 일정 지워줘")
-    assert "아직 실행되지 않았어요" in results[0]["answer"]
+    reply = _chat(client, a, "치과 일정 지워줘")
+    assert len(reply["confirm_cards"]) == 1 and reply["confirm_cards"][0]["action"] == "delete"
     assert [e["title"] for e in _events(client, a)] == ["치과"]
 
 
@@ -194,3 +198,53 @@ def test_chat_without_ai_consent_is_refused_before_any_model_call(client, family
     monkeypatch.setattr(rag_chat, "_post", fake_post)
     r = client.post("/ai-assistant/chat", json={"message": "내일 3시 엄마 생신이야"}, headers=a)
     assert r.status_code == 403 and calls == []  # 모델도, 일정 에이전트도 불리지 않는다
+
+
+def test_schedule_call_is_counted_under_the_main_chat_not_the_schedule_limit(
+    client, family, schedule_llm, monkeypatch
+):
+    """일정 요청 하나 = 메인 질문의 사용 기록 한 줄(모델 호출 2회: 메인 1 + 일정 1). 일정 한도(schedule_chat)에는 따로 쌓이지 않는다."""
+    from sqlalchemy import select
+
+    from app.shared.ai_usage import AiUsageLog
+    from app.shared.db import SessionLocal
+
+    a, _, group = family
+    enable_ai(group["id"])
+    schedule_llm.data = _register_data(title="엄마 생신", date=_tomorrow(), start_time="15:00:00")
+    _main_llm(monkeypatch, "내일 3시 엄마 생신 일정 잡아줘", [])
+    _chat(client, a, "내일 3시 엄마 생신 일정 잡아줘")
+    with SessionLocal() as db:
+        logs = db.scalars(select(AiUsageLog).where(AiUsageLog.group_id == group["id"])).all()
+    assert [(row.feature, row.api_calls, row.status) for row in logs] == [
+        ("assistant_chat", 2, "ok")
+    ]
+    assert len(schedule_llm.calls) == 1
+
+
+def test_main_chat_ignores_the_schedule_cooldown_and_daily_limit(
+    client, family, schedule_llm, monkeypatch
+):
+    """일정 한도를 0 으로 막아도 메인 채팅 안의 일정 요청은 메인 한도만 따른다(일정 탭 화면이 직접 부르는 입구만 일정 한도를 쓴다)."""
+    a, _, group = family
+    enable_ai(group["id"])
+    from app.shared.ai_usage import AiUsageLog
+    from app.shared.db import SessionLocal
+
+    me = client.get("/family-group/me", headers=a).json()["id"]
+    with SessionLocal() as db:  # 오늘 일정 한도를 이미 다 쓴 상태
+        for _ in range(settings.ai_schedule_chat_max_calls_per_user_per_day):
+            db.add(
+                AiUsageLog(
+                    group_id=group["id"],
+                    user_id=me,
+                    feature="schedule_chat",
+                    api_calls=1,
+                    status="ok",
+                )
+            )
+        db.commit()
+    schedule_llm.data = _register_data(title="치과", date=_tomorrow(), start_time="14:00:00")
+    _main_llm(monkeypatch, "내일 2시 치과 일정 잡아줘", [])
+    reply = _chat(client, a, "내일 2시 치과 일정 잡아줘")
+    assert "일정을 등록했어요" in reply["reply"]

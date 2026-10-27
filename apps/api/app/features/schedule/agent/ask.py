@@ -1,14 +1,16 @@
 """메인 에이전트(가비 채팅)가 일정 요청을 넘길 때 쓰는 입구. 정산·돌봄 탭 에이전트의 `ask` 와 같은 모양이다.
 
 메인이 `ask_schedule` 도구로 사용자의 일정 문장을 넘기면 `handler.handle` 에 그대로 보내고, 돌려받은 응답을 메인이 사용자에게
-전할 글로 바꾼다. 일정 에이전트는 자기 모델 호출을 자기 관문(`ai_guard`, 일정 한도)으로 세므로, 메인 질문의 관문 한 번에 묶지 않고
-따로 센다(`guarded` 인자는 다른 탭 에이전트와 호출 모양을 맞추려는 자리다).
+전할 글로 바꾼다. 일정 에이전트는 모델 호출을 메인 질문의 관문 한 번에 묶어 센다: 일정 에이전트는 이 입구에서 자기 관문(`ai_guard`, 일정 한도)을
+다시 지나지 않고, 부른 횟수만 메인 질문의 사용 기록·한도에 더한다(정산·돌봄과 같다). 일정 탭 화면이 직접 부르는 입구는 예전처럼 일정 한도를 쓴다.
 
 이 대화에서 하는 일: 조회와 등록(제목·날짜가 있으면 내 일정으로 바로 만들고, 없으면 되묻는다).
 이 대화에서 하지 않는 일: 수정·삭제·가족에게 공유하는 등록은 확인 카드가 필요해서 실행하지 않고 일정 화면으로 안내한다.
 되묻는 초안은 서버가 저장하지 않으므로 메인이 앞 대화 내용을 합쳐 완전한 문장으로 다시 넘긴다."""
 
 import re
+import threading
+import time
 
 from sqlalchemy.orm import Session
 
@@ -17,7 +19,7 @@ from app.shared.llm.agent import AgentReply, Post
 
 from . import handler
 from . import members as members_mod
-from .schemas import AgentRequest, AgentResponse
+from .schemas import AgentRequest, AgentResponse, Draft
 
 DESCRIPTION = (
     "일정 탭 담당. 일정 탭에 이미 입력된 내 일정을 조회하고, 사용자가 일정에 넣어 달라고 분명히 말한 새 일정을 등록한다. "
@@ -92,6 +94,30 @@ def _confirmation(response: AgentResponse) -> dict:
     }
 
 
+PENDING_TTL_SECONDS = 600  # 되묻는 초안을 기억하는 시간
+_pending: dict[tuple[str, str], tuple[float, Draft]] = {}
+_pending_lock = threading.Lock()
+
+
+def _take_draft(group_id: str, user_id: str) -> Draft | None:
+    """이 사용자가 직전에 되물음을 받은 초안이 있으면(10분 안) 꺼낸다. 프로세스 메모리라 재시작하면 사라진다(그러면 메인이 합쳐 준 문장으로 처리한다)."""
+    now = time.monotonic()
+    with _pending_lock:
+        for key in [k for k, (until, _) in _pending.items() if until <= now]:
+            del _pending[key]
+        item = _pending.pop((group_id, user_id), None)
+    return item[1] if item else None
+
+
+def _keep_draft(group_id: str, user_id: str, response: AgentResponse) -> None:
+    if response.draft is not None:
+        with _pending_lock:
+            _pending[(group_id, user_id)] = (
+                time.monotonic() + PENDING_TTL_SECONDS,
+                response.draft,
+            )
+
+
 def _reply(response: AgentResponse) -> AgentReply:
     """일정 에이전트의 응답을 메인이 사용자에게 전할 글로 바꾼다. 실행되지 않은 일을 실행됐다고 말하게 하지 않는다."""
     if response.intent == "not_schedule":
@@ -100,20 +126,24 @@ def _reply(response: AgentResponse) -> AgentReply:
         response.pending_action is not None
     ):  # 공유 등록·수정·삭제: 앱이 확인 카드로 보여 주고 버튼으로 실행한다
         card = _confirmation(response)
-        return AgentReply(f"{CARD_SHOWN} ({card['title']})", confirmations=[card])
+        return AgentReply(
+            f"{CARD_SHOWN} ({card['title']})", confirmations=[card], user_text=card["title"]
+        )
     if response.draft is not None:  # 제목이나 날짜가 빠져 되묻는 중
-        return AgentReply(f"{ASK_BACK}{response.text}")
+        return AgentReply(f"{ASK_BACK}{response.text}", user_text=response.text)
     registered = next((c for c in response.cards if c.type == "registered"), None)
     if registered is not None:
         line = _event_line(registered.data)
-        return AgentReply(f"일정을 등록했어요.\n{line}")
+        text = f"일정을 등록했어요.\n{line}"
+        return AgentReply(text, user_text=text)
     listed = next((c for c in response.cards if c.type == "event_list"), None)
     if listed is not None:
         events = listed.data.get("events", [])[:MAX_EVENTS_SHOWN]
         lines = "\n".join(_event_line(e) for e in events)
-        return AgentReply(f"{response.text}\n{lines}".strip())
+        text = f"{response.text}\n{lines}".strip()
+        return AgentReply(text, user_text=text)
     if response.text:
-        return AgentReply(response.text)
+        return AgentReply(response.text, user_text=response.text)
     return AgentReply("이 요청은 아직 처리할 수 없어요.", can_answer=False)
 
 
@@ -126,9 +156,13 @@ def ask(
     history: list[dict] | None = None,
     guarded: bool = False,
 ) -> AgentReply:
-    """`post`·`history`·`guarded` 는 정산·돌봄 에이전트와 호출 모양을 맞추는 자리다(일정 에이전트는 쓰지 않는다)."""
+    """`post`·`history` 는 정산·돌봄 에이전트와 호출 모양을 맞추는 자리다(쓰지 않는다). `guarded=False`(메인 채팅 안)이면 자기 관문을 다시 지나지 않는다."""
     text = with_whole_family(question.strip(), db, group_id, user.id)
-    request = AgentRequest(text=text[:2000], channel="personal")
-    return _reply(
-        handler.handle(db, user.id, group_id, request, share_all=wants_whole_family(question))
+    request = AgentRequest(
+        text=text[:2000], channel="personal", draft=_take_draft(group_id, user.id)
     )
+    response = handler.handle(
+        db, user.id, group_id, request, share_all=wants_whole_family(question), guarded=guarded
+    )
+    _keep_draft(group_id, user.id, response)
+    return _reply(response)

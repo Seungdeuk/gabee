@@ -138,16 +138,26 @@ def _direct_reply_ready(calls: list, result: "AskResult", direct: tuple | None, 
     if not settings.assistant_direct_agent_reply or direct is None or err:
         return False
     name, data, made = direct
+    card_ok = (
+        name in agents.USER_TEXT_AGENTS
+    )  # 확인 카드가 뜨는 답도 카드 제목이 사용자에게 줄 글이면 바로 돌려준다
     return (
         len(calls) == 1
         and len(result.tool_calls) == 1
         and name in agents.DIRECT_REPLY_AGENTS
         and bool(data.get("can_answer"))
-        and bool(str(data.get("answer", "")).strip())
+        and bool(_direct_text(direct))
         and not made
-        and not result.confirmations
-        and "pending_confirmation" not in data
+        and (card_ok or not result.confirmations)
+        and (card_ok or "pending_confirmation" not in data)
     )
+
+
+def _direct_text(direct: tuple) -> str:
+    """직통으로 돌려줄 글. 일정 에이전트는 메인에게 주는 안내가 섞인 answer 대신 사용자에게 줄 글(direct_answer)을 쓴다."""
+    name, data, _ = direct
+    key = "direct_answer" if name in agents.USER_TEXT_AGENTS else "answer"
+    return str(data.get(key) or "").strip()
 
 
 def _source(result: dict, n: int) -> dict:
@@ -274,9 +284,9 @@ def ask(
                     }
                 )
             if _direct_reply_ready(calls, result, direct, err):
-                result.answer = str(
-                    direct[1]["answer"]
-                ).strip()  # 에이전트의 답을 그대로(메인 모델 호출 1번 절약)
+                result.answer = _direct_text(
+                    direct
+                )  # 에이전트의 답을 그대로(메인 모델 호출 1번 절약)
                 break
             messages.append({"role": "user", "content": outputs})
     except (httpx.HTTPError, ValueError, KeyError):
@@ -343,7 +353,10 @@ def ask_guarded(
         return reply
 
     def call() -> tuple[dict, _Usage]:
-        box.append(ask(db, group_id, question, post=counting, history=history, user=user))
+        with ai_guard.tally_scope(
+            used
+        ):  # 관문 없이 도는 일정 에이전트의 모델 호출도 이 질문 하나로 센다
+            box.append(ask(db, group_id, question, post=counting, history=history, user=user))
         if failed:  # 외부 호출이 실패했는데 fallback 을 성공으로 세지 않는다 → 503 llm_failed + 기록 status="error"
             error = llm.LLMUnavailable(f"AI 호출에 실패했어요 ({type(failed[0]).__name__})")
             error.calls = max(1, used["calls"])  # 실패한 호출도 한도에 센다

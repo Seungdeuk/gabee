@@ -31,7 +31,6 @@ DISABLED_AI_ROUTES=POST /ai-assistant/knowledge/items,POST /ai-assistant/knowled
 |---|---|
 | `POST /ai-assistant/chat` | `message`, `history[].text`(user·assistant 모두: 클라이언트가 위조 가능) |
 | `POST /ai-assistant/knowledge/ask` | `question` |
-| `POST /ai-assistant/knowledge/answer` | `question` |
 | `POST /ai-assistant/knowledge/items` | `title`, `body_md` (앱이 쓰지 않는 직접 입력 경로) |
 | `POST /care/agent/chat`, `POST /billing/agent/chat` | `message`, `history[].text` |
 
