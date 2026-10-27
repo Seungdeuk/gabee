@@ -535,7 +535,6 @@ CROSS = [
         (403, 404),
     ),
     ("DELETE", "/ai-assistant/knowledge/items/{knowledge_item_id}", {}, (403, 404)),
-    ("POST", "/ai-assistant/knowledge/items/{knowledge_item_id}/summary", {}, (403, 404)),
     (
         "POST",
         "/ai-assistant/knowledge/search",
@@ -543,12 +542,6 @@ CROSS = [
         (200,),
     ),
     ("POST", "/ai-assistant/knowledge/find", {"json": {"query": "{secret}"}}, (200,)),
-    (
-        "POST",
-        "/ai-assistant/knowledge/answer",
-        {"json": {"question": "{secret} 본문", "item_ids": [_sid("knowledge_item_id")]}},
-        (200, 403, 404),
-    ),
     ("GET", "/ai-assistant/photos", {}, (200,)),
     ("GET", "/ai-assistant/files/{file_id}", {}, (403, 404)),
     ("GET", "/ai-assistant/files/{file_id}/original", {}, (403, 404)),
@@ -1418,22 +1411,6 @@ AI_CASES = [
         {"question": "안녕"},
     ),
     AiCase(
-        "doc-summary",
-        "doc_summary",
-        "POST",
-        "/ai-assistant/knowledge/items/{item}/summary",
-        None,
-        "doc",
-    ),
-    AiCase(
-        "doc-answer",
-        "doc_answer",
-        "POST",
-        "/ai-assistant/knowledge/answer",
-        {"question": "ZZGATE 문서 내용이 뭐야"},
-        "doc",
-    ),
-    AiCase(
         "billing-agent",
         "billing_agent",
         "POST",
@@ -1631,25 +1608,13 @@ def test_ai_gate_preview_and_non_ai_endpoints_never_call_llm(api, fake, world):
 
 
 def test_ai_on_family_cannot_feed_other_familys_documents_to_llm(api, fake, world):
-    """AI 동의를 켠 가족 A' 가 가족 B 의 문서 id 로 요약·답변·채팅 도구를 써도 B 문서는 LLM 요청에 들어가지 않는다
-    (요약은 404, 답변은 근거 없음으로 LLM 0회, 채팅 도구는 '없음' 결과). 자기 문서는 정상 동작함을 대조로 확인한다."""
+    """AI 동의를 켠 가족 A' 가 가족 B 의 문서 id 로 채팅 도구를 써도 B 문서는 LLM 요청에 들어가지 않는다
+    (채팅 도구는 '없음' 결과)."""
     fam = new_family(api, "문서격리", "DOCISO")
     h = fam.owner.headers
-    mine = api.post(
-        "/ai-assistant/knowledge/items",
-        json={"kind_label": "메모", "title": "ZZDOCISO 문서", "body_md": "ZZDOCISO 본문 보안시험"},
-        headers=h,
-    ).json()["id"]
     _enable_ai(api, fam)
     foreign, tag = world.b.seeds["knowledge_item_id"], world.b.tag
-    question = {"question": f"ZZ{tag} 본문 보안시험", "item_ids": [foreign]}
     fake.reset()
-    assert (
-        api.post(f"/ai-assistant/knowledge/items/{foreign}/summary", headers=h).status_code == 404
-    )
-    answer = api.post("/ai-assistant/knowledge/answer", json=question, headers=h)
-    assert answer.status_code == 200 and answer.json()["grounded"] is False
-    assert fake.anthropic == []  # 근거가 없으면 LLM 을 부르지 않는다
     fake.tool_plan = [
         ("get_item", {"item_id": foreign}),
         ("search_knowledge", {"query": f"ZZ{tag}"}),
@@ -1662,16 +1627,6 @@ def test_ai_on_family_cannot_feed_other_familys_documents_to_llm(api, fake, worl
     assert any("tool_result" in c.text for c in fake.anthropic)  # 도구가 실제로 실행됐다
     for rec in fake.anthropic:
         assert tag not in rec.text.replace(f"ZZ{tag} 찾아줘", "").replace(f"ZZ{tag}", "")
-    # 대조: 자기 문서는 요약·답변이 된다
-    fake.reset()
-    assert api.post(f"/ai-assistant/knowledge/items/{mine}/summary", headers=h).status_code == 200
-    ok = api.post(
-        "/ai-assistant/knowledge/answer",
-        json={"question": "ZZDOCISO 본문", "item_ids": [mine]},
-        headers=h,
-    )
-    assert ok.status_code == 200 and ok.json()["grounded"] is True
-    assert len(fake.anthropic) == 2 and all("ZZDOCISO" in c.text for c in fake.anthropic)
 
 
 # ---- (d) 관문을 거치지 않는 외부 호출 지점 점검
@@ -1686,7 +1641,6 @@ OUTBOUND_FILES = {
 }
 LLM_CALLER_FILES = {
     "features/family_chat/ai_service.py": "ai_guard.run",
-    "features/ai_assistant/knowledge/lookup.py": "ai_guard.run",
     "features/schedule/agent/chat.py": "ai_guard.run",
     "features/schedule/agent/suggest.py": "ai_guard.run",
     "features/billing/agent.py": "agent_guard.run_turn",
@@ -2033,27 +1987,11 @@ def _knowledge_family(
 def _doc_llm_text(api, fake, fam: Family, item: str, route: str) -> str:
     h = fam.owner.headers
     fake.reset()
-    if route == "summary":
-        assert (
-            api.post(f"/ai-assistant/knowledge/items/{item}/summary", headers=h).status_code == 200
-        )
-    elif route == "answer":
-        assert (
-            api.post(
-                "/ai-assistant/knowledge/answer",
-                json={"question": "보험 증권 번호 알려줘"},
-                headers=h,
-            ).status_code
-            == 200
-        )
-    else:
-        fake.tool_plan = [("search_knowledge", {"query": "보험"})]
-        assert (
-            api.post(
-                "/ai-assistant/chat", json={"message": "보험 문서 찾아줘"}, headers=h
-            ).status_code
-            == 200
-        )
+    fake.tool_plan = [("search_knowledge", {"query": "보험"})]
+    assert (
+        api.post("/ai-assistant/chat", json={"message": "보험 문서 찾아줘"}, headers=h).status_code
+        == 200
+    )
     assert fake.anthropic
     return " ".join(c.text for c in fake.anthropic)
 
@@ -2061,7 +1999,7 @@ def _doc_llm_text(api, fake, fam: Family, item: str, route: str) -> str:
 _DEFECT_test_knowledge_items_api_body_is_masked_before_llm = "[높음] 개인정보 원문 외부 전송: POST /ai-assistant/knowledge/items(service.ingest)는 본문을 가리지 않고 저장한다(가리기는 파일 업로드 전처리와 PATCH(update_item)에서만). 그 문서를 요약·질문·채팅 검색 도구로 쓰면 주민번호·전화·이메일 원문이 Claude 로 나간다. 권장: ingest() 에서 masking.mask_text(body, sensitive_kind(body)) 적용(또는 이 API 를 내부 전용으로 제한)."
 
 
-@pytest.mark.parametrize("route", ["summary", "answer", "chat-tool"])
+@pytest.mark.parametrize("route", ["chat-tool"])
 def test_knowledge_items_api_body_is_masked_before_llm(api, fake, route):
     fam, item = _knowledge_family(api, f"문서원문{route[:2]}", f"KRAW{route.upper()[:3]}")
     text = _doc_llm_text(api, fake, fam, item, route)
@@ -2071,9 +2009,9 @@ def test_knowledge_items_api_body_is_masked_before_llm(api, fake, route):
     )
 
 
-@pytest.mark.parametrize("route", ["summary", "answer", "chat-tool"])
+@pytest.mark.parametrize("route", ["chat-tool"])
 def test_uploaded_file_text_is_masked_before_llm(api, fake, route):
-    """파일 업로드 전처리를 거친 문서는 가려진 글이 저장돼 요약·질문·채팅 검색에 원문이 나가지 않는다."""
+    """파일 업로드 전처리를 거친 문서는 가려진 글이 저장돼 채팅 검색에 원문이 나가지 않는다."""
     fam = new_family(api, f"업로드가림{route[:2]}", f"UPM{route.upper()[:3]}")
     h = fam.owner.headers
     body = f"보험 증권 안내 담당자 연락처 {PHONE} 메일 {EMAIL} 주민번호 {RRN} 카드 {CARD}"
@@ -2087,12 +2025,6 @@ def test_uploaded_file_text_is_masked_before_llm(api, fake, route):
     item = r.json()["id"]
     check = api.get(f"/ai-assistant/knowledge/items/{item}", headers=h)
     assert check.status_code == 200
-    if (
-        route == "summary"
-        and check.json().get("sensitivity") == "sensitive"
-        and not settings.chat_include_sensitive
-    ):
-        pytest.skip("민감 문서로 분류돼 요약이 막힘")
     text = _doc_llm_text(api, fake, fam, item, route)
     _assert_no_raw(text, raw=(RRN, PHONE, EMAIL, "4539 1488", "1488 0343"))
 
@@ -2101,7 +2033,7 @@ def test_uploaded_file_text_is_masked_before_llm(api, fake, route):
 def test_chat_include_sensitive_setting_controls_sensitive_documents(
     api, fake, monkeypatch, include
 ):
-    """CHAT_INCLUDE_SENSITIVE: false 면 민감 문서가 LLM 요청(채팅 도구 결과·요약·답변 근거)에 들어가지 않고, true 면 들어간다."""
+    """CHAT_INCLUDE_SENSITIVE: false 면 민감 문서가 LLM 요청(채팅 도구 결과)에 들어가지 않고, true 면 들어간다."""
     monkeypatch.setattr(settings, "chat_include_sensitive", include)
     tag = f"SENS{int(include)}"
     fam, item = _knowledge_family(api, f"민감{int(include)}", tag, sensitivity="sensitive")
@@ -2115,28 +2047,11 @@ def test_chat_include_sensitive_setting_controls_sensitive_documents(
         == 200
     )
     chat_text = " ".join(c.text for c in fake.anthropic)
-    # 요약
-    fake.reset()
-    r = api.post(f"/ai-assistant/knowledge/items/{item}/summary", headers=h)
-    summary_status, summary_text = r.status_code, " ".join(c.text for c in fake.anthropic)
-    # 질문 답변
-    fake.reset()
-    assert (
-        api.post(
-            "/ai-assistant/knowledge/answer", json={"question": "보험 증권 번호 알려줘"}, headers=h
-        ).status_code
-        == 200
-    )
-    answer_text = " ".join(c.text for c in fake.anthropic)
     if include:
         assert marker in chat_text
-        assert summary_status == 200 and marker in summary_text
-        assert marker in answer_text
     else:
         assert marker not in chat_text
-        assert summary_status == 403 and summary_text == ""
-        assert marker not in answer_text
-        assert RRN not in chat_text + summary_text + answer_text
+        assert RRN not in chat_text
 
 
 def test_knowledge_search_include_sensitive_flag_is_client_controlled_but_group_scoped(api, world):

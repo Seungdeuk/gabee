@@ -133,6 +133,23 @@ def _run_tool(db: Session, group_id: str, name: str, args: dict) -> dict:
     raise ValueError(f"알 수 없는 함수: {name}")
 
 
+def _direct_reply_ready(calls: list, result: "AskResult", direct: tuple | None, err: bool) -> bool:
+    """탭 에이전트 하나만 불렀고 그 답이 완결이면 True. 쓰기 제안이 있거나 답하지 못했거나 다른 도구도 불렀으면 메인이 이어서 답한다."""
+    if not settings.assistant_direct_agent_reply or direct is None or err:
+        return False
+    name, data, made = direct
+    return (
+        len(calls) == 1
+        and len(result.tool_calls) == 1
+        and name in agents.DIRECT_REPLY_AGENTS
+        and bool(data.get("can_answer"))
+        and bool(str(data.get("answer", "")).strip())
+        and not made
+        and not result.confirmations
+        and "pending_confirmation" not in data
+    )
+
+
 def _source(result: dict, n: int) -> dict:
     """n 은 답 안의 [n] 표시와 앱 출처 칩의 번호(검색 결과의 ref)다."""
     return {
@@ -221,6 +238,9 @@ def ask(
                 break
             messages.append({"role": "assistant", "content": content})
             outputs = []
+            direct = (
+                None  # (에이전트 이름, 돌려받은 결과, 쓰기 제안) — 이번 단계에서 부른 탭 에이전트
+            )
             for call in calls:
                 args = call.get("input") or {}
                 record = {"name": call["name"], "input": args}
@@ -231,6 +251,7 @@ def ask(
                             db, group_id, user, call["name"], args, post
                         )
                         result.proposals.extend(made)
+                        direct = (call["name"], data, made)
                         result.confirmations.extend(cards)
                     else:
                         data = _run_tool(db, group_id, call["name"], args)
@@ -252,6 +273,11 @@ def ask(
                         "is_error": err,
                     }
                 )
+            if _direct_reply_ready(calls, result, direct, err):
+                result.answer = str(
+                    direct[1]["answer"]
+                ).strip()  # 에이전트의 답을 그대로(메인 모델 호출 1번 절약)
+                break
             messages.append({"role": "user", "content": outputs})
     except (httpx.HTTPError, ValueError, KeyError):
         return _fallback(db, group_id, question)

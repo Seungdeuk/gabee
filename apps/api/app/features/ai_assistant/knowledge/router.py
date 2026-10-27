@@ -12,9 +12,6 @@ from .models import KnowledgeItem
 from .schemas import (
     AskIn,
     AskOut,
-    DocAnswerIn,
-    DocAnswerOut,
-    DocSummaryOut,
     FindIn,
     FindOut,
     HitOut,
@@ -141,28 +138,6 @@ def find(
         kind_label=body.kind_label,
         semantic=body.semantic,
     )
-
-
-@router.post("/items/{item_id}/summary", response_model=DocSummaryOut)
-def summarize_item(
-    item_id: str,
-    user=Depends(current_user),
-    group_id: str = Depends(current_group_id),
-    db: Session = Depends(get_db),
-) -> DocSummaryOut:
-    """기록 한 건 AI 요약(동의·캐시·한도 가드를 거쳐 LLM 1회)."""
-    return lookup.summarize(db, group_id, user.id, item_id)
-
-
-@router.post("/answer", response_model=DocAnswerOut)
-def answer(
-    body: DocAnswerIn,
-    user=Depends(current_user),
-    group_id: str = Depends(current_group_id),
-    db: Session = Depends(get_db),
-) -> DocAnswerOut:
-    """기록을 근거로 질문에 답한다(LLM 1회, 근거가 없으면 호출하지 않는다)."""
-    return lookup.answer(db, group_id, user.id, body.question, body.item_ids)
 
 
 def _mark_review(db: Session, group_id: str, items: list[KnowledgeItem]) -> list[KnowledgeItem]:

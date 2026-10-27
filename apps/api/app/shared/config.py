@@ -135,6 +135,8 @@ class Settings(BaseSettings):
     ai_assistant_cooldown_seconds: int = 0
     ai_assistant_max_calls_per_user_per_day: int = 100
     ai_assistant_max_calls_per_group_per_day: int = 300
+    # 탭 에이전트(정산·돌봄·가족 채팅)가 사용자에게 줄 답을 만들었으면 메인이 다시 모델을 부르지 않고 그 답을 그대로 돌려준다(질문당 모델 호출 1번 절약)
+    assistant_direct_agent_reply: bool = True
 
     model_config = SettingsConfigDict(env_file=_ENV_FILE, extra="ignore", populate_by_name=True)
 

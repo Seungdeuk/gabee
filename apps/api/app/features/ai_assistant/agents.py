@@ -21,6 +21,10 @@ AGENTS: dict[str, tuple[str, AskFn]] = {
     "ask_schedule": (schedule_agent.DESCRIPTION, schedule_agent.ask),
 }
 
+# 답이 사용자에게 그대로 전할 수 있는 글인 탭 에이전트. 한 질문에 이것 하나만 불렀고 답이 완결이면 메인이 다시 모델을 부르지 않는다.
+# (일정 에이전트의 답은 메인에게 주는 안내 글이 섞여 있어 제외한다)
+DIRECT_REPLY_AGENTS = frozenset({"ask_billing", "ask_care", "ask_family_chat"})
+
 PROMPT_NOTE = (
     "지출·정산·구독·용돈 질문은 ask_billing, 돌봄 항목·식단·위치 질문은 ask_care 로 담당 에이전트에게 물어보세요. "
     "당신은 가계·돌봄 데이터를 직접 볼 수 없으니 추측하지 말고, 질문 내용을 한국어 문장으로 그대로 넘기세요(기간이나 "
