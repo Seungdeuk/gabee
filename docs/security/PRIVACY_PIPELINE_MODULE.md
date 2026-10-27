@@ -1,6 +1,6 @@
 # 가명화 파이프라인 모듈 (`app/shared/privacy`)
 
-외부 LLM(Claude)으로 보내는 가족 대화에서 개인정보를 줄이는 서버 기준 모듈이다. 표준 라이브러리만 쓰고 DB 모델·기존 기능 코드에 의존하지 않는다(독립 패키지). 가족 채팅 AI(분석·답장·주제·미리보기, `app/features/family_chat/ai_service.py`)에 연결되어 있다.
+외부 LLM(Claude)으로 보내는 가족 대화에서 개인정보를 줄이는 서버 기준 모듈이다. 표준 라이브러리만 쓰고(선택 NER 보강 `ner.py` 만 이미 선언된 `onnxruntime`·`tokenizers`·`numpy` 사용) DB 모델·기존 기능 코드에 의존하지 않는다(독립 패키지). 가족 채팅 AI(분석·답장·주제·미리보기, `app/features/family_chat/ai_service.py`)에 연결되어 있다.
 
 **하지 않는 말**: 이 모듈은 종단간 암호화(E2EE)가 아니다. 서버는 원문을 읽는다. 탐지는 정규식·검증 규칙이라 한국어 이름·주소를 놓칠 수 있고, 마스킹이 완전한 보호를 보장하지 않는다. 성능은 `docs/security/PII_EVALUATION.md` 를 본다.
 
@@ -13,6 +13,7 @@
 | `policy.py` | `Policy`, `Action`(KEEP/MASK/BLOCK), `ANALYSIS`/`REPLY`/`TOPICS`(가족 채팅 줄 단위), **`ASSISTANT`**(자유 글·JSON, AI 어시스턴트용) |
 | `pseudonymizer.py` | 요청 단위 `Pseudonymizer`: `apply`, `restore`, `clear` |
 | `gateway.py` | `prepare_transcript`, `restore_value`, `restore_json` (통합 지점, 순수 함수) |
+| `ner.py` | 선택: 이름·주소 NER 보강(아래 'NER 보강'), `detect_with_ner`·`batch_scope`·`NerEngine` |
 | `freetext.py` | 자유 글·JSON: `prepare_text`, `prepare_json`, `PrivacySession`, `generalize_coordinates`, `contains_placeholders`(아래 '자유 글·JSON API') |
 | `eval/` | 합성 평가 데이터 2종과 생성기, 평가 스크립트는 `apps/api/scripts/eval_pii.py` |
 
@@ -161,9 +162,58 @@ with new_session(ASSISTANT, members=[("김민수", "민수"), "이영희"]) as s
 5. **`agent_guard` 규칙 위반 정리**: `shared/llm/agent_guard.py` 가 `features.ai_assistant.ingest.masking.mask_text` 를 import 한다(`shared` 가 기능 코드에 의존). 이 API 로 대체하면 `shared` 안에서 끝나고 위반이 사라진다. 두 규칙은 겹치고(전화·카드·주민번호·계좌·이메일·주소·이름) 목적이 다르다(`mask_text` 는 문서 저장 시 영구 치환, 이 API 는 요청 시 가역 가명화). PR #87 이 `masking.py` 에 라벨 있는 번호(고객·증권·계약·환자 번호 등), 은행명이 낀 계좌, 줄 중간 라벨 주소, 동·호 주거지 주소를 추가해 **`mask_text` 가 이 모듈보다 넓게 잡는 항목이 생겼다**. 따라서 대체 전에 그 규칙을 `detectors.py` 로 옮길지(이 모듈의 탐지 성능 재평가 필요) 정하고, 문서 수집(`ingest`) 쪽은 `mask_text` 를 유지한다.
 6. **시험**: 통합 PR 에서는 가짜 LLM 으로 '원문 이름·전화·좌표 정밀값이 외부 요청 본문에 없다'는 시험과 복원 시험을 추가한다. 실제 외부 호출은 시험에서 하지 않는다.
 
+## NER 보강 (`ner.py`, 선택)
+
+규칙 탐지(`detect`) 위에 경량 한국어 NER(KoELECTRA-small v2b, ONNX)을 **더해** 이름·별명·주소를 보강한다. 규칙을 대체하지 않는다. 호출부(가족 채팅 AI·일정 에이전트 등)는 코드를 바꾸지 않는다: `Pseudonymizer.apply`/`apply_values` 가 `detect` 대신 `ner.detect_with_ner` 를 부른다. `detectors.detect` 자체는 규칙만 쓴다(`shared/high_risk_guard.py` 가 이것을 쓰며 NER 지연·503 영향을 받지 않는다). `features/ai_assistant` 의 `mask_text` 는 `detect` 를 쓰지 않아 이 보강을 받지 않는다.
+
+**구조**: `NerEngine`(`tokenizer.json` + onnxruntime CPU 세션, 지연 로드·프로세스 단위 싱글턴·스레드 안전) -> 입력 정규화(전각·대시는 반각, 보이지 않는 문자 제거, **조합형(NFD) 한글 자모는 완성형으로 합침**)하되 결과는 **원문 위치**로 되돌린다 -> 128 토큰 슬라이딩 윈도우(겹침 32, 겹친 토큰은 창 가운데 쪽 예측 사용) -> BIO 디코딩(조사가 붙은 `정채은이` 는 모델 출력 그대로) -> 문자 단위 `NerSpan(label, start, end, score)`(score = span 토큰 softmax 확률 평균). 한글이 없는 글은 모델에 넣지 않는다. 같은 글은 작은 LRU(512개, 소금 친 해시 키, 프로세스 메모리 안, 스팬만 보관)로 다시 쓴다. 로그에는 글자·값·경로를 남기지 않는다.
+
+**라벨 -> 종류** (`ner.LABEL_TO_KIND`): `PERSON`·`PERSON_ALIAS` -> `Kind.PERSON`, `ADDRESS` -> `Kind.ADDRESS`. `LOCATION`(랜드마크·지역명)·`ORGANIZATION` 은 마스킹 기본 제외 정책이라 내보내지 않는다(표에 줄을 더하면 바뀐다). 가족 호칭(엄마·아빠 등)은 모델이 라벨하지 않으며 혹시 라벨해도 `KINSHIP_TERMS` 와 같으면 버린다.
+
+**병합 우선순위** (`merge_ner`): 규칙 탐지가 항상 우선이고 규칙 구간의 종류·점수는 바뀌지 않는다(PHONE·EMAIL·카드·주민번호 등 높은 신뢰 구간 포함).
+- 규칙 구간과 겹치지 않는 NER 구간은 그대로 더한다.
+- 같은 종류(ADDRESS·PERSON)이고 NER 구간이 겹친 규칙 구간들을 **모두 감싸며 더 넓으면** 규칙 구간들을 NER 범위로 넓힌다(규칙 점수·출처 유지; 이름 사전 대표 이름이 있는 PERSON 은 넓히지 않는다). 예: 규칙이 `부산 해운대구`·`101동 202호` 만 잡아도 NER 가 `부산 해운대구 우동 1234-5 101동 202호` 전체를 잡으면 하나의 주소로 가려진다.
+- 그 밖의 부분 겹침·다른 종류와의 겹침은 규칙 구간이 덮지 못한 나머지 조각만 별도 구간으로 더한다(2글자 미만은 버림). NER 구간 가장자리의 구두점·주소 끝 조사(`202호로` 의 `로`)는 잘라 낸다.
+- NER 점수는 `[0.5, 0.69]` 로 제한한다: 0.5 미만은 버리고, 상한 0.69 는 정책 `block_min_score`(0.7) 바로 아래라 NER 탐지만으로는 메시지 통째 제외가 일어나지 않고 **값만 가명화**된다(지금 모든 정책에서 PERSON·ADDRESS 는 MASK 라 영향은 없다).
+- 검증(Baseline v2 val 180문장 / synth val 1427문장, 실모델): 가려지다 만 정답 구간 4 -> 0 / 52 -> 9, 남은 평문 글자 19 -> 3 / 306 -> 141, 오탐 구간 2 -> 1 / 50 -> 43(병합 확장 이전 -> 이후).
+
+**설정** (`app/shared/config.py`, `apps/api/.env.example`):
+
+| 환경변수 | 기본값 | 뜻 |
+|---|---|---|
+| `PRIVACY_NER_MODE` | `auto` | `off` 안 씀 / `auto` 쓸 수 있으면 사용, 없거나 실패하면 규칙만(경고 로그 한 번) / `required` 못 쓰면 fail-closed. 알 수 없는 값은 `required` 로 본다 |
+| `PRIVACY_NER_MODEL_DIR` | 비움 -> `<DATA_DIR>/models/ner` | 모델 폴더 |
+| `PRIVACY_NER_THREADS` | `2` | onnxruntime CPU 스레드 수(추론 하나당) |
+| `PRIVACY_NER_MAX_CONCURRENCY` | `2` | 동시에 도는 추론 수. 넘으면 대기(최대 8초), 그래도 못 얻으면 auto 는 규칙만·required 는 503 |
+| `PRIVACY_NER_MODEL_FILE` | `model.onnx` | 폴더 안 모델 파일. 양자화는 `model.int8.onnx` |
+
+**권장 모드**: 운영은 `required`(모델을 못 쓰면 외부로 보내지 않는다), 개발·시험은 `auto`(모델이 없어도 동작). 시험(`apps/api/conftest.py`)은 기본 `off` 로 고정해 모델이 있는 PC 와 없는 CI 의 결과를 같게 한다(NER 시험은 각자 모드를 명시한다).
+
+**mode 별 동작**: `auto` 에서 모델 폴더가 없거나, 로드·무결성·추론이 실패하거나, 시간·예산·입력 상한을 넘으면 규칙만으로 처리한다(초과분만 규칙, 나머지는 NER). 모델이 없는 환경(CI·로컬)의 동작은 NER 이 없던 때와 완전히 같고 불러오기 시도는 60초에 한 번이다. `required` 에서는 모델 없음·로드 실패·무결성 불일치·추론 오류·상한 초과·대기 초과 모두 `PrivacyUnavailable`(`ApiError`, 503 `privacy_unavailable`, "개인정보 보호 엔진을 사용할 수 없어 AI 요청을 보내지 않았어요")을 낸다. `new_session`·`prepare_transcript`·`prepare_text`·`prepare_json` 이 시작할 때 확인하고 추론 중에도 낸다(에이전트는 세션을 먼저 만들므로 **외부 모델을 부르기 전에** 막힌다). `shared/llm/agent.py` 는 도구 안에서 난 `PrivacyUnavailable` 을 도구 오류로 숨기지 않고 다시 던져 503 으로 끝낸다(다른 `ApiError` 는 기존처럼 도구 오류).
+
+**비용 상한**(요청 하나 = `prepare_*` 한 번): 추론이 필요한 글(캐시 적중 제외)의 합이 `BATCH_MAX_CHARS`=30000자·`BATCH_MAX_TEXTS`=3000개를 넘으면 초과분은 추론하지 않는다(대화는 **최신 줄부터** 예산을 쓴다: 줄 순서는 오래된 것 -> 최신). 근거: 실측 긴 줄(2000자) 기준 약 110us/글자(2스레드)라 30000자 ≈ 3.4초(짧은 줄은 더 빠르다)이고, 가족 채팅 분석의 글자 한도(12000자)의 2.5배라 정상적인 대화·도구 결과보다 넉넉하다. 글 하나는 8000자·24윈도우까지, 추론 호출 하나는 10초까지다. 동시 추론은 `PRIVACY_NER_MAX_CONCURRENCY` 로 제한한다. 초과 시 auto 는 규칙만(경고 한 번), required 는 503.
+
+**성능**: `prepare_transcript` 는 줄 전체를, `prepare_json` 은 문자열 값 전체를 `ner.batch_scope` 로 **한 번(배치)** 추론한 뒤 쓴다(길이가 비슷한 창끼리 64개씩 묶는다). `prepare_text` 는 글 하나다. 한글 없는 값은 건너뛰고 같은 글은 캐시한다. off·모델 없음에서는 추가 비용이 없다. 실측(개발 PC, 2스레드, fp32): 문장 하나 약 3~5ms, 서로 다른 값 3000개 약 1.7초.
+
+**시작·로드**: 서버가 시작할 때 `app/main.py` 의 `lifespan` 이 `ner.start_preload()` 로 모델을 백그라운드에서 미리 불러온다(off 면 아무 일도 안 함, 실패해도 서버 기동은 막지 않는다). 로드 중 도착한 요청은 auto 면 기다리지 않고 규칙만, required 면 로드가 끝나길 기다린다. 로드 때 `model_card.json` 의 `sha256`(모델 파일·`tokenizer.json`·`labels.json`)과 실제 파일을 한 번 대조해 다르면 사용 불가(`ModelIntegrityError`)로 본다. 카드나 해시가 없으면 경고만 한다.
+
+**캐시 키**: 가족 채팅 AI 결과 캐시 키(`ai_service._key`)에는 가명화된 줄의 해시가 들어가므로 NER 로 가명화 결과가 달라지면 키도 달라진다. 그래서 `MODULE_VERSION` 은 올리지 않았다. 진단용으로 `ner_status()` 가 모드·사용 여부·모델 지문(모델 파일 sha256 앞 12자)을 돌려준다(글자·경로 없음).
+
+**배포**: 모델 폴더(`model.onnx`, 선택 `model.int8.onnx`, `tokenizer.json`, `labels.json`, `model_card.json`)를 서버의 `data/models/ner/`(또는 `PRIVACY_NER_MODEL_DIR`)에 복사한다. **모델 파일은 Git 에 올리지 않는다**(`apps/api/data/` 는 `.gitignore`).
+
+**운영 확인**(상태 확인용 엔드포인트는 두지 않는다: 공개 라우트는 보안 매트릭스 허용 목록에 영향을 준다). 서버 로그(`app.shared.privacy.ner`)로 본다.
+- 정상: `INFO NER 엔진 준비 완료 (mode=required, 모델 파일=model.onnx, 지문=4ce93f7913e7, 스레드=2, 동시 추론=2, 로드 0.7초)` — 지문이 배포한 모델 파일의 `sha256` 앞 12자와 같은지 대조한다(`sha256sum data/models/ner/model.onnx | cut -c1-12`, Windows 는 `Get-FileHash`).
+- 실패: `NER 엔진을 불러오지 못했다(종류=FileNotFoundError|ModelIntegrityError|…)`(auto: WARNING "규칙 탐지만 사용한다", required: ERROR "가명화 요청은 503 으로 거부된다"). 종류가 `FileNotFoundError` 면 폴더·파일명, `ModelIntegrityError` 면 파일이 `model_card.json` 과 다른 것(복사 중단·손상·다른 버전).
+- 기타 경고: `NER 요청 예산(글자·개수)을 넘은 글은 …`, `NER 추론이 시간 상한을 넘어 …`, `NER 추론 대기가 길어져 …`, `model_card.json 에 sha256 이 없어 …`. 경고는 종류마다 프로세스당 한 번만 나온다.
+- 프로세스 안에서 직접: `python -c "from app.shared.privacy import ner_status; print(ner_status())"` -> `{'mode': ..., 'active': True, 'fingerprint': '...'}`.
+
+**모델 교체·롤백**: (1) 새 모델 폴더를 옆 이름(`data/models/ner.new/`)에 복사하고 `sha256` 이 `model_card.json` 과 맞는지 확인, (2) 서버를 내린 뒤(또는 트래픽이 적을 때) `ner` -> `ner.prev`, `ner.new` -> `ner` 로 이름을 바꾸고 서버를 다시 시작, (3) 로그의 `준비 완료` 줄과 지문을 확인. 롤백은 `ner.prev` 를 `ner` 로 되돌리고 재시작. 프로세스는 모델을 시작할 때 한 번 읽으므로 실행 중 폴더를 바꿔도 바로 반영되지 않는다(auto 에서 로드 실패 상태는 60초마다 재시도하므로 모델을 나중에 복사한 경우는 최대 1분 안에 쓰기 시작한다). 모델이 바뀌면 지문이 바뀌어 NER 결과 캐시는 자동으로 분리된다.
+
+**한계**: 모델은 틀릴 수 있다(오탐으로 일반 낱말을 가리거나 미탐). `ORGANIZATION`·`LOCATION` 은 내보내지 않는다. 조사가 붙은 이름은 조사까지 한 토큰으로 가려진다(`정채은이` 와 `정채은` 은 서로 다른 토큰). 외국 이름·한글 없는 글은 보지 않는다. 이모지가 이름 앞뒤에 붙으면 모델 결과가 달라질 수 있다. **조합형(NFD) 한글은 NER 쪽만 완성형으로 합쳐 처리한다**: 규칙 탐지(`detectors`)는 NFD 를 놓치는 기존 결함이 그대로이며 이번 범위 밖이다. 학습 데이터는 합성 중심이라 실제 대화 분포와 다를 수 있다. 모델·기반 모델(`monologg/koelectra-small-v3-discriminator`)과 학습 데이터(KLUE-NER CC BY-SA 4.0)의 **라이선스는 배포 전에 확인이 필요**하다(`model_card.json` 의 `license_status` 참고).
+
 ## 약속(코드로 지킨 것, 시험이 있다)
 
-- 대응표(원본 <-> 토큰)는 `Pseudonymizer` 인스턴스의 메모리에만 있다. 이 모듈은 `logging` 을 쓰지 않는다. DB·캐시·응답에 넣지 않는다.
+- 대응표(원본 <-> 토큰)는 `Pseudonymizer` 인스턴스의 메모리에만 있다. 이 모듈은 `logging` 을 쓰지 않는다(NER 어댑터의 글자 없는 경고 로그 제외). DB·캐시·응답에 넣지 않는다.
 - 같은 원본 값은 같은 토큰, 번호는 등장 순서. 전화번호는 숫자만 비교해 표기가 달라도 같은 토큰이다. 이름 사전의 별칭("민수" -> "김민수")은 같은 토큰이고 복원하면 대표 이름이 나온다.
 - 복원은 **이 요청이 만든 토큰만** 한다. `[PHONE_9]`, `[phone_1]`, `[PHONE_ 1]`, `[PHONE_01]`, 전각 괄호 `【PHONE_1】` 같은 지어내거나 변형된 토큰은 그대로 두고 `unknown_tokens` 에 적는다. 사용자가 대화에 직접 쓴 토큰 모양(변형 포함)과 대응표에 넣는 값(발화자 이름 등)이 토큰 모양이면 `‹PHONE_1›` 로 바꿔 복원 대상이 되지 않게 한다(이중 복원 방지).
 - BLOCK 대상 값(SECRET·RRN·CARD·ACCOUNT)은 대응표에 넣지 않는다(복원 불가). 정책이 MASK 여도 번호 없는 `[SECRET]` 같은 고정 토큰으로만 바꾼다.

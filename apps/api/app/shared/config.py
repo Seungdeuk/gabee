@@ -141,6 +141,16 @@ class Settings(BaseSettings):
     # 탭 에이전트(정산·돌봄·가족 채팅)가 사용자에게 줄 답을 만들었으면 메인이 다시 모델을 부르지 않고 그 답을 그대로 돌려준다(질문당 모델 호출 1번 절약)
     assistant_direct_agent_reply: bool = True
 
+    # 가명화 NER 보강(app/shared/privacy/ner.py, KoELECTRA-small ONNX). 모델 파일은 저장소에 없고 서버 폴더에서 읽는다.
+    # off: 안 씀 / auto: 모델이 있고 로드되면 쓰고, 없거나 실패하면 규칙만(프로세스당 한 번 경고) / required: 못 쓰면 503 privacy_unavailable(fail-closed)
+    privacy_ner_mode: str = "auto"
+    privacy_ner_model_dir: str = ""  # 비우면 <DATA_DIR>/models/ner
+    privacy_ner_threads: int = 2  # onnxruntime CPU 스레드 수
+    privacy_ner_max_concurrency: int = (
+        2  # 동시에 돌리는 추론 수(요청이 몰리면 대기, 오래 걸리면 auto 는 규칙만·required 는 503)
+    )
+    privacy_ner_model_file: str = "model.onnx"  # 폴더 안 모델 파일(양자화 모델은 model.int8.onnx)
+
     model_config = SettingsConfigDict(env_file=_ENV_FILE, extra="ignore", populate_by_name=True)
 
     @field_validator("llm_model")

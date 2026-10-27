@@ -15,6 +15,7 @@ from .freetext import (
     prepare_text,
 )
 from .gateway import Prepared, PreparedLine, Row, prepare_transcript, restore_json, restore_value
+from .ner import PrivacyUnavailable, ner_status
 from .policy import ANALYSIS, ASSISTANT, REPLY, TOPICS, Action, Policy
 from .pseudonymizer import MaskResult, Pseudonymizer, RestoreResult
 from .types import Kind, Risk, Span
@@ -36,6 +37,7 @@ __all__ = [
     "Prepared",
     "PreparedLine",
     "PrivacySession",
+    "PrivacyUnavailable",
     "Pseudonymizer",
     "RestoreResult",
     "Risk",
@@ -45,6 +47,7 @@ __all__ = [
     "detect",
     "generalize_coordinates",
     "generalize_number",
+    "ner_status",
     "new_session",
     "prepare_json",
     "prepare_text",
