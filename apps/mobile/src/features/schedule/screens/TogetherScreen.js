@@ -3,6 +3,7 @@ import { useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
+import { isApiConfigured } from "@/shared/api/client";
 import IconButton from "@/shared/components/IconButton";
 import { colors, font, radius, spacing } from "@/theme";
 
@@ -95,14 +96,17 @@ export default function TogetherScreen() {
             <Text style={styles.help}>지정하지 않으면 모두에게 가요. 여러 명에게 보내면 각자 수락할 수 있어요</Text>
           </FormField>
 
-          <FormField label="누구" hint="관련된 사람">
-            <View style={styles.chips}>
-              {OTHERS.map((m) => (
-                <FilterChip key={m.id} label={m.name} selected={whoIds.includes(m.id)} onPress={() => setWhoIds(toggle(whoIds, m.id))} />
-              ))}
-              <FilterChip label="+ 누구" muted />
-            </View>
-          </FormField>
+          {/* 서버는 "누구"를 저장하지 않는다(수락한 사람 일정의 누구는 보낸 사람으로 정해진다). 서버 모드에서는 숨긴다. */}
+          {!isApiConfigured() && (
+            <FormField label="누구" hint="관련된 사람">
+              <View style={styles.chips}>
+                {OTHERS.map((m) => (
+                  <FilterChip key={m.id} label={m.name} selected={whoIds.includes(m.id)} onPress={() => setWhoIds(toggle(whoIds, m.id))} />
+                ))}
+                <FilterChip label="+ 누구" muted />
+              </View>
+            </FormField>
+          )}
 
           <View style={styles.group}>
             <FormField label="날짜" hint="필수">

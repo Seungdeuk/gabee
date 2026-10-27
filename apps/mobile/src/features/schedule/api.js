@@ -9,14 +9,16 @@ import { apiFetch } from "@/shared/api/client";
  * @typedef {ReturnType<import("./members").buildFamily>} Family
  * @typedef {{ id: string, title: string, kind: 1 | 2, start_date: string, place: string }} ServerSuggestion
  * @typedef {{ suggestions: ServerSuggestion[], exhausted: boolean }} SuggestionList
+ * @typedef {{ user_id: string, status: "waiting" | "accepted" | "declined" }} ServerRecipient
+ * @typedef {{ id: string, from_id: string, title: string, start_date: string, start_time: string | null, end_time: string | null, place: string, memo: string, created_at: string, canceled: boolean, recipients: ServerRecipient[], my_event_id: string | null }} ServerRequest
  * @typedef {{ intent: string, text: string, cards: { type: string, data: Record<string, any> }[], pending_action: object | null, draft: object | null }} AgentResponse
  */
 
 const KIND_FROM_SERVER = { 1: "appointment", 2: "todo" };
 const KIND_TO_SERVER = { appointment: 1, todo: 2 };
 // 서버에는 종일 칸이 없어서 00:00~23:59 를 종일로 저장하고 읽는다.
-const ALL_DAY_START = "00:00";
-const ALL_DAY_END = "23:59";
+export const ALL_DAY_START = "00:00";
+export const ALL_DAY_END = "23:59";
 
 const hhmm = (time) => (time ? time.slice(0, 5) : null);
 
@@ -154,3 +156,22 @@ export const askAgent = (text, draft = null) =>
  */
 export const confirmAgent = (action, share = true) =>
   apiFetch("/schedule/agent/confirm", { method: "POST", body: { action, share } });
+
+/** 같이(부탁) 목록: 내가 보낸 것과 받은 것, 최신순. @returns {Promise<ServerRequest[]>} */
+export const listRequests = () => apiFetch("/schedule/requests");
+
+/** 같이를 보낸다. @param {object} body together_convert.js 의 toRequestBody @returns {Promise<ServerRequest>} */
+export const createRequest = (body) => apiFetch("/schedule/requests", { method: "POST", body });
+
+/**
+ * 받은 같이에 답한다. 수락이면 서버가 내 일정을 만든다(kind 필수: 1 약속·2 할 일).
+ * @param {string} id
+ * @param {"accepted" | "declined"} answer
+ * @param {1 | 2 | null} [kind]
+ * @returns {Promise<ServerRequest>}
+ */
+export const answerRequest = (id, answer, kind = null) =>
+  apiFetch(`/schedule/requests/${id}/answer`, { method: "POST", body: { answer, kind } });
+
+/** 보낸 사람이 보내기를 취소한다. @returns {Promise<ServerRequest>} */
+export const cancelRequest = (id) => apiFetch(`/schedule/requests/${id}/cancel`, { method: "POST" });
