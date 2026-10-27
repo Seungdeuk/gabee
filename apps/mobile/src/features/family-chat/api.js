@@ -1,5 +1,5 @@
 import { apiFetch, apiUrl, authHeaders, ensureFreshAccess, isApiConfigured } from "@/shared/api/client";
-import { mapConfirmCards } from "@/features/ai-assistant/scheduleCard";
+import { mapChatCards } from "@/features/ai-assistant/scheduleCard";
 import { photoPath } from "@/shared/photoCache";
 
 import { chatPhotoFileName, chatPhotoMimeType } from "./photo";
@@ -40,7 +40,7 @@ export async function askAssistantInRoom(question, history = []) {
     visibility: res.visibility === "room" ? "room" : "private", // 모르는 값은 개인용으로(방에 올리지 않는 쪽)
     reasons: res.private_reasons ?? [],
     postedMessageId: res.posted_message_id ?? null,
-    confirmCards: mapConfirmCards(res.confirm_cards), // 확인 버튼이 필요한 일정 요청은 질문한 사람 화면에만 카드로 보인다
+    confirmCards: mapChatCards(res), // 확인 버튼이 필요한 일정 요청·정산/돌봄 제안은 질문한 사람 화면에만 카드로 보인다
   };
 }
 
