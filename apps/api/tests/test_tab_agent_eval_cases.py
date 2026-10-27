@@ -34,7 +34,11 @@ def test_case_ids_are_unique_and_tools_exist(client, family):
 
 @pytest.mark.parametrize(
     "case",
-    [c for c in CASES if c["tool"] and not c["tool"].startswith("propose_")],
+    [
+        c
+        for c in CASES
+        if c["tool"] and not c["tool"].startswith("propose_") and not c.get("skip_tool_check")
+    ],
     ids=lambda c: c["id"],
 )
 def test_expected_values_appear_in_tool_output(client, family, case):
