@@ -8,13 +8,10 @@ import { isApiConfigured } from "@/shared/api/client";
 import SettingsButton from "@/shared/components/SettingsButton";
 import { colors, font, radius, spacing } from "@/theme";
 
-import ChatInputBar from "../components/ChatInputBar";
-import ChatSheet from "../components/ChatSheet";
 import DaySection from "../components/DaySection";
 import SuggestionCard from "../components/SuggestionCard";
 import TogetherRow from "../components/TogetherRow";
 import WeekStrip from "../components/WeekStrip";
-import { sendMessage } from "../chat";
 import { useNewReceivedCount } from "../requests";
 import { toggleChecked, useScheduleItems } from "../store";
 import { draftDateOf, suggestionExtras } from "../suggestion_convert";
@@ -47,8 +44,6 @@ export default function ScheduleScreen() {
   // 카드마다 자기 새로고침이 있다(전체 새로고침은 없다). 확인 카드는 확인하지 않고 다른 항목을, 추가 카드는 다른 제안을 보여 준다.
   const [checkCursor, setCheckCursor] = useState(0);
   const [addCursor, setAddCursor] = useState(0);
-  // 질문을 보내면 채팅 시트가 올라온다. 닫아도 대화는 유지된다.
-  const [sheetOpen, setSheetOpen] = useState(false);
   // "나중에"를 누른 카드는 복숭아색으로 표시된 채 그대로 남는다(다시 누르면 해제).
   const [later, setLater] = useState([]);
   // 방금 확인 버튼을 누른 항목. 복숭아색을 잠깐 보여 준 뒤 체크하고 다음 항목으로 넘어간다.
@@ -205,26 +200,8 @@ export default function ScheduleScreen() {
             <Text style={styles.notice}>추천은 참고용이에요. 내용을 확인 후 저장해 주세요 📝</Text>
           </View>
 
-          <ChatInputBar
-            onSubmit={(text) => {
-              sendMessage(text);
-              setSheetOpen(true);
-            }}
-          />
         </View>
       </ScrollView>
-      <ChatSheet
-        visible={sheetOpen}
-        onClose={() => setSheetOpen(false)}
-        onFull={() => {
-          setSheetOpen(false);
-          router.push("/schedule/chat");
-        }}
-        onAdd={(suggestion, date) =>
-          openSuggested({ kind: suggestion.draft.kind, title: suggestion.draft.title, date, ...suggestionExtras(suggestion) })
-        }
-        onOpenItem={openDetail}
-      />
     </SafeAreaView>
   );
 }

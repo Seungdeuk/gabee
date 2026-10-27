@@ -64,11 +64,6 @@ export function useScheduleItems() {
   return useSyncExternalStore(subscribe, () => items);
 }
 
-/** 훅이 아닌 곳(채팅 답변 만들기)에서 지금 항목을 읽는다. @returns {import("./model").ScheduleItem[]} */
-export function getScheduleItems() {
-  return items;
-}
-
 /**
  * @param {string} id
  * @returns {import("./model").ScheduleItem | undefined}

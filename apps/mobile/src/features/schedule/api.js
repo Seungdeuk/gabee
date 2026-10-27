@@ -11,7 +11,6 @@ import { apiFetch } from "@/shared/api/client";
  * @typedef {{ suggestions: ServerSuggestion[], exhausted: boolean }} SuggestionList
  * @typedef {{ user_id: string, status: "waiting" | "accepted" | "declined" }} ServerRecipient
  * @typedef {{ id: string, from_id: string, title: string, start_date: string, start_time: string | null, end_time: string | null, place: string, memo: string, created_at: string, canceled: boolean, recipients: ServerRecipient[], my_event_id: string | null }} ServerRequest
- * @typedef {{ intent: string, text: string, cards: { type: string, data: Record<string, any> }[], pending_action: object | null, draft: object | null }} AgentResponse
  */
 
 const KIND_FROM_SERVER = { 1: "appointment", 2: "todo" };
@@ -138,24 +137,6 @@ export const listTopics = () => apiFetch("/schedule/topics");
 
 /** 이 일정을 누가 공유했는지, 누구에게 공유했는지(상세 화면에서만 부른다). @returns {Promise<Sharing>} */
 export const getSharing = (id) => apiFetch(`/schedule/events/${id}/sharing`);
-
-/**
- * 일정 에이전트에게 말을 보낸다. draft 는 직전 응답이 되물으며 돌려준 초안(없으면 새 요청).
- * @param {string} text
- * @param {object | null} draft
- * @returns {Promise<AgentResponse>}
- */
-export const askAgent = (text, draft = null) =>
-  apiFetch("/schedule/agent", { method: "POST", body: { text, channel: "personal", draft } });
-
-/**
- * 확인 카드의 버튼(AI 를 부르지 않는다). 등록 확인에서 share 가 false 면 공유 대상을 빼고 내 일정만 만든다.
- * @param {object} action 응답의 pending_action
- * @param {boolean} [share]
- * @returns {Promise<AgentResponse>}
- */
-export const confirmAgent = (action, share = true) =>
-  apiFetch("/schedule/agent/confirm", { method: "POST", body: { action, share } });
 
 /** 같이(부탁) 목록: 내가 보낸 것과 받은 것, 최신순. @returns {Promise<ServerRequest[]>} */
 export const listRequests = () => apiFetch("/schedule/requests");
