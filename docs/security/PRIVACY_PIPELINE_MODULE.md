@@ -10,9 +10,10 @@
 |---|---|
 | `types.py` | `Kind`(PHONE, EMAIL, RRN, CARD, ACCOUNT, SECRET, ADDRESS, PERSON), `Risk`, `Span` |
 | `detectors.py` | `detect(text, known_names=()) -> list[Span]` 탐지·겹침 정리(전각·대시 변형은 반각으로 접어서 본다) |
-| `policy.py` | `Policy`, `Action`(KEEP/MASK/BLOCK), `ANALYSIS`/`REPLY`/`TOPICS` |
+| `policy.py` | `Policy`, `Action`(KEEP/MASK/BLOCK), `ANALYSIS`/`REPLY`/`TOPICS`(가족 채팅 줄 단위), **`ASSISTANT`**(자유 글·JSON, AI 어시스턴트용) |
 | `pseudonymizer.py` | 요청 단위 `Pseudonymizer`: `apply`, `restore`, `clear` |
 | `gateway.py` | `prepare_transcript`, `restore_value`, `restore_json` (통합 지점, 순수 함수) |
+| `freetext.py` | 자유 글·JSON: `prepare_text`, `prepare_json`, `PrivacySession`, `generalize_coordinates`, `contains_placeholders`(아래 '자유 글·JSON API') |
 | `eval/` | 합성 평가 데이터 2종과 생성기, 평가 스크립트는 `apps/api/scripts/eval_pii.py` |
 
 ## 정책 표
@@ -71,6 +72,76 @@ with prepare_transcript(rows, member_names, ANALYSIS) as prep:
 7. **로그**: 모듈은 `logging` 을 쓰지 않는다. 호출부도 `prep`·`MaskResult`·복원 전 응답을 로그에 찍지 않는다(`counts_by_kind` 만 사용량 기록용으로 안전).
 8. **두 군데로 갈라진 마스킹 규칙**: `app/features/ai_assistant/ingest/masking.py`(`mask_text`)가 문서 저장용으로 따로 정규식 마스킹을 한다. 이 모듈과 규칙(전화·카드·주민번호·계좌·이메일·주소·라벨 이름)이 겹치지만 목적이 다르다(저장 시 영구 치환 vs 요청 시 가역 가명화). 통합 계획만 적는다: (a) 당장은 코드를 합치지 않고, (b) 중복되는 탐지 규칙(`detect`)을 `masking.mask_text` 가 재사용하도록 다음 단계에서 정리하며, (c) AI 어시스턴트 질문(`/ai-assistant/chat`)에도 같은 `ANALYSIS`/별도 정책을 적용할지는 요구사항 확인 후 정한다. 이번에는 기존 코드를 수정하지 않았다.
 9. **성능**: 200줄×2,000자는 1초 안팎이라 요청 경로에서 동기로 돌려도 된다. 반복 입력 같은 최악 조건도 10만 자에 0.1~0.2초 이하다(선형).
+
+## 자유 글·JSON API (`freetext.py`, 추가됨 / 통합은 별도 PR)
+
+가족 채팅 줄 단위(`prepare_transcript`)와 별개로, **줄 구조가 없는 글**(AI 어시스턴트 질문·앞 대화)과 **구조화 JSON**(탭 에이전트 도구 결과)을 가명화하는 API 다. **이번 변경은 공용 모듈 안에서만** 이루어졌고 `ai_assistant`·`billing`·`care`·`schedule`·`family_chat` 코드는 바꾸지 않았다. 아래 '통합 가이드'는 **담당 팀과 협의한 뒤 별도 PR** 에서 진행한다. 탐지기는 `detect` 그대로라 탐지 성능은 `PII_EVALUATION.md` 와 같다(시험 `test_free_text_uses_same_detector_as_evaluation` 이 두 평가 데이터셋으로 탐지 결과가 그대로 반영되는지 확인한다). 기존 `prepare_transcript`·`ANALYSIS`/`REPLY`/`TOPICS` 동작은 바뀌지 않았다.
+
+### 사용법
+
+```python
+from app.shared.privacy import ASSISTANT, new_session, prepare_json, prepare_text
+
+# 한 요청 안의 여러 조각이 토큰 번호를 공유하도록 세션 하나를 만든다
+with new_session(ASSISTANT, members=[("김민수", "민수"), "이영희"]) as sess:
+    q, _ = prepare_text(question, session=sess)                      # 자유 글
+    data, _ = prepare_json(tool_result, session=sess,                # 구조화 JSON
+                           keys_to_drop=("memo",))
+    answer = call_llm(q, data)                                       # 가명화된 것만 나간다
+    shown = sess.restore_text(answer, generalize_unknown=True, scrub=True).value
+    # sess.blocked_count, sess.counts_by_kind 는 안내·사용량용(값은 담지 않는다)
+```
+
+- `prepare_text(text, *, policy=ASSISTANT, members=(), session=None)` -> `(글, 세션)`. `session` 을 안 주면 새로 만들어 돌려주고, 호출부가 `close()`/`with` 로 지운다.
+- `prepare_json(obj, *, policy, members, keys_to_drop, coordinate_keys, coordinate_precision, numbers, number_keys, pseudonymize_keys, session)` -> `(JSON, 세션)`.
+  - 문자열 **값**만 가명화한다. 구조·키 순서·불리언·null·날짜·숫자는 유지(원본 객체는 건드리지 않는다). dict·list·tuple·set 을 재귀로 본다(깊이 64 제한).
+  - 키는 기본으로 그대로 둔다. 키가 사람 이름일 수 있는 dict(`{"김민수": 5000}`)는 `pseudonymize_keys=True`. 서로 다른 키가 같은 키로 바뀌어 값이 덮어써질 상황(같은 사람의 두 표기 등)이면 **`ValueError`** 로 막는다(값을 합치거나 잃지 않는다).
+  - `keys_to_drop`: 해당 키(대소문자 무시)를 값과 함께 뺀다.
+  - 숫자: `numbers="keep"`(기본, `Policy.number_mode`) 이면 그대로, `"round"` 면 유효숫자 2자리로 뭉갠다(`generalize_number`: 123456 -> 120000). `ASSISTANT` 는 금액이 답에 필요해 keep. **`id`·`ids`·`*_id`·`*_ids`·`*Id`·`*ID`·`*Ids`·`*IDs` 키(`userID`, `member_ids` 등)의 숫자는 `round` 에서도 항상 보존**(값이 리스트여도 안쪽까지)하고, `number_keys=["amount", ...]` 를 주면 그 키(대소문자 무시)의 숫자만 뭉갠다. 정한 방침: 지정한 키 **아래의 중첩 dict 값도** 그 키의 숫자로 보고 뭉갠다(`{"amount": {"value": 12345}}` -> 12000). id 키 아래는 보존하고, 지정하지 않은 키의 하위(`items` 안의 `price`)는 뭉개지 않는다. 기본(None)은 id 가 아닌 숫자 전부다.
+  - 지원하지 않는 형식(사용자 정의 객체)은 개인정보를 못 가릴 수 있어 **TypeError(실패 시 막음)**. Pydantic 모델은 `model_dump(mode="json")` 으로 넘긴다(`mode="json"` 이어야 날짜·UUID 같은 값이 문자열이 되어 가명화 대상이 된다). 정수·실수 필드에 든 전화번호 같은 값은 못 찾는다.
+- `PrivacySession`: `prepare_text`, `prepare_json`, `restore_text`, `restore_json`, `blocked_count`, `high_risk_count`, `counts_by_kind`, `coordinates_generalized`, `close()`. `repr` 에는 개수만, `__slots__` 라 `vars(sess)`/`__dict__` 가 없고, `pickle`·`copy`·`dataclasses.replace`(대응표를 공유하는 사본) 는 `TypeError`. 기존 `restore_json(sess, ...)` 에도 넘길 수 있다. 속성을 코드가 직접 읽는 것까지는 막지 못한다.
+- `contains_placeholders(text_or_obj) -> bool`: 일반화 문구(`(연락처)`·`(이메일)`·`(주소)`·`(사람)`·`(알 수 없는 항목)`·`(민감 정보)`, 공백·전각 괄호 변형 `( 연락처 )` 포함)·고정 토큰(`[RRN]` 등)·번호 토큰 모양(`[PERSON_3]`·`(PERSON_1)`·`<PHONE_1>`·`{PERSON_1}`·`[ADDRESS_1]`·`[NAME_1]`·대소문자·공백 변형·ZWSP 낀 토큰·괄호 없는 `PERSON_1`·`PHONE_1`)·무력화 토큰(`‹PHONE_1›`)이 남았는지 본다(키·값·리스트 원소 전부). 사용자가 실제로 쓴 `회의 (주소) 확인` 도 True 가 되는데, 쓰기 도구 호출만 거부되는 **안전한 방향의 오탐**이라 허용한다. 쓰기 도구 인자 거부용이다(아래 통합 가이드 2번).
+
+### `ASSISTANT` 정책과 고위험 값 처리
+
+| 종류 | 동작 | 복원 |
+|---|---|---|
+| PHONE, EMAIL | MASK(`[PHONE_1]`, `[EMAIL_1]`) | 하지 않음 -> 응답에서 `(연락처)`, `(이메일)` |
+| ADDRESS, PERSON | MASK(`[ADDR_1]`, `[PERSON_1]`) | 복원 |
+| RRN, CARD, ACCOUNT, SECRET | **그 값만** `[RRN]`·`[CARD]`·`[ACCOUNT]`·`[SECRET]` 로 대체 | 복원 불가(`scrub=True` 면 `(민감 정보)`) |
+
+**설계 결정(통째 제외 vs 값 대체)**: 줄 단위 대화에는 '그 메시지를 빼도 나머지 대화가 남는다'는 단위가 있지만, 자유 글(질문 하나·JSON 한 덩어리)에는 그런 단위가 없다. 통째로 빼면 질문이 사라지고 도구 결과는 쓸 수 없게 된다. 그래서 자유 글·JSON 은 **점수와 관계없이 고위험 값만 고정 자리표시로 대체**하고, 점수가 `block_min_score`(0.7) 이상인 것의 수를 `blocked_count` 로 알린다(점수가 낮은 후보도 가리지만 세지 않는다). **그래서 `blocked_count` 는 '가린 고위험 값의 수'가 아니다.** 체크섬이 맞지 않는 `주민 900101-1234567`(점수 0.6)이나 라벨 없는 카드는 가려져도 0 일 수 있다. 사용자 안내("민감정보 N개는 가리고 처리했어요")에는 **`session.high_risk_count`**(= `counts_by_kind` 의 RRN·CARD·ACCOUNT·SECRET 합, 점수와 무관)를 쓴다. 정책이 `ANALYSIS` 여도 `prepare_text` 는 항상 값 단위다(줄 단위 BLOCK 은 `prepare_transcript` 에서만).
+
+### 좌표·숫자 일반화
+
+- `generalize_coordinates(lat, lng, *, precision=2)`: 소수점 `precision` 자리 아래를 **절삭**(0 쪽으로 버림, 반올림 아님)한다. precision 0=약 111km, 1=약 11km, **2=약 1km(위도 1.1km, 경도는 한국 위도에서 약 0.9km)**, 3=약 110m. 칸의 모서리 값이 되므로 원래 위치는 그 칸 안 어디든일 수 있다. 정확한 주소는 알 수 없지만 **익명은 아니다**(동네 수준은 추정 가능). 범위(위도 +-90, 경도 +-180) 밖이나 숫자가 아니면 `ValueError`. `-0.0` 은 `0.0` 으로 정리한다.
+- 글 속 좌표 쌍(`prepare_text`): 소수점 4자리 이상 두 수가 쉼표·세미콜론·공백으로 붙고(영문자·숫자·점 뒤에서 시작하지 않음) 지구상 유효한 쌍이면서, **(a) 가까이(앞 24자·뒤 12자) 위도·경도 단서**(위치·좌표·위도·경도·GPS·lat·lng·지도·`?q=`·`@` 등)가 있거나 **(b) 단서 없이도 두 수 모두 소수 5자리 이상이고 한 수가 10 이상인 정밀 좌표**일 때만 `37.56, 126.97` 로 절삭한다. 단서 없는 4자리 소수 두 개(환율·금리·체온·`v1.23456 2.34567`·금액·날짜·버전·확률 `0.12345, 0.98765`)는 건드리지 않는다. 경도가 먼저 오는 표기(`126.977969, 37.566535`, GeoJSON 순서)는 앞 수가 |90| 을 넘을 때만 범위로 알아본다(두 수가 모두 90 이하이면 순서와 상관없이 같은 절삭이라 결과는 같다). 단서가 멀면(예: 같은 문단의 '위치' 와 떨어진 숫자 쌍) 4자리 쌍은 못 잡는다. 소수 5자리 미만이면서 단서가 없는 좌표는 한계다.
+- JSON 의 좌표 쌍(`[위도, 경도]`·`[경도, 위도]` 실수 두 개 리스트)은 **부모 키가 좌표 단서**(coord·coordinates·location·position·pos·point·geo·latlng·lnglat·pt·loc·center·geometry·gps)이고 소수 4자리 이상이면 바꾸고, 단서 키가 아니면 정밀 좌표 규칙(b)일 때만 바꾼다(`{"probs": [0.12345, 0.98765]}`·`{"weights": [12.345, 56.789]}` 는 그대로).
+- JSON 에서는 `coordinate_keys`(기본 `COORDINATE_KEYS` = lat, lng, lon, long, latitude, longitude, 대소문자 무시)의 값에 같은 절삭을 적용한다. 숫자로 해석되지 않으면 None. 좌표 키가 다른 의미로 쓰이면 `coordinate_keys=()` 로 끈다. 아예 빼려면 `keys_to_drop` 이 우선한다.
+
+### 복원 규칙
+
+기존과 같다(`restore_kinds` 안의 종류만, **이 요청이 만든 정확한 토큰만**). `ASSISTANT` 는 이름·주소만 복원하고 연락처는 `(연락처)` 같은 일반 문구가 된다. 지어낸·변형 토큰(`[PHONE_9]`, `[person_1]`, 전각 괄호)은 복원하지 않고 `unknown_tokens` 에 적는다. 복원 결과를 다시 복원하거나 사용자가 직접 쓴 토큰 모양을 복원하는 일은 무력화(`‹PHONE_1›`)로 막는다. 다른 요청의 세션은 서로 토큰을 복원하지 못한다. 번호는 등장 순서라 같은 입력이면 같은 토큰이다.
+
+### 한계
+
+- 문맥 없는 이름(이름 사전·호칭 없는 '민수가 왔어' 속 모르는 사람), 약식 주소('강남역 3번 출구 빌라 302호'), **한글 숫자 표기('공일공 일이삼사 …')**, 공백 구분 계좌, 키워드 없는 비밀번호는 못 잡는다. 독립 보조 세트 기준 놓침 목록은 `PII_EVALUATION.md` 에 있다.
+- 가명화 후에도 문맥으로 사람을 추측할 수 있다. 좌표는 거칠게 해도 동네 수준 위치가 남는다. E2EE 가 아니다.
+- 못 잡는 것(추가 확인됨): 숫자 사이에 낀 폭 있는 공백이나 한글·영문 글자(`010 일234`), 분해형(NFD) 한글 이름, **붙어 있는 두 번호**(`010-1234-5678010-9999-8888`: 하나로 보거나 못 잡음), 좌표 쌍 규칙에 안 맞는 좌표(소수점 3자리 이하, 한쪽만 적힌 좌표, 좌표 키 밖의 문자열 `37.56°N`). 투명·방향 제어 문자(soft hyphen U+00AD, CGJ U+034F, U+180E, U+200B–200F(ZWSP·ZWNJ·ZWJ·LRM·RLM), bidi 제어 U+202A–202E·2066–2069, U+2060–2064, FEFF)가 낀 번호·이름은 탐지기가 지우고 탐지한 뒤 원문 위치로 되돌려 찾는다(번호 안쪽 투명 문자는 번호와 함께 사라지고 바깥쪽은 남는다). 그 밖의 보이지 않는 문자(예: U+3164 한글 채움 문자)는 처리하지 않는다.
+- 주소 뒤 번호가 전화번호 모양(`테헤란로 010-1234-5678`, `역삼동 02-1234-5678`)이면 건물번호·지번으로 보지 않고 전화로 찾는다(탐지기 수정, 가족 채팅 `prepare_transcript` 에도 적용). 이때 도로명·동 이름만 주소로 남기는 것은 **앞에 시·군·구 이름이 바로 붙은 때**(`서울시 강남구 테헤란로 010-…`)로 한정한다. `이 번호로 010-…`·`전화로 010-…`·`학교로 031-…` 같은 일상 말은 주소가 아니라 전화만 잡는다(시·군·구 없는 `테헤란로 010-…` 의 도로명은 주소로 못 잡는다).
+- 숫자 필드(금액)와 키는 기본으로 그대로 나간다. 지출 제목·메모 같은 **문자열**은 탐지 범위 안에서만 가려진다.
+- 매우 긴 입력도 선형이다(10만 자 반복 입력 시험). 그래도 **통합 시 요청당 입력 길이 상한을 두기를 권장**한다(질문·도구 결과 합계 N자 등: 외부 LLM 비용·지연 때문이기도 하다). 한 요청에 쓰는 세션은 하나로 묶어야 토큰이 일관된다.
+
+### 통합 가이드 (담당 팀 협의 후 별도 PR)
+
+**이번 PR 에서는 아래를 하지 않았다.** 담당 팀과 협의한 뒤 별도 PR 로 한다.
+
+1. **`rag_chat._messages`**(`ai_assistant/knowledge/rag_chat.py`): 질문과 앞 대화를 만들기 전에 요청당 세션을 만들고(`new_session(ASSISTANT, members=가족 구성원 이름·표시 이름)`), 질문과 각 `turn["text"]` 를 `sess.prepare_text` 로 바꾼다. 같은 세션을 도구 결과와 공유한다. 세션은 `try/finally` 또는 `with` 로 닫는다.
+2. **탭 에이전트 도구 결과**(`shared/llm/agent.py` 의 `_result_text`, `json.dumps(data, default=str)` 지점): dumps 하기 전에 `sess.prepare_json(data, keys_to_drop=..., pseudonymize_keys=필요 시)` 를 거친다. 돌봄은 좌표(`lat`/`lng`)가 기본 일반화 대상이다. 정산은 지출 제목·구성원 이름이 문자열 값이므로 가려지고, 금액은 `numbers` 로 선택한다. `MAX_TOOL_RESULT_CHARS` 자르기는 **가명화 뒤 길이 기준**으로 한다. 도구 호출 **입력**(모델이 만든 인자)은 **조회용**이면 서버가 실행 전에 `restore_json` 으로 이름·주소 토큰을 되돌려 쓰고, **쓰기 도구**(일정·지출·돌봄 기록 저장 등)는 복원한 뒤에도 `contains_placeholders(args)` 가 True 이면(`(연락처)` 같은 일반화 문구, `[RRN]` 같은 고정 토큰, 안 풀린 `[PERSON_3]`) **그 호출을 거부**하고 모델에 다시 묻거나 사용자에게 알린다. 그대로 저장하면 자리표시가 DB 에 들어간다.
+3. **응답 복원 위치**: 모델의 최종 답 문자열을 사용자에게 돌려주기 직전에 `sess.restore_text(answer, generalize_unknown=True, scrub=True)`. 쓰기 제안(제안 토큰·저장할 값)은 복원된 값이 아닌지, 이름 토큰이 깨졌는지 검증한 뒤 쓴다. 시스템 프롬프트에 "`[PERSON_1]` 같은 토큰은 글자 그대로 복사하고 새로 만들지 않는다"를 넣는다.
+4. **캐시·로그**: 에이전트 결과는 캐시하지 않는 현재 규칙(`cache_key=None`)을 유지하고, 캐시를 도입한다면 토큰 상태로만 저장한다. 세션·가명화 전 질문·도구 결과·복원 전 응답을 로그에 남기지 않는다(`counts_by_kind`·`blocked_count` 만 안전). 규칙을 바꾸면 `MODULE_VERSION` 을 올린다.
+5. **`agent_guard` 규칙 위반 정리**: `shared/llm/agent_guard.py` 가 `features.ai_assistant.ingest.masking.mask_text` 를 import 한다(`shared` 가 기능 코드에 의존). 이 API 로 대체하면 `shared` 안에서 끝나고 위반이 사라진다. 두 규칙은 겹치고(전화·카드·주민번호·계좌·이메일·주소·이름) 목적이 다르다(`mask_text` 는 문서 저장 시 영구 치환, 이 API 는 요청 시 가역 가명화). PR #87 이 `masking.py` 에 라벨 있는 번호(고객·증권·계약·환자 번호 등), 은행명이 낀 계좌, 줄 중간 라벨 주소, 동·호 주거지 주소를 추가해 **`mask_text` 가 이 모듈보다 넓게 잡는 항목이 생겼다**. 따라서 대체 전에 그 규칙을 `detectors.py` 로 옮길지(이 모듈의 탐지 성능 재평가 필요) 정하고, 문서 수집(`ingest`) 쪽은 `mask_text` 를 유지한다.
+6. **시험**: 통합 PR 에서는 가짜 LLM 으로 '원문 이름·전화·좌표 정밀값이 외부 요청 본문에 없다'는 시험과 복원 시험을 추가한다. 실제 외부 호출은 시험에서 하지 않는다.
 
 ## 약속(코드로 지킨 것, 시험이 있다)
 

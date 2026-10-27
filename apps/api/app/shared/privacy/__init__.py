@@ -4,8 +4,18 @@ E2EE 가 아니며 완전한 보호를 보장하지 않는다. 사용법은 docs
 """
 
 from .detectors import detect
+from .freetext import (
+    COORDINATE_KEYS,
+    PrivacySession,
+    contains_placeholders,
+    generalize_coordinates,
+    generalize_number,
+    new_session,
+    prepare_json,
+    prepare_text,
+)
 from .gateway import Prepared, PreparedLine, Row, prepare_transcript, restore_json, restore_value
-from .policy import ANALYSIS, REPLY, TOPICS, Action, Policy
+from .policy import ANALYSIS, ASSISTANT, REPLY, TOPICS, Action, Policy
 from .pseudonymizer import MaskResult, Pseudonymizer, RestoreResult
 from .types import Kind, Risk, Span
 
@@ -15,6 +25,8 @@ MODULE_VERSION = "1"
 __all__ = [
     "MODULE_VERSION",
     "ANALYSIS",
+    "ASSISTANT",
+    "COORDINATE_KEYS",
     "REPLY",
     "TOPICS",
     "Action",
@@ -23,12 +35,19 @@ __all__ = [
     "Policy",
     "Prepared",
     "PreparedLine",
+    "PrivacySession",
     "Pseudonymizer",
     "RestoreResult",
     "Risk",
     "Row",
     "Span",
+    "contains_placeholders",
     "detect",
+    "generalize_coordinates",
+    "generalize_number",
+    "new_session",
+    "prepare_json",
+    "prepare_text",
     "prepare_transcript",
     "restore_json",
     "restore_value",

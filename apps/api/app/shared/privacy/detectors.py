@@ -22,6 +22,21 @@ from .types import RISK_RANK, Kind, Span
 # 공통 도구
 # ---------------------------------------------------------------------------
 _HANGUL = re.compile(r"[가-힣]")
+# 폭 없는 공백·결합 방지·방향 제어 문자(soft hyphen, ZWSP/ZWNJ/ZWJ, LRM/RLM, bidi 제어 등): 사람 눈에는 안 보이지만 숫자 사이에 끼면 정규식 탐지를 피할 수 있다
+_INVISIBLE_RANGES = (
+    (0x00AD, 0x00AD),  # soft hyphen
+    (0x034F, 0x034F),  # combining grapheme joiner
+    (0x180E, 0x180E),  # mongolian vowel separator
+    (0x200B, 0x200F),  # zero width space/non-joiner/joiner, LRM, RLM
+    (0x202A, 0x202E),  # bidi embedding/override
+    (0x2060, 0x2064),  # word joiner, invisible operators
+    (0x2066, 0x2069),  # bidi isolate
+    (0xFEFF, 0xFEFF),  # BOM / zero width no-break space
+)
+INVISIBLE_CHARS = frozenset(chr(c) for lo, hi in _INVISIBLE_RANGES for c in range(lo, hi + 1))
+_INVISIBLE = re.compile(
+    "[" + "".join(f"\\u{lo:04x}-\\u{hi:04x}" for lo, hi in _INVISIBLE_RANGES) + "]"
+)
 # 탐지는 전각 문자(０１０-１２３４, ［］, 전각 공백)와 여러 가지 대시(– — ‐ − )를 반각으로 바꾼 글자에서 한다.
 # 글자 수가 그대로라 구간 위치는 원문과 같다.
 _FOLD: dict[int, int] = {c: c - 0xFEE0 for c in range(0xFF01, 0xFF5F)}
@@ -331,16 +346,39 @@ _DISTRICT_STOP = frozenset({"대도시", "신도시", "소도시", "중소도시
 _ADDR_GAP = re.compile(r"[\s,]{0,2}")
 
 
+def _phone_at(text: str, pos: int) -> bool:
+    """pos 에서 전화번호 한 덩어리가 시작하는가(주소 뒤 번호가 건물번호·지번이 아니라 전화번호인지 가린다)."""
+    return _PHONE_FULL.match(text, pos) is not None
+
+
+_REGION_BEFORE = re.compile(r"[가-힣]{1,4}[시군구][\s,]{0,2}$")
+
+
+def _region_before(text: str, pos: int) -> bool:
+    """pos 바로 앞(공백·쉼표 두 칸 안)이 '서울시'·'강남구'·'수원시' 같은 시·군·구 이름으로 끝나는가."""
+    return _REGION_BEFORE.search(text[max(0, pos - 12) : pos]) is not None
+
+
 def _detect_address(text: str) -> list[Span]:
     cands: list[Span] = []
     for m in _ROAD_RE.finditer(text):
         name = m.group("name")
         if any(name.endswith(stop) for stop in _ROAD_STOP_SUFFIX):
             continue
+        if _phone_at(text, m.start(3)):
+            # '테헤란로 010-1234-5678' 의 전화번호를 건물번호로 삼키지 않는다. 도로명만 주소로 남기는 것은 앞에 시·군·구 같은
+            # 지역 조각이 붙은 때뿐이다('이 번호로 010-…', '전화로 010-…' 같은 일상 말은 주소가 아니라 전화만 잡는다).
+            if _region_before(text, m.start()):
+                cands.append(Span(Kind.ADDRESS, m.start(), m.end("name"), 0.85, "road"))
+            continue
         cands.append(Span(Kind.ADDRESS, m.start(), m.end(), 0.85, "road"))
     for m in _JIBUN_RE.finditer(text):
         name, suffix = m.group("name"), m.group("suffix")
         if name in _JIBUN_STOP:
+            continue
+        if _phone_at(text, m.start(3)):  # '역삼동 010-1234-5678' 의 전화번호는 지번이 아니다
+            if _region_before(text, m.start()):
+                cands.append(Span(Kind.ADDRESS, m.start(), m.end("name"), 0.6, "jibun"))
             continue
         explicit = ("-" in m.group(3) and suffix == "동") or m.group("bunji")
         if (
@@ -530,6 +568,23 @@ def detect(text: str, known_names: tuple[str, ...] | list[str] = ()) -> list[Spa
     if not text:
         return []
     text = text.translate(_FOLD)  # 전각·대시 변형을 반각으로(길이 불변)
+    if _INVISIBLE.search(
+        text
+    ):  # 폭 없는 공백이 낀 번호('0<ZWSP>10-1234-5678')도 찾도록 지우고 탐지한 뒤 원문 위치로 되돌린다
+        return _detect_without_invisible(text, known_names)
+    return _detect_folded(text, known_names)
+
+
+def _detect_without_invisible(text: str, known_names: tuple[str, ...] | list[str]) -> list[Span]:
+    keep = [i for i, ch in enumerate(text) if ch not in INVISIBLE_CHARS]
+    plain = "".join(text[i] for i in keep)
+    out: list[Span] = []
+    for s in _detect_folded(plain, known_names):
+        out.append(Span(s.kind, keep[s.start], keep[s.end - 1] + 1, s.score, s.source, s.canonical))
+    return out
+
+
+def _detect_folded(text: str, known_names: tuple[str, ...] | list[str]) -> list[Span]:
     cands: list[Span] = []
     cands += _detect_secret(text)
     cands += _detect_rrn(text)
