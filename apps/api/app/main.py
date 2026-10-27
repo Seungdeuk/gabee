@@ -13,6 +13,8 @@ from app.features.schedule.router import router as schedule_router
 from app.shared.config import settings
 from app.shared.db import init_db
 from app.shared.errors import register_error_handlers
+from app.shared.high_risk_guard import GUARDED_FEATURES, high_risk_guard
+from app.shared.route_switch import RouteSwitchMiddleware
 from app.shared.schema_gate import health_router, schema_ready
 
 
@@ -33,6 +35,9 @@ app.add_middleware(
     path_suffix="/family-chat/photos",
     message="사진은 8MB 이하만 보낼 수 있어요",
 )  # 채팅 사진(8MB + multipart 여유)
+app.add_middleware(
+    RouteSwitchMiddleware
+)  # DISABLED_AI_ROUTES 에 걸린 요청은 라우터 전에 503 (임시 방어)
 origins = [o.strip() for o in settings.cors_origins.split(",") if o.strip()]
 app.add_middleware(CORSMiddleware, allow_origins=origins, allow_methods=["*"], allow_headers=["*"])
 register_error_handlers(app)
@@ -46,7 +51,10 @@ for feature, router in (
     ("care", care_router),
     ("ai_assistant", ai_assistant_router),
 ):
-    app.include_router(router, dependencies=[Depends(schema_ready(feature))])
+    deps = [Depends(schema_ready(feature))]
+    if feature in GUARDED_FEATURES:  # 고위험 입력(주민·카드·계좌·비밀번호) 사전 차단 (임시 방어)
+        deps.append(Depends(high_risk_guard))
+    app.include_router(router, dependencies=deps)
 app.include_router(health_router)
 
 
