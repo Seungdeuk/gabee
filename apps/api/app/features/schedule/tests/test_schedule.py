@@ -3,7 +3,7 @@
 from datetime import UTC, datetime, timedelta
 
 from app.shared.db import SessionLocal
-from tests.helpers import signup
+from tests.helpers import join_family, signup
 
 from ..models import Event
 
@@ -413,3 +413,54 @@ def test_deleting_topic_keeps_events_and_does_not_recreate_default(client, famil
     assert client.delete(f"/schedule/topics/{topic['id']}", headers=a).status_code == 404
     b_topic = _topics(client, b)[0]
     assert client.delete(f"/schedule/topics/{b_topic['id']}", headers=a).status_code == 404
+
+
+def _third(client, owner, group):
+    c = signup(client, "민수")
+    join_family(client, owner, group["invite_code"], c)
+    return c
+
+
+def _sharing(client, headers, event_id):
+    return client.get(f"/schedule/events/{event_id}/sharing", headers=headers)
+
+
+def test_sharing_original_lists_recipients_and_copy_shows_origin(client, family):
+    a, b, group = family
+    c = _third(client, a, group)
+    a_id, b_id, c_id = _me(client, a), _me(client, b), _me(client, c)
+    original = _new(client, a, share_with=[b_id, c_id])
+    assert _sharing(client, a, original["id"]).json() == {
+        "shared_by": None,
+        "shared_with": [b_id, c_id],
+    }
+    copy = client.get("/schedule/events", headers=b).json()[0]
+    # 복사본: 보낸 사람은 원본 주인, 받은 사람에는 나와 형제 복사본이 들어간다
+    assert _sharing(client, b, copy["id"]).json() == {
+        "shared_by": a_id,
+        "shared_with": [b_id, c_id],
+    }
+
+
+def test_sharing_keeps_deleted_copy_and_reports_origin_after_original_deleted(client, family):
+    a, b, group = family
+    c = _third(client, a, group)
+    a_id, b_id, c_id = _me(client, a), _me(client, b), _me(client, c)
+    original = _new(client, a, share_with=[b_id, c_id])
+    copy = client.get("/schedule/events", headers=b).json()[0]
+    assert client.delete(f"/schedule/events/{copy['id']}", headers=b).status_code == 204
+    assert _sharing(client, a, original["id"]).json()["shared_with"] == [b_id, c_id]
+    c_copy = client.get("/schedule/events", headers=c).json()[0]
+    assert client.delete(f"/schedule/events/{original['id']}", headers=a).status_code == 204
+    assert _sharing(client, c, c_copy["id"]).json() == {
+        "shared_by": a_id,
+        "shared_with": [b_id, c_id],
+    }
+
+
+def test_sharing_of_unshared_event_is_empty_and_others_get_404(client, family):
+    a, b, _ = family
+    e = _new(client, a)
+    assert _sharing(client, a, e["id"]).json() == {"shared_by": None, "shared_with": []}
+    assert _sharing(client, b, e["id"]).status_code == 404  # 남의 줄
+    assert _sharing(client, a, "nope").status_code == 404

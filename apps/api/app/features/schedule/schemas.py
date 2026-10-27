@@ -68,6 +68,13 @@ class EventOut(BaseModel):
     edited_at: datetime | None
 
 
+class SharingOut(BaseModel):
+    """누가 이 일정을 나에게 공유했는지(복사본일 때), 원본에서 누구에게 나눠졌는지."""
+
+    shared_by: str | None
+    shared_with: list[str]
+
+
 class CheckBody(BaseModel):
     """확인(약속)·완료(할 일) 표시. 같은 값을 다시 보내도 그대로다."""
 

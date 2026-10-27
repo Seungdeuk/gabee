@@ -17,9 +17,6 @@ import { addItem, updateItem, useScheduleItem } from "../store";
 import { formatDateWithYear, formatTimeConfirmed } from "../utils/date";
 
 const KIND_OPTIONS = [KIND.appointment, KIND.todo].map((key) => ({ key, label: KIND_LABEL[key] }));
-const OTHERS = members.filter((m) => m.id !== ME_ID);
-const SHAREABLE = OTHERS.filter((m) => m.hasAccount);
-
 const toggle = (list, id) => (list.includes(id) ? list.filter((x) => x !== id) : [...list, id]);
 
 /**
@@ -48,6 +45,9 @@ export default function RegisterScreen() {
   const [timeOpen, setTimeOpen] = useState(false);
   const [triedSave, setTriedSave] = useState(false);
 
+  // 서버에서 가족을 읽은 뒤에 바뀌므로 화면을 그릴 때마다 계산한다.
+  const OTHERS = members.filter((m) => m.id !== ME_ID);
+  const SHAREABLE = OTHERS.filter((m) => m.hasAccount);
   const valid = title.trim() !== "" && date !== "";
   const allShared = SHAREABLE.length > 0 && SHAREABLE.every((m) => sharedWith.includes(m.id));
 
@@ -67,10 +67,10 @@ export default function RegisterScreen() {
       memo: memo.trim(),
       whoIds,
       topicId,
-      sharedWith,
     };
+    // 공유는 등록할 때만 정한다(수정에서는 바꿀 수 없다).
     if (editing) updateItem(editing.id, fields);
-    else addItem({ ...fields, createdBy: ME_ID });
+    else addItem({ ...fields, sharedWith, createdBy: ME_ID });
     leave();
   };
 
@@ -117,14 +117,16 @@ export default function RegisterScreen() {
                 <FilterChip label="+ 주제" muted />
               </View>
             </FormField>
-            <FormField label="공유" hint="선택 안 하면 나만 봐요">
-              <View style={styles.chips}>
-                <FilterChip label="모두" selected={allShared} onPress={() => setSharedWith(allShared ? [] : SHAREABLE.map((m) => m.id))} />
-                {SHAREABLE.map((m) => (
-                  <FilterChip key={m.id} label={m.name} selected={sharedWith.includes(m.id)} onPress={() => setSharedWith(toggle(sharedWith, m.id))} />
-                ))}
-              </View>
-            </FormField>
+            {editing ? null : (
+              <FormField label="공유" hint="선택 안 하면 나만 봐요">
+                <View style={styles.chips}>
+                  <FilterChip label="모두" selected={allShared} onPress={() => setSharedWith(allShared ? [] : SHAREABLE.map((m) => m.id))} />
+                  {SHAREABLE.map((m) => (
+                    <FilterChip key={m.id} label={m.name} selected={sharedWith.includes(m.id)} onPress={() => setSharedWith(toggle(sharedWith, m.id))} />
+                  ))}
+                </View>
+              </FormField>
+            )}
           </View>
 
           <View style={styles.group}>

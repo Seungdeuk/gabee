@@ -28,6 +28,22 @@ def get(db: Session, group_id: str, event_id: str, user_id: str | None = None) -
     )
 
 
+def get_including_deleted(db: Session, group_id: str, event_id: str) -> Event | None:
+    """지워진 줄까지 포함해 그룹 안의 한 줄을 읽는다(공유 출처를 밝히기 위해)."""
+    return db.scalar(select(Event).where(Event.id == event_id, Event.group_id == group_id))
+
+
+def copies_of(db: Session, group_id: str, root_id: str) -> list[Event]:
+    """원본에서 나온 복사본들(지워진 것 포함), 만들어진 순서대로."""
+    return list(
+        db.scalars(
+            select(Event)
+            .where(Event.group_id == group_id, Event.origin_id == root_id)
+            .order_by(Event.created_at, Event.id)
+        )
+    )
+
+
 def list_from(
     db: Session, group_id: str, since: datetime | None, user_id: str | None = None
 ) -> list[Event]:

@@ -7,7 +7,15 @@ from app.shared.db import get_db
 from . import service
 from .agent.router import router as agent_router
 from .models import Event, EventTopic
-from .schemas import CheckBody, EventCreate, EventOut, EventUpdate, TopicCreate, TopicOut
+from .schemas import (
+    CheckBody,
+    EventCreate,
+    EventOut,
+    EventUpdate,
+    SharingOut,
+    TopicCreate,
+    TopicOut,
+)
 
 router = APIRouter(prefix="/schedule", tags=["schedule"])
 router.include_router(agent_router)
@@ -74,6 +82,16 @@ def set_event_checked(
     db: Session = Depends(get_db),
 ) -> Event:
     return service.set_checked(db, group_id, user.id, event_id, body.checked)
+
+
+@router.get("/events/{event_id}/sharing", response_model=SharingOut)
+def event_sharing(
+    event_id: str,
+    user=Depends(current_user),
+    group_id: str = Depends(current_group_id),
+    db: Session = Depends(get_db),
+) -> dict:
+    return service.sharing(db, group_id, user.id, event_id)
 
 
 @router.get("/topics", response_model=list[TopicOut])

@@ -163,6 +163,20 @@ def remove(db: Session, group_id: str, user_id: str, event_id: str) -> None:
     repo.soft_delete(db, event)
 
 
+def sharing(db: Session, group_id: str, user_id: str, event_id: str) -> dict:
+    """공유 관계를 그때그때 계산해 돌려준다(저장하지 않는다). 복사본이면 원본 주인이 shared_by,
+    원본에서 나온 모든 복사본(지운 것 포함)의 주인이 shared_with 다."""
+    event = repo.get(db, group_id, event_id, user_id)
+    if event is None:
+        raise not_found("일정")
+    root = event
+    if event.origin_id is not None:
+        root = repo.get_including_deleted(db, group_id, event.origin_id) or event
+    shared_by = root.user_id if event.origin_id is not None else None
+    owners = [c.user_id for c in repo.copies_of(db, group_id, root.id) if c.user_id is not None]
+    return {"shared_by": shared_by, "shared_with": list(dict.fromkeys(owners))}
+
+
 def set_checked(db: Session, group_id: str, user_id: str, event_id: str, checked: bool) -> Event:
     """내 줄의 확인·완료 표시를 정한다(약속은 '확인했어요', 할 일은 '완료했어요'). 체크는 각자 자기 줄에서 하고,
     같은 값을 다시 보내도 그대로다. 일정을 고친 것이 아니라서 edited_at 은 건드리지 않는다."""

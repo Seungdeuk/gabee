@@ -5035,6 +5035,80 @@
         }
       }
     },
+    "/schedule/events/{event_id}/sharing": {
+      "get": {
+        "tags": [
+          "schedule"
+        ],
+        "summary": "Event Sharing",
+        "operationId": "event_sharing_schedule_events__event_id__sharing_get",
+        "parameters": [
+          {
+            "name": "event_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Event Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-gyeot-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Gyeot-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SharingOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/schedule/topics": {
       "get": {
         "tags": [
@@ -16891,6 +16965,35 @@
           "completed"
         ],
         "title": "Settlement"
+      },
+      "SharingOut": {
+        "properties": {
+          "shared_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Shared By"
+          },
+          "shared_with": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Shared With"
+          }
+        },
+        "type": "object",
+        "required": [
+          "shared_by",
+          "shared_with"
+        ],
+        "title": "SharingOut",
+        "description": "누가 이 일정을 나에게 공유했는지(복사본일 때), 원본에서 누구에게 나눠졌는지."
       },
       "SignupOut": {
         "properties": {
