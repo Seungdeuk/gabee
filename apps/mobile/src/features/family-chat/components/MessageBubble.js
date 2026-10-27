@@ -130,12 +130,12 @@ const styles = StyleSheet.create({
   mineRow: { justifyContent: "flex-end" },
   highlight: { backgroundColor: colors.honeySoft },
   spacer: { width: AVATAR },
-  column: { flexShrink: 1, gap: spacing.xs, alignItems: "flex-start" },
+  column: { flexShrink: 1, maxWidth: "80%", gap: spacing.xs, alignItems: "flex-start" }, // 폭 기준은 row(확정된 폭)의 %. 안쪽 말풍선은 이 폭 안에서만 줄어든다
   line: { flexDirection: "row", alignItems: "flex-end", gap: spacing.xs, maxWidth: "100%" },
   name: { ...font.tab, fontFamily: font.bodyStrong.fontFamily, color: colors.textSub },
   bubble: { flexShrink: 1, maxWidth: "70%", paddingHorizontal: spacing.md, paddingVertical: spacing.sm + 2, borderRadius: radius.bubble },
   mineBubble: { backgroundColor: colors.peach, borderBottomRightRadius: spacing.xs },
-  otherBubble: { backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border, borderTopLeftRadius: spacing.xs },
+  otherBubble: { maxWidth: "100%", backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border, borderTopLeftRadius: spacing.xs },
   photoBubble: { paddingHorizontal: spacing.xs, paddingVertical: spacing.xs }, // 위쪽 bubble 의 가로·세로 여백(longhand)이 padding 보다 우선해서 같은 방향으로 덮어쓴다
   photo: { maxWidth: "100%", borderRadius: radius.md }, // 좁은 화면에서는 말풍선 안으로 비율을 지키며 줄어든다
   photoText: { paddingHorizontal: spacing.sm, paddingVertical: spacing.xs },
