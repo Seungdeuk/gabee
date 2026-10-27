@@ -71,6 +71,8 @@
 | 8 | 낮음(환경 의존) | CORS | `test_cors_does_not_allow_arbitrary_origins_by_default` (xfail strict=False). `cors_origins` 기본값 `*`. 인증이 쿠키가 아니라 헤더 토큰이라 위험은 낮다. 운영 `.env` 값은 미확인 | `.env.example` 에 `CORS_ORIGINS` 명시, 운영 값 확인 | shared/config, 배포 |
 | 9 | 낮음(문서) | `docs/contracts/permissions.md` | 코드와 어긋난 부분: "기존 인증 방식의 잔여 위험" 절(45~49행)이 "레이트 리밋·로그인 절차 없음, 토큰 만료 없음"으로 적혀 있으나 로그인 실패 제한·JWT·Refresh Token 이 있다(레거시 익명 토큰만 평문·무만료로 남음). `current_user(x_gyeot_token, db)` 시그니처(21행)도 오래됨. 용돈(부모/그룹 소유자), 할 일 삭제(만든 사람·관리자), 일정 삭제(본인), 정산 담당, AI 동의(관리자) 규칙은 문서에 없고 코드(시험)로만 확인됨 | 문서 갱신 | docs |
 
+> 임시 방어: 팀원이 결함 1·4 를 고치기 전까지 `DISABLED_AI_ROUTES`(경로 스위치)와 고위험 입력 사전 차단(주민·카드·계좌·비밀번호 400)을 둔다. 전화·이메일·이름·주소는 못 막는다 — [LLM_EGRESS_TEMP_GUARDS.md](LLM_EGRESS_TEMP_GUARDS.md).
+
 독립 검토 반영(2차 수정) 요약 — 시험을 약하게 하지 않고 더 정확하게 만든 내용:
 
 - 달 고정 제거: 시드 지출·정산·가계 시험의 `2026-10` 고정값을 현재 달 계산(`this_month()`)으로 바꿨다(2026-11-01 부터 깨지던 문제).

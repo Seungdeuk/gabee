@@ -87,6 +87,11 @@ def _outbound():
     }
     for name, value in pinned.items():
         mp.setattr(settings, name, value)
+    # 임시 방어(high_risk_guard)는 RRN·CARD 가 든 입력을 400 으로 막아 이 묶음이 보려는 하부 결함(가명화·마스킹 현황)을 가린다.
+    # 이 묶음에서는 끈다(가드 자체는 tests/test_high_risk_guard.py 가 시험). 제거 조건: docs/security/LLM_EGRESS_TEMP_GUARDS.md 4절
+    from app.shared import high_risk_guard
+
+    mp.setattr(high_risk_guard, "MIN_SCORE", 9.0)
     yield fake
     mp.undo()
 
@@ -1955,6 +1960,7 @@ def test_assistant_chat_masks_user_text_before_sending(api, fake):
     fam = new_family(api, "메인문장", "MAINQ")
     _enable_ai(api, fam)
     fake.reset()
+    # 가드는 모듈 시작 때 꺼 둔다(_outbound). 게이트웨이 연결 후 RRN·CARD 까지 가려져야 가드를 지울 수 있다.
     text = f"내 번호 {PHONE} 메일 {EMAIL} 주민번호 {RRN} 카드 {CARD}"
     r = api.post(
         "/ai-assistant/chat",
