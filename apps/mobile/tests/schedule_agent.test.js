@@ -155,3 +155,26 @@ test("오류 말풍선과 일정이 바뀐 응답", () => {
   assert.ok(changedItems({ intent: "register" }));
   assert.ok(!changedItems({ intent: "query" }));
 });
+
+test("추천 카드는 제안마다 하나씩 suggestions 로 모인다", () => {
+  const res = {
+    intent: "recommend",
+    text: "이런 건 어때요?",
+    cards: [
+      { type: "suggestion", data: { id: "s1", title: "정기 검진", kind: 1, date: "2026-11-03", place: "내과" } },
+      { type: "suggestion", data: { id: "s2", title: "관리비 납부", kind: 2, date: "2026-11-05", place: "" } },
+    ],
+  };
+  const m = fromAgentResponse(res, []);
+  assert.equal(m.suggestions.length, 2);
+  assert.deepEqual(m.suggestions[0], {
+    id: "s1",
+    name: "정기 검진",
+    draft: { kind: "appointment", title: "정기 검진", date: "2026-11-03", place: "내과" },
+  });
+  assert.equal(m.suggestions[1].draft.kind, "todo");
+  assert.equal(m.suggestion, undefined);
+
+  const none = fromAgentResponse({ intent: "recommend", text: "오늘 추천은 여기까지예요", cards: [] }, []);
+  assert.equal(none.suggestions, undefined);
+});

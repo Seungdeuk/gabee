@@ -11,6 +11,7 @@ import { confirmAction, newChat, retryLast, sendMessage, toggleSuggestionLater, 
 import ChatInputBar from "../components/ChatInputBar";
 import ChatMessages from "../components/ChatMessages";
 import QuickChips from "../components/QuickChips";
+import { suggestionExtras } from "../suggestion_convert";
 
 /**
  * 채팅 전용 화면. 머리줄은 ‹ + 글자 로고 + [새 채팅] [기록], 아래로 대화, 입력창 위에 빠른 질문 칩 한 줄.
@@ -23,7 +24,10 @@ export default function ChatScreen() {
 
   const leave = () => (router.canGoBack() ? router.back() : router.replace("/(tabs)/schedule"));
   const addSuggestion = (suggestion, date) =>
-    router.push({ pathname: "/schedule/register", params: { kind: suggestion.draft.kind, title: suggestion.draft.title, date, suggested: "1" } });
+    router.push({
+      pathname: "/schedule/register",
+      params: { kind: suggestion.draft.kind, title: suggestion.draft.title, date, suggested: "1", ...suggestionExtras(suggestion) },
+    });
 
   return (
     <SafeAreaView style={styles.safe} edges={["top"]}>

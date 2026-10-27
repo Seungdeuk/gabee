@@ -7,6 +7,8 @@ import { apiFetch } from "@/shared/api/client";
  * @typedef {{ id: string, name: string, color: string, created_at: string }} ServerTopic
  * @typedef {{ shared_by: string | null, shared_with: string[] }} Sharing
  * @typedef {ReturnType<import("./members").buildFamily>} Family
+ * @typedef {{ id: string, title: string, kind: 1 | 2, start_date: string, place: string }} ServerSuggestion
+ * @typedef {{ suggestions: ServerSuggestion[], exhausted: boolean }} SuggestionList
  * @typedef {{ intent: string, text: string, cards: { type: string, data: Record<string, any> }[], pending_action: object | null, draft: object | null }} AgentResponse
  */
 
@@ -56,7 +58,7 @@ export function toItem(event, family) {
 
 /**
  * 화면 항목의 값 → 서버 요청 본문. 수정(PATCH)은 시간을 null 로 보내야 지워지므로 항상 모든 값을 보낸다.
- * 공유(share_with)는 등록할 때만 보낸다.
+ * 공유(share_with)와 추천 확정(suggestion_id: 이 일정이 내 대기 제안에서 왔을 때)은 등록할 때만 보낸다.
  * @param {Partial<import("./model").ScheduleItem>} item
  * @param {Family} family
  * @param {{ create?: boolean }} [options]
@@ -73,7 +75,10 @@ export function toBody(item, family, { create = false } = {}) {
     who_ids: (item.whoIds ?? []).map(family.toUser).filter(Boolean),
     topic_id: item.topicId ?? null,
   };
-  if (create) body.share_with = (item.sharedWith ?? []).map(family.toUser).filter(Boolean);
+  if (create) {
+    body.share_with = (item.sharedWith ?? []).map(family.toUser).filter(Boolean);
+    if (item.suggestionId) body.suggestion_id = item.suggestionId;
+  }
   return body;
 }
 
@@ -119,6 +124,12 @@ export const setEventChecked = (id, checked) =>
     method: "PUT",
     body: { checked },
   });
+
+/**
+ * 오늘의 대기 제안(없으면 서버가 만들어 주니 몇 초 걸릴 수 있다). 하루 몫을 다 쓰면 suggestions 가 비고 exhausted 가 true.
+ * @returns {Promise<SuggestionList>}
+ */
+export const listSuggestions = () => apiFetch("/schedule/suggestions");
 
 /** 내 주제 목록(처음이면 서버가 기본 주제 "경조사"를 만들어 준다). @returns {Promise<ServerTopic[]>} */
 export const listTopics = () => apiFetch("/schedule/topics");

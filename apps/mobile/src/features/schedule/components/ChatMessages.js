@@ -9,7 +9,8 @@ import { KIND_COLOR, TOPIC_TEXT } from "../constants";
 import { members, topics } from "../mock";
 import { whoLabels } from "../model";
 import { useScheduleItems } from "../store";
-import { addDays, formatSlashDate, fromDateKey, todayKey } from "../utils/date";
+import { draftDateOf } from "../suggestion_convert";
+import { formatSlashDate, fromDateKey, todayKey } from "../utils/date";
 
 /** 미니 카드 오른쪽 글자. 예: "21일 09:00", 시간이 없으면 "21일", 종일이면 "21일 종일". */
 function miniTime(item) {
@@ -37,13 +38,14 @@ function MiniCard({ item, onPress }) {
   );
 }
 
+/** 제안의 날짜: 서버 제안은 draft.date, 예전 임시 제안은 오늘 기준 daysFromToday. */
+const suggestionDate = (suggestion) => draftDateOf(suggestion.draft, todayKey());
+
 /**
  * "추가해 드릴까요?" 제안 카드. 메인의 추천 카드와 같은 문장(날짜 이름 / 일정으로 추가해 드릴까요?)과 같은 버튼 규칙을 쓴다.
  * 이미 같은 일정이 있으면 버튼 대신 "추가했어요"를 보여 준다.
  */
-function Suggestion({ message, added, onAdd, onLater }) {
-  const { suggestion } = message;
-  const date = addDays(todayKey(), suggestion.draft.daysFromToday);
+function Suggestion({ suggestion, date, added, later, onAdd, onLater }) {
   return (
     <View style={styles.sug}>
       <Text style={styles.sugText}>{`${formatSlashDate(date)} ${suggestion.name}`}</Text>
@@ -59,12 +61,12 @@ function Suggestion({ message, added, onAdd, onLater }) {
               <Text style={styles.btnText}>추가</Text>
             </Pressable>
             <Pressable
-              onPress={() => onLater(message.id)}
-              style={[styles.btn, message.later && styles.btnOn]}
+              onPress={onLater}
+              style={[styles.btn, later && styles.btnOn]}
               accessibilityRole="button"
-              accessibilityState={{ selected: Boolean(message.later) }}
+              accessibilityState={{ selected: Boolean(later) }}
             >
-              <Text style={[styles.btnText, message.later && styles.btnTextOn]}>나중에</Text>
+              <Text style={[styles.btnText, later && styles.btnTextOn]}>나중에</Text>
             </Pressable>
           </>
         )}
@@ -158,7 +160,7 @@ function ConfirmCard({ message, onConfirm }) {
  * 채팅 대화 목록. 사용자의 말은 크림색 말풍선(오른쪽), 가비의 답은 꿀벌 아바타 옆 흰 말풍선(왼쪽)이다.
  * 답은 문장 + 약속·할 일 미니 카드 + 추가 제안으로 이루어지고, 답을 쓰는 동안은 점 세 개, 답하지 못하면 "다시 시도"가 붙는다.
  * 새 말이 붙으면 맨 아래로 내려간다.
- * @param {{ messages: import("../chat").ChatMessage[], thinking: boolean, onRetry: () => void, onAdd: (suggestion: object, date: string) => void, onLater: (messageId: string) => void, onConfirm: (messageId: string, choice: "yes" | "mine" | "no") => void, onOpenItem: (id: string) => void, empty?: string }} props
+ * @param {{ messages: import("../chat").ChatMessage[], thinking: boolean, onRetry: () => void, onAdd: (suggestion: object, date: string) => void, onLater: (messageId: string, suggestionId?: string) => void, onConfirm: (messageId: string, choice: "yes" | "mine" | "no") => void, onOpenItem: (id: string) => void, empty?: string }} props
  */
 export default function ChatMessages({ messages, thinking, onRetry, onAdd, onLater, onConfirm, onOpenItem, empty }) {
   const items = useScheduleItems();
@@ -195,11 +197,29 @@ export default function ChatMessages({ messages, thinking, onRetry, onAdd, onLat
               {message.suggestion ? (
                 <>
                   <Suggestion
-                    message={message}
-                    added={isAdded(message.suggestion, addDays(todayKey(), message.suggestion.draft.daysFromToday))}
+                    suggestion={message.suggestion}
+                    date={suggestionDate(message.suggestion)}
+                    added={isAdded(message.suggestion, suggestionDate(message.suggestion))}
+                    later={message.later}
                     onAdd={onAdd}
-                    onLater={onLater}
+                    onLater={() => onLater(message.id)}
                   />
+                  <Text style={styles.note}>추천은 참고용이에요. 내용을 확인 후 저장해 주세요 📝</Text>
+                </>
+              ) : null}
+              {message.suggestions?.length ? (
+                <>
+                  {message.suggestions.map((suggestion) => (
+                    <Suggestion
+                      key={suggestion.id}
+                      suggestion={suggestion}
+                      date={suggestionDate(suggestion)}
+                      added={isAdded(suggestion, suggestionDate(suggestion))}
+                      later={message.laterIds?.includes(suggestion.id)}
+                      onAdd={onAdd}
+                      onLater={() => onLater(message.id, suggestion.id)}
+                    />
+                  ))}
                   <Text style={styles.note}>추천은 참고용이에요. 내용을 확인 후 저장해 주세요 📝</Text>
                 </>
               ) : null}

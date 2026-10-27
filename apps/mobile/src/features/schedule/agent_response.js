@@ -1,4 +1,5 @@
 // 일정 에이전트 서버 응답(/schedule/agent)을 채팅 말풍선 필드로 바꾸는 순수 함수들. 화면·테마에 의존하지 않아 node 테스트로 확인한다.
+import { fromServerSuggestion } from "./suggestion_convert";
 
 /** 답을 만들지 못했을 때의 안내 문장. */
 export const ERROR_TEXT = "지금은 답하기 어려워요. 잠시 뒤에 다시 물어봐 주세요";
@@ -31,7 +32,7 @@ function briefItem(brief, items) {
 }
 
 /**
- * 서버 에이전트 응답 → 채팅 말풍선 필드(text·items·registered·confirm·draft·pending).
+ * 서버 에이전트 응답 → 채팅 말풍선 필드(text·items·registered·suggestions·confirm·draft·pending).
  * 되묻는 응답의 draft 와 확인 카드의 pending 은 다음 요청에 쓰려고 말풍선에 같이 둔다.
  * @param {import("./api").AgentResponse} res
  * @param {import("./model").ScheduleItem[]} items 지금 내 일정
@@ -53,6 +54,8 @@ export function fromAgentResponse(res, items) {
         who: d.who ?? [],
         shared: d.shared ?? 0,
       };
+    } else if (card.type === "suggestion") {
+      message.suggestions = [...(message.suggestions ?? []), fromServerSuggestion(d)];
     } else if (CONFIRM_KIND[card.type]) {
       message.confirm = { kind: CONFIRM_KIND[card.type], state: "pending" };
       if (d.event) message.confirm.event = d.event;

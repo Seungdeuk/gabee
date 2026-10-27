@@ -6,8 +6,13 @@ from sqlalchemy.orm import Session
 from app.shared.errors import ApiError, bad_request, not_found
 
 from . import repository as repo
-from .constants import DEFAULT_TOPIC_COLOR, DEFAULT_TOPIC_NAME
-from .models import Event, EventTopic
+from .constants import (
+    DEFAULT_TOPIC_COLOR,
+    DEFAULT_TOPIC_NAME,
+    SUGGESTION_CONFIRMED,
+    SUGGESTION_PENDING,
+)
+from .models import Event, EventSuggestion, EventTopic
 from .schemas import EventCreate, EventUpdate, TopicCreate
 from .timeutil import local_tz
 
@@ -42,6 +47,7 @@ def create(db: Session, group_id: str, user_id: str, body: EventCreate) -> Event
     memo = body.memo if body.memo is not None else body.note
     targets = _share_targets(db, group_id, user_id, body.share_with)
     _check_topic(db, group_id, user_id, body.topic_id)
+    suggestion = _pending_suggestion(db, group_id, user_id, body.suggestion_id)
     fields = dict(
         group_id=group_id,
         created_by=user_id,
@@ -74,8 +80,30 @@ def create(db: Session, group_id: str, user_id: str, body: EventCreate) -> Event
         )
         for i, t in enumerate(targets, start=1)
     ]
+    if suggestion is not None:
+        # 추천에서 등록하면 같은 트랜잭션에서 제안을 확정한다(공유 복사본에는 연결하지 않는다)
+        original.suggestion_id = suggestion.id
+        suggestion.status = SUGGESTION_CONFIRMED
+        suggestion.confirmed_at = now
     repo.add_all(db, [original, *copies])
     return original
+
+
+def _pending_suggestion(
+    db: Session, group_id: str, user_id: str, suggestion_id: str | None
+) -> EventSuggestion | None:
+    """등록에 쓸 제안이 내 대기 제안인지 확인한다(없는 제안·남의 제안·이미 확정·버린 제안은 400)."""
+    if suggestion_id is None:
+        return None
+    suggestion = db.get(EventSuggestion, suggestion_id)
+    if (
+        suggestion is None
+        or suggestion.user_id != user_id
+        or suggestion.group_id != group_id
+        or suggestion.status != SUGGESTION_PENDING
+    ):
+        raise bad_request("invalid_suggestion", "사용할 수 없는 추천이에요")
+    return suggestion
 
 
 def upcoming(db: Session, group_id: str, user_id: str, include_past: bool = False) -> list[Event]:

@@ -23,6 +23,7 @@ class EventCreate(BaseModel):
     who_ids: list[str] = Field(default_factory=list, max_length=20)  # 관련된 사람
     share_with: list[str] = Field(default_factory=list, max_length=20)
     topic_id: str | None = None  # 내 주제. 공유 복사본에는 붙지 않는다(받는 사람이 직접 붙인다)
+    suggestion_id: str | None = None  # 추천에서 등록할 때 그 제안의 id(내 대기 제안만, 아니면 400)
 
     @model_validator(mode="after")
     def _needs_when(self) -> "EventCreate":

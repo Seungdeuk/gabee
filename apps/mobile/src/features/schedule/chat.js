@@ -25,6 +25,8 @@ const DAY_MS = 24 * 60 * 60 * 1000;
  * @property {string} text
  * @property {import("./model").ScheduleItem[]} [items] 답에 붙은 약속·할 일 미니 카드
  * @property {{ name: string, draft: { kind: string, title: string, daysFromToday: number } }} [suggestion] 추가해 드릴까요? 제안
+ * @property {{ id: string, name: string, draft: { kind: string, title: string, date: string, place: string } }[]} [suggestions] 서버 추천 제안(카드마다 하나)
+ * @property {string[]} [laterIds] suggestions 중 "나중에"를 누른 제안 id
  * @property {boolean} [later] 제안에서 "나중에"를 누른 상태
  * @property {boolean} [error] 답하지 못한 말풍선(다시 시도 버튼이 붙는다)
  * @property {object} [registered] 에이전트가 일정을 등록했다는 완료 카드
@@ -192,7 +194,12 @@ export function openConversation(id) {
   if (state.conversations.some((c) => c.id === id)) set({ currentId: id, thinking: false, resumed: true });
 }
 
-/** 제안 카드의 "나중에"를 누르거나 푼다. @param {string} messageId */
-export function toggleSuggestionLater(messageId) {
-  patchCurrent({ messages: current().messages.map((m) => (m.id === messageId ? { ...m, later: !m.later } : m)) });
+/** 제안 카드의 "나중에"를 누르거나 푼다. 서버 추천(suggestions)은 제안 id 별로, 예전 단일 제안은 말풍선 단위로. @param {string} messageId @param {string} [suggestionId] */
+export function toggleSuggestionLater(messageId, suggestionId) {
+  const flip = (m) => {
+    if (!suggestionId) return { ...m, later: !m.later };
+    const ids = m.laterIds ?? [];
+    return { ...m, laterIds: ids.includes(suggestionId) ? ids.filter((x) => x !== suggestionId) : [...ids, suggestionId] };
+  };
+  patchCurrent({ messages: current().messages.map((m) => (m.id === messageId ? flip(m) : m)) });
 }

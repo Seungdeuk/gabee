@@ -4576,6 +4576,72 @@
         }
       }
     },
+    "/schedule/suggestions": {
+      "get": {
+        "tags": [
+          "schedule"
+        ],
+        "summary": "List Suggestions",
+        "description": "대기 중인 추천(없으면 오늘 3묶음 안에서 새로 만든다). AI 를 부를 때만 동의·한도를 본다.",
+        "operationId": "list_suggestions_schedule_suggestions_get",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-gyeot-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Gyeot-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SuggestionsOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/schedule/events": {
       "get": {
         "tags": [
@@ -13108,6 +13174,17 @@
               }
             ],
             "title": "Topic Id"
+          },
+          "suggestion_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Suggestion Id"
           }
         },
         "type": "object",
@@ -17570,6 +17647,61 @@
         "type": "object",
         "title": "SubscriptionPatch",
         "description": "보낸 필드만 바꾼다. 금액·결제일·통신사는 null 을 보내면 지운다."
+      },
+      "SuggestionOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "kind": {
+            "type": "integer",
+            "title": "Kind"
+          },
+          "start_date": {
+            "type": "string",
+            "title": "Start Date"
+          },
+          "place": {
+            "type": "string",
+            "title": "Place"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "title",
+          "kind",
+          "start_date",
+          "place"
+        ],
+        "title": "SuggestionOut"
+      },
+      "SuggestionsOut": {
+        "properties": {
+          "suggestions": {
+            "items": {
+              "$ref": "#/components/schemas/SuggestionOut"
+            },
+            "type": "array",
+            "title": "Suggestions"
+          },
+          "exhausted": {
+            "type": "boolean",
+            "title": "Exhausted"
+          }
+        },
+        "type": "object",
+        "required": [
+          "suggestions",
+          "exhausted"
+        ],
+        "title": "SuggestionsOut",
+        "description": "대기 중인 추천. exhausted 는 오늘 추천을 다 만들어 더 없다는 뜻."
       },
       "Summary": {
         "properties": {
