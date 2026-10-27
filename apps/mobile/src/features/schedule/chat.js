@@ -1,11 +1,16 @@
 import { useSyncExternalStore } from "react";
 
+import { isApiConfigured } from "@/shared/api/client";
+
 import { answerFor } from "./agent";
-import { getScheduleItems } from "./store";
+import { agentErrorMessage, changedItems, fromAgentResponse } from "./agent_response";
+import { askAgent, confirmAgent } from "./api";
+import { getScheduleItems, reloadItems } from "./store";
 import { todayKey } from "./utils/date";
 
-// 서버 연동 전까지 쓰는 메모리 저장소. 채팅 대화와 기록을 하단 시트·채팅 화면·기록 화면이 같이 본다.
-// 서버가 붙으면 이 파일의 함수 본문만 api.js 호출로 바꾸고 화면은 그대로 둔다.
+// 채팅 대화와 기록을 하단 시트·채팅 화면·기록 화면이 같이 보는 메모리 저장소. 대화 기록은 아직 서버에 저장하지 않는다.
+// 서버 주소가 있으면(EXPO_PUBLIC_API_URL) 질문을 일정 에이전트(/schedule/agent)에 보내고, 없으면 agent.js 의 임시 답을 쓴다.
+const useServer = isApiConfigured();
 
 /** 마지막 대화 뒤 이 시간이 지나면 새 대화로 시작한다(이전 대화는 기록에 남는다). */
 const FRESH_MS = 24 * 60 * 60 * 1000;
@@ -22,6 +27,10 @@ const DAY_MS = 24 * 60 * 60 * 1000;
  * @property {{ name: string, draft: { kind: string, title: string, daysFromToday: number } }} [suggestion] 추가해 드릴까요? 제안
  * @property {boolean} [later] 제안에서 "나중에"를 누른 상태
  * @property {boolean} [error] 답하지 못한 말풍선(다시 시도 버튼이 붙는다)
+ * @property {object} [registered] 에이전트가 일정을 등록했다는 완료 카드
+ * @property {{ kind: "register" | "edit" | "delete", state: "pending" | "done" | "cancelled" }} [confirm] 등록(공유)·수정·삭제 확인 카드
+ * @property {object} [pending] 확인 카드 버튼이 서버에 돌려줄 내용
+ * @property {object} [draft] 에이전트가 되묻는 중인 초안(다음 말과 함께 서버에 돌려준다)
  */
 
 /**
@@ -93,10 +102,27 @@ export function useConversations() {
   return snapshot.conversations.filter((c) => c.messages.length > 0).sort((a, b) => b.updatedAt - a.updatedAt);
 }
 
-const answer = (question) => {
-  const result = answerFor(question, getScheduleItems(), todayKey());
-  patchCurrent({ messages: [...current().messages, { id: makeId("m"), role: "ai", ...result }], updatedAt: Date.now() });
+const pushAi = (fields) => {
+  patchCurrent({ messages: [...current().messages, { id: makeId("m"), role: "ai", ...fields }], updatedAt: Date.now() });
   set({ thinking: false });
+};
+
+/** 되묻는 중이면(마지막 말풍선이 draft 를 가졌으면) 그 초안을 새 말과 함께 보낸다. */
+const pendingDraft = () => {
+  const last = current().messages.at(-1);
+  return last?.role === "ai" ? (last.draft ?? null) : null;
+};
+
+const answer = async (question, draft) => {
+  if (!useServer) return pushAi(answerFor(question, getScheduleItems(), todayKey()));
+  try {
+    const res = await askAgent(question, draft);
+    if (changedItems(res)) await reloadItems();
+    pushAi(fromAgentResponse(res, getScheduleItems()));
+  } catch (error) {
+    console.warn("[schedule] 에이전트 질문 실패", error?.message ?? error);
+    pushAi(agentErrorMessage(error));
+  }
 };
 
 /**
@@ -108,9 +134,11 @@ export function sendMessage(text) {
   if (!question || state.thinking) return;
   // 기록에서 열어 이어 가는 대화는 시간이 지나도 그대로 이어 간다.
   if (!state.resumed && current().messages.length > 0 && Date.now() - current().updatedAt > FRESH_MS) newChat();
+  const draft = pendingDraft();
   patchCurrent({ messages: [...current().messages, { id: makeId("m"), role: "user", text: question }], updatedAt: Date.now() });
   set({ thinking: true });
-  setTimeout(() => answer(question), THINKING_MS);
+  if (useServer) answer(question, draft);
+  else setTimeout(() => answer(question, draft), THINKING_MS);
 }
 
 /** 답하지 못한 말풍선을 지우고 마지막 질문을 다시 보낸다. */
@@ -119,8 +147,37 @@ export function retryLast() {
   const lastUser = [...messages].reverse().find((m) => m.role === "user");
   if (!lastUser || state.thinking) return;
   patchCurrent({ messages: messages.filter((m) => !m.error) });
+  const draft = pendingDraft();
   set({ thinking: true });
-  setTimeout(() => answer(lastUser.text), THINKING_MS);
+  if (useServer) answer(lastUser.text, draft);
+  else setTimeout(() => answer(lastUser.text, draft), THINKING_MS);
+}
+
+const setConfirmState = (messageId, state) =>
+  patchCurrent({
+    messages: current().messages.map((m) => (m.id === messageId ? { ...m, confirm: { ...m.confirm, state } } : m)),
+  });
+
+/**
+ * 확인 카드의 버튼. "no" 는 취소만 하고, "yes"·"mine" 은 서버에 실행을 맡긴다(AI 를 부르지 않는다).
+ * 등록 확인에서 "mine" 은 공유 대상을 빼고 내 일정만 만든다. 서버가 실패하면 카드를 다시 누를 수 있게 되돌린다.
+ * @param {string} messageId
+ * @param {"yes" | "mine" | "no"} choice
+ */
+export async function confirmAction(messageId, choice) {
+  const message = current().messages.find((m) => m.id === messageId);
+  if (!message?.confirm || message.confirm.state !== "pending") return;
+  if (choice === "no") return setConfirmState(messageId, "cancelled");
+  setConfirmState(messageId, "done");
+  try {
+    const res = await confirmAgent(message.pending, choice !== "mine");
+    await reloadItems();
+    pushAi(fromAgentResponse(res, getScheduleItems()));
+  } catch (error) {
+    console.warn("[schedule] 에이전트 확인 실패", error?.message ?? error);
+    setConfirmState(messageId, "pending");
+    pushAi({ text: agentErrorMessage(error).text });
+  }
 }
 
 /** 새 대화를 시작한다. 지금 대화는 기록에 그대로 남는다(비어 있었으면 그 빈 대화를 다시 쓴다). */

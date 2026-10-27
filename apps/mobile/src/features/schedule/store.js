@@ -198,3 +198,15 @@ export async function loadSharing(id) {
     return null;
   }
 }
+
+/** 에이전트가 서버에서 일정을 바꿨을 때 내 일정을 다시 읽는다(서버 모드에서만). */
+export async function reloadItems() {
+  if (!useServer) return;
+  try {
+    const f = await ready();
+    items = (await api.listEvents()).map((event) => api.toItem(event, f));
+    emit();
+  } catch (error) {
+    warn("일정 다시 읽기", error);
+  }
+}

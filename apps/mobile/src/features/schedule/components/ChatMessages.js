@@ -28,6 +28,7 @@ function MiniCard({ item, onPress }) {
       <Text style={styles.miniTitle}>
         {labels.length > 0 ? <Text style={styles.tag}>{` ${labels.join("·")} `}</Text> : null}
         {labels.length > 0 ? " " : null}
+        {item.checked ? "✓ " : ""}
         {item.title}
         {topic ? <Text style={[styles.topic, { color: TOPIC_TEXT[topic.color] }]}>{`  ${topic.name}`}</Text> : null}
       </Text>
@@ -72,13 +73,94 @@ function Suggestion({ message, added, onAdd, onLater }) {
   );
 }
 
+/** "M/D 09:00~10:00 · 장소" 한 줄. 없는 조각은 뺀다. */
+function registeredLine(registered) {
+  const time = registered.startTime ? (registered.endTime ? `${registered.startTime}~${registered.endTime}` : registered.startTime) : "";
+  return [formatSlashDate(registered.date), time, registered.place].filter(Boolean).join(" · ");
+}
+
+/** "등록했어요" 완료 카드. 제목·날짜·시간·장소, 이름표, 공유 인원을 보여 주고 누르면 상세를 연다. */
+function RegisteredCard({ registered, onPress }) {
+  return (
+    <Pressable onPress={onPress} style={styles.sug} accessibilityRole="button">
+      <Text style={styles.sugSub}>등록했어요</Text>
+      <Text style={styles.sugText}>
+        {registered.who?.length > 0 ? <Text style={styles.tag}>{` ${registered.who.join("·")} `}</Text> : null}
+        {registered.who?.length > 0 ? " " : null}
+        {registered.title}
+      </Text>
+      <Text style={styles.sugSub}>{registeredLine(registered)}</Text>
+      {registered.shared > 0 ? <Text style={styles.sugSub}>{`${registered.shared}명에게 공유했어요`}</Text> : null}
+    </Pressable>
+  );
+}
+
+/** confirm 카드에 보여 줄 요약 줄들. */
+function confirmLines(confirm) {
+  if (confirm.kind === "register" && confirm.register) {
+    const r = confirm.register;
+    const time = r.start_time ? (r.end_time ? `${r.start_time}~${r.end_time}` : r.start_time) : "";
+    const head = [formatSlashDate(r.date), time, r.place].filter(Boolean).join(" · ");
+    const share = r.share?.length > 0 ? [`공유: ${r.share.map((s) => s.name).join(", ")}`] : [];
+    return [r.title, head, ...share, "이대로 등록할까요?"];
+  }
+  const e = confirm.event;
+  const target = e ? [`${formatSlashDate(e.date)} ${e.title}${e.time ? ` ${e.time}` : ""}`] : [];
+  if (confirm.kind === "edit") return [...target, ...(confirm.lines ?? []), "바꿀까요?"];
+  return [...target, "지울까요?"];
+}
+
+const CONFIRM_BUTTONS = {
+  register: [
+    { label: "공유해서 등록", choice: "yes" },
+    { label: "내 일정만", choice: "mine" },
+    { label: "취소", choice: "no" },
+  ],
+  edit: [
+    { label: "바꿀게요", choice: "yes" },
+    { label: "아니요", choice: "no" },
+  ],
+  delete: [
+    { label: "지울게요", choice: "yes" },
+    { label: "아니요", choice: "no" },
+  ],
+};
+
+/** 서버가 확인을 요청한 카드(등록·수정·삭제). 대기 중에만 버튼이 있고, 끝나면 배지만 남는다. */
+function ConfirmCard({ message, onConfirm }) {
+  const { confirm } = message;
+  const lines = confirmLines(confirm);
+  return (
+    <View style={styles.sug}>
+      {lines.map((line, i) => (
+        <Text key={i} style={i === 0 ? styles.sugText : styles.sugSub}>
+          {line}
+        </Text>
+      ))}
+      <View style={styles.sugButtons}>
+        {confirm.state === "pending" ? (
+          (CONFIRM_BUTTONS[confirm.kind] ?? []).map((b) => (
+            <Pressable key={b.choice} onPress={() => onConfirm(message.id, b.choice)} style={styles.btn} accessibilityRole="button">
+              <Text style={styles.btnText}>{b.label}</Text>
+            </Pressable>
+          ))
+        ) : (
+          <View style={[styles.btn, styles.btnOn]}>
+            <Text style={[styles.btnText, styles.btnTextOn]}>{confirm.state === "cancelled" ? "취소했어요" : "확인했어요"}</Text>
+          </View>
+        )}
+      </View>
+    </View>
+  );
+}
+
 /**
  * 채팅 대화 목록. 사용자의 말은 크림색 말풍선(오른쪽), 가비의 답은 꿀벌 아바타 옆 흰 말풍선(왼쪽)이다.
  * 답은 문장 + 약속·할 일 미니 카드 + 추가 제안으로 이루어지고, 답을 쓰는 동안은 점 세 개, 답하지 못하면 "다시 시도"가 붙는다.
  * 새 말이 붙으면 맨 아래로 내려간다.
- * @param {{ messages: import("../chat").ChatMessage[], thinking: boolean, onRetry: () => void, onAdd: (suggestion: object, date: string) => void, onLater: (messageId: string) => void, onOpenItem: (id: string) => void, empty?: string }} props
+ * @param {{ messages: import("../chat").ChatMessage[], thinking: boolean, onRetry: () => void, onAdd: (suggestion: object, date: string) => void, onLater: (messageId: string) => void, onConfirm: (messageId: string, choice: "yes" | "mine" | "no") => void, onOpenItem: (id: string) => void, empty?: string }} props
  */
-export default function ChatMessages({ messages, thinking, onRetry, onAdd, onLater, onOpenItem, empty }) {
+export default function ChatMessages({ messages, thinking, onRetry, onAdd, onLater, onConfirm, onOpenItem, empty }) {
   const items = useScheduleItems();
   const listRef = useRef(null);
   const isAdded = (suggestion, date) => items.some((item) => item.title === suggestion.draft.title && item.date === date);
@@ -106,6 +188,10 @@ export default function ChatMessages({ messages, thinking, onRetry, onAdd, onLat
               {message.items?.map((item) => (
                 <MiniCard key={item.id} item={item} onPress={() => onOpenItem(item.id)} />
               ))}
+              {message.registered ? (
+                <RegisteredCard registered={message.registered} onPress={() => onOpenItem(message.registered.eventId)} />
+              ) : null}
+              {message.confirm ? <ConfirmCard message={message} onConfirm={onConfirm} /> : null}
               {message.suggestion ? (
                 <>
                   <Suggestion

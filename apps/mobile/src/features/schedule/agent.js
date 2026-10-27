@@ -1,4 +1,5 @@
 import { KIND } from "./constants";
+import { ERROR_TEXT } from "./agent_response";
 import { compareItems } from "./model";
 import { weekOf } from "./utils/date";
 
@@ -8,8 +9,7 @@ import { weekOf } from "./utils/date";
 /** 입력창 위 빠른 질문 칩. 누르면 이 문장이 바로 전송된다. */
 export const QUICK_QUESTIONS = ["우선순위 정해줘", "빈 시간 찾아줘", "이번 주 일정 알려줘"];
 
-/** 답을 만들지 못했을 때의 안내 문장. */
-export const ERROR_TEXT = "지금은 답하기 어려워요. 잠시 뒤에 다시 물어봐 주세요";
+export { ERROR_TEXT };
 
 /**
  * @typedef {Object} AgentAnswer

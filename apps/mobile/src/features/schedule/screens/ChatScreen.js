@@ -7,7 +7,7 @@ import Logo from "@/shared/components/Logo";
 import { colors, spacing } from "@/theme";
 
 import { QUICK_QUESTIONS } from "../agent";
-import { newChat, retryLast, sendMessage, toggleSuggestionLater, useChat } from "../chat";
+import { confirmAction, newChat, retryLast, sendMessage, toggleSuggestionLater, useChat } from "../chat";
 import ChatInputBar from "../components/ChatInputBar";
 import ChatMessages from "../components/ChatMessages";
 import QuickChips from "../components/QuickChips";
@@ -49,6 +49,7 @@ export default function ChatScreen() {
           onRetry={retryLast}
           onAdd={addSuggestion}
           onLater={toggleSuggestionLater}
+          onConfirm={confirmAction}
           onOpenItem={(id) => router.push({ pathname: "/schedule/detail", params: { id } })}
           empty="일정에 대해 무엇이든 물어보세요"
         />

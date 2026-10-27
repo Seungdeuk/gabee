@@ -4,7 +4,7 @@ import { Animated, KeyboardAvoidingView, Platform, Pressable, StyleSheet, Text, 
 import Logo from "@/shared/components/Logo";
 import { colors, spacing } from "@/theme";
 
-import { retryLast, sendMessage, toggleSuggestionLater, useChat } from "../chat";
+import { confirmAction, retryLast, sendMessage, toggleSuggestionLater, useChat } from "../chat";
 import ChatInputBar from "./ChatInputBar";
 import ChatMessages from "./ChatMessages";
 
@@ -63,6 +63,7 @@ export default function ChatSheet({ visible, onClose, onFull, onAdd, onOpenItem 
             onRetry={retryLast}
             onAdd={onAdd}
             onLater={toggleSuggestionLater}
+            onConfirm={confirmAction}
             onOpenItem={onOpenItem}
             empty="일정에 대해 무엇이든 물어보세요"
           />
