@@ -1,5 +1,5 @@
 import uuid
-from datetime import UTC, date, datetime, time
+from datetime import UTC, date, datetime, time, timedelta
 
 from sqlalchemy.orm import Session
 
@@ -59,8 +59,21 @@ def create(db: Session, group_id: str, user_id: str, body: EventCreate) -> Event
         end_time=end_time,
     )
     # 주제는 사람마다 따로라 복사본에는 붙이지 않는다(받는 사람이 직접 붙인다)
-    original = Event(id=_new_id(), user_id=user_id, topic_id=body.topic_id, **fields)
-    copies = [Event(id=_new_id(), user_id=t, origin_id=original.id, **fields) for t in targets]
+    # 복사본의 순서(shared_with)는 만든 순서다. created_at 이 같으면 무작위 id 가 순서를 정하므로 1μs 씩 늘려 지정한다.
+    now = datetime.now(UTC)
+    original = Event(
+        id=_new_id(), user_id=user_id, topic_id=body.topic_id, created_at=now, **fields
+    )
+    copies = [
+        Event(
+            id=_new_id(),
+            user_id=t,
+            origin_id=original.id,
+            created_at=now + timedelta(microseconds=i),
+            **fields,
+        )
+        for i, t in enumerate(targets, start=1)
+    ]
     repo.add_all(db, [original, *copies])
     return original
 
