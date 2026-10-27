@@ -1,4 +1,5 @@
-import { useEffect, useSyncExternalStore } from "react";
+import { useFocusEffect } from "expo-router";
+import { useCallback, useEffect, useSyncExternalStore } from "react";
 
 import { isApiConfigured } from "@/shared/api/client";
 
@@ -43,6 +44,30 @@ function ensureLoaded() {
   return loading;
 }
 
+let refreshing = null;
+
+/**
+ * 서버의 내 일정을 다시 읽어 목록을 새로 채운다. 채팅(AI 비서)이나 다른 기기에서 서버에 만든 일정이 이 목록에 없어서 생기는
+ * 누락을 막는다: 일정 화면이 다시 보일 때 부른다. 처음 읽기 전이거나, 다시 읽는 중이거나, 서버에 만드는 중인 일정이 있으면
+ * (그 임시 항목이 사라지지 않게) 아무것도 하지 않는다.
+ * @returns {Promise<void> | null}
+ */
+export function refreshItems() {
+  if (!useServer || !family || refreshing || pendingCreate.size > 0) return refreshing;
+  refreshing = api
+    .listEvents()
+    .then((events) => {
+      if (pendingCreate.size > 0) return; // 읽는 사이 새로 만든 일정이 있으면 그 항목을 지우지 않는다
+      items = events.map((event) => api.toItem(event, family));
+      emit();
+    })
+    .catch((error) => warn("일정 새로고침", error))
+    .finally(() => {
+      refreshing = null;
+    });
+  return refreshing;
+}
+
 /** 서버 요청 전에 가족 변환기가 준비될 때까지 기다린다. */
 export async function ready() {
   await ensureLoaded();
@@ -61,6 +86,11 @@ export function useScheduleItems() {
   useEffect(() => {
     ensureLoaded();
   }, []);
+  useFocusEffect(
+    useCallback(() => {
+      refreshItems(); // 다른 탭(AI 비서 채팅 등)에서 만든 일정이 이 화면으로 돌아올 때 보이게 한다
+    }, []),
+  );
   return useSyncExternalStore(subscribe, () => items);
 }
 
