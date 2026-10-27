@@ -1644,6 +1644,7 @@ LLM_CALLER_FILES = {
     "features/schedule/agent/chat.py": "ai_guard.run",
     "features/schedule/agent/suggest.py": "ai_guard.run",
     "features/billing/agent.py": "agent_guard.run_turn",
+    "features/family_chat/agent.py": "agent_guard.run_turn",
     "features/care/agent.py": "agent_guard.run_turn",
 }
 _OUTBOUND = re.compile(

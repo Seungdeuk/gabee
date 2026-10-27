@@ -76,6 +76,7 @@ def test_main_asks_billing_agent_and_never_gets_db_tools(client, family, monkeyp
         "list_items",
         "ask_billing",
         "ask_care",
+        "ask_family_chat",
         "ask_schedule",
     }
 

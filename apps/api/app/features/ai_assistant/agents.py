@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 
 from app.features.billing import agent as billing_agent
 from app.features.care import agent as care_agent
+from app.features.family_chat import agent as family_chat_agent
 from app.features.family_group.models import User
 from app.features.schedule.agent import ask as schedule_agent
 from app.shared.llm.agent import AgentReply, Post
@@ -18,6 +19,7 @@ AskFn = Callable[[Session, str, User, str, Post | None], AgentReply]
 AGENTS: dict[str, tuple[str, AskFn]] = {
     "ask_billing": (billing_agent.DESCRIPTION, billing_agent.ask),
     "ask_care": (care_agent.DESCRIPTION, care_agent.ask),
+    "ask_family_chat": (family_chat_agent.DESCRIPTION, family_chat_agent.ask),
     "ask_schedule": (schedule_agent.DESCRIPTION, schedule_agent.ask),
 }
 
@@ -46,7 +48,10 @@ PROMPT_NOTE = (
     "날짜·시간·제목을 합쳐 하나의 완전한 문장으로 다시 넘기세요. 이미 등록한 일정을 같은 요청으로 다시 등록하지 마세요. "
     "ask_schedule 이 등록했다고 답하기 전에는 등록했다고 말하지 마세요. 일정 수정·삭제와 가족에게 공유하는 등록은 확인 카드가 "
     "사용자 화면에 나타나니, 카드의 버튼을 눌러야 반영된다고 짧게 안내하고 실행됐다고 말하지 마세요. '가족 모두에게 공유'처럼 "
-    "여럿에게 공유하는 일정도 그대로 ask_schedule 로 넘기세요."
+    "여럿에게 공유하는 일정도 그대로 ask_schedule 로 넘기세요. "
+    "가족 단체 채팅방에서 나눈 대화('채팅에서 병원 얘기 언제 했지', '요즘 채팅 요약해줘')와 가족 공동 할 일 목록 질문은 "
+    "ask_family_chat 으로 물어보세요. 올려 둔 문서·영수증·고지서에 적힌 내용은 채팅이 아니니 search_knowledge 로 찾으세요. "
+    "채팅 분석의 일정·할 일은 후보일 뿐 등록된 것이 아니라고 알려 주세요."
 )
 
 

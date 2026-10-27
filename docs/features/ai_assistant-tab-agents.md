@@ -11,6 +11,7 @@ POST /ai-assistant/chat
   메인 에이전트(rag_chat.ask) — 도구: search_knowledge / get_item / list_items / ask_billing / ask_care / ask_schedule
      ├─ ask_billing(question) → 정산 에이전트(billing/agent.py) → 읽기 도구 7개 → billing.service → DB
      ├─ ask_care(question)    → 돌봄 에이전트(care/agent.py)    → 읽기 도구 8개 → care.service    → DB
+     ├─ ask_family_chat(question) → 가족 채팅 에이전트(family_chat/agent.py) → 읽기 도구 3개 → family_chat 서비스 → DB
      └─ ask_schedule(question) → 일정 에이전트(schedule/agent/ask.py → handler.handle) → 일정 서비스 → DB
 ```
 
@@ -131,6 +132,22 @@ main 에 들어온 팀 공통 관문(`shared/ai_guard.py`, 일정 에이전트 #
 - 효과(실제 Claude, 질문 8개 1회): 메인 모델 호출 16 → 8, 전체 호출 34 → 26(24% 감소), 평균 응답 7.1초 → 4.8초. 답은 8개 중 7개가 내용이 같고 말투만 조금 달랐다. 1개("오늘 저녁 뭐 먹으면 좋을까?")는 에이전트가 다른 도구를 골라 메뉴 추천 없이 "기록이 없다"고만 답했다(이 변경 때문인지는 확인하지 못했다).
 - 일정 에이전트는 제외한다(되묻기·실행 안 됨 안내 같은 메인에게 주는 글이 답에 섞여 있다).
 - 도구 호출 기록(`AskResult.tool_calls`)은 직통이어도 그대로 남는다.
+
+## 가족 채팅 탭 에이전트 (`ask_family_chat`)
+
+메인이 "채팅에서 병원 얘기 언제 했지?", "요즘 채팅 요약해줘", "우리 할 일 목록 보여줘" 같은 질문을 `ask_family_chat` 으로 넘긴다. 코드는 `family_chat/agent.py`, 도구는 읽기 전용 3개다.
+
+| 도구 | 하는 일 | 근거 코드 |
+|---|---|---|
+| `search_messages` | 가족 전체방에서 낱말이 든 메시지 찾기(AI 없음, 최신순) | `search_service.search` |
+| `analyze_recent_chat` | 최근 대화의 요약·중요 메시지·일정 후보·할 일 후보(모델 1회, 결과 캐시) | `ai_service.analysis` |
+| `list_todos` | 가족 공동 할 일(제목·담당자·기한·완료) | `todo_service.list_todos` |
+
+- **개인정보**: 1:1 방 대화는 AI 로 보내지 않는다(대화 검색도 가족 전체방만). 도구 결과는 이 요청의 가명화 세션(`shared/privacy`, 정책 `ASSISTANT`)을 거쳐 이름·전화·주소가 토큰이 된 채 모델로 가고, 최종 답은 같은 세션으로 복원한다(이름·주소만 복원, 전화·이메일은 `(연락처)` 처럼 가린 채). 복원 뒤 이름 뒤 조사를 받침에 맞게 고친다(`수진가` → `수진이`).
+- **쓰기 없음**: 일정·할 일은 "후보"로만 보여 주고 등록하지 않는다. 일정으로 넣으려면 일정 담당에게 따로 요청해야 한다.
+- **관문**: 정산·돌봄과 같은 탭 에이전트 한도 묶음으로 센다(`family_chat_agent`). `analyze_recent_chat` 은 자기 관문(`analysis`)도 한 번 지나므로 메인이 쥔 동시 실행 칸 안에서 `ai_guard.run` 이 칸을 다시 잡지 않아야 한다(contextvar, `shared/ai_guard.py`).
+- **실제 모델 시험**(16문항, 1회): 개인정보 점검 7항목(전화번호·이름이 모델로 감, 1:1 대화 노출, 토큰이 답에 남음, 대화 속 지시문 따름 등) 모두 0건. 첫 시험에서 나온 문제 3개(이름 뒤 조사, UTC 시각, 키워드 검색이 첫 메시지만 찾아 "정해지지 않았다"고 답함)를 고친 뒤 다시 확인했다.
+- **한계**: 키워드 검색은 낱말이 든 메시지만 찾는다(그래서 흐름 질문은 분석 도구를 함께 쓰게 안내한다). 전화번호는 가려져서 "수진 전화번호 뭐야?"에는 답하지 못한다.
 
 ## 도구
 
