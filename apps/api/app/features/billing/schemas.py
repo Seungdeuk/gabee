@@ -2,7 +2,7 @@ from datetime import date as _date
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 SubscriptionStatus = Literal["check", "available", "active"]  # 확인 필요 / 적용 가능 / 적용 중
 Carrier = Literal["skt", "kt", "lgu", "mvno", "other"]  # SKT / KT / LG U+ / 알뜰폰 / 기타
@@ -16,6 +16,23 @@ class ExpenseCreate(BaseModel):
     date: _date
     category: str = "기타"
     split_among: list[str] | None = None  # 비우면 가족 전원
+
+
+class ExpenseUpdate(BaseModel):
+    """지출에서 바꿀 값만 보낸다(에이전트의 수정 제안 전용 — 아직 REST 로 열지 않았다). 나눌 사람·낸 사람은 바꾸지 않는다."""
+
+    title: str | None = Field(default=None, min_length=1, max_length=120)
+    amount: int | None = Field(default=None, gt=0)
+    date: _date | None = None
+    category: str | None = Field(default=None, min_length=1, max_length=16)
+
+    @model_validator(mode="after")
+    def _something_to_change(self):
+        if not self.model_fields_set or all(
+            getattr(self, k) is None for k in self.model_fields_set
+        ):
+            raise ValueError("바꿀 값이 없어요")
+        return self
 
 
 class ExpenseOut(BaseModel):

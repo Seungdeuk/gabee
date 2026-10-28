@@ -12,7 +12,7 @@ from app.features.billing import agent as billing_agent
 from app.features.care import agent as care_agent
 from app.features.family_group.models import User
 from app.shared.db import SessionLocal
-from evals.tab_agents.seed import seed
+from evals.tab_agents.seed import seed, seed_write_targets
 
 CASES = json.loads((Path(__file__).parents[1] / "evals/tab_agents/cases.json").read_text("utf-8"))
 AGENTS = {"billing": billing_agent, "care": care_agent}
@@ -44,6 +44,7 @@ def test_case_ids_are_unique_and_tools_exist(client, family):
 def test_expected_values_appear_in_tool_output(client, family, case):
     a, b, _ = family
     seed(client, a, b)
+    seed_write_targets(client, a, b)
     with SessionLocal() as db:
         me = db.scalars(select(User).where(User.name == "지민")).first()
         tools = {t.name: t for t in AGENTS[case["agent"]].build_tools(db, me.active_group_id, me)}
