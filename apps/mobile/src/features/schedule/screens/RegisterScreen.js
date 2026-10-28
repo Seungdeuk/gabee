@@ -1,11 +1,12 @@
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import IconButton from "@/shared/components/IconButton";
 import { colors, font, radius, spacing } from "@/theme";
 
+import ConfirmDialog from "../components/ConfirmDialog";
 import DateSheet from "../components/DateSheet";
 import FilterChip from "../components/FilterChip";
 import { FormField, PressBox, TextBox } from "../components/FormControls";
@@ -16,7 +17,7 @@ import WhoChips from "../components/WhoChips";
 import { KIND, KIND_LABEL } from "../constants";
 import { useHiddenWho } from "../favorites_hook";
 import { ME_ID } from "../mock";
-import { addItem, addTopic, removeTopic, updateItem, useMembers, useScheduleItem, useTopics } from "../store";
+import { addItem, addTopic, loadSharing, removeTopic, updateItem, useMembers, useScheduleItem, useTopics } from "../store";
 import { markUsed } from "../suggestions_store";
 import { formatDateWithYear, formatTimeConfirmed } from "../utils/date";
 
@@ -37,6 +38,9 @@ export default function RegisterScreen() {
   const [whoIds, setWhoIds] = useState(editing?.whoIds ?? []);
   const [topicId, setTopicId] = useState(editing?.topicId ?? null);
   const [sharedWith, setSharedWith] = useState(editing?.sharedWith ?? []);
+  // 수정할 때 지금의 공유 상태(undefined 는 아직 읽는 중). 공유 대상은 원본 주인(sharedBy 가 없는 사람)만 보고 바꾼다.
+  const [shareInfo, setShareInfo] = useState(undefined);
+  const [removeShareOpen, setRemoveShareOpen] = useState(false);
   const [date, setDate] = useState(editing?.date ?? (/^\d{4}-\d{2}-\d{2}$/.test(params.date ?? "") ? params.date : ""));
   const [place, setPlace] = useState(editing?.place ?? (typeof params.place === "string" ? params.place : ""));
   const [memo, setMemo] = useState(editing?.memo ?? "");
@@ -58,6 +62,26 @@ export default function RegisterScreen() {
   const who = useHiddenWho("", OTHERS);
   const share = useHiddenWho("share", SHAREABLE);
   const valid = title.trim() !== "" && date !== "";
+  const editingId = editing?.id;
+  useEffect(() => {
+    if (!editingId) return undefined;
+    let alive = true;
+    loadSharing(editingId).then((value) => {
+      if (!alive) return;
+      // 서버가 없거나 못 읽으면 항목에 든 값으로 본다(내가 만든 일정이면 원본 주인).
+      const info = value ?? { sharedBy: editing.createdBy === ME_ID ? null : editing.createdBy, sharedWith: editing.sharedWith ?? [] };
+      setShareInfo(info);
+      setSharedWith(info.sharedWith);
+    });
+    return () => {
+      alive = false;
+    };
+    // editing 은 id 가 같으면 값을 다시 읽을 필요가 없어 id 만 본다.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editingId]);
+  const canShare = !editing || (shareInfo !== undefined && shareInfo.sharedBy === null);
+  const removedShare = editing && canShare ? shareInfo.sharedWith.filter((x) => !sharedWith.includes(x)) : [];
+  const shareChanged = editing && canShare && (removedShare.length > 0 || sharedWith.some((x) => !shareInfo.sharedWith.includes(x)));
   const hideWho = (id) => {
     who.hide(id);
     setWhoIds(whoIds.filter((x) => x !== id));
@@ -74,9 +98,14 @@ export default function RegisterScreen() {
 
   // 진입했던 화면으로 돌아간다. 이전 화면이 없으면(주소로 직접 열기) 일정 메인으로 간다.
   const leave = () => (router.canGoBack() ? router.back() : router.replace("/(tabs)/schedule"));
-  const save = () => {
+  const save = (confirmedRemove = false) => {
     if (!valid) {
       setTriedSave(true);
+      return;
+    }
+    // 공유에서 사람을 빼면 그 사람이 받은 일정도 지워지므로 한 번 확인한다.
+    if (removedShare.length > 0 && confirmedRemove !== true) {
+      setRemoveShareOpen(true);
       return;
     }
     const fields = {
@@ -89,8 +118,8 @@ export default function RegisterScreen() {
       whoIds,
       topicId,
     };
-    // 공유는 등록할 때만 정한다(수정에서는 바꿀 수 없다).
-    if (editing) updateItem(editing.id, fields);
+    // 수정에서는 원본 주인이 공유를 바꿨을 때만 공유 대상을 함께 보낸다.
+    if (editing) updateItem(editing.id, shareChanged ? { ...fields, sharedWith } : fields);
     else {
       // 서버 추천에서 열린 등록이면 제안 id 를 같이 보내 서버가 제안을 확정하게 하고, 홈의 추천 목록에서도 뺀다.
       const suggestionId = typeof params.suggestionId === "string" && params.suggestionId ? params.suggestionId : undefined;
@@ -158,7 +187,7 @@ export default function RegisterScreen() {
                 onDelete={deleteTopic}
               />
             </FormField>
-            {editing ? null : (
+            {canShare ? (
               <FormField label="공유" hint="선택 안 하면 나만 봐요">
                 <WhoChips
                   members={SHAREABLE}
@@ -172,7 +201,7 @@ export default function RegisterScreen() {
                   }
                 />
               </FormField>
-            )}
+            ) : null}
           </View>
 
           <View style={styles.group}>
@@ -229,6 +258,17 @@ export default function RegisterScreen() {
           }}
         />
       ) : null}
+      <ConfirmDialog
+        visible={removeShareOpen}
+        title="공유에서 뺄까요?"
+        message="받은 분 일정도 같이 사라져요."
+        confirmLabel="저장"
+        onCancel={() => setRemoveShareOpen(false)}
+        onConfirm={() => {
+          setRemoveShareOpen(false);
+          save(true);
+        }}
+      />
     </SafeAreaView>
   );
 }

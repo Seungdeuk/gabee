@@ -5,7 +5,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import useTotalUnread from "@/features/family-chat/useTotalUnread";
 import { unreadBadgeText } from "@/features/family-chat/listUtils";
-import { colors, font } from "@/theme";
+import { colors, font, fonts } from "@/theme";
 
 // 디자인의 하단 탭 5개. 기타(가족 그룹·설정)는 탭이 아니라 상단 ⋮ 메뉴로 들어간다.
 const TAB_CONTENT_HEIGHT = 64;
@@ -64,8 +64,9 @@ export default function TabLayout() {
 }
 
 const styles = StyleSheet.create({
-  label: { ...font.tab },
-  labelActive: { fontWeight: "700" },
+  // 선택돼도 글자 높이·간격이 변하지 않게, 굵기는 fontWeight 가 아니라 굵은 글꼴로 바꾸고 줄 높이를 고정한다
+  label: { ...font.tab, lineHeight: 14, includeFontPadding: false },
+  labelActive: { fontFamily: fonts.bold },
   pill: {
     width: 52,
     height: 30,

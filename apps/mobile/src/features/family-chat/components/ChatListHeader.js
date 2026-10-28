@@ -2,7 +2,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { StyleSheet, Text, TextInput, View } from "react-native";
 
 import IconButton from "@/shared/components/IconButton";
-import SettingsButton from "@/shared/components/SettingsButton";
+import SettingsButton, { SETTINGS_EDGE_GAP, SETTINGS_RAISE } from "@/shared/components/SettingsButton";
 import { colors, font, spacing } from "@/theme";
 
 /**
@@ -46,7 +46,7 @@ const styles = StyleSheet.create({
   wrap: { gap: spacing.md },
   top: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   title: { ...font.page, color: colors.text },
-  buttons: { flexDirection: "row", marginRight: -10 },
+  buttons: { flexDirection: "row", marginRight: SETTINGS_EDGE_GAP - spacing.xl, transform: [{ translateY: -SETTINGS_RAISE }] },
   search: {
     height: 44,
     flexDirection: "row",

@@ -153,9 +153,60 @@ def update(db: Session, group_id: str, user_id: str, event_id: str, body: EventU
 
     if sent & {"start_date", "start_time", "end_time"}:
         _apply_when(event, body, sent)
-    event.edited_at = datetime.now(UTC)
+    if sent - {"share_with"}:
+        event.edited_at = datetime.now(UTC)
+    if body.share_with is not None:
+        _reshare(db, group_id, user_id, event, body.share_with)
     db.commit()
     return event
+
+
+def _reshare(db: Session, group_id: str, user_id: str, event: Event, share_with: list[str]) -> None:
+    """공유 대상을 share_with 로 다시 정한다(원본 주인만). 빠진 사람의 복사본은 고쳤든 체크했든 지우고(소프트 삭제)
+    출처(origin_id)를 끊어 공유 목록에서 뺀다. 새로 든 사람에게는 지금 값으로 새 복사본을 만든다(지워진 옛 복사본은 그대로 둔다)."""
+    if event.origin_id is not None:
+        raise ApiError(403, "not_share_owner", "공유는 원본 주인만 바꿀 수 있어요")
+    targets = _share_targets(db, group_id, user_id, share_with)
+    now = datetime.now(UTC)
+    current: set[str] = set()
+    for copy in repo.copies_of(db, group_id, event.id):
+        if copy.user_id in targets:
+            current.add(copy.user_id)
+            continue
+        if copy.deleted_at is None:
+            copy.deleted_at = now
+        copy.origin_id = None
+    # 복사본의 순서(shared_with)는 만든 순서라 created_at 이 겹치지 않게 1μs 씩 늘린다.
+    fields = dict(
+        group_id=group_id,
+        created_by=event.created_by,
+        title=event.title,
+        starts_at=event.starts_at,
+        note=event.memo,
+        memo=event.memo,
+        status=event.status,
+        source=event.source,
+        kind=event.kind,
+        place=event.place,
+        who_ids=list(event.who_ids),
+        start_date=event.start_date,
+        start_time=event.start_time,
+        end_time=event.end_time,
+    )
+    added = [t for t in targets if t not in current]
+    repo.add_pending(
+        db,
+        [
+            Event(
+                id=_new_id(),
+                user_id=t,
+                origin_id=event.id,
+                created_at=now + timedelta(microseconds=i),
+                **fields,
+            )
+            for i, t in enumerate(added, start=1)
+        ],
+    )
 
 
 def current_when(event: Event) -> tuple[date, time | None, time | None]:

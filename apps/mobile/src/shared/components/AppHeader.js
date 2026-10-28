@@ -20,7 +20,7 @@ export default function AppHeader({ onMenu, onNew, onMore, menuBadge = false }) 
       <Logo />
       <View style={styles.right}>
         <IconButton name="add" label="새 대화" onPress={onNew} />
-        <IconButton name="ellipsis-vertical" size={20} label="설정" onPress={onMore} />
+        <IconButton name="settings-outline" size={22} label="설정" onPress={onMore} />
       </View>
     </View>
   );

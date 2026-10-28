@@ -34,7 +34,8 @@ class EventCreate(BaseModel):
 
 class EventUpdate(BaseModel):
     """바꿀 값만 보낸다. 보내지 않은 값은 그대로 둔다. 시간(start_time·end_time)은 null 로 보내면 지운다(시간 없음).
-    공유 대상은 고칠 수 없다(공유는 만들 때만, 복사본은 받은 사람의 일정이다)."""
+    share_with 는 공유 대상 전체를 다시 정한다(원본 주인만, 아니면 403 not_share_owner). 새로 든 사람에게는 복사본이 생기고,
+    빠진 사람의 복사본은 지워진다. 보내지 않으면 공유는 그대로다."""
 
     title: str | None = Field(default=None, min_length=1, max_length=120)
     start_date: date | None = None
@@ -45,6 +46,7 @@ class EventUpdate(BaseModel):
     memo: str | None = None
     who_ids: list[str] | None = Field(default=None, max_length=20)
     topic_id: str | None = None  # null 로 보내면 주제를 뗀다
+    share_with: list[str] | None = Field(default=None, max_length=20)
 
 
 class EventOut(BaseModel):

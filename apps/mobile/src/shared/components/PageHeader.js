@@ -1,8 +1,8 @@
 import { StyleSheet, Text, View } from "react-native";
 
-import { colors, font } from "@/theme";
+import { colors, font, spacing } from "@/theme";
 
-import SettingsButton from "./SettingsButton";
+import SettingsButton, { SETTINGS_EDGE_GAP, SETTINGS_RAISE } from "./SettingsButton";
 
 /**
  * 탭 화면의 큰 제목: 왼쪽에 제목과 한 줄 설명, 오른쪽에 아이콘 버튼들.
@@ -50,8 +50,10 @@ const styles = StyleSheet.create({
     marginLeft: -10,
     marginTop: -4,
   },
+  // 제목 줄 위치는 그대로 두고 버튼만 상단바 높이에 맞춰 올린다(transform 은 배치에 영향이 없다)
   right: {
     flexDirection: "row",
-    marginRight: -10,
+    marginRight: SETTINGS_EDGE_GAP - spacing.xl,
+    transform: [{ translateY: -SETTINGS_RAISE }],
   },
 });
