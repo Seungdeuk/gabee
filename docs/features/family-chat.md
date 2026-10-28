@@ -401,3 +401,11 @@
 - `docs/contracts/openapi.json` 과 `docs/contracts/db.md` 갱신(서버 변경 후 스크립트로 생성).
 - 로컬 모델(Ollama) 선택 옵션(개인정보가 많은 글자를 외부로 보내지 않을 때).
 - 대화방 여러 개(Chat 2 이후 범위).
+
+## 별명을 모든 탭에 반영 (앱 공통)
+
+내가 구성원에게 붙인 별명(서버 `GET /family-group/groups/me/nicknames`, 보는 사람 본인에게만 적용)을 소통·일정·가계·돌봄 화면의 이름에 쓴다. 우선순위는 별명 > (일정 탭만) 관계 이름(엄마·아빠) > 가족에서 쓰는 표시 이름 > 계정 이름이고, 나 자신은 그대로다.
+- 공통 모듈 `apps/mobile/src/shared/members/nicknames.js`: `getGroupWithNicknames()` 가 가족 그룹과 별명 목록을 함께 불러 별명이 있는 구성원의 `display_name` 을 별명으로 바꾸고 `nickname` 에도 넣는다(`display_name || name` 으로 읽던 화면이 고치지 않고 별명을 보여 준다). 별명 조회가 실패하면 원래 이름으로 보인다. 서버·DB 변경은 없다.
+- 소통 `getRoomInfo()`, 가계 `getMembers()`, 일정 가족 이름표(`buildFamily`, 화면이 다시 보일 때 `refreshItems` 가 이름표도 새로 만든다), 돌봄 `getLatestLocations()` 가 이 모듈을 쓴다. 채팅 말풍선 이름은 `MessageBubble` 의 `nameOf` 로 바꾼다. 가계 `getMembers()` 는 화면이 그리는 `name` 을 별명으로 바꿔 준다. 연락처 화면과 AI 할 일 등록(AI 가 준 담당자 이름 매칭)은 실명이 필요해 `getRoomInfo({ raw: true })` 를 쓴다. 연락처 화면만 실명을 부제로 보이므로 `getRoomInfo({ raw: true })` 로 서버 값을 그대로 받는다.
+- 시험: `apps/mobile/tests/nicknames.test.js`.
+- **아직 못 한 것(후속)**: 서버가 이름을 글자로만 내려 주는 곳(정산 내역 낸 사람·정산 이동, 용돈 기록자·결정자, 돌봄 기록자·식단 기록자, 링크 만든 사람, 대화 검색 결과의 보낸 사람, 사진 보관함 접근성 문구)과 AI 답변·알림 문구는 별명이 반영되지 않는다. 서버가 "보는 사람 기준 이름"으로 내려 주도록 바꿔야 한다. 실기기 확인은 못 했다.

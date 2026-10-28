@@ -2,8 +2,8 @@ import { useFocusEffect } from "expo-router";
 import { useCallback, useEffect, useSyncExternalStore } from "react";
 
 import { isApiConfigured } from "@/shared/api/client";
+import { getGroupWithNicknames } from "@/shared/members/nicknames";
 
-import { getMyGroup } from "../family-group/api";
 import * as api from "./api";
 import { buildFamily } from "./members";
 import { createMockItems, members, topics } from "./mock";
@@ -40,7 +40,7 @@ const warn = (what, error) => console.warn(`[schedule] ${what} 실패`, error?.m
 function ensureLoaded() {
   if (!useServer || loading) return loading;
   loading = (async () => {
-    const [group, serverTopics, events] = await Promise.all([getMyGroup(), api.listTopics(), api.listEvents()]);
+    const [group, serverTopics, events] = await Promise.all([getGroupWithNicknames(), api.listTopics(), api.listEvents()]);
     family = buildFamily(group);
     members.splice(0, members.length, ...family.members);
     topics.splice(0, topics.length, ...serverTopics.map(({ id, name, color }) => ({ id, name, color })));
@@ -63,10 +63,13 @@ let refreshing = null;
  */
 export function refreshItems() {
   if (!useServer || !family || refreshing || pendingCreate.size > 0) return refreshing;
-  refreshing = api
-    .listEvents()
-    .then((events) => {
+  refreshing = Promise.all([api.listEvents(), getGroupWithNicknames().catch(() => null)])
+    .then(([events, group]) => {
       if (pendingCreate.size > 0) return; // 읽는 사이 새로 만든 일정이 있으면 그 항목을 지우지 않는다
+      if (group) {
+        family = buildFamily(group); // 별명을 새로 붙이거나 바꿨으면 이름표에 바로 반영한다(가족 id 규칙은 그대로)
+        members.splice(0, members.length, ...family.members);
+      }
       items = events.map((event) => api.toItem(event, family));
       emit();
     })

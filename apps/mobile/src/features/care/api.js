@@ -1,4 +1,5 @@
 import { apiFetch } from "@/shared/api/client";
+import { loadNicknames } from "@/shared/members/nicknames";
 
 /**
  * 돌봄 서버 호출. 응답 모양은 docs/contracts/openapi.json 의 /care/* 를 따른다.
@@ -66,8 +67,11 @@ export const setLocationConsent = (consent) => apiFetch("/care/location/consent"
 /** 위치를 보낸다(동의하지 않았으면 서버가 403 consent_required 로 거절). @param {LocationPoint[]} points @returns {Promise<{ saved: number, skipped: number }>} */
 export const sendLocations = (points) => apiFetch("/care/locations", { method: "POST", body: { points } });
 
-/** 가족 구성원의 최신 위치. 동의하지 않은 사람은 좌표 없이 sharing=false 로 온다. @returns {Promise<{ members: MemberLocation[], retention_days: number }>} */
-export const getLatestLocations = () => apiFetch("/care/locations/latest");
+/** 가족 구성원의 최신 위치(이름은 내가 붙인 별명이 있으면 별명). 동의하지 않은 사람은 좌표 없이 sharing=false 로 온다. @returns {Promise<{ members: MemberLocation[], retention_days: number }>} */
+export async function getLatestLocations() {
+  const [latest, byId] = await Promise.all([apiFetch("/care/locations/latest"), loadNicknames()]);
+  return { ...latest, members: latest.members.map((m) => (byId[m.user_id] && !m.is_me ? { ...m, name: byId[m.user_id] } : m)) };
+}
 
 /**
  * 식단 기록: 최근 days 일(1~31). 날짜마다 아침·점심·저녁 칸이 있고 기록이 없으면 log 가 null 이다.

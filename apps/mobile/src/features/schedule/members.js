@@ -23,10 +23,10 @@ export function buildFamily(group) {
       taken.add(appId);
     }
     appIdOf.set(m.id, appId);
-    // 이름표는 관계(엄마·아빠…)가 있으면 그 말을, 없으면 표시 이름을 쓴다.
+    // 이름표는 내가 붙인 별명 > 관계(엄마·아빠…) > 표시 이름 순으로 쓴다.
     members.push({
       id: appId,
-      name: appId === ME ? "나" : relationText(m) || shownName(m),
+      name: appId === ME ? "나" : m.nickname || relationText(m) || shownName(m),
       hasAccount: true,
     });
   }
