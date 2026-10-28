@@ -15,4 +15,6 @@ def test_default_care_items_are_created_once_under_concurrent_requests(client, f
     a, _, _ = family
     results = _parallel(client, a, "/care/daily")
     assert all(r.status_code == 200 for r in results)
-    assert len(client.get("/care/daily", headers=a).json()["items"]) == 7
+    assert (
+        len(client.get("/care/daily", headers=a).json()["items"]) == 4
+    )  # 기본 항목(식사 3개 + 영양제)이 중복 없이 한 번만
