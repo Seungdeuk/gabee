@@ -5,6 +5,7 @@
 `post` 는 테스트에서 가짜 LLM 을 끼우는 자리다."""
 
 import json
+import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
 
@@ -18,6 +19,15 @@ from .client import API_URL, API_VERSION, LLMUnavailable
 
 Post = Callable[[dict], dict]
 MAX_TOOL_RESULT_CHARS = 12000
+RETRY_STATUS = {
+    429,
+    500,
+    502,
+    503,
+    504,
+    529,
+}  # 잠깐 뒤 다시 하면 될 수 있는 응답(529 는 Anthropic 과부하)
+RETRY_WAIT_SECONDS = 1.0
 
 
 @dataclass
@@ -55,9 +65,19 @@ class AgentReply:
 
 def _post(body: dict) -> dict:
     headers = {"x-api-key": settings.anthropic_api_key, "anthropic-version": API_VERSION}
-    res = httpx.post(API_URL, json=body, headers=headers, timeout=60.0)
-    res.raise_for_status()
-    return res.json()
+    for attempt in (1, 2):
+        try:
+            res = httpx.post(API_URL, json=body, headers=headers, timeout=60.0)
+            if res.status_code in RETRY_STATUS and attempt == 1:
+                time.sleep(RETRY_WAIT_SECONDS)
+                continue
+            res.raise_for_status()
+            return res.json()
+        except (httpx.ConnectError, httpx.TimeoutException):
+            if attempt == 2:
+                raise
+            time.sleep(RETRY_WAIT_SECONDS)
+    raise AssertionError("unreachable")  # 두 번째 시도는 반환하거나 예외를 던진다
 
 
 def _status_detail(res: httpx.Response) -> str:
