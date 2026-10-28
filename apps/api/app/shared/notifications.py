@@ -3,13 +3,18 @@
 각 기능이 사건이 생긴 자리에서 `notify()` 를 부르고, 조회·읽음 처리는 features/notifications 가 맡는다.
 다른 기능이 서로의 내부를 import 하지 않도록 모델과 기록 함수는 shared 에 둔다."""
 
+import logging
 import uuid
+from collections.abc import Iterable
 from datetime import UTC, datetime
 
 from sqlalchemy import DateTime, ForeignKey, Index, String
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, Session, mapped_column
 
+from app.features.family_group.models import GroupMember
 from app.shared.db import Base
+
+logger = logging.getLogger(__name__)
 
 # 알림 분류. 소통(가족 채팅) 메시지 알림은 알림함에 담지 않는다.
 KINDS = ("schedule", "billing", "care", "family_group", "ai_record")
@@ -42,3 +47,50 @@ class Notification(Base):
     actor_user_id: Mapped[str | None] = mapped_column(ForeignKey("users.id"), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
     read_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+def notify(
+    db: Session,
+    *,
+    group_id: str,
+    kind: str,
+    event: str,
+    recipients: Iterable[str],
+    title: str,
+    body: str | None = None,
+    target_type: str | None = None,
+    target_id: str | None = None,
+    actor_user_id: str | None = None,
+) -> int:
+    """받는 사람마다 알림 한 줄을 남기고 만든 개수를 돌려준다. 커밋은 부르는 쪽이 한다.
+
+    그룹 구성원이 아닌 사람과 행동한 본인(`actor_user_id`)은 건너뛰고, 같은 사람은 한 번만 받는다.
+    저장이 실패해도 예외를 밖으로 내지 않는다(원래 기능이 알림 때문에 실패하면 안 된다).
+    문구에는 금액·위치·건강 정보·AI 요약·채팅 내용을 넣지 않는다 — 고정 템플릿만 쓴다."""
+    if kind not in KINDS:
+        raise ValueError(f"알 수 없는 알림 분류: {kind}")  # 개발 실수는 일찍 드러낸다
+    targets = [uid for uid in dict.fromkeys(recipients) if uid != actor_user_id]
+    try:
+        with db.begin_nested():  # 실패해도 앞선 변경은 그대로 둔다
+            created = 0
+            for uid in targets:
+                if db.get(GroupMember, (group_id, uid)) is None:
+                    continue
+                db.add(
+                    Notification(
+                        user_id=uid,
+                        group_id=group_id,
+                        kind=kind,
+                        event=event,
+                        title=title,
+                        body=body,
+                        target_type=target_type,
+                        target_id=target_id,
+                        actor_user_id=actor_user_id,
+                    )
+                )
+                created += 1
+        return created
+    except Exception:
+        logger.warning("notify failed kind=%s event=%s", kind, event)  # 개인 정보는 남기지 않는다
+        return 0
