@@ -11,7 +11,7 @@ import { expenses, summary } from "../mock";
 /** 서버 주소(EXPO_PUBLIC_API_URL)가 없을 때 보여 주는 임시 데이터 화면. */
 export default function BillingPreview() {
   return (
-    <Screen title="가계" subtitle="가족이 함께 쓴 돈이에요">
+    <Screen title="사이좋게 알뜰살뜰">
       <Card tone="blue">
         <Text style={styles.label}>{summary.month} 공동 지출</Text>
         <Text style={styles.total}>{summary.total}</Text>

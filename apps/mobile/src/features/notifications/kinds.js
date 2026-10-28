@@ -3,8 +3,8 @@ import { colors } from "@/theme/index"; // 시험 환경(Node)이 디렉터리 i
 /** 알림 분류별 표시(이름·아이콘·색). 분류는 서버 app/shared/notifications.py 의 KINDS 와 같다. */
 export const KIND_META = {
   schedule: { label: "일정", icon: "calendar-outline", color: colors.primary },
-  billing: { label: "가계", icon: "wallet-outline", color: colors.accent },
-  care: { label: "돌봄", icon: "heart-outline", color: colors.success },
+  billing: { label: "지갑", icon: "wallet-outline", color: colors.accent },
+  care: { label: "안부", icon: "heart-outline", color: colors.success },
   family_group: { label: "가족", icon: "people-outline", color: colors.peach },
   ai_record: { label: "기록", icon: "document-text-outline", color: colors.textMuted },
 };

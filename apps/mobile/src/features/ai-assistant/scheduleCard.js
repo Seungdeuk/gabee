@@ -28,7 +28,7 @@ export function mapConfirmCards(cards) {
     }));
 }
 
-export const PROPOSAL_TABS = { billing: "정산", care: "돌봄" };
+export const PROPOSAL_TABS = { billing: "정산", care: "안부" };
 
 /**
  * 정산·돌봄 에이전트의 쓰기 제안(proposals)을 카드로 바꾼다. 모르는 탭이나 토큰이 없는 제안은 버린다(누르면 실행되는 것만 보인다).

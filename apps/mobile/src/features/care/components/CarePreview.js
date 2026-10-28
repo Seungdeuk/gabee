@@ -12,7 +12,7 @@ import { checks, today } from "../mock";
 /** 서버 주소(EXPO_PUBLIC_API_URL)가 없을 때 보여 주는 임시 데이터 화면. */
 export default function CarePreview() {
   return (
-    <Screen title="돌봄" subtitle="부모님의 오늘을 함께 살펴봐요">
+    <Screen title="일상의 안녕">
       <Card tone="blue">
         <Text style={styles.date}>{today.date}</Text>
         <Text style={styles.heading}>{today.person}의 오늘을 함께 살펴봐요</Text>

@@ -38,7 +38,7 @@ def test_own_item_record_is_cleared_only_after_confirm(client, family, monkeypat
     r = _post(client, a, "/care/agent/chat", CHAT).json()
     assert r["tool_calls"] == ["propose_clear_item"]
     (p,) = r["proposals"]
-    assert p["summary"] == f"돌봄 기록 취소: {DAY} {item['name']}"
+    assert p["summary"] == f"안부 기록 취소: {DAY} {item['name']}"
     assert _completed(client, a, item["id"]) is True  # 제안만으로는 지워지지 않는다
     assert _post(client, a, "/care/agent/confirm", {"token": p["token"]}).status_code == 200
     assert _completed(client, a, item["id"]) is False

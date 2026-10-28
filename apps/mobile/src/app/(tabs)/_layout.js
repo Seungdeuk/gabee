@@ -14,8 +14,8 @@ const tabs = [
   { name: "chat", title: "AI 채팅", icon: "chatbubble-ellipses-outline" },
   { name: "family-chat", title: "소통", icon: "people-outline" },
   { name: "schedule", title: "일정", icon: "calendar-outline" },
-  { name: "billing", title: "가계", icon: "wallet-outline" },
-  { name: "care", title: "돌봄", icon: "heart-outline" },
+  { name: "billing", title: "지갑", icon: "wallet-outline" },
+  { name: "care", title: "안부", icon: "heart-outline" },
 ];
 
 export default function TabLayout() {

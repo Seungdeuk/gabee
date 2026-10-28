@@ -48,7 +48,7 @@ PERSONAL_REASONS: dict[str, str] = {
     "get_family_locations": "가족 위치",
     "propose_add_expense": "확인이 필요한 지출 등록 제안",
     "propose_record_meal": "확인이 필요한 식단 기록 제안",
-    "propose_record_item": "확인이 필요한 돌봄 기록 제안",
+    "propose_record_item": "확인이 필요한 안부 기록 제안",
     "ask_schedule": "내 일정",
 }
 SENSITIVE_REASON = "민감한 기록"
