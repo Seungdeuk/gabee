@@ -182,6 +182,12 @@ main 에 들어온 팀 공통 관문(`shared/ai_guard.py`, 일정 에이전트 #
 - 소통·자료정리 에이전트, 여러 탭의 데이터를 종합하는 추천. 일정은 조회·등록만 연결했고 수정·삭제·공유 등록의 확인 화면과 호출 수 합치기는 남았다.
 - 채팅 응답에 어느 에이전트·도구를 썼는지 표시.
 
+## PostgreSQL end-to-end 확인 (scripts/e2e_tab_agents.py)
+- `cd apps/api && python -m scripts.e2e_tab_agents` 한 줄로 일회용 PostgreSQL 컨테이너(pgvector:pg16, 127.0.0.1:55432)를 띄우고 `alembic upgrade head` 로 처음부터 만든 뒤, uvicorn(127.0.0.1:8399)에 실제 HTTP 로 `chat → confirm` 을 확인하고 컨테이너를 지운다(`--keep` 이면 남김). Docker 가 필요하다.
+- 모델은 가짜라 `ANTHROPIC_API_KEY` 도 외부 전송도 없다. 개인 로컬 DB·팀 공용 DB 에는 연결하지 않는다(`--database-url` 은 localhost 의 빈 임시 DB 만 허용).
+- 확인 항목(17): AI 동의 꺼짐 403, 제안만으로는 저장 안 됨, 다른 사람·다른 탭·다른 가족·위조 토큰 거절 400, 본인 확인 저장, 재사용 409(지출 안 늘어남), 돌봄 식단 기록 저장, 일반 대화는 제안 없음.
+- 한계: 메인 채팅(`/ai-assistant/chat`)은 knowledge 검색 임베딩 모델이 필요해 포함하지 않았다. 모델의 도구 선택은 평가셋이 본다. CI 에는 넣지 않았다(Docker 로컬 실행용).
+
 ## 평가셋 (evals/tab_agents)
 
 - `cases.json`: 76개 사례(53개 + 쓰기 확대 도구 23개: 수정·삭제·송금 완료·용돈 승인/거절·기록 취소. 아직 실제 LLM 으로 돌려 보지 않았다 — 아래 이력은 53개 기준)(정산 직접·돌봄 직접·메인 라우팅/안전). 질문, 기대 도구, 답에 있어야 할 값(`expect_contains`/`expect_any`), 있으면 안 되는 값(`expect_not_contains`/`expect_not_endswith`/`expect_not_regex`), 기대 제안 수(`expect_proposals`)와 요약 문구(`expect_in_proposal`)를 적는다. `as_user`(질문하는 사람, 기본 지민), `history`(앞 대화, 직접 대화에도 적용), `tool_optional`(도구 사용은 채점 안 함), `skip_tool_check`(자체 검증 테스트에서 제외), `known_gap`(알려진 한계: 통과율·종료 코드에서 뺌)을 쓸 수 있다. 2026-10-26 추가분(21개): 다른 달·빈 해, 동음이의 이름('수진이 학원비'), 금액 없음·음수 등록 거절, 여러 건 등록, 긴 대화 뒤 질문, 자녀(민수) 계정, 위치 미공유 구성원, 돌봄 데이터 속 주입.
