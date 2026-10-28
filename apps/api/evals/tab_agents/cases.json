@@ -800,7 +800,8 @@
   "expect_not_contains": [
    "수정했어요",
    "고쳤어요"
-  ]
+  ],
+  "tool_optional": true
  },
  {
   "id": "b-update-settled",
