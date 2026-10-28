@@ -130,13 +130,13 @@ def test_reset_on_postgres_rotates_password_and_revokes_all_sessions(pg_client, 
         ).status_code
         == 204
     )
-    assert (
-        client.post(
-            f"{P}/password/reset/request",
-            json={"login_id": "ghost_x", "email": "ghost@example.com"},
-        ).status_code
-        == 204
+    ghost = client.post(
+        f"{P}/password/reset/request",
+        json={"login_id": "ghost_x", "email": "ghost@example.com"},
     )
+    assert (
+        ghost.status_code == 400 and ghost.json()["code"] == "reset_mismatch"
+    )  # 맞지 않는 짝은 메일도 기록도 없다
     assert len(outbox.mails) == 1  # 백그라운드 발송이 끝난 뒤(테스트 클라이언트는 응답 전에 실행)
     ((token_hash, used),) = rows(pg, "SELECT token_hash, used_at FROM password_resets")
     assert len(token_hash) == 64 and used is None and token_hash != outbox.token()

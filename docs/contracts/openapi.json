@@ -1717,7 +1717,7 @@
           "family-group"
         ],
         "summary": "Password Reset Request",
-        "description": "재설정 메일을 요청한다. 아이디와 이메일이 같은 계정과 둘 다 맞을 때만 보내며, 맞든 아니든 같은 204(발송은 응답 뒤).",
+        "description": "재설정 메일을 요청한다. 아이디와 이메일이 같은 계정과 둘 다 맞으면 204(발송은 응답 뒤), 아니면 400 reset_mismatch.",
         "operationId": "password_reset_request_family_group_auth_password_reset_request_post",
         "requestBody": {
           "content": {

@@ -45,7 +45,8 @@ export const confirmEmailCode = (code) =>
   apiFetch("/family-group/auth/email/verify/confirm-code", { method: "POST", body: { code } });
 
 /**
- * 비밀번호 재설정 코드를 메일로 요청한다. 아이디와 이메일이 같은 계정과 일치할 때만 메일이 가고, 응답은 항상 같다.
+ * 비밀번호 재설정 코드를 메일로 요청한다. 아이디와 이메일이 같은 계정과 일치할 때만 메일이 가고, 일치하지 않으면 400 reset_mismatch 를 던진다
+ * (아이디가 없는지 이메일이 틀렸는지는 구분하지 않는 같은 응답이다).
  * @param {string} loginId
  * @param {string} email
  * @returns {Promise<void>}
