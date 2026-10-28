@@ -39,6 +39,7 @@ from .schemas import (
     CatalogEntry,
     ExpenseCreate,
     ExpenseOut,
+    ExpenseUpdate,
     ManagerOut,
     MonthlyItem,
     MonthlyPlan,
@@ -172,6 +173,26 @@ def list_expenses(db: Session, group_id: str, month: str) -> list[ExpenseOut]:
     members = group_repo.members(db, group_id)
     names, ids = {m.id: m.name for m in members}, [m.id for m in members]
     return [_expense_out(e, names, ids) for e in repo.list_month(db, group_id, month)]
+
+
+def update_expense(db: Session, group_id: str, expense_id: str, body: ExpenseUpdate) -> ExpenseOut:
+    """지출의 제목·금액·날짜·카테고리를 고친다(보낸 값만). 나눌 사람·낸 사람·정산 상태는 건드리지 않는다.
+    누가 고칠 수 있는지는 부르는 쪽이 정한다(에이전트: 내가 낸 지출만)."""
+    expense = repo.get_expense(db, group_id, expense_id)
+    if expense is None:
+        raise not_found("지출")
+    sent = body.model_dump(exclude_none=True)
+    if "title" in sent:
+        expense.title = sent["title"].strip()
+    if "amount" in sent:
+        expense.amount = sent["amount"]
+    if "date" in sent:
+        expense.date = sent["date"].isoformat()
+    if "category" in sent:
+        expense.category = sent["category"]
+    repo.save(db, expense)
+    members = group_repo.members(db, group_id)
+    return _expense_out(expense, {m.id: m.name for m in members}, [m.id for m in members])
 
 
 def delete_expense(db: Session, group_id: str, expense_id: str) -> None:
