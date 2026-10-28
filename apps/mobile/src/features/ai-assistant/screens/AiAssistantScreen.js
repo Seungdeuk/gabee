@@ -2,7 +2,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { Image } from "expo-image";
 import { useRouter } from "expo-router";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Alert, FlatList, KeyboardAvoidingView, Pressable, StyleSheet, Text, View } from "react-native";
+import { FlatList, KeyboardAvoidingView, Pressable, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { legacyStorageScope } from "@/shared/api/client";
@@ -18,6 +18,7 @@ import SchedulePromptCard from "../components/SchedulePromptCard";
 import DoubtCard from "../components/DoubtCard";
 import ScheduleConfirmCard from "../components/ScheduleConfirmCard";
 import DraftCard from "../components/DraftCard";
+import MicPendingSheet from "../components/MicPendingSheet";
 import PromptChips from "../components/PromptChips";
 import ReadingStatus from "../components/ReadingStatus";
 import Sidebar from "../components/Sidebar";
@@ -44,6 +45,7 @@ export default function AiAssistantScreen() {
   const scope = auth.status === "loading" ? null : auth.user?.id ? `user-${auth.user.id}` : legacyStorageScope();
   const { sessions, currentId, startNew, open, remove } = useSessions({ messages, load, reset, scope });
   const [menuOpen, setMenuOpen] = useState(false);
+  const [micPendingOpen, setMicPendingOpen] = useState(false);
   const [reviewCount, setReviewCount] = useState(0); // 확인이 필요한 기록 수(메뉴 점·기록 탭 숫자)
   const [focusRecordId, setFocusRecordId] = useState(null);
 
@@ -224,7 +226,8 @@ export default function AiAssistantScreen() {
           {listening ? (
             <Text style={styles.note}>폰 기본 음성 인식으로 받아 적어요. 말이 끝나면 보내기를 눌러 주세요.</Text>
           ) : null}
-          <ChatInput mode={inputMode} onSend={send} onAttach={sendPhoto} onMic={MIC_ENABLED ? (listening ? stopListening : startListening) : () => Alert.alert("업데이트 대기", "음성 입력은 아직 준비 중이에요. 업데이트 후에 쓸 수 있어요.")} />
+          <ChatInput mode={inputMode} onSend={send} onAttach={sendPhoto} onMic={MIC_ENABLED ? (listening ? stopListening : startListening) : () => setMicPendingOpen(true)} />
+          <MicPendingSheet visible={micPendingOpen} onClose={() => setMicPendingOpen(false)} />
         </View>
       </KeyboardAvoidingView>
     </SafeAreaView>
