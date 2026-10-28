@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState } from "react";
-import { KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { KeyboardAvoidingView, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 
 import Button from "@/shared/components/Button";
 import { colors, font, radius, spacing } from "@/theme";
@@ -48,7 +48,7 @@ export default function TodoEditModal({ todo, members, onClose, onSave, onDelete
 
   return (
     <Modal visible transparent animationType="slide" onRequestClose={onClose}>
-      <KeyboardAvoidingView style={styles.root} behavior={Platform.OS === "ios" ? "padding" : undefined}>
+      <KeyboardAvoidingView style={styles.root} behavior="padding">
         <Pressable style={styles.backdrop} onPress={onClose} accessibilityRole="button" accessibilityLabel="고치기 닫기" />
         <View style={styles.sheet}>
           <Text style={styles.heading} accessibilityRole="header">

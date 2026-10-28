@@ -1,5 +1,5 @@
 import { useRef, useState } from "react";
-import { KeyboardAvoidingView, Modal, Platform, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { KeyboardAvoidingView, Modal, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 
 import Button from "@/shared/components/Button";
 import { colors, font, radius, spacing } from "@/theme";
@@ -34,7 +34,7 @@ export default function NicknameModal({ row, onClose, onSave }) {
 
   return (
     <Modal visible transparent animationType="slide" onRequestClose={onClose}>
-      <KeyboardAvoidingView style={styles.root} behavior={Platform.OS === "ios" ? "padding" : undefined}>
+      <KeyboardAvoidingView style={styles.root} behavior="padding">
         <Pressable style={styles.backdrop} onPress={onClose} accessibilityRole="button" accessibilityLabel="별명·메모 닫기" />
         <View style={styles.sheet}>
           <Text style={styles.heading} accessibilityRole="header">

@@ -479,7 +479,7 @@ export default function ChatRoomScreen() {
       {!searchOpen && info.status === "ready" ? (
         <PinnedBar pins={pins.pins} expanded={pins.expanded} onToggle={() => pins.setExpanded(!pins.expanded)} onPick={pickPin} notice={pins.notice} nameOf={nameOf} />
       ) : null}
-      <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === "ios" ? "padding" : "height"}>
+      <KeyboardAvoidingView style={styles.flex} behavior="padding">
         {body}
         {searchOpen && info.status === "ready" ? (
           <View style={styles.searchLayer}>
