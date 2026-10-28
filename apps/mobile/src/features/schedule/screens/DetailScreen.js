@@ -37,7 +37,8 @@ export default function DetailScreen() {
     return () => {
       alive = false;
     };
-  }, [id]);
+    // 수정해서 공유가 바뀌면 항목이 새로 만들어지므로 다시 읽는다.
+  }, [id, item]);
 
   const leave = () => (router.canGoBack() ? router.back() : router.replace("/(tabs)/schedule"));
 
