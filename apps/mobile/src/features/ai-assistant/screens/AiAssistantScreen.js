@@ -32,7 +32,7 @@ import mascot from "../../../../assets/images/gabee-mascot.png";
  * 홈: AI 채팅. 상태는 빈 화면 → (음성 입력) → 처리 중 → 답변/초안 승인 순으로 바뀐다.
  * 상단 ⋮ 는 기타 화면(가족 그룹·설정)으로 들어간다.
  */
-export default function AiAssistantScreen() {
+export default function AiAssistantScreen({ onBell, bellBadge }) {
   const router = useRouter();
   const { messages, phase, readingSince, confirmDoubts, markAiEnabled, resolveConfirm, saveDescription, skipDescription, send, sendPhoto, startListening, stopListening, editDraft, reset, load } = useChat();
   const auth = useAuth();
@@ -121,7 +121,7 @@ export default function AiAssistantScreen() {
 
   return (
     <SafeAreaView style={styles.safe} edges={["top"]}>
-      <AppHeader onMenu={() => setMenuOpen(true)} onNew={startNew} onMore={() => router.push("/more")} menuBadge={reviewCount > 0} />
+      <AppHeader onMenu={() => setMenuOpen(true)} onNew={startNew} onMore={() => router.push("/more")} menuBadge={reviewCount > 0} onBell={onBell} bellBadge={bellBadge} />
       <Sidebar
         open={menuOpen}
         onClose={() => setMenuOpen(false)}

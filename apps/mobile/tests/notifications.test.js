@@ -2,7 +2,7 @@
 import assert from "node:assert/strict";
 import { afterEach, beforeEach, test } from "node:test";
 
-import { safeTotal } from "../src/features/notifications/format.js";
+import { badgeLabel, relativeTime, safeTotal } from "../src/features/notifications/format.js";
 import { KIND_META, metaFor, routeFor } from "../src/features/notifications/kinds.js";
 
 process.env.EXPO_PUBLIC_API_URL = "http://api.test";
@@ -66,4 +66,25 @@ test("안 읽은 개수를 못 불러와도 0 이고 예외가 나지 않는다"
   assert.equal(await safeTotal(Promise.resolve({ total: 3, by_kind: {} })), 3);
   assert.equal(await safeTotal(Promise.resolve(null)), 0);
   assert.equal(await safeTotal(Promise.resolve({ total: "x" })), 0);
+});
+
+test("종 아이콘 배지: 0 이면 숨기고 100 이상은 99+", () => {
+  assert.equal(badgeLabel(0), null);
+  assert.equal(badgeLabel(-1), null);
+  assert.equal(badgeLabel(7), "7");
+  assert.equal(badgeLabel(99), "99");
+  assert.equal(badgeLabel(100), "99+");
+});
+
+test("알림 시각: 방금·분·시간·일 전, 일주일이 넘으면 날짜", () => {
+  const now = new Date("2026-10-28T12:00:00Z");
+  const ago = (ms) => new Date(now.getTime() - ms).toISOString();
+  assert.equal(relativeTime(ago(30 * 1000), now), "방금");
+  assert.equal(relativeTime(ago(5 * 60 * 1000), now), "5분 전");
+  assert.equal(relativeTime(ago(3 * 3600 * 1000), now), "3시간 전");
+  assert.equal(relativeTime(ago(2 * 86400 * 1000), now), "2일 전");
+  assert.equal(relativeTime("2026-10-01T09:00:00Z", now), "10월 1일");
+  assert.equal(relativeTime("2026-10-28T11:55:00", now), "5분 전"); // 시간대 표시가 없으면 UTC 로 본다(임시 SQLite)
+  assert.equal(relativeTime("not-a-date", now), "");
+  assert.equal(relativeTime(ago(-5000), now), "방금"); // 시계가 어긋나 미래로 보여도 방금
 });
