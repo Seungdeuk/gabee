@@ -9,6 +9,7 @@ from app.features.care.router import router as care_router
 from app.features.family_chat.router import router as family_chat_router
 from app.features.family_group.photo_limit import PhotoBodyLimitMiddleware
 from app.features.family_group.router import router as family_group_router
+from app.features.notifications.router import router as notifications_router
 from app.features.schedule.router import router as schedule_router
 from app.shared.config import settings
 from app.shared.db import init_db
@@ -52,6 +53,7 @@ for feature, router in (
     ("billing", billing_router),
     ("care", care_router),
     ("ai_assistant", ai_assistant_router),
+    ("notifications", notifications_router),
 ):
     deps = [Depends(schema_ready(feature))]
     if feature in GUARDED_FEATURES:  # 고위험 입력(주민·카드·계좌·비밀번호) 사전 차단 (임시 방어)
