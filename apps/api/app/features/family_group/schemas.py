@@ -127,6 +127,8 @@ class GroupOut(BaseModel):
     name: str
     invite_code: str | None = None  # 가족 관리자(owner/admin)에게만 보인다
     invite_expires_at: datetime | None = None
+    invite_uses_left: int | None = None  # 초대 코드로 더 들어올 수 있는 사람 수(관리자에게만, null = 제한 없음)
+    invite_auto_approve: bool | None = None  # 초대로 들어온 사람을 바로 구성원으로 넣는지(관리자에게만)
     my_id: str | None = None  # 이 응답을 받는 사람의 사용자 id(구성원 목록에서 나를 찾을 때)
     my_role: str | None = None  # 이 응답을 받는 사람의 이 가족 안 권한(owner/admin/member)
     members: list[MemberOut]

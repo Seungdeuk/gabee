@@ -33,8 +33,12 @@ export const getMyJoinRequest = () => apiFetch("/family-group/groups/join-reques
 /** 내 대기 요청을 취소한다. */
 export const cancelJoinRequest = (id) => apiFetch(`/family-group/groups/join-requests/${id}/cancel`, { method: "POST" });
 
-/** 새 초대 코드를 만든다(24시간·1회, 기존 코드는 폐기). 가족 관리자만. */
+/** 새 초대 코드를 만든다(기본 24시간·20명, 기존 코드는 폐기). 가족 관리자만. */
 export const reissueInvite = () => apiFetch("/family-group/groups/invites/reissue", { method: "POST" });
+
+/** 초대 코드로 들어온 사람을 승인 없이 바로 구성원으로 넣을지 켜고 끈다. 가족 관리자만. */
+export const setInviteAutoApprove = (autoApprove) =>
+  apiFetch("/family-group/groups/invites/settings", { method: "PUT", body: { auto_approve: autoApprove } });
 
 /** 지금 쓸 수 있는 초대 코드를 모두 폐기한다. 가족 관리자만. */
 export const revokeInvite = () => apiFetch("/family-group/groups/invites/revoke", { method: "POST" });

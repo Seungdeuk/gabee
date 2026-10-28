@@ -1,7 +1,8 @@
 """가족 초대·가입 승인(PR 4-B) 업무 규칙.
 
-- 초대 코드: 암호학적 난수 10자, 기본 24시간·1회. 재발급은 기존 코드를 폐기(삭제하지 않음)하고 새로 만든다.
-- 참여: 코드가 맞으면 멤버십이 아니라 승인 대기 요청(join_requests)만 만든다. 관리자(owner/admin)가 승인해야 group_members 가 생긴다.
+- 초대 코드: 암호학적 난수 10자, 기본 24시간·20명. 재발급은 기존 코드를 폐기(삭제하지 않음)하고 새로 만든다.
+- 참여: 가족의 자동 승인(groups.auto_approve_invites)이 켜져 있으면 요청을 바로 승인해 구성원으로 넣는다.
+  꺼져 있으면 승인 대기 요청(join_requests)만 만들고, 관리자(owner/admin)가 승인해야 group_members 가 생긴다.
 - 권한(owner/admin)은 어떤 요청값으로도 정해지지 않는다. 승인된 사람은 항상 member 로 들어가고, 관리자 판단은 DB 의 group_members.role 만 본다.
 - 동시성: 사용 횟수 증가와 요청 결정은 전부 조건부 UPDATE 한 문장이라 동시 요청 중 하나만 성공한다.
 - 시도 제한: 실패한 코드 입력은 invite_attempts 에 남기고(코드 원문·해시는 저장하지 않는다), 최근 15분 실패가 5회 이상이면 계정별·IP별로 막는다.
@@ -81,6 +82,14 @@ def reissue_invite(db: Session, user: User) -> Invite:
     return invite
 
 
+def set_auto_approve(db: Session, user: User, enabled: bool) -> str:
+    """초대 코드로 들어온 사람을 바로 구성원으로 넣을지 켜고 끈다. 가족 관리자만. 그룹 id 를 돌려준다."""
+    group_id = _managed_group_id(db, user)
+    repo.get_group(db, group_id).auto_approve_invites = enabled
+    db.commit()
+    return group_id
+
+
 def revoke_invite(db: Session, user: User) -> None:
     group_id = _managed_group_id(db, user)
     jrepo.revoke_active_invites(db, group_id)
@@ -117,7 +126,8 @@ def _fail_invalid(db: Session, user: User, ip: str) -> ApiError:
 
 # ---------- 참여 ----------
 def request_to_join(db: Session, user: User, code: str, ip: str) -> tuple[JoinRequest, Group]:
-    """초대 코드로 승인 대기 요청을 만든다. 이미 같은 그룹에 대기 요청이 있으면 그것을 그대로 돌려준다(사용 횟수도 다시 쓰지 않는다)."""
+    """초대 코드로 가입 요청을 만든다. 가족이 자동 승인을 켜 두었으면 그 자리에서 승인해 구성원으로 넣는다.
+    이미 같은 그룹에 대기 요청이 있으면 그것을 그대로 돌려준다(사용 횟수도 다시 쓰지 않는다)."""
     now = datetime.now(UTC)
     _check_attempt_limit(db, user.id, ip, now)
     code = code.strip().upper()
@@ -142,6 +152,10 @@ def request_to_join(db: Session, user: User, code: str, ip: str) -> tuple[JoinRe
     row = JoinRequest(
         id=_uid(), group_id=group_id, user_id=user.id, invite_id=invite_id, requested_at=now
     )
+    if group.auto_approve_invites:  # 사람 대신 시스템이 승인한 것이라 decided_by 는 비워 둔다
+        row.status, row.decided_at = "approved", now
+        jrepo.add_member(db, group_id, user.id)
+        user.active_group_id = group_id
     jrepo.add_join_request(db, row)
     jrepo.record_attempt(db, ip, user.id, invite_id, True)
     try:
