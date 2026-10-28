@@ -23,7 +23,7 @@ const BY_CODE = {
   verification_expired: "인증번호가 만료됐어요. 인증번호를 다시 받아 주세요",
   verification_code_invalid: "인증번호가 맞지 않아요. 다시 확인해 주세요",
   verification_code_locked: "틀린 횟수를 넘었어요. 인증번호를 다시 받아 주세요",
-  reset_code_invalid: "재설정 코드가 맞지 않거나 만료됐어요. 재설정 메일을 다시 받아 주세요",
+  reset_code_invalid: "재설정 코드가 맞지 않거나 만료됐어요. 아이디를 확인하고 코드를 다시 받아 주세요",
   invalid_role_detail: "관계는 40자 이내로 적어 주세요",
   reset_token_invalid: "재설정 링크(코드)가 올바르지 않아요",
   reset_token_used: "이미 사용된 재설정 링크예요. 필요하면 다시 요청해 주세요",

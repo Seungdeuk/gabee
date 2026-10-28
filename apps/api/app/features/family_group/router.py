@@ -24,6 +24,7 @@ from .schemas import (
     LoginOut,
     PasswordResetCodeConfirmIn,
     PasswordResetConfirmIn,
+    PasswordResetRequestIn,
     RefreshIn,
     SignupOut,
     TokenIn,
@@ -103,16 +104,31 @@ def email_verify_confirm_code(
 
 @router.post("/auth/password/reset/request", status_code=204)
 def password_reset_request(
+    body: PasswordResetRequestIn,
+    request: Request,
+    background: BackgroundTasks,
+    db: Session = Depends(get_db),
+) -> Response:
+    """재설정 메일을 요청한다. 아이디와 이메일이 같은 계정과 둘 다 맞을 때만 보내며, 맞든 아니든 같은 204(발송은 응답 뒤)."""
+    ip = request.client.host if request.client else "unknown"
+    mail = service.request_password_reset(db, body, ip)
+    if mail is not None:
+        background.add_task(service.deliver, mail, "password_reset")
+    return Response(status_code=204)
+
+
+@router.post("/auth/login-id/recover", status_code=204)
+def login_id_recover(
     body: EmailRequestIn,
     request: Request,
     background: BackgroundTasks,
     db: Session = Depends(get_db),
 ) -> Response:
-    """재설정 메일을 요청한다. 계정이 있든 없든 같은 204(발송은 응답 뒤)."""
+    """아이디 찾기: 가입한 이메일로 아이디를 보낸다. 계정이 있든 없든 같은 204(발송은 응답 뒤, 아이디는 응답에 싣지 않는다)."""
     ip = request.client.host if request.client else "unknown"
-    mail = service.request_password_reset(db, body, ip)
+    mail = service.recover_login_id(db, body, ip)
     if mail is not None:
-        background.add_task(service.deliver, mail, "password_reset")
+        background.add_task(service.deliver, mail, "login_id_recover")
     return Response(status_code=204)
 
 
@@ -162,6 +178,6 @@ def my_group(user: User = Depends(current_user), db: Session = Depends(get_db)) 
 def password_reset_confirm_code(
     body: PasswordResetCodeConfirmIn, db: Session = Depends(get_db)
 ) -> Response:
-    """메일의 6자리 코드와 이메일, 새 비밀번호로 재설정한다. 틀린 코드·없는 이메일은 같은 응답이다."""
+    """메일의 6자리 코드와 아이디, 새 비밀번호로 재설정한다. 틀린 코드·없는 아이디는 같은 응답이다."""
     service.confirm_password_reset_code(db, body)
     return Response(status_code=204)

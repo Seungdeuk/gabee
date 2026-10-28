@@ -114,7 +114,8 @@ def test_features_that_need_an_email_say_so_instead_of_failing_oddly(client, mai
     # 비밀번호 재설정은 가입한 이메일로만 할 수 있어서 이메일이 없는 계정에는 아무것도 보내지 않는다(응답은 다른 주소와 같다)
     assert (
         client.post(
-            f"{P}/auth/password/reset/request", json={"email": "nobody@example.com"}
+            f"{P}/auth/password/reset/request",
+            json={"login_id": "no_email_a", "email": "nobody@example.com"},
         ).status_code
         == 204
     )
