@@ -17,7 +17,7 @@ import {
   setAllowancePlan,
   voidAllowanceEntry,
 } from "../api";
-import { parseWon, won } from "../format";
+import { formatMoneyInput, parseWon, won } from "../format";
 import AllowancePlanForm, { planText } from "./AllowancePlanForm";
 import AllowanceRequests from "./AllowanceRequests";
 
@@ -145,14 +145,14 @@ function ChildLedger({ item, notify, onChanged }) {
 
       {item.can_manage ? (
         <View style={styles.line}>
-          <Field style={styles.amountField} value={credit} onChangeText={setCredit} placeholder={`${item.name} 지급 금액`} keyboardType="numeric" />
+          <Field style={styles.amountField} value={credit} onChangeText={(text) => setCredit(formatMoneyInput(text))} placeholder={`${item.name} 지급 금액`} keyboardType="numeric" />
           <Field style={styles.grow} value={creditMemo} onChangeText={setCreditMemo} placeholder="메모" />
           <Button small label="지급 기록" a11yLabel={`${item.name} 지급 기록`} onPress={saveCredit} disabled={busy} />
         </View>
       ) : null}
       {item.can_record_use ? (
         <View style={styles.line}>
-          <Field style={styles.amountField} value={use} onChangeText={setUse} placeholder={`${item.name} 사용 금액`} keyboardType="numeric" />
+          <Field style={styles.amountField} value={use} onChangeText={(text) => setUse(formatMoneyInput(text))} placeholder={`${item.name} 사용 금액`} keyboardType="numeric" />
           <Field style={styles.grow} value={useMemo} onChangeText={setUseMemo} placeholder="어디에 썼나요" />
           <Button small variant="secondary" label="사용 기록" a11yLabel={`${item.name} 사용 기록`} onPress={saveUse} disabled={busy} />
         </View>
