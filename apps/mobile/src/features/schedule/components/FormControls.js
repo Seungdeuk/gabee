@@ -58,7 +58,7 @@ export function PressBox({ value, placeholder, onPress }) {
 }
 
 const styles = StyleSheet.create({
-  field: { gap: spacing.xs },
+  field: { gap: 2 },
   labelRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   label: { fontSize: 14, fontWeight: "500", color: colors.text },
   hint: { ...font.caption, fontWeight: "400", color: colors.textMuted },

@@ -44,10 +44,10 @@ def confirm(
 ) -> AgentConfirmOut:
     """사용자가 확인한 제안을 실행한다. 토큰이 이 사용자·이 가족·이 탭의 것인지, 만료·재사용이 아닌지 먼저 본다.
     인자는 실행 직전에 해당 탭의 스키마로 다시 검증한다."""
-    claims = proposals.consume(body.token, tab, user.id, group_id)
+    claims = proposals.consume(db, body.token, tab, user.id, group_id)
     try:
         execute(db, group_id, user, claims["act"], claims["args"])
     except Exception:
-        proposals.release(claims["jti"])
+        proposals.release(db, claims["jti"])
         raise
     return AgentConfirmOut(ok=True, summary=claims["summary"])

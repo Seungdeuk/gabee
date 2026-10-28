@@ -11,6 +11,8 @@ import smtplib
 import ssl
 from dataclasses import dataclass
 from email.message import EmailMessage
+from functools import cache
+from pathlib import Path
 from typing import Protocol
 
 from .config import settings
@@ -18,12 +20,43 @@ from .errors import ApiError
 
 log = logging.getLogger(__name__)
 
+MASCOT_CID = "gabee-mascot"  # HTML 의 <img src="cid:gabee-mascot"> 와 짝이다
+_MASCOT_PATH = Path(__file__).parent / "assets" / "gabee-mascot.png"
+
 
 @dataclass(frozen=True)
 class Mail:
     to: str
     subject: str
-    body: str
+    body: str  # 글자만 있는 본문(HTML 을 못 보는 메일 앱용)
+    html: str | None = (
+        None  # 있으면 HTML 본문도 함께 보낸다. cid:gabee-mascot 이미지는 메일에 내장된다
+    )
+
+
+@cache
+def _mascot_png() -> bytes | None:
+    """메일에 내장할 마스코트. 파일이 없으면 이미지만 빠지고 메일은 나간다."""
+    try:
+        return _MASCOT_PATH.read_bytes()
+    except OSError:
+        log.warning("메일용 마스코트 이미지를 읽지 못했다: %s", _MASCOT_PATH.name)
+        return None
+
+
+def _build_message(mail: Mail) -> EmailMessage:
+    msg = EmailMessage()
+    msg["From"], msg["To"], msg["Subject"] = settings.smtp_from, mail.to, mail.subject
+    msg.set_content(mail.body)
+    if mail.html is not None:
+        msg.add_alternative(mail.html, subtype="html")
+        image = _mascot_png() if f"cid:{MASCOT_CID}" in mail.html else None
+        if image is not None:
+            # inline + 파일명 없음: filename 이 있으면 attachment 로 붙어 메일 앱이 본문 이미지로 연결하지 않고 첨부로 보여 준다
+            msg.get_payload()[1].add_related(
+                image, "image", "png", cid=f"<{MASCOT_CID}>", disposition="inline"
+            )
+    return msg
 
 
 class MailSendError(Exception):
@@ -36,9 +69,7 @@ class Mailer(Protocol):
 
 class SmtpMailer:
     def send(self, mail: Mail) -> None:
-        msg = EmailMessage()
-        msg["From"], msg["To"], msg["Subject"] = settings.smtp_from, mail.to, mail.subject
-        msg.set_content(mail.body)
+        msg = _build_message(mail)
         try:
             if settings.smtp_security == "ssl":
                 client = smtplib.SMTP_SSL(

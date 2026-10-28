@@ -105,6 +105,8 @@ class AnalysisOut(BaseModel):
     important_messages: list[ImportantMessage]
     schedule_candidates: list[ScheduleCandidate]
     todo_candidates: list[TodoCandidate]
+    replies: list[str] = []  # 답장 후보 0~3개(각 80자 이내). 구 응답과 호환되도록 기본값이 빈 목록
+    topics: list[str] = []  # 대화 주제 후보 0~5개(각 40자 이내)
     meta: AiMeta
 
 
@@ -128,9 +130,18 @@ _IDS = {"type": "array", "items": {"type": "integer"}}
 ANALYSIS_SCHEMA = {
     "type": "object",
     "additionalProperties": False,
-    "required": ["summary", "important_messages", "schedule_candidates", "todo_candidates"],
+    "required": [
+        "summary",
+        "important_messages",
+        "schedule_candidates",
+        "todo_candidates",
+        "replies",
+        "topics",
+    ],
     "properties": {
         "summary": {"type": "string"},
+        "replies": {"type": "array", "items": {"type": "string"}},
+        "topics": {"type": "array", "items": {"type": "string"}},
         "important_messages": {
             "type": "array",
             "items": {

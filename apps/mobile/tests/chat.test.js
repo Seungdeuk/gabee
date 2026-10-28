@@ -92,8 +92,6 @@ test("AI 호출: 경로·메서드·본문, 대화 글자는 보내지 않고 Be
   await api.setAiEnabled(true);
   await api.analyzeChat();
   await api.analyzeChat({ limit: 50, afterId: 7 });
-  await api.suggestReplies();
-  await api.suggestTopics({ limit: 20 });
   assert.deepEqual(
     calls.map((c) => `${c.method} ${c.path}`),
     [
@@ -101,14 +99,11 @@ test("AI 호출: 경로·메서드·본문, 대화 글자는 보내지 않고 Be
       "PUT /family-chat/ai/settings",
       "POST /family-chat/ai/analysis",
       "POST /family-chat/ai/analysis",
-      "POST /family-chat/ai/replies",
-      "POST /family-chat/ai/topics",
     ],
   );
   assert.deepEqual(calls[1].body, { enabled: true });
   assert.deepEqual(calls[2].body, { limit: 100, after_id: 0 });
   assert.deepEqual(calls[3].body, { limit: 50, after_id: 7 });
-  assert.deepEqual(calls[5].body, { limit: 20, after_id: 0 });
   assert.equal(calls[2].headers.Authorization, "Bearer access-1");
   assert.equal(calls[2].headers["X-Gyeot-Token"], undefined);
 });
@@ -142,4 +137,19 @@ test("AI 패널 호출 규칙: 닫혀 있으면 호출 없음, 열려도 설정�
   assert.equal(shouldLoadSettings(false), false);
   assert.equal(shouldLoadSettings(undefined), false);
   assert.equal(shouldLoadSettings(true), true);
+});
+
+test("parseAnalysis: replies·topics 가 있으면 그대로, 구 서버 응답(없음·null·배열 아님)은 빈 배열", async () => {
+  const { parseAnalysis } = await import("../src/features/family-chat/messages.js");
+  const full = parseAnalysis({ summary: "요약", important_messages: [], schedule_candidates: [{ title: "a" }], todo_candidates: [], replies: ["알겠어요", " ", 3], topics: ["주말 계획"], meta: { cached: false } });
+  assert.deepEqual(full.replies, ["알겠어요"]);
+  assert.deepEqual(full.topics, ["주말 계획"]);
+  assert.equal(full.summary, "요약");
+  assert.equal(full.schedule_candidates.length, 1);
+  assert.deepEqual(full.meta, { cached: false });
+  const old = parseAnalysis({ summary: "요약", important_messages: [], schedule_candidates: [], todo_candidates: [] });
+  assert.deepEqual([old.replies, old.topics], [[], []]);
+  const bad = parseAnalysis({ replies: null, topics: "x" });
+  assert.deepEqual([bad.replies, bad.topics, bad.important_messages], [[], [], []]);
+  assert.deepEqual(parseAnalysis(null).replies, []);
 });

@@ -4,18 +4,19 @@ import { ActivityIndicator, Modal, Pressable, ScrollView, StyleSheet, Text, View
 import Button from "@/shared/components/Button";
 import { colors, font, radius, spacing } from "@/theme";
 
-import { analyzeChat, createTodo, getAiSettings, getRoomInfo, previewAiRange, registerScheduleCandidate, setAiEnabled, suggestReplies, suggestTopics } from "../api";
+import { analyzeChat, createTodo, getAiSettings, getRoomInfo, registerScheduleCandidate, setAiEnabled } from "../api";
 import {
   canRegisterSchedule,
   chatErrorMessage,
   parseAiSettings,
+  parseAnalysis,
   rangeCaption,
   remainingText,
   resultCaption,
   scheduleMissingNote,
   shouldLoadSettings,
 } from "../messages";
-import { parsePreview, previewErrorMessage, privacyCaption } from "../privacyPreview";
+import { privacyCaption } from "../privacyPreview";
 import { candidateToTodoBody, todoErrorMessage } from "../todoUtils";
 import {
   CONSENT_CANCEL_LABEL,
@@ -26,9 +27,9 @@ import {
   CONSENT_ENABLE_LABEL,
   CONSENT_NEED_MANAGER,
   CONSENT_ON_MEMBER_NOTE,
+  PANEL_NOTICE,
   needsEnableConfirm,
 } from "../privacyCopy";
-import AiConfirmCard from "./AiConfirmCard";
 import AiConsentCard from "./AiConsentCard";
 import TodoCandidateRow from "./TodoCandidateRow";
 
@@ -36,8 +37,23 @@ import TodoCandidateRow from "./TodoCandidateRow";
 const joinParts = (parts) => parts.filter(Boolean).join(" · ");
 
 /**
- * 채팅방 안 AI 대화 도우미 시트. 열릴 때 설정만 한 번 읽는다. 분석·추천 버튼은 먼저 미리보기(AI 호출 없음)로 "AI에 보내기 전 확인"을 보이고,
- * 사용자가 "AI에 보내기"를 누를 때만 AI 를 부른다. 결과는 서버에 잠시(약 10분) 저장돼 같은 요청에 다시 쓰인다.
+ * 추천 문장 목록. 한 줄을 누르면 onPick 으로 알린다(비어 있으면 안내 글).
+ * @param {{ items: string[], emptyText: string, labelPrefix: string, testIDPrefix: string, onPick: (text: string) => void }} props
+ * @returns {JSX.Element}
+ */
+function PickList({ items, emptyText, labelPrefix, testIDPrefix, onPick }) {
+  if (items.length === 0) return <Text style={styles.caption}>{emptyText}</Text>;
+  return items.map((text, i) => (
+    <Pressable key={i} style={styles.pick} onPress={() => onPick(text)} accessibilityRole="button" accessibilityLabel={`${labelPrefix}: ${text}`} testID={`${testIDPrefix}-${i}`}>
+      <Text style={styles.body}>{text}</Text>
+    </Pressable>
+  ));
+}
+
+/**
+ * 채팅방 안 AI 대화 도우미 시트. 열릴 때 설정만 한 번 읽는다. "대화 분석하기" 버튼을 누르면 곧바로 AI 를 한 번 부른다(개인정보 설명·동의는 "AI 켜기" 동의 카드에서 받는다).
+ * 켜진 상태에는 항상 보이는 한 줄 안내(PANEL_NOTICE)를 둔다. 요약·일정·할 일 후보·답장 추천·대화 주제 추천이 한 결과 화면에 나온다.
+ * 결과는 서버에 잠시(약 10분) 저장돼 같은 요청에 다시 쓰인다.
  * 닫아도 컴포넌트는 유지되어 마지막 결과를 다시 열면 보여 준다. 닫혀 있는 동안에는 아무 호출도 하지 않는다.
  * 일정·할 일 후보를 등록하면 onLinked 로 알려 원본 메시지와의 연결을 저장하게 한다(연결 저장이 실패해도 등록은 성공으로 둔다).
  * @param {{ visible: boolean, onClose: () => void, onPickReply: (text: string) => void, onLinked?: (link: { kind: "event" | "todo", targetId: string, candidate: object }) => void }} props
@@ -46,18 +62,14 @@ const joinParts = (parts) => parts.filter(Boolean).join(" · ");
 export default function AiPanel({ visible, onClose, onPickReply, onLinked }) {
   const [settings, setSettings] = useState(null); // parseAiSettings 결과
   const [loadError, setLoadError] = useState("");
-  const [busy, setBusy] = useState(""); // "settings" | "analysis" | "replies" | "topics" | ""
+  const [busy, setBusy] = useState(""); // "settings" | "analysis" | ""
   const [error, setError] = useState("");
   const [analysis, setAnalysis] = useState(null);
-  const [replies, setReplies] = useState(null);
-  const [topics, setTopics] = useState(null);
   const [registered, setRegistered] = useState({}); // 후보 순번 -> "ok" | "sending" | 오류 문구
   const [todoRegistered, setTodoRegistered] = useState({}); // 할 일 후보 순번 -> 같은 형태
   const [confirmingEnable, setConfirmingEnable] = useState(false); // 켜기 직전 안내 확인 중
   const [confirmingDisable, setConfirmingDisable] = useState(false); // 끄기 직전 확인 중
   const settingBusy = useRef(false); // 켜기·끄기 확인 버튼을 빠르게 두 번 눌러도 한 번만 보낸다
-  const [pending, setPending] = useState(null); // 보내기 전 확인: { action, status: "loading"|"ready"|"error", preview, error }
-  const previewSeq = useRef(0); // 취소·재요청 뒤에 늦게 온 미리보기 응답을 버린다
   const todoBusy = useRef(new Set()); // 등록 중이거나 등록된 할 일 후보 순번: 같은 후보를 두 번 등록하지 않는다
 
   const loadSettings = useCallback(async () => {
@@ -104,46 +116,14 @@ export default function AiPanel({ visible, onClose, onPickReply, onLinked }) {
     loadSettings();
   };
 
-  /** AI 를 부르기 전에 보낼 내용을 미리 불러와 확인 카드를 보인다(미리보기는 AI 를 부르지 않는다). */
-  const requestPreview = async (action) => {
-    const seq = ++previewSeq.current;
-    setError("");
-    setPending({ action, status: "loading", preview: null, error: "" });
-    try {
-      const preview = parsePreview(await previewAiRange());
-      if (seq !== previewSeq.current) return;
-      setPending({ action, status: "ready", preview, error: "" });
-      if (!preview.aiEnabled) loadSettings(); // 서버가 꺼져 있다고 하면 동의 안내 영역을 다시 판단한다
-    } catch (e) {
-      if (seq !== previewSeq.current) return;
-      setPending({ action, status: "error", preview: null, error: previewErrorMessage(e) });
-    }
-  };
-
-  const cancelPreview = () => {
-    previewSeq.current += 1;
-    setPending(null);
-  };
-
-  /** 사용자가 "AI에 보내기"를 눌렀을 때만 실제 분석·추천 API 를 호출한다. */
-  const confirmSend = () => {
-    if (!pending || pending.status !== "ready" || !pending.preview?.aiEnabled) return;
-    const { action } = pending;
-    previewSeq.current += 1;
-    setPending(null);
-    if (action === "analysis") {
-      run("analysis", analyzeChat, (res) => {
-        setAnalysis(res);
-        setRegistered({});
-        setTodoRegistered({});
-        todoBusy.current.clear();
-      });
-    } else if (action === "replies") {
-      run("replies", suggestReplies, setReplies);
-    } else {
-      run("topics", suggestTopics, setTopics);
-    }
-  };
+  /** "대화 분석하기"/"다시 분석하기": 누르면 곧바로 분석 API 를 한 번 호출한다. */
+  const analyze = () =>
+    run("analysis", analyzeChat, (res) => {
+      setAnalysis(parseAnalysis(res));
+      setRegistered({});
+      setTodoRegistered({});
+      todoBusy.current.clear();
+    });
 
   /** 등록이 끝난 뒤 원본 메시지 연결을 부탁한다. 연결은 부가 기능이라 여기서 나는 오류는 등록 결과에 영향을 주지 않는다. */
   const notifyLinked = (link) => {
@@ -181,6 +161,12 @@ export default function AiPanel({ visible, onClose, onPickReply, onLinked }) {
       todoBusy.current.delete(index); // 실패하면 다시 누를 수 있다
       setTodoRegistered((r) => ({ ...r, [index]: e?.code ? todoErrorMessage(e) : "등록하지 못했어요. 다시 시도해 주세요" }));
     }
+  };
+
+  /** 추천 한 줄을 눌렀을 때: 입력창에 넣기만 하고(보내지 않는다) 패널을 닫는다. */
+  const pickText = (text) => {
+    onPickReply(text);
+    onClose();
   };
 
   const content = (() => {
@@ -238,10 +224,12 @@ export default function AiPanel({ visible, onClose, onPickReply, onLinked }) {
     );
   }
 
-  const disabled = busy !== "" || pending?.status === "loading";
+  const disabled = busy !== "";
   return (
     <>
-      <Text style={styles.sub}>확인 후 &ldquo;AI에 보내기&rdquo;를 누를 때만 개인정보를 가린 최근 대화가 AI로 전달돼요. 분석 결과는 잠시(약 10분) 저장돼 같은 요청에 다시 쓰여요.</Text>
+      <Text style={styles.sub} testID="chat-ai-notice">
+        {PANEL_NOTICE}
+      </Text>
       {settings.canManage ? (
         confirmingDisable ? (
           <View style={styles.offCard} testID="chat-ai-disable-confirm">
@@ -278,22 +266,10 @@ export default function AiPanel({ visible, onClose, onPickReply, onLinked }) {
       <Button
         label={busy === "analysis" ? "분석하는 중..." : analysis ? "다시 분석하기" : "대화 분석하기"}
         small
-        onPress={() => requestPreview("analysis")}
+        onPress={analyze}
         disabled={disabled}
         testID="chat-ai-analyze"
       />
-
-      {pending ? (
-        <AiConfirmCard
-          action={pending.action}
-          status={pending.status}
-          preview={pending.preview}
-          error={pending.error}
-          onConfirm={confirmSend}
-          onCancel={cancelPreview}
-          onRetry={() => requestPreview(pending.action)}
-        />
-      ) : null}
 
       {analysis ? (
         <View style={styles.result} testID="chat-ai-result">
@@ -357,58 +333,14 @@ export default function AiPanel({ visible, onClose, onPickReply, onLinked }) {
             ))
           )}
 
+          <Text style={styles.section}>답장 추천</Text>
+          <PickList items={analysis.replies} emptyText="추천할 답장이 없어요" labelPrefix="이 답장을 입력창에 넣기" testIDPrefix="chat-ai-reply" onPick={pickText} />
+
+          <Text style={styles.section}>대화 주제 추천</Text>
+          <PickList items={analysis.topics} emptyText="추천할 대화 주제가 없어요" labelPrefix="이 주제를 입력창에 넣기" testIDPrefix="chat-ai-topic" onPick={pickText} />
+
           <Text style={styles.caption}>{[rangeCaption(analysis.meta), resultCaption(analysis.meta)].filter(Boolean).join(" · ")}</Text>
           {privacyCaption(analysis.meta?.privacy) ? <Text style={styles.caption}>{privacyCaption(analysis.meta?.privacy)}</Text> : null}
-        </View>
-      ) : null}
-
-      <View style={styles.row}>
-        <Button label="답장 추천" small variant="secondary" onPress={() => requestPreview("replies")} disabled={disabled} testID="chat-ai-replies" />
-        <Button label="대화 주제 추천" small variant="secondary" onPress={() => requestPreview("topics")} disabled={disabled} testID="chat-ai-topics" />
-      </View>
-
-      {replies ? (
-        <View style={styles.result} testID="chat-ai-replies-result">
-          <Text style={styles.section}>답장 추천</Text>
-          {replies.replies.map((text, i) => (
-            <Pressable
-              key={i}
-              style={styles.pick}
-              onPress={() => {
-                onPickReply(text);
-                onClose();
-              }}
-              accessibilityRole="button"
-              accessibilityLabel={`이 답장을 입력창에 넣기: ${text}`}
-              testID={`chat-ai-reply-${i}`}
-            >
-              <Text style={styles.body}>{text}</Text>
-            </Pressable>
-          ))}
-          <Text style={styles.caption}>{resultCaption(replies.meta)}</Text>
-          {privacyCaption(replies.meta?.privacy) ? <Text style={styles.caption}>{privacyCaption(replies.meta?.privacy)}</Text> : null}
-        </View>
-      ) : null}
-      {topics ? (
-        <View style={styles.result} testID="chat-ai-topics-result">
-          <Text style={styles.section}>대화 주제 추천</Text>
-          {topics.topics.map((text, i) => (
-            <Pressable
-              key={i}
-              style={styles.pick}
-              onPress={() => {
-                onPickReply(text);
-                onClose();
-              }}
-              accessibilityRole="button"
-              accessibilityLabel={`이 주제를 입력창에 넣기: ${text}`}
-              testID={`chat-ai-topic-${i}`}
-            >
-              <Text style={styles.body}>{text}</Text>
-            </Pressable>
-          ))}
-          <Text style={styles.caption}>{resultCaption(topics.meta)}</Text>
-          {privacyCaption(topics.meta?.privacy) ? <Text style={styles.caption}>{privacyCaption(topics.meta?.privacy)}</Text> : null}
         </View>
       ) : null}
     </>

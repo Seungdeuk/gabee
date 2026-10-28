@@ -67,7 +67,9 @@ export default function CalendarScreen() {
   const goBack = () => router.dismissTo("/(tabs)/schedule");
   // 그 날짜가 미리 채워진 등록 화면을 연다. 저장하면 이 화면으로 돌아온다.
   const openDetail = (id) => router.push({ pathname: "/schedule/detail", params: { id } });
-  const openRegister = (dateKey) => router.push({ pathname: "/schedule/register", params: { date: dateKey } });
+  // 약속·할 일 필터가 켜져 있으면 그 형태로 열린다(모두면 기본 약속).
+  const openRegister = (dateKey) =>
+    router.push({ pathname: "/schedule/register", params: { date: dateKey, ...(kind === "all" ? {} : { kind }) } });
   const shift = (delta) => setSelected(collapsed ? addDays(selected, delta * 7) : shiftMonthKey(selected, delta));
   const toggleCollapse = () => {
     scroll.current.auto = false;
@@ -152,8 +154,10 @@ export default function CalendarScreen() {
             </>
           ) : (
             <>
-              <Text style={styles.dayTitle}>{formatDateLong(today)}</Text>
-              <SegmentedControl options={KIND_OPTIONS} value={kind} onChange={setKind} full />
+              <View style={styles.listHead}>
+                <Text style={styles.dayTitle}>{formatDateLong(today)}</Text>
+                <SegmentedControl options={KIND_OPTIONS} value={kind} onChange={setKind} full />
+              </View>
               <ListMode
                 items={byKind(filtered)}
                 today={today}
@@ -172,14 +176,15 @@ export default function CalendarScreen() {
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.background },
   content: { paddingBottom: spacing.xxl },
-  body: { paddingHorizontal: spacing.xxl, paddingTop: spacing.xl, gap: 14 },
+  body: { paddingHorizontal: spacing.xxl, paddingTop: spacing.xl, gap: 7 },
   top: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10 },
   titleBox: { flexDirection: "row", alignItems: "center", flexShrink: 1, marginLeft: -spacing.sm },
   title: { ...font.page, color: colors.text, flexShrink: 1 },
-  section: { gap: spacing.md },
+  section: { gap: 2 },
+  listHead: { gap: 4 },
   dayHead: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   dayTitle: { ...font.title, color: colors.text },
   dayCount: { ...font.bodyStrong, fontWeight: "500", color: colors.textMuted },
-  rows: { gap: 10 },
+  rows: { gap: 10, marginTop: 3 },
   empty: { ...font.body, color: colors.textMuted },
 });

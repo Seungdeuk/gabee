@@ -13,18 +13,22 @@ export const MOCK_SUGGESTIONS = [
 // 오늘 줄 추천을 다 보여 준 뒤 추가 카드에 남기는 마무리 문장. 하루 추천 개수 제한(15개)에 닿았을 때도 같은 문장을 쓴다.
 export const SUGGESTIONS_DONE_TEXT = "오늘 추천은 여기까지, 내일도 챙겨 드릴게요 💛";
 
+// 추천을 한 번도 못 받았거나(소진은 아님) 못 불러왔을 때 새로고침과 함께 보이는 문장, 불러오는 동안의 문장.
+export const SUGGESTIONS_ASK_TEXT = "추천해드릴게요 ✨";
+export const SUGGESTIONS_FAILED_TEXT = "지금은 불러오지 못했어요. 잠시 뒤 새로고침을 눌러 주세요";
+export const SUGGESTIONS_LOADING_TEXT = "어울리는 일정을 찾고 있어요…";
+
 /**
  * 확인 카드 하나. 내 약속·할 일 중 오늘 것을 한 장에서 하나씩 묻는다: 약속 먼저(시간 빠른 순), 그다음 할 일.
  * 확인하면 다음 항목으로 바뀌고, 카드의 새로고침(cursor 를 하나 올림)은 확인하지 않고 다른 항목을 보여 준다.
- * 전부 확인하면 "오늘 일정을 모두 확인했어요 👏"를 남기고, 오늘 일정이 없으면 null(카드 숨김).
+ * 전부 확인했거나 오늘 일정이 없으면 "오늘 일정을 모두 확인했어요 👏"를 남긴다(카드 자리는 항상 보인다).
  * @param {import("./model").ScheduleItem[]} items 전체 항목
  * @param {string} today "YYYY-MM-DD"
  * @param {number} cursor 새로고침 횟수. 확인할 항목이 남은 개수로 돌려 가며 보여 준다
- * @returns {{ text: string, count: number, target?: { type: "item", id: string }, label?: string, laterLabel?: string } | null}
+ * @returns {{ text: string, count: number, target?: { type: "item", id: string }, label?: string, laterLabel?: string }}
  */
 export function pickCheckCard(items, today, cursor = 0) {
   const todays = items.filter((i) => i.date === today).sort(compareItems);
-  if (todays.length === 0) return null;
 
   const pending = todays.filter((i) => !i.checked);
   if (pending.length === 0) return { text: "오늘 일정을 모두 확인했어요 👏", count: 0 };

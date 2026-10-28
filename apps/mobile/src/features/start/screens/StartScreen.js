@@ -34,7 +34,7 @@ export default function StartScreen() {
       <View style={styles.copy}>
         <Logo size={30} />
         <Text style={styles.title}>당신 곁의{"\n"}가족 생활 비서</Text>
-        <Text style={styles.sub}>영수증·고지서·처방전을 찍으면{"\n"}가족이 함께 보는 기록이 돼요</Text>
+        <Text style={styles.sub}>사진 한 장으로{"\n"}가족 모두의 이야기를 만들어가요</Text>
       </View>
 
       <View style={styles.footer}>

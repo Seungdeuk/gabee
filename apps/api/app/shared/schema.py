@@ -35,6 +35,7 @@ _SHARED_RE = re.compile(r"^app\.shared\.(\w+)$")
 SHARED_MODEL_FEATURES = {
     "location_consent": ("family_group", "care"),
     "ai_usage": ("family_chat", "ai_assistant"),  # AI 호출 한도·캐시·사용 기록
+    "used_proposals": ("billing", "care"),  # 에이전트 쓰기 제안 토큰의 사용 기록
 }
 
 

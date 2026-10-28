@@ -135,6 +135,12 @@ export const listSuggestions = () => apiFetch("/schedule/suggestions");
 /** 내 주제 목록(처음이면 서버가 기본 주제 "경조사"를 만들어 준다). @returns {Promise<ServerTopic[]>} */
 export const listTopics = () => apiFetch("/schedule/topics");
 
+/** 주제를 만든다. 같은 이름이면 409 topic_exists, 이름이 잘못이면 400 invalid_topic(ApiError.code). @returns {Promise<ServerTopic>} */
+export const createTopic = (name, color) => apiFetch("/schedule/topics", { method: "POST", body: { name, color } });
+
+/** 주제를 지운다(204). 그 주제를 붙였던 일정은 서버가 topic_id 를 비운다. */
+export const deleteTopic = (id) => apiFetch(`/schedule/topics/${id}`, { method: "DELETE" });
+
 /** 이 일정을 누가 공유했는지, 누구에게 공유했는지(상세 화면에서만 부른다). @returns {Promise<Sharing>} */
 export const getSharing = (id) => apiFetch(`/schedule/events/${id}/sharing`);
 

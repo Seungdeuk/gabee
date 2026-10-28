@@ -10,6 +10,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 import pytest
 
+from app.features.family_group import service
 from app.shared import mailer
 from tests import test_signup_pg_e2e as _base
 
@@ -28,20 +29,33 @@ PASSWORD = "Sunny-day-2026"
 class Outbox:
     def __init__(self):
         self.mails = []
+        self.tokens = []
 
     def send(self, mail):
         self.mails.append(mail)
 
+    def watch(self, monkeypatch):
+        """메일에는 링크(토큰)가 없으므로, 서버가 메일용으로 발급한 토큰을 발급 시점에 따로 모아 둔다."""
+        real = service._new_token_row
+
+        def spy(*args, **kwargs):
+            token, code, row = real(*args, **kwargs)
+            self.tokens.append(token)
+            return token, code, row
+
+        monkeypatch.setattr(service, "_new_token_row", spy)
+        return self
+
     def token(self):
-        return re.search(r"token=([\w-]+)", self.mails[-1].body).group(1)
+        return self.tokens[-1]
 
     def code(self):
         return re.search(r"코드: (\d{6})", self.mails[-1].body).group(1)
 
 
 @pytest.fixture
-def outbox():
-    box = Outbox()
+def outbox(monkeypatch):
+    box = Outbox().watch(monkeypatch)
     mailer.set_mailer(box)
     yield box
     mailer.set_mailer(None)
@@ -111,11 +125,16 @@ def test_reset_on_postgres_rotates_password_and_revokes_all_sessions(pg_client, 
     session = register_and_login(client)
     other = client.post(f"{P}/login", json={"login_id": "jimin_kim", "password": PASSWORD}).json()
     assert (
-        client.post(f"{P}/password/reset/request", json={"email": "j@example.com"}).status_code
+        client.post(
+            f"{P}/password/reset/request", json={"login_id": "jimin_kim", "email": "j@example.com"}
+        ).status_code
         == 204
     )
     assert (
-        client.post(f"{P}/password/reset/request", json={"email": "ghost@example.com"}).status_code
+        client.post(
+            f"{P}/password/reset/request",
+            json={"login_id": "ghost_x", "email": "ghost@example.com"},
+        ).status_code
         == 204
     )
     assert len(outbox.mails) == 1  # 백그라운드 발송이 끝난 뒤(테스트 클라이언트는 응답 전에 실행)
@@ -149,7 +168,9 @@ def test_reset_on_postgres_rotates_password_and_revokes_all_sessions(pg_client, 
 def test_eight_simultaneous_resets_of_one_token_only_one_wins(pg_client, outbox):
     client, pg = pg_client
     session = register_and_login(client)
-    client.post(f"{P}/password/reset/request", json={"email": "j@example.com"})
+    client.post(
+        f"{P}/password/reset/request", json={"login_id": "jimin_kim", "email": "j@example.com"}
+    )
     token = outbox.token()
 
     def go(i):
@@ -207,14 +228,16 @@ def test_simultaneous_wrong_codes_never_exceed_the_attempt_limit(pg_client, outb
 def test_reset_with_the_code_on_postgres(pg_client, outbox):
     client, pg = pg_client
     register_and_login(client)
-    client.post(f"{P}/password/reset/request", json={"email": "j@example.com"})
+    client.post(
+        f"{P}/password/reset/request", json={"login_id": "jimin_kim", "email": "j@example.com"}
+    )
     code = outbox.code()
     ((code_hash,),) = rows(pg, "SELECT code_hash FROM password_resets")
     assert len(code_hash) == 64 and code not in code_hash
     new = "Brand-new-pass-77"
     r = client.post(
         f"{P}/password/reset/confirm-code",
-        json={"email": "j@example.com", "code": code, "new_password": new},
+        json={"login_id": "jimin_kim", "code": code, "new_password": new},
     )
     assert r.status_code == 204
     assert (

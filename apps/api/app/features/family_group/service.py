@@ -8,7 +8,7 @@ from datetime import UTC, datetime, timedelta
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.shared import mailer, tokens
+from app.shared import mail_templates, mailer, tokens
 from app.shared.auth import ensure_group_member
 from app.shared.config import settings
 from app.shared.errors import ApiError, not_found
@@ -35,6 +35,7 @@ from .schemas import (
     MemberOut,
     PasswordResetCodeConfirmIn,
     PasswordResetConfirmIn,
+    PasswordResetRequestIn,
     RefreshIn,
     SignupOut,
     TokenIn,
@@ -355,13 +356,6 @@ _HOUR = 3600
 log = logging.getLogger(__name__)
 
 
-def _link(path: str, token: str) -> str:
-    base = settings.email_link_base
-    if not base.endswith(("/", ":")):
-        base += "/"
-    return f"{base}{path}?token={token}"
-
-
 def _code_hash(row_id: str, code: str) -> str:
     """6자리 코드는 경우의 수가 적어 해시만으로는 약하다 — 행 id 를 섞어 행마다 다르게 하고, 시도 횟수 제한(code_max_attempts)이 실제 방어선이다."""
     return hashlib.sha256(f"{row_id}:{code}".encode()).hexdigest()
@@ -422,29 +416,39 @@ def request_email_verification(db: Session, user: User) -> None:
     _check_rate(f"{key}:cooldown", 1, settings.verify_resend_cooldown_seconds)
     _check_rate(f"{key}:hour", settings.verify_max_per_hour, _HOUR)
     now = datetime.now(UTC)
-    token, code, row = _new_token_row(
-        EmailVerification, user.id, settings.email_verify_ttl_seconds, now, email=user.email
+    _, code, row = (
+        _new_token_row(  # 메일에는 코드만 담는다(링크 없음). 토큰은 DB 에 해시로만 남는다
+            EmailVerification, user.id, settings.email_verify_ttl_seconds, now, email=user.email
+        )
     )
-    repo.supersede_email_verifications(db, user.id, now)  # 이전 메일의 링크는 무효
+    repo.supersede_email_verifications(db, user.id, now)  # 이전 메일의 코드는 무효
     repo.add_email_verification(db, row)
     db.commit()
     mail_limiter.record(f"{key}:cooldown")
     mail_limiter.record(f"{key}:hour")
+    ttl = _ttl_text(settings.email_verify_ttl_seconds)
+    intro = "앱에 아래 인증 코드 6자리를 입력해 주세요."
+    notice = "본인이 요청하지 않았다면 이 메일을 무시해 주세요."
     body = "\n".join(
         [
             "가비 가족 비서 이메일 인증이에요.",
             "",
-            f"앱에 아래 인증 코드 6자리를 입력해 주세요 ({_ttl_text(settings.email_verify_ttl_seconds)} 안에 한 번만 쓸 수 있어요).",
+            f"{intro} ({ttl} 안에 한 번만 쓸 수 있어요).",
             f"인증 코드: {code}",
             "",
-            "또는 아래 링크를 열면 자동으로 인증돼요.",
-            _link("verify-email", token),
-            "",
-            "본인이 요청하지 않았다면 이 메일을 무시해 주세요.",
+            notice,
         ]
     )
+    html = mail_templates.code_mail_html(
+        title="이메일 인증",
+        intro=intro,
+        code_label="인증 코드",
+        code=code,
+        ttl=ttl,
+        notice=notice,
+    )
     try:
-        sender.send(mailer.Mail(to=user.email, subject="[가비] 이메일 인증", body=body))
+        sender.send(mailer.Mail(to=user.email, subject="[가비] 이메일 인증", body=body, html=html))
     except mailer.MailSendError as exc:
         raise ApiError(
             503, "mail_send_failed", "메일을 보내지 못했어요. 잠시 후 다시 시도해 주세요"
@@ -501,9 +505,17 @@ def confirm_email_code(db: Session, user: User, body: CodeIn) -> EmailVerifiedOu
     return EmailVerifiedOut()
 
 
-def request_password_reset(db: Session, body: EmailRequestIn, ip: str) -> mailer.Mail | None:
-    """재설정 메일을 만들어 돌려준다(발송은 router 가 응답 뒤 백그라운드로). 계정이 있든 없든 호출자에게는 똑같이 보인다 —
-    메일 설정이 없을 때의 503 과 요청 제한 429 는 계정과 무관하게 같은 조건에서만 나온다."""
+def _login_key(raw: str) -> str:
+    """아이디 조회용 정규화. 형식 검사는 하지 않는다(형식 오류도 '없는 아이디'와 같게 보이도록)."""
+    return raw.strip().lower()
+
+
+def request_password_reset(
+    db: Session, body: PasswordResetRequestIn, ip: str
+) -> mailer.Mail | None:
+    """재설정 메일을 만들어 돌려준다(발송은 router 가 응답 뒤 백그라운드로). 아이디와 이메일이 **같은 계정과 둘 다 일치할 때만**
+    만든다. 일치 여부와 무관하게 호출자에게는 똑같이 보인다 — 메일 설정이 없을 때의 503 과 요청 제한 429 는 계정과 무관하게
+    같은 조건에서만 나온다."""
     mailer.ensure_mail_configured()
     email = credentials.normalize_email(body.email)
     _check_rate(f"reset-email:{email}", settings.reset_max_per_email_per_hour, _HOUR)
@@ -511,30 +523,72 @@ def request_password_reset(db: Session, body: EmailRequestIn, ip: str) -> mailer
         _check_rate(f"reset-ip:{ip}", settings.reset_max_per_ip_per_hour, _HOUR)
     mail_limiter.record(f"reset-email:{email}")
     mail_limiter.record(f"reset-ip:{ip}")
-    user = repo.get_user_by_email(db, email)
-    if user is None or user.login_id is None:  # 없는 이메일, 익명 계정: 아무것도 하지 않는다
-        return None
+    user = repo.get_user_by_login_id(db, _login_key(body.login_id))
+    if user is None or user.login_id is None or user.email != email:
+        return None  # 없는 아이디, 익명 계정, 아이디와 이메일 불일치: 아무것도 하지 않는다
     now = datetime.now(UTC)
-    token, code, row = _new_token_row(
-        PasswordReset, user.id, settings.password_reset_ttl_seconds, now
-    )
+    _, code, row = _new_token_row(PasswordReset, user.id, settings.password_reset_ttl_seconds, now)
     repo.supersede_password_resets(db, user.id, now)
     repo.add_password_reset(db, row)
     db.commit()
+    ttl = _ttl_text(settings.password_reset_ttl_seconds)
+    intro = "앱에 아래 재설정 코드 6자리와 새 비밀번호를 입력해 주세요."
+    notice = "본인이 요청하지 않았다면 이 메일을 무시해 주세요. 비밀번호는 바뀌지 않아요."
     body_text = "\n".join(
         [
             "가비 가족 비서 비밀번호 재설정 요청이에요.",
             "",
-            f"앱에 아래 재설정 코드 6자리와 새 비밀번호를 입력해 주세요 ({_ttl_text(settings.password_reset_ttl_seconds)} 안에 한 번만 쓸 수 있어요).",
+            f"{intro} ({ttl} 안에 한 번만 쓸 수 있어요).",
             f"재설정 코드: {code}",
             "",
-            "또는 아래 링크를 열어 새 비밀번호를 설정할 수 있어요.",
-            _link("reset-password", token),
-            "",
-            "본인이 요청하지 않았다면 이 메일을 무시해 주세요. 비밀번호는 바뀌지 않아요.",
+            notice,
         ]
     )
-    return mailer.Mail(to=email, subject="[가비] 비밀번호 재설정", body=body_text)
+    html = mail_templates.code_mail_html(
+        title="비밀번호 재설정",
+        intro=intro,
+        code_label="재설정 코드",
+        code=code,
+        ttl=ttl,
+        notice=notice,
+    )
+    return mailer.Mail(to=email, subject="[가비] 비밀번호 재설정", body=body_text, html=html)
+
+
+def recover_login_id(db: Session, body: EmailRequestIn, ip: str) -> mailer.Mail | None:
+    """아이디 안내 메일을 만들어 돌려준다(발송은 router 가 응답 뒤 백그라운드로). 그 이메일로 가입한 정식 계정이 있을 때만 만들고,
+    아이디는 응답에 싣지 않고 가입한 메일로만 보낸다. 계정이 있든 없든 호출자에게는 똑같이 보인다(제한·503 은 계정과 무관).
+    인증하지 않은 이메일이어도 보낸다 — 이메일은 가입 때 선택이고 그 주소는 계정에 등록된 것이다."""
+    mailer.ensure_mail_configured()
+    email = credentials.normalize_email(body.email)
+    _check_rate(f"recover-email:{email}", settings.reset_max_per_email_per_hour, _HOUR)
+    if settings.reset_max_per_ip_per_hour:
+        _check_rate(f"recover-ip:{ip}", settings.reset_max_per_ip_per_hour, _HOUR)
+    mail_limiter.record(f"recover-email:{email}")
+    mail_limiter.record(f"recover-ip:{ip}")
+    user = repo.get_user_by_email(db, email)
+    if user is None or user.login_id is None:  # 없는 이메일, 익명 계정: 아무것도 하지 않는다
+        return None
+    notice = "본인이 요청하지 않았다면 이 메일을 무시해 주세요. 계정에는 아무 변화가 없어요."
+    body_text = "\n".join(
+        [
+            "가비 가족 비서 아이디 안내예요.",
+            "",
+            "가입하신 아이디는 아래와 같아요.",
+            f"아이디: {user.login_id}",
+            "",
+            notice,
+        ]
+    )
+    html = mail_templates.code_mail_html(
+        title="아이디 찾기",
+        intro="가입하신 아이디는 아래와 같아요.",
+        code_label="아이디",
+        code=user.login_id,
+        notice=notice,
+        spaced=False,
+    )
+    return mailer.Mail(to=email, subject="[가비] 아이디 안내", body=body_text, html=html)
 
 
 def confirm_password_reset(db: Session, body: PasswordResetConfirmIn) -> None:
@@ -547,12 +601,12 @@ def confirm_password_reset(db: Session, body: PasswordResetConfirmIn) -> None:
 
 
 def confirm_password_reset_code(db: Session, body: PasswordResetCodeConfirmIn) -> None:
-    """메일의 6자리 코드와 이메일, 새 비밀번호로 재설정한다. 없는 이메일·익명 계정·틀린 코드·한도 초과는 모두 같은 응답이다(계정 존재 여부가 새지 않게)."""
+    """메일의 6자리 코드와 아이디, 새 비밀번호로 재설정한다. 없는 아이디·익명 계정·틀린 코드·한도 초과는 모두 같은 응답이다(계정 존재 여부가 새지 않게)."""
     now = datetime.now(UTC)
     invalid = ApiError(
         400, "reset_code_invalid", "코드가 맞지 않거나 만료됐어요. 재설정 메일을 다시 받아 주세요"
     )
-    user = repo.get_user_by_email(db, credentials.normalize_email(body.email))
+    user = repo.get_user_by_login_id(db, _login_key(body.login_id))
     row = repo.latest_active_password_reset(db, user.id, now) if user and user.login_id else None
     if row is None or row.code_hash is None:
         raise invalid

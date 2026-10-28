@@ -362,6 +362,14 @@ def test_topics_start_with_default_and_are_mine(client, family):
     assert [t["name"] for t in _topics(client, b)] == ["경조사"]  # 사람마다 따로
 
 
+def test_topic_accepts_all_palette_colors_and_rejects_others(client, family):
+    a, _, _ = family
+    for color in ("rose", "amber", "green", "sky", "purple"):
+        r = _add_topic(client, a, f"c-{color}", color)
+        assert r.status_code == 201 and r.json()["color"] == color
+    assert _add_topic(client, a, "x", "red").status_code == 422
+
+
 def test_topic_rejects_duplicate_blank_and_unknown_color(client, family):
     a, _, _ = family
     assert _add_topic(client, a, "병원").status_code == 201

@@ -1,6 +1,5 @@
 """이메일 인증과 비밀번호 재설정(메일은 가짜 발송기로 가로채서 확인한다 — 실제 메일을 보내지 않는다)."""
 
-import re
 import threading
 from datetime import UTC, datetime, timedelta
 
@@ -33,6 +32,7 @@ class Outbox:
 
     def __init__(self, fail=False):
         self.mails: list[mailer.Mail] = []
+        self.tokens: list[str] = []
         self.fail = fail
 
     def send(self, mail):
@@ -40,14 +40,25 @@ class Outbox:
             raise mailer.MailSendError("boom")
         self.mails.append(mail)
 
+    def watch(self, monkeypatch) -> "Outbox":
+        """메일에는 토큰(링크)이 없으므로, 서버가 메일용으로 발급한 토큰을 발급 시점에 따로 모아 둔다."""
+        real = service._new_token_row
+
+        def spy(*args, **kwargs):
+            token, code, row = real(*args, **kwargs)
+            self.tokens.append(token)
+            return token, code, row
+
+        monkeypatch.setattr(service, "_new_token_row", spy)
+        return self
+
     def last_token(self) -> str:
-        body = self.mails[-1].body
-        return re.search(r"token=([\w-]+)", body).group(1)
+        return self.tokens[-1]
 
 
 @pytest.fixture
-def outbox():
-    box = Outbox()
+def outbox(monkeypatch):
+    box = Outbox().watch(monkeypatch)
     mailer.set_mailer(box)
     return box
 
@@ -79,7 +90,7 @@ def test_verification_flow_sends_a_one_time_token_and_verifies(client, outbox):
     headers = bearer_for(client)
     assert client.post(VERIFY_REQ, headers=headers).status_code == 204
     (mail,) = outbox.mails
-    assert mail.to == "jimin@example.com" and "gabee://verify-email?token=" in mail.body
+    assert mail.to == "jimin@example.com" and "token=" not in mail.body  # 링크 없음
     token = outbox.last_token()
 
     assert client.get(ME, headers=headers).json()["email_verified"] is False
@@ -170,7 +181,7 @@ def test_without_mail_configuration_nothing_is_reported_as_sent(client):
     headers = bearer_for(client)
     for r in (
         client.post(VERIFY_REQ, headers=headers),
-        client.post(RESET_REQ, json={"email": "jimin@example.com"}),
+        client.post(RESET_REQ, json={"login_id": "jimin_kim", "email": "jimin@example.com"}),
     ):
         assert r.status_code == 503 and r.json()["code"] == "mail_not_configured"
     with SessionLocal() as db:
@@ -230,6 +241,69 @@ def test_smtp_mailer_uses_settings_and_never_logs_the_body(monkeypatch, caplog):
     mailer.SmtpMailer().send(mailer.Mail(to="x@y.com", subject="s", body="본문 토큰 abc"))
     assert calls["conn"][:2] == ("h", 2525) and calls["tls"] and calls["login"] == ("u", "p")
     assert calls["msg"]["To"] == "x@y.com" and calls["msg"]["From"] == "a@b.co"
+
+
+def _capture_smtp(monkeypatch) -> dict:
+    calls: dict = {}
+
+    class FakeSMTP:
+        def __init__(self, host, port, timeout=None):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+        def starttls(self, context=None):
+            pass
+
+        def login(self, user, password):
+            pass
+
+        def send_message(self, msg):
+            calls["msg"] = msg
+
+    monkeypatch.setattr("smtplib.SMTP", FakeSMTP)
+    for k, v in dict(smtp_host="h", smtp_user="u", smtp_password="p", smtp_from="a@b.co").items():
+        monkeypatch.setattr(settings, k, v)
+    return calls
+
+
+def test_html_mail_embeds_the_mascot_and_keeps_a_plain_text_part(monkeypatch):
+    calls = _capture_smtp(monkeypatch)
+    html = f'<img src="cid:{mailer.MASCOT_CID}"><b>123456</b>'
+    mailer.SmtpMailer().send(mailer.Mail(to="x@y.com", subject="s", body="코드 123456", html=html))
+    msg = calls["msg"]
+    assert msg.get_body(("plain",)).get_content().strip() == "코드 123456"
+    assert "123456" in msg.get_body(("html",)).get_content()
+    (image,) = [p for p in msg.walk() if p.get_content_type() == "image/png"]
+    assert (
+        image["Content-ID"] == f"<{mailer.MASCOT_CID}>"
+        and image.get_payload(decode=True)[:4] == b"\x89PNG"
+    )
+    # 첨부가 아니라 본문용(inline), 파일명 없음 — attachment/filename 이면 메일 앱이 첨부로 보여 주고 본문 이미지가 깨진다
+    assert image.get_content_disposition() == "inline" and image.get_filename() is None
+    # 이미지는 HTML 과 같은 multipart/related 안에 있어야 cid 가 연결된다
+    related = next(p for p in msg.walk() if p.get_content_type() == "multipart/related")
+    assert [p.get_content_type() for p in related.iter_parts()] == ["text/html", "image/png"]
+
+
+def test_plain_mail_has_no_html_or_image(monkeypatch):
+    calls = _capture_smtp(monkeypatch)
+    mailer.SmtpMailer().send(mailer.Mail(to="x@y.com", subject="s", body="본문"))
+    msg = calls["msg"]
+    assert msg.get_content_type() == "text/plain"
+    assert not any(p.get_content_type() == "image/png" for p in msg.walk())
+
+
+def test_mail_still_goes_out_without_the_mascot_file(monkeypatch):
+    calls = _capture_smtp(monkeypatch)
+    monkeypatch.setattr(mailer, "_mascot_png", lambda: None)
+    html = f'<img src="cid:{mailer.MASCOT_CID}">코드'
+    mailer.SmtpMailer().send(mailer.Mail(to="x@y.com", subject="s", body="코드", html=html))
+    assert not any(p.get_content_type() == "image/png" for p in calls["msg"].walk())
 
 
 def test_smtp_failure_is_wrapped_without_leaking_details(monkeypatch, caplog):
@@ -332,8 +406,8 @@ def test_unverified_members_can_create_a_family_by_default(client, outbox):
 
 
 # ---------- 비밀번호 재설정 ----------
-def request_reset(client, email="jimin@example.com"):
-    return client.post(RESET_REQ, json={"email": email})
+def request_reset(client, email="jimin@example.com", login_id="jimin_kim"):
+    return client.post(RESET_REQ, json={"login_id": login_id, "email": email})
 
 
 def test_reset_flow_changes_the_password_and_logs_out_every_session(client, outbox):
@@ -341,7 +415,7 @@ def test_reset_flow_changes_the_password_and_logs_out_every_session(client, outb
     phone, tablet = login(client).json(), login(client).json()
     assert request_reset(client).status_code == 204
     (mail,) = outbox.mails
-    assert mail.to == "jimin@example.com" and "reset-password?token=" in mail.body
+    assert mail.to == "jimin@example.com" and "token=" not in mail.body  # 링크 없음
     token = outbox.last_token()
 
     r = client.post(RESET_CONFIRM, json={"token": token, "new_password": NEW_PASSWORD})
@@ -550,7 +624,7 @@ def test_reset_proves_mailbox_ownership_so_a_squatted_account_can_be_reclaimed(c
     register(client, "attacker_id", "victim@example.com")  # 공격자가 비밀번호 PASSWORD 로 선점
     attacker_session = login(client, "attacker_id").json()
     assert db_user("attacker_id").email_verified_at is None
-    request_reset(client, "victim@example.com")  # 메일은 피해자에게만 간다
+    request_reset(client, "victim@example.com", "attacker_id")  # 메일은 피해자에게만 간다
     assert outbox.mails[-1].to == "victim@example.com"
     client.post(RESET_CONFIRM, json={"token": outbox.last_token(), "new_password": NEW_PASSWORD})
     assert login(client, "attacker_id", PASSWORD).status_code == 401  # 공격자의 비밀번호 무효
@@ -603,4 +677,7 @@ def test_anonymous_and_unknown_emails_get_no_reset_mail(client, outbox):
     signup(client, "익명")
     assert request_reset(client, "anyone@example.com").status_code == 204
     assert outbox.mails == []
-    assert client.post(RESET_REQ, json={"email": "not-an-email"}).status_code == 400
+    assert (
+        client.post(RESET_REQ, json={"login_id": "jimin_kim", "email": "not-an-email"}).status_code
+        == 400
+    )

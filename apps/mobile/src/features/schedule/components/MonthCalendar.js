@@ -7,17 +7,18 @@ import { dotsFor } from "../calendar";
 import { DOT_COLOR, KIND, SELECTED_TODO_DOT, WEEKDAYS } from "../constants";
 import { fromDateKey, monthCells, formatYearMonth, weekOf } from "../utils/date";
 
+const WEEK_FROM_MONDAY = [...WEEKDAYS.slice(1), WEEKDAYS[0]]; // 월~일
 const chunk = (cells) => Array.from({ length: cells.length / 7 }, (_, i) => cells.slice(i * 7, i * 7 + 7));
 
 /**
  * 월 달력. 날짜마다 점(약속 복숭아, 할 일 초록, 최대 3개)을 찍고 선택한 날짜는 갈색 바탕.
- * 접으면 선택한 날짜의 한 주(일~토) 한 줄만 보인다. 접기·펴기는 드래그가 아니라 버튼.
+ * 월요일부터 시작하고, 접으면 선택한 날짜의 한 주(월~일) 한 줄만 보인다. 접기·펴기는 드래그가 아니라 버튼.
  * @param {{ selected: string, marks: Map<string, { appointment: number, todo: number }>, collapsed: boolean, onSelect: (dateKey: string) => void, onShift: (delta: number) => void, onToggleCollapse: () => void }} props
  *   onShift 는 펼침에서는 달, 접힘에서는 주 단위로 옮긴다(부모가 정한다).
  */
 export default function MonthCalendar({ selected, marks, collapsed, onSelect, onShift, onToggleCollapse }) {
   const d = fromDateKey(selected);
-  const cells = collapsed ? weekOf(selected, false) : monthCells(d.getFullYear(), d.getMonth() + 1);
+  const cells = collapsed ? weekOf(selected) : monthCells(d.getFullYear(), d.getMonth() + 1);
   return (
     <View style={styles.card}>
       <View style={styles.header}>
@@ -36,7 +37,7 @@ export default function MonthCalendar({ selected, marks, collapsed, onSelect, on
         </View>
       </View>
       <View style={styles.week}>
-        {WEEKDAYS.map((name) => (
+        {WEEK_FROM_MONDAY.map((name) => (
           <Text key={name} style={styles.weekday}>
             {name}
           </Text>

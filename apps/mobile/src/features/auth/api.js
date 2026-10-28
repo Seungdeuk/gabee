@@ -44,13 +44,26 @@ export const confirmEmailVerification = (token) =>
 export const confirmEmailCode = (code) =>
   apiFetch("/family-group/auth/email/verify/confirm-code", { method: "POST", body: { code } });
 
-/** 비밀번호 재설정 메일을 요청한다. 가입된 주소인지와 상관없이 같은 응답이다. */
-export const requestPasswordReset = (email) =>
+/**
+ * 비밀번호 재설정 코드를 메일로 요청한다. 아이디와 이메일이 같은 계정과 일치할 때만 메일이 가고, 응답은 항상 같다.
+ * @param {string} loginId
+ * @param {string} email
+ * @returns {Promise<void>}
+ */
+export const requestPasswordReset = (loginId, email) =>
   apiFetch("/family-group/auth/password/reset/request", {
     method: "POST",
     auth: false,
-    body: { email: normalizeEmail(email) },
+    body: { login_id: normalizeLoginId(loginId), email: normalizeEmail(email) },
   });
+
+/**
+ * 가입한 이메일로 아이디를 보내 달라고 요청한다. 계정이 있는지와 상관없이 응답은 항상 같다(응답에 아이디는 없다).
+ * @param {string} email
+ * @returns {Promise<void>}
+ */
+export const recoverLoginId = (email) =>
+  apiFetch("/family-group/auth/login-id/recover", { method: "POST", auth: false, body: { email: normalizeEmail(email) } });
 
 /** 메일의 토큰과 새 비밀번호로 재설정한다. 모든 기기가 로그아웃된다. */
 export const confirmPasswordReset = (token, newPassword) =>
@@ -60,12 +73,18 @@ export const confirmPasswordReset = (token, newPassword) =>
     body: { token, new_password: newPassword },
   });
 
-/** 메일의 6자리 코드와 이메일, 새 비밀번호로 재설정한다. 모든 기기가 로그아웃된다. */
-export const confirmPasswordResetCode = (email, code, newPassword) =>
+/**
+ * 메일의 6자리 코드와 아이디, 새 비밀번호로 재설정한다. 모든 기기가 로그아웃된다.
+ * @param {string} loginId
+ * @param {string} code 6자리 숫자
+ * @param {string} newPassword
+ * @returns {Promise<void>}
+ */
+export const confirmPasswordResetCode = (loginId, code, newPassword) =>
   apiFetch("/family-group/auth/password/reset/confirm-code", {
     method: "POST",
     auth: false,
-    body: { email: normalizeEmail(email), code, new_password: newPassword },
+    body: { login_id: normalizeLoginId(loginId), code, new_password: newPassword },
   });
 
 /**

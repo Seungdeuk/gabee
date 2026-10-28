@@ -67,7 +67,7 @@ class Settings(BaseSettings):
     smtp_from: str = ""  # 보내는 사람 주소(예: no-reply@example.com)
     smtp_security: str = "starttls"  # starttls | ssl | none(로컬 테스트 서버 전용)
     smtp_timeout_seconds: int = 10
-    # 메일 링크의 앱 주소(모바일 딥링크 또는 웹 주소). 링크는 <base>verify-email?token=..., <base>reset-password?token=...
+    # 예약: 메일에는 지금 링크를 넣지 않는다(6자리 코드만). 링크를 다시 넣을 때 쓸 앱 주소(딥링크 또는 웹 주소).
     email_link_base: str = "gabee://"
     email_verify_ttl_seconds: int = 3 * 60  # 인증번호·링크 유효 시간: 3분
     password_reset_ttl_seconds: int = 30 * 60

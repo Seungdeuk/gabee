@@ -12,12 +12,13 @@ import DaySection from "../components/DaySection";
 import SuggestionCard from "../components/SuggestionCard";
 import TogetherRow from "../components/TogetherRow";
 import WeekStrip from "../components/WeekStrip";
+import { briefingLabels } from "../briefing";
 import { useNewReceivedCount } from "../requests";
 import { toggleChecked, useScheduleItems } from "../store";
 import { draftDateOf, suggestionExtras } from "../suggestion_convert";
-import { MOCK_SUGGESTIONS, SUGGESTIONS_DONE_TEXT, pickCheckCard } from "../suggestions";
-import { useSuggestions } from "../suggestions_store";
-import { addDays, formatDateLong, formatMonthDay, formatSlashDate, todayKey } from "../utils/date";
+import { MOCK_SUGGESTIONS, SUGGESTIONS_ASK_TEXT, SUGGESTIONS_DONE_TEXT, SUGGESTIONS_FAILED_TEXT, SUGGESTIONS_LOADING_TEXT, pickCheckCard } from "../suggestions";
+import { reloadSuggestions, useSuggestions } from "../suggestions_store";
+import { addDays, formatDateLong, formatSlashDate, todayKey } from "../utils/date";
 
 // 서버 주소가 있으면 추가 카드는 서버 추천을, 없으면 임시(mock) 제안을 쓴다.
 const useServer = isApiConfigured();
@@ -39,7 +40,11 @@ export default function ScheduleScreen() {
   const items = useScheduleItems();
   const newCount = useNewReceivedCount();
   const today = todayKey();
-  const tomorrow = addDays(today, 1);
+  // 주간 스트림에서 고른 날. 아래 브리핑이 이 날과 그 다음 날로 바뀐다(처음엔 오늘).
+  const [selected, setSelected] = useState(today);
+  const [nextFolded, setNextFolded] = useState(false); // 다음 날(내일) 구역을 접었는지
+  const nextDay = addDays(selected, 1);
+  const [selectedLabel, nextLabel] = briefingLabels(selected, today);
 
   // 카드마다 자기 새로고침이 있다(전체 새로고침은 없다). 확인 카드는 확인하지 않고 다른 항목을, 추가 카드는 다른 제안을 보여 준다.
   const [checkCursor, setCheckCursor] = useState(0);
@@ -57,8 +62,17 @@ export default function ScheduleScreen() {
   // 이미 추가한 제안은 빠지고 다음 제안이 바로 나온다. 저장하지 않고 돌아오면 그대로다.
   const candidates = (useServer ? server.list : MOCK_SUGGESTIONS).filter((suggestion) => !isAdded(suggestion));
   const addCard = candidates.length > 0 ? candidates[addCursor % candidates.length] : null;
-  // 서버 추천은 불러오는 동안, 또 못 불러왔거나(403·429) 아직 안 쓴 게 없는 채로 소진이 아니면 카드를 숨긴다. 소진이면 마무리 문장.
-  const showAddArea = !useServer || addCard !== null || (!server.loading && server.exhausted);
+  // 추가 카드 자리의 상태. 서버 추천은 불러오는 동안 "찾고 있어요", 오늘 추천을 다 쓰면 "여기까지",
+  // 한 번도 못 받았거나 못 불러왔으면(소진은 아님) "추천해드릴게요"와 새로고침을 보인다.
+  const addState = addCard
+    ? "card"
+    : !useServer
+      ? "done"
+      : server.loading || !server.loaded
+        ? "loading"
+        : server.exhausted
+          ? "done"
+          : "ask";
   const toggleLater = (id) => {
     if (pressed === id) return;
     setLater((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
@@ -102,16 +116,15 @@ export default function ScheduleScreen() {
     <SafeAreaView style={styles.safe} edges={["top"]}>
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         <View style={styles.body}>
-          <View style={styles.section}>
+          <View style={styles.topSection}>
             <View style={styles.head}>
               <View style={styles.headText}>
-                <Text style={styles.greeting}>바쁜 날도, 여유로운 날도</Text>
                 <Text style={styles.title} accessibilityRole="header">
                   오늘도 차근차근
                 </Text>
               </View>
               <Pressable
-                onPress={() => openCalendar(today)}
+                onPress={() => openCalendar(selected)}
                 accessibilityRole="button"
                 accessibilityLabel="달력 열기"
                 style={styles.plus}
@@ -120,22 +133,24 @@ export default function ScheduleScreen() {
               </Pressable>
               <SettingsButton />
             </View>
-            <WeekStrip selected={today} markedDates={new Set(items.map((item) => item.date))} onSelect={openCalendar} />
+            <WeekStrip selected={selected} markedDates={new Set(items.map((item) => item.date))} onSelect={setSelected} />
           </View>
 
           <View style={styles.section}>
-            <Text style={styles.heading}>{formatDateLong(today)}</Text>
+            <Text style={styles.heading}>{formatDateLong(selected)}</Text>
             <DaySection
-              label="오늘"
-              items={items.filter((item) => item.date === today)}
+              label={selectedLabel}
+              items={items.filter((item) => item.date === selected)}
               onPressItem={openDetail}
               onToggleItem={toggleChecked}
             />
             <DaySection
-              label={`내일 · ${formatMonthDay(tomorrow)}`}
-              items={items.filter((item) => item.date === tomorrow)}
+              label={nextLabel}
+              items={items.filter((item) => item.date === nextDay)}
               onPressItem={openDetail}
               onToggleItem={toggleChecked}
+              collapsed={nextFolded}
+              onToggle={() => setNextFolded((v) => !v)}
             />
             <Pressable onPress={() => openRegister({})} style={styles.addButton} accessibilityRole="button">
               <Text style={styles.addText}>+ 약속 · 할 일 추가하기</Text>
@@ -182,7 +197,7 @@ export default function ScheduleScreen() {
                   onRefresh={checkCard.target ? gated("check", () => setCheckCursor((c) => c + 1)) : undefined}
                 />
               ) : null}
-              {addCard ? (
+              {addState === "card" ? (
                 <SuggestionCard
                   text={`${formatSlashDate(draftDate(addCard))} ${addCard.name}`}
                   subtext="일정으로 추가해 드릴까요?"
@@ -193,9 +208,17 @@ export default function ScheduleScreen() {
                   onSecondary={() => toggleLater(addCard.id)}
                   onRefresh={gated("add", () => setAddCursor((c) => c + 1))}
                 />
-              ) : showAddArea ? (
+              ) : addState === "loading" ? (
+                <SuggestionCard text={SUGGESTIONS_LOADING_TEXT} />
+              ) : addState === "ask" ? (
+                <SuggestionCard
+                  text={SUGGESTIONS_ASK_TEXT}
+                  subtext={server.failed ? SUGGESTIONS_FAILED_TEXT : undefined}
+                  onRefresh={gated("ask", reloadSuggestions)}
+                />
+              ) : (
                 <SuggestionCard text={SUGGESTIONS_DONE_TEXT} />
-              ) : null}
+              )}
             </View>
             <Text style={styles.notice}>추천은 참고용이에요. 내용을 확인 후 저장해 주세요 📝</Text>
           </View>
@@ -209,12 +232,12 @@ export default function ScheduleScreen() {
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.background },
   content: { paddingBottom: spacing.xxl },
-  body: { paddingHorizontal: spacing.xxl, paddingTop: spacing.xl, gap: 28 },
-  section: { gap: spacing.md },
+  body: { paddingHorizontal: spacing.xxl, paddingTop: spacing.xl, gap: 14 },
+  section: { gap: 4 },
+  topSection: { gap: 0 },
   head: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", gap: spacing.md },
   headText: { flex: 1 },
-  greeting: { ...font.caption, color: colors.textMuted },
-  title: { ...font.page, color: colors.text, marginTop: 2 },
+  title: { ...font.page, color: colors.text },
   plus: {
     width: 48,
     height: 48,
@@ -234,7 +257,7 @@ const styles = StyleSheet.create({
   addText: { fontSize: 16, fontWeight: "700", color: colors.text },
   caption: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   feed: { gap: 10 },
-  notice: { ...font.caption, color: colors.textMuted, textAlign: "center" },
+  notice: { ...font.caption, color: colors.textMuted, textAlign: "center", marginTop: 10 },
   statusPress: { flexDirection: "row", alignItems: "center", gap: 6 },
   statusLink: { ...font.bodyStrong, fontWeight: "500", color: colors.textMuted },
   newBadge: {

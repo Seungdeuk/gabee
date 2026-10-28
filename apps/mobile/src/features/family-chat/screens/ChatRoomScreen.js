@@ -25,6 +25,7 @@ import RoomDrawer from "../components/RoomDrawer";
 import { COPIED_NOTICE, COPY_FAILED_NOTICE, canPin, pinTapAction } from "../pinUtils";
 import { parseFocusParam, roomSearchOptions, shouldLoadNewer } from "../searchUtils";
 import { takeFlag } from "../linkUtils";
+import { canSaveToRecord, saveToRecord } from "../saveToRecord";
 import useChatLinks from "../useChatLinks";
 import useChatMessages, { useRoomInfo } from "../useChatMessages";
 import useChatPins from "../useChatPins";
@@ -39,6 +40,9 @@ const FAR = 400; // 바닥에서 이 이상 올라와 있으면 "맨 아래로" 
 const HIGHLIGHT_MS = 2000; // 검색 결과로 이동한 메시지를 강조해 두는 시간
 const SETTLE_MS = 600; // 이동 직후 이 시간 동안은 위로 자동 불러오기를 막아 이동 위치가 밀리지 않게 한다
 const NO_MESSAGES = []; // 과거 창을 보는 동안 읽음 처리에 넘기는 빈 목록
+
+/** 가족 전체방의 사진을 AI 비서의 가족 기록으로 올린다(사진 보기의 "가비 기록에 저장"). */
+const savePhotoToRecord = (attachment) => saveToRecord(attachment, Platform.OS);
 
 /** 가운데 안내(로딩·오류·그룹 없음). */
 function Center({ children }) {
@@ -416,6 +420,7 @@ export default function ChatRoomScreen() {
                 onDiscard={chat.discard}
                 onActions={canPin(item.message) ? setActionMessage : undefined}
                 linkBadges={links.badgesOf(item.message.id)}
+                onSaveToRecord={canSaveToRecord({ direct, attachment: item.message.attachment }) ? savePhotoToRecord : undefined}
               />
             )
           }

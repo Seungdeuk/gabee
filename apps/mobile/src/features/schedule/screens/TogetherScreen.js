@@ -8,15 +8,14 @@ import IconButton from "@/shared/components/IconButton";
 import { colors, font, radius, spacing } from "@/theme";
 
 import DateSheet from "../components/DateSheet";
-import FilterChip from "../components/FilterChip";
 import { FormField, PressBox, TextBox } from "../components/FormControls";
 import TimeSheet from "../components/TimeSheet";
-import { ME_ID, members } from "../mock";
+import WhoChips from "../components/WhoChips";
+import { useHiddenWho } from "../favorites_hook";
+import { ME_ID } from "../mock";
 import { sendRequest } from "../requests";
+import { useMembers } from "../store";
 import { formatDateWithYear, formatTimeConfirmed } from "../utils/date";
-
-const OTHERS = members.filter((m) => m.id !== ME_ID);
-const RECEIVERS = OTHERS.filter((m) => m.hasAccount);
 
 const toggle = (list, id) => (list.includes(id) ? list.filter((x) => x !== id) : [...list, id]);
 
@@ -39,6 +38,22 @@ export default function TogetherScreen() {
   const [dateOpen, setDateOpen] = useState(false);
   const [timeOpen, setTimeOpen] = useState(false);
   const [triedSend, setTriedSend] = useState(false);
+
+  // 서버에서 가족을 읽은 뒤에 채워지므로 화면을 그릴 때마다 읽는다(모듈 로드 때 한 번만 읽으면 비어 있다).
+  const family = useMembers();
+  const OTHERS = family.filter((m) => m.id !== ME_ID);
+  const RECEIVERS = OTHERS.filter((m) => m.hasAccount);
+  // 칩 줄에서 뺀 사람(이 폰에만 저장, 줄마다 따로). 빼면 고른 것도 풀린다.
+  const receivers = useHiddenWho("together", RECEIVERS);
+  const related = useHiddenWho("together-who", OTHERS);
+  const hideReceiver = (id) => {
+    receivers.hide(id);
+    setToIds(toIds.filter((x) => x !== id));
+  };
+  const hideRelated = (id) => {
+    related.hide(id);
+    setWhoIds(whoIds.filter((x) => x !== id));
+  };
 
   const valid = title.trim() !== "" && date !== "";
 
@@ -73,9 +88,14 @@ export default function TogetherScreen() {
                 같이, 곁에
               </Text>
             </View>
-            <Pressable onPress={toStatus} hitSlop={10} accessibilityRole="button">
-              <Text style={styles.cancel}>취소</Text>
-            </Pressable>
+            <View style={styles.topActions}>
+              <Pressable onPress={send} hitSlop={10} accessibilityRole="button">
+                <Text style={styles.cancel}>보내기</Text>
+              </Pressable>
+              <Pressable onPress={toStatus} hitSlop={10} accessibilityRole="button">
+                <Text style={styles.cancel}>취소</Text>
+              </Pressable>
+            </View>
           </View>
 
           {params.suggested === "1" ? (
@@ -86,25 +106,29 @@ export default function TogetherScreen() {
             <TextBox value={title} onChangeText={setTitle} />
           </FormField>
 
-          <FormField label="받는 사람">
-            <View style={styles.chips}>
-              {RECEIVERS.map((m) => (
-                <FilterChip key={m.id} label={m.name} selected={toIds.includes(m.id)} onPress={() => setToIds(toggle(toIds, m.id))} />
-              ))}
-              <FilterChip label="+ 누구" muted />
-            </View>
-            <Text style={styles.help}>지정하지 않으면 모두에게 가요. 여러 명에게 보내면 각자 수락할 수 있어요</Text>
+          <FormField label="받는 사람" hint="지정하지 않으면 모두에게 가요">
+            <WhoChips
+              members={RECEIVERS}
+              hiddenIds={receivers.hidden}
+              selectedIds={toIds}
+              onToggle={(id) => setToIds(toggle(toIds, id))}
+              onHide={hideReceiver}
+              onShow={receivers.show}
+            />
+            <Text style={styles.help}>여러 명에게 보내면 각자 수락할 수 있어요</Text>
           </FormField>
 
           {/* 서버는 "누구"를 저장하지 않는다(수락한 사람 일정의 누구는 보낸 사람으로 정해진다). 서버 모드에서는 숨긴다. */}
           {!isApiConfigured() && (
             <FormField label="누구" hint="관련된 사람">
-              <View style={styles.chips}>
-                {OTHERS.map((m) => (
-                  <FilterChip key={m.id} label={m.name} selected={whoIds.includes(m.id)} onPress={() => setWhoIds(toggle(whoIds, m.id))} />
-                ))}
-                <FilterChip label="+ 누구" muted />
-              </View>
+              <WhoChips
+                members={OTHERS}
+                hiddenIds={related.hidden}
+                selectedIds={whoIds}
+                onToggle={(id) => setWhoIds(toggle(whoIds, id))}
+                onHide={hideRelated}
+                onShow={related.show}
+              />
             </FormField>
           )}
 
@@ -162,6 +186,7 @@ const styles = StyleSheet.create({
   content: { paddingBottom: spacing.xxl },
   body: { paddingHorizontal: spacing.xxl, paddingTop: spacing.xl, gap: 18 },
   top: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  topActions: { flexDirection: "row", alignItems: "center", gap: spacing.lg },
   titleBox: { flexDirection: "row", alignItems: "center", marginLeft: -spacing.sm },
   title: { ...font.page, color: colors.text },
   cancel: { fontSize: 14, fontWeight: "500", color: colors.textMuted },
@@ -174,9 +199,8 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     paddingHorizontal: 14,
   },
-  group: { gap: spacing.sm },
-  chips: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
-  help: { ...font.caption, color: colors.textMuted },
+  group: { gap: 4 },
+  help: { ...font.caption, color: colors.textMuted, marginTop: 6 },
   error: { ...font.caption, color: colors.danger, textAlign: "center" },
   send: { minHeight: 56, alignItems: "center", justifyContent: "center", borderRadius: radius.button, backgroundColor: colors.peach },
   sendOff: { opacity: 0.55 },

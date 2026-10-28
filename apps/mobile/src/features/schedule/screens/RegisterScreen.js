@@ -1,6 +1,6 @@
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useState } from "react";
-import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import IconButton from "@/shared/components/IconButton";
@@ -11,9 +11,12 @@ import FilterChip from "../components/FilterChip";
 import { FormField, PressBox, TextBox } from "../components/FormControls";
 import SegmentedControl from "../components/SegmentedControl";
 import TimeSheet from "../components/TimeSheet";
+import TopicChips from "../components/TopicChips";
+import WhoChips from "../components/WhoChips";
 import { KIND, KIND_LABEL } from "../constants";
-import { ME_ID, members, topics } from "../mock";
-import { addItem, updateItem, useScheduleItem } from "../store";
+import { useHiddenWho } from "../favorites_hook";
+import { ME_ID } from "../mock";
+import { addItem, addTopic, removeTopic, updateItem, useMembers, useScheduleItem, useTopics } from "../store";
 import { markUsed } from "../suggestions_store";
 import { formatDateWithYear, formatTimeConfirmed } from "../utils/date";
 
@@ -45,11 +48,28 @@ export default function RegisterScreen() {
   const [dateOpen, setDateOpen] = useState(false);
   const [timeOpen, setTimeOpen] = useState(false);
   const [triedSave, setTriedSave] = useState(false);
+  const topics = useTopics();
+  const family = useMembers();
 
   // 서버에서 가족을 읽은 뒤에 바뀌므로 화면을 그릴 때마다 계산한다.
-  const OTHERS = members.filter((m) => m.id !== ME_ID);
+  const OTHERS = family.filter((m) => m.id !== ME_ID);
   const SHAREABLE = OTHERS.filter((m) => m.hasAccount);
+  // "누구"·"공유" 칩 줄에서 뺀 사람(이 폰에만 저장, 줄마다 따로). 누구는 예전 저장 키 그대로.
+  const who = useHiddenWho("", OTHERS);
+  const share = useHiddenWho("share", SHAREABLE);
   const valid = title.trim() !== "" && date !== "";
+  const hideWho = (id) => {
+    who.hide(id);
+    setWhoIds(whoIds.filter((x) => x !== id));
+  };
+  const hideShare = (id) => {
+    share.hide(id);
+    setSharedWith(sharedWith.filter((x) => x !== id));
+  };
+  const deleteTopic = (id) => {
+    removeTopic(id);
+    if (topicId === id) setTopicId(null);
+  };
   const allShared = SHAREABLE.length > 0 && SHAREABLE.every((m) => sharedWith.includes(m.id));
 
   // 진입했던 화면으로 돌아간다. 이전 화면이 없으면(주소로 직접 열기) 일정 메인으로 간다.
@@ -82,7 +102,13 @@ export default function RegisterScreen() {
 
   return (
     <SafeAreaView style={styles.safe} edges={["top"]}>
-      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+      <KeyboardAvoidingView style={styles.safe} behavior={Platform.OS === "ios" ? "padding" : undefined}>
+      <ScrollView
+        contentContainerStyle={styles.content}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode={Platform.OS === "ios" ? "interactive" : "on-drag"}
+        showsVerticalScrollIndicator={false}
+      >
         <View style={styles.body}>
           <View style={styles.top}>
             <View style={styles.titleBox}>
@@ -91,9 +117,14 @@ export default function RegisterScreen() {
                 {editing ? "수정" : "소중한 하루의 준비"}
               </Text>
             </View>
-            <Pressable onPress={leave} hitSlop={10} accessibilityRole="button">
-              <Text style={styles.cancel}>취소</Text>
-            </Pressable>
+            <View style={styles.topActions}>
+              <Pressable onPress={save} hitSlop={10} accessibilityRole="button">
+                <Text style={styles.cancel}>{editing ? "저장" : "등록"}</Text>
+              </Pressable>
+              <Pressable onPress={leave} hitSlop={10} accessibilityRole="button">
+                <Text style={styles.cancel}>취소</Text>
+              </Pressable>
+            </View>
           </View>
 
           {params.suggested === "1" ? (
@@ -108,29 +139,38 @@ export default function RegisterScreen() {
 
           <View style={styles.group}>
             <FormField label="누구" hint="관련된 사람">
-              <View style={styles.chips}>
-                {OTHERS.map((m) => (
-                  <FilterChip key={m.id} label={m.name} selected={whoIds.includes(m.id)} onPress={() => setWhoIds(toggle(whoIds, m.id))} />
-                ))}
-                <FilterChip label="+ 누구" muted />
-              </View>
+              <WhoChips
+                members={OTHERS}
+                hiddenIds={who.hidden}
+                selectedIds={whoIds}
+                onToggle={(id) => setWhoIds(toggle(whoIds, id))}
+                onHide={hideWho}
+                onShow={who.show}
+              />
             </FormField>
             <FormField label="주제">
-              <View style={styles.chips}>
-                {topics.map((t) => (
-                  <FilterChip key={t.id} label={t.name} selected={topicId === t.id} onPress={() => setTopicId(topicId === t.id ? null : t.id)} />
-                ))}
-                <FilterChip label="+ 주제" muted />
-              </View>
+              <TopicChips
+                topics={topics}
+                selectedIds={topicId ? [topicId] : []}
+                onToggle={(id) => setTopicId(topicId === id ? null : id)}
+                onCreate={addTopic}
+                onCreated={(topic) => setTopicId(topic.id)}
+                onDelete={deleteTopic}
+              />
             </FormField>
             {editing ? null : (
               <FormField label="공유" hint="선택 안 하면 나만 봐요">
-                <View style={styles.chips}>
-                  <FilterChip label="모두" selected={allShared} onPress={() => setSharedWith(allShared ? [] : SHAREABLE.map((m) => m.id))} />
-                  {SHAREABLE.map((m) => (
-                    <FilterChip key={m.id} label={m.name} selected={sharedWith.includes(m.id)} onPress={() => setSharedWith(toggle(sharedWith, m.id))} />
-                  ))}
-                </View>
+                <WhoChips
+                  members={SHAREABLE}
+                  hiddenIds={share.hidden}
+                  selectedIds={sharedWith}
+                  onToggle={(id) => setSharedWith(toggle(sharedWith, id))}
+                  onHide={hideShare}
+                  onShow={share.show}
+                  lead={
+                    <FilterChip label="모두" selected={allShared} onPress={() => setSharedWith(allShared ? [] : SHAREABLE.map((m) => m.id))} />
+                  }
+                />
               </FormField>
             )}
           </View>
@@ -165,6 +205,7 @@ export default function RegisterScreen() {
           </Pressable>
         </View>
       </ScrollView>
+      </KeyboardAvoidingView>
 
       {timeOpen ? (
         <TimeSheet
@@ -194,9 +235,10 @@ export default function RegisterScreen() {
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.background },
-  content: { paddingBottom: spacing.xxl },
-  body: { paddingHorizontal: spacing.xxl, paddingTop: spacing.xl, gap: 18 },
-  top: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  content: { paddingBottom: spacing.xxl * 3 }, // 키보드가 올라와도 맨 아래 칸까지 스크롤해 볼 수 있게 넉넉히
+  body: { paddingHorizontal: spacing.xxl, paddingTop: spacing.xl, gap: 14 },
+  top: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: -7 }, // 제목과 형태 선택 사이를 반으로
+  topActions: { flexDirection: "row", alignItems: "center", gap: spacing.lg },
   titleBox: { flexDirection: "row", alignItems: "center", marginLeft: -spacing.sm },
   title: { ...font.page, color: colors.text },
   cancel: { fontSize: 14, fontWeight: "500", color: colors.textMuted },
@@ -209,8 +251,7 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     paddingHorizontal: 14,
   },
-  group: { gap: spacing.sm },
-  chips: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
+  group: { gap: 6 },
   error: { ...font.caption, color: colors.danger, textAlign: "center" },
   save: {
     minHeight: 56,

@@ -12,6 +12,7 @@ import {
   CONSENT_NEED_MANAGER,
   CONSENT_SUMMARY,
   CONSENT_TITLE,
+  PANEL_NOTICE,
   consentA11ySummary,
   detailsToggleLabel,
   needsEnableConfirm,
@@ -40,8 +41,27 @@ test("상세에는 E2EE 아님·소유자/관리자만·끄면 멈춤·도우미
   assert.match(all, /위치/);
 });
 
-test("요약은 AI 비서·문서 질문·일정·가계·돌봄 도우미와 대화 주제 추천을 모두 언급한다", () => {
-  for (const word of ["대화 주제 추천", "AI 비서", "문서 질문", "일정", "가계", "돌봄"]) assert.ok(summary.includes(word), word);
+test("요약은 AI 비서·문서 질문·일정·가계·돌봄 도우미와 대화 분석(답장·대화 주제 추천 포함)을 모두 언급한다", () => {
+  for (const word of ["대화 분석", "답장 추천", "대화 주제 추천", "AI 비서", "문서 질문", "일정", "가계", "돌봄"]) assert.ok(summary.includes(word), word);
+});
+
+test("대화 분석 상세: 한 번에 보내고, 누를 때마다 별도 확인 없이 바로 전송되며, 가린 내용은 결과 화면에 개수로 알린다", () => {
+  const line = CONSENT_DETAILS.find((l) => l.startsWith("대화 분석("));
+  assert.ok(line);
+  assert.match(line, /답장 추천·대화 주제 추천/);
+  assert.match(line, /Claude 로 한 번에 보내요/);
+  assert.match(line, /“대화 분석하기”를 누를 때마다 별도 확인 없이 바로 전송돼요/);
+  assert.match(line, /결과 화면에 개수로 알려 드려요\(예: 이름 3개·주소 1개 가림\)\.$/);
+  // 확인 카드 흐름은 없어졌으므로 옛 표현이 남아 있으면 안 된다
+  assert.doesNotMatch(all, /확인 카드|AI에 보내기/);
+  assert.match(CONSENT_DETAILS.find((l) => l.startsWith("AI 비서")), /주민번호·카드·계좌·비밀번호가 든 입력은 서버가 막아요/);
+});
+
+test("요약 두 번째 줄에 '별도 확인 없이 바로 AI로 전송' 이 있고, 패널 상시 안내도 같은 사실을 쓴다", () => {
+  assert.equal(CONSENT_SUMMARY[1], "켜면 “대화 분석하기”를 누를 때마다 별도 확인 없이 바로 AI로 전송돼요.");
+  assert.match(PANEL_NOTICE, /“대화 분석하기”를 누르면 개인정보를 가린 최근 대화가 바로 AI로 전달돼요/);
+  assert.match(PANEL_NOTICE, /약 10분/);
+  assert.doesNotMatch(PANEL_NOTICE, /확인 후|AI에 보내기/);
 });
 
 test("가려서 보낸다는 말은 대화 분석 줄에만 쓰고, 끄면 Claude 로는 나가지 않는다고 한정한다", () => {

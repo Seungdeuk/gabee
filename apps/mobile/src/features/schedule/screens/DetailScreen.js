@@ -8,6 +8,7 @@ import { colors, font, radius, spacing } from "@/theme";
 
 import ConfirmDialog from "../components/ConfirmDialog";
 import FormTag from "../components/FormTag";
+import WhoTag from "../components/WhoTag";
 import { KIND, KIND_COLOR, TOPIC_TEXT } from "../constants";
 import { ME_ID, members, topics } from "../mock";
 import { whoLabels } from "../model";
@@ -101,23 +102,32 @@ export default function DetailScreen() {
           <View style={styles.head}>
             <View style={styles.badges}>
               <FormTag kind={item.kind} />
-              {topic ? <Text style={[styles.topic, { color: TOPIC_TEXT[topic.color] }]}>{topic.name}</Text> : null}
+              {labels.map((label) => (
+                <WhoTag key={label} label={label} />
+              ))}
             </View>
-            <Text style={styles.title} accessibilityRole="header">
-              {labels.length > 0 ? <Text style={styles.who}>{` ${labels.join("·")} `}</Text> : null}
-              {labels.length > 0 ? " " : null}
-              {item.title}
-            </Text>
-            <Text style={styles.by}>{sharedBy ? `${creator}${subjectParticle(creator)} 공유했어요` : "내가 만들었어요"}</Text>
+            <View style={styles.titleRow}>
+              <Text style={styles.title} accessibilityRole="header">
+                {item.title}
+              </Text>
+              {topic ? (
+                <View style={[styles.topicTag, { backgroundColor: TOPIC_TEXT[topic.color] }]}>
+                  <Text style={styles.topicTagText}>{topic.name}</Text>
+                </View>
+              ) : null}
+            </View>
           </View>
 
-          <View style={styles.info}>
-            {rows.map(([label, content], i) => (
-              <View key={label} style={[styles.row, i > 0 && styles.rowBorder]}>
-                <Text style={styles.label}>{label}</Text>
-                <View style={styles.content2}>{content}</View>
-              </View>
-            ))}
+          <View style={styles.infoBlock}>
+            <Text style={styles.by}>{sharedBy ? `${creator}${subjectParticle(creator)} 공유했어요` : "내가 만들었어요"}</Text>
+            <View style={styles.info}>
+              {rows.map(([label, content], i) => (
+                <View key={label} style={[styles.row, i > 0 && styles.rowBorder]}>
+                  <Text style={styles.label}>{label}</Text>
+                  <View style={styles.content2}>{content}</View>
+                </View>
+              ))}
+            </View>
           </View>
 
           <View style={styles.status}>
@@ -152,7 +162,7 @@ export default function DetailScreen() {
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.background },
   content: { paddingBottom: spacing.xxl },
-  body: { paddingHorizontal: spacing.xxl, paddingTop: spacing.xl, gap: 18 },
+  body: { paddingHorizontal: spacing.xxl, paddingTop: spacing.xl, gap: 12 },
   top: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   back: { marginLeft: -spacing.md },
   acts: { flexDirection: "row", gap: 6 },
@@ -166,18 +176,13 @@ const styles = StyleSheet.create({
   },
   pillText: { fontSize: 14, fontWeight: "500", color: colors.text },
   delete: { color: colors.danger },
-  head: { gap: 8 },
-  badges: { flexDirection: "row", alignItems: "center", gap: 8 },
-  topic: { ...font.caption, fontWeight: "500" },
-  title: { ...font.page, color: colors.text },
-  who: {
-    ...font.caption,
-    fontWeight: "500",
-    color: colors.text,
-    backgroundColor: colors.surfaceStrong,
-    borderRadius: radius.pill,
-    overflow: "hidden",
-  },
+  head: { gap: 6 },
+  badges: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 6 },
+  titleRow: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 8 },
+  title: { ...font.page, flexShrink: 1, color: colors.text },
+  topicTag: { paddingHorizontal: 10, paddingVertical: 2, borderRadius: radius.pill },
+  topicTagText: { ...font.caption, lineHeight: 18, fontWeight: "500", color: colors.onDark, includeFontPadding: false },
+  infoBlock: { gap: 4 }, // "내가 만들었어요" 줄은 아래 정보 카드에 붙인다
   by: { ...font.caption, color: colors.textMuted },
   info: {
     paddingHorizontal: spacing.lg,
@@ -187,7 +192,7 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     borderRadius: radius.card,
   },
-  row: { flexDirection: "row", gap: 10, paddingVertical: 11 },
+  row: { flexDirection: "row", gap: 10, paddingVertical: 8 },
   rowBorder: { borderTopWidth: 1, borderTopColor: colors.border },
   label: { width: 78, fontSize: 14, fontWeight: "500", color: colors.textMuted, paddingTop: 2 },
   content2: { flex: 1 },
