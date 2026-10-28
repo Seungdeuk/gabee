@@ -12,7 +12,7 @@ import { addMinutes } from "./utils/time";
  * @typedef {Object} Topic
  * @property {string} id
  * @property {string} name
- * @property {"rose" | "amber"} color 제목 옆 글자색 (constants 의 TOPIC_TEXT 키)
+ * @property {"rose" | "amber" | "green" | "sky" | "purple"} color 제목 옆 글자색 (constants 의 TOPIC_TEXT 키)
  */
 
 /**

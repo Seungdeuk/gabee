@@ -14,7 +14,7 @@ RECIPIENT_WAITING = 1  # 대기
 RECIPIENT_ACCEPTED = 2  # 수락
 RECIPIENT_DECLINED = 3  # 어려움
 
-# events_topics.color (UI Kit 색이 정해지면 늘린다)
-TOPIC_COLORS = ("rose", "amber")
+# events_topics.color (schemas.TopicCreate.color 의 Literal 과 같은 목록)
+TOPIC_COLORS = ("rose", "amber", "green", "sky", "purple")
 DEFAULT_TOPIC_NAME = "경조사"  # 사람마다 처음 한 번 만들어 주는 기본 주제
 DEFAULT_TOPIC_COLOR = "rose"

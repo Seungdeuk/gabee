@@ -18438,7 +18438,10 @@
             "type": "string",
             "enum": [
               "rose",
-              "amber"
+              "amber",
+              "green",
+              "sky",
+              "purple"
             ],
             "title": "Color"
           }

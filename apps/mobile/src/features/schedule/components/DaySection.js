@@ -35,8 +35,8 @@ export default function DaySection({ label, items, onPressItem, onToggleItem }) 
 }
 
 const styles = StyleSheet.create({
-  section: { gap: spacing.sm },
-  head: { flexDirection: "row", justifyContent: "space-between", marginTop: 2 },
+  section: { gap: 2 },
+  head: { flexDirection: "row", justifyContent: "space-between" },
   label: { ...font.bodyStrong, fontWeight: "500", color: colors.textMuted },
   rows: { gap: spacing.sm },
   empty: { ...font.body, color: colors.textMuted },

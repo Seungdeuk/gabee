@@ -145,7 +145,7 @@ const styles = StyleSheet.create({
   send: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: radius.pill, backgroundColor: colors.peach },
   sendText: { fontSize: 14, fontWeight: "700", color: colors.text },
   title: { ...font.page, color: colors.text },
-  section: { gap: spacing.md },
+  section: { gap: 6 },
   head: { flexDirection: "row", alignItems: "baseline", gap: spacing.sm },
   heading: { ...font.title, color: colors.text },
   count: { ...font.bodyStrong, fontWeight: "500", color: colors.textMuted },

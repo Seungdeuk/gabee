@@ -23,7 +23,7 @@ export default function SectionHeader({ title, count, collapsed = false, onToggl
 }
 
 const styles = StyleSheet.create({
-  row: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", minHeight: 36 },
+  row: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", minHeight: 28 },
   title: { flexShrink: 1 },
   text: { ...font.section, color: colors.text },
   count: { ...font.bodyStrong, color: colors.textMuted },

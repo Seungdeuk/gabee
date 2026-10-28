@@ -129,7 +129,7 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
   },
   pillText: { fontSize: 14, fontWeight: "500", color: colors.text },
-  head: { gap: 6 },
+  head: { gap: 3 },
   title: { ...font.page, color: colors.text },
   by: { ...font.bodyStrong, fontWeight: "400", color: colors.textMuted },
   info: {
@@ -140,11 +140,11 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     borderRadius: radius.card,
   },
-  row: { flexDirection: "row", gap: 10, paddingVertical: 11 },
+  row: { flexDirection: "row", gap: 10, paddingVertical: 8 },
   rowBorder: { borderTopWidth: 1, borderTopColor: colors.border },
   label: { width: 62, fontSize: 14, fontWeight: "500", color: colors.textMuted, paddingTop: 2 },
   value: { flex: 1, fontSize: 16, color: colors.text },
-  section: { gap: spacing.md },
+  section: { gap: 6 },
   heading: { ...font.title, color: colors.text },
   together: { flexDirection: "row", alignItems: "center", gap: 8, paddingVertical: 12 },
   who: {

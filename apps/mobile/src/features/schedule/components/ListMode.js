@@ -119,7 +119,7 @@ function Rows({ items, today, past = false, onToggleItem, onPressItem }) {
 
 const styles = StyleSheet.create({
   wrap: { gap: spacing.xl },
-  section: { gap: spacing.md },
+  section: { gap: 6 },
   rows: { gap: spacing.md },
   row: { flexDirection: "row", alignItems: "center", gap: 10 },
   dateCol: { width: 44, alignItems: "center" },
