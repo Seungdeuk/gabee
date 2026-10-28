@@ -173,7 +173,14 @@ PUBLIC = {
     ("POST", "/family-group/auth/logout"): "Refresh Token 을 본문으로 보내 폐기",
     ("POST", "/family-group/auth/email/verify/confirm"): "메일로 받은 일회용 토큰으로 인증",
     ("POST", "/family-group/auth/email/verify/confirm-code"): "메일로 받은 일회용 코드로 인증",
-    ("POST", "/family-group/auth/password/reset/request"): "비밀번호 재설정 메일 요청(로그인 전)",
+    (
+        "POST",
+        "/family-group/auth/password/reset/request",
+    ): "비밀번호 재설정 메일 요청(아이디·이메일 일치 시에만 발송, 로그인 전)",
+    (
+        "POST",
+        "/family-group/auth/login-id/recover",
+    ): "아이디 찾기: 가입한 이메일로 아이디 안내 메일 요청(로그인 전)",
     ("POST", "/family-group/auth/password/reset/confirm"): "재설정 토큰으로 새 비밀번호 설정",
     ("POST", "/family-group/auth/password/reset/confirm-code"): "재설정 코드로 새 비밀번호 설정",
     ("POST", "/family-group/auth/social/{provider}"): "소셜 로그인(공급자 토큰으로 인증)",

@@ -181,7 +181,7 @@ def test_without_mail_configuration_nothing_is_reported_as_sent(client):
     headers = bearer_for(client)
     for r in (
         client.post(VERIFY_REQ, headers=headers),
-        client.post(RESET_REQ, json={"email": "jimin@example.com"}),
+        client.post(RESET_REQ, json={"login_id": "jimin_kim", "email": "jimin@example.com"}),
     ):
         assert r.status_code == 503 and r.json()["code"] == "mail_not_configured"
     with SessionLocal() as db:
@@ -406,8 +406,8 @@ def test_unverified_members_can_create_a_family_by_default(client, outbox):
 
 
 # ---------- 비밀번호 재설정 ----------
-def request_reset(client, email="jimin@example.com"):
-    return client.post(RESET_REQ, json={"email": email})
+def request_reset(client, email="jimin@example.com", login_id="jimin_kim"):
+    return client.post(RESET_REQ, json={"login_id": login_id, "email": email})
 
 
 def test_reset_flow_changes_the_password_and_logs_out_every_session(client, outbox):
@@ -624,7 +624,7 @@ def test_reset_proves_mailbox_ownership_so_a_squatted_account_can_be_reclaimed(c
     register(client, "attacker_id", "victim@example.com")  # 공격자가 비밀번호 PASSWORD 로 선점
     attacker_session = login(client, "attacker_id").json()
     assert db_user("attacker_id").email_verified_at is None
-    request_reset(client, "victim@example.com")  # 메일은 피해자에게만 간다
+    request_reset(client, "victim@example.com", "attacker_id")  # 메일은 피해자에게만 간다
     assert outbox.mails[-1].to == "victim@example.com"
     client.post(RESET_CONFIRM, json={"token": outbox.last_token(), "new_password": NEW_PASSWORD})
     assert login(client, "attacker_id", PASSWORD).status_code == 401  # 공격자의 비밀번호 무효
@@ -677,4 +677,7 @@ def test_anonymous_and_unknown_emails_get_no_reset_mail(client, outbox):
     signup(client, "익명")
     assert request_reset(client, "anyone@example.com").status_code == 204
     assert outbox.mails == []
-    assert client.post(RESET_REQ, json={"email": "not-an-email"}).status_code == 400
+    assert (
+        client.post(RESET_REQ, json={"login_id": "jimin_kim", "email": "not-an-email"}).status_code
+        == 400
+    )

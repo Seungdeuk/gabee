@@ -77,6 +77,9 @@ export default function LoginScreen() {
         <Text style={styles.link} onPress={() => router.push("/forgot-password")} accessibilityRole="link">
           비밀번호를 잊으셨나요?
         </Text>
+        <Text style={styles.link} onPress={() => router.push("/find-id")} accessibilityRole="link">
+          아이디 찾기
+        </Text>
         <Text style={styles.link} onPress={() => router.replace("/signup")} accessibilityRole="link">
           회원가입
         </Text>

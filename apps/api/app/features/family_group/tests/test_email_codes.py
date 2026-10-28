@@ -46,8 +46,10 @@ def wrong(code: str) -> str:
     return "000000" if code != "000000" else "111111"
 
 
-def reset_with(client, email, code, password=NEW_PASSWORD):
-    return client.post(RESET_CODE, json={"email": email, "code": code, "new_password": password})
+def reset_with(client, login_id, code, password=NEW_PASSWORD):
+    return client.post(
+        RESET_CODE, json={"login_id": login_id, "code": code, "new_password": password}
+    )
 
 
 # ---------- 이메일 인증 ----------
@@ -176,7 +178,7 @@ def test_no_pending_mail_means_expired(client, outbox):
 # ---------- 비밀번호 재설정 ----------
 def test_reset_mail_has_a_code_and_no_link(client, outbox):
     register(client)
-    client.post(RESET_REQ, json={"email": "jimin@example.com"})
+    client.post(RESET_REQ, json={"login_id": "jimin_kim", "email": "jimin@example.com"})
     mail = outbox.mails[-1]
     code = re.search(r"재설정 코드: (\d{6})\n", mail.body).group(1)
     assert "gabee://" not in mail.body and "token=" not in mail.body
@@ -187,39 +189,39 @@ def test_reset_mail_has_a_code_and_no_link(client, outbox):
 def test_reset_with_the_code_changes_the_password_and_ends_every_session(client, outbox):
     register(client)
     phone = login(client).json()
-    client.post(RESET_REQ, json={"email": "jimin@example.com"})
-    r = reset_with(client, "jimin@example.com", last_code(outbox))
+    client.post(RESET_REQ, json={"login_id": "jimin_kim", "email": "jimin@example.com"})
+    r = reset_with(client, "jimin_kim", last_code(outbox))
     assert r.status_code == 204
     assert login(client, password=PASSWORD).status_code == 401
     assert login(client, password=NEW_PASSWORD).status_code == 200
     assert client.post(REFRESH, json={"refresh_token": phone["refresh_token"]}).status_code == 401
-    again = reset_with(client, "jimin@example.com", last_code(outbox), "Another-pass-88")
+    again = reset_with(client, "jimin_kim", last_code(outbox), "Another-pass-88")
     assert again.status_code == 400  # 한 번 쓴 코드
 
 
-def test_reset_email_is_matched_case_insensitively(client, outbox):
+def test_reset_login_id_is_matched_case_insensitively(client, outbox):
     register(client)
-    client.post(RESET_REQ, json={"email": "jimin@example.com"})
-    assert reset_with(client, " Jimin@Example.com ", last_code(outbox)).status_code == 204
+    client.post(RESET_REQ, json={"login_id": "jimin_kim", "email": "jimin@example.com"})
+    assert reset_with(client, " Jimin_Kim ", last_code(outbox)).status_code == 204
 
 
 def test_reset_failures_look_the_same_whether_or_not_the_account_exists(client, outbox):
     register(client)
-    client.post(RESET_REQ, json={"email": "jimin@example.com"})
+    client.post(RESET_REQ, json={"login_id": "jimin_kim", "email": "jimin@example.com"})
     code = last_code(outbox)
-    unknown = reset_with(client, "nobody@example.com", code)
-    wrong_code = reset_with(client, "jimin@example.com", wrong(code))
+    unknown = reset_with(client, "nobody_x", code)
+    wrong_code = reset_with(client, "jimin_kim", wrong(code))
     assert unknown.status_code == wrong_code.status_code == 400
     assert unknown.json() == wrong_code.json() and unknown.json()["code"] == "reset_code_invalid"
 
 
 def test_reset_code_locks_after_too_many_wrong_tries_and_stays_uniform(client, outbox):
     register(client)
-    client.post(RESET_REQ, json={"email": "jimin@example.com"})
+    client.post(RESET_REQ, json={"login_id": "jimin_kim", "email": "jimin@example.com"})
     code = last_code(outbox)
     for _ in range(settings.code_max_attempts):
-        assert reset_with(client, "jimin@example.com", wrong(code)).status_code == 400
-    locked = reset_with(client, "jimin@example.com", code)
+        assert reset_with(client, "jimin_kim", wrong(code)).status_code == 400
+    locked = reset_with(client, "jimin_kim", code)
     assert locked.status_code == 400 and locked.json()["code"] == "reset_code_invalid"
     assert login(client, password=PASSWORD).status_code == 200  # 비밀번호는 그대로
     with SessionLocal() as db:
@@ -228,19 +230,19 @@ def test_reset_code_locks_after_too_many_wrong_tries_and_stays_uniform(client, o
 
 def test_weak_password_with_a_right_code_can_be_retried(client, outbox):
     register(client)
-    client.post(RESET_REQ, json={"email": "jimin@example.com"})
+    client.post(RESET_REQ, json={"login_id": "jimin_kim", "email": "jimin@example.com"})
     code = last_code(outbox)
-    weak = reset_with(client, "jimin@example.com", code, "short")
+    weak = reset_with(client, "jimin_kim", code, "short")
     assert weak.status_code == 400 and weak.json()["code"] == "weak_password"
-    assert reset_with(client, "jimin@example.com", code).status_code == 204
+    assert reset_with(client, "jimin_kim", code).status_code == 204
 
 
 def test_newer_reset_mail_invalidates_the_older_code(client, outbox):
     register(client)
-    client.post(RESET_REQ, json={"email": "jimin@example.com"})
+    client.post(RESET_REQ, json={"login_id": "jimin_kim", "email": "jimin@example.com"})
     first = last_code(outbox)
-    client.post(RESET_REQ, json={"email": "jimin@example.com"})
+    client.post(RESET_REQ, json={"login_id": "jimin_kim", "email": "jimin@example.com"})
     second = last_code(outbox)
     if first != second:
-        assert reset_with(client, "jimin@example.com", first).status_code == 400
-    assert reset_with(client, "jimin@example.com", second).status_code == 204
+        assert reset_with(client, "jimin_kim", first).status_code == 400
+    assert reset_with(client, "jimin_kim", second).status_code == 204

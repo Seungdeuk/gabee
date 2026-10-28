@@ -99,8 +99,8 @@ describe("모바일 API 클라이언트 ↔ 실제 서버", { skip }, () => {
   test("비밀번호 재설정: 메일 코드로 변경, 모든 세션 종료, 새 비밀번호로 로그인", async () => {
     const old = await sessionApi.login(form.loginId, form.password);
     api.setSession({ accessToken: old.access_token, refreshToken: old.refresh_token });
-    await auth.requestPasswordReset(form.email);
-    await auth.requestPasswordReset("nobody@example.com"); // 없는 주소도 같은 성공 응답
+    await auth.requestPasswordReset(form.loginId, form.email);
+    await auth.requestPasswordReset(form.loginId, "nobody@example.com"); // 아이디·이메일이 안 맞아도 같은 성공 응답
     const token = lastMailToken("reset-password");
     assert.ok(token);
     await assert.rejects(auth.confirmPasswordReset(token, "short"), { code: "weak_password" });
@@ -159,14 +159,14 @@ describe("6자리 인증번호 ↔ 실제 서버", { skip }, () => {
     assert.deepEqual(await auth.confirmEmailCode(code), { email_verified: true });
     assert.equal((await sessionApi.getMe()).email_verified, true);
 
-    // 재설정: 이메일 + 6자리 코드, 성공하면 이전 세션이 끝난다
-    await auth.requestPasswordReset(form.email);
+    // 재설정: 아이디 + 6자리 코드, 성공하면 이전 세션이 끝난다
+    await auth.requestPasswordReset(form.loginId, form.email);
     await new Promise((r) => setTimeout(r, 500)); // 메일은 응답 뒤 백그라운드로 나간다
     const resetCode = lastMailCode();
-    await assert.rejects(auth.confirmPasswordResetCode(form.email, resetCode === "000000" ? "111111" : "000000", "Brand-new-pass-77"), {
+    await assert.rejects(auth.confirmPasswordResetCode(form.loginId, resetCode === "000000" ? "111111" : "000000", "Brand-new-pass-77"), {
       code: "reset_code_invalid",
     });
-    await auth.confirmPasswordResetCode(form.email, resetCode, "Brand-new-pass-77");
+    await auth.confirmPasswordResetCode(form.loginId, resetCode, "Brand-new-pass-77");
     await assert.rejects(sessionApi.login(form.loginId, form.password), { code: "invalid_credentials" });
     assert.ok((await sessionApi.login(form.loginId, "Brand-new-pass-77")).access_token);
   });

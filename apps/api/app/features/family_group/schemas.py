@@ -87,8 +87,13 @@ class PasswordResetConfirmIn(BaseModel):
     new_password: str = Field(max_length=256)
 
 
+class PasswordResetRequestIn(BaseModel):
+    login_id: str = Field(max_length=64)
+    email: str = Field(max_length=320)  # 아이디와 이메일이 같은 계정과 일치할 때만 메일을 보낸다
+
+
 class PasswordResetCodeConfirmIn(BaseModel):
-    email: str = Field(max_length=320)
+    login_id: str = Field(max_length=64)
     code: str = Field(pattern=r"^\d{6}$")
     new_password: str = Field(max_length=256)
 

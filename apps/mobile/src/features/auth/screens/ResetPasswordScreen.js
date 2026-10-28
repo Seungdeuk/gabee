@@ -13,19 +13,19 @@ import CodeBoxes from "../components/CodeBoxes";
 import Notice from "../components/Notice";
 import { errorMessage } from "../messages";
 import { extractToken, scrubTokenFromBrowserUrl } from "../tokenLink";
-import { checkEmail, checkPassword } from "../validation";
+import { checkLoginId, checkPassword } from "../validation";
 
 const EXPIRED_CODES = ["reset_token_expired", "reset_token_used", "reset_token_invalid"];
 
 /**
  * 새 비밀번호 설정. 메일 링크(gabee://reset-password?token=...)로 열면 토큰이 이미 들어 있고(주소에서는 바로 지운다),
- * 아니면 메일의 6자리 재설정 코드와 이메일을 입력한다. 성공하면 모든 기기가 로그아웃되므로 로그인 화면으로 보낸다.
+ * 아니면 메일의 6자리 재설정 코드와 아이디를 입력한다. 성공하면 모든 기기가 로그아웃되므로 로그인 화면으로 보낸다.
  */
 export default function ResetPasswordScreen() {
   const router = useRouter();
   const params = useLocalSearchParams();
   const [linkToken] = useState(() => extractToken(typeof params.token === "string" ? params.token : ""));
-  const [email, setEmail] = useState(() => (typeof params.email === "string" ? params.email : ""));
+  const [loginId, setLoginId] = useState(() => (typeof params.loginId === "string" ? params.loginId : ""));
   const [code, setCode] = useState("");
   const [password, setPassword] = useState("");
   const [password2, setPassword2] = useState("");
@@ -47,9 +47,9 @@ export default function ResetPasswordScreen() {
   const submit = async () => {
     const digits = parseCode(code);
     const next = {
-      email: linkToken ? "" : checkEmail(email),
+      loginId: linkToken ? "" : checkLoginId(loginId),
       code: linkToken || digits ? "" : "메일에 있는 재설정 코드 6자리를 입력해 주세요",
-      password: checkPassword(password),
+      password: checkPassword(password, loginId),
       password2: password === password2 ? "" : "비밀번호가 서로 달라요",
     };
     setErrors(next);
@@ -58,7 +58,7 @@ export default function ResetPasswordScreen() {
     setBusy(true);
     try {
       if (linkToken) await confirmPasswordReset(linkToken, password);
-      else await confirmPasswordResetCode(email, digits, password);
+      else await confirmPasswordResetCode(loginId, digits, password);
       setDone(true);
     } catch (e) {
       if (EXPIRED_CODES.includes(e.code) || e.code === "reset_code_invalid") setExpired(true);
@@ -85,15 +85,15 @@ export default function ResetPasswordScreen() {
       {linkToken ? null : (
         <>
           <Field
-            label="이메일"
-            value={email}
-            onChangeText={setEmail}
-            keyboardType="email-address"
+            label="아이디"
+            value={loginId}
+            onChangeText={setLoginId}
             autoCapitalize="none"
             autoCorrect={false}
-            autoComplete="email"
-            error={errors.email}
-            testID="reset-email"
+            autoComplete="username"
+            textContentType="username"
+            error={errors.loginId}
+            testID="reset-login-id"
           />
           <View style={styles.codeBlock}>
             <Text style={styles.codeLabel}>재설정 코드 6자리</Text>
