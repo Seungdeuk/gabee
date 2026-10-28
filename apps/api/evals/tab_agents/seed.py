@@ -107,3 +107,44 @@ def seed_other_family(client: TestClient, other: dict) -> None:
         headers=other,
     )
     assert r.status_code == 201, r.text
+
+
+def seed_write_targets(client: TestClient, a: dict, b: dict, child: dict | None = None) -> None:
+    """쓰기 제안(수정·삭제·송금 완료·용돈 승인·기록 취소) 사례용 데이터. 기존 사례가 쓰는 달·날짜와 겹치지 않게 따로 둔다.
+    2026-06: 지민의 미정산 지출(치과 진료 45,000원)과 수진의 지출(수진 간식 3,000원).
+    2026-07: 지민이 낸 여행 숙소 100,000원을 정산하기까지 마친 상태(수정·삭제 불가, 송금 목록에 수진 → 지민이 생긴다).
+    2026-10-18: 지민의 영양제 기록, 수진의 산책 기록, 수진의 저녁 식단 기록. child 헤더를 주면 민수의 용돈 요청 5,000원도 만든다."""
+
+    def post(path: str, body: dict, headers: dict) -> dict:
+        r = client.post(path, json=body, headers=headers)
+        assert r.status_code in (200, 201), r.text
+        return r.json()
+
+    post("/billing/expenses", {"title": "치과 진료", "amount": 45000, "date": "2026-06-15"}, a)
+    post("/billing/expenses", {"title": "수진 간식", "amount": 3000, "date": "2026-06-16"}, b)
+    trip = post(
+        "/billing/expenses", {"title": "여행 숙소", "amount": 100000, "date": "2026-07-10"}, a
+    )
+    post(
+        "/billing/settlement/tag",
+        {"month": "2026-07", "expense_ids": [trip["id"]], "tag": "all"},
+        a,
+    )
+    daily = client.get("/care/daily", params={"date": "2026-10-18"}, headers=a).json()
+    by_name = {i["name"]: i["id"] for i in daily["items"]}
+    for name, body, headers in (
+        ("영양제", {"done": True, "date": "2026-10-18"}, a),
+        ("산책", {"number": 20, "date": "2026-10-18"}, b),
+    ):
+        r = client.put(f"/care/items/{by_name[name]}/entry", json=body, headers=headers)
+        assert r.status_code == 200, r.text
+    r = client.put(
+        "/care/meal-log",
+        json={"date": "2026-10-18", "meal": "dinner", "menu": "김치찌개"},
+        headers=b,
+    )
+    assert r.status_code == 200, r.text
+    if child is not None:
+        members = client.get("/family-group/groups/me", headers=a).json()["members"]
+        child_id = next(m["id"] for m in members if m["name"] == "민수")
+        post(f"/billing/allowances/{child_id}/requests", {"amount": 5000, "memo": "학용품"}, child)

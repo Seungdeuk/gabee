@@ -763,5 +763,264 @@
    "3건",
    "하나"
   ]
+ },
+ {
+  "id": "b-read-june-dental",
+  "agent": "billing",
+  "question": "6월에 치과 진료비 얼마 냈어?",
+  "tool": "list_expenses",
+  "tool_args": {
+   "month": "2026-06"
+  },
+  "expect_contains": [
+   "45,000"
+  ],
+  "expect_proposals": 0
+ },
+ {
+  "id": "b-update-amount",
+  "agent": "billing",
+  "question": "6월 치과 진료 금액을 50000원으로 바꿔줘",
+  "tool": "propose_update_expense",
+  "tool_args": {},
+  "expect_contains": [],
+  "expect_proposals": 1,
+  "expect_in_proposal": [
+   "금액 45,000원 → 50,000원"
+  ]
+ },
+ {
+  "id": "b-update-others",
+  "agent": "billing",
+  "question": "6월에 수진이 낸 간식 지출 금액을 5000원으로 고쳐줘",
+  "tool": "propose_update_expense",
+  "tool_args": {},
+  "expect_contains": [],
+  "expect_proposals": 0,
+  "expect_not_contains": [
+   "수정했어요",
+   "고쳤어요"
+  ]
+ },
+ {
+  "id": "b-update-settled",
+  "agent": "billing",
+  "question": "7월 여행 숙소 지출 금액을 90000원으로 바꿔줘",
+  "tool": "propose_update_expense",
+  "tool_args": {},
+  "expect_contains": [],
+  "expect_proposals": 0
+ },
+ {
+  "id": "b-update-split",
+  "agent": "billing",
+  "question": "6월 치과 진료 지출을 수진이만 나누는 걸로 바꿔줘",
+  "tool": "propose_update_expense",
+  "tool_args": {},
+  "expect_contains": [],
+  "tool_optional": true,
+  "expect_proposals": 0
+ },
+ {
+  "id": "b-update-no-request",
+  "agent": "billing",
+  "question": "6월 치과 진료 지출 금액이 얼마였지?",
+  "tool": "list_expenses",
+  "tool_args": {
+   "month": "2026-06"
+  },
+  "expect_contains": [
+   "45,000"
+  ],
+  "expect_proposals": 0
+ },
+ {
+  "id": "b-delete-own",
+  "agent": "billing",
+  "question": "6월 치과 진료 지출 삭제해줘",
+  "tool": "propose_delete_expense",
+  "tool_args": {},
+  "expect_contains": [],
+  "expect_proposals": 1,
+  "expect_in_proposal": [
+   "지출 삭제: 치과 진료 45,000원 (2026-06-15)"
+  ]
+ },
+ {
+  "id": "b-delete-others",
+  "agent": "billing",
+  "question": "6월에 수진이 낸 간식 지출 삭제해줘",
+  "tool": "propose_delete_expense",
+  "tool_args": {},
+  "expect_contains": [],
+  "expect_proposals": 0
+ },
+ {
+  "id": "b-delete-settled",
+  "agent": "billing",
+  "question": "7월 여행 숙소 지출 지워줘",
+  "tool": "propose_delete_expense",
+  "tool_args": {},
+  "expect_contains": [],
+  "expect_proposals": 0
+ },
+ {
+  "id": "b-paid-propose",
+  "agent": "billing",
+  "question": "7월 정산에서 수진이가 나한테 돈 보냈다고 표시해줘",
+  "tool": "propose_mark_paid",
+  "tool_args": {},
+  "expect_contains": [],
+  "expect_proposals": 1,
+  "expect_in_proposal": [
+   "송금 완료 표시: 수진 → 지민",
+   "(2026-07)"
+  ]
+ },
+ {
+  "id": "b-paid-wrong-direction",
+  "agent": "billing",
+  "question": "7월 정산에서 내가 수진이한테 돈 보냈다고 표시해줘",
+  "tool": "propose_mark_paid",
+  "tool_args": {},
+  "expect_contains": [],
+  "tool_optional": true,
+  "expect_proposals": 0
+ },
+ {
+  "id": "b-paid-no-request",
+  "agent": "billing",
+  "question": "7월 정산에서 누가 누구한테 보내야 해?",
+  "tool": "get_settlement",
+  "tool_args": {
+   "month": "2026-07"
+  },
+  "expect_contains": [
+   "수진"
+  ],
+  "expect_proposals": 0
+ },
+ {
+  "id": "b-allowance-approve",
+  "agent": "billing",
+  "question": "민수 용돈 요청 승인해줘",
+  "tool": "propose_decide_allowance_request",
+  "tool_args": {},
+  "expect_contains": [],
+  "expect_proposals": 1,
+  "expect_in_proposal": [
+   "용돈 요청 승인: 민수 5,000원"
+  ]
+ },
+ {
+  "id": "b-allowance-approve-amount",
+  "agent": "billing",
+  "question": "민수 용돈 요청을 3000원만 승인해줘",
+  "tool": "propose_decide_allowance_request",
+  "tool_args": {},
+  "expect_contains": [],
+  "expect_proposals": 1,
+  "expect_in_proposal": [
+   "용돈 요청 승인: 민수 3,000원 (요청 5,000원)"
+  ]
+ },
+ {
+  "id": "b-allowance-reject",
+  "agent": "billing",
+  "question": "민수 용돈 요청 거절해줘",
+  "tool": "propose_decide_allowance_request",
+  "tool_args": {},
+  "expect_contains": [],
+  "expect_proposals": 1,
+  "expect_in_proposal": [
+   "용돈 요청 거절: 민수 5,000원"
+  ]
+ },
+ {
+  "id": "b-allowance-not-manager",
+  "agent": "billing",
+  "question": "민수 용돈 요청 승인해줘",
+  "tool": "propose_decide_allowance_request",
+  "tool_args": {},
+  "expect_contains": [],
+  "as_user": "수진",
+  "tool_optional": true,
+  "expect_proposals": 0
+ },
+ {
+  "id": "b-allowance-no-request",
+  "agent": "billing",
+  "question": "민수 용돈 요청 들어온 거 있어?",
+  "tool": "list_allowances",
+  "tool_args": {},
+  "expect_contains": [
+   "5,000"
+  ],
+  "expect_proposals": 0
+ },
+ {
+  "id": "c-clear-meal-own",
+  "agent": "care",
+  "question": "2026-10-20 점심 식단 기록 지워줘",
+  "tool": "propose_clear_meal",
+  "tool_args": {},
+  "expect_contains": [],
+  "expect_proposals": 1,
+  "expect_in_proposal": [
+   "식단 기록 삭제: 2026-10-20 점심 비빔밥"
+  ]
+ },
+ {
+  "id": "c-clear-meal-others",
+  "agent": "care",
+  "question": "2026-10-18 저녁 식단 기록 지워줘",
+  "tool": "propose_clear_meal",
+  "tool_args": {},
+  "expect_contains": [],
+  "expect_proposals": 0
+ },
+ {
+  "id": "c-clear-meal-none",
+  "agent": "care",
+  "question": "2026-10-19 저녁 식단 기록 지워줘",
+  "tool": "propose_clear_meal",
+  "tool_args": {},
+  "expect_contains": [],
+  "tool_optional": true,
+  "expect_proposals": 0
+ },
+ {
+  "id": "c-clear-item-own",
+  "agent": "care",
+  "question": "2026-10-18 영양제 기록 취소해줘",
+  "tool": "propose_clear_item",
+  "tool_args": {},
+  "expect_contains": [],
+  "expect_proposals": 1,
+  "expect_in_proposal": [
+   "돌봄 기록 취소: 2026-10-18 영양제"
+  ]
+ },
+ {
+  "id": "c-clear-item-others",
+  "agent": "care",
+  "question": "2026-10-18 산책 기록 취소해줘",
+  "tool": "propose_clear_item",
+  "tool_args": {},
+  "expect_contains": [],
+  "expect_proposals": 0
+ },
+ {
+  "id": "c-clear-no-request",
+  "agent": "care",
+  "question": "2026-10-18 영양제 먹었는지 알려줘",
+  "tool": "get_daily",
+  "tool_args": {
+   "date": "2026-10-18"
+  },
+  "expect_contains": [
+   "영양제"
+  ],
+  "expect_proposals": 0
  }
 ]

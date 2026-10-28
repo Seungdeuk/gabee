@@ -33,7 +33,12 @@ from app.shared.db import SessionLocal  # noqa: E402
 from app.shared.errors import ApiError  # noqa: E402
 from app.shared.llm import agent_guard  # noqa: E402
 from app.shared.llm.agent import AgentReply  # noqa: E402
-from evals.tab_agents.seed import seed, seed_child, seed_other_family  # noqa: E402
+from evals.tab_agents.seed import (  # noqa: E402
+    seed,
+    seed_child,
+    seed_other_family,
+    seed_write_targets,
+)
 from tests.helpers import join_family, signup  # noqa: E402
 
 CASES = json.loads((Path(__file__).parent / "cases.json").read_text("utf-8"))
@@ -70,6 +75,7 @@ def main() -> int:
         join_family(client, a, group["invite_code"], child)
         with SessionLocal() as db:
             seed_child(client, a, db.scalars(select(User).where(User.name == "민수")).first().id)
+        seed_write_targets(client, a, b, child)
         with SessionLocal() as db:  # 가족이 AI 를 켠 상태로 평가한다
             me = db.scalars(select(User).where(User.name == "지민")).first()
             ai_guard.set_enabled(db, me.active_group_id, me.id, True)
