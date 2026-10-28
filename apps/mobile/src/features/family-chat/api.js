@@ -53,14 +53,6 @@ export async function askAssistantInRoom(question, history = []) {
 export const analyzeChat = (range) => apiFetch("/family-chat/ai/analysis", { method: "POST", body: rangeBody(range) });
 
 /**
- * AI 에 보내기 전 미리보기: 같은 범위를 가명화한 결과(가려진 개수·제외 메시지 수·보낼 줄)를 받는다. AI 를 부르지 않고 한도도 쓰지 않는다.
- * 서버 계약: POST /family-chat/ai/preview (별도 PR). 오류 400 too_few_messages / no_group, 401 등.
- * @param {{ limit?: number, afterId?: number }} [range] 분석·추천 요청과 같은 범위
- * @returns {Promise<{ message_count: number, masked: Record<string, number>, blocked_messages: number, lines: { id: number, speaker: string, text: string, blocked: boolean }[], ai_enabled: boolean }>}
- */
-export const previewAiRange = (range) => apiFetch("/family-chat/ai/preview", { method: "POST", body: rangeBody(range) });
-
-/**
  * 일정 후보를 EventCreate 본문으로 바꾼다. 날짜·시간이 없거나 올바르지 않으면 null(지어내지 않는다).
  * 날짜·시간은 기기의 현재 시간대로 해석해 UTC 시각으로 보낸다.
  * @param {{ title: string, date?: string | null, time?: string | null, place?: string | null }} candidate
