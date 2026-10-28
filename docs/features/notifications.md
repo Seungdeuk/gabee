@@ -26,8 +26,12 @@
 
 ## 앱
 
-(Task 5~6에서 갱신)
+- `features/notifications/`: `api.js`(목록·개수·읽음·전부 읽음), `kinds.js`(분류별 이름·아이콘·색과 알림을 눌렀을 때 이동 경로 `routeFor`), `format.js`(배지 글자·상대 시각·개수 실패 처리), `useUnread.js`(안 읽은 개수 훅, 못 읽으면 0), `screens/NotificationsScreen.js`, `components/NotificationRow.js`.
+- 홈(AI 채팅) 상단 종 아이콘과 숫자 배지(`AppHeader`의 `onBell`·`bellBadge`). 연결은 라우트 `app/(tabs)/chat.js`에서 한다(기능끼리 서로를 import 하지 않기 위해). 누르면 `/notifications` 화면이 열린다.
+- 알림 화면: 분류 칩(전체·일정·가계·돌봄·가족·기록), 안 읽은 알림은 굵은 제목과 점, 누르면 읽음 처리 후 이동(가입 요청 → `/family-requests`, 가입 승인 → `/family`, 그 외는 읽음만), "모두 읽음"(현재 분류만), "더 보기"로 다음 페이지, 빈 목록·불러오기 실패(다시 시도) 안내.
+- 개수는 홈 화면에 돌아올 때마다 다시 읽는다(폴링·폰 푸시 없음). 못 읽으면 배지만 숨긴다.
 
 ## 시험
 
-- 서버: `tests/test_notifications_model.py`, `tests/test_notifications_notify.py`, `app/features/notifications/tests/test_notifications_api.py`.
+- 앱: `tests/notifications.test.js`(API 경로, 분류·이동 규칙, 배지·시각 표시, 개수 실패 처리). 화면 렌더링과 실기기는 자동화하지 않았다.
+- 서버: `tests/test_notifications_model.py`, `app/features/family_group/tests/test_join_notifications.py`,, `tests/test_notifications_notify.py`, `app/features/notifications/tests/test_notifications_api.py`.
