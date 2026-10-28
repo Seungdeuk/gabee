@@ -283,6 +283,11 @@ def test_html_mail_embeds_the_mascot_and_keeps_a_plain_text_part(monkeypatch):
         image["Content-ID"] == f"<{mailer.MASCOT_CID}>"
         and image.get_payload(decode=True)[:4] == b"\x89PNG"
     )
+    # 첨부가 아니라 본문용(inline), 파일명 없음 — attachment/filename 이면 메일 앱이 첨부로 보여 주고 본문 이미지가 깨진다
+    assert image.get_content_disposition() == "inline" and image.get_filename() is None
+    # 이미지는 HTML 과 같은 multipart/related 안에 있어야 cid 가 연결된다
+    related = next(p for p in msg.walk() if p.get_content_type() == "multipart/related")
+    assert [p.get_content_type() for p in related.iter_parts()] == ["text/html", "image/png"]
 
 
 def test_plain_mail_has_no_html_or_image(monkeypatch):
