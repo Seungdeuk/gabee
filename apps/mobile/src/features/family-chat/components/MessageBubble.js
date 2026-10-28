@@ -24,14 +24,24 @@ const AVATAR = 36;
  * 검색 결과로 이동했을 때 그 메시지는 highlighted 로 잠깐 배경색을 입힌다.
  * linkBadges 가 있으면(이 메시지에서 일정·할 일로 등록됨) 글 아래에 작은 표시를 붙인다(표시만, 눌러도 아무 일 없다).
  * onActions 가 있으면(서버에 저장된 텍스트 메시지) 말풍선을 길게 눌러 메뉴(복사·고정)를 연다. 네이티브에서는 길게 누르기가 글자 선택과 겹치지 않도록 이 경우 글자 선택을 끈다(복사는 메뉴에서 한다).
- * @param {{ message: object, mine: boolean, showName: boolean, showTime?: boolean, unread?: number, photoUrl?: string | null, highlighted?: boolean, onRetry?: (clientId: string) => void, onDiscard?: (clientId: string) => void, onActions?: (message: object) => void, linkBadges?: { kind: "event" | "todo", label: string }[] }} props
+ * onSaveToRecord 가 있으면(가족 전체방의 사진) 전체 화면 사진 보기에 "가비 기록에 저장" 버튼이 붙고, 누르면 그 사진을 AI 비서의 가족 기록으로 올린다(결과 문구는 사진 보기에 보인다).
+ * @param {{ message: object, mine: boolean, showName: boolean, showTime?: boolean, unread?: number, photoUrl?: string | null, highlighted?: boolean, onRetry?: (clientId: string) => void, onDiscard?: (clientId: string) => void, onActions?: (message: object) => void, linkBadges?: { kind: "event" | "todo", label: string }[], onSaveToRecord?: (attachment: object) => Promise<{ ok: boolean, message: string }> }} props
  */
-export default function MessageBubble({ message, mine, showName, showTime = true, unread = 0, photoUrl, highlighted = false, onRetry, onDiscard, onActions, linkBadges }) {
+export default function MessageBubble({ message, mine, showName, showTime = true, unread = 0, photoUrl, highlighted = false, onRetry, onDiscard, onActions, linkBadges, onSaveToRecord }) {
   const failed = message.status === "failed";
   const sending = message.status === "sending";
   const attachment = message.attachment ?? null;
   const [viewing, setViewing] = useState(false);
+  const [record, setRecord] = useState({ saving: false, done: false, notice: "" }); // 가비 기록에 저장한 상태(이 사진 하나의 것)
   const size = attachment ? fitSize(attachment.width, attachment.height) : null;
+
+  /** "가비 기록에 저장"을 눌렀을 때: 저장 중이거나 이미 저장했으면 다시 올리지 않는다(같은 사진이 기록에 두 번 쌓이지 않게). */
+  const saveRecord = async () => {
+    if (!onSaveToRecord || record.saving || record.done) return;
+    setRecord({ saving: true, done: false, notice: "" });
+    const result = await onSaveToRecord(attachment);
+    setRecord({ saving: false, done: result.ok, notice: result.message });
+  };
 
   const selectable = bubbleSelectable({ canAct: Boolean(onActions), os: Platform.OS });
   const Box = onActions ? Pressable : View;
@@ -52,7 +62,15 @@ export default function MessageBubble({ message, mine, showName, showTime = true
           <Pressable onPress={() => setViewing(true)} accessibilityRole="imagebutton" accessibilityLabel="사진, 누르면 크게 봐요">
             <AuthImage path={attachment.thumb_url} style={[styles.photo, { width: size.width, aspectRatio: size.width / size.height }]} />
           </Pressable>
-          <PhotoViewer path={attachment.url} visible={viewing} onClose={() => setViewing(false)} />
+          <PhotoViewer
+            path={attachment.url}
+            visible={viewing}
+            onClose={() => setViewing(false)}
+            onSaveToRecord={onSaveToRecord ? saveRecord : undefined}
+            recordSaving={record.saving}
+            recordDone={record.done}
+            recordNotice={record.notice}
+          />
         </>
       ) : null}
       {message.text ? (

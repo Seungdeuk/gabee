@@ -84,6 +84,14 @@ export function scheduleEventBody(candidate) {
 }
 
 /**
+ * 채팅 사진을 AI 비서의 가족 기록으로 올린다(POST /ai-assistant/files, multipart 'file'). AI 비서 기능의 api 파일을 가져오지 않고
+ * 공통 래퍼로 계약대로 직접 호출한다. 서버는 받자마자 received 로 응답하고 읽기·가리기·분류·저장은 뒤에서 한다.
+ * @param {FormData} form 'file' 한 개를 담은 폼(웹은 Blob, 네이티브는 {uri, name, type})
+ * @returns {Promise<{ id: string, filename: string, status: string }>}
+ */
+export const uploadToAssistantRecord = (form) => apiFetch("/ai-assistant/files", { method: "POST", body: form });
+
+/**
  * 사용자가 확인한 일정 후보를 서버 일정으로 등록한다(POST /schedule/events, EventCreate).
  * 일정 기능의 api 파일을 가져오지 않고 공통 래퍼로 계약대로 직접 호출한다.
  * @param {{ title: string, date: string | null, time: string | null, place?: string | null }} candidate 날짜·시간이 모두 있어야 한다
