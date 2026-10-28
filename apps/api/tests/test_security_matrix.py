@@ -2709,24 +2709,3 @@ def test_zz_family_b_resources_are_intact_after_all_cross_attempts(api, world):
     assert any(x["child_id"] == s["child_id"] and x["balance"] == 5000 for x in allowances)
     waiting = api.get("/family-group/groups/me/join-requests", headers=h).json()
     assert any(r["id"] == s["join_request_id"] for r in waiting)
-
-
-_DEFECT_test_event_who_ids_must_be_family_members = "[낮음] 일정 생성의 who_ids(관련된 사람)가 같은 가족 구성원인지 검증하지 않아 다른 가족 사용자 id 도 201 로 저장된다(share_with·담당자·결제자·나눌 사람은 모두 400). 이름 등은 응답에 없어 직접 유출은 없지만 타 가족 id 를 심을 수 있다. 권장: schedule/service.py 에서 who_ids 도 _share_targets 와 같은 멤버십 검사."
-
-
-def test_event_who_ids_must_be_family_members(api, world):
-    r = api.post(
-        "/schedule/events",
-        json={"title": "타가족 연결", "start_date": "2030-01-01", "who_ids": [world.b.member.id]},
-        headers=world.a.owner.headers,
-    )
-    # 대조: 같은 가족 구성원 id 는 정상 저장된다
-    own = api.post(
-        "/schedule/events",
-        json={"title": "가족 연결", "start_date": "2030-01-01", "who_ids": [world.a.member.id]},
-        headers=world.a.owner.headers,
-    )
-    assert own.status_code == 201, own.text
-    known_defect(
-        r.status_code in (400, 403, 404, 422), _DEFECT_test_event_who_ids_must_be_family_members
-    )

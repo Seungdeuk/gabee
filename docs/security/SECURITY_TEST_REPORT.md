@@ -17,7 +17,7 @@
 
 ## 2. 결과 요약
 
-704개: 통과 689, xfail(결함·현황) 15, 건너뜀 0 (이전 609개에서 늘어난 이유: 격리 82항목마다 '리소스 주인 가족이 보내면 2xx' 대조 시험 82개 추가, 가족 없는 사용자 기대 표 시험·문서 격리(AI 켠 상태) 시험 등 추가, 위치 등 소수 정리. 중복 파라미터였던 1:1 방 시험 3개는 1개로 정리). `ruff check .` / `ruff format --check .` 통과.
+703개: 통과 689, xfail(결함·현황) 14, 건너뜀 0 (이전 609개에서 늘어난 이유: 격리 82항목마다 '리소스 주인 가족이 보내면 2xx' 대조 시험 82개 추가, 가족 없는 사용자 기대 표 시험·문서 격리(AI 켠 상태) 시험 등 추가, 위치 등 소수 정리. 중복 파라미터였던 1:1 방 시험 3개는 1개로 정리). `ruff check .` / `ruff format --check .` 통과.
 
 | 영역 | 시험 수 | 통과 | xfail | 건너뜀 |
 |---|---|---|---|---|
@@ -28,7 +28,7 @@
 | 5. 개인정보 전송 최소화 | 약 25 | 약 19 | 6 | 0 |
 | 6. 속도 제한(검색·고정·모음·미리보기·사진·로그인·초대 코드) | 7 | 7 | 0 | 0 |
 | 7. 로그에 개인정보 없음 | 2 | 2 | 0 | 0 |
-| 8. 응답 형식·오류·적대적 입력 | 약 45 | 약 38 | 7 | 0 |
+| 8. 응답 형식·오류·적대적 입력 | 약 44 | 약 38 | 6 | 0 |
 
 (영역별 수는 파라미터 묶음 기준 근사치. 합계는 pytest 출력 기준이다.)
 
@@ -65,10 +65,9 @@
 | 3 | 중간 | `GET /family-chat/messages`(after_id·around_id·before_id), `POST /family-chat/pins`(message_id), `POST /billing/expenses`(amount) 등 상한 없는 정수 | `test_known_integer_overflow_inputs_return_500` (xfail strict ×5). 2**63 이상 → DB 드라이버 OverflowError(SQLite)/DataError(PostgreSQL 은 미확인이나 같은 종류 오류가 예상) → 500. 본문 `NaN` 은 검증 오류 응답 직렬화 단계에서 500. 응답에 스택은 없음 | 해당 Field 에 `le` 지정, 검증 오류 핸들러에서 `input` 제거(8번과 같이) | family_chat, billing, shared/errors |
 | 4 | 중간(현황) | `POST /ai-assistant/chat` | `test_assistant_chat_masks_user_text_before_sending` (xfail, strict=False). 메인 채팅은 사용자 문장·앞 대화를 가리지 않고 전송(일정·탭 에이전트는 `mask_text` 적용) | `agent_guard.prepare` 와 같은 마스킹을 `ask_guarded` 앞에 적용 | ai_assistant |
 | 5 | 중간(설계) | 정산·돌봄 에이전트 도구 결과·시스템 프롬프트 | `test_tab_agent_tool_results_do_not_leak_raw_personal_data`, `test_tab_agent_does_not_send_real_member_names` (xfail strict=False). 코드 주석상 의도된 설계(`agent_guard.py`)이나 지출 제목에 적은 전화·이메일, 구성원 실명, 위치 좌표가 가공 없이 LLM 으로 나간다. 사용자 질문 문장은 가려짐(`test_tab_agent_question_text_is_masked` 통과) | 자유 입력 문자열에 `mask_text`, 이름은 별칭 | billing, care, shared/llm |
-| 6 | 낮음 | `POST /schedule/events` 의 `who_ids` | `test_event_who_ids_must_be_family_members` (xfail strict). 타 가족 사용자 id 도 201 로 저장(`share_with`·담당자·결제자·나눌 사람은 400). 이름은 응답에 없어 직접 유출은 없음 | `_share_targets` 와 같은 멤버십 검사 | schedule |
-| 7 | 낮음 | 모든 검증 오류(422) | `test_validation_errors_use_common_format` (xfail strict). 공통 `{code,message}` 가 아니라 FastAPI 기본 `{detail:[...]}`, 항목마다 입력값(`input`)이 되돌아옴. CLAUDE.md 의 "에러 응답은 공통 형식만"과 불일치 | `RequestValidationError` 핸들러 추가(입력값은 싣지 않기) | shared/errors |
-| 8 | 낮음(환경 의존) | CORS | `test_cors_does_not_allow_arbitrary_origins_by_default` (xfail strict=False). `cors_origins` 기본값 `*`. 인증이 쿠키가 아니라 헤더 토큰이라 위험은 낮다. 운영 `.env` 값은 미확인 | `.env.example` 에 `CORS_ORIGINS` 명시, 운영 값 확인 | shared/config, 배포 |
-| 9 | 낮음(문서) | `docs/contracts/permissions.md` | 코드와 어긋난 부분: "기존 인증 방식의 잔여 위험" 절(45~49행)이 "레이트 리밋·로그인 절차 없음, 토큰 만료 없음"으로 적혀 있으나 로그인 실패 제한·JWT·Refresh Token 이 있다(레거시 익명 토큰만 평문·무만료로 남음). `current_user(x_gyeot_token, db)` 시그니처(21행)도 오래됨. 용돈(부모/그룹 소유자), 할 일 삭제(만든 사람·관리자), 일정 삭제(본인), 정산 담당, AI 동의(관리자) 규칙은 문서에 없고 코드(시험)로만 확인됨 | 문서 갱신 | docs |
+| 6 | 낮음 | 모든 검증 오류(422) | `test_validation_errors_use_common_format` (xfail strict). 공통 `{code,message}` 가 아니라 FastAPI 기본 `{detail:[...]}`, 항목마다 입력값(`input`)이 되돌아옴. CLAUDE.md 의 "에러 응답은 공통 형식만"과 불일치 | `RequestValidationError` 핸들러 추가(입력값은 싣지 않기) | shared/errors |
+| 7 | 낮음(환경 의존) | CORS | `test_cors_does_not_allow_arbitrary_origins_by_default` (xfail strict=False). `cors_origins` 기본값 `*`. 인증이 쿠키가 아니라 헤더 토큰이라 위험은 낮다. 운영 `.env` 값은 미확인 | `.env.example` 에 `CORS_ORIGINS` 명시, 운영 값 확인 | shared/config, 배포 |
+| 8 | 낮음(문서) | `docs/contracts/permissions.md` | 코드와 어긋난 부분: "기존 인증 방식의 잔여 위험" 절(45~49행)이 "레이트 리밋·로그인 절차 없음, 토큰 만료 없음"으로 적혀 있으나 로그인 실패 제한·JWT·Refresh Token 이 있다(레거시 익명 토큰만 평문·무만료로 남음). `current_user(x_gyeot_token, db)` 시그니처(21행)도 오래됨. 용돈(부모/그룹 소유자), 할 일 삭제(만든 사람·관리자), 일정 삭제(본인), 정산 담당, AI 동의(관리자) 규칙은 문서에 없고 코드(시험)로만 확인됨 | 문서 갱신 | docs |
 
 > 임시 방어: 팀원이 결함 1·4 를 고치기 전까지 `DISABLED_AI_ROUTES`(경로 스위치)와 고위험 입력 사전 차단(주민·카드·계좌·비밀번호 400)을 둔다. 전화·이메일·이름·주소는 못 막는다 — [LLM_EGRESS_TEMP_GUARDS.md](LLM_EGRESS_TEMP_GUARDS.md).
 
@@ -125,4 +124,4 @@
 - 그룹 경로가 늘어(링크 3종 등) 개수 하드코딩 시험이 깨져 규칙 단언으로 바꿨다.
 - 로컬 모델(`local.py`)·이미지 설명(`caption.py`)이 main 에서 제거되어 외부 호출 허용 목록에서 뺐다. 병합으로 **새로 생긴 외부 호출 지점은 없다**.
 - 일정 에이전트가 민감정보(주민번호·카드·계좌) 문장을 외부로 보내지 않고 거절하도록 바뀌어, '가려서 전송' 시험을 '거절(400) + 전화·이메일 가림'으로 나눴다. 가림이 사라진 것이 아니라 강화된 것이다.
-- 새로 드러난 결함 없음. 결과: 689 통과, xfail 15, 건너뜀 0.
+- 새로 드러난 결함 없음. 결과: 689 통과, xfail 14, 건너뜀 0.

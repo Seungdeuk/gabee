@@ -3,7 +3,7 @@ import { apiFetch } from "@/shared/api/client";
 /**
  * 일정 서버 호출. 응답 모양은 docs/contracts/openapi.json 의 /schedule/* 를 따른다.
  * 화면이 쓰는 항목(ScheduleItem)과 서버 일정(Event)의 변환(toItem·toBody)도 여기서 한다. 변환은 가족 id 변환기(members.js 의 buildFamily)를 받는다.
- * @typedef {{ id: string, title: string, starts_at: string, kind: 1 | 2, who_ids: string[], place: string, start_date: string | null, start_time: string | null, end_time: string | null, memo: string, note: string, checked: boolean, created_by: string, origin_id: string | null, topic_id: string | null }} ServerEvent
+ * @typedef {{ id: string, title: string, starts_at: string, kind: 1 | 2, place: string, start_date: string | null, start_time: string | null, end_time: string | null, memo: string, note: string, checked: boolean, created_by: string, origin_id: string | null, topic_id: string | null }} ServerEvent
  * @typedef {{ id: string, name: string, color: string, created_at: string }} ServerTopic
  * @typedef {{ shared_by: string | null, shared_with: string[] }} Sharing
  * @typedef {ReturnType<import("./members").buildFamily>} Family
