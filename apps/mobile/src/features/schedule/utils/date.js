@@ -56,13 +56,13 @@ export function weekOf(key, mondayStart = true) {
 }
 
 /**
- * 달력 한 달 칸. 앞쪽 빈 칸은 null.
+ * 달력 한 달 칸(월요일 시작). 앞쪽 빈 칸은 null.
  * @param {number} year
  * @param {number} month 1~12
  * @returns {(string | null)[]} 7의 배수 길이
  */
 export function monthCells(year, month) {
-  const lead = new Date(year, month - 1, 1).getDay();
+  const lead = (new Date(year, month - 1, 1).getDay() + 6) % 7; // 월요일 시작
   const days = new Date(year, month, 0).getDate();
   const cells = Array.from({ length: lead }, () => null);
   for (let d = 1; d <= days; d += 1) cells.push(`${year}-${pad(month)}-${pad(d)}`);
