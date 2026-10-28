@@ -14,7 +14,7 @@ import hashlib
 import json
 import re
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, date, datetime, timedelta, timezone
 
 from sqlalchemy import select
@@ -300,12 +300,14 @@ def _stored(result: dict, response: llm.JsonResult) -> dict:
     return {**result, "model": response.model, "generated_at": datetime.now(UTC).isoformat()}
 
 
-def _restore(ctx: _Context, stored: dict, keys: tuple[str, ...]) -> dict:
+def _restore(
+    ctx: _Context, stored: dict, keys: tuple[str, ...], policy: Policy | None = None
+) -> dict:
     """캐시에 든 토큰 상태의 결과를 이 요청의 대응표로 복원한다(정책의 restore_kinds 만 원래 값, 나머지 토큰은 일반화 문구,
-    이 요청이 만들지 않은 위조·변형 토큰은 '(알 수 없는 항목)'). 복원된 값은 응답에만 쓰고 저장하지 않는다."""
-    restored = restore_json(
-        ctx.prep, {k: stored[k] for k in keys}, generalize_unknown=True, scrub=True
-    )
+    이 요청이 만들지 않은 위조·변형 토큰은 '(알 수 없는 항목)'). 복원된 값은 응답에만 쓰고 저장하지 않는다.
+    policy 를 주면 같은 대응표로 그 정책의 복원 범위만 적용한다(분석 한 번에 답장·주제까지 받아도 필드마다 정책을 따로 둔다)."""
+    prep = ctx.prep if policy is None else replace(ctx.prep, policy=policy)
+    restored = restore_json(prep, {k: stored[k] for k in keys}, generalize_unknown=True, scrub=True)
     return restored.value
 
 
@@ -443,15 +445,11 @@ def analysis(db: Session, user: User, group_id: str, body: RangeIn) -> AnalysisO
         shown = _restore(
             ctx,
             stored,
-            (
-                "summary",
-                "important_messages",
-                "schedule_candidates",
-                "todo_candidates",
-                "replies",
-                "topics",
-            ),
+            ("summary", "important_messages", "schedule_candidates", "todo_candidates"),
         )
+        # 답장·주제 추천은 입력창에 넣어 보내는 문장이라 따로 만들 때와 같이 이름만 복원한다(주소는 '(주소)'로 일반화).
+        # 분석 정책(주소 복원)을 그대로 쓰면 추천 문장에 주소 원문이 되살아난다.
+        shown.update(_restore(ctx, stored, ("replies", "topics"), policy=REPLY))
         for todo in shown[
             "todo_candidates"
         ]:  # 복원된 담당자가 이 가족 구성원이 아니면 담당자만 비운다(후보는 유지)
