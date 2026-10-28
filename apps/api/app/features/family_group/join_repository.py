@@ -71,6 +71,17 @@ def get_membership(db: Session, group_id: str, user_id: str) -> GroupMember | No
     return db.get(GroupMember, (group_id, user_id))
 
 
+def manager_ids(db: Session, group_id: str) -> list[str]:
+    """그룹의 관리자(owner/admin) id. 가입 요청 알림을 받을 사람."""
+    return list(
+        db.scalars(
+            select(GroupMember.user_id).where(
+                GroupMember.group_id == group_id, GroupMember.role.in_(("owner", "admin"))
+            )
+        )
+    )
+
+
 def add_member(db: Session, group_id: str, user_id: str) -> None:
     """항상 member 로 넣는다 — 권한(owner/admin)은 요청값으로 정해지지 않는다."""
     db.add(GroupMember(group_id=group_id, user_id=user_id, role="member"))
