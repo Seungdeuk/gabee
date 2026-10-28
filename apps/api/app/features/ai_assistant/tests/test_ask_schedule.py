@@ -40,7 +40,6 @@ def _register_data(**fields):
         "kind": 0,
         "place": "",
         "memo": "",
-        "who_ids": [],
         "share_ids": [],
         "date_ambiguous": False,
     }

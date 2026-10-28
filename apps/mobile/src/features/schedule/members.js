@@ -1,13 +1,14 @@
 import { relationText, shownName } from "../family-group/relations";
 
-// 앱 안의 가족 id 규칙: 나는 "me", 관계가 엄마·아빠인 사람은 "mom"·"dad"(부모님 칩·이름표가 이 id 로 동작한다),
+// 앱 안의 가족 id 규칙: 나는 "me", 관계가 엄마·아빠인 사람은 "mom"·"dad"(mock 과 같이하기가 이 id 로 동작한다),
 // 나머지는 서버 사용자 id 그대로. 같이(부탁) 등 아직 mock 인 기능과 id 가 맞도록 이 규칙을 유지한다.
 export const ME = "me";
 
 /**
  * 서버 가족 그룹(GET /family-group/groups/me)을 앱 구성원 목록과 id 변환기로 바꾼다.
  * 엄마·아빠 관계가 두 사람 이상이면 먼저 나온 사람만 "mom"·"dad" 로 두고 나머지는 사용자 id 를 쓴다.
- * @param {{ my_id?: string | null, members: { id: string, name: string, display_name?: string | null, family_relation?: string | null, family_relation_detail?: string | null }[] }} group
+ * 보이는 이름은 별명(group.members 의 nickname, getGroupWithNicknames 가 입힌다) → 관계(엄마·아빠…) → 표시 이름 순이다.
+ * @param {{ my_id?: string | null, members: { id: string, name: string, display_name?: string | null, family_relation?: string | null, family_relation_detail?: string | null, nickname?: string }[] }} group
  * @returns {{ meUserId: string, members: import("./model").Member[], toApp: (userId: string) => string | null, toUser: (appId: string) => string | null }}
  */
 export function buildFamily(group) {

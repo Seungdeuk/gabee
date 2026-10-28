@@ -31,7 +31,13 @@ def _ask(
     db, user_id, group_id, request, local_now, shown, omitted, scope, final, members, guarded=True
 ) -> chat.ChatResult:
     lines = [
-        chat.event_line(e.id, reader.to_local(e.starts_at), e.title, reader.time_text(e))
+        chat.event_line(
+            e.id,
+            reader.to_local(e.starts_at),
+            e.title,
+            reader.time_text(e),
+            getattr(e, "shared", False),
+        )
         for e in shown
     ]
     return chat.converse(

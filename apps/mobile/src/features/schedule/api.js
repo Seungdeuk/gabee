@@ -30,7 +30,8 @@ function dateOf(event) {
 }
 
 /**
- * 서버 일정 → 화면 항목. 서버가 내 줄만 돌려주므로 모두 내 일정이다. 공유 대상은 서버 목록에 없어 비워 두고, 상세가 getSharing 으로 채운다.
+ * 서버 일정 → 화면 항목. 서버가 내 줄만 돌려주므로 모두 내 일정이다. 공동 여부(shared)와 얽힌 사람(shared_ids)은 서버가 계산해 준다.
+ * 공유 대상(sharedWith)은 서버 목록에 없어 비워 두고, 상세·수정 화면이 getSharing 으로 채운다.
  * @param {ServerEvent} event
  * @param {Family} family
  * @returns {import("./model").ScheduleItem}
@@ -49,9 +50,10 @@ export function toItem(event, family) {
     allDay,
     place: event.place ?? "",
     memo: event.memo || event.note || "",
-    whoIds: event.who_ids.map(family.toApp).filter(Boolean),
     topicId: event.topic_id,
     sharedWith: [],
+    shared: event.shared,
+    sharedIds: (event.shared_ids ?? []).map(family.toApp).filter(Boolean),
     createdBy: family.toApp(event.created_by) ?? event.created_by,
     checked: event.checked,
   };
@@ -73,7 +75,6 @@ export function toBody(item, family, { create = false } = {}) {
     end_time: item.allDay ? ALL_DAY_END : item.startTime ? (item.endTime ?? null) : null,
     place: item.place ?? "",
     memo: item.memo ?? "",
-    who_ids: (item.whoIds ?? []).map(family.toUser).filter(Boolean),
     topic_id: item.topicId ?? null,
   };
   if (create) {
@@ -98,7 +99,6 @@ export function toPatchBody(patch, current, family) {
   if ("kind" in patch) body.kind = full.kind;
   if ("place" in patch) body.place = full.place;
   if ("memo" in patch) body.memo = full.memo;
-  if ("whoIds" in patch) body.who_ids = full.who_ids;
   if ("topicId" in patch) body.topic_id = full.topic_id;
   // 공유 대상 전체를 다시 정한다(원본 주인만. 빠진 사람의 복사본은 서버가 지운다).
   if ("sharedWith" in patch) body.share_with = (patch.sharedWith ?? []).map(family.toUser).filter(Boolean);

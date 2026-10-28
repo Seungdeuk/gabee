@@ -22,7 +22,6 @@ def _register_data(**fields):
         "kind": 0,
         "place": "",
         "memo": "",
-        "who_ids": [],
         "share_ids": [],
         "date_ambiguous": False,
     }
@@ -92,20 +91,12 @@ def test_registers_right_away_without_asking(client, setup, fake):
     assert len(saved) == 1 and saved[0]["source"] == "chat" and saved[0]["kind"] == 2
 
 
-def test_title_is_kept_and_who_only_when_given(client, setup, fake):
+def test_title_is_kept_as_said(client, setup, fake):
     a, _, _, _ = setup
     fake.data = _register_data(title="엄마랑 병원", date=_tomorrow(), kind=1)
     _say(client, a, "엄마랑 병원 등록해줘 내일")
     saved = _events(client, a)[0]
-    assert saved["title"] == "엄마랑 병원" and saved["who_ids"] == []
-
-
-def test_explicit_who_is_saved_and_shown(client, setup, fake):
-    a, _, _, other = setup
-    fake.data = _register_data(title="치과", date=_tomorrow(), kind=1, who_ids=[other, "zzz"])
-    card = _say(client, a, "치과 내일, 누구는 수진").json()["cards"][0]
-    assert card["data"]["who"] == ["수진"]  # 구성원이 아닌 id 는 버려진다
-    assert _events(client, a)[0]["who_ids"] == [other]
+    assert saved["title"] == "엄마랑 병원" and "who_ids" not in saved
 
 
 def test_start_time_alone_becomes_one_hour_and_unknown_kind_is_todo(client, setup, fake):

@@ -20,7 +20,6 @@ class EventCreate(BaseModel):
     source: Literal["manual", "chat", "photo", "request"] = "manual"
     kind: Literal[1, 2] = 1  # 1 약속 · 2 할 일
     place: str = Field(default="", max_length=200)
-    who_ids: list[str] = Field(default_factory=list, max_length=20)  # 관련된 사람
     share_with: list[str] = Field(default_factory=list, max_length=20)
     topic_id: str | None = None  # 내 주제. 공유 복사본에는 붙지 않는다(받는 사람이 직접 붙인다)
     suggestion_id: str | None = None  # 추천에서 등록할 때 그 제안의 id(내 대기 제안만, 아니면 400)
@@ -44,7 +43,6 @@ class EventUpdate(BaseModel):
     kind: Literal[1, 2] | None = None
     place: str | None = Field(default=None, max_length=200)
     memo: str | None = None
-    who_ids: list[str] | None = Field(default=None, max_length=20)
     topic_id: str | None = None  # null 로 보내면 주제를 뗀다
     share_with: list[str] | None = Field(default=None, max_length=20)
 
@@ -59,7 +57,6 @@ class EventOut(BaseModel):
     created_by: str
     user_id: str | None
     kind: int
-    who_ids: list[str]
     place: str
     start_date: date | None
     start_time: time | None
@@ -69,6 +66,9 @@ class EventOut(BaseModel):
     origin_id: str | None
     topic_id: str | None
     edited_at: datetime | None
+    # 공동 정보(저장하지 않고 계산): 나와 얽힌 사람(공유한 사람·받은 사람·부탁한 사람, 나 제외)과 공동 일정인가
+    shared_ids: list[str] = Field(default_factory=list)
+    shared: bool = False
 
 
 class SharingOut(BaseModel):

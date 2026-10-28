@@ -120,13 +120,12 @@ def test_new_fields_and_starts_at_follow_start_date(client, family):
             "end_time": "11:30:00",
             "kind": 2,
             "place": "마트",
-            "who_ids": ["u1", "u1"],
             "memo": "우유",
         },
         headers=a,
     ).json()
     assert e["title"] == "장보기" and e["kind"] == 2 and e["place"] == "마트"
-    assert e["who_ids"] == ["u1"] and e["memo"] == "우유" and e["note"] == "우유"
+    assert e["memo"] == "우유" and e["note"] == "우유"
     assert (e["start_date"], e["start_time"], e["end_time"]) == (
         "2030-01-05",
         "10:00:00",
@@ -215,12 +214,11 @@ def test_update_changes_values_and_keeps_old_columns_in_sync(client, family):
         place="시장",
         memo="우유",
         kind=2,
-        who_ids=["u1", "u1"],
     )
     assert r.status_code == 200, r.text
     out = r.json()
     assert out["title"] == "시장 보기" and out["place"] == "시장" and out["kind"] == 2
-    assert out["memo"] == "우유" and out["note"] == "우유" and out["who_ids"] == ["u1"]
+    assert out["memo"] == "우유" and out["note"] == "우유"
     assert (out["start_time"], out["end_time"]) == ("11:00:00", "12:30:00")
     assert out["starts_at"].startswith("2030-01-05T02:00:00")  # 한국 시간 11시 = UTC 2시
     assert out["edited_at"] is not None
@@ -575,3 +573,43 @@ def test_update_share_with_rejects_non_member_and_deleted_original(client, famil
     assert r.status_code == 400 and r.json()["code"] == "invalid_share_target"
     client.delete(f"/schedule/events/{e['id']}", headers=a)
     assert _patch(client, a, e["id"], share_with=[_me(client, b)]).status_code == 404
+
+
+def _mine(client, headers):
+    return {x["title"]: x for x in client.get("/schedule/events", headers=headers).json()}
+
+
+def test_events_report_shared_and_who_is_involved(client, family):
+    a, b, group = family
+    c = _third(client, a, group)
+    a_id, b_id, c_id = _me(client, a), _me(client, b), _me(client, c)
+    _new(client, a, title="혼자")
+    _new(client, a, title="같이", share_with=[b_id, c_id])
+    mine = _mine(client, a)
+    assert mine["혼자"]["shared"] is False and mine["혼자"]["shared_ids"] == []
+    assert mine["같이"]["shared"] is True and mine["같이"]["shared_ids"] == [b_id, c_id]
+    got = _mine(client, b)["같이"]  # 받은 복사본: 보낸 사람과 같이 받은 사람(나 제외)
+    assert got["shared"] is True and got["shared_ids"] == [a_id, c_id]
+
+
+def test_shared_follows_reshare_and_ignores_receiver_deleting(client, family):
+    a, b, _ = family
+    b_id = _me(client, b)
+    e = _new(client, a, title="같이", share_with=[b_id])
+    copy = _mine(client, b)["같이"]
+    client.delete(
+        f"/schedule/events/{copy['id']}", headers=b
+    )  # 받은 사람이 지워도 공유 관계는 남는다
+    assert _mine(client, a)["같이"]["shared_ids"] == [b_id]
+    assert _patch(client, a, e["id"], share_with=[]).json()["shared"] is False
+    assert _mine(client, a)["같이"]["shared_ids"] == []  # 공유에서 빼면 다시 나 혼자
+
+
+def test_create_and_patch_responses_carry_shared(client, family):
+    a, b, _ = family
+    b_id = _me(client, b)
+    created = _new(client, a, share_with=[b_id])
+    assert created["shared"] is True and created["shared_ids"] == [b_id]
+    alone = _new(client, a, title="혼자")
+    assert alone["shared"] is False
+    assert _patch(client, a, alone["id"], share_with=[b_id]).json()["shared"] is True

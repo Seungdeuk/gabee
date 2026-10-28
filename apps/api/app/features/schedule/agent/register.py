@@ -66,7 +66,6 @@ def clean_fields(raw, member_ids: set[str]) -> dict:
         "kind": kind if kind in (1, 2) and not isinstance(kind, bool) else 0,
         "place": _text(raw.get("place"), PLACE_MAX),
         "memo": _text(raw.get("memo"), MEMO_MAX),
-        "who_ids": _ids(raw.get("who_ids"), member_ids),
         "share_ids": _ids(raw.get("share_ids"), member_ids),
         "date_ambiguous": raw.get("date_ambiguous") is True,
     }
@@ -87,7 +86,6 @@ def merge(draft: Draft | None, fields: dict) -> Draft:
         kind=pick("kind"),
         place=pick("place"),
         memo=pick("memo"),
-        who_ids=pick("who_ids"),
         share_ids=pick("share_ids"),
         asks=base.asks,
     )
@@ -129,7 +127,6 @@ def normalize(draft: Draft, member_ids: set[str], me: str, now: date) -> Draft:
             "end_time": end,
             "place": draft.place.strip(),
             "memo": draft.memo.strip(),
-            "who_ids": _ids(draft.who_ids, member_ids),
             "share_ids": [i for i in _ids(draft.share_ids, member_ids) if i != me],
         }
     )
@@ -182,12 +179,10 @@ def _created(db: Session, user_id: str, group_id: str, draft: Draft, members: li
             kind=draft.kind or DEFAULT_KIND,
             place=draft.place,
             memo=draft.memo,
-            who_ids=draft.who_ids,
             share_with=draft.share_ids,
             source="chat",
         ),
     )
-    labels = {m.id: m.label for m in members}
     card = Card(
         type="registered",
         data={
@@ -198,7 +193,6 @@ def _created(db: Session, user_id: str, group_id: str, draft: Draft, members: li
             "start_time": _hm(event.start_time),
             "end_time": _hm(event.end_time),
             "place": event.place,
-            "who": [labels[i] for i in event.who_ids if i in labels],
             "shared": len(draft.share_ids),
             **({"already": True} if already else {}),
         },

@@ -157,7 +157,6 @@ def _event_from(req: EventRequest, recip: EventRequestRecipient, user_id: str, k
         source="request",
         kind=kind,
         place=req.place,
-        who_ids=[req.user_id],
         start_date=req.start_date,
         start_time=start,
         end_time=end,

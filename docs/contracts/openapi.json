@@ -13387,14 +13387,6 @@
             "title": "Memo",
             "default": ""
           },
-          "who_ids": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "maxItems": 20,
-            "title": "Who Ids"
-          },
           "share_ids": {
             "items": {
               "type": "string"
@@ -13675,14 +13667,6 @@
             "title": "Place",
             "default": ""
           },
-          "who_ids": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "maxItems": 20,
-            "title": "Who Ids"
-          },
           "share_with": {
             "items": {
               "type": "string"
@@ -13767,13 +13751,6 @@
             "type": "integer",
             "title": "Kind"
           },
-          "who_ids": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "title": "Who Ids"
-          },
           "place": {
             "type": "string",
             "title": "Place"
@@ -13855,6 +13832,18 @@
               }
             ],
             "title": "Edited At"
+          },
+          "shared_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Shared Ids"
+          },
+          "shared": {
+            "type": "boolean",
+            "title": "Shared",
+            "default": false
           }
         },
         "type": "object",
@@ -13868,7 +13857,6 @@
           "created_by",
           "user_id",
           "kind",
-          "who_ids",
           "place",
           "start_date",
           "start_time",
@@ -13969,21 +13957,6 @@
               }
             ],
             "title": "Memo"
-          },
-          "who_ids": {
-            "anyOf": [
-              {
-                "items": {
-                  "type": "string"
-                },
-                "type": "array",
-                "maxItems": 20
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Who Ids"
           },
           "topic_id": {
             "anyOf": [

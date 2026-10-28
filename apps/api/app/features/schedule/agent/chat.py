@@ -97,11 +97,18 @@ def _short(value, limit: int) -> str:
     return value.strip()[:limit] if isinstance(value, str) else ""
 
 
-def event_line(event_id: str, when: datetime, title: str, time_text: str | None = None) -> str:
+def event_line(
+    event_id: str,
+    when: datetime,
+    title: str,
+    time_text: str | None = None,
+    shared: bool = False,
+) -> str:
     """LLM 에 보내는 한 줄: id · 날짜 시간 · 제목만(메모 등은 보내지 않아 양과 노출을 줄인다).
-    time_text 는 시간 표기(예: 14:00~15:00, 시간 미정). 없으면 시작 시각만 쓴다."""
+    time_text 는 시간 표기(예: 14:00~15:00, 시간 미정). 없으면 시작 시각만 쓴다. 공동 일정은 끝에 '| 공동'을 붙인다."""
     clock = time_text if time_text is not None else f"{when:%H:%M}"
-    return f"{event_id} | {prompts.format_day(when)} {clock} | {mask_text(title)}"
+    line = f"{event_id} | {prompts.format_day(when)} {clock} | {mask_text(title)}"
+    return f"{line} | 공동" if shared else line
 
 
 def _draft_block(draft: Draft | None, title: str, place: str, memo: str) -> str:
@@ -110,7 +117,7 @@ def _draft_block(draft: Draft | None, title: str, place: str, memo: str) -> str:
     return (
         f"제목: {title}\n날짜: {draft.date}\n시작: {draft.start_time}\n끝: {draft.end_time}\n"
         f"형태: {draft.kind}\n장소: {place}\n메모: {memo}\n"
-        f"누구: {', '.join(draft.who_ids)}\n공유: {', '.join(draft.share_ids)}"
+        f"공유: {', '.join(draft.share_ids)}"
     )
 
 

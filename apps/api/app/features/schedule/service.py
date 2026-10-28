@@ -59,7 +59,6 @@ def create(db: Session, group_id: str, user_id: str, body: EventCreate) -> Event
         source=body.source,
         kind=body.kind,
         place=body.place.strip(),
-        who_ids=list(dict.fromkeys(body.who_ids)),
         start_date=start_date,
         start_time=start_time,
         end_time=end_time,
@@ -86,7 +85,7 @@ def create(db: Session, group_id: str, user_id: str, body: EventCreate) -> Event
         suggestion.status = SUGGESTION_CONFIRMED
         suggestion.confirmed_at = now
     repo.add_all(db, [original, *copies])
-    return original
+    return with_sharing(db, user_id, [original])[0]
 
 
 def _pending_suggestion(
@@ -106,8 +105,32 @@ def _pending_suggestion(
     return suggestion
 
 
+def with_sharing(db: Session, user_id: str, events: list[Event]) -> list[Event]:
+    """각 일정에 공동 정보를 붙인다(저장하지 않고 그때그때 계산, 묶어서 3번만 묻는다).
+    shared_ids: 이 일정으로 나와 얽힌 사람(나 제외). 내가 공유한 원본이면 받은 사람들, 공유받은 복사본이면 보낸 사람과
+    같이 받은 사람들, 부탁을 수락해서 생긴 일정이면 부탁한 사람. shared: 공동 일정인가(위 셋 중 하나)."""
+    mine = [e.id for e in events]
+    origins = list({e.origin_id for e in events if e.origin_id})
+    copies: dict[str, list[str]] = {}
+    for origin_id, owner in repo.copy_owners(db, [*mine, *origins]):
+        copies.setdefault(origin_id, []).append(owner)
+    origin_owner = repo.owners_of(db, origins) if origins else {}
+    senders = repo.request_senders(db, list({e.request_id for e in events if e.request_id}))
+    for e in events:
+        if e.origin_id:
+            people = [origin_owner.get(e.origin_id), *copies.get(e.origin_id, [])]
+        elif e.request_id:
+            people = [senders.get(e.request_id)]
+        else:
+            people = copies.get(e.id, [])
+        e.shared_ids = [p for p in dict.fromkeys(people) if p and p != user_id]
+        e.shared = bool(e.origin_id or e.request_id or e.shared_ids)
+    return events
+
+
 def upcoming(db: Session, group_id: str, user_id: str, include_past: bool = False) -> list[Event]:
-    return repo.list_from(db, group_id, None if include_past else datetime.now(UTC), user_id)
+    events = repo.list_from(db, group_id, None if include_past else datetime.now(UTC), user_id)
+    return with_sharing(db, user_id, events)
 
 
 def confirm(db: Session, group_id: str, user_id: str, event_id: str) -> Event:
@@ -116,7 +139,7 @@ def confirm(db: Session, group_id: str, user_id: str, event_id: str) -> Event:
         raise not_found("일정")
     event.status = "confirmed"
     db.commit()
-    return event
+    return with_sharing(db, user_id, [event])[0]
 
 
 def owns(event: Event, user_id: str) -> bool:
@@ -145,8 +168,6 @@ def update(db: Session, group_id: str, user_id: str, event_id: str, body: EventU
     if body.memo is not None:
         event.memo = body.memo
         event.note = body.memo
-    if body.who_ids is not None:
-        event.who_ids = list(dict.fromkeys(body.who_ids))
     if "topic_id" in sent:
         _check_topic(db, group_id, user_id, body.topic_id)
         event.topic_id = body.topic_id
@@ -158,7 +179,7 @@ def update(db: Session, group_id: str, user_id: str, event_id: str, body: EventU
     if body.share_with is not None:
         _reshare(db, group_id, user_id, event, body.share_with)
     db.commit()
-    return event
+    return with_sharing(db, user_id, [event])[0]
 
 
 def _reshare(db: Session, group_id: str, user_id: str, event: Event, share_with: list[str]) -> None:
@@ -188,7 +209,6 @@ def _reshare(db: Session, group_id: str, user_id: str, event: Event, share_with:
         source=event.source,
         kind=event.kind,
         place=event.place,
-        who_ids=list(event.who_ids),
         start_date=event.start_date,
         start_time=event.start_time,
         end_time=event.end_time,
@@ -277,7 +297,7 @@ def set_checked(db: Session, group_id: str, user_id: str, event_id: str, checked
         raise not_found("일정")
     event.checked = checked
     db.commit()
-    return event
+    return with_sharing(db, user_id, [event])[0]
 
 
 def _check_topic(db: Session, group_id: str, user_id: str, topic_id: str | None) -> None:

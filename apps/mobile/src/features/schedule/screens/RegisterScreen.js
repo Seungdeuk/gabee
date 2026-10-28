@@ -35,7 +35,6 @@ export default function RegisterScreen() {
   const editing = useScheduleItem(typeof params.id === "string" ? params.id : "");
   const [kind, setKind] = useState(editing?.kind ?? (params.kind === KIND.todo ? KIND.todo : KIND.appointment));
   const [title, setTitle] = useState(editing?.title ?? (typeof params.title === "string" ? params.title : ""));
-  const [whoIds, setWhoIds] = useState(editing?.whoIds ?? []);
   const [topicId, setTopicId] = useState(editing?.topicId ?? null);
   const [sharedWith, setSharedWith] = useState(editing?.sharedWith ?? []);
   // 수정할 때 지금의 공유 상태(undefined 는 아직 읽는 중). 공유 대상은 원본 주인(sharedBy 가 없는 사람)만 보고 바꾼다.
@@ -58,8 +57,7 @@ export default function RegisterScreen() {
   // 서버에서 가족을 읽은 뒤에 바뀌므로 화면을 그릴 때마다 계산한다.
   const OTHERS = family.filter((m) => m.id !== ME_ID);
   const SHAREABLE = OTHERS.filter((m) => m.hasAccount);
-  // "누구"·"공유" 칩 줄에서 뺀 사람(이 폰에만 저장, 줄마다 따로). 누구는 예전 저장 키 그대로.
-  const who = useHiddenWho("", OTHERS);
+  // "공유" 칩 줄에서 뺀 사람(이 폰에만 저장).
   const share = useHiddenWho("share", SHAREABLE);
   const valid = title.trim() !== "" && date !== "";
   const editingId = editing?.id;
@@ -82,10 +80,6 @@ export default function RegisterScreen() {
   const canShare = !editing || (shareInfo !== undefined && shareInfo.sharedBy === null);
   const removedShare = editing && canShare ? shareInfo.sharedWith.filter((x) => !sharedWith.includes(x)) : [];
   const shareChanged = editing && canShare && (removedShare.length > 0 || sharedWith.some((x) => !shareInfo.sharedWith.includes(x)));
-  const hideWho = (id) => {
-    who.hide(id);
-    setWhoIds(whoIds.filter((x) => x !== id));
-  };
   const hideShare = (id) => {
     share.hide(id);
     setSharedWith(sharedWith.filter((x) => x !== id));
@@ -115,7 +109,6 @@ export default function RegisterScreen() {
       ...time,
       place: place.trim(),
       memo: memo.trim(),
-      whoIds,
       topicId,
     };
     // 수정에서는 원본 주인이 공유를 바꿨을 때만 공유 대상을 함께 보낸다.
@@ -167,16 +160,6 @@ export default function RegisterScreen() {
           </FormField>
 
           <View style={styles.group}>
-            <FormField label="누구" hint="관련된 사람">
-              <WhoChips
-                members={OTHERS}
-                hiddenIds={who.hidden}
-                selectedIds={whoIds}
-                onToggle={(id) => setWhoIds(toggle(whoIds, id))}
-                onHide={hideWho}
-                onShow={who.show}
-              />
-            </FormField>
             <FormField label="주제">
               <TopicChips
                 topics={topics}
