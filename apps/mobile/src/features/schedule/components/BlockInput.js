@@ -1,5 +1,5 @@
-import { useRef, useState } from "react";
-import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { useEffect, useRef, useState } from "react";
+import { Keyboard, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 
 import { colors } from "@/theme";
 
@@ -17,6 +17,13 @@ export default function BlockInput({ blocks, separators, values, onChange, activ
   const [sel, setSel] = useState(autoFocus ? 0 : null);
   const [fresh, setFresh] = useState(true);
   const [focused, setFocused] = useState(false);
+
+  // 안드로이드는 키보드만 내려가고 입력 칸은 포커스를 유지해서, 다시 영역을 눌러도 focus() 가 키보드를 못 띄운다.
+  // 키보드가 내려가면 포커스도 풀어 두어 다음 터치에서 키보드가 다시 뜨게 한다.
+  useEffect(() => {
+    const hide = Keyboard.addListener("keyboardDidHide", () => inputRef.current?.blur());
+    return () => hide.remove();
+  }, []);
 
   // 한 자리만 친 영역은 앞에 0을 붙여 확정하고, 범위 밖이면 비운다.
   const normalize = (vals, i) => {

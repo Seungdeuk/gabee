@@ -84,7 +84,7 @@ class CheckBody(BaseModel):
 
 class TopicCreate(BaseModel):
     name: str = Field(min_length=1, max_length=30)
-    color: Literal["rose", "amber"]  # constants.TOPIC_COLORS
+    color: Literal["rose", "amber", "green", "sky", "purple"]  # constants.TOPIC_COLORS
 
     @field_validator("name")
     @classmethod

@@ -18,7 +18,11 @@ const pendingCreate = new Map(); // 임시 id → 서버에 만드는 중인 일
 const aliases = new Map(); // 임시 id → 만들어진 서버 id
 const listeners = new Set();
 
-const emit = () => listeners.forEach((fn) => fn());
+let version = 0; // 가족·주제처럼 배열을 제자리에서 바꾸는 값을 구독하는 화면이 다시 그려지게 하는 숫자
+const emit = () => {
+  version += 1;
+  listeners.forEach((fn) => fn());
+};
 const subscribe = (fn) => {
   listeners.add(fn);
   return () => listeners.delete(fn);
@@ -62,6 +66,20 @@ export function useScheduleItems() {
     ensureLoaded();
   }, []);
   return useSyncExternalStore(subscribe, () => items);
+}
+
+/** 주제 목록(제자리에서 바뀌는 배열). 추가·삭제·서버 로드 때 화면이 다시 그려진다. */
+export function useTopics() {
+  useEffect(() => {
+    ensureLoaded();
+  }, []);
+  useSyncExternalStore(subscribe, () => version);
+  return topics;
+}
+
+/** 내 사용자 id(서버에서 가족을 읽은 뒤). 서버가 없거나 아직 못 읽었으면 빈 글자. 폰에만 저장하는 값의 키에 쓴다. */
+export function useMeUserId() {
+  return useSyncExternalStore(subscribe, () => family?.meUserId ?? "");
 }
 
 /**
@@ -172,6 +190,45 @@ export function toggleChecked(id) {
       warn("확인 표시", error);
       restore(before);
     });
+}
+
+/**
+ * 주제를 만든다. 서버 모드에서는 서버가 정한 id 를 쓰고, 실패하면(같은 이름 409 등) 던진다. 서버가 없으면 메모리에만 추가한다.
+ * @param {string} name
+ * @param {string} color TOPIC_TEXT 의 키
+ * @returns {Promise<{ id: string, name: string, color: string }>}
+ */
+export async function addTopic(name, color) {
+  let topic;
+  if (useServer) {
+    const { id, name: saved, color: savedColor } = await api.createTopic(name, color);
+    topic = { id, name: saved, color: savedColor };
+  } else {
+    nextId += 1;
+    topic = { id: `topic-${nextId}`, name, color };
+  }
+  topics.push(topic);
+  emit();
+  return topic;
+}
+
+/** 주제를 지운다. 그 주제를 붙였던 일정은 주제 없음이 된다. 서버가 실패하면 되돌린다. @param {string} id */
+export function removeTopic(id) {
+  const index = topics.findIndex((t) => t.id === id);
+  if (index < 0) return;
+  const [removed] = topics.splice(index, 1);
+  const before = items;
+  items = items.map((item) => (item.topicId === id ? { ...item, topicId: null } : item));
+  emit();
+  if (!useServer) return;
+  api.deleteTopic(id).catch((error) => {
+    warn("주제 삭제", error);
+    if (!topics.some((t) => t.id === id)) topics.splice(Math.min(index, topics.length), 0, removed);
+    // 그동안 바뀐 다른 일정은 두고, 이 주제였던 항목만 되돌린다.
+    const had = new Set(before.filter((item) => item.topicId === id).map((item) => item.id));
+    items = items.map((item) => (had.has(item.id) ? { ...item, topicId: id } : item));
+    emit();
+  });
 }
 
 /**

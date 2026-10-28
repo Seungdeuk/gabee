@@ -57,8 +57,8 @@ export default function ScheduleScreen() {
   // 이미 추가한 제안은 빠지고 다음 제안이 바로 나온다. 저장하지 않고 돌아오면 그대로다.
   const candidates = (useServer ? server.list : MOCK_SUGGESTIONS).filter((suggestion) => !isAdded(suggestion));
   const addCard = candidates.length > 0 ? candidates[addCursor % candidates.length] : null;
-  // 서버 추천은 불러오는 동안, 또 못 불러왔거나(403·429) 아직 안 쓴 게 없는 채로 소진이 아니면 카드를 숨긴다. 소진이면 마무리 문장.
-  const showAddArea = !useServer || addCard !== null || (!server.loading && server.exhausted);
+  // 서버 추천은 불러오는 동안에는 카드를 숨기고, 불러온 뒤 보여 줄 게 없으면(다 씀·소진·못 불러옴) 마무리 카드를 보인다.
+  const showAddArea = !useServer || addCard !== null || server.loaded;
   const toggleLater = (id) => {
     if (pressed === id) return;
     setLater((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
@@ -102,10 +102,9 @@ export default function ScheduleScreen() {
     <SafeAreaView style={styles.safe} edges={["top"]}>
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         <View style={styles.body}>
-          <View style={styles.section}>
+          <View style={styles.topSection}>
             <View style={styles.head}>
               <View style={styles.headText}>
-                <Text style={styles.greeting}>바쁜 날도, 여유로운 날도</Text>
                 <Text style={styles.title} accessibilityRole="header">
                   오늘도 차근차근
                 </Text>
@@ -209,12 +208,12 @@ export default function ScheduleScreen() {
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.background },
   content: { paddingBottom: spacing.xxl },
-  body: { paddingHorizontal: spacing.xxl, paddingTop: spacing.xl, gap: 28 },
-  section: { gap: spacing.md },
+  body: { paddingHorizontal: spacing.xxl, paddingTop: spacing.xl, gap: 14 },
+  section: { gap: 4 },
+  topSection: { gap: 0 },
   head: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", gap: spacing.md },
   headText: { flex: 1 },
-  greeting: { ...font.caption, color: colors.textMuted },
-  title: { ...font.page, color: colors.text, marginTop: 2 },
+  title: { ...font.page, color: colors.text },
   plus: {
     width: 48,
     height: 48,
@@ -234,7 +233,7 @@ const styles = StyleSheet.create({
   addText: { fontSize: 16, fontWeight: "700", color: colors.text },
   caption: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   feed: { gap: 10 },
-  notice: { ...font.caption, color: colors.textMuted, textAlign: "center" },
+  notice: { ...font.caption, color: colors.textMuted, textAlign: "center", marginTop: 10 },
   statusPress: { flexDirection: "row", alignItems: "center", gap: 6 },
   statusLink: { ...font.bodyStrong, fontWeight: "500", color: colors.textMuted },
   newBadge: {

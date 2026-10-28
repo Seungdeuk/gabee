@@ -73,9 +73,14 @@ export default function TogetherScreen() {
                 같이, 곁에
               </Text>
             </View>
-            <Pressable onPress={toStatus} hitSlop={10} accessibilityRole="button">
-              <Text style={styles.cancel}>취소</Text>
-            </Pressable>
+            <View style={styles.topActions}>
+              <Pressable onPress={send} hitSlop={10} accessibilityRole="button">
+                <Text style={styles.cancel}>보내기</Text>
+              </Pressable>
+              <Pressable onPress={toStatus} hitSlop={10} accessibilityRole="button">
+                <Text style={styles.cancel}>취소</Text>
+              </Pressable>
+            </View>
           </View>
 
           {params.suggested === "1" ? (
@@ -86,14 +91,14 @@ export default function TogetherScreen() {
             <TextBox value={title} onChangeText={setTitle} />
           </FormField>
 
-          <FormField label="받는 사람">
+          <FormField label="받는 사람" hint="지정하지 않으면 모두에게 가요">
             <View style={styles.chips}>
               {RECEIVERS.map((m) => (
                 <FilterChip key={m.id} label={m.name} selected={toIds.includes(m.id)} onPress={() => setToIds(toggle(toIds, m.id))} />
               ))}
               <FilterChip label="+ 누구" muted />
             </View>
-            <Text style={styles.help}>지정하지 않으면 모두에게 가요. 여러 명에게 보내면 각자 수락할 수 있어요</Text>
+            <Text style={styles.help}>여러 명에게 보내면 각자 수락할 수 있어요</Text>
           </FormField>
 
           {/* 서버는 "누구"를 저장하지 않는다(수락한 사람 일정의 누구는 보낸 사람으로 정해진다). 서버 모드에서는 숨긴다. */}
@@ -162,6 +167,7 @@ const styles = StyleSheet.create({
   content: { paddingBottom: spacing.xxl },
   body: { paddingHorizontal: spacing.xxl, paddingTop: spacing.xl, gap: 18 },
   top: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  topActions: { flexDirection: "row", alignItems: "center", gap: spacing.lg },
   titleBox: { flexDirection: "row", alignItems: "center", marginLeft: -spacing.sm },
   title: { ...font.page, color: colors.text },
   cancel: { fontSize: 14, fontWeight: "500", color: colors.textMuted },
@@ -174,9 +180,9 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     paddingHorizontal: 14,
   },
-  group: { gap: spacing.sm },
+  group: { gap: 4 },
   chips: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
-  help: { ...font.caption, color: colors.textMuted },
+  help: { ...font.caption, color: colors.textMuted, marginTop: 6 },
   error: { ...font.caption, color: colors.danger, textAlign: "center" },
   send: { minHeight: 56, alignItems: "center", justifyContent: "center", borderRadius: radius.button, backgroundColor: colors.peach },
   sendOff: { opacity: 0.55 },
