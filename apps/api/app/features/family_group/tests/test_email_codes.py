@@ -32,7 +32,7 @@ RESET_CODE = "/family-group/auth/password/reset/confirm-code"
 
 @pytest.fixture
 def outbox(monkeypatch):
-    box = Outbox()
+    box = Outbox().watch(monkeypatch)
     mailer.set_mailer(box)
     monkeypatch.setattr(settings, "verify_resend_cooldown_seconds", 0)
     return box
@@ -51,11 +51,14 @@ def reset_with(client, email, code, password=NEW_PASSWORD):
 
 
 # ---------- 이메일 인증 ----------
-def test_mail_has_a_six_digit_code_and_the_auto_verify_link(client, outbox):
+def test_mail_has_a_six_digit_code_and_no_link(client, outbox):
     register(client)
     client.post(VERIFY_REQ, headers=bearer_for(client))
-    body = outbox.mails[-1].body
-    assert re.search(r"인증 코드: \d{6}\n", body) and "gabee://verify-email?token=" in body
+    mail = outbox.mails[-1]
+    code = re.search(r"인증 코드: (\d{6})\n", mail.body).group(1)
+    assert "gabee://" not in mail.body and "token=" not in mail.body
+    assert code in mail.html and "href" not in mail.html and "gabee://" not in mail.html
+    assert outbox.last_token() not in mail.body + mail.html  # 토큰 원문은 메일 어디에도 없다
 
 
 def test_verify_with_the_six_digit_code(client, outbox):
@@ -171,11 +174,14 @@ def test_no_pending_mail_means_expired(client, outbox):
 
 
 # ---------- 비밀번호 재설정 ----------
-def test_reset_mail_has_a_code_and_the_link(client, outbox):
+def test_reset_mail_has_a_code_and_no_link(client, outbox):
     register(client)
     client.post(RESET_REQ, json={"email": "jimin@example.com"})
-    body = outbox.mails[-1].body
-    assert re.search(r"재설정 코드: \d{6}\n", body) and "gabee://reset-password?token=" in body
+    mail = outbox.mails[-1]
+    code = re.search(r"재설정 코드: (\d{6})\n", mail.body).group(1)
+    assert "gabee://" not in mail.body and "token=" not in mail.body
+    assert code in mail.html and "href" not in mail.html and "gabee://" not in mail.html
+    assert outbox.last_token() not in mail.body + mail.html
 
 
 def test_reset_with_the_code_changes_the_password_and_ends_every_session(client, outbox):
