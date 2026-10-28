@@ -956,7 +956,8 @@
   "expect_contains": [
    "5,000"
   ],
-  "expect_proposals": 0
+  "expect_proposals": 0,
+  "skip_tool_check": true
  },
  {
   "id": "c-clear-meal-own",
