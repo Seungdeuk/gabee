@@ -2,7 +2,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { Image } from "expo-image";
 import { useRouter } from "expo-router";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { FlatList, KeyboardAvoidingView, Pressable, StyleSheet, Text, View } from "react-native";
+import { Alert, FlatList, KeyboardAvoidingView, Pressable, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { legacyStorageScope } from "@/shared/api/client";
@@ -28,6 +28,9 @@ import useChat from "../hooks/useChat";
 import useSessions from "../hooks/useSessions";
 import { listRecords } from "../api";
 import mascot from "../../../../assets/images/gabee-mascot.png";
+
+// 음성 입력이 아직 준비되지 않아 마이크를 막아 둔다. 기능이 생기면 true 로 바꾼다.
+const MIC_ENABLED = false;
 
 /**
  * 홈: AI 채팅. 상태는 빈 화면 → (음성 입력) → 처리 중 → 답변/초안 승인 순으로 바뀐다.
@@ -221,7 +224,7 @@ export default function AiAssistantScreen() {
           {listening ? (
             <Text style={styles.note}>폰 기본 음성 인식으로 받아 적어요. 말이 끝나면 보내기를 눌러 주세요.</Text>
           ) : null}
-          <ChatInput mode={inputMode} onSend={send} onAttach={sendPhoto} onMic={listening ? stopListening : startListening} />
+          <ChatInput mode={inputMode} onSend={send} onAttach={sendPhoto} onMic={MIC_ENABLED ? (listening ? stopListening : startListening) : () => Alert.alert("업데이트 대기", "음성 입력은 아직 준비 중이에요. 업데이트 후에 쓸 수 있어요.")} />
         </View>
       </KeyboardAvoidingView>
     </SafeAreaView>
