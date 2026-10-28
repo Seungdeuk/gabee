@@ -8,7 +8,7 @@ from datetime import UTC, datetime, timedelta
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.shared import mailer, tokens
+from app.shared import mail_templates, mailer, tokens
 from app.shared.auth import ensure_group_member
 from app.shared.config import settings
 from app.shared.errors import ApiError, not_found
@@ -355,13 +355,6 @@ _HOUR = 3600
 log = logging.getLogger(__name__)
 
 
-def _link(path: str, token: str) -> str:
-    base = settings.email_link_base
-    if not base.endswith(("/", ":")):
-        base += "/"
-    return f"{base}{path}?token={token}"
-
-
 def _code_hash(row_id: str, code: str) -> str:
     """6자리 코드는 경우의 수가 적어 해시만으로는 약하다 — 행 id 를 섞어 행마다 다르게 하고, 시도 횟수 제한(code_max_attempts)이 실제 방어선이다."""
     return hashlib.sha256(f"{row_id}:{code}".encode()).hexdigest()
@@ -422,29 +415,39 @@ def request_email_verification(db: Session, user: User) -> None:
     _check_rate(f"{key}:cooldown", 1, settings.verify_resend_cooldown_seconds)
     _check_rate(f"{key}:hour", settings.verify_max_per_hour, _HOUR)
     now = datetime.now(UTC)
-    token, code, row = _new_token_row(
-        EmailVerification, user.id, settings.email_verify_ttl_seconds, now, email=user.email
+    _, code, row = (
+        _new_token_row(  # 메일에는 코드만 담는다(링크 없음). 토큰은 DB 에 해시로만 남는다
+            EmailVerification, user.id, settings.email_verify_ttl_seconds, now, email=user.email
+        )
     )
-    repo.supersede_email_verifications(db, user.id, now)  # 이전 메일의 링크는 무효
+    repo.supersede_email_verifications(db, user.id, now)  # 이전 메일의 코드는 무효
     repo.add_email_verification(db, row)
     db.commit()
     mail_limiter.record(f"{key}:cooldown")
     mail_limiter.record(f"{key}:hour")
+    ttl = _ttl_text(settings.email_verify_ttl_seconds)
+    intro = "앱에 아래 인증 코드 6자리를 입력해 주세요."
+    notice = "본인이 요청하지 않았다면 이 메일을 무시해 주세요."
     body = "\n".join(
         [
             "가비 가족 비서 이메일 인증이에요.",
             "",
-            f"앱에 아래 인증 코드 6자리를 입력해 주세요 ({_ttl_text(settings.email_verify_ttl_seconds)} 안에 한 번만 쓸 수 있어요).",
+            f"{intro} ({ttl} 안에 한 번만 쓸 수 있어요).",
             f"인증 코드: {code}",
             "",
-            "또는 아래 링크를 열면 자동으로 인증돼요.",
-            _link("verify-email", token),
-            "",
-            "본인이 요청하지 않았다면 이 메일을 무시해 주세요.",
+            notice,
         ]
     )
+    html = mail_templates.code_mail_html(
+        title="이메일 인증",
+        intro=intro,
+        code_label="인증 코드",
+        code=code,
+        ttl=ttl,
+        notice=notice,
+    )
     try:
-        sender.send(mailer.Mail(to=user.email, subject="[가비] 이메일 인증", body=body))
+        sender.send(mailer.Mail(to=user.email, subject="[가비] 이메일 인증", body=body, html=html))
     except mailer.MailSendError as exc:
         raise ApiError(
             503, "mail_send_failed", "메일을 보내지 못했어요. 잠시 후 다시 시도해 주세요"
@@ -515,26 +518,32 @@ def request_password_reset(db: Session, body: EmailRequestIn, ip: str) -> mailer
     if user is None or user.login_id is None:  # 없는 이메일, 익명 계정: 아무것도 하지 않는다
         return None
     now = datetime.now(UTC)
-    token, code, row = _new_token_row(
-        PasswordReset, user.id, settings.password_reset_ttl_seconds, now
-    )
+    _, code, row = _new_token_row(PasswordReset, user.id, settings.password_reset_ttl_seconds, now)
     repo.supersede_password_resets(db, user.id, now)
     repo.add_password_reset(db, row)
     db.commit()
+    ttl = _ttl_text(settings.password_reset_ttl_seconds)
+    intro = "앱에 아래 재설정 코드 6자리와 새 비밀번호를 입력해 주세요."
+    notice = "본인이 요청하지 않았다면 이 메일을 무시해 주세요. 비밀번호는 바뀌지 않아요."
     body_text = "\n".join(
         [
             "가비 가족 비서 비밀번호 재설정 요청이에요.",
             "",
-            f"앱에 아래 재설정 코드 6자리와 새 비밀번호를 입력해 주세요 ({_ttl_text(settings.password_reset_ttl_seconds)} 안에 한 번만 쓸 수 있어요).",
+            f"{intro} ({ttl} 안에 한 번만 쓸 수 있어요).",
             f"재설정 코드: {code}",
             "",
-            "또는 아래 링크를 열어 새 비밀번호를 설정할 수 있어요.",
-            _link("reset-password", token),
-            "",
-            "본인이 요청하지 않았다면 이 메일을 무시해 주세요. 비밀번호는 바뀌지 않아요.",
+            notice,
         ]
     )
-    return mailer.Mail(to=email, subject="[가비] 비밀번호 재설정", body=body_text)
+    html = mail_templates.code_mail_html(
+        title="비밀번호 재설정",
+        intro=intro,
+        code_label="재설정 코드",
+        code=code,
+        ttl=ttl,
+        notice=notice,
+    )
+    return mailer.Mail(to=email, subject="[가비] 비밀번호 재설정", body=body_text, html=html)
 
 
 def confirm_password_reset(db: Session, body: PasswordResetConfirmIn) -> None:

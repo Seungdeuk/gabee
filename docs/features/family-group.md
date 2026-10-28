@@ -40,6 +40,8 @@
   - `POST /family-group/auth/password/reset/confirm-code` `{email, code, new_password}` → 204. 없는 이메일·익명 계정·틀린 코드·한도 초과·만료는 **모두 같은 400 `reset_code_invalid`**(계정 존재 여부가 새지 않음). 약한 새 비밀번호는 400 `weak_password`(코드가 맞았다면 횟수 1회 사용).
   - **무차별 대입 방어**: 코드(메일 1통)마다 `CODE_MAX_ATTEMPTS`(기본 5)번까지만 틀릴 수 있다. 시도 횟수는 비교 *전에* 조건부 UPDATE 한 문장으로 먼저 올리므로(`failed_attempts < 5` 조건) 동시에 여러 번 찍어도 전체가 한도를 넘지 못한다(PG16 동시 10요청 시험: 비교 5번, 나머지 즉시 거부). 한도를 넘으면 맞는 코드도 쓸 수 없고 메일을 다시 받아야 한다(새 메일 = 새 코드 = 새 횟수. 재발송은 60초 간격·시간당 5회, 재설정은 이메일별 시간당 3회로 제한). 코드는 행 id 를 섞은 SHA-256 해시로만 저장한다(6자리라 해시 자체는 약하므로 횟수 제한이 실제 방어선).
   - 이전(코드 이전) 메일의 행은 `code_hash` 가 NULL 이라 코드로는 못 쓰고 링크만 된다.
+  - **메일 본문 변경(링크 제거 + 마스코트)**: 인증·재설정 메일에서 **링크를 없애고 6자리 코드만** 담는다(위 38·55번 줄의 링크 설명은 이 변경 전 내용). 메일은 글자 본문 + HTML 본문을 함께 보내고, HTML 에는 마스코트(`app/shared/assets/gabee-mascot.png`, 앱 아이콘을 200px 로 줄인 약 40KB)가 `cid:gabee-mascot` 로 **메일에 내장**된다(외부 이미지 서버·"이미지 표시" 누르기 불필요). 파일이 없으면 이미지만 빠지고 메일은 나간다. 템플릿은 `app/shared/mail_templates.py`. 토큰 확인 엔드포인트(`confirm`)는 그대로 있지만 메일로는 토큰이 전달되지 않는다(링크를 다시 넣을 때를 위해 남김, `EMAIL_LINK_BASE` 는 예약 설정).
+  - 테스트: 메일에 링크·토큰이 없고 HTML 에 코드가 있음, SMTP 메시지에 text/html + 내장 PNG, 이미지 파일이 없어도 발송(`test_email_flows.py`·`test_email_codes.py`). 토큰 엔드포인트 시험은 발급 시점의 토큰을 가로채 쓴다.
   - `POST /auth/signup` 의 `role_detail`(선택): 역할이 `other` 일 때만 저장(공백 정리, 40자 초과 400 `invalid_role_detail`), `UserOut.role_detail` 로 돌려준다. 그룹별 관계(PR 4-E 설계의 `group_members.family_relation*`)와는 별개인 가입 시 입력값이다.
   - 테스트: `family_group/tests/test_email_codes.py`(SQLite), `tests/test_email_pg_e2e.py`(PG16 코드 3건 추가). `conftest.py` 가 `MAIL_BACKEND`/`SMTP_*` 를 비워 개발자 `.env` 의 실제 메일 설정이 테스트로 새지 않는다.
 
