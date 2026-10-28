@@ -52,8 +52,9 @@ def _build_message(mail: Mail) -> EmailMessage:
         msg.add_alternative(mail.html, subtype="html")
         image = _mascot_png() if f"cid:{MASCOT_CID}" in mail.html else None
         if image is not None:
+            # inline + 파일명 없음: filename 이 있으면 attachment 로 붙어 메일 앱이 본문 이미지로 연결하지 않고 첨부로 보여 준다
             msg.get_payload()[1].add_related(
-                image, "image", "png", cid=f"<{MASCOT_CID}>", filename="gabee.png"
+                image, "image", "png", cid=f"<{MASCOT_CID}>", disposition="inline"
             )
     return msg
 
