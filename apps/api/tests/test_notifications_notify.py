@@ -1,10 +1,19 @@
 """notify() 시험: 구성원에게만, 본인 행동 제외, 중복 제거, 실패 격리."""
 
 import pytest
-from sqlalchemy import select
+from sqlalchemy import delete, select
 
 from app.shared.db import SessionLocal
 from app.shared.notifications import Notification, notify
+
+
+@pytest.fixture
+def family(client, family):
+    """가족을 만들 때 생기는 가입 알림은 지우고 시작한다(이 시험은 알림 개수를 직접 센다)."""
+    with SessionLocal() as db:
+        db.execute(delete(Notification))
+        db.commit()
+    return family
 
 
 def _id(client, headers) -> str:

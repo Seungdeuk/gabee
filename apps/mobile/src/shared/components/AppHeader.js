@@ -1,6 +1,6 @@
 import { StyleSheet, Text, View } from "react-native";
 
-import { colors } from "@/theme";
+import { colors, font } from "@/theme";
 
 import IconButton from "./IconButton";
 import Logo from "./Logo";
@@ -50,6 +50,6 @@ const styles = StyleSheet.create({
     flexDirection: "row",
   },
   count: { position: "absolute", top: 4, right: 2, minWidth: 18, height: 18, paddingHorizontal: 4, borderRadius: 9, alignItems: "center", justifyContent: "center", backgroundColor: colors.peach, borderWidth: 1.5, borderColor: colors.background },
-  countText: { fontSize: 10, lineHeight: 13, color: colors.text, fontWeight: "700" },
+  countText: { ...font.tab, color: colors.text }, // 글자 크기는 theme 토큰만 쓴다
   badge: { position: "absolute", top: 9, right: 9, width: 9, height: 9, borderRadius: 5, backgroundColor: colors.peach, borderWidth: 1.5, borderColor: colors.background },
 });

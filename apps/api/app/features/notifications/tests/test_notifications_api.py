@@ -2,6 +2,7 @@
 
 from datetime import UTC, datetime, timedelta
 
+import pytest
 from sqlalchemy import delete
 
 from app.features.family_group.models import GroupMember
@@ -9,6 +10,15 @@ from app.shared.db import SessionLocal
 from app.shared.notifications import Notification
 
 BASE = datetime(2026, 10, 1, 9, 0, tzinfo=UTC)
+
+
+@pytest.fixture
+def family(client, family):
+    """가족을 만들 때 생기는 가입 알림은 지우고 시작한다(이 시험은 알림 개수를 직접 센다)."""
+    with SessionLocal() as db:
+        db.execute(delete(Notification))
+        db.commit()
+    return family
 
 
 def _me(client, headers) -> str:

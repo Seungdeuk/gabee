@@ -116,3 +116,49 @@ def test_notify_failure_does_not_break_join(client, monkeypatch):
     done = client.post(f"{P}/groups/join-requests/{req.json()['id']}/approve", headers=owner)
     assert done.status_code == 200
     assert _notes(owner_id) == [] and _notes(guest_id) == []
+
+
+def test_concurrent_duplicate_request_still_returns_the_existing_one(client, monkeypatch):
+    """같은 사람이 동시에 두 번 신청해 사전 확인을 둘 다 통과해도(부분 유니크 인덱스 위반) 500 이 아니라 기존 요청을 돌려준다."""
+    from app.features.family_group import join_repository
+
+    owner, owner_id = account(client, "owner_kim")
+    create_group(client, owner)
+    guest, _guest_id = account(client, "guest_choi")
+    first = join(client, guest, new_code(client, owner)).json()
+
+    real = join_repository.pending_request
+    calls = {"n": 0}
+
+    def blind_first_time(db, group_id, user_id):
+        calls["n"] += 1
+        return None if calls["n"] == 1 else real(db, group_id, user_id)  # 첫 확인만 놓친 것처럼
+
+    monkeypatch.setattr(join_repository, "pending_request", blind_first_time)
+    again = join(client, guest, new_code(client, owner))
+    assert again.status_code == 200, again.text
+    assert again.json()["id"] == first["id"]
+    assert [n for n in _notes(owner_id) if n[1] == "join_requested"] == [
+        ("family_group", "join_requested", "join_request", _guest_id)
+    ]
+
+
+def test_notify_db_level_failure_is_isolated(client):
+    """알림 INSERT 가 DB 수준에서 실패해도(savepoint 롤백) 가입 요청·승인은 그대로 성공한다."""
+    from sqlalchemy import event
+
+    def boom(_mapper, _connection, _target):
+        raise RuntimeError("DB 수준 저장 실패")
+
+    owner, owner_id = account(client, "owner_kim")
+    create_group(client, owner)
+    guest, guest_id = account(client, "guest_choi")
+    event.listen(Notification, "before_insert", boom)
+    try:
+        req = join(client, guest, new_code(client, owner))
+        assert req.status_code == 200 and req.json()["status"] == "pending"
+        done = client.post(f"{P}/groups/join-requests/{req.json()['id']}/approve", headers=owner)
+        assert done.status_code == 200
+    finally:
+        event.remove(Notification, "before_insert", boom)
+    assert _notes(owner_id) == [] and _notes(guest_id) == []

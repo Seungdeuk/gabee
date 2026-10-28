@@ -70,6 +70,9 @@ def notify(
     if kind not in KINDS:
         raise ValueError(f"알 수 없는 알림 분류: {kind}")  # 개발 실수는 일찍 드러낸다
     targets = [uid for uid in dict.fromkeys(recipients) if uid != actor_user_id]
+    # begin_nested() 는 savepoint 를 열기 전에 flush 한다. 호출한 쪽이 쌓아 둔 변경의 오류가 알림 실패로 위장돼
+    # 삼켜지지 않도록 try 밖에서 먼저 flush 해서 그 오류는 호출한 쪽에게 돌려준다.
+    db.flush()
     try:
         with db.begin_nested():  # 실패해도 앞선 변경은 그대로 둔다
             created = 0
@@ -91,6 +94,7 @@ def notify(
                 )
                 created += 1
         return created
-    except Exception:
-        logger.warning("notify failed kind=%s event=%s", kind, event)  # 개인 정보는 남기지 않는다
+    except Exception as exc:
+        # 개인 정보는 남기지 않는다(분류·사건·예외 종류만)
+        logger.warning("notify failed kind=%s event=%s error=%s", kind, event, type(exc).__name__)
         return 0

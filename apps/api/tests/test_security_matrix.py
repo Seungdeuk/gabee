@@ -209,6 +209,11 @@ NO_GROUP_OK = {
     # 위치 공유 동의는 사용자 본인 설정이다(그룹 데이터 아님)
     ("GET", "/care/location/consent"),
     ("PUT", "/care/location/consent"),
+    # 알림함은 로그인한 본인의 알림만 다룬다. 가족이 없어도 빈 목록이며 그룹 id 를 요청에서 받지 않는다
+    ("GET", "/notifications"),
+    ("GET", "/notifications/unread-count"),
+    ("POST", "/notifications/read-all"),
+    ("POST", "/notifications/{notification_id}/read"),
 }
 
 

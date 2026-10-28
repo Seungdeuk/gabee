@@ -145,19 +145,21 @@ def request_to_join(db: Session, user: User, code: str, ip: str) -> tuple[JoinRe
     )
     jrepo.add_join_request(db, row)
     jrepo.record_attempt(db, ip, user.id, invite_id, True)
-    notify(  # 새 요청을 만든 경우에만(기존 대기 요청을 돌려주는 경로에서는 부르지 않는다)
-        db,
-        group_id=group_id,
-        kind="family_group",
-        event="join_requested",
-        recipients=jrepo.manager_ids(db, group_id),
-        title="가족 그룹 참여 요청이 왔어요",
-        body=f"{user.name}님이 참여를 요청했어요",
-        target_type="join_request",
-        target_id=row.id,
-        actor_user_id=user.id,
-    )
     try:
+        # flush 를 먼저 해서 같은 사람의 동시 중복 신청(부분 유니크 인덱스 위반)이 알림 저장과 섞이지 않고 여기서 드러나게 한다
+        db.flush()
+        notify(  # 새 요청을 만든 경우에만(기존 대기 요청을 돌려주는 경로에서는 부르지 않는다)
+            db,
+            group_id=group_id,
+            kind="family_group",
+            event="join_requested",
+            recipients=jrepo.manager_ids(db, group_id),
+            title="가족 그룹 참여 요청이 왔어요",
+            body=f"{user.name}님이 참여를 요청했어요",
+            target_type="join_request",
+            target_id=row.id,
+            actor_user_id=user.id,
+        )
         db.commit()
     except IntegrityError:  # 같은 사람의 동시 요청이 먼저 대기 요청을 만들었다(부분 유니크 인덱스). 사용 횟수 증가도 함께 되돌아간다
         db.rollback()
