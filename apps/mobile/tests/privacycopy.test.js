@@ -40,8 +40,19 @@ test("상세에는 E2EE 아님·소유자/관리자만·끄면 멈춤·도우미
   assert.match(all, /위치/);
 });
 
-test("요약은 AI 비서·문서 질문·일정·가계·돌봄 도우미와 대화 주제 추천을 모두 언급한다", () => {
-  for (const word of ["대화 주제 추천", "AI 비서", "문서 질문", "일정", "가계", "돌봄"]) assert.ok(summary.includes(word), word);
+test("요약은 AI 비서·문서 질문·일정·가계·돌봄 도우미와 대화 분석(답장·대화 주제 추천 포함)을 모두 언급한다", () => {
+  for (const word of ["대화 분석", "답장 추천", "대화 주제 추천", "AI 비서", "문서 질문", "일정", "가계", "돌봄"]) assert.ok(summary.includes(word), word);
+});
+
+test("대화 분석 상세: 한 번에 보내고 매번 확인 카드를 거치며, 버튼 이름은 실제 확인 카드의 'AI에 보내기'다", () => {
+  const line = CONSENT_DETAILS.find((l) => l.startsWith("대화 분석("));
+  assert.ok(line);
+  assert.match(line, /답장 추천·대화 주제 추천/);
+  assert.match(line, /Claude 로 한 번에 보내요/);
+  assert.match(line, /'AI에 보내기'를 눌러야만 전송돼요\.$/);
+  const card = readFileSync(new URL("../src/features/family-chat/components/AiConfirmCard.js", import.meta.url), "utf8");
+  assert.match(card, /label="AI에 보내기"/);
+  assert.match(CONSENT_DETAILS.find((l) => l.startsWith("AI 비서")), /주민번호·카드·계좌·비밀번호가 든 입력은 서버가 막아요/);
 });
 
 test("가려서 보낸다는 말은 대화 분석 줄에만 쓰고, 끄면 Claude 로는 나가지 않는다고 한정한다", () => {

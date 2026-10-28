@@ -4,12 +4,11 @@ import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-nati
 import Button from "@/shared/components/Button";
 import { colors, font, radius, spacing } from "@/theme";
 
-import { blockedWarning, canSendToAi, INSUFFICIENT_WARNING, maskedChips, PREVIEW_ACTIONS, previewLineText, sendBlockReason } from "../privacyPreview";
+import { blockedWarning, canSendToAi, INSUFFICIENT_WARNING, maskedChips, PREVIEW_KIND_LABEL, previewLineText, sendBlockReason } from "../privacyPreview";
 
 /**
  * "AI에 보내기 전 확인" 카드. 가려지는 정보·제외되는 메시지를 보여 주고, 사용자가 "AI에 보내기"를 눌러야만 onConfirm 이 불린다.
  * @param {{
- *   action: "analysis" | "replies" | "topics",
  *   status: "loading" | "ready" | "error",
  *   preview: object | null,
  *   error: string,
@@ -19,7 +18,7 @@ import { blockedWarning, canSendToAi, INSUFFICIENT_WARNING, maskedChips, PREVIEW
  * }} props preview 는 parsePreview 결과
  * @returns {JSX.Element}
  */
-export default function AiConfirmCard({ action, status, preview, error, onConfirm, onCancel, onRetry }) {
+export default function AiConfirmCard({ status, preview, error, onConfirm, onCancel, onRetry }) {
   const [open, setOpen] = useState(false);
   const warning = preview ? blockedWarning(preview.blockedMessages) : "";
   const blockReason = preview ? sendBlockReason(preview) : "";
@@ -30,7 +29,7 @@ export default function AiConfirmCard({ action, status, preview, error, onConfir
       <Text style={styles.title} accessibilityRole="header">
         이 내용이 AI로 전송돼요
       </Text>
-      <Text style={styles.caption}>{PREVIEW_ACTIONS[action] ?? ""}</Text>
+      <Text style={styles.caption}>{PREVIEW_KIND_LABEL}</Text>
       <Text style={styles.sub}>전송은 지금 누르는 요청에서만 일어나요. 아래처럼 개인정보를 가려서 보내요. 가려진 값은 AI에게 가지 않아요.</Text>
 
       {status === "loading" ? (

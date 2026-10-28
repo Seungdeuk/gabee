@@ -180,6 +180,32 @@ def test_replies_and_topics_restore_person_only(client, chat, fake):
     assert topics == ["수진 은 뭐 하고 싶대?", "(이메일) 로 보낼까?"]
 
 
+def test_analysis_restores_address_in_the_schedule_but_not_in_replies_and_topics(
+    client, chat, fake
+):
+    """분석 한 번에 답장·주제까지 받아도 복원 범위는 필드마다 다르다: 일정 장소는 주소를 복원하지만(분석 정책),
+    입력창에 넣어 보내는 답장·주제 문장은 따로 만들 때와 같이 이름만 복원하고 주소는 '(주소)'로 일반화한다(코드 리뷰 지적)."""
+    a, b, ids = chat
+    fake.data = with_ids(
+        tokens_analysis(
+            replies=["[PERSON_1] 고마워", "[ADDR_1] 에서 봐", "연락은 [PHONE_1] 로"],
+            topics=["[PERSON_2] 은 뭐 하고 싶대?", "[ADDR_1] 근처 맛집은?", "[EMAIL_1] 로 보낼까?"],
+        ),
+        ids,
+    )
+    body = analyze(client, a).json()
+    assert ADDR in body["schedule_candidates"][0]["place"]  # 일정 장소는 주소 복원
+    assert body["replies"] == ["지민 고마워", "(주소) 에서 봐", "연락은 (연락처) 로"]
+    assert body["topics"] == ["수진 은 뭐 하고 싶대?", "(주소) 근처 맛집은?", "(이메일) 로 보낼까?"]
+    assert ADDR not in json.dumps(body["replies"] + body["topics"], ensure_ascii=False)
+    # 캐시 적중(다른 구성원)에서도 같은 복원 범위가 지켜진다
+    again = analyze(client, b).json()
+    assert again["meta"]["cached"] is True
+    assert again["replies"] == body["replies"] and again["topics"] == body["topics"]
+    assert ADDR in again["schedule_candidates"][0]["place"]
+    assert "[ADDR_1]" in cache_text()  # 캐시는 여전히 토큰 상태
+
+
 # (d) 캐시: 토큰 상태 저장, 적중 시 호출 0, 복원 결과 동일
 def test_cache_holds_tokens_only_and_hit_restores_same_answer(client, chat, fake):
     a, b, ids = chat
@@ -319,13 +345,16 @@ def test_prompt_injection_does_not_change_scope_or_structure(client, chat, other
     r = analyze(client, a)
     assert r.status_code == 200
     body = r.json()
-    assert set(body) == {
+    assert set(body) == {  # 스키마에 없는 필드(members·system)는 응답에 나오지 않는다
         "summary",
         "important_messages",
         "schedule_candidates",
         "todo_candidates",
+        "replies",
+        "topics",
         "meta",
     }
+    assert body["replies"] == [] and body["topics"] == []  # 주입 응답에는 답장·주제가 없다
     assert body["important_messages"] == []
     assert body["todo_candidates"][0]["assignee_name"] is None
     assert body["todo_candidates"][0]["source_message_ids"] == []

@@ -12307,6 +12307,22 @@
             "type": "array",
             "title": "Todo Candidates"
           },
+          "replies": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Replies",
+            "default": []
+          },
+          "topics": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Topics",
+            "default": []
+          },
           "meta": {
             "$ref": "#/components/schemas/AiMeta"
           }

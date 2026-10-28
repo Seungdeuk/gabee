@@ -36,6 +36,8 @@ class FakeLLM:
             raise self.error
         if self.data is not None:
             data = self.data
+        elif "summary" in schema["properties"]:  # 분석(답장·주제를 함께 만든다)
+            data = good_analysis()
         elif "replies" in schema["properties"]:
             data = {"replies": ["좋아요", "알겠어요", "고마워요", "넷째"]}
         elif "topics" in schema["properties"]:
@@ -66,6 +68,8 @@ def good_analysis():
                 "source_message_ids": [2],
             }
         ],
+        "replies": ["좋아요", "알겠어요", "고마워요"],
+        "topics": ["주말 계획은?", "저녁 메뉴는?"],
     }
 
 
@@ -184,7 +188,7 @@ def test_second_identical_request_hits_cache(client, ready, fake):
 
 
 # 4) 한 번 호출에 네 가지 결과
-def test_one_call_returns_all_four_results(client, ready, fake):
+def test_one_call_returns_all_six_results(client, ready, fake):
     a, _, _ = ready
     body = analyze(client, a).json()
     assert len(fake.calls) == 1
@@ -192,7 +196,13 @@ def test_one_call_returns_all_four_results(client, ready, fake):
     assert body["important_messages"][0]["message_id"] == 1
     assert body["schedule_candidates"][0]["title"] == "가족 식사"
     assert body["todo_candidates"][0]["assignee_name"] == "수진"
-    assert "replies" not in body and "topics" not in body
+    assert body["replies"] == [
+        "좋아요",
+        "알겠어요",
+        "고마워요",
+    ]  # 답장·주제도 같은 한 번의 호출에서 온다
+    assert body["topics"] == ["주말 계획은?", "저녁 메뉴는?"]
+    assert body["meta"]["api_calls"] == 1
     assert body["meta"]["model"] == "fake-model"
     assert body["meta"]["input_tokens"] == 120 and body["meta"]["output_tokens"] == 40
 
@@ -263,7 +273,10 @@ def test_analysis_prompt_and_system(client, ready, fake):
         "important_messages",
         "schedule_candidates",
         "todo_candidates",
+        "replies",
+        "topics",
     ]
+    assert "replies" in call["system"] and "topics" in call["system"]
 
 
 # 5) 지어낸 값 걸러내기
@@ -310,6 +323,58 @@ def test_invented_values_are_dropped(client, ready, fake):
     assert (
         t2["assignee_name"] == "지민" and t2["due"] == "2026-11-01"
     )  # 토큰이 실제 이름으로 복원된다
+
+
+def test_replies_and_topics_are_cleaned(client, ready, fake):
+    """답장·주제 후보: 글자가 아닌 값·빈 값은 버리고, 길이와 개수 상한을 지키며, 위조 토큰이 든 항목은 버린다."""
+    a, _, _ = ready
+    fake.data = {
+        **good_analysis(),
+        "replies": [
+            "  좋아요  ",
+            "",
+            7,
+            None,
+            "가" * 200,
+            "[PERSON_99] 위조 토큰",
+            "넷째",
+            "다섯째",
+        ],
+        "topics": ["주말 계획은?", "나" * 100, "[PHONE_9] 위조", "넷", "다", "여", "일곱번째"],
+    }
+    body = analyze(client, a).json()
+    assert body["replies"][0] == "좋아요"
+    assert all(isinstance(r, str) and 0 < len(r) <= 80 for r in body["replies"])
+    assert len(body["replies"]) == 3 and not any("PERSON_99" in r for r in body["replies"])
+    assert all(0 < len(t) <= 40 for t in body["topics"])
+    assert len(body["topics"]) == 5 and not any("PHONE_9" in t for t in body["topics"])
+
+
+def test_missing_or_empty_replies_and_topics_do_not_fail_the_analysis(client, ready, fake):
+    """답장·주제가 비었거나 빠져도(구 형식 응답 포함) 요약·후보는 그대로 나온다."""
+    a, _, _ = ready
+    data = good_analysis()
+    data.pop("replies"), data.pop("topics")
+    fake.data = data
+    body = analyze(client, a).json()
+    assert body["summary"] and body["replies"] == [] and body["topics"] == []
+    fake.data = {**good_analysis(), "replies": [], "topics": "문자열"}
+    again = analyze(client, a, limit=3).json()
+    assert again["replies"] == [] and again["topics"] == []
+
+
+def test_analysis_call_has_room_for_the_extra_results(client, ready, monkeypatch):
+    """한 번의 호출이 답장·주제까지 만들어서 기본 출력 상한보다 넉넉한 max_tokens 를 쓴다(잘리면 전체가 실패한다)."""
+    seen = {}
+
+    def spy(prompt, schema, system=None, max_tokens=None, **kw):
+        seen["max_tokens"] = max_tokens
+        return llm.JsonResult(data=good_analysis(), input_tokens=1, output_tokens=1, model="m")
+
+    monkeypatch.setattr(llm, "complete_json", spy)
+    a, _, _ = ready
+    assert analyze(client, a).status_code == 200
+    assert seen["max_tokens"] and seen["max_tokens"] > settings.anthropic_max_tokens
 
 
 def test_empty_summary_is_invalid_output(client, ready, fake):

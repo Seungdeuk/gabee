@@ -97,6 +97,25 @@ export function parseAiSettings(raw) {
 }
 
 /**
+ * 대화 분석 응답을 화면용으로 다듬는다. 구 서버 응답에 replies·topics 가 없거나 배열이 아니면 빈 배열로 둔다.
+ * @param {object | null | undefined} res analyzeChat 응답
+ * @returns {{ summary: string, important_messages: object[], schedule_candidates: object[], todo_candidates: object[], replies: string[], topics: string[], meta: object | undefined }}
+ */
+export function parseAnalysis(res) {
+  const list = (v) => (Array.isArray(v) ? v : []);
+  const texts = (v) => list(v).filter((t) => typeof t === "string" && t.trim() !== "");
+  return {
+    summary: res?.summary ?? "",
+    important_messages: list(res?.important_messages),
+    schedule_candidates: list(res?.schedule_candidates),
+    todo_candidates: list(res?.todo_candidates),
+    replies: texts(res?.replies),
+    topics: texts(res?.topics),
+    meta: res?.meta,
+  };
+}
+
+/**
  * 오늘 남은 횟수 문구. 예: "오늘 남은 횟수: 나 7번 · 가족 25번"
  * @param {{ userLeft: number | null, groupLeft: number | null }} settings parseAiSettings 결과
  * @returns {string}
