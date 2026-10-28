@@ -59,7 +59,7 @@ export function toItem(event, family) {
 
 /**
  * 화면 항목의 값 → 서버 요청 본문. 수정(PATCH)은 시간을 null 로 보내야 지워지므로 항상 모든 값을 보낸다.
- * 공유(share_with)와 추천 확정(suggestion_id: 이 일정이 내 대기 제안에서 왔을 때)은 등록할 때만 보낸다.
+ * 추천 확정(suggestion_id: 이 일정이 내 대기 제안에서 왔을 때)은 등록할 때만 보낸다. 공유(share_with)는 등록 때 보내고, 수정에서는 toPatchBody 가 바꿨을 때만 보낸다.
  * @param {Partial<import("./model").ScheduleItem>} item
  * @param {Family} family
  * @param {{ create?: boolean }} [options]
@@ -100,6 +100,8 @@ export function toPatchBody(patch, current, family) {
   if ("memo" in patch) body.memo = full.memo;
   if ("whoIds" in patch) body.who_ids = full.who_ids;
   if ("topicId" in patch) body.topic_id = full.topic_id;
+  // 공유 대상 전체를 다시 정한다(원본 주인만. 빠진 사람의 복사본은 서버가 지운다).
+  if ("sharedWith" in patch) body.share_with = (patch.sharedWith ?? []).map(family.toUser).filter(Boolean);
   if (touchesTime) {
     body.start_date = full.start_date;
     body.start_time = full.start_time;

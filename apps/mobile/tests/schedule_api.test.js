@@ -145,3 +145,12 @@ test("수정 본문은 바꾼 값만, 시간은 날짜·시간을 함께 보낸�
     end_time: "23:59",
   });
 });
+
+test("수정 본문은 공유 대상을 바꿨을 때만 share_with 로 전체를 보낸다", () => {
+  const current = { ...item, id: "x", checked: false };
+  assert.deepEqual(toPatchBody({ sharedWith: ["mom", "dad"] }, current, family), {
+    share_with: ["u-mom", "u-dad"],
+  });
+  assert.deepEqual(toPatchBody({ sharedWith: [] }, current, family), { share_with: [] }); // 모두 뺄 때
+  assert.equal("share_with" in toPatchBody({ title: "새 제목" }, current, family), false);
+});

@@ -22,6 +22,11 @@ def add_all(db: Session, events: list[Event]) -> None:
     db.commit()
 
 
+def add_pending(db: Session, events: list[Event]) -> None:
+    """commit 없이 세션에만 올린다(부른 쪽이 한 트랜잭션으로 commit 한다)."""
+    db.add_all(events)
+
+
 def get(db: Session, group_id: str, event_id: str, user_id: str | None = None) -> Event | None:
     return db.scalar(
         select(Event).where(Event.id == event_id, Event.group_id == group_id, *_visible(user_id))
