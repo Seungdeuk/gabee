@@ -10,6 +10,7 @@ from app.shared.privacy import (
     Kind,
     Row,
     detect,
+    new_session,
     prepare_transcript,
     restore_json,
     restore_value,
@@ -127,3 +128,21 @@ def test_performance_smoke_200_lines_of_2000_chars():
     with prepare_transcript(rows, NAMES, ANALYSIS) as prep:
         assert len(prep.lines) == 200
     assert time.perf_counter() - start < 15  # 느슨한 상한(보통 1~2초 안팎)
+
+
+def test_luhn_fail_card_is_masked_not_blocked_in_transcript_and_free_text():
+    # 오타 난 카드번호(Luhn 실패)도 가린다. 점수가 차단 임계값 미만이라 메시지는 통째로 빠지지 않는다.
+    rows = [
+        (1, "김민수", "카드번호 4512-4516-1112-0055 야"),
+        (2, "이영희", "카드번호 4512451611120055 야"),
+        (3, "김민수", "주문번호 4512451611120055 야"),
+    ]
+    with prepare_transcript(rows, NAMES, ANALYSIS) as prep:
+        assert prep.lines[0].text == "카드번호 [CARD] 야"
+        assert prep.lines[1].text == "카드번호 [CARD] 야"
+        assert prep.lines[2].text == "주문번호 4512451611120055 야"  # 주문번호 문맥은 그대로
+        assert prep.blocked_ids == [] and prep.counts_by_kind["CARD"] == 2
+    with new_session(ANALYSIS) as sess:
+        assert sess.prepare_text("카드번호 4512-4516-1112-0055") == "카드번호 [CARD]"
+        assert sess.prepare_text("카드번호 4512451611120055") == "카드번호 [CARD]"
+        assert sess.prepare_text("4512451611120055") == "4512451611120055"

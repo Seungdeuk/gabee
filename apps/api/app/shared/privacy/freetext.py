@@ -23,6 +23,7 @@ from datetime import date, datetime, time
 from decimal import ROUND_DOWN, ROUND_HALF_UP, Decimal, InvalidOperation
 from typing import Any
 
+from . import ner
 from .detectors import INVISIBLE_CHARS
 from .gateway import JsonRestoreResult, restore_json, restore_value
 from .policy import ASSISTANT, Policy
@@ -377,7 +378,12 @@ class PrivacySession:
                 return type(node)(walk(x, depth + 1, round_ok, parent_key) for x in node)
             raise TypeError(f"지원하지 않는 형식: {type(node).__name__}")
 
-        return walk(obj, 0, round_keys is None)
+        # NER 을 켠 경우 문자열 값을 모아 한 번(배치)에 추론한다(값마다 부르면 지연이 값 수만큼 곱해진다). 끄면 모으지도 않는다.
+        if ner.current_mode() == "off":
+            return walk(obj, 0, round_keys is None)
+        texts = _collect_texts(obj, pseudonymize_keys, coordinate_precision)
+        with ner.batch_scope(texts):
+            return walk(obj, 0, round_keys is None)
 
     # ----- 복원 -----
     def restore_text(
@@ -391,6 +397,27 @@ class PrivacySession:
     ) -> JsonRestoreResult:
         """응답 JSON 을 복원한다(``gateway.restore_json`` 과 같은 규칙)."""
         return restore_json(self, obj, generalize_unknown=generalize_unknown, scrub=scrub)  # type: ignore[arg-type]
+
+
+def _collect_texts(node: Any, with_keys: bool, precision: int) -> list[str]:
+    """prepare_json 이 ``prepare_text`` 에 넘길 문자열(좌표 절삭 뒤의 글)을 미리 모은다. 쓰이지 않는 값(버리는 키 등)까지 모으는
+    것은 괜찮다(예산을 조금 더 쓸 뿐). 형식 검사는 본 처리(walk)가 한다."""
+    out: list[str] = []
+    stack = [(node, 0)]
+    while stack:
+        cur, depth = stack.pop()
+        if depth > MAX_DEPTH:
+            continue
+        if isinstance(cur, str):
+            out.append(_generalize_coordinate_text(cur, precision)[0])
+        elif isinstance(cur, dict):
+            for k, v in cur.items():
+                if with_keys and isinstance(k, str):
+                    out.append(_generalize_coordinate_text(k, precision)[0])
+                stack.append((v, depth + 1))
+        elif isinstance(cur, (list, tuple, set, frozenset)):
+            stack.extend((x, depth + 1) for x in cur)
+    return out
 
 
 def _coord_value(value: Any, precision: int) -> Any:
@@ -452,7 +479,10 @@ def contains_placeholders(obj: Any) -> bool:
 def new_session(
     policy: Policy = ASSISTANT, members: Iterable[str | Sequence[str]] = ()
 ) -> PrivacySession:
-    """빈 세션을 만든다. members 는 ``prepare_transcript`` 와 같다(이름 하나 또는 같은 사람의 표기 묶음)."""
+    """빈 세션을 만든다. members 는 ``prepare_transcript`` 와 같다(이름 하나 또는 같은 사람의 표기 묶음).
+
+    mode=required 에서 NER 을 쓸 수 없으면 PrivacyUnavailable(외부 모델을 처음 부르기 전에 막는다: 에이전트는 세션을 먼저 만든다)."""
+    ner.ensure_ready()
     return PrivacySession(policy, members)
 
 
@@ -467,6 +497,7 @@ def prepare_text(
 
     돌려준 세션은 호출부가 ``close()`` (또는 ``with``)로 지운다. 예외가 나면 새로 만든 세션은 여기서 지운다.
     """
+    ner.ensure_ready()  # mode=required 에서 NER 을 쓸 수 없으면 503 privacy_unavailable
     sess = session or new_session(policy, members)
     try:
         return sess.prepare_text(text), sess
@@ -490,6 +521,7 @@ def prepare_json(
     session: PrivacySession | None = None,
 ) -> tuple[Any, PrivacySession]:
     """JSON 을 가명화한다(``PrivacySession.prepare_json`` 참고). 돌려준 세션은 호출부가 지운다."""
+    ner.ensure_ready()  # mode=required 에서 NER 을 쓸 수 없으면 503 privacy_unavailable
     sess = session or new_session(policy, members)
     try:
         value = sess.prepare_json(

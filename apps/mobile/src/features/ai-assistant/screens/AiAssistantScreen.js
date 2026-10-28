@@ -15,6 +15,7 @@ import AiOffCard from "../components/AiOffCard";
 import ChatInput from "../components/ChatInput";
 import DescribeCard from "../components/DescribeCard";
 import DoubtCard from "../components/DoubtCard";
+import ScheduleConfirmCard from "../components/ScheduleConfirmCard";
 import DraftCard from "../components/DraftCard";
 import PromptChips from "../components/PromptChips";
 import ReadingStatus from "../components/ReadingStatus";
@@ -33,7 +34,7 @@ import mascot from "../../../../assets/images/gabee-mascot.png";
  */
 export default function AiAssistantScreen() {
   const router = useRouter();
-  const { messages, phase, readingSince, confirmDoubts, markAiEnabled, saveDescription, skipDescription, send, sendPhoto, startListening, stopListening, editDraft, reset, load } = useChat();
+  const { messages, phase, readingSince, confirmDoubts, markAiEnabled, resolveConfirm, saveDescription, skipDescription, send, sendPhoto, startListening, stopListening, editDraft, reset, load } = useChat();
   const auth = useAuth();
   // 대화 저장 키: 로그인한 회원은 사용자 id, 익명 계정(개발용 토큰)은 토큰에서 만든 값. 로그인 확인 중에는 null
   const scope = auth.status === "loading" ? null : auth.user?.id ? `user-${auth.user.id}` : legacyStorageScope();
@@ -78,6 +79,9 @@ export default function AiAssistantScreen() {
             <DraftCard to={item.draft.to} text={item.draftText} onChangeText={(t) => editDraft(item.id, t)} />
           ) : null}
         </AnswerView>
+        {(item.confirmCards ?? []).map((card, i) => (
+          <ScheduleConfirmCard key={`confirm-${i}`} card={card} onResolve={(status, text) => resolveConfirm(item.id, i, status, text)} />
+        ))}
         {item.doubts ? (
           <DoubtCard
             lines={item.doubts.lines}

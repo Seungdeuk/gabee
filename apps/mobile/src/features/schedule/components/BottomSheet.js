@@ -4,7 +4,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { colors, spacing } from "@/theme";
 
 /**
- * 아래에서 올라오는 시트(날짜·시간 선택, 채팅에 씀). 바깥을 누르면 닫힌다.
+ * 아래에서 올라오는 시트(날짜·시간 선택에 씀). 바깥을 누르면 닫힌다.
  * @param {{ visible: boolean, onClose: () => void, children: import("react").ReactNode }} props
  */
 export default function BottomSheet({ visible, onClose, children }) {

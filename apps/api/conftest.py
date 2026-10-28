@@ -7,6 +7,9 @@ os.environ["DATABASE_URL"] = f"sqlite:///{_tmp}/test.db"
 os.environ["DATA_DIR"] = _tmp
 os.environ["ANTHROPIC_API_KEY"] = ""
 os.environ["JWT_SECRET"] = "test-only-jwt-secret-not-for-production-0123456789"  # 테스트 전용 값
+# 개발자 PC 에 NER 모델이 있어도 시험은 규칙 탐지만 쓴다(NER 시험은 각자 모드를 명시한다). 모델이 있는 PC 와 없는 CI 의 결과를 같게 한다.
+os.environ["PRIVACY_NER_MODE"] = "off"
+os.environ["PRIVACY_NER_MODEL_DIR"] = ""
 # 개발자의 apps/api/.env 에 실제 SMTP 설정이 있어도 테스트가 진짜 메일을 보내지 않게 비운다(발송은 set_mailer 가짜로만).
 for _name in ("MAIL_BACKEND", "SMTP_HOST", "SMTP_USER", "SMTP_PASSWORD", "SMTP_FROM"):
     os.environ[_name] = ""

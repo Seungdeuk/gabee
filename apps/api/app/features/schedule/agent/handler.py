@@ -59,7 +59,9 @@ def _wider_scope(period: period_mod.Period | None, keyword: str) -> str | None:
     return "모델이 다시 요청한 " + ", ".join(parts) if parts else None
 
 
-def handle(db: Session, user_id: str, group_id: str, request: AgentRequest) -> AgentResponse:
+def handle(
+    db: Session, user_id: str, group_id: str, request: AgentRequest, share_all: bool = False
+) -> AgentResponse:
     ensure_group_member(db, user_id, group_id)  # 라우터 밖에서 service 를 부르므로 직접 확인한다
     now = datetime.now(UTC)
     local_now = now.astimezone(reader.local_tz())
@@ -91,7 +93,14 @@ def handle(db: Session, user_id: str, group_id: str, request: AgentRequest) -> A
         return AgentResponse(intent=result.intent)
     if result.intent == "register":
         return register.respond(
-            db, user_id, group_id, request.draft, result.register, result.reply, members
+            db,
+            user_id,
+            group_id,
+            request.draft,
+            result.register,
+            result.reply,
+            members,
+            share_all,
         )
     by_id = {e.id: e for e in shown}
     if result.intent == "edit":

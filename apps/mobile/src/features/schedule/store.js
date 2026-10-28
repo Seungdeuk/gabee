@@ -44,7 +44,7 @@ function ensureLoaded() {
 }
 
 /** 서버 요청 전에 가족 변환기가 준비될 때까지 기다린다. */
-async function ready() {
+export async function ready() {
   await ensureLoaded();
   if (!family) throw new Error("가족 정보를 아직 못 불러왔어요");
   return family;
@@ -62,11 +62,6 @@ export function useScheduleItems() {
     ensureLoaded();
   }, []);
   return useSyncExternalStore(subscribe, () => items);
-}
-
-/** 훅이 아닌 곳(채팅 답변 만들기)에서 지금 항목을 읽는다. @returns {import("./model").ScheduleItem[]} */
-export function getScheduleItems() {
-  return items;
 }
 
 /**

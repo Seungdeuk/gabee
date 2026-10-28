@@ -69,7 +69,7 @@
 | `EMBED_MODEL_DIR` | `<DATA_DIR>/models/e5-small-ft` | 임베딩 모델 폴더 |
 | `RAW_DIR` | (비움 → `DATA_DIR/raw`) | 원본 보관 폴더 |
 | `DOC_CLASSIFIER_DIR` | `<DATA_DIR>/models/doc-classifier` | 문서 분류기 폴더(`.env.example` 에는 없고 환경변수로만 쓴다) |
-| `CHAT_INCLUDE_SENSITIVE` | `true` | 가린 민감 기록(처방전·신분증 등)을 Claude 근거에 넣을지. `false` 면 채팅 검색·`get_item`·`list_items`·@가비 문서 질문에서 제외. 서버 전체에 적용되는 값이고 가족·사용자별 설정이 아니다 |
+| `CHAT_INCLUDE_SENSITIVE` | `true` | 가린 민감 기록(처방전·신분증 등)을 Claude 근거에 넣을지. `false` 면 채팅 검색·`get_item`·`list_items` 에서 제외. 서버 전체에 적용되는 값이고 가족·사용자별 설정이 아니다 |
 | `TYPESAFE_API_KEY` | (비움) | 있으면 로컬 분류기가 확신하지 못한 문서만 외부 Jev 로 분류한다(가린 글만 보냄). 없으면 "기타 문서 + 확인 필요" |
 
 **삭제된 설정**: `LOCAL_LLM_URL`·`LOCAL_LLM_MODEL`·`LOCAL_LLM_TIMEOUT`·`CAPTION_ENABLED`·`CAPTION_MODEL`·`CAPTION_TIMEOUT`·`OLLAMA_KEEP_ALIVE`. 예전 `.env` 에 남아 있어도 무시된다.
@@ -228,7 +228,7 @@ SELECT item_id, seq, embedding_model, vector_dims(embedding) AS dim, left(text, 
 | 같은 가족의 다른 AI 요청 처리 중 | 409 `ai_busy` |
 | 외부 AI 호출 실패 | 503 `llm_failed` (사용 기록 `status="error"`, 한도에는 센다) |
 
-- 한도 값: 어시스턴트는 가족 채팅 AI 의 기본 한도(사용자 10회/일, 가족 30회/일, 쿨다운 30초)와 **따로** 센다(`ai_guard.register_bucket`, `ai_assistant/limits.py`). 예전 값을 유지해 사용자 **100회/일**, 쿨다운 **없음**이고, 가족 상한은 예전에 없던 새 값 **300회/일**이다(`AI_ASSISTANT_MAX_CALLS_PER_USER_PER_DAY`, `AI_ASSISTANT_MAX_CALLS_PER_GROUP_PER_DAY`, `AI_ASSISTANT_COOLDOWN_SECONDS`). 동시 실행은 가족당 1건 그대로(409 `ai_busy`). 문서 요약·답변(`doc_summary`·`doc_answer`)은 기본 한도를 쓴다.
+- 한도 값: 어시스턴트는 가족 채팅 AI 의 기본 한도(사용자 10회/일, 가족 30회/일, 쿨다운 30초)와 **따로** 센다(`ai_guard.register_bucket`, `ai_assistant/limits.py`). 예전 값을 유지해 사용자 **100회/일**, 쿨다운 **없음**이고, 가족 상한은 예전에 없던 새 값 **300회/일**이다(`AI_ASSISTANT_MAX_CALLS_PER_USER_PER_DAY`, `AI_ASSISTANT_MAX_CALLS_PER_GROUP_PER_DAY`, `AI_ASSISTANT_COOLDOWN_SECONDS`). 동시 실행은 가족당 1건 그대로(409 `ai_busy`). 예전 문서 요약·답변 엔드포인트(`doc_summary`·`doc_answer`)는 메인 에이전트가 같은 일을 하므로 없앴다(`@가비` 도 메인 채팅과 같은 한도를 쓴다).
 - 질문 1건이 도구 루프로 Anthropic 을 1~4번 부르고, 실제 호출 수를 한도에 센다.
 - 한도 초과 폭: 요청 시작 때는 1회만 예약하고 끝나면 실제 횟수로 고치므로, 한도 직전의 마지막 요청은 최대 3회(4-1)까지 더 셀 수 있다.
 

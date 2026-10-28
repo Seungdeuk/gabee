@@ -22,7 +22,9 @@ def chat(body: ChatIn, user=Depends(current_user), db: Session = Depends(get_db)
     group_id = user.active_group_id
     if group_id:  # 캐시값만 믿지 않고 실제 구성원인지 확인한다(아니면 403 not_member)
         ensure_group_member(db, user.id, group_id)
-    return service.chat(db, group_id, user.id, body.message, history, user=user)
+    return service.chat(
+        db, group_id, user.id, body.message, history, user=user, audience=body.audience
+    )
 
 
 @router.post("/photos", response_model=PhotoOut, status_code=201)

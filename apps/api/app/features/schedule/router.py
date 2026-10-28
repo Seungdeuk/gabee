@@ -5,6 +5,7 @@ from app.shared.auth import current_group_id, current_user
 from app.shared.db import get_db
 
 from . import service
+from . import together as request_service
 from .agent.router import router as agent_router
 from .models import Event, EventTopic
 from .schemas import (
@@ -12,6 +13,9 @@ from .schemas import (
     EventCreate,
     EventOut,
     EventUpdate,
+    RequestAnswer,
+    RequestCreate,
+    RequestOut,
     SharingOut,
     TopicCreate,
     TopicOut,
@@ -122,3 +126,43 @@ def delete_topic(
 ) -> Response:
     service.remove_topic(db, group_id, user.id, topic_id)
     return Response(status_code=204)
+
+
+@router.post("/requests", response_model=RequestOut, status_code=201)
+def create_request(
+    body: RequestCreate,
+    user=Depends(current_user),
+    group_id: str = Depends(current_group_id),
+    db: Session = Depends(get_db),
+) -> dict:
+    return request_service.create(db, group_id, user.id, body)
+
+
+@router.get("/requests", response_model=list[RequestOut])
+def list_requests(
+    user=Depends(current_user),
+    group_id: str = Depends(current_group_id),
+    db: Session = Depends(get_db),
+) -> list[dict]:
+    return request_service.list_mine(db, group_id, user.id)
+
+
+@router.post("/requests/{request_id}/answer", response_model=RequestOut)
+def answer_request(
+    request_id: str,
+    body: RequestAnswer,
+    user=Depends(current_user),
+    group_id: str = Depends(current_group_id),
+    db: Session = Depends(get_db),
+) -> dict:
+    return request_service.answer(db, group_id, user.id, request_id, body)
+
+
+@router.post("/requests/{request_id}/cancel", response_model=RequestOut)
+def cancel_request(
+    request_id: str,
+    user=Depends(current_user),
+    group_id: str = Depends(current_group_id),
+    db: Session = Depends(get_db),
+) -> dict:
+    return request_service.cancel(db, group_id, user.id, request_id)

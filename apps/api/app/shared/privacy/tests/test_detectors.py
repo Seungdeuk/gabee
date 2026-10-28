@@ -117,6 +117,57 @@ def test_card_negative():
     assert Kind.CARD not in kinds("1234 5678 9012 3456 은 아니야")  # Luhn 실패
 
 
+# Luhn 실패 번호의 단계 규칙: 형식(구분자)·문맥이 확실하면 낮은 점수로 가린다. 시험용 합성 값이다.
+def card_scores(text):
+    return [s.score for s in detect(text) if s.kind is Kind.CARD]
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "카드번호 4512-4516-1112-0055",
+        "4512 4516 1112 0055 로 결제해줘",
+        "카드번호 4512451611120055",
+        "결제는 4512451611120055 로 했어",
+    ],
+)
+def test_card_luhn_fail_masked_with_low_score(text):
+    assert not _luhn_ok("4512451611120055")
+    scores = card_scores(text)
+    assert len(scores) == 1 and scores[0] < 0.7  # 가리기만 하고 메시지 통째 제외는 아님
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "4512451611120055",  # 문맥도 구분자도 없는 순수 숫자
+        "번호 4512451611120055 야",
+        "운송장 4512451611120055",
+        "주문번호 4512451611120055",
+        "주문번호 4512-4516-1112-0055",  # 구분자가 있어도 주문번호 문맥이면 버림
+        "카드 주문번호 4512451611120055",
+        "주문번호 2026110312345678",  # 연도로 시작 (발급 대역 밖)
+        "카드번호 2026-1103-1234-5678",
+    ],
+)
+def test_card_luhn_fail_without_strong_signal_ignored(text):
+    assert Kind.CARD not in kinds(text)
+
+
+def test_card_score_order_luhn_pass_above_fail():
+    ok = luhn_number("4539", 16)
+    bad = ok[:-1] + str((int(ok[-1]) + 1) % 10)
+
+    def fmt(n):
+        return f"{n[:4]}-{n[4:8]}-{n[8:12]}-{n[12:]}"
+
+    (pass_score,) = card_scores(f"카드 {fmt(ok)}")
+    (fail_score,) = card_scores(f"카드 {fmt(bad)}")
+    assert pass_score == 0.95 and 0.5 <= fail_score < 0.7 < pass_score
+    assert card_scores(f"카드 {ok}") == [0.95] and card_scores(ok) == [0.65]  # 기존 점수 유지
+    assert card_scores(f"카드 {bad}") == [0.5] and not card_scores(bad)  # 끊지 않음: 문맥 있을 때만
+
+
 # ---------- 계좌 ----------
 @pytest.mark.parametrize(
     "text,value",

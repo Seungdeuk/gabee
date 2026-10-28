@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.features.family_group.models import GroupMember, User
 
-from .models import Message
+from .models import ASSISTANT_USER_ID, Message
 from .repository import family_messages
 
 
@@ -18,8 +18,11 @@ def recent_messages(
         select(Message, User.name)
         .join(User, User.id == Message.user_id)
         .where(
-            family_messages(group_id), Message.id > after_id, Message.text != ""
-        )  # 사진 메시지(글자 없음)는 제외
+            family_messages(group_id),
+            Message.id > after_id,
+            Message.text != "",  # 사진 메시지(글자 없음)는 제외
+            Message.user_id != ASSISTANT_USER_ID,  # 가비의 답은 가족 대화가 아니라서 분석에서 뺀다
+        )
         .order_by(Message.id.desc())
         .limit(limit)
     ).all()

@@ -61,6 +61,12 @@ class ChatRoomMember(Base):
     user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), primary_key=True)
 
 
+# 가족 채팅방에서 @가비 의 답을 저장할 때 보낸 사람으로 쓰는 계정. 사람이 아니라서 로그인 아이디·이메일·비밀번호가 없고
+# 토큰은 서버만 아는 임의 값이다. 가족 구성원(group_members)에는 넣지 않는다.
+ASSISTANT_USER_ID = "gabee-assistant"
+ASSISTANT_NAME = "가비"
+
+
 class Message(Base):
     """대화방의 메시지. `room_id` 가 비어 있는 옛 메시지는 가족 전체방으로 본다(group_id 기준)."""
 

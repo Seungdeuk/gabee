@@ -1,4 +1,4 @@
-// 서버 추천(/schedule/suggestions, 채팅 suggestion 카드)을 화면이 쓰는 제안 모양으로 바꾸는 순수 함수들. 화면·테마에 의존하지 않아 node 테스트로 확인한다.
+// 서버 추천(/schedule/suggestions)을 화면이 쓰는 제안 모양으로 바꾸는 순수 함수들. 화면·테마에 의존하지 않아 node 테스트로 확인한다.
 
 const KIND_FROM_SERVER = { 1: "appointment", 2: "todo" };
 

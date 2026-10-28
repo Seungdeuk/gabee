@@ -100,3 +100,50 @@ class TopicOut(BaseModel):
     name: str
     color: str
     created_at: datetime
+
+
+class RequestCreate(BaseModel):
+    """같이해요 부탁 보내기. to_ids 는 같은 가족 구성원이어야 하고 나는 뺀다(중복은 하나로)."""
+
+    title: str = Field(min_length=1, max_length=120)
+    start_date: date
+    start_time: time | None = None
+    end_time: time | None = None
+    place: str = Field(default="", max_length=200)
+    memo: str = Field(default="", max_length=2000)
+    to_ids: list[str] = Field(min_length=1, max_length=20)
+
+    @field_validator("title")
+    @classmethod
+    def _strip(cls, v: str) -> str:
+        v = v.strip()
+        if not v:
+            raise ValueError("제목이 비었어요")
+        return v
+
+
+class RequestAnswer(BaseModel):
+    """받은 부탁에 답한다. 수락(accepted)이면 어떤 일정으로 만들지 kind(1 약속·2 할 일)가 필요하다."""
+
+    answer: Literal["accepted", "declined"]
+    kind: Literal[1, 2] | None = None
+
+
+class RecipientOut(BaseModel):
+    user_id: str
+    status: Literal["waiting", "accepted", "declined"]
+
+
+class RequestOut(BaseModel):
+    id: str
+    from_id: str
+    title: str
+    start_date: date
+    start_time: time | None
+    end_time: time | None
+    place: str
+    memo: str
+    created_at: datetime
+    canceled: bool
+    recipients: list[RecipientOut]
+    my_event_id: str | None  # 내가 수락해서 만든 지워지지 않은 일정

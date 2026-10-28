@@ -5384,6 +5384,306 @@
         }
       }
     },
+    "/schedule/requests": {
+      "post": {
+        "tags": [
+          "schedule"
+        ],
+        "summary": "Create Request",
+        "operationId": "create_request_schedule_requests_post",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-gyeot-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Gyeot-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RequestCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RequestOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "schedule"
+        ],
+        "summary": "List Requests",
+        "operationId": "list_requests_schedule_requests_get",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-gyeot-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Gyeot-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/RequestOut"
+                  },
+                  "title": "Response List Requests Schedule Requests Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/schedule/requests/{request_id}/answer": {
+      "post": {
+        "tags": [
+          "schedule"
+        ],
+        "summary": "Answer Request",
+        "operationId": "answer_request_schedule_requests__request_id__answer_post",
+        "parameters": [
+          {
+            "name": "request_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Request Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-gyeot-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Gyeot-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RequestAnswer"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RequestOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/schedule/requests/{request_id}/cancel": {
+      "post": {
+        "tags": [
+          "schedule"
+        ],
+        "summary": "Cancel Request",
+        "operationId": "cancel_request_schedule_requests__request_id__cancel_post",
+        "parameters": [
+          {
+            "name": "request_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Request Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-gyeot-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Gyeot-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RequestOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/billing/expenses": {
       "get": {
         "tags": [
@@ -10306,159 +10606,6 @@
         }
       }
     },
-    "/ai-assistant/knowledge/items/{item_id}/summary": {
-      "post": {
-        "tags": [
-          "ai-assistant",
-          "ai-assistant-knowledge"
-        ],
-        "summary": "Summarize Item",
-        "description": "기록 한 건 AI 요약(동의·캐시·한도 가드를 거쳐 LLM 1회).",
-        "operationId": "summarize_item_ai_assistant_knowledge_items__item_id__summary_post",
-        "parameters": [
-          {
-            "name": "item_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Item Id"
-            }
-          },
-          {
-            "name": "authorization",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Authorization"
-            }
-          },
-          {
-            "name": "x-gyeot-token",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Gyeot-Token"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/DocSummaryOut"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/ai-assistant/knowledge/answer": {
-      "post": {
-        "tags": [
-          "ai-assistant",
-          "ai-assistant-knowledge"
-        ],
-        "summary": "Answer",
-        "description": "기록을 근거로 질문에 답한다(LLM 1회, 근거가 없으면 호출하지 않는다).",
-        "operationId": "answer_ai_assistant_knowledge_answer_post",
-        "parameters": [
-          {
-            "name": "authorization",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Authorization"
-            }
-          },
-          {
-            "name": "x-gyeot-token",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Gyeot-Token"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/DocAnswerIn"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/DocAnswerOut"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
     "/ai-assistant/chat": {
       "post": {
         "tags": [
@@ -11571,25 +11718,6 @@
         ],
         "title": "AiMeta"
       },
-      "AiRunMeta": {
-        "properties": {
-          "cached": {
-            "type": "boolean",
-            "title": "Cached"
-          },
-          "api_calls": {
-            "type": "integer",
-            "title": "Api Calls"
-          }
-        },
-        "type": "object",
-        "required": [
-          "cached",
-          "api_calls"
-        ],
-        "title": "AiRunMeta",
-        "description": "AI 호출 정보. cached 면 이번 요청에서 Anthropic 을 부르지 않았다."
-      },
       "AiSettingsIn": {
         "properties": {
           "enabled": {
@@ -12423,6 +12551,15 @@
             "type": "array",
             "maxItems": 10,
             "title": "History"
+          },
+          "audience": {
+            "type": "string",
+            "enum": [
+              "me",
+              "room"
+            ],
+            "title": "Audience",
+            "default": "me"
           }
         },
         "type": "object",
@@ -12456,6 +12593,42 @@
             "type": "array",
             "title": "Proposals",
             "default": []
+          },
+          "visibility": {
+            "type": "string",
+            "enum": [
+              "room",
+              "private"
+            ],
+            "title": "Visibility",
+            "default": "private"
+          },
+          "private_reasons": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Private Reasons",
+            "default": []
+          },
+          "confirm_cards": {
+            "items": {
+              "$ref": "#/components/schemas/ConfirmCardOut"
+            },
+            "type": "array",
+            "title": "Confirm Cards",
+            "default": []
+          },
+          "posted_message_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Posted Message Id"
           }
         },
         "type": "object",
@@ -12520,6 +12693,11 @@
             "type": "string",
             "maxLength": 4000,
             "title": "Text"
+          },
+          "private": {
+            "type": "boolean",
+            "title": "Private",
+            "default": false
           }
         },
         "type": "object",
@@ -12556,6 +12734,58 @@
           "code"
         ],
         "title": "CodeIn"
+      },
+      "ConfirmCardOut": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "schedule",
+            "title": "Kind"
+          },
+          "action": {
+            "type": "string",
+            "enum": [
+              "register",
+              "edit",
+              "delete"
+            ],
+            "title": "Action"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "lines": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Lines",
+            "default": []
+          },
+          "shared_with": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Shared With",
+            "default": []
+          },
+          "pending_action": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Pending Action"
+          }
+        },
+        "type": "object",
+        "required": [
+          "kind",
+          "action",
+          "title",
+          "pending_action"
+        ],
+        "title": "ConfirmCardOut",
+        "description": "사용자가 버튼을 눌러야 실행되는 일정 요청(가족 공유 등록·수정·삭제). 앱은 `POST /schedule/agent/confirm` 에\n`{action: pending_action, share}` 를 보낸다. 서버는 돌려받은 pending_action 을 믿지 않고 처음부터 다시 검증한다."
       },
       "ConfirmRequest": {
         "properties": {
@@ -12716,101 +12946,6 @@
           "user_id"
         ],
         "title": "DirectRoomCreate"
-      },
-      "DocAnswerIn": {
-        "properties": {
-          "question": {
-            "type": "string",
-            "maxLength": 500,
-            "minLength": 1,
-            "title": "Question"
-          },
-          "item_ids": {
-            "anyOf": [
-              {
-                "items": {
-                  "type": "string"
-                },
-                "type": "array",
-                "maxItems": 20
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Item Ids"
-          }
-        },
-        "type": "object",
-        "required": [
-          "question"
-        ],
-        "title": "DocAnswerIn"
-      },
-      "DocAnswerOut": {
-        "properties": {
-          "answer": {
-            "type": "string",
-            "title": "Answer"
-          },
-          "grounded": {
-            "type": "boolean",
-            "title": "Grounded"
-          },
-          "sources": {
-            "items": {
-              "$ref": "#/components/schemas/SourceOut"
-            },
-            "type": "array",
-            "title": "Sources"
-          },
-          "meta": {
-            "$ref": "#/components/schemas/AiRunMeta"
-          }
-        },
-        "type": "object",
-        "required": [
-          "answer",
-          "grounded",
-          "sources",
-          "meta"
-        ],
-        "title": "DocAnswerOut"
-      },
-      "DocSummaryOut": {
-        "properties": {
-          "item_id": {
-            "type": "string",
-            "title": "Item Id"
-          },
-          "title": {
-            "type": "string",
-            "title": "Title"
-          },
-          "summary": {
-            "type": "string",
-            "title": "Summary"
-          },
-          "key_points": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "title": "Key Points"
-          },
-          "meta": {
-            "$ref": "#/components/schemas/AiRunMeta"
-          }
-        },
-        "type": "object",
-        "required": [
-          "item_id",
-          "title",
-          "summary",
-          "key_points",
-          "meta"
-        ],
-        "title": "DocSummaryOut"
       },
       "Draft": {
         "properties": {
@@ -15554,6 +15689,11 @@
                 "type": "null"
               }
             ]
+          },
+          "is_assistant": {
+            "type": "boolean",
+            "title": "Is Assistant",
+            "default": false
           }
         },
         "type": "object",
@@ -16421,6 +16561,29 @@
         ],
         "title": "ReadStateOut"
       },
+      "RecipientOut": {
+        "properties": {
+          "user_id": {
+            "type": "string",
+            "title": "User Id"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "waiting",
+              "accepted",
+              "declined"
+            ],
+            "title": "Status"
+          }
+        },
+        "type": "object",
+        "required": [
+          "user_id",
+          "status"
+        ],
+        "title": "RecipientOut"
+      },
       "RecommendationList": {
         "properties": {
           "date": {
@@ -16672,6 +16835,203 @@
           "meta"
         ],
         "title": "RepliesOut"
+      },
+      "RequestAnswer": {
+        "properties": {
+          "answer": {
+            "type": "string",
+            "enum": [
+              "accepted",
+              "declined"
+            ],
+            "title": "Answer"
+          },
+          "kind": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "enum": [
+                  1,
+                  2
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Kind"
+          }
+        },
+        "type": "object",
+        "required": [
+          "answer"
+        ],
+        "title": "RequestAnswer",
+        "description": "받은 부탁에 답한다. 수락(accepted)이면 어떤 일정으로 만들지 kind(1 약속·2 할 일)가 필요하다."
+      },
+      "RequestCreate": {
+        "properties": {
+          "title": {
+            "type": "string",
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Title"
+          },
+          "start_date": {
+            "type": "string",
+            "format": "date",
+            "title": "Start Date"
+          },
+          "start_time": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Start Time"
+          },
+          "end_time": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "End Time"
+          },
+          "place": {
+            "type": "string",
+            "maxLength": 200,
+            "title": "Place",
+            "default": ""
+          },
+          "memo": {
+            "type": "string",
+            "maxLength": 2000,
+            "title": "Memo",
+            "default": ""
+          },
+          "to_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 20,
+            "minItems": 1,
+            "title": "To Ids"
+          }
+        },
+        "type": "object",
+        "required": [
+          "title",
+          "start_date",
+          "to_ids"
+        ],
+        "title": "RequestCreate",
+        "description": "같이해요 부탁 보내기. to_ids 는 같은 가족 구성원이어야 하고 나는 뺀다(중복은 하나로)."
+      },
+      "RequestOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "from_id": {
+            "type": "string",
+            "title": "From Id"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "start_date": {
+            "type": "string",
+            "format": "date",
+            "title": "Start Date"
+          },
+          "start_time": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Start Time"
+          },
+          "end_time": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "End Time"
+          },
+          "place": {
+            "type": "string",
+            "title": "Place"
+          },
+          "memo": {
+            "type": "string",
+            "title": "Memo"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "canceled": {
+            "type": "boolean",
+            "title": "Canceled"
+          },
+          "recipients": {
+            "items": {
+              "$ref": "#/components/schemas/RecipientOut"
+            },
+            "type": "array",
+            "title": "Recipients"
+          },
+          "my_event_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "My Event Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "from_id",
+          "title",
+          "start_date",
+          "start_time",
+          "end_time",
+          "place",
+          "memo",
+          "created_at",
+          "canceled",
+          "recipients",
+          "my_event_id"
+        ],
+        "title": "RequestOut"
       },
       "RoleIn": {
         "properties": {

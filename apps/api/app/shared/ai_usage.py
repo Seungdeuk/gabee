@@ -35,7 +35,7 @@ class AiUsageLog(Base):
     user_id: Mapped[str] = mapped_column(String(32))
     feature: Mapped[str] = mapped_column(
         String(24)
-    )  # analysis | reply | topics | doc_summary | doc_answer
+    )  # analysis | reply | topics (옛 doc_summary·doc_answer 기록이 남아 있을 수 있다)
     api_calls: Mapped[int] = mapped_column(
         Integer, default=0
     )  # 실제로 Anthropic 을 부른 수(캐시 적중은 0)
