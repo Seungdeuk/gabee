@@ -1,4 +1,4 @@
-"""AI 호출을 최소화하는 공통 관문. 가족 채팅 분석·답장 추천·문서 질문 등 모든 AI 기능이 이 함수 하나(`run`)를 거쳐 Anthropic 을 부른다.
+"""AI 호출을 최소화하는 공통 관문. 가족 채팅 분석·답장 추천 등 모든 AI 기능이 이 함수 하나(`run`)를 거쳐 Anthropic 을 부른다.
 
 순서(앞 단계에서 걸리면 Anthropic 을 부르지 않는다):
  1. 가족 그룹의 AI 동의(소유자·관리자가 켬) 확인
@@ -13,6 +13,7 @@
 import json
 import uuid
 from collections.abc import Callable
+from contextvars import ContextVar
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
@@ -35,6 +36,11 @@ class Outcome:
     output_tokens: int
     model: str | None
 
+
+# 동시 실행 칸을 이미 쥔 요청 안에서 부르는 호출(메인 채팅이 탭 에이전트를 부를 때)이 같은 가족의 칸을 또 잡으려다 거절되지 않게 한다
+_slot_held_groups: ContextVar[frozenset[str]] = ContextVar(
+    "ai_slot_held_groups", default=frozenset()
+)
 
 USAGE_RETENTION_DAYS = 90  # 사용 기록(원문 없음)을 남겨 두는 기간
 CACHED_LOG_DEDUPE_SECONDS = 60  # 같은 사용자의 같은 캐시 적중 기록은 이 시간 안에 한 줄만 남긴다(반복 요청으로 표가 부푸는 것을 막는다)
@@ -338,7 +344,11 @@ def run(
         db, user_id, now, feature
     )  # 빠른 거절(경합이 있어도 아래에서 칸을 잡은 뒤 다시 확인한다)
     _check_daily_limits(db, user_id, group_id, feature)
-    slot, token = _acquire_slot(db, group_id, user_id, feature, now)
+    nested = (
+        group_id in _slot_held_groups.get()
+    )  # 바깥 요청이 이 가족의 칸을 쥐고 있다 — 한도·쿨다운은 그대로 센다
+    slot, token = (0, "") if nested else _acquire_slot(db, group_id, user_id, feature, now)
+    held = None if nested else _slot_held_groups.set(_slot_held_groups.get() | {group_id})
     try:
         # 칸을 잡는 사이 같은 결과를 다른 요청이 먼저 만들었을 수 있다 — AI 를 부르기 전에 한 번 더 본다
         cached = (
@@ -381,4 +391,6 @@ def run(
             result, False, calls, response.input_tokens, response.output_tokens, response.model
         )
     finally:
-        _release_slot(db, group_id, slot, token)
+        if held is not None:
+            _slot_held_groups.reset(held)
+            _release_slot(db, group_id, slot, token)

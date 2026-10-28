@@ -4,20 +4,23 @@ import { useRef, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
+import { isApiConfigured } from "@/shared/api/client";
 import SettingsButton from "@/shared/components/SettingsButton";
 import { colors, font, radius, spacing } from "@/theme";
 
-import ChatInputBar from "../components/ChatInputBar";
-import ChatSheet from "../components/ChatSheet";
 import DaySection from "../components/DaySection";
 import SuggestionCard from "../components/SuggestionCard";
 import TogetherRow from "../components/TogetherRow";
 import WeekStrip from "../components/WeekStrip";
-import { sendMessage } from "../chat";
 import { useNewReceivedCount } from "../requests";
 import { toggleChecked, useScheduleItems } from "../store";
+import { draftDateOf, suggestionExtras } from "../suggestion_convert";
 import { MOCK_SUGGESTIONS, SUGGESTIONS_DONE_TEXT, pickCheckCard } from "../suggestions";
+import { useSuggestions } from "../suggestions_store";
 import { addDays, formatDateLong, formatMonthDay, formatSlashDate, todayKey } from "../utils/date";
+
+// 서버 주소가 있으면 추가 카드는 서버 추천을, 없으면 임시(mock) 제안을 쓴다.
+const useServer = isApiConfigured();
 
 const TOGETHER_SAMPLES = ["장 같이 봐줘", "병원 같이 가줘"];
 
@@ -41,19 +44,21 @@ export default function ScheduleScreen() {
   // 카드마다 자기 새로고침이 있다(전체 새로고침은 없다). 확인 카드는 확인하지 않고 다른 항목을, 추가 카드는 다른 제안을 보여 준다.
   const [checkCursor, setCheckCursor] = useState(0);
   const [addCursor, setAddCursor] = useState(0);
-  // 질문을 보내면 채팅 시트가 올라온다. 닫아도 대화는 유지된다.
-  const [sheetOpen, setSheetOpen] = useState(false);
   // "나중에"를 누른 카드는 복숭아색으로 표시된 채 그대로 남는다(다시 누르면 해제).
   const [later, setLater] = useState([]);
   // 방금 확인 버튼을 누른 항목. 복숭아색을 잠깐 보여 준 뒤 체크하고 다음 항목으로 넘어간다.
   const [pressed, setPressed] = useState(null);
 
+  const server = useSuggestions();
+
   const checkCard = pickCheckCard(items, today, checkCursor);
-  const draftDate = (suggestion) => addDays(today, suggestion.draft.daysFromToday);
+  const draftDate = (suggestion) => draftDateOf(suggestion.draft, today);
   const isAdded = (suggestion) => items.some((item) => item.title === suggestion.draft.title && item.date === draftDate(suggestion));
   // 이미 추가한 제안은 빠지고 다음 제안이 바로 나온다. 저장하지 않고 돌아오면 그대로다.
-  const candidates = MOCK_SUGGESTIONS.filter((suggestion) => !isAdded(suggestion));
+  const candidates = (useServer ? server.list : MOCK_SUGGESTIONS).filter((suggestion) => !isAdded(suggestion));
   const addCard = candidates.length > 0 ? candidates[addCursor % candidates.length] : null;
+  // 서버 추천은 불러오는 동안, 또 못 불러왔거나(403·429) 아직 안 쓴 게 없는 채로 소진이 아니면 카드를 숨긴다. 소진이면 마무리 문장.
+  const showAddArea = !useServer || addCard !== null || (!server.loading && server.exhausted);
   const toggleLater = (id) => {
     if (pressed === id) return;
     setLater((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
@@ -85,7 +90,12 @@ export default function ScheduleScreen() {
   const openSuggested = (draft) => openRegister({ ...draft, suggested: "1" });
   const openDraft = (suggestion) => {
     setLater((prev) => prev.filter((x) => x !== suggestion.id));
-    openSuggested({ kind: suggestion.draft.kind, title: suggestion.draft.title, date: draftDate(suggestion) });
+    openSuggested({
+      kind: suggestion.draft.kind,
+      title: suggestion.draft.title,
+      date: draftDate(suggestion),
+      ...suggestionExtras(suggestion),
+    });
   };
 
   return (
@@ -183,31 +193,15 @@ export default function ScheduleScreen() {
                   onSecondary={() => toggleLater(addCard.id)}
                   onRefresh={gated("add", () => setAddCursor((c) => c + 1))}
                 />
-              ) : (
+              ) : showAddArea ? (
                 <SuggestionCard text={SUGGESTIONS_DONE_TEXT} />
-              )}
+              ) : null}
             </View>
             <Text style={styles.notice}>추천은 참고용이에요. 내용을 확인 후 저장해 주세요 📝</Text>
           </View>
 
-          <ChatInputBar
-            onSubmit={(text) => {
-              sendMessage(text);
-              setSheetOpen(true);
-            }}
-          />
         </View>
       </ScrollView>
-      <ChatSheet
-        visible={sheetOpen}
-        onClose={() => setSheetOpen(false)}
-        onFull={() => {
-          setSheetOpen(false);
-          router.push("/schedule/chat");
-        }}
-        onAdd={(suggestion, date) => openSuggested({ kind: suggestion.draft.kind, title: suggestion.draft.title, date })}
-        onOpenItem={openDetail}
-      />
     </SafeAreaView>
   );
 }

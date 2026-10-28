@@ -10,7 +10,9 @@ import IconButton from "@/shared/components/IconButton";
 import { colors, font, radius, spacing } from "@/theme";
 
 import { buildItems, canSend, lastId, photoSendErrorMessage, trimDraft, unreadCount } from "../chatUtils";
+import { DIRECT_NOT_ALLOWED, MENTION, mergeNotes, parseMention } from "../mention";
 import AiPanel from "../components/AiPanel";
+import AssistantNote from "../components/AssistantNote";
 import ChatSearchBar from "../components/ChatSearchBar";
 import ChatSearchResults from "../components/ChatSearchResults";
 import Composer from "../components/Composer";
@@ -26,6 +28,7 @@ import { takeFlag } from "../linkUtils";
 import useChatLinks from "../useChatLinks";
 import useChatMessages, { useRoomInfo } from "../useChatMessages";
 import useChatPins from "../useChatPins";
+import useMention from "../useMention";
 import useChatSearch, { useFamilyRoomId } from "../useChatSearch";
 import { memberName } from "../listUtils";
 import { pickChatPhoto } from "../pickPhoto";
@@ -72,6 +75,7 @@ export default function ChatRoomScreen() {
   const [goingLive, setGoingLive] = useState(false);
   const [draft, setDraft] = useState("");
   const [aiOpen, setAiOpen] = useState(false);
+  const mention = useMention(); // @가비 로 부른 뒤 나에게만 보이는 답·안내
   const listRef = useRef(null);
   const nearBottom = useRef(initialFocus == null);
   const itemsRef = useRef([]);
@@ -117,8 +121,14 @@ export default function ChatRoomScreen() {
     const text = trimDraft(draft);
     setDraft("");
     nearBottom.current = true;
+    const called = direct ? { mentioned: false, question: "" } : parseMention(text); // 1:1 방에서는 가비를 부를 수 없다(1:1 대화는 AI 로 보내지 않는다)
     chat.send(text).then((started) => {
-      if (!started) setDraft((prev) => prev || text); // 보내지 못했으면(최신 대화로 돌아가지 못함 등) 쓴 글을 되돌려 놓는다
+      if (!started) {
+        setDraft((prev) => prev || text); // 보내지 못했으면(최신 대화로 돌아가지 못함 등) 쓴 글을 되돌려 놓는다
+        return;
+      }
+      if (called.mentioned) mention.ask(called.question);
+      else if (direct && text.startsWith(MENTION)) mention.info(DIRECT_NOT_ALLOWED);
     });
   };
 
@@ -300,7 +310,7 @@ export default function ChatRoomScreen() {
     scrollToEnd(true);
   };
 
-  const items = buildItems(chat.messages);
+  const items = buildItems(mergeNotes(chat.messages, mention.notes)); // 개인용 가비 답은 내 화면에만 시간순으로 끼운다(읽음·새 메시지 계산은 chat.messages 그대로)
   itemsRef.current = items;
   const members = info.room?.members?.length ?? 0;
   const peer = direct ? info.room?.members?.find((m) => m.id === peerId) : null;
@@ -391,6 +401,8 @@ export default function ChatRoomScreen() {
                   {item.label}
                 </Text>
               </View>
+            ) : item.message.localNote ? (
+              <AssistantNote note={item.message} onRetry={mention.ask} onDismiss={mention.dismiss} onResolveCard={mention.resolveCard} />
             ) : (
               <MessageBubble
                 message={item.message}

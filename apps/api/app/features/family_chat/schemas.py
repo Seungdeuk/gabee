@@ -25,6 +25,7 @@ class MessageOut(BaseModel):
     text: str  # 사진 메시지는 빈 문자열
     created_at: datetime
     attachment: AttachmentOut | None = None
+    is_assistant: bool = False  # 가비가 @가비 호출에 답해 올린 메시지(앱이 말풍선을 따로 그린다)
 
 
 class ReadMark(BaseModel):

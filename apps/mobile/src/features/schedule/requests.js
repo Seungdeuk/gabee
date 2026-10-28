@@ -1,13 +1,22 @@
-import { useSyncExternalStore } from "react";
+import { useEffect, useSyncExternalStore } from "react";
 
+import { isApiConfigured } from "@/shared/api/client";
+
+import * as api from "./api";
 import { KIND } from "./constants";
 import { createMockRequests, ME_ID } from "./mock";
-import { addItem, removeItem } from "./store";
+import { addItem, ready, reloadItems, removeItem } from "./store";
+import { toRequest, toRequestBody } from "./together_convert";
 import { todayKey } from "./utils/date";
 
-// 서버 연동 전까지 쓰는 메모리 저장소. 같이(요청) 목록을 여러 화면이 같이 본다.
-let requests = createMockRequests();
+// 같이(요청) 목록을 여러 화면이 같이 보는 저장소. 서버 주소가 있으면(EXPO_PUBLIC_API_URL) 서버의 보낸·받은 목록을 읽고 쓰며,
+// 화면에는 바로 반영한 뒤 서버가 실패하면 되돌린다. 주소가 없으면 예전처럼 메모리 mock 으로 동작한다.
+const useServer = isApiConfigured();
+let requests = useServer ? [] : createMockRequests();
 let nextId = 100;
+let loading = null;
+const pendingCreate = new Map(); // 임시 id → 서버에 만드는 중인 요청의 서버 id(그동안 온 취소·답은 그 뒤에 보낸다)
+const aliases = new Map(); // 임시 id → 만들어진 서버 id
 const listeners = new Set();
 
 const emit = () => listeners.forEach((fn) => fn());
@@ -16,8 +25,43 @@ const subscribe = (fn) => {
   return () => listeners.delete(fn);
 };
 
+const warn = (what, error) => console.warn(`[schedule] ${what} 실패`, error?.message ?? error);
+
+/** 서버 모드에서 가족 정보가 준비된 뒤 요청 목록을 한 번 읽는다. 실패하면 다음에 다시 시도한다. */
+function ensureLoaded() {
+  if (!useServer || loading) return;
+  loading = (async () => {
+    const f = await ready();
+    requests = (await api.listRequests()).map((r) => toRequest(r, f));
+    emit();
+  })().catch((error) => {
+    warn("같이 불러오기", error);
+    loading = null;
+  });
+}
+
+/** 임시 id 로 만드는 중이면 서버 id 가 나올 때까지 기다린다. @returns {Promise<string>} */
+async function serverId(id) {
+  if (pendingCreate.has(id)) return pendingCreate.get(id);
+  return aliases.get(id) ?? id;
+}
+
+const replaceRequest = (id, next) => {
+  requests = requests.map((request) => (request.id === id ? next(request) : request));
+  emit();
+};
+
+/** 서버 요청이 실패했을 때 화면 상태를 요청 전으로 되돌린다. */
+const restore = (before) => {
+  requests = before;
+  emit();
+};
+
 /** @returns {import("./model").TogetherRequest[]} 전체 요청(보낸 것·받은 것) */
 export function useRequests() {
+  useEffect(() => {
+    ensureLoaded();
+  }, []);
   return useSyncExternalStore(subscribe, () => requests);
 }
 
@@ -36,16 +80,50 @@ export function useRequest(id) {
  */
 export function sendRequest(data) {
   nextId += 1;
-  const request = { ...data, id: `q${nextId}`, replies: {}, cancelled: false };
+  const request = { ...data, id: useServer ? `tmp-${nextId}` : `q${nextId}`, replies: {}, cancelled: false };
   requests = [request, ...requests];
   emit();
+  if (!useServer) return request;
+
+  // 서버 모드: 서버 응답으로 바꾸고, 실패하면 목록에서 뺀다. 서버는 "누구"를 저장하지 않으므로 whoIds 는 비운다.
+  const creating = (async () => {
+    const f = await ready();
+    const created = await api.createRequest(toRequestBody(request, f));
+    aliases.set(request.id, created.id);
+    replaceRequest(request.id, () => toRequest(created, f));
+    return created.id;
+  })();
+  pendingCreate.set(request.id, creating);
+  creating.then(
+    () => pendingCreate.delete(request.id),
+    (error) => {
+      warn("같이 보내기", error);
+      pendingCreate.delete(request.id);
+      requests = requests.filter((r) => r.id !== request.id);
+      emit();
+    },
+  );
   return request;
+}
+
+/** 서버 모드에서 요청을 서버에 보내고 응답으로 갱신한다. 실패하면 before 로 되돌린다. */
+function sync(id, before, what, call) {
+  return (async () => {
+    const f = await ready();
+    const saved = await call(await serverId(id));
+    replaceRequest(await serverId(id), () => toRequest(saved, f));
+  })().catch((error) => {
+    warn(what, error);
+    restore(before);
+  });
 }
 
 /** 답을 기다리는 동안 보낸 사람이 보내기를 취소한다. @param {string} id */
 export function cancelRequest(id) {
+  const before = requests;
   requests = requests.map((request) => (request.id === id ? { ...request, cancelled: true } : request));
   emit();
+  if (useServer) sync(id, before, "같이 취소", api.cancelRequest);
 }
 
 /**
@@ -67,6 +145,15 @@ const setReply = (id, answer, itemId = null) => {
   emit();
 };
 
+// 서버 모드의 답. 내 일정은 서버가 만들거나(수락) 지우므로(어렵다로 바꿈) 답한 뒤 내 일정 목록을 다시 읽는다.
+// 서버 응답 전에는 내 답만 먼저 보이고, 일정 id 는 응답으로 채워진다.
+function answerOnServer(request, answer, kind) {
+  const before = requests;
+  setReply(request.id, answer, null);
+  const serverKind = kind === KIND.appointment ? 1 : kind === KIND.todo ? 2 : null;
+  sync(request.id, before, "같이 답하기", (sid) => api.answerRequest(sid, answer, serverKind)).then(reloadItems);
+}
+
 /**
  * 답을 바꿀 수 있는 같이인지. 보낸 사람이 취소하지 않았고, 아직 날짜가 안 지났다.
  * @param {import("./model").TogetherRequest} request
@@ -84,6 +171,7 @@ export function acceptRequest(id, kind) {
   const request = requests.find((r) => r.id === id);
   if (!request || request.cancelled) return;
   if (request.replies[ME_ID] && !canAnswer(request)) return;
+  if (useServer) return answerOnServer(request, "accepted", kind);
   if (request.itemId) removeItem(request.itemId);
   const item = addItem({
     kind,
@@ -111,6 +199,7 @@ export function declineRequest(id) {
   const request = requests.find((r) => r.id === id);
   if (!request || request.cancelled) return;
   if (request.replies[ME_ID] && !canAnswer(request)) return;
+  if (useServer) return answerOnServer(request, "declined", null);
   if (request.itemId) removeItem(request.itemId);
   setReply(id, "declined");
 }

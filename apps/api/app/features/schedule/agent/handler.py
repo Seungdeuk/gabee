@@ -1,7 +1,7 @@
 """일정 에이전트 진입점. 메인 오케스트레이터(개인·가족 채팅)가 부르고, 그 전에는 일정 라우터가 부른다.
 
-한 번의 LLM 호출로 요청 종류와 답을 함께 받고(chat.py), 코드가 종류별로 처리한다. 지금은 질의·등록·수정·삭제·체크를 처리하고
-나머지(추천)는 다음 단계에서 채운다. 수정·삭제는 확인 카드를 거친 뒤 `confirm` 에서 실행한다. 일정 요청이 아니면 `not_schedule` 로 돌려줘 메인이 직접 답하게 한다.
+한 번의 LLM 호출로 요청 종류와 답을 함께 받고(chat.py), 코드가 종류별로 처리한다. 지금은 질의·등록·수정·삭제·체크·추천을 처리하고
+추천은 `suggest.supply` 로 연결한다. 수정·삭제는 확인 카드를 거친 뒤 `confirm` 에서 실행한다. 일정 요청이 아니면 `not_schedule` 로 돌려줘 메인이 직접 답하게 한다.
 """
 
 from datetime import UTC, datetime
@@ -10,12 +10,21 @@ from sqlalchemy.orm import Session
 
 from app.shared.auth import ensure_group_member
 
-from . import chat, checks, modify, reader, register
+from . import chat, checks, modify, reader, register, suggest
 from . import members as members_mod
 from . import period as period_mod
-from .schemas import AgentRequest, AgentResponse, Card, ConfirmRequest
+from .schemas import AgentRequest, AgentResponse, Card, ConfirmRequest, SuggestionOut
 
 NOT_READY = "이 요청은 아직 처리할 수 없어요"
+RECOMMEND_TEXT = "이런 일정은 어때요?"
+RECOMMEND_EXHAUSTED = "오늘 추천은 여기까지, 내일도 챙겨 드릴게요 💛"
+RECOMMEND_NONE = "지금은 추천드릴 일정이 없어요"
+
+
+def suggestion_out(s) -> SuggestionOut:
+    return SuggestionOut(
+        id=s.id, title=s.title, kind=s.kind, start_date=f"{s.start_date:%Y-%m-%d}", place=s.place
+    )
 
 
 def _ask(
@@ -50,7 +59,9 @@ def _wider_scope(period: period_mod.Period | None, keyword: str) -> str | None:
     return "모델이 다시 요청한 " + ", ".join(parts) if parts else None
 
 
-def handle(db: Session, user_id: str, group_id: str, request: AgentRequest) -> AgentResponse:
+def handle(
+    db: Session, user_id: str, group_id: str, request: AgentRequest, share_all: bool = False
+) -> AgentResponse:
     ensure_group_member(db, user_id, group_id)  # 라우터 밖에서 service 를 부르므로 직접 확인한다
     now = datetime.now(UTC)
     local_now = now.astimezone(reader.local_tz())
@@ -82,7 +93,14 @@ def handle(db: Session, user_id: str, group_id: str, request: AgentRequest) -> A
         return AgentResponse(intent=result.intent)
     if result.intent == "register":
         return register.respond(
-            db, user_id, group_id, request.draft, result.register, result.reply, members
+            db,
+            user_id,
+            group_id,
+            request.draft,
+            result.register,
+            result.reply,
+            members,
+            share_all,
         )
     by_id = {e.id: e for e in shown}
     if result.intent == "edit":
@@ -111,6 +129,27 @@ def handle(db: Session, user_id: str, group_id: str, request: AgentRequest) -> A
             else []
         )
         text = result.reply or "해당하는 일정을 찾지 못했어요"
+        return AgentResponse(intent=result.intent, text=text, cards=cards)
+    if result.intent == "recommend":
+        # 채팅 호출(분류)은 이미 했으므로 여기서는 카드 한도(schedule_card)만 추가로 쓴다
+        items, exhausted = suggest.supply(db, user_id, group_id)
+        if items:
+            text = result.reply or RECOMMEND_TEXT
+        else:
+            text = RECOMMEND_EXHAUSTED if exhausted else RECOMMEND_NONE
+        cards = [
+            Card(
+                type="suggestion",
+                data={
+                    "id": s.id,
+                    "title": s.title,
+                    "kind": s.kind,
+                    "date": f"{s.start_date:%Y-%m-%d}",
+                    "place": s.place,
+                },
+            )
+            for s in items
+        ]
         return AgentResponse(intent=result.intent, text=text, cards=cards)
     return AgentResponse(intent=result.intent, text=NOT_READY)
 

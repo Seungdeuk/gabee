@@ -9,7 +9,7 @@
   아니므로 마스킹하지 않는다.
 - 주소: 도로명·지번·동호수와 '시/도 + 시/군/구'만 본다. 건물 이름, 문장 속 약식 표현("강남역 3번 출구 앞 빌라")은 놓친다.
 - 숫자: 띄어쓰기·오탈자가 섞이거나 한글 숫자("공일공")로 쓴 전화번호는 놓친다. 반대로 주문번호가 우연히 규칙에 맞으면 오탐한다.
-- 한국어 NER 모델을 쓰지 않는다(새 의존성 금지). 마스킹은 위험을 줄일 뿐 보호를 보장하지 않는다.
+- 이 모듈(``detect``)은 규칙만 쓴다. 이름·주소 보강용 NER 은 ``ner.detect_with_ner`` 가 이 결과 위에 더한다(선택). 마스킹은 위험을 줄일 뿐 보호를 보장하지 않는다.
 """
 
 import calendar
@@ -189,24 +189,41 @@ _CARD_CONTEXT = re.compile(
 
 
 def _detect_card(text: str) -> list[Span]:
-    """Luhn 검증 + 발급 대역. 점수: 4자리씩 끊어 쓴 번호 0.95 / 끊지 않은 15·16자리는 '카드·결제' 같은 문맥이 있으면 0.95,
-    없으면 0.65(정책의 차단 임계값 미만이라 가리기만 한다) / 그 밖의 길이 0.4. 운송장·주문번호 문맥이면 끊지 않은 번호는 버린다."""
+    """카드번호를 단계로 판단한다. 길이 13~19 와 발급 대역은 모든 단계의 전제다.
+
+    - Luhn 통과: 4자리씩 끊어 쓴 번호 0.95 / 끊지 않은 15·16자리는 '카드·결제' 같은 문맥이 있으면 0.95, 없으면 0.65
+      (정책의 차단 임계값 0.7 미만이라 가리기만 한다) / 그 밖의 길이 0.4. 운송장·주문번호 문맥이면 끊지 않은 번호는 버린다.
+    - Luhn 실패(오타 난 번호·시험용 번호): 15·16자리이고 운송장·주문번호 문맥이 없을 때만, 형식이나 문맥이 확실하면 가린다.
+      4자리씩 끊어 쓴 번호 0.6 / 끊지 않은 번호는 '카드·결제' 문맥이 있을 때 0.5 / 문맥도 구분자도 없으면 버린다.
+      점수는 모두 차단 임계값(0.7) 미만이라 값만 가리고 메시지는 보낸다(오탐이어도 대화가 통째로 빠지지 않는다).
+    """
     spans = []
     for m in CARD_RE.finditer(text):
         raw = m.group(0)
         digits = re.sub(r"\D", "", raw)
-        if not 13 <= len(digits) <= 19 or not _luhn_ok(digits) or not _card_prefix_ok(digits):
+        if not 13 <= len(digits) <= 19 or not _card_prefix_ok(digits):
             continue
-        if len(digits) not in (15, 16):
-            score = 0.4
-        elif digits != raw:  # 구분자가 있는 번호
-            score = 0.95
-        elif _near_not_pii(text, m.start(), m.end()):
-            continue
-        elif _CARD_CONTEXT.search(text[max(0, m.start() - 20) : m.end() + 20]):
-            score = 0.95
+        separated = digits != raw
+        if _luhn_ok(digits):
+            if len(digits) not in (15, 16):
+                score = 0.4
+            elif separated:
+                score = 0.95
+            elif _near_not_pii(text, m.start(), m.end()):
+                continue
+            elif _CARD_CONTEXT.search(text[max(0, m.start() - 20) : m.end() + 20]):
+                score = 0.95
+            else:
+                score = 0.65
         else:
-            score = 0.65
+            if len(digits) not in (15, 16) or _near_not_pii(text, m.start(), m.end()):
+                continue
+            if separated:
+                score = 0.6
+            elif _CARD_CONTEXT.search(text[max(0, m.start() - 20) : m.end() + 20]):
+                score = 0.5
+            else:
+                continue  # 문맥도 구분자도 없는 Luhn 실패 숫자는 주문번호·운송장일 가능성이 크다
         spans.append(Span(Kind.CARD, m.start(), m.end(), score, "card"))
     return spans
 

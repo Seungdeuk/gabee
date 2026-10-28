@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.features.family_group.models import GroupMember
 
-from .models import Event, EventTopic
+from .models import Event, EventRequest, EventRequestRecipient, EventTopic
 
 
 def _visible(user_id: str | None) -> list:
@@ -113,3 +113,68 @@ def delete_topic(db: Session, topic: EventTopic) -> None:
     topic.deleted_at = datetime.now(UTC)
     db.execute(update(Event).where(Event.topic_id == topic.id).values(topic_id=None))
     db.commit()
+
+
+def get_request(db: Session, group_id: str, request_id: str) -> EventRequest | None:
+    return db.scalar(
+        select(EventRequest).where(EventRequest.id == request_id, EventRequest.group_id == group_id)
+    )
+
+
+def recipients_of(db: Session, request_ids: list[str]) -> list[EventRequestRecipient]:
+    """부탁들의 받는 사람 줄, 만든 순서대로."""
+    return list(
+        db.scalars(
+            select(EventRequestRecipient)
+            .where(EventRequestRecipient.request_id.in_(request_ids))
+            .order_by(EventRequestRecipient.created_at, EventRequestRecipient.id)
+        )
+    )
+
+
+def requests_for(db: Session, group_id: str, user_id: str) -> list[EventRequest]:
+    """내가 보냈거나 내가 받는 사람인 부탁, 최신순(같으면 id)."""
+    received = select(EventRequestRecipient.request_id).where(
+        EventRequestRecipient.group_id == group_id, EventRequestRecipient.user_id == user_id
+    )
+    return list(
+        db.scalars(
+            select(EventRequest)
+            .where(
+                EventRequest.group_id == group_id,
+                or_(EventRequest.user_id == user_id, EventRequest.id.in_(received)),
+            )
+            .order_by(EventRequest.created_at.desc(), EventRequest.id)
+        )
+    )
+
+
+def my_recipient(db: Session, request_id: str, user_id: str) -> EventRequestRecipient | None:
+    return db.scalar(
+        select(EventRequestRecipient).where(
+            EventRequestRecipient.request_id == request_id,
+            EventRequestRecipient.user_id == user_id,
+        )
+    )
+
+
+def live_events_of_requests(db: Session, request_ids: list[str], user_id: str) -> list[Event]:
+    """내가 수락해서 만든, 지워지지 않은 일정들."""
+    return list(
+        db.scalars(
+            select(Event)
+            .where(
+                Event.request_id.in_(request_ids),
+                Event.user_id == user_id,
+                Event.deleted_at.is_(None),
+            )
+            .order_by(Event.created_at, Event.id)
+        )
+    )
+
+
+def live_events_of_recipient(db: Session, recip_id: str) -> list[Event]:
+    """이 답 줄로 만들어진, 지워지지 않은 일정들."""
+    return list(
+        db.scalars(select(Event).where(Event.recip_id == recip_id, Event.deleted_at.is_(None)))
+    )

@@ -14,6 +14,7 @@ import TimeSheet from "../components/TimeSheet";
 import { KIND, KIND_LABEL } from "../constants";
 import { ME_ID, members, topics } from "../mock";
 import { addItem, updateItem, useScheduleItem } from "../store";
+import { markUsed } from "../suggestions_store";
 import { formatDateWithYear, formatTimeConfirmed } from "../utils/date";
 
 const KIND_OPTIONS = [KIND.appointment, KIND.todo].map((key) => ({ key, label: KIND_LABEL[key] }));
@@ -34,7 +35,7 @@ export default function RegisterScreen() {
   const [topicId, setTopicId] = useState(editing?.topicId ?? null);
   const [sharedWith, setSharedWith] = useState(editing?.sharedWith ?? []);
   const [date, setDate] = useState(editing?.date ?? (/^\d{4}-\d{2}-\d{2}$/.test(params.date ?? "") ? params.date : ""));
-  const [place, setPlace] = useState(editing?.place ?? "");
+  const [place, setPlace] = useState(editing?.place ?? (typeof params.place === "string" ? params.place : ""));
   const [memo, setMemo] = useState(editing?.memo ?? "");
   const [time, setTime] = useState(
     editing
@@ -70,7 +71,12 @@ export default function RegisterScreen() {
     };
     // 공유는 등록할 때만 정한다(수정에서는 바꿀 수 없다).
     if (editing) updateItem(editing.id, fields);
-    else addItem({ ...fields, sharedWith, createdBy: ME_ID });
+    else {
+      // 서버 추천에서 열린 등록이면 제안 id 를 같이 보내 서버가 제안을 확정하게 하고, 홈의 추천 목록에서도 뺀다.
+      const suggestionId = typeof params.suggestionId === "string" && params.suggestionId ? params.suggestionId : undefined;
+      addItem({ ...fields, sharedWith, createdBy: ME_ID, ...(suggestionId ? { suggestionId } : {}) });
+      if (suggestionId) markUsed(suggestionId);
+    }
     leave();
   };
 

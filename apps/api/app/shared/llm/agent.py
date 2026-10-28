@@ -12,6 +12,7 @@ import httpx
 
 from app.shared.config import settings
 from app.shared.errors import ApiError
+from app.shared.privacy.ner import PrivacyUnavailable
 
 from .client import API_URL, API_VERSION, LLMUnavailable
 
@@ -44,6 +45,8 @@ class AgentReply:
     proposals: list = field(
         default_factory=list
     )  # proposals.Proposal: 사용자 확인을 기다리는 쓰기 제안
+    # 앱이 확인 카드로 보여 줄 실행 정보(예: 일정 공유 등록·수정·삭제). 사용자가 버튼을 눌러야 실행되고, 서버는 돌려받은 값을 다시 검증한다
+    confirmations: list[dict] = field(default_factory=list)
     input_tokens: int = 0  # 이 답을 만들며 쓴 토큰 합(여러 번 부른 호출의 합, 사용 기록용)
     output_tokens: int = 0
     model: str = ""
@@ -128,6 +131,8 @@ def run_agent(
                 try:
                     tool = by_name[call["name"]]
                     data, err = tool.run(args), False
+                except PrivacyUnavailable:
+                    raise  # 개인정보 보호 엔진을 못 쓰면(required) 도구 오류로 숨기지 않고 503 으로 끝낸다
                 except (KeyError, ValueError, TypeError, ApiError) as e:
                     data, err = {"error": getattr(e, "message", None) or str(e)}, True
                 outputs.append(

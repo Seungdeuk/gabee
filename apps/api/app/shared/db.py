@@ -15,7 +15,8 @@ class Base(DeclarativeBase):
 
 def _make_engine(url: str):
     parsed = make_url(url)
-    kwargs = {}
+    # DB 오류 로그에 SQL 파라미터(메시지·이름 같은 값)가 함께 찍히지 않게 한다
+    kwargs = {"hide_parameters": True}
     if parsed.get_backend_name() == "sqlite":
         kwargs["connect_args"] = {"check_same_thread": False}
         if parsed.database and parsed.database != ":memory:":

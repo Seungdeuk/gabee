@@ -11,6 +11,7 @@ from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
+from . import ner
 from .detectors import KINSHIP_TERMS
 from .policy import Policy
 from .pseudonymizer import Pseudonymizer, scrub_leftovers
@@ -86,6 +87,7 @@ def prepare_transcript(
     counts_by_kind 는 글자 속에서 찾은 개인정보 수다(발화자 토큰은 세지 않는다).
     """
     normalized = [r if isinstance(r, Row) else Row(*r) for r in rows]
+    ner.ensure_ready()  # mode=required 에서 NER 을 쓸 수 없으면 외부로 보내기 전에 503 privacy_unavailable
     groups: list[tuple[str, ...]] = []
     for item in member_names:
         parts = [item] if isinstance(item, str) else list(item)
@@ -108,17 +110,21 @@ def prepare_transcript(
     blocked_ids: list[int] = []
     counts: dict[str, int] = {}
     try:
-        for r in normalized:
-            speaker = " ".join((r.speaker_name or "").split())
-            # 엄마·아빠 같은 가족 호칭이 표시 이름이면 그대로 둔다(본문의 '엄마' 와 모델이 이어서 이해할 수 있게)
-            tokenize = speaker_tokens and speaker and speaker not in KINSHIP_TERMS
-            token = pz.token_for(Kind.PERSON, speaker) if tokenize else speaker
-            result = pz.apply(r.text, policy, known)
-            for kind, n in result.counts_by_kind.items():
-                counts[kind] = counts.get(kind, 0) + n
-            if result.blocked:
-                blocked_ids.append(r.id)
-            lines.append(PreparedLine(r.id, token, result.text, result.blocked))
+        # NER 을 켠 경우 줄 전체를 한 번(배치)에 추론한다(줄마다 부르면 지연이 줄 수만큼 곱해진다). 끄면 아무 일도 안 한다
+        with ner.batch_scope(
+            [r.text for r in normalized], newest_last=True
+        ):  # 줄은 오래된 순(마지막이 최신)
+            for r in normalized:
+                speaker = " ".join((r.speaker_name or "").split())
+                # 엄마·아빠 같은 가족 호칭이 표시 이름이면 그대로 둔다(본문의 '엄마' 와 모델이 이어서 이해할 수 있게)
+                tokenize = speaker_tokens and speaker and speaker not in KINSHIP_TERMS
+                token = pz.token_for(Kind.PERSON, speaker) if tokenize else speaker
+                result = pz.apply(r.text, policy, known)
+                for kind, n in result.counts_by_kind.items():
+                    counts[kind] = counts.get(kind, 0) + n
+                if result.blocked:
+                    blocked_ids.append(r.id)
+                lines.append(PreparedLine(r.id, token, result.text, result.blocked))
     except Exception:
         pz.clear()
         raise

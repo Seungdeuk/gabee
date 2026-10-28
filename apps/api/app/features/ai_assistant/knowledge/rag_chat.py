@@ -92,6 +92,11 @@ class AskResult:
     sources: list[dict] = field(default_factory=list)
     tool_calls: list[dict] = field(default_factory=list)
     proposals: list = field(default_factory=list)  # 사용자 확인을 기다리는 쓰기 제안
+    confirmations: list = field(
+        default_factory=list
+    )  # 앱이 확인 카드로 보여 줄 일정 공유·수정·삭제 등
+    # 답에 쓰인(인용된) 근거 중 민감 기록이 있다(가족 채팅방에 올릴지 판단에 쓴다). 검색에 걸렸어도 답에 안 쓴 기록은 세지 않는다
+    used_sensitive: bool = False
 
 
 def _post(body: dict) -> dict:
@@ -128,6 +133,23 @@ def _run_tool(db: Session, group_id: str, name: str, args: dict) -> dict:
     raise ValueError(f"알 수 없는 함수: {name}")
 
 
+def _direct_reply_ready(calls: list, result: "AskResult", direct: tuple | None, err: bool) -> bool:
+    """탭 에이전트 하나만 불렀고 그 답이 완결이면 True. 쓰기 제안이 있거나 답하지 못했거나 다른 도구도 불렀으면 메인이 이어서 답한다."""
+    if not settings.assistant_direct_agent_reply or direct is None or err:
+        return False
+    name, data, made = direct
+    return (
+        len(calls) == 1
+        and len(result.tool_calls) == 1
+        and name in agents.DIRECT_REPLY_AGENTS
+        and bool(data.get("can_answer"))
+        and bool(str(data.get("answer", "")).strip())
+        and not made
+        and not result.confirmations
+        and "pending_confirmation" not in data
+    )
+
+
 def _source(result: dict, n: int) -> dict:
     """n 은 답 안의 [n] 표시와 앱 출처 칩의 번호(검색 결과의 ref)다."""
     return {
@@ -138,6 +160,7 @@ def _source(result: dict, n: int) -> dict:
         "page": result.get("page"),
         "source_path": result.get("source_path"),
         "date": result.get("date"),
+        "sensitive": bool(result.get("sensitive")),
     }
 
 
@@ -215,16 +238,21 @@ def ask(
                 break
             messages.append({"role": "assistant", "content": content})
             outputs = []
+            direct = (
+                None  # (에이전트 이름, 돌려받은 결과, 쓰기 제안) — 이번 단계에서 부른 탭 에이전트
+            )
             for call in calls:
                 args = call.get("input") or {}
                 record = {"name": call["name"], "input": args}
                 result.tool_calls.append(record)
                 try:
                     if with_agents and agents.is_agent_tool(call["name"]):
-                        data, record["agent_tool_calls"], made = agents.call(
+                        data, record["agent_tool_calls"], made, cards = agents.call(
                             db, group_id, user, call["name"], args, post
                         )
                         result.proposals.extend(made)
+                        direct = (call["name"], data, made)
+                        result.confirmations.extend(cards)
                     else:
                         data = _run_tool(db, group_id, call["name"], args)
                     err = False
@@ -245,6 +273,11 @@ def ask(
                         "is_error": err,
                     }
                 )
+            if _direct_reply_ready(calls, result, direct, err):
+                result.answer = str(
+                    direct[1]["answer"]
+                ).strip()  # 에이전트의 답을 그대로(메인 모델 호출 1번 절약)
+                break
             messages.append({"role": "user", "content": outputs})
     except (httpx.HTTPError, ValueError, KeyError):
         return _fallback(db, group_id, question)
@@ -256,6 +289,7 @@ def ask(
     ]
     if used:
         result.sources = used
+    result.used_sensitive = any(s.get("sensitive") for s in result.sources)
     _renumber(result)
     return result
 

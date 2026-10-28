@@ -196,8 +196,11 @@ def respond(
     fields: dict,
     reply: str,
     members: list[Member],
+    share_all: bool = False,
 ) -> AgentResponse:
     member_ids = {m.id for m in members}
+    if share_all:  # 모델이 일부만 고르거나 비워 둬도 가족 전체로 정한다
+        fields = {**fields, "share_ids": [m.id for m in members if m.id != user_id]}
     draft = normalize(merge(request_draft, fields), member_ids, user_id, today())
     ambiguous = fields["date_ambiguous"]
     if ambiguous:

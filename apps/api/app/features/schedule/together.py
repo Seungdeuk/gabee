@@ -1,0 +1,185 @@
+"""같이해요 부탁: 보내기·목록·답하기·취소.
+보낸 사람은 events_requests.user_id, 받는 사람은 events_request_recipients 줄들이다.
+수락하면 수락한 사람 본인의 일정만 만들고(보낸 사람에게는 만들지 않는다), 답은 현황으로만 보인다."""
+
+import uuid
+from datetime import UTC, datetime, time, timedelta
+
+from sqlalchemy.orm import Session
+
+from app.shared.errors import ApiError, bad_request, not_found
+
+from . import repository as repo
+from .constants import (
+    KIND_TODO,
+    RECIPIENT_ACCEPTED,
+    RECIPIENT_DECLINED,
+    RECIPIENT_WAITING,
+)
+from .models import Event, EventRequest, EventRequestRecipient
+from .schemas import RequestAnswer, RequestCreate
+from .timeutil import local_tz
+
+_STATUS = {
+    RECIPIENT_WAITING: "waiting",
+    RECIPIENT_ACCEPTED: "accepted",
+    RECIPIENT_DECLINED: "declined",
+}
+_ALL_DAY = (time(0, 0), time(23, 59))  # 종일은 00:00~23:59 (events 와 같은 규칙)
+
+
+def _new_id() -> str:
+    return uuid.uuid4().hex[:12]
+
+
+def _out(
+    req: EventRequest, recipients: list[EventRequestRecipient], my_events: list[Event]
+) -> dict:
+    return {
+        "id": req.id,
+        "from_id": req.user_id,
+        "title": req.title,
+        "start_date": req.start_date,
+        "start_time": req.start_time,
+        "end_time": req.end_time,
+        "place": req.place,
+        "memo": req.memo,
+        "created_at": req.created_at,
+        "canceled": req.canceled_at is not None,
+        "recipients": [
+            {"user_id": r.user_id, "status": _STATUS.get(r.status, "waiting")}
+            for r in recipients
+            if r.request_id == req.id
+        ],
+        "my_event_id": next((e.id for e in my_events if e.request_id == req.id), None),
+    }
+
+
+def _outs(db: Session, reqs: list[EventRequest], user_id: str) -> list[dict]:
+    if not reqs:
+        return []
+    ids = [r.id for r in reqs]
+    recipients = repo.recipients_of(db, ids)
+    mine = repo.live_events_of_requests(db, ids, user_id)
+    return [_out(r, recipients, mine) for r in reqs]
+
+
+def create(db: Session, group_id: str, user_id: str, body: RequestCreate) -> dict:
+    to_ids = list(dict.fromkeys(body.to_ids))
+    if user_id in to_ids:
+        raise bad_request("invalid_recipients", "나에게는 보낼 수 없어요")
+    if set(to_ids) - repo.member_ids(db, group_id, to_ids):
+        raise bad_request("invalid_recipients", "같은 가족 구성원이 아닌 사람이 있어요")
+    if body.end_time is not None and body.start_time is None:
+        raise bad_request("invalid_time", "시작하는 시간이 없으면 끝나는 시간을 정할 수 없어요")
+    if body.start_time and body.end_time and body.end_time <= body.start_time:
+        raise bad_request("invalid_time", "끝나는 시간은 시작하는 시간보다 늦어야 해요")
+    now = datetime.now(UTC)
+    req = EventRequest(
+        id=_new_id(),
+        group_id=group_id,
+        user_id=user_id,
+        title=body.title,
+        place=body.place.strip(),
+        memo=body.memo,
+        start_date=body.start_date,
+        start_time=body.start_time,
+        end_time=body.end_time,
+        created_at=now,
+    )
+    # 받는 사람 순서는 보낸 순서다(created_at 이 같으면 id 가 무작위라 1μs 씩 늘린다)
+    rows = [
+        EventRequestRecipient(
+            id=_new_id(),
+            group_id=group_id,
+            user_id=t,
+            request_id=req.id,
+            created_at=now + timedelta(microseconds=i),
+        )
+        for i, t in enumerate(to_ids)
+    ]
+    db.add(req)
+    db.flush()  # 부탁 줄이 먼저 들어가야 받는 사람 줄이 가리킬 수 있다
+    db.add_all(rows)
+    db.commit()
+    return _out(req, rows, [])
+
+
+def list_mine(db: Session, group_id: str, user_id: str) -> list[dict]:
+    return _outs(db, repo.requests_for(db, group_id, user_id), user_id)
+
+
+def answer(db: Session, group_id: str, user_id: str, request_id: str, body: RequestAnswer) -> dict:
+    """받는 사람 본인이 수락·어렵겠어요로 답한다. 이미 답했다면 날짜가 지나기 전까지만 바꿀 수 있다.
+    수락하면 내 일정을 만들고, 답을 바꾸면 이전에 만든 내 일정은 지운다(소프트 삭제)."""
+    req = repo.get_request(db, group_id, request_id)
+    recip = repo.my_recipient(db, request_id, user_id) if req is not None else None
+    if req is None or recip is None:
+        raise not_found("부탁")
+    if req.canceled_at is not None:
+        raise bad_request("request_canceled", "취소된 부탁이에요")
+    accepted = body.answer == "accepted"
+    if accepted and body.kind is None:
+        raise bad_request("kind_required", "수락하려면 약속인지 할 일인지 골라야 해요")
+    if recip.status != RECIPIENT_WAITING and req.start_date < datetime.now(local_tz()).date():
+        raise bad_request("answer_locked", "날짜가 지나서 답을 바꿀 수 없어요")
+
+    previous = repo.live_events_of_recipient(db, recip.id)
+    keep = accepted and any(e.kind == body.kind for e in previous)  # 같은 종류로 다시 수락
+    now = datetime.now(UTC)
+    for event in previous:
+        if not (keep and event.kind == body.kind):
+            event.deleted_at = now
+    recip.status = RECIPIENT_ACCEPTED if accepted else RECIPIENT_DECLINED
+    recip.answered_at = now
+    if accepted and not keep:
+        db.add(_event_from(req, recip, user_id, body.kind))
+    db.commit()
+    return _outs(db, [req], user_id)[0]
+
+
+def _event_from(req: EventRequest, recip: EventRequestRecipient, user_id: str, kind: int) -> Event:
+    """부탁 그대로 받는 사람의 일정 한 줄을 만든다. 종일 부탁을 할 일로 받으면 시간은 비운다."""
+    start, end = req.start_time, req.end_time
+    if kind == KIND_TODO and (start, end) == _ALL_DAY:
+        start = end = None
+    starts_at = datetime.combine(req.start_date, start or time(0, 0), tzinfo=local_tz())
+    return Event(
+        id=_new_id(),
+        group_id=req.group_id,
+        user_id=user_id,
+        created_by=user_id,
+        title=req.title,
+        starts_at=starts_at.astimezone(UTC),
+        note=req.memo,
+        memo=req.memo,
+        status="confirmed",
+        source="request",
+        kind=kind,
+        place=req.place,
+        who_ids=[req.user_id],
+        start_date=req.start_date,
+        start_time=start,
+        end_time=end,
+        request_id=req.id,
+        recip_id=recip.id,
+    )
+
+
+def cancel(db: Session, group_id: str, user_id: str, request_id: str) -> dict:
+    """보낸 사람만 취소한다. 답을 기다리는 동안만 가능하다(수락한 사람이 있으면 400). 이미 취소했으면 그대로다.
+    만들어진 일정은 지우지 않는다."""
+    req = repo.get_request(db, group_id, request_id)
+    if req is None or (
+        req.user_id != user_id and repo.my_recipient(db, request_id, user_id) is None
+    ):
+        raise not_found("부탁")
+    if req.user_id != user_id:
+        raise ApiError(403, "not_owner", "내가 보낸 부탁만 취소할 수 있어요")
+    if req.canceled_at is None:
+        rows = repo.recipients_of(db, [req.id])
+        if any(r.status == RECIPIENT_ACCEPTED for r in rows):
+            raise bad_request("already_accepted", "수락한 사람이 있어서 취소할 수 없어요")
+        req.canceled_at = datetime.now(UTC)
+        db.commit()
+    return _outs(db, [req], user_id)[0]

@@ -79,3 +79,18 @@ class AgentResponse(BaseModel):
     cards: list[Card] = Field(default_factory=list)
     pending_action: PendingAction | None = None
     draft: Draft | None = None  # 되묻는 응답에만
+
+
+class SuggestionOut(BaseModel):
+    id: str
+    title: str
+    kind: int
+    start_date: str  # YYYY-MM-DD
+    place: str
+
+
+class SuggestionsOut(BaseModel):
+    """대기 중인 추천. exhausted 는 오늘 추천을 다 만들어 더 없다는 뜻."""
+
+    suggestions: list[SuggestionOut]
+    exhausted: bool

@@ -4,7 +4,7 @@ from app.features.family_group.models import User
 from app.shared.errors import bad_request, not_found
 
 from . import repository as repo
-from .models import FAMILY, ChatRoom, Message, MessageAttachment
+from .models import ASSISTANT_USER_ID, FAMILY, ChatRoom, Message, MessageAttachment
 from .schemas import AttachmentOut, MessageOut, ReadPosition, ReadStateOut, RoomOut, UnreadOut
 
 
@@ -29,6 +29,7 @@ def message_out(
         text=m.text,
         created_at=m.created_at,
         attachment=_attachment_out(attachment) if attachment else None,
+        is_assistant=m.user_id == ASSISTANT_USER_ID,
     )
 
 
