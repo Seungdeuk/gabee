@@ -52,6 +52,7 @@ def import_all_models() -> None:
     from app.features.schedule import models as _schedule  # noqa: F401
     from app.shared import ai_usage as _ai_usage  # noqa: F401
     from app.shared import location_consent as _consent  # noqa: F401
+    from app.shared import used_proposals as _used_proposals  # noqa: F401
 
 
 def _script_directory():
