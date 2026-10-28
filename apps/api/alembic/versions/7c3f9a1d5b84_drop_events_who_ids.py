@@ -6,6 +6,8 @@ Create Date: 2026-10-29 10:00:00.000000
 
 events.who_ids(관련된 사람 id 목록, "누구")를 지운다(contract). 앱·API·에이전트가 이 값을 더 쓰지 않는다.
 이 컬럼을 읽거나 쓰는 코드가 모두 배포된 뒤에 적용한다. downgrade 는 빈 목록으로 컬럼만 되살리며 지운 값은 복구되지 않는다.
+
+destructive-approved: PR #141
 """
 
 from collections.abc import Sequence
