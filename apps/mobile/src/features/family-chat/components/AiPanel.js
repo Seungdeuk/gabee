@@ -151,7 +151,7 @@ export default function AiPanel({ visible, onClose, onPickReply, onLinked }) {
     todoBusy.current.add(index);
     setTodoRegistered((r) => ({ ...r, [index]: "sending" }));
     try {
-      const group = await getRoomInfo();
+      const group = await getRoomInfo({ raw: true }); // AI 가 돌려준 담당자 이름은 실제 이름이라 별명을 입히지 않은 구성원과 맞춘다
       const body = candidateToTodoBody(candidate, group.members);
       if (!body) throw Object.assign(new Error("invalid_title"), { code: "invalid_title" });
       const created = await createTodo(body);

@@ -1,4 +1,5 @@
 import { apiFetch } from "@/shared/api/client";
+import { getGroupWithNicknames } from "@/shared/members/nicknames";
 
 /**
  * 가계 서버 호출. 응답 모양은 docs/contracts/openapi.json 의 /billing/* 를 따른다.
@@ -53,10 +54,10 @@ export const createExpense = (body) => apiFetch("/billing/expenses", { method: "
 /** 소프트 삭제. @param {string} id */
 export const deleteExpense = (id) => apiFetch(`/billing/expenses/${id}`, { method: "DELETE" });
 
-/** 가족 구성원(낸 사람·나눌 사람 고르기용). @returns {Promise<{ id: string, name: string, role: string }[]>} */
+/** 가족 구성원(낸 사람·나눌 사람 고르기용, 내가 붙인 별명이 있으면 name 이 별명). @returns {Promise<{ id: string, name: string, role: string }[]>} */
 export async function getMembers() {
-  const group = await apiFetch("/family-group/groups/me");
-  return group.members;
+  const group = await getGroupWithNicknames();
+  return group.members.map((m) => (m.nickname ? { ...m, name: m.nickname } : m)); // 가계 화면은 name 을 그린다(서버에는 id 만 보낸다)
 }
 
 /** @returns {Promise<{ notice: string, items: Subscription[], monthly_total: number, discount_total: number }>} 월 합계는 월 청구 금액의 합(할인이 이미 빠진 값), 할인 합계는 직접 입력한 값의 합 */

@@ -409,6 +409,7 @@ export default function ChatRoomScreen() {
               <AssistantNote note={item.message} onRetry={mention.ask} onDismiss={mention.dismiss} onResolveCard={mention.resolveCard} />
             ) : (
               <MessageBubble
+                nameOf={nameOf}
                 message={item.message}
                 mine={item.message.user_id === info.me?.id}
                 showName={item.showName}

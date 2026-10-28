@@ -1,5 +1,6 @@
 import { apiFetch, apiUrl, authHeaders, ensureFreshAccess, isApiConfigured } from "@/shared/api/client";
 import { mapChatCards } from "@/features/ai-assistant/scheduleCard";
+import { getGroupWithNicknames } from "@/shared/members/nicknames";
 import { photoPath } from "@/shared/photoCache";
 
 import { chatPhotoFileName, chatPhotoMimeType } from "./photo";
@@ -183,10 +184,11 @@ export async function sendPhoto(asset, roomId) {
 }
 
 /**
- * 내 가족 그룹 정보(이름·구성원·내 id). 그룹이 없으면 404.
+ * 내 가족 그룹 정보(이름·구성원·내 id). 그룹이 없으면 404. 구성원의 display_name 은 내가 붙인 별명이 있으면 별명으로 바뀌어 온다(raw 면 서버 값 그대로).
+ * @param {{ raw?: boolean }} [options]
  * @returns {Promise<{ id: string, name: string, my_id: string | null, members: { id: string, name: string, display_name?: string | null, photo_url?: string | null }[] }>}
  */
-export const getRoomInfo = () => apiFetch("/family-group/groups/me");
+export const getRoomInfo = ({ raw = false } = {}) => (raw ? apiFetch("/family-group/groups/me") : getGroupWithNicknames());
 
 /**
  * 내 읽음 위치를 올린다(서버는 단조 증가만 허용). 대화 글자는 보내지 않고 메시지 번호만 보낸다. AI 를 부르지 않는다.

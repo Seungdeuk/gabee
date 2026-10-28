@@ -148,6 +148,7 @@ test("메시지 API: 경로·쿼리·본문, 대화 글자는 쿼리에 없고 B
       "GET /family-chat/messages?after_id=30&limit=100",
       "POST /family-chat/messages",
       "GET /family-group/groups/me",
+      "GET /family-group/groups/me/nicknames", // 내가 붙인 별명을 구성원 이름에 입히려고 함께 부른다
     ],
   );
   assert.deepEqual(calls[3].body, { text: "저녁 뭐 먹을까?" });
