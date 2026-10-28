@@ -319,13 +319,16 @@ def test_prompt_injection_does_not_change_scope_or_structure(client, chat, other
     r = analyze(client, a)
     assert r.status_code == 200
     body = r.json()
-    assert set(body) == {
+    assert set(body) == {  # 스키마에 없는 필드(members·system)는 응답에 나오지 않는다
         "summary",
         "important_messages",
         "schedule_candidates",
         "todo_candidates",
+        "replies",
+        "topics",
         "meta",
     }
+    assert body["replies"] == [] and body["topics"] == []  # 주입 응답에는 답장·주제가 없다
     assert body["important_messages"] == []
     assert body["todo_candidates"][0]["assignee_name"] is None
     assert body["todo_candidates"][0]["source_message_ids"] == []

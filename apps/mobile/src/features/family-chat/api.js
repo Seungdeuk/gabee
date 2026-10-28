@@ -45,9 +45,10 @@ export async function askAssistantInRoom(question, history = []) {
 }
 
 /**
- * 대화 분석(요약·중요 메시지·일정 후보·할 일 후보를 한 번에). 누를 때만 호출한다.
+ * 대화 분석(요약·중요 메시지·일정 후보·할 일 후보·답장 추천·대화 주제 추천을 한 번에). 누를 때만 호출한다.
+ * replies·topics 는 구 서버 응답에 없을 수 있다(parseAnalysis 로 방어).
  * @param {{ limit?: number, afterId?: number }} [range] 최근 limit 개(기본 100), afterId 를 주면 그 뒤의 대화
- * @returns {Promise<{ summary: string, important_messages: object[], schedule_candidates: object[], todo_candidates: object[], meta: object }>}
+ * @returns {Promise<{ summary: string, important_messages: object[], schedule_candidates: object[], todo_candidates: object[], replies?: string[], topics?: string[], meta: object }>}
  */
 export const analyzeChat = (range) => apiFetch("/family-chat/ai/analysis", { method: "POST", body: rangeBody(range) });
 
@@ -58,20 +59,6 @@ export const analyzeChat = (range) => apiFetch("/family-chat/ai/analysis", { met
  * @returns {Promise<{ message_count: number, masked: Record<string, number>, blocked_messages: number, lines: { id: number, speaker: string, text: string, blocked: boolean }[], ai_enabled: boolean }>}
  */
 export const previewAiRange = (range) => apiFetch("/family-chat/ai/preview", { method: "POST", body: rangeBody(range) });
-
-/**
- * 답장 추천(분석과 별개 요청).
- * @param {{ limit?: number, afterId?: number }} [range]
- * @returns {Promise<{ replies: string[], meta: object }>}
- */
-export const suggestReplies = (range) => apiFetch("/family-chat/ai/replies", { method: "POST", body: rangeBody(range) });
-
-/**
- * 대화 주제 추천(분석과 별개 요청).
- * @param {{ limit?: number, afterId?: number }} [range]
- * @returns {Promise<{ topics: string[], meta: object }>}
- */
-export const suggestTopics = (range) => apiFetch("/family-chat/ai/topics", { method: "POST", body: rangeBody(range) });
 
 /**
  * 일정 후보를 EventCreate 본문으로 바꾼다. 날짜·시간이 없거나 올바르지 않으면 null(지어내지 않는다).

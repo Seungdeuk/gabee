@@ -9,6 +9,7 @@ import {
   maskedChips,
   maskedTotal,
   INSUFFICIENT_WARNING,
+  PREVIEW_KIND_LABEL,
   parsePreview,
   previewErrorMessage,
   previewLineText,
@@ -118,6 +119,10 @@ test("previewAiRange: 400 too_few_messages 는 오류 코드로 전달돼 문구
   });
 });
 
+test("확인 카드 종류 글자는 '대화 분석' 하나", () => {
+  assert.equal(PREVIEW_KIND_LABEL, "대화 분석");
+});
+
 test("승인 정책: 답장 추천은 입력창에 넣기만 하고, 일정·할 일 등록은 버튼 핸들러에서만 일어난다(소스 확인)", () => {
   const read = (p) => readFileSync(new URL(p, import.meta.url), "utf8").replace(/\r\n/g, "\n");
   const room = read("../src/features/family-chat/screens/ChatRoomScreen.js");
@@ -127,10 +132,12 @@ test("승인 정책: 답장 추천은 입력창에 넣기만 하고, 일정·할
 
   const panel = read("../src/features/family-chat/components/AiPanel.js");
   // 분석·추천 API 는 confirmSend 안에서만 부른다(버튼은 requestPreview 만 부름)
-  assert.doesNotMatch(panel.replace(/const confirmSend[\s\S]*?\n {2}\};/, ""), /run\("(analysis|replies|topics)"/);
-  assert.match(panel, /onPress=\{\(\) => requestPreview\("analysis"\)\}/);
-  assert.match(panel, /onPress=\{\(\) => requestPreview\("replies"\)\}/);
-  assert.match(panel, /onPress=\{\(\) => requestPreview\("topics"\)\}/);
+  assert.doesNotMatch(panel.replace(/const confirmSend[\s\S]*?\n {2}\};/, ""), /run\("analysis"/);
+  assert.match(panel, /onPress=\{\(\) => requestPreview\(\)\}/);
+  assert.equal((panel.match(/requestPreview\(\)/g) ?? []).length, 2); // 버튼 + 다시 시도
+  // 답장·주제 추천은 버튼이 없고 분석 결과에서만 나온다(별도 AI 호출 없음)
+  assert.doesNotMatch(panel, /suggestReplies|suggestTopics|run\("(replies|topics)"/);
+  assert.match(panel, /onPick=\{pickText\}/);
   // 일정·할 일 등록은 사용자가 누르는 핸들러에 연결돼 있고 effect 에서 부르지 않는다
   assert.match(panel, /onPress=\{\(\) => register\(i, c\)\}/);
   assert.match(panel, /onRegister=\{\(\) => registerTodo\(i, t\)\}/);

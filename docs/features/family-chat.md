@@ -150,13 +150,14 @@
 - **켜기 직전 확인**: "AI 기능 켜기"를 누르면 바로 `PUT /family-chat/ai/settings` 를 보내지 않고 같은 카드가 "확인하고 켜기"/"취소"와 함께 나온다. "확인하고 켜기"를 눌러야 PUT 한다. 이미 켜져 있는 가족에는 이 단계가 없다(`needsEnableConfirm`: 꺼짐 -> 켬 에서만 true). 확인 단계에서는 상세를 펼쳐 둔다.
 - **끄기**: 동의가 켜진 상태의 패널에서 소유자·관리자에게만 "AI 끄기" 버튼을 보이고(구성원에게는 "가족 소유자나 관리자만 AI 기능을 끌 수 있어요" 안내만), 누르면 "끄면 AI 비서·일정·가계·돌봄 도우미까지 모두 멈추고 저장된 분석 결과가 지워져요" 확인 뒤 "끄기"/"취소". "끄기"에서만 `PUT {enabled:false}` 를 보낸다. 켜기·끄기 확인 버튼은 빠른 두 번 누름을 ref 로 막는다.
 - **알려진 우회(팀 영역)**: `features/ai-assistant/components/AiOffCard.js`(`enableAi`)는 같은 PUT 을 확인 카드 없이 보낸다. `tests/privacycopy.test.js` 가 PUT 호출 위치를 허용 목록으로 검사해 새 우회가 생기면 실패한다. 담당 팀과 확인 카드를 shared 로 올려 통합해야 한다.
-- **동의 문구의 근거와 한 곳 관리**: 문구는 `features/family-chat/privacyCopy.js` 상수에만 있다. 서버에서 이 동의(`ai_guard.is_enabled`/`run` 의 동의 단계)는 가족 채팅 AI(analysis·reply·topics, 가명화), AI 비서(`assistant_chat`: 질문·찾은 문서가 가려지지 않음), 일정(`schedule` 질문·일정 제목 정규식 마스킹), 가계·돌봄 도우미(`billing_agent`·`care_agent`: 질문만 `mask_text`, 조회 결과의 이름·금액·위치는 가려지지 않음)에 모두 쓰인다. 그래서 안내는 "대화 분석·답장 추천만 가려서 보내고 나머지는 가려지지 않을 수 있다"고 쓴다. 서버가 다른 기능에도 가명화를 넓히면 `privacyCopy.js` 만 고친다. 시험 `tests/privacycopy.test.js`.
+- **동의 문구의 근거와 한 곳 관리**: 문구는 `features/family-chat/privacyCopy.js` 상수에만 있다. 서버에서 이 동의(`ai_guard.is_enabled`/`run` 의 동의 단계)는 가족 채팅 AI(analysis·reply·topics, 가명화), AI 비서(`assistant_chat`: 질문·찾은 문서가 가려지지 않음), 일정(`schedule` 질문·일정 제목 정규식 마스킹), 가계·돌봄 도우미(`billing_agent`·`care_agent`: 질문만 `mask_text`, 조회 결과의 이름·금액·위치는 가려지지 않음)에 모두 쓰인다. 그래서 안내는 "대화 분석(답장·주제 추천 포함)만 가려서 보내고 나머지는 가려지지 않을 수 있다"고 쓴다. 대화 분석 줄은 "한 번에 보내고, 매번 확인 카드에서 'AI에 보내기'를 눌러야만 전송된다"까지 밝히고, AI 비서 줄은 "주민번호·카드·계좌·비밀번호가 든 입력은 서버가 막는다"를 덧붙인다. 서버가 다른 기능에도 가명화를 넓히면 `privacyCopy.js` 만 고친다. 시험 `tests/privacycopy.test.js`.
 - **켜져 있으면**: "오늘 남은 횟수: 나 N번 · 가족 N번"을 보인다(`parseAiSettings`). 호출이 끝날 때마다 설정을 다시 읽는다.
-- **대화 분석하기** → `POST /family-chat/ai/analysis`: 요약, 중요 메시지(이유 목록), 일정 후보, 할 일 후보를 보인다. 결과 아래에 "대화 N개 기준 · 시각"과 "방금 분석 · AI 호출 N번 · 토큰 N" 또는 "저장된 결과(AI 호출 없음)"를 보인다.
+- **버튼은 "대화 분석하기" 하나**(분석한 뒤에는 "다시 분석하기"). 답장 추천·대화 주제 추천 버튼은 없다. 누르면 아래 "보내기 전 확인" 카드가 먼저 뜨고, "AI에 보내기"를 눌러야만 `POST /family-chat/ai/analysis` 를 한 번 부른다.
+- **결과는 한 화면**: 요약 -> 중요 메시지 -> 일정 후보 -> 할 일·부탁 후보 -> 답장 추천 -> 대화 주제 추천 순서. 비어 있는 섹션은 "…가 없어요" 안내를 보인다. 결과 아래에 "대화 N개 기준 · 시각", "방금 분석 · AI 호출 N번 · 토큰 N" 또는 "저장된 결과(AI 호출 없음)", 그리고 가려진 개수(`meta.privacy`)를 보인다.
   - 일정 후보는 날짜·시간이 모두 있어야 "일정으로 등록"이 켜진다. 누르면 기존 `POST /schedule/events` 로 등록한다(`scheduleEventBody`: 날짜·시간은 기기 시간대로 해석해 UTC 로 보내고, 장소는 메모에 "장소: …"로 넣는다). 등록 결과는 후보마다 따로 보인다.
-  - 할 일 후보는 보기만 한다. 등록은 없고 "공동 할 일은 준비 중이에요"를 보인다.
-- **답장 추천** → `POST /family-chat/ai/replies`, **대화 주제 추천** → `POST /family-chat/ai/topics`: 추천 한 줄을 누르면 채팅 입력창에 넣고 패널을 닫는다. 입력창에 이미 글이 있으면 공백을 두고 이어 붙인다. 보내기는 구성원이 직접 누른다.
-- 분석·추천 요청은 범위를 따로 고르지 않는다(최근 대화 100개, `after_id=0` 기본값).
+  - 할 일 후보는 "할 일로 등록"으로 등록한다(아래 "할 일" 절).
+  - **답장 추천·대화 주제 추천**은 분석 응답의 `replies`·`topics`(문자열 목록)를 쓴다. 한 줄을 누르면 채팅 입력창에 넣고 패널을 닫는다(입력창에 이미 글이 있으면 공백을 두고 이어 붙인다). 보내기는 구성원이 직접 누른다. 구 서버 응답에 이 필드가 없으면 빈 목록으로 본다(`messages.js` 의 `parseAnalysis`). 앱은 `/family-chat/ai/replies`·`/topics` 를 더 부르지 않는다(`suggestReplies`·`suggestTopics` 삭제).
+- 분석 요청은 범위를 따로 고르지 않는다(최근 대화 100개, `after_id=0` 기본값).
 - 오류 문구는 `messages.js` 의 `chatErrorMessage` 가 서버 코드를 한국어 문장으로 바꾼다. 쿨다운은 대기 시간을 덧붙인다.
 - 앱은 결과를 기기 저장소에 쓰지 않는다. 마지막 결과는 화면이 살아 있는 동안만 남는다. 서버는 AI 결과를 잠시(약 10분) 캐시해 같은 요청에 다시 쓴다(안내 문구: "분석 결과는 잠시(약 10분) 저장돼 같은 요청에 다시 쓰여요").
 
@@ -164,14 +165,14 @@
 
 서버 계약 `POST /family-chat/ai/preview` 는 **별도 PR**(서버 가명화)이다. 앱은 이 계약대로 `api.js` 의 `previewAiRange(range)` 를 만들었고 서버 연동은 아직 확인하지 못했다.
 
-- 요청 `{limit?, after_id?}`(분석 요청과 같은 범위, 앱 기본값 100/0) → 응답 `{message_count, masked:{PHONE?,EMAIL?,RRN?,CARD?,ACCOUNT?,SECRET?,ADDRESS?,PERSON?: 개수}, blocked_messages, lines:[{id, speaker, text, blocked}], ai_enabled, sendable}`. 차단된 줄의 text 는 `[민감정보가 있어 제외된 메시지]`(시각 없음), `sendable` 은 보낼 수 있는(차단되지 않은) 메시지가 3개 이상이면 true 이고 false 면 분석·답장·주제가 400 `too_few_messages` 를 돌려준다(이 오류는 기존 오류 문구로 보인다). 가명화된 줄(`[PERSON_1]`, `[PHONE_1]` 같은 토큰 상태)이며 AI 를 부르지 않고 하루 한도도 쓰지 않는다. 오류: 400 `too_few_messages`·`no_group`, 401 등.
-- **흐름**: "대화 분석하기"·"답장 추천"·"대화 주제 추천"을 누르면 바로 AI 를 부르지 않고 먼저 미리보기를 불러 "이 내용이 AI로 전송돼요" 카드를 보인다. 카드에는 설명, 가려지는 항목 칩("전화번호 2개 가림", "이름 5개 가림" 등, 0 개 종류는 뺌), 고위험 정보로 제외되는 메시지 N개 경고(있을 때만, 경고 색), 접어 둔 "보낼 내용 보기"(가명화된 줄 목록, 차단된 줄은 "(제외됨)"), "AI에 보내기"·"취소"가 있다. **"AI에 보내기"를 누를 때만** 기존 분석/답장/주제 API 를 호출한다. 취소하면 아무 호출도 없다.
+- 요청 `{limit?, after_id?}`(분석 요청과 같은 범위, 앱 기본값 100/0) → 응답 `{message_count, masked:{PHONE?,EMAIL?,RRN?,CARD?,ACCOUNT?,SECRET?,ADDRESS?,PERSON?: 개수}, blocked_messages, lines:[{id, speaker, text, blocked}], ai_enabled, sendable}`. 차단된 줄의 text 는 `[민감정보가 있어 제외된 메시지]`(시각 없음), `sendable` 은 보낼 수 있는(차단되지 않은) 메시지가 3개 이상이면 true 이고 false 면 분석이 400 `too_few_messages` 를 돌려준다(이 오류는 기존 오류 문구로 보인다). 가명화된 줄(`[PERSON_1]`, `[PHONE_1]` 같은 토큰 상태)이며 AI 를 부르지 않고 하루 한도도 쓰지 않는다. 오류: 400 `too_few_messages`·`no_group`, 401 등.
+- **흐름**: "대화 분석하기"를 누르면 바로 AI 를 부르지 않고 먼저 미리보기를 불러 "이 내용이 AI로 전송돼요" 카드를 보인다. 카드에는 제목 줄 위의 종류 글자("대화 분석"), 설명, 가려지는 항목 칩("전화번호 2개 가림", "이름 5개 가림" 등, 0 개 종류는 뺌), 고위험 정보로 제외되는 메시지 N개 경고(있을 때만, 경고 색), 접어 둔 "보낼 내용 보기"(가명화된 줄 목록, 차단된 줄은 "(제외됨)"), "AI에 보내기"·"취소"가 있다. **"AI에 보내기"를 누를 때만** 분석 API 를 호출한다. 취소하면 아무 호출도 없다.
 - **미리보기 실패**: 오류 문구(`chatErrorMessage` 재사용)와 "다시 시도". AI 는 부르지 않는다. 늦게 도착한 옛 미리보기 응답은 버린다.
 - **`ai_enabled=false`**: 보내기 버튼을 막고 "AI 기능이 꺼져 있어요" 안내를 보이며 설정을 다시 읽어 기존 동의 켜기 영역으로 안내한다.
 - **`sendable=false`**: "AI에 보내기"를 막고 경고색으로 "민감정보가 있어 제외된 메시지가 많아서 지금은 AI에 보낼 수 있는 대화가 부족해요"를 보인다(보낼 내용 보기는 계속 가능). `ai_enabled=false` 와 겹치면 동의 안내가 먼저다(`sendBlockReason`).
-- **결과 아래 한 줄**: 응답 `meta.privacy`(`{masked, blocked_messages}`, 선택 필드)가 있으면 "개인정보 N개를 가려서 보냈고 메시지 M개는 제외했어요"(한쪽만 0 이면 해당 부분만, 둘 다 0 이면 생략)를 분석·답장·주제 결과 모두에 보인다. "저장된 결과(AI 호출 없음)" 안내와 함께 보인다.
-- **승인 정책**: 일정 후보 "일정으로 등록"·할 일 후보 "할 일로 등록"은 사용자가 누를 때만 동작하고, 답장·주제 추천은 누르면 입력창에 **넣기만** 한다(`pickReply` 는 `setDraft` 만, 자동 전송 없음). AI 호출은 확인 카드의 "AI에 보내기"에서만 일어난다.
-- 단순함을 위해 같은 범위를 이미 분석한 경우(서버 캐시)에도 항상 확인 단계를 거친다. 미리보기 범위는 분석과 같은 기본 범위이며, 답장(최대 15개)·주제(최대 30개)는 서버가 더 적게 보내므로 미리보기가 실제 전송보다 넓게 보일 수 있다.
+- **결과 아래 한 줄**: 응답 `meta.privacy`(`{masked, blocked_messages}`, 선택 필드)가 있으면 "개인정보 N개를 가려서 보냈고 메시지 M개는 제외했어요"(한쪽만 0 이면 해당 부분만, 둘 다 0 이면 생략)를 분석 결과 아래에 보인다. "저장된 결과(AI 호출 없음)" 안내와 함께 보인다.
+- **승인 정책**: 일정 후보 "일정으로 등록"·할 일 후보 "할 일로 등록"은 사용자가 누를 때만 동작하고, 답장·주제 추천(분석 결과 안)은 누르면 입력창에 **넣기만** 한다(`pickReply` 는 `setDraft` 만, 자동 전송 없음). AI 호출은 확인 카드의 "AI에 보내기"에서만 일어난다.
+- 단순함을 위해 같은 범위를 이미 분석한 경우(서버 캐시)에도 항상 확인 단계를 거친다. 미리보기 범위는 분석과 같은 기본 범위다.
 - 시험: `apps/mobile/tests/privacypreview.test.js`(칩 문구·순서, 차단 경고, `meta.privacy` 한 줄, 줄 표시, 오류 문구, `previewAiRange` 경로·메서드·본문, 승인 정책 소스 확인). 실기기·서버 연동은 직접 확인하지 못했다.
 
 **소통 탭에서 AI 를 뺀 것**: 소통 탭에는 AI 카드(`AiCard.js`)를 두지 않는다(작업 트리에서 파일 삭제). AI 진입점은 채팅방의 ✨ 하나다.
@@ -284,15 +285,16 @@
 | `GET /family-chat/ai/settings` | — | `AiSettingsOut` | 동의 여부, 내가 켤 수 있는지, 자동 분석 설정, 한도, 오늘 사용량. AI 를 부르지 않는다 |
 | `PUT /family-chat/ai/settings` | `{enabled: bool}` | `AiSettingsOut` | 가족 소유자·관리자만 AI 기능을 켜고 끈다. AI 를 부르지 않는다 |
 | `POST /family-chat/ai/preview` | `RangeIn` | `PreviewOut` | Claude 가 **실제로 받게 될 가명화된 대화**를 미리 보여 준다. **AI 를 부르지 않고** 하루·쿨다운 한도도 쓰지 않으며, 가족 AI 동의와 무관하게 볼 수 있다(`ai_enabled` 로 동의 여부를 알림). 사용자당 분당 20회, 넘으면 429 `too_many_previews` |
-| `POST /family-chat/ai/analysis` | `RangeIn` | `AnalysisOut` | 통합 분석: 요약·중요 메시지·일정 후보·할 일 후보를 한 번에 |
-| `POST /family-chat/ai/replies` | `RangeIn` | `RepliesOut` | 마지막 메시지에 이어 보낼 답장 후보(3개) |
-| `POST /family-chat/ai/topics` | `RangeIn` | `TopicsOut` | 이어갈 대화 주제 추천(3~5개) |
+| `POST /family-chat/ai/analysis` | `RangeIn` | `AnalysisOut` | 통합 분석: 요약·중요 메시지·일정 후보·할 일 후보·**답장 추천·대화 주제 추천**을 AI 한 번 호출로 |
+| `POST /family-chat/ai/replies` | `RangeIn` | `RepliesOut` | 마지막 메시지에 이어 보낼 답장 후보(3개). 앱은 더 이상 부르지 않는다(분석에 합쳐짐, 하위 호환으로 남김) |
+| `POST /family-chat/ai/topics` | `RangeIn` | `TopicsOut` | 이어갈 대화 주제 추천(3~5개). 위와 같이 앱은 부르지 않는다 |
 
-- `RangeIn`: `limit`(기본 100, 1~200), `after_id`(기본 0). `after_id` 뒤의 최근 `limit` 개를 쓴다. 분석은 최대 200개, 답장은 최대 15개, 주제는 최대 30개까지 본다.
-- `AnalysisOut`: `summary`, `important_messages[{message_id, reason}]`, `schedule_candidates[{title, date, time, place, source_message_ids}]`, `todo_candidates[{title, assignee_name, due, source_message_ids}]`, `meta`.
+- `RangeIn`: `limit`(기본 100, 1~200), `after_id`(기본 0). `after_id` 뒤의 최근 `limit` 개를 쓴다. 분석은 최대 200개, 따로 부르는 답장은 최대 15개, 주제는 최대 30개까지 본다.
+- `AnalysisOut`: `summary`, `important_messages[{message_id, reason}]`, `schedule_candidates[{title, date, time, place, source_message_ids}]`, `todo_candidates[{title, assignee_name, due, source_message_ids}]`, **`replies[]`(0~3개, 각 80자 이내), `topics[]`(0~5개, 각 40자 이내)**, `meta`. `replies`·`topics` 는 추가 필드(기본값 빈 목록)라 하위 호환이 깨지지 않는다.
+- **답장·주제 정리**: 글자가 아닌 값·빈 값은 버리고 길이·개수 상한을 지키며, 이 요청이 만들지 않은 위조·변형 토큰이 든 항목은 버린다. 둘 다 비어 있어도 분석은 실패하지 않는다(요약이 비면 기존처럼 실패). 분석의 AI 출력 상한은 3000토큰(`ANALYSIS_MAX_TOKENS`)이다(답장·주제까지 만들어 기본 2048보다 넉넉하게, 잘리면 전체가 실패하므로). `PROMPT_VERSION` 을 v4 로 올려 이전 캐시는 쓰이지 않는다.
 - `RepliesOut`: `replies[]`, `meta`. `TopicsOut`: `topics[]`, `meta`.
 - `meta`(`AiMeta`): `cached`, `api_calls`(0 또는 1), `input_tokens`, `output_tokens`, `model`, `message_count`, `from_message_id`, `to_message_id`, `generated_at`, `privacy`(선택, `{masked: {종류: 개수}, blocked_messages: 개수}` — 글자·값 없이 개수만, 캐시 적중에도 같은 값).
-- `PreviewOut`: `message_count`, `masked{종류: 개수}`, `blocked_messages`, `lines[{id, speaker, text, blocked}]`, `ai_enabled`, `sendable`(차단되지 않은 메시지가 3개 이상이라 AI 에 보낼 수 있는지. False 면 분석·답장·주제가 400 `too_few_messages` 이므로 앱은 요청 버튼을 막고 "민감정보가 있어 제외된 메시지가 많아요" 같은 안내를 보인다). `lines` 는 분석 요청이 Claude 로 보내는 줄과 같은 가명화된 줄(토큰 상태, 예: `[PERSON_1]`·`[PHONE_1]`, 차단된 메시지는 `[민감정보가 있어 제외된 메시지]`)이다. 원문 개인정보와 토큰 대응표는 담지 않는다. 답장(최근 15개)·주제(최근 30개)는 같은 규칙을 더 짧은 범위에 적용하므로 토큰 번호가 다를 수 있다.
+- `PreviewOut`: `message_count`, `masked{종류: 개수}`, `blocked_messages`, `lines[{id, speaker, text, blocked}]`, `ai_enabled`, `sendable`(차단되지 않은 메시지가 3개 이상이라 AI 에 보낼 수 있는지. False 면 분석·답장·주제가 400 `too_few_messages` 이므로 앱은 요청 버튼을 막고 "민감정보가 있어 제외된 메시지가 많아요" 같은 안내를 보인다). `lines` 는 분석 요청이 Claude 로 보내는 줄과 같은 가명화된 줄(토큰 상태, 예: `[PERSON_1]`·`[PHONE_1]`, 차단된 메시지는 `[민감정보가 있어 제외된 메시지]`)이다. 원문 개인정보와 토큰 대응표는 담지 않는다. 앱은 분석 한 번만 부르므로 미리보기와 실제 전송이 같은 범위다(따로 부르는 `/replies`(최근 15개)·`/topics`(최근 30개)는 같은 규칙을 더 짧은 범위에 적용하므로 토큰 번호가 다를 수 있다).
 
 **개인정보 가명화 (`app/shared/privacy`, 분석·답장·주제 공통)**
 
@@ -347,10 +349,10 @@
 |---|---|---|
 | 일반 채팅 메시지 전송 (`POST /family-chat/messages`) | **0** | 구현됨 |
 | 설정 조회·변경 (`GET`/`PUT /ai/settings`) | 0 | 구현됨 |
-| 대화 분석 (`POST /ai/analysis`) | 최대 **1**, 캐시 적중이면 **0** | 구현됨 |
+| 대화 분석 (`POST /ai/analysis`, 답장·주제 추천 포함) | 최대 **1**, 캐시 적중이면 **0** (이전에는 분석·답장·주제로 최대 3번) | 구현됨 |
 | 보낼 내용 미리보기 (`POST /ai/preview`) | **0** (한도·동의와 무관, 분당 20회) | 구현됨 |
-| 답장 추천 (`POST /ai/replies`) | **1**, 캐시 적중이면 0 | 구현됨 |
-| 주제 추천 (`POST /ai/topics`) | **1**, 캐시 적중이면 0 | 구현됨 |
+| 답장 추천 (`POST /ai/replies`) | **1**, 캐시 적중이면 0 | 구현됨(앱은 안 씀, 분석에 합쳐짐) |
+| 주제 추천 (`POST /ai/topics`) | **1**, 캐시 적중이면 0 | 구현됨(앱은 안 씀, 분석에 합쳐짐) |
 | @가비 키워드 검색 | **0** (PostgreSQL 키워드 검색 우선, 필요할 때만 pgvector) | 예정 |
 | 원본 문서 확인·공유 | **0** | 예정 |
 | AI 어시스턴트 채팅 (`POST /ai-assistant/chat`, 그룹 있음) | 질문 1건당 **1~4** (도구 루프, 실제 횟수를 센다). 동의가 꺼져 있으면 **0** | 구현됨 |

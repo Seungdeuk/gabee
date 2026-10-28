@@ -57,9 +57,10 @@ from .ai_schemas import (
 )
 
 MIN_MESSAGES = 3
-PROMPT_VERSION = (
-    "v3"  # 프롬프트·스키마를 바꾸면 올려서 오래된 캐시를 쓰지 않게 한다 (v3: 가명화 토큰)
-)
+PROMPT_VERSION = "v4"  # 프롬프트·스키마를 바꾸면 올려서 오래된 캐시를 쓰지 않게 한다 (v3: 가명화 토큰, v4: 분석에 답장·주제 합침)
+ANALYSIS_MAX_TOKENS = 3000  # 분석이 답장·주제까지 한 번에 만들어서 기본 상한(2048)보다 넉넉하게. 잘리면 전체가 실패한다
+MAX_REPLIES = 3
+MAX_TOPICS = 5
 MANAGER_ROLES = ("owner", "admin")
 _WEEKDAYS = "월화수목금토일"
 _PERSON_TOKEN = re.compile(r"\[PERSON_\d+\]")
@@ -78,11 +79,13 @@ COMMON_RULES = """- 대화에 없는 내용을 지어내지 않습니다. 날짜
 - 사람 이름을 말할 때도 대화에 나온 토큰 그대로 씁니다(예: [PERSON_1]). 서버가 나중에 원래 이름으로 바꿉니다.
 - 전화번호·이메일·계좌번호·주민등록번호 같은 개인정보(토큰 포함)는 그대로 옮기지 말고 '연락처', '계좌 정보'처럼 일반화합니다."""
 
-ANALYSIS_SYSTEM = f"""당신은 가족 단체 대화를 정리해 주는 비서입니다. 한국어로 아래 네 가지를 한 번에 만드세요.
+ANALYSIS_SYSTEM = f"""당신은 가족 단체 대화를 정리해 주는 비서입니다. 한국어로 아래 여섯 가지를 한 번에 만드세요.
 1) summary: 핵심 내용 위주 3~6문장 요약(잡담·인사는 줄입니다).
 2) important_messages: 놓치면 안 되는 메시지(결정·약속·요청·긴급 연락) 최대 5개. message_id 는 대화 각 줄(JSON)의 id 이고, reason 은 한 줄 이유입니다.
 3) schedule_candidates: 날짜·시간이 있는 약속·일정 후보 최대 8개. date 는 YYYY-MM-DD, time 은 24시간 HH:MM 입니다. 상대 표현(내일, 이번 주 토요일)은 '오늘 날짜'를 기준으로 바꾸되 확신이 없으면 null 로 둡니다. place 가 [ADDR_1] 같은 토큰이면 그 토큰을 그대로 씁니다.
 4) todo_candidates: 누군가에게 부탁했거나 해야 하는 일 후보 최대 8개. assignee_name 은 대화에 나온 사람 토큰(예: [PERSON_2]) 그대로 쓰고 불분명하면 null, due 는 YYYY-MM-DD 이고 불분명하면 null 입니다.
+5) replies: 대화의 마지막 메시지에 이어서 보낼 만한 짧고 따뜻한 답장 후보를 서로 다른 어조로 3개(각 80자 이내). 마지막 메시지가 답할 필요가 없는 내용이면 빈 배열로 둡니다.
+6) topics: 대화가 끊겼을 때 이어갈 만한 가볍고 구체적인 이야기 주제를 3~5개(각 40자 이내의 질문 또는 제안). 최근 대화 흐름과 어울려야 합니다.
 source_message_ids 는 근거가 된 메시지의 id 입니다. 해당하는 것이 없으면 빈 배열을 돌려줍니다.
 {COMMON_RULES}"""
 
@@ -393,7 +396,19 @@ def clean_analysis(
         "important_messages": important[:5],
         "schedule_candidates": schedules[:8],
         "todo_candidates": todos[:8],
+        "replies": _short_list(data.get("replies"), MAX_REPLIES, 80, forged),
+        "topics": _short_list(data.get("topics"), MAX_TOPICS, 40, forged),
     }
+
+
+def _short_list(value, maximum: int, limit: int, forged: Callable[..., bool]) -> list[str]:
+    """답장·주제 후보: 글자로 바꿔 길이를 자르고, 위조·변형 토큰이 든 항목은 버린다. 비어 있어도 분석 전체는 실패시키지 않는다."""
+    items = []
+    for raw in value if isinstance(value, list) else []:
+        text = _text(raw, limit)
+        if text and not forged(text):
+            items.append(text)
+    return items[:maximum]
 
 
 def _clean_list(data: dict, key: str, maximum: int, limit: int) -> dict:
@@ -415,7 +430,9 @@ def analysis(db: Session, user: User, group_id: str, body: RangeIn) -> AnalysisO
 
         def call():
             prompt = f"오늘 날짜: {today_text}\n다음은 가족 단체 대화입니다(오래된 순, 한 줄이 JSON 하나이고 id 가 메시지 번호입니다).\n\n{ctx.transcript}\n\n위 대화를 분석해 주세요."
-            response = llm.complete_json(prompt, ANALYSIS_SCHEMA, system=ANALYSIS_SYSTEM)
+            response = llm.complete_json(
+                prompt, ANALYSIS_SCHEMA, system=ANALYSIS_SYSTEM, max_tokens=ANALYSIS_MAX_TOKENS
+            )
             cleaned = clean_analysis(response.data, ctx.allowed_ids, ctx.names, unknown)
             return _stored(cleaned, response), response  # 토큰 상태로 캐시에 저장된다
 
@@ -426,7 +443,14 @@ def analysis(db: Session, user: User, group_id: str, body: RangeIn) -> AnalysisO
         shown = _restore(
             ctx,
             stored,
-            ("summary", "important_messages", "schedule_candidates", "todo_candidates"),
+            (
+                "summary",
+                "important_messages",
+                "schedule_candidates",
+                "todo_candidates",
+                "replies",
+                "topics",
+            ),
         )
         for todo in shown[
             "todo_candidates"

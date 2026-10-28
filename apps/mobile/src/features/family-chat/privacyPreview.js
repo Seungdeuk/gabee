@@ -122,12 +122,8 @@ export function privacyCaption(privacy) {
   return "";
 }
 
-/** 분석·답장·주제 추천 확인 단계의 이름. */
-export const PREVIEW_ACTIONS = {
-  analysis: "대화 분석",
-  replies: "답장 추천",
-  topics: "대화 주제 추천",
-};
+/** 확인 카드 제목 줄 위에 보이는 작은 종류 글자. */
+export const PREVIEW_KIND_LABEL = "대화 분석";
 
 /**
  * 미리보기 실패 문구. 서버 코드(too_few_messages, no_group, 401 등)는 공통 문구를 쓰고 모르면 일반 문구.
