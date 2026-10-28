@@ -1,4 +1,4 @@
-import { WEEKDAYS } from "../constants";
+import { WEEKDAYS } from "../weekdays";
 
 const pad = (n) => String(n).padStart(2, "0");
 

@@ -5,9 +5,11 @@ import { colors, font, radius, spacing } from "@/theme";
 
 import { groupByMonth, splitByTime } from "../calendar";
 import { DOT_COLOR, WEEKDAYS } from "../constants";
+import { pageUpcoming } from "../upcoming";
 import { fromDateKey } from "../utils/date";
 import AddButton from "./AddButton";
 import EventCard from "./EventCard";
+import MoreButtons from "./MoreButtons";
 import SectionHeader from "./SectionHeader";
 
 /** 지난 것을 펼쳤을 때 먼저 보이는 개수. 나머지는 "이전 기록 N개 더 보기". */
@@ -18,14 +20,18 @@ const countOf = (items) => `${items.filter((item) => item.checked).length}/${ite
 /**
  * 목록 모드: 오늘 → 다가오는 것(월 구분선) → 지난 것. 구역 제목을 누르면 각각 접고 편다.
  * 오늘은 비어 있어도 항상 보이고, 지난 것은 기본 접힘이며 없으면 숨긴다.
+ * 다가오는 것은 앞으로 한 달치만 보고, 먼저 앞 5개(5번째와 같은 날짜는 모두)를 보이며 "더보기"를 누를 때마다 5개씩 더 편다.
  * @param {{ items: import("../model").ScheduleItem[], today: string, onToggleItem: (id: string) => void, onPressItem?: (id: string) => void, onAddToday?: () => void }} props
  */
 export default function ListMode({ items, today, onToggleItem, onPressItem, onAddToday }) {
   const [fold, setFold] = useState({ today: false, upcoming: false, past: true });
   const [morePast, setMorePast] = useState(false);
+  const [upcomingPages, setUpcomingPages] = useState(1);
   const toggleFold = (key) => setFold((f) => ({ ...f, [key]: !f[key] }));
   const parts = splitByTime(items, today);
   const pastShown = morePast ? parts.past : parts.past.slice(0, PAST_PREVIEW);
+  const upcoming = pageUpcoming(parts.upcoming, today, upcomingPages);
+  const upcomingShown = upcoming.shown;
 
   return (
     <View style={styles.wrap}>
@@ -51,14 +57,23 @@ export default function ListMode({ items, today, onToggleItem, onPressItem, onAd
             collapsed={fold.upcoming}
             onToggle={() => toggleFold("upcoming")}
           />
-          {fold.upcoming
-            ? null
-            : groupByMonth(parts.upcoming).map((group) => (
+          {fold.upcoming ? null : (
+            <>
+              {upcomingShown.length === 0 ? <Text style={styles.empty}>앞으로 한 달 안에는 일정이 없어요</Text> : null}
+              {groupByMonth(upcomingShown).map((group) => (
                 <View key={group.key} style={styles.section}>
                   <Text style={styles.month}>{group.label}</Text>
                   <Rows items={group.items} today={today} onToggleItem={onToggleItem} onPressItem={onPressItem} />
                 </View>
               ))}
+              <MoreButtons
+                remaining={upcoming.remaining}
+                expanded={upcomingPages > 1}
+                onMore={() => setUpcomingPages((n) => n + 1)}
+                onFold={() => setUpcomingPages(1)}
+              />
+            </>
+          )}
         </View>
       ) : null}
 

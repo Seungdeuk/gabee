@@ -1,5 +1,5 @@
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
@@ -14,10 +14,9 @@ import TimeSheet from "../components/TimeSheet";
 import TopicChips from "../components/TopicChips";
 import WhoChips from "../components/WhoChips";
 import { KIND, KIND_LABEL } from "../constants";
-import { hideId, pruneHidden, showId } from "../favorites";
-import { loadHiddenWho, saveHiddenWho } from "../favorites_store";
-import { ME_ID, members } from "../mock";
-import { addItem, addTopic, removeTopic, updateItem, useMeUserId, useScheduleItem, useTopics } from "../store";
+import { useHiddenWho } from "../favorites_hook";
+import { ME_ID } from "../mock";
+import { addItem, addTopic, removeTopic, updateItem, useMembers, useScheduleItem, useTopics } from "../store";
 import { markUsed } from "../suggestions_store";
 import { formatDateWithYear, formatTimeConfirmed } from "../utils/date";
 
@@ -50,32 +49,22 @@ export default function RegisterScreen() {
   const [timeOpen, setTimeOpen] = useState(false);
   const [triedSave, setTriedSave] = useState(false);
   const topics = useTopics();
-  const meUserId = useMeUserId();
-  const [hiddenWho, setHiddenWho] = useState([]); // "누구" 칩 줄에서 뺀 사람(이 폰에만 저장)
-
-  // 내 id 별로 저장된 목록을 읽는다. 읽기에 실패하면 아무도 안 뺀 상태.
-  useEffect(() => {
-    let alive = true;
-    loadHiddenWho(meUserId || "local").then((ids) => alive && setHiddenWho(ids));
-    return () => {
-      alive = false;
-    };
-  }, [meUserId]);
+  const family = useMembers();
 
   // 서버에서 가족을 읽은 뒤에 바뀌므로 화면을 그릴 때마다 계산한다.
-  const OTHERS = members.filter((m) => m.id !== ME_ID);
+  const OTHERS = family.filter((m) => m.id !== ME_ID);
   const SHAREABLE = OTHERS.filter((m) => m.hasAccount);
+  // "누구"·"공유" 칩 줄에서 뺀 사람(이 폰에만 저장, 줄마다 따로). 누구는 예전 저장 키 그대로.
+  const who = useHiddenWho("", OTHERS);
+  const share = useHiddenWho("share", SHAREABLE);
   const valid = title.trim() !== "" && date !== "";
   const hideWho = (id) => {
-    const next = pruneHidden(hideId(hiddenWho, id), OTHERS);
-    setHiddenWho(next);
-    saveHiddenWho(meUserId || "local", next);
+    who.hide(id);
     setWhoIds(whoIds.filter((x) => x !== id));
   };
-  const showWho = (id) => {
-    const next = pruneHidden(showId(hiddenWho, id), OTHERS);
-    setHiddenWho(next);
-    saveHiddenWho(meUserId || "local", next);
+  const hideShare = (id) => {
+    share.hide(id);
+    setSharedWith(sharedWith.filter((x) => x !== id));
   };
   const deleteTopic = (id) => {
     removeTopic(id);
@@ -152,24 +141,36 @@ export default function RegisterScreen() {
             <FormField label="누구" hint="관련된 사람">
               <WhoChips
                 members={OTHERS}
-                hiddenIds={hiddenWho}
+                hiddenIds={who.hidden}
                 selectedIds={whoIds}
                 onToggle={(id) => setWhoIds(toggle(whoIds, id))}
                 onHide={hideWho}
-                onShow={showWho}
+                onShow={who.show}
               />
             </FormField>
             <FormField label="주제">
-              <TopicChips topics={topics} selectedId={topicId} onSelect={setTopicId} onCreate={addTopic} onDelete={deleteTopic} />
+              <TopicChips
+                topics={topics}
+                selectedIds={topicId ? [topicId] : []}
+                onToggle={(id) => setTopicId(topicId === id ? null : id)}
+                onCreate={addTopic}
+                onCreated={(topic) => setTopicId(topic.id)}
+                onDelete={deleteTopic}
+              />
             </FormField>
             {editing ? null : (
               <FormField label="공유" hint="선택 안 하면 나만 봐요">
-                <View style={styles.chips}>
-                  <FilterChip label="모두" selected={allShared} onPress={() => setSharedWith(allShared ? [] : SHAREABLE.map((m) => m.id))} />
-                  {SHAREABLE.map((m) => (
-                    <FilterChip key={m.id} label={m.name} selected={sharedWith.includes(m.id)} onPress={() => setSharedWith(toggle(sharedWith, m.id))} />
-                  ))}
-                </View>
+                <WhoChips
+                  members={SHAREABLE}
+                  hiddenIds={share.hidden}
+                  selectedIds={sharedWith}
+                  onToggle={(id) => setSharedWith(toggle(sharedWith, id))}
+                  onHide={hideShare}
+                  onShow={share.show}
+                  lead={
+                    <FilterChip label="모두" selected={allShared} onPress={() => setSharedWith(allShared ? [] : SHAREABLE.map((m) => m.id))} />
+                  }
+                />
               </FormField>
             )}
           </View>
@@ -251,7 +252,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
   },
   group: { gap: 6 },
-  chips: { flexDirection: "row", flexWrap: "wrap", gap: 5 },
   error: { ...font.caption, color: colors.danger, textAlign: "center" },
   save: {
     minHeight: 56,

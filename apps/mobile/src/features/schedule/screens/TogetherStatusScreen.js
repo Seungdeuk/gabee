@@ -6,11 +6,14 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import IconButton from "@/shared/components/IconButton";
 import { colors, font, radius, spacing } from "@/theme";
 
+import MoreButtons from "../components/MoreButtons";
+import SectionHeader from "../components/SectionHeader";
 import SegmentedControl from "../components/SegmentedControl";
 import StatusBadge from "../components/StatusBadge";
 import { ME_ID, members } from "../mock";
 import { receivedStatus, sentStatus } from "../model";
 import { useRequests } from "../requests";
+import { pageUpcoming } from "../upcoming";
 import { formatDateLong, todayKey } from "../utils/date";
 
 const TAB_OPTIONS = [
@@ -21,10 +24,12 @@ const TAB_OPTIONS = [
 /** 지난 구역에서 먼저 보이는 개수. 나머지는 "이전 기록 더 보기". */
 const PAST_PREVIEW = 3;
 
+
 const nameOf = (id) => members.find((m) => m.id === id)?.name ?? "";
 
 /**
  * 주고 받은(전 현황): 같이의 메인 화면. [받은 | 보낸] 두 탭(처음엔 받은), 구역은 "답을 기다려요" / "함께해요"(수락됐고 아직 날짜가 안 지난 것) / "지난"(숫자 없이 최근 몇 개 + 이전 기록 더 보기).
+ * 구역 제목을 누르면 각각 접고 편다: 답을 기다려요는 전부 보이고, 함께해요는 앞으로 한 달치 중 5개(마지막과 같은 날짜는 모두)만 보인 뒤 "더보기"를 누를 때마다 5개씩 펴며, 지난은 기본 접혀 있다.
  * 받은 탭의 카드는 받기 화면으로, 보낸 탭의 카드는 보낸 것 상세로 간다. 오른쪽 위 "같이하기"로 새로 보내고, ‹는 일정 메인으로 돌아간다.
  * 보내기에서 돌아오면 tab=sent 로 열려 방금 보낸 것이 보인다.
  */
@@ -34,6 +39,9 @@ export default function TogetherStatusScreen() {
   const requests = useRequests();
   const [tab, setTab] = useState(params.tab === "sent" ? "sent" : "received");
   const [morePast, setMorePast] = useState(false);
+  const [togetherPages, setTogetherPages] = useState(1);
+  const [fold, setFold] = useState({ waiting: false, together: false, past: true });
+  const toggleFold = (key) => setFold((f) => ({ ...f, [key]: !f[key] }));
 
   // 보내기 화면에서 돌아올 때마다(at 이 바뀔 때) 보낸 탭으로 옮긴다.
   useEffect(() => {
@@ -56,6 +64,7 @@ export default function TogetherStatusScreen() {
     .filter((m) => m.status === "cancelled" || (answered(m) && m.request.date < today))
     .sort((a, b) => b.request.date.localeCompare(a.request.date));
   const pastShown = morePast ? past : past.slice(0, PAST_PREVIEW);
+  const togetherPage = pageUpcoming(together, today, togetherPages, { dateOf: (m) => m.request.date });
 
   // 일정 메인에서 들어왔으므로 ‹는 일정 메인으로 간다.
   const leave = () => router.dismissTo("/(tabs)/schedule");
@@ -100,32 +109,50 @@ export default function TogetherStatusScreen() {
           ) : (
             <>
               <View style={styles.section}>
-                <View style={styles.head}>
-                  <Text style={styles.heading}>답을 기다려요</Text>
-                  {waiting.length > 0 ? <Text style={styles.count}>{`${waiting.length}개`}</Text> : null}
-                </View>
-                {waiting.length === 0 ? <Text style={styles.empty}>기다리는 게 없어요</Text> : waiting.map(card)}
+                <SectionHeader
+                  title="답을 기다려요"
+                  count={waiting.length > 0 ? `${waiting.length}개` : undefined}
+                  collapsed={fold.waiting}
+                  onToggle={() => toggleFold("waiting")}
+                />
+                {fold.waiting ? null : waiting.length === 0 ? <Text style={styles.empty}>기다리는 게 없어요</Text> : waiting.map(card)}
               </View>
 
               {together.length > 0 ? (
                 <View style={styles.section}>
-                  <View style={styles.head}>
-                    <Text style={styles.heading}>함께해요</Text>
-                    <Text style={styles.count}>{`${together.length}개`}</Text>
-                  </View>
-                  {together.map(card)}
+                  <SectionHeader
+                    title="함께해요"
+                    count={`${together.length}개`}
+                    collapsed={fold.together}
+                    onToggle={() => toggleFold("together")}
+                  />
+                  {fold.together ? null : (
+                    <>
+                      {togetherPage.shown.length === 0 ? <Text style={styles.empty}>앞으로 한 달 안에는 함께할 일이 없어요</Text> : togetherPage.shown.map(card)}
+                      <MoreButtons
+                        remaining={togetherPage.remaining}
+                        expanded={togetherPages > 1}
+                        onMore={() => setTogetherPages((n) => n + 1)}
+                        onFold={() => setTogetherPages(1)}
+                      />
+                    </>
+                  )}
                 </View>
               ) : null}
 
               {past.length > 0 ? (
                 <View style={styles.section}>
-                  <Text style={styles.heading}>지난</Text>
-                  {pastShown.map(card)}
-                  {!morePast && past.length > PAST_PREVIEW ? (
-                    <Pressable onPress={() => setMorePast(true)} style={styles.more} accessibilityRole="button">
-                      <Text style={styles.moreText}>이전 기록 더 보기</Text>
-                    </Pressable>
-                  ) : null}
+                  <SectionHeader title="지난" collapsed={fold.past} onToggle={() => toggleFold("past")} />
+                  {fold.past ? null : (
+                    <>
+                      {pastShown.map(card)}
+                      {!morePast && past.length > PAST_PREVIEW ? (
+                        <Pressable onPress={() => setMorePast(true)} style={styles.more} accessibilityRole="button">
+                          <Text style={styles.moreText}>이전 기록 더 보기</Text>
+                        </Pressable>
+                      ) : null}
+                    </>
+                  )}
                 </View>
               ) : null}
             </>
@@ -146,9 +173,6 @@ const styles = StyleSheet.create({
   sendText: { fontSize: 14, fontWeight: "700", color: colors.text },
   title: { ...font.page, color: colors.text },
   section: { gap: 6 },
-  head: { flexDirection: "row", alignItems: "baseline", gap: spacing.sm },
-  heading: { ...font.title, color: colors.text },
-  count: { ...font.bodyStrong, fontWeight: "500", color: colors.textMuted },
   empty: { ...font.body, color: colors.textMuted },
   card: {
     flexDirection: "row",

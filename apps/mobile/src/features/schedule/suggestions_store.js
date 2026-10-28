@@ -8,7 +8,7 @@ import { fromServerSuggestion } from "./suggestion_convert";
 // 서버가 오늘 만들어 준 추천(대기 제안). 서버 주소가 있을 때만 쓴다. 화면이 처음 쓰일 때 한 번 불러오고,
 // 실패하면 빈 목록으로 두고 다음에 다시 시도한다. 서버가 처음 만들 때는 몇 초 걸릴 수 있어 loading 을 함께 둔다.
 const useServer = isApiConfigured();
-let state = { list: [], loading: false, exhausted: false, loaded: false };
+let state = { list: [], loading: false, exhausted: false, loaded: false, failed: false };
 let started = false;
 const listeners = new Set();
 
@@ -27,17 +27,25 @@ function load() {
   started = true;
   set({ loading: true, loaded: false });
   api.listSuggestions().then(
-    (res) => set({ list: res.suggestions.map(fromServerSuggestion), exhausted: Boolean(res.exhausted), loading: false, loaded: true }),
+    (res) =>
+      set({ list: res.suggestions.map(fromServerSuggestion), exhausted: Boolean(res.exhausted), loading: false, loaded: true, failed: false }),
     (error) => {
-      // 403(AI 꺼짐)·429(한도) 포함: 카드를 숨기고, 다음에 화면이 열릴 때 다시 시도한다.
+      // 403(AI 꺼짐)·429(한도) 포함: 빈 목록으로 두고(카드는 "추천해드릴게요"+새로고침), 다음에 화면이 열릴 때도 다시 시도한다.
       console.warn("[schedule] 추천 불러오기 실패", error?.message ?? error);
       started = false;
-      set({ list: [], loading: false, loaded: true });
+      set({ list: [], loading: false, loaded: true, failed: true });
     },
   );
 }
 
-/** 서버 추천 목록. @returns {{ list: ReturnType<typeof fromServerSuggestion>[], loading: boolean, exhausted: boolean, loaded: boolean }} */
+/** 추천을 서버에 다시 요청한다(새로고침 버튼). 이미 불러오는 중이면 무시한다. */
+export function reloadSuggestions() {
+  if (state.loading) return;
+  started = false;
+  load();
+}
+
+/** 서버 추천 목록. @returns {{ list: ReturnType<typeof fromServerSuggestion>[], loading: boolean, exhausted: boolean, loaded: boolean, failed: boolean }} */
 export function useSuggestions() {
   useEffect(() => {
     load();

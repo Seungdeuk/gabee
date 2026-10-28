@@ -14,10 +14,11 @@ const toggle = (list, id) => (list.includes(id) ? list.filter((x) => x !== id) :
 /**
  * "누구" 칩 줄 = 자주 쓰는 사람. 짧게 누르면 선택/해제, 길게 누르면 그 칩 위에 "삭제" 버튼이 떠서 눌러야 줄에서 빠진다(약 3초 뒤 사라짐).
  * "+ 누구" 는 그 칩 아래에 말풍선을 띄워 빠져 있는 사람을 체크하고 [확인] 하면 줄에 들어간다. 빠진 사람이 없으면 "+ 누구" 는 보이지 않는다.
+ * lead 는 칩 줄 맨 앞에 끼우는 고정 칩(예: 공유의 "모두")이다.
  * @param {{ members: { id: string, name: string }[], hiddenIds: string[], selectedIds: string[], onToggle: (id: string) => void,
- *   onHide: (id: string) => void, onShow: (id: string) => void }} props
+ *   onHide: (id: string) => void, onShow: (id: string) => void, lead?: import("react").ReactNode }} props
  */
-export default function WhoChips({ members, hiddenIds, selectedIds, onToggle, onHide, onShow }) {
+export default function WhoChips({ members, hiddenIds, selectedIds, onToggle, onHide, onShow, lead }) {
   const [pop, setPop] = useState(null); // { kind: "delete", id, rect } | { kind: "add", rect }
   const [checked, setChecked] = useState([]);
 
@@ -29,6 +30,7 @@ export default function WhoChips({ members, hiddenIds, selectedIds, onToggle, on
 
   return (
     <View style={styles.chips}>
+      {lead}
       {shown.map((m) => (
         <FilterChip
           key={m.id}

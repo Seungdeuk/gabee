@@ -18,9 +18,14 @@ const pendingCreate = new Map(); // 임시 id → 서버에 만드는 중인 일
 const aliases = new Map(); // 임시 id → 만들어진 서버 id
 const listeners = new Set();
 
-let version = 0; // 가족·주제처럼 배열을 제자리에서 바꾸는 값을 구독하는 화면이 다시 그려지게 하는 숫자
+// 가족·주제는 배열을 제자리에서 바꾸는 값(다른 화면이 mock 의 배열을 직접 읽는다)이다. 화면이 다시 그려지게 하려면 구독하는 값의
+// 모양이 바뀌어야 하므로, 바뀔 때마다 사본(스냅샷)을 새로 만들어 둔다. 훅에서 매번 slice() 하면 React Compiler 가 결과를
+// 캐시해 지우거나 만들어도 화면이 그대로일 수 있다(다른 화면에 다녀와야 반영됨).
+let topicsSnapshot = topics.slice();
+let membersSnapshot = members.slice();
 const emit = () => {
-  version += 1;
+  topicsSnapshot = topics.slice();
+  membersSnapshot = members.slice();
   listeners.forEach((fn) => fn());
 };
 const subscribe = (fn) => {
@@ -68,13 +73,24 @@ export function useScheduleItems() {
   return useSyncExternalStore(subscribe, () => items);
 }
 
-/** 주제 목록(제자리에서 바뀌는 배열). 추가·삭제·서버 로드 때 화면이 다시 그려진다. */
+/** 주제 목록. 추가·삭제·서버 로드 때 새 스냅샷이 만들어져 화면이 바로 다시 그려진다. */
 export function useTopics() {
   useEffect(() => {
     ensureLoaded();
   }, []);
-  useSyncExternalStore(subscribe, () => version);
-  return topics;
+  return useSyncExternalStore(subscribe, () => topicsSnapshot);
+}
+
+/**
+ * 가족 구성원(나 포함). 서버에서 가족을 읽은 뒤에 채워지므로 화면이 모듈 로드 때가 아니라 그릴 때마다 이 훅으로 읽는다.
+ * 가족이 바뀔 때 새 스냅샷이 만들어져 화면이 바로 다시 그려진다.
+ * @returns {import("./model").Member[]}
+ */
+export function useMembers() {
+  useEffect(() => {
+    ensureLoaded();
+  }, []);
+  return useSyncExternalStore(subscribe, () => membersSnapshot);
 }
 
 /** 내 사용자 id(서버에서 가족을 읽은 뒤). 서버가 없거나 아직 못 읽었으면 빈 글자. 폰에만 저장하는 값의 키에 쓴다. */

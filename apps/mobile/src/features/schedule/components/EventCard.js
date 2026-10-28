@@ -7,6 +7,7 @@ import { members, topics } from "../mock";
 import { whoLabels } from "../model";
 import { formatClockRange } from "../utils/date";
 import CheckMark from "./CheckMark";
+import WhoTag from "./WhoTag";
 
 /**
  * 한 줄 카드. 왼쪽 막대 색으로 형태를 구분하고, 제목 앞은 이름표(누구), 제목 뒤는 주제 글자.
@@ -30,12 +31,13 @@ export default function EventCard({ item, variant = "compact", past = false, onP
     >
       <View style={[styles.bar, { backgroundColor: KIND_COLOR[item.kind] }]} />
       <View style={styles.main}>
-        <Text style={[styles.title, past && styles.titlePast]}>
-          {labels.length > 0 ? <Text style={styles.who}>{` ${labels.join("·")} `}</Text> : null}
-          {labels.length > 0 ? " " : null}
-          {item.title}
-          {topic ? <Text style={[styles.topic, { color: TOPIC_TEXT[topic.color] }]}>{`  ${topic.name}`}</Text> : null}
-        </Text>
+        <View style={styles.titleRow}>
+          {labels.length > 0 ? <WhoTag label={labels.join("·")} /> : null}
+          <Text style={[styles.title, past && styles.titlePast]}>
+            {item.title}
+            {topic ? <Text style={[styles.topic, { color: TOPIC_TEXT[topic.color] }]}>{`  ${topic.name}`}</Text> : null}
+          </Text>
+        </View>
         {sub ? <Text style={styles.sub}>{sub}</Text> : null}
       </View>
       {!detailed && time ? <Text style={styles.time}>{time}</Text> : null}
@@ -70,15 +72,8 @@ const styles = StyleSheet.create({
   titlePast: { color: colors.textMuted },
   bar: { width: 4, alignSelf: "stretch", borderRadius: 4 },
   main: { flex: 1, gap: 2 },
-  title: { fontSize: 16, color: colors.text },
-  who: {
-    ...font.caption,
-    fontWeight: "500",
-    color: colors.text,
-    backgroundColor: colors.surfaceStrong,
-    borderRadius: radius.pill,
-    overflow: "hidden",
-  },
+  titleRow: { flexDirection: "row", alignItems: "center", gap: 6 },
+  title: { flexShrink: 1, fontSize: 16, color: colors.text },
   topic: { ...font.caption, fontWeight: "500" },
   sub: { ...font.caption, color: colors.textMuted },
   time: { fontSize: 12, color: colors.textMuted },

@@ -13,10 +13,11 @@ const DELETE_MS = 3000; // 삭제 버튼이 저절로 사라지는 시간
 /**
  * 주제 칩 줄. 짧게 누르면 선택/해제, 길게 누르면 그 칩 위에 "삭제" 버튼이 떠서 눌러야 지운다(약 3초 뒤 사라짐).
  * "+ 주제" 를 누르면 그 칩 아래에 이름·색·[추가] 말풍선이 뜬다. 키보드가 올라오면 말풍선이 키보드 위로 올라간다.
- * @param {{ topics: { id: string, name: string, color: string }[], selectedId: string | null, onSelect: (id: string | null) => void,
- *   onCreate: (name: string, color: string) => Promise<{ id: string }>, onDelete: (id: string) => void }} props
+ * 선택은 여러 개를 받을 수 있다(등록 화면은 하나만 고르도록 onToggle 에서 처리). 새로 만든 주제는 onCreated 로 알린다.
+ * @param {{ topics: { id: string, name: string, color: string }[], selectedIds: string[], onToggle: (id: string) => void,
+ *   onCreate: (name: string, color: string) => Promise<{ id: string }>, onCreated?: (topic: { id: string }) => void, onDelete: (id: string) => void }} props
  */
-export default function TopicChips({ topics, selectedId, onSelect, onCreate, onDelete }) {
+export default function TopicChips({ topics, selectedIds, onToggle, onCreate, onCreated, onDelete }) {
   const [pop, setPop] = useState(null); // { kind: "delete", id, rect } | { kind: "add", rect }
   const [name, setName] = useState("");
   const [color, setColor] = useState(TOPIC_COLOR_KEYS[0]);
@@ -33,7 +34,7 @@ export default function TopicChips({ topics, selectedId, onSelect, onCreate, onD
     setError("");
     try {
       const created = await onCreate(check.name, color);
-      onSelect(created.id);
+      onCreated?.(created);
       close();
       setName("");
       setColor(TOPIC_COLOR_KEYS[0]);
@@ -50,12 +51,12 @@ export default function TopicChips({ topics, selectedId, onSelect, onCreate, onD
         <FilterChip
           key={t.id}
           label={t.name}
-          selected={selectedId === t.id}
+          selected={selectedIds.includes(t.id)}
           accent={TOPIC_TEXT[t.color]}
           ringed={pop?.kind === "delete" && pop.id === t.id}
           onPress={() => {
             close();
-            onSelect(selectedId === t.id ? null : t.id);
+            onToggle(t.id);
           }}
           onLongPressRect={(rect) => setPop({ kind: "delete", id: t.id, rect })}
         />
