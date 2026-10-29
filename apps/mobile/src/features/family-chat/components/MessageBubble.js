@@ -229,7 +229,7 @@ export default function MessageBubble({ message, mine, showName, showTime = true
 }
 
 const styles = StyleSheet.create({
-  row: { flexDirection: "row", alignItems: "flex-end", gap: spacing.sm, paddingHorizontal: spacing.md, paddingVertical: 2 },
+  row: { flexDirection: "row", alignItems: "flex-end", gap: spacing.sm, paddingHorizontal: spacing.md, paddingVertical: 1 },
   mineRow: { justifyContent: "flex-end" },
   deletedRow: { alignItems: "center", paddingVertical: spacing.sm, paddingHorizontal: spacing.md },
   deletedText: { ...font.caption, color: colors.textMuted, textAlign: "center" },
@@ -240,7 +240,7 @@ const styles = StyleSheet.create({
   column: { flexShrink: 1, maxWidth: "80%", gap: spacing.xs, alignItems: "flex-start" }, // 폭 기준은 row(확정된 폭)의 %. 안쪽 말풍선은 이 폭 안에서만 줄어든다
   line: { flexDirection: "row", alignItems: "flex-end", gap: spacing.xs, maxWidth: "100%" },
   name: { ...font.tab, fontFamily: font.bodyStrong.fontFamily, color: colors.textSub },
-  bubble: { flexShrink: 1, maxWidth: "70%", paddingHorizontal: spacing.md, paddingVertical: spacing.sm + 2, borderRadius: radius.bubble },
+  bubble: { flexShrink: 1, maxWidth: "70%", paddingHorizontal: spacing.md, paddingVertical: spacing.sm, borderRadius: radius.bubble },
   mineBubble: { backgroundColor: colors.peach, borderBottomRightRadius: spacing.xs },
   otherBubble: { maxWidth: "100%", backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border, borderTopLeftRadius: spacing.xs },
   assistantBubble: { backgroundColor: colors.honeySoft, borderColor: colors.accent },
