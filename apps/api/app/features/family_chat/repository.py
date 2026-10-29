@@ -159,6 +159,26 @@ def list_recent(
     return [(m, name) for m, name in reversed(rows)]
 
 
+def soft_delete(db: Session, message: Message, attachment: MessageAttachment | None) -> None:
+    """메시지를 지운 것으로 표시하고 본문·첨부를 비운다(행은 남긴다). 파일 삭제는 호출하는 쪽이 DB 저장 뒤에 한다."""
+    message.text = ""
+    message.deleted_at = datetime.now(UTC)
+    if attachment is not None:
+        db.delete(attachment)
+    db.commit()
+
+
+def deleted_since(db: Session, room: ChatRoom, since: datetime, limit: int = 200) -> list[int]:
+    """since 이후(같은 시각 포함)에 지워진 이 방의 메시지 id 를 지운 순서대로."""
+    rows = db.scalars(
+        select(Message.id)
+        .where(room_messages(room), Message.deleted_at.is_not(None), Message.deleted_at >= since)
+        .order_by(Message.deleted_at, Message.id)
+        .limit(limit)
+    )
+    return list(rows)
+
+
 def last_message(db: Session, room: ChatRoom) -> tuple[Message, str] | None:
     rows = list_recent(db, room, 1)
     return rows[0] if rows else None

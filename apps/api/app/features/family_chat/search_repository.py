@@ -45,7 +45,7 @@ def search(
     stmt = (
         select(Message, User.name)
         .join(User, User.id == Message.user_id)
-        .where(message_scope(group_id, rooms), Message.text != "")
+        .where(message_scope(group_id, rooms), Message.text != "", Message.deleted_at.is_(None))
     )
     for word in words:
         stmt = stmt.where(Message.text.ilike(like_pattern(word), escape=ESCAPE))

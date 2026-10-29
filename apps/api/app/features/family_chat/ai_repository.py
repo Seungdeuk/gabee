@@ -21,6 +21,7 @@ def recent_messages(
             family_messages(group_id),
             Message.id > after_id,
             Message.text != "",  # 사진 메시지(글자 없음)는 제외
+            Message.deleted_at.is_(None),  # 보낸 사람이 지운 메시지는 AI 로 보내지 않는다
             Message.user_id != ASSISTANT_USER_ID,  # 가비의 답은 가족 대화가 아니라서 분석에서 뺀다
         )
         .order_by(Message.id.desc())

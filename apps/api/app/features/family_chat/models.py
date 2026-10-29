@@ -85,6 +85,8 @@ class Message(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(UTC)
     )
+    # 보낸 사람이 지운 시각. 지우면 본문(text)과 첨부도 서버에서 비우고, 행은 남겨 읽음 위치·순서가 바뀌지 않게 한다
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 class ChatReadState(Base):

@@ -26,6 +26,12 @@ class MessageOut(BaseModel):
     created_at: datetime
     attachment: AttachmentOut | None = None
     is_assistant: bool = False  # 가비가 @가비 호출에 답해 올린 메시지(앱이 말풍선을 따로 그린다)
+    deleted: bool = False  # 보낸 사람이 지운 메시지. text 는 빈 문자열, attachment 는 null 이고 앱은 "삭제된 메시지입니다"를 보인다
+
+
+class DeletedOut(BaseModel):
+    message_ids: list[int]  # since 이후에 지워진 메시지 id(지운 순서, 최대 200개)
+    server_time: datetime  # 이 응답을 만든 서버 시각. 다음 조회의 since 로 쓴다
 
 
 class ReadMark(BaseModel):
