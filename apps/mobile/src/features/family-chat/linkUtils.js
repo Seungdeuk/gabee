@@ -9,7 +9,7 @@ export const TITLE_MAX = 120;
 
 /** 종류 이름(목록 배지)과 말풍선 표시 문구. */
 export const KIND_LABEL = { event: "일정", todo: "할 일" };
-export const BADGE_LABEL = { event: "일정으로 등록됨", todo: "함께하기로 보냄" };
+export const BADGE_LABEL = { event: "일정으로 등록됨", todo: "할 일로 등록됨" };
 
 export const EMPTY_LINKS_TEXT = "아직 대화에서 등록한 일정·할 일이 없어요";
 export const REMOVED_NOTICE = "연결만 지웠어요. 일정·할 일은 그대로예요";

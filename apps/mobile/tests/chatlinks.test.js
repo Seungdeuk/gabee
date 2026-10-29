@@ -30,7 +30,6 @@ import {
   runGuarded,
   tryBegin,
 } from "../src/features/family-chat/linkUtils.js";
-import { buildDrawerSections, resolveRowAction } from "../src/features/family-chat/mediaUtils.js";
 import { pinTapAction } from "../src/features/family-chat/pinUtils.js";
 
 process.env.TZ = "Asia/Seoul";
@@ -178,7 +177,7 @@ test("메시지별 맵과 말풍선 표시: 종류마다 하나, 일정 먼저",
   assert.equal(map.get(99), undefined);
   assert.deepEqual(badgesFor(map.get(10)), [
     { kind: "event", label: "일정으로 등록됨" },
-    { kind: "todo", label: "함께하기로 보냄" },
+    { kind: "todo", label: "할 일로 등록됨" },
   ]);
   assert.deepEqual(badgesFor(map.get(20)), [{ kind: "event", label: BADGE_LABEL.event }]);
   assert.deepEqual(badgesFor(undefined), []);
@@ -353,8 +352,9 @@ test("소스 검사: AiPanel 은 등록 성공 뒤에만 onLinked 를 부르고,
   const slice = (from, to) => src.slice(src.indexOf(from), src.indexOf(to, src.indexOf(from)));
   const event = slice("const created = await registerScheduleCandidate", "} catch (e) {");
   assert.match(event, /setRegistered\(.*"ok".*\)[\s\S]*notifyLinked\(\{ kind: "event"/);
-  const todo = slice("const created = await sendTogetherRequest", "} catch (e) {");
-  assert.match(todo, /setTodoRegistered\(.*"ok".*\)[\s\S]*notifyLinked\(\{ kind: "todo"/);
+  const todo = slice("await sendTogetherRequest", "} catch (e) {");
+  assert.match(todo, /setTodoRegistered\(.*"ok".*\)/);
+  assert.ok(!todo.includes("notifyLinked("), "함께하기 요청 id 는 서버 연결이 받지 않아 연결을 만들지 않는다");
   for (const part of src.split("} catch (e) {").slice(1)) assert.ok(!part.slice(0, 200).includes("notifyLinked("), "실패 분기에서 연결을 부르면 안 된다");
   assert.match(src, /const notifyLinked = [\s\S]*?try \{[\s\S]*?onLinked\?\.\(link\)[\s\S]*?\} catch/); // 연결 오류는 삼킨다
 });

@@ -3,6 +3,8 @@
 
 /** 함께하기 제목 최대 길이(서버 RequestCreate 와 같다). */
 export const TITLE_MAX = 120;
+/** 함께하기 받는 사람 최대 수(서버 RequestCreate 와 같다). */
+export const MAX_RECIPIENTS = 20;
 /** 서랍 화면에 보이는 항목 최대 개수. */
 export const BRIEF_LIMIT = 30;
 /** 서버 일정 종류: 1 약속, 2 할 일. */
@@ -59,11 +61,12 @@ export function isDay(value) {
 export const cleanTitle = (title) => String(title ?? "").split(/\s+/).filter(Boolean).join(" ").slice(0, TITLE_MAX);
 
 /**
- * 할 일 후보에 날짜가 이미 있는지(있으면 날짜를 고를 필요가 없다).
+ * 할 일 후보에 쓸 만한 날짜가 이미 있는지(있으면 날짜를 고를 필요가 없다). 실제 날짜이고 오늘 이후여야 한다(지난 날짜면 새로 고르게 한다).
  * @param {{ due?: string | null } | null | undefined} candidate
+ * @param {string} [today] YYYY-MM-DD, 기본은 기기의 오늘
  * @returns {boolean}
  */
-export const hasCandidateDay = (candidate) => isDay(candidate?.due);
+export const hasCandidateDay = (candidate, today = dateKey(new Date())) => isDay(candidate?.due) && candidate.due >= today;
 
 /**
  * 후보를 함께하기 요청 본문(POST /schedule/requests)으로. 사용자가 후보를 보고 누른 뒤에만 쓴다.
@@ -72,19 +75,21 @@ export const hasCandidateDay = (candidate) => isDay(candidate?.due);
  * @param {{ title?: string, assignee_name?: string | null, due?: string | null } | null | undefined} candidate
  * @param {{ my_id?: string | null, members?: { id: string, name?: string, display_name?: string | null }[] } | null | undefined} group 가족 정보(별명을 입히지 않은 원래 이름)
  * @param {string | null} [chosenDay] 사용자가 고른 날짜(YYYY-MM-DD)
+ * @param {string} [today] YYYY-MM-DD, 기본은 기기의 오늘(후보 기한이 이보다 이르면 쓰지 않는다)
  * @returns {{ body: { title: string, start_date: string, to_ids: string[] } } | { error: "no_title" | "no_date" | "no_recipient" }}
  */
-export function candidateToRequestBody(candidate, group, chosenDay = null) {
+export function candidateToRequestBody(candidate, group, chosenDay = null, today = dateKey(new Date())) {
   const title = cleanTitle(candidate?.title);
   if (!title) return { error: "no_title" };
-  const startDate = hasCandidateDay(candidate) ? candidate.due : isDay(chosenDay) ? chosenDay : null;
+  const startDate = hasCandidateDay(candidate, today) ? candidate.due : isDay(chosenDay) ? chosenDay : null;
   if (!startDate) return { error: "no_date" };
   const me = group?.my_id ?? null;
+  if (!me) return { error: "no_recipient" };
   const others = (Array.isArray(group?.members) ? group.members : []).filter((m) => m.id !== me);
   if (others.length === 0) return { error: "no_recipient" };
   const wanted = String(candidate?.assignee_name ?? "").trim();
   const hits = wanted ? (Array.isArray(group?.members) ? group.members : []).filter((m) => m.name === wanted || m.display_name === wanted) : [];
-  const toIds = hits.length === 1 && hits[0].id !== me ? [hits[0].id] : others.map((m) => m.id);
+  const toIds = hits.length === 1 && hits[0].id !== me ? [hits[0].id] : others.map((m) => m.id).slice(0, MAX_RECIPIENTS);
   return { body: { title, start_date: startDate, to_ids: toIds } };
 }
 
@@ -115,14 +120,14 @@ export function sendErrorMessage(error) {
 
 /**
  * 서랍 "가족 할 일" 화면의 항목들: 일정 탭의 **할 일**(안 끝낸 것, 날짜 지나지 않은 것)과 **함께하기**(내가 받은 것·보낸 것).
- * 날짜 빠른 순, 같으면 함께하기 먼저. 수락해서 생긴 내 할 일은 같은 함께하기 줄과 겹치므로 뺀다(origin_id 가 요청 id).
+ * 날짜 빠른 순, 같으면 함께하기 먼저. 수락해서 생긴 내 할 일은 같은 함께하기 줄과 겹치므로 뺀다(요청의 my_event_id 가 그 일정 id).
  * 거절(어려워요)한 요청·보낸 사람이 취소한 요청·날짜가 지난 요청은 뺀다.
  * @param {{ events?: object[], requests?: object[], myId: string | null, today: string, nameOf?: (userId: string) => string | undefined }} args
  * @returns {{ key: string, type: "todo" | "request", id: string, title: string, date: string, time: string | null, tag: string, route: { pathname: string, params: { id: string } } }[]}
  */
 export function buildBrief({ events, requests, myId, today, nameOf }) {
   const reqs = (Array.isArray(requests) ? requests : []).filter((r) => r && !r.canceled && String(r.start_date ?? "") >= today);
-  const reqIds = new Set(reqs.map((r) => r.id));
+  const acceptedEventIds = new Set((Array.isArray(requests) ? requests : []).map((r) => r?.my_event_id).filter(Boolean));
   const rows = [];
   for (const r of reqs) {
     const mine = r.from_id === myId;
@@ -131,7 +136,8 @@ export function buildBrief({ events, requests, myId, today, nameOf }) {
     let tag;
     if (mine) {
       const accepted = recipients.filter((x) => x.status === "accepted").length;
-      tag = accepted > 0 ? `${accepted}명이 함께해요` : "답을 기다려요";
+      const waiting = recipients.filter((x) => x.status === "waiting").length;
+      tag = accepted > 0 ? `${accepted}명이 함께해요` : waiting > 0 || recipients.length === 0 ? "답을 기다려요" : "모두 어려워요";
     } else if (me?.status === "declined") continue;
     else tag = me?.status === "accepted" ? "함께해요" : `${nameOf?.(r.from_id) || "가족"}님이 보냈어요`;
     rows.push({
@@ -146,7 +152,7 @@ export function buildBrief({ events, requests, myId, today, nameOf }) {
     });
   }
   for (const e of Array.isArray(events) ? events : []) {
-    if (!e || e.kind !== KIND_TODO || e.checked || reqIds.has(e.origin_id)) continue;
+    if (!e || e.kind !== KIND_TODO || e.checked || acceptedEventIds.has(e.id)) continue;
     const date = String(e.start_date ?? "");
     if (!date || date < today) continue;
     rows.push({

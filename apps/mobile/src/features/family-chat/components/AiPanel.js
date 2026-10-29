@@ -168,9 +168,8 @@ export default function AiPanel({ visible, onClose, onPickReply, onLinked }) {
         setTodoRegistered((r) => ({ ...r, [index]: requestErrorText(made.error) }));
         return;
       }
-      const created = await sendTogetherRequest(made.body);
+      await sendTogetherRequest(made.body); // 원본 대화 연결은 만들지 않는다(서버 연결은 공동 할 일 id 만 받는다)
       setTodoRegistered((r) => ({ ...r, [index]: "ok" }));
-      notifyLinked({ kind: "todo", targetId: created?.id, candidate });
     } catch (e) {
       todoBusy.current.delete(index); // 실패하면 다시 누를 수 있다
       setTodoRegistered((r) => ({ ...r, [index]: sendErrorMessage(e) }));

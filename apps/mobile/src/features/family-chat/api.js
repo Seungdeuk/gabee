@@ -255,10 +255,10 @@ export const getUnread = (roomId) => apiFetch(roomId ? `/family-chat/unread?${ro
 export const sendTogetherRequest = (body) => apiFetch("/schedule/requests", { method: "POST", body });
 
 /**
- * 일정 탭의 내 일정·할 일(앞으로의 것, 서버가 내 줄만 돌려준다). 서랍 "가족 할 일" 화면이 할 일만 골라 쓴다.
+ * 일정 탭의 내 일정·할 일(지난 것 포함, 서버가 내 줄만 돌려준다). 시간 없는 오늘 할 일은 자정이 지나면 "앞으로의 것"에서 빠지므로 지난 것까지 받고, 서랍 "가족 할 일" 화면이 오늘 이후의 할 일만 골라 쓴다.
  * @returns {Promise<{ id: string, title: string, kind: number, start_date: string | null, start_time: string | null, checked: boolean, origin_id: string | null }[]>}
  */
-export const listScheduleEvents = () => apiFetch("/schedule/events");
+export const listScheduleEvents = () => apiFetch("/schedule/events?include_past=true");
 
 /**
  * 같이(함께하기) 목록: 내가 보낸 것과 받은 것, 최신순.

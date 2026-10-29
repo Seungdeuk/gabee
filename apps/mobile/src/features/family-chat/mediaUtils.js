@@ -229,7 +229,7 @@ export function buildDrawerSections({ direct, pinsReady = false }) {
 }
 
 /**
- * 서랍 행을 눌렀을 때 할 일. 화면 이동은 media(모음)·pins(게시판)·familytodos(/family-todos)이고, 그 밖에는 안내 문구만 보인다.
+ * 서랍 행을 눌렀을 때 할 일. 화면 이동은 media(모음)·pins(게시판)·familytodos(/family-together)이고, 그 밖에는 안내 문구만 보인다.
  * 이동이 아닌 행(준비 중, 나가기)이나 아직 동작하지 않는 행은 notice 다.
  * @param {{ key: string, state: "open" | "soon", notice?: string }} row buildDrawerSections 의 행
  * @returns {{ type: "media" | "pins" | "familytodos" } | { type: "notice", text: string }}

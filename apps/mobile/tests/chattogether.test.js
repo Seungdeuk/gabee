@@ -4,6 +4,7 @@ import { afterEach, beforeEach, test } from "node:test";
 
 import {
   BRIEF_LIMIT,
+  MAX_RECIPIENTS,
   DAY_CHIPS,
   briefWhen,
   buildBrief,
@@ -57,7 +58,7 @@ test("isDay·hasCandidateDay: 실제 있는 날짜만", () => {
   assert.equal(isDay("2026-02-30"), false);
   assert.equal(isDay("내일"), false);
   assert.equal(isDay(null), false);
-  assert.equal(hasCandidateDay({ due: "2026-11-02" }), true);
+  assert.equal(hasCandidateDay({ due: "2099-11-02" }), true);
   assert.equal(hasCandidateDay({ due: "다음주" }), false);
   assert.equal(hasCandidateDay(null), false);
 });
@@ -69,21 +70,34 @@ test("cleanTitle: 연속 공백을 하나로, 120자로 자른다", () => {
 });
 
 test("candidateToRequestBody: 날짜는 후보 기한 우선·없으면 고른 날짜, 받는 사람은 담당자 한 명 아니면 나를 뺀 모두", () => {
-  assert.deepEqual(candidateToRequestBody({ title: " 김장 도와드리기 ", due: "2026-11-02" }, group, "2026-11-09"), { body: { title: "김장 도와드리기", start_date: "2026-11-02", to_ids: ["dad", "kid", "kid2"] } });
-  assert.deepEqual(candidateToRequestBody({ title: "장보기" }, group, "2026-11-09"), { body: { title: "장보기", start_date: "2026-11-09", to_ids: ["dad", "kid", "kid2"] } });
-  assert.deepEqual(candidateToRequestBody({ title: "x", due: "2026-11-02", assignee_name: "아빠" }, group).body.to_ids, ["dad"]);
-  assert.deepEqual(candidateToRequestBody({ title: "x", due: "2026-11-02", assignee_name: "우리 아빠" }, group).body.to_ids, ["dad"]); // 표시 이름도 정확히 같으면
-  assert.equal(candidateToRequestBody({ title: "x", due: "2026-11-02", assignee_name: "민수" }, group).body.to_ids.length, 3); // 두 사람이면 정하지 않고 모두
-  assert.equal(candidateToRequestBody({ title: "x", due: "2026-11-02", assignee_name: "엄" }, group).body.to_ids.length, 3); // 부분 일치는 안 된다
-  assert.equal(candidateToRequestBody({ title: "x", due: "2026-11-02", assignee_name: "엄마" }, group).body.to_ids.length, 3); // 담당자가 나면 모두에게
+  assert.deepEqual(candidateToRequestBody({ title: " 김장 도와드리기 ", due: "2026-11-02" }, group, "2026-11-09", "2026-11-01"), { body: { title: "김장 도와드리기", start_date: "2026-11-02", to_ids: ["dad", "kid", "kid2"] } });
+  assert.deepEqual(candidateToRequestBody({ title: "장보기" }, group, "2026-11-09", "2026-11-01"), { body: { title: "장보기", start_date: "2026-11-09", to_ids: ["dad", "kid", "kid2"] } });
+  assert.deepEqual(candidateToRequestBody({ title: "x", due: "2026-11-02", assignee_name: "아빠" }, group, null, "2026-11-01").body.to_ids, ["dad"]);
+  assert.deepEqual(candidateToRequestBody({ title: "x", due: "2026-11-02", assignee_name: "우리 아빠" }, group, null, "2026-11-01").body.to_ids, ["dad"]); // 표시 이름도 정확히 같으면
+  assert.equal(candidateToRequestBody({ title: "x", due: "2026-11-02", assignee_name: "민수" }, group, null, "2026-11-01").body.to_ids.length, 3); // 두 사람이면 정하지 않고 모두
+  assert.equal(candidateToRequestBody({ title: "x", due: "2026-11-02", assignee_name: "엄" }, group, null, "2026-11-01").body.to_ids.length, 3); // 부분 일치는 안 된다
+  assert.equal(candidateToRequestBody({ title: "x", due: "2026-11-02", assignee_name: "엄마" }, group, null, "2026-11-01").body.to_ids.length, 3); // 담당자가 나면 모두에게
+});
+
+test("지난 날짜 기한은 쓰지 않고 날짜를 새로 고르게 한다", () => {
+  assert.equal(hasCandidateDay({ due: "2026-10-30" }, "2026-11-01"), false);
+  assert.equal(hasCandidateDay({ due: "2026-11-01" }, "2026-11-01"), true); // 오늘은 괜찮다
+  assert.deepEqual(candidateToRequestBody({ title: "x", due: "2026-10-30" }, group, null, "2026-11-01"), { error: "no_date" });
+  assert.equal(candidateToRequestBody({ title: "x", due: "2026-10-30" }, group, "2026-11-02", "2026-11-01").body.start_date, "2026-11-02");
+});
+
+test("candidateToRequestBody: 내 id 를 모르면 보내지 않고, 받는 사람은 최대 20명", () => {
+  assert.deepEqual(candidateToRequestBody({ title: "x", due: "2026-11-02" }, { members: group.members }, null, "2026-11-01"), { error: "no_recipient" });
+  const big = { my_id: "me", members: [{ id: "me", name: "나" }, ...Array.from({ length: 25 }, (_, i) => ({ id: `u${i}`, name: `가${i}` }))] };
+  assert.equal(candidateToRequestBody({ title: "x", due: "2026-11-02" }, big, null, "2026-11-01").body.to_ids.length, MAX_RECIPIENTS);
 });
 
 test("candidateToRequestBody: 제목·날짜·받는 사람이 없으면 사유를 돌려준다", () => {
   assert.deepEqual(candidateToRequestBody({ title: "  " }, group, "2026-11-09"), { error: "no_title" });
   assert.deepEqual(candidateToRequestBody({ title: "x", due: "내일" }, group, null), { error: "no_date" });
   assert.deepEqual(candidateToRequestBody({ title: "x", due: "내일" }, group, "잘못"), { error: "no_date" });
-  assert.deepEqual(candidateToRequestBody({ title: "x", due: "2026-11-02" }, { my_id: "me", members: [{ id: "me", name: "엄마" }] }), { error: "no_recipient" });
-  assert.deepEqual(candidateToRequestBody({ title: "x", due: "2026-11-02" }, null), { error: "no_recipient" });
+  assert.deepEqual(candidateToRequestBody({ title: "x", due: "2026-11-02" }, { my_id: "me", members: [{ id: "me", name: "엄마" }] }, null, "2026-11-01"), { error: "no_recipient" });
+  assert.deepEqual(candidateToRequestBody({ title: "x", due: "2026-11-02" }, null, null, "2026-11-01"), { error: "no_recipient" });
   assert.equal(requestErrorText("no_date"), "날짜를 골라 주세요");
   assert.equal(requestErrorText("no_recipient"), "함께할 가족이 아직 없어요");
   assert.equal(requestErrorText("이상한값"), "보내지 못했어요. 다시 시도해 주세요");
@@ -119,12 +133,12 @@ test("buildBrief: 할 일(안 끝낸 것)과 함께하기(받은 것·보낸 것
 
 test("buildBrief: 거절·취소·날짜 지난 요청, 수락해서 생긴 내 할 일(겹침)은 뺀다", () => {
   const rows = buildBrief({
-    events: [ev("fromReq", { origin_id: "acc" }), ev("old", { start_date: "2026-10-30" }), ev("nodate", { start_date: null })],
+    events: [ev("fromReq"), ev("old", { start_date: "2026-10-30" }), ev("nodate", { start_date: null })],
     requests: [
       req("declined", { recipients: [{ user_id: "me", status: "declined" }] }),
       req("canceled", { canceled: true }),
       req("past", { start_date: "2026-10-30" }),
-      req("acc", { recipients: [{ user_id: "me", status: "accepted" }] }),
+      req("acc", { my_event_id: "fromReq", recipients: [{ user_id: "me", status: "accepted" }] }),
       req("waitForOthers", { from_id: "me", recipients: [{ user_id: "dad", status: "waiting" }] }),
     ],
     myId: "me",
@@ -133,6 +147,17 @@ test("buildBrief: 거절·취소·날짜 지난 요청, 수락해서 생긴 내 
   assert.deepEqual(rows.map((r) => r.key).sort(), ["r:acc", "r:waitForOthers"]);
   assert.equal(rows.find((r) => r.id === "acc").tag, "함께해요");
   assert.equal(rows.find((r) => r.id === "waitForOthers").tag, "답을 기다려요");
+});
+
+test("buildBrief: 보낸 요청에 답이 모두 거절이면 '모두 어려워요', 오늘 날짜는 포함", () => {
+  const rows = buildBrief({
+    events: [ev("today", { start_date: "2026-11-01" })],
+    requests: [req("allNo", { from_id: "me", recipients: [{ user_id: "dad", status: "declined" }, { user_id: "kid", status: "declined" }] })],
+    myId: "me",
+    today: "2026-11-01",
+  });
+  assert.equal(rows.find((r) => r.id === "allNo").tag, "모두 어려워요");
+  assert.ok(rows.some((r) => r.key === "e:today"));
 });
 
 test("buildBrief: 잘못된 입력·개수 제한", () => {
@@ -161,7 +186,7 @@ test("API sendTogetherRequest·listScheduleEvents·listTogetherRequests: 일정 
   assert.equal(calls[0].method, "POST");
   assert.match(calls[0].url, /\/schedule\/requests$/);
   assert.deepEqual(JSON.parse(calls[0].body), { title: "김장", start_date: "2026-11-03", to_ids: ["dad"] });
-  assert.match(calls[1].url, /\/schedule\/events$/);
+  assert.match(calls[1].url, /\/schedule\/events\?include_past=true$/);
   assert.match(calls[2].url, /\/schedule\/requests$/);
 });
 
