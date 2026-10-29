@@ -318,6 +318,22 @@ export const unpinMessage = ({ roomId, messageId }) =>
   apiFetch(`/family-chat/pins/${Number(messageId)}${roomId ? `?${roomParam(roomId)}` : ""}`, { method: "DELETE" });
 
 /**
+ * 게시판 공지를 나만 숨긴다(다른 구성원에게는 그대로 보인다, 이미 숨겼어도 같은 결과). 올라가 있지 않은 공지는 404.
+ * @param {{ roomId?: string | null, messageId: number }} options roomId 가 없으면 가족 전체방
+ * @returns {Promise<object>} 서버 PinItem(hidden: true)
+ */
+export const hidePin = ({ roomId, messageId }) =>
+  apiFetch(`/family-chat/pins/${Number(messageId)}/hide${roomId ? `?${roomParam(roomId)}` : ""}`, { method: "PUT" });
+
+/**
+ * 숨겼던 공지를 다시 보이게 한다(숨기지 않았어도 같은 결과). 올라가 있지 않은 공지는 404.
+ * @param {{ roomId?: string | null, messageId: number }} options roomId 가 없으면 가족 전체방
+ * @returns {Promise<object>} 서버 PinItem(hidden: false)
+ */
+export const showPin = ({ roomId, messageId }) =>
+  apiFetch(`/family-chat/pins/${Number(messageId)}/hide${roomId ? `?${roomParam(roomId)}` : ""}`, { method: "DELETE" });
+
+/**
  * 이 방에서 등록한 일정·할 일과 원본 메시지의 연결(최신순). 서버 계약은 별도 PR 의 `GET /family-chat/links`. AI 를 부르지 않는다. 제목·본문은 기록하지 않는다.
  * @param {{ roomId?: string | null, kind?: "event" | "todo" | null, limit?: number }} [options] roomId 가 없으면 가족 전체방, limit 1~100(기본 50)
  * @returns {Promise<{ items: { id: string, room_id: string, message_id: number, kind: "event" | "todo", target_id: string, title: string, date: string | null, time: string | null, created_by: string, created_by_name: string, created_at: string, message_text: string, message_user_name: string }[] }>}

@@ -6,8 +6,8 @@ import { SafeAreaInsetsContext } from "react-native-safe-area-context";
 import { colors, font, radius, spacing } from "@/theme";
 
 /**
- * 메시지를 길게 눌렀을 때 아래에서 올라오는 작은 메뉴(Modal 이라 웹에서도 같다). "복사"와 "공지로 고정 / 고정 해제", "닫기".
- * message 가 없으면 닫힌 상태다. 고정 항목은 서버에 저장된 텍스트 메시지에만 열리므로(호출하는 쪽이 확인) 여기서는 그대로 보여 준다.
+ * 메시지를 길게 눌렀을 때 아래에서 올라오는 작은 메뉴(Modal 이라 웹에서도 같다). "복사"와 "공지로 등록 / 게시판에서 내리기", "닫기".
+ * message 가 없으면 닫힌 상태다. 공지 항목은 서버에 저장된 텍스트 메시지에만 열리므로(호출하는 쪽이 확인) 여기서는 그대로 보여 준다.
  * @param {{ message: { id: number|string, text: string } | null, pinned: boolean, onClose: () => void, onCopy: () => void, onPin: () => void, onUnpin: () => void }} props
  */
 const FALLBACK_BOTTOM = Platform.OS === "ios" ? 34 : 0; // 안전 영역 정보가 없을 때의 기본값
@@ -17,7 +17,7 @@ export default function MessageActionSheet({ message, pinned, onClose, onCopy, o
   const bottom = insets?.bottom ?? FALLBACK_BOTTOM;
   const items = [
     { key: "copy", icon: "copy-outline", label: "복사", onPress: onCopy },
-    pinned ? { key: "unpin", icon: "pin-outline", label: "고정 해제", onPress: onUnpin } : { key: "pin", icon: "pin", label: "공지로 고정", onPress: onPin },
+    pinned ? { key: "unpin", icon: "pin-outline", label: "게시판에서 내리기", onPress: onUnpin } : { key: "pin", icon: "pin", label: "공지로 등록", onPress: onPin },
   ];
   return (
     <Modal visible={message != null} transparent animationType="fade" onRequestClose={onClose} statusBarTranslucent>

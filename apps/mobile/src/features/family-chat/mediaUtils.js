@@ -194,7 +194,7 @@ export function drawerMembers({ direct, room, peerId, myId }) {
 
 const MANAGE_ROWS = [
   { key: "search", icon: "search-outline", title: "대화 내용 검색", subtitle: "키워드·날짜·보낸 사람으로 검색", action: "search" },
-  { key: "pins", icon: "pin-outline", title: "고정 메시지", subtitle: "중요 공지와 약속 모아보기", action: "pins" },
+  { key: "pins", icon: "pin-outline", title: "게시판", subtitle: "공지 모아보기", action: "pins" },
   { key: "media", icon: "images-outline", title: "사진 · 동영상", subtitle: "채팅방에 공유된 미디어", action: "open" },
   { key: "docs", icon: "document-text-outline", title: "공유 문서", subtitle: "@가비 문서 검색과 연동", action: "soon", familyOnly: true },
   { key: "todos", icon: "checkbox-outline", title: "가족 일정 · 할 일", subtitle: "대화에서 등록된 일정과 할 일", action: "links" },

@@ -478,7 +478,7 @@ export default function ChatRoomScreen() {
     <SafeAreaView style={styles.safe} edges={["top", "bottom"]}>
       {header}
       {!searchOpen && info.status === "ready" ? (
-        <PinnedBar pins={pins.pins} expanded={pins.expanded} onToggle={() => pins.setExpanded(!pins.expanded)} onPick={pickPin} notice={pins.notice} nameOf={nameOf} />
+        <PinnedBar pins={pins.pins} expanded={pins.expanded} onToggle={() => pins.setExpanded(!pins.expanded)} onPick={pickPin} onHide={pins.hide} onShowHidden={pins.showHidden} notice={pins.notice} nameOf={nameOf} />
       ) : null}
       <KeyboardAvoidingView style={styles.flex} behavior="padding">
         {body}
