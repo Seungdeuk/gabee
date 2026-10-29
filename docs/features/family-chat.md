@@ -278,7 +278,7 @@
 | 메서드·경로 | 요청 | 응답 | 설명 |
 |---|---|---|---|
 | `GET /family-chat/ai/settings` | — | `AiSettingsOut` | 동의 여부, 내가 켤 수 있는지, 자동 분석 설정, 한도, 오늘 사용량. AI 를 부르지 않는다 |
-| `PUT /family-chat/ai/settings` | `{enabled: bool}` | `AiSettingsOut` | 가족 소유자·관리자만 AI 기능을 켜고 끈다. AI 를 부르지 않는다 |
+| `PUT /family-chat/ai/settings` | `{enabled: bool}` | `AiSettingsOut` | **가족 구성원 누구나** AI 기능을 켜고 끈다(회원가입 때 AI 동의를 하므로, 2026-10-29 변경. 예전에는 소유자·관리자만 `403 not_manager`). `can_manage` 는 앱 호환을 위해 남겼고 구성원이면 항상 true 다. AI 를 부르지 않는다 |
 | `POST /family-chat/ai/preview` | `RangeIn` | `PreviewOut` | Claude 가 **실제로 받게 될 가명화된 대화**를 미리 보여 준다. **AI 를 부르지 않고** 하루·쿨다운 한도도 쓰지 않으며, 가족 AI 동의와 무관하게 볼 수 있다(`ai_enabled` 로 동의 여부를 알림). 사용자당 분당 20회, 넘으면 429 `too_many_previews` |
 | `POST /family-chat/ai/analysis` | `RangeIn` | `AnalysisOut` | 통합 분석: 요약·중요 메시지·일정 후보·할 일 후보·**답장 추천·대화 주제 추천**을 AI 한 번 호출로 |
 | `POST /family-chat/ai/replies` | `RangeIn` | `RepliesOut` | 마지막 메시지에 이어 보낼 답장 후보(3개). 앱은 더 이상 부르지 않는다(분석에 합쳐짐, 하위 호환으로 남김) |

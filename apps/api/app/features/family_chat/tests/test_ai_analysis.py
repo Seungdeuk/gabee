@@ -144,15 +144,26 @@ def test_not_enabled_returns_403_without_call(client, family, fake):
     assert fake.calls == []
 
 
-def test_only_manager_can_enable(client, family, fake):
+def test_any_member_can_enable_and_disable(client, family, fake):
+    """회원가입 때 AI 동의를 하므로 관리자가 아닌 구성원도 켜고 끌 수 있다."""
     a, b, _ = family
-    r = client.put(f"{AI}/settings", json={"enabled": True}, headers=b)
-    assert r.status_code == 403 and r.json()["code"] == "not_manager"
     assert client.get(f"{AI}/settings", headers=b).json()["enabled"] is False
-    out = enable(client, a)
-    assert out["enabled"] is True and out["can_manage"] is True
-    assert client.get(f"{AI}/settings", headers=b).json()["can_manage"] is False
+    r = client.put(f"{AI}/settings", json={"enabled": True}, headers=b)  # 관리자가 아닌 구성원
+    assert r.status_code == 200 and r.json()["enabled"] is True and r.json()["can_manage"] is True
+    assert client.get(f"{AI}/settings", headers=a).json()["enabled"] is True  # 가족 전체에 적용된다
+    assert client.get(f"{AI}/settings", headers=b).json()["can_manage"] is True
+    r = client.put(f"{AI}/settings", json={"enabled": False}, headers=b)
+    assert r.status_code == 200 and r.json()["enabled"] is False
+    assert enable(client, a)["enabled"] is True
     assert enable(client, a, False)["enabled"] is False
+
+
+def test_outsider_cannot_change_ai_settings(client, family, other_family):
+    """구성원이 아니면(다른 가족) 바꾸지 못하고 이 가족의 설정도 그대로다."""
+    a, _, _ = family
+    r = client.put(f"{AI}/settings", json={"enabled": True}, headers=other_family)
+    assert r.status_code == 200  # 자기 가족의 설정만 바뀐다
+    assert client.get(f"{AI}/settings", headers=a).json()["enabled"] is False
 
 
 def test_get_settings_shows_limits_and_usage(client, ready):

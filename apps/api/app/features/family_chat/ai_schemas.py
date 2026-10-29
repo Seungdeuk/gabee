@@ -23,7 +23,7 @@ class AiUsageOut(BaseModel):
 
 class AiSettingsOut(BaseModel):
     enabled: bool  # 가족 그룹이 AI 기능 사용에 동의했는지
-    can_manage: bool  # 내가 켜고 끌 수 있는지(소유자·관리자)
+    can_manage: bool  # 내가 켜고 끌 수 있는지(가족 구성원이면 항상 true, 앱 호환용으로 남긴 필드)
     auto_analysis: bool  # 자동 분석(서버 설정, 기본 꺼짐)
     limits: AiLimitsOut
     usage: AiUsageOut
