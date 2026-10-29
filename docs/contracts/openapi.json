@@ -6354,6 +6354,90 @@
         }
       }
     },
+    "/schedule/requests/{request_id}/recipients": {
+      "put": {
+        "tags": [
+          "schedule"
+        ],
+        "summary": "Change Request Recipients",
+        "operationId": "change_request_recipients_schedule_requests__request_id__recipients_put",
+        "parameters": [
+          {
+            "name": "request_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Request Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-gyeot-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Gyeot-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RequestRecipients"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RequestOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/schedule/requests/{request_id}/cancel": {
       "post": {
         "tags": [
@@ -18464,6 +18548,18 @@
               }
             ],
             "title": "My Event Id"
+          },
+          "edited_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Edited At"
           }
         },
         "type": "object",
@@ -18482,6 +18578,25 @@
           "my_event_id"
         ],
         "title": "RequestOut"
+      },
+      "RequestRecipients": {
+        "properties": {
+          "to_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 20,
+            "minItems": 1,
+            "title": "To Ids"
+          }
+        },
+        "type": "object",
+        "required": [
+          "to_ids"
+        ],
+        "title": "RequestRecipients",
+        "description": "부탁의 받는 사람을 바꾼 뒤의 전체 목록. 보낸 사람만 바꿀 수 있고, 최소 1명이며 나는 뺀다."
       },
       "RoleIn": {
         "properties": {

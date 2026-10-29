@@ -13,7 +13,9 @@ import SuggestionCard from "../components/SuggestionCard";
 import TogetherRow from "../components/TogetherRow";
 import WeekStrip from "../components/WeekStrip";
 import { briefingLabels } from "../briefing";
-import { useNewReceivedCount } from "../requests";
+import { ME_ID } from "../mock";
+import { useNewReceivedCount, useRequests } from "../requests";
+import { briefingRequests } from "../request_view";
 import { toggleChecked, useScheduleItems } from "../store";
 import { draftDateOf, suggestionExtras } from "../suggestion_convert";
 import { MOCK_SUGGESTIONS, SUGGESTIONS_ASK_TEXT, SUGGESTIONS_DONE_TEXT, SUGGESTIONS_FAILED_TEXT, SUGGESTIONS_LOADING_TEXT, pickCheckCard } from "../suggestions";
@@ -39,6 +41,7 @@ export default function ScheduleScreen() {
   const router = useRouter();
   const items = useScheduleItems();
   const newCount = useNewReceivedCount();
+  const requests = useRequests();
   const today = todayKey();
   // 주간 스트림에서 고른 날. 아래 브리핑이 이 날과 그 다음 날로 바뀐다(처음엔 오늘).
   const [selected, setSelected] = useState(today);
@@ -98,6 +101,7 @@ export default function ScheduleScreen() {
   };
   const openCalendar = (date) => router.push({ pathname: "/schedule/calendar", params: { date } });
   const openDetail = (id) => router.push({ pathname: "/schedule/detail", params: { id } });
+  const openRequest = (id) => router.push({ pathname: "/schedule/together-detail", params: { id } });
   const openTogether = (params) => router.push({ pathname: "/schedule/together", params });
   const openRegister = (params) => router.push({ pathname: "/schedule/register", params });
   // 제안으로 여는 등록 화면은 형태·제목·날짜가 미리 채워지고, 저장은 사용자가 확인한 뒤에만 된다.
@@ -143,13 +147,17 @@ export default function ScheduleScreen() {
             <DaySection
               label={selectedLabel}
               items={items.filter((item) => item.date === selected)}
+              requests={briefingRequests(requests, ME_ID, selected, today)}
               onPressItem={openDetail}
+              onPressRequest={openRequest}
               onToggleItem={toggleChecked}
             />
             <DaySection
               label={nextLabel}
               items={items.filter((item) => item.date === nextDay)}
+              requests={briefingRequests(requests, ME_ID, nextDay, today)}
               onPressItem={openDetail}
+              onPressRequest={openRequest}
               onToggleItem={toggleChecked}
               collapsed={nextFolded}
               onToggle={() => setNextFolded((v) => !v)}

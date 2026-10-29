@@ -106,24 +106,47 @@ export function sendRequest(data) {
   return request;
 }
 
-/** 서버 모드에서 요청을 서버에 보내고 응답으로 갱신한다. 실패하면 before 로 되돌린다. */
+/** 서버 모드에서 요청을 서버에 보내고 응답으로 갱신한다. 실패하면 before 로 되돌린다. @returns {Promise<boolean>} 성공 여부 */
 function sync(id, before, what, call) {
   return (async () => {
     const f = await ready();
     const saved = await call(await serverId(id));
     replaceRequest(await serverId(id), () => toRequest(saved, f));
+    return true;
   })().catch((error) => {
     warn(what, error);
     restore(before);
+    return false;
   });
 }
 
-/** 답을 기다리는 동안 보낸 사람이 보내기를 취소한다. @param {string} id */
+/** 보낸 사람이 부탁을 취소한다(수락한 사람이 있어도 된다. 수락한 사람의 일정은 서버가 지우므로 내 일정 목록도 다시 읽는다). @param {string} id */
 export function cancelRequest(id) {
   const before = requests;
   requests = requests.map((request) => (request.id === id ? { ...request, cancelled: true } : request));
   emit();
-  if (useServer) sync(id, before, "같이 취소", api.cancelRequest);
+  if (useServer) sync(id, before, "같이 취소", api.cancelRequest).then(reloadItems);
+}
+
+/**
+ * 보낸 사람이 받는 사람을 바꾼다(바뀐 뒤 전체 목록). 화면에는 바로 반영하고 서버가 실패하면 되돌린다. 빠진 사람의 답은 함께 지운다.
+ * @param {string} id
+ * @param {string[]} toIds 앱 id, 최소 1명
+ * @returns {Promise<boolean>} 성공 여부
+ */
+export async function changeRecipients(id, toIds) {
+  const before = requests;
+  requests = requests.map((request) => {
+    if (request.id !== id) return request;
+    const replies = Object.fromEntries(Object.entries(request.replies).filter(([who]) => toIds.includes(who)));
+    return { ...request, toIds, replies };
+  });
+  emit();
+  if (!useServer) return true;
+  return sync(id, before, "받는 사람 바꾸기", async (sid) => {
+    const f = await ready();
+    return api.changeRecipients(sid, toIds.map(f.toUser).filter(Boolean));
+  });
 }
 
 /**

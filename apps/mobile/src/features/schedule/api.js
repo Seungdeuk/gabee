@@ -10,7 +10,7 @@ import { apiFetch } from "@/shared/api/client";
  * @typedef {{ id: string, title: string, kind: 1 | 2, start_date: string, place: string }} ServerSuggestion
  * @typedef {{ suggestions: ServerSuggestion[], exhausted: boolean }} SuggestionList
  * @typedef {{ user_id: string, status: "waiting" | "accepted" | "declined" }} ServerRecipient
- * @typedef {{ id: string, from_id: string, title: string, start_date: string, start_time: string | null, end_time: string | null, place: string, memo: string, created_at: string, canceled: boolean, recipients: ServerRecipient[], my_event_id: string | null }} ServerRequest
+ * @typedef {{ id: string, from_id: string, title: string, start_date: string, start_time: string | null, end_time: string | null, place: string, memo: string, created_at: string, canceled: boolean, recipients: ServerRecipient[], my_event_id: string | null, edited_at?: string | null }} ServerRequest
  */
 
 const KIND_FROM_SERVER = { 1: "appointment", 2: "todo" };
@@ -162,5 +162,14 @@ export const createRequest = (body) => apiFetch("/schedule/requests", { method: 
 export const answerRequest = (id, answer, kind = null) =>
   apiFetch(`/schedule/requests/${id}/answer`, { method: "POST", body: { answer, kind } });
 
-/** 보낸 사람이 보내기를 취소한다. @returns {Promise<ServerRequest>} */
+/** 보낸 사람이 부탁을 취소한다(수락한 사람이 있어도 되고, 그 사람의 일정은 서버가 지운다). @returns {Promise<ServerRequest>} */
 export const cancelRequest = (id) => apiFetch(`/schedule/requests/${id}/cancel`, { method: "POST" });
+
+/**
+ * 보낸 사람이 받는 사람을 바꾼다(바뀐 뒤 전체 목록, 최소 1명, 나 제외). 빠진 사람의 부탁·그가 만든 일정은 서버가 지운다.
+ * 400 invalid_recipients·request_canceled, 403 not_owner(ApiError.code).
+ * @param {string} id
+ * @param {string[]} toIds 서버 사용자 id
+ * @returns {Promise<ServerRequest>}
+ */
+export const changeRecipients = (id, toIds) => apiFetch(`/schedule/requests/${id}/recipients`, { method: "PUT", body: { to_ids: toIds } });

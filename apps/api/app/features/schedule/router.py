@@ -16,6 +16,7 @@ from .schemas import (
     RequestAnswer,
     RequestCreate,
     RequestOut,
+    RequestRecipients,
     SharingOut,
     TopicCreate,
     TopicOut,
@@ -156,6 +157,17 @@ def answer_request(
     db: Session = Depends(get_db),
 ) -> dict:
     return request_service.answer(db, group_id, user.id, request_id, body)
+
+
+@router.put("/requests/{request_id}/recipients", response_model=RequestOut)
+def change_request_recipients(
+    request_id: str,
+    body: RequestRecipients,
+    user=Depends(current_user),
+    group_id: str = Depends(current_group_id),
+    db: Session = Depends(get_db),
+) -> dict:
+    return request_service.change_recipients(db, group_id, user.id, request_id, body)
 
 
 @router.post("/requests/{request_id}/cancel", response_model=RequestOut)

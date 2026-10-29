@@ -131,6 +131,12 @@ class RequestAnswer(BaseModel):
     kind: Literal[1, 2] | None = None
 
 
+class RequestRecipients(BaseModel):
+    """부탁의 받는 사람을 바꾼 뒤의 전체 목록. 보낸 사람만 바꿀 수 있고, 최소 1명이며 나는 뺀다."""
+
+    to_ids: list[str] = Field(min_length=1, max_length=20)
+
+
 class RecipientOut(BaseModel):
     user_id: str
     status: Literal["waiting", "accepted", "declined"]
@@ -149,3 +155,4 @@ class RequestOut(BaseModel):
     canceled: bool
     recipients: list[RecipientOut]
     my_event_id: str | None  # 내가 수락해서 만든 지워지지 않은 일정
+    edited_at: datetime | None = None  # 받는 사람을 바꾼 마지막 시각

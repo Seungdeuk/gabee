@@ -3,6 +3,7 @@
 from datetime import date, timedelta
 
 from app.shared.db import SessionLocal
+from tests.helpers import join_family, signup
 
 from ..models import Event
 
@@ -166,7 +167,7 @@ def test_cannot_change_answer_after_date_passed(client, family):
     assert len(_events(client, b)) == 1
 
 
-def test_cancel_by_sender_only_while_waiting(client, family):
+def test_cancel_by_sender_only(client, family):
     a, b, _ = family
     req = _send(client, a, [_me(client, b)]).json()
     assert _cancel(client, b, req["id"]).status_code == 403
@@ -178,16 +179,121 @@ def test_cancel_by_sender_only_while_waiting(client, family):
     assert _events(client, b) == []
 
 
-def test_cancel_refused_after_accept(client, family):
+def test_cancel_after_accept_deletes_accepted_events(client, family):
     a, b, _ = family
     req = _send(client, a, [_me(client, b)]).json()
     _answer(client, b, req["id"])
-    r = _cancel(client, a, req["id"])
-    assert r.status_code == 400 and r.json()["code"] == "already_accepted"
-    assert len(_events(client, b)) == 1  # 만들어진 일정은 그대로
-    # 어렵겠어요로 바꾸면 기다리는 사람이 없으니 취소할 수 있다
-    _answer(client, b, req["id"], answer="declined", kind=None)
-    assert _cancel(client, a, req["id"]).json()["canceled"] is True
+    assert len(_events(client, b)) == 1
+    out = _cancel(client, a, req["id"])
+    assert (
+        out.status_code == 200 and out.json()["canceled"] is True
+    )  # 수락한 사람이 있어도 취소된다
+    assert _events(client, b) == []  # 수락해서 만든 일정도 같이 지워진다
+    assert _cancel(client, a, req["id"]).status_code == 200  # 다시 취소해도 그대로
+
+
+def _member(client, owner, group, name) -> dict:
+    """같은 가족에 구성원을 더 들이고 그 헤더를 돌려준다."""
+    joiner = signup(client, name)
+    join_family(client, owner, group["invite_code"], joiner)
+    return joiner
+
+
+def _recipients(client, headers, rid, to_ids):
+    return client.put(
+        f"/schedule/requests/{rid}/recipients", json={"to_ids": to_ids}, headers=headers
+    )
+
+
+def test_change_recipients_add_and_remove(client, family):
+    a, b, group = family
+    c = _member(client, a, group, "민수")
+    b_id, c_id = _me(client, b), _me(client, c)
+    rid = _send(client, a, [b_id]).json()["id"]
+    assert _events(client, c) == [] and client.get("/schedule/requests", headers=c).json() == []
+
+    out = _recipients(client, a, rid, [b_id, c_id])
+    assert out.status_code == 200, out.text
+    body = out.json()
+    assert [r["user_id"] for r in body["recipients"]] == [b_id, c_id]
+    assert {r["status"] for r in body["recipients"]} == {"waiting"}
+    assert body["edited_at"] is not None
+    assert len(client.get("/schedule/requests", headers=c).json()) == 1  # 새로 든 사람에게 보인다
+
+    out = _recipients(client, a, rid, [c_id])  # 답하지 않은 b 를 뺀다
+    assert [r["user_id"] for r in out.json()["recipients"]] == [c_id]
+    assert client.get("/schedule/requests", headers=b).json() == []  # 빠진 사람은 더 못 본다
+    assert _answer(client, b, rid).status_code == 404
+
+
+def test_remove_accepted_recipient_deletes_their_event_and_readd_is_new(client, family):
+    a, b, group = family
+    c = _member(client, a, group, "민수")
+    b_id, c_id = _me(client, b), _me(client, c)
+    rid = _send(client, a, [b_id, c_id]).json()["id"]
+    _answer(client, b, rid)
+    _answer(client, c, rid)
+    assert len(_events(client, b)) == 1 and len(_events(client, c)) == 1
+
+    _recipients(client, a, rid, [c_id])  # 수락한 b 를 뺀다
+    assert _events(client, b) == []  # b 의 수락 일정이 같이 지워진다
+    assert len(_events(client, c)) == 1  # 남은 사람의 일정은 그대로
+    assert client.get("/schedule/requests", headers=b).json() == []
+
+    out = _recipients(client, a, rid, [b_id, c_id])  # 다시 넣으면 새 부탁으로 간다
+    status = {r["user_id"]: r["status"] for r in out.json()["recipients"]}
+    assert status == {c_id: "accepted", b_id: "waiting"}
+    assert _events(client, b) == []
+    assert _answer(client, b, rid).status_code == 200
+    assert len(_events(client, b)) == 1
+
+
+def test_change_recipients_no_change_keeps_edited_at_empty(client, family):
+    a, b, _ = family
+    b_id = _me(client, b)
+    rid = _send(client, a, [b_id]).json()["id"]
+    out = _recipients(client, a, rid, [b_id])
+    assert out.status_code == 200 and out.json()["edited_at"] is None
+
+
+def test_change_recipients_rules(client, family, other_family):
+    a, b, group = family
+    a_id, b_id = _me(client, a), _me(client, b)
+    outsider = _me(client, other_family)
+    rid = _send(client, a, [b_id]).json()["id"]
+    assert _recipients(client, a, rid, []).status_code == 422  # 최소 1명
+    for to in ([a_id], [outsider], [b_id, outsider]):
+        r = _recipients(client, a, rid, to)
+        assert r.status_code == 400 and r.json()["code"] == "invalid_recipients", to
+    r = _recipients(client, b, rid, [b_id])  # 받는 사람은 못 바꾼다
+    assert r.status_code == 403 and r.json()["code"] == "not_owner"
+    assert _recipients(client, other_family, rid, [b_id]).status_code == 404
+    assert _recipients(client, a, "nope", [b_id]).status_code == 404
+    c = _member(client, a, group, "민수")
+    _cancel(client, a, rid)
+    r = _recipients(client, a, rid, [b_id, _me(client, c)])
+    assert r.status_code == 400 and r.json()["code"] == "request_canceled"
+
+
+def test_recipient_sees_only_self_and_accepted_others(client, family):
+    a, b, group = family
+    c, d = _member(client, a, group, "민수"), _member(client, a, group, "하윤")
+    b_id, c_id, d_id = _me(client, b), _me(client, c), _me(client, d)
+    rid = _send(client, a, [b_id, c_id, d_id]).json()["id"]
+
+    def seen(headers):
+        got = client.get("/schedule/requests", headers=headers).json()[0]["recipients"]
+        return {r["user_id"]: r["status"] for r in got}
+
+    assert seen(a) == {b_id: "waiting", c_id: "waiting", d_id: "waiting"}  # 보낸 사람은 전원
+    assert seen(b) == {b_id: "waiting"}  # 받는 사람은 자기 줄만
+    _answer(client, c, rid)
+    assert seen(b) == {b_id: "waiting", c_id: "accepted"}  # 수락한 사람은 보인다
+    _answer(client, d, rid, answer="declined", kind=None)
+    assert seen(b) == {b_id: "waiting", c_id: "accepted"}  # 거절한 사람은 안 보인다
+    assert seen(d) == {c_id: "accepted", d_id: "declined"}
+    out = _answer(client, b, rid).json()  # 답한 응답도 같은 규칙
+    assert {r["user_id"] for r in out["recipients"]} == {b_id, c_id}
 
 
 def test_other_family_cannot_touch_request(client, family, other_family):

@@ -218,6 +218,18 @@ def live_events_of_requests(db: Session, request_ids: list[str], user_id: str) -
     )
 
 
+def events_of_recipient(db: Session, recip_id: str) -> list[Event]:
+    """이 답 줄로 만들어진 일정들(지워진 것 포함). 답 줄을 지우기 전에 연결을 끊을 때 쓴다."""
+    return list(db.scalars(select(Event).where(Event.recip_id == recip_id)))
+
+
+def live_events_of_request(db: Session, request_id: str) -> list[Event]:
+    """이 부탁을 수락해서 만들어진, 지워지지 않은 일정들(받은 사람들 것)."""
+    return list(
+        db.scalars(select(Event).where(Event.request_id == request_id, Event.deleted_at.is_(None)))
+    )
+
+
 def live_events_of_recipient(db: Session, recip_id: str) -> list[Event]:
     """이 답 줄로 만들어진, 지워지지 않은 일정들."""
     return list(
