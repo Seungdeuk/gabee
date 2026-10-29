@@ -36,12 +36,16 @@ def upsert_post(
         with db.begin_nested():
             db.add(post)
             db.flush()
-    except IntegrityError:  # 겹친 요청이 먼저 만들었다
-        return db.scalar(
+    except IntegrityError:  # 겹친 요청이 먼저 만들었다: 그 줄을 최신 값으로 고친다
+        existing = db.scalar(
             select(ChatBoardPost).where(
                 ChatBoardPost.room_id == room_id, ChatBoardPost.message_id == message_id
             )
         )
+        if existing is None:  # 유니크가 아닌 다른 제약(외래키 등) 위반이면 숨기지 않고 알린다
+            raise
+        existing.posted_by, existing.posted_at, existing.text = user_id, now, text
+        return existing
     return post
 
 
@@ -62,9 +66,9 @@ def get_post(db: Session, room_id: str, post_id: str) -> ChatBoardPost | None:
     )
 
 
-def delete_post(db: Session, post: ChatBoardPost) -> None:
-    """글 한 줄을 지운다(commit 하지 않는다)."""
-    db.execute(delete(ChatBoardPost).where(ChatBoardPost.id == post.id))
+def delete_post(db: Session, post: ChatBoardPost) -> int:
+    """글 한 줄을 지운다(commit 하지 않는다). 지운 행 수(이미 지워졌으면 0)."""
+    return db.execute(delete(ChatBoardPost).where(ChatBoardPost.id == post.id)).rowcount
 
 
 def list_page(

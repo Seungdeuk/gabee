@@ -76,12 +76,17 @@ def pin(db: Session, user: User, group_id: str, message_id: int, room_id: str | 
         raise bad_request("not_pinnable", "글자가 있는 메시지만 고정할 수 있어요")
 
     prepo.lock_room(db, room.id)  # 같은 방의 고정 변경은 한 번에 하나씩(아래 개수 정리까지)
+    db.refresh(
+        message
+    )  # 잠금을 기다리는 사이 원본이 지워졌을 수 있다: 지운 메시지는 공지로 올리지 않는다
+    if message.deleted_at is not None or not message.text.strip():
+        raise bad_request("not_pinnable", "글자가 있는 메시지만 고정할 수 있어요")
     replaced: int | None = None
     pin_row = prepo.get_pin(db, room.id, message.id)
     pinner = prepo.user_name(db, pin_row.pinned_by) if pin_row else user.name
     already = pin_row is not None
     if not already:
-        # 사본은 게시판에 보이는 범위만 저장한다(+1 은 잘렸는지 알아보려는 한 글자). 지운 긴 메시지의 나머지는 남기지 않는다
+        # 고정 바용 사본은 보이는 범위만 저장한다(+1 은 잘렸는지 알아보려는 한 글자). 게시판 목록 기록(아래 upsert_post)에는 전체 본문이 남는다
         snapshot = message.text[: TEXT_LIMIT + 1]
         pin_row = prepo.add_pin(db, group_id, room.id, message.id, user.id, snapshot)
         if pin_row is None:  # 겹친 요청이 먼저 고정했다(유니크 충돌)

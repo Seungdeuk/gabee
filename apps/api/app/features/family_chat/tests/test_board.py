@@ -1,11 +1,13 @@
 """게시판 목록: 공지로 올린 메시지는 내려가거나 교체돼도 기록이 남고, 전체 본문·상태를 최신순으로 보고, 구성원 누구나 삭제한다."""
 
+import base64
+
 import httpx
 import pytest
 from sqlalchemy import func, select
 
 from app.features.family_chat import pin_service
-from app.features.family_chat.models import ChatBoardPost, ChatPinnedMessage
+from app.features.family_chat.models import ChatBoardPost, ChatPinHide, ChatPinnedMessage
 from app.shared.db import SessionLocal
 from app.shared.llm import client as llm
 from tests.helpers import join_family, signup
@@ -258,3 +260,93 @@ def test_hidden_and_text_limit_do_not_leak_into_board(client, family):
     assert client.put(f"{PINS}/{mid}/hide", headers=a).status_code == 200
     # 나만 숨기기는 고정 바용이라 게시판 목록에는 그대로 있다
     assert mid in _posts(client, a)
+
+
+def test_full_text_up_to_message_limit_is_kept_while_pin_bar_copy_is_short(client, family):
+    a, _, _ = family
+    mid = _send(client, a, "가" * 2000)  # 메시지 최대 길이
+    body = _pin(client, a, mid)
+    assert (
+        len(body["item"]["text"]) == pin_service.TEXT_LIMIT
+        and body["item"]["text_truncated"] is True
+    )  # 고정 바는 200자
+    assert _posts(client, a)[mid]["text"] == "가" * 2000  # 게시판에는 전체 본문
+
+
+def test_deleting_a_current_post_also_clears_my_hide_record(client, family):
+    a, _, _ = family
+    mid = _send(client, a, "숨김이 있는 현재 공지")
+    _pin(client, a, mid)
+    assert client.put(f"{PINS}/{mid}/hide", headers=a).status_code == 200
+    with SessionLocal() as db:
+        assert db.scalar(select(func.count()).select_from(ChatPinHide)) == 1
+    assert client.delete(f"{BOARD}/{_posts(client, a)[mid]['id']}", headers=a).status_code == 204
+    with SessionLocal() as db:
+        assert db.scalar(select(func.count()).select_from(ChatPinHide)) == 0
+
+
+def test_pinning_a_deleted_message_creates_no_board_post(client, family):
+    a, b, _ = family
+    mid = _send(client, a, "지운 메시지")
+    assert client.delete(f"{MSG}/{mid}", headers=a).status_code == 200
+    r = client.post(PINS, json={"message_id": mid}, headers=b)
+    assert r.status_code == 400 and r.json()["code"] == "not_pinnable"
+    assert _board(client, b)["items"] == []
+
+
+def test_stale_delete_does_not_take_down_a_republished_notice(client, family):
+    """이미 지운 글을 다시 지워도(오래된 요청) 같은 메시지를 새로 올린 현재 공지는 그대로다."""
+    a, b, _ = family
+    mid = _send(client, a, "다시 올릴 공지")
+    _pin(client, a, mid)
+    old_id = _posts(client, a)[mid]["id"]
+    assert client.delete(f"{BOARD}/{old_id}", headers=a).status_code == 204
+    _pin(client, b, mid)  # 같은 메시지를 새로 올림(새 글)
+    assert client.delete(f"{BOARD}/{old_id}", headers=a).status_code == 404  # 낡은 요청
+    assert [i["message_id"] for i in client.get(PINS, headers=a).json()["items"]] == [mid]
+    assert _posts(client, a)[mid]["is_current"] is True
+
+
+def test_cursor_with_valid_base64_but_wrong_content_is_400(client, family):
+    a, _, _ = family
+    for raw in ("시각아님|abc", "2026-10-29T00:00:00+00:00", "|id", "2026-10-29T00:00:00+09:00|"):
+        cursor = base64.urlsafe_b64encode(raw.encode()).decode()
+        r = client.get(BOARD, params={"before": cursor}, headers=a)
+        assert r.status_code == 400 and r.json()["code"] == "invalid_cursor", raw
+
+
+def test_cursor_with_offset_is_read_as_the_same_instant(client, family):
+    a, _, _ = family
+    ids = [_send(client, a, f"공지 {i}") for i in range(3)]
+    for mid in ids:
+        _pin(client, a, mid)
+    page = _board(client, a, limit=1)
+    stamp, post_id = base64.urlsafe_b64decode(page["next_before"].encode()).decode().split("|", 1)
+    from datetime import UTC, datetime, timedelta, timezone
+
+    at = datetime.fromisoformat(stamp).astimezone(
+        timezone(timedelta(hours=9))
+    )  # 같은 시각을 +09:00 로 표기
+    cursor = base64.urlsafe_b64encode(f"{at.isoformat()}|{post_id}".encode()).decode()
+    assert (
+        at.utcoffset() != timedelta(0)
+        and at.astimezone(UTC).isoformat() == datetime.fromisoformat(stamp).isoformat()
+    )
+    rest = _board(client, a, limit=5, before=cursor)
+    assert [i["message_id"] for i in rest["items"]] == [ids[1], ids[0]]
+
+
+def test_posts_with_the_same_posted_at_are_ordered_by_id(client, family):
+    a, _, _ = family
+    ids = [_send(client, a, f"공지 {i}") for i in range(3)]
+    for mid in ids:
+        _pin(client, a, mid)
+    with SessionLocal() as db:
+        stamp = db.scalar(select(ChatBoardPost.posted_at).limit(1))
+        db.execute(ChatBoardPost.__table__.update().values(posted_at=stamp))  # 시각이 모두 같다
+        db.commit()
+    first = _board(client, a, limit=2)
+    rest = _board(client, a, limit=2, before=first["next_before"])
+    seen = [i["id"] for i in first["items"]] + [i["id"] for i in rest["items"]]
+    assert len(seen) == 3 and len(set(seen)) == 3  # 누락·중복 없이 id 순서로 이어진다
+    assert seen == sorted(seen, reverse=True)
