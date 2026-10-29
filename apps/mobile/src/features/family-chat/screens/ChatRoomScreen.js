@@ -41,6 +41,7 @@ const FAR = 400; // 바닥에서 이 이상 올라와 있으면 "맨 아래로" 
 const HIGHLIGHT_MS = 2000; // 검색 결과로 이동한 메시지를 강조해 두는 시간
 const SETTLE_MS = 600; // 이동 직후 이 시간 동안은 위로 자동 불러오기를 막아 이동 위치가 밀리지 않게 한다
 const NO_MESSAGES = []; // 과거 창을 보는 동안 읽음 처리에 넘기는 빈 목록
+const END_SETTLE_MS = 150; // 맨 아래로 간 뒤 마지막 항목 높이가 확정되길 기다리는 시간
 
 /** 가족 전체방의 사진을 AI 비서의 가족 기록으로 올린다(사진 보기의 "가비 기록에 저장"). */
 const savePhotoToRecord = (attachment) => saveToRecord(attachment, Platform.OS);
@@ -83,6 +84,8 @@ export default function ChatRoomScreen() {
   const mention = useMention(); // @가비 로 부른 뒤 나에게만 보이는 답·안내
   const listRef = useRef(null);
   const nearBottom = useRef(initialFocus == null);
+  const lastScrollY = useRef(0); // 직전 스크롤 위치(위로 올렸는지 알아보려고)
+  const endTimer = useRef(null); // 마지막 항목의 높이가 확정된 뒤 한 번 더 맨 아래로 맞추는 타이머
   const itemsRef = useRef([]);
   const pinHighlightTimer = useRef(null); // 강조 해제 타이머(고정 바 이동·포커스 이동이 함께 쓴다 — 새 이동이 시작되면 앞의 것을 지운다)
   const pinSettleTimer = useRef(null); // 위로 불러오기 잠금 해제 타이머(같은 이유로 공유)
@@ -109,9 +112,14 @@ export default function ChatRoomScreen() {
   const onScroll = useCallback(
     ({ nativeEvent: { contentOffset, contentSize, layoutMeasurement } }) => {
       const fromBottom = contentSize.height - (contentOffset.y + layoutMeasurement.height);
-      nearBottom.current = fromBottom < NEAR;
-      setFar(fromBottom > FAR);
-      if (fromBottom <= FAR) setHasNew(false);
+      // 바닥을 따라가는 중(nearBottom)인지는 "바닥 근처에 닿았다"와 "사용자가 위로 올렸다"로만 바꾼다.
+      // 아직 그려지지 않은 아래 항목 때문에 내용이 길어져 바닥에서 멀어 보이는 것만으로는 따라가기를 멈추지 않는다(그러면 처음 열 때·보낸 직후 마지막 메시지가 입력창에 가려졌다).
+      const scrolledUp = contentOffset.y < lastScrollY.current - 2;
+      lastScrollY.current = contentOffset.y;
+      if (fromBottom < NEAR) nearBottom.current = true;
+      else if (scrolledUp) nearBottom.current = false;
+      setFar(!nearBottom.current && fromBottom > FAR);
+      if (nearBottom.current || fromBottom <= FAR) setHasNew(false);
       scrollPos.current.y = contentOffset.y;
       if (contentOffset.y < NEAR && !settling.current) {
         olderRequested.current = true;
@@ -170,6 +178,7 @@ export default function ChatRoomScreen() {
       clearTimeout(pinHighlightTimer.current);
       clearTimeout(pinSettleTimer.current);
       clearTimeout(linksTimer.current);
+      clearTimeout(endTimer.current);
     },
     [],
   );
@@ -485,6 +494,11 @@ export default function ChatRoomScreen() {
               listRef.current?.scrollToOffset({ offset: scrollPos.current.y + grew, animated: false });
             } else if (nearBottom.current && !chat.focusing) {
               scrollToEnd(false);
+              // 목록은 아직 그려지지 않았거나 높이가 바뀌는 마지막 항목(전송 중 → 보낸 시각·읽음 수) 때문에 한 번에 끝까지 못 갈 수 있어, 잠시 뒤 한 번 더 맞춘다
+              clearTimeout(endTimer.current);
+              endTimer.current = setTimeout(() => {
+                if (nearBottom.current && !chat.focusing) scrollToEnd(false);
+              }, END_SETTLE_MS);
             }
             scrollPos.current.height = height;
           }}
