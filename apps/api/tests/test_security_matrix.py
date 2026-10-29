@@ -1028,10 +1028,9 @@ def perm(api):
 
 
 def test_role_matrix_for_manager_only_operations(api, fake, perm):
-    """가족 관리자(owner/admin)만 가능: AI 동의 설정, 초대 코드 재발급·폐기, 가입 요청 목록. 일반 구성원은 403 not_manager."""
+    """가족 관리자(owner/admin)만 가능: 초대 코드 재발급·폐기, 가입 요청 목록. 일반 구성원은 403 not_manager. (AI 동의 켜기·끄기는 구성원 누구나 가능해 여기서 뺐다.)"""
     owner, admin, member = perm.owner, perm.member, perm.third
     ops = [
-        ("PUT", "/family-chat/ai/settings", {"json": {"enabled": True}}),
         ("POST", "/family-group/groups/invites/reissue", {}),
         ("POST", "/family-group/groups/invites/revoke", {}),
         ("GET", "/family-group/groups/me/join-requests", {}),
@@ -1095,12 +1094,15 @@ def test_join_approval_requires_manager_and_new_member_is_plain_member(api, perm
     )
     me = api.get("/family-group/groups/me", headers=newbie.headers).json()
     assert me["my_role"] == "member"  # 부모 역할로 가입해도 가족 안 권한은 member
-    # 승인된 새 구성원은 관리자 작업 불가
+    # 승인된 새 구성원도 AI 동의 켜기·끄기는 할 수 있다(회원가입 때 동의함). 관리자 작업(초대 코드 재발급 등)은 불가
     assert (
         api.put(
             "/family-chat/ai/settings", json={"enabled": True}, headers=newbie.headers
         ).status_code
-        == 403
+        == 200
+    )
+    assert (
+        api.post("/family-group/groups/invites/reissue", headers=newbie.headers).status_code == 403
     )
 
 
