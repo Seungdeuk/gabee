@@ -361,8 +361,8 @@ test("서랍: 가족 일정 · 할 일 행은 연결되면 동작 행이고 가�
     assert.deepEqual(resolveRowAction(row), { type: "links" });
     assert.equal(find(buildDrawerSections({ direct }), "todos").state, "soon"); // 연결 전에는 이전처럼 준비 중
   }
-  const soon = buildDrawerSections({ direct: false, searchReady: true, pinsReady: true, linksReady: true }).flatMap((s) => s.rows).filter((r) => r.state === "soon").map((r) => r.key);
-  assert.deepEqual(soon, ["docs", "notifications", "privacy", "edit"]);
+  const soon = buildDrawerSections({ direct: false, pinsReady: true, linksReady: true }).flatMap((s) => s.rows).filter((r) => r.state === "soon").map((r) => r.key);
+  assert.deepEqual(soon, ["notifications"]);
 });
 
 test("소스 검사: AiPanel 은 등록 성공 뒤에만 onLinked 를 부르고, 실패 분기에서는 부르지 않는다", () => {

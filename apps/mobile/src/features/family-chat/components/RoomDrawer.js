@@ -18,11 +18,11 @@ const NATIVE = Platform.OS !== "web";
 
 /**
  * 채팅방 서랍(오른쪽에서 열린다). 방 이름, 구성원 줄, "채팅 관리"·"채팅방 설정" 행들.
- * 동작하는 행: 사진 · 동영상(모음 화면), 구성원 초대 · 관리(가족 전체방만, /family), 대화 내용 검색(onOpenSearch 가 있을 때), 게시판(서랍을 닫고 지난 공지까지 모아 보는 게시판 화면으로 이동), 가족 일정 · 할 일(onOpenLinks 가 있을 때: 서랍을 닫고 연결 목록 시트를 연다). 나머지는 "준비 중" 안내만 한다.
+ * 동작하는 행: 사진 · 동영상(모음 화면), 가족 할 일(/family-todos), 게시판(서랍을 닫고 지난 공지까지 모아 보는 게시판 화면으로 이동), 가족 일정 · 할 일(onOpenLinks 가 있을 때: 서랍을 닫고 연결 목록 시트를 연다). 알림 설정은 "준비 중" 안내만 하고, 채팅방 나가기는 안내만 한다. 구성원은 맨 위 "가족 구성원 N명"을 눌러 펼쳐 본다.
  * 덮개를 누르거나 X, 안드로이드 뒤로가기로 닫는다.
- * @param {{ visible: boolean, onClose: () => void, room?: { name?: string, members?: object[] } | null, roomId?: string | null, peerId?: string | null, myId?: string | null, onOpenSearch?: () => void, onOpenLinks?: () => void, onClosed?: () => void }} props roomId 가 없으면 가족 전체방, 있으면 1:1
+ * @param {{ visible: boolean, onClose: () => void, room?: { name?: string, members?: object[] } | null, roomId?: string | null, peerId?: string | null, myId?: string | null, onOpenLinks?: () => void, onClosed?: () => void }} props roomId 가 없으면 가족 전체방, 있으면 1:1
  */
-export default function RoomDrawer({ visible, onClose, room, roomId, peerId, myId, onOpenSearch, onOpenLinks, onClosed }) {
+export default function RoomDrawer({ visible, onClose, room, roomId, peerId, myId, onOpenLinks, onClosed }) {
   const router = useRouter();
   const { width: windowWidth } = useWindowDimensions();
   const width = Math.min(MAX_WIDTH, Math.round(windowWidth * 0.85));
@@ -59,7 +59,7 @@ export default function RoomDrawer({ visible, onClose, room, roomId, peerId, myI
 
   const title = drawerTitle({ direct, room, peerId });
   const strip = drawerMembers({ direct, room, peerId, myId });
-  const sections = buildDrawerSections({ direct, searchReady: typeof onOpenSearch === "function", pinsReady: true, linksReady: typeof onOpenLinks === "function" });
+  const sections = buildDrawerSections({ direct, pinsReady: true, linksReady: typeof onOpenLinks === "function" });
 
   /**
    * 행을 눌렀을 때: 이동 행은 한 번만(닫히는 중이면 무시), 나머지는 안내 문구.
@@ -76,10 +76,9 @@ export default function RoomDrawer({ visible, onClose, room, roomId, peerId, myI
     locked.current = true;
     onClose();
     if (action.type === "media") router.push({ pathname: "/chat-media", params: { ...(roomId ? { roomId } : {}), ...(peerId ? { peer: peerId } : {}) } });
-    else if (action.type === "invite") router.push("/family");
+    else if (action.type === "familytodos") router.push("/family-todos");
     else if (action.type === "pins") router.push({ pathname: "/chat-board", params: { ...(roomId ? { roomId } : {}), ...(peerId ? { peer: peerId } : {}) } });
-    else if (action.type === "links") onOpenLinks();
-    else onOpenSearch();
+    else onOpenLinks();
   };
 
   return (

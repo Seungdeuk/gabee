@@ -233,7 +233,7 @@ test("서랍: 게시판 행은 연결되면 동작 행이고 가족방·1:1 모�
   }
   // 다른 행은 그대로
   const soon = buildDrawerSections({ direct: false, pinsReady: true }).flatMap((s) => s.rows).filter((r) => r.state === "soon").map((r) => r.key);
-  assert.deepEqual(soon, ["search", "docs", "todos", "notifications", "privacy", "edit"]);
+  assert.deepEqual(soon, ["todos", "notifications"]);
 });
 
 test("겹치는 요청: A 고정 대기 중 X 해제 성공 → A 실패해도 X 는 되살아나지 않는다", () => {

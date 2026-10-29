@@ -483,4 +483,9 @@
 - 코드: `boardUtils.js`(순수 함수·상태 전이), `useChatBoard.js`, `components/BoardRow.js`·`BoardDetail.js`, `screens/ChatBoardScreen.js`, `src/app/chat-board.js`, `api.js`(`listBoard`·`deleteBoardPost`). 시험 `tests/chatboard.test.js`.
 - 한계: 목록 새로고침은 화면을 다시 열 때뿐이다(다른 사람이 올리거나 지운 것은 다시 열어야 보인다). 직접 글쓰기는 없다. 실기기(iOS·Android) 확인은 하지 못했고 웹으로 목록·칩·상세·채팅에서 보기·삭제(공지 바에서도 내려감)를 확인했다.
 
-
+### 서랍 정리 (앱, release/1.1)
+- 서랍에서 **뺀 행**: 대화 내용 검색(채팅방 위 돋보기로 한다), 공유 문서, 구성원 초대 · 관리, AI · 개인정보 보호 설정, 채팅방 정보 수정. 구성원 관리·AI 설정은 "더보기"의 가족 그룹·설정에서 한다.
+- **남은 행**: 채팅 관리 — 게시판 · 사진 · 동영상 · 가족 일정 · 할 일(대화에서 등록된 연결 목록) · **가족 할 일**(새 행, `/family-todos`, 공동 할 일, 가족방·1:1 모두 보임) / 채팅방 설정 — 알림 설정(준비 중) · 채팅방 나가기. 위 "서랍 · 사진 모음" 절의 행 설명 중 검색·공유 문서·초대·개인정보·정보 수정 행은 이 절이 우선한다.
+- **구성원 드롭다운**: 맨 위 "가족 구성원 N명"(1:1 은 "대화 상대")을 누르면 사진(이니셜)+이름 목록이 펼쳐지고 다시 누르면 접힌다(처음엔 접힘, `components/MemberStrip.js`).
+- 코드: `mediaUtils.js`(`buildDrawerSections` 에서 `searchReady` 인자 제거, `resolveRowAction` 은 media·pins·links·familytodos), `RoomDrawer.js`(`onOpenSearch` 제거). 시험: `chatmedia.test.js`·`chatlinks.test.js`·`chatpins.test.js` 의 서랍 구성 시험을 새 구성에 맞게 고쳤다(정책 변경).
+- 확인 못한 것: 실기기·웹 화면에서 서랍을 직접 열어 보는 확인은 하지 못했다(순수 함수 시험과 린트만).
