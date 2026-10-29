@@ -95,6 +95,16 @@ def delete_pin(db: Session, room_id: str, message_id: int) -> bool:
     return result.rowcount > 0
 
 
+def delete_pin_in_transaction(db: Session, room_id: str, message_id: int) -> None:
+    """고정과 숨김 기록을 지운다(commit 하지 않는다). 고정이 아니어도 오류 없이 지나간다."""
+    _delete_hides(db, room_id, [message_id])
+    db.execute(
+        delete(ChatPinnedMessage).where(
+            ChatPinnedMessage.room_id == room_id, ChatPinnedMessage.message_id == message_id
+        )
+    )
+
+
 def set_hidden(db: Session, pin_id: str, user_id: str, hidden: bool) -> None:
     """이 공지를 나만 숨기거나(hidden=True) 다시 보이게 한다. 이미 그 상태여도 같은 결과(겹친 요청에도 오류 없음)."""
     if hidden:

@@ -12,6 +12,7 @@ from app.features.family_group.models import User
 from app.shared.errors import ApiError, bad_request, not_found
 from app.shared.rate_limit import FailureLimiter
 
+from . import board_repository as brepo
 from . import pin_repository as prepo
 from . import repository as repo
 from .models import ChatPinnedMessage, Message
@@ -96,6 +97,9 @@ def pin(db: Session, user: User, group_id: str, message_id: int, room_id: str | 
     if pin_row is None:  # 겹친 고정이 곧바로 해제된 드문 경우
         raise ApiError(409, "pin_changed", "고정 상태가 바뀌었어요. 다시 시도해 주세요")
     # 응답은 commit 전에, 잠금 안에서 만든다(commit 뒤 다시 조회하면 그 사이 다른 구성원의 해제·교체와 겹칠 수 있다)
+    if not already or not brepo.has_post(db, room.id, message.id):
+        # 게시판 목록(지난 공지 포함)용 기록: 올릴 때의 전체 본문을 남긴다. 이미 올라 있던 공지는 기록이 없을 때만(옛 공지) 만든다
+        brepo.upsert_post(db, group_id, room.id, message.id, user.id, message.text)
     item = _item(pin_row, message, author, pinner, prepo.is_hidden(db, pin_row.id, user.id))
     db.commit()
     return PinResult(item=item, replaced_message_id=replaced, already_pinned=already)
