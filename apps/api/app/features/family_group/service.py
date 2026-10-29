@@ -67,11 +67,20 @@ def user_out(user: User) -> UserOut:
         role_detail=user.role_detail,
         active_group_id=user.active_group_id,
         location_consent=user.location_consent_at is not None,
+        tester_consent_version=user.tester_consent_version,
         login_id=user.login_id,
         email=user.email,
         email_verified=user.email_verified_at is not None,
         photo_url=photo_service.photo_url(user),
     )
+
+
+def record_tester_consent(db: Session, user: User, version: str) -> UserOut:
+    user.tester_consent_version = version
+    user.tester_consent_at = datetime.now(UTC)
+    db.add(user)
+    db.commit()
+    return user_out(user)
 
 
 def _unusable_legacy_token() -> str:

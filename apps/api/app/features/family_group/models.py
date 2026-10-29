@@ -53,6 +53,12 @@ class User(Base):
         DateTime(timezone=True), nullable=True
     )
 
+    # 테스트 참여 동의(개인정보 수집·이용). 동의한 동의서 버전과 시각, 없으면 미동의.
+    tester_consent_version: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    tester_consent_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
     # 프로필 사진(PR B). 파일은 DATA_DIR 아래 profile_photos/<user_id>.jpg 로 서버가 정한 이름으로만 저장하고, 여기에는 그 상대 경로와
     # 바꾼 시각(캐시 무효화용)만 둔다. 사진이 없으면 둘 다 null.
     profile_photo_path: Mapped[str | None] = mapped_column(String(255), nullable=True)
@@ -76,9 +82,7 @@ class Group(Base):
     owner_id: Mapped[str] = mapped_column(ForeignKey("users.id"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
     # 초대 코드로 들어온 사람을 관리자 승인 없이 바로 구성원으로 넣을지. 관리자(owner/admin)가 켜고 끈다
-    auto_approve_invites: Mapped[bool] = mapped_column(
-        Boolean, default=True, server_default=true()
-    )
+    auto_approve_invites: Mapped[bool] = mapped_column(Boolean, default=True, server_default=true())
 
 
 class GroupMember(Base):

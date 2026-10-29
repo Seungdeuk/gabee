@@ -1,10 +1,12 @@
 import { Ionicons } from "@expo/vector-icons";
-import { Tabs } from "expo-router";
+import { Redirect, Tabs } from "expo-router";
 import { StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { needsTesterConsent } from "@/features/consent/consentState";
 import useTotalUnread from "@/features/family-chat/useTotalUnread";
 import { unreadBadgeText } from "@/features/family-chat/listUtils";
+import { useAuth } from "@/shared/auth/AuthProvider";
 import { colors, font, fonts } from "@/theme";
 
 // 디자인의 하단 탭 5개. 기타(가족 그룹·설정)는 탭이 아니라 상단 ⋮ 메뉴로 들어간다.
@@ -23,6 +25,9 @@ export default function TabLayout() {
   const unread = useTotalUnread();
   // 알약(30)+이름 글자가 들어갈 높이를 직접 정하고, 시스템 바 자리만큼 아래를 더한다(기본 높이는 이름이 잘린다)
   const insets = useSafeAreaInsets();
+  const { status, user } = useAuth();
+  // 로그인한 회원이 현재 동의서에 동의하지 않았으면 먼저 동의 화면을 보인다
+  if (status === "authenticated" && needsTesterConsent(user)) return <Redirect href="/tester-consent" />;
   return (
     <Tabs
       screenOptions={{
