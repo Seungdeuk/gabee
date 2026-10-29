@@ -144,7 +144,7 @@ const byKey = (sections, key) => flat(sections).find((r) => r.key === key);
 test("서랍 행: 가족 전체방은 두 구역에 10행, 동작하는 행은 사진·동영상과 구성원 초대·관리뿐", () => {
   const sections = buildDrawerSections({ direct: false });
   assert.deepEqual(sections.map((s) => s.title), ["채팅 관리", "채팅방 설정"]);
-  assert.deepEqual(sections[0].rows.map((r) => r.title), ["대화 내용 검색", "고정 메시지", "사진 · 동영상", "공유 문서", "가족 일정 · 할 일"]);
+  assert.deepEqual(sections[0].rows.map((r) => r.title), ["대화 내용 검색", "게시판", "사진 · 동영상", "공유 문서", "가족 일정 · 할 일"]);
   assert.deepEqual(sections[1].rows.map((r) => r.title), ["알림 설정", "구성원 초대 · 관리", "AI · 개인정보 보호 설정", "채팅방 정보 수정", "채팅방 나가기"]);
   const open = flat(sections).filter((r) => r.state === "open").map((r) => r.key);
   assert.deepEqual(open, ["media", "invite", "leave"]); // leave 는 배지 없이 안내를 보인다
