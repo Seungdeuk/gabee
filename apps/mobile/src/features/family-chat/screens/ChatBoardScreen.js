@@ -34,8 +34,9 @@ export default function ChatBoardScreen() {
   const info = useRoomInfo();
   const [filter, setFilter] = useState("all");
   const [open, setOpen] = useState(null); // 상세로 연 글
-  const [busy, setBusy] = useState(false);
-  const [notice, setNotice] = useState("");
+  const [busyId, setBusyId] = useState(null); // 삭제 중인 글 id(상세 창이 아니라 글에 묶는다)
+  const [failure, setFailure] = useState(null); // { id, text }: 삭제에 실패한 글과 사유
+  const [listNotice, setListNotice] = useState(""); // 삭제 결과 한 줄(목록 위)
 
   const nameOf = useMemo(() => {
     const byId = Object.fromEntries((info.room?.members ?? []).map((m) => [m.id, memberName(m)]));
@@ -47,9 +48,11 @@ export default function ChatBoardScreen() {
 
   const back = () => (router.canGoBack() ? router.back() : router.replace("/family-chat"));
 
-  const close = () => {
-    setOpen(null);
-    setNotice("");
+  const close = () => setOpen(null);
+
+  const openPost = (item) => {
+    setListNotice("");
+    setOpen(item);
   };
 
   /** 원본 메시지 위치의 채팅방으로 간다(검색 결과로 이동할 때와 같은 방식). */
@@ -58,20 +61,23 @@ export default function ChatBoardScreen() {
     router.replace(originalRoute({ roomId, peerId, messageId: item.message_id }));
   };
 
-  /** 글을 삭제한다. 성공하면 상세를 닫고, 실패하면 상세에 사유를 보여 준다. */
+  /** 글을 삭제한다. 성공하면 그 글의 상세를 닫고 결과를 목록 위에 보이고, 실패하면 그 글의 상세에 사유를 보여 준다. 그 사이 다른 글을 열었다면 그 창은 건드리지 않는다. */
   const remove = async (item) => {
-    if (busy) return;
-    setBusy(true);
-    setNotice("");
+    if (busyId) return;
+    setBusyId(item.id);
+    setFailure(null);
     const outcome = await board.remove(item.id);
-    setBusy(false);
+    setBusyId(null);
     if (!outcome) return;
-    if (outcome.effect === "remove") close();
-    else setNotice(outcome.notice);
+    if (outcome.effect === "remove") {
+      setListNotice(outcome.notice);
+      setOpen((cur) => (cur?.id === item.id ? null : cur));
+    } else setFailure({ id: item.id, text: outcome.notice });
   };
 
   const footer = board.hasMore ? (
     <View style={styles.more}>
+      {filter === "current" && shown.length === 0 ? <Text style={styles.emptyText}>받아 둔 목록에는 없어요. 더 보기를 눌러 이어서 찾아 보세요</Text> : null}
       {board.loadingMore ? <ActivityIndicator color={colors.accent} accessibilityLabel="불러오는 중" /> : <Button label="더 보기" variant="secondary" small onPress={board.loadMore} />}
       {board.error ? <Text style={styles.error}>{board.error}</Text> : null}
     </View>
@@ -96,6 +102,11 @@ export default function ChatBoardScreen() {
         <View style={styles.chips}>
           <ChipRow label="보기" options={BOARD_FILTERS} value={filter} onChange={setFilter} />
         </View>
+        {listNotice ? (
+          <Text style={styles.listNotice} accessibilityLiveRegion="polite">
+            {listNotice}
+          </Text>
+        ) : null}
         {board.status === "loading" ? (
           <View style={styles.center}>
             <ActivityIndicator color={colors.accent} accessibilityLabel="불러오는 중" />
@@ -109,7 +120,7 @@ export default function ChatBoardScreen() {
           <FlatList
             data={shown}
             keyExtractor={(it) => it.id}
-            renderItem={({ item }) => <BoardRow item={item} nameOf={nameOf} onPress={(it) => setOpen(it)} />}
+            renderItem={({ item }) => <BoardRow item={item} nameOf={nameOf} onPress={openPost} />}
             ItemSeparatorComponent={() => <View style={styles.gap} />}
             contentContainerStyle={styles.list}
             ListEmptyComponent={board.hasMore ? null : <Text style={[styles.emptyText, styles.empty]}>{boardEmptyText(filter)}</Text>}
@@ -117,7 +128,7 @@ export default function ChatBoardScreen() {
           />
         )}
       </View>
-      <BoardDetail item={open} nameOf={nameOf} busy={busy} notice={notice} onClose={close} onOpenOriginal={openOriginal} onDelete={remove} />
+      <BoardDetail item={open} nameOf={nameOf} busy={busyId != null && busyId === open?.id} notice={failure && failure.id === open?.id ? failure.text : ""} onClose={close} onOpenOriginal={openOriginal} onDelete={remove} />
     </SafeAreaView>
   );
 }
@@ -130,6 +141,7 @@ const styles = StyleSheet.create({
   subtitle: { ...font.caption, color: colors.textMuted },
   body: { flex: 1 },
   chips: { paddingHorizontal: spacing.lg, paddingVertical: spacing.sm },
+  listNotice: { ...font.caption, color: colors.textSub, paddingHorizontal: spacing.lg, paddingBottom: spacing.sm },
   list: { paddingHorizontal: spacing.lg, paddingBottom: spacing.xxl },
   gap: { height: spacing.sm },
   center: { flex: 1, alignItems: "center", justifyContent: "center", gap: spacing.md, padding: spacing.xl },

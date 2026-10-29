@@ -19,7 +19,7 @@ export default function BoardDetail({ item, nameOf, busy = false, notice = "", o
   const author = boardAuthor(item, nameOf);
   return (
     <Modal visible transparent animationType="fade" onRequestClose={onClose} statusBarTranslucent>
-      <Pressable style={styles.backdrop} onPress={onClose} accessibilityLabel="닫기" />
+      <Pressable style={styles.backdrop} onPress={onClose} accessibilityRole="button" accessibilityLabel="게시판 글 닫기" />
       <View style={styles.sheetWrap} pointerEvents="box-none">
         <View style={styles.sheet} accessibilityViewIsModal>
           <View style={styles.tags}>
@@ -60,7 +60,7 @@ export default function BoardDetail({ item, nameOf, busy = false, notice = "", o
 }
 
 const styles = StyleSheet.create({
-  backdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: "rgba(85,59,41,0.35)" },
+  backdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: colors.text, opacity: 0.4 },
   sheetWrap: { flex: 1, justifyContent: "center", alignItems: "center", padding: spacing.lg },
   sheet: { width: "100%", maxWidth: 520, maxHeight: "80%", backgroundColor: colors.card, borderRadius: radius.card, padding: spacing.lg, gap: spacing.sm },
   tags: { flexDirection: "row", gap: spacing.xs },

@@ -65,14 +65,12 @@ test("normalizeBoardItem: 없는 값은 안전한 기본값, 숫자·불리언 �
 
 test("mergeBoard: 같은 id 는 새 값으로 바꾸고 올린 시각 최신순, 같은 시각은 id 큰 순", () => {
   const a = normalizeBoardItem(post("a", "2026-10-24T01:00:00Z"));
-  const b = normalizeBoardItem(post("b", "2026-10-24T02:00:00Z"));
   const merged = mergeBoard([a], [post("b", "2026-10-24T02:00:00Z"), post("a", "2026-10-24T03:00:00Z", { text: "갱신" })]);
   assert.deepEqual(merged.map((i) => i.id), ["a", "b"]); // a 가 다시 올라와 최신
   assert.equal(merged[0].text, "갱신");
   const same = mergeBoard([], [post("a", "2026-10-24T01:00:00Z"), post("c", "2026-10-24T01:00:00Z")]);
   assert.deepEqual(same.map((i) => i.id), ["c", "a"]);
   assert.deepEqual(mergeBoard(undefined, undefined), []);
-  assert.equal(b.id, "b");
 });
 
 test("filterBoard: 현재 공지 칩은 지금 올라 있는 것만", () => {
@@ -161,6 +159,24 @@ test("boardReducer: 첫 쪽·다음 쪽·옛 응답 무시·삭제", () => {
   const failedFirst = boardReducer(boardReducer(initialBoardState(), { type: "start", seq: 3 }), { type: "firstFail", seq: 3, error: { status: 404 } });
   assert.equal(failedFirst.status, "error");
   assert.equal(failedFirst.error, "채팅방을 찾을 수 없어요");
+});
+
+test("boardReducer: 옛 쪽의 다음 쪽 응답은 무시, 다음 쪽 실패 뒤에도 커서가 남는다", () => {
+  let st = boardReducer(initialBoardState(), { type: "start", seq: 1 });
+  st = boardReducer(st, { type: "firstOk", seq: 1, page: { items: [post("a", "2026-10-24T03:00:00Z")], next_before: "CUR" } });
+  st = boardReducer(st, { type: "moreStart", seq: 1 });
+  assert.equal(boardReducer(st, { type: "moreOk", seq: 0, page: { items: [post("z", "2026-10-24T01:00:00Z")], next_before: null } }), st);
+  assert.equal(boardReducer(st, { type: "moreFail", seq: 0, error: { status: 0 } }), st);
+  const failed = boardReducer(st, { type: "moreFail", seq: 1, error: { status: 429 } });
+  assert.equal(failed.next, "CUR");
+  assert.equal(boardReducer(failed, { type: "moreStart", seq: 1 }).error, ""); // 다시 시도하면 오류 문구를 지운다
+  const removing = boardReducer(st, { type: "removed", id: "a" });
+  assert.equal(removing.loadingMore, true); // 삭제는 진행 중인 다음 쪽 요청에 영향을 주지 않는다
+  assert.equal(boardReducer(boardReducer(initialBoardState(), { type: "start", seq: 2 }), { type: "firstOk", seq: 2, page: { items: [] } }).next, null);
+});
+
+test("originalRoute: 1:1 방에서 상대 id 가 없으면 빈 문자열", () => {
+  assert.deepEqual(originalRoute({ roomId: "r1", messageId: 5 }), { pathname: "/chat-room", params: { focus: "5", roomId: "r1", peer: "" } });
 });
 
 test("API listBoard·deleteBoardPost: 경로·메서드·커서 인코딩", async () => {
