@@ -7,8 +7,8 @@ import pytest
 from PIL import Image
 from sqlalchemy import event
 
-from app.features.family_chat.assistant import get_or_create_assistant
-from app.features.family_chat.models import ASSISTANT_USER_ID, Message
+from app.features.family_chat.assistant import post_as_assistant
+from app.features.family_chat.models import Message
 from app.shared.config import settings
 from app.shared.db import SessionLocal, engine
 from app.shared.llm import client as llm
@@ -162,14 +162,16 @@ def test_reply_preview_empties_when_original_is_deleted_later(client, family):
 
 def test_can_reply_to_assistant_message(client, family):
     a, _, _ = family
-    parent = _ok(client, a, "@가비 질문")
     with SessionLocal() as db:
-        get_or_create_assistant(db)
-        row = db.get(Message, parent["id"])
-        row.user_id = ASSISTANT_USER_ID
-        db.commit()
-    reply = _ok(client, a, "고마워", reply_to=parent["id"])
-    assert reply["reply_to"]["user_name"] == "가비"
+        gid = db.get(Message, _ok(client, a, "처음")["id"]).group_id
+        posted = post_as_assistant(
+            db, gid, "무엇을 도와드릴까요?"
+        )  # 실제 서버가 가비 답을 저장하는 함수
+    reply = _ok(client, a, "고마워", reply_to=posted.id)
+    assert (
+        reply["reply_to"]["user_name"] == "가비"
+        and reply["reply_to"]["text"] == "무엇을 도와드릴까요?"
+    )
 
 
 def test_reply_to_a_reply_shows_only_direct_parent(client, family):
@@ -188,23 +190,83 @@ def test_reply_to_id_validation(client, family):
 
 
 def test_listing_replies_does_not_query_per_message(client, family):
-    """답장이 여럿이어도 원본은 한 번의 쿼리로 모아 붙인다(N+1 방지)."""
+    """원본이 여럿이고 목록 페이지 밖에 있어도 원본·이름·첨부는 한 번씩만 모아 조회한다(N+1 방지)."""
     a, b, _ = family
-    parent = _ok(client, a, "원본")
-    for i in range(6):
+    parents = [_ok(client, a, f"원본 {i}") for i in range(6)]
+    for i, parent in enumerate(parents):
         _ok(client, b, f"답장 {i}", reply_to=parent["id"])
     statements: list[str] = []
 
     def count(conn, cursor, statement, params, context, executemany):
-        if "FROM messages" in statement:
+        if "FROM messages" in statement or "FROM message_attachments" in statement:
             statements.append(statement)
 
     event.listen(engine, "before_cursor_execute", count)
     try:
-        listed = _list(client, a)
+        listed = _list(client, a, limit=6)  # 최근 6개 = 답장 6개, 원본은 모두 페이지 밖
     finally:
         event.remove(engine, "before_cursor_execute", count)
-    assert len([m for m in listed if m["reply_to"]]) == 6
-    assert (
-        len(statements) <= 3
-    )  # 메시지 목록 + 원본 묶음 조회(+ 방 확인). 메시지 수에 비례하지 않는다
+    assert [m["reply_to"]["id"] for m in listed] == [p["id"] for p in parents]
+    # 메시지 목록 1 + 첨부 1(목록) + 원본(이름 포함) 1 + 첨부 1(원본) 정도. 답장 수(6)에 비례하지 않는다
+    assert len(statements) <= 5, statements
+
+
+def test_reply_preview_never_crosses_rooms_even_if_row_is_tampered(client, trio):
+    """원본 조회에도 방 조건을 걸어, DB 를 손으로 고쳐도 다른 방 메시지의 내용이 미리보기로 새지 않는다."""
+    a, b, _ = trio
+    room = client.post(DIRECT_ROOM, json={"user_id": _uid(client, b)}, headers=a).json()["id"]
+    secret = _ok(client, a, "둘만의 비밀", room_id=room)
+    family_msg = _ok(client, a, "가족방 글")
+    with SessionLocal() as db:
+        db.get(Message, family_msg["id"]).reply_to_id = secret["id"]  # 검증을 건너뛴 잘못된 데이터
+        db.commit()
+    shown = {m["id"]: m for m in _list(client, b)}[family_msg["id"]]
+    assert shown["reply_to"] is None
+    assert "둘만의 비밀" not in str(_list(client, b))
+
+
+def test_deleted_reply_drops_its_reply_link(client, family):
+    a, b, _ = family
+    parent = _ok(client, a, "원본")
+    reply = _ok(client, b, "답장", reply_to=parent["id"])
+    deleted = _delete(client, b, reply["id"])
+    assert deleted.status_code == 200 and deleted.json()["reply_to"] is None
+    assert {m["id"]: m for m in _list(client, a)}[reply["id"]]["reply_to"] is None
+    with SessionLocal() as db:
+        assert (
+            db.get(Message, reply["id"]).reply_to_id is None
+        )  # 지우면 어느 글에 답했는지도 남기지 않는다
+
+
+def test_reply_preview_in_before_and_around_pages(client, family):
+    a, b, _ = family
+    parent = _ok(client, a, "원본")
+    replies = [_ok(client, b, f"답장 {i}", reply_to=parent["id"]) for i in range(3)]
+    around = client.get(MSG, params={"around_id": replies[1]["id"], "limit": 4}, headers=a).json()
+    assert all(
+        m["reply_to"]["id"] == parent["id"] for m in around if m["id"] in {r["id"] for r in replies}
+    )
+    before = client.get(
+        MSG, params={"before_id": replies[2]["id"] + 1, "limit": 5}, headers=a
+    ).json()
+    assert [m["reply_to"]["id"] for m in before if m["id"] in {r["id"] for r in replies}] == [
+        parent["id"]
+    ] * 3
+
+
+def test_room_list_last_message_has_no_reply_preview(client, family):
+    a, b, _ = family
+    parent = _ok(client, a, "원본")
+    _ok(client, b, "답장", reply_to=parent["id"])
+    last = client.get("/family-chat/rooms", headers=a).json()[0]["last_message"]
+    assert last["text"] == "답장" and last["reply_to"] is None  # 방 목록 미리보기에는 붙이지 않는다
+
+
+def test_deleting_photo_original_clears_attachment_flag(client, family):
+    a, b, _ = family
+    photo = _photo(client, a)
+    reply = _ok(client, b, "예쁘다", reply_to=photo["id"])
+    assert reply["reply_to"]["has_attachment"] is True
+    assert _delete(client, a, photo["id"]).status_code == 200
+    shown = {m["id"]: m for m in _list(client, b)}[reply["id"]]
+    assert shown["reply_to"]["deleted"] is True and shown["reply_to"]["has_attachment"] is False

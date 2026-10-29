@@ -63,10 +63,10 @@ def message_out(
     )
 
 
-def _outs(db: Session, rows: list[tuple[Message, str]]) -> list[MessageOut]:
+def _outs(db: Session, room: ChatRoom, rows: list[tuple[Message, str]]) -> list[MessageOut]:
     """메시지들을 응답 모양으로(첨부는 한 번의 쿼리로 모아 붙인다)."""
     attachments = repo.attachments_for(db, [m.id for m, _ in rows])
-    parents = repo.reply_parents(db, [m for m, _ in rows])
+    parents = repo.reply_parents(db, room, [m for m, _ in rows])
     return [
         message_out(
             m,
@@ -150,13 +150,13 @@ def list_messages(
             raise bad_request("invalid_message", "이 대화방의 메시지가 아니에요")
         before = repo.list_recent(db, room, half, around_id) if half else []
         after = repo.list_after(db, room, around_id, half) if half else []
-        return _outs(db, [*before, center, *after])
+        return _outs(db, room, [*before, center, *after])
     limit = 100 if limit is None else limit
     if latest or before_id is not None:
         rows = repo.list_recent(db, room, limit, before_id)
     else:
         rows = repo.list_after(db, room, after_id, limit)
-    return _outs(db, rows)
+    return _outs(db, room, rows)
 
 
 def mark_read(
