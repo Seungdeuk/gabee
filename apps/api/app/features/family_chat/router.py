@@ -87,7 +87,7 @@ def post_message(
     group_id: str = Depends(current_group_id),
     db: Session = Depends(get_db),
 ) -> MessageOut:
-    return service.post(db, user, group_id, body.text, body.room_id)
+    return service.post(db, user, group_id, body.text, body.room_id, body.reply_to_id)
 
 
 @router.get("/messages/deleted", response_model=DeletedOut)

@@ -421,3 +421,10 @@
 - 한계: 삭제 요청에는 호출 한도가 없다(고정·연결에는 분당 30회 한도가 있음). AI 분석 결과 캐시에는 지우기 전 대화로 만든 요약이 만료(약 10분)까지 남을 수 있다(캐시 키가 대화 내용에 따라 달라져 삭제 뒤에는 옛 결과가 다시 쓰이지 않는다).
 - 앱 화면(팝업 메뉴의 삭제, "삭제된 메시지입니다" 표시)은 아직 없다.
 
+## 메시지 답장 (서버, release/1.1)
+- `POST /family-chat/messages` 에 선택 필드 `reply_to_id`(1 이상 정수) 추가. 서비스(`service.post`)가 같은 방의 메시지인지(`repo.get_in_room`) 확인한다: 없는 id·다른 방·다른 가족의 메시지는 400 `invalid_message`(존재 여부를 숨김), 지운 메시지는 400 `reply_deleted`. 1:1 방의 제3자는 방 접근에서 404.
+- DB: `messages.reply_to_id`(nullable, 자기 참조 외래키, 리비전 `432e249f600c`, expand). 기존 메시지는 모두 null. 소프트 삭제라 원본 행은 지워지지 않아 연결이 유지된다.
+- 응답: `MessageOut.reply_to`(`ReplyOut`: `id`, `user_name`, `text` 40자까지, `deleted`, `has_attachment`). 원본이 지워졌으면 `deleted: true`, `text: ""`. 사진 원본은 `text: ""`, `has_attachment: true`. 지운 메시지 자신에게는 `reply_to` 를 붙이지 않는다. 목록·around 조회는 원본을 `repo.reply_parents` 로 한 번에 모아 붙이므로 메시지 수와 상관없이 쿼리 수가 일정하다. **방 목록의 `last_message` 에는 `reply_to` 가 붙지 않는다(항상 null).** 사진 보내기(`POST /family-chat/photos`)는 아직 답장을 받지 않는다.
+- 시험: `tests/test_message_reply.py`(미리보기, 40자 자르기, 사진 원본, 없는 id·다른 가족·다른 방, 1:1 방 제3자, 지운 원본에는 답장 불가, 나중에 지워진 원본 표시, 가비 메시지에 답장, 답장의 답장, 입력 검증, 목록 쿼리 수).
+- 앱 화면은 아직 없다.
+

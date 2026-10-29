@@ -7,6 +7,12 @@ from pydantic import BaseModel, Field
 class MessageCreate(BaseModel):
     text: str = Field(min_length=1, max_length=2000)
     room_id: str | None = Field(default=None, max_length=32)  # 없으면 가족 전체방
+    reply_to_id: int | None = Field(
+        default=None,
+        ge=1,
+        le=2**31 - 1,
+        description="답장할 메시지 id(같은 방의 지우지 않은 메시지)",
+    )
 
 
 class AttachmentOut(BaseModel):
@@ -18,6 +24,16 @@ class AttachmentOut(BaseModel):
     height: int
 
 
+class ReplyOut(BaseModel):
+    """답장이 가리키는 원본 메시지의 미리보기. 원본이 지워졌으면 deleted 이고 text 는 빈 문자열이다."""
+
+    id: int
+    user_name: str
+    text: str  # 40자까지. 사진 메시지·지운 메시지는 빈 문자열
+    deleted: bool = False
+    has_attachment: bool = False  # 원본이 사진 메시지
+
+
 class MessageOut(BaseModel):
     id: int
     user_id: str
@@ -26,6 +42,9 @@ class MessageOut(BaseModel):
     created_at: datetime
     attachment: AttachmentOut | None = None
     is_assistant: bool = False  # 가비가 @가비 호출에 답해 올린 메시지(앱이 말풍선을 따로 그린다)
+    reply_to: ReplyOut | None = (
+        None  # 답장이면 원본 미리보기(방 목록의 마지막 메시지에는 붙지 않는다)
+    )
     deleted: bool = False  # 보낸 사람이 지운 메시지. text 는 빈 문자열, attachment 는 null 이고 앱은 "삭제된 메시지입니다"를 보인다
 
 

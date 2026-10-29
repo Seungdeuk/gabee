@@ -179,6 +179,21 @@ def deleted_since(db: Session, room: ChatRoom, since: datetime, limit: int = 200
     return list(rows)
 
 
+def reply_parents(db: Session, messages: list[Message]) -> dict[int, tuple[Message, str, bool]]:
+    """답장인 메시지들의 원본을 한 번에 모은다: 원본 id -> (원본, 보낸 사람 이름, 사진 첨부 여부).
+    메시지 수와 상관없이 쿼리 수는 일정하다(원본 1번 + 첨부 1번)."""
+    parent_ids = {m.reply_to_id for m in messages if m.reply_to_id is not None}
+    if not parent_ids:
+        return {}
+    rows = db.execute(
+        select(Message, User.name)
+        .join(User, User.id == Message.user_id)
+        .where(Message.id.in_(parent_ids))
+    ).all()
+    attached = attachments_for(db, [m.id for m, _ in rows])
+    return {m.id: (m, name, m.id in attached) for m, name in rows}
+
+
 def last_message(db: Session, room: ChatRoom) -> tuple[Message, str] | None:
     rows = list_recent(db, room, 1)
     return rows[0] if rows else None
