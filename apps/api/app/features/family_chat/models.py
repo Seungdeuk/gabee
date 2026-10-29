@@ -201,6 +201,28 @@ class ChatPinnedMessage(Base):
     text: Mapped[str | None] = mapped_column(Text, nullable=True)  # 올릴 때의 본문 사본
 
 
+class ChatBoardPost(Base):
+    """게시판에 올린 공지의 기록. 공지로 올릴 때마다 한 줄이 생기고, 공지를 내리거나 교체해도 남아 지난 공지를 목록으로 볼 수 있다.
+    같은 방의 같은 메시지는 한 줄이라 다시 올리면 그 줄을 최신으로 갱신한다. 본문(text)은 올릴 때의 전체 사본이라 원본 메시지를 보낸 사람이 지워도 남는다.
+    구성원 누구나 목록에서 지울 수 있다(지우면 이 줄이 사라지고, 현재 공지면 고정 바에서도 내려간다)."""
+
+    __tablename__ = "chat_board_posts"
+    __table_args__ = (
+        UniqueConstraint("room_id", "message_id", name="uq_chat_board_room_message"),
+        Index("ix_chat_board_room_posted_at", "room_id", "posted_at"),
+    )
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uid)
+    group_id: Mapped[str] = mapped_column(ForeignKey("groups.id"), index=True)
+    room_id: Mapped[str] = mapped_column(ForeignKey("chat_rooms.id"))
+    message_id: Mapped[int] = mapped_column(ForeignKey("messages.id"))
+    posted_by: Mapped[str] = mapped_column(ForeignKey("users.id"))
+    posted_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(UTC)
+    )
+    text: Mapped[str] = mapped_column(Text)
+
+
 class ChatPinHide(Base):
     """게시판 공지를 "나만 숨기기"한 기록. 사용자마다 따로이고 다른 구성원에게는 영향이 없다.
     공지가 내려가거나 교체되면(`chat_pinned_messages` 행이 사라지면) DB 가 함께 지운다(ON DELETE CASCADE).
