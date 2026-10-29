@@ -65,7 +65,16 @@ def current_user(
     """Authorization 헤더가 있으면 반드시 Bearer(JWT) 로 인증한다 — 검증에 실패해도 X-Gyeot-Token 으로
     넘어가지 않는다(우회 방지). 없을 때만 레거시 X-Gyeot-Token 을 본다."""
     if authorization is not None:
-        return _user_from_bearer(authorization, db)
+        user = _user_from_bearer(authorization, db)
+        if (
+            settings.require_tester_consent
+            and user.tester_consent_version != settings.tester_consent_version
+        ):
+            # /auth/me 와 동의 저장(bearer_user)은 막지 않아서 앱이 동의 화면을 띄우고 동의를 저장할 수 있다
+            raise ApiError(
+                403, "tester_consent_required", "테스트 참여 동의서에 먼저 동의해 주세요"
+            )
+        return user
     if not x_gyeot_token:
         raise ApiError(401, "token_required", "먼저 가입하거나 로그인해 주세요")
     if not settings.allow_legacy_token_auth:

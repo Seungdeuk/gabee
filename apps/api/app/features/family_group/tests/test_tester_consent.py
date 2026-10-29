@@ -53,3 +53,18 @@ def test_consent_needs_login_and_a_version(client):
     headers, _ = _login(client)
     assert client.put(CONSENT, json={"version": ""}, headers=headers).status_code == 422
     assert client.put(CONSENT, json={}, headers=headers).status_code == 422
+
+
+def test_gate_blocks_api_until_consent_when_enabled(client, monkeypatch):
+    from app.shared.config import settings
+
+    headers, _ = _login(client)
+    assert client.get("/family-group/me", headers=headers).status_code == 200  # 기본은 꺼짐
+    monkeypatch.setattr(settings, "require_tester_consent", True)
+    r = client.get("/family-group/me", headers=headers)
+    assert r.status_code == 403 and r.json()["code"] == "tester_consent_required"
+    assert client.get(ME, headers=headers).status_code == 200  # 내 정보와 동의 저장은 열려 있다
+    assert client.put(CONSENT, json={"version": "v0.0"}, headers=headers).status_code == 200
+    assert client.get("/family-group/me", headers=headers).status_code == 403  # 예전 버전은 부족
+    client.put(CONSENT, json={"version": settings.tester_consent_version}, headers=headers)
+    assert client.get("/family-group/me", headers=headers).status_code == 200
