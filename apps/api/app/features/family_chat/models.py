@@ -87,6 +87,8 @@ class Message(Base):
     )
     # 보낸 사람이 지운 시각. 지우면 본문(text)과 첨부도 서버에서 비우고, 행은 남겨 읽음 위치·순서가 바뀌지 않게 한다
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # 답장하는 원본 메시지(같은 방). 원본이 지워져도 행은 남아 있어 연결은 그대로다
+    reply_to_id: Mapped[int | None] = mapped_column(ForeignKey("messages.id"), nullable=True)
 
 
 class ChatReadState(Base):

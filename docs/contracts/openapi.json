@@ -16424,6 +16424,20 @@
               }
             ],
             "title": "Room Id"
+          },
+          "reply_to_id": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 2147483647.0,
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reply To Id",
+            "description": "답장할 메시지 id(같은 방의 지우지 않은 메시지)"
           }
         },
         "type": "object",
@@ -16469,6 +16483,16 @@
             "type": "boolean",
             "title": "Is Assistant",
             "default": false
+          },
+          "reply_to": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ReplyOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "deleted": {
             "type": "boolean",
@@ -17789,6 +17813,40 @@
           "meta"
         ],
         "title": "RepliesOut"
+      },
+      "ReplyOut": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "user_name": {
+            "type": "string",
+            "title": "User Name"
+          },
+          "text": {
+            "type": "string",
+            "title": "Text"
+          },
+          "deleted": {
+            "type": "boolean",
+            "title": "Deleted",
+            "default": false
+          },
+          "has_attachment": {
+            "type": "boolean",
+            "title": "Has Attachment",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "user_name",
+          "text"
+        ],
+        "title": "ReplyOut",
+        "description": "답장이 가리키는 원본 메시지의 미리보기. 원본이 지워졌으면 deleted 이고 text 는 빈 문자열이다."
       },
       "RequestAnswer": {
         "properties": {

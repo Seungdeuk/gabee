@@ -5,7 +5,15 @@ from app.shared.errors import bad_request, not_found
 
 from . import repository as repo
 from .models import ASSISTANT_USER_ID, FAMILY, ChatRoom, Message, MessageAttachment
-from .schemas import AttachmentOut, MessageOut, ReadPosition, ReadStateOut, RoomOut, UnreadOut
+from .schemas import (
+    AttachmentOut,
+    MessageOut,
+    ReadPosition,
+    ReadStateOut,
+    ReplyOut,
+    RoomOut,
+    UnreadOut,
+)
 
 
 def _attachment_out(a: MessageAttachment) -> AttachmentOut:
@@ -19,8 +27,27 @@ def _attachment_out(a: MessageAttachment) -> AttachmentOut:
     )
 
 
+PREVIEW_CHARS = 40  # 답장 미리보기 글자 수
+
+
+def reply_out(parent: tuple[Message, str, bool]) -> ReplyOut:
+    """원본 메시지(저장소가 모은 (메시지, 이름, 사진 여부))를 미리보기로. 지운 원본은 내용 없이 deleted 만."""
+    m, name, has_attachment = parent
+    deleted = m.deleted_at is not None
+    return ReplyOut(
+        id=m.id,
+        user_name=name,
+        text="" if deleted else m.text[:PREVIEW_CHARS],
+        deleted=deleted,
+        has_attachment=has_attachment and not deleted,
+    )
+
+
 def message_out(
-    m: Message, user_name: str, attachment: MessageAttachment | None = None
+    m: Message,
+    user_name: str,
+    attachment: MessageAttachment | None = None,
+    reply: ReplyOut | None = None,
 ) -> MessageOut:
     deleted = m.deleted_at is not None
     return MessageOut(
@@ -31,14 +58,24 @@ def message_out(
         created_at=m.created_at,
         attachment=_attachment_out(attachment) if attachment and not deleted else None,
         is_assistant=m.user_id == ASSISTANT_USER_ID,
+        reply_to=None if deleted else reply,  # 지운 메시지는 답장 표시도 내용도 남기지 않는다
         deleted=deleted,
     )
 
 
-def _outs(db: Session, rows: list[tuple[Message, str]]) -> list[MessageOut]:
+def _outs(db: Session, room: ChatRoom, rows: list[tuple[Message, str]]) -> list[MessageOut]:
     """메시지들을 응답 모양으로(첨부는 한 번의 쿼리로 모아 붙인다)."""
     attachments = repo.attachments_for(db, [m.id for m, _ in rows])
-    return [message_out(m, name, attachments.get(m.id)) for m, name in rows]
+    parents = repo.reply_parents(db, room, [m for m, _ in rows])
+    return [
+        message_out(
+            m,
+            name,
+            attachments.get(m.id),
+            reply_out(parents[m.reply_to_id]) if m.reply_to_id in parents else None,
+        )
+        for m, name in rows
+    ]
 
 
 def resolve_room(db: Session, user: User, group_id: str, room_id: str | None) -> ChatRoom:
@@ -55,13 +92,35 @@ def resolve_room(db: Session, user: User, group_id: str, room_id: str | None) ->
 
 
 def post(
-    db: Session, user: User, group_id: str, text: str, room_id: str | None = None
+    db: Session,
+    user: User,
+    group_id: str,
+    text: str,
+    room_id: str | None = None,
+    reply_to_id: int | None = None,
 ) -> MessageOut:
     room = resolve_room(db, user, group_id, room_id)
+    parent = None
+    if reply_to_id is not None:
+        found = repo.get_in_room(
+            db, room, reply_to_id
+        )  # 같은 방(같은 가족·내가 들어갈 수 있는 방)의 메시지만
+        if found is None:
+            raise bad_request("invalid_message", "이 대화방의 메시지가 아니에요")
+        if found[0].deleted_at is not None:
+            raise bad_request("reply_deleted", "지운 메시지에는 답장할 수 없어요")
+        parent = (found[0], found[1], bool(repo.attachments_for(db, [found[0].id])))
     message = repo.add(
-        db, Message(group_id=group_id, room_id=room.id, user_id=user.id, text=text.strip())
+        db,
+        Message(
+            group_id=group_id,
+            room_id=room.id,
+            user_id=user.id,
+            text=text.strip(),
+            reply_to_id=reply_to_id,
+        ),
     )
-    out = message_out(message, user.name)
+    out = message_out(message, user.name, None, reply_out(parent) if parent else None)
     repo.advance_read(db, room.id, user.id, message.id)  # 내가 보낸 메시지는 읽은 것으로
     return out
 
@@ -91,13 +150,13 @@ def list_messages(
             raise bad_request("invalid_message", "이 대화방의 메시지가 아니에요")
         before = repo.list_recent(db, room, half, around_id) if half else []
         after = repo.list_after(db, room, around_id, half) if half else []
-        return _outs(db, [*before, center, *after])
+        return _outs(db, room, [*before, center, *after])
     limit = 100 if limit is None else limit
     if latest or before_id is not None:
         rows = repo.list_recent(db, room, limit, before_id)
     else:
         rows = repo.list_after(db, room, after_id, limit)
-    return _outs(db, rows)
+    return _outs(db, room, rows)
 
 
 def mark_read(

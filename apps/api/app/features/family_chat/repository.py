@@ -162,6 +162,7 @@ def list_recent(
 def soft_delete(db: Session, message: Message, attachment: MessageAttachment | None) -> None:
     """메시지를 지운 것으로 표시하고 본문·첨부를 비운다(행은 남긴다). 파일 삭제는 호출하는 쪽이 DB 저장 뒤에 한다."""
     message.text = ""
+    message.reply_to_id = None  # 지우면 어느 글에 답했는지도 남기지 않는다
     message.deleted_at = datetime.now(UTC)
     if attachment is not None:
         db.delete(attachment)
@@ -177,6 +178,25 @@ def deleted_since(db: Session, room: ChatRoom, since: datetime, limit: int = 200
         .limit(limit)
     )
     return list(rows)
+
+
+def reply_parents(
+    db: Session, room: ChatRoom, messages: list[Message]
+) -> dict[int, tuple[Message, str, bool]]:
+    """답장인 메시지들의 원본을 한 번에 모은다: 원본 id -> (원본, 보낸 사람 이름, 사진 첨부 여부).
+    원본도 같은 방(room_messages)에서만 찾는다 — 답장을 넣을 때의 방 검사가 빠진 잘못된 데이터가 있어도
+    다른 방 메시지의 내용이 미리보기로 나가지 않게 하는 방어선이다.
+    메시지 수와 상관없이 쿼리 수는 일정하다(원본 1번 + 첨부 1번)."""
+    parent_ids = {m.reply_to_id for m in messages if m.reply_to_id is not None}
+    if not parent_ids:
+        return {}
+    rows = db.execute(
+        select(Message, User.name)
+        .join(User, User.id == Message.user_id)
+        .where(room_messages(room), Message.id.in_(parent_ids))
+    ).all()
+    attached = attachments_for(db, [m.id for m, _ in rows])
+    return {m.id: (m, name, m.id in attached) for m, name in rows}
 
 
 def last_message(db: Session, room: ChatRoom) -> tuple[Message, str] | None:
