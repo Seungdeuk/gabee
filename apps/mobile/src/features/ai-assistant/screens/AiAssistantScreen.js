@@ -164,7 +164,7 @@ export default function AiAssistantScreen({ onBell, bellBadge }) {
           ) : null}
           {empty ? (
             <View style={styles.center}>
-              <Text style={styles.hello}>무엇을 도와드릴까요?</Text>
+              <Text style={styles.hello}>{auth.user?.name ? `${auth.user.name}님, 무엇을 도와드릴까요?` : "무엇을 도와드릴까요?"}</Text>
             </View>
           ) : messages.length === 0 && listening ? (
             <View style={styles.center}>
