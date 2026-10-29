@@ -1,4 +1,4 @@
-"""고정 메시지의 DB 접근. 고정은 메시지를 가리키기만 하고, 메시지 본문은 조회할 때 join 으로만 가져온다."""
+"""게시판(고정 메시지)의 DB 접근. 올릴 때의 본문 사본(text)을 저장하고, 사본이 없는 옛 행만 조회할 때 원본 본문을 쓴다."""
 
 from datetime import UTC, datetime
 
@@ -104,7 +104,7 @@ def set_hidden(db: Session, pin_id: str, user_id: str, hidden: bool) -> None:
                     db.add(ChatPinHide(pin_id=pin_id, user_id=user_id))
                     db.flush()
             except IntegrityError:
-                pass  # 겹친 요청이 먼저 숨겼다
+                pass  # 겹친 요청이 먼저 숨겼거나, 그 사이 공지가 내려갔다(외래키 위반). 뒤의 조회가 없으면 404 로 알린다
     else:
         db.execute(
             delete(ChatPinHide).where(ChatPinHide.pin_id == pin_id, ChatPinHide.user_id == user_id)

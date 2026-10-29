@@ -203,11 +203,14 @@ class ChatPinnedMessage(Base):
 
 class ChatPinHide(Base):
     """게시판 공지를 "나만 숨기기"한 기록. 사용자마다 따로이고 다른 구성원에게는 영향이 없다.
-    공지가 내려가거나 교체되면(`chat_pinned_messages` 행이 사라지면) 서비스가 함께 지운다."""
+    공지가 내려가거나 교체되면(`chat_pinned_messages` 행이 사라지면) DB 가 함께 지운다(ON DELETE CASCADE).
+    SQLite 는 외래키를 강제하지 않아 서비스도 같은 순서로 지운다."""
 
     __tablename__ = "chat_pin_hides"
 
-    pin_id: Mapped[str] = mapped_column(ForeignKey("chat_pinned_messages.id"), primary_key=True)
+    pin_id: Mapped[str] = mapped_column(
+        ForeignKey("chat_pinned_messages.id", ondelete="CASCADE"), primary_key=True
+    )
     user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), primary_key=True)
     hidden_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(UTC)

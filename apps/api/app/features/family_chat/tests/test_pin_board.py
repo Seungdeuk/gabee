@@ -210,3 +210,72 @@ def test_hidden_flag_is_false_when_pinning(client, family):
     mid = _send(client, a, "새 공지")
     body = _pin(client, a, mid).json()
     assert body["item"]["hidden"] is False and body["already_pinned"] is False
+
+
+# ── 리뷰 보강 ─────────────────────────────────────────────────────
+
+
+def test_saved_copy_keeps_only_what_is_shown(client, family):
+    """보이는 범위(200자)만 사본으로 저장한다. 지운 긴 메시지의 나머지 본문이 서버에 남지 않게 한다."""
+    a, _, _ = family
+    mid = _send(client, a, "가" * 500)
+    item = _pin(client, a, mid).json()["item"]
+    assert item["text"] == "가" * pin_service.TEXT_LIMIT and item["text_truncated"] is True
+    with SessionLocal() as db:
+        saved = db.scalar(select(ChatPinnedMessage.text))
+        assert len(saved) == pin_service.TEXT_LIMIT + 1  # 잘렸는지 알 수 있는 한 글자까지
+    assert _items(client, a)[mid]["text_truncated"] is True
+
+
+def test_short_text_is_saved_whole(client, family):
+    a, _, _ = family
+    mid = _send(client, a, "짧은 공지")
+    assert _pin(client, a, mid).json()["item"]["text_truncated"] is False
+    with SessionLocal() as db:
+        assert db.scalar(select(ChatPinnedMessage.text)) == "짧은 공지"
+
+
+def test_hiding_has_its_own_rate_limit_and_does_not_block_pinning(client, family):
+    a, _, _ = family
+    mid = _send(client, a, "공지")
+    other = _send(client, a, "또 다른 공지")
+    assert _pin(client, a, mid).status_code == 200
+    for _ in range(pin_service.WRITE_LIMIT):
+        assert _hide(client, a, mid).status_code == 200
+    limited = _hide(client, a, mid)
+    assert limited.status_code == 429 and "Retry-After" in limited.headers
+    # 숨기기를 많이 했어도 올리기·내리기는 막히지 않는다(한도를 따로 센다)
+    assert _pin(client, a, other).status_code == 200
+    assert client.delete(f"{PINS}/{other}", headers=a).status_code == 204
+
+
+def test_repinning_a_pin_i_hid_reports_hidden(client, family):
+    a, _, _ = family
+    mid = _send(client, a, "숨긴 뒤 다시 올리기")
+    assert _pin(client, a, mid).status_code == 200
+    assert _hide(client, a, mid).status_code == 200
+    again = _pin(client, a, mid).json()
+    assert again["already_pinned"] is True and again["item"]["hidden"] is True
+
+
+def test_old_pin_whose_message_was_deleted_shows_empty_text_and_deleted_flag(client, family):
+    a, _, _ = family
+    mid = _send(client, a, "옛 공지")
+    assert _pin(client, a, mid).status_code == 200
+    with SessionLocal() as db:
+        db.execute(ChatPinnedMessage.__table__.update().values(text=None))
+        db.commit()
+    _delete_msg(client, a, mid)
+    item = _items(client, a)[mid]
+    assert item["text"] == "" and item["message_deleted"] is True
+
+
+def test_hide_for_direct_room_needs_the_room_id(client, trio):
+    a, b, _ = trio
+    room = client.post(DIRECT_ROOM, json={"user_id": _uid(client, b)}, headers=a).json()["id"]
+    mid = _send(client, a, "둘만의 공지", room_id=room)
+    assert _pin(client, a, mid, room_id=room).status_code == 200
+    assert (
+        _hide(client, a, mid).status_code == 404
+    )  # room_id 가 없으면 가족방으로 보고, 거기에는 없다
+    assert _hide(client, a, mid, room_id=room).status_code == 200
