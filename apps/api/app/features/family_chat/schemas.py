@@ -26,6 +26,7 @@ class MessageOut(BaseModel):
     created_at: datetime
     attachment: AttachmentOut | None = None
     is_assistant: bool = False  # 가비가 @가비 호출에 답해 올린 메시지(앱이 말풍선을 따로 그린다)
+    deleted: bool = False  # 보낸 사람이 지운 메시지. text 는 빈 문자열, attachment 는 null 이고 앱은 "삭제된 메시지입니다"를 보인다
 
 
 class ReadMark(BaseModel):

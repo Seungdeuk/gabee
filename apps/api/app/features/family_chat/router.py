@@ -5,7 +5,7 @@ from app.features.family_group.models import User
 from app.shared.auth import current_group_id, current_user
 from app.shared.db import get_db
 
-from . import service
+from . import delete_service, service
 from .ai_router import router as ai_router
 from .link_router import router as link_router
 from .media_router import router as media_router
@@ -85,6 +85,18 @@ def post_message(
     db: Session = Depends(get_db),
 ) -> MessageOut:
     return service.post(db, user, group_id, body.text, body.room_id)
+
+
+@router.delete("/messages/{message_id}", response_model=MessageOut)
+def delete_message(
+    message_id: int,
+    room_id: str | None = ROOM_ID,
+    user: User = Depends(current_user),
+    group_id: str = Depends(current_group_id),
+    db: Session = Depends(get_db),
+) -> MessageOut:
+    """내가 보낸 메시지를 지운다(본문·사진도 서버에서 비운다). 이미 지웠으면 그대로 돌려준다."""
+    return delete_service.delete_message(db, user, group_id, message_id, room_id)
 
 
 @router.post("/read", response_model=ReadPosition)

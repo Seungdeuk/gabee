@@ -409,3 +409,12 @@
 - 소통 `getRoomInfo()`, 가계 `getMembers()`, 일정 가족 이름표(`buildFamily`, 화면이 다시 보일 때 `refreshItems` 가 이름표도 새로 만든다), 돌봄 `getLatestLocations()` 가 이 모듈을 쓴다. 채팅 말풍선 이름은 `MessageBubble` 의 `nameOf` 로 바꾼다. 가계 `getMembers()` 는 화면이 그리는 `name` 을 별명으로 바꿔 준다. 연락처 화면과 AI 할 일 등록(AI 가 준 담당자 이름 매칭)은 실명이 필요해 `getRoomInfo({ raw: true })` 를 쓴다. 연락처 화면만 실명을 부제로 보이므로 `getRoomInfo({ raw: true })` 로 서버 값을 그대로 받는다.
 - 시험: `apps/mobile/tests/nicknames.test.js`.
 - **아직 못 한 것(후속)**: 서버가 이름을 글자로만 내려 주는 곳(정산 내역 낸 사람·정산 이동, 용돈 기록자·결정자, 돌봄 기록자·식단 기록자, 링크 만든 사람, 대화 검색 결과의 보낸 사람, 사진 보관함 접근성 문구)과 AI 답변·알림 문구는 별명이 반영되지 않는다. 서버가 "보는 사람 기준 이름"으로 내려 주도록 바꿔야 한다. 실기기 확인은 못 했다.
+
+## 메시지 삭제 (서버, release/1.1)
+- `DELETE /family-chat/messages/{message_id}?room_id=` → 200 `MessageOut`(`deleted: true`, `text: ""`, `attachment: null`). 코드는 `delete_service.py`(라우터 → 서비스 → `repository.soft_delete`).
+- 규칙: 방에 들어갈 수 없거나 이 방의 메시지가 아니면 404(존재 여부를 숨김), 내가 보낸 것이 아니면(가비의 답 포함) 403 `forbidden`, 이미 지운 메시지는 그대로 200(멱등).
+- 소프트 삭제: `messages.deleted_at` 을 기록하고 `text` 를 비운다. 행을 남겨 읽음 위치·메시지 순서가 바뀌지 않는다. 사진 메시지는 `message_attachments` 행을 지운 뒤(DB 저장이 먼저) 원본·썸네일 파일을 지운다(파일 삭제에 실패해도 사진은 더 보이지 않고, 경고만 남기며 경로·내용은 남기지 않는다).
+- 조회: 메시지 목록·방 목록의 마지막 메시지에는 삭제된 메시지가 `deleted: true` 로 나온다. AI 분석(`ai_repository.recent_messages`)과 대화 검색에서는 제외한다. 사진 모음에서는 첨부 행이 없어져 빠진다. 고정 메시지는 본문 사본이 없어 삭제된 메시지를 고정해 두면 빈 칸이 되므로, 게시판(본문 사본 저장) 작업에서 해결한다.
+- 시험: `tests/test_message_delete.py`(작성자만, 멱등, 다른 가족·1:1 방 격리, 가비의 답, 검색·AI 제외, 사진 파일 삭제, 방 목록).
+- 앱 화면(팝업 메뉴의 삭제, "삭제된 메시지입니다" 표시)은 아직 없다.
+

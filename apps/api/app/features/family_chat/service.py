@@ -22,14 +22,16 @@ def _attachment_out(a: MessageAttachment) -> AttachmentOut:
 def message_out(
     m: Message, user_name: str, attachment: MessageAttachment | None = None
 ) -> MessageOut:
+    deleted = m.deleted_at is not None
     return MessageOut(
         id=m.id,
         user_id=m.user_id,
         user_name=user_name,
-        text=m.text,
+        text="" if deleted else m.text,
         created_at=m.created_at,
-        attachment=_attachment_out(attachment) if attachment else None,
+        attachment=_attachment_out(attachment) if attachment and not deleted else None,
         is_assistant=m.user_id == ASSISTANT_USER_ID,
+        deleted=deleted,
     )
 
 

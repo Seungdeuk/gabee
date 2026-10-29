@@ -11,7 +11,7 @@
           "family-group"
         ],
         "summary": "Reissue Invite",
-        "description": "새 초대 코드를 만든다(24시간·1회). 기존 코드는 폐기된다. 가족 관리자(owner/admin)만.",
+        "description": "새 초대 코드를 만든다(기본 24시간·20명). 기존 코드는 폐기된다. 가족 관리자(owner/admin)만.",
         "operationId": "reissue_invite_family_group_groups_invites_reissue_post",
         "parameters": [
           {
@@ -54,6 +54,82 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/InviteOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/family-group/groups/invites/settings": {
+      "put": {
+        "tags": [
+          "family-group"
+        ],
+        "summary": "Update Invite Settings",
+        "description": "초대 코드로 들어온 사람을 바로 구성원으로 넣을지(자동 승인) 켜고 끈다. 가족 관리자만.",
+        "operationId": "update_invite_settings_family_group_groups_invites_settings_put",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-gyeot-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Gyeot-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InviteSettingsIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GroupOut"
                 }
               }
             }
@@ -1790,6 +1866,66 @@
         }
       }
     },
+    "/family-group/auth/me/tester-consent": {
+      "put": {
+        "tags": [
+          "family-group"
+        ],
+        "summary": "Put Tester Consent",
+        "description": "테스트 동의서에 동의한 버전과 시각을 저장한다.",
+        "operationId": "put_tester_consent_family_group_auth_me_tester_consent_put",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TesterConsentIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/family-group/me": {
       "get": {
         "tags": [
@@ -1936,7 +2072,7 @@
           "family-group"
         ],
         "summary": "Join Group",
-        "description": "초대 코드로 참여를 신청한다. 모든 계정(익명 포함)에 승인 대기 요청(JoinRequestOut, status=pending)이 만들어지고, 관리자 승인 뒤 구성원이 된다.",
+        "description": "초대 코드로 참여를 신청한다. 가족의 자동 승인이 켜져 있으면 바로 구성원이 되고(status=approved),\n꺼져 있으면 승인 대기 요청(status=pending)이 만들어져 관리자 승인 뒤 구성원이 된다.",
         "operationId": "join_group_family_group_groups_join_post",
         "parameters": [
           {
@@ -4191,6 +4327,100 @@
         },
         "responses": {
           "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/family-chat/messages/{message_id}": {
+      "delete": {
+        "tags": [
+          "family-chat"
+        ],
+        "summary": "Delete Message",
+        "description": "내가 보낸 메시지를 지운다(본문·사진도 서버에서 비운다). 이미 지웠으면 그대로 돌려준다.",
+        "operationId": "delete_message_family_chat_messages__message_id__delete",
+        "parameters": [
+          {
+            "name": "message_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Message Id"
+            }
+          },
+          {
+            "name": "room_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 32
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "대화방 id. 없으면 가족 전체방",
+              "title": "Room Id"
+            },
+            "description": "대화방 id. 없으면 가족 전체방"
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-gyeot-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Gyeot-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
             "description": "Successful Response",
             "content": {
               "application/json": {
@@ -14382,6 +14612,28 @@
             ],
             "title": "Invite Expires At"
           },
+          "invite_uses_left": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Invite Uses Left"
+          },
+          "invite_auto_approve": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Invite Auto Approve"
+          },
           "my_id": {
             "anyOf": [
               {
@@ -14548,6 +14800,17 @@
               }
             ],
             "title": "Expires At"
+          },
+          "uses_left": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Uses Left"
           }
         },
         "type": "object",
@@ -14555,6 +14818,19 @@
           "invite_code"
         ],
         "title": "InviteOut"
+      },
+      "InviteSettingsIn": {
+        "properties": {
+          "auto_approve": {
+            "type": "boolean",
+            "title": "Auto Approve"
+          }
+        },
+        "type": "object",
+        "required": [
+          "auto_approve"
+        ],
+        "title": "InviteSettingsIn"
       },
       "ItemCreate": {
         "properties": {
@@ -16073,6 +16349,11 @@
           "is_assistant": {
             "type": "boolean",
             "title": "Is Assistant",
+            "default": false
+          },
+          "deleted": {
+            "type": "boolean",
+            "title": "Deleted",
             "default": false
           }
         },
@@ -18648,6 +18929,21 @@
         ],
         "title": "Summary"
       },
+      "TesterConsentIn": {
+        "properties": {
+          "version": {
+            "type": "string",
+            "maxLength": 16,
+            "minLength": 1,
+            "title": "Version"
+          }
+        },
+        "type": "object",
+        "required": [
+          "version"
+        ],
+        "title": "TesterConsentIn"
+      },
       "TodaySummary": {
         "properties": {
           "date": {
@@ -19279,6 +19575,17 @@
             "type": "boolean",
             "title": "Location Consent",
             "default": false
+          },
+          "tester_consent_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tester Consent Version"
           },
           "login_id": {
             "anyOf": [
