@@ -2,13 +2,14 @@
 import assert from "node:assert/strict";
 import { afterEach, beforeEach, test } from "node:test";
 
-import { previewText } from "../src/features/family-chat/chatUtils.js";
+import { previewText, shouldShowName, shouldShowTime } from "../src/features/family-chat/chatUtils.js";
 import {
   DELETED_TEXT,
   DOUBLE_TAP_MS,
   HEART,
   REACTIONS,
   REFRESH_EVERY_TICKS,
+  applyDeletedIds,
   canOpenMenu,
   isDoubleTap,
   markDeleted,
@@ -173,7 +174,8 @@ test("previewText: 지운 메시지는 삭제 문구, 사진은 사진, 내 글�
 
 test("messageActionError: 삭제·반응·답장 오류 문구에 메시지 글자를 넣지 않는다", () => {
   assert.equal(messageActionError({ status: 400, code: "message_deleted" }), "삭제된 메시지예요");
-  assert.equal(messageActionError({ status: 400, code: "reply_deleted" }, "reply"), "삭제된 메시지예요");
+  assert.match(messageActionError({ status: 400, code: "reply_deleted" }, "reply"), /답장하려던 메시지가 삭제돼서 답장 없이 보낼 수 있어요/); // 답장 전용 안내(다시 보내기는 답장 없이 간다)
+  assert.equal(messageActionError({ status: 400, code: "message_deleted" }), "삭제된 메시지예요");
   assert.equal(messageActionError({ status: 400, code: "invalid_reaction" }), "쓸 수 없는 반응이에요");
   assert.equal(messageActionError({ status: 403 }, "delete"), "내가 보낸 메시지만 삭제할 수 있어요");
   assert.equal(messageActionError({ status: 404 }), "메시지를 찾을 수 없어요");
@@ -203,7 +205,9 @@ test("API: deleteMessage·reactToMessage·removeReaction·sendMessage(replyToId)
   await api.sendMessage("답장", null, 5);
   await api.sendMessage("답장", "r1", 5);
   await api.sendMessage("그냥", null);
-  const [d1, d2, r1, r2, x1, x2, s1, s2, s3] = calls;
+  await api.listDeletedMessages({ since: "2026-10-29T01:00:00Z" });
+  await api.listDeletedMessages({ roomId: "r1", since: "2026-10-29T01:00:00.123+00:00" });
+  const [d1, d2, r1, r2, x1, x2, s1, s2, s3, l1, l2] = calls;
   assert.deepEqual([d1.method, d1.url.endsWith("/family-chat/messages/5")], ["DELETE", true]);
   assert.deepEqual([d2.method, d2.url.endsWith("/family-chat/messages/6?room_id=r1")], ["DELETE", true]);
   assert.deepEqual([r1.method, r1.url.endsWith("/family-chat/messages/5/reaction"), r1.body], ["PUT", true, { emoji: "👍" }]);
@@ -213,4 +217,43 @@ test("API: deleteMessage·reactToMessage·removeReaction·sendMessage(replyToId)
   assert.deepEqual(s1.body, { text: "답장", reply_to_id: 5 });
   assert.deepEqual(s2.body, { text: "답장", room_id: "r1", reply_to_id: 5 });
   assert.deepEqual(s3.body, { text: "그냥" }); // 답장이 아니면 reply_to_id 를 보내지 않는다
+  assert.deepEqual([l1.method, l1.url.endsWith("/family-chat/messages/deleted?since=2026-10-29T01%3A00%3A00Z")], ["GET", true]);
+  assert.equal(l2.url.endsWith("/family-chat/messages/deleted?since=2026-10-29T01%3A00%3A00.123%2B00%3A00&room_id=r1"), true);
+});
+
+test("applyDeletedIds: 서버가 알려 준 삭제 id 만 삭제 표시로(이미 지운 것·없는 id 는 그대로), 인용 답장도 반영", () => {
+  const quoted = msg(3, { reply_to: { id: 1, user_name: "지민", text: "원본", deleted: false, has_attachment: false } });
+  const list = [msg(1), msg(2, { deleted: true, text: "" }), quoted];
+  const next = applyDeletedIds(list, [1, 2, 99]);
+  assert.equal(next[0].deleted, true);
+  assert.equal(next[0].text, "");
+  assert.equal(next[1], list[1]); // 이미 지운 것은 같은 객체
+  assert.equal(next[2].reply_to.deleted, true);
+  assert.equal(applyDeletedIds(list, []), list); // 바뀐 것이 없으면 같은 배열
+  assert.equal(applyDeletedIds(next, [1]), next);
+});
+
+test("shouldShowName·shouldShowTime: 지운 메시지가 사이에 끼면 이름·시각을 숨기지 않는다", () => {
+  const a = msg(1, { user_id: "u1", created_at: "2026-10-29T01:00:10Z" });
+  const gone = msg(2, { user_id: "u1", deleted: true, text: "", created_at: "2026-10-29T01:00:20Z" });
+  const b = msg(3, { user_id: "u1", created_at: "2026-10-29T01:00:30Z" });
+  assert.equal(shouldShowName(a, b), false); // 같은 사람이 이어서 말하면 생략(기존 규칙)
+  assert.equal(shouldShowName(gone, b), true); // 앞이 지운 줄이면 누가 보냈는지 이름을 보인다
+  assert.equal(shouldShowTime(a, gone), true); // 다음이 지운 줄이면 이 메시지의 시각을 보인다
+  assert.equal(shouldShowTime(a, b), false); // 같은 분 이어서 보내면 마지막에만(기존 규칙)
+});
+
+test("menuPosition: 말풍선 위치를 알면 그 바로 아래에 붙이고(내 말풍선은 오른쪽 끝, 상대는 왼쪽 끝), 아래가 모자라면 위로", () => {
+  const size = { width: 196, height: 160 };
+  const screen = { width: 400, height: 800 };
+  const rect = { x: 250, y: 300, width: 140, height: 40 };
+  const mine = menuPosition({ x: 320, y: 340, rect, side: "right" }, size, screen);
+  assert.equal(mine.left, 250 + 140 - 196); // 말풍선 오른쪽 끝에 맞춤
+  assert.ok(mine.top >= 340 && mine.top <= 348); // 말풍선 아래
+  const other = menuPosition({ x: 60, y: 140, rect: { x: 56, y: 100, width: 120, height: 40 }, side: "left" }, size, screen);
+  assert.equal(other.left, 56); // 말풍선 왼쪽 끝에 맞춤
+  const bottom = menuPosition({ x: 100, y: 780, rect: { x: 56, y: 740, width: 120, height: 40 }, side: "left" }, size, screen);
+  assert.equal(bottom.top, 740 - 160 - 4); // 아래가 모자라 말풍선 위로
+  // 화면 가장자리 밖으로 나가지 않는다
+  assert.equal(menuPosition({ x: 5, y: 100, rect: { x: 0, y: 100, width: 40, height: 40 }, side: "right" }, size, screen).left, 8);
 });

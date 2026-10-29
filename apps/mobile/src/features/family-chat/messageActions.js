@@ -1,6 +1,4 @@
 // 메시지 메뉴(반응·답장·공지·복사·삭제)·더블탭 하트·삭제 표시의 순수 함수(화면·네트워크와 분리해 시험한다). 메시지 글자는 어디에도 기록하지 않는다.
-import { parseTime } from "./chatUtils";
-
 /** 메뉴·더블탭이 쓰는 반응 이모지 6개(서버 허용 목록과 같다, 표시 순서). */
 export const REACTIONS = [
   { emoji: "❤️", name: "하트" },
@@ -110,6 +108,20 @@ export const reactionAction = (message, emoji) => (myReaction(message) === emoji
 export const markDeleted = (message) => ({ ...message, deleted: true, text: "", attachment: null, reactions: [], reply_to: null });
 
 /**
+ * 서버가 알려 준 삭제 id 를 목록에 반영한다: 아직 지우지 않은 그 메시지를 삭제 표시로 바꾸고, 그 메시지를 인용한 답장도 삭제 표시로 바꾼다. 목록에 없는 id 는 무시한다.
+ * @param {object[]} messages
+ * @param {number[]} ids
+ * @returns {object[]} 바뀐 것이 없으면 같은 배열
+ */
+export function applyDeletedIds(messages, ids) {
+  const set = new Set((ids ?? []).map(Number));
+  if (set.size === 0) return messages;
+  let next = messages.map((m) => (!m.clientId && !m.deleted && set.has(Number(m.id)) ? markDeleted(m) : m));
+  for (const id of set) next = markRepliesDeleted(next, id);
+  return next.every((m, i) => m === messages[i]) ? messages : next;
+}
+
+/**
  * 어떤 메시지를 지웠을 때 그 메시지를 인용한 답장들의 원본 표시를 "삭제됨"으로 바꾼다(서버 응답을 기다리지 않고 바로 반영).
  * @param {object[]} messages
  * @param {number|string} deletedId
@@ -155,15 +167,25 @@ export function replyLine(reply) {
 }
 
 /**
- * 메뉴를 띄울 위치: 누른 지점 근처에 두되 화면 밖으로 나가지 않게 맞춘다. 아래 공간이 모자라면 위로 올린다.
- * @param {{ x: number, y: number }} anchor 누른 지점(화면 기준)
+ * 메뉴를 띄울 위치. 말풍선 위치(anchor.rect)를 알면 그 **말풍선 바로 아래**에 붙인다(내 말풍선은 오른쪽 끝, 상대는 왼쪽 끝에 맞춤, 아래가 모자라면 말풍선 위로).
+ * 말풍선 위치를 모르면 누른 지점(anchor.x, anchor.y) 근처에 둔다. 어느 쪽이든 화면 밖으로 나가지 않게 맞춘다.
+ * @param {{ x: number, y: number, rect?: { x: number, y: number, width: number, height: number }, side?: "left" | "right" }} anchor
  * @param {{ width: number, height: number }} size 메뉴 크기
  * @param {{ width: number, height: number }} screen 화면 크기
- * @param {number} [margin] 화면 가장자리 여백
+ * @param {number} [margin] 화면 가장자리·말풍선과의 여백
  * @returns {{ left: number, top: number }}
  */
 export function menuPosition(anchor, size, screen, margin = 8) {
-  const left = Math.min(Math.max(anchor.x - size.width / 2, margin), Math.max(margin, screen.width - size.width - margin));
+  const clampLeft = (left) => Math.min(Math.max(left, margin), Math.max(margin, screen.width - size.width - margin));
+  const { rect } = anchor;
+  if (rect) {
+    const left = clampLeft(anchor.side === "right" ? rect.x + rect.width - size.width : rect.x);
+    const below = rect.y + rect.height + margin / 2;
+    if (below + size.height + margin <= screen.height) return { left, top: below };
+    const above = rect.y - size.height - margin / 2;
+    return { left, top: above >= margin ? above : Math.max(margin, screen.height - size.height - margin) };
+  }
+  const left = clampLeft(anchor.x - size.width / 2);
   const below = anchor.y + margin;
   const top = below + size.height + margin <= screen.height ? below : Math.max(margin, anchor.y - size.height - margin);
   return { left, top };
@@ -213,7 +235,8 @@ export function refreshExisting(existing, incoming) {
  * @returns {string}
  */
 export function messageActionError(error, action = "react") {
-  if (error?.code === "message_deleted" || error?.code === "reply_deleted") return "삭제된 메시지예요";
+  if (error?.code === "reply_deleted") return "답장하려던 메시지가 삭제돼서 답장 없이 보낼 수 있어요. 다시 보내기를 눌러 주세요";
+  if (error?.code === "message_deleted") return "삭제된 메시지예요";
   if (error?.code === "invalid_reaction") return "쓸 수 없는 반응이에요";
   if (error?.code === "invalid_message") return "이 대화방의 메시지가 아니에요";
   if (error?.status === 403) return "내가 보낸 메시지만 삭제할 수 있어요";
@@ -232,6 +255,3 @@ export function reactionLabel(reaction) {
   const name = REACTIONS.find((r) => r.emoji === reaction.emoji)?.name ?? "반응";
   return `${name} ${reaction.count}명${reaction.mine ? ", 내가 누름. 누르면 취소해요" : ", 누르면 나도 눌러요"}`;
 }
-
-/** 삭제 알림을 시각순 정렬에 쓰지 않는다(자리는 그대로) — 정렬 보조: 같은 시각이면 id 순. */
-export const byCreated = (a, b) => parseTime(a.created_at) - parseTime(b.created_at) || Number(a.id) - Number(b.id);

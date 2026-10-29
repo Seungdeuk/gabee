@@ -6,9 +6,10 @@ import { colors, font, radius, spacing } from "@/theme";
 
 import { DELETE_BODY, DELETE_TITLE, REACTIONS, menuKeys, menuPosition, myReaction } from "../messageActions";
 
-const MENU_WIDTH = 264;
-const REACTION_ROW = 56;
-const ITEM_HEIGHT = 48;
+const MENU_WIDTH = 196; // 말풍선 옆에 작게 붙는 크기
+const REACTION_ROW = 40;
+const ITEM_HEIGHT = 38;
+const CONFIRM_WIDTH = 264;
 const CONFIRM_HEIGHT = 156;
 
 const ITEMS = {
@@ -35,8 +36,10 @@ export default function MessageMenu({ target, myId = null, pinned, onClose, onRe
   const keys = menuKeys({ message, myId, pinned });
   const rows = keys.filter((k) => k !== "reactions");
   const height = confirming ? CONFIRM_HEIGHT : (keys.includes("reactions") ? REACTION_ROW : 0) + rows.length * ITEM_HEIGHT;
+  const width = confirming ? CONFIRM_WIDTH : MENU_WIDTH;
   const anchor = target.anchor ?? { x: screen.width / 2, y: screen.height / 2 - height / 2 };
-  const { left, top } = menuPosition(anchor, { width: MENU_WIDTH, height }, screen);
+  // 삭제 확인은 화면 가운데에, 메뉴는 지정한 말풍선 바로 아래에 띄운다
+  const { left, top } = confirming ? { left: (screen.width - width) / 2, top: Math.max(spacing.sm, (screen.height - height) / 2) } : menuPosition(anchor, { width, height }, screen);
   const mine = myReaction(message);
   const handlers = { reply: onReply, pin: onPin, unpin: onUnpin, copy: onCopy, delete: () => setConfirming(true) };
 
@@ -44,7 +47,7 @@ export default function MessageMenu({ target, myId = null, pinned, onClose, onRe
     <Modal visible transparent animationType="fade" onRequestClose={onClose} statusBarTranslucent>
       <View style={styles.root}>
         <Pressable style={styles.backdrop} onPress={onClose} accessibilityRole="button" accessibilityLabel="메뉴 닫기" />
-        <View style={[styles.menu, { left, top, width: MENU_WIDTH }]} accessibilityViewIsModal>
+        <View style={[styles.menu, { left, top, width }]} accessibilityViewIsModal>
           {confirming ? (
             <View style={styles.confirm}>
               <Text style={styles.confirmTitle} accessibilityRole="header">
@@ -88,7 +91,7 @@ export default function MessageMenu({ target, myId = null, pinned, onClose, onRe
                     accessibilityLabel={item.label}
                     style={({ pressed }) => [styles.item, (index > 0 || keys.includes("reactions")) && styles.itemLine, pressed && styles.pressed]}
                   >
-                    <Ionicons name={item.icon} size={20} color={item.danger ? colors.danger : colors.textSub} />
+                    <Ionicons name={item.icon} size={16} color={item.danger ? colors.danger : colors.textSub} />
                     <Text style={[styles.label, item.danger && styles.danger]}>{item.label}</Text>
                   </Pressable>
                 );
@@ -103,16 +106,16 @@ export default function MessageMenu({ target, myId = null, pinned, onClose, onRe
 
 const styles = StyleSheet.create({
   root: { flex: 1 },
-  backdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: colors.dark, opacity: 0.25 },
+  backdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: colors.dark, opacity: 0.2 },
   menu: { position: "absolute", backgroundColor: colors.background, borderRadius: radius.card, borderWidth: 1, borderColor: colors.border, overflow: "hidden" },
   reactions: { height: REACTION_ROW, flexDirection: "row", alignItems: "center", justifyContent: "space-around", paddingHorizontal: spacing.xs },
-  reaction: { width: 40, height: 40, borderRadius: radius.pill, alignItems: "center", justifyContent: "center" },
+  reaction: { width: 30, height: 30, borderRadius: radius.pill, alignItems: "center", justifyContent: "center" },
   reactionOn: { backgroundColor: colors.honeySoft },
-  emoji: { ...font.h1 }, // 이모지 크기는 theme 토큰을 쓴다
-  item: { height: ITEM_HEIGHT, flexDirection: "row", alignItems: "center", gap: spacing.md, paddingHorizontal: spacing.lg },
+  emoji: { ...font.section }, // 이모지 크기는 theme 토큰을 쓴다
+  item: { height: ITEM_HEIGHT, flexDirection: "row", alignItems: "center", gap: spacing.sm, paddingHorizontal: spacing.md },
   itemLine: { borderTopWidth: 1, borderTopColor: colors.divider },
   pressed: { backgroundColor: colors.surface },
-  label: { ...font.bodyStrong, color: colors.text },
+  label: { ...font.caption, fontFamily: font.bodyStrong.fontFamily, color: colors.text },
   danger: { color: colors.danger },
   confirm: { padding: spacing.lg, gap: spacing.sm },
   confirmTitle: { ...font.cardTitle, color: colors.text },

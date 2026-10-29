@@ -175,8 +175,11 @@ export default function ChatRoomScreen() {
   );
 
   useEffect(() => {
-    if (replyTo && chat.messages.some((m) => !m.clientId && Number(m.id) === replyTo.id && m.deleted)) setReplyTo(null); // 원본이 지워지면 답장할 수 없다
-  }, [chat.messages, replyTo]);
+    if (replyTo && chat.messages.some((m) => !m.clientId && Number(m.id) === replyTo.id && m.deleted)) {
+      setReplyTo(null); // 원본이 지워지면 답장할 수 없다
+      pins.say("답장하려던 메시지가 삭제됐어요");
+    }
+  }, [chat.messages, replyTo, pins]);
 
   useEffect(() => {
     const newest = lastId(chat.messages);
@@ -261,9 +264,11 @@ export default function ChatRoomScreen() {
   };
   const heart = (message) => runReaction(message, HEART);
   const reactFromMenu = (emoji) => {
-    const message = menu?.message;
+    const opened = menu?.message;
     closeMenu();
-    if (message) runReaction(message, emoji);
+    if (!opened) return;
+    const latest = chat.messages.find((m) => !m.clientId && Number(m.id) === Number(opened.id)) ?? opened; // 메뉴를 연 뒤 내 반응이 바뀌었을 수 있어 최신 상태로 켜고 끈다
+    runReaction(latest, emoji);
   };
   const replyFromMenu = () => {
     const message = menu?.message;

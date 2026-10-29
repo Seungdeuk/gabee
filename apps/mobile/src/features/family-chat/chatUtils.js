@@ -129,7 +129,7 @@ export function groupByDay(messages) {
  * @returns {boolean}
  */
 export function shouldShowName(prev, cur) {
-  return !prev || prev.user_id !== cur.user_id;
+  return !prev || prev.deleted || prev.user_id !== cur.user_id; // 앞이 지운 줄(가운데 안내)이면 누가 보냈는지 이름을 보인다
 }
 
 /**
@@ -139,7 +139,7 @@ export function shouldShowName(prev, cur) {
  * @returns {boolean}
  */
 export function shouldShowTime(cur, next) {
-  if (!next || next.user_id !== cur.user_id) return true;
+  if (!next || next.deleted || next.user_id !== cur.user_id) return true; // 다음이 지운 줄이면 이 메시지의 시각을 보인다
   if (next.status === "sending" || next.status === "failed") return true;
   const a = parseTime(cur.created_at);
   const b = parseTime(next.created_at);

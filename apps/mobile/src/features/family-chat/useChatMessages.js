@@ -2,11 +2,11 @@ import { useFocusEffect } from "expo-router";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AppState } from "react-native";
 
-import { deleteMessage, getReadStates, getRoomInfo, listMessages, reactToMessage, removeReaction, sendMessage, sendPhoto } from "./api";
+import { deleteMessage, getReadStates, getRoomInfo, listDeletedMessages, listMessages, reactToMessage, removeReaction, sendMessage, sendPhoto } from "./api";
 import { canSend, firstId, focusErrorMessage, isNoGroup, lastId, mergeMessages, nextPollDelay, photoSendErrorMessage, readStatesDue, roomErrorMessage, trimDraft } from "./chatUtils";
 import { applySavedNow, beginTransition, canLoadNewer, canReuseLiveRun, canLoadOlder, canPoll, enterLiveEnd, finishTransition, initialModeState, needsLiveBeforeSend, retryTarget, tokenValid, windowToken } from "./focusMode";
 import { FOCUS_PAGE, keepTemps, reachedLiveEnd, replaceWindow } from "./searchUtils";
-import { markDeleted, markRepliesDeleted, refreshDue, refreshExisting, REFRESH_LIMIT, withMyReaction } from "./messageActions";
+import { applyDeletedIds, markDeleted, markRepliesDeleted, messageActionError, refreshDue, refreshExisting, REFRESH_LIMIT, withMyReaction } from "./messageActions";
 
 const FIRST_PAGE = 50;
 const POLL_PAGE = 100;
@@ -87,6 +87,8 @@ export default function useChatMessages({ me, enabled = true, roomId = null, ini
   const readFailures = useRef(0);
   const refreshTicks = useRef(0); // 마지막 최근 메시지 다시 받기 뒤 지난 틱 수(반응·삭제를 따라가려고 가끔 다시 받는다)
   const mutating = useRef(0); // 내가 보낸 반응·삭제 요청 수(그동안은 다시 받은 응답을 반영하지 않는다)
+  const mutationSeq = useRef(0); // 내 반응·삭제가 시작되거나 끝날 때마다 올라간다(그 사이에 받은 오래된 갱신 응답을 버리려고)
+  const deletedSince = useRef(null); // 삭제 조회 기준: 서버가 돌려준 마지막 server_time(처음에는 첫 조회로 알아 둔다)
   const busyMsg = useRef(new Set()); // 같은 메시지에 반응·삭제를 연타해도 한 번에 하나만 보낸다
   const readTicks = useRef(0); // 마지막 읽음 조회 시도 뒤 지난 틱 수
   const readOff = useRef(false); // 404 를 받으면 이 세션 동안 조회를 끈다
@@ -114,6 +116,22 @@ export default function useChatMessages({ me, enabled = true, roomId = null, ini
     if (alive.current) setMessages(ref.current);
   }, []);
 
+  /**
+   * 서버가 알려 주는 삭제(`GET /messages/deleted`)를 목록에 반영한다. 최근 50개 밖의 오래된 메시지나 과거 창에서도 남이 지운 글이 따라가게 한다.
+   * 처음에는 미래 시각으로 물어 서버 시각만 알아 두고(목록은 처음부터 삭제 표시를 받는다), 이후에는 마지막 server_time 이후만 묻는다. 실패는 조용히 넘기고 기준은 그대로 둔다.
+   */
+  const syncDeleted = useCallback(async () => {
+    try {
+      const since = deletedSince.current ?? new Date(Date.now() + 86400000).toISOString();
+      const res = await listDeletedMessages({ roomId: roomRef.current, since });
+      if (!alive.current || !res?.server_time) return;
+      deletedSince.current = res.server_time;
+      if (res.message_ids?.length) update((prev) => applyDeletedIds(prev, res.message_ids));
+    } catch {
+      // 다음 틱에 다시 한다
+    }
+  }, [update]);
+
   /** 새 메시지 확인. 겹치면 건너뛰지 않고 끝난 뒤 한 번 더 한다. */
   const fetchNew = useCallback(
     async function run() {
@@ -133,6 +151,7 @@ export default function useChatMessages({ me, enabled = true, roomId = null, ini
         update((prev) => mergeMessages(prev, rows));
         cursor.current = Math.max(cursor.current, lastId(rows));
         if (first && alive.current) setHasMore(rows.length >= FIRST_PAGE);
+        if (first) syncDeleted(); // 이 시점부터의 삭제를 따라가도록 서버 시각을 알아 둔다
         more = !first && rows.length >= POLL_PAGE; // 밀린 메시지가 더 있으면 바로 이어서
         failures.current = 0;
         if (alive.current) {
@@ -155,7 +174,7 @@ export default function useChatMessages({ me, enabled = true, roomId = null, ini
         }
       }
     },
-    [update],
+    [update, syncDeleted],
   );
 
   /**
@@ -165,9 +184,10 @@ export default function useChatMessages({ me, enabled = true, roomId = null, ini
   const refreshVisible = useCallback(async () => {
     if (!canPoll(ms.current) || mutating.current > 0) return;
     const token = windowToken(ms.current);
+    const seq = mutationSeq.current;
     try {
       const rows = await listMessages({ latest: true, limit: REFRESH_LIMIT, roomId: roomRef.current });
-      if (!alive.current || !tokenValid(ms.current, token) || !canPoll(ms.current) || mutating.current > 0) return; // 그 사이 창이 바뀌었거나 내가 바꾼 것이 있으면 오래된 응답이다
+      if (!alive.current || !tokenValid(ms.current, token) || !canPoll(ms.current) || mutating.current > 0 || mutationSeq.current !== seq) return; // 그 사이 창이 바뀌었거나 내가 반응·삭제를 시작했거나 끝냈으면 오래된 응답이다
       update((prev) => refreshExisting(prev, rows));
     } catch {
       // 갱신이 안 돼도 다음 틱에 다시 한다
@@ -205,6 +225,7 @@ export default function useChatMessages({ me, enabled = true, roomId = null, ini
       refreshTicks.current += 1;
       if (running.current && alive.current && generation.current === mine && refreshDue(refreshTicks.current)) {
         refreshTicks.current = 0;
+        await syncDeleted();
         await refreshVisible();
       }
       readTicks.current += 1;
@@ -213,7 +234,7 @@ export default function useChatMessages({ me, enabled = true, roomId = null, ini
       timer.current = setTimeout(tick, nextPollDelay(failures.current));
     };
     tick();
-  }, [fetchNew, fetchReadStates, refreshVisible]);
+  }, [fetchNew, fetchReadStates, refreshVisible, syncDeleted]);
 
   // 화면이 보이고 앱이 앞에 있을 때만 확인한다
   useFocusEffect(
@@ -385,8 +406,11 @@ export default function useChatMessages({ me, enabled = true, roomId = null, ini
         const saved = await sendMessage(text, roomRef.current, replyToId);
         // 임시 메시지를 지우고 서버 메시지를 id 로 병합한다(폴링이 먼저 가져왔어도 중복되지 않는다). 그 사이 과거 창으로 옮겨 갔으면 병합하지 않는다.
         update((prev) => applySavedNow(prev, saved, ms.current, clientId));
-      } catch {
-        update((prev) => prev.map((m) => (m.clientId === clientId ? { ...m, status: "failed" } : m)));
+      } catch (e) {
+        const gone = e?.code === "reply_deleted";
+        // 답장하려던 원본이 지워졌으면 답장 표시를 떼서(다시 보내기는 답장 없이 간다) 같은 실패를 반복하지 않게 하고 이유를 알린다
+        update((prev) => prev.map((m) => (m.clientId === clientId ? { ...m, status: "failed", reply_to: gone ? null : m.reply_to } : m)));
+        if (gone && alive.current) setError(messageActionError(e, "reply"));
       }
     },
     [update],
@@ -465,7 +489,7 @@ export default function useChatMessages({ me, enabled = true, roomId = null, ini
       const target = ref.current.find((m) => m.clientId === clientId);
       if (!target) return;
       update((prev) => prev.map((m) => (m.clientId === clientId ? { ...m, status: "sending" } : m)));
-      await deliver(clientId, target.text, target.reply_to?.id ?? null);
+      await deliver(clientId, target.text, target.reply_to && !target.reply_to.deleted ? target.reply_to.id : null); // 원본이 지워졌으면 답장 없이 보낸다
     },
     [deliver, ensureLive, update],
   );
@@ -488,6 +512,7 @@ export default function useChatMessages({ me, enabled = true, roomId = null, ini
       if (busyMsg.current.has(id)) return { ok: false, busy: true };
       busyMsg.current.add(id);
       mutating.current += 1;
+      mutationSeq.current += 1;
       patchMessage(id, (m) => withMyReaction(m, emoji));
       try {
         const saved = await (emoji ? reactToMessage({ roomId: roomRef.current, messageId: id, emoji }) : removeReaction({ roomId: roomRef.current, messageId: id }));
@@ -499,6 +524,7 @@ export default function useChatMessages({ me, enabled = true, roomId = null, ini
       } finally {
         busyMsg.current.delete(id);
         mutating.current -= 1;
+        mutationSeq.current += 1;
       }
     },
     [patchMessage],
@@ -514,10 +540,11 @@ export default function useChatMessages({ me, enabled = true, roomId = null, ini
       const id = Number(messageId);
       const before = ref.current.find((m) => !m.clientId && Number(m.id) === id);
       if (!before) return { ok: false, error: { status: 404 } };
+      if (busyMsg.current.has(id)) return { ok: false, busy: true }; // 요청 중인 삭제를 다시 누르면(이미 낙관적으로 지워 보임) 성공으로 오해하지 않는다
       if (before.deleted) return { ok: true };
-      if (busyMsg.current.has(id)) return { ok: false, busy: true };
       busyMsg.current.add(id);
       mutating.current += 1;
+      mutationSeq.current += 1;
       const quotedBefore = ref.current.filter((m) => m.reply_to?.id === id && !m.reply_to.deleted).map((m) => ({ id: m.id, reply_to: m.reply_to }));
       patchMessage(id, markDeleted);
       update((prev) => markRepliesDeleted(prev, id));
@@ -531,6 +558,7 @@ export default function useChatMessages({ me, enabled = true, roomId = null, ini
       } finally {
         busyMsg.current.delete(id);
         mutating.current -= 1;
+        mutationSeq.current += 1;
       }
     },
     [patchMessage, update],

@@ -34,9 +34,9 @@ export default function ReactionRow({ reactions, onPress, align = "start" }) {
 const styles = StyleSheet.create({
   row: { flexDirection: "row", flexWrap: "wrap", gap: spacing.xs, marginTop: spacing.xs },
   end: { justifyContent: "flex-end" },
-  chip: { minHeight: 26, flexDirection: "row", alignItems: "center", gap: 2, paddingHorizontal: spacing.sm, borderRadius: radius.pill, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border },
+  chip: { minHeight: spacing.lg + spacing.xs, flexDirection: "row", alignItems: "center", gap: spacing.xs, paddingHorizontal: spacing.xs + spacing.xs / 2, borderRadius: radius.pill, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border },
   mine: { backgroundColor: colors.honeySoft, borderColor: colors.accent },
-  emoji: { ...font.caption },
+  emoji: { fontSize: Math.round(font.tab.fontSize * 0.6), lineHeight: font.tab.fontSize + spacing.xs }, // 이모지는 작은 글자(tab)의 60% 크기(칩이 말풍선보다 눈에 띄지 않게)
   count: { ...font.tab, color: colors.textMuted },
   countMine: { color: colors.text, fontFamily: font.bodyStrong.fontFamily },
 });

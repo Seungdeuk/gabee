@@ -41,6 +41,7 @@ export default function MessageBubble({ message, mine, showName, showTime = true
   const [viewing, setViewing] = useState(false);
   const [record, setRecord] = useState({ saving: false, done: false, notice: "" }); // 가비 기록에 저장한 상태(이 사진 하나의 것)
   const size = attachment ? fitSize(attachment.width, attachment.height) : null;
+  const boxRef = useRef(null); // 메뉴를 말풍선 바로 아래에 붙이려고 위치를 잰다
   const lastTap = useRef(null); // 앞선 누름 시각(더블탭 판정)
   const photoTimer = useRef(null); // 사진 한 번 누름은 더블탭인지 기다렸다가 크게 본다
   useEffect(() => () => clearTimeout(photoTimer.current), []);
@@ -82,28 +83,50 @@ export default function MessageBubble({ message, mine, showName, showTime = true
     );
   }
 
+  /** 길게 누른 지점(화면 기준)과 함께 메뉴를 연다. 안쪽 사진·원본 인용도 같은 메뉴를 열도록 함께 쓴다. */
+  const openMenu = (e) => {
+    const n = e?.nativeEvent;
+    const point = typeof n?.pageX === "number" && typeof n?.pageY === "number" ? { x: n.pageX, y: n.pageY } : null;
+    const node = boxRef.current;
+    if (node?.measureInWindow) {
+      // 말풍선 위치를 알면 그 바로 아래에 메뉴를 붙인다(내 말풍선은 오른쪽 끝에 맞춤). 못 재면 누른 지점 근처, 그것도 모르면 화면 가운데
+      node.measureInWindow((x, y, width, height) => {
+        if (width > 0 && height > 0) onActions?.(message, { x: x + width / 2, y: y + height, rect: { x, y, width, height }, side: mine ? "right" : "left" });
+        else onActions?.(message, point);
+      });
+      return;
+    }
+    onActions?.(message, point);
+  };
   const selectable = bubbleSelectable({ canAct: Boolean(onActions), os: Platform.OS });
   const Box = onActions ? Pressable : View;
+  // 스크린리더: 바깥 말풍선이 하나로 묶여도 안쪽 동작(사진 크게 보기, 원본으로 이동)을 동작 목록으로 열어 둔다
+  const a11yActions = [
+    { name: "menu", label: "메뉴 열기" },
+    ...(attachment ? [{ name: "view", label: "사진 크게 보기" }] : []),
+    ...(message.reply_to && onReplyPress ? [{ name: "jump", label: "답장한 원본으로 이동" }] : []),
+  ];
   const boxProps = onActions
     ? {
-        onLongPress: (e) => {
-          const n = e?.nativeEvent;
-          onActions(message, typeof n?.pageX === "number" && typeof n?.pageY === "number" ? { x: n.pageX, y: n.pageY } : null); // 누른 지점 근처에 메뉴를 띄운다(모르면 화면 가운데)
-        },
+        ref: boxRef,
+        onLongPress: openMenu,
         onPress: attachment || !onHeart ? undefined : tapBubble,
         accessibilityHint: "길게 누르면 메뉴가 열려요",
-        accessibilityActions: [{ name: "menu", label: "메뉴 열기" }],
+        accessibilityActions: a11yActions,
         onAccessibilityAction: (e) => {
-          if (e.nativeEvent.actionName === "menu") onActions(message, null);
+          const name = e.nativeEvent.actionName;
+          if (name === "menu") onActions(message, null);
+          else if (name === "view") setViewing(true);
+          else if (name === "jump") onReplyPress?.(message.reply_to.id);
         },
       }
     : null;
   const bubble = (
     <Box {...boxProps} style={[styles.bubble, attachment && styles.photoBubble, mine ? styles.mineBubble : styles.otherBubble, message.is_assistant && styles.assistantBubble, sending && styles.dim]}>
-      {message.reply_to ? <ReplyQuote reply={message.reply_to} onPress={onReplyPress} /> : null}
+      {message.reply_to ? <ReplyQuote reply={message.reply_to} onPress={onReplyPress} onLongPress={onActions ? openMenu : undefined} /> : null}
       {attachment ? (
         <>
-          <Pressable onPress={tapPhoto} accessibilityRole="imagebutton" accessibilityLabel="사진, 누르면 크게 봐요">
+          <Pressable onPress={tapPhoto} onLongPress={onActions ? openMenu : undefined} accessibilityRole="imagebutton" accessibilityLabel="사진, 누르면 크게 봐요">
             <AuthImage path={attachment.thumb_url} style={[styles.photo, { width: size.width, aspectRatio: size.width / size.height }]} />
           </Pressable>
           <PhotoViewer
@@ -182,27 +205,27 @@ export default function MessageBubble({ message, mine, showName, showTime = true
   }
   return (
     <View>
-    <View style={[styles.row, highlighted && styles.highlight]}>
-      {showName ? (
-        message.is_assistant ? (
-          <AssistantAvatar size={AVATAR} />
+      <View style={[styles.row, highlighted && styles.highlight]}>
+        {showName ? (
+          message.is_assistant ? (
+            <AssistantAvatar size={AVATAR} />
+          ) : (
+            <UserAvatar name={senderName || "?"} userId={message.user_id} photoUrl={photoUrl} size={AVATAR} />
+          )
         ) : (
-          <UserAvatar name={senderName || "?"} userId={message.user_id} photoUrl={photoUrl} size={AVATAR} />
-        )
-      ) : (
-        <View style={styles.spacer} />
-      )}
-      <View style={styles.column}>
-        {showName ? <Text style={styles.name}>{senderName}</Text> : null}
-        <View style={styles.line}>
-          {bubble}
-          {meta ? <View style={styles.metaOther}>{meta}</View> : null}
+          <View style={styles.spacer} />
+        )}
+        <View style={styles.column}>
+          {showName ? <Text style={styles.name}>{senderName}</Text> : null}
+          <View style={styles.line}>
+            {bubble}
+            {meta ? <View style={styles.metaOther}>{meta}</View> : null}
+          </View>
         </View>
       </View>
-    </View>
     {hasReactions ? <View style={styles.reactionsOther}>{reactions}</View> : null}
     </View>
-  );
+    );
 }
 
 const styles = StyleSheet.create({

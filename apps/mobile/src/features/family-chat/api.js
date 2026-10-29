@@ -173,6 +173,14 @@ export const sendMessage = (text, roomId, replyToId) => {
 export const deleteMessage = ({ roomId, messageId }) => apiFetch(`/family-chat/messages/${Number(messageId)}${roomId ? `?${roomParam(roomId)}` : ""}`, { method: "DELETE" });
 
 /**
+ * since 이후에 지워진 이 방의 메시지 id(지운 순서, 최대 200개)와 서버 시각. 새 메시지만 조회하는 앱이 이미 받아 둔 메시지가 지워졌음을 알려고 쓴다.
+ * 응답의 server_time 을 다음 조회의 since 로 쓰면 기기 시계가 어긋나도 놓치지 않는다.
+ * @param {{ roomId?: string | null, since: string }} options since 는 ISO 시각
+ * @returns {Promise<{ message_ids: number[], server_time: string }>}
+ */
+export const listDeletedMessages = ({ roomId, since }) => apiFetch(`/family-chat/messages/deleted?since=${encodeURIComponent(since)}${roomId ? `&${roomParam(roomId)}` : ""}`);
+
+/**
  * 메시지에 내 반응을 정한다(한 사람이 한 메시지에 하나, 다른 이모지면 바뀐다). 허용 이모지 6개(❤️ 👍 😂 😮 😢 🙏)만. 오류: 400 invalid_reaction / message_deleted, 404.
  * @param {{ roomId?: string | null, messageId: number, emoji: string }} options roomId 가 없으면 가족 전체방
  * @returns {Promise<object>} 반응이 반영된 메시지(reactions: [{emoji, count, mine}])
