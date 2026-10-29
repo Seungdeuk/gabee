@@ -156,9 +156,43 @@ export function searchMessages({ q, roomId, limit = 20, beforeId } = {}) {
  * 메시지를 보낸다(일반 전송은 AI 를 부르지 않는다).
  * @param {string} text 1~2000자
  * @param {string | null} [roomId] 대화방 id, 없으면 가족 전체방
+ * @param {number | null} [replyToId] 답장할 메시지 id(같은 방의 지우지 않은 메시지, 아니면 400 invalid_message / reply_deleted)
  * @returns {Promise<{ id: number, user_id: string, user_name: string, text: string, created_at: string, attachment?: { id: string, kind: string, url: string, thumb_url: string, width: number, height: number } | null }>}
  */
-export const sendMessage = (text, roomId) => apiFetch("/family-chat/messages", { method: "POST", body: roomId ? { text, room_id: roomId } : { text } });
+export const sendMessage = (text, roomId, replyToId) => {
+  const body = roomId ? { text, room_id: roomId } : { text };
+  if (replyToId != null) body.reply_to_id = Number(replyToId);
+  return apiFetch("/family-chat/messages", { method: "POST", body });
+};
+
+/**
+ * 내가 보낸 메시지를 지운다(본문·사진도 서버에서 비운다). 이미 지웠으면 같은 결과. 오류: 403(남의 메시지·가비의 답), 404(방·메시지 없음), 429.
+ * @param {{ roomId?: string | null, messageId: number }} options roomId 가 없으면 가족 전체방
+ * @returns {Promise<object>} 지운 메시지(deleted: true, text 는 빈 글자)
+ */
+export const deleteMessage = ({ roomId, messageId }) => apiFetch(`/family-chat/messages/${Number(messageId)}${roomId ? `?${roomParam(roomId)}` : ""}`, { method: "DELETE" });
+
+/**
+ * since 이후에 지워진 이 방의 메시지 id(지운 순서, 최대 200개)와 서버 시각. 새 메시지만 조회하는 앱이 이미 받아 둔 메시지가 지워졌음을 알려고 쓴다.
+ * 응답의 server_time 을 다음 조회의 since 로 쓰면 기기 시계가 어긋나도 놓치지 않는다.
+ * @param {{ roomId?: string | null, since: string }} options since 는 ISO 시각
+ * @returns {Promise<{ message_ids: number[], server_time: string }>}
+ */
+export const listDeletedMessages = ({ roomId, since }) => apiFetch(`/family-chat/messages/deleted?since=${encodeURIComponent(since)}${roomId ? `&${roomParam(roomId)}` : ""}`);
+
+/**
+ * 메시지에 내 반응을 정한다(한 사람이 한 메시지에 하나, 다른 이모지면 바뀐다). 허용 이모지 6개(❤️ 👍 😂 😮 😢 🙏)만. 오류: 400 invalid_reaction / message_deleted, 404.
+ * @param {{ roomId?: string | null, messageId: number, emoji: string }} options roomId 가 없으면 가족 전체방
+ * @returns {Promise<object>} 반응이 반영된 메시지(reactions: [{emoji, count, mine}])
+ */
+export const reactToMessage = ({ roomId, messageId, emoji }) => apiFetch(`/family-chat/messages/${Number(messageId)}/reaction${roomId ? `?${roomParam(roomId)}` : ""}`, { method: "PUT", body: { emoji } });
+
+/**
+ * 내 반응을 지운다(없어도 같은 결과).
+ * @param {{ roomId?: string | null, messageId: number }} options roomId 가 없으면 가족 전체방
+ * @returns {Promise<object>} 반응이 반영된 메시지
+ */
+export const removeReaction = ({ roomId, messageId }) => apiFetch(`/family-chat/messages/${Number(messageId)}/reaction${roomId ? `?${roomParam(roomId)}` : ""}`, { method: "DELETE" });
 
 /**
  * 사진 메시지를 보낸다(POST /family-chat/photos, multipart 'file' + 선택 form 필드 room_id). 8MB 이하 JPEG/PNG/WebP, 서버가 다시 만든다. AI 를 부르지 않는다.

@@ -2,10 +2,11 @@ import { useFocusEffect } from "expo-router";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AppState } from "react-native";
 
-import { getReadStates, getRoomInfo, listMessages, sendMessage, sendPhoto } from "./api";
+import { deleteMessage, getReadStates, getRoomInfo, listDeletedMessages, listMessages, reactToMessage, removeReaction, sendMessage, sendPhoto } from "./api";
 import { canSend, firstId, focusErrorMessage, isNoGroup, lastId, mergeMessages, nextPollDelay, photoSendErrorMessage, readStatesDue, roomErrorMessage, trimDraft } from "./chatUtils";
 import { applySavedNow, beginTransition, canLoadNewer, canReuseLiveRun, canLoadOlder, canPoll, enterLiveEnd, finishTransition, initialModeState, needsLiveBeforeSend, retryTarget, tokenValid, windowToken } from "./focusMode";
 import { FOCUS_PAGE, keepTemps, reachedLiveEnd, replaceWindow } from "./searchUtils";
+import { applyDeletedIds, markDeleted, markRepliesDeleted, messageActionError, refreshDue, refreshExisting, REFRESH_LIMIT, withMyReaction } from "./messageActions";
 
 const FIRST_PAGE = 50;
 const POLL_PAGE = 100;
@@ -56,7 +57,7 @@ export function useRoomInfo() {
  * 과거 보기 중에도 위(loadOlder)·아래(loadNewer)로 이어서 불러올 수 있고, 아래로 라이브 끝에 닿으면 자동으로 라이브로 돌아간다. returnToLive() 는 최근 50개를 다시 받아 라이브(폴링 재개)로 돌아간다.
  * 과거 보기에서 글·사진을 보내면 먼저 라이브로 돌아간 뒤 보낸다. initialFocus 가 있으면 처음부터 그 창으로 열고, 실패하면 최근 대화로 열고 안내 문구를 둔다.
  * @param {{ me: { id: string, name: string } | null, enabled?: boolean, roomId?: string | null, initialFocus?: number | null }} options enabled 가 false 면 아무것도 부르지 않는다, roomId 가 없으면 가족 전체방(방이 바뀌면 화면을 새로 연다)
- * @returns {{ recovered: number, focusing: boolean, focusTarget: { id: number, seq: number } | null, focusOn: (messageId: number) => Promise<boolean>, loadNewer: () => Promise<void>, loadingNewer: boolean, returnToLive: () => Promise<boolean>, messages: object[], readStates: { user_id: string, last_read_message_id: number }[] | null, status: "loading" | "ready" | "error", error: string, hasMore: boolean, loadingOlder: boolean, loadOlder: () => Promise<void>, send: (text: string) => Promise<boolean>, sendImage: (asset: object) => Promise<boolean>, photoBusy: boolean, photoError: string, setPhotoError: (message: string) => void, resend: (clientId: string) => Promise<void>, discard: (clientId: string) => void, retry: () => void }}
+ * @returns {{ recovered: number, focusing: boolean, focusTarget: { id: number, seq: number } | null, focusOn: (messageId: number) => Promise<boolean>, loadNewer: () => Promise<void>, loadingNewer: boolean, returnToLive: () => Promise<boolean>, messages: object[], readStates: { user_id: string, last_read_message_id: number }[] | null, status: "loading" | "ready" | "error", error: string, hasMore: boolean, loadingOlder: boolean, loadOlder: () => Promise<void>, send: (text: string, reply?: object | null) => Promise<boolean>, reactTo: (messageId: number|string, emoji: string | null) => Promise<{ ok: boolean, busy?: boolean, error?: object }>, deleteMine: (messageId: number|string) => Promise<{ ok: boolean, busy?: boolean, error?: object }>, sendImage: (asset: object) => Promise<boolean>, photoBusy: boolean, photoError: string, setPhotoError: (message: string) => void, resend: (clientId: string) => Promise<void>, discard: (clientId: string) => void, retry: () => void }}
  */
 export default function useChatMessages({ me, enabled = true, roomId = null, initialFocus = null }) {
   const [messages, setMessages] = useState([]);
@@ -84,6 +85,11 @@ export default function useChatMessages({ me, enabled = true, roomId = null, ini
   const again = useRef(false);
   const failures = useRef(0);
   const readFailures = useRef(0);
+  const refreshTicks = useRef(0); // 마지막 최근 메시지 다시 받기 뒤 지난 틱 수(반응·삭제를 따라가려고 가끔 다시 받는다)
+  const mutating = useRef(0); // 내가 보낸 반응·삭제 요청 수(그동안은 다시 받은 응답을 반영하지 않는다)
+  const mutationSeq = useRef(0); // 내 반응·삭제가 시작되거나 끝날 때마다 올라간다(그 사이에 받은 오래된 갱신 응답을 버리려고)
+  const deletedSince = useRef(null); // 삭제 조회 기준: 서버가 돌려준 마지막 server_time(처음에는 첫 조회로 알아 둔다)
+  const busyMsg = useRef(new Set()); // 같은 메시지에 반응·삭제를 연타해도 한 번에 하나만 보낸다
   const readTicks = useRef(0); // 마지막 읽음 조회 시도 뒤 지난 틱 수
   const readOff = useRef(false); // 404 를 받으면 이 세션 동안 조회를 끈다
   const older = useRef(false);
@@ -110,6 +116,22 @@ export default function useChatMessages({ me, enabled = true, roomId = null, ini
     if (alive.current) setMessages(ref.current);
   }, []);
 
+  /**
+   * 서버가 알려 주는 삭제(`GET /messages/deleted`)를 목록에 반영한다. 최근 50개 밖의 오래된 메시지나 과거 창에서도 남이 지운 글이 따라가게 한다.
+   * 처음에는 미래 시각으로 물어 서버 시각만 알아 두고(목록은 처음부터 삭제 표시를 받는다), 이후에는 마지막 server_time 이후만 묻는다. 실패는 조용히 넘기고 기준은 그대로 둔다.
+   */
+  const syncDeleted = useCallback(async () => {
+    try {
+      const since = deletedSince.current ?? new Date(Date.now() + 86400000).toISOString();
+      const res = await listDeletedMessages({ roomId: roomRef.current, since });
+      if (!alive.current || !res?.server_time) return;
+      deletedSince.current = res.server_time;
+      if (res.message_ids?.length) update((prev) => applyDeletedIds(prev, res.message_ids));
+    } catch {
+      // 다음 틱에 다시 한다
+    }
+  }, [update]);
+
   /** 새 메시지 확인. 겹치면 건너뛰지 않고 끝난 뒤 한 번 더 한다. */
   const fetchNew = useCallback(
     async function run() {
@@ -129,6 +151,7 @@ export default function useChatMessages({ me, enabled = true, roomId = null, ini
         update((prev) => mergeMessages(prev, rows));
         cursor.current = Math.max(cursor.current, lastId(rows));
         if (first && alive.current) setHasMore(rows.length >= FIRST_PAGE);
+        if (first) syncDeleted(); // 이 시점부터의 삭제를 따라가도록 서버 시각을 알아 둔다
         more = !first && rows.length >= POLL_PAGE; // 밀린 메시지가 더 있으면 바로 이어서
         failures.current = 0;
         if (alive.current) {
@@ -151,8 +174,25 @@ export default function useChatMessages({ me, enabled = true, roomId = null, ini
         }
       }
     },
-    [update],
+    [update, syncDeleted],
   );
+
+  /**
+   * 열어 둔 화면이 다른 사람의 반응·삭제를 따라가도록 최근 메시지를 다시 받아, 이미 가진 메시지만 갱신한다(새 메시지는 새 메시지 확인 몫이라 넣지 않는다).
+   * 내가 반응·삭제 요청 중이거나 과거 창을 보는 중이면 건너뛰고, 실패는 조용히 넘긴다.
+   */
+  const refreshVisible = useCallback(async () => {
+    if (!canPoll(ms.current) || mutating.current > 0) return;
+    const token = windowToken(ms.current);
+    const seq = mutationSeq.current;
+    try {
+      const rows = await listMessages({ latest: true, limit: REFRESH_LIMIT, roomId: roomRef.current });
+      if (!alive.current || !tokenValid(ms.current, token) || !canPoll(ms.current) || mutating.current > 0 || mutationSeq.current !== seq) return; // 그 사이 창이 바뀌었거나 내가 반응·삭제를 시작했거나 끝냈으면 오래된 응답이다
+      update((prev) => refreshExisting(prev, rows));
+    } catch {
+      // 갱신이 안 돼도 다음 틱에 다시 한다
+    }
+  }, [update]);
 
   /** 구성원별 읽음 위치 조회. 실패하면 숫자를 숨기고(null) 자체 실패 횟수만 올린다. 404 면 끈다. */
   const fetchReadStates = useCallback(async () => {
@@ -182,13 +222,19 @@ export default function useChatMessages({ me, enabled = true, roomId = null, ini
     const mine = generation.current; // 멈췄다 다시 켜졌을 때 이전 반복이 남아 두 개가 돌지 않게 한다
     const tick = async () => {
       await fetchNew();
+      refreshTicks.current += 1;
+      if (running.current && alive.current && generation.current === mine && refreshDue(refreshTicks.current)) {
+        refreshTicks.current = 0;
+        await syncDeleted();
+        await refreshVisible();
+      }
       readTicks.current += 1;
       if (running.current && alive.current && generation.current === mine && readStatesDue(readTicks.current, readFailures.current)) await fetchReadStates();
       if (!running.current || !alive.current || generation.current !== mine) return;
       timer.current = setTimeout(tick, nextPollDelay(failures.current));
     };
     tick();
-  }, [fetchNew, fetchReadStates]);
+  }, [fetchNew, fetchReadStates, refreshVisible, syncDeleted]);
 
   // 화면이 보이고 앱이 앞에 있을 때만 확인한다
   useFocusEffect(
@@ -355,13 +401,16 @@ export default function useChatMessages({ me, enabled = true, roomId = null, ini
   }, [update]);
 
   const deliver = useCallback(
-    async (clientId, text) => {
+    async (clientId, text, replyToId = null) => {
       try {
-        const saved = await sendMessage(text, roomRef.current);
+        const saved = await sendMessage(text, roomRef.current, replyToId);
         // 임시 메시지를 지우고 서버 메시지를 id 로 병합한다(폴링이 먼저 가져왔어도 중복되지 않는다). 그 사이 과거 창으로 옮겨 갔으면 병합하지 않는다.
         update((prev) => applySavedNow(prev, saved, ms.current, clientId));
-      } catch {
-        update((prev) => prev.map((m) => (m.clientId === clientId ? { ...m, status: "failed" } : m)));
+      } catch (e) {
+        const gone = e?.code === "reply_deleted";
+        // 답장하려던 원본이 지워졌으면 답장 표시를 떼서(다시 보내기는 답장 없이 간다) 같은 실패를 반복하지 않게 하고 이유를 알린다
+        update((prev) => prev.map((m) => (m.clientId === clientId ? { ...m, status: "failed", reply_to: gone ? null : m.reply_to } : m)));
+        if (gone && alive.current) setError(messageActionError(e, "reply"));
       }
     },
     [update],
@@ -378,10 +427,11 @@ export default function useChatMessages({ me, enabled = true, roomId = null, ini
   /**
    * 글을 보낸다. 과거 창에서는 먼저 라이브로 돌아가야 하고, 돌아가지 못하면 보내지 않는다(false).
    * @param {string} text
+   * @param {{ id: number, user_name: string, text: string, deleted: boolean, has_attachment: boolean } | null} [reply] 답장이면 원본 미리보기(replyPreview)
    * @returns {Promise<boolean>} 보내기를 시작했으면 true(전송 실패는 목록의 "전송 실패" 로 보인다)
    */
   const send = useCallback(
-    async (text) => {
+    async (text, reply = null) => {
       if (!canSend(text) || !meRef.current) return false;
       if (!(await ensureLive())) return false;
       const body = trimDraft(text);
@@ -395,9 +445,10 @@ export default function useChatMessages({ me, enabled = true, roomId = null, ini
         text: body,
         created_at: new Date().toISOString(),
         status: "sending",
+        reply_to: reply,
       };
       update((prev) => mergeMessages(prev, [temp]));
-      await deliver(clientId, body);
+      await deliver(clientId, body, reply?.id ?? null);
       return true;
     },
     [deliver, ensureLive, update],
@@ -438,9 +489,79 @@ export default function useChatMessages({ me, enabled = true, roomId = null, ini
       const target = ref.current.find((m) => m.clientId === clientId);
       if (!target) return;
       update((prev) => prev.map((m) => (m.clientId === clientId ? { ...m, status: "sending" } : m)));
-      await deliver(clientId, target.text);
+      await deliver(clientId, target.text, target.reply_to && !target.reply_to.deleted ? target.reply_to.id : null); // 원본이 지워졌으면 답장 없이 보낸다
     },
     [deliver, ensureLive, update],
+  );
+
+  /** id 가 같은 서버 메시지만 바꾼다(임시 메시지는 건드리지 않는다). */
+  const patchMessage = useCallback((id, patch) => update((prev) => prev.map((m) => (!m.clientId && Number(m.id) === id ? patch(m) : m))), [update]);
+
+  /**
+   * 내 반응을 정한다(emoji) 또는 지운다(emoji 가 null). 먼저 화면에 반영하고 실패하면 이전 반응으로 되돌린다.
+   * 같은 메시지에 요청이 진행 중이거나 지운 메시지면 보내지 않는다.
+   * @param {number|string} messageId
+   * @param {string | null} emoji
+   * @returns {Promise<{ ok: boolean, busy?: boolean, error?: object }>}
+   */
+  const reactTo = useCallback(
+    async (messageId, emoji) => {
+      const id = Number(messageId);
+      const before = ref.current.find((m) => !m.clientId && Number(m.id) === id);
+      if (!before || before.deleted) return { ok: false, error: { code: "message_deleted" } };
+      if (busyMsg.current.has(id)) return { ok: false, busy: true };
+      busyMsg.current.add(id);
+      mutating.current += 1;
+      mutationSeq.current += 1;
+      patchMessage(id, (m) => withMyReaction(m, emoji));
+      try {
+        const saved = await (emoji ? reactToMessage({ roomId: roomRef.current, messageId: id, emoji }) : removeReaction({ roomId: roomRef.current, messageId: id }));
+        patchMessage(id, (m) => ({ ...m, reactions: saved?.reactions ?? m.reactions })); // 서버가 센 값이 기준이다
+        return { ok: true };
+      } catch (error) {
+        patchMessage(id, (m) => ({ ...m, reactions: before.reactions }));
+        return { ok: false, error };
+      } finally {
+        busyMsg.current.delete(id);
+        mutating.current -= 1;
+        mutationSeq.current += 1;
+      }
+    },
+    [patchMessage],
+  );
+
+  /**
+   * 내가 보낸 메시지를 지운다. 먼저 "삭제된 메시지"로 바꿔 그리고(그 메시지를 인용한 답장도 삭제 표시) 실패하면 되돌린다.
+   * @param {number|string} messageId
+   * @returns {Promise<{ ok: boolean, busy?: boolean, error?: object }>}
+   */
+  const deleteMine = useCallback(
+    async (messageId) => {
+      const id = Number(messageId);
+      const before = ref.current.find((m) => !m.clientId && Number(m.id) === id);
+      if (!before) return { ok: false, error: { status: 404 } };
+      if (busyMsg.current.has(id)) return { ok: false, busy: true }; // 요청 중인 삭제를 다시 누르면(이미 낙관적으로 지워 보임) 성공으로 오해하지 않는다
+      if (before.deleted) return { ok: true };
+      busyMsg.current.add(id);
+      mutating.current += 1;
+      mutationSeq.current += 1;
+      const quotedBefore = ref.current.filter((m) => m.reply_to?.id === id && !m.reply_to.deleted).map((m) => ({ id: m.id, reply_to: m.reply_to }));
+      patchMessage(id, markDeleted);
+      update((prev) => markRepliesDeleted(prev, id));
+      try {
+        await deleteMessage({ roomId: roomRef.current, messageId: id });
+        return { ok: true };
+      } catch (error) {
+        patchMessage(id, () => before);
+        update((prev) => prev.map((m) => (quotedBefore.some((q) => q.id === m.id) ? { ...m, reply_to: quotedBefore.find((q) => q.id === m.id).reply_to } : m)));
+        return { ok: false, error };
+      } finally {
+        busyMsg.current.delete(id);
+        mutating.current -= 1;
+        mutationSeq.current += 1;
+      }
+    },
+    [patchMessage, update],
   );
 
   const discard = useCallback((clientId) => update((prev) => prev.filter((m) => m.clientId !== clientId)), [update]);
@@ -458,5 +579,5 @@ export default function useChatMessages({ me, enabled = true, roomId = null, ini
     fetchReadStates();
   }, [fetchNew, fetchReadStates, loadNewer, loadOlder, returnToLive]);
 
-  return { recovered, focusing, focusTarget, focusOn, loadNewer, loadingNewer, returnToLive, messages, readStates, status, error, hasMore, loadingOlder, loadOlder, send, sendImage, photoBusy, photoError, setPhotoError, resend, discard, retry };
+  return { recovered, focusing, focusTarget, focusOn, loadNewer, loadingNewer, returnToLive, messages, readStates, status, error, hasMore, loadingOlder, loadOlder, send, sendImage, photoBusy, photoError, setPhotoError, resend, discard, retry, reactTo, deleteMine };
 }

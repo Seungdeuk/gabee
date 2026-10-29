@@ -18,11 +18,12 @@ import ChatSearchResults from "../components/ChatSearchResults";
 import Composer from "../components/Composer";
 import LinksSheet from "../components/LinksSheet";
 import LiveReturnButton from "../components/LiveReturnButton";
-import MessageActionSheet from "../components/MessageActionSheet";
 import MessageBubble from "../components/MessageBubble";
+import MessageMenu from "../components/MessageMenu";
 import PinnedBar from "../components/PinnedBar";
 import RoomDrawer from "../components/RoomDrawer";
-import { COPIED_NOTICE, COPY_FAILED_NOTICE, canPin, pinTapAction } from "../pinUtils";
+import { HEART, canOpenMenu, messageActionError, reactionAction, replyPreview } from "../messageActions";
+import { COPIED_NOTICE, COPY_FAILED_NOTICE, pinTapAction } from "../pinUtils";
 import { parseFocusParam, roomSearchOptions, shouldLoadNewer } from "../searchUtils";
 import { takeFlag } from "../linkUtils";
 import { canSaveToRecord, saveToRecord } from "../saveToRecord";
@@ -40,6 +41,7 @@ const FAR = 400; // 바닥에서 이 이상 올라와 있으면 "맨 아래로" 
 const HIGHLIGHT_MS = 2000; // 검색 결과로 이동한 메시지를 강조해 두는 시간
 const SETTLE_MS = 600; // 이동 직후 이 시간 동안은 위로 자동 불러오기를 막아 이동 위치가 밀리지 않게 한다
 const NO_MESSAGES = []; // 과거 창을 보는 동안 읽음 처리에 넘기는 빈 목록
+const END_SETTLE_MS = 150; // 맨 아래로 간 뒤 마지막 항목 높이가 확정되길 기다리는 시간
 
 /** 가족 전체방의 사진을 AI 비서의 가족 기록으로 올린다(사진 보기의 "가비 기록에 저장"). */
 const savePhotoToRecord = (attachment) => saveToRecord(attachment, Platform.OS);
@@ -82,6 +84,8 @@ export default function ChatRoomScreen() {
   const mention = useMention(); // @가비 로 부른 뒤 나에게만 보이는 답·안내
   const listRef = useRef(null);
   const nearBottom = useRef(initialFocus == null);
+  const lastScrollY = useRef(0); // 직전 스크롤 위치(위로 올렸는지 알아보려고)
+  const endTimer = useRef(null); // 마지막 항목의 높이가 확정된 뒤 한 번 더 맨 아래로 맞추는 타이머
   const itemsRef = useRef([]);
   const pinHighlightTimer = useRef(null); // 강조 해제 타이머(고정 바 이동·포커스 이동이 함께 쓴다 — 새 이동이 시작되면 앞의 것을 지운다)
   const pinSettleTimer = useRef(null); // 위로 불러오기 잠금 해제 타이머(같은 이유로 공유)
@@ -94,7 +98,8 @@ export default function ChatRoomScreen() {
   const [far, setFar] = useState(false); // 바닥에서 멀리 올라와 있는지
   const [hasNew, setHasNew] = useState(false); // 올라와 있는 동안 새 메시지가 왔는지
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const [actionMessage, setActionMessage] = useState(null); // 길게 눌러 메뉴를 연 메시지
+  const [menu, setMenu] = useState(null); // 길게 눌러 메뉴를 연 메시지 { message, anchor }
+  const [replyTo, setReplyTo] = useState(null); // 답장하려고 고른 원본 미리보기(입력창 위 바)
   const newestId = useRef(0);
   // 채팅 메시지 응답에는 사진 주소가 없어서 구성원 목록에서 user_id 로 찾는다
   const photoById = useMemo(() => Object.fromEntries((info.room?.members ?? []).map((m) => [m.id, m.photo_url ?? null])), [info.room]);
@@ -107,9 +112,14 @@ export default function ChatRoomScreen() {
   const onScroll = useCallback(
     ({ nativeEvent: { contentOffset, contentSize, layoutMeasurement } }) => {
       const fromBottom = contentSize.height - (contentOffset.y + layoutMeasurement.height);
-      nearBottom.current = fromBottom < NEAR;
-      setFar(fromBottom > FAR);
-      if (fromBottom <= FAR) setHasNew(false);
+      // 바닥을 따라가는 중(nearBottom)인지는 "바닥 근처에 닿았다"와 "사용자가 위로 올렸다"로만 바꾼다.
+      // 아직 그려지지 않은 아래 항목 때문에 내용이 길어져 바닥에서 멀어 보이는 것만으로는 따라가기를 멈추지 않는다(그러면 처음 열 때·보낸 직후 마지막 메시지가 입력창에 가려졌다).
+      const scrolledUp = contentOffset.y < lastScrollY.current - 2;
+      lastScrollY.current = contentOffset.y;
+      if (fromBottom < NEAR) nearBottom.current = true;
+      else if (scrolledUp) nearBottom.current = false;
+      setFar(!nearBottom.current && fromBottom > FAR);
+      if (nearBottom.current || fromBottom <= FAR) setHasNew(false);
       scrollPos.current.y = contentOffset.y;
       if (contentOffset.y < NEAR && !settling.current) {
         olderRequested.current = true;
@@ -123,12 +133,15 @@ export default function ChatRoomScreen() {
   const onSend = () => {
     if (!canSend(draft)) return;
     const text = trimDraft(draft);
+    const reply = replyTo;
     setDraft("");
+    setReplyTo(null);
     nearBottom.current = true;
     const called = direct ? { mentioned: false, question: "" } : parseMention(text); // 1:1 방에서는 가비를 부를 수 없다(1:1 대화는 AI 로 보내지 않는다)
-    chat.send(text).then((started) => {
+    chat.send(text, reply).then((started) => {
       if (!started) {
-        setDraft((prev) => prev || text); // 보내지 못했으면(최신 대화로 돌아가지 못함 등) 쓴 글을 되돌려 놓는다
+        setDraft((prev) => prev || text); // 보내지 못했으면(최신 대화로 돌아가지 못함 등) 쓴 글과 답장 대상을 되돌려 놓는다
+        setReplyTo((prev) => prev ?? reply);
         return;
       }
       if (called.mentioned) mention.ask(called.question);
@@ -165,9 +178,17 @@ export default function ChatRoomScreen() {
       clearTimeout(pinHighlightTimer.current);
       clearTimeout(pinSettleTimer.current);
       clearTimeout(linksTimer.current);
+      clearTimeout(endTimer.current);
     },
     [],
   );
+
+  useEffect(() => {
+    if (replyTo && chat.messages.some((m) => !m.clientId && Number(m.id) === replyTo.id && m.deleted)) {
+      setReplyTo(null); // 원본이 지워지면 답장할 수 없다
+      pins.say("답장하려던 메시지가 삭제됐어요");
+    }
+  }, [chat.messages, replyTo, pins]);
 
   useEffect(() => {
     const newest = lastId(chat.messages);
@@ -242,10 +263,38 @@ export default function ChatRoomScreen() {
     else nearBottom.current = false;
   };
 
-  const closeActions = () => setActionMessage(null);
+  const closeMenu = () => setMenu(null);
+  const openMenu = (message, anchor) => setMenu({ message, anchor });
+  /** 내 반응을 켜거나(다른 이모지면 바꾸고) 같은 이모지를 다시 누르면 끈다. 실패하면 이유를 안내 줄에 보인다. */
+  const runReaction = async (message, emoji) => {
+    const action = reactionAction(message, emoji);
+    const res = await chat.reactTo(message.id, action.type === "remove" ? null : emoji);
+    if (!res.ok && !res.busy) pins.say(messageActionError(res.error, "react"));
+  };
+  const heart = (message) => runReaction(message, HEART);
+  const reactFromMenu = (emoji) => {
+    const opened = menu?.message;
+    closeMenu();
+    if (!opened) return;
+    const latest = chat.messages.find((m) => !m.clientId && Number(m.id) === Number(opened.id)) ?? opened; // 메뉴를 연 뒤 내 반응이 바뀌었을 수 있어 최신 상태로 켜고 끈다
+    runReaction(latest, emoji);
+  };
+  const replyFromMenu = () => {
+    const message = menu?.message;
+    closeMenu();
+    if (message) setReplyTo(replyPreview(message, nameOf));
+  };
+  const deleteFromMenu = async () => {
+    const message = menu?.message;
+    closeMenu();
+    if (!message) return;
+    const res = await chat.deleteMine(message.id);
+    if (res.ok) pins.say("메시지를 삭제했어요");
+    else if (!res.busy) pins.say(messageActionError(res.error, "delete"));
+  };
   const copyMessage = () => {
-    const text = actionMessage?.text;
-    closeActions();
+    const text = menu?.message?.text;
+    closeMenu();
     if (text) Clipboard.setStringAsync(text).then(() => pins.say(COPIED_NOTICE), () => pins.say(COPY_FAILED_NOTICE));
   };
   /** 고정 바 항목: 이미 목록에 있는 라이브 메시지면 스크롤+강조만, 아니면 그 위치 창을 불러온다. */
@@ -293,13 +342,13 @@ export default function ChatRoomScreen() {
     pickPin(messageId);
   };
   const pinMessageFromMenu = () => {
-    const message = actionMessage;
-    closeActions();
+    const message = menu?.message;
+    closeMenu();
     pins.pin(message);
   };
   const unpinMessageFromMenu = () => {
-    const id = actionMessage?.id;
-    closeActions();
+    const id = menu?.message?.id;
+    closeMenu();
     pins.unpin(id);
   };
   const nameOf = (userId) => {
@@ -419,7 +468,10 @@ export default function ChatRoomScreen() {
                 highlighted={highlightId != null && String(item.message.id) === String(highlightId)}
                 onRetry={chat.resend}
                 onDiscard={chat.discard}
-                onActions={canPin(item.message) ? setActionMessage : undefined}
+                onActions={canOpenMenu(item.message) ? openMenu : undefined}
+                onHeart={canOpenMenu(item.message) ? heart : undefined}
+                onReactionPress={canOpenMenu(item.message) ? runReaction : undefined}
+                onReplyPress={pickPin}
                 linkBadges={links.badgesOf(item.message.id)}
                 onSaveToRecord={canSaveToRecord({ direct, attachment: item.message.attachment }) ? savePhotoToRecord : undefined}
               />
@@ -442,6 +494,11 @@ export default function ChatRoomScreen() {
               listRef.current?.scrollToOffset({ offset: scrollPos.current.y + grew, animated: false });
             } else if (nearBottom.current && !chat.focusing) {
               scrollToEnd(false);
+              // 목록은 아직 그려지지 않았거나 높이가 바뀌는 마지막 항목(전송 중 → 보낸 시각·읽음 수) 때문에 한 번에 끝까지 못 갈 수 있어, 잠시 뒤 한 번 더 맞춘다
+              clearTimeout(endTimer.current);
+              endTimer.current = setTimeout(() => {
+                if (nearBottom.current && !chat.focusing) scrollToEnd(false);
+              }, END_SETTLE_MS);
             }
             scrollPos.current.height = height;
           }}
@@ -469,6 +526,8 @@ export default function ChatRoomScreen() {
           photoBusy={pickingUi || chat.photoBusy}
           photoError={chat.photoError}
           onDismissPhotoError={() => chat.setPhotoError("")}
+          replyTo={replyTo}
+          onCancelReply={() => setReplyTo(null)}
         />
       </>
     );
@@ -490,7 +549,7 @@ export default function ChatRoomScreen() {
       </KeyboardAvoidingView>
       <RoomDrawer visible={drawerOpen} onClose={() => setDrawerOpen(false)} room={info.room} roomId={roomId} peerId={peerId} myId={info.me?.id} onOpenSearch={() => setSearchOpen(true)} onOpenPins={pins.showPins} onOpenLinks={openLinks} onClosed={showLinksSheet} />
       <LinksSheet visible={linksOpen} onClose={() => setLinksOpen(false)} links={links.links} status={links.status} myId={info.me?.id} notice={links.notice} onPick={pickLink} onDelete={links.remove} onRetry={links.reload} />
-      <MessageActionSheet message={actionMessage} pinned={pins.isPinned(actionMessage?.id)} onClose={closeActions} onCopy={copyMessage} onPin={pinMessageFromMenu} onUnpin={unpinMessageFromMenu} />
+      <MessageMenu target={menu} myId={info.me?.id} pinned={pins.isPinned(menu?.message?.id)} onClose={closeMenu} onReact={reactFromMenu} onReply={replyFromMenu} onPin={pinMessageFromMenu} onUnpin={unpinMessageFromMenu} onCopy={copyMessage} onDelete={deleteFromMenu} />
       {direct ? null : <AiPanel visible={aiOpen} onClose={() => setAiOpen(false)} onPickReply={pickReply} onLinked={links.registerCandidate} />}
     </SafeAreaView>
   );
