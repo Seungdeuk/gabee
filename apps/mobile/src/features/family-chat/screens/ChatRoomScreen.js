@@ -68,7 +68,7 @@ export default function ChatRoomScreen() {
   // 과거 창을 보는 동안은 읽음 위치를 올리지 않는다(보고 있지 않은 최신 메시지를 읽음 처리하면 안 된다)
   useReadMarker({ messages: chat.focusing ? NO_MESSAGES : chat.messages, myId: info.me?.id, enabled: info.status === "ready", roomId });
   const pins = useChatPins({ roomId, enabled: info.status === "ready", me: info.me }); // 고정 바는 과거(포커스) 모드에서도 유지된다
-  const links = useChatLinks({ roomId, enabled: info.status === "ready", me: info.me, poll: !direct, findMessage: (id) => chat.messages.find((m) => !m.clientId && Number(m.id) === id) }); // 일정·할 일로 등록한 메시지 연결(말풍선 표시·서랍 목록)
+  const links = useChatLinks({ roomId, enabled: info.status === "ready", me: info.me, poll: !direct, findMessage: (id) => chat.messages.find((m) => !m.clientId && Number(m.id) === id) }); // 일정·할 일로 등록한 메시지 연결(말풍선 표시)
   const familyRoom = useFamilyRoomId(!direct); // 가족 전체방은 경로에 방 id 가 없어 방 목록에서 알아낸다
   const search = useChatSearch(roomSearchOptions(roomId, familyRoom.id)); // 방 id 를 알기 전에는 검색하지 않는다(모든 방 검색으로 떨어지지 않게)
   const [searchOpen, setSearchOpen] = useState(false);

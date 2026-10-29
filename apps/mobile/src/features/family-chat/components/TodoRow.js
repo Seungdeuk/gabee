@@ -39,7 +39,7 @@ export default function TodoRow({ todo, members, onToggle, onEdit, onOpenOrigin 
         ) : null}
       </Pressable>
       {onOpenOrigin ? (
-        <Pressable onPress={onOpenOrigin} hitSlop={spacing.xs} accessibilityRole="button" accessibilityLabel={`${todo.title} 만든 대화 원본 보기`} style={styles.origin}>
+        <Pressable onPress={onOpenOrigin} hitSlop={spacing.xs} accessibilityRole="button" accessibilityLabel={`할 일 원본 대화 보기: ${todo.title}`} style={styles.origin}>
           <Ionicons name="chatbubble-ellipses-outline" size={18} color={colors.textSub} />
           <Text style={styles.originText}>원본</Text>
         </Pressable>

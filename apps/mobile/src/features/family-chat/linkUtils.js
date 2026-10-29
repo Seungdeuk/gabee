@@ -264,7 +264,7 @@ export function linkA11yLabel(link, nameOfSender) {
 
 /**
  * 다음 조회까지 기다릴 시간: 정상이면 30초, 연속 실패마다 두 배로 늘어 최대 2분(고정 메시지와 같다).
- * poll 이 false(1:1 방: 연결을 만드는 경로가 없어 처음과 시트를 열 때만 조회)면 null — 반복하지 않는다.
+ * poll 이 false(1:1 방: 연결을 만드는 경로가 없어 처음에만 조회)면 null — 반복하지 않는다.
  * @param {number} failures
  * @param {boolean} [poll]
  * @returns {number | null} 밀리초
