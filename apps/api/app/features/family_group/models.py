@@ -12,6 +12,7 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
     text,
+    true,
 )
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -74,6 +75,10 @@ class Group(Base):
     name: Mapped[str] = mapped_column(String(60))
     owner_id: Mapped[str] = mapped_column(ForeignKey("users.id"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    # 초대 코드로 들어온 사람을 관리자 승인 없이 바로 구성원으로 넣을지. 관리자(owner/admin)가 켜고 끈다
+    auto_approve_invites: Mapped[bool] = mapped_column(
+        Boolean, default=True, server_default=true()
+    )
 
 
 class GroupMember(Base):
