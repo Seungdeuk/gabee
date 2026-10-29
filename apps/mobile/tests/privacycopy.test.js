@@ -107,7 +107,7 @@ test("AI 패널에는 켜기·끄기 버튼이 없고 대화 분석하기만 있
 
 test("대화 분석하기는 AI 설정이 꺼져 있을 때만 먼저 켜고(분석을 누른 때 한정) 켜져 있으면 곧바로 분석한다", () => {
   const src = panel();
-  const analyze = src.match(/const analyze = \(\) =>[\s\S]*?\n {4}\}, \(res\)/)?.[0] ?? "";
+  const analyze = src.match(/const analyzeNow = \(\) =>[\s\S]*?\n {4}\}, \(res\)/)?.[0] ?? "";
   assert.match(analyze, /settings\?\.enabled === false\) await setAiEnabled\(true\)/);
   assert.match(analyze, /return analyzeChat\(\)/);
   assert.equal((src.match(/setAiEnabled\(/g) ?? []).length, 1); // 다른 곳에서 켜거나 끄지 않는다

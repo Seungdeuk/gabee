@@ -27,7 +27,7 @@ afterEach(() => {
 const json = (status, body) => new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
 
 test("AI 오류 문구: 서버 코드를 사용자 문장으로, 대화 내용은 넣지 않는다", () => {
-  assert.match(chatErrorMessage({ code: "ai_not_enabled" }), /켜 주세요/);
+  assert.match(chatErrorMessage({ code: "ai_not_enabled" }), /다시 눌러 주세요/);
   assert.match(chatErrorMessage({ code: "not_manager" }), /관리자/);
   assert.match(chatErrorMessage({ code: "ai_cooldown", retryAfter: 30 }), /30초/);
   assert.match(chatErrorMessage({ code: "ai_cooldown", retryAfter: 90 }), /2분/);

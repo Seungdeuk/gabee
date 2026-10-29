@@ -39,7 +39,7 @@ function PickList({ items, emptyText, labelPrefix, testIDPrefix, onPick }) {
 }
 
 /**
- * 채팅방 안 AI 대화 도우미 시트. 열릴 때 설정만 한 번 읽는다. "대화 분석하기" 버튼을 누르면 곧바로 AI 를 한 번 부른다(개인정보 설명·동의는 "AI 켜기" 동의 카드에서 받는다).
+ * 채팅방 안 AI 대화 도우미 시트. 열릴 때 설정만 한 번 읽는다. "대화 분석하기" 버튼을 누르면 곧바로 AI 를 한 번 부른다(AI 동의는 회원가입 때 받는다).
  * 켜진 상태에는 항상 보이는 한 줄 안내(PANEL_NOTICE)를 둔다. 요약·일정·할 일 후보·답장 추천·대화 주제 추천이 한 결과 화면에 나온다.
  * 결과는 서버에 잠시(약 10분) 저장돼 같은 요청에 다시 쓰인다.
  * 닫아도 컴포넌트는 유지되어 마지막 결과를 다시 열면 보여 준다. 닫혀 있는 동안에는 아무 호출도 하지 않는다.
@@ -50,13 +50,14 @@ function PickList({ items, emptyText, labelPrefix, testIDPrefix, onPick }) {
 export default function AiPanel({ visible, onClose, onPickReply, onLinked }) {
   const [settings, setSettings] = useState(null); // parseAiSettings 결과
   const [loadError, setLoadError] = useState("");
-  const [busy, setBusy] = useState(""); // "settings" | "analysis" | ""
+  const [busy, setBusy] = useState(""); // "analysis" | ""
   const [error, setError] = useState("");
   const [analysis, setAnalysis] = useState(null);
   const [registered, setRegistered] = useState({}); // 후보 순번 -> "ok" | "sending" | 오류 문구
   const [todoRegistered, setTodoRegistered] = useState({}); // 할 일 후보 순번 -> 같은 형태(함께하기로 보낸 결과)
   const [todoDay, setTodoDay] = useState({}); // 날짜가 없는 할 일 후보 순번 -> 고른 날짜 칩 key
   const [todoCustom, setTodoCustom] = useState({}); // 직접 입력을 고른 후보 순번 -> 적은 날짜 글자
+  const analyzing = useRef(false); // 분석(필요하면 켜기 포함)을 빠르게 두 번 눌러도 한 번만 보낸다
   const todoBusy = useRef(new Set()); // 등록 중이거나 등록된 할 일 후보 순번: 같은 후보를 두 번 등록하지 않는다
 
   const loadSettings = useCallback(async () => {
@@ -89,7 +90,16 @@ export default function AiPanel({ visible, onClose, onPickReply, onLinked }) {
    * "대화 분석하기"/"다시 분석하기": 누르면 곧바로 분석 API 를 한 번 호출한다. AI 동의는 회원가입 때 받으므로 켜기·끄기 버튼은 없다.
    * 이 가족의 AI 설정이 꺼져 있으면(예전에 꺼 둔 경우) 분석을 누른 때에 한해 먼저 켠 뒤 분석한다(안 켜면 서버가 ai_not_enabled 로 막는다).
    */
-  const analyze = () =>
+  const analyze = async () => {
+    if (analyzing.current) return;
+    analyzing.current = true;
+    try {
+      await analyzeNow();
+    } finally {
+      analyzing.current = false;
+    }
+  };
+  const analyzeNow = () =>
     run("analysis", async () => {
       if (settings?.enabled === false) await setAiEnabled(true);
       return analyzeChat();
@@ -327,8 +337,6 @@ const styles = StyleSheet.create({
   success: { ...font.caption, color: colors.success },
   error: { ...font.body, color: colors.danger },
   loading: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
-  row: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
   result: { gap: spacing.xs, backgroundColor: colors.card, borderRadius: 14, padding: spacing.md },
-  offCard: { gap: spacing.xs, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, padding: spacing.md },
   candidate: { gap: spacing.xs, paddingVertical: spacing.xs },
 });
