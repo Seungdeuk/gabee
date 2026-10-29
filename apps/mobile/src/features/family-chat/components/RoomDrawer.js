@@ -78,7 +78,7 @@ export default function RoomDrawer({ visible, onClose, room, roomId, peerId, myI
     if (action.type === "media") router.push({ pathname: "/chat-media", params: { ...(roomId ? { roomId } : {}), ...(peerId ? { peer: peerId } : {}) } });
     else if (action.type === "familytodos") router.push("/family-todos");
     else if (action.type === "pins") router.push({ pathname: "/chat-board", params: { ...(roomId ? { roomId } : {}), ...(peerId ? { peer: peerId } : {}) } });
-    else onOpenLinks();
+    else if (action.type === "links") onOpenLinks?.();
   };
 
   return (

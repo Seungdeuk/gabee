@@ -206,7 +206,7 @@ const SETTING_ROWS = [
 
 /**
  * 방 종류별 서랍 행. 채팅 관리: 게시판 · 사진 · 동영상 · 가족 일정 · 할 일 · 가족 할 일, 채팅방 설정: 알림 설정(준비 중) · 채팅방 나가기. 검색은 채팅방 위 돋보기로 하고,
- * 구성원 초대·관리, AI · 개인정보 설정, 채팅방 정보 수정, 공유 문서 행은 서랍에서 뺐다. familyOnly 행은 1:1 에서 숨기는 표시이고 지금은 해당하는 행이 없다.
+ * 구성원 초대·관리, AI · 개인정보 설정, 채팅방 정보 수정, 공유 문서 행은 서랍에서 뺐다. 가족방과 1:1 방의 행은 같다.
  * 각 행의 state: "open" 이면 동작, "soon" 이면 "준비 중" 배지. 게시판 행은 연결(pinsReady), 가족 일정 · 할 일 행은 연결(linksReady)이 있을 때만 동작한다.
  * 나가기 행의 notice 는 눌렀을 때의 안내 문구다.
  * @param {{ direct: boolean, pinsReady?: boolean, linksReady?: boolean }} args
@@ -214,24 +214,18 @@ const SETTING_ROWS = [
  */
 export function buildDrawerSections({ direct, pinsReady = false, linksReady = false }) {
   /**
-   * 정의 행을 화면 행으로: 동작 여부(state)와 나가기 안내(notice)를 붙이고 방 종류 표시(familyOnly)는 뗀다.
+   * 정의 행을 화면 행으로: 동작 여부(state)와 나가기 안내(notice)를 붙인다.
    * @param {object} row
    * @returns {object}
    */
   const make = (row) => {
-    const { familyOnly: _familyOnly, ...rest } = row;
     const live = row.action === "open" || (row.action === "pins" && pinsReady) || (row.action === "links" && linksReady);
     const state = row.action === "leave" ? "open" : live ? "open" : "soon";
-    return { ...rest, state, ...(row.action === "leave" ? { notice: direct ? SOON_NOTICE : FAMILY_LEAVE_NOTICE } : {}) };
+    return { ...row, state, ...(row.action === "leave" ? { notice: direct ? SOON_NOTICE : FAMILY_LEAVE_NOTICE } : {}) };
   };
-  /**
-   * @param {{ familyOnly?: boolean }} row
-   * @returns {boolean} 이 방 종류에서 보이는 행인지
-   */
-  const keep = (row) => !(direct && row.familyOnly);
   return [
-    { title: "채팅 관리", rows: MANAGE_ROWS.filter(keep).map(make) },
-    { title: "채팅방 설정", rows: SETTING_ROWS.filter(keep).map(make) },
+    { title: "채팅 관리", rows: MANAGE_ROWS.map(make) },
+    { title: "채팅방 설정", rows: SETTING_ROWS.map(make) },
   ];
 }
 
