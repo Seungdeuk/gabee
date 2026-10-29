@@ -36,24 +36,30 @@ def _check_rate(user_id: str) -> None:
     limiter.record(key)
 
 
-def _item(pin: ChatPinnedMessage, m: Message, author: str, pinner: str) -> PinItem:
+def _item(
+    pin: ChatPinnedMessage, m: Message, author: str, pinner: str, hidden: bool = False
+) -> PinItem:
+    # 올릴 때의 본문 사본을 쓴다. 사본이 없는 옛 행은 원본 본문(지워졌으면 빈 글자)으로 대신한다
+    text = pin.text if pin.text is not None else m.text
     return PinItem(
         message_id=m.id,
-        text=m.text[:TEXT_LIMIT],
-        text_truncated=len(m.text) > TEXT_LIMIT,
+        text=text[:TEXT_LIMIT],
+        text_truncated=len(text) > TEXT_LIMIT,
         user_id=m.user_id,
         user_name=author,
         created_at=m.created_at,
         pinned_by=pin.pinned_by,
         pinned_by_name=pinner,
         pinned_at=pin.pinned_at,
+        message_deleted=m.deleted_at is not None,
+        hidden=hidden,
     )
 
 
 def list_pins(db: Session, user: User, group_id: str, room_id: str | None = None) -> PinsOut:
     room = resolve_room(db, user, group_id, room_id)
-    rows = prepo.pin_rows(db, room.id, prepo.MAX_PINS)
-    return PinsOut(items=[_item(p, m, a, b) for p, m, a, b in rows])
+    rows = prepo.pin_rows(db, room.id, prepo.MAX_PINS, user.id)
+    return PinsOut(items=[_item(p, m, a, b, h) for p, m, a, b, h in rows])
 
 
 def pin(db: Session, user: User, group_id: str, message_id: int, room_id: str | None) -> PinResult:
@@ -72,7 +78,7 @@ def pin(db: Session, user: User, group_id: str, message_id: int, room_id: str | 
     pinner = prepo.user_name(db, pin_row.pinned_by) if pin_row else user.name
     already = pin_row is not None
     if not already:
-        pin_row = prepo.add_pin(db, group_id, room.id, message.id, user.id)
+        pin_row = prepo.add_pin(db, group_id, room.id, message.id, user.id, message.text)
         if pin_row is None:  # 겹친 요청이 먼저 고정했다(유니크 충돌)
             already = True
             pin_row = prepo.get_pin(db, room.id, message.id)
@@ -86,7 +92,7 @@ def pin(db: Session, user: User, group_id: str, message_id: int, room_id: str | 
     if pin_row is None:  # 겹친 고정이 곧바로 해제된 드문 경우
         raise ApiError(409, "pin_changed", "고정 상태가 바뀌었어요. 다시 시도해 주세요")
     # 응답은 commit 전에, 잠금 안에서 만든다(commit 뒤 다시 조회하면 그 사이 다른 구성원의 해제·교체와 겹칠 수 있다)
-    item = _item(pin_row, message, author, pinner)
+    item = _item(pin_row, message, author, pinner, prepo.is_hidden(db, pin_row.id, user.id))
     db.commit()
     return PinResult(item=item, replaced_message_id=replaced, already_pinned=already)
 
@@ -96,3 +102,20 @@ def unpin(db: Session, user: User, group_id: str, message_id: int, room_id: str 
     room = resolve_room(db, user, group_id, room_id)
     if not prepo.delete_pin(db, room.id, message_id):
         raise not_found("고정된 메시지")
+
+
+def hide(
+    db: Session, user: User, group_id: str, message_id: int, room_id: str | None, hidden: bool
+) -> PinItem:
+    """이 공지를 나만 숨기거나(hidden=True) 다시 보이게 한다. 다른 구성원에게는 영향이 없다. 올라가 있지 않은 공지는 404."""
+    _check_rate(user.id)
+    room = resolve_room(db, user, group_id, room_id)
+    pin_row = prepo.get_pin(db, room.id, message_id)
+    if pin_row is None:
+        raise not_found("고정된 메시지")
+    prepo.set_hidden(db, pin_row.id, user.id, hidden)
+    rows = prepo.pin_rows(db, room.id, 1, user.id, message_id)
+    if not rows:  # 겹친 요청이 그 사이에 내렸다
+        raise not_found("고정된 메시지")
+    p, m, author, pinner, is_hidden = rows[0]
+    return _item(p, m, author, pinner, is_hidden)
