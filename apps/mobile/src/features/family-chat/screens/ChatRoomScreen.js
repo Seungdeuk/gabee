@@ -1,5 +1,5 @@
 import { Ionicons } from "@expo/vector-icons";
-import { useLocalSearchParams, useRouter } from "expo-router";
+import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as Clipboard from "expo-clipboard";
 import { ActivityIndicator, FlatList, KeyboardAvoidingView, Platform, Pressable, StyleSheet, Text, View } from "react-native";
@@ -103,6 +103,29 @@ export default function ChatRoomScreen() {
   const back = () => (router.canGoBack() ? router.back() : router.replace("/family-chat"));
 
   const scrollToEnd = useCallback((animated) => listRef.current?.scrollToEnd({ animated }), []);
+
+  // 서랍에서 다른 화면(게시판·가족 할 일·사진 모음 등)을 열었다가 뒤로 돌아오면 가장 최근 메시지가 보이게 한다(검색 결과로 이동한 과거 창을 보는 중이면 그대로 둔다).
+  const leftRoom = useRef(false);
+  const focusingRef = useRef(false);
+  focusingRef.current = chat.focusing;
+  useFocusEffect(
+    useCallback(() => {
+      const timers = [];
+      if (leftRoom.current) {
+        leftRoom.current = false;
+        const toLatest = () => {
+          if (focusingRef.current) return;
+          nearBottom.current = true;
+          scrollToEnd(false);
+        };
+        timers.push(setTimeout(toLatest, 80), setTimeout(toLatest, 400)); // 목록이 다시 그려지며 높이가 바뀌므로 한 번 더 맞춘다
+      }
+      return () => {
+        timers.forEach(clearTimeout);
+        leftRoom.current = true;
+      };
+    }, [scrollToEnd]),
+  );
 
   const onScroll = useCallback(
     ({ nativeEvent: { contentOffset, contentSize, layoutMeasurement } }) => {
