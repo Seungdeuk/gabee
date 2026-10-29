@@ -194,6 +194,7 @@ export function canSend(text) {
  */
 export function previewText(message, myId = null) {
   if (!message) return "아직 대화가 없어요";
+  if (message.deleted) return "삭제된 메시지입니다";
   const body = String(message.text ?? "").replace(/\s+/g, " ").trim() || (message.attachment ? "사진" : "");
   return myId && message.user_id === myId ? `나: ${body}` : body;
 }
