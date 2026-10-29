@@ -1,5 +1,5 @@
 import { Ionicons } from "@expo/vector-icons";
-import { useLocalSearchParams, useRouter } from "expo-router";
+import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as Clipboard from "expo-clipboard";
 import { ActivityIndicator, FlatList, KeyboardAvoidingView, Platform, Pressable, StyleSheet, Text, View } from "react-native";
@@ -16,7 +16,6 @@ import AssistantNote from "../components/AssistantNote";
 import ChatSearchBar from "../components/ChatSearchBar";
 import ChatSearchResults from "../components/ChatSearchResults";
 import Composer from "../components/Composer";
-import LinksSheet from "../components/LinksSheet";
 import LiveReturnButton from "../components/LiveReturnButton";
 import MessageBubble from "../components/MessageBubble";
 import MessageMenu from "../components/MessageMenu";
@@ -25,7 +24,6 @@ import RoomDrawer from "../components/RoomDrawer";
 import { HEART, canOpenMenu, messageActionError, reactionAction, replyPreview } from "../messageActions";
 import { COPIED_NOTICE, COPY_FAILED_NOTICE, pinTapAction } from "../pinUtils";
 import { parseFocusParam, roomSearchOptions, shouldLoadNewer } from "../searchUtils";
-import { takeFlag } from "../linkUtils";
 import { canSaveToRecord, saveToRecord } from "../saveToRecord";
 import useChatLinks from "../useChatLinks";
 import useChatMessages, { useRoomInfo } from "../useChatMessages";
@@ -70,10 +68,7 @@ export default function ChatRoomScreen() {
   // 과거 창을 보는 동안은 읽음 위치를 올리지 않는다(보고 있지 않은 최신 메시지를 읽음 처리하면 안 된다)
   useReadMarker({ messages: chat.focusing ? NO_MESSAGES : chat.messages, myId: info.me?.id, enabled: info.status === "ready", roomId });
   const pins = useChatPins({ roomId, enabled: info.status === "ready", me: info.me }); // 고정 바는 과거(포커스) 모드에서도 유지된다
-  const links = useChatLinks({ roomId, enabled: info.status === "ready", me: info.me, poll: !direct, findMessage: (id) => chat.messages.find((m) => !m.clientId && Number(m.id) === id) }); // 일정·할 일로 등록한 메시지 연결(말풍선 표시·서랍 목록)
-  const [linksOpen, setLinksOpen] = useState(false);
-  const linksTimer = useRef(null);
-  const linksWanted = useRef(false); // 서랍을 닫은 뒤 목록 시트를 열어야 하는지(한 번만)
+  const links = useChatLinks({ roomId, enabled: info.status === "ready", me: info.me, poll: !direct, findMessage: (id) => chat.messages.find((m) => !m.clientId && Number(m.id) === id) }); // 일정·할 일로 등록한 메시지 연결(말풍선 표시)
   const familyRoom = useFamilyRoomId(!direct); // 가족 전체방은 경로에 방 id 가 없어 방 목록에서 알아낸다
   const search = useChatSearch(roomSearchOptions(roomId, familyRoom.id)); // 방 id 를 알기 전에는 검색하지 않는다(모든 방 검색으로 떨어지지 않게)
   const [searchOpen, setSearchOpen] = useState(false);
@@ -108,6 +103,29 @@ export default function ChatRoomScreen() {
   const back = () => (router.canGoBack() ? router.back() : router.replace("/family-chat"));
 
   const scrollToEnd = useCallback((animated) => listRef.current?.scrollToEnd({ animated }), []);
+
+  // 서랍에서 다른 화면(게시판·가족 할 일·사진 모음 등)을 열었다가 뒤로 돌아오면 가장 최근 메시지가 보이게 한다(검색 결과로 이동한 과거 창을 보는 중이면 그대로 둔다).
+  const leftRoom = useRef(false);
+  const focusingRef = useRef(false);
+  focusingRef.current = chat.focusing;
+  useFocusEffect(
+    useCallback(() => {
+      const timers = [];
+      if (leftRoom.current) {
+        leftRoom.current = false;
+        const toLatest = () => {
+          if (focusingRef.current) return;
+          nearBottom.current = true;
+          scrollToEnd(false);
+        };
+        timers.push(setTimeout(toLatest, 80), setTimeout(toLatest, 400)); // 목록이 다시 그려지며 높이가 바뀌므로 한 번 더 맞춘다
+      }
+      return () => {
+        timers.forEach(clearTimeout);
+        leftRoom.current = true;
+      };
+    }, [scrollToEnd]),
+  );
 
   const onScroll = useCallback(
     ({ nativeEvent: { contentOffset, contentSize, layoutMeasurement } }) => {
@@ -183,7 +201,6 @@ export default function ChatRoomScreen() {
     () => () => {
       clearTimeout(pinHighlightTimer.current);
       clearTimeout(pinSettleTimer.current);
-      clearTimeout(linksTimer.current);
       clearTimeout(endTimer.current);
     },
     [],
@@ -329,23 +346,6 @@ export default function ChatRoomScreen() {
       settling.current = false;
     }, SETTLE_MS);
     pinHighlightTimer.current = setTimeout(() => setHighlightId(null), HIGHLIGHT_MS);
-  };
-  /** 서랍이 완전히 닫힌 뒤(onClosed)에 목록 시트를 한 번만 연다(iOS 는 모달 두 개가 겹치면 뒤의 것이 열리지 않을 수 있다). 콜백이 오지 않을 때를 위해 600ms 뒤 폴백으로도 연다. */
-  const showLinksSheet = () => {
-    clearTimeout(linksTimer.current);
-    if (!takeFlag(linksWanted)) return;
-    links.refresh(); // 1:1 방은 반복 조회를 하지 않아 열 때 한 번 맞춘다
-    setLinksOpen(true);
-  };
-  const openLinks = () => {
-    linksWanted.current = true;
-    clearTimeout(linksTimer.current);
-    linksTimer.current = setTimeout(showLinksSheet, 600);
-  };
-  /** 목록 항목: 시트를 닫고 원본 메시지로 이동한다(고정 바와 같은 이동). */
-  const pickLink = (messageId) => {
-    setLinksOpen(false);
-    pickPin(messageId);
   };
   const pinMessageFromMenu = () => {
     const message = menu?.message;
@@ -553,8 +553,7 @@ export default function ChatRoomScreen() {
           </View>
         ) : null}
       </KeyboardAvoidingView>
-      <RoomDrawer visible={drawerOpen} onClose={() => setDrawerOpen(false)} room={info.room} roomId={roomId} peerId={peerId} myId={info.me?.id} onOpenSearch={() => setSearchOpen(true)} onOpenLinks={openLinks} onClosed={showLinksSheet} />
-      <LinksSheet visible={linksOpen} onClose={() => setLinksOpen(false)} links={links.links} status={links.status} myId={info.me?.id} notice={links.notice} onPick={pickLink} onDelete={links.remove} onRetry={links.reload} />
+      <RoomDrawer visible={drawerOpen} onClose={() => setDrawerOpen(false)} room={info.room} roomId={roomId} peerId={peerId} myId={info.me?.id} />
       <MessageMenu target={menu} myId={info.me?.id} pinned={pins.isPinned(menu?.message?.id)} onClose={closeMenu} onReact={reactFromMenu} onReply={replyFromMenu} onPin={pinMessageFromMenu} onUnpin={unpinMessageFromMenu} onCopy={copyMessage} onDelete={deleteFromMenu} />
       {direct ? null : <AiPanel visible={aiOpen} onClose={() => setAiOpen(false)} onPickReply={pickReply} onLinked={links.registerCandidate} />}
     </SafeAreaView>

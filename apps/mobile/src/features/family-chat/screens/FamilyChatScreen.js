@@ -9,16 +9,14 @@ import Button from "@/shared/components/Button";
 import SectionTitle from "@/shared/components/SectionTitle";
 import { colors, font, radius, spacing } from "@/theme";
 
-import { getRoomInfo, listRooms, listTodos, openDirectRoom } from "../api";
+import { getRoomInfo, listRooms, openDirectRoom } from "../api";
 import { isNoGroup, previewText, roomErrorMessage } from "../chatUtils";
 import ChatListHeader from "../components/ChatListHeader";
 import ContentSearchSection from "../components/ContentSearchSection";
 import EmptyChats from "../components/EmptyChats";
 import NewChatPicker from "../components/NewChatPicker";
 import RoomRow from "../components/RoomRow";
-import TodoCard from "../components/TodoCard";
 import { waitForPendingMarkRead } from "../pendingRead";
-import { OPEN_PREVIEW_LIMIT, openPreview } from "../todoUtils";
 import { buildRoomRows, formatRoomTime, matchesQuery, pickableMembers } from "../listUtils";
 import { focusRoute, searchRoomLabel } from "../searchUtils";
 import useChatSearch from "../useChatSearch";
@@ -55,7 +53,6 @@ export default function FamilyChatScreen() {
   const [pickError, setPickError] = useState("");
   const openingRef = useRef(false); // 상태는 다시 그려진 뒤에야 바뀌어서, 같은 순간의 두 번째 누름은 ref 로 막는다
   const [listError, setListError] = useState("");
-  const [todoPreview, setTodoPreview] = useState(null); // 가족 할 일 카드(실패하면 null 이라 카드만 숨는다)
   const [state, setState] = useState({ status: "loading", rooms: [], members: [], pickable: [], error: "" });
 
   const load = useCallback(async () => {
@@ -63,10 +60,6 @@ export default function FamilyChatScreen() {
       await waitForPendingMarkRead(); // 방을 막 나왔다면 읽음 올리기가 끝난 뒤에 숫자를 가져온다
       // 화면이 올 때마다 한 번만(폴링 없음).
       // 가족 정보는 필수(없으면 가족 없음/오류 화면), 방 목록이 실패해도 연락처는 보여 주고 다시 시도 안내를 띄운다
-      // 가족 할 일 카드는 따로 불러 목록 로딩에 영향을 주지 않는다(실패하면 카드만 숨긴다)
-      listTodos("open", OPEN_PREVIEW_LIMIT)
-        .then((todos) => setTodoPreview(openPreview(todos)))
-        .catch(() => setTodoPreview(null));
       const [group, rooms] = await Promise.all([getRoomInfo(), listRooms().catch((e) => ({ failed: e }))]);
       setListError(Array.isArray(rooms) ? "" : roomErrorMessage(rooms.failed));
       const people = Array.isArray(group.members) ? group.members : [];
@@ -157,8 +150,6 @@ export default function FamilyChatScreen() {
         {state.status === "ready" && searching && query.trim() ? (
           <ContentSearchSection search={search} roomLabel={(item) => searchRoomLabel(item, state.rooms, members)} onPick={(item) => router.push(focusRoute(item))} />
         ) : null}
-
-        {state.status === "ready" && todoPreview ? <TodoCard preview={todoPreview} onPress={() => router.push("/family-todos")} /> : null}
 
         {members.length > 0 ? (
           <View style={styles.contacts}>
