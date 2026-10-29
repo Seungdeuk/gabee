@@ -78,7 +78,7 @@ class Settings(BaseSettings):
     require_email_verification: bool = False
     # 테스트 참여 동의서에 동의한 회원만 API 를 쓸 수 있게 한다(기본은 꺼짐). 앱의 동의서 버전(CONSENT_VERSION)과 같게 둔다.
     require_tester_consent: bool = False
-    tester_consent_version: str = "v0.1"
+    tester_consent_version: str = "v0.2"
     # 메일 요청 제한(프로세스 메모리, login 제한과 같은 한계): 인증 메일 재발송 간격/시간당, 재설정 메일 이메일별/IP별 시간당
     verify_resend_cooldown_seconds: int = 60
     verify_max_per_hour: int = 5
