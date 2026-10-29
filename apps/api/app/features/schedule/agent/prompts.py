@@ -239,6 +239,7 @@ def chat_prompt(
     member_lines: list[str] | None = None,
     draft_block: str = "",
     request_lines: list[str] | None = None,
+    notice: str = "",
 ) -> str:
     """scope: 목록을 거른 기준 설명(없으면 기간을 몰라 넓게 보낸 것). final: 이미 한 번 넓혀 보낸 두 번째 호출.
     member_lines: 가족 구성원 한 줄씩(id | 이름 | 관계). draft_block: 되묻는 중인 등록 초안(없으면 빈 문자열)."""
@@ -258,9 +259,10 @@ def chat_prompt(
     members = "\n".join(member_lines) if member_lines else "(없음)"
     draft = f"\n\n[등록 초안]\n{draft_block}" if draft_block else ""
     requests = "\n".join(request_lines) if request_lines else "(부탁 없음)"
+    notice_block = f"\n\n[알림] {notice}" if notice else ""
     return (
         f"[지금] {format_when(now)} (한국 시간)\n\n"
-        f"[일정 목록] {range_note}. id | 날짜 시간 | 제목 [| 공동 [| 공유:id,id]]\n{listing}{last}\n\n"
+        f"[일정 목록] {range_note}. id | 날짜 시간 | 제목 [| 공동 [| 공유:id,id]]\n{listing}{last}{notice_block}\n\n"
         f"[가족 구성원] id | 이름 | 관계\n{members}\n\n"
         f"[부탁 목록] id | 날짜 시간 | 제목 | 보냄·받음 | 현황\n{requests}{draft}\n\n"
         f"[사용자 문장]\n{text}"

@@ -215,6 +215,7 @@ def ask(
     post: Post | None = None,
     history: list[dict] | None = None,
     user: User | None = None,
+    audience: str = "me",
 ) -> AskResult:
     """질문 하나에 답한다. `post` 는 테스트에서 가짜 LLM 을 끼우는 자리다.
 
@@ -260,7 +261,7 @@ def ask(
                 try:
                     if with_agents and agents.is_agent_tool(call["name"]):
                         data, record["agent_tool_calls"], made, cards = agents.call(
-                            db, group_id, user, call["name"], args, post
+                            db, group_id, user, call["name"], args, post, audience
                         )
                         result.proposals.extend(made)
                         direct = (call["name"], data, made)
@@ -327,6 +328,7 @@ def ask_guarded(
     history: list[dict] | None = None,
     post: Post | None = None,
     user: User | None = None,
+    audience: str = "me",
 ) -> AskResult:
     """`ask` 를 동의·쿨다운·하루 한도·동시 실행 제한(ai_guard.run) 아래에서 부른다.
 
@@ -358,7 +360,17 @@ def ask_guarded(
         with ai_guard.tally_scope(
             used
         ):  # 관문 없이 도는 일정 에이전트의 모델 호출도 이 질문 하나로 센다
-            box.append(ask(db, group_id, question, post=counting, history=history, user=user))
+            box.append(
+                ask(
+                    db,
+                    group_id,
+                    question,
+                    post=counting,
+                    history=history,
+                    user=user,
+                    audience=audience,
+                )
+            )
         if failed:  # 외부 호출이 실패했는데 fallback 을 성공으로 세지 않는다 → 503 llm_failed + 기록 status="error"
             error = llm.LLMUnavailable(f"AI 호출에 실패했어요 ({type(failed[0]).__name__})")
             error.calls = max(1, used["calls"])  # 실패한 호출도 한도에 센다

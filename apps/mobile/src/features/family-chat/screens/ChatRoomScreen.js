@@ -149,6 +149,12 @@ export default function ChatRoomScreen() {
     });
   };
 
+  /** 공유 선택 카드에서 고른 줄을 내 이름의 일반 메시지로 보낸다(입력창 전송과 같은 chat.send). 보내기를 시작하지 못하면 던져서 카드가 오류를 보여 준다. */
+  const shareToRoom = async (text) => {
+    nearBottom.current = true;
+    if (!(await chat.send(text, null))) throw new Error("방에 보내지 못했어요. 잠시 후 다시 시도해 주세요.");
+  };
+
   /** 갤러리에서 사진 한 장을 골라 보낸다. 고르는 동안·보내는 동안은 다시 누를 수 없다. */
   const onPickPhoto = async () => {
     if (picking.current || chat.photoBusy) return;
@@ -455,7 +461,7 @@ export default function ChatRoomScreen() {
                 </Text>
               </View>
             ) : item.message.localNote ? (
-              <AssistantNote note={item.message} onRetry={mention.ask} onDismiss={mention.dismiss} onResolveCard={mention.resolveCard} />
+              <AssistantNote note={item.message} onRetry={mention.ask} onDismiss={mention.dismiss} onResolveCard={mention.resolveCard} onShareToRoom={shareToRoom} />
             ) : (
               <MessageBubble
                 nameOf={nameOf}

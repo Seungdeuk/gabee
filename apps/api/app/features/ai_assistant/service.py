@@ -43,7 +43,14 @@ def chat(
     if not group_id:
         return ChatOut(reply=NO_GROUP_REPLY, source="fallback")
     r = rag_chat.ask_guarded(
-        db, user_id, group_id, message, feature="assistant_chat", history=history, user=user
+        db,
+        user_id,
+        group_id,
+        message,
+        feature="assistant_chat",
+        history=history,
+        user=user,
+        audience=audience,
     )
     sources = [
         ChatSource(n=s["n"], title=s["title"], item_id=s["item_id"], source_path=s["source_path"])

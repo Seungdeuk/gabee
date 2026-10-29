@@ -118,14 +118,22 @@ def _without_false_proposal(name: str, reply: AgentReply) -> AgentReply:
 
 
 def call(
-    db: Session, group_id: str, user: User, name: str, args: dict, post: Post | None
+    db: Session,
+    group_id: str,
+    user: User,
+    name: str,
+    args: dict,
+    post: Post | None,
+    audience: str = "me",
 ) -> tuple[dict, list[dict], list, list[dict]]:
     """탭 에이전트에게 묻고 (메인에게 줄 결과, 탭 에이전트가 부른 도구 기록, 쓰기 제안, 확인 카드) 를 돌려준다."""
     question = str(args.get("question", "")).strip()
     if not question:
         raise ValueError("question 이 비어 있어요")
+    # 일정 에이전트만 어디서 불렀는지(가족방 @가비 = room)를 알아야 한다: 방에서는 공동 일정만 다룬다
+    extra = {"audience": audience} if name == "ask_schedule" else {}
     reply = AGENTS[name][1](
-        db, group_id, user, question, post, guarded=False
+        db, group_id, user, question, post, guarded=False, **extra
     )  # 메인 질문의 관문 한 번에 함께 센다
     reply = _without_false_proposal(name, reply)
     result = {"answer": reply.answer, "can_answer": reply.can_answer}

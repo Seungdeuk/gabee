@@ -150,6 +150,7 @@ def converse(
     guarded: bool = True,
     request_lines: list[str] | None = None,
     request_ids: set[str] | None = None,
+    notice: str = "",
 ) -> ChatResult:
     members = members or []
     member_ids = {m.id for m in members}
@@ -175,6 +176,7 @@ def converse(
             member_lines=[sent[100 + i] for i in range(len(members))],
             draft_block=_draft_block(draft, sent.get(2, ""), sent.get(3, ""), sent.get(4, "")),
             request_lines=request_lines,
+            notice=notice,
         )
 
         def call():

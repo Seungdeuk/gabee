@@ -15,6 +15,10 @@ from . import members as members_mod
 from . import period as period_mod
 from .schemas import AgentRequest, AgentResponse, Card, ConfirmRequest, SuggestionOut
 
+FAMILY_NOTICE = (
+    "가족 채팅방에서 부른 요청이라 [일정 목록]에는 가족과 공유된(공동) 일정만 있다. 목록에 없는 일정은 공동이 아니라서 "
+    "보이지 않는 것일 수 있으니 '일정이 없다'고 단정하지 말고, 공동 일정에서는 찾지 못했다고 답한다."
+)
 NOT_READY = "이 요청은 아직 처리할 수 없어요"
 RECOMMEND_TEXT = "이런 일정은 어때요?"
 RECOMMEND_EXHAUSTED = "오늘 추천은 여기까지, 내일도 챙겨 드릴게요 💛"
@@ -68,6 +72,7 @@ def _ask(
         guarded,
         request_view.lines if request_view else None,
         set(request_view.rows) if request_view else None,
+        FAMILY_NOTICE if request.channel == "family" else "",
     )
 
 

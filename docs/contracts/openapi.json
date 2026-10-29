@@ -14234,7 +14234,8 @@
               "delete",
               "request_register",
               "request_edit",
-              "request_cancel"
+              "request_cancel",
+              "share_select"
             ],
             "title": "Action"
           },
@@ -14262,6 +14263,14 @@
             "additionalProperties": true,
             "type": "object",
             "title": "Pending Action"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ShareItemOut"
+            },
+            "type": "array",
+            "title": "Items",
+            "default": []
           }
         },
         "type": "object",
@@ -19294,6 +19303,24 @@
           "completed"
         ],
         "title": "Settlement"
+      },
+      "ShareItemOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "line": {
+            "type": "string",
+            "title": "Line"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "line"
+        ],
+        "title": "ShareItemOut"
       },
       "SharingOut": {
         "properties": {

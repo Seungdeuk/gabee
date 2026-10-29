@@ -11,6 +11,7 @@
 import re
 import threading
 import time
+from datetime import date
 
 from sqlalchemy.orm import Session
 
@@ -19,6 +20,7 @@ from app.shared.llm.agent import AgentReply, Post
 
 from . import handler
 from . import members as members_mod
+from .prompts import WEEKDAYS
 from .schemas import AgentRequest, AgentResponse, Draft
 
 DESCRIPTION = (
@@ -151,7 +153,39 @@ def _keep_draft(group_id: str, user_id: str, response: AgentResponse) -> None:
             )
 
 
-def _reply(response: AgentResponse) -> AgentReply:
+SHARE_SELECT_TITLE = "방에 공유할 항목을 골라 주세요"
+MAX_SHARE_ITEMS = 20
+
+
+def _share_line(item: dict) -> str:
+    """방에 올릴 한 줄: 'MM/DD(요일) HH:MM 제목'. 시간이 없으면 날짜와 제목만. 관련 구성원 이름은 넣지 않는다."""
+    day = date.fromisoformat(item["date"])
+    clock = item.get("start_time") or item.get("time") or ""
+    when = f"{day:%m/%d}({WEEKDAYS[day.weekday()]})"
+    return " ".join(x for x in (when, clock, item.get("title", "")) if x)
+
+
+def _share_select(events: list[dict], requests_: list[dict]) -> dict | None:
+    """가족방 조회 결과를 방에 올릴지 사용자가 고르는 카드. 후보가 없으면 만들지 않는다."""
+    items = [
+        {"id": str(x["id"]), "line": _share_line(x)}
+        for x in [*events, *requests_]
+        if x.get("id") and x.get("date")
+    ][:MAX_SHARE_ITEMS]
+    if not items:
+        return None
+    return {
+        "kind": "schedule",
+        "action": "share_select",
+        "title": SHARE_SELECT_TITLE,
+        "lines": [],
+        "shared_with": [],
+        "pending_action": {},
+        "items": items,
+    }
+
+
+def _reply(response: AgentResponse, room: bool = False) -> AgentReply:
     """일정 에이전트의 응답을 메인이 사용자에게 전할 글로 바꾼다. 실행되지 않은 일을 실행됐다고 말하게 하지 않는다."""
     if response.intent == "not_schedule":
         return AgentReply(NOT_SCHEDULE, can_answer=False)
@@ -181,6 +215,9 @@ def _reply(response: AgentResponse) -> AgentReply:
             [*(_event_line(e) for e in events), *(_request_summary(r) for r in requests_)]
         )
         text = f"{response.text}\n{lines}".strip()
+        card = _share_select(events, requests_) if room else None
+        if card is not None:  # 가족방: 나에게만 보이는 답에 방에 올릴 항목을 고르는 카드를 붙인다
+            return AgentReply(text, user_text=text, confirmations=[card])
         return AgentReply(text, user_text=text)
     if response.text:
         return AgentReply(response.text, user_text=response.text)
@@ -195,14 +232,25 @@ def ask(
     post: Post | None = None,
     history: list[dict] | None = None,
     guarded: bool = False,
+    audience: str = "me",
 ) -> AgentReply:
     """`post`·`history` 는 정산·돌봄 에이전트와 호출 모양을 맞추는 자리다(쓰지 않는다). `guarded=False`(메인 채팅 안)이면 자기 관문을 다시 지나지 않는다."""
+    room = (
+        audience == "room"
+    )  # 가족방 @가비: 공동 일정만 다루고, 등록은 방의 다른 구성원에게 공유한다
     text = with_whole_family(question.strip(), db, group_id, user.id)
     request = AgentRequest(
-        text=text[:2000], channel="personal", draft=_take_draft(group_id, user.id)
+        text=text[:2000],
+        channel="family" if room else "personal",
+        draft=_take_draft(group_id, user.id),
     )
     response = handler.handle(
-        db, user.id, group_id, request, share_all=wants_whole_family(question), guarded=guarded
+        db,
+        user.id,
+        group_id,
+        request,
+        share_all=room or wants_whole_family(question),
+        guarded=guarded,
     )
     _keep_draft(group_id, user.id, response)
-    return _reply(response)
+    return _reply(response, room)
