@@ -4,6 +4,8 @@
 - 대상은 모델이 일정 목록의 id 만 고른다. 같은 이름이 여럿이면 모델이 지금과 가장 가까운 하나를 고르고, 확인 카드에 날짜가
   보이니 틀리면 사용자가 취소한다. 목록에 없는 id 는 버린다.
 - 내 줄만 고치고 지운다(`service.owns`). 복사본은 독립이라 원본을 고치거나 지워도 공유받은 사람의 일정은 그대로다.
+- 공유 대상은 원본 주인만 바꾼다(가족 구성원만). 공유받은 일정과 부탁을 수락해 생긴 일정은 거부하고, 공유받은 사람에게는
+  누구에게 공유됐는지도 알려 주지 않는다(`share_targets_for_prompt`). 사람을 빼면 그 사람의 복사본이 지워진다(`service.update`).
 - 확인 요청의 내용은 앱이 돌려준 것이므로 믿지 않는다: 일정을 다시 찾고, 소유자를 다시 확인하고, 값을 다시 검증한다.
 """
 
@@ -18,6 +20,7 @@ from app.features.schedule.schemas import EventUpdate
 from app.shared.errors import ApiError, bad_request
 
 from . import reader, register
+from .members import Member
 from .schemas import AgentResponse, Card, PendingAction
 
 TITLE_MAX = 120
@@ -25,7 +28,16 @@ PLACE_MAX = 200
 MEMO_MAX = 1000
 CLEARABLE = ("time", "place", "memo")
 # 확인 요청에서 받는 바꿀 값의 이름(EventUpdate 의 필드). 그 밖의 이름은 버린다
-UPDATE_KEYS = ("title", "start_date", "start_time", "end_time", "kind", "place", "memo")
+UPDATE_KEYS = (
+    "title",
+    "start_date",
+    "start_time",
+    "end_time",
+    "kind",
+    "place",
+    "memo",
+    "share_with",
+)
 WEEKDAYS = "월화수목금토일"
 KIND_NAMES = {1: "약속", 2: "할 일"}
 
@@ -33,16 +45,26 @@ NOT_FOUND_TEXT = "어떤 일정인지 찾지 못했어요. 일정 이름이나 �
 NOT_OWNER_EDIT = "내 일정만 고칠 수 있어요"
 NOT_OWNER_DELETE = "내 일정만 지울 수 있어요"
 NOTHING_TEXT = "바꿀 내용을 찾지 못했어요. 무엇을 어떻게 바꿀지 알려 주세요"
+NOT_SHARE_OWNER = "공유 대상은 일정을 처음 만든 분만 바꿀 수 있어요"
+SHARE_PERSONAL_ONLY = "공유 대상은 개인 채팅에서만 바꿀 수 있어요"
 
 
 def _text(value, limit: int) -> str:
     return value.strip()[:limit] if isinstance(value, str) else ""
 
 
-def clean_changes(raw) -> dict:
-    """모델이 돌려준 changes 를 검증한다. 형식이 틀린 값은 빈 값(바꾸지 않음)으로 둔다."""
+def clean_changes(raw, member_ids=frozenset()) -> dict:
+    """모델이 돌려준 changes 를 검증한다. 형식이 틀린 값은 빈 값(바꾸지 않음)으로 둔다.
+    공유 대상은 share_change 가 true 일 때만 읽고, 가족 구성원 id 만 남긴다(빈 목록은 모두 빼 달라는 뜻)."""
     if not isinstance(raw, dict):
         raw = {}
+    share_change = raw.get("share_change") is True
+    share_ids = raw.get("share_ids")
+    share_ids = (
+        [i for i in dict.fromkeys(share_ids) if isinstance(i, str) and i in member_ids]
+        if share_change and isinstance(share_ids, list)
+        else []
+    )
     clear = raw.get("clear")
     clear = (
         [c for c in clear if isinstance(c, str) and c in CLEARABLE]
@@ -59,6 +81,8 @@ def clean_changes(raw) -> dict:
         "place": _text(raw.get("place"), PLACE_MAX),
         "memo": _text(raw.get("memo"), MEMO_MAX),
         "clear": list(dict.fromkeys(clear)),
+        "share_change": share_change,
+        "share_ids": share_ids,
     }
 
 
@@ -104,6 +128,18 @@ def build_update(changes: dict, event: Event, now: date) -> dict:
     return out
 
 
+def can_reshare(event: Event) -> bool:
+    """공유 대상을 바꿀 수 있는 일정인가: 내가 처음 만든 원본(공유받은 복사본·부탁을 수락해 생긴 일정이 아님)."""
+    return event.origin_id is None and event.request_id is None
+
+
+def share_targets_for_prompt(event: Event, user_id: str) -> list[str] | None:
+    """모델에게 알려 줄 공유 대상(구성원 id). 내가 공유한 원본일 때만이고, 공유받은 일정은 누구에게 공유됐는지 숨긴다."""
+    if not (service.owns(event, user_id) and can_reshare(event)):
+        return None
+    return list(getattr(event, "shared_ids", None) or []) or None
+
+
 def _day_text(value: date) -> str:
     return f"{value.month}월 {value.day}일({WEEKDAYS[value.weekday()]})"
 
@@ -136,15 +172,41 @@ def _diff(event: Event, body: EventUpdate, after) -> list[dict]:
     return lines
 
 
+def _share_line(current: list[str], new: list[str], labels: dict[str, str]) -> dict:
+    def text(ids: list[str]) -> str:
+        return ", ".join(labels[i] for i in ids if i in labels) or "없음"
+
+    return {"label": "공유", "before": text(current), "after": text(new)}
+
+
 def respond_edit(
-    user_id: str, target_id: str, changes: dict, events: dict[str, Event], now: date
+    user_id: str,
+    target_id: str,
+    changes: dict,
+    events: dict[str, Event],
+    now: date,
+    members: list[Member] | None = None,
+    channel: str = "personal",
 ) -> AgentResponse:
     event = events.get(target_id)
     if event is None:
         return AgentResponse(intent="edit", text=NOT_FOUND_TEXT)
     if not service.owns(event, user_id):
         return AgentResponse(intent="edit", text=NOT_OWNER_EDIT)
+    share_new: list[str] | None = None
+    current: list[str] = []
+    if changes.get("share_change"):
+        if channel != "personal":  # 가족 채팅 화면은 가족이 함께 봐서 누구에게 공유했는지 드러난다
+            return AgentResponse(intent="edit", text=SHARE_PERSONAL_ONLY)
+        if not can_reshare(event):
+            return AgentResponse(intent="edit", text=NOT_SHARE_OWNER)
+        current = list(getattr(event, "shared_ids", None) or [])
+        wanted = [i for i in changes["share_ids"] if i != user_id]
+        if set(wanted) != set(current):
+            share_new = wanted
     update = build_update(changes, event, now)
+    if share_new is not None:
+        update["share_with"] = share_new
     if not update:
         return AgentResponse(intent="edit", text=NOTHING_TEXT)
     try:
@@ -153,12 +215,19 @@ def respond_edit(
     except ApiError as e:  # 끝나는 시간이 시작보다 늦지 않은 경우 등
         return AgentResponse(intent="edit", text=e.message)
     lines = _diff(event, body, after)
+    text = "이렇게 바꿀까요?"
+    if share_new is not None:
+        labels = {m.id: m.label for m in members or []}
+        lines.append(_share_line(current, share_new, labels))
+        removed = [labels[i] for i in current if i not in share_new and i in labels]
+        if removed:
+            text += f" {', '.join(removed)}님은 공유에서 빠지고, 받은 일정도 같이 사라져요."
     if not lines:
         return AgentResponse(intent="edit", text=NOTHING_TEXT)
     card = Card(type="edit_confirm", data={"event": reader.brief(event), "changes": lines})
     return AgentResponse(
         intent="edit",
-        text="이렇게 바꿀까요?",
+        text=text,
         cards=[card],
         pending_action=PendingAction(type="edit", event_id=event.id, changes=update),
     )

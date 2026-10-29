@@ -88,7 +88,7 @@ def clean_result(data: dict, allowed_ids: set[str], member_ids: set[str] | None 
         "keyword": _short(data.get("keyword"), MAX_KEYWORD_CHARS),
         "register": register.clean_fields(data.get("register"), member_ids or set()),
         "target_id": target if isinstance(target, str) and target in allowed_ids else "",
-        "changes": modify.clean_changes(data.get("changes")),
+        "changes": modify.clean_changes(data.get("changes"), member_ids or set()),
         "check_action": action if action in ("mark", "unmark", "list") else "",
     }
 
@@ -103,12 +103,15 @@ def event_line(
     title: str,
     time_text: str | None = None,
     shared: bool = False,
+    share_ids: list[str] | None = None,
 ) -> str:
     """LLM 에 보내는 한 줄: id · 날짜 시간 · 제목만(메모 등은 보내지 않아 양과 노출을 줄인다).
-    time_text 는 시간 표기(예: 14:00~15:00, 시간 미정). 없으면 시작 시각만 쓴다. 공동 일정은 끝에 '| 공동'을 붙인다."""
+    time_text 는 시간 표기(예: 14:00~15:00, 시간 미정). 없으면 시작 시각만 쓴다. 공동 일정은 끝에 '| 공동'을 붙인다.
+    share_ids 는 내가 공유한 원본 일정의 공유 대상(구성원 id)이다 — 공유받은 사람과 가족 채팅에는 넘기지 않는다(누구에게 공유됐는지 숨긴다)."""
     clock = time_text if time_text is not None else f"{when:%H:%M}"
     line = f"{event_id} | {prompts.format_day(when)} {clock} | {mask_text(title)}"
-    return f"{line} | 공동" if shared else line
+    line = f"{line} | 공동" if shared else line
+    return f"{line} | 공유:{','.join(share_ids)}" if share_ids else line
 
 
 def _draft_block(draft: Draft | None, title: str, place: str, memo: str) -> str:
@@ -202,5 +205,5 @@ def converse(
         ).value
     cleaned["reply"] = restored["reply"]
     cleaned["register"] = register.clean_fields(restored["register"], member_ids)
-    cleaned["changes"] = modify.clean_changes(restored["changes"])
+    cleaned["changes"] = modify.clean_changes(restored["changes"], member_ids)
     return ChatResult(**cleaned)

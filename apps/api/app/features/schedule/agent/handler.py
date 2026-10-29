@@ -37,6 +37,7 @@ def _ask(
             e.title,
             reader.time_text(e),
             getattr(e, "shared", False),
+            modify.share_targets_for_prompt(e, user_id) if request.channel == "personal" else None,
         )
         for e in shown
     ]
@@ -120,7 +121,13 @@ def handle(
     by_id = {e.id: e for e in shown}
     if result.intent == "edit":
         return modify.respond_edit(
-            user_id, result.target_id, result.changes, by_id, register.today()
+            user_id,
+            result.target_id,
+            result.changes,
+            by_id,
+            register.today(),
+            members,
+            request.channel,
         )
     if result.intent == "delete":
         return modify.respond_delete(user_id, result.target_id, by_id)
