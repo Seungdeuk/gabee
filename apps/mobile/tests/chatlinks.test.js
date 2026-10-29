@@ -28,7 +28,6 @@ import {
   normalizeLinks,
   optimisticLink,
   runGuarded,
-  todoOrigins,
   tryBegin,
 } from "../src/features/family-chat/linkUtils.js";
 import { buildDrawerSections, resolveRowAction } from "../src/features/family-chat/mediaUtils.js";
@@ -179,7 +178,7 @@ test("메시지별 맵과 말풍선 표시: 종류마다 하나, 일정 먼저",
   assert.equal(map.get(99), undefined);
   assert.deepEqual(badgesFor(map.get(10)), [
     { kind: "event", label: "일정으로 등록됨" },
-    { kind: "todo", label: "할 일로 등록됨" },
+    { kind: "todo", label: "함께하기로 보냄" },
   ]);
   assert.deepEqual(badgesFor(map.get(20)), [{ kind: "event", label: BADGE_LABEL.event }]);
   assert.deepEqual(badgesFor(undefined), []);
@@ -349,38 +348,12 @@ test("API createLink·deleteLink: 400·403 은 ApiError 로 올라와 문구가 
   );
 });
 
-test("서랍: 가족 일정 · 할 일 행은 없고 가족 할 일 행이 대화에서 등록한 할 일까지 맡는다", () => {
-  const find = (sections, key) => sections.flatMap((s) => s.rows).find((r) => r.key === key);
-  for (const direct of [false, true]) {
-    const sections = buildDrawerSections({ direct, pinsReady: true });
-    assert.equal(find(sections, "todos"), undefined);
-    const row = find(sections, "familytodos");
-    assert.equal(row.state, "open");
-    assert.equal(row.subtitle, "대화에서 정한 일과 공동 할 일");
-    assert.deepEqual(resolveRowAction(row), { type: "familytodos" });
-  }
-});
-
-test("todoOrigins: 할 일 id → 원본 메시지 id, 일정·잘못된 값은 빼고 첫 연결만", () => {
-  const origins = todoOrigins([
-    { kind: "todo", target_id: "t1", message_id: 11 },
-    { kind: "todo", target_id: "t1", message_id: 5 },
-    { kind: "event", target_id: "e1", message_id: 12 },
-    { kind: "todo", target_id: "", message_id: 13 },
-    { kind: "todo", target_id: "t2", message_id: 0 },
-    { kind: "todo", target_id: "t3", message_id: "abc" },
-    null,
-  ]);
-  assert.deepEqual(origins, { t1: 11 });
-  assert.deepEqual(todoOrigins(undefined), {});
-});
-
 test("소스 검사: AiPanel 은 등록 성공 뒤에만 onLinked 를 부르고, 실패 분기에서는 부르지 않는다", () => {
   const src = readFileSync(new URL("../src/features/family-chat/components/AiPanel.js", import.meta.url), "utf8").replace(/\r\n/g, "\n");
   const slice = (from, to) => src.slice(src.indexOf(from), src.indexOf(to, src.indexOf(from)));
   const event = slice("const created = await registerScheduleCandidate", "} catch (e) {");
   assert.match(event, /setRegistered\(.*"ok".*\)[\s\S]*notifyLinked\(\{ kind: "event"/);
-  const todo = slice("const created = await createTodo", "} catch (e) {");
+  const todo = slice("const created = await sendTogetherRequest", "} catch (e) {");
   assert.match(todo, /setTodoRegistered\(.*"ok".*\)[\s\S]*notifyLinked\(\{ kind: "todo"/);
   for (const part of src.split("} catch (e) {").slice(1)) assert.ok(!part.slice(0, 200).includes("notifyLinked("), "실패 분기에서 연결을 부르면 안 된다");
   assert.match(src, /const notifyLinked = [\s\S]*?try \{[\s\S]*?onLinked\?\.\(link\)[\s\S]*?\} catch/); // 연결 오류는 삼킨다

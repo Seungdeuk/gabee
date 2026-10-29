@@ -248,37 +248,23 @@ export const getReadStates = (roomId) => apiFetch(roomId ? `/family-chat/read-st
 export const getUnread = (roomId) => apiFetch(roomId ? `/family-chat/unread?${roomParam(roomId)}` : "/family-chat/unread");
 
 /**
- * 공동 할 일 목록(가족 전체 공유). 서버 계약은 PR #62. AI 를 부르지 않는다.
- * @param {"open" | "done" | "all"} [status] 기본 open(안 끝난 일), done 은 끝난 일
- * @param {number} [limit] 1~200, 기본 100
- * @returns {Promise<{ id: string, title: string, assignee_id: string | null, due_date: string | null, done: boolean, done_at: string | null, done_by: string | null, created_by: string, source: string, created_at: string }[]>}
+ * 함께하기(일정 탭의 같이 요청)를 보낸다(POST /schedule/requests, RequestCreate). 일정 기능의 api 파일을 가져오지 않고 공통 래퍼로 계약대로 직접 호출한다.
+ * @param {{ title: string, start_date: string, to_ids: string[] }} body 제목 1~120자, 날짜 YYYY-MM-DD, 받는 사람(나 제외) 1~20명
+ * @returns {Promise<{ id: string, title: string, start_date: string }>}
  */
-export const listTodos = (status = "open", limit = 100) => {
-  const safe = ["open", "done", "all"].includes(status) ? status : "open";
-  return apiFetch(`/family-chat/todos?status=${safe}&limit=${Number(limit)}`);
-};
+export const sendTogetherRequest = (body) => apiFetch("/schedule/requests", { method: "POST", body });
 
 /**
- * 할 일을 만든다. 만든 사람은 서버가 로그인한 사용자로 정한다.
- * @param {{ title: string, assignee_id?: string | null, due_date?: string | null, source?: "manual" | "chat" }} body title 1~120자, due_date 는 YYYY-MM-DD
- * @returns {Promise<object>} 만들어진 할 일(TodoOut)
+ * 일정 탭의 내 일정·할 일(앞으로의 것, 서버가 내 줄만 돌려준다). 서랍 "가족 할 일" 화면이 할 일만 골라 쓴다.
+ * @returns {Promise<{ id: string, title: string, kind: number, start_date: string | null, start_time: string | null, checked: boolean, origin_id: string | null }[]>}
  */
-export const createTodo = (body) => apiFetch("/family-chat/todos", { method: "POST", body });
+export const listScheduleEvents = () => apiFetch("/schedule/events");
 
 /**
- * 할 일을 고친다. 보낸 항목만 바뀌고, assignee_id·due_date 에 null 을 보내면 비운다. done 은 완료(true)·되돌리기(false).
- * @param {string} id
- * @param {{ title?: string, assignee_id?: string | null, due_date?: string | null, done?: boolean }} patch
- * @returns {Promise<object>} 바뀐 할 일(TodoOut)
+ * 같이(함께하기) 목록: 내가 보낸 것과 받은 것, 최신순.
+ * @returns {Promise<{ id: string, from_id: string, title: string, start_date: string, start_time: string | null, canceled: boolean, recipients: { user_id: string, status: "waiting" | "accepted" | "declined" }[] }[]>}
  */
-export const updateTodo = (id, patch) => apiFetch(`/family-chat/todos/${encodeURIComponent(id)}`, { method: "PATCH", body: patch });
-
-/**
- * 할 일을 지운다(만든 사람이나 가족 관리자만, 아니면 403 not_allowed).
- * @param {string} id
- * @returns {Promise<null>} 성공하면 본문 없음(204)
- */
-export const deleteTodo = (id) => apiFetch(`/family-chat/todos/${encodeURIComponent(id)}`, { method: "DELETE" });
+export const listTogetherRequests = () => apiFetch("/schedule/requests");
 
 /**
  * 내가 다른 구성원에게 붙인 별명·메모(나만 보인다). family-group 기능의 파일을 가져오지 않고 계약대로 직접 호출한다.

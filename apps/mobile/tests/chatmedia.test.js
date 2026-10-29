@@ -151,7 +151,7 @@ test("서랍 행: 두 구역 5행(검색·공유 문서·구성원 초대·AI �
   for (const key of ["pins", "notifications"]) assert.equal(byKey(sections, key).state, "soon", key); // 연결 전
   for (const key of ["search", "docs", "invite", "privacy", "edit", "todos"]) assert.equal(byKey(sections, key), undefined, key);
   assert.equal(byKey(sections, "media").subtitle, "채팅방에 공유된 미디어");
-  assert.equal(byKey(sections, "familytodos").subtitle, "대화에서 정한 일과 공동 할 일");
+  assert.equal(byKey(sections, "familytodos").subtitle, "일정 탭의 할 일과 함께하기");
   assert.equal(byKey(sections, "leave").danger, true);
 });
 

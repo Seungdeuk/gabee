@@ -496,3 +496,11 @@
 - 원본 메시지가 지워져도 "원본" 버튼은 보이고(서버 연결이 지운 메시지를 거르지 않는다), 누르면 최근 대화로 돌아가고 안내가 뜬다. 게시판과 달리 "원본 삭제됨" 표시는 없다.
 - 이동은 `router.push` 라 뒤로 가면 가족 할 일 화면으로 돌아온다(게시판은 `replace`).
 - 시트 전용 도우미(`filterByKind`, `formatLinkWhen`, `linkSourceLine`, `linkA11yLabel`, `canDeleteLink` 등)와 `useChatLinks` 의 `links`·`remove`·`refresh` 등은 지금 화면에서 쓰지 않는다(말풍선 배지는 `badgesOf`, 등록은 `registerCandidate`).
+
+### 공동 할 일 앱 제거 · 가족 할 일 = 일정 탭 내역 · 할 일 후보는 함께하기로 (앱, release/1.1)
+- **채팅의 할 일 후보 → 함께하기**: AI 패널의 "할 일·부탁 후보"는 이제 **함께하기**(일정 탭의 같이 요청, `POST /schedule/requests`)로 보낸다. 일정 후보는 지금처럼 일정 탭의 일정(`POST /schedule/events`)으로 등록된다. 후보 줄의 버튼은 "함께하기로 보내기", 성공 문구는 "함께하기로 보냈어요". 함께하기는 **날짜가 필수**라 후보에 날짜가 없으면 날짜 칩(오늘·내일·3일 뒤·1주일 뒤)을 먼저 골라야 보낼 수 있다. 받는 사람은 담당자 이름이 구성원 이름·표시 이름과 정확히 같은 한 명(나 제외)이면 그 사람, 아니면 나를 뺀 가족 모두다. 가족이 나뿐이면 "함께할 가족이 아직 없어요". 원본 대화 연결은 그대로 남기며(`kind: "todo"`, 대상 id 는 요청 id) 말풍선 표시는 "함께하기로 보냄"이다. 코드: `togetherUtils.js`(`candidateToRequestBody`, `dayFromChip`…), `components/TodoCandidateRow.js`, `components/AiPanel.js`, `api.sendTogetherRequest`.
+- **서랍 "가족 할 일"**(`/family-together`, `screens/FamilyTogetherScreen.js`, `useFamilyTogether.js`): **일정 탭의 할 일**(`GET /schedule/events` 중 kind 2·안 끝낸 것·날짜 안 지난 것)과 **함께하기**(`GET /schedule/requests`: 받은 것·보낸 것)를 날짜순(같은 날은 함께하기 먼저)으로 최대 30개 간소화해 보여 준다. 보기만 하고, 줄을 누르면 일정 탭의 그 화면(할 일 상세 `/schedule/detail`, 받은 함께하기 `/schedule/together-receive`, 보낸 함께하기 `/schedule/together-detail`)으로 간다. 거절한 요청·취소된 요청·날짜 지난 요청, 수락해서 생긴 내 할 일(요청과 겹침)은 뺀다. 화면이 보일 때·당겨서 새로고침할 때만 불러온다. 일정 기능의 파일은 가져오지 않고 서버 계약대로 공통 래퍼로 호출한다.
+- **공동 할 일(family_chat 할 일)은 앱에서 없앴다**: 화면(`FamilyTodosScreen`, `/family-todos`), 훅(`useTodos`, `useTodoOrigins`), 컴포넌트(`TodoRow`·`TodoComposer`·`TodoEditModal`·`TodoCard`), `todoUtils.js`, 소통 탭의 가족 할 일 카드, 할 일 API 래퍼(`listTodos` 등)를 지웠다. 이 때문에 위 "공동 할 일·가족 연락처 (앱, Chat 4)" 절의 가족 할 일 화면 설명과 "원본" 버튼(가족 일정 · 할 일 통합 한계 절)은 더 이상 맞지 않는다(가족 연락처 부분은 그대로다).
+- **서버는 그대로 둔다**: `/family-chat/todos` API 와 `family_todos` 테이블·데이터는 남겨 둔다(데이터가 사라지는 변경은 DB 담당자 승인이 필요해 이번에 하지 않았다). 서버·테이블 삭제는 승인 뒤 별도 PR 로 한다. 이미 만들어진 공동 할 일은 앱에서 볼 수 없다.
+- 시험: `tests/chattogether.test.js`(변환·날짜·받는 사람·내역 만들기·API 경로·서랍 행), 가족 연락처 시험은 `tests/contacts.test.js` 로 옮겼다.
+- 확인 못한 것: 실기기 확인은 하지 못했다. 가족 할 일 화면과 AI 패널의 함께하기 전송은 웹에서 확인한다.

@@ -18,7 +18,7 @@ const NATIVE = Platform.OS !== "web";
 
 /**
  * 채팅방 서랍(오른쪽에서 열린다). 방 이름, 구성원 줄, "채팅 관리"·"채팅방 설정" 행들.
- * 동작하는 행: 사진 · 동영상(모음 화면), 가족 할 일(/family-todos), 게시판(서랍을 닫고 지난 공지까지 모아 보는 게시판 화면으로 이동). 알림 설정은 "준비 중" 안내만 하고, 채팅방 나가기는 안내만 한다. 구성원은 맨 위 "가족 구성원 N명"을 눌러 펼쳐 본다.
+ * 동작하는 행: 사진 · 동영상(모음 화면), 가족 할 일(/family-together: 일정 탭의 할 일·함께하기 내역), 게시판(서랍을 닫고 지난 공지까지 모아 보는 게시판 화면으로 이동). 알림 설정은 "준비 중" 안내만 하고, 채팅방 나가기는 안내만 한다. 구성원은 맨 위 "가족 구성원 N명"을 눌러 펼쳐 본다.
  * 덮개를 누르거나 X, 안드로이드 뒤로가기로 닫는다.
  * @param {{ visible: boolean, onClose: () => void, room?: { name?: string, members?: object[] } | null, roomId?: string | null, peerId?: string | null, myId?: string | null }} props roomId 가 없으면 가족 전체방, 있으면 1:1
  */
@@ -71,7 +71,7 @@ export default function RoomDrawer({ visible, onClose, room, roomId, peerId, myI
     locked.current = true;
     onClose();
     if (action.type === "media") router.push({ pathname: "/chat-media", params: { ...(roomId ? { roomId } : {}), ...(peerId ? { peer: peerId } : {}) } });
-    else if (action.type === "familytodos") router.push("/family-todos");
+    else if (action.type === "familytodos") router.push("/family-together");
     else if (action.type === "pins") router.push({ pathname: "/chat-board", params: { ...(roomId ? { roomId } : {}), ...(peerId ? { peer: peerId } : {}) } });
   };
 

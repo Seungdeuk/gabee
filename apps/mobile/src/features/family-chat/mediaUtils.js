@@ -195,7 +195,7 @@ export function drawerMembers({ direct, room, peerId, myId }) {
 const MANAGE_ROWS = [
   { key: "pins", icon: "pin-outline", title: "게시판", subtitle: "공지 모아보기", action: "pins" },
   { key: "media", icon: "images-outline", title: "사진 · 동영상", subtitle: "채팅방에 공유된 미디어", action: "open" },
-  { key: "familytodos", icon: "list-outline", title: "가족 할 일", subtitle: "대화에서 정한 일과 공동 할 일", action: "open" },
+  { key: "familytodos", icon: "list-outline", title: "가족 할 일", subtitle: "일정 탭의 할 일과 함께하기", action: "open" },
 ];
 
 const SETTING_ROWS = [
