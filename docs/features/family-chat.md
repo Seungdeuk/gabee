@@ -429,3 +429,13 @@
 - 한계: 답장 생성과 원본 삭제가 동시에 일어나면 "지운 메시지에 대한 답장" 행이 생길 수 있다(잠금 없음). 목록 표시는 `deleted` 로 처리해 내용은 새지 않는다. 마이그레이션의 외래키 추가는 테이블 전체를 검증하며 잠깐 쓰기를 막는다(가족 앱 규모에서는 문제 없다고 보고 `NOT VALID` 는 쓰지 않았다). `reply_to_id` 에는 인덱스가 없다(원본에 달린 답장을 찾거나 원본을 하드 삭제하는 기능이 생기면 추가).
 - 앱 화면은 아직 없다.
 
+## 메시지 반응 (서버, release/1.1)
+- `PUT /family-chat/messages/{message_id}/reaction {emoji}?room_id=` → 200 `MessageOut`(내 반응을 정한다: 없으면 만들고, 다른 이모지면 바꾸고, 같은 이모지면 그대로). `DELETE …/reaction?room_id=` → 200 `MessageOut`(내 반응을 지운다, 없어도 같은 결과). 코드는 `reaction_service.py`.
+- 규칙: 허용 이모지 6개(❤️ 👍 😂 😮 😢 🙏)만, 아니면 400 `invalid_reaction`(변형 문자 U+FE0F 는 있든 없든 같은 이모지로 보고 허용 표기로 저장, 4글자를 넘는 입력·피부색·텍스트 변형 등은 거절). 방에 들어갈 수 없거나 이 방의 메시지가 아니면 404(존재 여부를 숨김). 지운 메시지에는 400 `message_deleted`. 내 메시지·가비의 답에도 누를 수 있다.
+- DB: 새 테이블 `message_reactions`(기본키 `(message_id, user_id)`, 리비전 `8ba852cd9c10`, expand). 내 반응은 한 번의 upsert(`INSERT … ON CONFLICT DO UPDATE`, PostgreSQL·SQLite)로 저장해서, 같은 사람의 취소·다른 이모지 요청이 겹쳐도 오류 없이 마지막 요청대로 된다. 메시지를 지우면(`repo.soft_delete`) 그 메시지의 반응 행도 지운다. 반응을 저장하는 사이에 메시지가 지워졌으면 저장 뒤 메시지를 다시 읽어(`db.refresh`) 남은 반응 행을 치우고 400 `message_deleted` 로 답한다.
+- 응답: `MessageOut.reactions: [{emoji, count, mine}]`(많은 순, 같으면 허용 목록 순서). 목록·before·after·around 조회는 `repo.reaction_summary` 한 번의 쿼리로 모아 붙인다(메시지 수와 상관없음). **방 목록의 `last_message` 에는 채우지 않는다(항상 빈 목록).** 지운 메시지는 항상 빈 목록.
+- 한계: 누가 눌렀는지는 응답에 없다(사람 수와 내가 눌렀는지만). 반응 요청에는 호출 한도가 없다. 새 반응이 알림함으로 가지 않는다. **이미 받아 둔 메시지의 반응이 바뀐 것을 다른 사람 화면에 알리는 조회는 아직 없다**(앱은 새 메시지만 조회하므로 상대 화면에는 방을 다시 열기 전까지 안 보인다). 더블탭 하트·팝업 반응 앱 작업(6·5번)에서 방식을 정한다(예: 반응 변경 시각 기준 조회, 또는 최근 메시지를 다시 받기). 방 목록 `last_message.reactions` 는 "반응 없음"이 아니라 "채우지 않음"이라, 앱이 이 값으로 메시지 캐시를 덮어쓰면 반응이 사라져 보일 수 있다.
+- 배포 주의: `MessageReaction` 이 family_chat 모듈의 모델이라, 공용 DB 에 `message_reactions` 테이블이 없으면 `schema_ready` 가 채팅 전체를 503 으로 막는다(ADR 0006). 공용 DB 통합 때는 코드보다 먼저 이 리비전(`8ba852cd9c10`)을 올려야 한다.
+- 시험: `tests/test_message_reactions.py`(내 반응, 사람별 mine·집계 순서, 교체, 멱등, 취소, 허용 목록·변형 문자, 지운 메시지·삭제 시 정리, 다른 가족·1:1 방 제3자·잘못된 방, 가비의 답, before·around, 목록 쿼리 1번, 방 목록).
+- 앱 화면은 아직 없다.
+

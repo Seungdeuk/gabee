@@ -91,6 +91,20 @@ class Message(Base):
     reply_to_id: Mapped[int | None] = mapped_column(ForeignKey("messages.id"), nullable=True)
 
 
+class MessageReaction(Base):
+    """메시지 반응. 한 사람이 한 메시지에 반응 하나(바꾸면 교체)라 기본키가 (메시지, 사용자)다.
+    메시지를 지우면 그 메시지의 반응도 함께 지운다."""
+
+    __tablename__ = "message_reactions"
+
+    message_id: Mapped[int] = mapped_column(ForeignKey("messages.id"), primary_key=True)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), primary_key=True)
+    emoji: Mapped[str] = mapped_column(String(8))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(UTC)
+    )
+
+
 class ChatReadState(Base):
     """(옛 구조) 가족 전체방의 읽음 위치. 방별 읽음(`chat_room_reads`)으로 옮겨 더 이상 읽고 쓰지 않는다.
     기존 데이터를 보존하려고 테이블은 남겨 둔다(정리는 이후 contract 리비전)."""

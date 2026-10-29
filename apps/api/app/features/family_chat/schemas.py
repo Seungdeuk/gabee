@@ -34,6 +34,16 @@ class ReplyOut(BaseModel):
     has_attachment: bool = False  # 원본이 사진 메시지
 
 
+class ReactionIn(BaseModel):
+    emoji: str = Field(max_length=16, description="허용된 이모지 6개(❤️ 👍 😂 😮 😢 🙏) 중 하나")
+
+
+class ReactionOut(BaseModel):
+    emoji: str
+    count: int  # 이 이모지를 누른 사람 수
+    mine: bool  # 요청한 사람이 이 이모지를 눌렀는지
+
+
 class MessageOut(BaseModel):
     id: int
     user_id: str
@@ -45,6 +55,9 @@ class MessageOut(BaseModel):
     reply_to: ReplyOut | None = (
         None  # 답장이면 원본 미리보기(방 목록의 마지막 메시지에는 붙지 않는다)
     )
+    reactions: list[
+        ReactionOut
+    ] = []  # 많은 순(같으면 목록 순서). 방 목록의 마지막 메시지에는 채우지 않는다
     deleted: bool = False  # 보낸 사람이 지운 메시지. text 는 빈 문자열, attachment 는 null 이고 앱은 "삭제된 메시지입니다"를 보인다
 
 

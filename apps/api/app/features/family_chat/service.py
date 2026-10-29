@@ -8,6 +8,7 @@ from .models import ASSISTANT_USER_ID, FAMILY, ChatRoom, Message, MessageAttachm
 from .schemas import (
     AttachmentOut,
     MessageOut,
+    ReactionOut,
     ReadPosition,
     ReadStateOut,
     ReplyOut,
@@ -28,6 +29,7 @@ def _attachment_out(a: MessageAttachment) -> AttachmentOut:
 
 
 PREVIEW_CHARS = 40  # 답장 미리보기 글자 수
+REACTION_ORDER = ("\u2764\ufe0f", "👍", "😂", "😮", "😢", "🙏")  # 허용 이모지(표시 순서)
 
 
 def reply_out(parent: tuple[Message, str, bool]) -> ReplyOut:
@@ -48,6 +50,7 @@ def message_out(
     user_name: str,
     attachment: MessageAttachment | None = None,
     reply: ReplyOut | None = None,
+    reactions: list[ReactionOut] | None = None,
 ) -> MessageOut:
     deleted = m.deleted_at is not None
     return MessageOut(
@@ -59,23 +62,44 @@ def message_out(
         attachment=_attachment_out(attachment) if attachment and not deleted else None,
         is_assistant=m.user_id == ASSISTANT_USER_ID,
         reply_to=None if deleted else reply,  # 지운 메시지는 답장 표시도 내용도 남기지 않는다
+        reactions=[] if deleted else (reactions or []),
         deleted=deleted,
     )
 
 
-def _outs(db: Session, room: ChatRoom, rows: list[tuple[Message, str]]) -> list[MessageOut]:
-    """메시지들을 응답 모양으로(첨부는 한 번의 쿼리로 모아 붙인다)."""
+def reaction_outs(summary: list[tuple[str, int, bool]] | None) -> list[ReactionOut]:
+    """집계를 많은 순(같으면 허용 목록 순서)으로."""
+    order = {emoji: i for i, emoji in enumerate(REACTION_ORDER)}
+    ranked = sorted(summary or [], key=lambda r: (-r[1], order.get(r[0], len(order))))
+    return [ReactionOut(emoji=e, count=n, mine=mine) for e, n, mine in ranked]
+
+
+def _outs(
+    db: Session, room: ChatRoom, rows: list[tuple[Message, str]], viewer_id: str
+) -> list[MessageOut]:
+    """메시지들을 응답 모양으로(첨부·답장 원본·반응은 각각 한 번의 쿼리로 모아 붙인다)."""
     attachments = repo.attachments_for(db, [m.id for m, _ in rows])
     parents = repo.reply_parents(db, room, [m for m, _ in rows])
+    reactions = repo.reaction_summary(
+        db, [m.id for m, _ in rows if m.deleted_at is None], viewer_id
+    )
     return [
         message_out(
             m,
             name,
             attachments.get(m.id),
             reply_out(parents[m.reply_to_id]) if m.reply_to_id in parents else None,
+            reaction_outs(reactions.get(m.id)),
         )
         for m, name in rows
     ]
+
+
+def message_view(
+    db: Session, room: ChatRoom, found: tuple[Message, str], viewer_id: str
+) -> MessageOut:
+    """메시지 하나를 목록과 같은 모양(첨부·답장·반응 포함)으로."""
+    return _outs(db, room, [found], viewer_id)[0]
 
 
 def resolve_room(db: Session, user: User, group_id: str, room_id: str | None) -> ChatRoom:
@@ -150,13 +174,13 @@ def list_messages(
             raise bad_request("invalid_message", "이 대화방의 메시지가 아니에요")
         before = repo.list_recent(db, room, half, around_id) if half else []
         after = repo.list_after(db, room, around_id, half) if half else []
-        return _outs(db, room, [*before, center, *after])
+        return _outs(db, room, [*before, center, *after], user.id)
     limit = 100 if limit is None else limit
     if latest or before_id is not None:
         rows = repo.list_recent(db, room, limit, before_id)
     else:
         rows = repo.list_after(db, room, after_id, limit)
-    return _outs(db, room, rows)
+    return _outs(db, room, rows, user.id)
 
 
 def mark_read(
