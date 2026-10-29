@@ -23,7 +23,7 @@ export function entryText(item) {
 }
 
 /**
- * 항목 하나의 기록 입력: 예/아니오, 수치(목표 있음), 컨디션 중 항목의 기록 방식에 맞는 버튼·입력칸.
+ * 항목 하나의 기록 입력: 체크(예/아니오 항목은 한 번 누르면 완료), 수치(목표 있음), 컨디션 중 항목의 기록 방식에 맞는 버튼·입력칸.
  * 지금 기록하는 것이든 지난 항목을 소급 입력하는 것이든 같은 입력을 쓴다.
  * @param {{ item: import("../api").CareItem, act: (run: () => Promise<unknown>, done?: string) => Promise<void>, notify: (text: string, isError?: boolean) => void, doneText?: string }} props
  */
@@ -31,10 +31,10 @@ export default function ItemInput({ item, act, notify, doneText }) {
   const [value, setValue] = useState(item.entry?.number == null ? "" : String(item.entry.number));
 
   if (item.mode === "yesno") {
+    const checked = item.entry?.done === true;
     return (
       <View style={styles.options}>
-        <Button small variant="secondary" label="예" a11yLabel={`${item.name} 예`} selected={item.entry?.done === true} onPress={() => act(() => putEntry(item.id, { done: true }), doneText)} />
-        <Button small variant="secondary" label="아니오" a11yLabel={`${item.name} 아니오`} selected={item.entry?.done === false} onPress={() => act(() => putEntry(item.id, { done: false }), doneText)} />
+        <Button small variant="secondary" label={checked ? "✓ 완료" : "✓ 체크"} a11yLabel={`${item.name} 체크`} selected={checked} onPress={() => act(() => putEntry(item.id, { done: true }), doneText)} />
       </View>
     );
   }

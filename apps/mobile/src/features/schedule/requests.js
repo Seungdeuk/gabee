@@ -183,7 +183,6 @@ export function acceptRequest(id, kind) {
     endTime: request.allDay ? null : request.endTime,
     place: request.place,
     memo: request.memo,
-    whoIds: request.whoIds,
     topicId: null,
     sharedWith: [request.fromId],
     createdBy: ME_ID,

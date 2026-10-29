@@ -21,7 +21,15 @@ from . import join_repository as jrepo
 from . import repository as repo
 from . import social_repository as srepo
 from .join_schemas import JoinRequestOut
-from .models import EmailVerification, Group, JoinRequest, PasswordReset, RefreshToken, User
+from .models import (
+    EmailVerification,
+    Group,
+    Invite,
+    JoinRequest,
+    PasswordReset,
+    RefreshToken,
+    User,
+)
 from .schemas import (
     AccountSignupIn,
     AccountSignupOut,
@@ -59,11 +67,20 @@ def user_out(user: User) -> UserOut:
         role_detail=user.role_detail,
         active_group_id=user.active_group_id,
         location_consent=user.location_consent_at is not None,
+        tester_consent_version=user.tester_consent_version,
         login_id=user.login_id,
         email=user.email,
         email_verified=user.email_verified_at is not None,
         photo_url=photo_service.photo_url(user),
     )
+
+
+def record_tester_consent(db: Session, user: User, version: str) -> UserOut:
+    user.tester_consent_version = version
+    user.tester_consent_at = datetime.now(UTC)
+    db.add(user)
+    db.commit()
+    return user_out(user)
 
 
 def _unusable_legacy_token() -> str:
@@ -138,20 +155,26 @@ def _member_out(user: User, row) -> MemberOut:
     )
 
 
+def invite_uses_left(invite: Invite) -> int | None:
+    """이 초대 코드로 더 들어올 수 있는 사람 수. 횟수 제한이 없는 코드(기존 코드)는 None."""
+    if invite.max_uses is None:
+        return None
+    return max(invite.max_uses - (invite.use_count or 0), 0)
+
+
 def group_out(db: Session, group: Group, viewer_id: str | None = None) -> GroupOut:
     """viewer_id 는 응답을 받는 사람. 초대 코드는 그 사람이 가족 관리자(owner/admin)일 때만 담긴다."""
     rows = jrepo.members_by_user(db, group.id)
     my_role = rows[viewer_id].role if viewer_id in rows else None
-    invite = (
-        jrepo.active_invite(db, group.id, datetime.now(UTC))
-        if my_role in join_service.MANAGER_ROLES
-        else None
-    )
+    is_manager = my_role in join_service.MANAGER_ROLES
+    invite = jrepo.active_invite(db, group.id, datetime.now(UTC)) if is_manager else None
     return GroupOut(
         id=group.id,
         name=group.name,
         invite_code=invite.code if invite else None,
         invite_expires_at=invite.expires_at if invite else None,
+        invite_uses_left=invite_uses_left(invite) if invite else None,
+        invite_auto_approve=group.auto_approve_invites if is_manager else None,
         my_id=viewer_id if viewer_id in rows else None,
         my_role=my_role,
         members=[_member_out(m, rows.get(m.id)) for m in repo.members(db, group.id)],
@@ -188,8 +211,9 @@ def create_group(db: Session, user: User, name: str) -> GroupOut:
 
 
 def join_group(db: Session, user: User, code: str, ip: str = "unknown") -> JoinRequestOut:
-    """초대 코드로 참여를 신청한다. 정식 회원이든 익명(레거시 토큰) 계정이든, 어떤 코드(레거시 코드 포함)를 쓰든 멤버십이 아니라
-    승인 대기 요청만 만들어지고 관리자(owner/admin)가 승인해야 구성원이 된다. 승인 전에는 그룹 데이터에 접근할 수 없다."""
+    """초대 코드로 참여를 신청한다. 가족이 자동 승인을 켜 두었으면 바로 구성원이 되고(status=approved),
+    꺼 두었으면 승인 대기 요청(status=pending)만 만들어져 관리자(owner/admin)가 승인해야 구성원이 된다.
+    승인 전에는 그룹 데이터에 접근할 수 없다."""
     _require_verified_email(user)
     row, group = join_service.request_to_join(db, user, code, ip)
     return join_request_out(row, group)

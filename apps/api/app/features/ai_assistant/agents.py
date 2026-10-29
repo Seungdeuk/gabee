@@ -3,7 +3,9 @@
 각 탭 에이전트의 코드는 그 기능 폴더(billing/agent.py, care/agent.py, schedule/agent/ask.py)에 있고, 여기는 이름·설명·호출만 모은다.
 탭을 더 붙일 때는 `AGENTS` 에 한 줄을 더하면 된다."""
 
+import re
 from collections.abc import Callable
+from dataclasses import replace
 
 from sqlalchemy.orm import Session
 
@@ -25,7 +27,10 @@ AGENTS: dict[str, tuple[str, AskFn]] = {
 
 # 답이 사용자에게 그대로 전할 수 있는 글인 탭 에이전트. 한 질문에 이것 하나만 불렀고 답이 완결이면 메인이 다시 모델을 부르지 않는다.
 # (일정 에이전트의 답은 메인에게 주는 안내 글이 섞여 있어 제외한다)
-DIRECT_REPLY_AGENTS = frozenset({"ask_billing", "ask_care", "ask_family_chat"})
+DIRECT_REPLY_AGENTS = frozenset({"ask_billing", "ask_care", "ask_family_chat", "ask_schedule"})
+USER_TEXT_AGENTS = frozenset(
+    {"ask_schedule"}
+)  # 직통 응답에 answer 가 아니라 사용자에게 줄 글(direct_answer)을 쓰는 에이전트
 
 PROMPT_NOTE = (
     "지출·정산·구독·용돈 질문은 ask_billing, 돌봄 항목·식단·위치 질문은 ask_care 로 담당 에이전트에게 물어보세요. "
@@ -51,7 +56,20 @@ PROMPT_NOTE = (
     "여럿에게 공유하는 일정도 그대로 ask_schedule 로 넘기세요. "
     "가족 단체 채팅방에서 나눈 대화('채팅에서 병원 얘기 언제 했지', '요즘 채팅 요약해줘')와 가족 공동 할 일 목록 질문은 "
     "ask_family_chat 으로 물어보세요. 올려 둔 문서·영수증·고지서에 적힌 내용은 채팅이 아니니 search_knowledge 로 찾으세요. "
-    "채팅 분석의 일정·할 일은 후보일 뿐 등록된 것이 아니라고 알려 주세요."
+    "채팅 분석의 일정·할 일은 후보일 뿐 등록된 것이 아니라고 알려 주세요. 사용자가 그 일정 후보를 넣어 달라고 하면('그거 일정에 넣어줘', "
+    "'첫 번째 일정 넣어줘') 후보의 날짜·시간·제목·장소를 합친 완전한 문장으로 ask_schedule 에 넘기고, 어느 후보인지 모르겠으면 "
+    "어느 것인지 물어보세요. 넣어 달라는 말이 없으면 '일정에 넣어 드릴까요?'라고 먼저 물어보세요. 할 일 후보는 아직 등록하는 길이 없다고 알려 주세요. "
+    "사용자가 후보를 가리켜 일정에 넣어 달라고 하면('마지막 거 넣어줘', '토요일 저녁 약속 잡아줘') 다시 확인하지 말고 바로 ask_schedule 로 넘기세요. "
+    "날짜가 없는 후보만 날짜를 물어보세요. 일정 여러 개를 한꺼번에 넣어 달라고 하면 한 문장에 몰아 넘기지 말고 일정마다 따로 ask_schedule 을 "
+    "부르고, 부른 수와 등록된 수가 같은지 확인한 뒤 모두 알려 주세요. "
+    "올려 둔 영수증·고지서로 지출을 등록하거나 정산해 달라고 하면, 또는 '소아과 진료비 정산해줘'처럼 병원·약국·학원 같은 지출을 '영수증'이라는 말 없이 정산·등록해 달라고 해도, 먼저 search_knowledge 로 그 문서가 있는지 찾아 날짜·금액·제목을 읽고, "
+    "그 값을 담은 완전한 문장('2026-10-24 치과 128,000원 지출로 등록해줘')을 ask_billing 에 넘기세요. 문서에 나온 날짜를 쓰고 오늘 날짜로 "
+    "바꾸지 마세요. 영수증이 둘 이상이라 어느 것인지 모르면 어느 것인지 물어보세요. 정산 내역을 묻는 것이 아니라 영수증을 장부에 올리라는 뜻이면 "
+    "조회가 아니라 등록으로 넘기세요. 질문과 관계없는 도구는 함께 부르지 마세요. 지출·금액을 묻는 질문은 반드시 ask_billing 으로 확인하고, search_knowledge 는 사용자가 영수증·고지서·문서를 말했을 때만 함께 쓰세요. "
+    "pending_confirmation 이 결과에 없으면 제안이나 확인 카드가 만들어졌다고 말하지 마세요. "
+    "'약속들 전부 넣어줘'처럼 후보 여러 개를 넣을 때는 일정 후보만 넣고 장보기·재활용 같은 할 일 후보는 넣지 마세요. "
+    "'마지막 거'는 날짜가 정해진 일정 후보 중 마지막을 뜻합니다. 무엇을 넣으라는 말 없이 '넣어줘'라고만 하면 후보를 다시 보여 주고 어느 것인지 물어보세요. "
+    "'전부'·'모두'·'약속들'처럼 전체를 뜻하는 말이 있을 때만 여러 개를 한꺼번에 넣으세요."
 )
 
 
@@ -79,6 +97,23 @@ def is_agent_tool(name: str) -> bool:
     return name in AGENTS
 
 
+PROPOSAL_CLAIM = re.compile(r"확인\s*버튼|제안(합니다|했|해\s*두)")
+NO_PROPOSAL_TEXT = "등록 제안이 만들어지지 않았어요. 금액·날짜·항목을 함께 다시 말씀해 주세요."
+
+
+def _without_false_proposal(name: str, reply: AgentReply) -> AgentReply:
+    """정산·돌봄 에이전트의 답이 '확인 버튼을 눌러야 등록돼요'라고 하는데 실제 제안(토큰)이 없으면, 그 말을 사용자에게 전하지 않는다.
+    모델이 제안 도구를 부르지 않거나 실패하고도 제안했다고 글로 쓰는 경우가 있다(메인은 도구 결과의 글을 믿고 그대로 전한다)."""
+    if (
+        name in ("ask_billing", "ask_care")
+        and reply.can_answer
+        and not reply.proposals
+        and PROPOSAL_CLAIM.search(reply.answer)
+    ):
+        return replace(reply, answer=NO_PROPOSAL_TEXT, can_answer=False)
+    return reply
+
+
 def call(
     db: Session, group_id: str, user: User, name: str, args: dict, post: Post | None
 ) -> tuple[dict, list[dict], list, list[dict]]:
@@ -89,7 +124,10 @@ def call(
     reply = AGENTS[name][1](
         db, group_id, user, question, post, guarded=False
     )  # 메인 질문의 관문 한 번에 함께 센다
+    reply = _without_false_proposal(name, reply)
     result = {"answer": reply.answer, "can_answer": reply.can_answer}
+    if reply.user_text:
+        result["direct_answer"] = reply.user_text
     if (
         reply.proposals or reply.confirmations
     ):  # 사용자 화면에 확인 버튼이 뜬다. 메인은 등록됐다고 말하면 안 된다

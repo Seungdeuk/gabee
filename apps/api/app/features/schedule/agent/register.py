@@ -9,6 +9,7 @@
 import re
 from datetime import UTC, date, datetime, time, timedelta
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.features.schedule import service
@@ -65,7 +66,6 @@ def clean_fields(raw, member_ids: set[str]) -> dict:
         "kind": kind if kind in (1, 2) and not isinstance(kind, bool) else 0,
         "place": _text(raw.get("place"), PLACE_MAX),
         "memo": _text(raw.get("memo"), MEMO_MAX),
-        "who_ids": _ids(raw.get("who_ids"), member_ids),
         "share_ids": _ids(raw.get("share_ids"), member_ids),
         "date_ambiguous": raw.get("date_ambiguous") is True,
     }
@@ -86,7 +86,6 @@ def merge(draft: Draft | None, fields: dict) -> Draft:
         kind=pick("kind"),
         place=pick("place"),
         memo=pick("memo"),
-        who_ids=pick("who_ids"),
         share_ids=pick("share_ids"),
         asks=base.asks,
     )
@@ -128,7 +127,6 @@ def normalize(draft: Draft, member_ids: set[str], me: str, now: date) -> Draft:
             "end_time": end,
             "place": draft.place.strip(),
             "memo": draft.memo.strip(),
-            "who_ids": _ids(draft.who_ids, member_ids),
             "share_ids": [i for i in _ids(draft.share_ids, member_ids) if i != me],
         }
     )
@@ -152,8 +150,24 @@ def _to_time(value: str) -> time | None:
     return datetime.strptime(value, "%H:%M").time() if value else None
 
 
+def _existing(db: Session, user_id: str, group_id: str, draft: Draft) -> Event | None:
+    """같은 사람이 같은 제목·날짜·시작 시각으로 이미 등록한 일정(지운 것 제외)."""
+    start = _to_time(draft.start_time)
+    query = select(Event).where(
+        Event.group_id == group_id,
+        Event.user_id == user_id,
+        Event.deleted_at.is_(None),
+        Event.title == draft.title,
+        Event.start_date == date.fromisoformat(draft.date),
+        Event.start_time.is_(None) if start is None else Event.start_time == start,
+    )
+    return db.scalars(query).first()
+
+
 def _created(db: Session, user_id: str, group_id: str, draft: Draft, members: list[Member]):
-    event: Event = service.create(
+    # 같은 요청을 다시 보내거나 되묻는 답을 합쳐 다시 보내도 같은 일정이 두 번 생기지 않게 한다(공유 등록은 받는 사람 복사본이 있어 제외)
+    already = None if draft.share_ids else _existing(db, user_id, group_id, draft)
+    event: Event = already or service.create(
         db,
         group_id,
         user_id,
@@ -165,12 +179,10 @@ def _created(db: Session, user_id: str, group_id: str, draft: Draft, members: li
             kind=draft.kind or DEFAULT_KIND,
             place=draft.place,
             memo=draft.memo,
-            who_ids=draft.who_ids,
             share_with=draft.share_ids,
             source="chat",
         ),
     )
-    labels = {m.id: m.label for m in members}
     card = Card(
         type="registered",
         data={
@@ -181,11 +193,13 @@ def _created(db: Session, user_id: str, group_id: str, draft: Draft, members: li
             "start_time": _hm(event.start_time),
             "end_time": _hm(event.end_time),
             "place": event.place,
-            "who": [labels[i] for i in event.who_ids if i in labels],
             "shared": len(draft.share_ids),
+            **({"already": True} if already else {}),
         },
     )
-    return AgentResponse(intent="register", text="등록했어요.", cards=[card])
+    return AgentResponse(
+        intent="register", text="이미 있는 일정이에요." if already else "등록했어요.", cards=[card]
+    )
 
 
 def respond(
@@ -201,6 +215,8 @@ def respond(
     member_ids = {m.id for m in members}
     if share_all:  # 모델이 일부만 고르거나 비워 둬도 가족 전체로 정한다
         fields = {**fields, "share_ids": [m.id for m in members if m.id != user_id]}
+    if fields.get("title") and fields.get("date"):
+        request_draft = None  # 제목과 날짜를 모두 말한 문장은 새 요청이다: 옛 초안의 시간·장소·공유 대상이 섞이지 않게 한다
     draft = normalize(merge(request_draft, fields), member_ids, user_id, today())
     ambiguous = fields["date_ambiguous"]
     if ambiguous:

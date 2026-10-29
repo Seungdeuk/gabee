@@ -59,7 +59,6 @@ def create(db: Session, group_id: str, user_id: str, body: EventCreate) -> Event
         source=body.source,
         kind=body.kind,
         place=body.place.strip(),
-        who_ids=list(dict.fromkeys(body.who_ids)),
         start_date=start_date,
         start_time=start_time,
         end_time=end_time,
@@ -86,7 +85,7 @@ def create(db: Session, group_id: str, user_id: str, body: EventCreate) -> Event
         suggestion.status = SUGGESTION_CONFIRMED
         suggestion.confirmed_at = now
     repo.add_all(db, [original, *copies])
-    return original
+    return with_sharing(db, user_id, [original])[0]
 
 
 def _pending_suggestion(
@@ -106,8 +105,32 @@ def _pending_suggestion(
     return suggestion
 
 
+def with_sharing(db: Session, user_id: str, events: list[Event]) -> list[Event]:
+    """각 일정에 공동 정보를 붙인다(저장하지 않고 그때그때 계산, 묶어서 3번만 묻는다).
+    shared_ids: 이 일정으로 나와 얽힌 사람(나 제외). 내가 공유한 원본이면 받은 사람들, 공유받은 복사본이면 보낸 사람과
+    같이 받은 사람들, 부탁을 수락해서 생긴 일정이면 부탁한 사람. shared: 공동 일정인가(위 셋 중 하나)."""
+    mine = [e.id for e in events]
+    origins = list({e.origin_id for e in events if e.origin_id})
+    copies: dict[str, list[str]] = {}
+    for origin_id, owner in repo.copy_owners(db, [*mine, *origins]):
+        copies.setdefault(origin_id, []).append(owner)
+    origin_owner = repo.owners_of(db, origins) if origins else {}
+    senders = repo.request_senders(db, list({e.request_id for e in events if e.request_id}))
+    for e in events:
+        if e.origin_id:
+            people = [origin_owner.get(e.origin_id), *copies.get(e.origin_id, [])]
+        elif e.request_id:
+            people = [senders.get(e.request_id)]
+        else:
+            people = copies.get(e.id, [])
+        e.shared_ids = [p for p in dict.fromkeys(people) if p and p != user_id]
+        e.shared = bool(e.origin_id or e.request_id or e.shared_ids)
+    return events
+
+
 def upcoming(db: Session, group_id: str, user_id: str, include_past: bool = False) -> list[Event]:
-    return repo.list_from(db, group_id, None if include_past else datetime.now(UTC), user_id)
+    events = repo.list_from(db, group_id, None if include_past else datetime.now(UTC), user_id)
+    return with_sharing(db, user_id, events)
 
 
 def confirm(db: Session, group_id: str, user_id: str, event_id: str) -> Event:
@@ -116,7 +139,7 @@ def confirm(db: Session, group_id: str, user_id: str, event_id: str) -> Event:
         raise not_found("일정")
     event.status = "confirmed"
     db.commit()
-    return event
+    return with_sharing(db, user_id, [event])[0]
 
 
 def owns(event: Event, user_id: str) -> bool:
@@ -145,17 +168,65 @@ def update(db: Session, group_id: str, user_id: str, event_id: str, body: EventU
     if body.memo is not None:
         event.memo = body.memo
         event.note = body.memo
-    if body.who_ids is not None:
-        event.who_ids = list(dict.fromkeys(body.who_ids))
     if "topic_id" in sent:
         _check_topic(db, group_id, user_id, body.topic_id)
         event.topic_id = body.topic_id
 
     if sent & {"start_date", "start_time", "end_time"}:
         _apply_when(event, body, sent)
-    event.edited_at = datetime.now(UTC)
+    if sent - {"share_with"}:
+        event.edited_at = datetime.now(UTC)
+    if body.share_with is not None:
+        _reshare(db, group_id, user_id, event, body.share_with)
     db.commit()
-    return event
+    return with_sharing(db, user_id, [event])[0]
+
+
+def _reshare(db: Session, group_id: str, user_id: str, event: Event, share_with: list[str]) -> None:
+    """공유 대상을 share_with 로 다시 정한다(원본 주인만). 빠진 사람의 복사본은 고쳤든 체크했든 지우고(소프트 삭제)
+    출처(origin_id)를 끊어 공유 목록에서 뺀다. 새로 든 사람에게는 지금 값으로 새 복사본을 만든다(지워진 옛 복사본은 그대로 둔다)."""
+    if event.origin_id is not None:
+        raise ApiError(403, "not_share_owner", "공유는 원본 주인만 바꿀 수 있어요")
+    targets = _share_targets(db, group_id, user_id, share_with)
+    now = datetime.now(UTC)
+    current: set[str] = set()
+    for copy in repo.copies_of(db, group_id, event.id):
+        if copy.user_id in targets:
+            current.add(copy.user_id)
+            continue
+        if copy.deleted_at is None:
+            copy.deleted_at = now
+        copy.origin_id = None
+    # 복사본의 순서(shared_with)는 만든 순서라 created_at 이 겹치지 않게 1μs 씩 늘린다.
+    fields = dict(
+        group_id=group_id,
+        created_by=event.created_by,
+        title=event.title,
+        starts_at=event.starts_at,
+        note=event.memo,
+        memo=event.memo,
+        status=event.status,
+        source=event.source,
+        kind=event.kind,
+        place=event.place,
+        start_date=event.start_date,
+        start_time=event.start_time,
+        end_time=event.end_time,
+    )
+    added = [t for t in targets if t not in current]
+    repo.add_pending(
+        db,
+        [
+            Event(
+                id=_new_id(),
+                user_id=t,
+                origin_id=event.id,
+                created_at=now + timedelta(microseconds=i),
+                **fields,
+            )
+            for i, t in enumerate(added, start=1)
+        ],
+    )
 
 
 def current_when(event: Event) -> tuple[date, time | None, time | None]:
@@ -226,7 +297,7 @@ def set_checked(db: Session, group_id: str, user_id: str, event_id: str, checked
         raise not_found("일정")
     event.checked = checked
     db.commit()
-    return event
+    return with_sharing(db, user_id, [event])[0]
 
 
 def _check_topic(db: Session, group_id: str, user_id: str, topic_id: str | None) -> None:

@@ -1,8 +1,18 @@
 """돌봄 기능 설정: 기본 체크 항목, 추천 문구, 식단 메뉴 템플릿. 문구·메뉴는 코드 수정 없이 여기서 바꾼다."""
 
-# 처음 열 때 만들어 두는 샘플 항목 7개 (화면에 보이는 순서).
-# rule_key 는 추천 규칙이 어느 항목을 볼지 정한다. meal_type 은 식단 추천이 어느 끼니인지 정한다.
+# 새 가족이 처음 열 때 만들어 주는 항목(화면에 보이는 순서): 매일 한 번 누르는 체크만 둔다. 수치·컨디션 같은 항목은 사용자가 "항목 추가"에서 직접 만든다.
+# rule_key 는 추천 규칙이 어느 항목을 볼지 정한다(그 항목이 없으면 그 추천은 나오지 않는다). meal_type 은 식단 추천이 어느 끼니인지 정한다.
+# 이미 항목이 있는 가족에게는 아무것도 바꾸지 않는다.
 SAMPLE_ITEMS = (
+    {"name": "아침 식사", "mode": "yesno", "time": "08:00", "meal_type": "breakfast"},
+    {"name": "영양제", "mode": "yesno", "time": "09:00", "rule_key": "supplement"},
+    {"name": "점심 식사", "mode": "yesno", "time": "12:00", "meal_type": "lunch"},
+    {"name": "저녁 식사", "mode": "yesno", "time": "19:00", "meal_type": "dinner"},
+)
+
+# 예전 기본 항목 7개(컨디션·물·산책 포함). 추천 규칙(water·walk·condition)과 수치·컨디션 기록 방식을 시험하는 데 쓴다.
+# 서비스는 이 목록을 쓰지 않는다 — 시험과 평가셋이 SAMPLE_ITEMS 를 이것으로 바꿔서 쓴다.
+FULL_SAMPLE_ITEMS = (
     {"name": "아침 식사", "mode": "yesno", "time": "08:00", "meal_type": "breakfast"},
     {"name": "영양제", "mode": "yesno", "time": "09:00", "rule_key": "supplement"},
     {"name": "컨디션", "mode": "condition", "time": "10:00", "rule_key": "condition"},

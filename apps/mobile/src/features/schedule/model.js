@@ -26,7 +26,8 @@ import { addMinutes } from "./utils/time";
  * @property {boolean} allDay
  * @property {string} place 직접 입력한 글자
  * @property {string} memo
- * @property {string[]} whoIds 누구(나 말고 관련된 사람). 비어 있으면 내 일정
+ * @property {boolean} [shared] 공동 일정인가(공유받았거나 내가 공유했거나 부탁을 수락해서 생긴 일정). 서버 값이고, 없으면 sharedWith·createdBy 로 본다
+ * @property {string[]} [sharedIds] 이 일정으로 나와 얽힌 사람(공유한 사람·받은 사람·부탁한 사람, 나 제외). 서버 값이고, 없으면 sharedWith·createdBy 로 본다
  * @property {string | null} topicId 비어 있으면 분류 없음
  * @property {string[]} sharedWith 공유 대상(가족 구성원 id). 비어 있으면 나만
  * @property {string} createdBy 만든 사람 id
@@ -51,16 +52,7 @@ export function compareItems(a, b) {
 }
 
 /**
- * 누구가 비어 있으면 만든 사람 본인으로 본다 (저장 값은 바꾸지 않는다). 필터·에이전트 조회용.
- * @param {ScheduleItem} item
- * @returns {string[]}
- */
-export function effectiveWhoIds(item) {
-  return item.whoIds.length > 0 ? item.whoIds : [item.createdBy];
-}
-
-/**
- * 이름표로 보여줄 글자. 엄마+아빠는 "부모님"으로 합치고, 비어 있으면 이름표가 없다.
+ * 이름표로 보여줄 글자(같이하기 부탁의 누구). 엄마+아빠는 "부모님"으로 합치고, 비어 있으면 이름표가 없다.
  * @param {string[]} whoIds
  * @param {Member[]} members
  * @returns {string[]}
@@ -73,24 +65,7 @@ export function whoLabels(whoIds, members) {
   return hasParents ? ["부모님", ...names] : names;
 }
 
-/**
- * 누구·주제 필터. 같은 줄은 "또는", 줄끼리는 "그리고", 비어 있으면 전체.
- * 누구 칩 "parents"(부모님)는 엄마와 아빠가 모두 들어 있는 항목에 맞는다.
- * @param {ScheduleItem[]} items
- * @param {{ whoIds: string[], topicIds: string[] }} filter
- * @returns {ScheduleItem[]}
- */
-export function applyFilter(items, { whoIds, topicIds }) {
-  const matches = (item, chipId) => {
-    const ids = effectiveWhoIds(item);
-    return chipId === "parents" ? ids.includes("mom") && ids.includes("dad") : ids.includes(chipId);
-  };
-  return items.filter((item) => {
-    const whoOk = whoIds.length === 0 || whoIds.some((chipId) => matches(item, chipId));
-    const topicOk = topicIds.length === 0 || (item.topicId !== null && topicIds.includes(item.topicId));
-    return whoOk && topicOk;
-  });
-}
+export { applyFilter, involvedIds, isShared } from "./filter";
 
 /**
  * 같이(함께 해 달라는 요청) 하나. 보낸 사람이 정한 내용·날짜·시간·장소·메모와 받는 사람별 답을 담는다.

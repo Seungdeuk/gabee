@@ -2,7 +2,6 @@ import uuid
 from datetime import UTC, date, datetime, time
 
 from sqlalchemy import (
-    JSON,
     Boolean,
     Date,
     DateTime,
@@ -52,7 +51,6 @@ class Event(Base):
 
     user_id: Mapped[str | None] = mapped_column(ForeignKey("users.id"), nullable=True, index=True)
     kind: Mapped[int] = mapped_column(Integer, default=KIND_APPOINTMENT, server_default="1")
-    who_ids: Mapped[list[str]] = mapped_column(JSON, default=list, server_default="[]")
     place: Mapped[str] = mapped_column(String(200), default="", server_default="")
     start_date: Mapped[date | None] = mapped_column(Date, nullable=True, index=True)
     # start_time 이나 end_time 이 비어 있으면 시간 없음, 종일은 00:00~23:59

@@ -8,10 +8,10 @@ import { colors, font, radius, spacing } from "@/theme";
 
 import ConfirmDialog from "../components/ConfirmDialog";
 import FormTag from "../components/FormTag";
-import WhoTag from "../components/WhoTag";
+import SharedTag from "../components/SharedTag";
 import { KIND, KIND_COLOR, TOPIC_TEXT } from "../constants";
 import { ME_ID, members, topics } from "../mock";
-import { whoLabels } from "../model";
+import { isShared } from "../model";
 import { loadSharing, removeItem, toggleChecked, useScheduleItem } from "../store";
 import { formatDateWithYear, formatTimeConfirmed } from "../utils/date";
 import { subjectParticle } from "../utils/korean";
@@ -37,7 +37,8 @@ export default function DetailScreen() {
     return () => {
       alive = false;
     };
-  }, [id]);
+    // 수정해서 공유가 바뀌면 항목이 새로 만들어지므로 다시 읽는다.
+  }, [id, item]);
 
   const leave = () => (router.canGoBack() ? router.back() : router.replace("/(tabs)/schedule"));
 
@@ -55,7 +56,6 @@ export default function DetailScreen() {
   const sharedWith = sharing ? sharing.sharedWith : item.sharedWith;
   const isAppointment = item.kind === KIND.appointment;
   const topic = topics.find((t) => t.id === item.topicId);
-  const labels = whoLabels(item.whoIds, members);
   // 공유받은 사람이 보면 "나"가 들어가고, 공유한 사람은 공유 대상에서 뺀다.
   const sharedIds = [...new Set([...sharedWith, ...(sharedBy ? [ME_ID] : [])])].filter((x) => x !== sharedBy);
   const sharedNames = [...sharedIds].sort((a) => (a === ME_ID ? -1 : 0)).map(nameOf);
@@ -66,7 +66,6 @@ export default function DetailScreen() {
     ["날짜", <Text key="d" style={styles.value}>{formatDateWithYear(item.date)}</Text>],
     time ? ["시간", <Text key="t" style={styles.value}>{time}</Text>] : null,
     item.place ? ["장소", <Text key="p" style={styles.value}>{item.place}</Text>] : null,
-    labels.length > 0 ? ["누구", <Text key="w" style={styles.value}>{labels.join(", ")}</Text>] : null,
     sharedNames.length > 0 ? ["공유", <Text key="s" style={styles.value}>{sharedNames.join(", ")}</Text>] : null,
     item.memo ? ["메모", <Text key="m" style={styles.value}>{item.memo}</Text>] : null,
   ].filter(Boolean);
@@ -102,9 +101,7 @@ export default function DetailScreen() {
           <View style={styles.head}>
             <View style={styles.badges}>
               <FormTag kind={item.kind} />
-              {labels.map((label) => (
-                <WhoTag key={label} label={label} />
-              ))}
+              {isShared(item) ? <SharedTag label="공동" /> : null}
             </View>
             <View style={styles.titleRow}>
               <Text style={styles.title} accessibilityRole="header">

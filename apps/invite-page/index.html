@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>가비 가족 초대</title>
+<meta name="robots" content="noindex">
+<!-- 카카오톡·SNS 미리보기 카드 -->
+<meta property="og:title" content="가비 가족 초대가 왔어요">
+<meta property="og:description" content="눌러서 가족 그룹에 바로 참여하세요">
+<meta property="og:type" content="website">
+<style>
+  :root { --bg: #FFFCF7; --text: #553B29; --sub: #6B5444; --accent: #FEB49A; --soft: #FEF3DA; }
+  * { box-sizing: border-box; }
+  body { margin: 0; min-height: 100vh; background: var(--bg); color: var(--text);
+    font-family: "Noto Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+    display: flex; align-items: center; justify-content: center; padding: 24px 16px; }
+  main { width: 100%; max-width: 380px; display: flex; flex-direction: column; gap: 16px; text-align: center; }
+  .logo { font-size: 28px; font-weight: 700; margin: 0; }
+  .logo span { color: #B7791C; }
+  h1 { font-size: 24px; margin: 0; line-height: 1.4; }
+  p { margin: 0; color: var(--sub); line-height: 1.6; }
+  .btn { display: block; width: 100%; min-height: 56px; border: 0; border-radius: 16px; font: inherit;
+    font-size: 17px; font-weight: 700; text-decoration: none; display: flex; align-items: center; justify-content: center; }
+  .primary { background: var(--accent); color: var(--text); }
+  .secondary { background: var(--soft); color: var(--text); }
+  .code { font-size: 26px; font-weight: 700; letter-spacing: 3px; padding: 14px; border-radius: 14px; background: #FFFFFF; border: 1px solid #EFE6DA; }
+  .small { font-size: 13px; }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<main>
+  <p class="logo">Ga<span>Bee</span></p>
+  <h1>가족 그룹에 초대받았어요</h1>
+  <div id="ok" hidden>
+    <a id="open" class="btn primary" href="#">가비 앱에서 열기</a>
+    <p style="margin-top:16px">앱이 열리지 않으면 앱의 <b>"초대 코드로 참여"</b>에 아래 코드를 입력해 주세요.</p>
+    <div class="code" id="code" style="margin-top:12px"></div>
+    <button class="btn secondary" id="copy" type="button" style="margin-top:12px">코드 복사</button>
+    <a id="install" class="btn secondary" href="#" hidden style="margin-top:12px">가비 앱 설치하기</a>
+    <p class="small" id="noInstall" style="margin-top:12px">아직 앱이 없다면 초대한 가족에게 설치 방법을 물어보세요.</p>
+  </div>
+  <p id="bad" hidden>초대 링크가 올바르지 않아요. 초대한 가족에게 링크를 다시 받아 주세요.</p>
+</main>
+<script>
+  // 앱 설치 파일(APK) 주소. 정해지면 여기에 넣는다. 비어 있으면 설치 버튼 대신 안내 문구를 보인다.
+  var APK_URL = "";
+  var PACKAGE = "com.kangminhun.gabee";
+
+  var code = (new URLSearchParams(location.search).get("code") || "").trim().toUpperCase();
+  if (!/^[A-Z0-9]{4,12}$/.test(code)) {
+    document.getElementById("bad").hidden = false;
+  } else {
+    var appUrl = "gabee://family-join?code=" + code;
+    var isAndroid = /Android/i.test(navigator.userAgent);
+    // 안드로이드는 intent 주소로 열어야 카카오톡 안 브라우저에서도 앱이 열리고, 앱이 없으면 설치 주소로 넘어간다
+    var openUrl = isAndroid
+      ? "intent://family-join?code=" + code + "#Intent;scheme=gabee;package=" + PACKAGE +
+        (APK_URL ? ";S.browser_fallback_url=" + encodeURIComponent(APK_URL) : "") + ";end"
+      : appUrl;
+    document.getElementById("open").href = openUrl;
+    document.getElementById("code").textContent = code;
+    document.getElementById("ok").hidden = false;
+    if (APK_URL) {
+      document.getElementById("install").href = APK_URL;
+      document.getElementById("install").hidden = false;
+      document.getElementById("noInstall").hidden = true;
+    }
+    document.getElementById("copy").addEventListener("click", function () {
+      var btn = this;
+      var done = function () { btn.textContent = "복사했어요"; };
+      if (navigator.clipboard) navigator.clipboard.writeText(code).then(done, function () {});
+    });
+  }
+</script>
+</body>
+</html>

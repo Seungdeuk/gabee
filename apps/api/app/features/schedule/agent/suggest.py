@@ -102,7 +102,13 @@ def supply(db: Session, user_id: str, group_id: str) -> tuple[list[EventSuggesti
     since, until = today - timedelta(days=PAST_DAYS), today + timedelta(days=AHEAD_DAYS)
     nearby = [e for e in data.events if since <= current_when(e)[0] <= until]
     lines = [
-        chat.event_line(e.id, reader.to_local(e.starts_at), e.title, reader.time_text(e))
+        chat.event_line(
+            e.id,
+            reader.to_local(e.starts_at),
+            e.title,
+            reader.time_text(e),
+            getattr(e, "shared", False),
+        )
         for e in nearby
     ]
     # 이미 있는 제안(대기·확정, 날짜 지난 것 포함)은 다시 만들지 않는다

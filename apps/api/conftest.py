@@ -36,6 +36,15 @@ def _reset_login_limiter():
 
 
 @pytest.fixture
+def full_care_samples(monkeypatch):
+    """돌봄 추천 규칙(물·산책·컨디션)과 수치·컨디션 기록 방식을 시험할 때 쓴다: 예전 기본 항목 7개를 처음 열 때 만든다.
+    서비스의 기본값은 식사 3개 + 영양제라서(`care/config.py` 의 SAMPLE_ITEMS), 그 항목이 필요한 시험이 이 세트를 명시한다."""
+    from app.features.care import config as care_config
+
+    monkeypatch.setattr(care_config, "SAMPLE_ITEMS", care_config.FULL_SAMPLE_ITEMS)
+
+
+@pytest.fixture
 def client():
     with TestClient(app) as c:  # lifespan 이 테이블을 만든다
         yield c

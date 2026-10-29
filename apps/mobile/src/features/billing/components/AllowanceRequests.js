@@ -7,7 +7,7 @@ import Tag from "@/shared/components/Tag";
 import { colors, font } from "@/theme";
 
 import { approveAllowanceRequest, cancelAllowanceRequest, rejectAllowanceRequest, requestAllowance } from "../api";
-import { parseWon, won } from "../format";
+import { formatMoneyInput, parseWon, won } from "../format";
 
 const STATUS = {
   pending: { label: "기다리는 중", tone: "orange" },
@@ -56,7 +56,7 @@ export default function AllowanceRequests({ item, notify, onChanged }) {
       <Text style={styles.label}>용돈 요청</Text>
       {item.can_request ? (
         <View style={styles.line}>
-          <Field style={styles.amountField} value={amount} onChangeText={setAmount} placeholder={`${item.name} 요청 금액`} keyboardType="numeric" />
+          <Field style={styles.amountField} value={amount} onChangeText={(text) => setAmount(formatMoneyInput(text))} placeholder={`${item.name} 요청 금액`} keyboardType="numeric" />
           <Field style={styles.grow} value={memo} onChangeText={setMemo} placeholder="무엇에 쓸까요" />
           <Button small label="용돈 요청" a11yLabel={`${item.name} 용돈 요청`} onPress={send} disabled={busy} />
         </View>
@@ -97,7 +97,7 @@ function RequestRow({ item, request: r, busy, run, notify }) {
       </View>
       {r.status === "pending" && item.can_manage ? (
         <View style={styles.line}>
-          <Field style={styles.grow} value={approve} onChangeText={setApprove} placeholder="승인 금액 (비우면 요청 금액)" keyboardType="numeric" />
+          <Field style={styles.grow} value={approve} onChangeText={(text) => setApprove(formatMoneyInput(text))} placeholder="승인 금액 (비우면 요청 금액)" keyboardType="numeric" />
           <Button small label="승인" a11yLabel={`${ask} 승인`} onPress={onApprove} disabled={busy} />
           <Button small variant="secondary" label="거절" a11yLabel={`${ask} 거절`} onPress={() => run(() => rejectAllowanceRequest(item.child_id, r.id, {}), "요청을 거절했어요")} disabled={busy} />
         </View>

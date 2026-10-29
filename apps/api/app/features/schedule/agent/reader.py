@@ -10,6 +10,7 @@ from datetime import UTC, datetime, timedelta
 from sqlalchemy.orm import Session
 
 from app.features.schedule import repository as schedule_repo
+from app.features.schedule import service as schedule_service
 from app.features.schedule.models import Event
 from app.features.schedule.timeutil import local_tz
 
@@ -55,11 +56,14 @@ def read(
     if "schedule" in sources:
         since = now - READ_SPAN
         until = now + READ_SPAN
-        data.events = [
+        events = [
             e
             for e in schedule_repo.list_from(db, group_id, since, user_id)
             if aware(e.starts_at) <= until
         ]
+        events = schedule_service.with_sharing(db, user_id or "", events)
+        # 가족 채팅에서는 가족과 공유된(공동) 일정만 읽는다. 나 혼자 일정이 가족 앞에 나오지 않게.
+        data.events = [e for e in events if e.shared] if channel == "family" else events
     return data
 
 
@@ -79,6 +83,7 @@ def brief(event: Event) -> dict:
         "note": event.note,
         "status": event.status,
         "checked": bool(event.checked),
+        "shared": bool(getattr(event, "shared", False)),
     }
 
 

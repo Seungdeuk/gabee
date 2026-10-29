@@ -1,6 +1,7 @@
+import * as Linking from "expo-linking";
 import { useRouter } from "expo-router";
 import { useState } from "react";
-import { Pressable, Share, StyleSheet, Text, View } from "react-native";
+import { Pressable, Share, StyleSheet, Switch, Text, View } from "react-native";
 
 import UserAvatar from "@/shared/components/UserAvatar";
 import Button from "@/shared/components/Button";
@@ -9,8 +10,10 @@ import SectionTitle from "@/shared/components/SectionTitle";
 import Tag from "@/shared/components/Tag";
 import { colors, font } from "@/theme";
 
-import { approveJoinRequest, reissueInvite, rejectJoinRequest, revokeInvite } from "../api";
+import { approveJoinRequest, reissueInvite, rejectJoinRequest, revokeInvite, setInviteAutoApprove } from "../api";
 import FamilyFrame from "../components/FamilyFrame";
+import InviteQrModal from "../components/InviteQrModal";
+import { inviteLink, inviteMessage } from "../inviteLink";
 import Notice from "../components/Notice";
 import { expiryText, familyErrorMessage, roleLabel } from "../messages";
 import { relationText, shownName } from "../relations";
@@ -29,6 +32,8 @@ export default function FamilyScreen() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const [qrOpen, setQrOpen] = useState(false);
+  const linkFor = (code) => inviteLink(code, Linking.createURL("family-join", { queryParams: { code } }));
 
   const run = async (job, done) => {
     setBusy(true);
@@ -46,7 +51,7 @@ export default function FamilyScreen() {
 
   const share = async (code) => {
     try {
-      await Share.share({ message: `가비 가족 초대 코드: ${code}\n가비 앱에서 "초대 코드로 참여"에 입력해 주세요. 24시간 안에 한 번만 쓸 수 있어요.` });
+      await Share.share({ message: inviteMessage(code, linkFor(code)) });
     } catch {
       setError("공유하지 못했어요. 코드를 길게 눌러 복사해 보세요");
     }
@@ -93,6 +98,8 @@ export default function FamilyScreen() {
 
   const { group } = family;
   const expiry = expiryText(group.invite_expires_at);
+  const usesLeft = group.invite_uses_left == null ? "" : `${group.invite_uses_left}명 더 들어올 수 있어요`;
+  const autoApprove = group.invite_auto_approve !== false;
   return (
     <FamilyFrame title={group.name} subtitle={`구성원 ${group.members.length}명 · 내 권한 ${roleLabel(group.my_role)}`}>
       <Notice tone="error" text={error} />
@@ -121,8 +128,25 @@ export default function FamilyScreen() {
                 <Text style={styles.code} selectable accessibilityLabel="초대 코드" testID="invite-code">
                   {group.invite_code}
                 </Text>
-                <Text style={styles.sub}>{expiry ? `${expiry} · ` : ""}한 번만 쓸 수 있어요. 코드를 받은 사람은 관리자의 승인을 거쳐 들어와요.</Text>
-                <Button label="초대 코드 공유" onPress={() => share(group.invite_code)} disabled={busy} testID="invite-share" />
+                <Text style={styles.sub}>
+                  {[expiry, usesLeft].filter(Boolean).join(" · ")}
+                  {autoApprove ? "\n코드를 받은 사람은 바로 가족이 돼요." : "\n코드를 받은 사람은 관리자의 승인을 거쳐 들어와요."}
+                </Text>
+                <View style={styles.buttons}>
+                  <View style={styles.grow}>
+                    <Button label="초대 링크 보내기" onPress={() => share(group.invite_code)} disabled={busy} testID="invite-share" />
+                  </View>
+                  <View style={styles.grow}>
+                    <Button label="QR 보기" variant="secondary" onPress={() => setQrOpen(true)} disabled={busy} testID="invite-qr" />
+                  </View>
+                </View>
+                <InviteQrModal
+                  visible={qrOpen}
+                  link={linkFor(group.invite_code)}
+                  code={group.invite_code}
+                  caption={[expiry, usesLeft].filter(Boolean).join(" · ")}
+                  onClose={() => setQrOpen(false)}
+                />
                 <View style={styles.buttons}>
                   <View style={styles.grow}>
                     <Button label="새 코드 만들기" small variant="secondary" onPress={() => run(reissueInvite, "새 초대 코드를 만들었어요. 이전 코드는 쓸 수 없어요")} disabled={busy} testID="invite-reissue" />
@@ -138,6 +162,19 @@ export default function FamilyScreen() {
                 <Button label="초대 코드 만들기" onPress={() => run(reissueInvite, "초대 코드를 만들었어요")} disabled={busy} testID="invite-reissue" />
               </>
             )}
+            <View style={styles.switchRow}>
+              <View style={styles.text}>
+                <Text style={styles.name}>초대받은 사람 바로 들어오기</Text>
+                <Text style={styles.sub}>끄면 내가 승인해야 가족이 돼요</Text>
+              </View>
+              <Switch
+                value={autoApprove}
+                onValueChange={(v) => run(() => setInviteAutoApprove(v), v ? "이제 초대받은 사람이 바로 들어와요" : "이제 내가 승인해야 들어와요")}
+                disabled={busy}
+                accessibilityLabel="초대받은 사람 바로 들어오기"
+                testID="invite-auto-approve"
+              />
+            </View>
           </Card>
           <SectionTitle title="가입 요청" />
           <Card tone={family.pendingCount > 0 ? "orange" : "white"}>
@@ -187,4 +224,5 @@ const styles = StyleSheet.create({
   request: { gap: 8, paddingVertical: 8 },
   requestWho: { flexDirection: "row", alignItems: "center", gap: 12 },
   grow: { flex: 1 },
+  switchRow: { flexDirection: "row", alignItems: "center", gap: 12, marginTop: 12 },
 });

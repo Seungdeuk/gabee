@@ -9,9 +9,9 @@ import TopicChips from "./TopicChips";
 import WhoChips from "./WhoChips";
 
 /**
- * 누구 / 주제 필터 칩 두 줄. 안 켜면 전체, 켠 칩을 다시 누르면 해제(여러 개 가능).
+ * 대상 / 주제 필터 칩 두 줄. 안 켜면 전체, 켠 칩을 다시 누르면 해제(여러 개 가능).
  * 일정 등록 화면과 같은 칩이라 길게 눌러 줄에서 빼고("삭제"), "+ 누구"로 다시 넣고, "+ 주제"로 새 주제를 만들 수 있다.
- * 누구 칩은 나·가족·부모님이고, 뺀 목록은 이 화면 전용으로 이 폰에만 저장한다. 주제를 지우면 그 주제 필터도 풀린다.
+ * 대상 칩은 나·공동·가족 구성원(별명 → 이름)이고, 뺀 목록은 이 화면 전용으로 이 폰에만 저장한다. 주제를 지우면 그 주제 필터도 풀린다.
  * @param {{ filter: { whoIds: string[], topicIds: string[] }, onToggleWho: (id: string) => void, onToggleTopic: (id: string) => void }} props
  */
 export default function FilterRows({ filter, onToggleWho, onToggleTopic }) {
@@ -32,7 +32,7 @@ export default function FilterRows({ filter, onToggleWho, onToggleTopic }) {
   return (
     <View style={styles.rows}>
       <View style={styles.row}>
-        <Text style={styles.label}>누구</Text>
+        <Text style={styles.label}>대상</Text>
         <View style={styles.chips}>
           <WhoChips
             members={chips}

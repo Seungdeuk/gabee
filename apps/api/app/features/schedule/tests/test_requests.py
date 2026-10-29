@@ -94,7 +94,12 @@ def test_accept_creates_my_event_only(client, family):
         "09:00:00",
         "10:00:00",
     )
-    assert e["who_ids"] == [a_id] and e["origin_id"] is None and e["topic_id"] is None
+    assert (
+        e["shared"] is True
+        and e["shared_ids"] == [a_id]
+        and e["origin_id"] is None
+        and e["topic_id"] is None
+    )
     assert "request_id" not in e
     assert _events(client, a) == []  # 보낸 사람에게는 일정이 생기지 않는다
     mine = client.get("/schedule/requests", headers=a).json()[0]
@@ -191,3 +196,16 @@ def test_other_family_cannot_touch_request(client, family, other_family):
     assert _cancel(client, other_family, req["id"]).status_code == 404
     assert _answer(client, other_family, req["id"]).status_code == 404
     assert _cancel(client, a, "nope").status_code == 404
+
+
+def test_accepted_request_event_is_shared_with_the_sender(client, family):
+    a, b, _ = family
+    a_id = _me(client, a)
+    rid = _send(client, a, [_me(client, b)]).json()["id"]
+    _answer(client, b, rid)
+    mine = client.get("/schedule/events", headers=b).json()
+    assert len(mine) == 1
+    assert mine[0]["shared"] is True and mine[0]["shared_ids"] == [a_id]  # 부탁도 공동 일정
+    assert (
+        client.get("/schedule/events", headers=a).json() == []
+    )  # 보낸 사람은 일정이 생기지 않는다

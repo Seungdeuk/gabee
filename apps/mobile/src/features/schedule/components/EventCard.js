@@ -3,14 +3,14 @@ import { Pressable, StyleSheet, Text, View } from "react-native";
 import { colors, font, radius, spacing } from "@/theme";
 
 import { KIND_COLOR, TOPIC_TEXT } from "../constants";
-import { members, topics } from "../mock";
-import { whoLabels } from "../model";
+import { topics } from "../mock";
+import { isShared } from "../model";
 import { formatClockRange } from "../utils/date";
 import CheckMark from "./CheckMark";
-import WhoTag from "./WhoTag";
+import SharedTag from "./SharedTag";
 
 /**
- * 한 줄 카드. 왼쪽 막대 색으로 형태를 구분하고, 제목 앞은 이름표(누구), 제목 뒤는 주제 글자.
+ * 한 줄 카드. 왼쪽 막대 색으로 형태를 구분하고, 제목 앞은 공동 이름표(공동 일정일 때만), 제목 뒤는 주제 글자.
  * 시간이 없거나 종일이면 시간 자리를 글자 없이 비운다.
  * - compact(메인): 시간은 오른쪽에 짧게(09:00–10:00).
  * - detailed(달력·목록): 시간과 장소를 제목 아래 한 줄로(09:00 – 10:00 · 시립병원).
@@ -19,7 +19,6 @@ import WhoTag from "./WhoTag";
  */
 export default function EventCard({ item, variant = "compact", past = false, onPress, onToggleCheck }) {
   const detailed = variant === "detailed";
-  const labels = whoLabels(item.whoIds, members);
   const topic = topics.find((t) => t.id === item.topicId);
   const time = formatClockRange(item, detailed ? " – " : "–");
   const sub = detailed ? [time, item.place].filter(Boolean).join(" · ") : "";
@@ -32,7 +31,7 @@ export default function EventCard({ item, variant = "compact", past = false, onP
       <View style={[styles.bar, { backgroundColor: KIND_COLOR[item.kind] }]} />
       <View style={styles.main}>
         <View style={styles.titleRow}>
-          {labels.length > 0 ? <WhoTag label={labels.join("·")} /> : null}
+          {isShared(item) ? <SharedTag label="공동" /> : null}
           <Text style={[styles.title, past && styles.titlePast]}>
             {item.title}
             {topic ? <Text style={[styles.topic, { color: TOPIC_TEXT[topic.color] }]}>{`  ${topic.name}`}</Text> : null}

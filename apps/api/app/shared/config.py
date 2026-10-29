@@ -76,6 +76,9 @@ class Settings(BaseSettings):
     # 이메일은 가입 때 선택이고, 인증하지 않아도 가족 그룹을 만들고 참여할 수 있다(기본). true 로 켜면 이메일이 있는데 미인증인 정식 회원의
     # 그룹 생성·참여를 막는다(메일 발송이 설정된 환경에서만). 이메일이 없는 계정은 켜도 막지 않는다.
     require_email_verification: bool = False
+    # 테스트 참여 동의서에 동의한 회원만 API 를 쓸 수 있게 한다(기본은 꺼짐). 앱의 동의서 버전(CONSENT_VERSION)과 같게 둔다.
+    require_tester_consent: bool = False
+    tester_consent_version: str = "v0.2"
     # 메일 요청 제한(프로세스 메모리, login 제한과 같은 한계): 인증 메일 재발송 간격/시간당, 재설정 메일 이메일별/IP별 시간당
     verify_resend_cooldown_seconds: int = 60
     verify_max_per_hour: int = 5
@@ -85,7 +88,7 @@ class Settings(BaseSettings):
     # 가족 초대·가입 승인(PR 4-B): 새로 발급하는 초대 코드는 24시간·1회. 코드를 틀리게 입력한 실패가 이 횟수에 이르면
     # 계정별·IP별로 막고(invite_attempts, 슬라이딩 윈도우), 윈도우가 지나면 다시 시도할 수 있다.
     invite_ttl_seconds: int = 24 * 3600
-    invite_max_uses: int = 1
+    invite_max_uses: int = 20  # 가족 단톡방에 한 번 공유한 코드로 여러 명이 들어올 수 있게
     invite_max_failures: int = 5
     invite_failure_window_seconds: int = 15 * 60
 

@@ -1,6 +1,6 @@
 import { apiFetch, apiUrl, authHeaders, ensureFreshAccess, isApiConfigured } from "@/shared/api/client";
 
-import { confirmResultText, mapConfirmCards } from "./scheduleCard";
+import { confirmResultText, mapChatCards } from "./scheduleCard";
 
 /**
  * 가비의 답변 한 건.
@@ -60,7 +60,7 @@ export async function sendMessage(text, history = []) {
   }
   const res = await apiFetch("/ai-assistant/chat", { method: "POST", body: { message: text, history: history.slice(-10) } });
   const sources = (res.sources ?? []).map(({ n, title, item_id: itemId, source_path: sourcePath }) => ({ n, title, itemId, sourcePath }));
-  return { reply: res.reply, sources, draft: null, confirmCards: mapConfirmCards(res.confirm_cards) };
+  return { reply: res.reply, sources, draft: null, confirmCards: mapChatCards(res) };
 }
 
 /**
@@ -73,6 +73,20 @@ export async function confirmScheduleAction(card, share) {
   if (!isApiConfigured()) return { text: "(임시) 반영했어요." };
   const res = await apiFetch("/schedule/agent/confirm", { method: "POST", body: { action: card.pendingAction, share: Boolean(share) } });
   return { text: confirmResultText(res) };
+}
+
+/**
+ * 확인 카드의 버튼을 눌렀을 때 종류에 맞게 실행한다: 일정 카드는 일정 확인, 정산·돌봄 제안은 그 탭의 확인(token).
+ * 제안 토큰은 10분 안에 한 번만 쓸 수 있고, 서버가 사용자·가족·탭을 다시 확인한다.
+ * @param {{ kind: string, tab?: string, token?: string, pendingAction?: object }} card
+ * @param {boolean} share 일정 등록일 때만 쓰는 값
+ * @returns {Promise<{ text: string }>}
+ */
+export async function confirmCardAction(card, share) {
+  if (card.kind !== "proposal") return confirmScheduleAction(card, share);
+  if (!isApiConfigured()) return { text: "(임시) 반영했어요." };
+  const res = await apiFetch(`/${card.tab}/agent/confirm`, { method: "POST", body: { token: card.token } });
+  return { text: res?.summary ? `반영했어요 · ${res.summary}` : "반영했어요." };
 }
 
 /**

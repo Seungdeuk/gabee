@@ -25,9 +25,10 @@ const AVATAR = 36;
  * linkBadges 가 있으면(이 메시지에서 일정·할 일로 등록됨) 글 아래에 작은 표시를 붙인다(표시만, 눌러도 아무 일 없다).
  * onActions 가 있으면(서버에 저장된 텍스트 메시지) 말풍선을 길게 눌러 메뉴(복사·고정)를 연다. 네이티브에서는 길게 누르기가 글자 선택과 겹치지 않도록 이 경우 글자 선택을 끈다(복사는 메뉴에서 한다).
  * onSaveToRecord 가 있으면(가족 전체방의 사진) 전체 화면 사진 보기에 "가비 기록에 저장" 버튼이 붙고, 누르면 그 사진을 AI 비서의 가족 기록으로 올린다(결과 문구는 사진 보기에 보인다).
- * @param {{ message: object, mine: boolean, showName: boolean, showTime?: boolean, unread?: number, photoUrl?: string | null, highlighted?: boolean, onRetry?: (clientId: string) => void, onDiscard?: (clientId: string) => void, onActions?: (message: object) => void, linkBadges?: { kind: "event" | "todo", label: string }[], onSaveToRecord?: (attachment: object) => Promise<{ ok: boolean, message: string }> }} props
+ * @param {{ message: object, mine: boolean, showName: boolean, showTime?: boolean, unread?: number, photoUrl?: string | null, highlighted?: boolean, onRetry?: (clientId: string) => void, onDiscard?: (clientId: string) => void, onActions?: (message: object) => void, linkBadges?: { kind: "event" | "todo", label: string }[], onSaveToRecord?: (attachment: object) => Promise<{ ok: boolean, message: string }>, nameOf?: (userId: string) => string | undefined }} props
  */
-export default function MessageBubble({ message, mine, showName, showTime = true, unread = 0, photoUrl, highlighted = false, onRetry, onDiscard, onActions, linkBadges, onSaveToRecord }) {
+export default function MessageBubble({ message, mine, showName, showTime = true, unread = 0, photoUrl, highlighted = false, onRetry, onDiscard, onActions, linkBadges, onSaveToRecord, nameOf }) {
+  const senderName = nameOf?.(message.user_id) || message.user_name; // 내가 붙인 별명이 있으면 별명
   const failed = message.status === "failed";
   const sending = message.status === "sending";
   const attachment = message.attachment ?? null;
@@ -137,13 +138,13 @@ export default function MessageBubble({ message, mine, showName, showTime = true
         message.is_assistant ? (
           <AssistantAvatar size={AVATAR} />
         ) : (
-          <UserAvatar name={message.user_name || "?"} userId={message.user_id} photoUrl={photoUrl} size={AVATAR} />
+          <UserAvatar name={senderName || "?"} userId={message.user_id} photoUrl={photoUrl} size={AVATAR} />
         )
       ) : (
         <View style={styles.spacer} />
       )}
       <View style={styles.column}>
-        {showName ? <Text style={styles.name}>{message.user_name}</Text> : null}
+        {showName ? <Text style={styles.name}>{senderName}</Text> : null}
         <View style={styles.line}>
           {bubble}
           {meta ? <View style={styles.metaOther}>{meta}</View> : null}

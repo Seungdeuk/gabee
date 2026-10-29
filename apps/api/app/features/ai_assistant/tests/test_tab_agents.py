@@ -272,3 +272,20 @@ def test_tab_agent_daily_limit_uses_the_shared_guard(client, family, monkeypatch
     finally:
         monkeypatch.undo()
         agent_guard.register()
+
+
+def test_false_proposal_claim_is_not_passed_on():
+    """에이전트 답이 '확인 버튼을 눌러야 등록돼요'라는데 실제 제안이 없으면 그 말을 전하지 않는다."""
+    from app.features.ai_assistant import agents
+    from app.shared.llm.agent import AgentReply
+
+    claim = AgentReply("지출 등록을 제안합니다. 아래 확인 버튼을 눌러야 등록됩니다.")
+    out = agents._without_false_proposal("ask_billing", claim)
+    assert out.can_answer is False and out.answer == agents.NO_PROPOSAL_TEXT
+    # 제안이 실제로 있으면 그대로 둔다
+    real = AgentReply("지출 등록을 제안합니다. 확인 버튼을 눌러 주세요.", proposals=[object()])
+    assert agents._without_false_proposal("ask_billing", real) is real
+    # 조회 답이나 다른 에이전트는 건드리지 않는다
+    plain = AgentReply("이번 달 지출은 22만원이에요.")
+    assert agents._without_false_proposal("ask_billing", plain) is plain
+    assert agents._without_false_proposal("ask_schedule", claim) is claim
