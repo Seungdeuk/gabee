@@ -368,6 +368,25 @@ export const showPin = ({ roomId, messageId }) =>
   apiFetch(`/family-chat/pins/${Number(messageId)}/hide${roomId ? `?${roomParam(roomId)}` : ""}`, { method: "DELETE" });
 
 /**
+ * 게시판 목록: 공지로 올린 메시지의 기록(지난 공지 포함)을 올린 시각 최신순으로. 전체 본문이 온다. 서버 계약은 `GET /family-chat/board`. AI 를 부르지 않는다.
+ * 오류: 400 invalid_cursor, 404(들어갈 수 없는 방), 429, 401.
+ * @param {{ roomId?: string | null, limit?: number, before?: string | null }} [options] roomId 가 없으면 가족 전체방, limit 1~50(기본 20), before 는 이전 응답의 next_before
+ * @returns {Promise<{ items: { id: string, message_id: number, text: string, user_id: string, user_name: string, message_created_at: string, posted_by: string, posted_by_name: string, posted_at: string, is_current: boolean, message_deleted: boolean }[], next_before: string | null }>}
+ */
+export function listBoard({ roomId, limit = 20, before } = {}) {
+  const query = [roomParam(roomId), `limit=${Number(limit)}`, before ? `before=${encodeURIComponent(before)}` : ""].filter(Boolean).join("&");
+  return apiFetch(`/family-chat/board?${query}`);
+}
+
+/**
+ * 게시판 글을 삭제한다(방 안의 누구나). 지금 공지로 올라 있으면 채팅방 위 공지 바에서도 내려간다. 원본 메시지는 그대로다. 없는 글은 404.
+ * @param {{ roomId?: string | null, postId: string }} options roomId 가 없으면 가족 전체방
+ * @returns {Promise<null>} 성공하면 본문 없음(204)
+ */
+export const deleteBoardPost = ({ roomId, postId }) =>
+  apiFetch(`/family-chat/board/${encodeURIComponent(postId)}${roomId ? `?${roomParam(roomId)}` : ""}`, { method: "DELETE" });
+
+/**
  * 이 방에서 등록한 일정·할 일과 원본 메시지의 연결(최신순). 서버 계약은 별도 PR 의 `GET /family-chat/links`. AI 를 부르지 않는다. 제목·본문은 기록하지 않는다.
  * @param {{ roomId?: string | null, kind?: "event" | "todo" | null, limit?: number }} [options] roomId 가 없으면 가족 전체방, limit 1~100(기본 50)
  * @returns {Promise<{ items: { id: string, room_id: string, message_id: number, kind: "event" | "todo", target_id: string, title: string, date: string | null, time: string | null, created_by: string, created_by_name: string, created_at: string, message_text: string, message_user_name: string }[] }>}
