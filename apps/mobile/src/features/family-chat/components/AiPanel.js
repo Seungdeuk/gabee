@@ -18,19 +18,7 @@ import {
 } from "../messages";
 import { privacyCaption } from "../privacyPreview";
 import { candidateToRequestBody, dayFromChip, hasCandidateDay, requestErrorText, sendErrorMessage } from "../togetherUtils";
-import {
-  CONSENT_CANCEL_LABEL,
-  CONSENT_DISABLE_BODY,
-  CONSENT_DISABLE_CONFIRM_LABEL,
-  CONSENT_DISABLE_LABEL,
-  CONSENT_DISABLE_TITLE,
-  CONSENT_ENABLE_LABEL,
-  CONSENT_NEED_MANAGER,
-  CONSENT_ON_MEMBER_NOTE,
-  PANEL_NOTICE,
-  needsEnableConfirm,
-} from "../privacyCopy";
-import AiConsentCard from "./AiConsentCard";
+import { PANEL_NOTICE } from "../privacyCopy";
 import TodoCandidateRow from "./TodoCandidateRow";
 
 /** 후보 한 줄에 붙는 보조 글(날짜·시간·장소 등). */
@@ -69,9 +57,6 @@ export default function AiPanel({ visible, onClose, onPickReply, onLinked }) {
   const [todoRegistered, setTodoRegistered] = useState({}); // 할 일 후보 순번 -> 같은 형태(함께하기로 보낸 결과)
   const [todoDay, setTodoDay] = useState({}); // 날짜가 없는 할 일 후보 순번 -> 고른 날짜 칩 key
   const [todoCustom, setTodoCustom] = useState({}); // 직접 입력을 고른 후보 순번 -> 적은 날짜 글자
-  const [confirmingEnable, setConfirmingEnable] = useState(false); // 켜기 직전 안내 확인 중
-  const [confirmingDisable, setConfirmingDisable] = useState(false); // 끄기 직전 확인 중
-  const settingBusy = useRef(false); // 켜기·끄기 확인 버튼을 빠르게 두 번 눌러도 한 번만 보낸다
   const todoBusy = useRef(new Set()); // 등록 중이거나 등록된 할 일 후보 순번: 같은 후보를 두 번 등록하지 않는다
 
   const loadSettings = useCallback(async () => {
@@ -87,24 +72,6 @@ export default function AiPanel({ visible, onClose, onPickReply, onLinked }) {
     if (shouldLoadSettings(visible)) loadSettings();
   }, [visible, loadSettings]);
 
-  /** "AI 기능 켜기" 버튼: 바로 켜지 않고 확인 카드를 연다(이미 켜져 있으면 아무 일도 없다). */
-  const startEnable = () => {
-    if (needsEnableConfirm(settings?.enabled, true)) setConfirmingEnable(true);
-  };
-
-  /** 확인 카드에서 "확인하고 켜기"/"끄기"를 눌렀을 때만 설정을 바꾼다. */
-  const changeEnabled = async (enabled) => {
-    if (settingBusy.current) return;
-    settingBusy.current = true;
-    try {
-      await run("settings", () => setAiEnabled(enabled), () => {});
-    } finally {
-      settingBusy.current = false;
-      setConfirmingEnable(false);
-      setConfirmingDisable(false);
-    }
-  };
-
   /** 요청 하나를 실행하고 오류는 문구로 바꾼다. 끝나면 남은 횟수를 새로 읽는다. */
   const run = async (name, call, onDone) => {
     setBusy(name);
@@ -118,9 +85,15 @@ export default function AiPanel({ visible, onClose, onPickReply, onLinked }) {
     loadSettings();
   };
 
-  /** "대화 분석하기"/"다시 분석하기": 누르면 곧바로 분석 API 를 한 번 호출한다. */
+  /**
+   * "대화 분석하기"/"다시 분석하기": 누르면 곧바로 분석 API 를 한 번 호출한다. AI 동의는 회원가입 때 받으므로 켜기·끄기 버튼은 없다.
+   * 이 가족의 AI 설정이 꺼져 있으면(예전에 꺼 둔 경우) 분석을 누른 때에 한해 먼저 켠 뒤 분석한다(안 켜면 서버가 ai_not_enabled 로 막는다).
+   */
   const analyze = () =>
-    run("analysis", analyzeChat, (res) => {
+    run("analysis", async () => {
+      if (settings?.enabled === false) await setAiEnabled(true);
+      return analyzeChat();
+    }, (res) => {
       setAnalysis(parseAnalysis(res));
       setRegistered({});
       setTodoRegistered({});
@@ -202,69 +175,12 @@ export default function AiPanel({ visible, onClose, onPickReply, onLinked }) {
     );
   }
 
-  if (!settings.enabled) {
-    return (
-      <>
-        {confirmingEnable ? (
-          <AiConsentCard
-            busy={busy === "settings"}
-            defaultOpen
-            onConfirm={() => changeEnabled(true)}
-            onCancel={() => setConfirmingEnable(false)}
-          />
-        ) : (
-          <>
-            <AiConsentCard />
-            {settings.canManage ? (
-              <Button
-                label={CONSENT_ENABLE_LABEL}
-                small
-                onPress={startEnable}
-                disabled={busy !== ""}
-                testID="chat-ai-enable"
-              />
-            ) : (
-              <Text style={styles.note} testID="chat-ai-need-manager">
-                {CONSENT_NEED_MANAGER}
-              </Text>
-            )}
-          </>
-        )}
-        {error ? (
-          <Text style={styles.error} accessibilityRole="alert">
-            {error}
-          </Text>
-        ) : null}
-      </>
-    );
-  }
-
   const disabled = busy !== "";
   return (
     <>
       <Text style={styles.sub} testID="chat-ai-notice">
         {PANEL_NOTICE}
       </Text>
-      {settings.canManage ? (
-        confirmingDisable ? (
-          <View style={styles.offCard} testID="chat-ai-disable-confirm">
-            <Text style={styles.bodyStrong} accessibilityRole="header">
-              {CONSENT_DISABLE_TITLE}
-            </Text>
-            <Text style={styles.sub}>{CONSENT_DISABLE_BODY}</Text>
-            <View style={styles.row}>
-              <Button label={busy === "settings" ? "끄는 중..." : CONSENT_DISABLE_CONFIRM_LABEL} small onPress={() => changeEnabled(false)} disabled={busy !== ""} testID="chat-ai-disable-confirm-yes" />
-              <Button label={CONSENT_CANCEL_LABEL} small variant="secondary" onPress={() => setConfirmingDisable(false)} disabled={busy !== ""} testID="chat-ai-disable-confirm-no" />
-            </View>
-          </View>
-        ) : (
-          <Button label={CONSENT_DISABLE_LABEL} small variant="secondary" onPress={() => setConfirmingDisable(true)} disabled={busy !== ""} testID="chat-ai-disable" />
-        )
-      ) : (
-        <Text style={styles.note} testID="chat-ai-on-member-note">
-          {CONSENT_ON_MEMBER_NOTE}
-        </Text>
-      )}
       {remainingText(settings) ? <Text style={styles.caption}>{remainingText(settings)}</Text> : null}
       {error ? (
         <Text style={styles.error} accessibilityRole="alert">

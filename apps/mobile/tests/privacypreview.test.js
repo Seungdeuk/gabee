@@ -32,16 +32,14 @@ test("승인 정책: 답장 추천은 입력창에 넣기만 하고, 일정·할
   // 확인 카드(미리보기 -> "AI에 보내기") 흐름은 없다
   assert.doesNotMatch(panel, /AiConfirmCard|requestPreview|confirmSend|cancelPreview|previewAiRange|pending/);
   assert.equal(readFileSync(new URL("../src/features/family-chat/api.js", import.meta.url), "utf8").includes("previewAiRange"), false);
-  // "대화 분석하기" 버튼 한 번에 분석을 부른다(run("analysis", analyzeChat) 는 analyze 핸들러 한 곳)
+  // "대화 분석하기" 버튼 한 번에 분석을 부른다(run("analysis", ...) 는 analyze 핸들러 한 곳, 안에서 analyzeChat 을 한 번 부른다)
   assert.equal((panel.match(/run\("analysis"/g) ?? []).length, 1);
-  assert.match(panel, /const analyze = \(\) =>\s*run\("analysis", analyzeChat/);
+  assert.match(panel, /const analyze = \(\) =>\s*run\("analysis", async \(\) => \{[\s\S]*return analyzeChat\(\)/);
   assert.match(panel, /onPress=\{analyze\}/);
   assert.doesNotMatch(panel.slice(panel.indexOf("useEffect"), panel.indexOf("useEffect") + 150), /analyze/);
-  // 동의(enabled)가 꺼져 있으면 분석 버튼이 있는 화면에 도달하지 못한다: 꺼짐 분기가 먼저 return 한다
-  const offBranch = panel.indexOf("if (!settings.enabled)");
-  assert.ok(offBranch > 0);
-  assert.ok(offBranch < panel.indexOf('testID="chat-ai-analyze"'));
-  assert.match(panel.slice(offBranch, panel.indexOf('testID="chat-ai-analyze"')), /return \(/);
+  // 동의는 회원가입 때 받으므로 꺼짐 분기(동의 카드)가 없고 분석 버튼이 항상 있는 화면이다
+  assert.doesNotMatch(panel, /if \(!settings\.enabled\)/);
+  assert.ok(panel.indexOf('testID="chat-ai-analyze"') > 0);
   // 켜진 상태에는 상시 안내문이 분석 버튼 위에 있다(문구는 privacyCopy 상수)
   assert.match(panel, /\{PANEL_NOTICE\}/);
   assert.ok(panel.indexOf("{PANEL_NOTICE}") < panel.indexOf('testID="chat-ai-analyze"'));

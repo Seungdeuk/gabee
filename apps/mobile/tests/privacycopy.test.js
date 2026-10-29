@@ -7,15 +7,11 @@ import { test } from "node:test";
 
 import {
   CONSENT_DETAILS,
-  CONSENT_DISABLE_BODY,
-  CONSENT_ON_MEMBER_NOTE,
-  CONSENT_NEED_MANAGER,
   CONSENT_SUMMARY,
   CONSENT_TITLE,
   PANEL_NOTICE,
   consentA11ySummary,
   detailsToggleLabel,
-  needsEnableConfirm,
 } from "../src/features/family-chat/privacyCopy.js";
 import { privacyCaption } from "../src/features/family-chat/privacyPreview.js";
 
@@ -74,19 +70,6 @@ test("가려서 보낸다는 말은 대화 분석 줄에만 쓰고, 끄면 Claud
   assert.doesNotMatch(all, /아무것도 나가지/);
 });
 
-test("관리자 아닌 구성원 안내", () => {
-  assert.match(CONSENT_NEED_MANAGER, /소유자나 관리자/);
-  assert.match(CONSENT_NEED_MANAGER, /대신 동의할 수 없어요/);
-});
-
-test("켜기 확인은 꺼짐 -> 켬 에서만 필요하다", () => {
-  assert.equal(needsEnableConfirm(false, true), true);
-  assert.equal(needsEnableConfirm(undefined, true), true);
-  assert.equal(needsEnableConfirm(true, true), false); // 이미 켜짐
-  assert.equal(needsEnableConfirm(true, false), false); // 끄기
-  assert.equal(needsEnableConfirm(false, false), false);
-});
-
 test("접근성 라벨", () => {
   assert.equal(detailsToggleLabel(false), "자세히 보기");
   assert.equal(detailsToggleLabel(true), "자세히 접기");
@@ -113,30 +96,22 @@ test("가린 개수 안내 한 줄은 가족 채팅 AI 결과 영역에서만 �
   assert.deepEqual(names, ["features/family-chat/components/AiPanel.js"]);
 });
 
-test("켜기: '켜기' 버튼은 확인 카드만 열고, setAiEnabled 는 확인 버튼 핸들러(changeEnabled)에서만 부른다", () => {
+test("AI 패널에는 켜기·끄기 버튼이 없고 대화 분석하기만 있다(동의는 회원가입 때 받는다)", () => {
   const src = panel();
-  const block = src.match(/<Button[^>]*?testID="chat-ai-enable"[^>]*?\/>/s)?.[0] ?? "";
-  assert.match(block, /onPress=\{startEnable\}/);
-  assert.doesNotMatch(block, /setAiEnabled/);
-  const start = src.match(/const startEnable = \(\) => \{[\s\S]*?\n {2}\};/)?.[0] ?? "";
-  assert.match(start, /needsEnableConfirm/);
-  assert.match(start, /setConfirmingEnable\(true\)/);
-  assert.doesNotMatch(start, /setAiEnabled/);
-  assert.match(src, /onConfirm=\{\(\) => changeEnabled\(true\)\}/);
-  assert.equal((src.match(/setAiEnabled\(/g) ?? []).length, 1);
-  assert.match(src, /defaultOpen/);
+  for (const gone of ["chat-ai-enable", "chat-ai-disable", "chat-ai-need-manager", "chat-ai-on-member-note", "AiConsentCard", "confirmingEnable", "confirmingDisable", "changeEnabled", "startEnable", "canManage"]) {
+    assert.ok(!src.includes(gone), `${gone} 는 없어야 한다`);
+  }
+  assert.match(src, /testID="chat-ai-analyze"/);
+  assert.match(src, /PANEL_NOTICE/);
 });
 
-test("끄기 경로: 소유자·관리자에게만 'AI 끄기' 버튼, 확인 뒤에만 setAiEnabled(false)", () => {
+test("대화 분석하기는 AI 설정이 꺼져 있을 때만 먼저 켜고(분석을 누른 때 한정) 켜져 있으면 곧바로 분석한다", () => {
   const src = panel();
-  assert.match(src, /settings\.canManage \? \(\s*confirmingDisable/);
-  assert.match(src, /testID="chat-ai-disable"/);
-  assert.match(src, /onPress=\{\(\) => setConfirmingDisable\(true\)\}/);
-  assert.match(src, /onPress=\{\(\) => changeEnabled\(false\)\}/);
-  assert.match(src, /changeEnabled = async \(enabled\)[\s\S]*setAiEnabled\(enabled\)/);
-  assert.match(src, /CONSENT_ON_MEMBER_NOTE/);
-  assert.match(CONSENT_DISABLE_BODY, /AI 비서·문서 질문·일정·지갑·안부 도우미까지 모두 멈추고 저장된 분석 결과가 지워/);
-  assert.match(CONSENT_ON_MEMBER_NOTE, /소유자나 관리자만/);
+  const analyze = src.match(/const analyze = \(\) =>[\s\S]*?\n {4}\}, \(res\)/)?.[0] ?? "";
+  assert.match(analyze, /settings\?\.enabled === false\) await setAiEnabled\(true\)/);
+  assert.match(analyze, /return analyzeChat\(\)/);
+  assert.equal((src.match(/setAiEnabled\(/g) ?? []).length, 1); // 다른 곳에서 켜거나 끄지 않는다
+  assert.doesNotMatch(src, /setAiEnabled\(false\)/);
 });
 
 test("동의 PUT(/family-chat/ai/settings) 호출 위치는 허용 목록만 — 새 우회 경로가 생기면 실패", () => {
@@ -145,7 +120,7 @@ test("동의 PUT(/family-chat/ai/settings) 호출 위치는 허용 목록만 —
     .filter((f) => /ai\/settings"[^;]*PUT|PUT[^;]*ai\/settings"/.test(readText(f).replace(/\n/g, " ")))
     .map(rel)
     .sort();
-  // family-chat/api.js: AiPanel 의 확인 흐름이 부른다. ai-assistant/api.js(enableAi, AiOffCard): 확인 카드를 우회하는 알려진 경로.
+  // family-chat/api.js: AiPanel 의 분석 흐름(꺼져 있으면 먼저 켬)이 부른다. ai-assistant/api.js(enableAi, AiOffCard): 확인 카드를 우회하는 알려진 경로.
   // TODO: 담당 팀과 공용 확인 카드(shared)로 통합하면 ai-assistant 항목을 허용 목록에서 뺀다.
   assert.deepEqual(hits, ["features/ai-assistant/api.js", "features/family-chat/api.js"]);
   const callers = files.filter((f) => /setAiEnabled\(/.test(readText(f)) && !f.endsWith("api.js")).map(rel);
