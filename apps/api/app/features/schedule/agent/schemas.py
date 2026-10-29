@@ -1,7 +1,7 @@
 """일정 에이전트 입출력 형식. 메인 오케스트레이터(개인·가족 채팅)와 일정 화면 카드가 같은 형식을 쓴다.
 형식은 메인 담당자와 협의해 바뀔 수 있다 — 호출하는 쪽은 `handler.handle` 만 알면 되게 둔다."""
 
-from typing import Literal
+from typing import Annotated, Literal
 
 from pydantic import BaseModel, Field
 
@@ -100,6 +100,12 @@ class SuggestionOut(BaseModel):
     kind: int
     start_date: str  # YYYY-MM-DD
     place: str
+
+
+class SuggestionsRequest(BaseModel):
+    """추천 요청. chat 은 앱이 보낸 개인 AI 채팅의 최근 7일 안 내 말이다(서버는 저장하지 않고 이번 생성에만 쓴다)."""
+
+    chat: list[Annotated[str, Field(max_length=200)]] = Field(default_factory=list, max_length=30)
 
 
 class SuggestionsOut(BaseModel):

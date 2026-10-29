@@ -130,9 +130,11 @@ export const setEventChecked = (id, checked) =>
 
 /**
  * 오늘의 대기 제안(없으면 서버가 만들어 주니 몇 초 걸릴 수 있다). 하루 몫을 다 쓰면 suggestions 가 비고 exhausted 가 true.
+ * 최근 AI 채팅에서 내가 한 말(chat, 최대 30줄)을 함께 보낸다. 서버는 저장하지 않는다.
+ * @param {string[]} [chat] suggest_chat.js 의 recentChatLines 결과
  * @returns {Promise<SuggestionList>}
  */
-export const listSuggestions = () => apiFetch("/schedule/suggestions");
+export const listSuggestions = (chat = []) => apiFetch("/schedule/suggestions", { method: "POST", body: { chat } });
 
 /** 내 주제 목록(처음이면 서버가 기본 주제 "경조사"를 만들어 준다). @returns {Promise<ServerTopic[]>} */
 export const listTopics = () => apiFetch("/schedule/topics");

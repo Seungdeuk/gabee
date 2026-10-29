@@ -22,7 +22,7 @@ from ..constants import (
 )
 from ..models import EventSuggestion
 from ..service import current_when
-from . import chat, prompts, reader
+from . import chat, prompts, reader, suggest_sources
 
 FEATURE = "schedule_card"
 BATCH_SIZE = 5
@@ -86,8 +86,11 @@ def clean_suggestions(
     return out
 
 
-def supply(db: Session, user_id: str, group_id: str) -> tuple[list[EventSuggestion], bool]:
-    """(대기 제안 목록, 오늘 추천 소진 여부). 대기 제안이 있으면 LLM 을 부르지 않는다."""
+def supply(
+    db: Session, user_id: str, group_id: str, chat_lines: list[str] | None = None
+) -> tuple[list[EventSuggestion], bool]:
+    """(대기 제안 목록, 오늘 추천 소진 여부). 대기 제안이 있으면 LLM 을 부르지 않는다.
+    chat_lines: 앱이 보낸 개인 AI 채팅의 최근 내 말(저장하지 않고 이번 생성에만 쓴다)."""
     now = datetime.now(UTC)
     local_now = now.astimezone(reader.local_tz())
     today = local_now.date()
@@ -123,8 +126,15 @@ def supply(db: Session, user_id: str, group_id: str) -> tuple[list[EventSuggesti
     )
     taken = {(e.title, current_when(e)[0]) for e in data.events}
     taken |= {(s.title, s.start_date) for s in existing}
+    sources = suggest_sources.collect(db, user_id, group_id, today, chat_lines)
     prompt = prompts.suggest_prompt(
-        local_now, lines, [mask_text(s.title) for s in existing if s.start_date >= today]
+        local_now,
+        lines,
+        [mask_text(s.title) for s in existing if s.start_date >= today],
+        sources.requests,
+        sources.billing,
+        sources.family,
+        sources.chat,
     )
 
     def call():
@@ -132,7 +142,7 @@ def supply(db: Session, user_id: str, group_id: str) -> tuple[list[EventSuggesti
             prompt,
             prompts.SUGGEST_SCHEMA,
             system=prompts.SUGGEST_SYSTEM,
-            max_tokens=900,
+            max_tokens=2500,  # 입력이 늘고 모델의 생각 토큰이 출력 한도를 같이 써서 JSON 이 잘리지 않게 넉넉히
             model=prompts.SUGGEST_MODEL,
         )
         data = response.data if isinstance(response.data, dict) else {}

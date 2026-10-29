@@ -5529,7 +5529,7 @@
           "schedule"
         ],
         "summary": "List Suggestions",
-        "description": "대기 중인 추천(없으면 오늘 3묶음 안에서 새로 만든다). AI 를 부를 때만 동의·한도를 본다.",
+        "description": "대기 중인 추천(없으면 오늘 3묶음 안에서 새로 만든다). AI 를 부를 때만 동의·한도를 본다.\n개인 AI 채팅은 보내지 않으므로 이 입구로 만든 추천에는 쓰이지 않는다(앱은 POST 를 쓴다).",
         "operationId": "list_suggestions_schedule_suggestions_get",
         "parameters": [
           {
@@ -5565,6 +5565,87 @@
             }
           }
         ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SuggestionsOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "schedule"
+        ],
+        "summary": "Create Suggestions",
+        "description": "GET 과 같은 결과인데 개인 AI 채팅의 최근 내 말(`chat`)을 추천의 입력으로 함께 받는다. 대기 추천이 있으면 AI 를 부르지 않는다.",
+        "operationId": "create_suggestions_schedule_suggestions_post",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-gyeot-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Gyeot-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/SuggestionsRequest"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Body"
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -19981,6 +20062,22 @@
         ],
         "title": "SuggestionsOut",
         "description": "대기 중인 추천. exhausted 는 오늘 추천을 다 만들어 더 없다는 뜻."
+      },
+      "SuggestionsRequest": {
+        "properties": {
+          "chat": {
+            "items": {
+              "type": "string",
+              "maxLength": 200
+            },
+            "type": "array",
+            "maxItems": 30,
+            "title": "Chat"
+          }
+        },
+        "type": "object",
+        "title": "SuggestionsRequest",
+        "description": "추천 요청. chat 은 앱이 보낸 개인 AI 채팅의 최근 10일 안 내 말이다(서버는 저장하지 않고 이번 생성에만 쓴다)."
       },
       "Summary": {
         "properties": {
