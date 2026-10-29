@@ -547,7 +547,7 @@ export default function ChatRoomScreen() {
           </View>
         ) : null}
       </KeyboardAvoidingView>
-      <RoomDrawer visible={drawerOpen} onClose={() => setDrawerOpen(false)} room={info.room} roomId={roomId} peerId={peerId} myId={info.me?.id} onOpenSearch={() => setSearchOpen(true)} onOpenPins={pins.showPins} onOpenLinks={openLinks} onClosed={showLinksSheet} />
+      <RoomDrawer visible={drawerOpen} onClose={() => setDrawerOpen(false)} room={info.room} roomId={roomId} peerId={peerId} myId={info.me?.id} onOpenSearch={() => setSearchOpen(true)} onOpenLinks={openLinks} onClosed={showLinksSheet} />
       <LinksSheet visible={linksOpen} onClose={() => setLinksOpen(false)} links={links.links} status={links.status} myId={info.me?.id} notice={links.notice} onPick={pickLink} onDelete={links.remove} onRetry={links.reload} />
       <MessageMenu target={menu} myId={info.me?.id} pinned={pins.isPinned(menu?.message?.id)} onClose={closeMenu} onReact={reactFromMenu} onReply={replyFromMenu} onPin={pinMessageFromMenu} onUnpin={unpinMessageFromMenu} onCopy={copyMessage} onDelete={deleteFromMenu} />
       {direct ? null : <AiPanel visible={aiOpen} onClose={() => setAiOpen(false)} onPickReply={pickReply} onLinked={links.registerCandidate} />}
