@@ -18,6 +18,8 @@ export const socialConfig = () => ({
  * @returns {("google" | "kakao")[]}
  */
 export function enabledProviders() {
+  // 출시 전 임시로 끔: EXPO_PUBLIC_SOCIAL_LOGIN_DISABLED=true 면 키가 있어도 버튼을 숨긴다(EAS preview·production 환경에 설정)
+  if (process.env.EXPO_PUBLIC_SOCIAL_LOGIN_DISABLED === "true") return [];
   const cfg = socialConfig();
   const list = [];
   if (cfg.google.web || cfg.google.ios || cfg.google.android) list.push("google");

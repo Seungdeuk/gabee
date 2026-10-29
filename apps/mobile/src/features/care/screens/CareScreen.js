@@ -10,7 +10,6 @@ import { colors, font } from "@/theme";
 import { getDaily } from "../api";
 import CarePreview from "../components/CarePreview";
 import DailyCheckTab from "../components/DailyCheckTab";
-import LocationTab from "../components/LocationTab";
 import MealBar from "../components/MealBar";
 import MealTab from "../components/MealTab";
 import MissingBanner from "../components/MissingBanner";
@@ -20,11 +19,11 @@ const SECTIONS = [
   { key: "check", label: "데일리 체크" },
   { key: "recommend", label: "추천" },
   { key: "meal", label: "식단" },
-  { key: "location", label: "위치" },
+  // 위치 탭은 출시 전 임시로 끔(백그라운드 위치 권한 심사 대응). 다시 켤 때 LocationTab 과 app.json 위치 권한을 함께 되돌린다
 ];
 
 /**
- * 돌봄 탭: 데일리 체크, 추천, 식단 추천, 위치 확인(예시).
+ * 돌봄 탭: 데일리 체크, 추천, 식단 추천.
  * 서버 주소(EXPO_PUBLIC_API_URL)가 없으면 임시 데이터 화면을 보여 준다.
  */
 export default function CareScreen() {
@@ -76,7 +75,6 @@ function CareLive() {
       {section === "check" && daily.data ? <DailyCheckTab daily={daily.data} reload={reloadDaily} notify={notify} /> : null}
       {section === "recommend" ? <RecommendTab notify={notify} /> : null}
       {section === "meal" ? <MealTab notify={notify} onChanged={reloadDaily} /> : null}
-      {section === "location" ? <LocationTab notify={notify} /> : null}
     </Screen>
   );
 }
