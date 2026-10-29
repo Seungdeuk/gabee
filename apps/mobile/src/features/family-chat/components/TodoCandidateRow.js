@@ -1,17 +1,17 @@
-import { StyleSheet, Text, View } from "react-native";
+import { StyleSheet, Text, TextInput, View } from "react-native";
 
 import Button from "@/shared/components/Button";
-import { colors, font, spacing } from "@/theme";
+import { colors, font, radius, spacing } from "@/theme";
 
-import { DAY_CHIPS, hasCandidateDay } from "../togetherUtils";
+import { DAY_CHIPS, formatDayInput, hasCandidateDay } from "../togetherUtils";
 import ChipRow from "./ChipRow";
 
 /**
  * AI 가 찾은 할 일 후보 한 줄과 "함께하기로 보내기" 버튼. 사용자가 눌러야만 보내진다(AI 가 직접 보내지 않는다).
- * 후보에 날짜가 없으면 날짜 칩(오늘·내일·3일 뒤·1주일 뒤)을 먼저 골라야 한다(함께하기는 날짜가 필수다).
- * @param {{ candidate: { title: string, assignee_name?: string | null, due?: string | null }, state: undefined | "sending" | "ok" | string, day: string | null, onPickDay: (key: string) => void, onRegister: () => void, testID?: string }} props state 는 보낸 결과(없음/"sending"/"ok"/오류 문구), day 는 고른 날짜 칩 key
+ * 후보에 날짜가 없으면 날짜 칩(오늘·내일·직접 입력)을 먼저 골라야 한다(함께하기는 날짜가 필수다). 직접 입력은 날짜(YYYY-MM-DD)를 적는 칸이 나타난다.
+ * @param {{ candidate: { title: string, assignee_name?: string | null, due?: string | null }, state: undefined | "sending" | "ok" | string, day: string | null, customText: string, onChangeCustom: (text: string) => void, onPickDay: (key: string) => void, onRegister: () => void, testID?: string }} props state 는 보낸 결과(없음/"sending"/"ok"/오류 문구), day 는 고른 날짜 칩 key, customText 는 직접 입력에 적은 글자
  */
-export default function TodoCandidateRow({ candidate, state, day, onPickDay, onRegister, testID }) {
+export default function TodoCandidateRow({ candidate, state, day, customText = "", onChangeCustom, onPickDay, onRegister, testID }) {
   const needDay = !hasCandidateDay(candidate);
   const detail = [candidate.assignee_name && `담당 ${candidate.assignee_name}`, candidate.due && `기한 ${candidate.due}`].filter(Boolean).join(" · ");
   return (
@@ -23,6 +23,18 @@ export default function TodoCandidateRow({ candidate, state, day, onPickDay, onR
       ) : (
         <>
           {needDay ? <ChipRow label="날짜" options={DAY_CHIPS} value={day} onChange={onPickDay} /> : null}
+          {needDay && day === "custom" ? (
+            <TextInput
+              value={customText}
+              onChangeText={(t) => onChangeCustom?.(formatDayInput(t))}
+              placeholder="2026-11-05"
+              placeholderTextColor={colors.placeholder}
+              keyboardType="number-pad"
+              maxLength={10}
+              accessibilityLabel="함께할 날짜 직접 입력(년-월-일)"
+              style={styles.dayInput}
+            />
+          ) : null}
           {state && state !== "sending" ? (
             <Text style={styles.error} accessibilityRole="alert">
               {state}
@@ -40,5 +52,6 @@ const styles = StyleSheet.create({
   title: { ...font.bodyStrong, color: colors.text },
   caption: { ...font.caption, color: colors.textMuted },
   success: { ...font.caption, color: colors.success },
+  dayInput: { ...font.body, color: colors.text, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, paddingHorizontal: spacing.md, paddingVertical: spacing.sm },
   error: { ...font.body, color: colors.danger },
 });

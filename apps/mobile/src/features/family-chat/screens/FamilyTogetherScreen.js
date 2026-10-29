@@ -12,8 +12,8 @@ import { briefWhen } from "../togetherUtils";
 import useFamilyTogether from "../useFamilyTogether";
 
 /**
- * 서랍 "가족 할 일": 일정 탭의 **할 일**과 **함께하기**를 날짜 순으로 간소화해서 보여 준다(보기만 한다). 줄을 누르면 일정 탭의 그 화면(할 일 상세·받은 함께하기·보낸 함께하기)으로 간다.
- * 채팅에서 "함께하기로 보내기"를 하면 여기와 일정 탭에 나타난다. 화면이 보일 때와 당겨서 새로고침할 때만 불러온다.
+ * 서랍 "가족 할 일": 일정 탭의 **일정·할 일**과 **함께하기**를 날짜 순으로 간소화해서 보여 준다(보기만 한다). 줄을 누르면 일정 탭의 그 화면(할 일 상세·받은 함께하기·보낸 함께하기)으로 간다.
+ * 채팅에서 일정으로 등록하거나 "함께하기로 보내기"를 하면 여기와 일정 탭에 나타난다. 화면이 보일 때와 당겨서 새로고침할 때만 불러온다.
  */
 export default function FamilyTogetherScreen() {
   const router = useRouter();
@@ -47,7 +47,7 @@ export default function FamilyTogetherScreen() {
         {brief.items.length === 0 ? (
           <View style={styles.empty}>
             <Text style={styles.emptyTitle}>지금 챙길 일이 없어요</Text>
-            <Text style={styles.emptyText}>채팅에서 할 일을 함께하기로 보내거나, 일정 탭에서 추가해 보세요.</Text>
+            <Text style={styles.emptyText}>채팅에서 일정을 등록하거나 할 일을 함께하기로 보내 보세요.</Text>
           </View>
         ) : (
           brief.items.map((row) => (

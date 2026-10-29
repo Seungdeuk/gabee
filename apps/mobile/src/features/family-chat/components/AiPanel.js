@@ -68,6 +68,7 @@ export default function AiPanel({ visible, onClose, onPickReply, onLinked }) {
   const [registered, setRegistered] = useState({}); // 후보 순번 -> "ok" | "sending" | 오류 문구
   const [todoRegistered, setTodoRegistered] = useState({}); // 할 일 후보 순번 -> 같은 형태(함께하기로 보낸 결과)
   const [todoDay, setTodoDay] = useState({}); // 날짜가 없는 할 일 후보 순번 -> 고른 날짜 칩 key
+  const [todoCustom, setTodoCustom] = useState({}); // 직접 입력을 고른 후보 순번 -> 적은 날짜 글자
   const [confirmingEnable, setConfirmingEnable] = useState(false); // 켜기 직전 안내 확인 중
   const [confirmingDisable, setConfirmingDisable] = useState(false); // 끄기 직전 확인 중
   const settingBusy = useRef(false); // 켜기·끄기 확인 버튼을 빠르게 두 번 눌러도 한 번만 보낸다
@@ -124,6 +125,7 @@ export default function AiPanel({ visible, onClose, onPickReply, onLinked }) {
       setRegistered({});
       setTodoRegistered({});
       setTodoDay({});
+      setTodoCustom({});
       todoBusy.current.clear();
     });
 
@@ -153,9 +155,9 @@ export default function AiPanel({ visible, onClose, onPickReply, onLinked }) {
    */
   const registerTodo = async (index, candidate) => {
     if (todoBusy.current.has(index)) return;
-    const chosen = dayFromChip(todoDay[index]);
+    const chosen = dayFromChip(todoDay[index], new Date(), todoCustom[index]);
     if (!hasCandidateDay(candidate) && !chosen) {
-      setTodoRegistered((r) => ({ ...r, [index]: requestErrorText("no_date") }));
+      setTodoRegistered((r) => ({ ...r, [index]: requestErrorText(todoDay[index] === "custom" ? "bad_date" : "no_date") }));
       return;
     }
     todoBusy.current.add(index);
@@ -297,7 +299,8 @@ export default function AiPanel({ visible, onClose, onPickReply, onLinked }) {
           ) : (
             analysis.important_messages.map((m) => (
               <Text key={m.message_id} style={styles.body}>
-                {`• ${m.reason}`}
+                {"• "}
+                <Text style={styles.marker}>{m.reason}</Text>
               </Text>
             ))
           )}
@@ -342,7 +345,7 @@ export default function AiPanel({ visible, onClose, onPickReply, onLinked }) {
             <Text style={styles.caption}>할 일 후보가 없어요</Text>
           ) : (
             analysis.todo_candidates.map((t, i) => (
-              <TodoCandidateRow key={`${t.title}-${i}`} candidate={t} state={todoRegistered[i]} day={todoDay[i] ?? null} onPickDay={(key) => setTodoDay((d) => ({ ...d, [i]: key }))} onRegister={() => registerTodo(i, t)} testID={`chat-ai-todo-${i}`} />
+              <TodoCandidateRow key={`${t.title}-${i}`} candidate={t} state={todoRegistered[i]} day={todoDay[i] ?? null} customText={todoCustom[i] ?? ""} onChangeCustom={(text) => setTodoCustom((c) => ({ ...c, [i]: text }))} onPickDay={(key) => setTodoDay((d) => ({ ...d, [i]: key }))} onRegister={() => registerTodo(i, t)} testID={`chat-ai-todo-${i}`} />
             ))
           )}
 
@@ -400,6 +403,7 @@ const styles = StyleSheet.create({
   title: { ...font.cardTitle, color: colors.text },
   sub: { ...font.caption, color: colors.textSub },
   section: { ...font.bodyStrong, color: colors.text, marginTop: spacing.xs },
+  marker: { backgroundColor: colors.surfaceStrong, color: colors.text, fontFamily: font.bodyStrong.fontFamily }, // 중요 메시지 형광펜
   body: { ...font.body, color: colors.text },
   bodyStrong: { ...font.bodyStrong, color: colors.text },
   caption: { ...font.caption, color: colors.textMuted },

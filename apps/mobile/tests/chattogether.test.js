@@ -12,6 +12,7 @@ import {
   cleanTitle,
   dateKey,
   dayFromChip,
+  formatDayInput,
   hasCandidateDay,
   isDay,
   requestErrorText,
@@ -45,12 +46,29 @@ test("dayFromChip: 기기 시간대의 오늘에서 며칠 뒤, 월말·연말�
   const now = new Date(2026, 9, 31, 22, 30);
   assert.equal(dayFromChip("today", now), "2026-10-31");
   assert.equal(dayFromChip("tomorrow", now), "2026-11-01");
-  assert.equal(dayFromChip("d3", new Date(2026, 11, 30)), "2027-01-02");
-  assert.equal(dayFromChip("w1", now), "2026-11-07");
+  assert.equal(dayFromChip("tomorrow", new Date(2026, 11, 31)), "2027-01-01"); // 연말을 넘긴다
   assert.equal(dayFromChip("none", now), null);
   assert.equal(dayFromChip(null, now), null);
-  assert.deepEqual(DAY_CHIPS.map((c) => c.key), ["today", "tomorrow", "d3", "w1"]);
+  assert.deepEqual(DAY_CHIPS.map((c) => c.key), ["today", "tomorrow", "custom"]);
+  assert.deepEqual(DAY_CHIPS.map((c) => c.label), ["오늘", "내일", "직접 입력"]);
+  // 직접 입력: 실제 있는 날짜이고 오늘 이후일 때만
+  assert.equal(dayFromChip("custom", now, "2026-11-05"), "2026-11-05");
+  assert.equal(dayFromChip("custom", now, "2026-10-31"), "2026-10-31"); // 오늘은 괜찮다
+  assert.equal(dayFromChip("custom", now, "2026-10-30"), null); // 지난 날짜
+  assert.equal(dayFromChip("custom", now, "2026-02-30"), null); // 없는 날짜
+  assert.equal(dayFromChip("custom", now, "2026-11-0"), null); // 덜 적음
+  assert.equal(dayFromChip("custom", now, null), null);
   assert.equal(dateKey(new Date(2026, 0, 5)), "2026-01-05");
+});
+
+test("formatDayInput: 숫자만 남기고 YYYY-MM-DD 로 하이픈을 붙인다", () => {
+  assert.equal(formatDayInput("2026"), "2026");
+  assert.equal(formatDayInput("202611"), "2026-11");
+  assert.equal(formatDayInput("20261105"), "2026-11-05");
+  assert.equal(formatDayInput("2026-11-05"), "2026-11-05");
+  assert.equal(formatDayInput("2026/11/05 abc 99"), "2026-11-05"); // 8자리까지만
+  assert.equal(formatDayInput(null), "");
+  assert.equal(requestErrorText("bad_date"), "날짜를 정확히 적어 주세요(예: 2026-11-05, 오늘 이후)");
 });
 
 test("isDay·hasCandidateDay: 실제 있는 날짜만", () => {
@@ -115,7 +133,7 @@ const ev = (id, over = {}) => ({ id, title: `할 일 ${id}`, kind: 2, start_date
 
 test("buildBrief: 할 일(안 끝낸 것)과 함께하기(받은 것·보낸 것)를 날짜순으로, 같은 날은 함께하기 먼저", () => {
   const rows = buildBrief({
-    events: [ev("e1", { start_date: "2026-11-05" }), ev("e2", { start_date: "2026-11-03", start_time: "15:20:00" }), ev("appt", { kind: 1 }), ev("done", { checked: true })],
+    events: [ev("e1", { start_date: "2026-11-05" }), ev("e2", { start_date: "2026-11-03", start_time: "15:20:00" }), ev("done", { checked: true })],
     requests: [req("r1"), req("r2", { from_id: "me", start_date: "2026-11-04", recipients: [{ user_id: "dad", status: "accepted" }, { user_id: "kid", status: "waiting" }] })],
     myId: "me",
     today: "2026-11-01",
@@ -147,6 +165,19 @@ test("buildBrief: 거절·취소·날짜 지난 요청, 수락해서 생긴 내 
   assert.deepEqual(rows.map((r) => r.key).sort(), ["r:acc", "r:waitForOthers"]);
   assert.equal(rows.find((r) => r.id === "acc").tag, "함께해요");
   assert.equal(rows.find((r) => r.id === "waitForOthers").tag, "답을 기다려요");
+});
+
+test("buildBrief: 일정(약속)도 보이고 끝낸 것 표시는 할 일에만 적용, 태그는 내 일정", () => {
+  const rows = buildBrief({
+    events: [ev("appt", { kind: 1, start_date: "2026-11-02" }), ev("apptChecked", { kind: 1, checked: true, start_date: "2026-11-03" }), ev("todoDone", { checked: true })],
+    requests: [],
+    myId: "me",
+    today: "2026-11-01",
+  });
+  assert.deepEqual(rows.map((r) => r.key), ["e:appt", "e:apptChecked"]); // 일정의 checked 는 '확인함'이라 숨기지 않는다
+  assert.equal(rows[0].tag, "내 일정");
+  assert.equal(rows[0].type, "event");
+  assert.deepEqual(rows[0].route, { pathname: "/schedule/detail", params: { id: "appt" } });
 });
 
 test("buildBrief: 보낸 요청에 답이 모두 거절이면 '모두 어려워요', 오늘 날짜는 포함", () => {
@@ -195,7 +226,7 @@ test("서랍: 가족 할 일 행은 가족방·1:1 모두 동작 행이고 일�
     const row = buildDrawerSections({ direct, pinsReady: true }).flatMap((s) => s.rows).find((r) => r.key === "familytodos");
     assert.equal(row.state, "open");
     assert.equal(row.title, "가족 할 일");
-    assert.equal(row.subtitle, "일정 탭의 할 일과 함께하기");
+    assert.equal(row.subtitle, "일정 탭의 일정·할 일과 함께하기");
     assert.deepEqual(resolveRowAction(row), { type: "familytodos" });
   }
 });

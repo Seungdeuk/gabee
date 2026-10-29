@@ -7,15 +7,15 @@ export const TITLE_MAX = 120;
 export const MAX_RECIPIENTS = 20;
 /** 서랍 화면에 보이는 항목 최대 개수. */
 export const BRIEF_LIMIT = 30;
-/** 서버 일정 종류: 1 약속, 2 할 일. */
+/** 서버 일정 종류: 1 약속(일정), 2 할 일. */
 const KIND_TODO = 2;
+const KIND_APPOINTMENT = 1;
 
-/** 날짜를 고르는 칩: days 는 오늘부터 며칠 뒤인지. */
+/** 날짜를 고르는 칩: days 는 오늘부터 며칠 뒤인지, 직접 입력(custom)은 날짜를 YYYY-MM-DD 로 적는다. */
 export const DAY_CHIPS = [
   { key: "today", label: "오늘", days: 0 },
   { key: "tomorrow", label: "내일", days: 1 },
-  { key: "d3", label: "3일 뒤", days: 3 },
-  { key: "w1", label: "1주일 뒤", days: 7 },
+  { key: "custom", label: "직접 입력", days: null },
 ];
 
 const pad = (n) => String(n).padStart(2, "0");
@@ -28,16 +28,30 @@ const pad = (n) => String(n).padStart(2, "0");
 export const dateKey = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 
 /**
- * 칩이 뜻하는 날짜(기기 시간대의 오늘에서 days 일 뒤).
- * @param {string} key DAY_CHIPS 의 key
+ * 칩이 뜻하는 날짜(기기 시간대의 오늘에서 days 일 뒤). 직접 입력(custom)은 적은 날짜가 실제 있는 날짜이고 오늘 이후일 때만 쓴다.
+ * @param {string | null | undefined} key DAY_CHIPS 의 key
  * @param {Date} [now]
- * @returns {string | null} YYYY-MM-DD, 모르는 칩이면 null
+ * @param {string | null} [customText] 직접 입력 칩에 적은 YYYY-MM-DD
+ * @returns {string | null} YYYY-MM-DD, 모르는 칩이거나 직접 입력이 올바르지 않으면 null
  */
-export function dayFromChip(key, now = new Date()) {
+export function dayFromChip(key, now = new Date(), customText = null) {
   const chip = DAY_CHIPS.find((c) => c.key === key);
   if (!chip) return null;
+  if (chip.key === "custom") return isDay(customText) && customText >= dateKey(now) ? customText : null;
   const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() + chip.days);
   return dateKey(d);
+}
+
+/**
+ * 날짜 입력칸에 적는 글자를 숫자만 남겨 YYYY-MM-DD 모양으로 다듬는다(숫자를 치면 하이픈이 자동으로 붙는다).
+ * @param {string} text
+ * @returns {string}
+ */
+export function formatDayInput(text) {
+  const digits = String(text ?? "").replace(/\D/g, "").slice(0, 8);
+  if (digits.length <= 4) return digits;
+  if (digits.length <= 6) return `${digits.slice(0, 4)}-${digits.slice(4)}`;
+  return `${digits.slice(0, 4)}-${digits.slice(4, 6)}-${digits.slice(6)}`;
 }
 
 /**
@@ -96,12 +110,13 @@ export function candidateToRequestBody(candidate, group, chosenDay = null, today
 const ERROR_TEXT = {
   no_title: "제목이 비어 있어요",
   no_date: "날짜를 골라 주세요",
+  bad_date: "날짜를 정확히 적어 주세요(예: 2026-11-05, 오늘 이후)",
   no_recipient: "함께할 가족이 아직 없어요",
 };
 
 /**
  * 변환 실패 사유 문구.
- * @param {"no_title" | "no_date" | "no_recipient"} error
+ * @param {"no_title" | "no_date" | "bad_date" | "no_recipient"} error
  * @returns {string}
  */
 export const requestErrorText = (error) => ERROR_TEXT[error] ?? "보내지 못했어요. 다시 시도해 주세요";
@@ -119,11 +134,11 @@ export function sendErrorMessage(error) {
 }
 
 /**
- * 서랍 "가족 할 일" 화면의 항목들: 일정 탭의 **할 일**(안 끝낸 것, 날짜 지나지 않은 것)과 **함께하기**(내가 받은 것·보낸 것).
+ * 서랍 "가족 할 일" 화면의 항목들: 일정 탭의 **일정**(약속)·**할 일**(안 끝낸 것, 날짜 지나지 않은 것)과 **함께하기**(내가 받은 것·보낸 것).
  * 날짜 빠른 순, 같으면 함께하기 먼저. 수락해서 생긴 내 할 일은 같은 함께하기 줄과 겹치므로 뺀다(요청의 my_event_id 가 그 일정 id).
  * 거절(어려워요)한 요청·보낸 사람이 취소한 요청·날짜가 지난 요청은 뺀다.
  * @param {{ events?: object[], requests?: object[], myId: string | null, today: string, nameOf?: (userId: string) => string | undefined }} args
- * @returns {{ key: string, type: "todo" | "request", id: string, title: string, date: string, time: string | null, tag: string, route: { pathname: string, params: { id: string } } }[]}
+ * @returns {{ key: string, type: "todo" | "event" | "request", id: string, title: string, date: string, time: string | null, tag: string, route: { pathname: string, params: { id: string } } }[]}
  */
 export function buildBrief({ events, requests, myId, today, nameOf }) {
   const reqs = (Array.isArray(requests) ? requests : []).filter((r) => r && !r.canceled && String(r.start_date ?? "") >= today);
@@ -152,17 +167,17 @@ export function buildBrief({ events, requests, myId, today, nameOf }) {
     });
   }
   for (const e of Array.isArray(events) ? events : []) {
-    if (!e || e.kind !== KIND_TODO || e.checked || acceptedEventIds.has(e.id)) continue;
+    if (!e || (e.kind !== KIND_TODO && e.kind !== KIND_APPOINTMENT) || (e.kind === KIND_TODO && e.checked) || acceptedEventIds.has(e.id)) continue;
     const date = String(e.start_date ?? "");
     if (!date || date < today) continue;
     rows.push({
       key: `e:${e.id}`,
-      type: "todo",
+      type: e.kind === KIND_TODO ? "todo" : "event",
       id: e.id,
       title: String(e.title ?? ""),
       date,
       time: e.start_time ? String(e.start_time).slice(0, 5) : null,
-      tag: "내 할 일",
+      tag: e.kind === KIND_TODO ? "내 할 일" : "내 일정",
       route: { pathname: "/schedule/detail", params: { id: e.id } },
     });
   }
