@@ -4,7 +4,7 @@
 const BY_CODE = {
   network_error: "서버에 연결하지 못했어요. 인터넷 연결을 확인해 주세요",
   api_not_configured: "서버 주소가 설정되지 않아 이 기능을 쓸 수 없어요",
-  ai_not_enabled: "아직 AI 기능을 켜지 않았어요. 가족 관리자가 먼저 켜 주세요",
+  ai_not_enabled: "AI 기능이 아직 켜지지 않았어요. 잠시 뒤 다시 눌러 주세요",
   not_manager: "가족 소유자나 관리자만 바꿀 수 있어요",
   too_few_messages: "분석할 대화가 아직 충분하지 않아요. 대화가 조금 더 쌓인 뒤에 눌러 주세요",
   ai_daily_limit_user: "오늘 내가 쓸 수 있는 AI 횟수를 모두 썼어요. 내일 다시 이용해 주세요",
