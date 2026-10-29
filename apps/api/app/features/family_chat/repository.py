@@ -1,6 +1,8 @@
 from datetime import UTC, datetime
 
 from sqlalchemy import and_, case, delete, func, or_, select, update
+from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -227,22 +229,24 @@ def reaction_summary(
 
 
 def set_reaction(db: Session, message_id: int, user_id: str, emoji: str) -> None:
-    """내 반응을 정한다(없으면 만들고 있으면 이모지를 바꾼다). 동시에 두 번 눌러 기본키가 겹치면 먼저 만들어진 행을 바꾼다."""
-    row = db.get(MessageReaction, (message_id, user_id))
-    if row is not None:
-        if row.emoji != emoji:
-            row.emoji = emoji
-        db.commit()
-        return
-    db.add(MessageReaction(message_id=message_id, user_id=user_id, emoji=emoji))
-    try:
-        db.commit()
-    except IntegrityError:
-        db.rollback()
-        row = db.get(MessageReaction, (message_id, user_id))
-        if row is not None:
-            row.emoji = emoji
-            db.commit()
+    """내 반응을 정한다(없으면 만들고 있으면 이모지를 바꾼다). 한 번의 upsert(INSERT … ON CONFLICT DO UPDATE)라서
+    읽고 쓰는 사이에 같은 사람의 취소·다른 이모지 요청이 끼어들어도 오류 없이 마지막 요청대로 된다."""
+    insert = pg_insert if db.get_bind().dialect.name == "postgresql" else sqlite_insert
+    db.execute(
+        insert(MessageReaction)
+        .values(message_id=message_id, user_id=user_id, emoji=emoji, created_at=datetime.now(UTC))
+        .on_conflict_do_update(
+            index_elements=[MessageReaction.message_id, MessageReaction.user_id],
+            set_={"emoji": emoji},
+        )
+    )
+    db.commit()
+
+
+def clear_message_reactions(db: Session, message_id: int) -> None:
+    """이 메시지의 반응을 모두 지운다(메시지를 지울 때, 지운 뒤에 저장된 반응을 치울 때)."""
+    db.execute(delete(MessageReaction).where(MessageReaction.message_id == message_id))
+    db.commit()
 
 
 def clear_reaction(db: Session, message_id: int, user_id: str) -> None:

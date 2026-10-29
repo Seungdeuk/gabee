@@ -131,10 +131,23 @@ def test_only_six_emojis_are_allowed(client, family):
     mid = _send(client, a, "허용 목록")
     for ok in ("❤️", "👍", "😂", "😮", "😢", "🙏"):
         assert _react(client, a, mid, ok).status_code == 200, ok
-    for bad in ("🔥", "a", "", "👍👍", "<script>"):
+    for bad in (
+        "🔥",
+        "a",
+        "",
+        "👍👍",
+        "<script>",
+        "\ufe0e",
+        "👍\u200d",
+        "\ufe0f" * 15 + "👍",
+        " 👍",
+        "👍\x00",
+    ):
         r = _react(client, a, mid, bad)
-        assert r.status_code in (400, 422), bad
-    assert _react(client, a, mid, "🔥").json()["code"] == "invalid_reaction"
+        assert r.status_code == 400 and r.json()["code"] == "invalid_reaction", repr(bad)
+    assert (
+        _react(client, a, mid, "👍\ufe0f").json()["reactions"][0]["emoji"] == "👍"
+    )  # 변형 문자가 붙어도 같은 이모지
 
 
 def test_heart_without_variation_selector_is_normalized(client, family):
@@ -236,3 +249,61 @@ def test_room_list_last_message_has_no_reactions_field_filled(client, family):
     assert (
         last["id"] == mid and last["reactions"] == []
     )  # 방 목록 미리보기에는 반응을 붙이지 않는다
+
+
+# ── 리뷰 보강: 동시 요청 경합 ────────────────────────────────────────
+
+
+def test_react_racing_with_delete_leaves_no_reaction_row(client, family, monkeypatch):
+    """반응을 저장하는 사이에 메시지가 지워져도, 지운 메시지에 반응 행이 남지 않고 요청은 거절된다."""
+    from app.features.family_chat import repository as repo
+
+    a, b, _ = family
+    mid = _send(client, a, "곧 지워질 메시지")
+    real = repo.set_reaction
+
+    def racing(db, message_id, user_id, emoji):
+        with SessionLocal() as other:  # 다른 요청이 그 사이에 메시지를 지운다
+            msg = other.get(Message, message_id)
+            repo.soft_delete(other, msg, None)
+        return real(db, message_id, user_id, emoji)  # 지운 뒤에 반응이 저장된다
+
+    monkeypatch.setattr(repo, "set_reaction", racing)
+    r = _react(client, b, mid, THUMB)
+    assert r.status_code == 400 and r.json()["code"] == "message_deleted"
+    with SessionLocal() as db:
+        assert db.scalar(select(func.count(MessageReaction.message_id))) == 0  # 남은 행을 치웠다
+
+
+def test_react_after_cancel_and_fast_toggle_do_not_error(client, family):
+    """빠르게 켰다 끄고 다시 켜도(요청이 겹쳐도 순서가 바뀐 것과 같다) 500 이 나지 않고 마지막 상태가 맞다."""
+    a, _, _ = family
+    mid = _send(client, a, "빠르게 누르기")
+    for _ in range(3):
+        assert _react(client, a, mid, THUMB).status_code == 200
+        assert _unreact(client, a, mid).status_code == 200
+    assert _unreact(client, a, mid).status_code == 200
+    assert _react(client, a, mid, HEART).json()["reactions"] == [
+        {"emoji": HEART, "count": 1, "mine": True}
+    ]
+    with SessionLocal() as db:
+        assert db.scalar(select(func.count(MessageReaction.message_id))) == 1
+
+
+def test_set_reaction_upserts_when_row_vanished_between_read_and_write(client, family):
+    """읽고 쓰는 사이에 반응이 지워져도(취소와 겹침) 갱신 실패 없이 새로 저장된다."""
+    from app.features.family_chat import repository as repo
+
+    a, _, _ = family
+    mid = _send(client, a, "취소와 겹침")
+    uid = _uid(client, a)
+    with SessionLocal() as db:
+        repo.set_reaction(db, mid, uid, THUMB)
+    with SessionLocal() as db:
+        stale = db.get(MessageReaction, (mid, uid))  # 이 세션이 행을 읽어 둔다
+        assert stale is not None
+        with SessionLocal() as other:
+            repo.clear_reaction(other, mid, uid)  # 다른 요청이 그 사이에 취소한다
+        repo.set_reaction(db, mid, uid, HEART)  # 예외 없이 새로 저장된다
+    with SessionLocal() as db:
+        assert db.get(MessageReaction, (mid, uid)).emoji == HEART

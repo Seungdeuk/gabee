@@ -14,6 +14,8 @@ _ALLOWED = {e.replace(_VS16, ""): e for e in service.REACTION_ORDER}
 
 
 def _canonical(emoji: str) -> str:
+    if len(emoji) > 4:  # 허용 이모지는 많아야 두 글자(❤️)다. 변형 문자를 잔뜩 붙인 입력은 거절한다
+        raise bad_request("invalid_reaction", "쓸 수 없는 반응이에요")
     found = _ALLOWED.get(emoji.replace(_VS16, ""))
     if found is None:
         raise bad_request("invalid_reaction", "쓸 수 없는 반응이에요")
@@ -42,6 +44,12 @@ def react(
     if found[0].deleted_at is not None:
         raise bad_request("message_deleted", "지운 메시지에는 반응할 수 없어요")
     repo.set_reaction(db, message_id, user.id, canonical)
+    db.refresh(
+        found[0]
+    )  # 저장하는 사이에 메시지가 지워졌는지 다시 본다(지운 뒤에 저장된 반응이 남지 않게)
+    if found[0].deleted_at is not None:
+        repo.clear_message_reactions(db, message_id)
+        raise bad_request("message_deleted", "지운 메시지에는 반응할 수 없어요")
     return service.message_view(db, room, found, user.id)
 
 
