@@ -342,7 +342,7 @@ export function shouldSendOnEnter(event, platform) {
 /**
  * 게시판 오류(올리기·내리기·숨기기)를 사용자 문장으로(메시지 글자는 넣지 않는다). 서버 코드 이름에 기대지 않고 상태로도 알아본다.
  * @param {{ code?: string, status?: number } | null | undefined} error
- * @param {"pin" | "unpin" | "hide" | "show"} [action] 올리기가 아닌 동작 중 404 는 "이미 내려간 공지"다
+ * @param {"pin" | "unpin" | "hide" | "show"} [action] 올리기가 아닌 동작 중 404 는 "이미 내려갔거나 볼 수 없는 공지"다(서버가 공지 없음과 방 접근 불가를 같은 404 로 준다)
  * @returns {string}
  */
 export function pinErrorMessage(error, action = "pin") {
@@ -350,7 +350,7 @@ export function pinErrorMessage(error, action = "pin") {
   if (error?.code === "invalid_message") return "이 대화방의 메시지가 아니라 게시판에 올릴 수 없어요";
   if (error?.status === 429) return "너무 자주 바꿨어요. 잠시 뒤에 다시 해 주세요";
   if (error?.code === "pin_changed" || error?.status === 409) return "다른 사람이 방금 바꿨어요. 다시 확인해 주세요";
-  if (error?.status === 404) return action !== "pin" ? "이미 내려간 공지예요" : "대화방을 찾을 수 없거나 권한이 없어요";
+  if (error?.status === 404) return action !== "pin" ? "이미 내려갔거나 볼 수 없는 공지예요" : "대화방을 찾을 수 없거나 권한이 없어요";
   return roomErrorMessage(error);
 }
 

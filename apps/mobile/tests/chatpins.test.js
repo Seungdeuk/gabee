@@ -169,7 +169,7 @@ test("pinErrorMessage: not_pinnable·invalid_message·404·429, 해제 중 404, 
   assert.match(pinErrorMessage({ status: 400, code: "invalid_message" }), /이 대화방의 메시지가 아니라/);
   assert.equal(pinErrorMessage({ status: 429, code: "rate_limited" }), "너무 자주 바꿨어요. 잠시 뒤에 다시 해 주세요");
   assert.equal(pinErrorMessage({ status: 404, code: "not_found" }), "대화방을 찾을 수 없거나 권한이 없어요");
-  assert.equal(pinErrorMessage({ status: 404 }, "unpin"), "이미 내려간 공지예요");
+  assert.equal(pinErrorMessage({ status: 404 }, "unpin"), "이미 내려갔거나 볼 수 없는 공지예요");
   assert.equal(pinErrorMessage({ status: 0, code: "network_error" }), "서버에 연결하지 못했어요. 인터넷 연결을 확인해 주세요");
   assert.equal(pinErrorMessage(null), "잠시 문제가 생겼어요. 다시 시도해 주세요");
 });
@@ -390,8 +390,8 @@ test("failureEffect·pinErrorMessage: 숨기기·되돌리기 중 404(이미 내
   for (const action of ["unpin", "hide", "show"]) assert.equal(failureEffect(action, { status: 404 }), "keep");
   assert.equal(failureEffect("pin", { status: 404 }), "revert");
   assert.equal(failureEffect("hide", { status: 500 }), "revert");
-  assert.equal(pinErrorMessage({ status: 404 }, "hide"), "이미 내려간 공지예요");
-  assert.equal(pinErrorMessage({ status: 404 }, "show"), "이미 내려간 공지예요");
+  assert.equal(pinErrorMessage({ status: 404 }, "hide"), "이미 내려갔거나 볼 수 없는 공지예요");
+  assert.equal(pinErrorMessage({ status: 404 }, "show"), "이미 내려갔거나 볼 수 없는 공지예요");
 });
 
 test("API hidePin·showPin: 경로·메서드(PUT/DELETE), 방 id 는 쿼리", async () => {
@@ -407,4 +407,18 @@ test("API hidePin·showPin: 경로·메서드(PUT/DELETE), 방 id 는 쿼리", a
   assert.equal(calls2[0].method, "PUT");
   assert.match(calls2[1].url, /\/family-chat\/pins\/5\/hide\?room_id=r1$/);
   assert.equal(calls2[1].method, "DELETE");
+});
+
+test("pinA11yLabel: 앞말은 \"게시판 공지,\"", () => {
+  assert.match(pinA11yLabel(pin(2, "2026-10-24T06:20:00Z")), /^게시판 공지, /);
+});
+
+test("pinBarView: 접은 상태에서 보이는 공지 1개 + 숨긴 공지 1개", () => {
+  const view = pinBarView([{ ...pin(1, "2026-10-24T01:00:00Z"), hidden: true }, pin(2, "2026-10-24T02:00:00Z")], false);
+  assert.deepEqual(view.rows.map((r) => r.message_id), [2]);
+  assert.deepEqual([view.canToggle, view.hidden, view.hiddenByMe], [false, 0, 1]);
+});
+
+test("pinErrorMessage: 올리기가 아닌 동작의 404 문구는 중립(공지 없음·방 접근 불가를 서버가 구분하지 않는다)", () => {
+  assert.equal(pinErrorMessage({ status: 404 }, "hide"), "이미 내려갔거나 볼 수 없는 공지예요");
 });

@@ -53,14 +53,14 @@ export default function PinnedBar({ pins, expanded, onToggle, onPick, onHide, on
             </Pressable>
           ) : null}
           {onHide ? (
-            <Pressable onPress={() => onHide(pin.message_id)} accessibilityRole="button" accessibilityLabel="이 공지 나만 숨기기" hitSlop={spacing.xs} style={styles.toggle}>
+            <Pressable onPress={() => onHide(pin.message_id)} accessibilityRole="button" accessibilityLabel={`${pinLine(pin).slice(0, 20)} 공지 나만 숨기기`} hitSlop={spacing.xs} style={styles.toggle}>
               <Ionicons name="eye-off-outline" size={18} color={colors.textSub} />
             </Pressable>
           ) : null}
         </View>
       ))}
       {view.hiddenByMe > 0 && onShowHidden ? (
-        <Pressable onPress={onShowHidden} accessibilityRole="button" accessibilityLabel={`숨긴 공지 ${view.hiddenByMe}개 다시 보기`} style={styles.hiddenLine}>
+        <Pressable onPress={onShowHidden} accessibilityRole="button" accessibilityLabel={`숨긴 공지 ${view.hiddenByMe}개 다시 보기`} hitSlop={spacing.sm} style={styles.hiddenLine}>
           <Ionicons name="eye-outline" size={14} color={colors.textMuted} />
           <Text style={styles.hiddenText}>{`숨긴 공지 ${view.hiddenByMe}개 · 다시 보기`}</Text>
         </Pressable>
@@ -85,7 +85,7 @@ const styles = StyleSheet.create({
   text: { ...font.caption, color: colors.text, flex: 1 },
   meta: { ...font.tab, color: colors.textMuted },
   toggle: { width: 44, minHeight: 40, alignItems: "center", justifyContent: "center" },
-  hiddenLine: { minHeight: 32, flexDirection: "row", alignItems: "center", gap: spacing.xs, paddingHorizontal: spacing.lg },
+  hiddenLine: { minHeight: spacing.xxl + spacing.md, flexDirection: "row", alignItems: "center", gap: spacing.xs, paddingHorizontal: spacing.lg }, // 터치 영역은 hitSlop 으로 넓힌다
   hiddenText: { ...font.tab, color: colors.textMuted },
   notice: { alignItems: "center", paddingVertical: spacing.xs, paddingHorizontal: spacing.lg, backgroundColor: colors.honeySoft, borderRadius: radius.sm },
   noticeText: { ...font.caption, color: colors.textSub },

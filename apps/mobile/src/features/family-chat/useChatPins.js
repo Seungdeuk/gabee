@@ -4,7 +4,7 @@ import { AccessibilityInfo, AppState, Platform } from "react-native";
 
 import { hidePin, listPins, pinMessage, showPin, unpinMessage } from "./api";
 import { pinErrorMessage } from "./chatUtils";
-import { BUSY_NOTICE, HIDDEN_NOTICE, NO_PINS_NOTICE, SHOWN_NOTICE, UNPINNED_NOTICE, canPin, initialPinsState, nextPinPollDelay, failureEffect, optimisticPin, pinResultNotice, pinSettled, pinnedIdSet, pinsReducer, reloadGate } from "./pinUtils";
+import { BUSY_NOTICE, HIDDEN_NOTICE, HIDDEN_ONLY_NOTICE, NO_PINS_NOTICE, SHOWN_NOTICE, SHOW_PARTIAL_NOTICE, UNPINNED_NOTICE, canPin, initialPinsState, nextPinPollDelay, failureEffect, optimisticPin, pinResultNotice, pinSettled, pinnedIdSet, pinsReducer, reloadGate } from "./pinUtils";
 
 const NOTICE_MS = 3500;
 
@@ -114,14 +114,17 @@ export default function useChatPins({ roomId = null, enabled = true, me = null }
   /**
    * 요청을 보내기 전에 미리 반영하고, 실패하면 그 동작만 거꾸로 적용한다(다른 요청이 바꾼 항목은 그대로).
    * 같은 메시지에 요청이 진행 중이면 "처리 중이에요" 안내만 하고 보내지 않는다.
-   * @param {{ messageId: number, optimistic: object | null, revert: object | null, request: () => Promise<object | null>, action: "pin" | "unpin" }} args optimistic·revert 가 null 이면 화면은 바꾸지 않는다
+   * @param {{ messageId: number, optimistic: object | null, revert: object | null, request: () => Promise<object | null>, action: "pin" | "unpin" | "hide" | "show", quiet?: boolean }} args optimistic·revert 가 null 이면 화면은 바꾸지 않는다, quiet 이면 안내 문구를 내지 않는다
    * @returns {Promise<boolean>}
    */
   const mutate = useCallback(
-    async ({ messageId, optimistic, revert, request, action }) => {
+    async ({ messageId, optimistic, revert, request, action, quiet = false }) => {
       const key = Number(messageId);
+      const tell = (text) => {
+        if (!quiet) say(text); // quiet 이면 호출한 쪽이 결과를 모아 한 번만 안내한다
+      };
       if (busy.current.has(key)) {
-        say(BUSY_NOTICE);
+        tell(BUSY_NOTICE);
         return false;
       }
       busy.current.add(key);
@@ -133,22 +136,22 @@ export default function useChatPins({ roomId = null, enabled = true, me = null }
         seq.current += 1;
         if (action === "pin") {
           apply({ type: "confirmed", seq: seq.current, result });
-          say(pinResultNotice(result));
+          tell(pinResultNotice(result));
         } else if (action === "hide" || action === "show") {
           apply({ type: "set_hidden", seq: seq.current, messageId: key, hidden: action === "hide" }); // 서버가 돌려준 상태와 같다
-          say(action === "hide" ? HIDDEN_NOTICE : SHOWN_NOTICE);
+          tell(action === "hide" ? HIDDEN_NOTICE : SHOWN_NOTICE);
         } else {
-          say(UNPINNED_NOTICE);
+          tell(UNPINNED_NOTICE);
         }
         return true;
       } catch (e) {
         seq.current += 1;
         if (failureEffect(action, e) === "keep") {
-          say(pinErrorMessage(e, action)); // 이미 풀려 있으면 목록에서 빠진 채로 둔다
+          tell(pinErrorMessage(e, action)); // 이미 풀려 있으면 목록에서 빠진 채로 둔다
           return false;
         }
         if (revert) apply({ ...revert, seq: seq.current });
-        say(pinErrorMessage(e, action));
+        tell(pinErrorMessage(e, action));
         return false;
       } finally {
         busy.current.delete(key);
@@ -195,7 +198,7 @@ export default function useChatPins({ roomId = null, enabled = true, me = null }
 
   /** 이 공지를 나만 숨긴다(다른 구성원에게는 그대로 보인다). 먼저 화면에 반영하고 실패하면 되돌린다. */
   const setHidden = useCallback(
-    (messageId, hidden) => {
+    (messageId, hidden, quiet = false) => {
       const id = Number(messageId);
       const item = live.current.items.find((p) => p.message_id === id);
       if (!item) return Promise.resolve(false);
@@ -205,25 +208,34 @@ export default function useChatPins({ roomId = null, enabled = true, me = null }
         revert: { type: "set_hidden", messageId: id, hidden: Boolean(item.hidden) },
         request: () => (hidden ? hidePin : showPin)({ roomId: roomRef.current, messageId: id }),
         action: hidden ? "hide" : "show",
+        quiet,
       });
     },
     [mutate],
   );
+  /** @param {number|string} messageId @returns {Promise<boolean>} 숨기기에 성공했는지 */
   const hide = useCallback((messageId) => setHidden(messageId, true), [setHidden]);
 
-  /** 내가 숨긴 공지를 모두 다시 보이게 한다. */
+  /**
+   * 내가 숨긴 공지를 모두 다시 보이게 한다. 요청은 병렬로 보내되 안내는 결과를 모아 한 번만 낸다(마지막에 끝난 요청의 문구가 앞선 실패를 덮지 않게).
+   * @returns {Promise<boolean>} 모두 성공했는지
+   */
   const showHidden = useCallback(async () => {
     const hidden = live.current.items.filter((p) => p.hidden);
-    const results = await Promise.all(hidden.map((p) => setHidden(p.message_id, false)));
-    return results.every(Boolean);
-  }, [setHidden]);
+    const results = await Promise.all(hidden.map((p) => setHidden(p.message_id, false, true)));
+    const ok = results.every(Boolean);
+    say(ok ? SHOWN_NOTICE : SHOW_PARTIAL_NOTICE);
+    return ok;
+  }, [setHidden, say]);
 
   /** 서랍의 "게시판": 게시판 바를 펼쳐 보여 준다(공지가 없으면 안내만). */
   const showPins = useCallback(() => {
-    if (live.current.items.length === 0) {
+    const items = live.current.items;
+    if (items.length === 0) {
       say(NO_PINS_NOTICE);
       return;
     }
+    if (items.every((p) => p.hidden)) say(HIDDEN_ONLY_NOTICE); // 바에는 "다시 보기" 줄만 있다
     setExpanded(true);
   }, [say]);
 

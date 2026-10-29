@@ -12,7 +12,9 @@ export const PINNED_NOTICE = "게시판에 올렸어요";
 export const ALREADY_PINNED_NOTICE = "이미 게시판에 있는 메시지예요";
 export const UNPINNED_NOTICE = "게시판에서 내렸어요";
 export const HIDDEN_NOTICE = "이 공지를 내 화면에서 숨겼어요";
-export const SHOWN_NOTICE = "숨긴 공지를 다시 보여요";
+export const SHOWN_NOTICE = "숨긴 공지를 다시 보이게 했어요";
+export const SHOW_PARTIAL_NOTICE = "일부 공지는 다시 보이게 하지 못했어요";
+export const HIDDEN_ONLY_NOTICE = "숨긴 공지가 있어요. 아래 \"다시 보기\"를 눌러 주세요";
 export const NO_PINS_NOTICE = "게시판에 공지가 없어요";
 export const BUSY_NOTICE = "처리 중이에요";
 export const COPIED_NOTICE = "복사했어요";
@@ -285,7 +287,7 @@ export function reloadGate(gate, event) {
 export const bubbleTextStyle = ({ selectable, base, photo = null, noSelect }) => [base, photo, !selectable ? noSelect : null].filter(Boolean);
 
 /**
- * 게시판 요청이 실패했을 때 화면을 어떻게 할지: 해제·숨기기·되돌리기 중 404(이미 내려간 공지)는 미리 바꾼 상태를 그대로 두고(keep), 나머지는 그 동작을 거꾸로 적용한다(revert).
+ * 게시판 요청이 실패했을 때 화면을 어떻게 할지: 해제·숨기기·되돌리기 중 404(이미 내려갔거나 볼 수 없는 공지 — 서버가 둘을 구분하지 않는다)는 미리 바꾼 상태를 그대로 두고(keep), 나머지는 그 동작을 거꾸로 적용한다(revert).
  * @param {"pin" | "unpin" | "hide" | "show"} action
  * @param {{ status?: number } | null | undefined} error
  * @returns {"keep" | "revert"}
