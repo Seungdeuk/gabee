@@ -1,7 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { useState } from "react";
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, BackHandler, Platform, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { useAuth } from "@/shared/auth/AuthProvider";
@@ -9,7 +9,6 @@ import { colors } from "@/theme";
 
 import { saveTesterConsent } from "../api";
 import { CONSENT_VERSION, DETAIL_SECTIONS, SUMMARY_LINES } from "../consentCopy";
-import { declineForNow } from "../consentState";
 
 /**
  * 로그인 뒤 처음(또는 동의서 버전이 바뀐 뒤) 한 번 보여 주는 AI 테스트 참여 동의 화면.
@@ -17,10 +16,11 @@ import { declineForNow } from "../consentState";
  */
 export default function TesterConsentScreen() {
   const router = useRouter();
-  const { user, refreshUser } = useAuth();
+  const { refreshUser } = useAuth();
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [declined, setDeclined] = useState(false);
 
   const agree = async () => {
     setBusy(true);
@@ -35,9 +35,10 @@ export default function TesterConsentScreen() {
     }
   };
 
+  // 동의하지 않으면 앱을 쓸 수 없다. 안드로이드는 앱을 닫고, 닫을 수 없는 환경(iOS·웹)에는 직접 닫아 달라고 안내한다.
   const decline = () => {
-    if (user?.id) declineForNow(user.id);
-    router.replace("/chat");
+    if (Platform.OS === "android") BackHandler.exitApp();
+    else setDeclined(true);
   };
 
   return (
@@ -78,6 +79,7 @@ export default function TesterConsentScreen() {
 
       <View style={styles.footer}>
         {error ? <Text style={styles.error}>{error}</Text> : null}
+        {declined ? <Text style={styles.error}>동의하지 않으면 앱을 쓸 수 없어요. 앱을 닫아 주세요.</Text> : null}
         <Pressable onPress={agree} disabled={busy} accessibilityRole="button" style={({ pressed }) => [styles.agree, (pressed || busy) && styles.pressed]}>
           {busy ? <ActivityIndicator color={colors.onDark} /> : <Text style={styles.agreeText}>동의하고 시작</Text>}
         </Pressable>
