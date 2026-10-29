@@ -4446,6 +4446,202 @@
         }
       }
     },
+    "/family-chat/messages/{message_id}/reaction": {
+      "put": {
+        "tags": [
+          "family-chat"
+        ],
+        "summary": "React To Message",
+        "description": "내 반응을 정한다(한 메시지에 하나, 다른 이모지를 보내면 바뀐다). 허용 이모지 6개만, 지운 메시지에는 못 한다.",
+        "operationId": "react_to_message_family_chat_messages__message_id__reaction_put",
+        "parameters": [
+          {
+            "name": "message_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Message Id"
+            }
+          },
+          {
+            "name": "room_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 32
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "대화방 id. 없으면 가족 전체방",
+              "title": "Room Id"
+            },
+            "description": "대화방 id. 없으면 가족 전체방"
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-gyeot-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Gyeot-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReactionIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "family-chat"
+        ],
+        "summary": "Remove Reaction",
+        "description": "내 반응을 지운다(없어도 같은 결과).",
+        "operationId": "remove_reaction_family_chat_messages__message_id__reaction_delete",
+        "parameters": [
+          {
+            "name": "message_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Message Id"
+            }
+          },
+          {
+            "name": "room_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 32
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "대화방 id. 없으면 가족 전체방",
+              "title": "Room Id"
+            },
+            "description": "대화방 id. 없으면 가족 전체방"
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-gyeot-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Gyeot-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/family-chat/messages/{message_id}": {
       "delete": {
         "tags": [
@@ -16494,6 +16690,14 @@
               }
             ]
           },
+          "reactions": {
+            "items": {
+              "$ref": "#/components/schemas/ReactionOut"
+            },
+            "type": "array",
+            "title": "Reactions",
+            "default": []
+          },
           "deleted": {
             "type": "boolean",
             "title": "Deleted",
@@ -17443,6 +17647,44 @@
         "type": "object",
         "title": "RangeIn",
         "description": "분석할 범위. after_id 를 주면 그 뒤의 대화, 아니면 최근 limit 개(둘 다 주면 after_id 뒤의 최근 limit 개)."
+      },
+      "ReactionIn": {
+        "properties": {
+          "emoji": {
+            "type": "string",
+            "maxLength": 16,
+            "title": "Emoji",
+            "description": "허용된 이모지 6개(❤️ 👍 😂 😮 😢 🙏) 중 하나"
+          }
+        },
+        "type": "object",
+        "required": [
+          "emoji"
+        ],
+        "title": "ReactionIn"
+      },
+      "ReactionOut": {
+        "properties": {
+          "emoji": {
+            "type": "string",
+            "title": "Emoji"
+          },
+          "count": {
+            "type": "integer",
+            "title": "Count"
+          },
+          "mine": {
+            "type": "boolean",
+            "title": "Mine"
+          }
+        },
+        "type": "object",
+        "required": [
+          "emoji",
+          "count",
+          "mine"
+        ],
+        "title": "ReactionOut"
       },
       "ReadAllBody": {
         "properties": {

@@ -7,7 +7,7 @@ from app.features.family_group.models import User
 from app.shared.auth import current_group_id, current_user
 from app.shared.db import get_db
 
-from . import delete_service, service
+from . import delete_service, reaction_service, service
 from .ai_router import router as ai_router
 from .link_router import router as link_router
 from .media_router import router as media_router
@@ -18,6 +18,7 @@ from .schemas import (
     DirectRoomCreate,
     MessageCreate,
     MessageOut,
+    ReactionIn,
     ReadMark,
     ReadPosition,
     ReadStateOut,
@@ -102,6 +103,31 @@ def deleted_messages(
 ) -> DeletedOut:
     """이미 받아 둔 메시지 중 그 뒤에 지워진 것을 알려 준다(새 메시지만 조회하는 앱이 삭제를 따라가게)."""
     return delete_service.deleted_since(db, user, group_id, since, room_id)
+
+
+@router.put("/messages/{message_id}/reaction", response_model=MessageOut)
+def react_to_message(
+    message_id: int,
+    body: ReactionIn,
+    room_id: str | None = ROOM_ID,
+    user: User = Depends(current_user),
+    group_id: str = Depends(current_group_id),
+    db: Session = Depends(get_db),
+) -> MessageOut:
+    """내 반응을 정한다(한 메시지에 하나, 다른 이모지를 보내면 바뀐다). 허용 이모지 6개만, 지운 메시지에는 못 한다."""
+    return reaction_service.react(db, user, group_id, message_id, body.emoji, room_id)
+
+
+@router.delete("/messages/{message_id}/reaction", response_model=MessageOut)
+def remove_reaction(
+    message_id: int,
+    room_id: str | None = ROOM_ID,
+    user: User = Depends(current_user),
+    group_id: str = Depends(current_group_id),
+    db: Session = Depends(get_db),
+) -> MessageOut:
+    """내 반응을 지운다(없어도 같은 결과)."""
+    return reaction_service.unreact(db, user, group_id, message_id, room_id)
 
 
 @router.delete("/messages/{message_id}", response_model=MessageOut)

@@ -1,6 +1,6 @@
 from datetime import UTC, datetime
 
-from sqlalchemy import and_, func, or_, select, update
+from sqlalchemy import and_, case, delete, func, or_, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -14,6 +14,7 @@ from .models import (
     ChatRoomRead,
     Message,
     MessageAttachment,
+    MessageReaction,
 )
 
 UNREAD_CAP = 1000  # 안 읽은 수를 세는 상한(앱이 99+ 로 줄여 보여준다)
@@ -166,6 +167,9 @@ def soft_delete(db: Session, message: Message, attachment: MessageAttachment | N
     message.deleted_at = datetime.now(UTC)
     if attachment is not None:
         db.delete(attachment)
+    db.execute(
+        delete(MessageReaction).where(MessageReaction.message_id == message.id)
+    )  # 반응도 남기지 않는다
     db.commit()
 
 
@@ -197,6 +201,57 @@ def reply_parents(
     ).all()
     attached = attachments_for(db, [m.id for m, _ in rows])
     return {m.id: (m, name, m.id in attached) for m, name in rows}
+
+
+def reaction_summary(
+    db: Session, message_ids: list[int], viewer_id: str
+) -> dict[int, list[tuple[str, int, bool]]]:
+    """메시지별 반응 집계를 한 번에: 메시지 id -> [(이모지, 사람 수, 내가 눌렀는지)]. 메시지 수와 상관없이 쿼리 1번."""
+    if not message_ids:
+        return {}
+    mine = case((MessageReaction.user_id == viewer_id, 1), else_=0)
+    rows = db.execute(
+        select(
+            MessageReaction.message_id,
+            MessageReaction.emoji,
+            func.count(MessageReaction.user_id),
+            func.max(mine),
+        )
+        .where(MessageReaction.message_id.in_(message_ids))
+        .group_by(MessageReaction.message_id, MessageReaction.emoji)
+    ).all()
+    out: dict[int, list[tuple[str, int, bool]]] = {}
+    for message_id, emoji, count, is_mine in rows:
+        out.setdefault(message_id, []).append((emoji, count, bool(is_mine)))
+    return out
+
+
+def set_reaction(db: Session, message_id: int, user_id: str, emoji: str) -> None:
+    """내 반응을 정한다(없으면 만들고 있으면 이모지를 바꾼다). 동시에 두 번 눌러 기본키가 겹치면 먼저 만들어진 행을 바꾼다."""
+    row = db.get(MessageReaction, (message_id, user_id))
+    if row is not None:
+        if row.emoji != emoji:
+            row.emoji = emoji
+        db.commit()
+        return
+    db.add(MessageReaction(message_id=message_id, user_id=user_id, emoji=emoji))
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        row = db.get(MessageReaction, (message_id, user_id))
+        if row is not None:
+            row.emoji = emoji
+            db.commit()
+
+
+def clear_reaction(db: Session, message_id: int, user_id: str) -> None:
+    db.execute(
+        delete(MessageReaction).where(
+            MessageReaction.message_id == message_id, MessageReaction.user_id == user_id
+        )
+    )
+    db.commit()
 
 
 def last_message(db: Session, room: ChatRoom) -> tuple[Message, str] | None:
