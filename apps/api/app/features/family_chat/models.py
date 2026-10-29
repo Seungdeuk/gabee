@@ -179,8 +179,9 @@ class FamilyTodo(Base):
 
 
 class ChatPinnedMessage(Base):
-    """채팅방에 고정한(공지) 메시지. 메시지를 가리키기만 하고 본문은 복사하지 않는다(조회할 때 messages 와 join).
-    방당 최근 2개만 남기고(3번째를 고정하면 가장 오래된 것이 풀린다), 같은 메시지는 한 번만 고정된다.
+    """채팅방 게시판(공지)에 올린 메시지. 올릴 때의 본문을 `text` 에 복사해 둔다 — 원본 메시지를 보낸 사람이 지워도
+    게시판에는 남는다(내리면 사본도 함께 사라진다). `text` 가 비어 있는 옛 행은 조회할 때 원본 본문을 쓴다.
+    방당 최근 2개만 남기고(3번째를 올리면 가장 오래된 것이 내려간다), 같은 메시지는 한 번만 올라간다.
     가족 전체방도 방 id 를 쓴다(room_id 가 비어 있는 옛 메시지도 가족 전체방 id 로 고정한다)."""
 
     __tablename__ = "chat_pinned_messages"
@@ -195,6 +196,23 @@ class ChatPinnedMessage(Base):
     message_id: Mapped[int] = mapped_column(ForeignKey("messages.id"))
     pinned_by: Mapped[str] = mapped_column(ForeignKey("users.id"))
     pinned_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(UTC)
+    )
+    text: Mapped[str | None] = mapped_column(Text, nullable=True)  # 올릴 때의 본문 사본
+
+
+class ChatPinHide(Base):
+    """게시판 공지를 "나만 숨기기"한 기록. 사용자마다 따로이고 다른 구성원에게는 영향이 없다.
+    공지가 내려가거나 교체되면(`chat_pinned_messages` 행이 사라지면) DB 가 함께 지운다(ON DELETE CASCADE).
+    SQLite 는 외래키를 강제하지 않아 서비스도 같은 순서로 지운다."""
+
+    __tablename__ = "chat_pin_hides"
+
+    pin_id: Mapped[str] = mapped_column(
+        ForeignKey("chat_pinned_messages.id", ondelete="CASCADE"), primary_key=True
+    )
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), primary_key=True)
+    hidden_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(UTC)
     )
 

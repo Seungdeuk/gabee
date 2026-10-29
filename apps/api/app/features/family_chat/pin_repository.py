@@ -1,4 +1,4 @@
-"""고정 메시지의 DB 접근. 고정은 메시지를 가리키기만 하고, 메시지 본문은 조회할 때 join 으로만 가져온다."""
+"""게시판(고정 메시지)의 DB 접근. 올릴 때의 본문 사본(text)을 저장하고, 사본이 없는 옛 행만 조회할 때 원본 본문을 쓴다."""
 
 from datetime import UTC, datetime
 
@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session, aliased
 
 from app.features.family_group.models import User
 
-from .models import ChatPinnedMessage, ChatRoom, Message
+from .models import ChatPinHide, ChatPinnedMessage, ChatRoom, Message
 
 MAX_PINS = 2  # 방당 최대 고정 수
 
@@ -45,15 +45,16 @@ def get_pin(db: Session, room_id: str, message_id: int) -> ChatPinnedMessage | N
 
 
 def add_pin(
-    db: Session, group_id: str, room_id: str, message_id: int, user_id: str
+    db: Session, group_id: str, room_id: str, message_id: int, user_id: str, text: str
 ) -> ChatPinnedMessage | None:
-    """고정을 추가한다(commit 하지 않는다). 같은 메시지가 이미 고정돼 있으면 None."""
+    """게시판에 올린다(commit 하지 않는다). 올릴 때의 본문(text)을 사본으로 저장한다. 같은 메시지가 이미 올라가 있으면 None."""
     pin = ChatPinnedMessage(
         group_id=group_id,
         room_id=room_id,
         message_id=message_id,
         pinned_by=user_id,
         pinned_at=datetime.now(UTC),
+        text=text,
     )
     try:
         with db.begin_nested():
@@ -64,8 +65,17 @@ def add_pin(
     return pin
 
 
+def _delete_hides(db: Session, room_id: str, message_ids: list[int]) -> None:
+    """내려가는 공지의 "나만 숨기기" 기록을 지운다(commit 하지 않는다)."""
+    pin_ids = select(ChatPinnedMessage.id).where(
+        ChatPinnedMessage.room_id == room_id, ChatPinnedMessage.message_id.in_(message_ids)
+    )
+    db.execute(delete(ChatPinHide).where(ChatPinHide.pin_id.in_(pin_ids)))
+
+
 def remove_pins(db: Session, room_id: str, message_ids: list[int]) -> None:
-    """고정을 지운다(commit 하지 않는다)."""
+    """고정을 지운다(commit 하지 않는다). 숨김 기록도 함께 지운다."""
+    _delete_hides(db, room_id, message_ids)
     db.execute(
         delete(ChatPinnedMessage).where(
             ChatPinnedMessage.room_id == room_id, ChatPinnedMessage.message_id.in_(message_ids)
@@ -74,7 +84,8 @@ def remove_pins(db: Session, room_id: str, message_ids: list[int]) -> None:
 
 
 def delete_pin(db: Session, room_id: str, message_id: int) -> bool:
-    """고정을 해제한다. 없었으면 False."""
+    """고정을 해제한다(본문 사본·숨김 기록도 함께 사라진다). 없었으면 False."""
+    _delete_hides(db, room_id, [message_id])
     result = db.execute(
         delete(ChatPinnedMessage).where(
             ChatPinnedMessage.room_id == room_id, ChatPinnedMessage.message_id == message_id
@@ -84,17 +95,40 @@ def delete_pin(db: Session, room_id: str, message_id: int) -> bool:
     return result.rowcount > 0
 
 
+def set_hidden(db: Session, pin_id: str, user_id: str, hidden: bool) -> None:
+    """이 공지를 나만 숨기거나(hidden=True) 다시 보이게 한다. 이미 그 상태여도 같은 결과(겹친 요청에도 오류 없음)."""
+    if hidden:
+        if db.get(ChatPinHide, (pin_id, user_id)) is None:
+            try:
+                with db.begin_nested():
+                    db.add(ChatPinHide(pin_id=pin_id, user_id=user_id))
+                    db.flush()
+            except IntegrityError:
+                pass  # 겹친 요청이 먼저 숨겼거나, 그 사이 공지가 내려갔다(외래키 위반). 뒤의 조회가 없으면 404 로 알린다
+    else:
+        db.execute(
+            delete(ChatPinHide).where(ChatPinHide.pin_id == pin_id, ChatPinHide.user_id == user_id)
+        )
+    db.commit()
+
+
 def pin_rows(
-    db: Session, room_id: str, limit: int, message_id: int | None = None
-) -> list[tuple[ChatPinnedMessage, Message, str, str]]:
-    """고정 + 메시지 + 쓴 사람 이름 + 고정한 사람 이름. 고정 시각 최신순."""
+    db: Session, room_id: str, limit: int, viewer_id: str, message_id: int | None = None
+) -> list[tuple[ChatPinnedMessage, Message, str, str, bool]]:
+    """고정 + 메시지 + 쓴 사람 이름 + 고정한 사람 이름 + 내가 숨겼는지. 고정 시각 최신순."""
     author = aliased(User)
     pinner = aliased(User)
     stmt = (
-        select(ChatPinnedMessage, Message, author.name, pinner.name)
+        select(
+            ChatPinnedMessage, Message, author.name, pinner.name, ChatPinHide.user_id.is_not(None)
+        )
         .join(Message, Message.id == ChatPinnedMessage.message_id)
         .join(author, author.id == Message.user_id)
         .join(pinner, pinner.id == ChatPinnedMessage.pinned_by)
+        .outerjoin(
+            ChatPinHide,
+            (ChatPinHide.pin_id == ChatPinnedMessage.id) & (ChatPinHide.user_id == viewer_id),
+        )
         .where(ChatPinnedMessage.room_id == room_id)
     )
     if message_id is not None:
@@ -104,4 +138,8 @@ def pin_rows(
             ChatPinnedMessage.pinned_at.desc(), ChatPinnedMessage.message_id.desc()
         ).limit(limit)
     )
-    return [(p, m, a, b) for p, m, a, b in rows]
+    return [(p, m, a, b, bool(h)) for p, m, a, b, h in rows]
+
+
+def is_hidden(db: Session, pin_id: str, user_id: str) -> bool:
+    return db.get(ChatPinHide, (pin_id, user_id)) is not None
