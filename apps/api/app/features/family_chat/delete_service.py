@@ -1,6 +1,7 @@
 """메시지 삭제 업무 규칙: 보낸 사람만, 소프트 삭제(본문·사진을 서버에서도 비운다), 방 접근 규칙은 조회와 같다."""
 
 import logging
+from datetime import UTC, datetime
 
 from sqlalchemy.orm import Session
 
@@ -9,7 +10,7 @@ from app.shared.errors import ApiError, not_found
 
 from . import photo_service, service
 from . import repository as repo
-from .schemas import MessageOut
+from .schemas import DeletedOut, MessageOut
 
 logger = logging.getLogger(__name__)
 
@@ -30,12 +31,25 @@ def delete_message(
         return service.message_out(message, name)
     attachment = repo.attachments_for(db, [message.id]).get(message.id)
     files = photo_service.attachment_files(attachment) if attachment else None
-    repo.soft_delete(
-        db, message, attachment
-    )  # DB 를 먼저 저장한다(파일 삭제가 실패해도 사진은 더 보이지 않는다)
+    # 파일을 먼저 지운다. 지우다 실패하면 DB 는 그대로라 다시 눌러 지울 수 있고, 파일만 남는 일이 없다
+    # (반대로 DB 가 먼저면 첨부 행이 사라져 남은 파일의 경로를 다시 찾을 수 없다). 파일이 이미 없어도 괜찮다.
     for path in files or ():
         try:
             path.unlink(missing_ok=True)
         except OSError:
-            logger.warning("삭제한 사진 파일을 지우지 못했어요")  # 경로·내용은 남기지 않는다
+            logger.warning("삭제할 사진 파일을 지우지 못했어요")  # 경로·내용은 남기지 않는다
+            raise ApiError(
+                500, "delete_failed", "메시지를 지우지 못했어요. 다시 시도해 주세요"
+            ) from None
+    repo.soft_delete(db, message, attachment)
     return service.message_out(message, name)
+
+
+def deleted_since(
+    db: Session, user: User, group_id: str, since: datetime, room_id: str | None = None
+) -> DeletedOut:
+    """since 이후에 지워진 이 방의 메시지 id. 앱은 새 메시지만 조회하므로, 이미 받아 둔 메시지가 지워졌는지는
+    이 조회로 안다. server_time 은 서버 시계라 다음 조회의 since 로 쓰면 기기 시계가 어긋나도 놓치지 않는다."""
+    room = service.resolve_room(db, user, group_id, room_id)
+    now = datetime.now(UTC)
+    return DeletedOut(message_ids=repo.deleted_since(db, room, since), server_time=now)

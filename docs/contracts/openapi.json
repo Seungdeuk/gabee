@@ -4349,6 +4349,103 @@
         }
       }
     },
+    "/family-chat/messages/deleted": {
+      "get": {
+        "tags": [
+          "family-chat"
+        ],
+        "summary": "Deleted Messages",
+        "description": "이미 받아 둔 메시지 중 그 뒤에 지워진 것을 알려 준다(새 메시지만 조회하는 앱이 삭제를 따라가게).",
+        "operationId": "deleted_messages_family_chat_messages_deleted_get",
+        "parameters": [
+          {
+            "name": "since",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date-time",
+              "description": "이 시각 이후에 지워진 메시지(서버 시각, 앞선 응답의 server_time)",
+              "title": "Since"
+            },
+            "description": "이 시각 이후에 지워진 메시지(서버 시각, 앞선 응답의 server_time)"
+          },
+          {
+            "name": "room_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 32
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "대화방 id. 없으면 가족 전체방",
+              "title": "Room Id"
+            },
+            "description": "대화방 id. 없으면 가족 전체방"
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-gyeot-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Gyeot-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeletedOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/family-chat/messages/{message_id}": {
       "delete": {
         "tags": [
@@ -13538,6 +13635,28 @@
           "missing_ids"
         ],
         "title": "DailyOut"
+      },
+      "DeletedOut": {
+        "properties": {
+          "message_ids": {
+            "items": {
+              "type": "integer"
+            },
+            "type": "array",
+            "title": "Message Ids"
+          },
+          "server_time": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Server Time"
+          }
+        },
+        "type": "object",
+        "required": [
+          "message_ids",
+          "server_time"
+        ],
+        "title": "DeletedOut"
       },
       "DescriptionIn": {
         "properties": {

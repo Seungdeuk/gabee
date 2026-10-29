@@ -15,8 +15,8 @@ def allow_ai(client, headers, monkeypatch) -> None:
 
 
 def join_family(client, owner: dict, code: str, joiner: dict):
-    """초대 코드로 가입을 신청하고 가족 관리자(owner)가 승인한다. 승인 응답(GroupOut)을 돌려준다.
-    익명 계정도 정식 계정처럼 승인 대기를 거치므로, 구성원이 필요한 시험은 이 함수로 만든다."""
+    """초대 코드로 가입을 신청하고, 가족의 자동 승인이 꺼져 있어 승인 대기이면 가족 관리자(owner)가 승인한다.
+    자동 승인(기본 켜짐)이면 가입 응답을, 아니면 승인 응답을 돌려준다. 구성원이 필요한 시험은 이 함수로 만든다."""
     r = client.post("/family-group/groups/join", json={"code": code}, headers=joiner)
     assert r.status_code == 200 and r.json()["status"] in ("pending", "approved"), r.text
     # 가족의 자동 승인(groups.auto_approve_invites, 기본 켜짐)이면 바로 구성원이라 승인할 요청이 없다

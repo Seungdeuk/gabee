@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
@@ -12,6 +14,7 @@ from .media_router import router as media_router
 from .photo_router import router as photo_router
 from .pin_router import router as pin_router
 from .schemas import (
+    DeletedOut,
     DirectRoomCreate,
     MessageCreate,
     MessageOut,
@@ -85,6 +88,20 @@ def post_message(
     db: Session = Depends(get_db),
 ) -> MessageOut:
     return service.post(db, user, group_id, body.text, body.room_id)
+
+
+@router.get("/messages/deleted", response_model=DeletedOut)
+def deleted_messages(
+    since: datetime = Query(
+        ..., description="이 시각 이후에 지워진 메시지(서버 시각, 앞선 응답의 server_time)"
+    ),
+    room_id: str | None = ROOM_ID,
+    user: User = Depends(current_user),
+    group_id: str = Depends(current_group_id),
+    db: Session = Depends(get_db),
+) -> DeletedOut:
+    """이미 받아 둔 메시지 중 그 뒤에 지워진 것을 알려 준다(새 메시지만 조회하는 앱이 삭제를 따라가게)."""
+    return delete_service.deleted_since(db, user, group_id, since, room_id)
 
 
 @router.delete("/messages/{message_id}", response_model=MessageOut)

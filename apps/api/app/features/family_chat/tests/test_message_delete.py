@@ -204,3 +204,125 @@ def test_room_list_last_message_shows_deleted(client, family):
 
 def test_requires_login(client):
     assert client.delete(f"{MSG}/1").status_code == 401
+
+
+# ── 리뷰 보강: 삭제 알림(열어 둔 화면), 파일 삭제 순서, 필터·경로 시험 ──────────
+
+
+DELETED = "/family-chat/messages/deleted"
+
+
+def test_deleted_since_lists_recent_deletions_for_open_screens(client, family):
+    """앱은 새 메시지만 조회하므로, 이미 받아 둔 메시지가 지워졌음을 이 조회로 알 수 있어야 한다."""
+    a, b, _ = family
+    first = _send(client, a, "먼저")
+    second = _send(client, a, "나중")
+    start = client.get(DELETED, params={"since": "2000-01-01T00:00:00Z"}, headers=b)
+    assert start.status_code == 200 and start.json()["message_ids"] == []
+    mark = start.json()["server_time"]  # 다음 조회의 기준(서버 시계라 기기 시계와 어긋나도 괜찮다)
+    assert _delete(client, a, first).status_code == 200
+    r = client.get(DELETED, params={"since": mark}, headers=b)
+    assert r.status_code == 200
+    assert r.json()["message_ids"] == [first]
+    assert second not in r.json()["message_ids"]
+    later = client.get(DELETED, params={"since": r.json()["server_time"]}, headers=b)
+    assert later.json()["message_ids"] == []  # 같은 삭제를 다시 알리지 않는다
+
+
+def test_deleted_since_respects_room_access(client, trio, other_family):
+    a, b, c = trio
+    room = client.post(DIRECT_ROOM, json={"user_id": _uid(client, b)}, headers=a).json()["id"]
+    mid = _send(client, a, "둘만의 대화", room_id=room)
+    assert _delete(client, a, mid, room_id=room).status_code == 200
+    since = {"since": "2000-01-01T00:00:00Z"}
+    assert client.get(DELETED, params={**since, "room_id": room}, headers=b).json()[
+        "message_ids"
+    ] == [mid]
+    assert client.get(DELETED, params={**since, "room_id": room}, headers=c).status_code == 404
+    assert (
+        client.get(DELETED, params={**since, "room_id": room}, headers=other_family).status_code
+        == 404
+    )
+    assert (
+        client.get(DELETED, params=since, headers=c).json()["message_ids"] == []
+    )  # 가족방에는 없다
+    assert client.get(DELETED, params=since).status_code == 401
+
+
+def test_file_failure_keeps_message_so_delete_can_be_retried(client, family, tmp_path, monkeypatch):
+    """파일을 먼저 지운다: 지우다 실패하면 아무것도 바뀌지 않아 다시 눌러 지울 수 있고, 고아 파일이 남지 않는다."""
+    a, _, _ = family
+    sent = _photo(client, a)
+    aid, mid = sent["attachment"]["id"], sent["id"]
+    real_unlink = Path.unlink
+    calls = {"n": 0}
+
+    def flaky(self, *args, **kwargs):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise PermissionError("busy")
+        return real_unlink(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "unlink", flaky)
+    failed = _delete(client, a, mid)
+    assert failed.status_code >= 500
+    with SessionLocal() as db:
+        assert db.get(Message, mid).deleted_at is None  # DB 는 그대로
+        assert db.get(MessageAttachment, aid) is not None
+    retry = _delete(client, a, mid)
+    assert retry.status_code == 200 and retry.json()["deleted"] is True
+    photo_dir = Path(tmp_path) / "chat_photos"
+    assert not (photo_dir / f"{aid}.jpg").exists() and not (photo_dir / f"{aid}_t.jpg").exists()
+
+
+def test_filters_hide_rows_marked_deleted_even_if_text_remains(client, family):
+    """text 를 비우는 것과 별개로 deleted_at 필터 자체가 검색·AI 를 막는지 고정한다."""
+    a, _, _ = family
+    mid = _send(client, a, "남아 있는 글자 병원")
+    with SessionLocal() as db:
+        row = db.get(Message, mid)
+        row.deleted_at = row.created_at  # 본문은 그대로 두고 삭제 표시만
+        group_id = row.group_id
+        db.commit()
+    assert client.get(SEARCH, params={"q": "병원"}, headers=a).json()["items"] == []
+    with SessionLocal() as db:
+        assert ai_repository.recent_messages(db, group_id, 100) == []
+
+
+def test_direct_room_photo_delete_and_room_list(client, trio):
+    a, b, _ = trio
+    room = client.post(DIRECT_ROOM, json={"user_id": _uid(client, b)}, headers=a).json()["id"]
+    out = io.BytesIO()
+    Image.new("RGB", (30, 20), (10, 200, 10)).save(out, format="JPEG")
+    sent = client.post(
+        PHOTOS,
+        files={"file": ("a.jpg", out.getvalue(), "image/jpeg")},
+        data={"room_id": room},
+        headers=a,
+    )
+    assert sent.status_code == 201, sent.text
+    mid, aid = sent.json()["id"], sent.json()["attachment"]["id"]
+    assert _delete(client, a, mid, room_id=room).status_code == 200
+    assert client.get(f"{PHOTOS}/{aid}", headers=b).status_code == 404
+    mine = [r for r in client.get(ROOMS, headers=b).json() if r["id"] == room][0]
+    assert mine["last_message"]["deleted"] is True and mine["last_message"]["attachment"] is None
+
+
+def test_around_and_mark_read_work_with_deleted_message(client, family):
+    a, b, _ = family
+    ids = [_send(client, a, f"메시지 {i}") for i in range(5)]
+    assert _delete(client, a, ids[2]).status_code == 200
+    around = client.get(MSG, params={"around_id": ids[2], "limit": 4}, headers=b).json()
+    center = [m for m in around if m["id"] == ids[2]][0]
+    assert center["deleted"] is True and center["text"] == ""
+    r = client.post("/family-chat/read", json={"message_id": ids[2]}, headers=b)
+    assert (
+        r.status_code == 200 and r.json()["last_read_message_id"] >= ids[2]
+    )  # 삭제된 메시지도 읽음 위치로 쓸 수 있다
+
+
+def test_deleting_someone_elses_deleted_message_is_still_forbidden(client, family):
+    a, b, _ = family
+    mid = _send(client, a, "지울 메시지")
+    assert _delete(client, a, mid).status_code == 200
+    assert _delete(client, b, mid).status_code == 403

@@ -168,6 +168,17 @@ def soft_delete(db: Session, message: Message, attachment: MessageAttachment | N
     db.commit()
 
 
+def deleted_since(db: Session, room: ChatRoom, since: datetime, limit: int = 200) -> list[int]:
+    """since 이후(같은 시각 포함)에 지워진 이 방의 메시지 id 를 지운 순서대로."""
+    rows = db.scalars(
+        select(Message.id)
+        .where(room_messages(room), Message.deleted_at.is_not(None), Message.deleted_at >= since)
+        .order_by(Message.deleted_at, Message.id)
+        .limit(limit)
+    )
+    return list(rows)
+
+
 def last_message(db: Session, room: ChatRoom) -> tuple[Message, str] | None:
     rows = list_recent(db, room, 1)
     return rows[0] if rows else None
