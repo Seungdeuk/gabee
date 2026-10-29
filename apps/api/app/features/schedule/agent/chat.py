@@ -20,7 +20,7 @@ from app.shared.errors import ApiError, bad_request
 from app.shared.llm import client as llm
 from app.shared.privacy import Action, Kind, Policy, Row, prepare_transcript, restore_json
 
-from . import limits, modify, prompts, register  # noqa: F401  (limits: 일정 호출 한도를 따로 세도록 등록)
+from . import limits, modify, prompts, register, request_flow  # noqa: F401  (limits: 일정 호출 한도를 따로 세도록 등록)
 from .members import Member, line, names
 from .schemas import INTENTS, Draft, Intent
 
@@ -60,9 +60,15 @@ class ChatResult:
     target_id: str = ""  # intent 가 edit·delete 일 때 모델이 고른 일정 id(보여 준 목록에 있는 것만)
     changes: dict = field(default_factory=dict)  # intent 가 edit 일 때 모델이 읽은 바뀔 값(검증 끝)
     check_action: str = ""  # intent 가 check 일 때 mark / unmark / list (아니면 빈 문자열)
+    request: dict = field(default_factory=dict)  # intent 가 request 일 때 모델이 읽은 값(검증 끝)
 
 
-def clean_result(data: dict, allowed_ids: set[str], member_ids: set[str] | None = None) -> dict:
+def clean_result(
+    data: dict,
+    allowed_ids: set[str],
+    member_ids: set[str] | None = None,
+    request_ids: set[str] | None = None,
+) -> dict:
     """LLM 출력을 믿지 않고 검증한다: 보기 밖 종류는 일정 요청이 아닌 것으로, 목록에 없는 id 는 버린다."""
     if not isinstance(data, dict):
         data = {}
@@ -90,6 +96,9 @@ def clean_result(data: dict, allowed_ids: set[str], member_ids: set[str] | None 
         "target_id": target if isinstance(target, str) and target in allowed_ids else "",
         "changes": modify.clean_changes(data.get("changes"), member_ids or set()),
         "check_action": action if action in ("mark", "unmark", "list") else "",
+        "request": request_flow.clean_fields(
+            data.get("request"), member_ids or set(), request_ids or set()
+        ),
     }
 
 
@@ -118,6 +127,7 @@ def _draft_block(draft: Draft | None, title: str, place: str, memo: str) -> str:
     if draft is None:
         return ""
     return (
+        f"종류: {'부탁' if draft.mode == 'request' else '일정'}\n"
         f"제목: {title}\n날짜: {draft.date}\n시작: {draft.start_time}\n끝: {draft.end_time}\n"
         f"형태: {draft.kind}\n장소: {place}\n메모: {memo}\n"
         f"공유: {', '.join(draft.share_ids)}"
@@ -138,6 +148,8 @@ def converse(
     members: list[Member] | None = None,
     draft: Draft | None = None,
     guarded: bool = True,
+    request_lines: list[str] | None = None,
+    request_ids: set[str] | None = None,
 ) -> ChatResult:
     members = members or []
     member_ids = {m.id for m in members}
@@ -162,6 +174,7 @@ def converse(
             final,
             member_lines=[sent[100 + i] for i in range(len(members))],
             draft_block=_draft_block(draft, sent.get(2, ""), sent.get(3, ""), sent.get(4, "")),
+            request_lines=request_lines,
         )
 
         def call():
@@ -172,7 +185,7 @@ def converse(
                 max_tokens=900,
                 model=prompts.CHAT_MODEL,
             )
-            return clean_result(response.data, allowed_ids, member_ids), response
+            return clean_result(response.data, allowed_ids, member_ids, request_ids), response
 
         # 같은 가족이 같은 날 같은 일정 목록에서 같은 말을 하면 캐시를 쓴다(목록이 바뀌면 키가 달라진다).
         # 캐시에는 가명화된(토큰 상태의) 결과가 들어가고, 돌려줄 때 이 요청의 대응표로 복원한다.
@@ -192,13 +205,14 @@ def converse(
                     503, "llm_failed", "AI 요청을 처리하지 못했어요. 잠시 후 다시 시도해 주세요"
                 ) from None
             ai_guard.count_nested(response)
-        cleaned = clean_result(result_data, allowed_ids, member_ids)
+        cleaned = clean_result(result_data, allowed_ids, member_ids, request_ids)
         restored = restore_json(
             prep,
             {
                 "reply": cleaned["reply"],
                 "register": cleaned["register"],
                 "changes": cleaned["changes"],
+                "request": cleaned["request"],
             },
             generalize_unknown=True,
             scrub=True,
@@ -206,4 +220,7 @@ def converse(
     cleaned["reply"] = restored["reply"]
     cleaned["register"] = register.clean_fields(restored["register"], member_ids)
     cleaned["changes"] = modify.clean_changes(restored["changes"], member_ids)
+    cleaned["request"] = request_flow.clean_fields(
+        restored["request"], member_ids, request_ids or set()
+    )
     return ChatResult(**cleaned)

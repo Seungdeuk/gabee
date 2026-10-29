@@ -46,6 +46,26 @@ test("서버의 확인 카드를 앱이 쓰는 모양으로 바꾼다", () => {
   assert.equal(card.resultText, "");
 });
 
+test("부탁 카드(보내기·받는 사람 바꾸기·취소)도 변환하고 버튼이 다르다", () => {
+  const request = (action, extra = {}) => ({
+    kind: "schedule",
+    action,
+    title: "수진에게 부탁을 보낼까요?",
+    lines: ["2026-10-31 15:00 장 같이 봐줘"],
+    shared_with: ["수진"],
+    pending_action: { type: action, request_id: "r1", to_ids: ["u2"] },
+    ...extra,
+  });
+  const cards = mapConfirmCards([request("request_register"), request("request_edit"), request("request_cancel")]);
+  assert.deepEqual(cards.map((c) => c.action), ["request_register", "request_edit", "request_cancel"]);
+  assert.equal(cards[0].pendingAction.request_id, "r1");
+  assert.deepEqual(cardButtons(cards[0]).map((b) => b.label), ["보내기", "취소"]);
+  assert.deepEqual(cardButtons(cards[1]).map((b) => b.label), ["바꾸기", "취소"]);
+  const cancel = cardButtons(cards[2]);
+  assert.deepEqual(cancel.map((b) => b.label), ["부탁 취소하기", "돌아가기"]);
+  assert.equal(cancel[0].tone, "danger");
+});
+
 test("모르는 종류·실행 정보가 없는 카드는 버리고, 목록이 아니면 빈 목록", () => {
   assert.deepEqual(mapConfirmCards(undefined), []);
   assert.deepEqual(mapConfirmCards(null), []);

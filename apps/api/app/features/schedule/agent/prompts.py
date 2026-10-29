@@ -66,6 +66,38 @@ CHANGES_SCHEMA: dict = {
     "additionalProperties": False,
 }
 
+# request 일 때만 채운다(아니면 빈 문자열·빈 배열·false). action: create 보내기 / edit 받는 사람 바꾸기 / cancel 취소 / query 상세·현황 질문
+REQUEST_SCHEMA: dict = {
+    "type": "object",
+    "properties": {
+        "action": {"type": "string", "enum": ["", "create", "edit", "cancel", "query"]},
+        "target_id": {"type": "string"},
+        "request_ids": {"type": "array", "items": {"type": "string"}},
+        "title": {"type": "string"},
+        "date": {"type": "string"},
+        "start_time": {"type": "string"},
+        "end_time": {"type": "string"},
+        "place": {"type": "string"},
+        "memo": {"type": "string"},
+        "to_ids": {"type": "array", "items": {"type": "string"}},
+        "date_ambiguous": {"type": "boolean"},
+    },
+    "required": [
+        "action",
+        "target_id",
+        "request_ids",
+        "title",
+        "date",
+        "start_time",
+        "end_time",
+        "place",
+        "memo",
+        "to_ids",
+        "date_ambiguous",
+    ],
+    "additionalProperties": False,
+}
+
 CHAT_SCHEMA: dict = {
     "type": "object",
     "properties": {
@@ -83,6 +115,8 @@ CHAT_SCHEMA: dict = {
         "changes": CHANGES_SCHEMA,
         # check 일 때만: mark 확인·완료로 표시 / unmark 표시 취소 / list 확인하지 않은 일정 보기 (아니면 빈 문자열)
         "check_action": {"type": "string", "enum": ["", "mark", "unmark", "list"]},
+        # request 일 때만: 가족에게 보내는 부탁(함께하기)의 보내기·받는 사람 바꾸기·취소·상세 질의
+        "request": REQUEST_SCHEMA,
     },
     "required": [
         "intent",
@@ -96,6 +130,7 @@ CHAT_SCHEMA: dict = {
         "target_id",
         "changes",
         "check_action",
+        "request",
     ],
     "additionalProperties": False,
 }
@@ -109,10 +144,16 @@ CHAT_SYSTEM = (
     "- edit: 이미 있는 일정을 고쳐 달라는 요청\n"
     "- delete: 이미 있는 일정을 지워 달라는 요청\n"
     "- check: 일정을 확인했다거나 할 일을 끝냈다는 체크, 또는 아직 확인하지 않은 일정을 보여 달라는 요청\n"
+    "- request: 가족에게 일을 같이 해 달라고 보내는 부탁(함께하기)을 새로 보내거나, 보낸 부탁의 받는 사람을 바꾸거나, 보낸 부탁을 "
+    "취소하거나, 부탁의 상세·수락 현황을 묻는 말('엄마한테 장 같이 봐달라고 부탁해줘', '아빠도 부탁에 넣어줘', '부탁 취소해줘', "
+    "'부탁 누가 수락했어?'). 부탁이 있는지, 몇 개인지, 어떻게 됐는지 묻는 말('내일 부탁 있어?')도 query 가 아니라 request(query)다. 내 일정을 가족에게 공유해서 등록하는 말('엄마한테도 공유해줘')은 부탁이 아니라 register·edit 이다.\n"
     "- not_schedule: 정말로 일정과 무관한 말일 때만(앞 단계가 잘못 넘긴 경우)\n"
     "규칙:\n"
     "- 아래 [일정 목록] 에 있는 일정만 근거로 답한다. 없는 일정을 지어내지 않고, 목록에 없으면 그 기간에 일정이 없다고 답한다.\n"
     "- query 일 때 reply 는 한국어로 짧고 다정하게 쓰고, 답에 언급한 일정의 id 만 event_ids 에 넣는다(목록의 id 그대로).\n"
+    "- 일정 브리핑에는 약속·할 일과 함께 내가 보낸 부탁도 나온다. query 에서 묻는 기간에 [부탁 목록]의 '내가 보냄' 부탁이 있으면 "
+    "일정과 같이 reply 에 알려 주고 그 부탁 id 를 request.request_ids 에 넣는다(intent 는 query, request.action 은 빈 문자열). "
+    "'받음' 부탁 중 내답이 수락인 것은 이미 [일정 목록]에 일정으로 들어 있으니 따로 말하지 않는다.\n"
     "- 오늘·내일·이번 주 같은 말은 [지금] 날짜를 기준으로 계산한다.\n"
     "- 일정 목록 줄 끝에 '| 공동'이 붙은 일정은 가족과 공유된 일정이다. 그 뒤에 '| 공유:id,id'가 있으면 내가 그 사람들에게 "
     "공유한 일정이다(공유받은 일정에는 공유 대상이 적혀 있지 않고, 누구에게 공유됐는지는 알려 주지 않는다).\n"
@@ -140,7 +181,7 @@ CHAT_SYSTEM = (
     "- place·memo: 사용자가 말했을 때만 쓴다.\n"
     "- [등록 초안] 이 있으면 지금 등록을 진행하는 중이다. 사용자 문장('내일', '엄마 생일 파티'처럼 짧은 말도)은 빠진 값에 "
     "대한 답이므로 intent 는 register 로 한다. 초안과 전혀 상관없는 요청이 분명할 때만 다른 intent 를 고른다. "
-    "초안의 값을 유지하고 새 문장으로 채운 전체를 register 에 쓴다.\n"
+    "초안의 값을 유지하고 새 문장으로 채운 전체를 register 에 쓴다. 초안의 종류가 부탁이면 request(create)로 한다.\n"
     "- id 는 [가족 구성원] 목록에 있는 것만 쓴다.\n"
     "edit·delete 일 때는 target_id 와 changes 를 채운다(아니면 target_id 는 빈 문자열, changes 는 비운다):\n"
     "- target_id: [일정 목록] 에서 사용자가 말한 일정의 id 를 그대로 쓴다. 같은 이름의 일정이 여럿이면 되묻지 말고 지금과 "
@@ -154,6 +195,21 @@ CHAT_SYSTEM = (
     "'가족 모두'는 말한 사람(나)을 뺀 [가족 구성원] 전원이다. 말하지 않았으면 share_change 는 false, share_ids 는 빈 배열이다. "
     "공유 대상을 바꿀 수 있는 사람인지는 코드가 확인한다.\n"
     "- edit·delete 일 때 reply 는 빈 문자열이다. 확인 카드는 코드가 만든다.\n"
+    "request 일 때 request 객체를 채운다(request 가 아니면 문자열은 빈 문자열, 배열은 빈 배열, date_ambiguous 는 false):\n"
+    "- action: create 새 부탁 보내기 / edit 보낸 부탁의 받는 사람 바꾸기 / cancel 보낸 부탁 취소 / query 부탁의 상세·현황 질문.\n"
+    "- create: title(사용자가 말한 그대로), date(YYYY-MM-DD, [지금] 기준), start_time·end_time(HH:MM, 말했을 때만), place·memo(말했을 때만), "
+    "to_ids(부탁받을 사람의 [가족 구성원] id. '가족 모두'면 말한 사람(나)을 뺀 전원). 날짜가 둘 이상으로 읽히면 date 는 빈 문자열, "
+    "date_ambiguous 는 true 로 하고 reply 에 두 후보를 물어보는 짧은 문장을 쓴다. [등록 초안]의 종류가 부탁이면 짧은 답도 "
+    "request(create)로 하고 초안의 값을 유지해 합친 전체를 쓴다.\n"
+    "- edit: target_id 는 [부탁 목록] 의 id, to_ids 는 바뀐 뒤의 받는 사람 전체 id(목록 줄 '받는분:' 중 유지할 사람 + 새로 넣을 사람). "
+    "부탁의 내용(제목·날짜 등)은 바꿀 수 없다: 그런 요청이면 바꿀 값을 title·date 등에 그대로 쓴다(코드가 안내한다).\n"
+    "- cancel: target_id 만 쓴다. '내가 보냄'이 아닌 부탁도 고른 대로 쓰면 코드가 거부한다.\n"
+    "- edit·cancel 의 target_id: 같은 이름의 부탁이 여럿이면 되묻지 말고 지금과 가장 가까운 하나(앞으로 올 부탁을 먼저, 없으면 가장 "
+    "최근에 지난 부탁)를 고른다.\n"
+    "- query: [부탁 목록] 만 근거로 reply 에 짧고 다정하게 답하고(reply 를 비우면 사용자에게 답이 가지 않으니 반드시 채운다), 언급한 부탁의 id 를 request_ids 에 넣는다. 목록 줄에 없는 사람이나 "
+    "정보는 모른다고 답한다. 받음 줄에는 같이 받은 다른 사람이 적혀 있지 않으니 누가 또 받았는지는 알려 주지 않는다.\n"
+    "- 부탁 목록 줄: 'id | 날짜 시간 | 제목 | 내가 보냄 | 받는분:id=수락/대기,…' 또는 'id | … | 받음 | 보낸이:id | 내답:… | 수락:id,…'.\n"
+    "- request 일 때 reply 는 query 이거나 날짜를 되묻는 경우에만 쓰고 나머지는 빈 문자열이다. 확인 카드는 코드가 만든다.\n"
     "check 일 때는 check_action 을 채운다(아니면 빈 문자열):\n"
     "- mark: 일정을 확인했다거나 할 일을 끝냈다는 말('치과 확인했어', '세탁물 다 했어', '오늘 일정 다 확인했어'). "
     "대상 일정의 id 를 event_ids 에 모두 넣는다(같은 이름이 여럿이면 지금과 가장 가까운 하나만).\n"
@@ -182,6 +238,7 @@ def chat_prompt(
     final: bool = False,
     member_lines: list[str] | None = None,
     draft_block: str = "",
+    request_lines: list[str] | None = None,
 ) -> str:
     """scope: 목록을 거른 기준 설명(없으면 기간을 몰라 넓게 보낸 것). final: 이미 한 번 넓혀 보낸 두 번째 호출.
     member_lines: 가족 구성원 한 줄씩(id | 이름 | 관계). draft_block: 되묻는 중인 등록 초안(없으면 빈 문자열)."""
@@ -200,10 +257,12 @@ def chat_prompt(
     )
     members = "\n".join(member_lines) if member_lines else "(없음)"
     draft = f"\n\n[등록 초안]\n{draft_block}" if draft_block else ""
+    requests = "\n".join(request_lines) if request_lines else "(부탁 없음)"
     return (
         f"[지금] {format_when(now)} (한국 시간)\n\n"
         f"[일정 목록] {range_note}. id | 날짜 시간 | 제목 [| 공동 [| 공유:id,id]]\n{listing}{last}\n\n"
-        f"[가족 구성원] id | 이름 | 관계\n{members}{draft}\n\n"
+        f"[가족 구성원] id | 이름 | 관계\n{members}\n\n"
+        f"[부탁 목록] id | 날짜 시간 | 제목 | 보냄·받음 | 현황\n{requests}{draft}\n\n"
         f"[사용자 문장]\n{text}"
     )
 

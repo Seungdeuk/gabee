@@ -34,7 +34,9 @@ class ConfirmCardOut(BaseModel):
     `{action: pending_action, share}` 를 보낸다. 서버는 돌려받은 pending_action 을 믿지 않고 처음부터 다시 검증한다."""
 
     kind: Literal["schedule"]
-    action: Literal["register", "edit", "delete"]
+    action: Literal[
+        "register", "edit", "delete", "request_register", "request_edit", "request_cancel"
+    ]
     title: str  # 카드 제목(예: 수진, 서연에게 공유해서 등록할까요?)
     lines: list[str] = []  # 카드 본문(일정 제목·날짜, 바뀌는 내용)
     shared_with: list[str] = []  # register 일 때 공유 대상 이름(버튼 이름에 쓴다)

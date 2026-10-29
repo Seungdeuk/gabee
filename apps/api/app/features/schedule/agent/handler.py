@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.shared.auth import ensure_group_member
 
-from . import chat, checks, modify, reader, register, suggest
+from . import chat, checks, modify, reader, register, request_flow, suggest
 from . import members as members_mod
 from . import period as period_mod
 from .schemas import AgentRequest, AgentResponse, Card, ConfirmRequest, SuggestionOut
@@ -28,7 +28,18 @@ def suggestion_out(s) -> SuggestionOut:
 
 
 def _ask(
-    db, user_id, group_id, request, local_now, shown, omitted, scope, final, members, guarded=True
+    db,
+    user_id,
+    group_id,
+    request,
+    local_now,
+    shown,
+    omitted,
+    scope,
+    final,
+    members,
+    guarded=True,
+    request_view=None,
 ) -> chat.ChatResult:
     lines = [
         chat.event_line(
@@ -55,6 +66,8 @@ def _ask(
         members,
         request.draft,
         guarded,
+        request_view.lines if request_view else None,
+        set(request_view.rows) if request_view else None,
     )
 
 
@@ -83,8 +96,20 @@ def handle(
     shown, omitted = reader.select_for_prompt(data.events, now, period)
     scope = f"문장에서 읽은 기간 {period.widened().label()}" if period else None
     members = members_mod.load(db, group_id)
+    request_view = request_flow.load(db, group_id, user_id, local_now.date())
     result = _ask(
-        db, user_id, group_id, request, local_now, shown, omitted, scope, False, members, guarded
+        db,
+        user_id,
+        group_id,
+        request,
+        local_now,
+        shown,
+        omitted,
+        scope,
+        False,
+        members,
+        guarded,
+        request_view,
     )
     if result.need_wider:
         # 목록이 부족하다고 모델이 표시하면, 모델이 돌려준 기간·키워드로 이미 읽어 둔 일정 안에서 다시 걸러 한 번 더 묻는다
@@ -104,6 +129,7 @@ def handle(
             True,
             members,
             guarded,
+            request_view,
         )
     if result.intent == "not_schedule":
         return AgentResponse(intent=result.intent)
@@ -117,6 +143,17 @@ def handle(
             result.reply,
             members,
             share_all,
+        )
+    if result.intent == "request":
+        return request_flow.respond(
+            db,
+            user_id,
+            group_id,
+            request.draft,
+            result.request,
+            result.reply,
+            members,
+            request_view,
         )
     by_id = {e.id: e for e in shown}
     if result.intent == "edit":
@@ -150,6 +187,11 @@ def handle(
             if picked
             else []
         )
+        asked = [
+            request_view.rows[i] for i in result.request["request_ids"] if i in request_view.rows
+        ]
+        if asked:  # 브리핑처럼 묻는 기간의 일정 옆에 내가 보낸 부탁도 함께 보여 준다
+            cards.append(request_flow.list_card(asked, user_id, members))
         text = result.reply or "해당하는 일정을 찾지 못했어요"
         return AgentResponse(intent=result.intent, text=text, cards=cards)
     if result.intent == "recommend":
@@ -185,4 +227,6 @@ def confirm(db: Session, user_id: str, group_id: str, body: ConfirmRequest) -> A
     if action.type == "delete":
         return modify.confirm_delete(db, user_id, group_id, action)
     members = members_mod.load(db, group_id)
+    if action.type.startswith("request_"):
+        return request_flow.confirm(db, user_id, group_id, action, members)
     return register.confirm(db, user_id, group_id, action, body.share, members)

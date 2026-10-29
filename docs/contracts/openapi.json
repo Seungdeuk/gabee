@@ -12746,6 +12746,7 @@
               "edit",
               "delete",
               "check",
+              "request",
               "not_schedule"
             ],
             "title": "Intent"
@@ -13678,7 +13679,9 @@
               "register_confirm",
               "edit_confirm",
               "delete_confirm",
-              "suggestion"
+              "suggestion",
+              "request_confirm",
+              "request_list"
             ],
             "title": "Type"
           },
@@ -13932,7 +13935,10 @@
             "enum": [
               "register",
               "edit",
-              "delete"
+              "delete",
+              "request_register",
+              "request_edit",
+              "request_cancel"
             ],
             "title": "Action"
           },
@@ -14216,6 +14222,15 @@
             "minimum": 0.0,
             "title": "Asks",
             "default": 0
+          },
+          "mode": {
+            "type": "string",
+            "enum": [
+              "event",
+              "request"
+            ],
+            "title": "Mode",
+            "default": "event"
           }
         },
         "type": "object",
@@ -17451,7 +17466,10 @@
             "enum": [
               "edit",
               "delete",
-              "register"
+              "register",
+              "request_register",
+              "request_edit",
+              "request_cancel"
             ],
             "title": "Type"
           },
@@ -17474,6 +17492,19 @@
                 "type": "null"
               }
             ]
+          },
+          "request_id": {
+            "type": "string",
+            "title": "Request Id",
+            "default": ""
+          },
+          "to_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 20,
+            "title": "To Ids"
           }
         },
         "type": "object",

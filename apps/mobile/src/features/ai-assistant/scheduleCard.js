@@ -8,6 +8,9 @@ export const CARD_DONE = "done";
 export const CARD_CANCELLED = "cancelled";
 export const CANCELLED_TEXT = "취소했어요. 아무것도 바뀌지 않았어요.";
 
+// 일정(가족 공유 등록·수정·삭제)과 부탁(보내기·받는 사람 바꾸기·취소)의 확인 카드 종류
+export const CONFIRM_ACTIONS = ["register", "edit", "delete", "request_register", "request_edit", "request_cancel"];
+
 /**
  * 서버의 confirm_cards 를 앱이 쓰는 모양으로 바꾼다. 모르는 종류는 버린다(눌러서 실행할 수 없는 카드는 보이지 않게).
  * @param {any[] | undefined | null} cards
@@ -15,7 +18,7 @@ export const CANCELLED_TEXT = "취소했어요. 아무것도 바뀌지 않았어
  */
 export function mapConfirmCards(cards) {
   return (Array.isArray(cards) ? cards : [])
-    .filter((c) => c && c.kind === "schedule" && ["register", "edit", "delete"].includes(c.action) && c.pending_action && typeof c.pending_action === "object")
+    .filter((c) => c && c.kind === "schedule" && CONFIRM_ACTIONS.includes(c.action) && c.pending_action && typeof c.pending_action === "object")
     .map((c) => ({
       kind: "schedule",
       action: c.action,
@@ -88,6 +91,18 @@ export function cardButtons(card) {
     return [
       { key: "ok", label: "삭제", share: false, tone: "danger" },
       { key: "cancel", label: "취소", tone: "ghost" },
+    ];
+  }
+  if (card.action === "request_register") {
+    return [
+      { key: "ok", label: "보내기", share: false, tone: "main" },
+      { key: "cancel", label: "취소", tone: "ghost" },
+    ];
+  }
+  if (card.action === "request_cancel") {
+    return [
+      { key: "ok", label: "부탁 취소하기", share: false, tone: "danger" },
+      { key: "cancel", label: "돌아가기", tone: "ghost" },
     ];
   }
   return [

@@ -105,6 +105,8 @@ def test_delete_asks_first_and_runs_on_confirm(client, setup, fake):
         "event_id": e["id"],
         "changes": {},
         "draft": None,
+        "request_id": "",
+        "to_ids": [],
     }
     assert len(_events(client, a)) == 1  # 확인 전에는 지우지 않는다
     calls = len(fake.calls)
