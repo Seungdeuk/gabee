@@ -7,6 +7,9 @@ import { test } from "node:test";
 
 import {
   CONSENT_DETAILS,
+  ENABLE_ON_ANALYZE_BODY,
+  ENABLE_ON_ANALYZE_CONFIRM_LABEL,
+  ENABLE_ON_ANALYZE_TITLE,
   CONSENT_SUMMARY,
   CONSENT_TITLE,
   PANEL_NOTICE,
@@ -98,20 +101,37 @@ test("가린 개수 안내 한 줄은 가족 채팅 AI 결과 영역에서만 �
 
 test("AI 패널에는 켜기·끄기 버튼이 없고 대화 분석하기만 있다(동의는 회원가입 때 받는다)", () => {
   const src = panel();
-  for (const gone of ["chat-ai-enable", "chat-ai-disable", "chat-ai-need-manager", "chat-ai-on-member-note", "AiConsentCard", "confirmingEnable", "confirmingDisable", "changeEnabled", "startEnable", "canManage"]) {
+  for (const gone of ["testID=\"chat-ai-enable\"", "chat-ai-disable", "chat-ai-need-manager", "chat-ai-on-member-note", "AiConsentCard", "confirmingDisable", "changeEnabled", "startEnable", "canManage"]) {
     assert.ok(!src.includes(gone), `${gone} 는 없어야 한다`);
   }
   assert.match(src, /testID="chat-ai-analyze"/);
   assert.match(src, /PANEL_NOTICE/);
 });
 
-test("대화 분석하기는 AI 설정이 꺼져 있을 때만 먼저 켜고(분석을 누른 때 한정) 켜져 있으면 곧바로 분석한다", () => {
+test("AI 설정이 꺼져 있으면 확인 카드를 먼저 보이고, '켜고 분석하기'를 눌렀을 때만 켠 뒤 분석한다(켜져 있으면 곧바로 분석)", () => {
   const src = panel();
-  const analyze = src.match(/const analyzeNow = \(\) =>[\s\S]*?\n {4}\}, \(res\)/)?.[0] ?? "";
-  assert.match(analyze, /settings\?\.enabled === false\) await setAiEnabled\(true\)/);
-  assert.match(analyze, /return analyzeChat\(\)/);
+  // 분석하기 버튼: 꺼져 있으면 켜지 않고 확인 카드만 연다
+  const analyze = src.match(/const analyze = async \(\) => \{[\s\S]*?\n {2}\};/)?.[0] ?? "";
+  assert.match(analyze, /settings\?\.enabled === false\) \{\s*setConfirmingEnable\(true\)/);
+  assert.doesNotMatch(analyze, /setAiEnabled/);
+  assert.match(analyze, /await analyzeNow\(\)/); // 켜져 있으면 확인 없이 분석
+  // 켜기는 분석 호출 직전 한 곳, 확인 버튼 핸들러에서만 도달한다
+  const now = src.match(/const analyzeNow = \(\) =>[\s\S]*?\n {4}\}, \(res\)/)?.[0] ?? "";
+  assert.match(now, /settings\?\.enabled === false\) await setAiEnabled\(true\)/);
+  assert.match(now, /return analyzeChat\(\)/);
   assert.equal((src.match(/setAiEnabled\(/g) ?? []).length, 1); // 다른 곳에서 켜거나 끄지 않는다
   assert.doesNotMatch(src, /setAiEnabled\(false\)/);
+  const confirm = src.match(/const confirmEnableAndAnalyze = async \(\) => \{[\s\S]*?\n {2}\};/)?.[0] ?? "";
+  assert.match(confirm, /await analyzeNow\(\)/);
+  assert.match(src, /onPress=\{confirmEnableAndAnalyze\}/);
+  assert.match(src, /onPress=\{\(\) => setConfirmingEnable\(false\)\}/); // 취소하면 아무것도 켜지지 않는다
+});
+
+test("켜기 확인 문구: 가족 전체에 적용되고 대화는 가려서 전달된다는 것을 알린다", () => {
+  assert.match(ENABLE_ON_ANALYZE_TITLE, /꺼져 있어요/);
+  assert.match(ENABLE_ON_ANALYZE_BODY, /우리 가족 모두/);
+  assert.match(ENABLE_ON_ANALYZE_BODY, /개인정보를 가린 최근 대화/);
+  assert.equal(ENABLE_ON_ANALYZE_CONFIRM_LABEL, "켜고 분석하기");
 });
 
 test("동의 PUT(/family-chat/ai/settings) 호출 위치는 허용 목록만 — 새 우회 경로가 생기면 실패", () => {

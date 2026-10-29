@@ -18,7 +18,7 @@ import {
 } from "../messages";
 import { privacyCaption } from "../privacyPreview";
 import { candidateToRequestBody, dayFromChip, hasCandidateDay, requestErrorText, sendErrorMessage } from "../togetherUtils";
-import { PANEL_NOTICE } from "../privacyCopy";
+import { CONSENT_CANCEL_LABEL, ENABLE_ON_ANALYZE_BODY, ENABLE_ON_ANALYZE_CONFIRM_LABEL, ENABLE_ON_ANALYZE_TITLE, PANEL_NOTICE } from "../privacyCopy";
 import TodoCandidateRow from "./TodoCandidateRow";
 
 /** 후보 한 줄에 붙는 보조 글(날짜·시간·장소 등). */
@@ -57,6 +57,7 @@ export default function AiPanel({ visible, onClose, onPickReply, onLinked }) {
   const [todoRegistered, setTodoRegistered] = useState({}); // 할 일 후보 순번 -> 같은 형태(함께하기로 보낸 결과)
   const [todoDay, setTodoDay] = useState({}); // 날짜가 없는 할 일 후보 순번 -> 고른 날짜 칩 key
   const [todoCustom, setTodoCustom] = useState({}); // 직접 입력을 고른 후보 순번 -> 적은 날짜 글자
+  const [confirmingEnable, setConfirmingEnable] = useState(false); // 꺼져 있는 가족 AI 를 켜고 분석할지 묻는 중
   const analyzing = useRef(false); // 분석(필요하면 켜기 포함)을 빠르게 두 번 눌러도 한 번만 보낸다
   const todoBusy = useRef(new Set()); // 등록 중이거나 등록된 할 일 후보 순번: 같은 후보를 두 번 등록하지 않는다
 
@@ -88,11 +89,26 @@ export default function AiPanel({ visible, onClose, onPickReply, onLinked }) {
 
   /**
    * "대화 분석하기"/"다시 분석하기": 누르면 곧바로 분석 API 를 한 번 호출한다. AI 동의는 회원가입 때 받으므로 켜기·끄기 버튼은 없다.
-   * 이 가족의 AI 설정이 꺼져 있으면(예전에 꺼 둔 경우) 분석을 누른 때에 한해 먼저 켠 뒤 분석한다(안 켜면 서버가 ai_not_enabled 로 막는다).
+   * 이 가족의 AI 설정이 꺼져 있으면(예전에 꺼 둔 경우) 켜는 것이 가족 전체에 적용되므로 확인 카드(ENABLE_ON_ANALYZE_*)를 먼저 보이고, "켜고 분석하기"를 눌렀을 때만 켠 뒤 분석한다(안 켜면 서버가 ai_not_enabled 로 막는다).
    */
   const analyze = async () => {
     if (analyzing.current) return;
+    if (settings?.enabled === false) {
+      setConfirmingEnable(true); // 꺼져 있으면 켜는 것이 가족 전체에 적용된다는 확인을 먼저 받는다
+      return;
+    }
     analyzing.current = true;
+    try {
+      await analyzeNow();
+    } finally {
+      analyzing.current = false;
+    }
+  };
+  /** 확인 카드에서 "켜고 분석하기"를 눌렀을 때만 켠 뒤 분석한다. */
+  const confirmEnableAndAnalyze = async () => {
+    if (analyzing.current) return;
+    analyzing.current = true;
+    setConfirmingEnable(false);
     try {
       await analyzeNow();
     } finally {
@@ -201,6 +217,17 @@ export default function AiPanel({ visible, onClose, onPickReply, onLinked }) {
         <View style={styles.loading}>
           <ActivityIndicator color={colors.accent} />
           <Text style={styles.caption}>AI가 대화를 살펴보는 중이에요...</Text>
+        </View>
+      ) : null}
+
+      {confirmingEnable ? (
+        <View style={styles.confirmCard} testID="chat-ai-enable-confirm">
+          <Text style={styles.bodyStrong} accessibilityRole="header">
+            {ENABLE_ON_ANALYZE_TITLE}
+          </Text>
+          <Text style={styles.sub}>{ENABLE_ON_ANALYZE_BODY}</Text>
+          <Button label={ENABLE_ON_ANALYZE_CONFIRM_LABEL} small onPress={confirmEnableAndAnalyze} disabled={disabled} testID="chat-ai-enable-confirm-yes" />
+          <Button label={CONSENT_CANCEL_LABEL} small variant="secondary" onPress={() => setConfirmingEnable(false)} disabled={disabled} testID="chat-ai-enable-confirm-no" />
         </View>
       ) : null}
 
@@ -336,6 +363,7 @@ const styles = StyleSheet.create({
   note: { ...font.caption, color: colors.warning },
   success: { ...font.caption, color: colors.success },
   error: { ...font.body, color: colors.danger },
+  confirmCard: { gap: spacing.sm, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, padding: spacing.md },
   loading: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
   result: { gap: spacing.xs, backgroundColor: colors.card, borderRadius: 14, padding: spacing.md },
   candidate: { gap: spacing.xs, paddingVertical: spacing.xs },

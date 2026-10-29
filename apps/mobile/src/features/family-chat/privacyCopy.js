@@ -40,6 +40,12 @@ export const CONSENT_ON_MEMBER_NOTE = "가족 소유자나 관리자만 AI 기�
 export const CONSENT_ENABLE_LABEL = "AI 기능 켜기";
 export const CONSENT_CONFIRM_LABEL = "확인하고 켜기";
 export const CONSENT_CANCEL_LABEL = "취소";
+
+/** 이 가족의 AI 가 꺼져 있을 때 "대화 분석하기"를 누르면 한 번 보이는 확인(켜는 것은 가족 전체에 적용된다). */
+export const ENABLE_ON_ANALYZE_TITLE = "가족의 AI 기능이 꺼져 있어요";
+export const ENABLE_ON_ANALYZE_BODY =
+  "분석하려면 먼저 켜야 해요. 켜면 우리 가족 모두가 AI 기능(AI 비서·문서 질문·일정·지갑·안부 도우미)을 쓸 수 있게 돼요. 대화 분석은 개인정보를 가린 최근 대화를 AI로 전달해요";
+export const ENABLE_ON_ANALYZE_CONFIRM_LABEL = "켜고 분석하기";
 export const CONSENT_DETAILS_OPEN_LABEL = "자세히 보기";
 export const CONSENT_DETAILS_CLOSE_LABEL = "자세히 접기";
 
