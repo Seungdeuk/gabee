@@ -298,14 +298,18 @@ export function tryBegin(busy, key) {
 export const deleteFailureEffect = (error) => (error?.status === 404 ? "keep" : "revert");
 
 /**
- * 한 번만 true 를 돌려주는 깃발(ref 모양 { current }): 읽으면 바로 내린다. 서랍이 닫힌 뒤 시트를 한 번만 열 때 쓴다.
- * @param {{ current: boolean }} box
- * @returns {boolean}
+ * 할 일 id → 그 할 일을 등록한 원본 메시지 id. 같은 할 일에 연결이 여러 개면 가장 먼저 나온 것(최신순 목록의 첫 번째)을 쓴다.
+ * @param {{ kind?: string, target_id?: string, message_id?: number }[] | null | undefined} links 서버 연결 목록
+ * @returns {Record<string, number>}
  */
-export function takeFlag(box) {
-  const was = Boolean(box.current);
-  box.current = false;
-  return was;
+export function todoOrigins(links) {
+  const map = {};
+  for (const l of Array.isArray(links) ? links : []) {
+    const id = String(l?.target_id ?? "");
+    const messageId = Number(l?.message_id);
+    if (l?.kind === "todo" && id && Number.isInteger(messageId) && messageId > 0 && !(id in map)) map[id] = messageId;
+  }
+  return map;
 }
 
 /**

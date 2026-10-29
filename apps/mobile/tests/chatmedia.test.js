@@ -141,23 +141,23 @@ test("drawerTitle·drawerMembers: 가족 전체방은 가족 이름과 전원(�
 const flat = (sections) => sections.flatMap((s) => s.rows);
 const byKey = (sections, key) => flat(sections).find((r) => r.key === key);
 
-test("서랍 행: 두 구역 6행(검색·공유 문서·구성원 초대·AI 설정·정보 수정은 서랍에서 뺐다), 동작하는 행은 사진·동영상·가족 할 일·나가기 안내", () => {
+test("서랍 행: 두 구역 5행(검색·공유 문서·구성원 초대·AI 설정·정보 수정은 서랍에서 뺐다), 동작하는 행은 사진·동영상·가족 할 일·나가기 안내", () => {
   const sections = buildDrawerSections({ direct: false });
   assert.deepEqual(sections.map((s) => s.title), ["채팅 관리", "채팅방 설정"]);
-  assert.deepEqual(sections[0].rows.map((r) => r.title), ["게시판", "사진 · 동영상", "가족 일정 · 할 일", "가족 할 일"]);
+  assert.deepEqual(sections[0].rows.map((r) => r.title), ["게시판", "사진 · 동영상", "가족 할 일"]);
   assert.deepEqual(sections[1].rows.map((r) => r.title), ["알림 설정", "채팅방 나가기"]);
   const open = flat(sections).filter((r) => r.state === "open").map((r) => r.key);
   assert.deepEqual(open, ["media", "familytodos", "leave"]); // leave 는 배지 없이 안내를 보인다
-  for (const key of ["pins", "todos", "notifications"]) assert.equal(byKey(sections, key).state, "soon", key); // 연결 전
-  for (const key of ["search", "docs", "invite", "privacy", "edit"]) assert.equal(byKey(sections, key), undefined, key);
+  for (const key of ["pins", "notifications"]) assert.equal(byKey(sections, key).state, "soon", key); // 연결 전
+  for (const key of ["search", "docs", "invite", "privacy", "edit", "todos"]) assert.equal(byKey(sections, key), undefined, key);
   assert.equal(byKey(sections, "media").subtitle, "채팅방에 공유된 미디어");
-  assert.equal(byKey(sections, "familytodos").subtitle, "가족 모두의 공동 할 일");
+  assert.equal(byKey(sections, "familytodos").subtitle, "대화에서 정한 일과 공동 할 일");
   assert.equal(byKey(sections, "leave").danger, true);
 });
 
 test("서랍 행: 1:1 방도 같은 행이다", () => {
   const sections = buildDrawerSections({ direct: true });
-  assert.deepEqual(flat(sections).map((r) => r.key), ["pins", "media", "todos", "familytodos", "notifications", "leave"]);
+  assert.deepEqual(flat(sections).map((r) => r.key), ["pins", "media", "familytodos", "notifications", "leave"]);
   assert.equal(byKey(sections, "media").state, "open");
 });
 

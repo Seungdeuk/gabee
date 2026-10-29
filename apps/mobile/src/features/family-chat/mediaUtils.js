@@ -195,8 +195,7 @@ export function drawerMembers({ direct, room, peerId, myId }) {
 const MANAGE_ROWS = [
   { key: "pins", icon: "pin-outline", title: "게시판", subtitle: "공지 모아보기", action: "pins" },
   { key: "media", icon: "images-outline", title: "사진 · 동영상", subtitle: "채팅방에 공유된 미디어", action: "open" },
-  { key: "todos", icon: "checkbox-outline", title: "가족 일정 · 할 일", subtitle: "대화에서 등록된 일정과 할 일", action: "links" },
-  { key: "familytodos", icon: "list-outline", title: "가족 할 일", subtitle: "가족 모두의 공동 할 일", action: "open" },
+  { key: "familytodos", icon: "list-outline", title: "가족 할 일", subtitle: "대화에서 정한 일과 공동 할 일", action: "open" },
 ];
 
 const SETTING_ROWS = [
@@ -205,21 +204,21 @@ const SETTING_ROWS = [
 ];
 
 /**
- * 방 종류별 서랍 행. 채팅 관리: 게시판 · 사진 · 동영상 · 가족 일정 · 할 일 · 가족 할 일, 채팅방 설정: 알림 설정(준비 중) · 채팅방 나가기. 검색은 채팅방 위 돋보기로 하고,
+ * 방 종류별 서랍 행. 채팅 관리: 게시판 · 사진 · 동영상 · 가족 할 일(대화에서 등록한 할 일 포함), 채팅방 설정: 알림 설정(준비 중) · 채팅방 나가기. 검색은 채팅방 위 돋보기로 하고,
  * 구성원 초대·관리, AI · 개인정보 설정, 채팅방 정보 수정, 공유 문서 행은 서랍에서 뺐다. 가족방과 1:1 방의 행은 같다.
- * 각 행의 state: "open" 이면 동작, "soon" 이면 "준비 중" 배지. 게시판 행은 연결(pinsReady), 가족 일정 · 할 일 행은 연결(linksReady)이 있을 때만 동작한다.
+ * 각 행의 state: "open" 이면 동작, "soon" 이면 "준비 중" 배지. 게시판 행은 연결(pinsReady)이 있을 때만 동작한다.
  * 나가기 행의 notice 는 눌렀을 때의 안내 문구다.
- * @param {{ direct: boolean, pinsReady?: boolean, linksReady?: boolean }} args
+ * @param {{ direct: boolean, pinsReady?: boolean }} args
  * @returns {{ title: string, rows: { key: string, icon: string, title: string, subtitle: string, action: string, state: "open" | "soon", danger?: boolean, notice?: string }[] }[]}
  */
-export function buildDrawerSections({ direct, pinsReady = false, linksReady = false }) {
+export function buildDrawerSections({ direct, pinsReady = false }) {
   /**
    * 정의 행을 화면 행으로: 동작 여부(state)와 나가기 안내(notice)를 붙인다.
    * @param {object} row
    * @returns {object}
    */
   const make = (row) => {
-    const live = row.action === "open" || (row.action === "pins" && pinsReady) || (row.action === "links" && linksReady);
+    const live = row.action === "open" || (row.action === "pins" && pinsReady);
     const state = row.action === "leave" ? "open" : live ? "open" : "soon";
     return { ...row, state, ...(row.action === "leave" ? { notice: direct ? SOON_NOTICE : FAMILY_LEAVE_NOTICE } : {}) };
   };
@@ -230,15 +229,14 @@ export function buildDrawerSections({ direct, pinsReady = false, linksReady = fa
 }
 
 /**
- * 서랍 행을 눌렀을 때 할 일. 화면 이동은 media(모음)·pins(게시판)·familytodos(/family-todos)·links(연결 목록 시트)이고, 그 밖에는 안내 문구만 보인다.
+ * 서랍 행을 눌렀을 때 할 일. 화면 이동은 media(모음)·pins(게시판)·familytodos(/family-todos)이고, 그 밖에는 안내 문구만 보인다.
  * 이동이 아닌 행(준비 중, 나가기)이나 아직 동작하지 않는 행은 notice 다.
  * @param {{ key: string, state: "open" | "soon", notice?: string }} row buildDrawerSections 의 행
- * @returns {{ type: "media" | "pins" | "links" | "familytodos" } | { type: "notice", text: string }}
+ * @returns {{ type: "media" | "pins" | "familytodos" } | { type: "notice", text: string }}
  */
 export function resolveRowAction(row) {
   if (row.key === "media") return { type: "media" };
   if (row.key === "pins" && row.state === "open") return { type: "pins" };
-  if (row.key === "todos" && row.state === "open") return { type: "links" };
   if (row.key === "familytodos" && row.state === "open") return { type: "familytodos" };
   return { type: "notice", text: row.notice ?? SOON_NOTICE };
 }

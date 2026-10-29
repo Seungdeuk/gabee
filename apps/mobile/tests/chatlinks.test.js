@@ -28,7 +28,7 @@ import {
   normalizeLinks,
   optimisticLink,
   runGuarded,
-  takeFlag,
+  todoOrigins,
   tryBegin,
 } from "../src/features/family-chat/linkUtils.js";
 import { buildDrawerSections, resolveRowAction } from "../src/features/family-chat/mediaUtils.js";
@@ -278,9 +278,6 @@ test("조회·연타·삭제 실패·한 번만 열기 판단", () => {
   assert.equal(deleteFailureEffect({ status: 403 }), "revert");
   assert.equal(deleteFailureEffect({ status: 0 }), "revert");
   assert.equal(deleteFailureEffect(null), "revert");
-  const flag = { current: true };
-  assert.equal(takeFlag(flag), true);
-  assert.equal(takeFlag(flag), false); // 한 번만
 });
 
 test("오류 문구", () => {
@@ -352,17 +349,30 @@ test("API createLink·deleteLink: 400·403 은 ApiError 로 올라와 문구가 
   );
 });
 
-test("서랍: 가족 일정 · 할 일 행은 연결되면 동작 행이고 가족방·1:1 모두 같다", () => {
+test("서랍: 가족 일정 · 할 일 행은 없고 가족 할 일 행이 대화에서 등록한 할 일까지 맡는다", () => {
   const find = (sections, key) => sections.flatMap((s) => s.rows).find((r) => r.key === key);
   for (const direct of [false, true]) {
-    const row = find(buildDrawerSections({ direct, linksReady: true }), "todos");
+    const sections = buildDrawerSections({ direct, pinsReady: true });
+    assert.equal(find(sections, "todos"), undefined);
+    const row = find(sections, "familytodos");
     assert.equal(row.state, "open");
-    assert.equal(row.title, "가족 일정 · 할 일");
-    assert.deepEqual(resolveRowAction(row), { type: "links" });
-    assert.equal(find(buildDrawerSections({ direct }), "todos").state, "soon"); // 연결 전에는 이전처럼 준비 중
+    assert.equal(row.subtitle, "대화에서 정한 일과 공동 할 일");
+    assert.deepEqual(resolveRowAction(row), { type: "familytodos" });
   }
-  const soon = buildDrawerSections({ direct: false, pinsReady: true, linksReady: true }).flatMap((s) => s.rows).filter((r) => r.state === "soon").map((r) => r.key);
-  assert.deepEqual(soon, ["notifications"]);
+});
+
+test("todoOrigins: 할 일 id → 원본 메시지 id, 일정·잘못된 값은 빼고 첫 연결만", () => {
+  const origins = todoOrigins([
+    { kind: "todo", target_id: "t1", message_id: 11 },
+    { kind: "todo", target_id: "t1", message_id: 5 },
+    { kind: "event", target_id: "e1", message_id: 12 },
+    { kind: "todo", target_id: "", message_id: 13 },
+    { kind: "todo", target_id: "t2", message_id: 0 },
+    { kind: "todo", target_id: "t3", message_id: "abc" },
+    null,
+  ]);
+  assert.deepEqual(origins, { t1: 11 });
+  assert.deepEqual(todoOrigins(undefined), {});
 });
 
 test("소스 검사: AiPanel 은 등록 성공 뒤에만 onLinked 를 부르고, 실패 분기에서는 부르지 않는다", () => {

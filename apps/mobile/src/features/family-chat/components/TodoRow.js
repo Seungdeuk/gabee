@@ -7,9 +7,10 @@ import { assigneeName, dueLabel } from "../todoUtils";
 
 /**
  * 할 일 한 줄: 왼쪽 체크 원(완료·되돌리기), 제목, 담당자와 기한. 줄을 누르면 고치기 창이 열린다.
- * @param {{ todo: { id: string, title: string, done: boolean, assignee_id: string | null, due_date: string | null }, members: { id: string, name: string }[], onToggle: () => void, onEdit: () => void }} props
+ * 대화에서 등록한 할 일이면 onOpenOrigin 이 있어 "원본 보기"(그 메시지 위치의 채팅방으로 이동)가 함께 보인다.
+ * @param {{ todo: { id: string, title: string, done: boolean, assignee_id: string | null, due_date: string | null }, members: { id: string, name: string }[], onToggle: () => void, onEdit: () => void, onOpenOrigin?: () => void }} props
  */
-export default function TodoRow({ todo, members, onToggle, onEdit }) {
+export default function TodoRow({ todo, members, onToggle, onEdit, onOpenOrigin }) {
   const who = assigneeName(members, todo.assignee_id);
   const due = todo.due_date ? dueLabel(todo.due_date) : null;
   const meta = [who && `담당 ${who}`].filter(Boolean).join(" · ");
@@ -37,6 +38,12 @@ export default function TodoRow({ todo, members, onToggle, onEdit }) {
           </View>
         ) : null}
       </Pressable>
+      {onOpenOrigin ? (
+        <Pressable onPress={onOpenOrigin} hitSlop={spacing.xs} accessibilityRole="button" accessibilityLabel={`${todo.title} 만든 대화 원본 보기`} style={styles.origin}>
+          <Ionicons name="chatbubble-ellipses-outline" size={18} color={colors.textSub} />
+          <Text style={styles.originText}>원본</Text>
+        </Pressable>
+      ) : null}
     </View>
   );
 }
@@ -50,5 +57,7 @@ const styles = StyleSheet.create({
   titleDone: { color: colors.textMuted, textDecorationLine: "line-through" },
   meta: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
   metaText: { ...font.caption, color: colors.textMuted },
+  origin: { minHeight: 44, minWidth: 44, alignItems: "center", justifyContent: "center" },
+  originText: { ...font.caption, color: colors.textSub },
   overdue: { color: colors.danger, fontFamily: font.bodyStrong.fontFamily },
 });

@@ -10,7 +10,9 @@ import { colors, font, spacing } from "@/theme";
 
 import TodoComposer from "../components/TodoComposer";
 import TodoEditModal from "../components/TodoEditModal";
+import { originalRoute } from "../boardUtils";
 import TodoRow from "../components/TodoRow";
+import useTodoOrigins from "../useTodoOrigins";
 import useTodos from "../useTodos";
 
 /**
@@ -19,6 +21,8 @@ import useTodos from "../useTodos";
 export default function FamilyTodosScreen() {
   const router = useRouter();
   const todos = useTodos();
+  const origins = useTodoOrigins(); // 대화에서 등록한 할 일의 원본 메시지
+  const openOrigin = (todo) => router.push(originalRoute({ messageId: origins[todo.id] }));
   const [editing, setEditing] = useState(null); // 고치는 중인 할 일 id
   const [notice, setNotice] = useState(""); // 완료·되돌리기 실패 안내
   const back = () => (router.canGoBack() ? router.back() : router.replace("/family-chat"));
@@ -70,7 +74,7 @@ export default function FamilyTodosScreen() {
               <Text style={styles.emptyText}>아래에서 가족과 나눌 할 일을 적어 보세요.</Text>
             </View>
           ) : (
-            todos.open.map((t) => <TodoRow key={t.id} todo={t} members={todos.members} onToggle={() => toggle(t)} onEdit={() => setEditing(t.id)} />)
+            todos.open.map((t) => <TodoRow key={t.id} todo={t} members={todos.members} onToggle={() => toggle(t)} onEdit={() => setEditing(t.id)} onOpenOrigin={origins[t.id] ? () => openOrigin(t) : undefined} />)
           )}
 
           <Pressable
@@ -86,7 +90,7 @@ export default function FamilyTodosScreen() {
             ? todos.doneLoaded
               ? todos.done.length === 0
                 ? <Text style={styles.emptyText}>아직 끝낸 일이 없어요</Text>
-                : todos.done.map((t) => <TodoRow key={t.id} todo={t} members={todos.members} onToggle={() => toggle(t)} onEdit={() => setEditing(t.id)} />)
+                : todos.done.map((t) => <TodoRow key={t.id} todo={t} members={todos.members} onToggle={() => toggle(t)} onEdit={() => setEditing(t.id)} onOpenOrigin={origins[t.id] ? () => openOrigin(t) : undefined} />)
               : <ActivityIndicator color={colors.accent} accessibilityLabel="완료한 일을 불러오는 중" />
             : null}
         </ScrollView>
