@@ -7,9 +7,6 @@ import { loadNicknames } from "@/shared/members/nicknames";
  * @typedef {{ id: string, name: string, mode: "yesno" | "number" | "condition", unit: string, target: number | null, scheduled_time: string, meal_type: string | null, entry: Entry | null, completed: boolean, missing: boolean, skipped: boolean, status: "done" | "skipped" | "missing" | "due" | "upcoming", minutes_until: number | null }} CareItem
  * @typedef {{ meal: "breakfast" | "lunch" | "dinner", label: string, item_id: string, scheduled_time: string, status: CareItem["status"], answer: "yes" | "no" | null }} MealStatus
  * @typedef {{ date: string, now: string, items: CareItem[], missing_ids: string[], meals: MealStatus[], upcoming_ids: string[], cleanup_ids: string[], skipped_ids: string[], done_ids: string[] }} Daily
- * @typedef {{ rule: string, item_id: string | null, text: string }} Recommendation
- * @typedef {{ date: string, meal: "breakfast" | "lunch" | "dinner", label: string, menu: string, note: string, source: "typed" | "recommended", recorded_by_name: string, recorded_at: string }} MealLogEntry
- * @typedef {{ meal: string, label: string, item_id: string | null, menu: string, index: number, next_index: number, total: number }} Meal
  */
 
 // 개발용: 시각에 따라 달라지는 화면(다가오는 일정·누락)을 확인할 때 '지금' 시각을 바꾼다(EXPO_PUBLIC_DEV_NOW=HH:MM). 비우면 실제 시각.
@@ -42,15 +39,6 @@ export const putEntry = (id, value) => apiFetch(`/care/items/${id}/entry`, { met
 /** 오늘의 기록·건너뛰기를 지워 되돌린다. @param {string} id */
 export const deleteEntry = (id) => apiFetch(`/care/items/${id}/entry`, { method: "DELETE" });
 
-/** 규칙 기반 추천. @returns {Promise<{ date: string, recommendations: Recommendation[] }>} */
-export const getRecommendations = () => apiFetch("/care/recommendations");
-
-/** 기록되지 않은 끼니의 첫 메뉴. @returns {Promise<{ date: string, meals: Meal[] }>} */
-export const getMeals = () => apiFetch("/care/meals");
-
-/** '다른 메뉴': 직전 응답의 next_index 를 넘기면 다음 메뉴가 나온다. @returns {Promise<Meal>} */
-export const getMealMenu = (meal, index) => apiFetch(`/care/meals/${meal}?index=${index}`);
-
 /**
  * 위치 공유(개인정보). 동의한 사람만 위치를 보낼 수 있고, 가족 구성원만 볼 수 있다.
  * @typedef {{ consent: boolean, since: string | null }} Consent
@@ -72,27 +60,3 @@ export async function getLatestLocations() {
   const [latest, byId] = await Promise.all([apiFetch("/care/locations/latest"), loadNicknames()]);
   return { ...latest, members: latest.members.map((m) => (byId[m.user_id] && !m.is_me ? { ...m, name: byId[m.user_id] } : m)) };
 }
-
-/**
- * 식단 기록: 최근 days 일(1~31). 날짜마다 아침·점심·저녁 칸이 있고 기록이 없으면 log 가 null 이다.
- * @param {number} [days]
- * @returns {Promise<{ start: string, end: string, days: { date: string, slots: { meal: MealLogEntry["meal"], label: string, log: MealLogEntry | null }[] }[] }>}
- */
-export const getMealLog = (days = 7) => apiFetch(`/care/meal-log?days=${days}`);
-
-/**
- * 그날 끼니에 먹은 메뉴를 기록한다(같은 끼니는 덮어씀). 그 끼니의 데일리 체크도 완료가 된다.
- * @param {{ meal: MealLogEntry["meal"], menu: string, note?: string, source?: "typed" | "recommended", date?: string }} body
- * @returns {Promise<MealLogEntry>}
- */
-export const putMealLog = (body) => apiFetch("/care/meal-log", { method: "PUT", body });
-
-/** 식단 기록을 지운다(데일리 체크는 그대로). @param {string} date YYYY-MM-DD @param {string} meal */
-export const deleteMealLog = (date, meal) => apiFetch(`/care/meal-log?date=${date}&meal=${meal}`, { method: "DELETE" });
-
-/**
- * 식단 기록 요약: 최근 days 일에 기록한 끼니 수(끼니별)와, 최근 30일 끼니별로 자주 먹은 메뉴 5개(빠른 입력용).
- * @param {number} [days]
- * @returns {Promise<{ start: string, end: string, days: number, logged: number, total: number, per_meal: { meal: string, label: string, logged: number }[], frequent: { meal: MealLogEntry["meal"], label: string, menus: { menu: string, count: number }[] }[] }>}
- */
-export const getMealLogSummary = (days = 7) => apiFetch(`/care/meal-log/summary?days=${days}`);
