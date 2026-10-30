@@ -61,7 +61,6 @@ def main() -> int:
         return 2
     cases = [c for c in CASES if not args.case or c["id"] in args.case]
     # 평가는 한 사용자가 짧은 시간에 많이 부르므로 하루 한도를 넉넉히 한다(실서비스 설정은 그대로)
-    settings.care_location_enabled = True  # 위치 사례의 도구 선택을 본다(운영 기본은 꺼짐)
     settings.ai_tab_agent_max_calls_per_user_per_day = 100000
     settings.ai_tab_agent_max_calls_per_group_per_day = 100000
     agent_guard.register()

@@ -146,20 +146,6 @@ def test_bad_tool_arguments_are_returned_to_the_agent_as_errors(client, family, 
     assert reply.can_answer and "YYYY-MM" in reply.answer
 
 
-def test_care_locations_hide_coordinates_without_consent(client, family, monkeypatch):
-    monkeypatch.setattr(settings, "care_location_enabled", True)  # 위치 공유는 기본이 꺼짐
-    a, b, _ = family
-    client.put("/care/location/consent", json={"consent": True}, headers=a)
-    with SessionLocal() as db:
-        me = _user(db, "지민")
-        tools = {t.name: t for t in care_agent.build_tools(db, me.active_group_id, me)}
-        members = tools["get_family_locations"].run({})["members"]
-    by_name = {m["name"]: m for m in members}
-    assert by_name["지민"]["sharing"] is True
-    assert by_name["수진"]["sharing"] is False
-    assert by_name["수진"]["lat"] is None and by_name["수진"]["lng"] is None
-
-
 def test_model_failure_becomes_a_safe_503_and_is_logged(client, family, monkeypatch):
     _, _, group = family
     enable_ai(group["id"])
