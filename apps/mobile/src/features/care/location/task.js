@@ -2,6 +2,7 @@ import * as TaskManager from "expo-task-manager";
 import { Platform } from "react-native";
 
 import { sendLocations } from "../api";
+import { LOCATION_ENABLED } from "./enabled";
 
 /** 백그라운드 위치 작업 이름. startLocationUpdatesAsync 와 같은 이름이어야 한다. */
 export const LOCATION_TASK = "gabee-care-location";
@@ -22,7 +23,7 @@ export const toPoint = (loc) => ({
 // 웹에는 백그라운드 작업이 없다. 위치 좌표는 로그에 남기지 않고, 보내지 못하면 다음 주기에 다시 보낸다.
 if (Platform.OS !== "web") {
   TaskManager.defineTask(LOCATION_TASK, async ({ data, error }) => {
-    if (error || !data?.locations?.length) return;
+    if (!LOCATION_ENABLED || error || !data?.locations?.length) return; // 기능이 꺼져 있으면 좌표를 보내지 않는다
     try {
       await sendLocations(data.locations.map(toPoint));
     } catch {
