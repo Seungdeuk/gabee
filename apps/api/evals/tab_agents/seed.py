@@ -4,7 +4,7 @@ from fastapi.testclient import TestClient
 
 
 def seed(client: TestClient, a: dict, b: dict) -> None:
-    """a=지민, b=수진 헤더. 2026-10 지출 3건, 2026-11 지출 2건, 지민만 위치 공유 동의."""
+    """a=지민, b=수진 헤더. 2026-10 지출 3건, 2026-11 지출 2건."""
     for title, amount, headers in (("진료비", 30000, a), ("약", 10000, b), ("장보기", 20000, a)):
         r = client.post(
             "/billing/expenses",
@@ -16,9 +16,6 @@ def seed(client: TestClient, a: dict, b: dict) -> None:
         "/billing/subscriptions",
         json={"kind": "ott", "name": "넷플릭스", "monthly_fee": 17000, "billing_day": 15},
         headers=a,
-    )
-    assert (
-        client.put("/care/location/consent", json={"consent": True}, headers=a).status_code == 200
     )
     seed_november(client, a, b)
     seed_poisoned(client, a)
