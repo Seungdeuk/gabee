@@ -10,7 +10,7 @@ import RoomRow from "./RoomRow";
 const ACTION_WIDTH = 88; // 종 아이콘+두 줄 라벨이 들어갈 고정 폭(theme 에 같은 크기의 토큰이 없다)
 
 /**
- * 소통 탭 방 행. 오른쪽으로 밀면 왼쪽에 종 아이콘 액션("알림 끄기"/"알림 켜기")이 드러나고, 누르면 토글한 뒤 닫힌다.
+ * 소통 탭 방 행. 왼쪽으로 밀면 오른쪽에 종 아이콘 액션("알림 끄기"/"알림 켜기")이 드러나고, 누르면 토글한 뒤 닫힌다.
  * 행을 누르면 기존처럼 방으로 이동한다(스와이프 중에는 눌림으로 치지 않는다). 웹이거나 onToggleMute 가 없으면 스와이프 없이 일반 행이고,
  * 스크린 리더는 RoomRow 의 접근성 액션으로 같은 토글을 쓴다.
  * @param {{ room: object, onPress?: () => void, onToggleMute?: () => void }} props room 은 RoomRow 의 room 과 같다(muted 포함)
@@ -21,9 +21,9 @@ export default function SwipeableRoomRow({ room, onPress, onToggleMute }) {
   return (
     <ReanimatedSwipeable
       friction={2}
-      overshootLeft={false}
-      leftThreshold={ACTION_WIDTH / 2}
-      renderLeftActions={(_progress, _translation, methods) => (
+      overshootRight={false}
+      rightThreshold={ACTION_WIDTH / 2}
+      renderRightActions={(_progress, _translation, methods) => (
         <View style={styles.actionWrap}>
           <Pressable
             accessibilityRole="button"
