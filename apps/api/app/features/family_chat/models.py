@@ -133,6 +133,19 @@ class ChatRoomRead(Base):
     )
 
 
+class ChatRoomMute(Base):
+    """구성원이 이 대화방의 알림을 끈 기록. 행이 있으면 끈 것이고, 다시 켜면 행을 지운다(기본은 켜짐).
+    사용자마다 따로라 다른 구성원에게는 영향이 없다. 지금은 설정만 저장하고 읽지 않은 수 계산은 그대로다."""
+
+    __tablename__ = "chat_room_mutes"
+
+    room_id: Mapped[str] = mapped_column(ForeignKey("chat_rooms.id"), primary_key=True)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), primary_key=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(UTC)
+    )
+
+
 class MessageAttachment(Base):
     """사진 메시지의 첨부. 메시지 하나에 사진 하나. 파일은 DATA_DIR 아래 서버가 정한 이름으로만 저장하고
     여기에는 상대 경로와 크기만 둔다(원본 EXIF·GPS 는 저장 전에 버린다). 사진 메시지의 text 는 빈 문자열이다."""

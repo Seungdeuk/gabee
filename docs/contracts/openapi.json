@@ -4425,6 +4425,91 @@
         }
       }
     },
+    "/family-chat/rooms/{room_id}/mute": {
+      "put": {
+        "tags": [
+          "family-chat"
+        ],
+        "summary": "Set Room Mute",
+        "description": "이 방의 알림을 나만 끄거나 켠다(멱등). 설정만 저장한다.",
+        "operationId": "set_room_mute_family_chat_rooms__room_id__mute_put",
+        "parameters": [
+          {
+            "name": "room_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Room Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-gyeot-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Gyeot-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MuteSet"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MuteOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/family-chat/rooms/direct": {
       "post": {
         "tags": [
@@ -17530,6 +17615,37 @@
         ],
         "title": "MonthlyResult"
       },
+      "MuteOut": {
+        "properties": {
+          "room_id": {
+            "type": "string",
+            "title": "Room Id"
+          },
+          "muted": {
+            "type": "boolean",
+            "title": "Muted"
+          }
+        },
+        "type": "object",
+        "required": [
+          "room_id",
+          "muted"
+        ],
+        "title": "MuteOut"
+      },
+      "MuteSet": {
+        "properties": {
+          "muted": {
+            "type": "boolean",
+            "title": "Muted"
+          }
+        },
+        "type": "object",
+        "required": [
+          "muted"
+        ],
+        "title": "MuteSet"
+      },
       "NicknameIn": {
         "properties": {
           "nickname": {
@@ -19067,6 +19183,11 @@
           "unread": {
             "type": "integer",
             "title": "Unread"
+          },
+          "muted": {
+            "type": "boolean",
+            "title": "Muted",
+            "default": false
           }
         },
         "type": "object",
@@ -20077,7 +20198,7 @@
         },
         "type": "object",
         "title": "SuggestionsRequest",
-        "description": "추천 요청. chat 은 앱이 보낸 개인 AI 채팅의 최근 10일 안 내 말이다(서버는 저장하지 않고 이번 생성에만 쓴다)."
+        "description": "추천 요청. chat 은 앱이 보낸 개인 AI 채팅의 최근 7일 안 내 말이다(서버는 저장하지 않고 이번 생성에만 쓴다)."
       },
       "Summary": {
         "properties": {

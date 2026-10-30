@@ -13,6 +13,7 @@ from .models import (
     FAMILY,
     ChatRoom,
     ChatRoomMember,
+    ChatRoomMute,
     ChatRoomRead,
     Message,
     MessageAttachment,
@@ -446,6 +447,37 @@ def rooms_summary(
         rid: (last_by_id.get(rid), min(unread.get(rid, 0), UNREAD_CAP), peers.get(rid))
         for rid in ids
     }
+
+
+def muted_room_ids(db: Session, user_id: str, room_ids: list[str]) -> set[str]:
+    """이 방들 중 내가 알림을 끈 방의 id. 방 수와 상관없이 쿼리 한 번."""
+    if not room_ids:
+        return set()
+    rows = db.execute(
+        select(ChatRoomMute.room_id).where(
+            ChatRoomMute.user_id == user_id, ChatRoomMute.room_id.in_(room_ids)
+        )
+    )
+    return set(rows.scalars())
+
+
+def set_muted(db: Session, room_id: str, user_id: str, muted: bool) -> None:
+    """알림 끄기를 저장한다. 이미 그 상태여도 같은 결과(겹친 요청에도 오류 없음)."""
+    if muted:
+        if db.get(ChatRoomMute, (room_id, user_id)) is None:
+            try:
+                with db.begin_nested():
+                    db.add(ChatRoomMute(room_id=room_id, user_id=user_id))
+                    db.flush()
+            except IntegrityError:
+                pass  # 겹친 요청이 먼저 껐다
+    else:
+        db.execute(
+            delete(ChatRoomMute).where(
+                ChatRoomMute.room_id == room_id, ChatRoomMute.user_id == user_id
+            )
+        )
+    db.commit()
 
 
 # ── 첨부(사진) ───────────────────────────────────────────
