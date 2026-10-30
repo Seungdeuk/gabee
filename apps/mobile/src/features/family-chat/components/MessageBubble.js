@@ -144,7 +144,7 @@ export default function MessageBubble({ message, mine, showName, showTime = true
       ) : null}
       {message.text ? (
         <Text style={bubbleTextStyle({ selectable, base: styles.text, photo: attachment ? styles.photoText : null, noSelect: styles.noSelect })} selectable={selectable}>
-          {searchTerms?.length ? highlightNodes(message.text, searchTerms, searchCurrent ? hitStyles.current : styles.hit) : message.text}
+          {searchTerms?.length ? highlightNodes(message.text, searchTerms, searchCurrent ? hitStyles.current : message.is_assistant ? styles.hitOnAssistant : styles.hit) : message.text}
         </Text>
       ) : null}
       {(linkBadges ?? []).map((b) => (
@@ -239,6 +239,7 @@ const styles = StyleSheet.create({
   reactionsOther: { paddingLeft: AVATAR + spacing.sm + spacing.md, paddingRight: spacing.md },
   highlight: { backgroundColor: colors.honeySoft },
   hit: { fontFamily: font.bodyStrong.fontFamily, backgroundColor: colors.honeySoft },
+  hitOnAssistant: { fontFamily: font.bodyStrong.fontFamily, backgroundColor: colors.peach }, // 가비 말풍선 바탕이 꿀색이라 다른 색으로
   spacer: { width: AVATAR },
   column: { flexShrink: 1, maxWidth: "80%", gap: spacing.xs, alignItems: "flex-start" }, // 폭 기준은 row(확정된 폭)의 %. 안쪽 말풍선은 이 폭 안에서만 줄어든다
   line: { flexDirection: "row", alignItems: "flex-end", gap: spacing.xs, maxWidth: "100%" },

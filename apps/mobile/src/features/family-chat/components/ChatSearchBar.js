@@ -25,9 +25,10 @@ function statusText(search, scope) {
 /**
  * 채팅방 상단 검색 바(카톡 방식): 닫기, 입력칸, 지우기. 검색어가 있으면 아래 줄에 안내 문구와 현재 위치("n/m", 서버에 더 있으면 "n/m+"), 더 오래된 일치(▲)·더 최근 일치(▼) 버튼이 보인다. 입력은 100자까지.
  * 키보드의 검색 키는 ▲ 와 같다(더 오래된 일치로).
- * @param {{ search: ReturnType<typeof import("../useChatSearch").default>, scope?: { status: string, retry: () => void }, onClose: () => void, placeholder?: string }} props
+ * 현재 위치 문구를 누르면 스크롤로 벗어난 뒤에도 지금 가리키는 일치로 돌아온다.
+ * @param {{ search: ReturnType<typeof import("../useChatSearch").default>, scope?: { status: string, retry: () => void }, onClose: () => void, onJumpCurrent?: () => void, placeholder?: string }} props
  */
-export default function ChatSearchBar({ search, scope, onClose, placeholder = "대화 내용 검색" }) {
+export default function ChatSearchBar({ search, scope, onClose, onJumpCurrent, placeholder = "대화 내용 검색" }) {
   const { query, setQuery, items, index, hasMore, status } = search;
   const ready = status === "ready" && items.length > 0;
   const canOlder = ready && (index + 1 < items.length || hasMore);
@@ -73,9 +74,9 @@ export default function ChatSearchBar({ search, scope, onClose, placeholder = "�
           ) : null}
           {ready ? (
             <>
-              <Text style={styles.position} accessibilityLabel={`검색 결과 ${searchPositionLabel(index, items.length, hasMore).replace("/", " 중 ").replace("+", " 이상")}`}>
-                {searchPositionLabel(index, items.length, hasMore)}
-              </Text>
+              <Pressable onPress={onJumpCurrent} accessibilityRole="button" accessibilityLabel={`검색 결과 ${searchPositionLabel(index, items.length, hasMore).replace("/", " 중 ").replace("+", " 이상")}, 누르면 현재 위치로 이동`} hitSlop={8}>
+                <Text style={styles.position}>{searchPositionLabel(index, items.length, hasMore)}</Text>
+              </Pressable>
               <IconButton name="chevron-up" label="더 오래된 일치로" onPress={() => search.step("older")} disabled={!canOlder} />
               <IconButton name="chevron-down" label="더 최근 일치로" onPress={() => search.step("newer")} disabled={!canNewer} />
             </>

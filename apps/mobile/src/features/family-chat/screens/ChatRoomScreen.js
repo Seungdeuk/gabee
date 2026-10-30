@@ -315,8 +315,8 @@ export default function ChatRoomScreen() {
     if (text) Clipboard.setStringAsync(text).then(() => pins.say(COPIED_NOTICE), () => pins.say(COPY_FAILED_NOTICE));
   };
   /** 고정 바 항목: 이미 목록에 있는 라이브 메시지면 스크롤+강조만, 아니면 그 위치 창을 불러온다. */
-  const pickPin = (messageId) => {
-    if (pinTapAction({ messages: chat.messages, messageId, focusing: chat.focusing }) === "focus") {
+  const pickPin = (messageId, reuseWindow = false) => {
+    if (pinTapAction({ messages: chat.messages, messageId, focusing: chat.focusing, reuseWindow }) === "focus") {
       clearTimeout(pinHighlightTimer.current);
       clearTimeout(pinSettleTimer.current);
       chat.focusOn(messageId);
@@ -345,7 +345,7 @@ export default function ChatRoomScreen() {
   const currentMatchId = searchOpen ? (search.current?.id ?? null) : null;
   // 검색 줄이 가리키는 일치(처음엔 가장 최근 것, ▲▼ 로 바뀜)가 달라지면 그 메시지로 이동한다
   useEffect(() => {
-    if (currentMatchId != null) pickPinRef.current?.(currentMatchId);
+    if (currentMatchId != null) pickPinRef.current?.(currentMatchId, true);
   }, [currentMatchId]);
   const pinMessageFromMenu = () => {
     const message = menu?.message;
@@ -376,7 +376,7 @@ export default function ChatRoomScreen() {
   const title = direct ? (info.room ? memberName(peer) : "1:1 대화") : (info.room?.name ?? "가족 채팅");
 
   const header = searchOpen ? (
-    <ChatSearchBar search={search} scope={familyRoom} onClose={closeSearch} />
+    <ChatSearchBar search={search} scope={familyRoom} onClose={closeSearch} onJumpCurrent={() => currentMatchId != null && pickPin(currentMatchId, true)} />
   ) : (
     <>
       <View style={styles.bar}>
