@@ -7,8 +7,8 @@ import { apiFetch } from "@/shared/api/client";
  * @typedef {{ id: string, name: string, color: string, created_at: string }} ServerTopic
  * @typedef {{ shared_by: string | null, shared_with: string[] }} Sharing
  * @typedef {ReturnType<import("./members").buildFamily>} Family
- * @typedef {{ id: string, title: string, kind: 1 | 2, start_date: string, place: string }} ServerSuggestion
- * @typedef {{ suggestions: ServerSuggestion[], exhausted: boolean }} SuggestionList
+ * @typedef {{ id: string, title: string, kind: 1 | 2, start_date: string, place: string, later: boolean }} ServerSuggestion
+ * @typedef {{ suggestions: ServerSuggestion[], exhausted: boolean, state: "ok" | "exhausted" | "no_data" | "filtered" | "preparing", can_refresh: boolean }} SuggestionList
  * @typedef {{ user_id: string, status: "waiting" | "accepted" | "declined" }} ServerRecipient
  * @typedef {{ id: string, from_id: string, title: string, start_date: string, start_time: string | null, end_time: string | null, place: string, memo: string, created_at: string, canceled: boolean, recipients: ServerRecipient[], my_event_id: string | null, edited_at?: string | null }} ServerRequest
  */
@@ -135,6 +135,10 @@ export const setEventChecked = (id, checked) =>
  * @returns {Promise<SuggestionList>}
  */
 export const listSuggestions = (chat = []) => apiFetch("/schedule/suggestions", { method: "POST", body: { chat } });
+
+/** 추천의 "나중에" 표시를 서버에 반영한다(true 면 나중에, false 면 다시 대기). */
+export const setSuggestionLater = (id, later) =>
+  apiFetch(`/schedule/suggestions/${id}/later`, { method: "PUT", body: { later } });
 
 /** 내 주제 목록(처음이면 서버가 기본 주제 "경조사"를 만들어 준다). @returns {Promise<ServerTopic[]>} */
 export const listTopics = () => apiFetch("/schedule/topics");

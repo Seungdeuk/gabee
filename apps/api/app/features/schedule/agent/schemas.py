@@ -100,6 +100,7 @@ class SuggestionOut(BaseModel):
     kind: int
     start_date: str  # YYYY-MM-DD
     place: str
+    later: bool = False  # "나중에"를 눌러 둔 추천
 
 
 class SuggestionsRequest(BaseModel):
@@ -109,7 +110,17 @@ class SuggestionsRequest(BaseModel):
 
 
 class SuggestionsOut(BaseModel):
-    """대기 중인 추천. exhausted 는 오늘 추천을 다 만들어 더 없다는 뜻."""
+    """오늘의 추천 슬롯. state: ok(보여줄 추천이 있음) / exhausted(오늘 추천은 여기까지) / no_data(참고할 데이터가 없음) /
+    filtered(데이터는 있는데 새로 만들 게 없음) / preparing(AI 호출 오류). can_refresh 는 새로고침이 의미 있는가.
+    exhausted 는 state == "exhausted" 와 같다(예전 앱 호환)."""
 
     suggestions: list[SuggestionOut]
     exhausted: bool
+    state: str = "ok"
+    can_refresh: bool = True
+
+
+class SuggestionLater(BaseModel):
+    """ "나중에" 표시. later=true 면 나중에로, false 면 다시 대기로 되돌린다."""
+
+    later: bool

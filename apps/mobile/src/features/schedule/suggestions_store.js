@@ -11,7 +11,7 @@ import { recentChatLines } from "./suggest_chat";
 // 서버가 오늘 만들어 준 추천(대기 제안). 서버 주소가 있을 때만 쓴다. 화면이 처음 쓰일 때 한 번 불러오고,
 // 실패하면 빈 목록으로 두고 다음에 다시 시도한다. 서버가 처음 만들 때는 몇 초 걸릴 수 있어 loading 을 함께 둔다.
 const useServer = isApiConfigured();
-let state = { list: [], loading: false, exhausted: false, loaded: false, failed: false };
+let state = { list: [], loading: false, exhausted: false, loaded: false, failed: false, state: "ok", canRefresh: true };
 let started = false;
 const listeners = new Set();
 
@@ -44,9 +44,17 @@ function load() {
   set({ loading: true, loaded: false });
   chatLines().then(api.listSuggestions).then(
     (res) =>
-      set({ list: res.suggestions.map(fromServerSuggestion), exhausted: Boolean(res.exhausted), loading: false, loaded: true, failed: false }),
+      set({
+        list: res.suggestions.map(fromServerSuggestion),
+        exhausted: Boolean(res.exhausted),
+        state: res.state ?? (res.exhausted ? "exhausted" : "ok"),
+        canRefresh: res.can_refresh !== false,
+        loading: false,
+        loaded: true,
+        failed: false,
+      }),
     (error) => {
-      // 403(AI 꺼짐)·429(한도) 포함: 빈 목록으로 두고(카드는 "추천해드릴게요"+새로고침), 다음에 화면이 열릴 때도 다시 시도한다.
+      // 서버까지 못 갔거나 인증 같은 오류: 빈 목록으로 두고(카드는 "아직 준비 중이에요"+새로고침), 다음에 화면이 열릴 때도 다시 시도한다.
       console.warn("[schedule] 추천 불러오기 실패", error?.message ?? error);
       started = false;
       set({ list: [], loading: false, loaded: true, failed: true });
@@ -61,7 +69,10 @@ export function reloadSuggestions() {
   load();
 }
 
-/** 서버 추천 목록. @returns {{ list: ReturnType<typeof fromServerSuggestion>[], loading: boolean, exhausted: boolean, loaded: boolean, failed: boolean }} */
+/**
+ * 서버 추천 목록. state 는 서버가 알려 준 슬롯 상태(ok/exhausted/no_data/filtered/preparing), canRefresh 는 새로고침이 의미 있는가.
+ * @returns {{ list: ReturnType<typeof fromServerSuggestion>[], loading: boolean, exhausted: boolean, loaded: boolean, failed: boolean, state: string, canRefresh: boolean }}
+ */
 export function useSuggestions() {
   const auth = useAuth();
   const scope = auth.status === "loading" ? null : auth.user?.id ? `user-${auth.user.id}` : legacyStorageScope();
@@ -70,6 +81,17 @@ export function useSuggestions() {
     load();
   }, [scope]);
   return useSyncExternalStore(subscribe, () => state);
+}
+
+/** 추천의 "나중에" 표시를 바로 바꾸고 서버에 알린다(실패하면 되돌린다). @param {string} id @param {boolean} later */
+export function setSuggestionLater(id, later) {
+  if (!useServer) return;
+  const mark = (value) => set({ list: state.list.map((s) => (s.id === id ? { ...s, later: value } : s)) });
+  mark(later);
+  api.setSuggestionLater(id, later).catch((error) => {
+    console.warn("[schedule] 나중에 표시 실패", error?.message ?? error);
+    mark(!later);
+  });
 }
 
 /** 추가한 제안을 로컬 목록에서 뺀다(서버는 일정 등록과 함께 확정한다). @param {string} id */

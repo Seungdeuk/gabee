@@ -148,7 +148,9 @@ def test_billing_only_my_subscriptions_with_a_billing_day(client, ids, fake, no_
 
 
 def test_family_analysis_failure_does_not_stop_suggestions(client, ids, fake, monkeypatch):
-    user_id, group_id, *_ = ids
+    user_id, group_id, headers, *_ = ids
+    # 가족 분석이 실패해도 일정 같은 다른 참고 데이터가 있으면 추천은 만든다
+    client.post("/schedule/events", json={"title": "치과", "start_date": _day(4)}, headers=headers)
 
     def broken(*a, **k):
         raise ApiError(429, "limit", "오늘 분석 한도를 다 썼어요")

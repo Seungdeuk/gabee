@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.shared.auth import ensure_group_member
 
+from ..constants import SUGGESTION_DISMISSED
 from . import chat, checks, modify, reader, register, request_flow, suggest
 from . import members as members_mod
 from . import period as period_mod
@@ -27,7 +28,12 @@ RECOMMEND_NONE = "지금은 추천드릴 일정이 없어요"
 
 def suggestion_out(s) -> SuggestionOut:
     return SuggestionOut(
-        id=s.id, title=s.title, kind=s.kind, start_date=f"{s.start_date:%Y-%m-%d}", place=s.place
+        id=s.id,
+        title=s.title,
+        kind=s.kind,
+        start_date=f"{s.start_date:%Y-%m-%d}",
+        place=s.place,
+        later=s.status == SUGGESTION_DISMISSED,
     )
 
 

@@ -5614,7 +5614,7 @@
           "schedule"
         ],
         "summary": "List Suggestions",
-        "description": "대기 중인 추천(없으면 오늘 3묶음 안에서 새로 만든다). AI 를 부를 때만 동의·한도를 본다.\n개인 AI 채팅은 보내지 않으므로 이 입구로 만든 추천에는 쓰이지 않는다(앱은 POST 를 쓴다).",
+        "description": "오늘의 추천 슬롯(대기 추천이 있으면 그대로, 없으면 오늘 호출이 남았을 때 새로 만든다). AI 를 부를 때만 동의·한도를 본다.\n개인 AI 채팅은 보내지 않으므로 이 입구로 만든 추천에는 쓰이지 않는다(앱은 POST 를 쓴다).",
         "operationId": "list_suggestions_schedule_suggestions_get",
         "parameters": [
           {
@@ -5738,6 +5738,91 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/SuggestionsOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/schedule/suggestions/{suggestion_id}/later": {
+      "put": {
+        "tags": [
+          "schedule"
+        ],
+        "summary": "Mark Suggestion Later",
+        "description": "추천의 \"나중에\" 표시를 켜거나 끈다(켜면 나중에, 끄면 다시 대기). 확정된 추천이나 남의 추천은 400. AI 를 부르지 않는다.",
+        "operationId": "mark_suggestion_later_schedule_suggestions__suggestion_id__later_put",
+        "parameters": [
+          {
+            "name": "suggestion_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Suggestion Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-gyeot-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Gyeot-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SuggestionLater"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SuggestionOut"
                 }
               }
             }
@@ -20129,6 +20214,20 @@
         "title": "SubscriptionPatch",
         "description": "보낸 필드만 바꾼다. 금액·결제일·통신사는 null 을 보내면 지운다."
       },
+      "SuggestionLater": {
+        "properties": {
+          "later": {
+            "type": "boolean",
+            "title": "Later"
+          }
+        },
+        "type": "object",
+        "required": [
+          "later"
+        ],
+        "title": "SuggestionLater",
+        "description": "\"나중에\" 표시. later=true 면 나중에로, false 면 다시 대기로 되돌린다."
+      },
       "SuggestionOut": {
         "properties": {
           "id": {
@@ -20150,6 +20249,11 @@
           "place": {
             "type": "string",
             "title": "Place"
+          },
+          "later": {
+            "type": "boolean",
+            "title": "Later",
+            "default": false
           }
         },
         "type": "object",
@@ -20174,6 +20278,16 @@
           "exhausted": {
             "type": "boolean",
             "title": "Exhausted"
+          },
+          "state": {
+            "type": "string",
+            "title": "State",
+            "default": "ok"
+          },
+          "can_refresh": {
+            "type": "boolean",
+            "title": "Can Refresh",
+            "default": true
           }
         },
         "type": "object",
@@ -20182,7 +20296,7 @@
           "exhausted"
         ],
         "title": "SuggestionsOut",
-        "description": "대기 중인 추천. exhausted 는 오늘 추천을 다 만들어 더 없다는 뜻."
+        "description": "오늘의 추천 슬롯. state: ok(보여줄 추천이 있음) / exhausted(오늘 추천은 여기까지) / no_data(참고할 데이터가 없음) /\nfiltered(데이터는 있는데 새로 만들 게 없음) / preparing(AI 호출 오류). can_refresh 는 새로고침이 의미 있는가.\nexhausted 는 state == \"exhausted\" 와 같다(예전 앱 호환)."
       },
       "SuggestionsRequest": {
         "properties": {
