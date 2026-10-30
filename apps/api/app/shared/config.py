@@ -76,6 +76,9 @@ class Settings(BaseSettings):
     # 이메일은 가입 때 선택이고, 인증하지 않아도 가족 그룹을 만들고 참여할 수 있다(기본). true 로 켜면 이메일이 있는데 미인증인 정식 회원의
     # 그룹 생성·참여를 막는다(메일 발송이 설정된 환경에서만). 이메일이 없는 계정은 켜도 막지 않는다.
     require_email_verification: bool = False
+    # 돌봄 위치 공유 사용 여부(기본 꺼짐). 꺼져 있으면 위치 저장·조회·동의와 에이전트의 위치 도구를 403 location_disabled 로 막는다.
+    # 동의 철회(저장된 내 위치 삭제)와 동의 상태 조회는 꺼져 있어도 된다.
+    care_location_enabled: bool = False
     # 메일 요청 제한(프로세스 메모리, login 제한과 같은 한계): 인증 메일 재발송 간격/시간당, 재설정 메일 이메일별/IP별 시간당
     verify_resend_cooldown_seconds: int = 60
     verify_max_per_hour: int = 5
