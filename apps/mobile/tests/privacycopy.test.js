@@ -38,7 +38,8 @@ test("상세에는 E2EE 아님·소유자/관리자만·끄면 멈춤·도우미
   assert.match(all, /AI 비서: 질문과 앞 대화\(최근 10개\)를 가리지 않고/);
   assert.match(all, /문서 질문: 문서를 저장할 때/);
   assert.match(all, /정산·돌봄 도우미/);
-  assert.match(all, /위치/);
+  assert.match(all, /돌봄 기록/);
+  assert.doesNotMatch(all, /위치 결과|구성원의 위치/); // 돌봄 에이전트가 위치를 조회하지 않는다
 });
 
 test("요약은 AI 비서·문서 질문·일정·정산·돌봄 도우미와 대화 분석(답장·대화 주제 추천 포함)을 모두 언급한다", () => {

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
 
 import { MoneySection, MonthSwitcher, ReminderBanner, SettleSummary, SubscriptionTab, UpcomingBanner, currentMonth } from "@/features/billing/public";
@@ -12,6 +12,7 @@ import { getDaily } from "../api";
 import CarePreview from "../components/CarePreview";
 import LocationDisabled from "../components/LocationDisabled";
 import StatusBoard from "../components/StatusBoard";
+import { withoutMealItems } from "../format";
 import { LOCATION_ENABLED } from "../location/enabled";
 import { stopBackground } from "../location/sharing";
 
@@ -39,6 +40,7 @@ function CareLive() {
   const timer = useRef(null);
   const daily = useResource(getDaily); // 현황판의 끼니·체크가 같이 쓴다
   const { reload: reloadDaily } = daily;
+  const board = useMemo(() => (daily.data ? withoutMealItems(daily.data) : null), [daily.data]); // 식사 항목은 화면에서 숨긴다
 
   // 시각에 따라 다가오는 일정·누락이 바뀌므로 1분마다 다시 불러온다
   useEffect(() => {
@@ -74,8 +76,8 @@ function CareLive() {
       {section !== "location" ? <ReminderBanner refreshKey={refreshKey} onOpen={() => setSection("money")} /> : null}
 
       {section === "board" && !daily.data ? <Text style={styles.muted}>{daily.error || "불러오는 중…"}</Text> : null}
-      {section === "board" && daily.data ? (
-        <StatusBoard daily={daily.data} reload={reloadDaily} notify={notify}>
+      {section === "board" && board ? (
+        <StatusBoard daily={board} reload={reloadDaily} notify={notify}>
           <SettleSummary month={month} refreshKey={refreshKey} onOpen={() => setSection("money")} />
           <UpcomingBanner refreshKey={`${refreshKey}-${section}`} onOpen={() => setSection("subscription")} />
         </StatusBoard>
