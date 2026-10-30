@@ -20,6 +20,7 @@ pytestmark = pytest.mark.usefixtures(
     "full_care_samples"
 )  # 평가 데이터는 물·산책·컨디션 항목이 있는 예전 기본 세트를 쓴다
 
+
 CASES = {
     c["id"]: c
     for c in json.loads(
