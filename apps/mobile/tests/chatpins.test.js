@@ -231,9 +231,9 @@ test("서랍: 게시판 행은 연결되면 동작 행이고 가족방·1:1 모�
     assert.deepEqual(resolveRowAction(row), { type: "pins" });
     assert.equal(find(buildDrawerSections({ direct }), "pins").state, "soon"); // 연결 전에는 이전처럼 준비 중
   }
-  // 다른 행은 그대로
+  // 알림 행은 스위치가 되어 준비 중이 아니다
   const soon = buildDrawerSections({ direct: false, pinsReady: true }).flatMap((s) => s.rows).filter((r) => r.state === "soon").map((r) => r.key);
-  assert.deepEqual(soon, ["notifications"]);
+  assert.deepEqual(soon, []);
 });
 
 test("겹치는 요청: A 고정 대기 중 X 해제 성공 → A 실패해도 X 는 되살아나지 않는다", () => {

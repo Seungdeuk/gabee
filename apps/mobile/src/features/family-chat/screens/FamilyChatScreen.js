@@ -1,6 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect, useRouter } from "expo-router";
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
@@ -9,15 +9,15 @@ import Button from "@/shared/components/Button";
 import SectionTitle from "@/shared/components/SectionTitle";
 import { colors, font, radius, spacing } from "@/theme";
 
-import { getRoomInfo, listRooms, openDirectRoom } from "../api";
+import { getRoomInfo, listRooms, openDirectRoom, setRoomMuted } from "../api";
 import { isNoGroup, previewText, roomErrorMessage } from "../chatUtils";
 import ChatListHeader from "../components/ChatListHeader";
 import ContentSearchSection from "../components/ContentSearchSection";
 import EmptyChats from "../components/EmptyChats";
 import NewChatPicker from "../components/NewChatPicker";
-import RoomRow from "../components/RoomRow";
+import SwipeableRoomRow from "../components/SwipeableRoomRow";
 import { waitForPendingMarkRead } from "../pendingRead";
-import { buildRoomRows, formatRoomTime, matchesQuery, pickableMembers } from "../listUtils";
+import { buildRoomRows, formatRoomTime, matchesQuery, MUTE_FAILED_NOTICE, pickableMembers, withRoomMuted } from "../listUtils";
 import { focusRoute, searchRoomLabel } from "../searchUtils";
 import useChatSearch from "../useChatSearch";
 
@@ -53,9 +53,14 @@ export default function FamilyChatScreen() {
   const [pickError, setPickError] = useState("");
   const openingRef = useRef(false); // 상태는 다시 그려진 뒤에야 바뀌어서, 같은 순간의 두 번째 누름은 ref 로 막는다
   const [listError, setListError] = useState("");
+  const [muteNotice, setMuteNotice] = useState("");
+  const muteIntent = useRef(new Map()); // 저장 중인 방 id → 바꾸려는 muted. 같은 방을 저장하는 동안 다시 눌러도 무시하고, 그 사이 목록을 다시 읽어도 이 값을 지킨다
+  const muteVersion = useRef(0); // 토글이 시작·끝날 때마다 올린다. 목록 읽기가 시작된 뒤에 바뀐 방은 늦게 온 옛 값으로 덮어쓰지 않는다
+  const muteLast = useRef(new Map()); // 방 id → 마지막으로 정한 muted 와 그 때의 버전
   const [state, setState] = useState({ status: "loading", rooms: [], members: [], pickable: [], error: "" });
 
   const load = useCallback(async () => {
+    const startVersion = muteVersion.current;
     try {
       await waitForPendingMarkRead(); // 방을 막 나왔다면 읽음 올리기가 끝난 뒤에 숫자를 가져온다
       // 화면이 올 때마다 한 번만(폴링 없음).
@@ -66,7 +71,7 @@ export default function FamilyChatScreen() {
       setState({
         status: "ready",
         error: "",
-        rooms: Array.isArray(rooms) ? buildRoomRows(rooms, group, previewText, formatRoomTime) : [],
+        rooms: Array.isArray(rooms) ? [...muteLast.current].filter(([id, v]) => muteIntent.current.has(id) || v.version > startVersion).reduce((rows, [id, v]) => withRoomMuted(rows, id, v.muted), buildRoomRows(rooms, group, previewText, formatRoomTime)) : [],
         members: people.map((m) => ({ id: m.id, name: m.display_name || m.name, photoUrl: m.photo_url ?? null })),
         pickable: pickableMembers(people, group.my_id),
       });
@@ -80,6 +85,36 @@ export default function FamilyChatScreen() {
       load();
     }, [load]),
   );
+
+  useEffect(() => {
+    if (!muteNotice) return undefined;
+    const timer = setTimeout(() => setMuteNotice(""), 2500);
+    return () => clearTimeout(timer);
+  }, [muteNotice]);
+
+  /**
+   * 방 알림 끄기/켜기: 화면에 먼저 반영하고 저장한다. 실패하면 되돌리고 안내 문구를 잠깐 보인다.
+   * @param {{ id: string, muted?: boolean }} room
+   */
+  const toggleMute = async (room) => {
+    if (muteIntent.current.has(room.id)) return;
+    const next = room.muted !== true;
+    muteIntent.current.set(room.id, next);
+    muteVersion.current += 1;
+    muteLast.current.set(room.id, { muted: next, version: muteVersion.current });
+    setMuteNotice("");
+    setState((s) => ({ ...s, rooms: withRoomMuted(s.rooms, room.id, next) }));
+    try {
+      await setRoomMuted(room.id, next);
+    } catch {
+      muteLast.current.set(room.id, { muted: !next, version: muteVersion.current + 1 });
+      setState((s) => ({ ...s, rooms: withRoomMuted(s.rooms, room.id, !next) }));
+      setMuteNotice(MUTE_FAILED_NOTICE);
+    } finally {
+      muteVersion.current += 1;
+      muteIntent.current.delete(room.id);
+    }
+  };
 
   const members = state.members;
   const shown = useMemo(() => state.rooms.filter((room) => matchesQuery(room.name, query)), [query, state.rooms]);
@@ -123,6 +158,12 @@ export default function FamilyChatScreen() {
           }}
         />
 
+        {muteNotice ? (
+          <Text style={styles.muteNotice} accessibilityRole="alert" accessibilityLiveRegion="polite">
+            {muteNotice}
+          </Text>
+        ) : null}
+
         {pickerOpen ? <NewChatPicker members={state.pickable} busyId={opening} error={pickError} onPick={startDirect} /> : null}
 
         <View>
@@ -143,7 +184,7 @@ export default function FamilyChatScreen() {
           ) : shown.length === 0 ? (
             query.trim() ? null : <Text style={styles.empty}>찾는 대화가 없어요</Text>
           ) : (
-            shown.map((room) => <RoomRow key={room.id} room={room} onPress={() => openRoom(room)} />)
+            shown.map((room) => <SwipeableRoomRow key={room.id} room={room} onPress={() => openRoom(room)} onToggleMute={() => toggleMute(room)} />)
           )}
         </View>
 
@@ -192,6 +233,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.dangerSoft,
   },
   bannerText: { ...font.caption, color: colors.danger, textAlign: "center" },
+  muteNotice: { ...font.caption, color: colors.danger, textAlign: "center" },
   empty: { paddingVertical: spacing.xxl, textAlign: "center", color: colors.textMuted },
   contacts: { gap: spacing.sm },
   contactCard: {

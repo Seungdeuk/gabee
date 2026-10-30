@@ -199,25 +199,27 @@ const MANAGE_ROWS = [
 ];
 
 const SETTING_ROWS = [
-  { key: "notifications", icon: "notifications-outline", title: "알림 설정", subtitle: "이 채팅방의 알림", action: "soon" },
+  { key: "notifications", icon: "notifications-outline", title: "이 방 알림", subtitle: "끄면 이 방의 알림을 받지 않아요", action: "mute" },
   { key: "leave", icon: "exit-outline", title: "채팅방 나가기", subtitle: "", action: "leave", danger: true },
 ];
 
 /**
- * 방 종류별 서랍 행. 채팅 관리: 게시판 · 사진 · 동영상 · 가족 할 일(대화에서 등록한 할 일 포함), 채팅방 설정: 알림 설정(준비 중) · 채팅방 나가기. 검색은 채팅방 위 돋보기로 하고,
+ * 방 종류별 서랍 행. 채팅 관리: 게시판 · 사진 · 동영상 · 가족 할 일(대화에서 등록한 할 일 포함), 채팅방 설정: 이 방 알림(켜기/끄기 스위치) · 채팅방 나가기. 검색은 채팅방 위 돋보기로 하고,
  * 구성원 초대·관리, AI · 개인정보 설정, 채팅방 정보 수정, 공유 문서 행은 서랍에서 뺐다. 가족방과 1:1 방의 행은 같다.
  * 각 행의 state: "open" 이면 동작, "soon" 이면 "준비 중" 배지. 게시판 행은 연결(pinsReady)이 있을 때만 동작한다.
  * 나가기 행의 notice 는 눌렀을 때의 안내 문구다.
- * @param {{ direct: boolean, pinsReady?: boolean }} args
- * @returns {{ title: string, rows: { key: string, icon: string, title: string, subtitle: string, action: string, state: "open" | "soon", danger?: boolean, notice?: string }[] }[]}
+ * 알림 행(kind "switch")은 value 가 "알림 켜짐"이고, 이 방의 muted 값을 아직 모르면(muted 가 null/undefined) disabled 다.
+ * @param {{ direct: boolean, pinsReady?: boolean, muted?: boolean | null }} args muted 는 이 방의 알림 끔 여부(모르면 null)
+ * @returns {{ title: string, rows: { key: string, icon: string, title: string, subtitle: string, action: string, state: "open" | "soon", danger?: boolean, notice?: string, kind?: "switch", value?: boolean, disabled?: boolean }[] }[]}
  */
-export function buildDrawerSections({ direct, pinsReady = false }) {
+export function buildDrawerSections({ direct, pinsReady = false, muted = null }) {
   /**
    * 정의 행을 화면 행으로: 동작 여부(state)와 나가기 안내(notice)를 붙인다.
    * @param {object} row
    * @returns {object}
    */
   const make = (row) => {
+    if (row.action === "mute") return { ...row, state: "open", kind: "switch", value: muted === false, disabled: muted == null };
     const live = row.action === "open" || (row.action === "pins" && pinsReady);
     const state = row.action === "leave" ? "open" : live ? "open" : "soon";
     return { ...row, state, ...(row.action === "leave" ? { notice: direct ? SOON_NOTICE : FAMILY_LEAVE_NOTICE } : {}) };
@@ -232,9 +234,11 @@ export function buildDrawerSections({ direct, pinsReady = false }) {
  * 서랍 행을 눌렀을 때 할 일. 화면 이동은 media(모음)·pins(게시판)·familytodos(/family-together)이고, 그 밖에는 안내 문구만 보인다.
  * 이동이 아닌 행(준비 중, 나가기)이나 아직 동작하지 않는 행은 notice 다.
  * @param {{ key: string, state: "open" | "soon", notice?: string }} row buildDrawerSections 의 행
- * @returns {{ type: "media" | "pins" | "familytodos" } | { type: "notice", text: string }}
+ * 알림 행은 mute(바뀔 muted 값 — 지금 켜져 있으면 끄는 것)이고, 아직 값을 모르면(disabled) 아무 일도 없다(none).
+ * @returns {{ type: "media" | "pins" | "familytodos" | "none" } | { type: "mute", muted: boolean } | { type: "notice", text: string }}
  */
 export function resolveRowAction(row) {
+  if (row.key === "notifications") return row.disabled ? { type: "none" } : { type: "mute", muted: row.value === true };
   if (row.key === "media") return { type: "media" };
   if (row.key === "pins" && row.state === "open") return { type: "pins" };
   if (row.key === "familytodos" && row.state === "open") return { type: "familytodos" };
