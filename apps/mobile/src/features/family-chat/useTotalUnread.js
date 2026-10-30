@@ -4,6 +4,7 @@ import { AppState } from "react-native";
 
 import { listRooms } from "./api";
 import { totalUnread } from "./listUtils";
+import { waitForPendingMarkRead } from "./pendingRead";
 
 export const UNREAD_POLL_MS = 30000;
 const UNREAD_POLL_MAX_MS = 300000;
@@ -26,6 +27,7 @@ export default function useTotalUnread() {
     if (inFlight.current || AppState.currentState === "background") return;
     inFlight.current = true;
     try {
+      await waitForPendingMarkRead(); // 방을 막 나왔다면 읽음 올리기가 끝난 뒤에 합계를 가져온다(소통 탭 목록과 같은 기준)
       const rooms = await listRooms();
       failures.current = 0;
       if (alive.current) setCount(totalUnread(rooms));

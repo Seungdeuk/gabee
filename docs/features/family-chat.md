@@ -130,7 +130,7 @@
 **화면 흐름**
 
 - 소통 탭(`src/app/(tabs)/family-chat.js` → `screens/FamilyChatScreen.js`)의 "채팅방" 아래 실제 가족 채팅방 한 줄(가족 이름, 마지막 메시지 한 줄, 시각)을 누르면 `router.push("/chat-room")` 로 간다. `src/app/chat-room.js` 는 `screens/ChatRoomScreen.js` 를 다시 내보낸다.
-- 소통 탭은 화면에 올 때마다 가족 정보(`GET /family-group/groups/me`)와 대화방 목록(`GET /family-chat/rooms`: 마지막 메시지·안 읽은 수 포함)을 한 번 읽는다. 화면이 보이는 동안에는 10초마다(`ROOM_REFRESH_MS`) 방 목록만 조용히 다시 읽어 방별 안 읽은 수·마지막 말·시각을 갱신한다(가족 정보는 다시 읽지 않고, 실패하면 화면을 그대로 두며, 앱이 뒤에 있거나 읽는 중이면 건너뛴다). 하단 탭의 전체 합계(30초 폴링)와 같은 데이터라 숫자가 어긋나지 않는다. 상단 검색창은 방 이름으로 거른다.
+- 소통 탭은 화면에 올 때마다 가족 정보(`GET /family-group/groups/me`)와 대화방 목록(`GET /family-chat/rooms`: 마지막 메시지·안 읽은 수 포함)을 한 번 읽는다. 화면이 보이는 동안에는 10초마다(`ROOM_REFRESH_MS`) 방 목록만 조용히 다시 읽어 방별 안 읽은 수·마지막 말·시각을 갱신한다(가족 정보는 다시 읽지 않고, 실패하면 화면을 그대로 두며, 앱이 뒤에 있거나 읽는 중이면 건너뛴다). 하단 탭의 전체 합계(30초 폴링)와 같은 데이터라 숫자가 어긋나지 않는다. 하단 탭 합계(`useTotalUnread`)도 방을 막 나왔다면 읽음 올리기가 끝난 뒤에 읽어(`waitForPendingMarkRead`), 방 목록과 같은 기준으로 합산한다. 상단 검색창은 방 이름으로 거른다.
 - 채팅방 상단: 뒤로가기, 가족 이름과 "구성원 N명", ✨ AI 도우미 버튼. 가족 정보를 아직 읽지 못했으면 ✨ 는 꺼져 있다. 가족이 없으면 "가족 만들기 · 참여하기" 버튼을 보여 준다.
 
 **메시지 목록·전송** (`useChatMessages.js`, `chatUtils.js`, `components/MessageBubble.js`, `components/Composer.js`)
