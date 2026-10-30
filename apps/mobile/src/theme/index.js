@@ -14,6 +14,7 @@ export const colors = {
   surfaceStrong: "#FEECBF", // 선택된 탭 알약, 태그
   border: "#F0E2CF", // 카드 테두리
   divider: "#EFE6DA", // 목록 구분선
+  dividerStrong: "#D9CDC2", // 방 목록처럼 행 사이를 또렷하게 나눌 때 쓰는 진한 구분선
 
   // 포인트
   accent: "#B7791C", // 로고의 "Bee", 강조 글자

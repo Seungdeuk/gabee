@@ -76,7 +76,7 @@ const styles = StyleSheet.create({
     borderRadius: radius.lg,
   },
   pressed: { backgroundColor: colors.surface },
-  divider: { height: DIVIDER_HEIGHT, marginLeft: spacing.sm + AVATAR_SIZE + spacing.md, backgroundColor: colors.disabled },
+  divider: { height: DIVIDER_HEIGHT, marginLeft: spacing.sm + AVATAR_SIZE + spacing.md, backgroundColor: colors.dividerStrong },
   main: { flex: 1, minWidth: 0, gap: spacing.xs, paddingTop: spacing.xs },
   titleLine: { flexDirection: "row", alignItems: "center", gap: spacing.xs },
   name: { ...font.cardTitle, color: colors.text, flexShrink: 1 },
