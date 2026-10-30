@@ -105,16 +105,24 @@ const roomParam = (roomId) => (roomId ? `room_id=${encodeURIComponent(roomId)}` 
 
 /**
  * 대화방 목록: 가족 전체방(맨 위)과 내가 참여한 1:1 방. AI 를 부르지 않는다.
- * @returns {Promise<{ id: string, kind: "family" | "direct", peer_user_id: string | null, last_message: { id: number, user_id: string, user_name: string, text: string, created_at: string } | null, unread: number }[]>}
+ * @returns {Promise<{ id: string, kind: "family" | "direct", peer_user_id: string | null, last_message: { id: number, user_id: string, user_name: string, text: string, created_at: string } | null, unread: number, muted?: boolean }[]>} muted 는 내 알림 끔 여부(없으면 false)
  */
 export const listRooms = () => apiFetch("/family-chat/rooms");
 
 /**
  * 같은 가족 구성원과의 1:1 방을 열거나(없으면 만든다) 돌려준다.
  * @param {string} userId 상대 구성원 id
- * @returns {Promise<{ id: string, kind: "direct", peer_user_id: string, last_message: object | null, unread: number }>}
+ * @returns {Promise<{ id: string, kind: "direct", peer_user_id: string, last_message: object | null, unread: number, muted?: boolean }>}
  */
 export const openDirectRoom = (userId) => apiFetch("/family-chat/rooms/direct", { method: "POST", body: { user_id: userId } });
+
+/**
+ * 이 방의 알림을 끄거나 켠다(내 설정만 바뀐다. 푸시는 아직 없어 저장만 하고, 읽지 않음 숫자는 그대로다).
+ * @param {string} roomId 방 목록의 방 id(가족 전체방은 kind "family" 행의 id)
+ * @param {boolean} muted true 면 끔
+ * @returns {Promise<{ room_id: string, muted: boolean }>}
+ */
+export const setRoomMuted = (roomId, muted) => apiFetch(`/family-chat/rooms/${encodeURIComponent(roomId)}/mute`, { method: "PUT", body: { muted: Boolean(muted) } });
 
 /**
  * 채팅 메시지 조회. 결과는 항상 오래된 순이다. 대화 글자는 쿼리에 넣지 않는다(숫자 범위만).

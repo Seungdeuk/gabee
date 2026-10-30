@@ -145,10 +145,10 @@ test("서랍 행: 두 구역 5행(검색·공유 문서·구성원 초대·AI �
   const sections = buildDrawerSections({ direct: false });
   assert.deepEqual(sections.map((s) => s.title), ["채팅 관리", "채팅방 설정"]);
   assert.deepEqual(sections[0].rows.map((r) => r.title), ["게시판", "사진 · 동영상", "가족 할 일"]);
-  assert.deepEqual(sections[1].rows.map((r) => r.title), ["알림 설정", "채팅방 나가기"]);
+  assert.deepEqual(sections[1].rows.map((r) => r.title), ["이 방 알림", "채팅방 나가기"]);
   const open = flat(sections).filter((r) => r.state === "open").map((r) => r.key);
-  assert.deepEqual(open, ["media", "familytodos", "leave"]); // leave 는 배지 없이 안내를 보인다
-  for (const key of ["pins", "notifications"]) assert.equal(byKey(sections, key).state, "soon", key); // 연결 전
+  assert.deepEqual(open, ["media", "familytodos", "notifications", "leave"]); // leave 는 배지 없이 안내를 보인다
+  assert.equal(byKey(sections, "pins").state, "soon"); // 연결 전
   for (const key of ["search", "docs", "invite", "privacy", "edit", "todos"]) assert.equal(byKey(sections, key), undefined, key);
   assert.equal(byKey(sections, "media").subtitle, "채팅방에 공유된 미디어");
   assert.equal(byKey(sections, "familytodos").subtitle, "일정 탭의 일정·할 일과 함께하기");
@@ -391,7 +391,7 @@ test("resolveRowAction·canNavigateFromDrawer: 이동은 한 번만, 닫히는 �
   const row = (key) => flat(sections).find((r) => r.key === key);
   assert.deepEqual(resolveRowAction(row("media")), { type: "media" });
   assert.deepEqual(resolveRowAction(row("familytodos")), { type: "familytodos" });
-  assert.deepEqual(resolveRowAction(row("notifications")), { type: "notice", text: "준비 중이에요" });
+  assert.deepEqual(resolveRowAction(row("notifications")), { type: "none" }); // 방 알림 상태를 아직 모르면 아무 일도 없다
   assert.deepEqual(resolveRowAction(row("leave")), { type: "notice", text: FAMILY_LEAVE_NOTICE });
   assert.equal(canNavigateFromDrawer({ visible: true, locked: false }), true);
   assert.equal(canNavigateFromDrawer({ visible: true, locked: true }), false); // 이미 한 번 눌렀다

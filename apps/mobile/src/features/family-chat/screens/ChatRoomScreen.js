@@ -28,6 +28,7 @@ import useChatLinks from "../useChatLinks";
 import useChatMessages, { useRoomInfo } from "../useChatMessages";
 import useChatPins from "../useChatPins";
 import useMention from "../useMention";
+import useRoomMute from "../useRoomMute";
 import useChatSearch, { useFamilyRoomId } from "../useChatSearch";
 import { memberName } from "../listUtils";
 import { pickChatPhoto } from "../pickPhoto";
@@ -93,6 +94,7 @@ export default function ChatRoomScreen() {
   const [far, setFar] = useState(false); // 바닥에서 멀리 올라와 있는지
   const [hasNew, setHasNew] = useState(false); // 올라와 있는 동안 새 메시지가 왔는지
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const roomMute = useRoomMute({ roomId, enabled: drawerOpen }); // 서랍을 열 때마다 이 방의 알림 설정을 다시 읽는다
   const [menu, setMenu] = useState(null); // 길게 눌러 메뉴를 연 메시지 { message, anchor }
   const [replyTo, setReplyTo] = useState(null); // 답장하려고 고른 원본 미리보기(입력창 위 바)
   const newestId = useRef(0);
@@ -550,7 +552,7 @@ export default function ChatRoomScreen() {
       <KeyboardAvoidingView style={styles.flex} behavior="padding">
         {body}
       </KeyboardAvoidingView>
-      <RoomDrawer visible={drawerOpen} onClose={() => setDrawerOpen(false)} room={info.room} roomId={roomId} peerId={peerId} myId={info.me?.id} />
+      <RoomDrawer visible={drawerOpen} onClose={() => setDrawerOpen(false)} room={info.room} roomId={roomId} peerId={peerId} myId={info.me?.id} muted={roomMute.muted} onToggleMute={roomMute.toggle} />
       <MessageMenu target={menu} myId={info.me?.id} pinned={pins.isPinned(menu?.message?.id)} onClose={closeMenu} onReact={reactFromMenu} onReply={replyFromMenu} onPin={pinMessageFromMenu} onUnpin={unpinMessageFromMenu} onCopy={copyMessage} onDelete={deleteFromMenu} />
       {direct ? null : <AiPanel visible={aiOpen} onClose={() => setAiOpen(false)} onPickReply={pickReply} onLinked={links.registerCandidate} />}
     </SafeAreaView>
