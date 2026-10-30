@@ -146,7 +146,8 @@ def test_bad_tool_arguments_are_returned_to_the_agent_as_errors(client, family, 
     assert reply.can_answer and "YYYY-MM" in reply.answer
 
 
-def test_care_locations_hide_coordinates_without_consent(client, family):
+def test_care_locations_hide_coordinates_without_consent(client, family, monkeypatch):
+    monkeypatch.setattr(settings, "care_location_enabled", True)  # 위치 공유는 기본이 꺼짐
     a, b, _ = family
     client.put("/care/location/consent", json={"consent": True}, headers=a)
     with SessionLocal() as db:
