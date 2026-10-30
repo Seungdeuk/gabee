@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ActivityIndicator, Modal, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import Button from "@/shared/components/Button";
 import { colors, font, radius, spacing } from "@/theme";
@@ -48,6 +49,7 @@ function PickList({ items, emptyText, labelPrefix, testIDPrefix, onPick }) {
  * @returns {JSX.Element}
  */
 export default function AiPanel({ visible, onClose, onPickReply, onLinked }) {
+  const insets = useSafeAreaInsets(); // 안드로이드 내비게이션 바에 시트 아래쪽(버튼)이 가려지지 않게
   const [settings, setSettings] = useState(null); // parseAiSettings 결과
   const [loadError, setLoadError] = useState("");
   const [busy, setBusy] = useState(""); // "analysis" | ""
@@ -320,7 +322,7 @@ export default function AiPanel({ visible, onClose, onPickReply, onLinked }) {
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
       <View style={styles.root}>
         <Pressable style={styles.backdrop} onPress={onClose} accessibilityRole="button" accessibilityLabel="AI 대화 도우미 닫기" testID="chat-ai-backdrop" />
-        <View style={styles.sheet} testID="chat-ai">
+        <View style={[styles.sheet, { paddingBottom: insets.bottom }]} testID="chat-ai">
           <View style={styles.handle} />
           <View style={styles.header}>
             <Text style={styles.title} accessibilityRole="header">
