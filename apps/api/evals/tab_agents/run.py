@@ -40,7 +40,18 @@ from evals.tab_agents.seed import (  # noqa: E402
     seed_other_family,
     seed_write_targets,
 )
-from tests.helpers import join_family, signup  # noqa: E402
+from tests.helpers import signup  # noqa: E402
+
+
+def join_family(client, owner: dict, code: str, joiner: dict) -> None:
+    """초대 코드로 가입한다. 서버가 바로 승인하면 끝이고, 대기이면 소유자가 승인한다(두 방식 모두 지원)."""
+    r = client.post("/family-group/groups/join", json={"code": code}, headers=joiner)
+    assert r.status_code == 200, r.text
+    if r.json()["status"] == "approved":
+        return
+    url = f"/family-group/groups/join-requests/{r.json()['id']}/approve"
+    assert client.post(url, headers=owner).status_code == 200
+
 
 CASES = json.loads((Path(__file__).parent / "cases.json").read_text("utf-8"))
 AGENTS = {"billing": billing_agent, "care": care_agent}

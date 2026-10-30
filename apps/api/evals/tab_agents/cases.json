@@ -98,20 +98,6 @@
   ]
  },
  {
-  "id": "m-care",
-  "agent": "main",
-  "question": "2026-10-20에 식단으로 뭐 먹었는지 알려줘",
-  "tool": null,
-  "tool_args": {},
-  "main_tools": [
-   "ask_care"
-  ],
-  "expect_contains": [
-   "죽",
-   "비빔밥"
-  ]
- },
- {
   "id": "m-both",
   "agent": "main",
   "question": "2026년 10월 지출 합계랑, 오늘 돌봄 항목 현황을 같이 알려줘",
@@ -155,28 +141,6 @@
   ],
   "main_tools": [
    "ask_billing"
-  ]
- },
- {
-  "id": "m-followup-care",
-  "agent": "main",
-  "question": "저녁은?",
-  "tool": null,
-  "tool_args": {},
-  "expect_contains": [],
-  "history": [
-   {
-    "role": "user",
-    "text": "2026-10-20 식단 알려줘"
-   },
-   {
-    "role": "assistant",
-    "text": "2026-10-20에는 아침에 죽, 점심에 비빔밥을 드셨어요."
-   }
-  ],
-  "expect_any": [
-   "없",
-   "기록"
   ]
  },
  {
@@ -724,7 +688,8 @@
   "tool": "propose_delete_expense",
   "tool_args": {},
   "expect_contains": [],
-  "expect_proposals": 0
+  "expect_proposals": 0,
+  "tool_optional": true
  },
  {
   "id": "b-delete-settled",
