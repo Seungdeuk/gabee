@@ -5,19 +5,19 @@ import { ActivityIndicator, Keyboard, Platform, Pressable, StyleSheet, Text, Tex
 import { colors, font, radius, spacing } from "@/theme";
 
 import { canSend, MAX_TEXT, shouldSendOnEnter } from "../chatUtils";
-import { PLUS_SOON_MS, PLUS_SOON_NOTICE } from "../fileUtils";
+import { isPlusPhoto, PLUS_SOON_MS, PLUS_SOON_NOTICE } from "../fileUtils";
 import { replyLine } from "../messageActions";
 import PlusSheet from "./PlusSheet";
 
 const LINE_HEIGHT = font.body.lineHeight;
 const MAX_LINES = 5;
-const INNER_BTN = 36; // 입력칸 안 버튼(사진·문서·보내기)의 한 변
-const INNER_SLOT = INNER_BTN * 2 + spacing.xs; // 오른쪽 자리: 버튼 두 개 폭으로 고정해 글자를 쓰기 시작해도 글자 영역이 흔들리지 않는다
+const INNER_BTN = 36; // 입력칸 안 버튼(문서·보내기)의 한 변
+const INNER_SLOT = INNER_BTN; // 오른쪽 자리: 버튼 한 개 폭으로 고정해 글자를 쓰기 시작해도 글자 영역이 흔들리지 않는다
 
 /**
- * 메시지 입력줄: 왼쪽 + 버튼(아래에서 올라오는 메뉴 시트: 일정·정산·안부, 아직은 "준비 중이에요" 안내), 둥근 여러 줄 입력칸(최대 5줄).
- * 입력칸 오른쪽 안에는 글자가 없을 때 사진 버튼(갤러리에서 한 장)과 문서 버튼(문서 파일 한 개)이 나란히 있고, 글자를 쓰기 시작하면 보내기 버튼으로 바뀐다(자리 폭은 같다).
- * 사진·문서를 보내는 중에는 해당 버튼이 진행 표시·비활성이다. 보내지 못하면 입력줄 위에 오류 문구를 보인다(다시 눌러 재시도).
+ * 메시지 입력줄: 왼쪽 + 버튼(아래에서 올라오는 메뉴 시트: 사진·일정·정산·안부 — 사진은 바로 갤러리에서 한 장 고르고, 일정·정산·안부는 아직 "준비 중이에요" 안내), 둥근 여러 줄 입력칸(최대 5줄).
+ * 입력칸 오른쪽 안에는 글자가 없을 때 문서 버튼(문서 파일 한 개)이 있고, 글자를 쓰기 시작하면 보내기 버튼으로 바뀐다(자리 폭은 같다).
+ * 사진을 보내는 중에는 + 버튼이, 문서를 보내는 중에는 문서 버튼이 진행 표시·비활성이다. 보내지 못하면 입력줄 위에 오류 문구를 보인다(다시 눌러 재시도).
  * 답장 중이면(replyTo) 입력줄 위에 "○○에게 답장" 바(원본 한 줄 미리보기, 닫기)가 뜨고 입력칸에 커서가 간다.
  * @param {{ value: string, onChangeText: (text: string) => void, onSend: () => void, onPickPhoto: () => void, onPickFile?: () => void, photoBusy?: boolean, fileBusy?: boolean, photoError?: string, onDismissPhotoError?: () => void, replyTo?: { id: number, user_name: string, text: string, deleted: boolean, has_attachment: boolean } | null, onCancelReply?: () => void }} props
  */
@@ -80,11 +80,13 @@ export default function Composer({ value, onChangeText, onSend, onPickPhoto, onP
             Keyboard.dismiss(); // 키보드가 시트를 가리지 않게
             setSheetOpen(true);
           }}
+          disabled={photoBusy}
           accessibilityRole="button"
-          accessibilityLabel="더 보기 메뉴"
-          style={({ pressed }) => [styles.plus, pressed && styles.pressed]}
+          accessibilityLabel={photoBusy ? "사진을 보내는 중" : "더 보기 메뉴"}
+          aria-disabled={photoBusy}
+          style={({ pressed }) => [styles.plus, pressed && !photoBusy && styles.pressed]}
         >
-          <Ionicons name="add" size={26} color={colors.textSub} />
+          {photoBusy ? <ActivityIndicator color={colors.accent} /> : <Ionicons name="add" size={26} color={colors.textSub} />}
         </Pressable>
         <View style={styles.inputBox}>
           <TextInput
@@ -101,16 +103,6 @@ export default function Composer({ value, onChangeText, onSend, onPickPhoto, onP
           <View style={styles.slot}>
             {value.length === 0 ? (
               <>
-                <Pressable
-                  onPress={onPickPhoto}
-                  disabled={photoBusy}
-                  accessibilityRole="button"
-                  accessibilityLabel={photoBusy ? "사진을 보내는 중" : "사진 보내기"}
-                  aria-disabled={photoBusy}
-                  style={({ pressed }) => [styles.inner, pressed && !photoBusy && styles.pressed]}
-                >
-                  {photoBusy ? <ActivityIndicator color={colors.accent} /> : <Ionicons name="image-outline" size={22} color={colors.textSub} />}
-                </Pressable>
                 <Pressable
                   onPress={onPickFile}
                   disabled={fileBusy}
@@ -140,9 +132,10 @@ export default function Composer({ value, onChangeText, onSend, onPickPhoto, onP
       <PlusSheet
         visible={sheetOpen}
         onClose={() => setSheetOpen(false)}
-        onSelect={() => {
+        onSelect={(key) => {
           setSheetOpen(false);
-          setSoon(true); // 항목의 실제 기능은 이후 작업: 지금은 안내만
+          if (isPlusPhoto(key)) onPickPhoto();
+          else setSoon(true); // 일정·정산·안부의 실제 기능은 이후 작업: 지금은 안내만
         }}
       />
     </View>

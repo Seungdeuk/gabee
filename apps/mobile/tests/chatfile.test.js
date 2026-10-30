@@ -38,7 +38,9 @@ test("크기 문구", () => {
 });
 
 test("+ 메뉴 항목은 일정·정산·안부 순서", () => {
-  assert.deepEqual(u.PLUS_MENU_ITEMS.map((i) => i.label), ["일정", "정산", "안부"]);
+  assert.deepEqual(u.PLUS_MENU_ITEMS.map((i) => i.label), ["사진", "일정", "정산", "안부"]);
+  assert.equal(u.isPlusPhoto("photo"), true);
+  assert.equal(u.isPlusPhoto("schedule"), false);
   assert.ok(u.PLUS_MENU_ITEMS.every((i) => i.icon && i.key));
   assert.equal(u.PLUS_SOON_NOTICE, "준비 중이에요");
 });

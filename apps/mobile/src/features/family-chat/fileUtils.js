@@ -32,12 +32,19 @@ export const FILE_INVALID_MESSAGE = "지원하지 않는 파일이거나 내용�
 export const FILE_BUSY_MESSAGE = "지금 파일을 처리하는 중이 많아요. 잠시 후 다시 해 주세요";
 export const FILE_PREVIEW_TEXT = "파일";
 
-/** "+" 메뉴(아래에서 올라오는 시트) 항목. 실제 기능은 이후 작업이라 누르면 준비 중 안내만 한다. */
+/** "+" 메뉴(아래에서 올라오는 시트) 항목. 사진은 바로 갤러리를 열고, 나머지(일정·정산·안부)는 실제 기능이 이후 작업이라 누르면 준비 중 안내만 한다. */
 export const PLUS_MENU_ITEMS = [
+  { key: "photo", label: "사진", icon: "image-outline" },
   { key: "schedule", label: "일정", icon: "calendar-outline" },
   { key: "settle", label: "정산", icon: "wallet-outline" },
   { key: "safety", label: "안부", icon: "heart-outline" },
 ];
+/**
+ * "+" 메뉴 항목이 사진 보내기인지(나머지는 준비 중 안내).
+ * @param {string} key
+ * @returns {boolean}
+ */
+export const isPlusPhoto = (key) => key === "photo";
 export const PLUS_SOON_NOTICE = "준비 중이에요";
 export const PLUS_SOON_MS = 3000; // 안내가 저절로 사라지는 시간
 
