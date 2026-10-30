@@ -57,6 +57,7 @@ export default function AccountCard() {
             setBusy(true);
             await signOut();
             setBusy(false);
+            router.replace("/"); // 처음(시작) 화면으로 돌아간다
           }}
         />
       </View>

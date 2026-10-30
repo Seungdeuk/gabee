@@ -1,5 +1,11 @@
 """데일리 체크, 누락 계산, 규칙 기반 추천, 식단 추천. (위치 공유는 test_care_location.py)"""
 
+import pytest
+
+pytestmark = pytest.mark.usefixtures(
+    "full_care_samples"
+)  # 물·산책·컨디션 항목이 있는 세트로 시험한다
+
 TODAY = "/care/daily"
 
 

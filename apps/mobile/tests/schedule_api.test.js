@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import { toBody, toItem, toPatchBody } from "../src/features/schedule/api.js";
+import { applyFilter, involvedIds, isShared, whoChips } from "../src/features/schedule/filter.js";
 import { buildFamily } from "../src/features/schedule/members.js";
 
 const group = {
@@ -50,7 +51,8 @@ const event = {
   title: "가족 점심",
   starts_at: "2030-01-05T03:00:00Z",
   kind: 1,
-  who_ids: ["u-mom", "u-dad", "ghost"],
+  shared: true,
+  shared_ids: ["u-mom", "u-dad", "ghost"],
   place: "본가",
   start_date: "2030-01-05",
   start_time: "12:00:00",
@@ -63,6 +65,22 @@ const event = {
   topic_id: "t1",
 };
 
+test("이름은 별명(getGroupWithNicknames 가 입힌 nickname) → 관계 → 표시 이름 순", () => {
+  const named = buildFamily({
+    ...group,
+    members: group.members.map((m) => (m.id === "u-dad" ? { ...m, nickname: "아버지" } : m)),
+  });
+  assert.deepEqual(
+    named.members.map((m) => [m.id, m.name]),
+    [
+      ["me", "나"],
+      ["mom", "엄마"],
+      ["dad", "아버지"],
+      ["u-aunt", "이모"],
+    ],
+  );
+});
+
 test("서버 일정 → 화면 항목", () => {
   assert.deepEqual(toItem(event, family), {
     id: "e1",
@@ -74,9 +92,10 @@ test("서버 일정 → 화면 항목", () => {
     allDay: false,
     place: "본가",
     memo: "과일 사 가기",
-    whoIds: ["mom", "dad"], // 모르는 사람은 뺀다
     topicId: "t1",
     sharedWith: [],
+    shared: true,
+    sharedIds: ["mom", "dad"], // 모르는 사람은 뺀다
     createdBy: "mom",
     checked: true,
   });
@@ -102,7 +121,6 @@ const item = {
   allDay: false,
   place: "",
   memo: "",
-  whoIds: ["dad", "me"],
   topicId: null,
   sharedWith: ["mom"],
 };
@@ -116,7 +134,6 @@ test("화면 항목 → 등록 본문: 종일은 00:00~23:59, 공유는 사용�
     end_time: null,
     place: "",
     memo: "",
-    who_ids: ["u-dad", "u-me"],
     topic_id: null,
     share_with: ["u-mom"],
   });
@@ -130,9 +147,8 @@ test("화면 항목 → 등록 본문: 종일은 00:00~23:59, 공유는 사용�
 test("수정 본문은 바꾼 값만, 시간은 날짜·시간을 함께 보낸다", () => {
   const current = { ...item, id: "x", checked: false };
   assert.deepEqual(toPatchBody({ title: "새 제목" }, current, family), { title: "새 제목" });
-  assert.deepEqual(toPatchBody({ topicId: "t9", whoIds: ["mom"] }, current, family), {
+  assert.deepEqual(toPatchBody({ topicId: "t9" }, current, family), {
     topic_id: "t9",
-    who_ids: ["u-mom"],
   });
   assert.deepEqual(toPatchBody({ startTime: null }, current, family), {
     start_date: "2030-02-01",
@@ -144,4 +160,49 @@ test("수정 본문은 바꾼 값만, 시간은 날짜·시간을 함께 보낸�
     start_time: "00:00",
     end_time: "23:59",
   });
+});
+
+test("수정 본문은 공유 대상을 바꿨을 때만 share_with 로 전체를 보낸다", () => {
+  const current = { ...item, id: "x", checked: false };
+  assert.deepEqual(toPatchBody({ sharedWith: ["mom", "dad"] }, current, family), {
+    share_with: ["u-mom", "u-dad"],
+  });
+  assert.deepEqual(toPatchBody({ sharedWith: [] }, current, family), { share_with: [] }); // 모두 뺄 때
+  assert.equal("share_with" in toPatchBody({ title: "새 제목" }, current, family), false);
+});
+
+test("공동 여부와 대상 필터: 나는 나 혼자 일정, 공동은 공동 일정, 구성원은 그 사람과 얽힌 공동 일정", () => {
+  const alone = { ...item, id: "a", shared: false, sharedIds: [], sharedWith: [], createdBy: "me" };
+  const withMom = { ...item, id: "b", shared: true, sharedIds: ["mom"], sharedWith: ["mom"], createdBy: "me" };
+  const fromDad = { ...item, id: "c", shared: true, sharedIds: ["dad", "mom"], sharedWith: [], createdBy: "dad" };
+  const all = [alone, withMom, fromDad];
+  const ids = (list) => list.map((x) => x.id);
+  assert.equal(isShared(alone), false);
+  assert.equal(isShared(withMom), true);
+  assert.deepEqual(ids(applyFilter(all, { whoIds: [], topicIds: [] })), ["a", "b", "c"]); // 안 켜면 전체
+  assert.deepEqual(ids(applyFilter(all, { whoIds: ["me"], topicIds: [] })), ["a"]);
+  assert.deepEqual(ids(applyFilter(all, { whoIds: ["shared"], topicIds: [] })), ["b", "c"]);
+  assert.deepEqual(ids(applyFilter(all, { whoIds: ["mom"], topicIds: [] })), ["b", "c"]);
+  assert.deepEqual(ids(applyFilter(all, { whoIds: ["dad"], topicIds: [] })), ["c"]);
+  assert.deepEqual(ids(applyFilter(all, { whoIds: ["me", "dad"], topicIds: [] })), ["a", "c"]); // 같은 줄은 또는
+});
+
+test("서버 값이 없는 mock 일정은 공유 대상이 있거나 남이 만들었으면 공동", () => {
+  assert.equal(isShared({ ...item, sharedWith: [], createdBy: "me" }), false);
+  assert.equal(isShared({ ...item, sharedWith: ["mom"], createdBy: "me" }), true);
+  assert.equal(isShared({ ...item, sharedWith: [], createdBy: "mom" }), true);
+  assert.deepEqual(involvedIds({ ...item, sharedWith: ["mom"], createdBy: "dad" }).sort(), ["dad", "mom"]);
+});
+
+test("대상 칩: 나 · 공동 · 가족 구성원 순(부모님 칩은 없다)", () => {
+  assert.deepEqual(
+    whoChips(family.members).map((c) => [c.id, c.label]),
+    [
+      ["me", "나"],
+      ["shared", "공동"],
+      ["mom", "엄마"],
+      ["dad", "아빠"],
+      ["u-aunt", "이모"],
+    ],
+  );
 });

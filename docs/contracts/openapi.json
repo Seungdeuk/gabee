@@ -11325,6 +11325,347 @@
         }
       }
     },
+    "/notifications": {
+      "get": {
+        "tags": [
+          "notifications"
+        ],
+        "summary": "List Notifications",
+        "description": "내 알림을 최신순으로. kind 로 분류를 거르고 cursor(이전 응답의 next_cursor)로 이어 본다.",
+        "operationId": "list_notifications_notifications_get",
+        "parameters": [
+          {
+            "name": "kind",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "schedule",
+                    "billing",
+                    "care",
+                    "family_group",
+                    "ai_record"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Kind"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "default": 30,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-gyeot-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Gyeot-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotificationList"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/notifications/unread-count": {
+      "get": {
+        "tags": [
+          "notifications"
+        ],
+        "summary": "Unread Count",
+        "description": "안 읽은 알림 개수(전체와 분류별).",
+        "operationId": "unread_count_notifications_unread_count_get",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-gyeot-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Gyeot-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnreadCount"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/notifications/read-all": {
+      "post": {
+        "tags": [
+          "notifications"
+        ],
+        "summary": "Read All",
+        "description": "안 읽은 알림을 모두 읽음 처리한다. kind 를 주면 그 분류만.",
+        "operationId": "read_all_notifications_read_all_post",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-gyeot-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Gyeot-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/ReadAllBody"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Body"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReadAllResult"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/notifications/{notification_id}/read": {
+      "post": {
+        "tags": [
+          "notifications"
+        ],
+        "summary": "Read One",
+        "description": "알림 하나를 읽음 처리한다(이미 읽었으면 그대로). 남의 알림은 404.",
+        "operationId": "read_one_notifications__notification_id__read_post",
+        "parameters": [
+          {
+            "name": "notification_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Notification Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-gyeot-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Gyeot-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotificationOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/health/db": {
       "get": {
         "tags": [
@@ -13046,14 +13387,6 @@
             "title": "Memo",
             "default": ""
           },
-          "who_ids": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "maxItems": 20,
-            "title": "Who Ids"
-          },
           "share_ids": {
             "items": {
               "type": "string"
@@ -13334,14 +13667,6 @@
             "title": "Place",
             "default": ""
           },
-          "who_ids": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "maxItems": 20,
-            "title": "Who Ids"
-          },
           "share_with": {
             "items": {
               "type": "string"
@@ -13426,13 +13751,6 @@
             "type": "integer",
             "title": "Kind"
           },
-          "who_ids": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "title": "Who Ids"
-          },
           "place": {
             "type": "string",
             "title": "Place"
@@ -13514,6 +13832,18 @@
               }
             ],
             "title": "Edited At"
+          },
+          "shared_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Shared Ids"
+          },
+          "shared": {
+            "type": "boolean",
+            "title": "Shared",
+            "default": false
           }
         },
         "type": "object",
@@ -13527,7 +13857,6 @@
           "created_by",
           "user_id",
           "kind",
-          "who_ids",
           "place",
           "start_date",
           "start_time",
@@ -13629,7 +13958,18 @@
             ],
             "title": "Memo"
           },
-          "who_ids": {
+          "topic_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Topic Id"
+          },
+          "share_with": {
             "anyOf": [
               {
                 "items": {
@@ -13642,23 +13982,12 @@
                 "type": "null"
               }
             ],
-            "title": "Who Ids"
-          },
-          "topic_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Topic Id"
+            "title": "Share With"
           }
         },
         "type": "object",
         "title": "EventUpdate",
-        "description": "바꿀 값만 보낸다. 보내지 않은 값은 그대로 둔다. 시간(start_time·end_time)은 null 로 보내면 지운다(시간 없음).\n공유 대상은 고칠 수 없다(공유는 만들 때만, 복사본은 받은 사람의 일정이다)."
+        "description": "바꿀 값만 보낸다. 보내지 않은 값은 그대로 둔다. 시간(start_time·end_time)은 null 로 보내면 지운다(시간 없음).\nshare_with 는 공유 대상 전체를 다시 정한다(원본 주인만, 아니면 403 not_share_owner). 새로 든 사람에게는 복사본이 생기고,\n빠진 사람의 복사본은 지워진다. 보내지 않으면 공유는 그대로다."
       },
       "ExpenseCreate": {
         "properties": {
@@ -15967,6 +16296,123 @@
         ],
         "title": "NicknameOut"
       },
+      "NotificationList": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/NotificationOut"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items"
+        ],
+        "title": "NotificationList"
+      },
+      "NotificationOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "kind": {
+            "type": "string",
+            "title": "Kind"
+          },
+          "event": {
+            "type": "string",
+            "title": "Event"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "body": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Body"
+          },
+          "target_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Type"
+          },
+          "target_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Id"
+          },
+          "actor_user_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Actor User Id"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "read_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Read At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "kind",
+          "event",
+          "title",
+          "created_at"
+        ],
+        "title": "NotificationOut"
+      },
       "PasswordResetCodeConfirmIn": {
         "properties": {
           "login_id": {
@@ -16573,6 +17019,43 @@
         "type": "object",
         "title": "RangeIn",
         "description": "분석할 범위. after_id 를 주면 그 뒤의 대화, 아니면 최근 limit 개(둘 다 주면 after_id 뒤의 최근 limit 개)."
+      },
+      "ReadAllBody": {
+        "properties": {
+          "kind": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "schedule",
+                  "billing",
+                  "care",
+                  "family_group",
+                  "ai_record"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Kind"
+          }
+        },
+        "type": "object",
+        "title": "ReadAllBody"
+      },
+      "ReadAllResult": {
+        "properties": {
+          "updated": {
+            "type": "integer",
+            "title": "Updated"
+          }
+        },
+        "type": "object",
+        "required": [
+          "updated"
+        ],
+        "title": "ReadAllResult"
       },
       "ReadMark": {
         "properties": {
@@ -18605,6 +19088,27 @@
           "amount"
         ],
         "title": "Transfer"
+      },
+      "UnreadCount": {
+        "properties": {
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          },
+          "by_kind": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "type": "object",
+            "title": "By Kind"
+          }
+        },
+        "type": "object",
+        "required": [
+          "total",
+          "by_kind"
+        ],
+        "title": "UnreadCount"
       },
       "UnreadOut": {
         "properties": {

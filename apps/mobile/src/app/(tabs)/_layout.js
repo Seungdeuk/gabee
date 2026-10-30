@@ -1,23 +1,33 @@
 import { Ionicons } from "@expo/vector-icons";
-import { Tabs } from "expo-router";
+import { Redirect, Tabs } from "expo-router";
 import { StyleSheet, Text, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { needsTesterConsent } from "@/features/consent/consentState";
 import useTotalUnread from "@/features/family-chat/useTotalUnread";
 import { unreadBadgeText } from "@/features/family-chat/listUtils";
-import { colors, font } from "@/theme";
+import { useAuth } from "@/shared/auth/AuthProvider";
+import { colors, font, fonts } from "@/theme";
 
-// 디자인의 하단 탭 5개. 기타(가족 그룹·설정)는 탭이 아니라 상단 ⋮ 메뉴로 들어간다.
+// 하단 탭 5개(가계는 돌봄 탭에 합쳤고, 마지막 탭은 마이 페이지). 마이 페이지(계정·가족 그룹·앱 관리)가 마지막 탭이고, 각 화면 위 설정 버튼도 이 탭으로 온다.
+const TAB_CONTENT_HEIGHT = 64;
+
 const tabs = [
   { name: "chat", title: "AI 채팅", icon: "chatbubble-ellipses-outline" },
   { name: "family-chat", title: "소통", icon: "people-outline" },
   { name: "schedule", title: "일정", icon: "calendar-outline" },
-  { name: "billing", title: "가계", icon: "wallet-outline" },
   { name: "care", title: "돌봄", icon: "heart-outline" },
+  { name: "my", title: "마이", icon: "person-outline" },
 ];
 
 export default function TabLayout() {
   // 소통 탭 아이콘에 모든 방의 안 읽은 메시지 수를 보인다(0 이면 숨김, 99 넘으면 99+)
   const unread = useTotalUnread();
+  // 알약(30)+이름 글자가 들어갈 높이를 직접 정하고, 시스템 바 자리만큼 아래를 더한다(기본 높이는 이름이 잘린다)
+  const insets = useSafeAreaInsets();
+  const { status, user } = useAuth();
+  // 로그인한 회원이 현재 동의서에 동의하지 않았으면 먼저 동의 화면을 보인다
+  if (status === "authenticated" && needsTesterConsent(user)) return <Redirect href="/tester-consent" />;
   return (
     <Tabs
       screenOptions={{
@@ -29,6 +39,8 @@ export default function TabLayout() {
           borderTopWidth: 0,
           elevation: 0,
           paddingTop: 6,
+          height: TAB_CONTENT_HEIGHT + insets.bottom,
+          paddingBottom: insets.bottom + 6,
         },
       }}
     >
@@ -57,8 +69,9 @@ export default function TabLayout() {
 }
 
 const styles = StyleSheet.create({
-  label: { ...font.tab },
-  labelActive: { fontWeight: "700" },
+  // 선택돼도 글자 높이·간격이 변하지 않게, 굵기는 fontWeight 가 아니라 굵은 글꼴로 바꾸고 줄 높이를 고정한다
+  label: { ...font.tab, lineHeight: 14, includeFontPadding: false },
+  labelActive: { fontFamily: fonts.bold },
   pill: {
     width: 52,
     height: 30,

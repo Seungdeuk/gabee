@@ -14,9 +14,11 @@ import AnswerView from "../components/AnswerView";
 import AiOffCard from "../components/AiOffCard";
 import ChatInput from "../components/ChatInput";
 import DescribeCard from "../components/DescribeCard";
+import SchedulePromptCard from "../components/SchedulePromptCard";
 import DoubtCard from "../components/DoubtCard";
 import ScheduleConfirmCard from "../components/ScheduleConfirmCard";
 import DraftCard from "../components/DraftCard";
+import MicPendingSheet from "../components/MicPendingSheet";
 import PromptChips from "../components/PromptChips";
 import ReadingStatus from "../components/ReadingStatus";
 import Sidebar from "../components/Sidebar";
@@ -28,18 +30,22 @@ import useSessions from "../hooks/useSessions";
 import { listRecords } from "../api";
 import mascot from "../../../../assets/images/gabee-mascot.png";
 
+// 음성 입력이 아직 준비되지 않아 마이크를 막아 둔다. 기능이 생기면 true 로 바꾼다.
+const MIC_ENABLED = false;
+
 /**
  * 홈: AI 채팅. 상태는 빈 화면 → (음성 입력) → 처리 중 → 답변/초안 승인 순으로 바뀐다.
  * 상단 ⋮ 는 기타 화면(가족 그룹·설정)으로 들어간다.
  */
-export default function AiAssistantScreen() {
+export default function AiAssistantScreen({ onBell, bellBadge }) {
   const router = useRouter();
-  const { messages, phase, readingSince, confirmDoubts, markAiEnabled, resolveConfirm, saveDescription, skipDescription, send, sendPhoto, startListening, stopListening, editDraft, reset, load } = useChat();
+  const { messages, phase, readingSince, confirmDoubts, markAiEnabled, resolveConfirm, saveDescription, skipDescription, acceptSchedulePrompt, skipSchedulePrompt, send, sendPhoto, startListening, stopListening, editDraft, reset, load } = useChat();
   const auth = useAuth();
   // 대화 저장 키: 로그인한 회원은 사용자 id, 익명 계정(개발용 토큰)은 토큰에서 만든 값. 로그인 확인 중에는 null
   const scope = auth.status === "loading" ? null : auth.user?.id ? `user-${auth.user.id}` : legacyStorageScope();
   const { sessions, currentId, startNew, open, remove } = useSessions({ messages, load, reset, scope });
   const [menuOpen, setMenuOpen] = useState(false);
+  const [micPendingOpen, setMicPendingOpen] = useState(false);
   const [reviewCount, setReviewCount] = useState(0); // 확인이 필요한 기록 수(메뉴 점·기록 탭 숫자)
   const [focusRecordId, setFocusRecordId] = useState(null);
 
@@ -102,6 +108,16 @@ export default function AiAssistantScreen() {
             onSkip={() => skipDescription(item.id)}
           />
         ) : null}
+        {item.schedulePrompt ? (
+          <SchedulePromptCard
+            mode={item.schedulePrompt.status === "pending" ? "ask" : item.schedulePrompt.status}
+            title={item.schedulePrompt.title}
+            date={item.schedulePrompt.date}
+            kindLabel={item.schedulePrompt.kindLabel}
+            onAccept={() => acceptSchedulePrompt(item.id)}
+            onSkip={() => skipSchedulePrompt(item.id)}
+          />
+        ) : null}
         {item.reviewId ? (
           <Pressable
             onPress={() => {
@@ -121,7 +137,7 @@ export default function AiAssistantScreen() {
 
   return (
     <SafeAreaView style={styles.safe} edges={["top"]}>
-      <AppHeader onMenu={() => setMenuOpen(true)} onNew={startNew} onMore={() => router.push("/more")} menuBadge={reviewCount > 0} />
+      <AppHeader onMenu={() => setMenuOpen(true)} onNew={startNew} onMore={() => router.push("/more")} menuBadge={reviewCount > 0} onBell={onBell} bellBadge={bellBadge} />
       <Sidebar
         open={menuOpen}
         onClose={() => setMenuOpen(false)}
@@ -148,7 +164,7 @@ export default function AiAssistantScreen() {
           ) : null}
           {empty ? (
             <View style={styles.center}>
-              <Text style={styles.hello}>무엇을 도와드릴까요?</Text>
+              <Text style={styles.hello}>{auth.user?.name ? `${auth.user.name}님, 무엇을 도와드릴까요?` : "무엇을 도와드릴까요?"}</Text>
             </View>
           ) : messages.length === 0 && listening ? (
             <View style={styles.center}>
@@ -210,7 +226,8 @@ export default function AiAssistantScreen() {
           {listening ? (
             <Text style={styles.note}>폰 기본 음성 인식으로 받아 적어요. 말이 끝나면 보내기를 눌러 주세요.</Text>
           ) : null}
-          <ChatInput mode={inputMode} onSend={send} onAttach={sendPhoto} onMic={listening ? stopListening : startListening} />
+          <ChatInput mode={inputMode} onSend={send} onAttach={sendPhoto} onMic={MIC_ENABLED ? (listening ? stopListening : startListening) : () => setMicPendingOpen(true)} />
+          <MicPendingSheet visible={micPendingOpen} onClose={() => setMicPendingOpen(false)} />
         </View>
       </KeyboardAvoidingView>
     </SafeAreaView>

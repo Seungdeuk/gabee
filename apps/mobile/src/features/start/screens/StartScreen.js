@@ -11,13 +11,13 @@ import mascot from "../../../../assets/images/gabee-mascot.png";
 
 /**
  * 시작 화면. 큰 원 안에 가비(꿀벌)가 있고, 시작하기로 AI 채팅 홈에 들어간다.
- * 로그인 세션이 저장돼 있으면 이 화면을 건너뛰고 홈으로 간다. "시작하기"는 기존처럼 로그인 없이 들어가고(익명/개발용 토큰),
- * 정식 회원은 로그인·회원가입으로 들어간다.
+ * 로그인 세션이 저장돼 있으면 이 화면을 건너뛰고 홈으로 간다. "시작하기"는 로그인 화면으로 넘어가고,
+ * 계정이 없으면 회원가입으로 들어간다.
  */
 export default function StartScreen() {
   const router = useRouter();
   const { status } = useAuth();
-  const enter = () => router.replace("/chat");
+  const enter = () => router.push("/login");
 
   if (status === "loading") return null; // 저장된 로그인 세션을 확인하는 동안(스플래시 직후 잠깐)
   if (status === "authenticated") return <Redirect href="/chat" />;

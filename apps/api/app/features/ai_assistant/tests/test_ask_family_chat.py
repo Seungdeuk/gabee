@@ -197,3 +197,13 @@ def test_message_times_are_shown_in_service_timezone(monkeypatch):
     monkeypatch.setattr(settings, "ai_day_utc_offset_hours", 9)
     assert _local_time("2026-10-27T03:55:00") == "2026-10-27 12:55"
     assert _local_time("2026-10-27T23:30:00+00:00") == "2026-10-28 08:30"
+
+
+def test_schedule_candidates_can_be_handed_to_the_schedule_agent():
+    """채팅 분석의 일정 후보는 사용자가 넣어 달라고 하면 메인이 일정 에이전트로 넘긴다(후보는 날짜·시간·제목·장소를 정확히 적어 준다)."""
+    from app.features.family_chat import agent as family_chat_agent
+
+    note = agents.PROMPT_NOTE
+    assert "일정 후보" in note and "ask_schedule" in note.split("일정 후보")[1]
+    system = family_chat_agent.system_prompt()
+    assert "YYYY-MM-DD" in system and "일정 담당에게 따로 요청해야 한다" not in system

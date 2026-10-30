@@ -2,7 +2,13 @@
 
 from datetime import datetime, timedelta, timezone
 
+import pytest
+
 from tests.helpers import signup
+
+pytestmark = pytest.mark.usefixtures(
+    "full_care_samples"
+)  # 물·산책·컨디션 항목이 있는 세트로 시험한다
 
 KST = timezone(timedelta(hours=9))
 

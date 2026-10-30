@@ -4,11 +4,11 @@ import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-nati
 
 import { colors, font, radius, spacing } from "@/theme";
 
-import { confirmScheduleAction } from "../api";
+import { confirmCardAction } from "../api";
 import { CANCELLED_TEXT, CARD_CANCELLED, CARD_DONE, CARD_PENDING, cardButtons } from "../scheduleCard";
 
 /**
- * 채팅의 일정 확인 카드: 가족에게 공유해서 등록 / 일정 수정 / 일정 삭제. 서버는 채팅에서 바로 실행하지 않고, 사용자가 이 버튼을 눌러야 반영된다.
+ * 채팅의 확인 카드: 일정(가족에게 공유해서 등록 / 수정 / 삭제)과 정산·돌봄 에이전트의 쓰기 제안(지출·식단·돌봄 기록). 서버는 채팅에서 바로 실행하지 않고, 사용자가 이 버튼을 눌러야 반영된다.
  * 처리했거나 취소하면 카드가 결과 한 줄로 바뀌고(onResolve 로 대화에 저장돼 다시 열어도 두 번 실행되지 않는다) 버튼은 사라진다.
  * 서버 오류(예: 등록에 필요한 제목이나 날짜가 없어요)는 카드 아래에 보여 주고 다시 누를 수 있게 둔다.
  * @param {{ card: object, onResolve?: (status: "done" | "cancelled", text: string) => void }} props
@@ -37,7 +37,7 @@ export default function ScheduleConfirmCard({ card, onResolve }) {
     setBusy(button.key);
     setError("");
     try {
-      const { text } = await confirmScheduleAction(card, button.share);
+      const { text } = await confirmCardAction(card, button.share);
       onResolve?.(CARD_DONE, text);
     } catch (e) {
       setError(e?.message || "처리하지 못했어요. 잠시 후 다시 시도해 주세요.");
@@ -47,9 +47,9 @@ export default function ScheduleConfirmCard({ card, onResolve }) {
   };
 
   return (
-    <View style={styles.card} accessibilityLabel="일정 확인 카드">
+    <View style={styles.card} accessibilityLabel={card.kind === "proposal" ? "제안 확인 카드" : "일정 확인 카드"}>
       <View style={styles.head}>
-        <Ionicons name="calendar-outline" size={16} color={colors.accent} />
+        <Ionicons name={card.kind === "proposal" ? "create-outline" : "calendar-outline"} size={16} color={colors.accent} />
         <Text style={styles.title}>{card.title}</Text>
       </View>
       {card.lines.map((line, i) => (

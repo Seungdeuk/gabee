@@ -3,7 +3,7 @@ import { apiFetch } from "@/shared/api/client";
 /**
  * 일정 서버 호출. 응답 모양은 docs/contracts/openapi.json 의 /schedule/* 를 따른다.
  * 화면이 쓰는 항목(ScheduleItem)과 서버 일정(Event)의 변환(toItem·toBody)도 여기서 한다. 변환은 가족 id 변환기(members.js 의 buildFamily)를 받는다.
- * @typedef {{ id: string, title: string, starts_at: string, kind: 1 | 2, who_ids: string[], place: string, start_date: string | null, start_time: string | null, end_time: string | null, memo: string, note: string, checked: boolean, created_by: string, origin_id: string | null, topic_id: string | null }} ServerEvent
+ * @typedef {{ id: string, title: string, starts_at: string, kind: 1 | 2, place: string, start_date: string | null, start_time: string | null, end_time: string | null, memo: string, note: string, checked: boolean, created_by: string, origin_id: string | null, topic_id: string | null }} ServerEvent
  * @typedef {{ id: string, name: string, color: string, created_at: string }} ServerTopic
  * @typedef {{ shared_by: string | null, shared_with: string[] }} Sharing
  * @typedef {ReturnType<import("./members").buildFamily>} Family
@@ -30,7 +30,8 @@ function dateOf(event) {
 }
 
 /**
- * 서버 일정 → 화면 항목. 서버가 내 줄만 돌려주므로 모두 내 일정이다. 공유 대상은 서버 목록에 없어 비워 두고, 상세가 getSharing 으로 채운다.
+ * 서버 일정 → 화면 항목. 서버가 내 줄만 돌려주므로 모두 내 일정이다. 공동 여부(shared)와 얽힌 사람(shared_ids)은 서버가 계산해 준다.
+ * 공유 대상(sharedWith)은 서버 목록에 없어 비워 두고, 상세·수정 화면이 getSharing 으로 채운다.
  * @param {ServerEvent} event
  * @param {Family} family
  * @returns {import("./model").ScheduleItem}
@@ -49,9 +50,10 @@ export function toItem(event, family) {
     allDay,
     place: event.place ?? "",
     memo: event.memo || event.note || "",
-    whoIds: event.who_ids.map(family.toApp).filter(Boolean),
     topicId: event.topic_id,
     sharedWith: [],
+    shared: event.shared,
+    sharedIds: (event.shared_ids ?? []).map(family.toApp).filter(Boolean),
     createdBy: family.toApp(event.created_by) ?? event.created_by,
     checked: event.checked,
   };
@@ -59,7 +61,7 @@ export function toItem(event, family) {
 
 /**
  * 화면 항목의 값 → 서버 요청 본문. 수정(PATCH)은 시간을 null 로 보내야 지워지므로 항상 모든 값을 보낸다.
- * 공유(share_with)와 추천 확정(suggestion_id: 이 일정이 내 대기 제안에서 왔을 때)은 등록할 때만 보낸다.
+ * 추천 확정(suggestion_id: 이 일정이 내 대기 제안에서 왔을 때)은 등록할 때만 보낸다. 공유(share_with)는 등록 때 보내고, 수정에서는 toPatchBody 가 바꿨을 때만 보낸다.
  * @param {Partial<import("./model").ScheduleItem>} item
  * @param {Family} family
  * @param {{ create?: boolean }} [options]
@@ -73,7 +75,6 @@ export function toBody(item, family, { create = false } = {}) {
     end_time: item.allDay ? ALL_DAY_END : item.startTime ? (item.endTime ?? null) : null,
     place: item.place ?? "",
     memo: item.memo ?? "",
-    who_ids: (item.whoIds ?? []).map(family.toUser).filter(Boolean),
     topic_id: item.topicId ?? null,
   };
   if (create) {
@@ -98,8 +99,9 @@ export function toPatchBody(patch, current, family) {
   if ("kind" in patch) body.kind = full.kind;
   if ("place" in patch) body.place = full.place;
   if ("memo" in patch) body.memo = full.memo;
-  if ("whoIds" in patch) body.who_ids = full.who_ids;
   if ("topicId" in patch) body.topic_id = full.topic_id;
+  // 공유 대상 전체를 다시 정한다(원본 주인만. 빠진 사람의 복사본은 서버가 지운다).
+  if ("sharedWith" in patch) body.share_with = (patch.sharedWith ?? []).map(family.toUser).filter(Boolean);
   if (touchesTime) {
     body.start_date = full.start_date;
     body.start_time = full.start_time;

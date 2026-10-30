@@ -16,7 +16,7 @@ from sqlalchemy.orm import Session
 # 이 함수의 위치나 이름을 바꾸면 여기도 고쳐야 한다.
 from app.features.ai_assistant.ingest.masking import mask_text
 from app.shared import ai_guard
-from app.shared.errors import bad_request
+from app.shared.errors import ApiError, bad_request
 from app.shared.llm import client as llm
 from app.shared.privacy import Action, Kind, Policy, Row, prepare_transcript, restore_json
 
@@ -97,11 +97,18 @@ def _short(value, limit: int) -> str:
     return value.strip()[:limit] if isinstance(value, str) else ""
 
 
-def event_line(event_id: str, when: datetime, title: str, time_text: str | None = None) -> str:
+def event_line(
+    event_id: str,
+    when: datetime,
+    title: str,
+    time_text: str | None = None,
+    shared: bool = False,
+) -> str:
     """LLM 에 보내는 한 줄: id · 날짜 시간 · 제목만(메모 등은 보내지 않아 양과 노출을 줄인다).
-    time_text 는 시간 표기(예: 14:00~15:00, 시간 미정). 없으면 시작 시각만 쓴다."""
+    time_text 는 시간 표기(예: 14:00~15:00, 시간 미정). 없으면 시작 시각만 쓴다. 공동 일정은 끝에 '| 공동'을 붙인다."""
     clock = time_text if time_text is not None else f"{when:%H:%M}"
-    return f"{event_id} | {prompts.format_day(when)} {clock} | {mask_text(title)}"
+    line = f"{event_id} | {prompts.format_day(when)} {clock} | {mask_text(title)}"
+    return f"{line} | 공동" if shared else line
 
 
 def _draft_block(draft: Draft | None, title: str, place: str, memo: str) -> str:
@@ -110,7 +117,7 @@ def _draft_block(draft: Draft | None, title: str, place: str, memo: str) -> str:
     return (
         f"제목: {title}\n날짜: {draft.date}\n시작: {draft.start_time}\n끝: {draft.end_time}\n"
         f"형태: {draft.kind}\n장소: {place}\n메모: {memo}\n"
-        f"누구: {', '.join(draft.who_ids)}\n공유: {', '.join(draft.share_ids)}"
+        f"공유: {', '.join(draft.share_ids)}"
     )
 
 
@@ -127,6 +134,7 @@ def converse(
     final: bool = False,
     members: list[Member] | None = None,
     draft: Draft | None = None,
+    guarded: bool = True,
 ) -> ChatResult:
     members = members or []
     member_ids = {m.id for m in members}
@@ -166,10 +174,22 @@ def converse(
         # 같은 가족이 같은 날 같은 일정 목록에서 같은 말을 하면 캐시를 쓴다(목록이 바뀌면 키가 달라진다).
         # 캐시에는 가명화된(토큰 상태의) 결과가 들어가고, 돌려줄 때 이 요청의 대응표로 복원한다.
         key = hashlib.sha256(prompt.encode()).hexdigest()
-        outcome = ai_guard.run(
-            db, user_id=user_id, group_id=group_id, feature=FEATURE, cache_key=key, call=call
-        )
-        cleaned = clean_result(outcome.result, allowed_ids, member_ids)
+        if guarded:
+            outcome = ai_guard.run(
+                db, user_id=user_id, group_id=group_id, feature=FEATURE, cache_key=key, call=call
+            )
+            result_data = outcome.result
+        else:
+            # 메인 채팅이 이미 동의·쿨다운·한도를 확인했다. 여기서 또 지나지 않고 호출 수만 메인 질문에 더한다
+            try:
+                result_data, response = call()
+            except (llm.LLMUnavailable, ValueError) as exc:
+                ai_guard.count_nested(None, getattr(exc, "calls", 1))
+                raise ApiError(
+                    503, "llm_failed", "AI 요청을 처리하지 못했어요. 잠시 후 다시 시도해 주세요"
+                ) from None
+            ai_guard.count_nested(response)
+        cleaned = clean_result(result_data, allowed_ids, member_ids)
         restored = restore_json(
             prep,
             {

@@ -18,11 +18,16 @@ class UserOut(BaseModel):
     role_detail: str | None = None  # 역할이 other 일 때 직접 적은 관계
     active_group_id: str | None = None
     location_consent: bool = False
+    tester_consent_version: str | None = None  # 동의한 테스트 동의서 버전(미동의면 null)
     # 정식 회원(아이디/비밀번호 가입) 정보. 개발용 익명 계정은 null / false.
     login_id: str | None = None
     email: str | None = None
     email_verified: bool = False
     photo_url: str | None = None  # 프로필 사진의 상대 경로(없으면 null). 같은 가족만 받을 수 있다
+
+
+class TesterConsentIn(BaseModel):
+    version: str = Field(min_length=1, max_length=16)
 
 
 class AccountSignupIn(BaseModel):
@@ -132,6 +137,12 @@ class GroupOut(BaseModel):
     name: str
     invite_code: str | None = None  # 가족 관리자(owner/admin)에게만 보인다
     invite_expires_at: datetime | None = None
+    invite_uses_left: int | None = (
+        None  # 초대 코드로 더 들어올 수 있는 사람 수(관리자에게만, null = 제한 없음)
+    )
+    invite_auto_approve: bool | None = (
+        None  # 초대로 들어온 사람을 바로 구성원으로 넣는지(관리자에게만)
+    )
     my_id: str | None = None  # 이 응답을 받는 사람의 사용자 id(구성원 목록에서 나를 찾을 때)
     my_role: str | None = None  # 이 응답을 받는 사람의 이 가족 안 권한(owner/admin/member)
     members: list[MemberOut]

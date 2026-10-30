@@ -9,7 +9,7 @@ from app.shared.auth import current_user
 from app.shared.db import get_db
 
 from . import join_service, service
-from .join_schemas import InviteOut, JoinRequestOut, PendingJoinOut
+from .join_schemas import InviteOut, InviteSettingsIn, JoinRequestOut, PendingJoinOut
 from .models import User
 from .schemas import GroupOut
 
@@ -18,9 +18,22 @@ router = APIRouter()
 
 @router.post("/groups/invites/reissue", response_model=InviteOut)
 def reissue_invite(user: User = Depends(current_user), db: Session = Depends(get_db)) -> InviteOut:
-    """새 초대 코드를 만든다(24시간·1회). 기존 코드는 폐기된다. 가족 관리자(owner/admin)만."""
+    """새 초대 코드를 만든다(기본 24시간·20명). 기존 코드는 폐기된다. 가족 관리자(owner/admin)만."""
     invite = join_service.reissue_invite(db, user)
-    return InviteOut(invite_code=invite.code, expires_at=invite.expires_at)
+    return InviteOut(
+        invite_code=invite.code,
+        expires_at=invite.expires_at,
+        uses_left=service.invite_uses_left(invite),
+    )
+
+
+@router.put("/groups/invites/settings", response_model=GroupOut)
+def update_invite_settings(
+    body: InviteSettingsIn, user: User = Depends(current_user), db: Session = Depends(get_db)
+) -> GroupOut:
+    """초대 코드로 들어온 사람을 바로 구성원으로 넣을지(자동 승인) 켜고 끈다. 가족 관리자만."""
+    group_id = join_service.set_auto_approve(db, user, body.auto_approve)
+    return service.group_out_by_id(db, group_id, user.id)
 
 
 @router.post("/groups/invites/revoke", status_code=204)

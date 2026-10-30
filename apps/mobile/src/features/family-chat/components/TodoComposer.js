@@ -72,7 +72,7 @@ export default function TodoComposer({ members, onAdd }) {
 const styles = StyleSheet.create({
   wrap: { paddingHorizontal: spacing.lg, paddingVertical: spacing.sm, backgroundColor: colors.card, borderTopWidth: 1, borderTopColor: colors.divider, gap: spacing.xs },
   row: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
-  input: { flex: 1, minHeight: 44, paddingHorizontal: spacing.lg, borderRadius: radius.card, backgroundColor: colors.surface, ...font.body, color: colors.text },
+  input: { flex: 1, minHeight: 44, paddingHorizontal: spacing.lg, borderRadius: radius.card, backgroundColor: colors.surface, fontSize: font.body.fontSize, fontFamily: font.body.fontFamily, color: colors.text, textAlignVertical: "center" },
   send: { width: 44, height: 44, borderRadius: radius.pill, backgroundColor: colors.peach, alignItems: "center", justifyContent: "center" },
   sendOff: { backgroundColor: colors.divider },
   error: { ...font.caption, color: colors.danger },

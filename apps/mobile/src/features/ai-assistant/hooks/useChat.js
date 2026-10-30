@@ -3,6 +3,7 @@ import { useCallback, useRef, useState } from "react";
 import { getFileStatus, getRecord, sendMessage, submitDescription, updateRecord, uploadFile } from "../api";
 import { formatSeconds } from "../components/ReadingStatus";
 import { AI_ON_DONE, errorMessage, historyForServer } from "../errors";
+import { schedulePromptFor, schedulePromptSentence } from "../uploadSchedule";
 
 const POLL_INTERVAL_MS = 2000;
 const POLL_TIMEOUT_MS = 120000;
@@ -23,6 +24,8 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
  *   confirmDoubts: (messageId: string, edits: string[]) => Promise<void>,   // 흐린 줄 확인 카드의 결과 반영
  *   saveDescription: (messageId: string, text: string) => Promise<void>,   // 설명 카드 저장(실패하면 던진다. 카드가 오류를 보여 준다)
  *   skipDescription: (messageId: string) => void,   // 설명 카드 "나중에 할게요"
+ *   acceptSchedulePrompt: (messageId: string) => void,   // 업로드 직후 "일정에 넣을까요?" 카드의 "일정에 넣기"(채팅으로 요청을 보낸다)
+ *   skipSchedulePrompt: (messageId: string) => void,   // 같은 카드의 "아니요"
  *   markAiEnabled: (messageId: string) => void,   // AI 켜기 안내 카드를 '켰어요' 안내로 바꾼다
  *   resolveConfirm: (messageId: string, index: number, status: "done" | "cancelled", text: string) => void, // 일정 확인 카드를 결과 한 줄로 바꾼다
  *   send: (text: string, options?: { voice?: boolean }) => Promise<void>,
@@ -123,11 +126,18 @@ export default function useChat() {
         // 같은 파일에 설명 카드가 이미 있으면 또 만들지 않는다
         const needsDescription =
           result.needs_description === true && !messagesRef.current.some((m) => m.describe?.recordId === fileId);
+        let prompt = null; // 분석된 날짜가 오늘 이후면 "일정에 넣을까요?"를 묻는다(AI 호출 없음, 기록 한 건 읽기)
+        try {
+          prompt = schedulePromptFor(await getRecord(fileId));
+        } catch {
+          prompt = null; // 못 읽어도 업로드 결과 안내에는 영향이 없다
+        }
         say(
           `${head}${detail ? `\n${detail}` : ""}\n${review ? "원본과 비교해서 맞는지 확인해 주세요." : "이어서 궁금한 걸 물어보세요."}\n(걸린 시간 ${took()})`,
           {
             ...(doubts.length > 0 ? { doubts: { recordId: fileId, lines: doubts, done: false } } : review ? { reviewId: fileId } : {}),
             ...(needsDescription ? { describe: { recordId: fileId, status: "pending" } } : {}),
+            ...(prompt ? { schedulePrompt: { recordId: fileId, ...prompt, status: "pending" } } : {}),
           },
         );
       }
@@ -183,6 +193,23 @@ export default function useChat() {
     );
   }, []);
 
+  /** "일정에 넣기": 카드를 눌렀다고 표시하고, 날짜와 제목을 담은 문장을 채팅으로 보낸다(그 뒤는 일반 일정 요청과 같다). */
+  const acceptSchedulePrompt = useCallback(
+    (messageId) => {
+      const card = messagesRef.current.find((m) => m.id === messageId)?.schedulePrompt;
+      if (!card || card.status !== "pending") return;
+      setMessages((prev) => prev.map((m) => (m.id === messageId ? { ...m, schedulePrompt: { ...card, status: "done" } } : m)));
+      send(schedulePromptSentence(card));
+    },
+    [send],
+  );
+
+  const skipSchedulePrompt = useCallback((messageId) => {
+    setMessages((prev) =>
+      prev.map((m) => (m.id === messageId && m.schedulePrompt ? { ...m, schedulePrompt: { ...m.schedulePrompt, status: "skipped" } } : m)),
+    );
+  }, []);
+
   const startListening = useCallback(() => setPhase("listening"), []);
   const stopListening = useCallback(() => setPhase((p) => (p === "listening" ? "idle" : p)), []);
 
@@ -205,5 +232,5 @@ export default function useChat() {
     setPhase("idle");
   }, []);
 
-  return { messages, phase, readingSince, confirmDoubts, markAiEnabled, resolveConfirm, saveDescription, skipDescription, send, sendPhoto, startListening, stopListening, editDraft, reset, load };
+  return { messages, phase, readingSince, confirmDoubts, markAiEnabled, resolveConfirm, saveDescription, skipDescription, acceptSchedulePrompt, skipSchedulePrompt, send, sendPhoto, startListening, stopListening, editDraft, reset, load };
 }

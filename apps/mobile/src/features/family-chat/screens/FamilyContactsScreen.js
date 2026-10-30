@@ -33,7 +33,7 @@ export default function FamilyContactsScreen() {
   const load = useCallback(async () => {
     try {
       // 별명은 곁다리라 실패해도 연락처는 보여 준다
-      const [group, nicks] = await Promise.all([getRoomInfo(), listNicknames().catch((e) => ({ failed: e }))]);
+      const [group, nicks] = await Promise.all([getRoomInfo({ raw: true }), listNicknames().catch((e) => ({ failed: e }))]);
       setNickError(Array.isArray(nicks) ? "" : contactErrorMessage(nicks.failed));
       setNickReady(Array.isArray(nicks));
       if (Array.isArray(nicks)) setNicknames(nicknameMap(nicks));

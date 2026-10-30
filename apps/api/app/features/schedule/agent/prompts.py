@@ -18,7 +18,6 @@ REGISTER_SCHEMA: dict = {
         "kind": {"type": "integer", "enum": [0, 1, 2]},
         "place": {"type": "string"},
         "memo": {"type": "string"},
-        "who_ids": {"type": "array", "items": {"type": "string"}},
         "share_ids": {"type": "array", "items": {"type": "string"}},
         "date_ambiguous": {"type": "boolean"},
     },
@@ -30,7 +29,6 @@ REGISTER_SCHEMA: dict = {
         "kind",
         "place",
         "memo",
-        "who_ids",
         "share_ids",
         "date_ambiguous",
     ],
@@ -102,6 +100,7 @@ CHAT_SYSTEM = (
     "- 아래 [일정 목록] 에 있는 일정만 근거로 답한다. 없는 일정을 지어내지 않고, 목록에 없으면 그 기간에 일정이 없다고 답한다.\n"
     "- query 일 때 reply 는 한국어로 짧고 다정하게 쓰고, 답에 언급한 일정의 id 만 event_ids 에 넣는다(목록의 id 그대로).\n"
     "- 오늘·내일·이번 주 같은 말은 [지금] 날짜를 기준으로 계산한다.\n"
+    "- 일정 목록 줄 끝에 '| 공동'이 붙은 일정은 가족과 공유된 일정이다.\n"
     "- 일정 목록의 시간 표기: 'HH:MM~HH:MM'은 시작~종료, 'HH:MM~(종료 시간 미정)'은 시작만 정해진 일정, "
     "'시간 미정'은 그날 시간이 정해지지 않은 일정이다. 미정인 것을 '모른다'고 말하지 말고 사용자가 정해 주지 않은 것으로 "
     "말한다(예: '종료 시간은 정해 주지 않으셨어요', '시간은 정해 주지 않으셨어요'). 00:00 같은 시각이나 일정 길이를 "
@@ -121,7 +120,6 @@ CHAT_SYSTEM = (
     "- start_time·end_time: HH:MM(24시간). 말하지 않았으면 빈 문자열. '저녁' 같은 막연한 말은 시간을 정하지 않는다.\n"
     "- kind: 1 은 약속(그날 그 시간에 일어나는 것: 경조사, 식사, 병원 진료, 모임), 2 는 할 일(체크하면 끝나는 것: "
     "'~하기', 예약하기, 사 오기, 제출 같은 해야 할 일). 사용자가 약속이나 할 일이라고 말했으면 그대로 따른다. 모르면 0.\n"
-    "- who_ids: 사용자가 '누구는 ~'처럼 관련된 사람을 따로 말했을 때만 [가족 구성원] 의 id 를 넣는다. 제목의 '엄마랑' 같은 말에서 뽑지 않는다.\n"
     "- share_ids: 사용자가 다른 가족에게 공유해 달라고 했을 때만 [가족 구성원] 의 id 를 넣는다. '가족 모두', '가족 전체', '다 같이'처럼 "
     "가족 전체를 말하면 말한 사람(나)을 뺀 [가족 구성원] 전원의 id 를 넣는다.\n"
     "- place·memo: 사용자가 말했을 때만 쓴다.\n"
@@ -185,7 +183,7 @@ def chat_prompt(
     draft = f"\n\n[등록 초안]\n{draft_block}" if draft_block else ""
     return (
         f"[지금] {format_when(now)} (한국 시간)\n\n"
-        f"[일정 목록] {range_note}. id | 날짜 시간 | 제목\n{listing}{last}\n\n"
+        f"[일정 목록] {range_note}. id | 날짜 시간 | 제목 [| 공동]\n{listing}{last}\n\n"
         f"[가족 구성원] id | 이름 | 관계\n{members}{draft}\n\n"
         f"[사용자 문장]\n{text}"
     )

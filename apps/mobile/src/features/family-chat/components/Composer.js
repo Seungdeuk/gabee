@@ -91,8 +91,11 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.sm,
     borderRadius: radius.card,
     backgroundColor: colors.surface,
-    ...font.body,
+    // lineHeight 를 주면 안드로이드 입력칸의 글자·안내 문구가 위로 밀려 윗부분이 잘린다
+    fontSize: font.body.fontSize,
+    fontFamily: font.body.fontFamily,
     color: colors.text,
+    textAlignVertical: "center",
   },
   send: { width: 40, height: 40, borderRadius: radius.pill, backgroundColor: colors.peach, alignItems: "center", justifyContent: "center" },
   sendOff: { backgroundColor: colors.divider },

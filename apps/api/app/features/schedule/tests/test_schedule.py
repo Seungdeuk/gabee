@@ -120,13 +120,12 @@ def test_new_fields_and_starts_at_follow_start_date(client, family):
             "end_time": "11:30:00",
             "kind": 2,
             "place": "마트",
-            "who_ids": ["u1", "u1"],
             "memo": "우유",
         },
         headers=a,
     ).json()
     assert e["title"] == "장보기" and e["kind"] == 2 and e["place"] == "마트"
-    assert e["who_ids"] == ["u1"] and e["memo"] == "우유" and e["note"] == "우유"
+    assert e["memo"] == "우유" and e["note"] == "우유"
     assert (e["start_date"], e["start_time"], e["end_time"]) == (
         "2030-01-05",
         "10:00:00",
@@ -215,12 +214,11 @@ def test_update_changes_values_and_keeps_old_columns_in_sync(client, family):
         place="시장",
         memo="우유",
         kind=2,
-        who_ids=["u1", "u1"],
     )
     assert r.status_code == 200, r.text
     out = r.json()
     assert out["title"] == "시장 보기" and out["place"] == "시장" and out["kind"] == 2
-    assert out["memo"] == "우유" and out["note"] == "우유" and out["who_ids"] == ["u1"]
+    assert out["memo"] == "우유" and out["note"] == "우유"
     assert (out["start_time"], out["end_time"]) == ("11:00:00", "12:30:00")
     assert out["starts_at"].startswith("2030-01-05T02:00:00")  # 한국 시간 11시 = UTC 2시
     assert out["edited_at"] is not None
@@ -472,3 +470,146 @@ def test_sharing_of_unshared_event_is_empty_and_others_get_404(client, family):
     assert _sharing(client, a, e["id"]).json() == {"shared_by": None, "shared_with": []}
     assert _sharing(client, b, e["id"]).status_code == 404  # 남의 줄
     assert _sharing(client, a, "nope").status_code == 404
+
+
+def _put_checked(client, headers, event_id, checked=True):
+    return client.put(
+        f"/schedule/events/{event_id}/checked", json={"checked": checked}, headers=headers
+    )
+
+
+def test_update_share_with_adds_copy_with_current_values(client, family):
+    a, b, _ = family
+    b_id = _me(client, b)
+    e = _new(client, a)
+    r = _patch(client, a, e["id"], title="고친 제목", share_with=[b_id])
+    assert r.status_code == 200
+    assert _titles(client, b) == ["고친 제목"]  # 복사본은 고친 뒤의 값으로 생긴다
+    copy = client.get("/schedule/events", headers=b).json()[0]
+    assert copy["origin_id"] == e["id"] and copy["user_id"] == b_id
+    assert _sharing(client, a, e["id"]).json()["shared_with"] == [b_id]
+    again = _patch(
+        client, a, e["id"], share_with=[b_id]
+    )  # 이미 있는 사람은 복사본을 또 만들지 않는다
+    assert again.status_code == 200
+    assert _titles(client, b) == ["고친 제목"]
+
+
+def test_update_share_with_alone_is_not_an_edit(client, family):
+    a, b, _ = family
+    e = _new(client, a)
+    r = _patch(client, a, e["id"], share_with=[_me(client, b)])
+    assert r.json()["edited_at"] is None  # 공유만 바꾼 것은 일정을 고친 것이 아니다
+
+
+def test_update_share_with_removing_deletes_copy_even_if_edited_or_checked(client, family):
+    a, b, group = family
+    c = _third(client, a, group)
+    b_id, c_id = _me(client, b), _me(client, c)
+    e = _new(client, a, share_with=[b_id, c_id])
+    copy_b = client.get("/schedule/events", headers=b).json()[0]
+    _patch(client, b, copy_b["id"], title="내가 고침")
+    _put_checked(client, b, copy_b["id"])
+    assert _patch(client, a, e["id"], share_with=[c_id]).status_code == 200
+    assert _titles(client, b) == []  # 고쳤든 체크했든 지워진다
+    assert _titles(client, c) == ["장보기"]  # 남은 사람은 그대로
+    assert _sharing(client, a, e["id"]).json()["shared_with"] == [c_id]
+    with SessionLocal() as db:  # 소프트 삭제라 줄은 남는다
+        assert db.get(Event, copy_b["id"]).deleted_at is not None
+
+
+def test_update_share_with_empty_removes_everyone(client, family):
+    a, b, group = family
+    c = _third(client, a, group)
+    e = _new(client, a, share_with=[_me(client, b), _me(client, c)])
+    assert _patch(client, a, e["id"], share_with=[]).status_code == 200
+    assert _titles(client, b) == [] and _titles(client, c) == []
+    assert _titles(client, a) == ["장보기"]  # 내 일정은 그대로
+    assert _sharing(client, a, e["id"]).json()["shared_with"] == []
+
+
+def test_update_share_with_readding_makes_a_new_copy_and_keeps_the_deleted_one(client, family):
+    a, b, _ = family
+    b_id = _me(client, b)
+    e = _new(client, a, share_with=[b_id])
+    old = client.get("/schedule/events", headers=b).json()[0]
+    _patch(client, a, e["id"], share_with=[])
+    assert _patch(client, a, e["id"], share_with=[b_id]).status_code == 200
+    new = client.get("/schedule/events", headers=b).json()
+    assert len(new) == 1 and new[0]["id"] != old["id"]
+    with SessionLocal() as db:
+        assert db.get(Event, old["id"]).deleted_at is not None  # 지워진 옛 복사본은 그대로
+
+
+def test_update_share_with_keeps_a_copy_the_receiver_deleted(client, family):
+    a, b, _ = family
+    b_id = _me(client, b)
+    e = _new(client, a, share_with=[b_id])
+    copy = client.get("/schedule/events", headers=b).json()[0]
+    client.delete(f"/schedule/events/{copy['id']}", headers=b)  # 받은 사람이 자기 복사본을 지움
+    assert _patch(client, a, e["id"], share_with=[b_id]).status_code == 200
+    assert _titles(client, b) == []  # 여전히 공유 대상이라 새로 만들지 않는다
+    assert _sharing(client, a, e["id"]).json()["shared_with"] == [b_id]
+
+
+def test_update_share_with_only_by_the_original_owner(client, family):
+    a, b, group = family
+    c = _third(client, a, group)
+    e = _new(client, a, share_with=[_me(client, b)])
+    copy = client.get("/schedule/events", headers=b).json()[0]
+    r = _patch(client, b, copy["id"], share_with=[_me(client, c)])
+    assert r.status_code == 403 and r.json()["code"] == "not_share_owner"
+    assert _titles(client, c) == []
+    assert _patch(client, b, copy["id"], title="내용은 고친다").status_code == 200
+    assert _patch(client, b, e["id"], share_with=[]).status_code == 404  # 남의 줄
+
+
+def test_update_share_with_rejects_non_member_and_deleted_original(client, family):
+    a, b, _ = family
+    outsider = signup(client, "남")
+    client.post("/family-group/groups", json={"name": "다른 가족"}, headers=outsider)
+    e = _new(client, a)
+    r = _patch(client, a, e["id"], share_with=[_me(client, outsider)])
+    assert r.status_code == 400 and r.json()["code"] == "invalid_share_target"
+    client.delete(f"/schedule/events/{e['id']}", headers=a)
+    assert _patch(client, a, e["id"], share_with=[_me(client, b)]).status_code == 404
+
+
+def _mine(client, headers):
+    return {x["title"]: x for x in client.get("/schedule/events", headers=headers).json()}
+
+
+def test_events_report_shared_and_who_is_involved(client, family):
+    a, b, group = family
+    c = _third(client, a, group)
+    a_id, b_id, c_id = _me(client, a), _me(client, b), _me(client, c)
+    _new(client, a, title="혼자")
+    _new(client, a, title="같이", share_with=[b_id, c_id])
+    mine = _mine(client, a)
+    assert mine["혼자"]["shared"] is False and mine["혼자"]["shared_ids"] == []
+    assert mine["같이"]["shared"] is True and mine["같이"]["shared_ids"] == [b_id, c_id]
+    got = _mine(client, b)["같이"]  # 받은 복사본: 보낸 사람과 같이 받은 사람(나 제외)
+    assert got["shared"] is True and got["shared_ids"] == [a_id, c_id]
+
+
+def test_shared_follows_reshare_and_ignores_receiver_deleting(client, family):
+    a, b, _ = family
+    b_id = _me(client, b)
+    e = _new(client, a, title="같이", share_with=[b_id])
+    copy = _mine(client, b)["같이"]
+    client.delete(
+        f"/schedule/events/{copy['id']}", headers=b
+    )  # 받은 사람이 지워도 공유 관계는 남는다
+    assert _mine(client, a)["같이"]["shared_ids"] == [b_id]
+    assert _patch(client, a, e["id"], share_with=[]).json()["shared"] is False
+    assert _mine(client, a)["같이"]["shared_ids"] == []  # 공유에서 빼면 다시 나 혼자
+
+
+def test_create_and_patch_responses_carry_shared(client, family):
+    a, b, _ = family
+    b_id = _me(client, b)
+    created = _new(client, a, share_with=[b_id])
+    assert created["shared"] is True and created["shared_ids"] == [b_id]
+    alone = _new(client, a, title="혼자")
+    assert alone["shared"] is False
+    assert _patch(client, a, alone["id"], share_with=[b_id]).json()["shared"] is True

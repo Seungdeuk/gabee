@@ -5,7 +5,7 @@ import Button from "@/shared/components/Button";
 import Field from "@/shared/components/Field";
 import { colors, font } from "@/theme";
 
-import { parseWon, won } from "../format";
+import { formatMoneyInput, parseWon, won } from "../format";
 
 export const WEEKDAYS = ["월", "화", "수", "목", "금", "토", "일"];
 
@@ -24,7 +24,7 @@ export default function AllowancePlanForm({ name, initial, busy = false, onSubmi
   const [cycle, setCycle] = useState(initial?.cycle ?? "monthly");
   const [day, setDay] = useState(initial ? initial.day : 1);
   const [dayText, setDayText] = useState(String(initial && initial.cycle === "monthly" ? initial.day : 1));
-  const [amount, setAmount] = useState(initial ? String(initial.amount) : "");
+  const [amount, setAmount] = useState(initial ? formatMoneyInput(initial.amount) : "");
   const [mode, setMode] = useState(initial?.mode ?? "auto");
 
   const pickCycle = (next) => {
@@ -60,7 +60,7 @@ export default function AllowancePlanForm({ name, initial, busy = false, onSubmi
       ) : (
         <Field label="매월 지급일 (1~31)" value={dayText} onChangeText={setDayText} keyboardType="numeric" placeholder="예: 25" />
       )}
-      <Field label="한 번에 지급하는 금액 (원)" value={amount} onChangeText={setAmount} keyboardType="numeric" placeholder="숫자만" />
+      <Field label="한 번에 지급하는 금액 (원)" value={amount} onChangeText={(text) => setAmount(formatMoneyInput(text))} keyboardType="numeric" placeholder="숫자만" />
       <Text style={styles.label}>지급 방식</Text>
       <View style={styles.chips}>
         <Button small variant="secondary" selected={mode === "auto"} label="자동 지급" a11yLabel={`${name} 자동 지급`} onPress={() => setMode("auto")} />

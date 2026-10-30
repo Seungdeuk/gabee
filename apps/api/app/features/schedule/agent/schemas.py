@@ -37,9 +37,6 @@ class Draft(BaseModel):
     kind: Literal[0, 1, 2] = 0  # 0 아직 모름, 1 약속, 2 할 일
     place: str = Field(default="", max_length=200)
     memo: str = Field(default="", max_length=1000)
-    who_ids: list[str] = Field(
-        default_factory=list, max_length=20
-    )  # 관련된 사람(사용자가 따로 말했을 때만)
     share_ids: list[str] = Field(
         default_factory=list, max_length=20
     )  # 공유할 사람(사용자가 요청했을 때만)

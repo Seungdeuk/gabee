@@ -8,6 +8,11 @@ from pydantic import BaseModel
 class InviteOut(BaseModel):
     invite_code: str
     expires_at: datetime | None = None
+    uses_left: int | None = None  # 이 코드로 더 들어올 수 있는 사람 수(null = 제한 없음)
+
+
+class InviteSettingsIn(BaseModel):
+    auto_approve: bool  # true 면 초대 코드로 들어온 사람을 관리자 승인 없이 바로 구성원으로 넣는다
 
 
 class JoinRequestOut(BaseModel):

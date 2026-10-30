@@ -6,6 +6,8 @@ import Card from "@/shared/components/Card";
 import Field from "@/shared/components/Field";
 import { colors, font } from "@/theme";
 
+import { formatMoneyInput, stripMoney } from "../format";
+
 export const CARRIERS = [
   { key: "skt", label: "SKT" },
   { key: "kt", label: "KT" },
@@ -23,8 +25,8 @@ export const CARRIERS = [
 export default function SubscriptionForm({ kind, initial, presetName = "", people, meId, busy = false, onSubmit, onCancel, notify }) {
   const [name, setName] = useState(initial?.name ?? presetName);
   const [carrier, setCarrier] = useState(initial?.carrier ?? null);
-  const [fee, setFee] = useState(initial?.monthly_fee == null ? "" : String(initial.monthly_fee));
-  const [discount, setDiscount] = useState(initial?.discount_amount == null ? "" : String(initial.discount_amount));
+  const [fee, setFee] = useState(initial?.monthly_fee == null ? "" : formatMoneyInput(initial.monthly_fee));
+  const [discount, setDiscount] = useState(initial?.discount_amount == null ? "" : formatMoneyInput(initial.discount_amount));
   const [day, setDay] = useState(initial?.billing_day == null ? "" : String(initial.billing_day));
   const [payer, setPayer] = useState(initial ? initial.payer_id : meId); // 새 항목은 등록하는 나
   const [split, setSplit] = useState(initial?.split_among?.length ? initial.split_among : people.map((p) => p.id));
@@ -35,8 +37,8 @@ export default function SubscriptionForm({ kind, initial, presetName = "", peopl
 
   const submit = () => {
     if (!name.trim()) return notify("이름을 입력해 주세요", true);
-    if (fee.trim() && !/^\d+$/.test(fee.trim())) return notify("월 청구 금액은 숫자만 입력해 주세요", true);
-    if (discount.trim() && !/^\d+$/.test(discount.trim())) return notify("결합 할인 금액은 숫자만 입력해 주세요", true);
+    if (stripMoney(fee) && !/^\d+$/.test(stripMoney(fee))) return notify("월 청구 금액은 숫자만 입력해 주세요", true);
+    if (stripMoney(discount) && !/^\d+$/.test(stripMoney(discount))) return notify("결합 할인 금액은 숫자만 입력해 주세요", true);
     if (day.trim() && !(/^\d+$/.test(day.trim()) && Number(day) >= 1 && Number(day) <= 31)) {
       return notify("결제일은 1~31 사이 숫자로 입력해 주세요", true);
     }
@@ -44,8 +46,8 @@ export default function SubscriptionForm({ kind, initial, presetName = "", peopl
     onSubmit({
       name: name.trim(),
       carrier: kind === "telecom" ? carrier : null,
-      monthly_fee: fee.trim() ? Number(fee.trim()) : null,
-      discount_amount: discount.trim() ? Number(discount.trim()) : null,
+      monthly_fee: stripMoney(fee) ? Number(stripMoney(fee)) : null,
+      discount_amount: stripMoney(discount) ? Number(stripMoney(discount)) : null,
       billing_day: day.trim() ? Number(day.trim()) : null,
       payer_id: payer,
       split_among: split.length === people.length ? [] : split, // 전원이면 비워서 가족 전체로 저장
@@ -76,8 +78,8 @@ export default function SubscriptionForm({ kind, initial, presetName = "", peopl
           </View>
         </View>
       ) : null}
-      <Field label="월 청구 금액 (원, 청구서 기준, 선택)" value={fee} onChangeText={setFee} placeholder="숫자만" keyboardType="numeric" />
-      <Field label="결합 할인 금액 (원, 청구서 기준, 선택)" value={discount} onChangeText={setDiscount} placeholder="숫자만" keyboardType="numeric" />
+      <Field label="월 청구 금액 (원, 청구서 기준, 선택)" value={fee} onChangeText={(text) => setFee(formatMoneyInput(text))} placeholder="숫자만" keyboardType="numeric" />
+      <Field label="결합 할인 금액 (원, 청구서 기준, 선택)" value={discount} onChangeText={(text) => setDiscount(formatMoneyInput(text))} placeholder="숫자만" keyboardType="numeric" />
       <Field label="매월 결제일 (1~31, 선택)" value={day} onChangeText={setDay} placeholder="예: 5" keyboardType="numeric" />
 
       <View style={styles.block}>

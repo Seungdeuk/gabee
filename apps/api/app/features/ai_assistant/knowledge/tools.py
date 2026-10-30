@@ -12,8 +12,8 @@ from . import service
 TOOL_SPECS = [
     {
         "name": "search_knowledge",
-        "description": "가족이 저장한 기록(고지서, 영수증, 병원 내역, 증명서 등)에서 질문과 관련된 기록을 찾는다. "
-        "답에 쓸 근거가 필요할 때 먼저 부른다.",
+        "description": "가족이 올려 둔 문서·사진 기록(고지서, 영수증, 병원 내역, 증명서 등)에서 질문과 관련된 기록을 찾는다. "
+        "올려 둔 문서의 내용이 필요할 때만 부른다. 가계 장부 지출, 돌봄 기록, 일정, 채팅 대화는 여기에 없다.",
         "input_schema": {
             "type": "object",
             "properties": {

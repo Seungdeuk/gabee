@@ -22,6 +22,11 @@ def add_all(db: Session, events: list[Event]) -> None:
     db.commit()
 
 
+def add_pending(db: Session, events: list[Event]) -> None:
+    """commit 없이 세션에만 올린다(부른 쪽이 한 트랜잭션으로 commit 한다)."""
+    db.add_all(events)
+
+
 def get(db: Session, group_id: str, event_id: str, user_id: str | None = None) -> Event | None:
     return db.scalar(
         select(Event).where(Event.id == event_id, Event.group_id == group_id, *_visible(user_id))
@@ -42,6 +47,46 @@ def copies_of(db: Session, group_id: str, root_id: str) -> list[Event]:
             .order_by(Event.created_at, Event.id)
         )
     )
+
+
+def _chunks(values: list[str], size: int = 2000):
+    for i in range(0, len(values), size):
+        yield values[i : i + size]
+
+
+def copy_owners(db: Session, origin_ids: list[str]) -> list[tuple[str, str]]:
+    """(원본 id, 복사본 주인) 쌍들. 지워진 복사본도 포함한다(공유 관계는 지워도 남는다)."""
+    rows: list[tuple[str, str]] = []
+    for chunk in _chunks(origin_ids):
+        rows += [
+            (o, u)
+            for o, u in db.execute(
+                select(Event.origin_id, Event.user_id)
+                .where(Event.origin_id.in_(chunk), Event.user_id.is_not(None))
+                .order_by(Event.created_at, Event.id)
+            )
+        ]
+    return rows
+
+
+def owners_of(db: Session, event_ids: list[str]) -> dict[str, str | None]:
+    """줄 id → 주인(지워진 줄 포함)."""
+    owners: dict[str, str | None] = {}
+    for chunk in _chunks(event_ids):
+        owners.update(db.execute(select(Event.id, Event.user_id).where(Event.id.in_(chunk))).all())
+    return owners
+
+
+def request_senders(db: Session, request_ids: list[str]) -> dict[str, str]:
+    """부탁 id → 부탁한 사람."""
+    senders: dict[str, str] = {}
+    for chunk in _chunks(request_ids):
+        senders.update(
+            db.execute(
+                select(EventRequest.id, EventRequest.user_id).where(EventRequest.id.in_(chunk))
+            ).all()
+        )
+    return senders
 
 
 def list_from(

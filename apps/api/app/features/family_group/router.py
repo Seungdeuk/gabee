@@ -27,6 +27,7 @@ from .schemas import (
     PasswordResetRequestIn,
     RefreshIn,
     SignupOut,
+    TesterConsentIn,
     TokenIn,
     TokenOut,
     UserCreate,
@@ -145,6 +146,14 @@ def auth_me(user: User = Depends(bearer_user)) -> UserOut:
     return service.user_out(user)
 
 
+@router.put("/auth/me/tester-consent", response_model=UserOut)
+def put_tester_consent(
+    body: TesterConsentIn, user: User = Depends(bearer_user), db: Session = Depends(get_db)
+) -> UserOut:
+    """테스트 동의서에 동의한 버전과 시각을 저장한다."""
+    return service.record_tester_consent(db, user, body.version)
+
+
 @router.get("/me", response_model=UserOut)
 def me(user: User = Depends(current_user)) -> UserOut:
     return service.user_out(user)
@@ -164,7 +173,8 @@ def join_group(
     user: User = Depends(current_user),
     db: Session = Depends(get_db),
 ) -> JoinRequestOut:
-    """초대 코드로 참여를 신청한다. 모든 계정(익명 포함)에 승인 대기 요청(JoinRequestOut, status=pending)이 만들어지고, 관리자 승인 뒤 구성원이 된다."""
+    """초대 코드로 참여를 신청한다. 가족의 자동 승인이 켜져 있으면 바로 구성원이 되고(status=approved),
+    꺼져 있으면 승인 대기 요청(status=pending)이 만들어져 관리자 승인 뒤 구성원이 된다."""
     ip = request.client.host if request.client else "unknown"
     return service.join_group(db, user, body.code, ip)
 

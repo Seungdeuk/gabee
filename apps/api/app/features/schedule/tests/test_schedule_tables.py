@@ -38,7 +38,6 @@ def test_event_new_columns_have_defaults(client, family):
         db.commit()
         event = db.get(Event, "e1")
         assert event.kind == KIND_APPOINTMENT
-        assert event.who_ids == []
         assert event.place == ""
         assert event.memo == ""
         assert event.checked is False
@@ -79,7 +78,6 @@ def test_request_recipients_and_event_links(client, family):
                 starts_at=datetime.now(UTC),
                 created_by=receiver.id,
                 user_id=receiver.id,
-                who_ids=[sender.id],
                 source="request",
                 request_id=request.id,
                 recip_id=recipient.id,
