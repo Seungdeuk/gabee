@@ -18,9 +18,11 @@ class _TooLarge(Exception):
     pass
 
 
-async def _reject(send: Send, message: str = PHOTO_TOO_LARGE_MESSAGE) -> None:
+async def _reject(
+    send: Send, message: str = PHOTO_TOO_LARGE_MESSAGE, code: str = "photo_too_large"
+) -> None:
     body = json.dumps(
-        {"code": "photo_too_large", "message": message},
+        {"code": code, "message": message},
         ensure_ascii=False,
     ).encode()
     await send(
@@ -44,11 +46,13 @@ class PhotoBodyLimitMiddleware:
         max_bytes: int = MAX_BODY_BYTES,
         path_suffix: str = PHOTO_PATH_SUFFIX,
         message: str = PHOTO_TOO_LARGE_MESSAGE,
+        code: str = "photo_too_large",
     ) -> None:
         self.app = app
         self.max_bytes = max_bytes
         self.path_suffix = path_suffix  # 이 경로로 끝나는 POST 에만 적용(채팅 사진 업로드 경로도 같은 방식으로 쓴다)
         self.message = message
+        self.code = code
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         if (
@@ -65,7 +69,7 @@ class PhotoBodyLimitMiddleware:
                 except ValueError:
                     declared = 0
                 if declared > self.max_bytes:
-                    await _reject(send, self.message)
+                    await _reject(send, self.message, self.code)
                     return
         received = 0
         exceeded = False
@@ -89,4 +93,4 @@ class PhotoBodyLimitMiddleware:
         except _TooLarge:
             pass
         if exceeded:
-            await _reject(send, self.message)
+            await _reject(send, self.message, self.code)

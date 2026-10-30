@@ -87,6 +87,7 @@ def test_reply_carries_original_preview(client, family):
         "text": "저녁 뭐 먹을까?",
         "deleted": False,
         "has_attachment": False,
+        "attachment_kind": None,
     }
     listed = {m["id"]: m for m in _list(client, a)}
     assert listed[reply["id"]]["reply_to"]["id"] == parent["id"]

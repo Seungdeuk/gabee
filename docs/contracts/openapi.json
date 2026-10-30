@@ -2242,6 +2242,153 @@
         }
       }
     },
+    "/family-chat/files": {
+      "post": {
+        "tags": [
+          "family-chat"
+        ],
+        "summary": "Send File",
+        "description": "문서 파일 메시지를 보낸다(multipart `file`, 선택 `room_id`). 문서류(pdf, doc/docx, xls/xlsx, ppt/pptx, hwp/hwpx, txt, csv) 20MB 이하. AI 를 부르지 않는다.",
+        "operationId": "send_file_family_chat_files_post",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-gyeot-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Gyeot-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_send_file_family_chat_files_post"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/family-chat/files/{attachment_id}": {
+      "get": {
+        "tags": [
+          "family-chat"
+        ],
+        "summary": "Get File",
+        "description": "방에 들어갈 수 있는 사람만 받을 수 있다. 없는 파일·못 들어가는 방은 모두 404. 항상 내려받기(attachment)로만 내려간다.",
+        "operationId": "get_file_family_chat_files__attachment_id__get",
+        "parameters": [
+          {
+            "name": "attachment_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Attachment Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-gyeot-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Gyeot-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "채팅 문서 파일",
+            "content": {
+              "application/octet-stream": {}
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/family-chat/photos": {
       "post": {
         "tags": [
@@ -2409,7 +2556,7 @@
           "family-chat"
         ],
         "summary": "List Media",
-        "description": "그 방에서 공유된 첨부를 최신순으로. 방에 들어갈 수 없으면 404. 지금은 사진(image)만 있다.",
+        "description": "그 방에서 공유된 첨부를 최신순으로. 방에 들어갈 수 없으면 404. 사진(image)·문서(file)가 있고 동영상은 아직 없다.",
         "operationId": "list_media_family_chat_media_get",
         "parameters": [
           {
@@ -13902,6 +14049,10 @@
           },
           "kind": {
             "type": "string",
+            "enum": [
+              "image",
+              "file"
+            ],
             "title": "Kind"
           },
           "url": {
@@ -13909,26 +14060,77 @@
             "title": "Url"
           },
           "thumb_url": {
-            "type": "string",
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "Thumb Url"
           },
           "width": {
-            "type": "integer",
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "Width"
           },
           "height": {
-            "type": "integer",
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "Height"
+          },
+          "filename": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Filename"
+          },
+          "size_bytes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Size Bytes"
+          },
+          "content_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Content Type"
           }
         },
         "type": "object",
         "required": [
           "id",
           "kind",
-          "url",
-          "thumb_url",
-          "width",
-          "height"
+          "url"
         ],
         "title": "AttachmentOut"
       },
@@ -14062,6 +14264,32 @@
           "next_before"
         ],
         "title": "BoardOut"
+      },
+      "Body_send_file_family_chat_files_post": {
+        "properties": {
+          "file": {
+            "type": "string",
+            "contentMediaType": "application/octet-stream",
+            "title": "File"
+          },
+          "room_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 32
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Room Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "file"
+        ],
+        "title": "Body_send_file_family_chat_files_post"
       },
       "Body_send_photo_family_chat_photos_post": {
         "properties": {
@@ -18892,6 +19120,21 @@
             "type": "boolean",
             "title": "Has Attachment",
             "default": false
+          },
+          "attachment_kind": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "image",
+                  "file"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Attachment Kind"
           }
         },
         "type": "object",

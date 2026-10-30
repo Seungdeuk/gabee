@@ -17,11 +17,14 @@ class MessageCreate(BaseModel):
 
 class AttachmentOut(BaseModel):
     id: str
-    kind: str  # 지금은 image 만
-    url: str  # 원본(최대 1600px JPEG) 경로. 로그인이 필요하다
-    thumb_url: str  # 목록용 작은 그림 경로
-    width: int
-    height: int
+    kind: Literal["image", "file"]
+    url: str  # 사진: 원본(최대 1600px JPEG) 경로, 문서: 내려받기 경로. 로그인이 필요하다
+    thumb_url: str | None = None  # 사진: 목록용 작은 그림 경로, 문서: null
+    width: int | None = None  # 문서는 null
+    height: int | None = None  # 문서는 null
+    filename: str | None = None  # 문서만(사용자가 올린 이름을 정리한 것)
+    size_bytes: int | None = None
+    content_type: str | None = None  # 문서만(허용 목록의 안전한 값)
 
 
 class ReplyOut(BaseModel):
@@ -31,7 +34,8 @@ class ReplyOut(BaseModel):
     user_name: str
     text: str  # 40자까지. 사진 메시지·지운 메시지는 빈 문자열
     deleted: bool = False
-    has_attachment: bool = False  # 원본이 사진 메시지
+    has_attachment: bool = False  # 원본이 사진·문서 메시지
+    attachment_kind: Literal["image", "file"] | None = None  # 원본 첨부의 종류(없으면 null)
 
 
 class ReactionIn(BaseModel):
