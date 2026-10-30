@@ -166,32 +166,6 @@ export default function FamilyChatScreen() {
 
         {pickerOpen ? <NewChatPicker members={state.pickable} busyId={opening} error={pickError} onPick={startDirect} /> : null}
 
-        <View>
-          {state.status === "loading" ? (
-            <Skeleton />
-          ) : state.status === "none" ? (
-            <EmptyChats onCreate={() => router.push("/family")} onJoin={() => router.push("/family")} />
-          ) : state.status === "error" ? (
-            <View style={styles.banner} accessibilityRole="alert">
-              <Text style={styles.bannerText}>{state.error}</Text>
-              <Button label="다시 시도" small onPress={load} />
-            </View>
-          ) : listError ? (
-            <View style={styles.banner} accessibilityRole="alert">
-              <Text style={styles.bannerText}>{listError}</Text>
-              <Button label="다시 시도" small onPress={load} />
-            </View>
-          ) : shown.length === 0 ? (
-            query.trim() ? null : <Text style={styles.empty}>찾는 대화가 없어요</Text>
-          ) : (
-            shown.map((room) => <SwipeableRoomRow key={room.id} room={room} onPress={() => openRoom(room)} onToggleMute={() => toggleMute(room)} />)
-          )}
-        </View>
-
-        {state.status === "ready" && searching && query.trim() ? (
-          <ContentSearchSection search={search} roomLabel={(item) => searchRoomLabel(item, state.rooms, members)} onPick={(item) => router.push(focusRoute(item))} />
-        ) : null}
-
         {members.length > 0 ? (
           <View style={styles.contacts}>
             <SectionTitle title="가족 연락처" action="전체 보기 →" onAction={() => router.push("/family-contacts")} />
@@ -210,6 +184,32 @@ export default function FamilyChatScreen() {
               <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
             </Pressable>
           </View>
+        ) : null}
+
+        <View>
+          {state.status === "loading" ? (
+            <Skeleton />
+          ) : state.status === "none" ? (
+            <EmptyChats onCreate={() => router.push("/family")} onJoin={() => router.push("/family")} />
+          ) : state.status === "error" ? (
+            <View style={styles.banner} accessibilityRole="alert">
+              <Text style={styles.bannerText}>{state.error}</Text>
+              <Button label="다시 시도" small onPress={load} />
+            </View>
+          ) : listError ? (
+            <View style={styles.banner} accessibilityRole="alert">
+              <Text style={styles.bannerText}>{listError}</Text>
+              <Button label="다시 시도" small onPress={load} />
+            </View>
+          ) : shown.length === 0 ? (
+            query.trim() ? null : <Text style={styles.empty}>찾는 대화가 없어요</Text>
+          ) : (
+            shown.map((room, i) => <SwipeableRoomRow key={room.id} room={room} divider={i < shown.length - 1} onPress={() => openRoom(room)} onToggleMute={() => toggleMute(room)} />)
+          )}
+        </View>
+
+        {state.status === "ready" && searching && query.trim() ? (
+          <ContentSearchSection search={search} roomLabel={(item) => searchRoomLabel(item, state.rooms, members)} onPick={(item) => router.push(focusRoute(item))} />
         ) : null}
       </ScrollView>
     </SafeAreaView>
