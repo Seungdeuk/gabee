@@ -9,15 +9,14 @@ import { unreadBadgeText } from "@/features/family-chat/listUtils";
 import { useAuth } from "@/shared/auth/AuthProvider";
 import { colors, font, fonts } from "@/theme";
 
-// 디자인의 하단 탭 5개. 기타(가족 그룹·설정)는 탭이 아니라 상단 ⋮ 메뉴로 들어간다.
+// 하단 탭 4개(가계는 돌봄 탭에 합쳤다, 남는 한 자리는 마이 페이지 예정). 기타(가족 그룹·설정)는 탭이 아니라 상단 ⋮ 메뉴로 들어간다.
 const TAB_CONTENT_HEIGHT = 64;
 
 const tabs = [
   { name: "chat", title: "AI 채팅", icon: "chatbubble-ellipses-outline" },
   { name: "family-chat", title: "소통", icon: "people-outline" },
   { name: "schedule", title: "일정", icon: "calendar-outline" },
-  { name: "billing", title: "지갑", icon: "wallet-outline" },
-  { name: "care", title: "안부", icon: "heart-outline" },
+  { name: "care", title: "돌봄", icon: "heart-outline" },
 ];
 
 export default function TabLayout() {
