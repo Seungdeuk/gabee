@@ -3,6 +3,7 @@ import { mapChatCards } from "@/features/ai-assistant/scheduleCard";
 import { getGroupWithNicknames } from "@/shared/members/nicknames";
 import { photoPath } from "@/shared/photoCache";
 
+import { chatFileMimeType } from "./fileUtils";
 import { chatPhotoFileName, chatPhotoMimeType } from "./photo";
 
 /**
@@ -223,6 +224,55 @@ export async function sendPhoto(asset, roomId) {
   }
   if (roomId) form.append("room_id", roomId);
   return apiFetch("/family-chat/photos", { method: "POST", body: form });
+}
+
+/**
+ * 문서 파일 메시지를 보낸다(POST /family-chat/files, multipart 'file' + 선택 form 필드 room_id). 허용 형식·20MB 는 서버가 다시 검사한다. AI 를 부르지 않는다.
+ * 웹은 asset.file(없으면 asset.uri 의 blob)을 그대로, 네이티브는 {uri, name, type} 으로 보낸다.
+ * @param {{ uri: string, name?: string | null, mimeType?: string | null, file?: Blob }} asset expo-document-picker 의 asset
+ * @param {string | null} [roomId] 대화방 id, 없으면 가족 전체방(form 에 넣지 않는다)
+ * @returns {Promise<{ id: number, user_id: string, user_name: string, text: string, created_at: string, attachment: { id: string, kind: "file", url: string, thumb_url: string | null, width: number | null, height: number | null, filename: string | null, size_bytes: number | null, content_type: string | null } | null }>}
+ */
+export async function sendFile(asset, roomId) {
+  const name = asset.name || "file";
+  const type = chatFileMimeType({ name, mimeType: asset.mimeType });
+  const form = new FormData();
+  if (asset.file) {
+    form.append("file", asset.file, name);
+  } else if (/^(blob|data):/.test(asset.uri)) {
+    const blob = await (await fetch(asset.uri)).blob();
+    form.append("file", blob, name);
+  } else {
+    form.append("file", { uri: asset.uri, name, type });
+  }
+  if (roomId) form.append("room_id", roomId);
+  return apiFetch("/family-chat/files", { method: "POST", body: form });
+}
+
+// 서버가 만드는 파일 첨부 경로만 받는다(다른 주소로 인증 헤더가 나가지 않게)
+const CHAT_FILE_PATH = /^\/family-chat\/files\/[\w-]+$/;
+
+/**
+ * 파일 받기 요청(주소+인증 헤더). 낯선 경로나 서버 주소가 없으면 던진다.
+ * @param {string} path attachment.url
+ * @returns {Promise<{ url: string, headers: Record<string, string> }>}
+ */
+export async function fileDownloadRequest(path) {
+  if (typeof path !== "string" || !CHAT_FILE_PATH.test(path) || !isApiConfigured()) throw new Error("file_unavailable");
+  await ensureFreshAccess().catch(() => {});
+  return { url: apiUrl(path), headers: { ...authHeaders() } };
+}
+
+/**
+ * 웹: 로그인 헤더로 파일을 받아 blob 으로 돌려준다.
+ * @param {string} path attachment.url
+ * @returns {Promise<Blob>}
+ */
+export async function downloadFile(path) {
+  const { url, headers } = await fileDownloadRequest(path);
+  const res = await fetch(url, { headers });
+  if (!res.ok) throw new Error("file_unavailable");
+  return res.blob();
 }
 
 /**

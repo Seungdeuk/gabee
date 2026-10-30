@@ -2,8 +2,9 @@ import { useFocusEffect } from "expo-router";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AppState } from "react-native";
 
-import { deleteMessage, getReadStates, getRoomInfo, listDeletedMessages, listMessages, reactToMessage, removeReaction, sendMessage, sendPhoto } from "./api";
+import { deleteMessage, getReadStates, getRoomInfo, listDeletedMessages, listMessages, reactToMessage, removeReaction, sendFile, sendMessage, sendPhoto } from "./api";
 import { canSend, firstId, focusErrorMessage, isNoGroup, lastId, mergeMessages, nextPollDelay, photoSendErrorMessage, readStatesDue, roomErrorMessage, trimDraft } from "./chatUtils";
+import { fileSendErrorMessage } from "./fileUtils";
 import { applySavedNow, beginTransition, canLoadNewer, canReuseLiveRun, canLoadOlder, canPoll, enterLiveEnd, finishTransition, initialModeState, needsLiveBeforeSend, retryTarget, tokenValid, windowToken } from "./focusMode";
 import { FOCUS_PAGE, keepTemps, reachedLiveEnd, replaceWindow } from "./searchUtils";
 import { applyDeletedIds, markDeleted, markRepliesDeleted, messageActionError, refreshDue, refreshExisting, REFRESH_LIMIT, withMyReaction } from "./messageActions";
@@ -57,7 +58,7 @@ export function useRoomInfo() {
  * 과거 보기 중에도 위(loadOlder)·아래(loadNewer)로 이어서 불러올 수 있고, 아래로 라이브 끝에 닿으면 자동으로 라이브로 돌아간다. returnToLive() 는 최근 50개를 다시 받아 라이브(폴링 재개)로 돌아간다.
  * 과거 보기에서 글·사진을 보내면 먼저 라이브로 돌아간 뒤 보낸다. initialFocus 가 있으면 처음부터 그 창으로 열고, 실패하면 최근 대화로 열고 안내 문구를 둔다.
  * @param {{ me: { id: string, name: string } | null, enabled?: boolean, roomId?: string | null, initialFocus?: number | null }} options enabled 가 false 면 아무것도 부르지 않는다, roomId 가 없으면 가족 전체방(방이 바뀌면 화면을 새로 연다)
- * @returns {{ recovered: number, focusing: boolean, focusTarget: { id: number, seq: number } | null, focusOn: (messageId: number) => Promise<boolean>, loadNewer: () => Promise<void>, loadingNewer: boolean, returnToLive: () => Promise<boolean>, messages: object[], readStates: { user_id: string, last_read_message_id: number }[] | null, status: "loading" | "ready" | "error", error: string, hasMore: boolean, loadingOlder: boolean, loadOlder: () => Promise<void>, send: (text: string, reply?: object | null) => Promise<boolean>, reactTo: (messageId: number|string, emoji: string | null) => Promise<{ ok: boolean, busy?: boolean, error?: object }>, deleteMine: (messageId: number|string) => Promise<{ ok: boolean, busy?: boolean, error?: object }>, sendImage: (asset: object) => Promise<boolean>, photoBusy: boolean, photoError: string, setPhotoError: (message: string) => void, resend: (clientId: string) => Promise<void>, discard: (clientId: string) => void, retry: () => void }}
+ * @returns {{ recovered: number, focusing: boolean, focusTarget: { id: number, seq: number } | null, focusOn: (messageId: number) => Promise<boolean>, loadNewer: () => Promise<void>, loadingNewer: boolean, returnToLive: () => Promise<boolean>, messages: object[], readStates: { user_id: string, last_read_message_id: number }[] | null, status: "loading" | "ready" | "error", error: string, hasMore: boolean, loadingOlder: boolean, loadOlder: () => Promise<void>, send: (text: string, reply?: object | null) => Promise<boolean>, reactTo: (messageId: number|string, emoji: string | null) => Promise<{ ok: boolean, busy?: boolean, error?: object }>, deleteMine: (messageId: number|string) => Promise<{ ok: boolean, busy?: boolean, error?: object }>, sendImage: (asset: object) => Promise<boolean>, sendDocument: (asset: object) => Promise<boolean>, fileBusy: boolean, photoBusy: boolean, photoError: string, setPhotoError: (message: string) => void, resend: (clientId: string) => Promise<void>, discard: (clientId: string) => void, retry: () => void }}
  */
 export default function useChatMessages({ me, enabled = true, roomId = null, initialFocus = null }) {
   const [messages, setMessages] = useState([]);
@@ -78,6 +79,8 @@ export default function useChatMessages({ me, enabled = true, roomId = null, ini
   const lastFail = useRef(null); // 과거 모드에서 마지막으로 실패한 동작(다시 시도용)
   const newer = useRef(false);
   const focusStarted = useRef(false);
+  const fileLock = useRef(false); // 파일 보내기 중복 누름 방지
+  const [fileBusy, setFileBusy] = useState(false);
   const photoLock = useRef(false); // 사진 보내기 중복 누름 방지(state 는 한 박자 늦다)
   const ref = useRef([]); // 가장 최신 목록(비동기 콜백에서 읽는다)
   const alive = useRef(true);
@@ -483,6 +486,33 @@ export default function useChatMessages({ me, enabled = true, roomId = null, ini
     [ensureLive, update],
   );
 
+  /**
+   * 문서 파일 한 개를 보낸다(sendImage 와 같은 방식: 과거 창이면 먼저 라이브로 돌아가고, 임시 메시지 없이 서버가 돌려준 메시지를 병합). 실패하면 photoError(입력줄 위 안내 한 곳)에 문구를 둔다.
+   * @param {{ uri: string, name?: string | null, mimeType?: string | null, file?: Blob }} asset
+   * @returns {Promise<boolean>} 보냈으면 true
+   */
+  const sendDocument = useCallback(
+    async (asset) => {
+      if (fileLock.current || !meRef.current) return false;
+      fileLock.current = true;
+      setFileBusy(true);
+      setPhotoError("");
+      try {
+        if (!(await ensureLive((message) => { setError(""); setPhotoError(message); }))) return false;
+        const saved = await sendFile(asset, roomRef.current);
+        update((prev) => applySavedNow(prev, saved, ms.current, null));
+        return true;
+      } catch (e) {
+        if (alive.current) setPhotoError(fileSendErrorMessage(e));
+        return false;
+      } finally {
+        fileLock.current = false;
+        if (alive.current) setFileBusy(false);
+      }
+    },
+    [ensureLive, update],
+  );
+
   const resend = useCallback(
     async (clientId) => {
       if (!(await ensureLive())) return;
@@ -579,5 +609,5 @@ export default function useChatMessages({ me, enabled = true, roomId = null, ini
     fetchReadStates();
   }, [fetchNew, fetchReadStates, loadNewer, loadOlder, returnToLive]);
 
-  return { recovered, focusing, focusTarget, focusOn, loadNewer, loadingNewer, returnToLive, messages, readStates, status, error, hasMore, loadingOlder, loadOlder, send, sendImage, photoBusy, photoError, setPhotoError, resend, discard, retry, reactTo, deleteMine };
+  return { recovered, focusing, focusTarget, focusOn, loadNewer, loadingNewer, returnToLive, messages, readStates, status, error, hasMore, loadingOlder, loadOlder, send, sendImage, sendDocument, fileBusy, photoBusy, photoError, setPhotoError, resend, discard, retry, reactTo, deleteMine };
 }

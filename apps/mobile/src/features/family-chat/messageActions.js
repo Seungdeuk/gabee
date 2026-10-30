@@ -12,6 +12,7 @@ export const HEART = REACTIONS[0].emoji;
 
 export const DELETED_TEXT = "삭제된 메시지입니다";
 export const REPLY_PHOTO_TEXT = "사진";
+export const REPLY_FILE_TEXT = "파일";
 export const DELETE_TITLE = "이 메시지를 삭제할까요?";
 export const DELETE_BODY = "삭제하면 모두에게서 삭제돼요";
 
@@ -142,7 +143,7 @@ export function markRepliesDeleted(messages, deletedId) {
  * 답장 대상을 입력창·임시 메시지에 보일 미리보기로(글자 40자까지).
  * @param {{ id: number|string, user_name?: string, text?: string, attachment?: object | null, deleted?: boolean }} message
  * @param {(userId: string) => string | undefined} [nameOf]
- * @returns {{ id: number, user_name: string, text: string, deleted: boolean, has_attachment: boolean }}
+ * @returns {{ id: number, user_name: string, text: string, deleted: boolean, has_attachment: boolean, attachment_kind: string | null }}
  */
 export function replyPreview(message, nameOf) {
   const deleted = Boolean(message.deleted);
@@ -152,18 +153,24 @@ export function replyPreview(message, nameOf) {
     text: deleted ? "" : String(message.text ?? "").replace(/\s+/g, " ").trim().slice(0, 40),
     deleted,
     has_attachment: !deleted && Boolean(message.attachment),
+    attachment_kind: !deleted && message.attachment?.kind ? message.attachment.kind : null,
   };
 }
 
 /**
- * 답장 원본 한 줄: 지웠으면 "삭제된 메시지입니다", 글자가 없는 사진이면 "사진".
- * @param {{ text?: string, deleted?: boolean, has_attachment?: boolean } | null | undefined} reply
+ * 답장 원본 한 줄: 지웠으면 "삭제된 메시지입니다", 글자가 없는 사진이면 "사진", 파일이면 "파일".
+ * @param {{ text?: string, deleted?: boolean, has_attachment?: boolean, attachment_kind?: string | null } | null | undefined} reply
  * @returns {string}
  */
 export function replyLine(reply) {
   if (!reply) return "";
   if (reply.deleted) return DELETED_TEXT;
-  return String(reply.text ?? "").trim() || (reply.has_attachment ? REPLY_PHOTO_TEXT : "");
+  const text = String(reply.text ?? "").trim();
+  if (text) return text;
+  // 서버가 준 attachment_kind 를 먼저 따르고, 없을 때만 has_attachment 로 사진 취급(하위 호환)
+  if (reply.attachment_kind === "file") return REPLY_FILE_TEXT;
+  if (reply.attachment_kind === "image" || reply.has_attachment) return REPLY_PHOTO_TEXT;
+  return "";
 }
 
 /**

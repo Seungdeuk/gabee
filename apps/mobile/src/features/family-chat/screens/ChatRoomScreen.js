@@ -31,6 +31,8 @@ import useMention from "../useMention";
 import useRoomMute from "../useRoomMute";
 import useChatSearch, { useFamilyRoomId } from "../useChatSearch";
 import { memberName } from "../listUtils";
+import { fileSendErrorMessage } from "../fileUtils";
+import { pickChatDocument } from "../pickChatDocument";
 import { pickChatPhoto } from "../pickPhoto";
 import useReadMarker from "../useReadMarker";
 
@@ -93,6 +95,8 @@ export default function ChatRoomScreen() {
   const olderRequested = useRef(false);
   const picking = useRef(false); // 사진 고르는 중 중복 누름 방지(ref)
   const [pickingUi, setPicking] = useState(false);
+  const pickingFile = useRef(false); // 문서 고르는 중 중복 누름 방지(ref)
+  const [pickingFileUi, setPickingFile] = useState(false);
   const [far, setFar] = useState(false); // 바닥에서 멀리 올라와 있는지
   const [hasNew, setHasNew] = useState(false); // 올라와 있는 동안 새 메시지가 왔는지
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -193,6 +197,25 @@ export default function ChatRoomScreen() {
     } finally {
       picking.current = false;
       setPicking(false);
+    }
+  };
+
+  /** 기기에서 문서 파일 한 개를 골라 보낸다(pdf·워드·엑셀·파워포인트·한글·txt·csv, 20MB까지). 고르는 동안·보내는 동안은 다시 누를 수 없다. */
+  const onPickFile = async () => {
+    if (pickingFile.current || chat.fileBusy) return;
+    pickingFile.current = true;
+    setPickingFile(true);
+    chat.setPhotoError("");
+    try {
+      const asset = await pickChatDocument();
+      if (!asset) return;
+      nearBottom.current = true;
+      if (await chat.sendDocument(asset)) scrollToEnd(true);
+    } catch (e) {
+      chat.setPhotoError(fileSendErrorMessage(e));
+    } finally {
+      pickingFile.current = false;
+      setPickingFile(false);
     }
   };
 
@@ -551,6 +574,8 @@ export default function ChatRoomScreen() {
           onChangeText={setDraft}
           onSend={onSend}
           onPickPhoto={onPickPhoto}
+          onPickFile={onPickFile}
+          fileBusy={pickingFileUi || chat.fileBusy}
           photoBusy={pickingUi || chat.photoBusy}
           photoError={chat.photoError}
           onDismissPhotoError={() => chat.setPhotoError("")}

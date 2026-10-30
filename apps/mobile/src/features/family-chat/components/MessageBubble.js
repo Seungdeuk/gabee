@@ -10,8 +10,13 @@ import { formatTime } from "../chatUtils";
 import { unreadByA11yLabel } from "../listUtils";
 import { fitSize } from "../photo";
 import { bubbleSelectable, bubbleTextStyle } from "../pinUtils";
+import { FILE_SAVE_LABEL, fileSaveHelp, isFileMessage } from "../fileUtils";
 import { DELETED_TEXT, DOUBLE_TAP_MS, isDoubleTap } from "../messageActions";
+import { openChatFile, saveChatFile } from "../openFile";
+import { saveFileName } from "../mediaUtils";
+import { savePhoto } from "../savePhoto";
 import AssistantAvatar from "./AssistantAvatar";
+import FileCard from "./FileCard";
 import { highlightNodes, hitStyles } from "./Highlighted";
 import PhotoViewer from "./PhotoViewer";
 import ReactionRow from "./ReactionRow";
@@ -33,6 +38,7 @@ const AVATAR = 36;
  * 답장이면(reply_to) 글 위에 원본 인용(ReplyQuote)이 붙고 누르면 onReplyPress 로 원본으로 이동한다. 반응(reactions)은 말풍선 아래 칩으로 보이고 누르면 onReactionPress 가 내 반응을 켜거나 끈다.
  * 지운 메시지(deleted)는 말풍선 대신 가운데에 "삭제된 메시지입니다"만 보인다.
  * onSaveToRecord 가 있으면(가족 전체방의 사진) 전체 화면 사진 보기에 "가비 기록에 저장" 버튼이 붙고, 누르면 그 사진을 AI 비서의 가족 기록으로 올린다(결과 문구는 사진 보기에 보인다).
+ * 파일 메시지(attachment.kind === "file")는 사진 대신 파일 카드를 보인다: 본문을 누르면 열기/공유, 다운로드 아이콘은 내 파일/드라이브에 저장. 사진 보기에는 "사진첩에 저장" 버튼이 붙는다.
  * @param {{ message: object, mine: boolean, showName: boolean, showTime?: boolean, unread?: number, photoUrl?: string | null, highlighted?: boolean, searchTerms?: string[], searchCurrent?: boolean, onRetry?: (clientId: string) => void, onDiscard?: (clientId: string) => void, onActions?: (message: object, anchor: { x: number, y: number } | null) => void, onHeart?: (message: object) => void, onReactionPress?: (message: object, emoji: string) => void, onReplyPress?: (messageId: number) => void, linkBadges?: { kind: "event" | "todo", label: string }[], onSaveToRecord?: (attachment: object) => Promise<{ ok: boolean, message: string }>, nameOf?: (userId: string) => string | undefined }} props
  */
 export default function MessageBubble({ message, mine, showName, showTime = true, unread = 0, photoUrl, highlighted = false, searchTerms, searchCurrent = false, onRetry, onDiscard, onActions, onHeart, onReactionPress, onReplyPress, linkBadges, onSaveToRecord, nameOf }) {
@@ -42,7 +48,11 @@ export default function MessageBubble({ message, mine, showName, showTime = true
   const attachment = message.attachment ?? null;
   const [viewing, setViewing] = useState(false);
   const [record, setRecord] = useState({ saving: false, done: false, notice: "" }); // 가비 기록에 저장한 상태(이 사진 하나의 것)
-  const size = attachment ? fitSize(attachment.width, attachment.height) : null;
+  const isFile = isFileMessage(message);
+  const [fileState, setFileState] = useState({ busy: null, notice: "" }); // 파일 열기·저장 진행/결과
+  const fileBusyRef = useRef(false);
+  const [device, setDevice] = useState({ saving: false, notice: "" }); // 사진첩 저장 상태
+  const size = attachment && !isFile ? fitSize(attachment.width, attachment.height) : null;
   const boxRef = useRef(null); // 메뉴를 말풍선 바로 아래에 붙이려고 위치를 잰다
   const lastTap = useRef(null); // 앞선 누름 시각(더블탭 판정)
   const photoTimer = useRef(null); // 사진 한 번 누름은 더블탭인지 기다렸다가 크게 본다
@@ -77,6 +87,23 @@ export default function MessageBubble({ message, mine, showName, showTime = true
     setRecord({ saving: false, done: result.ok, notice: result.message });
   };
 
+  /** 파일 카드: 열기/공유(open) 또는 내 파일/드라이브에 저장(save). 진행 중에는 다시 누를 수 없다. */
+  const runFile = async (kind) => {
+    if (fileBusyRef.current) return; // 연속으로 눌러도 한 번만 실행(state 는 한 박자 늦다)
+    fileBusyRef.current = true;
+    setFileState({ busy: kind, notice: kind === "save" ? fileSaveHelp(Platform.OS) : "" });
+    const result = await (kind === "save" ? saveChatFile(attachment, Platform.OS) : openChatFile(attachment, Platform.OS));
+    fileBusyRef.current = false;
+    setFileState({ busy: null, notice: result.message });
+  };
+  /** 사진 보기의 "사진첩에 저장": 기기 사진첩(갤러리)에 저장한다. */
+  const saveToDevice = async () => {
+    if (device.saving) return;
+    setDevice({ saving: true, notice: "" });
+    const result = await savePhoto({ url: attachment.url }, saveFileName({ attachment_id: attachment.id, created_at: message.created_at }), Platform.OS);
+    setDevice({ saving: false, notice: result.message });
+  };
+
   if (message.deleted) {
     return (
       <View style={[styles.deletedRow, (highlighted || searchCurrent) && styles.highlight]} accessible accessibilityLabel={DELETED_TEXT}>
@@ -105,7 +132,8 @@ export default function MessageBubble({ message, mine, showName, showTime = true
   // 스크린리더: 바깥 말풍선이 하나로 묶여도 안쪽 동작(사진 크게 보기, 원본으로 이동)을 동작 목록으로 열어 둔다
   const a11yActions = [
     { name: "menu", label: "메뉴 열기" },
-    ...(attachment ? [{ name: "view", label: "사진 크게 보기" }] : []),
+    ...(attachment && !isFile ? [{ name: "view", label: "사진 크게 보기" }] : []),
+    ...(attachment && isFile ? [{ name: "open", label: "파일 열기" }, { name: "save", label: FILE_SAVE_LABEL }] : []),
     ...(message.reply_to && onReplyPress ? [{ name: "jump", label: "답장한 원본으로 이동" }] : []),
   ];
   const boxProps = onActions
@@ -118,15 +146,27 @@ export default function MessageBubble({ message, mine, showName, showTime = true
         onAccessibilityAction: (e) => {
           const name = e.nativeEvent.actionName;
           if (name === "menu") onActions(message, null);
-          else if (name === "view") setViewing(true);
+          else if (name === "view" && !isFile) setViewing(true);
+          else if (name === "open" && isFile) runFile("open");
+          else if (name === "save" && isFile) runFile("save");
           else if (name === "jump") onReplyPress?.(message.reply_to.id);
         },
       }
     : null;
   const bubble = (
-    <Box {...boxProps} style={[styles.bubble, attachment && styles.photoBubble, mine ? styles.mineBubble : styles.otherBubble, message.is_assistant && styles.assistantBubble, sending && styles.dim]}>
+    <Box {...boxProps} style={[styles.bubble, attachment && !isFile && styles.photoBubble, mine ? styles.mineBubble : styles.otherBubble, message.is_assistant && styles.assistantBubble, sending && styles.dim]}>
       {message.reply_to ? <ReplyQuote reply={message.reply_to} onPress={onReplyPress} onLongPress={onActions ? openMenu : undefined} /> : null}
-      {attachment ? (
+      {attachment && isFile ? (
+        <>
+          <FileCard attachment={attachment} busy={fileState.busy} onOpen={() => runFile("open")} onSave={() => runFile("save")} onLongPress={onActions ? openMenu : undefined} />
+          {fileState.notice ? (
+            <Text style={styles.fileNotice} accessibilityLiveRegion="polite">
+              {fileState.notice}
+            </Text>
+          ) : null}
+        </>
+      ) : null}
+      {attachment && !isFile ? (
         <>
           <Pressable onPress={tapPhoto} onLongPress={onActions ? openMenu : undefined} accessibilityRole="imagebutton" accessibilityLabel="사진, 누르면 크게 봐요">
             <AuthImage path={attachment.thumb_url} style={[styles.photo, { width: size.width, aspectRatio: size.width / size.height }]} />
@@ -139,6 +179,9 @@ export default function MessageBubble({ message, mine, showName, showTime = true
             recordSaving={record.saving}
             recordDone={record.done}
             recordNotice={record.notice}
+            onSaveToDevice={saveToDevice}
+            deviceSaving={device.saving}
+            deviceNotice={device.notice}
           />
         </>
       ) : null}
@@ -250,6 +293,7 @@ const styles = StyleSheet.create({
   assistantBubble: { backgroundColor: colors.honeySoft, borderColor: colors.accent },
   photoBubble: { paddingHorizontal: spacing.xs, paddingVertical: spacing.xs }, // 위쪽 bubble 의 가로·세로 여백(longhand)이 padding 보다 우선해서 같은 방향으로 덮어쓴다
   photo: { maxWidth: "100%", borderRadius: radius.md }, // 좁은 화면에서는 말풍선 안으로 비율을 지키며 줄어든다
+  fileNotice: { ...font.caption, color: colors.textSub, marginTop: spacing.xs },
   photoText: { paddingHorizontal: spacing.sm, paddingVertical: spacing.xs },
   dim: { opacity: 0.6 },
   linkChip: { flexDirection: "row", alignItems: "center", gap: spacing.xs, alignSelf: "flex-start", marginTop: spacing.xs, paddingHorizontal: spacing.sm, paddingVertical: 2, borderRadius: radius.pill, backgroundColor: colors.honeySoft },
