@@ -11,7 +11,6 @@ from sqlalchemy import select
 from app.features.billing import agent as billing_agent
 from app.features.care import agent as care_agent
 from app.features.family_group.models import User
-from app.shared.config import settings
 from app.shared.db import SessionLocal
 from evals.tab_agents.seed import seed, seed_write_targets
 
@@ -21,12 +20,6 @@ pytestmark = pytest.mark.usefixtures(
 
 CASES = json.loads((Path(__file__).parents[1] / "evals/tab_agents/cases.json").read_text("utf-8"))
 AGENTS = {"billing": billing_agent, "care": care_agent}
-
-
-@pytest.fixture(autouse=True)
-def _location_on(monkeypatch):
-    """위치 사례(c-location 등)는 위치 공유를 켠 상태를 본다. 기본은 꺼짐이다(CARE_LOCATION_ENABLED)."""
-    monkeypatch.setattr(settings, "care_location_enabled", True)
 
 
 def test_case_ids_are_unique_and_tools_exist(client, family):

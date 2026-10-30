@@ -33,7 +33,7 @@ def test_records_only_is_shareable():
 def test_shared_tools_of_tab_agents_are_shareable():
     calls = [
         _call("ask_billing", "get_month_summary", "list_expenses"),
-        _call("ask_care", "get_meal_suggestions"),
+        _call("ask_care", "get_today_summary"),
         _call("ask_family_chat", "search_messages", "analyze_recent_chat", "list_todos"),
     ]
     assert rv.judge(calls).visibility == rv.ROOM

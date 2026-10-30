@@ -73,11 +73,10 @@ def test_revoking_consent_still_works_and_deletes_stored_points(client, monkeypa
     assert _rows() == []  # 철회하면 저장된 내 위치가 지워진다
 
 
-def test_agent_has_no_location_tool_while_disabled(client, monkeypatch):
+def test_agent_never_has_the_location_tool(client, monkeypatch):
+    """돌봄 에이전트는 위치 도구를 주지 않는다(스위치를 켜도). 다시 살릴 때는 도구를 되돌려야 한다."""
     h, group = _solo(client)
-    monkeypatch.setattr(settings, "care_location_enabled", False)
-    assert TOOL not in _tool_names(client, h, group)
-    assert "지금 사용할 수 없" in agent.system_prompt("혼자")
-    monkeypatch.setattr(settings, "care_location_enabled", True)
-    assert TOOL in _tool_names(client, h, group)
-    assert "sharing=false" in agent.system_prompt("혼자")
+    for on in (False, True):
+        monkeypatch.setattr(settings, "care_location_enabled", on)
+        assert TOOL not in _tool_names(client, h, group)
+        assert "지금 사용할 수 없" in agent.system_prompt("혼자")
