@@ -79,9 +79,6 @@ export default function Composer({ value, onChangeText, onSend, onPickPhoto, onP
       ) : null}
       {hintsOn ? (
         <View style={styles.hintBox} accessibilityLabel="@가비 기능 예시">
-        <Text style={styles.hintTitle} accessibilityRole="header">
-          @가비로 이런 걸 물어볼 수 있어요
-        </Text>
         <ScrollView style={styles.hints} keyboardShouldPersistTaps="always" nestedScrollEnabled>
           {MENTION_EXAMPLES.map((ex) => (
             <Pressable
@@ -170,7 +167,6 @@ export default function Composer({ value, onChangeText, onSend, onPickPhoto, onP
 
 const styles = StyleSheet.create({
   hintBox: { marginHorizontal: spacing.sm, borderRadius: radius.md, backgroundColor: colors.surface, paddingTop: spacing.xs },
-  hintTitle: { ...font.caption, color: colors.textMuted, paddingHorizontal: spacing.md, paddingBottom: spacing.xs },
   hints: { maxHeight: 160 }, // 4줄 높이까지, 넘으면 스크롤
   hint: { flexDirection: "row", alignItems: "center", gap: spacing.sm, minHeight: 40, paddingHorizontal: spacing.md },
   chip: { minWidth: 64, alignItems: "center", paddingHorizontal: spacing.sm, paddingVertical: spacing.xs, borderRadius: radius.pill, backgroundColor: colors.honeySoft },
