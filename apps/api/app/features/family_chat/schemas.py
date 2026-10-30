@@ -91,6 +91,16 @@ class RoomOut(BaseModel):
     peer_user_id: str | None  # 1:1 방의 상대, 가족 전체방은 null
     last_message: MessageOut | None
     unread: int
+    muted: bool = False  # 내가 이 방의 알림을 껐는지(기본 켜짐)
+
+
+class MuteSet(BaseModel):
+    muted: bool
+
+
+class MuteOut(BaseModel):
+    room_id: str
+    muted: bool
 
 
 class DirectRoomCreate(BaseModel):

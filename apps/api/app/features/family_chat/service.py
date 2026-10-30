@@ -8,6 +8,7 @@ from .models import ASSISTANT_USER_ID, FAMILY, ChatRoom, Message, MessageAttachm
 from .schemas import (
     AttachmentOut,
     MessageOut,
+    MuteOut,
     ReactionOut,
     ReadPosition,
     ReadStateOut,
@@ -218,6 +219,7 @@ def _room_out(
     unread_count: int,
     peer: str | None,
     attachments: dict[int, MessageAttachment],
+    muted: bool = False,
 ) -> RoomOut:
     return RoomOut(
         id=room.id,
@@ -225,6 +227,7 @@ def _room_out(
         peer_user_id=peer,
         last_message=message_out(last[0], last[1], attachments.get(last[0].id)) if last else None,
         unread=unread_count,
+        muted=muted,
     )
 
 
@@ -239,12 +242,18 @@ def list_rooms(db: Session, user: User, group_id: str) -> list[RoomOut]:
         [family_last] if family_last else []
     )
     attachments = repo.attachments_for(db, [m.id for m, _ in lasts])
+    muted = repo.muted_room_ids(db, user.id, [family.id, *(r.id for r in rooms)])
     directs = [
-        _room_out(r, summary[r.id][0], summary[r.id][1], summary[r.id][2], attachments)
+        _room_out(
+            r, summary[r.id][0], summary[r.id][1], summary[r.id][2], attachments, r.id in muted
+        )
         for r in rooms
     ]
     directs.sort(key=lambda r: r.last_message.id if r.last_message else 0, reverse=True)
-    return [_room_out(family, family_last, family_unread, None, attachments), *directs]
+    family_out = _room_out(
+        family, family_last, family_unread, None, attachments, family.id in muted
+    )
+    return [family_out, *directs]
 
 
 def open_direct_room(db: Session, user: User, group_id: str, peer_id: str) -> RoomOut:
@@ -259,4 +268,13 @@ def open_direct_room(db: Session, user: User, group_id: str, peer_id: str) -> Ro
     )
     last, unread_count, peer = repo.rooms_summary(db, user.id, [room])[room.id]
     attachments = repo.attachments_for(db, [last[0].id] if last else [])
-    return _room_out(room, last, unread_count, peer, attachments)
+    muted = room.id in repo.muted_room_ids(db, user.id, [room.id])
+    return _room_out(room, last, unread_count, peer, attachments, muted)
+
+
+def set_room_muted(db: Session, user: User, group_id: str, room_id: str, muted: bool) -> MuteOut:
+    """이 방의 알림을 나만 끄거나 켠다(멱등). 설정만 저장하고 읽지 않은 수에는 영향이 없다.
+    볼 수 없는 방은 다른 방 API 와 같이 404 다."""
+    room = resolve_room(db, user, group_id, room_id)
+    repo.set_muted(db, room.id, user.id, muted)
+    return MuteOut(room_id=room.id, muted=muted)

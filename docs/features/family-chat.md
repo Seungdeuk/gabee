@@ -511,6 +511,13 @@
 - 이 가족의 AI 설정이 꺼져 있는 경우(예전에 꺼 둔 가족)에는 "대화 분석하기"를 눌러도 바로 켜지 않고, 켜는 것이 **가족 전체에 적용된다**는 확인 카드(`ENABLE_ON_ANALYZE_*`: "가족의 AI 기능이 꺼져 있어요" + 설명 + "켜고 분석하기"/"취소")를 먼저 보인다. **"켜고 분석하기"를 눌렀을 때만** `PUT /family-chat/ai/settings`(enabled true)로 켠 뒤 분석하고, 취소하면 아무것도 켜지지 않는다(안 켜면 서버가 `ai_not_enabled` 로 막는다). 이미 켜져 있으면 확인 없이 곧바로 분석한다. 끄는 UI는 없다(서버 API 는 구성원 누구나 가능, #160 — 앱에 끄는 화면이 없는 점은 후속 과제).
 - `tests/privacycopy.test.js`·`privacypreview.test.js` 의 동의 흐름 시험(켜기 확인·관리자만 끄기 등)은 이 정책 변경으로 새 시험(버튼 없음, 꺼져 있을 때만 분석 직전에 켬, PUT 호출 위치 허용 목록 유지)으로 바꿨다. 동의 문구(`privacyCopy.js`)는 가입 동의 화면 등에서 쓸 수 있어 남겼다.
 
+## 채팅방 알림 끄기 (서버, release/1.1)
+- `PUT /family-chat/rooms/{room_id}/mute {muted}` → 200 `{room_id, muted}`(멱등). 방 접근 규칙은 `resolve_room` 과 같다: 다른 가족의 방·내가 참여자가 아닌 1:1 방·없는 방은 404. `GET /family-chat/rooms` 의 각 방과 1:1 방 열기(`POST /rooms/direct`) 응답에 `muted: bool`(기본 false)이 붙는다.
+- DB: 새 테이블 `chat_room_mutes`(기본키 `(room_id, user_id)`, 리비전 `c606f5b0deb6`, expand). 행이 있으면 끈 것, 켜면 행을 지운다. 방 목록은 내 방들의 muted 를 쿼리 한 번(`repo.muted_room_ids`)으로 모아 방 수와 상관없이 쿼리 수가 일정하다.
+- 범위: 설정 저장만. 푸시는 아직 없고, 읽지 않은 수(`unread`) 계산은 그대로다.
+- 시험: `tests/test_room_mute.py`(기본값, 가족 전체방·1:1 방 켜기/끄기, 멱등, 사용자별 독립, 안 읽은 수 유지, 접근 거부, 요청 검증).
+- 앱 화면(방 행 스와이프·채팅방 서랍 스위치)은 아래 앱 절을 본다.
+
 ### 방별 알림 끄기 (앱, release/1.1)
 
 - 서버 계약: 방 목록 각 방의 `muted`(없으면 false), `PUT /family-chat/rooms/{room_id}/mute` 본문 `{muted}` → `{room_id, muted}`. 푸시는 아직 없어 설정 저장만 하고, 소통 탭 읽지 않음 숫자 배지는 그대로다.

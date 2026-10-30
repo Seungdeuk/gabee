@@ -19,6 +19,8 @@ from .schemas import (
     DirectRoomCreate,
     MessageCreate,
     MessageOut,
+    MuteOut,
+    MuteSet,
     ReactionIn,
     ReadMark,
     ReadPosition,
@@ -54,6 +56,18 @@ def list_rooms(
     db: Session = Depends(get_db),
 ) -> list[RoomOut]:
     return service.list_rooms(db, user, group_id)
+
+
+@router.put("/rooms/{room_id}/mute", response_model=MuteOut)
+def set_room_mute(
+    room_id: str,
+    body: MuteSet,
+    user: User = Depends(current_user),
+    group_id: str = Depends(current_group_id),
+    db: Session = Depends(get_db),
+) -> MuteOut:
+    """이 방의 알림을 나만 끄거나 켠다(멱등). 설정만 저장한다."""
+    return service.set_room_muted(db, user, group_id, room_id, body.muted)
 
 
 @router.post("/rooms/direct", response_model=RoomOut)
