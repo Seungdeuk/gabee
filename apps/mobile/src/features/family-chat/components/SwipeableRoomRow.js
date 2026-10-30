@@ -40,12 +40,15 @@ export default function SwipeableRoomRow({ room, onPress, onToggleMute }) {
         </View>
       )}
     >
-      <RoomRow room={room} onPress={onPress} onToggleMute={onToggleMute} />
+      <View style={styles.front}>
+        <RoomRow room={room} onPress={onPress} onToggleMute={onToggleMute} />
+      </View>
     </ReanimatedSwipeable>
   );
 }
 
 const styles = StyleSheet.create({
+  front: { backgroundColor: colors.background }, // 행 배경이 투명하면 뒤에 깔린 액션이 닫힌 상태에서도 비친다
   actionWrap: { width: ACTION_WIDTH, justifyContent: "center", paddingVertical: spacing.xs },
   action: { flex: 1, alignItems: "center", justifyContent: "center", gap: spacing.xs, borderRadius: radius.lg, backgroundColor: colors.honeySoft },
   actionPressed: { backgroundColor: colors.surfaceStrong },
