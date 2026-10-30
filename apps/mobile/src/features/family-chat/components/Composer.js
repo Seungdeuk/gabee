@@ -1,12 +1,13 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useEffect, useRef, useState } from "react";
-import { ActivityIndicator, Keyboard, Platform, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, Keyboard, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 
 import { colors, font, radius, spacing } from "@/theme";
 
 import { canSend, MAX_TEXT, shouldSendOnEnter } from "../chatUtils";
 import { isPlusFile, isPlusPhoto, PLUS_SOON_MS, PLUS_SOON_NOTICE } from "../fileUtils";
 import { replyLine } from "../messageActions";
+import { MENTION_EXAMPLES, mentionHintsVisible } from "../mention";
 import PlusSheet from "./PlusSheet";
 
 const LINE_HEIGHT = font.body.lineHeight;
@@ -18,9 +19,9 @@ const INNER_SLOT = INNER_BTN; // 오른쪽 자리: 버튼 한 개 폭으로 고�
  * 메시지 입력줄: 왼쪽 + 버튼(아래에서 올라오는 메뉴 시트: 사진·파일·일정·정산·안부 — 사진은 바로 갤러리에서 한 장, 파일은 문서 파일 한 개를 고르고, 일정·정산·안부는 아직 "준비 중이에요" 안내), 둥근 여러 줄 입력칸(최대 5줄), 입력칸 오른쪽 안의 보내기 버튼(글자가 있을 때만 켜짐).
  * 사진·파일을 보내는 중에는 + 버튼이 진행 표시·비활성이다. 보내지 못하면 입력줄 위에 오류 문구를 보인다(다시 눌러 재시도).
  * 답장 중이면(replyTo) 입력줄 위에 "○○에게 답장" 바(원본 한 줄 미리보기, 닫기)가 뜨고 입력칸에 커서가 간다.
- * @param {{ value: string, onChangeText: (text: string) => void, onSend: () => void, onPickPhoto: () => void, onPickFile?: () => void, photoBusy?: boolean, fileBusy?: boolean, photoError?: string, onDismissPhotoError?: () => void, replyTo?: { id: number, user_name: string, text: string, deleted: boolean, has_attachment: boolean } | null, onCancelReply?: () => void }} props
+ * @param {{ value: string, onChangeText: (text: string) => void, onSend: () => void, onPickPhoto: () => void, onPickFile?: () => void, photoBusy?: boolean, fileBusy?: boolean, photoError?: string, onDismissPhotoError?: () => void, replyTo?: { id: number, user_name: string, text: string, deleted: boolean, has_attachment: boolean } | null, onCancelReply?: () => void, direct?: boolean }} props
  */
-export default function Composer({ value, onChangeText, onSend, onPickPhoto, onPickFile, photoBusy = false, fileBusy = false, photoError = "", onDismissPhotoError, replyTo = null, onCancelReply }) {
+export default function Composer({ value, onChangeText, onSend, onPickPhoto, onPickFile, photoBusy = false, fileBusy = false, photoError = "", onDismissPhotoError, replyTo = null, onCancelReply, direct = false }) {
   const [sheetOpen, setSheetOpen] = useState(false);
   const [soon, setSoon] = useState(false); // "준비 중이에요" 안내 줄
   useEffect(() => {
@@ -31,6 +32,8 @@ export default function Composer({ value, onChangeText, onSend, onPickPhoto, onP
   const ok = canSend(value);
   const sending = photoBusy || fileBusy; // 사진·파일을 보내는 동안은 + 버튼이 진행 표시
   const inputRef = useRef(null);
+  const [sel, setSel] = useState(null); // 예시를 채운 직후에만 커서를 끝으로 둔다(안드로이드). 평소에는 제어하지 않는다
+  const hintsOn = mentionHintsVisible(value, direct); // `@` 를 치면 @가비 예시 목록(1:1 방은 숨김)
   const replyId = replyTo?.id ?? null;
   useEffect(() => {
     if (replyId != null) inputRef.current?.focus(); // 답장을 시작하면 바로 쓸 수 있게
@@ -40,6 +43,11 @@ export default function Composer({ value, onChangeText, onSend, onPickPhoto, onP
     if (!shouldSendOnEnter(event.nativeEvent, Platform.OS)) return;
     event.preventDefault?.();
     if (ok) onSend();
+  };
+  const pickExample = (text) => {
+    setSel({ start: text.length, end: text.length });
+    onChangeText(text); // 보내지 않고 입력창에만 채운다. 고쳐서 보낼 수 있다
+    inputRef.current?.focus();
   };
   return (
     <View style={styles.wrap}>
@@ -69,6 +77,33 @@ export default function Composer({ value, onChangeText, onSend, onPickPhoto, onP
           </Pressable>
         </View>
       ) : null}
+      {hintsOn ? (
+        <View style={styles.hintBox} accessibilityLabel="@가비 기능 예시">
+        <Text style={styles.hintTitle} accessibilityRole="header">
+          @가비로 이런 걸 물어볼 수 있어요
+        </Text>
+        <ScrollView style={styles.hints} keyboardShouldPersistTaps="always" nestedScrollEnabled>
+          {MENTION_EXAMPLES.map((ex) => (
+            <Pressable
+              key={ex.key}
+              onPress={() => pickExample(ex.text)}
+              accessibilityRole="button"
+              accessibilityLabel={`예시 입력: ${ex.text}`}
+              style={({ pressed }) => [styles.hint, pressed && styles.pressed]}
+            >
+              <View style={styles.chip}>
+                <Text style={styles.chipText} numberOfLines={1}>
+                  {ex.category}
+                </Text>
+              </View>
+              <Text style={styles.hintText} numberOfLines={2}>
+                {ex.text}
+              </Text>
+            </Pressable>
+          ))}
+        </ScrollView>
+        </View>
+      ) : null}
       {value.length > MAX_TEXT - 200 ? (
         <Text style={[styles.count, value.length > MAX_TEXT && styles.over]}>
           {value.length} / {MAX_TEXT}
@@ -93,7 +128,12 @@ export default function Composer({ value, onChangeText, onSend, onPickPhoto, onP
             ref={inputRef}
             style={styles.input}
             value={value}
-            onChangeText={onChangeText}
+            onChangeText={(t) => {
+              setSel(null);
+              onChangeText(t);
+            }}
+            selection={sel ?? undefined}
+            onSelectionChange={() => setSel(null)}
             placeholder="메시지를 입력하세요"
             placeholderTextColor={colors.placeholder}
             multiline
@@ -129,6 +169,13 @@ export default function Composer({ value, onChangeText, onSend, onPickPhoto, onP
 }
 
 const styles = StyleSheet.create({
+  hintBox: { marginHorizontal: spacing.sm, borderRadius: radius.md, backgroundColor: colors.surface, paddingTop: spacing.xs },
+  hintTitle: { ...font.caption, color: colors.textMuted, paddingHorizontal: spacing.md, paddingBottom: spacing.xs },
+  hints: { maxHeight: 160 }, // 4줄 높이까지, 넘으면 스크롤
+  hint: { flexDirection: "row", alignItems: "center", gap: spacing.sm, minHeight: 40, paddingHorizontal: spacing.md },
+  chip: { minWidth: 64, alignItems: "center", paddingHorizontal: spacing.sm, paddingVertical: spacing.xs, borderRadius: radius.pill, backgroundColor: colors.honeySoft },
+  chipText: { ...font.caption, color: colors.textSub },
+  hintText: { ...font.caption, color: colors.text, flex: 1, minWidth: 0 },
   replyBar: { flexDirection: "row", alignItems: "center", gap: spacing.sm, marginHorizontal: spacing.sm, paddingHorizontal: spacing.md, paddingVertical: spacing.xs, borderLeftWidth: 3, borderLeftColor: colors.accent, borderRadius: radius.sm, backgroundColor: colors.surface },
   replyTexts: { flex: 1, minWidth: 0 },
   replyName: { ...font.tab, fontFamily: font.bodyStrong.fontFamily, color: colors.textSub },
