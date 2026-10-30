@@ -50,7 +50,7 @@ test("승인 정책: 답장 추천은 입력창에 넣기만 하고, 일정·할
   assert.doesNotMatch(panel, /suggestReplies|suggestTopics|run\("(replies|topics)"/);
   assert.match(panel, /onPick=\{pickText\}/);
   // 일정·할 일 등록은 사용자가 누르는 핸들러에 연결돼 있고 effect 에서 부르지 않는다
-  assert.match(panel, /onPress=\{\(\) => register\(i, c\)\}/);
+  assert.match(panel, /onPress=\{\(\) => register\(c\)\}/);
   assert.match(panel, /onRegister=\{\(\) => registerTodo\(i, t\)\}/);
   assert.doesNotMatch(panel.slice(panel.indexOf("useEffect"), panel.indexOf("useEffect") + 150), /register/);
 });
