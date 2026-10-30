@@ -7,8 +7,8 @@ import { colors, font, radius, spacing } from "@/theme";
 import { PLUS_MENU_ITEMS } from "../fileUtils";
 
 /**
- * 입력줄의 + 버튼이 여는, 아래에서 올라오는 메뉴 시트: 사진 · 일정 · 정산 · 안부(아이콘+이름 한 줄씩). 바깥을 누르면 닫힌다.
- * @param {{ visible: boolean, onClose: () => void, onSelect: (key: string) => void }} props onSelect 는 항목 key(photo/schedule/settle/safety)를 받는다
+ * 입력줄의 + 버튼이 여는, 아래에서 올라오는 메뉴 시트: 사진 · 파일 · 일정 · 정산 · 안부(아이콘+이름 한 줄씩). 바깥을 누르면 닫힌다.
+ * @param {{ visible: boolean, onClose: () => void, onSelect: (key: string) => void }} props onSelect 는 항목 key(photo/file/schedule/settle/safety)를 받는다
  */
 export default function PlusSheet({ visible, onClose, onSelect }) {
   return (
