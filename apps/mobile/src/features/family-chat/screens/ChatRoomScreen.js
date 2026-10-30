@@ -39,6 +39,7 @@ const FAR = 400; // 바닥에서 이 이상 올라와 있으면 "맨 아래로" 
 const HIGHLIGHT_MS = 2000; // 검색 결과로 이동한 메시지를 강조해 두는 시간
 const SETTLE_MS = 600; // 이동 직후 이 시간 동안은 위로 자동 불러오기를 막아 이동 위치가 밀리지 않게 한다
 const NO_MESSAGES = []; // 과거 창을 보는 동안 읽음 처리에 넘기는 빈 목록
+const LIST_READY_MAX_MS = 1500; // 처음 맨 아래로 자리 잡는 동안 목록을 숨기는 최대 시간(그 뒤에는 무조건 보인다)
 const END_SETTLE_MS = 150; // 맨 아래로 간 뒤 마지막 항목 높이가 확정되길 기다리는 시간
 
 /** 가족 전체방의 사진을 AI 비서의 가족 기록으로 올린다(사진 보기의 "가비 기록에 저장"). */
@@ -75,6 +76,7 @@ export default function ChatRoomScreen() {
   const [highlightId, setHighlightId] = useState(null);
   const pickPinRef = useRef(null); // 검색 이동 효과가 항상 최신 pickPin 을 부르도록
   const [goingLive, setGoingLive] = useState(false);
+  const [listReady, setListReady] = useState(false); // 방에 처음 들어갈 때 맨 아래로 자리 잡기 전까지 목록을 숨겨, 위에서부터 훑으며 내려가는 모습이 보이지 않게 한다
   const [draft, setDraft] = useState("");
   const [aiOpen, setAiOpen] = useState(false);
   const mention = useMention(); // @가비 로 부른 뒤 나에게만 보이는 답·안내
@@ -220,6 +222,16 @@ export default function ChatRoomScreen() {
     if (newest > newestId.current && newestId.current > 0 && !nearBottom.current) setHasNew(true);
     newestId.current = Math.max(newestId.current, newest);
   }, [chat.messages]);
+
+  useEffect(() => {
+    if (chat.status === "loading" || listReady) return undefined;
+    if (chat.focusing || initialFocus != null || chat.messages.length === 0) {
+      setListReady(true); // 과거 위치로 열거나 내용이 없으면 숨길 이유가 없다
+      return undefined;
+    }
+    const t = setTimeout(() => setListReady(true), LIST_READY_MAX_MS);
+    return () => clearTimeout(t);
+  }, [chat.status, chat.focusing, chat.messages.length, initialFocus, listReady]);
 
   // 검색 결과(또는 focus 인자)로 이동: 목록이 그 창으로 바뀌면 해당 메시지로 스크롤하고 잠깐 강조한다
   useEffect(() => {
@@ -452,7 +464,7 @@ export default function ChatRoomScreen() {
         <View style={styles.listArea}>
         <FlatList
           ref={listRef}
-          style={styles.list}
+          style={[styles.list, !listReady && styles.listHidden]}
           data={items}
           keyExtractor={(it) => it.key}
           renderItem={({ item }) =>
@@ -508,6 +520,7 @@ export default function ChatRoomScreen() {
               clearTimeout(endTimer.current);
               endTimer.current = setTimeout(() => {
                 if (nearBottom.current && !chat.focusing) scrollToEnd(false);
+                setListReady(true);
               }, END_SETTLE_MS);
             }
             scrollPos.current.height = height;
@@ -516,6 +529,11 @@ export default function ChatRoomScreen() {
           keyboardShouldPersistTaps="handled"
           contentContainerStyle={styles.listContent}
         />
+        {!listReady ? (
+          <View style={styles.listLoading} pointerEvents="none">
+            <ActivityIndicator color={colors.accent} accessibilityLabel="대화를 불러오는 중" />
+          </View>
+        ) : null}
         {chat.focusing ? <LiveReturnButton onPress={goLive} busy={goingLive || chat.loadingNewer} /> : null}
         {far && !chat.focusing ? (
           <Pressable
@@ -593,6 +611,8 @@ const styles = StyleSheet.create({
   emptyText: { ...font.body, color: colors.textSub, textAlign: "center" },
   emptyList: { alignItems: "center", gap: spacing.sm, paddingVertical: spacing.xxl * 2 },
   list: { flex: 1, backgroundColor: colors.background },
+  listHidden: { opacity: 0 },
+  listLoading: { ...StyleSheet.absoluteFillObject, alignItems: "center", justifyContent: "center" },
   listContent: { paddingVertical: spacing.md },
   older: { paddingVertical: spacing.md },
   dayWrap: { alignItems: "center", paddingVertical: spacing.md },
