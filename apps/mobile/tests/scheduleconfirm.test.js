@@ -162,7 +162,7 @@ test("정산·돌봄 제안을 카드로 바꾸고, 토큰이 없거나 모르�
     status: CARD_PENDING,
     resultText: "",
   });
-  assert.equal(cards[1].title, "안부 에이전트의 제안");
+  assert.equal(cards[1].title, "돌봄 에이전트의 제안");
   assert.deepEqual(mapProposals(undefined), []);
   assert.deepEqual(mapProposals("x"), []);
 });

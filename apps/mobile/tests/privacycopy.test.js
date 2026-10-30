@@ -36,12 +36,12 @@ test("상세에는 E2EE 아님·소유자/관리자만·끄면 멈춤·도우미
   assert.match(all, /AI 기능이 모두 멈추고/);
   assert.match(all, /AI 비서: 질문과 앞 대화\(최근 10개\)를 가리지 않고/);
   assert.match(all, /문서 질문: 문서를 저장할 때/);
-  assert.match(all, /지갑·안부 도우미/);
+  assert.match(all, /정산·돌봄 도우미/);
   assert.match(all, /위치/);
 });
 
-test("요약은 AI 비서·문서 질문·일정·지갑·안부 도우미와 대화 분석(답장·대화 주제 추천 포함)을 모두 언급한다", () => {
-  for (const word of ["대화 분석", "답장 추천", "대화 주제 추천", "AI 비서", "문서 질문", "일정", "지갑", "안부"]) assert.ok(summary.includes(word), word);
+test("요약은 AI 비서·문서 질문·일정·정산·돌봄 도우미와 대화 분석(답장·대화 주제 추천 포함)을 모두 언급한다", () => {
+  for (const word of ["대화 분석", "답장 추천", "대화 주제 추천", "AI 비서", "문서 질문", "일정", "정산", "돌봄"]) assert.ok(summary.includes(word), word);
 });
 
 test("대화 분석 상세: 한 번에 보내고, 누를 때마다 별도 확인 없이 바로 전송되며, 가린 내용은 결과 화면에 개수로 알린다", () => {
