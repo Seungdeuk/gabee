@@ -9,7 +9,7 @@ import { familyRoomId } from "./searchUtils";
  * 켜고 끌 때는 화면에 먼저 반영한 뒤 저장하고 실패하면 되돌린다. 값을 알기 전에는 muted 가 null 이다.
  * 저장 중에는 다시 눌러도 무시하고, 저장 중에 도착한 목록 응답은 낙관적 값을 덮어쓰지 않는다.
  * @param {{ roomId: string | null, enabled?: boolean }} args roomId 가 null 이면 가족 전체방. enabled 가 true 가 될 때마다 목록을 다시 읽는다
- * @returns {{ muted: boolean | null, toggle: (muted: boolean) => Promise<boolean> }} toggle 은 저장에 성공하면 true
+ * @returns {{ muted: boolean | null, toggle: (muted: boolean) => Promise<boolean | null> }} toggle 은 저장에 성공하면 true, 실패하면 false, 무시했으면 null
  */
 export default function useRoomMute({ roomId, enabled = true }) {
   const [muted, setMuted] = useState(null);
@@ -47,7 +47,7 @@ export default function useRoomMute({ roomId, enabled = true }) {
 
   const toggle = useCallback(async (next) => {
     const id = idRef.current ?? null;
-    if (!id || pending.current) return false;
+    if (!id || pending.current) return null; // 값을 모르거나 저장 중이라 무시한 누름은 실패가 아니다
     pending.current = true;
     setMuted(next);
     try {
