@@ -63,7 +63,7 @@ export default function RoomRow({ room, onPress, onToggleMute, divider = false }
 
 const BADGE_SIZE = 22;
 const AVATAR_SIZE = 56;
-const DIVIDER_HEIGHT = 2 / PixelRatio.get(); // 정확히 물리 픽셀 2개: 1dp 는 화면 밀도에 따라 2~3픽셀로 갈려 행마다 굵기가 달라 보인다
+const DIVIDER_HEIGHT = 1 / PixelRatio.get(); // 정확히 물리 픽셀 1개: 1dp 는 화면 밀도에 따라 2~3픽셀로 갈려 행마다 굵기가 달라 보이고, 2픽셀은 줄여 본 화면에서 줄 사이에 걸리면 두꺼워 보인다
 
 const styles = StyleSheet.create({
   row: {
@@ -76,7 +76,7 @@ const styles = StyleSheet.create({
     borderRadius: radius.lg,
   },
   pressed: { backgroundColor: colors.surface },
-  divider: { height: DIVIDER_HEIGHT, marginLeft: spacing.sm + AVATAR_SIZE + spacing.md, backgroundColor: colors.dividerStrong },
+  divider: { height: DIVIDER_HEIGHT, marginLeft: spacing.sm + AVATAR_SIZE + spacing.md, backgroundColor: colors.disabled },
   main: { flex: 1, minWidth: 0, gap: spacing.xs, paddingTop: spacing.xs },
   titleLine: { flexDirection: "row", alignItems: "center", gap: spacing.xs },
   name: { ...font.cardTitle, color: colors.text, flexShrink: 1 },
