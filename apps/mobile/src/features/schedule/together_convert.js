@@ -37,6 +37,7 @@ export function toRequest(r, family) {
     replies,
     cancelled: Boolean(r.canceled),
     itemId: r.my_event_id ?? null,
+    editedAt: r.edited_at ?? null,
   };
 }
 

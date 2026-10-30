@@ -264,7 +264,7 @@ export function linkA11yLabel(link, nameOfSender) {
 
 /**
  * 다음 조회까지 기다릴 시간: 정상이면 30초, 연속 실패마다 두 배로 늘어 최대 2분(고정 메시지와 같다).
- * poll 이 false(1:1 방: 연결을 만드는 경로가 없어 처음과 시트를 열 때만 조회)면 null — 반복하지 않는다.
+ * poll 이 false(1:1 방: 연결을 만드는 경로가 없어 처음에만 조회)면 null — 반복하지 않는다.
  * @param {number} failures
  * @param {boolean} [poll]
  * @returns {number | null} 밀리초
@@ -296,17 +296,6 @@ export function tryBegin(busy, key) {
  * @returns {"keep" | "revert"}
  */
 export const deleteFailureEffect = (error) => (error?.status === 404 ? "keep" : "revert");
-
-/**
- * 한 번만 true 를 돌려주는 깃발(ref 모양 { current }): 읽으면 바로 내린다. 서랍이 닫힌 뒤 시트를 한 번만 열 때 쓴다.
- * @param {{ current: boolean }} box
- * @returns {boolean}
- */
-export function takeFlag(box) {
-  const was = Boolean(box.current);
-  box.current = false;
-  return was;
-}
 
 /**
  * 어떤 경우에도 던지지 않고 끝에 반드시 leave 를 부르는 실행기. work 가 던지면 onError 를 부르고 false 를 돌려준다(onError·leave 가 던져도 삼킨다).

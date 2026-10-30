@@ -9,7 +9,10 @@ from .schemas import (
     AgentRequest,
     AgentResponse,
     ConfirmRequest,
+    SuggestionLater,
+    SuggestionOut,
     SuggestionsOut,
+    SuggestionsRequest,
 )
 
 # 메인 오케스트레이터가 생기기 전까지 일정 에이전트를 부르는 입구. 메인이 생기면 메인이 handler.handle 을 직접 부른다
@@ -37,15 +40,49 @@ def confirm_agent_action(
     return handler.confirm(db, user.id, group_id, body)
 
 
+def _slot_out(slot: suggest.Slot) -> SuggestionsOut:
+    return SuggestionsOut(
+        suggestions=[handler.suggestion_out(s) for s in slot.items],
+        exhausted=slot.state == suggest.STATE_EXHAUSTED,
+        state=slot.state,
+        can_refresh=slot.can_refresh,
+    )
+
+
 @router.get("/suggestions", response_model=SuggestionsOut)
 def list_suggestions(
     user=Depends(current_user),
     group_id: str = Depends(current_group_id),
     db: Session = Depends(get_db),
 ) -> SuggestionsOut:
-    """대기 중인 추천(없으면 오늘 3묶음 안에서 새로 만든다). AI 를 부를 때만 동의·한도를 본다."""
+    """오늘의 추천 슬롯(대기 추천이 있으면 그대로, 없으면 오늘 호출이 남았을 때 새로 만든다). AI 를 부를 때만 동의·한도를 본다.
+    개인 AI 채팅은 보내지 않으므로 이 입구로 만든 추천에는 쓰이지 않는다(앱은 POST 를 쓴다)."""
     ensure_group_member(db, user.id, group_id)
-    items, exhausted = suggest.supply(db, user.id, group_id)
-    return SuggestionsOut(
-        suggestions=[handler.suggestion_out(s) for s in items], exhausted=exhausted
+    return _slot_out(suggest.supply_slot(db, user.id, group_id))
+
+
+@router.post("/suggestions", response_model=SuggestionsOut)
+def create_suggestions(
+    body: SuggestionsRequest | None = None,
+    user=Depends(current_user),
+    group_id: str = Depends(current_group_id),
+    db: Session = Depends(get_db),
+) -> SuggestionsOut:
+    """GET 과 같은 결과인데 개인 AI 채팅의 최근 내 말(`chat`)을 추천의 입력으로 함께 받는다. 대기 추천이 있으면 AI 를 부르지 않는다."""
+    ensure_group_member(db, user.id, group_id)
+    return _slot_out(suggest.supply_slot(db, user.id, group_id, body.chat if body else None))
+
+
+@router.put("/suggestions/{suggestion_id}/later", response_model=SuggestionOut)
+def mark_suggestion_later(
+    suggestion_id: str,
+    body: SuggestionLater,
+    user=Depends(current_user),
+    group_id: str = Depends(current_group_id),
+    db: Session = Depends(get_db),
+) -> SuggestionOut:
+    """추천의 "나중에" 표시를 켜거나 끈다(켜면 나중에, 끄면 다시 대기). 확정된 추천이나 남의 추천은 400. AI 를 부르지 않는다."""
+    ensure_group_member(db, user.id, group_id)
+    return handler.suggestion_out(
+        suggest.set_later(db, user.id, group_id, suggestion_id, body.later)
     )

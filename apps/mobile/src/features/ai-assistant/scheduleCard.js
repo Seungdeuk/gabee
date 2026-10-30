@@ -7,6 +7,16 @@ export const CARD_PENDING = "pending";
 export const CARD_DONE = "done";
 export const CARD_CANCELLED = "cancelled";
 export const CANCELLED_TEXT = "취소했어요. 아무것도 바뀌지 않았어요.";
+export const SHARE_CANCELLED_TEXT = "공유하지 않았어요";
+export const SHARE_ITEMS_MAX = 20;
+
+/** 카드를 닫았을 때 보여 줄 결과 문구(종류별). 방 공유 선택 카드는 아무것도 바뀌는 게 없어서 문구가 다르다. */
+export function cancelledText(card) {
+  return card?.action === "share_select" ? SHARE_CANCELLED_TEXT : CANCELLED_TEXT;
+}
+
+// 일정(가족 공유 등록·수정·삭제)과 부탁(보내기·받는 사람 바꾸기·취소)의 확인 카드 종류
+export const CONFIRM_ACTIONS = ["register", "edit", "delete", "request_register", "request_edit", "request_cancel", "share_select"];
 
 /**
  * 서버의 confirm_cards 를 앱이 쓰는 모양으로 바꾼다. 모르는 종류는 버린다(눌러서 실행할 수 없는 카드는 보이지 않게).
@@ -15,17 +25,48 @@ export const CANCELLED_TEXT = "취소했어요. 아무것도 바뀌지 않았어
  */
 export function mapConfirmCards(cards) {
   return (Array.isArray(cards) ? cards : [])
-    .filter((c) => c && c.kind === "schedule" && ["register", "edit", "delete"].includes(c.action) && c.pending_action && typeof c.pending_action === "object")
+    // 방 공유 선택 카드는 실행할 pending_action 이 없다({} 여도 살린다). 나머지는 실행 정보가 있어야 보인다
+    .filter((c) => c && c.kind === "schedule" && CONFIRM_ACTIONS.includes(c.action) && (c.action === "share_select" || (c.pending_action && typeof c.pending_action === "object")))
     .map((c) => ({
       kind: "schedule",
       action: c.action,
       title: String(c.title ?? ""),
       lines: Array.isArray(c.lines) ? c.lines.map(String) : [],
       sharedWith: Array.isArray(c.shared_with) ? c.shared_with.map(String) : [],
-      pendingAction: c.pending_action,
+      pendingAction: c.pending_action && typeof c.pending_action === "object" ? c.pending_action : {},
+      ...(c.action === "share_select" ? { items: mapShareItems(c.items) } : {}),
       status: CARD_PENDING,
       resultText: "",
-    }));
+    }))
+    .filter((c) => c.action !== "share_select" || c.items.length > 0); // 고를 항목이 없는 공유 카드는 보이지 않게
+}
+
+/** 공유 후보(items)를 { id, line } 목록으로 정리한다: 문자열이 아니거나 빈 줄·id 없는 것·중복 id 는 버리고 최대 20개. */
+export function mapShareItems(items) {
+  const seen = new Set();
+  const out = [];
+  for (const it of Array.isArray(items) ? items : []) {
+    const id = typeof it?.id === "string" || typeof it?.id === "number" ? String(it.id) : "";
+    const line = typeof it?.line === "string" ? it.line.trim() : "";
+    if (!id || !line || seen.has(id)) continue;
+    seen.add(id);
+    out.push({ id, line });
+    if (out.length >= SHARE_ITEMS_MAX) break;
+  }
+  return out;
+}
+
+/**
+ * 방에 보낼 메시지 본문: 고른 항목의 line 을 항목(목록) 순서대로 줄바꿈으로 잇는다. 고른 게 없으면 빈 문자열, 목록에 없는 id 는 무시한다.
+ * @param {{ id: string, line: string }[]} items
+ * @param {string[]} selectedIds
+ */
+export function buildShareText(items, selectedIds) {
+  const picked = new Set(selectedIds ?? []);
+  return (Array.isArray(items) ? items : [])
+    .filter((it) => picked.has(it.id))
+    .map((it) => it.line)
+    .join("\n");
 }
 
 export const PROPOSAL_TABS = { billing: "정산", care: "안부" };
@@ -72,6 +113,12 @@ export function cardButtons(card) {
       { key: "cancel", label: "취소", tone: "ghost" },
     ];
   }
+  if (card.action === "share_select") {
+    return [
+      { key: "share", label: "방에 공유", share: false, tone: "main" },
+      { key: "cancel", label: "닫기", tone: "ghost" },
+    ];
+  }
   if (card.action === "register") {
     return card.sharedWith.length > 0
       ? [
@@ -88,6 +135,18 @@ export function cardButtons(card) {
     return [
       { key: "ok", label: "삭제", share: false, tone: "danger" },
       { key: "cancel", label: "취소", tone: "ghost" },
+    ];
+  }
+  if (card.action === "request_register") {
+    return [
+      { key: "ok", label: "보내기", share: false, tone: "main" },
+      { key: "cancel", label: "취소", tone: "ghost" },
+    ];
+  }
+  if (card.action === "request_cancel") {
+    return [
+      { key: "ok", label: "부탁 취소하기", share: false, tone: "danger" },
+      { key: "cancel", label: "돌아가기", tone: "ghost" },
     ];
   }
   return [

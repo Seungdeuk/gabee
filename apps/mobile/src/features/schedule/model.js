@@ -84,6 +84,7 @@ export { applyFilter, involvedIds, isShared } from "./filter";
  * @property {Record<string, "accepted" | "declined">} replies 받는 사람별 답. 답이 없으면 기다리는 중
  * @property {boolean} cancelled 보낸 사람이 답을 기다리는 동안 취소했는지
  * @property {string | null} [itemId] 내가 수락해서 만든 내 일정의 id. 답을 바꾸면 이 일정을 지운다
+ * @property {string | null} [editedAt] 보낸 사람이 받는 사람을 바꾼 시각(서버 edited_at)
  */
 
 /**

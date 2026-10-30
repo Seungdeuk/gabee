@@ -8,7 +8,7 @@
 - 공동 일정 = 공유받았거나 내가 공유했거나 부탁을 수락해서 생긴 일정(나머지는 나 혼자). 제목 앞에 "공동" 이름표가 보이고 나 혼자 일정은 표시가 없다. 서버가 목록 응답에 `shared`(공동 여부)·`shared_ids`(나와 얽힌 사람, 나 제외)를 계산해 내려준다(저장하지 않음). "누구"(관련된 사람) 입력은 더 쓰지 않는다: 등록·수정·브리핑·상세에서 빼고 API 의 `who_ids` 와 DB 컬럼도 없앴다. 가족 구성원 이름은 별명 → 이름 순(관계는 쓰지 않음)
 - 주제 = 하나, 기본 선택 없음, 고르지 않으면 분류 없음. 기본 주제는 경조사, 나머지는 사용자가 만들고 색을 고름.
 - 공유 = 보여줄 가족 구성원(계정 있는 사람만). 안 고르면 나만.
-- 화면 글자에서는 "부탁"을 쓰지 않는다. "함께"는 영역·상태, "같이"는 동작.
+- 화면 글자에서는 "부탁"을 쓰지 않는다. "함께"는 영역·상태, "같이"는 동작. 브리핑의 부탁 카드 태그는 "함께"다. 예외: 보낸 부탁 상세의 "부탁 취소하기"와 취소 팝업(사용자가 시안으로 승인).
 
 ## 화면
 - 메인: 주간 스트립(+ 아이콘 → 달력), 오늘·내일 카드(체크 수 2/3), 일정·할 일 추가하기, 함께하기(같이하기), 먼저 권해드려요 카드.
@@ -36,18 +36,20 @@
   - 일정 `POST`·`PATCH` 는 `topic_id` 를 받고 일정 응답에도 `topic_id` 가 있다. `PATCH` 에서 `null` 이면 주제를 지운다. 없거나 지웠거나 남의 주제면 400 `invalid_topic`. 공유 복사본에는 주제를 붙이지 않는다.
 - 옛 컬럼(`starts_at`·`note`·`created_by`·`status`)은 당분간 새 컬럼과 함께 채운다. 제거는 별도 PR(담당자 승인 후).
 - 에이전트(`POST /schedule/agent`)도 호출한 사람의 일정만 읽는다.
-- `GET /schedule/suggestions`: 응답 `{suggestions: [{id, title, kind, start_date, place}], exhausted}`. 추천은 참고용이고 사람마다 하루 최대 3묶음(LLM 3회, 한 묶음 = 같은 `created_at` 의 제안 최대 5개)까지 만든다. 오늘(서버 로컬 날짜) 만든 대기 제안이 있으면 AI 를 부르지 않고 그것을 돌려주고, 없을 때만 새로 만든다. 오늘 3묶음을 다 만들었으면 빈 목록과 `exhausted: true` 를 준다(다음 날 다시 만든다). 모델에는 내 일정(지난 2주~앞으로 60일)의 제목·날짜·시간만 보내고(개인정보는 가림, 가족 이름은 보내지 않음), 결과는 오늘~60일 안의 날짜만 받고 이미 있는 일정·제안과 같은 것은 버린다. AI 를 부를 때만 동의(403 `ai_not_enabled`)와 카드 한도(429)를 본다. 채팅의 `recommend` 의도도 같은 공급을 써서 `suggestion` 카드로 답한다.
+- `GET /schedule/suggestions`: 응답 `{suggestions: [{id, title, kind, start_date, place, later}], exhausted, state, can_refresh}`. 추천은 참고용이고 사람마다 하루 `schedule_card` 호출 한도(기본 3회, 한 묶음 = LLM 한 번 = 같은 `created_at` 의 제안 최대 5개)까지 만든다. 오늘(서버 로컬 날짜) 만든 추천만 보며 날짜가 지난 것은 빼고, 보여 줄 때마다 순서를 섞는다. 대기(pending) 제안이 있으면 호출이 남았어도 AI 를 부르지 않고 그것을 돌려준다. 대기가 없고 호출이 남았으면 새로 만든다("나중에"만 남았거나 전부 확정이어도 호출). 호출이 비었거나 오류면 "나중에"(status 3) 제안을 대신 돌려주고, 호출을 다 썼으면 "나중에" 제안을 계속 돌려주며 전부 확정되면 빈 목록과 `state: "exhausted"`(= `exhausted: true`)를 준다(다음 날 다시 만든다). `state` 는 `ok`(보여 줄 추천 있음) / `exhausted`(오늘 추천은 여기까지) / `no_data`(참고 데이터가 전혀 없어 AI 를 부르지 않음, 한도도 안 씀) / `filtered`(데이터는 있는데 새로 만들 게 없음, 호출 1회로 셈) / `preparing`(AI 호출 오류). `can_refresh` 는 새로고침이 의미 있는가(하루 한도 소진·AI 꺼짐·키 없음이면 false). 하루 한도 초과(429 `ai_daily_limit_*`)는 오류가 아니라 `exhausted` 로 답한다. 이미 있는 제안은 대기·확정·나중에 모두 다시 만들지 않는다. 모델에는 내 일정(지난 2주~앞으로 60일)의 제목·날짜·시간만 보내고(개인정보는 가림, 가족 이름은 보내지 않음), 결과는 오늘~60일 안의 날짜만 받고 이미 있는 일정·제안과 같은 것은 버린다. AI 를 부를 때만 동의(403 `ai_not_enabled`)와 카드 한도(429)를 본다. 채팅의 `recommend` 의도도 같은 공급을 써서 `suggestion` 카드로 답한다.
+- `PUT /schedule/suggestions/{id}/later` `{later: bool}`: 추천 카드의 "나중에" 표시. true 면 status 3(나중에), false 면 1(대기)로 되돌린다. 확정된 추천·남의 추천·없는 추천은 400 `invalid_suggestion`. AI 를 부르지 않는다.
 - `POST /schedule/events` 에 `suggestion_id` 를 보내면 그 제안(내 대기 제안만, 아니면 400 `invalid_suggestion`)으로 등록한 것으로 보고, 일정에 연결하며 제안을 확정한다(같은 트랜잭션). 공유 복사본에는 연결하지 않는다.
-- 같이해요(부탁). 보낸 사람은 `events_requests.user_id`, 받는 사람은 `events_request_recipients` 줄들이다. 응답 `RequestOut` = `{id, from_id, title, start_date, start_time, end_time, place, memo, created_at, canceled, recipients: [{user_id, status: waiting|accepted|declined}], my_event_id}`. 받는 사람 목록은 보낸 사람·받는 사람 누구나 전부 보고(어렵겠어요 포함), `my_event_id` 는 호출한 사람이 수락해서 만든 지워지지 않은 일정 id 다. 그룹 밖 사람은 보지 못한다(404).
+- 같이해요(부탁). 보낸 사람은 `events_requests.user_id`, 받는 사람은 `events_request_recipients` 줄들이다. 응답 `RequestOut` = `{id, from_id, title, start_date, start_time, end_time, place, memo, created_at, canceled, recipients: [{user_id, status: waiting|accepted|declined}], my_event_id, edited_at}`. 받는 사람 목록은 보낸 사람에게는 전원(어렵겠어요 포함)이고, 받는 사람에게는 내 줄과 수락한 사람만 내려준다(누가 또 받았는지, 대기·거절은 모른다). `edited_at` 은 받는 사람을 바꾼 마지막 시각(바꾼 적 없으면 null). `my_event_id` 는 호출한 사람이 수락해서 만든 지워지지 않은 일정 id 다. 그룹 밖 사람은 보지 못한다(404).
   - `POST /schedule/requests`: `{title, start_date, start_time, end_time, place, memo, to_ids}` → 201. 받는 사람은 1~20명(중복은 하나로), 나는 뺀다, 모두 같은 가족 구성원이어야 한다(아니면 400 `invalid_recipients`). 시간 규칙은 일정과 같다(시작 없이 끝 불가, 끝이 시작보다 늦지 않으면 400 `invalid_time`).
   - `GET /schedule/requests`: 내가 보냈거나 내가 받는 사람인 부탁, 만든 시각 내림차순(같으면 id).
   - `POST /schedule/requests/{id}/answer`: `{answer: accepted|declined, kind: 1|2|null}`, 받는 사람 본인만(아니면 404). 수락이면 `kind` 필수(400 `kind_required`). 수락하면 받는 사람 본인의 일정만 만든다: `user_id`·`created_by` 는 수락한 사람, `source: "request"`, 제목·날짜·시간·장소·메모는 부탁 그대로이고 보낸 사람에게는 일정을 만들지 않는다. 종일(00:00~23:59) 부탁을 할 일로 수락하면 시간은 비운다. 이미 답한 사람이 다시 답하려면 부탁 날짜가 지나지 않아야 한다(400 `answer_locked`, 첫 답은 날짜와 무관). 다른 `kind` 로 다시 수락하면 이전에 만든 일정을 소프트 삭제하고 새로 만들고, 어렵겠어요로 바꾸면 그 일정을 소프트 삭제한다. 취소된 부탁에는 답할 수 없다(400 `request_canceled`).
-  - `POST /schedule/requests/{id}/cancel`: 보낸 사람만(받는 사람이면 403 `not_owner`). 수락한 사람이 있으면 400 `already_accepted`(앱의 "답을 기다리는 동안만"과 같다). 이미 취소한 것은 그대로 200. `canceled_at` 만 채우고 이미 만들어진 일정은 지우지 않는다.
+  - `POST /schedule/requests/{id}/cancel`: 보낸 사람만(받는 사람이면 403 `not_owner`). 수락한 사람이 있어도 취소되고, 그 사람들이 수락해서 만든 일정은 같이 소프트 삭제한다(받는 쪽 알림 없음). 이미 취소한 것은 그대로 200.
+  - `PUT /schedule/requests/{id}/recipients`: `{to_ids}` = 바뀐 뒤의 받는 사람 전체. 보낸 사람만(받는 사람이면 403 `not_owner`, 그룹 밖은 404), 답을 했든 안 했든 바꿀 수 있다. 최소 1명(422), 나 또는 가족이 아닌 사람이 있으면 400 `invalid_recipients`, 취소된 부탁은 400 `request_canceled`. 빠진 사람의 답 줄은 지우고 그 사람이 수락해서 만든 일정은 같이 소프트 삭제한다(일정의 `recip_id` 를 먼저 비움). 새로 든 사람에게는 새 부탁으로 가고, 빠졌다가 다시 든 사람도 새 대기 줄이다. 바뀐 게 있으면 `edited_at` 을 남기고 없으면 그대로 돌려준다. 부탁 내용(제목·날짜 등)은 바꿀 수 없다: 바꾸려면 취소하고 다시 보낸다.
 
 ## 데이터
 - 항목: 형태, 제목, 날짜(필수), 시작·종료 시간(선택), 종일, 장소(직접 입력), 메모, 주제, 공유 대상, 만든 사람, 확인·완료 여부.
 - 목록 순서: 약속 먼저(종일 → 시간순), 그다음 할 일(시간순, 시간 없는 것은 마지막).
-- 에이전트는 일정 목록 줄 끝에 `| 공동`을 붙여 공동 일정을 알고, 가족 채팅(`channel: family`)에서는 공동 일정만 읽는다(나 혼자 일정은 가족 앞에 나오지 않음).
+- 에이전트는 일정 목록 줄 끝에 `| 공동`을 붙여 공동 일정을 알고, 가족 채팅(`channel: family`)에서는 공동 일정만 읽는다(나 혼자 일정은 가족 앞에 나오지 않음). 원본 주인의 개인 채팅에서는 `| 공유:id,id` 로 공유 대상도 알고, 채팅으로 공유 대상을 추가·제거할 수 있다(원본 주인만, 공유받은 사람에게는 공유 대상을 알려 주지 않음).
 
 ## 완료 조건
 - 앱: mock 데이터로 위 화면의 흐름이 동작하고 `npm run lint` 통과.

@@ -394,16 +394,18 @@ def test_no_text_in_logs(client, family, caplog):
     assert "비밀스러운공지문구" not in caplog.text and "또다른비밀문구" not in caplog.text
 
 
-def test_pinned_text_comes_from_message_join(client, family):
+def test_pinned_text_is_the_copy_saved_when_pinned(client, family):
+    """정책 변경(게시판): 예전에는 본문을 복사하지 않고 메시지와 join 해서 읽었지만, 원본 메시지가 지워져도 게시판에
+    남도록 올릴 때의 본문을 사본으로 저장한다. 원본 본문이 바뀌어도 게시판에는 올릴 때의 문구가 보인다(자세한 시험은 test_pin_board.py)."""
     a, _, _ = family
     m = _send(client, a, "원본 글")
     assert _pin(client, a, m).status_code == 200
     with SessionLocal() as db:
         columns = {c.name for c in ChatPinnedMessage.__table__.columns}
-        assert "text" not in columns  # 본문을 복사해 두지 않는다
+        assert "text" in columns  # 올릴 때의 본문을 복사해 둔다
         db.get(Message, m).text = "고친 글"
         db.commit()
-    assert _pins(client, a).json()["items"][0]["text"] == "고친 글"
+    assert _pins(client, a).json()["items"][0]["text"] == "원본 글"
     assert [x["id"] for x in client.get(MSG, headers=a).json()] == [m]
 
 

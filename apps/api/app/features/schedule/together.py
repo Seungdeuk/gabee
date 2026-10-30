@@ -17,7 +17,7 @@ from .constants import (
     RECIPIENT_WAITING,
 )
 from .models import Event, EventRequest, EventRequestRecipient
-from .schemas import RequestAnswer, RequestCreate
+from .schemas import RequestAnswer, RequestCreate, RequestRecipients
 from .timeutil import local_tz
 
 _STATUS = {
@@ -33,8 +33,13 @@ def _new_id() -> str:
 
 
 def _out(
-    req: EventRequest, recipients: list[EventRequestRecipient], my_events: list[Event]
+    req: EventRequest,
+    recipients: list[EventRequestRecipient],
+    my_events: list[Event],
+    viewer_id: str,
 ) -> dict:
+    """받는 사람은 누가 또 받았는지 모른다: 보낸 사람에게는 전원, 받는 사람에게는 내 줄과 수락한 사람만 보여 준다."""
+    sender = req.user_id == viewer_id
     return {
         "id": req.id,
         "from_id": req.user_id,
@@ -50,8 +55,10 @@ def _out(
             {"user_id": r.user_id, "status": _STATUS.get(r.status, "waiting")}
             for r in recipients
             if r.request_id == req.id
+            and (sender or r.user_id == viewer_id or r.status == RECIPIENT_ACCEPTED)
         ],
         "my_event_id": next((e.id for e in my_events if e.request_id == req.id), None),
+        "edited_at": req.edited_at,
     }
 
 
@@ -61,7 +68,7 @@ def _outs(db: Session, reqs: list[EventRequest], user_id: str) -> list[dict]:
     ids = [r.id for r in reqs]
     recipients = repo.recipients_of(db, ids)
     mine = repo.live_events_of_requests(db, ids, user_id)
-    return [_out(r, recipients, mine) for r in reqs]
+    return [_out(r, recipients, mine, user_id) for r in reqs]
 
 
 def create(db: Session, group_id: str, user_id: str, body: RequestCreate) -> dict:
@@ -102,7 +109,7 @@ def create(db: Session, group_id: str, user_id: str, body: RequestCreate) -> dic
     db.flush()  # 부탁 줄이 먼저 들어가야 받는 사람 줄이 가리킬 수 있다
     db.add_all(rows)
     db.commit()
-    return _out(req, rows, [])
+    return _out(req, rows, [], user_id)
 
 
 def list_mine(db: Session, group_id: str, user_id: str) -> list[dict]:
@@ -166,19 +173,72 @@ def _event_from(req: EventRequest, recip: EventRequestRecipient, user_id: str, k
 
 
 def cancel(db: Session, group_id: str, user_id: str, request_id: str) -> dict:
-    """보낸 사람만 취소한다. 답을 기다리는 동안만 가능하다(수락한 사람이 있으면 400). 이미 취소했으면 그대로다.
-    만들어진 일정은 지우지 않는다."""
+    """보낸 사람만 취소한다. 수락한 사람이 있어도 취소되고, 그 사람들이 수락해서 만든 일정은 같이 지운다(소프트 삭제).
+    이미 취소했으면 그대로다."""
+    req = _owned_request(db, group_id, user_id, request_id)
+    if req.canceled_at is None:
+        now = datetime.now(UTC)
+        req.canceled_at = now
+        for event in repo.live_events_of_request(db, req.id):
+            event.deleted_at = now
+        db.commit()
+    return _outs(db, [req], user_id)[0]
+
+
+def _owned_request(db: Session, group_id: str, user_id: str, request_id: str) -> EventRequest:
+    """내가 보낸 부탁. 없거나 나와 상관없는 부탁은 404, 받는 사람이 고치려 하면 403."""
     req = repo.get_request(db, group_id, request_id)
     if req is None or (
         req.user_id != user_id and repo.my_recipient(db, request_id, user_id) is None
     ):
         raise not_found("부탁")
     if req.user_id != user_id:
-        raise ApiError(403, "not_owner", "내가 보낸 부탁만 취소할 수 있어요")
-    if req.canceled_at is None:
-        rows = repo.recipients_of(db, [req.id])
-        if any(r.status == RECIPIENT_ACCEPTED for r in rows):
-            raise bad_request("already_accepted", "수락한 사람이 있어서 취소할 수 없어요")
-        req.canceled_at = datetime.now(UTC)
-        db.commit()
+        raise ApiError(403, "not_owner", "내가 보낸 부탁만 바꿀 수 있어요")
+    return req
+
+
+def change_recipients(
+    db: Session, group_id: str, user_id: str, request_id: str, body: RequestRecipients
+) -> dict:
+    """받는 사람을 body.to_ids 로 다시 정한다(보낸 사람만, 답을 했든 안 했든). 빠진 사람의 답 줄은 지우고, 그 사람이
+    수락해서 만든 일정은 같이 지운다(소프트 삭제, 줄을 지우기 전에 일정의 연결을 끊는다). 새로 든 사람에게는 새 부탁으로 간다.
+    내용(제목·날짜 등)은 못 바꾼다."""
+    req = _owned_request(db, group_id, user_id, request_id)
+    if req.canceled_at is not None:
+        raise bad_request("request_canceled", "취소된 부탁이에요")
+    to_ids = list(dict.fromkeys(body.to_ids))
+    if user_id in to_ids:
+        raise bad_request("invalid_recipients", "나에게는 보낼 수 없어요")
+    if set(to_ids) - repo.member_ids(db, group_id, to_ids):
+        raise bad_request("invalid_recipients", "같은 가족 구성원이 아닌 사람이 있어요")
+
+    now = datetime.now(UTC)
+    rows = repo.recipients_of(db, [req.id])
+    kept = {r.user_id for r in rows if r.user_id in to_ids}
+    removed = [r for r in rows if r.user_id not in to_ids]
+    added = [t for t in to_ids if t not in kept]
+    if not removed and not added:
+        return _outs(db, [req], user_id)[0]
+    for row in removed:
+        for event in repo.events_of_recipient(db, row.id):
+            event.recip_id = None
+            if event.deleted_at is None:
+                event.deleted_at = now
+    db.flush()  # 일정의 연결을 먼저 끊어야 답 줄을 지울 수 있다
+    for row in removed:
+        db.delete(row)
+    db.add_all(
+        [
+            EventRequestRecipient(
+                id=_new_id(),
+                group_id=group_id,
+                user_id=t,
+                request_id=req.id,
+                created_at=now + timedelta(microseconds=i),
+            )
+            for i, t in enumerate(added)
+        ]
+    )
+    req.edited_at = now
+    db.commit()
     return _outs(db, [req], user_id)[0]

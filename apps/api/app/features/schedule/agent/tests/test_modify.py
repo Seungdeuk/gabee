@@ -23,6 +23,8 @@ def _data(intent, target="", **changes):
         "place": "",
         "memo": "",
         "clear": [],
+        "share_change": False,
+        "share_ids": [],
     }
     base.update(changes)
     return {"intent": intent, "reply": "", "event_ids": [], "target_id": target, "changes": base}
@@ -103,6 +105,8 @@ def test_delete_asks_first_and_runs_on_confirm(client, setup, fake):
         "event_id": e["id"],
         "changes": {},
         "draft": None,
+        "request_id": "",
+        "to_ids": [],
     }
     assert len(_events(client, a)) == 1  # 확인 전에는 지우지 않는다
     calls = len(fake.calls)
@@ -263,3 +267,91 @@ def test_personal_info_in_edit_is_masked_out_and_restored(client, setup, fake):
     assert body["pending_action"]["changes"]["title"] == "치과 010-1234-5678"
     assert _confirm(client, a, body["pending_action"]).status_code == 200
     assert _events(client, a)[0]["title"] == "치과 010-1234-5678"
+
+
+# ---------- 공유 대상 바꾸기(원본 주인만) ----------
+def _say_in(client, headers, text, channel):
+    return client.post("/schedule/agent", json={"text": text, "channel": channel}, headers=headers)
+
+
+def test_owner_adds_share_target_via_agent(client, setup, fake):
+    a, b, _, other, _ = setup
+    e = _new(client, a)
+    fake.data = _data("edit", e["id"], share_change=True, share_ids=[other])
+    body = _say(client, a, "치과 엄마한테도 공유해줘").json()
+    assert body["text"] == "이렇게 바꿀까요?"
+    by_label = {c["label"]: c for c in body["cards"][0]["data"]["changes"]}
+    assert by_label["공유"]["before"] == "없음" and by_label["공유"]["after"] != "없음"
+    assert body["pending_action"]["changes"] == {"share_with": [other]}
+    assert _events(client, b) == []  # 확인 전에는 공유하지 않는다
+
+    assert _confirm(client, a, body["pending_action"]).status_code == 200
+    assert [x["title"] for x in _events(client, b)] == ["치과"]
+    assert _events(client, a)[0]["edited_at"] is None  # 공유만 바꾸면 고친 시각을 남기지 않는다
+
+
+def test_owner_removes_share_target_and_is_warned(client, setup, fake):
+    a, b, _, other, _ = setup
+    e = _new(client, a, share_with=[other])
+    fake.data = _data("edit", e["id"], share_change=True, share_ids=[])
+    body = _say(client, a, "치과 공유 풀어줘").json()
+    assert "같이 사라져요" in body["text"]
+    by_label = {c["label"]: c for c in body["cards"][0]["data"]["changes"]}
+    assert by_label["공유"]["before"] != "없음" and by_label["공유"]["after"] == "없음"
+    assert len(_events(client, b)) == 1  # 확인 전에는 지우지 않는다
+
+    assert _confirm(client, a, body["pending_action"]).status_code == 200
+    assert _events(client, b) == []
+    assert [x["title"] for x in _events(client, a)] == ["치과"]
+
+
+def test_share_change_with_same_targets_or_non_members_changes_nothing(client, setup, fake):
+    a, _, _, other, _ = setup
+    e = _new(client, a, share_with=[other])
+    fake.data = _data("edit", e["id"], share_change=True, share_ids=[other])  # 지금과 같은 대상
+    assert _say(client, a, "치과 엄마한테 공유").json()["text"] == modify.NOTHING_TEXT
+    e2 = _new(client, a, title="병원")
+    fake.data = _data("edit", e2["id"], share_change=True, share_ids=["zzzz"])  # 구성원이 아니다
+    body = _say(client, a, "병원 낯선 사람한테 공유").json()
+    assert (
+        body["pending_action"] is None
+    )  # 구성원 아닌 id 는 버려져 "모두 빼기"가 되지만 지금도 비어 있다
+    assert body["text"] == modify.NOTHING_TEXT
+
+
+def test_receiver_cannot_change_share_and_does_not_see_targets(client, setup, fake):
+    a, b, me, other, _ = setup
+    e = _new(client, a, share_with=[other])
+    copy = _events(client, b)[0]
+    fake.data = _data("edit", copy["id"], share_change=True, share_ids=[me])
+    body = _say(client, b, "치과 공유 바꿔줘").json()
+    assert body["text"] == modify.NOT_SHARE_OWNER and body["pending_action"] is None
+    assert f"공유:{me}" not in fake.calls[-1]["prompt"]  # 받은 사람에게는 공유 대상이 보이지 않는다
+    assert "| 공동" in fake.calls[-1]["prompt"]
+
+    fake.data = _data("query")
+    _say(client, a, "치과 언제야")
+    assert f"| 공동 | 공유:{other}" in fake.calls[-1]["prompt"]  # 원본 주인은 자기 공유 대상을 안다
+    # 받은 사람이 확인 요청을 위조해도 서버가 거부한다
+    forged = {"type": "edit", "event_id": copy["id"], "changes": {"share_with": [me]}}
+    r = _confirm(client, b, forged)
+    assert r.status_code == 403 and r.json()["code"] == "not_share_owner"
+    assert e["id"]
+
+
+def test_share_change_only_in_personal_chat(client, setup, fake):
+    a, _, _, other, _ = setup
+    e = _new(client, a, share_with=[other])
+    fake.data = _data("edit", e["id"], share_change=True, share_ids=[])
+    body = _say_in(client, a, "치과 공유 풀어줘", "family").json()
+    assert body["text"] == modify.SHARE_PERSONAL_ONLY and body["pending_action"] is None
+    line = next(x for x in fake.calls[-1]["prompt"].splitlines() if x.startswith(e["id"]))
+    assert line.endswith("| 공동")  # 가족 채팅에는 공유 대상을 보내지 않는다
+
+
+def test_confirm_rejects_non_member_share_target(client, setup, fake):
+    a, _, _, _, _ = setup
+    e = _new(client, a)
+    forged = {"type": "edit", "event_id": e["id"], "changes": {"share_with": ["zzzz"]}}
+    r = _confirm(client, a, forged)
+    assert r.status_code == 400 and r.json()["code"] == "invalid_share_target"

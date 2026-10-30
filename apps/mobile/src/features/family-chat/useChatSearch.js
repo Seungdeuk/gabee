@@ -2,15 +2,16 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import { listRooms, searchMessages } from "./api";
 import { searchErrorMessage } from "./chatUtils";
-import { familyRoomId, isLatestRequest, mergeSearchResults, normalizeQuery, SEARCH_DEBOUNCE_MS, SEARCH_PAGE, searchTerms, shouldRunSearch } from "./searchUtils";
+import { familyRoomId, isLatestRequest, mergeSearchResults, normalizeQuery, SEARCH_DEBOUNCE_MS, SEARCH_PAGE, searchTerms, shouldRunSearch, stepSearchIndex } from "./searchUtils";
 
-const IDLE = { status: "idle", items: [], next: null, q: "", error: "", loadingMore: false, moreError: "" };
+const IDLE = { status: "idle", items: [], next: null, q: "", error: "", loadingMore: false, moreError: "", index: 0 };
 
 /**
  * 대화 글자 검색(키워드 일치만, AI 없음). 입력을 300ms 쉬었다가 한 번 부르고, 같은 검색어는 다시 부르지 않으며, 더 새 요청이 시작되면 이전 응답은 버린다.
+ * 결과는 최신순이고 index 0 이 가장 최근 일치다. 새 검색이 끝나면 index 0 에서 시작하고, step 으로 더 오래된/더 최근 일치로 옮기며(끝에서 서버에 더 있으면 다음 쪽을 받아 이어 간다) current 가 지금 가리키는 일치다.
  * 검색어·결과 글자는 화면 상태에만 두고 로그·저장소에 남기지 않는다.
  * @param {{ roomId?: string | null, scoped?: boolean, debounceMs?: number }} [options] roomId 가 없으면 내가 접근할 수 있는 모든 방. scoped 이면 한 방 안 검색이라 roomId 를 알기 전(null)에는 검색하지 않는다(blocked) — 모든 방 검색으로 떨어지지 않게
- * @returns {{ blocked: boolean, query: string, setQuery: (text: string) => void, reset: () => void, terms: string[], status: "idle" | "loading" | "ready" | "error", items: object[], error: string, hasMore: boolean, loadingMore: boolean, moreError: string, loadMore: () => Promise<void>, retry: () => void }}
+ * @returns {{ blocked: boolean, query: string, setQuery: (text: string) => void, reset: () => void, terms: string[], status: "idle" | "loading" | "ready" | "error", items: object[], index: number, current: object | null, step: (dir: "older" | "newer") => Promise<void>, error: string, hasMore: boolean, loadingMore: boolean, moreError: string, loadMore: () => Promise<void>, retry: () => void }}
  */
 export default function useChatSearch({ roomId = null, scoped = false, debounceMs = SEARCH_DEBOUNCE_MS } = {}) {
   const blocked = scoped && !roomId;
@@ -65,7 +66,7 @@ export default function useChatSearch({ roomId = null, scoped = false, debounceM
 
   const loadMore = useCallback(async () => {
     const cur = stateRef.current;
-    if (cur.status !== "ready" || cur.next == null || moreBusy.current) return;
+    if (cur.status !== "ready" || cur.next == null || moreBusy.current) return false;
     moreBusy.current = true;
     const mine = seq.current;
     setState((s) => ({ ...s, loadingMore: true, moreError: "" }));
@@ -73,12 +74,30 @@ export default function useChatSearch({ roomId = null, scoped = false, debounceM
       const page = await searchMessages({ q: cur.q, roomId, limit: SEARCH_PAGE, beforeId: cur.next });
       if (!alive.current || !isLatestRequest(mine, seq.current)) return;
       setState((s) => ({ ...s, items: mergeSearchResults(s.items, page.items), next: page.next_before_id ?? null, loadingMore: false }));
+      return true;
     } catch (e) {
       if (alive.current && isLatestRequest(mine, seq.current)) setState((s) => ({ ...s, loadingMore: false, moreError: searchErrorMessage(e) }));
+      return false;
     } finally {
       if (isLatestRequest(mine, seq.current)) moreBusy.current = false;
     }
   }, [roomId]);
+
+  const step = useCallback(
+    async (dir) => {
+      const cur = stateRef.current;
+      if (cur.status !== "ready") return;
+      const next = stepSearchIndex({ index: cur.index, count: cur.items.length, hasMore: cur.next != null, dir });
+      if (!next.more) {
+        if (next.index !== cur.index) setState((s) => ({ ...s, index: next.index }));
+        return;
+      }
+      const before = cur.items.length;
+      if (!(await loadMore())) return;
+      setState((s) => (s.q === cur.q && s.items.length > before ? { ...s, index: before } : s)); // 다시 그리기 전의 ref 가 아니라 최신 상태로 판단한다
+    },
+    [loadMore],
+  );
 
   const retry = useCallback(() => {
     const q = normalizeQuery(query);
@@ -95,6 +114,9 @@ export default function useChatSearch({ roomId = null, scoped = false, debounceM
     terms: searchTerms(state.q),
     status: state.status,
     items: state.items,
+    index: state.index,
+    current: state.status === "ready" ? (state.items[state.index] ?? null) : null,
+    step,
     error: state.error,
     hasMore: state.next != null,
     loadingMore: state.loadingMore,

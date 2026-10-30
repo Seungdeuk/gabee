@@ -85,6 +85,24 @@ class Message(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(UTC)
     )
+    # 보낸 사람이 지운 시각. 지우면 본문(text)과 첨부도 서버에서 비우고, 행은 남겨 읽음 위치·순서가 바뀌지 않게 한다
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # 답장하는 원본 메시지(같은 방). 원본이 지워져도 행은 남아 있어 연결은 그대로다
+    reply_to_id: Mapped[int | None] = mapped_column(ForeignKey("messages.id"), nullable=True)
+
+
+class MessageReaction(Base):
+    """메시지 반응. 한 사람이 한 메시지에 반응 하나(바꾸면 교체)라 기본키가 (메시지, 사용자)다.
+    메시지를 지우면 그 메시지의 반응도 함께 지운다."""
+
+    __tablename__ = "message_reactions"
+
+    message_id: Mapped[int] = mapped_column(ForeignKey("messages.id"), primary_key=True)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), primary_key=True)
+    emoji: Mapped[str] = mapped_column(String(8))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(UTC)
+    )
 
 
 class ChatReadState(Base):
@@ -115,8 +133,21 @@ class ChatRoomRead(Base):
     )
 
 
+class ChatRoomMute(Base):
+    """구성원이 이 대화방의 알림을 끈 기록. 행이 있으면 끈 것이고, 다시 켜면 행을 지운다(기본은 켜짐).
+    사용자마다 따로라 다른 구성원에게는 영향이 없다. 지금은 설정만 저장하고 읽지 않은 수 계산은 그대로다."""
+
+    __tablename__ = "chat_room_mutes"
+
+    room_id: Mapped[str] = mapped_column(ForeignKey("chat_rooms.id"), primary_key=True)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), primary_key=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(UTC)
+    )
+
+
 class MessageAttachment(Base):
-    """사진 메시지의 첨부. 메시지 하나에 사진 하나. 파일은 DATA_DIR 아래 서버가 정한 이름으로만 저장하고
+    """사진·문서 메시지의 첨부(kind: image | file). 메시지 하나에 첨부 하나. 파일은 DATA_DIR 아래 서버가 정한 이름으로만 저장하고
     여기에는 상대 경로와 크기만 둔다(원본 EXIF·GPS 는 저장 전에 버린다). 사진 메시지의 text 는 빈 문자열이다."""
 
     __tablename__ = "message_attachments"
@@ -125,11 +156,14 @@ class MessageAttachment(Base):
     message_id: Mapped[int] = mapped_column(ForeignKey("messages.id"), unique=True)
     group_id: Mapped[str] = mapped_column(ForeignKey("groups.id"), index=True)
     room_id: Mapped[str] = mapped_column(ForeignKey("chat_rooms.id"), index=True)
+    kind: Mapped[str] = mapped_column(String(10), default="image", server_default="image")
     path: Mapped[str] = mapped_column(String(80))
-    thumb_path: Mapped[str] = mapped_column(String(80))
-    width: Mapped[int] = mapped_column(Integer)
-    height: Mapped[int] = mapped_column(Integer)
+    thumb_path: Mapped[str | None] = mapped_column(String(80), nullable=True)  # 문서는 없다
+    width: Mapped[int | None] = mapped_column(Integer, nullable=True)  # 문서는 없다
+    height: Mapped[int | None] = mapped_column(Integer, nullable=True)  # 문서는 없다
     size_bytes: Mapped[int] = mapped_column(Integer)
+    filename: Mapped[str | None] = mapped_column(String(120), nullable=True)  # 문서만(표시용)
+    content_type: Mapped[str | None] = mapped_column(String(100), nullable=True)  # 문서만
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(UTC)
     )
@@ -161,8 +195,9 @@ class FamilyTodo(Base):
 
 
 class ChatPinnedMessage(Base):
-    """채팅방에 고정한(공지) 메시지. 메시지를 가리키기만 하고 본문은 복사하지 않는다(조회할 때 messages 와 join).
-    방당 최근 2개만 남기고(3번째를 고정하면 가장 오래된 것이 풀린다), 같은 메시지는 한 번만 고정된다.
+    """채팅방 게시판(공지)에 올린 메시지. 올릴 때의 본문을 `text` 에 복사해 둔다 — 원본 메시지를 보낸 사람이 지워도
+    게시판에는 남는다(내리면 사본도 함께 사라진다). `text` 가 비어 있는 옛 행은 조회할 때 원본 본문을 쓴다.
+    방당 최근 2개만 남기고(3번째를 올리면 가장 오래된 것이 내려간다), 같은 메시지는 한 번만 올라간다.
     가족 전체방도 방 id 를 쓴다(room_id 가 비어 있는 옛 메시지도 가족 전체방 id 로 고정한다)."""
 
     __tablename__ = "chat_pinned_messages"
@@ -177,6 +212,45 @@ class ChatPinnedMessage(Base):
     message_id: Mapped[int] = mapped_column(ForeignKey("messages.id"))
     pinned_by: Mapped[str] = mapped_column(ForeignKey("users.id"))
     pinned_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(UTC)
+    )
+    text: Mapped[str | None] = mapped_column(Text, nullable=True)  # 올릴 때의 본문 사본
+
+
+class ChatBoardPost(Base):
+    """게시판에 올린 공지의 기록. 공지로 올릴 때마다 한 줄이 생기고, 공지를 내리거나 교체해도 남아 지난 공지를 목록으로 볼 수 있다.
+    같은 방의 같은 메시지는 한 줄이라 다시 올리면 그 줄을 최신으로 갱신한다. 본문(text)은 올릴 때의 전체 사본이라 원본 메시지를 보낸 사람이 지워도 남는다.
+    구성원 누구나 목록에서 지울 수 있다(지우면 이 줄이 사라지고, 현재 공지면 고정 바에서도 내려간다)."""
+
+    __tablename__ = "chat_board_posts"
+    __table_args__ = (
+        UniqueConstraint("room_id", "message_id", name="uq_chat_board_room_message"),
+        Index("ix_chat_board_room_posted_at", "room_id", "posted_at"),
+    )
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uid)
+    group_id: Mapped[str] = mapped_column(ForeignKey("groups.id"), index=True)
+    room_id: Mapped[str] = mapped_column(ForeignKey("chat_rooms.id"))
+    message_id: Mapped[int] = mapped_column(ForeignKey("messages.id"))
+    posted_by: Mapped[str] = mapped_column(ForeignKey("users.id"))
+    posted_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(UTC)
+    )
+    text: Mapped[str] = mapped_column(Text)
+
+
+class ChatPinHide(Base):
+    """게시판 공지를 "나만 숨기기"한 기록. 사용자마다 따로이고 다른 구성원에게는 영향이 없다.
+    공지가 내려가거나 교체되면(`chat_pinned_messages` 행이 사라지면) DB 가 함께 지운다(ON DELETE CASCADE).
+    SQLite 는 외래키를 강제하지 않아 서비스도 같은 순서로 지운다."""
+
+    __tablename__ = "chat_pin_hides"
+
+    pin_id: Mapped[str] = mapped_column(
+        ForeignKey("chat_pinned_messages.id", ondelete="CASCADE"), primary_key=True
+    )
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), primary_key=True)
+    hidden_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(UTC)
     )
 

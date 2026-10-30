@@ -28,10 +28,8 @@ import {
   normalizeLinks,
   optimisticLink,
   runGuarded,
-  takeFlag,
   tryBegin,
 } from "../src/features/family-chat/linkUtils.js";
-import { buildDrawerSections, resolveRowAction } from "../src/features/family-chat/mediaUtils.js";
 import { pinTapAction } from "../src/features/family-chat/pinUtils.js";
 
 process.env.TZ = "Asia/Seoul";
@@ -213,6 +211,9 @@ test("이동 판단(고정 바와 같은 pinTapAction 을 쓴다): 라이브에�
   assert.equal(pinTapAction({ messages, messageId: 5, focusing: false }), "scroll");
   assert.equal(pinTapAction({ messages, messageId: 6, focusing: false }), "scroll");
   assert.equal(pinTapAction({ messages, messageId: 1, focusing: false }), "focus");
+  assert.equal(pinTapAction({ messages, messageId: 5, focusing: true }), "focus");
+  assert.equal(pinTapAction({ messages, messageId: 5, focusing: true, reuseWindow: true }), "scroll"); // 검색 이동: 과거 창 안에 있으면 다시 불러오지 않는다
+  assert.equal(pinTapAction({ messages, messageId: 1, focusing: true, reuseWindow: true }), "focus");
   assert.equal(pinTapAction({ messages, messageId: 7, focusing: false }), "focus"); // 임시 메시지는 목록에 있는 것으로 보지 않는다
   assert.equal(pinTapAction({ messages, messageId: 5, focusing: true }), "focus");
 });
@@ -278,9 +279,6 @@ test("조회·연타·삭제 실패·한 번만 열기 판단", () => {
   assert.equal(deleteFailureEffect({ status: 403 }), "revert");
   assert.equal(deleteFailureEffect({ status: 0 }), "revert");
   assert.equal(deleteFailureEffect(null), "revert");
-  const flag = { current: true };
-  assert.equal(takeFlag(flag), true);
-  assert.equal(takeFlag(flag), false); // 한 번만
 });
 
 test("오류 문구", () => {
@@ -352,26 +350,14 @@ test("API createLink·deleteLink: 400·403 은 ApiError 로 올라와 문구가 
   );
 });
 
-test("서랍: 가족 일정 · 할 일 행은 연결되면 동작 행이고 가족방·1:1 모두 같다", () => {
-  const find = (sections, key) => sections.flatMap((s) => s.rows).find((r) => r.key === key);
-  for (const direct of [false, true]) {
-    const row = find(buildDrawerSections({ direct, linksReady: true }), "todos");
-    assert.equal(row.state, "open");
-    assert.equal(row.title, "가족 일정 · 할 일");
-    assert.deepEqual(resolveRowAction(row), { type: "links" });
-    assert.equal(find(buildDrawerSections({ direct }), "todos").state, "soon"); // 연결 전에는 이전처럼 준비 중
-  }
-  const soon = buildDrawerSections({ direct: false, searchReady: true, pinsReady: true, linksReady: true }).flatMap((s) => s.rows).filter((r) => r.state === "soon").map((r) => r.key);
-  assert.deepEqual(soon, ["docs", "notifications", "privacy", "edit"]);
-});
-
 test("소스 검사: AiPanel 은 등록 성공 뒤에만 onLinked 를 부르고, 실패 분기에서는 부르지 않는다", () => {
   const src = readFileSync(new URL("../src/features/family-chat/components/AiPanel.js", import.meta.url), "utf8").replace(/\r\n/g, "\n");
   const slice = (from, to) => src.slice(src.indexOf(from), src.indexOf(to, src.indexOf(from)));
   const event = slice("const created = await registerScheduleCandidate", "} catch (e) {");
   assert.match(event, /setRegistered\(.*"ok".*\)[\s\S]*notifyLinked\(\{ kind: "event"/);
-  const todo = slice("const created = await createTodo", "} catch (e) {");
-  assert.match(todo, /setTodoRegistered\(.*"ok".*\)[\s\S]*notifyLinked\(\{ kind: "todo"/);
+  const todo = slice("await sendTogetherRequest", "} catch (e) {");
+  assert.match(todo, /setTodoRegistered\(.*"ok".*\)/);
+  assert.ok(!todo.includes("notifyLinked("), "함께하기 요청 id 는 서버 연결이 받지 않아 연결을 만들지 않는다");
   for (const part of src.split("} catch (e) {").slice(1)) assert.ok(!part.slice(0, 200).includes("notifyLinked("), "실패 분기에서 연결을 부르면 안 된다");
   assert.match(src, /const notifyLinked = [\s\S]*?try \{[\s\S]*?onLinked\?\.\(link\)[\s\S]*?\} catch/); // 연결 오류는 삼킨다
 });

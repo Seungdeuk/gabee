@@ -109,6 +109,9 @@ class EventRequest(Base):
     end_time: Mapped[time | None] = mapped_column(Time, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
     canceled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    edited_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )  # 받는 사람을 바꾼 마지막 시각
 
 
 class EventRequestRecipient(Base):

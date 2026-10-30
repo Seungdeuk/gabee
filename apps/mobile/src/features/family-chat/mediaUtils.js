@@ -193,64 +193,55 @@ export function drawerMembers({ direct, room, peerId, myId }) {
 }
 
 const MANAGE_ROWS = [
-  { key: "search", icon: "search-outline", title: "대화 내용 검색", subtitle: "키워드·날짜·보낸 사람으로 검색", action: "search" },
-  { key: "pins", icon: "pin-outline", title: "고정 메시지", subtitle: "중요 공지와 약속 모아보기", action: "pins" },
+  { key: "pins", icon: "pin-outline", title: "게시판", subtitle: "공지 모아보기", action: "pins" },
   { key: "media", icon: "images-outline", title: "사진 · 동영상", subtitle: "채팅방에 공유된 미디어", action: "open" },
-  { key: "docs", icon: "document-text-outline", title: "공유 문서", subtitle: "@가비 문서 검색과 연동", action: "soon", familyOnly: true },
-  { key: "todos", icon: "checkbox-outline", title: "가족 일정 · 할 일", subtitle: "대화에서 등록된 일정과 할 일", action: "links" },
+  { key: "familytodos", icon: "list-outline", title: "가족 할 일", subtitle: "일정 탭의 일정·할 일과 함께하기", action: "open" },
 ];
 
 const SETTING_ROWS = [
-  { key: "notifications", icon: "notifications-outline", title: "알림 설정", subtitle: "이 채팅방의 알림", action: "soon" },
-  { key: "invite", icon: "person-add-outline", title: "구성원 초대 · 관리", subtitle: "가족 구성원 추가와 관리", action: "open", familyOnly: true },
-  { key: "privacy", icon: "shield-checkmark-outline", title: "AI · 개인정보 보호 설정", subtitle: "가비가 읽는 범위와 가려지는 정보", action: "soon", familyOnly: true },
-  { key: "edit", icon: "create-outline", title: "채팅방 정보 수정", subtitle: "이름과 소개", action: "soon" },
+  { key: "notifications", icon: "notifications-outline", title: "이 방 알림", subtitle: "끄면 이 방의 알림을 받지 않아요", action: "mute" },
   { key: "leave", icon: "exit-outline", title: "채팅방 나가기", subtitle: "", action: "leave", danger: true },
 ];
 
 /**
- * 방 종류별 서랍 행. 가족 전체방에서만 보이는 행(공유 문서, 구성원 초대 · 관리, AI · 개인정보 보호 설정)은 1:1 에서 숨긴다
- * (1:1 대화는 AI 로 보내지 않고, 가족 구성원 관리는 가족 전체의 일이라서).
- * 각 행의 state: "open" 이면 동작, "soon" 이면 "준비 중" 배지. 검색 행은 연결(searchReady), 고정 메시지 행은 연결(pinsReady), 가족 일정 · 할 일 행은 연결(linksReady)이 있을 때만 동작한다.
+ * 방 종류별 서랍 행. 채팅 관리: 게시판 · 사진 · 동영상 · 가족 할 일(대화에서 등록한 할 일 포함), 채팅방 설정: 이 방 알림(켜기/끄기 스위치) · 채팅방 나가기. 검색은 채팅방 위 돋보기로 하고,
+ * 구성원 초대·관리, AI · 개인정보 설정, 채팅방 정보 수정, 공유 문서 행은 서랍에서 뺐다. 가족방과 1:1 방의 행은 같다.
+ * 각 행의 state: "open" 이면 동작, "soon" 이면 "준비 중" 배지. 게시판 행은 연결(pinsReady)이 있을 때만 동작한다.
  * 나가기 행의 notice 는 눌렀을 때의 안내 문구다.
- * @param {{ direct: boolean, searchReady?: boolean, pinsReady?: boolean, linksReady?: boolean }} args
- * @returns {{ title: string, rows: { key: string, icon: string, title: string, subtitle: string, action: string, state: "open" | "soon", danger?: boolean, notice?: string }[] }[]}
+ * 알림 행(kind "switch")은 value 가 "알림 켜짐"이고, 이 방의 muted 값을 아직 모르면(muted 가 null/undefined) disabled 다.
+ * @param {{ direct: boolean, pinsReady?: boolean, muted?: boolean | null }} args muted 는 이 방의 알림 끔 여부(모르면 null)
+ * @returns {{ title: string, rows: { key: string, icon: string, title: string, subtitle: string, action: string, state: "open" | "soon", danger?: boolean, notice?: string, kind?: "switch", value?: boolean, disabled?: boolean }[] }[]}
  */
-export function buildDrawerSections({ direct, searchReady = false, pinsReady = false, linksReady = false }) {
+export function buildDrawerSections({ direct, pinsReady = false, muted = null }) {
   /**
-   * 정의 행을 화면 행으로: 동작 여부(state)와 나가기 안내(notice)를 붙이고 방 종류 표시(familyOnly)는 뗀다.
+   * 정의 행을 화면 행으로: 동작 여부(state)와 나가기 안내(notice)를 붙인다.
    * @param {object} row
    * @returns {object}
    */
   const make = (row) => {
-    const { familyOnly: _familyOnly, ...rest } = row;
-    const live = row.action === "open" || (row.action === "search" && searchReady) || (row.action === "pins" && pinsReady) || (row.action === "links" && linksReady);
+    if (row.action === "mute") return { ...row, state: "open", kind: "switch", value: muted === false, disabled: muted == null };
+    const live = row.action === "open" || (row.action === "pins" && pinsReady);
     const state = row.action === "leave" ? "open" : live ? "open" : "soon";
-    return { ...rest, state, ...(row.action === "leave" ? { notice: direct ? SOON_NOTICE : FAMILY_LEAVE_NOTICE } : {}) };
+    return { ...row, state, ...(row.action === "leave" ? { notice: direct ? SOON_NOTICE : FAMILY_LEAVE_NOTICE } : {}) };
   };
-  /**
-   * @param {{ familyOnly?: boolean }} row
-   * @returns {boolean} 이 방 종류에서 보이는 행인지
-   */
-  const keep = (row) => !(direct && row.familyOnly);
   return [
-    { title: "채팅 관리", rows: MANAGE_ROWS.filter(keep).map(make) },
-    { title: "채팅방 설정", rows: SETTING_ROWS.filter(keep).map(make) },
+    { title: "채팅 관리", rows: MANAGE_ROWS.map(make) },
+    { title: "채팅방 설정", rows: SETTING_ROWS.map(make) },
   ];
 }
 
 /**
- * 서랍 행을 눌렀을 때 할 일. 화면 이동은 media(모음)·invite(/family)·search(부모가 연결한 검색)이고, 그 밖에는 안내 문구만 보인다.
+ * 서랍 행을 눌렀을 때 할 일. 화면 이동은 media(모음)·pins(게시판)·familytodos(/family-together)이고, 그 밖에는 안내 문구만 보인다.
  * 이동이 아닌 행(준비 중, 나가기)이나 아직 동작하지 않는 행은 notice 다.
  * @param {{ key: string, state: "open" | "soon", notice?: string }} row buildDrawerSections 의 행
- * @returns {{ type: "media" | "invite" | "search" | "pins" | "links" } | { type: "notice", text: string }}
+ * 알림 행은 mute(바뀔 muted 값 — 지금 켜져 있으면 끄는 것)이고, 아직 값을 모르면(disabled) 아무 일도 없다(none).
+ * @returns {{ type: "media" | "pins" | "familytodos" | "none" } | { type: "mute", muted: boolean } | { type: "notice", text: string }}
  */
 export function resolveRowAction(row) {
+  if (row.key === "notifications") return row.disabled ? { type: "none" } : { type: "mute", muted: row.value === true };
   if (row.key === "media") return { type: "media" };
-  if (row.key === "invite" && row.state === "open") return { type: "invite" };
-  if (row.key === "search" && row.state === "open") return { type: "search" };
   if (row.key === "pins" && row.state === "open") return { type: "pins" };
-  if (row.key === "todos" && row.state === "open") return { type: "links" };
+  if (row.key === "familytodos" && row.state === "open") return { type: "familytodos" };
   return { type: "notice", text: row.notice ?? SOON_NOTICE };
 }
 

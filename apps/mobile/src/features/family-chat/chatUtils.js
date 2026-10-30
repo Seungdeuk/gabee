@@ -129,7 +129,7 @@ export function groupByDay(messages) {
  * @returns {boolean}
  */
 export function shouldShowName(prev, cur) {
-  return !prev || prev.user_id !== cur.user_id;
+  return !prev || prev.deleted || prev.user_id !== cur.user_id; // 앞이 지운 줄(가운데 안내)이면 누가 보냈는지 이름을 보인다
 }
 
 /**
@@ -139,7 +139,7 @@ export function shouldShowName(prev, cur) {
  * @returns {boolean}
  */
 export function shouldShowTime(cur, next) {
-  if (!next || next.user_id !== cur.user_id) return true;
+  if (!next || next.deleted || next.user_id !== cur.user_id) return true; // 다음이 지운 줄이면 이 메시지의 시각을 보인다
   if (next.status === "sending" || next.status === "failed") return true;
   const a = parseTime(cur.created_at);
   const b = parseTime(next.created_at);
@@ -194,7 +194,8 @@ export function canSend(text) {
  */
 export function previewText(message, myId = null) {
   if (!message) return "아직 대화가 없어요";
-  const body = String(message.text ?? "").replace(/\s+/g, " ").trim() || (message.attachment ? "사진" : "");
+  if (message.deleted) return "삭제된 메시지입니다";
+  const body = String(message.text ?? "").replace(/\s+/g, " ").trim() || (message.attachment ? (message.attachment.kind === "file" ? "파일" : "사진") : "");
   return myId && message.user_id === myId ? `나: ${body}` : body;
 }
 
@@ -340,17 +341,17 @@ export function shouldSendOnEnter(event, platform) {
 }
 
 /**
- * 고정·해제 오류를 사용자 문장으로(메시지 글자는 넣지 않는다). 서버 코드 이름에 기대지 않고 상태로도 알아본다.
+ * 게시판 오류(올리기·내리기·숨기기)를 사용자 문장으로(메시지 글자는 넣지 않는다). 서버 코드 이름에 기대지 않고 상태로도 알아본다.
  * @param {{ code?: string, status?: number } | null | undefined} error
- * @param {"pin" | "unpin"} [action] 해제 중 404 는 "이미 해제된 고정"이다
+ * @param {"pin" | "unpin" | "hide" | "show"} [action] 올리기가 아닌 동작 중 404 는 "이미 내려갔거나 볼 수 없는 공지"다(서버가 공지 없음과 방 접근 불가를 같은 404 로 준다)
  * @returns {string}
  */
 export function pinErrorMessage(error, action = "pin") {
-  if (error?.code === "not_pinnable") return "사진이나 빈 메시지는 고정할 수 없어요";
-  if (error?.code === "invalid_message") return "이 대화방의 메시지가 아니라 고정할 수 없어요";
+  if (error?.code === "not_pinnable") return "사진이나 빈 메시지는 게시판에 올릴 수 없어요";
+  if (error?.code === "invalid_message") return "이 대화방의 메시지가 아니라 게시판에 올릴 수 없어요";
   if (error?.status === 429) return "너무 자주 바꿨어요. 잠시 뒤에 다시 해 주세요";
   if (error?.code === "pin_changed" || error?.status === 409) return "다른 사람이 방금 바꿨어요. 다시 확인해 주세요";
-  if (error?.status === 404) return action === "unpin" ? "이미 해제된 고정이에요" : "대화방을 찾을 수 없거나 권한이 없어요";
+  if (error?.status === 404) return action !== "pin" ? "이미 내려갔거나 볼 수 없는 공지예요" : "대화방을 찾을 수 없거나 권한이 없어요";
   return roomErrorMessage(error);
 }
 

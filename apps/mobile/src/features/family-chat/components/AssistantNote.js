@@ -15,10 +15,11 @@ const AVATAR = 36;
  * - private: 개인 정보가 있어서 방에 올리지 않은 답(이유 한 줄과 함께)
  * - info: 사용법 안내
  * - error: 답을 못 받음(다시 시도·닫기)
+ * 일정 조회 결과는 공유 선택 카드로 나오고, 고른 줄만 내 이름의 일반 메시지로 방에 보낸다(onShareToRoom).
  * 일정 공유 등록·수정·삭제처럼 확인이 필요한 요청은 이 말풍선 안에 확인 카드로 나오고, 버튼을 눌러야 반영된다.
- * @param {{ note: object, onRetry?: (question: string) => void, onDismiss?: (id: string) => void, onResolveCard?: (noteId: string, index: number, status: string, text: string) => void }} props
+ * @param {{ note: object, onRetry?: (question: string) => void, onDismiss?: (id: string) => void, onResolveCard?: (noteId: string, index: number, status: string, text: string) => void, onShareToRoom?: (text: string) => Promise<unknown> }} props
  */
-export default function AssistantNote({ note, onRetry, onDismiss, onResolveCard }) {
+export default function AssistantNote({ note, onRetry, onDismiss, onResolveCard, onShareToRoom }) {
   const pending = note.state === "pending";
   const error = note.state === "error";
   const cards = note.confirmCards ?? [];
@@ -40,7 +41,7 @@ export default function AssistantNote({ note, onRetry, onDismiss, onResolveCard 
           )}
           {note.state === "private" ? <Text style={styles.notice}>{cards.length > 0 ? "확인이 필요한 요청이라 나에게만 보여요. 버튼을 눌러야 반영돼요." : privateNotice(note.reasons)}</Text> : null}
           {cards.map((card, i) => (
-            <ScheduleConfirmCard key={`confirm-${i}`} card={card} onResolve={(status, text) => onResolveCard?.(note.id, i, status, text)} />
+            <ScheduleConfirmCard key={`confirm-${i}`} card={card} onResolve={(status, text) => onResolveCard?.(note.id, i, status, text)} onShareToRoom={onShareToRoom} />
           ))}
           {error || note.state === "info" || note.state === "private" ? (
             <View style={styles.actions}>

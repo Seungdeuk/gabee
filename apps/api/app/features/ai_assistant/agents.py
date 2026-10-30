@@ -54,6 +54,9 @@ PROMPT_NOTE = (
     "ask_schedule 이 등록했다고 답하기 전에는 등록했다고 말하지 마세요. 일정 수정·삭제와 가족에게 공유하는 등록은 확인 카드가 "
     "사용자 화면에 나타나니, 카드의 버튼을 눌러야 반영된다고 짧게 안내하고 실행됐다고 말하지 마세요. '가족 모두에게 공유'처럼 "
     "여럿에게 공유하는 일정도 그대로 ask_schedule 로 넘기세요. "
+    "가족에게 일을 같이 해 달라고 보내는 부탁('엄마한테 장 봐달라고 부탁해줘'), 보낸 부탁의 받는 사람 바꾸기·취소, "
+    "부탁의 상세·수락 현황 질문('내가 보낸 부탁 누가 수락했어?')도 ask_schedule 로 넘기세요. 부탁을 보내거나 바꾸거나 취소하는 것도 "
+    "확인 카드의 버튼을 눌러야 반영되니 실행됐다고 말하지 마세요. 부탁을 보낼 때는 누구에게·무엇을·언제를 담은 완전한 문장으로 넘기세요. "
     "가족 단체 채팅방에서 나눈 대화('채팅에서 병원 얘기 언제 했지', '요즘 채팅 요약해줘')와 가족 공동 할 일 목록 질문은 "
     "ask_family_chat 으로 물어보세요. 올려 둔 문서·영수증·고지서에 적힌 내용은 채팅이 아니니 search_knowledge 로 찾으세요. "
     "채팅 분석의 일정·할 일은 후보일 뿐 등록된 것이 아니라고 알려 주세요. 사용자가 그 일정 후보를 넣어 달라고 하면('그거 일정에 넣어줘', "
@@ -115,14 +118,22 @@ def _without_false_proposal(name: str, reply: AgentReply) -> AgentReply:
 
 
 def call(
-    db: Session, group_id: str, user: User, name: str, args: dict, post: Post | None
+    db: Session,
+    group_id: str,
+    user: User,
+    name: str,
+    args: dict,
+    post: Post | None,
+    audience: str = "me",
 ) -> tuple[dict, list[dict], list, list[dict]]:
     """탭 에이전트에게 묻고 (메인에게 줄 결과, 탭 에이전트가 부른 도구 기록, 쓰기 제안, 확인 카드) 를 돌려준다."""
     question = str(args.get("question", "")).strip()
     if not question:
         raise ValueError("question 이 비어 있어요")
+    # 일정 에이전트만 어디서 불렀는지(가족방 @가비 = room)를 알아야 한다: 방에서는 공동 일정만 다룬다
+    extra = {"audience": audience} if name == "ask_schedule" else {}
     reply = AGENTS[name][1](
-        db, group_id, user, question, post, guarded=False
+        db, group_id, user, question, post, guarded=False, **extra
     )  # 메인 질문의 관문 한 번에 함께 센다
     reply = _without_false_proposal(name, reply)
     result = {"answer": reply.answer, "can_answer": reply.can_answer}

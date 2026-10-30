@@ -20,6 +20,9 @@ export const KIND_COLOR = {
   [KIND.todo]: colors.success,
 };
 
+// 브리핑 부탁 카드의 왼쪽 막대·태그 테두리(금색). 시안 값이라 UI Kit 확인 후 theme 으로 옮긴다.
+export const REQUEST_COLOR = "#d9a93b";
+
 // 제목 옆 주제 글자색과 일정 있는 날 점 색. 이것도 UI Kit 미정의라 와이어프레임 값을 임시로 쓴다.
 export const TOPIC_TEXT = { rose: "#E5588C", amber: "#E08A00", green: "#2FA568", sky: "#2F8FE0", purple: "#8E5CE6" };
 export const DOT_COLOR = "#F08F6C";

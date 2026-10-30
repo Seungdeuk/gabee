@@ -28,6 +28,8 @@ import {
   pinMeta,
   pinResultNotice,
   pinsReducer,
+  normalizePin,
+  setPinHidden,
 } from "../src/features/family-chat/pinUtils.js";
 
 process.env.TZ = "Asia/Seoul";
@@ -111,10 +113,10 @@ test("optimisticUnpin·applyPinResult: 해제, replaced_message_id 처리, 2개 
 });
 
 test("pinResultNotice: 교체·이미 고정·일반", () => {
-  assert.equal(REPLACED_NOTICE, "가장 오래된 고정이 해제됐어요");
-  assert.match(pinResultNotice({ replaced_message_id: 1, already_pinned: false }), /가장 오래된 고정이 해제됐어요/);
+  assert.equal(REPLACED_NOTICE, "가장 오래된 공지가 내려갔어요");
+  assert.match(pinResultNotice({ replaced_message_id: 1, already_pinned: false }), /가장 오래된 공지가 내려갔어요/);
   assert.equal(pinResultNotice({ replaced_message_id: null, already_pinned: true }), ALREADY_PINNED_NOTICE);
-  assert.equal(pinResultNotice({ replaced_message_id: null, already_pinned: false }), "공지로 고정했어요");
+  assert.equal(pinResultNotice({ replaced_message_id: null, already_pinned: false }), "게시판에 올렸어요");
 });
 
 test("pinsReducer: 낙관적 고정 → 실패 되돌리기, 오래된 조회 응답은 버린다", () => {
@@ -146,13 +148,13 @@ test("pinBarView: 펼치면 2개, 접으면 가장 최근 1개, 토글은 2개�
   assert.deepEqual(pinBarView([], true).rows, []);
 });
 
-test("pinLine·pinMeta·pinA11yLabel: 한 줄 본문, 고정한 사람·시각, 별명 우선", () => {
+test("pinLine·pinMeta·pinA11yLabel: 한 줄 본문, 올린 사람·시각, 별명 우선", () => {
   const p = pin(2, "2026-10-24T06:20:00Z", { text: "토요일\n  저녁   7시" }); // 한국 시간 15:20
   assert.equal(pinLine(p), "토요일 저녁 7시");
-  assert.match(pinMeta(p), /^아빠 고정 · 10월 24일 /);
-  assert.match(pinMeta(p, (id) => (id === "dad" ? "우리 아빠" : undefined)), /^우리 아빠 고정/);
+  assert.match(pinMeta(p), /^아빠 올림 · 10월 24일 /);
+  assert.match(pinMeta(p, (id) => (id === "dad" ? "우리 아빠" : undefined)), /^우리 아빠 올림/);
   assert.match(pinA11yLabel(p), /엄마: 토요일 저녁 7시/);
-  assert.equal(pinMeta({ pinned_at: "모름" }), "가족 고정");
+  assert.equal(pinMeta({ pinned_at: "모름" }), "가족 올림");
 });
 
 test("nextPinPollDelay: 정상 30초, 실패마다 두 배로 최대 2분", () => {
@@ -163,11 +165,11 @@ test("nextPinPollDelay: 정상 30초, 실패마다 두 배로 최대 2분", () =
 });
 
 test("pinErrorMessage: not_pinnable·invalid_message·404·429, 해제 중 404, 그 밖에는 공통 문구", () => {
-  assert.equal(pinErrorMessage({ status: 400, code: "not_pinnable" }), "사진이나 빈 메시지는 고정할 수 없어요");
+  assert.equal(pinErrorMessage({ status: 400, code: "not_pinnable" }), "사진이나 빈 메시지는 게시판에 올릴 수 없어요");
   assert.match(pinErrorMessage({ status: 400, code: "invalid_message" }), /이 대화방의 메시지가 아니라/);
   assert.equal(pinErrorMessage({ status: 429, code: "rate_limited" }), "너무 자주 바꿨어요. 잠시 뒤에 다시 해 주세요");
   assert.equal(pinErrorMessage({ status: 404, code: "not_found" }), "대화방을 찾을 수 없거나 권한이 없어요");
-  assert.equal(pinErrorMessage({ status: 404 }, "unpin"), "이미 해제된 고정이에요");
+  assert.equal(pinErrorMessage({ status: 404 }, "unpin"), "이미 내려갔거나 볼 수 없는 공지예요");
   assert.equal(pinErrorMessage({ status: 0, code: "network_error" }), "서버에 연결하지 못했어요. 인터넷 연결을 확인해 주세요");
   assert.equal(pinErrorMessage(null), "잠시 문제가 생겼어요. 다시 시도해 주세요");
 });
@@ -205,7 +207,7 @@ test("API listPins·pinMessage·unpinMessage: 경로·메서드·본문", async 
 test("API pinMessage: 400 not_pinnable·429 는 ApiError 로 올라와 문구가 된다", async () => {
   const api = await import("../src/features/family-chat/api.js");
   for (const [status, code, text] of [
-    [400, "not_pinnable", "사진이나 빈 메시지는 고정할 수 없어요"],
+    [400, "not_pinnable", "사진이나 빈 메시지는 게시판에 올릴 수 없어요"],
     [429, "rate_limited", "너무 자주 바꿨어요. 잠시 뒤에 다시 해 주세요"],
   ]) {
     globalThis.fetch = async () => json(status, { code, message: "m" });
@@ -220,18 +222,18 @@ test("API pinMessage: 400 not_pinnable·429 는 ApiError 로 올라와 문구가
   }
 });
 
-test("서랍: 고정 메시지 행은 연결되면 동작 행이고 가족방·1:1 모두 같다", () => {
+test("서랍: 게시판 행은 연결되면 동작 행이고 가족방·1:1 모두 같다", () => {
   const find = (sections, key) => sections.flatMap((s) => s.rows).find((r) => r.key === key);
   for (const direct of [false, true]) {
     const row = find(buildDrawerSections({ direct, pinsReady: true }), "pins");
     assert.equal(row.state, "open");
-    assert.equal(row.subtitle, "중요 공지와 약속 모아보기");
+    assert.equal(row.subtitle, "공지 모아보기");
     assert.deepEqual(resolveRowAction(row), { type: "pins" });
     assert.equal(find(buildDrawerSections({ direct }), "pins").state, "soon"); // 연결 전에는 이전처럼 준비 중
   }
-  // 다른 행은 그대로
+  // 알림 행은 스위치가 되어 준비 중이 아니다
   const soon = buildDrawerSections({ direct: false, pinsReady: true }).flatMap((s) => s.rows).filter((r) => r.state === "soon").map((r) => r.key);
-  assert.deepEqual(soon, ["search", "docs", "todos", "notifications", "privacy", "edit"]);
+  assert.deepEqual(soon, []);
 });
 
 test("겹치는 요청: A 고정 대기 중 X 해제 성공 → A 실패해도 X 는 되살아나지 않는다", () => {
@@ -336,4 +338,87 @@ test("failureEffect·pinSettled: 해제 404 는 그대로 두고, 요청 중이�
   assert.equal(pinSettled({ pending: 0, alive: false }), false);
   // 마지막 요청이 끝났을 때만(pending 이 0 이 될 때) 서버 맞춤 조회
   assert.deepEqual([2, 1, 0].map((pending) => pinSettled({ pending, alive: true })), [false, false, true]);
+});
+
+// ── 게시판(8-b): 원본 삭제 표시, 나만 숨기기 ───────────────────────────
+
+test("normalizePin: message_deleted·hidden 을 불리언으로 다듬고 없으면 false", () => {
+  const base = { message_id: 7, text: "공지", pinned_at: "2026-10-24T01:00:00Z" };
+  assert.equal(normalizePin(base).message_deleted, false);
+  assert.equal(normalizePin(base).hidden, false);
+  assert.equal(normalizePin({ ...base, message_deleted: true, hidden: true }).message_deleted, true);
+  assert.equal(normalizePin({ ...base, hidden: "yes" }).hidden, true);
+});
+
+test("pinBarView: 내가 숨긴 공지는 줄에서 빼고 개수만 알려 준다, 토글은 보이는 공지가 2개일 때만", () => {
+  const a = { ...pin(1, "2026-10-24T01:00:00Z"), hidden: true };
+  const b = pin(2, "2026-10-24T02:00:00Z");
+  const c = pin(3, "2026-10-24T03:00:00Z");
+  const onlyHidden = pinBarView([a], true);
+  assert.deepEqual([onlyHidden.rows.length, onlyHidden.hiddenByMe, onlyHidden.canToggle], [0, 1, false]);
+  const mixed = pinBarView([a, b], true);
+  assert.deepEqual(mixed.rows.map((r) => r.message_id), [2]);
+  assert.equal(mixed.hiddenByMe, 1);
+  assert.equal(mixed.canToggle, false); // 보이는 공지가 1개
+  const two = pinBarView([b, c], false);
+  assert.deepEqual(two.rows.map((r) => r.message_id), [3]);
+  assert.deepEqual([two.canToggle, two.hidden, two.hiddenByMe], [true, 1, 0]);
+});
+
+test("setPinHidden·pinsReducer set_hidden: 한 공지만 바꾸고 되돌리면 원래 값, 없는 공지는 그대로", () => {
+  const items = [pin(1, "2026-10-24T01:00:00Z"), pin(2, "2026-10-24T02:00:00Z")];
+  const hidden = setPinHidden(items, 1, true);
+  assert.deepEqual(hidden.map((p) => [p.message_id, p.hidden]), [[2, false], [1, true]]);
+  assert.deepEqual(setPinHidden(hidden, 1, false).map((p) => p.hidden), [false, false]);
+  assert.deepEqual(setPinHidden(items, 99, true).map((p) => p.hidden), [false, false]);
+  let st = { items, mutSeq: 0 };
+  st = pinsReducer(st, { type: "set_hidden", seq: 1, messageId: 2, hidden: true });
+  assert.equal(st.items.find((p) => p.message_id === 2).hidden, true);
+  assert.equal(st.mutSeq, 1);
+  // 오래된 조회 응답은 방금 숨긴 상태를 덮지 못한다
+  assert.equal(pinsReducer(st, { type: "loaded", seq: 0, items }).items.find((p) => p.message_id === 2).hidden, true);
+});
+
+test("pinMeta·pinA11yLabel: 원본이 지워진 공지는 표시를 붙인다", () => {
+  const p = { ...pin(2, "2026-10-24T06:20:00Z"), message_deleted: true };
+  assert.match(pinMeta(p), / · 원본 삭제됨$/);
+  assert.match(pinA11yLabel(p), /원본 메시지는 삭제됐어요/);
+  assert.doesNotMatch(pinMeta(pin(3, "2026-10-24T06:20:00Z")), /원본 삭제됨/);
+});
+
+test("failureEffect·pinErrorMessage: 숨기기·되돌리기 중 404(이미 내려감)는 그대로 두고 안내한다", () => {
+  for (const action of ["unpin", "hide", "show"]) assert.equal(failureEffect(action, { status: 404 }), "keep");
+  assert.equal(failureEffect("pin", { status: 404 }), "revert");
+  assert.equal(failureEffect("hide", { status: 500 }), "revert");
+  assert.equal(pinErrorMessage({ status: 404 }, "hide"), "이미 내려갔거나 볼 수 없는 공지예요");
+  assert.equal(pinErrorMessage({ status: 404 }, "show"), "이미 내려갔거나 볼 수 없는 공지예요");
+});
+
+test("API hidePin·showPin: 경로·메서드(PUT/DELETE), 방 id 는 쿼리", async () => {
+  const calls2 = [];
+  globalThis.fetch = async (url, init) => {
+    calls2.push({ url: String(url), method: init?.method ?? "GET" });
+    return json(200, { message_id: 5, hidden: true });
+  };
+  const api = await import("../src/features/family-chat/api.js");
+  await api.hidePin({ messageId: 5 });
+  await api.showPin({ roomId: "r1", messageId: 5 });
+  assert.match(calls2[0].url, /\/family-chat\/pins\/5\/hide$/);
+  assert.equal(calls2[0].method, "PUT");
+  assert.match(calls2[1].url, /\/family-chat\/pins\/5\/hide\?room_id=r1$/);
+  assert.equal(calls2[1].method, "DELETE");
+});
+
+test("pinA11yLabel: 앞말은 \"게시판 공지,\"", () => {
+  assert.match(pinA11yLabel(pin(2, "2026-10-24T06:20:00Z")), /^게시판 공지, /);
+});
+
+test("pinBarView: 접은 상태에서 보이는 공지 1개 + 숨긴 공지 1개", () => {
+  const view = pinBarView([{ ...pin(1, "2026-10-24T01:00:00Z"), hidden: true }, pin(2, "2026-10-24T02:00:00Z")], false);
+  assert.deepEqual(view.rows.map((r) => r.message_id), [2]);
+  assert.deepEqual([view.canToggle, view.hidden, view.hiddenByMe], [false, 0, 1]);
+});
+
+test("pinErrorMessage: 올리기가 아닌 동작의 404 문구는 중립(공지 없음·방 접근 불가를 서버가 구분하지 않는다)", () => {
+  assert.equal(pinErrorMessage({ status: 404 }, "hide"), "이미 내려갔거나 볼 수 없는 공지예요");
 });

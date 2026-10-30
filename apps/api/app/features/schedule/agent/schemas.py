@@ -1,7 +1,7 @@
 """일정 에이전트 입출력 형식. 메인 오케스트레이터(개인·가족 채팅)와 일정 화면 카드가 같은 형식을 쓴다.
 형식은 메인 담당자와 협의해 바뀔 수 있다 — 호출하는 쪽은 `handler.handle` 만 알면 되게 둔다."""
 
-from typing import Literal
+from typing import Annotated, Literal
 
 from pydantic import BaseModel, Field
 
@@ -9,7 +9,9 @@ from pydantic import BaseModel, Field
 Channel = Literal["personal", "family"]
 
 # 일정 요청의 종류. not_schedule 이면 일정 요청이 아니라는 뜻이라 메인이 직접 답한다
-Intent = Literal["query", "recommend", "register", "edit", "delete", "check", "not_schedule"]
+Intent = Literal[
+    "query", "recommend", "register", "edit", "delete", "check", "request", "not_schedule"
+]
 INTENTS: tuple[str, ...] = (
     "query",
     "recommend",
@@ -17,12 +19,20 @@ INTENTS: tuple[str, ...] = (
     "edit",
     "delete",
     "check",
+    "request",
     "not_schedule",
 )
 
-# 채팅 안 카드 종류: 일정 목록 / 등록 완료 / 공유 등록 확인 / 수정 확인 / 삭제 확인 / 추천
+# 채팅 안 카드 종류: 일정 목록 / 등록 완료 / 공유 등록 확인 / 수정 확인 / 삭제 확인 / 추천 / 부탁 확인(보내기·받는 사람 바꾸기·취소) / 부탁 목록
 CardType = Literal[
-    "event_list", "registered", "register_confirm", "edit_confirm", "delete_confirm", "suggestion"
+    "event_list",
+    "registered",
+    "register_confirm",
+    "edit_confirm",
+    "delete_confirm",
+    "suggestion",
+    "request_confirm",
+    "request_list",
 ]
 
 
@@ -41,6 +51,8 @@ class Draft(BaseModel):
         default_factory=list, max_length=20
     )  # 공유할 사람(사용자가 요청했을 때만)
     asks: int = Field(default=0, ge=0, le=5)  # 지금까지 되물은 횟수
+    # event 는 일정 등록 초안, request 는 부탁 보내기 초안(이때 share_ids 는 부탁받을 사람, kind 는 쓰지 않는다)
+    mode: Literal["event", "request"] = "event"
 
 
 class AgentRequest(BaseModel):
@@ -57,10 +69,14 @@ class Card(BaseModel):
 class PendingAction(BaseModel):
     """확인 카드가 들고 있는 실행 정보. 서버는 저장하지 않고(stateless) 확인 요청에 그대로 돌려받는다."""
 
-    type: Literal["edit", "delete", "register"]
+    type: Literal[
+        "edit", "delete", "register", "request_register", "request_edit", "request_cancel"
+    ]
     event_id: str = ""  # 수정·삭제 대상(등록은 비어 있음)
     changes: dict = Field(default_factory=dict)  # 수정일 때 바뀌는 값
-    draft: Draft | None = None  # 등록(공유 확인)일 때 등록할 내용
+    draft: Draft | None = None  # 등록(공유 확인)·부탁 보내기일 때 등록할 내용
+    request_id: str = ""  # 부탁 받는 사람 바꾸기·취소 대상
+    to_ids: list[str] = Field(default_factory=list, max_length=20)  # 부탁의 바뀐 뒤 받는 사람 전체
 
 
 class ConfirmRequest(BaseModel):
@@ -84,10 +100,27 @@ class SuggestionOut(BaseModel):
     kind: int
     start_date: str  # YYYY-MM-DD
     place: str
+    later: bool = False  # "나중에"를 눌러 둔 추천
+
+
+class SuggestionsRequest(BaseModel):
+    """추천 요청. chat 은 앱이 보낸 개인 AI 채팅의 최근 7일 안 내 말이다(서버는 저장하지 않고 이번 생성에만 쓴다)."""
+
+    chat: list[Annotated[str, Field(max_length=200)]] = Field(default_factory=list, max_length=30)
 
 
 class SuggestionsOut(BaseModel):
-    """대기 중인 추천. exhausted 는 오늘 추천을 다 만들어 더 없다는 뜻."""
+    """오늘의 추천 슬롯. state: ok(보여줄 추천이 있음) / exhausted(오늘 추천은 여기까지) / no_data(참고할 데이터가 없음) /
+    filtered(데이터는 있는데 새로 만들 게 없음) / preparing(AI 호출 오류). can_refresh 는 새로고침이 의미 있는가.
+    exhausted 는 state == "exhausted" 와 같다(예전 앱 호환)."""
 
     suggestions: list[SuggestionOut]
     exhausted: bool
+    state: str = "ok"
+    can_refresh: bool = True
+
+
+class SuggestionLater(BaseModel):
+    """ "나중에" 표시. later=true 면 나중에로, false 면 다시 대기로 되돌린다."""
+
+    later: bool

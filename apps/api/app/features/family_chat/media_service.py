@@ -20,10 +20,9 @@ limiter = FailureLimiter()  # 프로세스 메모리(shared/rate_limit.py 의 �
 
 
 def attachment_kind(a: MessageAttachment) -> str:
-    """첨부의 종류를 정하는 유일한 곳. 지금 서버가 받는 첨부는 사진뿐이라 모두 image 다.
-    확장 지점: 파일·동영상 업로드가 생기면 MessageAttachment 에 종류(또는 content_type) 칼럼을 추가하고
-    여기서 읽는다. 목록·개수의 종류 필터도 같은 칼럼으로 SQL 조건에 넣는다(list_media, counts)."""
-    return "image"
+    """첨부의 종류를 정하는 유일한 곳. MessageAttachment.kind(image | file)를 읽는다(동영상은 아직 없다).
+    목록·개수의 종류 필터도 같은 칼럼으로 SQL 조건에 넣는다(list_media, counts)."""
+    return "file" if a.kind == "file" else "image"
 
 
 def _check_rate(user_id: str) -> None:
@@ -40,6 +39,20 @@ def _check_rate(user_id: str) -> None:
 
 
 def _item(a: MessageAttachment, message_id: int, user_id: str, user_name: str, created_at):
+    if attachment_kind(a) == "file":
+        return MediaItem(
+            attachment_id=a.id,
+            message_id=message_id,
+            kind="file",
+            user_id=user_id,
+            user_name=user_name,
+            created_at=created_at,
+            url=f"/family-chat/files/{a.id}",
+            thumb_url=None,
+            width=None,
+            height=None,
+            size_bytes=a.size_bytes,
+        )
     return MediaItem(
         attachment_id=a.id,
         message_id=message_id,
@@ -66,10 +79,11 @@ def list_media(
 ) -> MediaPage:
     room = service.resolve_room(db, user, group_id, room_id)
     _check_rate(user.id)
-    counts = MediaCounts(image=media_repo.count_attachments(db, room), file=0, video=0)
-    if kind not in ("all", "image"):  # 아직 이 종류의 첨부는 없다
+    by_kind = media_repo.count_attachments(db, room)
+    counts = MediaCounts(image=by_kind.get("image", 0), file=by_kind.get("file", 0), video=0)
+    if kind not in ("all", "image", "file"):  # 동영상은 아직 없다
         return MediaPage(items=[], next_before_id=None, counts=counts)
-    rows = media_repo.list_page(db, room, limit, before_id)
+    rows = media_repo.list_page(db, room, limit, before_id, None if kind == "all" else kind)
     page = rows[:limit]
     items = [_item(a, m.id, m.user_id, name, m.created_at) for a, m, name in page]
     next_id = page[-1][1].id if len(rows) > limit else None

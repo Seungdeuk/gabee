@@ -7,10 +7,10 @@ import { apiFetch } from "@/shared/api/client";
  * @typedef {{ id: string, name: string, color: string, created_at: string }} ServerTopic
  * @typedef {{ shared_by: string | null, shared_with: string[] }} Sharing
  * @typedef {ReturnType<import("./members").buildFamily>} Family
- * @typedef {{ id: string, title: string, kind: 1 | 2, start_date: string, place: string }} ServerSuggestion
- * @typedef {{ suggestions: ServerSuggestion[], exhausted: boolean }} SuggestionList
+ * @typedef {{ id: string, title: string, kind: 1 | 2, start_date: string, place: string, later: boolean }} ServerSuggestion
+ * @typedef {{ suggestions: ServerSuggestion[], exhausted: boolean, state: "ok" | "exhausted" | "no_data" | "filtered" | "preparing", can_refresh: boolean }} SuggestionList
  * @typedef {{ user_id: string, status: "waiting" | "accepted" | "declined" }} ServerRecipient
- * @typedef {{ id: string, from_id: string, title: string, start_date: string, start_time: string | null, end_time: string | null, place: string, memo: string, created_at: string, canceled: boolean, recipients: ServerRecipient[], my_event_id: string | null }} ServerRequest
+ * @typedef {{ id: string, from_id: string, title: string, start_date: string, start_time: string | null, end_time: string | null, place: string, memo: string, created_at: string, canceled: boolean, recipients: ServerRecipient[], my_event_id: string | null, edited_at?: string | null }} ServerRequest
  */
 
 const KIND_FROM_SERVER = { 1: "appointment", 2: "todo" };
@@ -130,9 +130,15 @@ export const setEventChecked = (id, checked) =>
 
 /**
  * 오늘의 대기 제안(없으면 서버가 만들어 주니 몇 초 걸릴 수 있다). 하루 몫을 다 쓰면 suggestions 가 비고 exhausted 가 true.
+ * 최근 AI 채팅에서 내가 한 말(chat, 최대 30줄)을 함께 보낸다. 서버는 저장하지 않는다.
+ * @param {string[]} [chat] suggest_chat.js 의 recentChatLines 결과
  * @returns {Promise<SuggestionList>}
  */
-export const listSuggestions = () => apiFetch("/schedule/suggestions");
+export const listSuggestions = (chat = []) => apiFetch("/schedule/suggestions", { method: "POST", body: { chat } });
+
+/** 추천의 "나중에" 표시를 서버에 반영한다(true 면 나중에, false 면 다시 대기). */
+export const setSuggestionLater = (id, later) =>
+  apiFetch(`/schedule/suggestions/${id}/later`, { method: "PUT", body: { later } });
 
 /** 내 주제 목록(처음이면 서버가 기본 주제 "경조사"를 만들어 준다). @returns {Promise<ServerTopic[]>} */
 export const listTopics = () => apiFetch("/schedule/topics");
@@ -162,5 +168,14 @@ export const createRequest = (body) => apiFetch("/schedule/requests", { method: 
 export const answerRequest = (id, answer, kind = null) =>
   apiFetch(`/schedule/requests/${id}/answer`, { method: "POST", body: { answer, kind } });
 
-/** 보낸 사람이 보내기를 취소한다. @returns {Promise<ServerRequest>} */
+/** 보낸 사람이 부탁을 취소한다(수락한 사람이 있어도 되고, 그 사람의 일정은 서버가 지운다). @returns {Promise<ServerRequest>} */
 export const cancelRequest = (id) => apiFetch(`/schedule/requests/${id}/cancel`, { method: "POST" });
+
+/**
+ * 보낸 사람이 받는 사람을 바꾼다(바뀐 뒤 전체 목록, 최소 1명, 나 제외). 빠진 사람의 부탁·그가 만든 일정은 서버가 지운다.
+ * 400 invalid_recipients·request_canceled, 403 not_owner(ApiError.code).
+ * @param {string} id
+ * @param {string[]} toIds 서버 사용자 id
+ * @returns {Promise<ServerRequest>}
+ */
+export const changeRecipients = (id, toIds) => apiFetch(`/schedule/requests/${id}/recipients`, { method: "PUT", body: { to_ids: toIds } });

@@ -35,3 +35,9 @@
 
 - 앱: `tests/notifications.test.js`(API 경로, 분류·이동 규칙, 배지·시각 표시, 개수 실패 처리). 화면 렌더링과 실기기는 자동화하지 않았다.
 - 서버: `tests/test_notifications_model.py`, `app/features/family_group/tests/test_join_notifications.py`,, `tests/test_notifications_notify.py`, `app/features/notifications/tests/test_notifications_api.py`.
+
+## 화면 다듬기 (release/1.1)
+- 알림 화면의 분류 칩 줄: `Screen` 의 `pinned` 영역은 좌우 여백이 없어 칩이 왼쪽 끝에서 시작하던 문제를 고쳤다. 제목과 같은 여백(`spacing.xl`)을 두고, 한 줄로 두어 폭이 모자라면 가로로 민다.
+- 상단바(`AppHeader`): 종 아이콘이 붙어 오른쪽 버튼이 늘면서 로고가 왼쪽으로 밀리던 문제를 고쳤다. 왼쪽·오른쪽 영역을 같은 너비(flex 1)로 두어 로고가 항상 가운데에 온다.
+- 종 배지: 숫자가 작고 종과 겹쳐 안 보일 수 있어 배지를 20px 로 키우고 글자 줄 높이를 고정했다. 실기기(안드로이드)에서는 아직 확인하지 못했다.
+

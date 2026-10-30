@@ -17,10 +17,9 @@ from collections.abc import Callable
 from dataclasses import dataclass, replace
 from datetime import UTC, date, datetime, timedelta, timezone
 
-from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.features.family_group.models import GroupMember, User
+from app.features.family_group.models import User
 from app.shared import ai_guard
 from app.shared.config import settings
 from app.shared.errors import ApiError, bad_request
@@ -61,7 +60,6 @@ PROMPT_VERSION = "v4"  # 프롬프트·스키마를 바꾸면 올려서 오래�
 ANALYSIS_MAX_TOKENS = 3000  # 분석이 답장·주제까지 한 번에 만들어서 기본 상한(2048)보다 넉넉하게. 잘리면 전체가 실패한다
 MAX_REPLIES = 3
 MAX_TOPICS = 5
-MANAGER_ROLES = ("owner", "admin")
 _WEEKDAYS = "월화수목금토일"
 _PERSON_TOKEN = re.compile(r"\[PERSON_\d+\]")
 
@@ -97,20 +95,11 @@ TOPICS_SYSTEM = f"""당신은 가족 대화가 끊겼을 때 이어갈 이야기
 
 
 # ---------- 설정(동의) ----------
-def _is_manager(db: Session, user_id: str, group_id: str) -> bool:
-    role = db.scalar(
-        select(GroupMember.role).where(
-            GroupMember.group_id == group_id, GroupMember.user_id == user_id
-        )
-    )
-    return role in MANAGER_ROLES
-
-
 def get_settings(db: Session, user: User, group_id: str) -> AiSettingsOut:
     user_calls, group_calls = ai_guard.usage_today(db, user.id, group_id)
     return AiSettingsOut(
         enabled=ai_guard.is_enabled(db, group_id),
-        can_manage=_is_manager(db, user.id, group_id),
+        can_manage=True,  # 회원가입 때 AI 동의를 하므로 가족 구성원 누구나 켜고 끌 수 있다(필드는 앱 호환을 위해 남긴다)
         auto_analysis=settings.ai_auto_analysis_enabled,
         limits=AiLimitsOut(
             user_per_day=settings.ai_max_calls_per_user_per_day,
@@ -123,8 +112,7 @@ def get_settings(db: Session, user: User, group_id: str) -> AiSettingsOut:
 
 
 def set_enabled(db: Session, user: User, group_id: str, enabled: bool) -> AiSettingsOut:
-    if not _is_manager(db, user.id, group_id):
-        raise ApiError(403, "not_manager", "가족 관리자만 할 수 있어요")
+    # 가족 구성원 누구나 켜고 끌 수 있다(소속 확인은 라우터의 current_group_id 가 한다). 끌 때는 이 가족의 분석 결과 캐시도 지워진다.
     ai_guard.set_enabled(db, group_id, user.id, enabled)
     return get_settings(db, user, group_id)
 

@@ -3,6 +3,7 @@ import { mapChatCards } from "@/features/ai-assistant/scheduleCard";
 import { getGroupWithNicknames } from "@/shared/members/nicknames";
 import { photoPath } from "@/shared/photoCache";
 
+import { chatFileMimeType } from "./fileUtils";
 import { chatPhotoFileName, chatPhotoMimeType } from "./photo";
 
 /**
@@ -105,16 +106,24 @@ const roomParam = (roomId) => (roomId ? `room_id=${encodeURIComponent(roomId)}` 
 
 /**
  * 대화방 목록: 가족 전체방(맨 위)과 내가 참여한 1:1 방. AI 를 부르지 않는다.
- * @returns {Promise<{ id: string, kind: "family" | "direct", peer_user_id: string | null, last_message: { id: number, user_id: string, user_name: string, text: string, created_at: string } | null, unread: number }[]>}
+ * @returns {Promise<{ id: string, kind: "family" | "direct", peer_user_id: string | null, last_message: { id: number, user_id: string, user_name: string, text: string, created_at: string } | null, unread: number, muted?: boolean }[]>} muted 는 내 알림 끔 여부(없으면 false)
  */
 export const listRooms = () => apiFetch("/family-chat/rooms");
 
 /**
  * 같은 가족 구성원과의 1:1 방을 열거나(없으면 만든다) 돌려준다.
  * @param {string} userId 상대 구성원 id
- * @returns {Promise<{ id: string, kind: "direct", peer_user_id: string, last_message: object | null, unread: number }>}
+ * @returns {Promise<{ id: string, kind: "direct", peer_user_id: string, last_message: object | null, unread: number, muted?: boolean }>}
  */
 export const openDirectRoom = (userId) => apiFetch("/family-chat/rooms/direct", { method: "POST", body: { user_id: userId } });
+
+/**
+ * 이 방의 알림을 끄거나 켠다(내 설정만 바뀐다. 푸시는 아직 없어 저장만 하고, 읽지 않음 숫자는 그대로다).
+ * @param {string} roomId 방 목록의 방 id(가족 전체방은 kind "family" 행의 id)
+ * @param {boolean} muted true 면 끔
+ * @returns {Promise<{ room_id: string, muted: boolean }>}
+ */
+export const setRoomMuted = (roomId, muted) => apiFetch(`/family-chat/rooms/${encodeURIComponent(roomId)}/mute`, { method: "PUT", body: { muted: Boolean(muted) } });
 
 /**
  * 채팅 메시지 조회. 결과는 항상 오래된 순이다. 대화 글자는 쿼리에 넣지 않는다(숫자 범위만).
@@ -156,9 +165,43 @@ export function searchMessages({ q, roomId, limit = 20, beforeId } = {}) {
  * 메시지를 보낸다(일반 전송은 AI 를 부르지 않는다).
  * @param {string} text 1~2000자
  * @param {string | null} [roomId] 대화방 id, 없으면 가족 전체방
+ * @param {number | null} [replyToId] 답장할 메시지 id(같은 방의 지우지 않은 메시지, 아니면 400 invalid_message / reply_deleted)
  * @returns {Promise<{ id: number, user_id: string, user_name: string, text: string, created_at: string, attachment?: { id: string, kind: string, url: string, thumb_url: string, width: number, height: number } | null }>}
  */
-export const sendMessage = (text, roomId) => apiFetch("/family-chat/messages", { method: "POST", body: roomId ? { text, room_id: roomId } : { text } });
+export const sendMessage = (text, roomId, replyToId) => {
+  const body = roomId ? { text, room_id: roomId } : { text };
+  if (replyToId != null) body.reply_to_id = Number(replyToId);
+  return apiFetch("/family-chat/messages", { method: "POST", body });
+};
+
+/**
+ * 내가 보낸 메시지를 지운다(본문·사진도 서버에서 비운다). 이미 지웠으면 같은 결과. 오류: 403(남의 메시지·가비의 답), 404(방·메시지 없음), 429.
+ * @param {{ roomId?: string | null, messageId: number }} options roomId 가 없으면 가족 전체방
+ * @returns {Promise<object>} 지운 메시지(deleted: true, text 는 빈 글자)
+ */
+export const deleteMessage = ({ roomId, messageId }) => apiFetch(`/family-chat/messages/${Number(messageId)}${roomId ? `?${roomParam(roomId)}` : ""}`, { method: "DELETE" });
+
+/**
+ * since 이후에 지워진 이 방의 메시지 id(지운 순서, 최대 200개)와 서버 시각. 새 메시지만 조회하는 앱이 이미 받아 둔 메시지가 지워졌음을 알려고 쓴다.
+ * 응답의 server_time 을 다음 조회의 since 로 쓰면 기기 시계가 어긋나도 놓치지 않는다.
+ * @param {{ roomId?: string | null, since: string }} options since 는 ISO 시각
+ * @returns {Promise<{ message_ids: number[], server_time: string }>}
+ */
+export const listDeletedMessages = ({ roomId, since }) => apiFetch(`/family-chat/messages/deleted?since=${encodeURIComponent(since)}${roomId ? `&${roomParam(roomId)}` : ""}`);
+
+/**
+ * 메시지에 내 반응을 정한다(한 사람이 한 메시지에 하나, 다른 이모지면 바뀐다). 허용 이모지 6개(❤️ 👍 😂 😮 😢 🙏)만. 오류: 400 invalid_reaction / message_deleted, 404.
+ * @param {{ roomId?: string | null, messageId: number, emoji: string }} options roomId 가 없으면 가족 전체방
+ * @returns {Promise<object>} 반응이 반영된 메시지(reactions: [{emoji, count, mine}])
+ */
+export const reactToMessage = ({ roomId, messageId, emoji }) => apiFetch(`/family-chat/messages/${Number(messageId)}/reaction${roomId ? `?${roomParam(roomId)}` : ""}`, { method: "PUT", body: { emoji } });
+
+/**
+ * 내 반응을 지운다(없어도 같은 결과).
+ * @param {{ roomId?: string | null, messageId: number }} options roomId 가 없으면 가족 전체방
+ * @returns {Promise<object>} 반응이 반영된 메시지
+ */
+export const removeReaction = ({ roomId, messageId }) => apiFetch(`/family-chat/messages/${Number(messageId)}/reaction${roomId ? `?${roomParam(roomId)}` : ""}`, { method: "DELETE" });
 
 /**
  * 사진 메시지를 보낸다(POST /family-chat/photos, multipart 'file' + 선택 form 필드 room_id). 8MB 이하 JPEG/PNG/WebP, 서버가 다시 만든다. AI 를 부르지 않는다.
@@ -181,6 +224,55 @@ export async function sendPhoto(asset, roomId) {
   }
   if (roomId) form.append("room_id", roomId);
   return apiFetch("/family-chat/photos", { method: "POST", body: form });
+}
+
+/**
+ * 문서 파일 메시지를 보낸다(POST /family-chat/files, multipart 'file' + 선택 form 필드 room_id). 허용 형식·20MB 는 서버가 다시 검사한다. AI 를 부르지 않는다.
+ * 웹은 asset.file(없으면 asset.uri 의 blob)을 그대로, 네이티브는 {uri, name, type} 으로 보낸다.
+ * @param {{ uri: string, name?: string | null, mimeType?: string | null, file?: Blob }} asset expo-document-picker 의 asset
+ * @param {string | null} [roomId] 대화방 id, 없으면 가족 전체방(form 에 넣지 않는다)
+ * @returns {Promise<{ id: number, user_id: string, user_name: string, text: string, created_at: string, attachment: { id: string, kind: "file", url: string, thumb_url: string | null, width: number | null, height: number | null, filename: string | null, size_bytes: number | null, content_type: string | null } | null }>}
+ */
+export async function sendFile(asset, roomId) {
+  const name = asset.name || "file";
+  const type = chatFileMimeType({ name, mimeType: asset.mimeType });
+  const form = new FormData();
+  if (asset.file) {
+    form.append("file", asset.file, name);
+  } else if (/^(blob|data):/.test(asset.uri)) {
+    const blob = await (await fetch(asset.uri)).blob();
+    form.append("file", blob, name);
+  } else {
+    form.append("file", { uri: asset.uri, name, type });
+  }
+  if (roomId) form.append("room_id", roomId);
+  return apiFetch("/family-chat/files", { method: "POST", body: form });
+}
+
+// 서버가 만드는 파일 첨부 경로만 받는다(다른 주소로 인증 헤더가 나가지 않게)
+const CHAT_FILE_PATH = /^\/family-chat\/files\/[\w-]+$/;
+
+/**
+ * 파일 받기 요청(주소+인증 헤더). 낯선 경로나 서버 주소가 없으면 던진다.
+ * @param {string} path attachment.url
+ * @returns {Promise<{ url: string, headers: Record<string, string> }>}
+ */
+export async function fileDownloadRequest(path) {
+  if (typeof path !== "string" || !CHAT_FILE_PATH.test(path) || !isApiConfigured()) throw new Error("file_unavailable");
+  await ensureFreshAccess().catch(() => {});
+  return { url: apiUrl(path), headers: { ...authHeaders() } };
+}
+
+/**
+ * 웹: 로그인 헤더로 파일을 받아 blob 으로 돌려준다.
+ * @param {string} path attachment.url
+ * @returns {Promise<Blob>}
+ */
+export async function downloadFile(path) {
+  const { url, headers } = await fileDownloadRequest(path);
+  const res = await fetch(url, { headers });
+  if (!res.ok) throw new Error("file_unavailable");
+  return res.blob();
 }
 
 /**
@@ -214,37 +306,23 @@ export const getReadStates = (roomId) => apiFetch(roomId ? `/family-chat/read-st
 export const getUnread = (roomId) => apiFetch(roomId ? `/family-chat/unread?${roomParam(roomId)}` : "/family-chat/unread");
 
 /**
- * 공동 할 일 목록(가족 전체 공유). 서버 계약은 PR #62. AI 를 부르지 않는다.
- * @param {"open" | "done" | "all"} [status] 기본 open(안 끝난 일), done 은 끝난 일
- * @param {number} [limit] 1~200, 기본 100
- * @returns {Promise<{ id: string, title: string, assignee_id: string | null, due_date: string | null, done: boolean, done_at: string | null, done_by: string | null, created_by: string, source: string, created_at: string }[]>}
+ * 함께하기(일정 탭의 같이 요청)를 보낸다(POST /schedule/requests, RequestCreate). 일정 기능의 api 파일을 가져오지 않고 공통 래퍼로 계약대로 직접 호출한다.
+ * @param {{ title: string, start_date: string, to_ids: string[] }} body 제목 1~120자, 날짜 YYYY-MM-DD, 받는 사람(나 제외) 1~20명
+ * @returns {Promise<{ id: string, title: string, start_date: string }>}
  */
-export const listTodos = (status = "open", limit = 100) => {
-  const safe = ["open", "done", "all"].includes(status) ? status : "open";
-  return apiFetch(`/family-chat/todos?status=${safe}&limit=${Number(limit)}`);
-};
+export const sendTogetherRequest = (body) => apiFetch("/schedule/requests", { method: "POST", body });
 
 /**
- * 할 일을 만든다. 만든 사람은 서버가 로그인한 사용자로 정한다.
- * @param {{ title: string, assignee_id?: string | null, due_date?: string | null, source?: "manual" | "chat" }} body title 1~120자, due_date 는 YYYY-MM-DD
- * @returns {Promise<object>} 만들어진 할 일(TodoOut)
+ * 일정 탭의 내 일정·할 일(지난 것 포함, 서버가 내 줄만 돌려준다). 시간 없는 오늘 할 일은 자정이 지나면 "앞으로의 것"에서 빠지므로 지난 것까지 받고, 서랍 "가족 할 일" 화면이 오늘 이후의 할 일만 골라 쓴다.
+ * @returns {Promise<{ id: string, title: string, kind: number, start_date: string | null, start_time: string | null, checked: boolean, origin_id: string | null }[]>}
  */
-export const createTodo = (body) => apiFetch("/family-chat/todos", { method: "POST", body });
+export const listScheduleEvents = () => apiFetch("/schedule/events?include_past=true");
 
 /**
- * 할 일을 고친다. 보낸 항목만 바뀌고, assignee_id·due_date 에 null 을 보내면 비운다. done 은 완료(true)·되돌리기(false).
- * @param {string} id
- * @param {{ title?: string, assignee_id?: string | null, due_date?: string | null, done?: boolean }} patch
- * @returns {Promise<object>} 바뀐 할 일(TodoOut)
+ * 같이(함께하기) 목록: 내가 보낸 것과 받은 것, 최신순.
+ * @returns {Promise<{ id: string, from_id: string, title: string, start_date: string, start_time: string | null, canceled: boolean, recipients: { user_id: string, status: "waiting" | "accepted" | "declined" }[] }[]>}
  */
-export const updateTodo = (id, patch) => apiFetch(`/family-chat/todos/${encodeURIComponent(id)}`, { method: "PATCH", body: patch });
-
-/**
- * 할 일을 지운다(만든 사람이나 가족 관리자만, 아니면 403 not_allowed).
- * @param {string} id
- * @returns {Promise<null>} 성공하면 본문 없음(204)
- */
-export const deleteTodo = (id) => apiFetch(`/family-chat/todos/${encodeURIComponent(id)}`, { method: "DELETE" });
+export const listTogetherRequests = () => apiFetch("/schedule/requests");
 
 /**
  * 내가 다른 구성원에게 붙인 별명·메모(나만 보인다). family-group 기능의 파일을 가져오지 않고 계약대로 직접 호출한다.
@@ -316,6 +394,41 @@ export const pinMessage = ({ roomId, messageId }) =>
  */
 export const unpinMessage = ({ roomId, messageId }) =>
   apiFetch(`/family-chat/pins/${Number(messageId)}${roomId ? `?${roomParam(roomId)}` : ""}`, { method: "DELETE" });
+
+/**
+ * 게시판 공지를 나만 숨긴다(다른 구성원에게는 그대로 보인다, 이미 숨겼어도 같은 결과). 올라가 있지 않은 공지는 404.
+ * @param {{ roomId?: string | null, messageId: number }} options roomId 가 없으면 가족 전체방
+ * @returns {Promise<object>} 서버 PinItem(hidden: true)
+ */
+export const hidePin = ({ roomId, messageId }) =>
+  apiFetch(`/family-chat/pins/${Number(messageId)}/hide${roomId ? `?${roomParam(roomId)}` : ""}`, { method: "PUT" });
+
+/**
+ * 숨겼던 공지를 다시 보이게 한다(숨기지 않았어도 같은 결과). 올라가 있지 않은 공지는 404.
+ * @param {{ roomId?: string | null, messageId: number }} options roomId 가 없으면 가족 전체방
+ * @returns {Promise<object>} 서버 PinItem(hidden: false)
+ */
+export const showPin = ({ roomId, messageId }) =>
+  apiFetch(`/family-chat/pins/${Number(messageId)}/hide${roomId ? `?${roomParam(roomId)}` : ""}`, { method: "DELETE" });
+
+/**
+ * 게시판 목록: 공지로 올린 메시지의 기록(지난 공지 포함)을 올린 시각 최신순으로. 전체 본문이 온다. 서버 계약은 `GET /family-chat/board`. AI 를 부르지 않는다.
+ * 오류: 400 invalid_cursor, 404(들어갈 수 없는 방), 429, 401.
+ * @param {{ roomId?: string | null, limit?: number, before?: string | null }} [options] roomId 가 없으면 가족 전체방, limit 1~50(기본 20), before 는 이전 응답의 next_before
+ * @returns {Promise<{ items: { id: string, message_id: number, text: string, user_id: string, user_name: string, message_created_at: string, posted_by: string, posted_by_name: string, posted_at: string, is_current: boolean, message_deleted: boolean }[], next_before: string | null }>}
+ */
+export function listBoard({ roomId, limit = 20, before } = {}) {
+  const query = [roomParam(roomId), `limit=${Number(limit)}`, before ? `before=${encodeURIComponent(before)}` : ""].filter(Boolean).join("&");
+  return apiFetch(`/family-chat/board?${query}`);
+}
+
+/**
+ * 게시판 글을 삭제한다(방 안의 누구나). 지금 공지로 올라 있으면 채팅방 위 공지 바에서도 내려간다. 원본 메시지는 그대로다. 없는 글은 404.
+ * @param {{ roomId?: string | null, postId: string }} options roomId 가 없으면 가족 전체방
+ * @returns {Promise<null>} 성공하면 본문 없음(204)
+ */
+export const deleteBoardPost = ({ roomId, postId }) =>
+  apiFetch(`/family-chat/board/${encodeURIComponent(postId)}${roomId ? `?${roomParam(roomId)}` : ""}`, { method: "DELETE" });
 
 /**
  * 이 방에서 등록한 일정·할 일과 원본 메시지의 연결(최신순). 서버 계약은 별도 PR 의 `GET /family-chat/links`. AI 를 부르지 않는다. 제목·본문은 기록하지 않는다.

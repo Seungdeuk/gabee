@@ -25,5 +25,5 @@ def list_media(
     group_id: str = Depends(current_group_id),
     db: Session = Depends(get_db),
 ) -> MediaPage:
-    """그 방에서 공유된 첨부를 최신순으로. 방에 들어갈 수 없으면 404. 지금은 사진(image)만 있다."""
+    """그 방에서 공유된 첨부를 최신순으로. 방에 들어갈 수 없으면 404. 사진(image)·문서(file)가 있고 동영상은 아직 없다."""
     return media_service.list_media(db, user, group_id, room_id, kind, limit, before_id)

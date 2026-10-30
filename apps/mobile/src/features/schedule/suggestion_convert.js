@@ -4,13 +4,14 @@ const KIND_FROM_SERVER = { 1: "appointment", 2: "todo" };
 
 /**
  * 서버 제안 한 건 → 화면 제안. 날짜는 절대 날짜(draft.date)다. 채팅 카드는 date, 목록은 start_date 로 온다.
- * @param {{ id: string, title: string, kind: 1 | 2, start_date?: string, date?: string, place?: string }} s
- * @returns {{ id: string, name: string, draft: { kind: "appointment" | "todo", title: string, date: string, place: string } }}
+ * @param {{ id: string, title: string, kind: 1 | 2, start_date?: string, date?: string, place?: string, later?: boolean }} s
+ * @returns {{ id: string, name: string, later: boolean, draft: { kind: "appointment" | "todo", title: string, date: string, place: string } }}
  */
 export function fromServerSuggestion(s) {
   return {
     id: s.id,
     name: s.title,
+    later: Boolean(s.later),
     draft: { kind: KIND_FROM_SERVER[s.kind] ?? "appointment", title: s.title, date: s.start_date ?? s.date ?? "", place: s.place ?? "" },
   };
 }

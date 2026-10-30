@@ -11,6 +11,7 @@
 import re
 import threading
 import time
+from datetime import date
 
 from sqlalchemy.orm import Session
 
@@ -19,6 +20,7 @@ from app.shared.llm.agent import AgentReply, Post
 
 from . import handler
 from . import members as members_mod
+from .prompts import WEEKDAYS
 from .schemas import AgentRequest, AgentResponse, Draft
 
 DESCRIPTION = (
@@ -26,6 +28,9 @@ DESCRIPTION = (
     "제목과 날짜가 있으면 바로 등록하고, 빠졌으면 되묻는 질문을 돌려준다. "
     "올려 둔 문서(학교 안내문·항공권·예약 확인서 등)에 적힌 날짜는 알지 못하니 그런 질문에는 쓰지 않는다. "
     "일정 수정·삭제와 다른 가족에게 공유해서 등록하는 것은 사용자 화면에 확인 카드가 나타나고 버튼을 눌러야 반영된다. "
+    "가족에게 일을 같이 해 달라고 보내는 부탁(함께하기)도 맡는다: 부탁 보내기·받는 사람 바꾸기·취소는 확인 카드가 나타나고 버튼을 눌러야 "
+    "반영되며, 보낸·받은 부탁의 상세와 수락 현황 질문은 바로 답한다. '엄마한테 내일 3시에 장 같이 봐달라고 부탁해줘'처럼 "
+    "누구에게·무엇을·언제를 담은 완전한 문장으로 넘긴다. "
     "'가족 모두에게 공유'도 그대로 넘긴다. "
     "'내일 오후 3시 엄마 생신 일정으로 등록해줘'처럼 날짜·시간 표현과 제목을 담은 완전한 문장으로 넘긴다. "
     "한 번에 일정 하나만 등록하니, 여러 개를 넣으려면 일정마다 따로 부른다."
@@ -42,6 +47,18 @@ def _event_line(event: dict) -> str:
     clock = event.get("start_time") or event.get("time") or ""
     when = " ".join(x for x in (event.get("date", ""), clock) if x)
     return f"- {when} {event.get('title', '')}".strip()
+
+
+def _request_summary(brief: dict) -> str:
+    """부탁 목록 카드 한 줄: 날짜 시간 제목 — 받는 분과 수락 현황(보낸 사람) 또는 보낸이와 수락한 사람(받은 사람)."""
+    head = _event_line(brief)
+    if brief.get("role") == "sent":
+        who = ", ".join(f"{r['name']}({r['status']})" for r in brief.get("recipients", []))
+        return f"{head} — 받는 분: {who}" if who else head
+    tail = f" — 보낸 분: {brief.get('from', '')}"
+    if brief.get("accepted"):
+        tail += f", 수락: {', '.join(brief['accepted'])}"
+    return head + tail
 
 
 WHOLE_FAMILY = re.compile(
@@ -69,6 +86,21 @@ def _change_line(change) -> str:
     return str(change)
 
 
+def _request_lines(action, data: dict) -> tuple[list[str], list[str]]:
+    """부탁 확인 카드의 (줄들, 받는 사람 이름들)."""
+    kind = data.get("action")
+    if kind == "create":
+        lines = [_event_line(data).removeprefix("- ")]
+        if data.get("place"):
+            lines.append(f"장소 {data['place']}")
+        who = [w["name"] for w in data.get("to", [])]
+        return lines, who
+    brief = data.get("request", {})
+    lines = [_event_line(brief).removeprefix("- ")]
+    lines.extend(_change_line(x) for x in data.get("changes", []))
+    return lines, []
+
+
 def _confirmation(response: AgentResponse) -> dict:
     """앱이 그리는 확인 카드. pending_action 은 버튼을 누를 때 그대로 돌려받아 서버가 처음부터 다시 검증한다."""
     action = response.pending_action
@@ -76,7 +108,9 @@ def _confirmation(response: AgentResponse) -> dict:
     data = card.data if card else {}
     lines: list[str] = []
     shared: list[str] = []
-    if action.type == "register":
+    if action.type.startswith("request_"):
+        lines, shared = _request_lines(action, data)
+    elif action.type == "register":
         lines.append(_event_line(data).removeprefix("- "))
         if data.get("place"):
             lines.append(f"장소 {data['place']}")
@@ -119,7 +153,39 @@ def _keep_draft(group_id: str, user_id: str, response: AgentResponse) -> None:
             )
 
 
-def _reply(response: AgentResponse) -> AgentReply:
+SHARE_SELECT_TITLE = "방에 공유할 항목을 골라 주세요"
+MAX_SHARE_ITEMS = 20
+
+
+def _share_line(item: dict) -> str:
+    """방에 올릴 한 줄: 'MM/DD(요일) HH:MM 제목'. 시간이 없으면 날짜와 제목만. 관련 구성원 이름은 넣지 않는다."""
+    day = date.fromisoformat(item["date"])
+    clock = item.get("start_time") or item.get("time") or ""
+    when = f"{day:%m/%d}({WEEKDAYS[day.weekday()]})"
+    return " ".join(x for x in (when, clock, item.get("title", "")) if x)
+
+
+def _share_select(events: list[dict], requests_: list[dict]) -> dict | None:
+    """가족방 조회 결과를 방에 올릴지 사용자가 고르는 카드. 후보가 없으면 만들지 않는다."""
+    items = [
+        {"id": str(x["id"]), "line": _share_line(x)}
+        for x in [*events, *requests_]
+        if x.get("id") and x.get("date")
+    ][:MAX_SHARE_ITEMS]
+    if not items:
+        return None
+    return {
+        "kind": "schedule",
+        "action": "share_select",
+        "title": SHARE_SELECT_TITLE,
+        "lines": [],
+        "shared_with": [],
+        "pending_action": {},
+        "items": items,
+    }
+
+
+def _reply(response: AgentResponse, room: bool = False) -> AgentReply:
     """일정 에이전트의 응답을 메인이 사용자에게 전할 글로 바꾼다. 실행되지 않은 일을 실행됐다고 말하게 하지 않는다."""
     if response.intent == "not_schedule":
         return AgentReply(NOT_SCHEDULE, can_answer=False)
@@ -140,11 +206,18 @@ def _reply(response: AgentResponse) -> AgentReply:
         )
         text = f"{head}\n{line}"
         return AgentReply(text, user_text=text)
+    asked = next((c for c in response.cards if c.type == "request_list"), None)
     listed = next((c for c in response.cards if c.type == "event_list"), None)
-    if listed is not None:
-        events = listed.data.get("events", [])[:MAX_EVENTS_SHOWN]
-        lines = "\n".join(_event_line(e) for e in events)
+    if asked is not None or listed is not None:  # 일정 질의에는 일정 줄과 부탁 줄이 함께 올 수 있다
+        events = listed.data.get("events", [])[:MAX_EVENTS_SHOWN] if listed else []
+        requests_ = asked.data.get("requests", [])[:MAX_EVENTS_SHOWN] if asked else []
+        lines = "\n".join(
+            [*(_event_line(e) for e in events), *(_request_summary(r) for r in requests_)]
+        )
         text = f"{response.text}\n{lines}".strip()
+        card = _share_select(events, requests_) if room else None
+        if card is not None:  # 가족방: 나에게만 보이는 답에 방에 올릴 항목을 고르는 카드를 붙인다
+            return AgentReply(text, user_text=text, confirmations=[card])
         return AgentReply(text, user_text=text)
     if response.text:
         return AgentReply(response.text, user_text=response.text)
@@ -159,14 +232,25 @@ def ask(
     post: Post | None = None,
     history: list[dict] | None = None,
     guarded: bool = False,
+    audience: str = "me",
 ) -> AgentReply:
     """`post`·`history` 는 정산·돌봄 에이전트와 호출 모양을 맞추는 자리다(쓰지 않는다). `guarded=False`(메인 채팅 안)이면 자기 관문을 다시 지나지 않는다."""
+    room = (
+        audience == "room"
+    )  # 가족방 @가비: 공동 일정만 다루고, 등록은 방의 다른 구성원에게 공유한다
     text = with_whole_family(question.strip(), db, group_id, user.id)
     request = AgentRequest(
-        text=text[:2000], channel="personal", draft=_take_draft(group_id, user.id)
+        text=text[:2000],
+        channel="family" if room else "personal",
+        draft=_take_draft(group_id, user.id),
     )
     response = handler.handle(
-        db, user.id, group_id, request, share_all=wants_whole_family(question), guarded=guarded
+        db,
+        user.id,
+        group_id,
+        request,
+        share_all=room or wants_whole_family(question),
+        guarded=guarded,
     )
     _keep_draft(group_id, user.id, response)
-    return _reply(response)
+    return _reply(response, room)

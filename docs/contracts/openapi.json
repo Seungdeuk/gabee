@@ -11,7 +11,7 @@
           "family-group"
         ],
         "summary": "Reissue Invite",
-        "description": "새 초대 코드를 만든다(24시간·1회). 기존 코드는 폐기된다. 가족 관리자(owner/admin)만.",
+        "description": "새 초대 코드를 만든다(기본 24시간·20명). 기존 코드는 폐기된다. 가족 관리자(owner/admin)만.",
         "operationId": "reissue_invite_family_group_groups_invites_reissue_post",
         "parameters": [
           {
@@ -54,6 +54,82 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/InviteOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/family-group/groups/invites/settings": {
+      "put": {
+        "tags": [
+          "family-group"
+        ],
+        "summary": "Update Invite Settings",
+        "description": "초대 코드로 들어온 사람을 바로 구성원으로 넣을지(자동 승인) 켜고 끈다. 가족 관리자만.",
+        "operationId": "update_invite_settings_family_group_groups_invites_settings_put",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-gyeot-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Gyeot-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InviteSettingsIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GroupOut"
                 }
               }
             }
@@ -1790,6 +1866,66 @@
         }
       }
     },
+    "/family-group/auth/me/tester-consent": {
+      "put": {
+        "tags": [
+          "family-group"
+        ],
+        "summary": "Put Tester Consent",
+        "description": "테스트 동의서에 동의한 버전과 시각을 저장한다.",
+        "operationId": "put_tester_consent_family_group_auth_me_tester_consent_put",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TesterConsentIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/family-group/me": {
       "get": {
         "tags": [
@@ -1936,7 +2072,7 @@
           "family-group"
         ],
         "summary": "Join Group",
-        "description": "초대 코드로 참여를 신청한다. 모든 계정(익명 포함)에 승인 대기 요청(JoinRequestOut, status=pending)이 만들어지고, 관리자 승인 뒤 구성원이 된다.",
+        "description": "초대 코드로 참여를 신청한다. 가족의 자동 승인이 켜져 있으면 바로 구성원이 되고(status=approved),\n꺼져 있으면 승인 대기 요청(status=pending)이 만들어져 관리자 승인 뒤 구성원이 된다.",
         "operationId": "join_group_family_group_groups_join_post",
         "parameters": [
           {
@@ -2092,6 +2228,153 @@
         "responses": {
           "204": {
             "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/family-chat/files": {
+      "post": {
+        "tags": [
+          "family-chat"
+        ],
+        "summary": "Send File",
+        "description": "문서 파일 메시지를 보낸다(multipart `file`, 선택 `room_id`). 문서류(pdf, doc/docx, xls/xlsx, ppt/pptx, hwp/hwpx, txt, csv) 20MB 이하. AI 를 부르지 않는다.",
+        "operationId": "send_file_family_chat_files_post",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-gyeot-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Gyeot-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_send_file_family_chat_files_post"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/family-chat/files/{attachment_id}": {
+      "get": {
+        "tags": [
+          "family-chat"
+        ],
+        "summary": "Get File",
+        "description": "방에 들어갈 수 있는 사람만 받을 수 있다. 없는 파일·못 들어가는 방은 모두 404. 항상 내려받기(attachment)로만 내려간다.",
+        "operationId": "get_file_family_chat_files__attachment_id__get",
+        "parameters": [
+          {
+            "name": "attachment_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Attachment Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-gyeot-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Gyeot-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "채팅 문서 파일",
+            "content": {
+              "application/octet-stream": {}
+            }
           },
           "422": {
             "description": "Validation Error",
@@ -2273,7 +2556,7 @@
           "family-chat"
         ],
         "summary": "List Media",
-        "description": "그 방에서 공유된 첨부를 최신순으로. 방에 들어갈 수 없으면 404. 지금은 사진(image)만 있다.",
+        "description": "그 방에서 공유된 첨부를 최신순으로. 방에 들어갈 수 없으면 404. 사진(image)·문서(file)가 있고 동영상은 아직 없다.",
         "operationId": "list_media_family_chat_media_get",
         "parameters": [
           {
@@ -2845,6 +3128,209 @@
         }
       }
     },
+    "/family-chat/board": {
+      "get": {
+        "tags": [
+          "family-chat"
+        ],
+        "summary": "List Board",
+        "description": "공지로 올린 메시지의 기록(지난 공지 포함)을 올린 시각 최신순으로. 전체 본문·올린 사람·지금 공지인지·원본 삭제 여부가 함께 온다.",
+        "operationId": "list_board_family_chat_board_get",
+        "parameters": [
+          {
+            "name": "room_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 32
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "대화방 id. 없으면 가족 전체방",
+              "title": "Room Id"
+            },
+            "description": "대화방 id. 없으면 가족 전체방"
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 50,
+              "minimum": 1,
+              "default": 20,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "before",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 200
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "앞 응답의 next_before(이전 글을 이어서 볼 때)",
+              "title": "Before"
+            },
+            "description": "앞 응답의 next_before(이전 글을 이어서 볼 때)"
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-gyeot-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Gyeot-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BoardOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/family-chat/board/{post_id}": {
+      "delete": {
+        "tags": [
+          "family-chat"
+        ],
+        "summary": "Delete Board Post",
+        "description": "게시판 글을 지운다(방 안의 누구나). 지금 공지로 올라 있으면 고정 바에서도 내려간다. 원본 메시지는 그대로 남는다.",
+        "operationId": "delete_board_post_family_chat_board__post_id__delete",
+        "parameters": [
+          {
+            "name": "post_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Post Id"
+            }
+          },
+          {
+            "name": "room_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 32
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "대화방 id. 없으면 가족 전체방",
+              "title": "Room Id"
+            },
+            "description": "대화방 id. 없으면 가족 전체방"
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-gyeot-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Gyeot-Token"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/family-chat/pins": {
       "get": {
         "tags": [
@@ -2987,6 +3473,192 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/PinResult"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/family-chat/pins/{message_id}/hide": {
+      "put": {
+        "tags": [
+          "family-chat"
+        ],
+        "summary": "Hide Pin",
+        "description": "이 공지를 나만 숨긴다(다른 구성원에게는 그대로 보인다, 이미 숨겼어도 같은 결과). 올라가 있지 않으면 404.",
+        "operationId": "hide_pin_family_chat_pins__message_id__hide_put",
+        "parameters": [
+          {
+            "name": "message_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Message Id"
+            }
+          },
+          {
+            "name": "room_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 32
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "대화방 id. 없으면 가족 전체방",
+              "title": "Room Id"
+            },
+            "description": "대화방 id. 없으면 가족 전체방"
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-gyeot-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Gyeot-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PinItem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "family-chat"
+        ],
+        "summary": "Show Pin",
+        "description": "숨겼던 공지를 다시 보이게 한다(숨기지 않았어도 같은 결과).",
+        "operationId": "show_pin_family_chat_pins__message_id__hide_delete",
+        "parameters": [
+          {
+            "name": "message_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Message Id"
+            }
+          },
+          {
+            "name": "room_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 32
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "대화방 id. 없으면 가족 전체방",
+              "title": "Room Id"
+            },
+            "description": "대화방 id. 없으면 가족 전체방"
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-gyeot-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Gyeot-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PinItem"
                 }
               }
             }
@@ -3900,6 +4572,91 @@
         }
       }
     },
+    "/family-chat/rooms/{room_id}/mute": {
+      "put": {
+        "tags": [
+          "family-chat"
+        ],
+        "summary": "Set Room Mute",
+        "description": "이 방의 알림을 나만 끄거나 켠다(멱등). 설정만 저장한다.",
+        "operationId": "set_room_mute_family_chat_rooms__room_id__mute_put",
+        "parameters": [
+          {
+            "name": "room_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Room Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-gyeot-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Gyeot-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MuteSet"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MuteOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/family-chat/rooms/direct": {
       "post": {
         "tags": [
@@ -4191,6 +4948,393 @@
         },
         "responses": {
           "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/family-chat/messages/deleted": {
+      "get": {
+        "tags": [
+          "family-chat"
+        ],
+        "summary": "Deleted Messages",
+        "description": "이미 받아 둔 메시지 중 그 뒤에 지워진 것을 알려 준다(새 메시지만 조회하는 앱이 삭제를 따라가게).",
+        "operationId": "deleted_messages_family_chat_messages_deleted_get",
+        "parameters": [
+          {
+            "name": "since",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date-time",
+              "description": "이 시각 이후에 지워진 메시지(서버 시각, 앞선 응답의 server_time)",
+              "title": "Since"
+            },
+            "description": "이 시각 이후에 지워진 메시지(서버 시각, 앞선 응답의 server_time)"
+          },
+          {
+            "name": "room_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 32
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "대화방 id. 없으면 가족 전체방",
+              "title": "Room Id"
+            },
+            "description": "대화방 id. 없으면 가족 전체방"
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-gyeot-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Gyeot-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeletedOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/family-chat/messages/{message_id}/reaction": {
+      "put": {
+        "tags": [
+          "family-chat"
+        ],
+        "summary": "React To Message",
+        "description": "내 반응을 정한다(한 메시지에 하나, 다른 이모지를 보내면 바뀐다). 허용 이모지 6개만, 지운 메시지에는 못 한다.",
+        "operationId": "react_to_message_family_chat_messages__message_id__reaction_put",
+        "parameters": [
+          {
+            "name": "message_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Message Id"
+            }
+          },
+          {
+            "name": "room_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 32
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "대화방 id. 없으면 가족 전체방",
+              "title": "Room Id"
+            },
+            "description": "대화방 id. 없으면 가족 전체방"
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-gyeot-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Gyeot-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReactionIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "family-chat"
+        ],
+        "summary": "Remove Reaction",
+        "description": "내 반응을 지운다(없어도 같은 결과).",
+        "operationId": "remove_reaction_family_chat_messages__message_id__reaction_delete",
+        "parameters": [
+          {
+            "name": "message_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Message Id"
+            }
+          },
+          {
+            "name": "room_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 32
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "대화방 id. 없으면 가족 전체방",
+              "title": "Room Id"
+            },
+            "description": "대화방 id. 없으면 가족 전체방"
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-gyeot-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Gyeot-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/family-chat/messages/{message_id}": {
+      "delete": {
+        "tags": [
+          "family-chat"
+        ],
+        "summary": "Delete Message",
+        "description": "내가 보낸 메시지를 지운다(본문·사진도 서버에서 비운다). 이미 지웠으면 그대로 돌려준다.",
+        "operationId": "delete_message_family_chat_messages__message_id__delete",
+        "parameters": [
+          {
+            "name": "message_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Message Id"
+            }
+          },
+          {
+            "name": "room_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 32
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "대화방 id. 없으면 가족 전체방",
+              "title": "Room Id"
+            },
+            "description": "대화방 id. 없으면 가족 전체방"
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-gyeot-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Gyeot-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
             "description": "Successful Response",
             "content": {
               "application/json": {
@@ -4617,7 +5761,7 @@
           "schedule"
         ],
         "summary": "List Suggestions",
-        "description": "대기 중인 추천(없으면 오늘 3묶음 안에서 새로 만든다). AI 를 부를 때만 동의·한도를 본다.",
+        "description": "오늘의 추천 슬롯(대기 추천이 있으면 그대로, 없으면 오늘 호출이 남았을 때 새로 만든다). AI 를 부를 때만 동의·한도를 본다.\n개인 AI 채팅은 보내지 않으므로 이 입구로 만든 추천에는 쓰이지 않는다(앱은 POST 를 쓴다).",
         "operationId": "list_suggestions_schedule_suggestions_get",
         "parameters": [
           {
@@ -4660,6 +5804,172 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/SuggestionsOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "schedule"
+        ],
+        "summary": "Create Suggestions",
+        "description": "GET 과 같은 결과인데 개인 AI 채팅의 최근 내 말(`chat`)을 추천의 입력으로 함께 받는다. 대기 추천이 있으면 AI 를 부르지 않는다.",
+        "operationId": "create_suggestions_schedule_suggestions_post",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-gyeot-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Gyeot-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/SuggestionsRequest"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Body"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SuggestionsOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/schedule/suggestions/{suggestion_id}/later": {
+      "put": {
+        "tags": [
+          "schedule"
+        ],
+        "summary": "Mark Suggestion Later",
+        "description": "추천의 \"나중에\" 표시를 켜거나 끈다(켜면 나중에, 끄면 다시 대기). 확정된 추천이나 남의 추천은 400. AI 를 부르지 않는다.",
+        "operationId": "mark_suggestion_later_schedule_suggestions__suggestion_id__later_put",
+        "parameters": [
+          {
+            "name": "suggestion_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Suggestion Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-gyeot-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Gyeot-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SuggestionLater"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SuggestionOut"
                 }
               }
             }
@@ -5617,6 +6927,90 @@
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/RequestAnswer"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RequestOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/schedule/requests/{request_id}/recipients": {
+      "put": {
+        "tags": [
+          "schedule"
+        ],
+        "summary": "Change Request Recipients",
+        "operationId": "change_request_recipients_schedule_requests__request_id__recipients_put",
+        "parameters": [
+          {
+            "name": "request_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Request Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-gyeot-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Gyeot-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RequestRecipients"
               }
             }
           }
@@ -11953,6 +13347,7 @@
               "edit",
               "delete",
               "check",
+              "request",
               "not_schedule"
             ],
             "title": "Intent"
@@ -12739,6 +14134,10 @@
           },
           "kind": {
             "type": "string",
+            "enum": [
+              "image",
+              "file"
+            ],
             "title": "Kind"
           },
           "url": {
@@ -12746,26 +14145,77 @@
             "title": "Url"
           },
           "thumb_url": {
-            "type": "string",
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "Thumb Url"
           },
           "width": {
-            "type": "integer",
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "Width"
           },
           "height": {
-            "type": "integer",
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "Height"
+          },
+          "filename": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Filename"
+          },
+          "size_bytes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Size Bytes"
+          },
+          "content_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Content Type"
           }
         },
         "type": "object",
         "required": [
           "id",
           "kind",
-          "url",
-          "thumb_url",
-          "width",
-          "height"
+          "url"
         ],
         "title": "AttachmentOut"
       },
@@ -12806,6 +14256,125 @@
           "balance"
         ],
         "title": "Balance"
+      },
+      "BoardItem": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "message_id": {
+            "type": "integer",
+            "title": "Message Id"
+          },
+          "text": {
+            "type": "string",
+            "title": "Text"
+          },
+          "user_id": {
+            "type": "string",
+            "title": "User Id"
+          },
+          "user_name": {
+            "type": "string",
+            "title": "User Name"
+          },
+          "message_created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Message Created At"
+          },
+          "posted_by": {
+            "type": "string",
+            "title": "Posted By"
+          },
+          "posted_by_name": {
+            "type": "string",
+            "title": "Posted By Name"
+          },
+          "posted_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Posted At"
+          },
+          "is_current": {
+            "type": "boolean",
+            "title": "Is Current"
+          },
+          "message_deleted": {
+            "type": "boolean",
+            "title": "Message Deleted"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "message_id",
+          "text",
+          "user_id",
+          "user_name",
+          "message_created_at",
+          "posted_by",
+          "posted_by_name",
+          "posted_at",
+          "is_current",
+          "message_deleted"
+        ],
+        "title": "BoardItem"
+      },
+      "BoardOut": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/BoardItem"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "next_before": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Before"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items",
+          "next_before"
+        ],
+        "title": "BoardOut"
+      },
+      "Body_send_file_family_chat_files_post": {
+        "properties": {
+          "file": {
+            "type": "string",
+            "contentMediaType": "application/octet-stream",
+            "title": "File"
+          },
+          "room_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 32
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Room Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "file"
+        ],
+        "title": "Body_send_file_family_chat_files_post"
       },
       "Body_send_photo_family_chat_photos_post": {
         "properties": {
@@ -12885,7 +14454,9 @@
               "register_confirm",
               "edit_confirm",
               "delete_confirm",
-              "suggestion"
+              "suggestion",
+              "request_confirm",
+              "request_list"
             ],
             "title": "Type"
           },
@@ -13139,7 +14710,11 @@
             "enum": [
               "register",
               "edit",
-              "delete"
+              "delete",
+              "request_register",
+              "request_edit",
+              "request_cancel",
+              "share_select"
             ],
             "title": "Action"
           },
@@ -13167,6 +14742,14 @@
             "additionalProperties": true,
             "type": "object",
             "title": "Pending Action"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ShareItemOut"
+            },
+            "type": "array",
+            "title": "Items",
+            "default": []
           }
         },
         "type": "object",
@@ -13309,6 +14892,28 @@
         ],
         "title": "DailyOut"
       },
+      "DeletedOut": {
+        "properties": {
+          "message_ids": {
+            "items": {
+              "type": "integer"
+            },
+            "type": "array",
+            "title": "Message Ids"
+          },
+          "server_time": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Server Time"
+          }
+        },
+        "type": "object",
+        "required": [
+          "message_ids",
+          "server_time"
+        ],
+        "title": "DeletedOut"
+      },
       "DescriptionIn": {
         "properties": {
           "text": {
@@ -13401,6 +15006,15 @@
             "minimum": 0.0,
             "title": "Asks",
             "default": 0
+          },
+          "mode": {
+            "type": "string",
+            "enum": [
+              "event",
+              "request"
+            ],
+            "title": "Mode",
+            "default": "event"
           }
         },
         "type": "object",
@@ -14382,6 +15996,28 @@
             ],
             "title": "Invite Expires At"
           },
+          "invite_uses_left": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Invite Uses Left"
+          },
+          "invite_auto_approve": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Invite Auto Approve"
+          },
           "my_id": {
             "anyOf": [
               {
@@ -14548,6 +16184,17 @@
               }
             ],
             "title": "Expires At"
+          },
+          "uses_left": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Uses Left"
           }
         },
         "type": "object",
@@ -14555,6 +16202,19 @@
           "invite_code"
         ],
         "title": "InviteOut"
+      },
+      "InviteSettingsIn": {
+        "properties": {
+          "auto_approve": {
+            "type": "boolean",
+            "title": "Auto Approve"
+          }
+        },
+        "type": "object",
+        "required": [
+          "auto_approve"
+        ],
+        "title": "InviteSettingsIn"
       },
       "ItemCreate": {
         "properties": {
@@ -16029,6 +17689,20 @@
               }
             ],
             "title": "Room Id"
+          },
+          "reply_to_id": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 2147483647.0,
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reply To Id",
+            "description": "답장할 메시지 id(같은 방의 지우지 않은 메시지)"
           }
         },
         "type": "object",
@@ -16073,6 +17747,29 @@
           "is_assistant": {
             "type": "boolean",
             "title": "Is Assistant",
+            "default": false
+          },
+          "reply_to": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ReplyOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "reactions": {
+            "items": {
+              "$ref": "#/components/schemas/ReactionOut"
+            },
+            "type": "array",
+            "title": "Reactions",
+            "default": []
+          },
+          "deleted": {
+            "type": "boolean",
+            "title": "Deleted",
             "default": false
           }
         },
@@ -16230,6 +17927,37 @@
           "plan"
         ],
         "title": "MonthlyResult"
+      },
+      "MuteOut": {
+        "properties": {
+          "room_id": {
+            "type": "string",
+            "title": "Room Id"
+          },
+          "muted": {
+            "type": "boolean",
+            "title": "Muted"
+          }
+        },
+        "type": "object",
+        "required": [
+          "room_id",
+          "muted"
+        ],
+        "title": "MuteOut"
+      },
+      "MuteSet": {
+        "properties": {
+          "muted": {
+            "type": "boolean",
+            "title": "Muted"
+          }
+        },
+        "type": "object",
+        "required": [
+          "muted"
+        ],
+        "title": "MuteSet"
       },
       "NicknameIn": {
         "properties": {
@@ -16553,7 +18281,10 @@
             "enum": [
               "edit",
               "delete",
-              "register"
+              "register",
+              "request_register",
+              "request_edit",
+              "request_cancel"
             ],
             "title": "Type"
           },
@@ -16576,6 +18307,19 @@
                 "type": "null"
               }
             ]
+          },
+          "request_id": {
+            "type": "string",
+            "title": "Request Id",
+            "default": ""
+          },
+          "to_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 20,
+            "title": "To Ids"
           }
         },
         "type": "object",
@@ -16720,6 +18464,16 @@
             "type": "string",
             "format": "date-time",
             "title": "Pinned At"
+          },
+          "message_deleted": {
+            "type": "boolean",
+            "title": "Message Deleted",
+            "default": false
+          },
+          "hidden": {
+            "type": "boolean",
+            "title": "Hidden",
+            "default": false
           }
         },
         "type": "object",
@@ -17019,6 +18773,44 @@
         "type": "object",
         "title": "RangeIn",
         "description": "분석할 범위. after_id 를 주면 그 뒤의 대화, 아니면 최근 limit 개(둘 다 주면 after_id 뒤의 최근 limit 개)."
+      },
+      "ReactionIn": {
+        "properties": {
+          "emoji": {
+            "type": "string",
+            "maxLength": 16,
+            "title": "Emoji",
+            "description": "허용된 이모지 6개(❤️ 👍 😂 😮 😢 🙏) 중 하나"
+          }
+        },
+        "type": "object",
+        "required": [
+          "emoji"
+        ],
+        "title": "ReactionIn"
+      },
+      "ReactionOut": {
+        "properties": {
+          "emoji": {
+            "type": "string",
+            "title": "Emoji"
+          },
+          "count": {
+            "type": "integer",
+            "title": "Count"
+          },
+          "mine": {
+            "type": "boolean",
+            "title": "Mine"
+          }
+        },
+        "type": "object",
+        "required": [
+          "emoji",
+          "count",
+          "mine"
+        ],
+        "title": "ReactionOut"
       },
       "ReadAllBody": {
         "properties": {
@@ -17390,6 +19182,55 @@
         ],
         "title": "RepliesOut"
       },
+      "ReplyOut": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "user_name": {
+            "type": "string",
+            "title": "User Name"
+          },
+          "text": {
+            "type": "string",
+            "title": "Text"
+          },
+          "deleted": {
+            "type": "boolean",
+            "title": "Deleted",
+            "default": false
+          },
+          "has_attachment": {
+            "type": "boolean",
+            "title": "Has Attachment",
+            "default": false
+          },
+          "attachment_kind": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "image",
+                  "file"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Attachment Kind"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "user_name",
+          "text"
+        ],
+        "title": "ReplyOut",
+        "description": "답장이 가리키는 원본 메시지의 미리보기. 원본이 지워졌으면 deleted 이고 text 는 빈 문자열이다."
+      },
       "RequestAnswer": {
         "properties": {
           "answer": {
@@ -17568,6 +19409,18 @@
               }
             ],
             "title": "My Event Id"
+          },
+          "edited_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Edited At"
           }
         },
         "type": "object",
@@ -17586,6 +19439,25 @@
           "my_event_id"
         ],
         "title": "RequestOut"
+      },
+      "RequestRecipients": {
+        "properties": {
+          "to_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 20,
+            "minItems": 1,
+            "title": "To Ids"
+          }
+        },
+        "type": "object",
+        "required": [
+          "to_ids"
+        ],
+        "title": "RequestRecipients",
+        "description": "부탁의 받는 사람을 바꾼 뒤의 전체 목록. 보낸 사람만 바꿀 수 있고, 최소 1명이며 나는 뺀다."
       },
       "RoleIn": {
         "properties": {
@@ -17639,6 +19511,11 @@
           "unread": {
             "type": "integer",
             "title": "Unread"
+          },
+          "muted": {
+            "type": "boolean",
+            "title": "Muted",
+            "default": false
           }
         },
         "type": "object",
@@ -17956,6 +19833,24 @@
           "completed"
         ],
         "title": "Settlement"
+      },
+      "ShareItemOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "line": {
+            "type": "string",
+            "title": "Line"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "line"
+        ],
+        "title": "ShareItemOut"
       },
       "SharingOut": {
         "properties": {
@@ -18562,6 +20457,20 @@
         "title": "SubscriptionPatch",
         "description": "보낸 필드만 바꾼다. 금액·결제일·통신사는 null 을 보내면 지운다."
       },
+      "SuggestionLater": {
+        "properties": {
+          "later": {
+            "type": "boolean",
+            "title": "Later"
+          }
+        },
+        "type": "object",
+        "required": [
+          "later"
+        ],
+        "title": "SuggestionLater",
+        "description": "\"나중에\" 표시. later=true 면 나중에로, false 면 다시 대기로 되돌린다."
+      },
       "SuggestionOut": {
         "properties": {
           "id": {
@@ -18583,6 +20492,11 @@
           "place": {
             "type": "string",
             "title": "Place"
+          },
+          "later": {
+            "type": "boolean",
+            "title": "Later",
+            "default": false
           }
         },
         "type": "object",
@@ -18607,6 +20521,16 @@
           "exhausted": {
             "type": "boolean",
             "title": "Exhausted"
+          },
+          "state": {
+            "type": "string",
+            "title": "State",
+            "default": "ok"
+          },
+          "can_refresh": {
+            "type": "boolean",
+            "title": "Can Refresh",
+            "default": true
           }
         },
         "type": "object",
@@ -18615,7 +20539,23 @@
           "exhausted"
         ],
         "title": "SuggestionsOut",
-        "description": "대기 중인 추천. exhausted 는 오늘 추천을 다 만들어 더 없다는 뜻."
+        "description": "오늘의 추천 슬롯. state: ok(보여줄 추천이 있음) / exhausted(오늘 추천은 여기까지) / no_data(참고할 데이터가 없음) /\nfiltered(데이터는 있는데 새로 만들 게 없음) / preparing(AI 호출 오류). can_refresh 는 새로고침이 의미 있는가.\nexhausted 는 state == \"exhausted\" 와 같다(예전 앱 호환)."
+      },
+      "SuggestionsRequest": {
+        "properties": {
+          "chat": {
+            "items": {
+              "type": "string",
+              "maxLength": 200
+            },
+            "type": "array",
+            "maxItems": 30,
+            "title": "Chat"
+          }
+        },
+        "type": "object",
+        "title": "SuggestionsRequest",
+        "description": "추천 요청. chat 은 앱이 보낸 개인 AI 채팅의 최근 7일 안 내 말이다(서버는 저장하지 않고 이번 생성에만 쓴다)."
       },
       "Summary": {
         "properties": {
@@ -18647,6 +20587,21 @@
           "balances"
         ],
         "title": "Summary"
+      },
+      "TesterConsentIn": {
+        "properties": {
+          "version": {
+            "type": "string",
+            "maxLength": 16,
+            "minLength": 1,
+            "title": "Version"
+          }
+        },
+        "type": "object",
+        "required": [
+          "version"
+        ],
+        "title": "TesterConsentIn"
       },
       "TodaySummary": {
         "properties": {
@@ -19279,6 +21234,17 @@
             "type": "boolean",
             "title": "Location Consent",
             "default": false
+          },
+          "tester_consent_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tester Consent Version"
           },
           "login_id": {
             "anyOf": [

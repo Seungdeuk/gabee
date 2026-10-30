@@ -13,11 +13,13 @@ import SuggestionCard from "../components/SuggestionCard";
 import TogetherRow from "../components/TogetherRow";
 import WeekStrip from "../components/WeekStrip";
 import { briefingLabels } from "../briefing";
-import { useNewReceivedCount } from "../requests";
+import { ME_ID } from "../mock";
+import { useNewReceivedCount, useRequests } from "../requests";
+import { briefingRequests } from "../request_view";
 import { toggleChecked, useScheduleItems } from "../store";
 import { draftDateOf, suggestionExtras } from "../suggestion_convert";
-import { MOCK_SUGGESTIONS, SUGGESTIONS_ASK_TEXT, SUGGESTIONS_DONE_TEXT, SUGGESTIONS_FAILED_TEXT, SUGGESTIONS_LOADING_TEXT, pickCheckCard } from "../suggestions";
-import { reloadSuggestions, useSuggestions } from "../suggestions_store";
+import { MOCK_SUGGESTIONS, SUGGESTIONS_DONE_TEXT, SUGGESTIONS_LOADING_TEXT, emptySlotView, pickCheckCard } from "../suggestions";
+import { reloadSuggestions, setSuggestionLater, useSuggestions } from "../suggestions_store";
 import { addDays, formatDateLong, formatSlashDate, todayKey } from "../utils/date";
 
 // 서버 주소가 있으면 추가 카드는 서버 추천을, 없으면 임시(mock) 제안을 쓴다.
@@ -39,6 +41,7 @@ export default function ScheduleScreen() {
   const router = useRouter();
   const items = useScheduleItems();
   const newCount = useNewReceivedCount();
+  const requests = useRequests();
   const today = todayKey();
   // 주간 스트림에서 고른 날. 아래 브리핑이 이 날과 그 다음 날로 바뀐다(처음엔 오늘).
   const [selected, setSelected] = useState(today);
@@ -62,17 +65,17 @@ export default function ScheduleScreen() {
   // 이미 추가한 제안은 빠지고 다음 제안이 바로 나온다. 저장하지 않고 돌아오면 그대로다.
   const candidates = (useServer ? server.list : MOCK_SUGGESTIONS).filter((suggestion) => !isAdded(suggestion));
   const addCard = candidates.length > 0 ? candidates[addCursor % candidates.length] : null;
-  // 추가 카드 자리의 상태. 서버 추천은 불러오는 동안 "찾고 있어요", 오늘 추천을 다 쓰면 "여기까지",
-  // 한 번도 못 받았거나 못 불러왔으면(소진은 아님) "추천해드릴게요"와 새로고침을 보인다.
-  const addState = addCard
-    ? "card"
-    : !useServer
-      ? "done"
-      : server.loading || !server.loaded
-        ? "loading"
-        : server.exhausted
-          ? "done"
-          : "ask";
+  // 추가 카드 자리의 상태. 서버 추천은 불러오는 동안 "찾고 있어요", 비었으면 서버 상태에 따라
+  // 데이터 없음 🌱 / 새로 줄 게 없음 🌙 / 준비 중 ⏳(새로고침) / 오늘 추천은 여기까지(전부 확정, 호출 소진).
+  const empty = useServer ? emptySlotView(server) : { kind: "message", text: SUGGESTIONS_DONE_TEXT, refresh: false };
+  const addState = addCard ? "card" : empty.kind === "loading" ? "loading" : "message";
+  // 서버 추천의 "나중에"는 서버에 기록하고, 예전 임시 제안은 화면 표시만 한다.
+  const addCardLater = addCard ? (useServer ? Boolean(addCard.later) : later.includes(addCard.id)) : false;
+  const toggleAddLater = () => {
+    if (pressed === addCard.id) return;
+    if (useServer) setSuggestionLater(addCard.id, !addCard.later);
+    else toggleLater(addCard.id);
+  };
   const toggleLater = (id) => {
     if (pressed === id) return;
     setLater((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
@@ -98,6 +101,7 @@ export default function ScheduleScreen() {
   };
   const openCalendar = (date) => router.push({ pathname: "/schedule/calendar", params: { date } });
   const openDetail = (id) => router.push({ pathname: "/schedule/detail", params: { id } });
+  const openRequest = (id) => router.push({ pathname: "/schedule/together-detail", params: { id } });
   const openTogether = (params) => router.push({ pathname: "/schedule/together", params });
   const openRegister = (params) => router.push({ pathname: "/schedule/register", params });
   // 제안으로 여는 등록 화면은 형태·제목·날짜가 미리 채워지고, 저장은 사용자가 확인한 뒤에만 된다.
@@ -143,13 +147,17 @@ export default function ScheduleScreen() {
             <DaySection
               label={selectedLabel}
               items={items.filter((item) => item.date === selected)}
+              requests={briefingRequests(requests, ME_ID, selected, today)}
               onPressItem={openDetail}
+              onPressRequest={openRequest}
               onToggleItem={toggleChecked}
             />
             <DaySection
               label={nextLabel}
               items={items.filter((item) => item.date === nextDay)}
+              requests={briefingRequests(requests, ME_ID, nextDay, today)}
               onPressItem={openDetail}
+              onPressRequest={openRequest}
               onToggleItem={toggleChecked}
               collapsed={nextFolded}
               onToggle={() => setNextFolded((v) => !v)}
@@ -205,21 +213,19 @@ export default function ScheduleScreen() {
                   subtext="일정으로 추가해 드릴까요?"
                   primary="추가"
                   secondary="나중에"
-                  secondarySelected={later.includes(addCard.id)}
+                  secondarySelected={addCardLater}
                   onPrimary={() => openDraft(addCard)}
-                  onSecondary={() => toggleLater(addCard.id)}
-                  onRefresh={gated("add", () => setAddCursor((c) => c + 1))}
+                  onSecondary={toggleAddLater}
+                  onRefresh={gated("add", () => {
+                    // 서버 추천은 새로고침마다 서버에서 다시 받아(대기가 있으면 AI 호출 없이 섞어서) 보여 준다
+                    if (useServer) reloadSuggestions();
+                    else setAddCursor((c) => c + 1);
+                  })}
                 />
               ) : addState === "loading" ? (
                 <SuggestionCard text={SUGGESTIONS_LOADING_TEXT} />
-              ) : addState === "ask" ? (
-                <SuggestionCard
-                  text={SUGGESTIONS_ASK_TEXT}
-                  subtext={server.failed ? SUGGESTIONS_FAILED_TEXT : undefined}
-                  onRefresh={gated("ask", reloadSuggestions)}
-                />
               ) : (
-                <SuggestionCard text={SUGGESTIONS_DONE_TEXT} />
+                <SuggestionCard text={empty.text} onRefresh={empty.refresh ? gated("ask", reloadSuggestions) : undefined} />
               )}
             </View>
             <Text style={styles.notice}>추천은 참고용이에요. 내용을 확인 후 저장해 주세요 📝</Text>

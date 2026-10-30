@@ -29,16 +29,31 @@ class ChatSource(BaseModel):
     source_path: str | None = None
 
 
+class ShareItemOut(BaseModel):
+    id: str
+    line: str  # 제목·날짜·시간만(관련 구성원 이름은 넣지 않는다)
+
+
 class ConfirmCardOut(BaseModel):
     """사용자가 버튼을 눌러야 실행되는 일정 요청(가족 공유 등록·수정·삭제). 앱은 `POST /schedule/agent/confirm` 에
     `{action: pending_action, share}` 를 보낸다. 서버는 돌려받은 pending_action 을 믿지 않고 처음부터 다시 검증한다."""
 
     kind: Literal["schedule"]
-    action: Literal["register", "edit", "delete"]
+    action: Literal[
+        "register",
+        "edit",
+        "delete",
+        "request_register",
+        "request_edit",
+        "request_cancel",
+        "share_select",
+    ]
     title: str  # 카드 제목(예: 수진, 서연에게 공유해서 등록할까요?)
     lines: list[str] = []  # 카드 본문(일정 제목·날짜, 바뀌는 내용)
     shared_with: list[str] = []  # register 일 때 공유 대상 이름(버튼 이름에 쓴다)
-    pending_action: dict  # 확인 요청에 그대로 돌려보낸다
+    pending_action: dict  # 확인 요청에 그대로 돌려보낸다(share_select 는 비어 있다)
+    # share_select: 가족방 @가비 조회 결과 중 방에 공유할 후보. 앱이 고른 줄만 질문한 사람 이름의 일반 메시지로 보낸다
+    items: list[ShareItemOut] = []
 
 
 class ChatOut(BaseModel):

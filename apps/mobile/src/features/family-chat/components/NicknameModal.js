@@ -1,5 +1,6 @@
 import { useRef, useState } from "react";
 import { KeyboardAvoidingView, Modal, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import Button from "@/shared/components/Button";
 import { colors, font, radius, spacing } from "@/theme";
@@ -11,6 +12,7 @@ import { MEMO_MAX, NICKNAME_MAX, validateNickname } from "../contactUtils";
  * @param {{ row: { id: string, realName: string, nickname: string, memo: string }, onClose: () => void, onSave: (value: { nickname: string, memo: string }) => Promise<string> }} props onSave 는 오류 문구(성공이면 빈 문자열)를 돌려준다
  */
 export default function NicknameModal({ row, onClose, onSave }) {
+  const insets = useSafeAreaInsets(); // 안드로이드 내비게이션 바에 저장 버튼이 가려지지 않게
   const [nickname, setNickname] = useState(row.nickname);
   const [memo, setMemo] = useState(row.memo);
   const [confirming, setConfirming] = useState(false);
@@ -36,7 +38,7 @@ export default function NicknameModal({ row, onClose, onSave }) {
     <Modal visible transparent animationType="slide" onRequestClose={onClose}>
       <KeyboardAvoidingView style={styles.root} behavior="padding">
         <Pressable style={styles.backdrop} onPress={onClose} accessibilityRole="button" accessibilityLabel="별명·메모 닫기" />
-        <View style={styles.sheet}>
+        <View style={[styles.sheet, { paddingBottom: spacing.xxl + insets.bottom }]}>
           <Text style={styles.heading} accessibilityRole="header">
             {row.realName}님 별명·메모
           </Text>

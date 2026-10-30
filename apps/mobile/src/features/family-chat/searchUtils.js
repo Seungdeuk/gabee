@@ -255,3 +255,25 @@ export const searchScopeRoomId = (roomId, familyId) => roomId || familyId || nul
  * @returns {{ roomId: string | null, scoped: true }}
  */
 export const roomSearchOptions = (roomId, familyId) => ({ roomId: searchScopeRoomId(roomId, familyId), scoped: true });
+
+/**
+ * 검색 위치 이동 계산. 결과는 최신순이라 index 0 이 가장 최근 일치다. "older" 는 더 오래된 일치(index+1), "newer" 는 더 최근 일치(index-1).
+ * 끝에서 older 인데 서버에 더 있으면 다음 쪽을 불러와야 한다(more), 끝이면 그대로 둔다.
+ * @param {{ index: number, count: number, hasMore: boolean, dir: "older" | "newer" }} args
+ * @returns {{ index: number, more: boolean }}
+ */
+export function stepSearchIndex({ index, count, hasMore, dir }) {
+  if (count <= 0) return { index: 0, more: false };
+  if (dir === "newer") return { index: Math.max(0, index - 1), more: false };
+  if (index + 1 < count) return { index: index + 1, more: false };
+  return { index, more: Boolean(hasMore) };
+}
+
+/**
+ * 검색 줄의 위치 문구. 결과가 없으면 빈 문자열, 서버에 더 있으면 "1/20+".
+ * @param {number} index 0부터 시작하는 현재 위치
+ * @param {number} count 지금까지 받은 개수
+ * @param {boolean} hasMore
+ * @returns {string}
+ */
+export const searchPositionLabel = (index, count, hasMore) => (count > 0 ? `${Math.min(index, count - 1) + 1}/${count}${hasMore ? "+" : ""}` : "");

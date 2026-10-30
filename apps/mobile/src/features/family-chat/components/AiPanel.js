@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ActivityIndicator, Modal, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import Button from "@/shared/components/Button";
 import { colors, font, radius, spacing } from "@/theme";
 
-import { analyzeChat, createTodo, getAiSettings, getRoomInfo, registerScheduleCandidate, setAiEnabled } from "../api";
+import { analyzeChat, getAiSettings, getRoomInfo, registerScheduleCandidate, sendTogetherRequest, setAiEnabled } from "../api";
 import {
   canRegisterSchedule,
   chatErrorMessage,
@@ -17,20 +18,8 @@ import {
   shouldLoadSettings,
 } from "../messages";
 import { privacyCaption } from "../privacyPreview";
-import { candidateToTodoBody, todoErrorMessage } from "../todoUtils";
-import {
-  CONSENT_CANCEL_LABEL,
-  CONSENT_DISABLE_BODY,
-  CONSENT_DISABLE_CONFIRM_LABEL,
-  CONSENT_DISABLE_LABEL,
-  CONSENT_DISABLE_TITLE,
-  CONSENT_ENABLE_LABEL,
-  CONSENT_NEED_MANAGER,
-  CONSENT_ON_MEMBER_NOTE,
-  PANEL_NOTICE,
-  needsEnableConfirm,
-} from "../privacyCopy";
-import AiConsentCard from "./AiConsentCard";
+import { candidateToRequestBody, dayFromChip, hasCandidateDay, requestErrorText, sendErrorMessage } from "../togetherUtils";
+import { CONSENT_CANCEL_LABEL, ENABLE_ON_ANALYZE_BODY, ENABLE_ON_ANALYZE_CONFIRM_LABEL, ENABLE_ON_ANALYZE_TITLE, PANEL_NOTICE } from "../privacyCopy";
 import TodoCandidateRow from "./TodoCandidateRow";
 
 /** 후보 한 줄에 붙는 보조 글(날짜·시간·장소 등). */
@@ -51,7 +40,7 @@ function PickList({ items, emptyText, labelPrefix, testIDPrefix, onPick }) {
 }
 
 /**
- * 채팅방 안 AI 대화 도우미 시트. 열릴 때 설정만 한 번 읽는다. "대화 분석하기" 버튼을 누르면 곧바로 AI 를 한 번 부른다(개인정보 설명·동의는 "AI 켜기" 동의 카드에서 받는다).
+ * 채팅방 안 AI 대화 도우미 시트. 열릴 때 설정만 한 번 읽는다. "대화 분석하기" 버튼을 누르면 곧바로 AI 를 한 번 부른다(AI 동의는 회원가입 때 받는다).
  * 켜진 상태에는 항상 보이는 한 줄 안내(PANEL_NOTICE)를 둔다. 요약·일정·할 일 후보·답장 추천·대화 주제 추천이 한 결과 화면에 나온다.
  * 결과는 서버에 잠시(약 10분) 저장돼 같은 요청에 다시 쓰인다.
  * 닫아도 컴포넌트는 유지되어 마지막 결과를 다시 열면 보여 준다. 닫혀 있는 동안에는 아무 호출도 하지 않는다.
@@ -60,16 +49,18 @@ function PickList({ items, emptyText, labelPrefix, testIDPrefix, onPick }) {
  * @returns {JSX.Element}
  */
 export default function AiPanel({ visible, onClose, onPickReply, onLinked }) {
+  const insets = useSafeAreaInsets(); // 안드로이드 내비게이션 바에 시트 아래쪽(버튼)이 가려지지 않게
   const [settings, setSettings] = useState(null); // parseAiSettings 결과
   const [loadError, setLoadError] = useState("");
-  const [busy, setBusy] = useState(""); // "settings" | "analysis" | ""
+  const [busy, setBusy] = useState(""); // "analysis" | ""
   const [error, setError] = useState("");
   const [analysis, setAnalysis] = useState(null);
   const [registered, setRegistered] = useState({}); // 후보 순번 -> "ok" | "sending" | 오류 문구
-  const [todoRegistered, setTodoRegistered] = useState({}); // 할 일 후보 순번 -> 같은 형태
-  const [confirmingEnable, setConfirmingEnable] = useState(false); // 켜기 직전 안내 확인 중
-  const [confirmingDisable, setConfirmingDisable] = useState(false); // 끄기 직전 확인 중
-  const settingBusy = useRef(false); // 켜기·끄기 확인 버튼을 빠르게 두 번 눌러도 한 번만 보낸다
+  const [todoRegistered, setTodoRegistered] = useState({}); // 할 일 후보 순번 -> 같은 형태(함께하기로 보낸 결과)
+  const [todoDay, setTodoDay] = useState({}); // 날짜가 없는 할 일 후보 순번 -> 고른 날짜 칩 key
+  const [todoCustom, setTodoCustom] = useState({}); // 직접 입력을 고른 후보 순번 -> 적은 날짜 글자
+  const [confirmingEnable, setConfirmingEnable] = useState(false); // 꺼져 있는 가족 AI 를 켜고 분석할지 묻는 중
+  const analyzing = useRef(false); // 분석(필요하면 켜기 포함)을 빠르게 두 번 눌러도 한 번만 보낸다
   const todoBusy = useRef(new Set()); // 등록 중이거나 등록된 할 일 후보 순번: 같은 후보를 두 번 등록하지 않는다
 
   const loadSettings = useCallback(async () => {
@@ -85,24 +76,6 @@ export default function AiPanel({ visible, onClose, onPickReply, onLinked }) {
     if (shouldLoadSettings(visible)) loadSettings();
   }, [visible, loadSettings]);
 
-  /** "AI 기능 켜기" 버튼: 바로 켜지 않고 확인 카드를 연다(이미 켜져 있으면 아무 일도 없다). */
-  const startEnable = () => {
-    if (needsEnableConfirm(settings?.enabled, true)) setConfirmingEnable(true);
-  };
-
-  /** 확인 카드에서 "확인하고 켜기"/"끄기"를 눌렀을 때만 설정을 바꾼다. */
-  const changeEnabled = async (enabled) => {
-    if (settingBusy.current) return;
-    settingBusy.current = true;
-    try {
-      await run("settings", () => setAiEnabled(enabled), () => {});
-    } finally {
-      settingBusy.current = false;
-      setConfirmingEnable(false);
-      setConfirmingDisable(false);
-    }
-  };
-
   /** 요청 하나를 실행하고 오류는 문구로 바꾼다. 끝나면 남은 횟수를 새로 읽는다. */
   const run = async (name, call, onDone) => {
     setBusy(name);
@@ -116,12 +89,44 @@ export default function AiPanel({ visible, onClose, onPickReply, onLinked }) {
     loadSettings();
   };
 
-  /** "대화 분석하기"/"다시 분석하기": 누르면 곧바로 분석 API 를 한 번 호출한다. */
-  const analyze = () =>
-    run("analysis", analyzeChat, (res) => {
+  /**
+   * "대화 분석하기"/"다시 분석하기": 누르면 곧바로 분석 API 를 한 번 호출한다. AI 동의는 회원가입 때 받으므로 켜기·끄기 버튼은 없다.
+   * 이 가족의 AI 설정이 꺼져 있으면(예전에 꺼 둔 경우) 켜는 것이 가족 전체에 적용되므로 확인 카드(ENABLE_ON_ANALYZE_*)를 먼저 보이고, "켜고 분석하기"를 눌렀을 때만 켠 뒤 분석한다(안 켜면 서버가 ai_not_enabled 로 막는다).
+   */
+  const analyze = async () => {
+    if (analyzing.current) return;
+    if (settings?.enabled === false) {
+      setConfirmingEnable(true); // 꺼져 있으면 켜는 것이 가족 전체에 적용된다는 확인을 먼저 받는다
+      return;
+    }
+    analyzing.current = true;
+    try {
+      await analyzeNow();
+    } finally {
+      analyzing.current = false;
+    }
+  };
+  /** 확인 카드에서 "켜고 분석하기"를 눌렀을 때만 켠 뒤 분석한다. */
+  const confirmEnableAndAnalyze = async () => {
+    if (analyzing.current) return;
+    analyzing.current = true;
+    setConfirmingEnable(false);
+    try {
+      await analyzeNow();
+    } finally {
+      analyzing.current = false;
+    }
+  };
+  const analyzeNow = () =>
+    run("analysis", async () => {
+      if (settings?.enabled === false) await setAiEnabled(true);
+      return analyzeChat();
+    }, (res) => {
       setAnalysis(parseAnalysis(res));
       setRegistered({});
       setTodoRegistered({});
+      setTodoDay({});
+      setTodoCustom({});
       todoBusy.current.clear();
     });
 
@@ -145,21 +150,32 @@ export default function AiPanel({ visible, onClose, onPickReply, onLinked }) {
     }
   };
 
-  /** 사용자가 누른 할 일 후보 하나만 등록한다(서버 AI 를 부르지 않는다). 담당자는 이름이 정확히 같을 때만 정한다. */
+  /**
+   * 사용자가 누른 할 일 후보 하나만 함께하기(일정 탭의 같이 요청)로 보낸다(서버 AI 를 부르지 않는다). 날짜는 후보에 있으면 그것을, 없으면 고른 날짜를 쓰고,
+   * 받는 사람은 담당자 이름이 정확히 같은 한 명이면 그 사람, 아니면 가족 모두(나 제외)다.
+   */
   const registerTodo = async (index, candidate) => {
     if (todoBusy.current.has(index)) return;
+    const chosen = dayFromChip(todoDay[index], new Date(), todoCustom[index]);
+    if (!hasCandidateDay(candidate) && !chosen) {
+      setTodoRegistered((r) => ({ ...r, [index]: requestErrorText(todoDay[index] === "custom" ? "bad_date" : "no_date") }));
+      return;
+    }
     todoBusy.current.add(index);
     setTodoRegistered((r) => ({ ...r, [index]: "sending" }));
     try {
       const group = await getRoomInfo({ raw: true }); // AI 가 돌려준 담당자 이름은 실제 이름이라 별명을 입히지 않은 구성원과 맞춘다
-      const body = candidateToTodoBody(candidate, group.members);
-      if (!body) throw Object.assign(new Error("invalid_title"), { code: "invalid_title" });
-      const created = await createTodo(body);
+      const made = candidateToRequestBody(candidate, group, chosen);
+      if (made.error) {
+        todoBusy.current.delete(index);
+        setTodoRegistered((r) => ({ ...r, [index]: requestErrorText(made.error) }));
+        return;
+      }
+      await sendTogetherRequest(made.body); // 원본 대화 연결은 만들지 않는다(서버 연결은 공동 할 일 id 만 받는다)
       setTodoRegistered((r) => ({ ...r, [index]: "ok" }));
-      notifyLinked({ kind: "todo", targetId: created?.id, candidate });
     } catch (e) {
       todoBusy.current.delete(index); // 실패하면 다시 누를 수 있다
-      setTodoRegistered((r) => ({ ...r, [index]: e?.code ? todoErrorMessage(e) : "등록하지 못했어요. 다시 시도해 주세요" }));
+      setTodoRegistered((r) => ({ ...r, [index]: sendErrorMessage(e) }));
     }
   };
 
@@ -187,69 +203,12 @@ export default function AiPanel({ visible, onClose, onPickReply, onLinked }) {
     );
   }
 
-  if (!settings.enabled) {
-    return (
-      <>
-        {confirmingEnable ? (
-          <AiConsentCard
-            busy={busy === "settings"}
-            defaultOpen
-            onConfirm={() => changeEnabled(true)}
-            onCancel={() => setConfirmingEnable(false)}
-          />
-        ) : (
-          <>
-            <AiConsentCard />
-            {settings.canManage ? (
-              <Button
-                label={CONSENT_ENABLE_LABEL}
-                small
-                onPress={startEnable}
-                disabled={busy !== ""}
-                testID="chat-ai-enable"
-              />
-            ) : (
-              <Text style={styles.note} testID="chat-ai-need-manager">
-                {CONSENT_NEED_MANAGER}
-              </Text>
-            )}
-          </>
-        )}
-        {error ? (
-          <Text style={styles.error} accessibilityRole="alert">
-            {error}
-          </Text>
-        ) : null}
-      </>
-    );
-  }
-
   const disabled = busy !== "";
   return (
     <>
       <Text style={styles.sub} testID="chat-ai-notice">
         {PANEL_NOTICE}
       </Text>
-      {settings.canManage ? (
-        confirmingDisable ? (
-          <View style={styles.offCard} testID="chat-ai-disable-confirm">
-            <Text style={styles.bodyStrong} accessibilityRole="header">
-              {CONSENT_DISABLE_TITLE}
-            </Text>
-            <Text style={styles.sub}>{CONSENT_DISABLE_BODY}</Text>
-            <View style={styles.row}>
-              <Button label={busy === "settings" ? "끄는 중..." : CONSENT_DISABLE_CONFIRM_LABEL} small onPress={() => changeEnabled(false)} disabled={busy !== ""} testID="chat-ai-disable-confirm-yes" />
-              <Button label={CONSENT_CANCEL_LABEL} small variant="secondary" onPress={() => setConfirmingDisable(false)} disabled={busy !== ""} testID="chat-ai-disable-confirm-no" />
-            </View>
-          </View>
-        ) : (
-          <Button label={CONSENT_DISABLE_LABEL} small variant="secondary" onPress={() => setConfirmingDisable(true)} disabled={busy !== ""} testID="chat-ai-disable" />
-        )
-      ) : (
-        <Text style={styles.note} testID="chat-ai-on-member-note">
-          {CONSENT_ON_MEMBER_NOTE}
-        </Text>
-      )}
       {remainingText(settings) ? <Text style={styles.caption}>{remainingText(settings)}</Text> : null}
       {error ? (
         <Text style={styles.error} accessibilityRole="alert">
@@ -260,6 +219,17 @@ export default function AiPanel({ visible, onClose, onPickReply, onLinked }) {
         <View style={styles.loading}>
           <ActivityIndicator color={colors.accent} />
           <Text style={styles.caption}>AI가 대화를 살펴보는 중이에요...</Text>
+        </View>
+      ) : null}
+
+      {confirmingEnable ? (
+        <View style={styles.confirmCard} testID="chat-ai-enable-confirm">
+          <Text style={styles.bodyStrong} accessibilityRole="header">
+            {ENABLE_ON_ANALYZE_TITLE}
+          </Text>
+          <Text style={styles.sub}>{ENABLE_ON_ANALYZE_BODY}</Text>
+          <Button label={ENABLE_ON_ANALYZE_CONFIRM_LABEL} small onPress={confirmEnableAndAnalyze} disabled={disabled} testID="chat-ai-enable-confirm-yes" />
+          <Button label={CONSENT_CANCEL_LABEL} small variant="secondary" onPress={() => setConfirmingEnable(false)} disabled={disabled} testID="chat-ai-enable-confirm-no" />
         </View>
       ) : null}
 
@@ -284,7 +254,8 @@ export default function AiPanel({ visible, onClose, onPickReply, onLinked }) {
           ) : (
             analysis.important_messages.map((m) => (
               <Text key={m.message_id} style={styles.body}>
-                {`• ${m.reason}`}
+                {"• "}
+                <Text style={styles.marker}>{m.reason}</Text>
               </Text>
             ))
           )}
@@ -329,7 +300,7 @@ export default function AiPanel({ visible, onClose, onPickReply, onLinked }) {
             <Text style={styles.caption}>할 일 후보가 없어요</Text>
           ) : (
             analysis.todo_candidates.map((t, i) => (
-              <TodoCandidateRow key={`${t.title}-${i}`} candidate={t} state={todoRegistered[i]} onRegister={() => registerTodo(i, t)} testID={`chat-ai-todo-${i}`} />
+              <TodoCandidateRow key={`${t.title}-${i}`} candidate={t} state={todoRegistered[i]} day={todoDay[i] ?? null} customText={todoCustom[i] ?? ""} onChangeCustom={(text) => setTodoCustom((c) => ({ ...c, [i]: text }))} onPickDay={(key) => setTodoDay((d) => ({ ...d, [i]: key }))} onRegister={() => registerTodo(i, t)} testID={`chat-ai-todo-${i}`} />
             ))
           )}
 
@@ -351,7 +322,7 @@ export default function AiPanel({ visible, onClose, onPickReply, onLinked }) {
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
       <View style={styles.root}>
         <Pressable style={styles.backdrop} onPress={onClose} accessibilityRole="button" accessibilityLabel="AI 대화 도우미 닫기" testID="chat-ai-backdrop" />
-        <View style={styles.sheet} testID="chat-ai">
+        <View style={[styles.sheet, { paddingBottom: insets.bottom }]} testID="chat-ai">
           <View style={styles.handle} />
           <View style={styles.header}>
             <Text style={styles.title} accessibilityRole="header">
@@ -387,15 +358,15 @@ const styles = StyleSheet.create({
   title: { ...font.cardTitle, color: colors.text },
   sub: { ...font.caption, color: colors.textSub },
   section: { ...font.bodyStrong, color: colors.text, marginTop: spacing.xs },
+  marker: { backgroundColor: colors.surfaceStrong, color: colors.text, fontFamily: font.bodyStrong.fontFamily }, // 중요 메시지 형광펜
   body: { ...font.body, color: colors.text },
   bodyStrong: { ...font.bodyStrong, color: colors.text },
   caption: { ...font.caption, color: colors.textMuted },
   note: { ...font.caption, color: colors.warning },
   success: { ...font.caption, color: colors.success },
   error: { ...font.body, color: colors.danger },
+  confirmCard: { gap: spacing.sm, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, padding: spacing.md },
   loading: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
-  row: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
   result: { gap: spacing.xs, backgroundColor: colors.card, borderRadius: 14, padding: spacing.md },
-  offCard: { gap: spacing.xs, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, padding: spacing.md },
   candidate: { gap: spacing.xs, paddingVertical: spacing.xs },
 });

@@ -167,6 +167,17 @@ def usage_today(db: Session, user_id: str, group_id: str) -> tuple[int, int]:
     )
 
 
+def calls_left(db: Session, user_id: str, group_id: str, feature: str) -> int:
+    """feature 가 속한 묶음에서 오늘 더 부를 수 있는 횟수(내 한도와 우리 가족 한도 중 작은 쪽, 0 이상). 쿨다운은 보지 않는다."""
+    limits, features = _bucket_of(feature)
+    since = day_start(datetime.now(UTC))
+    max_user = limits.per_user_per_day if limits else settings.ai_max_calls_per_user_per_day
+    max_group = limits.per_group_per_day if limits else settings.ai_max_calls_per_group_per_day
+    user_calls = _calls_since(db, since, user_id=user_id, group_id=None, features=features)
+    group_calls = _calls_since(db, since, user_id=None, group_id=group_id, features=features)
+    return max(0, min(max_user - user_calls, max_group - group_calls))
+
+
 def _aware(value: datetime) -> datetime:
     return value if value.tzinfo else value.replace(tzinfo=UTC)
 

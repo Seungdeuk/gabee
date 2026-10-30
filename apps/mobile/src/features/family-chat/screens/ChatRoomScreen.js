@@ -1,5 +1,5 @@
 import { Ionicons } from "@expo/vector-icons";
-import { useLocalSearchParams, useRouter } from "expo-router";
+import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as Clipboard from "expo-clipboard";
 import { ActivityIndicator, FlatList, KeyboardAvoidingView, Platform, Pressable, StyleSheet, Text, View } from "react-native";
@@ -14,24 +14,25 @@ import { DIRECT_NOT_ALLOWED, MENTION, mergeNotes, parseMention } from "../mentio
 import AiPanel from "../components/AiPanel";
 import AssistantNote from "../components/AssistantNote";
 import ChatSearchBar from "../components/ChatSearchBar";
-import ChatSearchResults from "../components/ChatSearchResults";
 import Composer from "../components/Composer";
-import LinksSheet from "../components/LinksSheet";
 import LiveReturnButton from "../components/LiveReturnButton";
-import MessageActionSheet from "../components/MessageActionSheet";
 import MessageBubble from "../components/MessageBubble";
+import MessageMenu from "../components/MessageMenu";
 import PinnedBar from "../components/PinnedBar";
 import RoomDrawer from "../components/RoomDrawer";
-import { COPIED_NOTICE, COPY_FAILED_NOTICE, canPin, pinTapAction } from "../pinUtils";
+import { HEART, canOpenMenu, messageActionError, reactionAction, replyPreview } from "../messageActions";
+import { COPIED_NOTICE, COPY_FAILED_NOTICE, pinTapAction } from "../pinUtils";
 import { parseFocusParam, roomSearchOptions, shouldLoadNewer } from "../searchUtils";
-import { takeFlag } from "../linkUtils";
 import { canSaveToRecord, saveToRecord } from "../saveToRecord";
 import useChatLinks from "../useChatLinks";
 import useChatMessages, { useRoomInfo } from "../useChatMessages";
 import useChatPins from "../useChatPins";
 import useMention from "../useMention";
+import useRoomMute from "../useRoomMute";
 import useChatSearch, { useFamilyRoomId } from "../useChatSearch";
 import { memberName } from "../listUtils";
+import { fileSendErrorMessage } from "../fileUtils";
+import { pickChatDocument } from "../pickChatDocument";
 import { pickChatPhoto } from "../pickPhoto";
 import useReadMarker from "../useReadMarker";
 
@@ -40,6 +41,8 @@ const FAR = 400; // 바닥에서 이 이상 올라와 있으면 "맨 아래로" 
 const HIGHLIGHT_MS = 2000; // 검색 결과로 이동한 메시지를 강조해 두는 시간
 const SETTLE_MS = 600; // 이동 직후 이 시간 동안은 위로 자동 불러오기를 막아 이동 위치가 밀리지 않게 한다
 const NO_MESSAGES = []; // 과거 창을 보는 동안 읽음 처리에 넘기는 빈 목록
+const LIST_READY_MAX_MS = 1500; // 처음 맨 아래로 자리 잡는 동안 목록을 숨기는 최대 시간(그 뒤에는 무조건 보인다)
+const END_SETTLE_MS = 150; // 맨 아래로 간 뒤 마지막 항목 높이가 확정되길 기다리는 시간
 
 /** 가족 전체방의 사진을 AI 비서의 가족 기록으로 올린다(사진 보기의 "가비 기록에 저장"). */
 const savePhotoToRecord = (attachment) => saveToRecord(attachment, Platform.OS);
@@ -68,20 +71,21 @@ export default function ChatRoomScreen() {
   // 과거 창을 보는 동안은 읽음 위치를 올리지 않는다(보고 있지 않은 최신 메시지를 읽음 처리하면 안 된다)
   useReadMarker({ messages: chat.focusing ? NO_MESSAGES : chat.messages, myId: info.me?.id, enabled: info.status === "ready", roomId });
   const pins = useChatPins({ roomId, enabled: info.status === "ready", me: info.me }); // 고정 바는 과거(포커스) 모드에서도 유지된다
-  const links = useChatLinks({ roomId, enabled: info.status === "ready", me: info.me, poll: !direct, findMessage: (id) => chat.messages.find((m) => !m.clientId && Number(m.id) === id) }); // 일정·할 일로 등록한 메시지 연결(말풍선 표시·서랍 목록)
-  const [linksOpen, setLinksOpen] = useState(false);
-  const linksTimer = useRef(null);
-  const linksWanted = useRef(false); // 서랍을 닫은 뒤 목록 시트를 열어야 하는지(한 번만)
+  const links = useChatLinks({ roomId, enabled: info.status === "ready", me: info.me, poll: !direct, findMessage: (id) => chat.messages.find((m) => !m.clientId && Number(m.id) === id) }); // 일정·할 일로 등록한 메시지 연결(말풍선 표시)
   const familyRoom = useFamilyRoomId(!direct); // 가족 전체방은 경로에 방 id 가 없어 방 목록에서 알아낸다
   const search = useChatSearch(roomSearchOptions(roomId, familyRoom.id)); // 방 id 를 알기 전에는 검색하지 않는다(모든 방 검색으로 떨어지지 않게)
   const [searchOpen, setSearchOpen] = useState(false);
   const [highlightId, setHighlightId] = useState(null);
+  const pickPinRef = useRef(null); // 검색 이동 효과가 항상 최신 pickPin 을 부르도록
   const [goingLive, setGoingLive] = useState(false);
+  const [listReady, setListReady] = useState(false); // 방에 처음 들어갈 때 맨 아래로 자리 잡기 전까지 목록을 숨겨, 위에서부터 훑으며 내려가는 모습이 보이지 않게 한다
   const [draft, setDraft] = useState("");
   const [aiOpen, setAiOpen] = useState(false);
   const mention = useMention(); // @가비 로 부른 뒤 나에게만 보이는 답·안내
   const listRef = useRef(null);
   const nearBottom = useRef(initialFocus == null);
+  const lastScrollY = useRef(0); // 직전 스크롤 위치(위로 올렸는지 알아보려고)
+  const endTimer = useRef(null); // 마지막 항목의 높이가 확정된 뒤 한 번 더 맨 아래로 맞추는 타이머
   const itemsRef = useRef([]);
   const pinHighlightTimer = useRef(null); // 강조 해제 타이머(고정 바 이동·포커스 이동이 함께 쓴다 — 새 이동이 시작되면 앞의 것을 지운다)
   const pinSettleTimer = useRef(null); // 위로 불러오기 잠금 해제 타이머(같은 이유로 공유)
@@ -91,10 +95,14 @@ export default function ChatRoomScreen() {
   const olderRequested = useRef(false);
   const picking = useRef(false); // 사진 고르는 중 중복 누름 방지(ref)
   const [pickingUi, setPicking] = useState(false);
+  const pickingFile = useRef(false); // 문서 고르는 중 중복 누름 방지(ref)
+  const [pickingFileUi, setPickingFile] = useState(false);
   const [far, setFar] = useState(false); // 바닥에서 멀리 올라와 있는지
   const [hasNew, setHasNew] = useState(false); // 올라와 있는 동안 새 메시지가 왔는지
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const [actionMessage, setActionMessage] = useState(null); // 길게 눌러 메뉴를 연 메시지
+  const roomMute = useRoomMute({ roomId, enabled: drawerOpen }); // 서랍을 열 때마다 이 방의 알림 설정을 다시 읽는다
+  const [menu, setMenu] = useState(null); // 길게 눌러 메뉴를 연 메시지 { message, anchor }
+  const [replyTo, setReplyTo] = useState(null); // 답장하려고 고른 원본 미리보기(입력창 위 바)
   const newestId = useRef(0);
   // 채팅 메시지 응답에는 사진 주소가 없어서 구성원 목록에서 user_id 로 찾는다
   const photoById = useMemo(() => Object.fromEntries((info.room?.members ?? []).map((m) => [m.id, m.photo_url ?? null])), [info.room]);
@@ -104,12 +112,40 @@ export default function ChatRoomScreen() {
 
   const scrollToEnd = useCallback((animated) => listRef.current?.scrollToEnd({ animated }), []);
 
+  // 서랍에서 다른 화면(게시판·가족 할 일·사진 모음 등)을 열었다가 뒤로 돌아오면 가장 최근 메시지가 보이게 한다(검색 결과로 이동한 과거 창을 보는 중이면 그대로 둔다).
+  const leftRoom = useRef(false);
+  const focusingRef = useRef(false);
+  focusingRef.current = chat.focusing;
+  useFocusEffect(
+    useCallback(() => {
+      const timers = [];
+      if (leftRoom.current) {
+        leftRoom.current = false;
+        const toLatest = () => {
+          if (focusingRef.current) return;
+          nearBottom.current = true;
+          scrollToEnd(false);
+        };
+        timers.push(setTimeout(toLatest, 80), setTimeout(toLatest, 400)); // 목록이 다시 그려지며 높이가 바뀌므로 한 번 더 맞춘다
+      }
+      return () => {
+        timers.forEach(clearTimeout);
+        leftRoom.current = true;
+      };
+    }, [scrollToEnd]),
+  );
+
   const onScroll = useCallback(
     ({ nativeEvent: { contentOffset, contentSize, layoutMeasurement } }) => {
       const fromBottom = contentSize.height - (contentOffset.y + layoutMeasurement.height);
-      nearBottom.current = fromBottom < NEAR;
-      setFar(fromBottom > FAR);
-      if (fromBottom <= FAR) setHasNew(false);
+      // 바닥을 따라가는 중(nearBottom)인지는 "바닥 근처에 닿았다"와 "사용자가 위로 올렸다"로만 바꾼다.
+      // 아직 그려지지 않은 아래 항목 때문에 내용이 길어져 바닥에서 멀어 보이는 것만으로는 따라가기를 멈추지 않는다(그러면 처음 열 때·보낸 직후 마지막 메시지가 입력창에 가려졌다).
+      const scrolledUp = contentOffset.y < lastScrollY.current - 2;
+      lastScrollY.current = contentOffset.y;
+      if (fromBottom < NEAR) nearBottom.current = true;
+      else if (scrolledUp) nearBottom.current = false;
+      setFar(!nearBottom.current && fromBottom > FAR);
+      if (nearBottom.current || fromBottom <= FAR) setHasNew(false);
       scrollPos.current.y = contentOffset.y;
       if (contentOffset.y < NEAR && !settling.current) {
         olderRequested.current = true;
@@ -123,17 +159,26 @@ export default function ChatRoomScreen() {
   const onSend = () => {
     if (!canSend(draft)) return;
     const text = trimDraft(draft);
+    const reply = replyTo;
     setDraft("");
+    setReplyTo(null);
     nearBottom.current = true;
     const called = direct ? { mentioned: false, question: "" } : parseMention(text); // 1:1 방에서는 가비를 부를 수 없다(1:1 대화는 AI 로 보내지 않는다)
-    chat.send(text).then((started) => {
+    chat.send(text, reply).then((started) => {
       if (!started) {
-        setDraft((prev) => prev || text); // 보내지 못했으면(최신 대화로 돌아가지 못함 등) 쓴 글을 되돌려 놓는다
+        setDraft((prev) => prev || text); // 보내지 못했으면(최신 대화로 돌아가지 못함 등) 쓴 글과 답장 대상을 되돌려 놓는다
+        setReplyTo((prev) => prev ?? reply);
         return;
       }
       if (called.mentioned) mention.ask(called.question);
       else if (direct && text.startsWith(MENTION)) mention.info(DIRECT_NOT_ALLOWED);
     });
+  };
+
+  /** 공유 선택 카드에서 고른 줄을 내 이름의 일반 메시지로 보낸다(입력창 전송과 같은 chat.send). 보내기를 시작하지 못하면 던져서 카드가 오류를 보여 준다. */
+  const shareToRoom = async (text) => {
+    nearBottom.current = true;
+    if (!(await chat.send(text, null))) throw new Error("방에 보내지 못했어요. 잠시 후 다시 시도해 주세요.");
   };
 
   /** 갤러리에서 사진 한 장을 골라 보낸다. 고르는 동안·보내는 동안은 다시 누를 수 없다. */
@@ -155,6 +200,25 @@ export default function ChatRoomScreen() {
     }
   };
 
+  /** 기기에서 문서 파일 한 개를 골라 보낸다(pdf·워드·엑셀·파워포인트·한글·txt·csv, 20MB까지). 고르는 동안·보내는 동안은 다시 누를 수 없다. */
+  const onPickFile = async () => {
+    if (pickingFile.current || chat.fileBusy) return;
+    pickingFile.current = true;
+    setPickingFile(true);
+    chat.setPhotoError("");
+    try {
+      const asset = await pickChatDocument();
+      if (!asset) return;
+      nearBottom.current = true;
+      if (await chat.sendDocument(asset)) scrollToEnd(true);
+    } catch (e) {
+      chat.setPhotoError(fileSendErrorMessage(e));
+    } finally {
+      pickingFile.current = false;
+      setPickingFile(false);
+    }
+  };
+
   const pickReply = (text) => {
     setDraft((prev) => (prev.trim() ? `${prev} ${text}` : text));
     setAiOpen(false);
@@ -164,16 +228,33 @@ export default function ChatRoomScreen() {
     () => () => {
       clearTimeout(pinHighlightTimer.current);
       clearTimeout(pinSettleTimer.current);
-      clearTimeout(linksTimer.current);
+      clearTimeout(endTimer.current);
     },
     [],
   );
+
+  useEffect(() => {
+    if (replyTo && chat.messages.some((m) => !m.clientId && Number(m.id) === replyTo.id && m.deleted)) {
+      setReplyTo(null); // 원본이 지워지면 답장할 수 없다
+      pins.say("답장하려던 메시지가 삭제됐어요");
+    }
+  }, [chat.messages, replyTo, pins]);
 
   useEffect(() => {
     const newest = lastId(chat.messages);
     if (newest > newestId.current && newestId.current > 0 && !nearBottom.current) setHasNew(true);
     newestId.current = Math.max(newestId.current, newest);
   }, [chat.messages]);
+
+  useEffect(() => {
+    if (chat.status === "loading" || listReady) return undefined;
+    if (chat.focusing || initialFocus != null || chat.messages.length === 0) {
+      setListReady(true); // 과거 위치로 열거나 내용이 없으면 숨길 이유가 없다
+      return undefined;
+    }
+    const t = setTimeout(() => setListReady(true), LIST_READY_MAX_MS);
+    return () => clearTimeout(t);
+  }, [chat.status, chat.focusing, chat.messages.length, initialFocus, listReady]);
 
   // 검색 결과(또는 focus 인자)로 이동: 목록이 그 창으로 바뀌면 해당 메시지로 스크롤하고 잠깐 강조한다
   useEffect(() => {
@@ -225,12 +306,6 @@ export default function ChatRoomScreen() {
     search.reset();
   };
 
-  /** 결과를 누르면 검색 모드를 닫고(검색어·결과는 남겨 다시 열면 이어서 볼 수 있다) 그 메시지 위치로 이동한다. */
-  const pickResult = (item) => {
-    setSearchOpen(false);
-    chat.focusOn(item.id);
-  };
-
   const goLive = async () => {
     if (goingLive) return;
     setGoingLive(true);
@@ -242,15 +317,43 @@ export default function ChatRoomScreen() {
     else nearBottom.current = false;
   };
 
-  const closeActions = () => setActionMessage(null);
+  const closeMenu = () => setMenu(null);
+  const openMenu = (message, anchor) => setMenu({ message, anchor });
+  /** 내 반응을 켜거나(다른 이모지면 바꾸고) 같은 이모지를 다시 누르면 끈다. 실패하면 이유를 안내 줄에 보인다. */
+  const runReaction = async (message, emoji) => {
+    const action = reactionAction(message, emoji);
+    const res = await chat.reactTo(message.id, action.type === "remove" ? null : emoji);
+    if (!res.ok && !res.busy) pins.say(messageActionError(res.error, "react"));
+  };
+  const heart = (message) => runReaction(message, HEART);
+  const reactFromMenu = (emoji) => {
+    const opened = menu?.message;
+    closeMenu();
+    if (!opened) return;
+    const latest = chat.messages.find((m) => !m.clientId && Number(m.id) === Number(opened.id)) ?? opened; // 메뉴를 연 뒤 내 반응이 바뀌었을 수 있어 최신 상태로 켜고 끈다
+    runReaction(latest, emoji);
+  };
+  const replyFromMenu = () => {
+    const message = menu?.message;
+    closeMenu();
+    if (message) setReplyTo(replyPreview(message, nameOf));
+  };
+  const deleteFromMenu = async () => {
+    const message = menu?.message;
+    closeMenu();
+    if (!message) return;
+    const res = await chat.deleteMine(message.id);
+    if (res.ok) pins.say("메시지를 삭제했어요");
+    else if (!res.busy) pins.say(messageActionError(res.error, "delete"));
+  };
   const copyMessage = () => {
-    const text = actionMessage?.text;
-    closeActions();
+    const text = menu?.message?.text;
+    closeMenu();
     if (text) Clipboard.setStringAsync(text).then(() => pins.say(COPIED_NOTICE), () => pins.say(COPY_FAILED_NOTICE));
   };
   /** 고정 바 항목: 이미 목록에 있는 라이브 메시지면 스크롤+강조만, 아니면 그 위치 창을 불러온다. */
-  const pickPin = (messageId) => {
-    if (pinTapAction({ messages: chat.messages, messageId, focusing: chat.focusing }) === "focus") {
+  const pickPin = (messageId, reuseWindow = false) => {
+    if (pinTapAction({ messages: chat.messages, messageId, focusing: chat.focusing, reuseWindow }) === "focus") {
       clearTimeout(pinHighlightTimer.current);
       clearTimeout(pinSettleTimer.current);
       chat.focusOn(messageId);
@@ -275,31 +378,20 @@ export default function ChatRoomScreen() {
     }, SETTLE_MS);
     pinHighlightTimer.current = setTimeout(() => setHighlightId(null), HIGHLIGHT_MS);
   };
-  /** 서랍이 완전히 닫힌 뒤(onClosed)에 목록 시트를 한 번만 연다(iOS 는 모달 두 개가 겹치면 뒤의 것이 열리지 않을 수 있다). 콜백이 오지 않을 때를 위해 600ms 뒤 폴백으로도 연다. */
-  const showLinksSheet = () => {
-    clearTimeout(linksTimer.current);
-    if (!takeFlag(linksWanted)) return;
-    links.refresh(); // 1:1 방은 반복 조회를 하지 않아 열 때 한 번 맞춘다
-    setLinksOpen(true);
-  };
-  const openLinks = () => {
-    linksWanted.current = true;
-    clearTimeout(linksTimer.current);
-    linksTimer.current = setTimeout(showLinksSheet, 600);
-  };
-  /** 목록 항목: 시트를 닫고 원본 메시지로 이동한다(고정 바와 같은 이동). */
-  const pickLink = (messageId) => {
-    setLinksOpen(false);
-    pickPin(messageId);
-  };
+  pickPinRef.current = pickPin;
+  const currentMatchId = searchOpen ? (search.current?.id ?? null) : null;
+  // 검색 줄이 가리키는 일치(처음엔 가장 최근 것, ▲▼ 로 바뀜)가 달라지면 그 메시지로 이동한다
+  useEffect(() => {
+    if (currentMatchId != null) pickPinRef.current?.(currentMatchId, true);
+  }, [currentMatchId]);
   const pinMessageFromMenu = () => {
-    const message = actionMessage;
-    closeActions();
+    const message = menu?.message;
+    closeMenu();
     pins.pin(message);
   };
   const unpinMessageFromMenu = () => {
-    const id = actionMessage?.id;
-    closeActions();
+    const id = menu?.message?.id;
+    closeMenu();
     pins.unpin(id);
   };
   const nameOf = (userId) => {
@@ -321,7 +413,7 @@ export default function ChatRoomScreen() {
   const title = direct ? (info.room ? memberName(peer) : "1:1 대화") : (info.room?.name ?? "가족 채팅");
 
   const header = searchOpen ? (
-    <ChatSearchBar value={search.query} onChange={search.setQuery} onClose={closeSearch} />
+    <ChatSearchBar search={search} scope={familyRoom} onClose={closeSearch} onJumpCurrent={() => currentMatchId != null && pickPin(currentMatchId, true)} />
   ) : (
     <>
       <View style={styles.bar}>
@@ -395,7 +487,7 @@ export default function ChatRoomScreen() {
         <View style={styles.listArea}>
         <FlatList
           ref={listRef}
-          style={styles.list}
+          style={[styles.list, !listReady && styles.listHidden]}
           data={items}
           keyExtractor={(it) => it.key}
           renderItem={({ item }) =>
@@ -406,7 +498,7 @@ export default function ChatRoomScreen() {
                 </Text>
               </View>
             ) : item.message.localNote ? (
-              <AssistantNote note={item.message} onRetry={mention.ask} onDismiss={mention.dismiss} onResolveCard={mention.resolveCard} />
+              <AssistantNote note={item.message} onRetry={mention.ask} onDismiss={mention.dismiss} onResolveCard={mention.resolveCard} onShareToRoom={shareToRoom} />
             ) : (
               <MessageBubble
                 nameOf={nameOf}
@@ -417,9 +509,14 @@ export default function ChatRoomScreen() {
                 unread={unreadCount(item.message, info.me, chat.readStates)}
                 photoUrl={photoById[item.message.user_id]}
                 highlighted={highlightId != null && String(item.message.id) === String(highlightId)}
+                searchTerms={searchOpen ? search.terms : undefined}
+                searchCurrent={currentMatchId != null && String(item.message.id) === String(currentMatchId)}
                 onRetry={chat.resend}
                 onDiscard={chat.discard}
-                onActions={canPin(item.message) ? setActionMessage : undefined}
+                onActions={canOpenMenu(item.message) ? openMenu : undefined}
+                onHeart={canOpenMenu(item.message) ? heart : undefined}
+                onReactionPress={canOpenMenu(item.message) ? runReaction : undefined}
+                onReplyPress={pickPin}
                 linkBadges={links.badgesOf(item.message.id)}
                 onSaveToRecord={canSaveToRecord({ direct, attachment: item.message.attachment }) ? savePhotoToRecord : undefined}
               />
@@ -442,6 +539,12 @@ export default function ChatRoomScreen() {
               listRef.current?.scrollToOffset({ offset: scrollPos.current.y + grew, animated: false });
             } else if (nearBottom.current && !chat.focusing) {
               scrollToEnd(false);
+              // 목록은 아직 그려지지 않았거나 높이가 바뀌는 마지막 항목(전송 중 → 보낸 시각·읽음 수) 때문에 한 번에 끝까지 못 갈 수 있어, 잠시 뒤 한 번 더 맞춘다
+              clearTimeout(endTimer.current);
+              endTimer.current = setTimeout(() => {
+                if (nearBottom.current && !chat.focusing) scrollToEnd(false);
+                setListReady(true);
+              }, END_SETTLE_MS);
             }
             scrollPos.current.height = height;
           }}
@@ -449,6 +552,11 @@ export default function ChatRoomScreen() {
           keyboardShouldPersistTaps="handled"
           contentContainerStyle={styles.listContent}
         />
+        {!listReady ? (
+          <View style={styles.listLoading} pointerEvents="none">
+            <ActivityIndicator color={colors.accent} accessibilityLabel="대화를 불러오는 중" />
+          </View>
+        ) : null}
         {chat.focusing ? <LiveReturnButton onPress={goLive} busy={goingLive || chat.loadingNewer} /> : null}
         {far && !chat.focusing ? (
           <Pressable
@@ -466,9 +574,13 @@ export default function ChatRoomScreen() {
           onChangeText={setDraft}
           onSend={onSend}
           onPickPhoto={onPickPhoto}
+          onPickFile={onPickFile}
+          fileBusy={pickingFileUi || chat.fileBusy}
           photoBusy={pickingUi || chat.photoBusy}
           photoError={chat.photoError}
           onDismissPhotoError={() => chat.setPhotoError("")}
+          replyTo={replyTo}
+          onCancelReply={() => setReplyTo(null)}
         />
       </>
     );
@@ -478,19 +590,13 @@ export default function ChatRoomScreen() {
     <SafeAreaView style={styles.safe} edges={["top", "bottom"]}>
       {header}
       {!searchOpen && info.status === "ready" ? (
-        <PinnedBar pins={pins.pins} expanded={pins.expanded} onToggle={() => pins.setExpanded(!pins.expanded)} onPick={pickPin} notice={pins.notice} nameOf={nameOf} />
+        <PinnedBar pins={pins.pins} expanded={pins.expanded} onToggle={() => pins.setExpanded(!pins.expanded)} onPick={pickPin} onHide={pins.hide} onShowHidden={pins.showHidden} notice={pins.notice} nameOf={nameOf} />
       ) : null}
       <KeyboardAvoidingView style={styles.flex} behavior="padding">
         {body}
-        {searchOpen && info.status === "ready" ? (
-          <View style={styles.searchLayer}>
-            <ChatSearchResults search={search} onPick={pickResult} scope={familyRoom} />
-          </View>
-        ) : null}
       </KeyboardAvoidingView>
-      <RoomDrawer visible={drawerOpen} onClose={() => setDrawerOpen(false)} room={info.room} roomId={roomId} peerId={peerId} myId={info.me?.id} onOpenSearch={() => setSearchOpen(true)} onOpenPins={pins.showPins} onOpenLinks={openLinks} onClosed={showLinksSheet} />
-      <LinksSheet visible={linksOpen} onClose={() => setLinksOpen(false)} links={links.links} status={links.status} myId={info.me?.id} notice={links.notice} onPick={pickLink} onDelete={links.remove} onRetry={links.reload} />
-      <MessageActionSheet message={actionMessage} pinned={pins.isPinned(actionMessage?.id)} onClose={closeActions} onCopy={copyMessage} onPin={pinMessageFromMenu} onUnpin={unpinMessageFromMenu} />
+      <RoomDrawer visible={drawerOpen} onClose={() => setDrawerOpen(false)} room={info.room} roomId={roomId} peerId={peerId} myId={info.me?.id} muted={roomMute.muted} onToggleMute={roomMute.toggle} />
+      <MessageMenu target={menu} myId={info.me?.id} pinned={pins.isPinned(menu?.message?.id)} onClose={closeMenu} onReact={reactFromMenu} onReply={replyFromMenu} onPin={pinMessageFromMenu} onUnpin={unpinMessageFromMenu} onCopy={copyMessage} onDelete={deleteFromMenu} />
       {direct ? null : <AiPanel visible={aiOpen} onClose={() => setAiOpen(false)} onPickReply={pickReply} onLinked={links.registerCandidate} />}
     </SafeAreaView>
   );
@@ -499,7 +605,6 @@ export default function ChatRoomScreen() {
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.background },
   flex: { flex: 1 },
-  searchLayer: { position: "absolute", top: 0, right: 0, bottom: 0, left: 0, backgroundColor: colors.background }, // 목록을 그대로 둔 채 위에 덮어, 검색을 닫아도 보던 위치가 유지된다
   bar: {
     flexDirection: "row",
     alignItems: "center",
@@ -531,6 +636,8 @@ const styles = StyleSheet.create({
   emptyText: { ...font.body, color: colors.textSub, textAlign: "center" },
   emptyList: { alignItems: "center", gap: spacing.sm, paddingVertical: spacing.xxl * 2 },
   list: { flex: 1, backgroundColor: colors.background },
+  listHidden: { opacity: 0 },
+  listLoading: { ...StyleSheet.absoluteFillObject, alignItems: "center", justifyContent: "center" },
   listContent: { paddingVertical: spacing.md },
   older: { paddingVertical: spacing.md },
   dayWrap: { alignItems: "center", paddingVertical: spacing.md },

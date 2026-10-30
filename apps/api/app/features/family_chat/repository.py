@@ -1,6 +1,8 @@
 from datetime import UTC, datetime
 
-from sqlalchemy import and_, func, or_, select, update
+from sqlalchemy import and_, case, delete, func, or_, select, update
+from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -11,9 +13,11 @@ from .models import (
     FAMILY,
     ChatRoom,
     ChatRoomMember,
+    ChatRoomMute,
     ChatRoomRead,
     Message,
     MessageAttachment,
+    MessageReaction,
 )
 
 UNREAD_CAP = 1000  # 안 읽은 수를 세는 상한(앱이 99+ 로 줄여 보여준다)
@@ -157,6 +161,105 @@ def list_recent(
         stmt = stmt.where(Message.id < before_id)
     rows = db.execute(stmt.order_by(Message.id.desc()).limit(limit)).all()
     return [(m, name) for m, name in reversed(rows)]
+
+
+def soft_delete(db: Session, message: Message, attachment: MessageAttachment | None) -> None:
+    """메시지를 지운 것으로 표시하고 본문·첨부를 비운다(행은 남긴다). 파일 삭제는 호출하는 쪽이 DB 저장 뒤에 한다."""
+    message.text = ""
+    message.reply_to_id = None  # 지우면 어느 글에 답했는지도 남기지 않는다
+    message.deleted_at = datetime.now(UTC)
+    if attachment is not None:
+        db.delete(attachment)
+    db.execute(
+        delete(MessageReaction).where(MessageReaction.message_id == message.id)
+    )  # 반응도 남기지 않는다
+    db.commit()
+
+
+def deleted_since(db: Session, room: ChatRoom, since: datetime, limit: int = 200) -> list[int]:
+    """since 이후(같은 시각 포함)에 지워진 이 방의 메시지 id 를 지운 순서대로."""
+    rows = db.scalars(
+        select(Message.id)
+        .where(room_messages(room), Message.deleted_at.is_not(None), Message.deleted_at >= since)
+        .order_by(Message.deleted_at, Message.id)
+        .limit(limit)
+    )
+    return list(rows)
+
+
+def reply_parents(
+    db: Session, room: ChatRoom, messages: list[Message]
+) -> dict[int, tuple[Message, str, str | None]]:
+    """답장인 메시지들의 원본을 한 번에 모은다: 원본 id -> (원본, 보낸 사람 이름, 첨부 종류 image|file|None).
+    원본도 같은 방(room_messages)에서만 찾는다 — 답장을 넣을 때의 방 검사가 빠진 잘못된 데이터가 있어도
+    다른 방 메시지의 내용이 미리보기로 나가지 않게 하는 방어선이다.
+    메시지 수와 상관없이 쿼리 수는 일정하다(원본 1번 + 첨부 1번)."""
+    parent_ids = {m.reply_to_id for m in messages if m.reply_to_id is not None}
+    if not parent_ids:
+        return {}
+    rows = db.execute(
+        select(Message, User.name)
+        .join(User, User.id == Message.user_id)
+        .where(room_messages(room), Message.id.in_(parent_ids))
+    ).all()
+    attached = attachments_for(db, [m.id for m, _ in rows])
+    return {
+        m.id: (m, name, (attached[m.id].kind or "image") if m.id in attached else None)
+        for m, name in rows
+    }
+
+
+def reaction_summary(
+    db: Session, message_ids: list[int], viewer_id: str
+) -> dict[int, list[tuple[str, int, bool]]]:
+    """메시지별 반응 집계를 한 번에: 메시지 id -> [(이모지, 사람 수, 내가 눌렀는지)]. 메시지 수와 상관없이 쿼리 1번."""
+    if not message_ids:
+        return {}
+    mine = case((MessageReaction.user_id == viewer_id, 1), else_=0)
+    rows = db.execute(
+        select(
+            MessageReaction.message_id,
+            MessageReaction.emoji,
+            func.count(MessageReaction.user_id),
+            func.max(mine),
+        )
+        .where(MessageReaction.message_id.in_(message_ids))
+        .group_by(MessageReaction.message_id, MessageReaction.emoji)
+    ).all()
+    out: dict[int, list[tuple[str, int, bool]]] = {}
+    for message_id, emoji, count, is_mine in rows:
+        out.setdefault(message_id, []).append((emoji, count, bool(is_mine)))
+    return out
+
+
+def set_reaction(db: Session, message_id: int, user_id: str, emoji: str) -> None:
+    """내 반응을 정한다(없으면 만들고 있으면 이모지를 바꾼다). 한 번의 upsert(INSERT … ON CONFLICT DO UPDATE)라서
+    읽고 쓰는 사이에 같은 사람의 취소·다른 이모지 요청이 끼어들어도 오류 없이 마지막 요청대로 된다."""
+    insert = pg_insert if db.get_bind().dialect.name == "postgresql" else sqlite_insert
+    db.execute(
+        insert(MessageReaction)
+        .values(message_id=message_id, user_id=user_id, emoji=emoji, created_at=datetime.now(UTC))
+        .on_conflict_do_update(
+            index_elements=[MessageReaction.message_id, MessageReaction.user_id],
+            set_={"emoji": emoji},
+        )
+    )
+    db.commit()
+
+
+def clear_message_reactions(db: Session, message_id: int) -> None:
+    """이 메시지의 반응을 모두 지운다(메시지를 지울 때, 지운 뒤에 저장된 반응을 치울 때)."""
+    db.execute(delete(MessageReaction).where(MessageReaction.message_id == message_id))
+    db.commit()
+
+
+def clear_reaction(db: Session, message_id: int, user_id: str) -> None:
+    db.execute(
+        delete(MessageReaction).where(
+            MessageReaction.message_id == message_id, MessageReaction.user_id == user_id
+        )
+    )
+    db.commit()
 
 
 def last_message(db: Session, room: ChatRoom) -> tuple[Message, str] | None:
@@ -347,6 +450,37 @@ def rooms_summary(
         rid: (last_by_id.get(rid), min(unread.get(rid, 0), UNREAD_CAP), peers.get(rid))
         for rid in ids
     }
+
+
+def muted_room_ids(db: Session, user_id: str, room_ids: list[str]) -> set[str]:
+    """이 방들 중 내가 알림을 끈 방의 id. 방 수와 상관없이 쿼리 한 번."""
+    if not room_ids:
+        return set()
+    rows = db.execute(
+        select(ChatRoomMute.room_id).where(
+            ChatRoomMute.user_id == user_id, ChatRoomMute.room_id.in_(room_ids)
+        )
+    )
+    return set(rows.scalars())
+
+
+def set_muted(db: Session, room_id: str, user_id: str, muted: bool) -> None:
+    """알림 끄기를 저장한다. 이미 그 상태여도 같은 결과(겹친 요청에도 오류 없음)."""
+    if muted:
+        if db.get(ChatRoomMute, (room_id, user_id)) is None:
+            try:
+                with db.begin_nested():
+                    db.add(ChatRoomMute(room_id=room_id, user_id=user_id))
+                    db.flush()
+            except IntegrityError:
+                pass  # 겹친 요청이 먼저 껐다
+    else:
+        db.execute(
+            delete(ChatRoomMute).where(
+                ChatRoomMute.room_id == room_id, ChatRoomMute.user_id == user_id
+            )
+        )
+    db.commit()
 
 
 # ── 첨부(사진) ───────────────────────────────────────────

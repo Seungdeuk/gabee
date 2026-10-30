@@ -4,6 +4,9 @@ import { afterEach, beforeEach, test } from "node:test";
 
 import {
   CANCELLED_TEXT,
+  SHARE_CANCELLED_TEXT,
+  buildShareText,
+  cancelledText,
   CARD_PENDING,
   cardButtons,
   confirmResultText,
@@ -44,6 +47,26 @@ test("서버의 확인 카드를 앱이 쓰는 모양으로 바꾼다", () => {
   assert.equal(card.pendingAction.type, "register");
   assert.equal(card.status, CARD_PENDING);
   assert.equal(card.resultText, "");
+});
+
+test("부탁 카드(보내기·받는 사람 바꾸기·취소)도 변환하고 버튼이 다르다", () => {
+  const request = (action, extra = {}) => ({
+    kind: "schedule",
+    action,
+    title: "수진에게 부탁을 보낼까요?",
+    lines: ["2026-10-31 15:00 장 같이 봐줘"],
+    shared_with: ["수진"],
+    pending_action: { type: action, request_id: "r1", to_ids: ["u2"] },
+    ...extra,
+  });
+  const cards = mapConfirmCards([request("request_register"), request("request_edit"), request("request_cancel")]);
+  assert.deepEqual(cards.map((c) => c.action), ["request_register", "request_edit", "request_cancel"]);
+  assert.equal(cards[0].pendingAction.request_id, "r1");
+  assert.deepEqual(cardButtons(cards[0]).map((b) => b.label), ["보내기", "취소"]);
+  assert.deepEqual(cardButtons(cards[1]).map((b) => b.label), ["바꾸기", "취소"]);
+  const cancel = cardButtons(cards[2]);
+  assert.deepEqual(cancel.map((b) => b.label), ["부탁 취소하기", "돌아가기"]);
+  assert.equal(cancel[0].tone, "danger");
 });
 
 test("모르는 종류·실행 정보가 없는 카드는 버리고, 목록이 아니면 빈 목록", () => {
@@ -196,4 +219,51 @@ test("confirmCardAction: 서버가 거절하면(만료·이미 처리) 그 메�
   globalThis.fetch = async () => json(409, { code: "proposal_used", message: "이미 처리한 요청이에요" });
   const [card] = mapProposals([proposal()]);
   await assert.rejects(() => api.confirmCardAction(card, false), (e) => /이미 처리/.test(e.message));
+});
+
+const shareCard = (extra = {}) => ({
+  kind: "schedule",
+  action: "share_select",
+  title: "방에 공유할 항목을 골라 주세요",
+  lines: [],
+  shared_with: [],
+  pending_action: {},
+  items: [
+    { id: "a1", line: "10/30(금) 14:00 치과" },
+    { id: "b2", line: "10/31(토) 18:00 엄마 생신" },
+    { id: "c3", line: "11/01(일) 장보기" },
+  ],
+  ...extra,
+});
+
+test("share_select: pending_action 이 {} 여도 살아남고 items 를 {id, line} 으로 정리한다", () => {
+  const [card] = mapConfirmCards([shareCard()]);
+  assert.equal(card.action, "share_select");
+  assert.deepEqual(card.pendingAction, {});
+  assert.equal(card.items.length, 3);
+  assert.deepEqual(card.items[0], { id: "a1", line: "10/30(금) 14:00 치과" });
+  const [messy] = mapConfirmCards([shareCard({ items: [{ id: "x", line: "  ok  " }, { id: "y", line: "" }, { id: "z", line: 5 }, { id: "x", line: "dup" }, null, "str", { line: "no id" }] })]);
+  assert.deepEqual(messy.items, [{ id: "x", line: "ok" }]);
+  const many = Array.from({ length: 30 }, (_, i) => ({ id: `i${i}`, line: `줄 ${i}` }));
+  assert.equal(mapConfirmCards([shareCard({ items: many })])[0].items.length, 20);
+  assert.deepEqual(mapConfirmCards([shareCard({ items: [] })]), []); // 고를 항목이 없으면 카드를 버린다
+  assert.deepEqual(mapConfirmCards([shareCard({ items: undefined })]), []);
+});
+
+test("share_select: 버튼은 방에 공유/닫기이고 닫기 문구는 공유하지 않았어요", () => {
+  const [card] = mapConfirmCards([shareCard()]);
+  assert.deepEqual(cardButtons(card).map((b) => [b.key, b.label]), [["share", "방에 공유"], ["cancel", "닫기"]]);
+  assert.equal(cancelledText(card), SHARE_CANCELLED_TEXT);
+  assert.equal(SHARE_CANCELLED_TEXT, "공유하지 않았어요");
+  assert.equal(cancelledText(mapConfirmCards([serverCard()])[0]), CANCELLED_TEXT);
+});
+
+test("buildShareText: 목록 순서대로 줄바꿈으로 잇고, 선택이 없거나 모르는 id 면 빈 문자열, 중복 id 는 한 번만", () => {
+  const { items } = mapConfirmCards([shareCard()])[0];
+  assert.equal(buildShareText(items, ["c3", "a1"]), "10/30(금) 14:00 치과\n11/01(일) 장보기");
+  assert.equal(buildShareText(items, []), "");
+  assert.equal(buildShareText(items, ["zzz"]), "");
+  assert.equal(buildShareText(items, ["a1", "a1"]), "10/30(금) 14:00 치과");
+  assert.equal(buildShareText(items, undefined), "");
+  assert.equal(buildShareText(undefined, ["a1"]), "");
 });
