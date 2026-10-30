@@ -3,12 +3,20 @@
 import logging
 from datetime import UTC, datetime, timedelta
 
+import pytest
 from sqlalchemy import select
 
 from app.features.care.models import CareLocation
+from app.shared.config import settings
 from app.shared.db import SessionLocal
 from app.shared.location_consent import LocationConsentEvent
 from tests.helpers import signup
+
+
+@pytest.fixture(autouse=True)
+def _location_on(monkeypatch):
+    """위치 공유는 기본이 꺼짐이라, 이 파일의 시험은 켠 상태에서 본다(꺼진 상태는 test_care_location_disabled.py)."""
+    monkeypatch.setattr(settings, "care_location_enabled", True)
 
 
 def _point(lat=37.5665, lng=126.978, minutes_ago=1, accuracy=12.5):

@@ -12,6 +12,7 @@ from sqlalchemy import select
 from app.features.billing import agent as billing_agent
 from app.features.care import agent as care_agent
 from app.features.family_group.models import User
+from app.shared.config import settings
 from app.shared.db import SessionLocal
 from evals.tab_agents.seed import seed, seed_write_targets
 from tests.helpers import join_family, signup
@@ -19,6 +20,13 @@ from tests.helpers import join_family, signup
 pytestmark = pytest.mark.usefixtures(
     "full_care_samples"
 )  # 평가 데이터는 물·산책·컨디션 항목이 있는 예전 기본 세트를 쓴다
+
+
+@pytest.fixture(autouse=True)
+def _location_on(monkeypatch):
+    """평가 시드가 위치 동의를 넣으므로 위치 공유를 켠 상태를 본다(기본은 꺼짐: CARE_LOCATION_ENABLED)."""
+    monkeypatch.setattr(settings, "care_location_enabled", True)
+
 
 CASES = {
     c["id"]: c
