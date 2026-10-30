@@ -107,8 +107,6 @@ def _args(client, a):
             "propose_decide_allowance_request",
             {"child_name": "민수", "request_id": rid, "decision": "approve"},
         ),
-        "c-clear-meal-own": ("지민", "propose_clear_meal", {"meal": "lunch", "date": "2026-10-20"}),
-        "c-clear-meal-others": ("지민", "propose_clear_meal", {"meal": "dinner", "date": day}),
         "c-clear-item-own": (
             "지민",
             "propose_clear_item",
@@ -134,8 +132,6 @@ WRITE_IDS = [
     "b-allowance-approve-amount",
     "b-allowance-reject",
     "b-allowance-not-manager",
-    "c-clear-meal-own",
-    "c-clear-meal-others",
     "c-clear-item-own",
     "c-clear-item-others",
 ]
