@@ -250,11 +250,12 @@ export function pinA11yLabel(pin, nameOf) {
 
 /**
  * 고정 바 항목을 눌렀을 때: 라이브이고 그 메시지가 이미 목록에 있으면 스크롤+강조만(scroll), 아니면 그 위치 창을 불러온다(focus).
- * @param {{ messages: object[], messageId: number|string, focusing: boolean }} args focusing 은 과거 창을 보는 중인지
+ * 과거 창을 보는 중에는 보통 항상 그 위치 창을 새로 불러오지만, reuseWindow 이면(검색 이동) 이미 창 안에 있는 메시지는 스크롤만 한다.
+ * @param {{ messages: object[], messageId: number|string, focusing: boolean, reuseWindow?: boolean }} args focusing 은 과거 창을 보는 중인지
  * @returns {"scroll" | "focus"}
  */
-export function pinTapAction({ messages, messageId, focusing }) {
-  if (focusing) return "focus";
+export function pinTapAction({ messages, messageId, focusing, reuseWindow = false }) {
+  if (focusing && !reuseWindow) return "focus";
   const id = Number(messageId);
   const found = (messages ?? []).some((m) => !m.clientId && Number(m.id) === id);
   return found ? "scroll" : "focus";

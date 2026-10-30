@@ -12,6 +12,7 @@ import { fitSize } from "../photo";
 import { bubbleSelectable, bubbleTextStyle } from "../pinUtils";
 import { DELETED_TEXT, DOUBLE_TAP_MS, isDoubleTap } from "../messageActions";
 import AssistantAvatar from "./AssistantAvatar";
+import { highlightNodes, hitStyles } from "./Highlighted";
 import PhotoViewer from "./PhotoViewer";
 import ReactionRow from "./ReactionRow";
 import ReplyQuote from "./ReplyQuote";
@@ -25,15 +26,16 @@ const AVATAR = 36;
  * 전송 중이면 "전송 중…", 실패하면 "전송 실패 · 다시 보내기"(누르면 재전송, 길게 누르거나 "삭제" 로 지움).
  * 가비(AI)가 @가비 호출에 답해 올린 메시지(is_assistant)는 반짝이 아바타와 꿀색 말풍선으로 사람과 구분한다.
  * 검색 결과로 이동했을 때 그 메시지는 highlighted 로 잠깐 배경색을 입힌다.
+ * 채팅방 검색이 열려 있으면 searchTerms 로 글 안의 검색어를 꿀색으로 강조하고, 지금 가리키는 일치 메시지(searchCurrent)는 배경과 검색어를 더 진하게 보인다.
  * linkBadges 가 있으면(이 메시지에서 일정·할 일로 등록됨) 글 아래에 작은 표시를 붙인다(표시만, 눌러도 아무 일 없다).
  * onActions 가 있으면(서버에 저장된 지우지 않은 메시지) 말풍선을 길게 눌러 메뉴(반응·답장·공지·복사·삭제)를 열고, 누른 지점(anchor)을 함께 넘긴다. 네이티브에서는 길게 누르기가 글자 선택과 겹치지 않도록 이 경우 글자 선택을 끈다(복사는 메뉴에서 한다).
  * onHeart 가 있으면 말풍선(사진은 썸네일)을 두 번 눌러 하트 반응을 켜고 끈다(사진은 한 번 누르면 잠깐 기다렸다가 크게 보기).
  * 답장이면(reply_to) 글 위에 원본 인용(ReplyQuote)이 붙고 누르면 onReplyPress 로 원본으로 이동한다. 반응(reactions)은 말풍선 아래 칩으로 보이고 누르면 onReactionPress 가 내 반응을 켜거나 끈다.
  * 지운 메시지(deleted)는 말풍선 대신 가운데에 "삭제된 메시지입니다"만 보인다.
  * onSaveToRecord 가 있으면(가족 전체방의 사진) 전체 화면 사진 보기에 "가비 기록에 저장" 버튼이 붙고, 누르면 그 사진을 AI 비서의 가족 기록으로 올린다(결과 문구는 사진 보기에 보인다).
- * @param {{ message: object, mine: boolean, showName: boolean, showTime?: boolean, unread?: number, photoUrl?: string | null, highlighted?: boolean, onRetry?: (clientId: string) => void, onDiscard?: (clientId: string) => void, onActions?: (message: object, anchor: { x: number, y: number } | null) => void, onHeart?: (message: object) => void, onReactionPress?: (message: object, emoji: string) => void, onReplyPress?: (messageId: number) => void, linkBadges?: { kind: "event" | "todo", label: string }[], onSaveToRecord?: (attachment: object) => Promise<{ ok: boolean, message: string }>, nameOf?: (userId: string) => string | undefined }} props
+ * @param {{ message: object, mine: boolean, showName: boolean, showTime?: boolean, unread?: number, photoUrl?: string | null, highlighted?: boolean, searchTerms?: string[], searchCurrent?: boolean, onRetry?: (clientId: string) => void, onDiscard?: (clientId: string) => void, onActions?: (message: object, anchor: { x: number, y: number } | null) => void, onHeart?: (message: object) => void, onReactionPress?: (message: object, emoji: string) => void, onReplyPress?: (messageId: number) => void, linkBadges?: { kind: "event" | "todo", label: string }[], onSaveToRecord?: (attachment: object) => Promise<{ ok: boolean, message: string }>, nameOf?: (userId: string) => string | undefined }} props
  */
-export default function MessageBubble({ message, mine, showName, showTime = true, unread = 0, photoUrl, highlighted = false, onRetry, onDiscard, onActions, onHeart, onReactionPress, onReplyPress, linkBadges, onSaveToRecord, nameOf }) {
+export default function MessageBubble({ message, mine, showName, showTime = true, unread = 0, photoUrl, highlighted = false, searchTerms, searchCurrent = false, onRetry, onDiscard, onActions, onHeart, onReactionPress, onReplyPress, linkBadges, onSaveToRecord, nameOf }) {
   const senderName = nameOf?.(message.user_id) || message.user_name; // 내가 붙인 별명이 있으면 별명
   const failed = message.status === "failed";
   const sending = message.status === "sending";
@@ -77,7 +79,7 @@ export default function MessageBubble({ message, mine, showName, showTime = true
 
   if (message.deleted) {
     return (
-      <View style={[styles.deletedRow, highlighted && styles.highlight]} accessible accessibilityLabel={DELETED_TEXT}>
+      <View style={[styles.deletedRow, (highlighted || searchCurrent) && styles.highlight]} accessible accessibilityLabel={DELETED_TEXT}>
         <Text style={styles.deletedText}>{DELETED_TEXT}</Text>
       </View>
     );
@@ -142,7 +144,7 @@ export default function MessageBubble({ message, mine, showName, showTime = true
       ) : null}
       {message.text ? (
         <Text style={bubbleTextStyle({ selectable, base: styles.text, photo: attachment ? styles.photoText : null, noSelect: styles.noSelect })} selectable={selectable}>
-          {message.text}
+          {searchTerms?.length ? highlightNodes(message.text, searchTerms, searchCurrent ? hitStyles.current : message.is_assistant ? styles.hitOnAssistant : styles.hit) : message.text}
         </Text>
       ) : null}
       {(linkBadges ?? []).map((b) => (
@@ -190,7 +192,7 @@ export default function MessageBubble({ message, mine, showName, showTime = true
   if (mine) {
     return (
       <View>
-        <View style={[styles.row, styles.mineRow, highlighted && styles.highlight]}>
+        <View style={[styles.row, styles.mineRow, (highlighted || searchCurrent) && styles.highlight]}>
           {meta || unreadNode ? (
             <View style={styles.metaMine}>
               {unreadNode}
@@ -205,7 +207,7 @@ export default function MessageBubble({ message, mine, showName, showTime = true
   }
   return (
     <View>
-      <View style={[styles.row, highlighted && styles.highlight]}>
+      <View style={[styles.row, (highlighted || searchCurrent) && styles.highlight]}>
         {showName ? (
           message.is_assistant ? (
             <AssistantAvatar size={AVATAR} />
@@ -236,6 +238,8 @@ const styles = StyleSheet.create({
   reactionsMine: { paddingHorizontal: spacing.md, alignItems: "flex-end" },
   reactionsOther: { paddingLeft: AVATAR + spacing.sm + spacing.md, paddingRight: spacing.md },
   highlight: { backgroundColor: colors.honeySoft },
+  hit: { fontFamily: font.bodyStrong.fontFamily, backgroundColor: colors.honeySoft },
+  hitOnAssistant: { fontFamily: font.bodyStrong.fontFamily, backgroundColor: colors.peach }, // 가비 말풍선 바탕이 꿀색이라 다른 색으로
   spacer: { width: AVATAR },
   column: { flexShrink: 1, maxWidth: "80%", gap: spacing.xs, alignItems: "flex-start" }, // 폭 기준은 row(확정된 폭)의 %. 안쪽 말풍선은 이 폭 안에서만 줄어든다
   line: { flexDirection: "row", alignItems: "flex-end", gap: spacing.xs, maxWidth: "100%" },

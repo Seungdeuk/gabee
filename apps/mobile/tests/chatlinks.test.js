@@ -211,6 +211,9 @@ test("이동 판단(고정 바와 같은 pinTapAction 을 쓴다): 라이브에�
   assert.equal(pinTapAction({ messages, messageId: 5, focusing: false }), "scroll");
   assert.equal(pinTapAction({ messages, messageId: 6, focusing: false }), "scroll");
   assert.equal(pinTapAction({ messages, messageId: 1, focusing: false }), "focus");
+  assert.equal(pinTapAction({ messages, messageId: 5, focusing: true }), "focus");
+  assert.equal(pinTapAction({ messages, messageId: 5, focusing: true, reuseWindow: true }), "scroll"); // 검색 이동: 과거 창 안에 있으면 다시 불러오지 않는다
+  assert.equal(pinTapAction({ messages, messageId: 1, focusing: true, reuseWindow: true }), "focus");
   assert.equal(pinTapAction({ messages, messageId: 7, focusing: false }), "focus"); // 임시 메시지는 목록에 있는 것으로 보지 않는다
   assert.equal(pinTapAction({ messages, messageId: 5, focusing: true }), "focus");
 });

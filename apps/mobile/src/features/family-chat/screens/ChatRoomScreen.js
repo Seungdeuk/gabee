@@ -14,7 +14,6 @@ import { DIRECT_NOT_ALLOWED, MENTION, mergeNotes, parseMention } from "../mentio
 import AiPanel from "../components/AiPanel";
 import AssistantNote from "../components/AssistantNote";
 import ChatSearchBar from "../components/ChatSearchBar";
-import ChatSearchResults from "../components/ChatSearchResults";
 import Composer from "../components/Composer";
 import LiveReturnButton from "../components/LiveReturnButton";
 import MessageBubble from "../components/MessageBubble";
@@ -73,6 +72,7 @@ export default function ChatRoomScreen() {
   const search = useChatSearch(roomSearchOptions(roomId, familyRoom.id)); // 방 id 를 알기 전에는 검색하지 않는다(모든 방 검색으로 떨어지지 않게)
   const [searchOpen, setSearchOpen] = useState(false);
   const [highlightId, setHighlightId] = useState(null);
+  const pickPinRef = useRef(null); // 검색 이동 효과가 항상 최신 pickPin 을 부르도록
   const [goingLive, setGoingLive] = useState(false);
   const [draft, setDraft] = useState("");
   const [aiOpen, setAiOpen] = useState(false);
@@ -269,12 +269,6 @@ export default function ChatRoomScreen() {
     search.reset();
   };
 
-  /** 결과를 누르면 검색 모드를 닫고(검색어·결과는 남겨 다시 열면 이어서 볼 수 있다) 그 메시지 위치로 이동한다. */
-  const pickResult = (item) => {
-    setSearchOpen(false);
-    chat.focusOn(item.id);
-  };
-
   const goLive = async () => {
     if (goingLive) return;
     setGoingLive(true);
@@ -321,8 +315,8 @@ export default function ChatRoomScreen() {
     if (text) Clipboard.setStringAsync(text).then(() => pins.say(COPIED_NOTICE), () => pins.say(COPY_FAILED_NOTICE));
   };
   /** 고정 바 항목: 이미 목록에 있는 라이브 메시지면 스크롤+강조만, 아니면 그 위치 창을 불러온다. */
-  const pickPin = (messageId) => {
-    if (pinTapAction({ messages: chat.messages, messageId, focusing: chat.focusing }) === "focus") {
+  const pickPin = (messageId, reuseWindow = false) => {
+    if (pinTapAction({ messages: chat.messages, messageId, focusing: chat.focusing, reuseWindow }) === "focus") {
       clearTimeout(pinHighlightTimer.current);
       clearTimeout(pinSettleTimer.current);
       chat.focusOn(messageId);
@@ -347,6 +341,12 @@ export default function ChatRoomScreen() {
     }, SETTLE_MS);
     pinHighlightTimer.current = setTimeout(() => setHighlightId(null), HIGHLIGHT_MS);
   };
+  pickPinRef.current = pickPin;
+  const currentMatchId = searchOpen ? (search.current?.id ?? null) : null;
+  // 검색 줄이 가리키는 일치(처음엔 가장 최근 것, ▲▼ 로 바뀜)가 달라지면 그 메시지로 이동한다
+  useEffect(() => {
+    if (currentMatchId != null) pickPinRef.current?.(currentMatchId, true);
+  }, [currentMatchId]);
   const pinMessageFromMenu = () => {
     const message = menu?.message;
     closeMenu();
@@ -376,7 +376,7 @@ export default function ChatRoomScreen() {
   const title = direct ? (info.room ? memberName(peer) : "1:1 대화") : (info.room?.name ?? "가족 채팅");
 
   const header = searchOpen ? (
-    <ChatSearchBar value={search.query} onChange={search.setQuery} onClose={closeSearch} />
+    <ChatSearchBar search={search} scope={familyRoom} onClose={closeSearch} onJumpCurrent={() => currentMatchId != null && pickPin(currentMatchId, true)} />
   ) : (
     <>
       <View style={styles.bar}>
@@ -472,6 +472,8 @@ export default function ChatRoomScreen() {
                 unread={unreadCount(item.message, info.me, chat.readStates)}
                 photoUrl={photoById[item.message.user_id]}
                 highlighted={highlightId != null && String(item.message.id) === String(highlightId)}
+                searchTerms={searchOpen ? search.terms : undefined}
+                searchCurrent={currentMatchId != null && String(item.message.id) === String(currentMatchId)}
                 onRetry={chat.resend}
                 onDiscard={chat.discard}
                 onActions={canOpenMenu(item.message) ? openMenu : undefined}
@@ -547,11 +549,6 @@ export default function ChatRoomScreen() {
       ) : null}
       <KeyboardAvoidingView style={styles.flex} behavior="padding">
         {body}
-        {searchOpen && info.status === "ready" ? (
-          <View style={styles.searchLayer}>
-            <ChatSearchResults search={search} onPick={pickResult} scope={familyRoom} />
-          </View>
-        ) : null}
       </KeyboardAvoidingView>
       <RoomDrawer visible={drawerOpen} onClose={() => setDrawerOpen(false)} room={info.room} roomId={roomId} peerId={peerId} myId={info.me?.id} />
       <MessageMenu target={menu} myId={info.me?.id} pinned={pins.isPinned(menu?.message?.id)} onClose={closeMenu} onReact={reactFromMenu} onReply={replyFromMenu} onPin={pinMessageFromMenu} onUnpin={unpinMessageFromMenu} onCopy={copyMessage} onDelete={deleteFromMenu} />
@@ -563,7 +560,6 @@ export default function ChatRoomScreen() {
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.background },
   flex: { flex: 1 },
-  searchLayer: { position: "absolute", top: 0, right: 0, bottom: 0, left: 0, backgroundColor: colors.background }, // 목록을 그대로 둔 채 위에 덮어, 검색을 닫아도 보던 위치가 유지된다
   bar: {
     flexDirection: "row",
     alignItems: "center",

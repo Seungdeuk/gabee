@@ -35,11 +35,13 @@ import {
   reachedLiveEnd,
   replaceWindow,
   resultCountLabel,
+  searchPositionLabel,
   searchRoomLabel,
   searchTerms,
   shouldLoadNewer,
   shouldRunSearch,
   splitHighlight,
+  stepSearchIndex,
 } from "../src/features/family-chat/searchUtils.js";
 
 process.env.EXPO_PUBLIC_API_URL = "http://api.test";
@@ -152,6 +154,22 @@ test("mergeSearchResults: id 중복 제거 후 최신(큰 id)이 먼저, resultC
   assert.deepEqual(mergeSearchResults(undefined, undefined), []);
   assert.equal(resultCountLabel(20, true), "20개 이상");
   assert.equal(resultCountLabel(3, false), "3개");
+});
+
+test("stepSearchIndex: ▲(older)는 한 칸 오래된 쪽, 끝에서 서버에 더 있으면 다음 쪽(more), ▼(newer)는 0 에서 멈춘다", () => {
+  assert.deepEqual(stepSearchIndex({ index: 0, count: 3, hasMore: false, dir: "older" }), { index: 1, more: false });
+  assert.deepEqual(stepSearchIndex({ index: 2, count: 3, hasMore: false, dir: "older" }), { index: 2, more: false });
+  assert.deepEqual(stepSearchIndex({ index: 2, count: 3, hasMore: true, dir: "older" }), { index: 2, more: true });
+  assert.deepEqual(stepSearchIndex({ index: 2, count: 3, hasMore: true, dir: "newer" }), { index: 1, more: false });
+  assert.deepEqual(stepSearchIndex({ index: 0, count: 3, hasMore: true, dir: "newer" }), { index: 0, more: false });
+  assert.deepEqual(stepSearchIndex({ index: 5, count: 0, hasMore: true, dir: "older" }), { index: 0, more: false });
+});
+
+test("searchPositionLabel: 결과가 없으면 빈 문구, 있으면 n/m, 서버에 더 있으면 n/m+", () => {
+  assert.equal(searchPositionLabel(0, 0, false), "");
+  assert.equal(searchPositionLabel(0, 12, false), "1/12");
+  assert.equal(searchPositionLabel(19, 20, true), "20/20+");
+  assert.equal(searchPositionLabel(99, 3, false), "3/3");
 });
 
 test("searchRoomLabel: 목록의 방 이름 우선, 없으면 종류·구성원으로, 모르면 '대화'", () => {
