@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 from app.features.family_group.models import User
 from app.shared.errors import ApiError, not_found
 
-from . import photo_service, service
+from . import file_service, service
 from . import repository as repo
 from .schemas import DeletedOut, MessageOut
 
@@ -19,7 +19,7 @@ def delete_message(
     db: Session, user: User, group_id: str, message_id: int, room_id: str | None = None
 ) -> MessageOut:
     """내가 보낸 메시지를 지운다. 방에 들어갈 수 없거나 이 방의 메시지가 아니면 404, 남이 보낸 메시지(가비의 답 포함)는 403.
-    이미 지운 메시지는 그대로 돌려준다(여러 번 눌러도 같은 결과). 사진 메시지는 첨부 행과 원본·썸네일 파일도 지운다."""
+    이미 지운 메시지는 그대로 돌려준다(여러 번 눌러도 같은 결과). 사진·문서 메시지는 첨부 행과 디스크 파일도 지운다."""
     room = service.resolve_room(db, user, group_id, room_id)
     found = repo.get_in_room(db, room, message_id)
     if found is None:
@@ -30,14 +30,14 @@ def delete_message(
     if message.deleted_at is not None:
         return service.message_out(message, name)
     attachment = repo.attachments_for(db, [message.id]).get(message.id)
-    files = photo_service.attachment_files(attachment) if attachment else None
+    files = file_service.attachment_paths(attachment) if attachment else ()
     # 파일을 먼저 지운다. 지우다 실패하면 DB 는 그대로라 다시 눌러 지울 수 있고, 파일만 남는 일이 없다
     # (반대로 DB 가 먼저면 첨부 행이 사라져 남은 파일의 경로를 다시 찾을 수 없다). 파일이 이미 없어도 괜찮다.
-    for path in files or ():
+    for path in files:
         try:
             path.unlink(missing_ok=True)
         except OSError:
-            logger.warning("삭제할 사진 파일을 지우지 못했어요")  # 경로·내용은 남기지 않는다
+            logger.warning("삭제할 첨부 파일을 지우지 못했어요")  # 경로·내용은 남기지 않는다
             raise ApiError(
                 500, "delete_failed", "메시지를 지우지 못했어요. 다시 시도해 주세요"
             ) from None

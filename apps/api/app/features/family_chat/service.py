@@ -19,6 +19,15 @@ from .schemas import (
 
 
 def _attachment_out(a: MessageAttachment) -> AttachmentOut:
+    if a.kind == "file":
+        return AttachmentOut(
+            id=a.id,
+            kind="file",
+            url=f"/family-chat/files/{a.id}",
+            filename=a.filename,
+            size_bytes=a.size_bytes,
+            content_type=a.content_type,
+        )
     return AttachmentOut(
         id=a.id,
         kind="image",
@@ -26,6 +35,7 @@ def _attachment_out(a: MessageAttachment) -> AttachmentOut:
         thumb_url=f"/family-chat/photos/{a.id}?size=thumb",
         width=a.width,
         height=a.height,
+        size_bytes=a.size_bytes,
     )
 
 
@@ -33,16 +43,17 @@ PREVIEW_CHARS = 40  # 답장 미리보기 글자 수
 REACTION_ORDER = ("\u2764\ufe0f", "👍", "😂", "😮", "😢", "🙏")  # 허용 이모지(표시 순서)
 
 
-def reply_out(parent: tuple[Message, str, bool]) -> ReplyOut:
-    """원본 메시지(저장소가 모은 (메시지, 이름, 사진 여부))를 미리보기로. 지운 원본은 내용 없이 deleted 만."""
-    m, name, has_attachment = parent
+def reply_out(parent: tuple[Message, str, str | None]) -> ReplyOut:
+    """원본 메시지(저장소가 모은 (메시지, 이름, 첨부 종류))를 미리보기로. 지운 원본은 내용 없이 deleted 만."""
+    m, name, kind = parent
     deleted = m.deleted_at is not None
     return ReplyOut(
         id=m.id,
         user_name=name,
         text="" if deleted else m.text[:PREVIEW_CHARS],
         deleted=deleted,
-        has_attachment=has_attachment and not deleted,
+        has_attachment=kind is not None and not deleted,
+        attachment_kind=None if deleted else kind,
     )
 
 
@@ -134,7 +145,8 @@ def post(
             raise bad_request("invalid_message", "이 대화방의 메시지가 아니에요")
         if found[0].deleted_at is not None:
             raise bad_request("reply_deleted", "지운 메시지에는 답장할 수 없어요")
-        parent = (found[0], found[1], bool(repo.attachments_for(db, [found[0].id])))
+        attached = repo.attachments_for(db, [found[0].id]).get(found[0].id)
+        parent = (found[0], found[1], (attached.kind or "image") if attached else None)
     message = repo.add(
         db,
         Message(

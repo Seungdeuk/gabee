@@ -147,7 +147,7 @@ class ChatRoomMute(Base):
 
 
 class MessageAttachment(Base):
-    """사진 메시지의 첨부. 메시지 하나에 사진 하나. 파일은 DATA_DIR 아래 서버가 정한 이름으로만 저장하고
+    """사진·문서 메시지의 첨부(kind: image | file). 메시지 하나에 첨부 하나. 파일은 DATA_DIR 아래 서버가 정한 이름으로만 저장하고
     여기에는 상대 경로와 크기만 둔다(원본 EXIF·GPS 는 저장 전에 버린다). 사진 메시지의 text 는 빈 문자열이다."""
 
     __tablename__ = "message_attachments"
@@ -156,11 +156,14 @@ class MessageAttachment(Base):
     message_id: Mapped[int] = mapped_column(ForeignKey("messages.id"), unique=True)
     group_id: Mapped[str] = mapped_column(ForeignKey("groups.id"), index=True)
     room_id: Mapped[str] = mapped_column(ForeignKey("chat_rooms.id"), index=True)
+    kind: Mapped[str] = mapped_column(String(10), default="image", server_default="image")
     path: Mapped[str] = mapped_column(String(80))
-    thumb_path: Mapped[str] = mapped_column(String(80))
-    width: Mapped[int] = mapped_column(Integer)
-    height: Mapped[int] = mapped_column(Integer)
+    thumb_path: Mapped[str | None] = mapped_column(String(80), nullable=True)  # 문서는 없다
+    width: Mapped[int | None] = mapped_column(Integer, nullable=True)  # 문서는 없다
+    height: Mapped[int | None] = mapped_column(Integer, nullable=True)  # 문서는 없다
     size_bytes: Mapped[int] = mapped_column(Integer)
+    filename: Mapped[str | None] = mapped_column(String(120), nullable=True)  # 문서만(표시용)
+    content_type: Mapped[str | None] = mapped_column(String(100), nullable=True)  # 문서만
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(UTC)
     )

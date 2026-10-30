@@ -43,12 +43,23 @@
 - **운영 확인 필요**: `DATA_DIR` 이 컨테이너 볼륨에 있어야 사진이 유지된다(프로필 사진과 같다). Caddy 를 쓴다면 `/family-chat/photos` 업로드 경로에 `request_body { max_size 8.2MB }` 를 권고한다(`deploy/` 는 요청 없이 수정하지 않아 문서에만 적는다). 사진 저장량 한도·정리(삭제)는 아직 없다.
 - 시험: `tests/test_chat_photos.py`. 모바일의 사진 고르기·보내기·보기는 아직 없다(다음 PR).
 
+### 문서 파일 보내기 (서버)
+
+- `POST /family-chat/files`(multipart `file`, 선택 `room_id`): 문서 메시지를 보낸다(201 `MessageOut`, `text` 는 빈 문자열). **문서류만, 20MB 이하**: pdf, doc/docx, xls/xlsx, ppt/pptx, hwp/hwpx, txt, csv. 이미지는 사진 경로, 실행 파일·zip 등 압축 파일·HTML·SVG·스크립트는 400 `invalid_file`, 20MB 초과는 413 `file_too_large`, 빈 파일은 400.
+- 검증: 확장자 허용 목록 + 파일 앞부분 시그니처(pdf `%PDF-`, doc/xls/ppt/hwp OLE, docx/xlsx/pptx 는 zip 이면서 `[Content_Types].xml` 과 해당 폴더, hwpx 는 zip, txt/csv 는 NUL 바이트 없고 HTML·SVG·스크립트·실행 파일 머리말이 아닌 텍스트).
+- 저장: `DATA_DIR/chat_files/<서버가 만든 id><허용 확장자>`. 사용자 파일명은 DB `filename` 에만(경로는 마지막 성분만, 제어·방향 문자 제거, 120자 이하).
+- 응답 `attachment`: `{id, kind:"file", url:"/family-chat/files/{id}", thumb_url:null, width:null, height:null, filename, size_bytes, content_type}`. 사진 첨부는 `kind:"image"` 이고 `size_bytes` 가 추가됐다(나머지 값 그대로).
+- `GET /family-chat/files/{id}`: 사진과 같은 권한(방에 들어갈 수 있는 사람만, 아니면 모두 404). `Content-Disposition: attachment; filename*=UTF-8''<퍼센트 인코딩>`, `X-Content-Type-Options: nosniff`, 허용 목록의 미디어 타입(아니면 `application/octet-stream`).
+- 사진·파일 모음: `kind=file` 은 문서만, `kind=image` 는 사진만(SQL 조건), `all` 은 둘 다, `counts.file` 은 문서 수. 삭제하면 디스크 파일도 지운다.
+- **AI·검색으로 가지 않는다**: 문서 메시지의 `text` 는 빈 문자열이라 검색·AI 분석에서 제외되고, 문서 내용·파일명은 로그에 남기지 않는다. 분당 20건(429), 동시 처리 2건(503 `file_busy`), 본문 20MB(+여유) 초과는 파싱 전에 413(경로 한정 ASGI 미들웨어).
+- 파일: `file_router.py`·`file_service.py`, 리비전 `f06220eb955a`. 시험: `tests/test_chat_files.py`. 앱의 문서 고르기·보내기·받기는 별도 작업.
+
 ### 사진·파일 모음 (서버)
 
 - `GET /family-chat/media?room_id=&kind=image|file|video|all&limit=&before_id=` — 채팅방 설정(⋮)의 모음 화면용. 인증 필수, 그룹은 `current_group_id`. `room_id` 가 없으면 가족 전체방(옛 NULL room 메시지 포함), 있으면 `resolve_room` 으로 확인하고 못 들어가는 방(다른 가족·참여하지 않은 1:1·없는 방)은 모두 404.
 - 응답: `{items:[{attachment_id, message_id, kind, user_id, user_name, created_at, url, thumb_url, width, height, size_bytes}], next_before_id, counts:{image, file, video}}`. 최신순이고 `before_id`(메시지 id) 커서로 다음 쪽을 받는다(`next_before_id` 가 null 이면 끝). `limit` 1~100(기본 40). `counts` 는 쪽과 상관없는 그 방 전체 개수. `url`·`thumb_url` 은 기존 `/family-chat/photos/{id}[?size=thumb]` 이고 권한 검사는 그 엔드포인트가 그대로 한다.
 - 권한은 SQL 조건이다: 첨부를 메시지에 join 하고 그 방의 메시지 조건으로만 조회해, 다른 방 첨부는 목록과 `counts` 어디에도 나오지 않는다. 사용자별 분당 60회 제한(초과 429 `too_many_requests`). AI·외부 호출 없음, 로그에 사용자 데이터 없음.
-- 종류 확장: 종류는 `media_service.attachment_kind()` 한 곳에서만 정한다. 지금은 서버가 받는 첨부가 사진뿐이라 모두 `image` 이고, `kind=file|video` 는 빈 목록, `counts.file/video` 는 0 이다. 파일·동영상 업로드는 **미구현**이다. 생기면 `message_attachments` 에 종류 칼럼(Alembic)을 추가하고 `attachment_kind`·목록·개수의 SQL 필터를 그 칼럼으로 바꾼다.
+- 종류: `media_service.attachment_kind()` 한 곳에서만 정하고 `message_attachments.kind` 를 읽는다. 목록·개수의 종류 필터도 같은 칼럼의 SQL 조건이다. `kind=file` 은 문서(`url=/family-chat/files/{id}`, `thumb_url`·`width`·`height` 는 null), `video` 는 아직 없어 빈 목록이다.
 - 파일: `media_router.py`·`media_service.py`·`media_repository.py`·`media_schemas.py`. 시험: `tests/test_chat_media.py`(최신순·커서·종류 필터·개수·방 분리·권한 격리·URL 로 사진 받기·429).
 
 ### 고정 메시지 (서버)

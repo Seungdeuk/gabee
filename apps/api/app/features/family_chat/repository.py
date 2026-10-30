@@ -189,8 +189,8 @@ def deleted_since(db: Session, room: ChatRoom, since: datetime, limit: int = 200
 
 def reply_parents(
     db: Session, room: ChatRoom, messages: list[Message]
-) -> dict[int, tuple[Message, str, bool]]:
-    """답장인 메시지들의 원본을 한 번에 모은다: 원본 id -> (원본, 보낸 사람 이름, 사진 첨부 여부).
+) -> dict[int, tuple[Message, str, str | None]]:
+    """답장인 메시지들의 원본을 한 번에 모은다: 원본 id -> (원본, 보낸 사람 이름, 첨부 종류 image|file|None).
     원본도 같은 방(room_messages)에서만 찾는다 — 답장을 넣을 때의 방 검사가 빠진 잘못된 데이터가 있어도
     다른 방 메시지의 내용이 미리보기로 나가지 않게 하는 방어선이다.
     메시지 수와 상관없이 쿼리 수는 일정하다(원본 1번 + 첨부 1번)."""
@@ -203,7 +203,10 @@ def reply_parents(
         .where(room_messages(room), Message.id.in_(parent_ids))
     ).all()
     attached = attachments_for(db, [m.id for m, _ in rows])
-    return {m.id: (m, name, m.id in attached) for m, name in rows}
+    return {
+        m.id: (m, name, (attached[m.id].kind or "image") if m.id in attached else None)
+        for m, name in rows
+    }
 
 
 def reaction_summary(

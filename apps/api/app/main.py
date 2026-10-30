@@ -39,6 +39,13 @@ app.add_middleware(
     message="사진은 8MB 이하만 보낼 수 있어요",
 )  # 채팅 사진(8MB + multipart 여유)
 app.add_middleware(
+    PhotoBodyLimitMiddleware,
+    max_bytes=20 * 1024 * 1024 + 100 * 1024,
+    path_suffix="/family-chat/files",
+    message="파일은 20MB 이하만 보낼 수 있어요",
+    code="file_too_large",
+)  # 채팅 문서 파일(20MB + multipart 여유)
+app.add_middleware(
     RouteSwitchMiddleware
 )  # DISABLED_AI_ROUTES 에 걸린 요청은 라우터 전에 503 (임시 방어)
 origins = [o.strip() for o in settings.cors_origins.split(",") if o.strip()]
