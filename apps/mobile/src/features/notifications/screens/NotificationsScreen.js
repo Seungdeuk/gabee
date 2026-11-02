@@ -81,9 +81,10 @@ export default function NotificationsScreen() {
     <Screen
       title="알림"
       subtitle="가족과 일어난 일을 모아 봐요"
+      centered
       left={<IconButton name="chevron-back" label="뒤로" onPress={() => router.back()} />}
       pinned={
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips} style={styles.chipsBar}>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={[styles.chips, styles.chipsCenter]} style={styles.chipsBar}>
           <Chip label="전체" selected={kind === null} onPress={() => setKind(null)} />
           {KIND_ORDER.map((k) => (
             <Chip key={k} label={KIND_META[k].label} selected={kind === k} onPress={() => setKind(k)} />
@@ -134,6 +135,7 @@ function Chip({ label, selected, onPress }) {
 const styles = StyleSheet.create({
   chipsBar: { backgroundColor: colors.background },
   chips: { gap: spacing.sm, paddingHorizontal: spacing.xl, paddingVertical: spacing.sm }, // Screen 의 pinned 영역은 좌우 여백이 없어 직접 두고, 폭이 모자라면 가로로 민다
+  chipsCenter: { flexGrow: 1, justifyContent: "center" }, // 칩이 화면보다 좁으면 가운데, 넘치면 처음부터 가로로 민다
   chip: { paddingHorizontal: spacing.md, paddingVertical: 6, borderRadius: radius.pill, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border },
   chipSelected: { backgroundColor: colors.surfaceStrong },
   chipText: { ...font.caption, color: colors.textMuted },
