@@ -2,8 +2,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
 
 // 지갑 탭에서는 정산·지출·용돈만 쓴다. 나머지 가져오기는 주석 처리해 두었다(다시 켤 때 되돌린다).
-import { MoneySection, MonthSwitcher, currentMonth } from "@/features/billing/public";
-// import { ReminderBanner, SettleSummary, SubscriptionTab, UpcomingBanner } from "@/features/billing/public";
+import { MoneySection, MonthSwitcher, ReminderBanner, currentMonth } from "@/features/billing/public";
+// import { SettleSummary, SubscriptionTab, UpcomingBanner } from "@/features/billing/public"; // 정산 요약·공동구독·결제일 알림은 뺐다
 // import { isApiConfigured } from "@/shared/api/client";
 // import useResource from "@/shared/hooks/useResource";
 import Screen from "@/shared/components/Screen";
@@ -38,7 +38,8 @@ function CareLive() {
   // const [section, setSection] = useState("board");
   const [month, setMonth] = useState(currentMonth());
   const [message, setMessage] = useState(null);
-  const [refreshKey, setRefreshKey] = useState(0); // 무언가 바뀌면 정산 화면도 다시 확인한다
+  const [refreshKey, setRefreshKey] = useState(0); // 무언가 바뀌면 월말 정산 알림과 정산 화면도 다시 확인한다
+  const [moneyKey, setMoneyKey] = useState(0); // 알림의 "정산하기"를 누르면 정산 구역으로 돌아가도록 정산·지출·용돈 구역을 다시 연다
   const timer = useRef(null);
   // const daily = useResource(getDaily); // 현황판의 끼니·체크가 같이 쓰던 것
   // const { reload: reloadDaily } = daily;
@@ -73,7 +74,7 @@ function CareLive() {
       ) : null}
 
       <MonthSwitcher month={month} onChange={setMonth} />
-      {/* {section !== "location" ? <ReminderBanner refreshKey={refreshKey} onOpen={() => setSection("money")} /> : null} */}
+      <ReminderBanner refreshKey={refreshKey} onOpen={() => setMoneyKey((k) => k + 1)} />
 
       {/* {section === "board" && !daily.data ? <Text style={styles.muted}>{daily.error || "불러오는 중…"}</Text> : null}
       {section === "board" && daily.data ? (
@@ -82,7 +83,7 @@ function CareLive() {
           <UpcomingBanner refreshKey={`${refreshKey}-${section}`} onOpen={() => setSection("subscription")} />
         </StatusBoard>
       ) : null} */}
-      <MoneySection month={month} notify={notify} refreshKey={refreshKey} />
+      <MoneySection key={moneyKey} month={month} notify={notify} refreshKey={refreshKey} />
       {/* {section === "subscription" ? <SubscriptionTab month={month} notify={notify} /> : null} */}
       {/* {section === "location" ? <LocationDisabled /> : null} */}
     </Screen>
