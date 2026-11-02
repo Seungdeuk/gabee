@@ -137,7 +137,7 @@ export default function AiAssistantScreen({ onBell, bellBadge, emptyAction }) {
 
   return (
     <SafeAreaView style={styles.safe} edges={["top"]}>
-      {empty ? <SoftBackdrop /> : null}
+      <SoftBackdrop />
       <AppHeader onMenu={() => setMenuOpen(true)} onNew={startNew} menuBadge={reviewCount > 0} onBell={onBell} bellBadge={bellBadge} />
       <Sidebar
         open={menuOpen}

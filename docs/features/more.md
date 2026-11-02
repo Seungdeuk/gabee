@@ -6,7 +6,7 @@
 - **하단 마지막 탭 "마이"**(`app/(tabs)/my.js`): `MoreScreen` 을 연결한다. 제목은 "마이 페이지". 탭은 AI 채팅·소통·일정·돌봄·마이 5개다.
 - 구성: **계정**(`AccountCard`: 로그인 상태, 이메일 인증, 소셜 계정 연동, 로그아웃) · **가족 그룹**(`FamilyGroupCard`) · **앱 관리**(`AppManageCard`: 알림함으로 가는 줄, 앱 버전).
 - 각 탭 화면 위의 **설정 버튼(톱니바퀴)과 AI 채팅의 ⋮ 는 없앴다**(설정은 하단 "마이" 탭에서 들어간다). 예전 주소 `/more` 는 `/my` 탭으로 보낸다(`app/more.js` 가 리다이렉트).
-- AI 채팅 홈은 크림 바탕에 복숭아색·꿀색이 번지는 배경(`shared/components/SoftBackdrop`, `react-native-svg`)을 쓴다. 빈 화면(대화 시작 전)에서만 그리고, 대화가 시작되면 단색으로 돌아가 말풍선·버튼이 잘 보이게 한다. 화면 바탕은 불투명한 크림색으로 두고 그 위·내용 뒤에 그린다. 다른 탭은 단색이다.
+- AI 채팅 홈은 크림 바탕에 복숭아색·꿀색이 번지는 배경(`shared/components/SoftBackdrop`, `react-native-svg`)을 쓴다. 빈 화면과 대화 중 모두에서 그린다. 화면 바탕은 불투명한 크림색으로 두고 그 위·내용 뒤에 그린다. 다른 탭은 단색이다.
 - 앱 버전은 `app.json` 의 version(`expo-constants`)을 `versionText` 로 보인다.
 
 ## 일부러 뺀 것
