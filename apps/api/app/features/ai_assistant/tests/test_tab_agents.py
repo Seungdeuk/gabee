@@ -5,6 +5,7 @@ import json
 import pytest
 from sqlalchemy import select
 
+from app.features.ai_assistant import agents
 from app.features.ai_assistant.knowledge import rag_chat
 from app.features.billing import agent as billing_agent
 from app.features.care import agent as care_agent
@@ -69,19 +70,20 @@ def test_main_asks_billing_agent_and_never_gets_db_tools(client, family, monkeyp
     r = client.post("/ai-assistant/chat", json={"message": "이번 달 얼마 썼어?"}, headers=a).json()
     assert r["source"] == "ai" and "40,000원" in r["reply"]
     assert sub_results[0]["total"] == 40000
-    # 메인은 탭 에이전트와 기록 검색만 쓸 수 있다(가계·돌봄 DB 를 읽는 도구가 없다)
+    # 메인은 탭 에이전트와 기록 검색만 쓸 수 있다(가계 DB 를 읽는 도구가 없다). 돌봄 에이전트는 지갑 탭 개편 동안 메인에서 뺐다.
     assert set(main_tools[0]) == {
         "search_knowledge",
         "get_item",
         "list_items",
         "ask_billing",
-        "ask_care",
         "ask_family_chat",
         "ask_schedule",
     }
 
 
 def test_main_asks_care_agent(client, family, monkeypatch):
+    # 돌봄 에이전트는 지금 메인에 연결돼 있지 않다. 다시 연결했을 때 동작하는지 확인하려고 이 테스트 동안만 목록에 넣는다.
+    monkeypatch.setitem(agents.AGENTS, "ask_care", (care_agent.DESCRIPTION, care_agent.ask))
     a, _, group = family
     enable_ai(group["id"])
     seen = {}

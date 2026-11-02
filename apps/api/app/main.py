@@ -5,6 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.features.ai_assistant.router import router as ai_assistant_router
 from app.features.billing.router import router as billing_router
+from app.features.care.router import require_care_api
 from app.features.care.router import router as care_router
 from app.features.family_chat.router import router as family_chat_router
 from app.features.family_group.photo_limit import PhotoBodyLimitMiddleware
@@ -62,7 +63,11 @@ for feature, router in (
     ("ai_assistant", ai_assistant_router),
     ("notifications", notifications_router),
 ):
-    deps = [Depends(schema_ready(feature))]
+    deps = []
+    # 돌봄 서버 API 는 닫혀 있다(CARE_API_ENABLED). 스키마 상태와 상관없이 먼저 403
+    if feature == "care":
+        deps.append(Depends(require_care_api))
+    deps.append(Depends(schema_ready(feature)))
     if feature in GUARDED_FEATURES:  # 고위험 입력(주민·카드·계좌·비밀번호) 사전 차단 (임시 방어)
         deps.append(Depends(high_risk_guard))
     app.include_router(router, dependencies=deps)

@@ -10,7 +10,8 @@ from dataclasses import replace
 from sqlalchemy.orm import Session
 
 from app.features.billing import agent as billing_agent
-from app.features.care import agent as care_agent
+
+# from app.features.care import agent as care_agent  # 돌봄 에이전트를 메인에서 뺐다(AGENTS 참고)
 from app.features.family_chat import agent as family_chat_agent
 from app.features.family_group.models import User
 from app.features.schedule.agent import ask as schedule_agent
@@ -20,21 +21,25 @@ AskFn = Callable[[Session, str, User, str, Post | None], AgentReply]
 
 AGENTS: dict[str, tuple[str, AskFn]] = {
     "ask_billing": (billing_agent.DESCRIPTION, billing_agent.ask),
-    "ask_care": (care_agent.DESCRIPTION, care_agent.ask),
+    # 돌봄 에이전트는 팀 회의 결과로 지갑 탭 개편 동안 메인 에이전트에서 뺀다(코드는 care/agent.py 에 그대로 있다).
+    # "ask_care": (care_agent.DESCRIPTION, care_agent.ask),
     "ask_family_chat": (family_chat_agent.DESCRIPTION, family_chat_agent.ask),
     "ask_schedule": (schedule_agent.DESCRIPTION, schedule_agent.ask),
 }
 
 # 답이 사용자에게 그대로 전할 수 있는 글인 탭 에이전트. 한 질문에 이것 하나만 불렀고 답이 완결이면 메인이 다시 모델을 부르지 않는다.
 # (일정 에이전트의 답은 메인에게 주는 안내 글이 섞여 있어 제외한다)
-DIRECT_REPLY_AGENTS = frozenset({"ask_billing", "ask_care", "ask_family_chat", "ask_schedule"})
+DIRECT_REPLY_AGENTS = frozenset(
+    {"ask_billing", "ask_family_chat", "ask_schedule"}
+)  # "ask_care" 는 주석 처리(위 AGENTS 참고)
 USER_TEXT_AGENTS = frozenset(
     {"ask_schedule"}
 )  # 직통 응답에 answer 가 아니라 사용자에게 줄 글(direct_answer)을 쓰는 에이전트
 
 PROMPT_NOTE = (
-    "지출·정산·구독·용돈 질문은 ask_billing, 돌봄 항목 질문은 ask_care 로 담당 에이전트에게 물어보세요. "
-    "당신은 가계·돌봄 데이터를 직접 볼 수 없으니 추측하지 말고, 질문 내용을 한국어 문장으로 그대로 넘기세요(기간이나 "
+    # 돌봄 문장은 지갑 탭 개편 동안 뺐다. 원래: "지출·정산·구독·용돈 질문은 ask_billing, 돌봄 항목 질문은 ask_care 로 담당 에이전트에게 물어보세요. 당신은 가계·돌봄 데이터를 직접 볼 수 없으니"
+    "지출·정산·구독·용돈 질문은 ask_billing 으로 담당 에이전트에게 물어보세요. 돌봄 항목(데일리 체크 등)은 지금 확인할 수 없으니 모른다고 답하세요. "
+    "당신은 가계 데이터를 직접 볼 수 없으니 추측하지 말고, 질문 내용을 한국어 문장으로 그대로 넘기세요(기간이나 "
     "사람 이름이 있으면 포함). 돌려받은 답의 숫자와 사실은 바꾸지 말고 전하세요. 두 탭에 걸친 질문이면 둘 다 물어보세요. "
     "can_answer 가 false 면 답을 지어내지 말고 지금은 확인하지 못했다고 알려 주세요. "
     "등록·기록 요청도 같은 담당 에이전트에게 넘기세요. pending_confirmation 이 있으면 아직 실행된 것이 아니라 "

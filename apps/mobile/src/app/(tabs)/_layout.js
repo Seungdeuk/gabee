@@ -10,13 +10,15 @@ import { useAuth } from "@/shared/auth/AuthProvider";
 import { colors, font, fonts } from "@/theme";
 
 // 하단 탭 5개(가계는 돌봄 탭에 합쳤고, 마지막 탭은 마이 페이지). 마이 페이지(계정·가족 그룹·앱 관리)가 마지막 탭이고, 각 화면 위 설정 버튼도 이 탭으로 온다.
+// 돌봄 탭은 팀 회의 결과로 지갑이 됐다(정산·지출·용돈).
 const TAB_CONTENT_HEIGHT = 64;
 
 const tabs = [
   { name: "chat", title: "AI 채팅", icon: "chatbubble-ellipses-outline" },
   { name: "family-chat", title: "소통", icon: "people-outline" },
   { name: "schedule", title: "일정", icon: "calendar-outline" },
-  { name: "care", title: "돌봄", icon: "heart-outline" },
+  // 라우트 이름(care)은 그대로 두고 탭 이름만 지갑으로 바꾼다(딥링크·기존 참조를 건드리지 않기 위해)
+  { name: "care", title: "지갑", icon: "wallet-outline" },
   { name: "my", title: "마이", icon: "person-outline" },
 ];
 
