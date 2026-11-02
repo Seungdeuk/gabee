@@ -21,11 +21,15 @@ export default function ShortcutGrid({ items, onPressItem }) {
           accessibilityLabel={`${item.title}, ${item.subtitle}`}
           accessibilityHint={item.soon ? "준비 중이에요" : undefined}
         >
-          <Ionicons name={item.icon} size={22} color={colors.text} />
-          <View style={styles.texts}>
-            <Text style={styles.title}>{item.title}</Text>
-            <Text style={styles.subtitle}>{item.subtitle}</Text>
+          <View style={styles.head}>
+            <Ionicons name={item.icon} size={18} color={colors.text} />
+            <Text style={styles.title} numberOfLines={1}>
+              {item.title}
+            </Text>
           </View>
+          <Text style={styles.subtitle} numberOfLines={1}>
+            {item.subtitle}
+          </Text>
         </Pressable>
       ))}
     </View>
@@ -36,21 +40,22 @@ const styles = StyleSheet.create({
   grid: {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: spacing.md,
+    gap: spacing.sm,
   },
   card: {
     flexGrow: 1,
     flexBasis: "45%",
     minWidth: 0,
-    gap: spacing.md,
-    padding: spacing.lg,
+    gap: spacing.xs,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.md,
     backgroundColor: colors.card,
     borderWidth: 1,
     borderColor: colors.divider,
     borderRadius: radius.card,
   },
   soon: { opacity: 0.6 },
-  texts: { gap: spacing.xs },
-  title: { ...font.cardTitle, color: colors.text },
+  head: { flexDirection: "row", alignItems: "center", gap: spacing.xs },
+  title: { ...font.cardTitle, color: colors.text, flexShrink: 1 },
   subtitle: { ...font.caption, color: colors.textMuted },
 });
