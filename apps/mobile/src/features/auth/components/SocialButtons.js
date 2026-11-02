@@ -27,7 +27,7 @@ function GoogleButton({ onToken, disabled }) {
     if (response?.type === "success") onToken("google", response.params.id_token);
     else if (response?.type === "error") onToken("google", null);
   }, [response]); // eslint-disable-line react-hooks/exhaustive-deps
-  return <Button label="Google로 계속하기" variant="secondary" onPress={() => promptAsync()} disabled={disabled || !request} testID="social-google" />;
+  return <Button label="Google로 계속하기" icon="logo-google" variant="secondary" onPress={() => promptAsync()} disabled={disabled || !request} testID="social-google" />;
 }
 
 /** 카카오: 시스템 브라우저 OAuth(PKCE)로 받은 코드를 액세스 토큰으로 바꿔 서버에 넘긴다. */
@@ -44,7 +44,7 @@ function KakaoButton({ onToken, disabled }) {
       .then((tokens) => onToken("kakao", tokens.accessToken))
       .catch(() => onToken("kakao", null));
   }, [response]); // eslint-disable-line react-hooks/exhaustive-deps
-  return <Button label="카카오로 계속하기" variant="secondary" onPress={() => promptAsync()} disabled={disabled || !request} testID="social-kakao" />;
+  return <Button label="카카오로 계속하기" icon="chatbubble" variant="secondary" onPress={() => promptAsync()} disabled={disabled || !request} testID="social-kakao" />;
 }
 
 /**
