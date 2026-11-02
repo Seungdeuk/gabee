@@ -5,7 +5,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 
 import { isApiConfigured } from "@/shared/api/client";
 import IconButton from "@/shared/components/IconButton";
-import SettingsButton,{ SETTINGS_EDGE_GAP } from "@/shared/components/SettingsButton";
+import { SETTINGS_EDGE_GAP } from "@/shared/components/SettingsButton";
 import { colors, font, radius, spacing } from "@/theme";
 
 import DaySection from "../components/DaySection";
@@ -129,7 +129,6 @@ export default function ScheduleScreen() {
               </View>
               <View style={styles.actions}>
                 <IconButton name="calendar-outline" size={24} label="달력 열기" onPress={() => openCalendar(selected)} />
-                <SettingsButton />
               </View>
             </View>
             <WeekStrip selected={selected} markedDates={new Set(items.map((item) => item.date))} onSelect={setSelected} />
