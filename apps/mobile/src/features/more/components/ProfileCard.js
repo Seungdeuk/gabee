@@ -39,22 +39,28 @@ export default function ProfileCard({ user, status, displayName, photoUrl, group
   return (
     <Card tone="white" testID="profile-card" style={styles.compact}>
       <View style={styles.row}>
-        <UserAvatar name={name || "?"} userId={user?.id} photoUrl={photoUrl ?? user?.photo_url} size={48} />
+        <UserAvatar name={name || "?"} userId={user?.id} photoUrl={photoUrl ?? user?.photo_url} size={40} />
         <View style={styles.info}>
-          <Text style={styles.name}>{name}</Text>
-          <Text style={styles.sub}>{profileSubtitle(groupName, roleText)}</Text>
-          {onEdit ? (
-            <Pressable
-              onPress={onEdit}
-              accessibilityRole="button"
-              accessibilityLabel="내 정보 수정"
-              hitSlop={spacing.md}
-              style={({ pressed }) => [styles.edit, pressed && styles.pressed]}
-            >
-              <Text style={styles.editText}>내 정보 수정</Text>
-              <Ionicons name="chevron-forward" size={14} color={colors.textMuted} />
-            </Pressable>
-          ) : null}
+          <View style={styles.nameRow}>
+            <Text style={styles.name} numberOfLines={1}>
+              {name}
+            </Text>
+            {onEdit ? (
+              <Pressable
+                onPress={onEdit}
+                accessibilityRole="button"
+                accessibilityLabel="내 정보 수정"
+                hitSlop={spacing.md}
+                style={({ pressed }) => [styles.edit, pressed && styles.pressed]}
+              >
+                <Text style={styles.editText}>내 정보 수정</Text>
+                <Ionicons name="chevron-forward" size={14} color={colors.textMuted} />
+              </Pressable>
+            ) : null}
+          </View>
+          <Text style={styles.sub} numberOfLines={1}>
+            {profileSubtitle(groupName, roleText)}
+          </Text>
         </View>
       </View>
     </Card>
@@ -63,14 +69,15 @@ export default function ProfileCard({ user, status, displayName, photoUrl, group
 
 const styles = StyleSheet.create({
   title: { ...font.cardTitle, color: colors.text },
-  name: { ...font.cardTitle, color: colors.text },
+  name: { ...font.cardTitle, color: colors.text, flexShrink: 1 },
   sub: { ...font.caption, color: colors.textMuted },
-  compact: { paddingVertical: spacing.md, paddingHorizontal: spacing.lg },
+  compact: { paddingVertical: spacing.sm, paddingHorizontal: spacing.lg },
+  nameRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: spacing.sm },
   row: { flexDirection: "row", alignItems: "center", gap: spacing.md },
   info: { flex: 1, gap: 2 },
   actions: { flexDirection: "row", gap: spacing.sm },
-  edit: { flexDirection: "row", alignItems: "center", gap: spacing.xs, alignSelf: "flex-start" },
+  edit: { flexDirection: "row", alignItems: "center", gap: spacing.xs },
   editText: { ...font.caption, color: colors.textMuted },
   pressed: { opacity: 0.7 },
-  placeholder: { minHeight: 72 },
+  placeholder: { minHeight: 56 },
 });
