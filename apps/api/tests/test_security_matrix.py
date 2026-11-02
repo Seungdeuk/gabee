@@ -83,6 +83,7 @@ def _outbound():
         "login_max_failures_per_id": 5,
         "login_max_failures_per_ip": 50,
         "invite_max_failures": 5,
+        "care_location_enabled": True,
         "invite_failure_window_seconds": 900,
     }
     for name, value in pinned.items():
