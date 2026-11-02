@@ -5,6 +5,7 @@ from datetime import UTC, datetime, timedelta, timezone
 from sqlalchemy.orm import Session
 
 from app.features.family_group import repository as group_repo
+from app.shared.config import settings
 from app.shared.errors import ApiError, bad_request, not_found
 from app.shared.location_consent import set_location_consent
 from app.shared.seed_lock import seed_lock
@@ -559,11 +560,22 @@ def delete_meal_log(db: Session, group_id: str, day: str, meal: str) -> None:
 # 외부 서비스로 보내지 않는다. 동의를 철회하면 저장된 위치를 바로 지운다.
 
 
+def location_enabled() -> bool:
+    return settings.care_location_enabled
+
+
+def _require_location_enabled() -> None:
+    if not location_enabled():
+        raise ApiError(403, "location_disabled", "위치 공유는 지금 사용할 수 없어요")
+
+
 def location_consent(user) -> ConsentOut:
     return ConsentOut(consent=user.location_consent_at is not None, since=user.location_consent_at)
 
 
 def set_consent(db: Session, user, consent: bool) -> ConsentOut:
+    if consent:
+        _require_location_enabled()  # 철회(저장된 위치 삭제)는 꺼져 있어도 할 수 있다
     set_location_consent(db, user, consent, source="care")
     if not consent:
         repo.delete_user_locations(db, user.id)
@@ -576,6 +588,7 @@ def _aware(dt: datetime) -> datetime:
 
 def save_locations(db: Session, user, batch: LocationBatch) -> LocationSaved:
     """동의한 사람이 기기에서 잰 위치를 보낸다. 너무 오래됐거나 미래 시각인 점은 버린다."""
+    _require_location_enabled()
     if user.location_consent_at is None:
         raise ApiError(403, "consent_required", "위치 공유에 동의해야 위치를 보낼 수 있어요")
     now = datetime.now(UTC)
@@ -602,6 +615,7 @@ def save_locations(db: Session, user, batch: LocationBatch) -> LocationSaved:
 
 def latest_locations(db: Session, group_id: str, user) -> LocationsLatest:
     """가족 구성원의 최신 위치. 동의하지 않은 사람은 좌표 없이 sharing=false 로만 나온다."""
+    _require_location_enabled()
     now = datetime.now(UTC)
     since = now - timedelta(days=config.LOCATION_RETENTION_DAYS)
     members: list[MemberLocation] = []

@@ -32,10 +32,6 @@ SHARED_AGENT_TOOLS: dict[str, frozenset[str]] = {
             "get_daily",
             "get_today_summary",
             "list_records",
-            "get_recommendations",
-            "get_meal_suggestions",
-            "list_meal_log",
-            "get_meal_log_summary",
         }
     ),
     "ask_family_chat": frozenset({"search_messages", "analyze_recent_chat", "list_todos"}),
@@ -47,8 +43,7 @@ PERSONAL_REASONS: dict[str, str] = {
     "get_upcoming_payments": "내 결제 예정",
     "get_family_locations": "가족 위치",
     "propose_add_expense": "확인이 필요한 지출 등록 제안",
-    "propose_record_meal": "확인이 필요한 식단 기록 제안",
-    "propose_record_item": "확인이 필요한 안부 기록 제안",
+    "propose_record_item": "확인이 필요한 돌봄 기록 제안",
     "ask_schedule": "내 일정",
 }
 SENSITIVE_REASON = "민감한 기록"
