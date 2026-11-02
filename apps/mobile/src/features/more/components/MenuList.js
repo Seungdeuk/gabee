@@ -28,7 +28,9 @@ export default function MenuList({ items, onPressItem }) {
           </View>
           <View style={styles.texts}>
             <Text style={styles.title}>{item.title}</Text>
-            <Text style={styles.subtitle}>{item.subtitle}</Text>
+            <Text style={styles.subtitle} numberOfLines={1}>
+              {item.subtitle}
+            </Text>
           </View>
           {item.badge ? (
             <View>
