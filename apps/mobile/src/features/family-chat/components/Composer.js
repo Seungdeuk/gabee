@@ -134,6 +134,7 @@ export default function Composer({ value, onChangeText, onSend, onPickPhoto, onP
             placeholder="메시지를 입력하세요"
             placeholderTextColor={colors.placeholder}
             multiline
+            {...(Platform.OS === "web" ? { rows: 1 } : {})} // 웹의 여러 줄 입력칸은 기본 2줄 높이로 시작하므로 한 줄로 시작하게 한다
             onKeyPress={onKeyPress}
             accessibilityLabel="메시지 입력"
           />
