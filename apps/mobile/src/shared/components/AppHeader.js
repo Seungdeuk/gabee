@@ -6,12 +6,12 @@ import IconButton from "./IconButton";
 import Logo from "./Logo";
 
 /**
- * 채팅 화면 상단바: 왼쪽 메뉴, 가운데 로고, 오른쪽 새 대화와 더 보기.
+ * 채팅 화면 상단바: 왼쪽 메뉴, 가운데 로고, 오른쪽 알림과 새 대화. 바탕은 투명해서 화면 뒤 배경이 비친다.
  * menuBadge: 메뉴 버튼 위에 점을 띄운다(확인이 필요한 기록이 있을 때).
  * onBell 를 주면 오른쪽에 알림 종 아이콘이 붙고, bellBadge(예: "3", "99+")가 있으면 종 위에 숫자 배지를 띄운다.
- * @param {{ onMenu?: () => void, onNew?: () => void, onMore?: () => void, menuBadge?: boolean, onBell?: () => void, bellBadge?: string | null }} props
+ * @param {{ onMenu?: () => void, onNew?: () => void, menuBadge?: boolean, onBell?: () => void, bellBadge?: string | null }} props
  */
-export default function AppHeader({ onMenu, onNew, onMore, menuBadge = false, onBell, bellBadge = null }) {
+export default function AppHeader({ onMenu, onNew, menuBadge = false, onBell, bellBadge = null }) {
   return (
     <View style={styles.header}>
       <View style={styles.side}>
@@ -33,7 +33,6 @@ export default function AppHeader({ onMenu, onNew, onMore, menuBadge = false, on
           </View>
         ) : null}
         <IconButton name="add" label="새 대화" onPress={onNew} />
-        <IconButton name="settings-outline" size={22} label="설정" onPress={onMore} />
       </View>
     </View>
   );
@@ -46,7 +45,6 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    backgroundColor: colors.background,
   },
   // 양쪽 영역을 같은 너비(flex 1)로 두어, 오른쪽 버튼 수와 상관없이 로고가 화면 가운데에 온다
   side: { flex: 1 },

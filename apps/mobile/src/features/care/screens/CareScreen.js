@@ -61,7 +61,7 @@ function CareLive() {
 
   const money = section === "money";
   return (
-    <Screen title="일상의 안녕" settings>
+    <Screen title="일상의 안녕">
       <Segmented options={SECTIONS} value={section} onChange={setSection} />
 
       {message ? (

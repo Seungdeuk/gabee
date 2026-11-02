@@ -2,15 +2,14 @@ import { StyleSheet, Text, View } from "react-native";
 
 import { colors, font, spacing } from "@/theme";
 
-import SettingsButton, { SETTINGS_EDGE_GAP, SETTINGS_RAISE } from "./SettingsButton";
+import { SETTINGS_EDGE_GAP, SETTINGS_RAISE } from "./SettingsButton";
 
 /**
  * 탭 화면의 큰 제목: 왼쪽에 제목과 한 줄 설명, 오른쪽에 아이콘 버튼들.
- * settings 가 true 면 오른쪽 맨 끝에 설정 버튼을 붙인다(탭 화면).
  * centered 가 true 면 제목과 설명을 가운데에 놓고, 왼쪽 버튼은 왼쪽 끝에 따로 붙인다.
- * @param {{ title: string, subtitle?: string, right?: import("react").ReactNode, left?: import("react").ReactNode, settings?: boolean, centered?: boolean }} props
+ * @param {{ title: string, subtitle?: string, right?: import("react").ReactNode, left?: import("react").ReactNode, centered?: boolean }} props
  */
-export default function PageHeader({ title, subtitle, right, left, settings = false, centered = false }) {
+export default function PageHeader({ title, subtitle, right, left, centered = false }) {
   return (
     <View style={[styles.header, centered && styles.headerCentered]}>
       {left ? <View style={[styles.left, centered && styles.leftCentered]}>{left}</View> : null}
@@ -22,7 +21,6 @@ export default function PageHeader({ title, subtitle, right, left, settings = fa
       </View>
       <View style={[styles.right, centered && styles.rightCentered]}>
         {right}
-        {settings ? <SettingsButton /> : null}
       </View>
     </View>
   );

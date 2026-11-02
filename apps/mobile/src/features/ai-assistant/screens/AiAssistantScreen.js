@@ -1,6 +1,5 @@
 import { Ionicons } from "@expo/vector-icons";
 import { Image } from "expo-image";
-import { useRouter } from "expo-router";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { FlatList, KeyboardAvoidingView, Pressable, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -8,6 +7,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { legacyStorageScope } from "@/shared/api/client";
 import { useAuth } from "@/shared/auth/AuthProvider";
 import AppHeader from "@/shared/components/AppHeader";
+import SoftBackdrop from "@/shared/components/SoftBackdrop";
 import { colors } from "@/theme";
 
 import AnswerView from "../components/AnswerView";
@@ -39,7 +39,6 @@ const MIC_ENABLED = false;
  * emptyAction 은 빈 화면 인사말 아래에 붙는 요소(라우트에서 조립한다).
  */
 export default function AiAssistantScreen({ onBell, bellBadge, emptyAction }) {
-  const router = useRouter();
   const { messages, phase, readingSince, confirmDoubts, markAiEnabled, resolveConfirm, saveDescription, skipDescription, acceptSchedulePrompt, skipSchedulePrompt, send, sendPhoto, startListening, stopListening, editDraft, reset, load } = useChat();
   const auth = useAuth();
   // 대화 저장 키: 로그인한 회원은 사용자 id, 익명 계정(개발용 토큰)은 토큰에서 만든 값. 로그인 확인 중에는 null
@@ -138,7 +137,8 @@ export default function AiAssistantScreen({ onBell, bellBadge, emptyAction }) {
 
   return (
     <SafeAreaView style={styles.safe} edges={["top"]}>
-      <AppHeader onMenu={() => setMenuOpen(true)} onNew={startNew} onMore={() => router.push("/more")} menuBadge={reviewCount > 0} onBell={onBell} bellBadge={bellBadge} />
+      {empty ? <SoftBackdrop /> : null}
+      <AppHeader onMenu={() => setMenuOpen(true)} onNew={startNew} menuBadge={reviewCount > 0} onBell={onBell} bellBadge={bellBadge} />
       <Sidebar
         open={menuOpen}
         onClose={() => setMenuOpen(false)}

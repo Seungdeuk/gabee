@@ -5,7 +5,7 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { isApiConfigured } from "@/shared/api/client";
-import SettingsButton, { SETTINGS_EDGE_GAP } from "@/shared/components/SettingsButton";
+import { SETTINGS_EDGE_GAP } from "@/shared/components/SettingsButton";
 import { colors, font, radius, spacing } from "@/theme";
 
 import DaySection from "../components/DaySection";
@@ -136,7 +136,6 @@ export default function ScheduleScreen() {
                 >
                   <Ionicons name="add" size={28} color={colors.text} />
                 </Pressable>
-                <SettingsButton />
               </View>
             </View>
             <WeekStrip selected={selected} markedDates={new Set(items.map((item) => item.date))} onSelect={setSelected} />
