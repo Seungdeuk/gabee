@@ -113,7 +113,7 @@
 
 - **가족 나가기** (스키마 변경 없음 — `profile_router/service/repository`)
   - `POST /family-group/groups/me/leave`(본문 없음) → **204**. 그룹은 `current_group_id` 로만 정한다(그룹 없음 400 `no_group`, 구성원 아님 403 `not_member`, 미인증 401). **소유자는 혼자여도 나갈 수 없다**: 400 `cannot_leave_owner`(소유권 이전은 범위 밖). 관리자·구성원은 나갈 수 있다.
-  - 한 트랜잭션: ① 이 그룹에서 내가 쓴(`owner_user_id`) 별명과 나에게 붙은(`target_user_id`) 별명 삭제(복합 FK 에 ondelete 가 없어 멤버십보다 먼저) ② `role != 'owner'` 조건부 DELETE 한 문장으로 멤버십 삭제(0행이면 다시 조회해 owner 면 `cannot_leave_owner`, 이미 없으면 403 `not_member`) ③ `users.active_group_id` 가 이 그룹이면 NULL. 두 번째 호출·동시 호출은 400/403 이고 500 이 아니다.
+  - 한 트랜잭션: ① 이 그룹에서 내가 쓴(`owner_user_id`) 별명과 나에게 붙은(`target_user_id`) 별명 삭제(복합 FK 에 ondelete 가 없어 멤버십보다 먼저) ② `role != 'owner'` 조건부 DELETE 한 문장으로 멤버십 삭제(0행이면 다시 조회해 owner 면 `cannot_leave_owner`, 이미 없으면 403 `not_member`) ③ `users.active_group_id` 가 이 그룹이었으면 남은 가족 중 가장 최근에 들어간(`joined_at` 최신) 곳으로 바꾸고, 남은 가족이 없으면 NULL. 내 멤버십 행을 `FOR UPDATE` 로 잠그고, 동시 별명 INSERT 로 `IntegrityError` 가 나면 롤백 후 한 번 다시 시도한다(그사이 이미 나갔으면 403 `not_member`). 두 번째 호출·동시 호출은 400/403 이고 500 이 아니다.
   - **의도적으로 남기는 것**(제품 결정): 지난 채팅 메시지·일정·가계·1:1 대화방 등 그 사람이 만든 데이터는 지우지 않는다. 토큰도 폐기하지 않고 멤버십 확인으로 막는다. 나간 뒤에는 초대 코드로 다시 가입 요청을 보낼 수 있다. 이름 변경·구성원 강제 퇴출 API 는 만들지 않기로 했다.
   - 시험: `family_group/tests/test_leave.py`.
 - **가족 초대·승인의 후속**: 승인 대기 요청의 자동 만료, 승인/거절 알림(푸시), 신청자에게 보여줄 거절 사유, 목록에 신청자가 가입 때 적은 관계(`role_detail`, 별도 PR 병합 후)·이메일 인증 여부 표시, 레거시(제한 없는) 초대 코드 일괄 폐기·자동 재발급은 공용 DB 배포 단계가 필요해 하지 않았다(익명 계정의 즉시 참여 경로는 닫았다 — 코드가 새도 관리자 승인이 필요하다. 코드 자체의 영구 유효성은 남아 있어 관리자가 재발급하면 새 정책 코드로 바뀐다).

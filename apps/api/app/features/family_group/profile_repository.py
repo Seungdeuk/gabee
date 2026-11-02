@@ -97,11 +97,27 @@ def delete_member_if_not_owner(db: Session, group_id: str, user_id: str) -> bool
     return result.rowcount == 1
 
 
+def lock_membership(db: Session, group_id: str, user_id: str) -> GroupMember | None:
+    """내 멤버십 행을 잠그고 가져온다(PostgreSQL 은 FOR UPDATE, SQLite 는 무시)."""
+    return db.scalars(
+        select(GroupMember)
+        .where(GroupMember.group_id == group_id, GroupMember.user_id == user_id)
+        .with_for_update()
+    ).first()
+
+
 def clear_active_group(db: Session, user_id: str, group_id: str) -> None:
-    """활성 그룹이 이 그룹이면 비운다."""
+    """활성 그룹이 이 그룹이면 남은 가족 중 가장 최근에 들어간 곳으로 바꾸고, 없으면 비운다."""
+    fallback = (
+        select(GroupMember.group_id)
+        .where(GroupMember.user_id == user_id, GroupMember.group_id != group_id)
+        .order_by(GroupMember.joined_at.desc())
+        .limit(1)
+        .scalar_subquery()
+    )
     db.execute(
         update(User)
         .where(User.id == user_id, User.active_group_id == group_id)
-        .values(active_group_id=None)
+        .values(active_group_id=fallback)
         .execution_options(synchronize_session=False)
     )

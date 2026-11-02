@@ -133,3 +133,43 @@ def test_concurrent_leave_never_500(client):
         codes = list(pool.map(lambda _: client.post(LEAVE, headers=jimin).status_code, range(2)))
     assert 204 in codes and all(c in (204, 400, 403) for c in codes), codes
     assert jimin_id not in roles(group["id"])
+
+
+def test_leave_active_group_switches_to_most_recent_remaining(client):
+    owner_a, _ = account(client, "mom_a", "엄마A")
+    group_a = create_group(client, owner_a, "A 가족")
+    owner_b, _ = account(client, "mom_b", "엄마B")
+    group_b = create_group(client, owner_b, "B 가족")
+    kid, kid_id = account(client, "kid_lee", "아이")
+    _enter(client, owner_a, kid)
+    _enter(client, owner_b, kid)  # 마지막에 들어간 B 가 활성 그룹
+    with SessionLocal() as db:
+        assert db.get(User, kid_id).active_group_id == group_b["id"]
+
+    assert client.post(LEAVE, headers=kid).status_code == 204
+
+    with SessionLocal() as db:
+        assert db.get(User, kid_id).active_group_id == group_a["id"]
+    seen = client.get(f"{P}/groups/me", headers=kid)
+    assert seen.status_code == 200 and seen.json()["id"] == group_a["id"]
+
+
+def test_leave_retries_once_on_integrity_error(client, monkeypatch):
+    from sqlalchemy.exc import IntegrityError
+
+    from app.features.family_group import profile_repository as prepo
+
+    _, _, (jimin, jimin_id), _, group = family(client)
+    real = prepo.delete_member_if_not_owner
+    calls = {"n": 0}
+
+    def flaky(db, group_id, user_id):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise IntegrityError("DELETE", {}, Exception("fk"))
+        return real(db, group_id, user_id)
+
+    monkeypatch.setattr(prepo, "delete_member_if_not_owner", flaky)
+    assert client.post(LEAVE, headers=jimin).status_code == 204
+    assert calls["n"] == 2
+    assert jimin_id not in roles(group["id"])
