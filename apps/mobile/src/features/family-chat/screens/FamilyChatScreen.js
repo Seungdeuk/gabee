@@ -1,7 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect, useRouter } from "expo-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { AppState, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import UserAvatar from "@/shared/components/UserAvatar";
@@ -17,7 +17,7 @@ import EmptyChats from "../components/EmptyChats";
 import NewChatPicker from "../components/NewChatPicker";
 import SwipeableRoomRow from "../components/SwipeableRoomRow";
 import { waitForPendingMarkRead } from "../pendingRead";
-import { buildRoomRows, formatRoomTime, matchesQuery, MUTE_FAILED_NOTICE, pickableMembers, withRoomMuted } from "../listUtils";
+import { buildRoomRows, formatRoomTime, matchesQuery, MUTE_FAILED_NOTICE, pickableMembers, ROOM_REFRESH_MS, withRoomMuted } from "../listUtils";
 import { focusRoute, searchRoomLabel } from "../searchUtils";
 import useChatSearch from "../useChatSearch";
 
@@ -58,32 +58,61 @@ export default function FamilyChatScreen() {
   const muteVersion = useRef(0); // 토글이 시작·끝날 때마다 올린다. 목록 읽기가 시작된 뒤에 바뀐 방은 늦게 온 옛 값으로 덮어쓰지 않는다
   const muteLast = useRef(new Map()); // 방 id → 마지막으로 정한 muted 와 그 때의 버전
   const [state, setState] = useState({ status: "loading", rooms: [], members: [], pickable: [], error: "" });
+  const groupRef = useRef(null); // 마지막으로 읽은 가족 정보(방 이름·구성원). 주기 새로고침이 방 목록만 다시 읽을 때 쓴다
+  const refreshing = useRef(false);
+
+  /** 방 행에 "내가 방금 바꾼 알림 설정"을 덧입힌다(늦게 온 옛 값이 덮어쓰지 않게). */
+  const withMuteOverrides = useCallback(
+    (rows, startVersion) => [...muteLast.current].filter(([id, v]) => muteIntent.current.has(id) || v.version > startVersion).reduce((acc, [id, v]) => withRoomMuted(acc, id, v.muted), rows),
+    [],
+  );
 
   const load = useCallback(async () => {
     const startVersion = muteVersion.current;
     try {
       await waitForPendingMarkRead(); // 방을 막 나왔다면 읽음 올리기가 끝난 뒤에 숫자를 가져온다
-      // 화면이 올 때마다 한 번만(폴링 없음).
+      // 화면이 올 때마다 한 번(이후 방 목록만 주기적으로 `refreshRooms` 가 다시 읽는다).
       // 가족 정보는 필수(없으면 가족 없음/오류 화면), 방 목록이 실패해도 연락처는 보여 주고 다시 시도 안내를 띄운다
       const [group, rooms] = await Promise.all([getRoomInfo(), listRooms().catch((e) => ({ failed: e }))]);
       setListError(Array.isArray(rooms) ? "" : roomErrorMessage(rooms.failed));
       const people = Array.isArray(group.members) ? group.members : [];
+      groupRef.current = group;
       setState({
         status: "ready",
         error: "",
-        rooms: Array.isArray(rooms) ? [...muteLast.current].filter(([id, v]) => muteIntent.current.has(id) || v.version > startVersion).reduce((rows, [id, v]) => withRoomMuted(rows, id, v.muted), buildRoomRows(rooms, group, previewText, formatRoomTime)) : [],
+        rooms: Array.isArray(rooms) ? withMuteOverrides(buildRoomRows(rooms, group, previewText, formatRoomTime), startVersion) : [],
         members: people.map((m) => ({ id: m.id, name: m.display_name || m.name, photoUrl: m.photo_url ?? null })),
         pickable: pickableMembers(people, group.my_id),
       });
     } catch (e) {
       setState(isNoGroup(e) ? { status: "none", rooms: [], members: [], pickable: [], error: "" } : { status: "error", rooms: [], members: [], pickable: [], error: roomErrorMessage(e) });
     }
-  }, []);
+  }, [withMuteOverrides]);
 
+  /** 방 목록만 조용히 다시 읽는다(가족 정보는 그대로). 실패해도 화면은 그대로 두고, 이미 읽는 중이거나 앱이 뒤에 있으면 건너뛴다. */
+  const refreshRooms = useCallback(async () => {
+    if (refreshing.current || !groupRef.current || AppState.currentState === "background") return;
+    refreshing.current = true;
+    const startVersion = muteVersion.current;
+    try {
+      await waitForPendingMarkRead();
+      const rooms = await listRooms();
+      const rows = withMuteOverrides(buildRoomRows(rooms, groupRef.current, previewText, formatRoomTime), startVersion);
+      setState((s) => (s.status === "ready" ? { ...s, rooms: rows } : s));
+    } catch {
+      // 다음 주기에 다시 시도한다
+    } finally {
+      refreshing.current = false;
+    }
+  }, [withMuteOverrides]);
+
+  // 화면이 보이는 동안: 들어올 때 한 번 읽고, 이후 주기마다 방 목록을 다시 읽어 안 읽은 수가 하단 탭 숫자와 같이 올라가게 한다
   useFocusEffect(
     useCallback(() => {
       load();
-    }, [load]),
+      const timer = setInterval(refreshRooms, ROOM_REFRESH_MS);
+      return () => clearInterval(timer);
+    }, [load, refreshRooms]),
   );
 
   useEffect(() => {

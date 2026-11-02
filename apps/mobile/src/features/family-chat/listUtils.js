@@ -106,6 +106,7 @@ export function roomMutedById(rooms, roomId) {
 }
 
 /** 알림 설정을 저장하지 못했을 때의 안내 문구. */
+export const ROOM_REFRESH_MS = 10000; // 소통 탭이 보이는 동안 방 목록(안 읽은 수·마지막 말)을 다시 읽는 간격
 export const MUTE_FAILED_NOTICE = "알림 설정을 바꾸지 못했어요. 잠시 후 다시 해 주세요";
 
 /**
