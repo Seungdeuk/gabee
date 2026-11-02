@@ -75,6 +75,27 @@ def change_member_role(
     db.commit()
 
 
+def leave_group(db: Session, user: User, group_id: str) -> None:
+    """내가 가족을 나간다. owner 는 나갈 수 없다(소유권 이전은 범위 밖).
+
+    한 트랜잭션에서 별명(내가 쓴 것·나에게 붙은 것) 삭제 → 멤버십 조건부 삭제 → 활성 그룹 비우기.
+    지난 채팅·일정·가계 등 데이터는 그대로 둔다(제품 결정)."""
+    me = prepo.get_membership(db, group_id, user.id)
+    if me is None:
+        raise ApiError(403, "not_member", "이 가족 그룹의 구성원이 아니에요")
+    if me.role == "owner":
+        raise bad_request("cannot_leave_owner", "소유자는 가족을 나갈 수 없어요.")
+    prepo.delete_member_nicknames_of(db, group_id, user.id)
+    if not prepo.delete_member_if_not_owner(db, group_id, user.id):
+        db.rollback()
+        again = prepo.get_membership(db, group_id, user.id)
+        if again is None:  # 동시 요청으로 이미 나간 경우
+            raise ApiError(403, "not_member", "이 가족 그룹의 구성원이 아니에요")
+        raise bad_request("cannot_leave_owner", "소유자는 가족을 나갈 수 없어요.")
+    prepo.clear_active_group(db, user.id, group_id)
+    db.commit()
+
+
 def list_my_nicknames(db: Session, user: User, group_id: str):
     return prepo.list_nicknames(db, group_id, user.id)
 
