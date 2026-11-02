@@ -9,7 +9,7 @@ import { colors } from "@/theme";
  */
 export default function SoftBackdrop() {
   return (
-    <View style={StyleSheet.absoluteFill} pointerEvents="none" accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
+    <View style={StyleSheet.absoluteFill} pointerEvents="none" aria-hidden>
       <Svg width="100%" height="100%">
         <Defs>
           <RadialGradient id="backdropPeach" cx="0.22" cy="0.55" r="0.75">
