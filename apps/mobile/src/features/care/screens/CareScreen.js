@@ -4,14 +4,14 @@ import { StyleSheet, Text, View } from "react-native";
 // 지갑 탭에서는 정산·지출·용돈만 쓴다. 나머지 가져오기는 주석 처리해 두었다(다시 켤 때 되돌린다).
 import { MoneySection, MonthSwitcher, currentMonth } from "@/features/billing/public";
 // import { ReminderBanner, SettleSummary, SubscriptionTab, UpcomingBanner } from "@/features/billing/public";
-import { isApiConfigured } from "@/shared/api/client";
+// import { isApiConfigured } from "@/shared/api/client";
 // import useResource from "@/shared/hooks/useResource";
 import Screen from "@/shared/components/Screen";
 // import Segmented from "@/shared/components/Segmented";
 import { colors, font } from "@/theme";
 
 // import { getDaily } from "../api";
-import CarePreview from "../components/CarePreview";
+// import CarePreview from "../components/CarePreview";
 // import LocationDisabled from "../components/LocationDisabled";
 // import StatusBoard from "../components/StatusBoard";
 import { LOCATION_ENABLED } from "../location/enabled";
@@ -27,10 +27,10 @@ import { stopBackground } from "../location/sharing";
 
 /**
  * 지갑 탭: 정산·지출·용돈(엔빵).
- * 서버 주소(EXPO_PUBLIC_API_URL)가 없으면 임시 데이터 화면을 보여 준다.
+ * 서버 주소가 없을 때 돌봄 임시 데이터 화면(CarePreview)을 보여 주던 것은 내렸다(주석 처리).
  */
 export default function CareScreen() {
-  if (!isApiConfigured()) return <CarePreview />;
+  // if (!isApiConfigured()) return <CarePreview />;
   return <CareLive />;
 }
 

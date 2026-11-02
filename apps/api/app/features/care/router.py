@@ -1,8 +1,10 @@
-from fastapi import APIRouter, Depends, Response
+from fastapi import APIRouter, Depends, Request, Response
 from sqlalchemy.orm import Session
 
 from app.shared.auth import current_group_id, current_user
+from app.shared.config import settings
 from app.shared.db import get_db
+from app.shared.errors import ApiError
 from app.shared.llm import agent_chat as agent_chat_service
 from app.shared.llm.schemas import (
     AgentChatIn,
@@ -37,6 +39,16 @@ from .schemas import (
 )
 
 router = APIRouter(prefix="/care", tags=["care"])
+
+# 위치 동의 철회·조회는 저장된 내 위치를 지우는 길이라 돌봄 API 가 닫혀 있어도 연다(켜기는 서비스가 location_disabled 로 막는다)
+_OPEN_WHEN_CLOSED = "/care/location/consent"
+
+
+def require_care_api(request: Request) -> None:
+    """돌봄 서버 API 스위치(CARE_API_ENABLED). 닫혀 있으면 /care/* 요청을 403 care_disabled 로 막는다."""
+    if settings.care_api_enabled or request.url.path == _OPEN_WHEN_CLOSED:
+        return
+    raise ApiError(403, "care_disabled", "돌봄 기능은 지금 사용할 수 없어요")
 
 
 @router.put("/records", response_model=PutResult)
