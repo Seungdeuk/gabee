@@ -6,9 +6,9 @@ import { MENU, SHORTCUTS, itemAction, profileSubtitle } from "../src/features/mo
 
 const byKey = (list, key) => list.find((i) => i.key === key);
 
-test("바로가기는 4칸, 목록은 5줄이고 key 가 겹치지 않는다", () => {
+test("바로가기는 4칸, 목록은 6줄이고 key 가 겹치지 않는다", () => {
   assert.equal(SHORTCUTS.length, 4);
-  assert.equal(MENU.length, 5);
+  assert.equal(MENU.length, 6);
   const keys = [...SHORTCUTS, ...MENU].map((i) => i.key);
   assert.equal(new Set(keys).size, keys.length);
 });
@@ -20,7 +20,7 @@ test("항목 제목 순서", () => {
   );
   assert.deepEqual(
     MENU.map((i) => i.title),
-    ["우리 가족", "가비 AI 설정 및 안내", "가족 공유 문서함", "계정 및 보안", "서비스 정보"],
+    ["우리 가족", "가비 AI 설정 및 안내", "가족 공유 문서함", "계정 및 보안", "공지사항", "서비스 정보"],
   );
 });
 
