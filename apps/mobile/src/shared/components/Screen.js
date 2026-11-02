@@ -4,7 +4,6 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { colors, spacing } from "@/theme";
 
 import PageHeader from "./PageHeader";
-import SoftBackdrop from "./SoftBackdrop";
 
 /**
  * 큰 제목 + 스크롤 본문으로 이루어진 탭 화면 틀.
@@ -17,7 +16,6 @@ export default function Screen({ title, subtitle, left, right, pinned, centered 
   const header = <PageHeader title={title} subtitle={subtitle} left={left} right={right} centered={centered} />;
   return (
     <SafeAreaView style={styles.safe} edges={["top", "bottom"]}>
-      <SoftBackdrop />
       <KeyboardAvoidingView style={styles.flex} behavior="padding">
         <ScrollView
           contentContainerStyle={styles.content}
