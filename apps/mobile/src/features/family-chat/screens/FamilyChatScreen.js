@@ -1,10 +1,8 @@
-import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect, useRouter } from "expo-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { AppState, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { AppState, ScrollView, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
-import UserAvatar from "@/shared/components/UserAvatar";
 import Button from "@/shared/components/Button";
 import SectionTitle from "@/shared/components/SectionTitle";
 import { colors, font, radius, spacing } from "@/theme";
@@ -198,20 +196,6 @@ export default function FamilyChatScreen() {
         {members.length > 0 ? (
           <View style={styles.contacts}>
             <SectionTitle title="가족 연락처" action="전체 보기 →" onAction={() => router.push("/family-contacts")} />
-            <Pressable onPress={() => router.push("/family-contacts")} accessibilityRole="button" accessibilityLabel={`가족 연락처, 가족 ${members.length}명`} style={styles.contactCard}>
-              <View style={styles.stack}>
-                {members.slice(0, 5).map((m, i) => (
-                  <View key={m.id} style={i > 0 && styles.overlap}>
-                    <UserAvatar name={m.name} userId={m.id} photoUrl={m.photoUrl} size={40} ring />
-                  </View>
-                ))}
-              </View>
-              <Text style={styles.contactText}>
-                <Text style={styles.contactStrong}>가족 {members.length}명</Text>
-                <Text style={styles.contactMuted}> 등록됨</Text>
-              </Text>
-              <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
-            </Pressable>
           </View>
         ) : null}
 
@@ -265,19 +249,4 @@ const styles = StyleSheet.create({
   muteNotice: { ...font.caption, color: colors.danger, textAlign: "center" },
   empty: { paddingVertical: spacing.xxl, textAlign: "center", color: colors.textMuted },
   contacts: { gap: spacing.sm },
-  contactCard: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-    padding: spacing.lg,
-    borderWidth: 1,
-    borderColor: colors.divider,
-    borderRadius: radius.card,
-    backgroundColor: colors.card,
-  },
-  stack: { flexDirection: "row" },
-  overlap: { marginLeft: -10 },
-  contactText: { flex: 1, paddingLeft: 6, fontSize: 14 },
-  contactStrong: { fontWeight: "600", color: colors.text },
-  contactMuted: { color: colors.textMuted },
 });
