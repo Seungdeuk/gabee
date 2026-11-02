@@ -12,7 +12,8 @@ import PlusSheet from "./PlusSheet";
 
 const LINE_HEIGHT = font.body.lineHeight;
 const MAX_LINES = 5;
-const INNER_BTN = 36; // 입력칸 안 버튼(문서·보내기)의 한 변
+const ROW_H = 36; // 입력 줄의 한 줄 높이(+ 버튼, 입력칸, 보내기 자리가 모두 이 높이)
+const INNER_BTN = 30; // 입력칸 안 버튼(문서·보내기)의 한 변
 const INNER_SLOT = INNER_BTN; // 오른쪽 자리: 버튼 한 개 폭으로 고정해 글자를 쓰기 시작해도 글자 영역이 흔들리지 않는다
 
 /**
@@ -179,29 +180,29 @@ const styles = StyleSheet.create({
   replyLine: { ...font.caption, color: colors.text },
   wrap: {
     paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.sm,
+    paddingVertical: spacing.xs,
     backgroundColor: colors.card,
     borderTopWidth: 1,
     borderTopColor: colors.divider,
     gap: spacing.xs,
   },
   row: { flexDirection: "row", alignItems: "flex-end", gap: spacing.xs },
-  plus: { width: 40, height: 40, borderRadius: radius.pill, alignItems: "center", justifyContent: "center" },
+  plus: { width: ROW_H, height: ROW_H, borderRadius: radius.pill, alignItems: "center", justifyContent: "center" },
   inputBox: { flex: 1, flexDirection: "row", alignItems: "flex-end", borderRadius: radius.card, backgroundColor: colors.surface },
   input: {
     flex: 1,
-    minHeight: 40,
-    maxHeight: LINE_HEIGHT * MAX_LINES + spacing.sm * 2,
+    minHeight: ROW_H,
+    maxHeight: LINE_HEIGHT * MAX_LINES + spacing.xs * 2,
     paddingLeft: spacing.lg,
     paddingRight: spacing.xs,
-    paddingVertical: spacing.sm,
+    paddingVertical: spacing.xs,
     // lineHeight 를 주면 안드로이드 입력칸의 글자·안내 문구가 위로 밀려 윗부분이 잘린다
     fontSize: font.body.fontSize,
     fontFamily: font.body.fontFamily,
     color: colors.text,
     textAlignVertical: "center",
   },
-  slot: { width: INNER_SLOT, height: 40, flexDirection: "row", alignItems: "center", justifyContent: "flex-end", paddingRight: spacing.xs },
+  slot: { width: INNER_SLOT, height: ROW_H, flexDirection: "row", alignItems: "center", justifyContent: "flex-end", paddingRight: spacing.xs },
   inner: { width: INNER_BTN, height: INNER_BTN, borderRadius: radius.pill, alignItems: "center", justifyContent: "center" },
   send: { backgroundColor: colors.peach },
   sendOff: { backgroundColor: colors.divider },
