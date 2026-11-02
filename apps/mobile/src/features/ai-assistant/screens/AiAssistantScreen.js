@@ -7,7 +7,6 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { legacyStorageScope } from "@/shared/api/client";
 import { useAuth } from "@/shared/auth/AuthProvider";
 import AppHeader from "@/shared/components/AppHeader";
-import SoftBackdrop from "@/shared/components/SoftBackdrop";
 import { colors } from "@/theme";
 
 import AnswerView from "../components/AnswerView";
@@ -137,7 +136,6 @@ export default function AiAssistantScreen({ onBell, bellBadge, emptyAction }) {
 
   return (
     <SafeAreaView style={styles.safe} edges={["top"]}>
-      {empty ? <SoftBackdrop /> : null}
       <AppHeader onMenu={() => setMenuOpen(true)} onNew={startNew} menuBadge={reviewCount > 0} onBell={onBell} bellBadge={bellBadge} />
       <Sidebar
         open={menuOpen}
@@ -237,7 +235,7 @@ export default function AiAssistantScreen({ onBell, bellBadge, emptyAction }) {
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: colors.background },
+  safe: { flex: 1 },
   flex: { flex: 1 },
   main: { flex: 1, overflow: "hidden" },
   center: { flex: 1, alignItems: "center", justifyContent: "center", gap: 16, paddingHorizontal: 24 },

@@ -1,7 +1,7 @@
 import { KeyboardAvoidingView, ScrollView, StyleSheet, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
-import { colors, spacing } from "@/theme";
+import { spacing } from "@/theme";
 
 import PageHeader from "./PageHeader";
 
@@ -52,7 +52,6 @@ const styles = StyleSheet.create({
   flex: { flex: 1 },
   safe: {
     flex: 1,
-    backgroundColor: colors.background,
   },
   content: {
     paddingBottom: spacing.xxl,
@@ -66,9 +65,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.xl,
     paddingTop: spacing.xl,
     paddingBottom: spacing.md,
-  },
-  pinned: {
-    backgroundColor: colors.background,
   },
   bodyRest: {
     paddingHorizontal: spacing.xl,

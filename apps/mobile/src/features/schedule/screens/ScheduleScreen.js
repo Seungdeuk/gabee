@@ -237,7 +237,7 @@ export default function ScheduleScreen() {
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: colors.background },
+  safe: { flex: 1 },
   content: { paddingBottom: spacing.xxl },
   body: { paddingHorizontal: spacing.xxl, paddingTop: spacing.xl, gap: 14 },
   section: { gap: 4 },
