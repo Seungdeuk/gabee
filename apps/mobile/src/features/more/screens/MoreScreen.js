@@ -1,26 +1,22 @@
-import { useRouter } from "expo-router";
-
 import FamilyGroupCard from "@/features/family-group/components/FamilyGroupCard";
 import AccountCard from "@/shared/auth/AccountCard";
-import IconButton from "@/shared/components/IconButton";
 import Screen from "@/shared/components/Screen";
 import SectionTitle from "@/shared/components/SectionTitle";
 
-/** 설정 화면: 계정과 가족 그룹. */
-export default function MoreScreen() {
-  const router = useRouter();
+import AppManageCard from "../components/AppManageCard";
 
+/** 마이 페이지(하단 탭): 내 계정, 가족 그룹, 앱 관리. 각 화면 위 설정 버튼(/more)도 이 탭으로 온다. */
+export default function MoreScreen() {
   return (
-    <Screen
-      title="설정"
-      subtitle="계정과 가족 그룹"
-      left={<IconButton name="chevron-back" label="뒤로" onPress={() => router.back()} />}
-    >
+    <Screen title="마이 페이지" subtitle="내 정보와 앱 관리">
       <SectionTitle title="계정" />
       <AccountCard />
 
       <SectionTitle title="가족 그룹" />
       <FamilyGroupCard />
+
+      <SectionTitle title="앱 관리" />
+      <AppManageCard />
     </Screen>
   );
 }

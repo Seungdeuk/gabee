@@ -63,7 +63,7 @@ function CareLive() {
   useEffect(() => () => clearTimeout(timer.current), []);
 
   return (
-    <Screen title="지갑" settings>
+    <Screen title="지갑">
       {/* <Segmented options={SECTIONS} value={section} onChange={setSection} /> */}
 
       {message ? (

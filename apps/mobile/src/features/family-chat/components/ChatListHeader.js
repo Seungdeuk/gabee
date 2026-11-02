@@ -2,7 +2,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { StyleSheet, Text, TextInput, View } from "react-native";
 
 import IconButton from "@/shared/components/IconButton";
-import SettingsButton, { SETTINGS_EDGE_GAP, SETTINGS_RAISE } from "@/shared/components/SettingsButton";
+import { SETTINGS_EDGE_GAP, SETTINGS_RAISE } from "@/shared/components/SettingsButton";
 import { colors, font, spacing } from "@/theme";
 
 /**
@@ -20,7 +20,6 @@ export default function ChatListHeader({ searching, query, onQuery, onToggleSear
         <View style={styles.buttons}>
           <IconButton name={searching ? "close" : "search-outline"} label={searching ? "검색 닫기" : "검색"} onPress={onToggleSearch} />
           <IconButton name="create-outline" label="새 대화" onPress={onNew} />
-          <SettingsButton />
         </View>
       </View>
       {searching ? (
