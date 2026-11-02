@@ -110,11 +110,10 @@ def password_reset_request(
     background: BackgroundTasks,
     db: Session = Depends(get_db),
 ) -> Response:
-    """재설정 메일을 요청한다. 아이디와 이메일이 같은 계정과 둘 다 맞을 때만 보내며, 맞든 아니든 같은 204(발송은 응답 뒤)."""
+    """재설정 메일을 요청한다. 아이디와 이메일이 같은 계정과 둘 다 맞으면 204(발송은 응답 뒤), 아니면 400 reset_mismatch."""
     ip = request.client.host if request.client else "unknown"
     mail = service.request_password_reset(db, body, ip)
-    if mail is not None:
-        background.add_task(service.deliver, mail, "password_reset")
+    background.add_task(service.deliver, mail, "password_reset")
     return Response(status_code=204)
 
 

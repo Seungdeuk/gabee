@@ -111,11 +111,10 @@ def test_features_that_need_an_email_say_so_instead_of_failing_oddly(client, mai
     headers, _ = make(client, "no_email_a")
     verify = client.post(f"{P}/auth/email/verify/request", headers=headers)
     assert verify.status_code == 400 and verify.json()["code"] == "no_email"
-    # 비밀번호 재설정은 가입한 이메일로만 할 수 있어서 이메일이 없는 계정에는 아무것도 보내지 않는다(응답은 다른 주소와 같다)
-    assert (
-        client.post(
-            f"{P}/auth/password/reset/request",
-            json={"login_id": "no_email_a", "email": "nobody@example.com"},
-        ).status_code
-        == 204
+    # 비밀번호 재설정은 가입한 이메일로만 할 수 있어서 이메일이 없는 계정에는 아무것도 보내지 않고 "일치하지 않아요"
+    # (다른 불일치와 같은 응답이라 이메일이 없는 계정인지는 알 수 없다)
+    reset = client.post(
+        f"{P}/auth/password/reset/request",
+        json={"login_id": "no_email_a", "email": "nobody@example.com"},
     )
+    assert reset.status_code == 400 and reset.json()["code"] == "reset_mismatch"
