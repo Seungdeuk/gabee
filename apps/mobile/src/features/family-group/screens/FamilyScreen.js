@@ -112,6 +112,7 @@ export default function FamilyScreen() {
         roleText={roleLabel(group.my_role)}
         members={group.members}
         nicknames={family.nicknames}
+        isOwner={group.my_role === "owner"}
         onPressMember={(m) => router.push({ pathname: "/family-member", params: { userId: m.id } })}
       />
       <Button label="내 프로필 (이름·가족 관계)" variant="secondary" onPress={() => router.push("/family-profile")} testID="open-profile" />

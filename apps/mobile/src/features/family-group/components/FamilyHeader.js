@@ -10,7 +10,7 @@ import MemberAvatar from "./MemberAvatar";
  * @param {{ name: string, memberCount: number, roleText: string, members: object[], nicknames?: Record<string, { nickname?: string | null }>, onPressMember?: (member: object) => void }} props
  * @returns {import("react").ReactElement}
  */
-export default function FamilyHeader({ name, memberCount, roleText, members, nicknames = {}, onPressMember }) {
+export default function FamilyHeader({ name, memberCount, roleText, members, nicknames = {}, isOwner = false, onPressMember }) {
   return (
     <View style={styles.wrap} testID="family-header">
       <Text style={styles.name} accessibilityRole="header">{name}</Text>
@@ -23,7 +23,7 @@ export default function FamilyHeader({ name, memberCount, roleText, members, nic
           <MemberAvatar key={m.id} member={m} nickname={nicknames[m.id]} onPress={onPressMember} />
         ))}
       </ScrollView>
-      <Text style={styles.hint}>구성원을 누르면 별명을 붙이거나 관리자를 지정할 수 있어요</Text>
+      <Text style={styles.hint}>{isOwner ? "구성원을 누르면 별명을 붙이거나 관리자를 지정할 수 있어요" : "구성원을 누르면 나만 보는 별명을 붙일 수 있어요"}</Text>
     </View>
   );
 }
