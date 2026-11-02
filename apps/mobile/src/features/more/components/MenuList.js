@@ -30,7 +30,11 @@ export default function MenuList({ items, onPressItem }) {
             <Text style={styles.title}>{item.title}</Text>
             <Text style={styles.subtitle}>{item.subtitle}</Text>
           </View>
-          {item.badge ? <Tag label={item.badge} tone="orange" /> : null}
+          {item.badge ? (
+            <View>
+              <Tag label={item.badge} tone="orange" />
+            </View>
+          ) : null}
           <Ionicons name="chevron-forward" size={20} color={colors.textMuted} />
         </Pressable>
       ))}
