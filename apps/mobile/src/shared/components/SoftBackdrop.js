@@ -12,11 +12,11 @@ export default function SoftBackdrop() {
     <View style={StyleSheet.absoluteFill} pointerEvents="none" accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
       <Svg width="100%" height="100%">
         <Defs>
-          <RadialGradient id="backdropPeach" cx="0.22" cy="0.55" rx="0.85" ry="0.5">
+          <RadialGradient id="backdropPeach" cx="0.22" cy="0.55" r="0.75">
             <Stop offset="0" stopColor={colors.peach} stopOpacity={0.5} />
             <Stop offset="1" stopColor={colors.peach} stopOpacity={0} />
           </RadialGradient>
-          <RadialGradient id="backdropHoney" cx="0.85" cy="0.3" rx="0.8" ry="0.45">
+          <RadialGradient id="backdropHoney" cx="0.85" cy="0.3" r="0.7">
             <Stop offset="0" stopColor={colors.surfaceStrong} stopOpacity={0.9} />
             <Stop offset="1" stopColor={colors.surfaceStrong} stopOpacity={0} />
           </RadialGradient>

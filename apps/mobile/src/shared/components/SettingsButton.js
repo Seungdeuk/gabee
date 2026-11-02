@@ -1,17 +1,4 @@
-import { useRouter } from "expo-router";
-
-import IconButton from "./IconButton";
-
-// 모든 탭에서 설정 버튼이 같은 자리에 오도록 맞추는 값: 화면 오른쪽 끝에서 6, 상단바(높이 56) 세로 가운데.
+// 탭 화면 상단 오른쪽 버튼 줄이 모든 탭에서 같은 자리에 오도록 맞추는 값: 화면 오른쪽 끝에서 6, 상단바(높이 56) 세로 가운데.
 // 각 화면의 제목 줄은 위 여백 20 에서 시작해 버튼 중심이 42 에 오므로, 28 로 올리려면 14 만큼 끌어올린다.
 export const SETTINGS_EDGE_GAP = 6;
 export const SETTINGS_RAISE = 14;
-
-/**
- * 모든 탭 화면 상단 오른쪽 맨 끝의 설정 버튼(톱니바퀴). 누르면 설정 화면(/more: 계정·가족 그룹·설정)으로 간다.
- * @returns {import("react").ReactElement}
- */
-export default function SettingsButton() {
-  const router = useRouter();
-  return <IconButton name="settings-outline" size={22} label="설정" onPress={() => router.push("/more")} />;
-}
