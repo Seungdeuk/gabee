@@ -5,10 +5,8 @@ import json
 import pytest
 from sqlalchemy import select
 
-from app.features.ai_assistant import agents
 from app.features.ai_assistant.knowledge import rag_chat
 from app.features.billing import agent as billing_agent
-from app.features.care import agent as care_agent
 from app.features.family_group.models import User
 from app.shared.ai_usage import AiResultCache, AiUsageLog
 from app.shared.config import settings
@@ -81,30 +79,6 @@ def test_main_asks_billing_agent_and_never_gets_db_tools(client, family, monkeyp
     }
 
 
-def test_main_asks_care_agent(client, family, monkeypatch):
-    # 돌봄 에이전트는 지금 메인에 연결돼 있지 않다. 다시 연결했을 때 동작하는지 확인하려고 이 테스트 동안만 목록에 넣는다.
-    monkeypatch.setitem(agents.AGENTS, "ask_care", (care_agent.DESCRIPTION, care_agent.ask))
-    a, _, group = family
-    enable_ai(group["id"])
-    seen = {}
-
-    def fake_post(body):
-        if "돌봄 담당" in body["system"]:
-            if len(body["messages"]) == 1:
-                return _tool_use("get_today_summary", {})
-            seen["sub"] = _last_tool_result(body)
-            return _text("오늘 돌봄 기록을 확인했어요.")
-        if len(body["messages"]) == 1:
-            return _tool_use("ask_care", {"question": "오늘 돌봄 기록은?"})
-        return _text(_last_tool_result(body)["answer"])
-
-    monkeypatch.setattr(settings, "anthropic_api_key", "test-key")
-    monkeypatch.setattr(rag_chat, "_post", fake_post)
-    r = client.post("/ai-assistant/chat", json={"message": "오늘 돌봄 어때?"}, headers=a).json()
-    assert r["source"] == "ai" and "오늘 돌봄 기록" in r["reply"]
-    assert "error" not in seen["sub"]
-
-
 def test_billing_tools_see_only_own_family(client, family, other_family, monkeypatch):
     a, _, _ = family
     _spend(client, a, "우리 가족 지출", 10000)
@@ -122,7 +96,7 @@ def test_tab_agent_refuses_non_member(client, family, other_family):
     with SessionLocal() as db:
         member = _user(db, "지민")
         outsider = _user(db, "남")
-        for ask in (billing_agent.ask, care_agent.ask):
+        for ask in (billing_agent.ask,):
             with pytest.raises(ApiError) as e:
                 ask(db, member.active_group_id, outsider, "질문", None)
             assert (e.value.status, e.value.code) == (403, "not_member")
@@ -218,11 +192,12 @@ def test_usage_is_logged_with_tokens_and_answers_are_not_cached(client, family, 
     }
     monkeypatch.setattr(llm_agent, "_post", lambda body: reply)
     assert (
-        client.post("/care/agent/chat", json={"message": "오늘은?"}, headers=a).status_code == 200
+        client.post("/billing/agent/chat", json={"message": "오늘은?"}, headers=a).status_code
+        == 200
     )
     with SessionLocal() as db:
         row = db.scalars(select(AiUsageLog)).one()
-        assert (row.feature, row.api_calls, row.status) == ("care_agent", 1, "ok")
+        assert (row.feature, row.api_calls, row.status) == ("billing_agent", 1, "ok")
         assert (row.input_tokens, row.output_tokens) == (120, 7)
         assert (
             db.scalars(select(AiResultCache)).all() == []
@@ -254,9 +229,7 @@ def test_tab_agent_daily_limit_uses_the_shared_guard(client, family, monkeypatch
         assert (
             client.post("/billing/agent/chat", json={"message": "a"}, headers=a).status_code == 200
         )
-        again = client.post(
-            "/care/agent/chat", json={"message": "b"}, headers=a
-        )  # 정산·돌봄이 한 묶음
+        again = client.post("/billing/agent/chat", json={"message": "b"}, headers=a)
         assert (again.status_code, again.json()["code"]) == (429, "ai_daily_limit_user")
     finally:
         monkeypatch.undo()

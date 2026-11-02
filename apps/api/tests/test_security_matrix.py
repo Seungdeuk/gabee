@@ -277,7 +277,7 @@ SAMPLE_AUTH_PATHS = [
     ("POST", "/family-chat/messages"),
     ("GET", "/schedule/events"),
     ("GET", "/billing/expenses"),
-    ("GET", "/care/records"),
+    ("GET", "/care/locations/latest"),
     ("GET", "/ai-assistant/knowledge/items"),
     ("POST", "/ai-assistant/chat"),
     ("GET", "/family-group/me"),
@@ -537,11 +537,6 @@ CROSS = [
     ("GET", "/billing/settlement", {"params": {"month": MONTH}}, (200,)),
     ("GET", "/billing/subscriptions", {}, (200,)),
     # --- care
-    ("DELETE", "/care/items/{care_item_id}", {}, (403, 404)),
-    ("PUT", "/care/items/{care_item_id}/entry", {"json": {"done": True}}, (403, 404)),
-    ("DELETE", "/care/items/{care_item_id}/entry", {"_setup": ["care_entry"]}, (403, 404)),
-    ("GET", "/care/records", {}, (200,)),
-    ("GET", "/care/daily", {}, (200,)),
     ("GET", "/care/locations/latest", {}, (200,)),
     # --- ai-assistant / knowledge
     ("GET", "/ai-assistant/knowledge/items", {}, (200,)),
@@ -662,9 +657,6 @@ def _setup(api, fam: Family, s: dict, name: str) -> None:
         pending = r.json()["pending"]
         assert pending, r.json()
         s["plan_due"] = pending[0]["due_date"]
-    elif name == "care_entry":
-        r = api.put(f"/care/items/{s['care_item_id']}/entry", json={"done": True}, headers=h)
-        assert r.status_code == 200, r.text
     elif name == "settlement_ready":
         s.update(fresh(api, fam, "settlement_ready"))
         board = api.get("/billing/settlement", params={"month": this_month()}, headers=h).json()
@@ -913,7 +905,7 @@ def test_pending_join_request_user_has_no_group_access(api, world):
         "/family-chat/messages",
         "/schedule/events",
         "/billing/expenses",
-        "/care/records",
+        "/care/locations/latest",
         "/ai-assistant/knowledge/items",
     ):
         r = api.get(path, headers=p.headers)
@@ -936,13 +928,12 @@ def test_stale_active_group_without_membership_is_blocked(api, world):
         ("POST", "/family-chat/messages", {"json": {"text": "x"}}),
         ("GET", "/schedule/events", {}),
         ("GET", "/billing/expenses", {}),
-        ("GET", "/care/records", {}),
+        ("GET", "/care/locations/latest", {}),
         ("GET", "/ai-assistant/knowledge/items", {}),
         ("POST", "/ai-assistant/chat", {"json": {"message": "안녕"}}),
         ("POST", "/ai-assistant/knowledge/ask", {"json": {"question": "x"}}),
         ("POST", "/schedule/agent", {"json": {"text": "x", "channel": "family"}}),
         ("POST", "/billing/agent/chat", {"json": {"message": "x"}}),
-        ("POST", "/care/agent/chat", {"json": {"message": "x"}}),
     ]:
         r = api.request(method, path, headers=victim.headers, **kwargs)
         assert r.status_code == 403 and r.json()["code"] == "not_member", (
@@ -1358,7 +1349,6 @@ def test_agent_confirm_token_is_bound_to_user_family_tab_and_single_use(api, fak
     for headers, path in [
         (perm.third.headers, "/billing/agent/confirm"),
         (other.owner.headers, "/billing/agent/confirm"),
-        (perm.owner.headers, "/care/agent/confirm"),
     ]:
         rr = api.post(path, json={"token": token}, headers=headers)
         assert rr.status_code in (400, 401, 403, 404), (path, rr.status_code, rr.text)
@@ -1437,7 +1427,6 @@ AI_CASES = [
         "/billing/agent/chat",
         {"message": "이번 달 지출 알려줘"},
     ),
-    AiCase("care-agent", "care_agent", "POST", "/care/agent/chat", {"message": "오늘 돌봄 알려줘"}),
 ]
 AI_IDS = [c.name for c in AI_CASES]
 
@@ -1665,7 +1654,6 @@ LLM_CALLER_FILES = {
     "features/schedule/agent/suggest.py": "ai_guard.run",
     "features/billing/agent.py": "agent_guard.run_turn",
     "features/family_chat/agent.py": "agent_guard.run_turn",
-    "features/care/agent.py": "agent_guard.run_turn",
 }
 _OUTBOUND = re.compile(
     r"\bhttpx\.(post|get|put|patch|delete|request|stream|Client|AsyncClient)\b|from httpx import"
@@ -1898,7 +1886,7 @@ def test_schedule_agent_masks_user_text_and_event_titles(api, fake):
 def test_tab_agent_question_text_is_masked(api, fake):
     fam = new_family(api, "탭질문", "TABQ")
     _enable_ai(api, fam)
-    for path in ("/billing/agent/chat", "/care/agent/chat"):
+    for path in ("/billing/agent/chat",):
         fake.reset()
         text = f"내 번호 {PHONE} 메일 {EMAIL} 주민번호 {RRN} 카드 {CARD} 알려줘"
         r = api.post(
@@ -2539,7 +2527,7 @@ def test_known_integer_overflow_inputs_return_500(api, fake, world, name, method
             "/ai-assistant/knowledge/items",
             {"json": {"kind_label": "메모", "title": "t", "body_md": BIG * 20}},
         ),
-        ("long-path", "GET", "/care/items/" + "a" * 5000 + "/entry", {}),
+        ("long-path", "GET", "/schedule/events/" + "a" * 5000, {}),
         (
             "long-header-token",
             "GET",

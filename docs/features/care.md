@@ -1,78 +1,36 @@
 # 구현 현황: 돌봄 (care)
 
-> **2026-11-02 팀 회의 결과: 하단 탭 "돌봄"을 "지갑"으로 바꾸고, 지갑 탭에는 정산·지출·용돈만 둔다.**
-> - 앱(`CareScreen.js`): 현황판(데일리 체크)·공동구독·위치 구역과 결제일·월말 알림 배너, 정산 요약 카드는 **주석 처리**했다(코드는 지우지 않았다). 탭 이름은 지갑, 아이콘은 `wallet-outline`이며 라우트 이름(`care`)은 그대로다.
-> - 메인 에이전트(`ai_assistant/agents.py`): 돌봄 에이전트(`ask_care`)를 목록과 안내 문구에서 주석 처리했다. 정산 에이전트(`ask_billing`)만 남는다. `care/agent.py` 코드는 그대로 있다.
-> - **서버 돌봄 API(`/care/*`, `/care/agent/*`)를 닫았다.** 스위치 `CARE_API_ENABLED`(기본 꺼짐)가 꺼져 있으면 403 `care_disabled`다. 위치 동의 철회·조회(`/care/location/consent`)는 저장된 내 위치를 지우는 길이라 열어 둔다. 테스트 환경(`conftest.py`)은 켠 상태로 돌고 닫힌 상태는 `care/tests/test_care_api_closed.py`가 본다.
-> - 서버 주소가 없을 때 보이던 돌봄 임시 화면(`CarePreview`)은 지갑 탭에서 내렸다(주석 처리). 요구사항은 `docs/requirements/wallet.md`.
-> - 테스트: 돌봄 에이전트 전용 테스트 2개는 그 테스트 동안만 `ask_care`를 목록에 넣어 다시 연결했을 때의 동작을 계속 확인한다. 목록을 확인하는 테스트 1개는 새 목록에 맞췄다.
-> - 아래 내용은 탭이 돌봄이던 때의 구현 현황이다.
+> **2026-11-02 팀 회의 결과: 하단 탭 "돌봄"을 "지갑"으로 바꾸고, 데일리 체크(현황판·항목·기록·추천·식단 기록)와 돌봄 에이전트를 지웠다.** 지갑 탭에는 정산·지출·용돈만 둔다. 요구사항은 `docs/requirements/wallet.md`.
 
-- 상태: 진행 중 (서버·앱 화면 연결과 브라우저 클릭 검증 완료, 실기기 미검증)
-- 요구사항: `docs/requirements/care.md` 없음. 2026-10-21 요청 메시지의 명세를 기준으로 구현했다.
-- 브랜치: `billing-care`
+- 상태: 데일리 체크는 삭제됨. **위치 공유만 코드로 남아 있고 보류(꺼짐)** 이다.
+- 앱 라우트 이름(`care`)은 그대로이고 탭 이름만 "지갑"이다. 화면은 `features/care/screens/CareScreen.js`(정산·지출·용돈, 월말 정산 알림).
 
-## 구현된 것
-### 서버 (`apps/api/app/features/care`)
-- **누락 알림 배너**: 추천·식단·위치 탭에서도 기록하지 못한 항목(서버가 계산한 `missing_ids`, 예정 + 60분 초과)이 있으면 위쪽에 "기록하지 못한 항목 N개"와 항목 이름을 보여 주고, "확인하기"로 데일리 체크의 지난 시간 정리로 이동한다. 앱 안 배너만이며 푸시는 후속이다. 서버 변경은 없다.
-- **화면 구조(데일리 체크)**: 위에서부터 ① 상단 고정 영역 — 아침·점심·저녁 상태(끼니가 지정된 항목, 다른 탭에서도 고정) ② 중단 피드 — 현재 시각 기준 지금 해야 할 것(`due`) → 다가오는 순서(`upcoming`) ③ 완료한 항목 ④ 하단 "지난 시간 정리" — 시간이 지난 미기록·누락 항목을 모아 **소급 입력** 또는 **건너뛰기**(개별·모두), 건너뛴 항목은 "되돌리기". 서버가 상태·순서를 계산한다.
-  - 상태: `done` 완료 / `skipped` 건너뜀 / `missing` 누락(예정 + 60분 초과) / `due` 예정 시각이 지났지만 60분 안 / `upcoming` 아직 전. 응답에 `meals`, `upcoming_ids`, `cleanup_ids`, `skipped_ids`, `done_ids`, 항목별 `status`·`minutes_until`, 기록별 `late`(예정 + 60분 뒤에 기록한 소급 입력)가 있다.
-  - 건너뛰기: `PUT /care/items/{id}/entry {skipped: true}`(값 없이), 되돌리기: `DELETE /care/items/{id}/entry`. 건너뛴 항목은 누락·추천(다시 권하기)에서 제외된다. 앱은 1분마다 다시 불러온다.
-- 데일리 체크 `GET /care/daily`: 기본 항목 4개(아침 식사, 영양제, 점심 식사, 저녁 식사 — 모두 한 번 누르는 체크)를 처음 열 때 만든다(2026-10-28 변경: 예전에는 컨디션·물 ml·산책 분까지 7개였다. 이미 항목이 있는 가족은 그대로이고, 수치·컨디션 항목은 사용자가 "항목 추가"에서 직접 만든다. 그 항목이 없으면 물·산책·컨디션 추천은 나오지 않는다). 항목 추가(`POST /care/items`)·삭제(소프트 삭제). 기록 방식은 예/아니오, 수치(목표 있음), 컨디션(좋음/보통/나쁨). 기록은 `PUT /care/items/{id}/entry`(같은 날 덮어씀).
-- 누락 확인: 서버가 계산한다. 완료되지 않았고 현재 시각이 예정 시각 + 60분을 **넘으면** 누락(정각 +60분은 아직 아님). 지난 날의 미완료는 모두 누락.
-  - 완료 기준: 예/아니오는 '예', 목표 있는 수치는 목표 이상, 목표 없는 수치·컨디션은 기록 있음.
-  - `at=HH:MM`을 주면 그 시각을 '지금'으로 본다(화면 테스트용).
-- 추천 `GET /care/recommendations`: 물, 산책, 컨디션, 영양제 규칙. 모델을 쓰지 않는다.
-- 식단 추천 `GET /care/meals`, `GET /care/meals/{meal}?index=`: 기록이 없는 끼니만, "다른 메뉴"는 `next_index`로 순환. 메뉴는 `care/config.py`.
-- **식단 기록** `GET·PUT·DELETE /care/meal-log`: 그날 아침·점심·저녁에 **무엇을 드셨는지** 남긴다. `PUT {date?, meal, menu, note?, source}`(`source`: `typed` 직접 입력 / `recommended` 추천 메뉴로 기록)는 같은 날·같은 끼니를 덮어쓰고, 그 끼니의 데일리 체크 항목을 **완료(예)로 맞춘다**(직전에 아니오·건너뛰기였어도). `GET ?days=7&end=`는 최신 날짜부터 날짜마다 아침·점심·저녁 칸(`log` 없으면 null)을 돌려주고 기간은 1~31일이다. `DELETE ?date=&meal=`은 기록만 지우고 데일리 체크는 그대로 둔다. 미래 날짜는 안 된다(`future_date`). 돌봄 대상은 그룹 단위라 가족 누구나 기록하고 모두 볼 수 있으며 기록한 사람 이름이 함께 나온다. 사진·칼로리·영양 정보는 다루지 않는다(후속). 식단 탭의 추천 카드에는 "이걸로 먹었어요" 버튼이 있다.
-  - 요약 `GET /care/meal-log/summary?days=7&end=`: 최근 `days`일에 기록한 끼니 수(`logged`/`total`=days×3, 끼니별 `per_meal`)와 **최근 30일 끼니별 자주 먹은 메뉴 5개**(`frequent`, 많이 먹은 순 → 같으면 최근 → 가나다순; 덮어쓴 끼니는 한 번만 센다). 앱은 식단 기록 위에 "최근 7일 N/21끼 기록"을 보여 주고, 고른 끼니의 자주 먹은 메뉴를 칩으로 눌러 입력칸을 채운다.
-- **위치 공유(실제 GPS, 개인정보)**: 동의한 사람만 위치를 보내고 같은 가족 구성원만 본다.
-  - **기능 스위치 `CARE_LOCATION_ENABLED`(기본 꺼짐)**: 꺼져 있으면 `POST /care/locations`, `GET /care/locations/latest`, 동의 켜기(`PUT /care/location/consent` `consent=true`)가 403 `location_disabled`이고, 돌봄 에이전트는 스위치와 상관없이 위치 도구(`get_family_locations`)를 아예 주지 않고(2026-10-30 제거) 프롬프트가 "위치는 지금 사용할 수 없다"고 답하게 한다. **동의 철회(저장된 내 위치 삭제)와 동의 상태 조회는 꺼져 있어도 열려 있다.** 이미 저장된 위치는 자동으로 지우지 않는다(7일 보관 기간이 지나면 새 위치가 올 때 함께 지워지는데, 꺼 두면 새 위치가 오지 않아 남아 있다). 가입 때 받은 위치 동의 값은 그대로다. 앱은 따로 `LOCATION_ENABLED=false`로 위치 구역을 막는다.
-  - 동의: 정본은 `users.location_consent_at`(없으면 미동의). 가입 API가 `location_consent`를 받고(`POST /family-group/users`), 이후 `GET·PUT /care/location/consent`로 바꾼다. 동의·철회 이력은 `location_consent_events`(좌표 없음)에 남는다. 두 경로 모두 `app/shared/location_consent.py` 한 함수를 쓴다.
-  - `POST /care/locations`(최대 50개): 동의하지 않았으면 403 `consent_required`. 보관 기간(7일)을 넘었거나 5분 넘게 미래인 점은 버리고, 쓸 때 보관 기간이 지난 위치를 함께 지운다.
+## 지운 것 (2026-11-02)
+- **서버**: 데일리 체크(`/care/daily`, `/care/items`, `/care/items/{id}/entry`), 추천(`/care/recommendations`), 식단 추천·기록(`/care/meals`, `/care/meal-log`), 돌봄 기록(`/care/records`, `/care/summary/today`), 돌봄 에이전트(`/care/agent/chat`, `/care/agent/confirm`, `care/agent.py`)와 관련 서비스·저장소·스키마·설정·테스트. 메인 에이전트의 `ask_care`는 먼저 목록에서 뺐다.
+- **앱**: 현황판·데일리 체크·항목 추가·누락 배너·길게 눌러 삭제·돌봄 임시 화면, 시간 선택기(`TimePicker`), 서버 호출 함수(`getDaily` 등).
+- **평가·스크립트**: 평가 사례 중 돌봄 6개와 돌봄·구독을 메인에 시키는 사례 6개(64개 → 52개), 평가용 돌봄 시드, 개발용 스크립트의 돌봄 호출.
+- **지우지 않은 것(DB)**: 테이블 `care_items`, `care_entries`, `care_records`, `care_meal_logs`와 모델(`care/models.py`)은 그대로 둔다. 테이블을 지우는 것은 데이터가 사라지는 변경이라 DB 담당자 승인과 별도 PR이 필요하다(`destructive-approved` 표기).
+
+## 남아 있는 것: 위치 공유 (보류)
+위치 공유는 법적 요건(사업 신고 등) 때문에 이번 범위에서 제외했고 코드는 지우지 않았다.
+- **서버 스위치**: `CARE_API_ENABLED`(기본 꺼짐)가 꺼져 있으면 `/care/*`가 403 `care_disabled`이다. 위치 동의 철회·조회(`/care/location/consent`)는 저장된 내 위치를 지우는 길이라 열어 둔다. `CARE_LOCATION_ENABLED`(기본 꺼짐)가 꺼져 있으면 위치 저장·조회·동의 켜기가 403 `location_disabled`이다. 둘 다 켜야 위치를 쓸 수 있다.
+- **API**: `GET·PUT /care/location/consent`, `POST /care/locations`(최대 50개), `GET /care/locations/latest`.
+  - 동의: 정본은 `users.location_consent_at`(없으면 미동의). 가입 API가 `location_consent`를 받고, 이후 `GET·PUT /care/location/consent`로 바꾼다. 동의·철회 이력은 `location_consent_events`(좌표 없음)에 남는다.
+  - `POST /care/locations`: 동의하지 않았으면 403 `consent_required`. 보관 기간(7일)을 넘었거나 5분 넘게 미래인 점은 버리고, 쓸 때 보관 기간이 지난 위치를 함께 지운다.
   - `GET /care/locations/latest`: 가족 구성원의 최신 위치. 동의하지 않은 사람은 좌표 없이 `sharing=false`.
-  - **동의를 철회하면 저장된 내 위치를 바로 지운다.** 좌표는 로그에 남기지 않고 외부 서비스로 보내지 않는다(역지오코딩·지도 호출 없음).
-  - 정책 값은 `care/config.py`(`LOCATION_RETENTION_DAYS` 등).
-- 기존 `/care/records`(종류별 하루 기록)는 그대로 두었다.
-- 테스트: `tests/test_care.py`, `tests/test_care_daily.py`. DB: Alembic 리비전 `9e28d84c1686`.
-
-### 앱 (`apps/mobile/src/features/care`)
-- `MealTab`/`MealLog`: 추천 메뉴("다른 메뉴"·"이걸로 먹었어요")와 식단 기록(끼니 칩·메뉴·메모, 최근 7일 날짜별 카드, 지우기).
-- `CareScreen`(가계 탭을 합친 화면): **현황판**(오늘 체크 진행을 크게, `StatusBoard`; 끼니 상태 칸은 뺐다 — 아침·점심·저녁 식사는 기본 체크 항목으로 남아 "오늘 체크"에 센다; "기록하기"로 데일리 체크 입력을 펼침, 정산 요약·결제일 알림 포함) · **정산·용돈**(가계의 `MoneySection`: 정산/지출/용돈) · **공동구독**(가계의 `SubscriptionTab`: OTT·통신비) · **위치** 4구역. 가계 쪽 조각은 `features/billing/public.js`로만 가져온다. 추천·식단 탭은 구역에서 뺐고 컴포넌트(`RecommendTab`, `MealTab`, `MealLog`)와 앱의 추천·식단 호출 함수는 2026-10-30에 지웠다(서버 API는 그대로). 서버 호출은 `api.js`.
-- **위치 기능은 지금 꺼져 있다**(`location/enabled.js`의 `LOCATION_ENABLED=false`): 위치 구역은 "준비 중" 안내만 보이고, 백그라운드 위치 작업은 서버로 보내지 않으며, 돌봄 탭을 열면 이전에 켜 둔 백그라운드 위치 공유를 멈춘다. 서버의 위치 API와 에이전트의 `get_family_locations`는 그대로라서 업데이트하지 않은 앱은 아직 보낼 수 있다.
-- 항목의 예정 시각은 글자 입력이 아니라 **휠 시간 선택기**(`shared/components/TimePicker.js`: 오전/오후·시·분(5분 단위)을 세로로 돌려 고르고, 칸을 눌러도 선택)로 정한다. 새 의존성 없이 웹·앱에서 동작하며 목록에는 "오전 7:30 예정"처럼 표시한다.
-- 위치 탭: 내 위치 공유 스위치(동의·철회), "지금 내 위치 보내기", 가족 최신 위치 목록. 기기에서는 `expo-location` + `expo-task-manager`로 **백그라운드에서 약 15분마다 또는 200m 이동 시** 보내고(`features/care/location/`), 웹·Expo Go에서는 앱을 열었을 때만 보낸다. 앱 설정(`app.json`)에 `expo-location` 플러그인(백그라운드 위치)을 넣었다.
-- 누락은 "미기록 · 누락" 크림색 배지로 보이고, 건강 이상이 아니라는 안내 문구를 함께 둔다.
-- **2026-10-28 화면 개선**(브랜치 `feature/hojenn-care-ui`, 앱 변경이 대부분이고 서버는 기본 항목만 바뀜):
-  - 펼쳐지는 패널(소급 입력, 식단 기록, 항목 추가)은 저장에 성공하면 자동으로 접히고, 실패하면 패널을 열어 둔 채 **패널 안에** 오류를 보여 준다(화면 위 알림으로 보내지 않는다). 식단 기록 양식은 "+ 식단 기록"을 눌렀을 때만 보인다.
-  - 삭제 버튼(항목 삭제, 완료 기록 지우기, 식단 기록 지우기)은 평소에 보이지 않고, 해당 줄을 **길게 누르면** 작은 "삭제/닫기"가 나온다(`HoldToDelete`: 6초 뒤·다른 곳을 누르면 숨음, 화면 낭독기는 접근성 동작 "삭제"). 안내 문구가 화면에 있다.
-  - 체크 항목(예/아니오)은 "✓ 체크" 한 번으로 완료한다(예전의 예/아니오 두 버튼 제거). 항목 추가는 "+ 항목 추가"를 눌러 이름과 예정 시각만 적으면 체크 항목이 만들어지고, 수치·컨디션·끼니는 "자세히 설정"에 접어 두었다.
-  - 위치 탭: 구성원 이름 옆에 "서울특별시 중구 명동"처럼 **시·동 이름**을 적고(`location/geocode.js`, `place.js`), 카드를 누르면 좌표·정확도·받은 시각과 "지도에서 보기"가 있는 확인 화면이 펼쳐진다. **시·동 이름은 보는 사람의 기기가 OS 주소 변환 서비스(안드로이드는 구글 서비스)에 좌표를 보내 받아오는 것으로, 외부 전송이다(2026-10-28 사용자 승인).** 서버에는 저장하지 않고, 같은 동네(소수 셋째 자리)는 결과를 다시 쓰며, 웹·권한 없음·실패면 이름만 생략한다(권한을 새로 묻지 않는다). "지도에서 보기"는 누를 때만 좌표를 구글 지도 주소로 연다. 위치 탭 안내 문구에 이 사실을 적었다. 도로명·번지는 쓰지 않는다.
-  - 시험: `apps/mobile/tests/careplace.test.js`(시·동 이름 만들기, 좌표 키, 지도 주소, 받은 시각), `app/features/care/tests/test_care_default_items.py`(기본 항목 4개, 식단 추천·추천 규칙이 줄어든 항목에서도 동작, 사용자가 추가한 항목을 한 번 눌러 기록). 화면 렌더링·길게 누르기·위치 변환은 자동 시험이 없어 실기기에서 확인해야 한다.
-- 서버 주소(`EXPO_PUBLIC_API_URL`)가 없으면 기존 임시 데이터 화면(`CarePreview`)을 그대로 보여 준다.
+  - 동의를 철회하면 저장된 내 위치를 바로 지운다. 좌표는 로그에 남기지 않고 외부 서비스로 보내지 않는다.
+  - 정책 값은 `care/config.py`(`LOCATION_RETENTION_DAYS` 등). 꺼 두면 새 위치가 오지 않아 이미 저장된 위치는 자동으로 지워지지 않는다.
+- **앱**: `LOCATION_ENABLED=false`(`features/care/location/enabled.js`). 위치 구역은 지갑 탭에 없다. 백그라운드 위치 작업(`location/`)은 서버로 보내지 않고, 지갑 탭을 열면 이전에 켜 둔 백그라운드 위치 공유를 멈춘다. 컴포넌트 `LocationTab`, `LocationDisabled`와 `expo-location` 설정은 그대로 있다.
 
 ## 개발 빌드(EAS) — 백그라운드 위치용
-Expo Go 는 백그라운드 위치를 지원하지 않아 실기기 확인에는 개발 빌드가 필요하다. 설정은 준비됐고, **빌드는 아직 한 번도 돌리지 않았다**(EAS 로그인·Apple 계정 필요).
-- 준비된 것: `apps/mobile/eas.json`(profiles `development`·`development-simulator`·`preview`·`production`), `expo-dev-client`(`npx expo install`로 추가, SDK 54 용 ~6.0.21), `app.json`의 `ios.bundleIdentifier`·`android.package` = `com.kangminhun.gabee`(**임시 값 — 첫 스토어 배포 전에 팀이 확정**; 개발 빌드만 쓸 때는 바꿔도 무방). `expo-doctor` 18/18 통과.
-- 위치 권한은 막지 않았다: 백그라운드 수집이 이 기능의 요구라 `expo-location` 플러그인의 백그라운드·포그라운드 서비스 설정을 그대로 둔다(동의한 본인 위치만 가족에게 공유, 7일 보관, 철회 시 삭제).
-- 빌드: `npm i -g eas-cli && eas login` 후 `eas build --platform android --profile development`(iOS 실기기는 유료 Apple Developer 계정 필요, 시뮬레이터는 `development-simulator`). 설치한 뒤 `npx expo start --dev-client` 로 연결한다.
-- 서버 주소는 `eas.json`에 넣지 않았다(`EXPO_PUBLIC_API_URL` 은 배포 주소가 정해지면 프로필별 `env` 로 추가; 비밀값 금지). 개발용 토큰(`EXPO_PUBLIC_DEV_TOKEN`)은 빌드에 넣지 않는다 — 로그인은 main 의 모바일 인증 화면을 쓴다.
-
-## 확인 방법
-- 서버 확인용 화면: `apps/api/scripts/dev_console.py` → `/console`.
-- 앱: `EXPO_PUBLIC_API_URL=http://<서버> EXPO_PUBLIC_DEV_TOKEN=<토큰> npx expo start --web`.
-- 2026-10-22 Edge 브라우저(Expo 웹)에서 체크 기록·항목 추가/삭제·추천·식단 순환·위치 클릭 흐름 검증(서버 응답까지 대조).
-  이 검증으로 "다른 메뉴"를 누를 때 첫 메뉴로 잠깐 되돌아가는 깜빡임 결함을 찾아 고쳤다.
-
-## 정한 것 (확인 필요)
-- **추천 규칙 문구는 프로토타입에서 찾지 못해 임시로 썼다.** 맞출 문구가 있으면 `care/config.py`의 `RECOMMENDATIONS`만 바꾸면 된다.
-- 기본 항목의 예정 시각(아침 08:00, 영양제 09:00, 점심 12:00, 저녁 19:00)은 임시 값이다. 예전 7개 세트(`FULL_SAMPLE_ITEMS`: 컨디션 10:00, 물 18:00 목표 1500ml, 산책 17:00 목표 30분 포함)는 서비스가 쓰지 않고 시험(`full_care_samples` 픽스처)과 추천 규칙 확인용으로만 남겼다.
-- 식단 추천에서 '기록되지 않은 끼니'는 기록이 아예 없는 끼니다('아니오'도 기록으로 본다).
+Expo Go 는 백그라운드 위치를 지원하지 않아 실기기 확인에는 개발 빌드가 필요하다. 설정은 준비됐고, **빌드는 한 번도 돌리지 않았다**(EAS 로그인·Apple 계정 필요).
+- 준비된 것: `apps/mobile/eas.json`(profiles `development`·`development-simulator`·`preview`·`production`), `expo-dev-client`, `app.json`의 `ios.bundleIdentifier`·`android.package` = `com.kangminhun.gabee`(**임시 값 — 첫 스토어 배포 전에 팀이 확정**).
+- 빌드: `npm i -g eas-cli && eas login` 후 `eas build --platform android --profile development`. 설치한 뒤 `npx expo start --dev-client` 로 연결한다.
+- 서버 주소는 `eas.json`에 넣지 않았다(`EXPO_PUBLIC_API_URL` 은 배포 주소가 정해지면 프로필별 `env` 로 추가; 비밀값 금지).
 
 ## 남은 것
-- 로그인·가족 그룹 화면 연결(현재는 개발용 토큰), 실기기(Expo Go) 확인.
-- **백그라운드 위치 수집은 이 개발 환경에서 검증하지 못했다.** Expo Go에서는 동작하지 않아 전용 개발 빌드(EAS)와 실기기가 필요하다. 백그라운드 작업은 로그인 화면이 붙기 전까지 `EXPO_PUBLIC_DEV_TOKEN`으로만 서버에 인증한다(앱이 꺼진 상태의 토큰 보관은 팀의 PR 4-F `expo-secure-store` 도입 뒤).
-- 가입 화면이 아직 없어 동의는 돌봄 탭에서 받는다. 가입 화면(PR 4-F)이 생기면 가입 API의 `location_consent`로 같은 동의를 받는다.
-- 출시 전 검토: 개인위치정보 수집·이용의 법적 요건(별도 동의, 만 14세 미만 보호자 동의, 사업자 신고 등)은 확인하지 못했다. Android `ACCESS_BACKGROUND_LOCATION`은 스토어 심사 대상이다.
+- 위치를 다시 켤 때: 서버 `CARE_API_ENABLED`와 `CARE_LOCATION_ENABLED`, 앱 `LOCATION_ENABLED`를 함께 바꾸고 `release/1.2`의 앱 위치 권한 차단(`app.json`)도 되돌린다.
+- **백그라운드 위치 수집은 검증하지 못했다.** 전용 개발 빌드(EAS)와 실기기가 필요하다.
+- 출시 전 검토: 개인위치정보 수집·이용의 법적 요건(별도 동의, 만 14세 미만 보호자 동의, 사업자 신고 등)은 확인하지 못했다.
 - 사용자가 여러 가족 그룹에 속하면 위치가 모든 그룹 구성원에게 보인다(동의는 사용자 단위).
-- 병원 일정·가족 요청·AI 안부.
+- 돌봄 DB 테이블 삭제는 별도 PR(DB 담당자 승인).

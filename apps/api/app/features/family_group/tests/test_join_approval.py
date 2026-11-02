@@ -312,7 +312,7 @@ def test_wrong_codes_lock_the_account_for_the_window_then_unlock(client):
 
 
 # ---------- 익명(레거시 토큰) 계정도 승인 대기를 거친다 ----------
-GROUP_APIS = ("/family-chat/messages", "/schedule/events", "/billing/expenses", "/care/records")
+GROUP_APIS = ("/family-chat/messages", "/schedule/events", "/billing/expenses")
 
 
 def test_anonymous_accounts_need_approval_even_with_a_legacy_code(client):

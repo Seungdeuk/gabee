@@ -97,7 +97,7 @@ def test_behind_db_only_blocks_features_whose_schema_is_missing(client, family_h
     assert client.get("/health").json() == {"status": "ok"}
     assert client.get("/family-group/me", headers=family_headers).status_code == 200
     assert client.get("/schedule/events", headers=family_headers).status_code == 200
-    assert client.get("/care/records", headers=family_headers).status_code == 200
+    assert client.get("/care/location/consent", headers=family_headers).status_code == 200
     assert client.get("/family-chat/messages", headers=family_headers).status_code == 200
 
     report = health(client)
@@ -165,7 +165,7 @@ def test_unknown_revision_with_incompatible_core_blocks_every_feature(client, fa
     set_revision("ffffffffffff")
     with engine.begin() as conn:
         conn.execute(text("ALTER TABLE group_members DROP COLUMN joined_at"))
-    for path in ("/family-group/me", "/billing/expenses", "/care/records"):
+    for path in ("/family-group/me", "/billing/expenses", "/care/location/consent"):
         assert client.get(path, headers=family_headers).status_code == 503, path
 
 
@@ -327,4 +327,4 @@ def test_shared_model_table_missing_blocks_the_features_that_use_it(client, fami
     report = health(client)
     assert report["features"]["care"] == {"ready": False, "reason": "missing_schema"}
     assert report["features"]["family_group"]["ready"] is False
-    assert client.get("/care/records", headers=family_headers).status_code == 503
+    assert client.get("/care/location/consent", headers=family_headers).status_code == 503

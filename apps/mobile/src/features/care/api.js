@@ -2,42 +2,9 @@ import { apiFetch } from "@/shared/api/client";
 import { loadNicknames } from "@/shared/members/nicknames";
 
 /**
- * 돌봄 서버 호출. 응답 모양은 docs/contracts/openapi.json 의 /care/* 를 따른다.
- * @typedef {{ done: boolean | null, number: number | null, condition: "good" | "normal" | "bad" | null, recorded_by: string, recorded_at: string, skipped: boolean, late: boolean }} Entry
- * @typedef {{ id: string, name: string, mode: "yesno" | "number" | "condition", unit: string, target: number | null, scheduled_time: string, meal_type: string | null, entry: Entry | null, completed: boolean, missing: boolean, skipped: boolean, status: "done" | "skipped" | "missing" | "due" | "upcoming", minutes_until: number | null }} CareItem
- * @typedef {{ meal: "breakfast" | "lunch" | "dinner", label: string, item_id: string, scheduled_time: string, status: CareItem["status"], answer: "yes" | "no" | null }} MealStatus
- * @typedef {{ date: string, now: string, items: CareItem[], missing_ids: string[], meals: MealStatus[], upcoming_ids: string[], cleanup_ids: string[], skipped_ids: string[], done_ids: string[] }} Daily
+ * 돌봄 서버 호출. 데일리 체크(항목·기록·추천·식단) 호출은 지갑 탭 개편 때 지웠고, 위치 공유(지금은 보류)만 남아 있다.
+ * 응답 모양은 docs/contracts/openapi.json 의 /care/* 를 따른다.
  */
-
-// 개발용: 시각에 따라 달라지는 화면(다가오는 일정·누락)을 확인할 때 '지금' 시각을 바꾼다(EXPO_PUBLIC_DEV_NOW=HH:MM). 비우면 실제 시각.
-const DEV_NOW = process.env.EXPO_PUBLIC_DEV_NOW ?? "";
-
-/**
- * 데일리 체크 항목과 오늘 기록. 상태(done/skipped/missing/due/upcoming), 끼니 요약, 다가오는 일정·지난 항목 순서는 서버가 계산한다.
- * @returns {Promise<Daily>}
- */
-export const getDaily = () => apiFetch(`/care/daily${DEV_NOW ? `?at=${DEV_NOW}` : ""}`);
-
-/**
- * 항목 추가.
- * @param {{ name: string, mode: CareItem["mode"], unit: string, target: number | null, scheduled_time: string, meal_type: string | null }} body
- * @returns {Promise<CareItem>}
- */
-export const addItem = (body) => apiFetch("/care/items", { method: "POST", body });
-
-/** 소프트 삭제. @param {string} id */
-export const deleteItem = (id) => apiFetch(`/care/items/${id}`, { method: "DELETE" });
-
-/**
- * 오늘 기록(같은 날 다시 보내면 덮어쓴다). 항목의 기록 방식에 맞는 값 하나만 보낸다.
- * @param {string} id
- * @param {{ done?: boolean, number?: number, condition?: "good" | "normal" | "bad", skipped?: boolean }} value skipped: 값 없이 '건너뛰기'
- * @returns {Promise<Entry>}
- */
-export const putEntry = (id, value) => apiFetch(`/care/items/${id}/entry`, { method: "PUT", body: value });
-
-/** 오늘의 기록·건너뛰기를 지워 되돌린다. @param {string} id */
-export const deleteEntry = (id) => apiFetch(`/care/items/${id}/entry`, { method: "DELETE" });
 
 /**
  * 위치 공유(개인정보). 동의한 사람만 위치를 보낼 수 있고, 가족 구성원만 볼 수 있다.

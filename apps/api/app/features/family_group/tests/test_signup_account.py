@@ -175,7 +175,7 @@ def test_new_account_cannot_use_the_legacy_token_header(client):
     # 저장된 token 값은 아무에게도 알려주지 않지만, 혹시 알아내더라도 레거시 인증으로 들어올 수 없다
     r = client.get("/family-group/me", headers={"X-Gyeot-Token": row.token})
     assert r.status_code == 401 and r.json()["code"] == "token_invalid"
-    for path in ("/family-chat/messages", "/schedule/events", "/billing/expenses", "/care/records"):
+    for path in ("/family-chat/messages", "/schedule/events", "/billing/expenses"):
         assert client.get(path, headers={"X-Gyeot-Token": row.token}).status_code == 401
 
 
