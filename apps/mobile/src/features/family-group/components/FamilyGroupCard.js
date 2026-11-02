@@ -47,8 +47,8 @@ export default function FamilyGroupCard() {
         <Text style={styles.title}>아직 가족 그룹이 없어요</Text>
         <Text style={styles.sub}>가족을 만들거나, 받은 초대 코드로 참여해 보세요.</Text>
         <View style={styles.row}>
-          <Button label="가족 만들기" small onPress={() => router.push("/family-create")} />
-          <Button label="초대 코드로 참여" small variant="secondary" onPress={() => router.push("/family-join")} />
+          <Button label="가족 만들기" small icon="add-circle-outline" onPress={() => router.push("/family-create")} />
+          <Button label="초대 코드로 참여" small variant="secondary" icon="people-outline" onPress={() => router.push("/family-join")} />
         </View>
       </Card>
     );
