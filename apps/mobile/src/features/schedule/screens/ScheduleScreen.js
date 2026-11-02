@@ -66,7 +66,7 @@ export default function ScheduleScreen() {
   const candidates = (useServer ? server.list : MOCK_SUGGESTIONS).filter((suggestion) => !isAdded(suggestion));
   const addCard = candidates.length > 0 ? candidates[addCursor % candidates.length] : null;
   // 추가 카드 자리의 상태. 서버 추천은 불러오는 동안 "찾고 있어요", 비었으면 서버 상태에 따라
-  // 데이터 없음 🌱 / 새로 줄 게 없음 🌙 / 준비 중 ⏳(새로고침) / 오늘 추천은 여기까지(전부 확정, 호출 소진).
+  // 데이터 없음🌱 / 걸러짐 "생각중이에요…" / 준비 중⏳(새로고침) / 호출 소진인데 받은 추천 없음 "찾지 못했어요😢" / 오늘 추천은 여기까지(전부 확정, 호출 소진).
   const empty = useServer ? emptySlotView(server) : { kind: "message", text: SUGGESTIONS_DONE_TEXT, refresh: false };
   const addState = addCard ? "card" : empty.kind === "loading" ? "loading" : "message";
   // 서버 추천의 "나중에"는 서버에 기록하고, 예전 임시 제안은 화면 표시만 한다.

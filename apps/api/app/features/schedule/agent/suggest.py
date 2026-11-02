@@ -93,6 +93,7 @@ STATE_OK = "ok"  # 보여줄 추천이 있다
 STATE_EXHAUSTED = (
     "exhausted"  # 오늘 호출을 다 썼고 보여줄 것도 없다(전부 확정) — "오늘 추천은 여기까지"
 )
+STATE_SPENT_EMPTY = "spent_empty"  # 오늘 호출을 다 썼는데 오늘 받은 추천이 하나도 없다 — "일정을 찾지 못했어요" (마무리 인사를 하면 안 됨)
 STATE_NO_DATA = "no_data"  # 참고할 데이터가 하나도 없어 AI 를 부르지 않았다
 STATE_FILTERED = (
     "filtered"  # 데이터는 있는데 새로 만들 추천이 없다(이미 있는 것과 겹치거나 범위 밖)
@@ -207,8 +208,13 @@ def supply_slot(
         return Slot(pending, STATE_OK)
     later = _pick(made, SUGGESTION_DISMISSED, today)
 
+    def done() -> Slot:
+        # 오늘 보여 줄 수 있는 추천을 한 번이라도 받았으면(전부 확정) 마무리 인사, 한 번도 못 받았으면(날짜가 이미 지나 보여 줄 수 없게 된 것만 있는 경우도) 못 찾았다고 알린다
+        received = any(s.start_date >= today for s in made)
+        return Slot([], STATE_EXHAUSTED if received else STATE_SPENT_EMPTY, False)
+
     def spent() -> Slot:
-        return Slot(later, STATE_OK, False) if later else Slot([], STATE_EXHAUSTED, False)
+        return Slot(later, STATE_OK, False) if later else done()
 
     if ai_guard.calls_left(db, user_id, group_id, FEATURE) <= 0:
         return spent()
@@ -228,7 +234,7 @@ def supply_slot(
     if rows is None:
         return Slot([], STATE_NO_DATA)
     if ai_guard.calls_left(db, user_id, group_id, FEATURE) <= 0:
-        return Slot([], STATE_EXHAUSTED, False)
+        return done()
     return Slot([], STATE_FILTERED)
 
 

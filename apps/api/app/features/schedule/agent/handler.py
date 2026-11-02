@@ -22,8 +22,9 @@ FAMILY_NOTICE = (
 )
 NOT_READY = "이 요청은 아직 처리할 수 없어요"
 RECOMMEND_TEXT = "이런 일정은 어때요?"
-RECOMMEND_EXHAUSTED = "오늘 추천은 여기까지, 내일도 챙겨 드릴게요 💛"
+RECOMMEND_EXHAUSTED = "오늘 추천은 여기까지, 내일도 챙겨 드릴게요💛"
 RECOMMEND_NONE = "지금은 추천드릴 일정이 없어요"
+RECOMMEND_SPENT_EMPTY = "일정을 찾지 못했어요. 내일 다시 찾아볼게요😢"
 
 
 def suggestion_out(s) -> SuggestionOut:
@@ -203,15 +204,28 @@ def handle(
         ]
         if asked:  # 브리핑처럼 묻는 기간의 일정 옆에 내가 보낸 부탁도 함께 보여 준다
             cards.append(request_flow.list_card(asked, user_id, members))
-        text = result.reply or "해당하는 일정을 찾지 못했어요"
+        # 개인 채팅에서만 공동 일정 제목 뒤에 (공), 함께하기(부탁) 제목 뒤에 (함)을 붙인다(DB 값 기준, 가족 채팅은 공동 일정만 다뤄서 생략)
+        marked = result.reply
+        if request.channel == "personal":
+            tagged = [
+                (e.title, chat.SHARED_MARK if getattr(e, "shared", False) else "") for e in picked
+            ]
+            tagged += [(r["title"], chat.TOGETHER_MARK) for r in asked]
+            marked = chat.mark_titles(result.reply, tagged)
+        text = marked or "해당하는 일정을 찾지 못했어요"
         return AgentResponse(intent=result.intent, text=text, cards=cards)
     if result.intent == "recommend":
         # 채팅 호출(분류)은 이미 했으므로 여기서는 카드 한도(schedule_card)만 추가로 쓴다
-        items, exhausted = suggest.supply(db, user_id, group_id)
+        slot = suggest.supply_slot(db, user_id, group_id, raise_errors=True)
+        items = slot.items
         if items:
             text = result.reply or RECOMMEND_TEXT
+        elif slot.state == suggest.STATE_EXHAUSTED:
+            text = RECOMMEND_EXHAUSTED
+        elif slot.state == suggest.STATE_SPENT_EMPTY:
+            text = RECOMMEND_SPENT_EMPTY
         else:
-            text = RECOMMEND_EXHAUSTED if exhausted else RECOMMEND_NONE
+            text = RECOMMEND_NONE
         cards = [
             Card(
                 type="suggestion",

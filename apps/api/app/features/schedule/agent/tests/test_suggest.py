@@ -96,7 +96,8 @@ def test_supply_calls_llm_only_without_pending(ids, fake):
     assert len(fake.calls) == 1 and fake.calls[0]["model"] == suggest.prompts.SUGGEST_MODEL
     assert len({r.created_at for r in _rows(user_id)}) == 1  # 한 묶음 = 같은 시각
     again, _ = _supply(user_id, group_id)
-    assert again == first and len(fake.calls) == 1  # 대기가 있으면 호출 없이 그대로
+    # 새로고침마다 섞이므로 순서는 비교하지 않는다
+    assert sorted(again) == sorted(first) and len(fake.calls) == 1  # 대기가 있으면 호출 없이 그대로
 
 
 def test_three_batches_then_exhausted(ids, fake, monkeypatch):
@@ -252,6 +253,22 @@ def test_recommend_intent_returns_suggestion_cards(client, ids, monkeypatch, fak
     assert set(card["data"]) == {"id", "title", "kind", "date", "place"}
 
 
+def test_recommend_intent_says_not_found_when_calls_spent_without_any_suggestion(
+    client, ids, monkeypatch, fake
+):
+    _, _, headers, _ = ids
+    _limit(monkeypatch, 0)  # 추천 카드 호출을 다 쓴 상태인데 오늘 받은 추천은 하나도 없다
+    fake.data = {"intent": "recommend", "reply": "", "event_ids": []}
+    r = client.post(
+        "/schedule/agent", json={"text": "일정 추천해줘", "channel": "personal"}, headers=headers
+    )
+    body = r.json()
+    assert body["intent"] == "recommend" and body["cards"] == []
+    assert (
+        body["text"] == "일정을 찾지 못했어요. 내일 다시 찾아볼게요😢"
+    )  # 마무리 인사(💛)가 아니다
+
+
 # ---------- 추천 카드 슬롯: 상태별 동작 ----------
 def _slot(user_id, group_id):
     with SessionLocal() as db:
@@ -338,8 +355,42 @@ def test_filtered_result_counts_as_a_call(ids, fake, monkeypatch):
     _limit(monkeypatch, 2)
     fake.data = {"suggestions": [_item("범위 밖", 90)]}  # 날짜 범위 밖이라 전부 걸러진다
     assert _slot(user_id, group_id) == ([], "filtered", True)
-    assert _slot(user_id, group_id) == ([], "exhausted", False)  # 둘째 호출로 한도를 다 썼다
+    # 둘째 호출로 한도를 다 썼는데 오늘 받은 추천이 하나도 없으면 마무리 인사(exhausted)가 아니라 못 찾았다고 알린다
+    assert _slot(user_id, group_id) == ([], "spent_empty", False)
     assert len(fake.calls) == 2 and not _rows(user_id)
+
+
+def test_spent_with_only_past_dated_suggestions_counts_as_none_received(ids, fake, monkeypatch):
+    # 오늘 만든 추천이 있어도 날짜가 이미 지나 보여 줄 수 없게 됐으면 "받은 추천 없음"으로 본다(마무리 인사가 아니라 못 찾았다고 알림)
+    user_id, group_id, *_ = ids
+    _limit(monkeypatch, 1)
+    fake.data = {"suggestions": [_item("지난 일정", 1)]}
+    assert _slot(user_id, group_id) == (["지난 일정"], "ok", True)
+    _mark(user_id, "지난 일정", SUGGESTION_CONFIRMED)
+    with SessionLocal() as db:
+        for s in db.scalars(select(EventSuggestion).where(EventSuggestion.user_id == user_id)):
+            s.start_date = s.start_date - timedelta(days=30)
+        db.commit()
+    assert _slot(user_id, group_id) == ([], "spent_empty", False)
+
+
+def test_error_after_all_confirmed_shows_preparing_then_exhausted_when_spent(
+    ids, fake, monkeypatch
+):
+    # 한 번 성공해 받은 추천을 전부 확정한 뒤 호출이 계속 실패하면: 한도가 남은 동안은 준비 중, 다 쓰면 오늘은 여기까지
+    user_id, group_id, *_ = ids
+    _limit(monkeypatch, 3)
+    fake.data = {"suggestions": [_item("가", 2)]}
+    assert _slot(user_id, group_id) == (["가"], "ok", True)
+    _mark(user_id, "가", SUGGESTION_CONFIRMED)
+
+    def boom(*a, **kw):
+        raise llm.LLMUnavailable("실패")
+
+    monkeypatch.setattr(llm, "complete_json", boom)
+    assert _slot(user_id, group_id) == ([], "preparing", True)  # 둘째 호출 실패
+    assert _slot(user_id, group_id) == ([], "preparing", True)  # 셋째 호출 실패(마지막 한 번)
+    assert _slot(user_id, group_id) == ([], "exhausted", False)  # 한도를 다 썼으니 마무리 인사
 
 
 def test_error_shows_preparing_or_falls_back_to_later(ids, fake, monkeypatch):
@@ -373,7 +424,11 @@ def test_daily_limit_error_means_exhausted(ids, fake, monkeypatch):
     user_id, group_id, *_ = ids
     _limit(monkeypatch, 0)  # 가드는 한도로 막는데
     monkeypatch.setattr(ai_guard, "calls_left", lambda *a, **kw: 1)  # 남은 횟수 계산은 통과한 경우
-    assert _slot(user_id, group_id) == ([], "exhausted", False)
+    assert _slot(user_id, group_id) == (
+        [],
+        "spent_empty",
+        False,
+    )  # 오늘 받은 추천이 없으니 마무리 인사가 아니다
     assert not fake.calls
 
 

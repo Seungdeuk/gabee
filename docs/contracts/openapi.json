@@ -20539,7 +20539,7 @@
           "exhausted"
         ],
         "title": "SuggestionsOut",
-        "description": "오늘의 추천 슬롯. state: ok(보여줄 추천이 있음) / exhausted(오늘 추천은 여기까지) / no_data(참고할 데이터가 없음) /\nfiltered(데이터는 있는데 새로 만들 게 없음) / preparing(AI 호출 오류). can_refresh 는 새로고침이 의미 있는가.\nexhausted 는 state == \"exhausted\" 와 같다(예전 앱 호환)."
+        "description": "오늘의 추천 슬롯. state: ok(보여줄 추천이 있음) / exhausted(오늘 추천은 여기까지) / spent_empty(오늘 호출을 다 썼는데 받은 추천이 하나도 없음) /\nno_data(참고할 데이터가 없음) / filtered(데이터는 있는데 새로 만들 게 없음) / preparing(AI 호출 오류). can_refresh 는 새로고침이 의미 있는가.\nexhausted 는 state == \"exhausted\" 와 같다(예전 앱 호환)."
       },
       "SuggestionsRequest": {
         "properties": {
