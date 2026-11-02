@@ -11,8 +11,8 @@ export const KIND_META = {
 
 const FALLBACK_META = { label: "알림", icon: "notifications-outline", color: colors.textMuted };
 
-/** 칩 필터에 보이는 분류 순서. */
-export const KIND_ORDER = ["schedule", "billing", "care", "family_group", "ai_record"];
+/** 칩 필터에 보이는 분류 순서(전체 칩은 따로 있다). 가족·기록 알림은 "전체"에서만 보이게 칩을 두지 않는다. */
+export const KIND_ORDER = ["schedule", "billing", "care"];
 
 /**
  * 분류의 표시 정보. 모르는 분류(서버가 먼저 새로 만든 것)도 깨지지 않게 기본값을 돌려준다.
