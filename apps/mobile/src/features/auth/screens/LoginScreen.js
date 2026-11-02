@@ -67,19 +67,23 @@ export default function LoginScreen() {
       />
       <Notice tone="error" text={error} />
       <Button label={busy ? "로그인 중..." : "로그인"} onPress={submit} disabled={busy} testID="login-submit" />
+      <View style={styles.finds}>
+        <Text style={styles.link} onPress={() => router.push("/find-id")} accessibilityRole="link">
+          아이디 찾기
+        </Text>
+        <Text style={styles.dot}>·</Text>
+        <Text style={styles.link} onPress={() => router.push("/forgot-password")} accessibilityRole="link">
+          비밀번호 찾기
+        </Text>
+      </View>
       <SocialLogin
         onSession={async (res) => {
           const user = await signInWithSession(res);
           router.replace(user.email && !user.email_verified ? "/verify-email" : "/chat");
         }}
       />
-      <View style={styles.links}>
-        <Text style={styles.link} onPress={() => router.push("/forgot-password")} accessibilityRole="link">
-          비밀번호를 잊으셨나요?
-        </Text>
-        <Text style={styles.link} onPress={() => router.push("/find-id")} accessibilityRole="link">
-          아이디 찾기
-        </Text>
+      <View style={styles.signup}>
+        <Text style={styles.signupText}>계정이 없으신가요?</Text>
         <Text style={styles.link} onPress={() => router.replace("/signup")} accessibilityRole="link">
           회원가입
         </Text>
@@ -89,6 +93,9 @@ export default function LoginScreen() {
 }
 
 const styles = StyleSheet.create({
-  links: { flexDirection: "row", justifyContent: "space-between", paddingTop: 4 },
+  finds: { flexDirection: "row", justifyContent: "center", alignItems: "center", gap: 10, paddingVertical: 4 },
+  dot: { fontSize: 14, color: colors.textMuted },
+  signup: { flexDirection: "row", justifyContent: "center", alignItems: "center", gap: 8, paddingTop: 8 },
+  signupText: { fontSize: 14, color: colors.textMuted },
   link: { fontSize: 14, fontWeight: "600", color: colors.accent },
 });
