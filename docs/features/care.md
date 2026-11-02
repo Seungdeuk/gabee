@@ -19,6 +19,7 @@
 - **식단 기록** `GET·PUT·DELETE /care/meal-log`: 그날 아침·점심·저녁에 **무엇을 드셨는지** 남긴다. `PUT {date?, meal, menu, note?, source}`(`source`: `typed` 직접 입력 / `recommended` 추천 메뉴로 기록)는 같은 날·같은 끼니를 덮어쓰고, 그 끼니의 데일리 체크 항목을 **완료(예)로 맞춘다**(직전에 아니오·건너뛰기였어도). `GET ?days=7&end=`는 최신 날짜부터 날짜마다 아침·점심·저녁 칸(`log` 없으면 null)을 돌려주고 기간은 1~31일이다. `DELETE ?date=&meal=`은 기록만 지우고 데일리 체크는 그대로 둔다. 미래 날짜는 안 된다(`future_date`). 돌봄 대상은 그룹 단위라 가족 누구나 기록하고 모두 볼 수 있으며 기록한 사람 이름이 함께 나온다. 사진·칼로리·영양 정보는 다루지 않는다(후속). 식단 탭의 추천 카드에는 "이걸로 먹었어요" 버튼이 있다.
   - 요약 `GET /care/meal-log/summary?days=7&end=`: 최근 `days`일에 기록한 끼니 수(`logged`/`total`=days×3, 끼니별 `per_meal`)와 **최근 30일 끼니별 자주 먹은 메뉴 5개**(`frequent`, 많이 먹은 순 → 같으면 최근 → 가나다순; 덮어쓴 끼니는 한 번만 센다). 앱은 식단 기록 위에 "최근 7일 N/21끼 기록"을 보여 주고, 고른 끼니의 자주 먹은 메뉴를 칩으로 눌러 입력칸을 채운다.
 - **위치 공유(실제 GPS, 개인정보)**: 동의한 사람만 위치를 보내고 같은 가족 구성원만 본다.
+  - **기능 스위치 `CARE_LOCATION_ENABLED`(기본 꺼짐)**: 꺼져 있으면 `POST /care/locations`, `GET /care/locations/latest`, 동의 켜기(`PUT /care/location/consent` `consent=true`)가 403 `location_disabled`이고, 돌봄 에이전트는 스위치와 상관없이 위치 도구(`get_family_locations`)를 아예 주지 않고(2026-10-30 제거) 프롬프트가 "위치는 지금 사용할 수 없다"고 답하게 한다. **동의 철회(저장된 내 위치 삭제)와 동의 상태 조회는 꺼져 있어도 열려 있다.** 이미 저장된 위치는 자동으로 지우지 않는다(7일 보관 기간이 지나면 새 위치가 올 때 함께 지워지는데, 꺼 두면 새 위치가 오지 않아 남아 있다). 가입 때 받은 위치 동의 값은 그대로다. 앱은 따로 `LOCATION_ENABLED=false`로 위치 구역을 막는다.
   - 동의: 정본은 `users.location_consent_at`(없으면 미동의). 가입 API가 `location_consent`를 받고(`POST /family-group/users`), 이후 `GET·PUT /care/location/consent`로 바꾼다. 동의·철회 이력은 `location_consent_events`(좌표 없음)에 남는다. 두 경로 모두 `app/shared/location_consent.py` 한 함수를 쓴다.
   - `POST /care/locations`(최대 50개): 동의하지 않았으면 403 `consent_required`. 보관 기간(7일)을 넘었거나 5분 넘게 미래인 점은 버리고, 쓸 때 보관 기간이 지난 위치를 함께 지운다.
   - `GET /care/locations/latest`: 가족 구성원의 최신 위치. 동의하지 않은 사람은 좌표 없이 `sharing=false`.
@@ -29,7 +30,8 @@
 
 ### 앱 (`apps/mobile/src/features/care`)
 - `MealTab`/`MealLog`: 추천 메뉴("다른 메뉴"·"이걸로 먹었어요")와 식단 기록(끼니 칩·메뉴·메모, 최근 7일 날짜별 카드, 지우기).
-- `CareScreen`: 데일리 체크·추천·식단·위치 4구역(`components/*Tab.js`), 서버 호출은 `api.js`.
+- `CareScreen`(가계 탭을 합친 화면): **현황판**(오늘 체크 진행을 크게, `StatusBoard`; 끼니 상태 칸은 뺐다 — 아침·점심·저녁 식사는 기본 체크 항목으로 남아 "오늘 체크"에 센다; "기록하기"로 데일리 체크 입력을 펼침, 정산 요약·결제일 알림 포함) · **정산·용돈**(가계의 `MoneySection`: 정산/지출/용돈) · **공동구독**(가계의 `SubscriptionTab`: OTT·통신비) · **위치** 4구역. 가계 쪽 조각은 `features/billing/public.js`로만 가져온다. 추천·식단 탭은 구역에서 뺐고 컴포넌트(`RecommendTab`, `MealTab`, `MealLog`)와 앱의 추천·식단 호출 함수는 2026-10-30에 지웠다(서버 API는 그대로). 서버 호출은 `api.js`.
+- **위치 기능은 지금 꺼져 있다**(`location/enabled.js`의 `LOCATION_ENABLED=false`): 위치 구역은 "준비 중" 안내만 보이고, 백그라운드 위치 작업은 서버로 보내지 않으며, 돌봄 탭을 열면 이전에 켜 둔 백그라운드 위치 공유를 멈춘다. 서버의 위치 API와 에이전트의 `get_family_locations`는 그대로라서 업데이트하지 않은 앱은 아직 보낼 수 있다.
 - 항목의 예정 시각은 글자 입력이 아니라 **휠 시간 선택기**(`shared/components/TimePicker.js`: 오전/오후·시·분(5분 단위)을 세로로 돌려 고르고, 칸을 눌러도 선택)로 정한다. 새 의존성 없이 웹·앱에서 동작하며 목록에는 "오전 7:30 예정"처럼 표시한다.
 - 위치 탭: 내 위치 공유 스위치(동의·철회), "지금 내 위치 보내기", 가족 최신 위치 목록. 기기에서는 `expo-location` + `expo-task-manager`로 **백그라운드에서 약 15분마다 또는 200m 이동 시** 보내고(`features/care/location/`), 웹·Expo Go에서는 앱을 열었을 때만 보낸다. 앱 설정(`app.json`)에 `expo-location` 플러그인(백그라운드 위치)을 넣었다.
 - 누락은 "미기록 · 누락" 크림색 배지로 보이고, 건강 이상이 아니라는 안내 문구를 함께 둔다.
