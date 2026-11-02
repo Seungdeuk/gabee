@@ -8,7 +8,9 @@ import {
   EMPTY_QUESTION_HINT,
   LOCAL_ASSISTANT_ID,
   MENTION,
+  MENTION_EXAMPLES,
   makeNote,
+  mentionHintsVisible,
   mentionHistory,
   mergeNotes,
   parseMention,
@@ -101,6 +103,27 @@ test("개인용 답은 메시지 사이에 시간순으로 끼고, 원래 목록
   assert.equal(mergeNotes(messages, []), messages); // 항목이 없으면 같은 목록을 그대로 쓴다
   const late = makeNote({ id: "n2", state: "info", createdAt: "2026-10-27T04:00:00Z" });
   assert.deepEqual(mergeNotes(messages, [late]).map((m) => m.id), [1, 2, 3, "n2"]);
+});
+
+test("mentionHintsVisible: @ 입력 중이거나 질문이 비어 있을 때만 예시를 보인다", () => {
+  for (const t of ["@", "@가", "@가비", "@가비 ", "  @가비  ", " @ ", "@ㄱ", "@갑", "@각", "@깋", "@가ㅂ", "@가비\n", "@가비,", "@가비 \n"]) assert.equal(mentionHintsVisible(t), true, JSON.stringify(t));
+  for (const t of ["", "가비", "@가비 이번", "@가비 이번 달 지출", "@가비야", "@가비야 ", "안녕 @가비", "@나", "@가비가", "@깍", "@ㅂ", "＠가비", "＠", "@가비비"]) assert.equal(mentionHintsVisible(t), false, JSON.stringify(t));
+  for (const t of ["@", "@가비", "@가비 ", "@갑"]) assert.equal(mentionHintsVisible(t, true), false, t); // 1:1 방은 항상 숨김
+  assert.equal(mentionHintsVisible(undefined), false);
+});
+
+test("MENTION_EXAMPLES: 가비를 부르는 예시 문장", () => {
+  assert.equal(MENTION_EXAMPLES.length, 6);
+  assert.equal(new Set(MENTION_EXAMPLES.map((e) => e.key)).size, MENTION_EXAMPLES.length);
+  for (const e of MENTION_EXAMPLES) {
+    assert.ok(e.category.trim());
+    assert.ok(e.text.startsWith("@가비 "), e.text);
+    const p = parseMention(e.text);
+    assert.equal(p.mentioned, true);
+    assert.ok(p.question.length > 0, e.text);
+    assert.equal(mentionHintsVisible(e.text), false); // 채운 뒤에는 목록이 사라진다
+  }
+  assert.ok(EMPTY_QUESTION_HINT.includes(MENTION_EXAMPLES[0].text));
 });
 
 test("안내 문구", () => {

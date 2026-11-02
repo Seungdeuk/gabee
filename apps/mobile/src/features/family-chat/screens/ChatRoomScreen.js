@@ -581,6 +581,7 @@ export default function ChatRoomScreen() {
           onDismissPhotoError={() => chat.setPhotoError("")}
           replyTo={replyTo}
           onCancelReply={() => setReplyTo(null)}
+          direct={direct}
         />
       </>
     );
