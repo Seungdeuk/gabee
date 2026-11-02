@@ -3,7 +3,7 @@
 - 상태: 진행 중 (통합 완료, 공용 PostgreSQL 에서의 실제 시험은 아직)
 - 담당: knowledge(임베딩·벡터 저장·채팅) + 앱 통합. 전처리(ingest)는 별도 담당자 작업을 합쳤다.
 - 요구사항: docs/requirements/ai_assistant-ingest.md
-- 결정 기록: [docs/adr/0007-upload-ingest-chat-integration.md](../adr/0007-upload-ingest-chat-integration.md) (이유와 한계가 자세히 있다)
+- 결정 기록: [docs/adr/0010-upload-ingest-chat-integration.md](../adr/0010-upload-ingest-chat-integration.md) (이유와 한계가 자세히 있다)
 
 ## 한눈에 보기
 
@@ -117,7 +117,7 @@
 - 압축본: `doc-classifier.zip`(4,823,602바이트, SHA-256 `A3BB41B506657B79BF8EA157804762D727DD1BC9B59815A43736F71C89FFA82A`). 풀어서 `apps/api/data/models/doc-classifier/` 에 둔다(다른 곳이면 `DOC_CLASSIFIER_DIR`). `apps/api/data/` 는 `.gitignore` 라 깃에 올라가지 않는다.
 - 없거나 깨져도 서버는 죽지 않는다. 분류기를 건너뛰고 Jev(키가 있을 때) → "기타 문서 + 확인 필요" 순서로 간다.
 - 다시 학습하려면 `apps/api/scripts/train_doc_classifier.py`(개발용, scikit-learn 필요, 프로젝트 의존성에는 넣지 않았다)를 쓴다. 학습 데이터는 저장소에 없고 `--data` 로 넘긴다.
-- 한계: 새로 직접 쓴 독립 문서 30개에서 28개(93%)를 맞혔지만 작은 시험이라 실제 사용 점수는 아니다. 처음 보는 종류와 학습 글과 다른 모양은 "확인 필요"가 된다. 새 종류가 생기면 예시를 모아 다시 학습해야 한다(자료와 방법: ADR 0007 "정정과 개선"). 기존 qwen 이 만들던 장소·중요 칸(`fields`) 추출은 사라졌다(날짜·금액은 그대로 규칙이 한다).
+- 한계: 새로 직접 쓴 독립 문서 30개에서 28개(93%)를 맞혔지만 작은 시험이라 실제 사용 점수는 아니다. 처음 보는 종류와 학습 글과 다른 모양은 "확인 필요"가 된다. 새 종류가 생기면 예시를 모아 다시 학습해야 한다(자료와 방법: ADR 0010 "정정과 개선"). 기존 qwen 이 만들던 장소·중요 칸(`fields`) 추출은 사라졌다(날짜·금액은 그대로 규칙이 한다).
 
 ## 받아서 테스트하는 방법
 

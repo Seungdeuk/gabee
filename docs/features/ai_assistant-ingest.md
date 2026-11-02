@@ -58,7 +58,7 @@
 
 ### 로컬 분류기 (2026-10-26) — 아래 qwen 분류를 대체했다
 
-`ingest/doc_classifier.py`: 가린 글을 앱 임베딩(e5-small 파인튜닝)과 글자 TF-IDF 로 숫자로 바꿔 로지스틱 회귀로 종류 46개 중 고른다(numpy 만 사용, 문서당 약 16ms). 확률이 0.7 이상이면 `by="classifier"` 로 확정, 아니면 Jev(키가 있을 때), 그래도 모르면 "기타 문서 + 확인 필요". 장소·중요 칸(`fields`)은 만들지 않는다. 파일 전달·재학습은 `docs/features/ai_assistant-upload-chat.md` 의 "문서 분류기 전달", 결정과 시험 결과는 ADR 0007.
+`ingest/doc_classifier.py`: 가린 글을 앱 임베딩(e5-small 파인튜닝)과 글자 TF-IDF 로 숫자로 바꿔 로지스틱 회귀로 종류 46개 중 고른다(numpy 만 사용, 문서당 약 16ms). 확률이 0.7 이상이면 `by="classifier"` 로 확정, 아니면 Jev(키가 있을 때), 그래도 모르면 "기타 문서 + 확인 필요". 장소·중요 칸(`fields`)은 만들지 않는다. 파일 전달·재학습은 `docs/features/ai_assistant-upload-chat.md` 의 "문서 분류기 전달", 결정과 시험 결과는 ADR 0010.
 
 ### (폐지) 로컬 언어 모델 분류 — 2026-10-26 에 제거, 기록으로만 남긴다
 ```
@@ -76,7 +76,7 @@
 
 ### 찍힌 사람 찾기 — 삭제함 (2026-10-25)
 
-얼굴은 생체정보라서 이번 범위에서 뺐고, 코드(`faces.py`)와 테스트, 설정(`FACE_MODEL_DIR`·`FACE_ENABLED`)을 지웠다(사용자 결정, ADR 0007). 필요해지면 깃 이력에서 복구한다. `PreprocessResult.people` 도 없어졌다.
+얼굴은 생체정보라서 이번 범위에서 뺐고, 코드(`faces.py`)와 테스트, 설정(`FACE_MODEL_DIR`·`FACE_ENABLED`)을 지웠다(사용자 결정, ADR 0010). 필요해지면 깃 이력에서 복구한다. `PreprocessResult.people` 도 없어졌다.
 
 ### 사진 전처리 (2026-10-22, 측정해서 정한 방식)
 ```

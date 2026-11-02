@@ -1,4 +1,6 @@
-# 0007. 업로드 → 전처리 → knowledge → 채팅 연결: 가린 글자만 외부 모델로, 원본은 서버에서 직접
+# 0010. 업로드 → 전처리 → knowledge → 채팅 연결: 가린 글자만 외부 모델로, 원본은 서버에서 직접
+
+> 번호 변경(2026-10-30): 이 문서는 원래 0007 이었다. 같은 번호의 [0007-shared-db-auto-migration](0007-shared-db-auto-migration.md)(공용 DB 자동 배포)과 겹쳐서 0010 으로 옮겼다. 다른 문서에서 "ADR 0007" 이 업로드·전처리·분류기·얼굴 인식 제거를 가리키면 이 문서다.
 
 - 날짜: 2026-10-23
 - 상태: 로컬 통합 브랜치 `integration/ingest-knowledge` 에서 구현·시험함, 2026-10-26 부터 `feature/kang-user-description-classifier` 에서 이어 작업 (푸시 전)
