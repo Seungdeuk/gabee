@@ -9,7 +9,7 @@ import Button from "@/shared/components/Button";
 import IconButton from "@/shared/components/IconButton";
 import { colors, font, radius, spacing } from "@/theme";
 
-import { buildItems, canSend, lastId, photoSendErrorMessage, trimDraft, unreadCount } from "../chatUtils";
+import { buildItems, canSend, lastId, photoSendErrorMessage, trimDraft, unreadCount, unreadDividerId } from "../chatUtils";
 import { DIRECT_NOT_ALLOWED, MENTION, mergeNotes, parseMention } from "../mention";
 import AiPanel from "../components/AiPanel";
 import AssistantNote from "../components/AssistantNote";
@@ -34,6 +34,7 @@ import { memberName } from "../listUtils";
 import { fileSendErrorMessage } from "../fileUtils";
 import { pickChatDocument } from "../pickChatDocument";
 import { pickChatPhoto } from "../pickPhoto";
+import useReadBaseline from "../useReadBaseline";
 import useReadMarker from "../useReadMarker";
 
 const NEAR = 120; // 바닥/맨 위에서 이 정도 안이면 "근처"로 본다
@@ -42,6 +43,8 @@ const HIGHLIGHT_MS = 2000; // 검색 결과로 이동한 메시지를 강조해 
 const SETTLE_MS = 600; // 이동 직후 이 시간 동안은 위로 자동 불러오기를 막아 이동 위치가 밀리지 않게 한다
 const NO_MESSAGES = []; // 과거 창을 보는 동안 읽음 처리에 넘기는 빈 목록
 const LIST_READY_MAX_MS = 1500; // 처음 맨 아래로 자리 잡는 동안 목록을 숨기는 최대 시간(그 뒤에는 무조건 보인다)
+const DIVIDER_VIEW_POSITION = 0.05; // 입장 때 "여기까지 읽었습니다" 줄이 화면 위쪽에 오도록(0 이 맨 위)
+const DIVIDER_READY_MS = 350; // 구분선으로 이동한 뒤 목록을 보이기까지 기다리는 시간(첫 시도가 실패해도 재시도가 끝나도록)
 const END_SETTLE_MS = 150; // 맨 아래로 간 뒤 마지막 항목 높이가 확정되길 기다리는 시간
 
 /** 가족 전체방의 사진을 AI 비서의 가족 기록으로 올린다(사진 보기의 "가비 기록에 저장"). */
@@ -68,6 +71,11 @@ export default function ChatRoomScreen() {
   const initialFocus = parseFocusParam(params.focus);
   const info = useRoomInfo();
   const chat = useChatMessages({ me: info.me, enabled: info.status === "ready", roomId, initialFocus });
+  const base = useReadBaseline({ roomId, enabled: info.status === "ready" }); // 입장 시점의 읽음 위치(읽음이 올라가도 바뀌지 않는다)
+  const dividerId = useMemo(
+    () => (chat.focusing || initialFocus != null ? null : unreadDividerId(chat.messages, base.baseline, info.me?.id)),
+    [chat.focusing, chat.messages, initialFocus, base.baseline, info.me?.id],
+  );
   // 과거 창을 보는 동안은 읽음 위치를 올리지 않는다(보고 있지 않은 최신 메시지를 읽음 처리하면 안 된다)
   useReadMarker({ messages: chat.focusing ? NO_MESSAGES : chat.messages, myId: info.me?.id, enabled: info.status === "ready", roomId });
   const pins = useChatPins({ roomId, enabled: info.status === "ready", me: info.me }); // 고정 바는 과거(포커스) 모드에서도 유지된다
@@ -91,6 +99,10 @@ export default function ChatRoomScreen() {
   const pinSettleTimer = useRef(null); // 위로 불러오기 잠금 해제 타이머(같은 이유로 공유)
   const settling = useRef(initialFocus != null);
   const focusRetry = useRef(0);
+  const positioned = useRef(false); // 방에 처음 들어갈 때의 자리 잡기(구분선 또는 맨 아래)를 마쳤는지
+  const sentEarly = useRef(false); // 자리 잡기 전에 내가 보냈으면 구분선으로 가지 않고 맨 아래에 둔다(보낸 메시지가 가려지지 않게)
+  const dividerRetries = useRef(0); // 예약된 구분선 이동 재시도 수
+  const dividerJump = useRef(false); // 구분선으로 이동하는 중(스크롤 재시도의 위치 값을 정한다)
   const scrollPos = useRef({ y: 0, height: 0 }); // 웹은 maintainVisibleContentPosition 이 없어 이전 대화가 위에 붙을 때 위치를 직접 지킨다
   const olderRequested = useRef(false);
   const picking = useRef(false); // 사진 고르는 중 중복 누름 방지(ref)
@@ -163,6 +175,7 @@ export default function ChatRoomScreen() {
     setDraft("");
     setReplyTo(null);
     nearBottom.current = true;
+    sentEarly.current = true;
     const called = direct ? { mentioned: false, question: "" } : parseMention(text); // 1:1 방에서는 가비를 부를 수 없다(1:1 대화는 AI 로 보내지 않는다)
     chat.send(text, reply).then((started) => {
       if (!started) {
@@ -178,6 +191,7 @@ export default function ChatRoomScreen() {
   /** 공유 선택 카드에서 고른 줄을 내 이름의 일반 메시지로 보낸다(입력창 전송과 같은 chat.send). 보내기를 시작하지 못하면 던져서 카드가 오류를 보여 준다. */
   const shareToRoom = async (text) => {
     nearBottom.current = true;
+    sentEarly.current = true;
     if (!(await chat.send(text, null))) throw new Error("방에 보내지 못했어요. 잠시 후 다시 시도해 주세요.");
   };
 
@@ -191,6 +205,7 @@ export default function ChatRoomScreen() {
       const asset = await pickChatPhoto();
       if (!asset) return;
       nearBottom.current = true;
+      sentEarly.current = true;
       if (await chat.sendImage(asset)) scrollToEnd(true);
     } catch (e) {
       chat.setPhotoError(photoSendErrorMessage(e));
@@ -210,6 +225,7 @@ export default function ChatRoomScreen() {
       const asset = await pickChatDocument();
       if (!asset) return;
       nearBottom.current = true;
+      sentEarly.current = true;
       if (await chat.sendDocument(asset)) scrollToEnd(true);
     } catch (e) {
       chat.setPhotoError(fileSendErrorMessage(e));
@@ -245,6 +261,43 @@ export default function ChatRoomScreen() {
     if (newest > newestId.current && newestId.current > 0 && !nearBottom.current) setHasNew(true);
     newestId.current = Math.max(newestId.current, newest);
   }, [chat.messages]);
+
+  // 방에 처음 들어갈 때: 읽음 위치(baseline)와 첫 메시지가 모두 준비되면 구분선으로, 구분선이 없으면 맨 아래로 자리 잡은 뒤 목록을 보인다
+  useEffect(() => {
+    if (positioned.current || initialFocus != null) return;
+    if (chat.status === "loading" || base.status === "pending") return;
+    positioned.current = true;
+    const index = dividerId != null && !chat.focusing && !sentEarly.current ? itemsRef.current.findIndex((it) => it.type === "unread") : -1;
+    if (index < 0) {
+      if (!nearBottom.current || chat.focusing) return;
+      scrollToEnd(false);
+      clearTimeout(endTimer.current);
+      endTimer.current = setTimeout(() => {
+        if (nearBottom.current && !chat.focusing) scrollToEnd(false);
+        setListReady(true);
+      }, END_SETTLE_MS);
+      return;
+    }
+    nearBottom.current = false; // 맨 아래로 따라가는 스크롤이 구분선 위치를 덮어쓰지 않게(바닥 근처로 오면 onScroll 이 되돌린다)
+    settling.current = true;
+    dividerJump.current = true;
+    focusRetry.current = 0;
+    setTimeout(() => listRef.current?.scrollToIndex({ index, viewPosition: DIVIDER_VIEW_POSITION, animated: false }), 0);
+    // 이동이 끝나면(재시도가 모두 끝난 뒤) 목록을 보이고 위로 불러오기 잠금과 구분선 모드를 푼다
+    const finish = () => {
+      if (dividerRetries.current > 0) {
+        setTimeout(finish, 60);
+        return;
+      }
+      dividerJump.current = false;
+      setListReady(true);
+      clearTimeout(pinSettleTimer.current);
+      pinSettleTimer.current = setTimeout(() => {
+        settling.current = false;
+      }, SETTLE_MS);
+    };
+    setTimeout(finish, DIVIDER_READY_MS);
+  }, [chat.status, chat.focusing, base.status, dividerId, initialFocus, scrollToEnd]);
 
   useEffect(() => {
     if (chat.status === "loading" || listReady) return undefined;
@@ -298,7 +351,12 @@ export default function ChatRoomScreen() {
     focusRetry.current += 1;
     if (focusRetry.current > 4) return;
     listRef.current?.scrollToOffset({ offset: Math.max(0, averageItemLength * index), animated: false });
-    setTimeout(() => listRef.current?.scrollToIndex({ index, viewPosition: 0.35, animated: false }), 120);
+    const viewPosition = dividerJump.current ? DIVIDER_VIEW_POSITION : 0.35;
+    if (dividerJump.current) dividerRetries.current += 1;
+    setTimeout(() => {
+      if (dividerJump.current) dividerRetries.current = Math.max(0, dividerRetries.current - 1);
+      listRef.current?.scrollToIndex({ index, viewPosition, animated: false });
+    }, 120);
   }, []);
 
   const closeSearch = () => {
@@ -406,7 +464,7 @@ export default function ChatRoomScreen() {
     scrollToEnd(true);
   };
 
-  const items = buildItems(mergeNotes(chat.messages, mention.notes)); // 개인용 가비 답은 내 화면에만 시간순으로 끼운다(읽음·새 메시지 계산은 chat.messages 그대로)
+  const items = buildItems(mergeNotes(chat.messages, mention.notes), { dividerBeforeId: dividerId }); // 개인용 가비 답은 내 화면에만 시간순으로 끼운다(읽음·새 메시지 계산은 chat.messages 그대로)
   itemsRef.current = items;
   const members = info.room?.members?.length ?? 0;
   const peer = direct ? info.room?.members?.find((m) => m.id === peerId) : null;
@@ -491,7 +549,13 @@ export default function ChatRoomScreen() {
           data={items}
           keyExtractor={(it) => it.key}
           renderItem={({ item }) =>
-            item.type === "day" ? (
+            item.type === "unread" ? (
+              <View style={styles.unreadWrap} accessible accessibilityRole="header" accessibilityLabel="여기까지 읽었습니다">
+                <View style={styles.unreadLine} />
+                <Text style={styles.unreadText}>여기까지 읽었습니다</Text>
+                <View style={styles.unreadLine} />
+              </View>
+            ) : item.type === "day" ? (
               <View style={styles.dayWrap}>
                 <Text style={styles.day} accessibilityRole="header">
                   {item.label}
@@ -537,7 +601,7 @@ export default function ChatRoomScreen() {
             if (Platform.OS === "web" && olderRequested.current && grew > 0 && scrollPos.current.height > 0 && !nearBottom.current) {
               olderRequested.current = false;
               listRef.current?.scrollToOffset({ offset: scrollPos.current.y + grew, animated: false });
-            } else if (nearBottom.current && !chat.focusing) {
+            } else if (nearBottom.current && !chat.focusing && (positioned.current || initialFocus != null)) {
               scrollToEnd(false);
               // 목록은 아직 그려지지 않았거나 높이가 바뀌는 마지막 항목(전송 중 → 보낸 시각·읽음 수) 때문에 한 번에 끝까지 못 갈 수 있어, 잠시 뒤 한 번 더 맞춘다
               clearTimeout(endTimer.current);
@@ -642,6 +706,9 @@ const styles = StyleSheet.create({
   listContent: { paddingVertical: spacing.md },
   older: { paddingVertical: spacing.md },
   dayWrap: { alignItems: "center", paddingVertical: spacing.md },
+  unreadWrap: { flexDirection: "row", alignItems: "center", gap: spacing.sm, paddingHorizontal: spacing.lg, paddingVertical: spacing.md },
+  unreadLine: { flex: 1, height: StyleSheet.hairlineWidth, backgroundColor: colors.divider },
+  unreadText: { ...font.caption, color: colors.textSub },
   day: { ...font.tab, color: colors.textMuted, backgroundColor: colors.surface, paddingHorizontal: spacing.md, paddingVertical: spacing.xs, borderRadius: radius.pill, overflow: "hidden" },
   banner: { flexDirection: "row", alignItems: "center", gap: spacing.sm, paddingHorizontal: spacing.lg, paddingVertical: spacing.sm, backgroundColor: colors.dangerSoft },
   bannerText: { flex: 1, ...font.caption, color: colors.danger },

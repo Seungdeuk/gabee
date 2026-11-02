@@ -148,20 +148,49 @@ export function shouldShowTime(cur, next) {
 }
 
 /**
- * FlatList 에 넣을 줄 목록: 날짜 구분선과 메시지.
- * @param {object[]} messages 오름차순
- * @returns {({ type: "day", key: string, label: string } | { type: "message", key: string, message: object, showName: boolean, showTime: boolean })[]}
+ * "여기까지 읽었습니다" 구분선을 놓을 자리: 구분선 바로 아래에 올 서버 메시지의 id. 없으면 null.
+ * 기준(lastRead) 보다 id 가 큰 첫 서버 메시지 앞이다(임시·실패·가비 개인 답 제외, 삭제된 메시지는 센다).
+ * 그 이후 서버 메시지 중 내가 보낸 것이 아닌 것이 하나도 없거나, 안 읽은 수가 0 이거나, 기준이 없으면 null.
+ * 기준이 불러온 목록보다 오래돼 목록 전체가 안 읽은 쪽이면 가장 오래된 메시지가 첫 안 읽은 메시지라 맨 위에 놓인다.
+ * @param {object[]} messages 오름차순(chat.messages)
+ * @param {{ lastRead: number, unread: number } | null | undefined} baseline 입장 시점의 읽음 위치와 안 읽은 수
+ * @param {string | null | undefined} myId
+ * @returns {number | null}
  */
-export function buildItems(messages) {
+export function unreadDividerId(messages, baseline, myId) {
+  if (!baseline || !(baseline.unread > 0)) return null;
+  const lastRead = Number(baseline.lastRead) || 0;
+  const server = messages.filter((m) => !m.clientId && !m.localNote && !isTemp(m) && Number.isFinite(serverId(m)));
+  const first = server.findIndex((m) => serverId(m) > lastRead);
+  if (first < 0) return null;
+  if (!server.slice(first).some((m) => !myId || m.user_id !== myId)) return null;
+  return serverId(server[first]);
+}
+
+/**
+ * FlatList 에 넣을 줄 목록: 날짜 구분선, (있으면) 안 읽음 구분선, 메시지.
+ * 안 읽음 구분선은 dividerBeforeId 메시지 바로 앞에 끼우므로 그 메시지가 날짜의 첫 줄이면 날짜 줄 다음에 온다.
+ * @param {object[]} messages 오름차순
+ * @param {{ dividerBeforeId?: number | null }} [options] dividerBeforeId: unreadDividerId 의 결과
+ * @returns {({ type: "day", key: string, label: string } | { type: "unread", key: string } | { type: "message", key: string, message: object, showName: boolean, showTime: boolean })[]}
+ */
+export function buildItems(messages, { dividerBeforeId = null } = {}) {
   const items = [];
+  let dividerDone = dividerBeforeId == null;
   for (const g of groupByDay(messages)) {
     items.push({ type: "day", key: `day-${g.key}`, label: g.label });
     g.messages.forEach((message, i) => {
+      let justAfterDivider = false;
+      if (!dividerDone && !message.clientId && !message.localNote && serverId(message) === dividerBeforeId) {
+        items.push({ type: "unread", key: "unread-divider" });
+        dividerDone = true;
+        justAfterDivider = true;
+      }
       items.push({
         type: "message",
         key: `m-${message.clientId ?? message.id}`,
         message,
-        showName: shouldShowName(g.messages[i - 1], message),
+        showName: justAfterDivider || shouldShowName(g.messages[i - 1], message), // 구분선 바로 아래 메시지는 이름을 다시 보인다
         showTime: shouldShowTime(message, g.messages[i + 1]),
       });
     });
