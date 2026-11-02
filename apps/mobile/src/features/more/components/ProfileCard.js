@@ -37,9 +37,9 @@ export default function ProfileCard({ user, status, displayName, photoUrl, group
   }
   const name = displayName || user?.name || "";
   return (
-    <Card tone="white" testID="profile-card">
+    <Card tone="white" testID="profile-card" style={styles.compact}>
       <View style={styles.row}>
-        <UserAvatar name={name || "?"} userId={user?.id} photoUrl={photoUrl ?? user?.photo_url} size={64} />
+        <UserAvatar name={name || "?"} userId={user?.id} photoUrl={photoUrl ?? user?.photo_url} size={48} />
         <View style={styles.info}>
           <Text style={styles.name}>{name}</Text>
           <Text style={styles.sub}>{profileSubtitle(groupName, roleText)}</Text>
@@ -63,13 +63,14 @@ export default function ProfileCard({ user, status, displayName, photoUrl, group
 
 const styles = StyleSheet.create({
   title: { ...font.cardTitle, color: colors.text },
-  name: { ...font.section, color: colors.text },
+  name: { ...font.cardTitle, color: colors.text },
   sub: { ...font.caption, color: colors.textMuted },
-  row: { flexDirection: "row", alignItems: "center", gap: spacing.lg },
-  info: { flex: 1, gap: spacing.xs },
+  compact: { paddingVertical: spacing.md, paddingHorizontal: spacing.lg },
+  row: { flexDirection: "row", alignItems: "center", gap: spacing.md },
+  info: { flex: 1, gap: 2 },
   actions: { flexDirection: "row", gap: spacing.sm },
   edit: { flexDirection: "row", alignItems: "center", gap: spacing.xs, alignSelf: "flex-start" },
   editText: { ...font.caption, color: colors.textMuted },
   pressed: { opacity: 0.7 },
-  placeholder: { minHeight: 96 },
+  placeholder: { minHeight: 72 },
 });
