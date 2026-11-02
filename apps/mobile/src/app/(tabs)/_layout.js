@@ -16,7 +16,8 @@ const tabs = [
   { name: "chat", title: "AI 채팅", icon: "chatbubble-ellipses-outline" },
   { name: "family-chat", title: "소통", icon: "people-outline" },
   { name: "schedule", title: "일정", icon: "calendar-outline" },
-  { name: "care", title: "돌봄", icon: "heart-outline" },
+  // 라우트 이름(care)은 그대로 두고 탭 이름만 지갑으로 바꾼다(딥링크·기존 참조를 건드리지 않기 위해)
+  { name: "care", title: "지갑", icon: "wallet-outline" },
 ];
 
 export default function TabLayout() {
