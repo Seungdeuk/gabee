@@ -15,7 +15,7 @@ export default function JoinFamilyPrompt() {
   return (
     <View style={styles.row}>
       <Button label="가족 만들기" small icon="add-circle-outline" onPress={() => router.push("/family-create")} testID="home-family-create" />
-      <Button label="가족 코드로 참여" small variant="secondary" icon="people-outline" onPress={() => router.push("/family-join")} testID="home-family-join" />
+      <Button label="초대 코드로 참여" small variant="secondary" icon="people-outline" onPress={() => router.push("/family-join")} testID="home-family-join" />
     </View>
   );
 }

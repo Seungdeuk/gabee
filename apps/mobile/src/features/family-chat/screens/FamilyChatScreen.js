@@ -219,7 +219,7 @@ export default function FamilyChatScreen() {
           {state.status === "loading" ? (
             <Skeleton />
           ) : state.status === "none" ? (
-            <EmptyChats onCreate={() => router.push("/family")} onJoin={() => router.push("/family")} />
+            <EmptyChats onCreate={() => router.push("/family-create")} onJoin={() => router.push("/family-join")} />
           ) : state.status === "error" ? (
             <View style={styles.banner} accessibilityRole="alert">
               <Text style={styles.bannerText}>{state.error}</Text>

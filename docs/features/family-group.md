@@ -116,5 +116,5 @@
 - 공용 DB: 회원가입은 스키마 변경이 없고 `b6931fc30c66` 이상이면 동작한다(공용 DB 는 `6304cb91e46a` 로 확인됨).
 - PR 4-C: Google/Kakao 소셜 로그인 연동 API.
 - PR 4-E: 가족 관계·표시 이름·구성원별 별명 지정 API, owner/admin 권한 관리 API.
-- 홈(AI 채팅) 인사말 아래 "가족 만들기"(`/family-create`)·"가족 코드로 참여"(`/family-join`) 버튼 둘(2026-11): 가족 그룹도 승인 대기 요청도 없을 때만 보인다(`JoinFamilyPrompt`, 판단은 `joinPrompt.js`). AI 화면은 `emptyAction` 자리만 두고 홈 라우트(`(tabs)/chat.js`)에서 조립한다. 앱만 바뀌고 서버는 그대로.
+- 홈(AI 채팅) 인사말 아래 "가족 만들기"(`/family-create`)·"초대 코드로 참여"(`/family-join`) 버튼 둘(2026-11): 가족 그룹도 승인 대기 요청도 없을 때만 보인다(`JoinFamilyPrompt`, 판단은 `joinPrompt.js`). AI 화면은 `emptyAction` 자리만 두고 홈 라우트(`(tabs)/chat.js`)에서 조립한다. 앱만 바뀌고 서버는 그대로.
 - PR 4-F: 모바일 화면 — 로그인·회원가입·이메일 인증·비밀번호 재설정은 구현(docs/features/mobile-auth.md). 남은 것: 소셜 연동, 초대 승인, 가족 프로필.
