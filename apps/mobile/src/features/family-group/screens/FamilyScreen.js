@@ -90,8 +90,8 @@ export default function FamilyScreen() {
         {family.request?.status === "rejected" ? (
           <Notice tone="error" text={`${family.request.group_name} 가입 요청이 거절됐어요. 새 초대 코드로 다시 요청할 수 있어요`} />
         ) : null}
-        <Button label="가족 만들기" onPress={() => router.push("/family-create")} testID="family-new" />
-        <Button label="초대 코드로 참여" variant="secondary" onPress={() => router.push("/family-join")} testID="family-join" />
+        <Button label="가족 만들기" icon="add-circle-outline" onPress={() => router.push("/family-create")} testID="family-new" />
+        <Button label="초대 코드로 참여" variant="secondary" icon="people-outline" onPress={() => router.push("/family-join")} testID="family-join" />
       </FamilyFrame>
     );
   }
