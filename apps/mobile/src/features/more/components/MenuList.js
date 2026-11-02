@@ -20,7 +20,7 @@ export default function MenuList({ items, onPressItem }) {
           style={[styles.row, index > 0 ? styles.divider : null, item.soon ? styles.soon : null]}
           onPress={() => onPressItem(item)}
           accessibilityRole="button"
-          accessibilityLabel={`${item.title}, ${item.subtitle}`}
+          accessibilityLabel={[item.title, item.subtitle, item.badge].filter(Boolean).join(", ")}
           accessibilityHint={item.soon ? "준비 중이에요" : undefined}
         >
           <View style={styles.iconBox}>

@@ -4,7 +4,10 @@ import AccountCard from "@/shared/auth/AccountCard";
 import IconButton from "@/shared/components/IconButton";
 import Screen from "@/shared/components/Screen";
 
-/** 계정 및 보안: 이메일 인증, 소셜 계정 연결, 로그인·로그아웃은 공통 AccountCard 가 맡는다. */
+/**
+ * 계정 및 보안: 이메일 인증, 소셜 계정 연결, 로그인·로그아웃은 공통 AccountCard 가 맡는다.
+ * @returns {import("react").ReactElement}
+ */
 export default function AccountSecurityScreen() {
   const router = useRouter();
   return (

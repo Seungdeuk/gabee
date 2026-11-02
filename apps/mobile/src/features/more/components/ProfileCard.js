@@ -10,10 +10,10 @@ import { profileSubtitle } from "../menuItems";
 
 /**
  * 마이 페이지 맨 위 프로필 카드: 로그인했으면 이름·가족/역할·내 정보 수정, 아니면 안내.
- * @param {{ user?: { id?: string, name?: string, photo_url?: string | null } | null, status: string, groupName?: string | null, roleText?: string | null, onEdit?: () => void, onLogin?: () => void }} props
+ * @param {{ user?: { id?: string, name?: string, photo_url?: string | null } | null, status: string, displayName?: string | null, photoUrl?: string | null, groupName?: string | null, roleText?: string | null, onEdit?: () => void, onLogin?: () => void }} props
  * @returns {import("react").ReactElement | null}
  */
-export default function ProfileCard({ user, status, groupName, roleText, onEdit, onLogin }) {
+export default function ProfileCard({ user, status, displayName, photoUrl, groupName, roleText, onEdit, onLogin }) {
   if (status === "loading") return null;
   if (status === "unreachable") {
     return (
@@ -33,23 +33,26 @@ export default function ProfileCard({ user, status, groupName, roleText, onEdit,
       </Card>
     );
   }
+  const name = displayName || user?.name || "";
   return (
     <Card tone="white" testID="profile-card">
       <View style={styles.row}>
-        <UserAvatar name={user?.name ?? "?"} userId={user?.id} photoUrl={user?.photo_url} size={64} />
+        <UserAvatar name={name || "?"} userId={user?.id} photoUrl={photoUrl ?? user?.photo_url} size={64} />
         <View style={styles.info}>
-          <Text style={styles.name}>{user?.name}</Text>
+          <Text style={styles.name}>{name}</Text>
           <Text style={styles.sub}>{profileSubtitle(groupName, roleText)}</Text>
-          <Pressable
-            onPress={onEdit}
-            accessibilityRole="button"
-            accessibilityLabel="내 정보 수정"
-            hitSlop={spacing.sm}
-            style={({ pressed }) => [styles.edit, pressed && styles.pressed]}
-          >
-            <Text style={styles.editText}>내 정보 수정</Text>
-            <Ionicons name="chevron-forward" size={14} color={colors.textMuted} />
-          </Pressable>
+          {onEdit ? (
+            <Pressable
+              onPress={onEdit}
+              accessibilityRole="button"
+              accessibilityLabel="내 정보 수정"
+              hitSlop={spacing.sm}
+              style={({ pressed }) => [styles.edit, pressed && styles.pressed]}
+            >
+              <Text style={styles.editText}>내 정보 수정</Text>
+              <Ionicons name="chevron-forward" size={14} color={colors.textMuted} />
+            </Pressable>
+          ) : null}
         </View>
       </View>
     </Card>
