@@ -7,7 +7,6 @@ import { needsTesterConsent } from "@/features/consent/consentState";
 import useTotalUnread from "@/features/family-chat/useTotalUnread";
 import { unreadBadgeText } from "@/features/family-chat/listUtils";
 import { useAuth } from "@/shared/auth/AuthProvider";
-import SoftBackdrop from "@/shared/components/SoftBackdrop";
 import { colors, font, fonts } from "@/theme";
 
 // 하단 탭 5개(가계는 돌봄 탭에 합쳤고, 마지막 탭은 마이 페이지). 마이 페이지(계정·가족 그룹·앱 관리)가 마지막 탭이고, 각 화면 위 설정 버튼도 이 탭으로 온다.
@@ -30,52 +29,46 @@ export default function TabLayout() {
   // 로그인한 회원이 현재 동의서에 동의하지 않았으면 먼저 동의 화면을 보인다
   if (status === "authenticated" && needsTesterConsent(user)) return <Redirect href="/tester-consent" />;
   return (
-    // 모든 탭 화면 뒤에 같은 그라데이션 배경을 한 번만 깔고, 각 화면과 탭 바의 바탕은 투명하게 둔다
-    <View style={styles.root}>
-      <SoftBackdrop />
-      <Tabs
-        screenOptions={{
-          headerShown: false,
-          sceneStyle: { backgroundColor: "transparent" },
-          tabBarActiveTintColor: colors.text,
-          tabBarInactiveTintColor: colors.textMuted,
-          tabBarStyle: {
-            backgroundColor: "transparent",
-            borderTopWidth: 0,
-            elevation: 0,
-            paddingTop: 6,
-            height: TAB_CONTENT_HEIGHT + insets.bottom,
-            paddingBottom: insets.bottom + 6,
-          },
-        }}
-      >
-        {tabs.map(({ name, title, icon }) => (
-          <Tabs.Screen
-            key={name}
-            name={name}
-            options={{
-              title,
-              tabBarBadge: name === "family-chat" && unread > 0 ? unreadBadgeText(unread) : undefined,
-              tabBarBadgeStyle: styles.badge,
-              tabBarLabel: ({ focused, color }) => (
-                <Text style={[styles.label, { color }, focused && styles.labelActive]}>{title}</Text>
-              ),
-              // 선택된 탭은 아이콘 뒤에 옅은 꿀색 알약이 깔린다
-              tabBarIcon: ({ focused, color }) => (
-                <View style={[styles.pill, focused && styles.pillActive]}>
-                  <Ionicons name={icon} size={22} color={color} />
-                </View>
-              ),
-            }}
-          />
-        ))}
-      </Tabs>
-    </View>
+    <Tabs
+      screenOptions={{
+        headerShown: false,
+        tabBarActiveTintColor: colors.text,
+        tabBarInactiveTintColor: colors.textMuted,
+        tabBarStyle: {
+          backgroundColor: colors.background,
+          borderTopWidth: 0,
+          elevation: 0,
+          paddingTop: 6,
+          height: TAB_CONTENT_HEIGHT + insets.bottom,
+          paddingBottom: insets.bottom + 6,
+        },
+      }}
+    >
+      {tabs.map(({ name, title, icon }) => (
+        <Tabs.Screen
+          key={name}
+          name={name}
+          options={{
+            title,
+            tabBarBadge: name === "family-chat" && unread > 0 ? unreadBadgeText(unread) : undefined,
+            tabBarBadgeStyle: styles.badge,
+            tabBarLabel: ({ focused, color }) => (
+              <Text style={[styles.label, { color }, focused && styles.labelActive]}>{title}</Text>
+            ),
+            // 선택된 탭은 아이콘 뒤에 옅은 꿀색 알약이 깔린다
+            tabBarIcon: ({ focused, color }) => (
+              <View style={[styles.pill, focused && styles.pillActive]}>
+                <Ionicons name={icon} size={22} color={color} />
+              </View>
+            ),
+          }}
+        />
+      ))}
+    </Tabs>
   );
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: colors.background },
   // 선택돼도 글자 높이·간격이 변하지 않게, 굵기는 fontWeight 가 아니라 굵은 글꼴로 바꾸고 줄 높이를 고정한다
   label: { ...font.tab, lineHeight: 14, includeFontPadding: false },
   labelActive: { fontFamily: fonts.bold },

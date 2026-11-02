@@ -5,6 +5,7 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { isApiConfigured } from "@/shared/api/client";
+import SoftBackdrop from "@/shared/components/SoftBackdrop";
 import { SETTINGS_EDGE_GAP } from "@/shared/components/SettingsButton";
 import { colors, font, radius, spacing } from "@/theme";
 
@@ -118,6 +119,7 @@ export default function ScheduleScreen() {
 
   return (
     <SafeAreaView style={styles.safe} edges={["top"]}>
+      <SoftBackdrop />
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         <View style={styles.body}>
           <View style={styles.topSection}>
@@ -237,7 +239,7 @@ export default function ScheduleScreen() {
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1 },
+  safe: { flex: 1, backgroundColor: colors.background },
   content: { paddingBottom: spacing.xxl },
   body: { paddingHorizontal: spacing.xxl, paddingTop: spacing.xl, gap: 14 },
   section: { gap: 4 },

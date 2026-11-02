@@ -5,6 +5,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 
 import Button from "@/shared/components/Button";
 import SectionTitle from "@/shared/components/SectionTitle";
+import SoftBackdrop from "@/shared/components/SoftBackdrop";
 import { colors, font, radius, spacing } from "@/theme";
 
 import { getRoomInfo, listRooms, openDirectRoom, setRoomMuted } from "../api";
@@ -172,6 +173,7 @@ export default function FamilyChatScreen() {
 
   return (
     <SafeAreaView style={styles.safe} edges={["top"]}>
+      <SoftBackdrop />
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         <ChatListHeader
           searching={searching}
@@ -230,7 +232,7 @@ export default function FamilyChatScreen() {
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1 },
+  safe: { flex: 1, backgroundColor: colors.background },
   content: { paddingHorizontal: spacing.xl, paddingTop: spacing.xl, paddingBottom: spacing.xxl, gap: spacing.xl },
   skeletons: { gap: spacing.sm },
   skRow: { minHeight: 72, flexDirection: "row", alignItems: "center", gap: spacing.md, paddingHorizontal: spacing.sm },
