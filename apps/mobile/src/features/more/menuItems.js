@@ -8,7 +8,7 @@ export const SOON_MESSAGE = "준비 중이에요";
  */
 export const SHORTCUTS = [
   { key: "report", icon: "stats-chart-outline", title: "AI 리포트", subtitle: "주간 가족 요약", soon: true },
-  { key: "notify", icon: "notifications-outline", title: "알림 설정", subtitle: "알림함 · 가족 소식", route: "/notifications" },
+  { key: "settings", icon: "settings-outline", title: "설정", subtitle: "앱 · 알림 설정", soon: true },
   { key: "subscription", icon: "diamond-outline", title: "구독 관리", subtitle: "요금제 · 혜택", soon: true },
   { key: "ranking", icon: "trophy-outline", title: "가족 랭킹", subtitle: "가족 활동 순위", soon: true },
 ];
