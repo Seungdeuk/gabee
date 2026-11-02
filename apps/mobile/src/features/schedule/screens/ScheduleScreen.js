@@ -1,11 +1,11 @@
-import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { useRef, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { isApiConfigured } from "@/shared/api/client";
-import SettingsButton, { SETTINGS_EDGE_GAP } from "@/shared/components/SettingsButton";
+import IconButton from "@/shared/components/IconButton";
+import SettingsButton,{ SETTINGS_EDGE_GAP } from "@/shared/components/SettingsButton";
 import { colors, font, radius, spacing } from "@/theme";
 
 import DaySection from "../components/DaySection";
@@ -128,14 +128,7 @@ export default function ScheduleScreen() {
                 </Text>
               </View>
               <View style={styles.actions}>
-                <Pressable
-                  onPress={() => openCalendar(selected)}
-                  accessibilityRole="button"
-                  accessibilityLabel="달력 열기"
-                  style={styles.plus}
-                >
-                  <Ionicons name="add" size={28} color={colors.text} />
-                </Pressable>
+                <IconButton name="calendar-outline" size={24} label="달력 열기" onPress={() => openCalendar(selected)} />
                 <SettingsButton />
               </View>
             </View>
@@ -248,14 +241,6 @@ const styles = StyleSheet.create({
   title: { ...font.page, color: colors.text },
   // 48 높이 묶음의 중심(44)을 상단바 가운데(28)로 올리고, 오른쪽 끝에서 6 만큼 띄운다
   actions: { flexDirection: "row", alignItems: "center", marginRight: SETTINGS_EDGE_GAP - spacing.xxl, transform: [{ translateY: -16 }] },
-  plus: {
-    width: 48,
-    height: 48,
-    borderRadius: radius.button,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: colors.peach,
-  },
   heading: { ...font.title, color: colors.text },
   addButton: {
     minHeight: 56,
