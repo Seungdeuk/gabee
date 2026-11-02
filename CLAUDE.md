@@ -1,6 +1,6 @@
 # gabee 공통 규칙
 
-가족용 비서 앱. 하단 5개 탭(AI 채팅, 소통, 일정, 가계, 돌봄)과 로그인·가족 그룹. 기타 화면(가족 그룹·설정)은 AI 채팅 상단의 ⋮ 로 들어간다.
+가족용 비서 앱. 하단 5개 탭(AI 채팅, 소통, 일정, 돌봄, 마이)과 로그인·가족 그룹. 가계(지갑)는 돌봄 탭에 합쳐져 있고, 가족 그룹·설정·계정은 마지막 "마이" 탭에서 들어간다.
 여러 명이 Claude로 함께 개발한다. 협업 절차는 `CONTRIBUTING.md`, 코드 세부 규칙은 `CODING_RULES.md`를 따른다.
 
 ## 스택
@@ -29,7 +29,7 @@ docs/legacy/                  원본 프로젝트(family-secretary_prj) 참고 �
 ```
 
 기능: ai-assistant, family-chat, schedule, billing, care, family-group, more
-- `more`는 기타 화면(오늘 요약·가족 그룹·설정)이라 서버 기능이 따로 없다. `start`는 시작 화면이다. 서버는 family_group, 나머지 5개 기능이 있다.
+- `more`는 마이 탭 화면(계정·가족 그룹·앱 관리)이라 서버 기능이 따로 없다. `start`는 시작 화면이다. 서버는 family_group, 나머지 5개 기능이 있다.
 - 앱 폴더는 하이픈(`family-chat`), 서버 폴더는 밑줄(`family_chat`)이다. 같은 기능이다.
 - family-group은 로그인·권한이라 모든 기능이 의존한다.
 
