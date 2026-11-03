@@ -263,6 +263,7 @@ def test_health_db_reports_ready_state_and_exposes_no_internal_names(client):
         "billing",
         "ai_assistant",
         "notifications",
+        "ops_admin",
     }
     assert "problems" not in str(report) and "expenses" not in str(
         report
