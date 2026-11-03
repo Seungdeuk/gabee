@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, datetime
 
 from pgvector.sqlalchemy import Vector
 from sqlalchemy import Float, String, cast, delete, literal, select
@@ -54,11 +54,21 @@ def get_item(db: Session, group_id: str, item_id: str) -> KnowledgeItem | None:
 
 
 def list_items(
-    db: Session, group_id: str, kind_label: str | None = None, limit: int = 50
+    db: Session,
+    group_id: str,
+    kind_label: str | None = None,
+    limit: int = 50,
+    created_from: datetime | None = None,
+    created_to: datetime | None = None,
 ) -> list[KnowledgeItem]:
+    """created_from 이상, created_to 미만(둘 다 UTC aware datetime)인 기록만 거른다. 안 주면 거르지 않는다."""
     q = select(KnowledgeItem).where(KnowledgeItem.group_id == group_id)
     if kind_label:
         q = q.where(KnowledgeItem.kind_label == kind_label)
+    if created_from is not None:
+        q = q.where(KnowledgeItem.created_at >= created_from)
+    if created_to is not None:
+        q = q.where(KnowledgeItem.created_at < created_to)
     return list(
         db.scalars(
             q.order_by(KnowledgeItem.occurred_on.desc(), KnowledgeItem.created_at.desc()).limit(
