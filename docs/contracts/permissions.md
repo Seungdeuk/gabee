@@ -40,7 +40,8 @@
 
 ## 아직 없는 기능 (이번 PR에서 만들지 않음)
 
-- **가족 탈퇴**, **활성 그룹 전환** API는 코드에 없다. 나중에 만들 때는 `GroupMember` 행 삭제(또는 생성)와 `active_group_id` 갱신을 같은 트랜잭션에서 함께 처리해야 한다 — 다만 이제 `current_group_id`가 `group_members`를 직접 확인하므로, 둘이 어긋나더라도(예: 탈퇴 로직이 `active_group_id`를 못 지우는 버그) 권한 검증 자체는 여전히 안전하다. `apps/api/tests/test_membership_enforcement.py`가 이 상황(멤버십은 없는데 `active_group_id`는 남은 상태)을 직접 시뮬레이션해서 막히는지 확인한다.
+- **활성 그룹 전환** API는 코드에 없다.
+- **가족 나가기**: `POST /family-group/groups/me/leave`(204). 일반 구성원·관리자(admin)는 자발적으로 나갈 수 있고, **소유자(owner)는 나갈 수 없다**(400 `cannot_leave_owner`, 소유권 이전이 생기기 전까지). 멤버십 삭제(`role != 'owner'` 조건부 DELETE)·그 사람이 쓰거나 받은 별명 삭제·`active_group_id` 정리(이 그룹이 활성이었으면 남은 가족 중 가장 최근에 들어간 곳으로 바꾸고, 없으면 NULL)를 한 트랜잭션에서 처리한다. **토큰은 폐기하지 않는다** — 나간 뒤의 접근은 토큰이 아니라 `current_group_id` 의 `group_members` 확인(400 `no_group`/403 `not_member`)으로 막힌다. 이름 변경·구성원 강제 퇴출 API는 제품 결정으로 만들지 않는다. `apps/api/tests/test_membership_enforcement.py`는 멤버십은 없는데 `active_group_id`는 남은 상태도 시뮬레이션해서 막히는지 확인한다.
 
 ## 기존 인증 방식의 잔여 위험
 
