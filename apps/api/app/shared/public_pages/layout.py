@@ -39,13 +39,30 @@ _NAV = (
 )
 
 
+def contact_email() -> str:
+    """문의 이메일(설정 SUPPORT_EMAIL). 값은 운영자가 정한 설정이라 이스케이프해 돌려준다.
+
+    @returns: 이스케이프한 이메일 또는 빈 문자열
+    """
+    return html.escape(settings.support_email.strip(), quote=True)
+
+
+def contact_link() -> str:
+    """본문에 넣는 문의 이메일 링크. 설정이 없으면 빈 문자열.
+
+    @returns: `<a href="mailto:...">...</a>` 또는 빈 문자열
+    """
+    email = contact_email()
+    return f'<a href="mailto:{email}">{email}</a>' if email else ""
+
+
 def contact_html() -> str:
-    """문의 이메일 문구(설정 SUPPORT_EMAIL 이 있을 때만). 값은 운영자가 정한 설정이라 이스케이프해 넣는다.
+    """꼬리말의 문의 이메일 문구(설정 SUPPORT_EMAIL 이 있을 때만).
 
     @returns: " · 문의 <a ...>이메일</a>" 또는 빈 문자열
     """
-    email = html.escape(settings.support_email.strip(), quote=True)
-    return f' · 문의 <a href="mailto:{email}">{email}</a>' if email else ""
+    link = contact_link()
+    return f" · 문의 {link}" if link else ""
 
 
 def page(title: str, body: str) -> str:

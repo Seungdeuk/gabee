@@ -4,12 +4,23 @@
 문구나 값이 바뀌면 시행일(`EFFECTIVE_DATE`)도 함께 고친다.
 """
 
-from app.shared.public_pages.layout import SERVICE_NAME, page
+from app.shared.public_pages.layout import SERVICE_NAME, contact_link, page
 
 OPERATOR = "강민훈"  # 운영자(팀원이 만든 방침 v0.1 의 운영 주체와 같다)
 EFFECTIVE_DATE = "2026년 11월 3일"
 PRIVACY_OFFICER = "백승득"  # 개인정보 보호책임자
 DELETE_ACCOUNT_URL = "https://kangminhun.github.io/gabee-privacy/delete-account.html"  # 계정·데이터 삭제 요청 안내(이메일 접수)
+
+
+def _contact_line() -> str:
+    """방침 9항의 문의 줄. 이메일 설정이 있으면 주소를 본문에 직접 보여 준다."""
+    link = contact_link()
+    return f"문의 이메일: {link}" if link else "문의: 운영자에게 연락해 주세요."
+
+
+def _contact_target() -> str:
+    """약관 11조의 문의 수단. 이메일 설정이 없으면 운영자에게 연락하라고만 안내한다."""
+    return contact_link() or "운영자에게 연락해 주세요."
 
 
 def home() -> str:
@@ -127,7 +138,7 @@ AI에 보내기 전에 대화 등에서 전화번호·이메일·주소·이름�
 <p>서비스는 만 14세 미만을 대상으로 하지 않아요. 만 14세 미만의 정보를 모으려면 법정대리인의 동의가 필요하며, 그 절차가 마련되기 전에는 만 14세 미만의 이용을 받지 않아요.</p>
 
 <h2>9. 개인정보 보호 문의처</h2>
-<p>운영자: {OPERATOR}<br>개인정보 보호책임자: {PRIVACY_OFFICER}<br>문의: 이 페이지 아래의 이메일로 연락해 주세요.</p>
+<p>운영자: {OPERATOR}<br>개인정보 보호책임자: {PRIVACY_OFFICER}<br>{_contact_line()}</p>
 
 <h2>10. 방침의 변경</h2>
 <p>내용이 바뀌면 이 페이지에 새 시행일과 함께 알려요.</p>
@@ -184,6 +195,6 @@ def terms() -> str:
 <p>개인정보는 <a href="/privacy">개인정보처리방침</a>에 따라 처리해요.</p>
 
 <h2>제11조 (준거법과 문의)</h2>
-<p>이 약관은 대한민국 법령에 따라 해석해요. 서비스에 대한 문의는 페이지 아래의 이메일로 알려 주세요.</p>
+<p>이 약관은 대한민국 법령에 따라 해석해요. 서비스에 대한 문의: {_contact_target()}</p>
 """
     return page("서비스 약관", body)

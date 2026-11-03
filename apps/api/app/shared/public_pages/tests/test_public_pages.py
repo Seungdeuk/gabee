@@ -74,3 +74,17 @@ def test_head_requests_work(client, path):
     res = client.head(path)
     assert res.status_code == 200
     assert res.text == ""
+
+
+def test_contact_email_is_in_the_body_when_configured(client, monkeypatch):
+    # 꼬리말만이 아니라 방침 9항·약관 11조 본문에도 주소가 있어야 한다(꼬리말을 못 봐도 연락할 수 있게)
+    monkeypatch.setattr(settings, "support_email", "help@example.com")
+    link = '<a href="mailto:help@example.com">help@example.com</a>'
+    assert f"문의 이메일: {link}" in client.get("/privacy").text
+    assert f"서비스에 대한 문의: {link}" in client.get("/terms").text
+
+
+def test_contact_falls_back_without_email(client, monkeypatch):
+    monkeypatch.setattr(settings, "support_email", "")
+    assert "문의: 운영자에게 연락해 주세요." in client.get("/privacy").text
+    assert "서비스에 대한 문의: 운영자에게 연락해 주세요." in client.get("/terms").text
