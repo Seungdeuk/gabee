@@ -12,6 +12,9 @@ import { enabledProviders, KAKAO_APP_RETURN_URL, KAKAO_RELAY_PATH, kakaoRedirect
 // 시스템 브라우저에서 돌아온 로그인 결과를 앱이 이어받는다(웹에서 꼭 필요하다).
 WebBrowser.maybeCompleteAuthSession();
 
+// 닉네임만 요청한다: 카카오계정(이메일)은 비즈 앱이 아니면 쓸 수 없어 요청하면 KOE205 오류가 난다(이메일이 없어도 서버는 로그인시킨다)
+const KAKAO_SCOPES = ["profile_nickname"];
+
 const KAKAO = {
   authorizationEndpoint: "https://kauth.kakao.com/oauth/authorize",
   tokenEndpoint: "https://kauth.kakao.com/oauth/token",
@@ -42,7 +45,7 @@ function KakaoButton({ onToken, disabled }) {
   const appReturnUrl = Platform.OS === "web" ? makeRedirectUri({ scheme: "gabee", path: "kakao" }) : KAKAO_APP_RETURN_URL; // 모바일은 서버가 넘겨 주는 주소로 고정(Expo Go 는 주소가 달라 시험할 수 없다)
   const busy = useRef(false); // 인증 창이 열려 있는 동안 다시 누르지 못하게(promptAsync 와 달리 직접 여는 쪽에는 잠금이 없다)
   const redirectUri = kakaoRedirectUri({ platform: Platform.OS, appReturnUrl, relayUrl: apiUrl(KAKAO_RELAY_PATH) });
-  const [request, response, promptAsync] = useAuthRequest({ clientId, redirectUri, usePKCE: true, scopes: ["account_email", "profile_nickname"] }, KAKAO);
+  const [request, response, promptAsync] = useAuthRequest({ clientId, redirectUri, usePKCE: true, scopes: KAKAO_SCOPES }, KAKAO);
   /** 시스템 브라우저에서 돌아온 결과(성공이면 코드)를 액세스 토큰으로 바꿔 넘긴다. 취소는 그냥 둔다. */
   const finish = (res) => {
     if (res?.type !== "success") {
