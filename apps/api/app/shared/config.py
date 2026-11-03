@@ -80,6 +80,11 @@ class Settings(BaseSettings):
     # 테스트 참여 동의서에 동의한 회원만 API 를 쓸 수 있게 한다(기본은 꺼짐). 앱의 동의서 버전(CONSENT_VERSION)과 같게 둔다.
     require_tester_consent: bool = False
     tester_consent_version: str = "v0.2"
+    # 서비스 운영자 허용 목록(app/shared/auth.py require_operator): 쉼표로 구분한 사용자 id. 비어 있거나 없으면 아무도 허용하지 않는다.
+    # ops_admin = 운영 관리자 페이지, service_admin = 서비스 관리자 페이지이며 서로를 포함하지 않는다.
+    # 실제 id 는 환경변수(.env·비밀 관리)에만 두고 코드·Git·문서에 넣지 않는다.
+    ops_admin_user_ids: str = ""
+    service_admin_user_ids: str = ""
     # 구독·통신비 서버 API(/billing/subscriptions*) 사용 여부(기본 꺼짐). 지갑 탭에서 구독 기능을 빼면서 닫았다. 꺼져 있으면 403 subscription_disabled 로 막고,
     # 일정 추천도 구독 결제일을 읽지 않는다. 테이블과 데이터는 그대로 둔다.
     subscription_api_enabled: bool = False
