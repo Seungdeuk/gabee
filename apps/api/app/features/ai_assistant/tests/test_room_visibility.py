@@ -4,11 +4,9 @@ import json
 
 import pytest
 
-from app.features.ai_assistant import agents
 from app.features.ai_assistant import room_visibility as rv
 from app.features.ai_assistant.knowledge import rag_chat
 from app.features.ai_assistant.knowledge import service as kservice
-from app.features.care import agent as care_agent
 from app.shared.config import settings
 from app.shared.db import SessionLocal
 from tests.ai_consent import enable_ai
@@ -116,16 +114,6 @@ def test_room_allowance_question_stays_private(client, family, monkeypatch):
     _fake(monkeypatch, "ask_billing", {"question": "용돈 잔액"}, "list_allowances", {})
     out = _chat(client, a, "room")
     assert out["visibility"] == "private" and out["private_reasons"] == ["자녀 용돈 장부"]
-
-
-def test_room_location_question_stays_private(client, family, monkeypatch):
-    # 돌봄 에이전트는 지금 메인에 연결돼 있지 않다. 다시 연결했을 때의 공개 범위 판단을 확인하려고 이 테스트 동안만 목록에 넣는다.
-    monkeypatch.setitem(agents.AGENTS, "ask_care", (care_agent.DESCRIPTION, care_agent.ask))
-    a, _, group = family
-    enable_ai(group["id"])
-    _fake(monkeypatch, "ask_care", {"question": "아빠 위치"}, "get_family_locations", {})
-    out = _chat(client, a, "room")
-    assert out["visibility"] == "private" and "가족 위치" in out["private_reasons"]
 
 
 def test_room_sensitive_record_stays_private(client, family, monkeypatch):

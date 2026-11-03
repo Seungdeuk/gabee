@@ -1,17 +1,13 @@
-"""위치 공유 기능 스위치(CARE_LOCATION_ENABLED): 꺼져 있으면 저장·조회·동의와 에이전트의 위치 도구를 막고, 철회는 열어 둔다."""
+"""위치 공유 기능 스위치(CARE_LOCATION_ENABLED): 꺼져 있으면 저장·조회·동의를 막고, 철회는 열어 둔다. (돌봄 에이전트는 지웠다)"""
 
 from datetime import UTC, datetime
 
 from sqlalchemy import select
 
-from app.features.care import agent
 from app.features.care.models import CareLocation
-from app.features.family_group.models import User
 from app.shared.config import settings
 from app.shared.db import SessionLocal
 from tests.helpers import signup
-
-TOOL = "get_family_locations"
 
 
 def _point():
@@ -33,12 +29,6 @@ def _solo(client):
 def _rows():
     with SessionLocal() as db:
         return list(db.scalars(select(CareLocation)))
-
-
-def _tool_names(client, h, group):
-    me = client.get("/family-group/me", headers=h).json()["id"]
-    with SessionLocal() as db:
-        return {t.name for t in agent.build_tools(db, group["id"], db.get(User, me))}
 
 
 def test_location_is_off_by_default():
@@ -71,12 +61,3 @@ def test_revoking_consent_still_works_and_deletes_stored_points(client, monkeypa
     r = client.put("/care/location/consent", json={"consent": False}, headers=h)
     assert r.status_code == 200 and r.json()["consent"] is False
     assert _rows() == []  # 철회하면 저장된 내 위치가 지워진다
-
-
-def test_agent_never_has_the_location_tool(client, monkeypatch):
-    """돌봄 에이전트는 위치 도구를 주지 않는다(스위치를 켜도). 다시 살릴 때는 도구를 되돌려야 한다."""
-    h, group = _solo(client)
-    for on in (False, True):
-        monkeypatch.setattr(settings, "care_location_enabled", on)
-        assert TOOL not in _tool_names(client, h, group)
-        assert "지금 사용할 수 없" in agent.system_prompt("혼자")

@@ -39,7 +39,7 @@ def test_billing_without_discount_column_is_503_but_care_and_others_keep_working
         r = client.get(path, headers=a)
         assert r.status_code == 503 and r.json()["code"] == "schema_not_ready", path
         assert r.headers["retry-after"] == "5"
-    assert client.get("/care/daily", headers=a).status_code == 200
+    assert client.get("/care/location/consent", headers=a).status_code == 200
     assert client.get("/family-group/me", headers=a).status_code == 200
     assert client.get("/health").json() == {"status": "ok"}
     report = client.get("/health/db").json()
@@ -55,7 +55,7 @@ def test_care_without_its_columns_is_503_but_billing_keeps_working(client, famil
     a, _, _ = family
     _drop("care_entries", "skipped")  # 건너뛰기 컬럼이 아직 없는 DB
 
-    r = client.get("/care/daily", headers=a)
+    r = client.get("/care/location/consent", headers=a)
     assert r.status_code == 503 and r.json()["code"] == "schema_not_ready"
     assert client.get("/billing/subscriptions", headers=a).status_code == 200
     assert client.get("/billing/expenses", headers=a).status_code == 200
