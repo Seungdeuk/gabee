@@ -294,7 +294,7 @@ test("인사이트(지난 주): 미완료 할 일, 모두 완료, 가장 바쁜 
   assert.deepEqual(done2.insights, [{ key: "todo_done", text: "지난주 할 일 1건을 모두 끝냈어요." }]);
 });
 
-test("인사이트는 최대 2개", () => {
+test("문서가 없으면 인사이트는 할 일과 가까운 일정 두 개", () => {
   const events = [
     ev({ id: 1, start_date: "2026-10-28" }),
     ev({ id: 2, start_date: "2026-10-28" }),
@@ -324,4 +324,79 @@ test("문서 올린 시각: 마이크로초와 시간대 없는 값도 KST 날�
 test("start_date 가 없는 할 일은 세지 않는다", () => {
   const r = report([ev({ kind: 2, start_date: null })], []);
   assert.equal(r.todoTotal, 0);
+});
+
+test("아직 보지 않은 문서: seen 이 false 인 문서만 세고 인사이트에 넣는다", () => {
+  const range = weekRange(NOW, 0);
+  const docs = [
+    doc({ created_at: "2026-11-03T01:00:00Z", seen: false }),
+    doc({ created_at: "2026-11-03T02:00:00Z", seen: false }),
+    doc({ created_at: "2026-11-03T03:00:00Z", seen: true }), // 내가 올렸거나 이미 연 문서
+    doc({ created_at: "2026-11-03T04:00:00Z", seen: false, sensitivity: "sensitive" }), // 민감 문서는 제외
+    doc({ created_at: "2026-10-20T04:00:00Z", seen: false }), // 다른 주
+  ];
+  const r = buildReport({ events: [], docs, range, today: TODAY });
+  assert.equal(r.docCount, 3);
+  assert.equal(r.docUnseen, 2);
+  const hit = r.insights.find((i) => i.key === "doc_unseen");
+  assert.equal(hit.text, "이번 주 올라온 문서 중 아직 보지 않은 것이 2건 있어요.");
+  assert.equal(hit.action, undefined);
+});
+
+test("seen 필드가 없거나 문서를 못 받았으면 보지 않은 문서는 알 수 없다(인사이트 없음)", () => {
+  const range = weekRange(NOW, 0);
+  const noSeen = [doc({ created_at: "2026-11-03T01:00:00Z" }), doc({ created_at: "2026-11-03T02:00:00Z", seen: false })];
+  const a = buildReport({ events: [], docs: noSeen, range, today: TODAY });
+  assert.equal(a.docUnseen, null);
+  assert.ok(!a.insights.some((i) => i.key === "doc_unseen"));
+  const failed = buildReport({ events: [], docs: null, range, today: TODAY });
+  assert.equal(failed.docUnseen, null);
+  const pending = buildReport({ events: [], docs: null, range, today: TODAY, docsPending: true });
+  assert.equal(pending.docUnseen, null);
+  const none = buildReport({ events: [], docs: [], range, today: TODAY });
+  assert.equal(none.docUnseen, 0);
+  assert.ok(!none.insights.some((i) => i.key === "doc_unseen"));
+});
+
+test("지난 주에도 보지 않은 문서를 알리고, 인사이트는 최대 3개다", () => {
+  const range = weekRange(NOW, -1); // 2026-10-26 ~ 11-01
+  const docs = [doc({ created_at: "2026-10-28T03:00:00Z", seen: false })];
+  const events = [
+    ev({ id: 1, start_date: "2026-10-28", kind: 1 }),
+    ev({ id: 2, start_date: "2026-10-28", kind: 1 }),
+    ev({ id: 3, start_date: "2026-10-27", kind: 2, checked: false }),
+  ];
+  const r = buildReport({ events, docs, range, today: TODAY });
+  assert.deepEqual(r.insights.map((i) => i.key), ["todo_left", "doc_unseen", "busiest"]);
+  assert.equal(r.insights[1].text, "지난주 올라온 문서 중 아직 보지 않은 것이 1건 있어요.");
+});
+
+test("이번 주 인사이트 순서: 남은 할 일, 보지 않은 문서, 가장 가까운 일정", () => {
+  const range = weekRange(NOW, 0);
+  const events = [ev({ id: 1, start_date: "2026-11-05" }), ev({ id: 2, kind: 2, start_date: "2026-11-04", checked: false })];
+  const docs = [doc({ created_at: "2026-11-03T01:00:00Z", seen: false })];
+  const r = buildReport({ events, docs, range, today: TODAY });
+  assert.deepEqual(r.insights.map((i) => i.key), ["todo_left", "doc_unseen", "next_event"]);
+});
+
+test("보지 않은 문서: 그 주 밖·민감 문서에 seen 이 없어도 숫자로 나오고, 모두 봤으면 0 이며 인사이트가 없다", () => {
+  const range = weekRange(NOW, 0);
+  const mixed = [
+    doc({ created_at: "2026-11-03T01:00:00Z", seen: false }),
+    doc({ created_at: "2026-10-01T01:00:00Z" }), // 다른 주: seen 없음
+    doc({ created_at: "2026-11-03T02:00:00Z", sensitivity: "sensitive" }), // 민감: seen 없음
+  ];
+  assert.equal(buildReport({ events: [], docs: mixed, range, today: TODAY }).docUnseen, 1);
+  const allSeen = [doc({ created_at: "2026-11-03T01:00:00Z", seen: true }), doc({ created_at: "2026-11-03T02:00:00Z", seen: true })];
+  const r = buildReport({ events: [], docs: allSeen, range, today: TODAY });
+  assert.equal(r.docUnseen, 0);
+  assert.ok(!r.insights.some((i) => i.key === "doc_unseen"));
+});
+
+test("지난 주 인사이트 순서: 모두 끝낸 할 일 다음에 보지 않은 문서", () => {
+  const range = weekRange(NOW, -1);
+  const events = [ev({ id: 1, kind: 2, start_date: "2026-10-27", checked: true })];
+  const docs = [doc({ created_at: "2026-10-28T03:00:00Z", seen: false })];
+  const r = buildReport({ events, docs, range, today: TODAY });
+  assert.deepEqual(r.insights.map((i) => i.key), ["todo_done", "doc_unseen"]);
 });

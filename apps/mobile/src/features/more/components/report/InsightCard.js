@@ -13,7 +13,7 @@ export default function InsightCard({ insights, onOpenSchedule }) {
     <View style={styles.card}>
       <View style={styles.head}>
         <Text style={styles.label}>가비의 인사이트</Text>
-        <Text style={styles.source}>공유 데이터 기준</Text>
+        <Text style={styles.source}>공유 데이터·내 확인 기준</Text>
       </View>
       {insights.map((item) => (
         <View key={item.key} style={styles.item}>

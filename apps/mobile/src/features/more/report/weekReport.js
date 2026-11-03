@@ -177,16 +177,20 @@ function buildLine({ isCurrent, P, state, sharedCount, todoTotal, todoDone, docC
 }
 
 /**
- * 인사이트(사실만, 최대 2개)를 만든다.
+ * 인사이트(사실만, 최대 3개)를 만든다. 아직 보지 않은 문서가 있으면(`docUnseen > 0`) 할 일 다음에 넣는다.
  * @param {object} p 집계 값 묶음
  * @returns {{ key: string, text: string, action?: "schedule" }[]}
  */
-function buildInsights({ isCurrent, P, today, todoTotal, todoLeft, shared }) {
+function buildInsights({ isCurrent, P, today, todoTotal, todoLeft, docUnseen, shared }) {
   const out = [];
+  const unseenDocs = docUnseen > 0
+    ? { key: "doc_unseen", text: `${P} 올라온 문서 중 아직 보지 않은 것이 ${docUnseen}건 있어요.` }
+    : null;
   if (isCurrent) {
     if (todoLeft > 0) {
       out.push({ key: "todo_left", text: `이번 주 남은 할 일이 ${todoLeft}건 있어요.`, action: "schedule" });
     }
+    if (unseenDocs) out.push(unseenDocs);
     const next = shared.find((e) => e.start_date >= today);
     if (next) {
       let text = `가장 가까운 일정은 ${weekdayOf(next.start_date)}요일 ${next.title}이에요.`;
@@ -204,6 +208,7 @@ function buildInsights({ isCurrent, P, today, todoTotal, todoLeft, shared }) {
     } else if (todoTotal > 0) {
       out.push({ key: "todo_done", text: `${P} 할 일 ${todoTotal}건을 모두 끝냈어요.` });
     }
+    if (unseenDocs) out.push(unseenDocs);
     const perDay = new Map();
     for (const e of shared) perDay.set(e.start_date, (perDay.get(e.start_date) || 0) + 1);
     let bestDate = null;
@@ -218,7 +223,7 @@ function buildInsights({ isCurrent, P, today, todoTotal, todoLeft, shared }) {
       out.push({ key: "busiest", text: `${weekdayOf(bestDate)}요일에 공유 일정이 가장 많았어요(${bestN}건).` });
     }
   }
-  return out.slice(0, 2);
+  return out.slice(0, 3); // 항목이 늘어도 카드가 길어지지 않게 하는 안전장치(지금은 각 분기가 3개를 넘지 않는다)
 }
 
 /**
@@ -229,7 +234,7 @@ function buildInsights({ isCurrent, P, today, todoTotal, todoLeft, shared }) {
  * @returns {{
  *   isCurrent: boolean, state: "ok" | "events_empty" | "all_empty",
  *   sharedCount: number, todoTotal: number, todoDone: number,
- *   docCount: number | null, docsFailed: boolean,
+ *   docCount: number | null, docUnseen: number | null, docsFailed: boolean,
  *   listTitle: string, listTotal: number,
  *   list: { id: *, title: string, date: string, weekday: string, day: number, timeText: string, meta: string }[],
  *   insights: { key: string, text: string, action?: "schedule" }[], line: string
@@ -252,9 +257,14 @@ export function buildReport({ events, docs, range, today, docsPending = false })
   const todoLeft = todoTotal - todoDone;
 
   const docsFailed = docs == null && !docsPending;
-  const docCount = docsPending || docs == null
+  const weekDocs = docsPending || docs == null
     ? null
-    : docs.filter((d) => d.sensitivity !== "sensitive" && inWeek(docKstDate(d.created_at))).length;
+    : docs.filter((d) => d.sensitivity !== "sensitive" && inWeek(docKstDate(d.created_at)));
+  const docCount = weekDocs ? weekDocs.length : null;
+  // 내가 아직 보지 않은 문서 수: 서버가 `seen` 을 주지 않으면(구버전 서버) 알 수 없으므로 null
+  const docUnseen = weekDocs && weekDocs.every((d) => typeof d.seen === "boolean")
+    ? weekDocs.filter((d) => d.seen === false).length
+    : null;
 
   const sharedCount = shared.length;
   let state = "ok";
@@ -283,11 +293,12 @@ export function buildReport({ events, docs, range, today, docsPending = false })
     todoTotal,
     todoDone,
     docCount,
+    docUnseen,
     docsFailed,
     listTitle: isCurrent ? "이번 주 남은 공유 일정" : "그 주의 공유 일정",
     listTotal: target.length,
     list,
-    insights: buildInsights({ isCurrent, P, today, todoTotal, todoLeft, shared }),
+    insights: buildInsights({ isCurrent, P, today, todoTotal, todoLeft, docUnseen, shared }),
     line: buildLine({ isCurrent, P, state, sharedCount, todoTotal, todoDone, docCount, docsFailed, docsPending }),
   };
 }
