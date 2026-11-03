@@ -2,7 +2,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { seedCheers } from "../src/features/schedule/daily/mock.js";
 import {
   cheerBannerText,
   cheerCaption,
@@ -52,9 +51,8 @@ test("배너 문구: 오늘 받은 응원 개수와 보낸 사람(중복 없이)
   assert.equal(cheerBannerText(list, TODAY), "오늘 받은 응원 3개 · 아들, 딸");
 });
 
-test("시드: 오늘 받은 응원 두 개는 고마워 전 상태로 들어간다", () => {
-  const today = seedCheers(TODAY).filter((c) => c.direction === "received" && c.date === TODAY);
-  assert.equal(today.length, 2);
-  assert.ok(today.every((c) => c.thanked === false));
-  assert.deepEqual(pendingCheersOf(seedCheers(TODAY), TODAY).map((c) => c.fromName), ["아들", "딸"]);
+test("닫은 카드(서버 closed)는 메인 카드에서 빠지고, 고마워 처리와 함께 배너 조건이 된다", () => {
+  const list = [received({ id: "a" }), received({ id: "b", fromName: "딸", closed: true })];
+  assert.deepEqual(pendingCheersOf(list, TODAY).map((c) => c.id), ["a"]);
+  assert.equal(cheerCaption(list, TODAY), "오늘 받은 응원 1 / 2");
 });

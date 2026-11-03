@@ -311,14 +311,41 @@ export function stepGoalText(text, delta) {
   return formatGoal(Math.max(1, Math.min(9999, parsed.goal + delta)), parsed.unit);
 }
 
-/** 항목 저장 전 검사. 첫 번째 잘못된 점 하나만 알려 준다. */
+// 입력 글자 수 상한(앱 한도). 서버 한도(이름 60·단위 10·한마디 100, apps/api/app/features/schedule/check_schemas.py)보다
+// 앱 한도를 더 좁게 둔 것(사용자 결정)이다. 서버 한도를 넘지 않으므로 서버 쪽 422 는 이 칸에서 나오지 않는다.
+export const NAME_MAX = 20;
+export const UNIT_MAX = 10;
+export const CHEER_TEXT_MAX = 50;
+
+/** 항목 저장 전 검사. 첫 번째 잘못된 점 하나만 알려 준다. 이름은 서버처럼 자르기 전 글자 수로 센다. */
 export function validateItem(draft) {
   if (!draft.name?.trim()) return { ok: false, error: "이름을 적어 주세요" };
+  if (draft.name.length > NAME_MAX) return { ok: false, error: `이름은 ${NAME_MAX}자까지 쓸 수 있어요` };
   if (!draft.days?.length) return { ok: false, error: "반복할 요일을 하나 이상 골라 주세요" };
-  if (draft.type === "count" && !parseGoal(draft.goalText)) {
-    return { ok: false, error: "하루 목표는 1 이상의 숫자로 적어 주세요" };
+  if (draft.type === "count") {
+    const parsed = parseGoal(draft.goalText);
+    if (!parsed) return { ok: false, error: "하루 목표는 1 이상의 숫자로 적어 주세요" };
+    if (parsed.unit.length > UNIT_MAX) return { ok: false, error: `단위는 ${UNIT_MAX}자까지 쓸 수 있어요` };
   }
   return { ok: true, error: "" };
+}
+
+/**
+ * 전화 버튼을 보일지. 안드로이드는 canOpenURL 을 믿지 않고 항상 보인다(Android 11+ 는 패키지 공개 설정 때문에 tel: 확인이 거짓이 될 수 있다).
+ * iOS 는 canOpenURL("tel:") 결과를 따른다. 확인 전(canOpen 이 null)에는 보인다.
+ * @param {string} platform Platform.OS
+ * @param {boolean | null} canOpen canOpenURL("tel:") 결과(아직 모르면 null)
+ */
+export function shouldShowCallButton(platform, canOpen) {
+  if (platform === "android") return true;
+  if (canOpen === null || canOpen === undefined) return true;
+  return Boolean(canOpen);
+}
+
+/** 응원 한마디 검사: 빈 글자는 화면이 따로 알리므로 여기서는 글자 수만 본다. 문제없으면 "". */
+export function cheerTextError(text) {
+  if (String(text ?? "").length > CHEER_TEXT_MAX) return `한마디는 ${CHEER_TEXT_MAX}자까지 쓸 수 있어요`;
+  return "";
 }
 
 /**
@@ -592,7 +619,7 @@ function pointFor(row) {
 
 // ── 개발용 가상 가족 ─────────────────────────────────────────────
 
-/** 개발용 가상 가족 구성원 5명(예시 데이터의 기록·전화 mock 과 짝. 탭이 넘치는 모습을 보려고 다섯 명이다). */
+/** 개발용 가상 가족 구성원 5명(FAMILY_ITEMS_MOCK 과 짝. 탭이 넘치는 모습을 보려고 다섯 명이다). */
 export const DEV_FAMILY = [
   { id: "mom", name: "엄마", hasAccount: false },
   { id: "dad", name: "아빠", hasAccount: false },
@@ -605,20 +632,26 @@ export const DEV_FAMILY = [
 const SELF_ID = "me";
 
 /**
- * 가상 가족(엄마·아빠)을 가족 목록에 덧붙일지 정하고 합친다. 같은 id 가 이미 있으면 중복으로 넣지 않는다.
- * - 가상 가족 모드 플래그(devOn)가 켜져 있으면 덧붙인다.
- * - 개발 빌드(isDev)이고 실제 가족이 한 명도 없으면(나 말고 구성원이 없음) 플래그와 상관없이 덧붙인다.
- * - 그 밖에는 실제 목록 그대로다.
+ * 개발용 가상 가족을 가족 목록에 덧붙일지 정하고 합친다. 같은 id 가 이미 있으면 중복으로 넣지 않는다.
+ * 개발 빌드(isDev)이고 실제 가족이 한 명도 없을(나 말고 구성원이 없을) 때만 덧붙인다. 그 밖에는 실제 목록 그대로다.
+ * 덧붙인 가상 구성원은 hasAccount 가 false 라서 화면이 서버 호출 없이 읽기 전용으로 그린다.
  * @param {{ id: string, name: string }[]} members 실제 가족 구성원(나 포함)
- * @param {boolean} devOn 가상 가족 모드 플래그
  * @param {boolean} [isDev=false] 개발 빌드 여부(__DEV__ 를 넘긴다)
  */
-export function withDevFamily(members, devOn, isDev = false) {
+export function withDevFamily(members, isDev = false) {
   const hasRealFamily = members.some((m) => m.id !== SELF_ID);
-  const on = devOn || (isDev && !hasRealFamily);
-  if (!on) return members;
+  if (!isDev || hasRealFamily) return members;
   const have = new Set(members.map((m) => m.id));
   return [...members, ...DEV_FAMILY.filter((m) => !have.has(m.id))];
+}
+
+/**
+ * 처음 열었을 때 온보딩을 띄울지. 서버에 습관이 하나도 없고 온보딩 완료 표시(settings.onboarded)가 거짓일 때만 띄운다.
+ * @param {object[]} items 내 습관 전체
+ * @param {boolean} onboarded 서버 온보딩 완료 표시
+ */
+export function needsOnboarding(items, onboarded) {
+  return !onboarded && items.length === 0;
 }
 
 /** 지금 시각을 "HH:MM" 으로. */
@@ -640,27 +673,23 @@ export function cheerCardTitle(name) {
   return `${name}${subjectParticle(name)} 응원을 보냈어요`;
 }
 
-/** 오늘 안 누른 받은 응원(카드로 보여 줄 것). */
-export const pendingCheersOf = (list, today) => receivedTodayOf(list, today).filter((c) => !c.thanked);
-
 /**
- * 카드 아래 줄: "오늘 받은 응원 1 / 2"(안 누른 것 / 오늘 받은 전체).
+ * 오늘 안 누른 받은 응원(카드로 보여 줄 것): 고마워를 안 보냈고(thanked 없음), 카드를 닫지도 않은(closed 없음) 오늘 받은 응원.
+ * 고마워와 닫기는 서버에 저장되므로 앱을 다시 켜도 같은 카드가 보인다(닫은 카드는 다시 열리지 않는다).
  */
-export function cheerCaption(list, today, dismissed = []) {
-  return `오늘 받은 응원 ${openCheersOf(list, today, dismissed).length} / ${receivedTodayOf(list, today).length}`;
+export const pendingCheersOf = (list, today) => receivedTodayOf(list, today).filter((c) => !c.thanked && !c.closed);
+
+/** 카드 아래 줄: "오늘 받은 응원 1 / 2"(카드로 남은 것 / 오늘 받은 전체). */
+export function cheerCaption(list, today) {
+  return `오늘 받은 응원 ${openCheersOf(list, today).length} / ${receivedTodayOf(list, today).length}`;
 }
 
-/**
- * 메인 카드로 아직 보여 줄 응원: 고마워를 안 했고, 카드를 닫지도 않은 오늘 받은 응원.
- * dismissed 는 닫은 응원 id 목록이다. 닫는 것은 "고마워 보냄"이 아니다(저장도 따로 한다).
- */
-export function openCheersOf(list, today, dismissed = []) {
-  return pendingCheersOf(list, today).filter((c) => !dismissed.includes(c.id));
-}
+/** 메인 카드로 아직 보여 줄 응원. pendingCheersOf 와 같다. */
+export const openCheersOf = (list, today) => pendingCheersOf(list, today);
 
 /** 오늘 받은 응원을 모두 처리(고마워 또는 닫기)했는가. 이때 한 줄 배너를 보인다. 받은 것이 없으면 false. */
-export function allCheersHandled(list, today, dismissed = []) {
-  return receivedTodayOf(list, today).length > 0 && openCheersOf(list, today, dismissed).length === 0;
+export function allCheersHandled(list, today) {
+  return receivedTodayOf(list, today).length > 0 && openCheersOf(list, today).length === 0;
 }
 
 /**
