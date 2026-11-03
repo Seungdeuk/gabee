@@ -34,13 +34,16 @@ function describeError(error) {
 }
 
 /**
- * 마이 > AI 리포트 데이터. 일정·문서를 병렬로 한 번만 받아 두고, 주 이동은 서버 호출 없이 다시 계산한다.
+ * 마이 > AI 리포트 데이터. 일정은 첫 진입에 한 번만 받고, 문서는 주(offset)마다 그 주 범위로 조회해
+ * docsByOffset 캐시에 둔다(한 번 본 주는 다시 부르지 않는다). 주 이동 때 캐시에 없으면 그 주 문서만 받는다.
+ * 캐시 값: { status: "ok", items } | { status: "failed" }. 값이 없으면 받는 중.
  * @returns {{
  *   status: "loading" | "ready" | "error" | "nofamily",
  *   errorMessage: string,
  *   range: ReturnType<typeof weekRange>,
  *   report: ReturnType<typeof buildReport> | null,
  *   docsStatus: "ok" | "loading" | "failed",
+ *   docsRetrying: boolean,
  *   canPrev: boolean, canNext: boolean,
  *   goPrev: () => void, goNext: () => void, goCurrent: () => void,
  *   retry: () => void, retryDocs: () => void,
@@ -52,10 +55,12 @@ export function useWeeklyReport() {
   const [status, setStatus] = useState("loading");
   const [errorMessage, setErrorMessage] = useState("");
   const [events, setEvents] = useState(null);
-  const [docs, setDocs] = useState(null);
-  const [docsStatus, setDocsStatus] = useState("loading");
+  const [docsByOffset, setDocsByOffset] = useState({});
+  const [retryingOffset, setRetryingOffset] = useState(null);
   const alive = useRef(true);
-  const loadId = useRef(0); // 오래된 응답이 새 응답을 덮어쓰지 않게 한다
+  const loadId = useRef(0); // 첫 진입·retry 마다 올린다. 오래된 응답이 새 응답을 덮어쓰지 않게 한다
+  const offsetRef = useRef(0);
+  const inFlight = useRef(new Set()); // 지금 받는 중인 offset(같은 주를 두 번 부르지 않는다)
 
   useEffect(() => {
     alive.current = true;
@@ -64,55 +69,89 @@ export function useWeeklyReport() {
     };
   }, []);
 
+  useEffect(() => {
+    offsetRef.current = offset;
+  }, [offset]);
+
+  /**
+   * 한 주의 문서를 받아 캐시에 넣는다(실패해도 던지지 않는다).
+   * @param {number} off 주 offset
+   * @param {number} nowMs 기준 시각
+   * @param {number} id 요청한 시점의 loadId
+   * @param {boolean} [force] true 면 받는 중이어도 다시 받는다(문서 다시 불러오기)
+   * @returns {Promise<{ noGroup: boolean }>}
+   */
+  const fetchDocs = useCallback(async (off, nowMs, id, force = false) => {
+    if (!force && inFlight.current.has(off)) return { noGroup: false };
+    inFlight.current.add(off);
+    const { start, end } = weekRange(nowMs, off);
+    let entry;
+    let noGroup = false;
+    try {
+      const items = await listSharedDocuments({ from: start, to: end });
+      entry = { status: "ok", items: Array.isArray(items) ? items : [] };
+    } catch (error) {
+      noGroup = describeError(error).noGroup;
+      entry = { status: "failed" };
+    }
+    if (id !== loadId.current) return { noGroup };
+    inFlight.current.delete(off);
+    if (!alive.current) return { noGroup };
+    setDocsByOffset((prev) => ({ ...prev, [off]: entry }));
+    return { noGroup };
+  }, []);
+
   const load = useCallback(async () => {
     const id = (loadId.current += 1);
-    setNow(currentTime());
+    const nowMs = currentTime();
+    inFlight.current.clear();
+    setNow(nowMs);
     setStatus("loading");
-    setDocsStatus("loading");
-    const [ev, dc] = await Promise.allSettled([listSharedEvents(), listSharedDocuments()]);
+    setDocsByOffset({});
+    setRetryingOffset(null);
+    const [ev, dc] = await Promise.allSettled([listSharedEvents(), fetchDocs(offsetRef.current, nowMs, id)]);
     if (!alive.current || id !== loadId.current) return;
+    const docsNoGroup = dc.status === "fulfilled" && dc.value.noGroup;
     if (ev.status === "rejected") {
       const e = describeError(ev.reason);
-      const noGroup = e.noGroup || (dc.status === "rejected" && describeError(dc.reason).noGroup);
       setErrorMessage(e.message);
-      setStatus(noGroup ? "nofamily" : "error");
+      setStatus(e.noGroup || docsNoGroup ? "nofamily" : "error");
       return;
     }
     setEvents(Array.isArray(ev.value) ? ev.value : []);
-    if (dc.status === "fulfilled") {
-      setDocs(Array.isArray(dc.value) ? dc.value : []);
-      setDocsStatus("ok");
-    } else {
-      setDocs(null);
-      setDocsStatus("failed");
-    }
-    setStatus("ready");
-  }, []);
-
-  const retryDocs = useCallback(async () => {
-    const id = loadId.current;
-    setDocsStatus("loading");
-    try {
-      const items = await listSharedDocuments();
-      if (!alive.current || id !== loadId.current) return;
-      setDocs(Array.isArray(items) ? items : []);
-      setDocsStatus("ok");
-    } catch {
-      if (!alive.current || id !== loadId.current) return;
-      setDocs(null);
-      setDocsStatus("failed");
-    }
-  }, []);
+    setStatus("ready"); // 일정은 성공하고 문서만 실패한 경우(no_group 포함)는 문서만 실패로 보여 준다
+  }, [fetchDocs]);
 
   useEffect(() => {
     load();
   }, [load]);
 
+  // 주를 옮겼는데 그 주 문서가 아직 없으면 그 주만 받는다(status 는 ready 그대로).
+  const currentEntry = docsByOffset[offset];
+  useEffect(() => {
+    if (status === "ready" && !currentEntry) fetchDocs(offset, now, loadId.current);
+  }, [status, offset, now, currentEntry, fetchDocs]);
+
+  const retryDocs = useCallback(async () => {
+    const off = offsetRef.current;
+    const id = loadId.current;
+    setRetryingOffset(off);
+    await fetchDocs(off, now, id, true);
+    if (alive.current && id === loadId.current) setRetryingOffset((cur) => (cur === off ? null : cur)); // 다른 주의 재시도 표시를 지우지 않는다
+  }, [fetchDocs, now]);
+
   const range = useMemo(() => weekRange(now, offset), [now, offset]);
-  const report = useMemo(
-    () => (status === "ready" && events ? buildReport({ events, docs, range, today: todayKst(now) }) : null),
-    [status, events, docs, range, now],
-  );
+  const docsRetrying = retryingOffset === offset;
+  let docsStatus = "loading";
+  if (currentEntry) docsStatus = currentEntry.status === "ok" ? "ok" : "failed";
+
+  const report = useMemo(() => {
+    if (status !== "ready" || !events) return null;
+    const today = todayKst(now);
+    if (docsRetrying || docsStatus === "failed") return buildReport({ events, docs: null, range, today });
+    if (docsStatus === "loading") return buildReport({ events, docs: null, range, today, docsPending: true });
+    return buildReport({ events, docs: currentEntry.items, range, today });
+  }, [status, events, docsStatus, docsRetrying, currentEntry, range, now]);
 
   const goPrev = useCallback(() => setOffset((o) => (canGoBack(o) ? o - 1 : o)), []);
   const goNext = useCallback(() => setOffset((o) => (canGoForward(o) ? o + 1 : o)), []);
@@ -124,6 +163,7 @@ export function useWeeklyReport() {
     range,
     report,
     docsStatus,
+    docsRetrying,
     canPrev: canGoBack(offset),
     canNext: canGoForward(offset),
     goPrev,

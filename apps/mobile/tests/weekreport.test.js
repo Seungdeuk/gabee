@@ -195,6 +195,28 @@ test("docs 가 null 이면 docCount null, 문서 건수 없이 확인 불가 문
   assert.ok(!/문서가 \d|문서는 \d/.test(r.line));
 });
 
+test("docsPending: 문서 문장 없이 docCount null, 실패와 구분, all_empty 가 되지 않는다", () => {
+  const base = { range: weekRange(NOW, 0), today: TODAY, docsPending: true };
+  const r = buildReport({ ...base, events: [ev()], docs: null });
+  assert.equal(r.docCount, null);
+  assert.equal(r.docsFailed, false);
+  assert.ok(!r.line.includes("문서"));
+  assert.ok(!r.line.includes("확인할 수 없어요"));
+  // 일정·할 일이 하나도 없어도 문서가 0건으로 확정된 것이 아니므로 all_empty 가 아니다
+  const empty = buildReport({ ...base, events: [], docs: null });
+  assert.equal(empty.state, "events_empty");
+  assert.equal(empty.docsFailed, false);
+  assert.ok(!empty.line.includes("문서"));
+  // 지난 주도 같다
+  const past = buildReport({ ...base, range: weekRange(NOW, -1), events: [], docs: null });
+  assert.equal(past.state, "events_empty");
+  assert.ok(!past.line.includes("문서"));
+  // docsPending 이 아니고 docs 가 null 이면 기존 실패 규칙
+  const failed = buildReport({ ...base, docsPending: false, events: [ev()], docs: null });
+  assert.equal(failed.docsFailed, true);
+  assert.ok(failed.line.includes("공유한 문서는 지금 확인할 수 없어요."));
+});
+
 test("line: 이번 주 문구", () => {
   assert.equal(
     report([], []).line,

@@ -35,7 +35,7 @@ export default function ReportScreen() {
     body = <NoticeBox title="불러오지 못했어요" message={r.errorMessage} actionLabel="다시 시도" onAction={r.retry} />;
   } else if (report) {
     const noun = report.isCurrent ? "이번 주" : "그 주";
-    const docsReloading = r.docsStatus === "loading";
+    const docsReloading = r.docsRetrying;
     body = (
       <>
         <WeekSwitcher
@@ -52,6 +52,7 @@ export default function ReportScreen() {
           todoDone={report.todoDone}
           todoTotal={report.todoTotal}
           docCount={report.docCount}
+          docsStatus={r.docsStatus}
           isCurrent={report.isCurrent}
         />
         {r.docsStatus === "failed" || docsReloading ? (
