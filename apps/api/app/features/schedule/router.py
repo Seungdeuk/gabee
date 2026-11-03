@@ -7,6 +7,7 @@ from app.shared.db import get_db
 from . import service
 from . import together as request_service
 from .agent.router import router as agent_router
+from .check_router import router as check_router
 from .models import Event, EventTopic
 from .schemas import (
     CheckBody,
@@ -178,3 +179,7 @@ def cancel_request(
     db: Session = Depends(get_db),
 ) -> dict:
     return request_service.cancel(db, group_id, user.id, request_id)
+
+
+# 데일리 체크: /schedule/check/... (맨 뒤에 붙여 기존 일정 API 의 문서 순서를 바꾸지 않는다)
+router.include_router(check_router)

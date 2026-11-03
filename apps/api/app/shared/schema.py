@@ -40,12 +40,18 @@ SHARED_MODEL_FEATURES = {
 }
 
 
+# 한 기능 안의 하위 기능(테이블 이름 접두사 → 하위 기능 이름). 이 접두사의 테이블은 상위 기능(schedule)이 아니라
+# 하위 기능으로 따로 점검해, 준비 안 된 DB 에서 그 API 만 503 이 되게 한다(일정의 나머지 API 는 영향받지 않는다).
+SUB_FEATURE_PREFIXES = {"events_check_": "schedule_check"}  # 데일리 체크(schedule/check_router.py)
+
+
 def feature_tables() -> dict[str, dict[str, Table]]:
     """기능 이름 → {테이블 이름: Table}. 각 기능 models.py 의 모델에서 자동으로 모은다."""
     db.import_all_models()
     features: dict[str, dict[str, Table]] = {}
     for mapper in db.Base.registry.mappers:
         module = mapper.class_.__module__
+        table_name = mapper.local_table.name
         found = _FEATURE_RE.match(module)
         if found:
             owners = (found.group(1),)
@@ -54,8 +60,11 @@ def feature_tables() -> dict[str, dict[str, Table]]:
             if not shared:
                 continue
             owners = SHARED_MODEL_FEATURES.get(shared.group(1), (CORE_FEATURE,))
+        for prefix, sub_feature in SUB_FEATURE_PREFIXES.items():
+            if table_name.startswith(prefix):
+                owners = (sub_feature,)
         for owner in owners:
-            features.setdefault(owner, {})[mapper.local_table.name] = mapper.local_table
+            features.setdefault(owner, {})[table_name] = mapper.local_table
     return features
 
 
