@@ -96,8 +96,10 @@ class OnnxNer:
         self.id2label = {int(k): v for k, v in meta["id2label"].items()}
         self.max_len = int(meta.get("max_len", MAX_LEN))
         self.pad_id = int(meta.get("pad_token_id", 0))
-        self.cls_id = int(meta.get("cls_token_id", self.tk.token_to_id("[CLS]")))
-        self.sep_id = int(meta.get("sep_token_id", self.tk.token_to_id("[SEP]")))
+        cls_fb = self.tk.token_to_id("[CLS]") if self.tk.token_to_id("[CLS]") is not None else self.tk.token_to_id("<s>")
+        sep_fb = self.tk.token_to_id("[SEP]") if self.tk.token_to_id("[SEP]") is not None else self.tk.token_to_id("</s>")
+        self.cls_id = int(meta["cls_token_id"] if meta.get("cls_token_id") is not None else cls_fb)
+        self.sep_id = int(meta["sep_token_id"] if meta.get("sep_token_id") is not None else sep_fb)
         self.size = self.max_len - 2
         self.overlap = overlap
         self.sess = None

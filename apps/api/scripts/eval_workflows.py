@@ -69,7 +69,8 @@ from tests.security_matrix_support import (  # noqa: E402
     example_from_schema,
 )
 
-assert "gabee-17a" in str(_app_pkg.__file__), _app_pkg.__file__
+# 이 스크립트가 있는 저장소의 app 패키지를 검사하는지 확인한다(다른 폴더의 app 을 잘못 import 하는 일 방지)
+assert str(API_DIR).lower() in str(_app_pkg.__file__).lower(), _app_pkg.__file__
 
 SECRET_PW = "Gabee!2024x"
 TOKEN_RE = re.compile(r"\[(?:PERSON|ADDR|PHONE|EMAIL)_\d+\]")
