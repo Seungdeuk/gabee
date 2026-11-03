@@ -16,6 +16,7 @@ class Settings(BaseSettings):
     database_url: str = "sqlite:///./data/gabee.db"
     data_dir: str = "./data"
     cors_origins: str = "*"
+    support_email: str = ""  # 공개 안내 페이지(/privacy·/terms 등)에 보이는 문의 이메일. 비우면 이메일 줄은 보이지 않는다
     anthropic_api_key: str = ""
     # Anthropic 모델은 환경변수 ANTHROPIC_MODEL 로 고른다(예전 이름 LLM_MODEL 도 읽는다). 비우면 기본값.
     llm_model: str = Field(

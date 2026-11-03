@@ -17,6 +17,7 @@ from app.shared.db import init_db
 from app.shared.errors import register_error_handlers
 from app.shared.high_risk_guard import GUARDED_FEATURES, high_risk_guard
 from app.shared.privacy import ner as privacy_ner
+from app.shared.public_pages.router import router as public_pages_router
 from app.shared.route_switch import RouteSwitchMiddleware
 from app.shared.schema_gate import health_router, schema_ready
 
@@ -72,6 +73,7 @@ for feature, router in (
         deps.append(Depends(high_risk_guard))
     app.include_router(router, dependencies=deps)
 app.include_router(health_router)
+app.include_router(public_pages_router)  # 공개 안내 페이지(/, /privacy, /terms): 로그인·DB 없음
 
 
 @app.get("/health", tags=["health"])
