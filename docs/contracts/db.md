@@ -33,7 +33,7 @@ docker compose 의 개발용 PostgreSQL(`pgvector/pgvector:pg16` 이미지, `pgv
 | chat_room_mutes | family_chat | 구성원이 대화방의 알림을 끈 기록. `(room_id, user_id)` 기본키(각각 `chat_rooms`·`users` 참조), `created_at`(시간대 포함). 행이 있으면 끈 것이고 다시 켜면 행을 지운다(기본은 켜짐). 사용자마다 따로이고 다른 구성원에게는 영향이 없다. 리비전 `c606f5b0deb6`(expand) |
 | chat_message_links | family_chat | 채팅 메시지와 그 메시지에서 등록한 일정·할 일의 연결. `group_id`(`groups` 참조)·`room_id`(`chat_rooms` 참조, 가족 전체방도 방 id 를 쓴다)·`message_id`(`messages` 참조)·`kind`(event/todo)·`target_id`(일정 또는 할 일 id, 일정은 다른 기능이라 외래키 없이 복사본만)·`title`(120자 복사본)·`date`·`time`(없을 수 있음)·`created_by`(`users` 참조)·`created_at`. 본문은 복사하지 않고 `messages` 와 join 해서 읽는다. 유니크 `(room_id, message_id, kind, target_id)`·인덱스 `(room_id, created_at)`. 방당 최대 200개는 서비스가 지킨다. 리비전 `c4d8a2e6b157` |
 | ai_group_settings | family_chat, ai_assistant | 가족 그룹의 AI 기능 사용 동의(`enabled`, 켠 사람). 기본은 꺼짐. 소유자·관리자만 바꾼다 |
-| agent_proposal_uses | billing, care | 에이전트 쓰기 제안 토큰을 한 번만 쓰게 하는 사용 기록(`jti`, 만료 시각, 사용 시각). 토큰 원문은 저장하지 않고, 만료가 지난 행은 새 토큰을 쓸 때 지운다 |
+| agent_proposal_uses | billing | 에이전트 쓰기 제안 토큰을 한 번만 쓰게 하는 사용 기록(`jti`, 만료 시각, 사용 시각). 토큰 원문은 저장하지 않고, 만료가 지난 행은 새 토큰을 쓸 때 지운다 |
 | notifications | notifications | 알림함. 사건 한 건당 받는 사람마다 한 줄(`user_id`, `group_id`, 분류 `kind`, 세부 종류 `event`, 고정 문구 `title`/`body`, 이동 대상 `target_type`/`target_id`, 행동한 사람 `actor_user_id`, 생성·읽은 시각). 인덱스 `(user_id, created_at)`, `(user_id, read_at)`. 금액·위치·건강 정보·AI 요약·채팅 내용은 담지 않는다 |
 | ai_usage_logs | family_chat, ai_assistant | AI 요청별 사용 기록(기능, API 호출 수, 입력·출력 토큰, 캐시 적중, 상태, 오류 코드, 모델). **대화·문서 원문과 API 키는 저장하지 않는다.** 하루 한도·쿨다운 계산에 쓰고 90일이 지난 기록은 정리한다 |
 | ai_result_cache | family_chat, ai_assistant | 같은 AI 요청의 검증된 결과(가족 그룹·기능·키로 유일). 만료 시각까지만 재사용하고 새 결과를 저장할 때 만료된 행을 지우며, 동의를 끄면 그 가족의 행을 모두 지운다 |
@@ -52,12 +52,7 @@ docker compose 의 개발용 PostgreSQL(`pgvector/pgvector:pg16` 이미지, `pgv
 | allowance_plans | billing | 자녀별 고정 용돈 주기(매주/매월, 금액, 자동/리마인드, 시작일). 자녀당 1개 |
 | allowance_entries | billing | 용돈 장부(입금 credit·사용 use, 취소는 `voided_at`). 주기 입금은 `plan_due_date`로 같은 지급일 중복 방지(unique) |
 | allowance_requests | billing | 자녀의 용돈 요청(금액, 사유, 상태 pending/approved/rejected/cancelled, 처리한 사람, 승인 금액, 승인으로 생긴 장부 줄 `entry_id`) |
-| care_records | care | 돌봄 기록(대상, 종류, 값, 날짜). 같은 그룹·대상·종류·날짜는 하나만 둔다 **(2026-11-02 코드는 지웠고 테이블만 남김. 삭제는 DB 담당자 승인 필요)** |
-| care_locations | care | 동의한 사람이 보낸 위치(좌표·정확도·잰 시각). 7일이 지나면 삭제, 동의 철회 시 즉시 삭제. 좌표는 로그에 남기지 않는다 |
-| location_consent_events | shared | 위치 공유 동의·철회 이력(사용자, 동의 여부, 경로, 시각). 좌표 없음 |
-| care_items | care | 데일리 체크 항목(기록 방식, 목표, 예정 시각, 끼니). 삭제는 `deleted_at` 소프트 삭제 **(2026-11-02 코드는 지웠고 테이블만 남김. 삭제는 DB 담당자 승인 필요)** |
-| care_entries | care | 항목의 하루 기록. 같은 항목·날짜는 하나만 둔다. 건너뛰기 `skipped`(누락으로 세지 않음, 값 없음) **(2026-11-02 코드는 지웠고 테이블만 남김. 삭제는 DB 담당자 승인 필요)** |
-| care_meal_logs | care | 식단 기록(그날 끼니에 먹은 메뉴, 메모, 직접 입력/추천 구분, 기록한 사람). 그룹·날짜·끼니당 하나(덮어쓰기) **(2026-11-02 코드는 지웠고 테이블만 남김. 삭제는 DB 담당자 승인 필요)** |
+| location_consent_events | shared | (돌봄 위치 기능을 지워 새 기록은 없음) 위치 공유 동의·철회 이력(사용자, 동의 여부, 경로, 시각). 좌표 없음 |
 | photos | ai_assistant | 앱이 올린 사진(파일은 `DATA_DIR/photos`에 저장) |
 | knowledge_items | ai_assistant/knowledge | 전처리가 넘긴 기록 한 건(분류 이름, 제목, 마크다운 전체, 원본 경로, 날짜, 민감도) |
 | knowledge_chunks | ai_assistant/knowledge | 기록을 쪽·슬라이드·길이로 자른 조각과 임베딩 벡터(PostgreSQL 은 pgvector `vector(384)` + 코사인 HNSW 인덱스, SQLite 는 JSON). Alembic 리비전 c3a9f21d7e54 |

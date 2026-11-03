@@ -6,7 +6,6 @@ process.env.EXPO_PUBLIC_API_URL = "http://api.test";
 process.env.EXPO_PUBLIC_DEV_TOKEN = "legacy-dev-token";
 
 // 서버 주소는 불러올 때 읽으므로 환경 값을 정한 뒤에 가져온다.
-const { getLatestLocations } = await import("../src/features/care/api.js");
 const { getMembers } = await import("../src/features/billing/api.js");
 const { getRoomInfo } = await import("../src/features/family-chat/api.js");
 const { buildFamily } = await import("../src/features/schedule/members.js");
@@ -40,8 +39,6 @@ function serve({ nicknames = NICKS, nickFails = false } = {}) {
     const path = new URL(String(url)).pathname;
     if (path === "/family-group/groups/me/nicknames") return nickFails ? json(500, { code: "x" }) : json(200, nicknames);
     if (path === "/family-group/groups/me") return json(200, GROUP);
-    if (path === "/care/locations/latest")
-      return json(200, { retention_days: 7, members: [{ user_id: "me1", name: "김나", is_me: true }, { user_id: "u2", name: "박엄마계정", is_me: false }] });
     throw new Error(`예상 밖 호출 ${path}`);
   };
 }
@@ -87,17 +84,4 @@ test("일정 buildFamily: 별명 > 관계 이름 > 표시 이름이고, 별명�
   assert.equal(name("me"), "나");
   assert.equal(name("mom"), "어머니"); // 별명이 관계 이름(엄마)보다 먼저
   assert.equal(name("dad"), "아빠"); // 별명 없음 → 관계 이름
-});
-
-test("돌봄 위치: 남의 이름은 별명으로, 내 이름은 그대로", async () => {
-  serve();
-  const { members } = await getLatestLocations();
-  assert.equal(members[0].name, "김나");
-  assert.equal(members[1].name, "어머니");
-});
-
-test("돌봄 위치: 별명 조회가 실패하면 원래 이름으로 온다", async () => {
-  serve({ nickFails: true });
-  const { members } = await getLatestLocations();
-  assert.equal(members[1].name, "박엄마계정");
 });

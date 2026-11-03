@@ -83,7 +83,6 @@ def _outbound():
         "login_max_failures_per_id": 5,
         "login_max_failures_per_ip": 50,
         "invite_max_failures": 5,
-        "care_location_enabled": True,
         "invite_failure_window_seconds": 900,
     }
     for name, value in pinned.items():
@@ -207,9 +206,6 @@ NO_GROUP_OK = {
     ("POST", "/ai-assistant/chat"),
     # 가족 그룹과 무관한 공개 정보(구독 서비스 목록 등)
     ("GET", "/billing/subscriptions/catalog"),
-    # 위치 공유 동의는 사용자 본인 설정이다(그룹 데이터 아님)
-    ("GET", "/care/location/consent"),
-    ("PUT", "/care/location/consent"),
     # 알림함은 로그인한 본인의 알림만 다룬다. 가족이 없어도 빈 목록이며 그룹 id 를 요청에서 받지 않는다
     ("GET", "/notifications"),
     ("GET", "/notifications/unread-count"),
@@ -277,7 +273,6 @@ SAMPLE_AUTH_PATHS = [
     ("POST", "/family-chat/messages"),
     ("GET", "/schedule/events"),
     ("GET", "/billing/expenses"),
-    ("GET", "/care/locations/latest"),
     ("GET", "/ai-assistant/knowledge/items"),
     ("POST", "/ai-assistant/chat"),
     ("GET", "/family-group/me"),
@@ -536,8 +531,6 @@ CROSS = [
     ("GET", "/billing/summary", {"params": {"month": MONTH}}, (200,)),
     ("GET", "/billing/settlement", {"params": {"month": MONTH}}, (200,)),
     ("GET", "/billing/subscriptions", {}, (200,)),
-    # --- care
-    ("GET", "/care/locations/latest", {}, (200,)),
     # --- ai-assistant / knowledge
     ("GET", "/ai-assistant/knowledge/items", {}, (200,)),
     ("GET", "/ai-assistant/knowledge/items/{knowledge_item_id}", {}, (403, 404)),
@@ -905,7 +898,6 @@ def test_pending_join_request_user_has_no_group_access(api, world):
         "/family-chat/messages",
         "/schedule/events",
         "/billing/expenses",
-        "/care/locations/latest",
         "/ai-assistant/knowledge/items",
     ):
         r = api.get(path, headers=p.headers)
@@ -928,7 +920,6 @@ def test_stale_active_group_without_membership_is_blocked(api, world):
         ("POST", "/family-chat/messages", {"json": {"text": "x"}}),
         ("GET", "/schedule/events", {}),
         ("GET", "/billing/expenses", {}),
-        ("GET", "/care/locations/latest", {}),
         ("GET", "/ai-assistant/knowledge/items", {}),
         ("POST", "/ai-assistant/chat", {"json": {"message": "안녕"}}),
         ("POST", "/ai-assistant/knowledge/ask", {"json": {"question": "x"}}),
@@ -1233,63 +1224,6 @@ def test_settlement_manager_change_only_manager_or_group_owner(api, perm):
         "/billing/settlement/manager", json={"user_id": other.id}, headers=perm.member.headers
     )
     assert r.status_code == 403
-
-
-def _point(lat=37.5, lng=127.0):
-    from datetime import UTC, datetime
-
-    return {"lat": lat, "lng": lng, "recorded_at": datetime.now(UTC).isoformat()}
-
-
-def test_location_sharing_requires_own_consent(api, perm):
-    h = perm.third.headers
-    r = api.post("/care/locations", json={"points": [_point()]}, headers=h)
-    assert r.status_code == 403 and r.json()["code"] == "consent_required", r.text
-    # 다른 구성원의 동의는 내 것이 아니다
-    assert (
-        api.put(
-            "/care/location/consent", json={"consent": True}, headers=perm.owner.headers
-        ).status_code
-        == 200
-    )
-    assert api.post(
-        "/care/locations", json={"points": [_point()]}, headers=perm.owner.headers
-    ).status_code in (200, 201)
-    r = api.post("/care/locations", json={"points": [_point()]}, headers=h)
-    assert r.status_code == 403 and r.json()["code"] == "consent_required"
-    # 동의를 철회하면 다시 막힌다
-    assert (
-        api.put(
-            "/care/location/consent", json={"consent": False}, headers=perm.owner.headers
-        ).status_code
-        == 200
-    )
-    assert (
-        api.post(
-            "/care/locations", json={"points": [_point()]}, headers=perm.owner.headers
-        ).status_code
-        == 403
-    )
-
-
-def test_location_of_other_family_is_never_visible(api, world):
-    b = world.b
-    assert (
-        api.put(
-            "/care/location/consent", json={"consent": True}, headers=b.member.headers
-        ).status_code
-        == 200
-    )
-    assert api.post(
-        "/care/locations",
-        json={"points": [_point(37.123456, 127.654321)]},
-        headers=b.member.headers,
-    ).status_code in (200, 201)
-    mine = api.get("/care/locations/latest", headers=b.owner.headers)
-    assert "37.123456" in mine.text  # 같은 가족에게는 보인다(동의한 사람의 위치)
-    for who in (world.a.owner, world.a.member, world.loner):
-        r = api.get("/care/locations/latest", headers=who.headers)
-        assert "37.123456" not in r.text and "127.654321" not in r.text and "비이" not in r.text
 
 
 def test_formal_account_bearer_auth_and_legacy_token_boundaries(api, monkeypatch):

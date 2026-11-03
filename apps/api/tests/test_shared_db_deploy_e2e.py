@@ -588,7 +588,7 @@ def api_state(client):
     paths = (
         "/family-group/me",
         "/schedule/events",
-        "/care/location/consent",
+        "/notifications",
         "/family-chat/messages",
     )
     existing = [client.get(path, headers=HEADERS).status_code for path in paths]
