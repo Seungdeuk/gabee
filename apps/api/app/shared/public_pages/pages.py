@@ -4,6 +4,8 @@
 문구나 값이 바뀌면 시행일(`EFFECTIVE_DATE`)도 함께 고친다.
 """
 
+import html
+
 from app.shared.public_pages.layout import SERVICE_NAME, contact_link, page
 
 OPERATOR = "강민훈"  # 운영자(팀원이 만든 방침 v0.1 의 운영 주체와 같다)
@@ -198,3 +200,18 @@ def terms() -> str:
 <p>이 약관은 대한민국 법령에 따라 해석해요. 서비스에 대한 문의: {_contact_target()}</p>
 """
     return page("서비스 약관", body)
+
+
+def kakao_return(target: str) -> str:
+    """카카오 로그인 뒤 앱으로 돌려보내는 응답의 본문(302 를 따르지 않는 클라이언트용 안내와 이동 링크).
+
+    @param target: 앱으로 돌아갈 주소(`gabee://kakao?...`). 서버가 만든 값이지만 안전하게 이스케이프해 넣는다
+    @returns: HTML 문자열
+    """
+    href = html.escape(target, quote=True)
+    body = f"""
+<h1>카카오 로그인을 마쳤어요</h1>
+<p>앱으로 돌아가는 중이에요. 자동으로 돌아가지 않으면 아래 버튼을 눌러 주세요.</p>
+<p><a href="{href}"><b>{SERVICE_NAME} 앱으로 돌아가기</b></a></p>
+"""
+    return page("카카오 로그인", body)

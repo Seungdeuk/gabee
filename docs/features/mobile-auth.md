@@ -33,6 +33,7 @@
 - 같은 이메일의 기존 계정이 있으면 합치지 않고 안내만 보여 준다("기타 탭의 소셜 계정 연동에서 연결"). 기타 탭 계정 카드 → `/social-accounts`: 연결·해제(비밀번호가 있는 계정은 비밀번호 확인, 마지막 로그인 수단은 서버가 거부).
 - `AuthProvider.signInWithSession(loginResponse)`: 소셜 로그인 응답으로 세션을 시작한다(아이디 로그인과 같은 저장·복원 경로).
 - Android 에서 Google 로그인이 끝나고 앱으로 돌아오는 주소는 `com.kangminhun.gabee:/oauthredirect`(expo-auth-session 이 앱 패키지명을 쓴다)라, `app.json` 의 `scheme` 에 `gabee`(딥링크·카카오, 첫 번째라 `Linking.createURL` 도 이쪽)와 함께 패키지명도 넣었다. 스킴을 바꾼 것이라 새 빌드가 필요하다.
+- **카카오 로그인(모바일)은 서버 https 중계로 돌아온다.** 카카오는 사용자 지정 앱 주소(`gabee://`)를 Redirect URI 로 받지 않는다. 그래서 카카오 콘솔에는 `https://api.gabee.cloud/auth/kakao/callback`(서버 `app/shared/public_pages/router.py`)을 Redirect URI 로 등록하고(웹 시험용 `http://localhost:8086/kakao` 도 등록), 이 경로가 받은 `code`·`state`·`error` 를 `gabee://kakao?...` 로 넘겨 준다(돌아갈 곳은 앱 주소로 고정, 코드는 서버가 저장하지 않고 PKCE 없이는 토큰으로 못 바꾼다). 앱은 `WebBrowser.openAuthSessionAsync(request.url, 앱 주소)` 로 앱 주소가 돌아오기를 기다리고 `parseReturnUrl` 로 state 를 확인한 뒤 코드를 액세스 토큰으로 바꿔 서버에 넘긴다. 웹은 웹 주소로 바로 돌아오는 기존 방식이다. 안드로이드는 앱 라우터도 `gabee://kakao` 를 받으므로 빈 라우트 `src/app/kakao.js` 가 이전 화면으로 돌려보낸다. 인증 창을 직접 여는 쪽(`SocialButtons`)은 중복 실행 잠금과 예외 처리를 둔다. 인증 코드는 서버 접근 로그의 쿼리에 남을 수 있는데(PKCE 라 코드만으로는 토큰을 못 얻는다) 운영에서 이 경로의 쿼리를 로그에서 가리는 것을 검토한다. Expo Go 에서는 앱 주소가 달라 카카오 로그인을 시험할 수 없고 개발·production 빌드에서 시험한다. **실제 기기에서의 복귀 동작은 아직 확인하지 못했다.**
 - **실제 Google·카카오 앱 등록과 기기 동작은 확인하지 못했다**(앱 키 필요, 카카오는 아직 앱 등록 전). 자동 시험은 호출 경로·설정·후보 응답 처리까지.
 
 ## 이메일은 선택 (가족 참여에 인증이 필요 없다)
