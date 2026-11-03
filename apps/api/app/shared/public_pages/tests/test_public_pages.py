@@ -44,11 +44,19 @@ def test_privacy_covers_key_disclosures(client):
         assert needle in text
 
 
-def test_pending_items_are_visibly_marked(client):
-    # 운영자가 채워야 하는 자리는 반드시 <mark> 안에 있어야 눈에 띈다(공개 전에 모두 채워 이 표시가 사라지게 한다)
-    for path in ("/privacy", "/terms"):
+def test_no_pending_placeholders_left(client):
+    # 운영자가 정해야 하던 자리(시행일·보호책임자·마이크)를 모두 채웠다. 다시 비워 두고 공개하지 않게 한다
+    for path in PAGES:
         text = client.get(path).text
-        assert text.count("【확정 필요") == text.count("<mark>【확정 필요")
+        assert "확정 필요" not in text
+        assert "<mark>" not in text
+
+
+def test_key_values_are_shown(client):
+    text = client.get("/privacy").text
+    assert "2026년 11월 3일" in text
+    assert "개인정보 보호책임자: 백승득" in text
+    assert "온디바이스" in text
 
 
 def test_contact_email_only_when_configured(client, monkeypatch):
