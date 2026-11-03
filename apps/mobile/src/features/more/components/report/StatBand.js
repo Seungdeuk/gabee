@@ -3,17 +3,17 @@ import { StyleSheet, Text, View } from "react-native";
 import { colors, font, radius, spacing } from "@/theme";
 
 /**
- * 숫자 띠 한 칸: 라벨 + 큰 숫자 + 단위. value 가 null 이면 "–" 로 보이고 접근성 라벨은 "불러오지 못했어요".
- * @param {{ label: string, value: number | null, unit: string, children?: import("react").ReactNode }} props
+ * 숫자 띠 한 칸: 라벨 + 큰 숫자 + 단위. value 가 null 이면 "–" 로 보이고 접근성 라벨은 nullText.
+ * @param {{ label: string, value: number | null, unit: string, nullText?: string, children?: import("react").ReactNode }} props
  * @returns {import("react").ReactElement}
  */
-function Cell({ label, value, unit, children }) {
+function Cell({ label, value, unit, nullText = "불러오지 못했어요", children }) {
   const failed = value === null;
   return (
     <View
       style={styles.cell}
       accessible
-      accessibilityLabel={failed ? `${label}, 불러오지 못했어요` : `${label}, ${value}${unit}`}
+      accessibilityLabel={failed ? `${label}, ${nullText}` : `${label}, ${value}${unit}`}
     >
       <Text style={styles.label}>{label}</Text>
       <View style={styles.valueRow}>
@@ -27,10 +27,10 @@ function Cell({ label, value, unit, children }) {
 
 /**
  * 공유 일정·완료한 할 일·공유한 문서 숫자 띠(흰 카드 한 장, 세 칸)와 아래 설명 한 줄.
- * @param {{ sharedCount: number, todoDone: number, todoTotal: number, docCount: number | null, isCurrent: boolean }} props
+ * @param {{ sharedCount: number, todoDone: number, todoTotal: number, docCount: number | null, docsStatus?: "ok" | "loading" | "failed", isCurrent: boolean }} props
  * @returns {import("react").ReactElement}
  */
-export default function StatBand({ sharedCount, todoDone, todoTotal, docCount, isCurrent }) {
+export default function StatBand({ sharedCount, todoDone, todoTotal, docCount, docsStatus, isCurrent }) {
   const ratio = todoTotal > 0 ? Math.min(todoDone / todoTotal, 1) : 0;
   return (
     <View style={styles.wrap}>
@@ -43,7 +43,12 @@ export default function StatBand({ sharedCount, todoDone, todoTotal, docCount, i
           </View>
         </Cell>
         <View style={styles.line} />
-        <Cell label="공유한 문서" value={docCount} unit="건" />
+        <Cell
+          label="공유한 문서"
+          value={docCount}
+          unit="건"
+          nullText={docsStatus === "loading" ? "불러오는 중" : "불러오지 못했어요"}
+        />
       </View>
       <Text style={styles.note}>
         {isCurrent

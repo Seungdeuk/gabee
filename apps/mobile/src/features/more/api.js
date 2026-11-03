@@ -13,6 +13,16 @@ export const listSharedEvents = () => apiFetch("/schedule/events?include_past=tr
 
 /**
  * 가비 기록(문서) 목록. 민감 문서 제외는 호출한 쪽이 한다.
+ * from·to 를 주면 서버가 올린 날(created_at, KST 날짜) 양끝 포함 범위로 거른다.
+ * 서버가 구버전이면 범위를 무시하고 전체 최대 200건을 주므로 호출한 쪽이 다시 거른다.
+ * @param {{ from?: string, to?: string }} [range] "YYYY-MM-DD". 둘 다 없으면 범위 없이 최대 200건
  * @returns {Promise<object[]>} ItemOut[]
  */
-export const listSharedDocuments = () => apiFetch("/ai-assistant/knowledge/items?limit=200");
+export const listSharedDocuments = ({ from, to } = {}) => {
+  const query = new URLSearchParams({ limit: "200" });
+  if (from && to) {
+    query.set("created_from", from);
+    query.set("created_to", to);
+  }
+  return apiFetch(`/ai-assistant/knowledge/items?${query.toString()}`);
+};

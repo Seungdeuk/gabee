@@ -145,7 +145,7 @@ function compareEvents(a, b) {
  * @param {object} p 집계 값 묶음
  * @returns {string}
  */
-function buildLine({ isCurrent, P, state, sharedCount, todoTotal, todoDone, docCount, docsFailed }) {
+function buildLine({ isCurrent, P, state, sharedCount, todoTotal, todoDone, docCount, docsFailed, docsPending }) {
   if (state === "all_empty") {
     return isCurrent
       ? "이번 주는 아직 가족이 공유한 기록이 없어요. 일정이나 할 일을 등록하고 문서를 공유하면 여기에 모아 보여 드릴게요."
@@ -166,7 +166,9 @@ function buildLine({ isCurrent, P, state, sharedCount, todoTotal, todoDone, docC
         : `할 일은 ${todoTotal}건 중 ${todoDone}건 끝냈어요.`,
     );
   }
-  if (docsFailed) {
+  if (docsPending) {
+    // 문서를 처음 받는 중: 문서 문장은 아예 넣지 않는다
+  } else if (docsFailed) {
     parts.push("공유한 문서는 지금 확인할 수 없어요.");
   } else if (docCount > 0) {
     parts.push(isCurrent ? `공유한 문서가 ${docCount}건 있어요.` : `공유한 문서는 ${docCount}건이었어요.`);
@@ -221,8 +223,9 @@ function buildInsights({ isCurrent, P, today, todoTotal, todoLeft, shared }) {
 
 /**
  * 한 주 리포트를 만든다.
- * @param {{ events: object[], docs: object[] | null, range: ReturnType<typeof weekRange>, today: string }} args
- *   events 는 필수, docs 가 null 이면 문서를 불러오지 못한 것.
+ * @param {{ events: object[], docs: object[] | null, range: ReturnType<typeof weekRange>, today: string, docsPending?: boolean }} args
+ *   events 는 필수, docs 가 null 이면 문서를 불러오지 못한 것. docsPending 이 true 면 문서를 처음 받는 중이라
+ *   실패가 아니다(docCount null, 문서 문장 없음, 문서 0건으로 확정하지 않으므로 all_empty 가 되지 않는다).
  * @returns {{
  *   isCurrent: boolean, state: "ok" | "events_empty" | "all_empty",
  *   sharedCount: number, todoTotal: number, todoDone: number,
@@ -232,7 +235,7 @@ function buildInsights({ isCurrent, P, today, todoTotal, todoLeft, shared }) {
  *   insights: { key: string, text: string, action?: "schedule" }[], line: string
  * }}
  */
-export function buildReport({ events, docs, range, today }) {
+export function buildReport({ events, docs, range, today, docsPending = false }) {
   const { start, end, isCurrent, offset } = range;
   const inWeek = (d) => typeof d === "string" && d >= start && d <= end;
   let P = "그 주";
@@ -248,8 +251,8 @@ export function buildReport({ events, docs, range, today }) {
   const todoDone = todos.filter((e) => e.checked === true).length;
   const todoLeft = todoTotal - todoDone;
 
-  const docsFailed = docs == null;
-  const docCount = docsFailed
+  const docsFailed = docs == null && !docsPending;
+  const docCount = docsPending || docs == null
     ? null
     : docs.filter((d) => d.sensitivity !== "sensitive" && inWeek(docKstDate(d.created_at))).length;
 
@@ -285,6 +288,6 @@ export function buildReport({ events, docs, range, today }) {
     listTotal: target.length,
     list,
     insights: buildInsights({ isCurrent, P, today, todoTotal, todoLeft, shared }),
-    line: buildLine({ isCurrent, P, state, sharedCount, todoTotal, todoDone, docCount, docsFailed }),
+    line: buildLine({ isCurrent, P, state, sharedCount, todoTotal, todoDone, docCount, docsFailed, docsPending }),
   };
 }
