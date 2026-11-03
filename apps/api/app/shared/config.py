@@ -79,6 +79,11 @@ class Settings(BaseSettings):
     # 테스트 참여 동의서에 동의한 회원만 API 를 쓸 수 있게 한다(기본은 꺼짐). 앱의 동의서 버전(CONSENT_VERSION)과 같게 둔다.
     require_tester_consent: bool = False
     tester_consent_version: str = "v0.2"
+    # 서비스 운영자 허용 목록(app/shared/auth.py require_operator): 쉼표로 구분한 사용자 id. 비어 있거나 없으면 아무도 허용하지 않는다.
+    # ops_admin = 운영 관리자 페이지, service_admin = 서비스 관리자 페이지이며 서로를 포함하지 않는다.
+    # 실제 id 는 환경변수(.env·비밀 관리)에만 두고 코드·Git·문서에 넣지 않는다.
+    ops_admin_user_ids: str = ""
+    service_admin_user_ids: str = ""
     # 돌봄 서버 API(/care/*) 사용 여부(기본 꺼짐). 팀 회의 결과로 돌봄 탭을 지갑으로 바꾸면서 닫았다. 꺼져 있으면 /care/* 요청을 403 care_disabled 로 막는다.
     # 위치 동의 철회·조회(/care/location/consent)는 저장된 내 위치를 지우는 길이라 꺼져 있어도 열어 둔다.
     care_api_enabled: bool = False
