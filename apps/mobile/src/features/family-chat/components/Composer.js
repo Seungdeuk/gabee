@@ -12,7 +12,9 @@ import PlusSheet from "./PlusSheet";
 
 const LINE_HEIGHT = font.body.lineHeight;
 const MAX_LINES = 5;
-const INNER_BTN = 36; // 입력칸 안 버튼(문서·보내기)의 한 변
+const ROW_H = LINE_HEIGHT + (spacing.xs + 2) * 2; // 입력 줄의 한 줄 높이 = 말풍선 한 줄 높이(글자 줄 높이 + 위아래 여백). + 버튼, 입력칸, 보내기 자리가 모두 이 높이
+const INNER_BTN = ROW_H - spacing.xs * 2; // 입력칸 안 버튼(문서·보내기)의 한 변
+const MAX_H = LINE_HEIGHT * MAX_LINES + spacing.xs * 2; // 입력칸 최대 높이(5줄)
 const INNER_SLOT = INNER_BTN; // 오른쪽 자리: 버튼 한 개 폭으로 고정해 글자를 쓰기 시작해도 글자 영역이 흔들리지 않는다
 
 /**
@@ -32,6 +34,7 @@ export default function Composer({ value, onChangeText, onSend, onPickPhoto, onP
   const ok = canSend(value);
   const sending = photoBusy || fileBusy; // 사진·파일을 보내는 동안은 + 버튼이 진행 표시
   const inputRef = useRef(null);
+  const [inputH, setInputH] = useState(ROW_H); // 입력칸 높이: 글자 높이에 맞추되 한 줄일 때는 말풍선과 같은 높이로 고정(안드로이드 기본 여백 때문에 더 커지지 않게)
   const [sel, setSel] = useState(null); // 예시를 채운 직후에만 커서를 끝으로 둔다(안드로이드). 평소에는 제어하지 않는다
   const hintsOn = mentionHintsVisible(value, direct); // `@` 를 치면 @가비 예시 목록(1:1 방은 숨김)
   const replyId = replyTo?.id ?? null;
@@ -123,7 +126,7 @@ export default function Composer({ value, onChangeText, onSend, onPickPhoto, onP
         <View style={styles.inputBox}>
           <TextInput
             ref={inputRef}
-            style={styles.input}
+            style={[styles.input, { height: inputH }]}
             value={value}
             onChangeText={(t) => {
               setSel(null);
@@ -134,6 +137,8 @@ export default function Composer({ value, onChangeText, onSend, onPickPhoto, onP
             placeholder="메시지를 입력하세요"
             placeholderTextColor={colors.placeholder}
             multiline
+            onContentSizeChange={(e) => setInputH(Math.min(MAX_H, Math.max(ROW_H, Math.ceil(e.nativeEvent.contentSize.height) + spacing.xs * 2)))}
+            {...(Platform.OS === "web" ? { rows: 1 } : {})} // 웹의 여러 줄 입력칸은 기본 2줄 높이로 시작하므로 한 줄로 시작하게 한다
             onKeyPress={onKeyPress}
             accessibilityLabel="메시지 입력"
           />
@@ -178,29 +183,30 @@ const styles = StyleSheet.create({
   replyLine: { ...font.caption, color: colors.text },
   wrap: {
     paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.sm,
+    paddingVertical: spacing.xs,
     backgroundColor: colors.card,
     borderTopWidth: 1,
     borderTopColor: colors.divider,
     gap: spacing.xs,
   },
   row: { flexDirection: "row", alignItems: "flex-end", gap: spacing.xs },
-  plus: { width: 40, height: 40, borderRadius: radius.pill, alignItems: "center", justifyContent: "center" },
+  plus: { width: ROW_H, height: ROW_H, borderRadius: radius.pill, alignItems: "center", justifyContent: "center" },
   inputBox: { flex: 1, flexDirection: "row", alignItems: "flex-end", borderRadius: radius.card, backgroundColor: colors.surface },
   input: {
     flex: 1,
-    minHeight: 40,
-    maxHeight: LINE_HEIGHT * MAX_LINES + spacing.sm * 2,
+    minHeight: ROW_H,
+    maxHeight: MAX_H,
     paddingLeft: spacing.lg,
     paddingRight: spacing.xs,
-    paddingVertical: spacing.sm,
+    paddingVertical: spacing.xs,
     // lineHeight 를 주면 안드로이드 입력칸의 글자·안내 문구가 위로 밀려 윗부분이 잘린다
     fontSize: font.body.fontSize,
     fontFamily: font.body.fontFamily,
     color: colors.text,
     textAlignVertical: "center",
+    includeFontPadding: false, // 안드로이드 글자 위아래 기본 여백 제거
   },
-  slot: { width: INNER_SLOT, height: 40, flexDirection: "row", alignItems: "center", justifyContent: "flex-end", paddingRight: spacing.xs },
+  slot: { width: INNER_SLOT, height: ROW_H, flexDirection: "row", alignItems: "center", justifyContent: "flex-end", paddingRight: spacing.xs },
   inner: { width: INNER_BTN, height: INNER_BTN, borderRadius: radius.pill, alignItems: "center", justifyContent: "center" },
   send: { backgroundColor: colors.peach },
   sendOff: { backgroundColor: colors.divider },
