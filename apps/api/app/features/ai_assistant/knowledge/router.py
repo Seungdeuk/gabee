@@ -1,9 +1,12 @@
+from datetime import date
+
 from fastapi import APIRouter, Depends, Response
 from sqlalchemy.orm import Session
 
 from app.shared.auth import current_group_id, current_user
+from app.shared.config import settings
 from app.shared.db import get_db
-from app.shared.errors import not_found
+from app.shared.errors import bad_request, not_found
 
 from .. import files
 from .. import repository as photo_repo
@@ -43,10 +46,19 @@ def create_item(
 def list_items(
     kind_label: str | None = None,
     limit: int = 50,
+    created_from: date | None = None,
+    created_to: date | None = None,
     group_id: str = Depends(current_group_id),
     db: Session = Depends(get_db),
 ) -> list[KnowledgeItem]:
-    items = service.list_items(db, group_id, kind_label, min(max(limit, 1), 200))
+    """created_from·created_to 는 설정된 날짜 경계(`ai_day_utc_offset_hours`, 기본 한국 시간 KST)의 달력 날짜이고 양끝을 포함한다(created_at 기준)."""
+    try:
+        start, end = service.created_bounds(
+            created_from, created_to, settings.ai_day_utc_offset_hours
+        )
+    except ValueError as exc:
+        raise bad_request("invalid_range", str(exc)) from exc
+    items = service.list_items(db, group_id, kind_label, min(max(limit, 1), 200), start, end)
     return _mark_review(db, group_id, items)
 
 

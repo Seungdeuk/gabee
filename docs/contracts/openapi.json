@@ -10943,6 +10943,7 @@
           "ai-assistant-knowledge"
         ],
         "summary": "List Items",
+        "description": "created_from·created_to 는 설정된 날짜 경계(`ai_day_utc_offset_hours`, 기본 한국 시간 KST)의 달력 날짜이고 양끝을 포함한다(created_at 기준).",
         "operationId": "list_items_ai_assistant_knowledge_items_get",
         "parameters": [
           {
@@ -10969,6 +10970,40 @@
               "type": "integer",
               "default": 50,
               "title": "Limit"
+            }
+          },
+          {
+            "name": "created_from",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Created From"
+            }
+          },
+          {
+            "name": "created_to",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Created To"
             }
           },
           {
