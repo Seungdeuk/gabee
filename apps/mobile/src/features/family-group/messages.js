@@ -10,6 +10,7 @@ const BY_CODE = {
   not_manager: "가족 관리자만 할 수 있어요",
   not_member: "이 가족 그룹의 구성원이 아니에요",
   not_owner: "가족 소유자만 관리자를 지정할 수 있어요",
+  cannot_leave_owner: "소유자는 가족을 나갈 수 없어요.",
   cannot_change_owner: "소유자의 권한은 바꿀 수 없어요",
   cannot_nickname_self: "자기 자신에게는 별명을 붙일 수 없어요",
   invalid_display_name: "이름은 40자 이내로 적어 주세요",
