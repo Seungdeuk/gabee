@@ -42,7 +42,7 @@ HEADERS = {"X-Gyeot-Token": "t1"}
 EXISTING = (
     "/family-group/me",
     "/schedule/events",
-    "/care/location/consent",
+    "/notifications",
     "/family-chat/messages",
 )
 
@@ -206,7 +206,7 @@ def test_server_starts_one_migration_behind_and_opens_after_upgrade_without_rest
     checked = {
         "family_group": "/family-group/me",
         "schedule": "/schedule/events",
-        "care": "/care/location/consent",
+        "notifications": "/notifications",
         "family_chat": "/family-chat/messages",
         "billing": "/billing/expenses",
     }
@@ -292,5 +292,5 @@ def test_shared_common_model_table_is_part_of_the_feature_check(pg16, start_app)
     client = start_app()
     with admin(pg16) as c:
         c.execute("DROP TABLE location_consent_events")
-    assert health(client)["features"]["care"]["ready"] is False
-    assert client.get("/care/location/consent", headers=HEADERS).status_code == 503
+    assert health(client)["features"]["family_group"]["ready"] is False
+    assert client.get("/family-group/me", headers=HEADERS).status_code == 503

@@ -34,7 +34,7 @@ MAX_SCAN_BYTES_ITEMS = 2 * 1024 * 1024
 MESSAGE = "주민등록번호·카드·계좌번호·비밀번호는 AI 비서에 입력하지 마세요"
 
 # 가드가 붙는 기능(main.py 가 사용). care·billing 은 질문을 mask_text 로 가리지만 RRN·카드뿐이라 계좌·비밀번호는 그대로 나간다.
-GUARDED_FEATURES = frozenset({"ai_assistant", "care", "billing"})
+GUARDED_FEATURES = frozenset({"ai_assistant", "billing"})
 # 대상 (POST, 경로) -> (사용자 입력 문자열 필드, 본문 상한). PATCH /knowledge/items/{id} 는 앱이 쓰는 경로라 넣지 않았다(한계로 문서화).
 _TARGETS: dict[str, tuple[tuple[str, ...], int]] = {
     "/ai-assistant/chat": (("message", "history"), MAX_SCAN_BYTES),

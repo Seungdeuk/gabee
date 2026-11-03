@@ -97,7 +97,6 @@ def test_behind_db_only_blocks_features_whose_schema_is_missing(client, family_h
     assert client.get("/health").json() == {"status": "ok"}
     assert client.get("/family-group/me", headers=family_headers).status_code == 200
     assert client.get("/schedule/events", headers=family_headers).status_code == 200
-    assert client.get("/care/location/consent", headers=family_headers).status_code == 200
     assert client.get("/family-chat/messages", headers=family_headers).status_code == 200
 
     report = health(client)
@@ -165,7 +164,7 @@ def test_unknown_revision_with_incompatible_core_blocks_every_feature(client, fa
     set_revision("ffffffffffff")
     with engine.begin() as conn:
         conn.execute(text("ALTER TABLE group_members DROP COLUMN joined_at"))
-    for path in ("/family-group/me", "/billing/expenses", "/care/location/consent"):
+    for path in ("/family-group/me", "/billing/expenses", "/schedule/events"):
         assert client.get(path, headers=family_headers).status_code == 503, path
 
 
@@ -262,7 +261,6 @@ def test_health_db_reports_ready_state_and_exposes_no_internal_names(client):
         "family_chat",
         "schedule",
         "billing",
-        "care",
         "ai_assistant",
         "notifications",
     }
@@ -288,7 +286,7 @@ def column(name, nullable=True, default=None, **extra):
 
 
 def test_table_problems_flags_what_would_break_this_codes_inserts():
-    table = Base.metadata.tables["care_records"]
+    table = Base.metadata.tables["expenses"]
     ok = [column(c.name, c.nullable, "x" if not c.nullable else None) for c in table.columns]
     assert table_problems(FakeInspector(ok), table) == []
 
@@ -305,9 +303,9 @@ def test_table_problems_flags_what_would_break_this_codes_inserts():
     assert table_problems(FakeInspector(extra_optional), table) == []
 
     missing = [c for c in ok if c["name"] != "date"]
-    assert "컬럼 care_records.date 없음" in table_problems(FakeInspector(missing), table)
+    assert "컬럼 expenses.date 없음" in table_problems(FakeInspector(missing), table)
 
-    assert table_problems(FakeInspector([], exists=False), table) == ["테이블 care_records 없음"]
+    assert table_problems(FakeInspector([], exists=False), table) == ["테이블 expenses 없음"]
 
 
 def test_nullable_column_tightened_to_not_null_is_incompatible_unless_defaulted():
@@ -321,10 +319,9 @@ def test_nullable_column_tightened_to_not_null_is_incompatible_unless_defaulted(
 
 
 def test_shared_model_table_missing_blocks_the_features_that_use_it(client, family_headers):
-    """app/shared 의 공통 모델(위치 동의 이력)이 없으면 그것을 쓰는 가입(family_group)·돌봄(care)을 연다고 보지 않는다."""
+    """app/shared 의 공통 모델(위치 동의 이력)이 없으면 그것을 쓰는 가입(family_group)을 연다고 보지 않는다."""
     with engine.begin() as conn:
         conn.execute(text("DROP TABLE location_consent_events"))
     report = health(client)
-    assert report["features"]["care"] == {"ready": False, "reason": "missing_schema"}
     assert report["features"]["family_group"]["ready"] is False
-    assert client.get("/care/location/consent", headers=family_headers).status_code == 503
+    assert client.get("/family-group/me", headers=family_headers).status_code == 503

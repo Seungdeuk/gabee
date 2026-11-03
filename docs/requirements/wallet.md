@@ -16,8 +16,7 @@
 - **월말 정산 알림은 그대로 둔다.** 정산 담당자에게 "정산 안 한 지출 N건 · 월말까지 N일"과 [정산하기] 버튼을 보여 주고, 버튼을 누르면 정산 구역으로 돌아간다(담당자에게만 보임, 서버가 `show`를 정함).
 - **구독 기능은 제외한다.** 공동구독 구역, 결제일 알림, 정산 요약 카드는 화면에서 뺐고, 정산 에이전트의 구독 도구(`list_subscriptions`, `get_upcoming_payments`)도 주석 처리했다. 메인 AI는 구독·통신비·결제일 질문에 확인할 수 없다고 답한다.
 - 다음은 **삭제하지 않고 주석 처리**했다(다시 켤 때 되돌린다): 공동구독·위치 구역, 결제일 알림 배너, 정산 요약 카드, 정산 에이전트의 구독 도구 2개.
-- **데일리 체크 관련은 삭제했다**: 앱의 현황판·데일리 체크·항목 추가·누락 배너·돌봄 임시 화면(`CarePreview`)·시간 선택기, 서버의 `/care/daily`, `/care/items`, 기록(`/care/items/{id}/entry`), 추천, 식단 추천·기록, 돌봄 기록(`/care/records`, `/care/summary/today`), 돌봄 에이전트(`/care/agent/*`, `care/agent.py`)와 그 테스트·평가 사례. **DB 테이블(`care_items`, `care_entries`, `care_records`, `care_meal_logs`)과 모델은 그대로 둔다.**
-- **남은 돌봄 서버 API는 위치(`/care/location*`)뿐이고 닫혀 있다.** 스위치 `CARE_API_ENABLED`(기본 꺼짐)가 꺼져 있으면 403 `care_disabled`. 위치 동의 철회·조회(`/care/location/consent`)는 저장된 내 위치를 지우는 길이라 열어 둔다. 위치 기능 자체는 기존대로 `CARE_LOCATION_ENABLED` 꺼짐이다(보류).
+- **돌봄 기능은 전부 삭제했다**: 앱의 현황판·데일리 체크·항목 추가·누락 배너·돌봄 임시 화면·시간 선택기·위치 가져오기, 서버의 `/care/*` 전체(데일리 체크·추천·식단·돌봄 기록·돌봄 에이전트·위치)와 `features/care` 폴더(CareScreen 제외), 그 테스트·평가 사례. **DB 테이블 5개(`care_items`, `care_entries`, `care_records`, `care_meal_logs`, `care_locations`)는 Alembic 리비전 `5d1c0a7b9e42`로 지운다(별도 PR, DB 담당자 승인 필요).**
 - **메인 AI 에이전트에서 돌봄 에이전트(`ask_care`)를 삭제했다.** 정산 에이전트(`ask_billing`)는 남는다. 돌봄 항목을 물으면 AI는 확인할 수 없다고 답한다.
 - 돌봄 재설계(개인별 현황판, 지난 항목, 자정 마감)와 안부 기능은 이번 범위에서 접었다. 프로토타입과 초안은 보관만 한다.
 
@@ -37,18 +36,18 @@
   - 에이전트: `POST /billing/agent/chat`, `POST /billing/agent/confirm`
   - 월말 정산 알림: `GET /billing/settlement/reminder` (화면에서 쓴다)
 - 화면에서 쓰지 않지만 서버에 남은 것: 구독·통신비(`/billing/subscriptions/*`). 닫을지는 미정이다.
-- 돌봄 서버 API는 위치(`/care/location*`)만 남았고 닫혀 있다(위 "합의된 것"). 닫힌 응답은 403 `care_disabled`. 삭제한 데일리 체크 경로(`/care/daily` 등)는 404다.
+- 돌봄 서버 API(`/care/*`)는 없다(삭제).
 - 권한은 `docs/contracts/permissions.md`와 기존 가계 규칙을 따른다(용돈 주기·지급은 부모 역할 또는 그룹을 만든 사람 등, 자세한 것은 `docs/features/billing.md`).
 
 ## 데이터
 - 지갑 개편으로 바꾼 테이블·컬럼은 없다. 가계 테이블(`expenses`, 정산 설정, 용돈 장부 등)은 그대로다.
-- 돌봄 테이블(`care_items`, `care_entries`, `care_records`, `care_meal_logs`, 위치)은 지우지 않고 그대로 둔다. 코드만 지웠다.
-- 테이블을 지우는 변경은 하지 않았다. 지우려면 별도 PR에 적고 DB 담당자 승인(`destructive-approved: PR #번호`)을 받는다.
+- 돌봄 테이블 5개(`care_items`, `care_entries`, `care_records`, `care_meal_logs`, `care_locations`)는 리비전 `5d1c0a7b9e42`로 지운다. 정산·지출·용돈·구독 테이블은 그대로다.
+- 테이블을 지우는 변경이라 DB 담당자 승인(`destructive-approved: PR #번호`)이 PR에 있어야 병합할 수 있다.
 
 ## 완료 조건
 - 지갑 탭에 정산·지출·용돈과 월말 정산 알림(담당자에게만)이 보이고, 현황판·공동구독·위치·결제일 알림·정산 요약이 보이지 않는다(앱 테스트와 실기기에서 확인).
 - 정산 에이전트에 구독 도구가 없다(서버 테스트).
-- 남은 돌봄 서버 API(위치)가 닫혀 있다: 닫힌 상태에서 `/care/*`는 403 `care_disabled`, 위치 동의 철회·조회는 200(서버 테스트 `test_care_api_closed.py`). 삭제한 `/care/daily`는 404.
+- `/care/*` 경로가 서버에 없다(서버 테스트: 지운 경로는 404).
 - 메인 에이전트의 도구에 `ask_care`가 없고 `ask_billing`은 있다(서버 테스트).
 - `docs/contracts/openapi.json`에서 삭제한 `/care/*` 경로가 빠져 있다.
 - 서버·앱 테스트와 린트를 통과한다. `release/1.2`가 원래 안고 있는 실패(가입 승인, CI 워크플로우 확인)는 이 변경과 무관하다.
@@ -58,7 +57,6 @@
 - **구독 서버 API**: 구독 기능은 화면과 에이전트에서 뺐다. 서버의 `/billing/subscriptions/*`를 닫을지 유지할지. 일정 탭의 추천(`schedule/agent/suggest_sources.py`)이 구독 데이터를 참고하므로 닫기 전에 일정 담당과 확인이 필요하다.
 - **정산 요약 카드**: 현황판이 없어져서 갈 곳이 없다. 지갑에 다시 둘지.
 - **지출의 포함 여부**: "정산하기와 용돈만"이라고 했지만 정산에는 지출 입력이 필요해서 지출을 같이 두었다. 맞는지 확인이 필요하다.
-- **돌봄 DB 테이블 삭제**: `care_items`, `care_entries`, `care_records`, `care_meal_logs`를 언제 지울지(DB 담당자 승인과 별도 PR 필요). 위치 코드와 위치 동의 철회 경로를 언제까지 둘지.
 - **메인 AI**: 돌봄 항목 질문에 "확인할 수 없다"고 답하는 것으로 충분한지. 평가 데이터에서 돌봄·구독 사례 12개를 뺐다(64개 → 52개).
 - **용돈 요청과 아이 계정**: 자녀 본인이 요청하는 기능이 있어 아이 계정이 전제다. 만 14세 미만 개인정보 처리는 확인하지 못했다(법적 확인 미완).
 - **푸시 알림**: 월말 정산, 용돈 리마인드는 앱 안 배너뿐이다. 푸시는 인프라(스케줄러·푸시)가 생기면 다시 본다.
