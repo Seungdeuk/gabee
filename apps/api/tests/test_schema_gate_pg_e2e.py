@@ -38,6 +38,12 @@ HEAD = SCRIPT.get_current_head()
 BEFORE_HEAD = SCRIPT.get_revision(
     HEAD
 ).down_revision  # 방금 병합됐지만 아직 DB 에 적용되지 않은 최신 마이그레이션 직전
+# 최신 마이그레이션이 코드가 쓰는 스키마를 추가하는지(삭제 전용이면 DB 가 한 단계 뒤처져도 막히는 기능이 없다)
+HEAD_ADDS_SCHEMA = any(
+    marker
+    in Path(SCRIPT.get_revision(HEAD).path).read_text(encoding="utf-8").split("def downgrade")[0]
+    for marker in ("op.create_table", "op.add_column", "op.create_index", "op.alter_column")
+)
 HEADERS = {"X-Gyeot-Token": "t1"}
 EXISTING = (
     "/family-group/me",
@@ -202,7 +208,11 @@ def test_server_starts_one_migration_behind_and_opens_after_upgrade_without_rest
 
     # 최신 마이그레이션이 무엇을 바꾸는지에 의존하지 않는다: 코드가 필요로 하는 스키마가 아직 없는 기능만 막힌다
     not_ready = {name for name, f in report["features"].items() if not f["ready"]}
-    assert not_ready, "대기 중인 마이그레이션의 스키마를 쓰는 기능이 막혀 있어야 한다"
+    if HEAD_ADDS_SCHEMA:
+        assert not_ready, "대기 중인 마이그레이션의 스키마를 쓰는 기능이 막혀 있어야 한다"
+    else:
+        # 삭제 전용 마이그레이션은 코드가 쓰는 스키마를 늘리지 않으므로 뒤처져도 막히는 기능이 없다
+        assert not not_ready, f"삭제 전용 마이그레이션인데 막힌 기능이 있다: {sorted(not_ready)}"
     checked = {
         "family_group": "/family-group/me",
         "schedule": "/schedule/events",
