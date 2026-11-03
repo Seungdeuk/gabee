@@ -15,11 +15,9 @@ import {
   listFamilyPhone,
   listFamilyToday,
   listItems,
-  loadCallMemo,
   loadOnboarded,
   loadTabOrder,
   deleteItem,
-  saveCallMemo,
   sendCheer,
   setEntry,
 } from "../api";
@@ -40,6 +38,7 @@ import {
   cheerSubtitle,
   familyRowsOf,
   findCallItem,
+  shouldShowCallDone,
   formatClock,
   formatDayLabel,
   isDone,
@@ -106,7 +105,7 @@ export default function DailyCheckScreen() {
   const [cheerFor, setCheerFor] = useState(null); // 응원 시트를 연 가족 id
   const [dismissedCheers, setDismissedCheers] = useState([]); // 카드 X 로 닫은 응원 id(고마워 보냄과는 별개)
   const [callFor, setCallFor] = useState(null); // 전화 확인 시트를 연 가족 id
-  const [callDone, setCallDone] = useState(null); // 통화 뒤 시트: { memberId, memo }
+  const [callDone, setCallDone] = useState(null); // 통화 뒤 시트: { memberId }
   const [phone, setPhone] = useState(null);
   const pendingCall = useRef(null); // 전화 앱을 연 가족 id(앱으로 돌아오면 통화 뒤 시트를 띄운다)
 
@@ -267,29 +266,22 @@ export default function DailyCheckScreen() {
     }
   };
 
+  // 전화 앱에서 돌아왔을 때: "안부 전화" 습관이 오늘 있고 아직 완료가 아닐 때만 시트를 띄운다(없거나 완료면 아무것도 안 한다)
   function openCallDone(memberId) {
-    setCallDone({ memberId, memo: "" });
-    loadCallMemo(scope, today, memberId).then((memo) =>
-      setCallDone((prev) => (prev && prev.memberId === memberId ? { ...prev, memo } : prev)),
-    );
+    if (!shouldShowCallDone(items, entries, today)) return;
+    setCallDone({ memberId });
   }
 
-  // "완료로 체크하기": 메모를 저장하고 오늘 목록의 "안부 전화" 항목을 완료로 바꾼다. 없으면 안내 문구를 돌려준다.
-  const finishCall = (memo) => {
-    const memberId = callDone.memberId;
-    saveCallMemo(scope, today, memberId, memo.trim());
+  // "완료로 체크하기": 오늘 목록의 "안부 전화" 습관을 완료로 바꾸고 시트를 닫는다(시트는 습관이 있을 때만 열렸다).
+  const finishCall = () => {
     const target = findCallItem(items, today);
-    if (!target) return "오늘 목록에 ‘안부 전화’ 습관이 없어요, 습관을 추가하면 여기서 체크할 수 있어요";
-    if (!isDone(target, entries[target.id])) {
+    if (target && !isDone(target, entries[target.id])) {
       persistEntry(target.id, { done: true, count: 0, doneAt: nowClock() });
     }
     setCallDone(null);
-    return "";
   };
-  const laterCall = (memo) => {
-    if (callDone) saveCallMemo(scope, today, callDone.memberId, memo.trim());
-    setCallDone(null);
-  };
+  // "다음에 할게요": 아무것도 바꾸지 않고 닫는다.
+  const laterCall = () => setCallDone(null);
 
   return (
     <SafeAreaView style={styles.safe} edges={["top"]} onTouchStart={onScreenTouch}>
@@ -498,7 +490,6 @@ export default function DailyCheckScreen() {
       <CallDoneSheet
         visible={callDone !== null}
         memberName={nameOf(callDone?.memberId ?? "")}
-        initialMemo={callDone?.memo ?? ""}
         onDone={finishCall}
         onLater={laterCall}
       />

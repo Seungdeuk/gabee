@@ -176,7 +176,7 @@ export async function listFamilyToday(memberId) {
  * 다음에 메인을 열면 온보딩이 뜬다. 다른 사용자의 값은 건드리지 않는다.
  */
 export async function resetAll(scope) {
-  const names = ["items", "entries", "tabs", "onboarded", "cheers", "callMemo", "devFamily", "seeded"];
+  const names = ["items", "entries", "tabs", "onboarded", "cheers", "devFamily", "seeded"];
   try {
     await AsyncStorage.multiRemove(names.map((name) => keyOf(name, scope)));
   } catch {
@@ -222,24 +222,5 @@ export function toggleCheerThanked(scope, id) {
       cheersKey(scope),
       list.map((c) => (c.id === id ? { ...c, thanked: !c.thanked } : c)),
     );
-  });
-}
-
-// ── 전화 ──
-// 통화 메모는 나만 보는 값이라 서버에 보내지 않는다(연결 뒤에도 로컬 전용).
-
-/** 날짜·가족 구성원별 통화 메모. @returns {Promise<string>} */
-export async function loadCallMemo(scope, dateKey, memberId) {
-  const all = await readJson(keyOf("callMemo", scope), {});
-  const text = all?.[dateKey]?.[memberId];
-  return typeof text === "string" ? text : "";
-}
-
-export function saveCallMemo(scope, dateKey, memberId, text) {
-  return serial(async () => {
-    const all = await readJson(keyOf("callMemo", scope), {});
-    const base = all && typeof all === "object" ? all : {};
-    const day = { ...(base[dateKey] || {}), [memberId]: text };
-    await writeJson(keyOf("callMemo", scope), { ...base, [dateKey]: day });
   });
 }

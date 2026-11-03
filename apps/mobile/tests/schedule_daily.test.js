@@ -6,9 +6,11 @@ import { FAMILY_PHONE_MOCK, SEED_ENTRIES, SEED_ITEMS, seedCheers } from "../src/
 import {
   ALL_DAYS,
   WEEKDAYS,
+  COUNT_MAX,
   applyCheck,
   applyStep,
   buildItem,
+  countChipText,
   daysLabel,
   dragTargetIndex,
   familyRowsOf,
@@ -92,8 +94,42 @@ test("횟수 증감: 0과 목표 사이에 머물고, 목표에 닿으면 완료
   assert.equal(two.done, false);
   const three = applyStep(item, two, 1, "07:30");
   assert.deepEqual(three, { done: true, count: 3, doneAt: "07:30" });
-  assert.equal(applyStep(item, three, 5, "08:00").count, 3); // 넘치지 않는다
   assert.equal(applyStep(item, three, -1, "08:00").doneAt, null); // 목표 아래로 내리면 완료가 풀린다
+});
+
+test("횟수는 목표를 넘겨도 계속 올라간다(상한 9999), 완료 시각은 처음 닿은 때 그대로", () => {
+  const item = count({ goal: 3 });
+  const three = { done: true, count: 3, doneAt: "07:30" };
+  const four = applyStep(item, three, 1, "08:00");
+  assert.deepEqual(four, { done: true, count: 4, doneAt: "07:30" }); // 4/3 도 완료, 시각은 그대로
+  assert.equal(applyStep(item, { count: 9999 }, 5, "09:00").count, 9999); // 상한
+  assert.equal(COUNT_MAX, 9999);
+});
+
+test("목표를 줄여도 count 는 깎지 않는다: 완료 판정만 새 목표로 다시 본다", () => {
+  const lowered = count({ goal: 2 });
+  const entry = { count: 5, done: true, doneAt: "07:00" };
+  assert.equal(isDone(lowered, entry), true); // 5 >= 2
+  assert.equal(entry.count, 5);
+  assert.equal(isDone(count({ goal: 8 }), entry), false); // 5 < 8 이면 아직 미완료
+});
+
+test("완료 판정: 횟수는 count >= goal (목표와 같아도 완료)", () => {
+  assert.equal(isDone(count({ goal: 3 }), { count: 2 }), false);
+  assert.equal(isDone(count({ goal: 3 }), { count: 3 }), true);
+  assert.equal(isDone(count({ goal: 3 }), { count: 4 }), true);
+});
+
+test("진행률: 목표를 넘긴 습관도 한 번만 세고, 완료 수는 전체를 넘지 않는다", () => {
+  const items = [count({ id: "w", goal: 8 }), check({ id: "a" })];
+  const entries = { w: { count: 10, done: true }, a: { done: true } };
+  assert.deepEqual(progressOf(items, (i) => entries[i.id]), { done: 2, total: 2, pct: 100 });
+});
+
+test("횟수 칩 글자: 현재/목표, 목표를 넘기면 10/8 처럼 그대로", () => {
+  assert.equal(countChipText({ count: 5 }, 8), "5/8");
+  assert.equal(countChipText({ count: 10 }, 8), "10/8");
+  assert.equal(countChipText(undefined, 8), "0/8");
 });
 
 test("진행률: 완료 수와 퍼센트, 항목이 없으면 0", () => {

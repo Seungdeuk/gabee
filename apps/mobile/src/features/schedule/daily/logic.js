@@ -84,11 +84,35 @@ export function applyCheck(entry, now) {
   return { done, count: 0, doneAt: done ? now : null };
 }
 
-/** 횟수를 delta 만큼 바꾼다. 0 과 목표 사이에 머문다. 목표에 처음 닿은 시각을 기록한다. */
+// 횟수 상한은 실수로 너무 많이 눌렀을 때를 막는 값이다. 목표를 넘겨서 계속 기록할 수 있다.
+export const COUNT_MAX = 9999;
+
+/**
+ * 횟수를 delta 만큼 바꾼다. 0 과 COUNT_MAX 사이에 머문다. 목표를 넘겨도 계속 올라간다(완료는 count >= goal).
+ * 목표에 처음 닿은 시각을 기록한다(이미 완료였으면 그 시각을 그대로 둔다). 목표를 줄여도 count 는 깎지 않는다.
+ */
 export function applyStep(item, entry, delta, now) {
-  const next = Math.max(0, Math.min(item.goal, (entry?.count ?? 0) + delta));
+  const next = Math.max(0, Math.min(COUNT_MAX, (entry?.count ?? 0) + delta));
   const done = next >= item.goal;
   return { done, count: next, doneAt: done ? (entry?.doneAt ?? now) : null };
+}
+
+/** 횟수 칩 글자: "현재/목표". 목표를 넘기면 "10/8" 처럼 그대로 보인다. */
+export function countChipText(entry, goal) {
+  return `${entry?.count ?? 0}/${goal}`;
+}
+
+/**
+ * 전화 앱에서 앱으로 돌아왔을 때 통화 뒤 시트를 띄울지. 오늘 목록에 "안부 전화" 습관이 있고 오늘 아직 완료가 아닐 때만 띄운다.
+ * 습관이 없거나(요일에 안 맞음 포함) 이미 완료면 false.
+ * @param {object[]} items 전체 습관
+ * @param {Record<string, object>} entries 오늘 기록(습관 id → 기록)
+ * @param {string} dateKey 오늘 날짜 키
+ */
+export function shouldShowCallDone(items, entries, dateKey) {
+  const target = findCallItem(items, dateKey);
+  if (!target) return false;
+  return !isDone(target, entries[target.id]);
 }
 
 /**

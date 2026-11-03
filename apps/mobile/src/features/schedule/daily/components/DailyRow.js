@@ -3,7 +3,7 @@ import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import { colors, font } from "@/theme";
 
-import { ROW_HEIGHT, isCount, isDone, itemSubText } from "../logic";
+import { ROW_HEIGHT, countChipText, isCount, isDone, itemSubText } from "../logic";
 
 /**
  * 데일리 체크 항목 한 줄. 줄 높이는 ROW_HEIGHT 로 고정이다.
@@ -33,7 +33,7 @@ export default function DailyRow({ item, entry, family = false, handle = null, o
         count ? (
           // 목표 달성이면 초록 칩 흰 글자, 아니면 노랑 칩(예: 5/8)
           <View style={[styles.chip56, done ? styles.pillDone : styles.pillSoft]}>
-            <Text style={done ? styles.pillDoneText : styles.pillText}>{`${entry?.count ?? 0}/${item.goal}`}</Text>
+            <Text style={done ? styles.pillDoneText : styles.pillText}>{countChipText(entry, item.goal)}</Text>
           </View>
         ) : done ? (
           <View style={[styles.chip56, styles.pillDone]}>
@@ -55,7 +55,7 @@ export default function DailyRow({ item, entry, family = false, handle = null, o
           >
             <Text style={styles.stepText}>−</Text>
           </Pressable>
-          <Text style={[styles.countText, done && styles.countDone]}>{`${entry?.count ?? 0}/${item.goal}`}</Text>
+          <Text style={[styles.countText, done && styles.countDone]}>{countChipText(entry, item.goal)}</Text>
           <Pressable
             onPress={() => onStep?.(1)}
             style={[styles.roundButton, styles.plusGreen]}
