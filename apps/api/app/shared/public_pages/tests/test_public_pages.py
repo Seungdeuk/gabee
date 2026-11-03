@@ -88,3 +88,50 @@ def test_contact_falls_back_without_email(client, monkeypatch):
     monkeypatch.setattr(settings, "support_email", "")
     assert "문의: 운영자에게 연락해 주세요." in client.get("/privacy").text
     assert "서비스에 대한 문의: 운영자에게 연락해 주세요." in client.get("/terms").text
+
+
+def test_kakao_callback_forwards_code_to_app(client):
+    res = client.get("/auth/kakao/callback?code=abc&state=xyz", follow_redirects=False)
+    assert res.status_code == 302
+    assert res.headers["location"] == "gabee://kakao?code=abc&state=xyz"
+    assert res.headers["cache-control"] == "no-store"
+    assert res.headers["referrer-policy"] == "no-referrer"
+    assert (
+        'href="gabee://kakao?code=abc&amp;state=xyz"' in res.text
+    )  # 302 를 따르지 않는 클라이언트를 위한 링크
+
+
+def test_kakao_callback_forwards_errors_and_only_known_params(client):
+    res = client.get(
+        "/auth/kakao/callback?error=access_denied&error_description=user+cancelled&evil=1&redirect=http://x",
+        follow_redirects=False,
+    )
+    location = res.headers["location"]
+    assert location.startswith("gabee://kakao?")
+    assert "error=access_denied" in location and "error_description=user+cancelled" in location
+    assert "evil" not in location and "redirect" not in location
+
+
+def test_kakao_callback_target_is_fixed_and_encoded(client):
+    res = client.get("/auth/kakao/callback", follow_redirects=False)
+    assert res.headers["location"] == "gabee://kakao"  # 값이 없어도 앱 주소로만 간다
+    res = client.get("/auth/kakao/callback?code=&state=", follow_redirects=False)
+    assert res.headers["location"] == "gabee://kakao"  # 빈 값은 넘기지 않는다
+    res = client.get(
+        "/auth/kakao/callback",
+        params={"code": "a&state=forged\r\nX-Injected: 1<script>", "state": "s"},
+        follow_redirects=False,
+    )
+    assert res.headers["location"] == (
+        "gabee://kakao?code=a%26state%3Dforged%0D%0AX-Injected%3A+1%3Cscript%3E&state=s"
+    )  # 값 속의 &·=·줄바꿈은 인코딩돼 다른 파라미터나 헤더가 되지 못한다
+    assert "x-injected" not in {k.lower() for k in res.headers}
+    assert "<script>" not in res.text  # 본문에는 이스케이프된 값만
+
+
+def test_kakao_callback_drops_oversized_values_and_is_not_in_openapi(client):
+    res = client.get(
+        "/auth/kakao/callback", params={"code": "a" * 5000, "state": "s"}, follow_redirects=False
+    )
+    assert res.headers["location"] == "gabee://kakao?state=s"  # 너무 긴 값은 버린다
+    assert "/auth/kakao/callback" not in app.openapi()["paths"]
