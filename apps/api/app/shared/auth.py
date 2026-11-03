@@ -57,6 +57,14 @@ def bearer_user(
     return _user_from_bearer(authorization, db)
 
 
+def staff_user(user: User = Depends(bearer_user)) -> User:
+    """운영 관리자(users.is_staff) 전용 엔드포인트용. Bearer(JWT) 정식 회원이면서 is_staff 여야 한다.
+    가족 안의 owner·admin 역할로는 통과하지 못한다. 관리자가 아니면 엔드포인트가 있다는 것도 알리지 않으려 404 로 답한다."""
+    if not user.is_staff:
+        raise ApiError(404, "not_found", "찾을 수 없어요")
+    return user
+
+
 def current_user(
     authorization: Annotated[str | None, Header()] = None,
     x_gyeot_token: Annotated[str | None, Header()] = None,

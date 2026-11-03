@@ -1,0 +1,134 @@
+/* 가비 관리자 화면. 색은 앱 theme 과 같은 계열(크림 바탕·브라운 글자·꿀색 포인트) */
+:root {
+  --bg: #fffcf7;
+  --card: #ffffff;
+  --line: #ede4d6;
+  --line-soft: #f3ece1;
+  --line-strong: #d9cbb6;
+  --text: #3b2f25;
+  --muted: #6b5a4a;
+  --honey: #e8a33d;
+  --honey-soft: #fce9c6;
+  --honey-text: #6e4508;
+  --brown: #5b4636;
+  --cream: #f6eee1;
+  --ok: #2e7d57;
+  --ok-soft: #e6f2ea;
+  --ok-text: #245c40;
+  --bad: #b4462b;
+  --bad-soft: #f8e1da;
+  --bad-text: #8e3420;
+  --link: #8a5a12;
+}
+
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: "Noto Sans KR", system-ui, sans-serif;
+}
+a { color: var(--link); }
+a:hover { color: #5e3d0b; }
+button, input, select { font: inherit; color: var(--text); }
+
+/* 상단 */
+.top { background: var(--card); border-bottom: 1px solid var(--line); }
+.top header {
+  max-width: 1200px; margin: 0 auto; padding: 14px 24px 6px;
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px;
+}
+.brand { display: flex; align-items: center; gap: 10px; }
+.brand-mark { width: 32px; height: 32px; border-radius: 9px; }
+.brand-name { font-size: 20px; font-weight: 700; }
+.who { display: flex; align-items: center; gap: 12px; font-size: 14px; color: var(--muted); }
+.tabs { max-width: 1200px; margin: 0 auto; padding: 0 16px; display: flex; overflow-x: auto; }
+.tabs a {
+  min-height: 48px; display: flex; align-items: center; padding: 0 14px;
+  border-bottom: 3px solid transparent; color: var(--muted);
+  font-size: 15px; font-weight: 500; text-decoration: none; white-space: nowrap;
+}
+.tabs a[aria-current="page"] { border-bottom-color: var(--honey); color: var(--text); font-weight: 700; }
+
+/* 본문 */
+main { max-width: 1200px; margin: 0 auto; padding: 28px 24px 48px; display: flex; flex-direction: column; gap: 24px; }
+.head { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 8px; }
+h1 { margin: 0; font-size: 24px; }
+h2 { margin: 0; font-size: 18px; }
+.sub { margin: 6px 0 0; font-size: 14px; color: var(--muted); }
+.note { margin: 0; font-size: 13px; color: var(--muted); }
+.small { font-size: 12px; color: var(--muted); }
+
+.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; }
+.row { display: flex; flex-wrap: wrap; gap: 16px; }
+.wide { flex: 999 1 560px; min-width: 0; }
+.side { flex: 1 1 280px; min-width: 0; }
+.card {
+  background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 20px;
+  display: flex; flex-direction: column; gap: 12px;
+}
+.card-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; }
+
+.stat {
+  background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 18px 20px;
+  display: flex; flex-direction: column; gap: 6px; text-decoration: none; color: inherit;
+}
+.stat-label { font-size: 13px; color: var(--muted); }
+.stat-value { font-size: 30px; font-weight: 700; letter-spacing: -0.5px; }
+.stat-sub { font-size: 12px; color: var(--muted); }
+.up { color: var(--ok); }
+.warn { color: var(--bad); }
+
+/* 표 */
+.table-wrap { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-size: 14px; }
+th { text-align: left; color: var(--muted); font-size: 12px; font-weight: 500; padding: 8px 10px; border-bottom: 1px solid var(--line); }
+td { padding: 10px; border-bottom: 1px solid var(--line-soft); }
+.num { text-align: right; }
+
+/* 막대 */
+.bar { height: 8px; border-radius: 999px; background: var(--line-soft); overflow: hidden; }
+.bar > span { display: block; height: 100%; background: var(--brown); }
+.bar.plain > span { background: #4c78a8; }
+.meter { display: grid; grid-template-columns: minmax(96px, 160px) 1fr 72px; align-items: center; gap: 12px; font-size: 14px; }
+.chart { height: 160px; display: flex; align-items: flex-end; gap: 4px; border-bottom: 1px solid var(--line); }
+.chart > div { flex: 1 1 0; min-width: 0; display: flex; align-items: flex-end; gap: 1px; height: 100%; }
+.chart i { flex: 1 1 0; min-height: 2px; border-radius: 3px 3px 0 0; background: #4c78a8; }
+.axis { display: flex; justify-content: space-between; font-size: 11px; color: var(--muted); }
+
+/* 작은 표시 */
+.pill { display: inline-block; font-size: 12px; border-radius: 999px; padding: 3px 10px; background: var(--cream); color: var(--muted); }
+.pill.ok { background: var(--ok-soft); color: var(--ok-text); }
+.pill.hot { background: var(--honey-soft); color: var(--honey-text); }
+.pill.bad { background: var(--bad-soft); color: var(--bad-text); }
+.line-item {
+  display: flex; justify-content: space-between; align-items: center; gap: 8px;
+  font-size: 14px; padding: 10px 0; border-top: 1px solid var(--line-soft);
+}
+
+/* 입력 */
+.btn {
+  min-height: 40px; padding: 0 16px; border: 1px solid var(--line-strong); border-radius: 10px;
+  background: var(--card); font-size: 14px; cursor: pointer;
+}
+.btn.sm { min-height: 36px; padding: 0 12px; font-size: 13px; }
+.chip { min-height: 36px; padding: 0 14px; border: 1px solid var(--line-strong); border-radius: 999px; background: var(--card); font-size: 13px; cursor: pointer; }
+.chip[aria-pressed="true"] { border-color: var(--text); background: var(--text); color: var(--bg); }
+.field { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--muted); }
+.field input, .field select {
+  min-height: 40px; padding: 0 12px; border: 1px solid var(--line-strong); border-radius: 10px;
+  font-size: 14px; background: var(--bg);
+}
+.filters { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 8px; }
+
+@media (max-width: 600px) {
+  .top header, main { padding-left: 16px; padding-right: 16px; }
+  .stat-value { font-size: 26px; }
+}
+
+/* 로그인 */
+[hidden] { display: none !important; }
+.login { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 16px; }
+.login-card { width: 100%; max-width: 380px; gap: 14px; }
+.btn.primary { border: 0; background: var(--text); color: var(--bg); min-height: 44px; font-weight: 500; }
+.sample { margin: 0; padding: 10px 14px; border-radius: 12px; background: var(--honey-soft); color: var(--honey-text); font-size: 13px; }

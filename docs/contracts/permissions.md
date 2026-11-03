@@ -20,6 +20,7 @@
 |---|---|---|
 | `current_user(x_gyeot_token, db)` | 인증 — 토큰으로 사용자를 찾는다 | 모든 라우터, `Depends(current_user)` |
 | `current_group_id(user, db)` | 인증 + 권한 — 활성 그룹이 있고 **실제 그 그룹의 구성원**인지까지 확인한 뒤 group_id를 돌려준다 | 그룹 데이터를 다루는 모든 라우터, `Depends(current_group_id)` |
+| `staff_user(user)` | 운영 관리자 전용 — Bearer(JWT) 정식 회원이면서 `users.is_staff` 가 true 여야 한다. 레거시 토큰은 401, 관리자가 아니면 경로가 있다는 것도 숨기려 404. 가족 안의 owner·admin 역할로는 통과하지 못한다 | `/admin/*` 라우터, `Depends(staff_user)` |
 | `ensure_group_member(db, user_id, group_id)` | 순수 함수(FastAPI와 무관) — `group_members`에 그 조합이 있는지만 확인하고, 없으면 `ApiError(403, "not_member", ...)`를 던진다 | `current_group_id` 내부에서 쓰고, **라우터를 거치지 않고 Service를 직접 호출하는 모든 코드도 호출 전에 직접 써야 한다** |
 
 이 표의 개념은 과제에서 말한 `require_authenticated_user`/`require_family_member`/`require_family_permission`/`assert_resource_family_access`에 각각 대응한다: `current_user`가 "인증된 사용자 요구", `current_group_id`가 "가족 구성원 요구", 규칙 3번(SQL 조건)이 "리소스가 그 가족에 속하는지 확인"에 해당한다. 기존 코드 스타일(`current_*`, `ensure_*`)을 그대로 따르기 위해 이름을 새로 바꾸지 않았다.
@@ -37,6 +38,13 @@
 - **초대 코드 발급·폐기와 가입 요청 승인·거절은 가족 관리자(`group_members.role` 이 owner/admin)만** 할 수 있다(`join_service.require_manager`). 권한은 요청값이 아니라 DB 의 role 로만 판단하고, 승인된 사람은 항상 member 로 들어간다. **익명(레거시 토큰) 계정도 예외 없이** 초대 코드(레거시 코드 포함)로는 승인 대기 요청만 만들 수 있고, 승인 전에는 `group_members` 행이 없어 모든 그룹 API 가 막힌다(`no_group`/`not_member`). 다른 그룹의 가입 요청은 404 로 존재 자체를 숨긴다. 자세한 내용은 `docs/features/family-group.md`.
 
 - **잔여 위험(레거시 초대 코드)**: 익명 계정이 만든 그룹의 레거시 코드(8자, 만료·사용 횟수 제한 없음)는 승인 우회는 아니지만, 거절·취소된 뒤에도 같은 사용자가 계속 재신청해 관리자 대기 목록을 채울 수 있다(코드 입력 실패 제한은 틀린 코드에만 적용). 관리자가 코드를 재발급하면 새 정책 코드(10자·24시간·1회)로 바뀌어 줄어든다.
+
+## 운영 관리자(`/admin`) 규칙
+
+- 서비스 운영팀용이며 가족 권한과 섞지 않는다. 가족 관리자(owner·admin)라도 `users.is_staff` 가 false 면 `/admin` 을 쓸 수 없다.
+- `is_staff` 는 앱·API 로 켜거나 끌 수 없다. 운영 DB 에서 담당자가 직접 바꾼다(`docs/features/admin.md`).
+- 관리자 API 도 가족 문서·채팅·가계 내용은 돌려주지 않는다(`docs/requirements/admin.md`).
+- 바깥 문(Cloudflare Access 등)은 아직 없다. 붙이더라도 Cloud Run 기본 주소(`*.run.app`)로 오는 요청은 바깥 문을 거치지 않으므로 이 안쪽 문은 그대로 둔다.
 
 ## 아직 없는 기능 (이번 PR에서 만들지 않음)
 

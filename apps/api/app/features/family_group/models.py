@@ -11,6 +11,7 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    false,
     text,
     true,
 )
@@ -65,6 +66,9 @@ class User(Base):
     profile_photo_updated_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+
+    # 운영 관리자(서비스 운영팀) 표시. 가족 안의 owner·admin 역할과는 별개다. 앱·API 로는 바꿀 수 없고 DB 에서 직접만 켠다.
+    is_staff: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false())
 
     __table_args__ = (
         # 이름을 명시하지 않으면 Alembic autogenerate 가 downgrade 에서 drop_constraint()

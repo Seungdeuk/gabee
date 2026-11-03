@@ -13060,6 +13060,256 @@
         }
       }
     },
+    "/admin/me": {
+      "get": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "Admin Me",
+        "description": "관리자 화면이 처음 열릴 때 부른다. 관리자가 아니면 404.",
+        "operationId": "admin_me_admin_me_get",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminMeOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/admin/members": {
+      "get": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "Admin Members",
+        "description": "회원 수와 최근 가입자 목록. 이메일은 돌려주지 않는다.",
+        "operationId": "admin_members_admin_members_get",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MembersOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/admin/groups": {
+      "get": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "Admin Groups",
+        "description": "가족 그룹 수와 구성원 수.",
+        "operationId": "admin_groups_admin_groups_get",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GroupsOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/admin/features": {
+      "get": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "Admin Features",
+        "description": "기능별 최근 7일 사용 수와 그 전 7일 사용 수.",
+        "operationId": "admin_features_admin_features_get",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FeaturesOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/admin/testers": {
+      "get": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "Admin Testers",
+        "description": "테스터 동의한 회원 목록.",
+        "operationId": "admin_testers_admin_testers_get",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TestersOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/health/db": {
       "get": {
         "tags": [
@@ -13184,6 +13434,36 @@
           "user"
         ],
         "title": "AccountSignupOut"
+      },
+      "AdminMeOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "login_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Login Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "login_id"
+        ],
+        "title": "AdminMeOut"
       },
       "AgentChatIn": {
         "properties": {
@@ -15721,6 +16001,60 @@
         ],
         "title": "ExpenseOut"
       },
+      "FeatureRow": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "families": {
+            "type": "integer",
+            "title": "Families"
+          },
+          "uses": {
+            "type": "integer",
+            "title": "Uses"
+          },
+          "prev_uses": {
+            "type": "integer",
+            "title": "Prev Uses"
+          }
+        },
+        "type": "object",
+        "required": [
+          "key",
+          "name",
+          "families",
+          "uses",
+          "prev_uses"
+        ],
+        "title": "FeatureRow"
+      },
+      "FeaturesOut": {
+        "properties": {
+          "families_total": {
+            "type": "integer",
+            "title": "Families Total"
+          },
+          "rows": {
+            "items": {
+              "$ref": "#/components/schemas/FeatureRow"
+            },
+            "type": "array",
+            "title": "Rows"
+          }
+        },
+        "type": "object",
+        "required": [
+          "families_total",
+          "rows"
+        ],
+        "title": "FeaturesOut"
+      },
       "FileOut": {
         "properties": {
           "id": {
@@ -16055,6 +16389,94 @@
           "members"
         ],
         "title": "GroupOut"
+      },
+      "GroupRow": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "owner_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Owner Name"
+          },
+          "members": {
+            "type": "integer",
+            "title": "Members"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "owner_name",
+          "members",
+          "created_at"
+        ],
+        "title": "GroupRow"
+      },
+      "GroupSize": {
+        "properties": {
+          "members": {
+            "type": "integer",
+            "title": "Members"
+          },
+          "groups": {
+            "type": "integer",
+            "title": "Groups"
+          }
+        },
+        "type": "object",
+        "required": [
+          "members",
+          "groups"
+        ],
+        "title": "GroupSize"
+      },
+      "GroupsOut": {
+        "properties": {
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          },
+          "rows": {
+            "items": {
+              "$ref": "#/components/schemas/GroupRow"
+            },
+            "type": "array",
+            "title": "Rows"
+          },
+          "sizes": {
+            "items": {
+              "$ref": "#/components/schemas/GroupSize"
+            },
+            "type": "array",
+            "title": "Sizes"
+          }
+        },
+        "type": "object",
+        "required": [
+          "total",
+          "rows",
+          "sizes"
+        ],
+        "title": "GroupsOut"
       },
       "HTTPValidationError": {
         "properties": {
@@ -17669,6 +18091,86 @@
           "role"
         ],
         "title": "MemberOut"
+      },
+      "MemberRow": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "login_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Login Id"
+          },
+          "joined_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Joined At"
+          },
+          "has_family": {
+            "type": "boolean",
+            "title": "Has Family"
+          },
+          "last_login_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Login At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "login_id",
+          "joined_at",
+          "has_family",
+          "last_login_at"
+        ],
+        "title": "MemberRow"
+      },
+      "MembersOut": {
+        "properties": {
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          },
+          "joined_this_week": {
+            "type": "integer",
+            "title": "Joined This Week"
+          },
+          "rows": {
+            "items": {
+              "$ref": "#/components/schemas/MemberRow"
+            },
+            "type": "array",
+            "title": "Rows"
+          }
+        },
+        "type": "object",
+        "required": [
+          "total",
+          "joined_this_week",
+          "rows"
+        ],
+        "title": "MembersOut"
       },
       "MessageCreate": {
         "properties": {
@@ -20602,6 +21104,70 @@
           "version"
         ],
         "title": "TesterConsentIn"
+      },
+      "TesterRow": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "login_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Login Id"
+          },
+          "consent_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Consent At"
+          },
+          "consent_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Consent Version"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "login_id",
+          "consent_at",
+          "consent_version"
+        ],
+        "title": "TesterRow"
+      },
+      "TestersOut": {
+        "properties": {
+          "rows": {
+            "items": {
+              "$ref": "#/components/schemas/TesterRow"
+            },
+            "type": "array",
+            "title": "Rows"
+          }
+        },
+        "type": "object",
+        "required": [
+          "rows"
+        ],
+        "title": "TestersOut"
       },
       "TodaySummary": {
         "properties": {
