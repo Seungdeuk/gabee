@@ -10,16 +10,10 @@ import pytest
 from sqlalchemy import select
 
 from app.features.billing import agent as billing_agent
-from app.features.care import agent as care_agent
 from app.features.family_group.models import User
 from app.shared.db import SessionLocal
 from evals.tab_agents.seed import seed, seed_write_targets
 from tests.helpers import join_family, signup
-
-pytestmark = pytest.mark.usefixtures(
-    "full_care_samples"
-)  # 평가 데이터는 물·산책·컨디션 항목이 있는 예전 기본 세트를 쓴다
-
 
 CASES = {
     c["id"]: c
@@ -27,7 +21,7 @@ CASES = {
         (Path(__file__).parents[1] / "evals/tab_agents/cases.json").read_text("utf-8")
     )
 }
-AGENTS = {"billing": billing_agent, "care": care_agent}
+AGENTS = {"billing": billing_agent}
 
 
 def _expense_id(client, headers, month, title):
@@ -61,9 +55,6 @@ def _args(client, a):
     snack = _expense_id(client, a, "2026-06", "수진 간식")
     trip = _expense_id(client, a, "2026-07", "여행 숙소")
     rid = _request_id(client, a)
-    daily = client.get("/care/daily", params={"date": "2026-10-18"}, headers=a).json()
-    by_name = {i["name"]: i["id"] for i in daily["items"]}
-    day = "2026-10-18"
     return {
         "b-update-amount": (
             "지민",
@@ -108,16 +99,6 @@ def _args(client, a):
             "propose_decide_allowance_request",
             {"child_name": "민수", "request_id": rid, "decision": "approve"},
         ),
-        "c-clear-item-own": (
-            "지민",
-            "propose_clear_item",
-            {"item_id": by_name["영양제"], "date": day},
-        ),
-        "c-clear-item-others": (
-            "지민",
-            "propose_clear_item",
-            {"item_id": by_name["산책"], "date": day},
-        ),
     }
 
 
@@ -133,8 +114,6 @@ WRITE_IDS = [
     "b-allowance-approve-amount",
     "b-allowance-reject",
     "b-allowance-not-manager",
-    "c-clear-item-own",
-    "c-clear-item-others",
 ]
 
 

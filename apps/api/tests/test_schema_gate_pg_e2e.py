@@ -39,7 +39,12 @@ BEFORE_HEAD = SCRIPT.get_revision(
     HEAD
 ).down_revision  # 방금 병합됐지만 아직 DB 에 적용되지 않은 최신 마이그레이션 직전
 HEADERS = {"X-Gyeot-Token": "t1"}
-EXISTING = ("/family-group/me", "/schedule/events", "/care/records", "/family-chat/messages")
+EXISTING = (
+    "/family-group/me",
+    "/schedule/events",
+    "/care/location/consent",
+    "/family-chat/messages",
+)
 
 
 def docker(*args, check=True, env=None):
@@ -201,7 +206,7 @@ def test_server_starts_one_migration_behind_and_opens_after_upgrade_without_rest
     checked = {
         "family_group": "/family-group/me",
         "schedule": "/schedule/events",
-        "care": "/care/records",
+        "care": "/care/location/consent",
         "family_chat": "/family-chat/messages",
         "billing": "/billing/expenses",
     }
@@ -288,4 +293,4 @@ def test_shared_common_model_table_is_part_of_the_feature_check(pg16, start_app)
     with admin(pg16) as c:
         c.execute("DROP TABLE location_consent_events")
     assert health(client)["features"]["care"]["ready"] is False
-    assert client.get("/care/records", headers=HEADERS).status_code == 503
+    assert client.get("/care/location/consent", headers=HEADERS).status_code == 503

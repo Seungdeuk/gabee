@@ -3,11 +3,18 @@
 from datetime import timedelta
 
 import jwt
+import pytest
+from sqlalchemy import select
 
 from app.features.ai_assistant.knowledge import rag_chat
+from app.features.family_group.models import User
 from app.shared import tokens
 from app.shared.config import settings
+from app.shared.db import SessionLocal
+from app.shared.errors import ApiError
 from app.shared.llm import agent, proposals
+from app.shared.llm import agent_chat as agent_chat_service
+from app.shared.llm.schemas import AgentConfirmIn
 from tests.ai_consent import enable_ai_for_user
 from tests.helpers import signup
 
@@ -73,7 +80,19 @@ def test_confirm_rejects_other_user_family_tab_reuse_and_forgery(client, family,
 
     assert confirm(b).json()["code"] == "proposal_invalid"  # 같은 가족의 다른 사람
     assert confirm(outsider).json()["code"] == "proposal_invalid"  # 다른 가족
-    assert confirm(a, tab="care").json()["code"] == "proposal_invalid"  # 다른 탭
+    # 다른 탭: 돌봄 확인 경로(/care/agent/confirm)는 지웠으니, 공용 확인 로직에 다른 탭 이름으로 직접 넣어 본다
+    with SessionLocal() as db:
+        me = db.scalars(select(User).where(User.name == "지민")).first()
+        with pytest.raises(ApiError) as e:
+            agent_chat_service.confirm(
+                db,
+                me.active_group_id,
+                me,
+                AgentConfirmIn(token=token),
+                "care",
+                lambda *a, **k: None,
+            )
+        assert e.value.code == "proposal_invalid"
     assert confirm(a, tok=token[:-3] + "abc").json()["code"] == "proposal_invalid"  # 위조
     assert confirm(a, tok="not-a-token-at-all").json()["code"] == "proposal_invalid"
     assert _expenses(client, a) == []

@@ -24,7 +24,7 @@ from .schemas import (
 NAME = "billing"
 DESCRIPTION = (
     "가계(정산) 탭 담당. 이번 달·지난 달 지출과 카테고리별 합계, 누가 누구에게 얼마를 보내야 하는지(정산), 정산 담당자, "
-    "구독·통신비와 곧 다가오는 결제, 자녀 용돈 장부(잔액·요청)를 조회해서 답하고, 지출 등록·내 지출 수정/삭제·송금 완료 표시·용돈 요청 승인/거절은 사용자 확인을 거치도록 제안한다."
+    "자녀 용돈 장부(잔액·요청)를 조회해서 답하고, 지출 등록·내 지출 수정/삭제·송금 완료 표시·용돈 요청 승인/거절은 사용자 확인을 거치도록 제안한다."
 )
 _MONTH_PROP = {
     "month": {"type": "string", "description": "YYYY-MM. 비우면 이번 달"},
@@ -425,18 +425,19 @@ def build_tools(db: Session, group_id: str, user: User, proposed: list | None = 
             _NO_ARGS,
             lambda a: _dump(service.get_manager(db, group_id, user)),
         ),
-        Tool(
-            "list_subscriptions",
-            "등록된 구독·통신비 항목(월 금액, 결제일, 결제한 사람, 나눌 사람).",
-            _NO_ARGS,
-            lambda a: _dump(service.list_subscriptions(db, group_id)),
-        ),
-        Tool(
-            "get_upcoming_payments",
-            "질문한 사람이 결제하는 구독 중 결제일이 3일 안으로 다가온 것.",
-            _NO_ARGS,
-            lambda a: _dump(service.upcoming_payments(db, group_id, user, None)),
-        ),
+        # 구독 기능은 팀 회의 결과로 지갑 탭에서 뺐다. 에이전트 도구도 주석 처리한다(다시 켤 때 되돌린다).
+        # Tool(
+        #     "list_subscriptions",
+        #     "등록된 구독·통신비 항목(월 금액, 결제일, 결제한 사람, 나눌 사람).",
+        #     _NO_ARGS,
+        #     lambda a: _dump(service.list_subscriptions(db, group_id)),
+        # ),
+        # Tool(
+        #     "get_upcoming_payments",
+        #     "질문한 사람이 결제하는 구독 중 결제일이 3일 안으로 다가온 것.",
+        #     _NO_ARGS,
+        #     lambda a: _dump(service.upcoming_payments(db, group_id, user, None)),
+        # ),
         Tool(
             "list_allowances",
             "자녀별 용돈 장부: 잔액, 최근 입출금 내역, 지급 주기, 승인 대기 중인 요청.",

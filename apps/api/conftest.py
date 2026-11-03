@@ -8,6 +8,8 @@ os.environ["DATA_DIR"] = _tmp
 os.environ["ANTHROPIC_API_KEY"] = ""
 # 돌봄 서버 API 는 서비스에서 닫혀 있지만(CARE_API_ENABLED), 돌봄 코드 시험은 켠 상태에서 본다. 닫힌 상태는 test_care_api_closed.py 가 본다.
 os.environ["CARE_API_ENABLED"] = "true"
+# 구독·통신비 서버 API 도 서비스에서 닫혀 있지만(SUBSCRIPTION_API_ENABLED), 구독 코드 시험은 켠 상태에서 본다. 닫힌 상태는 test_subscription_api_closed.py 가 본다.
+os.environ["SUBSCRIPTION_API_ENABLED"] = "true"
 os.environ["JWT_SECRET"] = "test-only-jwt-secret-not-for-production-0123456789"  # 테스트 전용 값
 # 개발자 PC 에 NER 모델이 있어도 시험은 규칙 탐지만 쓴다(NER 시험은 각자 모드를 명시한다). 모델이 있는 PC 와 없는 CI 의 결과를 같게 한다.
 os.environ["PRIVACY_NER_MODE"] = "off"
@@ -35,15 +37,6 @@ def _reset_login_limiter():
     login_limiter.reset()
     mail_limiter.reset()
     mailer.set_mailer(None)
-
-
-@pytest.fixture
-def full_care_samples(monkeypatch):
-    """돌봄 추천 규칙(물·산책·컨디션)과 수치·컨디션 기록 방식을 시험할 때 쓴다: 예전 기본 항목 7개를 처음 열 때 만든다.
-    서비스의 기본값은 식사 3개 + 영양제라서(`care/config.py` 의 SAMPLE_ITEMS), 그 항목이 필요한 시험이 이 세트를 명시한다."""
-    from app.features.care import config as care_config
-
-    monkeypatch.setattr(care_config, "SAMPLE_ITEMS", care_config.FULL_SAMPLE_ITEMS)
 
 
 @pytest.fixture

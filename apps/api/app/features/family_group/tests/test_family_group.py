@@ -48,7 +48,7 @@ def test_token_is_required_and_errors_have_code_and_message(client):
 
 def test_group_features_need_a_group(client):
     a = signup(client)
-    for path in ("/family-chat/messages", "/schedule/events", "/billing/expenses", "/care/records"):
+    for path in ("/family-chat/messages", "/schedule/events", "/billing/expenses"):
         r = client.get(path, headers=a)
         assert r.status_code == 400 and r.json()["code"] == "no_group", path
 

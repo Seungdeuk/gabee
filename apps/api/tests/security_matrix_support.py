@@ -263,13 +263,6 @@ def seed_resources(client, fam: Family) -> None:
     kid = next(x for x in req if x["child_id"] == fam.member.id) if isinstance(req, list) else req
     s["allowance_request_id"] = kid["requests"][0]["id"]
     s["allowance_entry_id"] = kid["entries"][0]["id"]
-    s["care_item_id"] = ok(
-        client.post(
-            "/care/items",
-            json={"name": f"{secret} 약", "mode": "yesno", "scheduled_time": "09:00"},
-            headers=h,
-        )
-    ).json()["id"]
     ki = ok(
         client.post(
             "/ai-assistant/knowledge/items",
@@ -356,7 +349,6 @@ FRESH_KEYS = (
     "event_id",
     "expense_id",
     "subscription_id",
-    "care_item_id",
     "knowledge_item_id",
     "file_id",
     "pdf_file_id",
@@ -437,9 +429,6 @@ def fresh(client, fam: Family, key: str) -> dict:
     if key == "subscription_id":
         body = {"kind": "ott", "name": f"{secret} 새 구독", "monthly_fee": 10000}
         return {key: ok(client.post("/billing/subscriptions", json=body, headers=h))["id"]}
-    if key == "care_item_id":
-        body = {"name": f"{secret} 새 약", "mode": "yesno", "scheduled_time": "09:00"}
-        return {key: ok(client.post("/care/items", json=body, headers=h))["id"]}
     if key == "knowledge_item_id":
         body = {
             "kind_label": "메모",

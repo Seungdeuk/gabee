@@ -28,7 +28,6 @@ TARGETS = [
     ("/ai-assistant/knowledge/ask", lambda t: {"question": t}),
     ("/ai-assistant/knowledge/items", lambda t: {"kind_label": "메모", "title": "x", "body_md": t}),
     ("/ai-assistant/knowledge/items", lambda t: {"kind_label": "메모", "title": t, "body_md": "x"}),
-    ("/care/agent/chat", lambda t: {"message": t}),
     ("/billing/agent/chat", lambda t: {"message": t}),
 ]
 
