@@ -260,6 +260,7 @@ def test_health_db_reports_ready_state_and_exposes_no_internal_names(client):
         "family_group",
         "family_chat",
         "schedule",
+        "schedule_check",
         "billing",
         "ai_assistant",
         "notifications",

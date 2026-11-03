@@ -76,6 +76,24 @@
 - 서버 자리: `daily/api.js` 의 응원(`listCheers`·`sendCheer`·`toggleCheerThanked`)과 전화(`listFamilyPhone`)는 지금 폰 저장·mock 이다. 상대 폰으로 가는 전송, 알림, 가족 대화방 연동은 서버가 생긴 뒤의 후속 작업이다.
 - 개발용(`__DEV__` 에서만, 편집 화면 하단): "예시 데이터 채우기"는 시안 값(내 항목·오늘 기록·받은 응원)으로 덮어쓰고 가상 가족 모드 플래그(`gabee.schedule.daily.devFamily.v1.*`)를 켠다. 가상 가족은 다섯 명(엄마·아빠·아들·딸·할머니, `logic.js` `DEV_FAMILY`, 기록·전화 mock 은 `mock.js`)이고, 목록에 덧붙이는 조건(`withDevFamily`)은 플래그가 켜졌거나, 개발 빌드이고 실제 가족(나 말고 구성원)이 한 명도 없을 때다(플래그와 무관하게 보인다). 같은 id 가 이미 있으면 중복하지 않는다. "데일리 체크 초기화"는 이 사용자의 `gabee.schedule.daily.*` 저장값을 모두 지워 다음에 온보딩이 뜨게 하고 플래그도 끈다(`api.js` `resetAll`). 탭 줄은 가로 스크롤이고 "편집" 칩은 고정이다. 가족 순서 바꾸기 화면은 세로 스크롤 안에서 목록이 늘어난다(끄는 중에는 스크롤이 잠기고, 화면 밖으로 끌어 자동 스크롤하지는 않는다).
 
+## 데일리 체크 서버(스키마·API)
+- 상태: 서버 구현 중(앱 연동은 다음 PR). 테이블 `events_check_items`·`events_check_cheers`·`events_check_settings`(db.md 참고, 리비전 `063b754e4c89`). 체크 테이블만 따로 점검하는 하위 기능 `schedule_check` 이라, 준비 안 된 DB 에서는 `/schedule/check/...` 만 503 이고 일정의 나머지는 그대로다.
+- 공통: 모든 API 는 로그인과 현재 가족 그룹이 필요하다. 날짜는 요청에 받지 않는다. "오늘"과 "지금"은 서버 시계의 한국 시간이다. 습관·응원은 사람(`user_id`)에게 묶여 그룹 열이 없다. 내 습관 목록·수정·삭제·순서·기록과 응원 목록·고마워·닫기는 사람 기준이고, 가족 판단(누가 구성원인가)은 `group_members` 로 요청자의 현재 그룹을 기준으로 한다.
+- API (prefix `/schedule/check`):
+  - 내 습관: `GET /items`, `POST /items`(201), `PUT /items/order`(`{ids}` 전체 순서, 누락·중복·남의 id 는 400), `PUT /items/{id}`, `DELETE /items/{id}`(행을 지운다, 204), `PUT /items/{id}/entry`(체크 습관 `{done}`, 횟수 습관 `{count}` 절대값)
+  - 가족: `GET /members/summary`(구성원별 `[오늘 해당하는 가족에게 보이는 습관 수, 그중 완료 수]`), `GET /members/{user_id}/today`(가족에게 보이는 습관 중 오늘 요일에 해당하는 것, 같은 가족이 아니면 404)
+  - 응원: `POST /cheers`(201, `to_user_id`·`kind` 1~3·`message` 1~100자·`chat_left`), `GET /cheers?direction=received|sent`(기본 received, 닫은 카드도 `closed` 로 표시), `PUT /cheers/{id}/thanked`, `PUT /cheers/{id}/closed`(둘 다 본문 없음, 받은 사람만, 처음 한 번만 시각을 남기고 되돌림 없음)
+  - 설정: `GET /settings`, `PUT /settings`(`{onboarded}`)
+- 오늘 기록 규칙:
+  - 오늘 유효성: `confirmed_at` 의 한국 날짜가 오늘일 때만 done·count·confirmed 를 보인다. 날짜가 지나면 DB 값은 두고 응답에서 미완료·0·거짓으로 계산한다(초기화 작업 없음).
+  - 체크 습관: 체크하면 done·confirmed 참, confirmed_at 지금. 해제하면 거짓과 NULL. 다시 체크하면 confirmed_at 을 지금으로 한다.
+  - 횟수 습관: 절대값 count(0 이상, 상한 9999, 목표 초과 허용)를 저장하고 confirmed 는 `count >= goal`, confirmed_at 은 지금. count 가 0 이면 confirmed_at NULL·confirmed 거짓. 목표 없는 횟수 습관은 만들 수 없다(400).
+  - kind 와 맞지 않는 필드(체크 습관에 count, 횟수 습관에 done 등)는 400. 체크 습관에 목표·단위를 두면 400.
+  - 목표를 바꾸면 오늘 count 는 그대로 두고 confirmed 만 다시 계산한다. kind 를 바꾸면 오늘 기록을 초기화한다.
+  - 반복 요일은 월~일 1/0 7자리이고 하루 이상 켜야 한다(그 밖의 요일이 꺼진 습관은 그 요일에 목록에 안 나온다).
+- 가족·응원 규칙: 가족 조회(`/members/{user_id}/today`)는 대상이 요청자의 현재 그룹 구성원일 때만 보여 주고 아니면 404. 담는 것은 `shared` 가 참인 습관뿐이다(꺼진 습관은 이름도 안 담는다). `/members/summary` 는 현재 그룹 구성원 전원(본인 포함)을 돌려준다. 응원 보내기는 받는 사람이 현재 그룹 구성원이어야 하고 자기 자신에게는 안 된다(아니면 404·400). 고마워·닫기는 받은 사람만 하며 보내면 끝이다(취소 없음, 다시 보내도 처음 시각을 지킨다, 보낸 사람·제3자는 404). 응원 횟수 제한은 아직 없다.
+- 아직 안 한 것: 알림(`notify` 는 저장만), 가족 대화방 연동(`chat_left` 는 저장만), 푸시, 앱 연동.
+
 ## 남은 것
 - 등록: 시계는 웹에서 모양과 누르기만 확인했고, 손가락으로 밀어 고르는 느낌은 폰에서 확인 필요
 - 달력: "+ 누구"·"+ 주제" 추가와 칩을 꾹 눌러 이름·색 변경·삭제(칩 관리)
