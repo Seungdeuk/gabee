@@ -11141,6 +11141,7 @@
           "ai-assistant-knowledge"
         ],
         "summary": "Get Item",
+        "description": "기록을 열면 이 사용자의 읽음이 남는다(다른 가족 기록이면 404 이고 남기지 않는다).",
         "operationId": "get_item_ai_assistant_knowledge_items__item_id__get",
         "parameters": [
           {
@@ -16065,6 +16066,11 @@
             "title": "Needs Description",
             "default": false
           },
+          "seen": {
+            "type": "boolean",
+            "title": "Seen",
+            "default": true
+          },
           "body_md": {
             "type": "string",
             "title": "Body Md"
@@ -16211,6 +16217,11 @@
             "type": "boolean",
             "title": "Needs Description",
             "default": false
+          },
+          "seen": {
+            "type": "boolean",
+            "title": "Seen",
+            "default": true
           }
         },
         "type": "object",

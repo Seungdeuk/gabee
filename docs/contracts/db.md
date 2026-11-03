@@ -59,6 +59,7 @@ docker compose 의 개발용 PostgreSQL(`pgvector/pgvector:pg16` 이미지, `pgv
 | photos | ai_assistant | 앱이 올린 사진(파일은 `DATA_DIR/photos`에 저장) |
 | knowledge_items | ai_assistant/knowledge | 전처리가 넘긴 기록 한 건(분류 이름, 제목, 마크다운 전체, 원본 경로, 날짜, 민감도) |
 | knowledge_chunks | ai_assistant/knowledge | 기록을 쪽·슬라이드·길이로 자른 조각과 임베딩 벡터(PostgreSQL 은 pgvector `vector(384)` + 코사인 HNSW 인덱스, SQLite 는 JSON). Alembic 리비전 c3a9f21d7e54 |
+| knowledge_item_reads | ai_assistant/knowledge | 구성원별 문서 읽음 기록. 기본키 (item_id → knowledge_items.id ON DELETE CASCADE, user_id → users.id), read_at. 문서 상세를 열면 한 행이 생기고 문서를 지우면 함께 지운다. `group_id` 없이 `item_id` 로 가족을 구분하며(문서가 가족에 속한다), 읽음은 본인 것만 조회한다. Alembic 리비전 27c7716f7207 |
 
 모든 기능 테이블은 `group_id`로 가족 그룹을 구분하고, 다른 그룹의 데이터는 볼 수 없다.
 

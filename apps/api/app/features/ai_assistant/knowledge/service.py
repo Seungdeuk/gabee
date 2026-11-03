@@ -171,6 +171,26 @@ def get_item(db: Session, group_id: str, item_id: str) -> KnowledgeItem:
     return item
 
 
+def mark_read(db: Session, item_id: str, user_id: str) -> None:
+    """상세를 연 사용자의 읽음을 남긴다(멱등)."""
+    repo.mark_read(db, item_id, user_id)
+
+
+def seen_ids(db: Session, user_id: str, items: list[KnowledgeItem]) -> set[str]:
+    """이 사용자가 본 기록의 id: 직접 올렸거나 상세를 열어 읽음이 남은 것."""
+    mine = {i.id for i in items if i.created_by == user_id}
+    rest = [i.id for i in items if i.id not in mine]
+    return mine | repo.seen_item_ids(db, user_id, rest)
+
+
+def attach_seen(db: Session, user_id: str, items: list[KnowledgeItem]) -> list[KnowledgeItem]:
+    """각 기록에 이 사용자의 읽음 여부(`seen`)를 붙여 돌려준다."""
+    seen = seen_ids(db, user_id, items)
+    for item in items:
+        item.seen = item.id in seen
+    return items
+
+
 def created_bounds(
     created_from: date | None, created_to: date | None, offset_hours: int
 ) -> tuple[datetime | None, datetime | None]:
