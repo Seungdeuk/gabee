@@ -1,4 +1,4 @@
-"""로컬 개발 DB 에 정산·돌봄 가짜 데이터를 채운다(데모 가족 한 팀). 공용 DB 에는 절대 쓰지 않는다.
+"""로컬 개발 DB 에 정산·지출·용돈 가짜 데이터를 채운다(데모 가족 한 팀). 공용 DB 에는 절대 쓰지 않는다.
 
     cd apps/api
     DATABASE_URL=postgresql+psycopg://postgres:<비번>@127.0.0.1:5433/gabee python -m scripts.seed_local_demo
@@ -10,7 +10,7 @@
 """
 
 import sys
-from datetime import UTC, date, datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 
 from fastapi.testclient import TestClient
 from sqlalchemy import select
@@ -121,16 +121,6 @@ def main() -> int:
             200,
             201,
         )
-
-        # ---- 돌봄: 위치 (CARE_LOCATION_ENABLED 를 켠 서버에서만 동작한다) ----
-        _ok(client.put("/care/location/consent", json={"consent": True}, headers=a))
-        point = {
-            "lat": 37.5665,
-            "lng": 126.978,
-            "accuracy_m": 15,
-            "recorded_at": datetime.now(UTC).isoformat(),
-        }
-        _ok(client.post("/care/locations", json={"points": [point]}, headers=a))
 
         # ---- 가족의 AI 동의 켜기 ----
         with SessionLocal() as db:

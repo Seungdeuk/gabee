@@ -6,8 +6,6 @@ _tmp = tempfile.mkdtemp(prefix="gabee-test-")
 os.environ["DATABASE_URL"] = f"sqlite:///{_tmp}/test.db"
 os.environ["DATA_DIR"] = _tmp
 os.environ["ANTHROPIC_API_KEY"] = ""
-# 돌봄 서버 API 는 서비스에서 닫혀 있지만(CARE_API_ENABLED), 돌봄 코드 시험은 켠 상태에서 본다. 닫힌 상태는 test_care_api_closed.py 가 본다.
-os.environ["CARE_API_ENABLED"] = "true"
 # 구독·통신비 서버 API 도 서비스에서 닫혀 있지만(SUBSCRIPTION_API_ENABLED), 구독 코드 시험은 켠 상태에서 본다. 닫힌 상태는 test_subscription_api_closed.py 가 본다.
 os.environ["SUBSCRIPTION_API_ENABLED"] = "true"
 os.environ["JWT_SECRET"] = "test-only-jwt-secret-not-for-production-0123456789"  # 테스트 전용 값

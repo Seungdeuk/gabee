@@ -5,7 +5,7 @@
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "gabee",
+    "scheme": ["gabee", "com.kangminhun.gabee"],
     "userInterfaceStyle": "light",
     "ios": {
       "icon": "./assets/images/icon.png",

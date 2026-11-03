@@ -100,6 +100,7 @@ export default function ScheduleScreen() {
     action();
   };
   const openCalendar = (date) => router.push({ pathname: "/schedule/calendar", params: { date } });
+  const openDailyCheck = () => router.push("/schedule/daily-check");
   const openDetail = (id) => router.push({ pathname: "/schedule/detail", params: { id } });
   const openRequest = (id) => router.push({ pathname: "/schedule/together-detail", params: { id } });
   const openTogether = (params) => router.push({ pathname: "/schedule/together", params });
@@ -128,6 +129,7 @@ export default function ScheduleScreen() {
                 </Text>
               </View>
               <View style={styles.actions}>
+                <IconButton name="checkmark-circle-outline" size={24} label="데일리 체크 열기" onPress={() => openDailyCheck()} />
                 <IconButton name="calendar-outline" size={24} label="달력 열기" onPress={() => openCalendar(selected)} />
               </View>
             </View>

@@ -33,9 +33,9 @@ _FEATURE_RE = re.compile(r"^app\.features\.(\w+)\.")
 _SHARED_RE = re.compile(r"^app\.shared\.(\w+)$")
 # app/shared 의 공통 모델이 어떤 기능에서 쓰이는지. 등록되지 않은 공통 모델은 모든 기능의 전제(family_group)로 본다.
 SHARED_MODEL_FEATURES = {
-    "location_consent": ("family_group", "care"),
+    "location_consent": ("family_group",),
     "ai_usage": ("family_chat", "ai_assistant"),  # AI 호출 한도·캐시·사용 기록
-    "used_proposals": ("billing", "care"),  # 에이전트 쓰기 제안 토큰의 사용 기록
+    "used_proposals": ("billing",),  # 에이전트 쓰기 제안 토큰의 사용 기록
     "notifications": ("notifications",),  # 알림함: 알림 기능만 쓴다
 }
 

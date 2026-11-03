@@ -5,8 +5,6 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.features.ai_assistant.router import router as ai_assistant_router
 from app.features.billing.router import router as billing_router
-from app.features.care.router import require_care_api
-from app.features.care.router import router as care_router
 from app.features.family_chat.router import router as family_chat_router
 from app.features.family_group.photo_limit import PhotoBodyLimitMiddleware
 from app.features.family_group.router import router as family_group_router
@@ -17,6 +15,7 @@ from app.shared.db import init_db
 from app.shared.errors import register_error_handlers
 from app.shared.high_risk_guard import GUARDED_FEATURES, high_risk_guard
 from app.shared.privacy import ner as privacy_ner
+from app.shared.public_pages.router import router as public_pages_router
 from app.shared.route_switch import RouteSwitchMiddleware
 from app.shared.schema_gate import health_router, schema_ready
 
@@ -59,19 +58,16 @@ for feature, router in (
     ("family_chat", family_chat_router),
     ("schedule", schedule_router),
     ("billing", billing_router),
-    ("care", care_router),
     ("ai_assistant", ai_assistant_router),
     ("notifications", notifications_router),
 ):
     deps = []
-    # 돌봄 서버 API 는 닫혀 있다(CARE_API_ENABLED). 스키마 상태와 상관없이 먼저 403
-    if feature == "care":
-        deps.append(Depends(require_care_api))
     deps.append(Depends(schema_ready(feature)))
     if feature in GUARDED_FEATURES:  # 고위험 입력(주민·카드·계좌·비밀번호) 사전 차단 (임시 방어)
         deps.append(Depends(high_risk_guard))
     app.include_router(router, dependencies=deps)
 app.include_router(health_router)
+app.include_router(public_pages_router)  # 공개 안내 페이지(/, /privacy, /terms): 로그인·DB 없음
 
 
 @app.get("/health", tags=["health"])
