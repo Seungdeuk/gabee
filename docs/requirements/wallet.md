@@ -36,7 +36,7 @@
   - 용돈: `GET /billing/allowances`, `PUT·DELETE …/{child_id}/plan`, `POST …/plan/pay`, `POST …/credits`, `POST …/uses`, `POST …/requests`(+ approve·reject·취소), `DELETE …/entries/{id}`
   - 에이전트: `POST /billing/agent/chat`, `POST /billing/agent/confirm`
   - 월말 정산 알림: `GET /billing/settlement/reminder` (화면에서 쓴다)
-- 화면에서 쓰지 않지만 서버에 남은 것: 구독·통신비(`/billing/subscriptions/*`). 닫을지는 미정이다.
+- 구독·통신비(`/billing/subscriptions/*`)는 **닫았다**(2026-11-03). 스위치 `SUBSCRIPTION_API_ENABLED`(기본 꺼짐)가 꺼져 있으면 403 `subscription_disabled`이고, 일정 탭 추천도 구독 결제일을 읽지 않는다(일정 담당 확인함). 테이블과 데이터는 그대로 둔다.
 - 돌봄 서버 API는 위치(`/care/location*`)만 남았고 닫혀 있다(위 "합의된 것"). 닫힌 응답은 403 `care_disabled`. 삭제한 데일리 체크 경로(`/care/daily` 등)는 404다.
 - 권한은 `docs/contracts/permissions.md`와 기존 가계 규칙을 따른다(용돈 주기·지급은 부모 역할 또는 그룹을 만든 사람 등, 자세한 것은 `docs/features/billing.md`).
 
@@ -55,7 +55,7 @@
 
 ## 미정
 다음은 임의로 정하지 않고 확인한다.
-- **구독 서버 API**: 구독 기능은 화면과 에이전트에서 뺐다. 서버의 `/billing/subscriptions/*`를 닫을지 유지할지. 일정 탭의 추천(`schedule/agent/suggest_sources.py`)이 구독 데이터를 참고하므로 닫기 전에 일정 담당과 확인이 필요하다.
+- (정리됨) 구독 서버 API는 닫았다. 구독 테이블을 지울지는 별도 PR과 DB 담당자 승인이 필요하다.
 - **정산 요약 카드**: 현황판이 없어져서 갈 곳이 없다. 지갑에 다시 둘지.
 - **지출의 포함 여부**: "정산하기와 용돈만"이라고 했지만 정산에는 지출 입력이 필요해서 지출을 같이 두었다. 맞는지 확인이 필요하다.
 - **돌봄 DB 테이블 삭제**: `care_items`, `care_entries`, `care_records`, `care_meal_logs`를 언제 지울지(DB 담당자 승인과 별도 PR 필요). 위치 코드와 위치 동의 철회 경로를 언제까지 둘지.

@@ -82,6 +82,9 @@ class Settings(BaseSettings):
     # 돌봄 서버 API(/care/*) 사용 여부(기본 꺼짐). 팀 회의 결과로 돌봄 탭을 지갑으로 바꾸면서 닫았다. 꺼져 있으면 /care/* 요청을 403 care_disabled 로 막는다.
     # 위치 동의 철회·조회(/care/location/consent)는 저장된 내 위치를 지우는 길이라 꺼져 있어도 열어 둔다.
     care_api_enabled: bool = False
+    # 구독·통신비 서버 API(/billing/subscriptions*) 사용 여부(기본 꺼짐). 지갑 탭에서 구독 기능을 빼면서 닫았다. 꺼져 있으면 403 subscription_disabled 로 막고,
+    # 일정 추천도 구독 결제일을 읽지 않는다. 테이블과 데이터는 그대로 둔다.
+    subscription_api_enabled: bool = False
     # 돌봄 위치 공유 사용 여부(기본 꺼짐). 꺼져 있으면 위치 저장·조회·동의와 에이전트의 위치 도구를 403 location_disabled 로 막는다.
     # 동의 철회(저장된 내 위치 삭제)와 동의 상태 조회는 꺼져 있어도 된다.
     care_location_enabled: bool = False
