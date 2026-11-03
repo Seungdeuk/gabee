@@ -2,7 +2,9 @@ from fastapi import APIRouter, Depends, Response
 from sqlalchemy.orm import Session
 
 from app.shared.auth import current_group_id, current_user
+from app.shared.config import settings
 from app.shared.db import get_db
+from app.shared.errors import ApiError
 from app.shared.llm import agent_chat as agent_chat_service
 from app.shared.llm.schemas import (
     AgentChatIn,
@@ -43,6 +45,12 @@ from .schemas import (
 )
 
 router = APIRouter(prefix="/billing", tags=["billing"])
+
+
+def require_subscription_api() -> None:
+    """구독·통신비 서버 API 스위치(SUBSCRIPTION_API_ENABLED). 닫혀 있으면 /billing/subscriptions* 요청을 403 subscription_disabled 로 막는다."""
+    if not settings.subscription_api_enabled:
+        raise ApiError(403, "subscription_disabled", "구독 기능은 지금 사용할 수 없어요")
 
 
 @router.get("/expenses", response_model=list[ExpenseOut])
@@ -167,14 +175,22 @@ def undo_paid(
     return service.undo_paid(db, group_id, payment_id)
 
 
-@router.get("/subscriptions", response_model=SubscriptionList)
+@router.get(
+    "/subscriptions",
+    dependencies=[Depends(require_subscription_api)],
+    response_model=SubscriptionList,
+)
 def list_subscriptions(
     group_id: str = Depends(current_group_id), db: Session = Depends(get_db)
 ) -> SubscriptionList:
     return service.list_subscriptions(db, group_id)
 
 
-@router.get("/subscriptions/catalog", response_model=SubscriptionCatalog)
+@router.get(
+    "/subscriptions/catalog",
+    dependencies=[Depends(require_subscription_api)],
+    response_model=SubscriptionCatalog,
+)
 def subscription_catalog(
     group_id: str = Depends(current_group_id), db: Session = Depends(get_db)
 ) -> SubscriptionCatalog:
@@ -182,7 +198,12 @@ def subscription_catalog(
     return service.subscription_catalog(db, group_id)
 
 
-@router.post("/subscriptions", response_model=SubscriptionOut, status_code=201)
+@router.post(
+    "/subscriptions",
+    dependencies=[Depends(require_subscription_api)],
+    response_model=SubscriptionOut,
+    status_code=201,
+)
 def create_subscription(
     body: SubscriptionCreate,
     user=Depends(current_user),
@@ -193,7 +214,11 @@ def create_subscription(
     return service.create_subscription(db, group_id, user, body)
 
 
-@router.get("/subscriptions/upcoming", response_model=UpcomingPayments)
+@router.get(
+    "/subscriptions/upcoming",
+    dependencies=[Depends(require_subscription_api)],
+    response_model=UpcomingPayments,
+)
 def upcoming_payments(
     on: str | None = None,
     user=Depends(current_user),
@@ -204,7 +229,11 @@ def upcoming_payments(
     return service.upcoming_payments(db, group_id, user, on)
 
 
-@router.get("/subscriptions/monthly", response_model=MonthlyPlan)
+@router.get(
+    "/subscriptions/monthly",
+    dependencies=[Depends(require_subscription_api)],
+    response_model=MonthlyPlan,
+)
 def monthly_plan(
     month: str | None = None,
     group_id: str = Depends(current_group_id),
@@ -214,7 +243,12 @@ def monthly_plan(
     return service.monthly_plan(db, group_id, month or service.this_month())
 
 
-@router.post("/subscriptions/monthly", response_model=MonthlyResult, status_code=201)
+@router.post(
+    "/subscriptions/monthly",
+    dependencies=[Depends(require_subscription_api)],
+    response_model=MonthlyResult,
+    status_code=201,
+)
 def generate_monthly(
     body: MonthlyGenerate,
     group_id: str = Depends(current_group_id),
@@ -224,7 +258,11 @@ def generate_monthly(
     return service.generate_monthly(db, group_id, body.month)
 
 
-@router.patch("/subscriptions/{item_id}", response_model=SubscriptionOut)
+@router.patch(
+    "/subscriptions/{item_id}",
+    dependencies=[Depends(require_subscription_api)],
+    response_model=SubscriptionOut,
+)
 def update_subscription(
     item_id: str,
     body: SubscriptionPatch,
@@ -235,7 +273,9 @@ def update_subscription(
     return service.update_subscription(db, group_id, item_id, body)
 
 
-@router.delete("/subscriptions/{item_id}", status_code=204)
+@router.delete(
+    "/subscriptions/{item_id}", dependencies=[Depends(require_subscription_api)], status_code=204
+)
 def delete_subscription(
     item_id: str, group_id: str = Depends(current_group_id), db: Session = Depends(get_db)
 ) -> Response:

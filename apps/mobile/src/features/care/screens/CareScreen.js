@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
 
-// 지갑 탭에서는 정산·지출·용돈과 월말 정산 알림만 쓴다. 공동구독·정산 요약·결제일 알림·위치 가져오기는 주석 처리해 두었다(다시 켤 때 되돌린다).
-import { MoneySection, MonthSwitcher, ReminderBanner, currentMonth } from "@/features/billing/public";
-// import { SettleSummary, SubscriptionTab, UpcomingBanner } from "@/features/billing/public"; // 정산 요약·공동구독·결제일 알림은 뺐다
+// 지갑 탭에서는 정산 요약·정산·지출·용돈과 월말 정산 알림만 쓴다. 공동구독·결제일 알림·위치 가져오기는 주석 처리해 두었다(다시 켤 때 되돌린다).
+import { MoneySection, MonthSwitcher, ReminderBanner, SettleSummary, currentMonth } from "@/features/billing/public";
+// import { SubscriptionTab, UpcomingBanner } from "@/features/billing/public"; // 공동구독·결제일 알림은 뺐다
 import Screen from "@/shared/components/Screen";
 import { colors, font } from "@/theme";
 
@@ -35,6 +35,7 @@ export default function CareScreen() {
       ) : null}
 
       <MonthSwitcher month={month} onChange={setMonth} />
+      <SettleSummary month={month} refreshKey={refreshKey} onOpen={() => setMoneyKey((k) => k + 1)} />
       <ReminderBanner refreshKey={refreshKey} onOpen={() => setMoneyKey((k) => k + 1)} />
 
       <MoneySection key={moneyKey} month={month} notify={notify} refreshKey={refreshKey} />

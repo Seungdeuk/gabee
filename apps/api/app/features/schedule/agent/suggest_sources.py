@@ -19,6 +19,7 @@ from app.features.family_chat import ai_service
 from app.features.family_chat.ai_schemas import RangeIn
 from app.features.family_group.models import User
 from app.features.schedule import together
+from app.shared.config import settings
 from app.shared.errors import ApiError
 
 from .prompts import WEEKDAYS
@@ -75,6 +76,10 @@ def request_lines(db: Session, group_id: str, user_id: str, today: date) -> list
 
 def billing_lines(db: Session, group_id: str, user_id: str, today: date) -> list[str]:
     """내가 결제하는 구독의 앞으로 60일 안 결제일. 이름과 날짜만(금액은 보내지 않는다)."""
+    if (
+        not settings.subscription_api_enabled
+    ):  # 구독 기능을 닫았으면 결제일도 일정 추천에 쓰지 않는다
+        return []
     until = today + timedelta(days=AHEAD_DAYS)
     out: list[tuple[date, str]] = []
     for item in billing_repo.list_subscriptions(db, group_id):

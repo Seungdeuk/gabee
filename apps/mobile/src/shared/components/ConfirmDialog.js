@@ -3,9 +3,10 @@ import { Modal, Pressable, StyleSheet, Text, View } from "react-native";
 import { colors, font, radius, spacing } from "@/theme";
 
 /**
- * 화면 가운데 확인 팝업. 되돌릴 수 없는 동작(삭제)을 확인할 때 쓰고, 하단 시트(날짜·시간 선택)와 구분된다.
- * 안전한 취소를 왼쪽에, 위험한 확인(삭제)을 오른쪽에 오류 색으로 둔다.
+ * 화면 가운데 확인 팝업. 되돌릴 수 없는 동작(삭제, 가족 나가기 등)을 확인할 때 쓰고, 하단 시트(날짜·시간 선택)와 구분된다.
+ * 안전한 취소를 왼쪽에, 위험한 확인(삭제·나가기)을 오른쪽에 오류 색으로 둔다.
  * @param {{ visible: boolean, title: string, message?: string, cancelLabel?: string, confirmLabel: string, onCancel: () => void, onConfirm: () => void }} props
+ * @returns {import("react").ReactElement}
  */
 export default function ConfirmDialog({ visible, title, message, cancelLabel = "취소", confirmLabel, onCancel, onConfirm }) {
   return (

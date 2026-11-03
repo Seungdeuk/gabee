@@ -162,3 +162,20 @@ test("프로필·별명·권한 API 호출 경로와 본문", async () => {
   assert.deepEqual(calls[3].body, { nickname: "삼촌", memo: null }); // 빈 값은 null(지우기)
   assert.deepEqual(calls[4].body, { nickname: null, memo: null });
 });
+
+test("가족 나가기: POST /family-group/groups/me/leave, 204 는 null", async () => {
+  const calls = [];
+  globalThis.fetch = async (url, init = {}) => {
+    calls.push(`${init.method ?? "GET"} ${new URL(url).pathname}`);
+    return new Response(null, { status: 204 });
+  };
+  const api = await import("../src/features/family-group/api.js");
+  assert.equal(await api.leaveFamily(), null);
+  assert.deepEqual(calls, ["POST /family-group/groups/me/leave"]);
+});
+
+test("가족 오류 문구: 소유자는 나갈 수 없다", () => {
+  assert.match(familyErrorMessage({ code: "cannot_leave_owner" }), /소유자는 가족을 나갈 수 없어요/);
+  assert.match(familyErrorMessage({ code: "no_group" }), /가족 그룹/);
+  assert.match(familyErrorMessage({ code: "not_member" }), /구성원이 아니에요/);
+});

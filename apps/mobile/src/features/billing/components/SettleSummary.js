@@ -9,7 +9,7 @@ import { getSettlement } from "../api";
 import { won } from "../format";
 
 /**
- * 현황판용 정산 요약: 이번 달 남은 잔액과 보내야 할 송금 수. 누르면 정산 구역으로 간다.
+ * 지갑 탭 정산 요약: 이번 달 남은 잔액과 보내야 할 송금 수. 누르면 정산 구역으로 간다.
  * @param {{ month: string, refreshKey?: number, onOpen: () => void }} props
  */
 export default function SettleSummary({ month, refreshKey, onOpen }) {
