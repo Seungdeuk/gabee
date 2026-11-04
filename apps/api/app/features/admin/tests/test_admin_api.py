@@ -86,7 +86,7 @@ def test_ops_admin_list_is_not_service_admin(client, make_admin):
     assert _denied(client.get(ME, headers=headers))
 
 
-LISTS = ("/admin/members", "/admin/groups", "/admin/features", "/admin/ai-usage")
+LISTS = ("/admin/members", "/admin/groups", "/admin/features", "/admin/ai-usage", "/admin/support")
 
 
 def test_lists_are_admin_only(client, make_admin):
@@ -288,3 +288,61 @@ def test_legacy_token_cannot_reach_admin_even_if_listed(client, make_admin):
     user_id = client.get("/family-group/me", headers=headers).json()["id"]
     make_admin(user_id)
     assert client.get(ME, headers=headers).status_code == 401
+
+
+def test_support_list_and_answer(client, make_admin):
+    headers, user_id = _login(client)
+    make_admin(user_id)
+    client.post("/family-group/groups", json={"name": "우리 가족"}, headers=headers)
+    h2, _ = _login(client, "minsu_park")
+    send = lambda h, kind, title: client.post(  # noqa: E731
+        "/support/tickets", json={"kind": kind, "title": title, "body": "내용"}, headers=h
+    ).json()["id"]
+    first = send(headers, "inquiry", "비밀번호 바꾸기")
+    second = send(h2, "report", "광고 메시지")
+
+    d = client.get("/admin/support", headers=headers).json()
+    assert (d["new"], d["working"], d["done"], d["reports"]) == (2, 0, 0, 1)
+    assert [r["id"] for r in d["rows"]] == [second, first]  # 최근순
+    row = d["rows"][1]
+    assert (row["user_name"], row["login_id"], row["group_name"]) == (
+        "김지민",
+        "jimin_kim",
+        "우리 가족",
+    )
+    assert d["rows"][0]["group_name"] is None  # 가족 없는 회원
+
+    r = client.patch(f"/admin/support/{second}", json={"status": "working"}, headers=headers)
+    assert r.status_code == 204, r.text
+    r = client.patch(
+        f"/admin/support/{first}",
+        json={"status": "done", "answer": " 설정에서 바꿀 수 있어요 "},
+        headers=headers,
+    )
+    assert r.status_code == 204, r.text
+
+    d = client.get("/admin/support", headers=headers).json()
+    assert (d["new"], d["working"], d["done"]) == (0, 1, 1)
+    mine = client.get("/support/tickets/mine", headers=headers).json()["rows"][0]
+    assert (mine["status"], mine["answer"]) == ("done", "설정에서 바꿀 수 있어요")
+    assert mine["answered_at"] is not None
+
+
+def test_support_update_rules(client, make_admin):
+    headers, user_id = _login(client)
+    h2, _ = _login(client, "minsu_park")
+    tid = client.post(
+        "/support/tickets", json={"kind": "inquiry", "title": "질문", "body": "내용"}, headers=h2
+    ).json()["id"]
+    path = f"/admin/support/{tid}"
+    assert client.patch(path, json={"status": "done"}).status_code == 401
+    assert _denied(client.patch(path, json={"status": "done"}, headers=headers))  # 허용 목록에 없음
+    make_admin(user_id)
+    assert client.patch(path, json={}, headers=headers).status_code == 422  # 바꿀 것이 없음
+    assert client.patch(path, json={"status": "closed"}, headers=headers).status_code == 422
+    assert (
+        client.patch("/admin/support/nope", json={"status": "done"}, headers=headers).status_code
+        == 404
+    )
+    # 문의를 보낸 사용자 본인도 허용 목록에 없으면 상태를 바꿀 수 없다
+    assert _denied(client.patch(path, json={"status": "done"}, headers=h2))

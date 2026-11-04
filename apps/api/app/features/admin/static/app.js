@@ -1,5 +1,5 @@
 // 가비 관리자 화면(서비스 관리). 서버가 /admin/ui 로 내려준다.
-// 모든 탭은 로그인한 뒤 /admin/* API 의 실제 데이터를 쓴다(읽기 전용). 문의 및 신고 탭은 다음 단계에서 붙인다.
+// 모든 탭은 로그인한 뒤 /admin/* API 의 실제 데이터를 쓴다. 문의·신고만 상태와 답변을 바꿀 수 있다.
 (function () {
   "use strict";
 
@@ -8,8 +8,17 @@
     ["groups", "가족 그룹 관리"],
     ["features", "기능 관리"],
     ["ai", "AI 이용 현황"],
+    ["support", "문의 및 신고"],
   ];
   const TOKEN_KEY = "gabee_admin_token";
+
+  // 문의·신고 상태: 화면 글자, 표시 색, 버튼 글자, 버튼을 누르면 바뀔 상태
+  const STATUS = {
+    new: { label: "접수", cls: "hot", action: "처리 시작", next: "working" },
+    working: { label: "처리 중", cls: "", action: "처리 완료", next: "done" },
+    done: { label: "처리 완료", cls: "ok" },
+  };
+  const KIND = { inquiry: "문의", report: "신고" };
 
   /**
    * 화면에 넣을 글자를 HTML 로 해석되지 않게 바꾼다.
@@ -42,10 +51,17 @@
   /**
    * 관리자 API 를 부른다. 로그인이 풀렸으면(401) 로그인 화면으로 돌아간다.
    * @param {string} path
+   * @param {object} [body] 주면 PATCH 로 보낸다(문의·신고 상태·답변)
    * @returns {Promise<any>}
    */
-  async function api(path) {
-    const res = await fetch(path, { headers: { Authorization: `Bearer ${token()}` } });
+  async function api(path, body) {
+    const init = { headers: { Authorization: `Bearer ${token()}` } };
+    if (body) {
+      init.method = "PATCH";
+      init.headers["Content-Type"] = "application/json";
+      init.body = JSON.stringify(body);
+    }
+    const res = await fetch(path, init);
     if (res.status === 401) {
       setToken(null);
       showLogin("로그인이 만료됐어요. 다시 로그인해 주세요.");
@@ -53,7 +69,7 @@
     }
     if (res.status === 403 && path === "/admin/me") throw new Error("not_staff"); // 허용 목록에 없는 회원
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    return res.json();
+    return res.status === 204 ? null : res.json();
   }
 
   /**
@@ -61,10 +77,10 @@
    * @returns {Promise<object>}
    */
   async function loadData() {
-    const [me, members, groups, features, ai] = await Promise.all(
-      ["/admin/me", "/admin/members", "/admin/groups", "/admin/features", "/admin/ai-usage"].map((p) => api(p)),
+    const [me, members, groups, features, ai, support] = await Promise.all(
+      ["/admin/me", "/admin/members", "/admin/groups", "/admin/features", "/admin/ai-usage", "/admin/support"].map((p) => api(p)),
     );
-    return { me, members, groups, features, ai };
+    return { me, members, groups, features, ai, support };
   }
 
   // ── 그리기 도우미 ─────────────────────────────────────
@@ -95,6 +111,13 @@
     const th = columns.map((c) => `<th class="${c.num ? "num" : ""}">${esc(c.label)}</th>`).join("");
     const body = rows.length ? rows.join("") : `<tr><td colspan="${columns.length}" class="small">해당하는 항목이 없어요</td></tr>`;
     return `<div class="table-wrap"><table><thead><tr>${th}</tr></thead><tbody>${body}</tbody></table></div>`;
+  }
+
+  /** 문의·신고 상태 표시 + 다음 상태로 바꾸는 버튼. */
+  function statusCells(row) {
+    const s = STATUS[row.status];
+    const btn = s.next ? `<button type="button" class="btn sm" data-ticket="${esc(row.id)}" data-next="${s.next}">${esc(s.action)}</button>` : "";
+    return `<td><span class="pill ${s.cls}">${esc(s.label)}</span></td><td class="num">${btn}</td>`;
   }
 
   // ── 탭별 화면 ─────────────────────────────────────────
@@ -216,11 +239,55 @@
       </div>`;
   }
 
+  let openTicket = null; // 펼쳐 둔 문의(다시 그려도 열린 채로 둔다)
+  let supportError = ""; // 마지막 저장 실패 안내
+
+  /** 제목을 누르면 내용과 답변 칸이 펼쳐진다. 내용은 사용자가 직접 쓴 글뿐이다. */
+  function ticketTitle(t) {
+    const answered = t.answered_at ? `<span class="small">답변 ${day(t.answered_at)}</span>` : "<span></span>";
+    return `<details data-open="${esc(t.id)}" ${t.id === openTicket ? "open" : ""}><summary>${esc(t.title)}</summary>
+      <p class="ticket-body">${esc(t.body)}</p>
+      <form class="answer" data-answer="${esc(t.id)}">
+        <label class="small" for="answer-${esc(t.id)}">답변</label>
+        <textarea id="answer-${esc(t.id)}" name="answer" rows="3" maxlength="2000" required>${esc(t.answer || "")}</textarea>
+        <div class="answer-row">${answered}<button type="submit" class="btn sm">답변 저장</button></div>
+      </form></details>`;
+  }
+
+  function viewSupport(d) {
+    const rows = d.rows.map(
+      (t) => `<tr><td>#${esc(t.id.slice(0, 6))}</td><td><span class="pill ${t.kind === "report" ? "bad" : ""}">${KIND[t.kind]}</span></td><td>${ticketTitle(t)}</td><td>${esc(t.user_name || "-")}<br><span class="small">${esc(t.login_id || "")}</span></td><td>${esc(t.group_name || "-")}</td><td>${day(t.created_at)}</td>${statusCells(t)}</tr>`,
+    );
+    const error = supportError ? `<p class="note warn">${esc(supportError)}</p>` : "";
+    return `${head("문의 및 신고", "문의 현황 · 처리 상태 · 답변")}${error}
+      <section class="grid">
+        ${stat("새 문의·신고", `${num(d.new)}건`, "", d.new ? "warn" : "")}
+        ${stat("처리 중", `${num(d.working)}건`)}
+        ${stat("처리 완료", `${num(d.done)}건`, "", "up")}
+        ${stat("신고", `${num(d.reports)}건`, "문의와 따로 셈")}
+      </section>
+      <section class="card"><h2>문의·신고 목록</h2><p class="small">사용자가 직접 쓴 글만 있어요. 가족 채팅 내용은 담기지 않아요.</p>${table([{ label: "번호" }, { label: "종류" }, { label: "제목 (누르면 내용)" }, { label: "보낸 사람" }, { label: "가족" }, { label: "받은 날" }, { label: "상태" }, { label: "" }], rows)}</section>`;
+  }
+
+  /** 문의·신고를 바꾸고 목록을 다시 받아 그린다. 실패하면 화면 위에 알려 준다. */
+  async function updateTicket(id, body) {
+    try {
+      await api(`/admin/support/${encodeURIComponent(id)}`, body);
+      data.support = await api("/admin/support");
+      supportError = "";
+    } catch (err) {
+      if (err.message === "unauthorized") return;
+      supportError = "저장하지 못했어요. 잠시 뒤 다시 해 주세요.";
+    }
+    render();
+  }
+
   const VIEWS = {
     members: (data) => viewMembers(data.members),
     groups: (data) => viewGroups(data.groups),
     features: (data) => viewFeatures(data.features),
     ai: (data) => viewAi(data.ai),
+    support: (data) => viewSupport(data.support),
   };
 
   // ── 화면 그리기 ───────────────────────────────────────
@@ -294,6 +361,34 @@
       showLogin();
       return;
     }
+    const step = e.target.closest("[data-ticket]");
+    if (step) {
+      step.disabled = true;
+      updateTicket(step.dataset.ticket, { status: step.dataset.next });
+      return;
+    }
+  });
+
+  // 펼친 문의를 기억해 두면 저장 뒤 다시 그려도 열린 채로 남는다
+  document.addEventListener(
+    "toggle",
+    (e) => {
+      const el = e.target;
+      if (!el.dataset || !el.dataset.open) return;
+      if (el.open) openTicket = el.dataset.open;
+      else if (openTicket === el.dataset.open) openTicket = null;
+    },
+    true,
+  );
+
+  document.addEventListener("submit", (e) => {
+    const form = e.target.closest("[data-answer]");
+    if (!form) return;
+    e.preventDefault();
+    const answer = form.answer.value.trim();
+    if (!answer) return;
+    form.querySelector("button").disabled = true;
+    updateTicket(form.dataset.answer, { answer });
   });
 
   document.addEventListener("change", (e) => {
