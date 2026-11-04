@@ -13,6 +13,7 @@ from app.features.family_group.photo_limit import PhotoBodyLimitMiddleware
 from app.features.family_group.router import router as family_group_router
 from app.features.notifications.router import router as notifications_router
 from app.features.ops_admin.middleware import RequestMetricsMiddleware
+from app.features.ops_admin.router import router as ops_admin_router
 from app.features.ops_admin.service import aggregator as ops_metrics
 from app.features.schedule.router import router as schedule_router
 from app.features.support.router import router as support_router
@@ -73,6 +74,7 @@ for feature, router in (
     ("ai_assistant", ai_assistant_router),
     ("notifications", notifications_router),
     ("support", support_router),
+    ("ops_admin", ops_admin_router),
 ):
     deps = []
     deps.append(Depends(schema_ready(feature)))

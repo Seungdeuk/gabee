@@ -22,7 +22,10 @@ logger = logging.getLogger(__name__)
 
 UNMATCHED = "unmatched"  # 어떤 라우트와도 맞지 않은 요청(404 등). 원본 주소를 남기지 않으려 한 이름으로 묶는다
 KNOWN_METHODS = frozenset({"GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"})
-EXCLUDED_PREFIXES = ("/health",)  # 상태 확인 호출은 지표를 부풀리므로 제외한다
+EXCLUDED_PREFIXES = (
+    "/health",  # 상태 확인 호출은 지표를 부풀리므로 제외한다
+    "/admin/ops/",  # 운영 화면이 자동 갱신으로 부르는 조회가 자기 지표를 부풀리지 않게 한다
+)
 MAX_ROUTE_LENGTH = 200
 PURGE_EVERY_SECONDS = 3600
 
