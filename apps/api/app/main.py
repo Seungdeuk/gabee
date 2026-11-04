@@ -12,6 +12,8 @@ from app.features.family_chat.router import router as family_chat_router
 from app.features.family_group.photo_limit import PhotoBodyLimitMiddleware
 from app.features.family_group.router import router as family_group_router
 from app.features.notifications.router import router as notifications_router
+from app.features.ops_admin.middleware import RequestMetricsMiddleware
+from app.features.ops_admin.service import aggregator as ops_metrics
 from app.features.schedule.router import router as schedule_router
 from app.features.support.router import router as support_router
 from app.shared.config import settings
@@ -29,6 +31,9 @@ async def lifespan(_: FastAPI):
     init_db()
     privacy_ner.start_preload()  # NER 모델을 백그라운드로 미리 불러온다(off 면 아무 일도 안 함, 실패해도 기동은 계속)
     yield
+    ops_metrics.flush(
+        final=True
+    )  # 종료 전에 남은 요청 지표를 저장한다(꺼져 있으면 비어 있고, 실패해도 종료는 계속)
 
 
 app = FastAPI(title=settings.app_name, debug=settings.debug, lifespan=lifespan)
@@ -54,6 +59,9 @@ app.add_middleware(
 )  # DISABLED_AI_ROUTES 에 걸린 요청은 라우터 전에 503 (임시 방어)
 origins = [o.strip() for o in settings.cors_origins.split(",") if o.strip()]
 app.add_middleware(CORSMiddleware, allow_origins=origins, allow_methods=["*"], allow_headers=["*"])
+app.add_middleware(
+    RequestMetricsMiddleware
+)  # 가장 바깥: OPS_METRICS_ENABLED 가 켜졌을 때만 X-Trace-Id 발급·요청 지표 집계(기본 꺼짐)
 register_error_handlers(app)
 
 # 기능별 스키마 의존성: 그 기능에 필요한 DB 스키마가 아직 준비되지 않았으면(자동 배포 중 등) 해당 기능만 503

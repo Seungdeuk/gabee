@@ -64,6 +64,8 @@ docker compose 의 개발용 PostgreSQL(`pgvector/pgvector:pg16` 이미지, `pgv
 | knowledge_chunks | ai_assistant/knowledge | 기록을 쪽·슬라이드·길이로 자른 조각과 임베딩 벡터(PostgreSQL 은 pgvector `vector(384)` + 코사인 HNSW 인덱스, SQLite 는 JSON). Alembic 리비전 c3a9f21d7e54 |
 | knowledge_item_reads | ai_assistant/knowledge | 구성원별 문서 읽음 기록. 기본키 (item_id → knowledge_items.id ON DELETE CASCADE, user_id → users.id), read_at. 문서 상세를 열면 한 행이 생기고 문서를 지우면 함께 지운다. `group_id` 없이 `item_id` 로 가족을 구분하며(문서가 가족에 속한다), 읽음은 본인 것만 조회한다. Alembic 리비전 27c7716f7207 |
 
-모든 기능 테이블은 `group_id`로 가족 그룹을 구분하고, 다른 그룹의 데이터는 볼 수 없다.
+| ops_request_metrics | ops_admin | 운영 관리자 페이지용 요청 지표 집계. 구간 시작 `bucket_start`(기본 5분), `method`, 경로 패턴 `route`(`/items/{id}` 또는 `unmatched`), 상태코드 구분 `status_class`(2xx~5xx)별 요청 수·지연 시간 합·최댓값. 기본키는 앞의 네 컬럼이라 인스턴스가 여러 개여도 같은 행에 더해진다. 보관 90일(기본, `OPS_METRICS_RETENTION_DAYS`). URL 원문·본문·쿼리·헤더·사용자·가족 id 를 담는 컬럼이 없다. 기본 꺼짐(`OPS_METRICS_ENABLED`). Alembic 리비전 fcf5ce5e68e1 |
+
+모든 가족 기능 테이블은 `group_id`로 가족 그룹을 구분하고, 다른 그룹의 데이터는 볼 수 없다. 단 `ops_request_metrics`는 가족 데이터가 아닌 서버 지표라 `group_id`가 없다.
 
 "(PR 4-A, 스키마만)"로 표시한 컬럼·테이블은 통합 인증·가족 구성원 기능(`docs/requirements/family-group.md`)을 위한 스키마만 미리 만든 것이고, 이를 채우는 회원가입/로그인/소셜 연동/초대 승인 API는 PR 4-B~4-F에서 추가된다 — 지금은 기존 API 동작이 바뀌지 않는다.

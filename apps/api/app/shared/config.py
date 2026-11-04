@@ -162,6 +162,12 @@ class Settings(BaseSettings):
         2  # 동시에 돌리는 추론 수(요청이 몰리면 대기, 오래 걸리면 auto 는 규칙만·required 는 503)
     )
     privacy_ner_model_file: str = "model.onnx"  # 폴더 안 모델 파일(양자화 모델은 model.int8.onnx)
+    # 운영 관리자 요청 지표(app/features/ops_admin). 기본 꺼짐: 공용 DB 에 ops_request_metrics 가 생긴 뒤 켠다.
+    # 켜면 요청마다 X-Trace-Id 를 내려주고 메서드·경로 패턴·상태코드 구분·지연 시간만 집계한다(URL 원문·본문·헤더·사용자 id 저장 안 함).
+    # 구간 길이와 보관 일수는 추측으로 정한 초기값이라 실제 트래픽·저장량을 본 뒤 조정한다.
+    ops_metrics_enabled: bool = False
+    ops_metrics_bucket_seconds: int = 300
+    ops_metrics_retention_days: int = 90
 
     model_config = SettingsConfigDict(env_file=_ENV_FILE, extra="ignore", populate_by_name=True)
 
