@@ -1,6 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect, useRouter } from "expo-router";
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
@@ -23,14 +23,17 @@ import {
   recommendToForm,
 } from "../logic";
 import { useDailyScope } from "../scope";
-import { todayKey } from "../../utils/date";
+import { failureNotice } from "../serverMap";
 
 // 편집 줄 높이(고정). 이름·보조글자, ∧∨, 연필, 휴지통이 한 줄에 든다.
 const EDIT_ROW_HEIGHT = 64;
 
+/** 안내 팝업 내용(확인 한 개). */
+const infoSheet = (notice) => ({ title: notice.title, body: notice.body, confirmLabel: "확인" });
+
 /**
- * 내 항목 편집: 매일 챙기는 일 목록(∧∨ 한 칸 옮기기, 줄을 꾹 누른 채 끌어서 순서 바꾸기, 고치기·지우기), 직접 만들기, 추천 항목을 눌러 바로 추가.
- * 순서를 바꾸면 바로 저장하고, 데일리 체크 메인도 같은 목록 순서를 읽는다.
+ * 내 습관 편집: 매일 챙기는 일 목록(∧∨ 한 칸 옮기기, 줄을 꾹 누른 채 끌어서 순서 바꾸기, 고치기·지우기), 직접 만들기, 추천 항목을 눌러 바로 추가.
+ * 순서를 바꾸면 화면에 먼저 보이고 서버에 한 번에 저장한다. 실패하면 이전 순서로 되돌리고 안내한다.
  * 추가·수정 화면에서 돌아오면 다시 읽는다.
  */
 export default function DailyEditScreen() {
@@ -39,21 +42,35 @@ export default function DailyEditScreen() {
   const [items, setItems] = useState([]);
   const [sheet, setSheet] = useState(null); // 확인 팝업(ConfirmSheet) 내용. null 이면 닫힘
   const [dragging, setDragging] = useState(false); // 줄을 끄는 중이면 바깥 스크롤을 잠근다
+  const orderSeq = useRef(0); // 순서 저장 요청 번호(옛 응답이 새 화면을 덮지 않게)
 
   useFocusEffect(
     useCallback(() => {
       let alive = true;
-      listItems(scope).then((list) => alive && setItems(list));
+      listItems()
+        .then((list) => alive && setItems(list))
+        .catch((error) => alive && setSheet(infoSheet(failureNotice(error, "불러오지 못했어요"))));
       return () => {
         alive = false;
       };
-    }, [scope]),
+    }, []),
   );
 
-  // 바뀐 목록을 화면에 바로 보이고 이 폰에 저장한다.
+  // 바뀐 순서를 화면에 바로 보이고 서버에 저장한다. 실패하면 바꾸기 전 순서로 되돌린다(그 사이 더 새 변경이 있었으면 그대로 둔다).
   const applyItems = (next) => {
+    const seq = ++orderSeq.current;
+    const before = items;
     setItems(next);
-    replaceItems(scope, next);
+    replaceItems(next).then(
+      (saved) => {
+        if (seq === orderSeq.current) setItems(saved);
+      },
+      (error) => {
+        if (seq !== orderSeq.current) return;
+        setItems(before);
+        setSheet(infoSheet(failureNotice(error, "순서를 바꾸지 못했어요")));
+      },
+    );
   };
 
   const leave = () => (router.canGoBack() ? router.back() : router.replace("/schedule/daily-check"));
@@ -67,8 +84,12 @@ export default function DailyEditScreen() {
       tone: "danger",
       onConfirm: async () => {
         setSheet(null);
-        await deleteItem(scope, item.id);
-        setItems((prev) => prev.filter((x) => x.id !== item.id));
+        try {
+          await deleteItem(item.id);
+          setItems((prev) => prev.filter((x) => x.id !== item.id));
+        } catch (error) {
+          setSheet(infoSheet(failureNotice(error, "지우지 못했어요")));
+        }
       },
     });
   };
@@ -82,24 +103,32 @@ export default function DailyEditScreen() {
   );
   const openRecommended = (p) => router.push({ pathname: "/schedule/daily-item", params: recommendToForm(p) });
 
-  // 개발용: 시안 예시 데이터(내 항목·오늘 기록·받은 응원)로 덮어쓴다. __DEV__ 에서만 보인다.
+  // 개발용: 예시 습관을 서버에 만든다(이름이 같은 것은 건너뛴다). __DEV__ 에서만 보인다.
   const devSeed = async () => {
-    await seedExamples(scope, todayKey());
-    setItems(await listItems(scope));
+    try {
+      await seedExamples(items.map((x) => x.name));
+      setItems(await listItems());
+    } catch (error) {
+      setSheet(infoSheet(failureNotice(error, "예시를 채우지 못했어요")));
+    }
   };
 
-  // 개발용: 이 사용자의 데일리 체크 저장값을 모두 지우고(가상 가족 플래그 포함) 메인으로 돌아간다. 메인이 온보딩으로 보낸다.
+  // 개발용: 내 습관을 서버에서 모두 지우고 온보딩 표시를 끈 뒤 메인으로 돌아간다. 메인이 온보딩으로 보낸다.
   const devReset = () => {
     setSheet({
       title: "데일리 체크를 처음 상태로 지울까요?",
-      body: "습관·기록·응원·온보딩 표시가 모두 지워져요 (개발용)",
+      body: "내 습관과 온보딩 표시가 지워져요 (개발용, 받은 응원은 그대로 남아요)",
       cancelLabel: "취소",
       confirmLabel: "지우기",
       tone: "danger",
       onConfirm: async () => {
         setSheet(null);
-        await resetAll(scope);
-        router.replace("/schedule/daily-check");
+        try {
+          await resetAll(scope);
+          router.replace("/schedule/daily-check");
+        } catch (error) {
+          setSheet(infoSheet(failureNotice(error, "초기화하지 못했어요")));
+        }
       },
     });
   };

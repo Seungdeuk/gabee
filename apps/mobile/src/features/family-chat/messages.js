@@ -1,3 +1,5 @@
+import { usedRatio } from "../../shared/aiUsage.js";
+
 /**
  * 가족 채팅(AI) 오류(ApiError)와 결과를 사용자에게 보여줄 한국어 문장으로 바꾼다. 대화 내용은 문장에 넣지 않는다.
  */
@@ -83,7 +85,8 @@ export function scheduleMissingNote(candidate) {
 /**
  * 설정 응답을 화면에서 쓰는 형태로 정리한다(빠진 값은 안전한 쪽으로).
  * @param {object | null | undefined} raw
- * @returns {{ enabled: boolean, canManage: boolean, userLeft: number | null, groupLeft: number | null, cooldownSeconds: number }}
+ * @returns {{ enabled: boolean, canManage: boolean, userLeft: number | null, groupLeft: number | null, userUsedRatio: number | null, groupUsedRatio: number | null, cooldownSeconds: number }}
+ *   Left 는 남은 횟수, UsedRatio 는 한도 대비 사용한 비율(0~1)이다. 화면은 횟수 대신 "N% 사용됨" 게이지를 보인다.
  */
 export function parseAiSettings(raw) {
   const left = (limit, used) => (Number.isFinite(limit) && Number.isFinite(used) ? Math.max(0, limit - used) : null);
@@ -92,6 +95,8 @@ export function parseAiSettings(raw) {
     canManage: raw?.can_manage === true,
     userLeft: left(raw?.limits?.user_per_day, raw?.usage?.user_today),
     groupLeft: left(raw?.limits?.group_per_day, raw?.usage?.group_today),
+    userUsedRatio: usedRatio(raw?.limits?.user_per_day, raw?.usage?.user_today),
+    groupUsedRatio: usedRatio(raw?.limits?.group_per_day, raw?.usage?.group_today),
     cooldownSeconds: Number(raw?.limits?.cooldown_seconds) || 0,
   };
 }
@@ -113,16 +118,6 @@ export function parseAnalysis(res) {
     topics: texts(res?.topics),
     meta: res?.meta,
   };
-}
-
-/**
- * 오늘 남은 횟수 문구. 예: "오늘 남은 횟수: 나 7번 · 가족 25번"
- * @param {{ userLeft: number | null, groupLeft: number | null }} settings parseAiSettings 결과
- * @returns {string}
- */
-export function remainingText({ userLeft, groupLeft }) {
-  if (userLeft === null || groupLeft === null) return "";
-  return `오늘 남은 횟수: 나 ${userLeft}번 · 가족 ${groupLeft}번`;
 }
 
 /**

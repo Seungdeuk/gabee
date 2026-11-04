@@ -1,9 +1,12 @@
+from datetime import date
+
 from fastapi import APIRouter, Depends, Response
 from sqlalchemy.orm import Session
 
 from app.shared.auth import current_group_id, current_user
+from app.shared.config import settings
 from app.shared.db import get_db
-from app.shared.errors import not_found
+from app.shared.errors import bad_request, not_found
 
 from .. import files
 from .. import repository as photo_repo
@@ -43,11 +46,21 @@ def create_item(
 def list_items(
     kind_label: str | None = None,
     limit: int = 50,
+    created_from: date | None = None,
+    created_to: date | None = None,
+    user=Depends(current_user),
     group_id: str = Depends(current_group_id),
     db: Session = Depends(get_db),
 ) -> list[KnowledgeItem]:
-    items = service.list_items(db, group_id, kind_label, min(max(limit, 1), 200))
-    return _mark_review(db, group_id, items)
+    """created_from·created_to 는 설정된 날짜 경계(`ai_day_utc_offset_hours`, 기본 한국 시간 KST)의 달력 날짜이고 양끝을 포함한다(created_at 기준)."""
+    try:
+        start, end = service.created_bounds(
+            created_from, created_to, settings.ai_day_utc_offset_hours
+        )
+    except ValueError as exc:
+        raise bad_request("invalid_range", str(exc)) from exc
+    items = service.list_items(db, group_id, kind_label, min(max(limit, 1), 200), start, end)
+    return _mark_review(db, group_id, service.attach_seen(db, user.id, items))
 
 
 @router.delete("/items/{item_id}", status_code=204)
@@ -62,22 +75,30 @@ def delete_item(
 
 @router.get("/items/{item_id}", response_model=ItemDetailOut)
 def get_item(
-    item_id: str, group_id: str = Depends(current_group_id), db: Session = Depends(get_db)
+    item_id: str,
+    user=Depends(current_user),
+    group_id: str = Depends(current_group_id),
+    db: Session = Depends(get_db),
 ) -> KnowledgeItem:
-    return _mark_review(db, group_id, [service.get_item(db, group_id, item_id)])[0]
+    """기록을 열면 이 사용자의 읽음이 남는다(다른 가족 기록이면 404 이고 남기지 않는다)."""
+    item = service.get_item(db, group_id, item_id)
+    service.mark_read(db, item.id, user.id)
+    item.seen = True
+    return _mark_review(db, group_id, [item])[0]
 
 
 @router.patch("/items/{item_id}", response_model=ItemDetailOut)
 def update_item(
     item_id: str,
     body: ItemUpdateIn,
+    user=Depends(current_user),
     group_id: str = Depends(current_group_id),
     db: Session = Depends(get_db),
 ) -> KnowledgeItem:
     """확인하며 고친 값으로 기록을 바꾼다. 가족 그룹이 다르면 없는 기록처럼 404 다."""
     item = service.update_item(db, group_id, item_id, body.model_dump(exclude_unset=True))
     photo_repo.set_status(db, item.id, "analyzed")  # 올린 파일이면 확인 필요 표시를 끈다
-    return _mark_review(db, group_id, [item])[0]
+    return _mark_review(db, group_id, service.attach_seen(db, user.id, [item]))[0]
 
 
 @router.post("/ask", response_model=AskOut)

@@ -18,7 +18,13 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from app.shared.db import Base
 
-from .constants import KIND_APPOINTMENT, RECIPIENT_WAITING, SUGGESTION_PENDING
+from .constants import (
+    CHECK_KIND_CHECK,
+    CHECK_REPEAT_ALL,
+    KIND_APPOINTMENT,
+    RECIPIENT_WAITING,
+    SUGGESTION_PENDING,
+)
 
 
 def _uid() -> str:
@@ -151,3 +157,121 @@ class EventSuggestion(Base):
     )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
     confirmed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class CheckItem(Base):
+    """데일리 체크 내 습관. 사람마다 자기 줄(`user_id`)을 갖는다. 삭제는 `deleted_at` 소프트 삭제다(지난 기록 보존).
+
+    날짜별 기록(done·count·confirmed·confirmed_at·메모)은 `CheckLog` 에 둔다. 이 행에는 습관 정의만 있다.
+    """
+
+    __tablename__ = "events_check_items"
+    __table_args__ = (Index("ix_events_check_items_user_position", "user_id", "position"),)
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uid)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id"))
+    name: Mapped[str] = mapped_column(String(60))
+    kind: Mapped[int] = mapped_column(Integer, default=CHECK_KIND_CHECK, server_default="1")
+    goal: Mapped[int | None] = mapped_column(Integer, nullable=True)  # 횟수일 때 하루 목표
+    unit: Mapped[str | None] = mapped_column(
+        String(10), nullable=True
+    )  # 횟수일 때 단위(체크 습관은 비어 있음)
+    repeat_days: Mapped[str] = mapped_column(
+        String(7), default=CHECK_REPEAT_ALL, server_default=CHECK_REPEAT_ALL
+    )  # 월~일 순서 1/0, 월 = 첫 글자
+    shared: Mapped[bool] = mapped_column(Boolean, default=True, server_default=text("true"))
+    notify: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("false"))
+    position: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_now
+    )  # 이름·종류·목표·단위·요일·공개·알림이 실제로 바뀔 때
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # 반복 요일을 마지막으로 바꾼 시각(반복 요일 값이 실제로 달라졌을 때만 갱신). 생성 시 NULL.
+    repeat_updated_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+
+class CheckLog(Base):
+    """데일리 체크 날짜별 기록. 습관 하루에 한 줄이며, 그날 처음 체크·횟수·메모를 남길 때만 만든다(자정에 미리 만들지 않는다).
+
+    kind 1 은 done 을, kind 2 는 count·goal 을 쓴다(다른 쪽은 NULL). 메모만 쓴 줄은 done·count 가 NULL 이다.
+    confirmed_at 은 완료 상태가 된 시각이다(취소하면 NULL, 다시 완료하면 새 시각). created_at 은 줄이 처음 생긴 시각이다.
+    """
+
+    __tablename__ = "events_check_logs"
+    __table_args__ = (
+        UniqueConstraint("item_id", "log_date", name="uq_events_check_logs_item_date"),
+        Index("ix_events_check_logs_log_date", "log_date"),
+    )
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uid)
+    item_id: Mapped[str] = mapped_column(ForeignKey("events_check_items.id"))
+    log_date: Mapped[date] = mapped_column(Date)  # 기록 대상 날짜(한국 시간)
+    done: Mapped[bool | None] = mapped_column(Boolean, nullable=True)  # kind 1
+    count: Mapped[int | None] = mapped_column(Integer, nullable=True)  # kind 2
+    goal: Mapped[int | None] = mapped_column(Integer, nullable=True)  # kind 2, 그날의 목표 스냅샷
+    confirmed: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("false"))
+    note: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    note_shared: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default=text("false")
+    )  # 이 메모를 가족에게 보일지
+    confirmed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+
+class CheckCheer(Base):
+    """데일리 체크 응원. 보낸 사람(`from_user_id`)과 받은 사람(`to_user_id`)은 같은 가족 그룹이어야 한다(보낼 때 확인, 그룹 열은 없다).
+    받은 사람만 고마워(`thanked_at`)와 닫기(`closed_at`)를 할 수 있다. 닫은 카드도 목록에는 남는다."""
+
+    __tablename__ = "events_check_cheers"
+    __table_args__ = (
+        Index("ix_events_check_cheers_to_sent", "to_user_id", "sent_at"),
+        Index("ix_events_check_cheers_pair_sent", "from_user_id", "to_user_id", "sent_at"),
+    )
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uid)
+    from_user_id: Mapped[str] = mapped_column(ForeignKey("users.id"))
+    to_user_id: Mapped[str] = mapped_column(ForeignKey("users.id"))
+    kind: Mapped[int] = mapped_column(Integer)  # 1 사랑해요 · 2 최고예요 · 3 잘하셨어요
+    message: Mapped[str] = mapped_column(String(100))
+    chat_left: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("false"))
+    sent_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    thanked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class CheckSuggestion(Base):
+    """데일리 체크 추천 문구 창고. 습관 추천(category 1)과 응원 문구(category 2)를 한 테이블에 둔다.
+
+    앱이 읽기 전용 API 로 무작위 몇 개만 가져간다(LLM 호출 없음). 사람·가족과 무관한 공용 목록이라 사용자 열이 없다.
+    습관은 kind(1 체크 · 2 횟수)와 goal·unit 을 쓰고, 응원 문구는 content 만 쓴다(나머지 NULL).
+    active 를 끄면 지우지 않고 추천에서만 뺀다. 내용은 시드 스크립트(scripts/seed_check_suggestions.py)로 넣는다.
+    """
+
+    __tablename__ = "events_check_suggestions"
+    __table_args__ = (
+        UniqueConstraint(
+            "category", "content", name="uq_events_check_suggestions_category_content"
+        ),
+        Index("ix_events_check_suggestions_category_active", "category", "active"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    category: Mapped[int] = mapped_column(Integer)  # 1 습관 추천 · 2 응원 문구
+    content: Mapped[str] = mapped_column(String(60))  # 습관 이름(앱 20자) 또는 응원 문구(앱 50자)
+    kind: Mapped[int | None] = mapped_column(Integer, nullable=True)  # 습관만: 1 체크 · 2 횟수
+    goal: Mapped[int | None] = mapped_column(Integer, nullable=True)  # 횟수 습관의 하루 목표
+    unit: Mapped[str | None] = mapped_column(String(10), nullable=True)  # 횟수 습관의 단위
+    active: Mapped[bool] = mapped_column(Boolean, default=True, server_default=text("true"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+
+class CheckSetting(Base):
+    """데일리 체크 온보딩 완료 표시. 사용자당 한 줄이고, 행이 없으면 아직 안 한 것이다."""
+
+    __tablename__ = "events_check_settings"
+
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), primary_key=True)
+    onboarded: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("false"))

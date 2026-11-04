@@ -1,6 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
@@ -9,8 +9,9 @@ import { colors, font, radius, spacing } from "@/theme";
 
 import { FormField, TextBox } from "../../components/FormControls";
 import ConfirmSheet, { ConfirmBody } from "../components/ConfirmSheet";
-import { deleteItem, listItems, saveItem } from "../api";
+import { deleteItem, listHabitSuggestions, listItems, saveItem } from "../api";
 import { RECOMMEND_POOL } from "../mock";
+import { failureNotice } from "../serverMap";
 import {
   ALL_DAYS,
   DAY_PRESETS,
@@ -26,9 +27,12 @@ import {
   recommendAvailable,
   recommendToForm,
   stepGoalText,
+  NAME_MAX,
   validateItem,
 } from "../logic";
-import { useDailyScope } from "../scope";
+
+/** 안내 팝업 내용(확인 한 개). */
+const infoSheet = (notice) => ({ title: notice.title, body: notice.body, confirmLabel: "확인" });
 
 const TYPE_OPTIONS = [
   { key: "check", label: "한 번 체크" },
@@ -49,7 +53,6 @@ export default function DailyItemScreen() {
   const pType = typeof params.type === "string" ? params.type : "";
   const pGoal = typeof params.goalText === "string" ? params.goalText : "";
   const editing = Boolean(editingId);
-  const scope = useDailyScope();
 
   const [name, setName] = useState("");
   const [type, setType] = useState("check");
@@ -62,27 +65,42 @@ export default function DailyItemScreen() {
   const [sheet, setSheet] = useState(null); // 확인 팝업(ConfirmSheet) 내용. null 이면 닫힘
   const [existing, setExisting] = useState([]); // 이미 있는 항목 이름(추천에서 뺀다)
   const [pickedRec, setPickedRec] = useState("");
+  // 서버 추천 습관. null 은 아직 받는 중(추천 칸을 숨김), 빈 배열은 실패하거나 비어 있어 내장 목록을 쓴다.
+  const [serverRecs, setServerRecs] = useState(null);
+  const askedRecs = useRef(false); // 화면을 연 동안 한 번만 받는다(다시 포커스돼도 추천이 바뀌지 않게)
 
   // 화면에 올 때마다 이미 있는 이름을 다시 읽는다(등록한 추천 칩이 추천에서 빠지도록).
   // 수정이면 저장된 항목을 채워 넣는다.
   useFocusEffect(
     useCallback(() => {
       let alive = true;
-      listItems(scope).then((list) => {
-        if (!alive) return;
-        setExisting(list.map((x) => x.name));
-        const item = editingId ? list.find((x) => x.id === editingId) : null;
-        if (!item) return;
-        setName(item.name);
-        setType(item.type);
-        setGoalText(formatGoal(item.goal, item.unit));
-        setDays(item.days);
-        setShare(Boolean(item.shareWithFamily));
-      });
+      listItems()
+        .then((list) => {
+          if (!alive) return;
+          setExisting(list.map((x) => x.name));
+          if (!editingId && !askedRecs.current) {
+            askedRecs.current = true;
+            listHabitSuggestions(list.map((x) => x.name))
+              .then((recs) => setServerRecs(recs))
+              .catch(() => setServerRecs([]));
+          }
+          const item = editingId ? list.find((x) => x.id === editingId) : null;
+          if (!item) return;
+          setName(item.name);
+          setType(item.type);
+          setGoalText(formatGoal(item.goal, item.unit));
+          setDays(item.days);
+          setShare(Boolean(item.shareWithFamily));
+        })
+        .catch((error) => {
+          if (!alive) return;
+          setServerRecs((prev) => prev ?? []); // 목록을 못 읽으면 내장 추천이라도 보여 준다
+          setSheet(infoSheet(failureNotice(error, "불러오지 못했어요")));
+        });
       return () => {
         alive = false;
       };
-    }, [editingId, scope]),
+    }, [editingId]),
   );
 
   // 추천 칩에서 넘어온 값(이름·체크 방식·목표)으로 새 항목 폼을 채운다. 저장은 사용자가 한다.
@@ -98,10 +116,12 @@ export default function DailyItemScreen() {
 
   // 추천은 이미 있는 이름을 뺀 앞의 세 개만 보여 준다(다른 추천으로 넘기지 않는다).
   // 새로 만들기 화면에서는 항상 세 개를 기본으로 보인다. 추천 칩으로 열렸으면 그 이름은 뺀다.
-  const recommendations = useMemo(
-    () => (editing ? [] : recommendAvailable(RECOMMEND_POOL, pName ? [...existing, pName] : existing, 3)),
-    [editing, existing, pName],
-  );
+  // 서버가 준 추천(DB 창고)이 있으면 그것을, 못 받았거나 비어 있으면 내장 목록(RECOMMEND_POOL)을 쓴다.
+  const recommendations = useMemo(() => {
+    if (editing || serverRecs === null) return [];
+    const taken = pName ? [...existing, pName] : existing;
+    return recommendAvailable(serverRecs.length ? serverRecs : RECOMMEND_POOL, taken, 3);
+  }, [editing, existing, pName, serverRecs]);
 
   // 온보딩의 "직접 만들기"에서 왔으면 뒤로 가도 온보딩이 아니라 데일리 체크 메인으로 간다
   const fromOnboarding = params.fromOnboarding === "1";
@@ -130,8 +150,13 @@ export default function DailyItemScreen() {
       return;
     }
     setBusy(true);
-    await saveItem(scope, buildItem(draft));
-    leave();
+    try {
+      await saveItem(buildItem(draft));
+      leave();
+    } catch (saveError) {
+      setBusy(false);
+      setSheet(infoSheet(failureNotice(saveError)));
+    }
   };
 
   const remove = () => {
@@ -143,8 +168,12 @@ export default function DailyItemScreen() {
       tone: "danger",
       onConfirm: async () => {
         setSheet(null);
-        await deleteItem(scope, editingId);
-        leave();
+        try {
+          await deleteItem(editingId);
+          leave();
+        } catch (deleteError) {
+          setSheet(infoSheet(failureNotice(deleteError, "지우지 못했어요")));
+        }
       },
     });
   };
@@ -181,7 +210,8 @@ export default function DailyItemScreen() {
               <TextBox
                 value={name}
                 onChangeText={(text) => {
-                  setName(text);
+                  // 최대 글자 수(앱 한도 20자)를 넘기지 못하게 자른다(maxLength 와 같은 동작)
+                  setName(text.slice(0, NAME_MAX));
                   setPickedRec("");
                   setError("");
                 }}
@@ -294,7 +324,7 @@ export default function DailyItemScreen() {
               </View>
             </View>
 
-            {!editing ? (
+            {!editing && serverRecs !== null ? (
               <View style={styles.recBox}>
                 <Text style={styles.label}>이런 건 어때요?</Text>
                 <View style={styles.chips}>

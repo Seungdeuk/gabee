@@ -1,4 +1,5 @@
 // 가족 채팅 AI: 오류 문구·결과 설명·일정 후보 판정과 API 호출을 가짜 서버(fetch 대체)로 시험한다: npm test
+import { usageGauges } from "../src/shared/aiUsage.js";
 import assert from "node:assert/strict";
 import { afterEach, beforeEach, test } from "node:test";
 
@@ -7,7 +8,6 @@ import {
   chatErrorMessage,
   parseAiSettings,
   rangeCaption,
-  remainingText,
   resultCaption,
   scheduleMissingNote,
   shouldLoadSettings,
@@ -69,14 +69,18 @@ test("설정 응답 해석: 동의·권한·남은 횟수", () => {
     limits: { user_per_day: 10, group_per_day: 30, cooldown_seconds: 30, cache_ttl_seconds: 600 },
     usage: { user_today: 3, group_today: 5 },
   });
-  assert.deepEqual(s, { enabled: true, canManage: false, userLeft: 7, groupLeft: 25, cooldownSeconds: 30 });
-  assert.equal(remainingText(s), "오늘 남은 횟수: 나 7번 · 가족 25번");
+  assert.deepEqual(s, { enabled: true, canManage: false, userLeft: 7, groupLeft: 25, userUsedRatio: 0.3, groupUsedRatio: 5 / 30, cooldownSeconds: 30 });
+  assert.deepEqual(usageGauges({ userUsed: s.userUsedRatio, groupUsed: s.groupUsedRatio }).map((g) => [g.key, g.percent, g.high]), [["me", 30, false], ["family", 17, false]]);
   const over = parseAiSettings({ enabled: true, limits: { user_per_day: 2, group_per_day: 2 }, usage: { user_today: 5, group_today: 9 } });
   assert.equal(over.userLeft, 0);
+  assert.equal(over.userUsedRatio, 1);
+  assert.equal(usageGauges({ userUsed: over.userUsedRatio, groupUsed: over.groupUsedRatio })[0].high, true); // 다 썼으면 거의 다 썼어요 상태
+  const bad = parseAiSettings({ enabled: true, limits: { user_per_day: 0, group_per_day: 5 }, usage: { user_today: 1, group_today: 1 } });
+  assert.equal(bad.userUsedRatio, null); // 한도 0 은 비율을 알 수 없다
   const empty = parseAiSettings(null);
   assert.equal(empty.enabled, false);
   assert.equal(empty.canManage, false);
-  assert.equal(remainingText(empty), "");
+  assert.deepEqual(usageGauges({ userUsed: empty.userUsedRatio, groupUsed: empty.groupUsedRatio }), []);
 });
 
 test("AI 호출: 경로·메서드·본문, 대화 글자는 보내지 않고 Bearer 만", async () => {

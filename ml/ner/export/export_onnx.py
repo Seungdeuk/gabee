@@ -241,8 +241,9 @@ def main(argv=None):
         "labels": list(nc.NER_LABELS),
         "max_len": MAX_LEN,
         "pad_token_id": cfg.get("pad_token_id", 0),
-        "cls_token_id": tk.token_to_id("[CLS]"),
-        "sep_token_id": tk.token_to_id("[SEP]"),
+        # BERT 계열은 [CLS]/[SEP], XLM-R 계열(MiniLM·e5)은 <s>/</s>
+        "cls_token_id": next((i for i in (tk.token_to_id("[CLS]"), tk.token_to_id("<s>")) if i is not None), None),
+        "sep_token_id": next((i for i in (tk.token_to_id("[SEP]"), tk.token_to_id("</s>")) if i is not None), None),
     }
     (out / "labels.json").write_text(
         json.dumps(labels, ensure_ascii=False, indent=2), encoding="utf-8"

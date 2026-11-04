@@ -7,33 +7,36 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import IconButton from "@/shared/components/IconButton";
 import { colors, font, spacing } from "@/theme";
 
+import ConfirmSheet from "../components/ConfirmSheet";
 import SegmentedControl from "../../components/SegmentedControl";
-import { listCheers, toggleCheerThanked } from "../api";
+import { listCheers, markCheerThanked } from "../api";
 import { cheerKindLabel, cheerTone, formatClock, groupCheersByDate } from "../logic";
-import { useDailyScope } from "../scope";
-import { todayKey } from "../../utils/date";
+import { failureNotice, todayKeyKST } from "../serverMap";
 
 const KIND_ICON = { love: "heart", best: "thumbs-up", well: "star" };
 
 /**
  * 응원 모아보기: 받은·보낸 응원을 날짜별로 본다(최근 날짜 먼저). 카드 전체는 응원 종류별 색(cheerTone)이다.
  * 받은 응원은 "고마워 보내기"(종류 진한색 채움, 흰 글자)와 "고마워 보냄"(옅은 바탕, 종류 글자색)을 같은 크기 칩으로 보여 준다.
+ * 날짜는 한국 시간 기준이다(서버가 준 보낸 시각으로 묶는다).
  */
 export default function DailyCheerHistoryScreen() {
   const router = useRouter();
-  const scope = useDailyScope();
-  const today = todayKey();
+  const today = todayKeyKST();
   const [tab, setTab] = useState("received");
   const [cheers, setCheers] = useState([]);
+  const [sheet, setSheet] = useState(null); // 안내 팝업 내용. null 이면 닫힘
 
   useFocusEffect(
     useCallback(() => {
       let alive = true;
-      listCheers(scope).then((list) => alive && setCheers(list));
+      Promise.all([listCheers("received"), listCheers("sent")])
+        .then(([received, sent]) => alive && setCheers([...received, ...sent]))
+        .catch((error) => alive && setSheet({ ...failureNotice(error, "불러오지 못했어요"), confirmLabel: "확인" }));
       return () => {
         alive = false;
       };
-    }, [scope]),
+    }, []),
   );
 
   const groups = useMemo(
@@ -43,9 +46,17 @@ export default function DailyCheerHistoryScreen() {
   const receivedCount = cheers.filter((c) => c.direction === "received").length;
   const sentCount = cheers.filter((c) => c.direction === "sent").length;
 
+  // 고마워는 화면에서 먼저 바꾸고 서버에 보낸다. 실패하면 되돌리고 안내한다.
   const thank = async (id) => {
-    await toggleCheerThanked(scope, id);
-    setCheers(await listCheers(scope));
+    const setThanked = (thanked) => setCheers((prev) => prev.map((c) => (c.id === id ? { ...c, thanked } : c)));
+    setThanked(true);
+    try {
+      const row = await markCheerThanked(id);
+      setCheers((prev) => prev.map((c) => (c.id === id ? row : c)));
+    } catch (error) {
+      setThanked(false);
+      setSheet({ ...failureNotice(error), confirmLabel: "확인" });
+    }
   };
 
   const back = () => (router.canGoBack() ? router.back() : router.replace("/schedule/daily-check"));
@@ -119,6 +130,13 @@ export default function DailyCheerHistoryScreen() {
           <Text style={styles.empty}>{tab === "received" ? "받은 응원이 아직 없어요" : "보낸 응원이 아직 없어요"}</Text>
         )}
       </ScrollView>
+      <ConfirmSheet
+        visible={sheet !== null}
+        title={sheet?.title ?? ""}
+        body={sheet?.body}
+        confirmLabel={sheet?.confirmLabel ?? "확인"}
+        onConfirm={() => setSheet(null)}
+      />
     </SafeAreaView>
   );
 }

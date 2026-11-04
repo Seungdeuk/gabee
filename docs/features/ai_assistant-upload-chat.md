@@ -254,3 +254,17 @@ SELECT item_id, seq, embedding_model, vector_dims(embedding) AS dim, left(text, 
 ## 보안 점검에서 아직 열린 것 (이 브랜치에서 고치지 않음)
 
 압축·화소 폭탄 상한, 원본 동시 저장 오류(같은 파일 동시에 올릴 때), 업로드 대기 상한, 처리 중 서버 재시작 시 재처리. 팀에 공개하기 전에 우선순위를 정하는 것이 좋다.
+
+## 문서 목록 날짜 조건
+
+`GET /ai-assistant/knowledge/items` 에 선택 파라미터 `created_from`, `created_to`(`YYYY-MM-DD`)를 더했다. `created_at` 을 한국 시간(KST) 달력 날짜로 보고 양끝을 포함해 거른다(`settings.ai_day_utc_offset_hours` 로 UTC 경계 변환). 한쪽만 줘도 되고, 안 주면 기존과 같다. `created_from > created_to` 면 400 `invalid_range`. 하위 호환 추가다.
+
+- 날짜 범위를 줘도 `limit`(최대 200)이 그대로 걸리고 정렬은 문서 날짜(`occurred_on`) 최신순이다. 한 주에 올라온 문서가 200건을 넘는 경우는 현실적으로 드물다고 보고 한계로 둔다(넘으면 문서 날짜가 오래된 것부터 빠진다). 날짜가 표현 범위를 넘는 값(예: `9999-12-31`)과 시작이 끝보다 늦은 범위는 400 `invalid_range` 이다.
+
+## 문서 읽음 기록
+
+문서(KnowledgeItem)를 **구성원마다** 읽었는지 기록한다. `GET /ai-assistant/knowledge/items/{id}` 상세를 열면 그 사용자의 읽음이 자동으로 남는다(테이블 `knowledge_item_reads`, 이미 있으면 그대로 두는 멱등 저장). 다른 가족 문서라 404 가 나면 남기지 않는다. 읽음은 **본인 것만** 조회된다: 목록(`GET /items`)·상세 응답의 `seen`(bool, 하위 호환 추가)은 요청한 사용자 기준이고, 다른 구성원의 읽음 여부를 알려 주는 API 는 없다.
+
+- 내가 올린 문서(`created_by` 가 나)는 별도 기록 없이 처음부터 `seen=true` 다. 상세 응답의 `seen` 은 방금 열었으므로 항상 true 다. 생성·수정 응답은 기본값 true 다.
+- 읽음은 이 상세 GET 에서만 기록한다. 목록·검색·AI 도구·`service.get_item` 내부 호출은 기록하지 않는다.
+- 문서를 지우면(`knowledge/repository.delete_item`, 파일 삭제 경로 포함) 그 문서의 읽음 행도 함께 지운다.

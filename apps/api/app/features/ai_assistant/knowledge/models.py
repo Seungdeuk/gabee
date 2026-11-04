@@ -34,6 +34,20 @@ class KnowledgeItem(Base):
     )
 
 
+class KnowledgeItemRead(Base):
+    """구성원별 문서 읽음 기록. 상세를 연 사용자마다 한 행이고, 본인 것만 조회한다. 문서를 지우면 함께 지운다."""
+
+    __tablename__ = "knowledge_item_reads"
+
+    item_id: Mapped[str] = mapped_column(
+        String(32), ForeignKey("knowledge_items.id", ondelete="CASCADE"), primary_key=True
+    )
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), primary_key=True)
+    read_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(UTC)
+    )
+
+
 class KnowledgeChunk(Base):
     """기록을 쪽·슬라이드·길이로 자른 조각. 검색은 조각 단위로 하고 결과는 기록 단위로 묶는다.
 

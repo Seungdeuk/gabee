@@ -50,6 +50,7 @@ def import_all_models() -> None:
     from app.features.family_group import models as _group  # noqa: F401
     from app.features.ops_admin import models as _ops_admin  # noqa: F401
     from app.features.schedule import models as _schedule  # noqa: F401
+    from app.features.support import models as _support  # noqa: F401
     from app.shared import ai_usage as _ai_usage  # noqa: F401
     from app.shared import location_consent as _consent  # noqa: F401
     from app.shared import notifications as _notifications  # noqa: F401

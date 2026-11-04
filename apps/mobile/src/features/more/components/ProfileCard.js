@@ -36,48 +36,43 @@ export default function ProfileCard({ user, status, displayName, photoUrl, group
     );
   }
   const name = displayName || user?.name || "";
+  const body = (
+    <View style={styles.row}>
+      <UserAvatar name={name || "?"} userId={user?.id} photoUrl={photoUrl ?? user?.photo_url} size={72} />
+      <View style={styles.info}>
+        <Text style={styles.name} numberOfLines={1}>
+          {name}
+        </Text>
+        <Text style={styles.sub} numberOfLines={1}>
+          {profileSubtitle(groupName, roleText)}
+        </Text>
+        {onEdit ? <Text style={styles.editText}>내 정보 수정</Text> : null}
+      </View>
+      {onEdit ? <Ionicons name="chevron-forward" size={20} color={colors.textMuted} /> : null}
+    </View>
+  );
   return (
     <Card tone="white" testID="profile-card" style={styles.compact}>
-      <View style={styles.row}>
-        <UserAvatar name={name || "?"} userId={user?.id} photoUrl={photoUrl ?? user?.photo_url} size={40} />
-        <View style={styles.info}>
-          <View style={styles.nameRow}>
-            <Text style={styles.name} numberOfLines={1}>
-              {name}
-            </Text>
-            {onEdit ? (
-              <Pressable
-                onPress={onEdit}
-                accessibilityRole="button"
-                accessibilityLabel="내 정보 수정"
-                hitSlop={spacing.md}
-                style={({ pressed }) => [styles.edit, pressed && styles.pressed]}
-              >
-                <Text style={styles.editText}>내 정보 수정</Text>
-                <Ionicons name="chevron-forward" size={14} color={colors.textMuted} />
-              </Pressable>
-            ) : null}
-          </View>
-          <Text style={styles.sub} numberOfLines={1}>
-            {profileSubtitle(groupName, roleText)}
-          </Text>
-        </View>
-      </View>
+      {onEdit ? (
+        <Pressable onPress={onEdit} accessibilityRole="button" accessibilityLabel="내 정보 수정" style={({ pressed }) => pressed && styles.pressed}>
+          {body}
+        </Pressable>
+      ) : (
+        body
+      )}
     </Card>
   );
 }
 
 const styles = StyleSheet.create({
   title: { ...font.cardTitle, color: colors.text },
-  name: { ...font.cardTitle, color: colors.text, flexShrink: 1 },
+  name: { ...font.title, color: colors.text, flexShrink: 1 },
   sub: { ...font.caption, color: colors.textMuted },
-  compact: { paddingVertical: spacing.sm, paddingHorizontal: spacing.lg },
-  nameRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: spacing.sm },
-  row: { flexDirection: "row", alignItems: "center", gap: spacing.md },
-  info: { flex: 1, gap: 2 },
+  compact: { paddingVertical: spacing.lg, paddingHorizontal: spacing.lg },
+  row: { flexDirection: "row", alignItems: "center", gap: spacing.lg },
+  info: { flex: 1, gap: spacing.xs },
   actions: { flexDirection: "row", gap: spacing.sm },
-  edit: { flexDirection: "row", alignItems: "center", gap: spacing.xs },
-  editText: { ...font.caption, color: colors.textMuted },
+  editText: { ...font.caption, color: colors.accent },
   pressed: { opacity: 0.7 },
   placeholder: { minHeight: 56 },
 });

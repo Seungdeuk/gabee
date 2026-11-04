@@ -7,24 +7,40 @@ export const SOON_MESSAGE = "준비 중이에요";
  * @type {{ key: string, icon: string, title: string, subtitle: string, route?: string, soon?: boolean }[]}
  */
 export const SHORTCUTS = [
-  { key: "report", icon: "stats-chart-outline", title: "AI 리포트", subtitle: "주간 가족 요약", soon: true },
-  { key: "subscription", icon: "diamond-outline", title: "구독 관리", subtitle: "요금제 · 혜택", soon: true },
+  { key: "report", icon: "stats-chart-outline", title: "AI 리포트", subtitle: "주간 가족 요약", route: "/report" },
   { key: "ranking", icon: "trophy-outline", title: "가족 랭킹", subtitle: "가족 활동 순위", soon: true },
-  { key: "settings", icon: "settings-outline", title: "설정", subtitle: "앱 · 알림 설정", soon: true },
+  { key: "subscription", icon: "diamond-outline", title: "구독 관리", subtitle: "요금제 · 사용량", route: "/subscription" },
+  { key: "invite", icon: "person-add-outline", title: "가족 초대", subtitle: "초대 코드 · 가입 요청", route: "/family-invite" },
 ];
 
 /**
- * 마이 페이지 목록 6줄(위에서 아래 순서). 규칙은 SHORTCUTS 와 같다.
+ * 마이 페이지 목록 7줄(위에서 아래 순서, section 별로 묶여 보인다). 규칙은 SHORTCUTS 와 같다. subtitle 은 화면에는 보이지 않고 접근성 읽기에만 쓴다.
  * @type {{ key: string, icon: string, title: string, subtitle: string, route?: string, soon?: boolean }[]}
  */
 export const MENU = [
-  { key: "family", icon: "people-outline", title: "우리 가족", subtitle: "구성원 · 초대 · 관리", route: "/family" },
-  { key: "docs", icon: "folder-open-outline", title: "가족 공유 문서함", subtitle: "가정통신문 · 공지 · 업로드", soon: true },
-  { key: "ai", icon: "sparkles-outline", title: "가비 AI 이용 안내", subtitle: "처리 방식 · 개인정보 · 사용량", soon: true },
-  { key: "account", icon: "lock-closed-outline", title: "계정 및 보안", subtitle: "비밀번호 · 로그인 · 계정", route: "/account-security" },
-  { key: "notice", icon: "megaphone-outline", title: "공지사항", subtitle: "서비스 소식 · 업데이트", soon: true },
-  { key: "service", icon: "information-circle-outline", title: "서비스 정보", subtitle: "이용약관 · 개인정보 · 문의", soon: true },
+  { key: "family", section: "service", icon: "people-outline", title: "우리 가족", subtitle: "구성원 · 역할 · 내 프로필", route: "/family" },
+  { key: "docs", section: "service", icon: "folder-open-outline", title: "가족 공유 문서함", subtitle: "가족 공지 · 업로드", soon: true },
+  { key: "ai", section: "service", icon: "sparkles-outline", title: "가비 AI 이용 안내", subtitle: "사용 방법 · 개인정보 처리", route: "/ai-guide" },
+  { key: "account", section: "support", icon: "lock-closed-outline", title: "계정 및 보안", subtitle: "비밀번호 · 로그인 · 계정", route: "/account-security" },
+  { key: "notice", section: "support", icon: "megaphone-outline", title: "공지사항", subtitle: "서비스 소식 · 업데이트", soon: true },
+  { key: "help", section: "support", icon: "help-circle-outline", title: "고객센터", subtitle: "FAQ · 문의 · 오류 신고", soon: true },
+  { key: "service", section: "support", icon: "information-circle-outline", title: "서비스 정보", subtitle: "이용약관 · 개인정보 · 문의", soon: true },
 ];
+
+/** 마이 페이지 목록의 묶음 제목(위에서 아래 순서). MENU 항목의 section 이 이 key 를 가리킨다. */
+export const MENU_SECTIONS = [
+  { key: "service", title: "가족 및 AI 서비스" },
+  { key: "support", title: "계정 및 고객지원" },
+];
+
+/**
+ * 목록 항목을 묶음별로 나눈다(항목이 없는 묶음은 뺀다).
+ * @param {{ section?: string }[]} items MENU(또는 badge 를 붙인 사본)
+ * @returns {{ key: string, title: string, items: object[] }[]}
+ */
+export function menuSections(items) {
+  return MENU_SECTIONS.map((sec) => ({ ...sec, items: items.filter((i) => i.section === sec.key) })).filter((sec) => sec.items.length > 0);
+}
 
 /**
  * 항목을 눌렀을 때 할 일을 정한다. route 가 있으면 이동, 아니면 "준비 중" 안내.
