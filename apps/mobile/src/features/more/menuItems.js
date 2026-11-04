@@ -23,7 +23,7 @@ export const MENU = [
   { key: "ai", section: "service", icon: "sparkles-outline", title: "가비 AI 이용 안내", subtitle: "사용 방법 · 개인정보 처리", route: "/ai-guide" },
   { key: "account", section: "support", icon: "lock-closed-outline", title: "계정 및 보안", subtitle: "비밀번호 · 로그인 · 계정", route: "/account-security" },
   { key: "notice", section: "support", icon: "megaphone-outline", title: "공지사항", subtitle: "서비스 소식 · 업데이트", soon: true },
-  { key: "help", section: "support", icon: "help-circle-outline", title: "고객센터", subtitle: "FAQ · 문의 · 오류 신고", soon: true },
+  { key: "help", section: "support", icon: "help-circle-outline", title: "고객센터", subtitle: "FAQ · 문의 · 오류 신고", route: "/support" },
   { key: "service", section: "support", icon: "information-circle-outline", title: "서비스 정보", subtitle: "이용약관 · 개인정보 · 문의", soon: true },
 ];
 
