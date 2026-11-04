@@ -1,8 +1,11 @@
 """운영 관리자 API(/admin)의 안쪽 문: Bearer 정식 회원 + users.is_staff 만 통과한다."""
 
+from datetime import UTC, datetime, timedelta
+
 from sqlalchemy import update
 
-from app.features.family_group.models import GroupMember, User
+from app.features.family_group.models import GroupMember, JoinRequest, User
+from app.shared.ai_usage import AiGroupSetting, AiUsageLog
 from app.shared.db import SessionLocal
 from tests.helpers import signup
 
@@ -21,6 +24,11 @@ def _login(client, login_id="jimin_kim") -> tuple[dict, str]:
     r = client.post("/family-group/auth/login", json={"login_id": login_id, "password": PASSWORD})
     assert r.status_code == 200, r.text
     return {"Authorization": f"Bearer {r.json()['access_token']}"}, r.json()["user"]["id"]
+
+
+def _group_of(user_id: str) -> str:
+    with SessionLocal() as db:
+        return db.get(User, user_id).active_group_id
 
 
 def _make_staff(user_id: str) -> None:
@@ -55,7 +63,7 @@ def test_family_owner_role_is_not_staff(client):
     assert client.get(ME, headers=headers).status_code == 404
 
 
-LISTS = ("/admin/members", "/admin/groups", "/admin/features", "/admin/testers")
+LISTS = ("/admin/members", "/admin/groups", "/admin/features", "/admin/ai-usage", "/admin/support")
 
 
 def test_lists_are_staff_only(client):
@@ -77,6 +85,7 @@ def test_lists_count_members_and_groups(client):
     me = next(r for r in members["rows"] if r["id"] == user_id)
     assert me["has_family"] is True and me["last_login_at"] is not None
     assert "email" not in me  # 이메일은 돌려주지 않는다
+    assert me["email_verified"] is False
 
     groups = client.get("/admin/groups", headers=headers).json()
     assert groups["total"] == 1
@@ -87,7 +96,228 @@ def test_lists_count_members_and_groups(client):
     assert [r["key"] for r in features["rows"]] == ["schedule", "chat", "care", "billing"]
     assert features["families_total"] == 1
 
-    assert client.get("/admin/testers", headers=headers).status_code == 200
+
+def test_members_summary(client):
+    headers, user_id = _login(client)
+    _make_staff(user_id)
+    _login(client, "minsu_park")  # 가족 없음
+    client.post("/family-group/groups", json={"name": "우리 가족"}, headers=headers)
+    with SessionLocal() as db:
+        db.execute(
+            update(User).where(User.id == user_id).values(email_verified_at=datetime.now(UTC))
+        )
+        db.commit()
+
+    d = client.get("/admin/members", headers=headers).json()
+    assert d["total"] == 2
+    assert d["active_7d"] == 2  # 둘 다 방금 로그인했다
+    assert d["no_family"] == 1
+    assert d["email_verified"] == 1
+    flags = {r["id"]: r["email_verified"] for r in d["rows"]}
+    assert flags[user_id] is True and list(flags.values()).count(False) == 1
+    assert all("email" not in r for r in d["rows"])
+
+
+def test_groups_summary(client):
+    headers, user_id = _login(client)
+    _make_staff(user_id)
+    client.post("/family-group/groups", json={"name": "우리 가족"}, headers=headers)
+    h2, u2 = _login(client, "minsu_park")
+    client.post("/family-group/groups", json={"name": "둘째 가족"}, headers=h2)
+    g1, g2 = _group_of(user_id), _group_of(u2)
+    old = datetime.now(UTC) - timedelta(days=2)
+    with SessionLocal() as db:
+        db.add_all(
+            [
+                JoinRequest(group_id=g1, user_id="u_a", invite_id="i_a", requested_at=old),
+                JoinRequest(group_id=g1, user_id="u_b", invite_id="i_b"),
+                JoinRequest(
+                    group_id=g2,
+                    user_id="u_c",
+                    invite_id="i_c",
+                    status="approved",
+                    requested_at=old - timedelta(days=5),
+                ),
+                AiGroupSetting(group_id=g1, enabled=True),
+                AiGroupSetting(group_id=g2, enabled=False),
+            ]
+        )
+        db.commit()
+
+    d = client.get("/admin/groups", headers=headers).json()
+    assert d["total"] == 2 and d["single_member"] == 2
+    assert d["pending_total"] == 2
+    assert d["oldest_pending_at"][:16] == old.isoformat()[:16]  # 처리된 요청은 빼고 센다
+    assert d["ai_enabled"] == 1
+    rows = {r["id"]: r for r in d["rows"]}
+    assert (rows[g1]["pending"], rows[g1]["ai_enabled"]) == (2, True)
+    assert (rows[g2]["pending"], rows[g2]["ai_enabled"]) == (0, False)
+
+
+def test_groups_summary_empty(client):
+    headers, user_id = _login(client)
+    _make_staff(user_id)
+    d = client.get("/admin/groups", headers=headers).json()
+    assert (d["single_member"], d["pending_total"], d["ai_enabled"]) == (0, 0, 0)
+    assert d["oldest_pending_at"] is None
+
+
+def test_ai_usage_excludes_markers_and_lists(client):
+    headers, user_id = _login(client)
+    _make_staff(user_id)
+    h2, u2 = _login(client, "minsu_park")
+    client.post("/family-group/groups", json={"name": "우리 가족"}, headers=headers)
+    now = datetime.now(UTC)
+    g = "g1"
+
+    def row(uid, status, feature="analysis", code=None, at=now, group=g):
+        return AiUsageLog(
+            group_id=group,
+            user_id=uid,
+            status=status,
+            feature=feature,
+            error_code=code,
+            created_at=at,
+        )
+
+    with SessionLocal() as db:
+        db.add_all(
+            [
+                row(user_id, "ok"),
+                row(user_id, "error"),
+                row(user_id, "nested", "reply"),
+                row(u2, "ok", "reply"),
+                row(u2, "rejected", code="ai_cooldown"),
+                row(u2, "rejected", code="ai_daily_limit_user", at=now - timedelta(hours=1)),
+                row(u2, "rejected", code="ai_daily_limit_user", at=now - timedelta(days=2)),
+                row(
+                    u2, "rejected", code="ai_daily_limit_group", at=now - timedelta(days=2, hours=1)
+                ),
+                row(user_id, "rejected", code="ai_cooldown", at=now - timedelta(days=1)),
+            ]
+        )
+        db.commit()
+
+    d = client.get("/admin/ai-usage", headers=headers).json()
+    assert (d["today"], d["week"], d["month"]) == (3, 3, 3)
+    assert sum(d["daily"]) == 3
+    # 기능별로는 비서가 안에서 부른 에이전트(nested)도 따로 나눠 센다. 한도 거절은 뺀다
+    assert {r["key"]: (r["calls"], r["direct"], r["via_assistant"]) for r in d["rows"]} == {
+        "analysis": (2, 2, 0),
+        "reply": (2, 1, 1),
+    }
+
+    assert d["families"] == [{"group_id": g, "name": None, "requests": 3, "errors": 1}]
+    by_user = {r["user_id"]: r for r in d["users"]}
+    assert by_user[user_id]["requests"] == 2 and by_user[user_id]["errors"] == 1
+    assert by_user[user_id]["name"] == "김지민" and by_user[user_id]["login_id"] == "jimin_kim"
+    assert by_user[u2]["requests"] == 1 and by_user[u2]["errors"] == 0
+    assert d["users"][0]["user_id"] == user_id  # 요청 많은 순
+
+    assert len(d["limited"]) == 1  # ai_cooldown 거절은 한도 기록이 아니다
+    lim = d["limited"][0]
+    assert lim["user_id"] == u2 and lim["name"] == "김지민"
+    assert lim["days"] == 2
+    assert lim["group_name"] is None
+    assert lim["last_at"][:16] == (now - timedelta(hours=1)).isoformat()[:16]
+
+
+def test_ai_usage_counts_requests(client):
+    headers, user_id = _login(client)
+    _make_staff(user_id)
+    now = datetime.now(UTC)
+    log = {"group_id": "g1", "user_id": user_id, "status": "ok"}
+    with SessionLocal() as db:
+        db.add_all(
+            [
+                AiUsageLog(**log, feature="assistant_chat", api_calls=4, created_at=now),
+                # 캐시 적중도 사용자가 요청한 1번으로 센다
+                AiUsageLog(**log, feature="assistant_chat", api_calls=0, created_at=now),
+                AiUsageLog(
+                    **log, feature="analysis", api_calls=1, created_at=now - timedelta(days=3)
+                ),
+                AiUsageLog(
+                    **log, feature="analysis", api_calls=1, created_at=now - timedelta(days=40)
+                ),
+            ]
+        )
+        db.commit()
+
+    r = client.get("/admin/ai-usage", headers=headers)
+    assert r.status_code == 200, r.text
+    d = r.json()
+    assert (d["today"], d["week"], d["month"]) == (2, 3, 3)
+    assert len(d["daily"]) == 14 and d["daily"][-1] == 2 and sum(d["daily"]) == 3
+    assert d["rows"] == [
+        {
+            "key": "assistant_chat",
+            "name": "AI 비서 채팅",
+            "calls": 2,
+            "direct": 2,
+            "via_assistant": 0,
+        },
+        {"key": "analysis", "name": "가족 채팅 분석", "calls": 1, "direct": 1, "via_assistant": 0},
+    ]
+
+
+def test_support_list_and_answer(client):
+    headers, user_id = _login(client)
+    _make_staff(user_id)
+    client.post("/family-group/groups", json={"name": "우리 가족"}, headers=headers)
+    h2, _ = _login(client, "minsu_park")
+    send = lambda h, kind, title: client.post(  # noqa: E731
+        "/support/tickets", json={"kind": kind, "title": title, "body": "내용"}, headers=h
+    ).json()["id"]
+    first = send(headers, "inquiry", "비밀번호 바꾸기")
+    second = send(h2, "report", "광고 메시지")
+
+    d = client.get("/admin/support", headers=headers).json()
+    assert (d["new"], d["working"], d["done"], d["reports"]) == (2, 0, 0, 1)
+    assert [r["id"] for r in d["rows"]] == [second, first]  # 최근순
+    row = d["rows"][1]
+    assert (row["user_name"], row["login_id"], row["group_name"]) == (
+        "김지민",
+        "jimin_kim",
+        "우리 가족",
+    )
+    assert d["rows"][0]["group_name"] is None  # 가족 없는 회원
+
+    r = client.patch(f"/admin/support/{second}", json={"status": "working"}, headers=headers)
+    assert r.status_code == 204, r.text
+    r = client.patch(
+        f"/admin/support/{first}",
+        json={"status": "done", "answer": " 설정에서 바꿀 수 있어요 "},
+        headers=headers,
+    )
+    assert r.status_code == 204, r.text
+
+    d = client.get("/admin/support", headers=headers).json()
+    assert (d["new"], d["working"], d["done"]) == (0, 1, 1)
+    mine = client.get("/support/tickets/mine", headers=headers).json()["rows"][0]
+    assert (mine["status"], mine["answer"]) == ("done", "설정에서 바꿀 수 있어요")
+    assert mine["answered_at"] is not None
+
+
+def test_support_update_rules(client):
+    headers, user_id = _login(client)
+    h2, _ = _login(client, "minsu_park")
+    tid = client.post(
+        "/support/tickets", json={"kind": "inquiry", "title": "질문", "body": "내용"}, headers=h2
+    ).json()["id"]
+    path = f"/admin/support/{tid}"
+    assert client.patch(path, json={"status": "done"}).status_code == 401
+    assert (
+        client.patch(path, json={"status": "done"}, headers=headers).status_code == 404
+    )  # 관리자 아님
+    _make_staff(user_id)
+    assert client.patch(path, json={}, headers=headers).status_code == 422  # 바꿀 것이 없음
+    assert client.patch(path, json={"status": "closed"}, headers=headers).status_code == 422
+    assert (
+        client.patch("/admin/support/nope", json={"status": "done"}, headers=headers).status_code
+        == 404
+    )
+    # 문의를 보낸 사용자 본인도 관리자가 아니면 상태를 바꿀 수 없다
+    assert client.patch(path, json={"status": "done"}, headers=h2).status_code == 404
 
 
 def test_legacy_token_cannot_reach_admin_even_if_staff(client):

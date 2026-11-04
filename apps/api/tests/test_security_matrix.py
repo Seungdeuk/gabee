@@ -214,6 +214,9 @@ NO_GROUP_OK = {
     ("GET", "/notifications/unread-count"),
     ("POST", "/notifications/read-all"),
     ("POST", "/notifications/{notification_id}/read"),
+    # 문의·신고는 로그인한 본인이 보내고 본인 것만 본다. 가족이 없어도 보낼 수 있어야 한다(가족 만들기 문의 등)
+    ("POST", "/support/tickets"),
+    ("GET", "/support/tickets/mine"),
 }
 
 

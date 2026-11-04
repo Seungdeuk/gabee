@@ -30,7 +30,7 @@ body {
 }
 a { color: var(--link); }
 a:hover { color: #5e3d0b; }
-button, input, select { font: inherit; color: var(--text); }
+button, input, select, textarea { font: inherit; color: var(--text); }
 
 /* 상단 */
 .top { background: var(--card); border-bottom: 1px solid var(--line); }
@@ -97,7 +97,7 @@ td { padding: 10px; border-bottom: 1px solid var(--line-soft); }
 .axis { display: flex; justify-content: space-between; font-size: 11px; color: var(--muted); }
 
 /* 작은 표시 */
-.pill { display: inline-block; font-size: 12px; border-radius: 999px; padding: 3px 10px; background: var(--cream); color: var(--muted); }
+.pill { display: inline-block; white-space: nowrap; font-size: 12px; border-radius: 999px; padding: 3px 10px; background: var(--cream); color: var(--muted); }
 .pill.ok { background: var(--ok-soft); color: var(--ok-text); }
 .pill.hot { background: var(--honey-soft); color: var(--honey-text); }
 .pill.bad { background: var(--bad-soft); color: var(--bad-text); }
@@ -121,6 +121,22 @@ td { padding: 10px; border-bottom: 1px solid var(--line-soft); }
 }
 .filters { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 8px; }
 
+/* AI 이용 현황: 넓은 화면에서는 3칸 격자로 한 화면에 모두 보이게 하고, 긴 목록은 카드 안에서만 스크롤한다(좁으면 위아래로 쌓인다) */
+.dash { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; }
+.dash .card { min-width: 0; }
+.dash .scroll { display: flex; flex-direction: column; gap: 12px; }
+.grid.compact .stat { padding: 12px 18px; gap: 2px; }
+.grid.compact .stat-value { font-size: 24px; }
+.grid.compact .stat-sub:empty { display: none; }
+@media (min-width: 900px) {
+  .dash { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .dash .span2 { grid-column: span 2; }
+  /* 화면 높이에 맞춰 두 줄이 다 보이게(너무 작아지지 않게 최소 170px) */
+  .dash .card { height: clamp(170px, calc((100vh - 380px) / 2), 260px); padding: 16px 20px; }
+  .dash .scroll { flex: 1 1 auto; min-height: 0; overflow: auto; }
+  .dash .chart { flex: 1 1 auto; height: auto; min-height: 0; }
+}
+
 @media (max-width: 600px) {
   .top header, main { padding-left: 16px; padding-right: 16px; }
   .stat-value { font-size: 26px; }
@@ -131,4 +147,8 @@ td { padding: 10px; border-bottom: 1px solid var(--line-soft); }
 .login { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 16px; }
 .login-card { width: 100%; max-width: 380px; gap: 14px; }
 .btn.primary { border: 0; background: var(--text); color: var(--bg); min-height: 44px; font-weight: 500; }
-.sample { margin: 0; padding: 10px 14px; border-radius: 12px; background: var(--honey-soft); color: var(--honey-text); font-size: 13px; }
+.ticket-body { margin: 8px 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+details summary { cursor: pointer; }
+.answer { display: flex; flex-direction: column; gap: 6px; min-width: 220px; }
+.answer textarea { width: 100%; box-sizing: border-box; padding: 8px 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--bg); resize: vertical; }
+.answer-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
