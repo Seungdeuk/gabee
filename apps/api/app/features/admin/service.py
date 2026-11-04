@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.features.family_group.models import User
 from app.shared.ai_guard import day_start
+from app.shared.errors import ApiError
 
 from . import repository
 from .schemas import (
@@ -14,6 +15,9 @@ from .schemas import (
     AdminAiUsageOut,
     AdminAiUserRow,
     AdminMeOut,
+    AdminTicketRow,
+    AdminTicketsOut,
+    AdminTicketUpdate,
     FeatureRow,
     FeaturesOut,
     GroupRow,
@@ -161,3 +165,30 @@ def ai_usage(db: Session, now: datetime | None = None) -> AdminAiUsageOut:
         users=[AdminAiUserRow(**r) for r in repository.ai_requests_by_user(db, month_start)],
         limited=_limited(repository.ai_limit_hits(db, month_start)),
     )
+
+
+def support(db: Session) -> AdminTicketsOut:
+    counts = repository.support_counts(db)
+    return AdminTicketsOut(
+        new=counts.get("new", 0),
+        working=counts.get("working", 0),
+        done=counts.get("done", 0),
+        reports=counts["report"],
+        rows=[AdminTicketRow(**r) for r in repository.support_tickets(db)],
+    )
+
+
+def update_support(
+    db: Session, ticket_id: str, body: AdminTicketUpdate, now: datetime | None = None
+) -> None:
+    """상태와 답변 중 준 것만 바꾼다. 답변을 쓰면 답변 시각도 적는다(마지막 값만 남긴다)."""
+    values: dict = {}
+    if body.status is not None:
+        values["status"] = body.status
+    if body.answer is not None:
+        values["answer"] = body.answer.strip()
+        values["answered_at"] = now or datetime.now(UTC)
+    if not values:
+        raise ApiError(422, "nothing_to_update", "바꿀 상태나 답변을 보내 주세요")
+    if not repository.update_support_ticket(db, ticket_id, values):
+        raise ApiError(404, "not_found", "찾을 수 없어요")

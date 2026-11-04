@@ -3,7 +3,7 @@
 
 from datetime import datetime
 
-from sqlalchemy import Table, case, func, select
+from sqlalchemy import Table, case, func, select, update
 from sqlalchemy.orm import Session
 
 from app.shared.db import Base
@@ -236,3 +236,42 @@ def ai_limit_hits(db: Session, since: datetime) -> list[dict]:
         h["name"] = names.get(h["user_id"])
         h["group_name"] = group_names.get(h["group_id"])
     return hits
+
+
+def support_tickets(db: Session) -> list[dict]:
+    """문의·신고 최근순(최대 200). 보낸 사람 이름·아이디와 가족 이름을 붙인다."""
+    tickets, users, groups = _t("support_tickets"), _t("users"), _t("groups")
+    q = (
+        select(
+            tickets,
+            users.c.name.label("user_name"),
+            users.c.login_id,
+            groups.c.name.label("group_name"),
+        )
+        .outerjoin(users, users.c.id == tickets.c.user_id)
+        .outerjoin(groups, groups.c.id == tickets.c.group_id)
+        .order_by(tickets.c.created_at.desc(), tickets.c.id.desc())
+        .limit(LIST_LIMIT)
+    )
+    return [dict(r._mapping) for r in db.execute(q)]
+
+
+def support_counts(db: Session) -> dict[str, int]:
+    """상태별 건수와 전체 신고 수."""
+    tickets = _t("support_tickets")
+    counts = {
+        status: n
+        for status, n in db.execute(
+            select(tickets.c.status, func.count()).group_by(tickets.c.status)
+        )
+    }
+    counts["report"] = db.scalar(select(func.count()).where(tickets.c.kind == "report")) or 0
+    return counts
+
+
+def update_support_ticket(db: Session, ticket_id: str, values: dict) -> bool:
+    """상태·답변을 바꾼다. 없는 번호면 False."""
+    tickets = _t("support_tickets")
+    done = db.execute(update(tickets).where(tickets.c.id == ticket_id).values(**values)).rowcount
+    db.commit()
+    return bool(done)

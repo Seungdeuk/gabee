@@ -1,6 +1,7 @@
 from datetime import datetime
+from typing import Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class AdminMeOut(BaseModel):
@@ -109,3 +110,30 @@ class AdminAiUsageOut(BaseModel):
     families: list[AdminAiFamilyRow]  # 최근 30일, 많은 순, 최대 200
     users: list[AdminAiUserRow]  # 최근 30일, 많은 순, 최대 200
     limited: list[AdminAiLimitedRow]  # 최근 30일 일일 한도에 막힌 사람, 최근순, 최대 200
+
+
+class AdminTicketRow(BaseModel):
+    id: str
+    kind: Literal["inquiry", "report"]
+    title: str
+    body: str  # 사용자가 직접 쓴 글. 가족 채팅 내용은 담기지 않는다
+    status: Literal["new", "working", "done"]
+    answer: str | None
+    answered_at: datetime | None
+    created_at: datetime
+    user_name: str | None
+    login_id: str | None
+    group_name: str | None
+
+
+class AdminTicketsOut(BaseModel):
+    new: int
+    working: int
+    done: int
+    reports: int  # 신고 건수(문의와 따로)
+    rows: list[AdminTicketRow]  # 최근순, 최대 200
+
+
+class AdminTicketUpdate(BaseModel):
+    status: Literal["new", "working", "done"] | None = None
+    answer: str | None = Field(default=None, min_length=1, max_length=2000)
