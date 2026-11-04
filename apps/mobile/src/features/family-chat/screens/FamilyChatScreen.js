@@ -41,7 +41,8 @@ function Skeleton() {
  * 화면에 올 때마다 한 번만 불러온다(폴링 없음). 줄을 누르면 채팅방으로 들어가고, 새 대화 버튼으로 가족 구성원과 1:1 방을 연다.
  * 돋보기 검색은 방 이름 일치 아래에 "대화 내용" 검색 결과(서버 글자 일치)를 함께 보여 주고, 결과를 누르면 그 방의 해당 메시지 위치로 열린다.
  */
-export default function FamilyChatScreen() {
+/** @param {{ playEntry?: import("react").ReactNode }} props playEntry: 가족 연락처 아래에 놓을 가족 놀이터 입구(라우트에서 조립) */
+export default function FamilyChatScreen({ playEntry = null }) {
   const router = useRouter();
   const search = useChatSearch();
   const query = search.query;
@@ -198,6 +199,8 @@ export default function FamilyChatScreen() {
             <SectionTitle title="가족 연락처" action="전체 보기 →" onAction={() => router.push("/family-contacts")} />
           </View>
         ) : null}
+
+        {members.length > 0 ? playEntry : null}
 
         <View>
           {state.status === "loading" ? (
