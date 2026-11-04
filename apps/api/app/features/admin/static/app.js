@@ -117,7 +117,8 @@
   function statusCells(row) {
     const s = STATUS[row.status];
     const btn = s.next ? `<button type="button" class="btn sm" data-ticket="${esc(row.id)}" data-next="${s.next}">${esc(s.action)}</button>` : "";
-    return `<td><span class="pill ${s.cls}">${esc(s.label)}</span></td><td class="num">${btn}</td>`;
+    const reply = `<button type="button" class="btn sm primary" data-reply="${esc(row.id)}">${row.answer ? "답변 고치기" : "답변하기"}</button>`;
+    return `<td><span class="pill ${s.cls}">${esc(s.label)}</span></td><td class="num"><div class="row-actions">${reply}${btn}</div></td>`;
   }
 
   // ── 탭별 화면 ─────────────────────────────────────────
@@ -250,7 +251,7 @@
       <form class="answer" data-answer="${esc(t.id)}">
         <label class="small" for="answer-${esc(t.id)}">답변</label>
         <textarea id="answer-${esc(t.id)}" name="answer" rows="3" maxlength="2000" required>${esc(t.answer || "")}</textarea>
-        <div class="answer-row">${answered}<button type="submit" class="btn sm">답변 저장</button></div>
+        <div class="answer-row">${answered}<button type="submit" class="btn sm primary">답변 저장</button></div>
       </form></details>`;
   }
 
@@ -359,6 +360,18 @@
     if (e.target.closest("[data-action='logout']")) {
       setToken(null);
       showLogin();
+      return;
+    }
+    // '답변하기': 그 문의를 펼치고 답변 칸으로 바로 간다
+    const reply = e.target.closest("[data-reply]");
+    if (reply) {
+      const box = document.querySelector(`details[data-open="${CSS.escape(reply.dataset.reply)}"]`);
+      if (!box) return;
+      box.open = true;
+      openTicket = reply.dataset.reply;
+      const area = box.querySelector("textarea");
+      area.scrollIntoView({ block: "center" });
+      area.focus();
       return;
     }
     const step = e.target.closest("[data-ticket]");

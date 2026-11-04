@@ -152,3 +152,4 @@ details summary { cursor: pointer; }
 .answer { display: flex; flex-direction: column; gap: 6px; min-width: 220px; }
 .answer textarea { width: 100%; box-sizing: border-box; padding: 8px 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--bg); resize: vertical; }
 .answer-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.row-actions { display: flex; gap: 6px; justify-content: flex-end; flex-wrap: wrap; }
