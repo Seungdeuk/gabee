@@ -54,7 +54,8 @@ export default function MoreScreen({ displayName = null, photoUrl = null, groupN
     else showNotice(SOON_MESSAGE);
   };
 
-  const menu = MENU.map((item) => (item.key === "family" && pendingCount > 0 ? { ...item, badge: `요청 ${pendingCount}건` } : item));
+  // 가입 요청 건수는 초대 코드·가입 요청을 다루는 "가족 초대" 바로가기에 붙는다
+  const shortcuts = SHORTCUTS.map((item) => (item.key === "invite" && pendingCount > 0 ? { ...item, badge: `${pendingCount}` } : item));
 
   return (
     <View style={styles.root}>
@@ -65,8 +66,8 @@ export default function MoreScreen({ displayName = null, photoUrl = null, groupN
         </View>
       }>
       <ProfileCard user={user} status={status} displayName={displayName} photoUrl={photoUrl} groupName={groupName} roleText={roleText} onEdit={canEdit ? () => router.push("/family-profile") : undefined} onLogin={() => router.push("/login")} onRetry={restore} />
-      <ShortcutGrid items={SHORTCUTS} onPressItem={open} />
-      <MenuList sections={menuSections(menu)} onPressItem={open} />
+      <ShortcutGrid items={shortcuts} onPressItem={open} />
+      <MenuList sections={menuSections(MENU)} onPressItem={open} />
       <View style={styles.footer}>
         {status === "authenticated" ? (
           <Pressable

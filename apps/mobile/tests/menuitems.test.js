@@ -69,3 +69,9 @@ test("목록은 가족 및 AI 서비스 3줄, 계정 및 고객지원 4줄로 �
   // 항목이 없는 묶음은 빠진다
   assert.deepEqual(menuSections([]), []);
 });
+
+test("가족 초대 바로가기는 초대 전용 화면으로 가고 우리 가족과 이동 위치가 다르다", () => {
+  const invite = byKey(SHORTCUTS, "invite");
+  assert.deepEqual(itemAction(invite), { type: "route", path: "/family-invite" });
+  assert.notEqual(itemAction(invite).path, itemAction(byKey(MENU, "family")).path);
+});
