@@ -1,8 +1,13 @@
 /* 운영 관리자 화면 (샘플 데이터 전용). 서버 연결 전이라 모든 값은 가짜다. 실제 데이터 연결 때는 서버 값을 반드시 esc() 로 감싼다. */
+import { config } from "./config.js";
+import { request, setToken, setUnauthorizedHandler } from "./api.js";
+import { login as apiLogin, logout as apiLogout } from "./auth.js";
+
 (function(){
 'use strict';
+var LIVE=!config.sampleMode;
 var $=function(s){return document.querySelector(s)};
-var esc=function(s){return String(s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]})};
+var esc=function(s){return String(s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})};
 var fmt=function(n){return Math.round(n).toLocaleString('ko-KR')};
 var pad=function(n){return String(n).padStart(2,'0')};
 function rnd(seed){return function(){seed=(seed*16807)%2147483647;return (seed-1)/2147483646}}
@@ -141,9 +146,9 @@ function Header(){var p=PAGES.filter(function(x){return x.id===S.page})[0];
   '<div class="hdr-t"><h1>'+p.label+'</h1><p>'+p.desc+'</p></div>'+
   '<div class="hdr-r"><span class="upd">마지막 갱신 '+pad(u.getHours())+':'+pad(u.getMinutes())+':'+pad(u.getSeconds())+'</span>'+
   '<button class="ibtn" data-act="refresh">'+IC.refresh+'새로고침</button>'+
-  '<div class="pwrap"><button class="ibtn" data-act="notif" aria-label="알림 '+unread()+'건" aria-expanded="'+S.notif+'">'+IC.bell+(unread()?'<span class="dot"></span>':'')+'</button>'+
+  (LIVE?'':'<div class="pwrap"><button class="ibtn" data-act="notif" aria-label="알림 '+unread()+'건" aria-expanded="'+S.notif+'">'+IC.bell+(unread()?'<span class="dot"></span>':'')+'</button>'+
   (S.notif?'<div class="pop"><h4>최근 알림 (샘플) · 클릭하면 확인 처리</h4>'+alertItems()+
-         '</div>':'')+'</div>'+
+         '</div>':'')+'</div>')+
   '<div class="me"><div class="avatar">운</div><div><strong style="font-weight:500">운영 담당자</strong></div></div></div>'}
 function SampleBar(){return '<div class="sample"><span><strong>샘플 데이터</strong> 이 화면의 모든 수치는 UI 확인용 예시이며 실제 운영 데이터가 아닙니다.</span>'+
  '<span class="toolbar" style="gap:8px"><span>상태 미리보기</span>'+Seg('view',[['ok','정상'],['loading','로딩'],['error','오류'],['empty','데이터 없음']],S.view)+'</span></div>'}
@@ -242,7 +247,7 @@ function pageApi(){
   SummaryCard({label:'정상 API 수',value:ok,unit:'개',badge:badge('ok'),sub:'<span>주의 '+APIS.filter(function(a){return a[2]==='warn'}).length+'개</span>'})+
   SummaryCard({label:'오류 API 수',value:er,unit:'개',badge:badge('err'),sub:'<span>/api/files/upload 오류율 높음</span>'})+
   SummaryCard({label:'평균 응답 시간',value:fmt(avg),unit:'ms',sub:'<span>이전 기간 대비 '+deltaHtml(3.1,true)+'</span>'})+'</div>';
- var cols=[{h:'서비스명',k:function(r){return r.svc},f:function(r){return r.svc}},{h:'Endpoint',k:function(r){return r.ep},f:function(r){return '<span class="mono">'+esc(r.ep)+'</span>'}},{h:'상태',k:function(r){return {ok:0,warn:1,err:2}[r.st]},f:function(r){return badge(r.st)}},{h:'응답 시간',r:1,k:function(r){return r.ms},f:function(r){return ms(r.ms)}},{h:'요청 수',r:1,k:function(r){return r.req},f:function(r){return fmt(r.req)}},{h:'오류율',r:1,k:function(r){return r.er},f:function(r){return r.er+'%'}},{h:'최근 확인',k:function(r){return r.chk},f:function(r){return r.chk+'분 전'}}];
+ var cols=[{h:'서비스명',k:function(r){return r.svc},f:function(r){return esc(r.svc)}},{h:'Endpoint',k:function(r){return r.ep},f:function(r){return '<span class="mono">'+esc(r.ep)+'</span>'}},{h:'상태',k:function(r){return {ok:0,warn:1,err:2}[r.st]},f:function(r){return badge(r.st)}},{h:'응답 시간',r:1,k:function(r){return r.ms},f:function(r){return ms(r.ms)}},{h:'요청 수',r:1,k:function(r){return r.req},f:function(r){return fmt(r.req)}},{h:'오류율',r:1,k:function(r){return r.er},f:function(r){return r.er+'%'}},{h:'최근 확인',k:function(r){return r.chk},f:function(r){return r.chk+'분 전'}}];
  var tbl=panelFixed('API별 상태','행을 클릭하면 시간별 응답 시간과 오류 추이를 볼 수 있습니다',guard('table',function(){return '<div class="pbody flush">'+DataTable(cols,sortRows('api',cols,rows),'apiModal','api')+'</div>'}),'<div class="toolbar">'+Seg('svcFilter',names.map(function(n){return [n,n]}),S.svcFilter)+'</div>');
  return cards+tbl}
 
@@ -276,7 +281,7 @@ function pageDeploy(){
  return cards+dep+db}
 
 /* ---------- modals ---------- */
-function modalShell(title,sub,body){return '<div class="modal-bg" data-act="closeModal"><div class="modal" role="dialog" aria-modal="true" aria-label="'+esc(title)+'"><header><div><h3>'+title+'</h3>'+(sub?'<small>'+sub+'</small>':'')+'</div><button class="btn" data-act="closeModal" id="mClose">닫기</button></header><div class="mb">'+body+'</div></div></div>'}
+function modalShell(title,sub,body){return '<div class="modal-bg" data-act="closeModal"><div class="modal" role="dialog" aria-modal="true" aria-label="'+esc(title)+'"><header><div><h3>'+esc(title)+'</h3>'+(sub?'<small>'+sub+'</small>':'')+'</div><button class="btn" data-act="closeModal" id="mClose">닫기</button></header><div class="mb">'+body+'</div></div></div>'}
 function DetailModal(){var m=S.modal;if(!m)return '';
  if(m.t==='log'){var l=LOGS[m.id],rel=LOGS.filter(function(x){return x.i!==l.i&&(x.svc===l.svc||x.path===l.path)}).slice(0,3);
   return modalShell('로그 상세',sevBadge(l.sev)+' '+procBadge(l.proc),
@@ -286,34 +291,99 @@ function DetailModal(){var m=S.modal;if(!m)return '';
   return modalShell('배포 상세 · '+d.ver,resBadge(d.res),'<dl class="kv"><dt>배포 일시</dt><dd class="mono">'+when(d.ago)+'</dd><dt>배포 환경</dt><dd>'+d.env+'</dd><dt>배포 담당자</dt><dd>'+d.by+'</dd><dt>소요 시간</dt><dd>'+d.dur+'</dd><dt>커밋</dt><dd class="mono">'+d.sha+'</dd><dt>변경 내용</dt><dd>'+d.note+'</dd></dl>')}
  if(m.t==='api'){var a=APIS[m.id],r=rnd(m.id*13+5);
   var lat=wave(a[3],a[3]*.5,m.id*17+3),er=wave(Math.max(.1,a[5]),a[5]*.8+.2,m.id*19+1).map(function(v){return +(v).toFixed(2)});
-  return modalShell(a[0]+' · '+esc(a[1]),badge(a[2]),'<div><p class="sec-t">시간별 응답 시간 (ms, 샘플)</p>'+MonitoringChart({type:'line',labels:HOURS,series:[{values:lat,c:'accent'}],area:1,h:170,aria:'시간별 응답 시간'})+'</div><div><p class="sec-t">시간별 오류율 (%, 샘플)</p>'+MonitoringChart({type:'line',labels:HOURS,series:[{values:er,c:'err'}],area:1,h:150,fy:function(v){return v.toFixed(1)},aria:'시간별 오류율'})+'</div>')}
+  return modalShell(a[0]+' · '+a[1],badge(a[2]),'<div><p class="sec-t">시간별 응답 시간 (ms, 샘플)</p>'+MonitoringChart({type:'line',labels:HOURS,series:[{values:lat,c:'accent'}],area:1,h:170,aria:'시간별 응답 시간'})+'</div><div><p class="sec-t">시간별 오류율 (%, 샘플)</p>'+MonitoringChart({type:'line',labels:HOURS,series:[{values:er,c:'err'}],area:1,h:150,fy:function(v){return v.toFixed(1)},aria:'시간별 오류율'})+'</div>')}
  if(m.t==='svc'){var s=SERVICES.filter(function(x){return x.id===m.id})[0];
   return modalShell(s.name,badge(s.st)+' '+esc(s.desc),'<div class="mgrid">'+M('요청 수 ('+RANGE_L[S.range]+')',fmt(s.req*f()))+M('오류 수',fmt(s.err*f()))+M('평균 응답 시간',ms(s.avg))+'</div><div><p class="sec-t">응답 시간 추이 (ms, 샘플)</p>'+MonitoringChart({type:'line',labels:HOURS,series:[{values:s.spark.concat(s.spark).slice(0,24),c:s.st==='warn'?'warn':'accent'}],area:1,h:190,aria:'응답 시간 추이'})+'</div>'+(s.id==='run'?'<div class="mgrid">'+M('CPU 사용률',meter(38,'ok'))+M('메모리 사용률',meter(71,'warn'))+M('인스턴스','2 / 최대 10')+'</div>':''))}
  return ''}
 
-/* ---------- render ---------- */
-/* ---------- login (샘플: 실제 인증 아님, 서버 연결 전 화면용) ---------- */
+/* ---------- live (서버 연결 모드: /admin/ops/summary) ---------- */
+/* 서버에서 받은 문자열은 모두 esc() 를 거쳐 HTML 에 넣는다. 서버에 없는 값(인프라·배포·오류 내역)은 샘플을 섞지 않고 "미연결" 로 보여 준다. */
+var LIVE_RANGES=[['1h','1시간'],['24h','24시간'],['7d','7일']];
+var LS={sum:null,err:null,loading:false},seq=0;
+function liveRange(){return S.range==='1h'||S.range==='7d'?S.range:'24h'}
+function liveErr(e){
+ if(e&&e.status===403)return {t:'운영자 권한이 없습니다',d:'이 계정은 운영 관리자 허용 목록에 없습니다.'};
+ if(e&&e.code==='network_error')return {t:'서버에 연결하지 못했습니다',d:'네트워크와 서버 주소를 확인하세요.'};
+ return {t:'데이터를 불러오지 못했습니다',d:'잠시 후 다시 시도하세요.'}}
+function fetchLive(rk){return Promise.all([request('/admin/ops/summary?range='+rk)])}
+function loadLive(){
+ var rk=liveRange(),my=++seq;
+ if(LS.sum&&LS.sum.range!==rk){LS.sum=null}  // 다른 기간의 숫자를 남겨 두지 않는다
+ LS.loading=true;LS.err=null;render();
+ return fetchLive(rk).then(function(r){
+  if(my!==seq)return;LS.sum=r[0];
+ }).catch(function(e){if(my!==seq)return;LS.err=liveErr(e);LS.sum=null;
+ }).then(function(){if(my!==seq)return;LS.loading=false;S.updated=new Date();render()})}
+function liveLabel(iso,rk){var d=new Date(iso);return rk==='7d'?pad(d.getMonth()+1)+'-'+pad(d.getDate()):pad(d.getHours())+':'+pad(d.getMinutes())}
+function pct(r){return (r*100).toFixed(2)+'%'}
+function LiveBar(){
+ var warn=LS.sum&&!LS.sum.metrics_enabled?'<span class="note" style="color:var(--warn)">서버의 요청 계측이 꺼져 있어 수치가 0 일 수 있습니다.</span>':'';
+ return '<div class="sample live"><span><strong>실서버 데이터</strong> 요청 지표(경로 패턴·상태코드·응답 시간 집계)만 표시합니다. 평균·최대 응답 시간만 제공하며 p95 는 없습니다. 시각은 이 브라우저의 시간대 기준입니다. '+warn+'</span>'+
+  (LS.loading?'<span class="note">갱신 중…</span>':'')+'<span class="toolbar" style="gap:8px"><span>기간</span>'+Seg('range',LIVE_RANGES,liveRange())+'</span></div>'}
+function liveNotConnected(what){return '<div class="panel"><div class="state">'+IC.empty+'<b>아직 서버와 연결되지 않았습니다</b><span>'+esc(what)+' 은(는) 저장 테이블과 조회 API 가 만들어진 뒤 표시됩니다. 샘플 값은 섞어 보이지 않습니다.</span></div></div>'}
+function liveState(){
+ if(LS.loading&&!LS.sum)return '<div class="panel"><div style="padding:16px;display:flex;flex-direction:column;gap:10px"><div class="sk" style="height:60px"></div><div class="sk" style="height:170px"></div></div></div>';
+ if(LS.err)return '<div class="panel"><div class="state err">'+IC.fail+'<b>'+esc(LS.err.t)+'</b><span>'+esc(LS.err.d)+'</span><button class="btn" data-act="refresh">다시 시도</button></div></div>';
+ return ''}
+function liveDashboard(){
+ var st=liveState();if(st)return st;if(!LS.sum)return '';
+ var s=LS.sum,rk=s.range;
+ var cards='<div class="grid4">'+
+  SummaryCard({label:'API 요청 수 ('+RANGE_L[rk]+')',value:fmt(s.requests),unit:'건',sub:'<span>4xx '+fmt(s.errors_4xx)+'건 포함</span>'})+
+  SummaryCard({label:'서버 오류 (5xx)',value:fmt(s.errors_5xx),unit:'건',badge:s.errors_5xx?badge('err'):badge('ok'),sub:'<span>오류율 <b>'+pct(s.error_rate)+'</b></span>'})+
+  SummaryCard({label:'평균 응답 시간',value:fmt(s.avg_ms),unit:'ms',sub:'<span>최대 '+fmt(s.max_ms)+'ms</span>'})+
+  SummaryCard({label:'수집 구간 수',value:fmt(s.series.filter(function(p){return p.requests>0}).length),unit:'개',sub:'<span>요청이 있었던 구간</span>'})+'</div>';
+ var labels=s.series.map(function(p){return liveLabel(p.t,rk)});
+ var chart=panelFixed('요청 추이','정상 요청과 5xx 실패 요청 · 막대에 마우스를 올리면 값을 볼 수 있습니다',
+  '<div class="pbody">'+(s.requests?'<div class="toolbar" style="margin-bottom:8px"><div class="legend"><span><i style="background:var(--bar)"></i>정상</span><span><i style="background:var(--err)"></i>5xx 실패</span></div><div class="readout" id="readout-ch">막대에 마우스를 올리면 구간별 값을 볼 수 있습니다.</div></div>'+MonitoringChart({type:'bar',labels:labels,a:s.series.map(function(p){return p.requests-p.errors}),b:s.series.map(function(p){return p.errors}),id:'ch',aria:'구간별 정상 요청과 실패 요청 막대 차트'}):'<div class="state">'+IC.empty+'<b>이 기간에 집계된 요청이 없습니다</b><span>계측이 켜져 있는지, 기간을 넓혀야 하는지 확인하세요.</span></div>')+'</div>');
+ return cards+chart+liveNotConnected('서비스별 인프라 상태, 오류 내역, 배포 이력')}
+function livePage(){
+ var body={dashboard:liveDashboard,api:function(){return liveNotConnected('API 경로별 요청 현황')},infra:function(){return liveNotConnected('인프라 상태(Cloud Run·Cloudflare·DB)')},
+  logs:function(){return liveNotConnected('오류 로그')},deploy:function(){return liveNotConnected('배포 이력과 DB 관리')}}[S.page]();
+ return (S.page==='dashboard'?LiveBar():'')+body}
+
+/* ---------- login ---------- */
 var LOGIN_HTML='<div class="login-card"><div class="login-head"><b>GABI</b><span>OPERATIONS ADMIN</span></div>'+
  '<form class="login-body" data-login="1" autocomplete="off"><h1>운영 관리자 로그인</h1>'+
  '<div class="field"><label for="l-id">아이디</label><input id="l-id" type="text" autocomplete="off" spellcheck="false" required></div>'+
  '<div class="field"><label for="l-pw">비밀번호</label><input id="l-pw" type="password" autocomplete="off" required></div>'+
  '<div class="login-err" id="l-err" role="alert"></div>'+
  '<button class="btn primary" type="submit">로그인</button>'+
- '<div class="login-note">샘플 화면입니다. 서버에 연결되기 전이라 실제 인증이 아니며, 화면의 모든 값은 가짜입니다.</div></form></div>';
-var fails=0,lockUntil=0;
+ '<div class="login-note">'+(LIVE?'운영 서버 계정으로 로그인합니다. 운영자 허용 목록에 있는 계정만 화면을 볼 수 있습니다.':'샘플 화면입니다. 서버에 연결되기 전이라 실제 인증이 아니며, 화면의 모든 값은 가짜입니다.')+'</div></form></div>';
+var fails=0,lockUntil=0,busy=false;
 function showLogin(){$('#app').hidden=true;$('#modalRoot').innerHTML='';var r=$('#loginRoot');r.hidden=false;if(!r.innerHTML)r.innerHTML=LOGIN_HTML}
+function enterApp(){fails=0;S.auth=true;var r=$('#loginRoot');r.innerHTML='';r.hidden=true;$('#app').hidden=false;render()}
+function failLogin(msg){var err=$('#l-err');fails++;$('#l-pw').value='';
+ if(fails>=5){lockUntil=Date.now()+30000;fails=0;err.textContent='시도가 너무 많습니다. 30초 뒤에 다시 시도하세요'}else err.textContent=msg}
 function tryLogin(){
  var err=$('#l-err'),acc=window.GABI_SAMPLE_ACCOUNT,now=Date.now();
  if(now<lockUntil){err.textContent='시도가 너무 많습니다. '+Math.ceil((lockUntil-now)/1000)+'초 뒤에 다시 시도하세요';return}
+ if(LIVE){
+  if(busy)return;busy=true;err.textContent='';
+  var id=$('#l-id').value,pw=$('#l-pw').value;
+  // 로그인 → 운영자 확인(운영 API 호출). 403 이면 토큰을 버리고 로그인 화면에 머문다.
+  // 로그인 → 운영 API 첫 조회가 운영자 확인을 겸한다. 403 이면 토큰을 버리고 로그인 화면에 머문다.
+  apiLogin(id,pw).then(function(){var rk=liveRange(),my=++seq;return fetchLive(rk).then(function(r){
+   if(my!==seq)return;LS.sum=r[0];LS.err=null;LS.loading=false;enterApp()})}).catch(function(e){
+   setToken(null);
+   if(e&&e.status===403){err.textContent='운영 관리자 권한이 없는 계정입니다';$('#l-pw').value=''}
+   else if(e&&e.status===429)err.textContent='시도가 너무 많습니다. 잠시 후 다시 시도하세요';
+   else if(e&&e.code==='network_error')err.textContent='서버에 연결하지 못했습니다';
+   else if(e&&(e.status===401||e.status===400||e.status===422))failLogin('아이디 또는 비밀번호가 올바르지 않습니다');
+   else err.textContent='로그인하지 못했습니다. 잠시 후 다시 시도하세요';
+  }).then(function(){busy=false});
+  return}
  if(!acc||!acc.id){err.textContent='샘플 계정이 설정되지 않았습니다 (js/sample-account.js)';return}
- if($('#l-id').value===acc.id&&$('#l-pw').value===acc.pw){
-  fails=0;S.auth=true;var r=$('#loginRoot');r.innerHTML='';r.hidden=true;$('#app').hidden=false;render();return}
- fails++;$('#l-pw').value='';
- if(fails>=5){lockUntil=now+30000;fails=0;err.textContent='시도가 너무 많습니다. 30초 뒤에 다시 시도하세요'}
- else err.textContent='아이디 또는 비밀번호가 올바르지 않습니다'}
+ if($('#l-id').value===acc.id&&$('#l-pw').value===acc.pw){enterApp();return}
+ failLogin('아이디 또는 비밀번호가 올바르지 않습니다')}
+function doLogout(){if(LIVE){seq++;apiLogout();LS.sum=LS.err=null;LS.loading=false}S.auth=false;S.modal=null;S.notif=false;$('#app').classList.remove('open');render()}
+if(LIVE)setUnauthorizedHandler(function(){doLogout();var e=$('#l-err');if(e)e.textContent='로그인이 만료되었습니다. 다시 로그인하세요'});
+
+/* ---------- render ---------- */
 function render(){
  if(!S.auth){showLogin();return}
  Sidebar();Header();
+ if(LIVE){$('#content').innerHTML=livePage();$('#modalRoot').innerHTML='';return}
  var body={dashboard:pageDashboard,infra:pageInfra,api:pageApi,logs:pageLogs,deploy:pageDeploy}[S.page]();
  $('#content').innerHTML=SampleBar()+body;
  $('#modalRoot').innerHTML=DetailModal();
@@ -331,11 +401,12 @@ document.addEventListener('click',function(e){
  if(a==='nav')return go(t.dataset.id);
  if(a==='openMenu'){$('#app').classList.add('open');return}
  if(a==='closeMenu'){$('#app').classList.remove('open');return}
- if(a==='logout'){S.auth=false;S.modal=null;S.notif=false;$('#app').classList.remove('open');render();return}
+ if(a==='logout'){doLogout();return}
  if(a==='notif'){S.notif=!S.notif;Header();return}
+ if(a==='refresh'&&LIVE){loadLive();return}
  if(a==='refresh'){var keep=S.view;S.view='loading';render();setTimeout(function(){S.view=keep==='loading'?'ok':keep;S.updated=new Date();render()},700);return}
  if(a==='retry'){S.view='ok';S.updated=new Date();render();return}
- if(a==='seg'){var k=t.dataset.k,v=t.dataset.v;S[k]=v;if(k==='svcFilter'||k==='range')S.lp=1;render();return}
+ if(a==='seg'){var k=t.dataset.k,v=t.dataset.v;S[k]=v;if(LIVE&&k==='range'){loadLive();return}if(k==='svcFilter'||k==='range')S.lp=1;render();return}
  if(a==='sort'){var cur=S.sort[t.dataset.t],c=+t.dataset.c;S.sort[t.dataset.t]=cur&&cur.c===c?{c:c,d:-cur.d}:{c:c,d:1};S.lp=1;S.dp=1;render();return}
  if(a==='page'){var n=+t.dataset.v;if(n<1)return;S[t.dataset.k]=n;render();return}
  if(a==='resetF'){S.lf={type:'',sev:'',path:'',code:'',proc:'',q:''};S.lp=1;render();return}
@@ -363,6 +434,7 @@ document.addEventListener('change',function(e){
 document.addEventListener('input',function(e){var el=e.target;if(el.id==='f-q'){var pos=el.selectionStart;S.lf.q=el.value;S.lp=1;render();var q=$('#f-q');if(q){q.focus();try{q.setSelectionRange(pos,pos)}catch(x){}}}});
 document.addEventListener('mouseover',function(e){
  var b=e.target.closest('.bar');if(!b)return;var ro=$('#readout-ch');if(!ro)return;var i=+b.dataset.i;
+ if(LIVE){var p=LS.sum&&LS.sum.series[i];if(p)ro.innerHTML='<b>'+esc(liveLabel(p.t,LS.sum.range))+'</b> · 전체 '+fmt(p.requests)+' · 5xx '+fmt(p.errors);return}
  ro.innerHTML='<b>'+HOURS[i]+'</b> · 전체 '+fmt(REQ[i])+' · 실패 '+fmt(FAIL[i])+' ('+(FAIL[i]/REQ[i]*100).toFixed(1)+'%)'});
 window.addEventListener('hashchange',function(){var id=location.hash.slice(1);if(PAGES.some(function(p){return p.id===id})&&id!==S.page)go(id)});
 var h0=location.hash.slice(1);if(PAGES.some(function(p){return p.id===h0}))S.page=h0;

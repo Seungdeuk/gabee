@@ -3,11 +3,11 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <!-- 스크립트는 같은 출처 파일만 허용. 스타일은 화면 코드의 style 속성 때문에 인라인을 허용한다. API 주소는 운영 도메인이 정해지면 좁힌다(미정). -->
+  <!-- 스크립트는 같은 출처 파일만 허용. 스타일은 화면 코드의 style 속성 때문에 인라인을 허용한다. 연결 허용은 로컬 개발 주소와 https://api.gabee.cloud 뿐이다. 배포본에는 _headers 로 localhost 도 막는다. -->
   <meta http-equiv="Content-Security-Policy"
-        content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self'; connect-src 'self' http://127.0.0.1:* http://localhost:* https:; base-uri 'none'; form-action 'none'">
+        content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self'; connect-src 'self' http://127.0.0.1:* http://localhost:* https://api.gabee.cloud; base-uri 'none'; form-action 'none'">
   <title>가비 운영 관리자</title>
-  <link rel="stylesheet" href="css/style.css?v=3">
+  <link rel="stylesheet" href="css/style.css?v=4">
 </head>
 <body>
 <div class="app" id="app">
@@ -29,6 +29,7 @@
 <div id="modalRoot"></div>
 <div id="toastRoot"></div>
 <script src="js/sample-account.js"></script>
-<script src="js/app.js?v=3"></script>
+<script src="js/local-config.js"></script>
+<script type="module" src="js/app.js?v=4"></script>
 </body>
 </html>
