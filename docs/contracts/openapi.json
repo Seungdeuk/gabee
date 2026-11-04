@@ -12763,6 +12763,398 @@
         }
       }
     },
+    "/support/tickets": {
+      "post": {
+        "tags": [
+          "support"
+        ],
+        "summary": "Create Ticket",
+        "description": "문의(inquiry)나 신고(report)를 보낸다. 사용자가 쓴 제목과 내용만 저장한다.",
+        "operationId": "create_ticket_support_tickets_post",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-gyeot-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Gyeot-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TicketIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TicketOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/support/tickets/mine": {
+      "get": {
+        "tags": [
+          "support"
+        ],
+        "summary": "My Tickets",
+        "description": "내가 보낸 문의·신고와 답변, 최근 순 최대 100건.",
+        "operationId": "my_tickets_support_tickets_mine_get",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-gyeot-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Gyeot-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TicketList"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/admin/me": {
+      "get": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "Admin Me",
+        "description": "관리자 화면이 처음 열릴 때 부른다. 허용 목록에 없으면 403 operator_required.",
+        "operationId": "admin_me_admin_me_get",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminMeOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/admin/members": {
+      "get": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "Admin Members",
+        "description": "회원 수와 최근 가입자 목록. 이메일은 돌려주지 않는다.",
+        "operationId": "admin_members_admin_members_get",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MembersOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/admin/groups": {
+      "get": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "Admin Groups",
+        "description": "가족 그룹 수와 구성원 수.",
+        "operationId": "admin_groups_admin_groups_get",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GroupsOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/admin/features": {
+      "get": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "Admin Features",
+        "description": "기능별 최근 7일 사용 수와 그 전 7일 사용 수.",
+        "operationId": "admin_features_admin_features_get",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FeaturesOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/admin/ai-usage": {
+      "get": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "Admin Ai Usage",
+        "description": "AI 기능 사용 요청 수(오늘·7일·30일, 하루별 14일, 기능별 30일). 대화 내용은 다루지 않는다.",
+        "operationId": "admin_ai_usage_admin_ai_usage_get",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminAiUsageOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/health/db": {
       "get": {
         "tags": [
@@ -12887,6 +13279,262 @@
           "user"
         ],
         "title": "AccountSignupOut"
+      },
+      "AdminAiFamilyRow": {
+        "properties": {
+          "group_id": {
+            "type": "string",
+            "title": "Group Id"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "requests": {
+            "type": "integer",
+            "title": "Requests"
+          },
+          "errors": {
+            "type": "integer",
+            "title": "Errors"
+          }
+        },
+        "type": "object",
+        "required": [
+          "group_id",
+          "name",
+          "requests",
+          "errors"
+        ],
+        "title": "AdminAiFamilyRow"
+      },
+      "AdminAiFeatureRow": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "calls": {
+            "type": "integer",
+            "title": "Calls"
+          },
+          "direct": {
+            "type": "integer",
+            "title": "Direct"
+          },
+          "via_assistant": {
+            "type": "integer",
+            "title": "Via Assistant"
+          }
+        },
+        "type": "object",
+        "required": [
+          "key",
+          "name",
+          "calls",
+          "direct",
+          "via_assistant"
+        ],
+        "title": "AdminAiFeatureRow"
+      },
+      "AdminAiLimitedRow": {
+        "properties": {
+          "user_id": {
+            "type": "string",
+            "title": "User Id"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "group_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Group Name"
+          },
+          "days": {
+            "type": "integer",
+            "title": "Days"
+          },
+          "last_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Last At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "user_id",
+          "name",
+          "group_name",
+          "days",
+          "last_at"
+        ],
+        "title": "AdminAiLimitedRow"
+      },
+      "AdminAiUsageOut": {
+        "properties": {
+          "today": {
+            "type": "integer",
+            "title": "Today"
+          },
+          "week": {
+            "type": "integer",
+            "title": "Week"
+          },
+          "month": {
+            "type": "integer",
+            "title": "Month"
+          },
+          "daily": {
+            "items": {
+              "type": "integer"
+            },
+            "type": "array",
+            "title": "Daily"
+          },
+          "rows": {
+            "items": {
+              "$ref": "#/components/schemas/AdminAiFeatureRow"
+            },
+            "type": "array",
+            "title": "Rows"
+          },
+          "families": {
+            "items": {
+              "$ref": "#/components/schemas/AdminAiFamilyRow"
+            },
+            "type": "array",
+            "title": "Families"
+          },
+          "users": {
+            "items": {
+              "$ref": "#/components/schemas/AdminAiUserRow"
+            },
+            "type": "array",
+            "title": "Users"
+          },
+          "limited": {
+            "items": {
+              "$ref": "#/components/schemas/AdminAiLimitedRow"
+            },
+            "type": "array",
+            "title": "Limited"
+          }
+        },
+        "type": "object",
+        "required": [
+          "today",
+          "week",
+          "month",
+          "daily",
+          "rows",
+          "families",
+          "users",
+          "limited"
+        ],
+        "title": "AdminAiUsageOut"
+      },
+      "AdminAiUserRow": {
+        "properties": {
+          "user_id": {
+            "type": "string",
+            "title": "User Id"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "login_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Login Id"
+          },
+          "requests": {
+            "type": "integer",
+            "title": "Requests"
+          },
+          "errors": {
+            "type": "integer",
+            "title": "Errors"
+          }
+        },
+        "type": "object",
+        "required": [
+          "user_id",
+          "name",
+          "login_id",
+          "requests",
+          "errors"
+        ],
+        "title": "AdminAiUserRow"
+      },
+      "AdminMeOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "login_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Login Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "login_id"
+        ],
+        "title": "AdminMeOut"
       },
       "AgentChatIn": {
         "properties": {
@@ -15840,6 +16488,60 @@
         ],
         "title": "ExpenseOut"
       },
+      "FeatureRow": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "families": {
+            "type": "integer",
+            "title": "Families"
+          },
+          "uses": {
+            "type": "integer",
+            "title": "Uses"
+          },
+          "prev_uses": {
+            "type": "integer",
+            "title": "Prev Uses"
+          }
+        },
+        "type": "object",
+        "required": [
+          "key",
+          "name",
+          "families",
+          "uses",
+          "prev_uses"
+        ],
+        "title": "FeatureRow"
+      },
+      "FeaturesOut": {
+        "properties": {
+          "families_total": {
+            "type": "integer",
+            "title": "Families Total"
+          },
+          "rows": {
+            "items": {
+              "$ref": "#/components/schemas/FeatureRow"
+            },
+            "type": "array",
+            "title": "Rows"
+          }
+        },
+        "type": "object",
+        "required": [
+          "families_total",
+          "rows"
+        ],
+        "title": "FeaturesOut"
+      },
       "FileOut": {
         "properties": {
           "id": {
@@ -16140,6 +16842,132 @@
           "members"
         ],
         "title": "GroupOut"
+      },
+      "GroupRow": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "owner_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Owner Name"
+          },
+          "members": {
+            "type": "integer",
+            "title": "Members"
+          },
+          "pending": {
+            "type": "integer",
+            "title": "Pending"
+          },
+          "ai_enabled": {
+            "type": "boolean",
+            "title": "Ai Enabled"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "owner_name",
+          "members",
+          "pending",
+          "ai_enabled",
+          "created_at"
+        ],
+        "title": "GroupRow"
+      },
+      "GroupSize": {
+        "properties": {
+          "members": {
+            "type": "integer",
+            "title": "Members"
+          },
+          "groups": {
+            "type": "integer",
+            "title": "Groups"
+          }
+        },
+        "type": "object",
+        "required": [
+          "members",
+          "groups"
+        ],
+        "title": "GroupSize"
+      },
+      "GroupsOut": {
+        "properties": {
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          },
+          "single_member": {
+            "type": "integer",
+            "title": "Single Member"
+          },
+          "pending_total": {
+            "type": "integer",
+            "title": "Pending Total"
+          },
+          "oldest_pending_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Oldest Pending At"
+          },
+          "ai_enabled": {
+            "type": "integer",
+            "title": "Ai Enabled"
+          },
+          "rows": {
+            "items": {
+              "$ref": "#/components/schemas/GroupRow"
+            },
+            "type": "array",
+            "title": "Rows"
+          },
+          "sizes": {
+            "items": {
+              "$ref": "#/components/schemas/GroupSize"
+            },
+            "type": "array",
+            "title": "Sizes"
+          }
+        },
+        "type": "object",
+        "required": [
+          "total",
+          "single_member",
+          "pending_total",
+          "oldest_pending_at",
+          "ai_enabled",
+          "rows",
+          "sizes"
+        ],
+        "title": "GroupsOut"
       },
       "HTTPValidationError": {
         "properties": {
@@ -17192,6 +18020,106 @@
           "role"
         ],
         "title": "MemberOut"
+      },
+      "MemberRow": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "login_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Login Id"
+          },
+          "joined_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Joined At"
+          },
+          "has_family": {
+            "type": "boolean",
+            "title": "Has Family"
+          },
+          "email_verified": {
+            "type": "boolean",
+            "title": "Email Verified"
+          },
+          "last_login_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Login At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "login_id",
+          "joined_at",
+          "has_family",
+          "email_verified",
+          "last_login_at"
+        ],
+        "title": "MemberRow"
+      },
+      "MembersOut": {
+        "properties": {
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          },
+          "joined_this_week": {
+            "type": "integer",
+            "title": "Joined This Week"
+          },
+          "active_7d": {
+            "type": "integer",
+            "title": "Active 7D"
+          },
+          "no_family": {
+            "type": "integer",
+            "title": "No Family"
+          },
+          "email_verified": {
+            "type": "integer",
+            "title": "Email Verified"
+          },
+          "rows": {
+            "items": {
+              "$ref": "#/components/schemas/MemberRow"
+            },
+            "type": "array",
+            "title": "Rows"
+          }
+        },
+        "type": "object",
+        "required": [
+          "total",
+          "joined_this_week",
+          "active_7d",
+          "no_family",
+          "email_verified",
+          "rows"
+        ],
+        "title": "MembersOut"
       },
       "MessageCreate": {
         "properties": {
@@ -19964,6 +20892,127 @@
           "version"
         ],
         "title": "TesterConsentIn"
+      },
+      "TicketIn": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "inquiry",
+              "report"
+            ],
+            "title": "Kind"
+          },
+          "title": {
+            "type": "string",
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Title"
+          },
+          "body": {
+            "type": "string",
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Body"
+          }
+        },
+        "type": "object",
+        "required": [
+          "kind",
+          "title",
+          "body"
+        ],
+        "title": "TicketIn"
+      },
+      "TicketList": {
+        "properties": {
+          "rows": {
+            "items": {
+              "$ref": "#/components/schemas/TicketOut"
+            },
+            "type": "array",
+            "title": "Rows"
+          }
+        },
+        "type": "object",
+        "required": [
+          "rows"
+        ],
+        "title": "TicketList"
+      },
+      "TicketOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "inquiry",
+              "report"
+            ],
+            "title": "Kind"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "body": {
+            "type": "string",
+            "title": "Body"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "new",
+              "working",
+              "done"
+            ],
+            "title": "Status"
+          },
+          "answer": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Answer"
+          },
+          "answered_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Answered At"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "kind",
+          "title",
+          "body",
+          "status",
+          "answer",
+          "answered_at",
+          "created_at"
+        ],
+        "title": "TicketOut",
+        "description": "보낸 사람 본인에게 보여 주는 모양."
       },
       "TodoCandidate": {
         "properties": {
