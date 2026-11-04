@@ -6,7 +6,7 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.dialects import postgresql, sqlite
 from sqlalchemy.orm import Session
 
-from .models import OpsRequestMetric
+from .models import OpsErrorEvent, OpsRequestMetric
 
 # 행 = (bucket_start, method, route, status_class, count, duration_sum, duration_max)
 Row = tuple[datetime, str, str, str, int, float, float]
@@ -81,3 +81,56 @@ def totals_by_route(db: Session, since: datetime) -> list[tuple[str, str, str, i
         .group_by(OpsRequestMetric.method, OpsRequestMetric.route, OpsRequestMetric.status_class)
     )
     return [(m, r, s, int(c), float(t), float(p)) for m, r, s, c, t, p in db.execute(stmt)]
+
+
+def upsert_error_event(
+    db: Session,
+    *,
+    fingerprint: str,
+    kind: str,
+    severity: str,
+    event_type: str,
+    method: str,
+    route: str,
+    status: int,
+    message: str,
+    location: str | None,
+    trace_id: str | None,
+    now: datetime,
+) -> None:
+    """오류 이벤트를 저장한다. 같은 지문이 있으면 횟수를 올리고 마지막 발생 시각·trace id 만 갱신한다."""
+    insert = postgresql.insert if db.get_bind().dialect.name == "postgresql" else sqlite.insert
+    stmt = insert(OpsErrorEvent).values(
+        fingerprint=fingerprint,
+        kind=kind,
+        severity=severity,
+        event_type=event_type,
+        method=method,
+        route=route,
+        status=status,
+        message=message,
+        location=location,
+        occurrences=1,
+        first_seen=now,
+        last_seen=now,
+        last_trace_id=trace_id,
+        handling_status="new",
+    )
+    table = OpsErrorEvent.__table__
+    stmt = stmt.on_conflict_do_update(
+        index_elements=["fingerprint"],
+        set_={
+            "occurrences": table.c.occurrences + 1,
+            "last_seen": stmt.excluded.last_seen,
+            "last_trace_id": stmt.excluded.last_trace_id,
+        },
+    )
+    db.execute(stmt)
+    db.commit()
+
+
+def delete_error_events_before(db: Session, cutoff: datetime) -> int:
+    """마지막 발생이 cutoff 보다 오래된 오류 이벤트를 지우고 지운 행 수를 돌려준다."""
+    result = db.execute(delete(OpsErrorEvent).where(OpsErrorEvent.last_seen < cutoff))
+    db.commit()
+    return result.rowcount or 0

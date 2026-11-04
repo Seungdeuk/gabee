@@ -168,6 +168,10 @@ class Settings(BaseSettings):
     ops_metrics_enabled: bool = False
     ops_metrics_bucket_seconds: int = 300
     ops_metrics_retention_days: int = 90
+    # 운영 관리자 오류 이벤트(5xx·처리되지 않은 예외·401/403): 기본 꺼짐. 공용 DB 에 ops_error_events 가 생긴 뒤 켠다.
+    # 켜도 응답에는 영향이 없고(응답을 보낸 뒤 저장), 메시지는 가려서 200자까지만, 인증 실패는 메시지 없이 code 만 저장한다.
+    ops_errors_enabled: bool = False
+    ops_errors_retention_days: int = 90
 
     model_config = SettingsConfigDict(env_file=_ENV_FILE, extra="ignore", populate_by_name=True)
 
