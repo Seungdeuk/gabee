@@ -6,3 +6,7 @@
   Referrer-Policy: no-referrer
   X-Frame-Options: DENY
   Permissions-Policy: camera=(), microphone=(), geolocation=()
+/js/*
+  Cache-Control: no-cache
+/css/*
+  Cache-Control: no-cache

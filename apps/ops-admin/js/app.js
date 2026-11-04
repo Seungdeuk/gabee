@@ -1,4 +1,4 @@
-/* 운영 관리자 화면 (샘플 데이터 전용). 서버 연결 전이라 모든 값은 가짜다. 실제 데이터 연결 때는 서버 값을 반드시 esc() 로 감싼다. */
+/* 운영 관리자 화면. 서버 모드(기본)는 실서버 값을, 로컬 샘플 모드는 가짜 값을 보여 준다. 서버에서 받은 값은 반드시 esc() 로 감싼다. */
 import { config } from "./config.js";
 import { request, setToken, setUnauthorizedHandler } from "./api.js";
 import { login as apiLogin, logout as apiLogout } from "./auth.js";
@@ -135,7 +135,6 @@ function guard(kind,fn){
  if(S.view==='error')return '<div class="state err">'+IC.fail+'<b>데이터를 불러오지 못했습니다</b><span>수집기 응답이 없습니다. 잠시 후 다시 시도하세요.</span><button class="btn" data-act="retry">다시 시도</button></div>';
  if(S.view==='empty')return '<div class="state">'+IC.empty+'<b>표시할 데이터가 없습니다</b><span>선택한 기간에 수집된 기록이 없습니다. 기간을 넓혀 보세요.</span></div>';
  return fn()}
-function panel(title,sub,body,extra){return '<section class="panel"><header><div><h2>'+title+'</h2>'+(sub?'<small>'+sub+'</small>':'')+'</div>'+(extra||'')+'</section>'.replace('</section>','')+'</header>'+body+'</section>'}
 function panelFixed(title,sub,body,extra){return '<section class="panel"><header><div><h2>'+title+'</h2>'+(sub?'<small>'+sub+'</small>':'')+'</div>'+(extra||'')+'</header>'+body+'</section>'}
 
 /* ---------- components ---------- */
@@ -350,7 +349,7 @@ var LOGIN_HTML='<div class="login-card"><div class="login-head"><b>GABI</b><span
  '<div class="login-err" id="l-err" role="alert"></div>'+
  '<button class="btn primary" type="submit">로그인</button>'+
  '<div class="login-note">'+(LIVE?'운영 서버 계정으로 로그인합니다. 운영자 허용 목록에 있는 계정만 화면을 볼 수 있습니다.':'샘플 화면입니다. 서버에 연결되기 전이라 실제 인증이 아니며, 화면의 모든 값은 가짜입니다.')+'</div></form></div>';
-var fails=0,lockUntil=0,busy=false;
+var fails=0,lockUntil=0,busy=false,authed=false;
 function showLogin(){$('#app').hidden=true;$('#modalRoot').innerHTML='';var r=$('#loginRoot');r.hidden=false;if(!r.innerHTML)r.innerHTML=LOGIN_HTML}
 function enterApp(){fails=0;S.auth=true;var r=$('#loginRoot');r.innerHTML='';r.hidden=true;$('#app').hidden=false;render()}
 function failLogin(msg){var err=$('#l-err');fails++;$('#l-pw').value='';
@@ -359,16 +358,16 @@ function tryLogin(){
  var err=$('#l-err'),acc=window.GABI_SAMPLE_ACCOUNT,now=Date.now();
  if(now<lockUntil){err.textContent='시도가 너무 많습니다. '+Math.ceil((lockUntil-now)/1000)+'초 뒤에 다시 시도하세요';return}
  if(LIVE){
-  if(busy)return;busy=true;err.textContent='';
+  if(busy)return;busy=true;authed=false;err.textContent='';
   var id=$('#l-id').value,pw=$('#l-pw').value;
-  // 로그인 → 운영자 확인(운영 API 호출). 403 이면 토큰을 버리고 로그인 화면에 머문다.
   // 로그인 → 운영 API 첫 조회가 운영자 확인을 겸한다. 403 이면 토큰을 버리고 로그인 화면에 머문다.
-  apiLogin(id,pw).then(function(){var rk=liveRange(),my=++seq;return fetchLive(rk).then(function(r){
+  apiLogin(id,pw).then(function(){authed=true;var rk=liveRange(),my=++seq;return fetchLive(rk).then(function(r){
    if(my!==seq)return;LS.sum=r[0];LS.err=null;LS.loading=false;enterApp()})}).catch(function(e){
    setToken(null);
    if(e&&e.status===403){err.textContent='운영 관리자 권한이 없는 계정입니다';$('#l-pw').value=''}
    else if(e&&e.status===429)err.textContent='시도가 너무 많습니다. 잠시 후 다시 시도하세요';
    else if(e&&e.code==='network_error')err.textContent='서버에 연결하지 못했습니다';
+   else if(e&&e.status===401&&authed)err.textContent='로그인은 됐지만 서버가 권한 확인을 거절했습니다. 잠시 후 다시 시도하세요';
    else if(e&&(e.status===401||e.status===400||e.status===422))failLogin('아이디 또는 비밀번호가 올바르지 않습니다');
    else err.textContent='로그인하지 못했습니다. 잠시 후 다시 시도하세요';
   }).then(function(){busy=false});
@@ -377,7 +376,7 @@ function tryLogin(){
  if($('#l-id').value===acc.id&&$('#l-pw').value===acc.pw){enterApp();return}
  failLogin('아이디 또는 비밀번호가 올바르지 않습니다')}
 function doLogout(){if(LIVE){seq++;apiLogout();LS.sum=LS.err=null;LS.loading=false}S.auth=false;S.modal=null;S.notif=false;$('#app').classList.remove('open');render()}
-if(LIVE)setUnauthorizedHandler(function(){doLogout();var e=$('#l-err');if(e)e.textContent='로그인이 만료되었습니다. 다시 로그인하세요'});
+if(LIVE)setUnauthorizedHandler(function(){if(busy)return;doLogout();var e=$('#l-err');if(e)e.textContent='로그인이 만료되었습니다. 다시 로그인하세요'});
 
 /* ---------- render ---------- */
 function render(){
@@ -397,7 +396,6 @@ document.addEventListener('click',function(e){
  if(!t){if(S.notif&&!e.target.closest('.pop')){S.notif=false;Header()}return}
  var a=t.dataset.act;
  if(a==='closeModal'){if(e.target.closest('.modal')&&!e.target.closest('#mClose'))return;S.modal=null;render();return}
- e.stopPropagation&&0;
  if(a==='nav')return go(t.dataset.id);
  if(a==='openMenu'){$('#app').classList.add('open');return}
  if(a==='closeMenu'){$('#app').classList.remove('open');return}
