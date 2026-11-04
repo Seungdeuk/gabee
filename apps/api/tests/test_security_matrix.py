@@ -211,6 +211,12 @@ NO_GROUP_OK = {
     ("GET", "/notifications/unread-count"),
     ("POST", "/notifications/read-all"),
     ("POST", "/notifications/{notification_id}/read"),
+    # 서비스 관리자 경로는 가족 데이터가 아니다. 권한은 require_operator("service_admin") 허용 목록이 정한다(admin/tests 에서 401·403 확인)
+    ("GET", "/admin/me"),
+    ("GET", "/admin/members"),
+    ("GET", "/admin/groups"),
+    ("GET", "/admin/features"),
+    ("GET", "/admin/ai-usage"),
 }
 
 
