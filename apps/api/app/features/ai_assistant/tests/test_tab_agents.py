@@ -183,6 +183,32 @@ def test_ai_must_be_enabled_for_the_family(client, family, monkeypatch):
     assert (r.status_code, r.json()["code"]) == (403, "ai_not_enabled")
 
 
+def test_main_chat_usage_log_records_which_tab_agent_was_used(client, family, monkeypatch):
+    a, _, group = family
+    enable_ai(group["id"])
+    _spend(client, a, "진료비", 30000)
+
+    def fake_post(body):
+        if "가계(정산) 담당" in body["system"]:
+            return _text("2026-10 지출은 총 30,000원이에요.")
+        if len(body["messages"]) == 1:
+            return _tool_use("ask_billing", {"question": "2026년 10월 지출 합계는?"})
+        return _text(_last_tool_result(body)["answer"])
+
+    monkeypatch.setattr(settings, "anthropic_api_key", "test-key")
+    monkeypatch.setattr(rag_chat, "_post", fake_post)
+    r = client.post("/ai-assistant/chat", json={"message": "이번 달 얼마 썼어?"}, headers=a)
+    assert r.status_code == 200, r.text
+    with SessionLocal() as db:
+        main, nested = db.scalars(select(AiUsageLog).order_by(AiUsageLog.id)).all()
+        # 호출 수는 메인 줄에 모두 센다
+        assert (main.feature, main.status) == ("assistant_chat", "ok") and main.api_calls >= 2
+        # 어느 탭 에이전트를 썼는지만 남긴다(호출 수 0 이라 한도·쿨다운에 다시 세지 않는다)
+        assert (nested.feature, nested.status, nested.api_calls) == ("billing_agent", "nested", 0)
+        assert (nested.user_id, nested.group_id) == (main.user_id, main.group_id)
+        assert nested.input_tokens == 0 and nested.output_tokens == 0
+
+
 def test_usage_is_logged_with_tokens_and_answers_are_not_cached(client, family, monkeypatch):
     a, _, group = family
     _ready(monkeypatch, group)
