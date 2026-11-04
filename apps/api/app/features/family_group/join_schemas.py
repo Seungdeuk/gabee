@@ -2,7 +2,7 @@
 
 from datetime import datetime
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, field_validator
 
 
 class InviteOut(BaseModel):
@@ -13,6 +13,19 @@ class InviteOut(BaseModel):
 
 class InviteSettingsIn(BaseModel):
     auto_approve: bool  # true 면 초대 코드로 들어온 사람을 관리자 승인 없이 바로 구성원으로 넣는다
+
+
+class GroupNameIn(BaseModel):
+    name: str = Field(min_length=1, max_length=60)
+
+    @field_validator("name")
+    @classmethod
+    def _strip_name(cls, value: str) -> str:
+        """앞뒤 공백을 지우고, 공백뿐인 이름은 받지 않는다(가족 만들기와 같은 1~60자 규칙)."""
+        value = value.strip()
+        if not value:
+            raise ValueError("가족 이름을 입력해 주세요")
+        return value
 
 
 class JoinRequestOut(BaseModel):
