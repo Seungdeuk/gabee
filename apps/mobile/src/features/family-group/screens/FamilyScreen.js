@@ -10,6 +10,7 @@ import { colors, font } from "@/theme";
 import { leaveFamily } from "../api";
 import FamilyFrame from "../components/FamilyFrame";
 import FamilyHeader from "../components/FamilyHeader";
+import FamilyNameEditor from "../components/FamilyNameEditor";
 import LeaveFamilySection from "../components/LeaveFamilySection";
 import Notice from "../components/Notice";
 import { familyErrorMessage, roleLabel } from "../messages";
@@ -19,7 +20,7 @@ const POLL_MS = 8000;
 
 /**
  * 우리 가족. 그룹이 없으면 만들기/참여, 승인 대기 중이면 대기 화면으로 안내한다.
- * 구성원이면 위쪽에 가족 이름·구성원 프로필·내 역할을, 아래쪽에 가족 나가기를 보여 준다. 초대 코드·가입 요청은 "가족 초대" 화면(/family-invite)에 있고, 관리자에게는 거기로 가는 버튼이 보인다.
+ * 구성원이면 위쪽에 가족 이름·구성원 프로필·내 역할을, 아래쪽에 가족 나가기를 보여 준다. 가족 이름은 관리자에게만 바꾸는 칸이 보인다. 초대 코드·가입 요청은 "가족 초대" 화면(/family-invite)에 있고, 관리자에게는 거기로 가는 버튼이 보인다.
  * @returns {import("react").ReactElement}
  */
 export default function FamilyScreen() {
@@ -102,6 +103,7 @@ export default function FamilyScreen() {
         isOwner={group.my_role === "owner"}
         onPressMember={(m) => router.push({ pathname: "/family-member", params: { userId: m.id } })}
       />
+      {family.isManager ? <FamilyNameEditor name={group.name} onRenamed={family.reload} /> : null}
       <Button label="내 프로필 (이름·가족 관계)" variant="secondary" onPress={() => router.push("/family-profile")} testID="open-profile" />
 
       {family.isManager ? (
