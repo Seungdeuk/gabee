@@ -15,7 +15,7 @@ export const STATUS_LABEL = { new: "접수됨", working: "처리 중", done: "�
 /** 신고에도 사용자가 직접 쓴 글만 전달된다는 안내. */
 export const PRIVACY_NOTE = "직접 쓴 제목과 내용만 서비스 관리자에게 전달돼요. 가족 채팅 내용은 함께 전달되지 않아요.";
 
-export const SENT_NOTICE = "보냈어요. 답변이 달리면 알려 드릴게요";
+export const SENT_NOTICE = "보냈어요. 답변은 이 화면에서 확인할 수 있어요";
 
 const BY_CODE = {
   network_error: "서버에 연결하지 못했어요. 인터넷 연결을 확인해 주세요",

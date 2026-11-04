@@ -27,6 +27,7 @@ test("항목 제목 순서", () => {
 test("route 가 있는 항목은 이동 동작을 돌려준다", () => {
   assert.deepEqual(itemAction(byKey(MENU, "family")), { type: "route", path: "/family" });
   assert.deepEqual(itemAction(byKey(MENU, "account")), { type: "route", path: "/account-security" });
+  assert.deepEqual(itemAction(byKey(MENU, "help")), { type: "route", path: "/support" });
   assert.deepEqual(itemAction(byKey(SHORTCUTS, "report")), { type: "route", path: "/report" });
 });
 
