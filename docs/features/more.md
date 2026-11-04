@@ -10,6 +10,7 @@
 - **고객센터 화면(`/support`, 앱 `features/support`)**: 마이 > 고객센터에서 "문의하기"(종류 문의/신고·제목 100자·내용 2000자)로 보내고 "내 문의"에서 상태(접수됨·처리 중·답변 완료)와 관리자 답변을 본다. 서버 `POST /support/tickets`·`GET /support/tickets/mine`(docs/requirements/support.md)을 쓰고, 신고에도 사용자가 쓴 글만 보낸다. 답변은 "내 문의"에서 본다. 답변이 저장되면 알림함에 "고객센터" 분류로 알림이 뜨고 누르면 `/support?tab=mine` 으로 간다(서버가 기록, `docs/features/notifications.md`). 마이 > 고객센터 줄은 이 화면에 연결돼 있다(서버 문의 API 병합 후).
 - 가족 정보(이름·역할·가입 요청 수)는 다른 기능이라 라우트(`app/(tabs)/my.js`)가 `useFamilyState` 로 읽어 `MoreScreen` 에 props 로 넘긴다.
 - 각 탭 화면 위의 **설정 버튼(톱니바퀴)과 AI 채팅의 ⋮ 는 없앴다**(설정은 하단 "마이" 탭에서 들어간다). 예전 주소 `/more` 는 `/my` 탭으로 보낸다(`app/more.js` 가 리다이렉트).
+- **고객센터 화면 구성(2026-11)**: "문의하기"(무엇을 도와드릴까요? 안내 → 문의/신고 선택 카드 → 제목·내용 → 안내 박스 → 보내기)와 "내 문의"(필터 칩 전체·답변 대기·답변 완료 + 건수 → 상태 뱃지가 붙은 접히는 카드, 질문 Q·답변 A 구분, 비었을 때 안내와 "문의하기" 버튼, 오른쪽 위 새로고침)로 이뤄진다. 답변이 있으면 서버 상태와 상관없이 "답변 완료"로 보이고, 답변 없이 닫힌 것은 "처리 완료"다(`features/support/messages.js` 의 `ticketView`·`ticketCounts`·`filterTickets`, 카드는 `components/TicketCard.js`·`KindPicker.js`). "답변이 달리면 알림으로 알려 드려요" 문구는 답변 알림 서버 기능(`kind=support`)이 있어야 사실이 된다.
 - AI 채팅 홈은 크림 바탕에 복숭아색·꿀색이 번지는 배경(`shared/components/SoftBackdrop`, `react-native-svg`)을 쓴다. 빈 화면과 대화 중 모두에서 그린다. 화면 바탕은 불투명한 크림색으로 두고 그 위·내용 뒤에 그린다. 다른 탭은 단색이다.
 - 앱 버전은 `app.json` 의 version(`expo-constants`)을 `versionText` 로 보인다.
 
