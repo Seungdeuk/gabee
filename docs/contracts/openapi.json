@@ -147,6 +147,82 @@
         }
       }
     },
+    "/family-group/groups/me/name": {
+      "put": {
+        "tags": [
+          "family-group"
+        ],
+        "summary": "Rename Group",
+        "description": "가족 이름을 바꾼다(1~60자, 앞뒤 공백 제거). 가족 관리자(owner/admin)만, 일반 구성원은 403 not_manager.",
+        "operationId": "rename_group_family_group_groups_me_name_put",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-gyeot-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Gyeot-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GroupNameIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GroupOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/family-group/groups/invites/revoke": {
       "post": {
         "tags": [
@@ -15956,6 +16032,21 @@
           "name"
         ],
         "title": "GroupCreate"
+      },
+      "GroupNameIn": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 60,
+            "minLength": 1,
+            "title": "Name"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "title": "GroupNameIn"
       },
       "GroupOut": {
         "properties": {
