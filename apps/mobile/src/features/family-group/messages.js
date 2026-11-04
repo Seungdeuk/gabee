@@ -51,6 +51,21 @@ export function expiryText(iso) {
   return hours > 0 ? `${hours}시간 ${minutes}분 뒤 만료` : `${Math.max(1, minutes)}분 뒤 만료`;
 }
 
+/** 가족 이름 최대 글자 수(서버 규칙과 같다: 1~60자). */
+export const FAMILY_NAME_MAX = 60;
+
+/**
+ * 가족 이름 입력을 검사한다: 앞뒤 공백을 지우고 비어 있거나 60자를 넘으면 안 된다.
+ * @param {unknown} text 입력한 글
+ * @returns {{ ok: true, value: string } | { ok: false, error: string }}
+ */
+export function validateFamilyName(text) {
+  const value = typeof text === "string" ? text.trim() : "";
+  if (!value) return { ok: false, error: "가족 이름을 입력해 주세요" };
+  if (value.length > FAMILY_NAME_MAX) return { ok: false, error: `가족 이름은 ${FAMILY_NAME_MAX}자까지 쓸 수 있어요` };
+  return { ok: true, value };
+}
+
 /**
  * 구성원 중 가족 관리자(소유자·관리자). 일반 구성원에게 초대를 부탁할 사람을 알려 줄 때 쓴다.
  * @param {{ group_role?: string }[] | null | undefined} members GroupOut.members
