@@ -13750,6 +13750,14 @@
       },
       "ApisOut": {
         "properties": {
+          "total_routes": {
+            "type": "integer",
+            "title": "Total Routes"
+          },
+          "truncated": {
+            "type": "boolean",
+            "title": "Truncated"
+          },
           "range": {
             "type": "string",
             "enum": [
@@ -13778,6 +13786,8 @@
         },
         "type": "object",
         "required": [
+          "total_routes",
+          "truncated",
           "range",
           "since",
           "metrics_enabled",

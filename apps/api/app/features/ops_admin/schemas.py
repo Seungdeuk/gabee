@@ -41,6 +41,8 @@ class ApiRouteOut(BaseModel):
 
 
 class ApisOut(BaseModel):
+    total_routes: int  # 잘리기 전의 전체 경로 수
+    truncated: bool  # items 가 최대 개수에서 잘렸는지
     range: RangeKey
     since: datetime
     metrics_enabled: bool

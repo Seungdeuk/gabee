@@ -105,3 +105,47 @@ def test_apis_group_by_route_pattern_sorted_by_requests(client, ops):
 
 def test_rejects_unknown_range(client, ops):
     assert client.get("/admin/ops/summary?range=30d", headers=ops).status_code == 422
+
+
+def test_window_start_is_aligned_so_the_oldest_partial_bucket_is_kept(client, monkeypatch):
+    from app.features.ops_admin import query_service
+
+    monkeypatch.setattr(settings, "ops_metrics_bucket_seconds", 300)
+    now = datetime(2026, 11, 4, 12, 3, tzinfo=UTC)
+    # 12:03 기준 1시간 전은 11:03 이고, 11:00 구간(11:00~11:05)은 그 일부가 창에 걸쳐 있으므로 포함해야 한다
+    _seed([(datetime(2026, 11, 4, 11, 0, tzinfo=UTC), "GET", "/edge", "2xx", 4, 40.0, 15.0)])
+    _seed([(datetime(2026, 11, 4, 10, 55, tzinfo=UTC), "GET", "/older", "2xx", 9, 90.0, 15.0)])
+    with SessionLocal() as db:
+        out = query_service.summary(db, "1h", now=now)
+        routes = query_service.apis(db, "1h", now=now)
+    assert out.requests == 4 and out.since == datetime(2026, 11, 4, 11, 0, tzinfo=UTC)
+    assert [i.route for i in routes.items] == ["/edge"]
+
+
+def test_chart_step_is_never_finer_than_the_stored_bucket(client, monkeypatch):
+    from app.features.ops_admin import query_service
+
+    monkeypatch.setattr(settings, "ops_metrics_bucket_seconds", 900)  # 15분
+    now = datetime(2026, 11, 4, 12, 3, tzinfo=UTC)
+    _seed([(datetime(2026, 11, 4, 11, 45, tzinfo=UTC), "GET", "/x", "2xx", 6, 60.0, 15.0)])
+    with SessionLocal() as db:
+        out = query_service.summary(db, "1h", now=now)
+    gaps = {(b.t - a.t).total_seconds() for a, b in zip(out.series, out.series[1:], strict=False)}
+    assert gaps == {900.0}  # 5분 막대로 쪼개지 않는다
+    assert sum(p.requests for p in out.series) == 6
+
+
+def test_apis_reports_truncation(client, monkeypatch):
+    from app.features.ops_admin import query_service
+
+    monkeypatch.setattr(query_service, "MAX_ROUTES", 2)
+    _seed([(_bucket(5), "GET", f"/r{i}", "2xx", i + 1, 1.0, 1.0) for i in range(3)])
+    body = client.get("/admin/ops/apis?range=1h", headers=_ops_headers(client, monkeypatch)).json()
+    assert body["total_routes"] == 3 and body["truncated"] is True and len(body["items"]) == 2
+    assert [i["route"] for i in body["items"]] == ["/r2", "/r1"]  # 요청 수가 많은 쪽이 남는다
+
+
+def _ops_headers(client, monkeypatch) -> dict:
+    headers, user_id = _member(client, "ops_tester2")
+    monkeypatch.setattr(settings, "ops_admin_user_ids", user_id)
+    return headers
