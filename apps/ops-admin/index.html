@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <!-- 스크립트는 같은 출처 파일만 허용. 스타일은 화면 코드의 style 속성 때문에 인라인을 허용한다. API 주소는 운영 도메인이 정해지면 좁힌다(미정). -->
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self'; connect-src 'self' http://127.0.0.1:* http://localhost:* https:; base-uri 'none'; form-action 'none'">
+  <title>가비 운영 관리자</title>
+  <link rel="stylesheet" href="css/style.css?v=3">
+</head>
+<body>
+<div class="app" id="app">
+  <aside class="side" id="side" aria-label="운영 관리자 메뉴">
+    <div class="brand"><b>GABI</b><span>OPERATIONS ADMIN</span></div>
+    <nav class="nav" id="nav"></nav>
+    <div class="side-foot">
+      <div class="who"><div class="avatar">운</div><div><strong>운영 담당자</strong><small>ops-admin</small></div></div>
+      <button class="logout" data-act="logout">로그아웃</button>
+    </div>
+  </aside>
+  <div class="scrim" data-act="closeMenu"></div>
+  <div class="main">
+    <header class="hdr"><div class="hdr-in" id="hdr"></div></header>
+    <main class="content" id="content"></main>
+  </div>
+</div>
+<div id="loginRoot" class="login" hidden></div>
+<div id="modalRoot"></div>
+<div id="toastRoot"></div>
+<script src="js/sample-account.js"></script>
+<script src="js/app.js?v=3"></script>
+</body>
+</html>
