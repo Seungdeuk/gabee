@@ -15,7 +15,9 @@ from app.features.billing import agent as billing_agent
 from app.features.family_chat import agent as family_chat_agent
 from app.features.family_group.models import User
 from app.features.schedule.agent import ask as schedule_agent
+from app.shared import ai_guard
 from app.shared.llm.agent import AgentReply, Post
+from app.shared.llm.agent_guard import BILLING_FEATURE, FAMILY_CHAT_FEATURE
 
 AskFn = Callable[[Session, str, User, str, Post | None], AgentReply]
 
@@ -25,6 +27,13 @@ AGENTS: dict[str, tuple[str, AskFn]] = {
     # "ask_care": (care_agent.DESCRIPTION, care_agent.ask),
     "ask_family_chat": (family_chat_agent.DESCRIPTION, family_chat_agent.ask),
     "ask_schedule": (schedule_agent.DESCRIPTION, schedule_agent.ask),
+}
+
+# 탭 에이전트 → 사용 기록(ai_usage_logs.feature) 이름. 각 탭에서 직접 쓸 때 남는 이름과 같게 둔다
+USAGE_FEATURES = {
+    "ask_billing": BILLING_FEATURE,
+    "ask_family_chat": FAMILY_CHAT_FEATURE,
+    "ask_schedule": "schedule_chat",  # schedule/agent/chat.py 의 FEATURE
 }
 
 # 답이 사용자에게 그대로 전할 수 있는 글인 탭 에이전트. 한 질문에 이것 하나만 불렀고 답이 완결이면 메인이 다시 모델을 부르지 않는다.
@@ -137,6 +146,9 @@ def call(
         raise ValueError("question 이 비어 있어요")
     # 일정 에이전트만 어디서 불렀는지(가족방 @가비 = room)를 알아야 한다: 방에서는 공동 일정만 다룬다
     extra = {"audience": audience} if name == "ask_schedule" else {}
+    ai_guard.note_nested(
+        USAGE_FEATURES[name]
+    )  # 사용 기록에 어느 탭 에이전트를 썼는지 남긴다(호출 수는 메인 줄에 센다)
     reply = AGENTS[name][1](
         db, group_id, user, question, post, guarded=False, **extra
     )  # 메인 질문의 관문 한 번에 함께 센다

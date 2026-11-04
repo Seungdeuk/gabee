@@ -298,6 +298,22 @@ def test_ai_daily_limit_applies_to_chat_and_ask_together(client, family, monkeyp
     assert len(post.bodies) == 2
 
 
+def test_daily_limit_rejection_is_logged_once_without_using_the_limit(client, family, monkeypatch):
+    a, _, _ = family
+    _fake_ai(monkeypatch)
+    allow_ai(client, a, monkeypatch)
+    set_assistant_limits(monkeypatch, per_user=1)
+    path, body, feature = ENTRIES[0]
+    assert client.post(path, json=body, headers=a).status_code == 200
+    for _ in range(3):  # 계속 눌러도
+        assert client.post(path, json=body, headers=a).status_code == 429
+    rows = _usage_rows(feature)
+    assert [(r.status, r.api_calls, r.error_code) for r in rows] == [
+        ("ok", 1, None),
+        ("rejected", 0, "ai_daily_limit_user"),  # 짧은 시간 안에는 한 줄만 남는다
+    ]
+
+
 def test_ai_cooldown_applies_to_chat(client, family, monkeypatch):
 
     a, _, _ = family
