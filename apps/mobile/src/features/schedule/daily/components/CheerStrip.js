@@ -22,15 +22,15 @@ const KIND_ICON = { love: "heart", best: "thumbs-up", well: "star" };
 
 /**
  * 받은 응원(내 탭 전용). 시안 CheerReceived 대로 "오늘 나의 체크" 진행률 카드 바로 아래에 둔다.
- * - 고마워도 안 하고 닫지도 않은 응원은 가로로 넘기는 카드로 보인다. 카드 오른쪽 위 X 는 그 카드만 닫는다(고마워 보냄이 되지 않는다).
+ * - 고마워도 안 하고 닫지도 않은 응원은 가로로 넘기는 카드로 보인다. 카드 오른쪽 위 X 는 서버에 닫기를 보내고 그 카드만 닫는다(고마워 보냄이 되지 않는다).
  * - 모두 처리(고마워 또는 닫기)하면 한 줄 배너 "오늘 받은 응원 N개 · 이름, 이름"으로 바뀐다.
  * - 오늘 받은 응원이 하나도 없으면 아무것도 그리지 않는다.
- * @param {{ cheers: object[], today: string, dismissed: string[], onThank: (id: string) => void, onDismiss: (id: string) => void, onOpenHistory: () => void }} props
+ * @param {{ cheers: object[], today: string, onThank: (id: string) => void, onDismiss: (id: string) => void, onOpenHistory: () => void, onReplyInfo?: () => void }} props
  */
-export default function CheerStrip({ cheers, today, dismissed, onThank, onDismiss, onOpenHistory, onReplyInfo }) {
+export default function CheerStrip({ cheers, today, onThank, onDismiss, onOpenHistory, onReplyInfo }) {
   const [index, setIndex] = useState(0);
-  const open = openCheersOf(cheers, today, dismissed);
-  if (allCheersHandled(cheers, today, dismissed)) {
+  const open = openCheersOf(cheers, today);
+  if (allCheersHandled(cheers, today)) {
     return (
       <Pressable
         onPress={onOpenHistory}
@@ -74,7 +74,7 @@ export default function CheerStrip({ cheers, today, dismissed, onThank, onDismis
         ))}
       </View>
       <View style={styles.footer}>
-        <Text style={styles.caption}>{cheerCaption(cheers, today, dismissed)}</Text>
+        <Text style={styles.caption}>{cheerCaption(cheers, today)}</Text>
         <Pressable onPress={onOpenHistory} hitSlop={8} accessibilityRole="button" accessibilityLabel="지난 응원 보기">
           <Text style={styles.link}>지난 응원 보기</Text>
         </Pressable>

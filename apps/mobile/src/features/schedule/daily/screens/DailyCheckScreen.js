@@ -1,7 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect, useRouter } from "expo-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { AppState, Linking, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { AppState, Linking, Platform, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import Svg, { Path } from "react-native-svg";
 
@@ -9,73 +9,84 @@ import { colors, font, radius, spacing } from "@/theme";
 
 import { ME_ID } from "../../mock";
 import {
+  deleteItem,
+  dropLocalCopy,
   listCheers,
-  toggleCheerThanked,
-  listEntries,
-  listFamilyPhone,
+  listFamilySummary,
   listFamilyToday,
   listItems,
   loadOnboarded,
   loadTabOrder,
-  deleteItem,
+  markCheerClosed,
+  markCheerThanked,
   sendCheer,
   setEntry,
 } from "../api";
 import CallDoneSheet from "../components/CallDoneSheet";
-import ConfirmSheet, { ConfirmBody } from "../components/ConfirmSheet";
 import CallSheet from "../components/CallSheet";
 import CheerSheet from "../components/CheerSheet";
 import CheerStrip from "../components/CheerStrip";
-import PencilIcon from "../components/PencilIcon";
+import ConfirmSheet, { ConfirmBody } from "../components/ConfirmSheet";
 import DailyRow from "../components/DailyRow";
+import PencilIcon from "../components/PencilIcon";
+import { createEntrySync } from "../entrySync";
+import { FAMILY_ITEMS_MOCK } from "../mock";
 import {
+  HOLD_CANCEL_PX,
   ROW_GAP,
   ROW_HEIGHT,
+  ROW_MENU,
   ROW_MENU_HOLD_MS,
-  HOLD_CANCEL_PX,
   applyCheck,
   applyStep,
   cheerSubtitle,
   familyRowsOf,
   findCallItem,
-  shouldShowCallDone,
   formatClock,
   formatDayLabel,
   isDone,
   lastRecordOf,
+  needsOnboarding,
   nowClock,
   normalizeTabs,
   progressOf,
-  tabLabel,
-  talkingPoints,
-  todayItemsOf,
-  visibleTabIds,
-  ROW_MENU,
   rowMenuAction,
   rowMenuTop,
   shouldHideDotsOnTouch,
+  shouldShowCallDone,
+  tabLabel,
+  shouldShowCallButton,
+  talkingPoints,
+  todayItemsOf,
+  visibleTabIds,
 } from "../logic";
 import { useDailyMembers, useDailyScope } from "../scope";
-import { todayKey } from "../../utils/date";
+import { failureNotice, loadErrorText, todayKeyKST } from "../serverMap";
+
+/** 확인 팝업 내용을 안내형(확인 한 개)으로 만든다. */
+const infoSheet = (notice) => ({ title: notice.title, body: notice.body, confirmLabel: "확인" });
 
 /**
- * 데일리 체크 메인: 내 탭(체크·횟수, 줄을 길게 누르면 수정·삭제 메뉴, 받은 응원 칩)과 가족 탭(보기만, 응원 보내기·전화 버튼).
- * 순서 바꾸기는 가족 순서 바꾸기 화면과 내 항목 편집 화면에서만 한다(이 화면은 드래그하지 않는다).
- * 저장은 이 폰에만 하고(api.js), 가족 기록·전화번호는 mock 이다. 처음이고 항목이 없으면 온보딩으로 보낸다.
- * 전화는 Linking 으로 전화 앱을 열고, 앱으로 돌아오면(AppState active) 통화 뒤 시트를 띄운다.
+ * 데일리 체크 메인: 내 탭(체크·횟수, 줄을 길게 누르면 수정·삭제 메뉴, 받은 응원 카드)과 가족 탭(보기만, 응원 보내기·전화 버튼).
+ * 습관·기록·응원은 서버에서 읽는다. 기록은 누르는 즉시 화면에 반영하고 서버 저장은 뒤에서 한다(entrySync.js).
+ * 처음이고 서버에 습관이 없으면 온보딩으로 보낸다. 가족 탭 라벨은 가족 요약, 가족 탭 목록은 탭을 열 때와 당겨 새로고침 때만 읽는다.
  */
 export default function DailyCheckScreen() {
   const router = useRouter();
   const scope = useDailyScope();
   const members = useDailyMembers();
-  const today = todayKey();
+  const today = todayKeyKST();
 
+  const [loaded, setLoaded] = useState(false); // 서버에서 내 습관·온보딩 표시를 한 번 받았는가
+  const [loadFailed, setLoadFailed] = useState(null); // 받지 못한 오류(있으면 오류 빈 상태)
   const [items, setItems] = useState([]);
   const [entries, setEntries] = useState({});
   const [tabState, setTabState] = useState({ order: [], hidden: [] });
-  const [familyItems, setFamilyItems] = useState({});
-  const [cheers, setCheers] = useState([]);
+  const [summary, setSummary] = useState({}); // 가족 앱 id → { done, total }
+  const [familyView, setFamilyView] = useState({}); // 가족 앱 id → { loading, error, rows }
+  const [cheers, setCheers] = useState([]); // 받은 응원
   const [tab, setTab] = useState(ME_ID);
+  const [refreshing, setRefreshing] = useState(false);
   const [showMenuDots, setShowMenuDots] = useState(false); // 내 줄을 길게 누르면 켜지는 점 표시 모드: 모든 줄 왼쪽에 점 세 개
   const [menuFor, setMenuFor] = useState(null); // 점 세 개를 누르면 여는 줄 메뉴: { id, index }
   // 점 표시 모드의 바깥 터치 종료: 줄·점·메뉴 밖을 누르면 루트 onTouchStart 에서 점과 메뉴를 한 번에 닫는다.
@@ -92,102 +103,132 @@ export default function DailyCheckScreen() {
     }
   };
   const [sheet, setSheet] = useState(null); // 확인 팝업(ConfirmSheet) 내용. null 이면 닫힘
-  // 화면을 떠나면 줄 메뉴를 닫는다. 다시 들어와도 닫힌 상태로 시작한다.
-  useFocusEffect(
-    useCallback(
-      () => () => {
-        setMenuFor(null);
-        setShowMenuDots(false);
-      },
-      [],
-    ),
-  );
   const [cheerFor, setCheerFor] = useState(null); // 응원 시트를 연 가족 id
-  const [dismissedCheers, setDismissedCheers] = useState([]); // 카드 X 로 닫은 응원 id(고마워 보냄과는 별개)
   const [callFor, setCallFor] = useState(null); // 전화 확인 시트를 연 가족 id
   const [callDone, setCallDone] = useState(null); // 통화 뒤 시트: { memberId }
-  const [phone, setPhone] = useState(null);
   const pendingCall = useRef(null); // 전화 앱을 연 가족 id(앱으로 돌아오면 통화 뒤 시트를 띄운다)
+  // 전화는 번호 없이 전화 앱 키패드를 연다(가족 전화번호는 서버에 두지 않는다).
+  // 전화 버튼 판정: 안드로이드는 항상 보이고(canOpenURL 을 믿지 않는다), iOS 만 화면이 열릴 때 canOpenURL("tel:") 을 한 번 확인해 거짓이면 숨긴다.
+  const [canOpen, setCanOpen] = useState(null);
+  useEffect(() => {
+    if (Platform.OS !== "ios") return undefined;
+    let alive = true;
+    Linking.canOpenURL("tel:")
+      .then((ok) => alive && setCanOpen(Boolean(ok)))
+      .catch(() => alive && setCanOpen(false));
+    return () => {
+      alive = false;
+    };
+  }, []);
+  const canCall = shouldShowCallButton(Platform.OS, canOpen);
 
-  // 가족 구성원(나 제외). 키 글자로 묶어 두면 목록이 같을 때 다시 읽지 않는다.
+  // 기록 저장 보조: 화면 값(낙관적 갱신)·서버 확인·롤백을 한 곳에서 한다.
+  const [sync] = useState(() =>
+    createEntrySync({
+      send: setEntry,
+      show: (id, entry) => setEntries((prev) => ({ ...prev, [id]: entry })),
+      onError: (error) => setSheet(infoSheet(failureNotice(error))),
+    }),
+  );
+
+  // 가족 구성원(나 제외).
   const familyIds = useMemo(() => members.filter((m) => m.id !== ME_ID).map((m) => m.id), [members]);
-  const familyKey = familyIds.join(",");
   const tabs = normalizeTabs(tabState, familyIds);
   const visibleIds = visibleTabIds(tabs);
-  const nameOf = (id) => members.find((m) => m.id === id)?.name ?? "";
+  const memberOf = (id) => members.find((m) => m.id === id);
+  const nameOf = (id) => memberOf(id)?.name ?? "";
 
+  // 내 습관 · 온보딩 표시 · 받은 응원을 서버에서 읽는다. 처음 한 번 실패하면 오류 빈 상태, 그 뒤 실패는 안내만 한다.
+  const readyRef = useRef(false);
+  const load = useCallback(async () => {
+    try {
+      const [its, onboarded, cs] = await Promise.all([listItems(), loadOnboarded(), listCheers("received")]);
+      if (needsOnboarding(its, onboarded)) {
+        router.replace("/schedule/daily-onboarding");
+        return;
+      }
+      setEntries(sync.seed(Object.fromEntries(its.map((item) => [item.id, item.entry]))));
+      setItems(its);
+      setCheers(cs);
+      setLoadFailed(null);
+      setLoaded(true);
+      readyRef.current = true;
+    } catch (error) {
+      if (readyRef.current) setSheet(infoSheet(failureNotice(error, "불러오지 못했어요")));
+      else setLoadFailed(error);
+    }
+  }, [router, sync]);
+
+  // 가족 탭 라벨용 요약(실패해도 라벨만 이름으로 남는다).
+  const loadSummary = useCallback(
+    () =>
+      listFamilySummary()
+        .then((list) => setSummary(Object.fromEntries(list.map((s) => [s.id, s]))))
+        .catch(() => {}),
+    [],
+  );
+
+  // 가족 한 사람의 오늘 습관. 개발용 가상 가족은 서버 없이 읽기 전용 mock 을 쓴다.
+  const loadFamily = useCallback(async (member) => {
+    if (!member || member.id === ME_ID || member.hasAccount === false) return; // 가상 가족은 mock 을 바로 쓴다(서버 호출 없음)
+    setFamilyView((prev) => ({ ...prev, [member.id]: { loading: true, error: null, rows: prev[member.id]?.rows ?? [] } }));
+    try {
+      const rows = await listFamilyToday(member.id);
+      setFamilyView((prev) => ({ ...prev, [member.id]: { loading: false, error: null, rows } }));
+    } catch (error) {
+      setFamilyView((prev) => ({ ...prev, [member.id]: { loading: false, error, rows: prev[member.id]?.rows ?? [] } }));
+    }
+  }, []);
+
+  // 화면에 올 때마다 읽는다. 나갈 때는 남은 횟수 저장을 바로 보내고 줄 메뉴를 닫는다.
   useFocusEffect(
     useCallback(() => {
       let alive = true;
-      Promise.all([listItems(scope), listEntries(scope, today), loadTabOrder(scope), loadOnboarded(scope), listCheers(scope)]).then(
-        ([its, ens, tb, onboarded, cs]) => {
-          if (!alive) return;
-          // 처음 열었고 항목도 없으면 온보딩으로 보낸다(완료 표시가 남으면 다시 보내지 않는다)
-          if (!onboarded && its.length === 0) {
-            router.replace("/schedule/daily-onboarding");
-            return;
-          }
-          setItems(its);
-          setEntries(ens);
-          setTabState(tb);
-          setCheers(cs);
-        },
-      );
+      load();
+      loadSummary();
+      dropLocalCopy(scope); // 지난 버전이 폰에 남긴 습관·기록·응원 사본은 버린다(서버가 기준이다)
+      loadTabOrder(scope).then((tb) => alive && setTabState(tb));
       return () => {
         alive = false;
+        sync.flushAll();
+        setMenuFor(null);
+        setShowMenuDots(false);
       };
-    }, [scope, today, router]),
+    }, [load, loadSummary, scope, sync]),
   );
 
-  // 가족 구성원마다 오늘 항목을 한 번 읽는다(탭 라벨의 완료 수에 쓴다).
-  useEffect(() => {
-    let alive = true;
-    const ids = familyKey ? familyKey.split(",") : [];
-    Promise.all(ids.map(async (id) => [id, await listFamilyToday(id)])).then((pairs) => {
-      if (alive) setFamilyItems(Object.fromEntries(pairs));
-    });
-    return () => {
-      alive = false;
-    };
-  }, [familyKey]);
+  // ── 탭 줄 ──
+  // 가족 오늘 줄: 개발용 가상 가족은 읽기 전용 mock 을 바로 쓰고, 실제 가족은 탭을 열어 받은 줄을 쓴다.
+  const isVirtualId = (id) => memberOf(id)?.hasAccount === false;
+  const familyRows = (id) => familyRowsOf(isVirtualId(id) ? (FAMILY_ITEMS_MOCK[id] ?? []) : (familyView[id]?.rows ?? []), today);
+  // 탭 라벨 숫자: 가상 가족은 mock 으로, 실제 가족은 서버 요약으로 센다.
+  const countsOf = (id) => {
+    if (isVirtualId(id)) {
+      const p = progressOf(familyRows(id), (row) => row.entry);
+      return { done: p.done, total: p.total };
+    }
+    const s = summary[id];
+    return s ? { done: s.done, total: s.total } : null;
+  };
 
-  // 통화 뒤 시트: 전화 앱에 다녀와서 앱이 다시 활성이 되면 연 가족의 메모 시트를 띄운다.
-  // 최신 openCallDone 을 ref 로 들고 있어 구독은 한 번만 붙인다.
-  const openCallDoneRef = useRef(null);
-  openCallDoneRef.current = openCallDone;
-  useEffect(() => {
-    const sub = AppState.addEventListener("change", (state) => {
-      if (state !== "active" || !pendingCall.current) return;
-      const memberId = pendingCall.current;
-      pendingCall.current = null;
-      openCallDoneRef.current?.(memberId);
-    });
-    return () => sub.remove();
-  }, []);
-
-  // 전화 번호: 전화 확인 시트를 열 때 한 번 읽는다.
-  useEffect(() => {
-    let alive = true;
-    setPhone(null);
-    if (callFor) listFamilyPhone(callFor).then((p) => alive && setPhone(p));
-    return () => {
-      alive = false;
-    };
-  }, [callFor]);
-
-  // 탭 줄: 나(고정) + 보이는 가족. 라벨은 "이름 완료/전체".
   const mine = todayItemsOf(items, today);
   const myProgress = progressOf(mine, (item) => entries[item.id]);
-  const familyRows = (id) => familyRowsOf(familyItems[id] ?? [], today);
   const tabList = [
     { id: ME_ID, label: tabLabel("나", myProgress.done, myProgress.total) },
     ...visibleIds.map((id) => {
-      const p = progressOf(familyRows(id), (row) => row.entry);
-      return { id, label: tabLabel(nameOf(id), p.done, p.total) };
+      const counts = countsOf(id);
+      return { id, label: counts ? tabLabel(nameOf(id), counts.done, counts.total) : nameOf(id) };
     }),
   ];
   const activeTab = tabList.some((t) => t.id === tab) ? tab : ME_ID;
   const isMe = activeTab === ME_ID;
+  const activeMember = memberOf(activeTab);
+  const isVirtual = !isMe && activeMember?.hasAccount === false;
+  // 가족 탭을 열면 그 사람의 오늘 습관을 한 번 읽는다(폴링 없음). 탭을 바꾸거나 새로고침할 때만 다시 읽는다.
+  useEffect(() => {
+    if (activeMember && activeMember.id !== ME_ID) loadFamily(activeMember);
+  }, [activeMember, loadFamily]);
+  const activeView = isMe ? null : familyView[activeTab];
   const activeRows = isMe ? [] : familyRows(activeTab);
   const activeProgress = progressOf(activeRows, (row) => row.entry);
   const cheerRows = cheerFor ? familyRows(cheerFor) : [];
@@ -201,17 +242,12 @@ export default function DailyCheckScreen() {
     setTab(id);
   };
 
-  // 한 번 체크·횟수는 바로 화면에 반영하고 이 폰에 저장한다.
-  const persistEntry = (itemId, next) => {
-    setEntries((prev) => ({ ...prev, [itemId]: next }));
-    setEntry(scope, today, itemId, next);
-  };
-  const onCheck = (item) => persistEntry(item.id, applyCheck(entries[item.id], nowClock()));
-  const onStep = (item, delta) => persistEntry(item.id, applyStep(item, entries[item.id], delta, nowClock()));
+  // ── 기록 ──
+  const onCheck = (item) => sync.change(item, applyCheck(sync.valueOf(item.id), nowClock()));
+  const onStep = (item, delta) => sync.change(item, applyStep(item, sync.valueOf(item.id), delta, nowClock()), { debounced: true });
 
   // ── 줄 메뉴 ──
   // 내 줄을 길게 누르면(ROW_MENU_HOLD_MS) 그 줄 아래에 수정·삭제 메뉴가 뜬다. 메뉴 바깥을 누르면 닫힌다.
-  // 메뉴: 수정은 항목 수정 화면, 삭제는 확인 뒤 지운다.
   const runMenu = (key) => {
     const item = menuFor ? mine[menuFor.index] : null;
     setMenuFor(null);
@@ -229,37 +265,59 @@ export default function DailyCheckScreen() {
         tone: "danger",
         onConfirm: async () => {
           setSheet(null);
-          await deleteItem(scope, item.id);
-          setItems((prev) => prev.filter((x) => x.id !== item.id));
+          try {
+            await deleteItem(item.id);
+            setItems((prev) => prev.filter((x) => x.id !== item.id));
+          } catch (error) {
+            setSheet(infoSheet(failureNotice(error, "지우지 못했어요")));
+          }
         },
       });
     }
   };
 
   // ── 응원 ──
-  // 고마워를 누르면 카드가 사라지고(전부 누르면 배너), 저장된 목록을 다시 읽는다.
+  // 고마워·닫기는 화면에서 먼저 바꾸고 서버에 보낸다. 실패하면 되돌리고 안내한다.
+  const patchCheer = (id, patch) => setCheers((prev) => prev.map((c) => (c.id === id ? { ...c, ...patch } : c)));
   const thankCheer = async (id) => {
-    await toggleCheerThanked(scope, id);
-    setCheers(await listCheers(scope));
+    patchCheer(id, { thanked: true });
+    try {
+      const row = await markCheerThanked(id);
+      setCheers((prev) => prev.map((c) => (c.id === id ? row : c)));
+    } catch (error) {
+      patchCheer(id, { thanked: false });
+      setSheet(infoSheet(failureNotice(error)));
+    }
+  };
+  const closeCheer = async (id) => {
+    patchCheer(id, { closed: true });
+    try {
+      const row = await markCheerClosed(id);
+      setCheers((prev) => prev.map((c) => (c.id === id ? row : c)));
+    } catch (error) {
+      patchCheer(id, { closed: false });
+      setSheet(infoSheet(failureNotice(error)));
+    }
   };
   const sendTo = async (memberId, cheer) => {
-    await sendCheer(scope, { ...cheer, toId: memberId, toName: nameOf(memberId), date: today, time: nowClock() });
-    setCheers(await listCheers(scope));
-    setCheerFor(null);
+    try {
+      await sendCheer({ toId: memberId, kind: cheer.kind, text: cheer.text, groupChat: cheer.groupChat });
+      setCheerFor(null);
+    } catch (error) {
+      setSheet(infoSheet(failureNotice(error, "보내지 못했어요")));
+    }
   };
 
   // ── 전화 ──
   const startCall = async (memberId) => {
-    if (!phone) return;
     setCallFor(null);
     pendingCall.current = memberId;
     try {
-      await Linking.openURL(`tel:${phone.dial}`);
+      await Linking.openURL("tel:"); // 번호 없이 전화 앱 키패드를 연다
     } catch {
       pendingCall.current = null;
       setSheet({
-        title: "전화 앱을 열지 못했어요",
-        body: "번호를 직접 눌러 전화해 주세요",
+        title: "전화 앱을 열 수 없어요",
         confirmLabel: "확인",
         onConfirm: () => setSheet(null),
       });
@@ -267,25 +325,57 @@ export default function DailyCheckScreen() {
   };
 
   // 전화 앱에서 돌아왔을 때: "안부 전화" 습관이 오늘 있고 아직 완료가 아닐 때만 시트를 띄운다(없거나 완료면 아무것도 안 한다)
+  const openCallDoneRef = useRef(null);
   function openCallDone(memberId) {
     if (!shouldShowCallDone(items, entries, today)) return;
     setCallDone({ memberId });
   }
+  openCallDoneRef.current = openCallDone;
+  useEffect(() => {
+    const sub = AppState.addEventListener("change", (state) => {
+      if (state === "background" || state === "inactive") {
+        sync.flushAll();
+        return;
+      }
+      if (state !== "active" || !pendingCall.current) return;
+      const memberId = pendingCall.current;
+      pendingCall.current = null;
+      openCallDoneRef.current?.(memberId);
+    });
+    return () => sub.remove();
+  }, [sync]);
 
   // "완료로 체크하기": 오늘 목록의 "안부 전화" 습관을 완료로 바꾸고 시트를 닫는다(시트는 습관이 있을 때만 열렸다).
   const finishCall = () => {
     const target = findCallItem(items, today);
-    if (target && !isDone(target, entries[target.id])) {
-      persistEntry(target.id, { done: true, count: 0, doneAt: nowClock() });
+    if (target && !isDone(target, sync.valueOf(target.id))) {
+      sync.change(target, { done: true, count: 0, doneAt: nowClock() });
     }
     setCallDone(null);
   };
   // "다음에 할게요": 아무것도 바꾸지 않고 닫는다.
   const laterCall = () => setCallDone(null);
 
+  // 당겨서 새로고침: 남은 저장을 먼저 보내고 내 습관·응원·요약(과 열린 가족 탭)을 다시 읽는다.
+  const onRefresh = async () => {
+    setRefreshing(true);
+    await sync.flushAll();
+    await Promise.all([load(), loadSummary(), isMe ? null : loadFamily(activeMember)]);
+    setRefreshing(false);
+  };
+
+  const meLoading = isMe && !loaded && !loadFailed;
+  const meFailed = isMe && loadFailed;
+  const familyLoading = !isMe && !isVirtual && (!activeView || activeView.loading) && !activeRows.length && !activeView?.error;
+  const familyFailed = !isMe && !isVirtual && activeView?.error && !activeRows.length;
+
   return (
     <SafeAreaView style={styles.safe} edges={["top"]} onTouchStart={onScreenTouch}>
-      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        contentContainerStyle={styles.content}
+        showsVerticalScrollIndicator={false}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+      >
         {/* 시안 순서: ① "‹ 일정" 줄 ② 제목 줄(오늘의 안녕 … 연필 편집) ③ 날짜 줄 */}
         <View style={styles.head}>
           <Pressable
@@ -336,7 +426,9 @@ export default function DailyCheckScreen() {
         </View>
 
         {isMe ? (
-          <ProgressCard tone="me" title="오늘 나의 체크" done={myProgress.done} total={myProgress.total} pct={myProgress.pct} />
+          loaded ? (
+            <ProgressCard tone="me" title="오늘 나의 체크" done={myProgress.done} total={myProgress.total} pct={myProgress.pct} />
+          ) : null
         ) : (
           <ProgressCard
             tone="family"
@@ -348,11 +440,10 @@ export default function DailyCheckScreen() {
           />
         )}
 
-        {isMe ? (
+        {isMe && loaded ? (
           <CheerStrip
             cheers={cheers}
             today={today}
-            dismissed={dismissedCheers}
             onReplyInfo={() =>
               setSheet({
                 title: "답장은 곧 만들어져요",
@@ -361,7 +452,7 @@ export default function DailyCheckScreen() {
               })
             }
             onThank={thankCheer}
-            onDismiss={(id) => setDismissedCheers((prev) => (prev.includes(id) ? prev : [...prev, id]))}
+            onDismiss={closeCheer}
             onOpenHistory={() => router.push("/schedule/daily-cheer-history")}
           />
         ) : null}
@@ -369,7 +460,11 @@ export default function DailyCheckScreen() {
         <View style={[styles.list, styles.listWrap]}>
           {/* 내 줄을 길게 누르면(ROW_MENU_HOLD_MS) 그 줄 아래에 수정·삭제 메뉴가 뜬다. 메뉴 바깥을 누르면 닫힌다. */}
           {isMe ? (
-            mine.length ? (
+            meLoading ? (
+              <Text style={styles.empty}>불러오는 중이에요</Text>
+            ) : meFailed ? (
+              <LoadError text={loadErrorText(loadFailed)} onRetry={load} />
+            ) : mine.length ? (
               mine.map((item, index) => (
                 <View key={item.id} style={styles.rowWrap} onTouchStart={markInside}>
                   <Pressable
@@ -405,6 +500,10 @@ export default function DailyCheckScreen() {
             ) : (
               <Text style={styles.empty}>오늘 해당하는 습관이 없어요, 아래에서 추가해 보세요</Text>
             )
+          ) : familyLoading ? (
+            <Text style={styles.empty}>불러오는 중이에요</Text>
+          ) : familyFailed ? (
+            <LoadError text={loadErrorText(activeView.error)} onRetry={() => loadFamily(activeMember)} />
           ) : activeRows.length ? (
             activeRows.map((row) => (
               <View key={row.id} style={styles.familyRow}>
@@ -437,15 +536,21 @@ export default function DailyCheckScreen() {
         </View>
 
         {isMe ? (
+          loaded ? (
+            <View style={styles.footer}>
+              <Pressable
+                onPress={() => router.push("/schedule/daily-item")}
+                style={styles.addButton}
+                accessibilityRole="button"
+                accessibilityLabel="습관 추가"
+              >
+                <Text style={styles.addText}>+ 습관 추가</Text>
+              </Pressable>
+            </View>
+          ) : null
+        ) : isVirtual ? (
           <View style={styles.footer}>
-            <Pressable
-              onPress={() => router.push("/schedule/daily-item")}
-              style={styles.addButton}
-              accessibilityRole="button"
-              accessibilityLabel="습관 추가"
-            >
-              <Text style={styles.addText}>+ 습관 추가</Text>
-            </Pressable>
+            <Text style={styles.devNote}>개발용 가상 가족이에요(서버 데이터가 아니에요)</Text>
           </View>
         ) : (
           <View style={styles.footer}>
@@ -458,14 +563,16 @@ export default function DailyCheckScreen() {
               >
                 <Text style={styles.actionLineText}>응원 보내기</Text>
               </Pressable>
-              <Pressable
-                onPress={() => setCallFor(activeTab)}
-                style={[styles.actionBtn, styles.actionPeach]}
-                accessibilityRole="button"
-                accessibilityLabel={`${nameOf(activeTab)}에게 전화`}
-              >
-                <Text style={styles.actionPeachText}>{`${nameOf(activeTab)}에게 전화`}</Text>
-              </Pressable>
+              {canCall ? (
+                <Pressable
+                  onPress={() => setCallFor(activeTab)}
+                  style={[styles.actionBtn, styles.actionPeach]}
+                  accessibilityRole="button"
+                  accessibilityLabel={`${nameOf(activeTab)}에게 전화`}
+                >
+                  <Text style={styles.actionPeachText}>{`${nameOf(activeTab)}에게 전화`}</Text>
+                </Pressable>
+              ) : null}
             </View>
           </View>
         )}
@@ -483,7 +590,6 @@ export default function DailyCheckScreen() {
         onClose={() => setCallFor(null)}
         memberId={callFor ?? ""}
         memberName={nameOf(callFor ?? "")}
-        phone={phone}
         points={talkingPoints(callRows)}
         onCall={() => startCall(callFor)}
       />
@@ -507,7 +613,19 @@ export default function DailyCheckScreen() {
   );
 }
 
-/** 탭 줄의 사람 칩. 선택됨은 외곽선 없이 노란 채움(테두리는 바탕색과 같게 두어 크기를 맞춘다). */
+/** 불러오기 실패 빈 상태: 한 줄 글자와 다시 시도 버튼. */
+function LoadError({ text, onRetry }) {
+  return (
+    <View style={styles.loadError}>
+      <Text style={styles.empty}>{text}</Text>
+      <Pressable onPress={onRetry} style={styles.retry} accessibilityRole="button" accessibilityLabel="다시 시도">
+        <Text style={styles.retryText}>다시 시도</Text>
+      </Pressable>
+    </View>
+  );
+}
+
+/** 탭 줄의 사람 칩. 선택됨은 진한 갈색 알약(외곽선 없음), 아니면 옅은 외곽선. */
 function TabChip({ t, on, onPress }) {
   return (
     <Pressable
@@ -608,7 +726,20 @@ const styles = StyleSheet.create({
   // 점 세 개 버튼: 줄 왼쪽, 44×44 터치 칸
   dots: { width: 44, height: 44, alignItems: "center", justifyContent: "center" },
   empty: { ...font.caption, color: colors.textSub, textAlign: "center", paddingVertical: spacing.lg },
+  loadError: { alignItems: "center", gap: 8 },
+  retry: {
+    minHeight: 44,
+    paddingHorizontal: 18,
+    borderRadius: 22,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.card,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  retryText: { fontSize: 15, fontWeight: "700", color: colors.text },
   footer: { paddingHorizontal: spacing.xl, gap: 8, paddingTop: 4 },
+  devNote: { ...font.caption, color: colors.textSub, textAlign: "center", paddingVertical: spacing.sm },
   addButton: {
     height: 56,
     borderRadius: radius.button,

@@ -6,45 +6,60 @@ import { SafeAreaView } from "react-native-safe-area-context";
 
 import { colors, radius, spacing } from "@/theme";
 
+import ConfirmSheet from "../components/ConfirmSheet";
 import { finishOnboarding, listItems } from "../api";
 import { RECOMMENDED_NAMES } from "../mock";
 import { SELECT_BG, onboardingChoices, onboardingToSave } from "../logic";
-import { useDailyScope } from "../scope";
+import { failureNotice } from "../serverMap";
 
 /**
- * 처음 시작하기: 매일 챙길 일을 골라 항목으로 만든다. 처음 열고 항목이 없을 때만 온다.
+ * 처음 시작하기: 매일 챙길 일을 골라 서버에 습관으로 만든다. 서버에 습관이 없고 온보딩을 안 마쳤을 때만 온다.
  * 카드는 2열 × 3행(여섯 개)을 행 단위로 그린다. 선택 카드는 외곽선 없이 노란 채움만.
  * 순서: "+ 직접 만들기" → "이대로 시작하기" → "건너뛰기".
- * "직접 만들기"는 고른 항목을 먼저 등록하고(이미 있는 이름은 뺀다) 항목 추가 화면으로 간다. 온보딩 완료를 남기므로 돌아와도 온보딩은 다시 뜨지 않는다.
+ * "직접 만들기"는 고른 항목을 먼저 만들고(이미 있는 이름은 뺀다) 항목 추가 화면으로 간다. 온보딩 완료를 남기므로 돌아와도 온보딩은 다시 뜨지 않는다.
  */
 export default function DailyOnboardingScreen() {
   const router = useRouter();
-  const scope = useDailyScope();
   const choices = useMemo(() => onboardingChoices(RECOMMENDED_NAMES), []);
   const [picked, setPicked] = useState(() => choices.filter((c) => c.preselected).map((c) => c.name));
   const [busy, setBusy] = useState(false);
+  const [sheet, setSheet] = useState(null); // 안내 팝업 내용. null 이면 닫힘
 
   const toggle = (name) => setPicked((prev) => (prev.includes(name) ? prev.filter((x) => x !== name) : [...prev, name]));
 
-  // 고른 항목을 저장하고 온보딩 완료를 남긴다. 이미 있는 이름은 다시 넣지 않는다.
+  // 고른 항목을 만들고 온보딩 완료를 남긴다. 이미 있는 이름은 다시 넣지 않는다.
   const saveChosen = async (names) => {
-    const existing = (await listItems(scope)).map((x) => x.name);
-    await finishOnboarding(scope, onboardingToSave(choices, names, existing));
+    const existing = (await listItems()).map((x) => x.name);
+    await finishOnboarding(onboardingToSave(choices, names, existing));
+  };
+
+  const fail = (error) => {
+    const notice = failureNotice(error);
+    setBusy(false);
+    setSheet({ title: notice.title, body: notice.body, confirmLabel: "확인" });
   };
 
   const finish = async (names) => {
     if (busy) return;
     setBusy(true);
-    await saveChosen(names);
-    router.replace("/schedule/daily-check");
+    try {
+      await saveChosen(names);
+      router.replace("/schedule/daily-check");
+    } catch (error) {
+      fail(error);
+    }
   };
 
-  // 직접 만들기: 고른 것을 먼저 등록하고, 항목 추가 화면으로 간다(그 화면에서 나오면 데일리 체크 메인).
+  // 직접 만들기: 고른 것을 먼저 만들고, 항목 추가 화면으로 간다(그 화면에서 나오면 데일리 체크 메인).
   const createOwn = async () => {
     if (busy) return;
     setBusy(true);
-    await saveChosen(picked);
-    router.replace({ pathname: "/schedule/daily-item", params: { fromOnboarding: "1" } });
+    try {
+      await saveChosen(picked);
+      router.replace({ pathname: "/schedule/daily-item", params: { fromOnboarding: "1" } });
+    } catch (error) {
+      fail(error);
+    }
   };
 
   const rows = [];
@@ -115,6 +130,13 @@ export default function DailyOnboardingScreen() {
           <Text style={styles.skipText}>건너뛰기</Text>
         </Pressable>
       </ScrollView>
+      <ConfirmSheet
+        visible={sheet !== null}
+        title={sheet?.title ?? ""}
+        body={sheet?.body}
+        confirmLabel={sheet?.confirmLabel ?? "확인"}
+        onConfirm={() => setSheet(null)}
+      />
     </SafeAreaView>
   );
 }

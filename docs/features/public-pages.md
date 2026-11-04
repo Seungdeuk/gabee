@@ -7,6 +7,9 @@
 - `layout.py`: 공통 HTML 틀(밝은/어두운 모드, 모바일 폭). `pages.py`: 본문. 본문은 코드에서 확인한 사실만 쓴다(조사한 근거: 사용자 모델·소셜 로그인·LLM 래퍼·위치 7일 보관 등).
 - 문의 이메일은 설정 `SUPPORT_EMAIL`(`.env.example`)에서 읽어 꼬리말에 보인다(비우면 안 보인다). 값은 이스케이프해 넣는다.
 
+## 카카오 로그인 중계 (`GET /auth/kakao/callback`)
+모바일 카카오 로그인용이다. 카카오는 `gabee://` 를 Redirect URI 로 받지 않아서, https 주소로 돌려받은 `code`·`state`·`error`·`error_description` 을 `gabee://kakao?...` 로 302 리다이렉트한다(돌아갈 곳 고정, 다른 파라미터 버림, 값 길이 2048자 제한, `Cache-Control: no-store`, `Referrer-Policy: no-referrer`). 자동 이동이 막히는 브라우저를 위해 "앱으로 돌아가기" 버튼도 본문에 둔다. 코드는 서버에 저장하거나 검증하지 않는다. 시험은 `test_public_pages.py` 의 `test_kakao_callback_*`.
+
 ## 팀원 방침과의 관계
 팀원이 만든 GitHub Pages 방침 v0.1(`kangminhun.github.io/gabee-privacy/`)의 값(운영 주체 강민훈, 문의 이메일 삭제 요청 절차, 만 14세 미만 미수용, 위치 미수집, 위탁업체 Anthropic·Supabase·Google Cloud)을 합쳤다. 계정·데이터 삭제는 팀원의 `delete-account.html` 로 연결한다(이메일 접수). 본문은 코드 기준으로 더 상세하다(카카오 로그인, IP 주소 기록, TypeSafe 문서 분류, AI 가리기 처리의 한계, AI 사용 기록 90일).
 

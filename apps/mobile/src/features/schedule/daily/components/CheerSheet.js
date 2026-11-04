@@ -6,7 +6,7 @@ import { colors, font, radius, spacing } from "@/theme";
 
 import BottomSheet from "../../components/BottomSheet";
 import { FormField, TextBox } from "../../components/FormControls";
-import { CHEER_KINDS, CHEER_MESSAGES, cheerTone } from "../logic";
+import { CHEER_KINDS, CHEER_MESSAGES, CHEER_TEXT_MAX, cheerTextError, cheerTone } from "../logic";
 
 const KIND_ICON = { love: "heart-outline", best: "thumbs-up-outline", well: "star-outline" };
 
@@ -36,6 +36,11 @@ export default function CheerSheet({ visible, onClose, title, subtitle, onSend }
     const text = custom.trim() || picked;
     if (!text) {
       setError("한마디를 고르거나 직접 적어 주세요");
+      return;
+    }
+    const lengthError = cheerTextError(text);
+    if (lengthError) {
+      setError(lengthError);
       return;
     }
     onSend({ kind, text, groupChat });
@@ -92,7 +97,7 @@ export default function CheerSheet({ visible, onClose, title, subtitle, onSend }
         <TextBox
           value={custom}
           onChangeText={(text) => {
-            setCustom(text);
+            setCustom(text.slice(0, CHEER_TEXT_MAX)); // 앱 한도 50자까지(maxLength 와 같은 동작)
             setError("");
           }}
           placeholder="한마디를 적어 보세요"

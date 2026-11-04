@@ -1,11 +1,12 @@
-from datetime import date
+from datetime import date, datetime
 
 from pgvector.sqlalchemy import Vector
 from sqlalchemy import Float, String, cast, delete, literal, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from .embedding import cosine
-from .models import EMBED_DIM, KnowledgeChunk, KnowledgeItem
+from .models import EMBED_DIM, KnowledgeChunk, KnowledgeItem, KnowledgeItemRead
 
 
 def add_item(db: Session, item: KnowledgeItem, chunks: list[KnowledgeChunk]) -> KnowledgeItem:
@@ -29,10 +30,35 @@ def replace_chunks(db: Session, item: KnowledgeItem, chunks: list[KnowledgeChunk
 
 
 def delete_item(db: Session, item: KnowledgeItem) -> None:
-    """기록과 그 조각을 함께 지운다."""
+    """기록과 그 조각·읽음 기록을 함께 지운다."""
     db.execute(delete(KnowledgeChunk).where(KnowledgeChunk.item_id == item.id))
+    db.execute(delete(KnowledgeItemRead).where(KnowledgeItemRead.item_id == item.id))
     db.delete(item)
     db.commit()
+
+
+def mark_read(db: Session, item_id: str, user_id: str) -> None:
+    """이 사용자가 기록을 읽었다고 남긴다. 이미 있으면 아무것도 하지 않는다(동시에 불려도 안전)."""
+    if db.get(KnowledgeItemRead, (item_id, user_id)) is not None:
+        return
+    db.add(KnowledgeItemRead(item_id=item_id, user_id=user_id))
+    try:
+        db.commit()
+    except IntegrityError:  # 동시에 같은 읽음이 먼저 저장됨
+        db.rollback()
+
+
+def seen_item_ids(db: Session, user_id: str, item_ids: list[str]) -> set[str]:
+    """주어진 기록 중 이 사용자가 읽은 것의 id (쿼리 한 번)."""
+    if not item_ids:
+        return set()
+    return set(
+        db.scalars(
+            select(KnowledgeItemRead.item_id).where(
+                KnowledgeItemRead.user_id == user_id, KnowledgeItemRead.item_id.in_(item_ids)
+            )
+        )
+    )
 
 
 def path_in_use(db: Session, group_id: str, source_path: str) -> bool:
@@ -54,11 +80,21 @@ def get_item(db: Session, group_id: str, item_id: str) -> KnowledgeItem | None:
 
 
 def list_items(
-    db: Session, group_id: str, kind_label: str | None = None, limit: int = 50
+    db: Session,
+    group_id: str,
+    kind_label: str | None = None,
+    limit: int = 50,
+    created_from: datetime | None = None,
+    created_to: datetime | None = None,
 ) -> list[KnowledgeItem]:
+    """created_from 이상, created_to 미만(둘 다 UTC aware datetime)인 기록만 거른다. 안 주면 거르지 않는다."""
     q = select(KnowledgeItem).where(KnowledgeItem.group_id == group_id)
     if kind_label:
         q = q.where(KnowledgeItem.kind_label == kind_label)
+    if created_from is not None:
+        q = q.where(KnowledgeItem.created_at >= created_from)
+    if created_to is not None:
+        q = q.where(KnowledgeItem.created_at < created_to)
     return list(
         db.scalars(
             q.order_by(KnowledgeItem.occurred_on.desc(), KnowledgeItem.created_at.desc()).limit(

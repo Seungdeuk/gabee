@@ -61,17 +61,18 @@ test("반복 빠른 선택 칩 순서와 글자: 모두 / 평일 / 주말 / 해�
   assert.deepEqual(DAY_PRESETS.map((p) => p.label), ["모두", "평일", "주말", "해제"]);
 });
 
-test("닫은 카드는 메인 카드에서 빠지고, 고마워 처리와는 따로 본다", () => {
-  const list = [received({ id: "a" }), received({ id: "b", fromName: "딸" })];
-  assert.deepEqual(openCheersOf(list, TODAY, ["a"]).map((c) => c.id), ["b"]);
-  assert.equal(cheerCaption(list, TODAY, ["a"]), "오늘 받은 응원 1 / 2");
+test("닫은 카드는 메인 카드에서 빠지고, 고마워 처리와는 따로 본다(서버 closed 기준)", () => {
+  const list = [received({ id: "a", closed: true }), received({ id: "b", fromName: "딸" })];
+  assert.deepEqual(openCheersOf(list, TODAY).map((c) => c.id), ["b"]);
+  assert.equal(cheerCaption(list, TODAY), "오늘 받은 응원 1 / 2");
   // 닫은 카드는 고마워 보냄이 되지 않는다(thanked 는 그대로 false)
   assert.equal(list[0].thanked, false);
 });
 
 test("모두 처리(고마워 또는 닫기)하면 배너 조건이 된다", () => {
-  const list = [received({ id: "a" }), received({ id: "b", fromName: "딸", thanked: true })];
-  assert.equal(allCheersHandled(list, TODAY, []), false);
-  assert.equal(allCheersHandled(list, TODAY, ["a"]), true);
-  assert.equal(allCheersHandled([], TODAY, []), false);
+  const handledByThanks = [received({ id: "a" }), received({ id: "b", fromName: "딸", thanked: true })];
+  assert.equal(allCheersHandled(handledByThanks, TODAY), false);
+  const handled = [received({ id: "a", closed: true }), received({ id: "b", fromName: "딸", thanked: true })];
+  assert.equal(allCheersHandled(handled, TODAY), true);
+  assert.equal(allCheersHandled([], TODAY), false);
 });

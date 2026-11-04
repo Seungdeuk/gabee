@@ -5,6 +5,7 @@
 둘은 섞이지 않는다: Bearer 가 있으면 Bearer 만, 정식 회원은 레거시 토큰을 쓸 수 없다.
 """
 
+from collections.abc import Callable
 from typing import Annotated
 
 from fastapi import Depends, Header
@@ -57,6 +58,17 @@ def bearer_user(
     return _user_from_bearer(authorization, db)
 
 
+def _require_tester_consent(user: User) -> None:
+    """테스트 참여 동의를 요구하는 설정이면 동의 버전이 다른 정식 회원을 403 으로 막는다.
+    `current_user` 와 `require_operator` 가 같은 조건을 쓰도록 한 곳에 둔다."""
+    if (
+        settings.require_tester_consent
+        and user.tester_consent_version != settings.tester_consent_version
+    ):
+        # /auth/me 와 동의 저장(bearer_user)은 막지 않아서 앱이 동의 화면을 띄우고 동의를 저장할 수 있다
+        raise ApiError(403, "tester_consent_required", "테스트 참여 동의서에 먼저 동의해 주세요")
+
+
 def current_user(
     authorization: Annotated[str | None, Header()] = None,
     x_gyeot_token: Annotated[str | None, Header()] = None,
@@ -66,14 +78,7 @@ def current_user(
     넘어가지 않는다(우회 방지). 없을 때만 레거시 X-Gyeot-Token 을 본다."""
     if authorization is not None:
         user = _user_from_bearer(authorization, db)
-        if (
-            settings.require_tester_consent
-            and user.tester_consent_version != settings.tester_consent_version
-        ):
-            # /auth/me 와 동의 저장(bearer_user)은 막지 않아서 앱이 동의 화면을 띄우고 동의를 저장할 수 있다
-            raise ApiError(
-                403, "tester_consent_required", "테스트 참여 동의서에 먼저 동의해 주세요"
-            )
+        _require_tester_consent(user)
         return user
     if not x_gyeot_token:
         raise ApiError(401, "token_required", "먼저 가입하거나 로그인해 주세요")
@@ -87,6 +92,40 @@ def current_user(
         # 존재 여부를 알려주지 않으려 같은 응답을 쓴다.
         raise ApiError(401, "token_invalid", "토큰이 올바르지 않아요")
     return user
+
+
+# 운영자 scope → 허용 목록 설정 이름. 두 scope 는 서로를 포함하지 않는다(한 사람이 둘 다 맡으면 두 목록에 같은 id 를 둔다).
+OPERATOR_SCOPES: dict[str, str] = {
+    "ops_admin": "ops_admin_user_ids",  # 운영 관리자 페이지(서버·시스템 상태)
+    "service_admin": "service_admin_user_ids",  # 서비스 관리자 페이지(사용자 이용·서비스 상태)
+}
+
+
+def parse_user_id_list(raw: str) -> frozenset[str]:
+    """쉼표로 구분한 사용자 id 목록을 집합으로 바꾼다. 앞뒤 공백은 지우고 빈 항목은 무시한다.
+    비교는 정확히 일치할 때만 통과하므로 부분 일치·대소문자 무시는 하지 않는다."""
+    return frozenset(part.strip() for part in raw.split(",") if part.strip())
+
+
+def require_operator(scope: str) -> Callable[..., User]:
+    """서비스 운영자만 통과시키는 의존성을 만든다. 예: `Depends(require_operator("ops_admin"))`.
+
+    판단 기준은 가족 역할(group_members.role)이 아니라 scope 별 허용 목록(환경변수)의 사용자 id 뿐이다.
+    순서: Bearer(JWT) 인증 → 허용 목록 → 테스트 참여 동의. 인증된 비운영자는 동의 여부와 상관없이 항상 같은 403
+    `operator_required` 이고(토큰이 없거나 만료·무효이면 그 전에 401), 허용 목록의 내용·크기는 응답에 드러내지 않는다. 목록은 요청마다 settings 에서 읽고,
+    비어 있거나 설정이 없으면 아무도 허용하지 않는다. 알 수 없는 scope 는 의존성을 만들 때 ValueError 로 알린다.
+    """
+    field = OPERATOR_SCOPES.get(scope)
+    if field is None:
+        raise ValueError(f"알 수 없는 운영자 scope: {scope!r} (가능: {', '.join(OPERATOR_SCOPES)})")
+
+    def dependency(user: User = Depends(bearer_user)) -> User:
+        if user.id not in parse_user_id_list(getattr(settings, field)):
+            raise ApiError(403, "operator_required", "운영자 권한이 필요해요")
+        _require_tester_consent(user)
+        return user
+
+    return dependency
 
 
 def ensure_group_member(db: Session, user_id: str, group_id: str) -> None:

@@ -11,6 +11,7 @@ import { FormField, TextBox } from "../../components/FormControls";
 import ConfirmSheet, { ConfirmBody } from "../components/ConfirmSheet";
 import { deleteItem, listItems, saveItem } from "../api";
 import { RECOMMEND_POOL } from "../mock";
+import { failureNotice } from "../serverMap";
 import {
   ALL_DAYS,
   DAY_PRESETS,
@@ -26,9 +27,12 @@ import {
   recommendAvailable,
   recommendToForm,
   stepGoalText,
+  NAME_MAX,
   validateItem,
 } from "../logic";
-import { useDailyScope } from "../scope";
+
+/** 안내 팝업 내용(확인 한 개). */
+const infoSheet = (notice) => ({ title: notice.title, body: notice.body, confirmLabel: "확인" });
 
 const TYPE_OPTIONS = [
   { key: "check", label: "한 번 체크" },
@@ -49,7 +53,6 @@ export default function DailyItemScreen() {
   const pType = typeof params.type === "string" ? params.type : "";
   const pGoal = typeof params.goalText === "string" ? params.goalText : "";
   const editing = Boolean(editingId);
-  const scope = useDailyScope();
 
   const [name, setName] = useState("");
   const [type, setType] = useState("check");
@@ -68,21 +71,23 @@ export default function DailyItemScreen() {
   useFocusEffect(
     useCallback(() => {
       let alive = true;
-      listItems(scope).then((list) => {
-        if (!alive) return;
-        setExisting(list.map((x) => x.name));
-        const item = editingId ? list.find((x) => x.id === editingId) : null;
-        if (!item) return;
-        setName(item.name);
-        setType(item.type);
-        setGoalText(formatGoal(item.goal, item.unit));
-        setDays(item.days);
-        setShare(Boolean(item.shareWithFamily));
-      });
+      listItems()
+        .then((list) => {
+          if (!alive) return;
+          setExisting(list.map((x) => x.name));
+          const item = editingId ? list.find((x) => x.id === editingId) : null;
+          if (!item) return;
+          setName(item.name);
+          setType(item.type);
+          setGoalText(formatGoal(item.goal, item.unit));
+          setDays(item.days);
+          setShare(Boolean(item.shareWithFamily));
+        })
+        .catch((error) => alive && setSheet(infoSheet(failureNotice(error, "불러오지 못했어요"))));
       return () => {
         alive = false;
       };
-    }, [editingId, scope]),
+    }, [editingId]),
   );
 
   // 추천 칩에서 넘어온 값(이름·체크 방식·목표)으로 새 항목 폼을 채운다. 저장은 사용자가 한다.
@@ -130,8 +135,13 @@ export default function DailyItemScreen() {
       return;
     }
     setBusy(true);
-    await saveItem(scope, buildItem(draft));
-    leave();
+    try {
+      await saveItem(buildItem(draft));
+      leave();
+    } catch (saveError) {
+      setBusy(false);
+      setSheet(infoSheet(failureNotice(saveError)));
+    }
   };
 
   const remove = () => {
@@ -143,8 +153,12 @@ export default function DailyItemScreen() {
       tone: "danger",
       onConfirm: async () => {
         setSheet(null);
-        await deleteItem(scope, editingId);
-        leave();
+        try {
+          await deleteItem(editingId);
+          leave();
+        } catch (deleteError) {
+          setSheet(infoSheet(failureNotice(deleteError, "지우지 못했어요")));
+        }
       },
     });
   };
@@ -181,7 +195,8 @@ export default function DailyItemScreen() {
               <TextBox
                 value={name}
                 onChangeText={(text) => {
-                  setName(text);
+                  // 최대 글자 수(앱 한도 20자)를 넘기지 못하게 자른다(maxLength 와 같은 동작)
+                  setName(text.slice(0, NAME_MAX));
                   setPickedRec("");
                   setError("");
                 }}

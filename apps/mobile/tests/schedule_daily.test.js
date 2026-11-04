@@ -2,7 +2,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { FAMILY_PHONE_MOCK, SEED_ENTRIES, SEED_ITEMS, seedCheers } from "../src/features/schedule/daily/mock.js";
 import {
   ALL_DAYS,
   WEEKDAYS,
@@ -310,16 +309,14 @@ test("항목 아래 한 줄 글자와 시각 표시", () => {
   assert.match(nowClock(new Date(2026, 10, 2, 7, 5)), /^07:05$/);
 });
 
-test("시드 데이터(시안 Main.dc.html): 물 5/8, 영양제 8:10 완료, 알림장 4:30 완료, 안부 전화 미완료", () => {
-  const byId = Object.fromEntries(SEED_ITEMS.map((i) => [i.id, i]));
-  assert.equal(byId["seed-water"].type, "count");
-  assert.equal(byId["seed-water"].goal, 8);
-  assert.equal(byId["seed-call"].shareWithFamily, false);
-  assert.equal(isDone(byId["seed-water"], SEED_ENTRIES["seed-water"]), false);
-  assert.equal(SEED_ENTRIES["seed-water"].count, 5);
-  assert.equal(itemSubText(byId["seed-vit"], SEED_ENTRIES["seed-vit"]), "오전 8:10 완료");
-  assert.equal(itemSubText(byId["seed-note"], SEED_ENTRIES["seed-note"]), "오후 4:30 완료");
-  assert.equal(isDone(byId["seed-call"], SEED_ENTRIES["seed-call"]), false);
+test("완료 한 줄 글자: 한 번 체크는 시각과 함께, 횟수는 목표 글자(시안 값의 형식)", () => {
+  const vit = { id: "v", name: "영양제 먹기", type: "check", goal: 1, unit: "", days: ALL_DAYS, alarm: false, shareWithFamily: true };
+  const water = { id: "w", name: "물 마시기", type: "count", goal: 8, unit: "잔", days: ALL_DAYS, alarm: false, shareWithFamily: true };
+  assert.equal(itemSubText(vit, { done: true, count: 0, doneAt: "08:10" }), "오전 8:10 완료");
+  assert.equal(itemSubText(vit, { done: true, count: 0, doneAt: "16:30" }), "오후 4:30 완료");
+  assert.equal(itemSubText(water, { done: false, count: 5, doneAt: null }), "하루 8잔 목표");
+  assert.equal(countChipText({ count: 5 }, 8), "5/8");
+  assert.equal(isDone(water, { done: false, count: 5, doneAt: null }), false);
 });
 
 // ── 2차: 온보딩 · 응원 · 전화 ──
@@ -352,12 +349,6 @@ test("받은 응원: 오늘 받은 것만 세고, 날짜별로 최근 날짜 먼
   const groups = groupCheersByDate(list.filter((c) => c.direction === "received"), "2026-11-02");
   assert.deepEqual(groups.map((g) => g.label), ["오늘", "어제"]);
   assert.deepEqual(groups[0].items.map((c) => c.id), ["b", "a"]);
-});
-
-test("시드 응원: 오늘 받은 것이 두 개(아들, 딸)이고 한 개는 고마워 표시가 있다", () => {
-  const list = seedCheers("2026-11-02");
-  assert.equal(receivedTodayOf(list, "2026-11-02").length, 2);
-  assert.equal(list.filter((c) => c.thanked).length, 1);
 });
 
 test("온보딩 목록: 아홉 개, 처음부터 고른 것은 세 개, 이름이 겹치지 않는다", () => {
@@ -416,9 +407,3 @@ test("이야깃거리: 횟수 항목 완료, 완료가 없을 때 기록 없는 
   ]);
 });
 
-test("가족 전화번호 mock: 가린 번호와 전화 번호가 같은 끝자리를 가진다", () => {
-  for (const p of Object.values(FAMILY_PHONE_MOCK)) {
-    assert.match(p.masked, /^010-\*\*\*\*-\d{4}$/);
-    assert.equal(p.dial.slice(-4), p.masked.slice(-4));
-  }
-});

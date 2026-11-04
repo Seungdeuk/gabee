@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from datetime import date
+from datetime import UTC, date, datetime, time, timedelta
 
 from sqlalchemy.orm import Session
 
@@ -171,10 +171,59 @@ def get_item(db: Session, group_id: str, item_id: str) -> KnowledgeItem:
     return item
 
 
+def mark_read(db: Session, item_id: str, user_id: str) -> None:
+    """상세를 연 사용자의 읽음을 남긴다(멱등)."""
+    repo.mark_read(db, item_id, user_id)
+
+
+def seen_ids(db: Session, user_id: str, items: list[KnowledgeItem]) -> set[str]:
+    """이 사용자가 본 기록의 id: 직접 올렸거나 상세를 열어 읽음이 남은 것."""
+    mine = {i.id for i in items if i.created_by == user_id}
+    rest = [i.id for i in items if i.id not in mine]
+    return mine | repo.seen_item_ids(db, user_id, rest)
+
+
+def attach_seen(db: Session, user_id: str, items: list[KnowledgeItem]) -> list[KnowledgeItem]:
+    """각 기록에 이 사용자의 읽음 여부(`seen`)를 붙여 돌려준다."""
+    seen = seen_ids(db, user_id, items)
+    for item in items:
+        item.seen = item.id in seen
+    return items
+
+
+def created_bounds(
+    created_from: date | None, created_to: date | None, offset_hours: int
+) -> tuple[datetime | None, datetime | None]:
+    """한국 시간(설정 `ai_day_utc_offset_hours`) 달력 날짜 범위(양끝 포함)를 UTC 경계(시작 이상, 끝 미만)로 바꾼다.
+
+    시작이 끝보다 늦거나 날짜가 표현 범위를 넘으면 ValueError 를 낸다(라우터가 400 으로 바꾼다).
+    """
+    if created_from and created_to and created_from > created_to:
+        raise ValueError("시작 날짜가 끝 날짜보다 늦을 수 없어요.")
+    offset = timedelta(hours=offset_hours)
+    try:
+        start = (
+            datetime.combine(created_from, time.min, tzinfo=UTC) - offset if created_from else None
+        )
+        end = (
+            datetime.combine(created_to + timedelta(days=1), time.min, tzinfo=UTC) - offset
+            if created_to
+            else None
+        )
+    except OverflowError as exc:
+        raise ValueError("날짜가 너무 크거나 작아요.") from exc
+    return start, end
+
+
 def list_items(
-    db: Session, group_id: str, kind_label: str | None = None, limit: int = 50
+    db: Session,
+    group_id: str,
+    kind_label: str | None = None,
+    limit: int = 50,
+    created_from: datetime | None = None,
+    created_to: datetime | None = None,
 ) -> list[KnowledgeItem]:
-    return repo.list_items(db, group_id, kind_label, limit)
+    return repo.list_items(db, group_id, kind_label, limit, created_from, created_to)
 
 
 def reindex(db: Session, group_id: str | None = None) -> int:
