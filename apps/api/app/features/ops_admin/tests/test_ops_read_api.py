@@ -149,3 +149,16 @@ def _ops_headers(client, monkeypatch) -> dict:
     headers, user_id = _member(client, "ops_tester2")
     monkeypatch.setattr(settings, "ops_admin_user_ids", user_id)
     return headers
+
+
+def test_ops_read_api_calls_are_not_counted_in_their_own_metrics(client, monkeypatch):
+    from app.features.ops_admin import service
+
+    monkeypatch.setattr(settings, "ops_metrics_enabled", True)
+    service.aggregator.reset()
+    assert service.is_excluded("/admin/ops/summary") and service.is_excluded("/admin/ops/apis")
+    assert not service.is_excluded("/admin/opsx")  # 같은 경로 아래만 제외한다
+    client.get("/admin/ops/summary")
+    client.get("/admin/ops/apis?range=1h")
+    assert service.aggregator.take() == []
+    service.aggregator.reset()
