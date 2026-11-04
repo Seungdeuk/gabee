@@ -13,6 +13,7 @@ from app.features.family_group.photo_limit import PhotoBodyLimitMiddleware
 from app.features.family_group.router import router as family_group_router
 from app.features.notifications.router import router as notifications_router
 from app.features.schedule.router import router as schedule_router
+from app.features.support.router import router as support_router
 from app.shared.config import settings
 from app.shared.db import init_db
 from app.shared.errors import register_error_handlers
@@ -63,6 +64,7 @@ for feature, router in (
     ("billing", billing_router),
     ("ai_assistant", ai_assistant_router),
     ("notifications", notifications_router),
+    ("support", support_router),
 ):
     deps = []
     deps.append(Depends(schema_ready(feature)))
