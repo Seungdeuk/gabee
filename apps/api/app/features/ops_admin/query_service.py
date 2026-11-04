@@ -13,7 +13,17 @@ from sqlalchemy.orm import Session
 from app.shared.config import settings
 
 from . import repository
-from .schemas import ApiRouteOut, ApisOut, RangeKey, SeriesPoint, SummaryOut
+from .models import OpsErrorEvent
+from .schemas import (
+    ApiRouteOut,
+    ApisOut,
+    ErrorEventOut,
+    ErrorKind,
+    ErrorListOut,
+    RangeKey,
+    SeriesPoint,
+    SummaryOut,
+)
 
 RANGES: dict[str, timedelta] = {
     "1h": timedelta(hours=1),
@@ -134,3 +144,48 @@ def apis(db: Session, range_key: RangeKey, now: datetime | None = None) -> ApisO
         truncated=len(items) > MAX_ROUTES,
         items=items[:MAX_ROUTES],
     )
+
+
+def _error_out(e: OpsErrorEvent) -> ErrorEventOut:
+    return ErrorEventOut(
+        id=e.fingerprint,
+        kind=e.kind,  # type: ignore[arg-type]
+        severity=e.severity,
+        event_type=e.event_type,
+        method=e.method,
+        route=e.route,
+        status=e.status,
+        message=e.message,
+        location=e.location,
+        occurrences=e.occurrences,
+        first_seen=_utc(e.first_seen),
+        last_seen=_utc(e.last_seen),
+        last_trace_id=e.last_trace_id,
+        handling_status=e.handling_status,
+        assignee_label=e.assignee_label,
+        note=e.note,
+    )
+
+
+def errors(
+    db: Session,
+    range_key: RangeKey,
+    kind: ErrorKind | None,
+    limit: int,
+    now: datetime | None = None,
+) -> ErrorListOut:
+    since = (now or datetime.now(UTC)) - RANGES[range_key]
+    total, rows = repository.list_error_events(db, since, kind, limit)
+    return ErrorListOut(
+        range=range_key,
+        since=since,
+        errors_enabled=settings.ops_errors_enabled,
+        total=total,
+        truncated=total > len(rows),
+        items=[_error_out(e) for e in rows],
+    )
+
+
+def error_detail(db: Session, event_id: str) -> ErrorEventOut | None:
+    event = repository.get_error_event(db, event_id)
+    return _error_out(event) if event else None

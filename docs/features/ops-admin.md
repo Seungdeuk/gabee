@@ -30,10 +30,13 @@
 - `app/features/ops_admin/error_service.py`: 5xx 응답, 처리되지 않은 예외, 401/403 만 지문별로 합쳐 `ops_error_events` 에 저장한다(4xx 나머지는 저장 안 함). 응답을 보낸 뒤 백그라운드에서 저장하므로 저장이 느리거나 실패해도 응답에는 영향이 없다. 인증 실패는 메시지 없이 응답 code 만 둔다. 예외는 클래스 이름과 발생 위치(`app/...py:줄`)만 남기고 스택의 변수 값은 남기지 않는다.
 - `app/shared/errors.py`: **처리되지 않은 예외 응답이 앱 공통 형식 `{code:"internal_error", message}` 로 바뀌었다**(전에는 Starlette 기본 "Internal Server Error" 텍스트). 하위 호환이 깨지는 변경이다. 계측이 켜져 있으면 이 응답에도 `X-Trace-Id` 를 붙인다. shared 가 기능 코드를 import 하지 않도록 관찰자 등록 함수(`set_error_observer`)만 두고 `main.py` 가 연결한다.
 - 테이블 `ops_error_events`(Alembic `2110458d9b12`, 테이블·인덱스 추가만): `docs/contracts/db.md`. 설정: `OPS_ERRORS_ENABLED`(기본 false), `OPS_ERRORS_RETENTION_DAYS`(90).
-- 이 PR 에는 엔드포인트가 없다(목록·상세 API 는 1-c-3).
+- 조회 API(1-c-3, 읽기 전용, `require_operator("ops_admin")`):
+  - `GET /admin/ops/errors?range=1h|24h|7d&kind=server_error|auth_failure&limit=1~100(기본 50)`: 마지막 발생이 기간 안인 오류 이벤트를 최근순으로. 응답에 `total`(잘리기 전 전체 수), `truncated`, `errors_enabled`(수집이 꺼져 있어 비어 있는지 구분)가 있다.
+  - `GET /admin/ops/errors/{event_id}`: 한 건(지문 64자리 16진수). 형식이 틀리면 422, 없으면 404 `not_found`.
+  - 응답에는 가린 메시지, 예외 클래스·응답 code, 경로 패턴, 발생 위치, 횟수, 처음·마지막 발생, 마지막 trace id, 처리 상태 필드만 있다. 사용자·가족 id, URL 원문, 본문·헤더 필드는 없다.
 
 ## 아직 없는 것
-- 오류 이벤트 조회 API(1-c-3)와 화면, 처리 상태 변경(2단계), 배포 이력, 인프라(Cloud Run 등) 지표, Agent, RAG.
+- 오류 이벤트 화면 연결, 처리 상태 변경(2단계), 배포 이력, 인프라(Cloud Run 등) 지표, Agent, RAG.
 - (운영자 인증 `require_operator` 는 병합된 release/1.2 에 있다.)
 
 ## 확인되지 않은 것

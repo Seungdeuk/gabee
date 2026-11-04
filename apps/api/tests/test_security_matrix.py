@@ -219,6 +219,12 @@ NO_GROUP_OK = {
     ("GET", "/admin/ai-usage"),
     ("GET", "/admin/support"),
     ("PATCH", "/admin/support/{ticket_id}"),
+    # 운영 관리자 조회 경로도 가족 데이터가 아니다(요청 지표·오류 이벤트). 권한은 require_operator("ops_admin") 허용 목록이 정한다
+    # (ops_admin/tests 에서 401·403 확인)
+    ("GET", "/admin/ops/summary"),
+    ("GET", "/admin/ops/apis"),
+    ("GET", "/admin/ops/errors"),
+    ("GET", "/admin/ops/errors/{event_id}"),
     # 문의·신고는 로그인한 본인이 보내고 본인 것만 본다. 가족이 없어도 보낼 수 있어야 한다(가족 만들기 문의 등)
     ("POST", "/support/tickets"),
     ("GET", "/support/tickets/mine"),

@@ -134,3 +134,24 @@ def delete_error_events_before(db: Session, cutoff: datetime) -> int:
     result = db.execute(delete(OpsErrorEvent).where(OpsErrorEvent.last_seen < cutoff))
     db.commit()
     return result.rowcount or 0
+
+
+def list_error_events(
+    db: Session, since: datetime, kind: str | None, limit: int
+) -> tuple[int, list[OpsErrorEvent]]:
+    """since 이후에 마지막으로 발생한 오류 이벤트를 최근순으로. (조건에 맞는 전체 수, limit 개까지의 목록)."""
+    where = [OpsErrorEvent.last_seen >= since]
+    if kind:
+        where.append(OpsErrorEvent.kind == kind)
+    total = db.scalar(select(func.count()).select_from(OpsErrorEvent).where(*where)) or 0
+    stmt = (
+        select(OpsErrorEvent)
+        .where(*where)
+        .order_by(OpsErrorEvent.last_seen.desc(), OpsErrorEvent.fingerprint)
+        .limit(limit)
+    )
+    return int(total), list(db.scalars(stmt))
+
+
+def get_error_event(db: Session, fingerprint: str) -> OpsErrorEvent | None:
+    return db.get(OpsErrorEvent, fingerprint)
