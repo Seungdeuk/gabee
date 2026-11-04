@@ -5,7 +5,7 @@
 downgrade 는 이 테이블만 지운다(집계 데이터가 사라진다).
 
 Revision ID: fcf5ce5e68e1
-Revises: 5d1c0a7b9e42
+Revises: 27c7716f7207
 Create Date: 2026-11-03 16:13:21.833677
 
 """
@@ -18,7 +18,7 @@ from alembic import op
 
 # revision identifiers, used by Alembic.
 revision: str = "fcf5ce5e68e1"
-down_revision: str | Sequence[str] | None = "5d1c0a7b9e42"
+down_revision: str | Sequence[str] | None = "27c7716f7207"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
