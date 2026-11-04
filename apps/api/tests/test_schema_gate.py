@@ -326,3 +326,39 @@ def test_shared_model_table_missing_blocks_the_features_that_use_it(client, fami
     report = health(client)
     assert report["features"]["family_group"]["ready"] is False
     assert client.get("/family-group/me", headers=family_headers).status_code == 503
+
+
+# ---------- 데일리 체크 하위 기능(schedule_check): 날짜별 기록 테이블과 소프트 삭제 컬럼 ----------
+def test_check_log_table_missing_blocks_only_check_api(client, family_headers):
+    with engine.begin() as conn:
+        conn.execute(text("DROP TABLE events_check_logs"))
+    try:
+        blocked = client.get("/schedule/check/items", headers=family_headers)
+        assert blocked.status_code == 503 and blocked.json()["code"] == "schema_not_ready"
+        assert client.get("/schedule/events", headers=family_headers).status_code == 200
+        report = health(client)
+        assert report["features"]["schedule_check"]["ready"] is False
+        assert report["features"]["schedule"]["ready"] is True
+    finally:
+        Base.metadata.tables["events_check_logs"].create(engine, checkfirst=True)
+    assert client.get("/schedule/check/items", headers=family_headers).status_code == 200
+
+
+def test_check_item_deleted_at_missing_blocks_only_check_api(client, family_headers):
+    with engine.begin() as conn:
+        conn.execute(text("ALTER TABLE events_check_items DROP COLUMN deleted_at"))
+    try:
+        blocked = client.get("/schedule/check/items", headers=family_headers)
+        assert blocked.status_code == 503 and blocked.json()["code"] == "schema_not_ready"
+        assert client.get("/schedule/events", headers=family_headers).status_code == 200
+        assert health(client)["features"]["schedule_check"]["ready"] is False
+    finally:
+        with engine.begin() as conn:
+            conn.execute(text("ALTER TABLE events_check_items ADD COLUMN deleted_at DATETIME"))
+    assert client.get("/schedule/check/items", headers=family_headers).status_code == 200
+
+
+def test_check_log_table_is_part_of_schedule_check_feature():
+    from app.shared.schema import feature_tables
+
+    assert "events_check_logs" in feature_tables()["schedule_check"]

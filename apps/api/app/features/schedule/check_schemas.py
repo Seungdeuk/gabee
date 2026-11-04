@@ -8,7 +8,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator
 
-from .constants import CHECK_COUNT_MAX, CHECK_GOAL_MAX
+from .constants import CHECK_COUNT_MAX, CHECK_GOAL_MAX, NOTE_MAX
 
 _REPEAT_RE = r"^[01]{7}$"  # 월~일, 1 이 켜진 요일
 
@@ -71,10 +71,26 @@ class CheckItemOrder(BaseModel):
 
 
 class CheckEntryBody(BaseModel):
-    """오늘 기록. 체크 습관은 done 만, 횟수 습관은 count(절대값)만 보낸다."""
+    """그날 기록. 체크 습관은 done 만, 횟수 습관은 count(절대값)만 보낸다."""
 
     done: bool | None = None
     count: int | None = Field(default=None, ge=0, le=CHECK_COUNT_MAX)
+
+
+class CheckNoteBody(BaseModel):
+    """그날 메모. note 가 비어 있거나 null 이면 메모를 지운다. 100자를 넘으면 422."""
+
+    note: str | None
+    note_shared: bool = False  # 이 메모를 가족에게 보일지(습관이 가족에게 보일 때만 나간다)
+
+    @field_validator("note")
+    @classmethod
+    def _note(cls, v: str | None) -> str | None:
+        if v is None:
+            return None
+        if len(v) > NOTE_MAX:
+            raise ValueError(f"메모는 {NOTE_MAX}자까지 쓸 수 있어요")
+        return v.strip() or None
 
 
 class CheckItemOut(BaseModel):
@@ -87,15 +103,19 @@ class CheckItemOut(BaseModel):
     shared: bool
     notify: bool
     position: int
-    # 오늘 상태(날짜가 지났으면 미완료·0 으로 계산해 보낸다)
+    # 요청한 날짜(없으면 오늘)의 기록. 줄이 없으면 미완료·0·메모 없음
     done: bool | None  # 체크 습관만 값이 있다
     count: int | None  # 횟수 습관만 값이 있다
     confirmed: bool
     confirmed_at: datetime | None
+    note: str | None
+    note_shared: bool
+    applies: bool  # 그 날짜의 요일 패턴에 켜져 있는가(목록을 거르는 기준은 앱이 쓴다)
+    updated_at: datetime  # 습관 정의가 마지막으로 실제로 바뀐 시각(순서·삭제는 아님)
 
 
 class CheckMemberItemOut(BaseModel):
-    """가족이 보는 습관 한 줄. 알림·순서·반복 요일은 싣지 않는다."""
+    """가족이 보는 습관 한 줄(오늘). 알림·순서·반복 요일은 싣지 않는다. 메모는 습관과 줄이 모두 공유일 때만 값이 있다."""
 
     id: str
     name: str
@@ -106,6 +126,7 @@ class CheckMemberItemOut(BaseModel):
     count: int | None
     confirmed: bool
     confirmed_at: datetime | None
+    note: str | None
 
 
 class CheckMemberToday(BaseModel):

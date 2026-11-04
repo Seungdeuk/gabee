@@ -52,7 +52,7 @@ export function daysToRepeat(days) {
 }
 
 /**
- * 서버 오늘 기록 → 화면의 entry. 오늘 유효성은 서버가 이미 반영해 보낸다(날짜가 지난 기록은 미완료·0).
+ * 서버 기록(요청한 날짜의 줄) → 화면의 entry. 날짜 유효성은 서버가 이미 반영해 보낸다(줄이 없는 날은 미완료·0).
  * 한 번 체크는 done, 횟수는 count 와 confirmed(목표 도달)를 쓴다. doneAt 은 완료 시각("HH:MM", 한국 시간).
  */
 export function entryFromServer(row) {
@@ -63,7 +63,16 @@ export function entryFromServer(row) {
   return { done: Boolean(row.done), count: 0, doneAt: row.done ? doneAt : null };
 }
 
-/** 서버 습관 한 줄 → 화면 항목(entry 포함). notify 는 화면의 alarm 과 같은 값이다. */
+/** 서버 메모 → 화면 메모({ note, noteShared }). 메모가 없으면 undefined. */
+export function memoFromServer(row) {
+  return row.note ? { note: row.note, noteShared: Boolean(row.note_shared) } : undefined;
+}
+
+/**
+ * 서버 습관 한 줄 → 화면 항목. notify 는 화면의 alarm 과 같은 값이다.
+ * entry·memo 는 요청한 날짜(없으면 오늘)의 기록과 메모다. applies 는 그 날짜 목록에 나올지(서버가 계산한 값)다.
+ * updatedAt 은 습관 정의가 바뀐 시각이다. 반복 요일을 바꾼 시각(repeat_updated_at)은 서버 안에서만 쓰고 응답에 없다(목록 거르기는 applies 로 한다).
+ */
 export function itemFromServer(row) {
   const type = KIND_FROM_SERVER[row.kind] ?? "check";
   const count = type === "count";
@@ -78,6 +87,9 @@ export function itemFromServer(row) {
     shareWithFamily: Boolean(row.shared),
     position: row.position ?? 0,
     entry: entryFromServer(row),
+    memo: memoFromServer(row),
+    applies: Boolean(row.applies),
+    updatedAt: row.updated_at ?? null,
   };
 }
 
@@ -95,13 +107,21 @@ export function itemToServer(item) {
   };
 }
 
-/** 오늘 기록 저장 본문: 한 번 체크는 done, 횟수는 count(절대값). */
+/** 기록 저장 본문: 한 번 체크는 done, 횟수는 count(절대값). 메모는 따로 보낸다(noteToServer). */
 export function entryToServer(item, entry) {
   if (item.type === "count") return { count: entry?.count ?? 0 };
   return { done: Boolean(entry?.done) };
 }
 
-/** 가족이 보는 습관 한 줄(서버는 오늘 요일에 해당하고 shared 인 것만 준다). 화면에서는 오늘 목록으로 그대로 쓴다. */
+/** 메모 저장 본문({ note, note_shared }). memo 가 없으면 지우기다: note 를 null 로 보낸다(서버는 빈 글자와 null 을 모두 지운다). */
+export function noteToServer(memo) {
+  return memo ? { note: memo.note, note_shared: Boolean(memo.noteShared) } : { note: null, note_shared: false };
+}
+
+/**
+ * 가족이 보는 습관 한 줄(서버는 오늘 요일에 해당하고 shared 인 것만 준다). 화면에서는 오늘 목록으로 그대로 쓴다.
+ * note 는 서버가 공개로 준 메모 글자(없으면 null)다. 가족 탭은 이 글자만 보여 준다.
+ */
 export function memberItemFromServer(row) {
   const type = KIND_FROM_SERVER[row.kind] ?? "check";
   const count = type === "count";
@@ -115,6 +135,7 @@ export function memberItemFromServer(row) {
     alarm: false,
     shareWithFamily: true,
     entry: entryFromServer(row),
+    note: row.note ?? null,
   };
 }
 
@@ -148,6 +169,8 @@ export function loadErrorText(error) {
 /** 서버 오류 → 안내 팝업 내용(저장·지우기·보내기 실패). title 은 호출한 쪽이 정한다. */
 export function failureNotice(error, title = "저장하지 못했어요") {
   if (error?.status === 503) return { title: "준비 중이에요", body: "잠시 후 다시 해 주세요" };
+  // 400 은 서버가 이유를 글로 준다(예: 7일 전보다 이른 날짜, 습관을 만들기 전 날짜)
+  if (error?.status === 400 && error.message) return { title, body: error.message };
   // 422 는 입력 모양·글자 수가 서버 상한을 넘은 것이다(화면의 입력 제한으로 대부분 막힌다)
   if (error?.status === 422) return { title, body: "입력한 글자 수를 확인해 주세요" };
   return { title, body: "잠시 후 다시 해 주세요" };

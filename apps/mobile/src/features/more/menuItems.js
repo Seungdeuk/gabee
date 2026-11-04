@@ -20,7 +20,7 @@ export const SHORTCUTS = [
 export const MENU = [
   { key: "family", icon: "people-outline", title: "우리 가족", subtitle: "구성원 · 초대 · 관리", route: "/family" },
   { key: "docs", icon: "folder-open-outline", title: "가족 공유 문서함", subtitle: "가족 공지 · 업로드", soon: true },
-  { key: "ai", icon: "sparkles-outline", title: "가비 AI 이용 안내", subtitle: "처리 방식 · 개인정보 · 사용량", soon: true },
+  { key: "ai", icon: "sparkles-outline", title: "가비 AI 이용 안내", subtitle: "사용 방법 · 개인정보 처리", route: "/ai-guide" },
   { key: "account", icon: "lock-closed-outline", title: "계정 및 보안", subtitle: "비밀번호 · 로그인 · 계정", route: "/account-security" },
   { key: "notice", icon: "megaphone-outline", title: "공지사항", subtitle: "서비스 소식 · 업데이트", soon: true },
   { key: "service", icon: "information-circle-outline", title: "서비스 정보", subtitle: "이용약관 · 개인정보 · 문의", soon: true },

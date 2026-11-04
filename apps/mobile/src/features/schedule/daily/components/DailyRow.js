@@ -3,29 +3,56 @@ import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import { colors, font } from "@/theme";
 
-import { ROW_HEIGHT, countChipText, isCount, isDone, itemSubText } from "../logic";
+import { ROW_HEIGHT, countChipText, isCount, isDone, itemSubText, memoPreview } from "../logic";
+
+import MemoIcon from "./MemoIcon";
 
 /**
  * 데일리 체크 항목 한 줄. 줄 높이는 ROW_HEIGHT 로 고정이다.
  * - 내 탭: 줄 왼쪽에 handle(길게 누른 줄의 점 세 개 표시, 평소에는 없음), 한 번 체크는 체크 버튼, 횟수 세기는 − 횟수 + 버튼.
- * - 가족 탭(family): 손잡이 없이 보기만 한다(완료·기록 없음·횟수 표시).
- * @param {{ item: object, entry?: object, family?: boolean, handle?: import("react").ReactNode,
- *   onCheck?: () => void, onStep?: (delta: number) => void }} props
+ *   이름 옆 메모 아이콘(onMemoIcon 이 있을 때만, 보이는 크기 28·터치 44): 메모가 있으면 노란 원, 없으면 연한 윤곽선.
+ * - 가족 탭(family): 손잡이 없이 보기만 한다(완료·기록 없음·횟수 표시). 메모 아이콘은 없다.
+ * - 메모가 있으면 보조 글자 뒤에 " · 메모 앞 10자"를 붙인다. 그 글자를 누르면 onMemoText(전문 팝업)를 부른다.
+ * @param {{ item: object, entry?: object, family?: boolean, handle?: import("react").ReactNode, memo?: string,
+ *   onMemoIcon?: () => void, onMemoText?: () => void, onCheck?: () => void, onStep?: (delta: number) => void }} props
  */
-export default function DailyRow({ item, entry, family = false, handle = null, onCheck, onStep }) {
+export default function DailyRow({ item, entry, family = false, handle = null, memo = "", onMemoIcon, onMemoText, onCheck, onStep }) {
   const done = isDone(item, entry);
   const count = isCount(item);
   const sub = itemSubText(item, entry, { family });
+  const preview = memoPreview(memo);
 
   return (
-    <View style={[styles.row, handle ? styles.rowWithHandle : styles.rowPlain]} accessibilityLabel={`${item.name}, ${sub}`}>
+    <View style={[styles.row, handle ? styles.rowWithHandle : styles.rowPlain]} accessibilityLabel={`${item.name}, ${sub}${preview ? `, 메모 ${preview}` : ""}`}>
       {handle}
       <View style={styles.text}>
-        <Text style={styles.name} numberOfLines={1}>
-          {item.name}
-        </Text>
+        <View style={styles.nameRow}>
+          <Text style={styles.name} numberOfLines={1}>
+            {item.name}
+          </Text>
+          {onMemoIcon ? (
+            <Pressable
+              onPress={onMemoIcon}
+              style={styles.memoHit}
+              accessibilityRole="button"
+              accessibilityLabel={`${item.name} ${preview ? "메모 고치기" : "메모 쓰기"}`}
+            >
+              <View style={[styles.memoCircle, preview ? styles.memoOn : styles.memoOff]}>
+                <MemoIcon size={16} color={preview ? colors.text : colors.textMuted} />
+              </View>
+            </Pressable>
+          ) : null}
+        </View>
         <Text style={styles.sub} numberOfLines={1}>
           {sub}
+          {preview ? (
+            <Text>
+              {" · "}
+              <Text style={styles.memoText} onPress={onMemoText} accessibilityRole="button" accessibilityLabel={`${item.name} 메모 전체 보기`}>
+                {preview}
+              </Text>
+            </Text>
+          ) : null}
         </Text>
       </View>
 
@@ -95,8 +122,15 @@ const styles = StyleSheet.create({
   },
   rowWithHandle: { paddingLeft: 4 },
   rowPlain: { paddingLeft: 18 },
-  text: { flex: 1, gap: 2 },
-  name: { ...font.cardTitle, fontSize: 17, color: colors.text },
+  text: { flex: 1, minWidth: 0, gap: 2 },
+  nameRow: { flexDirection: "row", alignItems: "center", gap: 4, minWidth: 0 },
+  name: { ...font.cardTitle, fontSize: 17, color: colors.text, flexShrink: 1 },
+  // 메모 아이콘: 보이는 원 28, 터치 칸 44(위아래 -8 로 줄 높이를 넘기지 않게)
+  memoHit: { width: 44, height: 44, marginVertical: -8, marginLeft: -4, alignItems: "center", justifyContent: "center", flex: 0 },
+  memoCircle: { width: 28, height: 28, borderRadius: 14, alignItems: "center", justifyContent: "center" },
+  memoOn: { backgroundColor: colors.surfaceStrong },
+  memoOff: { borderWidth: 1, borderColor: colors.border },
+  memoText: { fontWeight: "700", color: colors.text },
   sub: { ...font.caption, fontSize: 14, color: colors.textSub },
   roundButton: {
     width: 44,

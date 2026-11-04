@@ -160,11 +160,9 @@ class EventSuggestion(Base):
 
 
 class CheckItem(Base):
-    """데일리 체크 내 습관. 사람마다 자기 줄(`user_id`)을 갖는다. 삭제는 소프트 삭제가 아니라 행을 지운다.
+    """데일리 체크 내 습관. 사람마다 자기 줄(`user_id`)을 갖는다. 삭제는 `deleted_at` 소프트 삭제다(지난 기록 보존).
 
-    오늘의 기록(done·count·confirmed·confirmed_at)은 `confirmed_at` 의 한국 날짜가 오늘일 때만 유효하다.
-    날짜가 지나면 DB 값을 지우지 않고 응답에서 미완료·0 으로 계산한다(서비스 `_view`).
-    kind 1 은 done 을, kind 2 는 count 를 쓴다(다른 쪽은 NULL). confirmed 는 완료 여부다.
+    날짜별 기록(done·count·confirmed·confirmed_at·메모)은 `CheckLog` 에 둔다. 이 행에는 습관 정의만 있다.
     """
 
     __tablename__ = "events_check_items"
@@ -184,9 +182,41 @@ class CheckItem(Base):
     shared: Mapped[bool] = mapped_column(Boolean, default=True, server_default=text("true"))
     notify: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("false"))
     position: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
-    done: Mapped[bool | None] = mapped_column(Boolean, nullable=True)  # kind 1 의 오늘 체크 여부
-    count: Mapped[int | None] = mapped_column(Integer, nullable=True)  # kind 2 의 오늘 횟수
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_now
+    )  # 이름·종류·목표·단위·요일·공개·알림이 실제로 바뀔 때
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # 반복 요일을 마지막으로 바꾼 시각(반복 요일 값이 실제로 달라졌을 때만 갱신). 생성 시 NULL.
+    repeat_updated_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+
+class CheckLog(Base):
+    """데일리 체크 날짜별 기록. 습관 하루에 한 줄이며, 그날 처음 체크·횟수·메모를 남길 때만 만든다(자정에 미리 만들지 않는다).
+
+    kind 1 은 done 을, kind 2 는 count·goal 을 쓴다(다른 쪽은 NULL). 메모만 쓴 줄은 done·count 가 NULL 이다.
+    confirmed_at 은 완료 상태가 된 시각이다(취소하면 NULL, 다시 완료하면 새 시각). created_at 은 줄이 처음 생긴 시각이다.
+    """
+
+    __tablename__ = "events_check_logs"
+    __table_args__ = (
+        UniqueConstraint("item_id", "log_date", name="uq_events_check_logs_item_date"),
+        Index("ix_events_check_logs_log_date", "log_date"),
+    )
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uid)
+    item_id: Mapped[str] = mapped_column(ForeignKey("events_check_items.id"))
+    log_date: Mapped[date] = mapped_column(Date)  # 기록 대상 날짜(한국 시간)
+    done: Mapped[bool | None] = mapped_column(Boolean, nullable=True)  # kind 1
+    count: Mapped[int | None] = mapped_column(Integer, nullable=True)  # kind 2
+    goal: Mapped[int | None] = mapped_column(Integer, nullable=True)  # kind 2, 그날의 목표 스냅샷
     confirmed: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("false"))
+    note: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    note_shared: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default=text("false")
+    )  # 이 메모를 가족에게 보일지
     confirmed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
 

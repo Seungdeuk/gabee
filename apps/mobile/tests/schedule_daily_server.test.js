@@ -29,6 +29,8 @@ import {
   kstDateKey,
   loadErrorText,
   memberItemFromServer,
+  memoFromServer,
+  noteToServer,
   repeatToDays,
   summaryFromServer,
   todayKeyKST,
@@ -288,4 +290,47 @@ test("응원 한마디: 50자까지 통과, 51자부터 안내", () => {
 test("422(입력 모양·글자 수 초과)는 글자 수 확인 안내로 구분한다", () => {
   assert.deepEqual(failureNotice({ status: 422 }), { title: "저장하지 못했어요", body: "입력한 글자 수를 확인해 주세요" });
   assert.equal(failureNotice({ status: 422 }, "보내지 못했어요").title, "보내지 못했어요");
+});
+
+test("400 은 서버가 준 이유(범위 밖 날짜 등)를 안내 본문으로 보이고, 이유가 없으면 기본 문장을 쓴다", () => {
+  const error = { status: 400, message: "기록은 오늘부터 7일 전까지의 날짜만 볼 수 있어요" };
+  assert.deepEqual(failureNotice(error), { title: "저장하지 못했어요", body: "기록은 오늘부터 7일 전까지의 날짜만 볼 수 있어요" });
+  assert.equal(failureNotice({ status: 400 }).body, "잠시 후 다시 해 주세요");
+});
+
+test("서버 메모 → 화면 메모: 글자가 있을 때만 메모가 있고 공유 표시를 옮긴다", () => {
+  assert.equal(memoFromServer({ note: null, note_shared: false }), undefined);
+  assert.deepEqual(memoFromServer({ note: "혈압 120/80", note_shared: true }), { note: "혈압 120/80", noteShared: true });
+});
+
+test("습관 한 줄: applies·메모·updated_at 을 옮기고, 지난 날짜의 기록을 entry 로 바꾼다", () => {
+  const item = itemFromServer(
+    checkRow({
+      applies: false,
+      note: "식후에 먹었어요",
+      note_shared: true,
+      updated_at: "2026-11-02T15:30:00Z",
+      done: true,
+      confirmed: true,
+      confirmed_at: "2026-11-02T01:00:00Z",
+    }),
+  );
+  assert.equal(item.applies, false);
+  assert.deepEqual(item.memo, { note: "식후에 먹었어요", noteShared: true });
+  assert.deepEqual(item.entry, { done: true, count: 0, doneAt: "10:00" }); // 한국 시간 10:00
+  assert.equal(item.updatedAt, "2026-11-02T15:30:00Z");
+  const plain = itemFromServer(countRow({ applies: true }));
+  assert.equal(plain.applies, true);
+  assert.equal(plain.memo, undefined);
+});
+
+test("메모 요청 본문: 저장은 note·note_shared, 지우기는 note 를 null 로 보내고 공유는 끈다", () => {
+  assert.deepEqual(noteToServer({ note: "식후", noteShared: true }), { note: "식후", note_shared: true });
+  assert.deepEqual(noteToServer(null), { note: null, note_shared: false });
+});
+
+test("가족 줄의 메모: 서버가 공개로 준 note 를 옮기고, 없으면 null 이다", () => {
+  const base = { id: "x", name: "혈압약", kind: 1, goal: null, unit: "", done: true, count: null, confirmed: true, confirmed_at: null };
+  assert.equal(memberItemFromServer({ ...base, note: "괜찮았어요" }).note, "괜찮았어요");
+  assert.equal(memberItemFromServer({ ...base, note: null }).note, null);
 });
