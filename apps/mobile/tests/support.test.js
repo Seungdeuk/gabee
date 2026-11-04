@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { afterEach, beforeEach, test } from "node:test";
 
 import { KIND_META, routeFor } from "../src/features/notifications/kinds.js";
-import { BODY_MAX, TITLE_MAX, dateText, supportErrorMessage, ticketView, validateTicket } from "../src/features/support/messages.js";
+import { BODY_MAX, FILTERS, TITLE_MAX, dateText, filterTickets, supportErrorMessage, ticketCounts, ticketView, validateTicket } from "../src/features/support/messages.js";
 
 process.env.EXPO_PUBLIC_API_URL = "http://api.test";
 process.env.EXPO_PUBLIC_DEV_TOKEN = "legacy-dev-token";
@@ -67,12 +67,37 @@ test("한 건 정리: 상태·종류 이름, 답변 유무, 한국 시간 날짜
   assert.equal(v.sentOn, "11월 4일"); // UTC 20시 = 한국 다음날 새벽 5시
   const none = ticketView({ id: 7, status: "new", answer: null });
   assert.equal(none.answered, false);
-  assert.equal(none.statusLabel, "접수됨");
-  assert.equal(ticketView({ status: "알수없음" }).statusLabel, "접수됨");
+  assert.equal(none.statusLabel, "답변 대기");
+  assert.equal(ticketView({ status: "알수없음" }).statusLabel, "답변 대기");
   assert.equal(dateText("이상한 값"), "");
 });
 
 test("답변 알림: 고객센터 분류가 있고 누르면 내 문의 탭으로 간다", () => {
   assert.equal(KIND_META.support.label, "고객센터");
   assert.equal(routeFor({ kind: "support", event: "ticket_answered" }), "/support?tab=mine");
+});
+
+test("상태 표시: 답변이 있으면 서버 상태와 상관없이 답변 완료, 답변 없이 닫힌 것은 처리 완료", () => {
+  assert.equal(ticketView({ status: "working", answer: "확인했어요" }).statusLabel, "답변 완료"); // 관리자가 상태를 안 바꾸고 답변만 남긴 경우
+  assert.equal(ticketView({ status: "new", answer: "확인했어요" }).state, "answered");
+  assert.equal(ticketView({ status: "working", answer: null }).statusLabel, "처리 중");
+  assert.equal(ticketView({ status: "done", answer: "  " }).statusLabel, "처리 완료");
+  assert.equal(ticketView({ status: "done", answer: "  " }).answered, false); // 공백뿐인 답변은 답변이 아니다
+});
+
+test("필터: 건수를 세고 순서를 지켜 고른다(답변 완료·처리 완료는 완료, 대기·처리 중은 대기)", () => {
+  const rows = [
+    { id: "a", status: "new", answer: null },
+    { id: "b", status: "working", answer: "답변" },
+    { id: "c", status: "working", answer: null },
+    { id: "d", status: "done", answer: null },
+  ];
+  assert.deepEqual(ticketCounts(rows), { all: 4, waiting: 2, answered: 2 });
+  assert.deepEqual(filterTickets(rows, "waiting").map((r) => r.id), ["a", "c"]);
+  assert.deepEqual(filterTickets(rows, "answered").map((r) => r.id), ["b", "d"]);
+  assert.equal(filterTickets(rows, "all").length, 4);
+  assert.equal(filterTickets(rows, "이상한 값").length, 4);
+  assert.deepEqual(ticketCounts(null), { all: 0, waiting: 0, answered: 0 });
+  assert.deepEqual(filterTickets(undefined, "waiting"), []);
+  assert.deepEqual(FILTERS.map((f) => f.key), ["all", "waiting", "answered"]);
 });

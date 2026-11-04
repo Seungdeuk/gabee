@@ -1,52 +1,37 @@
+import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
 
 import Button from "@/shared/components/Button";
-import Card from "@/shared/components/Card";
 import Field from "@/shared/components/Field";
 import IconButton from "@/shared/components/IconButton";
 import Screen from "@/shared/components/Screen";
 import Segmented from "@/shared/components/Segmented";
-import Tag from "@/shared/components/Tag";
-import { colors, font, spacing } from "@/theme";
+import { colors, font, radius, spacing } from "@/theme";
 
 import { createTicket, listMyTickets } from "../api";
-import { BODY_MAX, KIND_OPTIONS, PRIVACY_NOTE, SENT_NOTICE, TITLE_MAX, supportErrorMessage, ticketView, validateTicket } from "../messages";
+import KindPicker from "../components/KindPicker";
+import TicketCard from "../components/TicketCard";
+import {
+  BODY_MAX,
+  EMPTY_TEXT,
+  FILTERS,
+  KIND_OPTIONS,
+  PRIVACY_NOTE,
+  SENT_NOTICE,
+  TITLE_MAX,
+  WRITE_INTRO,
+  filterTickets,
+  supportErrorMessage,
+  ticketCounts,
+  validateTicket,
+} from "../messages";
 
 const TABS = [
   { key: "write", label: "문의하기" },
   { key: "mine", label: "내 문의" },
 ];
-
-/**
- * 보낸 문의·신고 한 건. 누르면 내용이 펼쳐지고, 답변이 있으면 답변이 함께 보인다.
- * @param {{ row: object }} props TicketOut
- * @returns {import("react").ReactElement}
- */
-function TicketCard({ row }) {
-  const t = ticketView(row);
-  const [open, setOpen] = useState(t.answered);
-  return (
-    <Card tone="white" testID={`ticket-${t.id}`}>
-      <Pressable onPress={() => setOpen((v) => !v)} accessibilityRole="button" accessibilityLabel={`${t.kindLabel}, ${t.statusLabel}, ${t.title}`} accessibilityState={{ expanded: open }}>
-        <View style={styles.tags}>
-          <Tag label={t.kindLabel} tone="blue" />
-          <Tag label={t.statusLabel} tone={t.answered ? "green" : "orange"} />
-          <Text style={styles.date}>{t.sentOn}</Text>
-        </View>
-        <Text style={styles.ticketTitle}>{t.title}</Text>
-      </Pressable>
-      {open ? <Text style={styles.body}>{t.body}</Text> : null}
-      {open && t.answered ? (
-        <View style={styles.answer}>
-          <Text style={styles.answerHead}>{t.answeredOn ? `답변 · ${t.answeredOn}` : "답변"}</Text>
-          <Text style={styles.body}>{t.answer}</Text>
-        </View>
-      ) : null}
-    </Card>
-  );
-}
 
 /**
  * 마이 > 고객센터: 문의·신고를 보내고(문의하기), 보낸 것과 관리자 답변을 본다(내 문의).
@@ -66,6 +51,7 @@ export default function SupportScreen() {
   const [sending, setSending] = useState(false);
   const [rows, setRows] = useState(null); // null: 불러오는 중
   const [listError, setListError] = useState("");
+  const [filter, setFilter] = useState("all");
 
   const load = useCallback(async () => {
     setListError("");
@@ -82,6 +68,9 @@ export default function SupportScreen() {
     if (tab === "mine") load();
   }, [tab, load]);
 
+  const counts = useMemo(() => ticketCounts(rows), [rows]);
+  const shown = useMemo(() => filterTickets(rows, filter), [rows, filter]);
+
   const send = async () => {
     const checked = validateTicket({ kind, title, body });
     if (!checked.ok) {
@@ -95,6 +84,7 @@ export default function SupportScreen() {
       await createTicket(checked.value);
       setTitle("");
       setBody("");
+      setFilter("all");
       setNotice(SENT_NOTICE);
       setTab("mine");
     } catch (e) {
@@ -103,25 +93,56 @@ export default function SupportScreen() {
     setSending(false);
   };
 
+  const empty = EMPTY_TEXT[filter] ?? EMPTY_TEXT.all;
+
   return (
     <Screen
       title="고객센터"
       left={<IconButton name="chevron-back" label="뒤로" onPress={() => (router.canGoBack() ? router.back() : router.replace("/my"))} />}
+      right={tab === "mine" ? <IconButton name="refresh-outline" label="새로고침" onPress={load} /> : undefined}
     >
       <Segmented options={TABS} value={tab} onChange={(key) => { setNotice(""); setTab(key); }} />
       {tab === "write" ? (
         <View style={styles.form}>
-          <Segmented options={KIND_OPTIONS} value={kind} onChange={setKind} />
-          {errors.kind ? <Text style={styles.error} accessibilityRole="alert">{errors.kind}</Text> : null}
+          <View style={styles.intro}>
+            <Text style={styles.introTitle}>{WRITE_INTRO.title}</Text>
+            <Text style={styles.introSub}>{WRITE_INTRO.sub}</Text>
+          </View>
+          <KindPicker options={KIND_OPTIONS} value={kind} onChange={setKind} error={errors.kind} />
           <Field label="제목" value={title} onChangeText={setTitle} maxLength={TITLE_MAX} error={errors.title} editable={!sending} placeholder="어떤 내용인지 짧게 적어 주세요" testID="support-title" />
           <Field label="내용" value={body} onChangeText={setBody} maxLength={BODY_MAX} multiline error={errors.body} editable={!sending} hint={`${body.length} / ${BODY_MAX}`} placeholder="자세히 적어 주세요" testID="support-body" />
-          <Text style={styles.note}>{PRIVACY_NOTE}</Text>
+          <View style={styles.info}>
+            <Ionicons name="information-circle-outline" size={18} color={colors.textMuted} />
+            <Text style={styles.infoText}>{PRIVACY_NOTE}</Text>
+          </View>
           {sendError ? <Text style={styles.error} accessibilityRole="alert">{sendError}</Text> : null}
           <Button label={sending ? "보내는 중..." : "보내기"} onPress={send} disabled={sending} testID="support-send" />
         </View>
       ) : (
         <View style={styles.list}>
-          {notice ? <Text style={styles.notice} accessibilityLiveRegion="polite">{notice}</Text> : null}
+          {notice ? (
+            <View style={styles.notice} accessibilityLiveRegion="polite">
+              <Ionicons name="checkmark-circle" size={18} color={colors.success} />
+              <Text style={styles.noticeText}>{notice}</Text>
+            </View>
+          ) : null}
+          <View style={styles.filters} accessibilityRole="tablist">
+            {FILTERS.map((f) => {
+              const active = f.key === filter;
+              return (
+                <Pressable
+                  key={f.key}
+                  onPress={() => setFilter(f.key)}
+                  accessibilityRole="tab"
+                  accessibilityState={{ selected: active }}
+                  testID={`support-filter-${f.key}`}
+                  style={[styles.chip, active && styles.chipActive]}
+                >
+                  <Text style={[styles.chipText, active && styles.chipTextActive]}>{f.label} {counts[f.key]}</Text>
+                </Pressable>
+              );
+            })}
+          </View>
           {rows === null ? <ActivityIndicator color={colors.accent} /> : null}
           {listError ? (
             <View style={styles.center}>
@@ -129,8 +150,17 @@ export default function SupportScreen() {
               <Button label="다시 시도" variant="secondary" small onPress={load} testID="support-retry" />
             </View>
           ) : null}
-          {rows && rows.length === 0 && !listError ? <Text style={styles.empty}>아직 보낸 문의가 없어요</Text> : null}
-          {rows ? rows.map((row) => <TicketCard key={String(row.id)} row={row} />) : null}
+          {rows && shown.length === 0 && !listError ? (
+            <View style={styles.empty}>
+              <View style={styles.emptyIcon}>
+                <Ionicons name="chatbubble-ellipses-outline" size={28} color={colors.accent} />
+              </View>
+              <Text style={styles.emptyTitle}>{empty.title}</Text>
+              {empty.sub ? <Text style={styles.emptySub}>{empty.sub}</Text> : null}
+              {filter === "all" ? <Button label="문의하기" small onPress={() => { setNotice(""); setTab("write"); }} testID="support-empty-write" /> : null}
+            </View>
+          ) : null}
+          {shown.map((row) => <TicketCard key={String(row.id)} row={row} />)}
         </View>
       )}
     </Screen>
@@ -138,17 +168,24 @@ export default function SupportScreen() {
 }
 
 const styles = StyleSheet.create({
-  form: { gap: spacing.md },
+  form: { gap: spacing.lg },
+  intro: { gap: spacing.xs, marginTop: spacing.xs },
+  introTitle: { ...font.title, color: colors.text },
+  introSub: { ...font.caption, color: colors.textMuted },
+  info: { flexDirection: "row", gap: spacing.sm, alignItems: "flex-start", padding: spacing.md, borderRadius: radius.md, backgroundColor: colors.surface },
+  infoText: { ...font.caption, color: colors.textMuted, flex: 1 },
   list: { gap: spacing.md },
+  notice: { flexDirection: "row", gap: spacing.sm, alignItems: "center", padding: spacing.md, borderRadius: radius.md, backgroundColor: colors.successSoft },
+  noticeText: { ...font.caption, color: colors.success, flex: 1 },
+  filters: { flexDirection: "row", gap: spacing.sm, flexWrap: "wrap" },
+  chip: { paddingHorizontal: spacing.md, paddingVertical: 7, borderRadius: radius.pill, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.divider },
+  chipActive: { backgroundColor: colors.dark, borderColor: colors.dark },
+  chipText: { ...font.caption, color: colors.textMuted },
+  chipTextActive: { color: colors.onDark, fontWeight: "700" },
   center: { gap: spacing.sm, alignItems: "flex-start" },
-  tags: { flexDirection: "row", alignItems: "center", gap: spacing.sm, marginBottom: spacing.xs },
-  date: { ...font.caption, color: colors.textMuted },
-  ticketTitle: { ...font.cardTitle, color: colors.text },
-  body: { ...font.body, color: colors.textSub },
-  answer: { gap: spacing.xs, padding: spacing.md, borderRadius: 14, backgroundColor: colors.peachSoft },
-  answerHead: { ...font.caption, color: colors.accent },
-  note: { ...font.caption, color: colors.textMuted },
-  notice: { ...font.body, color: colors.success },
+  empty: { alignItems: "center", gap: spacing.sm, paddingVertical: spacing.xxl },
+  emptyIcon: { width: 64, height: 64, borderRadius: 32, alignItems: "center", justifyContent: "center", backgroundColor: colors.honeySoft, marginBottom: spacing.xs },
+  emptyTitle: { ...font.cardTitle, color: colors.text },
+  emptySub: { ...font.caption, color: colors.textMuted, marginBottom: spacing.sm },
   error: { ...font.caption, color: colors.danger },
-  empty: { ...font.body, color: colors.textMuted },
 });
