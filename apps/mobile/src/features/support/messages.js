@@ -5,17 +5,45 @@ export const BODY_MAX = 2000;
 
 /** 보낼 때 고르는 종류(서버 kind). */
 export const KIND_OPTIONS = [
-  { key: "inquiry", label: "문의" },
-  { key: "report", label: "신고" },
+  { key: "inquiry", label: "문의", icon: "help-circle-outline", desc: "사용 방법이나 궁금한 점" },
+  { key: "report", label: "신고", icon: "flag-outline", desc: "오류나 부적절한 사용 제보" },
 ];
 
-/** 상태 표시(서버 status). 변경 이력은 없고 마지막 값만 온다. */
-export const STATUS_LABEL = { new: "접수됨", working: "처리 중", done: "답변 완료" };
+/** 문의하기 화면 맨 위 안내. */
+export const WRITE_INTRO = {
+  title: "무엇을 도와드릴까요?",
+  sub: "남겨 주신 내용은 서비스 관리자가 확인하고, 답변은 \"내 문의\"에서 볼 수 있어요",
+};
+
+/** 내 문의 목록 위쪽 필터(건수는 화면에서 붙인다). */
+export const FILTERS = [
+  { key: "all", label: "전체" },
+  { key: "waiting", label: "답변 대기" },
+  { key: "answered", label: "답변 완료" },
+];
+
+/** 보낸 것이 없을 때와 필터에 맞는 것이 없을 때 안내. */
+export const EMPTY_TEXT = {
+  all: { title: "아직 보낸 문의가 없어요", sub: "궁금한 점이나 불편한 점을 남겨 주세요" },
+  waiting: { title: "답변을 기다리는 문의가 없어요", sub: "" },
+  answered: { title: "답변이 달린 문의가 아직 없어요", sub: "" },
+};
+
+/** 답변이 아직 없는 문의를 펼쳤을 때 안내. */
+export const WAITING_NOTE = "답변이 달리면 알림으로 알려 드려요";
 
 /** 신고에도 사용자가 직접 쓴 글만 전달된다는 안내. */
 export const PRIVACY_NOTE = "직접 쓴 제목과 내용만 서비스 관리자에게 전달돼요. 가족 채팅 내용은 함께 전달되지 않아요.";
 
-export const SENT_NOTICE = "보냈어요. 답변은 이 화면에서 확인할 수 있어요";
+export const SENT_NOTICE = "보냈어요. 답변이 달리면 알림으로 알려 드릴게요";
+
+/** 상태 표시. state 는 화면 색 구분, group 은 필터 묶음이다. */
+const STATE = {
+  answered: { label: "답변 완료", group: "answered" },
+  closed: { label: "처리 완료", group: "answered" },
+  working: { label: "처리 중", group: "waiting" },
+  waiting: { label: "답변 대기", group: "waiting" },
+};
 
 const BY_CODE = {
   network_error: "서버에 연결하지 못했어요. 인터넷 연결을 확인해 주세요",
@@ -75,16 +103,24 @@ export function dateText(iso) {
 
 /**
  * 보낸 문의·신고 한 건을 화면용으로 정리한다(모르는 값이 와도 깨지지 않게).
+ * 답변이 있으면 서버 상태와 상관없이 "답변 완료"로 보여 준다(관리자가 상태를 바꾸지 않고 답변만 남겨도 같게 보이도록).
  * @param {object} row TicketOut
- * @returns {{ id: string, kindLabel: string, statusLabel: string, title: string, body: string, answer: string, answered: boolean, sentOn: string, answeredOn: string }}
+ * @returns {{ id: string, kind: string, kindLabel: string, state: "answered" | "closed" | "working" | "waiting", statusLabel: string, group: "waiting" | "answered", title: string, body: string, answer: string, answered: boolean, sentOn: string, answeredOn: string }}
  */
 export function ticketView(row) {
   const kind = KIND_OPTIONS.find((o) => o.key === row?.kind);
   const answer = typeof row?.answer === "string" ? row.answer.trim() : "";
+  let state = "waiting";
+  if (answer !== "") state = "answered";
+  else if (row?.status === "done") state = "closed";
+  else if (row?.status === "working") state = "working";
   return {
     id: String(row?.id ?? ""),
+    kind: kind ? kind.key : "inquiry",
     kindLabel: kind ? kind.label : "문의",
-    statusLabel: STATUS_LABEL[row?.status] ?? STATUS_LABEL.new,
+    state,
+    statusLabel: STATE[state].label,
+    group: STATE[state].group,
     title: String(row?.title ?? ""),
     body: String(row?.body ?? ""),
     answer,
@@ -92,4 +128,30 @@ export function ticketView(row) {
     sentOn: dateText(row?.created_at),
     answeredOn: dateText(row?.answered_at),
   };
+}
+
+/**
+ * 필터 칩에 붙일 건수.
+ * @param {object[]} rows TicketOut 목록
+ * @returns {{ all: number, waiting: number, answered: number }}
+ */
+export function ticketCounts(rows) {
+  const counts = { all: 0, waiting: 0, answered: 0 };
+  for (const row of Array.isArray(rows) ? rows : []) {
+    counts.all += 1;
+    counts[ticketView(row).group] += 1;
+  }
+  return counts;
+}
+
+/**
+ * 필터에 맞는 문의만 순서를 지켜 고른다. 모르는 필터는 전체로 본다.
+ * @param {object[]} rows TicketOut 목록
+ * @param {string} filter "all" | "waiting" | "answered"
+ * @returns {object[]}
+ */
+export function filterTickets(rows, filter) {
+  const list = Array.isArray(rows) ? rows : [];
+  if (filter !== "waiting" && filter !== "answered") return list;
+  return list.filter((row) => ticketView(row).group === filter);
 }
