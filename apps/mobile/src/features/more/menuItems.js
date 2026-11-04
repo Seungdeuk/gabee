@@ -10,7 +10,7 @@ export const SHORTCUTS = [
   { key: "report", icon: "stats-chart-outline", title: "AI 리포트", subtitle: "주간 가족 요약", route: "/report" },
   { key: "ranking", icon: "trophy-outline", title: "가족 랭킹", subtitle: "가족 활동 순위", soon: true },
   { key: "subscription", icon: "diamond-outline", title: "구독 관리", subtitle: "요금제 · 사용량", route: "/subscription" },
-  { key: "settings", icon: "options-outline", title: "환경설정", subtitle: "알림 · 앱 설정", soon: true },
+  { key: "invite", icon: "person-add-outline", title: "가족 초대", subtitle: "초대 코드 · 가입 요청", route: "/family" },
 ];
 
 /**
@@ -18,7 +18,7 @@ export const SHORTCUTS = [
  * @type {{ key: string, icon: string, title: string, subtitle: string, route?: string, soon?: boolean }[]}
  */
 export const MENU = [
-  { key: "family", section: "service", icon: "people-outline", title: "우리 가족", subtitle: "구성원 · 초대 · 관리", route: "/family" },
+  { key: "family", section: "service", icon: "people-outline", title: "우리 가족", subtitle: "구성원 · 역할 · 가입 요청", route: "/family" },
   { key: "docs", section: "service", icon: "folder-open-outline", title: "가족 공유 문서함", subtitle: "가족 공지 · 업로드", soon: true },
   { key: "ai", section: "service", icon: "sparkles-outline", title: "가비 AI 이용 안내", subtitle: "사용 방법 · 개인정보 처리", route: "/ai-guide" },
   { key: "account", section: "support", icon: "lock-closed-outline", title: "계정 및 보안", subtitle: "비밀번호 · 로그인 · 계정", route: "/account-security" },
