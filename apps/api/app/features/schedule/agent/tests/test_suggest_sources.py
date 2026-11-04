@@ -1,5 +1,5 @@
-"""추천(먼저 권해드려요)의 입력 출처 확대 시험: 부탁·결제일·가족 대화 후보·개인 AI 채팅이 모델에 가는 입력에 들어가는지,
-돌봄·금액·지출 내역은 안 가는지, 개인정보가 가려지는지, 한 출처가 실패해도 추천이 계속되는지를 본다. 실제 Anthropic 은 부르지 않는다."""
+"""추천(먼저 권해드려요)의 입력 출처 확대 시험: 부탁·가족 대화 후보·개인 AI 채팅이 모델에 가는 입력에 들어가는지,
+구독·결제일·돌봄·금액·지출 내역은 안 가는지, 개인정보가 가려지는지, 한 출처가 실패해도 추천이 계속되는지를 본다. 실제 Anthropic 은 부르지 않는다."""
 
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
@@ -96,11 +96,6 @@ def test_prompt_has_requests_billing_family_and_chat(client, ids, fake, monkeypa
         headers=a,
     )
     assert received["title"] == "장 같이 봐줘"
-    client.post(
-        "/billing/subscriptions",
-        json={"kind": "ott", "name": "넷플릭스", "monthly_fee": 17000, "billing_day": 15},
-        headers=a,
-    )
     monkeypatch.setattr(
         suggest_sources.ai_service,
         "analysis",
@@ -118,8 +113,7 @@ def test_prompt_has_requests_billing_family_and_chat(client, ids, fake, monkeypa
     assert "병원 같이 가요" in requests_ and "내가 보낸 부탁" in requests_
     assert "장 같이 봐줘" in requests_ and "받은 부탁(답 전)" in requests_
     assert "이미 수락한 부탁" not in requests_  # 수락한 부탁은 이미 내 일정이다
-    billing = _section(prompt, "결제일")
-    assert "넷플릭스 결제일(OTT)" in billing and "17000" not in prompt  # 금액은 보내지 않는다
+    assert "결제일" not in prompt and "구독" not in prompt  # 구독 기능을 뺐다: 결제일은 읽지 않는다
     family = _section(prompt, "가족 대화에서 나온 후보")
     assert "가족 식사" in family and "일정 후보" in family and "선물 사기" in family
     assert "기한 미정" in family
@@ -127,24 +121,6 @@ def test_prompt_has_requests_billing_family_and_chat(client, ids, fake, monkeypa
     assert "여권 갱신" in chat and "1234-5678" not in chat  # 개인정보는 가려서 보낸다
     assert "돌봄" not in prompt  # 돌봄은 읽지 않는다
     assert fake.calls[-1]["max_tokens"] >= 2000  # 입력이 늘어 생각 토큰까지 감안한 출력 한도
-
-
-def test_billing_only_my_subscriptions_with_a_billing_day(client, ids, fake, no_family):
-    user_id, group_id, a, b, other_id = ids
-    pay = {"kind": "ott", "monthly_fee": 9000, "billing_day": 10}
-    client.post("/billing/subscriptions", json={**pay, "name": "내 구독"}, headers=a)
-    client.post(
-        "/billing/subscriptions", json={**pay, "name": "남이 결제", "payer_id": other_id}, headers=a
-    )
-    client.post(
-        "/billing/subscriptions",
-        json={"kind": "ott", "name": "결제일 없음", "monthly_fee": 5000},
-        headers=a,
-    )
-    _supply(user_id, group_id)
-    billing = _section(_prompt(fake), "결제일")
-    assert billing.count("내 구독") >= 2  # 앞으로 60일 안에 두 번 돌아온다
-    assert "남이 결제" not in billing and "결제일 없음" not in billing
 
 
 def test_family_analysis_failure_does_not_stop_suggestions(client, ids, fake, monkeypatch):

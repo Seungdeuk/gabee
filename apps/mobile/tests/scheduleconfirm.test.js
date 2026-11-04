@@ -69,6 +69,22 @@ test("부탁 카드(보내기·받는 사람 바꾸기·취소)도 변환하고 
   assert.equal(cancel[0].tone, "danger");
 });
 
+test("데일리 체크 대신 누르기 카드는 [체크하기][취소] 버튼으로 보인다", () => {
+  const cards = mapConfirmCards([
+    {
+      kind: "schedule",
+      action: "habit_check",
+      title: "이대로 체크할까요?",
+      lines: ["약 먹기: 아직 → 완료"],
+      shared_with: [],
+      pending_action: { type: "habit_check", habit_ids: ["h1"], habit_op: "mark", amount: 1 },
+    },
+  ]);
+  assert.equal(cards.length, 1);
+  assert.equal(cards[0].pendingAction.habit_ids[0], "h1");
+  assert.deepEqual(cardButtons(cards[0]).map((b) => b.label), ["체크하기", "취소"]);
+});
+
 test("모르는 종류·실행 정보가 없는 카드는 버리고, 목록이 아니면 빈 목록", () => {
   assert.deepEqual(mapConfirmCards(undefined), []);
   assert.deepEqual(mapConfirmCards(null), []);

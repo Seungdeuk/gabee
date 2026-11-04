@@ -14299,6 +14299,7 @@
               "delete",
               "check",
               "request",
+              "habit",
               "not_schedule"
             ],
             "title": "Intent"
@@ -15512,7 +15513,8 @@
               "delete_confirm",
               "suggestion",
               "request_confirm",
-              "request_list"
+              "request_list",
+              "habit_confirm"
             ],
             "title": "Type"
           },
@@ -16440,6 +16442,7 @@
               "request_register",
               "request_edit",
               "request_cancel",
+              "habit_check",
               "share_select"
             ],
             "title": "Action"
@@ -19495,7 +19498,8 @@
               "register",
               "request_register",
               "request_edit",
-              "request_cancel"
+              "request_cancel",
+              "habit_check"
             ],
             "title": "Type"
           },
@@ -19531,6 +19535,31 @@
             "type": "array",
             "maxItems": 20,
             "title": "To Ids"
+          },
+          "habit_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 20,
+            "title": "Habit Ids"
+          },
+          "habit_op": {
+            "type": "string",
+            "enum": [
+              "",
+              "mark",
+              "unmark"
+            ],
+            "title": "Habit Op",
+            "default": ""
+          },
+          "amount": {
+            "type": "integer",
+            "maximum": 100.0,
+            "minimum": 1.0,
+            "title": "Amount",
+            "default": 1
           }
         },
         "type": "object",

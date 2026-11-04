@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 from app.shared.auth import ensure_group_member
 
 from ..constants import SUGGESTION_DISMISSED
-from . import chat, checks, modify, reader, register, request_flow, suggest
+from . import chat, checks, habits, modify, reader, register, request_flow, suggest
 from . import members as members_mod
 from . import period as period_mod
 from .schemas import AgentRequest, AgentResponse, Card, ConfirmRequest, SuggestionOut
@@ -51,6 +51,7 @@ def _ask(
     members,
     guarded=True,
     request_view=None,
+    habit_view=None,
 ) -> chat.ChatResult:
     lines = [
         chat.event_line(
@@ -80,6 +81,8 @@ def _ask(
         request_view.lines if request_view else None,
         set(request_view.rows) if request_view else None,
         FAMILY_NOTICE if request.channel == "family" else "",
+        habit_view.lines if habit_view else None,
+        set(habit_view.rows) if habit_view else None,
     )
 
 
@@ -109,6 +112,7 @@ def handle(
     scope = f"문장에서 읽은 기간 {period.widened().label()}" if period else None
     members = members_mod.load(db, group_id)
     request_view = request_flow.load(db, group_id, user_id, local_now.date())
+    habit_view = habits.load(db, user_id, group_id, request.channel)
     result = _ask(
         db,
         user_id,
@@ -122,6 +126,7 @@ def handle(
         members,
         guarded,
         request_view,
+        habit_view,
     )
     if result.need_wider:
         # 목록이 부족하다고 모델이 표시하면, 모델이 돌려준 기간·키워드로 이미 읽어 둔 일정 안에서 다시 걸러 한 번 더 묻는다
@@ -142,6 +147,7 @@ def handle(
             members,
             guarded,
             request_view,
+            habit_view,
         )
     if result.intent == "not_schedule":
         return AgentResponse(intent=result.intent)
@@ -166,6 +172,15 @@ def handle(
             result.reply,
             members,
             request_view,
+        )
+    if result.intent == "habit":
+        return habits.respond(
+            habit_view,
+            user_id,
+            result.habit["action"],
+            result.habit["item_ids"],
+            result.habit["amount"],
+            request.channel,
         )
     by_id = {e.id: e for e in shown}
     if result.intent == "edit":
@@ -251,6 +266,8 @@ def confirm(db: Session, user_id: str, group_id: str, body: ConfirmRequest) -> A
         return modify.confirm_edit(db, user_id, group_id, action)
     if action.type == "delete":
         return modify.confirm_delete(db, user_id, group_id, action)
+    if action.type == "habit_check":
+        return habits.confirm(db, user_id, action)
     members = members_mod.load(db, group_id)
     if action.type.startswith("request_"):
         return request_flow.confirm(db, user_id, group_id, action, members)

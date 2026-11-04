@@ -15,8 +15,8 @@ export function cancelledText(card) {
   return card?.action === "share_select" ? SHARE_CANCELLED_TEXT : CANCELLED_TEXT;
 }
 
-// 일정(가족 공유 등록·수정·삭제)과 부탁(보내기·받는 사람 바꾸기·취소)의 확인 카드 종류
-export const CONFIRM_ACTIONS = ["register", "edit", "delete", "request_register", "request_edit", "request_cancel", "share_select"];
+// 일정(가족 공유 등록·수정·삭제)과 부탁(보내기·받는 사람 바꾸기·취소), 데일리 체크 대신 누르기(habit_check)의 확인 카드 종류
+export const CONFIRM_ACTIONS = ["register", "edit", "delete", "request_register", "request_edit", "request_cancel", "habit_check", "share_select"];
 
 /**
  * 서버의 confirm_cards 를 앱이 쓰는 모양으로 바꾼다. 모르는 종류는 버린다(눌러서 실행할 수 없는 카드는 보이지 않게).
@@ -140,6 +140,12 @@ export function cardButtons(card) {
   if (card.action === "request_register") {
     return [
       { key: "ok", label: "보내기", share: false, tone: "main" },
+      { key: "cancel", label: "취소", tone: "ghost" },
+    ];
+  }
+  if (card.action === "habit_check") {
+    return [
+      { key: "ok", label: "체크하기", share: false, tone: "main" },
       { key: "cancel", label: "취소", tone: "ghost" },
     ];
   }

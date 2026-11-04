@@ -10,7 +10,15 @@ Channel = Literal["personal", "family"]
 
 # 일정 요청의 종류. not_schedule 이면 일정 요청이 아니라는 뜻이라 메인이 직접 답한다
 Intent = Literal[
-    "query", "recommend", "register", "edit", "delete", "check", "request", "not_schedule"
+    "query",
+    "recommend",
+    "register",
+    "edit",
+    "delete",
+    "check",
+    "request",
+    "habit",
+    "not_schedule",
 ]
 INTENTS: tuple[str, ...] = (
     "query",
@@ -20,6 +28,7 @@ INTENTS: tuple[str, ...] = (
     "delete",
     "check",
     "request",
+    "habit",
     "not_schedule",
 )
 
@@ -33,6 +42,7 @@ CardType = Literal[
     "suggestion",
     "request_confirm",
     "request_list",
+    "habit_confirm",
 ]
 
 
@@ -70,13 +80,23 @@ class PendingAction(BaseModel):
     """확인 카드가 들고 있는 실행 정보. 서버는 저장하지 않고(stateless) 확인 요청에 그대로 돌려받는다."""
 
     type: Literal[
-        "edit", "delete", "register", "request_register", "request_edit", "request_cancel"
+        "edit",
+        "delete",
+        "register",
+        "request_register",
+        "request_edit",
+        "request_cancel",
+        "habit_check",
     ]
     event_id: str = ""  # 수정·삭제 대상(등록은 비어 있음)
     changes: dict = Field(default_factory=dict)  # 수정일 때 바뀌는 값
     draft: Draft | None = None  # 등록(공유 확인)·부탁 보내기일 때 등록할 내용
     request_id: str = ""  # 부탁 받는 사람 바꾸기·취소 대상
     to_ids: list[str] = Field(default_factory=list, max_length=20)  # 부탁의 바뀐 뒤 받는 사람 전체
+    # 데일리 체크 대신 누르기(habit_check): 대상 습관 id, mark(체크·횟수 더하기) / unmark(체크 취소·횟수 빼기), 횟수 습관에 더하거나 빼는 양
+    habit_ids: list[str] = Field(default_factory=list, max_length=20)
+    habit_op: Literal["", "mark", "unmark"] = ""
+    amount: int = Field(default=1, ge=1, le=100)
 
 
 class ConfirmRequest(BaseModel):
