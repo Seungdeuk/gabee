@@ -23,7 +23,7 @@
 - **p95 같은 백분위는 없다**: 저장값이 구간별 합계·최댓값뿐이라 계산할 수 없다. 평균은 합계/요청 수이다.
 - `/admin/ops/` 아래 호출은 계측에서 제외한다(화면 자동 갱신이 자기 지표를 부풀리지 않게).
 - 한계: DB 에 저장된 구간만 읽는다(아직 닫히지 않은 최신 구간은 구간이 바뀐 뒤 반영). 평균 응답 시간은 모든 상태코드 구분을 합친 값이다. 조회 시작은 저장 구간 경계로 내리고, 막대 간격은 저장 구간보다 가늘어지지 않는다. `/apis` 는 최대 100개이며 `total_routes`·`truncated` 로 잘림을 알린다.
-- 시험: `ops_admin/tests/test_ops_read_api.py`(권한, 기간 합산, 경로별 집계, 빈 데이터, 잘못된 range). 실제 PostgreSQL 에서의 조회는 아직 확인하지 않았다(SQLite 시험).
+- 시험: `ops_admin/tests/test_ops_read_api.py`(권한, 기간 합산, 경로별 집계, 빈 데이터, 잘못된 range). pytest 는 SQLite 로 돈다. PostgreSQL 에서의 `summary`·`apis` 집계는 격리 임시 DB 에서 스크립트로 확인했다(2026-11-04).
 
 ### 오류 이벤트 (1-c-2, `OPS_ERRORS_ENABLED=true` 일 때만 동작, 기본 꺼짐)
 - `app/features/ops_admin/masking.py`: 오류 메시지의 개인정보·식별자를 가린다(공용 검출기 + 토큰·UUID·id·URL 쿼리·SQL·IP·홈 경로). 길이 200자, 가림 실패 시 메시지를 버린다. 한국어 이름·주소는 일부 놓칠 수 있다.
