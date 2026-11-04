@@ -122,4 +122,5 @@
 - PR 4-C: Google/Kakao 소셜 로그인 연동 API.
 - PR 4-E: 가족 관계·표시 이름·구성원별 별명 지정 API, owner/admin 권한 관리 API.
 - 홈(AI 채팅) 인사말 아래 "가족 만들기"(`/family-create`)·"초대 코드로 참여"(`/family-join`) 버튼 둘(2026-11): 가족 그룹도 승인 대기 요청도 없을 때만 보인다(`JoinFamilyPrompt`, 판단은 `joinPrompt.js`). AI 화면은 `emptyAction` 자리만 두고 홈 라우트(`(tabs)/chat.js`)에서 조립한다. 앱만 바뀌고 서버는 그대로.
+- **가족 이름 변경**(2026-11, 스키마 변경 없음): `PUT /family-group/groups/me/name`(`join_router.py`·`join_service.rename_group`, `GroupNameIn` 1~60자·공백 제거). 가족 관리자(owner/admin)만, 일반 구성원 403 `not_manager`. 응답은 바뀐 `GroupOut`. 시험 `tests/test_group_rename.py`(소유자·관리자 성공, 일반 구성원 403, 길이·공백 검증, 가족 없음 `no_group`, 다른 가족 영향 없음).
 - PR 4-F: 모바일 화면 — 로그인·회원가입·이메일 인증·비밀번호 재설정은 구현(docs/features/mobile-auth.md). 남은 것: 소셜 연동, 초대 승인, 가족 프로필.

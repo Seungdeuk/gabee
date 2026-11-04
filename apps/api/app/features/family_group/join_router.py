@@ -9,7 +9,7 @@ from app.shared.auth import current_user
 from app.shared.db import get_db
 
 from . import join_service, service
-from .join_schemas import InviteOut, InviteSettingsIn, JoinRequestOut, PendingJoinOut
+from .join_schemas import GroupNameIn, InviteOut, InviteSettingsIn, JoinRequestOut, PendingJoinOut
 from .models import User
 from .schemas import GroupOut
 
@@ -33,6 +33,15 @@ def update_invite_settings(
 ) -> GroupOut:
     """초대 코드로 들어온 사람을 바로 구성원으로 넣을지(자동 승인) 켜고 끈다. 가족 관리자만."""
     group_id = join_service.set_auto_approve(db, user, body.auto_approve)
+    return service.group_out_by_id(db, group_id, user.id)
+
+
+@router.put("/groups/me/name", response_model=GroupOut)
+def rename_group(
+    body: GroupNameIn, user: User = Depends(current_user), db: Session = Depends(get_db)
+) -> GroupOut:
+    """가족 이름을 바꾼다(1~60자, 앞뒤 공백 제거). 가족 관리자(owner/admin)만, 일반 구성원은 403 not_manager."""
+    group_id = join_service.rename_group(db, user, body.name)
     return service.group_out_by_id(db, group_id, user.id)
 
 
