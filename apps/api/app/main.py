@@ -12,6 +12,7 @@ from app.features.family_chat.router import router as family_chat_router
 from app.features.family_group.photo_limit import PhotoBodyLimitMiddleware
 from app.features.family_group.router import router as family_group_router
 from app.features.notifications.router import router as notifications_router
+from app.features.ops_admin.error_service import observe as ops_error_observer
 from app.features.ops_admin.middleware import RequestMetricsMiddleware
 from app.features.ops_admin.router import router as ops_admin_router
 from app.features.ops_admin.service import aggregator as ops_metrics
@@ -19,7 +20,7 @@ from app.features.schedule.router import router as schedule_router
 from app.features.support.router import router as support_router
 from app.shared.config import settings
 from app.shared.db import init_db
-from app.shared.errors import register_error_handlers
+from app.shared.errors import register_error_handlers, set_error_observer
 from app.shared.high_risk_guard import GUARDED_FEATURES, high_risk_guard
 from app.shared.privacy import ner as privacy_ner
 from app.shared.public_pages.router import router as public_pages_router
@@ -64,6 +65,9 @@ app.add_middleware(
     RequestMetricsMiddleware
 )  # 가장 바깥: OPS_METRICS_ENABLED 가 켜졌을 때만 X-Trace-Id 발급·요청 지표 집계(기본 꺼짐)
 register_error_handlers(app)
+set_error_observer(
+    ops_error_observer
+)  # 5xx·처리되지 않은 예외·401/403 을 운영 오류 이벤트로(OPS_ERRORS_ENABLED, 기본 꺼짐)
 
 # 기능별 스키마 의존성: 그 기능에 필요한 DB 스키마가 아직 준비되지 않았으면(자동 배포 중 등) 해당 기능만 503
 for feature, router in (
