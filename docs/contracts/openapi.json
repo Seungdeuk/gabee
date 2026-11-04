@@ -7178,8 +7178,26 @@
           "schedule"
         ],
         "summary": "List Items",
+        "description": "내 습관과 그 날짜(없으면 오늘)의 기록. 날짜는 오늘부터 7일 전까지.",
         "operationId": "list_items_schedule_check_items_get",
         "parameters": [
+          {
+            "name": "date",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Date"
+            }
+          },
           {
             "name": "authorization",
             "in": "header",
@@ -7481,6 +7499,7 @@
           "schedule"
         ],
         "summary": "Delete Item",
+        "description": "소프트 삭제(지난 기록은 남는다).",
         "operationId": "delete_item_schedule_check_items__item_id__delete",
         "parameters": [
           {
@@ -7560,6 +7579,23 @@
             }
           },
           {
+            "name": "date",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Date"
+            }
+          },
+          {
             "name": "authorization",
             "in": "header",
             "required": false,
@@ -7598,6 +7634,108 @@
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/CheckEntryBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CheckItemOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/schedule/check/items/{item_id}/note": {
+      "put": {
+        "tags": [
+          "schedule"
+        ],
+        "summary": "Set Note",
+        "description": "그날 메모 저장·지우기(note 가 빈 문자열이나 null 이면 지운다).",
+        "operationId": "set_note_schedule_check_items__item_id__note_put",
+        "parameters": [
+          {
+            "name": "item_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Item Id"
+            }
+          },
+          {
+            "name": "date",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Date"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-gyeot-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Gyeot-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CheckNoteBody"
               }
             }
           }
@@ -14324,7 +14462,7 @@
         },
         "type": "object",
         "title": "CheckEntryBody",
-        "description": "오늘 기록. 체크 습관은 done 만, 횟수 습관은 count(절대값)만 보낸다."
+        "description": "그날 기록. 체크 습관은 done 만, 횟수 습관은 count(절대값)만 보낸다."
       },
       "CheckItemCreate": {
         "properties": {
@@ -14486,6 +14624,30 @@
               }
             ],
             "title": "Confirmed At"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "note_shared": {
+            "type": "boolean",
+            "title": "Note Shared"
+          },
+          "applies": {
+            "type": "boolean",
+            "title": "Applies"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
           }
         },
         "type": "object",
@@ -14502,7 +14664,11 @@
           "done",
           "count",
           "confirmed",
-          "confirmed_at"
+          "confirmed_at",
+          "note",
+          "note_shared",
+          "applies",
+          "updated_at"
         ],
         "title": "CheckItemOut"
       },
@@ -14666,6 +14832,17 @@
               }
             ],
             "title": "Confirmed At"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
           }
         },
         "type": "object",
@@ -14678,10 +14855,11 @@
           "done",
           "count",
           "confirmed",
-          "confirmed_at"
+          "confirmed_at",
+          "note"
         ],
         "title": "CheckMemberItemOut",
-        "description": "가족이 보는 습관 한 줄. 알림·순서·반복 요일은 싣지 않는다."
+        "description": "가족이 보는 습관 한 줄(오늘). 알림·순서·반복 요일은 싣지 않는다. 메모는 습관과 줄이 모두 공유일 때만 값이 있다."
       },
       "CheckMemberSummary": {
         "properties": {
@@ -14736,6 +14914,32 @@
           "items"
         ],
         "title": "CheckMemberToday"
+      },
+      "CheckNoteBody": {
+        "properties": {
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "note_shared": {
+            "type": "boolean",
+            "title": "Note Shared",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "note"
+        ],
+        "title": "CheckNoteBody",
+        "description": "그날 메모. note 가 비어 있거나 null 이면 메모를 지운다. 100자를 넘으면 422."
       },
       "CheckSettingsIn": {
         "properties": {

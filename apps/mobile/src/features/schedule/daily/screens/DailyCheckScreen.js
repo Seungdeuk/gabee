@@ -22,13 +22,18 @@ import {
   sendCheer,
   setEntry,
 } from "../api";
+import CalendarIcon from "../components/CalendarIcon";
 import CallDoneSheet from "../components/CallDoneSheet";
 import CallSheet from "../components/CallSheet";
 import CheerSheet from "../components/CheerSheet";
 import CheerStrip from "../components/CheerStrip";
 import ConfirmSheet, { ConfirmBody } from "../components/ConfirmSheet";
 import DailyRow from "../components/DailyRow";
+import DayPickSheet from "../components/DayPickSheet";
+import MemoFullPopup from "../components/MemoFullPopup";
+import MemoSheet from "../components/MemoSheet";
 import PencilIcon from "../components/PencilIcon";
+import { useDayRecords } from "../dayRecords";
 import { createEntrySync } from "../entrySync";
 import { FAMILY_ITEMS_MOCK } from "../mock";
 import {
@@ -37,15 +42,20 @@ import {
   ROW_HEIGHT,
   ROW_MENU,
   ROW_MENU_HOLD_MS,
-  applyCheck,
-  applyStep,
+  canGoNextDay,
+  canGoPrevDay,
   cheerSubtitle,
+  dayCardTitle,
+  dayHeaderLabel,
   familyRowsOf,
   findCallItem,
   formatClock,
-  formatDayLabel,
   isDone,
+  itemsOnDate,
   lastRecordOf,
+  memoShareText,
+  memoSheetSub,
+  memoStampText,
   needsOnboarding,
   nowClock,
   normalizeTabs,
@@ -54,10 +64,10 @@ import {
   rowMenuTop,
   shouldHideDotsOnTouch,
   shouldShowCallDone,
+  stepDay,
   tabLabel,
   shouldShowCallButton,
   talkingPoints,
-  todayItemsOf,
   visibleTabIds,
 } from "../logic";
 import { useDailyMembers, useDailyScope } from "../scope";
@@ -68,7 +78,8 @@ const infoSheet = (notice) => ({ title: notice.title, body: notice.body, confirm
 
 /**
  * 데일리 체크 메인: 내 탭(체크·횟수, 줄을 길게 누르면 수정·삭제 메뉴, 받은 응원 카드)과 가족 탭(보기만, 응원 보내기·전화 버튼).
- * 습관·기록·응원은 서버에서 읽는다. 기록은 누르는 즉시 화면에 반영하고 서버 저장은 뒤에서 한다(entrySync.js).
+ * 습관·기록·메모·응원은 서버에서 읽는다. 기록과 메모는 누르는 즉시 화면에 반영하고 서버 저장은 뒤에서 한다(오늘 기록은 entrySync.js, 지난 날과 메모는 dayStore.js).
+ * 지난 날을 보면 그 날짜의 목록을 서버에서 읽는다(날짜별로 한 번, 당겨서 새로고침하면 다시 읽는다).
  * 처음이고 서버에 습관이 없으면 온보딩으로 보낸다. 가족 탭 라벨은 가족 요약, 가족 탭 목록은 탭을 열 때와 당겨 새로고침 때만 읽는다.
  */
 export default function DailyCheckScreen() {
@@ -81,6 +92,7 @@ export default function DailyCheckScreen() {
   const [loadFailed, setLoadFailed] = useState(null); // 받지 못한 오류(있으면 오류 빈 상태)
   const [items, setItems] = useState([]);
   const [entries, setEntries] = useState({});
+  const [pastDays, setPastDays] = useState({}); // 지난 날 목록: 날짜 → { loading, error, items }(오늘은 items 를 쓴다)
   const [tabState, setTabState] = useState({ order: [], hidden: [] });
   const [summary, setSummary] = useState({}); // 가족 앱 id → { done, total }
   const [familyView, setFamilyView] = useState({}); // 가족 앱 id → { loading, error, rows }
@@ -106,6 +118,11 @@ export default function DailyCheckScreen() {
   const [cheerFor, setCheerFor] = useState(null); // 응원 시트를 연 가족 id
   const [callFor, setCallFor] = useState(null); // 전화 확인 시트를 연 가족 id
   const [callDone, setCallDone] = useState(null); // 통화 뒤 시트: { memberId }
+  const [viewDate, setViewDate] = useState(null); // 내 탭에서 보고 있는 날짜(YYYY-MM-DD). null 이면 오늘
+  const [dayPick, setDayPick] = useState(false); // 날짜 고르기 시트를 열었는가
+  const [memoSheet, setMemoSheet] = useState(null); // 메모 쓰기 시트를 연 항목: { id }
+  const [memoFull, setMemoFull] = useState(null); // 메모 전문 팝업: { id, family }
+  const viewing = viewDate ?? today; // 보고 있는 날짜(가족 탭은 늘 오늘을 본다)
   const pendingCall = useRef(null); // 전화 앱을 연 가족 id(앱으로 돌아오면 통화 뒤 시트를 띄운다)
   // 전화는 번호 없이 전화 앱 키패드를 연다(가족 전화번호는 서버에 두지 않는다).
   // 전화 버튼 판정: 안드로이드는 항상 보이고(canOpenURL 을 믿지 않는다), iOS 만 화면이 열릴 때 canOpenURL("tel:") 을 한 번 확인해 거짓이면 숨긴다.
@@ -130,6 +147,9 @@ export default function DailyCheckScreen() {
       onError: (error) => setSheet(infoSheet(failureNotice(error))),
     }),
   );
+  // 날짜별 기록·메모 저장 자리(dayRecords.js). 오늘의 기록은 sync 를, 지난 날의 기록과 모든 메모는 서버를 쓴다.
+  const records = useDayRecords({ today, entries, sync, onError: (error) => setSheet(infoSheet(failureNotice(error))) });
+  const { seedEntries, seedMemos, flushAll } = records;
 
   // 가족 구성원(나 제외).
   const familyIds = useMemo(() => members.filter((m) => m.id !== ME_ID).map((m) => m.id), [members]);
@@ -148,6 +168,7 @@ export default function DailyCheckScreen() {
         return;
       }
       setEntries(sync.seed(Object.fromEntries(its.map((item) => [item.id, item.entry]))));
+      seedMemos(today, its);
       setItems(its);
       setCheers(cs);
       setLoadFailed(null);
@@ -157,7 +178,7 @@ export default function DailyCheckScreen() {
       if (readyRef.current) setSheet(infoSheet(failureNotice(error, "불러오지 못했어요")));
       else setLoadFailed(error);
     }
-  }, [router, sync]);
+  }, [router, sync, seedMemos, today]);
 
   // 가족 탭 라벨용 요약(실패해도 라벨만 이름으로 남는다).
   const loadSummary = useCallback(
@@ -180,21 +201,38 @@ export default function DailyCheckScreen() {
     }
   }, []);
 
-  // 화면에 올 때마다 읽는다. 나갈 때는 남은 횟수 저장을 바로 보내고 줄 메뉴를 닫는다.
+  // 지난 날 목록을 읽는다(날짜별로 처음 볼 때 한 번, 실패하면 그 날의 다시 시도 줄). 기록·메모도 같이 맞춘다.
+  const loadDay = useCallback(
+    async (date) => {
+      setPastDays((prev) => ({ ...prev, [date]: { loading: true, error: null, items: prev[date]?.items ?? [] } }));
+      try {
+        const list = await listItems(date);
+        seedEntries(date, list);
+        seedMemos(date, list);
+        setPastDays((prev) => ({ ...prev, [date]: { loading: false, error: null, items: list } }));
+      } catch (error) {
+        setPastDays((prev) => ({ ...prev, [date]: { loading: false, error, items: prev[date]?.items ?? [] } }));
+      }
+    },
+    [seedEntries, seedMemos],
+  );
+
+  // 화면에 올 때마다 읽는다. 나갈 때는 남은 저장(횟수·메모)을 바로 보내고 줄 메뉴를 닫는다.
   useFocusEffect(
     useCallback(() => {
       let alive = true;
       load();
       loadSummary();
       dropLocalCopy(scope); // 지난 버전이 폰에 남긴 습관·기록·응원 사본은 버린다(서버가 기준이다)
+      setPastDays({}); // 지난 날 목록은 화면에 올 때마다 다시 읽는다(습관 수정·삭제 반영). 보고 있는 날만 바로 다시 읽힌다
       loadTabOrder(scope).then((tb) => alive && setTabState(tb));
       return () => {
         alive = false;
-        sync.flushAll();
+        flushAll();
         setMenuFor(null);
         setShowMenuDots(false);
       };
-    }, [load, loadSummary, scope, sync]),
+    }, [load, loadSummary, scope, flushAll]),
   );
 
   // ── 탭 줄 ──
@@ -211,8 +249,14 @@ export default function DailyCheckScreen() {
     return s ? { done: s.done, total: s.total } : null;
   };
 
-  const mine = todayItemsOf(items, today);
-  const myProgress = progressOf(mine, (item) => entries[item.id]);
+  const isViewingToday = viewing === today;
+  const pastDay = isViewingToday ? null : pastDays[viewing]; // 지난 날 목록 상태(아직 안 읽었으면 undefined)
+  // 목록은 서버가 그 날짜로 준 습관을 쓴다(applies 로 거른다). 오늘은 아래 load() 가 읽은 목록이다.
+  const mine = itemsOnDate(isViewingToday ? items : (pastDay?.items ?? []), viewing);
+  const myProgress = progressOf(mine, (item) => records.entryOf(item.id, viewing));
+  const myReady = isViewingToday ? loaded : Boolean(pastDay && !pastDay.loading && !pastDay.error);
+  const canPrev = canGoPrevDay(viewing, today);
+  const canNext = canGoNextDay(viewing, today);
   const tabList = [
     { id: ME_ID, label: tabLabel("나", myProgress.done, myProgress.total) },
     ...visibleIds.map((id) => {
@@ -228,6 +272,11 @@ export default function DailyCheckScreen() {
   useEffect(() => {
     if (activeMember && activeMember.id !== ME_ID) loadFamily(activeMember);
   }, [activeMember, loadFamily]);
+  // 지난 날을 보고 있고 아직 안 읽었으면 그 날의 목록을 읽는다(날짜별 한 번. 실패한 날은 다시 시도 줄로 다시 읽는다).
+  useEffect(() => {
+    if (!isMe || isViewingToday || pastDays[viewing]) return;
+    loadDay(viewing);
+  }, [isMe, isViewingToday, viewing, pastDays, loadDay]);
   const activeView = isMe ? null : familyView[activeTab];
   const activeRows = isMe ? [] : familyRows(activeTab);
   const activeProgress = progressOf(activeRows, (row) => row.entry);
@@ -239,12 +288,27 @@ export default function DailyCheckScreen() {
   const pickTab = (id) => {
     setMenuFor(null);
     setShowMenuDots(false);
+    if (id !== ME_ID) setViewDate(null); // 가족 탭은 오늘만 보므로 내 탭의 날짜 보기는 오늘로 되돌린다
     setTab(id);
   };
 
   // ── 기록 ──
-  const onCheck = (item) => sync.change(item, applyCheck(sync.valueOf(item.id), nowClock()));
-  const onStep = (item, delta) => sync.change(item, applyStep(item, sync.valueOf(item.id), delta, nowClock()), { debounced: true });
+  const onCheck = (item) => records.checkItem(item, viewing);
+  const onStep = (item, delta) => records.stepItem(item, viewing, delta);
+
+  // ── 메모 ──
+  // 메모 아이콘은 쓰기 시트를, 메모 글자는 전문 팝업을 연다. 팝업의 [수정]은 쓰기 시트로 이어진다(내 화면만).
+  const sheetItem = memoSheet ? (mine.find((x) => x.id === memoSheet.id) ?? null) : null;
+  const sheetMemo = sheetItem ? records.memoOf(sheetItem.id, viewing) : undefined;
+  const saveSheetMemo = (memo) => {
+    if (sheetItem) records.saveMemo(sheetItem, viewing, memo);
+    setMemoSheet(null);
+  };
+  // 전문 팝업: 내 화면은 내 목록에서, 가족 탭은 가족 목록(오늘)에서 찾는다.
+  const fullFamily = Boolean(memoFull?.family);
+  const fullItem = memoFull ? ((fullFamily ? activeRows : mine).find((x) => x.id === memoFull.id) ?? null) : null;
+  const fullMemo = fullItem && !fullFamily ? records.memoOf(fullItem.id, viewing) : undefined;
+  const fullEntry = fullItem ? (fullFamily ? fullItem.entry : records.entryOf(fullItem.id, viewing)) : undefined;
 
   // ── 줄 메뉴 ──
   // 내 줄을 길게 누르면(ROW_MENU_HOLD_MS) 그 줄 아래에 수정·삭제 메뉴가 뜬다. 메뉴 바깥을 누르면 닫힌다.
@@ -268,6 +332,9 @@ export default function DailyCheckScreen() {
           try {
             await deleteItem(item.id);
             setItems((prev) => prev.filter((x) => x.id !== item.id));
+            setPastDays((prev) =>
+              Object.fromEntries(Object.entries(prev).map(([date, day]) => [date, { ...day, items: day.items.filter((x) => x.id !== item.id) }])),
+            );
           } catch (error) {
             setSheet(infoSheet(failureNotice(error, "지우지 못했어요")));
           }
@@ -334,7 +401,7 @@ export default function DailyCheckScreen() {
   useEffect(() => {
     const sub = AppState.addEventListener("change", (state) => {
       if (state === "background" || state === "inactive") {
-        sync.flushAll();
+        flushAll();
         return;
       }
       if (state !== "active" || !pendingCall.current) return;
@@ -343,7 +410,7 @@ export default function DailyCheckScreen() {
       openCallDoneRef.current?.(memberId);
     });
     return () => sub.remove();
-  }, [sync]);
+  }, [flushAll]);
 
   // "완료로 체크하기": 오늘 목록의 "안부 전화" 습관을 완료로 바꾸고 시트를 닫는다(시트는 습관이 있을 때만 열렸다).
   const finishCall = () => {
@@ -359,13 +426,13 @@ export default function DailyCheckScreen() {
   // 당겨서 새로고침: 남은 저장을 먼저 보내고 내 습관·응원·요약(과 열린 가족 탭)을 다시 읽는다.
   const onRefresh = async () => {
     setRefreshing(true);
-    await sync.flushAll();
-    await Promise.all([load(), loadSummary(), isMe ? null : loadFamily(activeMember)]);
+    await flushAll();
+    await Promise.all([load(), loadSummary(), isMe ? null : loadFamily(activeMember), isMe && !isViewingToday ? loadDay(viewing) : null]);
     setRefreshing(false);
   };
 
-  const meLoading = isMe && !loaded && !loadFailed;
-  const meFailed = isMe && loadFailed;
+  const meLoading = isMe && (isViewingToday ? !loaded && !loadFailed : !pastDay || pastDay.loading);
+  const meFailed = isMe && (isViewingToday ? loadFailed : pastDay?.error);
   const familyLoading = !isMe && !isVirtual && (!activeView || activeView.loading) && !activeRows.length && !activeView?.error;
   const familyFailed = !isMe && !isVirtual && activeView?.error && !activeRows.length;
 
@@ -402,7 +469,25 @@ export default function DailyCheckScreen() {
               <Text style={styles.editText}>편집</Text>
             </Pressable>
           </View>
-          <Text style={styles.date}>{formatDayLabel(today)}</Text>
+          {isMe ? (
+            // 날짜 줄: ‹ 날짜 › 화살표(8일 범위), 오른쪽 끝에 달력 아이콘(날짜 고르기 시트)
+            <View style={styles.dateRow}>
+              <DayArrow prev disabled={!canPrev} onPress={() => setViewDate(stepDay(viewing, -1, today))} />
+              <Text style={[styles.date, styles.dateInRow]}>{dayHeaderLabel(viewing, today)}</Text>
+              <DayArrow disabled={!canNext} onPress={() => setViewDate(stepDay(viewing, 1, today))} />
+              <View style={styles.flexFill} />
+              <Pressable
+                onPress={() => setDayPick(true)}
+                style={styles.calendarBtn}
+                accessibilityRole="button"
+                accessibilityLabel="다른 날짜 보기"
+              >
+                <CalendarIcon size={22} />
+              </Pressable>
+            </View>
+          ) : (
+            <Text style={styles.date}>{dayHeaderLabel(today, today)}</Text>
+          )}
         </View>
 
         <View style={styles.tabBar}>
@@ -426,8 +511,8 @@ export default function DailyCheckScreen() {
         </View>
 
         {isMe ? (
-          loaded ? (
-            <ProgressCard tone="me" title="오늘 나의 체크" done={myProgress.done} total={myProgress.total} pct={myProgress.pct} />
+          myReady ? (
+            <ProgressCard tone="me" title={dayCardTitle(viewing, today)} done={myProgress.done} total={myProgress.total} pct={myProgress.pct} />
           ) : null
         ) : (
           <ProgressCard
@@ -440,7 +525,7 @@ export default function DailyCheckScreen() {
           />
         )}
 
-        {isMe && loaded ? (
+        {isMe && loaded && isViewingToday ? (
           <CheerStrip
             cheers={cheers}
             today={today}
@@ -463,7 +548,7 @@ export default function DailyCheckScreen() {
             meLoading ? (
               <Text style={styles.empty}>불러오는 중이에요</Text>
             ) : meFailed ? (
-              <LoadError text={loadErrorText(loadFailed)} onRetry={load} />
+              <LoadError text={loadErrorText(isViewingToday ? loadFailed : pastDay.error)} onRetry={isViewingToday ? load : () => loadDay(viewing)} />
             ) : mine.length ? (
               mine.map((item, index) => (
                 <View key={item.id} style={styles.rowWrap} onTouchStart={markInside}>
@@ -478,7 +563,10 @@ export default function DailyCheckScreen() {
                   >
                     <DailyRow
                       item={item}
-                      entry={entries[item.id]}
+                      entry={records.entryOf(item.id, viewing)}
+                      memo={records.memoOf(item.id, viewing)?.note ?? ""}
+                      onMemoIcon={() => setMemoSheet({ id: item.id })}
+                      onMemoText={() => setMemoFull({ id: item.id, family: false })}
                       handle={
                         showMenuDots ? (
                           <Pressable
@@ -498,7 +586,7 @@ export default function DailyCheckScreen() {
                 </View>
               ))
             ) : (
-              <Text style={styles.empty}>오늘 해당하는 습관이 없어요, 아래에서 추가해 보세요</Text>
+              <Text style={styles.empty}>{isViewingToday ? "오늘 해당하는 습관이 없어요, 아래에서 추가해 보세요" : "그날 해당하는 습관이 없어요"}</Text>
             )
           ) : familyLoading ? (
             <Text style={styles.empty}>불러오는 중이에요</Text>
@@ -507,7 +595,7 @@ export default function DailyCheckScreen() {
           ) : activeRows.length ? (
             activeRows.map((row) => (
               <View key={row.id} style={styles.familyRow}>
-                <DailyRow item={row} entry={row.entry} family />
+                <DailyRow item={row} entry={row.entry} family memo={row.note ?? ""} onMemoText={() => setMemoFull({ id: row.id, family: true })} />
               </View>
             ))
           ) : (
@@ -599,6 +687,38 @@ export default function DailyCheckScreen() {
         onDone={finishCall}
         onLater={laterCall}
       />
+      <DayPickSheet
+        visible={dayPick}
+        onClose={() => setDayPick(false)}
+        selected={viewing}
+        onPick={(date) => {
+          setViewDate(date);
+          setDayPick(false);
+        }}
+      />
+      <MemoSheet
+        visible={sheetItem !== null}
+        onClose={() => setMemoSheet(null)}
+        itemName={sheetItem?.name ?? ""}
+        subtitle={memoSheetSub(viewing, today)}
+        note={sheetMemo?.note ?? ""}
+        shared={sheetMemo?.noteShared ?? false}
+        onSave={(memo) => saveSheetMemo(memo)}
+        onClear={() => saveSheetMemo(null)}
+      />
+      <MemoFullPopup
+        visible={fullItem !== null}
+        title={fullItem?.name ?? ""}
+        stamp={fullItem ? memoStampText(fullFamily ? today : viewing, fullItem, fullEntry) : ""}
+        note={fullFamily ? (fullItem?.note ?? "") : (fullMemo?.note ?? "")}
+        shareText={memoShareText({ shared: Boolean(fullMemo?.noteShared), mine: !fullFamily })}
+        canEdit={!fullFamily}
+        onClose={() => setMemoFull(null)}
+        onEdit={() => {
+          if (fullItem) setMemoSheet({ id: fullItem.id });
+          setMemoFull(null);
+        }}
+      />
       <ConfirmSheet
         visible={sheet !== null}
         title={sheet?.title ?? ""}
@@ -622,6 +742,23 @@ function LoadError({ text, onRetry }) {
         <Text style={styles.retryText}>다시 시도</Text>
       </Pressable>
     </View>
+  );
+}
+
+/** 날짜 줄의 ‹ › 화살표. 터치 칸 36(시안) + 여백. 막힌 쪽은 흐리게 두고 누르지 않는다. */
+function DayArrow({ prev = false, disabled, onPress }) {
+  return (
+    <Pressable
+      onPress={onPress}
+      disabled={disabled}
+      style={styles.dayArrow}
+      hitSlop={4}
+      accessibilityRole="button"
+      accessibilityLabel={prev ? "이전 날짜" : "다음 날짜"}
+      accessibilityState={{ disabled }}
+    >
+      <Ionicons name={prev ? "chevron-back" : "chevron-forward"} size={20} color={disabled ? colors.disabled : colors.text} />
+    </Pressable>
   );
 }
 
@@ -669,6 +806,12 @@ const styles = StyleSheet.create({
   date: { ...font.body, fontSize: 14, lineHeight: 20, color: colors.textSub },
   editLink: { minHeight: 44, flexDirection: "row", alignItems: "center", gap: 4, paddingHorizontal: 4 },
   editText: { fontSize: 15, fontWeight: "500", color: colors.text },
+  // 날짜 줄(내 탭): ‹ 날짜 › 와 오른쪽 달력. 왼쪽 화살표 칸이 여백 안에 들어가게 -10 으로 당긴다.
+  dateRow: { flexDirection: "row", alignItems: "center", marginLeft: -10 },
+  dateInRow: { marginHorizontal: 2 },
+  dayArrow: { width: 36, height: 36, alignItems: "center", justifyContent: "center" },
+  flexFill: { flex: 1 },
+  calendarBtn: { width: 44, height: 44, marginVertical: -4, marginRight: -10, alignItems: "center", justifyContent: "center" },
   tabBar: { flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: spacing.xl },
   tabScroll: { flex: 1, minWidth: 0 },
   tabRow: { gap: 6, alignItems: "center" },

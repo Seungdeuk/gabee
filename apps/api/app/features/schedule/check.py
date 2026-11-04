@@ -1,16 +1,19 @@
-"""데일리 체크 서비스: 내 습관과 오늘 기록, 가족 조회·요약, 응원, 온보딩 표시.
+"""데일리 체크 서비스: 내 습관과 날짜별 기록, 가족 조회·요약, 응원, 온보딩 표시.
 
-- 날짜는 서버가 정한다. "오늘"과 "지금"은 서버 시계의 한국 시간(`timeutil.local_tz`)이다. 요청에는 날짜가 없다.
-- 오늘 기록의 유효성: `confirmed_at` 의 한국 날짜가 오늘일 때만 done·count·confirmed 를 그대로 보여 준다. 아니면 미완료·0·거짓.
-  DB 값은 날짜가 바뀌어도 지우지 않는다(초기화 작업 없음). 그래서 자정이 지나면 어제 기록은 자연히 안 보인다.
+- "오늘"과 "지금"은 서버 시계의 한국 시간(`timeutil.local_tz`)이다. 기록·조회 날짜(`date`)는 선택이고, 없으면 오늘이다.
+- 날짜 규칙: 기록·조회 날짜는 오늘부터 7일 전까지만 쓴다(그 밖·미래는 400). 기록은 추가로 습관을 만든 날(한국 날짜)
+  이전이면 400 이다. 반복 요일은 목록에 나올지에만 쓰고 기록 가능 여부와는 무관하다.
+- 기록 줄(`CheckLog`)은 습관 하루에 한 줄이고, 그날 처음 체크·횟수·메모를 남길 때만 만든다. 지난 줄은 목표 변경으로 바뀌지 않는다.
+  목표를 바꾸면 오늘 줄만 goal 스냅샷과 완료 여부를 다시 계산한다.
+- 습관 삭제는 `deleted_at` 소프트 삭제다. 지운 습관은 목록·기록에서 빠지고 지난 줄은 남는다.
 - 습관·응원은 사람(user_id)에게 묶인다. 가족 단위 판단(누가 가족 구성원인가)은 `group_members` 로 그때그때 한다:
   가족 조회와 응원 보내기는 요청자의 현재 그룹을 기준으로 본다.
 - 고마워·닫기는 "보내면 끝"이다. 처음 한 번만 시각을 넣고, 이미 있으면 그대로 둔다(되돌림 없음).
-- 시계는 `now_utc()` 한 곳에서 읽는다. 시험은 이 함수를 바꿔 자정 경계를 확인한다.
+- 시계는 `now_utc()` 한 곳에서 읽는다. 시험은 이 함수를 바꿔 날짜 경계를 확인한다.
 """
 
 import uuid
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 
 from sqlalchemy.orm import Session
 
@@ -22,10 +25,11 @@ from .check_schemas import (
     CheckEntryBody,
     CheckItemCreate,
     CheckItemUpdate,
+    CheckNoteBody,
     CheckSettingsIn,
 )
-from .constants import CHECK_KIND_CHECK, CHECK_KIND_COUNT
-from .models import CheckCheer, CheckItem, CheckSetting
+from .constants import CHECK_DAY_RANGE, CHECK_KIND_CHECK, CHECK_KIND_COUNT
+from .models import CheckCheer, CheckItem, CheckLog, CheckSetting
 from .timeutil import local_tz
 
 
@@ -53,36 +57,56 @@ def _new_id() -> str:
     return uuid.uuid4().hex[:12]
 
 
-def _valid_today(item: CheckItem, today: date) -> bool:
-    """오늘 기록인가: 기록 시각의 한국 날짜가 오늘과 같은가."""
-    return item.confirmed_at is not None and today_of(item.confirmed_at) == today
+def _applies(item: CheckItem, day: date, log: CheckLog | None) -> bool:
+    """그 날짜 목록에 나오는가(요일 기준). 반복 요일을 마지막으로 바꾼 날(KST) 이후거나 바꾼 적이 없으면 현재 요일 비트를 본다.
+    그보다 앞 날짜는 예전 요일을 모르므로, 그 날짜에 기록 줄이 있는 습관만 켜진 것으로 본다.
+    습관을 만든 날(KST)보다 앞 날짜는 기록할 수 없으므로 목록에도 나오지 않는다.
+    월~일 순서, 월 = 첫 글자(weekday() 는 월요일이 0)."""
+    if day < today_of(_aware(item.created_at)):
+        return False
+    if item.repeat_updated_at is None or day >= today_of(item.repeat_updated_at):
+        return item.repeat_days[day.weekday()] == "1"
+    return log is not None
 
 
-def _repeats_on(item: CheckItem, today: date) -> bool:
-    """반복 요일: 월~일 순서의 1/0 문자열, 월 = 첫 글자(weekday() 는 월요일이 0)."""
-    return item.repeat_days[today.weekday()] == "1"
+def _view_day(day: date | None, now: datetime) -> date:
+    """조회 날짜: 없으면 오늘. 오늘~7일 전 밖이면 400(반복 요일·생성일은 조회에서 보지 않는다)."""
+    today = today_of(now)
+    day = day or today
+    if not today - timedelta(days=CHECK_DAY_RANGE) <= day <= today:
+        raise bad_request("date_out_of_range", "기록은 오늘부터 7일 전까지의 날짜만 볼 수 있어요")
+    return day
 
 
-def _record(item: CheckItem, today: date) -> dict:
-    """오늘 상태(유효성을 반영한 값). 체크 습관은 done, 횟수 습관은 count 만 값이 있다."""
-    valid = _valid_today(item, today)
-    stamp = _aware(item.confirmed_at) if valid else None
+def _entry_day(item: CheckItem, day: date | None, now: datetime) -> date:
+    """기록 날짜: 조회 범위(오늘~7일 전)를 지키고, 습관을 만든 날(한국 날짜) 이후여야 한다.
+    반복 요일은 기록 가능 여부와 무관하다(목록에 나올지에만 쓴다)."""
+    day = _view_day(day, now)
+    if day < today_of(_aware(item.created_at)):
+        raise bad_request("before_item_created", "습관을 만들기 전 날짜에는 기록할 수 없어요")
+    return day
+
+
+def _record(item: CheckItem, log: CheckLog | None) -> dict:
+    """그날 상태. 줄이 없으면 미완료·0·메모 없음. 체크 습관은 done, 횟수 습관은 count 만 값이 있다."""
+    confirmed = bool(log and log.confirmed)
+    stamp = _aware(log.confirmed_at) if log and log.confirmed_at else None
+    note = log.note if log and log.note else None
     if item.kind == CHECK_KIND_CHECK:
-        return {
-            "done": valid and bool(item.done),
-            "count": None,
-            "confirmed": valid and bool(item.confirmed),
-            "confirmed_at": stamp,
-        }
+        done, count = bool(log and log.done), None
+    else:
+        done, count = None, (log.count or 0) if log else 0
     return {
-        "done": None,
-        "count": (item.count or 0) if valid else 0,
-        "confirmed": valid and bool(item.confirmed),
+        "done": done,
+        "count": count,
+        "confirmed": confirmed,
         "confirmed_at": stamp,
+        "note": note,
+        "note_shared": bool(note and log.note_shared),
     }
 
 
-def _item_out(item: CheckItem, today: date) -> dict:
+def _item_out(item: CheckItem, log: CheckLog | None, day: date) -> dict:
     return {
         "id": item.id,
         "name": item.name,
@@ -93,19 +117,27 @@ def _item_out(item: CheckItem, today: date) -> dict:
         "shared": item.shared,
         "notify": item.notify,
         "position": item.position,
-        **_record(item, today),
+        "applies": _applies(item, day, log),
+        "updated_at": _aware(item.updated_at),
+        **_record(item, log),
     }
 
 
-def _member_item_out(item: CheckItem, today: date) -> dict:
-    """가족에게 보이는 줄: 알림·순서·반복 요일은 싣지 않는다."""
+def _member_item_out(item: CheckItem, log: CheckLog | None) -> dict:
+    """가족에게 보이는 줄: 알림·순서·반복 요일은 싣지 않는다. 메모는 습관과 줄이 모두 공유일 때만 싣는다."""
+    record = _record(item, log)
+    note = record["note"] if item.shared and record["note_shared"] else None
     return {
         "id": item.id,
         "name": item.name,
         "kind": item.kind,
         "goal": item.goal,
         "unit": item.unit or "",
-        **_record(item, today),
+        "done": record["done"],
+        "count": record["count"],
+        "confirmed": record["confirmed"],
+        "confirmed_at": record["confirmed_at"],
+        "note": note,
     }
 
 
@@ -121,10 +153,39 @@ def _check_repeat(repeat_days: str) -> None:
         raise bad_request("invalid_repeat", "반복 요일을 하루 이상 골라 주세요")
 
 
+def _new_log(item: CheckItem, day: date, now: datetime) -> CheckLog:
+    """그날 줄을 처음 만든다. 이후 created_at 은 바뀌지 않는다."""
+    return CheckLog(
+        id=_new_id(),
+        item_id=item.id,
+        log_date=day,
+        done=None,
+        count=None,
+        goal=None,
+        confirmed=False,
+        note=None,
+        note_shared=False,
+        confirmed_at=None,
+        created_at=now,
+    )
+
+
+def _apply_count_state(log: CheckLog, goal: int, now: datetime) -> None:
+    """횟수 완료 상태. 목표에 처음 닿을 때만 완료 시각을 찍고, 이미 완료면 시각을 바꾸지 않는다.
+    목표 아래로 내려가면 완료를 취소하고 시각을 지운다."""
+    if (log.count or 0) >= goal:
+        if not log.confirmed or log.confirmed_at is None:
+            log.confirmed, log.confirmed_at = True, now
+    else:
+        log.confirmed, log.confirmed_at = False, None
+
+
 # ---------------------------------------------------------------- 내 습관
-def list_items(db: Session, user_id: str) -> list[dict]:
-    today = today_of(_now())
-    return [_item_out(i, today) for i in repo.items_of(db, user_id)]
+def list_items(db: Session, user_id: str, day: date | None = None) -> list[dict]:
+    view = _view_day(day, _now())
+    items = repo.items_of(db, user_id)
+    logs = repo.logs_on(db, [i.id for i in items], view)
+    return [_item_out(i, logs.get(i.id), view) for i in items]
 
 
 def create_item(db: Session, user_id: str, body: CheckItemCreate) -> dict:
@@ -138,7 +199,6 @@ def create_item(db: Session, user_id: str, body: CheckItemCreate) -> dict:
         goal = body.goal
     _check_repeat(body.repeat_days)
     last = repo.max_position(db, user_id)
-    is_check = body.kind == CHECK_KIND_CHECK
     item = CheckItem(
         id=_new_id(),
         user_id=user_id,
@@ -150,30 +210,30 @@ def create_item(db: Session, user_id: str, body: CheckItemCreate) -> dict:
         shared=body.shared,
         notify=body.notify,
         position=0 if last is None else last + 1,
-        done=False if is_check else None,
-        count=None if is_check else 0,
-        confirmed=False,
-        confirmed_at=None,
         created_at=_now(),
+        updated_at=_now(),
     )
     db.add(item)
     db.commit()
-    return _item_out(item, today_of(_now()))
-
-
-def _reset_today(item: CheckItem) -> None:
-    """종류를 바꾸면 오늘 기록(done·count·confirmed·confirmed_at)을 비운다."""
-    item.done = False if item.kind == CHECK_KIND_CHECK else None
-    item.count = None if item.kind == CHECK_KIND_CHECK else 0
-    item.confirmed = False
-    item.confirmed_at = None
+    return _item_out(item, None, today_of(_now()))
 
 
 def update_item(db: Session, user_id: str, item_id: str, body: CheckItemUpdate) -> dict:
     item = _owned(db, user_id, item_id)
-    today = today_of(_now())
+    now = _now()
+    today = today_of(now)
     sent = body.model_fields_set
     old_kind, old_goal = item.kind, item.goal
+    old_repeat = item.repeat_days
+    before = (
+        item.name,
+        item.kind,
+        item.goal,
+        item.unit,
+        item.repeat_days,
+        item.shared,
+        item.notify,
+    )
     new_kind = body.kind if body.kind is not None else item.kind
 
     # 종류·목표·단위 규칙: 체크 습관에는 목표·단위가 없고, 횟수 습관에는 목표가 있다
@@ -192,33 +252,41 @@ def update_item(db: Session, user_id: str, item_id: str, body: CheckItemUpdate) 
     if body.name is not None:
         item.name = body.name
     item.kind, item.goal, item.unit = new_kind, goal, unit
-    if body.repeat_days is not None:
+    if body.repeat_days is not None and body.repeat_days != old_repeat:
+        item.repeat_updated_at = now  # 값이 실제로 달라졌을 때만 시각을 갱신한다
         item.repeat_days = body.repeat_days
     if body.shared is not None:
         item.shared = body.shared
     if body.notify is not None:
         item.notify = body.notify
 
-    if new_kind != old_kind:
-        _reset_today(item)  # 종류가 바뀌면 오늘 기록을 초기화한다
-    elif new_kind == CHECK_KIND_COUNT and goal != old_goal:
-        # 목표를 바꾸면 오늘 횟수는 깎지 않고 완료 여부만 다시 계산한다
-        if _valid_today(item, today):
-            item.confirmed = (item.count or 0) >= goal
-        else:
-            item.confirmed = False
+    after = (item.name, item.kind, item.goal, item.unit, item.repeat_days, item.shared, item.notify)
+    if after != before:
+        item.updated_at = now  # 정의가 실제로 바뀐 경우에만 수정 시각을 갱신한다
+
+    log = repo.log_of(db, item.id, today)  # 지난 줄은 건드리지 않는다
+    if log is not None:
+        if new_kind != old_kind:
+            # 종류가 바뀌면 오늘 줄의 기록을 비우고 메모만 남긴다
+            log.done, log.count, log.goal = None, None, None
+            log.confirmed, log.confirmed_at = False, None
+        elif new_kind == CHECK_KIND_COUNT and goal != old_goal:
+            # 목표를 바꾸면 오늘 횟수는 깎지 않고 목표·완료 여부만 다시 계산한다
+            log.goal = goal
+            _apply_count_state(log, goal, now)
     db.commit()
-    return _item_out(item, today)
+    return _item_out(item, log, today)
 
 
 def delete_item(db: Session, user_id: str, item_id: str) -> None:
+    """소프트 삭제: 습관에 `deleted_at` 을 채운다. 지난 기록 줄은 그대로 남긴다."""
     item = _owned(db, user_id, item_id)
-    db.delete(item)  # 소프트 삭제가 아니라 행을 지운다
+    item.deleted_at = _now()
     db.commit()
 
 
 def reorder_items(db: Session, user_id: str, ids: list[str]) -> list[dict]:
-    """내 습관 전체의 새 순서를 0..N-1 로 한 번에 다시 매긴다."""
+    """내 습관(지워지지 않은 것) 전체의 새 순서를 0..N-1 로 한 번에 다시 매긴다."""
     items = {i.id: i for i in repo.items_of(db, user_id)}
     if len(ids) != len(set(ids)) or set(ids) != set(items):
         raise bad_request(
@@ -228,31 +296,61 @@ def reorder_items(db: Session, user_id: str, ids: list[str]) -> list[dict]:
         items[item_id].position = position
     db.commit()
     today = today_of(_now())
-    return [_item_out(items[i], today) for i in ids]
+    logs = repo.logs_on(db, ids, today)
+    return [_item_out(items[i], logs.get(i), today) for i in ids]
 
 
-def set_entry(db: Session, user_id: str, item_id: str, body: CheckEntryBody) -> dict:
-    """오늘 기록. 체크 습관은 done(참·거짓), 횟수 습관은 count(절대값)를 보낸다. 종류와 맞지 않는 필드는 400."""
+def set_entry(
+    db: Session, user_id: str, item_id: str, body: CheckEntryBody, day: date | None = None
+) -> dict:
+    """그날 기록. 체크 습관은 done(참·거짓), 횟수 습관은 count(절대값)를 보낸다. 종류와 맞지 않는 필드는 400."""
     item = _owned(db, user_id, item_id)
     now = _now()
+    target = _entry_day(item, day, now)
+    log = repo.log_of(db, item.id, target)
     if item.kind == CHECK_KIND_CHECK:
         if body.done is None or body.count is not None:
             raise bad_request("invalid_entry", "체크 습관은 done 만 보낼 수 있어요")
         if body.done:
-            item.done, item.confirmed, item.confirmed_at = True, True, now
-        else:
-            item.done, item.confirmed, item.confirmed_at = False, False, None
+            if log is None:
+                log = _new_log(item, target, now)
+                db.add(log)
+            if not log.done:  # 이미 체크돼 있으면 처음 체크한 시각을 그대로 둔다
+                log.done, log.confirmed, log.confirmed_at = True, True, now
+        elif log is not None:
+            log.done, log.confirmed, log.confirmed_at = False, False, None
     else:
         if body.count is None or body.done is not None:
             raise bad_request("invalid_entry", "횟수 습관은 count 만 보낼 수 있어요")
-        item.count, item.done = body.count, None
-        if body.count == 0:
-            item.confirmed, item.confirmed_at = False, None
-        else:
-            item.confirmed = body.count >= (item.goal or 0)
-            item.confirmed_at = now
+        if log is None:
+            if body.count == 0:  # 0 을 적는 것은 기록이 아니므로 줄을 만들지 않는다
+                return _item_out(item, None, target)
+            log = _new_log(item, target, now)
+            db.add(log)
+        log.count, log.done, log.goal = body.count, None, item.goal
+        _apply_count_state(log, item.goal, now)
     db.commit()
-    return _item_out(item, today_of(now))
+    return _item_out(item, log, target)
+
+
+def set_note(
+    db: Session, user_id: str, item_id: str, body: CheckNoteBody, day: date | None = None
+) -> dict:
+    """그날 메모 저장·지우기. 빈 값이면 메모를 지운다(줄은 남긴다). 기록할 것이 없는 날의 지우기는 줄을 만들지 않는다."""
+    item = _owned(db, user_id, item_id)
+    now = _now()
+    target = _entry_day(item, day, now)
+    log = repo.log_of(db, item.id, target)
+    if body.note is None:
+        if log is not None:
+            log.note, log.note_shared = None, False
+    else:
+        if log is None:
+            log = _new_log(item, target, now)
+            db.add(log)
+        log.note, log.note_shared = body.note, body.note_shared
+    db.commit()
+    return _item_out(item, log, target)
 
 
 # ---------------------------------------------------------------- 가족
@@ -261,9 +359,11 @@ def members_summary(db: Session, group_id: str) -> list[dict]:
     today = today_of(_now())
     members = repo.members_of(db, group_id)
     flags: dict[str, list[bool]] = {user_id: [] for user_id, _ in members}
-    for item in repo.shared_items_of(db, list(flags)):
-        if _repeats_on(item, today):
-            flags[item.user_id].append(_record(item, today)["confirmed"])
+    shared = repo.shared_items_of(db, list(flags))
+    logs = repo.logs_on(db, [i.id for i in shared], today)
+    for item in shared:
+        if _applies(item, today, logs.get(item.id)):
+            flags[item.user_id].append(_record(item, logs.get(item.id))["confirmed"])
     return [
         {
             "user_id": user_id,
@@ -281,11 +381,13 @@ def member_today(db: Session, group_id: str, target_id: str) -> dict:
         raise not_found("구성원")
     today = today_of(_now())
     name = repo.names_of(db, {target_id}).get(target_id, "")
-    items = [i for i in repo.shared_items_of(db, [target_id]) if _repeats_on(i, today)]
+    shared = repo.shared_items_of(db, [target_id])
+    logs = repo.logs_on(db, [i.id for i in shared], today)
+    items = [i for i in shared if _applies(i, today, logs.get(i.id))]
     return {
         "user_id": target_id,
         "name": name,
-        "items": [_member_item_out(i, today) for i in items],
+        "items": [_member_item_out(i, logs.get(i.id)) for i in items],
     }
 
 

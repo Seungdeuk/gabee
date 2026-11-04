@@ -60,9 +60,24 @@ export function isScheduledOn(item, dateKey) {
   return Array.isArray(item.days) && item.days.includes(weekdayKeyOf(dateKey));
 }
 
-/** 오늘(이 날짜) 목록에 나올 항목만 거른다. 순서는 그대로다. */
+/**
+ * 항목이 이 날짜의 목록에 나오는가. 서버가 준 applies(bool)가 있으면 그것을 쓰고, 없으면 반복 요일과 날짜의 요일로 계산한다.
+ * @param {{ applies?: boolean, days?: string[] }} item
+ * @param {string} dateKey "YYYY-MM-DD"
+ */
+export function appliesOnDate(item, dateKey) {
+  if (typeof item.applies === "boolean") return item.applies;
+  return isScheduledOn(item, dateKey);
+}
+
+/** 이 날짜의 목록에 나올 항목만 거른다. 순서는 그대로다. */
+export function itemsOnDate(items, dateKey) {
+  return items.filter((item) => appliesOnDate(item, dateKey));
+}
+
+/** 오늘(이 날짜) 목록에 나올 항목만 거른다. itemsOnDate 와 같다. */
 export function todayItemsOf(items, dateKey) {
-  return items.filter((item) => isScheduledOn(item, dateKey));
+  return itemsOnDate(items, dateKey);
 }
 
 export const isCount = (item) => item.type === "count";
@@ -128,7 +143,7 @@ export function progressOf(items, entryOf) {
 
 /** 가족에게 보이기가 켜진 항목 중 오늘 해당하는 것. 각 항목에 entry(오늘 기록)가 들어 있다고 본다. */
 export function familyRowsOf(items, dateKey) {
-  return items.filter((item) => item.shareWithFamily && isScheduledOn(item, dateKey));
+  return items.filter((item) => item.shareWithFamily && appliesOnDate(item, dateKey));
 }
 
 /** 오늘 완료된 항목 중 가장 늦은 완료 시각("HH:MM"), 없으면 null. */
@@ -712,4 +727,123 @@ export function cheerBannerText(list, today) {
 export function shouldHideDotsOnTouch({ showDots, insideRow }) {
   if (!showDots || insideRow) return "none";
   return "hideAll";
+}
+
+// ── 날짜 이동 · 메모 (앱 화면. 서버 연동은 다음 커밋) ─────────────────
+
+/** 기록을 볼 수 있는 과거 날짜 한도: 오늘 포함 8일(오늘 ~ 7일 전). 서버 규칙과 같다. */
+export const MAX_BACK_DAYS = 7;
+
+/** 날짜 고르기 시트에 나오는 날짜: 최근 날짜가 먼저(오늘, 어제, … 7일 전). */
+export function recordDateRange(today) {
+  return Array.from({ length: MAX_BACK_DAYS + 1 }, (_, i) => shiftDayKey(today, -i));
+}
+
+/** ‹ 는 7일 전(한도)이면 막힌다. */
+export const canGoPrevDay = (viewDate, today) => viewDate > shiftDayKey(today, -MAX_BACK_DAYS);
+
+/** › 는 오늘이면 막힌다(미래는 볼 수 없다). */
+export const canGoNextDay = (viewDate, today) => viewDate < today;
+
+/** 보는 날짜를 n일 옮긴다. 8일 범위(오늘 ~ 7일 전)를 벗어나면 그대로 둔다. "YYYY-MM-DD" 는 글자 순서가 날짜 순서와 같다. */
+export function stepDay(viewDate, delta, today) {
+  const next = shiftDayKey(viewDate, delta);
+  return next >= shiftDayKey(today, -MAX_BACK_DAYS) && next <= today ? next : viewDate;
+}
+
+/** "11월 1일" */
+export function shortDayLabel(dateKey) {
+  const [, m, d] = dateKey.split("-").map(Number);
+  return `${m}월 ${d}일`;
+}
+
+/** 날짜 줄 글자: 오늘 "11월 3일 화요일", 어제 "11월 2일 월요일 · 어제", 그 밖은 "11월 1일 일요일". */
+export function dayHeaderLabel(dateKey, today) {
+  const base = formatDayLabel(dateKey);
+  return dateKey === shiftDayKey(today, -1) ? `${base} · 어제` : base;
+}
+
+/** 요약 카드 제목: "오늘 나의 체크", "어제 나의 체크", 그 밖은 "11월 1일 나의 체크". */
+export function dayCardTitle(dateKey, today) {
+  if (dateKey === today) return "오늘 나의 체크";
+  if (dateKey === shiftDayKey(today, -1)) return "어제 나의 체크";
+  return `${shortDayLabel(dateKey)} 나의 체크`;
+}
+
+/** 기록할 수 있는 날짜인가: 오늘 ~ 7일 전(recordDateRange)만. 미래와 그보다 오래된 날짜는 아니다. */
+export const isRecordableDay = (dateKey, today) => recordDateRange(today).includes(dateKey);
+
+const dateKeyOf = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+
+/** 달력이 보는 달을 delta 달 옮긴 달의 1일 키("YYYY-MM-01"). */
+export function shiftMonthView(viewKey, delta) {
+  const [y, m] = viewKey.split("-").map(Number);
+  return dateKeyOf(new Date(y, m - 1 + delta, 1));
+}
+
+/** 달 화살표가 갈 수 있는가: 옮길 달에 기록할 수 있는 날(오늘 ~ 7일 전)이 하나라도 있어야 한다. */
+export function canShiftMonth(viewKey, delta, today) {
+  const [y, m] = viewKey.split("-").map(Number);
+  const first = dateKeyOf(new Date(y, m - 1 + delta, 1));
+  const last = dateKeyOf(new Date(y, m + delta, 0));
+  return last >= shiftDayKey(today, -MAX_BACK_DAYS) && first <= today;
+}
+
+/**
+ * 직접 입력 칸(연·월·일)을 검증한다. 칸을 다 채웠을 때만 판단한다.
+ * @param {string[]} values [연 네 자리, 월 두 자리, 일 두 자리]
+ * @returns {{ key: string | null, message: string }} key 는 기록할 수 있는 날짜일 때만 "YYYY-MM-DD", message 는 칸 아래 안내 글자(없으면 "")
+ */
+export function typedDateOf(values, today) {
+  const [y, m, d] = values;
+  if (!/^\d{4}$/.test(y) || !/^\d{2}$/.test(m) || !/^\d{2}$/.test(d)) return { key: null, message: "" };
+  const key = `${y}-${m}-${d}`;
+  if (dateKeyOf(new Date(Number(y), Number(m) - 1, Number(d))) !== key) return { key: null, message: "없는 날짜예요" };
+  if (!isRecordableDay(key, today)) return { key: null, message: "오늘부터 7일 전까지만 기록할 수 있어요" };
+  return { key, message: "" };
+}
+
+/** 쓰기 시트 머리 줄: 오늘이면 "오늘 메모를 남겨요", 그 밖은 "11월 1일 메모를 남겨요". */
+export function memoSheetSub(dateKey, today) {
+  return dateKey === today ? "오늘 메모를 남겨요" : `${shortDayLabel(dateKey)} 메모를 남겨요`;
+}
+
+// 메모 글자 수 상한(앱 입력 한도, 사용자 결정). 서버 한도(100자)보다 좁다. 줄 미리보기는 앞 10자다.
+export const MEMO_MAX = 50;
+export const MEMO_PREVIEW_MAX = 10;
+
+/** 글자 수(이모지처럼 여러 글자로 된 것도 한 글자로 센다). */
+export const memoLength = (text) => [...String(text ?? "")].length;
+
+/** 입력을 MEMO_MAX 글자까지만 남긴다(NAME_MAX 자르기와 같은 방식). */
+export const clipMemo = (text) => [...String(text ?? "")].slice(0, MEMO_MAX).join("");
+
+/** 항목 줄 두 번째 줄에 붙일 메모 미리보기: 앞뒤 공백을 뺀 앞 10자, 넘으면 "…". 메모가 없으면 "". */
+export function memoPreview(text) {
+  const chars = [...String(text ?? "").trim()];
+  if (chars.length <= MEMO_PREVIEW_MAX) return chars.join("");
+  return `${chars.slice(0, MEMO_PREVIEW_MAX).join("")}…`;
+}
+
+/** 메모 저장 전 검사: 앞뒤 공백을 뺀 뒤 빈 글자와 MEMO_MAX 초과를 본다. 첫 번째 잘못된 점 하나만 알려 준다. */
+export function validateMemo(text) {
+  const trimmed = String(text ?? "").trim();
+  if (!trimmed) return { ok: false, error: "메모를 적어 주세요" };
+  if (memoLength(trimmed) > MEMO_MAX) return { ok: false, error: `메모는 ${MEMO_MAX}자까지 쓸 수 있어요` };
+  return { ok: true, error: "" };
+}
+
+/**
+ * 공유 상태 문구. 내 메모는 공유 여부로 나뉘고, 가족 탭의 메모는 공개로 받은 것이라 늘 "가족에게 보이는 메모예요".
+ * @param {{ shared: boolean, mine: boolean }} s
+ */
+export function memoShareText({ shared, mine }) {
+  if (!mine || shared) return "가족에게 보이는 메모예요";
+  return "나만 볼 수 있는 메모예요";
+}
+
+/** 전문 팝업 시각 줄: "11월 3일 · 오전 8:10 완료". 완료 시각이 있을 때만 붙이고, 아니면 날짜만 쓴다. */
+export function memoStampText(dateKey, item, entry) {
+  const base = shortDayLabel(dateKey);
+  return isDone(item, entry) && entry?.doneAt ? `${base} · ${formatClock(entry.doneAt)} 완료` : base;
 }

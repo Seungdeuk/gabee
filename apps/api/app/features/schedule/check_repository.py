@@ -3,44 +3,75 @@
 습관과 응원은 사람(user_id)에게 묶여 그룹 열이 없다. 가족 단위 판단(누가 가족 구성원인가)은 `group_members` 로 한다.
 """
 
+from datetime import date
+
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.features.family_group.models import GroupMember, User
 
-from .models import CheckCheer, CheckItem, CheckSetting
+from .models import CheckCheer, CheckItem, CheckLog, CheckSetting
 
 
 def items_of(db: Session, user_id: str) -> list[CheckItem]:
-    """내 습관, 순서대로."""
+    """내 습관(지워지지 않은 것), 순서대로."""
     return list(
         db.scalars(
             select(CheckItem)
-            .where(CheckItem.user_id == user_id)
+            .where(CheckItem.user_id == user_id, CheckItem.deleted_at.is_(None))
             .order_by(CheckItem.position, CheckItem.created_at, CheckItem.id)
         )
     )
 
 
 def item_of(db: Session, user_id: str, item_id: str) -> CheckItem | None:
-    return db.scalar(select(CheckItem).where(CheckItem.id == item_id, CheckItem.user_id == user_id))
+    """내 습관 한 개(지워지지 않은 것만). 지운 습관은 없는 것으로 본다."""
+    return db.scalar(
+        select(CheckItem).where(
+            CheckItem.id == item_id,
+            CheckItem.user_id == user_id,
+            CheckItem.deleted_at.is_(None),
+        )
+    )
 
 
 def max_position(db: Session, user_id: str) -> int | None:
-    return db.scalar(select(func.max(CheckItem.position)).where(CheckItem.user_id == user_id))
+    return db.scalar(
+        select(func.max(CheckItem.position)).where(
+            CheckItem.user_id == user_id, CheckItem.deleted_at.is_(None)
+        )
+    )
 
 
 def shared_items_of(db: Session, user_ids: list[str]) -> list[CheckItem]:
-    """가족에게 보이기가 켜진 습관(여러 사람 한 번에). 가족 소속 확인은 호출한 쪽이 한다."""
+    """가족에게 보이기가 켜진, 지워지지 않은 습관(여러 사람 한 번에). 가족 소속 확인은 호출한 쪽이 한다."""
     if not user_ids:
         return []
     return list(
         db.scalars(
             select(CheckItem)
-            .where(CheckItem.user_id.in_(user_ids), CheckItem.shared.is_(True))
+            .where(
+                CheckItem.user_id.in_(user_ids),
+                CheckItem.shared.is_(True),
+                CheckItem.deleted_at.is_(None),
+            )
             .order_by(CheckItem.user_id, CheckItem.position, CheckItem.created_at, CheckItem.id)
         )
     )
+
+
+def logs_on(db: Session, item_ids: list[str], day: date) -> dict[str, CheckLog]:
+    """여러 습관의 그날 줄. 줄이 없는 습관은 결과에 없다."""
+    if not item_ids:
+        return {}
+    rows = db.scalars(
+        select(CheckLog).where(CheckLog.item_id.in_(item_ids), CheckLog.log_date == day)
+    )
+    return {row.item_id: row for row in rows}
+
+
+def log_of(db: Session, item_id: str, day: date) -> CheckLog | None:
+    return db.scalar(select(CheckLog).where(CheckLog.item_id == item_id, CheckLog.log_date == day))
 
 
 def members_of(db: Session, group_id: str) -> list[tuple[str, str]]:
