@@ -242,6 +242,7 @@
 
   let openTicket = null; // 펼쳐 둔 문의(다시 그려도 열린 채로 둔다)
   let supportError = ""; // 마지막 저장 실패 안내
+  let lastSupportAt = null; // 문의 목록을 마지막으로 받은 시각
 
   /** 제목을 누르면 내용과 답변 칸이 펼쳐진다. 내용은 사용자가 직접 쓴 글뿐이다. */
   function ticketTitle(t) {
@@ -255,12 +256,18 @@
       </form></details>`;
   }
 
+  /** 새로고침 버튼과 마지막 확인 시각. */
+  function refreshRow() {
+    const at = lastSupportAt ? lastSupportAt.toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" }) : "";
+    return `<p class="small"><button type="button" class="btn sm" data-action="refresh-support">새로고침</button> ${at ? `마지막 확인 ${esc(at)} · ` : ""}15초마다 새 문의를 자동으로 확인해요</p>`;
+  }
+
   function viewSupport(d) {
     const rows = d.rows.map(
       (t) => `<tr><td>#${esc(t.id.slice(0, 6))}</td><td><span class="pill ${t.kind === "report" ? "bad" : ""}">${KIND[t.kind]}</span></td><td>${ticketTitle(t)}</td><td>${esc(t.user_name || "-")}<br><span class="small">${esc(t.login_id || "")}</span></td><td>${esc(t.group_name || "-")}</td><td>${day(t.created_at)}</td>${statusCells(t)}</tr>`,
     );
     const error = supportError ? `<p class="note warn">${esc(supportError)}</p>` : "";
-    return `${head("문의 및 신고", "문의 현황 · 처리 상태 · 답변")}${error}
+    return `${head("문의 및 신고", "문의 현황 · 처리 상태 · 답변")}${refreshRow()}${error}
       <section class="grid">
         ${stat("새 문의·신고", `${num(d.new)}건`, "", d.new ? "warn" : "")}
         ${stat("처리 중", `${num(d.working)}건`)}
@@ -300,12 +307,40 @@
     return VIEWS[key] ? key : "members";
   }
 
+  /** 탭 줄. 문의 및 신고에는 아직 처리하지 않은 새 문의 건수를 붙인다. */
+  function renderTabs(key) {
+    const fresh = data && data.support ? Number(data.support.new) || 0 : 0;
+    document.getElementById("tabs").innerHTML = TABS.map(([k, label]) => {
+      const badge = k === "support" && fresh ? `<span class="tab-badge" aria-label="새 문의 ${fresh}건">${num(fresh)}</span>` : "";
+      return `<a href="#${k}" aria-current="${k === key ? "page" : "false"}">${label}${badge}</a>`;
+    }).join("");
+  }
+
+  /** 답변 칸에 쓰던 글이 있는지. 있으면 다시 그리다 지워지지 않도록 화면은 그대로 둔다. */
+  function typing() {
+    return [...document.querySelectorAll("#view textarea")].some((t) => t === document.activeElement || t.value !== t.defaultValue);
+  }
+
+  /** 문의·신고 목록만 새로 받아 온다. 실패해도 지금 화면은 그대로 둔다(로그인 만료는 api() 가 처리한다). */
+  async function refreshSupport() {
+    if (!data || !token()) return;
+    let fresh;
+    try {
+      fresh = await api("/admin/support");
+    } catch {
+      return;
+    }
+    if (!data) return;
+    data.support = fresh;
+    lastSupportAt = new Date();
+    if (current() === "support" && !typing()) render();
+    else renderTabs(current());
+  }
+
   function render() {
     if (!data) return;
     const key = current();
-    document.getElementById("tabs").innerHTML = TABS.map(
-      ([k, label]) => `<a href="#${k}" aria-current="${k === key ? "page" : "false"}">${label}</a>`,
-    ).join("");
+    renderTabs(key);
     document.getElementById("view").innerHTML = VIEWS[key](data);
     document.title = `가비 관리자 · ${TABS.find(([k]) => k === key)[1]}`;
   }
@@ -333,6 +368,7 @@
     document.getElementById("login").hidden = true;
     document.getElementById("app").hidden = false;
     document.getElementById("who").textContent = `관리자 · ${data.me.login_id || data.me.name}`;
+    lastSupportAt = new Date();
     render();
   }
 
@@ -360,6 +396,10 @@
     if (e.target.closest("[data-action='logout']")) {
       setToken(null);
       showLogin();
+      return;
+    }
+    if (e.target.closest("[data-action='refresh-support']")) {
+      refreshSupport();
       return;
     }
     // '답변하기': 그 문의를 펼치고 답변 칸으로 바로 간다
@@ -411,7 +451,17 @@
     render();
   });
 
-  window.addEventListener("hashchange", render);
+  window.addEventListener("hashchange", () => {
+    render();
+    if (current() === "support") refreshSupport(); // 탭에 들어올 때마다 최신으로
+  });
+  // 새 문의가 F5 없이 보이도록: 창으로 돌아올 때와 15초마다 목록만 다시 받는다
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") refreshSupport();
+  });
+  setInterval(() => {
+    if (document.visibilityState === "visible") refreshSupport();
+  }, 15000);
 
   if (token()) start();
   else showLogin();
