@@ -38,7 +38,7 @@ export default function ProfileCard({ user, status, displayName, photoUrl, group
   const name = displayName || user?.name || "";
   const body = (
     <View style={styles.row}>
-      <UserAvatar name={name || "?"} userId={user?.id} photoUrl={photoUrl ?? user?.photo_url} size={48} />
+      <UserAvatar name={name || "?"} userId={user?.id} photoUrl={photoUrl ?? user?.photo_url} size={72} />
       <View style={styles.info}>
         <Text style={styles.name} numberOfLines={1}>
           {name}
@@ -66,13 +66,13 @@ export default function ProfileCard({ user, status, displayName, photoUrl, group
 
 const styles = StyleSheet.create({
   title: { ...font.cardTitle, color: colors.text },
-  name: { ...font.cardTitle, color: colors.text, flexShrink: 1 },
+  name: { ...font.title, color: colors.text, flexShrink: 1 },
   sub: { ...font.caption, color: colors.textMuted },
-  compact: { paddingVertical: spacing.md, paddingHorizontal: spacing.lg },
-  row: { flexDirection: "row", alignItems: "center", gap: spacing.md },
-  info: { flex: 1, gap: 2 },
+  compact: { paddingVertical: spacing.lg, paddingHorizontal: spacing.lg },
+  row: { flexDirection: "row", alignItems: "center", gap: spacing.lg },
+  info: { flex: 1, gap: spacing.xs },
   actions: { flexDirection: "row", gap: spacing.sm },
-  editText: { ...font.caption, color: colors.textMuted },
+  editText: { ...font.caption, color: colors.accent },
   pressed: { opacity: 0.7 },
   placeholder: { minHeight: 56 },
 });
