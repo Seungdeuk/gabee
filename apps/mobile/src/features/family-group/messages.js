@@ -51,5 +51,12 @@ export function expiryText(iso) {
   return hours > 0 ? `${hours}시간 ${minutes}분 뒤 만료` : `${Math.max(1, minutes)}분 뒤 만료`;
 }
 
+/**
+ * 구성원 중 가족 관리자(소유자·관리자). 일반 구성원에게 초대를 부탁할 사람을 알려 줄 때 쓴다.
+ * @param {{ group_role?: string }[] | null | undefined} members GroupOut.members
+ * @returns {object[]}
+ */
+export const managersOf = (members) => (Array.isArray(members) ? members.filter((m) => m?.group_role === "owner" || m?.group_role === "admin") : []);
+
 /** 가족 안의 권한을 사용자 문구로. @param {string | undefined} role */
 export const roleLabel = (role) => (role === "owner" ? "소유자" : role === "admin" ? "관리자" : "구성원");

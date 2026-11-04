@@ -1,7 +1,6 @@
-import * as Linking from "expo-linking";
 import { useRouter } from "expo-router";
 import { useState } from "react";
-import { Share, StyleSheet, Text } from "react-native";
+import { StyleSheet, Text } from "react-native";
 
 import Button from "@/shared/components/Button";
 import Card from "@/shared/components/Card";
@@ -11,11 +10,8 @@ import { colors, font } from "@/theme";
 import { leaveFamily } from "../api";
 import FamilyFrame from "../components/FamilyFrame";
 import FamilyHeader from "../components/FamilyHeader";
-import InviteSection from "../components/InviteSection";
-import JoinRequestsSection from "../components/JoinRequestsSection";
 import LeaveFamilySection from "../components/LeaveFamilySection";
 import Notice from "../components/Notice";
-import { inviteLink, inviteMessage } from "../inviteLink";
 import { familyErrorMessage, roleLabel } from "../messages";
 import useFamilyState from "../useFamilyState";
 
@@ -23,7 +19,7 @@ const POLL_MS = 8000;
 
 /**
  * 우리 가족. 그룹이 없으면 만들기/참여, 승인 대기 중이면 대기 화면으로 안내한다.
- * 구성원이면 위쪽에 가족 이름·구성원 프로필·내 역할을, 아래쪽에 초대·가입 요청(가족 관리자만)과 가족 나가기를 보여 준다.
+ * 구성원이면 위쪽에 가족 이름·구성원 프로필·내 역할을, 아래쪽에 가족 나가기를 보여 준다. 초대 코드·가입 요청은 "가족 초대" 화면(/family-invite)에 있고, 관리자에게는 거기로 가는 버튼이 보인다.
  * @returns {import("react").ReactElement}
  */
 export default function FamilyScreen() {
@@ -32,7 +28,6 @@ export default function FamilyScreen() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
-  const linkFor = (code) => inviteLink(code, Linking.createURL("family-join", { queryParams: { code } }));
 
   const run = async (job, done) => {
     setBusy(true);
@@ -46,14 +41,6 @@ export default function FamilyScreen() {
     }
     await family.reload();
     setBusy(false);
-  };
-
-  const share = async (code) => {
-    try {
-      await Share.share({ message: inviteMessage(code, linkFor(code)) });
-    } catch {
-      setError("공유하지 못했어요. 코드를 길게 눌러 복사해 보세요");
-    }
   };
 
   if (family.status === "loading") {
@@ -118,10 +105,13 @@ export default function FamilyScreen() {
       <Button label="내 프로필 (이름·가족 관계)" variant="secondary" onPress={() => router.push("/family-profile")} testID="open-profile" />
 
       {family.isManager ? (
-        <>
-          <InviteSection group={group} busy={busy} run={run} onShare={share} linkFor={linkFor} />
-          <JoinRequestsSection pendingRequests={family.pendingRequests} pendingCount={family.pendingCount} busy={busy} run={run} />
-        </>
+        <Button
+          label={family.pendingCount > 0 ? `가족 초대 · 가입 요청 ${family.pendingCount}건` : "가족 초대 · 가입 요청"}
+          variant="secondary"
+          icon="person-add-outline"
+          onPress={() => router.push("/family-invite")}
+          testID="open-invite"
+        />
       ) : null}
 
       <LeaveFamilySection isOwner={group.my_role === "owner"} onLeave={leave} busy={busy} />
