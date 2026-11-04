@@ -12549,6 +12549,134 @@
         }
       }
     },
+    "/admin/ops/summary": {
+      "get": {
+        "tags": [
+          "ops-admin"
+        ],
+        "summary": "Get Summary",
+        "operationId": "get_summary_admin_ops_summary_get",
+        "parameters": [
+          {
+            "name": "range",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "1h",
+                "24h",
+                "7d"
+              ],
+              "type": "string",
+              "default": "24h",
+              "title": "Range"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SummaryOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/admin/ops/apis": {
+      "get": {
+        "tags": [
+          "ops-admin"
+        ],
+        "summary": "Get Apis",
+        "operationId": "get_apis_admin_ops_apis_get",
+        "parameters": [
+          {
+            "name": "range",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "1h",
+                "24h",
+                "7d"
+              ],
+              "type": "string",
+              "default": "24h",
+              "title": "Range"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApisOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/health/db": {
       "get": {
         "tags": [
@@ -13561,6 +13689,101 @@
           "meta"
         ],
         "title": "AnalysisOut"
+      },
+      "ApiRouteOut": {
+        "properties": {
+          "method": {
+            "type": "string",
+            "title": "Method"
+          },
+          "route": {
+            "type": "string",
+            "title": "Route"
+          },
+          "requests": {
+            "type": "integer",
+            "title": "Requests"
+          },
+          "c2xx": {
+            "type": "integer",
+            "title": "C2Xx"
+          },
+          "c3xx": {
+            "type": "integer",
+            "title": "C3Xx"
+          },
+          "c4xx": {
+            "type": "integer",
+            "title": "C4Xx"
+          },
+          "c5xx": {
+            "type": "integer",
+            "title": "C5Xx"
+          },
+          "error_rate": {
+            "type": "number",
+            "title": "Error Rate"
+          },
+          "avg_ms": {
+            "type": "number",
+            "title": "Avg Ms"
+          },
+          "max_ms": {
+            "type": "number",
+            "title": "Max Ms"
+          }
+        },
+        "type": "object",
+        "required": [
+          "method",
+          "route",
+          "requests",
+          "c2xx",
+          "c3xx",
+          "c4xx",
+          "c5xx",
+          "error_rate",
+          "avg_ms",
+          "max_ms"
+        ],
+        "title": "ApiRouteOut"
+      },
+      "ApisOut": {
+        "properties": {
+          "range": {
+            "type": "string",
+            "enum": [
+              "1h",
+              "24h",
+              "7d"
+            ],
+            "title": "Range"
+          },
+          "since": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Since"
+          },
+          "metrics_enabled": {
+            "type": "boolean",
+            "title": "Metrics Enabled"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ApiRouteOut"
+            },
+            "type": "array",
+            "title": "Items"
+          }
+        },
+        "type": "object",
+        "required": [
+          "range",
+          "since",
+          "metrics_enabled",
+          "items"
+        ],
+        "title": "ApisOut"
       },
       "AskIn": {
         "properties": {
@@ -18771,6 +18994,30 @@
         ],
         "title": "SearchItem"
       },
+      "SeriesPoint": {
+        "properties": {
+          "t": {
+            "type": "string",
+            "format": "date-time",
+            "title": "T"
+          },
+          "requests": {
+            "type": "integer",
+            "title": "Requests"
+          },
+          "errors": {
+            "type": "integer",
+            "title": "Errors"
+          }
+        },
+        "type": "object",
+        "required": [
+          "t",
+          "requests",
+          "errors"
+        ],
+        "title": "SeriesPoint"
+      },
       "SettleRequest": {
         "properties": {
           "month": {
@@ -19654,6 +19901,73 @@
           "balances"
         ],
         "title": "Summary"
+      },
+      "SummaryOut": {
+        "properties": {
+          "range": {
+            "type": "string",
+            "enum": [
+              "1h",
+              "24h",
+              "7d"
+            ],
+            "title": "Range"
+          },
+          "since": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Since"
+          },
+          "metrics_enabled": {
+            "type": "boolean",
+            "title": "Metrics Enabled"
+          },
+          "requests": {
+            "type": "integer",
+            "title": "Requests"
+          },
+          "errors_5xx": {
+            "type": "integer",
+            "title": "Errors 5Xx"
+          },
+          "errors_4xx": {
+            "type": "integer",
+            "title": "Errors 4Xx"
+          },
+          "error_rate": {
+            "type": "number",
+            "title": "Error Rate"
+          },
+          "avg_ms": {
+            "type": "number",
+            "title": "Avg Ms"
+          },
+          "max_ms": {
+            "type": "number",
+            "title": "Max Ms"
+          },
+          "series": {
+            "items": {
+              "$ref": "#/components/schemas/SeriesPoint"
+            },
+            "type": "array",
+            "title": "Series"
+          }
+        },
+        "type": "object",
+        "required": [
+          "range",
+          "since",
+          "metrics_enabled",
+          "requests",
+          "errors_5xx",
+          "errors_4xx",
+          "error_rate",
+          "avg_ms",
+          "max_ms",
+          "series"
+        ],
+        "title": "SummaryOut"
       },
       "TesterConsentIn": {
         "properties": {

@@ -14,11 +14,18 @@
 - `app/features/ops_admin/repository.py`: 같은 키는 더하고 최댓값은 큰 쪽을 둔다(PostgreSQL·SQLite 모두).
 - 테이블 `ops_request_metrics`(Alembic `fcf5ce5e68e1`, 테이블·인덱스 추가만): `docs/contracts/db.md`.
 - 설정: `OPS_METRICS_ENABLED`(기본 false), `OPS_METRICS_BUCKET_SECONDS`(300), `OPS_METRICS_RETENTION_DAYS`(90). 구간·보관 일수는 추측으로 정한 초기값이라 실제 트래픽과 저장량을 본 뒤 조정한다.
-- 이 PR 에는 엔드포인트가 없다(조회 API 는 다음 PR).
+- 계측 PR 에는 엔드포인트가 없고, 조회는 아래 "조회 API" 에서 한다.
+
+### 조회 API (PR 4, `/admin/ops/*`, 읽기 전용)
+- `GET /admin/ops/summary?range=1h|24h|7d`: 요청 수, 5xx·4xx 건수, 5xx 비율, 평균·최대 응답 시간, 구간별 추이(빈 구간은 0). 막대 길이는 1h=5분, 24h=1시간, 7d=1일.
+- `GET /admin/ops/apis?range=...`: 메서드+경로 패턴별 요청 수, 상태코드 구분별 건수, 5xx 비율, 평균·최대 응답 시간(요청 수 순, 최대 100개).
+- 권한: `require_operator("ops_admin")` — 로그인 없으면 401, 허용 목록에 없으면 403 `operator_required`. 응답에는 `metrics_enabled` 가 있어 계측이 꺼져 있어 0 인지 구분할 수 있다.
+- **p95 같은 백분위는 없다**: 저장값이 구간별 합계·최댓값뿐이라 계산할 수 없다. 평균은 합계/요청 수이다.
+- 시험: `ops_admin/tests/test_ops_read_api.py`(권한, 기간 합산, 경로별 집계, 빈 데이터, 잘못된 range). 실제 PostgreSQL 에서의 조회는 아직 확인하지 않았다(SQLite 시험).
 
 ## 아직 없는 것
-- 오류 이벤트 저장(`ops_error_events`), 조회 API(`/admin/ops/*`), 운영 웹, Agent, RAG.
-- 운영자 인증 `require_operator` 는 별도 PR(`feature/hojenn-operator-auth`).
+- 오류 이벤트 저장(`ops_error_events`)과 그 조회, 배포 이력, 인프라(Cloud Run 등) 지표, Agent, RAG.
+- (운영자 인증 `require_operator` 는 병합된 release/1.2 에 있다.)
 
 ## 확인되지 않은 것
 - Cloud Run 에서 응답 뒤 저장이 CPU 제한 없이 끝나는지, 인스턴스가 여러 개일 때의 실제 저장량·지연.
