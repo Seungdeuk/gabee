@@ -32,7 +32,7 @@ test("route 가 있는 항목은 이동 동작을 돌려준다", () => {
 
 test("준비 중 항목과 잘못된 입력은 soon 이다", () => {
   assert.deepEqual(itemAction(byKey(SHORTCUTS, "settings")), { type: "soon" });
-  assert.deepEqual(itemAction(byKey(SHORTCUTS, "subscription")), { type: "soon" });
+  assert.deepEqual(itemAction(byKey(SHORTCUTS, "ranking")), { type: "soon" });
   assert.deepEqual(itemAction(undefined), { type: "soon" });
   assert.deepEqual(itemAction({}), { type: "soon" });
   assert.deepEqual(itemAction({ route: "" }), { type: "soon" });
