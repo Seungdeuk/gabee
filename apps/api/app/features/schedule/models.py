@@ -242,6 +242,32 @@ class CheckCheer(Base):
     closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
+class CheckSuggestion(Base):
+    """데일리 체크 추천 문구 창고. 습관 추천(category 1)과 응원 문구(category 2)를 한 테이블에 둔다.
+
+    앱이 읽기 전용 API 로 무작위 몇 개만 가져간다(LLM 호출 없음). 사람·가족과 무관한 공용 목록이라 사용자 열이 없다.
+    습관은 kind(1 체크 · 2 횟수)와 goal·unit 을 쓰고, 응원 문구는 content 만 쓴다(나머지 NULL).
+    active 를 끄면 지우지 않고 추천에서만 뺀다. 내용은 시드 스크립트(scripts/seed_check_suggestions.py)로 넣는다.
+    """
+
+    __tablename__ = "events_check_suggestions"
+    __table_args__ = (
+        UniqueConstraint(
+            "category", "content", name="uq_events_check_suggestions_category_content"
+        ),
+        Index("ix_events_check_suggestions_category_active", "category", "active"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    category: Mapped[int] = mapped_column(Integer)  # 1 습관 추천 · 2 응원 문구
+    content: Mapped[str] = mapped_column(String(60))  # 습관 이름(앱 20자) 또는 응원 문구(앱 50자)
+    kind: Mapped[int | None] = mapped_column(Integer, nullable=True)  # 습관만: 1 체크 · 2 횟수
+    goal: Mapped[int | None] = mapped_column(Integer, nullable=True)  # 횟수 습관의 하루 목표
+    unit: Mapped[str | None] = mapped_column(String(10), nullable=True)  # 횟수 습관의 단위
+    active: Mapped[bool] = mapped_column(Boolean, default=True, server_default=text("true"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+
 class CheckSetting(Base):
     """데일리 체크 온보딩 완료 표시. 사용자당 한 줄이고, 행이 없으면 아직 안 한 것이다."""
 

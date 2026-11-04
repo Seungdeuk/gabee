@@ -5,6 +5,7 @@ import { Pressable, StyleSheet, Text, View } from "react-native";
 import { colors, font, radius, spacing } from "@/theme";
 
 import BottomSheet from "../../components/BottomSheet";
+import { listCheerSuggestions } from "../api";
 import { FormField, TextBox } from "../../components/FormControls";
 import { CHEER_KINDS, CHEER_MESSAGES, CHEER_TEXT_MAX, cheerTextError, cheerTone } from "../logic";
 
@@ -21,6 +22,8 @@ export default function CheerSheet({ visible, onClose, title, subtitle, onSend }
   const [custom, setCustom] = useState("");
   const [groupChat, setGroupChat] = useState(true);
   const [error, setError] = useState("");
+  // 서버 추천 문구. null 은 받는 중(문구 칸을 숨김), 못 받거나 비어 있으면 내장 문구(CHEER_MESSAGES)를 쓴다.
+  const [messages, setMessages] = useState(null);
 
   // 시트를 열 때마다 처음 상태로 돌린다.
   useEffect(() => {
@@ -30,6 +33,15 @@ export default function CheerSheet({ visible, onClose, title, subtitle, onSend }
     setCustom("");
     setGroupChat(true);
     setError("");
+    // 열 때마다 서버에서 새로 받는다(새로고침 버튼은 없다). 실패하거나 비면 내장 문구로 대신한다.
+    let alive = true;
+    setMessages(null);
+    listCheerSuggestions()
+      .then((list) => alive && setMessages(list.length ? list : CHEER_MESSAGES))
+      .catch(() => alive && setMessages(CHEER_MESSAGES));
+    return () => {
+      alive = false;
+    };
   }, [visible]);
 
   const send = () => {
@@ -73,7 +85,7 @@ export default function CheerSheet({ visible, onClose, title, subtitle, onSend }
       </View>
 
       <Text style={styles.label}>한마디 고르기</Text>
-      {CHEER_MESSAGES.map((message) => {
+      {(messages ?? []).map((message) => {
         const on = !custom.trim() && picked === message;
         return (
           <Pressable

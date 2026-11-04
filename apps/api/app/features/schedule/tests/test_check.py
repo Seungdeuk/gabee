@@ -698,6 +698,7 @@ def test_check_tables_form_their_own_schema_feature():
         "events_check_logs",
         "events_check_cheers",
         "events_check_settings",
+        "events_check_suggestions",
     }
     assert not any(name.startswith("events_check_") for name in features["schedule"])
 
@@ -765,7 +766,9 @@ def test_applies_is_false_before_item_created_day(client, family, clock):
     assert _applies(client, a, item["id"]) is True  # 만든 날
     assert _applies(client, a, item["id"], date(2026, 11, 2)) is False  # 만들기 전날
     assert _applies(client, a, item["id"], date(2026, 10, 30)) is False
-    r = client.put(f"/schedule/check/items/{item['id']}/entry?date=2026-11-02", json={"done": True}, headers=a)
+    r = client.put(
+        f"/schedule/check/items/{item['id']}/entry?date=2026-11-02", json={"done": True}, headers=a
+    )
     assert r.status_code == 400
 
 

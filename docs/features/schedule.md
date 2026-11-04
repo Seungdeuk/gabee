@@ -96,6 +96,7 @@
   - 가족: `GET /members/summary`(구성원별 `[오늘 해당하는 가족에게 보이는 습관 수, 그중 완료 수]`), `GET /members/{user_id}/today`(가족에게 보이는 습관 중 오늘 요일에 해당하는 것, 같은 가족이 아니면 404)
   - 응원: `POST /cheers`(201, `to_user_id`·`kind` 1~3·`message` 1~100자·`chat_left`), `GET /cheers?direction=received|sent`(기본 received, 닫은 카드도 `closed` 로 표시), `PUT /cheers/{id}/thanked`, `PUT /cheers/{id}/closed`(둘 다 본문 없음, 받은 사람만, 처음 한 번만 시각을 남기고 되돌림 없음)
   - 설정: `GET /settings`, `PUT /settings`(`{onboarded}`)
+  - 추천(읽기 전용, LLM 호출 없음, DB `events_check_suggestions` 에서 무작위): `GET /suggestions/habits?exclude=&limit=`(기본 3개, `exclude` 로 보낸 이름은 빼고 고름, `[{name,kind,goal,unit}]`), `GET /suggestions/cheers?limit=`(기본 2개, `[{message}]`). 추천이 모자라거나 없으면 빈 목록이며 앱은 내장 목록으로 채운다(앱 연동은 다음 단계). 내용은 `apps/api/scripts/seed_data/check_habits.txt`·`check_cheers.txt` 를 `python -m scripts.seed_check_suggestions [--apply]` 로 넣는다(없는 것만 추가, `--apply` 없이는 검사만).
 - 날짜별 기록과 메모 규칙(브랜치 `feat/hellobk-schedule-check-log`):
   - 저장: 습관 하루에 `events_check_logs` 한 줄. 줄은 그날 처음 체크·횟수·메모를 남길 때 만들고 자정에 미리 만들지 않는다. 기록이 없는 날은 줄이 없다. 체크를 비우거나 초기화하는 일은 없다(새 날은 그날 줄이 아직 없어서 비어 보일 뿐이다).
   - 날짜: `date` 는 오늘(한국 시간)부터 7일 전까지만 쓸 수 있다. 미래와 그보다 오래된 날짜, 습관을 만든 날(한국 날짜)보다 앞선 날짜는 400. 반복 요일이 아닌 날도 기록할 수 있다(반복 요일은 그날 목록에 나올지에만 쓴다).
@@ -128,6 +129,11 @@
 - 전화: 번호 없이 전화 앱 키패드를 연다(`Linking.openURL("tel:")`). 가족 전화번호는 서버에 두지 않으며, 두는 것은 나중에 정한다. 전화 버튼은 안드로이드에서는 항상 보인다(Android 11+ 에서 canOpenURL 이 거짓이어도 숨기지 않는다, 누르면 `openURL` 을 try/catch 로 부르고 실패하면 "전화 앱을 열 수 없어요" 안내). iOS 에서만 화면이 열릴 때 `Linking.canOpenURL("tel:")` 을 한 번 확인해 거짓이면 숨긴다(확인 전에는 보인다). 판정은 `logic.js` `shouldShowCallButton`(시험: `tests/schedule_daily_phone.test.js`). 개발용 가상 가족 탭은 버튼 없이 "개발용 가상 가족이에요(서버 데이터가 아니에요)" 한 줄만 보인다. 통화 확인 시트는 가족 아바타·제목·부제(휴대폰의 전화 앱으로 연결돼요)·가비 이야깃거리만 보이고, 전화 앱을 연 뒤 돌아오면 통화 뒤 시트(조건부 "안부 전화" 완료 체크)가 그대로 뜬다.
 - 시험: 서버 모양 변환·메모 변환·온보딩 판정·가족 탭 맞춤·오늘 받은 응원(한국 날짜)은 `tests/schedule_daily_server.test.js`, 디바운스·줄 세우기·롤백 판정은 `tests/schedule_daily_sync.test.js`, 지난 날 기록·메모 저장(낙관 갱신·롤백·최근 변경만 반영·오늘은 저장 보조로 넘김)은 `tests/schedule_daily_store.test.js`(가짜 서버·가짜 시계). `api.js` 의 실제 호출(주소·날짜 파라미터)은 시험하지 않았고, 실기기·실서버 확인은 아직이다.
 - 입력 글자 수(앱 한도, 사용자 결정): 습관 이름 20자, 단위 10자, 응원 직접 쓰기 50자. 서버 한도(이름 60·단위 10·한마디 100)보다 좁다. 이름·직접 쓰기 칸은 넘기지 못하게 잘라 맞추고(maxLength 와 같은 동작), 단위는 저장 전 검사로 "단위는 10자까지 쓸 수 있어요"를 인라인으로 보인다. 저장 전 검사 상수는 `logic.js` `NAME_MAX`·`UNIT_MAX`·`CHEER_TEXT_MAX` 한 곳이다. 서버가 422 를 주면 "입력한 글자 수를 확인해 주세요"를 보인다.
+
+- 추천 습관·응원 문구는 서버 창고(DB `events_check_suggestions`)에서 받는다(LLM 호출 없음, 새로고침 버튼 없음). `api.js` 의 `listHabitSuggestions(excludeNames)`·`listCheerSuggestions()` 가 `/schedule/check/suggestions/*` 를 부르고, `serverMap.js` 가 앱 한도(습관 이름 20자, 응원 문구 50자)를 넘는 줄을 걸러 낸다.
+  - 항목 추가 화면(`DailyItemScreen`): 화면을 연 동안 한 번 받아 3개를 보인다(받는 동안 "이런 건 어때요?" 칸은 숨김). 서버 오류이거나 빈 목록이면 내장 `RECOMMEND_POOL` 로 대신한다. 이미 있는 이름은 요청에 담아 뺀다.
+  - 응원 보내기 시트(`CheerSheet`): 시트를 열 때마다 2개를 받는다. 오류이거나 비면 내장 `CHEER_MESSAGES` 로 대신한다.
+  - 그대로 둔 곳: 온보딩 추천(`RECOMMENDED_NAMES`)과 편집 화면 하단 추천(`RECOMMEND_POOL` 6개)은 내장 목록을 계속 쓴다.
 
 ## 남은 것
 - 등록: 시계는 웹에서 모양과 누르기만 확인했고, 손가락으로 밀어 고르는 느낌은 폰에서 확인 필요

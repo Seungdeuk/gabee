@@ -30,11 +30,16 @@ from .check_schemas import (
     CheckSettingsIn,
     CheckSettingsOut,
 )
+from .suggestion.router import router as suggestion_router
 
 router = APIRouter(
     prefix="/check",
     dependencies=[Depends(schema_ready("schedule_check"))],
 )
+
+
+# 추천 습관·응원 문구(읽기 전용). '/items/{item_id}' 같은 경로와 겹치지 않는 '/suggestions' 아래다.
+router.include_router(suggestion_router)
 
 
 # ---------------------------------------------------------------- 내 습관

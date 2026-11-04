@@ -32,3 +32,7 @@ NOTE_MAX = 100  # 날짜별 메모 글자 수 상한(서버). 앱 입력은 50�
 CHEER_LOVE = 1  # 사랑해요
 CHEER_BEST = 2  # 최고예요
 CHEER_WELL_DONE = 3  # 잘하셨어요
+
+# 데일리 체크 추천 문구(events_check_suggestions.category)
+SUGGEST_HABIT = 1  # 습관 추천
+SUGGEST_CHEER = 2  # 응원 문구
