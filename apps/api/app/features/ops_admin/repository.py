@@ -2,7 +2,7 @@
 
 from datetime import datetime
 
-from sqlalchemy import delete, func
+from sqlalchemy import delete, func, select
 from sqlalchemy.dialects import postgresql, sqlite
 from sqlalchemy.orm import Session
 
@@ -48,3 +48,36 @@ def delete_before(db: Session, cutoff: datetime) -> int:
     result = db.execute(delete(OpsRequestMetric).where(OpsRequestMetric.bucket_start < cutoff))
     db.commit()
     return result.rowcount or 0
+
+
+def totals_by_bucket(db: Session, since: datetime) -> list[tuple[datetime, str, int, float, float]]:
+    """since 이후의 (구간 시작, 상태코드 구분)별 요청 수·걸린 시간 합·최댓값."""
+    stmt = (
+        select(
+            OpsRequestMetric.bucket_start,
+            OpsRequestMetric.status_class,
+            func.sum(OpsRequestMetric.request_count),
+            func.sum(OpsRequestMetric.duration_ms_sum),
+            func.max(OpsRequestMetric.duration_ms_max),
+        )
+        .where(OpsRequestMetric.bucket_start >= since)
+        .group_by(OpsRequestMetric.bucket_start, OpsRequestMetric.status_class)
+    )
+    return [(b, s, int(c), float(t), float(m)) for b, s, c, t, m in db.execute(stmt)]
+
+
+def totals_by_route(db: Session, since: datetime) -> list[tuple[str, str, str, int, float, float]]:
+    """since 이후의 (메서드, 경로 패턴, 상태코드 구분)별 요청 수·걸린 시간 합·최댓값."""
+    stmt = (
+        select(
+            OpsRequestMetric.method,
+            OpsRequestMetric.route,
+            OpsRequestMetric.status_class,
+            func.sum(OpsRequestMetric.request_count),
+            func.sum(OpsRequestMetric.duration_ms_sum),
+            func.max(OpsRequestMetric.duration_ms_max),
+        )
+        .where(OpsRequestMetric.bucket_start >= since)
+        .group_by(OpsRequestMetric.method, OpsRequestMetric.route, OpsRequestMetric.status_class)
+    )
+    return [(m, r, s, int(c), float(t), float(p)) for m, r, s, c, t, p in db.execute(stmt)]
