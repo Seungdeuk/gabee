@@ -8,7 +8,9 @@ import { DEV_SAMPLE_ITEMS } from "./mock";
 import {
   CHEER_KIND_TO_SERVER,
   cheerFromServer,
+  cheerSuggestionsFromServer,
   entryToServer,
+  habitSuggestionsFromServer,
   itemFromServer,
   itemToServer,
   memberItemFromServer,
@@ -88,6 +90,27 @@ export async function dropLocalCopy(scope) {
  */
 export async function listItems(date) {
   return (await apiFetch(`${BASE}/items${dateQuery(date)}`)).map((row) => itemFromServer(row));
+}
+
+/**
+ * 추천 습관을 서버 창고(DB)에서 무작위로 받는다(LLM 호출 없음). 이미 있는 이름은 보내서 뺀다.
+ * 실패하거나 비어 있으면 호출한 화면이 내장 목록(mock.js RECOMMEND_POOL)으로 대신한다.
+ * @param {string[]} [excludeNames] 이미 내 목록에 있는 습관 이름
+ * @param {number} [limit] 받을 개수(기본 3)
+ * @returns {Promise<{ name: string, goal?: number, unit?: string }[]>}
+ */
+export async function listHabitSuggestions(excludeNames = [], limit = 3) {
+  const query = [`limit=${limit}`, ...excludeNames.map((name) => `exclude=${seg(name)}`)].join("&");
+  return habitSuggestionsFromServer(await apiFetch(`${BASE}/suggestions/habits?${query}`));
+}
+
+/**
+ * 추천 응원 문구를 서버 창고(DB)에서 무작위로 받는다. 실패하거나 비어 있으면 호출한 화면이 내장 문구(CHEER_MESSAGES)로 대신한다.
+ * @param {number} [limit] 받을 개수(기본 2)
+ * @returns {Promise<string[]>}
+ */
+export async function listCheerSuggestions(limit = 2) {
+  return cheerSuggestionsFromServer(await apiFetch(`${BASE}/suggestions/cheers?limit=${limit}`));
 }
 
 /**

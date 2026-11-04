@@ -1,7 +1,7 @@
 // 데일리 체크 서버 응답 ↔ 화면 모양 변환(순수 함수). api.js 가 쓰고, 시험은 tests/schedule_daily_server.test.js.
 // 서버 규칙: 습관 kind 1 = 한 번 체크, 2 = 횟수. repeat_days = 월~일 1/0 일곱 글자. 응원 kind 1·2·3 = 사랑해요·최고예요·잘하셨어요.
 // 시각은 서버가 시간대가 붙은 ISO 로 준다. 화면은 한국 시간의 날짜 키("YYYY-MM-DD")와 "HH:MM" 으로 쓴다.
-import { ALL_DAYS, WEEK_DAYS } from "./logic";
+import { ALL_DAYS, CHEER_TEXT_MAX, NAME_MAX, WEEK_DAYS } from "./logic";
 
 const DAY_KEYS = WEEK_DAYS.map((d) => d.key);
 const KST_MS = 9 * 60 * 60 * 1000;
@@ -159,6 +159,31 @@ export function cheerFromServer(row, direction) {
 /** 가족 요약 한 줄 → { id(앱 id), name, done, total }. toApp 은 가족 변환기(store 의 ready() 가 준 것). */
 export function summaryFromServer(row, toApp) {
   return { id: toApp(row.user_id) ?? row.user_id, name: row.name, total: row.total, done: row.done };
+}
+
+/**
+ * 서버 추천 습관 줄 → 추천 칩 모양({ name, goal?, unit? }). 체크(kind 1)는 목표·단위가 없다.
+ * 이름이 앱 한도(NAME_MAX)를 넘거나 모양이 이상한 줄은 버린다(서버가 잘못 줘도 화면이 깨지지 않게).
+ */
+export function habitSuggestionsFromServer(rows) {
+  if (!Array.isArray(rows)) return [];
+  return rows.flatMap((row) => {
+    const name = typeof row?.name === "string" ? row.name.trim() : "";
+    if (!name || name.length > NAME_MAX) return [];
+    if (row.kind === 2 && Number.isInteger(row.goal) && row.goal > 0) {
+      return [{ name, goal: row.goal, unit: typeof row.unit === "string" ? row.unit : "" }];
+    }
+    return [{ name }];
+  });
+}
+
+/** 서버 추천 응원 문구 줄 → 문구 글자 목록. 비었거나 앱 한도(CHEER_TEXT_MAX)를 넘는 줄은 버린다. */
+export function cheerSuggestionsFromServer(rows) {
+  if (!Array.isArray(rows)) return [];
+  return rows.flatMap((row) => {
+    const message = typeof row?.message === "string" ? row.message.trim() : "";
+    return message && message.length <= CHEER_TEXT_MAX ? [message] : [];
+  });
 }
 
 /** 서버 오류 → 빈 상태 글자(목록 불러오기 실패). 503 은 기능 준비 중(스키마 미적용)이다. */

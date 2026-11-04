@@ -10,6 +10,8 @@ Create Date: 2026-11-03 18:00:00.000000
   습관 소프트 삭제용 deleted_at 을 더한다. 반복 요일을 마지막으로 바꾼 시각 repeat_updated_at 과
   습관 수정 시각 updated_at 을 더한다(기존 행은 created_at 으로 채운 뒤 NOT NULL 로 바꾼다).
 
+destructive-approved: PR #228
+
 개발용 데이터는 옮기지 않는다(버려도 된다). downgrade 는 기록 테이블을 지우고 빼 두었던 컬럼을 되살리며,
 지운 오늘 기록 값은 복구되지 않는다(컬럼은 기본값으로 채워진다).
 """
