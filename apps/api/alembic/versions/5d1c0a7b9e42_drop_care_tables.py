@@ -2,7 +2,9 @@
 
 돌봄 테이블 5개(care_items, care_entries, care_records, care_meal_logs, care_locations)를 지운다. 데이터가 사라지는 변경이다.
 코드(app/features/care)는 같은 PR 에서 지웠다. downgrade 는 구조만 되살리고 지워진 행은 돌아오지 않는다.
-데이터 삭제 승인 표시는 PR 번호가 생기고 DB 담당자가 승인한 뒤에 추가한다(아직 없음).
+DB 담당자가 2026-11-04 에 승인했다(돌봄 삭제 PR #212 기준).
+
+destructive-approved: PR #212
 
 Revision ID: 5d1c0a7b9e42
 Revises: f06220eb955a
