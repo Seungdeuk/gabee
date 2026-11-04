@@ -16,7 +16,7 @@ test("바로가기는 4칸, 목록은 7줄이고 key 가 겹치지 않는다", (
 test("항목 제목 순서", () => {
   assert.deepEqual(
     SHORTCUTS.map((i) => i.title),
-    ["AI 리포트", "가족 랭킹", "가비 상점", "알림 설정"],
+    ["AI 리포트", "가족 랭킹", "구독 관리", "환경설정"],
   );
   assert.deepEqual(
     MENU.map((i) => i.title),

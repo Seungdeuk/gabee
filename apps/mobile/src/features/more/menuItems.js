@@ -9,8 +9,8 @@ export const SOON_MESSAGE = "준비 중이에요";
 export const SHORTCUTS = [
   { key: "report", icon: "stats-chart-outline", title: "AI 리포트", subtitle: "주간 가족 요약", route: "/report" },
   { key: "ranking", icon: "trophy-outline", title: "가족 랭킹", subtitle: "가족 활동 순위", soon: true },
-  { key: "subscription", icon: "bag-outline", title: "가비 상점", subtitle: "구독 플랜 · 사용량", route: "/subscription" },
-  { key: "notifications", icon: "notifications-outline", title: "알림 설정", subtitle: "알림 · 방해금지", soon: true },
+  { key: "subscription", icon: "diamond-outline", title: "구독 관리", subtitle: "요금제 · 사용량", route: "/subscription" },
+  { key: "settings", icon: "options-outline", title: "환경설정", subtitle: "알림 · 앱 설정", soon: true },
 ];
 
 /**
