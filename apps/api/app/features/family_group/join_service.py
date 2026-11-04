@@ -91,6 +91,14 @@ def set_auto_approve(db: Session, user: User, enabled: bool) -> str:
     return group_id
 
 
+def rename_group(db: Session, user: User, name: str) -> str:
+    """가족 이름을 바꾼다. 가족 관리자(owner/admin)만. 그룹 id 를 돌려준다."""
+    group_id = _managed_group_id(db, user)
+    repo.get_group(db, group_id).name = name
+    db.commit()
+    return group_id
+
+
 def revoke_invite(db: Session, user: User) -> None:
     group_id = _managed_group_id(db, user)
     jrepo.revoke_active_invites(db, group_id)

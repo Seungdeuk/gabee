@@ -5,9 +5,10 @@
 - 순서 주의: `PUT /items/order` 는 `PUT /items/{item_id}` 보다 먼저 등록해야 'order' 가 id 로 잡히지 않는다.
 """
 
+from datetime import date
 from typing import Literal
 
-from fastapi import APIRouter, Depends, Response
+from fastapi import APIRouter, Depends, Query, Response
 from sqlalchemy.orm import Session
 
 from app.shared.auth import current_group_id, current_user
@@ -25,9 +26,11 @@ from .check_schemas import (
     CheckItemUpdate,
     CheckMemberSummary,
     CheckMemberToday,
+    CheckNoteBody,
     CheckSettingsIn,
     CheckSettingsOut,
 )
+from .suggestion.router import router as suggestion_router
 
 router = APIRouter(
     prefix="/check",
@@ -35,14 +38,20 @@ router = APIRouter(
 )
 
 
+# 추천 습관·응원 문구(읽기 전용). '/items/{item_id}' 같은 경로와 겹치지 않는 '/suggestions' 아래다.
+router.include_router(suggestion_router)
+
+
 # ---------------------------------------------------------------- 내 습관
 @router.get("/items", response_model=list[CheckItemOut])
 def list_items(
+    day: date | None = Query(default=None, alias="date"),
     user=Depends(current_user),
     group_id: str = Depends(current_group_id),
     db: Session = Depends(get_db),
 ) -> list[dict]:
-    return service.list_items(db, user.id)
+    """내 습관과 그 날짜(없으면 오늘)의 기록. 날짜는 오늘부터 7일 전까지."""
+    return service.list_items(db, user.id, day)
 
 
 @router.post("/items", response_model=CheckItemOut, status_code=201)
@@ -83,6 +92,7 @@ def delete_item(
     group_id: str = Depends(current_group_id),
     db: Session = Depends(get_db),
 ) -> Response:
+    """소프트 삭제(지난 기록은 남는다)."""
     service.delete_item(db, user.id, item_id)
     return Response(status_code=204)
 
@@ -91,11 +101,25 @@ def delete_item(
 def set_entry(
     item_id: str,
     body: CheckEntryBody,
+    day: date | None = Query(default=None, alias="date"),
     user=Depends(current_user),
     group_id: str = Depends(current_group_id),
     db: Session = Depends(get_db),
 ) -> dict:
-    return service.set_entry(db, user.id, item_id, body)
+    return service.set_entry(db, user.id, item_id, body, day)
+
+
+@router.put("/items/{item_id}/note", response_model=CheckItemOut)
+def set_note(
+    item_id: str,
+    body: CheckNoteBody,
+    day: date | None = Query(default=None, alias="date"),
+    user=Depends(current_user),
+    group_id: str = Depends(current_group_id),
+    db: Session = Depends(get_db),
+) -> dict:
+    """그날 메모 저장·지우기(note 가 빈 문자열이나 null 이면 지운다)."""
+    return service.set_note(db, user.id, item_id, body, day)
 
 
 # ---------------------------------------------------------------- 가족

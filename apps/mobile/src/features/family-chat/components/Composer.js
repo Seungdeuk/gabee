@@ -38,6 +38,17 @@ export default function Composer({ value, onChangeText, onSend, onPickPhoto, onP
   const [sel, setSel] = useState(null); // 예시를 채운 직후에만 커서를 끝으로 둔다(안드로이드). 평소에는 제어하지 않는다
   const hintsOn = mentionHintsVisible(value, direct); // `@` 를 치면 @가비 예시 목록(1:1 방은 숨김)
   const replyId = replyTo?.id ?? null;
+  // 웹: onContentSizeChange 의 높이는 입력칸의 scrollHeight(위아래 여백 포함, 현재 높이 이상)라서, 여백을 또 더하면 글자를 쓰거나 지울 때마다 입력칸이 커지기만 한다.
+  // 그래서 웹에서는 값이 바뀔 때마다 높이를 한 줄로 되돌린 뒤 scrollHeight 를 재서 맞춘다(지우면 줄어든다).
+  useEffect(() => {
+    if (Platform.OS !== "web") return;
+    const el = inputRef.current;
+    if (!el?.style) return;
+    el.style.height = `${ROW_H}px`;
+    const h = Math.min(MAX_H, Math.max(ROW_H, el.scrollHeight));
+    el.style.height = `${h}px`; // 높이가 그대로여서 React 가 다시 쓰지 않아도 되돌려 둔 한 줄 높이가 남지 않게 직접 맞춘다
+    setInputH(h);
+  }, [value]);
   useEffect(() => {
     if (replyId != null) inputRef.current?.focus(); // 답장을 시작하면 바로 쓸 수 있게
   }, [replyId]);
@@ -137,7 +148,7 @@ export default function Composer({ value, onChangeText, onSend, onPickPhoto, onP
             placeholder="메시지를 입력하세요"
             placeholderTextColor={colors.placeholder}
             multiline
-            onContentSizeChange={(e) => setInputH(Math.min(MAX_H, Math.max(ROW_H, Math.ceil(e.nativeEvent.contentSize.height) + spacing.xs * 2)))}
+            onContentSizeChange={Platform.OS === "web" ? undefined : (e) => setInputH(Math.min(MAX_H, Math.max(ROW_H, Math.ceil(e.nativeEvent.contentSize.height) + spacing.xs * 2)))}
             {...(Platform.OS === "web" ? { rows: 1 } : {})} // 웹의 여러 줄 입력칸은 기본 2줄 높이로 시작하므로 한 줄로 시작하게 한다
             onKeyPress={onKeyPress}
             accessibilityLabel="메시지 입력"

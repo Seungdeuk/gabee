@@ -15,12 +15,13 @@ export const DEV_SAMPLE_ITEMS = [
 /** 개발용 가상 가족의 오늘 습관(읽기 전용). id 는 logic.js DEV_FAMILY 와 같다. shareWithFamily 가 꺼진 것도 섞어 두어 빠지는지 볼 수 있다. */
 export const FAMILY_ITEMS_MOCK = {
   mom: [
-    { id: "m-bp", name: "혈압약 먹기", type: "check", goal: 1, unit: "", days: ALL_DAYS, alarm: true, shareWithFamily: true, entry: { done: true, count: 0, doneAt: "08:30" } },
+    // note: 서버가 메모를 공개로 준 경우를 흉내 낸다(가족 탭 두 번째 줄 미리보기와 전문 팝업 확인용)
+    { id: "m-bp", name: "혈압약 먹기", type: "check", goal: 1, unit: "", days: ALL_DAYS, alarm: true, shareWithFamily: true, note: "혈압약 먹고 괜찮았어요", entry: { done: true, count: 0, doneAt: "08:30" } },
     { id: "m-walk", name: "산책 30분", type: "check", goal: 1, unit: "", days: ALL_DAYS, alarm: false, shareWithFamily: true, entry: { done: true, count: 0, doneAt: "10:12" } },
     { id: "m-water", name: "물 마시기", type: "count", goal: 8, unit: "잔", days: ALL_DAYS, alarm: false, shareWithFamily: true, entry: { done: false, count: 7, doneAt: null } },
   ],
   dad: [
-    { id: "d-vit", name: "영양제 먹기", type: "check", goal: 1, unit: "", days: ALL_DAYS, alarm: true, shareWithFamily: true, entry: { done: true, count: 0, doneAt: "07:50" } },
+    { id: "d-vit", name: "영양제 먹기", type: "check", goal: 1, unit: "", days: ALL_DAYS, alarm: true, shareWithFamily: true, note: "식후에 먹었고 속이 편해요", entry: { done: true, count: 0, doneAt: "07:50" } },
     { id: "d-walk", name: "산책 30분", type: "check", goal: 1, unit: "", days: ALL_DAYS, alarm: false, shareWithFamily: true, entry: { done: false, count: 0, doneAt: null } },
     { id: "d-water", name: "물 마시기", type: "count", goal: 8, unit: "잔", days: ALL_DAYS, alarm: false, shareWithFamily: true, entry: { done: false, count: 3, doneAt: null } },
     { id: "d-private", name: "비밀 메모 체크", type: "check", goal: 1, unit: "", days: ALL_DAYS, alarm: false, shareWithFamily: false, entry: { done: false, count: 0, doneAt: null } },

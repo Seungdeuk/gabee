@@ -3,6 +3,8 @@ import { ActivityIndicator, Modal, Pressable, ScrollView, StyleSheet, Text, View
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import Button from "@/shared/components/Button";
+import { usageGauges } from "@/shared/aiUsage";
+import UsageGauge from "@/shared/components/UsageGauge";
 import { colors, font, radius, spacing } from "@/theme";
 
 import { analyzeChat, getAiSettings, getRoomInfo, registerScheduleCandidate, sendTogetherRequest, setAiEnabled } from "../api";
@@ -12,7 +14,6 @@ import {
   parseAiSettings,
   parseAnalysis,
   rangeCaption,
-  remainingText,
   resultCaption,
   scheduleMissingNote,
   shouldLoadSettings,
@@ -20,7 +21,7 @@ import {
 import { privacyCaption } from "../privacyPreview";
 import { candidateKey, isCandidateDone, markCandidateDone } from "../candidateKey";
 import { candidateToRequestBody, dayFromChip, hasCandidateDay, requestErrorText, sendErrorMessage } from "../togetherUtils";
-import { CONSENT_CANCEL_LABEL, ENABLE_ON_ANALYZE_BODY, ENABLE_ON_ANALYZE_CONFIRM_LABEL, ENABLE_ON_ANALYZE_TITLE, PANEL_NOTICE } from "../privacyCopy";
+import { CONSENT_CANCEL_LABEL, ENABLE_ON_ANALYZE_BODY, ENABLE_ON_ANALYZE_CONFIRM_LABEL, ENABLE_ON_ANALYZE_TITLE } from "../privacyCopy";
 import TodoCandidateRow from "./TodoCandidateRow";
 
 /** 후보 한 줄에 붙는 보조 글(날짜·시간·장소 등). */
@@ -42,8 +43,8 @@ function PickList({ items, emptyText, labelPrefix, testIDPrefix, onPick }) {
 
 /**
  * 채팅방 안 AI 대화 도우미 시트. 열릴 때 설정만 한 번 읽는다. "대화 분석하기" 버튼을 누르면 곧바로 AI 를 한 번 부른다(AI 동의는 회원가입 때 받는다).
- * 켜진 상태에는 항상 보이는 한 줄 안내(PANEL_NOTICE)를 둔다. 요약·일정·할 일 후보·답장 추천·대화 주제 추천이 한 결과 화면에 나온다.
- * 결과는 서버에 잠시(약 10분) 저장돼 같은 요청에 다시 쓰인다.
+ * 요약·일정·할 일 후보·답장 추천·대화 주제 추천이 한 결과 화면에 나온다. 결과는 서버에 잠시(약 10분) 저장돼 같은 요청에 다시 쓰인다.
+ * 개인정보 가림·전달·저장 안내는 이 패널에 두지 않고 마이 > 가비 AI 이용 안내에 있다.
  * 닫아도 컴포넌트는 유지되어 마지막 결과를 다시 열면 보여 준다. 닫혀 있는 동안에는 아무 호출도 하지 않는다.
  * 일정·할 일 후보를 등록하면 onLinked 로 알려 원본 메시지와의 연결을 저장하게 한다(연결 저장이 실패해도 등록은 성공으로 둔다).
  * @param {{ visible: boolean, onClose: () => void, onPickReply: (text: string) => void, onLinked?: (link: { kind: "event" | "todo", targetId: string, candidate: object }) => void }} props
@@ -208,10 +209,7 @@ export default function AiPanel({ visible, onClose, onPickReply, onLinked }) {
   const disabled = busy !== "";
   return (
     <>
-      <Text style={styles.sub} testID="chat-ai-notice">
-        {PANEL_NOTICE}
-      </Text>
-      {remainingText(settings) ? <Text style={styles.caption}>{remainingText(settings)}</Text> : null}
+      <UsageGauge gauges={usageGauges({ userUsed: settings.userUsedRatio, groupUsed: settings.groupUsedRatio })} />
       {error ? (
         <Text style={styles.error} accessibilityRole="alert">
           {error}

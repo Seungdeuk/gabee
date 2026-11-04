@@ -1,8 +1,11 @@
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
+from app.features.admin.router import router as admin_router
 from app.features.ai_assistant.router import router as ai_assistant_router
 from app.features.billing.router import router as billing_router
 from app.features.family_chat.router import router as family_chat_router
@@ -13,6 +16,7 @@ from app.features.ops_admin.middleware import RequestMetricsMiddleware
 from app.features.ops_admin.router import router as ops_admin_router
 from app.features.ops_admin.service import aggregator as ops_metrics
 from app.features.schedule.router import router as schedule_router
+from app.features.support.router import router as support_router
 from app.shared.config import settings
 from app.shared.db import init_db
 from app.shared.errors import register_error_handlers
@@ -69,6 +73,7 @@ for feature, router in (
     ("billing", billing_router),
     ("ai_assistant", ai_assistant_router),
     ("notifications", notifications_router),
+    ("support", support_router),
     ("ops_admin", ops_admin_router),
 ):
     deps = []
@@ -76,6 +81,11 @@ for feature, router in (
     if feature in GUARDED_FEATURES:  # 고위험 입력(주민·카드·계좌·비밀번호) 사전 차단 (임시 방어)
         deps.append(Depends(high_risk_guard))
     app.include_router(router, dependencies=deps)
+# 서비스 관리자 API 는 자기 모델이 없고 다른 기능의 표를 개수만 읽는다(권한은 require_operator("service_admin"))
+app.include_router(admin_router, dependencies=[Depends(schema_ready("family_group"))])
+# 관리자 화면(정적 파일). 데이터는 화면이 로그인한 뒤 /admin/* API 로 받는다
+_ADMIN_STATIC = Path(__file__).parent / "features" / "admin" / "static"
+app.mount("/admin/ui", StaticFiles(directory=_ADMIN_STATIC, html=True), name="admin_ui")
 app.include_router(health_router)
 app.include_router(public_pages_router)  # 공개 안내 페이지(/, /privacy, /terms): 로그인·DB 없음
 

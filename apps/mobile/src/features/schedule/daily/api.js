@@ -8,10 +8,13 @@ import { DEV_SAMPLE_ITEMS } from "./mock";
 import {
   CHEER_KIND_TO_SERVER,
   cheerFromServer,
+  cheerSuggestionsFromServer,
   entryToServer,
+  habitSuggestionsFromServer,
   itemFromServer,
   itemToServer,
   memberItemFromServer,
+  noteToServer,
   summaryFromServer,
 } from "./serverMap";
 
@@ -22,6 +25,8 @@ import {
 const BASE = "/schedule/check";
 const keyOf = (name, scope) => `gabee.schedule.daily.${name}.v1.${scope}`;
 const seg = (value) => encodeURIComponent(String(value));
+// 날짜(YYYY-MM-DD)를 주면 그 날의 기록을 쓴다. 없으면 서버가 오늘로 본다. 날짜 범위(오늘~7일 전)는 서버가 400 으로 막는다.
+const dateQuery = (date) => (date ? `?date=${seg(date)}` : "");
 
 // ── 폰에 남기는 것: 가족 탭 순서와 숨김 ──
 
@@ -78,9 +83,34 @@ export async function dropLocalCopy(scope) {
 
 // ── 내 습관 ──
 
-/** 내 습관 전체(순서대로, 요일과 상관없이). @returns {Promise<object[]>} */
-export async function listItems() {
-  return (await apiFetch(`${BASE}/items`)).map(itemFromServer);
+/**
+ * 내 습관 전체(순서대로). 날짜를 주면 그 날의 기록과 메모를 담고, 그 날 목록에 나올지(applies)를 서버가 정한다.
+ * @param {string} [date] "YYYY-MM-DD"(없으면 오늘)
+ * @returns {Promise<object[]>}
+ */
+export async function listItems(date) {
+  return (await apiFetch(`${BASE}/items${dateQuery(date)}`)).map((row) => itemFromServer(row));
+}
+
+/**
+ * 추천 습관을 서버 창고(DB)에서 무작위로 받는다(LLM 호출 없음). 이미 있는 이름은 보내서 뺀다.
+ * 실패하거나 비어 있으면 호출한 화면이 내장 목록(mock.js RECOMMEND_POOL)으로 대신한다.
+ * @param {string[]} [excludeNames] 이미 내 목록에 있는 습관 이름
+ * @param {number} [limit] 받을 개수(기본 3)
+ * @returns {Promise<{ name: string, goal?: number, unit?: string }[]>}
+ */
+export async function listHabitSuggestions(excludeNames = [], limit = 3) {
+  const query = [`limit=${limit}`, ...excludeNames.map((name) => `exclude=${seg(name)}`)].join("&");
+  return habitSuggestionsFromServer(await apiFetch(`${BASE}/suggestions/habits?${query}`));
+}
+
+/**
+ * 추천 응원 문구를 서버 창고(DB)에서 무작위로 받는다. 실패하거나 비어 있으면 호출한 화면이 내장 문구(CHEER_MESSAGES)로 대신한다.
+ * @param {number} [limit] 받을 개수(기본 2)
+ * @returns {Promise<string[]>}
+ */
+export async function listCheerSuggestions(limit = 2) {
+  return cheerSuggestionsFromServer(await apiFetch(`${BASE}/suggestions/cheers?limit=${limit}`));
 }
 
 /**
@@ -112,13 +142,27 @@ export async function replaceItems(items) {
 }
 
 /**
- * 오늘 기록을 저장한다. 한 번 체크는 done, 횟수는 count(절대값)를 보낸다. 서버의 항목(오늘 기록 포함)을 돌려준다.
+ * 기록을 저장한다. 한 번 체크는 done, 횟수는 count(절대값)를 보낸다. 날짜를 주면 그 날의 줄에 쓴다(없으면 오늘).
+ * 메모는 건드리지 않는다(메모는 setNote). 서버의 항목(그 날의 기록 포함)을 돌려준다.
  * @param {object} item 항목(id·type)
  * @param {object} entry 바꾼 뒤의 기록
+ * @param {string} [date] "YYYY-MM-DD"(없으면 오늘)
  * @returns {Promise<object>} 서버가 준 항목(entry 포함)
  */
-export async function setEntry(item, entry) {
-  const row = await apiFetch(`${BASE}/items/${seg(item.id)}/entry`, { method: "PUT", body: entryToServer(item, entry) });
+export async function setEntry(item, entry, date) {
+  const row = await apiFetch(`${BASE}/items/${seg(item.id)}/entry${dateQuery(date)}`, { method: "PUT", body: entryToServer(item, entry) });
+  return itemFromServer(row);
+}
+
+/**
+ * 그날 메모를 저장하거나 지운다. memo 가 null 이면 지운다. 기록(체크·횟수)은 건드리지 않는다.
+ * @param {object} item 항목(id 가 필요하다)
+ * @param {string} date "YYYY-MM-DD"
+ * @param {{ note: string, noteShared: boolean } | null} memo
+ * @returns {Promise<object>} 서버가 준 항목(memo 포함)
+ */
+export async function setNote(item, date, memo) {
+  const row = await apiFetch(`${BASE}/items/${seg(item.id)}/note${dateQuery(date)}`, { method: "PUT", body: noteToServer(memo) });
   return itemFromServer(row);
 }
 
