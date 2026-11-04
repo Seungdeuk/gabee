@@ -104,7 +104,7 @@
 |---|---|---|
 | 기술 | 순수 HTML + JavaScript로 시작(복잡해지면 React). TypeScript 금지 | 표·대시보드 위주 화면, `apps/invite-page`도 정적 HTML |
 | 폴더 | `apps/ops-admin/` | `apps/` 아래 기존 패턴. 새 앱 폴더라 만들기 전에 계획 확인 필요 |
-| 호스팅 | Cloudflare Pages | 이미 Cloudflare 사용, 정적 웹. 무료 범위는 **미확인** |
+| 호스팅 | ~~Cloudflare Pages~~ → **기존 Cloud Run 서비스에 함께 배포(확정 18차로 대체, 아래 "확정 18차" 절)** | 이미 Cloudflare 사용, 정적 웹. 무료 범위는 **미확인** |
 | 서브도메인 | `ops.gabee.cloud` | API 도메인과 분리. 도메인의 Cloudflare 연결은 유님 설명 기준(**미확인**) |
 | Cloudflare Access | 1차부터 앞단에 둠 | 보조 수단, 최종 판단은 JWT + 허용 목록. Cloud Run 직접 접근 가능 여부는 **미확인**. 주의: Access는 웹 화면 도메인을 보호하고, 브라우저가 API 도메인을 호출하는 요청에는 별도 설정이 없으면 적용되지 않을 수 있음(**미확인**) |
 | CORS | `ops.gabee.cloud`와 앱 주소만 허용 | 코드 기본값은 `*`(확인됨). 운영 설정은 **미확인**. 주의: CORS 미들웨어는 API 전체에 공통이라 좁히면 다른 웹 클라이언트에도 영향. `apps/invite-page`에는 API 호출이 없음(확인됨, grep). 앱(네이티브)은 CORS 대상이 아님. Expo 웹 미리보기 등 다른 브라우저 클라이언트는 **미확인** |
@@ -575,6 +575,7 @@ Cloud Monitoring 지표 이름은 2026-11-03에 GCP 공식 문서로 확인했�
 11. **`permissions.md`에 "서비스 운영자" 절을 쓸지**: 유님에게 먼저 묻는다(아직 쓰지 않음).
 
 ## W2 서버 연결, CSP, CORS (2026-11-04, 유님 "이어서 진행")
+> 확정 18차로 호스팅이 Cloud Run 같은 서비스로 바뀌었다. 아래 Cloudflare Pages `_headers`·`CORS_ORIGINS` 항목은 배포 방식이 정해진 뒤 다시 본다(같은 출처가 되면 CORS 변경이 필요 없을 수 있음 — 미검증).
 **구현됨(로컬 커밋, 푸시 전)**
 - 서버: `feature/hojenn-ops-read-api`(worktree `gabee-ops-api`) — `GET /admin/ops/summary`, `GET /admin/ops/apis`(읽기 전용, `require_operator("ops_admin")`, 기간 1h/24h/7d, `metrics_enabled` 포함, p95 없음). 요청 계측 브랜치 위에 쌓았고 `release/1.2`를 병합했다. 병합으로 Alembic head가 둘이 되어 요청 지표 리비전의 `down_revision`을 옮겼다(내용 불변).
 - 웹: `feature/hojenn-ops-admin-web` `47736c4` — 서버 모드(JWT 로그인 → 운영자 확인 → 대시보드·API 상태에 실제 지표). 인프라·오류 로그·배포/DB는 저장 테이블·API가 없어 샘플을 섞지 않고 "미연결"로 표시. 배포본은 샘플 계정 파일이 없어 항상 서버 모드.
@@ -590,3 +591,23 @@ Cloud Monitoring 지표 이름은 2026-11-03에 GCP 공식 문서로 확인했�
 - 이 PC에서 `CORS_ORIGINS`를 특정 출처로 둔 로컬 서버로 확인: 허용 출처는 `access-control-allow-origin`이 그대로 오고, 그 밖의 출처 preflight는 400.
 - 제안 값: `https://ops.gabee.cloud`(+ 운영에서 앱 웹을 쓰면 그 출처). 적용·되돌리기 절차는 첨부 문서 5장(변경 전후 `curl -X OPTIONS`, 문제 시 `*`로 복귀)을 따른다. **운영 `CORS_ORIGINS` 현재 값, Cloud Run 여부, Expo 웹 운영 출처는 미확인.**
 - 주의: 이 설정은 API 전체에 공통이라 브라우저로 API를 부르는 다른 클라이언트에 영향을 준다.
+
+## 확정 18차 — 운영 웹 호스팅을 기존 Cloud Run 서비스에 얹는 것으로 변경 (유님 "기존에 Cloud Run 서비스에 얹어", 2026-11-03 결정 · 2026-11-04 기록, 적용 확인 2026-11-04)
+근거: dev-docs `wiki/decisions/gabee-admin-page-2026-11.md` 34장. 유님이 "별도 정적 호스팅(추천) vs 같은 서비스"의 장단점을 듣고 직접 고른 결정이다.
+
+**변경**: 확정 5차 "최선안 표"의 호스팅(Cloudflare Pages)을 **대체**한다. 운영 웹(`apps/ops-admin/`의 정적 파일)은 기존 앱 서비스(Cloud Run)와 같은 서비스에 함께 배포하고, 서브도메인(`ops.gabee.cloud` 제안)을 그 서비스에 붙인다.
+
+**유지**: 별도 웹 폴더 `apps/ops-admin/`, 순수 HTML+JS(TypeScript 금지), 최종 인증 판단은 JWT + 허용 목록(Cloudflare Access는 보조), 경로 `/admin/ops/*`.
+
+**알려 준 장단점**: 장점 = 배포 대상이 하나, 같은 출처라 CORS 불필요. 단점 = ① 운영 화면만 고쳐도 API 전체 재배포 ② `apps/api/Dockerfile`이 `apps/api` 안의 파일만 복사하므로 `apps/ops-admin/`을 이미지에 넣으려면 빌드 방식 변경 필요 ③ Cloudflare Access는 호스트 이름 단위라 `*.run.app`·기존 도메인으로도 화면 파일에 접근 가능(화면 파일에 비밀은 없고 데이터는 JWT·허용 목록이 막지만 한 겹 약해짐).
+
+**참고(확인함)**: `release/1.2`의 `main.py`는 서비스 관리자 화면을 같은 서비스에서 정적 파일로 내려준다(`app/features/admin/static`을 `/admin/ui`로 마운트). 운영 웹을 같은 방식으로 얹을 때 경로 충돌은 확인하지 못했다(`/admin/ops/*` API와 `/admin/ui`는 달라 보이지만 미검증).
+
+**미정 (구현 전 설계·확인 필요, 임의로 정하지 않는다)**
+1. 정적 파일을 서버가 내려주는 방식과 경로(접두사 또는 호스트 이름 기준). 서비스 관리자 `/admin/ui` 방식을 따를지.
+2. 이미지에 `apps/ops-admin/`을 넣는 방법(Dockerfile 빌드 방식 변경 또는 복사 방법). `Dockerfile`·`deploy/`·`.github/workflows/`는 요청 없이 수정하지 않는 영역이라 유님 요청과 계획 확인 후에만 건드린다.
+3. 서브도메인 호스트로 들어온 요청이 가족용 API 전체에도 닿는 문제. 호스트별로 경로를 제한할지(제안: 운영 호스트는 `/admin/ops/*`와 화면 파일만 허용).
+4. Cloud Run 기본 주소·기존 도메인으로 운영 화면에 접근되는 것을 막을지(**미확인**: 앱 서비스가 Cloudflare를 거치는지, Cloud Run 도메인 매핑이 가능한지).
+5. 운영 웹 변경이 API 배포와 묶이므로 운영 웹 변경은 API 배포 일정(deploy/kang 기준)에 맞춘다.
+
+**이미 병합된 것에 미치는 영향 (제안, 미검증)**: `apps/ops-admin/_headers`(Pages 전용)는 같은 서비스 배포에서는 쓰이지 않는다. 같은 출처가 되면 `connect-src 'self'`만으로 충분해지고 운영 `CORS_ORIGINS` 변경은 필요 없을 수 있다. 정리는 배포 방식이 정해진 뒤 별도 PR로 한다.
