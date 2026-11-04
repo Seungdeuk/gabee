@@ -12623,7 +12623,8 @@
                     "billing",
                     "care",
                     "family_group",
-                    "ai_record"
+                    "ai_record",
+                    "support"
                   ],
                   "type": "string"
                 },
@@ -19784,7 +19785,8 @@
                   "billing",
                   "care",
                   "family_group",
-                  "ai_record"
+                  "ai_record",
+                  "support"
                 ]
               },
               {

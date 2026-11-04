@@ -148,3 +148,27 @@ def test_invalid_cursor_is_400(client, family):
     res = client.get("/notifications", params={"cursor": "###"}, headers=a)
     assert res.status_code == 400
     assert res.json()["code"] == "invalid_cursor"
+
+
+def test_personal_notification_is_visible_only_to_owner_and_survives_leaving_family(client, family):
+    a, b, group = family
+    me = _me(client, a)
+    nid = _make(me, None, "문의에 답변이 달렸어요", kind="support")
+    assert [n["title"] for n in client.get("/notifications", headers=a).json()["items"]] == [
+        "문의에 답변이 달렸어요"
+    ]
+    assert client.get("/notifications/unread-count", headers=a).json()["by_kind"] == {"support": 1}
+    assert (
+        client.get("/notifications", headers=b).json()["items"] == []
+    )  # 다른 사람에게는 안 보인다
+    assert client.post(f"/notifications/{nid}/read", headers=b).status_code == 404
+    with SessionLocal() as db:  # 가족을 떠나도 개인 알림은 그대로 보인다
+        db.execute(
+            delete(GroupMember).where(
+                GroupMember.group_id == group["id"], GroupMember.user_id == me
+            )
+        )
+        db.commit()
+    assert len(client.get("/notifications", headers=a).json()["items"]) == 1
+    assert client.post(f"/notifications/{nid}/read", headers=a).status_code == 200
+    assert client.get("/notifications/unread-count", headers=a).json()["total"] == 0

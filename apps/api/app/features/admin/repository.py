@@ -269,9 +269,17 @@ def support_counts(db: Session) -> dict[str, int]:
     return counts
 
 
+def get_support_ticket(db: Session, ticket_id: str) -> dict | None:
+    """답변 알림에 필요한 보낸 사람과 지금 답변. 없는 번호면 None."""
+    tickets = _t("support_tickets")
+    row = db.execute(
+        select(tickets.c.user_id, tickets.c.answer).where(tickets.c.id == ticket_id)
+    ).first()
+    return dict(row._mapping) if row else None
+
+
 def update_support_ticket(db: Session, ticket_id: str, values: dict) -> bool:
-    """상태·답변을 바꾼다. 없는 번호면 False."""
+    """상태·답변을 바꾼다. 없는 번호면 False. 커밋은 부르는 쪽이 한다(알림과 함께 저장)."""
     tickets = _t("support_tickets")
     done = db.execute(update(tickets).where(tickets.c.id == ticket_id).values(**values)).rowcount
-    db.commit()
     return bool(done)

@@ -17,7 +17,8 @@ from app.shared.db import Base
 logger = logging.getLogger(__name__)
 
 # 알림 분류. 소통(가족 채팅) 메시지 알림은 알림함에 담지 않는다.
-KINDS = ("schedule", "billing", "care", "family_group", "ai_record")
+# support(고객센터 답변)는 사용자 개인에게 가는 알림이라 group_id 가 없다.
+KINDS = ("schedule", "billing", "care", "family_group", "ai_record", "support")
 
 
 def _uid() -> str:
@@ -37,7 +38,9 @@ class Notification(Base):
 
     id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uid)
     user_id: Mapped[str] = mapped_column(ForeignKey("users.id"))  # 받는 사람
-    group_id: Mapped[str] = mapped_column(ForeignKey("groups.id"))
+    group_id: Mapped[str | None] = mapped_column(
+        ForeignKey("groups.id"), nullable=True
+    )  # 가족과 무관한 알림은 비움
     kind: Mapped[str] = mapped_column(String(16))
     event: Mapped[str] = mapped_column(String(40))
     title: Mapped[str] = mapped_column(String(120))
@@ -52,7 +55,7 @@ class Notification(Base):
 def notify(
     db: Session,
     *,
-    group_id: str,
+    group_id: str | None,
     kind: str,
     event: str,
     recipients: Iterable[str],
@@ -65,6 +68,7 @@ def notify(
     """받는 사람마다 알림 한 줄을 남기고 만든 개수를 돌려준다. 커밋은 부르는 쪽이 한다.
 
     그룹 구성원이 아닌 사람과 행동한 본인(`actor_user_id`)은 건너뛰고, 같은 사람은 한 번만 받는다.
+    `group_id=None` 은 가족과 무관한 개인 알림(고객센터 답변 등)이라 구성원 확인 없이 받는 사람에게 그대로 남긴다.
     저장이 실패해도 예외를 밖으로 내지 않는다(원래 기능이 알림 때문에 실패하면 안 된다).
     문구에는 금액·위치·건강 정보·AI 요약·채팅 내용을 넣지 않는다 — 고정 템플릿만 쓴다."""
     if kind not in KINDS:
@@ -77,7 +81,7 @@ def notify(
         with db.begin_nested():  # 실패해도 앞선 변경은 그대로 둔다
             created = 0
             for uid in targets:
-                if db.get(GroupMember, (group_id, uid)) is None:
+                if group_id is not None and db.get(GroupMember, (group_id, uid)) is None:
                     continue
                 db.add(
                     Notification(

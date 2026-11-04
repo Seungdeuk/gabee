@@ -89,3 +89,21 @@ def test_failure_is_isolated(client, family, monkeypatch):
         assert _send(db, group["id"], ids) == 0  # 예외가 밖으로 나오지 않는다
         db.commit()
         assert [r.title for r in _rows(db)] == ["먼저 있던 행"]  # 앞선 변경은 그대로 저장된다
+
+
+def test_personal_notification_has_no_group_and_skips_membership(client, family, other_family):
+    outsider = _id(
+        client, other_family
+    )  # 어느 가족의 구성원이어도 아니어도 개인 알림은 본인에게 간다
+    with SessionLocal() as db:
+        created = notify(
+            db,
+            group_id=None,
+            kind="support",
+            event="ticket_answered",
+            recipients=[outsider, outsider],
+            title="문의에 답변이 달렸어요",
+        )
+        db.commit()
+        assert created == 1  # 같은 사람은 한 번만
+        assert [(r.user_id, r.group_id, r.kind) for r in _rows(db)] == [(outsider, None, "support")]

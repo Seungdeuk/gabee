@@ -346,3 +346,33 @@ def test_support_update_rules(client, make_admin):
     )
     # 문의를 보낸 사용자 본인도 허용 목록에 없으면 상태를 바꿀 수 없다
     assert _denied(client.patch(path, json={"status": "done"}, headers=h2))
+
+
+def test_support_answer_notifies_sender_without_family(client, make_admin):
+    admin, admin_id = _login(client)
+    make_admin(admin_id)
+    sender, _ = _login(client, "minsu_park")  # 가족 없는 회원
+    tid = client.post(
+        "/support/tickets",
+        json={"kind": "inquiry", "title": "비밀 제목", "body": "비밀 내용"},
+        headers=sender,
+    ).json()["id"]
+    path = f"/admin/support/{tid}"
+    inbox = lambda h: client.get("/notifications", headers=h).json()["items"]  # noqa: E731
+
+    assert client.patch(path, json={"status": "working"}, headers=admin).status_code == 204
+    assert inbox(sender) == []  # 상태만 바꾸면 알림이 없다
+
+    r = client.patch(path, json={"status": "done", "answer": "비밀 답변"}, headers=admin)
+    assert r.status_code == 204, r.text
+    items = inbox(sender)
+    assert [(n["kind"], n["event"], n["title"], n["target_id"]) for n in items] == [
+        ("support", "ticket_answered", "문의에 답변이 달렸어요", tid)
+    ]
+    assert not any(word in str(items) for word in ("비밀 제목", "비밀 내용", "비밀 답변"))
+    assert inbox(admin) == []  # 답변한 관리자에게는 가지 않는다
+
+    client.patch(path, json={"answer": "비밀 답변"}, headers=admin)  # 같은 답변 다시 저장
+    assert len(inbox(sender)) == 1
+    client.patch(path, json={"answer": "고친 답변"}, headers=admin)  # 답변을 고치면 다시 알린다
+    assert len(inbox(sender)) == 2
