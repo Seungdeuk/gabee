@@ -12869,6 +12869,282 @@
         }
       }
     },
+    "/notifications/push-settings": {
+      "get": {
+        "tags": [
+          "notifications"
+        ],
+        "summary": "Get Push Settings",
+        "description": "내 푸시 설정(저장한 적이 없으면 기본값).",
+        "operationId": "get_push_settings_notifications_push_settings_get",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-gyeot-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Gyeot-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PushSettingsOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "notifications"
+        ],
+        "summary": "Put Push Settings",
+        "description": "내 푸시 설정을 저장한다(켜기·끄기, 내용 표시 방식, 끈 분류, 방해금지 시간).",
+        "operationId": "put_push_settings_notifications_push_settings_put",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-gyeot-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Gyeot-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PushSettingsIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PushSettingsOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/notifications/push-token": {
+      "put": {
+        "tags": [
+          "notifications"
+        ],
+        "summary": "Put Push Token",
+        "description": "이 기기의 푸시 토큰을 등록한다(같은 토큰이 이미 있으면 소유자·정보를 갱신).",
+        "operationId": "put_push_token_notifications_push_token_put",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-gyeot-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Gyeot-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PushTokenIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "notifications"
+        ],
+        "summary": "Delete Push Token",
+        "description": "이 기기의 푸시 토큰을 해제한다(로그아웃 때). 내 토큰만 지우고 없어도 204.",
+        "operationId": "delete_push_token_notifications_push_token_delete",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-gyeot-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Gyeot-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PushTokenDelete"
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/notifications/{notification_id}/read": {
       "post": {
         "tags": [
@@ -20302,6 +20578,178 @@
         ],
         "title": "ProposalOut",
         "description": "에이전트가 제안한 쓰기 동작. 사용자가 확인하면 `POST /<tab>/agent/confirm` 에 token 을 보낸다."
+      },
+      "PushSettingsIn": {
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "title": "Enabled",
+            "default": true
+          },
+          "preview_mode": {
+            "type": "string",
+            "enum": [
+              "full",
+              "sender",
+              "hidden"
+            ],
+            "title": "Preview Mode",
+            "default": "full"
+          },
+          "muted_kinds": {
+            "items": {
+              "type": "string",
+              "enum": [
+                "schedule",
+                "billing",
+                "care",
+                "family_group",
+                "ai_record",
+                "support"
+              ]
+            },
+            "type": "array",
+            "title": "Muted Kinds",
+            "default": []
+          },
+          "quiet_start": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quiet Start"
+          },
+          "quiet_end": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quiet End"
+          }
+        },
+        "type": "object",
+        "title": "PushSettingsIn",
+        "description": "푸시 설정 저장 요청. 방해금지 시작·끝은 둘 다 있거나 둘 다 없어야 한다."
+      },
+      "PushSettingsOut": {
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "title": "Enabled",
+            "default": true
+          },
+          "preview_mode": {
+            "type": "string",
+            "enum": [
+              "full",
+              "sender",
+              "hidden"
+            ],
+            "title": "Preview Mode",
+            "default": "full"
+          },
+          "muted_kinds": {
+            "items": {
+              "type": "string",
+              "enum": [
+                "schedule",
+                "billing",
+                "care",
+                "family_group",
+                "ai_record",
+                "support"
+              ]
+            },
+            "type": "array",
+            "title": "Muted Kinds",
+            "default": []
+          },
+          "quiet_start": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quiet Start"
+          },
+          "quiet_end": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quiet End"
+          }
+        },
+        "type": "object",
+        "title": "PushSettingsOut"
+      },
+      "PushTokenDelete": {
+        "properties": {
+          "token": {
+            "type": "string",
+            "title": "Token"
+          }
+        },
+        "type": "object",
+        "required": [
+          "token"
+        ],
+        "title": "PushTokenDelete",
+        "description": "푸시 토큰 해제 요청(로그아웃 때)."
+      },
+      "PushTokenIn": {
+        "properties": {
+          "token": {
+            "type": "string",
+            "title": "Token"
+          },
+          "platform": {
+            "type": "string",
+            "enum": [
+              "android",
+              "ios"
+            ],
+            "title": "Platform"
+          },
+          "device_label": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 80
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Device Label"
+          }
+        },
+        "type": "object",
+        "required": [
+          "token",
+          "platform"
+        ],
+        "title": "PushTokenIn",
+        "description": "기기의 Expo 푸시 토큰 등록 요청."
       },
       "RangeIn": {
         "properties": {

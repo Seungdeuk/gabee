@@ -3,7 +3,7 @@
 from datetime import datetime, time
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.shared.notifications import KINDS
 
@@ -62,3 +62,28 @@ class PushSettingsIn(BaseModel):
 
 class PushSettingsOut(PushSettingsIn):
     pass
+
+
+_TOKEN_PREFIXES = ("ExponentPushToken[", "ExpoPushToken[")
+
+
+def _check_token(value: str) -> str:
+    if not (value.startswith(_TOKEN_PREFIXES) and value.endswith("]") and len(value) <= 255):
+        raise ValueError("푸시 토큰 형식이 올바르지 않아요")
+    return value
+
+
+class PushTokenIn(BaseModel):
+    """기기의 Expo 푸시 토큰 등록 요청."""
+
+    token: str
+    platform: Literal["android", "ios"]
+    device_label: str | None = Field(default=None, max_length=80)
+
+    _token_ok = field_validator("token")(_check_token)
+
+
+class PushTokenDelete(BaseModel):
+    """푸시 토큰 해제 요청(로그아웃 때)."""
+
+    token: str

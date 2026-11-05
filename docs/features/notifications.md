@@ -24,6 +24,9 @@
   - 가입 거절은 알림이 없다(신청자가 아직 구성원이 아니라 알림함에 남지 않는다. 신청자는 기존 대기 화면에서 결과를 본다).
 - 고객센터(`kind=support`, `admin/service.py`에서 `notify()` 호출)
   - `ticket_answered`: 관리자가 답변을 저장하면 문의를 보낸 사람에게. `notifications.group_id` 가 비어 있는 개인 알림이라 가족이 없는 사용자도, 가족을 옮긴 사용자도 받는다(Alembic 리비전 `5b7c1d9e3a46`, NOT NULL 완화만).
+- 푸시 설정·토큰 API(푸시 1단계 서버 A, 발송은 서버 B 에서 연결)
+  - `GET`·`PUT /notifications/push-settings`: 내 푸시 설정(켜기·끄기 `enabled`, 내용 표시 방식 `preview_mode` full/sender/hidden, 끈 분류 `muted_kinds`, 방해금지 `quiet_start`·`quiet_end`). 저장한 적이 없으면 기본값(줄을 만들지 않는다). 방해금지 시작·끝은 둘 다 있거나 둘 다 없어야 한다(아니면 422).
+  - `PUT /notifications/push-token`(204): 이 기기의 Expo 푸시 토큰 등록. 같은 토큰이 이미 있으면 소유자·정보를 갱신한다(기기를 다른 사람이 쓰면 소유자가 옮겨 간다). 형식이 다르면 422. `DELETE /notifications/push-token`(204): 내 토큰만 해제(없어도 204).
 - 2차로 미룬 것: 일정·가계·돌봄·AI 기록·구성원 변경.
 
 ## 앱

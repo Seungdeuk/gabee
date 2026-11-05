@@ -15,6 +15,7 @@
 | [0009](0009-local-first-db-workflow.md) | 개발은 각자 로컬 DB, 공용 DB 는 통합 확인용 | 2026-10-23 | 유효 |
 | [0010](0010-upload-ingest-chat-integration.md) | 업로드 → 전처리 → knowledge → 채팅 연결(가린 글자만 외부 모델로) | 2026-10-23 | 유효 |
 | [0011](0011-ai-call-minimization.md) | 가족 채팅 AI 는 요청할 때만 부르고 한도·캐시·동시 실행은 PostgreSQL 에 | 2026-10-23 | 유효 |
+| [0012](0012-push-via-expo.md) | 폰 푸시는 Expo 푸시 서비스(→ FCM)로 보내고, 소통 메시지 푸시는 암호화해서 알림함에 저장하지 않는다 | 2026-11-05 |
 
 ## 번호 변경 이력
 

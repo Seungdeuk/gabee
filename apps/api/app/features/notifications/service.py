@@ -14,6 +14,8 @@ from .schemas import (
     NotificationOut,
     PushSettingsIn,
     PushSettingsOut,
+    PushTokenDelete,
+    PushTokenIn,
     ReadAllResult,
     UnreadCount,
 )
@@ -75,3 +77,13 @@ def put_push_settings(db: Session, user: User, body: PushSettingsIn) -> PushSett
     row = repo.save_push_setting(db, user.id, body.model_dump())
     db.commit()
     return PushSettingsOut.model_validate(row, from_attributes=True)
+
+
+def register_push_token(db: Session, user: User, body: PushTokenIn) -> None:
+    repo.upsert_push_token(db, user.id, body.token, body.platform, body.device_label)
+    db.commit()
+
+
+def unregister_push_token(db: Session, user: User, body: PushTokenDelete) -> None:
+    repo.delete_push_token(db, user.id, body.token)
+    db.commit()
