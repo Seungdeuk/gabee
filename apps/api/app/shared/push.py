@@ -199,6 +199,9 @@ def _send_chunk(chunk: list[PushPlan]) -> None:
 
 @event.listens_for(Session, "after_commit")
 def _send_after_commit(session: Session) -> None:
+    # 저장점(begin_nested)이 닫힐 때도 이 이벤트가 온다. 저장점 안에서 온 이벤트(in_nested_transaction)는 진짜 커밋이 아니다.
+    if session.in_nested_transaction():
+        return
     pending = session.info.pop(_PENDING_KEY, None)
     if pending:
         _submit(_deliver, pending)
@@ -206,4 +209,7 @@ def _send_after_commit(session: Session) -> None:
 
 @event.listens_for(Session, "after_rollback")
 def _drop_after_rollback(session: Session) -> None:
+    # 저장점만 롤백된 경우(in_nested_transaction)에는 쌓아 둔 푸시를 지우지 않는다.
+    if session.in_nested_transaction():
+        return
     session.info.pop(_PENDING_KEY, None)
