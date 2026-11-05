@@ -223,6 +223,7 @@ NO_GROUP_OK = {
     # (ops_admin/tests 에서 401·403 확인)
     ("GET", "/admin/ops/summary"),
     ("GET", "/admin/ops/apis"),
+    ("GET", "/admin/ops/infra"),
     ("GET", "/admin/ops/errors"),
     ("GET", "/admin/ops/errors/{event_id}"),
     # 문의·신고는 로그인한 본인이 보내고 본인 것만 본다. 가족이 없어도 보낼 수 있어야 한다(가족 만들기 문의 등)
@@ -1598,6 +1599,7 @@ OUTBOUND_FILES = {
     "features/family_group/social_providers.py": "소셜 로그인 공급자 서버 호출(AI 아님, 로그인 전용)",
     "shared/mailer.py": "인증·비밀번호 재설정 메일 SMTP 발송(AI 아님)",
     "features/ai_assistant/knowledge/rag_chat.py": "Anthropic 도구 루프(ask_guarded 가 ai_guard.run 으로 감싼다)",
+    "features/ops_admin/infra_service.py": "Cloud Run 메타데이터·Cloud Run Admin·Cloud Monitoring 읽기 전용 조회(AI 아님, 개인 데이터 전송 없음, 운영자 조회 시에만)",
 }
 LLM_CALLER_FILES = {
     "features/family_chat/ai_service.py": "ai_guard.run",

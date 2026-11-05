@@ -13214,6 +13214,55 @@
         }
       }
     },
+    "/admin/ops/infra": {
+      "get": {
+        "tags": [
+          "ops-admin"
+        ],
+        "summary": "Get Infra",
+        "operationId": "get_infra_admin_ops_infra_get",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InfraOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/admin/ops/errors": {
       "get": {
         "tags": [
@@ -18168,6 +18217,185 @@
           "reason"
         ],
         "title": "ImportantMessage"
+      },
+      "InfraMetrics": {
+        "properties": {
+          "instances_active": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Instances Active"
+          },
+          "instances_idle": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Instances Idle"
+          },
+          "cpu_p99": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cpu P99"
+          },
+          "memory_p99": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Memory P99"
+          }
+        },
+        "type": "object",
+        "title": "InfraMetrics",
+        "description": "최근 window_minutes 분의 Cloud Monitoring 값. 사용률은 0~1, 못 얻은 칸은 None."
+      },
+      "InfraOut": {
+        "properties": {
+          "collected": {
+            "type": "boolean",
+            "title": "Collected"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "service": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/InfraService"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "metrics": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/InfraMetrics"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "window_minutes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Window Minutes"
+          },
+          "fetched_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Fetched At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "collected",
+          "fetched_at"
+        ],
+        "title": "InfraOut"
+      },
+      "InfraService": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "region": {
+            "type": "string",
+            "title": "Region"
+          },
+          "revision": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Revision"
+          },
+          "min_instances": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Min Instances"
+          },
+          "max_instances": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Instances"
+          },
+          "cpu_allocation": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "request",
+                  "instance"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cpu Allocation"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "region"
+        ],
+        "title": "InfraService",
+        "description": "Cloud Run 서비스 설정. 값을 못 얻은 칸은 None."
       },
       "InviteOut": {
         "properties": {

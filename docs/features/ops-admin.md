@@ -33,6 +33,7 @@
 - 조회 API(1-c-3, 읽기 전용, `require_operator("ops_admin")`):
   - `GET /admin/ops/errors?range=1h|24h|7d&kind=server_error|auth_failure&limit=1~100(기본 50)`: 마지막 발생이 기간 안인 오류 이벤트를 최근순으로. 응답에 `total`(잘리기 전 전체 수), `truncated`, `errors_enabled`(수집이 꺼져 있어 비어 있는지 구분)가 있다.
   - `GET /admin/ops/errors/{event_id}`: 한 건(지문 64자리 16진수). 형식이 틀리면 422, 없으면 404 `not_found`.
+  - `GET /admin/ops/infra`: Cloud Run 인프라 상태(읽기 전용, 60초 캐시). 서비스 이름·리전·리비전·최소/최대 인스턴스·CPU 할당 방식(Cloud Run Admin API)과 최근 10분 인스턴스 수(활성/유휴)·CPU/메모리 p99 사용률(Cloud Monitoring). `OPS_INFRA_ENABLED`(기본 꺼짐)이고 Cloud Run 이며 실행 서비스 계정에 `roles/run.viewer`·`roles/monitoring.viewer` 가 있어야 값이 나온다. 아니면 `collected:false` 와 이유(권한 없음 등)만 돌려주고 샘플 값을 섞지 않는다. 새 의존성 없이 `httpx` 로 메타데이터 서버 토큰을 받아 REST 를 부른다. **시험은 가짜 HTTP 응답으로만 했고 실제 Cloud Run·GCP 에서는 확인하지 않았다(미확인)**: 지표 이름·필터·집계 방식과 응답 필드명은 공식 문서 기준 설계이다.
   - 응답에는 가린 메시지, 예외 클래스·응답 code, 경로 패턴, 발생 위치, 횟수, 처음·마지막 발생, 마지막 trace id, 처리 상태 필드만 있다. 사용자·가족 id, URL 원문, 본문·헤더 필드는 없다.
 
 ## 아직 없는 것
