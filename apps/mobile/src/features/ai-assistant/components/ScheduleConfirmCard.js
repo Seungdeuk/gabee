@@ -82,7 +82,7 @@ function ShareSelectCard({ card, onResolve, onShareToRoom }) {
               accessibilityState={{ disabled }}
               style={[styles.btn, b.tone === "ghost" ? styles.ghost : styles.main, disabled && styles.off]}
             >
-              {busy && b.key === "share" ? <ActivityIndicator color={colors.onDark} /> : <Text numberOfLines={1} style={b.tone === "ghost" ? styles.ghostText : styles.mainText}>{b.label}</Text>}
+              {busy && b.key === "share" ? <ActivityIndicator color={colors.onDark} /> : <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8} style={b.tone === "ghost" ? styles.ghostText : styles.mainText}>{b.label}</Text>}
             </Pressable>
           );
         })}
@@ -168,7 +168,7 @@ function ServerConfirmCard({ card, onResolve }) {
             accessibilityLabel={b.label}
             style={[styles.btn, b.tone === "ghost" ? styles.ghost : b.tone === "danger" ? styles.danger : styles.main, busy && styles.off]}
           >
-            {busy === b.key ? <ActivityIndicator color={b.tone === "ghost" ? colors.text : colors.onDark} /> : <Text numberOfLines={1} style={b.tone === "ghost" ? styles.ghostText : styles.mainText}>{b.label}</Text>}
+            {busy === b.key ? <ActivityIndicator color={b.tone === "ghost" ? colors.text : colors.onDark} /> : <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8} style={b.tone === "ghost" ? styles.ghostText : styles.mainText}>{b.label}</Text>}
           </Pressable>
         ))}
       </View>

@@ -18,6 +18,7 @@ import {
 } from "../messages";
 import { privacyCaption } from "../privacyPreview";
 import { candidateKey, isCandidateDone, markCandidateDone } from "../candidateKey";
+import { claimCandidate, releaseCandidate } from "../scheduleCandidateUtils";
 import { candidateToRequestBody, dayFromChip, hasCandidateDay, requestErrorText, sendErrorMessage } from "../togetherUtils";
 import { CONSENT_CANCEL_LABEL, ENABLE_ON_ANALYZE_BODY, ENABLE_ON_ANALYZE_CONFIRM_LABEL, ENABLE_ON_ANALYZE_TITLE } from "../privacyCopy";
 import ScheduleCandidateRow from "./ScheduleCandidateRow";
@@ -62,6 +63,7 @@ export default function AiPanel({ visible, onClose, onPickReply, onLinked }) {
   const [schedTime, setSchedTime] = useState({}); // 시간이 없는 일정 후보 순번 -> 적은 시간(HH:MM)
   const [confirmingEnable, setConfirmingEnable] = useState(false); // 꺼져 있는 가족 AI 를 켜고 분석할지 묻는 중
   const analyzing = useRef(false); // 분석(필요하면 켜기 포함)을 빠르게 두 번 눌러도 한 번만 보낸다
+  const schedBusy = useRef(new Set()); // 등록 중이거나 등록된 일정 후보 식별자: 빠르게 두 번 눌러도 같은 후보를 두 번 등록하지 않는다
   const todoBusy = useRef(new Set()); // 등록 중이거나 등록된 할 일 후보 식별자(candidateKey): 같은 후보를 두 번 등록하지 않는다
 
   const loadSettings = useCallback(async () => {
@@ -142,6 +144,7 @@ export default function AiPanel({ visible, onClose, onPickReply, onLinked }) {
 
   const register = async (candidate, completed = candidate) => {
     const key = candidateKey("schedule", candidate); // 다시 분석해도 같은 후보로 알아보도록 AI 가 준 원래 후보로 식별한다
+    if (!claimCandidate(schedBusy.current, key)) return;
     setRegistered((r) => ({ ...r, [key]: "sending" }));
     try {
       const created = await registerScheduleCandidate(completed);
@@ -149,6 +152,7 @@ export default function AiPanel({ visible, onClose, onPickReply, onLinked }) {
       setRegistered((r) => ({ ...r, [key]: "ok" }));
       notifyLinked({ kind: "event", targetId: created?.id, candidate: completed });
     } catch (e) {
+      releaseCandidate(schedBusy.current, key);
       setRegistered((r) => ({ ...r, [key]: chatErrorMessage(e) }));
     }
   };
@@ -323,7 +327,9 @@ export default function AiPanel({ visible, onClose, onPickReply, onLinked }) {
               <Text style={styles.close}>닫기</Text>
             </Pressable>
           </View>
-          <ScrollView contentContainerStyle={styles.content}>{content}</ScrollView>
+          <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled" automaticallyAdjustKeyboardInsets>
+            {content}
+          </ScrollView>
         </View>
       </View>
     </Modal>

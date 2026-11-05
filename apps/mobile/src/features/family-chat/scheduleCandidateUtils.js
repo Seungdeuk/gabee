@@ -45,3 +45,24 @@ export function completeScheduleCandidate(candidate, input = {}, now = new Date(
   const time = candidate?.time || (isTime(input.timeText) ? input.timeText : null);
   return { ...candidate, date: date ?? null, time: time ?? null };
 }
+
+/**
+ * 같은 후보를 한 번에 한 번만 등록하도록 후보 식별자를 잡는다. 이미 잡혀 있으면 false(빠르게 두 번 눌러도 요청이 한 번만 나간다).
+ * @param {Set<string>} busy 등록 중이거나 등록된 후보 식별자 모음
+ * @param {string} key candidateKey
+ * @returns {boolean}
+ */
+export function claimCandidate(busy, key) {
+  if (busy.has(key)) return false;
+  busy.add(key);
+  return true;
+}
+
+/**
+ * 등록에 실패했을 때 후보를 놓아 다시 시도할 수 있게 한다.
+ * @param {Set<string>} busy
+ * @param {string} key
+ */
+export function releaseCandidate(busy, key) {
+  busy.delete(key);
+}
