@@ -13,6 +13,7 @@ from sqlalchemy.orm import Mapped, Session, mapped_column
 
 from app.features.family_group.models import GroupMember
 from app.shared.db import Base
+from app.shared.push import queue_push
 
 logger = logging.getLogger(__name__)
 
@@ -80,25 +81,50 @@ def notify(
     try:
         with db.begin_nested():  # 실패해도 앞선 변경은 그대로 둔다
             created = 0
+            new_rows: list[Notification] = []
             for uid in targets:
                 if group_id is not None and db.get(GroupMember, (group_id, uid)) is None:
                     continue
-                db.add(
-                    Notification(
-                        user_id=uid,
-                        group_id=group_id,
-                        kind=kind,
-                        event=event,
-                        title=title,
-                        body=body,
-                        target_type=target_type,
-                        target_id=target_id,
-                        actor_user_id=actor_user_id,
-                    )
+                row = Notification(
+                    id=_uid(),
+                    user_id=uid,
+                    group_id=group_id,
+                    kind=kind,
+                    event=event,
+                    title=title,
+                    body=body,
+                    target_type=target_type,
+                    target_id=target_id,
+                    actor_user_id=actor_user_id,
                 )
+                db.add(row)
+                new_rows.append(row)
                 created += 1
+        _queue_pushes(db, new_rows)
         return created
     except Exception as exc:
         # 개인 정보는 남기지 않는다(분류·사건·예외 종류만)
         logger.warning("notify failed kind=%s event=%s error=%s", kind, event, type(exc).__name__)
         return 0
+
+
+def _queue_pushes(db: Session, rows: list[Notification]) -> None:
+    """방금 저장한 알림마다 푸시를 예약한다(커밋 뒤에 발송). 푸시 쪽 오류는 알림 저장에 영향을 주지 않는다."""
+    for row in rows:
+        try:
+            queue_push(
+                db,
+                user_ids=[row.user_id],
+                kind=row.kind,
+                title=row.title,
+                body=None,  # 알림함 사건은 고정 제목만 푸시한다
+                data={
+                    "notification_id": row.id,
+                    "kind": row.kind,
+                    "event": row.event,
+                    "target_type": row.target_type,
+                    "target_id": row.target_id,
+                },
+            )
+        except Exception as exc:
+            logger.warning("push queue failed kind=%s error=%s", row.kind, type(exc).__name__)

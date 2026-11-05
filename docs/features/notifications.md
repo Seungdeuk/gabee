@@ -31,6 +31,18 @@
 - 푸시 설정·토큰 API(푸시 1단계 서버 A, 발송은 서버 B 에서 연결)
   - `GET`·`PUT /notifications/push-settings`: 내 푸시 설정(켜기·끄기 `enabled`, 내용 표시 방식 `preview_mode` full/sender/hidden, 끈 분류 `muted_kinds`, 방해금지 `quiet_start`·`quiet_end`). 저장한 적이 없으면 기본값(줄을 만들지 않는다). 방해금지 시작·끝은 둘 다 있거나 둘 다 없어야 한다(아니면 422).
   - `PUT /notifications/push-token`(204): 이 기기의 Expo 푸시 토큰 등록. 같은 토큰이 이미 있으면 소유자·정보를 갱신한다(기기를 다른 사람이 쓰면 소유자가 옮겨 간다). 형식이 다르면 422. `DELETE /notifications/push-token`(204): 내 토큰만 해제(없어도 204).
+- 푸시 발송(푸시 1단계 서버 B, `app/shared/push.py`, 결정 `docs/adr/0012-push-via-expo.md`)
+  - `PUSH_ENABLED`(기본 false)를 켜면 `notify()` 가 알림을 저장한 **커밋 뒤에만** Expo 푸시 API 로 보낸다(롤백이면 나가지 않는다). 백그라운드 스레드에서 한 번에 100개씩, 타임아웃 5초, 재시도 없음. 푸시 실패는 알림함 저장·원래 기능에 영향이 없다.
+  - 푸시에는 알림 제목(고정 문구)과 이동용 `data`(`notification_id`·`kind`·`event`·`target_type`·`target_id`)만 담고 본문은 보내지 않는다. 토큰은 로그에 남기지 않는다.
+  - 보내기 전에 받는 사람마다 푸시 설정을 적용한다: 푸시를 껐거나, 그 분류를 껐거나, 방해금지 시간(한국 시간 기준, 자정을 넘기는 구간 포함, 끝 시각은 미포함)이면 뺀다. 행동한 본인은 `notify()` 단계에서 이미 빠진다. 기기가 여러 개면 모두 받는다.
+  - Expo 가 `DeviceNotRegistered` 로 응답한 토큰은 `push_tokens` 에서 지운다.
+  - `push_only()` 는 알림함에 저장하지 않고 푸시만 보낸다(소통 메시지용, 2단계에서 연결).
+- 앱 푸시(푸시 1단계 앱, 결정 `docs/adr/0012-push-via-expo.md`)
+  - `features/notifications/PushBootstrap.js`: 로그인하면 안드로이드 알림 채널(`default`)을 만들고 권한을 요청한 뒤(처음이면 안내 문구 후 시스템 창) Expo 푸시 토큰을 받아 `PUT /notifications/push-token` 으로 등록한다. 거절·오류·Expo Go·에뮬레이터 실패는 조용히 넘기고 알림함은 그대로 쓴다. 웹에서는 아무것도 하지 않는다.
+  - 로그아웃 직전(세션이 살아 있을 때) `shared/auth/signOutHooks.js` 의 `onBeforeSignOut` 로 `DELETE /notifications/push-token` 을 부른다(실패·3초 초과해도 로그아웃은 계속).
+  - 앱이 켜져 있을 때 오는 푸시는 상단 배너로 보이고, 푸시를 누르면 알림함(`/notifications`)으로 이동한다(분류별 이동은 후속).
+  - 마이 > 알림설정(`/push-settings`, `screens/PushSettingsScreen.js`): 푸시 켜기·끄기, 분류별 켜기·끄기, 메시지 내용 표시 방식(내용 보이기·보낸 사람만·숨기기, 소통 푸시에 적용), 방해금지(밤 10시~아침 7시 고정, 직접 시간 고르기는 후속). 바꾸는 즉시 저장하고 실패하면 되돌린다.
+  - 개발용 빌드(development build)가 필요하다(Expo Go 에서는 안드로이드 원격 푸시가 안 된다). 안드로이드는 Firebase FCM 설정(`google-services.json` → `android.googleServicesFile`)과 EAS 에 올린 FCM 키가 있어야 푸시를 받는다. 이 설정은 Firebase 프로젝트 소유자가 정해지면 추가한다(아직 없음).
 - 2차로 미룬 것: 가계·돌봄·AI 기록·구성원 변경.
 
 ## 앱

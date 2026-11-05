@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "21499524782",
+    "project_id": "gabee-61085",
+    "storage_bucket": "gabee-61085.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:21499524782:android:4ac491f02d001702121f3f",
+        "android_client_info": {
+          "package_name": "com.kangminhun.gabee"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCxRR7gtScK48MGGfCQIBij0xmEVZHSaI4"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
