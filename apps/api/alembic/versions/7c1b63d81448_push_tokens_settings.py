@@ -1,7 +1,7 @@
 """push tokens settings
 
 Revision ID: 7c1b63d81448
-Revises: 5b7c1d9e3a46
+Revises: e2b6a8c4f173
 Create Date: 2026-11-05 10:49:56.980395
 
 """
@@ -14,7 +14,7 @@ from alembic import op
 
 # revision identifiers, used by Alembic.
 revision: str = "7c1b63d81448"
-down_revision: str | Sequence[str] | None = "5b7c1d9e3a46"
+down_revision: str | Sequence[str] | None = "e2b6a8c4f173"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
