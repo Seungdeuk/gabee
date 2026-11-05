@@ -112,6 +112,16 @@ def test_lists_count_members_and_groups(client, make_admin):
 
     members = client.get("/admin/service/members", headers=headers).json()
     assert members["total"] >= 1 and members["joined_this_week"] >= 1
+    daily = members["daily_joined"]  # 30일 전 → 오늘, 방금 가입한 사람은 오늘 칸에 든다
+    assert len(daily) == 30 and daily[-1] >= 1 and sum(daily) <= members["total"]
+    # 카드별 날짜 그래프: 오늘 칸은 카드 숫자와 같다(누적 항목), 방금 로그인했으니 오늘 활성 1명 이상
+    for field in ("daily_total", "daily_active", "daily_no_family", "daily_verified"):
+        assert len(members[field]) == 30, field
+    assert members["daily_total"][-1] == members["total"]
+    assert members["daily_no_family"][-1] == members["no_family"]
+    assert members["daily_verified"][-1] == members["email_verified"]
+    assert members["daily_active"][-1] >= 1
+    assert members["daily_total"] == sorted(members["daily_total"])  # 누적은 줄지 않는다
     me = next(r for r in members["rows"] if r["id"] == user_id)
     assert me["has_family"] is True and me["last_login_at"] is not None
     assert "email" not in me  # 이메일은 돌려주지 않는다
@@ -476,3 +486,40 @@ def test_notice_rules(client, make_admin):
         assert client.post("/admin/service/notices", json=b, headers=headers).status_code == 422
     assert client.put("/admin/service/notices/nope", json=body, headers=headers).status_code == 404
     assert client.delete("/admin/service/notices/nope", headers=headers).status_code == 404
+
+
+def test_analytics_shape_and_counts(client, make_admin):
+    """데이터 분석: 가입·가족·문의 답변이 퍼널·가족·고객 응대 숫자에 들어가고, 아직 지나지 않은 주는 None 이다."""
+    headers, user_id = _login(client)
+    make_admin(user_id)
+    _login(client, "minsu_park")  # 가족 없는 회원
+    client.post("/family-group/groups", json={"name": "우리 가족"}, headers=headers)
+    tid = client.post(
+        "/support/tickets",
+        json={"kind": "report", "title": "광고", "body": "내용"},
+        headers=headers,
+    ).json()["id"]
+    client.patch(f"/admin/service/support/{tid}", json={"answer": "확인했어요"}, headers=headers)
+
+    r = client.get("/admin/service/analytics", headers=headers)
+    assert r.status_code == 200, r.text
+    d = r.json()
+    assert d["users"] >= 2 and len(d["retention"]) == 8 and len(d["heatmap"]) == 7
+    assert all(len(row) == 24 for row in d["heatmap"]) and sum(map(sum, d["heatmap"])) >= 2
+    this_week = d["retention"][-1]
+    assert this_week["size"] >= 2 and this_week["w1"] is None  # 이번 주 가입자는 1주가 안 지났다
+    steps = {s["key"]: s for s in d["funnel"]}
+    assert steps["signup"]["users"] == d["users"] and steps["signup"]["share"] == 100.0
+    assert 1 <= steps["family"]["users"] < d["users"]  # 가족을 만든 사람만
+    assert d["families"]["solo_families"] >= 1 and d["total_families"] >= 1
+    assert [f["key"] for f in d["features"]] == ["schedule", "chat", "billing", "ai"]
+    s = d["support"]
+    assert (s["reports"], s["answered"]) == (1, 1) and s["avg_hours"] is not None
+    assert len(s["weekly"]) == 8 and s["weekly"][-1] == 1
+    assert "email" not in r.text and "광고" not in r.text  # 내용·이메일은 담지 않는다
+
+
+def test_analytics_is_admin_only(client, make_admin):
+    headers, _ = _login(client)
+    assert client.get("/admin/service/analytics").status_code == 401
+    assert _denied(client.get("/admin/service/analytics", headers=headers))

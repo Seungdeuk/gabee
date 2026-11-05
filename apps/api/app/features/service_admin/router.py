@@ -9,7 +9,7 @@ from app.shared.auth import require_operator
 from app.shared.db import get_db
 from app.shared.schema_gate import schema_ready
 
-from . import service
+from . import analytics, service
 from .schemas import (
     AdminAiUsageOut,
     AdminMeOut,
@@ -18,6 +18,7 @@ from .schemas import (
     AdminNoticesOut,
     AdminTicketsOut,
     AdminTicketUpdate,
+    AnalyticsOut,
     FeaturesOut,
     GroupsOut,
     MembersOut,
@@ -104,3 +105,10 @@ def admin_update_notice(notice_id: str, body: AdminNoticeIn, db: Session = Depen
 def admin_delete_notice(notice_id: str, db: Session = Depends(get_db)) -> None:
     """공지를 지운다(되돌릴 수 없다). 없는 번호면 404."""
     service.delete_notice(db, notice_id)
+
+
+@router.get("/analytics", response_model=AnalyticsOut, dependencies=SUPPORT)
+def admin_analytics(db: Session = Depends(get_db)) -> AnalyticsOut:
+    """데이터 분석: 재방문 코호트, 가입 퍼널, 가족 인원별 활동, 기능 사용, AI 품질·비용, 요일·시간 활동, 고객 응대.
+    id·시각·개수만 읽는다(문의 표도 읽으므로 support 표가 없으면 503)."""
+    return analytics.analytics(db)

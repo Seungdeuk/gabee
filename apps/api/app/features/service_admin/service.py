@@ -63,15 +63,65 @@ def me_out(user: User) -> AdminMeOut:
     return AdminMeOut(id=user.id, name=user.name, login_id=user.login_id)
 
 
+MEMBER_DAYS = 30
+
+
+def _aware(at: datetime | None) -> datetime | None:
+    """SQLite 는 시간대 없는 값을 돌려준다(UTC 로 저장했다)."""
+    return at.replace(tzinfo=UTC) if at is not None and at.tzinfo is None else at
+
+
+def member_daily(db: Session, now: datetime) -> dict[str, list[int]]:
+    """회원 카드별 하루 그래프(30일 전 → 오늘, 한국 시간 자정 경계). 표마다 시각만 한 번씩 읽어 날짜별로 센다.
+    total·no_family·verified 는 그날 끝 기준 누적, joined 는 그날 가입, active 는 그날 토큰을 받은 사람 수.
+    가족을 떠나거나 토큰이 지워진 기록은 남지 않아서 지난날 값은 지금 남은 기록으로 센 것이다."""
+    start = day_start(now) - (MEMBER_DAYS - 1) * DAY
+    ends = [start + (i + 1) * DAY for i in range(MEMBER_DAYS)]
+    t = repository.member_timestamps(db, start)
+    created = [_aware(a) for a in t["created"]]
+    verified = [_aware(a) for a in t["verified"] if a is not None]
+    first_family = {uid: _aware(a) for uid, a in t["first_family"]}
+    created_by_user = {uid: _aware(a) for uid, a in t["users"]}
+    active = [(uid, _aware(a)) for uid, a in t["tokens"]]
+
+    def before(times: list[datetime], end: datetime) -> int:
+        return sum(1 for a in times if a < end)
+
+    out: dict[str, list[int]] = {
+        "total": [],
+        "joined": [],
+        "active": [],
+        "no_family": [],
+        "verified": [],
+    }
+    for end in ends:
+        total = before(created, end)
+        with_family = sum(
+            1 for uid, a in first_family.items() if a < end and created_by_user.get(uid, end) < end
+        )
+        out["total"].append(total)
+        out["joined"].append(sum(1 for a in created if end - DAY <= a < end))
+        out["active"].append(len({uid for uid, a in active if end - DAY <= a < end}))
+        out["no_family"].append(total - with_family)
+        out["verified"].append(before(verified, end))
+    return out
+
+
 def members(db: Session, now: datetime | None = None) -> MembersOut:
     now = now or datetime.now(UTC)
     active_7d, no_family, email_verified = repository.member_totals(db, now - WEEK)
+    daily = member_daily(db, now)
     return MembersOut(
         total=repository.count_users(db),
         joined_this_week=repository.count_users(db, since=now - WEEK),
         active_7d=active_7d,
         no_family=no_family,
         email_verified=email_verified,
+        daily_joined=daily["joined"],
+        daily_total=daily["total"],
+        daily_active=daily["active"],
+        daily_no_family=daily["no_family"],
+        daily_verified=daily["verified"],
         rows=[
             MemberRow(
                 id=r["id"],

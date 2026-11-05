@@ -220,6 +220,7 @@ NO_GROUP_OK = {
     ("GET", "/admin/service/support"),
     ("PATCH", "/admin/service/support/{ticket_id}"),
     ("GET", "/admin/service/notices"),
+    ("GET", "/admin/service/analytics"),
     ("POST", "/admin/service/notices"),
     ("PUT", "/admin/service/notices/{notice_id}"),
     ("DELETE", "/admin/service/notices/{notice_id}"),
