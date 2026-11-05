@@ -185,8 +185,8 @@ const styles = StyleSheet.create({
   item: { flexDirection: "row", alignItems: "center", gap: spacing.sm, minHeight: 44 },
   itemText: { ...font.body, color: colors.text, flexShrink: 1 },
   error: { ...font.caption, color: colors.danger },
-  row: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm, marginTop: spacing.sm },
-  btn: { minHeight: 40, minWidth: 72, paddingHorizontal: spacing.md, borderRadius: radius.pill, alignItems: "center", justifyContent: "center" },
+  row: { flexDirection: "column", gap: spacing.sm, marginTop: spacing.sm }, // 버튼은 세로 한 열
+  btn: { minHeight: 44, alignSelf: "stretch", paddingHorizontal: spacing.md, borderRadius: radius.pill, alignItems: "center", justifyContent: "center" },
   main: { backgroundColor: colors.accent },
   danger: { backgroundColor: colors.danger },
   ghost: { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border },
