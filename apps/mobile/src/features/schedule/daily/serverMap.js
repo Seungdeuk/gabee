@@ -186,6 +186,23 @@ export function cheerSuggestionsFromServer(rows) {
   });
 }
 
+/**
+ * 서버 전화 이야깃거리 응답 → { source, reason, points }. 모르는 source 는 "greeting" 으로 보고,
+ * 문자열이 아니거나 say 가 빈 point 는 버린다. 최대 2개, 글자는 trim.
+ */
+export function callTalkFromServer(res) {
+  const points = (Array.isArray(res?.points) ? res.points : []).flatMap((p) => {
+    const say = typeof p?.say === "string" ? p.say.trim() : "";
+    const ask = typeof p?.ask === "string" ? p.ask.trim() : "";
+    return say ? [{ say, ask }] : [];
+  });
+  return {
+    source: res?.source === "ai" ? "ai" : "greeting",
+    reason: typeof res?.reason === "string" ? res.reason : "",
+    points: points.slice(0, 2),
+  };
+}
+
 /** 서버 오류 → 빈 상태 글자(목록 불러오기 실패). 503 은 기능 준비 중(스키마 미적용)이다. */
 export function loadErrorText(error) {
   return error?.status === 503 ? "준비 중이에요" : "서버에 연결하지 못했어요";

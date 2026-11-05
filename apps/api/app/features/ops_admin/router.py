@@ -7,12 +7,13 @@ from app.shared.auth import require_operator
 from app.shared.db import get_db
 from app.shared.errors import not_found
 
-from . import query_service
+from . import infra_service, query_service
 from .schemas import (
     ApisOut,
     ErrorEventOut,
     ErrorKind,
     ErrorListOut,
+    InfraOut,
     RangeKey,
     SummaryOut,
 )
@@ -36,6 +37,11 @@ def get_apis(
     db: Session = Depends(get_db),
 ) -> ApisOut:
     return query_service.apis(db, range)
+
+
+@router.get("/infra", response_model=InfraOut)
+def get_infra(_: object = Depends(require_operator("ops_admin"))) -> InfraOut:
+    return infra_service.get_infra()
 
 
 @router.get("/errors", response_model=ErrorListOut)
