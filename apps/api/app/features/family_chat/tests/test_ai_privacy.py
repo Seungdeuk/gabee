@@ -198,7 +198,7 @@ def test_analysis_restores_address_in_the_schedule_but_not_in_replies_and_topics
     assert body["replies"] == ["지민 고마워", "(주소) 에서 봐", "연락은 (연락처) 로"]
     assert body["topics"] == ["수진 은 뭐 하고 싶대?", "(주소) 근처 맛집은?", "(이메일) 로 보낼까?"]
     assert ADDR not in json.dumps(body["replies"] + body["topics"], ensure_ascii=False)
-    # 캐시 적중(다른 구성원)에서도 같은 복원 범위가 지켜진다
+    # 캐시 적중(같은 사람의 다시 누르기)에서도 같은 복원 범위가 지켜진다
     again = analyze(client, a).json()
     assert again["meta"]["cached"] is True
     assert again["replies"] == body["replies"] and again["topics"] == body["topics"]

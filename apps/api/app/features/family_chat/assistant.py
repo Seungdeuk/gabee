@@ -100,9 +100,11 @@ class RoomContext:
         self._ctx.close()
 
 
-def room_context(db: Session, group_id: str, direct: str | None) -> RoomContext | None:
+def room_context(
+    db: Session, group_id: str, direct: str | None, user_id: str | None = None
+) -> RoomContext | None:
     """@가비 에 맥락으로 붙일 방의 최근 대화. 붙일 메시지가 없으면 None."""
-    ctx = ai_service.room_context(db, group_id, direct)
+    ctx = ai_service.room_context(db, group_id, direct, user_id)
     return RoomContext(ctx) if ctx else None
 
 

@@ -55,6 +55,7 @@ from .ai_schemas import (
     RepliesOut,
     TopicsOut,
 )
+from .models import ASSISTANT_NAME, ASSISTANT_USER_ID
 
 MIN_MESSAGES = 3
 PROMPT_VERSION = "v5"  # 프롬프트·스키마를 바꾸면 올려서 오래된 캐시를 쓰지 않게 한다 (v3: 가명화 토큰, v4: 분석에 답장·주제 합침, v5: 요청한 사람 입장·친근한 요약)
@@ -269,7 +270,9 @@ ROOM_CONTEXT_MAX_CHARS = (
 )
 
 
-def room_context(db: Session, group_id: str, room_id: str | None) -> _Context | None:
+def room_context(
+    db: Session, group_id: str, room_id: str | None, user_id: str | None = None
+) -> _Context | None:
     """@가비 에 맥락으로 붙일 방의 최근 대화(최근 ROOM_CONTEXT_LIMIT 개 중 ROOM_CONTEXT_MINUTES 분 이내)를
     분석과 같은 규칙으로 가명화해서 돌려준다. 붙일 메시지가 없으면 None. 돌려받은 쪽이 끝나면 close() 로 대응표를 지운다.
     room_id 는 room_scope 가 확인한 1:1 방 id 여야 한다(None 이면 가족 전체방)."""
@@ -281,14 +284,27 @@ def room_context(db: Session, group_id: str, room_id: str | None) -> _Context | 
         )
         if (m.created_at if m.created_at.tzinfo else m.created_at.replace(tzinfo=UTC)) >= cutoff
     ]
+    # 지금 부른 질문(요청한 사람의 마지막 @가비 글)은 맥락에서 뺀다: 이미 처리된 요청으로 보이면 모델이 일정 등록 같은 일을 거부할 수 있다
+    if (
+        rows
+        and user_id
+        and rows[-1][0].user_id == user_id
+        and rows[-1][0].text.lstrip().startswith("@가비")
+    ):
+        rows = rows[:-1]
     if not rows:
         return None
-    return _build_context(
+    ctx = _build_context(
         rows,
         repo.member_names(db, group_id),
         ANALYSIS,
         min(ROOM_CONTEXT_MAX_CHARS, settings.ai_analysis_max_chars),
     )
+    # 가비의 글은 사람처럼 가명화되지 않게 가비로 되돌린다(모델이 '가비의 답'과 '@가비 요청'을 알아보도록)
+    for message, line in zip(ctx.used, ctx.prep.lines, strict=True):
+        if message.user_id == ASSISTANT_USER_ID and _PERSON_TOKEN.fullmatch(line.speaker):
+            ctx.transcript = ctx.transcript.replace(line.speaker, ASSISTANT_NAME)
+    return ctx
 
 
 def _prepare(

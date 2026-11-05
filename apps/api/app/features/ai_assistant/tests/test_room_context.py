@@ -241,3 +241,47 @@ def test_gabi_previous_answers_are_in_context_and_told_not_to_redo(client, setup
     sent = systems[-1]
     assert "답이에요" in sent.split(CONTEXT_MARK, 1)[1]  # 가비가 이미 한 말도 맥락에 있다
     assert "다시 실행" in sent  # 이전 요청(일정 등록 등)을 다시 하지 않는다
+
+
+def test_gabi_lines_stay_recognizable_in_context(client, setup):
+    a, b, _, systems = setup
+    _say(client, b, "토요일에 낚시 가자")
+    _ask(client, a, "일정 잡아줘")  # 가비가 방에 "답이에요"를 올린다
+    _ask(client, a, "그중 식비는?")
+    block = systems[-1].split(CONTEXT_MARK, 1)[1]
+    assert '"name": "가비"' in block  # 가비 글은 사람처럼 가명화되지 않고 가비로 보인다
+    assert "@[PERSON" not in block
+
+
+def test_current_question_is_not_in_context_as_a_pending_request(client, setup):
+    a, b, _, systems = setup
+    _say(client, b, "토요일에 낚시 가자")
+    _say(client, a, "@가비 낚시터 예약해줘")  # 앱은 질문을 방에 올린 뒤 @가비 를 부른다
+    _ask(client, a, "낚시터 예약해줘")
+    block = systems[-1].split(CONTEXT_MARK, 1)[1]
+    assert "토요일에 낚시 가자" in block
+    assert "낚시터 예약해줘" not in block  # 지금 질문은 맥락에 '이미 처리된 요청'으로 들어가지 않는다
+
+
+def test_privacy_failure_in_context_does_not_burn_the_limit(client, setup, monkeypatch):
+    from sqlalchemy import select
+
+    from app.features.family_chat import assistant
+    from app.shared.ai_usage import AiUsageLog
+    from app.shared.errors import ApiError
+
+    a, b, _, systems = setup
+    _say(client, b, "토요일에 낚시 가자")
+
+    def boom(*args, **kw):
+        raise ApiError(503, "privacy_unavailable", "개인정보 가리기를 쓸 수 없어요")
+
+    monkeypatch.setattr(assistant, "room_context", boom)
+    r = client.post(
+        "/ai-assistant/chat", json={"message": "일정 잡아줘", "audience": "room"}, headers=a
+    )
+    assert r.status_code == 200  # 방 대화는 붙이지 않고 질문만으로 답한다
+    assert CONTEXT_MARK not in systems[-1]
+    with SessionLocal() as db:
+        statuses = [row.status for row in db.scalars(select(AiUsageLog))]
+    assert "pending" not in statuses

@@ -51,7 +51,7 @@ def chat(
     # 방에서 부른 @가비 에는 그 방의 최근 대화를 개인정보를 가린 채 맥락으로 붙인다("일정 잡아줘"가 무엇을 가리키는지 알도록).
     # 가명화는 동의·쿨다운·한도 확인을 통과한 뒤 관문 안에서 한다(막힐 요청은 대화를 가명화하지 않는다)
     factory = (
-        (lambda: family_assistant.room_context(db, group_id, direct))
+        (lambda: family_assistant.room_context(db, group_id, direct, user_id))
         if audience == "room"
         else None
     )
