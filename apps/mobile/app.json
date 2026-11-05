@@ -75,6 +75,12 @@
           "isIosBackgroundLocationEnabled": false
         }
       ],
+      [
+        "expo-notifications",
+        {
+          "color": "#B7791C"
+        }
+      ],
       "expo-secure-store"
     ],
     "experiments": {
