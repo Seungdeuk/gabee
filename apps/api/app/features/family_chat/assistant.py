@@ -5,7 +5,7 @@
 - 이 계정은 로그인할 수 없다: 로그인 아이디·이메일·비밀번호가 없고 토큰은 서버가 만든 임의 값이며 아무에게도 주지 않는다.
 - 가족 구성원(group_members)에 넣지 않는다. 구성원 목록·할 일 담당자·읽음 계산에 나오지 않는다.
 - 저장은 서버가 AI 답을 만든 직후에만 한다. 앱이 "이 글을 가비 이름으로 올려 줘"라고 요청하는 입구는 두지 않는다(아무 글이나 가비 이름으로 올리는 것을 막는다).
-- 가족 전체방에만 저장한다. 1:1 방에는 저장하지 않는다."""
+- 기본은 가족 전체방에 저장한다. 1:1 방에서 부른 답은 그 1:1 방(두 사람에게만 보임)에 저장한다(`room_id`)."""
 
 import re
 import secrets
@@ -17,6 +17,7 @@ from sqlalchemy.orm import Session
 from app.features.family_group.models import User
 from app.shared import room_assistant
 
+from . import ai_service
 from . import repository as repo
 from .models import ASSISTANT_NAME, ASSISTANT_USER_ID, Message
 from .schemas import MessageOut
@@ -74,12 +75,21 @@ def clip(text: str) -> str:
     return text if len(text) <= MAX_TEXT else text[: MAX_TEXT - 1].rstrip() + "…"
 
 
-def post_as_assistant(db: Session, group_id: str, text: str) -> MessageOut:
+def direct_room(db: Session, user: User, group_id: str, room_id: str | None) -> str | None:
+    """@가비 를 부른 방. 1:1 방이면 그 방 id, 가족 전체방이거나 room_id 가 없으면 None.
+    1:1 방은 참가자 본인만(아니면 404), 상대가 가족을 나갔으면 403 peer_left — AI 대화 도우미와 같은 규칙이다."""
+    return ai_service.room_scope(db, user, group_id, room_id)
+
+
+def post_as_assistant(
+    db: Session, group_id: str, text: str, room_id: str | None = None
+) -> MessageOut:
     """가족 전체방에 가비 이름으로 메시지를 올린다. group_id 는 호출한 쪽이 실제 구성원인지 확인한 값이어야 한다."""
     assistant = get_or_create_assistant(db)
-    room = repo.get_family_room(db, group_id)
+    # room_id 는 direct_room 이 확인한 1:1 방 id 여야 한다(없으면 가족 전체방)
+    target = room_id or repo.get_family_room(db, group_id).id
     message = repo.add(
-        db, Message(group_id=group_id, room_id=room.id, user_id=assistant.id, text=clip(text))
+        db, Message(group_id=group_id, room_id=target, user_id=assistant.id, text=clip(text))
     )
     return message_out(message, assistant.name)
 

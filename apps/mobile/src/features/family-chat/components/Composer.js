@@ -36,7 +36,7 @@ export default function Composer({ value, onChangeText, onSend, onPickPhoto, onP
   const inputRef = useRef(null);
   const [inputH, setInputH] = useState(ROW_H); // 입력칸 높이: 글자 높이에 맞추되 한 줄일 때는 말풍선과 같은 높이로 고정(안드로이드 기본 여백 때문에 더 커지지 않게)
   const [sel, setSel] = useState(null); // 예시를 채운 직후에만 커서를 끝으로 둔다(안드로이드). 평소에는 제어하지 않는다
-  const hintsOn = mentionHintsVisible(value, direct); // `@` 를 치면 @가비 예시 목록(1:1 방은 숨김)
+  const hintsOn = mentionHintsVisible(value); // `@` 를 치면 @가비 예시 목록
   const replyId = replyTo?.id ?? null;
   // 웹: onContentSizeChange 의 높이는 입력칸의 scrollHeight(위아래 여백 포함, 현재 높이 이상)라서, 여백을 또 더하면 글자를 쓰거나 지울 때마다 입력칸이 커지기만 한다.
   // 그래서 웹에서는 값이 바뀔 때마다 높이를 한 줄로 되돌린 뒤 scrollHeight 를 재서 맞춘다(지우면 줄어든다).

@@ -225,7 +225,7 @@ def _build_context(
     )
 
 
-def _room_scope(db: Session, user: User, group_id: str, room_id: str | None) -> str | None:
+def room_scope(db: Session, user: User, group_id: str, room_id: str | None) -> str | None:
     """AI 가 읽을 방. 가족 전체방(또는 room_id 없음)이면 None, 1:1 방이면 그 방 id.
     1:1 방은 이 가족의 방이고 호출한 사람이 참가자일 때만 쓸 수 있다(아니면 방이 있는지도 드러내지 않고 404).
     상대가 가족을 나갔으면 쓸 수 없다(403 peer_left): 나간 사람의 대화를 AI 로 보내지 않는다."""
@@ -432,7 +432,7 @@ def _clean_list(data: dict, key: str, maximum: int, limit: int) -> dict:
 # ---------- 기능 ----------
 def analysis(db: Session, user: User, group_id: str, body: RangeIn) -> AnalysisOut:
     ctx = _prepare(
-        db, group_id, body, ANALYSIS, 200, room_id=_room_scope(db, user, group_id, body.room_id)
+        db, group_id, body, ANALYSIS, 200, room_id=room_scope(db, user, group_id, body.room_id)
     )
     try:
         key = _key("analysis", ctx)
@@ -473,7 +473,7 @@ def analysis(db: Session, user: User, group_id: str, body: RangeIn) -> AnalysisO
 
 def reply_suggestions(db: Session, user: User, group_id: str, body: RangeIn) -> RepliesOut:
     ctx = _prepare(
-        db, group_id, body, REPLY, 15, room_id=_room_scope(db, user, group_id, body.room_id)
+        db, group_id, body, REPLY, 15, room_id=room_scope(db, user, group_id, body.room_id)
     )
     try:
         key = _key("reply", ctx)
@@ -496,7 +496,7 @@ def reply_suggestions(db: Session, user: User, group_id: str, body: RangeIn) -> 
 
 def topic_suggestions(db: Session, user: User, group_id: str, body: RangeIn) -> TopicsOut:
     ctx = _prepare(
-        db, group_id, body, TOPICS, 30, room_id=_room_scope(db, user, group_id, body.room_id)
+        db, group_id, body, TOPICS, 30, room_id=room_scope(db, user, group_id, body.room_id)
     )
     try:
         key = _key("topics", ctx)
@@ -537,7 +537,7 @@ def preview(db: Session, user: User, group_id: str, body: RangeIn) -> PreviewOut
         ANALYSIS,
         200,
         need_sendable=False,
-        room_id=_room_scope(db, user, group_id, body.room_id),
+        room_id=room_scope(db, user, group_id, body.room_id),
     )
     try:
         privacy = _privacy(ctx)

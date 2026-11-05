@@ -23,7 +23,6 @@ export const MENTION_EXAMPLES = [
   { key: "document", category: "문서", text: "@가비 올려 둔 영수증 찾아줘" },
 ];
 export const EMPTY_QUESTION_HINT = `@가비 뒤에 물어볼 내용을 적어 주세요. 예: ${MENTION_EXAMPLES[0].text}`;
-export const DIRECT_NOT_ALLOWED = "1:1 대화에서는 @가비를 쓸 수 없어요. 가족 전체 채팅방에서 불러 주세요.";
 
 const LEADING = /^\s*@가비(?![0-9A-Za-z가-힣_])[\s,.:;!?]*/;
 
@@ -43,13 +42,11 @@ export function parseMention(text) {
 const HINT_TYPING = /^@(?:[ㄱ\uAC00-\uAE4B]|가ㅂ|가비)?$/; // `@`, `@ㄱ`, ㄱ으로 시작하는 한 글자(가~깋), `@가ㅂ`, `@가비`
 
 /**
- * 예시 목록을 보일지: 글(앞뒤 공백 제외)이 `@`, 한글 조합 중간(`@ㄱ`·`@갑`·`@가ㅂ`), `@가비` 이거나 `@가비` 뒤에 질문이 비어 있을 때만. 1:1 방에서는 가비를 부를 수 없으니 항상 false.
+ * 예시 목록을 보일지: 글(앞뒤 공백 제외)이 `@`, 한글 조합 중간(`@ㄱ`·`@갑`·`@가ㅂ`), `@가비` 이거나 `@가비` 뒤에 질문이 비어 있을 때만.
  * @param {string} text 입력창 글
- * @param {boolean} [direct] 1:1 방이면 true
  * @returns {boolean}
  */
-export function mentionHintsVisible(text, direct = false) {
-  if (direct) return false;
+export function mentionHintsVisible(text) {
   const t = String(text ?? "").trim();
   if (HINT_TYPING.test(t)) return true; // 한글 조합 중간 상태(@ㄱ, @갑, @가ㅂ)도 목록이 깜빡이지 않게 보인다
   const p = parseMention(t);

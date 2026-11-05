@@ -18,6 +18,8 @@ class ChatIn(BaseModel):
     history: list[ChatTurn] = Field(default_factory=list, max_length=10)  # 앞 대화(오래된 것부터)
     # me: 나와 가비의 대화(기본). room: 가족 채팅방에서 @가비 로 부른 것 — 답을 방에 올려도 되는지 서버가 정해 visibility 로 알려 준다
     audience: Literal["me", "room"] = "me"
+    # audience=room 일 때 @가비 를 부른 1:1 방 id. 있으면 답을 그 1:1 방에 올린다(참가자 본인·상대가 가족일 때만). 없으면 가족 전체방.
+    room_id: str | None = Field(default=None, max_length=32)
 
 
 class ChatSource(BaseModel):

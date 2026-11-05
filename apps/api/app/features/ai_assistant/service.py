@@ -30,6 +30,7 @@ def chat(
     history: list[dict] | None = None,
     user: User | None = None,
     audience: str = "me",
+    room_id: str | None = None,
 ) -> ChatOut:
     """가족 그룹이 있으면 저장된 기록(knowledge)을 검색해서 근거로 답한다.
 
@@ -41,6 +42,12 @@ def chat(
     TODO: 일정·지출·돌봄 기록도 검색 대상에 넣는다(원본의 capture/qa 참고)."""
     if not group_id:
         return ChatOut(reply=NO_GROUP_REPLY, source="fallback")
+    # 1:1 방에서 부른 @가비: 참가자·상대 이탈을 AI 를 부르기 전에 확인한다(막히면 AI 호출·한도 없음)
+    direct = (
+        family_assistant.direct_room(db, user, group_id, room_id)
+        if audience == "room" and room_id and user is not None
+        else None
+    )
     r = rag_chat.ask_guarded(
         db,
         user_id,
@@ -49,7 +56,8 @@ def chat(
         feature="assistant_chat",
         history=history,
         user=user,
-        audience=audience,
+        # 1:1 방이면 탭 에이전트에게 "direct" 로 알린다(일정 에이전트는 아직 1:1 을 다루지 않는다)
+        audience="direct" if direct else audience,
     )
     sources = [
         ChatSource(n=s["n"], title=s["title"], item_id=s["item_id"], source_path=s["source_path"])
@@ -79,7 +87,7 @@ def chat(
             out.visibility = "room"
             if out.reply.strip():
                 out.posted_message_id = family_assistant.post_as_assistant(
-                    db, group_id, out.reply
+                    db, group_id, out.reply, direct
                 ).id
     return out
 
