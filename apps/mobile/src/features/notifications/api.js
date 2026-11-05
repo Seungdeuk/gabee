@@ -41,3 +41,35 @@ export const markRead = (id) => apiFetch(`/notifications/${id}/read`, { method: 
  * @returns {Promise<{ updated: number }>}
  */
 export const markAllRead = (kind) => apiFetch("/notifications/read-all", { method: "POST", body: kind ? { kind } : {} });
+
+/**
+ * 이 기기의 푸시 토큰을 서버에 등록한다(같은 토큰이면 갱신).
+ * @param {{ token: string, platform: "android" | "ios", deviceLabel?: string | null }} input
+ * @returns {Promise<void>}
+ */
+export const registerPushToken = ({ token, platform, deviceLabel }) =>
+  apiFetch("/notifications/push-token", {
+    method: "PUT",
+    body: { token, platform, device_label: deviceLabel ?? null },
+  });
+
+/**
+ * 이 기기의 푸시 토큰을 서버에서 해제한다(로그아웃 때).
+ * @param {string} token
+ * @returns {Promise<void>}
+ */
+export const unregisterPushToken = (token) =>
+  apiFetch("/notifications/push-token", { method: "DELETE", body: { token } });
+
+/**
+ * 내 푸시 설정.
+ * @returns {Promise<{ enabled: boolean, preview_mode: "full" | "sender" | "hidden", muted_kinds: string[], quiet_start: string | null, quiet_end: string | null }>}
+ */
+export const getPushSettings = () => apiFetch("/notifications/push-settings");
+
+/**
+ * 내 푸시 설정을 저장한다.
+ * @param {{ enabled: boolean, preview_mode: "full" | "sender" | "hidden", muted_kinds: string[], quiet_start: string | null, quiet_end: string | null }} settings
+ * @returns {Promise<object>} 저장된 설정
+ */
+export const savePushSettings = (settings) => apiFetch("/notifications/push-settings", { method: "PUT", body: settings });

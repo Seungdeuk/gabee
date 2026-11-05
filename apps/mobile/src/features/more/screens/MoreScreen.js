@@ -18,7 +18,7 @@ import { itemAction, MENU, menuSections, SHORTCUTS, SOON_MESSAGE } from "../menu
 const NOTICE_MS = 2200;
 
 /**
- * 마이 페이지(하단 탭): 오른쪽 위 알림설정·환경설정 버튼(이름 표시, 아직 "준비 중"), 프로필 카드, 카드 하나에 담은 바로가기 4칸, 묶음(가족 및 AI 서비스·계정 및 고객지원)별 카드 목록, 맨 아래 로그아웃·앱 버전 버튼 두 개.
+ * 마이 페이지(하단 탭): 오른쪽 위 알림설정(푸시 설정 화면으로 이동)·환경설정 버튼(이름 표시, 아직 "준비 중"), 프로필 카드, 카드 하나에 담은 바로가기 4칸, 묶음(가족 및 AI 서비스·계정 및 고객지원)별 카드 목록, 맨 아래 로그아웃·앱 버전 버튼 두 개.
  * 가족 정보는 다른 기능이라 라우트가 읽어서 넘겨 준다(groupName·roleText·pendingCount). "준비 중" 항목은 안내 문구만 잠깐 보인다.
  * displayName·photoUrl 은 가족 안에서 쓰는 내 이름과 사진이고(없으면 계정 이름·사진), canEdit 이 true 일 때만 "내 정보 수정"이 보인다.
  * @param {{ displayName?: string | null, photoUrl?: string | null, groupName?: string | null, roleText?: string | null, canEdit?: boolean, pendingCount?: number }} props
@@ -65,7 +65,7 @@ export default function MoreScreen({ displayName = null, photoUrl = null, groupN
         right={
           <HeaderActions
             items={[
-              { key: "notifications", icon: "notifications-outline", label: "알림설정", onPress: () => showNotice(SOON_MESSAGE) },
+              { key: "notifications", icon: "notifications-outline", label: "알림설정", onPress: () => router.push("/push-settings") },
               { key: "settings", icon: "settings-outline", label: "환경설정", onPress: () => showNotice(SOON_MESSAGE) },
             ]}
           />
