@@ -82,7 +82,7 @@ function ShareSelectCard({ card, onResolve, onShareToRoom }) {
               accessibilityState={{ disabled }}
               style={[styles.btn, b.tone === "ghost" ? styles.ghost : styles.main, disabled && styles.off]}
             >
-              {busy && b.key === "share" ? <ActivityIndicator color={colors.onDark} /> : <Text style={b.tone === "ghost" ? styles.ghostText : styles.mainText}>{b.label}</Text>}
+              {busy && b.key === "share" ? <ActivityIndicator color={colors.onDark} /> : <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8} style={b.tone === "ghost" ? styles.ghostText : styles.mainText}>{b.label}</Text>}
             </Pressable>
           );
         })}
@@ -168,7 +168,7 @@ function ServerConfirmCard({ card, onResolve }) {
             accessibilityLabel={b.label}
             style={[styles.btn, b.tone === "ghost" ? styles.ghost : b.tone === "danger" ? styles.danger : styles.main, busy && styles.off]}
           >
-            {busy === b.key ? <ActivityIndicator color={b.tone === "ghost" ? colors.text : colors.onDark} /> : <Text style={b.tone === "ghost" ? styles.ghostText : styles.mainText}>{b.label}</Text>}
+            {busy === b.key ? <ActivityIndicator color={b.tone === "ghost" ? colors.text : colors.onDark} /> : <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8} style={b.tone === "ghost" ? styles.ghostText : styles.mainText}>{b.label}</Text>}
           </Pressable>
         ))}
       </View>
@@ -185,8 +185,8 @@ const styles = StyleSheet.create({
   item: { flexDirection: "row", alignItems: "center", gap: spacing.sm, minHeight: 44 },
   itemText: { ...font.body, color: colors.text, flexShrink: 1 },
   error: { ...font.caption, color: colors.danger },
-  row: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm, marginTop: spacing.sm },
-  btn: { minHeight: 40, minWidth: 72, paddingHorizontal: spacing.md, borderRadius: radius.pill, alignItems: "center", justifyContent: "center" },
+  row: { flexDirection: "row", flexWrap: "nowrap", gap: spacing.xs, marginTop: spacing.sm }, // 버튼은 한 줄에 가로로(줄바꿈 없이)
+  btn: { flexGrow: 1, flexShrink: 1, minHeight: 40, paddingHorizontal: spacing.sm, borderRadius: radius.pill, alignItems: "center", justifyContent: "center" }, // 글자 길이에 맞춰 나누고 남는 폭을 고르게 채운다
   main: { backgroundColor: colors.accent },
   danger: { backgroundColor: colors.danger },
   ghost: { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border },

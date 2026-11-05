@@ -260,7 +260,7 @@ export default function MessageBubble({ message, mine, showName, showTime = true
         ) : (
           <View style={styles.spacer} />
         )}
-        <View style={styles.column}>
+        <View style={[styles.column, message.is_assistant && styles.assistantColumn]}>
           {showName ? <Text style={styles.name}>{senderName}</Text> : null}
           <View style={styles.line}>
             {bubble}
@@ -291,6 +291,7 @@ const styles = StyleSheet.create({
   mineBubble: { backgroundColor: colors.peach, borderBottomRightRadius: spacing.xs },
   otherBubble: { maxWidth: "100%", backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border, borderTopLeftRadius: spacing.xs },
   assistantBubble: { backgroundColor: colors.honeySoft, borderColor: colors.accent },
+  assistantColumn: { maxWidth: "92%" }, // 가비의 긴 답(목록)은 폭을 넓혀 읽기 쉽게
   photoBubble: { paddingHorizontal: spacing.xs, paddingVertical: spacing.xs }, // 위쪽 bubble 의 가로·세로 여백(longhand)이 padding 보다 우선해서 같은 방향으로 덮어쓴다
   photo: { maxWidth: "100%", borderRadius: radius.md }, // 좁은 화면에서는 말풍선 안으로 비율을 지키며 줄어든다
   fileNotice: { ...font.caption, color: colors.textSub, marginTop: spacing.xs },

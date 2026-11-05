@@ -9,23 +9,20 @@ import { colors, font, radius, spacing } from "@/theme";
 
 import { analyzeChat, getAiSettings, getRoomInfo, registerScheduleCandidate, sendTogetherRequest, setAiEnabled } from "../api";
 import {
-  canRegisterSchedule,
   chatErrorMessage,
   parseAiSettings,
   parseAnalysis,
   rangeCaption,
   resultCaption,
-  scheduleMissingNote,
   shouldLoadSettings,
 } from "../messages";
 import { privacyCaption } from "../privacyPreview";
 import { candidateKey, isCandidateDone, markCandidateDone } from "../candidateKey";
+import { claimCandidate, releaseCandidate } from "../scheduleCandidateUtils";
 import { candidateToRequestBody, dayFromChip, hasCandidateDay, requestErrorText, sendErrorMessage } from "../togetherUtils";
 import { CONSENT_CANCEL_LABEL, ENABLE_ON_ANALYZE_BODY, ENABLE_ON_ANALYZE_CONFIRM_LABEL, ENABLE_ON_ANALYZE_TITLE } from "../privacyCopy";
+import ScheduleCandidateRow from "./ScheduleCandidateRow";
 import TodoCandidateRow from "./TodoCandidateRow";
-
-/** 후보 한 줄에 붙는 보조 글(날짜·시간·장소 등). */
-const joinParts = (parts) => parts.filter(Boolean).join(" · ");
 
 /**
  * 추천 문장 목록. 한 줄을 누르면 onPick 으로 알린다(비어 있으면 안내 글).
@@ -61,8 +58,12 @@ export default function AiPanel({ visible, onClose, onPickReply, onLinked }) {
   const [todoRegistered, setTodoRegistered] = useState({}); // 할 일 후보 식별자 -> 같은 형태(함께하기로 보낸 결과)
   const [todoDay, setTodoDay] = useState({}); // 날짜가 없는 할 일 후보 순번 -> 고른 날짜 칩 key
   const [todoCustom, setTodoCustom] = useState({}); // 직접 입력을 고른 후보 순번 -> 적은 날짜 글자
+  const [schedDay, setSchedDay] = useState({}); // 날짜가 없는 일정 후보 순번 -> 고른 날짜 칩 key
+  const [schedCustom, setSchedCustom] = useState({}); // 직접 입력을 고른 일정 후보 순번 -> 적은 날짜 글자
+  const [schedTime, setSchedTime] = useState({}); // 시간이 없는 일정 후보 순번 -> 적은 시간(HH:MM)
   const [confirmingEnable, setConfirmingEnable] = useState(false); // 꺼져 있는 가족 AI 를 켜고 분석할지 묻는 중
   const analyzing = useRef(false); // 분석(필요하면 켜기 포함)을 빠르게 두 번 눌러도 한 번만 보낸다
+  const schedBusy = useRef(new Set()); // 등록 중이거나 등록된 일정 후보 식별자: 빠르게 두 번 눌러도 같은 후보를 두 번 등록하지 않는다
   const todoBusy = useRef(new Set()); // 등록 중이거나 등록된 할 일 후보 식별자(candidateKey): 같은 후보를 두 번 등록하지 않는다
 
   const loadSettings = useCallback(async () => {
@@ -127,6 +128,9 @@ export default function AiPanel({ visible, onClose, onPickReply, onLinked }) {
       setAnalysis(parseAnalysis(res));
       setTodoDay({});
       setTodoCustom({});
+      setSchedDay({});
+      setSchedCustom({});
+      setSchedTime({});
     });
 
   /** 등록이 끝난 뒤 원본 메시지 연결을 부탁한다. 연결은 부가 기능이라 여기서 나는 오류는 등록 결과에 영향을 주지 않는다. */
@@ -138,15 +142,17 @@ export default function AiPanel({ visible, onClose, onPickReply, onLinked }) {
     }
   };
 
-  const register = async (candidate) => {
-    const key = candidateKey("schedule", candidate);
+  const register = async (candidate, completed = candidate) => {
+    const key = candidateKey("schedule", candidate); // 다시 분석해도 같은 후보로 알아보도록 AI 가 준 원래 후보로 식별한다
+    if (!claimCandidate(schedBusy.current, key)) return;
     setRegistered((r) => ({ ...r, [key]: "sending" }));
     try {
-      const created = await registerScheduleCandidate(candidate);
+      const created = await registerScheduleCandidate(completed);
       markCandidateDone(key);
       setRegistered((r) => ({ ...r, [key]: "ok" }));
-      notifyLinked({ kind: "event", targetId: created?.id, candidate });
+      notifyLinked({ kind: "event", targetId: created?.id, candidate: completed });
     } catch (e) {
+      releaseCandidate(schedBusy.current, key);
       setRegistered((r) => ({ ...r, [key]: chatErrorMessage(e) }));
     }
   };
@@ -266,32 +272,20 @@ export default function AiPanel({ visible, onClose, onPickReply, onLinked }) {
           ) : (
             analysis.schedule_candidates.map((c, i) => {
               const key = candidateKey("schedule", c);
-              const state = registered[key] ?? (isCandidateDone(key) ? "ok" : undefined);
               return (
-                <View key={`${c.title}-${i}`} style={styles.candidate}>
-                  <Text style={styles.bodyStrong}>{c.title}</Text>
-                  <Text style={styles.caption}>{joinParts([c.date, c.time, c.place]) || "-"}</Text>
-                  {scheduleMissingNote(c) ? <Text style={styles.note}>{scheduleMissingNote(c)}</Text> : null}
-                  {state === "ok" ? (
-                    <Text style={styles.success}>일정으로 등록했어요</Text>
-                  ) : (
-                    <>
-                      {state && state !== "sending" ? (
-                        <Text style={styles.error} accessibilityRole="alert">
-                          {state}
-                        </Text>
-                      ) : null}
-                      <Button
-                        label={state === "sending" ? "등록하는 중..." : "일정으로 등록"}
-                        small
-                        variant="secondary"
-                        onPress={() => register(c)}
-                        disabled={!canRegisterSchedule(c) || state === "sending"}
-                        testID={`chat-ai-register-${i}`}
-                      />
-                    </>
-                  )}
-                </View>
+                <ScheduleCandidateRow
+                  key={`${c.title}-${i}`}
+                  candidate={c}
+                  state={registered[key] ?? (isCandidateDone(key) ? "ok" : undefined)}
+                  day={schedDay[i] ?? null}
+                  customText={schedCustom[i] ?? ""}
+                  timeText={schedTime[i] ?? ""}
+                  onPickDay={(day) => setSchedDay((d) => ({ ...d, [i]: day }))}
+                  onChangeCustom={(text) => setSchedCustom((d) => ({ ...d, [i]: text }))}
+                  onChangeTime={(text) => setSchedTime((d) => ({ ...d, [i]: text }))}
+                  onRegister={(completed) => register(c, completed)}
+                  testID={`chat-ai-register-${i}`}
+                />
               );
             })
           )}
@@ -333,7 +327,9 @@ export default function AiPanel({ visible, onClose, onPickReply, onLinked }) {
               <Text style={styles.close}>닫기</Text>
             </Pressable>
           </View>
-          <ScrollView contentContainerStyle={styles.content}>{content}</ScrollView>
+          <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled" automaticallyAdjustKeyboardInsets>
+            {content}
+          </ScrollView>
         </View>
       </View>
     </Modal>
