@@ -76,3 +76,30 @@ export function isQuietOn(settings) {
 export function withQuiet(settings, on) {
   return { ...settings, ...(on ? QUIET_PRESET : { quiet_start: null, quiet_end: null }) };
 }
+
+/**
+ * 이 기기에서 서버에 올린(또는 올리려던) 푸시 토큰을 기억하고, 등록하는 도중에 로그아웃(해제)이 지나갔는지 알려 준다.
+ * 토큰은 서버에 보내기 전에 기억해 두므로, 등록 요청이 실패해도 로그아웃 때 해제를 시도할 수 있다.
+ * @returns {{ begin: () => number, remember: (token: string) => void, current: () => string | null, isStale: (startedAt: number) => boolean, take: () => string | null }}
+ */
+export function createTokenTracker() {
+  let token = null;
+  let epoch = 0;
+  return {
+    /** 등록을 시작할 때 부른다. 돌려준 번호를 isStale 에 넘긴다. */
+    begin: () => epoch,
+    remember(next) {
+      token = next;
+    },
+    current: () => token,
+    /** begin() 이후 해제(take)가 있었으면 true. */
+    isStale: (startedAt) => startedAt !== epoch,
+    /** 해제하려고 기억한 토큰을 꺼낸다(없으면 null). 이후 시작한 등록과 구분되도록 번호가 올라간다. */
+    take() {
+      epoch += 1;
+      const taken = token;
+      token = null;
+      return taken;
+    },
+  };
+}

@@ -5,6 +5,7 @@ import { afterEach, beforeEach, test } from "node:test";
 import {
   PREVIEW_OPTIONS,
   PUSH_CHANNEL_ID,
+  createTokenTracker,
   isQuietOn,
   isUsableToken,
   routeForPush,
@@ -119,4 +120,22 @@ test("PREVIEW_OPTIONS lists the three server modes in order", () => {
     PREVIEW_OPTIONS.map((o) => o.key),
     ["full", "sender", "hidden"],
   );
+});
+
+test("token tracker remembers a token and hands it out once for release", () => {
+  const tracker = createTokenTracker();
+  assert.equal(tracker.take(), null); // 기억한 게 없으면 null
+  tracker.remember("ExponentPushToken[a]");
+  assert.equal(tracker.current(), "ExponentPushToken[a]");
+  assert.equal(tracker.take(), "ExponentPushToken[a]");
+  assert.equal(tracker.take(), null);
+});
+
+test("token tracker marks a registration stale when a release happened meanwhile", () => {
+  const tracker = createTokenTracker();
+  const started = tracker.begin();
+  assert.equal(tracker.isStale(started), false); // 중간에 해제가 없으면 그대로 유효
+  tracker.take(); // 로그아웃(해제)이 먼저 지나갔다
+  assert.equal(tracker.isStale(started), true);
+  assert.equal(tracker.isStale(tracker.begin()), false); // 새로 시작한 등록은 유효
 });

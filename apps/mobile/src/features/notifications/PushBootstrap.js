@@ -10,7 +10,7 @@ import { useAuth } from "@/shared/auth/AuthProvider";
 
 import { registerPushToken, unregisterPushToken } from "./api";
 import { PUSH_INTRO_BODY, PUSH_INTRO_TITLE, PUSH_CHANNEL_NAME } from "./messages";
-import { PUSH_CHANNEL_ID, isUsableToken, routeForPush, shouldRegister } from "./push";
+import { PUSH_CHANNEL_ID, createTokenTracker, isUsableToken, routeForPush, shouldRegister } from "./push";
 
 // 앱이 켜져 있을 때 푸시가 오면 상단 배너로 보여 준다(웹에는 푸시가 없다).
 if (Platform.OS !== "web") {
@@ -24,8 +24,8 @@ if (Platform.OS !== "web") {
   });
 }
 
-/** 이 기기에서 서버에 등록한 푸시 토큰(로그아웃 때 해제하려고 기억한다). */
-let registeredToken = null;
+/** 이 기기의 푸시 토큰(서버에 보내기 전에 기억해 두어, 등록이 실패해도 로그아웃 때 해제를 시도한다). */
+const tracker = createTokenTracker();
 
 /**
  * 권한을 처음 묻기 전에 한 번 안내한다. 확인을 눌러야 시스템 권한 창으로 넘어간다.
@@ -53,10 +53,25 @@ async function ensurePermission() {
 }
 
 /**
+ * 서버에서 토큰을 지운다. 실패해도 던지지 않는다(서버에 닿지 않으면 Expo 가 만료 응답을 줄 때 정리된다).
+ * @param {string} token
+ * @returns {Promise<void>}
+ */
+async function unregisterQuietly(token) {
+  try {
+    await unregisterPushToken(token);
+  } catch {
+    // 로그아웃·정리를 막지 않는다
+  }
+}
+
+/**
  * 이 기기의 Expo 푸시 토큰을 받아 서버에 등록한다. 거절·오류·에뮬레이터 실패는 조용히 넘긴다(알림함은 그대로 쓴다).
+ * 등록하는 도중에 로그아웃이 지나갔으면 방금 받은 토큰을 서버에서 다시 지운다.
  * @returns {Promise<void>}
  */
 async function registerThisDevice() {
+  const startedAt = tracker.begin();
   try {
     if (Platform.OS === "android") {
       await Notifications.setNotificationChannelAsync(PUSH_CHANNEL_ID, {
@@ -65,33 +80,50 @@ async function registerThisDevice() {
       });
     }
     if (!(await ensurePermission())) return;
-    const projectId = Constants.expoConfig?.extra?.eas?.projectId ?? Constants.easConfig?.projectId;
-    const { data: token } = await Notifications.getExpoPushTokenAsync({ projectId });
+    const token = await fetchToken();
     if (!isUsableToken(token)) return;
+    tracker.remember(token); // 서버에 보내기 전에 기억해 둔다
+    if (tracker.isStale(startedAt)) {
+      await unregisterQuietly(tracker.take()); // 토큰을 받는 동안 로그아웃이 지나갔다
+      return;
+    }
     await registerPushToken({
       token,
       platform: Platform.OS === "ios" ? "ios" : "android",
       deviceLabel: Device.deviceName ?? Device.modelName ?? null,
     });
-    registeredToken = token;
+    if (tracker.isStale(startedAt)) await unregisterQuietly(token); // 등록하는 동안 로그아웃이 지나갔다
   } catch {
     // 토큰을 못 받아도(Expo Go·에뮬레이터·오프라인) 앱 사용에는 영향이 없다
   }
 }
 
 /**
- * 이 기기의 푸시 토큰을 서버에서 해제한다(로그아웃 직전). 실패해도 던지지 않는다.
+ * 이 기기의 Expo 푸시 토큰을 받는다(권한이 없거나 못 받으면 null).
+ * @returns {Promise<string | null>}
+ */
+async function fetchToken() {
+  const projectId = Constants.expoConfig?.extra?.eas?.projectId ?? Constants.easConfig?.projectId;
+  const { data } = await Notifications.getExpoPushTokenAsync({ projectId });
+  return data ?? null;
+}
+
+/**
+ * 이 기기의 푸시 토큰을 서버에서 해제한다(로그아웃 직전). 기억한 토큰이 없으면(이번 실행에서 등록에 실패했지만
+ * 서버에는 이전 실행의 토큰이 남아 있을 수 있다) 토큰을 다시 받아 지운다. 실패해도 던지지 않는다.
  * @returns {Promise<void>}
  */
 export async function releasePushToken() {
-  const token = registeredToken;
-  registeredToken = null;
-  if (!token) return;
-  try {
-    await unregisterPushToken(token);
-  } catch {
-    // 서버에 닿지 않으면 토큰은 서버가 만료 응답을 받을 때 정리된다
+  let token = tracker.take();
+  if (!token) {
+    try {
+      const { status } = await Notifications.getPermissionsAsync();
+      if (status === "granted") token = await fetchToken();
+    } catch {
+      token = null;
+    }
   }
+  if (isUsableToken(token)) await unregisterQuietly(token);
 }
 
 /**
