@@ -172,6 +172,8 @@ class Settings(BaseSettings):
     # 켜도 응답에는 영향이 없고(응답을 보내기 전 요청 안에서 저장), 메시지는 가려서 200자까지만, 인증 실패는 메시지 없이 code 만 저장한다.
     ops_errors_enabled: bool = False
     ops_errors_retention_days: int = 90
+    # 운영 관리자 인프라 상태(Cloud Run 설정·Cloud Monitoring 조회, 읽기 전용): 기본 꺼짐. 실행 서비스 계정에 roles/run.viewer·monitoring.viewer 가 필요하다.
+    ops_infra_enabled: bool = False
 
     model_config = SettingsConfigDict(env_file=_ENV_FILE, extra="ignore", populate_by_name=True)
 

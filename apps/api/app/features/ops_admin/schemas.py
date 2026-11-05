@@ -80,3 +80,34 @@ class ErrorListOut(BaseModel):
     total: int  # 조건에 맞는 전체 수(잘리기 전)
     truncated: bool  # items 가 limit 에서 잘렸는지
     items: list[ErrorEventOut]
+
+
+class InfraService(BaseModel):
+    """Cloud Run 서비스 설정. 값을 못 얻은 칸은 None."""
+
+    name: str
+    region: str
+    revision: str | None = None
+    min_instances: int | None = None
+    max_instances: int | None = None
+    cpu_allocation: Literal["request", "instance"] | None = (
+        None  # request = 요청 처리 중에만 CPU 할당
+    )
+
+
+class InfraMetrics(BaseModel):
+    """최근 window_minutes 분의 Cloud Monitoring 값. 사용률은 0~1, 못 얻은 칸은 None."""
+
+    instances_active: int | None = None
+    instances_idle: int | None = None
+    cpu_p99: float | None = None
+    memory_p99: float | None = None
+
+
+class InfraOut(BaseModel):
+    collected: bool
+    reason: str | None = None  # 수집 안 함/일부 실패 이유
+    service: InfraService | None = None
+    metrics: InfraMetrics | None = None
+    window_minutes: int | None = None
+    fetched_at: datetime
