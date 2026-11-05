@@ -90,9 +90,10 @@ export const hasCandidateDay = (candidate, today = dateKey(new Date())) => isDay
  * @param {{ my_id?: string | null, members?: { id: string, name?: string, display_name?: string | null }[] } | null | undefined} group 가족 정보(별명을 입히지 않은 원래 이름)
  * @param {string | null} [chosenDay] 사용자가 고른 날짜(YYYY-MM-DD)
  * @param {string} [today] YYYY-MM-DD, 기본은 기기의 오늘(후보 기한이 이보다 이르면 쓰지 않는다)
+ * @param {string | null} [peerId] 1:1 방의 상대 id. 있으면 담당자와 상관없이 받는 사람은 이 사람 한 명뿐이다(1:1 대화 내용이 다른 가족에게 가지 않게)
  * @returns {{ body: { title: string, start_date: string, to_ids: string[] } } | { error: "no_title" | "no_date" | "no_recipient" }}
  */
-export function candidateToRequestBody(candidate, group, chosenDay = null, today = dateKey(new Date())) {
+export function candidateToRequestBody(candidate, group, chosenDay = null, today = dateKey(new Date()), peerId = null) {
   const title = cleanTitle(candidate?.title);
   if (!title) return { error: "no_title" };
   const startDate = hasCandidateDay(candidate, today) ? candidate.due : isDay(chosenDay) ? chosenDay : null;
@@ -101,6 +102,7 @@ export function candidateToRequestBody(candidate, group, chosenDay = null, today
   if (!me) return { error: "no_recipient" };
   const others = (Array.isArray(group?.members) ? group.members : []).filter((m) => m.id !== me);
   if (others.length === 0) return { error: "no_recipient" };
+  if (peerId) return others.some((m) => m.id === peerId) ? { body: { title, start_date: startDate, to_ids: [peerId] } } : { error: "no_recipient" };
   const wanted = String(candidate?.assignee_name ?? "").trim();
   const hits = wanted ? (Array.isArray(group?.members) ? group.members : []).filter((m) => m.name === wanted || m.display_name === wanted) : [];
   const toIds = hits.length === 1 && hits[0].id !== me ? [hits[0].id] : others.map((m) => m.id).slice(0, MAX_RECIPIENTS);

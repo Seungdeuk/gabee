@@ -48,7 +48,37 @@ test("ChatRoomScreen: 1:1 방에서도 AI 도우미 버튼이 보이고 AiPanel 
   assert.doesNotMatch(screen, /direct \? null : <IconButton name="sparkles-outline"/); // 1:1 에서 숨기지 않는다
   assert.match(screen, /<IconButton name="sparkles-outline" label="AI 도우미 열기"/);
   assert.doesNotMatch(screen, /direct \? null : <AiPanel/);
-  assert.match(screen, /<AiPanel visible=\{aiOpen\}[^\n]*roomId=\{roomId \?\? undefined\} \/>/); // 1:1 방이면 그 방 id, 가족 전체방은 없음
+  assert.match(screen, /<AiPanel visible=\{aiOpen\}[^\n]*roomId=\{roomId \?\? undefined\}/); // 1:1 방이면 그 방 id, 가족 전체방은 없음
   const panel = read("../src/features/family-chat/components/AiPanel.js");
   assert.match(panel, /return analyzeChat\(\{ roomId \}\)/);
+});
+
+const { candidateToRequestBody } = await import("../src/features/family-chat/togetherUtils.js");
+const family = {
+  my_id: "me",
+  members: [
+    { id: "me", name: "지민" },
+    { id: "su", name: "수진" },
+    { id: "dad", name: "아빠" },
+    { id: "mom", name: "엄마" },
+  ],
+};
+
+test("candidateToRequestBody: 1:1 방이면 받는 사람이 상대 한 명뿐이다(담당자가 없거나 다른 사람이어도)", () => {
+  const base = { title: "선물 준비", due: "2099-01-01" };
+  assert.deepEqual(candidateToRequestBody(base, family, null, "2026-11-05", "su").body.to_ids, ["su"]);
+  assert.deepEqual(candidateToRequestBody({ ...base, assignee_name: "아빠" }, family, null, "2026-11-05", "su").body.to_ids, ["su"]);
+  assert.deepEqual(candidateToRequestBody({ ...base, assignee_name: "수진" }, family, null, "2026-11-05", "su").body.to_ids, ["su"]);
+  // 가족 전체방(peerId 없음)은 이전과 같다: 담당자가 없으면 나를 뺀 전원
+  assert.deepEqual(candidateToRequestBody(base, family, null, "2026-11-05").body.to_ids, ["su", "dad", "mom"]);
+});
+
+test("candidateToRequestBody: 1:1 상대가 가족 구성원이 아니면 보내지 않는다", () => {
+  const made = candidateToRequestBody({ title: "x", due: "2099-01-01" }, family, null, "2026-11-05", "ghost");
+  assert.deepEqual(made, { error: "no_recipient" });
+});
+
+test("AiPanel: 1:1 방의 상대 id 를 함께하기 요청에 넘긴다(소스 확인)", () => {
+  assert.match(read("../src/features/family-chat/components/AiPanel.js"), /candidateToRequestBody\(candidate, group, chosen, undefined, peerId\)/);
+  assert.match(read("../src/features/family-chat/screens/ChatRoomScreen.js"), /peerId=\{peerId \?\? undefined\}/);
 });

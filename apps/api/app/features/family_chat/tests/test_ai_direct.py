@@ -97,3 +97,24 @@ def test_each_room_has_its_own_cached_result(client, chats, fake):
     assert len(fake.calls) == 2
     analyze(client, b, room_id=direct["id"])  # 같은 1:1 방의 같은 범위는 캐시를 쓴다
     assert len(fake.calls) == 2
+
+
+def test_another_direct_room_of_mine_is_not_mixed_in(client, chats, trio, fake):
+    a, _, c, direct = chats
+    other = _direct(client, a, _uid(client, c))  # a-c 방
+    for i in range(3):
+        _send(client, a if i % 2 == 0 else c, f"셋째와의 이야기 {i}", room_id=other["id"])
+    analyze(client, a, room_id=direct["id"])
+    prompt = fake.calls[-1]["prompt"]
+    assert "둘만의 이야기" in prompt and "셋째와의 이야기" not in prompt
+    analyze(client, a, room_id=other["id"])
+    prompt = fake.calls[-1]["prompt"]
+    assert "셋째와의 이야기" in prompt and "둘만의 이야기" not in prompt
+
+
+def test_rejected_requests_never_call_ai(client, chats, other_family, fake):
+    a, _, _, direct = chats
+    calls = len(fake.calls)
+    assert analyze(client, a, room_id="nope").status_code == 404
+    assert analyze(client, other_family, room_id=direct["id"]).status_code == 404
+    assert len(fake.calls) == calls

@@ -662,7 +662,7 @@ export default function ChatRoomScreen() {
       </KeyboardAvoidingView>
       <RoomDrawer visible={drawerOpen} onClose={() => setDrawerOpen(false)} room={info.room} roomId={roomId} peerId={peerId} myId={info.me?.id} muted={roomMute.muted} onToggleMute={roomMute.toggle} />
       <MessageMenu target={menu} myId={info.me?.id} pinned={pins.isPinned(menu?.message?.id)} onClose={closeMenu} onReact={reactFromMenu} onReply={replyFromMenu} onPin={pinMessageFromMenu} onUnpin={unpinMessageFromMenu} onCopy={copyMessage} onDelete={deleteFromMenu} />
-      <AiPanel visible={aiOpen} onClose={() => setAiOpen(false)} onPickReply={pickReply} onLinked={links.registerCandidate} roomId={roomId ?? undefined} />
+      <AiPanel visible={aiOpen} onClose={() => setAiOpen(false)} onPickReply={pickReply} onLinked={links.registerCandidate} roomId={roomId ?? undefined} peerId={peerId ?? undefined} />
     </SafeAreaView>
   );
 }
