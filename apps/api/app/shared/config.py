@@ -141,6 +141,10 @@ class Settings(BaseSettings):
     ai_schedule_chat_cooldown_seconds: int = 0
     ai_schedule_chat_max_calls_per_user_per_day: int = 30
     ai_schedule_chat_max_calls_per_group_per_day: int = 100
+    # 전화 이야깃거리(데일리 체크): 쿨다운 없음, 하루 10번(가족 30번). 결과 캐시는 서버 기본 시간(ai_result_cache_ttl_seconds)을 따른다
+    ai_call_talk_cooldown_seconds: int = 0
+    ai_call_talk_max_calls_per_user_per_day: int = 10
+    ai_call_talk_max_calls_per_group_per_day: int = 30
     # 먼저 권해드려요 카드 공급(미리 만들어 저장): 하루 3번(5개씩 15개), 요청 간격 5초
     ai_schedule_card_cooldown_seconds: int = 5
     ai_schedule_card_max_calls_per_user_per_day: int = 3

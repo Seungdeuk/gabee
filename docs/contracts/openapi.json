@@ -7428,6 +7428,81 @@
         }
       }
     },
+    "/schedule/check/members/{user_id}/call-talk": {
+      "post": {
+        "tags": [
+          "schedule"
+        ],
+        "summary": "Call Talk",
+        "description": "가비가 추천하는 이야깃거리. source ai 면 문구 한 쌍, greeting 이면 안부 문구(reason 이 이유).",
+        "operationId": "call_talk_schedule_check_members__user_id__call_talk_post",
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "User Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-gyeot-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Gyeot-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CallTalkOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/schedule/check/items": {
       "get": {
         "tags": [
@@ -15705,6 +15780,61 @@
           "file"
         ],
         "title": "Body_upload_photo_family_group_me_photo_post"
+      },
+      "CallTalkOut": {
+        "properties": {
+          "source": {
+            "type": "string",
+            "enum": [
+              "ai",
+              "greeting"
+            ],
+            "title": "Source"
+          },
+          "reason": {
+            "type": "string",
+            "enum": [
+              "",
+              "no_habits",
+              "limit",
+              "no_consent",
+              "error"
+            ],
+            "title": "Reason"
+          },
+          "points": {
+            "items": {
+              "$ref": "#/components/schemas/CallTalkPoint"
+            },
+            "type": "array",
+            "title": "Points"
+          }
+        },
+        "type": "object",
+        "required": [
+          "source",
+          "reason",
+          "points"
+        ],
+        "title": "CallTalkOut"
+      },
+      "CallTalkPoint": {
+        "properties": {
+          "say": {
+            "type": "string",
+            "title": "Say"
+          },
+          "ask": {
+            "type": "string",
+            "title": "Ask"
+          }
+        },
+        "type": "object",
+        "required": [
+          "say",
+          "ask"
+        ],
+        "title": "CallTalkPoint"
       },
       "Card": {
         "properties": {
