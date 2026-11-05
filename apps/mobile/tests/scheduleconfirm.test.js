@@ -151,13 +151,12 @@ test("confirmScheduleAction: 서버가 거절하면 그 메시지를 그대로 �
   await assert.rejects(() => api.confirmScheduleAction(card, true), (e) => e.code === "draft_incomplete" && /제목/.test(e.message));
 });
 
-test("askAssistantInRoom: 방에서 부른 요청의 확인 카드도 돌려준다(질문한 사람 화면에만 보인다)", async () => {
+test("askAssistantInRoom: 방에서 부른 요청의 확인 카드도 돌려준다(답 글은 방에 저장되고 카드는 질문한 사람 화면에만 보인다)", async () => {
   const fam = await import("../src/features/family-chat/api.js");
   globalThis.fetch = async () =>
-    json(200, { reply: "카드를 확인해 주세요", visibility: "private", private_reasons: ["확인 버튼이 필요한 제안"], posted_message_id: null, confirm_cards: [serverCard()] });
+    json(200, { reply: "카드를 확인해 주세요", visibility: "room", private_reasons: [], posted_message_id: 7, confirm_cards: [serverCard()] });
   const res = await fam.askAssistantInRoom("가족 모두에게 공유해서 일정 잡아줘", []);
-  assert.equal(res.visibility, "private");
-  assert.equal(res.postedMessageId, null);
+  assert.equal(res.postedMessageId, 7);
   assert.equal(res.confirmCards.length, 1);
   assert.equal(res.confirmCards[0].action, "register");
 });
