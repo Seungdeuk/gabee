@@ -18751,6 +18751,17 @@
             "type": "string",
             "title": "Region"
           },
+          "project_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project Id"
+          },
           "revision": {
             "anyOf": [
               {
