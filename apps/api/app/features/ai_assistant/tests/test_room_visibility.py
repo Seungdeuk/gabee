@@ -105,12 +105,15 @@ def test_room_ordinary_record_is_shareable(client, family, monkeypatch):
     assert out["visibility"] == "room"
 
 
-def test_room_without_ai_answer_is_shared_too(client, family, monkeypatch):
-    a, _, group = family
+def test_room_without_ai_answer_is_not_posted(client, family, monkeypatch):
+    """AI 가 답하지 못한 기본 안내는 방에 올리지 않는다(키가 없으면 동의·쿨다운·한도 검사를 거치지 않아 마구 올라갈 수 있다)."""
+    a, b, group = family
     enable_ai(group["id"])
     monkeypatch.setattr(settings, "anthropic_api_key", "")  # AI 를 못 써서 기본 안내가 나온다
     out = _chat(client, a, "room")
-    assert out["source"] == "fallback" and out["visibility"] == "room"
+    assert out["source"] == "fallback" and out["visibility"] == "private"
+    assert out["posted_message_id"] is None and out["private_reasons"]
+    assert client.get("/family-chat/messages", headers=b).json() == []
 
 
 def test_room_sensitive_record_found_but_not_used_is_shareable(client, family, monkeypatch):

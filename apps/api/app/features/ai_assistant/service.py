@@ -63,11 +63,24 @@ def chat(
         confirm_cards=[ConfirmCardOut(**c) for c in r.confirmations],
     )
     if audience == "room":
-        # 가족 채팅방에서 @가비 로 부른 답은 모두 가족 전체방에 공유하고 기록으로 남긴다. 서버가 직접 가비 이름으로 저장한다
-        # (앱이 아무 글이나 가비 이름으로 올리는 입구는 없다). 확인 버튼(confirm_cards)은 질문한 사람 응답에만 담긴다.
-        out.visibility = "room"
-        if out.reply.strip():
-            out.posted_message_id = family_assistant.post_as_assistant(db, group_id, out.reply).id
+        # 가족 채팅방에서 @가비 로 부른 AI 답은 가족 전체방에 공유하고 기록으로 남긴다. 서버가 직접 가비 이름으로 저장한다
+        # (앱이 아무 글이나 가비 이름으로 올리는 입구는 없다). 아래 두 경우는 방에 올리지 않고 질문한 사람에게만 돌려준다.
+        # 이전 앱이 visibility 만 보고 카드·안내를 버리지 않도록 이때는 visibility 를 private 으로 둔다.
+        if out.confirm_cards or out.proposals:
+            # 확인 버튼이 딸린 답은 버튼이 없는 다른 구성원에게 열린 질문으로 남고, 부탁 줄에는 받는 분·수락 현황이 들어 있다
+            out.visibility, out.private_reasons = "private", ["확인 버튼이 필요한 제안"]
+        elif r.source != "ai":
+            # AI 를 못 써서 나온 기본 안내: 키가 없으면 동의·쿨다운·한도 검사(ai_guard)를 거치지 않아 마구 올라갈 수 있다
+            out.visibility, out.private_reasons = (
+                "private",
+                ["AI 가 답하지 못해 기록 검색 결과만 있어요"],
+            )
+        else:
+            out.visibility = "room"
+            if out.reply.strip():
+                out.posted_message_id = family_assistant.post_as_assistant(
+                    db, group_id, out.reply
+                ).id
     return out
 
 
