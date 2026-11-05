@@ -13,11 +13,12 @@
   ];
   const TOKEN_KEY = "gabee_admin_token";
 
-  // 문의·신고 상태: 화면 글자, 표시 색, 버튼 글자, 버튼을 누르면 바뀔 상태
+  // 문의·신고 상태: 화면 글자, 표시 색, 버튼 글자, 버튼을 누르면 바뀔 상태.
+  // 답변 완료(done)는 버튼이 아니라 답변을 저장할 때만 된다(서버가 자동으로 바꾼다).
   const STATUS = {
     new: { label: "접수", cls: "hot", action: "처리 시작", next: "working" },
-    working: { label: "처리 중", cls: "", action: "처리 완료", next: "done" },
-    done: { label: "처리 완료", cls: "ok" },
+    working: { label: "처리 중", cls: "" },
+    done: { label: "답변 완료", cls: "ok" },
   };
   const KIND = { inquiry: "문의", report: "신고" };
   // 공지 종류: 앱의 칩과 같은 이름
@@ -120,7 +121,7 @@
   function statusCells(row) {
     const s = STATUS[row.status];
     const btn = s.next ? `<button type="button" class="btn sm" data-ticket="${esc(row.id)}" data-next="${s.next}">${esc(s.action)}</button>` : "";
-    const reply = `<button type="button" class="btn sm primary" data-reply="${esc(row.id)}">${row.answer ? "답변 고치기" : "답변하기"}</button>`;
+    const reply = `<button type="button" class="btn sm ${row.answer ? "" : "primary"}" data-reply="${esc(row.id)}">${row.answer ? "답변 수정" : "답변하기"}</button>`;
     return `<td><span class="pill ${s.cls}">${esc(s.label)}</span></td><td class="num"><div class="row-actions">${reply}${btn}</div></td>`;
   }
 
@@ -247,15 +248,15 @@
   let supportError = ""; // 마지막 저장 실패 안내
   let lastSupportAt = null; // 문의 목록을 마지막으로 받은 시각
 
-  /** 제목을 누르면 내용과 답변 칸이 펼쳐진다. 내용은 사용자가 직접 쓴 글뿐이다. */
+  /** 제목을 누르면 내용과 답변 칸이 펼쳐진다. 내용은 사용자가 직접 쓴 글뿐이다. 답변을 저장하면 답변 완료가 되고, 다시 저장하면 고쳐진다. */
   function ticketTitle(t) {
-    const answered = t.answered_at ? `<span class="small">답변 ${day(t.answered_at)}</span>` : "<span></span>";
+    const answered = t.answered_at ? `<span class="small">답변 ${day(t.answered_at)}</span>` : '<span class="small">저장하면 답변 완료가 돼요</span>';
     return `<details data-open="${esc(t.id)}" ${t.id === openTicket ? "open" : ""}><summary>${esc(t.title)}</summary>
       <p class="ticket-body">${esc(t.body)}</p>
       <form class="answer" data-answer="${esc(t.id)}">
         <label class="small" for="answer-${esc(t.id)}">답변</label>
         <textarea id="answer-${esc(t.id)}" name="answer" rows="3" maxlength="2000" required>${esc(t.answer || "")}</textarea>
-        <div class="answer-row">${answered}<button type="submit" class="btn sm primary">답변 저장</button></div>
+        <div class="answer-row">${answered}<button type="submit" class="btn sm primary">${t.answer ? "수정 저장" : "답변 저장"}</button></div>
       </form></details>`;
   }
 
@@ -274,7 +275,7 @@
       <section class="grid">
         ${stat("새 문의·신고", `${num(d.new)}건`, "", d.new ? "warn" : "")}
         ${stat("처리 중", `${num(d.working)}건`)}
-        ${stat("처리 완료", `${num(d.done)}건`, "", "up")}
+        ${stat("답변 완료", `${num(d.done)}건`, "", "up")}
         ${stat("신고", `${num(d.reports)}건`, "문의와 따로 셈")}
       </section>
       <section class="card"><h2>문의·신고 목록</h2><p class="small">사용자가 직접 쓴 글만 있어요. 가족 채팅 내용은 담기지 않아요.</p>${table([{ label: "번호" }, { label: "종류" }, { label: "제목 (누르면 내용)" }, { label: "보낸 사람" }, { label: "가족" }, { label: "받은 날" }, { label: "상태" }, { label: "" }], rows)}</section>`;

@@ -185,20 +185,27 @@ def support(db: Session) -> AdminTicketsOut:
 def update_support(
     db: Session, ticket_id: str, body: AdminTicketUpdate, now: datetime | None = None
 ) -> None:
-    """상태와 답변 중 준 것만 바꾼다. 답변을 쓰면 답변 시각도 적는다(마지막 값만 남긴다)."""
+    """상태와 답변 중 준 것만 바꾼다(2026-11-05 결정).
+    - 답변을 저장하면 상태는 자동으로 done(답변 완료)이 되고 답변 시각을 적는다. 답변은 다시 저장해 고칠 수 있다(마지막 값만 남긴다).
+    - 답변 없이는 done 으로 바꿀 수 없다(422 answer_required)."""
     values: dict = {}
     if body.status is not None:
         values["status"] = body.status
     if body.answer is not None:
         values["answer"] = body.answer.strip()
         values["answered_at"] = now or datetime.now(UTC)
+        values["status"] = "done"
     if not values:
         raise ApiError(422, "nothing_to_update", "바꿀 상태나 답변을 보내 주세요")
     ticket = repository.get_support_ticket(db, ticket_id)
-    if ticket is None or not repository.update_support_ticket(db, ticket_id, values):
+    if ticket is None:
+        raise ApiError(404, "not_found", "찾을 수 없어요")
+    if values.get("status") == "done" and not (values.get("answer") or ticket["answer"]):
+        raise ApiError(422, "answer_required", "답변을 저장해야 답변 완료로 바꿀 수 있어요")
+    if not repository.update_support_ticket(db, ticket_id, values):
         raise ApiError(404, "not_found", "찾을 수 없어요")
     answer = values.get("answer")
-    if answer and answer != (ticket["answer"] or ""):  # 새 답변이나 바뀐 답변만 알린다
+    if answer and answer != (ticket["answer"] or ""):  # 새 답변이나 고친 답변만 알린다
         # 문의 제목·내용·답변은 알림에 넣지 않는다(고정 문구). 가족과 무관하게 보낸 사람에게만 간다.
         notify(
             db,

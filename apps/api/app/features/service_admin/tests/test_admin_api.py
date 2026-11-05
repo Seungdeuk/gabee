@@ -385,8 +385,36 @@ def test_support_answer_notifies_sender_without_family(client, make_admin):
 
     client.patch(path, json={"answer": "비밀 답변"}, headers=admin)  # 같은 답변 다시 저장
     assert len(inbox(sender)) == 1
-    client.patch(path, json={"answer": "고친 답변"}, headers=admin)  # 답변을 고치면 다시 알린다
+    r = client.patch(
+        path, json={"answer": "고친 답변"}, headers=admin
+    )  # 답변 수정은 되고 다시 알린다
+    assert r.status_code == 204, r.text
     assert len(inbox(sender)) == 2
+    mine = client.get("/support/tickets/mine", headers=sender).json()["rows"][0]
+    assert (mine["status"], mine["answer"]) == ("done", "고친 답변")
+
+
+def test_support_done_needs_answer(client, make_admin):
+    """답변해야 답변 완료(done)가 된다. 답변을 저장하면 상태를 안 보내도 done 이 된다."""
+    admin, admin_id = _login(client)
+    make_admin(admin_id)
+    sender, _ = _login(client, "minsu_park")
+    tid = client.post(
+        "/support/tickets",
+        json={"kind": "inquiry", "title": "질문", "body": "내용"},
+        headers=sender,
+    ).json()["id"]
+    path = f"/admin/service/support/{tid}"
+    status = lambda: client.get("/support/tickets/mine", headers=sender).json()["rows"][0]["status"]  # noqa: E731
+
+    r = client.patch(path, json={"status": "done"}, headers=admin)
+    assert (r.status_code, r.json()["code"]) == (422, "answer_required")
+    assert status() == "new"
+    assert client.patch(path, json={"answer": "답변"}, headers=admin).status_code == 204
+    assert status() == "done"  # 답변만 보내도 답변 완료
+    # 답변이 있으면 다시 처리 중으로 돌렸다가 done 으로 바꾸는 것은 된다
+    assert client.patch(path, json={"status": "working"}, headers=admin).status_code == 204
+    assert client.patch(path, json={"status": "done"}, headers=admin).status_code == 204
 
 
 def test_notice_write_edit_delete(client, make_admin):
