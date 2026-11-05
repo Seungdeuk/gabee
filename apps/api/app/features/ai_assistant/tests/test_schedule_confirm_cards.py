@@ -261,3 +261,53 @@ def test_whole_family_share_always_targets_everyone_even_if_the_model_picks_fewe
     for headers in (b, third):
         titles = [e["title"] for e in client.get("/schedule/events", headers=headers).json()]
         assert "엄마 생신" in titles
+
+
+def _confirm_from_room(client, headers, card, share=True, post_to_room=True):
+    return client.post(
+        "/schedule/agent/confirm",
+        json={"action": card["pending_action"], "share": share, "post_to_room": post_to_room},
+        headers=headers,
+    )
+
+
+def _room_texts(client, headers):
+    return [m["text"] for m in client.get("/family-chat/messages", headers=headers).json()]
+
+
+def test_shared_registration_confirmed_from_the_room_tells_the_family(
+    client, setup, schedule_llm, monkeypatch
+):
+    """확인 질문은 방에 올리지 않고, 질문한 사람이 공유 등록을 확인하면 가비가 결과를 방에 알린다(문장은 서버가 만든다)."""
+    a, b, other = setup
+    _main(monkeypatch)
+    schedule_llm.data = _register_data(
+        title="가족 모임", date=_tomorrow(), start_time="18:00:00", kind=1, share_ids=[other]
+    )
+    card = _ask(client, a, audience="room")["confirm_cards"][0]
+    assert _room_texts(client, b) == []  # 확인하기 전에는 방에 아무것도 없다
+    assert _confirm_from_room(client, a, card).status_code == 200
+    [msg] = client.get("/family-chat/messages", headers=b).json()
+    assert msg["is_assistant"] is True
+    assert "가족 모임" in msg["text"] and "1명" in msg["text"] and "공유" in msg["text"]
+
+
+def test_confirm_posts_nothing_when_private_or_not_from_the_room(
+    client, setup, schedule_llm, monkeypatch
+):
+    a, b, other = setup
+    _main(monkeypatch)
+    schedule_llm.data = _register_data(
+        title="가족 모임", date=_tomorrow(), kind=1, share_ids=[other]
+    )
+    card = _ask(client, a, audience="room")["confirm_cards"][0]
+    assert _confirm_from_room(client, a, card, share=False).status_code == 200  # 나만 등록
+    assert _room_texts(client, b) == []
+    schedule_llm.data = _register_data(
+        title="가족 저녁", date=_tomorrow(), kind=1, share_ids=[other]
+    )
+    card = _ask(client, a, audience="room")["confirm_cards"][0]
+    assert (
+        _confirm_from_room(client, a, card, post_to_room=False).status_code == 200
+    )  # 방에서 부른 게 아님
+    assert _room_texts(client, b) == []

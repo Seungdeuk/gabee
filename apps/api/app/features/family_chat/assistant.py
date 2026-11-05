@@ -9,11 +9,13 @@
 
 import re
 import secrets
+from datetime import date
 
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.features.family_group.models import User
+from app.shared import room_assistant
 
 from . import repository as repo
 from .models import ASSISTANT_NAME, ASSISTANT_USER_ID, Message
@@ -45,11 +47,25 @@ def get_or_create_assistant(db: Session) -> User:
 
 _CITATION = re.compile(r"\s*\[\d+\]")
 _HEADING = re.compile(r"^[ 	]{0,3}#{1,6}[ 	]*", re.MULTILINE)
+_BULLET = re.compile(r"^[ 	]*[-*][ 	]+", re.MULTILINE)
+_LIST_DATE = re.compile(r"^• (\d{4})-(\d{2})-(\d{2})[:：]?[ 	]*", re.MULTILINE)
+_BLANK_LINES = re.compile(r"\n{3,}")
+
+
+def _short_date(match: re.Match) -> str:
+    year, month, day = match.groups()
+    # 올해 날짜는 연도를 빼서 줄을 짧게 한다(말풍선이 좁아 날짜가 길면 줄이 어색하게 꺾인다)
+    return f"• {month}/{day} " if int(year) == date.today().year else f"• {year}-{month}-{day} "
 
 
 def plain(text: str) -> str:
-    """방 메시지는 일반 글이라 개인 대화 화면이 그리는 마크다운 표시('## 제목', '**굵게**')를 글자 그대로 보이지 않게 뺀다. 목록의 '- '는 그대로 둔다."""
-    return _HEADING.sub("", text).replace("**", "")
+    """방 메시지는 일반 글이라 개인 대화 화면이 그리는 마크다운 표시('## 제목', '**굵게**')를 글자 그대로 보이지 않게 뺀다.
+    읽기 쉽게 목록 줄의 '- '·'* ' 는 '• ' 로, 목록 줄 맨 앞의 올해 날짜(2026-11-04)는 '11/04' 로 줄이고, 빈 줄은 한 줄까지만 둔다.
+    번호 목록과 문장 속 날짜는 그대로 둔다."""
+    text = _HEADING.sub("", text).replace("**", "")
+    text = _BULLET.sub("• ", text)
+    text = _LIST_DATE.sub(_short_date, text)
+    return _BLANK_LINES.sub("\n\n", text)
 
 
 def clip(text: str) -> str:
@@ -66,3 +82,6 @@ def post_as_assistant(db: Session, group_id: str, text: str) -> MessageOut:
         db, Message(group_id=group_id, room_id=room.id, user_id=assistant.id, text=clip(text))
     )
     return message_out(message, assistant.name)
+
+
+room_assistant.register_poster(lambda db, group_id, text: post_as_assistant(db, group_id, text).id)

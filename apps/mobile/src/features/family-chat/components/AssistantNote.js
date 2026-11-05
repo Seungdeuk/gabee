@@ -44,7 +44,7 @@ export default function AssistantNote({ note, onRetry, onDismiss, onResolveCard,
             </Text>
           )}
           {cards.map((card, i) => (
-            <ScheduleConfirmCard key={`confirm-${i}`} card={card} onResolve={(status, text) => onResolveCard?.(note.id, i, status, text)} onShareToRoom={onShareToRoom} />
+            <ScheduleConfirmCard key={`confirm-${i}`} card={card} onResolve={(status, text) => onResolveCard?.(note.id, i, status, text)} onShareToRoom={onShareToRoom} postToRoom />
           ))}
           {error || note.state === "info" || note.state === "reply" ? (
             <View style={styles.actions}>

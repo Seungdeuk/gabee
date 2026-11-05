@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 from app.shared.auth import ensure_group_member
 
 from ..constants import SUGGESTION_DISMISSED
-from . import chat, checks, habits, modify, reader, register, request_flow, suggest
+from . import chat, checks, habits, modify, reader, register, request_flow, room_notice, suggest
 from . import members as members_mod
 from . import period as period_mod
 from .schemas import AgentRequest, AgentResponse, Card, ConfirmRequest, SuggestionOut
@@ -259,7 +259,14 @@ def handle(
 
 
 def confirm(db: Session, user_id: str, group_id: str, body: ConfirmRequest) -> AgentResponse:
-    """확인 카드의 버튼. AI 를 부르지 않는다. 앱이 돌려준 내용은 믿지 않고 처음부터 다시 검증한다."""
+    """확인 카드의 버튼. AI 를 부르지 않는다. 앱이 돌려준 내용은 믿지 않고 처음부터 다시 검증한다.
+    가족방 @가비 카드(`post_to_room`)에서 공유 등록을 마쳤으면 결과를 방에 알린다."""
+    response = _confirm(db, user_id, group_id, body)
+    room_notice.post_if_needed(db, group_id, body, response)
+    return response
+
+
+def _confirm(db: Session, user_id: str, group_id: str, body: ConfirmRequest) -> AgentResponse:
     ensure_group_member(db, user_id, group_id)
     action = body.action
     if action.type == "edit":

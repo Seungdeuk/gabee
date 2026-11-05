@@ -138,9 +138,37 @@ def test_markdown_marks_are_removed_from_the_room_message():
     text = "## 이번 달 지출\n\n총액은 **205,000원**이에요.\n\n- 식비: 160,000원\n- 교통: 45,000원"
     assert (
         assistant.clip(text)
-        == "이번 달 지출\n\n총액은 205,000원이에요.\n\n- 식비: 160,000원\n- 교통: 45,000원"
+        == "이번 달 지출\n\n총액은 205,000원이에요.\n\n• 식비: 160,000원\n• 교통: 45,000원"
     )
     assert assistant.clip("가격은 #1 입니다") == "가격은 #1 입니다"  # 줄 맨 앞이 아닌 # 는 그대로
+
+
+def test_list_lines_get_bullets_and_short_dates_for_readability():
+    from datetime import date
+
+    year = date.today().year
+    text = (
+        f"**{year}년 11월 지출 내역** (총 203,800원, 5건)\n\n"
+        f"- {year}-11-04: 지우 문구류 9,500원 (기타, 시험 엄마 결제)\n"
+        f"* {year}-11-03: 교통카드 충전 30,000원\n"
+        "- 2024-01-05: 작년 영수증 1,000원\n\n\n\n"
+        "카테고리별 합계\n"
+        "1. 식비 151,500원"
+    )
+    assert (
+        assistant.clip(text)
+        == (
+            f"{year}년 11월 지출 내역 (총 203,800원, 5건)\n\n"
+            "• 11/04 지우 문구류 9,500원 (기타, 시험 엄마 결제)\n"
+            "• 11/03 교통카드 충전 30,000원\n"
+            "• 2024-01-05 작년 영수증 1,000원\n\n"  # 올해가 아닌 날짜는 연도를 지키고, 빈 줄은 한 줄까지만
+            "카테고리별 합계\n"
+            "1. 식비 151,500원"  # 번호 목록은 그대로
+        )
+    )
+    assert (
+        assistant.clip("납부기한은 2026-11-20 까지예요") == "납부기한은 2026-11-20 까지예요"
+    )  # 문장 속 날짜는 건드리지 않는다
 
 
 def test_long_answer_is_clipped_to_the_message_limit():

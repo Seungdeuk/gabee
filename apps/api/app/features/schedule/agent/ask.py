@@ -12,7 +12,6 @@
 import re
 import threading
 import time
-from datetime import date
 
 from sqlalchemy.orm import Session
 
@@ -21,7 +20,6 @@ from app.shared.llm.agent import AgentReply, Post
 
 from . import handler
 from . import members as members_mod
-from .prompts import WEEKDAYS
 from .schemas import AgentRequest, AgentResponse, Draft
 
 DESCRIPTION = (
@@ -158,38 +156,6 @@ def _keep_draft(group_id: str, user_id: str, response: AgentResponse) -> None:
             )
 
 
-SHARE_SELECT_TITLE = "방에 공유할 항목을 골라 주세요"
-MAX_SHARE_ITEMS = 20
-
-
-def _share_line(item: dict) -> str:
-    """방에 올릴 한 줄: 'MM/DD(요일) HH:MM 제목'. 시간이 없으면 날짜와 제목만. 관련 구성원 이름은 넣지 않는다."""
-    day = date.fromisoformat(item["date"])
-    clock = item.get("start_time") or item.get("time") or ""
-    when = f"{day:%m/%d}({WEEKDAYS[day.weekday()]})"
-    return " ".join(x for x in (when, clock, item.get("title", "")) if x)
-
-
-def _share_select(events: list[dict], requests_: list[dict]) -> dict | None:
-    """가족방 조회 결과를 방에 올릴지 사용자가 고르는 카드. 후보가 없으면 만들지 않는다."""
-    items = [
-        {"id": str(x["id"]), "line": _share_line(x)}
-        for x in [*events, *requests_]
-        if x.get("id") and x.get("date")
-    ][:MAX_SHARE_ITEMS]
-    if not items:
-        return None
-    return {
-        "kind": "schedule",
-        "action": "share_select",
-        "title": SHARE_SELECT_TITLE,
-        "lines": [],
-        "shared_with": [],
-        "pending_action": {},
-        "items": items,
-    }
-
-
 def _reply(response: AgentResponse, room: bool = False) -> AgentReply:
     """일정 에이전트의 응답을 메인이 사용자에게 전할 글로 바꾼다. 실행되지 않은 일을 실행됐다고 말하게 하지 않는다."""
     if response.intent == "not_schedule":
@@ -216,13 +182,12 @@ def _reply(response: AgentResponse, room: bool = False) -> AgentReply:
     if asked is not None or listed is not None:  # 일정 질의에는 일정 줄과 부탁 줄이 함께 올 수 있다
         events = listed.data.get("events", [])[:MAX_EVENTS_SHOWN] if listed else []
         requests_ = asked.data.get("requests", [])[:MAX_EVENTS_SHOWN] if asked else []
+        # 가족방 답은 방에 저장되므로 부탁 줄에는 날짜·시간·제목만 넣는다(받는 분·수락 현황 이름은 뺀다)
+        request_line = _event_line if room else _request_summary
         lines = "\n".join(
-            [*(_event_line(e) for e in events), *(_request_summary(r) for r in requests_)]
+            [*(_event_line(e) for e in events), *(request_line(r) for r in requests_)]
         )
         text = f"{response.text}\n{lines}".strip()
-        card = _share_select(events, requests_) if room else None
-        if card is not None:  # 가족방: 나에게만 보이는 답에 방에 올릴 항목을 고르는 카드를 붙인다
-            return AgentReply(text, user_text=text, confirmations=[card])
         return AgentReply(text, user_text=text)
     if response.text:
         return AgentReply(response.text, user_text=response.text)

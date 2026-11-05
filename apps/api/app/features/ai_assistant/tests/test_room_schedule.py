@@ -104,7 +104,7 @@ def _me(client, headers):
     return client.get("/family-group/me", headers=headers).json()["id"]
 
 
-def test_room_query_shows_only_shared_events_and_offers_a_share_select_card(
+def test_room_query_shows_only_shared_events_and_is_posted_to_the_room(
     client, family, schedule_llm, monkeypatch
 ):
     a, b, group = family
@@ -115,16 +115,18 @@ def test_room_query_shows_only_shared_events_and_offers_a_share_select_card(
     _main_llm(monkeypatch, "이번 주 일정 알려줘")
     out = _chat(client, a, "이번 주 일정 알려줘", audience="room")
 
-    # 공유 선택 카드가 딸린 조회 답은 방에 올리지 않는다(부탁 줄에는 받는 분·수락 현황이 들어 있다). 고른 줄만 질문한 사람 이름으로 올린다
-    assert out["visibility"] == "private" and out["posted_message_id"] is None
+    assert (
+        out["visibility"] == "room" and out["confirm_cards"] == []
+    )  # 공유 선택 카드 없이 방에 저장한다
     prompt = schedule_llm.calls[-1]
     assert "치과" in prompt and "혼자 병원" not in prompt  # 공동 일정만 읽는다
     assert "[알림] 가족 채팅방" in prompt
-    card = out["confirm_cards"][0]
-    assert card["action"] == "share_select" and card["pending_action"] == {}
-    assert [i["id"] for i in card["items"]] == [shared["id"]]
-    line = card["items"][0]["line"]
-    assert line.endswith("14:00 치과") and "수진" not in line  # 제목·날짜·시간만, 구성원 이름 없음
+    [posted] = client.get("/family-chat/messages", headers=b).json()
+    assert (
+        posted["is_assistant"] is True
+        and "치과" in posted["text"]
+        and "혼자 병원" not in posted["text"]
+    )
 
 
 def test_personal_chat_is_unchanged(client, family, schedule_llm, monkeypatch):
@@ -150,7 +152,7 @@ def test_room_query_without_matches_has_no_card(client, family, schedule_llm, mo
     assert out["confirm_cards"] == []
 
 
-def test_room_query_can_offer_a_sent_request_too(client, family, schedule_llm, monkeypatch):
+def test_room_query_lists_a_sent_request_without_names(client, family, schedule_llm, monkeypatch):
     a, b, group = family
     enable_ai(group["id"])
     sent = client.post(
@@ -161,9 +163,15 @@ def test_room_query_can_offer_a_sent_request_too(client, family, schedule_llm, m
     schedule_llm.data = _query(request_ids=[sent["id"]], reply="장 부탁이 있어요")
     _main_llm(monkeypatch, "내일 뭐 있어?")
     out = _chat(client, a, "내일 뭐 있어?", audience="room")
-    items = out["confirm_cards"][0]["items"]
-    assert [i["id"] for i in items] == [sent["id"]]
-    assert items[0]["line"].endswith("장 같이 봐줘") and "수진" not in items[0]["line"]
+    assert out["confirm_cards"] == [] and out["visibility"] == "room"
+    [posted] = client.get("/family-chat/messages", headers=b).json()
+    assert "장 같이 봐줘" in posted["text"]
+    # 부탁을 받은 사람 이름과 수락 현황은 방에 올리지 않는다
+    assert (
+        "수진" not in posted["text"]
+        and "받는 분" not in posted["text"]
+        and "waiting" not in posted["text"]
+    )
 
 
 def test_room_register_is_shared_with_the_other_members(client, family, schedule_llm, monkeypatch):

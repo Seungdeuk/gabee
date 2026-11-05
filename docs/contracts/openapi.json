@@ -17111,6 +17111,11 @@
             "type": "boolean",
             "title": "Share",
             "default": true
+          },
+          "post_to_room": {
+            "type": "boolean",
+            "title": "Post To Room",
+            "default": false
           }
         },
         "type": "object",

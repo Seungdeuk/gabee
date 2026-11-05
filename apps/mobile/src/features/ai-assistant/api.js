@@ -67,11 +67,12 @@ export async function sendMessage(text, history = []) {
  * 채팅의 일정 확인 카드(가족 공유 등록·수정·삭제)의 버튼을 눌렀을 때. AI 를 부르지 않고, 서버는 돌려받은 내용을 처음부터 다시 검증한다.
  * @param {{ pendingAction: object }} card mapConfirmCards 가 만든 카드
  * @param {boolean} share 등록일 때 true 면 공유 대상에게도 등록, false 면 내 일정만
+ * @param {boolean} [postToRoom] 가족 채팅방 @가비 의 카드면 true: 공유 등록을 마치면 서버가 결과를 가비 이름으로 방에 알린다(문장은 서버가 만든다)
  * @returns {Promise<{ text: string }>} 사용자에게 보여 줄 결과 한 줄
  */
-export async function confirmScheduleAction(card, share) {
+export async function confirmScheduleAction(card, share, postToRoom = false) {
   if (!isApiConfigured()) return { text: "(임시) 반영했어요." };
-  const res = await apiFetch("/schedule/agent/confirm", { method: "POST", body: { action: card.pendingAction, share: Boolean(share) } });
+  const res = await apiFetch("/schedule/agent/confirm", { method: "POST", body: { action: card.pendingAction, share: Boolean(share), post_to_room: Boolean(postToRoom) } });
   return { text: confirmResultText(res) };
 }
 
@@ -80,10 +81,11 @@ export async function confirmScheduleAction(card, share) {
  * 제안 토큰은 10분 안에 한 번만 쓸 수 있고, 서버가 사용자·가족·탭을 다시 확인한다.
  * @param {{ kind: string, tab?: string, token?: string, pendingAction?: object }} card
  * @param {boolean} share 일정 등록일 때만 쓰는 값
+ * @param {boolean} [postToRoom] 가족 채팅방 @가비 의 일정 카드면 true(정산·돌봄 제안은 쓰지 않는다)
  * @returns {Promise<{ text: string }>}
  */
-export async function confirmCardAction(card, share) {
-  if (card.kind !== "proposal") return confirmScheduleAction(card, share);
+export async function confirmCardAction(card, share, postToRoom = false) {
+  if (card.kind !== "proposal") return confirmScheduleAction(card, share, postToRoom);
   if (!isApiConfigured()) return { text: "(임시) 반영했어요." };
   const res = await apiFetch(`/${card.tab}/agent/confirm`, { method: "POST", body: { token: card.token } });
   return { text: res?.summary ? `반영했어요 · ${res.summary}` : "반영했어요." };
