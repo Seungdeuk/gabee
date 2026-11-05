@@ -3,15 +3,29 @@
 알림함 사건은 `app/shared/notifications.py` 의 `notify()` 가, 알림함에 남기지 않는 푸시는 `push_only()` 가 부른다.
 문구는 부르는 쪽이 정한다 — 알림함 사건은 고정 템플릿 제목만 쓴다. 토큰은 로그에 남기지 않는다."""
 
+import logging
 from collections.abc import Iterable
-from datetime import datetime, time
+from concurrent.futures import ThreadPoolExecutor
+from datetime import UTC, datetime, time
 from typing import Any, TypedDict
 from zoneinfo import ZoneInfo
 
-from sqlalchemy import select
+import httpx
+from sqlalchemy import delete, event, select
 from sqlalchemy.orm import Session
 
+from app.shared.config import settings
+from app.shared.db import SessionLocal
 from app.shared.push_models import PushSetting, PushToken
+
+logger = logging.getLogger(__name__)
+
+EXPO_SEND_URL = "https://exp.host/--/api/v2/push/send"
+ANDROID_CHANNEL_ID = "default"
+_BATCH = 100  # Expo 가 한 번에 받는 최대 개수
+_TIMEOUT_SECONDS = 5
+_PENDING_KEY = "pending_push"
+_executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="push")
 
 # 방해금지 시간은 이 시간대로 본다(앱 사용자가 모두 한국 시간대라는 가정).
 _TZ = ZoneInfo("Asia/Seoul")
@@ -85,3 +99,111 @@ def plan_recipients(
             PushPlan(user_id=row.user_id, token=row.token, title=title, body=body, data=data)
         )
     return plans
+
+
+def queue_push(
+    db: Session,
+    *,
+    user_ids: Iterable[str],
+    kind: str,
+    title: str,
+    body: str | None,
+    data: dict[str, Any],
+) -> None:
+    """이 세션이 커밋되면 보낼 푸시를 쌓아 둔다(차단 규칙은 발송 직전에 적용). 꺼져 있으면 아무것도 하지 않는다."""
+    if not settings.push_enabled:
+        return
+    db.info.setdefault(_PENDING_KEY, []).append(
+        {"user_ids": list(user_ids), "kind": kind, "title": title, "body": body, "data": data}
+    )
+
+
+def push_only(
+    db: Session,
+    *,
+    user_ids: Iterable[str],
+    kind: str,
+    title: str,
+    body: str | None,
+    data: dict[str, Any],
+) -> None:
+    """알림함에 남기지 않고 푸시만 보낸다(소통 메시지처럼 알림함에서 제외하는 사건). 커밋 뒤에 발송한다."""
+    queue_push(db, user_ids=user_ids, kind=kind, title=title, body=body, data=data)
+
+
+def _submit(fn, *args) -> None:
+    """발송을 백그라운드 스레드에서 실행한다(시험은 이 함수를 그 자리 실행으로 바꾼다)."""
+    _executor.submit(fn, *args)
+
+
+def _post(messages: list[dict[str, Any]]) -> dict[str, Any]:
+    """Expo 푸시 API 에 한 묶음을 보내고 JSON 응답을 돌려준다(시험은 이 함수를 바꾼다)."""
+    headers = {"Accept": "application/json", "Content-Type": "application/json"}
+    if settings.push_expo_access_token:
+        headers["Authorization"] = f"Bearer {settings.push_expo_access_token}"
+    response = httpx.post(EXPO_SEND_URL, json=messages, headers=headers, timeout=_TIMEOUT_SECONDS)
+    response.raise_for_status()
+    return response.json()
+
+
+def _message(plan: PushPlan) -> dict[str, Any]:
+    message: dict[str, Any] = {
+        "to": plan["token"],
+        "title": plan["title"],
+        "data": plan["data"],
+        "channelId": ANDROID_CHANNEL_ID,
+        "priority": "high",
+        "sound": "default",
+    }
+    if plan["body"] is not None:
+        message["body"] = plan["body"]
+    return message
+
+
+def _deliver(items: list[dict[str, Any]]) -> None:
+    """쌓인 푸시를 실제로 보낸다. 어떤 오류도 밖으로 내지 않는다(로그에는 예외 종류만, 토큰·문구는 남기지 않는다)."""
+    try:
+        now = datetime.now(UTC)
+        with SessionLocal() as db:
+            plans: list[PushPlan] = []
+            for item in items:
+                plans += plan_recipients(db, now=now, **item)
+        for start in range(0, len(plans), _BATCH):
+            chunk = plans[start : start + _BATCH]
+            _send_chunk(chunk)
+    except Exception as exc:
+        logger.warning("push deliver failed error=%s", type(exc).__name__)
+
+
+def _send_chunk(chunk: list[PushPlan]) -> None:
+    try:
+        result = _post([_message(p) for p in chunk])
+        tickets = result["data"]
+        if len(tickets) != len(chunk):
+            raise ValueError("ticket count mismatch")
+    except Exception as exc:
+        logger.warning("push send failed error=%s", type(exc).__name__)
+        return
+    dead = [
+        plan["token"]
+        for plan, ticket in zip(chunk, tickets, strict=True)
+        if isinstance(ticket, dict)
+        and ticket.get("status") == "error"
+        and (ticket.get("details") or {}).get("error") == "DeviceNotRegistered"
+    ]
+    if dead:
+        with SessionLocal() as db:
+            db.execute(delete(PushToken).where(PushToken.token.in_(dead)))
+            db.commit()
+
+
+@event.listens_for(Session, "after_commit")
+def _send_after_commit(session: Session) -> None:
+    pending = session.info.pop(_PENDING_KEY, None)
+    if pending:
+        _submit(_deliver, pending)
+
+
+@event.listens_for(Session, "after_rollback")
+def _drop_after_rollback(session: Session) -> None:
+    session.info.pop(_PENDING_KEY, None)

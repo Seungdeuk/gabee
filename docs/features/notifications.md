@@ -27,6 +27,12 @@
 - 푸시 설정·토큰 API(푸시 1단계 서버 A, 발송은 서버 B 에서 연결)
   - `GET`·`PUT /notifications/push-settings`: 내 푸시 설정(켜기·끄기 `enabled`, 내용 표시 방식 `preview_mode` full/sender/hidden, 끈 분류 `muted_kinds`, 방해금지 `quiet_start`·`quiet_end`). 저장한 적이 없으면 기본값(줄을 만들지 않는다). 방해금지 시작·끝은 둘 다 있거나 둘 다 없어야 한다(아니면 422).
   - `PUT /notifications/push-token`(204): 이 기기의 Expo 푸시 토큰 등록. 같은 토큰이 이미 있으면 소유자·정보를 갱신한다(기기를 다른 사람이 쓰면 소유자가 옮겨 간다). 형식이 다르면 422. `DELETE /notifications/push-token`(204): 내 토큰만 해제(없어도 204).
+- 푸시 발송(푸시 1단계 서버 B, `app/shared/push.py`, 결정 `docs/adr/0012-push-via-expo.md`)
+  - `PUSH_ENABLED`(기본 false)를 켜면 `notify()` 가 알림을 저장한 **커밋 뒤에만** Expo 푸시 API 로 보낸다(롤백이면 나가지 않는다). 백그라운드 스레드에서 한 번에 100개씩, 타임아웃 5초, 재시도 없음. 푸시 실패는 알림함 저장·원래 기능에 영향이 없다.
+  - 푸시에는 알림 제목(고정 문구)과 이동용 `data`(`notification_id`·`kind`·`event`·`target_type`·`target_id`)만 담고 본문은 보내지 않는다. 토큰은 로그에 남기지 않는다.
+  - 보내기 전에 받는 사람마다 푸시 설정을 적용한다: 푸시를 껐거나, 그 분류를 껐거나, 방해금지 시간(한국 시간 기준, 자정을 넘기는 구간 포함, 끝 시각은 미포함)이면 뺀다. 행동한 본인은 `notify()` 단계에서 이미 빠진다. 기기가 여러 개면 모두 받는다.
+  - Expo 가 `DeviceNotRegistered` 로 응답한 토큰은 `push_tokens` 에서 지운다.
+  - `push_only()` 는 알림함에 저장하지 않고 푸시만 보낸다(소통 메시지용, 2단계에서 연결).
 - 2차로 미룬 것: 일정·가계·돌봄·AI 기록·구성원 변경.
 
 ## 앱
