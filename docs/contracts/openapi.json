@@ -13214,6 +13214,161 @@
         }
       }
     },
+    "/admin/ops/errors": {
+      "get": {
+        "tags": [
+          "ops-admin"
+        ],
+        "summary": "Get Errors",
+        "operationId": "get_errors_admin_ops_errors_get",
+        "parameters": [
+          {
+            "name": "range",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "1h",
+                "24h",
+                "7d"
+              ],
+              "type": "string",
+              "default": "24h",
+              "title": "Range"
+            }
+          },
+          {
+            "name": "kind",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "server_error",
+                    "auth_failure"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Kind"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "default": 50,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorListOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/admin/ops/errors/{event_id}": {
+      "get": {
+        "tags": [
+          "ops-admin"
+        ],
+        "summary": "Get Error",
+        "operationId": "get_error_admin_ops_errors__event_id__get",
+        "parameters": [
+          {
+            "name": "event_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$",
+              "title": "Event Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEventOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/admin/me": {
       "get": {
         "tags": [
@@ -14300,6 +14455,7 @@
               "delete",
               "check",
               "request",
+              "habit",
               "not_schedule"
             ],
             "title": "Intent"
@@ -15513,7 +15669,8 @@
               "delete_confirm",
               "suggestion",
               "request_confirm",
-              "request_list"
+              "request_list",
+              "habit_confirm"
             ],
             "title": "Type"
           },
@@ -16441,6 +16598,7 @@
               "request_register",
               "request_edit",
               "request_cancel",
+              "habit_check",
               "share_select"
             ],
             "title": "Action"
@@ -16660,6 +16818,176 @@
         },
         "type": "object",
         "title": "EmailVerifiedOut"
+      },
+      "ErrorEventOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "server_error",
+              "auth_failure"
+            ],
+            "title": "Kind"
+          },
+          "severity": {
+            "type": "string",
+            "title": "Severity"
+          },
+          "event_type": {
+            "type": "string",
+            "title": "Event Type"
+          },
+          "method": {
+            "type": "string",
+            "title": "Method"
+          },
+          "route": {
+            "type": "string",
+            "title": "Route"
+          },
+          "status": {
+            "type": "integer",
+            "title": "Status"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          },
+          "location": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Location"
+          },
+          "occurrences": {
+            "type": "integer",
+            "title": "Occurrences"
+          },
+          "first_seen": {
+            "type": "string",
+            "format": "date-time",
+            "title": "First Seen"
+          },
+          "last_seen": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Last Seen"
+          },
+          "last_trace_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Trace Id"
+          },
+          "handling_status": {
+            "type": "string",
+            "title": "Handling Status"
+          },
+          "assignee_label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Assignee Label"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "kind",
+          "severity",
+          "event_type",
+          "method",
+          "route",
+          "status",
+          "message",
+          "location",
+          "occurrences",
+          "first_seen",
+          "last_seen",
+          "last_trace_id",
+          "handling_status",
+          "assignee_label",
+          "note"
+        ],
+        "title": "ErrorEventOut",
+        "description": "오류 이벤트 하나(같은 지문의 발생을 합친 기록). 메시지는 이미 가린 값이고 인증 실패는 메시지가 비어 있다."
+      },
+      "ErrorListOut": {
+        "properties": {
+          "range": {
+            "type": "string",
+            "enum": [
+              "1h",
+              "24h",
+              "7d"
+            ],
+            "title": "Range"
+          },
+          "since": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Since"
+          },
+          "errors_enabled": {
+            "type": "boolean",
+            "title": "Errors Enabled"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          },
+          "truncated": {
+            "type": "boolean",
+            "title": "Truncated"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ErrorEventOut"
+            },
+            "type": "array",
+            "title": "Items"
+          }
+        },
+        "type": "object",
+        "required": [
+          "range",
+          "since",
+          "errors_enabled",
+          "total",
+          "truncated",
+          "items"
+        ],
+        "title": "ErrorListOut"
       },
       "EventCreate": {
         "properties": {
@@ -19496,7 +19824,8 @@
               "register",
               "request_register",
               "request_edit",
-              "request_cancel"
+              "request_cancel",
+              "habit_check"
             ],
             "title": "Type"
           },
@@ -19532,6 +19861,31 @@
             "type": "array",
             "maxItems": 20,
             "title": "To Ids"
+          },
+          "habit_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 20,
+            "title": "Habit Ids"
+          },
+          "habit_op": {
+            "type": "string",
+            "enum": [
+              "",
+              "mark",
+              "unmark"
+            ],
+            "title": "Habit Op",
+            "default": ""
+          },
+          "amount": {
+            "type": "integer",
+            "maximum": 100.0,
+            "minimum": 1.0,
+            "title": "Amount",
+            "default": 1
           }
         },
         "type": "object",

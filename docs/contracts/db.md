@@ -65,7 +65,8 @@ docker compose 의 개발용 PostgreSQL(`pgvector/pgvector:pg16` 이미지, `pgv
 | knowledge_item_reads | ai_assistant/knowledge | 구성원별 문서 읽음 기록. 기본키 (item_id → knowledge_items.id ON DELETE CASCADE, user_id → users.id), read_at. 문서 상세를 열면 한 행이 생기고 문서를 지우면 함께 지운다. `group_id` 없이 `item_id` 로 가족을 구분하며(문서가 가족에 속한다), 읽음은 본인 것만 조회한다. Alembic 리비전 27c7716f7207 |
 
 | ops_request_metrics | ops_admin | 운영 관리자 페이지용 요청 지표 집계. 구간 시작 `bucket_start`(기본 5분), `method`, 경로 패턴 `route`(`/items/{id}` 또는 `unmatched`), 상태코드 구분 `status_class`(2xx~5xx)별 요청 수·지연 시간 합·최댓값. 기본키는 앞의 네 컬럼이라 인스턴스가 여러 개여도 같은 행에 더해진다. 보관 90일(기본, `OPS_METRICS_RETENTION_DAYS`). URL 원문·본문·쿼리·헤더·사용자·가족 id 를 담는 컬럼이 없다. 기본 꺼짐(`OPS_METRICS_ENABLED`). Alembic 리비전 fcf5ce5e68e1 |
+| ops_error_events | ops_admin | 운영 관리자 페이지용 오류 이벤트. 5xx·처리되지 않은 예외·401/403 을 지문 `fingerprint`(종류·유형·경로 패턴·상태코드·가린 메시지의 sha256)별로 한 행에 합쳐 횟수 `occurrences`, 처음·마지막 발생 시각, 마지막 trace id 를 둔다. `kind`(server_error/auth_failure)·`severity`(error/warning)·`event_type`(예외 클래스 이름 또는 응답 code)·`method`·경로 패턴 `route`·`status`, 가린 메시지 `message`(200자, 인증 실패는 빈 값)와 발생 위치 `location`(`app/...py:줄`, 변수 값 없음). 처리 상태 `handling_status`·`assignee_label`·`note` 는 2단계에서 쓰며 지금은 비어 있다. 보관 90일(기본, `OPS_ERRORS_RETENTION_DAYS`, 마지막 발생 기준). 사용자·가족 id, URL 원문, 본문·헤더를 담는 컬럼이 없다. 기본 꺼짐(`OPS_ERRORS_ENABLED`). Alembic 리비전 2110458d9b12 |
 
-모든 가족 기능 테이블은 `group_id`로 가족 그룹을 구분하고, 다른 그룹의 데이터는 볼 수 없다. 단 `ops_request_metrics`는 가족 데이터가 아닌 서버 지표라 `group_id`가 없다.
+모든 가족 기능 테이블은 `group_id`로 가족 그룹을 구분하고, 다른 그룹의 데이터는 볼 수 없다. 단 `ops_request_metrics`·`ops_error_events`는 가족 데이터가 아닌 서버 지표·오류 기록이라 `group_id`가 없다.
 
 "(PR 4-A, 스키마만)"로 표시한 컬럼·테이블은 통합 인증·가족 구성원 기능(`docs/requirements/family-group.md`)을 위한 스키마만 미리 만든 것이고, 이를 채우는 회원가입/로그인/소셜 연동/초대 승인 API는 PR 4-B~4-F에서 추가된다 — 지금은 기존 API 동작이 바뀌지 않는다.

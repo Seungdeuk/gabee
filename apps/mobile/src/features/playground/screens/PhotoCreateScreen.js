@@ -1,0 +1,361 @@
+import { Image } from "expo-image";
+import * as ImagePicker from "expo-image-picker";
+import { useRouter } from "expo-router";
+import { useMemo, useRef, useState } from "react";
+import { Modal, PanResponder, Pressable, StyleSheet, Switch, Text, TextInput, View } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
+
+import Button from "@/shared/components/Button";
+import { colors, font, fonts, radius } from "@/theme";
+
+import PlayScreen from "../components/PlayScreen";
+import { AudiencePicker, Chip, RevealNote, Toggle } from "../components/quiz/QuizParts";
+
+const ZOOMS = [4, 6, 8, 16, 32];
+const ASKS = { "직접 쓰기": "", 어디서: "이 사진, 어디서 찍었을까?", 언제: "이 사진, 언제 찍었을까?", 누가: "이 사진에 누가 있을까?" }; // 보여 주는 순서도 이 순서
+const INSET_W = 120; // 원본 사진 위에 겹쳐 보이는 확대 미리보기 너비
+const INSET_GAP = 8;
+const STAGE_H = 260;
+const NOTE_MAX = 100;
+const Q_MAX = 20; // 질문 글자 수: 맞히는 화면에서 질문이 한 줄에 들어가는 길이
+// 가족 앨범 시안(실제로는 가족이 공유한 사진 목록)
+const ALBUM = [
+  { id: "a1", name: "제주도 여행", color: "#CDB9A3" },
+  { id: "a2", name: "생일 파티", color: "#E7C9B6" },
+  { id: "a3", name: "캠핑", color: "#B9CDB5" },
+  { id: "a4", name: "돌잔치", color: "#C9D3E3" },
+  { id: "a5", name: "할머니 댁", color: "#E3D5B0" },
+  { id: "a6", name: "강릉 바다", color: "#B5D2DC" },
+];
+
+/** 찰칵! 탐정단 문제 내기: 사진(가족 앨범 또는 내 폰), 보여 줄 부분(네모 끌기), 확대 배율, 질문·정답·보기, 한마디. */
+export default function PhotoCreateScreen() {
+  const router = useRouter();
+  const [photo, setPhoto] = useState({ kind: "album", ...ALBUM[0] });
+  const [albumOpen, setAlbumOpen] = useState(false);
+  const [zoom, setZoom] = useState(4);
+  const [ask, setAsk] = useState("어디서");
+  const [question, setQuestion] = useState(ASKS["어디서"]);
+  const [answer, setAnswer] = useState("제주도 여행");
+  const [mode, setMode] = useState("choice"); // choice: 선택식, text: 주관식
+  const [count, setCount] = useState(4); // 선택식 보기 수(2~4개)
+  const [opts, setOpts] = useState(["제주도 여행", "할머니 댁", "강릉 바다", "우리 집 거실"]);
+  const [ansIdx, setAnsIdx] = useState(0); // 몇 번째 보기가 정답인지
+  const shown = opts.slice(0, count);
+  const changeCount = (n) => {
+    const c = Math.max(2, Math.min(4, n));
+    setCount(c);
+    setAnsIdx((a) => (a != null && a >= c ? null : a)); // 정답 보기가 사라지면 다시 고르게
+  };
+  const [withNote, setWithNote] = useState(true);
+  const [note, setNote] = useState("그날 비가 와서 협재 해변에서 우동을 먹었어요. 언제 어디서 찍었는지 기억나는 사람?");
+  const [target, setTarget] = useState([]);
+  const [box, setBox] = useState({ x: 130, y: 80 });
+  const [stageW, setStageW] = useState(350);
+  const [dragging, setDragging] = useState(false);
+
+  // 문제로 낼 부분(네모)은 배율이 클수록 작아진다: 사진 전체의 1/배율
+  const bw = stageW / zoom;
+  const bh = STAGE_H / zoom;
+  const live = useRef({ box, stageW, start: box, bw, bh });
+  live.current.box = box;
+  live.current.stageW = stageW;
+  live.current.bw = bw;
+  live.current.bh = bh;
+  const drag = useMemo(
+    () =>
+      PanResponder.create({
+        onStartShouldSetPanResponder: () => true,
+        onPanResponderTerminationRequest: () => false,
+        onPanResponderGrant: () => {
+          live.current.start = live.current.box;
+          setDragging(true);
+        },
+        onPanResponderMove: (_, g) => {
+          const s = live.current.start;
+          setBox({
+            x: Math.max(0, Math.min(live.current.stageW - live.current.bw, s.x + g.dx)),
+            y: Math.max(0, Math.min(STAGE_H - live.current.bh, s.y + g.dy)),
+          });
+        },
+        onPanResponderRelease: () => setDragging(false),
+        onPanResponderTerminate: () => setDragging(false),
+      }),
+    [],
+  );
+
+  const pickZoom = (z) => {
+    setZoom(z);
+    // 네모가 작아지면 사진 밖으로 나가지 않게 위치를 다시 맞춘다
+    setBox((b) => ({ x: Math.max(0, Math.min(stageW - stageW / z, b.x)), y: Math.max(0, Math.min(STAGE_H - STAGE_H / z, b.y)) }));
+  };
+  const k = INSET_W / bw; // 네모 한 변이 미리보기 한 변으로 커지는 비율
+  const insetH = bh * k;
+  // 미리보기는 네모와 겹치지 않는 모서리에 둔다(오른쪽 아래 → 왼쪽 아래 → 오른쪽 위 → 왼쪽 위)
+  const insetPos = (() => {
+    const corners = [
+      { right: INSET_GAP, bottom: INSET_GAP },
+      { left: INSET_GAP, bottom: INSET_GAP },
+      { right: INSET_GAP, top: INSET_GAP },
+      { left: INSET_GAP, top: INSET_GAP },
+    ];
+    const rect = (c) => {
+      const x = c.left ?? stageW - INSET_W - c.right;
+      const y = c.top ?? STAGE_H - insetH - c.bottom;
+      return { x, y };
+    };
+    const free = corners.find((c) => {
+      const { x, y } = rect(c);
+      return box.x + bw < x - 4 || box.x > x + INSET_W + 4 || box.y + bh < y - 4 || box.y > y + insetH + 4;
+    });
+    return free ?? corners[0];
+  })();
+  const pickFromPhone = async () => {
+    try {
+      const res = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ["images"], quality: 0.8 });
+      if (!res.canceled && res.assets?.[0]?.uri) setPhoto({ kind: "phone", uri: res.assets[0].uri });
+    } catch {
+      // 사진을 못 불러와도 화면은 그대로 둔다
+    }
+  };
+  const pickAsk = (k2) => {
+    setAsk(k2);
+    setQuestion(ASKS[k2]);
+  };
+  const [tried, setTried] = useState(false);
+  const problem = !question.trim()
+    ? "질문을 써 주세요"
+    : mode === "text"
+      ? !answer.trim()
+        ? "정답을 써 주세요"
+        : null
+      : shown.some((o) => !o.trim())
+        ? "보기를 모두 채워 주세요"
+        : ansIdx == null
+          ? "정답 보기를 골라 주세요"
+          : null;
+
+  return (
+    <PlayScreen
+      title="찰칵! 탐정단 문제 내기"
+      footerInScroll
+      close
+      scrollEnabled={!dragging}
+      footer={
+        <>
+          {tried && problem ? (
+            <Text style={styles.error} accessibilityRole="alert">
+              {problem}
+            </Text>
+          ) : (
+            <RevealNote>내일 오후 2:10에 정답이 공개돼요 · 모두 답하면 바로 열려요</RevealNote>
+          )}
+          <Button
+            label="사진 문제 보내기"
+            onPress={() => {
+              if (problem) {
+                setTried(true);
+                return;
+              }
+              // 맞히는 화면에 방식과 보기를 넘긴다(정답 위치는 출제자가 고른 그대로)
+              const options = mode === "choice" ? shown.map((o) => o.trim()) : [];
+              router.replace({ pathname: "/play/photo-guess", params: { mode, question: question.trim(), options: JSON.stringify(options) } });
+            }}
+          />
+        </>
+      }
+    >
+      <View style={styles.block}>
+        {photo.kind === "album" ? <Text style={styles.label}>{`가족 앨범에서 고른 사진 · ${photo.name}`}</Text> : null}
+        <View style={styles.row}>
+          <View style={styles.flex}>
+            <Button label="가족 앨범에서 고르기" small variant="secondary" onPress={() => setAlbumOpen(true)} />
+          </View>
+          <View style={styles.flex}>
+            <Button label="내 폰에서 올리기" small variant="secondary" onPress={pickFromPhone} />
+          </View>
+        </View>
+      </View>
+      <View style={[styles.stage, photo.kind === "album" && { backgroundColor: photo.color }]} onLayout={(e) => setStageW(e.nativeEvent.layout.width)}>
+        {photo.kind === "phone" ? <Image source={{ uri: photo.uri }} style={StyleSheet.absoluteFill} contentFit="cover" accessibilityLabel="올린 사진" /> : null}
+        <View {...drag.panHandlers} style={[styles.box, { left: box.x, top: box.y, width: bw, height: bh }]} accessibilityLabel="보여 줄 부분. 끌어서 옮겨요" />
+        <Text style={styles.stageNote}>네모를 끌어 보여줄 부분을 옮겨요</Text>
+        <View pointerEvents="none" style={[styles.inset, insetPos, { width: INSET_W + 4, height: insetH + 4 }, photo.kind === "album" && { backgroundColor: photo.color }]} accessibilityLabel={`사진의 일부를 ${zoom}배 확대한 미리보기`}>
+          <View style={{ width: INSET_W, height: insetH, overflow: "hidden", borderRadius: 8, backgroundColor: photo.kind === "album" ? photo.color : "#CDB9A3" }}>
+            {photo.kind === "phone" ? <Image source={{ uri: photo.uri }} style={{ position: "absolute", width: stageW * k, height: STAGE_H * k, left: -box.x * k, top: -box.y * k }} contentFit="cover" /> : null}
+            <Text style={styles.insetBadge}>{zoom}배 확대</Text>
+          </View>
+        </View>
+      </View>
+      <View style={styles.block}>
+        <View style={styles.labelRow}>
+          <Text style={styles.label}>확대 정도</Text>
+          <Text style={[styles.sub, styles.flex]}>배율이 높을수록 사진이 흐려 보일 수 있어요</Text>
+        </View>
+        <View style={styles.row}>
+          {ZOOMS.map((z) => (
+            <Chip key={z} label={`${z}배`} on={zoom === z} onPress={() => pickZoom(z)} />
+          ))}
+        </View>
+      </View>
+      <View style={styles.block}>
+        <Text style={styles.label}>무엇을 물어볼까요</Text>
+        <View style={styles.row}>
+          {Object.keys(ASKS).map((k) => (
+            <Chip key={k} label={k} on={ask === k} onPress={() => pickAsk(k)} />
+          ))}
+        </View>
+        <View style={styles.labelRow}>
+          <Text style={styles.label}>질문</Text>
+          <Text style={styles.sub}>
+            ({question.length}/{Q_MAX})
+          </Text>
+        </View>
+        <TextInput value={question} onChangeText={(v) => setQuestion(v.slice(0, Q_MAX))} maxLength={Q_MAX} style={styles.input} accessibilityLabel="질문" />
+      </View>
+      <View style={styles.block}>
+        <Text style={styles.label}>정답 방식</Text>
+        <Toggle
+          value={mode}
+          onChange={setMode}
+          options={[
+            { key: "choice", label: "선택식" },
+            { key: "text", label: "주관식" },
+          ]}
+        />
+        {mode === "text" ? (
+          <>
+            <View style={styles.labelRow}>
+              <Text style={styles.label}>정답</Text>
+              <Text style={styles.sub}>정확하게 입력해야 정답으로 처리돼요!</Text>
+            </View>
+            <TextInput value={answer} onChangeText={setAnswer} style={styles.input} accessibilityLabel="정답" />
+          </>
+        ) : (
+          <>
+            <View style={styles.optHead}>
+              <View style={styles.labelRow}>
+                <Text style={styles.label}>보기</Text>
+                
+              </View>
+              <View style={styles.stepper}>
+                <Pressable onPress={() => changeCount(count - 1)} disabled={count <= 2} accessibilityRole="button" accessibilityLabel="보기 줄이기" style={[styles.stepBtn, count <= 2 && styles.stepOff]}>
+                  <Text style={styles.stepText}>−</Text>
+                </Pressable>
+                <Text style={styles.stepNum}>{count}</Text>
+                <Pressable onPress={() => changeCount(count + 1)} disabled={count >= 4} accessibilityRole="button" accessibilityLabel="보기 늘리기" style={[styles.stepBtn, count >= 4 && styles.stepOff]}>
+                  <Text style={styles.stepText}>+</Text>
+                </Pressable>
+              </View>
+            </View>
+            {shown.map((o, i) => {
+              const isAns = ansIdx === i;
+              return (
+                <View key={i} style={[styles.opt, isAns && styles.optAns2]}>
+                  <Pressable onPress={() => setAnsIdx(i)} accessibilityRole="button" accessibilityState={{ selected: isAns }} accessibilityLabel={isAns ? `보기 ${i + 1} 정답으로 표시됨` : `보기 ${i + 1} 정답으로 표시`} hitSlop={6} style={[styles.radio, isAns && styles.radioOn]}>
+                    {isAns ? <Text style={styles.radioMark}>✓</Text> : null}
+                  </Pressable>
+                  <TextInput value={o} onChangeText={(v) => setOpts((arr) => arr.map((x, j) => (j === i ? v.slice(0, 20) : x)))} placeholder={`보기 ${i + 1}`} placeholderTextColor={colors.placeholder} accessibilityLabel={`보기 ${i + 1}`} style={styles.optInput} />
+                </View>
+              );
+            })}
+          </>
+        )}
+      </View>
+      <View style={styles.block}>
+        <View style={styles.noteRow}>
+          <Text style={styles.noteLabel}>한마디 남기기 (선택)</Text>
+          <Switch value={withNote} onValueChange={setWithNote} trackColor={{ false: "#E0D6CB", true: colors.success }} thumbColor="#FFFFFF" />
+        </View>
+        {withNote ? (
+          <>
+            <Text style={styles.sub}>{`그날 이야기나 언제·어디서·무엇을 했는지 적어요\n정답 공개될 때 같이 보여요 (${note.length}/${NOTE_MAX}자)`}</Text>
+            <TextInput value={note} onChangeText={(v) => setNote(v.slice(0, NOTE_MAX))} multiline numberOfLines={3} placeholder="정답 공개될 때 같이 보여요" placeholderTextColor={colors.placeholder} style={[styles.input, styles.area]} accessibilityLabel="한마디" />
+          </>
+        ) : null}
+      </View>
+      <AudiencePicker value={target} onChange={setTarget} />
+
+      <BottomSheet visible={albumOpen} title="가족 앨범" onClose={() => setAlbumOpen(false)}>
+        <View style={styles.grid}>
+          {ALBUM.map((a) => (
+            <Pressable
+              key={a.id}
+              onPress={() => {
+                setPhoto({ kind: "album", ...a });
+                setAlbumOpen(false);
+              }}
+              accessibilityRole="button"
+              accessibilityLabel={`${a.name} 사진 고르기`}
+              style={[styles.tile, { backgroundColor: a.color }, photo.id === a.id && styles.tileOn]}
+            >
+              <Text style={styles.tileName}>{a.name}</Text>
+            </Pressable>
+          ))}
+        </View>
+      </BottomSheet>
+    </PlayScreen>
+  );
+}
+
+/** 아래에서 올라오는 시트. 바깥 어두운 부분을 누르면 닫힌다. */
+function BottomSheet({ visible, title, onClose, children }) {
+  return (
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+      <View style={styles.sheetWrap}>
+        <Pressable style={styles.backdrop} onPress={onClose} accessibilityRole="button" accessibilityLabel={`${title} 닫기`} />
+        <SafeAreaView edges={["bottom"]} style={styles.sheet}>
+          <View style={styles.modalHead}>
+            <Text style={styles.modalTitle}>{title}</Text>
+            <Pressable onPress={onClose} accessibilityRole="button" accessibilityLabel="닫기" style={styles.modalClose}>
+              <Text style={styles.modalCloseText}>닫기</Text>
+            </Pressable>
+          </View>
+          {children}
+        </SafeAreaView>
+      </View>
+    </Modal>
+  );
+}
+
+const styles = StyleSheet.create({
+  flex: { flex: 1 },
+  error: { ...font.caption, color: colors.danger, textAlign: "center", fontFamily: fonts.bold },
+  block: { gap: 8 },
+  row: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
+  label: { ...font.bodyStrong, color: colors.text },
+  sub: { fontSize: 13, lineHeight: 20, fontFamily: fonts.regular, color: colors.textSub },
+  stage: { height: STAGE_H, borderRadius: radius.card, backgroundColor: "#CDB9A3", overflow: "hidden" },
+  labelRow: { flexDirection: "row", alignItems: "baseline", gap: 8 },
+  inset: { position: "absolute", padding: 2, borderRadius: 10, backgroundColor: colors.background },
+  insetBadge: { position: "absolute", left: 6, top: 6, paddingVertical: 2, paddingHorizontal: 7, borderRadius: 999, overflow: "hidden", backgroundColor: colors.background, fontSize: 11, fontFamily: fonts.bold, color: colors.text },
+  box: { position: "absolute", borderWidth: 3, borderColor: colors.background, borderRadius: 10, backgroundColor: "rgba(255,252,247,0.25)" },
+  stageNote: { position: "absolute", left: 0, right: 0, top: 12, textAlign: "center", fontSize: 13, color: "#3A2719" },
+  input: { height: 44, paddingVertical: 0, paddingHorizontal: 14, borderRadius: 12, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.card, color: colors.text, fontSize: 15, fontFamily: fonts.regular },
+  optHead: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  stepper: { flexDirection: "row", alignItems: "center", gap: 6 },
+  stepBtn: { width: 32, height: 32, borderRadius: 16, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.card, alignItems: "center", justifyContent: "center" },
+  stepOff: { opacity: 0.35 },
+  stepText: { fontSize: 18, lineHeight: 22, fontFamily: fonts.bold, color: colors.text },
+  stepNum: { minWidth: 20, textAlign: "center", fontSize: 16, fontFamily: fonts.bold, color: colors.text },
+  opt: { height: 48, paddingLeft: 10, paddingRight: 10, borderRadius: 12, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.card, flexDirection: "row", alignItems: "center", gap: 8 },
+  optAns2: { backgroundColor: "#F2F8F4", borderColor: colors.success },
+  radio: { width: 26, height: 26, borderRadius: 13, borderWidth: 1.5, borderColor: "#D9C7B4", alignItems: "center", justifyContent: "center" },
+  radioOn: { backgroundColor: colors.success, borderColor: colors.success },
+  radioMark: { fontSize: 14, lineHeight: 18, color: "#FFFFFF", fontFamily: fonts.bold },
+  optInput: { flex: 1, height: 44, paddingVertical: 0, fontSize: 15, fontFamily: fonts.regular, color: colors.text },
+  area: { height: 88, paddingTop: 10, textAlignVertical: "top" },
+  noteRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", minHeight: 44 },
+  noteLabel: { ...font.body, color: colors.text },
+  sheetWrap: { flex: 1, justifyContent: "flex-end" },
+  backdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: "rgba(58,39,25,0.4)" }, // 바깥을 누르면 닫힌다
+  sheet: { padding: 20, gap: 16, borderTopLeftRadius: 24, borderTopRightRadius: 24, backgroundColor: colors.background },
+  modalHead: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  modalTitle: { ...font.title, color: colors.text },
+  modalClose: { minHeight: 44, justifyContent: "center", paddingHorizontal: 8 },
+  modalCloseText: { fontSize: 15, fontFamily: fonts.bold, color: colors.text },
+  grid: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
+  tile: { width: "31%", flexGrow: 1, height: 110, borderRadius: radius.lg, justifyContent: "flex-end", padding: 10, borderWidth: 2, borderColor: "transparent" },
+  tileOn: { borderColor: colors.dark },
+  tileName: { fontSize: 13, fontFamily: fonts.bold, color: "#3A2719" },
+});

@@ -46,6 +46,7 @@ class ConfirmCardOut(BaseModel):
         "request_register",
         "request_edit",
         "request_cancel",
+        "habit_check",
         "share_select",
     ]
     title: str  # 카드 제목(예: 수진, 서연에게 공유해서 등록할까요?)

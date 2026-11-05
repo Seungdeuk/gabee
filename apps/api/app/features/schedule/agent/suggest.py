@@ -138,7 +138,7 @@ def _generate(
         for e in nearby
     ]
     sources = suggest_sources.collect(db, user_id, group_id, today, chat_lines)
-    if not (lines or sources.requests or sources.billing or sources.family or sources.chat):
+    if not (lines or sources.requests or sources.family or sources.chat):
         return None
     # 이미 있는 제안(대기·확정·나중에, 날짜 지난 것 포함)은 다시 만들지 않는다
     existing = list(
@@ -159,7 +159,6 @@ def _generate(
         lines,
         [mask_text(s.title) for s in existing if s.start_date >= today],
         sources.requests,
-        sources.billing,
         sources.family,
         sources.chat,
     )
