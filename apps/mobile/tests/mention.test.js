@@ -239,3 +239,25 @@ test("ChatRoomScreen: 방에 들어올 때 저장된 메시지로 이전 대화�
   const hook = readFileSync(new URL("../src/features/family-chat/useMention.js", import.meta.url), "utf8");
   assert.match(hook, /const seed = useCallback/);
 });
+
+test("restoreThread: 여러 사람이 동시에 부르면 짝이 뒤바뀔 수 있어 되살리지 않는다", () => {
+  const thread = mention.restoreThread(
+    [msg(1, "dad", "@가비 X", 0), msg(2, "me", "@가비 Y", 0.2), gabi(3, "X 에 대한 답", 0.5), gabi(4, "Y 에 대한 답", 0.6)],
+    "me",
+  );
+  assert.deepEqual(thread, []);
+  const ok = mention.restoreThread(
+    [msg(1, "dad", "@가비 X", 0), gabi(2, "X 답", 0.2), msg(3, "me", "@가비 Y", 1), gabi(4, "Y 답", 1.2)],
+    "me",
+  );
+  assert.deepEqual(ok.map((t) => t.text), ["Y", "Y 답"]);
+});
+
+test("restoreThread: 질문과 답의 시각 차이가 2분을 넘으면 같은 짝으로 보지 않는다", () => {
+  assert.deepEqual(mention.restoreThread([msg(1, "me", "@가비 Y", 0), gabi(2, "한참 뒤의 가비 글", 5)], "me"), []);
+});
+
+test("ChatRoomScreen: 방 목록이 준비되고 최근 구간일 때만 되살린다(소스 확인)", () => {
+  const screen = readFileSync(new URL("../src/features/family-chat/screens/ChatRoomScreen.js", import.meta.url), "utf8");
+  assert.match(screen, /chat\.status !== "ready" \|\| chat\.focusing/);
+});

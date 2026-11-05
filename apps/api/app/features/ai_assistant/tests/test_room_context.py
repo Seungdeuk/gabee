@@ -126,3 +126,118 @@ def test_blocked_sensitive_messages_stay_out(client, setup):
     _say(client, b, "비밀번호는 zebra-7788-pw 이야")
     _ask(client, a)
     assert "zebra-7788-pw" not in systems[-1]
+
+
+def test_blocked_message_shows_up_masked_not_raw(client, setup):
+    a, b, _, systems = setup
+    _say(client, b, "비밀번호는 zebra-7788-pw 이야")
+    _ask(client, a)
+    sent = systems[-1]
+    assert CONTEXT_MARK in sent and "zebra-7788-pw" not in sent
+
+
+def test_context_has_its_own_small_size_cap(client, setup):
+    a, b, _, systems = setup
+    for i in range(10):
+        _say(client, a if i % 2 else b, f"낚시터 {i:02d} " + "가나다라마바사 " * 100)
+    _ask(client, a)
+    block = systems[-1].split(CONTEXT_MARK, 1)[1]
+    assert 0 < len(block) < 3600
+
+
+def test_names_from_the_room_are_not_restored_for_billing_agent(client, setup, monkeypatch):
+    import re
+
+    a, b, _, _ = setup
+    _say(client, b, "수진이 학원비 30만원 보냈어")
+    seen = {}
+
+    def fake_post(req):
+        if "가계(정산) 담당" in req["system"]:
+            seen["billing_question"] = str(req["messages"][0]["content"])
+            return {"content": [{"type": "text", "text": "정산 답"}]}
+        if len(req["messages"]) == 1:
+            token = re.search(r"\[PERSON_\d+\]", req["system"]).group(0)
+            return {
+                "content": [
+                    {
+                        "type": "tool_use",
+                        "id": "t1",
+                        "name": "ask_billing",
+                        "input": {"question": f"{token} 학원비 30만원 정산"},
+                    }
+                ]
+            }
+        return {"content": [{"type": "text", "text": "끝"}]}
+
+    monkeypatch.setattr(rag_chat, "_post", fake_post)
+    _ask(client, a, "이거 정산해줘")
+    assert (
+        "수진" not in seen["billing_question"]
+    )  # 남이 쓴 글의 이름은 정산 에이전트의 모델 호출로 나가지 않는다
+
+
+def test_final_answer_tokens_are_restored(client, setup, monkeypatch):
+    import re
+
+    a, b, _, _ = setup
+    _say(client, b, "수진이 낚시 가자")
+
+    def fake_post(req):
+        token = re.search(r"\[PERSON_\d+\]", req["system"]).group(0)
+        return {"content": [{"type": "text", "text": f"{token} 낚시 일정이에요"}]}
+
+    monkeypatch.setattr(rag_chat, "_post", fake_post)
+    out = _ask(client, a, "누구 얘기야")
+    assert "[PERSON_" not in out["reply"]
+
+
+def test_context_is_not_built_when_ai_is_off(client, setup, monkeypatch):
+    from app.features.family_chat import assistant
+
+    a, b, _, _ = setup
+    _say(client, b, "토요일에 낚시 가자")
+    assert (
+        client.put("/family-chat/ai/settings", json={"enabled": False}, headers=a).status_code
+        == 200
+    )
+    built = []
+    monkeypatch.setattr(assistant, "room_context", lambda *args, **kw: built.append(1))
+    r = client.post(
+        "/ai-assistant/chat", json={"message": "일정 잡아줘", "audience": "room"}, headers=a
+    )
+    assert r.status_code in (200, 403)
+    assert built == []  # 동의가 꺼진 가족의 대화는 가명화하지 않는다
+
+
+def test_context_is_closed_even_when_the_model_fails(client, setup, monkeypatch):
+    import httpx
+
+    from app.features.family_chat import ai_service
+
+    a, b, _, _ = setup
+    _say(client, b, "토요일에 낚시 가자")
+    closed = []
+    real_close = ai_service._Context.close
+    monkeypatch.setattr(
+        ai_service._Context, "close", lambda self: (closed.append(1), real_close(self))[1]
+    )
+
+    def boom(req):
+        raise httpx.ConnectError("down")
+
+    monkeypatch.setattr(rag_chat, "_post", boom)
+    client.post(
+        "/ai-assistant/chat", json={"message": "일정 잡아줘", "audience": "room"}, headers=a
+    )
+    assert closed == [1]
+
+
+def test_gabi_previous_answers_are_in_context_and_told_not_to_redo(client, setup):
+    a, b, _, systems = setup
+    _say(client, b, "토요일에 낚시 가자")
+    _ask(client, a, "일정 잡아줘")  # 가비가 방에 "답이에요"를 올린다
+    _ask(client, a, "그중 식비는?")
+    sent = systems[-1]
+    assert "답이에요" in sent.split(CONTEXT_MARK, 1)[1]  # 가비가 이미 한 말도 맥락에 있다
+    assert "다시 실행" in sent  # 이전 요청(일정 등록 등)을 다시 하지 않는다

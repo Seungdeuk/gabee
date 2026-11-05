@@ -16,6 +16,7 @@ from sqlalchemy.orm import Session
 
 from app.features.family_group.models import User
 from app.shared import room_assistant
+from app.shared.privacy import restore_value
 
 from . import ai_service
 from . import repository as repo
@@ -81,9 +82,28 @@ def direct_room(db: Session, user: User, group_id: str, room_id: str | None) -> 
     return ai_service.room_scope(db, user, group_id, room_id)
 
 
-def room_context(db: Session, group_id: str, direct: str | None) -> ai_service._Context | None:
-    """@가비 에 맥락으로 붙일 방의 최근 대화(개인정보를 가린 것). 없으면 None. 쓴 뒤 close() 를 부른다."""
-    return ai_service.room_context(db, group_id, direct)
+class RoomContext:
+    """@가비 에 맥락으로 붙일 방의 최근 대화(개인정보를 가린 것). 쓴 뒤 close() 로 이름 대응표를 지운다."""
+
+    def __init__(self, ctx: ai_service._Context) -> None:
+        self._ctx = ctx
+
+    @property
+    def transcript(self) -> str:
+        return self._ctx.transcript
+
+    def restore(self, text: str) -> str:
+        """모델이 쓴 이름 토큰을 원래 이름으로 되돌린다(정책의 복원 종류만)."""
+        return restore_value(self._ctx.prep, text, generalize_unknown=True, scrub=True).value
+
+    def close(self) -> None:
+        self._ctx.close()
+
+
+def room_context(db: Session, group_id: str, direct: str | None) -> RoomContext | None:
+    """@가비 에 맥락으로 붙일 방의 최근 대화. 붙일 메시지가 없으면 None."""
+    ctx = ai_service.room_context(db, group_id, direct)
+    return RoomContext(ctx) if ctx else None
 
 
 def post_as_assistant(

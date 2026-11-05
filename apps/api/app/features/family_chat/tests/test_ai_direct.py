@@ -95,8 +95,12 @@ def test_each_room_has_its_own_cached_result(client, chats, fake):
     analyze(client, a, room_id=direct["id"])
     analyze(client, a)  # 같은 사람·같은 날이어도 방이 다르면 다른 결과(다른 메시지)
     assert len(fake.calls) == 2
-    analyze(client, b, room_id=direct["id"])  # 같은 1:1 방의 같은 범위는 캐시를 쓴다
+    analyze(client, a, room_id=direct["id"])  # 같은 사람의 같은 1:1 방·같은 범위는 캐시를 쓴다
     assert len(fake.calls) == 2
+    analyze(
+        client, b, room_id=direct["id"]
+    )  # 같은 방이어도 다른 참가자는 자기 입장의 결과를 새로 만든다
+    assert len(fake.calls) == 3
 
 
 def test_another_direct_room_of_mine_is_not_mixed_in(client, chats, trio, fake):
