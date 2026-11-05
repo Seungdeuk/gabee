@@ -95,7 +95,7 @@ export default function PlayRankingScreen() {
       </View>
       <View style={styles.rule}>
         <Text style={styles.ruleTitle}>점수 받는 법</Text>
-        <Text style={styles.ruleText}>{"문제 내거나 참여하면 +10\n정답 맞추면 +20 / 폭탄 우승은 +30\n매주 월요일에 이번 주 순위가 새로 시작돼요"}</Text>
+        <Text style={styles.ruleText}>{"문제 내면 +20 / 참여하면 +10\n(문제 출제는 하루 3개까지, 가족이 풀면 받아요)\n정답 맞추면 +20 / 폭탄 우승은 +30\n매주 월요일에 이번 주 순위가 새로 시작돼요"}</Text>
       </View>
     </PlayScreen>
   );

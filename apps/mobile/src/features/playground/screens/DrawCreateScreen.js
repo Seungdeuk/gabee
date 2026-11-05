@@ -8,8 +8,9 @@ import { colors, font, fonts } from "@/theme";
 
 import DrawingCanvas from "../components/draw/DrawingCanvas";
 import PlayScreen from "../components/PlayScreen";
-import { AudiencePicker, RevealNote } from "../components/quiz/QuizParts";
+import { AudiencePicker, RevealNote, MakeQuotaNote } from "../components/quiz/QuizParts";
 import { SCORE } from "../games";
+import { recordMade } from "../mock";
 
 const PALETTE = [
   { name: "검정", value: colors.text },
@@ -22,9 +23,9 @@ const HINT_MAX = 20; // 맞히는 화면에서 힌트 칩이 두 줄로 넘어�
 /** 이게 뭐게 문제 내기: 정답(+비슷한 정답), 그림판, 힌트 1(글자 수 자동)·힌트 2(직접), 대상. */
 export default function DrawCreateScreen() {
   const router = useRouter();
-  const [answer, setAnswer] = useState("강아지");
-  const [alt, setAlt] = useState("멍멍이, 개");
-  const [hint2, setHint2] = useState("동물이야");
+  const [answer, setAnswer] = useState("");
+  const [alt, setAlt] = useState("");
+  const [hint2, setHint2] = useState("");
   const [strokes, setStrokes] = useState([]);
   const [color, setColor] = useState(PALETTE[0].value);
   const [eraser, setEraser] = useState(false);
@@ -47,8 +48,9 @@ export default function DrawCreateScreen() {
               {problem}
             </Text>
           ) : (
-            <RevealNote>내일 오후 2:10에 정답이 공개돼요 · 모두 답하면 바로 열려요</RevealNote>
+            <RevealNote>내일 오후 2:10에 정답이 공개돼요, 모두 답하면 바로 열려요</RevealNote>
           )}
+          <MakeQuotaNote />
           <Button
             label="그림 문제 보내기"
             onPress={() => {
@@ -56,6 +58,7 @@ export default function DrawCreateScreen() {
                 setTried(true);
                 return;
               }
+              recordMade();
               router.replace("/play/draw-guess");
             }}
           />
@@ -144,7 +147,7 @@ const styles = StyleSheet.create({
   labelRow: { flexDirection: "row", alignItems: "baseline", gap: 8 },
   label: { ...font.bodyStrong, color: colors.text },
   sub: { fontSize: 13, fontFamily: fonts.regular, color: colors.textSub },
-  input: { height: 44, paddingVertical: 0, paddingHorizontal: 14, borderRadius: 12, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.card, color: colors.text, fontSize: 15, fontFamily: fonts.regular },
+  input: { height: 44, paddingVertical: 0, paddingHorizontal: 14, borderRadius: 12, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.card, color: colors.text, fontSize: 15, lineHeight: 18, includeFontPadding: false, textAlignVertical: "center", fontFamily: fonts.regular },
   inputMain: { fontSize: 15 },
   doneBtn: { position: "absolute", right: 10, top: 10, minHeight: 36, paddingHorizontal: 16, borderRadius: 18, backgroundColor: colors.dark, alignItems: "center", justifyContent: "center" },
   doneText: { fontSize: 14, fontFamily: fonts.bold, color: colors.background },

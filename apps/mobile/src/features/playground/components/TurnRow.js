@@ -17,7 +17,7 @@ export default function TurnRow({ item, strong = false, done = false }) {
     <Pressable
       onPress={() => router.push(item.route)}
       accessibilityRole="button"
-      accessibilityLabel={`${item.title}. ${item.sub}`}
+      accessibilityLabel={`${item.title}. ${item.sub ?? ""} ${item.progress ?? ""}`}
       style={[styles.row, strong ? styles.strong : styles.plain]}
     >
       <View style={[styles.icon, { backgroundColor: strong ? colors.background : colors.surfaceStrong }]}>
@@ -25,7 +25,14 @@ export default function TurnRow({ item, strong = false, done = false }) {
       </View>
       <View style={styles.text}>
         <Text style={styles.title}>{item.title}</Text>
-        <Text style={styles.sub}>{item.sub}</Text>
+        <View style={styles.subRow}>
+          {item.progress ? (
+            <View style={styles.progress}>
+              <Text style={styles.progressText}>{item.progress}</Text>
+            </View>
+          ) : null}
+          {item.sub ? <Text style={styles.sub}>{item.sub}</Text> : null}
+        </View>
       </View>
       {done ? <Text style={styles.chip}>참여 완료</Text> : item.action ? <Text style={styles.action}>{item.action}</Text> : null}
     </Pressable>
@@ -40,6 +47,9 @@ const styles = StyleSheet.create({
   text: { flex: 1 },
   title: { ...font.bodyStrong, color: colors.text },
   sub: { ...font.caption, color: colors.textSub },
+  subRow: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 6 },
+  progress: { paddingVertical: 2, paddingHorizontal: 10, borderRadius: 999, backgroundColor: colors.successSoft },
+  progressText: { fontSize: 12, fontFamily: font.bodyStrong.fontFamily, color: "#2F4A3B" },
   action: { fontSize: 14, fontFamily: font.bodyStrong.fontFamily, color: colors.text },
   chip: { paddingVertical: 4, paddingHorizontal: 10, borderRadius: 12, overflow: "hidden", backgroundColor: colors.successSoft, color: "#2F4A3B", fontSize: 12, fontFamily: font.bodyStrong.fontFamily },
 });

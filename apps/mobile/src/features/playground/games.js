@@ -7,5 +7,8 @@ export const GAMES = {
 };
 export const GAME_LIST = [GAMES.quiz, GAMES.draw, GAMES.photo, GAMES.bomb];
 
-// 점수 규칙: 참여 +10, 정답 +20, 문제 내기 +10, 폭탄 우승 +30. 힌트·줄여 보기는 -5
-export const SCORE = { join: 10, correct: 20, make: 10, bombWin: 30, hintCost: 5 };
+// 점수 규칙: 참여 +10, 정답 +20, 문제 내기 +20, 폭탄 우승 +30. 힌트·줄여 보기는 -5
+export const SCORE = { join: 10, correct: 20, make: 20, bombWin: 30, hintCost: 5 };
+
+// 문제 내기 점수는 한 사람이 하루에 낸 문제 전체(게임 구분 없이) 3건까지. 한도를 넘어도 문제는 보낼 수 있고 점수만 없다
+export const MAKE_LIMIT = 3;

@@ -10,7 +10,7 @@ import { colors, font, fonts, radius } from "@/theme";
 
 import PlayIcon from "../components/PlayIcon";
 import PlayScreen from "../components/PlayScreen";
-import { GAMES } from "../games";
+import { GAMES, SCORE } from "../games";
 import RuleCard, { LIFE, SEC } from "../components/bomb/RuleCard";
 import PlayerRow from "../components/bomb/PlayerRow";
 import { bombRoom, closeRoom } from "../mock";
@@ -20,24 +20,24 @@ const FAMILY = {
   draw: [
     { id: "mom", name: "엄마", state: "done", note: "오늘 오전 9:12" },
     { id: "dad", name: "아빠", state: "done", note: "오늘 오전 10:40" },
-    { id: "daughter", name: "딸", state: "wait", note: "아직 안 했어요" },
+    { id: "daughter", name: "딸", state: "wait", note: "" },
   ],
   photo: [
     { id: "mom", name: "엄마", state: "done", note: "오늘 오전 9:12" },
-    { id: "dad", name: "아빠", state: "wait", note: "아직 안 했어요" },
-    { id: "daughter", name: "딸", state: "wait", note: "아직 안 했어요" },
+    { id: "dad", name: "아빠", state: "wait", note: "" },
+    { id: "daughter", name: "딸", state: "wait", note: "" },
   ],
   quiz: [
-    { id: "mom", name: "엄마", state: "done", note: "3문제 모두 · 오늘 오전 9:12" },
-    { id: "dad", name: "아빠", state: "done", note: "3문제 모두 · 오늘 오전 10:40" },
-    { id: "daughter", name: "딸", state: "wait", note: "아직 안 했어요" },
+    { id: "mom", name: "엄마", state: "done", note: "오늘 오전 9:12" },
+    { id: "dad", name: "아빠", state: "done", note: "오늘 오전 10:40" },
+    { id: "daughter", name: "딸", state: "wait", note: "" },
   ],
   bomb: bombRoom("me").map((p) => ({ id: p.id, name: p.name, state: p.joined ? "in" : "wait", note: p.note })),
 };
 const TITLES = {
-  draw: ["이게 뭐게 · 내가 그린 그림", "내일 오전 11:00 공개", "내일 오전 11:00"],
-  photo: ["찰칵! 탐정단 · 내가 올린 사진", "내일 오후 2:10 공개", "내일 오후 2:10"],
-  quiz: ["가족 골든벨 · 내가 낸 3문제", "내일 오후 2:10 공개 · 모두 답하면 바로 공개", "내일 오후 2:10"],
+  draw: ["내가 낸 이게 뭐게", "내일 오전 11:00 공개", "내일 오전 11:00"],
+  photo: ["내가 낸 찰칵! 탐정단", "내일 오후 2:10 공개", "내일 오후 2:10"],
+  quiz: ["내가 낸 가족 골든벨", "내일 오후 2:10 공개", "내일 오후 2:10"],
   bomb: ["문장 폭탄 · 내가 연 방", "방이 열려 있어요 · 5명 입장"],
 };
 const ROW_H = 52; // 선수 한 줄 높이
@@ -130,7 +130,12 @@ export default function SentDetailScreen() {
           }}
         />
       ) : (
-        <Text style={styles.note}>결과는 {reveal}에 열려요</Text>
+        <>
+          <Text style={styles.scoreNote}>결과는 {reveal}에 열려요</Text>
+          <Text style={styles.note}>
+            {doneCount > 0 ? `문제가 닫히면 문제 출제로 +${SCORE.make} 받아요` : `가족이 한 명이라도 풀면 문제 출제로 +${SCORE.make} 받아요`}
+          </Text>
+        </>
       )}
     </PlayScreen>
   );
@@ -194,7 +199,7 @@ function Quiz() {
       {QUESTIONS.map((q, i) => (
         <View key={q.q} style={styles.qCard}>
           <Text style={styles.qKind}>
-            문제 {i + 1} · {q.kind}
+            문제 {i + 1} {q.kind}
           </Text>
           <Text style={styles.qText}>{q.q}</Text>
           {q.options ? (
@@ -262,4 +267,5 @@ const styles = StyleSheet.create({
   chip: { paddingVertical: 3, paddingHorizontal: 10, borderRadius: 12, overflow: "hidden", backgroundColor: colors.successSoft, color: "#2F4A3B", fontSize: 12, fontFamily: fonts.bold },
   chipWait: { backgroundColor: "#F7F0E6", color: colors.textSub },
   note: { ...font.caption, color: colors.textSub, textAlign: "center" },
+  scoreNote: { padding: 12, borderRadius: radius.md, overflow: "hidden", backgroundColor: colors.surface, ...font.caption, color: colors.text, textAlign: "center" },
 });

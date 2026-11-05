@@ -3,6 +3,9 @@ import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import { colors, font, fonts, radius } from "@/theme";
 
+import { MAKE_LIMIT, SCORE } from "../../games";
+import { makeLeft } from "../../mock";
+
 /** 문제 번호 탭: 한 줄(문제 1~5 + 추가). 눌러서 문제를 바꾼다. */
 export function QuestionTabs({ count = 3, active = 0, onSelect, onAdd, onRemove, flags = [], max = 5 }) {
   return (
@@ -89,6 +92,12 @@ export function AudiencePicker({ value, onChange }) {
 /** 아래 고정 영역의 안내 + 보내기 버튼 문구 줄. */
 export function RevealNote({ children }) {
   return <Text style={styles.reveal}>{children}</Text>;
+}
+
+/** 보내기 전에 오늘 점수 받는 문제가 몇 개 남았는지 알려 준다. 한도를 넘어도 보내는 건 막지 않는다. */
+export function MakeQuotaNote() {
+  const left = makeLeft();
+  return <Text style={styles.reveal}>{left > 0 ? `오늘 문제 출제로 받는 +${SCORE.make}은 ${left}회 남았어요` : `오늘은 문제 출제로 +${SCORE.make} 받는 ${MAKE_LIMIT}회를 다 썼어요. 문제는 보낼 수 있지만 점수는 없어요`}</Text>;
 }
 
 const styles = StyleSheet.create({

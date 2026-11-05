@@ -17,24 +17,18 @@ export default function PlayBoardScreen() {
   return (
     <PlayScreen title="놀이터 현황" close>
       <View style={styles.toggle}>
-        <Tab label={`받은 ${TODO.length}`} on={tab === "recv"} onPress={() => setTab("recv")} />
-        <Tab label={`보낸 ${sent.length}`} on={tab === "sent"} onPress={() => setTab("sent")} />
+        <Tab label="받은" on={tab === "recv"} onPress={() => setTab("recv")} />
+        <Tab label="보낸" on={tab === "sent"} onPress={() => setTab("sent")} />
       </View>
       {tab === "recv" ? (
         <>
           <SectionHead title="내가 할 차례" right={`${TODO.length}개`} />
           {TODO.map((item) => (
-            <View key={item.id} style={styles.sentBox}>
-              <TurnRow item={item} strong={item.strong} />
-              <PeopleChips done={item.done} pending={item.pending} />
-            </View>
+            <TurnRow key={item.id} item={recvProgress(item, false)} strong={item.strong} />
           ))}
           <SectionHead title="내가 참여했어요" right={`${WAITING.length}개`} />
           {WAITING.map((item) => (
-            <View key={item.id} style={styles.sentBox}>
-              <TurnRow item={item} done />
-              <PeopleChips done={item.done} pending={item.pending} />
-            </View>
+            <TurnRow key={item.id} item={recvProgress(item, true)} done />
           ))}
           <SectionHead title="지난 결과" right="최근 3일" />
           {PAST.map((item) => (
@@ -45,10 +39,7 @@ export default function PlayBoardScreen() {
         <>
           <SectionHead title="내가 낸 문제" right={`${sent.length}개`} />
           {sent.map((item) => (
-            <View key={item.id} style={styles.sentBox}>
-              <TurnRow item={item} />
-              <PeopleChips done={item.done} pending={item.pending} />
-            </View>
+            <TurnRow key={item.id} item={progressSub(item)} strong={item.game === "bomb"} />
           ))}
           <SectionHead title="지난 결과" right="최근 3일" />
           {SENT_PAST.map((item) => (
@@ -61,23 +52,19 @@ export default function PlayBoardScreen() {
   );
 }
 
-/** 가족별 진행 칩: 한 사람은 초록 "완료", 아직 안 한 사람은 회색 "대기". 가족 전원을 모두 보여 준다. */
-function PeopleChips({ done = [], pending = [] }) {
-  if (!done.length && !pending.length) return null;
-  return (
-    <View style={styles.chips}>
-      {done.map((n) => (
-        <Text key={n} style={[styles.chip, styles.chipDone]}>
-          {n} 완료
-        </Text>
-      ))}
-      {pending.map((n) => (
-        <Text key={n} style={styles.chip}>
-          {n} 대기
-        </Text>
-      ))}
-    </View>
-  );
+/** 보낸 문제의 둘째 줄에 "공개 시각 N/M"를 붙인다(가족별 칩 대신). 진행 정보가 없는 항목(폭탄 방)은 그대로. */
+function progressSub(item) {
+  if (!item.done && !item.pending) return item;
+  const total = item.done.length + item.pending.length;
+  return { ...item, progress: `${item.done.length}/${total}` };
+}
+
+/** 받은 문제의 둘째 줄에 "공개 시각 N/M". M 은 문제를 낸 사람을 뺀 가족(나 포함), 내가 끝냈으면 N 에 나도 센다. 폭탄 방은 그대로. */
+function recvProgress(item, mineDone) {
+  if (!item.done) return item;
+  const total = item.done.length + item.pending.length + 1;
+  const count = item.done.length + (mineDone ? 1 : 0);
+  return { ...item, sub: `${item.reveal} 공개`, progress: `${count}/${total}` };
 }
 
 function Tab({ label, on, onPress }) {
@@ -94,9 +81,5 @@ const styles = StyleSheet.create({
   tabOn: { backgroundColor: colors.surfaceStrong },
   tabText: { fontSize: 15, fontFamily: fonts.regular, color: colors.textSub },
   tabTextOn: { fontFamily: fonts.bold, color: colors.text },
-  sentBox: { gap: 6 },
-  chips: { flexDirection: "row", flexWrap: "wrap", gap: 6, paddingHorizontal: 4 },
-  chip: { paddingVertical: 4, paddingHorizontal: 10, borderRadius: 12, overflow: "hidden", backgroundColor: colors.surface, color: colors.textSub, fontSize: 12, fontFamily: fonts.regular },
-  chipDone: { backgroundColor: colors.successSoft, color: "#2F4A3B", fontFamily: fonts.bold },
   note: { ...font.caption, color: colors.textSub, textAlign: "center" },
 });

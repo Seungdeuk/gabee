@@ -9,7 +9,8 @@ import Button from "@/shared/components/Button";
 import { colors, font, fonts, radius } from "@/theme";
 
 import PlayScreen from "../components/PlayScreen";
-import { AudiencePicker, Chip, RevealNote, Toggle } from "../components/quiz/QuizParts";
+import { AudiencePicker, Chip, RevealNote, MakeQuotaNote } from "../components/quiz/QuizParts";
+import { recordMade } from "../mock";
 
 const ZOOMS = [4, 6, 8, 16, 32];
 const ASKS = { "직접 쓰기": "", 어디서: "이 사진, 어디서 찍었을까?", 언제: "이 사진, 언제 찍었을까?", 누가: "이 사진에 누가 있을까?" }; // 보여 주는 순서도 이 순서
@@ -36,8 +37,6 @@ export default function PhotoCreateScreen() {
   const [zoom, setZoom] = useState(4);
   const [ask, setAsk] = useState("어디서");
   const [question, setQuestion] = useState(ASKS["어디서"]);
-  const [answer, setAnswer] = useState("제주도 여행");
-  const [mode, setMode] = useState("choice"); // choice: 선택식, text: 주관식
   const [count, setCount] = useState(4); // 선택식 보기 수(2~4개)
   const [opts, setOpts] = useState(["제주도 여행", "할머니 댁", "강릉 바다", "우리 집 거실"]);
   const [ansIdx, setAnsIdx] = useState(0); // 몇 번째 보기가 정답인지
@@ -125,15 +124,11 @@ export default function PhotoCreateScreen() {
   const [tried, setTried] = useState(false);
   const problem = !question.trim()
     ? "질문을 써 주세요"
-    : mode === "text"
-      ? !answer.trim()
-        ? "정답을 써 주세요"
-        : null
-      : shown.some((o) => !o.trim())
-        ? "보기를 모두 채워 주세요"
-        : ansIdx == null
-          ? "정답 보기를 골라 주세요"
-          : null;
+    : shown.some((o) => !o.trim())
+      ? "보기를 모두 채워 주세요"
+      : ansIdx == null
+        ? "정답 보기를 골라 주세요"
+        : null;
 
   return (
     <PlayScreen
@@ -148,8 +143,9 @@ export default function PhotoCreateScreen() {
               {problem}
             </Text>
           ) : (
-            <RevealNote>내일 오후 2:10에 정답이 공개돼요 · 모두 답하면 바로 열려요</RevealNote>
+            <RevealNote>내일 오후 2:10에 정답이 공개돼요, 모두 답하면 바로 열려요</RevealNote>
           )}
+          <MakeQuotaNote />
           <Button
             label="사진 문제 보내기"
             onPress={() => {
@@ -157,9 +153,10 @@ export default function PhotoCreateScreen() {
                 setTried(true);
                 return;
               }
+              recordMade();
               // 맞히는 화면에 방식과 보기를 넘긴다(정답 위치는 출제자가 고른 그대로)
-              const options = mode === "choice" ? shown.map((o) => o.trim()) : [];
-              router.replace({ pathname: "/play/photo-guess", params: { mode, question: question.trim(), options: JSON.stringify(options) } });
+              const options = shown.map((o) => o.trim());
+              router.replace({ pathname: "/play/photo-guess", params: { question: question.trim(), options: JSON.stringify(options) } });
             }}
           />
         </>
@@ -214,53 +211,32 @@ export default function PhotoCreateScreen() {
         <TextInput value={question} onChangeText={(v) => setQuestion(v.slice(0, Q_MAX))} maxLength={Q_MAX} style={styles.input} accessibilityLabel="질문" />
       </View>
       <View style={styles.block}>
-        <Text style={styles.label}>정답 방식</Text>
-        <Toggle
-          value={mode}
-          onChange={setMode}
-          options={[
-            { key: "choice", label: "선택식" },
-            { key: "text", label: "주관식" },
-          ]}
-        />
-        {mode === "text" ? (
-          <>
-            <View style={styles.labelRow}>
-              <Text style={styles.label}>정답</Text>
-              <Text style={styles.sub}>정확하게 입력해야 정답으로 처리돼요!</Text>
+        <View style={styles.optHead}>
+          <View style={styles.labelRow}>
+            <Text style={styles.label}>보기</Text>
+            
+          </View>
+          <View style={styles.stepper}>
+            <Pressable onPress={() => changeCount(count - 1)} disabled={count <= 2} accessibilityRole="button" accessibilityLabel="보기 줄이기" style={[styles.stepBtn, count <= 2 && styles.stepOff]}>
+              <Text style={styles.stepText}>−</Text>
+            </Pressable>
+            <Text style={styles.stepNum}>{count}</Text>
+            <Pressable onPress={() => changeCount(count + 1)} disabled={count >= 4} accessibilityRole="button" accessibilityLabel="보기 늘리기" style={[styles.stepBtn, count >= 4 && styles.stepOff]}>
+              <Text style={styles.stepText}>+</Text>
+            </Pressable>
+          </View>
+        </View>
+        {shown.map((o, i) => {
+          const isAns = ansIdx === i;
+          return (
+            <View key={i} style={[styles.opt, isAns && styles.optAns2]}>
+              <Pressable onPress={() => setAnsIdx(i)} accessibilityRole="button" accessibilityState={{ selected: isAns }} accessibilityLabel={isAns ? `보기 ${i + 1} 정답으로 표시됨` : `보기 ${i + 1} 정답으로 표시`} hitSlop={6} style={[styles.radio, isAns && styles.radioOn]}>
+                {isAns ? <Text style={styles.radioMark}>✓</Text> : null}
+              </Pressable>
+              <TextInput value={o} onChangeText={(v) => setOpts((arr) => arr.map((x, j) => (j === i ? v.slice(0, 20) : x)))} placeholder={`보기 ${i + 1}`} placeholderTextColor={colors.placeholder} accessibilityLabel={`보기 ${i + 1}`} style={styles.optInput} />
             </View>
-            <TextInput value={answer} onChangeText={setAnswer} style={styles.input} accessibilityLabel="정답" />
-          </>
-        ) : (
-          <>
-            <View style={styles.optHead}>
-              <View style={styles.labelRow}>
-                <Text style={styles.label}>보기</Text>
-                
-              </View>
-              <View style={styles.stepper}>
-                <Pressable onPress={() => changeCount(count - 1)} disabled={count <= 2} accessibilityRole="button" accessibilityLabel="보기 줄이기" style={[styles.stepBtn, count <= 2 && styles.stepOff]}>
-                  <Text style={styles.stepText}>−</Text>
-                </Pressable>
-                <Text style={styles.stepNum}>{count}</Text>
-                <Pressable onPress={() => changeCount(count + 1)} disabled={count >= 4} accessibilityRole="button" accessibilityLabel="보기 늘리기" style={[styles.stepBtn, count >= 4 && styles.stepOff]}>
-                  <Text style={styles.stepText}>+</Text>
-                </Pressable>
-              </View>
-            </View>
-            {shown.map((o, i) => {
-              const isAns = ansIdx === i;
-              return (
-                <View key={i} style={[styles.opt, isAns && styles.optAns2]}>
-                  <Pressable onPress={() => setAnsIdx(i)} accessibilityRole="button" accessibilityState={{ selected: isAns }} accessibilityLabel={isAns ? `보기 ${i + 1} 정답으로 표시됨` : `보기 ${i + 1} 정답으로 표시`} hitSlop={6} style={[styles.radio, isAns && styles.radioOn]}>
-                    {isAns ? <Text style={styles.radioMark}>✓</Text> : null}
-                  </Pressable>
-                  <TextInput value={o} onChangeText={(v) => setOpts((arr) => arr.map((x, j) => (j === i ? v.slice(0, 20) : x)))} placeholder={`보기 ${i + 1}`} placeholderTextColor={colors.placeholder} accessibilityLabel={`보기 ${i + 1}`} style={styles.optInput} />
-                </View>
-              );
-            })}
-          </>
-        )}
+          );
+        })}
       </View>
       <View style={styles.block}>
         <View style={styles.noteRow}>

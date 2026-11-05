@@ -22,14 +22,14 @@ export default function QuizPlayScreen() {
   const [picks, setPicks] = useState({}); // 처음에는 아무것도 골라져 있지 않다
   const cur = QUESTIONS[i];
   const last = i === QUESTIONS.length - 1;
-  const next = () => (last ? router.replace("/play/quiz-result") : setI(i + 1));
+  const next = () => (last ? router.replace("/play/my-answer?kind=quiz") : setI(i + 1));
   return (
     <PlayScreen
       title={`${i + 1} / ${QUESTIONS.length} 문제`}
       close
       footer={
         <>
-          <Text style={styles.reveal}>내일 오후 2:10 공개</Text>
+          <Text style={styles.reveal}>내일 오후 2:10에 종료돼요</Text>
           <Button label={last ? "답 보내기" : "다음 문제"} disabled={picks[i] == null} onPress={next} />
         </>
       }

@@ -1,6 +1,6 @@
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useState } from "react";
-import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import Avatar from "@/shared/components/Avatar";
 import Button from "@/shared/components/Button";
@@ -17,7 +17,6 @@ const START_ZOOM = 4;
 export default function PhotoGuessScreen() {
   const router = useRouter();
   const params = useLocalSearchParams();
-  const text = params.mode === "text"; // 주관식이면 보기 대신 직접 써서 맞힌다
   const options = (() => {
     try {
       const o = JSON.parse(params.options ?? "[]");
@@ -27,7 +26,6 @@ export default function PhotoGuessScreen() {
     }
   })();
   const question = params.question || "이 사진, 어디서 누구랑 찍었을까요?"; // 시안: 딸이 낸 문제(20자)
-  const [typed, setTyped] = useState("");
   const [shrunk, setShrunk] = useState(0);
   const [pick, setPick] = useState(null);
   const zoom = Math.max(1, START_ZOOM - shrunk);
@@ -38,7 +36,7 @@ export default function PhotoGuessScreen() {
       close
       footer={
         <>
-          <Button label="답 보내기" disabled={text ? !typed.trim() : pick == null} onPress={() => router.replace("/play/photo-result")} />
+          <Button label="답 보내기" disabled={pick == null} onPress={() => router.replace("/play/my-answer?kind=photo")} />
           <Text style={[styles.reveal, styles.center]}>내일 오후 2:10에 공개돼요</Text>
         </>
       }
@@ -69,23 +67,13 @@ export default function PhotoGuessScreen() {
           {question}
         </Text>
       </View>
-      {text ? (
-        <View style={styles.list}>
-          <View style={styles.labelRow}>
-            <Text style={styles.typeLabel}>정답 쓰기</Text>
-            <Text style={styles.typeSub}>정확하게 입력해야 정답으로 처리돼요!</Text>
-          </View>
-          <TextInput value={typed} onChangeText={setTyped} style={styles.typeInput} accessibilityLabel="정답 쓰기" />
-        </View>
-      ) : (
-        <View style={styles.list}>
-          {options.map((o) => (
-            <Pressable key={o} onPress={() => setPick(o)} accessibilityRole="button" accessibilityState={{ selected: pick === o }} style={[styles.opt, pick === o && styles.optOn]}>
-              <Text style={[styles.optText, pick === o && styles.optTextOn]}>{o}</Text>
-            </Pressable>
-          ))}
-        </View>
-      )}
+      <View style={styles.list}>
+        {options.map((o) => (
+          <Pressable key={o} onPress={() => setPick(o)} accessibilityRole="button" accessibilityState={{ selected: pick === o }} style={[styles.opt, pick === o && styles.optOn]}>
+            <Text style={[styles.optText, pick === o && styles.optTextOn]}>{o}</Text>
+          </Pressable>
+        ))}
+      </View>
     </PlayScreen>
   );
 }

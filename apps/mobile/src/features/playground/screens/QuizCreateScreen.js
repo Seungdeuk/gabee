@@ -7,7 +7,8 @@ import ConfirmDialog from "@/shared/components/ConfirmDialog";
 import { colors, font, fonts } from "@/theme";
 
 import PlayScreen from "../components/PlayScreen";
-import { AudiencePicker, QuestionTabs, RevealNote, Toggle } from "../components/quiz/QuizParts";
+import { AudiencePicker, QuestionTabs, RevealNote, MakeQuotaNote, Toggle } from "../components/quiz/QuizParts";
+import { recordMade } from "../mock";
 
 const Q_MAX = 60; // 문제 글자 수
 const OPT_MAX = 20; // 보기 글자 수
@@ -95,8 +96,9 @@ export default function QuizCreateScreen({ initialMode = "rec" }) {
               {problems[firstBad]}
             </Text>
           ) : (
-            <RevealNote>내일 오후 2:10에 정답이 공개돼요 · 모두 답하면 바로 열려요</RevealNote>
+            <RevealNote>내일 오후 2:10에 정답이 공개돼요, 모두 답하면 바로 열려요</RevealNote>
           )}
+          <MakeQuotaNote />
           <Button
             label={`골든벨 ${qs.length}문제 보내기`}
             onPress={() => {
@@ -107,6 +109,7 @@ export default function QuizCreateScreen({ initialMode = "rec" }) {
                 return;
               }
               leaving.current = true;
+              recordMade();
               router.replace("/play/quiz-play");
             }}
           />
