@@ -8,6 +8,7 @@ from datetime import UTC, datetime, time, timedelta
 from sqlalchemy.orm import Session
 
 from app.shared.errors import ApiError, bad_request, not_found
+from app.shared.notifications import notify
 
 from . import repository as repo
 from .constants import (
@@ -30,6 +31,21 @@ _ALL_DAY = (time(0, 0), time(23, 59))  # 종일은 00:00~23:59 (events 와 같�
 
 def _new_id() -> str:
     return uuid.uuid4().hex[:12]
+
+
+def _notify_received(db: Session, req: EventRequest, to_ids: list[str]) -> None:
+    """받는 사람에게 "같이해요가 도착했어요". 문구는 고정이라 제목·날짜·장소·메모를 담지 않는다."""
+    notify(
+        db,
+        group_id=req.group_id,
+        kind="schedule",
+        event="request_received",
+        recipients=to_ids,
+        title="같이해요가 도착했어요",
+        target_type="schedule_request",
+        target_id=req.id,
+        actor_user_id=req.user_id,
+    )
 
 
 def _out(
@@ -108,6 +124,7 @@ def create(db: Session, group_id: str, user_id: str, body: RequestCreate) -> dic
     db.add(req)
     db.flush()  # 부탁 줄이 먼저 들어가야 받는 사람 줄이 가리킬 수 있다
     db.add_all(rows)
+    _notify_received(db, req, to_ids)
     db.commit()
     return _out(req, rows, [], user_id)
 
@@ -137,10 +154,24 @@ def answer(db: Session, group_id: str, user_id: str, request_id: str, body: Requ
     for event in previous:
         if not (keep and event.kind == body.kind):
             event.deleted_at = now
-    recip.status = RECIPIENT_ACCEPTED if accepted else RECIPIENT_DECLINED
+    new_status = RECIPIENT_ACCEPTED if accepted else RECIPIENT_DECLINED
+    changed = recip.status != new_status  # 같은 답을 다시 보내면 알리지 않는다
+    recip.status = new_status
     recip.answered_at = now
     if accepted and not keep:
         db.add(_event_from(req, recip, user_id, body.kind))
+    if changed:
+        notify(
+            db,
+            group_id=group_id,
+            kind="schedule",
+            event="request_answered",
+            recipients=[req.user_id],
+            title="같이해요에 답이 왔어요",  # 수락·거절 여부와 누가 답했는지는 담지 않는다
+            target_type="schedule_request",
+            target_id=req.id,
+            actor_user_id=user_id,
+        )
     db.commit()
     return _outs(db, [req], user_id)[0]
 
@@ -240,5 +271,6 @@ def change_recipients(
         ]
     )
     req.edited_at = now
+    _notify_received(db, req, added)
     db.commit()
     return _outs(db, [req], user_id)[0]
