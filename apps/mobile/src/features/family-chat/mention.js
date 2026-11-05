@@ -64,6 +64,30 @@ export function mentionHistory(thread, now = Date.now()) {
   return fresh.map((t) => ({ role: t.role, text: t.text }));
 }
 
+/**
+ * 방에 저장된 메시지로 이전 @가비 대화를 되살린다(방을 나갔다 들어와도 이어 가도록). 내가 쓴 `@가비 질문` 바로 다음 메시지가
+ * 가비의 답일 때만 한 쌍으로 본다(사이에 다른 사람 글이 끼면 누구의 답인지 알 수 없어 건너뛴다). 지운 글·전송 중인 글은 뺀다.
+ * 시각은 가비 답의 시각이라 15분이 지난 쌍은 mentionHistory 가 버린다.
+ * @param {{ id?: number, user_id: string, text?: string, created_at: string, is_assistant?: boolean, deleted?: boolean, clientId?: string }[]} messages 오래된 순
+ * @param {string | null | undefined} myId 내 사용자 id
+ * @returns {{ role: "user" | "assistant", text: string, at: number }[]}
+ */
+export function restoreThread(messages, myId) {
+  const list = (messages ?? []).filter((m) => !m.clientId);
+  const thread = [];
+  for (let i = 0; i < list.length - 1; i++) {
+    const ask = list[i];
+    const answer = list[i + 1];
+    if (!myId || ask.user_id !== myId || ask.is_assistant || ask.deleted) continue;
+    if (!answer.is_assistant || answer.deleted || !answer.text) continue;
+    const called = parseMention(ask.text);
+    if (!called.mentioned || !called.question) continue;
+    const at = parseTime(answer.created_at);
+    thread.push({ role: "user", text: called.question, at }, { role: "assistant", text: answer.text, at });
+  }
+  return thread.slice(-MAX_TURNS * 2);
+}
+
 /** 대화에 한 턴을 더한다(오래된 것은 버린다). */
 export function pushThread(thread, ...turns) {
   return [...thread, ...turns].slice(-MAX_TURNS * 2);

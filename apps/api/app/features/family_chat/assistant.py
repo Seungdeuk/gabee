@@ -81,6 +81,11 @@ def direct_room(db: Session, user: User, group_id: str, room_id: str | None) -> 
     return ai_service.room_scope(db, user, group_id, room_id)
 
 
+def room_context(db: Session, group_id: str, direct: str | None) -> ai_service._Context | None:
+    """@가비 에 맥락으로 붙일 방의 최근 대화(개인정보를 가린 것). 없으면 None. 쓴 뒤 close() 를 부른다."""
+    return ai_service.room_context(db, group_id, direct)
+
+
 def post_as_assistant(
     db: Session, group_id: str, text: str, room_id: str | None = None
 ) -> MessageOut:

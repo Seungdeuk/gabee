@@ -244,6 +244,27 @@ def room_scope(db: Session, user: User, group_id: str, room_id: str | None) -> s
     return room.id
 
 
+ROOM_CONTEXT_LIMIT = 10  # @가비 에 맥락으로 붙이는 방의 최근 메시지 수
+ROOM_CONTEXT_MINUTES = 30  # 이 시간보다 오래된 메시지는 맥락에 붙이지 않는다
+
+
+def room_context(db: Session, group_id: str, room_id: str | None) -> _Context | None:
+    """@가비 에 맥락으로 붙일 방의 최근 대화(최근 ROOM_CONTEXT_LIMIT 개 중 ROOM_CONTEXT_MINUTES 분 이내)를
+    분석과 같은 규칙으로 가명화해서 돌려준다. 붙일 메시지가 없으면 None. 돌려받은 쪽이 끝나면 close() 로 대응표를 지운다.
+    room_id 는 room_scope 가 확인한 1:1 방 id 여야 한다(None 이면 가족 전체방)."""
+    cutoff = datetime.now(UTC) - timedelta(minutes=ROOM_CONTEXT_MINUTES)
+    rows = [
+        (m, name)
+        for m, name in repo.recent_messages(db, group_id, ROOM_CONTEXT_LIMIT, 0, room_id)
+        if (m.created_at if m.created_at.tzinfo else m.created_at.replace(tzinfo=UTC)) >= cutoff
+    ]
+    if not rows:
+        return None
+    return _build_context(
+        rows, repo.member_names(db, group_id), ANALYSIS, settings.ai_analysis_max_chars
+    )
+
+
 def _prepare(
     db: Session,
     group_id: str,

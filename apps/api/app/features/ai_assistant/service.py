@@ -8,6 +8,7 @@ from app.features.family_group.models import User
 from app.shared.config import settings
 from app.shared.errors import bad_request
 from app.shared.llm.agent_chat import to_out as to_proposal_out
+from app.shared.privacy import restore_value
 
 from . import repository as repo
 from .knowledge import rag_chat
@@ -48,17 +49,31 @@ def chat(
         if audience == "room" and room_id and user is not None
         else None
     )
-    r = rag_chat.ask_guarded(
-        db,
-        user_id,
-        group_id,
-        message,
-        feature="assistant_chat",
-        history=history,
-        user=user,
-        # 1:1 방이면 탭 에이전트에게 "direct" 로 알린다(일정 에이전트는 아직 1:1 을 다루지 않는다)
-        audience="direct" if direct else audience,
-    )
+    # 방에서 부른 @가비 에는 그 방의 최근 대화를 개인정보를 가린 채 맥락으로 붙인다("일정 잡아줘"가 무엇을 가리키는지 알도록)
+    ctx = family_assistant.room_context(db, group_id, direct) if audience == "room" else None
+    try:
+        r = rag_chat.ask_guarded(
+            db,
+            user_id,
+            group_id,
+            message,
+            feature="assistant_chat",
+            history=history,
+            user=user,
+            # 1:1 방이면 탭 에이전트에게 "direct" 로 알린다(일정 에이전트는 아직 1:1 을 다루지 않는다)
+            audience="direct" if direct else audience,
+            room_context=ctx.transcript if ctx else None,
+            restore=(
+                lambda text: (
+                    restore_value(ctx.prep, text, generalize_unknown=True, scrub=True).value
+                )
+            )
+            if ctx
+            else None,
+        )
+    finally:
+        if ctx:
+            ctx.close()  # 대화 속 이름 대응표는 요청이 끝나면 지운다
     sources = [
         ChatSource(n=s["n"], title=s["title"], item_id=s["item_id"], source_path=s["source_path"])
         for s in r.sources

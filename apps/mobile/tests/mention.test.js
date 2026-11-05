@@ -180,3 +180,62 @@ test("ChatRoomScreen: 1:1 방에서도 @가비 를 부르고 방 id 를 넘긴�
   const hook = readFileSync(new URL("../src/features/family-chat/useMention.js", import.meta.url), "utf8");
   assert.match(hook, /askAssistantInRoom\(q, mentionHistory\(thread\.current\), roomId\)/);
 });
+
+const T0 = Date.parse("2026-11-05T10:00:00Z");
+const iso = (min) => new Date(T0 + min * 60000).toISOString();
+const msg = (id, uid, text, min, extra = {}) => ({ id, user_id: uid, text, created_at: iso(min), is_assistant: false, ...extra });
+const gabi = (id, text, min) => msg(id, "gabee-assistant", text, min, { is_assistant: true });
+
+test("restoreThread: 내 @가비 질문과 바로 뒤의 가비 답을 이전 대화로 되살린다", () => {
+  const thread = mention.restoreThread(
+    [msg(1, "me", "점심 뭐 먹지", 0), msg(2, "me", "@가비 이번 달 지출", 1), gabi(3, "총 22만원이에요", 1.5)],
+    "me",
+  );
+  assert.deepEqual(
+    mentionHistory(thread, T0 + 2 * 60000),
+    [
+      { role: "user", text: "이번 달 지출" },
+      { role: "assistant", text: "총 22만원이에요" },
+    ],
+  );
+});
+
+test("restoreThread: 다른 사람의 @가비 질문, 사이에 다른 글이 낀 짝, 지운 글·임시 글은 되살리지 않는다", () => {
+  const thread = mention.restoreThread(
+    [
+      msg(1, "dad", "@가비 아빠 질문", 0),
+      gabi(2, "아빠에게 한 답", 0.5),
+      msg(3, "me", "@가비 끼어든 질문", 1),
+      msg(4, "mom", "엄마가 끼어든 글", 1.2),
+      gabi(5, "누구 답인지 알 수 없는 답", 1.5),
+      msg(6, "me", "@가비 지운 질문", 2, { deleted: true }),
+      gabi(7, "지운 질문의 답", 2.5),
+      msg(8, "me", "@가비 보내는 중", 3, { clientId: "tmp-1" }),
+    ],
+    "me",
+  );
+  assert.deepEqual(thread, []);
+});
+
+test("restoreThread: 시각은 가비 답의 시각이라 15분이 지나면 mentionHistory 가 버리고, 최근 6개까지만 보낸다", () => {
+  const rows = [];
+  for (let i = 0; i < 5; i++) rows.push(msg(i * 2 + 1, "me", `@가비 질문${i}`, i), gabi(i * 2 + 2, `답${i}`, i + 0.5));
+  const thread = mention.restoreThread(rows, "me");
+  assert.equal(thread.length, 10);
+  const sent = mentionHistory(thread, T0 + 5 * 60000);
+  assert.equal(sent.length, 6);
+  assert.deepEqual(sent.at(-1), { role: "assistant", text: "답4" });
+  assert.deepEqual(mentionHistory(thread, T0 + 40 * 60000), []);
+});
+
+test("restoreThread: @가비 만 있고 질문이 비어 있으면 건너뛴다", () => {
+  assert.deepEqual(mention.restoreThread([msg(1, "me", "@가비", 0), gabi(2, "무엇을 도와드릴까요", 0.5)], "me"), []);
+});
+
+test("ChatRoomScreen: 방에 들어올 때 저장된 메시지로 이전 대화를 한 번 되살린다(소스 확인)", () => {
+  const screen = readFileSync(new URL("../src/features/family-chat/screens/ChatRoomScreen.js", import.meta.url), "utf8");
+  assert.match(screen, /seedThread\(restoreThread\(chat\.messages, info\.me\.id\)\)/);
+  assert.match(screen, /const seedThread = mention\.seed;/);
+  const hook = readFileSync(new URL("../src/features/family-chat/useMention.js", import.meta.url), "utf8");
+  assert.match(hook, /const seed = useCallback/);
+});
