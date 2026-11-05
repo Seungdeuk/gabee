@@ -64,14 +64,14 @@ class ChatOut(BaseModel):
     proposals: list[
         ProposalOut
     ] = []  # 정산·돌봄 에이전트가 제안한 쓰기. 사용자가 확인해야 실행된다
-    # room: 가족 채팅방에 올려도 되는 답 | private: 질문한 사람에게만 보여 줄 답(audience=me 이면 항상 private)
+    # room: 가족 채팅방에서 부른 답(모두에게 공유, audience=room 이면 항상 room) | private: 나와 가비의 개인 대화(audience=me 이면 항상 private)
     visibility: Literal["room", "private"] = "private"
-    private_reasons: list[str] = []  # private 인 이유(audience=room 일 때만. 예: 자녀 용돈 장부)
+    private_reasons: list[str] = []  # 이전 앱 호환용(항상 빈 목록)
     confirm_cards: list[
         ConfirmCardOut
     ] = []  # 확인 버튼이 필요한 일정 요청(질문한 사람에게만 보인다)
     posted_message_id: int | None = (
-        None  # visibility=room 이라 가비 이름으로 가족 전체방에 올린 메시지 id(없으면 올리지 않음)
+        None  # audience=room 이라 가비 이름으로 가족 전체방에 올린 메시지 id(개인 대화이거나 답이 비면 없음)
     )
 
 

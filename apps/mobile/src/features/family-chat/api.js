@@ -28,19 +28,17 @@ const rangeBody = ({ limit = 100, afterId = 0 } = {}) => ({ limit, after_id: aft
 
 /**
  * 가족 채팅방에서 @가비 로 부른 질문을 메인 AI 비서에게 보낸다(개인 대화와 같은 입구, 같은 한도).
- * 서버가 답을 방에 올려도 되는지(visibility)를 정한다: room 이면 서버가 가비 이름으로 방에 저장한다(앱이 다시 올리지 않는다),
- * private 이면 저장하지 않고 이유(private_reasons)와 함께 돌려주며 앱은 질문한 사람 화면에만 보여 준다.
- * history 는 내가 @가비 로 나눈 앞 대화뿐이다(방의 다른 사람 글은 보내지 않는다). 개인용이었던 가비의 답에는 private: true 를 단다.
+ * 서버가 답을 가비 이름으로 가족 전체방에 저장한다(앱이 다시 올리지 않는다). 확인 버튼이 필요한 요청은 질문한 사람 응답에만 카드로 온다.
+ * history 는 내가 @가비 로 나눈 앞 대화뿐이다(방의 다른 사람 글은 보내지 않는다).
  * @param {string} question @가비 를 뺀 질문
- * @param {{ role: "user" | "assistant", text: string, private?: boolean }[]} [history]
- * @returns {Promise<{ reply: string, visibility: "room" | "private", reasons: string[], postedMessageId: number | null, confirmCards: object[] }>}
+ * @param {{ role: "user" | "assistant", text: string }[]} [history]
+ * @returns {Promise<{ reply: string, postedMessageId: number | null, confirmCards: object[] }>} postedMessageId 가 null 이면 서버가 방에 저장하지 않은 답(구 서버)
  */
 export async function askAssistantInRoom(question, history = []) {
-  const res = await apiFetch("/ai-assistant/chat", { method: "POST", body: { message: question, audience: "room", history: history.slice(-10) } });
+  const turns = history.slice(-10).map(({ role, text }) => ({ role, text }));
+  const res = await apiFetch("/ai-assistant/chat", { method: "POST", body: { message: question, audience: "room", history: turns } });
   return {
     reply: res.reply ?? "",
-    visibility: res.visibility === "room" ? "room" : "private", // 모르는 값은 개인용으로(방에 올리지 않는 쪽)
-    reasons: res.private_reasons ?? [],
     postedMessageId: res.posted_message_id ?? null,
     confirmCards: mapChatCards(res), // 확인 버튼이 필요한 일정 요청·정산/돌봄 제안은 질문한 사람 화면에만 카드로 보인다
   };

@@ -186,15 +186,17 @@ def test_forged_card_payload_is_revalidated_by_the_server(client, setup, schedul
     assert [e["title"] for e in _events(client, a)] == ["가족 모임"]
 
 
-def test_room_answer_with_a_card_is_private_and_not_posted(
+def test_room_answer_with_a_card_is_not_posted_and_stays_with_the_asker(
     client, setup, schedule_llm, monkeypatch
 ):
+    """확인 카드가 딸린 답(예: "공유해서 등록할까요?")은 버튼이 없는 다른 구성원에게 열린 질문으로 남지 않게 방에 올리지 않는다."""
     a, b, other = setup
     _main(monkeypatch)
     schedule_llm.data = _register_data(title="가족 모임", date=_tomorrow(), share_ids=[other])
     out = _ask(client, a, audience="room")
     assert out["visibility"] == "private" and out["posted_message_id"] is None
-    assert "확인 버튼이 필요한 제안" in out["private_reasons"]
+    assert out["private_reasons"] == ["확인 버튼이 필요한 제안"]
+    assert out["confirm_cards"]  # 카드는 질문한 사람 응답에 그대로 있다
     assert client.get("/family-chat/messages", headers=b).json() == []
 
 
