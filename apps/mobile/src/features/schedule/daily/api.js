@@ -8,6 +8,7 @@ import { DEV_SAMPLE_ITEMS } from "./mock";
 import {
   CHEER_KIND_TO_SERVER,
   cheerFromServer,
+  callTalkFromServer,
   cheerSuggestionsFromServer,
   entryToServer,
   habitSuggestionsFromServer,
@@ -209,6 +210,19 @@ export async function listFamilyToday(appId) {
   if (!userId) throw new Error("가족 구성원을 찾지 못했어요");
   const body = await apiFetch(`${BASE}/members/${seg(userId)}/today`);
   return body.items.map(memberItemFromServer);
+}
+
+/**
+ * 전화 시트에 보여 줄 AI 이야깃거리(서버가 Claude Haiku 로 만든다, 6초 안팎). 앱 id 로 부른다.
+ * 서버는 실패 대신 안부 문구(source "greeting")를 주는 것이 원칙이고, 네트워크 실패는 호출한 화면이 임시 문구로 대신한다.
+ * @param {string} appId "mom" 같은 앱 id
+ * @returns {Promise<{ source: "ai" | "greeting", reason: string, points: { say: string, ask: string }[] }>}
+ */
+export async function loadCallTalk(appId) {
+  const fam = await ready();
+  const userId = fam.toUser(appId);
+  if (!userId) throw new Error("가족 구성원을 찾지 못했어요");
+  return callTalkFromServer(await apiFetch(`${BASE}/members/${seg(userId)}/call-talk`, { method: "POST" }));
 }
 
 // ── 응원 ──

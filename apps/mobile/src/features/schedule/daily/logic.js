@@ -620,6 +620,71 @@ export function talkingPoints(rows) {
   return [{ say: "오늘 기록이 아직 없어요", ask: "오늘 하루 어떻게 지내셨는지 여쭤보세요" }];
 }
 
+/** 서버(DB)에 닿지 못할 때 쓰는 내장 안부 문구. 각 문장은 { say: 문장, ask: "" } 로 쓴다(28자 이내). */
+export const FALLBACK_GREETINGS = [
+  "오늘 식사는 맛있게 드셨는지 여쭤보세요",
+  "요즘 잠은 편하게 주무시는지 물어보세요",
+  "이번 주말에 계획이 있으신지 여쭤보세요",
+  "요즘 재미있게 보시는 프로그램이 있는지 물어보세요",
+  "오늘 바깥 공기는 마시고 오셨는지 물어보세요",
+  "오늘 하루는 어떠셨는지 여쭤보세요",
+  "요즘 즐겁게 하시는 일이 있는지 여쭤보세요",
+  "오늘도 고생 많으셨다고 한마디 건네보세요",
+  "지난주에 있었던 좋은 일을 물어보세요",
+  "다음에 만나면 뭘 하고 싶으신지 여쭤보세요",
+  "요즘 가장 즐겁게 하시는 일을 여쭤보세요",
+  "오늘 기분을 한 단어로 말해 달라고 해 보세요",
+];
+
+/**
+ * 전화 시트를 열자마자 보여 줄 임시 문구(서버 응답 전, 서버를 못 부를 때). 내장 안부 문구에서 count 개를 고른다.
+ * 시트를 열 때 seed(0 이상 1 미만)를 한 번 정해 넘기면 열려 있는 동안 문구가 바뀌지 않는다.
+ * 임시 문구 정책을 바꿀 때는 이 함수 한 곳만 고친다.
+ * @param {number} seed
+ * @param {number} [count] 기본 1(AI 문구도 한 묶음)
+ * @returns {{ say: string, ask: string }[]}
+ */
+export function provisionalPoints(seed, count = 1) {
+  const n = FALLBACK_GREETINGS.length;
+  const start = Math.min(n - 1, Math.max(0, Math.floor(seed * n)));
+  return Array.from({ length: Math.min(count, n) }, (_, i) => ({ say: FALLBACK_GREETINGS[(start + i) % n], ask: "" }));
+}
+
+/**
+ * 전화 이야깃거리 캐시 키: 한국 날짜 + 가족 id + 보이는 습관의 (이름, 완료 여부/횟수). 습관 순서와 무관하다.
+ * @param {string} memberId
+ * @param {{ name: string, type: string, goal: number, entry?: object }[]} rows
+ * @param {string} dateKey 오늘(한국 시간) "YYYY-MM-DD". 다음 날에는 같은 상태여도 다시 부른다.
+ */
+export function callTalkKey(memberId, rows, dateKey) {
+  const parts = rows.map((row) => {
+    const done = isDone(row, row.entry);
+    const state = isCount(row) ? `c${row.entry?.count ?? 0}${done ? "!" : ""}` : done ? "d" : "n";
+    return `${row.name}=${state}`;
+  });
+  return `${dateKey}|${memberId}|${parts.sort().join(",")}`;
+}
+
+/** 서버 결과를 캐시에 둘지. 곧 풀릴 수 있는 안부(limit·error)는 두지 않는다. */
+export function shouldCacheCallTalk(result) {
+  return !(result.source === "greeting" && (result.reason === "limit" || result.reason === "error"));
+}
+
+/** 앱이 켜져 있는 동안만 쓰는 작은 캐시(max 를 넘으면 오래 둔 것부터 뺀다). */
+export function createCallTalkCache(max = 30) {
+  const map = new Map();
+  return {
+    get: (key) => map.get(key),
+    set(key, result) {
+      if (!shouldCacheCallTalk(result)) return;
+      map.delete(key);
+      map.set(key, result);
+      while (map.size > max) map.delete(map.keys().next().value);
+    },
+    size: () => map.size,
+  };
+}
+
 function pointFor(row) {
   const { name, entry } = row;
   if (name.includes("산책")) return { say: `오늘 ${name} 하셨어요`, ask: "어디로 다녀오셨는지 여쭤보세요" };

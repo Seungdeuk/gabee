@@ -36,3 +36,4 @@ CHEER_WELL_DONE = 3  # 잘하셨어요
 # 데일리 체크 추천 문구(events_check_suggestions.category)
 SUGGEST_HABIT = 1  # 습관 추천
 SUGGEST_CHEER = 2  # 응원 문구
+SUGGEST_GREETING = 3  # 안부 문구(전화 이야깃거리를 AI 로 못 만들 때)
