@@ -141,6 +141,10 @@ class Settings(BaseSettings):
     ai_schedule_chat_cooldown_seconds: int = 0
     ai_schedule_chat_max_calls_per_user_per_day: int = 30
     ai_schedule_chat_max_calls_per_group_per_day: int = 100
+    # 전화 이야깃거리(데일리 체크): 쿨다운 없음, 하루 10번(가족 30번). 결과 캐시는 서버 기본 시간(ai_result_cache_ttl_seconds)을 따른다
+    ai_call_talk_cooldown_seconds: int = 0
+    ai_call_talk_max_calls_per_user_per_day: int = 10
+    ai_call_talk_max_calls_per_group_per_day: int = 30
     # 먼저 권해드려요 카드 공급(미리 만들어 저장): 하루 3번(5개씩 15개), 요청 간격 5초
     ai_schedule_card_cooldown_seconds: int = 5
     ai_schedule_card_max_calls_per_user_per_day: int = 3
@@ -172,6 +176,8 @@ class Settings(BaseSettings):
     # 켜도 응답에는 영향이 없고(응답을 보내기 전 요청 안에서 저장), 메시지는 가려서 200자까지만, 인증 실패는 메시지 없이 code 만 저장한다.
     ops_errors_enabled: bool = False
     ops_errors_retention_days: int = 90
+    # 운영 관리자 인프라 상태(Cloud Run 설정·Cloud Monitoring 조회, 읽기 전용): 기본 꺼짐. 실행 서비스 계정에 roles/run.viewer·monitoring.viewer 가 필요하다.
+    ops_infra_enabled: bool = False
     # 폰 푸시(app/shared/push.py). 기본 꺼짐: 켜면 알림함 알림을 저장한 뒤(커밋 후) Expo 푸시 서비스로 발송한다.
     # 푸시 토큰이 없거나 발송이 실패해도 원래 기능에는 영향이 없다. Expo 계정에서 '푸시 보안'을 켠 경우에만
     # PUSH_EXPO_ACCESS_TOKEN 을 넣는다(안드로이드 FCM 키는 EAS 에 올리며 서버에는 두지 않는다).

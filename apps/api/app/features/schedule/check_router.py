@@ -16,6 +16,7 @@ from app.shared.db import get_db
 from app.shared.schema_gate import schema_ready
 
 from . import check as service
+from .call_talk.router import router as call_talk_router
 from .check_schemas import (
     CheckCheerCreate,
     CheckCheerOut,
@@ -40,6 +41,8 @@ router = APIRouter(
 
 # 추천 습관·응원 문구(읽기 전용). '/items/{item_id}' 같은 경로와 겹치지 않는 '/suggestions' 아래다.
 router.include_router(suggestion_router)
+# 전화 이야깃거리(AI 문구, 실패하면 안부 문구): POST /members/{user_id}/call-talk
+router.include_router(call_talk_router)
 
 
 # ---------------------------------------------------------------- 내 습관
