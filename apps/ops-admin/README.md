@@ -39,6 +39,6 @@ python -m http.server 5601
 - `js/config.js` 가 모드를 정한다. **기본은 서버 모드**이고, 샘플 모드는 로컬 `js/local-config.js` 가 `mode: "sample"` 을 명시하고 `js/sample-account.js` 에 계정이 있을 때만 켜진다(두 파일 모두 커밋 제외, 배포본에 없음).
 - 로컬에서 서버에 붙이려면 `local-config.example.js` 를 `local-config.js` 로 복사한다(커밋 제외). 기본 서버 주소는 `https://api.gabee.cloud`.
 - 로그인은 `/family-group/auth/login` → 곧바로 `/admin/ops/summary` 를 불러 운영자 여부를 확인한다. 403 이면 토큰을 버리고 "권한 없음" 만 알려 준다. 토큰은 메모리에만 있다.
-- 서버 모드에서 실제 데이터가 있는 화면은 **대시보드(요청 지표)** 와 **API 상태(경로별 집계)** 뿐이다. 나머지(인프라, 오류 로그, 배포/DB)는 샘플을 섞지 않고 "아직 서버와 연결되지 않았습니다" 로 표시한다. 응답 시간은 평균·최대만 있고 p95 는 없다.
+- 서버 모드에서 실제 데이터가 있는 화면은 **대시보드(요청 지표)**, **API 상태(경로별 집계)**, **인프라(`/admin/ops/infra`)**, **로그/오류(`/admin/ops/errors`)** 이다. 인프라·오류 조회가 실패하거나(서버에 아직 배포되지 않아 404 등) 수집이 꺼져 있으면 그 이유를 보여 주고 다른 화면은 그대로 동작한다. 배포/DB 는 샘플을 섞지 않고 "아직 서버와 연결되지 않았습니다" 로 표시한다. 응답 시간은 평균·최대만 있고 p95 는 없다.
 - CSP: `index.html` 의 meta 는 로컬 개발 주소와 `https://api.gabee.cloud` 만 허용한다. 배포본은 Cloudflare Pages 가 `_headers` 의 더 좁은 CSP(`connect-src 'self' https://api.gabee.cloud`, `frame-ancestors 'none'`)를 함께 적용한다. 남은 완화: `style-src 'unsafe-inline'`.
 - 서버 CORS 는 서버의 `CORS_ORIGINS` 환경변수로 좁힌다(코드 변경 없음). 값 예: `https://ops.gabee.cloud`. 이 화면을 쓰는 브라우저 출처만 넣는다.
