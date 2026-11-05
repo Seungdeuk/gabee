@@ -82,6 +82,7 @@ export default function DrawGuessScreen() {
           </View>
         </View>
       )}
+      <Text style={styles.end}>내일 오후 2:10에 종료돼요</Text>
       {right ? (
         <FieldButton label="나도 그림 문제 내기" icon="brush-outline" onPress={() => router.push("/play/draw-create")} />
       ) : opened < 2 ? (
@@ -102,6 +103,7 @@ function FieldButton({ label, onPress, icon }) {
 }
 
 const styles = StyleSheet.create({
+  end: { ...font.caption, color: colors.textSub, textAlign: "center" },
   fieldBtn: { height: FIELD_H, borderRadius: radius.button, backgroundColor: colors.honeySoft, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8 },
   fieldBtnText: { fontSize: 15, fontFamily: fonts.bold, color: colors.text },
   from: { flexDirection: "row", alignItems: "center", gap: 10 },

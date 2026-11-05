@@ -37,7 +37,7 @@ export default function PhotoGuessScreen() {
       footer={
         <>
           <Button label="답 보내기" disabled={pick == null} onPress={() => router.replace("/play/my-answer?kind=photo")} />
-          <Text style={[styles.reveal, styles.center]}>내일 오후 2:10에 공개돼요</Text>
+          <Text style={[styles.reveal, styles.center]}>내일 오후 2:10에 종료돼요</Text>
         </>
       }
     >

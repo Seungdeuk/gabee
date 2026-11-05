@@ -7,6 +7,7 @@ import { colors, font, fonts, radius } from "@/theme";
 
 import AnswerRow, { bySolved } from "../components/AnswerRow";
 import PlayScreen from "../components/PlayScreen";
+import ScoreBox from "../components/ScoreBox";
 import { SCORE } from "../games";
 
 // 시안: 정답과 이것도 정답, 내가 정답으로 인정받은 답, 연 힌트 수
@@ -16,7 +17,7 @@ const MINE = "멍멍이";
 const HINTS = 2;
 const HINT2 = "동물이야";
 // 가족이 낸 답(푼 시각은 정렬에만 쓴다): 이름, 답, 시각, 쓴 힌트 수
-const ROWS = [["아빠", ["고양이", "토끼", "곰", "사자", "호랑이", "여우", "늑대", "다람쥐", "원숭이", "기린"].join(" · "), "13:00", 1], ["엄마", "강아지", "09:20", 0], ["나", "멍멍이", "10:10", 1]];
+const ROWS = [["아빠", ["고양이", "토끼", "곰", "사자", "호랑이", "여우", "늑대", "다람쥐", "원숭이", "기린"].join(" · "), "13:00", 1], ["엄마", "강아지", "09:20", 0]];
 
 /** 이게 뭐게 정답 공개(받은 쪽): 정답, 그림, 내 답과 받은 점수, 쓴 힌트, 누가 맞혔나. */
 export default function DrawResultScreen() {
@@ -50,9 +51,7 @@ export default function DrawResultScreen() {
           </View>
         ) : null}
       </View>
-      <View style={styles.scoreBox}>
-        <Text style={styles.score}>{`점수 +${SCORE.join + SCORE.correct - SCORE.hintCost * HINTS} (참여 +${SCORE.join} 정답 +${SCORE.correct}${HINTS ? ` 힌트 -${SCORE.hintCost * HINTS}` : ""})`}</Text>
-      </View>
+      <ScoreBox total={SCORE.join + SCORE.correct - SCORE.hintCost * HINTS} detail={`참여 +${SCORE.join} 정답 +${SCORE.correct}${HINTS ? ` 힌트 -${SCORE.hintCost * HINTS}` : ""}`} />
       <Text style={styles.label}>가족이 낸 답</Text>
       <View style={styles.rows}>
         {bySolved(ROWS, 2).map(([name, a, , hints]) => (
@@ -72,8 +71,6 @@ const styles = StyleSheet.create({
   mineCol: { gap: 4 },
   mineLabel: { ...font.caption, color: colors.textSub },
   mineText: { fontSize: 17, fontFamily: fonts.bold, color: colors.text },
-  scoreBox: { padding: 14, borderRadius: radius.md, backgroundColor: colors.dangerSoft },
-  score: { ...font.bodyStrong, color: colors.text },
   chips: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
   hint: { paddingVertical: 4, paddingHorizontal: 12, borderRadius: 999, overflow: "hidden", backgroundColor: colors.card, color: colors.text, fontSize: 12, fontFamily: fonts.bold },
   memo: { padding: 12, borderRadius: radius.md, backgroundColor: colors.surface },

@@ -6,12 +6,13 @@ import { colors, font, fonts, radius } from "@/theme";
 
 import AnswerRow, { bySolved } from "../components/AnswerRow";
 import PlayScreen from "../components/PlayScreen";
+import ScoreBox from "../components/ScoreBox";
 import { SCORE } from "../games";
 
 // 시안: 내가 "조금 줄여 보기"를 쓴 횟수(힌트와 같이 번마다 -5점)
 const SHRINKS = 1;
 // 가족이 낸 답(푼 시각은 정렬에만 쓴다)
-const ROWS = [["아빠", "돌잔치", "13:50"], ["엄마", "제주도 여행", "09:12"], ["나", "제주도 여행", "10:00"]];
+const ROWS = [["아빠", "돌잔치", "13:50"], ["엄마", "제주도 여행", "09:12"]];
 
 /** 찰칵! 탐정단 정답 공개: 정답, 원본 사진과 문제로 낸 부분, 딸의 한마디, 누가 맞혔나. */
 export default function PhotoResultScreen() {
@@ -39,9 +40,7 @@ export default function PhotoResultScreen() {
       <View style={styles.memo}>
         <Text style={styles.memoText}>{`딸의 한마디\n"그날 비가 와서 협재 해변에서 우동을 먹었어요"`}</Text>
       </View>
-      <View style={styles.scoreBox}>
-        <Text style={styles.score}>{`점수 +${SCORE.join + SCORE.correct - SCORE.hintCost * SHRINKS} (참여 +${SCORE.join} 정답 +${SCORE.correct}${SHRINKS ? ` 힌트 -${SCORE.hintCost * SHRINKS}` : ""})`}</Text>
-      </View>
+      <ScoreBox total={SCORE.join + SCORE.correct - SCORE.hintCost * SHRINKS} detail={`참여 +${SCORE.join} 정답 +${SCORE.correct}${SHRINKS ? ` 힌트 -${SCORE.hintCost * SHRINKS}` : ""}`} />
       <Text style={styles.label}>가족이 낸 답</Text>
       <View style={styles.rows}>
         {bySolved(ROWS, 2).map(([name, a]) => (
@@ -60,8 +59,6 @@ const styles = StyleSheet.create({
   box: { position: "absolute", left: 130, top: 80, width: 110, height: 90, borderWidth: 3, borderColor: colors.background, borderRadius: 10, backgroundColor: "rgba(255,252,247,0.25)" },
   badge: { position: "absolute", left: 14, top: 12, paddingVertical: 4, paddingHorizontal: 10, borderRadius: 999, overflow: "hidden", backgroundColor: colors.background, fontSize: 13, fontFamily: fonts.bold, color: colors.text },
   stageNote: { position: "absolute", left: 0, right: 0, bottom: 12, textAlign: "center", fontSize: 13, color: "#3A2719" },
-  scoreBox: { padding: 14, borderRadius: radius.md, backgroundColor: colors.dangerSoft },
-  score: { ...font.bodyStrong, color: colors.text },
   memo: { padding: 12, borderRadius: radius.md, backgroundColor: colors.surface },
   memoText: { ...font.caption, color: colors.textSub },
   label: { ...font.bodyStrong, color: colors.text },

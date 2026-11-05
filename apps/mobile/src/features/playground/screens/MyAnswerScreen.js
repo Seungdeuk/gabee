@@ -5,6 +5,7 @@ import Svg, { Circle, Path } from "react-native-svg";
 import { colors, font, fonts, radius } from "@/theme";
 
 import PlayScreen from "../components/PlayScreen";
+import ScoreBox from "../components/ScoreBox";
 import { SCORE } from "../games";
 
 // 시안 데이터: 내가 이미 답을 보냈지만 가족 전체 결과는 아직 안 열린 골든벨. 정답과 내가 고른 답을 같이 보여 준다.
@@ -142,9 +143,7 @@ function Draw({ maker, answer, alt, hint2, hints, tries }) {
           </View>
         ) : null}
       </View>
-      <View style={styles.scoreBox}>
-        <Text style={styles.score}>{solved ? `점수 +${SCORE.join + SCORE.correct - SCORE.hintCost * hints} (참여 +${SCORE.join} 정답 +${SCORE.correct}${hints ? ` 힌트 -${SCORE.hintCost * hints}` : ""})` : `점수 +${SCORE.join - SCORE.hintCost * hints} (참여 +${SCORE.join}${hints ? ` 힌트 -${SCORE.hintCost * hints}` : ""})`}</Text>
-      </View>
+      <ScoreBox total={solved ? SCORE.join + SCORE.correct - SCORE.hintCost * hints : SCORE.join - SCORE.hintCost * hints} detail={solved ? `참여 +${SCORE.join} 정답 +${SCORE.correct}${hints ? ` 힌트 -${SCORE.hintCost * hints}` : ""}` : `참여 +${SCORE.join}${hints ? ` 힌트 -${SCORE.hintCost * hints}` : ""}`} />
     </>
   );
 }
@@ -208,8 +207,6 @@ const styles = StyleSheet.create({
   heroScore: { fontSize: 16, fontFamily: fonts.bold },
   heroSub: { ...font.caption, color: "#2F4A3B" },
   mineCol: { gap: 4 },
-  scoreBox: { padding: 14, borderRadius: radius.md, backgroundColor: colors.dangerSoft },
-  score: { ...font.bodyStrong, color: colors.text },
   mine: { padding: 14, borderRadius: radius.md, backgroundColor: colors.surfaceStrong, gap: 8 },
   mineLabel: { ...font.caption, color: colors.textSub },
   mineText: { fontSize: 16, fontFamily: fonts.bold, color: colors.text },
