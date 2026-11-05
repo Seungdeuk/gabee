@@ -154,3 +154,9 @@ details summary { cursor: pointer; }
 .answer textarea { width: 100%; box-sizing: border-box; padding: 8px 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--bg); resize: vertical; }
 .answer-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .row-actions { display: flex; gap: 6px; justify-content: flex-end; flex-wrap: wrap; }
+.notice-form { display: flex; flex-direction: column; gap: 8px; }
+.notice-fields { display: flex; gap: 12px; flex-wrap: wrap; }
+.notice-fields label { display: flex; flex-direction: column; gap: 4px; }
+.notice-title { flex: 1 1 280px; }
+.notice-form input, .notice-form select, .notice-form textarea { box-sizing: border-box; padding: 8px 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--bg); }
+.notice-form textarea { width: 100%; resize: vertical; }

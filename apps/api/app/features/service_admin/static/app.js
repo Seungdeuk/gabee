@@ -1,5 +1,5 @@
 // 가비 서비스 관리자 화면. 서버가 /admin/service/ui 로 내려준다.
-// 모든 탭은 로그인한 뒤 /admin/service/* API 의 실제 데이터를 쓴다. 문의·신고만 상태와 답변을 바꿀 수 있다.
+// 모든 탭은 로그인한 뒤 /admin/service/* API 의 실제 데이터를 쓴다. 문의·신고(상태·답변)와 공지사항(쓰기·고치기·지우기)만 바꿀 수 있다.
 (function () {
   "use strict";
 
@@ -9,6 +9,7 @@
     ["features", "기능 관리"],
     ["ai", "AI 이용 현황"],
     ["support", "문의 및 신고"],
+    ["notices", "공지사항"],
   ];
   const TOKEN_KEY = "gabee_admin_token";
 
@@ -19,6 +20,8 @@
     done: { label: "처리 완료", cls: "ok" },
   };
   const KIND = { inquiry: "문의", report: "신고" };
+  // 공지 종류: 앱의 칩과 같은 이름
+  const CATEGORY = { update: "업데이트", info: "안내", maintenance: "점검" };
 
   /**
    * 화면에 넣을 글자를 HTML 로 해석되지 않게 바꾼다.
@@ -51,13 +54,13 @@
   /**
    * 관리자 API 를 부른다. 로그인이 풀렸으면(401) 로그인 화면으로 돌아간다.
    * @param {string} path
-   * @param {object} [body] 주면 PATCH 로 보낸다(문의·신고 상태·답변)
+   * @param {object} [body] 주면 method(기본 PATCH)로 보낸다(문의·신고 상태·답변, 공지 쓰기·고치기)
+   * @param {string} [method] body 없이 DELETE 처럼 보낼 때도 쓴다
    * @returns {Promise<any>}
    */
-  async function api(path, body) {
-    const init = { headers: { Authorization: `Bearer ${token()}` } };
+  async function api(path, body, method = body ? "PATCH" : "GET") {
+    const init = { method, headers: { Authorization: `Bearer ${token()}` } };
     if (body) {
-      init.method = "PATCH";
       init.headers["Content-Type"] = "application/json";
       init.body = JSON.stringify(body);
     }
@@ -77,10 +80,10 @@
    * @returns {Promise<object>}
    */
   async function loadData() {
-    const [me, members, groups, features, ai, support] = await Promise.all(
-      ["/admin/service/me", "/admin/service/members", "/admin/service/groups", "/admin/service/features", "/admin/service/ai-usage", "/admin/service/support"].map((p) => api(p)),
+    const [me, members, groups, features, ai, support, notices] = await Promise.all(
+      ["/admin/service/me", "/admin/service/members", "/admin/service/groups", "/admin/service/features", "/admin/service/ai-usage", "/admin/service/support", "/admin/service/notices"].map((p) => api(p)),
     );
-    return { me, members, groups, features, ai, support };
+    return { me, members, groups, features, ai, support, notices };
   }
 
   // ── 그리기 도우미 ─────────────────────────────────────
@@ -290,12 +293,63 @@
     render();
   }
 
+  let editingNotice = null; // 고치는 중인 공지 번호(없으면 새 공지 쓰기)
+  let writingNotice = false; // '글쓰기'를 눌러 쓰기 칸을 연 상태. 평소에는 칸을 숨기고 버튼만 둔다
+  let noticeError = "";
+
+  /** 공지 쓰기·고치기 칸. 고치는 중이면 그 공지 내용을 채워 둔다. 글쓰기·고치기를 눌렀을 때만 보인다. */
+  function noticeForm(rows) {
+    if (!writingNotice && !editingNotice) return "";
+    const n = rows.find((r) => r.id === editingNotice) || { category: "info", title: "", body: "" };
+    const options = Object.entries(CATEGORY)
+      .map(([k, label]) => `<option value="${k}" ${k === n.category ? "selected" : ""}>${label}</option>`)
+      .join("");
+    const cancel = '<button type="button" class="btn sm" data-action="cancel-notice">취소</button>';
+    return `<section class="card"><h2>${editingNotice ? "공지 고치기" : "새 공지 쓰기"}</h2>
+      <form class="notice-form" data-notice-form>
+        <div class="notice-fields">
+          <label class="small">종류 <select name="category">${options}</select></label>
+          <label class="small notice-title">제목 <input name="title" maxlength="100" required value="${esc(n.title)}"></label>
+        </div>
+        <label class="small" for="notice-body">내용</label>
+        <textarea id="notice-body" name="body" rows="6" maxlength="5000" required>${esc(n.body)}</textarea>
+        <div class="answer-row"><span class="small">저장하면 바로 앱 더보기 › 공지사항에 보여요. 알림은 가지 않아요.</span><div class="row-actions">${cancel}<button type="submit" class="btn sm primary">${editingNotice ? "고친 내용 저장" : "공지 올리기"}</button></div></div>
+      </form></section>`;
+  }
+
+  function viewNotices(d) {
+    const rows = d.rows.map(
+      (n) => `<tr><td><span class="pill">${esc(CATEGORY[n.category])}</span></td><td><details><summary>${esc(n.title)}</summary><p class="ticket-body">${esc(n.body)}</p></details></td><td>${day(n.created_at)}</td><td>${n.updated_at !== n.created_at ? day(n.updated_at) : "-"}</td><td class="num"><div class="row-actions"><button type="button" class="btn sm" data-notice-edit="${esc(n.id)}">고치기</button><button type="button" class="btn sm" data-notice-delete="${esc(n.id)}">지우기</button></div></td></tr>`,
+    );
+    const error = noticeError ? `<p class="note warn">${esc(noticeError)}</p>` : "";
+    const write = writingNotice || editingNotice ? "" : '<button type="button" class="btn sm primary" data-action="write-notice">글쓰기</button>';
+    return `${head("공지사항", "앱 사용자 모두에게 보이는 서비스 공지")}${error}
+      ${noticeForm(d.rows)}
+      <section class="card"><div class="card-head"><h2>올린 공지 (${num(d.rows.length)}건)</h2>${write}</div>${table([{ label: "종류" }, { label: "제목 (누르면 내용)" }, { label: "올린 날" }, { label: "고친 날" }, { label: "" }], rows)}</section>`;
+  }
+
+  /** 공지를 쓰거나 고치거나 지우고 목록을 다시 받아 그린다. */
+  async function saveNotice(path, body, method) {
+    try {
+      await api(path, body, method);
+      data.notices = await api("/admin/service/notices");
+      editingNotice = null;
+      writingNotice = false;
+      noticeError = "";
+    } catch (err) {
+      if (err.message === "unauthorized") return;
+      noticeError = "저장하지 못했어요. 잠시 뒤 다시 해 주세요.";
+    }
+    render();
+  }
+
   const VIEWS = {
     members: (data) => viewMembers(data.members),
     groups: (data) => viewGroups(data.groups),
     features: (data) => viewFeatures(data.features),
     ai: (data) => viewAi(data.ai),
     support: (data) => viewSupport(data.support),
+    notices: (data) => viewNotices(data.notices),
   };
 
   // ── 화면 그리기 ───────────────────────────────────────
@@ -420,6 +474,30 @@
       updateTicket(step.dataset.ticket, { status: step.dataset.next });
       return;
     }
+    const edit = e.target.closest("[data-notice-edit]");
+    if (edit) {
+      editingNotice = edit.dataset.noticeEdit;
+      render();
+      document.querySelector("[data-notice-form] input[name=title]").focus();
+      return;
+    }
+    if (e.target.closest("[data-action='write-notice']")) {
+      writingNotice = true;
+      render();
+      document.querySelector("[data-notice-form] input[name=title]").focus();
+      return;
+    }
+    if (e.target.closest("[data-action='cancel-notice']")) {
+      editingNotice = null;
+      writingNotice = false;
+      render();
+      return;
+    }
+    const del = e.target.closest("[data-notice-delete]");
+    if (del && window.confirm("이 공지를 지울까요? 앱에서도 바로 사라지고 되돌릴 수 없어요.")) {
+      del.disabled = true;
+      saveNotice(`/admin/service/notices/${encodeURIComponent(del.dataset.noticeDelete)}`, undefined, "DELETE");
+    }
   });
 
   // 펼친 문의를 기억해 두면 저장 뒤 다시 그려도 열린 채로 남는다
@@ -435,6 +513,17 @@
   );
 
   document.addEventListener("submit", (e) => {
+    const nf = e.target.closest("[data-notice-form]");
+    if (nf) {
+      e.preventDefault();
+      const f = nf.elements; // form.title 은 폼의 title 속성이라 elements 로 칸을 찾는다
+      const body = { category: f.category.value, title: f.title.value.trim(), body: f.body.value.trim() };
+      if (!body.title || !body.body) return;
+      nf.querySelector("button[type=submit]").disabled = true;
+      if (editingNotice) saveNotice(`/admin/service/notices/${encodeURIComponent(editingNotice)}`, body, "PUT");
+      else saveNotice("/admin/service/notices", body, "POST");
+      return;
+    }
     const form = e.target.closest("[data-answer]");
     if (!form) return;
     e.preventDefault();

@@ -92,6 +92,7 @@ LISTS = (
     "/admin/service/features",
     "/admin/service/ai-usage",
     "/admin/service/support",
+    "/admin/service/notices",
 )
 
 
@@ -386,3 +387,64 @@ def test_support_answer_notifies_sender_without_family(client, make_admin):
     assert len(inbox(sender)) == 1
     client.patch(path, json={"answer": "고친 답변"}, headers=admin)  # 답변을 고치면 다시 알린다
     assert len(inbox(sender)) == 2
+
+
+def test_notice_write_edit_delete(client, make_admin):
+    headers, user_id = _login(client)
+    make_admin(user_id)
+    user, _ = _login(client, "minsu_park")  # 가족 없는 일반 회원
+    write = lambda title, category="info": client.post(  # noqa: E731
+        "/admin/service/notices",
+        json={"category": category, "title": f" {title} ", "body": " 내용\n둘째 줄 "},
+        headers=headers,
+    )
+    r = write("점검 안내", "maintenance")
+    assert r.status_code == 201, r.text
+    first = r.json()
+    assert (first["title"], first["body"], first["category"]) == (
+        "점검 안내",
+        "내용\n둘째 줄",
+        "maintenance",
+    )
+    second = write("1.2 업데이트", "update").json()
+
+    rows = client.get("/admin/service/notices", headers=headers).json()["rows"]
+    assert [x["id"] for x in rows] == [second["id"], first["id"]]  # 최근순
+    seen = client.get("/notices", headers=user).json()["rows"]
+    assert [x["title"] for x in seen] == ["1.2 업데이트", "점검 안내"]
+    assert "created_by" not in seen[0]
+
+    path = f"/admin/service/notices/{first['id']}"
+    r = client.put(
+        path, json={"category": "info", "title": "점검 끝", "body": "끝났어요"}, headers=headers
+    )
+    assert r.status_code == 204, r.text
+    edited = [
+        x for x in client.get("/notices", headers=user).json()["rows"] if x["id"] == first["id"]
+    ][0]
+    assert (edited["category"], edited["title"], edited["body"]) == ("info", "점검 끝", "끝났어요")
+    assert edited["updated_at"] >= edited["created_at"]
+
+    assert client.delete(path, headers=headers).status_code == 204
+    assert [x["id"] for x in client.get("/notices", headers=user).json()["rows"]] == [second["id"]]
+
+
+def test_notice_rules(client, make_admin):
+    headers, user_id = _login(client)
+    body = {"category": "info", "title": "안내", "body": "내용"}
+    assert client.post("/admin/service/notices", json=body).status_code == 401
+    assert _denied(
+        client.post("/admin/service/notices", json=body, headers=headers)
+    )  # 허용 목록 밖
+    assert _denied(client.delete("/admin/service/notices/nope", headers=headers))
+    make_admin(user_id)
+    bad = [
+        {**body, "category": "event"},
+        {**body, "title": ""},
+        {**body, "body": ""},
+        {**body, "title": "가" * 101},
+    ]
+    for b in bad:
+        assert client.post("/admin/service/notices", json=b, headers=headers).status_code == 422
+    assert client.put("/admin/service/notices/nope", json=body, headers=headers).status_code == 404
+    assert client.delete("/admin/service/notices/nope", headers=headers).status_code == 404

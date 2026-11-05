@@ -16,6 +16,9 @@ from .schemas import (
     AdminAiUsageOut,
     AdminAiUserRow,
     AdminMeOut,
+    AdminNoticeIn,
+    AdminNoticeRow,
+    AdminNoticesOut,
     AdminTicketRow,
     AdminTicketsOut,
     AdminTicketUpdate,
@@ -207,4 +210,41 @@ def update_support(
             target_type="support_ticket",
             target_id=ticket_id,
         )
+    db.commit()
+
+
+def notices(db: Session) -> AdminNoticesOut:
+    return AdminNoticesOut(rows=[AdminNoticeRow(**r) for r in repository.notices(db)])
+
+
+def _notice_values(body: AdminNoticeIn, now: datetime) -> dict:
+    return {
+        "category": body.category,
+        "title": body.title.strip(),
+        "body": body.body.strip(),
+        "updated_at": now,
+    }
+
+
+def create_notice(
+    db: Session, user: User, body: AdminNoticeIn, now: datetime | None = None
+) -> AdminNoticeRow:
+    now = now or datetime.now(UTC)
+    values = {**_notice_values(body, now), "created_by": user.id, "created_at": now}
+    row = repository.add_notice(db, values)
+    db.commit()
+    return AdminNoticeRow(**row)
+
+
+def update_notice(
+    db: Session, notice_id: str, body: AdminNoticeIn, now: datetime | None = None
+) -> None:
+    if not repository.update_notice(db, notice_id, _notice_values(body, now or datetime.now(UTC))):
+        raise ApiError(404, "not_found", "찾을 수 없어요")
+    db.commit()
+
+
+def delete_notice(db: Session, notice_id: str) -> None:
+    if not repository.delete_notice(db, notice_id):
+        raise ApiError(404, "not_found", "찾을 수 없어요")
     db.commit()

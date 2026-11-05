@@ -219,6 +219,11 @@ NO_GROUP_OK = {
     ("GET", "/admin/service/ai-usage"),
     ("GET", "/admin/service/support"),
     ("PATCH", "/admin/service/support/{ticket_id}"),
+    ("GET", "/admin/service/notices"),
+    ("POST", "/admin/service/notices"),
+    ("PUT", "/admin/service/notices/{notice_id}"),
+    ("DELETE", "/admin/service/notices/{notice_id}"),
+    ("GET", "/notices"),
     # 운영 관리자 조회 경로도 가족 데이터가 아니다(요청 지표·오류 이벤트). 권한은 require_operator("ops_admin") 허용 목록이 정한다
     # (ops_admin/tests 에서 401·403 확인)
     ("GET", "/admin/ops/summary"),

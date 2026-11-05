@@ -10,6 +10,7 @@ from app.features.billing.router import router as billing_router
 from app.features.family_chat.router import router as family_chat_router
 from app.features.family_group.photo_limit import PhotoBodyLimitMiddleware
 from app.features.family_group.router import router as family_group_router
+from app.features.notices.router import router as notices_router
 from app.features.notifications.router import router as notifications_router
 from app.features.ops_admin.error_service import observe as ops_error_observer
 from app.features.ops_admin.middleware import RequestMetricsMiddleware
@@ -78,6 +79,7 @@ for feature, router in (
     ("ai_assistant", ai_assistant_router),
     ("notifications", notifications_router),
     ("support", support_router),
+    ("notices", notices_router),
     ("ops_admin", ops_admin_router),
 ):
     deps = []

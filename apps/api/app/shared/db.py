@@ -48,6 +48,7 @@ def import_all_models() -> None:
     from app.features.billing import models as _billing  # noqa: F401
     from app.features.family_chat import models as _chat  # noqa: F401
     from app.features.family_group import models as _group  # noqa: F401
+    from app.features.notices import models as _notices  # noqa: F401
     from app.features.ops_admin import models as _ops_admin  # noqa: F401
     from app.features.schedule import models as _schedule  # noqa: F401
     from app.features.support import models as _support  # noqa: F401
