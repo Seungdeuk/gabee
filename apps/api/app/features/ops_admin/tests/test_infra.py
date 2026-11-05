@@ -92,6 +92,7 @@ def test_collects_service_and_metrics(monkeypatch):
         "asia-northeast3",
         "gabee-00042",
     )
+    assert r.service.project_id == "proj"
     assert (r.service.min_instances, r.service.max_instances, r.service.cpu_allocation) == (
         1,
         3,
