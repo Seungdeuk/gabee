@@ -22,7 +22,7 @@ from sqlalchemy.orm import Session
 from app.features.family_group.models import User
 from app.shared import ai_guard
 from app.shared.config import settings
-from app.shared.errors import ApiError, bad_request
+from app.shared.errors import ApiError, bad_request, not_found
 from app.shared.llm import client as llm
 from app.shared.privacy import (
     ANALYSIS,
@@ -38,6 +38,7 @@ from app.shared.privacy import (
 from app.shared.rate_limit import FailureLimiter
 
 from . import ai_repository as repo
+from . import repository as chat_repo
 from .ai_schemas import (
     ANALYSIS_SCHEMA,
     REPLIES_SCHEMA,
@@ -224,6 +225,25 @@ def _build_context(
     )
 
 
+def _room_scope(db: Session, user: User, group_id: str, room_id: str | None) -> str | None:
+    """AI 가 읽을 방. 가족 전체방(또는 room_id 없음)이면 None, 1:1 방이면 그 방 id.
+    1:1 방은 이 가족의 방이고 호출한 사람이 참가자일 때만 쓸 수 있다(아니면 방이 있는지도 드러내지 않고 404).
+    상대가 가족을 나갔으면 쓸 수 없다(403 peer_left): 나간 사람의 대화를 AI 로 보내지 않는다."""
+    if not room_id:
+        return None
+    room = chat_repo.get_room(db, room_id)
+    if room is None or room.group_id != group_id:
+        raise not_found("대화방")
+    if room.kind != chat_repo.DIRECT:
+        return None
+    if not chat_repo.is_room_member(db, room.id, user.id):
+        raise not_found("대화방")
+    peer = chat_repo.peer_of(db, room.id, user.id)
+    if peer is None or not chat_repo.is_group_member(db, group_id, peer):
+        raise ApiError(403, "peer_left", "상대가 가족을 나가서 이 대화에는 AI 를 쓸 수 없어요")
+    return room.id
+
+
 def _prepare(
     db: Session,
     group_id: str,
@@ -232,9 +252,10 @@ def _prepare(
     limit: int,
     *,
     need_sendable: bool = True,
+    room_id: str | None = None,
 ) -> _Context:
     """need_sendable: 차단되지 않은 메시지가 MIN_MESSAGES 미만이면 400 (AI 를 부르지 않고 한도도 쓰지 않는다). 미리보기는 False."""
-    rows = repo.recent_messages(db, group_id, min(body.limit, limit), body.after_id)
+    rows = repo.recent_messages(db, group_id, min(body.limit, limit), body.after_id, room_id)
     if len(rows) < MIN_MESSAGES:
         raise bad_request("too_few_messages", "AI가 살펴볼 대화가 아직 충분하지 않아요")
     ctx = _build_context(
@@ -410,7 +431,9 @@ def _clean_list(data: dict, key: str, maximum: int, limit: int) -> dict:
 
 # ---------- 기능 ----------
 def analysis(db: Session, user: User, group_id: str, body: RangeIn) -> AnalysisOut:
-    ctx = _prepare(db, group_id, body, ANALYSIS, 200)
+    ctx = _prepare(
+        db, group_id, body, ANALYSIS, 200, room_id=_room_scope(db, user, group_id, body.room_id)
+    )
     try:
         key = _key("analysis", ctx)
         _, today_text = _today()
@@ -449,7 +472,9 @@ def analysis(db: Session, user: User, group_id: str, body: RangeIn) -> AnalysisO
 
 
 def reply_suggestions(db: Session, user: User, group_id: str, body: RangeIn) -> RepliesOut:
-    ctx = _prepare(db, group_id, body, REPLY, 15)
+    ctx = _prepare(
+        db, group_id, body, REPLY, 15, room_id=_room_scope(db, user, group_id, body.room_id)
+    )
     try:
         key = _key("reply", ctx)
 
@@ -470,7 +495,9 @@ def reply_suggestions(db: Session, user: User, group_id: str, body: RangeIn) -> 
 
 
 def topic_suggestions(db: Session, user: User, group_id: str, body: RangeIn) -> TopicsOut:
-    ctx = _prepare(db, group_id, body, TOPICS, 30)
+    ctx = _prepare(
+        db, group_id, body, TOPICS, 30, room_id=_room_scope(db, user, group_id, body.room_id)
+    )
     try:
         key = _key("topics", ctx)
 
@@ -503,7 +530,15 @@ def preview(db: Session, user: User, group_id: str, body: RangeIn) -> PreviewOut
             headers={"Retry-After": str(wait)},
         )
     preview_limiter.record(key)
-    ctx = _prepare(db, group_id, body, ANALYSIS, 200, need_sendable=False)
+    ctx = _prepare(
+        db,
+        group_id,
+        body,
+        ANALYSIS,
+        200,
+        need_sendable=False,
+        room_id=_room_scope(db, user, group_id, body.room_id),
+    )
     try:
         privacy = _privacy(ctx)
         return PreviewOut(

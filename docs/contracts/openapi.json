@@ -21128,6 +21128,18 @@
             "minimum": 0.0,
             "title": "After Id",
             "default": 0
+          },
+          "room_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 32
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Room Id"
           }
         },
         "type": "object",

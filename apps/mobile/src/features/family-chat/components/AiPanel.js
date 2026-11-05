@@ -44,10 +44,10 @@ function PickList({ items, emptyText, labelPrefix, testIDPrefix, onPick }) {
  * 개인정보 가림·전달·저장 안내는 이 패널에 두지 않고 마이 > 가비 AI 이용 안내에 있다.
  * 닫아도 컴포넌트는 유지되어 마지막 결과를 다시 열면 보여 준다. 닫혀 있는 동안에는 아무 호출도 하지 않는다.
  * 일정·할 일 후보를 등록하면 onLinked 로 알려 원본 메시지와의 연결을 저장하게 한다(연결 저장이 실패해도 등록은 성공으로 둔다).
- * @param {{ visible: boolean, onClose: () => void, onPickReply: (text: string) => void, onLinked?: (link: { kind: "event" | "todo", targetId: string, candidate: object }) => void }} props
+ * @param {{ visible: boolean, onClose: () => void, roomId?: string, onPickReply: (text: string) => void, onLinked?: (link: { kind: "event" | "todo", targetId: string, candidate: object }) => void }} props
  * @returns {JSX.Element}
  */
-export default function AiPanel({ visible, onClose, onPickReply, onLinked }) {
+export default function AiPanel({ visible, onClose, onPickReply, onLinked, roomId }) {
   const insets = useSafeAreaInsets(); // 안드로이드 내비게이션 바에 시트 아래쪽(버튼)이 가려지지 않게
   const [settings, setSettings] = useState(null); // parseAiSettings 결과
   const [loadError, setLoadError] = useState("");
@@ -123,7 +123,7 @@ export default function AiPanel({ visible, onClose, onPickReply, onLinked }) {
   const analyzeNow = () =>
     run("analysis", async () => {
       if (settings?.enabled === false) await setAiEnabled(true);
-      return analyzeChat();
+      return analyzeChat({ roomId });
     }, (res) => {
       setAnalysis(parseAnalysis(res));
       setTodoDay({});

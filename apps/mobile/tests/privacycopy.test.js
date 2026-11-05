@@ -115,7 +115,7 @@ test("AI 설정이 꺼져 있으면 확인 카드를 먼저 보이고, '켜고 �
   // 켜기는 분석 호출 직전 한 곳, 확인 버튼 핸들러에서만 도달한다
   const now = src.match(/const analyzeNow = \(\) =>[\s\S]*?\n {4}\}, \(res\)/)?.[0] ?? "";
   assert.match(now, /settings\?\.enabled === false\) await setAiEnabled\(true\)/);
-  assert.match(now, /return analyzeChat\(\)/);
+  assert.match(now, /return analyzeChat\(\{ roomId \}\)/);
   assert.equal((src.match(/setAiEnabled\(/g) ?? []).length, 1); // 다른 곳에서 켜거나 끄지 않는다
   assert.doesNotMatch(src, /setAiEnabled\(false\)/);
   const confirm = src.match(/const confirmEnableAndAnalyze = async \(\) => \{[\s\S]*?\n {2}\};/)?.[0] ?? "";

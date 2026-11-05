@@ -487,7 +487,7 @@ export default function ChatRoomScreen() {
           ) : null}
         </View>
         <IconButton name="search-outline" label="대화 검색" onPress={() => setSearchOpen(true)} disabled={info.status !== "ready"} />
-        {direct ? null : <IconButton name="sparkles-outline" label="AI 도우미 열기" onPress={() => setAiOpen(true)} disabled={info.status !== "ready"} />}
+        <IconButton name="sparkles-outline" label="AI 도우미 열기" onPress={() => setAiOpen(true)} disabled={info.status !== "ready"} />
         <IconButton name="ellipsis-vertical" label="채팅방 메뉴" onPress={() => setDrawerOpen(true)} />
       </View>
     </>
@@ -662,7 +662,7 @@ export default function ChatRoomScreen() {
       </KeyboardAvoidingView>
       <RoomDrawer visible={drawerOpen} onClose={() => setDrawerOpen(false)} room={info.room} roomId={roomId} peerId={peerId} myId={info.me?.id} muted={roomMute.muted} onToggleMute={roomMute.toggle} />
       <MessageMenu target={menu} myId={info.me?.id} pinned={pins.isPinned(menu?.message?.id)} onClose={closeMenu} onReact={reactFromMenu} onReply={replyFromMenu} onPin={pinMessageFromMenu} onUnpin={unpinMessageFromMenu} onCopy={copyMessage} onDelete={deleteFromMenu} />
-      {direct ? null : <AiPanel visible={aiOpen} onClose={() => setAiOpen(false)} onPickReply={pickReply} onLinked={links.registerCandidate} />}
+      <AiPanel visible={aiOpen} onClose={() => setAiOpen(false)} onPickReply={pickReply} onLinked={links.registerCandidate} roomId={roomId ?? undefined} />
     </SafeAreaView>
   );
 }

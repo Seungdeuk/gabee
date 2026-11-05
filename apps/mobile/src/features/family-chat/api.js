@@ -24,7 +24,7 @@ export const getAiSettings = () => apiFetch("/family-chat/ai/settings");
  */
 export const setAiEnabled = (enabled) => apiFetch("/family-chat/ai/settings", { method: "PUT", body: { enabled } });
 
-const rangeBody = ({ limit = 100, afterId = 0 } = {}) => ({ limit, after_id: afterId });
+const rangeBody = ({ limit = 100, afterId = 0, roomId } = {}) => ({ limit, after_id: afterId, ...(roomId ? { room_id: roomId } : {}) });
 
 /**
  * 가족 채팅방에서 @가비 로 부른 질문을 메인 AI 비서에게 보낸다(개인 대화와 같은 입구, 같은 한도).
@@ -47,7 +47,7 @@ export async function askAssistantInRoom(question, history = []) {
 /**
  * 대화 분석(요약·중요 메시지·일정 후보·할 일 후보·답장 추천·대화 주제 추천을 한 번에). 누를 때만 호출한다.
  * replies·topics 는 구 서버 응답에 없을 수 있다(parseAnalysis 로 방어).
- * @param {{ limit?: number, afterId?: number }} [range] 최근 limit 개(기본 100), afterId 를 주면 그 뒤의 대화
+ * @param {{ limit?: number, afterId?: number, roomId?: string }} [range] 최근 limit 개(기본 100), afterId 를 주면 그 뒤의 대화, roomId 를 주면 그 1:1 방의 대화(없으면 가족 전체방)
  * @returns {Promise<{ summary: string, important_messages: object[], schedule_candidates: object[], todo_candidates: object[], replies?: string[], topics?: string[], meta: object }>}
  */
 export const analyzeChat = (range) => apiFetch("/family-chat/ai/analysis", { method: "POST", body: rangeBody(range) });
