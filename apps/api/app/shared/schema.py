@@ -37,6 +37,7 @@ SHARED_MODEL_FEATURES = {
     "ai_usage": ("family_chat", "ai_assistant"),  # AI 호출 한도·캐시·사용 기록
     "used_proposals": ("billing",),  # 에이전트 쓰기 제안 토큰의 사용 기록
     "notifications": ("notifications",),  # 알림함: 알림 기능만 쓴다
+    "push_models": ("notifications",),  # 푸시 토큰·설정: 알림 기능만 쓴다
 }
 
 

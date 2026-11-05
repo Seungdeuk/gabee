@@ -9,7 +9,16 @@ from app.features.family_group.models import User
 from app.shared.errors import bad_request, not_found
 
 from . import repository as repo
-from .schemas import NotificationList, NotificationOut, ReadAllResult, UnreadCount
+from .schemas import (
+    NotificationList,
+    NotificationOut,
+    PushSettingsIn,
+    PushSettingsOut,
+    PushTokenDelete,
+    PushTokenIn,
+    ReadAllResult,
+    UnreadCount,
+)
 
 
 def _encode_cursor(row) -> str:
@@ -56,3 +65,25 @@ def read_all(db: Session, user: User, kind: str | None) -> ReadAllResult:
     updated = repo.mark_all_read(db, user.id, kind, datetime.now(UTC))
     db.commit()
     return ReadAllResult(updated=updated)
+
+
+def get_push_settings(db: Session, user: User) -> PushSettingsOut:
+    """내 푸시 설정. 저장한 적이 없으면 기본값(줄은 만들지 않는다)."""
+    row = repo.get_push_setting(db, user.id)
+    return PushSettingsOut.model_validate(row, from_attributes=True) if row else PushSettingsOut()
+
+
+def put_push_settings(db: Session, user: User, body: PushSettingsIn) -> PushSettingsOut:
+    row = repo.save_push_setting(db, user.id, body.model_dump())
+    db.commit()
+    return PushSettingsOut.model_validate(row, from_attributes=True)
+
+
+def register_push_token(db: Session, user: User, body: PushTokenIn) -> None:
+    repo.upsert_push_token(db, user.id, body.token, body.platform, body.device_label)
+    db.commit()
+
+
+def unregister_push_token(db: Session, user: User, body: PushTokenDelete) -> None:
+    repo.delete_push_token(db, user.id, body.token)
+    db.commit()
