@@ -12,6 +12,8 @@ from .schemas import (
     Kind,
     NotificationList,
     NotificationOut,
+    PushSettingsIn,
+    PushSettingsOut,
     ReadAllBody,
     ReadAllResult,
     UnreadCount,
@@ -46,6 +48,22 @@ def read_all(
 ) -> ReadAllResult:
     """안 읽은 알림을 모두 읽음 처리한다. kind 를 주면 그 분류만."""
     return service.read_all(db, user, body.kind if body else None)
+
+
+@router.get("/push-settings", response_model=PushSettingsOut)
+def get_push_settings(
+    user: User = Depends(current_user), db: Session = Depends(get_db)
+) -> PushSettingsOut:
+    """내 푸시 설정(저장한 적이 없으면 기본값)."""
+    return service.get_push_settings(db, user)
+
+
+@router.put("/push-settings", response_model=PushSettingsOut)
+def put_push_settings(
+    body: PushSettingsIn, user: User = Depends(current_user), db: Session = Depends(get_db)
+) -> PushSettingsOut:
+    """내 푸시 설정을 저장한다(켜기·끄기, 내용 표시 방식, 끈 분류, 방해금지 시간)."""
+    return service.put_push_settings(db, user, body)
 
 
 @router.post("/{notification_id}/read", response_model=NotificationOut)

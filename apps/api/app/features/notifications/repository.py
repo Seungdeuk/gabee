@@ -1,12 +1,13 @@
 """알림 조회·읽음 처리 쿼리. 항상 받는 사람 본인의 것만, 지금도 구성원인 그룹의 것과 개인 알림만 다룬다."""
 
-from datetime import datetime
+from datetime import UTC, datetime
 
 from sqlalchemy import and_, func, or_, select, update
 from sqlalchemy.orm import Session
 
 from app.features.family_group.models import GroupMember
 from app.shared.notifications import Notification
+from app.shared.push_models import PushSetting
 
 
 def _visible(user_id: str):
@@ -81,3 +82,19 @@ def mark_all_read(db: Session, user_id: str, kind: str | None, now: datetime) ->
         return 0
     db.execute(update(Notification).where(Notification.id.in_(ids)).values(read_at=now))
     return len(ids)
+
+
+def get_push_setting(db: Session, user_id: str) -> PushSetting | None:
+    return db.get(PushSetting, user_id)
+
+
+def save_push_setting(db: Session, user_id: str, values: dict) -> PushSetting:
+    """사용자의 푸시 설정 줄을 만들거나 덮어쓴다(커밋은 부르는 쪽)."""
+    row = db.get(PushSetting, user_id)
+    if row is None:
+        row = PushSetting(user_id=user_id)
+        db.add(row)
+    for key, value in values.items():
+        setattr(row, key, value)
+    row.updated_at = datetime.now(UTC)
+    return row
