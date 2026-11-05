@@ -82,6 +82,8 @@ const infoSheet = (notice) => ({ title: notice.title, body: notice.body, confirm
 // 전화 이야깃거리: 앱이 켜져 있는 동안 같은 상태면 서버를 다시 부르지 않는다. 15초 넘게 걸리면 임시 문구로 둔다.
 const CALL_TALK_CACHE = createCallTalkCache(30);
 const CALL_TALK_TIMEOUT_MS = 15000;
+// 개발 빌드에서 실제 가족이 없을 때 덧붙는 가상 가족 탭: 버튼은 보이지만 서버를 부르지 않는다(응원은 보내지 않고, 전화 이야깃거리는 내장 안부 문구).
+const DEV_VIRTUAL_NOTE = "개발용 가상 가족이에요(서버 데이터가 아니에요). 응원은 실제로 보내지지 않고, 전화 이야깃거리는 내장 안부 문구예요";
 
 /**
  * 데일리 체크 메인: 내 탭(체크·횟수, 줄을 길게 누르면 수정·삭제 메뉴, 받은 응원 카드)과 가족 탭(보기만, 응원 보내기·전화 버튼).
@@ -292,7 +294,9 @@ export default function DailyCheckScreen() {
   const callRows = callFor ? familyRows(callFor) : [];
 
   // 전화 시트 문구: 열자마자 임시 문구, 서버(AI·DB 안부) 결과가 오면 교체한다. 실패·시간 초과는 내장 안부 문구 그대로 두고 캐시하지 않는다.
-  const callSeed = useMemo(() => Math.random(), [callFor]); // 시트를 열 때 한 번만 뽑는다
+  // 시트를 열 때(callFor 가 바뀔 때) 한 번만 뽑는다. 값은 callFor 를 쓰지 않지만 열 때마다 새로 뽑으려는 의도다.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const callSeed = useMemo(() => Math.random(), [callFor]);
   const callKey = callFor ? callTalkKey(callFor, callRows, today) : null;
   const [callTalk, setCallTalk] = useState(null); // { key, points } 서버가 준 문구
   useEffect(() => {
@@ -408,6 +412,11 @@ export default function DailyCheckScreen() {
     }
   };
   const sendTo = async (memberId, cheer) => {
+    if (isVirtualId(memberId)) {
+      setCheerFor(null);
+      setSheet(infoSheet({ title: "개발용 가상 가족이에요", body: "실제로 응원을 보내지는 않았어요" }));
+      return;
+    }
     try {
       await sendCheer({ toId: memberId, kind: cheer.kind, text: cheer.text, groupChat: cheer.groupChat });
       setCheerFor(null);
@@ -677,10 +686,6 @@ export default function DailyCheckScreen() {
               </Pressable>
             </View>
           ) : null
-        ) : isVirtual ? (
-          <View style={styles.footer}>
-            <Text style={styles.devNote}>개발용 가상 가족이에요(서버 데이터가 아니에요)</Text>
-          </View>
         ) : (
           <View style={styles.footer}>
             <View style={styles.familyActions}>
@@ -703,6 +708,7 @@ export default function DailyCheckScreen() {
                 </Pressable>
               ) : null}
             </View>
+            {isVirtual ? <Text style={styles.devNote}>{DEV_VIRTUAL_NOTE}</Text> : null}
           </View>
         )}
       </ScrollView>
