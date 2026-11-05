@@ -104,6 +104,8 @@ class ConfirmRequest(BaseModel):
 
     action: PendingAction
     share: bool = True  # 등록일 때 false 면 공유 대상을 빼고 내 일정만 만든다
+    # 가족 채팅방의 @가비 카드에서 눌렀을 때 true. 공유 등록이면 결과를 가비 이름으로 방에 알린다(문장은 서버가 만든다)
+    post_to_room: bool = False
 
 
 class AgentResponse(BaseModel):

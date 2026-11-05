@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 from app.shared.auth import ensure_group_member
 
 from ..constants import SUGGESTION_DISMISSED
-from . import chat, checks, habits, modify, reader, register, request_flow, suggest
+from . import chat, checks, habits, modify, reader, register, request_flow, room_notice, suggest
 from . import members as members_mod
 from . import period as period_mod
 from .schemas import AgentRequest, AgentResponse, Card, ConfirmRequest, SuggestionOut
@@ -111,7 +111,10 @@ def handle(
     shown, omitted = reader.select_for_prompt(data.events, now, period)
     scope = f"문장에서 읽은 기간 {period.widened().label()}" if period else None
     members = members_mod.load(db, group_id)
-    request_view = request_flow.load(db, group_id, user_id, local_now.date())
+    # 가족방(channel=family)의 답은 방에 저장되므로 부탁의 받는 분·수락 현황은 모델에게 주지 않는다
+    request_view = request_flow.load(
+        db, group_id, user_id, local_now.date(), detail=request.channel != "family"
+    )
     habit_view = habits.load(db, user_id, group_id, request.channel)
     result = _ask(
         db,
@@ -259,7 +262,14 @@ def handle(
 
 
 def confirm(db: Session, user_id: str, group_id: str, body: ConfirmRequest) -> AgentResponse:
-    """확인 카드의 버튼. AI 를 부르지 않는다. 앱이 돌려준 내용은 믿지 않고 처음부터 다시 검증한다."""
+    """확인 카드의 버튼. AI 를 부르지 않는다. 앱이 돌려준 내용은 믿지 않고 처음부터 다시 검증한다.
+    가족방 @가비 카드(`post_to_room`)에서 공유 등록을 마쳤으면 결과를 방에 알린다."""
+    response = _confirm(db, user_id, group_id, body)
+    room_notice.post_if_needed(db, group_id, body, response)
+    return response
+
+
+def _confirm(db: Session, user_id: str, group_id: str, body: ConfirmRequest) -> AgentResponse:
     ensure_group_member(db, user_id, group_id)
     action = body.action
     if action.type == "edit":

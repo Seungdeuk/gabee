@@ -107,14 +107,15 @@ function ResolvedLine({ card, status }) {
  * 처리했거나 취소하면 카드가 결과 한 줄로 바뀌고(onResolve 로 대화에 저장돼 다시 열어도 두 번 실행되지 않는다) 버튼은 사라진다.
  * 서버 오류(예: 등록에 필요한 제목이나 날짜가 없어요)는 카드 아래에 보여 주고 다시 누를 수 있게 둔다.
  * 가족방의 공유 선택 카드(share_select)는 onShareToRoom(text) → Promise 로 선택한 줄을 방에 보낸다(서버 확인 요청을 부르지 않는다).
- * @param {{ card: object, onResolve?: (status: "done" | "cancelled", text: string) => void, onShareToRoom?: (text: string) => Promise<unknown> }} props
+ * postToRoom 는 가족방 @가비 의 카드일 때 true: 공유 등록을 마치면 서버가 결과를 방에 알린다.
+ * @param {{ card: object, onResolve?: (status: "done" | "cancelled", text: string) => void, onShareToRoom?: (text: string) => Promise<unknown>, postToRoom?: boolean }} props
  */
-export default function ScheduleConfirmCard({ card, onResolve, onShareToRoom }) {
+export default function ScheduleConfirmCard({ card, onResolve, onShareToRoom, postToRoom = false }) {
   if (card.action === "share_select") return <ShareSelectCard card={card} onResolve={onResolve} onShareToRoom={onShareToRoom} />;
-  return <ServerConfirmCard card={card} onResolve={onResolve} />;
+  return <ServerConfirmCard card={card} onResolve={onResolve} postToRoom={postToRoom} />;
 }
 
-function ServerConfirmCard({ card, onResolve }) {
+function ServerConfirmCard({ card, onResolve, postToRoom }) {
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
   const status = card.status ?? CARD_PENDING;
@@ -132,7 +133,7 @@ function ServerConfirmCard({ card, onResolve }) {
     setBusy(button.key);
     setError("");
     try {
-      const { text } = await confirmCardAction(card, button.share);
+      const { text } = await confirmCardAction(card, button.share, postToRoom);
       onResolve?.(CARD_DONE, text);
     } catch (e) {
       setError(e?.message || "처리하지 못했어요. 잠시 후 다시 시도해 주세요.");

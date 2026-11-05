@@ -138,7 +138,7 @@ test("confirmScheduleAction: 카드의 pending_action 과 share 를 그대로 �
   const res = await api.confirmScheduleAction(card, true);
   assert.equal(calls[0].url, "http://api.test/schedule/agent/confirm");
   assert.equal(calls[0].method, "POST");
-  assert.deepEqual(calls[0].body, { action: card.pendingAction, share: true });
+  assert.deepEqual(calls[0].body, { action: card.pendingAction, share: true, post_to_room: false });
   assert.equal(res.text, "등록했어요. (가족 2명에게도 공유했어요)");
   await api.confirmScheduleAction(card, false);
   assert.equal(calls[1].body.share, false);
@@ -227,6 +227,11 @@ test("confirmCardAction: 일정 카드는 예전처럼 일정 확인 요청으�
   await api.confirmCardAction(card, true);
   assert.equal(calls[0].url, "http://api.test/schedule/agent/confirm");
   assert.equal(calls[0].body.share, true);
+  assert.equal(calls[0].body.post_to_room, false); // 개인 채팅의 카드는 방에 알리지 않는다
+  await api.confirmCardAction(card, true, true); // 가족방 @가비 의 카드
+  assert.equal(calls[1].body.post_to_room, true);
+  await api.confirmCardAction(card, false, true); // 나만 등록이어도 표시는 보내고(올릴지는 서버가 정한다)
+  assert.deepEqual(calls[2].body, { action: card.pendingAction, share: false, post_to_room: true });
 });
 
 test("confirmCardAction: 서버가 거절하면(만료·이미 처리) 그 메시지를 그대로 던진다", async () => {
