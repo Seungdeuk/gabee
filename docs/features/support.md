@@ -12,7 +12,10 @@
 - 테스트: `app/features/support/tests/test_support_api.py`. 보안 매트릭스에는 "가족 없이 써도 되는 경로"로 등록했다.
 - 관리자 쪽(목록·상태·답변)은 `app/features/admin` 의 `GET /admin/support`, `PATCH /admin/support/{ticket_id}` 와 "문의 및 신고" 탭. `docs/features/admin.md` 참고.
 
+## 답변 알림 (2026-11-04)
+- 관리자 답변 저장(`PATCH /admin/support/{id}`) 때 `notify(group_id=None, kind="support", event="ticket_answered")` 로 보낸 사람에게 알림 한 줄을 남긴다(저장과 같은 커밋). 새 답변이나 고친 답변만 알리고 문구는 고정이다. 시험: `admin/tests/test_admin_api.py::test_support_answer_notifies_sender_without_family`.
+
 ## 남은 것
 
-- 앱 문의 보내기·내 문의 화면(다른 팀원).
+- 앱 문의 보내기·내 문의 화면(앱 PR #252 병합). 답변 알림은 아래 "답변 알림" 참고.
 - 요구사항 "미정" 항목(보내기 횟수 제한, 관리자 알림).

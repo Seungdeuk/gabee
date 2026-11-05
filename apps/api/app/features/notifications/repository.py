@@ -1,4 +1,4 @@
-"""알림 조회·읽음 처리 쿼리. 항상 받는 사람 본인의 것만, 지금도 구성원인 그룹의 것만 다룬다."""
+"""알림 조회·읽음 처리 쿼리. 항상 받는 사람 본인의 것만, 지금도 구성원인 그룹의 것과 개인 알림만 다룬다."""
 
 from datetime import datetime
 
@@ -10,17 +10,20 @@ from app.shared.notifications import Notification
 
 
 def _visible(user_id: str):
-    """내 알림 중 지금도 구성원인 그룹의 것(탈퇴한 그룹의 옛 알림은 제외)."""
+    """내 알림 중 지금도 구성원인 그룹의 것(탈퇴한 그룹의 옛 알림은 제외)과 그룹과 무관한 개인 알림."""
     return (
         select(Notification)
-        .join(
+        .outerjoin(
             GroupMember,
             and_(
                 GroupMember.group_id == Notification.group_id,
                 GroupMember.user_id == Notification.user_id,
             ),
         )
-        .where(Notification.user_id == user_id)
+        .where(
+            Notification.user_id == user_id,
+            or_(Notification.group_id.is_(None), GroupMember.user_id.is_not(None)),
+        )
     )
 
 

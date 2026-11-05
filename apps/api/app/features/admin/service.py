@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 from app.features.family_group.models import User
 from app.shared.ai_guard import day_start
 from app.shared.errors import ApiError
+from app.shared.notifications import notify
 
 from . import repository
 from .schemas import (
@@ -190,5 +191,20 @@ def update_support(
         values["answered_at"] = now or datetime.now(UTC)
     if not values:
         raise ApiError(422, "nothing_to_update", "바꿀 상태나 답변을 보내 주세요")
-    if not repository.update_support_ticket(db, ticket_id, values):
+    ticket = repository.get_support_ticket(db, ticket_id)
+    if ticket is None or not repository.update_support_ticket(db, ticket_id, values):
         raise ApiError(404, "not_found", "찾을 수 없어요")
+    answer = values.get("answer")
+    if answer and answer != (ticket["answer"] or ""):  # 새 답변이나 바뀐 답변만 알린다
+        # 문의 제목·내용·답변은 알림에 넣지 않는다(고정 문구). 가족과 무관하게 보낸 사람에게만 간다.
+        notify(
+            db,
+            group_id=None,
+            kind="support",
+            event="ticket_answered",
+            recipients=[ticket["user_id"]],
+            title="문의에 답변이 달렸어요",
+            target_type="support_ticket",
+            target_id=ticket_id,
+        )
+    db.commit()
