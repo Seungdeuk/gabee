@@ -1,4 +1,4 @@
-"""@가비 로 부른 답을 방에 올려도 되면(visibility=room) 서버가 가비 이름으로 가족 전체방에 저장한다. 개인용이면 저장하지 않는다."""
+"""가족 채팅방에서 @가비 로 부른 답은 모두 서버가 가비 이름으로 가족 전체방에 저장한다(개인 대화는 저장하지 않는다)."""
 
 import pytest
 from sqlalchemy import func, select
@@ -64,12 +64,14 @@ def test_shareable_room_answer_is_posted_as_gabi(client, family, ask):
         assert msgs[0]["id"] == out["posted_message_id"]
 
 
-def test_private_answer_is_not_posted(client, family, ask):
-    a, _, _ = family
+def test_allowance_answer_in_room_is_posted_too(client, family, ask):
+    """예전에는 개인용이라 저장하지 않던 답(자녀 용돈 장부)도 방에서 부르면 가족 모두에게 저장된다."""
+    a, b, _ = family
     out = ask("ask_billing", {"question": "용돈"}, "list_allowances", audience="room")
-    assert out["visibility"] == "private" and out["posted_message_id"] is None
-    assert out["private_reasons"] == ["자녀 용돈 장부"]
-    assert _room_messages(client, a) == []
+    assert out["visibility"] == "room" and out["private_reasons"] == []
+    assert out["posted_message_id"] is not None
+    for headers in (a, b):
+        assert [m["text"] for m in _room_messages(client, headers)] == [out["reply"]]
 
 
 def test_personal_chat_is_never_posted(client, family, ask):
@@ -78,17 +80,16 @@ def test_personal_chat_is_never_posted(client, family, ask):
     assert out["posted_message_id"] is None and _room_messages(client, a) == []
 
 
-def test_history_with_a_private_turn_keeps_the_room_answer_private(client, family, ask):
-    """앞서 질문한 사람에게만 보였던 개인용 답이 맥락에 있으면, 도구 없이 답해도 방에 올리지 않는다."""
+def test_old_apps_private_flag_in_history_is_ignored(client, family, ask):
+    """예전 앱이 보내는 history 의 private 표시는 더 이상 저장을 막지 않는다."""
     a, _, _ = family
     history = [
         {"role": "user", "text": "아이 용돈 잔액 알려줘"},
         {"role": "assistant", "text": "잔액은 12,000원이에요.", "private": True},
     ]
     out = ask(None, None, audience="room", history=history)
-    assert out["visibility"] == "private" and out["posted_message_id"] is None
-    assert "앞서 개인 정보가 있는 답이 있었어요" in out["private_reasons"]
-    assert _room_messages(client, a) == []
+    assert out["visibility"] == "room" and out["posted_message_id"] is not None
+    assert [m["text"] for m in _room_messages(client, a)] == [out["reply"]]
 
 
 def test_public_history_does_not_block_posting(client, family, ask):

@@ -186,16 +186,19 @@ def test_forged_card_payload_is_revalidated_by_the_server(client, setup, schedul
     assert [e["title"] for e in _events(client, a)] == ["가족 모임"]
 
 
-def test_room_answer_with_a_card_is_private_and_not_posted(
+def test_room_answer_with_a_card_is_posted_and_the_card_stays_with_the_asker(
     client, setup, schedule_llm, monkeypatch
 ):
     a, b, other = setup
     _main(monkeypatch)
     schedule_llm.data = _register_data(title="가족 모임", date=_tomorrow(), share_ids=[other])
     out = _ask(client, a, audience="room")
-    assert out["visibility"] == "private" and out["posted_message_id"] is None
-    assert "확인 버튼이 필요한 제안" in out["private_reasons"]
-    assert client.get("/family-chat/messages", headers=b).json() == []
+    assert out["visibility"] == "room" and out["private_reasons"] == []
+    assert out["posted_message_id"] is not None  # 답 글은 방에 남는다
+    assert out["confirm_cards"]  # 확인 버튼은 질문한 사람 응답에만 있다
+    assert [m["id"] for m in client.get("/family-chat/messages", headers=b).json()] == [
+        out["posted_message_id"]
+    ]
 
 
 def test_schedule_agent_prompt_knows_whole_family_sharing():

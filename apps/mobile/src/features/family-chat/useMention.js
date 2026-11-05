@@ -8,9 +8,9 @@ import { EMPTY_QUESTION_HINT, makeNote, mentionHistory, pushThread } from "./men
 const BUSY_HINT = "앞선 질문에 답하는 중이에요. 끝난 뒤에 다시 불러 주세요.";
 
 /**
- * 가족 채팅방의 @가비. 메시지를 보낸 뒤 질문을 메인 AI 비서에게 넘기고, 개인용 답과 안내는 이 화면에만 보이는 항목(notes)으로 둔다.
- * - 방에 올려도 되는 답(visibility=room)은 서버가 가비 이름으로 방에 저장한다. 앱은 다시 올리지 않고, 새 메시지 확인(3초)에 나타난다.
- * - 개인용(private) 답은 서버에 남지 않는다. 이 화면을 닫으면 사라진다(대화 이력 thread 도 함께).
+ * 가족 채팅방의 @가비. 메시지를 보낸 뒤 질문을 메인 AI 비서에게 넘기고, 답기다림·안내·확인 카드는 이 화면에만 보이는 항목(notes)으로 둔다.
+ * - 답은 서버가 가비 이름으로 가족 전체방에 저장한다(모두에게 공유, 기록으로 남는다). 앱은 다시 올리지 않고, 새 메시지 확인(3초)에 나타난다.
+ * - 확인이 필요한 요청의 카드는 질문한 사람 화면에만 있고 서버에 남지 않는다. 이 화면을 닫으면 카드와 대화 이력(thread)이 사라진다.
  * - 앞 대화(thread)는 내가 @가비 로 나눈 최근 대화뿐이다. 오류가 난 질문은 이어 가지 않는다.
  * @returns {{ notes: object[], ask: (question: string) => Promise<void>, info: (text: string) => void, dismiss: (id: string) => void, resolveCard: (noteId: string, index: number, status: string, text: string) => void }}
  */
@@ -56,9 +56,15 @@ export default function useMention() {
       try {
         const res = await askAssistantInRoom(q, mentionHistory(thread.current));
         const at = Date.now();
-        thread.current = pushThread(thread.current, { role: "user", text: q, at }, { role: "assistant", text: res.reply, at, private: res.visibility === "private" });
-        if (res.visibility === "room") remove(id); // 서버가 방에 저장했다. 새 메시지 확인에서 가비 말풍선으로 나타난다
-        else replace(id, makeNote({ id, state: "private", text: res.reply, reasons: res.reasons, question: q, confirmCards: res.confirmCards }));
+        thread.current = pushThread(thread.current, { role: "user", text: q, at }, { role: "assistant", text: res.reply, at });
+        if (res.postedMessageId == null) {
+          // 서버가 방에 저장하지 않은 답(구 서버): 답을 잃지 않게 이 화면에만 보여 준다
+          replace(id, makeNote({ id, state: "reply", text: res.reply, question: q, confirmCards: res.confirmCards }));
+        } else if (res.confirmCards.length > 0) {
+          replace(id, makeNote({ id, state: "cards", question: q, confirmCards: res.confirmCards })); // 답 글은 방에 저장됐고, 확인 카드만 내 화면에 둔다
+        } else {
+          remove(id); // 새 메시지 확인에서 가비 말풍선으로 나타난다
+        }
       } catch (e) {
         replace(id, makeNote({ id, state: "error", text: assistantErrorText(e), question: q }));
       } finally {

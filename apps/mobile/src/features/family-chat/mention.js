@@ -1,6 +1,6 @@
 // 가족 채팅방에서 @가비 로 부르기(순수 함수, 시험: tests/mention.test.js)
-// 서버는 POST /ai-assistant/chat 에 audience: "room" 으로 받아 방에 올려도 되면(visibility=room) 가비 이름으로 직접 저장하고,
-// 개인용(private)이면 저장하지 않는다. 개인용 답은 이 앱이 질문한 사람 화면에만 목록 사이에 끼워 보여 준다(서버에 남지 않는다).
+// 서버는 POST /ai-assistant/chat 에 audience: "room" 으로 받아 답을 가비 이름으로 가족 전체방에 직접 저장한다(모두에게 공유, 기록으로 남는다).
+// 이 앱이 목록 사이에 끼워 보이는 항목은 답을 기다리는 중·안내·오류·확인 카드뿐이다(서버에 남지 않는다).
 
 import { parseTime } from "./chatUtils";
 
@@ -58,14 +58,13 @@ export function mentionHintsVisible(text, direct = false) {
 
 /**
  * 서버에 보낼 앞 대화: 내가 @가비 로 나눈 최근 대화만(방의 다른 사람 글은 넣지 않는다).
- * 개인용이라 나에게만 보였던 가비의 답에는 private 표시를 단다. 서버는 이 표시가 하나라도 있으면 이번 답도 방에 올리지 않는다.
- * @param {{ role: "user" | "assistant", text: string, at: number, private?: boolean }[]} thread
+ * @param {{ role: "user" | "assistant", text: string, at: number }[]} thread
  * @param {number} [now]
- * @returns {{ role: "user" | "assistant", text: string, private?: boolean }[]}
+ * @returns {{ role: "user" | "assistant", text: string }[]}
  */
 export function mentionHistory(thread, now = Date.now()) {
   const fresh = thread.filter((t) => now - t.at <= THREAD_MS).slice(-MAX_TURNS);
-  return fresh.map((t) => (t.private ? { role: t.role, text: t.text, private: true } : { role: t.role, text: t.text }));
+  return fresh.map((t) => ({ role: t.role, text: t.text }));
 }
 
 /** 대화에 한 턴을 더한다(오래된 것은 버린다). */
@@ -74,20 +73,11 @@ export function pushThread(thread, ...turns) {
 }
 
 /**
- * 개인용으로 판단된 이유 한 줄. 이유 글은 서버가 정한다.
- * @param {string[] | undefined} reasons
- * @returns {string}
+ * 내 화면에만 보이는 가비 항목.
+ * pending(답 기다림) · cards(방에 저장된 답에 딸린 확인 카드) · reply(방에 저장되지 않은 답, 구 서버) · info(안내) · error(오류)
+ * @param {{ id: string, state: "pending" | "cards" | "reply" | "info" | "error", text?: string, question?: string, confirmCards?: object[], createdAt?: string }} p
  */
-export function privateNotice(reasons) {
-  const why = (reasons ?? []).filter(Boolean);
-  return why.length ? `개인 정보가 있어서 방에 올리지 않았어요 · ${why.join(", ")}` : "개인 정보가 있어서 방에 올리지 않았어요";
-}
-
-/**
- * 내 화면에만 보이는 가비 항목(답 기다림·개인용 답·안내·오류).
- * @param {{ id: string, state: "pending" | "private" | "info" | "error", text?: string, reasons?: string[], question?: string, confirmCards?: object[], createdAt?: string }} p
- */
-export function makeNote({ id, state, text = "", reasons = [], question = "", confirmCards = [], createdAt = new Date().toISOString() }) {
+export function makeNote({ id, state, text = "", question = "", confirmCards = [], createdAt = new Date().toISOString() }) {
   return {
     id,
     localNote: true,
@@ -95,7 +85,6 @@ export function makeNote({ id, state, text = "", reasons = [], question = "", co
     user_id: LOCAL_ASSISTANT_ID,
     user_name: ASSISTANT_NAME,
     text,
-    reasons,
     question,
     confirmCards, // 확인 버튼이 필요한 일정 요청(가족 공유 등록·수정·삭제). 질문한 사람 화면에만 보인다
     created_at: createdAt,

@@ -115,7 +115,9 @@ def test_room_query_shows_only_shared_events_and_offers_a_share_select_card(
     _main_llm(monkeypatch, "이번 주 일정 알려줘")
     out = _chat(client, a, "이번 주 일정 알려줘", audience="room")
 
-    assert out["visibility"] == "private"  # 일정 답은 질문한 사람에게만 보인다
+    assert (
+        out["visibility"] == "room"
+    )  # 방에서 부른 일정 답도 가족 모두에게 공유된다(방에서는 공동 일정만 읽는다)
     prompt = schedule_llm.calls[-1]
     assert "치과" in prompt and "혼자 병원" not in prompt  # 공동 일정만 읽는다
     assert "[알림] 가족 채팅방" in prompt
