@@ -20,7 +20,7 @@ from .schemas import (
     MembersOut,
 )
 
-router = APIRouter(prefix="/admin", tags=["admin"])
+router = APIRouter(prefix="/admin/service", tags=["service-admin"])
 service_admin = require_operator("service_admin")
 # 문의·신고 표가 아직 없는 DB 에서는 그 경로만 503
 SUPPORT = [Depends(service_admin), Depends(schema_ready("support"))]

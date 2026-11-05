@@ -102,7 +102,7 @@
 - 문서: `docs/contracts/permissions.md` 운영자 절의 "서비스 관리자" 소제목 아래, `docs/contracts/openapi.json` 갱신.
 
 ## 미정
-1. 서버 경로 접두어: 제안 `/admin/service/*`, 폴더 `app/features/service_admin/`. 운영 담당자에게 알린다.
+1. ~~서버 경로 접두어~~ → 정함(2026-11-05): API `/admin/service/*`, 화면 `/admin/service/ui`, 폴더 `app/features/service_admin/`.
 2. 화면 기술과 호스팅: 지금 시안은 API 서버가 정적 HTML 로 내려주는 방식이다. 그대로 쓸지, 경로를 어디로 할지 정한다.
 3. "기능 관리"(일정·소통·정산의 최근 7일 사용 수, 쓴 가족 수): DB 에 데이터는 있지만 식별자가 없는 기능별 집계라 운영 범위일 수 있다. 서비스에 둘지 운영으로 넘길지 정한다.
 4. "활성 사용자"의 정의: 1차 제안은 "최근 7일 안에 `refresh_tokens` 새 줄이 생긴 사람"(로그인·자동 갱신 포함). 확인이 필요하다.

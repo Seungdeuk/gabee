@@ -1,5 +1,5 @@
-// 가비 관리자 화면(서비스 관리). 서버가 /admin/ui 로 내려준다.
-// 모든 탭은 로그인한 뒤 /admin/* API 의 실제 데이터를 쓴다. 문의·신고만 상태와 답변을 바꿀 수 있다.
+// 가비 서비스 관리자 화면. 서버가 /admin/service/ui 로 내려준다.
+// 모든 탭은 로그인한 뒤 /admin/service/* API 의 실제 데이터를 쓴다. 문의·신고만 상태와 답변을 바꿀 수 있다.
 (function () {
   "use strict";
 
@@ -67,7 +67,7 @@
       showLogin("로그인이 만료됐어요. 다시 로그인해 주세요.");
       throw new Error("unauthorized");
     }
-    if (res.status === 403 && path === "/admin/me") throw new Error("not_staff"); // 허용 목록에 없는 회원
+    if (res.status === 403 && path === "/admin/service/me") throw new Error("not_staff"); // 허용 목록에 없는 회원
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     return res.status === 204 ? null : res.json();
   }
@@ -78,7 +78,7 @@
    */
   async function loadData() {
     const [me, members, groups, features, ai, support] = await Promise.all(
-      ["/admin/me", "/admin/members", "/admin/groups", "/admin/features", "/admin/ai-usage", "/admin/support"].map((p) => api(p)),
+      ["/admin/service/me", "/admin/service/members", "/admin/service/groups", "/admin/service/features", "/admin/service/ai-usage", "/admin/service/support"].map((p) => api(p)),
     );
     return { me, members, groups, features, ai, support };
   }
@@ -280,8 +280,8 @@
   /** 문의·신고를 바꾸고 목록을 다시 받아 그린다. 실패하면 화면 위에 알려 준다. */
   async function updateTicket(id, body) {
     try {
-      await api(`/admin/support/${encodeURIComponent(id)}`, body);
-      data.support = await api("/admin/support");
+      await api(`/admin/service/support/${encodeURIComponent(id)}`, body);
+      data.support = await api("/admin/service/support");
       supportError = "";
     } catch (err) {
       if (err.message === "unauthorized") return;
@@ -326,7 +326,7 @@
     if (!data || !token()) return;
     let fresh;
     try {
-      fresh = await api("/admin/support");
+      fresh = await api("/admin/service/support");
     } catch {
       return;
     }
@@ -342,7 +342,7 @@
     const key = current();
     renderTabs(key);
     document.getElementById("view").innerHTML = VIEWS[key](data);
-    document.title = `가비 관리자 · ${TABS.find(([k]) => k === key)[1]}`;
+    document.title = `가비 서비스 관리자 · ${TABS.find(([k]) => k === key)[1]}`;
   }
 
   function showLogin(message = "") {

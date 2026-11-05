@@ -1,6 +1,6 @@
 # 운영 관리자 페이지 (ops-admin) 구현 현황
 
-운영(유님) 쪽 문서다. 서비스 관리자 페이지(주님)는 `docs/features/admin.md`에 따로 있고 이 문서는 그 내용을 다루지 않는다.
+운영(유님) 쪽 문서다. 서비스 관리자 페이지(주님)는 `docs/features/service-admin.md`에 따로 있고 이 문서는 그 내용을 다루지 않는다.
 요구사항은 `docs/requirements/ops-admin.md`.
 
 ## 구현된 것
