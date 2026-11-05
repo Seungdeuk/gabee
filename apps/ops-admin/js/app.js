@@ -298,26 +298,27 @@ function DetailModal(){var m=S.modal;if(!m)return '';
 /* ---------- live (서버 연결 모드: /admin/ops/summary, /admin/ops/apis) ---------- */
 /* 서버에서 받은 문자열은 모두 esc() 를 거쳐 HTML 에 넣는다. 서버에 없는 값(인프라·배포·오류 내역)은 샘플을 섞지 않고 "미연결" 로 보여 준다. */
 var LIVE_RANGES=[['1h','1시간'],['24h','24시간'],['7d','7일']];
-var LS={sum:null,apis:null,err:null,loading:false},seq=0;
+var LS={sum:null,apis:null,infra:null,errs:null,err:null,loading:false},seq=0;
 function liveRange(){return S.range==='1h'||S.range==='7d'?S.range:'24h'}
 function liveErr(e){
  if(e&&e.status===403)return {t:'운영자 권한이 없습니다',d:'이 계정은 운영 관리자 허용 목록에 없습니다.'};
  if(e&&e.code==='network_error')return {t:'서버에 연결하지 못했습니다',d:'네트워크와 서버 주소를 확인하세요.'};
  return {t:'데이터를 불러오지 못했습니다',d:'잠시 후 다시 시도하세요.'}}
-function fetchLive(rk){return Promise.all([request('/admin/ops/summary?range='+rk),request('/admin/ops/apis?range='+rk)])}
+function soft(path){return request(path).catch(function(e){return {failed:e}})}  // 인프라·오류 조회가 실패해도 요청 지표 화면은 막지 않는다
+function fetchLive(rk){return Promise.all([request('/admin/ops/summary?range='+rk),request('/admin/ops/apis?range='+rk),soft('/admin/ops/infra'),soft('/admin/ops/errors?range='+rk+'&limit=100')])}
 function loadLive(){
  var rk=liveRange(),my=++seq;
- if(LS.sum&&LS.sum.range!==rk){LS.sum=LS.apis=null}  // 다른 기간의 숫자를 남겨 두지 않는다
+ if(LS.sum&&LS.sum.range!==rk){LS.sum=LS.apis=LS.infra=LS.errs=null}  // 다른 기간의 숫자를 남겨 두지 않는다
  LS.loading=true;LS.err=null;render();
  return fetchLive(rk).then(function(r){
-  if(my!==seq)return;LS.sum=r[0];LS.apis=r[1];
- }).catch(function(e){if(my!==seq)return;LS.err=liveErr(e);LS.sum=LS.apis=null;
+  if(my!==seq)return;LS.sum=r[0];LS.apis=r[1];LS.infra=r[2];LS.errs=r[3];
+ }).catch(function(e){if(my!==seq)return;LS.err=liveErr(e);LS.sum=LS.apis=LS.infra=LS.errs=null;
  }).then(function(){if(my!==seq)return;LS.loading=false;S.updated=new Date();render()})}
 function liveLabel(iso,rk){var d=new Date(iso);return rk==='7d'?pad(d.getMonth()+1)+'-'+pad(d.getDate()):pad(d.getHours())+':'+pad(d.getMinutes())}
 function pct(r){return (r*100).toFixed(2)+'%'}
 function LiveBar(){
  var warn=LS.sum&&!LS.sum.metrics_enabled?'<span class="note" style="color:var(--warn)">서버의 요청 계측이 꺼져 있어 수치가 0 일 수 있습니다.</span>':'';
- return '<div class="sample live"><span><strong>실서버 데이터</strong> 요청 지표(경로 패턴·상태코드·응답 시간 집계)만 표시합니다. 평균·최대 응답 시간만 제공하며 p95 는 없습니다. 시각은 이 브라우저의 시간대 기준입니다. '+warn+'</span>'+
+ return '<div class="sample live"><span><strong>실서버 데이터</strong> 요청 지표(경로 패턴·상태코드·응답 시간 집계), 오류 이벤트, Cloud Run 상태를 표시합니다. 평균·최대 응답 시간만 제공하며 p95 는 없습니다. 시각은 이 브라우저의 시간대 기준입니다. '+warn+'</span>'+
   (LS.loading?'<span class="note">갱신 중…</span>':'')+'<span class="toolbar" style="gap:8px"><span>기간</span>'+Seg('range',LIVE_RANGES,liveRange())+'</span></div>'}
 function liveNotConnected(what){return '<div class="panel"><div class="state">'+IC.empty+'<b>아직 서버와 연결되지 않았습니다</b><span>'+esc(what)+' 은(는) 저장 테이블과 조회 API 가 만들어진 뒤 표시됩니다. 샘플 값은 섞어 보이지 않습니다.</span></div></div>'}
 function liveState(){
@@ -335,7 +336,7 @@ function liveDashboard(){
  var labels=s.series.map(function(p){return liveLabel(p.t,rk)});
  var chart=panelFixed('요청 추이','정상 요청과 5xx 실패 요청 · 막대에 마우스를 올리면 값을 볼 수 있습니다',
   '<div class="pbody">'+(s.requests?'<div class="toolbar" style="margin-bottom:8px"><div class="legend"><span><i style="background:var(--bar)"></i>정상</span><span><i style="background:var(--err)"></i>5xx 실패</span></div><div class="readout" id="readout-ch">막대에 마우스를 올리면 구간별 값을 볼 수 있습니다.</div></div>'+MonitoringChart({type:'bar',labels:labels,a:s.series.map(function(p){return p.requests-p.errors}),b:s.series.map(function(p){return p.errors}),id:'ch',aria:'구간별 정상 요청과 실패 요청 막대 차트'}):'<div class="state">'+IC.empty+'<b>이 기간에 집계된 요청이 없습니다</b><span>계측이 켜져 있는지, 기간을 넓혀야 하는지 확인하세요.</span></div>')+'</div>');
- return cards+chart+liveNotConnected('서비스별 인프라 상태, 오류 내역, 배포 이력')}
+ return cards+chart+liveNotConnected('배포 이력과 DB 관리')}
 function liveApis(){
  var st=liveState();if(st)return st;if(!LS.apis)return '';
  var items=LS.apis.items.map(function(a,i){return {i:i,m:a.method,r:a.route,n:a.requests,c4:a.c4xx,c5:a.c5xx,er:a.error_rate,avg:a.avg_ms,max:a.max_ms}});
@@ -356,10 +357,47 @@ function liveApis(){
   {h:'최대 응답',r:1,k:function(r){return r.max},f:function(r){return ms(r.max)}}];
  return cards+panelFixed('API 경로별 요청 현황','실제 주소가 아니라 경로 패턴(예: /groups/{group_id})으로 집계됩니다',
   '<div class="pbody flush">'+DataTable(cols,sortRows('lapi',cols,items),'','lapi')+'</div>')}
+function softFail(what,x){
+ var e=x.failed,d=e&&e.status===404?'서버에 이 조회 기능이 아직 배포되지 않았습니다.':(e&&e.status===403?'운영자 권한이 없습니다.':'잠시 후 다시 시도하세요.');
+ return '<div class="panel"><div class="state err">'+IC.fail+'<b>'+esc(what)+'을(를) 불러오지 못했습니다</b><span>'+esc(d)+'</span><button class="btn" data-act="refresh">다시 시도</button></div></div>'}
+function pctOrNone(v){return v==null?'미수집':(v*100).toFixed(1)+'%'}
+function numOrNone(v,unit){return v==null?'미수집':fmt(v)+(unit||'')}
+function liveInfra(){
+ var st=liveState();if(st)return st;if(!LS.infra)return '';
+ if(LS.infra.failed)return softFail('인프라 상태',LS.infra);
+ var x=LS.infra;
+ if(!x.collected)return '<div class="panel"><div class="state">'+IC.empty+'<b>인프라 상태를 수집하지 않고 있습니다</b><span>'+esc(x.reason||'')+' 샘플 값은 섞어 보이지 않습니다.</span></div></div>';
+ var s=x.service||{},m=x.metrics||{};
+ var cpuMode=s.cpu_allocation==='request'?'요청 처리 중에만 할당':s.cpu_allocation==='instance'?'항상 할당':'미수집';
+ var note=x.reason?'<p class="note" style="color:var(--warn)">일부만 수집했습니다: '+esc(x.reason)+'</p>':'';
+ var card='<div class="grid2"><div class="panel"><header><div><h2>Cloud Run 서비스</h2><small>'+esc(s.name||'')+' · '+esc(s.region||'')+'</small></div></header><div class="pbody"><div class="mgrid">'+
+  M('현재 리비전',esc(s.revision||'미수집'))+M('최소 인스턴스',numOrNone(s.min_instances))+M('최대 인스턴스',numOrNone(s.max_instances))+M('CPU 할당',esc(cpuMode))+'</div></div></div>'+
+  '<div class="panel"><header><div><h2>최근 '+fmt(x.window_minutes||0)+'분 사용량</h2><small>Cloud Monitoring</small></div></header><div class="pbody"><div class="mgrid">'+
+  M('활성 인스턴스',numOrNone(m.instances_active))+M('유휴 인스턴스',numOrNone(m.instances_idle))+M('CPU 사용률(p99)',pctOrNone(m.cpu_p99))+M('메모리 사용률(p99)',pctOrNone(m.memory_p99))+'</div></div></div></div>';
+ return card+note+'<p class="note">서버가 약 60초 동안 캐시한 값입니다('+esc(new Date(x.fetched_at).toLocaleTimeString())+' 조회). Cloud Run 요청 기반 CPU 에서는 요청 밖 CPU 해석이 달라질 수 있습니다.</p>'}
+function liveErrors(){
+ var st=liveState();if(st)return st;if(!LS.errs)return '';
+ if(LS.errs.failed)return softFail('오류 내역',LS.errs);
+ var d=LS.errs;
+ if(!d.errors_enabled&&!d.items.length)return '<div class="panel"><div class="state">'+IC.empty+'<b>서버의 오류 수집이 꺼져 있습니다</b><span>OPS_ERRORS_ENABLED 를 켜면 5xx·처리되지 않은 예외·401/403 이 여기에 쌓입니다.</span></div></div>';
+ var kinds={server_error:'서버 오류',auth_failure:'인증 실패'};
+ var items=d.items.map(function(e){return {i:e.id,k:kinds[e.kind]||e.kind,sev:e.severity,t:e.event_type,m:e.method,r:e.route,s:e.status,n:e.occurrences,f:e.first_seen,l:e.last_seen,msg:e.message,loc:e.location}});
+ var cols=[{h:'종류',k:function(r){return r.k},f:function(r){return badge(r.sev==='error'?'err':'warn',r.k)}},
+  {h:'유형',k:function(r){return r.t},f:function(r){return '<span class="mono">'+esc(r.t)+'</span>'}},
+  {h:'경로',k:function(r){return r.r},f:function(r){return '<span class="mono">'+esc(r.m)+' '+esc(r.r)+'</span>'}},
+  {h:'상태',r:1,k:function(r){return r.s},f:function(r){return r.s}},
+  {h:'횟수',r:1,k:function(r){return r.n},f:function(r){return fmt(r.n)}},
+  {h:'마지막 발생',k:function(r){return r.l},f:function(r){return esc(new Date(r.l).toLocaleString())}},
+  {h:'위치',f:function(r){return '<span class="mono">'+esc(r.loc||'-')+'</span>'}},
+  {h:'메시지(가림)',f:function(r){return esc(r.msg||'-')}}];
+ var cards='<div class="grid4">'+SummaryCard({label:'오류 종류 수 ('+RANGE_L[d.range]+')',value:fmt(d.total),unit:'개',badge:d.total?badge('warn'):badge('ok'),sub:d.truncated?'<span>상위 '+fmt(items.length)+'개만 표시</span>':''})+
+  SummaryCard({label:'발생 횟수 합계',value:fmt(sum(items.map(function(x){return x.n}))),unit:'건',sub:d.truncated?'<span>표시된 항목만 합산</span>':''})+'</div>';
+ return cards+panelFixed('오류 내역','같은 오류는 한 줄로 합쳐 횟수를 셉니다 · 메시지는 개인정보를 가린 값입니다',
+  '<div class="pbody flush">'+DataTable(cols,sortRows('lerr',cols,items),'','lerr')+'</div>')}
 function livePage(){
- var body={dashboard:liveDashboard,api:liveApis,infra:function(){return liveNotConnected('인프라 상태(Cloud Run·Cloudflare·DB)')},
-  logs:function(){return liveNotConnected('오류 로그')},deploy:function(){return liveNotConnected('배포 이력과 DB 관리')}}[S.page]();
- return (S.page==='dashboard'||S.page==='api'?LiveBar():'')+body}
+ var body={dashboard:liveDashboard,api:liveApis,infra:liveInfra,
+  logs:liveErrors,deploy:function(){return liveNotConnected('배포 이력과 DB 관리')}}[S.page]();
+ return (S.page==='dashboard'||S.page==='api'||S.page==='infra'||S.page==='logs'?LiveBar():'')+body}
 
 /* ---------- login ---------- */
 var LOGIN_HTML='<div class="login-card"><div class="login-head"><b>GABI</b><span>OPERATIONS ADMIN</span></div>'+
@@ -395,7 +433,7 @@ function tryLogin(){
  if(!acc||!acc.id){err.textContent='샘플 계정이 설정되지 않았습니다 (js/sample-account.js)';return}
  if($('#l-id').value===acc.id&&$('#l-pw').value===acc.pw){enterApp();return}
  failLogin('아이디 또는 비밀번호가 올바르지 않습니다')}
-function doLogout(){if(LIVE){seq++;apiLogout();LS.sum=LS.apis=LS.err=null;LS.loading=false}S.auth=false;S.modal=null;S.notif=false;$('#app').classList.remove('open');render()}
+function doLogout(){if(LIVE){seq++;apiLogout();LS.sum=LS.apis=LS.infra=LS.errs=LS.err=null;LS.loading=false}S.auth=false;S.modal=null;S.notif=false;$('#app').classList.remove('open');render()}
 if(LIVE)setUnauthorizedHandler(function(){if(busy)return;doLogout();var e=$('#l-err');if(e)e.textContent='로그인이 만료되었습니다. 다시 로그인하세요'});
 
 /* ---------- render ---------- */
