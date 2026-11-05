@@ -3,11 +3,14 @@ import assert from "node:assert/strict";
 import { afterEach, beforeEach, test } from "node:test";
 
 import {
+  PREVIEW_OPTIONS,
   PUSH_CHANNEL_ID,
+  isQuietOn,
   isUsableToken,
   routeForPush,
   shouldRegister,
   toggleKind,
+  withQuiet,
 } from "../src/features/notifications/push.js";
 
 process.env.EXPO_PUBLIC_API_URL = "http://api.test";
@@ -97,4 +100,23 @@ test("getPushSettings GETs and savePushSettings PUTs the settings", async () => 
   await savePushSettings(settings);
   assert.equal(calls[1].method, "PUT");
   assert.deepEqual(JSON.parse(calls[1].body), settings);
+});
+
+test("quiet hours preset: on sets 22:00~07:00, off clears, state is read from the pair", () => {
+  const base = { enabled: true, preview_mode: "full", muted_kinds: [], quiet_start: null, quiet_end: null };
+  assert.equal(isQuietOn(base), false);
+  const on = withQuiet(base, true);
+  assert.deepEqual([on.quiet_start, on.quiet_end], ["22:00", "07:00"]);
+  assert.equal(isQuietOn(on), true);
+  assert.equal(isQuietOn({ ...on, quiet_start: "22:00:00", quiet_end: "07:00:00" }), true); // 서버는 초까지 돌려준다
+  const off = withQuiet(on, false);
+  assert.deepEqual([off.quiet_start, off.quiet_end], [null, null]);
+  assert.equal(base.quiet_start, null); // 입력은 바꾸지 않는다
+});
+
+test("PREVIEW_OPTIONS lists the three server modes in order", () => {
+  assert.deepEqual(
+    PREVIEW_OPTIONS.map((o) => o.key),
+    ["full", "sender", "hidden"],
+  );
 });

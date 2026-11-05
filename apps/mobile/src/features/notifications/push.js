@@ -47,3 +47,32 @@ export function toggleKind(muted, kind) {
   const list = muted ?? [];
   return list.includes(kind) ? list.filter((k) => k !== kind) : [...list, kind];
 }
+
+/** 소통 메시지 푸시에 무엇을 보일지 고르는 선택지(서버 `preview_mode` 값과 같다). */
+export const PREVIEW_OPTIONS = [
+  { key: "full", label: "내용 보이기" },
+  { key: "sender", label: "보낸 사람만" },
+  { key: "hidden", label: "숨기기" },
+];
+
+const QUIET_PRESET = { quiet_start: "22:00", quiet_end: "07:00" };
+
+/**
+ * 방해금지(밤 10시~아침 7시)가 켜져 있는지. 서버는 "22:00:00" 처럼 초까지 돌려준다.
+ * @param {{ quiet_start?: string | null, quiet_end?: string | null }} settings
+ * @returns {boolean}
+ */
+export function isQuietOn(settings) {
+  return Boolean(settings?.quiet_start && settings?.quiet_end);
+}
+
+/**
+ * 방해금지를 켜거나 끈 새 설정을 만든다(입력은 바꾸지 않는다). 시간은 밤 10시~아침 7시로 정해 둔다.
+ * @template {{ quiet_start?: string | null, quiet_end?: string | null }} T
+ * @param {T} settings
+ * @param {boolean} on
+ * @returns {T}
+ */
+export function withQuiet(settings, on) {
+  return { ...settings, ...(on ? QUIET_PRESET : { quiet_start: null, quiet_end: null }) };
+}
