@@ -84,7 +84,7 @@ def direct_room(db: Session, user: User, group_id: str, room_id: str | None) -> 
 def post_as_assistant(
     db: Session, group_id: str, text: str, room_id: str | None = None
 ) -> MessageOut:
-    """가족 전체방에 가비 이름으로 메시지를 올린다. group_id 는 호출한 쪽이 실제 구성원인지 확인한 값이어야 한다."""
+    """가비 이름으로 메시지를 올린다(room_id 가 없으면 가족 전체방, 있으면 그 1:1 방). group_id 는 호출한 쪽이 실제 구성원인지 확인한 값이어야 한다."""
     assistant = get_or_create_assistant(db)
     # room_id 는 direct_room 이 확인한 1:1 방 id 여야 한다(없으면 가족 전체방)
     target = room_id or repo.get_family_room(db, group_id).id

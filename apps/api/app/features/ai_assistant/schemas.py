@@ -73,7 +73,7 @@ class ChatOut(BaseModel):
         ConfirmCardOut
     ] = []  # 확인 버튼이 필요한 일정 요청(질문한 사람에게만 보인다)
     posted_message_id: int | None = (
-        None  # audience=room 이라 가비 이름으로 가족 전체방에 올린 메시지 id(개인 대화이거나 답이 비면 없음)
+        None  # audience=room 이라 가비 이름으로 방(가족 전체방 또는 1:1 방)에 올린 메시지 id(개인 대화이거나 답이 비면 없음)
     )
 
 

@@ -117,3 +117,51 @@ def test_schedule_agent_is_not_used_in_direct_rooms_yet(client, setup):
             audience="direct",
         )
     assert result["can_answer"] is False
+
+
+def test_schedule_tool_call_through_the_endpoint_gives_no_cards_in_direct_room(
+    client, setup, monkeypatch
+):
+    a, _, _, direct, _ = setup
+
+    def fake_post(req):
+        if len(req["messages"]) == 1:
+            return {
+                "content": [
+                    {
+                        "type": "tool_use",
+                        "id": "t1",
+                        "name": "ask_schedule",
+                        "input": {"question": "토요일 일정 넣어줘"},
+                    }
+                ]
+            }
+        return {"content": [{"type": "text", "text": "일정은 아직 다루지 않아요"}]}
+
+    monkeypatch.setattr(rag_chat, "_post", fake_post)
+    out = _ask(client, a, room_id=direct["id"]).json()
+    assert out["confirm_cards"] == [] and out["proposals"] == []
+
+
+def test_fallback_answer_is_not_posted_to_direct_room(client, setup, monkeypatch):
+    a, _, _, direct, _ = setup
+    monkeypatch.setattr(settings, "anthropic_api_key", "")  # AI 를 못 써서 기록 검색 결과만 나온다
+    out = _ask(client, a, room_id=direct["id"]).json()
+    assert out["visibility"] == "private" and out["posted_message_id"] is None
+    assert _texts(client, a, direct["id"]) == []
+
+
+def test_family_room_id_posts_to_the_family_room(client, setup):
+    a, b, _, direct, _ = setup
+    rooms = client.get("/family-chat/rooms", headers=a).json()
+    family_room = next(r for r in rooms if r["kind"] == "family")
+    out = _ask(client, a, room_id=family_room["id"]).json()
+    assert out["posted_message_id"] is not None
+    assert _texts(client, b) == [out["reply"]]
+    assert _texts(client, a, direct["id"]) == []
+
+
+def test_other_family_cannot_use_the_direct_room(client, setup, other_family):
+    _, _, _, direct, calls = setup
+    assert _ask(client, other_family, room_id=direct["id"]).status_code == 404
+    assert calls == []
