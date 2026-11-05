@@ -14,6 +14,7 @@ import {
 } from "@/shared/api/client";
 
 import { getMe, login, logoutOnServer } from "./sessionApi";
+import { runBeforeSignOut } from "./signOutHooks";
 import { createTokenStore } from "./tokenStore";
 
 // Refresh Token 만 기기의 보안 저장소(iOS Keychain / Android Keystore)에 둔다. 웹에는 없어서 메모리만 쓴다.
@@ -96,6 +97,7 @@ export function AuthProvider({ children }) {
   );
 
   const signOut = useCallback(async () => {
+    await runBeforeSignOut(); // 세션이 살아 있을 때 기능별 정리(푸시 토큰 해제 등)
     const refreshToken = getRefreshToken();
     if (refreshToken) {
       try {
