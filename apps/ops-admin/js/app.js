@@ -144,7 +144,7 @@ function Header(){var p=PAGES.filter(function(x){return x.id===S.page})[0];
  $('#hdr').innerHTML='<button class="ibtn menu-btn" data-act="openMenu" aria-label="메뉴 열기">'+IC.menu+'</button>'+
   '<div class="hdr-t"><h1>'+p.label+'</h1><p>'+p.desc+'</p></div>'+
   '<div class="hdr-r"><span class="upd">마지막 갱신 '+pad(u.getHours())+':'+pad(u.getMinutes())+':'+pad(u.getSeconds())+'</span>'+
-  '<button class="ibtn" data-act="refresh">'+IC.refresh+'새로고침</button>'+
+  '<button class="ibtn" data-act="refresh">'+IC.refresh+'새로고침</button>'+(LIVE?'<button class="ibtn" data-act="logout">로그아웃</button>':'')+
   (LIVE?'':'<div class="pwrap"><button class="ibtn" data-act="notif" aria-label="알림 '+unread()+'건" aria-expanded="'+S.notif+'">'+IC.bell+(unread()?'<span class="dot"></span>':'')+'</button>'+
   (S.notif?'<div class="pop"><h4>최근 알림 (샘플) · 클릭하면 확인 처리</h4>'+alertItems()+
          '</div>':'')+'</div>')+
@@ -316,11 +316,6 @@ function loadLive(){
  }).then(function(){if(my!==seq)return;LS.loading=false;S.updated=new Date();render()})}
 function liveLabel(iso,rk){var d=new Date(iso);return rk==='7d'?pad(d.getMonth()+1)+'-'+pad(d.getDate()):pad(d.getHours())+':'+pad(d.getMinutes())}
 function pct(r){return (r*100).toFixed(2)+'%'}
-function LiveBar(){
- var warn=LS.sum&&!LS.sum.metrics_enabled?'<span class="note" style="color:var(--warn)">서버의 요청 계측이 꺼져 있어 수치가 0 일 수 있습니다.</span>':'';
- return '<div class="sample live"><span><strong>실서버 데이터</strong> 요청 지표(경로 패턴·상태코드·응답 시간 집계), 오류 이벤트, Cloud Run 상태를 표시합니다. 평균·최대 응답 시간만 제공하며 p95 는 없습니다. 시각은 이 브라우저의 시간대 기준입니다. '+warn+'</span>'+
-  (LS.loading?'<span class="note">갱신 중…</span>':'')+'<span class="toolbar" style="gap:8px"><span>기간</span>'+Seg('range',LIVE_RANGES,liveRange())+'</span></div>'}
-function liveNotConnected(what){return '<div class="panel"><div class="state">'+IC.empty+'<b>아직 서버와 연결되지 않았습니다</b><span>'+esc(what)+' 은(는) 저장 테이블과 조회 API 가 만들어진 뒤 표시됩니다. 샘플 값은 섞어 보이지 않습니다.</span></div></div>'}
 function liveState(){
  if(LS.loading&&!LS.sum)return '<div class="panel"><div style="padding:16px;display:flex;flex-direction:column;gap:10px"><div class="sk" style="height:60px"></div><div class="sk" style="height:170px"></div></div></div>';
  if(LS.err)return '<div class="panel"><div class="state err">'+IC.fail+'<b>'+esc(LS.err.t)+'</b><span>'+esc(LS.err.d)+'</span><button class="btn" data-act="refresh">다시 시도</button></div></div>';
@@ -372,11 +367,11 @@ function TrendPanel(s){
  return panelFixed('요청 추이','정상 요청과 5xx 실패 요청 · 막대에 마우스를 올리면 값을 볼 수 있습니다',
   '<div class="pbody">'+(s.requests?'<div class="toolbar" style="margin-bottom:8px"><div class="legend"><span><i style="background:var(--bar)"></i>정상</span><span><i style="background:var(--err)"></i>5xx 실패</span></div><div class="readout" id="readout-ch">막대에 마우스를 올리면 구간별 값을 볼 수 있습니다.</div></div>'+MonitoringChart({type:'bar',labels:labels,a:s.series.map(function(p){return p.requests-p.errors}),b:s.series.map(function(p){return p.errors}),id:'ch',aria:'구간별 정상 요청과 실패 요청 막대 차트'}):'<div class="state">'+IC.empty+'<b>이 기간에 집계된 요청이 없습니다</b><span>계측이 켜져 있는지, 기간을 넓혀야 하는지 확인하세요.</span></div>')+'</div>')}
 function UnresolvedErrorsPanel(){
- var link='<button class="lnk" data-act="nav" data-id="logs">전체 보기</button>';
+ var link='<button class="lnk" data-act="toggle" data-k="allErr">'+(S.allErr?'접기':'전체 보기')+'</button>';
  if(LS.errs&&LS.errs.failed)return softFail('오류 내역',LS.errs);
  var all=errItems()||[],open=all.filter(function(e){return e.handling_status==='new'});
  open.sort(function(a,b){return new Date(b.last_seen)-new Date(a.last_seen)});
- var rows=open.slice(0,8).map(function(e){return {i:e.id,t:e.event_type,r:e.method+' '+e.route,n:e.occurrences,l:e.last_seen,sev:e.severity}});
+ var lim=S.allErr?100:8,rows=open.slice(0,lim).map(function(e){return {i:e.id,t:e.event_type,r:e.method+' '+e.route,n:e.occurrences,l:e.last_seen,sev:e.severity}});
  var cols=[{h:'유형',f:function(r){return badge(r.sev==='error'?'err':'warn',r.t)}},
   {h:'경로',f:function(r){return '<span class="mono">'+esc(r.r)+'</span>'}},
   {h:'발생 횟수',r:1,f:function(r){return fmt(r.n)}},
@@ -384,7 +379,7 @@ function UnresolvedErrorsPanel(){
  var empty=LS.errs&&!LS.errs.errors_enabled&&!all.length;
  var body=empty?'<div class="state">'+IC.empty+'<b>서버의 오류 수집이 꺼져 있습니다</b><span>OPS_ERRORS_ENABLED 를 켜면 여기에 쌓입니다.</span></div>':
   (rows.length?DataTable(cols,rows,'errModal'):'<div class="state">'+IC.empty+'<b>확인할 오류가 없습니다</b><span>이 기간에 기록된 미처리 오류가 없습니다.</span></div>');
- return panelFixed('지금 확인할 오류','미처리 · 마지막 발생이 최근인 순'+(open.length>8?' · '+fmt(open.length)+'건 중 8건':'')+' · 줄을 누르면 상세',
+ return panelFixed('지금 확인할 오류','미처리 · 마지막 발생이 최근인 순'+(open.length>lim?' · '+fmt(open.length)+'건 중 '+lim+'건':'')+' · 줄을 누르면 상세',
   '<div class="pbody flush">'+body+'</div>',link)}
 function ProblemPathsPanel(){
  var a=LS.apis;if(!a||a.failed)return '';
@@ -395,7 +390,7 @@ function ProblemPathsPanel(){
   {h:'5xx',r:1,f:function(r){return fmt(r.c5)+' <span class="note">('+pct(r.er)+')</span>'}},
   {h:'평균 응답',r:1,f:function(r){return ms(r.avg)}}];
  var body=rows.length?DataTable(cols,rows,''):'<div class="state">'+IC.empty+'<b>5xx 가 발생한 경로가 없습니다</b><span>요청 '+MIN_REQ_TOP+'건 이상인 경로만 봅니다.</span></div>';
- return panelFixed('문제 경로 TOP5','5xx 비율이 높은 순 · 요청 '+MIN_REQ_TOP+'건 이상인 경로만'+(a.truncated?' · 요청 수 상위 경로 안에서 계산':''),'<div class="pbody flush">'+body+'</div>','<button class="lnk" data-act="nav" data-id="api">전체 보기</button>')}
+ return panelFixed('문제 경로 TOP5','5xx 비율이 높은 순 · 요청 '+MIN_REQ_TOP+'건 이상인 경로만'+(a.truncated?' · 요청 수 상위 경로 안에서 계산':''),'<div class="pbody flush">'+body+'</div>','<button class="lnk" data-act="toggle" data-k="allApis">'+(S.allApis?'전체 경로 접기':'전체 경로 표')+'</button>')}
 function gcpLinks(){
  var s=LS.infra&&!LS.infra.failed&&LS.infra.collected&&LS.infra.service,base='https://console.cloud.google.com';
  if(s&&s.project_id){var p=encodeURIComponent(s.project_id),n=encodeURIComponent(s.name),r=encodeURIComponent(s.region);
@@ -416,7 +411,7 @@ function SystemFooter(s){
 function liveDashboard(){
  var st=liveState();if(st)return st;if(!LS.sum)return '';
  var s=LS.sum;
- return StatusBar(s)+MetricCards(s)+TrendPanel(s)+'<div class="split even">'+UnresolvedErrorsPanel()+ProblemPathsPanel()+'</div>'+SystemFooter(s)}
+ return StatusBar(s)+MetricCards(s)+TrendPanel(s)+'<div class="split even">'+UnresolvedErrorsPanel()+ProblemPathsPanel()+'</div>'+(S.allApis?liveApis():'')+SystemFooter(s)}
 function liveModal(){
  var m=S.modal;if(!m||m.live!=='err'||!errItems())return '';
  var e=errItems().filter(function(x){return x.id===m.id})[0];if(!e)return '';
@@ -450,46 +445,10 @@ function liveApis(){
 function softFail(what,x){
  var e=x.failed,d=e&&e.status===404?'서버에 이 조회 기능이 아직 배포되지 않았습니다.':(e&&e.status===403?'운영자 권한이 없습니다.':'잠시 후 다시 시도하세요.');
  return '<div class="panel"><div class="state err">'+IC.fail+'<b>'+esc(what)+'을(를) 불러오지 못했습니다</b><span>'+esc(d)+'</span><button class="btn" data-act="refresh">다시 시도</button></div></div>'}
-function pctOrNone(v){return v==null?'미수집':(v*100).toFixed(1)+'%'}
 function numOrNone(v,unit){return v==null?'미수집':fmt(v)+(unit||'')}
-function liveInfra(){
- var st=liveState();if(st)return st;if(!LS.infra)return '';
- if(LS.infra.failed)return softFail('인프라 상태',LS.infra);
- var x=LS.infra;
- if(!x.collected)return '<div class="panel"><div class="state">'+IC.empty+'<b>인프라 상태를 수집하지 않고 있습니다</b><span>'+esc(x.reason||'')+' 샘플 값은 섞어 보이지 않습니다.</span></div></div>';
- var s=x.service||{},m=x.metrics||{};
- var cpuMode=s.cpu_allocation==='request'?'요청 처리 중에만 할당':s.cpu_allocation==='instance'?'항상 할당':'미수집';
- var note=x.reason?'<p class="note" style="color:var(--warn)">일부만 수집했습니다: '+esc(x.reason)+'</p>':'';
- var card='<div class="grid2"><div class="panel"><header><div><h2>Cloud Run 서비스</h2><small>'+esc(s.name||'')+' · '+esc(s.region||'')+'</small></div></header><div class="pbody"><div class="mgrid">'+
-  M('현재 리비전',esc(s.revision||'미수집'))+M('최소 인스턴스',numOrNone(s.min_instances))+M('최대 인스턴스',numOrNone(s.max_instances))+M('CPU 할당',esc(cpuMode))+'</div></div></div>'+
-  '<div class="panel"><header><div><h2>최근 '+fmt(x.window_minutes||0)+'분 사용량</h2><small>Cloud Monitoring</small></div></header><div class="pbody"><div class="mgrid">'+
-  M('활성 인스턴스',numOrNone(m.instances_active))+M('유휴 인스턴스',numOrNone(m.instances_idle))+M('CPU 사용률(p99)',pctOrNone(m.cpu_p99))+M('메모리 사용률(p99)',pctOrNone(m.memory_p99))+'</div></div></div></div>';
- return card+note+'<p class="note">서버가 약 60초 동안 캐시한 값입니다('+esc(new Date(x.fetched_at).toLocaleTimeString())+' 조회). Cloud Run 요청 기반 CPU 에서는 요청 밖 CPU 해석이 달라질 수 있습니다.</p>'}
-function liveErrors(){
- var st=liveState();if(st)return st;if(!LS.errs)return '';
- if(LS.errs.failed)return softFail('오류 내역',LS.errs);
- var d=LS.errs;
- if(!d.errors_enabled&&!d.items.length)return '<div class="panel"><div class="state">'+IC.empty+'<b>서버의 오류 수집이 꺼져 있습니다</b><span>OPS_ERRORS_ENABLED 를 켜면 5xx·처리되지 않은 예외·401/403 이 여기에 쌓입니다.</span></div></div>';
- var kinds={server_error:'서버 오류',auth_failure:'인증 실패'};
- var items=d.items.map(function(e){return {i:e.id,k:kinds[e.kind]||e.kind,sev:e.severity,t:e.event_type,m:e.method,r:e.route,s:e.status,n:e.occurrences,f:e.first_seen,l:e.last_seen,msg:e.message,loc:e.location}});
- var cols=[{h:'종류',k:function(r){return r.k},f:function(r){return badge(r.sev==='error'?'err':'warn',r.k)}},
-  {h:'유형',k:function(r){return r.t},f:function(r){return '<span class="mono">'+esc(r.t)+'</span>'}},
-  {h:'경로',k:function(r){return r.r},f:function(r){return '<span class="mono">'+esc(r.m)+' '+esc(r.r)+'</span>'}},
-  {h:'상태',r:1,k:function(r){return r.s},f:function(r){return r.s}},
-  {h:'횟수',r:1,k:function(r){return r.n},f:function(r){return fmt(r.n)}},
-  {h:'마지막 발생',k:function(r){return r.l},f:function(r){return esc(new Date(r.l).toLocaleString())}},
-  {h:'위치',f:function(r){return '<span class="mono">'+esc(r.loc||'-')+'</span>'}},
-  {h:'메시지(가림)',f:function(r){return esc(r.msg||'-')}}];
- var cards='<div class="grid4">'+SummaryCard({label:'오류 종류 수 ('+RANGE_L[d.range]+')',value:fmt(d.total),unit:'개',badge:d.total?badge('warn'):badge('ok'),sub:d.truncated?'<span>상위 '+fmt(items.length)+'개만 표시</span>':''})+
-  SummaryCard({label:'발생 횟수 합계',value:fmt(sum(items.map(function(x){return x.n}))),unit:'건',sub:d.truncated?'<span>표시된 항목만 합산</span>':''})+'</div>';
- return cards+panelFixed('오류 내역','같은 오류는 한 줄로 합쳐 횟수를 셉니다 · 메시지는 개인정보를 가린 값입니다',
-  '<div class="pbody flush">'+DataTable(cols,sortRows('lerr',cols,items),'errModal','lerr')+'</div>')}
-function livePage(){
- var body={dashboard:liveDashboard,api:liveApis,infra:liveInfra,
-  logs:liveErrors,deploy:function(){return liveNotConnected('배포 이력과 DB 관리')}}[S.page]();
- return (S.page==='api'||S.page==='infra'||S.page==='logs'?LiveBar():'')+body}
+function livePage(){return liveDashboard()}
 
-if(LIVE)setInterval(function(){if(S.auth&&!document.hidden&&!LS.loading&&!S.modal&&(S.page==='dashboard'||S.page==='logs'))loadLive()},60000);
+if(LIVE)setInterval(function(){if(S.auth&&!document.hidden&&!LS.loading&&!S.modal&&S.page==='dashboard')loadLive()},60000);
 
 /* ---------- login ---------- */
 var LOGIN_HTML='<div class="login-card"><div class="login-head"><b>Gabee</b><span>OPERATIONS ADMIN</span></div>'+
@@ -501,7 +460,7 @@ var LOGIN_HTML='<div class="login-card"><div class="login-head"><b>Gabee</b><spa
  '<div class="login-note">'+(LIVE?'운영 서버 계정으로 로그인합니다. 운영자 허용 목록에 있는 계정만 화면을 볼 수 있습니다.':'샘플 화면입니다. 서버에 연결되기 전이라 실제 인증이 아니며, 화면의 모든 값은 가짜입니다.')+'</div></form></div>';
 var fails=0,lockUntil=0,busy=false,authed=false;
 function showLogin(){$('#app').hidden=true;$('#modalRoot').innerHTML='';var r=$('#loginRoot');r.hidden=false;if(!r.innerHTML)r.innerHTML=LOGIN_HTML}
-function enterApp(){fails=0;S.auth=true;var r=$('#loginRoot');r.innerHTML='';r.hidden=true;$('#app').hidden=false;render()}
+function enterApp(){fails=0;S.auth=true;if(LIVE){S.page='dashboard';$('#app').classList.add('single')}var r=$('#loginRoot');r.innerHTML='';r.hidden=true;$('#app').hidden=false;render()}
 function failLogin(msg){var err=$('#l-err');fails++;$('#l-pw').value='';
  if(fails>=5){lockUntil=Date.now()+30000;fails=0;err.textContent='시도가 너무 많습니다. 30초 뒤에 다시 시도하세요'}else err.textContent=msg}
 function tryLogin(){
@@ -547,6 +506,8 @@ document.addEventListener('click',function(e){
  var a=t.dataset.act;
  if(a==='closeModal'){if(e.target.closest('.modal')&&!e.target.closest('#mClose'))return;S.modal=null;render();return}
  if(a==='errModal'&&LIVE){S.modal={live:'err',id:t.dataset.id};render();return}
+ if(a==='toggle'&&LIVE){S[t.dataset.k]=!S[t.dataset.k];render();return}
+ if(a==='nav'&&LIVE)return;
  if(a==='nav')return go(t.dataset.id);
  if(a==='openMenu'){$('#app').classList.add('open');return}
  if(a==='closeMenu'){$('#app').classList.remove('open');return}
@@ -585,7 +546,7 @@ document.addEventListener('mouseover',function(e){
  var b=e.target.closest('.bar');if(!b)return;var ro=$('#readout-ch');if(!ro)return;var i=+b.dataset.i;
  if(LIVE){var p=LS.sum&&LS.sum.series[i];if(p)ro.innerHTML='<b>'+esc(liveLabel(p.t,LS.sum.range))+'</b> · 전체 '+fmt(p.requests)+' · 5xx '+fmt(p.errors);return}
  ro.innerHTML='<b>'+HOURS[i]+'</b> · 전체 '+fmt(REQ[i])+' · 실패 '+fmt(FAIL[i])+' ('+(FAIL[i]/REQ[i]*100).toFixed(1)+'%)'});
-window.addEventListener('hashchange',function(){var id=location.hash.slice(1);if(PAGES.some(function(p){return p.id===id})&&id!==S.page)go(id)});
-var h0=location.hash.slice(1);if(PAGES.some(function(p){return p.id===h0}))S.page=h0;
+window.addEventListener('hashchange',function(){if(LIVE)return;var id=location.hash.slice(1);if(PAGES.some(function(p){return p.id===id})&&id!==S.page)go(id)});
+var h0=location.hash.slice(1);if(!LIVE&&PAGES.some(function(p){return p.id===h0}))S.page=h0;
 render();
 })();
