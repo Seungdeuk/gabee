@@ -33,7 +33,7 @@ test("승인 정책: 답장 추천은 입력창에 넣기만 하고, 일정·할
   assert.equal(readFileSync(new URL("../src/features/family-chat/api.js", import.meta.url), "utf8").includes("previewAiRange"), false);
   // "대화 분석하기" 버튼 한 번에 분석을 부른다(run("analysis", ...) 는 analyze 핸들러 한 곳, 안에서 analyzeChat 을 한 번 부른다)
   assert.equal((panel.match(/run\("analysis"/g) ?? []).length, 1);
-  assert.match(panel, /const analyzeNow = \(\) =>\s*run\("analysis", async \(\) => \{[\s\S]*return analyzeChat\(\)/);
+  assert.match(panel, /const analyzeNow = \(\) =>\s*run\("analysis", async \(\) => \{[\s\S]*return analyzeChat\(\{ roomId \}\)/);
   assert.match(panel, /onPress=\{analyze\}/);
   assert.doesNotMatch(panel.slice(panel.indexOf("useEffect"), panel.indexOf("useEffect") + 150), /analyze/);
   // 동의는 회원가입 때 받으므로 꺼짐 분기(동의 카드)가 없고 분석 버튼이 항상 있는 화면이다
