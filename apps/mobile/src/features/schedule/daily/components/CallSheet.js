@@ -7,7 +7,7 @@ import { colors, font, radius, spacing } from "@/theme";
 import BottomSheet from "../../components/BottomSheet";
 
 /**
- * 전화 확인 시트. 가족 아바타와 제목, 가비의 이야깃거리(규칙 문구)를 보여 주고, "전화 걸기"를 누르면 onCall 을 부른다.
+ * 전화 확인 시트. 가족 아바타와 제목, 가비의 이야깃거리(AI·안부 문구)를 보여 주고, "전화 걸기"를 누르면 onCall 을 부른다.
  * 번호는 쓰지 않는다. 부모가 Linking.openURL("tel:") 로 전화 앱 키패드를 연다(실패해도 앱은 계속 동작).
  * @param {{ visible: boolean, onClose: () => void, memberId?: string, memberName: string,
  *   points: { say: string, ask: string }[], onCall: () => void }} props
@@ -36,7 +36,7 @@ export default function CallSheet({ visible, onClose, memberId = "", memberName,
         {points.map((p, i) => (
           <View key={i} style={styles.point}>
             <Text style={styles.say}>{p.say}</Text>
-            <Text style={styles.ask}>{p.ask}</Text>
+            {p.ask ? <Text style={styles.ask}>{p.ask}</Text> : null}
           </View>
         ))}
       </View>

@@ -243,7 +243,7 @@ class CheckCheer(Base):
 
 
 class CheckSuggestion(Base):
-    """데일리 체크 추천 문구 창고. 습관 추천(category 1)과 응원 문구(category 2)를 한 테이블에 둔다.
+    """데일리 체크 추천 문구 창고. 습관 추천(category 1)·응원 문구(category 2)·안부 문구(category 3)를 한 테이블에 둔다.
 
     앱이 읽기 전용 API 로 무작위 몇 개만 가져간다(LLM 호출 없음). 사람·가족과 무관한 공용 목록이라 사용자 열이 없다.
     습관은 kind(1 체크 · 2 횟수)와 goal·unit 을 쓰고, 응원 문구는 content 만 쓴다(나머지 NULL).
@@ -259,7 +259,7 @@ class CheckSuggestion(Base):
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    category: Mapped[int] = mapped_column(Integer)  # 1 습관 추천 · 2 응원 문구
+    category: Mapped[int] = mapped_column(Integer)  # 1 습관 추천 · 2 응원 문구 · 3 안부 문구
     content: Mapped[str] = mapped_column(String(60))  # 습관 이름(앱 20자) 또는 응원 문구(앱 50자)
     kind: Mapped[int | None] = mapped_column(Integer, nullable=True)  # 습관만: 1 체크 · 2 횟수
     goal: Mapped[int | None] = mapped_column(Integer, nullable=True)  # 횟수 습관의 하루 목표

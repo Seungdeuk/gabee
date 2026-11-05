@@ -15,6 +15,7 @@ import {
   listFamilySummary,
   listFamilyToday,
   listItems,
+  loadCallTalk,
   loadOnboarded,
   loadTabOrder,
   markCheerClosed,
@@ -67,7 +68,9 @@ import {
   stepDay,
   tabLabel,
   shouldShowCallButton,
-  talkingPoints,
+  callTalkKey,
+  createCallTalkCache,
+  provisionalPoints,
   visibleTabIds,
 } from "../logic";
 import { useDailyMembers, useDailyScope } from "../scope";
@@ -75,6 +78,10 @@ import { failureNotice, loadErrorText, todayKeyKST } from "../serverMap";
 
 /** 확인 팝업 내용을 안내형(확인 한 개)으로 만든다. */
 const infoSheet = (notice) => ({ title: notice.title, body: notice.body, confirmLabel: "확인" });
+
+// 전화 이야깃거리: 앱이 켜져 있는 동안 같은 상태면 서버를 다시 부르지 않는다. 15초 넘게 걸리면 임시 문구로 둔다.
+const CALL_TALK_CACHE = createCallTalkCache(30);
+const CALL_TALK_TIMEOUT_MS = 15000;
 
 /**
  * 데일리 체크 메인: 내 탭(체크·횟수, 줄을 길게 누르면 수정·삭제 메뉴, 받은 응원 카드)과 가족 탭(보기만, 응원 보내기·전화 버튼).
@@ -283,6 +290,40 @@ export default function DailyCheckScreen() {
   const cheerRows = cheerFor ? familyRows(cheerFor) : [];
   const cheerProgress = progressOf(cheerRows, (row) => row.entry);
   const callRows = callFor ? familyRows(callFor) : [];
+
+  // 전화 시트 문구: 열자마자 임시 문구, 서버(AI·DB 안부) 결과가 오면 교체한다. 실패·시간 초과는 내장 안부 문구 그대로 두고 캐시하지 않는다.
+  const callSeed = useMemo(() => Math.random(), [callFor]); // 시트를 열 때 한 번만 뽑는다
+  const callKey = callFor ? callTalkKey(callFor, callRows, today) : null;
+  const [callTalk, setCallTalk] = useState(null); // { key, points } 서버가 준 문구
+  useEffect(() => {
+    if (!callFor || isVirtualId(callFor)) return undefined;
+    const cached = CALL_TALK_CACHE.get(callKey);
+    if (cached) {
+      setCallTalk({ key: callKey, points: cached.points });
+      return undefined;
+    }
+    let alive = true; // 시트를 닫았거나 다른 가족·상태로 바뀌면 늦게 온 응답은 버린다
+    let timer;
+    Promise.race([
+      loadCallTalk(callFor),
+      new Promise((_, reject) => {
+        timer = setTimeout(() => reject(new Error("timeout")), CALL_TALK_TIMEOUT_MS);
+      }),
+    ])
+      .then((result) => {
+        if (!alive) return;
+        CALL_TALK_CACHE.set(callKey, result);
+        if (result.points.length) setCallTalk({ key: callKey, points: result.points });
+      })
+      .catch(() => {})
+      .finally(() => clearTimeout(timer));
+    return () => {
+      alive = false;
+    };
+    // callKey 가 바뀔 때만 다시 부른다(rows 가 새 배열이어도 내용이 같으면 부르지 않는다)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [callFor, callKey]);
+  const callPoints = callTalk?.key === callKey ? callTalk.points : provisionalPoints(callSeed);
 
   const leave = () => (router.canGoBack() ? router.back() : router.replace("/(tabs)/schedule"));
   const pickTab = (id) => {
@@ -678,7 +719,7 @@ export default function DailyCheckScreen() {
         onClose={() => setCallFor(null)}
         memberId={callFor ?? ""}
         memberName={nameOf(callFor ?? "")}
-        points={talkingPoints(callRows)}
+        points={callPoints}
         onCall={() => startCall(callFor)}
       />
       <CallDoneSheet
