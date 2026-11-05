@@ -222,3 +222,53 @@ def test_push_only_sends_without_inbox_row(client, family, sent):
         db.commit()
         assert db.scalars(select(Notification)).all() == []  # 알림함에는 남기지 않는다
     assert [m["title"] for m in _flat(sent)] == ["제목"]
+
+
+def test_two_notifies_in_one_request_push_only_after_final_commit(client, family, sent):
+    """같은 요청에서 notify() 를 두 번 불러도(저장점이 두 번 열리고 닫혀도) 푸시는 마지막 커밋 뒤에만 나간다."""
+    a, b, group = family
+    me_a, me_b = _me(client, a), _me(client, b)
+    _token(me_a, "ExponentPushToken[a1]")
+    _token(me_b, "ExponentPushToken[b1]")
+    with SessionLocal() as db:
+        _notify(db, group["id"], [me_a], title="첫째")
+        _notify(db, group["id"], [me_b], title="둘째")
+        assert sent == []  # 저장점이 닫혔을 뿐 바깥 커밋은 아직이다
+        db.commit()
+    assert sorted(m["title"] for m in _flat(sent)) == ["둘째", "첫째"]
+
+
+def test_savepoint_rollback_does_not_drop_pending_push(client, family, sent):
+    """notify() 뒤에 다른 저장점이 롤백돼도 이미 쌓은 푸시는 바깥 커밋 때 나간다."""
+    _a, b, group = family
+    me_b = _me(client, b)
+    _token(me_b, "ExponentPushToken[b1]")
+    with SessionLocal() as db:
+        _notify(db, group["id"], [me_b])
+        try:
+            with db.begin_nested():
+                raise ValueError("저장점 안에서 실패")
+        except ValueError:
+            pass
+        db.commit()
+    assert [m["to"] for m in _flat(sent)] == ["ExponentPushToken[b1]"]
+
+
+def test_outer_rollback_after_savepoints_sends_nothing(client, family, sent):
+    """저장점이 정상으로 닫힌 뒤 바깥 트랜잭션이 롤백되면 푸시도 알림도 없다."""
+    a, b, group = family
+    me_a, me_b = _me(client, a), _me(client, b)
+    _token(me_a, "ExponentPushToken[a1]")
+    _token(me_b, "ExponentPushToken[b1]")
+    with SessionLocal() as db:
+        # 실제 요청처럼 알림보다 먼저 쓴 내용이 있어야 SQLite 가 바깥 트랜잭션을 연다(pysqlite 는 첫 SQL 이
+        # SAVEPOINT 면 그 해제를 진짜 커밋으로 처리한다). PostgreSQL 에서는 이 준비 없이도 같다.
+        db.add(PushToken(user_id=me_a, token="ExponentPushToken[tmp]", platform="android"))
+        db.flush()
+        _notify(db, group["id"], [me_a])
+        _notify(db, group["id"], [me_b])
+        db.rollback()
+        db.commit()
+    assert sent == []
+    with SessionLocal() as db:
+        assert db.scalars(select(Notification)).all() == []
