@@ -1,6 +1,6 @@
 /** 화면 설정. 비밀·운영 값은 넣지 않는다(코드·Git 에 남음). */
-const local = (typeof window !== "undefined" && window.GABI_LOCAL) || {};
-const sample = (typeof window !== "undefined" && window.GABI_SAMPLE_ACCOUNT) || {};
+const local = (typeof window !== "undefined" && (window.GABEE_LOCAL || window.GABI_LOCAL)) || {};
+const sample = (typeof window !== "undefined" && (window.GABEE_SAMPLE_ACCOUNT || window.GABI_SAMPLE_ACCOUNT)) || {};
 
 export const config = {
   /** 서버 주소. 로컬 개발은 js/local-config.js(.gitignore)로 덮어쓴다. */
