@@ -15,6 +15,16 @@ from .schemas import AgentResponse, ConfirmRequest
 
 logger = logging.getLogger(__name__)
 
+TITLE_MAX = (
+    30  # 알림에 넣는 제목 길이. 확인 요청의 초안 제목은 클라이언트가 보낸 값이라 짧게 자른다
+)
+
+
+def _short_title(title: object) -> str:
+    """제목을 한 줄로 합치고(줄바꿈·연속 공백 제거) 짧게 자른다. 가비 이름으로 원하는 글을 올릴 수 없게 하는 안전장치다."""
+    one_line = " ".join(str(title or "").split())
+    return one_line if len(one_line) <= TITLE_MAX else one_line[: TITLE_MAX - 1].rstrip() + "…"
+
 
 def notice_text(body: ConfirmRequest, response: AgentResponse) -> str | None:
     """방에 알릴 문장. 알릴 일이 아니면 None."""
@@ -34,7 +44,7 @@ def notice_text(body: ConfirmRequest, response: AgentResponse) -> str | None:
     if card.data.get("start_time"):
         when = f"{when} {card.data['start_time']}".strip()
     where = f"{when}에 " if when else ""
-    title = card.data.get("title", "")
+    title = _short_title(card.data.get("title"))
     return f"'{title}' 일정을 {where}등록하고 가족 {shared}명에게 공유했어요."
 
 

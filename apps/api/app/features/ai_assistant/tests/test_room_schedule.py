@@ -205,3 +205,26 @@ def test_room_register_is_shared_with_the_other_members(client, family, schedule
     assert [e["title"] for e in _events(client, b)] == [
         "가족 저녁"
     ]  # 방의 다른 구성원은 공유받는 사람(복사본)
+
+
+def test_room_prompt_hides_request_recipients_and_status_but_personal_chat_keeps_them(
+    client, family, schedule_llm, monkeypatch
+):
+    """방에서 부른 일정 답은 방에 저장되므로, 모델에게도 부탁의 받는 분·수락 현황을 주지 않는다(답 글에 섞이지 않게). 개인 채팅은 그대로."""
+    a, b, group = family
+    enable_ai(group["id"])
+    sent = client.post(
+        "/schedule/requests",
+        json={"title": "장 같이 봐줘", "start_date": _tomorrow(), "to_ids": [_me(client, b)]},
+        headers=a,
+    ).json()
+    schedule_llm.data = _query(request_ids=[sent["id"]], reply="장 부탁이 있어요")
+    _main_llm(monkeypatch, "내일 뭐 있어?")
+    _chat(client, a, "내일 뭐 있어?", audience="room")
+    room_prompt = schedule_llm.calls[-1]
+    assert (
+        "장 같이 봐줘" in room_prompt and sent["id"] in room_prompt
+    )  # 부탁 자체와 id 는 알려 준다
+    assert "받는분:" not in room_prompt and "수락:" not in room_prompt
+    _chat(client, a, "내일 뭐 있어?")
+    assert "받는분:" in schedule_llm.calls[-1]  # 개인 채팅은 받는 분 현황도 본다

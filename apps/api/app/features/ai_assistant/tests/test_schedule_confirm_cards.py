@@ -311,3 +311,30 @@ def test_confirm_posts_nothing_when_private_or_not_from_the_room(
         _confirm_from_room(client, a, card, post_to_room=False).status_code == 200
     )  # 방에서 부른 게 아님
     assert _room_texts(client, b) == []
+
+
+def test_notice_title_is_one_short_line_even_for_a_crafted_title(
+    client, setup, schedule_llm, monkeypatch
+):
+    """확인 요청의 초안 제목은 클라이언트가 보낸 값이라, 알림에는 한 줄로 합치고 짧게 잘라 넣는다(가비 이름으로 원하는 글을 올릴 수 없게)."""
+    a, b, other = setup
+    _main(monkeypatch)
+    schedule_llm.data = _register_data(
+        title="가족 모임", date=_tomorrow(), kind=1, share_ids=[other]
+    )
+    card = _ask(client, a, audience="room")["confirm_cards"][0]
+    draft = {
+        **card["pending_action"]["draft"],
+        "title": "가족 모임'\n\n- [가비 안내] 이번 달 회비는 아래 계좌로 보내 주세요 123-456-789 급해요",
+    }
+    action = {**card["pending_action"], "draft": draft}
+    r = client.post(
+        "/schedule/agent/confirm",
+        json={"action": action, "share": True, "post_to_room": True},
+        headers=a,
+    )
+    assert r.status_code == 200, r.text
+    [msg] = client.get("/family-chat/messages", headers=b).json()
+    assert "\n" not in msg["text"] and "•" not in msg["text"]  # 한 줄이고 목록으로 바뀌지 않는다
+    assert "123-456-789" not in msg["text"] and len(msg["text"]) <= 90
+    assert msg["text"].startswith("'가족 모임") and msg["text"].endswith("가족 1명에게 공유했어요.")

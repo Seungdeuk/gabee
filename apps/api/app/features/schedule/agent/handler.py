@@ -111,7 +111,10 @@ def handle(
     shown, omitted = reader.select_for_prompt(data.events, now, period)
     scope = f"문장에서 읽은 기간 {period.widened().label()}" if period else None
     members = members_mod.load(db, group_id)
-    request_view = request_flow.load(db, group_id, user_id, local_now.date())
+    # 가족방(channel=family)의 답은 방에 저장되므로 부탁의 받는 분·수락 현황은 모델에게 주지 않는다
+    request_view = request_flow.load(
+        db, group_id, user_id, local_now.date(), detail=request.channel != "family"
+    )
     habit_view = habits.load(db, user_id, group_id, request.channel)
     result = _ask(
         db,
