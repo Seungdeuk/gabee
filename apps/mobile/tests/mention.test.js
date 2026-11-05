@@ -1,10 +1,11 @@
 // 가족 채팅방 @가비: 부르는 글 판별, 앞 대화 정리, 내 화면 항목 끼워 넣기, 서버 호출 모양을 시험한다: npm test
+import * as mention from "../src/features/family-chat/mention.js";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { afterEach, beforeEach, test } from "node:test";
 
 import {
   ASSISTANT_NAME,
-  DIRECT_NOT_ALLOWED,
   EMPTY_QUESTION_HINT,
   LOCAL_ASSISTANT_ID,
   MENTION,
@@ -101,7 +102,7 @@ test("내 화면 항목(확인 카드·안내)은 메시지 사이에 시간순�
 test("mentionHintsVisible: @ 입력 중이거나 질문이 비어 있을 때만 예시를 보인다", () => {
   for (const t of ["@", "@가", "@가비", "@가비 ", "  @가비  ", " @ ", "@ㄱ", "@갑", "@각", "@깋", "@가ㅂ", "@가비\n", "@가비,", "@가비 \n"]) assert.equal(mentionHintsVisible(t), true, JSON.stringify(t));
   for (const t of ["", "가비", "@가비 이번", "@가비 이번 달 지출", "@가비야", "@가비야 ", "안녕 @가비", "@나", "@가비가", "@깍", "@ㅂ", "＠가비", "＠", "@가비비"]) assert.equal(mentionHintsVisible(t), false, JSON.stringify(t));
-  for (const t of ["@", "@가비", "@가비 ", "@갑"]) assert.equal(mentionHintsVisible(t, true), false, t); // 1:1 방은 항상 숨김
+  for (const t of ["@", "@가비", "@가비 ", "@갑"]) assert.equal(mentionHintsVisible(t, true), true, t); // 1:1 방에서도 가족 전체방과 같다
   assert.equal(mentionHintsVisible(undefined), false);
 });
 
@@ -121,7 +122,7 @@ test("MENTION_EXAMPLES: 가비를 부르는 예시 문장", () => {
 
 test("안내 문구", () => {
   assert.match(EMPTY_QUESTION_HINT, /@가비/);
-  assert.match(DIRECT_NOT_ALLOWED, /1:1/);
+  assert.equal("DIRECT_NOT_ALLOWED" in mention, false); // 1:1 에서 막는 안내는 없앴다
 });
 
 test("askAssistantInRoom: audience 를 room 으로 보내고, 방에 저장된 답의 id 와 확인 카드를 돌려준다", async () => {
@@ -156,4 +157,26 @@ test("askAssistantInRoom: 서버 오류는 그대로 던져 화면이 안내 문
   const api = await import("../src/features/family-chat/api.js");
   globalThis.fetch = async () => json(403, { code: "ai_not_enabled", message: "m" });
   await assert.rejects(() => api.askAssistantInRoom("q"), (e) => e.code === "ai_not_enabled");
+});
+
+test("askAssistantInRoom: 1:1 방이면 room_id 를 싣고, 가족 전체방 요청은 이전과 같은 본문이다", async () => {
+  const api = await import("../src/features/family-chat/api.js");
+  const calls = [];
+  globalThis.fetch = async (url, init = {}) => {
+    calls.push(JSON.parse(init.body));
+    return json(200, { reply: "답", source: "ai", visibility: "room", private_reasons: [], posted_message_id: 7 });
+  };
+  await api.askAssistantInRoom("질문", [], "room-1");
+  await api.askAssistantInRoom("질문", []);
+  assert.deepEqual(calls[0], { message: "질문", audience: "room", history: [], room_id: "room-1" });
+  assert.deepEqual(calls[1], { message: "질문", audience: "room", history: [] });
+});
+
+test("ChatRoomScreen: 1:1 방에서도 @가비 를 부르고 방 id 를 넘긴다(소스 확인)", () => {
+  const screen = readFileSync(new URL("../src/features/family-chat/screens/ChatRoomScreen.js", import.meta.url), "utf8");
+  assert.doesNotMatch(screen, /DIRECT_NOT_ALLOWED/);
+  assert.doesNotMatch(screen, /const called = direct \?/);
+  assert.match(screen, /useMention\(roomId \?\? undefined\)/);
+  const hook = readFileSync(new URL("../src/features/family-chat/useMention.js", import.meta.url), "utf8");
+  assert.match(hook, /askAssistantInRoom\(q, mentionHistory\(thread\.current\), roomId\)/);
 });

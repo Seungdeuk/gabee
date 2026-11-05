@@ -10,7 +10,7 @@ import IconButton from "@/shared/components/IconButton";
 import { colors, font, radius, spacing } from "@/theme";
 
 import { buildItems, canSend, lastId, photoSendErrorMessage, trimDraft, unreadCount, unreadDividerId } from "../chatUtils";
-import { DIRECT_NOT_ALLOWED, MENTION, mergeNotes, parseMention } from "../mention";
+import { mergeNotes, parseMention } from "../mention";
 import AiPanel from "../components/AiPanel";
 import AssistantNote from "../components/AssistantNote";
 import ChatSearchBar from "../components/ChatSearchBar";
@@ -89,7 +89,7 @@ export default function ChatRoomScreen() {
   const [listReady, setListReady] = useState(false); // 방에 처음 들어갈 때 맨 아래로 자리 잡기 전까지 목록을 숨겨, 위에서부터 훑으며 내려가는 모습이 보이지 않게 한다
   const [draft, setDraft] = useState("");
   const [aiOpen, setAiOpen] = useState(false);
-  const mention = useMention(); // @가비 로 부른 뒤 나에게만 보이는 답·안내
+  const mention = useMention(roomId ?? undefined); // @가비 로 부른 뒤 나에게만 보이는 답·안내
   const listRef = useRef(null);
   const nearBottom = useRef(initialFocus == null);
   const lastScrollY = useRef(0); // 직전 스크롤 위치(위로 올렸는지 알아보려고)
@@ -176,7 +176,7 @@ export default function ChatRoomScreen() {
     setReplyTo(null);
     nearBottom.current = true;
     sentEarly.current = true;
-    const called = direct ? { mentioned: false, question: "" } : parseMention(text); // 1:1 방에서는 가비를 부를 수 없다(1:1 대화는 AI 로 보내지 않는다)
+    const called = parseMention(text); // 1:1 방에서도 부를 수 있다(답은 그 1:1 방에 저장된다)
     chat.send(text, reply).then((started) => {
       if (!started) {
         setDraft((prev) => prev || text); // 보내지 못했으면(최신 대화로 돌아가지 못함 등) 쓴 글과 답장 대상을 되돌려 놓는다
@@ -184,7 +184,6 @@ export default function ChatRoomScreen() {
         return;
       }
       if (called.mentioned) mention.ask(called.question);
-      else if (direct && text.startsWith(MENTION)) mention.info(DIRECT_NOT_ALLOWED);
     });
   };
 

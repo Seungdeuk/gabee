@@ -18,6 +18,8 @@ class ChatIn(BaseModel):
     history: list[ChatTurn] = Field(default_factory=list, max_length=10)  # 앞 대화(오래된 것부터)
     # me: 나와 가비의 대화(기본). room: 가족 채팅방에서 @가비 로 부른 것 — 답을 방에 올려도 되는지 서버가 정해 visibility 로 알려 준다
     audience: Literal["me", "room"] = "me"
+    # audience=room 일 때 @가비 를 부른 1:1 방 id. 있으면 답을 그 1:1 방에 올린다(참가자 본인·상대가 가족일 때만). 없으면 가족 전체방.
+    room_id: str | None = Field(default=None, max_length=32)
 
 
 class ChatSource(BaseModel):
@@ -71,7 +73,7 @@ class ChatOut(BaseModel):
         ConfirmCardOut
     ] = []  # 확인 버튼이 필요한 일정 요청(질문한 사람에게만 보인다)
     posted_message_id: int | None = (
-        None  # audience=room 이라 가비 이름으로 가족 전체방에 올린 메시지 id(개인 대화이거나 답이 비면 없음)
+        None  # audience=room 이라 가비 이름으로 방(가족 전체방 또는 1:1 방)에 올린 메시지 id(개인 대화이거나 답이 비면 없음)
     )
 
 

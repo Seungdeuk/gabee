@@ -145,6 +145,14 @@ def call(
     if not question:
         raise ValueError("question 이 비어 있어요")
     # 일정 에이전트만 어디서 불렀는지(가족방 @가비 = room)를 알아야 한다: 방에서는 공동 일정만 다룬다
+    if audience == "direct" and name == "ask_schedule":
+        # 1:1 방에서는 일정 에이전트를 아직 쓰지 않는다(상대 한 명 기준 조회·공유는 별도 작업). 개인 일정이 상대에게 보이지 않게 막는다
+        return (
+            {"answer": "1:1 대화에서는 아직 일정을 다루지 않아요", "can_answer": False},
+            [],
+            [],
+            [],
+        )
     extra = {"audience": audience} if name == "ask_schedule" else {}
     ai_guard.note_nested(
         USAGE_FEATURES[name]

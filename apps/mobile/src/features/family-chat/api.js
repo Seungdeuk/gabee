@@ -32,11 +32,12 @@ const rangeBody = ({ limit = 100, afterId = 0, roomId } = {}) => ({ limit, after
  * history 는 내가 @가비 로 나눈 앞 대화뿐이다(방의 다른 사람 글은 보내지 않는다).
  * @param {string} question @가비 를 뺀 질문
  * @param {{ role: "user" | "assistant", text: string }[]} [history]
+ * @param {string} [roomId] 1:1 방에서 부른 것이면 그 방 id(답을 그 1:1 방에 저장한다). 없으면 가족 전체방
  * @returns {Promise<{ reply: string, postedMessageId: number | null, confirmCards: object[] }>} postedMessageId 가 null 이면 서버가 방에 저장하지 않은 답(구 서버)
  */
-export async function askAssistantInRoom(question, history = []) {
+export async function askAssistantInRoom(question, history = [], roomId) {
   const turns = history.slice(-10).map(({ role, text }) => ({ role, text }));
-  const res = await apiFetch("/ai-assistant/chat", { method: "POST", body: { message: question, audience: "room", history: turns } });
+  const res = await apiFetch("/ai-assistant/chat", { method: "POST", body: { message: question, audience: "room", history: turns, ...(roomId ? { room_id: roomId } : {}) } });
   return {
     reply: res.reply ?? "",
     postedMessageId: res.posted_message_id ?? null,

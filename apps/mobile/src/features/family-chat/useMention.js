@@ -9,12 +9,13 @@ const BUSY_HINT = "앞선 질문에 답하는 중이에요. 끝난 뒤에 다시
 
 /**
  * 가족 채팅방의 @가비. 메시지를 보낸 뒤 질문을 메인 AI 비서에게 넘기고, 답기다림·안내·확인 카드는 이 화면에만 보이는 항목(notes)으로 둔다.
- * - 답은 서버가 가비 이름으로 가족 전체방에 저장한다(모두에게 공유, 기록으로 남는다). 앱은 다시 올리지 않고, 새 메시지 확인(3초)에 나타난다.
+ * - 답은 서버가 가비 이름으로 방(가족 전체방, 1:1 방이면 그 1:1 방)에 저장한다(방 사람들에게 공유, 기록으로 남는다). 앱은 다시 올리지 않고, 새 메시지 확인(3초)에 나타난다.
  * - 확인이 필요한 요청의 카드는 질문한 사람 화면에만 있고 서버에 남지 않는다. 이 화면을 닫으면 카드와 대화 이력(thread)이 사라진다.
  * - 앞 대화(thread)는 내가 @가비 로 나눈 최근 대화뿐이다. 오류가 난 질문은 이어 가지 않는다.
+ * @param {string} [roomId] 1:1 방 id. 있으면 답을 그 1:1 방(두 사람)에 저장한다. 없으면 가족 전체방
  * @returns {{ notes: object[], ask: (question: string) => Promise<void>, info: (text: string) => void, dismiss: (id: string) => void, resolveCard: (noteId: string, index: number, status: string, text: string) => void }}
  */
-export default function useMention() {
+export default function useMention(roomId) {
   const [notes, setNotes] = useState([]);
   const thread = useRef([]);
   const counter = useRef(0);
@@ -54,7 +55,7 @@ export default function useMention() {
       const id = nextId();
       add(makeNote({ id, state: "pending", question: q }));
       try {
-        const res = await askAssistantInRoom(q, mentionHistory(thread.current));
+        const res = await askAssistantInRoom(q, mentionHistory(thread.current), roomId);
         const at = Date.now();
         thread.current = pushThread(thread.current, { role: "user", text: q, at }, { role: "assistant", text: res.reply, at });
         if (res.postedMessageId == null) {
@@ -71,7 +72,7 @@ export default function useMention() {
         busy.current = false;
       }
     },
-    [add, info, remove, replace],
+    [add, info, remove, replace, roomId],
   );
 
   /** 일정 확인 카드를 처리했거나 취소했을 때: 카드를 결과 한 줄로 바꾼다(이 화면에만 있는 항목이라 저장하지 않는다). */

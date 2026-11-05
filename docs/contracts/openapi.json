@@ -16192,6 +16192,18 @@
             ],
             "title": "Audience",
             "default": "me"
+          },
+          "room_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 32
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Room Id"
           }
         },
         "type": "object",
