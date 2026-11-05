@@ -2,48 +2,51 @@
 <html lang="ko">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="robots" content="noindex, nofollow">
   <title>가비 서비스 관리자</title>
   <link rel="icon" href="logo.png">
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700&display=swap">
-  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="style.css?v=7">
 </head>
 <body>
+  <!-- 화면 틀은 운영 관리자 웹(apps/ops-admin)과 같다: 왼쪽 남색 메뉴 + 위 고정 머리줄 + 본문 -->
   <section id="login" class="login" hidden>
-    <form id="login-form" class="card login-card">
-      <div class="brand">
-        <img class="brand-mark" src="logo.png" alt="" width="32" height="32">
-        <span class="brand-name">가비 서비스 관리자</span>
+    <form id="login-form" class="login-card">
+      <div class="login-head"><b>GABEE</b><span>SERVICE ADMIN</span></div>
+      <div class="login-body">
+        <h1>서비스 관리자 로그인</h1>
+        <p class="login-note">가비 앱 계정으로 로그인해요. 관리자로 등록된 계정만 들어올 수 있어요.</p>
+        <label class="field">아이디<input name="login_id" autocomplete="username" required></label>
+        <label class="field">비밀번호<input name="password" type="password" autocomplete="current-password" required></label>
+        <p id="login-error" class="login-err" role="alert"></p>
+        <button type="submit" class="btn primary">로그인</button>
       </div>
-      <p class="note">가비 앱 계정으로 로그인해요. 관리자로 등록된 계정만 들어올 수 있어요.</p>
-      <label class="field">아이디<input name="login_id" autocomplete="username" required></label>
-      <label class="field">비밀번호<input name="password" type="password" autocomplete="current-password" required></label>
-      <p id="login-error" class="small warn" role="alert"></p>
-      <button type="submit" class="btn primary">로그인</button>
     </form>
   </section>
 
-  <div id="app" hidden>
-    <div class="top">
-      <header>
-        <div class="brand">
-          <img class="brand-mark" src="logo.png" alt="" width="32" height="32">
-          <span class="brand-name">가비 서비스 관리자</span>
-          <span class="pill">관리자 전용</span>
-        </div>
-        <div class="who">
-          <span id="who">관리자</span>
-          <button type="button" class="btn" data-action="logout">로그아웃</button>
+  <div id="app" class="app" hidden>
+    <aside class="sidebar" aria-label="서비스 관리자 메뉴">
+      <div class="brand"><b>GABEE</b><span>SERVICE ADMIN</span></div>
+      <nav class="nav" id="tabs"></nav>
+      <div class="side-foot">
+        <div class="who-box"><div class="avatar" aria-hidden="true">서</div><div><strong>서비스 관리자</strong><small id="who">관리자</small></div></div>
+        <button type="button" class="logout" data-action="logout">로그아웃</button>
+      </div>
+    </aside>
+    <div class="scrim" data-action="close-menu"></div>
+    <div class="main">
+      <header class="hdr">
+        <div class="hdr-in">
+          <button type="button" class="ibtn menu-btn" data-action="open-menu" aria-label="메뉴 열기">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
+          </button>
+          <div class="hdr-t"><h1 id="page-title">서비스 관리자</h1><p id="page-sub"></p></div>
         </div>
       </header>
-      <nav class="tabs" id="tabs" aria-label="관리자 메뉴"></nav>
+      <main id="view" class="content" aria-live="polite"></main>
     </div>
-
-    <main id="view" aria-live="polite"></main>
   </div>
 
-  <script src="app.js"></script>
+  <script src="app.js?v=7"></script>
 </body>
 </html>

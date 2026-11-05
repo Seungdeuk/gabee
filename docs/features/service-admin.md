@@ -11,7 +11,7 @@
 - `app/features/service_admin/`
   - `router.py`: `GET /admin/service/me`, `/admin/service/members`, `/admin/service/groups`, `/admin/service/features`, `/admin/service/ai-usage` (읽기 전용), `GET /admin/service/support`, `PATCH /admin/service/support/{ticket_id}`(문의·신고 상태·답변). `main.py` 에서 `schema_ready("family_group")` 로 등록하고, 문의·신고 두 경로는 `schema_ready("support")` 도 거친다.
   - `repository.py`: 다른 기능의 모델 파일을 import 하지 않고 공용 메타데이터의 표에서 개수·시각만 읽는다.
-  - `static/`: 관리자 화면. `main.py` 가 `/admin/service/ui` 로 내려준다. 로그인 → 메뉴 6개(회원·가족 그룹·기능·AI 이용·문의 및 신고·공지사항) 모두 실제 데이터. 허용 목록에 없으면 "관리자 계정이 아니에요".
+  - `static/`: 관리자 화면. `main.py` 가 `/admin/service/ui` 로 내려준다. 화면 틀과 색은 운영 관리자 웹(`apps/ops-admin`)과 같다(왼쪽 남색 메뉴·위 고정 머리줄·흰 패널, 시스템 글꼴, 다크 모드, 900px 이하 햄버거 메뉴, 2026-11-05). 로그인 → 메뉴 6개(회원·가족 그룹·기능·AI 이용·문의 및 신고·공지사항) 모두 실제 데이터. 허용 목록에 없으면 "관리자 계정이 아니에요".
   - 기능 관리: 일정·소통·정산의 최근 7일 사용 수. 돌봄은 release/1.2 에서 기능과 표가 지워져 뺐다.
   - 문의 및 신고: 상태별 건수와 최근순 목록. 줄마다 "답변하기"(답변이 있으면 "답변 수정") 버튼이나 제목을 누르면 사용자가 쓴 내용과 답변 칸이 펼쳐진다. 답변을 저장하면 상태가 자동으로 "답변 완료"가 되고(답변 없이는 완료 불가), 상태 버튼은 "처리 시작"(접수 → 처리 중)뿐이다. 그리고 "처리 시작"·"처리 완료" 버튼으로 상태를 바꾼다. 답변은 다시 저장하면 고쳐진다. 새 문의는 F5 없이 보인다: 15초마다·창으로 돌아올 때·탭에 들어올 때·"새로고침" 버튼을 누를 때 문의 목록만 다시 받고, 탭에는 처리하지 않은 새 문의 건수가 붙는다(답변 칸에 쓰던 글이 있으면 화면을 다시 그리지 않아 글이 지워지지 않는다).
   - 공지사항: 평소에는 목록과 "글쓰기" 버튼만 보이고, 글쓰기나 고치기를 누르면 쓰기 칸(종류·제목·내용)이 열린다. 올리고, 목록에서 고치기·지우기. `GET/POST /admin/service/notices`, `PUT/DELETE /admin/service/notices/{notice_id}`. 자세한 것은 `docs/features/notices.md`.

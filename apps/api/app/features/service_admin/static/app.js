@@ -3,14 +3,13 @@
 (function () {
   "use strict";
 
-  const TABS = [
-    ["members", "회원 관리"],
-    ["groups", "가족 그룹 관리"],
-    ["features", "기능 관리"],
-    ["ai", "AI 이용 현황"],
-    ["support", "문의 및 신고"],
-    ["notices", "공지사항"],
+  // 왼쪽 메뉴: 묶음 제목과 그 안의 탭. 비슷한 것끼리 묶고 할 일(문의·공지)은 아래에 모은다. 첫 화면은 맨 위 탭.
+  const TAB_GROUPS = [
+    ["사람", [["members", "회원 관리"], ["groups", "가족 그룹 관리"]]],
+    ["사용", [["features", "기능 관리"], ["ai", "AI 이용 현황"]]],
+    ["운영 업무", [["support", "문의 및 신고"], ["notices", "공지사항"]]],
   ];
+  const TABS = TAB_GROUPS.flatMap(([, tabs]) => tabs);
   const TOKEN_KEY = "gabee_admin_token";
 
   // 문의·신고 상태: 화면 글자, 표시 색, 버튼 글자, 버튼을 누르면 바뀔 상태.
@@ -103,9 +102,23 @@
     return `<div class="stat"><span class="stat-label">${esc(label)}</span><span class="stat-value">${esc(value)}</span><span class="stat-sub ${tone}">${esc(sub)}</span></div>`;
   }
 
+  let pageHead = { title: "", sub: "" }; // 화면 제목은 본문이 아니라 위 고정 머리줄에 쓴다(render 가 옮긴다)
+
   function head(title, sub) {
-    return `<div class="head"><div><h1>${esc(title)}</h1><p class="sub">${esc(sub)}</p></div></div>`;
+    pageHead = { title, sub };
+    return "";
   }
+
+  // 왼쪽 메뉴 아이콘(선 아이콘, 운영 관리자 웹과 같은 굵기)
+  const ICON_PATHS = {
+    members: "M16 19v-1a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v1M9 10a3 3 0 1 0 0-6 3 3 0 0 0 0 6M22 19v-1a4 4 0 0 0-3-3.9M16 4.1a3 3 0 0 1 0 5.8",
+    groups: "M3 10.5 12 4l9 6.5M5 9v10h14V9M10 19v-5h4v5",
+    features: "M4 20V10M10 20V4M16 20v-7M22 20H2",
+    ai: "M12 3l1.8 4.6L18 9.5l-4.2 1.9L12 16l-1.8-4.6L6 9.5l4.2-1.9zM19 15l.8 2 2 .8-2 .8-.8 2-.8-2-2-.8 2-.8z",
+    support: "M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z",
+    notices: "M3 11v2a1 1 0 0 0 1 1h2l5 4V6L6 10H4a1 1 0 0 0-1 1zM15 9a4 4 0 0 1 0 6M18 6a8 8 0 0 1 0 12",
+  };
+  const icon = (key) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${ICON_PATHS[key]}"/></svg>`;
 
   function bar(n) {
     return `<div class="bar"><span style="width:${pct(n)}"></span></div>`;
@@ -359,16 +372,17 @@
 
   function current() {
     const key = location.hash.replace("#", "");
-    return VIEWS[key] ? key : "members";
+    return VIEWS[key] ? key : TABS[0][0];
   }
 
-  /** 탭 줄. 문의 및 신고에는 아직 처리하지 않은 새 문의 건수를 붙인다. */
+  /** 왼쪽 메뉴(묶음 제목 + 탭). 문의 및 신고에는 아직 처리하지 않은 새 문의 건수를 붙인다. */
   function renderTabs(key) {
     const fresh = data && data.support ? Number(data.support.new) || 0 : 0;
-    document.getElementById("tabs").innerHTML = TABS.map(([k, label]) => {
+    const link = ([k, label]) => {
       const badge = k === "support" && fresh ? `<span class="tab-badge" aria-label="새 문의 ${fresh}건">${num(fresh)}</span>` : "";
-      return `<a href="#${k}" aria-current="${k === key ? "page" : "false"}">${label}${badge}</a>`;
-    }).join("");
+      return `<a href="#${k}" aria-current="${k === key ? "page" : "false"}">${icon(k)}<span>${label}</span>${badge}</a>`;
+    };
+    document.getElementById("tabs").innerHTML = TAB_GROUPS.map(([title, tabs]) => `<p class="nav-group">${esc(title)}</p>${tabs.map(link).join("")}`).join("");
   }
 
   /** 답변 칸에 쓰던 글이 있는지. 있으면 다시 그리다 지워지지 않도록 화면은 그대로 둔다. */
@@ -397,6 +411,8 @@
     const key = current();
     renderTabs(key);
     document.getElementById("view").innerHTML = VIEWS[key](data);
+    document.getElementById("page-title").textContent = pageHead.title;
+    document.getElementById("page-sub").textContent = pageHead.sub;
     document.title = `가비 서비스 관리자 · ${TABS.find(([k]) => k === key)[1]}`;
   }
 
@@ -422,7 +438,7 @@
     }
     document.getElementById("login").hidden = true;
     document.getElementById("app").hidden = false;
-    document.getElementById("who").textContent = `관리자 · ${data.me.login_id || data.me.name}`;
+    document.getElementById("who").textContent = data.me.login_id || data.me.name;
     lastSupportAt = new Date();
     render();
   }
@@ -452,6 +468,15 @@
       setToken(null);
       showLogin();
       return;
+    }
+    // 좁은 화면: 햄버거로 메뉴를 열고, 바깥이나 메뉴 항목을 누르면 닫는다
+    if (e.target.closest("[data-action='open-menu']")) {
+      document.getElementById("app").classList.add("open");
+      return;
+    }
+    if (e.target.closest("[data-action='close-menu']") || e.target.closest("#tabs a")) {
+      document.getElementById("app").classList.remove("open");
+      if (!e.target.closest("#tabs a")) return;
     }
     if (e.target.closest("[data-action='refresh-support']")) {
       refreshSupport();
