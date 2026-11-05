@@ -1,7 +1,7 @@
 """notifications group_id nullable
 
 Revision ID: 5b7c1d9e3a46
-Revises: fcf5ce5e68e1
+Revises: 2110458d9b12
 Create Date: 2026-11-04 15:00:00.000000
 
 알림 표 notifications.group_id 의 NOT NULL 을 푼다(제약 완화만, 데이터가 사라지는 변경 없음).
@@ -18,7 +18,7 @@ from alembic import op
 
 # revision identifiers, used by Alembic.
 revision: str = "5b7c1d9e3a46"
-down_revision: str | Sequence[str] | None = "fcf5ce5e68e1"
+down_revision: str | Sequence[str] | None = "2110458d9b12"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
