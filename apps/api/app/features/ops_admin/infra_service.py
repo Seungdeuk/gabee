@@ -84,7 +84,7 @@ def _collect() -> InfraOut:
         except (httpx.HTTPError, KeyError, ValueError):
             raise _Skip("실행 환경 정보를 가져오지 못했어요") from None
         headers = {"Authorization": f"Bearer {token}"}
-        info = InfraService(name=service, region=region, revision=os.environ.get("K_REVISION"))
+        info = InfraService(name=service, region=region, project_id=str(project), revision=os.environ.get("K_REVISION"))
         metrics = InfraMetrics()
         errors: list[str] = []
         try:

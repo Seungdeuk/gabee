@@ -87,6 +87,7 @@ class InfraService(BaseModel):
 
     name: str
     region: str
+    project_id: str | None = None  # GCP 콘솔 바로가기 주소를 만들 때 쓴다(비밀 아님)
     revision: str | None = None
     min_instances: int | None = None
     max_instances: int | None = None
