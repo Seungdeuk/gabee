@@ -10,7 +10,7 @@ import { useAuth } from "@/shared/auth/AuthProvider";
 
 import { registerPushToken, unregisterPushToken } from "./api";
 import { PUSH_INTRO_BODY, PUSH_INTRO_TITLE, PUSH_CHANNEL_NAME } from "./messages";
-import { PUSH_CHANNEL_ID, createTokenTracker, isUsableToken, routeForPush, shouldRegister } from "./push";
+import { PUSH_CHANNEL_ID, createTokenTracker, isUsableToken, permissionState, routeForPush, shouldRegister } from "./push";
 
 // 앱이 켜져 있을 때 푸시가 오면 상단 배너로 보여 준다(웹에는 푸시가 없다).
 if (Platform.OS !== "web") {
@@ -66,11 +66,24 @@ async function unregisterQuietly(token) {
 }
 
 /**
- * 이 기기의 Expo 푸시 토큰을 받아 서버에 등록한다. 거절·오류·에뮬레이터 실패는 조용히 넘긴다(알림함은 그대로 쓴다).
- * 등록하는 도중에 로그아웃이 지나갔으면 방금 받은 토큰을 서버에서 다시 지운다.
- * @returns {Promise<void>}
+ * 기기 알림 권한 상태를 읽는다(웹이거나 읽지 못하면 "unknown").
+ * @returns {Promise<"granted" | "ask" | "blocked" | "unknown">}
  */
-async function registerThisDevice() {
+export async function readPermissionState() {
+  if (Platform.OS === "web") return "unknown";
+  try {
+    return permissionState(await Notifications.getPermissionsAsync());
+  } catch {
+    return "unknown";
+  }
+}
+
+/**
+ * 이 기기를 푸시 받을 준비를 한다: 알림 채널 → 권한 확인(처음이면 안내 후 요청) → 토큰 받기 → 서버 등록.
+ * 거절·오류·에뮬레이터 실패는 던지지 않고 결과로 알린다(알림함은 그대로 쓴다). 등록하는 도중에 로그아웃이 지나갔으면 방금 받은 토큰을 서버에서 다시 지운다.
+ * @returns {Promise<"granted" | "ask" | "blocked" | "failed">} granted 등록됨 · ask 안내를 닫았거나 아직 허용 안 함 · blocked 기기 설정에서만 켤 수 있음 · failed 토큰을 못 받음
+ */
+export async function prepareThisDevice() {
   const startedAt = tracker.begin();
   try {
     if (Platform.OS === "android") {
@@ -79,13 +92,16 @@ async function registerThisDevice() {
         importance: Notifications.AndroidImportance.HIGH,
       });
     }
-    if (!(await ensurePermission())) return;
+    if (!(await ensurePermission())) {
+      const state = await readPermissionState();
+      return state === "granted" || state === "unknown" ? "ask" : state;
+    }
     const token = await fetchToken();
-    if (!isUsableToken(token)) return;
+    if (!isUsableToken(token)) return "failed";
     tracker.remember(token); // 서버에 보내기 전에 기억해 둔다
     if (tracker.isStale(startedAt)) {
       await unregisterQuietly(tracker.take()); // 토큰을 받는 동안 로그아웃이 지나갔다
-      return;
+      return "failed";
     }
     await registerPushToken({
       token,
@@ -93,8 +109,10 @@ async function registerThisDevice() {
       deviceLabel: Device.deviceName ?? Device.modelName ?? null,
     });
     if (tracker.isStale(startedAt)) await unregisterQuietly(token); // 등록하는 동안 로그아웃이 지나갔다
+    return "granted";
   } catch {
     // 토큰을 못 받아도(Expo Go·에뮬레이터·오프라인) 앱 사용에는 영향이 없다
+    return "failed";
   }
 }
 
@@ -137,7 +155,7 @@ function NativePush() {
 
   useEffect(() => {
     if (!shouldRegister({ status, platform: Platform.OS })) return undefined;
-    registerThisDevice();
+    prepareThisDevice();
     return onBeforeSignOut(releasePushToken);
   }, [status]);
 

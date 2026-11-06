@@ -51,6 +51,31 @@ export function toggleKind(muted, kind) {
   return list.includes(kind) ? list.filter((k) => k !== kind) : [...list, kind];
 }
 
+/**
+ * 기기 알림 권한 상태를 화면에서 쓰는 네 가지로 나눈다.
+ * @param {{ status?: string, canAskAgain?: boolean } | null | undefined} permission expo-notifications getPermissionsAsync 결과
+ * @returns {"granted" | "ask" | "blocked" | "unknown"} granted 허용됨 · ask 아직 묻지 않았거나 다시 물을 수 있음 · blocked 기기 설정에서만 켤 수 있음 · unknown 알 수 없음(웹 등)
+ */
+export function permissionState(permission) {
+  if (!permission || typeof permission.status !== "string") return "unknown";
+  if (permission.status === "granted") return "granted";
+  return permission.canAskAgain === false ? "blocked" : "ask";
+}
+
+/**
+ * 푸시를 켜 둔 사람에게 보일 기기 권한 안내. 문제가 없거나 푸시를 꺼 둔 사람에게는 null 이다.
+ * @param {"granted" | "ask" | "blocked" | "unknown" | "failed"} state permissionState 결과(또는 등록 실패 "failed")
+ * @param {boolean} enabled 서버 푸시 설정이 켜져 있는지
+ * @returns {{ text: string, action: "allow" | "settings" | null, actionLabel?: string } | null}
+ */
+export function permissionNotice(state, enabled) {
+  if (!enabled) return null;
+  if (state === "ask") return { text: "이 기기에서 알림을 아직 허용하지 않았어요. 허용해야 푸시가 와요.", action: "allow", actionLabel: "알림 허용하기" };
+  if (state === "blocked") return { text: "기기의 알림 권한이 꺼져 있어요. 기기 설정에서 켜면 푸시를 받을 수 있어요.", action: "settings", actionLabel: "기기 설정 열기" };
+  if (state === "failed") return { text: "이 기기에서는 푸시를 받을 준비를 하지 못했어요. 알림함에서는 그대로 볼 수 있어요.", action: null };
+  return null;
+}
+
 const QUIET_PRESET = { quiet_start: "22:00", quiet_end: "07:00" };
 
 /**
