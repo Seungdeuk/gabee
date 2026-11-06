@@ -51,6 +51,7 @@ export default function MessageBubble({ message, mine, showName, showTime = true
   const isAlbum = Boolean(album && album.length > 1); // 같은 묶음으로 올린 사진들(message 는 그 마지막 사진)
   const [viewing, setViewing] = useState(false);
   const [albumStart, setAlbumStart] = useState(null); // 앨범 뷰어를 연 사진 순서(닫혀 있으면 null)
+  const [albumRecords, setAlbumRecords] = useState({}); // 앨범 사진별(첨부 id) 가비 기록 저장 상태
   const [record, setRecord] = useState({ saving: false, done: false, notice: "" }); // 가비 기록에 저장한 상태(이 사진 하나의 것)
   const isFile = isFileMessage(message);
   const [fileState, setFileState] = useState({ busy: null, notice: "" }); // 파일 열기·저장 진행/결과
@@ -87,6 +88,19 @@ export default function MessageBubble({ message, mine, showName, showTime = true
   const openAlbumMenu = (target, e) => {
     const n = e?.nativeEvent;
     onActions?.(target, typeof n?.pageX === "number" && typeof n?.pageY === "number" ? { x: n.pageX, y: n.pageY } : null);
+  };
+  /** 앨범 뷰어의 "가비 기록에 저장": 지금 보는 사진 한 장을 올린다(저장 중이거나 이미 저장했으면 다시 올리지 않는다). */
+  const saveAlbumRecord = async (photo, index) => {
+    const state = albumRecords[photo.id];
+    if (!onSaveToRecord || state?.saving || state?.done) return;
+    setAlbumRecords((prev) => ({ ...prev, [photo.id]: { saving: true, done: false, notice: "" } }));
+    const result = await onSaveToRecord(album[index].attachment);
+    setAlbumRecords((prev) => ({ ...prev, [photo.id]: { saving: false, done: result.ok, notice: result.message } }));
+  };
+  /** 앨범 뷰어의 "메뉴": 뷰어를 닫고(모달이 겹치지 않게) 그 사진의 메시지로 메뉴를 연다. */
+  const openAlbumViewerMenu = (index) => {
+    setAlbumStart(null);
+    onActions?.(album[index], null);
   };
   /** 앨범 뷰어의 "사진첩에 저장": 지금 보고 있는 사진 한 장을 저장한다. */
   const saveAlbumPhoto = async (photo) => {
@@ -150,7 +164,7 @@ export default function MessageBubble({ message, mine, showName, showTime = true
   // 스크린리더: 바깥 말풍선이 하나로 묶여도 안쪽 동작(사진 크게 보기, 원본으로 이동)을 동작 목록으로 열어 둔다
   const a11yActions = [
     { name: "menu", label: "메뉴 열기" },
-    ...(attachment && !isFile ? [{ name: "view", label: "사진 크게 보기" }] : []),
+    ...(attachment && !isFile ? [{ name: "view", label: isAlbum ? `사진 ${album.length}장 크게 보기` : "사진 크게 보기" }] : []),
     ...(attachment && isFile ? [{ name: "open", label: "파일 열기" }, { name: "save", label: FILE_SAVE_LABEL }] : []),
     ...(message.reply_to && onReplyPress ? [{ name: "jump", label: "답장한 원본으로 이동" }] : []),
   ];
@@ -164,7 +178,10 @@ export default function MessageBubble({ message, mine, showName, showTime = true
         onAccessibilityAction: (e) => {
           const name = e.nativeEvent.actionName;
           if (name === "menu") onActions(message, null);
-          else if (name === "view" && !isFile) setViewing(true);
+          else if (name === "view" && !isFile) {
+            if (isAlbum) setAlbumStart(0);
+            else setViewing(true);
+          }
           else if (name === "open" && isFile) runFile("open");
           else if (name === "save" && isFile) runFile("save");
           else if (name === "jump") onReplyPress?.(message.reply_to.id);
@@ -195,6 +212,9 @@ export default function MessageBubble({ message, mine, showName, showTime = true
             onSaveToDevice={saveAlbumPhoto}
             saving={device.saving}
             notice={device.notice}
+            onSaveToRecord={onSaveToRecord ? saveAlbumRecord : undefined}
+            recordOf={(id) => albumRecords[id] ?? { saving: false, done: false, notice: "" }}
+            onMenu={onActions ? openAlbumViewerMenu : undefined}
           />
         </>
       ) : null}

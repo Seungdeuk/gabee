@@ -118,3 +118,42 @@ test("선택기: 여러 장 선택은 순서를 지키고 한도를 MAX_ALBUM_PH
   assert.match(pick, /selectionLimit: MAX_ALBUM_PHOTOS/);
   assert.match(pick, /orderedSelection: true/);
 });
+
+test("buildItems: deleted 표시만 있고 첨부가 남은 사진도 앨범에서 빠진다", () => {
+  const gone = { ...photo(2, "a", "batch0001"), deleted: true };
+  const rows = buildItems([photo(1, "a", "batch0001"), gone, photo(3, "a", "batch0001")]).filter((i) => i.type === "message");
+  assert.deepEqual(rows.map((r) => r.message.id), [1, 2, 3]);
+  assert.ok(rows.every((r) => r.album === undefined));
+});
+
+test("buildItems: 사진이 2장에서 3장으로 늘어도 줄 key 는 첫 사진이라 그대로다", () => {
+  const two = buildItems([photo(1, "a", "batch0001"), photo(2, "a", "batch0001")]).find((i) => i.type === "message");
+  const three = buildItems([photo(1, "a", "batch0001"), photo(2, "a", "batch0001"), photo(3, "a", "batch0001")]).find((i) => i.type === "message");
+  assert.equal(two.key, three.key);
+  assert.equal(three.album.length, 3);
+});
+
+test("buildItems: 안 읽음 구분선이 앨범 안 사진을 가리키면 앨범 앞에 한 번만 놓이고 이름을 다시 보인다", () => {
+  const items = buildItems([text(1, "b"), photo(2, "a", "batch0001"), photo(3, "a", "batch0001")], { dividerBeforeId: 3 });
+  assert.equal(items.filter((i) => i.type === "unread").length, 1);
+  const idx = items.findIndex((i) => i.type === "unread");
+  assert.equal(items[idx + 1].album.length, 2);
+  assert.equal(items[idx + 1].showName, true);
+});
+
+test("보기 연결: 앨범 뷰어는 메뉴·가비 기록 저장을 받고 반응은 대표 사진에 건다", () => {
+  const viewer = src("components/AlbumViewer.js");
+  assert.match(viewer, /onMenu/);
+  assert.match(viewer, /onSaveToRecord/);
+  assert.match(viewer, /Math\.min\(last, Math\.max\(0, page\.index\)\)/); // 사진이 줄어도 번호가 범위를 넘지 않는다
+  const room = src("screens/ChatRoomScreen.js");
+  assert.match(room, /menu\?\.reactTo \?\? menu\?\.message/);
+  assert.match(room, /openMenu\(m, anchor, item\.album \? item\.message : undefined\)/);
+  assert.match(src("components/MessageMenu.js"), /myReaction\(target\?\.reactTo \?\? message\)/);
+});
+
+test("선택기: 8MB 를 넘는 사진만 빼고 나머지는 보낸다(skipped 로 센다)", () => {
+  const pick = src("pickPhoto.js");
+  assert.match(pick, /return \{ assets, skipped \}/);
+  assert.match(pick, /if \(e\?\.code !== "photo_too_large"\) throw e/);
+});

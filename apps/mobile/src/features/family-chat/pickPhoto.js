@@ -10,8 +10,8 @@ import { MAX_ALBUM_PHOTOS } from "./album";
 import { isChatPhotoTooLarge, PICKER_QUALITY, WEB_JPEG_QUALITY, WEB_MAX_SIDE } from "./photo";
 
 /**
- * 갤러리에서 사진 여러 장(최대 MAX_ALBUM_PHOTOS)을 고른다(고른 순서대로). 취소하면 빈 배열. 장마다 웹은 긴 변 2048px 이하 JPEG(0.85)로 줄이고 8MB 를 넘는 것이 분명하면 거르고(한 장만 골라도 같다), 8MB 초과가 있으면 { code: "photo_too_large" } 오류를 던진다. 시스템 선택기라 권한 요청이 필요 없다.
- * @returns {Promise<{ uri: string, file?: Blob, fileName?: string | null, mimeType?: string, fileSize?: number | null }[]>}
+ * 갤러리에서 사진 여러 장(최대 MAX_ALBUM_PHOTOS)을 고른다(고른 순서대로). 취소하면 빈 배열. 장마다 웹은 긴 변 2048px 이하 JPEG(0.85)로 줄이고, 8MB 를 넘는 사진은 빼서 skipped 로 센다(나머지는 그대로 돌려준다, 한 장만 골라도 같다). 시스템 선택기라 권한 요청이 필요 없다.
+ * @returns {Promise<{ assets: { uri: string, file?: Blob, fileName?: string | null, mimeType?: string, fileSize?: number | null }[], skipped: number }>}
  */
 export async function pickChatPhotos() {
   const result = await ImagePicker.launchImageLibraryAsync({
@@ -23,10 +23,18 @@ export async function pickChatPhotos() {
     quality: PICKER_QUALITY,
     exif: false,
   });
-  if (result.canceled || !result.assets?.length) return [];
-  const picked = [];
-  for (const asset of result.assets.slice(0, MAX_ALBUM_PHOTOS)) picked.push(await prepareAsset(asset));
-  return picked;
+  if (result.canceled || !result.assets?.length) return { assets: [], skipped: 0 };
+  const assets = [];
+  let skipped = 0;
+  for (const asset of result.assets.slice(0, MAX_ALBUM_PHOTOS)) {
+    try {
+      assets.push(await prepareAsset(asset));
+    } catch (e) {
+      if (e?.code !== "photo_too_large") throw e;
+      skipped += 1;
+    }
+  }
+  return { assets, skipped };
 }
 
 /**

@@ -51,6 +51,17 @@ const END_SETTLE_MS = 150; // 맨 아래로 간 뒤 마지막 항목 높이가 �
 /** 가족 전체방의 사진을 AI 비서의 가족 기록으로 올린다(사진 보기의 "가비 기록에 저장"). */
 const savePhotoToRecord = (attachment) => saveToRecord(attachment, Platform.OS);
 
+/**
+ * 앨범에 속한 사진들의 일정·할 일 연결 표시를 모은다(같은 표시는 한 번만).
+ * @param {{ id: number }[]} album
+ * @param {(id: number) => { kind: string, label: string }[]} badgesOf
+ * @returns {{ kind: string, label: string }[]}
+ */
+function albumBadges(album, badgesOf) {
+  const seen = new Set();
+  return album.flatMap((m) => badgesOf(m.id) ?? []).filter((b) => (seen.has(`${b.kind}:${b.label}`) ? false : seen.add(`${b.kind}:${b.label}`)));
+}
+
 /** 가운데 안내(로딩·오류·그룹 없음). */
 function Center({ children }) {
   return <View style={styles.center}>{children}</View>;
@@ -202,17 +213,22 @@ export default function ChatRoomScreen() {
     setPicking(true);
     chat.setPhotoError("");
     try {
-      const assets = await pickChatPhotos();
-      if (!assets.length) return;
+      const { assets, skipped } = await pickChatPhotos();
+      if (!assets.length) {
+        if (skipped) chat.setPhotoError(photoSendErrorMessage({ code: "photo_too_large" }));
+        return;
+      }
       nearBottom.current = true;
       sentEarly.current = true;
       const batchId = assets.length > 1 ? makeBatchId() : undefined;
-      let sent = false;
+      let count = 0;
       for (const asset of assets) {
         if (!(await chat.sendImage(asset, batchId))) break;
-        sent = true;
+        count += 1;
       }
-      if (sent) scrollToEnd(true);
+      if (count) scrollToEnd(true);
+      if (count < assets.length && count > 0) chat.setPhotoError(`${assets.length}장 중 ${count}장만 보냈어요. 나머지는 다시 골라 보내 주세요`);
+      else if (skipped) chat.setPhotoError(`용량이 커서 ${skipped}장은 빼고 보냈어요`);
     } catch (e) {
       chat.setPhotoError(photoSendErrorMessage(e));
     } finally {
@@ -389,7 +405,7 @@ export default function ChatRoomScreen() {
   };
 
   const closeMenu = () => setMenu(null);
-  const openMenu = (message, anchor) => setMenu({ message, anchor });
+  const openMenu = (message, anchor, reactTo) => setMenu({ message, anchor, reactTo }); // reactTo: 앨범 사진의 메뉴일 때 반응을 거는 대표 사진(마지막 사진)
   /** 내 반응을 켜거나(다른 이모지면 바꾸고) 같은 이모지를 다시 누르면 끈다. 실패하면 이유를 안내 줄에 보인다. */
   const runReaction = async (message, emoji) => {
     const action = reactionAction(message, emoji);
@@ -398,7 +414,7 @@ export default function ChatRoomScreen() {
   };
   const heart = (message) => runReaction(message, HEART);
   const reactFromMenu = (emoji) => {
-    const opened = menu?.message;
+    const opened = menu?.reactTo ?? menu?.message;
     closeMenu();
     if (!opened) return;
     const latest = chat.messages.find((m) => !m.clientId && Number(m.id) === Number(opened.id)) ?? opened; // 메뉴를 연 뒤 내 반응이 바뀌었을 수 있어 최신 상태로 켜고 끈다
@@ -591,11 +607,11 @@ export default function ChatRoomScreen() {
                 searchCurrent={currentMatchId != null && itemHasMessage(item, currentMatchId)}
                 onRetry={chat.resend}
                 onDiscard={chat.discard}
-                onActions={canOpenMenu(item.message) ? openMenu : undefined}
+                onActions={canOpenMenu(item.message) ? (m, anchor) => openMenu(m, anchor, item.album ? item.message : undefined) : undefined}
                 onHeart={canOpenMenu(item.message) ? heart : undefined}
                 onReactionPress={canOpenMenu(item.message) ? runReaction : undefined}
                 onReplyPress={pickPin}
-                linkBadges={links.badgesOf(item.message.id)}
+                linkBadges={item.album ? albumBadges(item.album, links.badgesOf) : links.badgesOf(item.message.id)}
                 onSaveToRecord={canSaveToRecord({ direct, attachment: item.message.attachment }) ? savePhotoToRecord : undefined}
               />
             )
