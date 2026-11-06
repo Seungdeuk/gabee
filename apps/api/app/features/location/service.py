@@ -8,7 +8,7 @@
 import math
 import statistics
 import uuid
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime, time, timedelta, timezone
 
 from sqlalchemy.orm import Session
 
@@ -250,6 +250,43 @@ def delete_my_data(db: Session, user: User) -> MyLocationOut:
     return my_status(db, user)
 
 
+def _pause_end(now: datetime, days: int) -> datetime:
+    """일시정지가 끝나는 시각. 오늘(한국 시간)을 1일째로 세어 days 일째 되는 날이 끝나는 자정(다음 날 0시)이다.
+    예: 11/6 에 3일이면 11/8 까지 멈추고 11/9 0시에 다시 공유한다(날짜만 정하고 시각은 정하지 않는다)."""
+    kst = timezone(timedelta(hours=settings.ai_day_utc_offset_hours))
+    today = now.astimezone(kst).date()
+    return (datetime.combine(today, time(0), tzinfo=kst) + timedelta(days=days)).astimezone(UTC)
+
+
+def _notify_resumed(db: Session, user: User, group_id: str) -> None:
+    """부모에게 위치 공유를 다시 시작했다는 사실만 알린다(일시정지를 걸 때와 짝이다)."""
+    notify(
+        db,
+        group_id=group_id,
+        kind=NOTIFY_KIND,
+        event="location_resumed",
+        recipients=_parent_ids(db, group_id),
+        title="위치 공유를 다시 시작했어요",
+        body="가족 구성원이 여행 모드를 마치고 위치 공유를 다시 시작했어요",
+        target_type="location",
+        target_id=user.id,
+        actor_user_id=user.id,
+    )
+
+
+def _resume_if_expired(
+    db: Session, user: User, group_id: str, setting: LocationSetting | None, now: datetime
+) -> bool:
+    """일시정지 종료 시각이 지났으면 설정을 비우고 부모에게 다시 시작했다고 알린다(한 번만). 커밋은 부르는 쪽이 한다."""
+    if setting is None or setting.paused_until is None or _aware(setting.paused_until) > now:
+        return False
+    setting.paused_until = None
+    setting.updated_at = now
+    db.add(setting)
+    _notify_resumed(db, user, group_id)
+    return True
+
+
 def set_pause(db: Session, user: User, group_id: str, days: int | None) -> MyLocationOut:
     ensure_enabled()
     if not _has_consent(user):
@@ -257,8 +294,14 @@ def set_pause(db: Session, user: User, group_id: str, days: int | None) -> MyLoc
     now = _now()
     setting = repo.get_setting(db, user.id) or LocationSetting(user_id=user.id, group_id=group_id)
     was_paused = _is_paused(setting, now)
+    if not days:
+        # 직접 다시 공유하기: 아직 진행 중인 일시정지를 풀었거나, 끝났는데 아직 안 풀린 상태를 정리한 것이므로 부모에게 다시 시작했다고 알린다
+        if was_paused:
+            _notify_resumed(db, user, group_id)
+        else:
+            _resume_if_expired(db, user, group_id, setting, now)
     setting.group_id = group_id
-    setting.paused_until = now + timedelta(days=days) if days else None
+    setting.paused_until = _pause_end(now, days) if days else None
     setting.updated_at = now
     db.add(setting)
     if days and not was_paused:  # 일시정지를 켠 사실만 부모에게 알린다(기간·장소는 넣지 않는다)
@@ -283,8 +326,12 @@ def save_point(db: Session, user: User, group_id: str, body: PointIn) -> PointSa
     if not _has_consent(user):
         return PointSaved(saved=False, reason="no_consent")
     now = _now()
-    if _is_paused(repo.get_setting(db, user.id), now):
+    setting = repo.get_setting(db, user.id)
+    if _is_paused(setting, now):
         return PointSaved(saved=False, reason="paused")
+    _resume_if_expired(
+        db, user, group_id, setting, now
+    )  # 여행이 끝난 뒤 첫 위치가 오면 설정을 풀고 부모에게 알린다
     recorded = _aware(body.recorded_at) if body.recorded_at else now
     if recorded > now + timedelta(minutes=5):
         raise bad_request("invalid_recorded_at", "위치를 잰 시각이 올바르지 않아요")

@@ -266,3 +266,76 @@ def test_background_can_be_turned_on_only_when_switch_is_on_but_off_is_always_op
     monkeypatch.setattr(settings, "location_enabled", False)
     assert _bg(client, b).status_code == 503
     assert _bg(client, b, False).status_code == 200
+
+
+def _events(client, headers) -> list[str]:
+    """부모가 받은 위치 알림의 event 를 오래된 것부터(알림함은 최신이 먼저라 뒤집는다)."""
+    return [n["event"] for n in reversed(_location_notifications(client, headers))]
+
+
+def _kst_midnight_after(days: int):
+    """오늘(한국 시간)을 1일째로 셀 때 days 일째 날이 끝나는 자정(UTC 로 바꾼 값)."""
+    from datetime import time, timezone
+
+    kst = timezone(timedelta(hours=settings.ai_day_utc_offset_hours))
+    today = datetime.now(UTC).astimezone(kst).date()
+    return (datetime.combine(today, time(0), tzinfo=kst) + timedelta(days=days)).astimezone(UTC)
+
+
+def _parse(text: str) -> datetime:
+    value = datetime.fromisoformat(text.replace("Z", "+00:00"))
+    return value if value.tzinfo else value.replace(tzinfo=UTC)
+
+
+@pytest.mark.parametrize("days", [1, 3, 14])
+def test_pause_ends_at_kst_midnight_after_the_last_day(client, family, on, days):
+    _, b, _ = family
+    _consent(client, b)
+    res = client.put("/location/pause", json={"days": days}, headers=b).json()
+    assert _parse(res["paused_until"]) == _kst_midnight_after(
+        days
+    )  # 날짜만 정하고 시각은 다음 날 0시
+
+
+def test_expired_pause_resumes_on_next_point_and_tells_parents_once(client, family, on):
+    from app.features.location.models import LocationSetting
+
+    a, b, _ = family
+    ub = _me(client, b)
+    _consent(client, b)
+    client.put("/location/pause", json={"days": 2}, headers=b)
+    with SessionLocal() as db:  # 종료 시각이 지난 것처럼 만든다
+        db.get(LocationSetting, ub).paused_until = datetime.now(UTC) - timedelta(minutes=1)
+        db.commit()
+    assert _events(client, a) == ["location_paused"]
+
+    first = _send(client, b).json()
+    assert first["saved"] is True  # 종료 후 첫 위치는 받는다
+    assert _events(client, a) == [
+        "location_paused",
+        "location_resumed",
+    ]
+    assert client.get("/location/me", headers=b).json()["paused"] is False
+    _send(client, b)
+    events = _events(client, a)
+    assert events.count("location_resumed") == 1  # 두 번째 위치에서는 다시 알리지 않는다
+    text = " ".join((n["title"] + (n["body"] or "")) for n in _location_notifications(client, a))
+    assert str(LAT)[:5] not in text
+
+
+def test_manual_resume_tells_parents_and_second_resume_does_not(client, family, on):
+    a, b, _ = family
+    _consent(client, b)
+    client.put("/location/pause", json={"days": 3}, headers=b)
+    client.put("/location/pause", json={}, headers=b)  # 다시 공유하기
+    events = _events(client, a)
+    assert events == ["location_paused", "location_resumed"]
+    client.put("/location/pause", json={}, headers=b)  # 이미 풀린 상태에서 또 눌러도 알리지 않는다
+    assert len(_location_notifications(client, a)) == 2
+
+
+def test_never_paused_user_sends_no_resume_notice(client, family, on):
+    a, b, _ = family
+    _consent(client, b)
+    _send(client, b)
+    assert _location_notifications(client, a) == []

@@ -53,7 +53,7 @@ def put_pause(
     group_id: str = Depends(current_group_id),
     db: Session = Depends(get_db),
 ) -> MyLocationOut:
-    """여행 등으로 위치 공유를 잠시 멈추거나(days 1~14) 다시 켠다(days 없음/0)."""
+    """여행 등으로 위치 공유를 잠시 멈추거나(days 1~14) 다시 켠다(days 없음/0). 오늘(한국 시간)을 1일째로 세어 days 일째 날이 끝나는 자정에 자동으로 다시 공유하고, 멈출 때와 다시 시작할 때 부모에게 알린다."""
     return service.set_pause(db, user, group_id, body.days)
 
 

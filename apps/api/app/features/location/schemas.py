@@ -15,7 +15,7 @@ class BackgroundIn(BaseModel):
 
 
 class PauseIn(BaseModel):
-    """days 가 없거나 0 이면 일시정지를 푼다. 최대 14일."""
+    """days 가 없거나 0 이면 일시정지를 푼다. 최대 14일. 오늘을 1일째로 세어 days 일째 날이 끝나는 자정(한국 시간)에 끝난다."""
 
     days: int | None = Field(default=None, ge=0, le=14)
 
