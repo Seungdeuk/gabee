@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, Response
 from sqlalchemy.orm import Session
 
+from app.features.family_group.models import User
 from app.shared.auth import current_group_id, current_user
 from app.shared.config import settings
 from app.shared.db import get_db
@@ -162,10 +163,13 @@ def settlement_reminder(
 
 @router.post("/settlement/payments", response_model=Settlement, status_code=201)
 def mark_paid(
-    body: PaymentCreate, group_id: str = Depends(current_group_id), db: Session = Depends(get_db)
+    body: PaymentCreate,
+    user: User = Depends(current_user),
+    group_id: str = Depends(current_group_id),
+    db: Session = Depends(get_db),
 ) -> Settlement:
     """송금 목록에 있는 송금 하나를 '송금 완료'로 표시한다."""
-    return service.mark_paid(db, group_id, body)
+    return service.mark_paid(db, group_id, body, user.id)
 
 
 @router.delete("/settlement/payments/{payment_id}", response_model=Settlement)

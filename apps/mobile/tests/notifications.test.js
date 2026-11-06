@@ -61,6 +61,16 @@ test("알림을 누르면 이동할 곳", () => {
   assert.equal(routeFor(null), null);
 });
 
+test("새 공유 일정·할 일 배정은 일정 탭으로, 정산·송금·용돈은 지갑(돌봄) 탭으로 이동하고 문서 알림은 읽음만 한다", () => {
+  assert.equal(routeFor({ kind: "schedule", event: "event_shared" }), "/schedule");
+  assert.equal(routeFor({ kind: "schedule", event: "todo_assigned" }), null); // 공동 할 일을 보는 화면이 앱에 아직 없다(읽음만)
+  for (const event of ["settlement_updated", "payment_marked", "allowance_requested", "allowance_decided"]) {
+    assert.equal(routeFor({ kind: "billing", event }), "/care");
+  }
+  assert.equal(routeFor({ kind: "billing", event: "something_new" }), null);
+  assert.equal(routeFor({ kind: "ai_record", event: "document_added" }), null); // 가족 문서함 화면이 아직 없다
+});
+
 test("안 읽은 개수를 못 불러와도 0 이고 예외가 나지 않는다", async () => {
   assert.equal(await safeTotal(Promise.reject(new Error("offline"))), 0);
   assert.equal(await safeTotal(Promise.resolve({ total: 3, by_kind: {} })), 3);

@@ -22,6 +22,9 @@ export const KIND_ORDER = ["schedule", "billing", "care"];
  */
 export const metaFor = (kind) => KIND_META[kind] ?? FALLBACK_META;
 
+/** 누르면 돌봄(지갑) 탭으로 가는 정산·용돈 알림 사건. */
+const BILLING_EVENTS = ["settlement_updated", "payment_marked", "allowance_requested", "allowance_decided"];
+
 /**
  * 알림을 눌렀을 때 이동할 화면 경로. 이동할 곳이 없으면 null(읽음 처리만 한다).
  * @param {{ kind?: string, event?: string } | null | undefined} notification
@@ -32,6 +35,8 @@ export function routeFor(notification) {
     if (notification.event === "join_requested") return "/family-requests";
     if (notification.event === "join_approved") return "/family";
   }
+  if (notification?.kind === "schedule" && notification.event === "event_shared") return "/schedule"; // todo_assigned 는 공동 할 일을 보는 화면이 앱에 생길 때까지 읽음만 한다
+  if (notification?.kind === "billing" && BILLING_EVENTS.includes(notification.event)) return "/care"; // 정산·용돈은 돌봄(지갑) 탭에서 본다
   if (notification?.kind === "support") return "/support?tab=mine"; // 답변이 달린 문의는 내 문의 탭에서 본다
   return null;
 }
