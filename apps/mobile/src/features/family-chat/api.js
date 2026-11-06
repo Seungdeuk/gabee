@@ -207,9 +207,10 @@ export const removeReaction = ({ roomId, messageId }) => apiFetch(`/family-chat/
  * 웹은 asset.file(없으면 asset.uri 의 blob)을 그대로, 네이티브는 {uri, name, type} 으로 보낸다. Content-Type 은 fetch 가 boundary 와 함께 붙인다.
  * @param {{ uri: string, file?: Blob, fileName?: string | null, mimeType?: string }} asset expo-image-picker 가 돌려준 asset
  * @param {string | null} [roomId] 대화방 id, 없으면 가족 전체방(form 에 넣지 않는다)
- * @returns {Promise<{ id: number, user_id: string, user_name: string, text: string, created_at: string, attachment: { id: string, kind: "image", url: string, thumb_url: string, width: number, height: number } | null }>}
+ * @param {string | null} [batchId] 한 번에 여러 장 올릴 때 장마다 같은 묶음 번호(없으면 form 에 넣지 않는다)
+ * @returns {Promise<{ id: number, user_id: string, user_name: string, text: string, created_at: string, attachment: { id: string, kind: "image", url: string, thumb_url: string, width: number, height: number, batch_id: string | null } | null }>}
  */
-export async function sendPhoto(asset, roomId) {
+export async function sendPhoto(asset, roomId, batchId) {
   const name = chatPhotoFileName(asset);
   const type = chatPhotoMimeType(asset);
   const form = new FormData();
@@ -222,6 +223,7 @@ export async function sendPhoto(asset, roomId) {
     form.append("file", { uri: asset.uri, name, type });
   }
   if (roomId) form.append("room_id", roomId);
+  if (batchId) form.append("batch_id", batchId);
   return apiFetch("/family-chat/photos", { method: "POST", body: form });
 }
 

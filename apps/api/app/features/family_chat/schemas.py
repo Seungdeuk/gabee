@@ -22,6 +22,9 @@ class AttachmentOut(BaseModel):
     thumb_url: str | None = None  # 사진: 목록용 작은 그림 경로, 문서: null
     width: int | None = None  # 문서는 null
     height: int | None = None  # 문서는 null
+    batch_id: str | None = (
+        None  # 한 번에 여러 장 올린 사진의 묶음 번호(같으면 한 묶음). 한 장짜리·문서는 null
+    )
     filename: str | None = None  # 문서만(사용자가 올린 이름을 정리한 것)
     size_bytes: int | None = None
     content_type: str | None = None  # 문서만(허용 목록의 안전한 값)

@@ -17,6 +17,7 @@ class MediaItem(BaseModel):
     thumb_url: str | None
     width: int | None
     height: int | None
+    batch_id: str | None = None
     size_bytes: int | None
 
 

@@ -146,9 +146,14 @@ def attachment_files(attachment: MessageAttachment) -> tuple[Path, Path] | None:
 
 
 def send_photo(
-    db: Session, user: User, group_id: str, data: bytes, room_id: str | None = None
+    db: Session,
+    user: User,
+    group_id: str,
+    data: bytes,
+    room_id: str | None = None,
+    batch_id: str | None = None,
 ) -> MessageOut:
-    """사진 메시지를 보낸다. 방에 들어갈 수 없으면 404(존재 여부를 숨김)."""
+    """사진 메시지를 보낸다. 방에 들어갈 수 없으면 404(존재 여부를 숨김). batch_id 는 같은 번호끼리 한 묶음으로 보이게 저장한다."""
     room = service.resolve_room(db, user, group_id, room_id)
     _check_rate(user.id)
     if not _slots.acquire(blocking=False):  # 대기하지 않고 바로 거절(메모리 보호)
@@ -164,6 +169,7 @@ def send_photo(
         room_id=room.id,
         width=width,
         height=height,
+        batch_id=batch_id,
         size_bytes=len(full),
         path="",
         thumb_path="",

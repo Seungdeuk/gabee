@@ -1,5 +1,7 @@
 // 채팅방 순수 함수 모음(화면·훅과 분리해 시험한다). 대화 글자는 여기서 어디에도 기록하지 않는다.
 
+import { isAlbumPhoto } from "./album";
+
 export const MAX_TEXT = 2000;
 export const POLL_BASE_MS = 3000;
 export const POLL_MAX_MS = 30000;
@@ -168,30 +170,66 @@ export function unreadDividerId(messages, baseline, myId) {
 }
 
 /**
- * FlatList 에 넣을 줄 목록: 날짜 구분선, (있으면) 안 읽음 구분선, 메시지.
- * 안 읽음 구분선은 dividerBeforeId 메시지 바로 앞에 끼우므로 그 메시지가 날짜의 첫 줄이면 날짜 줄 다음에 온다.
+ * 같은 사람이 같은 묶음 번호(batch_id)로 연달아 올린 사진을 한 덩어리로 모은다(2장 이상일 때만). 그 외 메시지는 한 개씩 그대로다.
+ * @param {object[]} messages 같은 날짜의 메시지(오름차순)
+ * @returns {object[][]} 덩어리 목록(앨범이면 2개 이상)
+ */
+function runsOf(messages) {
+  const runs = [];
+  for (const m of messages) {
+    const last = runs[runs.length - 1];
+    const prev = last?.[last.length - 1];
+    if (prev && isAlbumPhoto(m) && isAlbumPhoto(prev) && prev.user_id === m.user_id && prev.attachment.batch_id === m.attachment.batch_id) last.push(m);
+    else runs.push([m]);
+  }
+  return runs;
+}
+
+/**
+ * 줄 하나가 이 서버 메시지를 담고 있는지(앨범 안에 숨은 사진도 센다). 검색·고정·답장 원본으로 이동할 때 줄을 찾는 데 쓴다.
+ * @param {{ type: string, message?: object, album?: object[] }} item buildItems 의 줄
+ * @param {number | string} messageId
+ * @returns {boolean}
+ */
+export function itemHasMessage(item, messageId) {
+  if (item?.type !== "message") return false;
+  const id = String(messageId);
+  if (item.album) return item.album.some((m) => String(m.id) === id);
+  return String(item.message.id) === id;
+}
+
+/**
+ * FlatList 에 넣을 줄 목록: 날짜 구분선, (있으면) 안 읽음 구분선, 메시지(같은 묶음의 사진은 album 이 있는 한 줄).
+ * 안 읽음 구분선은 dividerBeforeId 메시지 바로 앞에 끼우므로 그 메시지가 날짜의 첫 줄이면 날짜 줄 다음에 온다(앨범 안이면 앨범 앞).
+ * 앨범 줄의 message 는 마지막 사진이다(시각·읽음·반응 기준). 이름은 앨범 앞 메시지, 시각은 앨범 뒤 메시지로 정하고 key 는 첫 사진이다.
  * @param {object[]} messages 오름차순
  * @param {{ dividerBeforeId?: number | null }} [options] dividerBeforeId: unreadDividerId 의 결과
- * @returns {({ type: "day", key: string, label: string } | { type: "unread", key: string } | { type: "message", key: string, message: object, showName: boolean, showTime: boolean })[]}
+ * @returns {({ type: "day", key: string, label: string } | { type: "unread", key: string } | { type: "message", key: string, message: object, album?: object[], showName: boolean, showTime: boolean })[]}
  */
 export function buildItems(messages, { dividerBeforeId = null } = {}) {
   const items = [];
   let dividerDone = dividerBeforeId == null;
   for (const g of groupByDay(messages)) {
     items.push({ type: "day", key: `day-${g.key}`, label: g.label });
-    g.messages.forEach((message, i) => {
+    const runs = runsOf(g.messages);
+    runs.forEach((run, i) => {
+      const first = run[0];
+      const last = run[run.length - 1];
       let justAfterDivider = false;
-      if (!dividerDone && !message.clientId && !message.localNote && serverId(message) === dividerBeforeId) {
+      if (!dividerDone && run.some((m) => !m.clientId && !m.localNote && serverId(m) === dividerBeforeId)) {
         items.push({ type: "unread", key: "unread-divider" });
         dividerDone = true;
         justAfterDivider = true;
       }
+      const prev = runs[i - 1]?.[runs[i - 1].length - 1];
+      const next = runs[i + 1]?.[0];
       items.push({
         type: "message",
-        key: `m-${message.clientId ?? message.id}`,
-        message,
-        showName: justAfterDivider || shouldShowName(g.messages[i - 1], message), // 구분선 바로 아래 메시지는 이름을 다시 보인다
-        showTime: shouldShowTime(message, g.messages[i + 1]),
+        key: `m-${first.clientId ?? first.id}`,
+        message: last,
+        ...(run.length > 1 ? { album: run } : {}),
+        showName: justAfterDivider || shouldShowName(prev, first), // 구분선 바로 아래 메시지는 이름을 다시 보인다
+        showTime: shouldShowTime(last, next),
       });
     });
   }

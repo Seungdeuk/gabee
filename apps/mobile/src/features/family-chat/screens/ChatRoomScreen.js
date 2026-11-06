@@ -9,7 +9,7 @@ import Button from "@/shared/components/Button";
 import IconButton from "@/shared/components/IconButton";
 import { colors, font, radius, spacing } from "@/theme";
 
-import { buildItems, canSend, lastId, photoSendErrorMessage, trimDraft, unreadCount, unreadDividerId } from "../chatUtils";
+import { buildItems, canSend, itemHasMessage, lastId, photoSendErrorMessage, trimDraft, unreadCount, unreadDividerId } from "../chatUtils";
 import { mergeNotes, parseMention, restoreThread } from "../mention";
 import AiPanel from "../components/AiPanel";
 import AssistantNote from "../components/AssistantNote";
@@ -33,7 +33,8 @@ import useChatSearch, { useFamilyRoomId } from "../useChatSearch";
 import { memberName } from "../listUtils";
 import { fileSendErrorMessage } from "../fileUtils";
 import { pickChatDocument } from "../pickChatDocument";
-import { pickChatPhoto } from "../pickPhoto";
+import { makeBatchId } from "../album";
+import { pickChatPhotos } from "../pickPhoto";
 import useReadBaseline from "../useReadBaseline";
 import useReadMarker from "../useReadMarker";
 
@@ -49,6 +50,17 @@ const END_SETTLE_MS = 150; // 맨 아래로 간 뒤 마지막 항목 높이가 �
 
 /** 가족 전체방의 사진을 AI 비서의 가족 기록으로 올린다(사진 보기의 "가비 기록에 저장"). */
 const savePhotoToRecord = (attachment) => saveToRecord(attachment, Platform.OS);
+
+/**
+ * 앨범에 속한 사진들의 일정·할 일 연결 표시를 모은다(같은 표시는 한 번만).
+ * @param {{ id: number }[]} album
+ * @param {(id: number) => { kind: string, label: string }[]} badgesOf
+ * @returns {{ kind: string, label: string }[]}
+ */
+function albumBadges(album, badgesOf) {
+  const seen = new Set();
+  return album.flatMap((m) => badgesOf(m.id) ?? []).filter((b) => (seen.has(`${b.kind}:${b.label}`) ? false : seen.add(`${b.kind}:${b.label}`)));
+}
 
 /** 가운데 안내(로딩·오류·그룹 없음). */
 function Center({ children }) {
@@ -194,18 +206,29 @@ export default function ChatRoomScreen() {
     if (!(await chat.send(text, null))) throw new Error("방에 보내지 못했어요. 잠시 후 다시 시도해 주세요.");
   };
 
-  /** 갤러리에서 사진 한 장을 골라 보낸다. 고르는 동안·보내는 동안은 다시 누를 수 없다. */
+  /** 갤러리에서 사진을 한 장 또는 여러 장(최대 10장) 골라 보낸다. 2장 이상이면 같은 묶음 번호를 붙여 앨범으로 보이게 하고, 한 장이 실패하면 거기서 멈춘다. 고르는 동안·보내는 동안은 다시 누를 수 없다. */
   const onPickPhoto = async () => {
     if (picking.current || chat.photoBusy) return;
     picking.current = true;
     setPicking(true);
     chat.setPhotoError("");
     try {
-      const asset = await pickChatPhoto();
-      if (!asset) return;
+      const { assets, skipped } = await pickChatPhotos();
+      if (!assets.length) {
+        if (skipped) chat.setPhotoError(photoSendErrorMessage({ code: "photo_too_large" }));
+        return;
+      }
       nearBottom.current = true;
       sentEarly.current = true;
-      if (await chat.sendImage(asset)) scrollToEnd(true);
+      const batchId = assets.length > 1 ? makeBatchId() : undefined;
+      let count = 0;
+      for (const asset of assets) {
+        if (!(await chat.sendImage(asset, batchId))) break;
+        count += 1;
+      }
+      if (count) scrollToEnd(true);
+      if (count < assets.length && count > 0) chat.setPhotoError(`${assets.length}장 중 ${count}장만 보냈어요. 나머지는 다시 골라 보내 주세요`);
+      else if (skipped) chat.setPhotoError(`용량이 커서 ${skipped}장은 빼고 보냈어요`);
     } catch (e) {
       chat.setPhotoError(photoSendErrorMessage(e));
     } finally {
@@ -327,7 +350,7 @@ export default function ChatRoomScreen() {
     setHasNew(false);
     setHighlightId(target.id);
     const scroll = setTimeout(() => {
-      const index = itemsRef.current.findIndex((it) => it.type === "message" && String(it.message.id) === String(target.id));
+      const index = itemsRef.current.findIndex((it) => itemHasMessage(it, target.id));
       if (index >= 0) listRef.current?.scrollToIndex({ index, viewPosition: 0.35, animated: false });
     }, 0);
     const settle = setTimeout(() => {
@@ -382,7 +405,7 @@ export default function ChatRoomScreen() {
   };
 
   const closeMenu = () => setMenu(null);
-  const openMenu = (message, anchor) => setMenu({ message, anchor });
+  const openMenu = (message, anchor, reactTo) => setMenu({ message, anchor, reactTo }); // reactTo: 앨범 사진의 메뉴일 때 반응을 거는 대표 사진(마지막 사진)
   /** 내 반응을 켜거나(다른 이모지면 바꾸고) 같은 이모지를 다시 누르면 끈다. 실패하면 이유를 안내 줄에 보인다. */
   const runReaction = async (message, emoji) => {
     const action = reactionAction(message, emoji);
@@ -391,7 +414,7 @@ export default function ChatRoomScreen() {
   };
   const heart = (message) => runReaction(message, HEART);
   const reactFromMenu = (emoji) => {
-    const opened = menu?.message;
+    const opened = menu?.reactTo ?? menu?.message;
     closeMenu();
     if (!opened) return;
     const latest = chat.messages.find((m) => !m.clientId && Number(m.id) === Number(opened.id)) ?? opened; // 메뉴를 연 뒤 내 반응이 바뀌었을 수 있어 최신 상태로 켜고 끈다
@@ -423,7 +446,7 @@ export default function ChatRoomScreen() {
       chat.focusOn(messageId);
       return;
     }
-    const index = itemsRef.current.findIndex((it) => it.type === "message" && String(it.message.id) === String(messageId));
+    const index = itemsRef.current.findIndex((it) => itemHasMessage(it, messageId));
     if (index < 0) {
       clearTimeout(pinHighlightTimer.current);
       clearTimeout(pinSettleTimer.current);
@@ -578,16 +601,17 @@ export default function ChatRoomScreen() {
                 showTime={item.showTime}
                 unread={unreadCount(item.message, info.me, chat.readStates)}
                 photoUrl={photoById[item.message.user_id]}
-                highlighted={highlightId != null && String(item.message.id) === String(highlightId)}
+                album={item.album}
+                highlighted={highlightId != null && itemHasMessage(item, highlightId)}
                 searchTerms={searchOpen ? search.terms : undefined}
-                searchCurrent={currentMatchId != null && String(item.message.id) === String(currentMatchId)}
+                searchCurrent={currentMatchId != null && itemHasMessage(item, currentMatchId)}
                 onRetry={chat.resend}
                 onDiscard={chat.discard}
-                onActions={canOpenMenu(item.message) ? openMenu : undefined}
+                onActions={canOpenMenu(item.message) ? (m, anchor) => openMenu(m, anchor, item.album ? item.message : undefined) : undefined}
                 onHeart={canOpenMenu(item.message) ? heart : undefined}
                 onReactionPress={canOpenMenu(item.message) ? runReaction : undefined}
                 onReplyPress={pickPin}
-                linkBadges={links.badgesOf(item.message.id)}
+                linkBadges={item.album ? albumBadges(item.album, links.badgesOf) : links.badgesOf(item.message.id)}
                 onSaveToRecord={canSaveToRecord({ direct, attachment: item.message.attachment }) ? savePhotoToRecord : undefined}
               />
             )

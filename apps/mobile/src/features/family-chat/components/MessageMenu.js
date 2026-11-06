@@ -40,7 +40,7 @@ export default function MessageMenu({ target, myId = null, pinned, onClose, onRe
   const anchor = target.anchor ?? { x: screen.width / 2, y: screen.height / 2 - height / 2 };
   // 삭제 확인은 화면 가운데에, 메뉴는 지정한 말풍선 바로 아래에 띄운다
   const { left, top } = confirming ? { left: (screen.width - width) / 2, top: Math.max(spacing.sm, (screen.height - height) / 2) } : menuPosition(anchor, { width, height }, screen);
-  const mine = myReaction(message);
+  const mine = myReaction(target?.reactTo ?? message); // 앨범의 반응은 앨범 대표 사진(마지막)에 건다
   const handlers = { reply: onReply, pin: onPin, unpin: onUnpin, copy: onCopy, delete: () => setConfirming(true) };
 
   return (
