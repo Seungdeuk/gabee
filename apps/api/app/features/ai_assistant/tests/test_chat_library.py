@@ -10,6 +10,7 @@ from sqlalchemy import select
 
 from app.features.ai_assistant import files, library
 from app.features.ai_assistant.ingest.converters import OcrLine
+from app.features.ai_assistant.knowledge import service as knowledge_service
 from app.features.ai_assistant.knowledge.models import KnowledgeItem
 from app.features.ai_assistant.models import Photo
 from app.features.family_chat import file_service, photo_service
@@ -21,7 +22,10 @@ from tests.helpers import join_family, signup
 NOTICE = (
     "해솔초등학교 가정통신문\n2026년 11월 현장체험학습 안내\n11월 7일 오전 8시 40분 국립중앙박물관\n준비물: 도시락, 물\n"
 ).encode()
-PRESCRIPTION = "서울약국 처방전\n환자 김가비\n2026-11-05 처방 내용 아목시실린 3일분\n".encode()
+# 규칙(낱말 2개 이상)만으로 처방전으로 잡히는 글: 외부 분류에 기대지 않는다
+PRESCRIPTION = (
+    "서울약국 처방전\n환자 김가비\n처방의약품 아목시실린 투약일수 3일 용법 1일 3회 복용\n".encode()
+)
 
 
 class FakeOcr:
@@ -223,3 +227,100 @@ def test_new_member_documents_register_under_the_family_group(client, family):
     _send_file(client, c)
     [item] = _items(group["id"])
     assert item.created_by == _me(client, c)
+
+
+def test_deleting_the_message_while_it_is_being_registered_leaves_nothing_in_the_library(
+    client, family, tmp_path, monkeypatch
+):
+    """읽는 도중(OCR·재시도 대기)에 메시지를 지우면, 처리가 끝난 뒤에도 지운 메시지의 문서가 문서함에 남지 않는다."""
+    a, _, group = family
+    queued = []
+    monkeypatch.setattr(library, "_submit", lambda fn, *args: queued.append((fn, args)))
+    msg = _send_file(client, a)
+    assert _items(group["id"]) == [] and len(queued) == 1  # 아직 처리 전
+    client.delete(f"/family-chat/messages/{msg['id']}", headers=a)  # 처리 전에 지운다
+    fn, args = queued[0]
+    fn(*args)
+    assert _items(group["id"]) == [] and _raw_files(tmp_path) == []
+
+
+def test_deleting_during_the_read_is_also_caught_right_after_saving(
+    client, family, tmp_path, monkeypatch
+):
+    a, _, group = family
+    queued = []
+    monkeypatch.setattr(library, "_submit", lambda fn, *args: queued.append((fn, args)))
+    msg = _send_file(client, a)
+    original = files.ingest_service.ingest_file
+
+    def delete_while_reading(*args, **kwargs):
+        result = original(*args, **kwargs)
+        client.delete(f"/family-chat/messages/{msg['id']}", headers=a)  # 읽는 사이에 지운다
+        return result
+
+    monkeypatch.setattr(files.ingest_service, "ingest_file", delete_while_reading)
+    fn, args = queued[0]
+    fn(*args)
+    assert _items(group["id"]) == []  # 저장 직후 첨부가 없어진 것을 알고 되돌린다
+    assert _raw_files(tmp_path) == []
+
+
+def test_a_final_read_failure_leaves_no_original_or_record_behind(
+    client, family, tmp_path, monkeypatch
+):
+    """Claude 연결이 계속 안 돼서 끝내 못 읽어도, 분류·가리기 전에 보관한 원본이 기록 없이 남지 않는다."""
+    a, _, group = family
+    monkeypatch.setattr(settings, "ingest_retry_max", 0)
+    original = files.ingest_service.ingest_file
+
+    def unavailable(*args, **kwargs):
+        result = original(*args, **kwargs)  # 원본은 먼저 보관된다
+        quality = result.quality.model_copy(update={"status": "failed", "error": "llm_unavailable"})
+        return result.model_copy(update={"quality": quality})
+
+    monkeypatch.setattr(files.ingest_service, "ingest_file", unavailable)
+    _send_file(client, a)
+    assert _items(group["id"]) == [] and _raw_files(tmp_path) == []
+    with SessionLocal() as db:
+        assert db.scalars(select(Photo)).all() == []
+
+
+def test_an_unexpected_error_while_registering_leaves_no_original_behind(
+    client, family, tmp_path, monkeypatch
+):
+    a, _, group = family
+
+    def boom(result):
+        raise RuntimeError("embedding model missing")
+
+    monkeypatch.setattr(files.from_ingest, "to_item", boom)
+    msg = _send_file(client, a)  # 전송은 그대로 성공한다
+    assert msg["attachment"]["kind"] == "file"
+    assert _items(group["id"]) == [] and _raw_files(tmp_path) == []
+    with SessionLocal() as db:
+        assert db.scalars(select(Photo)).all() == []
+
+
+def test_the_chat_path_also_skips_identity_and_medical_names_the_general_list_misses():
+    """일반 민감 낱말에 없는 신분·금융·의료 분류도 채팅 자동 등록에서는 제외한다(모르면 등록이 되는 빈틈을 줄인다)."""
+    for kind in ("외국인등록증", "통장 사본", "진단서", "소견서", "검사결과지"):
+        assert knowledge_service.is_sensitive(kind, None, strict=True) is True, kind
+        assert knowledge_service.is_sensitive(kind, None) is False, (
+            kind
+        )  # 기존 업로드 규칙은 바뀌지 않는다
+    assert knowledge_service.is_sensitive("가정통신문", None, strict=True) is False
+    assert knowledge_service.is_sensitive("처방전", None) is True
+
+
+def test_a_medical_certificate_is_not_registered_from_the_chat(
+    client, family, tmp_path, monkeypatch
+):
+    a, _, group = family
+    original = files.from_ingest.to_item
+
+    def as_certificate(result):
+        return {**original(result), "kind_label": "진단서", "sensitivity": None}
+
+    monkeypatch.setattr(files.from_ingest, "to_item", as_certificate)
+    _send_file(client, a)
+    assert _items(group["id"]) == [] and _raw_files(tmp_path) == []

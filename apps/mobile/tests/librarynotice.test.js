@@ -55,3 +55,10 @@ test("채팅방 화면: 가족 전체방에서 문서를 고르기 전에만(1:1
   assert.match(room, /markLibraryNoticeSeen\(AsyncStorage\)/);
   assert.ok(room.indexOf("shouldShowLibraryNotice(AsyncStorage)") < room.indexOf("await pickChatDocument()"), "문서를 고르기 전에 안내한다");
 });
+
+test("채팅방 화면: 웹에서는 Alert 대신 브라우저 알림으로 안내하고(웹 Alert 는 동작하지 않아 버튼이 잠긴다), 안드로이드 뒤로 가기로도 닫힌다", () => {
+  const room = readFileSync(new URL("../src/features/family-chat/screens/ChatRoomScreen.js", import.meta.url), "utf8");
+  assert.match(room, /function showLibraryNotice\(\)[\s\S]*Platform\.OS === "web"[\s\S]*globalThis\.alert/);
+  assert.match(room, /cancelable: true/);
+  assert.match(room, /await showLibraryNotice\(\)/);
+});

@@ -54,6 +54,19 @@ const END_SETTLE_MS = 150; // 맨 아래로 간 뒤 마지막 항목 높이가 �
 const savePhotoToRecord = (attachment) => saveToRecord(attachment, Platform.OS);
 
 /**
+ * 가족 문서함 자동 등록 안내를 보이고 닫힐 때까지 기다린다. 웹의 Alert 는 아무 동작도 하지 않아(끝나지 않아 문서 버튼이 잠긴다) 브라우저 알림 창을 쓴다.
+ * 안드로이드에서는 뒤로 가기로도 닫힌다(cancelable).
+ * @returns {Promise<void>}
+ */
+function showLibraryNotice() {
+  if (Platform.OS === "web") {
+    globalThis.alert?.(`${LIBRARY_NOTICE_TITLE}\n\n${LIBRARY_NOTICE_BODY}`);
+    return Promise.resolve();
+  }
+  return new Promise((resolve) => Alert.alert(LIBRARY_NOTICE_TITLE, LIBRARY_NOTICE_BODY, [{ text: "확인", onPress: () => resolve() }], { cancelable: true, onDismiss: () => resolve() }));
+}
+
+/**
  * 앨범에 속한 사진들의 일정·할 일 연결 표시를 모은다(같은 표시는 한 번만).
  * @param {{ id: number }[]} album
  * @param {(id: number) => { kind: string, label: string }[]} badgesOf
@@ -248,7 +261,7 @@ export default function ChatRoomScreen() {
     try {
       if (!direct && (await shouldShowLibraryNotice(AsyncStorage))) {
         // 가족 전체방에 올린 문서는 가족 공유 문서함에 자동 등록된다는 안내를 처음 한 번만 보이고, 확인한 뒤 파일을 고른다
-        await new Promise((resolve) => Alert.alert(LIBRARY_NOTICE_TITLE, LIBRARY_NOTICE_BODY, [{ text: "확인", onPress: () => resolve() }], { onDismiss: () => resolve() }));
+        await showLibraryNotice();
         await markLibraryNoticeSeen(AsyncStorage);
       }
       const asset = await pickChatDocument();

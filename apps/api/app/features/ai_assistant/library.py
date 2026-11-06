@@ -53,6 +53,8 @@ def register_chat_document(
         with SessionLocal() as db:
             if knowledge_repo.get_by_attachment(db, group_id, attachment_id) is not None:
                 return  # 이미 등록했다(재시도·중복 요청)
+            if not chat_library.attachment_exists(db, group_id, attachment_id):
+                return  # 대기하는 사이 메시지가 지워졌다
             photo = service.receive_file(db, group_id, user_id, filename, content_type, data)
             photo_id = photo.id
         files.process_file(
