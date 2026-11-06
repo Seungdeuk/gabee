@@ -8,11 +8,11 @@ import Screen from "@/shared/components/Screen";
 import { colors, font, radius, spacing } from "@/theme";
 
 import { listNotices } from "../api";
-import { CATEGORY_LABEL, CHIPS, EMPTY_TEXT, HELP_TEXT, filterNotices, noticeDate, noticesErrorMessage, preview, unreadCount } from "../notices";
+import { CATEGORY_LABEL, EMPTY_TEXT, HELP_TEXT, clampPage, noticeDate, noticesErrorMessage, pageCount, pageSlice, pageWindow, preview, unreadCount } from "../notices";
 import { loadReadIds, saveReadIds } from "../readStore";
 
 /**
- * 더보기 > 공지사항: 서비스 공지를 종류 칩으로 걸러 보고, 누르면 같은 화면에서 내용을 연다.
+ * 더보기 > 공지사항: 서비스 공지를 최근순 목록으로 보고(10개를 넘으면 쪽으로 나눈다), 누르면 같은 화면에서 내용을 연다.
  * 열어 본 공지는 이 폰에 기억해 '새 글' 표시를 지운다.
  * @returns {import("react").ReactElement}
  */
@@ -20,7 +20,7 @@ export default function NoticesScreen() {
   const router = useRouter();
   const [rows, setRows] = useState(null); // null: 불러오는 중
   const [error, setError] = useState("");
-  const [chip, setChip] = useState("all");
+  const [page, setPage] = useState(0); // 0부터
   const [openId, setOpenId] = useState(null);
   const [readIds, setReadIds] = useState(() => new Set());
 
@@ -40,7 +40,9 @@ export default function NoticesScreen() {
     loadReadIds().then(setReadIds);
   }, [load]);
 
-  const shown = useMemo(() => filterNotices(rows, chip), [rows, chip]);
+  const pages = pageCount(rows?.length);
+  const view = clampPage(page, rows?.length); // 새로고침으로 목록이 줄어도 범위를 벗어난 쪽을 보이지 않는다
+  const shown = useMemo(() => pageSlice(rows, view), [rows, view]);
   const unread = useMemo(() => unreadCount(rows, readIds), [rows, readIds]);
   const current = openId ? (rows ?? []).find((n) => n.id === openId) : null;
 
@@ -73,26 +75,12 @@ export default function NoticesScreen() {
     );
   }
 
-  const chips = (
-    <View style={styles.chips} accessibilityRole="tablist">
-      {CHIPS.map((c) => {
-        const on = c.key === chip;
-        return (
-          <Pressable key={c.key} onPress={() => setChip(c.key)} accessibilityRole="tab" accessibilityState={{ selected: on }} style={[styles.chip, on && styles.chipOn]}>
-            <Text style={[styles.chipText, on && styles.chipTextOn]}>{c.label}</Text>
-          </Pressable>
-        );
-      })}
-    </View>
-  );
-
   return (
     <Screen
       title="공지사항"
       subtitle={rows && rows.length ? `안 읽음 ${unread}` : undefined}
       left={<IconButton name="chevron-back" label="뒤로" onPress={back} />}
       right={<IconButton name="refresh-outline" label="새로고침" onPress={load} />}
-      pinned={chips}
     >
       {rows === null ? (
         <ActivityIndicator color={colors.primary} style={styles.loading} />
@@ -121,6 +109,21 @@ export default function NoticesScreen() {
               </Pressable>
             );
           })}
+          {pages > 1 ? (
+            <View style={styles.pager} accessibilityRole="toolbar">
+              <Pressable onPress={() => setPage(Math.max(0, view - 1))} disabled={view === 0} accessibilityRole="button" accessibilityLabel="이전 쪽" accessibilityState={{ disabled: view === 0 }} style={styles.pageArrow}>
+                <Text style={[styles.pageArrowText, view === 0 && styles.pageOff]}>{"<"}</Text>
+              </Pressable>
+              {pageWindow(view, pages).map((n) => (
+                <Pressable key={n} onPress={() => setPage(n)} accessibilityRole="button" accessibilityLabel={`${n + 1}쪽`} accessibilityState={{ selected: n === view }} style={[styles.pageNo, n === view && styles.pageNoOn]}>
+                  <Text style={[styles.pageNoText, n === view && styles.pageNoTextOn]}>{n + 1}</Text>
+                </Pressable>
+              ))}
+              <Pressable onPress={() => setPage(Math.min(pages - 1, view + 1))} disabled={view >= pages - 1} accessibilityRole="button" accessibilityLabel="다음 쪽" accessibilityState={{ disabled: view >= pages - 1 }} style={styles.pageArrow}>
+                <Text style={[styles.pageArrowText, view >= pages - 1 && styles.pageOff]}>{">"}</Text>
+              </Pressable>
+            </View>
+          ) : null}
         </View>
       )}
     </Screen>
@@ -128,12 +131,14 @@ export default function NoticesScreen() {
 }
 
 const styles = StyleSheet.create({
-  // Screen 의 pinned 영역은 좌우 여백이 없어서 제목과 같은 여백(spacing.xl)을 직접 둔다(안 그러면 칩이 화면 왼쪽 끝에서 시작한다)
-  chips: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm, paddingVertical: spacing.sm, paddingHorizontal: spacing.xl },
-  chip: { minHeight: 36, paddingHorizontal: spacing.lg, borderRadius: radius.pill, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.card, justifyContent: "center" },
-  chipOn: { backgroundColor: colors.dark, borderColor: colors.dark },
-  chipText: { ...font.caption, fontSize: 14, color: colors.text },
-  chipTextOn: { color: colors.onDark },
+  pager: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: spacing.xs, paddingTop: spacing.md },
+  pageArrow: { minWidth: 36, minHeight: 36, alignItems: "center", justifyContent: "center" },
+  pageArrowText: { ...font.cardTitle, color: colors.text },
+  pageOff: { color: colors.disabled },
+  pageNo: { minWidth: 36, minHeight: 36, borderRadius: radius.pill, alignItems: "center", justifyContent: "center" },
+  pageNoOn: { backgroundColor: colors.dark },
+  pageNoText: { ...font.caption, fontSize: 14, color: colors.text },
+  pageNoTextOn: { color: colors.onDark },
   list: { gap: 10 },
   card: { borderWidth: 1, borderColor: colors.border, backgroundColor: colors.card, borderRadius: radius.card, padding: spacing.lg, gap: spacing.sm },
   pressed: { opacity: 0.7 },
