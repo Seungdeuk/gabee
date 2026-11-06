@@ -5,9 +5,10 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from app.shared.notifications import KINDS
+from app.shared.notifications import KINDS, PUSH_KINDS
 
 Kind = Literal[*KINDS]
+PushKind = Literal[*PUSH_KINDS]
 PreviewMode = Literal["full", "sender", "hidden"]
 
 
@@ -49,7 +50,7 @@ class PushSettingsIn(BaseModel):
 
     enabled: bool = True
     preview_mode: PreviewMode = "full"
-    muted_kinds: list[Kind] = []
+    muted_kinds: list[PushKind] = []
     quiet_start: time | None = None
     quiet_end: time | None = None
 

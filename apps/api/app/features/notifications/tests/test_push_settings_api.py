@@ -54,10 +54,18 @@ def test_invalid_values_are_422(client, family):
     a, _b, _group = family
     for bad in (
         {**DEFAULTS, "preview_mode": "loud"},
-        {**DEFAULTS, "muted_kinds": ["chat"]},
+        {**DEFAULTS, "muted_kinds": ["no-such-kind"]},
         {**DEFAULTS, "quiet_start": "25:00", "quiet_end": "07:00"},
     ):
         assert client.put(URL, json=bad, headers=a).status_code == 422, bad
+
+
+def test_chat_is_a_kind_users_can_mute_for_push(client, family):
+    """소통(chat)은 알림함 분류는 아니지만 푸시 설정에서는 끌 수 있다."""
+    a, _b, _group = family
+    r = client.put(URL, json={**DEFAULTS, "muted_kinds": ["chat", "billing"]}, headers=a)
+    assert r.status_code == 200, r.text
+    assert client.get(URL, headers=a).json()["muted_kinds"] == ["chat", "billing"]
 
 
 def test_quiet_hours_need_both_or_neither(client, family):

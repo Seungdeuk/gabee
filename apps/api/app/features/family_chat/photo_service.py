@@ -24,8 +24,8 @@ from app.shared.config import settings
 from app.shared.errors import ApiError, bad_request, not_found
 from app.shared.rate_limit import FailureLimiter
 
+from . import chat_push, service
 from . import repository as repo
-from . import service
 from .models import Message, MessageAttachment
 from .schemas import MessageOut
 
@@ -202,6 +202,9 @@ def send_photo(
         repo.advance_read(db, room.id, user.id, message.id)  # 내가 보낸 메시지는 읽은 것으로
     except Exception:
         db.rollback()  # 사진은 이미 저장됐다. 읽음 위치 실패로 500 을 주면 재시도로 같은 사진이 두 번 간다
+    chat_push.notify_new_message(
+        db, room, message, attachment.batch_id
+    )  # 같은 묶음은 첫 사진에서만 푸시
     return service.message_out(message, user.name, attachment)
 
 

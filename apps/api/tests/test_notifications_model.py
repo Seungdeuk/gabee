@@ -1,7 +1,7 @@
 """알림함 공용 모델(app/shared/notifications.py) 시험: 스키마 등록과 테이블 생성."""
 
 from app.shared.db import SessionLocal
-from app.shared.notifications import KINDS, Notification
+from app.shared.notifications import KINDS, PUSH_KINDS, Notification
 from app.shared.schema import feature_tables
 
 
@@ -10,6 +10,7 @@ def test_schema_registered_and_kinds():
     assert "notifications" in tables
     assert "notifications" in tables["notifications"]
     assert KINDS == ("schedule", "billing", "care", "family_group", "ai_record", "support")
+    assert PUSH_KINDS == (*KINDS, "chat")  # 소통은 푸시 설정에서만 끌 수 있고 알림함 분류는 아니다
 
 
 def test_create_all_creates_columns(client, family):

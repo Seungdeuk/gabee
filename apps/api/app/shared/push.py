@@ -7,7 +7,7 @@ import logging
 from collections.abc import Iterable
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime, time
-from typing import Any, TypedDict
+from typing import Any, NotRequired, TypedDict
 from zoneinfo import ZoneInfo
 
 import httpx
@@ -39,6 +39,9 @@ class PushPlan(TypedDict):
     title: str
     body: str | None
     data: dict[str, Any]
+    collapse_key: NotRequired[
+        str
+    ]  # 있으면 같은 키의 알림을 한 건으로 교체(안드로이드 tag, iOS collapseId)
 
 
 def in_quiet_hours(now: datetime, start: time | None, end: time | None) -> bool:
@@ -60,6 +63,7 @@ def plan_recipients(
     body: str | None,
     data: dict[str, Any],
     now: datetime,
+    collapse_key: str | None = None,
 ) -> list[PushPlan]:
     """받는 사람마다 설정을 적용해 보낼 푸시 목록을 만든다.
 
@@ -95,9 +99,10 @@ def plan_recipients(
         if key in seen:
             continue
         seen.add(key)
-        plans.append(
-            PushPlan(user_id=row.user_id, token=row.token, title=title, body=body, data=data)
-        )
+        plan = PushPlan(user_id=row.user_id, token=row.token, title=title, body=body, data=data)
+        if collapse_key:
+            plan["collapse_key"] = collapse_key
+        plans.append(plan)
     return plans
 
 
@@ -109,12 +114,20 @@ def queue_push(
     title: str,
     body: str | None,
     data: dict[str, Any],
+    collapse_key: str | None = None,
 ) -> None:
     """이 세션이 커밋되면 보낼 푸시를 쌓아 둔다(차단 규칙은 발송 직전에 적용). 꺼져 있으면 아무것도 하지 않는다."""
     if not settings.push_enabled:
         return
     db.info.setdefault(_PENDING_KEY, []).append(
-        {"user_ids": list(user_ids), "kind": kind, "title": title, "body": body, "data": data}
+        {
+            "user_ids": list(user_ids),
+            "kind": kind,
+            "title": title,
+            "body": body,
+            "data": data,
+            "collapse_key": collapse_key,
+        }
     )
 
 
@@ -126,9 +139,19 @@ def push_only(
     title: str,
     body: str | None,
     data: dict[str, Any],
+    collapse_key: str | None = None,
 ) -> None:
-    """알림함에 남기지 않고 푸시만 보낸다(소통 메시지처럼 알림함에서 제외하는 사건). 커밋 뒤에 발송한다."""
-    queue_push(db, user_ids=user_ids, kind=kind, title=title, body=body, data=data)
+    """알림함에 남기지 않고 푸시만 보낸다(소통 메시지처럼 알림함에서 제외하는 사건). 커밋 뒤에 발송한다.
+    collapse_key 가 있으면 같은 키의 알림이 잠금 화면에서 한 건으로 교체된다."""
+    queue_push(
+        db,
+        user_ids=user_ids,
+        kind=kind,
+        title=title,
+        body=body,
+        data=data,
+        collapse_key=collapse_key,
+    )
 
 
 def _submit(fn, *args) -> None:
@@ -157,6 +180,9 @@ def _message(plan: PushPlan) -> dict[str, Any]:
     }
     if plan["body"] is not None:
         message["body"] = plan["body"]
+    if plan.get("collapse_key"):
+        message["tag"] = plan["collapse_key"]  # 안드로이드: 같은 tag 의 알림을 교체
+        message["collapseId"] = plan["collapse_key"]  # iOS: 같은 collapseId 의 알림을 교체
     return message
 
 

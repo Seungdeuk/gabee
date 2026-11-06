@@ -21992,7 +21992,8 @@
                 "care",
                 "family_group",
                 "ai_record",
-                "support"
+                "support",
+                "chat"
               ]
             },
             "type": "array",
@@ -22054,7 +22055,8 @@
                 "care",
                 "family_group",
                 "ai_record",
-                "support"
+                "support",
+                "chat"
               ]
             },
             "type": "array",

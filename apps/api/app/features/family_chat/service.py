@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session
 from app.features.family_group.models import User
 from app.shared.errors import bad_request, not_found
 
+from . import chat_push
 from . import repository as repo
 from .models import ASSISTANT_USER_ID, FAMILY, ChatRoom, Message, MessageAttachment
 from .schemas import (
@@ -160,6 +161,9 @@ def post(
     )
     out = message_out(message, user.name, None, reply_out(parent) if parent else None)
     repo.advance_read(db, room.id, user.id, message.id)  # 내가 보낸 메시지는 읽은 것으로
+    chat_push.notify_new_message(
+        db, room, message
+    )  # 받을 사람에게 고정 문구 푸시(실패해도 전송은 그대로)
     return out
 
 
