@@ -10,6 +10,7 @@ from app.shared.auth import current_group_id, current_user
 from app.shared.db import get_db
 
 from . import media, service
+from .bomb_router import router as bomb_router
 from .schemas import (
     PlayBoardOut,
     PlayDrawTryIn,
@@ -21,6 +22,7 @@ from .schemas import (
 )
 
 router = APIRouter(prefix="/play", tags=["play"])
+router.include_router(bomb_router)  # /play/bomb/*
 
 
 @router.post("/quiz", response_model=PlayItemOut, status_code=201)

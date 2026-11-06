@@ -1,11 +1,12 @@
-import { useCallback } from "react";
+import { useFocusEffect, useRouter } from "expo-router";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { getMyGroup } from "@/features/family-group/api";
 import { isApiConfigured } from "@/shared/api/client";
 import useResource from "@/shared/hooks/useResource";
 
-import { boardView, rankingView } from "./adapt";
-import { getBoard, getItem, getQuota, getRanking } from "./api";
+import { bombPath, bombScreen, boardView, rankingView } from "./adapt";
+import { getBoard, getBomb, getItem, getQuota, getRanking } from "./api";
 import { ME, makeLeft, openSent, PAST, RANKING_BY, SENT_PAST, TODO, WAITING } from "./mock";
 
 /** 서버 주소가 있으면 서버에서, 없으면 시안(mock.js)으로 동작한다. */
@@ -54,4 +55,87 @@ export function useAudience() {
 export function useMakeLeft() {
   const loader = useCallback(async () => (playLive() ? (await getQuota()).left : makeLeft()), []);
   return useResource(loader).data ?? null;
+}
+
+const BOMB_POLL_MS = 1000;
+
+/**
+ * 폭탄방 상태를 1초마다 물어서 받는다(폴링). 화면이 보일 때만 돈다.
+ * - act(action): 말하기·시작 같은 요청을 보내고, 돌려받은 상태를 바로 화면에 반영한다. 실패하면 error 에 문구를 두고 null 을 돌려준다.
+ * - left: 지금 차례의 남은 초(받은 값에서 시계로 줄인다), cheerLeft: 다음 응원까지 남은 초
+ * @param {string | null | undefined} id 방 id
+ */
+export function useBombRoom(id) {
+  const [room, setRoom] = useState(null);
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [, setTick] = useState(0);
+  const receivedAt = useRef(Date.now());
+  const alive = useRef(true);
+  const inflight = useRef(false);
+
+  const apply = useCallback((next) => {
+    receivedAt.current = Date.now();
+    setRoom(next);
+    setError("");
+  }, []);
+
+  const refresh = useCallback(async () => {
+    if (!id || inflight.current) return;
+    inflight.current = true;
+    try {
+      const next = await getBomb(id);
+      if (alive.current) apply(next);
+    } catch (e) {
+      if (alive.current) setError(e.message || "연결이 불안정해요");
+    } finally {
+      inflight.current = false;
+    }
+  }, [id, apply]);
+
+  useFocusEffect(
+    useCallback(() => {
+      alive.current = true;
+      refresh();
+      const poll = setInterval(refresh, BOMB_POLL_MS);
+      const clock = setInterval(() => setTick((n) => n + 1), 250); // 남은 시간 막대를 부드럽게
+      return () => {
+        alive.current = false;
+        clearInterval(poll);
+        clearInterval(clock);
+      };
+    }, [refresh]),
+  );
+
+  const act = useCallback(
+    async (action) => {
+      setBusy(true);
+      try {
+        const next = await action();
+        if (alive.current) apply(next);
+        return next;
+      } catch (e) {
+        if (alive.current) setError(e.message || "잠시 뒤 다시 해 주세요");
+        return null;
+      } finally {
+        if (alive.current) setBusy(false);
+      }
+    },
+    [apply],
+  );
+
+  const elapsed = (Date.now() - receivedAt.current) / 1000;
+  const left = room?.turn ? Math.max(0, room.turn.seconds_left - elapsed) : null;
+  const cheerLeft = room ? Math.max(0, room.cheer_wait - elapsed) : 0;
+  return { room, error, busy, act, left, cheerLeft };
+}
+
+/** 방 상태에 맞지 않는 폭탄 화면에 있으면 알맞은 화면으로 옮겨 간다(게임이 시작되면 로비 → 게임, 탈락하면 게임 → 관전, 끝나면 결과). */
+export function useBombRedirect(room, self) {
+  const router = useRouter();
+  const target = room ? bombScreen(room) : self;
+  const id = room?.id;
+  useEffect(() => {
+    if (id && target !== self) router.replace(bombPath(target, id));
+  }, [id, target, self, router]);
 }

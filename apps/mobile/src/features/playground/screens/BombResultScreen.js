@@ -1,4 +1,4 @@
-import { useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import { ScrollView, StyleSheet, Text, View } from "react-native";
 
 import Avatar from "@/shared/components/Avatar";
@@ -7,6 +7,8 @@ import { colors, font, fonts, radius } from "@/theme";
 
 import PlayScreen from "../components/PlayScreen";
 import { SCORE } from "../games";
+import { playLive } from "../hooks";
+import { LiveBombResult } from "./BombLiveScreens";
 
 const ROW_H = 64;
 const VISIBLE = 3; // 순위는 3줄만 보이고 나머지는 목록 안에서 스크롤
@@ -22,7 +24,7 @@ const RANK = [
 ];
 
 /** 문장 폭탄 결과: 최후의 1인, 이번 판 기록(가족 신기록), 순위와 점수. */
-export default function BombResultScreen() {
+function MockBombResultScreen() {
   const router = useRouter();
   const mine = RANK.find((r) => r.id === "me");
   return (
@@ -103,3 +105,8 @@ const styles = StyleSheet.create({
   mineBig: { ...font.bodyStrong, color: colors.text },
   mineSub: { ...font.caption, color: colors.textSub },
 });
+
+export default function BombResultScreen() {
+  const { id } = useLocalSearchParams();
+  return playLive() && id ? <LiveBombResult id={id} /> : <MockBombResultScreen />;
+}

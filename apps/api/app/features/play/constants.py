@@ -22,6 +22,7 @@ POINT_JOIN = 10  # 참여(실패해도 항상)
 POINT_CORRECT = 20  # 정답(골든벨은 세트 전체 20점을 맞힌 비율로 나눔)
 POINT_MAKE = 20  # 문제 내기(받는 가족 중 한 명이라도 풀어야, 닫힐 때 지급)
 POINT_HINT = 5  # 힌트·줄여 보기 한 번당 감점
+POINT_BOMB_WIN = 30  # 문장 폭탄 우승(참여 +10 은 따로)
 DAILY_MAKE_LIMIT = 3  # 한 사람이 하루(한국 시간)에 낸 문제 전체(게임 구분 없이) 3건까지만 점수
 
 QUIZ_MAX_QUESTIONS = 5
@@ -54,6 +55,7 @@ __all__ = [
     "GAME_DRAW",
     "GAME_PHOTO",
     "GAME_QUIZ",
+    "POINT_BOMB_WIN",
     "POINT_CORRECT",
     "POINT_HINT",
     "POINT_JOIN",

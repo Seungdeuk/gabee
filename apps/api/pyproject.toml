@@ -18,6 +18,8 @@ dependencies = [
     # ai_assistant/ingest: 원본 전처리 (사진 회전·축소, HEIC, 한국어 OCR, 오피스·PDF → 마크다운)
     "pillow>=10.4",
     "pillow-heif>=0.18",
+    # 가족 놀이터 문장 폭탄: 문장이 끝났는지 판정하는 한국어 형태소 분석기
+    "kiwipiepy>=0.18",
     "rapidocr>=3.4",
     "onnxruntime>=1.20",
     "markitdown[docx,xlsx,pptx,pdf]>=0.1",

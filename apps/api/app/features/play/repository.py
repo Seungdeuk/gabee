@@ -4,7 +4,18 @@ from sqlalchemy import and_, exists, func, select
 from sqlalchemy.orm import Session
 
 from .constants import ASYNC_GAMES
-from .models import PlayAnswer, PlayDraw, PlayItem, PlayPhoto, PlayQuiz, PlayScore
+from .models import (
+    GAME_BOMB,
+    PlayAnswer,
+    PlayBombPlayer,
+    PlayBombRound,
+    PlayBombTurn,
+    PlayDraw,
+    PlayItem,
+    PlayPhoto,
+    PlayQuiz,
+    PlayScore,
+)
 
 
 def add(db: Session, *rows) -> None:
@@ -163,3 +174,59 @@ def correct_counts(
     if since is not None:
         q = q.where(PlayAnswer.answered_at >= since)
     return [(pid, game, n) for pid, game, n in db.execute(q)]
+
+
+# ---------- 문장 폭탄방 ----------
+def open_bomb_room(db: Session, group_id: str, now: datetime) -> PlayItem | None:
+    """가족의 열려 있는 폭탄방(닫히는 시각 전) 한 개. 가족마다 한 번에 하나만 둔다."""
+    return db.scalars(
+        select(PlayItem)
+        .where(PlayItem.group_id == group_id, PlayItem.game == GAME_BOMB, PlayItem.close_at > now)
+        .order_by(PlayItem.created_at.desc())
+    ).first()
+
+
+def bomb_players(db: Session, play_id: str) -> list[PlayBombPlayer]:
+    return list(
+        db.scalars(
+            select(PlayBombPlayer)
+            .where(PlayBombPlayer.play_id == play_id)
+            .order_by(PlayBombPlayer.joined_at, PlayBombPlayer.player_id)
+        )
+    )
+
+
+def bomb_player(db: Session, play_id: str, player_id: str) -> PlayBombPlayer | None:
+    return db.get(PlayBombPlayer, (play_id, player_id))
+
+
+def latest_bomb_round(db: Session, play_id: str) -> PlayBombRound | None:
+    return db.scalars(
+        select(PlayBombRound)
+        .where(PlayBombRound.play_id == play_id)
+        .order_by(PlayBombRound.round_no.desc())
+    ).first()
+
+
+def bomb_turns(db: Session, play_id: str, round_no: int) -> list[PlayBombTurn]:
+    return list(
+        db.scalars(
+            select(PlayBombTurn)
+            .where(PlayBombTurn.play_id == play_id, PlayBombTurn.round_no == round_no)
+            .order_by(PlayBombTurn.turn_seq)
+        )
+    )
+
+
+def best_bomb_chain(db: Session, group_id: str, play_id: str, round_no: int) -> int | None:
+    """이 판을 뺀, 가족의 끝난 폭탄 판 중 가장 긴 이어가기(없으면 None)."""
+    return db.scalar(
+        select(func.max(PlayBombRound.longest_len))
+        .join(PlayItem, PlayItem.id == PlayBombRound.play_id)
+        .where(
+            PlayItem.group_id == group_id,
+            PlayItem.game == GAME_BOMB,
+            PlayBombRound.ended_at.is_not(None),
+            ~and_(PlayBombRound.play_id == play_id, PlayBombRound.round_no == round_no),
+        )
+    )

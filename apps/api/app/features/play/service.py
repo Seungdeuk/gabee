@@ -853,6 +853,19 @@ def board(db: Session, user: User, group_id: str) -> PlayBoardOut:
     answers = repository.answers_of_many(db, ids)
     counts = repository.quiz_counts(db, ids)
     out = PlayBoardOut(todo=[], joined=[], past=[], sent=[], sent_past=[])
+    room = repository.open_bomb_room(db, group_id, now)  # 열린 폭탄방은 맨 위
+    if room is not None:
+        row = PlayBoardItemOut(
+            id=room.id,
+            game=room.game,
+            maker=_person(by_id.get(room.maker_id)),
+            close_at=aware(room.close_at),
+            closed=False,
+            progress_done=len(repository.bomb_players(db, room.id)),
+            progress_total=0,
+            question_count=0,
+        )
+        (out.sent if room.maker_id == user.id else out.todo).append(row)
     for item in items:
         closed = is_closed(item, now)
         joined = participants(item, answers[item.id], closed)

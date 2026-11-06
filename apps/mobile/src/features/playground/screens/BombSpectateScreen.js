@@ -8,6 +8,8 @@ import { colors, font, fonts } from "@/theme";
 import { Bubble, PlayerStrip, TimeBar } from "../components/bomb/BombParts";
 import PlayHeader from "../components/PlayHeader";
 import { bombTurnOrder } from "../mock";
+import { playLive } from "../hooks";
+import { LiveBombSpectate } from "./BombLiveScreens";
 
 const SEC = 10;
 const CHEERS = ["힘내요", "아슬아슬", "끝내지 마!"];
@@ -26,7 +28,7 @@ const seed = (host) => {
 };
 
 /** 탈락 뒤 관전: 판이 계속 이어지고, 응원 칩은 채팅에 올라간다. 몇 개 더 이어지면 결과 화면으로 간다. */
-export default function BombSpectateScreen() {
+function MockBombSpectateScreen() {
   const router = useRouter();
   const host = useLocalSearchParams().host === "mom" ? "mom" : "me";
   const order = useMemo(() => bombTurnOrder(host), [host]);
@@ -128,3 +130,8 @@ const styles = StyleSheet.create({
   chip: { height: 40, paddingHorizontal: 16, borderRadius: 20, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.card, alignItems: "center", justifyContent: "center" },
   chipText: { fontSize: 14, fontFamily: fonts.regular, color: colors.text },
 });
+
+export default function BombSpectateScreen() {
+  const { id } = useLocalSearchParams();
+  return playLive() && id ? <LiveBombSpectate id={id} /> : <MockBombSpectateScreen />;
+}

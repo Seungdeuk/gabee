@@ -8,13 +8,15 @@ import { colors, font, fonts } from "@/theme";
 import { Bubble, endsSentence, PlayerStrip, TimeBar } from "../components/bomb/BombParts";
 import PlayHeader from "../components/PlayHeader";
 import { bombTurnOrder } from "../mock";
+import { playLive } from "../hooks";
+import { LiveBombPlay } from "./BombLiveScreens";
 
 const MAX_LEN = 10; // 한 번에 한 단어나 짧은 구, 10자까지
 // 상대 차례를 흉내 내는 말들(서버 연결 전 시안). 문장을 끝내지 않는 말만 쓴다.
 const SCRIPT = ["누가", "어제", "학교에서", "강아지와", "춤을", "열심히", "함께", "웃으면서", "그리고", "조용히"];
 
 /** 문장 폭탄 플레이: 선수 줄, 시간 막대, 채팅. 내 차례에 문장을 끝내거나 시간이 다 되면 생명이 줄어든다. */
-export default function BombPlayScreen() {
+function MockBombPlayScreen() {
   const router = useRouter();
   const params = useLocalSearchParams();
   const total = Math.max(1, Math.min(5, parseInt(params.life, 10) || 3));
@@ -183,3 +185,8 @@ const styles = StyleSheet.create({
   sendOff: { backgroundColor: colors.honeySoft },
   sendText: { fontSize: 15, fontFamily: fonts.bold, color: colors.text },
 });
+
+export default function BombPlayScreen() {
+  const { id } = useLocalSearchParams();
+  return playLive() && id ? <LiveBombPlay id={id} /> : <MockBombPlayScreen />;
+}

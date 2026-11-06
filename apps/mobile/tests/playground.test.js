@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { afterEach, beforeEach, test } from "node:test";
 
 import { base64ToBytes } from "../src/features/playground/upload.js";
-import { bestView, bitsOf, boardRow, drawResultView, photoGuessView, photoResultView, zoomBoxStyle, familyView, quizAnswerBody, quizPlayView, quizQuestions, quizResultView, boardView, clockLabel, indexOfBits, pastLabel, playRoute, rankingView, revealLabel, withIga } from "../src/features/playground/adapt.js";
+import { bestView, bitsOf, bombChat, bombPath, bombScreen, boardRow, recordNote, drawResultView, photoGuessView, photoResultView, zoomBoxStyle, familyView, quizAnswerBody, quizPlayView, quizQuestions, quizResultView, boardView, clockLabel, indexOfBits, pastLabel, playRoute, rankingView, revealLabel, withIga } from "../src/features/playground/adapt.js";
 
 process.env.EXPO_PUBLIC_API_URL = "http://api.test";
 process.env.EXPO_PUBLIC_DEV_TOKEN = "legacy-dev-token";
@@ -62,7 +62,7 @@ test("화면 주소에 문제 id 와 종류를 싣는다", () => {
   assert.equal(playRoute("past", 3, "x"), "/play/photo-result?id=x");
   assert.equal(playRoute("sent", 1, "x"), "/play/sent-detail?id=x&kind=quiz");
   assert.equal(playRoute("sentPast", 2, "x"), "/play/sent-result?id=x&kind=draw");
-  assert.equal(playRoute("todo", 4, "x"), "/play"); // 폭탄은 서버 API 가 없다
+  assert.equal(playRoute("todo", 4, "x"), "/play/bomb-lobby?id=x"); // 폭탄방은 상태에 따라 화면이 옮겨 준다
 });
 
 const row = (over = {}) => ({
@@ -400,4 +400,54 @@ test("탐정단 올리기: 사진·출처·확대·위치·질문·보기·정�
 test("그림판 PNG(base64)를 바이트로 바꾼다", () => {
   assert.deepEqual([...base64ToBytes("iVBORw==")], [137, 80, 78, 71]);
   assert.deepEqual([...base64ToBytes("data:image/png;base64,iVBORw==")], [137, 80, 78, 71]); // data 주소 머리말은 뗀다
+});
+
+test("폭탄방 현황판 줄: 받는 쪽은 입장 카드, 방장은 입장 인원", () => {
+  const room = { id: "b1", game: 4, maker: { id: "u1", name: "엄마" }, close_at: at(0, 12), closed: false, progress_done: 3, progress_total: 0, question_count: 0 };
+  assert.deepEqual(boardRow(room, "todo", NOW), { id: "b1", game: "bomb", route: "/play/bomb-lobby?id=b1", title: "엄마가 폭탄 방을 열었어요", sub: "", action: "입장", strong: true });
+  assert.deepEqual(boardRow(room, "sent", NOW), { id: "b1", game: "bomb", route: "/play/bomb-lobby?id=b1", title: "내가 연 문장 폭탄 방", sub: "방이 열려 있어요 · 3명 입장", strong: true });
+});
+
+test("폭탄 화면 고르기: 상태와 내 처지에 따라", () => {
+  assert.equal(bombScreen({ phase: "lobby", my_status: "player" }), "lobby");
+  assert.equal(bombScreen({ phase: "lobby", my_status: "none" }), "lobby");
+  assert.equal(bombScreen({ phase: "playing", my_status: "player" }), "play");
+  assert.equal(bombScreen({ phase: "playing", my_status: "out" }), "spectate");
+  assert.equal(bombScreen({ phase: "playing", my_status: "spectator" }), "spectate");
+  assert.equal(bombScreen({ phase: "playing", my_status: "none" }), "lobby"); // 방에 안 들어왔으면 들어올 수 있는 로비
+  assert.equal(bombScreen({ phase: "finished", my_status: "player" }), "result");
+  assert.equal(bombScreen({ phase: "closed", my_status: "player", result: { round_no: 1 } }), "result");
+  assert.equal(bombScreen({ phase: "closed", my_status: "player", result: null }), "lobby");
+  assert.equal(bombPath("spectate", "r 1"), "/play/bomb-spectate?id=r%201");
+});
+
+test("가족 기록 안내", () => {
+  assert.equal(recordNote({ is_record: true, prev_record: 11 }), "우리 가족 신기록이에요\n(이전 11개)");
+  assert.equal(recordNote({ is_record: true, prev_record: null }), "우리 가족 첫 기록이에요");
+  assert.equal(recordNote({ is_record: false, prev_record: 14 }), "우리 가족 기록은 14개예요");
+  assert.equal(recordNote({ is_record: false, prev_record: null }), "");
+});
+
+test("폭탄 채팅: 말풍선, 문장 끝냄·시간 초과 안내, 응원", () => {
+  const p = (id, name) => ({ id, name });
+  const chat = bombChat(
+    [
+      { id: "t1", kind: "say", player: p("u1", "엄마"), text: "누가", ended: false, lost_life: false, out: false },
+      { id: "t2", kind: "say", player: p("me", "수진"), text: "먹었다", ended: true, lost_life: true, out: false },
+      { id: "t3", kind: "timeout", player: p("u1", "엄마"), text: "", ended: false, lost_life: true, out: true },
+      { id: "c1", kind: "cheer", player: p("u3", "아들"), text: "힘내요", ended: false, lost_life: false, out: false },
+      { id: "t4", kind: "say", player: p("u1", "엄마"), text: "밥을", ended: true, reason: "repeat", lost_life: true, out: false },
+    ],
+    "me",
+  );
+  assert.deepEqual(chat.map((c) => [c.kind, c.text, c.mine ?? false]), [
+    ["say", "누가", false],
+    ["say", "먹었다", true],
+    ["system", "수진이 문장을 끝냈어요 · 생명 -1", false],
+    ["system", "엄마 시간 초과 · 생명 -1 · 탈락", false],
+    ["cheer", "힘내요!", false],
+    ["say", "밥을", false],
+    ["system", "엄마가 같은 말을 또 했어요 · 생명 -1", false],
+  ]);
+  assert.deepEqual(bombChat(null, "me"), []);
 });

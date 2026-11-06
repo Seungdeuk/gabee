@@ -68,3 +68,22 @@ export async function createPhoto({ image, source, zoom, boxX, boxY, question, o
   for (const id of playerIds) form.append("player_ids", id);
   return apiFetch("/play/photos", { method: "POST", body: form });
 }
+
+// ---------- 문장 폭탄방(폴링: 화면이 1초쯤마다 getBomb 을 부른다) ----------
+const bombPath = (id, tail = "") => `/play/bomb/${encodeURIComponent(id)}${tail}`;
+
+/** 우리 가족의 열려 있는 폭탄방(없으면 null) */
+export const getBombCurrent = () => apiFetch("/play/bomb/current");
+/** 폭탄방을 연다(방장). 이미 열려 있으면 409 room_open */
+export const createBomb = () => apiFetch("/play/bomb", { method: "POST" });
+/** 방 상태: 선수·생명, 지금 차례와 남은 시간, 채팅, 끝났으면 결과 */
+export const getBomb = (id) => apiFetch(bombPath(id));
+export const joinBomb = (id) => apiFetch(bombPath(id, "/join"), { method: "POST" });
+export const leaveBomb = (id) => apiFetch(bombPath(id, "/leave"), { method: "POST" });
+/** 게임 시작 / 한 판 더(방장). 생명 1~5, 차례당 1~60초 */
+export const startBomb = (id, { life, sec }) => apiFetch(bombPath(id, "/start"), { method: "POST", body: { life, sec } });
+/** 내 차례에 이어 말하기(10자까지) */
+export const sayBomb = (id, word) => apiFetch(bombPath(id, "/say"), { method: "POST", body: { word } });
+/** 탈락·구경하는 사람의 응원(정해진 말, 5초에 한 번) */
+export const cheerBomb = (id, text) => apiFetch(bombPath(id, "/cheer"), { method: "POST", body: { text } });
+export const closeBomb = (id) => apiFetch(bombPath(id, "/close"), { method: "POST" });

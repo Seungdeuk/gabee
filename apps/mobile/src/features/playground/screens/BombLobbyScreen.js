@@ -13,6 +13,8 @@ import PlayIcon from "../components/PlayIcon";
 import PlayScreen from "../components/PlayScreen";
 import { GAMES } from "../games";
 import { bombRoom, closeRoom } from "../mock";
+import { playLive } from "../hooks";
+import { LiveBombEntry, LiveBombLobby } from "./BombLiveScreens";
 
 
 // 방에 들어온 가족(시안). joined 가 false 면 "초대하기" 버튼
@@ -20,7 +22,7 @@ const ROW_H = 52; // 선수 한 줄 높이
 const VISIBLE_PLAYERS = 4; // 나 포함 4명까지 보이고 나머지는 이 영역 안에서 스크롤
 
 /** 문장 폭탄 로비: 생명·시간 설정, 선수 대기 목록, 초대하기(공유 링크), 게임 시작. */
-export default function BombLobbyScreen() {
+function MockBombLobbyScreen() {
   const router = useRouter();
   const { host: hostParam, life: lifeParam, sec: secParam } = useLocalSearchParams();
   const host = hostParam !== "0"; // 내가 연 방이면 방장, 초대받아 들어왔으면 손님
@@ -85,3 +87,10 @@ const styles = StyleSheet.create({
   sectionSub: { fontSize: 13, fontFamily: fonts.regular, color: colors.textSub },
   note: { ...font.caption, color: colors.textSub, textAlign: "center" },
 });
+
+/** 서버에 연결되면 id 가 있는 방으로, id 가 없으면(홈의 카드) 열린 방을 찾거나 새로 연다. 아니면 시안. */
+export default function BombLobbyScreen() {
+  const { id } = useLocalSearchParams();
+  if (!playLive()) return <MockBombLobbyScreen />;
+  return id ? <LiveBombLobby id={id} /> : <LiveBombEntry />;
+}

@@ -15554,6 +15554,701 @@
           }
         }
       }
+    },
+    "/play/bomb/current": {
+      "get": {
+        "tags": [
+          "play"
+        ],
+        "summary": "Current",
+        "description": "우리 가족의 열려 있는 폭탄방(없으면 null). 가족마다 한 번에 하나만 열 수 있다.",
+        "operationId": "current_play_bomb_current_get",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-gyeot-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Gyeot-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/PlayBombStateOut"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "title": "Response Current Play Bomb Current Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/play/bomb": {
+      "post": {
+        "tags": [
+          "play"
+        ],
+        "summary": "Create",
+        "description": "폭탄방을 연다(방장). 이미 열린 방이 있으면 409 room_open.",
+        "operationId": "create_play_bomb_post",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-gyeot-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Gyeot-Token"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlayBombStateOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/play/bomb/{room_id}": {
+      "get": {
+        "tags": [
+          "play"
+        ],
+        "summary": "Get Room",
+        "description": "방 상태: 선수·생명, 지금 차례와 남은 시간, 채팅, 판이 끝났으면 결과. 제한 시간이 지난 차례는 이때 시간 초과로 기록한다.",
+        "operationId": "get_room_play_bomb__room_id__get",
+        "parameters": [
+          {
+            "name": "room_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Room Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-gyeot-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Gyeot-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlayBombStateOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/play/bomb/{room_id}/join": {
+      "post": {
+        "tags": [
+          "play"
+        ],
+        "summary": "Join",
+        "description": "방에 들어온다. 게임이 시작된 뒤에 들어오면 이번 판은 구경한다.",
+        "operationId": "join_play_bomb__room_id__join_post",
+        "parameters": [
+          {
+            "name": "room_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Room Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-gyeot-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Gyeot-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlayBombStateOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/play/bomb/{room_id}/leave": {
+      "post": {
+        "tags": [
+          "play"
+        ],
+        "summary": "Leave",
+        "description": "방을 나간다(방장은 불가). 게임 중에 나가면 탈락한다.",
+        "operationId": "leave_play_bomb__room_id__leave_post",
+        "parameters": [
+          {
+            "name": "room_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Room Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-gyeot-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Gyeot-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlayBombStateOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/play/bomb/{room_id}/start": {
+      "post": {
+        "tags": [
+          "play"
+        ],
+        "summary": "Start",
+        "description": "게임 시작 또는 한 판 더(방장). 생명 1~5, 차례당 1~60초. 방에 2명 이상 있어야 한다.",
+        "operationId": "start_play_bomb__room_id__start_post",
+        "parameters": [
+          {
+            "name": "room_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Room Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-gyeot-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Gyeot-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PlayBombStartIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlayBombStateOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/play/bomb/{room_id}/say": {
+      "post": {
+        "tags": [
+          "play"
+        ],
+        "summary": "Say",
+        "description": "내 차례에 이어 말한다(10자까지). 이어 말한 문장이 끝났다고 판정되면 생명이 줄어든다.",
+        "operationId": "say_play_bomb__room_id__say_post",
+        "parameters": [
+          {
+            "name": "room_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Room Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-gyeot-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Gyeot-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PlayBombSayIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlayBombStateOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/play/bomb/{room_id}/cheer": {
+      "post": {
+        "tags": [
+          "play"
+        ],
+        "summary": "Cheer",
+        "description": "탈락했거나 구경하는 사람의 응원. 정해진 말만 보낼 수 있고 한 사람이 5초에 한 번이다(429 cheer_cooldown).",
+        "operationId": "cheer_play_bomb__room_id__cheer_post",
+        "parameters": [
+          {
+            "name": "room_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Room Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-gyeot-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Gyeot-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PlayBombCheerIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlayBombStateOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/play/bomb/{room_id}/close": {
+      "post": {
+        "tags": [
+          "play"
+        ],
+        "summary": "Close",
+        "description": "방을 닫는다(방장, 게임 중에는 불가).",
+        "operationId": "close_play_bomb__room_id__close_post",
+        "parameters": [
+          {
+            "name": "room_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Room Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-gyeot-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Gyeot-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlayBombStateOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -26929,6 +27624,426 @@
         ],
         "title": "PlayQuotaOut",
         "description": "오늘(한국 시간) 내가 낸 문제 수와 문제 내기 점수(+20)를 받을 수 있는 남은 횟수."
+      },
+      "PlayBombCheerIn": {
+        "properties": {
+          "text": {
+            "type": "string",
+            "maxLength": 10,
+            "minLength": 1,
+            "title": "Text"
+          }
+        },
+        "type": "object",
+        "required": [
+          "text"
+        ],
+        "title": "PlayBombCheerIn",
+        "description": "관전 응원. 정해진 말 중에서 고른다."
+      },
+      "PlayBombMessageOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "say",
+              "timeout",
+              "cheer"
+            ],
+            "title": "Kind"
+          },
+          "player": {
+            "$ref": "#/components/schemas/PlayPersonOut"
+          },
+          "text": {
+            "type": "string",
+            "title": "Text"
+          },
+          "ended": {
+            "type": "boolean",
+            "title": "Ended",
+            "default": false
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "end",
+                  "repeat"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "lost_life": {
+            "type": "boolean",
+            "title": "Lost Life",
+            "default": false
+          },
+          "out": {
+            "type": "boolean",
+            "title": "Out",
+            "default": false
+          },
+          "at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "kind",
+          "player",
+          "text",
+          "at"
+        ],
+        "title": "PlayBombMessageOut",
+        "description": "채팅 한 줄. say 말함, timeout 시간 초과, cheer 관전 응원."
+      },
+      "PlayBombPlayerOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "joined": {
+            "type": "boolean",
+            "title": "Joined"
+          },
+          "host": {
+            "type": "boolean",
+            "title": "Host",
+            "default": false
+          },
+          "lives": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lives"
+          },
+          "total": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total"
+          },
+          "out": {
+            "type": "boolean",
+            "title": "Out",
+            "default": false
+          },
+          "spectator": {
+            "type": "boolean",
+            "title": "Spectator",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "joined"
+        ],
+        "title": "PlayBombPlayerOut"
+      },
+      "PlayBombRankOut": {
+        "properties": {
+          "player": {
+            "$ref": "#/components/schemas/PlayPersonOut"
+          },
+          "rank": {
+            "type": "integer",
+            "title": "Rank"
+          },
+          "sub": {
+            "type": "string",
+            "title": "Sub"
+          },
+          "points": {
+            "type": "integer",
+            "title": "Points"
+          }
+        },
+        "type": "object",
+        "required": [
+          "player",
+          "rank",
+          "sub",
+          "points"
+        ],
+        "title": "PlayBombRankOut"
+      },
+      "PlayBombResultOut": {
+        "properties": {
+          "round_no": {
+            "type": "integer",
+            "title": "Round No"
+          },
+          "winner": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PlayPersonOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "longest_len": {
+            "type": "integer",
+            "title": "Longest Len"
+          },
+          "prev_record": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Prev Record"
+          },
+          "is_record": {
+            "type": "boolean",
+            "title": "Is Record",
+            "default": false
+          },
+          "ranking": {
+            "items": {
+              "$ref": "#/components/schemas/PlayBombRankOut"
+            },
+            "type": "array",
+            "title": "Ranking"
+          },
+          "my_points": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "My Points"
+          }
+        },
+        "type": "object",
+        "required": [
+          "round_no",
+          "longest_len",
+          "ranking"
+        ],
+        "title": "PlayBombResultOut"
+      },
+      "PlayBombSayIn": {
+        "properties": {
+          "word": {
+            "type": "string",
+            "maxLength": 30,
+            "minLength": 1,
+            "title": "Word"
+          }
+        },
+        "type": "object",
+        "required": [
+          "word"
+        ],
+        "title": "PlayBombSayIn",
+        "description": "내 차례에 이어 말하는 한 단어나 짧은 구(10자까지)."
+      },
+      "PlayBombStartIn": {
+        "properties": {
+          "life": {
+            "type": "integer",
+            "maximum": 5.0,
+            "minimum": 1.0,
+            "title": "Life",
+            "default": 3
+          },
+          "sec": {
+            "type": "integer",
+            "maximum": 60.0,
+            "minimum": 1.0,
+            "title": "Sec",
+            "default": 10
+          }
+        },
+        "type": "object",
+        "title": "PlayBombStartIn",
+        "description": "방장이 게임을 시작할 때 정하는 규칙. 생명 1~5(기본 3), 차례당 시간 1~60초(기본 10)."
+      },
+      "PlayBombStateOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "phase": {
+            "type": "string",
+            "enum": [
+              "lobby",
+              "playing",
+              "finished",
+              "closed"
+            ],
+            "title": "Phase"
+          },
+          "host": {
+            "$ref": "#/components/schemas/PlayPersonOut"
+          },
+          "is_host": {
+            "type": "boolean",
+            "title": "Is Host"
+          },
+          "my_status": {
+            "type": "string",
+            "enum": [
+              "none",
+              "player",
+              "out",
+              "spectator"
+            ],
+            "title": "My Status"
+          },
+          "players": {
+            "items": {
+              "$ref": "#/components/schemas/PlayBombPlayerOut"
+            },
+            "type": "array",
+            "title": "Players"
+          },
+          "round_no": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Round No"
+          },
+          "life": {
+            "type": "integer",
+            "title": "Life"
+          },
+          "sec": {
+            "type": "integer",
+            "title": "Sec"
+          },
+          "turn": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PlayBombTurnOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "chain": {
+            "type": "integer",
+            "title": "Chain",
+            "default": 0
+          },
+          "messages": {
+            "items": {
+              "$ref": "#/components/schemas/PlayBombMessageOut"
+            },
+            "type": "array",
+            "title": "Messages",
+            "default": []
+          },
+          "cheers": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Cheers",
+            "default": []
+          },
+          "cheer_wait": {
+            "type": "number",
+            "title": "Cheer Wait",
+            "default": 0
+          },
+          "result": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PlayBombResultOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "close_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Close At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "phase",
+          "host",
+          "is_host",
+          "my_status",
+          "players",
+          "life",
+          "sec",
+          "close_at"
+        ],
+        "title": "PlayBombStateOut"
+      },
+      "PlayBombTurnOut": {
+        "properties": {
+          "player": {
+            "$ref": "#/components/schemas/PlayPersonOut"
+          },
+          "seconds_left": {
+            "type": "number",
+            "title": "Seconds Left"
+          },
+          "deadline": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Deadline"
+          }
+        },
+        "type": "object",
+        "required": [
+          "player",
+          "seconds_left",
+          "deadline"
+        ],
+        "title": "PlayBombTurnOut"
       }
     }
   }

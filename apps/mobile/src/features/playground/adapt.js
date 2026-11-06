@@ -68,6 +68,7 @@ const ACTION = { quiz: "풀기", draw: "맞히기", photo: "맞히기" };
 /** 시안과 같은 주소 모양: 상세 화면은 id 로 서버에서 다시 불러오고, 게임 종류는 kind 로 알려 준다. */
 export function playRoute(section, game, id) {
   const key = gameKey(game);
+  if (key === "bomb") return `/play/bomb-lobby?id=${encodeURIComponent(id)}`; // 방 상태에 따라 화면이 알맞은 곳으로 옮겨 준다
   const base = ROUTE[section]?.[key];
   if (!base) return "/play";
   const kind = section === "joined" || section === "sent" || section === "sentPast" ? `&kind=${key}` : "";
@@ -84,6 +85,13 @@ export function boardRow(row, section, now = new Date()) {
   const key = gameKey(row.game);
   const game = GAMES[key];
   const mine = section === "sent" || section === "sentPast";
+  if (key === "bomb") {
+    // 열려 있는 폭탄방: 받는 쪽은 맨 위 노란 카드, 방장은 입장 인원만 보인다
+    const base = { id: row.id, game: key, route: playRoute(section, row.game, row.id) };
+    return section === "sent"
+      ? { ...base, title: "내가 연 문장 폭탄 방", sub: `방이 열려 있어요 · ${row.progress_done}명 입장`, strong: true }
+      : { ...base, title: `${withIga(row.maker?.name ?? "가족")} 폭탄 방을 열었어요`, sub: "", action: "입장", strong: true };
+  }
   const title = `${mine ? "내가" : withIga(row.maker?.name ?? "가족")} 낸 ${game.name}`;
   const item = { id: row.id, game: key, route: playRoute(section, row.game, row.id), title };
   if (section === "past" || section === "sentPast") return { ...item, sub: pastLabel(row.close_at, now), action: "결과 보기" };
@@ -333,4 +341,49 @@ export function zoomBoxStyle({ x, y, zoom }) {
   const top = Math.min(Math.max(y - size / 2, 0), 1 - size);
   const pct = (v) => `${Math.round(v * 10000) / 100}%`;
   return { left: pct(left), top: pct(top), width: pct(size), height: pct(size) };
+}
+
+/**
+ * 폭탄방 상태에 따라 지금 보여 줄 화면. 모든 폭탄 화면이 상태를 받을 때마다 이 값과 자기 화면을 비교해서 옮겨 간다.
+ * @param {{ phase: "lobby" | "playing" | "finished" | "closed", my_status: "none" | "player" | "out" | "spectator", result?: object | null }} room
+ * @returns {"lobby" | "play" | "spectate" | "result"}
+ */
+export function bombScreen(room) {
+  if (room.phase === "playing") return room.my_status === "player" ? "play" : room.my_status === "none" ? "lobby" : "spectate";
+  if (room.phase === "finished" || (room.phase === "closed" && room.result)) return "result";
+  return "lobby";
+}
+
+const BOMB_PATH = { lobby: "bomb-lobby", play: "bomb-play", spectate: "bomb-spectate", result: "bomb-result" };
+
+/** 폭탄 화면 주소 */
+export const bombPath = (screen, id) => `/play/${BOMB_PATH[screen]}?id=${encodeURIComponent(id)}`;
+
+/** 우리 가족 기록 안내(결과 화면) */
+export function recordNote(result) {
+  if (result.is_record) return result.prev_record ? `우리 가족 신기록이에요\n(이전 ${result.prev_record}개)` : "우리 가족 첫 기록이에요";
+  return result.prev_record ? `우리 가족 기록은 ${result.prev_record}개예요` : "";
+}
+
+/**
+ * 채팅 한 줄 → 화면에 그릴 모양. kind: say(말풍선) / system(시간 초과·문장 끝냄 안내) / cheer(응원).
+ * 말 한 줄이 문장을 끝냈거나 시간이 지나 생명이 줄었으면 뒤에 안내 줄을 하나 더 붙인다.
+ */
+export function bombChat(messages, myId) {
+  const out = [];
+  for (const m of messages ?? []) {
+    const mine = m.player.id === myId;
+    if (m.kind === "timeout") {
+      out.push({ id: m.id, kind: "system", text: `${m.player.name} 시간 초과 · 생명 -1${m.out ? " · 탈락" : ""}` });
+    } else if (m.kind === "cheer") {
+      out.push({ id: m.id, kind: "cheer", uid: m.player.id, name: m.player.name, text: `${m.text}`.replace(/!?$/, "!").replace("!!", "!"), mine });
+    } else {
+      out.push({ id: m.id, kind: "say", uid: m.player.id, name: m.player.name, text: m.text, mine });
+      if (m.ended) {
+        const what = m.reason === "repeat" ? "같은 말을 또 했어요" : "문장을 끝냈어요"; // 이번 문장에서 나온 말을 또 해도 생명이 줄어든다
+        out.push({ id: `${m.id}e`, kind: "system", text: `${m.player.name}${hasFinalConsonant(m.player.name) ? "이" : "가"} ${what} · 생명 -1${m.out ? " · 탈락" : ""}` });
+      }
+    }
+  }
+  return out;
 }
