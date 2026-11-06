@@ -27,6 +27,8 @@ test("소통 탭 상단: 돋보기 버튼과 검색 토글은 없고 검색창�
   const header = read("components/ChatListHeader.js");
   assert.doesNotMatch(header, /label=\{searching|name=\{searching|onToggleSearch|autoFocus/); // 돋보기·닫기 토글과 자동 포커스가 없다
   assert.match(header, /accessibilityLabel="채팅 검색"/); // 검색창은 남는다
+  // 안드로이드에서 글자가 위로 치우치지 않게: 줄 높이를 글자 크기에 맞추고 글꼴 여백을 빼며 세로 가운데로 둔다(font.body 의 줄 높이 24 는 입력창에서 글자를 위로 밀어 올린다)
+  assert.match(header, /input: \{[^}]*lineHeight: 18[^}]*includeFontPadding: false[^}]*textAlignVertical: "center"/);
   assert.match(header, /position: "absolute", top: -SETTINGS_RAISE/); // 제목 높이에 따라 내려가지 않는다
   const screen = read("screens/FamilyChatScreen.js");
   assert.doesNotMatch(screen, /setSearching|toggleSearch/);

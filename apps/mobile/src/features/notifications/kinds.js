@@ -8,6 +8,7 @@ export const KIND_META = {
   family_group: { label: "가족", icon: "people-outline", color: colors.peach },
   ai_record: { label: "기록", icon: "document-text-outline", color: colors.textMuted },
   support: { label: "고객센터", icon: "chatbubble-ellipses-outline", color: colors.accent },
+  chat: { label: "소통", icon: "chatbubbles-outline", color: colors.primary }, // 푸시 설정에서만 끄는 분류(알림함에는 남지 않아 칩이 없다)
 };
 
 const FALLBACK_META = { label: "알림", icon: "notifications-outline", color: colors.textMuted };

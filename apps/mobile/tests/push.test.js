@@ -3,7 +3,6 @@ import assert from "node:assert/strict";
 import { afterEach, beforeEach, test } from "node:test";
 
 import {
-  PREVIEW_OPTIONS,
   PUSH_CHANNEL_ID,
   createTokenTracker,
   isQuietOn,
@@ -13,6 +12,7 @@ import {
   toggleKind,
   withQuiet,
 } from "../src/features/notifications/push.js";
+import { KIND_META, KIND_ORDER } from "../src/features/notifications/kinds.js";
 
 process.env.EXPO_PUBLIC_API_URL = "http://api.test";
 process.env.EXPO_PUBLIC_DEV_TOKEN = "legacy-dev-token";
@@ -47,10 +47,19 @@ test("isUsableToken accepts Expo token shapes only", () => {
   assert.equal(isUsableToken(`ExponentPushToken[${"x".repeat(300)}]`), false);
 });
 
-test("routeForPush always opens the notification box in stage 1", () => {
+test("routeForPush: 알림함 사건은 알림함으로, 소통 푸시는 채팅방을 여는 길로 간다", () => {
   assert.equal(routeForPush(undefined), "/notifications");
   assert.equal(routeForPush(null), "/notifications");
   assert.equal(routeForPush({ kind: "schedule", notification_id: "n1" }), "/notifications");
+  assert.equal(routeForPush({ kind: "chat", room_id: "ab12cd34ef56" }), "/chat-open?roomId=ab12cd34ef56");
+  assert.equal(routeForPush({ kind: "chat", room_id: "a b&c" }), "/chat-open?roomId=a%20b%26c"); // 값은 주소에 안전하게 담는다
+  assert.equal(routeForPush({ kind: "chat" }), "/family-chat"); // 방 id 가 없으면 소통 탭 목록
+  assert.equal(routeForPush({ kind: "chat", room_id: 7 }), "/family-chat"); // 문자열이 아니면 믿지 않는다
+});
+
+test("chat 은 푸시 설정에서 끌 수 있는 분류로 표시된다(알림함 칩에는 없다)", () => {
+  assert.equal(KIND_META.chat.label, "소통");
+  assert.equal(KIND_ORDER.includes("chat"), false);
 });
 
 test("push channel id matches the server's channelId", () => {
@@ -115,13 +124,6 @@ test("quiet hours preset: on sets 22:00~07:00, off clears, state is read from th
   assert.equal(base.quiet_start, null); // 입력은 바꾸지 않는다
 });
 
-test("PREVIEW_OPTIONS lists the three server modes in order", () => {
-  assert.deepEqual(
-    PREVIEW_OPTIONS.map((o) => o.key),
-    ["full", "sender", "hidden"],
-  );
-});
-
 test("token tracker remembers a token and hands it out once for release", () => {
   const tracker = createTokenTracker();
   assert.equal(tracker.take(), null); // 기억한 게 없으면 null
@@ -138,4 +140,12 @@ test("token tracker marks a registration stale when a release happened meanwhile
   tracker.take(); // 로그아웃(해제)이 먼저 지나갔다
   assert.equal(tracker.isStale(started), true);
   assert.equal(tracker.isStale(tracker.begin()), false); // 새로 시작한 등록은 유효
+});
+
+test("알림 설정 화면: 소통 항목이 있고 더는 쓸모없는 '메시지 내용 표시 방식' 선택은 없다", async () => {
+  const { readFileSync } = await import("node:fs");
+  const screen = readFileSync(new URL("../src/features/notifications/screens/PushSettingsScreen.js", import.meta.url), "utf8");
+  assert.match(screen, /const KIND_KEYS = \["chat", /);
+  assert.doesNotMatch(screen, /PREVIEW_OPTIONS|Segmented|preview_mode: /);
+  assert.match(screen, /새 메시지가 도착했어요/);
 });
