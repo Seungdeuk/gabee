@@ -17,10 +17,10 @@ from app.features.ops_admin.middleware import RequestMetricsMiddleware
 from app.features.ops_admin.router import router as ops_admin_router
 from app.features.ops_admin.service import aggregator as ops_metrics
 from app.features.play.router import router as play_router
+from app.features.schedule import push_schedule
 from app.features.schedule.router import router as schedule_router
 from app.features.service_admin.router import router as admin_router
 from app.features.support.router import router as support_router
-from app.shared import push_schedule
 from app.shared.config import settings
 from app.shared.db import init_db
 from app.shared.errors import register_error_handlers, set_error_observer

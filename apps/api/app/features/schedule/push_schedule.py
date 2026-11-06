@@ -10,17 +10,19 @@ import threading
 from collections import defaultdict
 from datetime import UTC, datetime, time, timedelta
 
-from sqlalchemy import select
+from sqlalchemy import and_, exists, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.features.schedule.constants import KIND_APPOINTMENT, KIND_TODO
-from app.features.schedule.models import Event
-from app.features.schedule.timeutil import local_tz
+from app.features.family_group.models import GroupMember
 from app.shared.config import settings
 from app.shared.db import SessionLocal
-from app.shared.push import push_only
+from app.shared.push import plan_recipients, push_only
 from app.shared.push_models import ScheduledPushLog
+
+from .constants import KIND_APPOINTMENT, KIND_TODO
+from .models import Event
+from .timeutil import local_tz
 
 logger = logging.getLogger(__name__)
 
@@ -32,6 +34,13 @@ EVENT_TITLE = "30분 안에 시작하는 일정이 있어요"
 TODO_TITLE = "오늘까지인 할 일이 있어요"
 
 _started = threading.Event()
+
+# 종일 일정은 앱이 00:00~23:59 로 저장한다(시간 칸이 비어 있지 않다). 시작 시각만 보면 전날 23:30 에 "30분 안에 시작" 푸시가 가므로 뺀다.
+_ALL_DAY = and_(Event.start_time == time(0, 0), Event.end_time == time(23, 59))
+# 지금도 이 가족인 사람의 일정만(가족을 나가도 일정 줄은 남는다)
+_STILL_MEMBER = exists().where(
+    GroupMember.group_id == Event.group_id, GroupMember.user_id == Event.user_id
+)
 
 
 def _claim(db: Session, key: str, user_id: str) -> bool:
@@ -49,13 +58,18 @@ def _due_events(db: Session, now: datetime) -> list[tuple[str, str]]:
     tz = local_tz()
     local = now.astimezone(tz)
     rows = db.execute(
-        select(Event.id, Event.user_id, Event.start_date, Event.start_time).where(
+        select(Event.id, Event.user_id, Event.start_date, Event.start_time)
+        .where(
             Event.kind == KIND_APPOINTMENT,
             Event.deleted_at.is_(None),
             Event.user_id.is_not(None),
+            Event.checked.is_(False),  # 이미 한 약속은 알리지 않는다
             Event.start_date.in_({local.date(), (local + EVENT_LEAD).date()}),
             Event.start_time.is_not(None),
+            ~_ALL_DAY,
+            _STILL_MEMBER,
         )
+        .order_by(Event.id)  # 서버가 여러 대여도 같은 순서로 선점해 교착을 피한다
     )
     out = []
     for event_id, user_id, start_date, start_time in rows:
@@ -72,14 +86,20 @@ def _due_todos(db: Session, now: datetime) -> list[tuple[str, str]]:
     local = now.astimezone(local_tz())
     if local.time() < time(TODO_HOUR, 0):
         return []
+    # 아침 알림이라 오늘 9시 전에 만들어 둔 할 일만 보낸다(22:30 에 방금 만든 할 일을 1분 뒤 알리면 소음이다)
+    nine = datetime.combine(local.date(), time(TODO_HOUR, 0), tzinfo=local.tzinfo)
     rows = db.execute(
-        select(Event.id, Event.user_id).where(
+        select(Event.id, Event.user_id)
+        .where(
             Event.kind == KIND_TODO,
             Event.deleted_at.is_(None),
             Event.user_id.is_not(None),
             Event.checked.is_(False),
             Event.start_date == local.date(),
+            Event.created_at < nine,
+            _STILL_MEMBER,
         )
+        .order_by(Event.id)
     )
     return [(f"todo:{event_id}:{local.date().isoformat()}", user_id) for event_id, user_id in rows]
 
@@ -109,8 +129,22 @@ def run_due(db: Session, now: datetime | None = None) -> int:
         (_due_todos(db, now), TODO_TITLE, "todo_due"),
     ):
         claimed: dict[str, int] = defaultdict(int)
+        receivable: dict[str, bool] = {}
         for key, user_id in due:
-            if _claim(db, key, user_id):
+            if user_id not in receivable:
+                # 푸시를 껐거나 방해금지·토큰 없음으로 지금 못 받는 사람은 기록(선점)하지 않는다 — 방해금지가 끝난 뒤 다음 확인에서 보낸다
+                receivable[user_id] = bool(
+                    plan_recipients(
+                        db,
+                        user_ids=[user_id],
+                        kind="schedule",
+                        title=title,
+                        body=None,
+                        data={},
+                        now=now,
+                    )
+                )
+            if receivable[user_id] and _claim(db, key, user_id):
                 claimed[user_id] += 1
         if claimed:
             _send(db, claimed, title, event)

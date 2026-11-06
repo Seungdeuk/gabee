@@ -2,14 +2,15 @@
 일정을 고치거나 지워도 따로 고칠 예약이 없고, 같은 푸시는 보냈음 기록(고유 키)으로 한 번만 간다. 문구는 고정이라 내용을 싣지 않는다."""
 
 import uuid
-from datetime import datetime, timedelta
+from datetime import datetime, time, timedelta
 
 import pytest
 from sqlalchemy import func, select
 
+from app.features.schedule import push_schedule
 from app.features.schedule.models import Event
 from app.features.schedule.timeutil import local_tz
-from app.shared import push, push_schedule
+from app.shared import push
 from app.shared.config import settings
 from app.shared.db import SessionLocal
 from app.shared.push_models import PushToken, ScheduledPushLog
@@ -63,8 +64,12 @@ def _event(user_id, group_id, start: datetime, *, kind=1, all_day=False, title=E
         starts_at=start,
         kind=kind,
         start_date=local.date(),
-        start_time=None if all_day else local.time().replace(tzinfo=None),
-        **over,
+        # 종일은 앱이 00:00~23:59 로 저장한다(시간 칸이 비어 있지 않다)
+        **{
+            "start_time": time(0, 0) if all_day else local.time().replace(tzinfo=None),
+            "end_time": time(23, 59) if all_day else None,
+            **over,
+        },
     )
     with SessionLocal() as db:
         db.add(row)
@@ -97,7 +102,7 @@ def test_events_outside_the_window_do_not_push(client, home, sent):
     uid = _me(client, a)
     _event(uid, group["id"], NOW + timedelta(minutes=45))  # 아직 멀다
     _event(uid, group["id"], NOW - timedelta(minutes=5))  # 이미 시작했다
-    _event(uid, group["id"], NOW + timedelta(minutes=20), all_day=True)  # 시간이 없는 종일 일정
+    _event(uid, group["id"], NOW + timedelta(minutes=20), all_day=True)  # 종일 일정(00:00~23:59)
     assert _run() == 0 and sent() == []
 
 
@@ -192,3 +197,82 @@ def test_tick_swallows_errors_so_the_loop_keeps_running(monkeypatch):
 
     monkeypatch.setattr(push_schedule, "run_due", boom)
     push_schedule.tick()  # 예외가 밖으로 나오지 않는다
+
+
+def test_all_day_event_is_not_pushed_the_night_before(client, home, sent):
+    """종일 일정은 00:00~23:59 로 저장돼서, 시작 시각만 보면 전날 23:30 에 "30분 안에 시작" 푸시가 간다."""
+    a, _, group = home
+    day = datetime(2026, 11, 11, 0, 0, tzinfo=KST)
+    _event(_me(client, a), group["id"], day, all_day=True)
+    assert _run(day - timedelta(minutes=30)) == 0 and sent() == []  # 전날 23:30
+    assert _run(day - timedelta(minutes=1)) == 0 and sent() == []
+
+
+def test_an_event_that_starts_at_midnight_is_still_pushed_when_it_is_not_all_day(
+    client, home, sent
+):
+    a, _, group = home
+    start = datetime(2026, 11, 11, 0, 10, tzinfo=KST)
+    _event(_me(client, a), group["id"], start, end_time=time(1, 0))  # 00:10~01:00 약속
+    assert _run(datetime(2026, 11, 10, 23, 45, tzinfo=KST)) == 1  # 전날 23:40 이후
+    assert len(sent()) == 1
+
+
+def test_window_edges_30_minutes_before_is_in_the_start_itself_is_out(client, home, sent):
+    a, _, group = home
+    uid = _me(client, a)
+    start = NOW + timedelta(minutes=30)
+    _event(uid, group["id"], start)
+    assert _run(NOW - timedelta(seconds=1)) == 0  # 30분 1초 전
+    assert _run(NOW) == 1  # 정확히 30분 전
+    other = _event(uid, group["id"], NOW + timedelta(minutes=5))
+    assert other and _run(NOW + timedelta(minutes=5)) == 0  # 시작 정각은 이미 시작한 것
+
+
+def test_checked_appointments_and_people_who_left_the_family_are_skipped(client, home, sent):
+    a, b, group = home
+    uid, bid = _me(client, a), _me(client, b)
+    _event(uid, group["id"], NOW + timedelta(minutes=20), checked=True)  # 이미 한 약속
+    _event(bid, group["id"], NOW + timedelta(minutes=20))
+    assert client.post("/family-group/groups/me/leave", headers=b).status_code == 204
+    assert _run() == 0 and sent() == []  # 나간 사람의 일정은 알리지 않는다
+
+
+def test_shared_copies_each_push_to_their_own_owner(client, home, sent):
+    a, b, group = home
+    start = NOW + timedelta(minutes=20)
+    _event(_me(client, a), group["id"], start)
+    _event(_me(client, b), group["id"], start)  # 공유 복사본은 받은 사람 몫의 줄이다
+    assert _run() == 2
+    assert _tokens(sent()) == ["ExponentPushToken[a]", "ExponentPushToken[b]"]
+
+
+def test_a_todo_created_after_9am_is_not_pushed_right_away(client, home, sent):
+    """22:30 에 "오늘 할 일"을 만든 사람에게 1분 뒤 "오늘까지인 할 일이 있어요"가 가면 소음이다."""
+    a, _, group = home
+    morning = datetime(2026, 11, 10, 9, 0, tzinfo=KST)
+    _event(
+        _me(client, a),
+        group["id"],
+        morning + timedelta(hours=9),
+        kind=2,
+        all_day=True,
+        created_at=morning + timedelta(hours=1),  # 9시 넘어 새로 만든 할 일
+    )
+    assert _run(morning + timedelta(hours=2)) == 0 and sent() == []
+
+
+def test_quiet_hours_do_not_use_up_the_push_so_it_goes_out_later(client, home, sent):
+    """방해금지(22:00~09:30)에 걸려 걸러진 아침 알림은 기록을 남기지 않아, 방해금지가 끝난 뒤 다음 확인에서 간다."""
+    a, _, group = home
+    r = client.put(
+        "/notifications/push-settings",
+        json={"quiet_start": "08:00:00", "quiet_end": "09:30:00"},
+        headers=a,
+    )
+    assert r.status_code == 200, r.text
+    morning = datetime(2026, 11, 10, 9, 0, tzinfo=KST)
+    _event(_me(client, a), group["id"], morning + timedelta(hours=9), kind=2, all_day=True)
+    assert _run(morning) == 0 and sent() == []  # 방해금지 중: 보내지도 기록하지도 않는다
+    assert _run(morning + timedelta(minutes=40)) == 1  # 9:40, 방해금지가 끝났다
+    assert len(sent()) == 1
