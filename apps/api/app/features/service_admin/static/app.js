@@ -1,5 +1,5 @@
-// 가비 관리자 화면(서비스 관리). 서버가 /admin/ui 로 내려준다.
-// 모든 탭은 로그인한 뒤 /admin/* API 의 실제 데이터를 쓴다. 문의·신고만 상태와 답변을 바꿀 수 있다.
+// 가비 서비스 관리자 화면. 서버가 /admin/service/ui 로 내려준다.
+// 모든 탭은 로그인한 뒤 /admin/service/* API 의 실제 데이터를 쓴다. 문의·신고(상태·답변)와 공지사항(쓰기·고치기·지우기)만 바꿀 수 있다.
 (function () {
   "use strict";
 
@@ -9,16 +9,20 @@
     ["features", "기능 관리"],
     ["ai", "AI 이용 현황"],
     ["support", "문의 및 신고"],
+    ["notices", "공지사항"],
   ];
   const TOKEN_KEY = "gabee_admin_token";
 
-  // 문의·신고 상태: 화면 글자, 표시 색, 버튼 글자, 버튼을 누르면 바뀔 상태
+  // 문의·신고 상태: 화면 글자, 표시 색, 버튼 글자, 버튼을 누르면 바뀔 상태.
+  // 답변 완료(done)는 버튼이 아니라 답변을 저장할 때만 된다(서버가 자동으로 바꾼다).
   const STATUS = {
     new: { label: "접수", cls: "hot", action: "처리 시작", next: "working" },
-    working: { label: "처리 중", cls: "", action: "처리 완료", next: "done" },
-    done: { label: "처리 완료", cls: "ok" },
+    working: { label: "처리 중", cls: "" },
+    done: { label: "답변 완료", cls: "ok" },
   };
   const KIND = { inquiry: "문의", report: "신고" };
+  // 공지 종류: 앱의 칩과 같은 이름
+  const CATEGORY = { update: "업데이트", info: "안내", maintenance: "점검" };
 
   /**
    * 화면에 넣을 글자를 HTML 로 해석되지 않게 바꾼다.
@@ -51,13 +55,13 @@
   /**
    * 관리자 API 를 부른다. 로그인이 풀렸으면(401) 로그인 화면으로 돌아간다.
    * @param {string} path
-   * @param {object} [body] 주면 PATCH 로 보낸다(문의·신고 상태·답변)
+   * @param {object} [body] 주면 method(기본 PATCH)로 보낸다(문의·신고 상태·답변, 공지 쓰기·고치기)
+   * @param {string} [method] body 없이 DELETE 처럼 보낼 때도 쓴다
    * @returns {Promise<any>}
    */
-  async function api(path, body) {
-    const init = { headers: { Authorization: `Bearer ${token()}` } };
+  async function api(path, body, method = body ? "PATCH" : "GET") {
+    const init = { method, headers: { Authorization: `Bearer ${token()}` } };
     if (body) {
-      init.method = "PATCH";
       init.headers["Content-Type"] = "application/json";
       init.body = JSON.stringify(body);
     }
@@ -67,7 +71,7 @@
       showLogin("로그인이 만료됐어요. 다시 로그인해 주세요.");
       throw new Error("unauthorized");
     }
-    if (res.status === 403 && path === "/admin/me") throw new Error("not_staff"); // 허용 목록에 없는 회원
+    if (res.status === 403 && path === "/admin/service/me") throw new Error("not_staff"); // 허용 목록에 없는 회원
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     return res.status === 204 ? null : res.json();
   }
@@ -77,10 +81,10 @@
    * @returns {Promise<object>}
    */
   async function loadData() {
-    const [me, members, groups, features, ai, support] = await Promise.all(
-      ["/admin/me", "/admin/members", "/admin/groups", "/admin/features", "/admin/ai-usage", "/admin/support"].map((p) => api(p)),
+    const [me, members, groups, features, ai, support, notices] = await Promise.all(
+      ["/admin/service/me", "/admin/service/members", "/admin/service/groups", "/admin/service/features", "/admin/service/ai-usage", "/admin/service/support", "/admin/service/notices"].map((p) => api(p)),
     );
-    return { me, members, groups, features, ai, support };
+    return { me, members, groups, features, ai, support, notices };
   }
 
   // ── 그리기 도우미 ─────────────────────────────────────
@@ -117,7 +121,7 @@
   function statusCells(row) {
     const s = STATUS[row.status];
     const btn = s.next ? `<button type="button" class="btn sm" data-ticket="${esc(row.id)}" data-next="${s.next}">${esc(s.action)}</button>` : "";
-    const reply = `<button type="button" class="btn sm primary" data-reply="${esc(row.id)}">${row.answer ? "답변 고치기" : "답변하기"}</button>`;
+    const reply = `<button type="button" class="btn sm ${row.answer ? "" : "primary"}" data-reply="${esc(row.id)}">${row.answer ? "답변 수정" : "답변하기"}</button>`;
     return `<td><span class="pill ${s.cls}">${esc(s.label)}</span></td><td class="num"><div class="row-actions">${reply}${btn}</div></td>`;
   }
 
@@ -244,15 +248,15 @@
   let supportError = ""; // 마지막 저장 실패 안내
   let lastSupportAt = null; // 문의 목록을 마지막으로 받은 시각
 
-  /** 제목을 누르면 내용과 답변 칸이 펼쳐진다. 내용은 사용자가 직접 쓴 글뿐이다. */
+  /** 제목을 누르면 내용과 답변 칸이 펼쳐진다. 내용은 사용자가 직접 쓴 글뿐이다. 답변을 저장하면 답변 완료가 되고, 다시 저장하면 고쳐진다. */
   function ticketTitle(t) {
-    const answered = t.answered_at ? `<span class="small">답변 ${day(t.answered_at)}</span>` : "<span></span>";
+    const answered = t.answered_at ? `<span class="small">답변 ${day(t.answered_at)}</span>` : '<span class="small">저장하면 답변 완료가 돼요</span>';
     return `<details data-open="${esc(t.id)}" ${t.id === openTicket ? "open" : ""}><summary>${esc(t.title)}</summary>
       <p class="ticket-body">${esc(t.body)}</p>
       <form class="answer" data-answer="${esc(t.id)}">
         <label class="small" for="answer-${esc(t.id)}">답변</label>
         <textarea id="answer-${esc(t.id)}" name="answer" rows="3" maxlength="2000" required>${esc(t.answer || "")}</textarea>
-        <div class="answer-row">${answered}<button type="submit" class="btn sm primary">답변 저장</button></div>
+        <div class="answer-row">${answered}<button type="submit" class="btn sm primary">${t.answer ? "수정 저장" : "답변 저장"}</button></div>
       </form></details>`;
   }
 
@@ -271,7 +275,7 @@
       <section class="grid">
         ${stat("새 문의·신고", `${num(d.new)}건`, "", d.new ? "warn" : "")}
         ${stat("처리 중", `${num(d.working)}건`)}
-        ${stat("처리 완료", `${num(d.done)}건`, "", "up")}
+        ${stat("답변 완료", `${num(d.done)}건`, "", "up")}
         ${stat("신고", `${num(d.reports)}건`, "문의와 따로 셈")}
       </section>
       <section class="card"><h2>문의·신고 목록</h2><p class="small">사용자가 직접 쓴 글만 있어요. 가족 채팅 내용은 담기지 않아요.</p>${table([{ label: "번호" }, { label: "종류" }, { label: "제목 (누르면 내용)" }, { label: "보낸 사람" }, { label: "가족" }, { label: "받은 날" }, { label: "상태" }, { label: "" }], rows)}</section>`;
@@ -280,12 +284,62 @@
   /** 문의·신고를 바꾸고 목록을 다시 받아 그린다. 실패하면 화면 위에 알려 준다. */
   async function updateTicket(id, body) {
     try {
-      await api(`/admin/support/${encodeURIComponent(id)}`, body);
-      data.support = await api("/admin/support");
+      await api(`/admin/service/support/${encodeURIComponent(id)}`, body);
+      data.support = await api("/admin/service/support");
       supportError = "";
     } catch (err) {
       if (err.message === "unauthorized") return;
       supportError = "저장하지 못했어요. 잠시 뒤 다시 해 주세요.";
+    }
+    render();
+  }
+
+  let editingNotice = null; // 고치는 중인 공지 번호(없으면 새 공지 쓰기)
+  let writingNotice = false; // '글쓰기'를 눌러 쓰기 칸을 연 상태. 평소에는 칸을 숨기고 버튼만 둔다
+  let noticeError = "";
+
+  /** 공지 쓰기·고치기 칸. 고치는 중이면 그 공지 내용을 채워 둔다. 글쓰기·고치기를 눌렀을 때만 보인다. */
+  function noticeForm(rows) {
+    if (!writingNotice && !editingNotice) return "";
+    const n = rows.find((r) => r.id === editingNotice) || { category: "info", title: "", body: "" };
+    const options = Object.entries(CATEGORY)
+      .map(([k, label]) => `<option value="${k}" ${k === n.category ? "selected" : ""}>${label}</option>`)
+      .join("");
+    const cancel = '<button type="button" class="btn sm" data-action="cancel-notice">취소</button>';
+    return `<section class="card"><h2>${editingNotice ? "공지 고치기" : "새 공지 쓰기"}</h2>
+      <form class="notice-form" data-notice-form>
+        <div class="notice-fields">
+          <label class="small">종류 <select name="category">${options}</select></label>
+          <label class="small notice-title">제목 <input name="title" maxlength="100" required value="${esc(n.title)}"></label>
+        </div>
+        <label class="small" for="notice-body">내용</label>
+        <textarea id="notice-body" name="body" rows="6" maxlength="5000" required>${esc(n.body)}</textarea>
+        <div class="answer-row"><span class="small">저장하면 바로 앱 더보기 › 공지사항에 보여요. 알림은 가지 않아요.</span><div class="row-actions">${cancel}<button type="submit" class="btn sm primary">${editingNotice ? "고친 내용 저장" : "공지 올리기"}</button></div></div>
+      </form></section>`;
+  }
+
+  function viewNotices(d) {
+    const rows = d.rows.map(
+      (n) => `<tr><td><span class="pill">${esc(CATEGORY[n.category])}</span></td><td><details><summary>${esc(n.title)}</summary><p class="ticket-body">${esc(n.body)}</p></details></td><td>${day(n.created_at)}</td><td>${n.updated_at !== n.created_at ? day(n.updated_at) : "-"}</td><td class="num"><div class="row-actions"><button type="button" class="btn sm" data-notice-edit="${esc(n.id)}">고치기</button><button type="button" class="btn sm" data-notice-delete="${esc(n.id)}">지우기</button></div></td></tr>`,
+    );
+    const error = noticeError ? `<p class="note warn">${esc(noticeError)}</p>` : "";
+    const write = writingNotice || editingNotice ? "" : '<button type="button" class="btn sm primary" data-action="write-notice">글쓰기</button>';
+    return `${head("공지사항", "앱 사용자 모두에게 보이는 서비스 공지")}${error}
+      ${noticeForm(d.rows)}
+      <section class="card"><div class="card-head"><h2>올린 공지 (${num(d.rows.length)}건)</h2>${write}</div>${table([{ label: "종류" }, { label: "제목 (누르면 내용)" }, { label: "올린 날" }, { label: "고친 날" }, { label: "" }], rows)}</section>`;
+  }
+
+  /** 공지를 쓰거나 고치거나 지우고 목록을 다시 받아 그린다. */
+  async function saveNotice(path, body, method) {
+    try {
+      await api(path, body, method);
+      data.notices = await api("/admin/service/notices");
+      editingNotice = null;
+      writingNotice = false;
+      noticeError = "";
+    } catch (err) {
+      if (err.message === "unauthorized") return;
+      noticeError = "저장하지 못했어요. 잠시 뒤 다시 해 주세요.";
     }
     render();
   }
@@ -296,6 +350,7 @@
     features: (data) => viewFeatures(data.features),
     ai: (data) => viewAi(data.ai),
     support: (data) => viewSupport(data.support),
+    notices: (data) => viewNotices(data.notices),
   };
 
   // ── 화면 그리기 ───────────────────────────────────────
@@ -326,7 +381,7 @@
     if (!data || !token()) return;
     let fresh;
     try {
-      fresh = await api("/admin/support");
+      fresh = await api("/admin/service/support");
     } catch {
       return;
     }
@@ -342,7 +397,7 @@
     const key = current();
     renderTabs(key);
     document.getElementById("view").innerHTML = VIEWS[key](data);
-    document.title = `가비 관리자 · ${TABS.find(([k]) => k === key)[1]}`;
+    document.title = `가비 서비스 관리자 · ${TABS.find(([k]) => k === key)[1]}`;
   }
 
   function showLogin(message = "") {
@@ -420,6 +475,30 @@
       updateTicket(step.dataset.ticket, { status: step.dataset.next });
       return;
     }
+    const edit = e.target.closest("[data-notice-edit]");
+    if (edit) {
+      editingNotice = edit.dataset.noticeEdit;
+      render();
+      document.querySelector("[data-notice-form] input[name=title]").focus();
+      return;
+    }
+    if (e.target.closest("[data-action='write-notice']")) {
+      writingNotice = true;
+      render();
+      document.querySelector("[data-notice-form] input[name=title]").focus();
+      return;
+    }
+    if (e.target.closest("[data-action='cancel-notice']")) {
+      editingNotice = null;
+      writingNotice = false;
+      render();
+      return;
+    }
+    const del = e.target.closest("[data-notice-delete]");
+    if (del && window.confirm("이 공지를 지울까요? 앱에서도 바로 사라지고 되돌릴 수 없어요.")) {
+      del.disabled = true;
+      saveNotice(`/admin/service/notices/${encodeURIComponent(del.dataset.noticeDelete)}`, undefined, "DELETE");
+    }
   });
 
   // 펼친 문의를 기억해 두면 저장 뒤 다시 그려도 열린 채로 남는다
@@ -435,6 +514,17 @@
   );
 
   document.addEventListener("submit", (e) => {
+    const nf = e.target.closest("[data-notice-form]");
+    if (nf) {
+      e.preventDefault();
+      const f = nf.elements; // form.title 은 폼의 title 속성이라 elements 로 칸을 찾는다
+      const body = { category: f.category.value, title: f.title.value.trim(), body: f.body.value.trim() };
+      if (!body.title || !body.body) return;
+      nf.querySelector("button[type=submit]").disabled = true;
+      if (editingNotice) saveNotice(`/admin/service/notices/${encodeURIComponent(editingNotice)}`, body, "PUT");
+      else saveNotice("/admin/service/notices", body, "POST");
+      return;
+    }
     const form = e.target.closest("[data-answer]");
     if (!form) return;
     e.preventDefault();

@@ -137,3 +137,24 @@ class AdminTicketsOut(BaseModel):
 class AdminTicketUpdate(BaseModel):
     status: Literal["new", "working", "done"] | None = None
     answer: str | None = Field(default=None, min_length=1, max_length=2000)
+
+
+class AdminNoticeIn(BaseModel):
+    """공지 쓰기·고치기. 종류는 update(업데이트)/info(안내)/maintenance(점검)."""
+
+    category: Literal["update", "info", "maintenance"]
+    title: str = Field(min_length=1, max_length=100)
+    body: str = Field(min_length=1, max_length=5000)
+
+
+class AdminNoticeRow(BaseModel):
+    id: str
+    category: Literal["update", "info", "maintenance"]
+    title: str
+    body: str
+    created_at: datetime
+    updated_at: datetime
+
+
+class AdminNoticesOut(BaseModel):
+    rows: list[AdminNoticeRow]  # 최근순, 최대 200

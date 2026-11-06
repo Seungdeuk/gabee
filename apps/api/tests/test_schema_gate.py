@@ -265,6 +265,7 @@ def test_health_db_reports_ready_state_and_exposes_no_internal_names(client):
         "ai_assistant",
         "notifications",
         "support",
+        "notices",
         "ops_admin",
         "play",
     }

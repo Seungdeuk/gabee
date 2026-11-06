@@ -1,9 +1,10 @@
-"""관리자 집계용 읽기 전용 조회. 다른 기능의 모델 파일을 import 하지 않고 공용 메타데이터의 표로 센다.
+"""관리자 집계용 조회(쓰기는 문의·신고 상태·답변과 공지사항뿐). 다른 기능의 모델 파일을 import 하지 않고 공용 메타데이터의 표로 센다.
 가족 데이터의 내용(채팅 글, 일정 제목, 금액 등)은 읽지 않고 개수와 시각만 쓴다."""
 
+import uuid
 from datetime import datetime
 
-from sqlalchemy import Table, case, func, select, update
+from sqlalchemy import Table, case, delete, func, insert, select, update
 from sqlalchemy.orm import Session
 
 from app.shared.db import Base
@@ -283,3 +284,35 @@ def update_support_ticket(db: Session, ticket_id: str, values: dict) -> bool:
     tickets = _t("support_tickets")
     done = db.execute(update(tickets).where(tickets.c.id == ticket_id).values(**values)).rowcount
     return bool(done)
+
+
+NOTICE_COLUMNS = ("id", "category", "title", "body", "created_at", "updated_at")
+
+
+def notices(db: Session) -> list[dict]:
+    """공지사항 최근순(최대 200). 쓴 관리자 id 는 화면에 보내지 않는다."""
+    t = _t("notices")
+    q = (
+        select(*(t.c[c] for c in NOTICE_COLUMNS))
+        .order_by(t.c.created_at.desc(), t.c.id.desc())
+        .limit(LIST_LIMIT)
+    )
+    return [dict(r._mapping) for r in db.execute(q)]
+
+
+def add_notice(db: Session, values: dict) -> dict:
+    """공지 한 줄을 넣고 그 줄을 돌려준다. 커밋은 부르는 쪽이 한다."""
+    t = _t("notices")
+    row = {"id": uuid.uuid4().hex[:12], **values}
+    db.execute(insert(t).values(**row))
+    return {c: row[c] for c in NOTICE_COLUMNS}
+
+
+def update_notice(db: Session, notice_id: str, values: dict) -> bool:
+    t = _t("notices")
+    return bool(db.execute(update(t).where(t.c.id == notice_id).values(**values)).rowcount)
+
+
+def delete_notice(db: Session, notice_id: str) -> bool:
+    t = _t("notices")
+    return bool(db.execute(delete(t).where(t.c.id == notice_id)).rowcount)

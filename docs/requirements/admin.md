@@ -1,13 +1,13 @@
-# 기능: 서비스 관리자 페이지 (admin)
+# 기능: 서비스 관리자 페이지 (service_admin)
 
 ## 목적
 서비스 관리자가 가비의 회원·가족 그룹·기능 사용·AI 이용을 한곳에서 본다. 가족이 쓰는 앱 기능이 아니다.
-관리자 역할 나누기(서비스 / 운영)와 전체 범위는 `docs/requirements/service-admin.md` 가 기준이다. 이 문서는 서버 기능 폴더 `app/features/admin` 이 지금 만드는 것을 적는다.
+관리자 역할 나누기(서비스 / 운영)와 전체 범위는 `docs/requirements/service-admin.md` 가 기준이다. 이 문서는 서버 기능 폴더 `app/features/service_admin` 이 지금 만드는 것을 적는다.
 
 ## 화면
-- 서버가 `/admin/ui` 로 내려주는 HTML 페이지 한 장(`apps/api/app/features/admin/static/`). 새 라이브러리는 쓰지 않는다.
+- 서버가 `/admin/service/ui` 로 내려주는 HTML 페이지 한 장(`apps/api/app/features/service_admin/static/`). 새 라이브러리는 쓰지 않는다.
 - 가비 앱 계정으로 로그인한다(`POST /family-group/auth/login`). 허용 목록에 없으면 "관리자 계정이 아니에요".
-- 메뉴 5개. 첫 화면은 회원 관리다.
+- 메뉴 6개. 첫 화면은 회원 관리다.
 
 | 메뉴 | 주요 구성 |
 |---|---|
@@ -15,7 +15,8 @@
 | 가족 그룹 관리 | 그룹 수, 구성원 수별 그룹 수, 1명뿐인 가족, 승인 대기와 가장 오래된 신청, AI 켠 가족, 가족 목록 |
 | 기능 관리 | 일정·소통·정산 기능별 최근 7일 사용 수(보기만) |
 | AI 이용 현황 | 오늘·7일·30일 요청 수, 14일 그래프, 기능별(직접 / AI 비서가 부름), 가족별·사용자별 요청·오류, 하루 한도 걸린 사람 |
-| 문의 및 신고 | 접수·처리 중·처리 완료·신고 건수, 최근순 목록(보낸 사람·가족·받은 날), 제목을 누르면 내용과 답변 칸, 상태 바꾸기 버튼 |
+| 문의 및 신고 | 접수·처리 중·답변 완료·신고 건수, 최근순 목록(보낸 사람·가족·받은 날), 제목을 누르면 내용과 답변 칸, "처리 시작" 버튼, 답변을 저장하면 답변 완료(답변 수정 가능) |
+| 공지사항 | 올린 공지 목록과 "글쓰기" 버튼(누르면 쓰기 칸이 열림: 종류·제목·내용), 고치기·지우기. 저장하면 바로 앱 더보기 › 공지사항에 보인다 |
 
 - 가족 안의 채팅·문서·정산 내용과 회원 이메일은 어느 메뉴에도 나오지 않는다. 개수·이름·시각만 쓴다. 문의·신고 내용은 사용자가 직접 쓴 글만 보인다.
 - 휴대폰 너비에서도 가로 스크롤 없이 보인다(넓은 표는 표 안에서만 스크롤).
@@ -25,14 +26,15 @@
 - 로그인 안 함·레거시 토큰: 401. 목록에 없음(가족 owner·운영 관리자 목록 포함): 403 `operator_required`.
 - 허용할 사용자 id 는 코드·Git·문서·테스트에 쓰지 않는다. DB 관리자 칸(`users.is_staff`)은 만들지 않는다.
 
-## API (문의·신고 바꾸기만 쓰기, 나머지는 읽기 전용)
-- `GET /admin/me`: `{id, name, login_id}`
-- `GET /admin/members`: 위 회원 관리 항목. 이메일 주소는 돌려주지 않는다
-- `GET /admin/groups`: 위 가족 그룹 관리 항목
-- `GET /admin/features`: 기능별 최근 7일 사용 수·쓴 가족 수, 그 전 7일 사용 수, 전체 가족 수
-- `GET /admin/ai-usage`: **요청 수**는 `ai_usage_logs` 행 수다(사용자가 한 번 쓰면 1, 저장된 답을 다시 쓴 경우·오류 포함, 2026-11-03 결정). `status` 가 `nested`(메인 비서가 부른 에이전트 표시)·`rejected`(한도 거절)인 줄은 요청 수에서 뺀다. 최근 30일 기능별 사용량에는 `nested` 도 넣고 `direct`·`via_assistant` 로 나눠 준다. 날짜 경계는 한국 시간 자정
-- `GET /admin/support`: 상태별 건수(`new`·`working`·`done`), 신고 수(`reports`), 최근순 목록 최대 200(보낸 사람 이름·아이디, 가족 이름 포함)
-- `PATCH /admin/support/{ticket_id}`: 본문 `{status?, answer?}`. 상태는 `new`/`working`/`done`, 답변 1~2000자. 답변을 쓰면 `answered_at` 도 적고 마지막 값만 남긴다. 둘 다 없으면 422, 없는 번호 404, 성공 204. `support_tickets` 표가 없는 DB 에서는 이 두 경로만 503
+## API (문의·신고 바꾸기와 공지사항만 쓰기, 나머지는 읽기 전용)
+- `GET /admin/service/me`: `{id, name, login_id}`
+- `GET /admin/service/members`: 위 회원 관리 항목. 이메일 주소는 돌려주지 않는다
+- `GET /admin/service/groups`: 위 가족 그룹 관리 항목
+- `GET /admin/service/features`: 기능별 최근 7일 사용 수·쓴 가족 수, 그 전 7일 사용 수, 전체 가족 수
+- `GET /admin/service/ai-usage`: **요청 수**는 `ai_usage_logs` 행 수다(사용자가 한 번 쓰면 1, 저장된 답을 다시 쓴 경우·오류 포함, 2026-11-03 결정). `status` 가 `nested`(메인 비서가 부른 에이전트 표시)·`rejected`(한도 거절)인 줄은 요청 수에서 뺀다. 최근 30일 기능별 사용량에는 `nested` 도 넣고 `direct`·`via_assistant` 로 나눠 준다. 날짜 경계는 한국 시간 자정
+- `GET /admin/service/support`: 상태별 건수(`new`·`working`·`done`), 신고 수(`reports`), 최근순 목록 최대 200(보낸 사람 이름·아이디, 가족 이름 포함)
+- `PATCH /admin/service/support/{ticket_id}`: 본문 `{status?, answer?}`. 상태는 `new`/`working`/`done`, 답변 1~2000자. 답변을 쓰면 `answered_at` 도 적는다. 답변을 저장하면 상태가 자동으로 `done`(답변 완료)이 되고, 다시 저장하면 고친다(마지막 값만 남김). 답변 없이 `done` 으로 바꾸면 422 `answer_required`(2026-11-05 결정). 둘 다 없으면 422, 없는 번호 404, 성공 204. `support_tickets` 표가 없는 DB 에서는 이 두 경로만 503
+- 공지사항 `GET`/`POST /admin/service/notices`, `PUT`/`DELETE /admin/service/notices/{notice_id}`: `docs/requirements/notices.md` 참고. 문의·신고 바꾸기와 공지 쓰기만 쓰기 API 다
 
 ## 데이터
 - 새 표나 칸을 만들지 않는다. 이미 있는 표를 읽고(문의·신고는 `support_tickets` 의 `status`·`answer`·`answered_at` 만 바꾼다), 다른 기능의 모델 파일은 import 하지 않는다.
@@ -41,6 +43,6 @@
 - 허용 목록에 있는 계정만 API 와 화면 데이터를 받는다. 테스트: 401, 403, 200, 각 집계 값.
 
 ## 미정
-- 경로 접두어를 `/admin/service/*` 로 옮길지, 화면 호스팅(`service-admin.md` 미정 1·2).
+- 화면 호스팅(`service-admin.md` 미정 2). 경로 접두어는 `/admin/service/*` 로 정했다(2026-11-05).
 - "기능 관리"를 서비스에 둘지 운영으로 넘길지(`service-admin.md` 미정 3).
 - 바깥 문(IP 제한 등).

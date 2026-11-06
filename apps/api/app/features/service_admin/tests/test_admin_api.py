@@ -13,7 +13,7 @@ from app.shared.config import settings
 from app.shared.db import SessionLocal
 from tests.helpers import signup
 
-ME = "/admin/me"
+ME = "/admin/service/me"
 PASSWORD = "Sunny-day-2026"
 
 
@@ -86,7 +86,14 @@ def test_ops_admin_list_is_not_service_admin(client, make_admin):
     assert _denied(client.get(ME, headers=headers))
 
 
-LISTS = ("/admin/members", "/admin/groups", "/admin/features", "/admin/ai-usage", "/admin/support")
+LISTS = (
+    "/admin/service/members",
+    "/admin/service/groups",
+    "/admin/service/features",
+    "/admin/service/ai-usage",
+    "/admin/service/support",
+    "/admin/service/notices",
+)
 
 
 def test_lists_are_admin_only(client, make_admin):
@@ -103,19 +110,19 @@ def test_lists_count_members_and_groups(client, make_admin):
     r = client.post("/family-group/groups", json={"name": "우리 가족"}, headers=headers)
     assert r.status_code in (200, 201), r.text
 
-    members = client.get("/admin/members", headers=headers).json()
+    members = client.get("/admin/service/members", headers=headers).json()
     assert members["total"] >= 1 and members["joined_this_week"] >= 1
     me = next(r for r in members["rows"] if r["id"] == user_id)
     assert me["has_family"] is True and me["last_login_at"] is not None
     assert "email" not in me  # 이메일은 돌려주지 않는다
     assert me["email_verified"] is False
 
-    groups = client.get("/admin/groups", headers=headers).json()
+    groups = client.get("/admin/service/groups", headers=headers).json()
     assert groups["total"] == 1
     assert groups["rows"][0]["name"] == "우리 가족" and groups["rows"][0]["members"] == 1
     assert groups["sizes"] == [{"members": 1, "groups": 1}]
 
-    features = client.get("/admin/features", headers=headers).json()
+    features = client.get("/admin/service/features", headers=headers).json()
     assert [r["key"] for r in features["rows"]] == ["schedule", "chat", "billing"]
     assert features["families_total"] == 1
 
@@ -131,7 +138,7 @@ def test_members_summary(client, make_admin):
         )
         db.commit()
 
-    d = client.get("/admin/members", headers=headers).json()
+    d = client.get("/admin/service/members", headers=headers).json()
     assert d["total"] == 2
     assert d["active_7d"] == 2  # 둘 다 방금 로그인했다
     assert d["no_family"] == 1
@@ -167,7 +174,7 @@ def test_groups_summary(client, make_admin):
         )
         db.commit()
 
-    d = client.get("/admin/groups", headers=headers).json()
+    d = client.get("/admin/service/groups", headers=headers).json()
     assert d["total"] == 2 and d["single_member"] == 2
     assert d["pending_total"] == 2
     assert d["oldest_pending_at"][:16] == old.isoformat()[:16]  # 처리된 요청은 빼고 센다
@@ -180,7 +187,7 @@ def test_groups_summary(client, make_admin):
 def test_groups_summary_empty(client, make_admin):
     headers, user_id = _login(client)
     make_admin(user_id)
-    d = client.get("/admin/groups", headers=headers).json()
+    d = client.get("/admin/service/groups", headers=headers).json()
     assert (d["single_member"], d["pending_total"], d["ai_enabled"]) == (0, 0, 0)
     assert d["oldest_pending_at"] is None
 
@@ -221,7 +228,7 @@ def test_ai_usage_excludes_markers_and_lists(client, make_admin):
         )
         db.commit()
 
-    d = client.get("/admin/ai-usage", headers=headers).json()
+    d = client.get("/admin/service/ai-usage", headers=headers).json()
     assert (d["today"], d["week"], d["month"]) == (3, 3, 3)
     assert sum(d["daily"]) == 3
     # 기능별로는 비서가 안에서 부른 에이전트(nested)도 따로 나눠 센다. 한도 거절은 뺀다
@@ -266,7 +273,7 @@ def test_ai_usage_counts_requests(client, make_admin):
         )
         db.commit()
 
-    r = client.get("/admin/ai-usage", headers=headers)
+    r = client.get("/admin/service/ai-usage", headers=headers)
     assert r.status_code == 200, r.text
     d = r.json()
     assert (d["today"], d["week"], d["month"]) == (2, 3, 3)
@@ -301,7 +308,7 @@ def test_support_list_and_answer(client, make_admin):
     first = send(headers, "inquiry", "비밀번호 바꾸기")
     second = send(h2, "report", "광고 메시지")
 
-    d = client.get("/admin/support", headers=headers).json()
+    d = client.get("/admin/service/support", headers=headers).json()
     assert (d["new"], d["working"], d["done"], d["reports"]) == (2, 0, 0, 1)
     assert [r["id"] for r in d["rows"]] == [second, first]  # 최근순
     row = d["rows"][1]
@@ -312,16 +319,18 @@ def test_support_list_and_answer(client, make_admin):
     )
     assert d["rows"][0]["group_name"] is None  # 가족 없는 회원
 
-    r = client.patch(f"/admin/support/{second}", json={"status": "working"}, headers=headers)
+    r = client.patch(
+        f"/admin/service/support/{second}", json={"status": "working"}, headers=headers
+    )
     assert r.status_code == 204, r.text
     r = client.patch(
-        f"/admin/support/{first}",
+        f"/admin/service/support/{first}",
         json={"status": "done", "answer": " 설정에서 바꿀 수 있어요 "},
         headers=headers,
     )
     assert r.status_code == 204, r.text
 
-    d = client.get("/admin/support", headers=headers).json()
+    d = client.get("/admin/service/support", headers=headers).json()
     assert (d["new"], d["working"], d["done"]) == (0, 1, 1)
     mine = client.get("/support/tickets/mine", headers=headers).json()["rows"][0]
     assert (mine["status"], mine["answer"]) == ("done", "설정에서 바꿀 수 있어요")
@@ -334,14 +343,16 @@ def test_support_update_rules(client, make_admin):
     tid = client.post(
         "/support/tickets", json={"kind": "inquiry", "title": "질문", "body": "내용"}, headers=h2
     ).json()["id"]
-    path = f"/admin/support/{tid}"
+    path = f"/admin/service/support/{tid}"
     assert client.patch(path, json={"status": "done"}).status_code == 401
     assert _denied(client.patch(path, json={"status": "done"}, headers=headers))  # 허용 목록에 없음
     make_admin(user_id)
     assert client.patch(path, json={}, headers=headers).status_code == 422  # 바꿀 것이 없음
     assert client.patch(path, json={"status": "closed"}, headers=headers).status_code == 422
     assert (
-        client.patch("/admin/support/nope", json={"status": "done"}, headers=headers).status_code
+        client.patch(
+            "/admin/service/support/nope", json={"status": "done"}, headers=headers
+        ).status_code
         == 404
     )
     # 문의를 보낸 사용자 본인도 허용 목록에 없으면 상태를 바꿀 수 없다
@@ -357,7 +368,7 @@ def test_support_answer_notifies_sender_without_family(client, make_admin):
         json={"kind": "inquiry", "title": "비밀 제목", "body": "비밀 내용"},
         headers=sender,
     ).json()["id"]
-    path = f"/admin/support/{tid}"
+    path = f"/admin/service/support/{tid}"
     inbox = lambda h: client.get("/notifications", headers=h).json()["items"]  # noqa: E731
 
     assert client.patch(path, json={"status": "working"}, headers=admin).status_code == 204
@@ -374,5 +385,94 @@ def test_support_answer_notifies_sender_without_family(client, make_admin):
 
     client.patch(path, json={"answer": "비밀 답변"}, headers=admin)  # 같은 답변 다시 저장
     assert len(inbox(sender)) == 1
-    client.patch(path, json={"answer": "고친 답변"}, headers=admin)  # 답변을 고치면 다시 알린다
+    r = client.patch(
+        path, json={"answer": "고친 답변"}, headers=admin
+    )  # 답변 수정은 되고 다시 알린다
+    assert r.status_code == 204, r.text
     assert len(inbox(sender)) == 2
+    mine = client.get("/support/tickets/mine", headers=sender).json()["rows"][0]
+    assert (mine["status"], mine["answer"]) == ("done", "고친 답변")
+
+
+def test_support_done_needs_answer(client, make_admin):
+    """답변해야 답변 완료(done)가 된다. 답변을 저장하면 상태를 안 보내도 done 이 된다."""
+    admin, admin_id = _login(client)
+    make_admin(admin_id)
+    sender, _ = _login(client, "minsu_park")
+    tid = client.post(
+        "/support/tickets",
+        json={"kind": "inquiry", "title": "질문", "body": "내용"},
+        headers=sender,
+    ).json()["id"]
+    path = f"/admin/service/support/{tid}"
+    status = lambda: client.get("/support/tickets/mine", headers=sender).json()["rows"][0]["status"]  # noqa: E731
+
+    r = client.patch(path, json={"status": "done"}, headers=admin)
+    assert (r.status_code, r.json()["code"]) == (422, "answer_required")
+    assert status() == "new"
+    assert client.patch(path, json={"answer": "답변"}, headers=admin).status_code == 204
+    assert status() == "done"  # 답변만 보내도 답변 완료
+    # 답변이 있으면 다시 처리 중으로 돌렸다가 done 으로 바꾸는 것은 된다
+    assert client.patch(path, json={"status": "working"}, headers=admin).status_code == 204
+    assert client.patch(path, json={"status": "done"}, headers=admin).status_code == 204
+
+
+def test_notice_write_edit_delete(client, make_admin):
+    headers, user_id = _login(client)
+    make_admin(user_id)
+    user, _ = _login(client, "minsu_park")  # 가족 없는 일반 회원
+    write = lambda title, category="info": client.post(  # noqa: E731
+        "/admin/service/notices",
+        json={"category": category, "title": f" {title} ", "body": " 내용\n둘째 줄 "},
+        headers=headers,
+    )
+    r = write("점검 안내", "maintenance")
+    assert r.status_code == 201, r.text
+    first = r.json()
+    assert (first["title"], first["body"], first["category"]) == (
+        "점검 안내",
+        "내용\n둘째 줄",
+        "maintenance",
+    )
+    second = write("1.2 업데이트", "update").json()
+
+    rows = client.get("/admin/service/notices", headers=headers).json()["rows"]
+    assert [x["id"] for x in rows] == [second["id"], first["id"]]  # 최근순
+    seen = client.get("/notices", headers=user).json()["rows"]
+    assert [x["title"] for x in seen] == ["1.2 업데이트", "점검 안내"]
+    assert "created_by" not in seen[0]
+
+    path = f"/admin/service/notices/{first['id']}"
+    r = client.put(
+        path, json={"category": "info", "title": "점검 끝", "body": "끝났어요"}, headers=headers
+    )
+    assert r.status_code == 204, r.text
+    edited = [
+        x for x in client.get("/notices", headers=user).json()["rows"] if x["id"] == first["id"]
+    ][0]
+    assert (edited["category"], edited["title"], edited["body"]) == ("info", "점검 끝", "끝났어요")
+    assert edited["updated_at"] >= edited["created_at"]
+
+    assert client.delete(path, headers=headers).status_code == 204
+    assert [x["id"] for x in client.get("/notices", headers=user).json()["rows"]] == [second["id"]]
+
+
+def test_notice_rules(client, make_admin):
+    headers, user_id = _login(client)
+    body = {"category": "info", "title": "안내", "body": "내용"}
+    assert client.post("/admin/service/notices", json=body).status_code == 401
+    assert _denied(
+        client.post("/admin/service/notices", json=body, headers=headers)
+    )  # 허용 목록 밖
+    assert _denied(client.delete("/admin/service/notices/nope", headers=headers))
+    make_admin(user_id)
+    bad = [
+        {**body, "category": "event"},
+        {**body, "title": ""},
+        {**body, "body": ""},
+        {**body, "title": "가" * 101},
+    ]
+    for b in bad:
+        assert client.post("/admin/service/notices", json=b, headers=headers).status_code == 422
+    assert client.put("/admin/service/notices/nope", json=body, headers=headers).status_code == 404
+    assert client.delete("/admin/service/notices/nope", headers=headers).status_code == 404
