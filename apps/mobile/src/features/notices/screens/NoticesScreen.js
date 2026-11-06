@@ -1,3 +1,4 @@
+import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
@@ -8,7 +9,7 @@ import Screen from "@/shared/components/Screen";
 import { colors, font, radius, spacing } from "@/theme";
 
 import { listNotices } from "../api";
-import { CATEGORY_LABEL, EMPTY_TEXT, HELP_TEXT, clampPage, noticeDate, noticesErrorMessage, pageCount, pageSlice, pageWindow, preview, unreadCount } from "../notices";
+import { CATEGORY_LABEL, EMPTY_TEXT, HELP_TEXT, clampPage, noticeDate, noticesErrorMessage, pageCount, pageSlice, pageWindow, summaryParts, unreadCount } from "../notices";
 import { loadReadIds, saveReadIds } from "../readStore";
 
 /**
@@ -43,6 +44,7 @@ export default function NoticesScreen() {
   const pages = pageCount(rows?.length);
   const view = clampPage(page, rows?.length); // 새로고침으로 목록이 줄어도 범위를 벗어난 쪽을 보이지 않는다
   const shown = useMemo(() => pageSlice(rows, view), [rows, view]);
+  const summary = summaryParts(rows?.length);
   const unread = useMemo(() => unreadCount(rows, readIds), [rows, readIds]);
   const current = openId ? (rows ?? []).find((n) => n.id === openId) : null;
 
@@ -89,23 +91,25 @@ export default function NoticesScreen() {
       ) : shown.length === 0 ? (
         <Text style={styles.empty}>{EMPTY_TEXT}</Text>
       ) : (
-        <View style={styles.list}>
+        <View>
+          <Text style={styles.summary}>
+            {summary[0]}
+            <Text style={styles.summaryNo}>{summary[1]}</Text>
+            {summary[2]}
+          </Text>
+          <View style={styles.listTop} />
           {shown.map((n) => {
             const isNew = !readIds.has(n.id);
             return (
-              <Pressable key={n.id} onPress={() => open(n.id)} accessibilityRole="button" accessibilityLabel={`${isNew ? "새 글, " : ""}${n.title}`} style={({ pressed }) => [styles.card, pressed && styles.pressed]} testID={`notice-${n.id}`}>
-                <View style={styles.cardTop}>
-                  <Text style={styles.tag}>{CATEGORY_LABEL[n.category] ?? "공지"}</Text>
-                  {isNew ? (
-                    <View style={styles.newRow}>
-                      <View style={styles.dot} />
-                      <Text style={styles.newText}>새 글</Text>
-                    </View>
-                  ) : null}
+              <Pressable key={n.id} onPress={() => open(n.id)} accessibilityRole="button" accessibilityLabel={`${isNew ? "새 글, " : ""}${n.title}`} style={({ pressed }) => [styles.row, pressed && styles.pressed]} testID={`notice-${n.id}`}>
+                <View style={styles.rowBody}>
+                  <View style={styles.titleLine}>
+                    {isNew ? <View style={styles.dot} /> : null}
+                    <Text style={styles.rowTitle} numberOfLines={2}>{n.title}</Text>
+                  </View>
+                  <Text style={styles.meta}>{CATEGORY_LABEL[n.category] ?? "공지"} · {noticeDate(n.created_at)}</Text>
                 </View>
-                <Text style={styles.cardTitle}>{n.title}</Text>
-                <Text style={styles.preview} numberOfLines={2}>{preview(n.body)}</Text>
-                <Text style={styles.meta}>{noticeDate(n.created_at)}</Text>
+                <Ionicons name="chevron-forward" size={20} color={colors.textMuted} />
               </Pressable>
             );
           })}
@@ -139,16 +143,17 @@ const styles = StyleSheet.create({
   pageNoOn: { backgroundColor: colors.dark },
   pageNoText: { ...font.caption, fontSize: 14, color: colors.text },
   pageNoTextOn: { color: colors.onDark },
-  list: { gap: 10 },
-  card: { borderWidth: 1, borderColor: colors.border, backgroundColor: colors.card, borderRadius: radius.card, padding: spacing.lg, gap: spacing.sm },
+  summary: { ...font.caption, fontSize: 14, color: colors.textSub, paddingBottom: spacing.md },
+  summaryNo: { color: colors.accent, fontFamily: font.bodyStrong.fontFamily },
+  listTop: { height: 2, backgroundColor: colors.text },
+  // 박스 없이 구분선으로 나뉜 평면 목록(제목 + 종류·날짜, 오른쪽 화살표)
+  row: { flexDirection: "row", alignItems: "center", gap: spacing.md, paddingVertical: spacing.lg, borderBottomWidth: 1, borderBottomColor: colors.divider },
+  rowBody: { flex: 1, gap: spacing.xs },
+  titleLine: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
+  rowTitle: { ...font.body, fontFamily: font.bodyStrong.fontFamily, color: colors.text, flex: 1 },
   pressed: { opacity: 0.7 },
-  cardTop: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   tag: { alignSelf: "flex-start", ...font.caption, fontSize: 12, color: colors.text, backgroundColor: colors.surfaceStrong, paddingHorizontal: spacing.sm, paddingVertical: 2, borderRadius: radius.pill, overflow: "hidden" },
-  newRow: { flexDirection: "row", alignItems: "center", gap: spacing.xs },
   dot: { width: 8, height: 8, borderRadius: 4, backgroundColor: colors.danger },
-  newText: { ...font.caption, fontSize: 12, color: colors.danger },
-  cardTitle: { ...font.cardTitle, color: colors.text },
-  preview: { ...font.caption, fontSize: 14, color: colors.textSub },
   meta: { ...font.caption, fontSize: 12, color: colors.textMuted },
   detail: { gap: spacing.md },
   detailTitle: { ...font.title, fontSize: 22, lineHeight: 32, color: colors.text },

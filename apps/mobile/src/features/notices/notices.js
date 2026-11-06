@@ -80,6 +80,15 @@ export function noticeDate(iso) {
 }
 
 /**
+ * 목록 위 "총 N건의 공지사항이 있어요." 문구를 세 토막으로(가운데 숫자만 강조해서 그리려고).
+ * @param {number | null | undefined} total 공지 수
+ * @returns {[string, string, string]}
+ */
+export function summaryParts(total) {
+  return ["총 ", String(Number(total) || 0), "건의 공지사항이 있어요."];
+}
+
+/**
  * 목록 카드에 보일 본문 앞부분(첫 줄, 60자까지).
  * @param {string} body
  */
