@@ -9,7 +9,8 @@ import { colors, font } from "@/theme";
 import { setLocationBackground } from "../api";
 import { isScrolledToEnd } from "../background";
 import { BACKGROUND_TERMS } from "../consentText";
-import { canTrackInBackground, requestBackgroundPermission, startBackground, stopBackground } from "../sharing";
+import { canTrackInBackground, startBackground, stopBackground } from "../backgroundControl";
+import { requestBackgroundPermission } from "../sharing";
 
 /**
  * 앱을 꺼도 위치를 계속 모으는 것(백그라운드)에 따로 동의하거나 끄는 카드.
@@ -36,7 +37,7 @@ export default function BackgroundCard({ me, notify, onChanged }) {
         return;
       }
       await setLocationBackground(true);
-      if ((await startBackground()) !== "started") {
+      if ((await startBackground(me.paused ? "waiting" : "normal")) !== "started") {
         await setLocationBackground(false); // 시작하지 못했는데 동의만 켜진 채로 두지 않는다
         notify("앱을 꺼도 위치를 모으는 것을 시작하지 못했어요", true);
         return;

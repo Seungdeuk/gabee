@@ -81,3 +81,46 @@ export function describeSegment(seg) {
   }
   return { time, title: `${name}에서 머묾`, sub: span, tone: "normal" };
 }
+
+/** 위치 기록을 보관하는 날 수(오늘 포함). 서버 LOCATION_RETENTION_DAYS 기본값과 같다. */
+export const KEEP_DAYS = 14;
+const WEEKDAYS = "일월화수목금토";
+
+/**
+ * date 가 속한 주(일요일 시작)의 7일을 날짜순으로.
+ * @param {string} date YYYY-MM-DD
+ * @param {number} [weekOffset] 몇 주 전인지(0=이번 주, 1=지난 주)
+ * @returns {string[]}
+ */
+export function weekDates(date, weekOffset = 0) {
+  const base = shiftDay(date, -weekOffset * 7);
+  const start = shiftDay(base, -new Date(`${base}T00:00:00Z`).getUTCDay());
+  return Array.from({ length: 7 }, (_, i) => shiftDay(start, i));
+}
+
+/**
+ * 주간 달력 한 주의 칸들. 오늘 기준 보관 기간(KEEP_DAYS) 밖의 날(expired)과 아직 오지 않은 날(future)은 누를 수 없다.
+ * @param {string} today 오늘 YYYY-MM-DD(한국 시간)
+ * @param {number} [weekOffset] 0=이번 주, 1=지난 주
+ * @returns {{ date: string, day: number, weekday: string, isToday: boolean, state: "open" | "future" | "expired" }[]}
+ */
+export function calendarWeek(today, weekOffset = 0) {
+  const oldest = shiftDay(today, -(KEEP_DAYS - 1));
+  return weekDates(today, weekOffset).map((date, i) => ({
+    date,
+    day: Number(date.slice(8)),
+    weekday: WEEKDAYS[i],
+    isToday: date === today,
+    state: date > today ? "future" : date < oldest ? "expired" : "open",
+  }));
+}
+
+/**
+ * 한 주의 제목("11/1 ~ 11/7").
+ * @param {{ date: string }[]} week calendarWeek 의 결과
+ * @returns {string}
+ */
+export function weekTitle(week) {
+  const md = (d) => `${Number(d.slice(5, 7))}/${Number(d.slice(8, 10))}`;
+  return `${md(week[0].date)} ~ ${md(week[6].date)}`;
+}

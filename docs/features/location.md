@@ -14,9 +14,17 @@
 - 활동 구역은 위치가 5개 모이면 만든다(서버 `ZONE_MIN_POINTS`, 이전 20개).
 - 시험: `tests/locationgeo.test.js`, `locationmap.test.js`(타일·투영), `locationpause.test.js`, `locationbackground.test.js`(스크롤 끝 판정 포함) 통과. 앱 전체 시험은 기존 실패 1개(`schedule_lunar`)만 남는다. 변경 파일 린트 통과(import 규칙 제외). 실기기 확인은 하지 않았다.
 
+## 위치 탭 하위 탭 개편 — 구현됨, 실기기 확인 전(미확인)
+- 위치 탭을 상태 줄 + 아이콘 하위 탭 4개(내 위치·이동 기록·여행 모드·설정)로 나눴다. 공통 부모 `components/LocationHome.js`가 서버 상태·백그라운드 맞추기·1분 전송을 맡고, 하위 탭 화면은 처음 열 때 만들어 숨기기만 한다(`LocationSection.js` 삭제, `CareScreen.js`는 `LocationHome`만 조립). 동의 전에는 `ConsentGate` 만 보인다.
+- 이동 기록 날짜는 `WeekCalendar`(이번 주/지난 주, 일요일 시작, 14일 보관·오늘 이후 칸 비활성). 순수 계산은 `timelineView.js`의 `calendarWeek`·`weekTitle`.
+- 여행 모드는 날짜만 정하고 마지막 날 다음 날 0시(KST)에 자동 재개. 서버(`service.py`): `paused_until` 계산, 종료 뒤 첫 위치에서 해제하고 부모에게 `location_resumed` 알림을 한 번, 시험 추가(위치 시험 합계 60개). 기기: 대기 모드(`backgroundControl.js`의 `waiting`)와 종료 시각 저장(`pauseState.js`), 깨어난 작업이 `localPauseState`로 종료를 판단(`backgroundTask.js`). 순수 계산은 `travel.js`(D-day·미리보기)·`status.js`·`diagnostics.js`, 시험 `tests/locationtravel.test.js`.
+- 보류: 서버의 "기록 있는 날 점 찍기" 날짜 목록 API.
+- 확인하지 못한 것(미확인): 실기기 화면, 대기 모드 전환과 앱 종료 중 자동 재개, 재개 알림 수신, 숨긴 탭의 지도 크기. 실행 중인 베타 서버는 이전 코드라 재시작해야 새 규칙이 적용된다.
+- 시험: 앱 전체 795개 통과, 변경 파일 린트 통과(import 규칙 제외, 이 PC에서 import 플러그인 네이티브 모듈이 없어 끔).
+
 ## 이동 기록 타임라인 — 서버와 앱 화면 완료(실기기 확인 전)
 - 변환기 `timeline.py`(시험 10개), 왕복 검증 `run_timeline.py`(머묾 recall·precision 1.00, 지어낸 시간 0분), 장소 이름 붙이기(`location_places`, 마이그레이션 `d3b8f15e92a4`), API `GET /location/timeline`·`/location/places`, `POST /location/places`, `DELETE /location/places/{id}`(시험 11개). 위치 시험 합계 54개.
-- 앱: 위치 구역에 `TimelineCard`(날짜 앞뒤 이동, 부모는 가족 구성원 선택, 구간 목록, 자주 간 이름 없는 곳에 이름 붙이기·지우기). 보기 글은 `timelineView.js`(시험 6개)가 만든다. 기록 없음은 원인을 단정하지 않는 문구("앱이 꺼져 있었거나 신호가 없었거나 위치 공유를 멈춘 시간")를 쓴다.
+- 앱: `TimelineCard`(날짜는 위 주간 달력에서 받음; 처음에는 앞뒤 화살표였음, 부모는 가족 구성원 선택, 구간 목록, 자주 간 이름 없는 곳에 이름 붙이기·지우기). 보기 글은 `timelineView.js`(시험 6개)가 만든다. 기록 없음은 원인을 단정하지 않는 문구("앱이 꺼져 있었거나 신호가 없었거나 위치 공유를 멈춘 시간")를 쓴다.
 - 구간은 저장하지 않고 요청 때 만든다(설계 6번 "위치를 올릴 때 다시 만든다"에서 바꿈: 파생 데이터를 남기지 않고 결과가 같다).
 
 ## 앱을 꺼도 계속 공유 (백그라운드 수집) — 구현됨, 실기기 확인 전

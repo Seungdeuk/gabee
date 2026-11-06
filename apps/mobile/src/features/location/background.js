@@ -47,3 +47,27 @@ export function pickToSend(locations, max = 5) {
 export function isScrolledToEnd({ contentOffset, layoutMeasurement, contentSize }, slack = 12) {
   return contentSize.height <= layoutMeasurement.height + slack || contentOffset.y + layoutMeasurement.height >= contentSize.height - slack;
 }
+
+/**
+ * 이 기기에서 위치를 어떻게 모을지. 서버 스위치·위치 공유 동의·백그라운드 동의가 모두 있어야 모은다.
+ * 여행 모드(일시정지) 중에는 완전히 끄지 않고 저전력 대기(waiting)로 두어, 보내지는 않고 종료 후 스스로 다시 시작할 수 있게 한다.
+ * @param {{ enabled: boolean, consent: boolean, background: boolean, paused: boolean } | null | undefined} me
+ * @returns {"off" | "waiting" | "normal"}
+ */
+export function trackingMode(me) {
+  if (!(me && me.enabled && me.consent && me.background)) return "off";
+  return me.paused ? "waiting" : "normal";
+}
+
+/**
+ * 기기에 저장해 둔 여행 종료 시각으로, 백그라운드 작업이 지금 위치를 보내도 되는지 정한다(서버에 묻지 않고 기기에서 판단).
+ * @param {string | null | undefined} pausedUntilIso 기기에 저장한 종료 시각
+ * @param {number} [now] 현재 시각(ms)
+ * @returns {"none" | "paused" | "expired"} none=여행 모드 아님, paused=아직 보내지 않음, expired=종료됨(다시 보냄)
+ */
+export function localPauseState(pausedUntilIso, now = Date.now()) {
+  if (!pausedUntilIso) return "none";
+  const until = Date.parse(pausedUntilIso);
+  if (Number.isNaN(until)) return "none";
+  return now < until ? "paused" : "expired";
+}

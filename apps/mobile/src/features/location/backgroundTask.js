@@ -1,4 +1,3 @@
-import * as Location from "expo-location";
 import * as SecureStore from "expo-secure-store";
 import * as TaskManager from "expo-task-manager";
 import { Platform } from "react-native";
@@ -7,10 +6,9 @@ import { ApiError, configureAuth, hasSession, isApiConfigured, setSession } from
 import { createTokenStore } from "@/shared/auth/tokenStore";
 
 import { postLocationPoint } from "./api";
-import { pickToSend, toPoint } from "./background";
-
-/** 백그라운드 위치 작업 이름. 시작·중지·확인에 같은 이름을 쓴다. */
-export const LOCATION_TASK = "gabee-background-location";
+import { localPauseState, pickToSend, toPoint } from "./background";
+import { LOCATION_TASK, startBackground, stopBackground } from "./backgroundControl";
+import { loadPausedUntil, savePausedUntil } from "./pauseState";
 
 const store = createTokenStore(SecureStore);
 
@@ -28,15 +26,21 @@ async function ensureSession() {
   return true;
 }
 
-/** 서버가 더는 받지 않거나(철회·일시정지) 로그인이 풀렸으면 이 기기의 수집을 멈춘다. */
-async function stopUpdates() {
-  try {
-    if (await Location.hasStartedLocationUpdatesAsync(LOCATION_TASK)) {
-      await Location.stopLocationUpdatesAsync(LOCATION_TASK);
-    }
-  } catch {
-    /* 이미 멈췄거나 이 기기에서 쓸 수 없는 경우 */
+/**
+ * 깨어날 때마다 기기에 저장한 여행 모드 종료 시각을 본다: 아직이면 보내지 않고 저전력 대기로 두고, 종료됐으면 기억을 지우고 정상 수집으로 돌아간다.
+ * @returns {Promise<boolean>} 지금 위치를 서버로 보내도 되는지
+ */
+async function mayUpload() {
+  const state = localPauseState(await loadPausedUntil());
+  if (state === "paused") {
+    await startBackground("waiting"); // 이미 대기 중이면 아무것도 하지 않는다
+    return false;
   }
+  if (state === "expired") {
+    await savePausedUntil(null);
+    await startBackground("normal");
+  }
+  return true;
 }
 
 // 모듈을 불러올 때 등록해야 앱이 꺼진 채 깨어나도 작업이 실행된다(루트 레이아웃에서 불러온다). 웹에는 없다.
@@ -44,16 +48,18 @@ if (Platform.OS !== "web") {
   TaskManager.defineTask(LOCATION_TASK, async ({ data, error }) => {
     if (error || !data?.locations?.length || !isApiConfigured()) return;
     try {
+      if (!(await mayUpload())) return;
       if (!(await ensureSession())) return;
       for (const loc of pickToSend(data.locations)) {
         const res = await postLocationPoint(toPoint(loc));
-        if (!res.saved && (res.reason === "paused" || res.reason === "no_consent")) {
-          await stopUpdates(); // 서버가 받지 않는 상태면 기기도 모으지 않는다
+        if (!res.saved && res.reason === "no_consent") {
+          await stopBackground(); // 동의를 철회했으면 기기도 모으지 않는다
           return;
         }
+        if (!res.saved && res.reason === "paused") return; // 여행 모드는 앱을 열 때 서버 상태에 맞춰 대기로 바뀐다
       }
     } catch (e) {
-      if (e instanceof ApiError && (e.code === "session_expired" || e.status === 401)) await stopUpdates();
+      if (e instanceof ApiError && (e.code === "session_expired" || e.status === 401)) await stopBackground();
       // 그 밖의 오류(네트워크 등)는 다음 갱신에 다시 보낸다. 좌표는 로그에 남기지 않는다
     }
   });

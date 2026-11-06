@@ -1,5 +1,5 @@
 import { useCallback, useState } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { StyleSheet, Text, View } from "react-native";
 
 import Button from "@/shared/components/Button";
 import Card from "@/shared/components/Card";
@@ -9,15 +9,14 @@ import useResource from "@/shared/hooks/useResource";
 import { colors, font } from "@/theme";
 
 import { deletePlace, getPlaces, getTimeline, namePlace } from "../api";
-import { dayLabel, describeSegment, shiftDay, todayKst } from "../timelineView";
+import { dayLabel, describeSegment } from "../timelineView";
 
 /**
- * 하루 이동 기록(머묾·이동·기록 없음). 날짜를 앞뒤로 넘기고, 부모는 가족 구성원을 골라 본다.
+ * 하루 이동 기록(머묾·이동·기록 없음). 날짜는 위의 주간 달력에서 골라 넘겨받고, 부모는 가족 구성원을 골라 본다.
  * 자주 간 이름 없는 곳에는 이름을 붙일 수 있다(본인 기록에서만). 좌표는 서버가 주지 않는다.
- * @param {{ members: import("../api").MemberLocation[], canSeeFamily: boolean, refreshKey?: number, notify: (text: string, isError?: boolean) => void }} props
+ * @param {{ date: string, members: import("../api").MemberLocation[], canSeeFamily: boolean, refreshKey?: number, notify: (text: string, isError?: boolean) => void }} props
  */
-export default function TimelineCard({ members, canSeeFamily, refreshKey, notify }) {
-  const [date, setDate] = useState(todayKst());
+export default function TimelineCard({ date, members, canSeeFamily, refreshKey, notify }) {
   const [target, setTarget] = useState(null); // null 이면 나
   const [naming, setNaming] = useState(null); // 이름을 붙이는 중인 후보 id
   const [draft, setDraft] = useState("");
@@ -29,7 +28,6 @@ export default function TimelineCard({ members, canSeeFamily, refreshKey, notify
 
   const others = canSeeFamily ? members.filter((m) => !m.is_me) : [];
   const options = [{ key: "me", label: "나" }, ...others.map((m) => ({ key: m.user_id, label: m.name }))];
-  const isToday = date >= todayKst();
 
   const save = async (candidateId) => {
     try {
@@ -57,21 +55,7 @@ export default function TimelineCard({ members, canSeeFamily, refreshKey, notify
       {options.length > 1 ? (
         <Segmented options={options} value={target ?? "me"} onChange={(key) => setTarget(key === "me" ? null : key)} />
       ) : null}
-      <View style={styles.dayRow}>
-        <Pressable onPress={() => setDate(shiftDay(date, -1))} accessibilityRole="button" accessibilityLabel="이전 날" style={styles.dayBtn}>
-          <Text style={styles.dayArrow}>‹</Text>
-        </Pressable>
-        <Text style={styles.dayText}>{dayLabel(date)}</Text>
-        <Pressable
-          onPress={() => setDate(shiftDay(date, 1))}
-          disabled={isToday}
-          accessibilityRole="button"
-          accessibilityLabel="다음 날"
-          style={[styles.dayBtn, isToday && styles.dayBtnOff]}
-        >
-          <Text style={styles.dayArrow}>›</Text>
-        </Pressable>
-      </View>
+      <Text style={styles.dayText}>{dayLabel(date)}</Text>
 
       {error && !data ? <Text style={styles.error}>{error}</Text> : null}
       {data && !data.sharing ? <Text style={styles.caption}>{data.name}님은 위치 공유에 동의하지 않아 기록이 없어요.</Text> : null}
@@ -127,10 +111,6 @@ const styles = StyleSheet.create({
   title: { ...font.bodyStrong, color: colors.text },
   caption: { ...font.caption, color: colors.textSub },
   error: { ...font.caption, color: colors.danger },
-  dayRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
-  dayBtn: { width: 44, height: 44, alignItems: "center", justifyContent: "center", borderRadius: 22, backgroundColor: colors.surface },
-  dayBtnOff: { opacity: 0.35 },
-  dayArrow: { fontSize: 24, color: colors.text },
   dayText: { ...font.bodyStrong, color: colors.text },
   row: { flexDirection: "row", gap: 12, paddingVertical: 6 },
   time: { ...font.caption, color: colors.textMuted, width: 104 },
