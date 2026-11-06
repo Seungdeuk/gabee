@@ -19,6 +19,11 @@
       "environment": "preview",
       "android": { "buildType": "apk" }
     },
+    "beta-apk": {
+      "distribution": "internal",
+      "android": { "buildType": "apk" },
+      "env": { "EXPO_PUBLIC_API_URL": "http://192.168.0.15:8000" }
+    },
     "production": {
       "environment": "production",
       "autoIncrement": true
