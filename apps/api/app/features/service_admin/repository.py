@@ -72,6 +72,27 @@ def member_totals(db: Session, since_active: datetime) -> tuple[int, int, int]:
     return active or 0, no_family or 0, verified or 0
 
 
+def member_timestamps(db: Session, since: datetime) -> dict[str, list]:
+    """회원 하루 그래프용 시각만 읽는다(이름·이메일 같은 내용은 읽지 않는다).
+    users: (id, 가입 시각), created: 가입 시각, verified: 이메일 인증 시각,
+    first_family: (id, 처음 가족에 든 시각), tokens: since 이후 (id, 토큰 받은 시각)."""
+    users, members, tokens = _t("users"), _t("group_members"), _t("refresh_tokens")
+    rows = db.execute(select(users.c.id, users.c.created_at, users.c.email_verified_at)).all()
+    first = db.execute(
+        select(members.c.user_id, func.min(members.c.joined_at)).group_by(members.c.user_id)
+    ).all()
+    issued = db.execute(
+        select(tokens.c.user_id, tokens.c.issued_at).where(tokens.c.issued_at >= since)
+    ).all()
+    return {
+        "users": [(r[0], r[1]) for r in rows],
+        "created": [r[1] for r in rows],
+        "verified": [r[2] for r in rows],
+        "first_family": [(r[0], r[1]) for r in first],
+        "tokens": [(r[0], r[1]) for r in issued],
+    }
+
+
 def groups_with_counts(db: Session) -> tuple[int, list[dict]]:
     groups, members, users = _t("groups"), _t("group_members"), _t("users")
     join_reqs, ai = _t("join_requests"), _t("ai_group_settings")
@@ -316,3 +337,52 @@ def update_notice(db: Session, notice_id: str, values: dict) -> bool:
 def delete_notice(db: Session, notice_id: str) -> bool:
     t = _t("notices")
     return bool(db.execute(delete(t).where(t.c.id == notice_id)).rowcount)
+
+
+def analytics_rows(db: Session, token_since: datetime, since: datetime) -> dict[str, list]:
+    """데이터 분석 탭에 쓰는 id·시각·개수만 읽는다(글 내용·이메일은 읽지 않는다).
+    가족 이름은 AI 많이 쓴 가족 표에만 쓴다(다른 탭도 가족 이름은 보여 준다)."""
+    users, groups, members = _t("users"), _t("groups"), _t("group_members")
+    tokens, events, messages = _t("refresh_tokens"), _t("events"), _t("messages")
+    expenses, ai, tickets = _t("expenses"), _t("ai_usage_logs"), _t("support_tickets")
+    rows = lambda q: [tuple(r) for r in db.execute(q)]  # noqa: E731
+    return {
+        "users": rows(select(users.c.id, users.c.created_at)),
+        "groups": rows(select(groups.c.id, groups.c.name, groups.c.created_at)),
+        "members": rows(select(members.c.group_id, members.c.user_id, members.c.joined_at)),
+        "tokens": rows(
+            select(tokens.c.user_id, tokens.c.issued_at).where(tokens.c.issued_at >= token_since)
+        ),
+        "first_event": rows(
+            select(events.c.created_by, func.min(events.c.created_at)).group_by(events.c.created_by)
+        ),
+        "first_message": rows(
+            select(messages.c.user_id, func.min(messages.c.created_at)).group_by(messages.c.user_id)
+        ),
+        "first_ai": rows(
+            select(ai.c.user_id, func.min(ai.c.created_at))
+            .where(ai.c.status.not_in(MARKER_STATUSES))
+            .group_by(ai.c.user_id)
+        ),
+        "schedule": rows(
+            select(events.c.group_id, events.c.created_at).where(events.c.created_at >= since)
+        ),
+        "chat": rows(
+            select(messages.c.group_id, messages.c.created_at).where(messages.c.created_at >= since)
+        ),
+        "billing": rows(
+            select(expenses.c.group_id, expenses.c.created_at).where(expenses.c.created_at >= since)
+        ),
+        "ai": rows(
+            select(
+                ai.c.group_id,
+                ai.c.user_id,
+                ai.c.status,
+                ai.c.cache_hit,
+                ai.c.input_tokens,
+                ai.c.output_tokens,
+                ai.c.created_at,
+            ).where(ai.c.created_at >= since)
+        ),
+        "support": rows(select(tickets.c.kind, tickets.c.created_at, tickets.c.answered_at)),
+    }

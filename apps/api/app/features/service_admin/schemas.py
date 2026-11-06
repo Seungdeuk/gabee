@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import date, datetime
 from typing import Literal
 
 from pydantic import BaseModel, Field
@@ -26,6 +26,12 @@ class MembersOut(BaseModel):
     active_7d: int  # 최근 7일에 로그인·자동 갱신으로 토큰을 받은 사람 수
     no_family: int  # 어느 가족에도 속하지 않은 사람 수
     email_verified: int  # 이메일 인증을 마친 사람 수
+    # 카드를 누르면 보이는 하루 그래프: 30개, 30일 전 → 오늘(한국 시간 자정 기준)
+    daily_joined: list[int]  # 그날 가입
+    daily_total: list[int]  # 그날 끝 기준 전체 가입자
+    daily_active: list[int]  # 그날 로그인·자동 갱신으로 토큰을 받은 사람
+    daily_no_family: list[int]  # 그날 끝 기준 가족 없는 회원
+    daily_verified: list[int]  # 그날 끝 기준 이메일 인증
     rows: list[MemberRow]  # 최근 가입순, 최대 200명
 
 
@@ -158,3 +164,78 @@ class AdminNoticeRow(BaseModel):
 
 class AdminNoticesOut(BaseModel):
     rows: list[AdminNoticeRow]  # 최근순, 최대 200
+
+
+# ---------- 데이터 분석 탭 ----------
+class AnalyticsCohort(BaseModel):
+    week_start: date  # 가입 주의 월요일(한국 시간)
+    size: int  # 그 주 가입자 수
+    w1: float | None  # 가입 1주 뒤에 다시 쓴 비율(%). 아직 안 지났으면 None
+    w2: float | None
+    w4: float | None
+
+
+class AnalyticsFunnelStep(BaseModel):
+    key: str
+    label: str
+    users: int  # 이 단계까지 모두 지난 사람
+    share: float | None  # 가입자 대비 %
+    median_hours: float | None  # 가입부터 이 단계까지 걸린 시간 중앙값
+
+
+class AnalyticsFamilySize(BaseModel):
+    label: str  # 1명 ~ 5명 이상
+    families: int
+    active_share: float | None  # 최근 7일에 일정·채팅·정산·AI 중 하나라도 쓴 가족 %
+    avg_actions: float | None  # 가족당 최근 7일 사용 수
+
+
+class AnalyticsFamilies(BaseModel):
+    by_size: list[AnalyticsFamilySize]
+    solo_families: int  # 지금 1명뿐인 가족
+    days_to_second_member: float | None  # 가족을 만든 뒤 두 번째 사람이 들어오기까지(중앙값, 일)
+
+
+class AnalyticsFeature(BaseModel):
+    key: str
+    label: str
+    families: int  # 최근 30일에 이 기능을 쓴 가족 수
+    share: float | None  # 전체 가족 대비 %
+
+
+class AnalyticsAiFamily(BaseModel):
+    name: str
+    requests: int
+    tokens: int  # 입력 + 출력 토큰(비용의 기준)
+
+
+class AnalyticsAi(BaseModel):
+    requests: int  # 최근 30일 요청 수(표식 줄 제외)
+    active_users: int  # 최근 30일 활동한 사람
+    per_active_user: float | None
+    error_rate: float | None  # %
+    cache_hit_rate: float | None  # %
+    limit_rate: float | None  # 한도·쿨다운으로 거절된 비율 %
+    top_families: list[AnalyticsAiFamily]  # 토큰을 많이 쓴 가족 5곳
+
+
+class AnalyticsSupport(BaseModel):
+    inquiries: int
+    reports: int
+    answered: int
+    avg_hours: float | None  # 문의부터 답변까지 평균 시간
+    max_hours: float | None
+    weekly: list[int]  # 주별 문의·신고 수(8주, 오래된 주 → 이번 주)
+    week_start: date  # weekly 첫 주의 월요일
+
+
+class AnalyticsOut(BaseModel):
+    users: int
+    retention: list[AnalyticsCohort]  # 가입 주별(8주)
+    funnel: list[AnalyticsFunnelStep]
+    families: AnalyticsFamilies
+    features: list[AnalyticsFeature]
+    total_families: int
+    ai: AnalyticsAi
+    heatmap: list[list[int]]  # 7(월~일) × 24(시) 활동 수, 최근 30일
+    support: AnalyticsSupport

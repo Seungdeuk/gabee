@@ -14417,6 +14417,56 @@
         }
       }
     },
+    "/admin/service/analytics": {
+      "get": {
+        "tags": [
+          "service-admin"
+        ],
+        "summary": "Admin Analytics",
+        "description": "데이터 분석: 재방문 코호트, 가입 퍼널, 가족 인원별 활동, 기능 사용, AI 품질·비용, 요일·시간 활동, 고객 응대.\nid·시각·개수만 읽는다(문의 표도 읽으므로 support 표가 없으면 503).",
+        "operationId": "admin_analytics_admin_service_analytics_get",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnalyticsOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/health/db": {
       "get": {
         "tags": [
@@ -15960,6 +16010,441 @@
           "meta"
         ],
         "title": "AnalysisOut"
+      },
+      "AnalyticsAi": {
+        "properties": {
+          "requests": {
+            "type": "integer",
+            "title": "Requests"
+          },
+          "active_users": {
+            "type": "integer",
+            "title": "Active Users"
+          },
+          "per_active_user": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Per Active User"
+          },
+          "error_rate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Rate"
+          },
+          "cache_hit_rate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cache Hit Rate"
+          },
+          "limit_rate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Limit Rate"
+          },
+          "top_families": {
+            "items": {
+              "$ref": "#/components/schemas/AnalyticsAiFamily"
+            },
+            "type": "array",
+            "title": "Top Families"
+          }
+        },
+        "type": "object",
+        "required": [
+          "requests",
+          "active_users",
+          "per_active_user",
+          "error_rate",
+          "cache_hit_rate",
+          "limit_rate",
+          "top_families"
+        ],
+        "title": "AnalyticsAi"
+      },
+      "AnalyticsAiFamily": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "requests": {
+            "type": "integer",
+            "title": "Requests"
+          },
+          "tokens": {
+            "type": "integer",
+            "title": "Tokens"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "requests",
+          "tokens"
+        ],
+        "title": "AnalyticsAiFamily"
+      },
+      "AnalyticsCohort": {
+        "properties": {
+          "week_start": {
+            "type": "string",
+            "format": "date",
+            "title": "Week Start"
+          },
+          "size": {
+            "type": "integer",
+            "title": "Size"
+          },
+          "w1": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "W1"
+          },
+          "w2": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "W2"
+          },
+          "w4": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "W4"
+          }
+        },
+        "type": "object",
+        "required": [
+          "week_start",
+          "size",
+          "w1",
+          "w2",
+          "w4"
+        ],
+        "title": "AnalyticsCohort"
+      },
+      "AnalyticsFamilies": {
+        "properties": {
+          "by_size": {
+            "items": {
+              "$ref": "#/components/schemas/AnalyticsFamilySize"
+            },
+            "type": "array",
+            "title": "By Size"
+          },
+          "solo_families": {
+            "type": "integer",
+            "title": "Solo Families"
+          },
+          "days_to_second_member": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Days To Second Member"
+          }
+        },
+        "type": "object",
+        "required": [
+          "by_size",
+          "solo_families",
+          "days_to_second_member"
+        ],
+        "title": "AnalyticsFamilies"
+      },
+      "AnalyticsFamilySize": {
+        "properties": {
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "families": {
+            "type": "integer",
+            "title": "Families"
+          },
+          "active_share": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Active Share"
+          },
+          "avg_actions": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Avg Actions"
+          }
+        },
+        "type": "object",
+        "required": [
+          "label",
+          "families",
+          "active_share",
+          "avg_actions"
+        ],
+        "title": "AnalyticsFamilySize"
+      },
+      "AnalyticsFeature": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "families": {
+            "type": "integer",
+            "title": "Families"
+          },
+          "share": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Share"
+          }
+        },
+        "type": "object",
+        "required": [
+          "key",
+          "label",
+          "families",
+          "share"
+        ],
+        "title": "AnalyticsFeature"
+      },
+      "AnalyticsFunnelStep": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "users": {
+            "type": "integer",
+            "title": "Users"
+          },
+          "share": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Share"
+          },
+          "median_hours": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Median Hours"
+          }
+        },
+        "type": "object",
+        "required": [
+          "key",
+          "label",
+          "users",
+          "share",
+          "median_hours"
+        ],
+        "title": "AnalyticsFunnelStep"
+      },
+      "AnalyticsOut": {
+        "properties": {
+          "users": {
+            "type": "integer",
+            "title": "Users"
+          },
+          "retention": {
+            "items": {
+              "$ref": "#/components/schemas/AnalyticsCohort"
+            },
+            "type": "array",
+            "title": "Retention"
+          },
+          "funnel": {
+            "items": {
+              "$ref": "#/components/schemas/AnalyticsFunnelStep"
+            },
+            "type": "array",
+            "title": "Funnel"
+          },
+          "families": {
+            "$ref": "#/components/schemas/AnalyticsFamilies"
+          },
+          "features": {
+            "items": {
+              "$ref": "#/components/schemas/AnalyticsFeature"
+            },
+            "type": "array",
+            "title": "Features"
+          },
+          "total_families": {
+            "type": "integer",
+            "title": "Total Families"
+          },
+          "ai": {
+            "$ref": "#/components/schemas/AnalyticsAi"
+          },
+          "heatmap": {
+            "items": {
+              "items": {
+                "type": "integer"
+              },
+              "type": "array"
+            },
+            "type": "array",
+            "title": "Heatmap"
+          },
+          "support": {
+            "$ref": "#/components/schemas/AnalyticsSupport"
+          }
+        },
+        "type": "object",
+        "required": [
+          "users",
+          "retention",
+          "funnel",
+          "families",
+          "features",
+          "total_families",
+          "ai",
+          "heatmap",
+          "support"
+        ],
+        "title": "AnalyticsOut"
+      },
+      "AnalyticsSupport": {
+        "properties": {
+          "inquiries": {
+            "type": "integer",
+            "title": "Inquiries"
+          },
+          "reports": {
+            "type": "integer",
+            "title": "Reports"
+          },
+          "answered": {
+            "type": "integer",
+            "title": "Answered"
+          },
+          "avg_hours": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Avg Hours"
+          },
+          "max_hours": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Hours"
+          },
+          "weekly": {
+            "items": {
+              "type": "integer"
+            },
+            "type": "array",
+            "title": "Weekly"
+          },
+          "week_start": {
+            "type": "string",
+            "format": "date",
+            "title": "Week Start"
+          }
+        },
+        "type": "object",
+        "required": [
+          "inquiries",
+          "reports",
+          "answered",
+          "avg_hours",
+          "max_hours",
+          "weekly",
+          "week_start"
+        ],
+        "title": "AnalyticsSupport"
       },
       "ApiRouteOut": {
         "properties": {
@@ -20267,6 +20752,41 @@
             "type": "integer",
             "title": "Email Verified"
           },
+          "daily_joined": {
+            "items": {
+              "type": "integer"
+            },
+            "type": "array",
+            "title": "Daily Joined"
+          },
+          "daily_total": {
+            "items": {
+              "type": "integer"
+            },
+            "type": "array",
+            "title": "Daily Total"
+          },
+          "daily_active": {
+            "items": {
+              "type": "integer"
+            },
+            "type": "array",
+            "title": "Daily Active"
+          },
+          "daily_no_family": {
+            "items": {
+              "type": "integer"
+            },
+            "type": "array",
+            "title": "Daily No Family"
+          },
+          "daily_verified": {
+            "items": {
+              "type": "integer"
+            },
+            "type": "array",
+            "title": "Daily Verified"
+          },
           "rows": {
             "items": {
               "$ref": "#/components/schemas/MemberRow"
@@ -20282,6 +20802,11 @@
           "active_7d",
           "no_family",
           "email_verified",
+          "daily_joined",
+          "daily_total",
+          "daily_active",
+          "daily_no_family",
+          "daily_verified",
           "rows"
         ],
         "title": "MembersOut"

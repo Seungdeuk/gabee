@@ -3,8 +3,9 @@
 (function () {
   "use strict";
 
-  // 왼쪽 메뉴: 묶음 제목과 그 안의 탭. 비슷한 것끼리 묶고 할 일(문의·공지)은 아래에 모은다. 첫 화면은 맨 위 탭.
+  // 왼쪽 메뉴: 묶음 제목과 그 안의 탭. 요약(데이터 분석)을 먼저, 할 일(문의·공지)은 아래에 모은다. 첫 화면은 맨 위 탭.
   const TAB_GROUPS = [
+    ["한눈에", [["analytics", "데이터 분석"]]],
     ["사람", [["members", "회원 관리"], ["groups", "가족 그룹 관리"]]],
     ["사용", [["features", "기능 관리"], ["ai", "AI 이용 현황"]]],
     ["운영 업무", [["support", "문의 및 신고"], ["notices", "공지사항"]]],
@@ -80,10 +81,10 @@
    * @returns {Promise<object>}
    */
   async function loadData() {
-    const [me, members, groups, features, ai, support, notices] = await Promise.all(
-      ["/admin/service/me", "/admin/service/members", "/admin/service/groups", "/admin/service/features", "/admin/service/ai-usage", "/admin/service/support", "/admin/service/notices"].map((p) => api(p)),
+    const [me, members, groups, features, ai, support, notices, analytics] = await Promise.all(
+      ["/admin/service/me", "/admin/service/members", "/admin/service/groups", "/admin/service/features", "/admin/service/ai-usage", "/admin/service/support", "/admin/service/notices", "/admin/service/analytics"].map((p) => api(p)),
     );
-    return { me, members, groups, features, ai, support, notices };
+    return { me, members, groups, features, ai, support, notices, analytics };
   }
 
   // ── 그리기 도우미 ─────────────────────────────────────
@@ -117,6 +118,7 @@
     ai: "M12 3l1.8 4.6L18 9.5l-4.2 1.9L12 16l-1.8-4.6L6 9.5l4.2-1.9zM19 15l.8 2 2 .8-2 .8-.8 2-.8-2-2-.8 2-.8z",
     support: "M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z",
     notices: "M3 11v2a1 1 0 0 0 1 1h2l5 4V6L6 10H4a1 1 0 0 0-1 1zM15 9a4 4 0 0 1 0 6M18 6a8 8 0 0 1 0 12",
+    analytics: "M3 3v18h18M7 15l4-4 3 3 5-6",
   };
   const icon = (key) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${ICON_PATHS[key]}"/></svg>`;
 
@@ -142,20 +144,62 @@
 
   const filters = { memberQ: "" };
 
+  // 회원 관리 카드를 누르면 보이는 하루 그래프: 카드 key → (서버 칸, 그래프 제목, 아래 합계 문구)
+  const MEMBER_METRICS = {
+    total: { field: "daily_total", title: "날짜별 전체 가입자", foot: (s) => `오늘 ${num(s.at(-1))}명` },
+    joined: { field: "daily_joined", title: "날짜별 가입", foot: (s) => `30일 동안 ${num(s.reduce((a, c) => a + c, 0))}명` },
+    active: { field: "daily_active", title: "날짜별 활성 사용자", foot: (s) => `가장 많은 날 ${num(Math.max(0, ...s))}명` },
+    no_family: { field: "daily_no_family", title: "날짜별 가족 없는 회원", foot: (s) => `오늘 ${num(s.at(-1))}명` },
+    verified: { field: "daily_verified", title: "날짜별 이메일 인증", foot: (s) => `오늘 ${num(s.at(-1))}명` },
+  };
+  let memberMetric = "joined";
+
+  /** 누를 수 있는 요약 카드(누르면 아래 그래프가 그 항목으로 바뀐다). */
+  function statButton(key, label, value, sub = "", tone = "") {
+    const on = key === memberMetric;
+    return `<button type="button" class="stat clickable" data-metric="${key}" aria-pressed="${on}"><span class="stat-label">${esc(label)}</span><span class="stat-value">${esc(value)}</span><span class="stat-sub ${tone}">${esc(sub)}</span></button>`;
+  }
+
+  /** 30일 전 → 오늘 막대. 날짜는 한국 시간 기준 MM-DD. */
+  function dailyChart(series, label) {
+    const top = Math.max(1, ...series);
+    const kst = (offset) => new Date(Date.now() + 9 * 3600000 - offset * 86400000).toISOString().slice(5, 10);
+    const bars = series.map((c, i) => `<div title="${kst(series.length - 1 - i)} · ${c}명"><i style="height:${pct((c / top) * 100)}"></i></div>`).join("");
+    return `<div class="chart" role="img" aria-label="${esc(label)}">${bars}</div>
+      <div class="axis"><span>${kst(series.length - 1)}</span><span>${kst(Math.floor(series.length / 2))}</span><span>오늘 ${kst(0)}</span></div>`;
+  }
+
   function viewMembers(d) {
     const word = filters.memberQ.toLowerCase();
     const rows = d.rows
       .filter((u) => !word || u.name.toLowerCase().includes(word) || (u.login_id || "").toLowerCase().includes(word))
       .map((u) => `<tr><td><strong>${esc(u.name)}</strong></td><td>${esc(u.login_id || "-")}</td><td>${day(u.joined_at)}</td><td>${u.has_family ? "있음" : "없음"}</td><td><span class="pill ${u.email_verified ? "ok" : ""}">${u.email_verified ? "인증" : "미인증"}</span></td><td>${ago(u.last_login_at)}</td></tr>`);
-    return `${head("회원 관리", "가입자 수 · 가입일 · 계정 상태")}
+    const metric = MEMBER_METRICS[memberMetric];
+    const series = d[metric.field] || [];
+    const share = (n) => (d.total ? Math.round((n / d.total) * 100) : 0);
+    const meter = (label, n) => `<div class="meter"><strong>${esc(label)}</strong><div class="bar"><span style="width:${pct(share(n))}"></span></div><span class="num">${num(n)}명 · ${share(n)}%</span></div>`;
+    return `${head("회원 관리", "가입자 수 · 가입일 · 계정 상태 · 카드를 누르면 날짜별 그래프")}
       <section class="grid">
-        ${stat("전체 가입자", `${num(d.total)}명`)}
-        ${stat("이번 주 가입", `${num(d.joined_this_week)}명`, "최근 7일", "up")}
-        ${stat("활성 사용자", `${num(d.active_7d)}명`, "최근 7일")}
-        ${stat("가족 없는 회원", `${num(d.no_family)}명`)}
-        ${stat("이메일 인증", `${num(d.email_verified)}명`, d.total ? `전체의 ${Math.round((d.email_verified / d.total) * 100)}%` : "")}
+        ${statButton("total", "전체 가입자", `${num(d.total)}명`)}
+        ${statButton("joined", "이번 주 가입", `${num(d.joined_this_week)}명`, "최근 7일", "up")}
+        ${statButton("active", "활성 사용자", `${num(d.active_7d)}명`, "최근 7일")}
+        ${statButton("no_family", "가족 없는 회원", `${num(d.no_family)}명`)}
+        ${statButton("verified", "이메일 인증", `${num(d.email_verified)}명`, d.total ? `전체의 ${share(d.email_verified)}%` : "")}
         ${stat("계정 상태", "준비 중", "정지 기능은 2단계")}
       </section>
+      <div class="row">
+        <section class="card wide">
+          <div class="card-head"><h2>${esc(metric.title)} (최근 30일)</h2><span class="small">${esc(metric.foot(series.length ? series : [0]))}</span></div>
+          ${dailyChart(series, `${metric.title} 최근 30일`)}
+        </section>
+        <section class="card side">
+          <h2>회원 구성</h2>
+          ${meter("가족 있음", d.total - d.no_family)}
+          ${meter("이메일 인증", d.email_verified)}
+          ${meter("최근 7일 활성", d.active_7d)}
+          <span class="small">전체 ${num(d.total)}명 기준</span>
+        </section>
+      </div>
       <section class="card">
         <div class="filters">
           <label class="field">이름·아이디 검색<input type="search" data-filter="memberQ" value="${esc(filters.memberQ)}" placeholder="예: test"></label>
@@ -357,6 +401,105 @@
     render();
   }
 
+  // ── 데이터 분석 ──────────────────────────────────────
+
+  const percent = (v) => (v === null || v === undefined ? "-" : `${v}%`);
+  const hours = (h) => (h === null || h === undefined ? "-" : h < 24 ? `${h}시간` : `${Math.round((h / 24) * 10) / 10}일`);
+  /** 값이 클수록 진한 칸(비율 % 또는 최대값 대비). */
+  const shade = (v, max = 100) => (v === null || v === undefined ? "" : `background: color-mix(in srgb, var(--accent) ${Math.round((Math.min(v, max) / Math.max(max, 1)) * 70)}%, transparent);`);
+
+  function viewAnalytics(d) {
+    const small = d.users < 30 ? `<p class="note warn">지금은 가입자가 ${num(d.users)}명뿐이라 비율이 크게 흔들려요. 숫자는 흐름만 보고, 사람이 늘면 해석해요.</p>` : "";
+
+    // ① 재방문 코호트
+    const cohortRows = d.retention.map(
+      (c) => `<tr><td>${esc(c.week_start)} 주</td><td class="num">${num(c.size)}명</td>${[c.w1, c.w2, c.w4].map((v) => `<td class="num" style="${shade(v)}">${c.size ? percent(v) : "-"}</td>`).join("")}</tr>`,
+    );
+
+    // ② 가입 퍼널
+    const funnel = d.funnel
+      .map((s, i) => {
+        const drop = i ? d.funnel[i - 1].users - s.users : 0;
+        const wait = s.median_hours !== null ? ` · 가입부터 ${hours(s.median_hours)}` : "";
+        return `<div><div class="meter"><strong>${esc(s.label)}</strong><div class="bar"><span style="width:${pct(s.share)}"></span></div><span class="num">${num(s.users)}명 · ${percent(s.share)}</span></div><p class="small" style="margin:2px 0 0">${i ? `앞 단계에서 ${num(drop)}명 멈춤` : "전체 가입자"}${wait}</p></div>`;
+      })
+      .join("");
+
+    // ③ 가족 인원별
+    const f = d.families;
+    const sizeRows = f.by_size.map((s) => `<tr><td>${esc(s.label)}</td><td class="num">${num(s.families)}곳</td><td class="num">${percent(s.active_share)}</td><td class="num">${s.avg_actions ?? "-"}</td></tr>`);
+
+    // ④ 기능 사용 지도
+    const features = d.features.map((x) => `<div class="meter"><strong>${esc(x.label)}</strong><div class="bar"><span style="width:${pct(x.share)}"></span></div><span class="num">${num(x.families)}곳 · ${percent(x.share)}</span></div>`).join("");
+
+    // ⑤ AI 품질·비용
+    const ai = d.ai;
+    const aiRows = ai.top_families.map((x) => `<tr><td><strong>${esc(x.name)}</strong></td><td class="num">${num(x.requests)}회</td><td class="num">${num(x.tokens)}</td></tr>`);
+
+    // ⑥ 요일 × 시간
+    const top = Math.max(1, ...d.heatmap.flat());
+    const daysKo = ["월", "화", "수", "목", "금", "토", "일"];
+    const heat = d.heatmap
+      .map((row, i) => `<div class="heat-row"><span class="heat-day">${daysKo[i]}</span>${row.map((c, h) => `<i title="${daysKo[i]} ${h}시 · ${c}회" style="${c ? shade(Math.max(c, top / 6), top) : ""}"></i>`).join("")}</div>`)
+      .join("");
+
+    // ⑦ 고객 응대
+    const s = d.support;
+    const wTop = Math.max(1, ...s.weekly);
+    const weekly = s.weekly.map((c) => `<div title="${c}건"><i style="height:${pct((c / wTop) * 100)}"></i></div>`).join("");
+
+    return `${head("데이터 분석", "재방문 · 가입 퍼널 · 가족 · 기능 · AI · 시간대 · 고객 응대 (개수와 시각만 사용)")}${small}
+      <div class="row">
+        <section class="card wide">
+          <div class="card-head"><h2>① 재방문(리텐션) 코호트</h2><span class="small">가입 주별로, 가입 1·2·4주 뒤에 다시 로그인한 비율</span></div>
+          ${table([{ label: "가입 주" }, { label: "가입자", num: true }, { label: "1주 뒤", num: true }, { label: "2주 뒤", num: true }, { label: "4주 뒤", num: true }], cohortRows)}
+        </section>
+        <section class="card side">
+          <h2>② 가입 퍼널</h2>
+          ${funnel}
+          <span class="small">각 단계는 앞 단계를 모두 지난 사람만 세요</span>
+        </section>
+      </div>
+      <div class="row">
+        <section class="card wide">
+          <div class="card-head"><h2>③ 가족 인원별 활동 (최근 7일)</h2><span class="small">혼자인 가족 ${num(f.solo_families)}곳 · 두 번째 가족이 들어오기까지 ${f.days_to_second_member ?? "-"}일(중앙값)</span></div>
+          ${table([{ label: "가족 인원" }, { label: "가족 수", num: true }, { label: "활동한 가족", num: true }, { label: "가족당 사용 수", num: true }], sizeRows)}
+        </section>
+        <section class="card side">
+          <h2>④ 기능 사용 지도 (최근 30일)</h2>
+          ${features}
+          <span class="small">전체 가족 ${num(d.total_families)}곳 중 그 기능을 한 번이라도 쓴 가족</span>
+        </section>
+      </div>
+      <section class="card">
+        <div class="card-head"><h2>⑤ AI 품질·비용 (최근 30일)</h2><span class="small">요청 수는 메인 비서가 부른 표식·한도 거절 줄을 뺀 값</span></div>
+        <section class="grid compact">
+          ${stat("요청", `${num(ai.requests)}회`)}
+          ${stat("활동한 사람 1명당", ai.per_active_user === null ? "-" : `${ai.per_active_user}회`, `활동 ${num(ai.active_users)}명`)}
+          ${stat("오류율", percent(ai.error_rate), "", ai.error_rate > 5 ? "warn" : "")}
+          ${stat("캐시 적중률", percent(ai.cache_hit_rate), "저장된 답 재사용")}
+          ${stat("한도 거절", percent(ai.limit_rate))}
+        </section>
+        ${table([{ label: "토큰을 많이 쓴 가족" }, { label: "요청", num: true }, { label: "토큰(입력+출력)", num: true }], aiRows)}
+      </section>
+      <div class="row">
+        <section class="card wide">
+          <div class="card-head"><h2>⑥ 요일 · 시간대 활동 (최근 30일)</h2><span class="small">로그인 + AI 요청, 한국 시간. 진할수록 많아요</span></div>
+          <div class="heat" role="img" aria-label="요일과 시간대별 활동">${heat}<div class="heat-row heat-axis"><span class="heat-day"></span><span>0시</span><span>6시</span><span>12시</span><span>18시</span><span>23시</span></div></div>
+        </section>
+        <section class="card side">
+          <h2>⑦ 고객 응대</h2>
+          <section class="grid compact">
+            ${stat("평균 답변 시간", hours(s.avg_hours), `답변 ${num(s.answered)}건`)}
+            ${stat("가장 오래 걸린", hours(s.max_hours))}
+            ${stat("문의 / 신고", `${num(s.inquiries)} / ${num(s.reports)}`)}
+          </section>
+          <div class="chart" style="height:90px" role="img" aria-label="주별 문의·신고 수">${weekly}</div>
+          <div class="axis"><span>${esc(s.week_start)} 주</span><span>이번 주</span></div>
+        </section>
+      </div>`;
+  }
+
   const VIEWS = {
     members: (data) => viewMembers(data.members),
     groups: (data) => viewGroups(data.groups),
@@ -364,6 +507,7 @@
     ai: (data) => viewAi(data.ai),
     support: (data) => viewSupport(data.support),
     notices: (data) => viewNotices(data.notices),
+    analytics: (data) => viewAnalytics(data.analytics),
   };
 
   // ── 화면 그리기 ───────────────────────────────────────
@@ -492,6 +636,12 @@
       const area = box.querySelector("textarea");
       area.scrollIntoView({ block: "center" });
       area.focus();
+      return;
+    }
+    const metric = e.target.closest("[data-metric]");
+    if (metric) {
+      memberMetric = metric.dataset.metric;
+      render();
       return;
     }
     const step = e.target.closest("[data-ticket]");
