@@ -20,6 +20,7 @@ import { agoText } from "../geo";
 import { requestForeground, seedZoneNearHere, sendNow, startBackground, stopBackground, isBackgroundRunning } from "../sharing";
 import BackgroundCard from "./BackgroundCard";
 import FamilyMap from "./FamilyMap";
+import TimelineCard from "./TimelineCard";
 
 const SEND_EVERY_MS = 60 * 1000; // 베타: 화면이 열려 있는 동안 1분마다 한 번
 const PAUSE_DAYS = [
@@ -188,6 +189,13 @@ export default function LocationSection({ notify }) {
                 : `활동 구역은 위치가 20개 모이면 만들어요 (지금 ${me.point_count}개)`}
             </Text>
           </Card>
+
+          <TimelineCard
+            members={members}
+            canSeeFamily={Boolean(family?.can_see_family)}
+            refreshKey={tick}
+            notify={notify}
+          />
 
           <Card tone="white">
             <Text style={styles.title}>시연 도구</Text>

@@ -32,3 +32,25 @@ export const simulateExit = (distance = 5000) => apiFetch("/location/simulate-ex
 
 /** 앱이 꺼져 있어도 위치를 모으는 것에 동의(true)하거나 끈다. 위치 공유에 먼저 동의해야 켤 수 있다. @param {boolean} enabled @returns {Promise<MyLocation>} */
 export const setLocationBackground = (enabled) => apiFetch("/location/background", { method: "PUT", body: { enabled } });
+
+/**
+ * 하루 이동 기록. 본인 것, 부모(관리자)는 userId 로 가족 구성원 것도 볼 수 있다. 좌표는 없다.
+ * @typedef {{ kind: "stay" | "move" | "no_record" | "anomaly", start: string, end: string, place: string | null, origin: string | null, candidate_id: string | null }} Segment
+ * @typedef {{ date: string, user_id: string, name: string, sharing: boolean, can_name: boolean, segments: Segment[] }} Timeline
+ * @typedef {{ places: { id: string, name: string }[], candidates: { id: string, label: string, visits: number, last_seen: string }[] }} Places
+ * @param {string} date YYYY-MM-DD
+ * @param {string | null} [userId]
+ * @returns {Promise<Timeline>}
+ */
+export const getTimeline = (date, userId) =>
+  apiFetch(`/location/timeline?date=${encodeURIComponent(date)}${userId ? `&user_id=${encodeURIComponent(userId)}` : ""}`);
+
+/** 내가 이름 붙인 장소와 이름 붙이기를 제안하는 자주 간 곳. @returns {Promise<Places>} */
+export const getPlaces = () => apiFetch("/location/places");
+
+/** 자주 간 곳에 이름을 붙인다(본인만, 20자, 최대 20곳). @param {string} candidateId @param {string} name @returns {Promise<Places>} */
+export const namePlace = (candidateId, name) =>
+  apiFetch("/location/places", { method: "POST", body: { candidate_id: candidateId, name } });
+
+/** 내가 붙인 장소 이름을 지운다. @param {string} placeId @returns {Promise<Places>} */
+export const deletePlace = (placeId) => apiFetch(`/location/places/${encodeURIComponent(placeId)}`, { method: "DELETE" });
