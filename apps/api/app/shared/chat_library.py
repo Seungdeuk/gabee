@@ -59,6 +59,27 @@ def document_posted(
         logger.warning("chat library register failed error=%s", type(exc).__name__)
 
 
+# (group_id, user_id, attachment_id, data, forced) → 사진 등록(백그라운드). forced 는 사용자가 "문서로 저장"을 눌러 판별을 건너뛴 경우
+OnPhoto = Callable[[str, str, str, bytes, bool], None]
+_on_photo: OnPhoto | None = None
+
+
+def register_photo_handler(on_photo: OnPhoto) -> None:
+    """ai_assistant 가 시작할 때 사진 처리 함수를 등록한다."""
+    global _on_photo
+    _on_photo = on_photo
+
+
+def photo_posted(group_id: str, user_id: str, attachment_id: str, data: bytes) -> None:
+    """가족 전체방에 사진이 저장되면 부른다. 문서 사진인지는 뒤에서 가려서(판별) 문서일 때만 등록한다. 실패해도 던지지 않는다."""
+    if _on_photo is None:
+        return
+    try:
+        _on_photo(group_id, user_id, attachment_id, data, False)
+    except Exception as exc:  # noqa: BLE001  채팅 전송을 깨면 안 된다(종류만 기록)
+        logger.warning("chat library photo failed error=%s", type(exc).__name__)
+
+
 def attachment_removed(db: Session, group_id: str, attachment_id: str) -> None:
     """채팅 첨부(메시지)를 지우면 부른다. 그 첨부에서 만든 기록이 있으면 함께 지운다. 실패해도 던지지 않는다."""
     if _on_removed is None:

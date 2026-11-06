@@ -174,6 +174,10 @@ def _process_once(
                 _drop_chat_upload(group_id, photo_id, data)
             return "failed", retry
         fields = from_ingest.to_item(result)
+        if source_attachment_id and fields["kind_label"] == from_ingest.PHOTO_KIND:
+            # 문서 사진으로 보고 읽었는데 글자가 거의 없다: 일반 사진은 문서함에 넣지 않는다
+            _drop_chat_upload(group_id, photo_id, data)
+            return "skipped", False
         if source_attachment_id and knowledge_service.is_sensitive(
             fields["kind_label"], fields.get("sensitivity"), strict=True
         ):

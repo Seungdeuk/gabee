@@ -20,13 +20,14 @@ from PIL import Image, ImageOps
 from sqlalchemy.orm import Session
 
 from app.features.family_group.models import User
+from app.shared import chat_library
 from app.shared.config import settings
 from app.shared.errors import ApiError, bad_request, not_found
 from app.shared.rate_limit import FailureLimiter
 
 from . import chat_push, service
 from . import repository as repo
-from .models import Message, MessageAttachment
+from .models import FAMILY, Message, MessageAttachment
 from .schemas import MessageOut
 
 MAX_BYTES = 8 * 1024 * 1024
@@ -205,6 +206,10 @@ def send_photo(
     chat_push.notify_new_message(
         db, room, message, attachment.batch_id
     )  # 같은 묶음은 첫 사진에서만 푸시
+    if (
+        room.kind == FAMILY
+    ):  # 가족 전체방 사진만: 문서를 찍은 사진이면 가족 문서함에 자동 등록한다(판별·읽기는 뒤에서, 실패해도 전송은 그대로)
+        chat_library.photo_posted(group_id, user.id, attachment.id, data)
     return service.message_out(message, user.name, attachment)
 
 
