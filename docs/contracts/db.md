@@ -64,6 +64,7 @@ docker compose 의 개발용 PostgreSQL(`pgvector/pgvector:pg16` 이미지, `pgv
 | location_points | location | (위치 베타 브랜치에만 있음) 동의한 사람이 보낸 위치(사용자, 그룹, 위도·경도, 오차, 잰 시각, 받은 시각). 보관 기간(기본 14일)이 지나면 지운다. 좌표는 로그에 남기지 않는다 |
 | location_zones | location | (위치 베타 브랜치에만 있음) 사용자별 평소 활동 구역(중심, 반지름, 계산에 쓴 위치 수, 마지막 이탈 알림 시각, 지금 구역 밖인지) |
 | location_settings | location | (위치 베타 브랜치에만 있음) 사용자별 위치 공유 일시정지 종료 시각, 앱을 꺼도 위치를 모으는 것(백그라운드)에 동의했는지와 그 시각 |
+| location_places | location | (위치 베타 브랜치에만 있음) 사용자가 이름을 붙인 자주 가는 곳(주인, 그룹, 이름 20자, 위도·경도, 반경 150m). 본인만 만들고 지우며 위치 공유 철회 시 함께 지운다 |
 | location_chunks | location | (위치 베타 브랜치에만 있음) 위치 기록을 사람이 읽는 요약 문장으로 바꾼 검색 조각(주인, 그룹, 종류 span/move/day/place, 시작·끝 시각, 문장, 임베딩 pgvector 384차원, 임베딩 모델). 좌표를 담지 않는다. 동의 철회·위치 삭제 때 함께 지운다 |
 | photos | ai_assistant | 앱이 올린 사진(파일은 `DATA_DIR/photos`에 저장) |
 | knowledge_items | ai_assistant/knowledge | 전처리가 넘긴 기록 한 건(분류 이름, 제목, 마크다운 전체, 원본 경로, 날짜, 민감도) |

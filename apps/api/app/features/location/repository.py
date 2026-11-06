@@ -5,7 +5,14 @@ from sqlalchemy.orm import Session
 
 from app.features.family_group.models import GroupMember, User
 
-from .models import EMBED_DIM, LocationChunk, LocationPoint, LocationSetting, LocationZone
+from .models import (
+    EMBED_DIM,
+    LocationChunk,
+    LocationPlace,
+    LocationPoint,
+    LocationSetting,
+    LocationZone,
+)
 
 
 def add_point(db: Session, point: LocationPoint) -> LocationPoint:
@@ -54,7 +61,7 @@ def prune_points(db: Session, user_id: str, before: datetime) -> None:
 
 def delete_user_data(db: Session, user_id: str) -> None:
     """동의를 철회하거나 위치를 지울 때: 저장된 위치·구역·설정을 모두 지운다."""
-    for model in (LocationPoint, LocationZone, LocationSetting, LocationChunk):
+    for model in (LocationPoint, LocationZone, LocationSetting, LocationChunk, LocationPlace):
         db.execute(delete(model).where(model.user_id == user_id))
 
 
@@ -123,3 +130,35 @@ def search_chunks(
 
     scored = [(c, cosine(query_vec, c.embedding)) for c in db.scalars(q)]
     return sorted(scored, key=lambda row: row[1], reverse=True)[:limit]
+
+
+def points_between(
+    db: Session, user_id: str, start: datetime, end: datetime
+) -> list[LocationPoint]:
+    """[start, end) 에 잰 위치를 시간순으로. start·end 는 UTC 로 넘긴다."""
+    return list(
+        db.scalars(
+            select(LocationPoint)
+            .where(
+                LocationPoint.user_id == user_id,
+                LocationPoint.recorded_at >= start,
+                LocationPoint.recorded_at < end,
+            )
+            .order_by(LocationPoint.recorded_at)
+        )
+    )
+
+
+def list_places(db: Session, user_id: str) -> list[LocationPlace]:
+    return list(
+        db.scalars(
+            select(LocationPlace)
+            .where(LocationPlace.user_id == user_id)
+            .order_by(LocationPlace.created_at)
+        )
+    )
+
+
+def get_place(db: Session, user_id: str, place_id: str) -> LocationPlace | None:
+    place = db.get(LocationPlace, place_id)
+    return place if place is not None and place.user_id == user_id else None

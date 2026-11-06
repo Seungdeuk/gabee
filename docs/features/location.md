@@ -13,6 +13,10 @@
 - 지도 타일·지도 라이브러리는 쓰지 않는다(의존성 추가 없음). 점과 활동 구역을 상대 위치로 그린다.
 - 시험: `tests/locationgeo.test.js` 통과. 앱 전체 시험은 기존 실패 1개(`schedule_lunar`)만 남는다. 변경 파일 린트 통과(import 규칙 제외). 실기기 확인은 하지 않았다.
 
+## 이동 기록 타임라인 — 서버 완료, 앱 화면은 다음
+- 변환기 `timeline.py`(시험 10개), 왕복 검증 `run_timeline.py`(머묾 recall·precision 1.00, 지어낸 시간 0분), 장소 이름 붙이기(`location_places`, 마이그레이션 `d3b8f15e92a4`), API `GET /location/timeline`·`/location/places`, `POST /location/places`, `DELETE /location/places/{id}`(시험 11개). 위치 시험 합계 54개.
+- 구간은 저장하지 않고 요청 때 만든다(설계 6번 "위치를 올릴 때 다시 만든다"에서 바꿈: 파생 데이터를 남기지 않고 결과가 같다).
+
 ## 앱을 꺼도 계속 공유 (백그라운드 수집) — 구현됨, 실기기 확인 전
 - 서버: `PUT /location/background`, `location_settings.background_enabled/background_at`(마이그레이션 `c7e2a9d41f08`, 컬럼 추가만), `/location/me`의 `background`. 별도 동의 이력은 `location_consent_events`(경로 `location_bg`). 위치 공유 철회 시 함께 꺼지고 이력이 남는다. 시험 4개 추가(위치 시험 합계 33개).
 - 앱: `backgroundTask.js`(TaskManager 작업을 루트 레이아웃에서 등록, 깨어나면 저장된 Refresh Token으로 세션 복원 후 위치 업로드), `sharing.js`(권한·시작·중지), `BackgroundCard.js`(동의 안내 7항목과 켜기·끄기), `consentText.js`, `background.js`(수집 조건 `wantsBackground`·`toPoint`·`pickToSend`, 시험 3개). 여행 모드·철회·서버 거절 시 기기 수집이 멈춘다.

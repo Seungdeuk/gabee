@@ -215,6 +215,9 @@ NO_GROUP_OK = {
     ("GET", "/location/me"),
     ("PUT", "/location/consent"),
     ("DELETE", "/location/me"),
+    # 내가 이름 붙인 장소를 보고 지우는 것도 내 정보라서 가족이 없어도 된다(그룹 id 를 받지 않고 본인 것만 다룬다)
+    ("GET", "/location/places"),
+    ("DELETE", "/location/places/{place_id}"),
     # 서비스 관리자 경로는 가족 데이터가 아니다. 권한은 require_operator("service_admin") 허용 목록이 정한다(admin/tests 에서 401·403 확인)
     ("GET", "/admin/me"),
     ("GET", "/admin/members"),

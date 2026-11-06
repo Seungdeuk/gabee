@@ -1,10 +1,12 @@
-from fastapi import APIRouter, Depends
+from datetime import date
+
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
 from app.shared.auth import current_group_id, current_user
 from app.shared.db import get_db
 
-from . import agent, service
+from . import agent, service, timeline_service
 from .schemas import (
     AskIn,
     AskOut,
@@ -12,10 +14,13 @@ from .schemas import (
     ConsentIn,
     FamilyLocations,
     MyLocationOut,
+    NamePlaceIn,
     PauseIn,
+    PlacesOut,
     PointIn,
     PointSaved,
     SimulateIn,
+    TimelineOut,
 )
 
 router = APIRouter(prefix="/location", tags=["location"])
@@ -106,3 +111,40 @@ def put_background(
 ) -> MyLocationOut:
     """앱이 꺼져 있어도 위치를 모으는 것에 동의(켜기)하거나 끈다. 켜려면 위치 공유에 먼저 동의해야 한다."""
     return service.set_background(db, user, group_id, body.enabled)
+
+
+@router.get("/timeline", response_model=TimelineOut)
+def get_timeline(
+    day: date = Query(alias="date"),
+    user_id: str | None = None,
+    user=Depends(current_user),
+    group_id: str = Depends(current_group_id),
+    db: Session = Depends(get_db),
+) -> TimelineOut:
+    """하루 이동 기록(머묾·이동·기록 없음·평소 구역 밖). 본인 것, 부모(관리자)는 가족 구성원 것도 볼 수 있다. 좌표는 없다."""
+    return timeline_service.day_timeline(db, user, group_id, user_id, day)
+
+
+@router.get("/places", response_model=PlacesOut)
+def get_places(user=Depends(current_user), db: Session = Depends(get_db)) -> PlacesOut:
+    """내가 이름 붙인 장소와, 이름 붙이기를 제안하는 자주 간 곳."""
+    return timeline_service.list_places(db, user)
+
+
+@router.post("/places", response_model=PlacesOut, status_code=201)
+def post_place(
+    body: NamePlaceIn,
+    user=Depends(current_user),
+    group_id: str = Depends(current_group_id),
+    db: Session = Depends(get_db),
+) -> PlacesOut:
+    """자주 간 곳(candidate_id)에 이름을 붙인다. 본인만 붙일 수 있고 최대 20곳."""
+    return timeline_service.name_place(db, user, group_id, body)
+
+
+@router.delete("/places/{place_id}", response_model=PlacesOut)
+def delete_place(
+    place_id: str, user=Depends(current_user), db: Session = Depends(get_db)
+) -> PlacesOut:
+    """내가 붙인 장소 이름을 지운다."""
+    return timeline_service.delete_place(db, user, place_id)

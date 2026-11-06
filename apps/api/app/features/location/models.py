@@ -68,6 +68,22 @@ class LocationSetting(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
 
 
+class LocationPlace(Base):
+    """사용자가 이름을 붙인 자주 가는 곳(집, 학교). 이름 붙인 본인만 만들고 지운다. 위치 공유를 철회하면 함께 지운다."""
+
+    __tablename__ = "location_places"
+    __table_args__ = (Index("ix_location_places_user", "user_id"),)
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uid)
+    user_id: Mapped[str] = mapped_column(String(32))
+    group_id: Mapped[str] = mapped_column(String(32), index=True)
+    name: Mapped[str] = mapped_column(String(20))
+    lat: Mapped[float] = mapped_column(Float)
+    lng: Mapped[float] = mapped_column(Float)
+    radius_m: Mapped[float] = mapped_column(Float, default=150.0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+
 class LocationChunk(Base):
     """위치 기록을 사람이 읽는 요약 문장으로 바꾼 검색 조각(좌표 없음). 질문에 답할 때 가까운 조각만 꺼낸다.
 

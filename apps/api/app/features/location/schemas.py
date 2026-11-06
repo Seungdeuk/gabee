@@ -86,3 +86,45 @@ class SimulateIn(BaseModel):
     """시연용: 지정한 사용자(기본은 나)의 현재 위치를 활동 구역에서 멀리 옮긴 것처럼 한 번 보낸다."""
 
     distance_m: float = Field(default=5000, ge=100, le=500000)
+
+
+class SegmentOut(BaseModel):
+    """하루 이동 기록의 한 구간. 좌표는 담지 않는다."""
+
+    kind: Literal["stay", "move", "no_record", "anomaly"]
+    start: datetime
+    end: datetime
+    place: str | None = None  # 이름을 붙인 곳의 이름(이동은 도착지). 이름 없는 곳은 비어 있다
+    origin: str | None = None  # 이동의 출발지 이름
+    candidate_id: str | None = None  # 자주 간 이름 없는 곳이면 이름 붙이기용 id
+
+
+class TimelineOut(BaseModel):
+    date: str
+    user_id: str
+    name: str
+    sharing: bool  # 위치 공유에 동의한 사람인지
+    can_name: bool  # 장소 이름은 본인만 붙인다
+    segments: list[SegmentOut]
+
+
+class PlaceOut(BaseModel):
+    id: str
+    name: str
+
+
+class CandidateOut(BaseModel):
+    id: str
+    label: str  # "자주 가는 곳 1"
+    visits: int
+    last_seen: datetime
+
+
+class PlacesOut(BaseModel):
+    places: list[PlaceOut]
+    candidates: list[CandidateOut]
+
+
+class NamePlaceIn(BaseModel):
+    candidate_id: str = Field(min_length=1, max_length=40)
+    name: str = Field(min_length=1, max_length=20)
