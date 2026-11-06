@@ -8,6 +8,7 @@ from . import agent, service
 from .schemas import (
     AskIn,
     AskOut,
+    BackgroundIn,
     ConsentIn,
     FamilyLocations,
     MyLocationOut,
@@ -93,3 +94,14 @@ def post_ask(
     service.ensure_enabled()
     reply = agent.ask(db, group_id, user, body.question, history=body.history)
     return AskOut(answer=reply.answer, used_tool=bool(reply.tool_calls))
+
+
+@router.put("/background", response_model=MyLocationOut)
+def put_background(
+    body: BackgroundIn,
+    user=Depends(current_user),
+    group_id: str = Depends(current_group_id),
+    db: Session = Depends(get_db),
+) -> MyLocationOut:
+    """앱이 꺼져 있어도 위치를 모으는 것에 동의(켜기)하거나 끈다. 켜려면 위치 공유에 먼저 동의해야 한다."""
+    return service.set_background(db, user, group_id, body.enabled)

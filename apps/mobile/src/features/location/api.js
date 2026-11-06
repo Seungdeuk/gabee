@@ -3,7 +3,7 @@ import { apiFetch } from "@/shared/api/client";
 /**
  * 위치 공유(베타) 서버 호출. 응답 모양은 docs/contracts/openapi.json 의 /location/* 를 따른다.
  * @typedef {{ center_lat: number, center_lng: number, radius_m: number, sample_count: number, computed_at: string }} Zone
- * @typedef {{ enabled: boolean, consent: boolean, paused_until: string | null, paused: boolean, zone: Zone | null, point_count: number }} MyLocation
+ * @typedef {{ enabled: boolean, consent: boolean, paused_until: string | null, paused: boolean, background: boolean, zone: Zone | null, point_count: number }} MyLocation
  * @typedef {{ saved: boolean, reason: "paused" | "no_consent" | null, outside: boolean, alerted: boolean }} PointSaved
  * @typedef {{ user_id: string, name: string, is_me: boolean, sharing: boolean, paused: boolean, lat: number | null, lng: number | null, recorded_at: string | null, outside: boolean, zone: Zone | null }} MemberLocation
  * @typedef {{ members: MemberLocation[], can_see_family: boolean }} FamilyLocations
@@ -29,3 +29,6 @@ export const getFamilyLocations = () => apiFetch("/location/family");
 
 /** 시연용: 활동 구역을 벗어난 것처럼 판정만 한다(위치는 저장하지 않는다). @param {number} [distance] @returns {Promise<PointSaved>} */
 export const simulateExit = (distance = 5000) => apiFetch("/location/simulate-exit", { method: "POST", body: { distance_m: distance } });
+
+/** 앱이 꺼져 있어도 위치를 모으는 것에 동의(true)하거나 끈다. 위치 공유에 먼저 동의해야 켤 수 있다. @param {boolean} enabled @returns {Promise<MyLocation>} */
+export const setLocationBackground = (enabled) => apiFetch("/location/background", { method: "PUT", body: { enabled } });

@@ -55,13 +55,16 @@ class LocationZone(Base):
 
 
 class LocationSetting(Base):
-    """사용자별 위치 공유 설정. 일시정지(여행 등)가 끝나는 시각."""
+    """사용자별 위치 공유 설정. 일시정지(여행 등)가 끝나는 시각과 앱이 꺼져 있어도 모으는지(백그라운드)."""
 
     __tablename__ = "location_settings"
 
     user_id: Mapped[str] = mapped_column(String(32), primary_key=True)
     group_id: Mapped[str] = mapped_column(String(32), index=True)
     paused_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # 앱이 꺼져 있어도 위치를 모으는 것에 따로 동의했는지. 위치 공유 동의와 별개이고 철회하면 함께 지워진다
+    background_enabled: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    background_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
 
 

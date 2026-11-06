@@ -13,6 +13,12 @@
 - 지도 타일·지도 라이브러리는 쓰지 않는다(의존성 추가 없음). 점과 활동 구역을 상대 위치로 그린다.
 - 시험: `tests/locationgeo.test.js` 통과. 앱 전체 시험은 기존 실패 1개(`schedule_lunar`)만 남는다. 변경 파일 린트 통과(import 규칙 제외). 실기기 확인은 하지 않았다.
 
+## 앱을 꺼도 계속 공유 (백그라운드 수집) — 구현됨, 실기기 확인 전
+- 서버: `PUT /location/background`, `location_settings.background_enabled/background_at`(마이그레이션 `c7e2a9d41f08`, 컬럼 추가만), `/location/me`의 `background`. 별도 동의 이력은 `location_consent_events`(경로 `location_bg`). 위치 공유 철회 시 함께 꺼지고 이력이 남는다. 시험 4개 추가(위치 시험 합계 33개).
+- 앱: `backgroundTask.js`(TaskManager 작업을 루트 레이아웃에서 등록, 깨어나면 저장된 Refresh Token으로 세션 복원 후 위치 업로드), `sharing.js`(권한·시작·중지), `BackgroundCard.js`(동의 안내 7항목과 켜기·끄기), `consentText.js`, `background.js`(수집 조건 `wantsBackground`·`toPoint`·`pickToSend`, 시험 3개). 여행 모드·철회·서버 거절 시 기기 수집이 멈춘다.
+- 설정: `app.json`에서 위치 4개 권한의 `blockedPermissions` 삭제, expo-location 플러그인의 백그라운드 위치·포그라운드 서비스·iOS 백그라운드 옵션 켬 → **새 개발 빌드 필요**. Expo Go에서는 동작하지 않는다.
+- 확인하지 못한 것: 실기기 동작(권한 흐름, 앱 종료 후 수집, 배터리), 안드로이드 14+ 포그라운드 서비스 동작, 앱 종료 중 Refresh Token 갱신과 앱 재실행 시의 경합.
+
 ## 위치 기록 질문용 검색(RAG) — 검색 단계까지 완료
 - 요약 문장: `summary.py`가 구간(머묾·이동·일시정지·동의 없음·평소 구역 밖)을 문장으로 바꾼다. 규칙만 쓰고 LLM·좌표가 없다. 조각 종류는 span(구간), move(이동), day(하루 요약), place(장소별 방문 횟수·시각)이고, 자정에서 잘라 날짜·요일이 문장에 들어간다.
 - 적재·검색: `rag.py`(`index_spans`, `search`), 테이블 `location_chunks`(마이그레이션 `b4d9e1a7c630`, pgvector 384차원 + HNSW). 임베딩은 문서 지식과 같은 e5-small ONNX를 서버에서 계산한다(모델 폴더가 없으면 해시 임베더). 검색은 질문한 사람이 볼 수 있는 사용자(`visible_user_ids`)의 조각만 후보로 하고, 날짜 범위·시각·조각 종류를 받아 좁힌다. 동의 철회·위치 삭제 때 조각도 함께 지운다.
@@ -32,4 +38,4 @@
 ## 하지 않은 것
 - 위치 점(`location_points`)을 구간(머묾·이동)으로 바꾸는 단계: 적재기는 구간을 받는다. 실제 위치에서 구간을 만들려면 머문 곳 판정과 장소 이름 붙이기가 필요하다.
 - 실제 LLM 답변 점수 측정, ToolOps 호출 기록 테이블(현재는 `ai_usage_logs`의 기능·토큰·호출 수·상태만), 앱 질문 입력창.
-- 백그라운드 수집, 14세 미만 보호자 동의, 푸시 알림 연결(알림함에는 쌓인다), 시간대·속도 신호.
+- 14세 미만 보호자 동의(안내 문구에만 있고 확인 절차는 없음), 푸시 알림 연결(알림함에는 쌓인다), 시간대·속도 신호.

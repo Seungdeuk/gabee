@@ -13870,6 +13870,82 @@
         }
       }
     },
+    "/location/background": {
+      "put": {
+        "tags": [
+          "location"
+        ],
+        "summary": "Put Background",
+        "description": "앱이 꺼져 있어도 위치를 모으는 것에 동의(켜기)하거나 끈다. 켜려면 위치 공유에 먼저 동의해야 한다.",
+        "operationId": "put_background_location_background_put",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-gyeot-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Gyeot-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BackgroundIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MyLocationOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/support/tickets": {
       "post": {
         "tags": [
@@ -16353,6 +16429,20 @@
           "url"
         ],
         "title": "AttachmentOut"
+      },
+      "BackgroundIn": {
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "title": "Enabled"
+          }
+        },
+        "type": "object",
+        "required": [
+          "enabled"
+        ],
+        "title": "BackgroundIn",
+        "description": "앱이 꺼져 있어도 위치를 모으는 것에 동의(true)하거나 끈다(false)."
       },
       "Balance": {
         "properties": {
@@ -20801,6 +20891,11 @@
           "paused": {
             "type": "boolean",
             "title": "Paused",
+            "default": false
+          },
+          "background": {
+            "type": "boolean",
+            "title": "Background",
             "default": false
           },
           "zone": {

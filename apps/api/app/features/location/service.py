@@ -7,6 +7,7 @@
 
 import math
 import statistics
+import uuid
 from datetime import UTC, datetime, timedelta
 
 from sqlalchemy.orm import Session
@@ -14,7 +15,7 @@ from sqlalchemy.orm import Session
 from app.features.family_group.models import User
 from app.shared.config import settings
 from app.shared.errors import ApiError, bad_request
-from app.shared.location_consent import set_location_consent
+from app.shared.location_consent import LocationConsentEvent, set_location_consent
 from app.shared.notifications import notify
 
 from . import repository as repo
@@ -173,6 +174,7 @@ def my_status(db: Session, user: User) -> MyLocationOut:
         consent=_has_consent(user),
         paused_until=setting.paused_until if paused and setting else None,
         paused=paused,
+        background=bool(setting and setting.background_enabled),
         zone=_zone_out(repo.get_zone(db, user.id)),
         point_count=repo.count_points(db, user.id, now - timedelta(days=ZONE_WINDOW_DAYS)),
     )
@@ -181,9 +183,55 @@ def my_status(db: Session, user: User) -> MyLocationOut:
 def set_consent(db: Session, user: User, consent: bool) -> MyLocationOut:
     if consent:
         ensure_enabled()  # 켜기는 스위치가 꺼져 있으면 막는다. 철회는 항상 열려 있다
+    if not consent:
+        setting = repo.get_setting(db, user.id)
+        if (
+            setting is not None and setting.background_enabled
+        ):  # 백그라운드 동의도 함께 끝났다는 이력을 남긴다
+            db.add(
+                LocationConsentEvent(
+                    id=uuid.uuid4().hex[:12],
+                    user_id=user.id,
+                    consent=False,
+                    source="location_bg",
+                    at=_now(),
+                )
+            )
     set_location_consent(db, user, consent, SOURCE)
     if not consent:
         repo.delete_user_data(db, user.id)
+        db.commit()
+    return my_status(db, user)
+
+
+def set_background(db: Session, user: User, group_id: str, enabled: bool) -> MyLocationOut:
+    """앱이 꺼져 있어도 위치를 모으는 것에 동의하거나 끈다. 위치 공유에 먼저 동의해야 켤 수 있고, 끄는 것은 항상 열려 있다.
+    켜고 끈 이력은 동의 이력(location_consent_events)에 경로 `location_bg` 로 남긴다(좌표 없음)."""
+    if enabled:
+        ensure_enabled()
+        if not _has_consent(user):
+            raise bad_request("location_no_consent", "먼저 위치 공유에 동의해 주세요")
+    setting = repo.get_setting(db, user.id)
+    if setting is None:
+        if not enabled:
+            return my_status(db, user)
+        setting = LocationSetting(user_id=user.id, group_id=group_id)
+    if bool(setting.background_enabled) != enabled:
+        now = _now()
+        setting.group_id = group_id
+        setting.background_enabled = enabled
+        setting.background_at = now if enabled else None
+        setting.updated_at = now
+        db.add(setting)
+        db.add(
+            LocationConsentEvent(
+                id=uuid.uuid4().hex[:12],
+                user_id=user.id,
+                consent=enabled,
+                source="location_bg",
+                at=now,
+            )
+        )
         db.commit()
     return my_status(db, user)
 

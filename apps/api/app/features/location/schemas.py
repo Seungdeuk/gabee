@@ -8,6 +8,12 @@ class ConsentIn(BaseModel):
     consent: bool
 
 
+class BackgroundIn(BaseModel):
+    """앱이 꺼져 있어도 위치를 모으는 것에 동의(true)하거나 끈다(false)."""
+
+    enabled: bool
+
+
 class PauseIn(BaseModel):
     """days 가 없거나 0 이면 일시정지를 푼다. 최대 14일."""
 
@@ -34,6 +40,7 @@ class MyLocationOut(BaseModel):
     consent: bool
     paused_until: datetime | None = None
     paused: bool = False
+    background: bool = False  # 앱이 꺼져 있어도 위치를 모으는 것에 동의했는지
     zone: ZoneOut | None = None
     point_count: int = 0
 

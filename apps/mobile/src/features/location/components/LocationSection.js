@@ -15,8 +15,10 @@ import {
   setLocationPause,
   simulateExit,
 } from "../api";
+import { wantsBackground } from "../background";
 import { agoText } from "../geo";
-import { requestForeground, seedZoneNearHere, sendNow } from "../sharing";
+import { requestForeground, seedZoneNearHere, sendNow, startBackground, stopBackground, isBackgroundRunning } from "../sharing";
+import BackgroundCard from "./BackgroundCard";
 import FamilyMap from "./FamilyMap";
 
 const SEND_EVERY_MS = 60 * 1000; // 베타: 화면이 열려 있는 동안 1분마다 한 번
@@ -29,7 +31,7 @@ const PAUSE_DAYS = [
 
 /**
  * 돌봄 탭의 위치 구역(베타). 동의·여행 일시정지·가족 위치·이탈 알림 시연을 한 화면에 둔다.
- * 위치는 이 화면이 열려 있는 동안만 보낸다.
+ * 위치는 이 화면이 열려 있는 동안 보내고, "앱을 꺼도 계속 공유"에 동의하면 앱이 꺼져 있어도 기기에서 모아 보낸다.
  * @param {{ notify: (text: string, isError?: boolean) => void }} props
  */
 export default function LocationSection({ notify }) {
@@ -43,11 +45,24 @@ export default function LocationSection({ notify }) {
   const { data: family, reload: reloadFamily } = useResource(loadFamily, tick);
 
   const sharing = active && !me?.paused;
+  const background = Boolean(me?.background);
   const refresh = useCallback(() => setTick((t) => t + 1), []);
 
-  // 화면이 열려 있고 공유 중이면 1분마다 위치를 한 번 보낸다.
+  // 서버 상태에 맞춰 이 기기의 백그라운드 수집을 켜고 끈다: 동의했고 일시정지가 아닐 때만 돌고, 철회·일시정지·스위치 꺼짐이면 멈춘다.
   useEffect(() => {
-    if (!sharing) return undefined;
+    if (!me) return;
+    (async () => {
+      if (wantsBackground(me)) {
+        if (!(await isBackgroundRunning())) await startBackground();
+      } else {
+        await stopBackground();
+      }
+    })().catch(() => {});
+  }, [me]);
+
+  // 화면이 열려 있고 공유 중이면 1분마다 위치를 한 번 보낸다. 백그라운드 수집이 켜져 있으면 그쪽이 보내므로 겹쳐 보내지 않는다.
+  useEffect(() => {
+    if (!sharing || background) return undefined;
     let cancelled = false;
     const send = async () => {
       try {
@@ -67,7 +82,7 @@ export default function LocationSection({ notify }) {
       cancelled = true;
       clearInterval(id);
     };
-  }, [sharing, notify, reloadMe, reloadFamily]);
+  }, [sharing, background, notify, reloadMe, reloadFamily]);
 
   const run = async (job, okText) => {
     if (busy) return;
@@ -88,7 +103,11 @@ export default function LocationSection({ notify }) {
       if (!(await requestForeground())) throw new Error("위치 권한을 허용해야 위치를 공유할 수 있어요");
       await setLocationConsent(true);
     }, "위치 공유를 시작했어요");
-  const withdraw = () => run(() => setLocationConsent(false), "위치 공유를 끄고 기록을 지웠어요");
+  const withdraw = () =>
+    run(async () => {
+      await stopBackground(); // 철회하면 서버 응답을 기다리지 않고 먼저 이 기기의 수집을 멈춘다
+      await setLocationConsent(false);
+    }, "위치 공유를 끄고 기록을 지웠어요");
   const seedZone = () =>
     run(async () => {
       if (!(await requestForeground())) throw new Error("위치 권한이 필요해요");
@@ -131,6 +150,8 @@ export default function LocationSection({ notify }) {
 
       {me.consent ? (
         <>
+          <BackgroundCard me={me} notify={notify} onChanged={refresh} />
+
           <Card tone="white">
             <Text style={styles.title}>여행 모드(일시정지)</Text>
             {me.paused ? (

@@ -5,6 +5,7 @@ from datetime import UTC, datetime, timedelta
 import pytest
 
 from app.shared.config import settings
+from app.shared.db import SessionLocal
 
 LAT, LNG = 37.5665, 126.9780  # 시험용 가짜 중심 좌표
 
@@ -198,3 +199,70 @@ def test_other_family_cannot_see_members(client, family, other_family, on):
     _consent(client, other_family)
     fam = client.get("/location/family", headers=other_family).json()
     assert [m["is_me"] for m in fam["members"]] == [True]
+
+
+def _bg(client, headers, enabled=True):
+    return client.put("/location/background", json={"enabled": enabled}, headers=headers)
+
+
+def _bg_events(user_id):
+    from sqlalchemy import select
+
+    from app.shared.location_consent import LocationConsentEvent
+
+    with SessionLocal() as db:
+        rows = db.scalars(
+            select(LocationConsentEvent)
+            .where(
+                LocationConsentEvent.user_id == user_id,
+                LocationConsentEvent.source == "location_bg",
+            )
+            .order_by(LocationConsentEvent.at)
+        )
+        return [r.consent for r in rows]
+
+
+def test_background_needs_location_consent_first(client, family, on):
+    _, b, _ = family
+    assert _bg(client, b).status_code == 400
+    assert client.get("/location/me", headers=b).json()["background"] is False
+    _consent(client, b)
+    res = _bg(client, b)
+    assert res.status_code == 200 and res.json()["background"] is True
+
+
+def test_background_toggle_is_logged_and_off_is_idempotent(client, family, on):
+    _, b, _ = family
+    uid = _me(client, b)
+    _consent(client, b)
+    assert _bg(client, b).json()["background"] is True
+    assert _bg(client, b).json()["background"] is True  # 이미 켜져 있으면 이력을 또 남기지 않는다
+    assert _bg(client, b, False).json()["background"] is False
+    assert _bg(client, b, False).json()["background"] is False
+    assert _bg_events(uid) == [True, False]
+
+
+def test_withdrawing_location_consent_also_ends_background(client, family, on):
+    _, b, _ = family
+    uid = _me(client, b)
+    _consent(client, b)
+    _bg(client, b)
+    me = _consent(client, b, False).json()
+    assert me["consent"] is False and me["background"] is False
+    assert _bg_events(uid) == [True, False]  # 철회로 함께 끝났다는 이력
+    _consent(client, b)
+    assert (
+        client.get("/location/me", headers=b).json()["background"] is False
+    )  # 다시 동의해도 백그라운드는 꺼져 있다
+
+
+def test_background_can_be_turned_on_only_when_switch_is_on_but_off_is_always_open(
+    client, family, monkeypatch
+):
+    _, b, _ = family
+    monkeypatch.setattr(settings, "location_enabled", True)
+    _consent(client, b)
+    _bg(client, b)
+    monkeypatch.setattr(settings, "location_enabled", False)
+    assert _bg(client, b).status_code == 503
+    assert _bg(client, b, False).status_code == 200
