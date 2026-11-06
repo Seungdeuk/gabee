@@ -16,6 +16,7 @@ from app.features.ops_admin.error_service import observe as ops_error_observer
 from app.features.ops_admin.middleware import RequestMetricsMiddleware
 from app.features.ops_admin.router import router as ops_admin_router
 from app.features.ops_admin.service import aggregator as ops_metrics
+from app.features.play.router import router as play_router
 from app.features.schedule.router import router as schedule_router
 from app.features.service_admin.router import router as admin_router
 from app.features.support.router import router as support_router
@@ -80,6 +81,7 @@ for feature, router in (
     ("notifications", notifications_router),
     ("support", support_router),
     ("notices", notices_router),
+    ("play", play_router),
     ("ops_admin", ops_admin_router),
 ):
     deps = []
