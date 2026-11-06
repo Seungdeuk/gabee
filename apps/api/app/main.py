@@ -17,6 +17,7 @@ from app.features.ops_admin.middleware import RequestMetricsMiddleware
 from app.features.ops_admin.router import router as ops_admin_router
 from app.features.ops_admin.service import aggregator as ops_metrics
 from app.features.play.router import router as play_router
+from app.features.schedule import push_schedule
 from app.features.schedule.router import router as schedule_router
 from app.features.service_admin.router import router as admin_router
 from app.features.support.router import router as support_router
@@ -33,6 +34,7 @@ from app.shared.schema_gate import health_router, schema_ready
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     init_db()
+    push_schedule.start()  # 예약 푸시(일정 30분 전·할 일 아침 9시): PUSH_ENABLED 가 켜져 있을 때만 1분마다 확인한다
     privacy_ner.start_preload()  # NER 모델을 백그라운드로 미리 불러온다(off 면 아무 일도 안 함, 실패해도 기동은 계속)
     yield
     ops_metrics.flush(

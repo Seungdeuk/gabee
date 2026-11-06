@@ -28,6 +28,7 @@ export function routeForPush(data) {
   if (data?.kind === "chat") {
     return typeof data.room_id === "string" && data.room_id ? `/chat-open?roomId=${encodeURIComponent(data.room_id)}` : "/family-chat";
   }
+  if (data?.kind === "schedule" && (data.event === "event_soon" || data.event === "todo_due")) return "/schedule"; // 예약 푸시(일정 30분 전·할 일 아침)는 일정 탭으로
   return "/notifications";
 }
 
