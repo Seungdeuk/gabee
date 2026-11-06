@@ -280,7 +280,7 @@ def execute(db: Session, group_id: str, user: User, action: str, args: dict) -> 
         service.update_expense(db, group_id, expense.id, ExpenseUpdate.model_validate(changes))
         return
     if action == "mark_paid":  # 송금 목록에 아직 있는 송금인지 mark_paid 가 다시 확인한다
-        service.mark_paid(db, group_id, PaymentCreate.model_validate(args))
+        service.mark_paid(db, group_id, PaymentCreate.model_validate(args), user.id)
         return
     if (
         action == "decide_allowance_request"
