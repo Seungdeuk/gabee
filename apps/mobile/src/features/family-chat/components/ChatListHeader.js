@@ -53,5 +53,6 @@ const styles = StyleSheet.create({
     borderRadius: 22,
     backgroundColor: colors.surface,
   },
-  input: { flex: 1, minWidth: 0, ...font.body, color: colors.text, paddingVertical: 0 },
+  // 입력창은 줄 높이를 글자 크기에 맞춘다: font.body 의 줄 높이(24)를 그대로 쓰면 안드로이드에서 글자가 위로 밀려 올라간다
+  input: { flex: 1, minWidth: 0, height: 44, ...font.body, lineHeight: 18, includeFontPadding: false, textAlignVertical: "center", color: colors.text, paddingVertical: 0 },
 });

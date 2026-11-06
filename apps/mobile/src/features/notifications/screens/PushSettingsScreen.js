@@ -6,14 +6,13 @@ import Button from "@/shared/components/Button";
 import Card from "@/shared/components/Card";
 import IconButton from "@/shared/components/IconButton";
 import Screen from "@/shared/components/Screen";
-import Segmented from "@/shared/components/Segmented";
 import { colors, font, spacing } from "@/theme";
 
 import { getPushSettings, savePushSettings } from "../api";
 import { KIND_META } from "../kinds";
-import { PREVIEW_OPTIONS, isQuietOn, toggleKind, withQuiet } from "../push";
+import { isQuietOn, toggleKind, withQuiet } from "../push";
 
-const KIND_KEYS = ["schedule", "billing", "care", "family_group", "ai_record", "support"];
+const KIND_KEYS = ["chat", "schedule", "billing", "care", "family_group", "ai_record", "support"];
 
 /** 마이 > 알림 설정: 푸시 켜기·끄기, 분류별 켜기·끄기, 메시지 내용 표시 방식, 방해금지 시간. 바꾸는 즉시 저장한다. */
 export default function PushSettingsScreen() {
@@ -81,13 +80,7 @@ export default function PushSettingsScreen() {
                   />
                 ))}
               </Card>
-              <Text style={styles.section}>메시지 알림에 보일 내용</Text>
-              <Segmented
-                options={PREVIEW_OPTIONS}
-                value={settings.preview_mode}
-                onChange={(preview_mode) => change({ ...settings, preview_mode })}
-              />
-              <Text style={styles.hint}>소통 메시지 푸시를 보낼 때 적용돼요.</Text>
+              <Text style={styles.hint}>{"소통 푸시는 '새 메시지가 도착했어요'로만 와요. 내용은 앱에서 확인해요."}</Text>
               <Text style={styles.section}>방해금지</Text>
               <Card tone="white">
                 <Row
