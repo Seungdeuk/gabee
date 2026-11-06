@@ -4,26 +4,57 @@
 
 export const CATEGORY_LABEL = { update: "업데이트", info: "안내", maintenance: "점검" };
 
-export const CHIPS = [
-  { key: "all", label: "전체" },
-  { key: "update", label: "업데이트" },
-  { key: "info", label: "안내" },
-  { key: "maintenance", label: "점검" },
-];
-
-export const EMPTY_TEXT = "이 종류의 공지는 아직 없어요.";
+export const EMPTY_TEXT = "아직 공지가 없어요.";
 export const HELP_TEXT = "궁금한 점은 더보기 › 고객센터에서 문의해 주세요.";
 
 const KST_OFFSET_MS = 9 * 60 * 60 * 1000;
 
+/** 한 쪽에 보이는 공지 수. 이보다 많아지면 쪽으로 나눈다. */
+export const PAGE_SIZE = 10;
+/** 쪽 번호를 한 번에 보이는 개수(< 1 | 2 | 3 | 4 | 5 >). */
+export const PAGE_WINDOW = 5;
+
 /**
- * 고른 칩의 공지만 남긴다. 모르는 칩이면 전체.
- * @param {object[] | null} rows
- * @param {string} chip
+ * 전체 쪽 수(공지가 없거나 한 쪽이면 1).
+ * @param {number | null | undefined} total 공지 수
+ * @returns {number}
  */
-export function filterNotices(rows, chip) {
+export function pageCount(total) {
+  return Math.max(1, Math.ceil((Number(total) || 0) / PAGE_SIZE));
+}
+
+/**
+ * 그 쪽(0부터)에 보일 공지. 서버가 준 최근순 그대로 PAGE_SIZE 개씩 자른다.
+ * @param {object[] | null | undefined} rows
+ * @param {number} page
+ * @returns {object[]}
+ */
+export function pageSlice(rows, page) {
   const list = Array.isArray(rows) ? rows : [];
-  return chip in CATEGORY_LABEL ? list.filter((n) => n.category === chip) : list;
+  return list.slice(page * PAGE_SIZE, page * PAGE_SIZE + PAGE_SIZE);
+}
+
+/**
+ * 쪽이 범위를 벗어나지 않게 한다(새로고침으로 목록이 줄어도 빈 쪽이 보이지 않게).
+ * @param {number} page
+ * @param {number | null | undefined} total 공지 수
+ * @returns {number}
+ */
+export function clampPage(page, total) {
+  const last = pageCount(total) - 1;
+  return Number.isFinite(page) ? Math.min(Math.max(0, Math.floor(page)), last) : 0;
+}
+
+/**
+ * 쪽 번호 줄에 보일 쪽들(0부터). PAGE_WINDOW 개씩 묶어 1~5, 6~10, … 처럼 보이고 마지막 묶음은 남은 만큼이다.
+ * @param {number} page 지금 쪽
+ * @param {number} pages 전체 쪽 수
+ * @returns {number[]}
+ */
+export function pageWindow(page, pages) {
+  const start = Math.floor(page / PAGE_WINDOW) * PAGE_WINDOW;
+  const end = Math.min(start + PAGE_WINDOW, pages);
+  return Array.from({ length: Math.max(0, end - start) }, (_, i) => start + i);
 }
 
 /**
