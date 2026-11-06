@@ -522,3 +522,15 @@ def test_analytics_is_admin_only(client, make_admin):
     headers, _ = _login(client)
     assert client.get("/admin/service/analytics").status_code == 401
     assert _denied(client.get("/admin/service/analytics", headers=headers))
+
+
+def test_ops_tab_page_is_served(client):
+    """'운영 › 서버 상태' 탭이 띄우는 운영 화면 파일(static/ops/)이 서비스 관리자 화면 아래에 있다.
+    로그인 없이 받는 정적 파일이고, 데이터는 화면이 토큰으로 /admin/ops/* 를 불러야 나온다."""
+    page = client.get("/admin/service/ui/ops/")
+    assert page.status_code == 200
+    assert 'src="js/embed.js' in page.text
+    assert "connect-src 'self'" in page.text  # 같은 출처(API 서버)만 부른다
+    for path in ("ops/js/embed.js", "ops/js/app.js", "ops/js/api.js", "ops/css/style.css"):
+        assert client.get(f"/admin/service/ui/{path}").status_code == 200, path
+    assert 'class="ops-frame"' in client.get("/admin/service/ui/app.js").text

@@ -9,6 +9,8 @@
     ["사람", [["members", "회원 관리"], ["groups", "가족 그룹 관리"]]],
     ["사용", [["features", "기능 관리"], ["ai", "AI 이용 현황"]]],
     ["운영 업무", [["support", "문의 및 신고"], ["notices", "공지사항"]]],
+    // 운영 관리자 화면(서버 상태). 권한은 통합관리자 하나라 로그인한 관리자에게 모두 보인다.
+    ["운영", [["ops", "서버 상태"]]],
   ];
   const TABS = TAB_GROUPS.flatMap(([, tabs]) => tabs);
   const TOKEN_KEY = "gabee_admin_token";
@@ -119,6 +121,7 @@
     support: "M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z",
     notices: "M3 11v2a1 1 0 0 0 1 1h2l5 4V6L6 10H4a1 1 0 0 0-1 1zM15 9a4 4 0 0 1 0 6M18 6a8 8 0 0 1 0 12",
     analytics: "M3 3v18h18M7 15l4-4 3 3 5-6",
+    ops: "M3 4h18v6H3zM3 14h18v6H3zM7 7h.01M7 17h.01",
   };
   const icon = (key) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${ICON_PATHS[key]}"/></svg>`;
 
@@ -508,7 +511,17 @@
     support: (data) => viewSupport(data.support),
     notices: (data) => viewNotices(data.notices),
     analytics: (data) => viewAnalytics(data.analytics),
+    ops: () => viewOps(),
   };
+
+  /**
+   * 운영 관리자 화면(apps/ops-admin 복사본, static/ops/)을 같은 출처 iframe 으로 띄운다.
+   * 로그인은 이 화면 하나로 끝난다: iframe 은 같은 탭의 sessionStorage 토큰을 읽어 쓴다(ops/js/embed.js).
+   */
+  function viewOps() {
+    head("서버 상태", "운영 관리자 대시보드 · 요청·오류·인프라 상태");
+    return '<iframe class="ops-frame" src="ops/?v=1" title="운영 서버 상태"></iframe>';
+  }
 
   // ── 화면 그리기 ───────────────────────────────────────
 
@@ -714,6 +727,11 @@
     if (!el) return;
     filters[el.dataset.filter] = el.value;
     render();
+  });
+
+  window.addEventListener("gabee-admin-expired", () => {
+    setToken(null);
+    showLogin("로그인이 만료됐어요. 다시 로그인해 주세요.");
   });
 
   window.addEventListener("hashchange", () => {
