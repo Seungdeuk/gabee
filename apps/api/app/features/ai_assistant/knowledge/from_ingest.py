@@ -10,6 +10,7 @@ from datetime import date
 
 from app.features.ai_assistant.ingest.schemas import PreprocessResult
 
+from ..family_names import clip
 from .chunking import DOUBT_MARK, UNREAD_MARK
 
 _BLOCK_NUMBER = re.compile(
@@ -141,7 +142,7 @@ def _title(text: str, kind: str, day: date | None) -> str:
         line = re.sub(r"^\(블록 \d+\)\s*", "", raw).strip()
         line = re.sub(r"^[#>*\-\s|]+", "", line).replace("**", "").strip()
         if len(line) >= 2 and not _NOT_A_TITLE.match(line):
-            return line[:_TITLE_LIMIT]
+            return clip(line, _TITLE_LIMIT)  # 가족 자리표시를 반으로 자르지 않는다
     return f"{kind} {day.isoformat()}" if day else kind
 
 

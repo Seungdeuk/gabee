@@ -82,7 +82,14 @@
           "color": "#B7791C"
         }
       ],
-      "expo-secure-store"
+      "expo-secure-store",
+      [
+        "expo-speech-recognition",
+        {
+          "microphonePermission": "가비가 말로 묻는 내용을 글자로 바꾸려고 마이크를 사용해요.",
+          "speechRecognitionPermission": "가비가 말로 묻는 내용을 글자로 바꾸려고 음성 인식을 사용해요."
+        }
+      ]
     ],
     "experiments": {
       "reactCompiler": true

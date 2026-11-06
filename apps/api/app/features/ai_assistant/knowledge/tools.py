@@ -7,13 +7,15 @@ from datetime import date
 
 from sqlalchemy.orm import Session
 
+from .. import family_names, reminders
 from . import service
 
 TOOL_SPECS = [
     {
         "name": "search_knowledge",
         "description": "가족이 올려 둔 문서·사진 기록(고지서, 영수증, 병원 내역, 증명서 등)에서 질문과 관련된 기록을 찾는다. "
-        "올려 둔 문서의 내용이 필요할 때만 부른다. 가계 장부 지출, 돌봄 기록, 일정, 채팅 대화는 여기에 없다.",
+        "올려 둔 문서의 내용이 필요할 때만 부른다. 가계 장부 지출, 돌봄 기록, 일정, 채팅 대화는 여기에 없다. "
+        "특정 가족의 기록만 보려면 member 에 그 가족의 이름이나 별칭을 넣는다. 결과의 family 는 그 기록에 나오는 가족이다.",
         "input_schema": {
             "type": "object",
             "properties": {
@@ -22,6 +24,10 @@ TOOL_SPECS = [
                 "kind_label": {"type": "string", "description": "분류 이름(예: 전기요금 고지서)"},
                 "date_from": {"type": "string", "description": "YYYY-MM-DD"},
                 "date_to": {"type": "string", "description": "YYYY-MM-DD"},
+                "member": {
+                    "type": "string",
+                    "description": "이 가족이 등장하는 기록만(가족 구성원의 이름이나 별칭, 예: 민훈)",
+                },
             },
             "required": ["query"],
         },
@@ -46,7 +52,78 @@ TOOL_SPECS = [
             },
         },
     },
+    {
+        "name": "list_name_checks",
+        "description": "방금 올린 문서에서 읽은 이름이 가족 이름과 한 글자 차이라서(글자를 잘못 읽었을 수 있음) 같은 사람인지 사용자 확인을 기다리는 곳의 목록. "
+        "시스템 안내에 확인 대기가 있다고 나오면 먼저 부르고, 각 건을 사용자에게 한 문장으로 물어본다.",
+        "input_schema": {"type": "object", "properties": {}},
+    },
+    {
+        "name": "resolve_name_check",
+        "description": "사용자가 답한 뒤에만 부른다. list_name_checks 의 item_id 와 candidate_id 로, 같은 사람이라고 하면 same_person=true, "
+        "다른 사람이거나 모른다고 하면 false. 사용자가 답하지 않았으면 절대 부르지 않는다.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "item_id": {"type": "string"},
+                "candidate_id": {"type": "string"},
+                "same_person": {"type": "boolean"},
+            },
+            "required": ["item_id", "candidate_id", "same_person"],
+        },
+    },
+    {
+        "name": "resolve_reminder",
+        "description": "시스템 안내의 '챙길 일' 목록에 있는 한 건에 대한 사용자의 답을 반영한다. 사용자가 답한 뒤에만 부른다. "
+        "action: schedule(일정으로 잡아 달라고 함) · done(이미 했다고 함) · prepared(준비물·준비를 다 챙겼다고 함. 일정이 끝난 게 아니라 done 이 아님) · redo_today(아직 안 했으니 오늘 일정으로 다시 잡아 달라고 함) · "
+        "dismiss(그만 알려 달라고 함). 사용자가 답하지 않았으면 절대 부르지 않는다.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "reminder_id": {"type": "string"},
+                "action": {"type": "string", "enum": list(reminders.ACTIONS)},
+            },
+            "required": ["reminder_id", "action"],
+        },
+    },
+    {
+        "name": "set_reminders",
+        "description": "먼저 챙겨주기(문서 날짜 알림)를 사용자가 켜거나 꺼 달라고 분명히 말했을 때만 부른다. 끄면 앱을 열 때 먼저 말하지 않는다.",
+        "input_schema": {
+            "type": "object",
+            "properties": {"enabled": {"type": "boolean"}},
+            "required": ["enabled"],
+        },
+    },
 ]
+
+
+def list_name_checks(db: Session, group_id: str) -> dict:
+    checks = service.name_checks(db, group_id)
+    return {
+        "checks": checks,
+        "note": "각 건을 '<제목>에 읽은 이름이 <candidate> 님과 같은 사람인가요?' 처럼 사용자에게 물어보세요. 글자를 모르니 이름을 지어내지 마세요."
+        if checks
+        else "확인할 이름이 없어요.",
+    }
+
+
+def resolve_name_check(
+    db: Session, group_id: str, item_id: str, candidate_id: str, same_person: bool
+) -> dict:
+    service.resolve_name_check(db, group_id, item_id, candidate_id, bool(same_person))
+    return {"done": True, "same_person": bool(same_person)}
+
+
+def resolve_reminder(
+    db: Session, group_id: str, user_id: str, reminder_id: str, action: str
+) -> dict:
+    return reminders.resolve(db, group_id, user_id, reminder_id, action)
+
+
+def set_reminders(db: Session, user_id: str, enabled: bool) -> dict:
+    reminders.set_enabled(db, user_id, bool(enabled))
+    return {"done": True, "enabled": bool(enabled)}
 
 
 def _day(value: str | None) -> date | None:
@@ -62,7 +139,33 @@ def search_knowledge(
     date_from: str | None = None,
     date_to: str | None = None,
     include_sensitive: bool = True,
+    member: str | None = None,
 ) -> dict:
+    """member 를 주면 그 가족이 등장한 기록만 찾는다. 이름을 모르면 빈 결과와 안내를 돌려준다(필터를 조용히 무시하지 않는다).
+    글 속 `[가족:<id>]` 는 이 그룹의 현재 이름으로 되돌려서 준다."""
+    members = family_names.load_members(db, group_id)
+    names = family_names.shown_names(members)
+    wanted: list[str] | None = None
+    notes = [
+        "has_unread_parts 가 true 이면 원본에서 읽지 못한 부분이 있으니 값을 단정하지 말고 확인을 권하세요."
+    ]
+    if member and member.strip():
+        wanted = family_names.match_member(members, member)
+        if not wanted:
+            near = family_names.suggest_members(members, member)
+            hint = (
+                f" 비슷한 이름의 가족: {', '.join(near)}. 이 이름이 맞는지 사용자 말과 비교해 다시 찾아보세요."
+                if near
+                else " 가족 구성원의 이름이나 별칭으로 다시 찾아보세요."
+            )
+            return {
+                "results": [],
+                "note": f"'{member.strip()}' 이름의 가족 구성원을 찾지 못했어요." + hint,
+            }
+        if len(wanted) > 1:
+            notes.append(
+                f"'{member.strip()}' 와 이름이 같은 가족이 여러 명이라 모두 합쳐 찾았어요. 결과의 family 로 구분하세요."
+            )
     hits = service.search(
         db,
         group_id,
@@ -72,6 +175,7 @@ def search_knowledge(
         date_from=_day(date_from),
         date_to=_day(date_to),
         include_sensitive=include_sensitive,
+        family_user_ids=wanted,
     )
     hits = _one_per_file(hits)
     return {
@@ -79,8 +183,9 @@ def search_knowledge(
             {
                 "item_id": h.item.id,
                 "kind_label": h.item.kind_label,
-                "title": h.item.title,
-                "text": h.chunk.text,
+                "title": family_names.restore(h.item.title, names),
+                "family": family_names.family_of(h.item.family_user_ids, names),
+                "text": family_names.restore(h.chunk.text, names),
                 "page": h.chunk.page_label,
                 "date": h.item.occurred_on.isoformat() if h.item.occurred_on else None,
                 "source_path": h.item.source_path,
@@ -90,7 +195,7 @@ def search_knowledge(
             }
             for h in hits
         ],
-        "note": "has_unread_parts 가 true 이면 원본에서 읽지 못한 부분이 있으니 값을 단정하지 말고 확인을 권하세요.",
+        "note": " ".join(notes),
     }
 
 
@@ -115,11 +220,13 @@ def get_item(db: Session, group_id: str, item_id: str, include_sensitive: bool =
         return {
             "error": "민감한 기록이라 이 대화에서는 내용을 볼 수 없어요. 앱의 기록 화면에서 직접 확인해 주세요."
         }
+    names = family_names.shown_names(family_names.load_members(db, group_id))
     return {
         "item_id": item.id,
         "kind_label": item.kind_label,
-        "title": item.title,
-        "text": item.body_md,
+        "title": family_names.restore(item.title, names),
+        "family": family_names.family_of(item.family_user_ids, names),
+        "text": family_names.restore(item.body_md, names),
         "date": item.occurred_on.isoformat() if item.occurred_on else None,
         "source_path": item.source_path,
         "has_unread_parts": item.has_unread_parts,
@@ -137,12 +244,14 @@ def list_items(
     items = service.list_items(db, group_id, kind_label, min(max(limit, 1), 50))
     if not include_sensitive:
         items = [i for i in items if i.sensitivity != "sensitive"]
+    names = family_names.shown_names(family_names.load_members(db, group_id))
     return {
         "items": [
             {
                 "item_id": i.id,
                 "kind_label": i.kind_label,
-                "title": i.title,
+                "title": family_names.restore(i.title, names),
+                "family": family_names.family_of(i.family_user_ids, names),
                 "date": i.occurred_on.isoformat() if i.occurred_on else None,
             }
             for i in items

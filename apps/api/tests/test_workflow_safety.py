@@ -37,7 +37,13 @@ def test_no_workflow_may_use_a_self_hosted_runner():
 def test_there_is_no_db_deploy_workflow_so_branches_cannot_trigger_deployments():
     assert not (WORKFLOWS / "deploy-shared-db.yml").exists()
     for path in WORKFLOWS.glob("*.yml"):
-        assert "shared_db_deploy" not in path.read_text(encoding="utf-8")
+        # 주석은 실행되지 않는다(비활성화 사유를 적은 줄이 파일 이름을 언급해도 배포를 일으키지 않는다)
+        code = "\n".join(
+            line
+            for line in path.read_text(encoding="utf-8").splitlines()
+            if not line.lstrip().startswith("#")
+        )
+        assert "shared_db_deploy" not in code
 
 
 def test_workflows_never_reference_db_secrets_or_the_shared_host():
@@ -53,4 +59,5 @@ def test_ci_workflow_matches_what_the_deployer_requires():
     assert set(deploy.CI_REQUIRED_JOBS) <= set(ci["jobs"])
     assert deploy.CI_WORKFLOW_PATH == ".github/workflows/ci-check.yml"
     triggers = ci.get("on") or ci.get(True)
-    assert "push" in triggers and "pull_request" in triggers
+    # 결제를 안 하기로 해서 자동 실행을 끈 동안(2026-10-27~)은 수동 실행(workflow_dispatch)만 있다. 다시 켜면 push + pull_request 여야 한다
+    assert set(triggers) - {"workflow_dispatch"} in (set(), {"push", "pull_request"})

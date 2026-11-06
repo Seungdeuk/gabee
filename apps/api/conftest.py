@@ -1,4 +1,5 @@
 import os
+import shutil
 import tempfile
 
 # 앱을 불러오기 전에 설정해야 한다: 테스트는 임시 SQLite 파일만 쓰고 실제 AI 를 부르지 않는다.
@@ -15,13 +16,60 @@ os.environ["PRIVACY_NER_MODEL_DIR"] = ""
 # 개발자의 apps/api/.env 에 실제 SMTP 설정이 있어도 테스트가 진짜 메일을 보내지 않게 비운다(발송은 set_mailer 가짜로만).
 for _name in ("MAIL_BACKEND", "SMTP_HOST", "SMTP_USER", "SMTP_PASSWORD", "SMTP_FROM"):
     os.environ[_name] = ""
+# 개발자의 .env 에 업로드 Claude 읽기·가리기를 켜 두어도 시험은 가짜 OCR·규칙 가리기만 쓴다(켠 경로의 시험은 각자 settings 를 바꾼다).
+os.environ["INGEST_LLM_OCR"] = "false"
+os.environ["INGEST_LLM_MASK"] = "false"
+os.environ["INGEST_REMINDERS"] = "false"  # 챙길 일 뽑기도 기본은 끈다(켠 경로의 시험은 각자 settings 를 바꾼다)
+os.environ["INGEST_RETRY_WAIT_SECONDS"] = (
+    "0"  # 자동 재시도(실패 파일)가 시험을 기다리게 하지 않는다
+)
+
+from contextlib import contextmanager  # noqa: E402
 
 import pytest  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
+from sqlalchemy import event  # noqa: E402
 
+from app.features.family_group.models import Group  # noqa: E402
 from app.main import app  # noqa: E402
 from app.shared.db import Base, engine  # noqa: E402
 from tests.helpers import join_family, signup  # noqa: E402
+
+
+def pytest_sessionfinish(session, exitstatus):
+    """시험이 끝나면 임시 DB·데이터 폴더를 지운다(Temp 에 gabee-test-* 가 실행마다 쌓이지 않게)."""
+    engine.dispose()  # Windows 는 열려 있는 SQLite 파일을 지울 수 없다
+    shutil.rmtree(_tmp, ignore_errors=True)
+
+
+@contextmanager
+def _approval_required_scope():
+    """이 범위에서 만든 가족은 초대 코드로 들어와도 관리자 승인을 기다린다.
+
+    서버 기본값은 자동 승인(`groups.auto_approve_invites=True`)이라, '승인 대기 → 관리자 승인' 흐름을 보는 시험은
+    가족을 만들 때 자동 승인을 끈 상태로 시작해야 한다. 기본값에 기대지 않게 가족을 저장하기 직전에 값을 고정한다."""
+
+    def _off(mapper, connection, group):
+        group.auto_approve_invites = False
+
+    event.listen(Group, "before_insert", _off)
+    try:
+        yield
+    finally:
+        event.remove(Group, "before_insert", _off)
+
+
+@pytest.fixture
+def approval_required():
+    with _approval_required_scope():
+        yield
+
+
+@pytest.fixture(scope="module")
+def approval_required_module():
+    """module 범위 픽스처(`world` 같은 것)가 만드는 가족에도 적용할 때 쓴다."""
+    with _approval_required_scope():
+        yield
 
 
 @pytest.fixture(autouse=True)

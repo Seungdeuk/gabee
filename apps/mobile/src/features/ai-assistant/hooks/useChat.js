@@ -26,6 +26,7 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
  *   skipDescription: (messageId: string) => void,   // 설명 카드 "나중에 할게요"
  *   acceptSchedulePrompt: (messageId: string) => void,   // 업로드 직후 "일정에 넣을까요?" 카드의 "일정에 넣기"(채팅으로 요청을 보낸다)
  *   skipSchedulePrompt: (messageId: string) => void,   // 같은 카드의 "아니요"
+ *   addAssistantMessages: (texts: string[]) => void,   // 앱을 열 때 가비가 먼저 하는 말을 대화에 넣는다
  *   markAiEnabled: (messageId: string) => void,   // AI 켜기 안내 카드를 '켰어요' 안내로 바꾼다
  *   resolveConfirm: (messageId: string, index: number, status: "done" | "cancelled", text: string) => void, // 일정 확인 카드를 결과 한 줄로 바꾼다
  *   send: (text: string, options?: { voice?: boolean }) => Promise<void>,
@@ -218,6 +219,11 @@ export default function useChat() {
     setMessages((prev) => prev.map((m) => (m.id === messageId ? { ...m, draftText: text } : m)));
   }, []);
 
+  /** 가비가 먼저 하는 말(앱을 열 때 챙겨 주는 내용)을 대화 끝에 넣는다. 대화 이력에 들어가서 사용자의 답이 이어진다. */
+  const addAssistantMessages = useCallback((texts) => {
+    setMessages((prev) => [...prev, ...texts.map((text) => ({ id: id(), role: "assistant", text, sources: [] }))]);
+  }, []);
+
   const reset = useCallback(() => {
     runId.current += 1;
     setMessages([]);
@@ -232,5 +238,5 @@ export default function useChat() {
     setPhase("idle");
   }, []);
 
-  return { messages, phase, readingSince, confirmDoubts, markAiEnabled, resolveConfirm, saveDescription, skipDescription, acceptSchedulePrompt, skipSchedulePrompt, send, sendPhoto, startListening, stopListening, editDraft, reset, load };
+  return { messages, phase, readingSince, confirmDoubts, markAiEnabled, resolveConfirm, saveDescription, skipDescription, acceptSchedulePrompt, skipSchedulePrompt, send, sendPhoto, startListening, stopListening, editDraft, addAssistantMessages, reset, load };
 }

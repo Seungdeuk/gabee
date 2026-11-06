@@ -32,6 +32,9 @@ class KnowledgeItem(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(UTC)
     )
+    # 글에 `[가족:<user_id>]` 로 등장한 가족 구성원 user_id 목록(JSON 문자열 배열). 없으면 null.
+    # 글(title·body_md·조각)에서 뽑은 사본이라 "누가 나오는 기록인가" 필터에 쓴다. 이전 기록은 채우지 않는다.
+    family_user_ids: Mapped[list[str] | None] = mapped_column(JSON, default=None)
 
 
 class KnowledgeItemRead(Base):

@@ -480,6 +480,14 @@ def run(
             raise ApiError(
                 503, "llm_failed", "AI 요청을 처리하지 못했어요. 잠시 후 다시 시도해 주세요"
             ) from None
+        except ApiError as exc:
+            # 호출 도중 난 공통 오류(예: 개인정보 보호 503). 예약해 둔 기록을 열어 둔 채(pending) 두지 않고 닫는다.
+            # 호출 수는 오류가 알려 준 만큼만 센다(외부 모델을 부르기 전에 끝났으면 0)
+            db.rollback()
+            log.status, log.error_code = "error", exc.code
+            log.api_calls = max(0, int(getattr(exc, "calls", 0)))
+            db.commit()
+            raise
         finally:
             _nested_features.reset(nested_token)
         calls = max(1, int(getattr(response, "calls", 1)))

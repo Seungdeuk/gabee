@@ -45,3 +45,5 @@ apps/api/data/
 *.dump.sha256
 *.dump.partial
 gabee-backups/
+
+apps/api/env.yaml

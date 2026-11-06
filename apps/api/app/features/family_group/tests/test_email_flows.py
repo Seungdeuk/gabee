@@ -13,6 +13,8 @@ from app.shared.config import settings
 from app.shared.db import SessionLocal
 from tests.helpers import signup
 
+pytestmark = pytest.mark.usefixtures("approval_required")  # 승인 대기 흐름을 본다
+
 SIGNUP, LOGIN, REFRESH = (
     "/family-group/auth/signup",
     "/family-group/auth/login",

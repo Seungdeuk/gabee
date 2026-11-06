@@ -96,8 +96,8 @@ def test_supply_calls_llm_only_without_pending(ids, fake):
     assert len(fake.calls) == 1 and fake.calls[0]["model"] == suggest.prompts.SUGGEST_MODEL
     assert len({r.created_at for r in _rows(user_id)}) == 1  # 한 묶음 = 같은 시각
     again, _ = _supply(user_id, group_id)
-    # 새로고침마다 섞이므로 순서는 비교하지 않는다
-    assert sorted(again) == sorted(first) and len(fake.calls) == 1  # 대기가 있으면 호출 없이 그대로
+    # 대기가 있으면 호출 없이 같은 추천을 돌려준다. 순서는 매번 섞이므로(suggest._pick) 순서는 비교하지 않는다
+    assert sorted(again) == sorted(first) and len(fake.calls) == 1
 
 
 def test_three_batches_then_exhausted(ids, fake, monkeypatch):

@@ -37,8 +37,8 @@ MESSAGE = "주민등록번호·카드·계좌번호·비밀번호는 AI 비서�
 GUARDED_FEATURES = frozenset({"ai_assistant", "billing"})
 # 대상 (POST, 경로) -> (사용자 입력 문자열 필드, 본문 상한). PATCH /knowledge/items/{id} 는 앱이 쓰는 경로라 넣지 않았다(한계로 문서화).
 _TARGETS: dict[str, tuple[tuple[str, ...], int]] = {
-    "/ai-assistant/chat": (("message", "history"), MAX_SCAN_BYTES),
-    "/ai-assistant/knowledge/ask": (("question",), MAX_SCAN_BYTES),
+    # 메인 AI 채팅(/ai-assistant/chat, /knowledge/ask)은 막지 않는다: 외부 전송은 공지로 처리하기로 했고(2026-11-04) 채팅은 서버 DB에 저장되지 않는다.
+    # 탭 에이전트에 넘기는 질문만 rag_chat 에서 따로 거절한다.
     "/ai-assistant/knowledge/items": (("title", "body_md"), MAX_SCAN_BYTES_ITEMS),
     "/billing/agent/chat": (("message", "history"), MAX_SCAN_BYTES),
 }

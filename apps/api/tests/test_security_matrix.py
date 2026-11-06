@@ -151,8 +151,13 @@ def fake(_outbound) -> FakeHttp:
 
 
 # ====================================================================== openapi 열거
+_SPEC = app.openapi()
+# 이 파일의 시험은 '승인 대기 → 관리자 승인' 흐름을 전제로 쓰였다(서버 기본 자동 승인과 무관하게 고정)
+pytestmark = pytest.mark.usefixtures("approval_required_module")
+
+
 def _operations() -> list[tuple[str, str, dict]]:
-    spec = app.openapi()
+    spec = _SPEC
     ops = []
     for path, item in spec["paths"].items():
         for method, op in item.items():
@@ -207,6 +212,11 @@ NO_GROUP_OK = {
     ("POST", "/ai-assistant/chat"),
     # 가족 그룹과 무관한 공개 정보(구독 서비스 목록 등)
     ("GET", "/billing/subscriptions/catalog"),
+    # 테스터 동의는 정식 계정(Bearer)의 본인 설정이다(그룹 데이터 아님, 레거시 토큰은 401)
+    ("PUT", "/family-group/auth/me/tester-consent"),
+    # 챙겨주기 스위치는 로그인한 본인의 설정이다(그룹 데이터 아님, 그룹 id 를 요청에서 받지 않는다)
+    ("GET", "/ai-assistant/reminders/settings"),
+    ("PUT", "/ai-assistant/reminders/settings"),
     # 알림함은 로그인한 본인의 알림만 다룬다. 가족이 없어도 빈 목록이며 그룹 id 를 요청에서 받지 않는다
     ("GET", "/notifications"),
     ("GET", "/notifications/unread-count"),
@@ -259,8 +269,8 @@ REQUIRED_BODIES = {
 
 
 def _build_request(method: str, path: str, op: dict) -> tuple[str, dict]:
-    """openapi 정의로 더미 요청을 만든다: 경로·필수 쿼리는 더미 값, 본문은 빈 JSON(또는 더미 파일).
-    REQUIRED_BODIES 에 있는 경로는 그 최소 본문을 쓴다."""
+    """openapi 정의로 더미 요청을 만든다: 경로·필수 쿼리는 더미 값, 본문은 필수 칸만 채운 JSON(또는 더미 파일).
+    REQUIRED_BODIES 에 있는 경로는 그 최소 본문을, 없으면 스키마에서 만든 본문을 쓴다."""
     url = path
     params = {}
     for p in op.get("parameters", []):
@@ -274,8 +284,25 @@ def _build_request(method: str, path: str, op: dict) -> tuple[str, dict]:
     if "multipart/form-data" in content:
         kwargs["files"] = {"file": ("a.txt", b"x", "text/plain")}
     elif "application/json" in content:
-        kwargs["json"] = dict(REQUIRED_BODIES.get((method, path), {}))
+        required = REQUIRED_BODIES.get((method, path))
+        kwargs["json"] = (
+            dict(required)
+            if required is not None
+            else _json_body(content["application/json"].get("schema", {}))
+        )
     return url, kwargs
+
+
+def _json_body(schema: dict) -> dict:
+    """필수 칸만 더미 값으로 채운 본문. 본문 검사(422)가 그룹 검사(400 no_group)보다 먼저 걸리지 않게 한다."""
+    ref = schema.get("$ref")
+    if ref:
+        schema = _SPEC["components"]["schemas"][ref.rsplit("/", 1)[-1]]
+    dummy = {"boolean": True, "integer": 1, "number": 1, "array": [], "object": {}}
+    props = schema.get("properties", {})
+    return {
+        name: dummy.get(props.get(name, {}).get("type"), "a") for name in schema.get("required", [])
+    }
 
 
 def _op_ids(ops):
@@ -1620,12 +1647,12 @@ def test_ai_on_family_cannot_feed_other_familys_documents_to_llm(api, fake, worl
 # ---- (d) 관문을 거치지 않는 외부 호출 지점 점검
 # 앱 코드에서 외부로 요청을 보내거나 LLM 래퍼를 직접 쓰는 파일과, 그 파일이 어떤 관문 아래에 있는지.
 OUTBOUND_FILES = {
-    "shared/llm/client.py": "Anthropic 래퍼(호출하는 쪽이 ai_guard.run 으로 감싼다)",
-    "shared/llm/agent.py": "Anthropic 에이전트 래퍼(agent_guard.run_turn / rag_chat.ask_guarded 로 감싼다)",
+    # Anthropic 호출은 이 한 곳뿐이다. client(글 답·구조화 출력)·agent(탭 에이전트)·rag_chat(메인 채팅)이 모두 이 함수를 거치고,
+    # 호출하는 쪽이 ai_guard.run / agent_guard.run_turn / rag_chat.ask_guarded 로 감싼다(docs/adr/0010-llm-transport.md)
+    "shared/llm/transport.py": "Anthropic 호출의 유일한 곳(호출하는 쪽이 관문으로 감싼다)",
     "shared/llm/jev.py": "Jev(TypeSafe) 외부 서비스 래퍼 — 아래 xfail 참고",
     "features/family_group/social_providers.py": "소셜 로그인 공급자 서버 호출(AI 아님, 로그인 전용)",
     "shared/mailer.py": "인증·비밀번호 재설정 메일 SMTP 발송(AI 아님)",
-    "features/ai_assistant/knowledge/rag_chat.py": "Anthropic 도구 루프(ask_guarded 가 ai_guard.run 으로 감싼다)",
     "features/ops_admin/infra_service.py": "Cloud Run 메타데이터·Cloud Run Admin·Cloud Monitoring 읽기 전용 조회(AI 아님, 개인 데이터 전송 없음, 운영자 조회 시에만)",
     "shared/push.py": "Expo 푸시 발송(AI 아님). 알림함 사건은 고정 제목만 보내고 본문은 비운다(docs/adr/0012-push-via-expo.md)",
 }
@@ -1938,14 +1965,11 @@ def test_tab_agent_does_not_send_real_member_names(api, fake):
     )
 
 
-_DEFECT_test_assistant_chat_masks_user_text_before_sending = "개인정보 가명화 미적용: /ai-assistant/chat 사용자 문장·앞 대화(history)는 rag_chat.ask 가 가공 없이 LLM 으로 보낸다(탭 에이전트·일정 에이전트는 mask_text 를 적용하지만 메인 채팅은 아님). 권장: agent_guard.prepare 와 같은 마스킹을 ask_guarded 앞에 적용."
-
-
-def test_assistant_chat_masks_user_text_before_sending(api, fake):
+def test_assistant_chat_sends_user_text_as_is(api, fake):
     fam = new_family(api, "메인문장", "MAINQ")
     _enable_ai(api, fam)
     fake.reset()
-    # 가드는 모듈 시작 때 꺼 둔다(_outbound). 게이트웨이 연결 후 RRN·CARD 까지 가려져야 가드를 지울 수 있다.
+    # 2026-11-04 결정: 메인 채팅은 입력을 막지도 가리지도 않는다(외부 전송은 공지로 처리, 채팅은 서버 DB에 저장되지 않는다).
     text = f"내 번호 {PHONE} 메일 {EMAIL} 주민번호 {RRN} 카드 {CARD}"
     r = api.post(
         "/ai-assistant/chat",
@@ -1954,11 +1978,9 @@ def test_assistant_chat_masks_user_text_before_sending(api, fake):
     )
     assert r.status_code == 200
     assert len(fake.anthropic) == 1
-    known_defect(
-        _no_raw(fake.anthropic[0].text, (PHONE, EMAIL, RRN, "4539 1488", "1488 0343")),
-        _DEFECT_test_assistant_chat_masks_user_text_before_sending,
-        strict=False,
-    )
+    sent = fake.anthropic[0].text
+    for value in (PHONE, EMAIL, RRN, CARD):
+        assert value in sent
 
 
 def _knowledge_family(
@@ -1988,17 +2010,13 @@ def _doc_llm_text(api, fake, fam: Family, item: str, route: str) -> str:
     return " ".join(c.text for c in fake.anthropic)
 
 
-_DEFECT_test_knowledge_items_api_body_is_masked_before_llm = "[높음] 개인정보 원문 외부 전송: POST /ai-assistant/knowledge/items(service.ingest)는 본문을 가리지 않고 저장한다(가리기는 파일 업로드 전처리와 PATCH(update_item)에서만). 그 문서를 요약·질문·채팅 검색 도구로 쓰면 주민번호·전화·이메일 원문이 Claude 로 나간다. 권장: ingest() 에서 masking.mask_text(body, sensitive_kind(body)) 적용(또는 이 API 를 내부 전용으로 제한)."
-
-
 @pytest.mark.parametrize("route", ["chat-tool"])
-def test_knowledge_items_api_body_is_masked_before_llm(api, fake, route):
+def test_knowledge_items_api_body_reaches_llm_as_stored(api, fake, route):
+    """POST /knowledge/items 는 본문을 가리지 않고 저장하고(앱이 쓰지 않는 직접 입력), 메인 채팅은 도구 결과를 가리지 않고
+    그대로 모델에 보낸다(2026-11-04 결정: 외부 전송은 공지로 처리, 서버 DB 저장분의 가리기는 업로드 전처리가 맡는다)."""
     fam, item = _knowledge_family(api, f"문서원문{route[:2]}", f"KRAW{route.upper()[:3]}")
     text = _doc_llm_text(api, fake, fam, item, route)
-    known_defect(
-        _no_raw(text, (RRN, PHONE, EMAIL)),
-        _DEFECT_test_knowledge_items_api_body_is_masked_before_llm,
-    )
+    assert PHONE in text and EMAIL in text
 
 
 @pytest.mark.parametrize("route", ["chat-tool"])

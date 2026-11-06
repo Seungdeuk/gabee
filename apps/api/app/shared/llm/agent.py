@@ -5,7 +5,6 @@
 `post` 는 테스트에서 가짜 LLM 을 끼우는 자리다."""
 
 import json
-import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
 
@@ -15,19 +14,11 @@ from app.shared.config import settings
 from app.shared.errors import ApiError
 from app.shared.privacy.ner import PrivacyUnavailable
 
-from .client import API_URL, API_VERSION, LLMUnavailable
+from . import transport
+from .transport import LLMUnavailable
 
 Post = Callable[[dict], dict]
 MAX_TOOL_RESULT_CHARS = 12000
-RETRY_STATUS = {
-    429,
-    500,
-    502,
-    503,
-    504,
-    529,
-}  # 잠깐 뒤 다시 하면 될 수 있는 응답(529 는 Anthropic 과부하)
-RETRY_WAIT_SECONDS = 1.0
 
 
 @dataclass
@@ -65,20 +56,8 @@ class AgentReply:
 
 
 def _post(body: dict) -> dict:
-    headers = {"x-api-key": settings.anthropic_api_key, "anthropic-version": API_VERSION}
-    for attempt in (1, 2):
-        try:
-            res = httpx.post(API_URL, json=body, headers=headers, timeout=60.0)
-            if res.status_code in RETRY_STATUS and attempt == 1:
-                time.sleep(RETRY_WAIT_SECONDS)
-                continue
-            res.raise_for_status()
-            return res.json()
-        except (httpx.ConnectError, httpx.TimeoutException):
-            if attempt == 2:
-                raise
-            time.sleep(RETRY_WAIT_SECONDS)
-    raise AssertionError("unreachable")  # 두 번째 시도는 반환하거나 예외를 던진다
+    """탭 에이전트의 호출: 429·5xx·연결 실패는 한 번 더 시도한다(시험은 이 이름을 가짜로 바꾼다)."""
+    return transport.post_messages(body, timeout=60.0, retry=True)
 
 
 def _status_detail(res: httpx.Response) -> str:
@@ -126,9 +105,9 @@ def run_agent(
                     "messages": messages,
                 }
             )
-            usage = reply.get("usage") or {}
-            tokens_in += int(usage.get("input_tokens") or 0)
-            tokens_out += int(usage.get("output_tokens") or 0)
+            used_in, used_out = transport.usage_of(reply)
+            tokens_in += used_in
+            tokens_out += used_out
             content = reply.get("content") or []
             calls = [c for c in content if c.get("type") == "tool_use"]
             if not calls:

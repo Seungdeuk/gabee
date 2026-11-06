@@ -247,3 +247,38 @@ export async function deleteRecord(id) {
 
 /** 예전 이름. uploadFile 과 같다. */
 export const uploadPhoto = uploadFile;
+
+/**
+ * 앱을 열 때 가비가 먼저 할 말(일정으로 잡을까요 / 미리 알림 / 하셨나요)을 받는다. 서버는 한 번 준 말을 다시 주지 않는다.
+ * 여러 개는 서버가 한 덩어리로 묶어 주므로 말풍선 하나(`message`)만 쓴다.
+ * 먼저 말하기는 부가 기능이라 서버 주소가 없거나 호출이 실패하면 오류를 보이지 않고 빈 목록을 돌려준다.
+ * @returns {Promise<string[]>} 채팅에 넣을 말(없으면 빈 배열, 있으면 한 개)
+ */
+export async function fetchNudges() {
+  if (!isApiConfigured()) return [];
+  try {
+    const res = await apiFetch("/ai-assistant/reminders/nudges", { method: "POST" });
+    return res.message ? [res.message] : [];
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * 먼저 챙겨주기(문서 날짜 알림) 스위치를 읽는다.
+ * @returns {Promise<boolean>} 켜져 있으면 true
+ */
+export async function getReminderSetting() {
+  const res = await apiFetch("/ai-assistant/reminders/settings");
+  return res.enabled === true;
+}
+
+/**
+ * 먼저 챙겨주기 스위치를 켜거나 끈다.
+ * @param {boolean} enabled
+ * @returns {Promise<boolean>} 저장된 값
+ */
+export async function setReminderSetting(enabled) {
+  const res = await apiFetch("/ai-assistant/reminders/settings", { method: "PUT", body: { enabled } });
+  return res.enabled === true;
+}

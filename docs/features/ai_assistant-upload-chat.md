@@ -255,6 +255,12 @@ SELECT item_id, seq, embedding_model, vector_dims(embedding) AS dim, left(text, 
 
 압축·화소 폭탄 상한, 원본 동시 저장 오류(같은 파일 동시에 올릴 때), 업로드 대기 상한, 처리 중 서버 재시작 시 재처리. 팀에 공개하기 전에 우선순위를 정하는 것이 좋다.
 
+## 가족 이름 메타데이터화 (2026-11-02, ADR 0012)
+
+- 업로드 글의 가족 이름(이름·표시 이름, 조사·성 뗀 이름자 포함)은 가리기 전에 `[가족:<user_id>]` 로 바뀌어 저장되고, `knowledge_items.family_user_ids` 에 등장한 가족이 남는다. 읽을 때(상세·목록·검색·파일 상태·기록 도구) 현재 표시 이름으로 되돌린다. 동명이인은 치환하지 않는다.
+- `search_knowledge` 에 `member`(이름·별칭) 필터, 도구 결과에 `family`(등장한 가족의 현재 이름) 추가. 메인 채팅(`rag_chat._run_tool`)의 허용 인자 목록에 `member` 를 넣어야 AI 가 쓸 수 있다(1팀 작업 파일).
+- 기존 기록은 백필하지 않는다(`강**` 그대로).
+
 ## 문서 목록 날짜 조건
 
 `GET /ai-assistant/knowledge/items` 에 선택 파라미터 `created_from`, `created_to`(`YYYY-MM-DD`)를 더했다. `created_at` 을 한국 시간(KST) 달력 날짜로 보고 양끝을 포함해 거른다(`settings.ai_day_utc_offset_hours` 로 UTC 경계 변환). 한쪽만 줘도 되고, 안 주면 기존과 같다. `created_from > created_to` 면 400 `invalid_range`. 하위 호환 추가다.

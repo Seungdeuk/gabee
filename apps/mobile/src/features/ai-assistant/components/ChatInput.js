@@ -15,26 +15,33 @@ import AttachSheet from "./AttachSheet";
  * - 왼쪽 + 버튼: 앨범/카메라에서 사진을, 또는 파일(PDF·문서 등)을 골라 onAttach 로 넘긴다
  * - disabled: 가비가 답하는 동안 입력을 막는다
  *
- * TODO: 음성 인식은 폰 키보드의 받아쓰기를 쓴다. 앱 안에서 직접 인식하려면 음성 인식 모듈을 붙인다.
+ * 음성 입력: 마이크를 누르면 폰의 음성 인식이 켜지고, 인식된 글자(voiceText)가 입력창에 채워진다.
+ * 자동으로 보내지 않는다. 사용자가 글자를 확인·고친 뒤 보내기를 눌러야 전송된다.
  * TODO: 음성 대화(말로 주고받기) 버튼은 기능이 생기면 다시 둔다. 지금은 마이크와 같은 동작이라 뺐다.
  *
- * @param {{ mode: "idle" | "listening" | "disabled", onSend: (text: string, options: { voice: boolean }) => void, onMic: () => void, onAttach: (file: { uri: string, name?: string, type?: string, isImage: boolean }) => void }} props
+ * @param {{ mode: "idle" | "listening" | "disabled", voiceText?: string, onSend: (text: string, options: { voice: boolean }) => void, onMic: () => void, onAttach: (file: { uri: string, name?: string, type?: string, isImage: boolean }) => void }} props
  */
-export default function ChatInput({ mode, onSend, onMic, onAttach }) {
+export default function ChatInput({ mode, voiceText = "", onSend, onMic, onAttach }) {
   const [text, setText] = useState("");
   const [sheet, setSheet] = useState(false);
-  const inputRef = useRef(null);
   const listening = mode === "listening";
   const disabled = mode === "disabled";
   const canSend = text.trim().length > 0 && !disabled;
+  const baseRef = useRef(""); // 말하기 시작 전에 이미 쳐 둔 글자(지우지 않고 뒤에 이어 붙인다)
+  const usedVoice = useRef(false); // 이번 글에 음성으로 받은 부분이 있는지(전송 때 voice 표시)
+  const textRef = useRef(text);
+  textRef.current = text;
 
-  // 음성 입력으로 바뀌면 입력창에 커서를 둬서 폰 키보드의 받아쓰기를 바로 쓸 수 있게 한다
   useEffect(() => {
-    if (!listening) return undefined;
-    // 마이크 버튼을 누른 직후에는 버튼이 포커스를 가져가므로, 한 박자 뒤에 입력창으로 옮긴다
-    const timer = setTimeout(() => inputRef.current?.focus(), 60);
-    return () => clearTimeout(timer);
+    if (listening) baseRef.current = textRef.current.trim();
   }, [listening]);
+
+  useEffect(() => {
+    if (!voiceText) return;
+    const base = baseRef.current;
+    setText(base ? `${base} ${voiceText}` : voiceText);
+    usedVoice.current = true;
+  }, [voiceText]);
 
   const pick = async (fromCamera) => {
     try {
@@ -81,7 +88,9 @@ export default function ChatInput({ mode, onSend, onMic, onAttach }) {
 
   const submit = () => {
     if (!canSend) return;
-    onSend(text, { voice: listening });
+    onSend(text, { voice: usedVoice.current });
+    usedVoice.current = false;
+    baseRef.current = "";
     setText("");
   };
 
@@ -91,7 +100,6 @@ export default function ChatInput({ mode, onSend, onMic, onAttach }) {
         <Ionicons name="add" size={26} color={disabled ? colors.disabled : colors.text} />
       </Pressable>
       <TextInput
-        ref={inputRef}
         style={[styles.input, disabled && styles.inputDisabled]}
         value={text}
         onChangeText={setText}

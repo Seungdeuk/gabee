@@ -24,7 +24,10 @@ export function schedulePromptFor(record, today = localToday()) {
   return { title, kindLabel: String(record?.kind_label ?? "").trim(), date };
 }
 
-/** 카드의 "일정에 넣기"를 눌렀을 때 채팅으로 보낼 문장. 날짜와 제목을 모두 담아 되묻지 않고 처리되게 한다. */
+/**
+ * 카드의 "일정에 넣기"를 눌렀을 때 채팅으로 보낼 문장. 날짜와 제목을 모두 담아 되묻지 않고 처리되게 한다.
+ * 시각·장소가 문서에 있으면 넣고 메모에는 문서 핵심 내용만 적어 달라고 덧붙인다(가비가 기록을 읽어 채운다).
+ */
 export function schedulePromptSentence({ title, date }) {
-  return `방금 올린 "${title}" 문서의 날짜(${date})를 일정에 넣어줘`;
+  return `방금 올린 "${title}" 문서의 날짜(${date})를 일정에 넣어줘. 시간과 장소가 문서에 있으면 함께 넣고, 메모에는 문서의 핵심 내용만 적어줘`;
 }

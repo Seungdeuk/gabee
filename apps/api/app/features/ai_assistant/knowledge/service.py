@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.shared.errors import ApiError, not_found
 
+from .. import family_names
 from ..ingest import masking
 from . import repository as repo
 from .chunking import DOUBT_MARK, UNREAD_MARK, split_markdown
@@ -79,6 +80,7 @@ def ingest(
         occurred_on=occurred_on,
         has_unread_parts=UNREAD_MARK in body_md,
         sensitivity=_sensitivity(kind_label, sensitivity),
+        family_user_ids=family_names.extract_ids(title, body_md) or None,
     )
     return repo.add_item(db, item, _chunks(embedder, group_id, body_md))
 
@@ -108,8 +110,12 @@ def update_item(db: Session, group_id: str, item_id: str, changes: dict) -> Know
     embedder = _embedder(db)
     title = changes.get("title") or item.title
     kind = changes.get("kind_label") or item.kind_label
-    body = changes.get("body_md") or item.body_md
-    body = masking.mask_text(body, masking.sensitive_kind(body))
+    # 앱은 되돌린 이름을 보여 주므로 사용자가 고친 글에는 실명이 들어 있다 -> 가리기 전에 다시 자리표시로 바꾼다.
+    # 이미 저장된 글(자리표시가 있다)도 같은 길을 지나게 해서 user_id 숫자 덩어리가 번호로 오인되지 않게 한다.
+    tagger = family_names.FamilyTagger(family_names.load_members(db, group_id))
+    title = tagger.tag(title)
+    body = tagger.protect(changes.get("body_md") or item.body_md)
+    body = tagger.expand(masking.mask_text(body, masking.sensitive_kind(body)))
     lines = [
         ln.removesuffix(DOUBT_MARK).rstrip()  # 사용자가 확인했으니 [불확실] 표시는 지운다
         for ln in body.split("\n")
@@ -128,6 +134,7 @@ def update_item(db: Session, group_id: str, item_id: str, changes: dict) -> Know
         or _sensitivity(kind, None) == "sensitive"
     )
     item.title, item.kind_label, item.body_md = title, kind, body
+    item.family_user_ids = family_names.extract_ids(title, body) or None
     if "occurred_on" in changes:
         item.occurred_on = changes["occurred_on"]
     item.has_unread_parts = False
@@ -145,8 +152,10 @@ def search(
     date_from: date | None = None,
     date_to: date | None = None,
     include_sensitive: bool = True,
+    family_user_ids: list[str] | None = None,
 ) -> list[Hit]:
-    """질문과 가장 가까운 기록을 점수 순으로 돌려준다(기록마다 가장 가까운 조각 하나)."""
+    """질문과 가장 가까운 기록을 점수 순으로 돌려준다(기록마다 가장 가까운 조각 하나).
+    family_user_ids 를 주면 그 가족 중 한 명이라도 등장한 기록만 본다(빈 목록이면 결과 없음)."""
     embedder = _embedder(db)
     rows = repo.search_chunks(
         db,
@@ -157,11 +166,64 @@ def search(
         date_from,
         date_to,
         include_sensitive,
+        family_user_ids=family_user_ids,
     )
     best: dict[str, Hit] = {}
     for chunk, item, score in rows:  # 점수 순이라 기록마다 처음 나온 조각이 가장 가깝다
         best.setdefault(item.id, Hit(item=item, chunk=chunk, score=score))
     return sorted(best.values(), key=lambda h: h.score, reverse=True)[:top_k]
+
+
+def name_checks(db: Session, group_id: str, limit: int = 5) -> list[dict]:
+    """가족 이름과 한 글자 차이인 이름이 있어 사용자 확인을 기다리는 곳(기록, 후보 가족) 목록. 오래된 것부터 limit 개.
+
+    글자는 저장하지 않았으므로 앞뒤 글(가린 글)만 보여 준다. 같은 기록에 후보가 둘이면 각각 한 건이다."""
+    names = family_names.shown_names(family_names.load_members(db, group_id))
+    out: list[dict] = []
+    for item in reversed(repo.items_containing(db, group_id, "[확인필요:", limit=20)):
+        for uid in family_names.check_ids(item.body_md):
+            out.append(
+                {
+                    "item_id": item.id,
+                    "title": family_names.restore(item.title, names),
+                    "date": item.occurred_on.isoformat() if item.occurred_on else None,
+                    "candidate_id": uid,
+                    "candidate": names.get(uid, family_names.NEUTRAL_NAME),
+                    "context": _check_context(item.body_md, uid, names),
+                }
+            )
+    return out[:limit]
+
+
+def count_name_checks(db: Session, group_id: str) -> int:
+    return sum(
+        len(family_names.check_ids(i.body_md))
+        for i in repo.items_containing(db, group_id, "[확인필요:", limit=50)
+    )
+
+
+def _check_context(body: str, user_id: str, names: dict[str, str], pad: int = 30) -> str:
+    """확인할 자리 앞뒤 글. 그 자리는 '[?]', 다른 확인 자리와 가족 이름은 보이는 형태로."""
+    mark = f"[확인필요:{user_id}]"
+    at = body.find(mark)
+    part = body[max(0, at - pad) : at + len(mark) + pad]
+    part = part.replace(mark, "[?]")
+    return " ".join(family_names.restore(part, names).split())
+
+
+def resolve_name_check(
+    db: Session, group_id: str, item_id: str, user_id: str, same_person: bool
+) -> KnowledgeItem:
+    """사용자의 답을 반영한다: 같은 사람이면 `[가족:<id>]`, 아니면 `[이름]` 으로 바꾸고 검색 조각을 다시 만든다.
+    후보는 이 기록에 남은 확인 자리의 user_id 만 받는다(모델이 임의의 id 를 넣을 수 없다). 글은 이미 가려진 상태라 다시 가리지 않는다."""
+    item = get_item(db, group_id, item_id)
+    if user_id not in family_names.check_ids(item.body_md):
+        raise ApiError(404, "name_check_not_found", "확인할 이름이 이 기록에 없어요")
+    title = family_names.resolve_check(item.title, user_id, same_person)
+    body = family_names.resolve_check(item.body_md, user_id, same_person)
+    item.title, item.body_md = title, body
+    item.family_user_ids = family_names.extract_ids(title, body) or None
+    return repo.replace_chunks(db, item, _chunks(_embedder(db), group_id, body))
 
 
 def get_item(db: Session, group_id: str, item_id: str) -> KnowledgeItem:

@@ -155,7 +155,12 @@ with new_session(ASSISTANT, members=[("김민수", "민수"), "이영희"]) as s
 
 **이번 PR 에서는 아래를 하지 않았다.** 담당 팀과 협의한 뒤 별도 PR 로 한다.
 
-1. **`rag_chat._messages`**(`ai_assistant/knowledge/rag_chat.py`): 질문과 앞 대화를 만들기 전에 요청당 세션을 만들고(`new_session(ASSISTANT, members=가족 구성원 이름·표시 이름)`), 질문과 각 `turn["text"]` 를 `sess.prepare_text` 로 바꾼다. 같은 세션을 도구 결과와 공유한다. 세션은 `try/finally` 또는 `with` 로 닫는다.
+> **2026-11-02 현황 (메인 AI 채팅)**: 1(질문·앞 대화)·2(도구 결과, 모델이 쓴 인자의 복원과 쓰기 도구 거부)·3(응답 복원)·4(캐시·로그 규칙 유지)·6(시험)은
+> `ai_assistant/knowledge/rag_privacy.py`·`rag_graph.py` 로 **메인 채팅에 구현됐다**(ADR 0013, 시험 `tests/test_rag_privacy_unit.py`·`test_main_chat_privacy.py`).
+> **아직 안 된 것**: 탭 에이전트(`billing`·`care`·`family_chat`)가 자기 모델을 부르는 경로의 가명화(2의 `agent.py` 지점)와 5(`agent_guard` 규칙 위반 정리)다.
+> 메인이 탭 에이전트에 넘기는 질문은 이름표를 되돌린 실제 글이라 그 에이전트들의 규칙 가리기가 막지 못하는 이름은 나간다.
+
+1. **`rag_chat.ask` 의 `build_messages(question, history)` 호출 지점**(`ai_assistant/knowledge/rag_chat.py`, 함수는 `shared/llm/agent.py` 와 공용): 질문과 앞 대화를 만들기 전에 요청당 세션을 만들고(`new_session(ASSISTANT, members=가족 구성원 이름·표시 이름)`), 질문과 각 `turn["text"]` 를 `sess.prepare_text` 로 바꾼다. 같은 세션을 도구 결과와 공유한다. 세션은 `try/finally` 또는 `with` 로 닫는다.
 2. **탭 에이전트 도구 결과**(`shared/llm/agent.py` 의 `_result_text`, `json.dumps(data, default=str)` 지점): dumps 하기 전에 `sess.prepare_json(data, keys_to_drop=..., pseudonymize_keys=필요 시)` 를 거친다. 돌봄은 좌표(`lat`/`lng`)가 기본 일반화 대상이다. 정산은 지출 제목·구성원 이름이 문자열 값이므로 가려지고, 금액은 `numbers` 로 선택한다. `MAX_TOOL_RESULT_CHARS` 자르기는 **가명화 뒤 길이 기준**으로 한다. 도구 호출 **입력**(모델이 만든 인자)은 **조회용**이면 서버가 실행 전에 `restore_json` 으로 이름·주소 토큰을 되돌려 쓰고, **쓰기 도구**(일정·지출·돌봄 기록 저장 등)는 복원한 뒤에도 `contains_placeholders(args)` 가 True 이면(`(연락처)` 같은 일반화 문구, `[RRN]` 같은 고정 토큰, 안 풀린 `[PERSON_3]`) **그 호출을 거부**하고 모델에 다시 묻거나 사용자에게 알린다. 그대로 저장하면 자리표시가 DB 에 들어간다.
 3. **응답 복원 위치**: 모델의 최종 답 문자열을 사용자에게 돌려주기 직전에 `sess.restore_text(answer, generalize_unknown=True, scrub=True)`. 쓰기 제안(제안 토큰·저장할 값)은 복원된 값이 아닌지, 이름 토큰이 깨졌는지 검증한 뒤 쓴다. 시스템 프롬프트에 "`[PERSON_1]` 같은 토큰은 글자 그대로 복사하고 새로 만들지 않는다"를 넣는다.
 4. **캐시·로그**: 에이전트 결과는 캐시하지 않는 현재 규칙(`cache_key=None`)을 유지하고, 캐시를 도입한다면 토큰 상태로만 저장한다. 세션·가명화 전 질문·도구 결과·복원 전 응답을 로그에 남기지 않는다(`counts_by_kind`·`blocked_count` 만 안전). 규칙을 바꾸면 `MODULE_VERSION` 을 올린다.

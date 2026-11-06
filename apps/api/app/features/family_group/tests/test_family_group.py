@@ -1,8 +1,12 @@
 """가입, 가족 그룹, 초대 코드, 토큰 검사."""
 
+import pytest
+
 from app.features.family_group.models import GroupMember, Invite
 from app.shared.db import SessionLocal
 from tests.helpers import signup
+
+pytestmark = pytest.mark.usefixtures("approval_required")  # 승인 대기 흐름을 본다
 
 
 def test_signup_group_invite_and_join(client):

@@ -8,6 +8,7 @@
 import logging
 import mimetypes
 import threading
+import time
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
@@ -15,10 +16,12 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.features.family_group.models import GroupMember
+from app.shared.config import settings
 from app.shared.db import SessionLocal
 from app.shared.errors import ApiError
 from app.shared.notifications import notify
 
+from . import family_names, reminders
 from . import repository as repo
 from .ingest import converters, masking
 from .ingest import service as ingest_service
@@ -78,35 +81,71 @@ def _notify_document(db: Session, group_id: str, user_id: str, item) -> None:
 
 
 def process_file(photo_id: str, group_id: str, user_id: str, data: bytes, filename: str) -> None:
-    """전처리해서 knowledge 에 넣고 `photos.status` 를 바꾼다. 어떤 실패도 서버를 멈추지 않는다."""
+    """전처리해서 knowledge 에 넣고 `photos.status` 를 바꾼다. 어떤 실패도 서버를 멈추지 않는다.
+
+    Claude 연결이 잠깐 안 돼서 실패(`llm_unavailable`)했으면 기다렸다가 같은 파일을 다시 처리한다(원본 바이트는 이미 메모리에 있다).
+    깨진 파일·지원 안 하는 형식은 다시 해도 같으므로 다시 하지 않는다. 기다리는 동안은 처리 칸을 비워 다른 파일이 지나가게 한다."""
     status = "failed"
-    with _SLOTS:
-        try:
-            result = ingest_service.ingest_file(
-                group_id,
-                data,
-                filename,
-                ocr=processors.ocr,
-                jev=processors.jev,
-            )
-            if result.quality.status != "failed":
-                with SessionLocal() as db:
-                    item = knowledge_service.ingest(
-                        db, group_id, user_id, item_id=photo_id, **from_ingest.to_item(result)
-                    )
-                    try:
-                        _notify_document(db, group_id, user_id, item)
-                    except Exception as e:  # noqa: BLE001  문서는 이미 저장됐다: 알림 실패가 처리 실패로 바뀌지 않게 종류만 적는다
-                        db.rollback()
-                        logger.warning(
-                            "문서 알림에 실패했어요 id=%s 종류=%s", photo_id, type(e).__name__
-                        )
-                status = "needs_review" if from_ingest.needs_review(result) else "analyzed"
-        except Exception as e:  # noqa: BLE001  내용이 로그에 남지 않게 종류만 적는다
-            logger.error("파일 처리에 실패했어요 id=%s 종류=%s", photo_id, type(e).__name__)
-            status = "failed"
+    for attempt in range(settings.ingest_retry_max + 1):
+        if attempt:
+            time.sleep(settings.ingest_retry_wait_seconds * attempt)
+        with _SLOTS:
+            status, retry = _process_once(photo_id, group_id, user_id, data, filename)
+        if not retry:
+            break
+        logger.warning(
+            "Claude 연결이 안 돼 파일을 다시 처리해요 id=%s 시도=%d/%d",
+            photo_id,
+            attempt + 1,
+            settings.ingest_retry_max + 1,
+        )
     with SessionLocal() as db:
         repo.set_status(db, photo_id, status)
+
+
+def _plan_reminders(photo_id: str, group_id: str, user_id: str) -> None:
+    """저장된 기록에서 챙길 일을 뽑는다(설정이 켜진 경우). 실패해도 파일은 그대로 저장된 상태로 둔다."""
+    if not settings.ingest_reminders:
+        return
+    try:
+        with SessionLocal() as db:
+            reminders.plan(db, group_id, user_id, photo_id)
+    except Exception as e:  # noqa: BLE001  내용이 로그에 남지 않게 종류만 적는다
+        logger.warning("챙길 일을 뽑지 못했어요 id=%s 종류=%s", photo_id, type(e).__name__)
+
+
+def _process_once(
+    photo_id: str, group_id: str, user_id: str, data: bytes, filename: str
+) -> tuple[str, bool]:
+    """한 번 처리한다. (상태, 다시 해 볼 만한 실패인지)"""
+    try:
+        # 가족 이름은 가리기 전에 자리표시로 바꾼다(분류를 외부 서비스에 맡겨도 실명이 나가지 않는다)
+        with SessionLocal() as db:
+            family = family_names.FamilyTagger(family_names.load_members(db, group_id))
+        result = ingest_service.ingest_file(
+            group_id,
+            data,
+            filename,
+            ocr=processors.ocr,
+            jev=processors.jev,
+            family=family,
+        )
+        if result.quality.status == "failed":
+            return "failed", result.quality.error == "llm_unavailable"
+        with SessionLocal() as db:
+            item = knowledge_service.ingest(
+                db, group_id, user_id, item_id=photo_id, **from_ingest.to_item(result)
+            )
+            try:
+                _notify_document(db, group_id, user_id, item)
+            except Exception as e:  # noqa: BLE001  문서는 이미 저장됐다: 알림 실패가 처리 실패로 바뀌지 않게 종류만 적는다
+                db.rollback()
+                logger.warning("문서 알림에 실패했어요 id=%s 종류=%s", photo_id, type(e).__name__)
+        _plan_reminders(photo_id, group_id, user_id)
+        return ("needs_review" if from_ingest.needs_review(result) else "analyzed"), False
+    except Exception as e:  # noqa: BLE001  내용이 로그에 남지 않게 종류만 적는다
+        logger.error("파일 처리에 실패했어요 id=%s 종류=%s", photo_id, type(e).__name__)
+        return "failed", False
 
 
 def status(db: Session, group_id: str, photo_id: str) -> FileStatusOut | None:
@@ -127,9 +166,11 @@ def status(db: Session, group_id: str, photo_id: str) -> FileStatusOut | None:
         get_item(db, group_id, photo_id) if photo.status in ("analyzed", "needs_review") else None
     )
     if item is not None:
-        out.title, out.kind_label = item.title, item.kind_label
-        out.description = _describe(item.body_md)
-        out.doubts = _doubts(item.body_md)
+        names = family_names.shown_names(family_names.load_members(db, group_id))
+        body = family_names.restore(item.body_md, names)  # 자리표시를 현재 이름으로(자르기 전에)
+        out.title, out.kind_label = family_names.restore(item.title, names), item.kind_label
+        out.description = _describe(body)
+        out.doubts = _doubts(body)
         out.needs_description = from_ingest.needs_description(item.kind_label, item.body_md)
     return out
 
@@ -143,13 +184,18 @@ def set_description(db: Session, group_id: str, photo_id: str, text: str) -> Fil
         return None
     if item.kind_label != from_ingest.PHOTO_KIND:
         raise ApiError(409, "not_a_photo", "사진에만 설명을 달 수 있어요")
-    text = " ".join(masking.mask_text(text).split())[: from_ingest.DESCRIPTION_MAX]
+    # 설명에 쓴 가족 이름도 가리기 전에 자리표시로 바꾼다(저장되는 글에는 실명이 없다)
+    tagger = family_names.FamilyTagger(family_names.load_members(db, group_id))
+    masked = " ".join(tagger.expand(masking.mask_text(tagger.protect(text))).split())
+    text = family_names.clip(masked, from_ingest.DESCRIPTION_MAX)
     changes = {"body_md": from_ingest.with_description(item.body_md, text)}
     before = from_ingest.current_description(item.body_md)
     if from_ingest.is_default_title(item.title, item.kind_label) or (
-        before and item.title == before[:50]
+        before and item.title == family_names.clip(before, 50)
     ):
-        changes["title"] = text[:50]  # 제목이 기본값이거나 이전 설명이면 새 설명이 제목이 된다
+        changes["title"] = family_names.clip(
+            text, 50
+        )  # 제목이 기본값이거나 이전 설명이면 새 설명이 제목이 된다
     knowledge_service.update_item(db, group_id, photo_id, changes)
     return status(db, group_id, photo_id)
 

@@ -3,12 +3,15 @@
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime, timedelta
 
+import pytest
 from sqlalchemy import select
 
 from app.features.family_group.models import GroupMember, Invite, InviteAttempt, JoinRequest
 from app.shared.config import settings
 from app.shared.db import SessionLocal
 from tests.helpers import signup
+
+pytestmark = pytest.mark.usefixtures("approval_required")  # 이 파일은 승인 대기 흐름을 본다
 
 P = "/family-group"
 PASSWORD = "Sunny-day-2026"
@@ -32,9 +35,16 @@ def account(client, login_id, name=None):
     return {"Authorization": f"Bearer {token}"}, r.json()["user"]["id"]
 
 
-def create_group(client, headers, name="우리 가족"):
+def create_group(client, headers, name="우리 가족", auto_approve=False):
+    """가족을 만든다. 이 파일의 시험은 '승인 대기 → 관리자 승인' 흐름을 보므로 자동 승인(서버 기본 켜짐)을 명시적으로 끈다.
+    자동 승인 자체를 보려면 auto_approve=True 로 부른다."""
     r = client.post(f"{P}/groups", json={"name": name}, headers=headers)
     assert r.status_code == 201, r.text
+    group = r.json()
+    if auto_approve:
+        return group
+    r = client.put(f"{P}/groups/invites/settings", json={"auto_approve": False}, headers=headers)
+    assert r.status_code == 200, r.text
     return r.json()
 
 
@@ -102,7 +112,8 @@ def test_invite_request_approve_flow(client):
     assert seen["invite_code"] is None and seen["my_role"] == "member"
 
 
-def test_reject_does_not_refund_the_use_and_a_new_code_works(client):
+def test_reject_does_not_refund_the_use_and_a_new_code_works(client, monkeypatch):
+    monkeypatch.setattr(settings, "invite_max_uses", 1)  # 서버 기본은 20회라 1회용으로 고정한다
     owner, _ = account(client, "owner_kim")
     group = create_group(client, owner)
     guest, guest_id = account(client, "guest_lee")
@@ -123,7 +134,8 @@ def test_reject_does_not_refund_the_use_and_a_new_code_works(client):
 
 
 # ---------- 초대 코드 ----------
-def test_code_is_single_use_expires_and_can_be_revoked(client):
+def test_code_is_single_use_expires_and_can_be_revoked(client, monkeypatch):
+    monkeypatch.setattr(settings, "invite_max_uses", 1)  # 서버 기본은 20회라 1회용으로 고정한다
     owner, _ = account(client, "owner_kim")
     group = create_group(client, owner)
     a, _ = account(client, "guest_a")
@@ -271,7 +283,8 @@ def test_simultaneous_approvals_only_one_wins(client):
     assert list(members_of(group["id"]).values()).count("member") == 1
 
 
-def test_one_use_code_submitted_by_many_people_at_once_creates_one_request(client):
+def test_one_use_code_submitted_by_many_people_at_once_creates_one_request(client, monkeypatch):
+    monkeypatch.setattr(settings, "invite_max_uses", 1)  # 서버 기본은 20회라 1회용으로 고정한다
     owner, _ = account(client, "owner_kim")
     group = create_group(client, owner)
     guests = [account(client, f"guest_{i}")[0] for i in range(5)]

@@ -107,3 +107,22 @@ class PhotoOut(BaseModel):
     size: int
     status: str
     created_at: datetime
+
+
+class NudgeOut(BaseModel):
+    id: str  # 챙길 일 id
+    kind: str  # propose(일정으로 잡을까요) | urgent(미리 알림) | followup(하셨나요)
+    text: str
+
+
+class NudgesOut(BaseModel):
+    nudges: list[NudgeOut]
+    message: str = ""  # 여러 개를 한 번에 보기 좋게 묶은 말(하나뿐이면 그 문장, 없으면 빈 문자열). 앱은 이것만 보여 준다
+
+
+class ReminderSettingsIn(BaseModel):
+    enabled: bool
+
+
+class ReminderSettingsOut(BaseModel):
+    enabled: bool

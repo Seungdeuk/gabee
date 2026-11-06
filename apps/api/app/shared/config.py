@@ -37,6 +37,20 @@ class Settings(BaseSettings):
         True  # 가린 글만 채팅 근거로 쓴다. 끄려면 CHAT_INCLUDE_SENSITIVE=false
     )
 
+    # 업로드 파일의 글자 읽기(OCR)·개인정보 가리기를 Claude 로 할지(docs/adr/0014). 외부 API 로 파일 내용이 나가므로 평가 기준을 통과하기 전까지 기본은 끈다.
+    # 꺼져 있으면 기존 방식(RapidOCR·규칙 가리기)을 그대로 쓴다. 켜면 호출이 실패할 때 가리지 않은 글을 저장하지 않고 파일을 failed 로 둔다.
+    ingest_llm_ocr: bool = False  # 사진·PDF 쪽을 Claude 로 읽는다
+    ingest_llm_mask: bool = False  # 글을 Claude 로 가리고 가족 이름 후보를 문맥으로 판단한다
+    ingest_ocr_model: str = "claude-sonnet-5-5"  # 표·머리말 구분이 좋은 모델
+    ingest_mask_model: str = ""  # 비우면 llm_model(Haiku)
+    ingest_mask_chunk_chars: int = 6000  # 가리기 호출 한 번에 보내는 최대 글자 수(긴 문서는 나눠서)
+    ingest_pdf_max_pages: int = 20  # Claude 로 읽는 PDF 최대 쪽 수(비용 상한)
+    # Claude 연결 실패(llm_unavailable)로 failed 가 될 파일을 자동으로 다시 처리하는 횟수와 기다리는 시간(n번째 재시도는 n×이 초)
+    ingest_retry_max: int = 2
+    ingest_retry_wait_seconds: int = 20
+    # 올린 문서의 날짜에서 챙길 일을 뽑는다(Claude 1회 호출). 켜도 사용자마다 챙겨주기 스위치로 끌 수 있다
+    ingest_reminders: bool = False
+
     # 임시 경로 스위치(app/shared/route_switch.py): 쉼표로 구분한 `METHOD /path`(경로에 * 허용). 걸린 요청은 503 route_disabled. 비우면 끄는 경로 없음
     disabled_ai_routes: str = ""
 

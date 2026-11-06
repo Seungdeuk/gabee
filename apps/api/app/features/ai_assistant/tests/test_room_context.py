@@ -260,7 +260,9 @@ def test_current_question_is_not_in_context_as_a_pending_request(client, setup):
     _ask(client, a, "낚시터 예약해줘")
     block = systems[-1].split(CONTEXT_MARK, 1)[1]
     assert "토요일에 낚시 가자" in block
-    assert "낚시터 예약해줘" not in block  # 지금 질문은 맥락에 '이미 처리된 요청'으로 들어가지 않는다
+    assert (
+        "낚시터 예약해줘" not in block
+    )  # 지금 질문은 맥락에 '이미 처리된 요청'으로 들어가지 않는다
 
 
 def test_privacy_failure_in_context_does_not_burn_the_limit(client, setup, monkeypatch):

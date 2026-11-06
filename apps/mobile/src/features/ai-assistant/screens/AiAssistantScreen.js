@@ -18,7 +18,6 @@ import SchedulePromptCard from "../components/SchedulePromptCard";
 import DoubtCard from "../components/DoubtCard";
 import ScheduleConfirmCard from "../components/ScheduleConfirmCard";
 import DraftCard from "../components/DraftCard";
-import MicPendingSheet from "../components/MicPendingSheet";
 import PromptChips from "../components/PromptChips";
 import ReadingStatus from "../components/ReadingStatus";
 import Sidebar from "../components/Sidebar";
@@ -26,12 +25,11 @@ import ThinkingSteps from "../components/ThinkingSteps";
 import UserBubble from "../components/UserBubble";
 import WaveBars from "../components/WaveBars";
 import useChat from "../hooks/useChat";
+import useNudges from "../hooks/useNudges";
 import useSessions from "../hooks/useSessions";
+import useVoiceInput from "../hooks/useVoiceInput";
 import { listRecords } from "../api";
 import mascot from "../../../../assets/images/gabee-mascot.png";
-
-// 음성 입력이 아직 준비되지 않아 마이크를 막아 둔다. 기능이 생기면 true 로 바꾼다.
-const MIC_ENABLED = false;
 
 /**
  * 홈: AI 채팅. 상태는 빈 화면 → (음성 입력) → 처리 중 → 답변/초안 승인 순으로 바뀐다.
@@ -39,13 +37,23 @@ const MIC_ENABLED = false;
  * emptyAction 은 빈 화면 인사말 아래에 붙는 요소(라우트에서 조립한다).
  */
 export default function AiAssistantScreen({ onBell, bellBadge, emptyAction }) {
-  const { messages, phase, readingSince, confirmDoubts, markAiEnabled, resolveConfirm, saveDescription, skipDescription, acceptSchedulePrompt, skipSchedulePrompt, send, sendPhoto, startListening, stopListening, editDraft, reset, load } = useChat();
+  const { messages, phase, readingSince, confirmDoubts, markAiEnabled, resolveConfirm, saveDescription, skipDescription, acceptSchedulePrompt, skipSchedulePrompt, send, sendPhoto, startListening, stopListening, editDraft, addAssistantMessages, reset, load } = useChat();
+  const voice = useVoiceInput({ onEnd: stopListening });
+  const toggleMic = async () => {
+    if (phase === "listening") {
+      voice.stop(); // 마지막 글자는 곧 도착해 입력창에 채워진다. 화면 상태는 바로 푼다
+      stopListening();
+      return;
+    }
+    startListening();
+    if (!(await voice.start())) stopListening();
+  };
   const auth = useAuth();
+  useNudges({ enabled: Boolean(auth.user?.id), busy: phase === "thinking" || phase === "reading", onNudges: addAssistantMessages }); // 앱을 열면(켜 두는 동안에도 5분마다) 챙길 일을 먼저 말한다. 가비가 답하는 중에는 끼어들지 않는다
   // 대화 저장 키: 로그인한 회원은 사용자 id, 익명 계정(개발용 토큰)은 토큰에서 만든 값. 로그인 확인 중에는 null
   const scope = auth.status === "loading" ? null : auth.user?.id ? `user-${auth.user.id}` : legacyStorageScope();
   const { sessions, currentId, startNew, open, remove } = useSessions({ messages, load, reset, scope });
   const [menuOpen, setMenuOpen] = useState(false);
-  const [micPendingOpen, setMicPendingOpen] = useState(false);
   const [reviewCount, setReviewCount] = useState(0); // 확인이 필요한 기록 수(메뉴 점·기록 탭 숫자)
   const [focusRecordId, setFocusRecordId] = useState(null);
 
@@ -226,10 +234,9 @@ export default function AiAssistantScreen({ onBell, bellBadge, emptyAction }) {
             </>
           ) : null}
           {listening ? (
-            <Text style={styles.note}>폰 기본 음성 인식으로 받아 적어요. 말이 끝나면 보내기를 눌러 주세요.</Text>
+            <Text style={styles.note}>말씀해 보세요. 입력창에 글자가 채워지면 확인한 뒤 보내기를 눌러 주세요.</Text>
           ) : null}
-          <ChatInput mode={inputMode} onSend={send} onAttach={sendPhoto} onMic={MIC_ENABLED ? (listening ? stopListening : startListening) : () => setMicPendingOpen(true)} />
-          <MicPendingSheet visible={micPendingOpen} onClose={() => setMicPendingOpen(false)} />
+          <ChatInput mode={inputMode} voiceText={voice.transcript} onSend={send} onAttach={sendPhoto} onMic={toggleMic} />
         </View>
       </KeyboardAvoidingView>
     </SafeAreaView>

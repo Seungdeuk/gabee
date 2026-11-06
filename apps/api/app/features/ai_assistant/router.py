@@ -7,10 +7,21 @@ from app.shared.auth import current_group_id, current_user, ensure_group_member
 from app.shared.db import get_db
 from app.shared.errors import not_found
 
-from . import files, repository, service
+from . import files, reminders, repository, service
 from .knowledge.router import router as knowledge_router
 from .models import Photo
-from .schemas import ChatIn, ChatOut, DescriptionIn, FileOut, FileStatusOut, PhotoOut
+from .schemas import (
+    ChatIn,
+    ChatOut,
+    DescriptionIn,
+    FileOut,
+    FileStatusOut,
+    NudgeOut,
+    NudgesOut,
+    PhotoOut,
+    ReminderSettingsIn,
+    ReminderSettingsOut,
+)
 
 router = APIRouter(prefix="/ai-assistant", tags=["ai-assistant"])
 router.include_router(knowledge_router)  # /ai-assistant/knowledge/*
@@ -52,6 +63,35 @@ def list_photos(
     group_id: str = Depends(current_group_id), db: Session = Depends(get_db)
 ) -> list[Photo]:
     return repository.list_photos(db, group_id)
+
+
+@router.post("/reminders/nudges", response_model=NudgesOut)
+def reminder_nudges(
+    user=Depends(current_user),
+    group_id: str = Depends(current_group_id),
+    db: Session = Depends(get_db),
+) -> NudgesOut:
+    """앱을 열 때 가비가 먼저 할 말. 한 번 돌려준 말은 다시 돌려주지 않는다(스위치가 꺼져 있으면 빈 목록)."""
+    found = reminders.due_nudges(db, group_id, user.id)
+    return NudgesOut(
+        nudges=[NudgeOut(**{k: n[k] for k in ("id", "kind", "text")}) for n in found],
+        message=reminders.compose(found),
+    )
+
+
+@router.get("/reminders/settings", response_model=ReminderSettingsOut)
+def reminder_settings(
+    user=Depends(current_user), db: Session = Depends(get_db)
+) -> ReminderSettingsOut:
+    return ReminderSettingsOut(enabled=reminders.is_enabled(db, user.id))
+
+
+@router.put("/reminders/settings", response_model=ReminderSettingsOut)
+def set_reminder_settings(
+    body: ReminderSettingsIn, user=Depends(current_user), db: Session = Depends(get_db)
+) -> ReminderSettingsOut:
+    """먼저 챙겨주기를 켜거나 끈다(내 스위치)."""
+    return ReminderSettingsOut(enabled=reminders.set_enabled(db, user.id, body.enabled))
 
 
 @router.post("/files", response_model=FileOut, status_code=201)
