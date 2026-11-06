@@ -10,6 +10,7 @@ export const LOCAL_ASSISTANT_ID = "assistant-local"; // 내 화면에만 보이�
 
 const MAX_TURNS = 6; // 서버에 보내는 앞 대화는 내가 @가비 로 나눈 최근 몇 턴만
 const THREAD_MS = 15 * 60 * 1000; // 이 시간이 지난 대화는 이어 가지 않는다
+const PAIR_GAP_MS = 2 * 60 * 1000; // 질문과 가비의 답이 이 시간 안에 이어져야 한 쌍으로 본다(답은 보통 몇 초 안에 올라온다)
 /**
  * 입력창에 `@` 를 치면 보여 주는 @가비 기능 예시. 서버가 실제로 처리하는 영역만 둔다(날씨·일반 질문은 처리하지 않는다).
  * 서버 근거: ai_assistant/agents.py(탭 에이전트), ai_assistant/knowledge/rag_chat.py, family_chat/agent.py. 바꿀 때는 서버와 대조한다.
@@ -62,6 +63,35 @@ export function mentionHintsVisible(text) {
 export function mentionHistory(thread, now = Date.now()) {
   const fresh = thread.filter((t) => now - t.at <= THREAD_MS).slice(-MAX_TURNS);
   return fresh.map((t) => ({ role: t.role, text: t.text }));
+}
+
+/**
+ * 방에 저장된 메시지로 이전 @가비 대화를 되살린다(방을 나갔다 들어와도 이어 가도록). 내가 쓴 `@가비 질문` 바로 다음 메시지가
+ * 가비의 답이고 2분 안에 올라왔을 때만 한 쌍으로 본다. 사이에 다른 사람 글이 끼거나, 바로 앞에도 누군가의 @가비 질문이 있어 답이 뒤바뀔 수
+ * 있으면 건너뛴다(남의 답을 내 이전 대화로 되살리지 않는다). 지운 글·전송 중인 글은 뺀다.
+ * 시각은 가비 답의 시각이라 15분이 지난 쌍은 mentionHistory 가 버린다.
+ * @param {{ id?: number, user_id: string, text?: string, created_at: string, is_assistant?: boolean, deleted?: boolean, clientId?: string }[]} messages 오래된 순
+ * @param {string | null | undefined} myId 내 사용자 id
+ * @returns {{ role: "user" | "assistant", text: string, at: number }[]}
+ */
+export function restoreThread(messages, myId) {
+  const list = (messages ?? []).filter((m) => !m.clientId);
+  const thread = [];
+  for (let i = 0; i < list.length - 1; i++) {
+    const ask = list[i];
+    const answer = list[i + 1];
+    if (!myId || ask.user_id !== myId || ask.is_assistant || ask.deleted) continue;
+    if (!answer.is_assistant || answer.deleted || !answer.text) continue;
+    const called = parseMention(ask.text);
+    if (!called.mentioned || !called.question) continue;
+    const before = list[i - 1];
+    if (before && !before.is_assistant && !before.deleted && parseMention(before.text).mentioned) continue; // 동시에 부른 질문이 있어 짝이 뒤바뀔 수 있다
+    const at = parseTime(answer.created_at);
+    const gap = at - parseTime(ask.created_at);
+    if (!(gap >= 0 && gap <= PAIR_GAP_MS)) continue;
+    thread.push({ role: "user", text: called.question, at }, { role: "assistant", text: answer.text, at });
+  }
+  return thread.slice(-MAX_TURNS * 2);
 }
 
 /** 대화에 한 턴을 더한다(오래된 것은 버린다). */

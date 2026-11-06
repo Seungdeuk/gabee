@@ -55,9 +55,10 @@ from .ai_schemas import (
     RepliesOut,
     TopicsOut,
 )
+from .models import ASSISTANT_NAME, ASSISTANT_USER_ID
 
 MIN_MESSAGES = 3
-PROMPT_VERSION = "v4"  # 프롬프트·스키마를 바꾸면 올려서 오래된 캐시를 쓰지 않게 한다 (v3: 가명화 토큰, v4: 분석에 답장·주제 합침)
+PROMPT_VERSION = "v5"  # 프롬프트·스키마를 바꾸면 올려서 오래된 캐시를 쓰지 않게 한다 (v3: 가명화 토큰, v4: 분석에 답장·주제 합침, v5: 요청한 사람 입장·친근한 요약)
 ANALYSIS_MAX_TOKENS = 3000  # 분석이 답장·주제까지 한 번에 만들어서 기본 상한(2048)보다 넉넉하게. 잘리면 전체가 실패한다
 MAX_REPLIES = 3
 MAX_TOPICS = 5
@@ -78,20 +79,20 @@ COMMON_RULES = """- 대화에 없는 내용을 지어내지 않습니다. 날짜
 - 사람 이름을 말할 때도 대화에 나온 토큰 그대로 씁니다(예: [PERSON_1]). 서버가 나중에 원래 이름으로 바꿉니다.
 - 전화번호·이메일·계좌번호·주민등록번호 같은 개인정보(토큰 포함)는 그대로 옮기지 말고 '연락처', '계좌 정보'처럼 일반화합니다."""
 
-ANALYSIS_SYSTEM = f"""당신은 가족 단체 대화를 정리해 주는 비서입니다. 한국어로 아래 여섯 가지를 한 번에 만드세요.
-1) summary: 핵심 내용 위주 3~6문장 요약(잡담·인사는 줄입니다).
-2) important_messages: 놓치면 안 되는 메시지(결정·약속·요청·긴급 연락) 최대 5개. message_id 는 대화 각 줄(JSON)의 id 이고, reason 은 한 줄 이유입니다.
+ANALYSIS_SYSTEM = f"""당신은 가족 대화를 정리해 주는 친근한 비서입니다. 이 결과는 프롬프트에 알려 주는 '요청한 사람' 한 명이 보고 씁니다. 한국어로 아래 여섯 가지를 한 번에 만드세요.
+1) summary: 요청한 사람에게 친구가 들려주듯 친근한 말투('~했어요', '~래요')로 2~4문장. 문장마다 줄을 바꿔(\n) 읽기 쉽게 쓰고, '~알려주었습니다', '~당부했습니다' 같은 딱딱한 보고서 투나 '특별한 일정이나 요청 사항은 없습니다' 같은 형식적인 문장은 쓰지 않습니다(잡담·인사는 줄입니다).
+2) important_messages: 놓치면 안 되는 메시지(결정·약속·요청·긴급 연락) 최대 5개. message_id 는 대화 각 줄(JSON)의 id 이고, reason 은 친근한 말투의 한 줄 이유입니다('~라서 확인이 필요해요').
 3) schedule_candidates: 날짜·시간이 있는 약속·일정 후보 최대 8개. date 는 YYYY-MM-DD, time 은 24시간 HH:MM 입니다. 상대 표현(내일, 이번 주 토요일)은 '오늘 날짜'를 기준으로 바꾸되 확신이 없으면 null 로 둡니다. place 가 [ADDR_1] 같은 토큰이면 그 토큰을 그대로 씁니다.
 4) todo_candidates: 누군가에게 부탁했거나 해야 하는 일 후보 최대 8개. assignee_name 은 대화에 나온 사람 토큰(예: [PERSON_2]) 그대로 쓰고 불분명하면 null, due 는 YYYY-MM-DD 이고 불분명하면 null 입니다.
-5) replies: 대화의 마지막 메시지에 이어서 보낼 만한 짧고 따뜻한 답장 후보를 서로 다른 어조로 3개(각 80자 이내). 마지막 메시지가 답할 필요가 없는 내용이면 빈 배열로 둡니다.
-6) topics: 대화가 끊겼을 때 이어갈 만한 가볍고 구체적인 이야기 주제를 3~5개(각 40자 이내의 질문 또는 제안). 최근 대화 흐름과 어울려야 합니다.
+5) replies: 요청한 사람 본인이 보낼 짧고 따뜻한 답장 후보를 서로 다른 어조로 3개(각 80자 이내). 요청한 사람의 입장에서 쓰고, 상대가 할 말이나 요청한 사람이 이미 한 말에 대한 반응(예: 요청한 사람이 '학원 가는 중'이라고 했는데 '학원 잘 다녀와'라고 쓰는 것)은 만들지 않습니다. 마지막 메시지를 상대가 보냈으면 그 말에 이어 답하고, 요청한 사람이 마지막이었으면 이어서 덧붙이거나 상대에게 물어볼 말을 씁니다. 답할 필요가 없는 내용이면 빈 배열로 둡니다.
+6) topics: 대화가 끊겼을 때 요청한 사람이 상대에게 꺼내기 좋은 가볍고 구체적인 이야기 주제를 3~5개(각 40자 이내의 질문 또는 제안). 최근 대화 흐름과 어울려야 합니다.
 source_message_ids 는 근거가 된 메시지의 id 입니다. 해당하는 것이 없으면 빈 배열을 돌려줍니다.
 {COMMON_RULES}"""
 
-REPLIES_SYSTEM = f"""당신은 가족 대화에서 답장을 골라 주는 비서입니다. 마지막 메시지에 이어서 보낼 만한 짧고 따뜻한 답장 후보를 서로 다른 어조로 3개 만드세요(각 80자 이내).
+REPLIES_SYSTEM = f"""당신은 가족 대화에서 답장을 골라 주는 비서입니다. 요청한 사람 본인이 보낼 짧고 따뜻한 답장 후보를 서로 다른 어조로 3개 만드세요(각 80자 이내). 요청한 사람의 입장에서 쓰고, 상대가 할 말이나 요청한 사람이 이미 한 말에 대한 반응은 만들지 않습니다.
 {COMMON_RULES}"""
 
-TOPICS_SYSTEM = f"""당신은 가족 대화가 끊겼을 때 이어갈 이야기 주제를 추천하는 비서입니다. 최근 대화 흐름과 어울리는 가볍고 구체적인 주제를 3~5개 제안하세요(각 40자 이내의 질문 또는 제안).
+TOPICS_SYSTEM = f"""당신은 가족 대화가 끊겼을 때 이어갈 이야기 주제를 추천하는 비서입니다. 요청한 사람이 상대에게 꺼내기 좋은, 최근 대화 흐름과 어울리는 가볍고 구체적인 주제를 3~5개 제안하세요(각 40자 이내의 질문 또는 제안).
 {COMMON_RULES}"""
 
 
@@ -144,6 +145,10 @@ class _Context:
     # 복원된 담당자 이름으로 인정하는 실제 글자: 이 가족 구성원의 이름·표시 이름과 가명화하지 않은 발화자
     real_names: set[str]
     policy: Policy
+    viewer: str | None = (
+        None  # 요청한 사람이 대화에서 쓰인 이름(가명화 토큰이거나 호칭). 말한 적이 없으면 None
+    )
+    viewer_id: str = ""  # 요청한 사람의 사용자 id(결과는 사용자마다 따로 캐시한다)
 
     @property
     def sendable(self) -> bool:
@@ -152,6 +157,20 @@ class _Context:
 
     def close(self) -> None:
         self.prep.close()
+
+
+def _with_viewer(ctx: _Context, user: User) -> None:
+    """요청한 사람을 표시한다. 답장·주제는 그 사람이 보낼 말이라 누가 요청했는지가 결과를 정한다."""
+    ctx.viewer_id = user.id
+    for message, line in zip(ctx.used, ctx.prep.lines, strict=True):
+        if message.user_id == user.id:
+            ctx.viewer = line.speaker
+
+
+def _viewer_note(ctx: _Context) -> str:
+    if ctx.viewer:
+        return f"\n요청한 사람(이 결과를 보고 쓸 사람): {ctx.viewer}"
+    return "\n요청한 사람은 이 대화에서 말한 적이 없습니다(상대들의 대화에 새로 끼어들어 보낼 만한 말을 기준으로 합니다)."
 
 
 def _json_lines(rows: list, prep: Prepared) -> list[str]:
@@ -244,6 +263,50 @@ def room_scope(db: Session, user: User, group_id: str, room_id: str | None) -> s
     return room.id
 
 
+ROOM_CONTEXT_LIMIT = 10  # @가비 에 맥락으로 붙이는 방의 최근 메시지 수
+ROOM_CONTEXT_MINUTES = 30  # 이 시간보다 오래된 메시지는 맥락에 붙이지 않는다
+ROOM_CONTEXT_MAX_CHARS = (
+    3000  # 맥락 글자 수 상한(도구 루프에서 호출마다 다시 보내므로 분석보다 작게)
+)
+
+
+def room_context(
+    db: Session, group_id: str, room_id: str | None, user_id: str | None = None
+) -> _Context | None:
+    """@가비 에 맥락으로 붙일 방의 최근 대화(최근 ROOM_CONTEXT_LIMIT 개 중 ROOM_CONTEXT_MINUTES 분 이내)를
+    분석과 같은 규칙으로 가명화해서 돌려준다. 붙일 메시지가 없으면 None. 돌려받은 쪽이 끝나면 close() 로 대응표를 지운다.
+    room_id 는 room_scope 가 확인한 1:1 방 id 여야 한다(None 이면 가족 전체방)."""
+    cutoff = datetime.now(UTC) - timedelta(minutes=ROOM_CONTEXT_MINUTES)
+    rows = [
+        (m, name)
+        for m, name in repo.recent_messages(
+            db, group_id, ROOM_CONTEXT_LIMIT, 0, room_id, include_assistant=True
+        )
+        if (m.created_at if m.created_at.tzinfo else m.created_at.replace(tzinfo=UTC)) >= cutoff
+    ]
+    # 지금 부른 질문(요청한 사람의 마지막 @가비 글)은 맥락에서 뺀다: 이미 처리된 요청으로 보이면 모델이 일정 등록 같은 일을 거부할 수 있다
+    if (
+        rows
+        and user_id
+        and rows[-1][0].user_id == user_id
+        and rows[-1][0].text.lstrip().startswith("@가비")
+    ):
+        rows = rows[:-1]
+    if not rows:
+        return None
+    ctx = _build_context(
+        rows,
+        repo.member_names(db, group_id),
+        ANALYSIS,
+        min(ROOM_CONTEXT_MAX_CHARS, settings.ai_analysis_max_chars),
+    )
+    # 가비의 글은 사람처럼 가명화되지 않게 가비로 되돌린다(모델이 '가비의 답'과 '@가비 요청'을 알아보도록)
+    for message, line in zip(ctx.used, ctx.prep.lines, strict=True):
+        if message.user_id == ASSISTANT_USER_ID and _PERSON_TOKEN.fullmatch(line.speaker):
+            ctx.transcript = ctx.transcript.replace(line.speaker, ASSISTANT_NAME)
+    return ctx
+
+
 def _prepare(
     db: Session,
     group_id: str,
@@ -278,7 +341,7 @@ def _key(feature: str, ctx: _Context) -> str:
     restore = ",".join(sorted(k.value for k in pol.restore_kinds))
     raw = (
         f"{PROMPT_VERSION}|privacy{MODULE_VERSION}|{pol.name}|{pol.block_min_score}|{restore}|"
-        f"{feature}|{settings.llm_model}|{used[0].id}|{used[-1].id}|{len(used)}|{_today()[1]}|{text_hash}"
+        f"{feature}|{ctx.viewer_id}|{settings.llm_model}|{used[0].id}|{used[-1].id}|{len(used)}|{_today()[1]}|{text_hash}"
     )
     return hashlib.sha256(raw.encode()).hexdigest()
 
@@ -435,6 +498,7 @@ def analysis(db: Session, user: User, group_id: str, body: RangeIn) -> AnalysisO
         db, group_id, body, ANALYSIS, 200, room_id=room_scope(db, user, group_id, body.room_id)
     )
     try:
+        _with_viewer(ctx, user)
         key = _key("analysis", ctx)
         _, today_text = _today()
 
@@ -443,6 +507,7 @@ def analysis(db: Session, user: User, group_id: str, body: RangeIn) -> AnalysisO
 
         def call():
             prompt = f"오늘 날짜: {today_text}\n다음은 가족 단체 대화입니다(오래된 순, 한 줄이 JSON 하나이고 id 가 메시지 번호입니다).\n\n{ctx.transcript}\n\n위 대화를 분석해 주세요."
+            prompt += _viewer_note(ctx)
             response = llm.complete_json(
                 prompt, ANALYSIS_SCHEMA, system=ANALYSIS_SYSTEM, max_tokens=ANALYSIS_MAX_TOKENS
             )
@@ -476,10 +541,12 @@ def reply_suggestions(db: Session, user: User, group_id: str, body: RangeIn) -> 
         db, group_id, body, REPLY, 15, room_id=room_scope(db, user, group_id, body.room_id)
     )
     try:
+        _with_viewer(ctx, user)
         key = _key("reply", ctx)
 
         def call():
             prompt = f"다음은 최근 가족 대화입니다(오래된 순).\n\n{ctx.transcript}\n\n마지막 메시지에 이어서 보낼 답장 후보를 만들어 주세요."
+            prompt += _viewer_note(ctx)
             response = llm.complete_json(
                 prompt, REPLIES_SCHEMA, system=REPLIES_SYSTEM, max_tokens=400
             )
@@ -499,10 +566,12 @@ def topic_suggestions(db: Session, user: User, group_id: str, body: RangeIn) -> 
         db, group_id, body, TOPICS, 30, room_id=room_scope(db, user, group_id, body.room_id)
     )
     try:
+        _with_viewer(ctx, user)
         key = _key("topics", ctx)
 
         def call():
             prompt = f"다음은 최근 가족 대화입니다(오래된 순).\n\n{ctx.transcript}\n\n이어갈 이야기 주제를 추천해 주세요."
+            prompt += _viewer_note(ctx)
             response = llm.complete_json(
                 prompt, TOPICS_SCHEMA, system=TOPICS_SYSTEM, max_tokens=500
             )

@@ -10,7 +10,7 @@ import IconButton from "@/shared/components/IconButton";
 import { colors, font, radius, spacing } from "@/theme";
 
 import { buildItems, canSend, lastId, photoSendErrorMessage, trimDraft, unreadCount, unreadDividerId } from "../chatUtils";
-import { mergeNotes, parseMention } from "../mention";
+import { mergeNotes, parseMention, restoreThread } from "../mention";
 import AiPanel from "../components/AiPanel";
 import AssistantNote from "../components/AssistantNote";
 import ChatSearchBar from "../components/ChatSearchBar";
@@ -238,6 +238,13 @@ export default function ChatRoomScreen() {
     setDraft((prev) => (prev.trim() ? `${prev} ${text}` : text));
     setAiOpen(false);
   };
+
+  // 방을 나갔다 들어와도 가비와 나눈 이야기를 이어 가도록, 처음 불러온 메시지에서 내 @가비 질문과 가비의 답을 되살린다(15분 이내만 쓰인다)
+  const seedThread = mention.seed;
+  useEffect(() => {
+    if (info.status !== "ready" || !info.me?.id || chat.status !== "ready" || chat.focusing) return; // 최근 구간이 준비됐을 때만(검색 이동으로 과거를 보는 중이면 기다린다)
+    seedThread(restoreThread(chat.messages, info.me.id)); // 이미 이 화면에서 나눈 대화가 있으면 seed 가 건드리지 않는다
+  }, [info.status, info.me?.id, chat.status, chat.focusing, chat.messages, seedThread]);
 
   useEffect(
     () => () => {

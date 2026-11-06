@@ -13,7 +13,7 @@ const BUSY_HINT = "앞선 질문에 답하는 중이에요. 끝난 뒤에 다시
  * - 확인이 필요한 요청의 카드는 질문한 사람 화면에만 있고 서버에 남지 않는다. 이 화면을 닫으면 카드와 대화 이력(thread)이 사라진다.
  * - 앞 대화(thread)는 내가 @가비 로 나눈 최근 대화뿐이다. 오류가 난 질문은 이어 가지 않는다.
  * @param {string} [roomId] 1:1 방 id. 있으면 답을 그 1:1 방(두 사람)에 저장한다. 없으면 가족 전체방
- * @returns {{ notes: object[], ask: (question: string) => Promise<void>, info: (text: string) => void, dismiss: (id: string) => void, resolveCard: (noteId: string, index: number, status: string, text: string) => void }}
+ * @returns {{ seed: (turns: object[]) => void, notes: object[], ask: (question: string) => Promise<void>, info: (text: string) => void, dismiss: (id: string) => void, resolveCard: (noteId: string, index: number, status: string, text: string) => void }}
  */
 export default function useMention(roomId) {
   const [notes, setNotes] = useState([]);
@@ -39,6 +39,11 @@ export default function useMention(roomId) {
 
   const info = useCallback((text) => add(makeNote({ id: nextId(), state: "info", text })), [add]);
   const dismiss = useCallback((id) => setNotes((prev) => prev.filter((n) => n.id !== id)), []);
+
+  /** 방에 저장된 메시지로 되살린 이전 대화를 넣는다(이미 이 화면에서 나눈 대화가 있으면 건드리지 않는다). */
+  const seed = useCallback((turns) => {
+    if (thread.current.length === 0) thread.current = turns;
+  }, []);
 
   const ask = useCallback(
     async (question) => {
@@ -82,5 +87,5 @@ export default function useMention(roomId) {
     );
   }, []);
 
-  return { notes, ask, info, dismiss, resolveCard };
+  return { notes, ask, info, dismiss, resolveCard, seed };
 }
