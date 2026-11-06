@@ -52,6 +52,7 @@ from tests.security_matrix_support import (
     fresh,
     jpeg_bytes,
     new_family,
+    require_manual_approval,
     seed_resources,
     this_month,
 )
@@ -211,6 +212,14 @@ NO_GROUP_OK = {
     ("GET", "/notifications/unread-count"),
     ("POST", "/notifications/read-all"),
     ("POST", "/notifications/{notification_id}/read"),
+    # 푸시 설정·기기 토큰은 로그인한 본인의 앱 알림 설정이다. 가족 없이도 쓰며 그룹 id 를 받지 않는다
+    # (본인 것만 다루는지는 notifications/tests 의 test_settings_are_per_user·test_cannot_delete_others_token 에서 확인)
+    ("GET", "/notifications/push-settings"),
+    ("PUT", "/notifications/push-settings"),
+    ("PUT", "/notifications/push-token"),
+    ("DELETE", "/notifications/push-token"),
+    # 테스트 참여 동의 버전·시각은 본인 계정에 저장하는 값이다(가족 데이터 아님, service.record_tester_consent)
+    ("PUT", "/family-group/auth/me/tester-consent"),
     # 서비스 관리자 경로는 가족 데이터가 아니다. 권한은 require_operator("service_admin") 허용 목록이 정한다(admin/tests 에서 401·403 확인)
     ("GET", "/admin/service/me"),
     ("GET", "/admin/service/members"),
@@ -242,8 +251,16 @@ def _dummy_value(schema: dict):
     return 1 if schema.get("type") == "integer" else "a"
 
 
+# 빈 JSON 이면 본문 검증(422)이 권한·그룹 검사보다 먼저 걸리는 경로의 최소 본문(필수 필드만)
+REQUIRED_BODIES = {
+    ("PUT", "/family-group/groups/invites/settings"): {"auto_approve": False},
+    ("PUT", "/family-group/groups/me/name"): {"name": "가족"},
+}
+
+
 def _build_request(method: str, path: str, op: dict) -> tuple[str, dict]:
-    """openapi 정의로 더미 요청을 만든다: 경로·필수 쿼리는 더미 값, 본문은 빈 JSON(또는 더미 파일)."""
+    """openapi 정의로 더미 요청을 만든다: 경로·필수 쿼리는 더미 값, 본문은 빈 JSON(또는 더미 파일).
+    REQUIRED_BODIES 에 있는 경로는 그 최소 본문을 쓴다."""
     url = path
     params = {}
     for p in op.get("parameters", []):
@@ -257,7 +274,7 @@ def _build_request(method: str, path: str, op: dict) -> tuple[str, dict]:
     if "multipart/form-data" in content:
         kwargs["files"] = {"file": ("a.txt", b"x", "text/plain")}
     elif "application/json" in content:
-        kwargs["json"] = {}
+        kwargs["json"] = dict(REQUIRED_BODIES.get((method, path), {}))
     return url, kwargs
 
 
@@ -913,6 +930,8 @@ def test_ai_assistant_chat_without_family_returns_notice_without_llm(api, fake, 
 def test_pending_join_request_user_has_no_group_access(api, world):
     """가입 승인 대기자는 group_members 행이 없어 모든 그룹 API 가 막힌다."""
     p = _person(api, "대기자둘", "child")
+    # 자동 승인(기본 켜짐)이면 대기 상태가 생기지 않는다
+    require_manual_approval(api, world.a.owner.headers)
     code = api.post("/family-group/groups/invites/reissue", headers=world.a.owner.headers).json()[
         "invite_code"
     ]
@@ -1080,6 +1099,8 @@ def test_only_owner_can_change_roles(api, perm):
 
 def test_join_approval_requires_manager_and_new_member_is_plain_member(api, perm):
     owner, member = perm.owner, perm.third
+    # 승인 절차를 시험하려면 자동 승인(기본 켜짐)을 끈다
+    require_manual_approval(api, owner.headers)
     code = api.post("/family-group/groups/invites/reissue", headers=owner.headers).json()[
         "invite_code"
     ]
@@ -1606,11 +1627,13 @@ OUTBOUND_FILES = {
     "shared/mailer.py": "인증·비밀번호 재설정 메일 SMTP 발송(AI 아님)",
     "features/ai_assistant/knowledge/rag_chat.py": "Anthropic 도구 루프(ask_guarded 가 ai_guard.run 으로 감싼다)",
     "features/ops_admin/infra_service.py": "Cloud Run 메타데이터·Cloud Run Admin·Cloud Monitoring 읽기 전용 조회(AI 아님, 개인 데이터 전송 없음, 운영자 조회 시에만)",
+    "shared/push.py": "Expo 푸시 발송(AI 아님). 알림함 사건은 고정 제목만 보내고 본문은 비운다(docs/adr/0012-push-via-expo.md)",
 }
 LLM_CALLER_FILES = {
     "features/family_chat/ai_service.py": "ai_guard.run",
     "features/schedule/agent/chat.py": "ai_guard.run",
     "features/schedule/agent/suggest.py": "ai_guard.run",
+    "features/schedule/call_talk/service.py": "ai_guard.run",
     "features/billing/agent.py": "agent_guard.run_turn",
     "features/family_chat/agent.py": "agent_guard.run_turn",
 }

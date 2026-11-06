@@ -162,6 +162,15 @@ def _person(client, name: str, role: str) -> Person:
     return Person(name, headers, me.json()["id"])
 
 
+def require_manual_approval(client, owner_headers: dict) -> None:
+    """가족의 초대 자동 승인(groups.auto_approve_invites, 기본 켜짐)을 끈다.
+    승인 대기(pending) 요청이 필요한 시험이 가입 직후 바로 구성원이 되지 않게 한다."""
+    r = client.put(
+        "/family-group/groups/invites/settings", json={"auto_approve": False}, headers=owner_headers
+    )
+    assert r.status_code == 200, r.text
+
+
 def new_family(client, label: str, tag: str = "") -> Family:
     """가족 하나(소유자·일반 구성원·또 다른 구성원). label 로 이름이 겹치지 않게 하고 tag 는 데이터 표식이다."""
     from tests.helpers import join_family
@@ -287,6 +296,7 @@ def seed_resources(client, fam: Family) -> None:
             headers=h,
         )
     ).json()["id"]
+    require_manual_approval(client, h)  # 승인 대기 요청을 시드로 남기려면 자동 승인을 꺼야 한다
     code = ok(client.post("/family-group/groups/invites/reissue", headers=h)).json()["invite_code"]
     waiting = _person(client, f"{fam.owner.name[:-2]}대기", "child")
     r = ok(client.post("/family-group/groups/join", json={"code": code}, headers=waiting.headers))
@@ -468,6 +478,7 @@ def fresh(client, fam: Family, key: str) -> dict:
         )
         return {key: next(e for e in out["entries"] if e["memo"] == "fresh-entry")["id"]}
     if key == "join_request_id":
+        require_manual_approval(client, h)
         code = ok(client.post("/family-group/groups/invites/reissue", headers=h))["invite_code"]
         waiting = _person(client, f"{fam.owner.name[:-2]}대기{fam.seeds.get('_n', 0)}", "child")
         fam.seeds["_n"] = fam.seeds.get("_n", 0) + 1
