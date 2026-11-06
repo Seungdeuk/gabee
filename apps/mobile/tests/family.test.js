@@ -79,6 +79,28 @@ test("가족 API 호출: 경로·메서드·본문, 로그인 세션이 있으�
   assert.ok(calls.slice(1).every((c) => c.body === null));
 });
 
+test("소셜 로그인 설정: Google 은 지금 기기(플랫폼)용 클라이언트 ID 가 있을 때만 켠다(없는데 그리면 안드로이드에서 앱이 시작하자마자 오류가 난다)", async () => {
+  const social = await import("../src/features/auth/social.js");
+  const saved = { ...process.env };
+  try {
+    for (const k of Object.keys(process.env)) if (k.startsWith("EXPO_PUBLIC_GOOGLE") || k.startsWith("EXPO_PUBLIC_KAKAO")) delete process.env[k];
+    process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID = "web-id";
+    assert.deepEqual(social.enabledProviders("android"), []); // 웹 ID 만 있으면 안드로이드는 Google 버튼을 숨긴다
+    assert.deepEqual(social.enabledProviders("ios"), []);
+    assert.deepEqual(social.enabledProviders("web"), ["google"]);
+    process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID = "android-id";
+    assert.deepEqual(social.enabledProviders("android"), ["google"]);
+    assert.deepEqual(social.enabledProviders("ios"), []);
+    process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID = "ios-id";
+    assert.deepEqual(social.enabledProviders("ios"), ["google"]);
+    process.env.EXPO_PUBLIC_KAKAO_REST_API_KEY = "rest-key";
+    assert.deepEqual(social.enabledProviders("android"), ["google", "kakao"]); // 카카오는 플랫폼과 무관
+  } finally {
+    for (const k of Object.keys(process.env)) if (!(k in saved)) delete process.env[k];
+    Object.assign(process.env, saved);
+  }
+});
+
 test("소셜 로그인 설정: 값이 있는 제공자만 켜지고, 후보 응답을 알아본다", async () => {
   const social = await import("../src/features/auth/social.js");
   const saved = { ...process.env };

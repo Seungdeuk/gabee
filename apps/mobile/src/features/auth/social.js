@@ -14,15 +14,18 @@ export const socialConfig = () => ({
 });
 
 /**
- * 이 앱에서 쓸 수 있게 설정된 제공자 목록.
+ * 이 앱에서 쓸 수 있게 설정된 제공자 목록. Google 은 지금 기기(플랫폼)용 클라이언트 ID 가 있을 때만 켠다
+ * (다른 플랫폼 ID 만 있는데 버튼을 그리면 안드로이드·iOS 에서 앱이 시작하자마자 "ClientId must be defined" 오류가 난다).
+ * @param {string} [platform] "web" | "ios" | "android" (기본 "web")
  * @returns {("google" | "kakao")[]}
  */
-export function enabledProviders() {
+export function enabledProviders(platform = "web") {
   // 출시 전 임시로 끔: EXPO_PUBLIC_SOCIAL_LOGIN_DISABLED=true 면 키가 있어도 버튼을 숨긴다(EAS preview·production 환경에 설정)
   if (process.env.EXPO_PUBLIC_SOCIAL_LOGIN_DISABLED === "true") return [];
   const cfg = socialConfig();
   const list = [];
-  if (cfg.google.web || cfg.google.ios || cfg.google.android) list.push("google");
+  const googleId = platform === "android" ? cfg.google.android : platform === "ios" ? cfg.google.ios : cfg.google.web;
+  if (googleId) list.push("google");
   if (cfg.kakao.restApiKey) list.push("kakao");
   return list;
 }

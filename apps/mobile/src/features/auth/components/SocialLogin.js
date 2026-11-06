@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { StyleSheet, View } from "react-native";
+import { Platform, StyleSheet, View } from "react-native";
 
 import Button from "@/shared/components/Button";
 
@@ -31,7 +31,7 @@ export default function SocialLogin({ onSession }) {
   const [error, setError] = useState("");
   const [candidate, setCandidate] = useState("");
 
-  if (enabledProviders().length === 0) return <ComingSoon />;
+  if (enabledProviders(Platform.OS).length === 0) return <ComingSoon />;
 
   const onToken = async (provider, token) => {
     setBusy(true);
