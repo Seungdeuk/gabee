@@ -5,6 +5,7 @@
 기록의 id 는 파일 id 와 같게 둬서 DB 구조를 바꾸지 않고 둘을 잇는다.
 """
 
+import hashlib
 import logging
 import mimetypes
 import threading
@@ -13,9 +14,11 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.features.family_group.models import GroupMember
+from app.shared import chat_library
 from app.shared.config import settings
 from app.shared.db import SessionLocal
 from app.shared.errors import ApiError
@@ -80,7 +83,14 @@ def _notify_document(db: Session, group_id: str, user_id: str, item) -> None:
     db.commit()
 
 
-def process_file(photo_id: str, group_id: str, user_id: str, data: bytes, filename: str) -> None:
+def process_file(
+    photo_id: str,
+    group_id: str,
+    user_id: str,
+    data: bytes,
+    filename: str,
+    source_attachment_id: str | None = None,
+) -> None:
     """전처리해서 knowledge 에 넣고 `photos.status` 를 바꾼다. 어떤 실패도 서버를 멈추지 않는다.
 
     Claude 연결이 잠깐 안 돼서 실패(`llm_unavailable`)했으면 기다렸다가 같은 파일을 다시 처리한다(원본 바이트는 이미 메모리에 있다).
@@ -90,7 +100,9 @@ def process_file(photo_id: str, group_id: str, user_id: str, data: bytes, filena
         if attempt:
             time.sleep(settings.ingest_retry_wait_seconds * attempt)
         with _SLOTS:
-            status, retry = _process_once(photo_id, group_id, user_id, data, filename)
+            status, retry = _process_once(
+                photo_id, group_id, user_id, data, filename, source_attachment_id
+            )
         if not retry:
             break
         logger.warning(
@@ -100,7 +112,28 @@ def process_file(photo_id: str, group_id: str, user_id: str, data: bytes, filena
             settings.ingest_retry_max + 1,
         )
     with SessionLocal() as db:
-        repo.set_status(db, photo_id, status)
+        if source_attachment_id and status == "failed":
+            # 채팅 문서는 읽지 못해도(재시도를 다 써도) "실패" 기록과 가리기 전 원본을 남기지 않는다(채팅 파일로는 남아 있다)
+            _drop_chat_upload(group_id, photo_id, data)
+        else:
+            repo.set_status(db, photo_id, status)
+
+
+def _drop_chat_upload(group_id: str, photo_id: str, data: bytes) -> None:
+    """등록하지 않기로 한(민감·실패·중복·지워진) 채팅 문서의 처리 기록(photos)과, 읽는 도중 보관한 원본·사본을 지운다.
+    파일은 내용(sha256)으로 찾아서 결과 객체가 없는 실패·예외에서도 정리된다. 다른 기록이 쓰는 원본은 그대로 둔다."""
+    with SessionLocal() as db:
+        repo.delete_photo(db, photo_id)
+        store = LocalRawStore()
+        refs = store.refs_for_sha(group_id, hashlib.sha256(data).hexdigest())
+        main = [r for r in refs if ".display." not in r]
+        if any(path_in_use(db, group_id, r) for r in main):
+            return
+        for ref in refs:
+            try:
+                store.delete_for_group(group_id, ref)
+            except (ValueError, OSError):
+                logger.warning("원본 파일을 지우지 못했어요 id=%s", photo_id)
 
 
 def _plan_reminders(photo_id: str, group_id: str, user_id: str) -> None:
@@ -115,7 +148,12 @@ def _plan_reminders(photo_id: str, group_id: str, user_id: str) -> None:
 
 
 def _process_once(
-    photo_id: str, group_id: str, user_id: str, data: bytes, filename: str
+    photo_id: str,
+    group_id: str,
+    user_id: str,
+    data: bytes,
+    filename: str,
+    source_attachment_id: str | None = None,
 ) -> tuple[str, bool]:
     """한 번 처리한다. (상태, 다시 해 볼 만한 실패인지)"""
     try:
@@ -131,20 +169,56 @@ def _process_once(
             family=family,
         )
         if result.quality.status == "failed":
-            return "failed", result.quality.error == "llm_unavailable"
+            retry = result.quality.error == "llm_unavailable"
+            if source_attachment_id and not retry:
+                _drop_chat_upload(group_id, photo_id, data)
+            return "failed", retry
+        fields = from_ingest.to_item(result)
+        if source_attachment_id and knowledge_service.is_sensitive(
+            fields["kind_label"], fields.get("sensitivity"), strict=True
+        ):
+            _drop_chat_upload(
+                group_id, photo_id, data
+            )  # 민감 문서(처방전·신분증·진단서 등)는 자동 등록하지 않는다
+            return "skipped", False
         with SessionLocal() as db:
-            item = knowledge_service.ingest(
-                db, group_id, user_id, item_id=photo_id, **from_ingest.to_item(result)
-            )
             try:
-                _notify_document(db, group_id, user_id, item)
-            except Exception as e:  # noqa: BLE001  문서는 이미 저장됐다: 알림 실패가 처리 실패로 바뀌지 않게 종류만 적는다
+                item = knowledge_service.ingest(
+                    db,
+                    group_id,
+                    user_id,
+                    item_id=photo_id,
+                    source_attachment_id=source_attachment_id,
+                    **fields,
+                )
+            except IntegrityError:  # 같은 채팅 첨부를 다른 요청이 먼저 등록했다
                 db.rollback()
-                logger.warning("문서 알림에 실패했어요 id=%s 종류=%s", photo_id, type(e).__name__)
+                _drop_chat_upload(group_id, photo_id, data)
+                return "skipped", False
+            if source_attachment_id and not chat_library.attachment_exists(
+                db, group_id, source_attachment_id
+            ):
+                # 읽는 사이에 채팅 메시지가 지워졌다: 방금 저장한 기록을 되돌린다(지운 메시지의 문서가 문서함에 남지 않게)
+                delete_record(db, group_id, photo_id)
+                return "skipped", False
+            if (
+                not source_attachment_id
+            ):  # 채팅에 이미 올라온 파일이라 "새 문서" 알림은 한 번 더 보내지 않는다
+                try:
+                    _notify_document(db, group_id, user_id, item)
+                except Exception as e:  # noqa: BLE001  문서는 이미 저장됐다: 알림 실패가 처리 실패로 바뀌지 않게 종류만 적는다
+                    db.rollback()
+                    logger.warning(
+                        "문서 알림에 실패했어요 id=%s 종류=%s", photo_id, type(e).__name__
+                    )
         _plan_reminders(photo_id, group_id, user_id)
         return ("needs_review" if from_ingest.needs_review(result) else "analyzed"), False
     except Exception as e:  # noqa: BLE001  내용이 로그에 남지 않게 종류만 적는다
         logger.error("파일 처리에 실패했어요 id=%s 종류=%s", photo_id, type(e).__name__)
+        if source_attachment_id:
+            _drop_chat_upload(
+                group_id, photo_id, data
+            )  # 예외로 끝나도 읽는 도중 보관한 원본이 기록 없이 남지 않게
         return "failed", False
 
 

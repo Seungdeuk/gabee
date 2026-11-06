@@ -24,13 +24,14 @@ from urllib.parse import quote
 from sqlalchemy.orm import Session
 
 from app.features.family_group.models import User
+from app.shared import chat_library
 from app.shared.config import settings
 from app.shared.errors import ApiError, bad_request, not_found
 from app.shared.rate_limit import FailureLimiter
 
 from . import chat_push, photo_service, service
 from . import repository as repo
-from .models import Message, MessageAttachment
+from .models import FAMILY, Message, MessageAttachment
 from .schemas import MessageOut
 
 MAX_BYTES = 20 * 1024 * 1024
@@ -207,6 +208,15 @@ def attachment_paths(attachment: MessageAttachment) -> tuple[Path, ...]:
     return photo_service.attachment_files(attachment) or ()
 
 
+def _attachment_exists(db: Session, group_id: str, attachment_id: str) -> bool:
+    """이 가족의 채팅 첨부가 아직 있는지(메시지를 지우면 첨부 행도 지워진다). 문서함 자동 등록이 처리 도중 지워졌는지 확인하는 데 쓴다."""
+    found = repo.get_attachment(db, attachment_id)
+    return found is not None and found.group_id == group_id
+
+
+chat_library.register_exists(_attachment_exists)
+
+
 def send_file(
     db: Session,
     user: User,
@@ -260,6 +270,12 @@ def send_file(
     except Exception:
         db.rollback()  # 파일은 이미 저장됐다. 읽음 위치 실패로 500 을 주면 재시도로 같은 파일이 두 번 간다
     chat_push.notify_new_message(db, room, message)
+    if (
+        room.kind == FAMILY
+    ):  # 가족 전체방의 문서만 가족 공유 문서함에 자동 등록한다(1:1 방은 제외, 실패해도 전송은 그대로)
+        chat_library.document_posted(
+            group_id, user.id, attachment.id, clean, ALLOWED[ext].content_type, data
+        )
     return service.message_out(message, user.name, attachment)
 
 

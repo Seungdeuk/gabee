@@ -83,6 +83,16 @@ def path_in_use(db: Session, group_id: str, source_path: str) -> bool:
     )
 
 
+def get_by_attachment(db: Session, group_id: str, attachment_id: str) -> KnowledgeItem | None:
+    """이 채팅 첨부에서 만든 기록(이 가족의 것만). 없으면 None."""
+    return db.scalar(
+        select(KnowledgeItem).where(
+            KnowledgeItem.group_id == group_id,
+            KnowledgeItem.source_attachment_id == attachment_id,
+        )
+    )
+
+
 def get_item(db: Session, group_id: str, item_id: str) -> KnowledgeItem | None:
     return db.scalar(
         select(KnowledgeItem).where(KnowledgeItem.id == item_id, KnowledgeItem.group_id == group_id)

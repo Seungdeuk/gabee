@@ -7,7 +7,7 @@ from app.shared.auth import current_group_id, current_user, ensure_group_member
 from app.shared.db import get_db
 from app.shared.errors import not_found
 
-from . import files, reminders, repository, service
+from . import files, library, reminders, repository, service
 from .knowledge.router import router as knowledge_router
 from .models import Photo
 from .schemas import (
@@ -25,6 +25,7 @@ from .schemas import (
 
 router = APIRouter(prefix="/ai-assistant", tags=["ai-assistant"])
 router.include_router(knowledge_router)  # /ai-assistant/knowledge/*
+library.register()  # 가족 채팅 문서를 문서함에 자동 등록하는 처리 함수를 채팅 쪽 통로(shared/chat_library)에 등록한다  # /ai-assistant/knowledge/*
 
 
 @router.post("/chat", response_model=ChatOut)

@@ -2,7 +2,8 @@ import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as Clipboard from "expo-clipboard";
-import { ActivityIndicator, FlatList, KeyboardAvoidingView, Platform, Pressable, StyleSheet, Text, View } from "react-native";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { ActivityIndicator, Alert, FlatList, KeyboardAvoidingView, Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import Button from "@/shared/components/Button";
@@ -34,6 +35,7 @@ import { memberName } from "../listUtils";
 import { fileSendErrorMessage } from "../fileUtils";
 import { pickChatDocument } from "../pickChatDocument";
 import { makeBatchId } from "../album";
+import { LIBRARY_NOTICE_BODY, LIBRARY_NOTICE_TITLE, markLibraryNoticeSeen, shouldShowLibraryNotice } from "../libraryNotice";
 import { pickChatPhotos } from "../pickPhoto";
 import useReadBaseline from "../useReadBaseline";
 import useReadMarker from "../useReadMarker";
@@ -50,6 +52,19 @@ const END_SETTLE_MS = 150; // 맨 아래로 간 뒤 마지막 항목 높이가 �
 
 /** 가족 전체방의 사진을 AI 비서의 가족 기록으로 올린다(사진 보기의 "가비 기록에 저장"). */
 const savePhotoToRecord = (attachment) => saveToRecord(attachment, Platform.OS);
+
+/**
+ * 가족 문서함 자동 등록 안내를 보이고 닫힐 때까지 기다린다. 웹의 Alert 는 아무 동작도 하지 않아(끝나지 않아 문서 버튼이 잠긴다) 브라우저 알림 창을 쓴다.
+ * 안드로이드에서는 뒤로 가기로도 닫힌다(cancelable).
+ * @returns {Promise<void>}
+ */
+function showLibraryNotice() {
+  if (Platform.OS === "web") {
+    globalThis.alert?.(`${LIBRARY_NOTICE_TITLE}\n\n${LIBRARY_NOTICE_BODY}`);
+    return Promise.resolve();
+  }
+  return new Promise((resolve) => Alert.alert(LIBRARY_NOTICE_TITLE, LIBRARY_NOTICE_BODY, [{ text: "확인", onPress: () => resolve() }], { cancelable: true, onDismiss: () => resolve() }));
+}
 
 /**
  * 앨범에 속한 사진들의 일정·할 일 연결 표시를 모은다(같은 표시는 한 번만).
@@ -244,6 +259,11 @@ export default function ChatRoomScreen() {
     setPickingFile(true);
     chat.setPhotoError("");
     try {
+      if (!direct && (await shouldShowLibraryNotice(AsyncStorage))) {
+        // 가족 전체방에 올린 문서는 가족 공유 문서함에 자동 등록된다는 안내를 처음 한 번만 보이고, 확인한 뒤 파일을 고른다
+        await showLibraryNotice();
+        await markLibraryNoticeSeen(AsyncStorage);
+      }
       const asset = await pickChatDocument();
       if (!asset) return;
       nearBottom.current = true;

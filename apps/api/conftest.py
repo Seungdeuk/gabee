@@ -19,6 +19,8 @@ for _name in ("MAIL_BACKEND", "SMTP_HOST", "SMTP_USER", "SMTP_PASSWORD", "SMTP_F
 # 개발자의 .env 에 업로드 Claude 읽기·가리기를 켜 두어도 시험은 가짜 OCR·규칙 가리기만 쓴다(켠 경로의 시험은 각자 settings 를 바꾼다).
 os.environ["INGEST_LLM_OCR"] = "false"
 os.environ["INGEST_LLM_MASK"] = "false"
+# 개발자의 .env 에 분류 보조(Jev) 키가 있어도 시험 문서가 외부로 나가지 않게 비운다.
+os.environ["TYPESAFE_API_KEY"] = ""
 os.environ["INGEST_REMINDERS"] = "false"  # 챙길 일 뽑기도 기본은 끈다(켠 경로의 시험은 각자 settings 를 바꾼다)
 os.environ["INGEST_RETRY_WAIT_SECONDS"] = (
     "0"  # 자동 재시도(실패 파일)가 시험을 기다리게 하지 않는다
@@ -108,3 +110,11 @@ def other_family(client):
     outsider = signup(client, "남")
     client.post("/family-group/groups", json={"name": "다른 가족"}, headers=outsider)
     return outsider
+
+
+@pytest.fixture(autouse=True)
+def _no_background_library_registration(monkeypatch):
+    """가족방 문서의 문서함 자동 등록은 실제 스레드에서 돌지 않게 한다(다른 시험의 DB·행 수에 끼어들지 않게). 그 동작을 보는 시험은 각자 `library._submit` 을 바꾼다."""
+    from app.features.ai_assistant import library
+
+    monkeypatch.setattr(library, "_submit", lambda fn, *args: None)
