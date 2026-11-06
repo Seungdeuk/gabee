@@ -39,14 +39,13 @@ function Skeleton() {
 /**
  * 소통 탭: 메신저 채팅 목록 모양의 가족 전체방과 1:1 방, 가족 연락처.
  * 화면에 올 때마다 한 번만 불러온다(폴링 없음). 줄을 누르면 채팅방으로 들어가고, 새 대화 버튼으로 가족 구성원과 1:1 방을 연다.
- * 돋보기 검색은 방 이름 일치 아래에 "대화 내용" 검색 결과(서버 글자 일치)를 함께 보여 주고, 결과를 누르면 그 방의 해당 메시지 위치로 열린다.
+ * 상단 검색창은 방 이름 일치 아래에 "대화 내용" 검색 결과(서버 글자 일치)를 함께 보여 주고, 결과를 누르면 그 방의 해당 메시지 위치로 열린다.
  */
 /** @param {{ playEntry?: import("react").ReactNode }} props playEntry: 가족 연락처 아래에 놓을 가족 놀이터 입구(라우트에서 조립) */
 export default function FamilyChatScreen({ playEntry = null }) {
   const router = useRouter();
   const search = useChatSearch();
   const query = search.query;
-  const [searching, setSearching] = useState(false);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [opening, setOpening] = useState(null); // 1:1 방을 여는 중인 상대 id
   const [pickError, setPickError] = useState("");
@@ -166,19 +165,12 @@ export default function FamilyChatScreen({ playEntry = null }) {
     }
   };
 
-  const toggleSearch = () => {
-    if (searching) search.reset();
-    setSearching((v) => !v);
-  };
-
   return (
     <SafeAreaView style={styles.safe} edges={["top"]}>
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         <ChatListHeader
-          searching={searching}
           query={query}
           onQuery={search.setQuery}
-          onToggleSearch={toggleSearch}
           onNew={() => {
             if (state.status !== "ready") return; // 가족 정보를 읽기 전에는 상대 목록이 없다
             setPickError("");
@@ -224,7 +216,7 @@ export default function FamilyChatScreen({ playEntry = null }) {
           )}
         </View>
 
-        {state.status === "ready" && searching && query.trim() ? (
+        {state.status === "ready" && query.trim() ? (
           <ContentSearchSection search={search} roomLabel={(item) => searchRoomLabel(item, state.rooms, members)} onPick={(item) => router.push(focusRoute(item))} />
         ) : null}
       </ScrollView>

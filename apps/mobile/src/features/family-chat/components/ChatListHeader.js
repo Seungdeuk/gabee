@@ -6,11 +6,12 @@ import { SETTINGS_EDGE_GAP, SETTINGS_RAISE } from "@/shared/components/SettingsB
 import { colors, font, spacing } from "@/theme";
 
 /**
- * 소통 탭 상단: 큰 제목 "우리 도란도란"과 오른쪽 검색·새 대화 버튼, 검색을 누르면 펼쳐지는 입력줄.
+ * 소통 탭 상단: 큰 제목 "우리 도란도란", 오른쪽 새 대화 버튼, 그 아래 항상 보이는 검색창.
  * 검색 입력은 방 이름과 대화 내용을 함께 찾는다(대화 내용 결과는 화면이 입력값으로 따로 불러와 보여 준다).
- * @param {{ searching: boolean, query: string, onQuery: (text: string) => void, onToggleSearch: () => void, onNew: () => void }} props
+ * 새 대화 버튼은 제목 줄 높이와 상관없이 다른 탭과 같은 자리(화면 오른쪽 끝에서 6, 상단바 높이 56 의 세로 가운데)에 고정한다.
+ * @param {{ query: string, onQuery: (text: string) => void, onNew: () => void }} props
  */
-export default function ChatListHeader({ searching, query, onQuery, onToggleSearch, onNew }) {
+export default function ChatListHeader({ query, onQuery, onNew }) {
   return (
     <View style={styles.wrap}>
       <View style={styles.top}>
@@ -18,34 +19,31 @@ export default function ChatListHeader({ searching, query, onQuery, onToggleSear
           우리 도란도란
         </Text>
         <View style={styles.buttons}>
-          <IconButton name={searching ? "close" : "search-outline"} label={searching ? "검색 닫기" : "검색"} onPress={onToggleSearch} />
           <IconButton name="create-outline" label="새 대화" onPress={onNew} />
         </View>
       </View>
-      {searching ? (
-        <View style={styles.search}>
-          <Ionicons name="search-outline" size={20} color={colors.textMuted} />
-          <TextInput
-            style={styles.input}
-            value={query}
-            onChangeText={onQuery}
-            placeholder="채팅방 이름·대화 내용 검색"
-            placeholderTextColor={colors.placeholder}
-            accessibilityLabel="채팅 검색"
-            maxLength={100}
-            autoFocus
-          />
-        </View>
-      ) : null}
+      <View style={styles.search}>
+        <Ionicons name="search-outline" size={20} color={colors.textMuted} />
+        <TextInput
+          style={styles.input}
+          value={query}
+          onChangeText={onQuery}
+          placeholder="채팅방 이름·대화 내용 검색"
+          placeholderTextColor={colors.placeholder}
+          accessibilityLabel="채팅 검색"
+          maxLength={100}
+        />
+      </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   wrap: { gap: spacing.md },
-  top: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  top: { justifyContent: "center" },
   title: { ...font.page, color: colors.text },
-  buttons: { flexDirection: "row", marginRight: SETTINGS_EDGE_GAP - spacing.xl, transform: [{ translateY: -SETTINGS_RAISE }] },
+  // 제목 줄 높이에 따라 버튼이 따라 내려가지 않게 절대 위치로 둔다(화면 안쪽 여백만큼 밖으로 내어 오른쪽 끝 6 에 맞춘다)
+  buttons: { position: "absolute", top: -SETTINGS_RAISE, right: SETTINGS_EDGE_GAP - spacing.xl, flexDirection: "row" },
   search: {
     height: 44,
     flexDirection: "row",
