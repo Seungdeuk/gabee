@@ -452,6 +452,67 @@ def rooms_summary(
     }
 
 
+def room_member_ids(db: Session, room: ChatRoom) -> list[str]:
+    """이 방에 들어갈 수 있는 사람: 가족 전체방은 가족 구성원 전원, 1:1 은 참여자 두 사람."""
+    if room.kind == FAMILY:
+        stmt = select(GroupMember.user_id).where(GroupMember.group_id == room.group_id)
+    else:  # 가족을 나간 사람의 1:1 방 참여 기록은 남아 있으니 지금도 이 가족인 사람만
+        stmt = (
+            select(ChatRoomMember.user_id)
+            .join(
+                GroupMember,
+                and_(
+                    GroupMember.user_id == ChatRoomMember.user_id,
+                    GroupMember.group_id == room.group_id,
+                ),
+            )
+            .where(ChatRoomMember.room_id == room.id)
+        )
+    return list(db.scalars(stmt))
+
+
+def muted_user_ids(db: Session, room_id: str) -> set[str]:
+    """이 방의 알림을 끈 사람들의 id."""
+    return set(db.scalars(select(ChatRoomMute.user_id).where(ChatRoomMute.room_id == room_id)))
+
+
+def earlier_batch_photo_exists(
+    db: Session, room: ChatRoom, message: Message, batch_id: str, since: datetime
+) -> bool:
+    """같은 사람이 같은 방에 같은 묶음 번호로 since 이후에 이 메시지보다 먼저 올린 지우지 않은 사진이 있는지(묶음의 첫 사진이 아닌지).
+    같은 번호를 오래 뒤에 다시 쓰는 경우를 새 묶음으로 보려고 기간을 둔다."""
+    found = db.scalar(
+        select(MessageAttachment.id)
+        .join(Message, Message.id == MessageAttachment.message_id)
+        .where(
+            room_messages(room),
+            Message.user_id == message.user_id,
+            Message.id < message.id,
+            Message.deleted_at.is_(None),
+            Message.created_at >= since,
+            MessageAttachment.batch_id == batch_id,
+        )
+        .limit(1)
+    )
+    return found is not None
+
+
+def sent_since(db: Session, room: ChatRoom, message: Message, since: datetime) -> bool:
+    """같은 사람이 같은 방에 이 메시지보다 먼저 since 이후에 보낸 지우지 않은 메시지가 있는지."""
+    found = db.scalar(
+        select(Message.id)
+        .where(
+            room_messages(room),
+            Message.user_id == message.user_id,
+            Message.id < message.id,
+            Message.deleted_at.is_(None),
+            Message.created_at >= since,
+        )
+        .limit(1)
+    )
+    return found is not None
+
+
 def muted_room_ids(db: Session, user_id: str, room_ids: list[str]) -> set[str]:
     """이 방들 중 내가 알림을 끈 방의 id. 방 수와 상관없이 쿼리 한 번."""
     if not room_ids:

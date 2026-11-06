@@ -28,7 +28,7 @@ from app.shared.config import settings
 from app.shared.errors import ApiError, bad_request, not_found
 from app.shared.rate_limit import FailureLimiter
 
-from . import photo_service, service
+from . import chat_push, photo_service, service
 from . import repository as repo
 from .models import Message, MessageAttachment
 from .schemas import MessageOut
@@ -259,6 +259,7 @@ def send_file(
         repo.advance_read(db, room.id, user.id, message.id)
     except Exception:
         db.rollback()  # 파일은 이미 저장됐다. 읽음 위치 실패로 500 을 주면 재시도로 같은 파일이 두 번 간다
+    chat_push.notify_new_message(db, room, message)
     return service.message_out(message, user.name, attachment)
 
 
