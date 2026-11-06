@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { PAGE_SIZE, PAGE_WINDOW, clampPage, noticeDate, noticesErrorMessage, pageCount, pageSlice, pageWindow, preview, unreadCount } from "../src/features/notices/notices.js";
+import { PAGE_SIZE, PAGE_WINDOW, clampPage, noticeDate, noticesErrorMessage, pageCount, pageSlice, pageWindow, preview, summaryParts, unreadCount } from "../src/features/notices/notices.js";
 
 const rows = [
   { id: "a", category: "update", title: "1.2", body: "x" },
@@ -38,6 +38,12 @@ test("pageWindow: 쪽 번호는 5개씩 묶어 보인다(1~5, 6~10, …), 마지
   assert.deepEqual(pageWindow(9, 12), [5, 6, 7, 8, 9]);
   assert.deepEqual(pageWindow(10, 12), [10, 11]); // 마지막 묶음
   assert.deepEqual(pageWindow(0, 1), [0]);
+});
+
+test("summaryParts: 목록 위 총 N건 문구를 숫자만 따로 꾸밀 수 있게 세 토막으로 준다", () => {
+  assert.deepEqual(summaryParts(30), ["총 ", "30", "건의 공지사항이 있어요."]);
+  assert.deepEqual(summaryParts(1), ["총 ", "1", "건의 공지사항이 있어요."]);
+  assert.deepEqual(summaryParts(null), ["총 ", "0", "건의 공지사항이 있어요."]);
 });
 
 test("clampPage: 범위를 벗어난 쪽은 가까운 쪽으로(새로고침으로 목록이 줄어도 빈 쪽이 안 보인다)", () => {
@@ -79,6 +85,11 @@ test("공지사항 화면: 칩 없이 목록으로 보이고, 10개를 넘으면
   const { readFileSync } = await import("node:fs");
   const screen = readFileSync(new URL("../src/features/notices/screens/NoticesScreen.js", import.meta.url), "utf8");
   assert.doesNotMatch(screen, /CHIPS|filterNotices|tablist/); // 종류 칩은 없다
+  // 박스 카드가 아니라 구분선으로 나뉜 평면 목록 + 오른쪽 화살표 + 위에 "총 N건"
+  assert.doesNotMatch(screen, /card: \{[^}]*borderRadius/);
+  assert.match(screen, /row: \{[^}]*borderBottomWidth: 1/);
+  assert.match(screen, /name="chevron-forward"/);
+  assert.match(screen, /summaryParts\(rows\?\.length\)/);
   assert.match(screen, /pageSlice\(rows, view\)/); // 한 쪽만 그린다(범위를 벗어난 쪽은 clampPage 로 되돌린다)
   assert.match(screen, /clampPage\(page, rows\?\.length\)/);
   assert.match(screen, /pages > 1 \?/); // 쪽이 둘 이상일 때만 이동 줄
