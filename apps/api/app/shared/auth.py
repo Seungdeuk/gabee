@@ -96,8 +96,8 @@ def current_user(
 
 # 운영자 scope → 허용 목록 설정 이름. 두 scope 는 서로를 포함하지 않는다(한 사람이 둘 다 맡으면 두 목록에 같은 id 를 둔다).
 OPERATOR_SCOPES: dict[str, str] = {
-    "ops_admin": "ops_admin_user_ids",  # 운영 관리자 페이지(서버·시스템 상태)
-    "service_admin": "service_admin_user_ids",  # 서비스 관리자 페이지(사용자 이용·서비스 상태)
+    # 통합관리자 하나(2026-11-06 결정). 서비스 관리·운영 관리 API 가 모두 이 scope 를 쓴다.
+    "admin": "admin_user_ids",
 }
 
 
@@ -108,7 +108,7 @@ def parse_user_id_list(raw: str) -> frozenset[str]:
 
 
 def require_operator(scope: str) -> Callable[..., User]:
-    """서비스 운영자만 통과시키는 의존성을 만든다. 예: `Depends(require_operator("ops_admin"))`.
+    """서비스 운영자만 통과시키는 의존성을 만든다. 예: `Depends(require_operator("admin"))`.
 
     판단 기준은 가족 역할(group_members.role)이 아니라 scope 별 허용 목록(환경변수)의 사용자 id 뿐이다.
     순서: Bearer(JWT) 인증 → 허용 목록 → 테스트 참여 동의. 인증된 비운영자는 동의 여부와 상관없이 항상 같은 403

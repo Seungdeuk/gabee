@@ -24,7 +24,7 @@ router = APIRouter(prefix="/admin/ops", tags=["ops-admin"])
 @router.get("/summary", response_model=SummaryOut)
 def get_summary(
     range: RangeKey = Query("24h"),
-    _: object = Depends(require_operator("ops_admin")),
+    _: object = Depends(require_operator("admin")),
     db: Session = Depends(get_db),
 ) -> SummaryOut:
     return query_service.summary(db, range)
@@ -33,14 +33,14 @@ def get_summary(
 @router.get("/apis", response_model=ApisOut)
 def get_apis(
     range: RangeKey = Query("24h"),
-    _: object = Depends(require_operator("ops_admin")),
+    _: object = Depends(require_operator("admin")),
     db: Session = Depends(get_db),
 ) -> ApisOut:
     return query_service.apis(db, range)
 
 
 @router.get("/infra", response_model=InfraOut)
-def get_infra(_: object = Depends(require_operator("ops_admin"))) -> InfraOut:
+def get_infra(_: object = Depends(require_operator("admin"))) -> InfraOut:
     return infra_service.get_infra()
 
 
@@ -49,7 +49,7 @@ def get_errors(
     range: RangeKey = Query("24h"),
     kind: ErrorKind | None = Query(None),
     limit: int = Query(50, ge=1, le=100),
-    _: object = Depends(require_operator("ops_admin")),
+    _: object = Depends(require_operator("admin")),
     db: Session = Depends(get_db),
 ) -> ErrorListOut:
     return query_service.errors(db, range, kind, limit)
@@ -58,7 +58,7 @@ def get_errors(
 @router.get("/errors/{event_id}", response_model=ErrorEventOut)
 def get_error(
     event_id: str = Path(pattern="^[0-9a-f]{64}$"),
-    _: object = Depends(require_operator("ops_admin")),
+    _: object = Depends(require_operator("admin")),
     db: Session = Depends(get_db),
 ) -> ErrorEventOut:
     event = query_service.error_detail(db, event_id)

@@ -11,7 +11,7 @@
 
 ## API
 - `GET /notices` (로그인한 사용자, 가족 없어도 됨): 최근순 최대 100건 `{rows: [{id, category, title, body, created_at, updated_at}]}`. 쓴 관리자는 담지 않는다.
-- 서비스 관리자(`require_operator("service_admin")`):
+- 서비스 관리자(통합관리자, `require_operator("admin")`):
   - `GET /admin/service/notices`: 최근순 최대 200건
   - `POST /admin/service/notices`: `{category, title(1~100자), body(1~5000자)}` → 201 + 그 공지
   - `PUT /admin/service/notices/{notice_id}`: 같은 본문으로 통째로 고친다 → 204, 없으면 404

@@ -110,7 +110,7 @@ def test_auth_failures_store_only_the_code_and_no_message(client, enabled, monke
     }
     assert client.post(SIGNUP, json=body).status_code == 201
     token = client.post(LOGIN, json={"login_id": "plain_user", "password": PASSWORD}).json()
-    monkeypatch.setattr(settings, "ops_admin_user_ids", "")
+    monkeypatch.setattr(settings, "admin_user_ids", "")
     headers = {"Authorization": f"Bearer {token['access_token']}"}
     assert client.get("/admin/ops/summary", headers=headers).status_code == 403
 

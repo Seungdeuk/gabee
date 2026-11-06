@@ -30,7 +30,7 @@ def _member(client, login_id: str) -> tuple[dict, str]:
 def ops(client, monkeypatch):
     """운영자로 허용된 계정의 헤더."""
     headers, user_id = _member(client, "ops_tester")
-    monkeypatch.setattr(settings, "ops_admin_user_ids", user_id)
+    monkeypatch.setattr(settings, "admin_user_ids", user_id)
     return headers
 
 
@@ -47,7 +47,7 @@ def _bucket(minutes_ago: int) -> datetime:
 def test_requires_login_and_operator(client, monkeypatch):
     assert client.get("/admin/ops/summary").status_code == 401
     headers, _ = _member(client, "plain_user")
-    monkeypatch.setattr(settings, "ops_admin_user_ids", "")
+    monkeypatch.setattr(settings, "admin_user_ids", "")
     r = client.get("/admin/ops/summary", headers=headers)
     assert r.status_code == 403 and r.json()["code"] == "operator_required"
     assert client.get("/admin/ops/apis", headers=headers).status_code == 403
@@ -147,7 +147,7 @@ def test_apis_reports_truncation(client, monkeypatch):
 
 def _ops_headers(client, monkeypatch) -> dict:
     headers, user_id = _member(client, "ops_tester2")
-    monkeypatch.setattr(settings, "ops_admin_user_ids", user_id)
+    monkeypatch.setattr(settings, "admin_user_ids", user_id)
     return headers
 
 
