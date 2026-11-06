@@ -9,7 +9,7 @@ def test_schema_registered_and_kinds():
     tables = feature_tables()
     assert "notifications" in tables
     assert "notifications" in tables["notifications"]
-    assert KINDS == ("schedule", "billing", "care", "family_group", "ai_record")
+    assert KINDS == ("schedule", "billing", "care", "family_group", "ai_record", "support")
 
 
 def test_create_all_creates_columns(client, family):

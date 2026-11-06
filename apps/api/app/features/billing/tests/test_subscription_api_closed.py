@@ -3,13 +3,10 @@
 구독 코드 시험은 conftest 가 켠 상태(SUBSCRIPTION_API_ENABLED=true)에서 본다. 이 파일은 닫힌 상태를 본다.
 """
 
-from datetime import date
-
 import pytest
 
 from app.features.schedule.agent import suggest_sources
 from app.shared.config import settings
-from app.shared.db import SessionLocal
 
 
 def test_default_is_closed_in_settings():
@@ -50,10 +47,7 @@ def test_open_reaches_the_service(client, family, monkeypatch):
     assert client.get("/billing/subscriptions", headers=a).status_code == 200
 
 
-def test_closed_schedule_suggestions_skip_payment_days(monkeypatch):
-    monkeypatch.setattr(settings, "subscription_api_enabled", False)
-    with SessionLocal() as db:
-        assert (
-            suggest_sources.billing_lines(db, "no-such-group", "no-such-user", date(2026, 10, 1))
-            == []
-        )
+def test_schedule_suggestions_do_not_read_payment_days():
+    # 구독 결제일은 일정 추천에서 뺐다(#256 "추천에서 구독 결제일 제거"): 결제일을 읽는 출처 함수가 더는 없다.
+    # 스위치가 꺼져 있어도 켜져 있어도 추천은 결제일을 읽지 않는다.
+    assert not hasattr(suggest_sources, "billing_lines")
