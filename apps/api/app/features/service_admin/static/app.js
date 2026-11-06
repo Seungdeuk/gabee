@@ -14,6 +14,36 @@
   ];
   const TABS = TAB_GROUPS.flatMap(([, tabs]) => tabs);
   const TOKEN_KEY = "gabee_admin_token";
+  const THEME_KEY = "gabee_admin_theme"; // light 나 dark. 없으면 컴퓨터 설정을 따른다
+
+  /** 지금 보이는 화면 모드. 고른 값이 없으면 컴퓨터 설정이다. */
+  function currentTheme() {
+    return document.documentElement.dataset.theme || (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+  }
+
+  /** 화면 모드를 적용한다. 운영 탭(iframe)이 열려 있으면 같이 바꾼다. */
+  function applyTheme(theme) {
+    if (theme) document.documentElement.dataset.theme = theme;
+    const frame = document.querySelector(".ops-frame");
+    if (theme && frame && frame.contentDocument) frame.contentDocument.documentElement.dataset.theme = theme;
+    document.getElementById("theme-toggle").setAttribute("aria-checked", String(currentTheme() === "dark"));
+  }
+
+  function toggleTheme() {
+    const next = currentTheme() === "dark" ? "light" : "dark";
+    try {
+      localStorage.setItem(THEME_KEY, next);
+    } catch {
+      // 저장이 막힌 브라우저면 새로고침할 때 컴퓨터 설정으로 돌아간다
+    }
+    applyTheme(next);
+  }
+
+  try {
+    applyTheme(localStorage.getItem(THEME_KEY));
+  } catch {
+    applyTheme(null);
+  }
 
   // 문의·신고 상태: 화면 글자, 표시 색, 버튼 글자, 버튼을 누르면 바뀔 상태.
   // 답변 완료(done)는 버튼이 아니라 답변을 저장할 때만 된다(서버가 자동으로 바꾼다).
@@ -520,7 +550,7 @@
    */
   function viewOps() {
     head("서버 상태", "운영 관리자 대시보드 · 요청·오류·인프라 상태");
-    return '<iframe class="ops-frame" src="ops/?v=1" title="운영 서버 상태"></iframe>';
+    return '<iframe class="ops-frame" src="ops/?v=2" title="운영 서버 상태"></iframe>';
   }
 
   // ── 화면 그리기 ───────────────────────────────────────
@@ -621,6 +651,10 @@
   });
 
   document.addEventListener("click", (e) => {
+    if (e.target.closest("[data-action='theme-toggle']")) {
+      toggleTheme();
+      return;
+    }
     if (e.target.closest("[data-action='logout']")) {
       setToken(null);
       showLogin();
@@ -727,6 +761,202 @@
     if (!el) return;
     filters[el.dataset.filter] = el.value;
     render();
+  });
+
+  // ── 챗봇 ─────────────────────────────────────────────
+  // 오른쪽 아래 작은 버튼으로 연다. 대화는 화면 메모리에만 있고 서버에 저장하지 않는다.
+  // 질문은 서버가 Claude 에게 보낸다.
+  const CHAT_HITS = 1;
+  const CHAT_HELLO = "안녕하세요. 아래 추천 질문이나 주제를 눌러 보세요. 직접 물어보셔도 돼요.";
+
+  // 탭마다 추천하는 질문. 팀 문서에서 답을 찾을 수 있는 것만 둔다
+  const CHAT_TAB_QUESTION = {
+    analytics: "활성 사용자는 어떤 기준으로 세?",
+    members: "이메일 인증 안 해도 가족에 들어갈 수 있어?",
+    groups: "참가 요청은 누가 승인해?",
+    features: "503 오류는 언제 나와?",
+    ai: "AI 하루 한도는 몇 번이야?",
+    support: "답변을 고치면 사용자에게 알림이 또 가?",
+    notices: "공지 올리면 사용자에게 알림이 가?",
+    ops: "오류율이 몇 퍼센트면 오류 상태야?",
+  };
+  // 오류가 난 경로가 어느 탭의 일인지. 위에서부터 맞는 첫 줄을 쓴다
+  const CHAT_ROUTE_TAB = [
+    ["/admin/service/analytics", "analytics"],
+    ["/admin/service/members", "members"],
+    ["/admin/service/groups", "groups"],
+    ["/admin/service/features", "features"],
+    ["/admin/service/ai-usage", "ai"],
+    ["/admin/service/support", "support"],
+    ["/admin/service/notices", "notices"],
+    ["/admin/", "ops"],
+    ["/support", "support"],
+    ["/notices", "notices"],
+    ["/ai-assistant", "ai"],
+    ["/family-group/groups", "groups"],
+    ["/family-group", "members"],
+    ["/schedule", "features"],
+    ["/billing", "features"],
+    ["/family-chat", "features"],
+    ["/notifications", "features"],
+  ];
+  const CHAT_DEFAULT_TABS = ["support", "notices", "ops"]; // 최근 오류가 없을 때
+  const CHAT_SUGGEST_TABS = 3;
+  // 무엇을 물어볼지 모를 때 고르는 주제. 질문은 모두 admin_knowledge/faq.md 에 답이 있다
+  const CHAT_TOPICS = [
+    ["회원·가족", ["활성 사용자는 어떤 기준으로 세?", "이메일 인증 안 해도 가족에 들어갈 수 있어?", "참가 요청은 누가 승인해?", "계정 상태 카드는 무슨 뜻이야?"]],
+    ["문의·공지", ["답변 없이 완료로 바꿀 수 있어?", "답변을 고치면 사용자에게 알림이 또 가?", "공지 올리면 사용자에게 알림이 가?", "지운 공지를 되살릴 수 있어?", "공지 종류는 어떻게 골라?"]],
+    ["서버·오류", ["오류가 갑자기 늘면 뭐부터 봐?", "상태 바가 주의면 무슨 뜻이야?", "오류율이 몇 퍼센트면 오류 상태야?", "503 오류는 언제 나와?", "인스턴스 카드가 미수집이면 고장이야?"]],
+    ["AI·비용", ["AI 하루 한도는 몇 번이야?", "AI 한도를 늘리려면 어디를 바꿔?"]],
+    ["데이터 분석", ["재방문 코호트 표는 어떻게 읽어?", "가입자가 30명 안 되면 왜 경고가 떠?", "지난 날짜 숫자가 왜 나중에 바뀌어?"]],
+    ["배포·DB", ["배포 후 이상하면 어떻게 되돌려?", "공용 DB에 직접 마이그레이션해도 돼?", "Pull Agent 는 뭐야?"]],
+    ["권한·보안", ["관리자 계정은 어떻게 추가해?", "관리자 목록이 비면 어떻게 돼?", "권한은 몇 종류야?", "로그인은 얼마나 유지돼?", "관리자도 사용자 채팅 내용을 볼 수 있어?"]],
+  ];
+  const chatAsked = new Set(); // 이번 대화에서 이미 물어본 질문은 추천에서 뺀다
+  let chatErrorChips = []; // 최근 오류 탭의 [탭 이름, 질문]
+
+  /**
+   * 오류 목록(최근 7일)에서 마지막 발생이 가장 최근인 순으로 서로 다른 탭 3개를 고른다.
+   * @param {{route: string, last_seen: string}[]} items
+   * @returns {string[]}
+   */
+  function chatErrorTabs(items) {
+    const tabs = [];
+    const latest = [...items].sort((a, b) => new Date(b.last_seen) - new Date(a.last_seen));
+    for (const item of latest) {
+      const rule = CHAT_ROUTE_TAB.find(([prefix]) => item.route.startsWith(prefix));
+      if (rule && !tabs.includes(rule[1])) tabs.push(rule[1]);
+      if (tabs.length === CHAT_SUGGEST_TABS) break;
+    }
+    return tabs;
+  }
+
+  /** 최근 오류 탭을 읽어 추천 질문을 만든다. 못 읽으면 자주 묻는 질문을 쓴다(챗봇은 막지 않는다). */
+  async function chatLoadErrors() {
+    let tabs = [];
+    try {
+      tabs = chatErrorTabs((await api("/admin/ops/errors?range=7d&limit=100")).items);
+    } catch {
+      tabs = [];
+    }
+    chatErrorChips = (tabs.length ? tabs : CHAT_DEFAULT_TABS).map((key) => [TABS.find(([k]) => k === key)[1], CHAT_TAB_QUESTION[key]]);
+    return tabs.length > 0;
+  }
+
+  const chatChip = (label, question) =>
+    `<button type="button" class="chat-chip" data-chat-ask="${esc(question)}">${label ? `<small>${esc(label)}</small>` : ""}${esc(question)}</button>`;
+
+  /**
+   * 추천 질문과 주제 버튼을 그린다. 답할 때마다 다시 그려서 언제든 다음 질문을 고를 수 있다.
+   * @param {string} title 제목
+   * @param {[string, string][]} chips [작은 글씨, 질문]
+   */
+  function chatRenderSuggest(title, chips) {
+    const fresh = chips.filter(([, q]) => !chatAsked.has(q));
+    const topics = CHAT_TOPICS.map(([name], i) => `<button type="button" class="chat-topic" data-chat-topic="${i}">${esc(name)}</button>`).join("");
+    document.getElementById("chat-suggest").innerHTML =
+      `${fresh.length ? `<p class="chat-suggest-title">${esc(title)}</p>${fresh.map(([label, q]) => chatChip(label, q)).join("")}` : ""}` +
+      `<p class="chat-suggest-title">주제별로 보기</p><div class="chat-topics">${topics}</div>`;
+  }
+
+  /** 다음 질문을 고르는 칸을 대화 맨 아래로 옮긴다. 오류 추천을 다 물어봤으면 주제 질문에서 이어서 추천한다. */
+  function chatNext(title) {
+    const log = document.getElementById("chat-log");
+    log.appendChild(document.getElementById("chat-suggest"));
+    const rest = chatErrorChips.filter(([, q]) => !chatAsked.has(q));
+    const more = CHAT_TOPICS.flatMap(([name, list]) => list.map((q) => [name, q])).filter(([, q]) => !chatAsked.has(q));
+    chatRenderSuggest(title, rest.length ? rest : more.slice(0, CHAT_SUGGEST_TABS));
+    log.scrollTop = log.scrollHeight;
+  }
+
+  /** 대화를 비우고 처음 상태로 돌아간다. */
+  async function chatReset() {
+    document.querySelectorAll("#chat-log .chat-msg").forEach((el) => el.remove());
+    chatAsked.clear();
+    chatAdd("bot", esc(CHAT_HELLO));
+    const fromErrors = await chatLoadErrors();
+    chatNext(fromErrors ? "최근 오류가 난 탭의 추천 질문" : "자주 묻는 질문");
+  }
+
+  function chatAdd(who, html) {
+    const log = document.getElementById("chat-log");
+    const el = document.createElement("div");
+    el.className = `chat-msg ${who}`;
+    el.innerHTML = html;
+    log.appendChild(el);
+    log.scrollTop = log.scrollHeight;
+    return el;
+  }
+
+  async function chatAsk(question) {
+    chatAsked.add(question);
+    chatAdd("me", esc(question));
+    const wait = chatAdd("bot", "찾는 중…");
+    try {
+      const res = await api("/admin/knowledge/ask", { q: question }, "POST");
+      wait.textContent = res.answer;
+    } catch (err) {
+      if (err.message === "unauthorized") return;
+      wait.textContent = err.message === "HTTP 503" ? "AI 연결이 준비되지 않았어요. 잠시 뒤 다시 해 주세요." : "지금은 답할 수 없어요. 잠시 뒤 다시 해 주세요.";
+    }
+    chatNext("이어서 물어볼 만한 질문");
+  }
+
+  function chatToggle() {
+    const panel = document.getElementById("chat-panel");
+    panel.hidden = !panel.hidden;
+    document.querySelector(".chat-fab").setAttribute("aria-expanded", String(!panel.hidden));
+    if (panel.hidden) return;
+    // 처음 열 때만 인사한다. 이어서 쓰던 대화는 그대로 둔다
+    if (!document.querySelector("#chat-log .chat-msg")) chatReset();
+    document.querySelector("#chat-form input").focus();
+  }
+
+  /** 입력칸의 질문을 보낸다. */
+  function chatSend() {
+    const input = document.querySelector("#chat-form input");
+    const question = input.value.trim();
+    if (question.length < 2) return;
+    input.value = "";
+    chatAsk(question);
+  }
+
+  document.getElementById("chat-form").addEventListener("submit", (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    chatSend();
+  });
+
+  // 한글은 마지막 글자가 조합 중이면 Enter 가 글자 확정으로만 쓰여 전송이 안 될 수 있다.
+  // 조합 중의 Enter 는 기억해 두었다가 조합이 끝나면 보낸다.
+  let chatSendAfterIme = false;
+  const chatInput = document.querySelector("#chat-form input");
+  chatInput.addEventListener("keydown", (e) => {
+    if (e.key !== "Enter" && e.keyCode !== 229) return;
+    if (e.isComposing || e.keyCode === 229) {
+      if (e.key === "Enter" || e.code === "Enter" || e.code === "NumpadEnter") chatSendAfterIme = true;
+      return;
+    }
+    e.preventDefault();
+    chatSend();
+  });
+  chatInput.addEventListener("compositionend", () => {
+    if (!chatSendAfterIme) return;
+    chatSendAfterIme = false;
+    setTimeout(chatSend, 0);
+  });
+
+  document.addEventListener("click", (e) => {
+    if (e.target.closest("[data-action='chat-toggle']")) chatToggle();
+    if (e.target.closest("[data-action='chat-clear']")) chatReset();
+    const chip = e.target.closest("[data-chat-ask]");
+    if (chip) chatAsk(chip.dataset.chatAsk);
+    const topic = e.target.closest("[data-chat-topic]");
+    if (topic) {
+      const [name, list] = CHAT_TOPICS[Number(topic.dataset.chatTopic)];
+      chatRenderSuggest(`${name} 질문`, list.map((q) => ["", q]));
+      document.getElementById("chat-log").scrollTop = 1e9;
+    }
   });
 
   window.addEventListener("gabee-admin-expired", () => {

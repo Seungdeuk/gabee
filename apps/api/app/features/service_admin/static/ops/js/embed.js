@@ -5,6 +5,12 @@
  * - 로그인 만료(401): 바깥 화면에 알려 바깥 화면이 로그인으로 돌아가게 한다. */
 (function () {
   "use strict";
+  try {
+    var theme = localStorage.getItem("gabee_admin_theme"); // 바깥 화면에서 고른 밝은·어두운 화면을 따른다
+    if (theme) document.documentElement.dataset.theme = theme;
+  } catch (e) {
+    /* 저장을 못 읽으면 컴퓨터 설정을 따른다 */
+  }
   var token = null;
   try {
     token = sessionStorage.getItem("gabee_admin_token");
