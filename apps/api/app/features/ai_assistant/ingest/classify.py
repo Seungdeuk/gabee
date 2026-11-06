@@ -119,7 +119,7 @@ def classify(result: PreprocessResult, jev: Jev | None = None) -> Classification
         jev = jev_api.ask
     if jev is not None:
         return _by_jev(text, jev)
-    return _review("기타 문서")
+    return _review("기타 문서", text)
 
 
 def _by_classifier(guess: doc_classifier.Prediction, text: str) -> Classification:
@@ -191,9 +191,9 @@ def _by_jev(text: str, jev: Jev) -> Classification:
         is_document = float(ans["is_document"]["noul"])
         domain = str(ans["domain"]["choice"])
     except (LLMUnavailable, KeyError, TypeError, ValueError):
-        return _review("기타 문서")  # Jev 가 안 되면 사람 확인
+        return _review("기타 문서", text)  # Jev 가 안 되면 사람 확인
     if doc_type not in DOC_TYPES or doc_type == "none":
-        return _review("기타 문서")  # Jev 도 모르는 종류: 사람이 확인
+        return _review("기타 문서", text)  # Jev 도 모르는 종류: 사람이 확인
     needs_review = confidence < REVIEW_BELOW
     route = "review" if needs_review else ("document" if is_document >= 0.5 else "daily_share")
     fields = {}
@@ -239,8 +239,15 @@ def _by_rule(doc_type: str, confidence: float, text: str) -> Classification:
     )
 
 
-def _review(doc_type: str) -> Classification:
-    return Classification(doc_type=doc_type, route="review", needs_review=True)
+def _review(doc_type: str, text: str = "") -> Classification:
+    # 종류를 못 정해도 글에서 규칙으로 찾은 날짜·금액은 남긴다(사람이 확인할 때 보이고, 일정·챙길 일로 이어질 수 있다)
+    return Classification(
+        doc_type=doc_type,
+        route="review",
+        needs_review=True,
+        dates=_dates(text),
+        amounts=_money(text),
+    )
 
 
 def _date(value) -> str | None:
