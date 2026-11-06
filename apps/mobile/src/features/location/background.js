@@ -37,3 +37,13 @@ export function toPoint(loc) {
 export function pickToSend(locations, max = 5) {
   return locations.length > max ? locations.slice(locations.length - max) : locations;
 }
+
+/**
+ * 약관 스크롤이 맨 아래까지 내려왔는지(체크할 수 있는지). 안내가 짧아 스크롤이 필요 없는 경우도 true 다.
+ * @param {{ contentOffset: { y: number }, layoutMeasurement: { height: number }, contentSize: { height: number } }} event 스크롤 이벤트의 nativeEvent
+ * @param {number} [slack] 맨 아래로 보는 여유(px)
+ * @returns {boolean}
+ */
+export function isScrolledToEnd({ contentOffset, layoutMeasurement, contentSize }, slack = 12) {
+  return contentSize.height <= layoutMeasurement.height + slack || contentOffset.y + layoutMeasurement.height >= contentSize.height - slack;
+}

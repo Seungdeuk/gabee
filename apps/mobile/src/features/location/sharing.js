@@ -29,7 +29,7 @@ export async function sendNow() {
  * @param {number} [count]
  * @returns {Promise<void>}
  */
-export async function seedZoneNearHere(count = 20) {
+export async function seedZoneNearHere(count = 5) {
   const base = await currentPoint();
   const now = Date.now();
   for (let i = 0; i < count; i += 1) {

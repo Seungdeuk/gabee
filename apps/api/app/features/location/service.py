@@ -31,7 +31,9 @@ from .schemas import (
 
 SOURCE = "location"
 ZONE_WINDOW_DAYS = 14  # 구역을 계산하는 최근 기간
-ZONE_MIN_POINTS = 20  # 이만큼 모여야 구역을 만든다
+ZONE_MIN_POINTS = (
+    5  # 이만큼 모이면 구역을 만든다(베타는 빨리 보이려고 5개, 점이 적어 반지름은 최소 300m)
+)
 ZONE_REFRESH_EVERY = 20  # 구역이 있으면 새 위치가 이만큼 쌓일 때마다 다시 계산
 ZONE_MIN_RADIUS_M = 300.0
 ZONE_PAD = 1.2  # 90% 위치까지의 거리에 곱하는 여유

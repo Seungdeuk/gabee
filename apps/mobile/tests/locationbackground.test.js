@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { pickToSend, toPoint, wantsBackground } from "../src/features/location/background.js";
+import { isScrolledToEnd, pickToSend, toPoint, wantsBackground } from "../src/features/location/background.js";
 
 const base = { enabled: true, consent: true, background: true, paused: false };
 
@@ -26,4 +26,13 @@ test("pickToSend: 한 번에 많이 쌓여도 가장 최근 몇 개만 보낸다
   assert.deepEqual(pickToSend([1, 2, 3]), [1, 2, 3]);
   assert.deepEqual(pickToSend([1, 2, 3, 4, 5, 6, 7], 5), [3, 4, 5, 6, 7]);
   assert.deepEqual(pickToSend([], 5), []);
+});
+
+test("isScrolledToEnd: 맨 아래까지 내려야 true, 짧은 안내는 바로 true", () => {
+  const ev = (y, view, content) => ({ contentOffset: { y }, layoutMeasurement: { height: view }, contentSize: { height: content } });
+  assert.equal(isScrolledToEnd(ev(0, 160, 600)), false);
+  assert.equal(isScrolledToEnd(ev(300, 160, 600)), false);
+  assert.equal(isScrolledToEnd(ev(430, 160, 600)), true); // 12px 여유 안
+  assert.equal(isScrolledToEnd(ev(440, 160, 600)), true);
+  assert.equal(isScrolledToEnd(ev(0, 160, 150)), true); // 스크롤이 필요 없는 길이
 });

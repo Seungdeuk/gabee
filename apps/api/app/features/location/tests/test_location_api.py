@@ -81,12 +81,12 @@ def test_points_need_consent(client, family, on):
 def test_zone_is_built_after_enough_points(client, family, on):
     _, b, _ = family
     _consent(client, b)
-    for _ in range(19):
+    for _ in range(4):
         _send(client, b)
-    assert client.get("/location/me", headers=b).json()["zone"] is None
+    assert client.get("/location/me", headers=b).json()["zone"] is None  # 4개로는 아직 구역이 없다
     _send(client, b)
     zone = client.get("/location/me", headers=b).json()["zone"]
-    assert zone is not None and zone["radius_m"] >= 300 and zone["sample_count"] == 20
+    assert zone is not None and zone["radius_m"] >= 300 and zone["sample_count"] == 5
 
 
 def test_exit_alerts_parents_once_and_resets_when_back(client, family, on):

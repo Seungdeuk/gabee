@@ -17,8 +17,8 @@ const tabs = [
   { name: "chat", title: "AI 채팅", icon: "chatbubble-ellipses-outline" },
   { name: "family-chat", title: "소통", icon: "people-outline" },
   { name: "schedule", title: "일정", icon: "calendar-outline" },
-  // 위치 베타 브랜치: 탭 이름을 다시 돌봄으로 쓴다(지갑 + 위치). release/1.2 에는 병합하지 않는다
-  { name: "care", title: "돌봄", icon: "heart-outline" },
+  // 위치 베타 브랜치: 이 탭은 위치 기능만 보인다. 라우트 이름(care)은 그대로 둔다. release/1.2 에는 병합하지 않는다
+  { name: "care", title: "위치", icon: "location-outline" },
   { name: "my", title: "마이", icon: "person-outline" },
 ];
 

@@ -9,9 +9,10 @@
 - 시험: `app/features/location/tests/test_location_api.py` 13개 통과.
 
 ## 앱 (`apps/mobile/src/features/location/`)
-- 완료: 돌봄 탭(`care` 라우트, 제목 "돌봄")에 `지갑 | 위치` 구분. 위치 구역(동의, 여행 모드, 약식 지도, 가족 상태, 시연 도구). 앱이 켜져 있는 동안 1분마다 위치 전송(`expo-location`, 앞에서만).
-- 지도 타일·지도 라이브러리는 쓰지 않는다(의존성 추가 없음). 점과 활동 구역을 상대 위치로 그린다.
-- 시험: `tests/locationgeo.test.js` 통과. 앱 전체 시험은 기존 실패 1개(`schedule_lunar`)만 남는다. 변경 파일 린트 통과(import 규칙 제외). 실기기 확인은 하지 않았다.
+- 완료: 하단 탭을 "위치"로 바꾸고(`care` 라우트 유지) 위치 기능만 보인다(지갑 화면은 이 탭에서 뺌). 지도 카드(`TileMap`: OpenStreetMap 타일 이미지를 이어 붙인 실제 지도, 확대·축소만, 서버 기록이 없어도 이 기기의 현재 위치를 `useDevicePosition`으로 보여 줌), 동의, 앱을 꺼도 공유(안내를 작은 상자에서 스크롤해 맨 아래까지 내려야 체크 가능), 여행 모드(1일·3일·7일·기타 직접 입력 1~14일), 공유 상태, 이동 기록, 시연 도구. 앱이 켜져 있는 동안 1분마다 위치 전송.
+- 지도 라이브러리·키는 쓰지 않는다(의존성 추가 없음). 지도 조각 요청으로 대략적인 지역이 OpenStreetMap 에 전달되는 점을 화면에 적었다.
+- 활동 구역은 위치가 5개 모이면 만든다(서버 `ZONE_MIN_POINTS`, 이전 20개).
+- 시험: `tests/locationgeo.test.js`, `locationmap.test.js`(타일·투영), `locationpause.test.js`, `locationbackground.test.js`(스크롤 끝 판정 포함) 통과. 앱 전체 시험은 기존 실패 1개(`schedule_lunar`)만 남는다. 변경 파일 린트 통과(import 규칙 제외). 실기기 확인은 하지 않았다.
 
 ## 이동 기록 타임라인 — 서버와 앱 화면 완료(실기기 확인 전)
 - 변환기 `timeline.py`(시험 10개), 왕복 검증 `run_timeline.py`(머묾 recall·precision 1.00, 지어낸 시간 0분), 장소 이름 붙이기(`location_places`, 마이그레이션 `d3b8f15e92a4`), API `GET /location/timeline`·`/location/places`, `POST /location/places`, `DELETE /location/places/{id}`(시험 11개). 위치 시험 합계 54개.
