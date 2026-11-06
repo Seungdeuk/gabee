@@ -45,3 +45,9 @@ test("오류 문구", () => {
   assert.match(noticesErrorMessage({ status: 503 }), /잠시 볼 수 없어요/);
   assert.match(noticesErrorMessage({ status: 500 }), /불러오지 못했어요/);
 });
+
+test("공지사항 화면: 분류 칩은 제목과 같은 좌우 여백을 두고 시작한다(화면 왼쪽 끝에 붙지 않는다)", async () => {
+  const { readFileSync } = await import("node:fs");
+  const screen = readFileSync(new URL("../src/features/notices/screens/NoticesScreen.js", import.meta.url), "utf8");
+  assert.match(screen, /chips: \{[^}]*paddingHorizontal: spacing\.xl/);
+});

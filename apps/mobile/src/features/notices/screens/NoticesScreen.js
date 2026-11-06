@@ -128,7 +128,8 @@ export default function NoticesScreen() {
 }
 
 const styles = StyleSheet.create({
-  chips: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm, paddingVertical: spacing.sm },
+  // Screen 의 pinned 영역은 좌우 여백이 없어서 제목과 같은 여백(spacing.xl)을 직접 둔다(안 그러면 칩이 화면 왼쪽 끝에서 시작한다)
+  chips: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm, paddingVertical: spacing.sm, paddingHorizontal: spacing.xl },
   chip: { minHeight: 36, paddingHorizontal: spacing.lg, borderRadius: radius.pill, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.card, justifyContent: "center" },
   chipOn: { backgroundColor: colors.dark, borderColor: colors.dark },
   chipText: { ...font.caption, fontSize: 14, color: colors.text },
