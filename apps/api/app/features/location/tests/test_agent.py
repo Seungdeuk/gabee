@@ -184,6 +184,11 @@ def test_ask_endpoint_switch_login_and_llm_failure(client, family, monkeypatch):
         client.post("/location/ask", json={"question": "어디야?"}, headers=a).status_code == 503
     )  # 스위치 꺼짐
     monkeypatch.setattr(settings, "location_enabled", True)
+    off = client.post("/location/ask", json={"question": "어디야?"}, headers=a)
+    assert (
+        off.status_code == 503 and off.json()["code"] == "location_ask_disabled"
+    )  # 질문은 따로 꺼져 있다
+    monkeypatch.setattr(settings, "location_ask_enabled", True)
     assert client.post("/location/ask", json={"question": ""}, headers=a).status_code == 422
     allow_ai(client, a, monkeypatch)
     r = client.post("/location/ask", json={"question": "어디야?"}, headers=a)
@@ -193,6 +198,7 @@ def test_ask_endpoint_switch_login_and_llm_failure(client, family, monkeypatch):
 def test_ask_endpoint_answers_with_fake_llm(client, family, hashing, monkeypatch):
     a, b, _ = family
     monkeypatch.setattr(settings, "location_enabled", True)
+    monkeypatch.setattr(settings, "location_ask_enabled", True)
     monkeypatch.setattr(settings, "anthropic_api_key", "test-key")
     allow_ai(client, a, monkeypatch)
     fake = FakeLLM(None, "저는 가족 위치 기록만 도와드릴 수 있어요")

@@ -63,6 +63,12 @@ def ensure_enabled() -> None:
         raise ApiError(503, "location_disabled", "위치 공유는 아직 쓸 수 없어요")
 
 
+def ensure_ask_enabled() -> None:
+    """위치 기록 질문 답변은 따로 켜야 한다(기본 꺼짐)."""
+    if not settings.location_ask_enabled:
+        raise ApiError(503, "location_ask_disabled", "위치 기록 질문은 아직 쓸 수 없어요")
+
+
 def _has_consent(user: User) -> bool:
     return user.location_consent_at is not None
 

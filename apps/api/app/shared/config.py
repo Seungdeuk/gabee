@@ -91,6 +91,8 @@ class Settings(BaseSettings):
     # 위치 공유(베타, feature/hojenn-location-beta 에만 있는 기능). 기본 꺼짐: 켜기·위치 올리기·가족 위치 API 는 503(location_disabled)이고 동의 철회·내 위치 삭제만 열려 있다
     location_enabled: bool = False
     location_retention_days: int = 14  # 이 날짜가 지난 위치는 지운다
+    # 위치 기록 질문 답변(POST /location/ask, 검색 에이전트). 이번 베타 범위에서 제외해 기본 꺼짐: 켜지 않으면 503(location_ask_disabled)
+    location_ask_enabled: bool = False
     # 메일 요청 제한(프로세스 메모리, login 제한과 같은 한계): 인증 메일 재발송 간격/시간당, 재설정 메일 이메일별/IP별 시간당
     verify_resend_cooldown_seconds: int = 60
     verify_max_per_hour: int = 5

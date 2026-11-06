@@ -24,7 +24,7 @@
 | POST `/location/points` | 위치 하나 올리기(동의·비일시정지일 때만 저장). 구역 밖이면 부모에게 알림 |
 | GET `/location/family` | 부모(관리자)는 동의하고 공유 중인 가족 모두의 마지막 위치, 그 밖의 사람은 자기 것만 |
 | POST `/location/simulate-exit` | 시연용: 구역을 벗어난 것처럼 판정만 하고 알림을 보낸다(위치는 저장하지 않음) |
-| POST `/location/ask` | 위치 기록에 대한 질문(`question` 300자 이내, 앞선 대화 `history`). 스위치가 꺼져 있으면 503, 가족 AI 동의와 하루 한도(위치 에이전트 전용, 사용자 30·그룹 100)를 따른다. 응답 `answer`, `used_tool` |
+| POST `/location/ask` | **이번 베타 범위에서 제외(기본 꺼짐)**: `LOCATION_ASK_ENABLED` 가 꺼져 있으면 503(`location_ask_disabled`). 켜면 위치 기록에 대한 질문(`question` 300자 이내, 앞선 대화 `history`). 스위치가 꺼져 있으면 503, 가족 AI 동의와 하루 한도(위치 에이전트 전용, 사용자 30·그룹 100)를 따른다. 응답 `answer`, `used_tool` |
 
 ## 위치 기록 질문 에이전트 (베타)
 - 질문 하나를 LLM(`claude-haiku-5-5`, 기존 LLM 래퍼)이 `search_location_history` 도구로 요약 조각을 찾아 그 문장에 있는 사실만 답한다. 도구 인자는 사람 이름·날짜·시각·질문 성격(when_where/count/sequence/anomaly/gap)·찾을 내용이다.

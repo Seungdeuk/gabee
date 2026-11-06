@@ -92,6 +92,7 @@ def post_ask(
 ) -> AskOut:
     """위치 기록에 대한 질문에 답한다(부모는 가족 전체, 그 밖의 사람은 본인 기록만). 가족 AI 동의와 하루 한도를 따른다."""
     service.ensure_enabled()
+    service.ensure_ask_enabled()
     reply = agent.ask(db, group_id, user, body.question, history=body.history)
     return AskOut(answer=reply.answer, used_tool=bool(reply.tool_calls))
 
