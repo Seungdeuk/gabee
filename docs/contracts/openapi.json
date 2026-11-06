@@ -11811,7 +11811,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/AskIn"
+                "$ref": "#/components/schemas/app__features__ai_assistant__knowledge__schemas__AskIn"
               }
             }
           }
@@ -11822,7 +11822,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/AskOut"
+                  "$ref": "#/components/schemas/app__features__ai_assistant__knowledge__schemas__AskOut"
                 }
               }
             }
@@ -13278,6 +13278,581 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/NotificationOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/location/me": {
+      "get": {
+        "tags": [
+          "location"
+        ],
+        "summary": "Get Me",
+        "description": "내 위치 공유 상태. 서버 스위치가 꺼져 있어도 읽을 수 있다(앱이 꺼짐 화면을 고르는 데 쓴다).",
+        "operationId": "get_me_location_me_get",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-gyeot-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Gyeot-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MyLocationOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "location"
+        ],
+        "summary": "Delete Me",
+        "description": "저장된 내 위치·활동 구역·설정을 지운다(동의 상태는 그대로).",
+        "operationId": "delete_me_location_me_delete",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-gyeot-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Gyeot-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MyLocationOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/location/consent": {
+      "put": {
+        "tags": [
+          "location"
+        ],
+        "summary": "Put Consent",
+        "description": "동의(켜기는 스위치가 켜져 있을 때만)와 철회(항상). 철회하면 저장된 내 위치를 모두 지운다.",
+        "operationId": "put_consent_location_consent_put",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-gyeot-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Gyeot-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConsentIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MyLocationOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/location/pause": {
+      "put": {
+        "tags": [
+          "location"
+        ],
+        "summary": "Put Pause",
+        "description": "여행 등으로 위치 공유를 잠시 멈추거나(days 1~14) 다시 켠다(days 없음/0).",
+        "operationId": "put_pause_location_pause_put",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-gyeot-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Gyeot-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PauseIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MyLocationOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/location/points": {
+      "post": {
+        "tags": [
+          "location"
+        ],
+        "summary": "Post Point",
+        "description": "내 위치 하나를 올린다. 구역 밖이면 부모(관리자)에게 알림이 간다.",
+        "operationId": "post_point_location_points_post",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-gyeot-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Gyeot-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PointIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PointSaved"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/location/family": {
+      "get": {
+        "tags": [
+          "location"
+        ],
+        "summary": "Get Family",
+        "operationId": "get_family_location_family_get",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-gyeot-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Gyeot-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FamilyLocations"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/location/simulate-exit": {
+      "post": {
+        "tags": [
+          "location"
+        ],
+        "summary": "Post Simulate Exit",
+        "description": "시연용: 내가 활동 구역을 벗어난 것처럼 판정만 해서 부모에게 알림을 보낸다(위치는 저장하지 않는다).",
+        "operationId": "post_simulate_exit_location_simulate_exit_post",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-gyeot-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Gyeot-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SimulateIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PointSaved"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/location/ask": {
+      "post": {
+        "tags": [
+          "location"
+        ],
+        "summary": "Post Ask",
+        "description": "위치 기록에 대한 질문에 답한다(부모는 가족 전체, 그 밖의 사람은 본인 기록만). 가족 AI 동의와 하루 한도를 따른다.",
+        "operationId": "post_ask_location_ask_post",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-gyeot-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Gyeot-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/app__features__location__schemas__AskIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/app__features__location__schemas__AskOut"
                 }
               }
             }
@@ -15686,59 +16261,6 @@
         ],
         "title": "ApisOut"
       },
-      "AskIn": {
-        "properties": {
-          "question": {
-            "type": "string",
-            "maxLength": 500,
-            "minLength": 1,
-            "title": "Question"
-          }
-        },
-        "type": "object",
-        "required": [
-          "question"
-        ],
-        "title": "AskIn"
-      },
-      "AskOut": {
-        "properties": {
-          "answer": {
-            "type": "string",
-            "title": "Answer"
-          },
-          "source": {
-            "type": "string",
-            "enum": [
-              "ai",
-              "fallback"
-            ],
-            "title": "Source"
-          },
-          "sources": {
-            "items": {
-              "$ref": "#/components/schemas/SourceOut"
-            },
-            "type": "array",
-            "title": "Sources"
-          },
-          "tool_calls": {
-            "items": {
-              "$ref": "#/components/schemas/ToolCallOut"
-            },
-            "type": "array",
-            "title": "Tool Calls"
-          }
-        },
-        "type": "object",
-        "required": [
-          "answer",
-          "source",
-          "sources",
-          "tool_calls"
-        ],
-        "title": "AskOut"
-      },
       "AttachmentOut": {
         "properties": {
           "id": {
@@ -17125,6 +17647,19 @@
         "title": "ConfirmRequest",
         "description": "확인 카드의 버튼을 눌렀을 때. AI 를 부르지 않는다."
       },
+      "ConsentIn": {
+        "properties": {
+          "consent": {
+            "type": "boolean",
+            "title": "Consent"
+          }
+        },
+        "type": "object",
+        "required": [
+          "consent"
+        ],
+        "title": "ConsentIn"
+      },
       "DeletedOut": {
         "properties": {
           "message_ids": {
@@ -17995,6 +18530,27 @@
           "paid_by"
         ],
         "title": "ExpenseOut"
+      },
+      "FamilyLocations": {
+        "properties": {
+          "members": {
+            "items": {
+              "$ref": "#/components/schemas/MemberLocation"
+            },
+            "type": "array",
+            "title": "Members"
+          },
+          "can_see_family": {
+            "type": "boolean",
+            "title": "Can See Family"
+          }
+        },
+        "type": "object",
+        "required": [
+          "members",
+          "can_see_family"
+        ],
+        "title": "FamilyLocations"
       },
       "FeatureRow": {
         "properties": {
@@ -19677,6 +20233,88 @@
         ],
         "title": "MediaPage"
       },
+      "MemberLocation": {
+        "properties": {
+          "user_id": {
+            "type": "string",
+            "title": "User Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "is_me": {
+            "type": "boolean",
+            "title": "Is Me"
+          },
+          "sharing": {
+            "type": "boolean",
+            "title": "Sharing"
+          },
+          "paused": {
+            "type": "boolean",
+            "title": "Paused",
+            "default": false
+          },
+          "lat": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lat"
+          },
+          "lng": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lng"
+          },
+          "recorded_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recorded At"
+          },
+          "outside": {
+            "type": "boolean",
+            "title": "Outside",
+            "default": false
+          },
+          "zone": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ZoneOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "user_id",
+          "name",
+          "is_me",
+          "sharing"
+        ],
+        "title": "MemberLocation"
+      },
       "MemberOut": {
         "properties": {
           "id": {
@@ -20138,6 +20776,56 @@
         ],
         "title": "MuteSet"
       },
+      "MyLocationOut": {
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "title": "Enabled"
+          },
+          "consent": {
+            "type": "boolean",
+            "title": "Consent"
+          },
+          "paused_until": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Paused Until"
+          },
+          "paused": {
+            "type": "boolean",
+            "title": "Paused",
+            "default": false
+          },
+          "zone": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ZoneOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "point_count": {
+            "type": "integer",
+            "title": "Point Count",
+            "default": 0
+          }
+        },
+        "type": "object",
+        "required": [
+          "enabled",
+          "consent"
+        ],
+        "title": "MyLocationOut"
+      },
       "NicknameIn": {
         "properties": {
           "nickname": {
@@ -20385,6 +21073,26 @@
           "email"
         ],
         "title": "PasswordResetRequestIn"
+      },
+      "PauseIn": {
+        "properties": {
+          "days": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 14.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Days"
+          }
+        },
+        "type": "object",
+        "title": "PauseIn",
+        "description": "days 가 없거나 0 이면 일시정지를 푼다. 최대 14일."
       },
       "PaymentCreate": {
         "properties": {
@@ -20739,6 +21447,91 @@
           "items"
         ],
         "title": "PinsOut"
+      },
+      "PointIn": {
+        "properties": {
+          "lat": {
+            "type": "number",
+            "maximum": 90.0,
+            "minimum": -90.0,
+            "title": "Lat"
+          },
+          "lng": {
+            "type": "number",
+            "maximum": 180.0,
+            "minimum": -180.0,
+            "title": "Lng"
+          },
+          "accuracy_m": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 100000.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Accuracy M"
+          },
+          "recorded_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recorded At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "lat",
+          "lng"
+        ],
+        "title": "PointIn"
+      },
+      "PointSaved": {
+        "properties": {
+          "saved": {
+            "type": "boolean",
+            "title": "Saved"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "paused",
+                  "no_consent"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "outside": {
+            "type": "boolean",
+            "title": "Outside",
+            "default": false
+          },
+          "alerted": {
+            "type": "boolean",
+            "title": "Alerted",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "saved"
+        ],
+        "title": "PointSaved"
       },
       "PreviewLine": {
         "properties": {
@@ -22138,6 +22931,20 @@
           "token"
         ],
         "title": "SignupOut"
+      },
+      "SimulateIn": {
+        "properties": {
+          "distance_m": {
+            "type": "number",
+            "maximum": 500000.0,
+            "minimum": 100.0,
+            "title": "Distance M",
+            "default": 5000
+          }
+        },
+        "type": "object",
+        "title": "SimulateIn",
+        "description": "시연용: 지정한 사용자(기본은 나)의 현재 위치를 활동 구역에서 멀리 옮긴 것처럼 한 번 보낸다."
       },
       "SocialAccountOut": {
         "properties": {
@@ -23733,6 +24540,93 @@
         ],
         "title": "ValidationError"
       },
+      "ZoneOut": {
+        "properties": {
+          "center_lat": {
+            "type": "number",
+            "title": "Center Lat"
+          },
+          "center_lng": {
+            "type": "number",
+            "title": "Center Lng"
+          },
+          "radius_m": {
+            "type": "number",
+            "title": "Radius M"
+          },
+          "sample_count": {
+            "type": "integer",
+            "title": "Sample Count"
+          },
+          "computed_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Computed At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "center_lat",
+          "center_lng",
+          "radius_m",
+          "sample_count",
+          "computed_at"
+        ],
+        "title": "ZoneOut"
+      },
+      "app__features__ai_assistant__knowledge__schemas__AskIn": {
+        "properties": {
+          "question": {
+            "type": "string",
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Question"
+          }
+        },
+        "type": "object",
+        "required": [
+          "question"
+        ],
+        "title": "AskIn"
+      },
+      "app__features__ai_assistant__knowledge__schemas__AskOut": {
+        "properties": {
+          "answer": {
+            "type": "string",
+            "title": "Answer"
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "ai",
+              "fallback"
+            ],
+            "title": "Source"
+          },
+          "sources": {
+            "items": {
+              "$ref": "#/components/schemas/SourceOut"
+            },
+            "type": "array",
+            "title": "Sources"
+          },
+          "tool_calls": {
+            "items": {
+              "$ref": "#/components/schemas/ToolCallOut"
+            },
+            "type": "array",
+            "title": "Tool Calls"
+          }
+        },
+        "type": "object",
+        "required": [
+          "answer",
+          "source",
+          "sources",
+          "tool_calls"
+        ],
+        "title": "AskOut"
+      },
       "app__features__ai_assistant__knowledge__schemas__SearchOut": {
         "properties": {
           "hits": {
@@ -23776,6 +24670,56 @@
           "next_before_id"
         ],
         "title": "SearchOut"
+      },
+      "app__features__location__schemas__AskIn": {
+        "properties": {
+          "question": {
+            "type": "string",
+            "maxLength": 300,
+            "minLength": 1,
+            "title": "Question"
+          },
+          "history": {
+            "anyOf": [
+              {
+                "items": {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                "type": "array",
+                "maxItems": 10
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "History"
+          }
+        },
+        "type": "object",
+        "required": [
+          "question"
+        ],
+        "title": "AskIn",
+        "description": "위치 기록 질문. history 는 앞선 대화(역할 user/assistant, 글)다."
+      },
+      "app__features__location__schemas__AskOut": {
+        "properties": {
+          "answer": {
+            "type": "string",
+            "title": "Answer"
+          },
+          "used_tool": {
+            "type": "boolean",
+            "title": "Used Tool"
+          }
+        },
+        "type": "object",
+        "required": [
+          "answer",
+          "used_tool"
+        ],
+        "title": "AskOut"
       }
     }
   }

@@ -88,6 +88,9 @@ class Settings(BaseSettings):
     # 구독·통신비 서버 API(/billing/subscriptions*) 사용 여부(기본 꺼짐). 지갑 탭에서 구독 기능을 빼면서 닫았다. 꺼져 있으면 403 subscription_disabled 로 막고,
     # 일정 추천도 구독 결제일을 읽지 않는다. 테이블과 데이터는 그대로 둔다.
     subscription_api_enabled: bool = False
+    # 위치 공유(베타, feature/hojenn-location-beta 에만 있는 기능). 기본 꺼짐: 켜기·위치 올리기·가족 위치 API 는 503(location_disabled)이고 동의 철회·내 위치 삭제만 열려 있다
+    location_enabled: bool = False
+    location_retention_days: int = 14  # 이 날짜가 지난 위치는 지운다
     # 메일 요청 제한(프로세스 메모리, login 제한과 같은 한계): 인증 메일 재발송 간격/시간당, 재설정 메일 이메일별/IP별 시간당
     verify_resend_cooldown_seconds: int = 60
     verify_max_per_hour: int = 5
@@ -138,6 +141,10 @@ class Settings(BaseSettings):
     ai_tab_agent_cooldown_seconds: int = 0
     ai_tab_agent_max_calls_per_user_per_day: int = 60
     ai_tab_agent_max_calls_per_group_per_day: int = 200
+    # 위치 기록 질문 에이전트(위치 베타 브랜치에만 있음)는 탭 에이전트와 따로 센다. 질문 하나에 모델을 여러 번 부르면 실제 호출 수를 센다
+    ai_location_agent_cooldown_seconds: int = 0
+    ai_location_agent_max_calls_per_user_per_day: int = 30
+    ai_location_agent_max_calls_per_group_per_day: int = 100
     ai_schedule_chat_cooldown_seconds: int = 0
     ai_schedule_chat_max_calls_per_user_per_day: int = 30
     ai_schedule_chat_max_calls_per_group_per_day: int = 100

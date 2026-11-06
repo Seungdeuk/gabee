@@ -61,6 +61,10 @@ docker compose 의 개발용 PostgreSQL(`pgvector/pgvector:pg16` 이미지, `pgv
 | allowance_entries | billing | 용돈 장부(입금 credit·사용 use, 취소는 `voided_at`). 주기 입금은 `plan_due_date`로 같은 지급일 중복 방지(unique) |
 | allowance_requests | billing | 자녀의 용돈 요청(금액, 사유, 상태 pending/approved/rejected/cancelled, 처리한 사람, 승인 금액, 승인으로 생긴 장부 줄 `entry_id`) |
 | location_consent_events | shared | (돌봄 위치 기능을 지워 새 기록은 없음) 위치 공유 동의·철회 이력(사용자, 동의 여부, 경로, 시각). 좌표 없음 |
+| location_points | location | (위치 베타 브랜치에만 있음) 동의한 사람이 보낸 위치(사용자, 그룹, 위도·경도, 오차, 잰 시각, 받은 시각). 보관 기간(기본 14일)이 지나면 지운다. 좌표는 로그에 남기지 않는다 |
+| location_zones | location | (위치 베타 브랜치에만 있음) 사용자별 평소 활동 구역(중심, 반지름, 계산에 쓴 위치 수, 마지막 이탈 알림 시각, 지금 구역 밖인지) |
+| location_settings | location | (위치 베타 브랜치에만 있음) 사용자별 위치 공유 일시정지 종료 시각 |
+| location_chunks | location | (위치 베타 브랜치에만 있음) 위치 기록을 사람이 읽는 요약 문장으로 바꾼 검색 조각(주인, 그룹, 종류 span/move/day/place, 시작·끝 시각, 문장, 임베딩 pgvector 384차원, 임베딩 모델). 좌표를 담지 않는다. 동의 철회·위치 삭제 때 함께 지운다 |
 | photos | ai_assistant | 앱이 올린 사진(파일은 `DATA_DIR/photos`에 저장) |
 | knowledge_items | ai_assistant/knowledge | 전처리가 넘긴 기록 한 건(분류 이름, 제목, 마크다운 전체, 원본 경로, 날짜, 민감도) |
 | knowledge_chunks | ai_assistant/knowledge | 기록을 쪽·슬라이드·길이로 자른 조각과 임베딩 벡터(PostgreSQL 은 pgvector `vector(384)` + 코사인 HNSW 인덱스, SQLite 는 JSON). Alembic 리비전 c3a9f21d7e54 |

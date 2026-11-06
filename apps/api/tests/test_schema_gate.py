@@ -266,6 +266,7 @@ def test_health_db_reports_ready_state_and_exposes_no_internal_names(client):
         "notifications",
         "support",
         "ops_admin",
+        "location",  # 위치 베타 브랜치에만 있는 기능
     }
     assert "problems" not in str(report) and "expenses" not in str(
         report

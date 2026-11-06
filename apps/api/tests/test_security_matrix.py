@@ -211,6 +211,10 @@ NO_GROUP_OK = {
     ("GET", "/notifications/unread-count"),
     ("POST", "/notifications/read-all"),
     ("POST", "/notifications/{notification_id}/read"),
+    # 위치 공유(베타): 본인 위치의 상태·동의 철회·삭제는 가족이 없어도 할 수 있어야 한다(가족을 떠난 뒤에도 내 위치를 지울 수 있게). 그룹 id 를 요청에서 받지 않는다
+    ("GET", "/location/me"),
+    ("PUT", "/location/consent"),
+    ("DELETE", "/location/me"),
     # 서비스 관리자 경로는 가족 데이터가 아니다. 권한은 require_operator("service_admin") 허용 목록이 정한다(admin/tests 에서 401·403 확인)
     ("GET", "/admin/me"),
     ("GET", "/admin/members"),

@@ -1,0 +1,81 @@
+from datetime import datetime
+from typing import Literal
+
+from pydantic import BaseModel, Field
+
+
+class ConsentIn(BaseModel):
+    consent: bool
+
+
+class PauseIn(BaseModel):
+    """days 가 없거나 0 이면 일시정지를 푼다. 최대 14일."""
+
+    days: int | None = Field(default=None, ge=0, le=14)
+
+
+class PointIn(BaseModel):
+    lat: float = Field(ge=-90, le=90)
+    lng: float = Field(ge=-180, le=180)
+    accuracy_m: float | None = Field(default=None, ge=0, le=100000)
+    recorded_at: datetime | None = None  # 없으면 서버가 받은 시각
+
+
+class ZoneOut(BaseModel):
+    center_lat: float
+    center_lng: float
+    radius_m: float
+    sample_count: int
+    computed_at: datetime
+
+
+class MyLocationOut(BaseModel):
+    enabled: bool  # 서버 스위치(LOCATION_ENABLED)
+    consent: bool
+    paused_until: datetime | None = None
+    paused: bool = False
+    zone: ZoneOut | None = None
+    point_count: int = 0
+
+
+class PointSaved(BaseModel):
+    saved: bool
+    reason: Literal["paused", "no_consent"] | None = None
+    outside: bool = False  # 저장한 위치가 활동 구역 밖인지
+    alerted: bool = False  # 이 요청으로 부모에게 알림을 보냈는지
+
+
+class MemberLocation(BaseModel):
+    user_id: str
+    name: str
+    is_me: bool
+    sharing: bool  # 동의했고 일시정지 중이 아님
+    paused: bool = False
+    lat: float | None = None
+    lng: float | None = None
+    recorded_at: datetime | None = None
+    outside: bool = False
+    zone: ZoneOut | None = None
+
+
+class FamilyLocations(BaseModel):
+    members: list[MemberLocation]
+    can_see_family: bool  # 부모(관리자)만 가족의 위치를 본다
+
+
+class AskIn(BaseModel):
+    """위치 기록 질문. history 는 앞선 대화(역할 user/assistant, 글)다."""
+
+    question: str = Field(min_length=1, max_length=300)
+    history: list[dict] | None = Field(default=None, max_length=10)
+
+
+class AskOut(BaseModel):
+    answer: str
+    used_tool: bool  # 위치 기록을 찾아서 답했는지
+
+
+class SimulateIn(BaseModel):
+    """시연용: 지정한 사용자(기본은 나)의 현재 위치를 활동 구역에서 멀리 옮긴 것처럼 한 번 보낸다."""
+
+    distance_m: float = Field(default=5000, ge=100, le=500000)

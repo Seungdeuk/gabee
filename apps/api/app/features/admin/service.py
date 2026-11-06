@@ -48,6 +48,7 @@ AI_FEATURE_NAMES = {
     "schedule_card": "일정 카드 만들기",
     "billing_agent": "정산 에이전트",
     "family_chat_agent": "가족 채팅 에이전트",
+    "location_agent": "위치 기록 에이전트",
     "analysis": "가족 채팅 분석",
     "reply": "답장 추천",
     "topics": "대화 주제 추천",
