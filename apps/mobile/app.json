@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "가비",
+    "name": "가비 베타",
     "slug": "gabeebetaver",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -12,13 +12,12 @@
       "bundleIdentifier": "com.kangminhun.gabee"
     },
     "android": {
-      "package": "com.kangminhun.gabee",
+      "package": "com.kangminhun.gabee.beta",
       "adaptiveIcon": {
         "backgroundColor": "#FFF7E3",
         "foregroundImage": "./assets/images/android-icon-foreground.png"
       },
       "predictiveBackGestureEnabled": false,
-      "googleServicesFile": "./google-services.json",
       "permissions": [
         "android.permission.RECORD_AUDIO",
         "android.permission.READ_EXTERNAL_STORAGE",
