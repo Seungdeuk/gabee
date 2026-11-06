@@ -2530,7 +2530,7 @@
           "family-chat"
         ],
         "summary": "Send Photo",
-        "description": "사진 메시지를 보낸다(multipart `file`, 선택 `room_id`). JPEG/PNG/WebP 8MB 이하, 서버가 EXIF 를 지우고 다시 만든다. AI 를 부르지 않는다.",
+        "description": "사진 메시지를 보낸다(multipart `file`, 선택 `room_id`, 선택 `batch_id`: 여러 장을 한 번에 올릴 때 장마다 같은 번호). JPEG/PNG/WebP 8MB 이하, 서버가 EXIF 를 지우고 다시 만든다. AI 를 부르지 않는다.",
         "operationId": "send_photo_family_chat_photos_post",
         "parameters": [
           {
@@ -15790,6 +15790,17 @@
             ],
             "title": "Height"
           },
+          "batch_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Batch Id"
+          },
           "filename": {
             "anyOf": [
               {
@@ -16007,6 +16018,18 @@
               }
             ],
             "title": "Room Id"
+          },
+          "batch_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9_-]{8,32}$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Batch Id"
           }
         },
         "type": "object",
@@ -19639,6 +19662,17 @@
               }
             ],
             "title": "Height"
+          },
+          "batch_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Batch Id"
           },
           "size_bytes": {
             "anyOf": [

@@ -6,6 +6,7 @@ import AuthImage from "@/shared/components/AuthImage";
 import UserAvatar from "@/shared/components/UserAvatar";
 import { colors, font, radius, spacing } from "@/theme";
 
+import { ALBUM_WIDTH, albumCells } from "../album";
 import { formatTime } from "../chatUtils";
 import { unreadByA11yLabel } from "../listUtils";
 import { fitSize } from "../photo";
@@ -15,6 +16,7 @@ import { DELETED_TEXT, DOUBLE_TAP_MS, isDoubleTap } from "../messageActions";
 import { openChatFile, saveChatFile } from "../openFile";
 import { saveFileName } from "../mediaUtils";
 import { savePhoto } from "../savePhoto";
+import AlbumViewer from "./AlbumViewer";
 import AssistantAvatar from "./AssistantAvatar";
 import FileCard from "./FileCard";
 import { highlightNodes, hitStyles } from "./Highlighted";
@@ -41,12 +43,14 @@ const AVATAR = 36;
  * 파일 메시지(attachment.kind === "file")는 사진 대신 파일 카드를 보인다: 본문을 누르면 열기/공유, 다운로드 아이콘은 내 파일/드라이브에 저장. 사진 보기에는 "사진첩에 저장" 버튼이 붙는다.
  * @param {{ message: object, mine: boolean, showName: boolean, showTime?: boolean, unread?: number, photoUrl?: string | null, highlighted?: boolean, searchTerms?: string[], searchCurrent?: boolean, onRetry?: (clientId: string) => void, onDiscard?: (clientId: string) => void, onActions?: (message: object, anchor: { x: number, y: number } | null) => void, onHeart?: (message: object) => void, onReactionPress?: (message: object, emoji: string) => void, onReplyPress?: (messageId: number) => void, linkBadges?: { kind: "event" | "todo", label: string }[], onSaveToRecord?: (attachment: object) => Promise<{ ok: boolean, message: string }>, nameOf?: (userId: string) => string | undefined }} props
  */
-export default function MessageBubble({ message, mine, showName, showTime = true, unread = 0, photoUrl, highlighted = false, searchTerms, searchCurrent = false, onRetry, onDiscard, onActions, onHeart, onReactionPress, onReplyPress, linkBadges, onSaveToRecord, nameOf }) {
+export default function MessageBubble({ message, mine, showName, showTime = true, unread = 0, photoUrl, highlighted = false, searchTerms, searchCurrent = false, onRetry, onDiscard, onActions, onHeart, onReactionPress, onReplyPress, linkBadges, onSaveToRecord, nameOf, album }) {
   const senderName = nameOf?.(message.user_id) || message.user_name; // 내가 붙인 별명이 있으면 별명
   const failed = message.status === "failed";
   const sending = message.status === "sending";
   const attachment = message.attachment ?? null;
+  const isAlbum = Boolean(album && album.length > 1); // 같은 묶음으로 올린 사진들(message 는 그 마지막 사진)
   const [viewing, setViewing] = useState(false);
+  const [albumStart, setAlbumStart] = useState(null); // 앨범 뷰어를 연 사진 순서(닫혀 있으면 null)
   const [record, setRecord] = useState({ saving: false, done: false, notice: "" }); // 가비 기록에 저장한 상태(이 사진 하나의 것)
   const isFile = isFileMessage(message);
   const [fileState, setFileState] = useState({ busy: null, notice: "" }); // 파일 열기·저장 진행/결과
@@ -77,6 +81,20 @@ export default function MessageBubble({ message, mine, showName, showTime = true
     }
     lastTap.current = now;
     photoTimer.current = setTimeout(() => setViewing(true), onHeart ? DOUBLE_TAP_MS : 0);
+  };
+
+  /** 앨범 안의 사진을 길게 눌렀을 때: 그 사진의 메시지로 메뉴를 연다(삭제 등이 그 사진에만 적용된다). */
+  const openAlbumMenu = (target, e) => {
+    const n = e?.nativeEvent;
+    onActions?.(target, typeof n?.pageX === "number" && typeof n?.pageY === "number" ? { x: n.pageX, y: n.pageY } : null);
+  };
+  /** 앨범 뷰어의 "사진첩에 저장": 지금 보고 있는 사진 한 장을 저장한다. */
+  const saveAlbumPhoto = async (photo) => {
+    if (device.saving) return;
+    setDevice({ saving: true, notice: "" });
+    const target = album.find((m) => m.attachment?.id === photo.id);
+    const result = await savePhoto({ url: photo.url }, saveFileName({ attachment_id: photo.id, created_at: target?.created_at ?? message.created_at }), Platform.OS);
+    setDevice({ saving: false, notice: result.message });
   };
 
   /** "가비 기록에 저장"을 눌렀을 때: 저장 중이거나 이미 저장했으면 다시 올리지 않는다(같은 사진이 기록에 두 번 쌓이지 않게). */
@@ -166,7 +184,21 @@ export default function MessageBubble({ message, mine, showName, showTime = true
           ) : null}
         </>
       ) : null}
-      {attachment && !isFile ? (
+      {isAlbum ? (
+        <>
+          <AlbumGrid album={album} onOpen={setAlbumStart} onLongPress={onActions ? openAlbumMenu : undefined} />
+          <AlbumViewer
+            photos={album.map((m) => ({ id: m.attachment.id, url: m.attachment.url }))}
+            startIndex={albumStart ?? 0}
+            visible={albumStart != null}
+            onClose={() => setAlbumStart(null)}
+            onSaveToDevice={saveAlbumPhoto}
+            saving={device.saving}
+            notice={device.notice}
+          />
+        </>
+      ) : null}
+      {attachment && !isFile && !isAlbum ? (
         <>
           <Pressable onPress={tapPhoto} onLongPress={onActions ? openMenu : undefined} accessibilityRole="imagebutton" accessibilityLabel="사진, 누르면 크게 봐요">
             <AuthImage path={attachment.thumb_url} style={[styles.photo, { width: size.width, aspectRatio: size.width / size.height }]} />
@@ -273,6 +305,35 @@ export default function MessageBubble({ message, mine, showName, showTime = true
     );
 }
 
+/**
+ * 앨범 말풍선 안의 사진 칸들(2장 나란히 · 3장 위 한 장+아래 두 장 · 4장 이상 2×2 에 마지막 칸 "+N"). 누르면 그 사진부터 뷰어가 열린다.
+ * @param {{ album: object[], onOpen: (index: number) => void, onLongPress?: (message: object, e: object) => void }} props
+ */
+function AlbumGrid({ album, onOpen, onLongPress }) {
+  const { cells, more } = albumCells(album.length, ALBUM_WIDTH);
+  return (
+    <View style={styles.album} accessible={false}>
+      {cells.map((cell, i) => (
+        <Pressable
+          key={album[i].id}
+          onPress={() => onOpen(i)}
+          onLongPress={onLongPress ? (e) => onLongPress(album[i], e) : undefined}
+          accessibilityRole="imagebutton"
+          accessibilityLabel={`사진 ${album.length}장 중 ${i + 1}번째, 누르면 크게 봐요`}
+          style={{ width: cell.width, height: cell.height }}
+        >
+          <AuthImage path={album[i].attachment.thumb_url} style={{ width: cell.width, height: cell.height, borderRadius: radius.sm }} />
+          {more > 0 && i === cells.length - 1 ? (
+            <View style={[styles.albumMore, { borderRadius: radius.sm }]}>
+              <Text style={styles.albumMoreText}>{`+${more}`}</Text>
+            </View>
+          ) : null}
+        </Pressable>
+      ))}
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
   row: { flexDirection: "row", alignItems: "flex-end", gap: spacing.sm, paddingHorizontal: spacing.md, paddingVertical: 1 },
   mineRow: { justifyContent: "flex-end" },
@@ -295,6 +356,9 @@ const styles = StyleSheet.create({
   photoBubble: { paddingHorizontal: spacing.xs, paddingVertical: spacing.xs }, // 위쪽 bubble 의 가로·세로 여백(longhand)이 padding 보다 우선해서 같은 방향으로 덮어쓴다
   photo: { maxWidth: "100%", borderRadius: radius.md }, // 좁은 화면에서는 말풍선 안으로 비율을 지키며 줄어든다
   fileNotice: { ...font.caption, color: colors.textSub, marginTop: spacing.xs },
+  album: { flexDirection: "row", flexWrap: "wrap", gap: 2, width: ALBUM_WIDTH },
+  albumMore: { position: "absolute", top: 0, left: 0, right: 0, bottom: 0, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(0,0,0,0.45)" },
+  albumMoreText: { ...font.cardTitle, color: colors.onDark },
   photoText: { paddingHorizontal: spacing.sm, paddingVertical: spacing.xs },
   dim: { opacity: 0.6 },
   linkChip: { flexDirection: "row", alignItems: "center", gap: spacing.xs, alignSelf: "flex-start", marginTop: spacing.xs, paddingHorizontal: spacing.sm, paddingVertical: 2, borderRadius: radius.pill, backgroundColor: colors.honeySoft },

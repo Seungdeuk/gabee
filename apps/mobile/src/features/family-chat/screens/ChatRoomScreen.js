@@ -9,7 +9,7 @@ import Button from "@/shared/components/Button";
 import IconButton from "@/shared/components/IconButton";
 import { colors, font, radius, spacing } from "@/theme";
 
-import { buildItems, canSend, lastId, photoSendErrorMessage, trimDraft, unreadCount, unreadDividerId } from "../chatUtils";
+import { buildItems, canSend, itemHasMessage, lastId, photoSendErrorMessage, trimDraft, unreadCount, unreadDividerId } from "../chatUtils";
 import { mergeNotes, parseMention, restoreThread } from "../mention";
 import AiPanel from "../components/AiPanel";
 import AssistantNote from "../components/AssistantNote";
@@ -33,7 +33,8 @@ import useChatSearch, { useFamilyRoomId } from "../useChatSearch";
 import { memberName } from "../listUtils";
 import { fileSendErrorMessage } from "../fileUtils";
 import { pickChatDocument } from "../pickChatDocument";
-import { pickChatPhoto } from "../pickPhoto";
+import { makeBatchId } from "../album";
+import { pickChatPhotos } from "../pickPhoto";
 import useReadBaseline from "../useReadBaseline";
 import useReadMarker from "../useReadMarker";
 
@@ -194,18 +195,24 @@ export default function ChatRoomScreen() {
     if (!(await chat.send(text, null))) throw new Error("방에 보내지 못했어요. 잠시 후 다시 시도해 주세요.");
   };
 
-  /** 갤러리에서 사진 한 장을 골라 보낸다. 고르는 동안·보내는 동안은 다시 누를 수 없다. */
+  /** 갤러리에서 사진을 한 장 또는 여러 장(최대 10장) 골라 보낸다. 2장 이상이면 같은 묶음 번호를 붙여 앨범으로 보이게 하고, 한 장이 실패하면 거기서 멈춘다. 고르는 동안·보내는 동안은 다시 누를 수 없다. */
   const onPickPhoto = async () => {
     if (picking.current || chat.photoBusy) return;
     picking.current = true;
     setPicking(true);
     chat.setPhotoError("");
     try {
-      const asset = await pickChatPhoto();
-      if (!asset) return;
+      const assets = await pickChatPhotos();
+      if (!assets.length) return;
       nearBottom.current = true;
       sentEarly.current = true;
-      if (await chat.sendImage(asset)) scrollToEnd(true);
+      const batchId = assets.length > 1 ? makeBatchId() : undefined;
+      let sent = false;
+      for (const asset of assets) {
+        if (!(await chat.sendImage(asset, batchId))) break;
+        sent = true;
+      }
+      if (sent) scrollToEnd(true);
     } catch (e) {
       chat.setPhotoError(photoSendErrorMessage(e));
     } finally {
@@ -327,7 +334,7 @@ export default function ChatRoomScreen() {
     setHasNew(false);
     setHighlightId(target.id);
     const scroll = setTimeout(() => {
-      const index = itemsRef.current.findIndex((it) => it.type === "message" && String(it.message.id) === String(target.id));
+      const index = itemsRef.current.findIndex((it) => itemHasMessage(it, target.id));
       if (index >= 0) listRef.current?.scrollToIndex({ index, viewPosition: 0.35, animated: false });
     }, 0);
     const settle = setTimeout(() => {
@@ -423,7 +430,7 @@ export default function ChatRoomScreen() {
       chat.focusOn(messageId);
       return;
     }
-    const index = itemsRef.current.findIndex((it) => it.type === "message" && String(it.message.id) === String(messageId));
+    const index = itemsRef.current.findIndex((it) => itemHasMessage(it, messageId));
     if (index < 0) {
       clearTimeout(pinHighlightTimer.current);
       clearTimeout(pinSettleTimer.current);
@@ -578,9 +585,10 @@ export default function ChatRoomScreen() {
                 showTime={item.showTime}
                 unread={unreadCount(item.message, info.me, chat.readStates)}
                 photoUrl={photoById[item.message.user_id]}
-                highlighted={highlightId != null && String(item.message.id) === String(highlightId)}
+                album={item.album}
+                highlighted={highlightId != null && itemHasMessage(item, highlightId)}
                 searchTerms={searchOpen ? search.terms : undefined}
-                searchCurrent={currentMatchId != null && String(item.message.id) === String(currentMatchId)}
+                searchCurrent={currentMatchId != null && itemHasMessage(item, currentMatchId)}
                 onRetry={chat.resend}
                 onDiscard={chat.discard}
                 onActions={canOpenMenu(item.message) ? openMenu : undefined}

@@ -159,6 +159,9 @@ class MessageAttachment(Base):
     kind: Mapped[str] = mapped_column(String(10), default="image", server_default="image")
     path: Mapped[str] = mapped_column(String(80))
     thumb_path: Mapped[str | None] = mapped_column(String(80), nullable=True)  # 문서는 없다
+    batch_id: Mapped[str | None] = mapped_column(
+        String(32), nullable=True, index=True
+    )  # 한 번에 여러 장 올린 사진의 묶음 번호(앱이 만든다). 없으면 한 장짜리
     width: Mapped[int | None] = mapped_column(Integer, nullable=True)  # 문서는 없다
     height: Mapped[int | None] = mapped_column(Integer, nullable=True)  # 문서는 없다
     size_bytes: Mapped[int] = mapped_column(Integer)

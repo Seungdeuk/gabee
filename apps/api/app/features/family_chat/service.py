@@ -35,6 +35,7 @@ def _attachment_out(a: MessageAttachment) -> AttachmentOut:
         thumb_url=f"/family-chat/photos/{a.id}?size=thumb",
         width=a.width,
         height=a.height,
+        batch_id=a.batch_id,
         size_bytes=a.size_bytes,
     )
 
