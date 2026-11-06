@@ -2,7 +2,8 @@ import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as Clipboard from "expo-clipboard";
-import { ActivityIndicator, FlatList, KeyboardAvoidingView, Platform, Pressable, StyleSheet, Text, View } from "react-native";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { ActivityIndicator, Alert, FlatList, KeyboardAvoidingView, Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import Button from "@/shared/components/Button";
@@ -34,6 +35,7 @@ import { memberName } from "../listUtils";
 import { fileSendErrorMessage } from "../fileUtils";
 import { pickChatDocument } from "../pickChatDocument";
 import { makeBatchId } from "../album";
+import { LIBRARY_NOTICE_BODY, LIBRARY_NOTICE_TITLE, markLibraryNoticeSeen, shouldShowLibraryNotice } from "../libraryNotice";
 import { pickChatPhotos } from "../pickPhoto";
 import useReadBaseline from "../useReadBaseline";
 import useReadMarker from "../useReadMarker";
@@ -244,6 +246,11 @@ export default function ChatRoomScreen() {
     setPickingFile(true);
     chat.setPhotoError("");
     try {
+      if (!direct && (await shouldShowLibraryNotice(AsyncStorage))) {
+        // 가족 전체방에 올린 문서는 가족 공유 문서함에 자동 등록된다는 안내를 처음 한 번만 보이고, 확인한 뒤 파일을 고른다
+        await new Promise((resolve) => Alert.alert(LIBRARY_NOTICE_TITLE, LIBRARY_NOTICE_BODY, [{ text: "확인", onPress: () => resolve() }], { onDismiss: () => resolve() }));
+        await markLibraryNoticeSeen(AsyncStorage);
+      }
       const asset = await pickChatDocument();
       if (!asset) return;
       nearBottom.current = true;

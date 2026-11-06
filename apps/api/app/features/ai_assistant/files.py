@@ -13,6 +13,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.features.family_group.models import GroupMember
@@ -80,7 +81,14 @@ def _notify_document(db: Session, group_id: str, user_id: str, item) -> None:
     db.commit()
 
 
-def process_file(photo_id: str, group_id: str, user_id: str, data: bytes, filename: str) -> None:
+def process_file(
+    photo_id: str,
+    group_id: str,
+    user_id: str,
+    data: bytes,
+    filename: str,
+    source_attachment_id: str | None = None,
+) -> None:
     """전처리해서 knowledge 에 넣고 `photos.status` 를 바꾼다. 어떤 실패도 서버를 멈추지 않는다.
 
     Claude 연결이 잠깐 안 돼서 실패(`llm_unavailable`)했으면 기다렸다가 같은 파일을 다시 처리한다(원본 바이트는 이미 메모리에 있다).
@@ -90,7 +98,9 @@ def process_file(photo_id: str, group_id: str, user_id: str, data: bytes, filena
         if attempt:
             time.sleep(settings.ingest_retry_wait_seconds * attempt)
         with _SLOTS:
-            status, retry = _process_once(photo_id, group_id, user_id, data, filename)
+            status, retry = _process_once(
+                photo_id, group_id, user_id, data, filename, source_attachment_id
+            )
         if not retry:
             break
         logger.warning(
@@ -100,7 +110,27 @@ def process_file(photo_id: str, group_id: str, user_id: str, data: bytes, filena
             settings.ingest_retry_max + 1,
         )
     with SessionLocal() as db:
-        repo.set_status(db, photo_id, status)
+        if source_attachment_id and status == "failed":
+            repo.delete_photo(
+                db, photo_id
+            )  # 채팅 문서는 읽지 못해도 "실패" 기록을 남기지 않는다(채팅 파일로는 남아 있다)
+        else:
+            repo.set_status(db, photo_id, status)
+
+
+def _drop_chat_upload(group_id: str, photo_id: str, result) -> None:
+    """등록하지 않기로 한 채팅 문서의 처리 기록(photos)과, 이번에 보관한 원본·사본을 지운다(다른 기록이 쓰는 원본은 그대로 둔다)."""
+    with SessionLocal() as db:
+        repo.delete_photo(db, photo_id)
+        path = getattr(result, "raw_path", None)
+        if path and not path_in_use(db, group_id, path):
+            store = LocalRawStore()
+            stem = path.rsplit(".", 1)[0]
+            for ref in (path, f"{stem}.display.webp"):
+                try:
+                    store.delete_for_group(group_id, ref)
+                except (ValueError, OSError):
+                    logger.warning("원본 파일을 지우지 못했어요 id=%s", photo_id)
 
 
 def _plan_reminders(photo_id: str, group_id: str, user_id: str) -> None:
@@ -115,7 +145,12 @@ def _plan_reminders(photo_id: str, group_id: str, user_id: str) -> None:
 
 
 def _process_once(
-    photo_id: str, group_id: str, user_id: str, data: bytes, filename: str
+    photo_id: str,
+    group_id: str,
+    user_id: str,
+    data: bytes,
+    filename: str,
+    source_attachment_id: str | None = None,
 ) -> tuple[str, bool]:
     """한 번 처리한다. (상태, 다시 해 볼 만한 실패인지)"""
     try:
@@ -131,16 +166,42 @@ def _process_once(
             family=family,
         )
         if result.quality.status == "failed":
-            return "failed", result.quality.error == "llm_unavailable"
+            retry = result.quality.error == "llm_unavailable"
+            if source_attachment_id and not retry:
+                _drop_chat_upload(group_id, photo_id, result)
+            return "failed", retry
+        fields = from_ingest.to_item(result)
+        if source_attachment_id and knowledge_service.is_sensitive(
+            fields["kind_label"], fields.get("sensitivity")
+        ):
+            _drop_chat_upload(
+                group_id, photo_id, result
+            )  # 민감 문서(처방전·신분증 등)는 자동 등록하지 않는다
+            return "skipped", False
         with SessionLocal() as db:
-            item = knowledge_service.ingest(
-                db, group_id, user_id, item_id=photo_id, **from_ingest.to_item(result)
-            )
             try:
-                _notify_document(db, group_id, user_id, item)
-            except Exception as e:  # noqa: BLE001  문서는 이미 저장됐다: 알림 실패가 처리 실패로 바뀌지 않게 종류만 적는다
+                item = knowledge_service.ingest(
+                    db,
+                    group_id,
+                    user_id,
+                    item_id=photo_id,
+                    source_attachment_id=source_attachment_id,
+                    **fields,
+                )
+            except IntegrityError:  # 같은 채팅 첨부를 다른 요청이 먼저 등록했다
                 db.rollback()
-                logger.warning("문서 알림에 실패했어요 id=%s 종류=%s", photo_id, type(e).__name__)
+                _drop_chat_upload(group_id, photo_id, result)
+                return "skipped", False
+            if (
+                not source_attachment_id
+            ):  # 채팅에 이미 올라온 파일이라 "새 문서" 알림은 한 번 더 보내지 않는다
+                try:
+                    _notify_document(db, group_id, user_id, item)
+                except Exception as e:  # noqa: BLE001  문서는 이미 저장됐다: 알림 실패가 처리 실패로 바뀌지 않게 종류만 적는다
+                    db.rollback()
+                    logger.warning(
+                        "문서 알림에 실패했어요 id=%s 종류=%s", photo_id, type(e).__name__
+                    )
         _plan_reminders(photo_id, group_id, user_id)
         return ("needs_review" if from_ingest.needs_review(result) else "analyzed"), False
     except Exception as e:  # noqa: BLE001  내용이 로그에 남지 않게 종류만 적는다

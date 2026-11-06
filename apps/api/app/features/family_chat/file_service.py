@@ -24,13 +24,14 @@ from urllib.parse import quote
 from sqlalchemy.orm import Session
 
 from app.features.family_group.models import User
+from app.shared import chat_library
 from app.shared.config import settings
 from app.shared.errors import ApiError, bad_request, not_found
 from app.shared.rate_limit import FailureLimiter
 
 from . import chat_push, photo_service, service
 from . import repository as repo
-from .models import Message, MessageAttachment
+from .models import FAMILY, Message, MessageAttachment
 from .schemas import MessageOut
 
 MAX_BYTES = 20 * 1024 * 1024
@@ -260,6 +261,12 @@ def send_file(
     except Exception:
         db.rollback()  # 파일은 이미 저장됐다. 읽음 위치 실패로 500 을 주면 재시도로 같은 파일이 두 번 간다
     chat_push.notify_new_message(db, room, message)
+    if (
+        room.kind == FAMILY
+    ):  # 가족 전체방의 문서만 가족 공유 문서함에 자동 등록한다(1:1 방은 제외, 실패해도 전송은 그대로)
+        chat_library.document_posted(
+            group_id, user.id, attachment.id, clean, ALLOWED[ext].content_type, data
+        )
     return service.message_out(message, user.name, attachment)
 
 

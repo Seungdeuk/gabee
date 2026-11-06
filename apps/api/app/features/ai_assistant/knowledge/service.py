@@ -54,6 +54,11 @@ def _sensitivity(kind_label: str, given: str | None) -> str:
     return "sensitive" if any(w in kind_label for w in SENSITIVE_WORDS) else "normal"
 
 
+def is_sensitive(kind_label: str, given: str | None = None) -> bool:
+    """이 분류(또는 전처리가 준 값)가 민감 기록인지. 채팅 문서 자동 등록에서 민감 문서를 거를 때 쓴다."""
+    return _sensitivity(kind_label, given) == "sensitive"
+
+
 def ingest(
     db: Session,
     group_id: str,
@@ -66,8 +71,9 @@ def ingest(
     occurred_on: date | None = None,
     sensitivity: str | None = None,
     item_id: str | None = None,
+    source_attachment_id: str | None = None,
 ) -> KnowledgeItem:
-    """전처리가 넘긴 기록 한 건을 조각내고 임베딩해서 저장한다."""
+    """전처리가 넘긴 기록 한 건을 조각내고 임베딩해서 저장한다. source_attachment_id 는 채팅 첨부에서 자동 등록할 때만 준다."""
     embedder = _embedder(db)
     item = KnowledgeItem(
         **({"id": item_id} if item_id else {}),
@@ -80,6 +86,7 @@ def ingest(
         occurred_on=occurred_on,
         has_unread_parts=UNREAD_MARK in body_md,
         sensitivity=_sensitivity(kind_label, sensitivity),
+        source_attachment_id=source_attachment_id,
         family_user_ids=family_names.extract_ids(title, body_md) or None,
     )
     return repo.add_item(db, item, _chunks(embedder, group_id, body_md))
