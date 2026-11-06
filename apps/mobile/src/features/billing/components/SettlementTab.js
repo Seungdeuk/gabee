@@ -10,6 +10,7 @@ import { colors, font } from "@/theme";
 
 import { getSettlement, markPaid, undoPaid } from "../api";
 import { won } from "../format";
+import PaidList from "./PaidList";
 import SettleForm from "./SettleForm";
 
 /**
@@ -96,28 +97,7 @@ export default function SettlementTab({ month, notify, refreshKey }) {
         ))}
       </Card>
 
-      <SectionTitle title="송금 완료" />
-      <Card tone="white">
-        {data.completed.length === 0 ? <Text style={styles.muted}>아직 없어요</Text> : null}
-        {data.completed.map((p) => (
-          <ListItem
-            key={p.id}
-            icon="checkmark-circle"
-            tone="green"
-            title={`${p.from_name} → ${p.to_name}`}
-            subtitle={`✓ 완료 · ${won(p.amount)}`}
-            right={
-              <Button
-                small
-                variant="secondary"
-                label="취소"
-                a11yLabel={`${p.from_name} → ${p.to_name} 송금 취소`}
-                onPress={() => act(() => undoPaid(p.id), "송금 완료를 취소했어요")}
-              />
-            }
-          />
-        ))}
-      </Card>
+      <PaidList items={data.completed} onUndo={(id) => act(() => undoPaid(id), "송금 완료를 취소했어요")} />
     </View>
   );
 }
