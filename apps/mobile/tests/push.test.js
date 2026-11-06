@@ -8,6 +8,8 @@ import {
   isQuietOn,
   isUsableToken,
   routeForPush,
+  permissionNotice,
+  permissionState,
   shouldRegister,
   toggleKind,
   withQuiet,
@@ -148,4 +150,38 @@ test("알림 설정 화면: 소통 항목이 있고 더는 쓸모없는 '메시�
   assert.match(screen, /const KIND_KEYS = \["chat", /);
   assert.doesNotMatch(screen, /PREVIEW_OPTIONS|Segmented|preview_mode: /);
   assert.match(screen, /새 메시지가 도착했어요/);
+});
+
+test("permissionState: 기기 알림 권한을 허용됨·물어볼 수 있음·막힘·알 수 없음으로 나눈다", () => {
+  assert.equal(permissionState({ status: "granted", canAskAgain: true }), "granted");
+  assert.equal(permissionState({ status: "undetermined", canAskAgain: true }), "ask");
+  assert.equal(permissionState({ status: "denied", canAskAgain: true }), "ask"); // 아직 시스템 창을 다시 띄울 수 있다
+  assert.equal(permissionState({ status: "denied", canAskAgain: false }), "blocked"); // 기기 설정에서만 켤 수 있다
+  assert.equal(permissionState(null), "unknown");
+  assert.equal(permissionState(undefined), "unknown");
+  assert.equal(permissionState({}), "unknown");
+});
+
+test("permissionNotice: 푸시를 켜 둔 상태에서만, 상태별 안내와 버튼을 돌려준다", () => {
+  assert.equal(permissionNotice("granted", true), null);
+  assert.equal(permissionNotice("unknown", true), null);
+  assert.equal(permissionNotice("blocked", false), null); // 푸시를 꺼 둔 사람에게는 권한 이야기를 하지 않는다
+  assert.equal(permissionNotice("ask", true).action, "allow");
+  assert.equal(permissionNotice("blocked", true).action, "settings");
+  assert.equal(permissionNotice("failed", true).action, null);
+  for (const state of ["ask", "blocked", "failed"]) assert.ok(permissionNotice(state, true).text.length > 0);
+});
+
+test("알림 설정 화면: 스위치를 켜면 이 기기 권한·토큰을 준비하고, 권한이 막혔으면 기기 설정을 열며, 돌아오면 다시 확인한다", async () => {
+  const { readFileSync } = await import("node:fs");
+  const read = (rel) => readFileSync(new URL(`../src/features/notifications/${rel}`, import.meta.url), "utf8");
+  const screen = read("screens/PushSettingsScreen.js");
+  assert.match(screen, /if \(next\.enabled && !previous\?\.enabled\) allowOnDevice\(\)/); // 방금 켠 때만
+  assert.match(screen, /Linking\.openSettings\(\)/); // 권한이 막혔을 때
+  assert.match(screen, /AppState\.addEventListener\("change"/); // 기기 설정에서 돌아오면
+  assert.match(screen, /state === "granted" \? await prepareThisDevice\(\) : state/); // 허용돼 있을 때만 조용히 토큰 등록(묻지 않음)
+  const boot = read("PushBootstrap.js");
+  assert.match(boot, /export async function prepareThisDevice\(\)/);
+  assert.match(boot, /export async function readPermissionState\(\)/);
+  assert.doesNotMatch(read("messages.js"), /메시지 내용이 보일 수 있어요/); // 고정 문구 방침과 맞지 않는 안내가 없다
 });
