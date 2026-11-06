@@ -1,12 +1,15 @@
-import { useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import { StyleSheet, Text, View } from "react-native";
 
 import Button from "@/shared/components/Button";
 import { colors, font, fonts, radius } from "@/theme";
 
-import AnswerRow, { bySolved } from "../components/AnswerRow";
+import { quizResultView } from "../adapt";
+import AnswerRow from "../components/AnswerRow";
+import LoadNote from "../components/LoadNote";
 import PlayScreen from "../components/PlayScreen";
 import { SCORE } from "../games";
+import { playLive, useMyId, usePlayItem } from "../hooks";
 
 // 정답 공개 시안 데이터
 const RESULTS = [
@@ -15,13 +18,41 @@ const RESULTS = [
   { q: "우리 가족이 처음 같이 간 여행지는?", answer: "제주도", mine: "제주도", rows: [["아빠", "제주도", "09:30"], ["딸", "제주도", "11:05"], ["아들", "강릉", "12:00"]] },
 ];
 
-/** 골든벨 정답 공개: 맞힌 개수와 받은 점수, 문제별 정답·내 답·한마디·가족 결과. */
+/** 시안 데이터를 서버 결과와 같은 모양으로 맞춘다. 정답 점수는 세트 전체가 20점이고 맞힌 비율만큼 받는다. */
+function mockView() {
+  const questions = RESULTS.map((r) => ({
+    q: r.q,
+    answer: r.answer,
+    mine: r.mine,
+    hit: r.answer === r.mine,
+    note: r.note ?? "",
+    rows: [...r.rows].sort((a, b) => a[2].localeCompare(b[2])).map(([name, text]) => ({ name, text, ok: text === r.answer })),
+  }));
+  const right = questions.filter((q) => q.hit).length;
+  const correct = Math.round((SCORE.correct * right) / RESULTS.length);
+  return { maker: "엄마", total: RESULTS.length, right, score: { total: SCORE.join + correct, join: SCORE.join, correct, hint: 0 }, hasScore: true, questions };
+}
+
+/** 골든벨 정답 공개: 맞힌 개수와 받은 점수, 문제별 정답·내 답·한마디·가족 결과. 서버에 연결되면 id 로 결과를 불러온다. */
 export default function QuizResultScreen() {
+  const { id } = useLocalSearchParams();
+  const live = playLive() && Boolean(id);
+  const res = usePlayItem(live ? id : null);
+  const myId = useMyId();
+  const view = live ? (res.data ? quizResultView(res.data, myId) : null) : mockView();
+  if (!view) {
+    return (
+      <PlayScreen title="정답 공개" close>
+        <LoadNote {...res} what="결과" />
+      </PlayScreen>
+    );
+  }
+  return <QuizResultBody view={view} />;
+}
+
+function QuizResultBody({ view }) {
   const router = useRouter();
-  const right = RESULTS.filter((r) => r.answer === r.mine).length;
-  // 정답 점수는 세트 전체가 20점이고 맞힌 비율만큼 받는다(문제 수를 늘려도 점수가 늘지 않게)
-  const quizPoints = Math.round((SCORE.correct * right) / RESULTS.length);
-  const score = SCORE.join + quizPoints;
+  const { score } = view;
   return (
     <PlayScreen
       title="정답 공개"
@@ -29,30 +60,40 @@ export default function QuizResultScreen() {
       footer={<Button label="나도 퀴즈 내기" variant="secondary" onPress={() => router.push("/play/quiz-create")} />}
     >
       <View style={styles.hero}>
-        <Text style={styles.heroSub}>엄마가 낸 퀴즈 {RESULTS.length}문제</Text>
-        <Text style={styles.heroBig}>
-          {right}/{RESULTS.length} 맞혔어요
-        </Text>
-        <Text style={styles.heroSub}>
-          <Text style={styles.heroScore}>{`점수 +${score}`}</Text>
-          {` (참여 +${SCORE.join} 정답 +${quizPoints})`}
-        </Text>
-      </View>
-      {RESULTS.map((r, i) => {
-        const ok = r.answer === r.mine;
-        return (
-          <View key={r.q} style={[styles.card, ok ? styles.ok : styles.no]}>
-            <Text style={[styles.tag, { color: ok ? colors.success : colors.danger }]}>
-              {i + 1}번 {ok ? "맞혔어요" : "아쉬워요"}
+        <Text style={styles.heroSub}>{view.maker}가 낸 퀴즈 {view.total}문제</Text>
+        {view.hasScore ? (
+          <>
+            <Text style={styles.heroBig}>
+              {view.right}/{view.total} 맞혔어요
             </Text>
+            <Text style={styles.heroSub}>
+              <Text style={styles.heroScore}>{`점수 +${score.total}`}</Text>
+              {` (참여 +${score.join} 정답 +${score.correct}${score.hint ? ` 힌트 ${score.hint}` : ""})`}
+            </Text>
+          </>
+        ) : null}
+      </View>
+      {view.questions.map((r, i) => {
+        const answered = r.mine != null;
+        return (
+          <View key={r.q} style={[styles.card, !answered ? null : r.hit ? styles.ok : styles.no]}>
+            {answered ? (
+              <Text style={[styles.tag, { color: r.hit ? colors.success : colors.danger }]}>
+                {i + 1}번 {r.hit ? "맞혔어요" : "아쉬워요"}
+              </Text>
+            ) : (
+              <Text style={styles.tag}>{i + 1}번</Text>
+            )}
             <Text style={styles.q}>{r.q}</Text>
             <Text style={styles.ans}>
-              정답 <Text style={styles.bold}>{r.answer}</Text>{"   "}내 답 {r.mine}
+              정답 <Text style={styles.bold}>{r.answer}</Text>
+              {answered ? `   내 답 ${r.mine}` : ""}
             </Text>
-            {r.note ? <Text style={styles.memo}>엄마의 한마디{`\n"${r.note}"`}</Text> : null}
+            {r.note ? <Text style={styles.memo}>{view.maker}의 한마디{`
+"${r.note}"`}</Text> : null}
             <View style={styles.rows}>
-              {bySolved(r.rows, 2).map(([name, a]) => (
-                <AnswerRow key={name} name={name} answer={a} ok={a === r.answer} />
+              {r.rows.map((row) => (
+                <AnswerRow key={row.name} name={row.name} answer={row.text} ok={row.ok} />
               ))}
             </View>
           </View>

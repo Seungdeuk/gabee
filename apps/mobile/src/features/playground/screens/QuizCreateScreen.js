@@ -6,8 +6,11 @@ import Button from "@/shared/components/Button";
 import ConfirmDialog from "@/shared/components/ConfirmDialog";
 import { colors, font, fonts } from "@/theme";
 
+import { quizQuestions } from "../adapt";
+import { createQuiz } from "../api";
 import PlayScreen from "../components/PlayScreen";
 import { AudiencePicker, QuestionTabs, RevealNote, MakeQuotaNote, Toggle } from "../components/quiz/QuizParts";
+import { playLive } from "../hooks";
 import { recordMade } from "../mock";
 
 const Q_MAX = 60; // 문제 글자 수
@@ -50,6 +53,8 @@ export default function QuizCreateScreen({ initialMode = "rec" }) {
   const [target, setTarget] = useState([]);
   const [confirmRemove, setConfirmRemove] = useState(false); // 문제 삭제 확인 창
   const [tried, setTried] = useState(false); // 보내기를 한 번 눌러 본 뒤부터 안내를 보여 준다
+  const [sending, setSending] = useState(false);
+  const [sendError, setSendError] = useState("");
   const problems = qs.map(problemOf);
   const firstBad = problems.findIndex(Boolean);
   const cur = qs[active];
@@ -91,9 +96,9 @@ export default function QuizCreateScreen({ initialMode = "rec" }) {
       onBack={back}
       footer={
         <>
-          {tried && firstBad >= 0 ? (
+          {sendError || (tried && firstBad >= 0) ? (
             <Text style={styles.error} accessibilityRole="alert">
-              {problems[firstBad]}
+              {sendError || problems[firstBad]}
             </Text>
           ) : (
             <RevealNote>내일 오후 2:10에 정답이 공개돼요, 모두 답하면 바로 열려요</RevealNote>
@@ -101,16 +106,31 @@ export default function QuizCreateScreen({ initialMode = "rec" }) {
           <MakeQuotaNote />
           <Button
             label={`골든벨 ${qs.length}문제 보내기`}
-            onPress={() => {
+            disabled={sending}
+            onPress={async () => {
               if (firstBad >= 0) {
                 setTried(true);
                 setActive(firstBad);
                 setMode("manual"); // 덜 채운 문제를 바로 고칠 수 있게
                 return;
               }
-              leaving.current = true;
-              recordMade();
-              router.replace("/play/quiz-play");
+              if (!playLive()) {
+                leaving.current = true;
+                recordMade();
+                router.replace("/play/quiz-play");
+                return;
+              }
+              setSending(true);
+              setSendError("");
+              try {
+                const item = await createQuiz({ questions: quizQuestions(qs), playerIds: target });
+                leaving.current = true;
+                router.replace(`/play/sent-detail?id=${item.id}&kind=quiz`);
+              } catch (e) {
+                setSendError(e.message || "보내지 못했어요. 잠시 뒤 다시 해 주세요");
+              } finally {
+                setSending(false);
+              }
             }}
           />
         </>

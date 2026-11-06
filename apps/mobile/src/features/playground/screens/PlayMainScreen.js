@@ -9,7 +9,8 @@ import PlayIcon from "../components/PlayIcon";
 import PlayScreen from "../components/PlayScreen";
 import TurnRow from "../components/TurnRow";
 import { GAME_LIST } from "../games";
-import { RANKING, reopenRooms, TODO } from "../mock";
+import { usePlayBoard, usePlayRanking } from "../hooks";
+import { reopenRooms } from "../mock";
 
 const SHOWN = 3; // 홈 "내 차례"는 3개까지. 나머지는 + 로 현황판에서 본다
 
@@ -17,7 +18,9 @@ const SHOWN = 3; // 홈 "내 차례"는 3개까지. 나머지는 + 로 현황판
 export default function PlayMainScreen() {
   const router = useRouter();
   useEffect(() => reopenRooms(), []); // 시안: 닫았던 폭탄 방을 다시 열어 둔다
-  const top = RANKING.slice(0, 3);
+  const board = usePlayBoard();
+  const todo = board.data?.todo ?? [];
+  const top = (usePlayRanking("week").data ?? []).slice(0, 3);
   return (
     <PlayScreen
       title="가족 놀이터"
@@ -31,13 +34,14 @@ export default function PlayMainScreen() {
         <View style={styles.turnHead}>
           <Text style={styles.h2}>내 차례예요</Text>
           <View style={styles.turnRight}>
-            <Text style={styles.count}>{TODO.length}개</Text>
+            <Text style={styles.count}>{todo.length}개</Text>
             <Pressable onPress={() => router.push("/play/board")} accessibilityRole="button" accessibilityLabel="받은·보낸 현황 보기" hitSlop={8} style={styles.boardBtn}>
               <Ionicons name="file-tray-full-outline" size={22} color={colors.text} />
             </Pressable>
           </View>
         </View>
-        {TODO.slice(0, SHOWN).map((item, i) => (
+        {board.data && todo.length === 0 ? <Text style={styles.empty}>지금은 내 차례인 놀이가 없어요</Text> : null}
+        {todo.slice(0, SHOWN).map((item, i) => (
           <TurnRow key={item.id} item={item} strong={i === 0 && item.strong} />
         ))}
       </View>
@@ -83,6 +87,7 @@ const styles = StyleSheet.create({
   boardBtn: { width: 32, height: 32, marginRight: -4, alignItems: "center", justifyContent: "center" }, // 테두리 없이 아이콘만
   h2: { ...font.cardTitle, color: colors.text },
   count: { ...font.caption, color: colors.textSub },
+  empty: { ...font.caption, color: colors.textSub, paddingVertical: 12, textAlign: "center" },
   grid: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
   card: { width: "48%", flexGrow: 1, padding: 14, borderRadius: radius.lg, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border, gap: 4 },
   cardIcon: { width: 48, height: 48, borderRadius: 14, backgroundColor: colors.surfaceStrong, alignItems: "center", justifyContent: "center", marginBottom: 4 },

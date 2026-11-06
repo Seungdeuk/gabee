@@ -212,6 +212,20 @@ def test_all_finished_closes_and_pays_maker(client, family):
     assert [fa["player"]["name"] for fa in mine["family_answers"]] == ["수진"]
 
 
+def test_family_answers_show_hints_used_per_try(client, family):
+    a, b, _ = family
+    item = make_draw(client, a)
+    hint(client, b, item["id"])
+    tries(client, b, item["id"], "강아지")
+    tries(client, b, item["id"], "고양이")  # 맞히면 모두 끝나 닫힌다
+    seen = client.get(f"/play/items/{item['id']}", headers=a).json()
+    answers = seen["family_answers"][0]["answers"]
+    assert [(x["answer"], x["is_correct"], x["hints_used"]) for x in answers] == [
+        ("강아지", False, 1),
+        ("고양이", True, 1),
+    ]
+
+
 def test_unfinished_tries_count_as_join_when_closed(client, family):
     a, b, _ = family
     c_headers = trio(client, family)[2]

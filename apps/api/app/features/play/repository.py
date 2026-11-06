@@ -144,3 +144,22 @@ def scores_since(db: Session, group_id: str, since: datetime | None) -> list[Pla
     if since is not None:
         q = q.where(PlayScore.created_at >= since)
     return list(db.scalars(q))
+
+
+def correct_counts(
+    db: Session, group_id: str, since: datetime | None
+) -> list[tuple[str, int, int]]:
+    """(사람, 게임, 맞힌 개수). 골든벨은 맞힌 문항 수, 이게 뭐게·탐정단은 맞힌 문제 수다(힌트 상태 줄은 제외)."""
+    q = (
+        select(PlayAnswer.player_id, PlayItem.game, func.count())
+        .join(PlayItem, PlayItem.id == PlayAnswer.play_id)
+        .where(
+            PlayItem.group_id == group_id,
+            PlayAnswer.is_correct.is_(True),
+            PlayAnswer.try_no >= 1,
+        )
+        .group_by(PlayAnswer.player_id, PlayItem.game)
+    )
+    if since is not None:
+        q = q.where(PlayAnswer.answered_at >= since)
+    return [(pid, game, n) for pid, game, n in db.execute(q)]

@@ -4,7 +4,8 @@ import { Pressable, StyleSheet, Text, View } from "react-native";
 import { colors, font, fonts, radius } from "@/theme";
 
 import { MAKE_LIMIT, SCORE } from "../../games";
-import { makeLeft } from "../../mock";
+import { closeLabel } from "../../adapt";
+import { playLive, useAudience, useMakeLeft } from "../../hooks";
 
 /** 문제 번호 탭: 한 줄(문제 1~5 + 추가). 눌러서 문제를 바꾼다. */
 export function QuestionTabs({ count = 3, active = 0, onSelect, onAdd, onRemove, flags = [], max = 5 }) {
@@ -73,30 +74,30 @@ export function Toggle({ options, value, onChange }) {
 
 /** "누구에게 낼까요" 대상 칩. 지정하지 않으면 모두. */
 export function AudiencePicker({ value, onChange }) {
-  const names = ["엄마", "아빠", "딸"];
+  const members = useAudience(); // value 는 고른 가족의 id 목록(비어 있으면 모두)
   const all = value.length === 0;
-  const toggle = (n) => onChange(value.includes(n) ? value.filter((v) => v !== n) : [...value, n]);
+  const toggle = (id) => onChange(value.includes(id) ? value.filter((v) => v !== id) : [...value, id]);
   return (
     <View style={styles.block}>
       <Text style={styles.label}>누구에게 낼까요</Text>
       <View style={styles.row}>
         <Chip label="모두" on={all} onPress={() => onChange([])} />
-        {names.map((n) => (
-          <Chip key={n} label={n} on={value.includes(n)} onPress={() => toggle(n)} />
+        {members.map((m) => (
+          <Chip key={m.id} label={m.name} on={value.includes(m.id)} onPress={() => toggle(m.id)} />
         ))}
       </View>
     </View>
   );
 }
 
-/** 아래 고정 영역의 안내 + 보내기 버튼 문구 줄. */
 export function RevealNote({ children }) {
-  return <Text style={styles.reveal}>{children}</Text>;
+  // 서버에 연결되면 실제로 닫히는 시각(지금부터 24시간 뒤)을 보여 준다
+  return <Text style={styles.reveal}>{playLive() ? `${closeLabel()}에 정답이 공개돼요, 모두 답하면 바로 열려요` : children}</Text>;
 }
 
-/** 보내기 전에 오늘 점수 받는 문제가 몇 개 남았는지 알려 준다. 한도를 넘어도 보내는 건 막지 않는다. */
 export function MakeQuotaNote() {
-  const left = makeLeft();
+  const left = useMakeLeft();
+  if (left == null) return null;
   return <Text style={styles.reveal}>{left > 0 ? `오늘 문제 출제로 받는 +${SCORE.make}은 ${left}회 남았어요` : `오늘은 문제 출제로 +${SCORE.make} 받는 ${MAKE_LIMIT}회를 다 썼어요. 문제는 보낼 수 있지만 점수는 없어요`}</Text>;
 }
 

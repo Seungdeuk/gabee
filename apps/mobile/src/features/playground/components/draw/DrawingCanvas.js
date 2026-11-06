@@ -1,6 +1,6 @@
 import { useMemo, useRef, useState } from "react";
 import { PanResponder, StyleSheet, View } from "react-native";
-import Svg, { Path } from "react-native-svg";
+import Svg, { Path, Rect } from "react-native-svg";
 
 import { colors, radius } from "@/theme";
 
@@ -10,7 +10,7 @@ const toPath = (pts) => pts.map((p, i) => `${i === 0 ? "M" : "L"}${p.x.toFixed(1
  * 손가락으로 그리는 그림판. strokes 는 부모가 들고 있다(취소/지우개 버튼이 부모에 있어서).
  * @param {{ strokes: {color:string,pts:{x:number,y:number}[]}[], onChange: (s:any[])=>void, color: string, eraser?: boolean, height?: number }} props
  */
-export default function DrawingCanvas({ strokes, onChange, color, eraser = false, height = 280, onTouching }) {
+export default function DrawingCanvas({ strokes, onChange, color, eraser = false, height = 280, onTouching, svgRef }) {
   const ref = useRef({ strokes, color, eraser });
   ref.current = { strokes, color, eraser, onTouching };
   const [live, setLive] = useState(null);
@@ -49,7 +49,8 @@ export default function DrawingCanvas({ strokes, onChange, color, eraser = false
   const all = live ? [...strokes, live] : strokes;
   return (
     <View style={[styles.box, { height }]} {...responder.panHandlers} accessibilityLabel="그림판. 손가락으로 그려요">
-      <Svg width="100%" height="100%">
+      <Svg ref={svgRef} width="100%" height="100%">
+        <Rect width="100%" height="100%" fill={colors.card} />
         {all.map((s, i) => (
           <Path key={i} d={toPath(s.pts)} stroke={s.color} strokeWidth={s.width ?? 4} strokeLinecap="round" strokeLinejoin="round" fill="none" />
         ))}

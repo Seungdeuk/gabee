@@ -27,7 +27,13 @@
 | `POST /play/items/{id}/answers` | 골든벨은 문항 수만큼 한 번에, 탐정단은 `quiz_no` 0 한 건 |
 | `POST /play/items/{id}/hints` | 이게 뭐게 힌트 열기 / 탐정단 조금 줄여 보기 (최대 2번, 이게 뭐게는 힌트 2가 없으면 1번) |
 | `POST /play/items/{id}/tries` | 이게 뭐게 정답 쓰기 (최대 10번) |
-| `GET /play/ranking?period=week\|month\|all` | 순위 (이번 주는 월요일 시작) |
+| `GET /play/quota` | 오늘 내가 낸 문제 수와 문제 내기 점수(+20)를 받을 수 있는 남은 횟수 `{limit, used, left}` |
+| `GET /play/ranking?period=week\|month\|all` | 순위 (이번 주는 월요일 시작). 줄마다 게임별 점수 `by_game`, 참여 횟수 `counts`, 맞힌 개수 `corrects`(폭탄은 우승 횟수) |
+
+### 응답에서 알아둘 것
+
+- 답 한 줄(`PlayAnswerOut`)에 그 시도 때까지 쓴 힌트 수 `hints_used` 가 있다. 닫힌 뒤 가족의 답에서 "힌트 N개"를 보여 줄 때 쓴다.
+- 탐정단 `photo` 의 `box_x`/`box_y`(확대 창 가운데 위치 0~1)는 원본 전체를 볼 수 있을 때만 채워진다. 푸는 중에는 사진의 어디인지 새지 않게 비워 둔다.
 
 ### 이게 뭐게
 

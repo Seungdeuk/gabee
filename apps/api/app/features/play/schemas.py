@@ -98,6 +98,7 @@ class PlayAnswerOut(BaseModel):
     quiz_no: int
     answer: str
     is_correct: bool
+    hints_used: int = 0  # 그 시도 때까지 쓴 힌트·줄여 보기 수
 
 
 class PlayFamilyStatusOut(BaseModel):
@@ -146,6 +147,9 @@ class PlayPhotoOut(BaseModel):
     max_shrinks: int
     answer: str | None = None  # 비트 글자
     comment: str | None = None
+    # 확대 창 가운데 위치(0~1). 원본 전체를 볼 수 있을 때만 채워진다(풀이 중에는 사진의 어디인지 새지 않게 비움)
+    box_x: float | None = None
+    box_y: float | None = None
 
 
 class PlayItemOut(BaseModel):
@@ -200,6 +204,15 @@ class PlayRankRow(BaseModel):
     by_game: dict[int, int]  # game(1~4) → 정답·우승·힌트 점수
     etc: int  # 참여·문제 내기 점수
     counts: dict[int, int]  # game(1~4) → 참여 횟수
+    corrects: dict[int, int]  # game(1~4) → 맞힌 개수(폭탄은 우승 횟수)
+
+
+class PlayQuotaOut(BaseModel):
+    """오늘(한국 시간) 내가 낸 문제 수와 문제 내기 점수(+20)를 받을 수 있는 남은 횟수."""
+
+    limit: int
+    used: int
+    left: int
 
 
 class PlayRankingOut(BaseModel):

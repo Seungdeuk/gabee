@@ -1,16 +1,21 @@
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ScrollView, Share, StyleSheet, Text, View } from "react-native";
 import Svg, { Circle, Path } from "react-native-svg";
 
+import AuthImage from "@/shared/components/AuthImage";
 import Avatar from "@/shared/components/Avatar";
 import Button from "@/shared/components/Button";
 import ConfirmDialog from "@/shared/components/ConfirmDialog";
 import { colors, font, fonts, radius } from "@/theme";
 
+import { gameKey, quizResultView, revealLabel } from "../adapt";
+import LoadNote from "../components/LoadNote";
+import PhotoStage from "../components/PhotoStage";
 import PlayIcon from "../components/PlayIcon";
 import PlayScreen from "../components/PlayScreen";
 import { GAMES, SCORE } from "../games";
+import { playLive, usePlayItem } from "../hooks";
 import RuleCard, { LIFE, SEC } from "../components/bomb/RuleCard";
 import PlayerRow from "../components/bomb/PlayerRow";
 import { bombRoom, closeRoom } from "../mock";
@@ -51,6 +56,145 @@ const PHOTO_OPTIONS = ["제주도 여행", "할머니 댁", "강릉 바다", "�
 
 /** 내가 낸 문제 상세: 내 문제 내용, 가족별 현황(완료·대기), 공개 시각. kind = draw | photo | quiz | bomb */
 export default function SentDetailScreen() {
+  const { id } = useLocalSearchParams();
+  return playLive() && id ? <LiveSentDetail id={id} /> : <MockSentDetail />;
+}
+
+/** 서버에 연결됐을 때: 내가 낸 골든벨·이게 뭐게·탐정단의 내용과 가족 현황. 닫힌 문제는 결과 화면으로 보낸다. */
+function LiveSentDetail({ id }) {
+  const router = useRouter();
+  const res = usePlayItem(id);
+  const item = res.data;
+  useEffect(() => {
+    if (item?.closed) router.replace(`/play/sent-result?id=${id}&kind=${gameKey(item.game)}`);
+  }, [item?.closed, item?.game, id, router]);
+  if (!item) {
+    return (
+      <PlayScreen title="내가 낸 문제">
+        <LoadNote {...res} what="문제" />
+      </PlayScreen>
+    );
+  }
+  const k = gameKey(item.game);
+  const reveal = revealLabel(item.close_at);
+  const members = item.family_status ?? [];
+  const doneCount = members.filter((m) => m.done).length;
+  return (
+    <PlayScreen title="내가 낸 문제">
+      <View style={styles.summary}>
+        <View style={styles.summaryIcon}>
+          <PlayIcon icon={GAMES[k].icon} />
+        </View>
+        <View style={styles.flex}>
+          <Text style={styles.summaryTitle}>내가 낸 {GAMES[k].name}</Text>
+          <Text style={styles.summarySub}>{reveal} 공개</Text>
+        </View>
+      </View>
+      {k === "draw" ? <LiveDraw item={item} /> : k === "photo" ? <LivePhoto item={item} /> : <LiveQuiz item={item} />}
+      <View style={styles.family}>
+        <View style={styles.familyHead}>
+          <Text style={styles.h2}>가족 현황</Text>
+          <Text style={styles.count}>
+            {doneCount} / {members.length}명 완료
+          </Text>
+        </View>
+        {members.map((m) => (
+          <View key={m.player.id} style={styles.member}>
+            <Avatar name={m.player.name} userId={m.player.id} size={36} />
+            <View style={styles.memberText}>
+              <Text style={styles.memberName}>{m.player.name}</Text>
+              {m.done && m.answered_at ? <Text style={styles.memberNote}>{revealLabel(m.answered_at)}</Text> : null}
+            </View>
+            <Text style={[styles.chip, !m.done && styles.chipWait]}>{m.done ? "완료" : "대기"}</Text>
+          </View>
+        ))}
+      </View>
+      <Text style={styles.scoreNote}>결과는 {reveal}에 열려요</Text>
+      <Text style={styles.note}>
+        {doneCount > 0 ? `문제가 닫히면 문제 출제로 +${SCORE.make} 받아요` : `가족이 한 명이라도 풀면 문제 출제로 +${SCORE.make} 받아요`}
+      </Text>
+    </PlayScreen>
+  );
+}
+
+function LiveDraw({ item }) {
+  const d = item.draw;
+  const alts = d?.alt_answers ?? [];
+  return (
+    <>
+      <AuthImage path={item.image_url} contentFit="contain" style={styles.canvas} accessibilityLabel="내가 그린 그림" />
+      <View style={styles.block}>
+        <View style={styles.answerBox}>
+          <Text style={styles.answer}>{d?.answer}</Text>
+          {alts.length ? <Text style={styles.answerSub}>이것도 정답: {alts.join(", ")}</Text> : null}
+        </View>
+        <View style={styles.chips}>
+          {d?.hint1 ? <Text style={styles.hint}>힌트 1: {d.hint1}</Text> : null}
+          {d?.hint2 ? <Text style={[styles.hint, styles.hintOpen]}>힌트 2: {d.hint2}</Text> : null}
+        </View>
+      </View>
+    </>
+  );
+}
+
+function LivePhoto({ item }) {
+  const p = item.photo;
+  if (!p) return null;
+  const answerIndex = p.answer ? p.answer.indexOf("1") : -1;
+  return (
+    <>
+      <PhotoStage path={item.image_url} box={p.box_x == null ? null : { x: p.box_x, y: p.box_y, zoom: p.zoom }} badge={`${p.zoom}배 확대`} label="내가 고른 사진" />
+      <View style={styles.question}>
+        <Text style={styles.questionText}>{p.question}</Text>
+      </View>
+      <View style={styles.block}>
+        <Text style={styles.h3}>보기</Text>
+        {p.options.map((o, i) => (
+          <View key={o} style={[styles.opt, i === answerIndex && styles.optAns]}>
+            <View style={[styles.radio, i === answerIndex && styles.radioOn]}>{i === answerIndex ? <Text style={styles.radioMark}>✓</Text> : null}</View>
+            <Text style={styles.optText}>{o}</Text>
+          </View>
+        ))}
+      </View>
+      {p.comment ? (
+        <View style={styles.block}>
+          <Text style={styles.h3}>한마디</Text>
+          <Text style={styles.memo}>{p.comment}</Text>
+        </View>
+      ) : null}
+    </>
+  );
+}
+
+function LiveQuiz({ item }) {
+  const view = quizResultView(item, null);
+  return (
+    <View style={styles.block}>
+      {view.questions.map((q, i) => (
+        <View key={q.q} style={styles.qCard}>
+          <Text style={styles.qKind}>
+            문제 {i + 1} {q.kind}
+          </Text>
+          <Text style={styles.qText}>{q.q}</Text>
+          {q.kind === "OX" ? (
+            <Text style={[styles.optChip, styles.optChipAns, styles.selfStart]}>정답 {q.answer}</Text>
+          ) : (
+            <View style={styles.chips}>
+              {q.options.map((o) => (
+                <Text key={o} style={[styles.optChip, o === q.answer && styles.optChipAns]}>
+                  {o}
+                  {o === q.answer ? " ✓" : ""}
+                </Text>
+              ))}
+            </View>
+          )}
+        </View>
+      ))}
+    </View>
+  );
+}
+
+function MockSentDetail() {
   const { kind = "draw" } = useLocalSearchParams();
   const router = useRouter();
   const [askClose, setAskClose] = useState(false);

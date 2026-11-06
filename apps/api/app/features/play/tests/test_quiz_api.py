@@ -303,10 +303,25 @@ def test_ranking_sums_ledger(client, family):
     by_name = {r["player"]["name"]: r for r in rows}
     assert by_name["수진"]["score"] == 30 and by_name["수진"]["by_game"]["1"] == 20
     assert by_name["수진"]["etc"] == 10 and by_name["수진"]["counts"]["1"] == 1
+    assert by_name["수진"]["corrects"] == {"1": 3, "2": 0, "3": 0, "4": 0}  # 맞힌 문항 수
+    assert by_name["지민"]["corrects"] == {"1": 0, "2": 0, "3": 0, "4": 0}
     assert by_name["지민"]["score"] == 20 and by_name["지민"]["etc"] == 20  # 문제 내기 +20
     assert [r["player"]["name"] for r in rows][0] == "수진"
     assert client.get("/play/ranking?period=all", headers=a).status_code == 200
     assert client.get("/play/ranking?period=year", headers=a).status_code == 422
+
+
+def test_quota_counts_todays_items(client, family):
+    a, b, _ = family
+    assert client.get("/play/quota", headers=a).json() == {"limit": 3, "used": 0, "left": 3}
+    make_quiz(client, a)
+    make_quiz(client, a)
+    assert client.get("/play/quota", headers=a).json() == {"limit": 3, "used": 2, "left": 1}
+    assert client.get("/play/quota", headers=b).json()["used"] == 0  # 사람마다 센다
+    for _ in range(3):
+        make_quiz(client, a)
+    assert client.get("/play/quota", headers=a).json() == {"limit": 3, "used": 5, "left": 0}
+    assert client.get("/play/quota").status_code == 401
 
 
 def test_other_family_cannot_see(client, family, other_family):

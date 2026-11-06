@@ -15488,6 +15488,72 @@
           }
         }
       }
+    },
+    "/play/quota": {
+      "get": {
+        "tags": [
+          "play"
+        ],
+        "summary": "Quota",
+        "description": "오늘 내가 낸 문제 수와 문제 내기 점수(+20)를 받을 수 있는 남은 횟수.",
+        "operationId": "quota_play_quota_get",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-gyeot-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Gyeot-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlayQuotaOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -26030,6 +26096,11 @@
           "is_correct": {
             "type": "boolean",
             "title": "Is Correct"
+          },
+          "hints_used": {
+            "type": "integer",
+            "title": "Hints Used",
+            "default": 0
           }
         },
         "type": "object",
@@ -26548,6 +26619,28 @@
               }
             ],
             "title": "Comment"
+          },
+          "box_x": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Box X"
+          },
+          "box_y": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Box Y"
           }
         },
         "type": "object",
@@ -26739,6 +26832,13 @@
             },
             "type": "object",
             "title": "Counts"
+          },
+          "corrects": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "type": "object",
+            "title": "Corrects"
           }
         },
         "type": "object",
@@ -26747,7 +26847,8 @@
           "score",
           "by_game",
           "etc",
-          "counts"
+          "counts",
+          "corrects"
         ],
         "title": "PlayRankRow"
       },
@@ -26804,6 +26905,30 @@
           "correct"
         ],
         "title": "PlayScoreOut"
+      },
+      "PlayQuotaOut": {
+        "properties": {
+          "limit": {
+            "type": "integer",
+            "title": "Limit"
+          },
+          "used": {
+            "type": "integer",
+            "title": "Used"
+          },
+          "left": {
+            "type": "integer",
+            "title": "Left"
+          }
+        },
+        "type": "object",
+        "required": [
+          "limit",
+          "used",
+          "left"
+        ],
+        "title": "PlayQuotaOut",
+        "description": "오늘(한국 시간) 내가 낸 문제 수와 문제 내기 점수(+20)를 받을 수 있는 남은 횟수."
       }
     }
   }

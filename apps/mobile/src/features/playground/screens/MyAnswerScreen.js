@@ -4,9 +4,15 @@ import Svg, { Circle, Path } from "react-native-svg";
 
 import { colors, font, fonts, radius } from "@/theme";
 
+import AuthImage from "@/shared/components/AuthImage";
+
+import { drawResultView, familyView, gameKey, photoResultView, quizResultView, revealLabel, withIga } from "../adapt";
+import LoadNote from "../components/LoadNote";
+import PhotoStage from "../components/PhotoStage";
 import PlayScreen from "../components/PlayScreen";
 import ScoreBox from "../components/ScoreBox";
-import { SCORE } from "../games";
+import { GAMES, SCORE } from "../games";
+import { playLive, useMyId, usePlayItem } from "../hooks";
 
 // 시안 데이터: 내가 이미 답을 보냈지만 가족 전체 결과는 아직 안 열린 골든벨. 정답과 내가 고른 답을 같이 보여 준다.
 const QUIZ = [
@@ -30,9 +36,22 @@ const INFO = {
 /** 공개 전에 내가 참여한 문제: 문제와 내가 낸 답만 보여 준다(정답·맞았는지·점수는 공개 뒤에). 답은 고칠 수 없다. kind = quiz | draw | photo */
 export default function MyAnswerScreen() {
   // 푸는 화면에서 넘어오면 그 문제의 이름·정답·연 힌트로 보여 주고, 현황판에서 직접 들어오면 시안 값을 쓴다
-  const { kind = "quiz", from: fromParam, maker, answer, alt, hint2, hints, tries, hit } = useLocalSearchParams();
-  const k = INFO[kind] ? kind : "quiz";
-  const from = fromParam || INFO[k].from;
+  const { id, kind = "quiz", from: fromParam, maker, answer, alt, hint2, hints, tries, hit } = useLocalSearchParams();
+  const live = playLive() && Boolean(id);
+  const res = usePlayItem(live ? id : null);
+  const myId = useMyId();
+  const item = live ? res.data : null;
+  if (live && !item) {
+    return (
+      <PlayScreen title="내가 낸 답" close>
+        <LoadNote {...res} what="내 답" />
+      </PlayScreen>
+    );
+  }
+  const k = item ? gameKey(item.game) : INFO[kind] ? kind : "quiz";
+  const from = item ? `${withIga(item.maker.name)} 낸 ${GAMES[k].name}` : fromParam || INFO[k].from;
+  const family = item ? familyView(item, myId) : { done: ["나", ...FAMILY[k].done], pending: FAMILY[k].pending };
+  const end = item ? revealLabel(item.close_at) : INFO[k].end;
   return (
     <PlayScreen title="내가 낸 답" close>
       {k === "draw" || k === "quiz" ? null : (
@@ -40,19 +59,24 @@ export default function MyAnswerScreen() {
           <Text style={styles.noticeTitle}>{from}</Text>
         </View>
       )}
-      {k === "quiz" ? <Quiz from={from} /> : null}
-      {k === "draw" ? <Draw maker={maker || "딸이"} answer={answer || "고양이"} alt={alt === undefined ? "야옹이" : alt} hint2={hint2 || "동물이야"} hints={hints === undefined ? 2 : Number(hints)} tries={tries ? JSON.parse(tries) : null} /> : null}
-      {k === "photo" ? <Photo hit={hit === "1"} /> : null}
-      <Family kind={k} end={INFO[k].end} />
+      {k === "quiz" ? <Quiz from={from} view={item ? quizResultView(item, myId) : null} /> : null}
+      {k === "draw" ? (
+        item ? (
+          <DrawLive v={drawResultView(item, myId)} />
+        ) : (
+          <Draw maker={maker || "딸이"} answer={answer || "고양이"} alt={alt === undefined ? "야옹이" : alt} hint2={hint2 || "동물이야"} hints={hints === undefined ? 2 : Number(hints)} tries={tries ? JSON.parse(tries) : null} />
+        )
+      ) : null}
+      {k === "photo" ? item ? <PhotoLive v={photoResultView(item, myId)} /> : <Photo hit={hit === "1"} /> : null}
+      <Family family={family} end={end} />
       <Text style={styles.foot}>보낸 답은 고칠 수 없어요</Text>
     </PlayScreen>
   );
 }
 
 /** 누가 했는지: 두 줄. 윗줄은 "완료" 칩 + 한 가족, 아랫줄은 "대기" 칩 + 아직 안 한 가족. */
-function Family({ kind, end }) {
-  const f = FAMILY[kind];
-  const done = ["나", ...f.done];
+function Family({ family, end }) {
+  const { done, pending } = family;
   return (
     <View style={styles.family}>
       <View style={styles.familyHead}>
@@ -62,10 +86,10 @@ function Family({ kind, end }) {
         <Text style={styles.status}>완료</Text>
         <Text style={styles.names}>{done.join("  ")}</Text>
       </View>
-      {f.pending.length ? (
+      {pending.length ? (
         <View style={styles.lineRow}>
           <Text style={[styles.status, styles.statusWait]}>대기</Text>
-          <Text style={styles.names}>{f.pending.join("  ")}</Text>
+          <Text style={styles.names}>{pending.join("  ")}</Text>
         </View>
       ) : null}
       <Text style={styles.end}>{end}에 종료돼요</Text>
@@ -73,23 +97,26 @@ function Family({ kind, end }) {
   );
 }
 
-function Quiz({ from }) {
-  const right = QUIZ.filter((r) => r.mine === r.answer).length;
-  // 정답 점수는 세트 전체 20점을 맞힌 비율로 나눈다(정답 공개 화면과 같은 계산)
-  const quizPoints = Math.round((SCORE.correct * right) / QUIZ.length);
+function Quiz({ from, view }) {
+  // 서버 값이 없으면 시안. 정답 점수는 세트 전체 20점을 맞힌 비율로 나눈다(정답 공개 화면과 같은 계산)
+  const list = view ? view.questions : QUIZ.map((r) => ({ ...r, hit: r.mine === r.answer }));
+  const right = view ? view.right : QUIZ.filter((r) => r.mine === r.answer).length;
+  const quizPoints = view ? view.score.correct : Math.round((SCORE.correct * right) / QUIZ.length);
+  const join = view ? view.score.join : SCORE.join;
+  const maker = view ? view.maker : "엄마";
   return (
     <>
       <View style={styles.hero}>
         <Text style={styles.heroSub}>{from}</Text>
         <Text style={styles.heroBig}>
-          {right}/{QUIZ.length} 맞혔어요
+          {right}/{list.length} 맞혔어요
         </Text>
         <Text style={styles.heroSub}>
-          <Text style={styles.heroScore}>{`점수 +${SCORE.join + quizPoints}`}</Text>
-          {` (참여 +${SCORE.join} 정답 +${quizPoints})`}
+          <Text style={styles.heroScore}>{`점수 +${join + quizPoints}`}</Text>
+          {` (참여 +${join} 정답 +${quizPoints})`}
         </Text>
       </View>
-      {QUIZ.map((r, i) => {
+      {list.map((r, i) => {
         const hit = r.mine === r.answer;
         return (
           <View key={r.q} style={styles.card}>
@@ -103,13 +130,64 @@ function Quiz({ from }) {
             ))}
             {r.note ? (
               <View style={styles.memo}>
-                <Text style={styles.memoText}>{`엄마의 한마디
+                <Text style={styles.memoText}>{`${maker}의 한마디
 "${r.note}"`}</Text>
               </View>
             ) : null}
           </View>
         );
       })}
+    </>
+  );
+}
+
+/** 서버에 연결됐을 때: 이게 뭐게 내가 낸 답 */
+function DrawLive({ v }) {
+  const { score } = v;
+  return (
+    <>
+      <View style={styles.hero}>
+        <Text style={styles.heroSub}>{v.maker}가 그린 그림</Text>
+        <Text style={styles.heroBig}>{v.heroText}</Text>
+      </View>
+      <AuthImage path={v.imageUrl} contentFit="contain" style={styles.canvas} accessibilityLabel="그린 그림" />
+      <View style={styles.mine}>
+        <View style={styles.mineCol}>
+          <Text style={styles.mineLabel}>내가 쓴 답</Text>
+          <Text style={styles.mineText}>{v.mineText}</Text>
+        </View>
+        {v.hint1 ? (
+          <View style={styles.chips}>
+            <Text style={styles.hint}>힌트 1: {v.hint1}</Text>
+            {v.hint2 ? <Text style={styles.hint}>힌트 2: {v.hint2}</Text> : null}
+          </View>
+        ) : null}
+      </View>
+      <ScoreBox total={score.total} detail={`참여 +${score.join}${score.correct ? ` 정답 +${score.correct}` : ""}${score.hint ? ` 힌트 ${score.hint}` : ""}`} />
+    </>
+  );
+}
+
+/** 서버에 연결됐을 때: 탐정단 내가 낸 답(내가 답을 보냈으니 원본과 문제로 낸 부분을 볼 수 있다) */
+function PhotoLive({ v }) {
+  return (
+    <>
+      <PhotoStage path={v.imageUrl} box={v.box} badge={v.box ? `${v.zoom}배 확대` : undefined} label="사진" />
+      {v.comment ? (
+        <View style={styles.memo}>
+          <Text style={styles.memoText}>{`${v.maker}의 한마디\n"${v.comment}"`}</Text>
+        </View>
+      ) : null}
+      <View style={styles.card}>
+        <Text style={styles.q}>{v.question}</Text>
+        {v.options.map((o, i) => (
+          <View key={o} style={[styles.row, i === v.mineIndex && styles.rowMine, i === v.answerIndex && styles.rowAnswer, v.hit && i === v.answerIndex && styles.rowHit]}>
+            <Text style={[styles.rowText, (i === v.mineIndex || i === v.answerIndex) && styles.rowTextMine]}>{o}</Text>
+            {v.hit ? null : <Text style={styles.mineTag}>{i === v.answerIndex ? "정답" : i === v.mineIndex ? "내 답" : ""}</Text>}
+          </View>
+        ))}
+      </View>
+      <ScoreBox total={v.score.total} detail={`참여 +${v.score.join}${v.score.correct ? ` 정답 +${v.score.correct}` : ""}${v.score.hint ? ` 힌트 ${v.score.hint}` : ""}`} />
     </>
   );
 }

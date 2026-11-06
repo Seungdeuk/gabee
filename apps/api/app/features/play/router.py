@@ -16,6 +16,7 @@ from .schemas import (
     PlayItemOut,
     PlayQuizAnswerIn,
     PlayQuizCreateIn,
+    PlayQuotaOut,
     PlayRankingOut,
 )
 
@@ -163,6 +164,16 @@ def submit_try(
 ) -> PlayItemOut:
     """이게 뭐게 정답 쓰기(최대 10번). 틀려도 깎이지 않고, 맞히거나 10번을 다 쓰면 끝난다."""
     return service.submit_try(db, user, group_id, item_id, body)
+
+
+@router.get("/quota", response_model=PlayQuotaOut)
+def quota(
+    user: User = Depends(current_user),
+    _group_id: str = Depends(current_group_id),
+    db: Session = Depends(get_db),
+) -> PlayQuotaOut:
+    """오늘 내가 낸 문제 수와 문제 내기 점수(+20)를 받을 수 있는 남은 횟수."""
+    return service.quota(db, user)
 
 
 @router.get("/ranking", response_model=PlayRankingOut)

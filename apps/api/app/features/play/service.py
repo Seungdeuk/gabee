@@ -45,6 +45,7 @@ from .constants import (
 from .models import (
     GAME_DRAW,
     GAME_PHOTO,
+    REASON_BOMB_WIN,
     REASON_HINT,
     PlayAnswer,
     PlayDraw,
@@ -67,6 +68,7 @@ from .schemas import (
     PlayQuestionOut,
     PlayQuizAnswerIn,
     PlayQuizCreateIn,
+    PlayQuotaOut,
     PlayRankingOut,
     PlayRankRow,
     PlayScoreOut,
@@ -758,11 +760,19 @@ def item_out(
                 max_shrinks=MAX_HINTS,
                 answer=photo.answer if show_answers else None,
                 comment=photo.comment if show_answers else None,
+                box_x=photo.box_x if full else None,
+                box_y=photo.box_y if full else None,
             )
             # 줄여 보기·결과 공개로 사진이 달라지면 주소도 달라져서 오래된 사진이 남지 않는다
             image_url = f"/play/items/{item.id}/image?v={shrinks}{'f' if full else ''}"
     my_answers = [
-        PlayAnswerOut(quiz_no=a.quiz_no, answer=a.answer, is_correct=a.is_correct) for a in mine
+        PlayAnswerOut(
+            quiz_no=a.quiz_no,
+            answer=a.answer,
+            is_correct=a.is_correct,
+            hints_used=a.hints_used,
+        )
+        for a in mine
     ] or None
     my_score = _score_out(repository.scores_of(db, item.id, user.id)) if mine else None
     status = [
@@ -778,7 +788,12 @@ def item_out(
                 player=_person(by_id.get(pid)),
                 answered_at=when,
                 answers=[
-                    PlayAnswerOut(quiz_no=a.quiz_no, answer=a.answer, is_correct=a.is_correct)
+                    PlayAnswerOut(
+                        quiz_no=a.quiz_no,
+                        answer=a.answer,
+                        is_correct=a.is_correct,
+                        hints_used=a.hints_used,
+                    )
                     for a in answers
                     if a.player_id == pid
                 ],
@@ -862,6 +877,14 @@ def board(db: Session, user: User, group_id: str) -> PlayBoardOut:
     return out
 
 
+# ---------- 오늘 남은 횟수 ----------
+def quota(db: Session, user: User) -> PlayQuotaOut:
+    """문제 내기 점수(+20)는 하루 3건까지(게임 구분 없음). 한도를 넘어도 문제는 보낼 수 있고 점수만 없다."""
+    start = local_day_start(_now())
+    used = len(repository.maker_items_between(db, user.id, start, start + timedelta(days=1)))
+    return PlayQuotaOut(limit=DAILY_MAKE_LIMIT, used=used, left=max(0, DAILY_MAKE_LIMIT - used))
+
+
 # ---------- 순위 ----------
 def ranking(db: Session, group_id: str, period: str) -> PlayRankingOut:
     now = _now()
@@ -869,7 +892,13 @@ def ranking(db: Session, group_id: str, period: str) -> PlayRankingOut:
     since = {"week": week_start(now), "month": month_start(now), "all": None}[period]
     members = group_repo.members(db, group_id)
     rows: dict[str, dict] = {
-        m.id: {"by": {1: 0, 2: 0, 3: 0, 4: 0}, "etc": 0, "n": {1: 0, 2: 0, 3: 0, 4: 0}}
+        m.id: {
+            "by": {1: 0, 2: 0, 3: 0, 4: 0},
+            "etc": 0,
+            "n": {1: 0, 2: 0, 3: 0, 4: 0},
+            "right": {1: 0, 2: 0, 3: 0, 4: 0},
+            "win": {1: 0, 2: 0, 3: 0, 4: 0},
+        }
         for m in members
     }
     for s in repository.scores_since(db, group_id, since):
@@ -882,6 +911,11 @@ def ranking(db: Session, group_id: str, period: str) -> PlayRankingOut:
             r["by"][s.game] = r["by"].get(s.game, 0) + s.points
         if s.reason == REASON_JOIN:
             r["n"][s.game] = r["n"].get(s.game, 0) + 1
+        if s.reason == REASON_BOMB_WIN:
+            r["win"][s.game] = r["win"].get(s.game, 0) + 1  # 폭탄 우승 횟수
+    for pid, game, n in repository.correct_counts(db, group_id, since):
+        if pid in rows:
+            rows[pid]["right"][game] = n
     out = [
         PlayRankRow(
             player=_person(m),
@@ -889,6 +923,8 @@ def ranking(db: Session, group_id: str, period: str) -> PlayRankingOut:
             by_game=rows[m.id]["by"],
             etc=rows[m.id]["etc"],
             counts=rows[m.id]["n"],
+            # 골든벨·이게 뭐게·탐정단은 맞힌 개수, 폭탄은 우승 횟수
+            corrects={**rows[m.id]["right"], 4: rows[m.id]["win"][4]},
         )
         for m in members
     ]

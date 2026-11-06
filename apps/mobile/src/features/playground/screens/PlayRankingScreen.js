@@ -2,12 +2,16 @@ import { Ionicons } from "@expo/vector-icons";
 import { useState } from "react";
 import { Pressable, Share, StyleSheet, Text, View } from "react-native";
 
+import avatarTone from "@/shared/avatarTone";
 import { colors, font, fonts, radius } from "@/theme";
 
+import { bestView } from "../adapt";
+import LoadNote from "../components/LoadNote";
 import PlayIcon from "../components/PlayIcon";
 import PlayScreen from "../components/PlayScreen";
 import { GAME_LIST } from "../games";
-import { BEST, RANKING_BY } from "../mock";
+import { playLive, useMyId, usePlayRanking } from "../hooks";
+import { BEST } from "../mock";
 
 const TABS = [
   { key: "week", label: "이번 주" },
@@ -17,12 +21,20 @@ const TABS = [
 // 와이어프레임 3번: 1위는 노랑, 나는 얇은 테두리, 나머지는 흰색 카드
 const AVATAR = { mom: [colors.peach, colors.text], me: ["#553B29", "#FFFCF7"], dad: [colors.successSoft, "#2F4A3B"], daughter: ["#F3ECE4", colors.text], son: [colors.peachSoft, colors.text] };
 
+const avatarPair = (id) => {
+  const tone = avatarTone(id);
+  return [tone.backgroundColor, tone.color];
+};
+
 /** 순위: 이번 주/이번 달/전체. 줄을 누르면 점수가 어디서 왔는지 내역이 펼쳐진다. 게임별 최고 기록, 점수 받는 법(3줄). */
 export default function PlayRankingScreen() {
   const [tab, setTab] = useState("week");
   const [open, setOpen] = useState(null);
 
-  const rows = RANKING_BY[tab];
+  const ranking = usePlayRanking(tab);
+  const myId = useMyId();
+  const rows = ranking.data ?? [];
+  const best = playLive() ? bestView(rows) : BEST[tab]; // 서버 순위에는 게임별 맞힌 개수가 있다
   const changeTab = (k) => {
     setTab(k);
     setOpen(null);
@@ -36,13 +48,15 @@ export default function PlayRankingScreen() {
           </Pressable>
         ))}
       </View>
+      <LoadNote {...ranking} what="순위" />
       <View style={styles.list}>
         {rows.map((r, i) => {
-          const [bg, fg] = AVATAR[r.id] ?? AVATAR.daughter;
+          const [bg, fg] = AVATAR[r.id] ?? avatarPair(r.id);
+          const isMe = r.id === myId;
           const idle = r.score === 0;
           const isOpen = open === r.id && !idle;
           return (
-            <View key={r.id} style={[styles.card, i === 0 && styles.first, r.id === "me" && styles.me]}>
+            <View key={r.id} style={[styles.card, i === 0 && styles.first, isMe && styles.me]}>
               <Pressable onPress={() => !idle && setOpen(isOpen ? null : r.id)} disabled={idle} accessibilityRole="button" accessibilityState={{ expanded: isOpen }} accessibilityLabel={`${i + 1}위 ${r.name} ${r.score}점. 누르면 점수 내역`} style={styles.row}>
                 <Text style={[styles.no, i === 0 && styles.noFirst]}>{i + 1}</Text>
                 <View style={[styles.avatar, { backgroundColor: bg }]}>
@@ -78,7 +92,7 @@ export default function PlayRankingScreen() {
       <Text style={styles.h2}>게임별 최고 기록</Text>
       <View style={styles.grid}>
         {GAME_LIST.map((g) => {
-          const b = BEST[tab][g.key];
+          const b = best[g.key];
           return (
             <View key={g.key} style={styles.best} accessible accessibilityLabel={`${g.name} 최고 기록 ${b.who} ${b.value}`}>
               <View style={styles.bestIcon}>

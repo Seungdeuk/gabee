@@ -2,11 +2,16 @@ import { useLocalSearchParams } from "expo-router";
 import { StyleSheet, Text, View } from "react-native";
 import Svg, { Circle, Path } from "react-native-svg";
 
+import AuthImage from "@/shared/components/AuthImage";
 import { colors, font, fonts, radius } from "@/theme";
 
+import { drawResultView, gameKey, photoResultView, quizResultView } from "../adapt";
 import AnswerRow, { bySolved } from "../components/AnswerRow";
+import LoadNote from "../components/LoadNote";
+import PhotoStage from "../components/PhotoStage";
 import PlayScreen from "../components/PlayScreen";
-import { SCORE } from "../games";
+import { MAKE_LIMIT, SCORE } from "../games";
+import { playLive, usePlayItem } from "../hooks";
 
 // 시안 데이터: 공개가 끝난 내가 낸 문제. 가족이 낸 답은 푼 순서(시각이 빠른 순)로 보여 준다.
 // time 은 "시:분"(24시간). 정렬에만 쓴다.
@@ -44,6 +49,111 @@ const byTime = bySolved;
 
 /** 내가 낸 문제 결과(공개 뒤): 문제별 정답과 가족이 낸 답(푼 순서). kind = quiz | draw | photo */
 export default function SentResultScreen() {
+  const { id } = useLocalSearchParams();
+  return playLive() && id ? <LiveSentResult id={id} /> : <MockSentResult />;
+}
+
+// 문제를 낸 사람의 점수 안내: 닫힌 뒤 서버가 정산한 결과
+const MAKER_NOTE = {
+  paid: `문제 출제로 +${SCORE.make} 받았어요`,
+  none_solved: "아무도 풀지 않아 문제 출제 점수는 없어요",
+  daily_limit: `오늘 문제 출제 점수 ${MAKE_LIMIT}건을 넘어서 점수는 없어요`,
+  pending: "결과가 열리면 점수가 정해져요",
+};
+
+/** 서버에 연결됐을 때: 닫힌 내가 낸 문제의 정답과 가족이 낸 답(푼 순서). */
+function LiveSentResult({ id }) {
+  const res = usePlayItem(id);
+  const item = res.data;
+  if (!item) {
+    return (
+      <PlayScreen title="정답 공개" close>
+        <LoadNote {...res} what="결과" />
+      </PlayScreen>
+    );
+  }
+  const k = gameKey(item.game);
+  const names = { quiz: "내가 낸 골든벨", draw: "내가 낸 이게 뭐게", photo: "내가 낸 찰칵! 탐정단" };
+  const solved = (item.family_answers ?? []).filter((fa) => fa.answers.length).length;
+  return (
+    <PlayScreen title="정답 공개" close>
+      <View style={styles.hero}>
+        <Text style={styles.heroSub}>{names[k]}</Text>
+        <Text style={styles.heroBig}>가족 {solved}명이 풀었어요</Text>
+        <Text style={styles.heroSub}>{MAKER_NOTE[item.maker_score_state] ?? ""}</Text>
+      </View>
+      {k === "draw" ? <LiveDraw item={item} /> : k === "photo" ? <LivePhoto item={item} /> : <LiveQuiz item={item} />}
+    </PlayScreen>
+  );
+}
+
+function LiveQuiz({ item }) {
+  const v = quizResultView(item, null);
+  return (
+    <>
+      {v.questions.map((r, i) => (
+        <View key={r.q} style={styles.card}>
+          <Text style={styles.tag}>
+            문제 {i + 1} {r.kind}
+          </Text>
+          <Text style={styles.q}>{r.q}</Text>
+          <Text style={styles.ans}>
+            정답 <Text style={styles.bold}>{r.answer}</Text>
+          </Text>
+          {r.note ? <Text style={styles.memo}>{`내가 쓴 한마디\n"${r.note}"`}</Text> : null}
+          <View style={styles.rows}>
+            {r.rows.map((row) => (
+              <AnswerRow key={row.name} name={row.name} answer={row.text} ok={row.ok} />
+            ))}
+          </View>
+        </View>
+      ))}
+    </>
+  );
+}
+
+function LiveDraw({ item }) {
+  const v = drawResultView(item, null);
+  return (
+    <>
+      <AuthImage path={v.imageUrl} contentFit="contain" style={styles.canvas} accessibilityLabel="내가 그린 그림" />
+      <View style={styles.card}>
+        <Text style={styles.ans}>
+          정답 <Text style={styles.bold}>{v.answer}</Text>
+        </Text>
+        {v.alts.length ? <Text style={styles.sub}>이것도 정답: {v.alts.join(", ")}</Text> : null}
+        <View style={styles.rows}>
+          {v.rows.map((r) => (
+            <AnswerRow key={r.name} name={r.name} answer={r.text} ok={r.ok} extra={r.hints ? `힌트 ${r.hints}개` : ""} />
+          ))}
+        </View>
+      </View>
+    </>
+  );
+}
+
+function LivePhoto({ item }) {
+  const v = photoResultView(item, null);
+  return (
+    <>
+      <PhotoStage path={v.imageUrl} box={v.box} badge="원본 사진" note={v.box ? "네모가 문제로 낸 부분이에요" : undefined} label="원본 사진" />
+      <View style={styles.card}>
+        <Text style={styles.q}>{v.question}</Text>
+        <Text style={styles.ans}>
+          정답 <Text style={styles.bold}>{v.answer}</Text>
+        </Text>
+        {v.comment ? <Text style={styles.memo}>{`내가 쓴 한마디\n"${v.comment}"`}</Text> : null}
+        <View style={styles.rows}>
+          {v.rows.map((r) => (
+            <AnswerRow key={r.name} name={r.name} answer={r.text} ok={r.ok} />
+          ))}
+        </View>
+      </View>
+    </>
+  );
+}
+
+function MockSentResult() {
   const { kind = "quiz" } = useLocalSearchParams();
   const k = kind === "draw" || kind === "photo" ? kind : "quiz";
   const info = { quiz: QUIZ, draw: DRAW, photo: PHOTO }[k];

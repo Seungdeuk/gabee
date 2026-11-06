@@ -94,6 +94,9 @@ def test_solver_gets_zoomed_crop_not_original(client, family):
     seen = client.get(f"/play/items/{item['id']}", headers=b).json()
     assert seen["photo"]["answer"] is None and seen["photo"]["comment"] is None
     assert seen["photo"]["zoom"] == 8 and seen["photo"]["shrinks_used"] == 0
+    assert (
+        seen["photo"]["box_x"] is None and seen["photo"]["box_y"] is None
+    )  # 풀이 중에는 위치를 알리지 않는다
     crop = client.get(seen["image_url"], headers=b)
     assert size_of(crop.content) == (100, 75)  # 8배 확대 = 800×600 의 1/8
     # 줄여 보기를 할 때마다 배율이 절반이 되고 사진 주소도 달라진다
@@ -117,6 +120,7 @@ def test_correct_answer_scores_and_reveals_full_photo(client, family):
     assert out["my_score"] == {"total": 25, "join": 10, "correct": 20, "hint": -5}
     assert scores(item["id"]) == [(1, 10), (2, 20), (5, -5)]
     assert out["photo"]["answer"] == "0100" and out["photo"]["zoom"] == 8  # 푼 뒤에는 원본 배율로
+    assert (out["photo"]["box_x"], out["photo"]["box_y"]) == (0.5, 0.5)
     assert size_of(client.get(out["image_url"], headers=b).content) == (800, 600)
     r = pick(client, b, item["id"], "1000")
     assert r.status_code == 409 and r.json()["code"] == "already_answered"

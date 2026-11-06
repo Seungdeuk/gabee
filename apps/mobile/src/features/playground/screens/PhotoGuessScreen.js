@@ -6,8 +6,13 @@ import Avatar from "@/shared/components/Avatar";
 import Button from "@/shared/components/Button";
 import { colors, font, fonts, radius } from "@/theme";
 
+import { bitsOf, photoGuessView } from "../adapt";
+import { openHint, sendAnswers } from "../api";
+import LoadNote from "../components/LoadNote";
+import PhotoStage from "../components/PhotoStage";
 import PlayScreen from "../components/PlayScreen";
 import { SCORE } from "../games";
+import { playLive, usePlayItem } from "../hooks";
 
 const OPTIONS = ["할머니 댁", "제주도 여행", "돌잔치", "우리 집 거실"];
 const MAX_SHRINK = 2; // 참가 점수가 10점이라 줄여 보기는 최대 2번
@@ -15,6 +20,93 @@ const START_ZOOM = 4;
 
 /** 찰칵! 탐정단 맞히기: 확대된 사진 일부, 질문, 보기. "조금 줄여 보기"는 최대 2번(−5점씩). */
 export default function PhotoGuessScreen() {
+  const { id } = useLocalSearchParams();
+  return playLive() && id ? <LivePhotoGuess id={id} /> : <MockPhotoGuess />;
+}
+
+/** 서버에 연결됐을 때: 사진은 서버가 확대해서 잘라 준 조각만 받고, 줄여 보기를 누르면 서버가 배율을 낮춰 다시 잘라 준다. */
+function LivePhotoGuess({ id }) {
+  const router = useRouter();
+  const res = usePlayItem(id);
+  const [item, setItem] = useState(null);
+  const [pick, setPick] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const cur = item ?? res.data;
+  if (!cur?.photo) {
+    return (
+      <PlayScreen title="찰칵! 탐정단" close>
+        <LoadNote {...res} what="사진" />
+      </PlayScreen>
+    );
+  }
+  const view = photoGuessView(cur);
+  const left = view.maxShrinks - view.shrinksUsed;
+  const run = async (action, next) => {
+    setBusy(true);
+    setError("");
+    try {
+      next(await action());
+    } catch (e) {
+      setError(e.message || "잠시 뒤 다시 해 주세요");
+    } finally {
+      setBusy(false);
+    }
+  };
+  const shrink = () => run(() => openHint(id), setItem);
+  const send = () =>
+    run(
+      () => sendAnswers(id, [{ quiz_no: 0, answer: bitsOf(pick, view.options.length) }]), // 보낸 답은 고칠 수 없다
+      (out) => router.replace(out.closed ? `/play/photo-result?id=${id}` : `/play/my-answer?id=${id}&kind=photo`),
+    );
+  return (
+    <PlayScreen
+      title="찰칵! 탐정단"
+      close
+      footer={
+        <>
+          {error ? <Text style={[styles.wrong, styles.center]}>{error}</Text> : null}
+          <Button label="답 보내기" disabled={pick == null || busy} onPress={send} />
+          <Text style={[styles.reveal, styles.center]}>{view.closeAt}에 종료돼요</Text>
+        </>
+      }
+    >
+      <View style={styles.from}>
+        <Avatar name={view.maker} userId={view.makerId} size={36} />
+        <Text style={styles.fromText}>{view.sourceText}</Text>
+      </View>
+      <PhotoStage path={cur.image_url} badge={`${view.zoom}배 확대`} label={`사진의 일부를 ${view.zoom}배 확대해 보여 줘요`} />
+      <View style={styles.shrinkRow}>
+        <Text style={styles.reveal}>
+          최대 {view.maxShrinks}번 · 남은 횟수 {left}번
+        </Text>
+        <Pressable
+          onPress={shrink}
+          disabled={left <= 0 || busy}
+          accessibilityRole="button"
+          accessibilityLabel={`조금 줄여 보기, 점수 ${SCORE.hintCost}점 줄어요. 남은 횟수 ${left}번`}
+          style={[styles.shrinkBtn, view.shrinksUsed === 1 && styles.shrink1, view.shrinksUsed >= 2 && styles.shrink2]}
+        >
+          <Text style={styles.shrinkText}>조금 줄여 보기 (−{SCORE.hintCost}점)</Text>
+        </Pressable>
+      </View>
+      <View style={styles.q}>
+        <Text style={styles.qText} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8}>
+          {view.question}
+        </Text>
+      </View>
+      <View style={styles.list}>
+        {view.options.map((o, k) => (
+          <Pressable key={o} onPress={() => setPick(k)} accessibilityRole="button" accessibilityState={{ selected: pick === k }} style={[styles.opt, pick === k && styles.optOn]}>
+            <Text style={[styles.optText, pick === k && styles.optTextOn]}>{o}</Text>
+          </Pressable>
+        ))}
+      </View>
+    </PlayScreen>
+  );
+}
+
+function MockPhotoGuess() {
   const router = useRouter();
   const params = useLocalSearchParams();
   const options = (() => {
@@ -102,4 +194,5 @@ const styles = StyleSheet.create({
   shrink2: { backgroundColor: colors.surfaceStrong, borderColor: colors.surfaceStrong },
   shrinkText: { fontSize: 13, fontFamily: fonts.bold, color: colors.text },
   reveal: { ...font.caption, color: colors.textSub },
+  wrong: { ...font.caption, color: colors.danger, fontFamily: fonts.bold },
 });

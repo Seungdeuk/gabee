@@ -8,8 +8,10 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import Button from "@/shared/components/Button";
 import { colors, font, fonts, radius } from "@/theme";
 
+import { createPhoto } from "../api";
 import PlayScreen from "../components/PlayScreen";
 import { AudiencePicker, Chip, RevealNote, MakeQuotaNote } from "../components/quiz/QuizParts";
+import { playLive } from "../hooks";
 import { recordMade } from "../mock";
 
 const ZOOMS = [4, 6, 8, 16, 32];
@@ -32,7 +34,11 @@ const ALBUM = [
 /** 찰칵! 탐정단 문제 내기: 사진(가족 앨범 또는 내 폰), 보여 줄 부분(네모 끌기), 확대 배율, 질문·정답·보기, 한마디. */
 export default function PhotoCreateScreen() {
   const router = useRouter();
-  const [photo, setPhoto] = useState({ kind: "album", ...ALBUM[0] });
+  const live = playLive(); // 서버에 연결되면 내 폰의 사진을 올린다(가족 앨범은 시안뿐)
+  const [photo, setPhoto] = useState(live ? { kind: "none" } : { kind: "album", ...ALBUM[0] });
+  const [ratio, setRatio] = useState(null); // 고른 사진의 가로÷세로(서버 사진과 같은 비율로 네모 위치를 잡는다)
+  const [sending, setSending] = useState(false);
+  const [sendError, setSendError] = useState("");
   const [albumOpen, setAlbumOpen] = useState(false);
   const [zoom, setZoom] = useState(4);
   const [ask, setAsk] = useState("어디서");
@@ -51,30 +57,32 @@ export default function PhotoCreateScreen() {
   const [target, setTarget] = useState([]);
   const [box, setBox] = useState({ x: 130, y: 80 });
   const [stageW, setStageW] = useState(350);
+  const stageH = live && ratio ? Math.round(stageW / ratio) : STAGE_H; // 사진 비율대로(잘리지 않게)
   const [dragging, setDragging] = useState(false);
 
   // 문제로 낼 부분(네모)은 배율이 클수록 작아진다: 사진 전체의 1/배율
   const bw = stageW / zoom;
-  const bh = STAGE_H / zoom;
-  const live = useRef({ box, stageW, start: box, bw, bh });
-  live.current.box = box;
-  live.current.stageW = stageW;
-  live.current.bw = bw;
-  live.current.bh = bh;
+  const bh = stageH / zoom;
+  const drag0 = useRef({ box, stageW, stageH, start: box, bw, bh });
+  drag0.current.box = box;
+  drag0.current.stageW = stageW;
+  drag0.current.stageH = stageH;
+  drag0.current.bw = bw;
+  drag0.current.bh = bh;
   const drag = useMemo(
     () =>
       PanResponder.create({
         onStartShouldSetPanResponder: () => true,
         onPanResponderTerminationRequest: () => false,
         onPanResponderGrant: () => {
-          live.current.start = live.current.box;
+          drag0.current.start = drag0.current.box;
           setDragging(true);
         },
         onPanResponderMove: (_, g) => {
-          const s = live.current.start;
+          const s = drag0.current.start;
           setBox({
-            x: Math.max(0, Math.min(live.current.stageW - live.current.bw, s.x + g.dx)),
-            y: Math.max(0, Math.min(STAGE_H - live.current.bh, s.y + g.dy)),
+            x: Math.max(0, Math.min(drag0.current.stageW - drag0.current.bw, s.x + g.dx)),
+            y: Math.max(0, Math.min(drag0.current.stageH - drag0.current.bh, s.y + g.dy)),
           });
         },
         onPanResponderRelease: () => setDragging(false),
@@ -86,7 +94,7 @@ export default function PhotoCreateScreen() {
   const pickZoom = (z) => {
     setZoom(z);
     // 네모가 작아지면 사진 밖으로 나가지 않게 위치를 다시 맞춘다
-    setBox((b) => ({ x: Math.max(0, Math.min(stageW - stageW / z, b.x)), y: Math.max(0, Math.min(STAGE_H - STAGE_H / z, b.y)) }));
+    setBox((b) => ({ x: Math.max(0, Math.min(stageW - stageW / z, b.x)), y: Math.max(0, Math.min(stageH - stageH / z, b.y)) }));
   };
   const k = INSET_W / bw; // 네모 한 변이 미리보기 한 변으로 커지는 비율
   const insetH = bh * k;
@@ -100,7 +108,7 @@ export default function PhotoCreateScreen() {
     ];
     const rect = (c) => {
       const x = c.left ?? stageW - INSET_W - c.right;
-      const y = c.top ?? STAGE_H - insetH - c.bottom;
+      const y = c.top ?? stageH - insetH - c.bottom;
       return { x, y };
     };
     const free = corners.find((c) => {
@@ -112,7 +120,12 @@ export default function PhotoCreateScreen() {
   const pickFromPhone = async () => {
     try {
       const res = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ["images"], quality: 0.8 });
-      if (!res.canceled && res.assets?.[0]?.uri) setPhoto({ kind: "phone", uri: res.assets[0].uri });
+      const asset = res.assets?.[0];
+      if (!res.canceled && asset?.uri) {
+        setPhoto({ kind: "phone", uri: asset.uri, asset });
+        setRatio(asset.width && asset.height ? asset.width / asset.height : null);
+        setBox({ x: 0, y: 0 });
+      }
     } catch {
       // 사진을 못 불러와도 화면은 그대로 둔다
     }
@@ -122,7 +135,9 @@ export default function PhotoCreateScreen() {
     setQuestion(ASKS[k2]);
   };
   const [tried, setTried] = useState(false);
-  const problem = !question.trim()
+  const problem = live && photo.kind !== "phone"
+    ? "사진을 골라 주세요"
+    : !question.trim()
     ? "질문을 써 주세요"
     : shown.some((o) => !o.trim())
       ? "보기를 모두 채워 주세요"
@@ -138,9 +153,9 @@ export default function PhotoCreateScreen() {
       scrollEnabled={!dragging}
       footer={
         <>
-          {tried && problem ? (
+          {sendError || (tried && problem) ? (
             <Text style={styles.error} accessibilityRole="alert">
-              {problem}
+              {sendError || problem}
             </Text>
           ) : (
             <RevealNote>내일 오후 2:10에 정답이 공개돼요, 모두 답하면 바로 열려요</RevealNote>
@@ -148,9 +163,34 @@ export default function PhotoCreateScreen() {
           <MakeQuotaNote />
           <Button
             label="사진 문제 보내기"
-            onPress={() => {
+            disabled={sending}
+            onPress={async () => {
               if (problem) {
                 setTried(true);
+                return;
+              }
+              if (live) {
+                setSending(true);
+                setSendError("");
+                try {
+                  const item = await createPhoto({
+                    image: photo.asset,
+                    source: 2,
+                    zoom,
+                    boxX: (box.x + bw / 2) / stageW, // 네모의 가운데를 사진 전체에서의 위치(0~1)로
+                    boxY: (box.y + bh / 2) / stageH,
+                    question: question.trim(),
+                    options: shown.map((o) => o.trim()),
+                    answerIndex: ansIdx,
+                    comment: withNote ? note.trim() : "",
+                    playerIds: target,
+                  });
+                  router.replace(`/play/sent-detail?id=${item.id}&kind=photo`);
+                } catch (e) {
+                  setSendError(e.message || "보내지 못했어요. 잠시 뒤 다시 해 주세요");
+                } finally {
+                  setSending(false);
+                }
                 return;
               }
               recordMade();
@@ -165,21 +205,23 @@ export default function PhotoCreateScreen() {
       <View style={styles.block}>
         {photo.kind === "album" ? <Text style={styles.label}>{`가족 앨범에서 고른 사진 · ${photo.name}`}</Text> : null}
         <View style={styles.row}>
-          <View style={styles.flex}>
-            <Button label="가족 앨범에서 고르기" small variant="secondary" onPress={() => setAlbumOpen(true)} />
-          </View>
+          {live ? null : (
+            <View style={styles.flex}>
+              <Button label="가족 앨범에서 고르기" small variant="secondary" onPress={() => setAlbumOpen(true)} />
+            </View>
+          )}
           <View style={styles.flex}>
             <Button label="내 폰에서 올리기" small variant="secondary" onPress={pickFromPhone} />
           </View>
         </View>
       </View>
-      <View style={[styles.stage, photo.kind === "album" && { backgroundColor: photo.color }]} onLayout={(e) => setStageW(e.nativeEvent.layout.width)}>
+      <View style={[styles.stage, { height: stageH }, photo.kind === "album" && { backgroundColor: photo.color }]} onLayout={(e) => setStageW(e.nativeEvent.layout.width)}>
         {photo.kind === "phone" ? <Image source={{ uri: photo.uri }} style={StyleSheet.absoluteFill} contentFit="cover" accessibilityLabel="올린 사진" /> : null}
         <View {...drag.panHandlers} style={[styles.box, { left: box.x, top: box.y, width: bw, height: bh }]} accessibilityLabel="보여 줄 부분. 끌어서 옮겨요" />
         <Text style={styles.stageNote}>네모를 끌어 보여줄 부분을 옮겨요</Text>
         <View pointerEvents="none" style={[styles.inset, insetPos, { width: INSET_W + 4, height: insetH + 4 }, photo.kind === "album" && { backgroundColor: photo.color }]} accessibilityLabel={`사진의 일부를 ${zoom}배 확대한 미리보기`}>
           <View style={{ width: INSET_W, height: insetH, overflow: "hidden", borderRadius: 8, backgroundColor: photo.kind === "album" ? photo.color : "#CDB9A3" }}>
-            {photo.kind === "phone" ? <Image source={{ uri: photo.uri }} style={{ position: "absolute", width: stageW * k, height: STAGE_H * k, left: -box.x * k, top: -box.y * k }} contentFit="cover" /> : null}
+            {photo.kind === "phone" ? <Image source={{ uri: photo.uri }} style={{ position: "absolute", width: stageW * k, height: stageH * k, left: -box.x * k, top: -box.y * k }} contentFit="cover" /> : null}
             <Text style={styles.insetBadge}>{zoom}배 확대</Text>
           </View>
         </View>
@@ -301,7 +343,7 @@ const styles = StyleSheet.create({
   row: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
   label: { ...font.bodyStrong, color: colors.text },
   sub: { fontSize: 13, lineHeight: 20, fontFamily: fonts.regular, color: colors.textSub },
-  stage: { height: STAGE_H, borderRadius: radius.card, backgroundColor: "#CDB9A3", overflow: "hidden" },
+  stage: { minHeight: STAGE_H, borderRadius: radius.card, backgroundColor: "#CDB9A3", overflow: "hidden" },
   labelRow: { flexDirection: "row", alignItems: "baseline", gap: 8 },
   inset: { position: "absolute", padding: 2, borderRadius: 10, backgroundColor: colors.background },
   insetBadge: { position: "absolute", left: 6, top: 6, paddingVertical: 2, paddingHorizontal: 7, borderRadius: 999, overflow: "hidden", backgroundColor: colors.background, fontSize: 11, fontFamily: fonts.bold, color: colors.text },

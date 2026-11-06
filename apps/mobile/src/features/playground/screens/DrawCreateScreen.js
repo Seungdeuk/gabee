@@ -1,16 +1,19 @@
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 
 import Button from "@/shared/components/Button";
 import { colors, font, fonts } from "@/theme";
 
+import { createDraw } from "../api";
 import DrawingCanvas from "../components/draw/DrawingCanvas";
 import PlayScreen from "../components/PlayScreen";
 import { AudiencePicker, RevealNote, MakeQuotaNote } from "../components/quiz/QuizParts";
 import { SCORE } from "../games";
+import { playLive } from "../hooks";
 import { recordMade } from "../mock";
+import { pngAssetFromBase64 } from "../upload";
 
 const PALETTE = [
   { name: "검정", value: colors.text },
@@ -30,6 +33,9 @@ export default function DrawCreateScreen() {
   const [color, setColor] = useState(PALETTE[0].value);
   const [eraser, setEraser] = useState(false);
   const [target, setTarget] = useState([]);
+  const svgRef = useRef(null); // 그림판 SVG: 보낼 때 PNG 로 바꾼다
+  const [sending, setSending] = useState(false);
+  const [sendError, setSendError] = useState("");
   const [paint, setPaint] = useState(false); // 그리기 모드: 켜져 있는 동안 화면 스크롤을 잠근다. 완료를 누르면 풀린다
   const letters = answer.replace(/\s/g, "").length;
   const [tried, setTried] = useState(false);
@@ -43,9 +49,9 @@ export default function DrawCreateScreen() {
       scrollEnabled={!paint}
       footer={
         <>
-          {tried && problem ? (
+          {sendError || (tried && problem) ? (
             <Text style={styles.error} accessibilityRole="alert">
-              {problem}
+              {sendError || problem}
             </Text>
           ) : (
             <RevealNote>내일 오후 2:10에 정답이 공개돼요, 모두 답하면 바로 열려요</RevealNote>
@@ -53,9 +59,33 @@ export default function DrawCreateScreen() {
           <MakeQuotaNote />
           <Button
             label="그림 문제 보내기"
-            onPress={() => {
+            disabled={sending}
+            onPress={async () => {
               if (problem) {
                 setTried(true);
+                return;
+              }
+              if (playLive()) {
+                setSending(true);
+                setSendError("");
+                try {
+                  const base64 = await new Promise((resolve, reject) => {
+                    if (!svgRef.current?.toDataURL) reject(new Error("그림을 저장하지 못했어요"));
+                    else svgRef.current.toDataURL(resolve);
+                  });
+                  const item = await createDraw({
+                    image: await pngAssetFromBase64(base64),
+                    answer: answer.trim(),
+                    alts: alt.split(",").map((a) => a.trim()).filter(Boolean),
+                    hint2: hint2.trim(),
+                    playerIds: target,
+                  });
+                  router.replace(`/play/sent-detail?id=${item.id}&kind=draw`);
+                } catch (e) {
+                  setSendError(e.message || "보내지 못했어요. 잠시 뒤 다시 해 주세요");
+                } finally {
+                  setSending(false);
+                }
                 return;
               }
               recordMade();
@@ -76,7 +106,7 @@ export default function DrawCreateScreen() {
       </View>
       <View>
         <View pointerEvents={paint ? "auto" : "none"}>
-          <DrawingCanvas strokes={strokes} onChange={setStrokes} color={color} eraser={eraser} />
+          <DrawingCanvas strokes={strokes} onChange={setStrokes} color={color} eraser={eraser} svgRef={svgRef} />
         </View>
         {paint ? (
           <>

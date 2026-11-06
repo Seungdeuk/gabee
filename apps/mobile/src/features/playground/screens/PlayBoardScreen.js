@@ -4,34 +4,37 @@ import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import { colors, font, fonts, radius } from "@/theme";
 
+import LoadNote from "../components/LoadNote";
 import PlayScreen from "../components/PlayScreen";
 import SectionHead from "../components/SectionHead";
 import TurnRow from "../components/TurnRow";
-import { openSent, PAST, SENT_PAST, TODO, WAITING } from "../mock";
+import { usePlayBoard } from "../hooks";
 
 /** 놀이터 현황: 받은/보낸 토글. 받은 = 내가 할 차례 + 내가 참여했어요 + 지난 결과(최근 3일), 보낸 = 내가 낸 문제 + 지난 결과. */
 export default function PlayBoardScreen() {
-  const sent = openSent(); // 닫은 방은 빼고 보여 준다
+  const board = usePlayBoard(); // 서버 주소가 없으면 시안 데이터(닫은 폭탄 방은 뺀 채)
   const { tab: startTab } = useLocalSearchParams();
   const [tab, setTab] = useState(startTab === "sent" ? "sent" : "recv");
+  const { todo, waiting, past, sent, sentPast } = board.data ?? {};
   return (
     <PlayScreen title="놀이터 현황" close>
       <View style={styles.toggle}>
         <Tab label="받은" on={tab === "recv"} onPress={() => setTab("recv")} />
         <Tab label="보낸" on={tab === "sent"} onPress={() => setTab("sent")} />
       </View>
-      {tab === "recv" ? (
+      <LoadNote {...board} what="현황" />
+      {!board.data ? null : tab === "recv" ? (
         <>
-          <SectionHead title="내가 할 차례" right={`${TODO.length}개`} />
-          {TODO.map((item) => (
+          <SectionHead title="내가 할 차례" right={`${todo.length}개`} />
+          {todo.map((item) => (
             <TurnRow key={item.id} item={recvProgress(item, false)} strong={item.strong} />
           ))}
-          <SectionHead title="내가 참여했어요" right={`${WAITING.length}개`} />
-          {WAITING.map((item) => (
+          <SectionHead title="내가 참여했어요" right={`${waiting.length}개`} />
+          {waiting.map((item) => (
             <TurnRow key={item.id} item={recvProgress(item, true)} done />
           ))}
           <SectionHead title="지난 결과" right="최근 3일" />
-          {PAST.map((item) => (
+          {past.map((item) => (
             <TurnRow key={item.id} item={item} />
           ))}
         </>
@@ -42,7 +45,7 @@ export default function PlayBoardScreen() {
             <TurnRow key={item.id} item={progressSub(item)} strong={item.game === "bomb"} />
           ))}
           <SectionHead title="지난 결과" right="최근 3일" />
-          {SENT_PAST.map((item) => (
+          {sentPast.map((item) => (
             <TurnRow key={item.id} item={item} />
           ))}
           <Text style={styles.note}>같은 게임도 여러 개 낼 수 있어요</Text>
