@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 from app.features.family_group import repository as group_repo
 from app.features.family_group.models import User
 from app.shared.errors import ApiError, bad_request, not_found
+from app.shared.notifications import notify
 from app.shared.seed_lock import seed_lock
 
 from . import allowance
@@ -323,7 +324,43 @@ def settle(db: Session, group_id: str, user_id: str, body: SettleRequest) -> Set
         e.target_tag, e.split_among = body.tag, participants
         e.settled_at, e.settled_by = now, user_id
     repo.save_all(db, chosen)
-    return settlement(db, group_id, month)
+    result = settlement(db, group_id, month)
+    _notify_settled(db, group_id, user_id, month, result)
+    return result
+
+
+def _notify_settled(
+    db: Session, group_id: str, actor_id: str, month: str, result: Settlement
+) -> None:
+    """정산하기가 끝나면 보낼 사람과 받을 사람에게 알림함으로 알린다. 보낼 돈이 없으면 알리지 않는다.
+    알림 문구는 고정 템플릿이고 금액은 넣지 않는다(정산한 본인은 알림 함수가 건너뛴다)."""
+    if not result.transfers:
+        return
+    payers = [t.from_user_id for t in result.transfers]
+    payees = [t.to_user_id for t in result.transfers if t.to_user_id not in payers]
+    common = dict(
+        group_id=group_id,
+        kind="billing",
+        title="정산이 끝났어요",
+        target_type="settlement",
+        target_id=month,
+        actor_user_id=actor_id,
+    )
+    notify(
+        db,
+        event="settlement_pay",
+        recipients=payers,
+        body=f"{month} 정산에서 보낼 돈이 있어요",
+        **common,
+    )
+    notify(
+        db,
+        event="settlement_receive",
+        recipients=payees,
+        body=f"{month} 정산에서 받을 돈이 있어요",
+        **common,
+    )
+    db.commit()
 
 
 # ---- 정산 담당자와 월말 알림 ----

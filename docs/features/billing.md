@@ -15,6 +15,8 @@
   - 미성년 자녀 표시: `PUT /billing/settlement/minors`(정산 담당자·그룹을 만든 사람만, 부모 역할은 고를 수 없음). 가족 구성원 모델에 나이 정보가 아직 없어 정산 설정(`billing_settings.minor_ids`)에 둔다. 가족 그룹 쪽에 생년·미성년 필드가 생기면 그 값으로 옮긴다.
   - **미정산 지출은 잔액·송금 목록에서 제외**한다(`GET /billing/settlement`은 정산하기를 마친 지출만 계산, 응답의 `unsettled_count`·`unsettled_total`로 개수를 알려 준다). `GET /billing/summary`는 미정산까지 포함한 월 요약이다.
   - 직접 고르기(`custom`): 고정 태그로 채워진 인원에서 사람을 더하거나 빼서 `participants`로 보낸다. 지출에는 `target_tag`와 `split_among`(태그+나눌 사람)이 저장되고, 잔액·최소 송금 계산은 기존 것을 그대로 쓴다.
+- 정산하기 알림: `POST /billing/settlement/tag` 가 끝나면 송금 목록에 오른 사람에게 알림함(`kind=billing`)으로 알린다. 보낼 사람은 `settlement_pay`("보낼 돈이 있어요"), 받을 사람은 `settlement_receive`("받을 돈이 있어요"), 둘 다 `target_type=settlement`, `target_id=월`. 문구는 고정 템플릿이고 금액은 넣지 않으며, 정산한 본인과 보낼 돈이 없을 때는 알리지 않는다. 알림 저장이 실패해도 정산은 그대로 된다. 재알림(24시간 뒤 한 번)은 아직 없다.
+
   - `POST /billing/settlement/tag`: 같은 달의 지출 여러 건에 한 번에 건다. 송금 완료 표시가 있는 달은 `settlement_locked`로 거절(송금 완료를 먼저 취소).
 - **월말 정산 알림(정산 담당자에게만)**: 지출에 "정산됨" 상태(`settled_at`, `settled_by`)를 추가했다. "정산하기"를 누르면 정산됨이 되고, 그 전 지출은 미정산이다.
   - 정산 담당자: `GET·PUT /billing/settlement/manager`. 지정하지 않으면 그룹을 만든 사람이 담당자다. 변경은 지금 담당자나 그룹을 만든 사람만 할 수 있다(`not_manager` 403).
