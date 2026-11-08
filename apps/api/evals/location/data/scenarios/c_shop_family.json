@@ -1,0 +1,2698 @@
+{
+  "family": {
+    "name": "가짜 가족 (가게 집)",
+    "timezone": "Asia/Seoul"
+  },
+  "people": [
+    {
+      "id": "c_dalsu",
+      "name": "달수",
+      "role": "parent"
+    },
+    {
+      "id": "c_boram",
+      "name": "보람",
+      "role": "parent"
+    },
+    {
+      "id": "c_haneul",
+      "name": "하늘",
+      "role": "child"
+    },
+    {
+      "id": "c_geon",
+      "name": "건",
+      "role": "child"
+    }
+  ],
+  "places": [
+    {
+      "id": "c_home",
+      "name": "소나무길 단독 3호",
+      "kind": "home",
+      "lat": 37.52,
+      "lng": 126.92,
+      "radius_m": 150
+    },
+    {
+      "id": "c_shop",
+      "name": "달콤모퉁이 분식집",
+      "kind": "shop",
+      "lat": 37.532,
+      "lng": 126.935,
+      "radius_m": 120
+    },
+    {
+      "id": "c_wholesale",
+      "name": "큰물 도매시장",
+      "kind": "market",
+      "lat": 37.544,
+      "lng": 126.92,
+      "radius_m": 200
+    },
+    {
+      "id": "c_bank",
+      "name": "은행나무 신협",
+      "kind": "bank",
+      "lat": 37.532,
+      "lng": 126.95,
+      "radius_m": 100
+    },
+    {
+      "id": "c_post",
+      "name": "오름동 우체국",
+      "kind": "post_office",
+      "lat": 37.52,
+      "lng": 126.95,
+      "radius_m": 100
+    },
+    {
+      "id": "c_school",
+      "name": "새솔 고등학교",
+      "kind": "school",
+      "lat": 37.556,
+      "lng": 126.935,
+      "radius_m": 200
+    },
+    {
+      "id": "c_study",
+      "name": "고요 독서실",
+      "kind": "study_room",
+      "lat": 37.544,
+      "lng": 126.95,
+      "radius_m": 100
+    },
+    {
+      "id": "c_campus",
+      "name": "바람결 대학교",
+      "kind": "campus",
+      "lat": 37.508,
+      "lng": 126.935,
+      "radius_m": 250
+    },
+    {
+      "id": "c_conv",
+      "name": "반달 편의점",
+      "kind": "convenience_store",
+      "lat": 37.508,
+      "lng": 126.965,
+      "radius_m": 100
+    },
+    {
+      "id": "c_club",
+      "name": "별무리 동아리방",
+      "kind": "club",
+      "lat": 37.556,
+      "lng": 126.965,
+      "radius_m": 100
+    },
+    {
+      "id": "c_friend",
+      "name": "도윤네 원룸",
+      "kind": "friend_home",
+      "lat": 37.544,
+      "lng": 126.98,
+      "radius_m": 100
+    }
+  ],
+  "segments": [
+    {
+      "person": "c_dalsu",
+      "start": "2026-10-27T00:00:00+09:00",
+      "end": "2026-10-27T04:05:00+09:00",
+      "type": "stay",
+      "place": "c_home"
+    },
+    {
+      "person": "c_dalsu",
+      "start": "2026-10-27T04:05:00+09:00",
+      "end": "2026-10-27T04:13:00+09:00",
+      "type": "move",
+      "from": "c_home",
+      "to": "c_wholesale"
+    },
+    {
+      "person": "c_dalsu",
+      "start": "2026-10-27T04:13:00+09:00",
+      "end": "2026-10-27T05:10:00+09:00",
+      "type": "stay",
+      "place": "c_wholesale"
+    },
+    {
+      "person": "c_dalsu",
+      "start": "2026-10-27T05:10:00+09:00",
+      "end": "2026-10-27T05:18:00+09:00",
+      "type": "move",
+      "from": "c_wholesale",
+      "to": "c_shop"
+    },
+    {
+      "person": "c_dalsu",
+      "start": "2026-10-27T05:18:00+09:00",
+      "end": "2026-10-27T20:15:00+09:00",
+      "type": "stay",
+      "place": "c_shop"
+    },
+    {
+      "person": "c_dalsu",
+      "start": "2026-10-27T20:15:00+09:00",
+      "end": "2026-10-27T20:23:00+09:00",
+      "type": "move",
+      "from": "c_shop",
+      "to": "c_home"
+    },
+    {
+      "person": "c_dalsu",
+      "start": "2026-10-27T20:23:00+09:00",
+      "end": "2026-10-28T00:00:00+09:00",
+      "type": "stay",
+      "place": "c_home"
+    },
+    {
+      "person": "c_boram",
+      "start": "2026-10-27T00:00:00+09:00",
+      "end": "2026-10-27T08:30:00+09:00",
+      "type": "stay",
+      "place": "c_home"
+    },
+    {
+      "person": "c_boram",
+      "start": "2026-10-27T08:30:00+09:00",
+      "end": "2026-10-27T08:38:00+09:00",
+      "type": "move",
+      "from": "c_home",
+      "to": "c_shop"
+    },
+    {
+      "person": "c_boram",
+      "start": "2026-10-27T08:38:00+09:00",
+      "end": "2026-10-27T13:35:00+09:00",
+      "type": "stay",
+      "place": "c_shop"
+    },
+    {
+      "person": "c_boram",
+      "start": "2026-10-27T13:35:00+09:00",
+      "end": "2026-10-27T13:43:00+09:00",
+      "type": "move",
+      "from": "c_shop",
+      "to": "c_post"
+    },
+    {
+      "person": "c_boram",
+      "start": "2026-10-27T13:43:00+09:00",
+      "end": "2026-10-27T14:40:00+09:00",
+      "type": "stay",
+      "place": "c_post"
+    },
+    {
+      "person": "c_boram",
+      "start": "2026-10-27T14:40:00+09:00",
+      "end": "2026-10-27T14:48:00+09:00",
+      "type": "move",
+      "from": "c_post",
+      "to": "c_shop"
+    },
+    {
+      "person": "c_boram",
+      "start": "2026-10-27T14:48:00+09:00",
+      "end": "2026-10-27T20:25:00+09:00",
+      "type": "stay",
+      "place": "c_shop"
+    },
+    {
+      "person": "c_boram",
+      "start": "2026-10-27T20:25:00+09:00",
+      "end": "2026-10-27T20:33:00+09:00",
+      "type": "move",
+      "from": "c_shop",
+      "to": "c_home"
+    },
+    {
+      "person": "c_boram",
+      "start": "2026-10-27T20:33:00+09:00",
+      "end": "2026-10-28T00:00:00+09:00",
+      "type": "stay",
+      "place": "c_home"
+    },
+    {
+      "person": "c_haneul",
+      "start": "2026-10-27T00:00:00+09:00",
+      "end": "2026-10-27T07:30:00+09:00",
+      "type": "stay",
+      "place": "c_home"
+    },
+    {
+      "person": "c_haneul",
+      "start": "2026-10-27T07:30:00+09:00",
+      "end": "2026-10-27T07:42:00+09:00",
+      "type": "move",
+      "from": "c_home",
+      "to": "c_school"
+    },
+    {
+      "person": "c_haneul",
+      "start": "2026-10-27T07:42:00+09:00",
+      "end": "2026-10-27T21:35:00+09:00",
+      "type": "stay",
+      "place": "c_school"
+    },
+    {
+      "person": "c_haneul",
+      "start": "2026-10-27T21:35:00+09:00",
+      "end": "2026-10-27T21:47:00+09:00",
+      "type": "move",
+      "from": "c_school",
+      "to": "c_home"
+    },
+    {
+      "person": "c_haneul",
+      "start": "2026-10-27T21:47:00+09:00",
+      "end": "2026-10-28T00:00:00+09:00",
+      "type": "stay",
+      "place": "c_home"
+    },
+    {
+      "person": "c_geon",
+      "start": "2026-10-27T00:00:00+09:00",
+      "end": "2026-10-27T08:10:00+09:00",
+      "type": "stay",
+      "place": "c_home"
+    },
+    {
+      "person": "c_geon",
+      "start": "2026-10-27T08:10:00+09:00",
+      "end": "2026-10-27T08:18:00+09:00",
+      "type": "move",
+      "from": "c_home",
+      "to": "c_campus"
+    },
+    {
+      "person": "c_geon",
+      "start": "2026-10-27T08:18:00+09:00",
+      "end": "2026-10-27T15:25:00+09:00",
+      "type": "stay",
+      "place": "c_campus"
+    },
+    {
+      "person": "c_geon",
+      "start": "2026-10-27T15:25:00+09:00",
+      "end": "2026-10-27T15:33:00+09:00",
+      "type": "move",
+      "from": "c_campus",
+      "to": "c_conv"
+    },
+    {
+      "person": "c_geon",
+      "start": "2026-10-27T15:33:00+09:00",
+      "end": "2026-10-27T23:10:00+09:00",
+      "type": "stay",
+      "place": "c_conv"
+    },
+    {
+      "person": "c_geon",
+      "start": "2026-10-27T23:10:00+09:00",
+      "end": "2026-10-27T23:22:00+09:00",
+      "type": "move",
+      "from": "c_conv",
+      "to": "c_home"
+    },
+    {
+      "person": "c_geon",
+      "start": "2026-10-27T23:22:00+09:00",
+      "end": "2026-10-28T00:00:00+09:00",
+      "type": "stay",
+      "place": "c_home"
+    },
+    {
+      "person": "c_dalsu",
+      "start": "2026-10-28T00:00:00+09:00",
+      "end": "2026-10-29T00:00:00+09:00",
+      "type": "stay",
+      "place": "c_home"
+    },
+    {
+      "person": "c_boram",
+      "start": "2026-10-28T00:00:00+09:00",
+      "end": "2026-10-28T08:10:00+09:00",
+      "type": "stay",
+      "place": "c_home"
+    },
+    {
+      "person": "c_boram",
+      "start": "2026-10-28T08:10:00+09:00",
+      "end": "2026-10-28T08:18:00+09:00",
+      "type": "move",
+      "from": "c_home",
+      "to": "c_shop"
+    },
+    {
+      "person": "c_boram",
+      "start": "2026-10-28T08:18:00+09:00",
+      "end": "2026-10-28T15:00:00+09:00",
+      "type": "stay",
+      "place": "c_shop"
+    },
+    {
+      "person": "c_boram",
+      "start": "2026-10-28T15:00:00+09:00",
+      "end": "2026-10-28T15:08:00+09:00",
+      "type": "move",
+      "from": "c_shop",
+      "to": "c_bank"
+    },
+    {
+      "person": "c_boram",
+      "start": "2026-10-28T15:08:00+09:00",
+      "end": "2026-10-28T15:35:00+09:00",
+      "type": "stay",
+      "place": "c_bank"
+    },
+    {
+      "person": "c_boram",
+      "start": "2026-10-28T15:35:00+09:00",
+      "end": "2026-10-28T15:43:00+09:00",
+      "type": "move",
+      "from": "c_bank",
+      "to": "c_shop"
+    },
+    {
+      "person": "c_boram",
+      "start": "2026-10-28T15:43:00+09:00",
+      "end": "2026-10-28T20:40:00+09:00",
+      "type": "stay",
+      "place": "c_shop"
+    },
+    {
+      "person": "c_boram",
+      "start": "2026-10-28T20:40:00+09:00",
+      "end": "2026-10-28T20:48:00+09:00",
+      "type": "move",
+      "from": "c_shop",
+      "to": "c_home"
+    },
+    {
+      "person": "c_boram",
+      "start": "2026-10-28T20:48:00+09:00",
+      "end": "2026-10-29T00:00:00+09:00",
+      "type": "stay",
+      "place": "c_home"
+    },
+    {
+      "person": "c_haneul",
+      "start": "2026-10-28T00:00:00+09:00",
+      "end": "2026-10-28T07:35:00+09:00",
+      "type": "stay",
+      "place": "c_home"
+    },
+    {
+      "person": "c_haneul",
+      "start": "2026-10-28T07:35:00+09:00",
+      "end": "2026-10-28T07:47:00+09:00",
+      "type": "move",
+      "from": "c_home",
+      "to": "c_school"
+    },
+    {
+      "person": "c_haneul",
+      "start": "2026-10-28T07:47:00+09:00",
+      "end": "2026-10-28T17:35:00+09:00",
+      "type": "stay",
+      "place": "c_school"
+    },
+    {
+      "person": "c_haneul",
+      "start": "2026-10-28T17:35:00+09:00",
+      "end": "2026-10-28T17:43:00+09:00",
+      "type": "move",
+      "from": "c_school",
+      "to": "c_shop"
+    },
+    {
+      "person": "c_haneul",
+      "start": "2026-10-28T17:43:00+09:00",
+      "end": "2026-10-28T18:35:00+09:00",
+      "type": "stay",
+      "place": "c_shop"
+    },
+    {
+      "person": "c_haneul",
+      "start": "2026-10-28T18:35:00+09:00",
+      "end": "2026-10-28T18:43:00+09:00",
+      "type": "move",
+      "from": "c_shop",
+      "to": "c_study"
+    },
+    {
+      "person": "c_haneul",
+      "start": "2026-10-28T18:43:00+09:00",
+      "end": "2026-10-28T22:20:00+09:00",
+      "type": "stay",
+      "place": "c_study"
+    },
+    {
+      "person": "c_haneul",
+      "start": "2026-10-28T22:20:00+09:00",
+      "end": "2026-10-28T22:31:00+09:00",
+      "type": "move",
+      "from": "c_study",
+      "to": "c_home"
+    },
+    {
+      "person": "c_haneul",
+      "start": "2026-10-28T22:31:00+09:00",
+      "end": "2026-10-29T00:00:00+09:00",
+      "type": "stay",
+      "place": "c_home"
+    },
+    {
+      "person": "c_geon",
+      "start": "2026-10-28T00:00:00+09:00",
+      "end": "2026-10-28T08:20:00+09:00",
+      "type": "stay",
+      "place": "c_home"
+    },
+    {
+      "person": "c_geon",
+      "start": "2026-10-28T08:20:00+09:00",
+      "end": "2026-10-28T08:28:00+09:00",
+      "type": "move",
+      "from": "c_home",
+      "to": "c_campus"
+    },
+    {
+      "person": "c_geon",
+      "start": "2026-10-28T08:28:00+09:00",
+      "end": "2026-10-28T14:00:00+09:00",
+      "type": "stay",
+      "place": "c_campus"
+    },
+    {
+      "person": "c_geon",
+      "start": "2026-10-28T14:00:00+09:00",
+      "end": "2026-10-28T14:08:00+09:00",
+      "type": "move",
+      "from": "c_campus",
+      "to": "c_home"
+    },
+    {
+      "person": "c_geon",
+      "start": "2026-10-28T14:08:00+09:00",
+      "end": "2026-10-29T00:00:00+09:00",
+      "type": "stay",
+      "place": "c_home"
+    },
+    {
+      "person": "c_dalsu",
+      "start": "2026-10-29T00:00:00+09:00",
+      "end": "2026-10-29T04:10:00+09:00",
+      "type": "stay",
+      "place": "c_home"
+    },
+    {
+      "person": "c_dalsu",
+      "start": "2026-10-29T04:10:00+09:00",
+      "end": "2026-10-29T04:18:00+09:00",
+      "type": "move",
+      "from": "c_home",
+      "to": "c_wholesale"
+    },
+    {
+      "person": "c_dalsu",
+      "start": "2026-10-29T04:18:00+09:00",
+      "end": "2026-10-29T05:15:00+09:00",
+      "type": "stay",
+      "place": "c_wholesale"
+    },
+    {
+      "person": "c_dalsu",
+      "start": "2026-10-29T05:15:00+09:00",
+      "end": "2026-10-29T05:23:00+09:00",
+      "type": "move",
+      "from": "c_wholesale",
+      "to": "c_shop"
+    },
+    {
+      "person": "c_dalsu",
+      "start": "2026-10-29T05:23:00+09:00",
+      "end": "2026-10-29T20:30:00+09:00",
+      "type": "stay",
+      "place": "c_shop"
+    },
+    {
+      "person": "c_dalsu",
+      "start": "2026-10-29T20:30:00+09:00",
+      "end": "2026-10-29T20:38:00+09:00",
+      "type": "move",
+      "from": "c_shop",
+      "to": "c_bank"
+    },
+    {
+      "person": "c_dalsu",
+      "start": "2026-10-29T20:38:00+09:00",
+      "end": "2026-10-29T21:33:00+09:00",
+      "type": "anomaly",
+      "lat": 37.5385,
+      "lng": 126.957
+    },
+    {
+      "person": "c_dalsu",
+      "start": "2026-10-29T21:33:00+09:00",
+      "end": "2026-10-29T21:41:00+09:00",
+      "type": "move",
+      "from": "c_bank",
+      "to": "c_home"
+    },
+    {
+      "person": "c_dalsu",
+      "start": "2026-10-29T21:41:00+09:00",
+      "end": "2026-10-30T00:00:00+09:00",
+      "type": "stay",
+      "place": "c_home"
+    },
+    {
+      "person": "c_boram",
+      "start": "2026-10-29T00:00:00+09:00",
+      "end": "2026-10-29T08:20:00+09:00",
+      "type": "stay",
+      "place": "c_home"
+    },
+    {
+      "person": "c_boram",
+      "start": "2026-10-29T08:20:00+09:00",
+      "end": "2026-10-29T08:28:00+09:00",
+      "type": "move",
+      "from": "c_home",
+      "to": "c_shop"
+    },
+    {
+      "person": "c_boram",
+      "start": "2026-10-29T08:28:00+09:00",
+      "end": "2026-10-29T14:30:00+09:00",
+      "type": "stay",
+      "place": "c_shop"
+    },
+    {
+      "person": "c_boram",
+      "start": "2026-10-29T14:30:00+09:00",
+      "end": "2026-10-29T14:38:00+09:00",
+      "type": "move",
+      "from": "c_shop",
+      "to": "c_bank"
+    },
+    {
+      "person": "c_boram",
+      "start": "2026-10-29T14:38:00+09:00",
+      "end": "2026-10-29T15:35:00+09:00",
+      "type": "stay",
+      "place": "c_bank"
+    },
+    {
+      "person": "c_boram",
+      "start": "2026-10-29T15:35:00+09:00",
+      "end": "2026-10-29T15:43:00+09:00",
+      "type": "move",
+      "from": "c_bank",
+      "to": "c_shop"
+    },
+    {
+      "person": "c_boram",
+      "start": "2026-10-29T15:43:00+09:00",
+      "end": "2026-10-29T20:40:00+09:00",
+      "type": "stay",
+      "place": "c_shop"
+    },
+    {
+      "person": "c_boram",
+      "start": "2026-10-29T20:40:00+09:00",
+      "end": "2026-10-29T20:48:00+09:00",
+      "type": "move",
+      "from": "c_shop",
+      "to": "c_home"
+    },
+    {
+      "person": "c_boram",
+      "start": "2026-10-29T20:48:00+09:00",
+      "end": "2026-10-30T00:00:00+09:00",
+      "type": "stay",
+      "place": "c_home"
+    },
+    {
+      "person": "c_haneul",
+      "start": "2026-10-29T00:00:00+09:00",
+      "end": "2026-10-29T07:35:00+09:00",
+      "type": "stay",
+      "place": "c_home"
+    },
+    {
+      "person": "c_haneul",
+      "start": "2026-10-29T07:35:00+09:00",
+      "end": "2026-10-29T07:47:00+09:00",
+      "type": "move",
+      "from": "c_home",
+      "to": "c_school"
+    },
+    {
+      "person": "c_haneul",
+      "start": "2026-10-29T07:47:00+09:00",
+      "end": "2026-10-29T21:30:00+09:00",
+      "type": "stay",
+      "place": "c_school"
+    },
+    {
+      "person": "c_haneul",
+      "start": "2026-10-29T21:30:00+09:00",
+      "end": "2026-10-29T21:42:00+09:00",
+      "type": "move",
+      "from": "c_school",
+      "to": "c_home"
+    },
+    {
+      "person": "c_haneul",
+      "start": "2026-10-29T21:42:00+09:00",
+      "end": "2026-10-30T00:00:00+09:00",
+      "type": "stay",
+      "place": "c_home"
+    },
+    {
+      "person": "c_geon",
+      "start": "2026-10-29T00:00:00+09:00",
+      "end": "2026-10-29T08:15:00+09:00",
+      "type": "stay",
+      "place": "c_home"
+    },
+    {
+      "person": "c_geon",
+      "start": "2026-10-29T08:15:00+09:00",
+      "end": "2026-10-29T08:23:00+09:00",
+      "type": "move",
+      "from": "c_home",
+      "to": "c_campus"
+    },
+    {
+      "person": "c_geon",
+      "start": "2026-10-29T08:23:00+09:00",
+      "end": "2026-10-29T15:50:00+09:00",
+      "type": "stay",
+      "place": "c_campus"
+    },
+    {
+      "person": "c_geon",
+      "start": "2026-10-29T15:50:00+09:00",
+      "end": "2026-10-29T16:07:00+09:00",
+      "type": "move",
+      "from": "c_campus",
+      "to": "c_club"
+    },
+    {
+      "person": "c_geon",
+      "start": "2026-10-29T16:07:00+09:00",
+      "end": "2026-10-29T19:05:00+09:00",
+      "type": "stay",
+      "place": "c_club"
+    },
+    {
+      "person": "c_geon",
+      "start": "2026-10-29T19:05:00+09:00",
+      "end": "2026-10-29T19:21:00+09:00",
+      "type": "move",
+      "from": "c_club",
+      "to": "c_home"
+    },
+    {
+      "person": "c_geon",
+      "start": "2026-10-29T19:21:00+09:00",
+      "end": "2026-10-30T00:00:00+09:00",
+      "type": "stay",
+      "place": "c_home"
+    },
+    {
+      "person": "c_dalsu",
+      "start": "2026-10-30T00:00:00+09:00",
+      "end": "2026-10-30T04:15:00+09:00",
+      "type": "stay",
+      "place": "c_home"
+    },
+    {
+      "person": "c_dalsu",
+      "start": "2026-10-30T04:15:00+09:00",
+      "end": "2026-10-30T04:23:00+09:00",
+      "type": "move",
+      "from": "c_home",
+      "to": "c_wholesale"
+    },
+    {
+      "person": "c_dalsu",
+      "start": "2026-10-30T04:23:00+09:00",
+      "end": "2026-10-30T05:15:00+09:00",
+      "type": "stay",
+      "place": "c_wholesale"
+    },
+    {
+      "person": "c_dalsu",
+      "start": "2026-10-30T05:15:00+09:00",
+      "end": "2026-10-30T05:23:00+09:00",
+      "type": "move",
+      "from": "c_wholesale",
+      "to": "c_shop"
+    },
+    {
+      "person": "c_dalsu",
+      "start": "2026-10-30T05:23:00+09:00",
+      "end": "2026-10-30T11:30:00+09:00",
+      "type": "stay",
+      "place": "c_shop"
+    },
+    {
+      "person": "c_dalsu",
+      "start": "2026-10-30T11:30:00+09:00",
+      "end": "2026-10-30T11:38:00+09:00",
+      "type": "move",
+      "from": "c_shop",
+      "to": "c_bank"
+    },
+    {
+      "person": "c_dalsu",
+      "start": "2026-10-30T11:38:00+09:00",
+      "end": "2026-10-30T12:05:00+09:00",
+      "type": "stay",
+      "place": "c_bank"
+    },
+    {
+      "person": "c_dalsu",
+      "start": "2026-10-30T12:05:00+09:00",
+      "end": "2026-10-30T12:13:00+09:00",
+      "type": "move",
+      "from": "c_bank",
+      "to": "c_shop"
+    },
+    {
+      "person": "c_dalsu",
+      "start": "2026-10-30T12:13:00+09:00",
+      "end": "2026-10-30T20:55:00+09:00",
+      "type": "stay",
+      "place": "c_shop"
+    },
+    {
+      "person": "c_dalsu",
+      "start": "2026-10-30T20:55:00+09:00",
+      "end": "2026-10-30T21:03:00+09:00",
+      "type": "move",
+      "from": "c_shop",
+      "to": "c_home"
+    },
+    {
+      "person": "c_dalsu",
+      "start": "2026-10-30T21:03:00+09:00",
+      "end": "2026-10-31T00:00:00+09:00",
+      "type": "stay",
+      "place": "c_home"
+    },
+    {
+      "person": "c_boram",
+      "start": "2026-10-30T00:00:00+09:00",
+      "end": "2026-10-31T00:00:00+09:00",
+      "type": "paused"
+    },
+    {
+      "person": "c_haneul",
+      "start": "2026-10-30T00:00:00+09:00",
+      "end": "2026-10-30T07:35:00+09:00",
+      "type": "stay",
+      "place": "c_home"
+    },
+    {
+      "person": "c_haneul",
+      "start": "2026-10-30T07:35:00+09:00",
+      "end": "2026-10-30T07:47:00+09:00",
+      "type": "move",
+      "from": "c_home",
+      "to": "c_school"
+    },
+    {
+      "person": "c_haneul",
+      "start": "2026-10-30T07:47:00+09:00",
+      "end": "2026-10-30T17:40:00+09:00",
+      "type": "stay",
+      "place": "c_school"
+    },
+    {
+      "person": "c_haneul",
+      "start": "2026-10-30T17:40:00+09:00",
+      "end": "2026-10-30T17:48:00+09:00",
+      "type": "move",
+      "from": "c_school",
+      "to": "c_shop"
+    },
+    {
+      "person": "c_haneul",
+      "start": "2026-10-30T17:48:00+09:00",
+      "end": "2026-10-30T18:50:00+09:00",
+      "type": "stay",
+      "place": "c_shop"
+    },
+    {
+      "person": "c_haneul",
+      "start": "2026-10-30T18:50:00+09:00",
+      "end": "2026-10-30T18:58:00+09:00",
+      "type": "move",
+      "from": "c_shop",
+      "to": "c_study"
+    },
+    {
+      "person": "c_haneul",
+      "start": "2026-10-30T18:58:00+09:00",
+      "end": "2026-10-30T22:15:00+09:00",
+      "type": "stay",
+      "place": "c_study"
+    },
+    {
+      "person": "c_haneul",
+      "start": "2026-10-30T22:15:00+09:00",
+      "end": "2026-10-30T22:26:00+09:00",
+      "type": "move",
+      "from": "c_study",
+      "to": "c_home"
+    },
+    {
+      "person": "c_haneul",
+      "start": "2026-10-30T22:26:00+09:00",
+      "end": "2026-10-31T00:00:00+09:00",
+      "type": "stay",
+      "place": "c_home"
+    },
+    {
+      "person": "c_geon",
+      "start": "2026-10-30T00:00:00+09:00",
+      "end": "2026-10-30T08:30:00+09:00",
+      "type": "stay",
+      "place": "c_home"
+    },
+    {
+      "person": "c_geon",
+      "start": "2026-10-30T08:30:00+09:00",
+      "end": "2026-10-30T08:38:00+09:00",
+      "type": "move",
+      "from": "c_home",
+      "to": "c_campus"
+    },
+    {
+      "person": "c_geon",
+      "start": "2026-10-30T08:38:00+09:00",
+      "end": "2026-10-30T15:55:00+09:00",
+      "type": "stay",
+      "place": "c_campus"
+    },
+    {
+      "person": "c_geon",
+      "start": "2026-10-30T15:55:00+09:00",
+      "end": "2026-10-30T16:03:00+09:00",
+      "type": "move",
+      "from": "c_campus",
+      "to": "c_conv"
+    },
+    {
+      "person": "c_geon",
+      "start": "2026-10-30T16:03:00+09:00",
+      "end": "2026-10-30T22:55:00+09:00",
+      "type": "stay",
+      "place": "c_conv"
+    },
+    {
+      "person": "c_geon",
+      "start": "2026-10-30T22:55:00+09:00",
+      "end": "2026-10-30T23:07:00+09:00",
+      "type": "move",
+      "from": "c_conv",
+      "to": "c_friend"
+    },
+    {
+      "person": "c_geon",
+      "start": "2026-10-30T23:07:00+09:00",
+      "end": "2026-10-31T00:00:00+09:00",
+      "type": "stay",
+      "place": "c_friend"
+    },
+    {
+      "person": "c_dalsu",
+      "start": "2026-10-31T00:00:00+09:00",
+      "end": "2026-10-31T04:15:00+09:00",
+      "type": "stay",
+      "place": "c_home"
+    },
+    {
+      "person": "c_dalsu",
+      "start": "2026-10-31T04:15:00+09:00",
+      "end": "2026-10-31T04:23:00+09:00",
+      "type": "move",
+      "from": "c_home",
+      "to": "c_wholesale"
+    },
+    {
+      "person": "c_dalsu",
+      "start": "2026-10-31T04:23:00+09:00",
+      "end": "2026-10-31T05:30:00+09:00",
+      "type": "stay",
+      "place": "c_wholesale"
+    },
+    {
+      "person": "c_dalsu",
+      "start": "2026-10-31T05:30:00+09:00",
+      "end": "2026-10-31T05:38:00+09:00",
+      "type": "move",
+      "from": "c_wholesale",
+      "to": "c_shop"
+    },
+    {
+      "person": "c_dalsu",
+      "start": "2026-10-31T05:38:00+09:00",
+      "end": "2026-10-31T20:40:00+09:00",
+      "type": "stay",
+      "place": "c_shop"
+    },
+    {
+      "person": "c_dalsu",
+      "start": "2026-10-31T20:40:00+09:00",
+      "end": "2026-10-31T20:48:00+09:00",
+      "type": "move",
+      "from": "c_shop",
+      "to": "c_home"
+    },
+    {
+      "person": "c_dalsu",
+      "start": "2026-10-31T20:48:00+09:00",
+      "end": "2026-11-01T00:00:00+09:00",
+      "type": "stay",
+      "place": "c_home"
+    },
+    {
+      "person": "c_boram",
+      "start": "2026-10-31T00:00:00+09:00",
+      "end": "2026-11-01T00:00:00+09:00",
+      "type": "paused"
+    },
+    {
+      "person": "c_haneul",
+      "start": "2026-10-31T00:00:00+09:00",
+      "end": "2026-10-31T10:10:00+09:00",
+      "type": "stay",
+      "place": "c_home"
+    },
+    {
+      "person": "c_haneul",
+      "start": "2026-10-31T10:10:00+09:00",
+      "end": "2026-10-31T10:21:00+09:00",
+      "type": "move",
+      "from": "c_home",
+      "to": "c_study"
+    },
+    {
+      "person": "c_haneul",
+      "start": "2026-10-31T10:21:00+09:00",
+      "end": "2026-10-31T17:00:00+09:00",
+      "type": "stay",
+      "place": "c_study"
+    },
+    {
+      "person": "c_haneul",
+      "start": "2026-10-31T17:00:00+09:00",
+      "end": "2026-10-31T17:11:00+09:00",
+      "type": "move",
+      "from": "c_study",
+      "to": "c_home"
+    },
+    {
+      "person": "c_haneul",
+      "start": "2026-10-31T17:11:00+09:00",
+      "end": "2026-11-01T00:00:00+09:00",
+      "type": "stay",
+      "place": "c_home"
+    },
+    {
+      "person": "c_geon",
+      "start": "2026-10-31T00:00:00+09:00",
+      "end": "2026-10-31T11:25:00+09:00",
+      "type": "stay",
+      "place": "c_friend"
+    },
+    {
+      "person": "c_geon",
+      "start": "2026-10-31T11:25:00+09:00",
+      "end": "2026-10-31T11:42:00+09:00",
+      "type": "move",
+      "from": "c_friend",
+      "to": "c_home"
+    },
+    {
+      "person": "c_geon",
+      "start": "2026-10-31T11:42:00+09:00",
+      "end": "2026-11-01T00:00:00+09:00",
+      "type": "stay",
+      "place": "c_home"
+    },
+    {
+      "person": "c_dalsu",
+      "start": "2026-11-01T00:00:00+09:00",
+      "end": "2026-11-01T04:10:00+09:00",
+      "type": "stay",
+      "place": "c_home"
+    },
+    {
+      "person": "c_dalsu",
+      "start": "2026-11-01T04:10:00+09:00",
+      "end": "2026-11-01T04:18:00+09:00",
+      "type": "move",
+      "from": "c_home",
+      "to": "c_wholesale"
+    },
+    {
+      "person": "c_dalsu",
+      "start": "2026-11-01T04:18:00+09:00",
+      "end": "2026-11-01T05:25:00+09:00",
+      "type": "stay",
+      "place": "c_wholesale"
+    },
+    {
+      "person": "c_dalsu",
+      "start": "2026-11-01T05:25:00+09:00",
+      "end": "2026-11-01T05:33:00+09:00",
+      "type": "move",
+      "from": "c_wholesale",
+      "to": "c_shop"
+    },
+    {
+      "person": "c_dalsu",
+      "start": "2026-11-01T05:33:00+09:00",
+      "end": "2026-11-01T21:05:00+09:00",
+      "type": "stay",
+      "place": "c_shop"
+    },
+    {
+      "person": "c_dalsu",
+      "start": "2026-11-01T21:05:00+09:00",
+      "end": "2026-11-01T21:13:00+09:00",
+      "type": "move",
+      "from": "c_shop",
+      "to": "c_home"
+    },
+    {
+      "person": "c_dalsu",
+      "start": "2026-11-01T21:13:00+09:00",
+      "end": "2026-11-02T00:00:00+09:00",
+      "type": "stay",
+      "place": "c_home"
+    },
+    {
+      "person": "c_boram",
+      "start": "2026-11-01T00:00:00+09:00",
+      "end": "2026-11-02T00:00:00+09:00",
+      "type": "paused"
+    },
+    {
+      "person": "c_haneul",
+      "start": "2026-11-01T00:00:00+09:00",
+      "end": "2026-11-02T00:00:00+09:00",
+      "type": "stay",
+      "place": "c_home"
+    },
+    {
+      "person": "c_geon",
+      "start": "2026-11-01T00:00:00+09:00",
+      "end": "2026-11-02T00:00:00+09:00",
+      "type": "stay",
+      "place": "c_home"
+    },
+    {
+      "person": "c_dalsu",
+      "start": "2026-11-02T00:00:00+09:00",
+      "end": "2026-11-02T04:05:00+09:00",
+      "type": "stay",
+      "place": "c_home"
+    },
+    {
+      "person": "c_dalsu",
+      "start": "2026-11-02T04:05:00+09:00",
+      "end": "2026-11-02T04:13:00+09:00",
+      "type": "move",
+      "from": "c_home",
+      "to": "c_wholesale"
+    },
+    {
+      "person": "c_dalsu",
+      "start": "2026-11-02T04:13:00+09:00",
+      "end": "2026-11-02T05:15:00+09:00",
+      "type": "stay",
+      "place": "c_wholesale"
+    },
+    {
+      "person": "c_dalsu",
+      "start": "2026-11-02T05:15:00+09:00",
+      "end": "2026-11-02T05:23:00+09:00",
+      "type": "move",
+      "from": "c_wholesale",
+      "to": "c_shop"
+    },
+    {
+      "person": "c_dalsu",
+      "start": "2026-11-02T05:23:00+09:00",
+      "end": "2026-11-02T11:40:00+09:00",
+      "type": "stay",
+      "place": "c_shop"
+    },
+    {
+      "person": "c_dalsu",
+      "start": "2026-11-02T11:40:00+09:00",
+      "end": "2026-11-02T11:48:00+09:00",
+      "type": "move",
+      "from": "c_shop",
+      "to": "c_bank"
+    },
+    {
+      "person": "c_dalsu",
+      "start": "2026-11-02T11:48:00+09:00",
+      "end": "2026-11-02T12:10:00+09:00",
+      "type": "stay",
+      "place": "c_bank"
+    },
+    {
+      "person": "c_dalsu",
+      "start": "2026-11-02T12:10:00+09:00",
+      "end": "2026-11-02T12:18:00+09:00",
+      "type": "move",
+      "from": "c_bank",
+      "to": "c_shop"
+    },
+    {
+      "person": "c_dalsu",
+      "start": "2026-11-02T12:18:00+09:00",
+      "end": "2026-11-02T20:30:00+09:00",
+      "type": "stay",
+      "place": "c_shop"
+    },
+    {
+      "person": "c_dalsu",
+      "start": "2026-11-02T20:30:00+09:00",
+      "end": "2026-11-02T20:38:00+09:00",
+      "type": "move",
+      "from": "c_shop",
+      "to": "c_home"
+    },
+    {
+      "person": "c_dalsu",
+      "start": "2026-11-02T20:38:00+09:00",
+      "end": "2026-11-03T00:00:00+09:00",
+      "type": "stay",
+      "place": "c_home"
+    },
+    {
+      "person": "c_boram",
+      "start": "2026-11-02T00:00:00+09:00",
+      "end": "2026-11-02T08:15:00+09:00",
+      "type": "stay",
+      "place": "c_home"
+    },
+    {
+      "person": "c_boram",
+      "start": "2026-11-02T08:15:00+09:00",
+      "end": "2026-11-02T08:23:00+09:00",
+      "type": "move",
+      "from": "c_home",
+      "to": "c_shop"
+    },
+    {
+      "person": "c_boram",
+      "start": "2026-11-02T08:23:00+09:00",
+      "end": "2026-11-02T15:10:00+09:00",
+      "type": "stay",
+      "place": "c_shop"
+    },
+    {
+      "person": "c_boram",
+      "start": "2026-11-02T15:10:00+09:00",
+      "end": "2026-11-02T15:18:00+09:00",
+      "type": "move",
+      "from": "c_shop",
+      "to": "c_bank"
+    },
+    {
+      "person": "c_boram",
+      "start": "2026-11-02T15:18:00+09:00",
+      "end": "2026-11-02T15:45:00+09:00",
+      "type": "stay",
+      "place": "c_bank"
+    },
+    {
+      "person": "c_boram",
+      "start": "2026-11-02T15:45:00+09:00",
+      "end": "2026-11-02T15:53:00+09:00",
+      "type": "move",
+      "from": "c_bank",
+      "to": "c_shop"
+    },
+    {
+      "person": "c_boram",
+      "start": "2026-11-02T15:53:00+09:00",
+      "end": "2026-11-02T21:05:00+09:00",
+      "type": "stay",
+      "place": "c_shop"
+    },
+    {
+      "person": "c_boram",
+      "start": "2026-11-02T21:05:00+09:00",
+      "end": "2026-11-02T21:13:00+09:00",
+      "type": "move",
+      "from": "c_shop",
+      "to": "c_home"
+    },
+    {
+      "person": "c_boram",
+      "start": "2026-11-02T21:13:00+09:00",
+      "end": "2026-11-03T00:00:00+09:00",
+      "type": "stay",
+      "place": "c_home"
+    },
+    {
+      "person": "c_haneul",
+      "start": "2026-11-02T00:00:00+09:00",
+      "end": "2026-11-02T07:30:00+09:00",
+      "type": "stay",
+      "place": "c_home"
+    },
+    {
+      "person": "c_haneul",
+      "start": "2026-11-02T07:30:00+09:00",
+      "end": "2026-11-02T07:42:00+09:00",
+      "type": "move",
+      "from": "c_home",
+      "to": "c_school"
+    },
+    {
+      "person": "c_haneul",
+      "start": "2026-11-02T07:42:00+09:00",
+      "end": "2026-11-02T21:25:00+09:00",
+      "type": "stay",
+      "place": "c_school"
+    },
+    {
+      "person": "c_haneul",
+      "start": "2026-11-02T21:25:00+09:00",
+      "end": "2026-11-02T21:37:00+09:00",
+      "type": "move",
+      "from": "c_school",
+      "to": "c_home"
+    },
+    {
+      "person": "c_haneul",
+      "start": "2026-11-02T21:37:00+09:00",
+      "end": "2026-11-03T00:00:00+09:00",
+      "type": "stay",
+      "place": "c_home"
+    },
+    {
+      "person": "c_geon",
+      "start": "2026-11-02T00:00:00+09:00",
+      "end": "2026-11-02T07:55:00+09:00",
+      "type": "stay",
+      "place": "c_home"
+    },
+    {
+      "person": "c_geon",
+      "start": "2026-11-02T07:55:00+09:00",
+      "end": "2026-11-02T08:03:00+09:00",
+      "type": "move",
+      "from": "c_home",
+      "to": "c_campus"
+    },
+    {
+      "person": "c_geon",
+      "start": "2026-11-02T08:03:00+09:00",
+      "end": "2026-11-02T15:45:00+09:00",
+      "type": "stay",
+      "place": "c_campus"
+    },
+    {
+      "person": "c_geon",
+      "start": "2026-11-02T15:45:00+09:00",
+      "end": "2026-11-02T16:02:00+09:00",
+      "type": "move",
+      "from": "c_campus",
+      "to": "c_club"
+    },
+    {
+      "person": "c_geon",
+      "start": "2026-11-02T16:02:00+09:00",
+      "end": "2026-11-02T18:55:00+09:00",
+      "type": "stay",
+      "place": "c_club"
+    },
+    {
+      "person": "c_geon",
+      "start": "2026-11-02T18:55:00+09:00",
+      "end": "2026-11-02T19:11:00+09:00",
+      "type": "move",
+      "from": "c_club",
+      "to": "c_home"
+    },
+    {
+      "person": "c_geon",
+      "start": "2026-11-02T19:11:00+09:00",
+      "end": "2026-11-03T00:00:00+09:00",
+      "type": "stay",
+      "place": "c_home"
+    },
+    {
+      "person": "c_dalsu",
+      "start": "2026-11-03T00:00:00+09:00",
+      "end": "2026-11-03T04:15:00+09:00",
+      "type": "stay",
+      "place": "c_home"
+    },
+    {
+      "person": "c_dalsu",
+      "start": "2026-11-03T04:15:00+09:00",
+      "end": "2026-11-03T04:23:00+09:00",
+      "type": "move",
+      "from": "c_home",
+      "to": "c_wholesale"
+    },
+    {
+      "person": "c_dalsu",
+      "start": "2026-11-03T04:23:00+09:00",
+      "end": "2026-11-03T05:15:00+09:00",
+      "type": "stay",
+      "place": "c_wholesale"
+    },
+    {
+      "person": "c_dalsu",
+      "start": "2026-11-03T05:15:00+09:00",
+      "end": "2026-11-03T05:23:00+09:00",
+      "type": "move",
+      "from": "c_wholesale",
+      "to": "c_shop"
+    },
+    {
+      "person": "c_dalsu",
+      "start": "2026-11-03T05:23:00+09:00",
+      "end": "2026-11-03T11:45:00+09:00",
+      "type": "stay",
+      "place": "c_shop"
+    },
+    {
+      "person": "c_dalsu",
+      "start": "2026-11-03T11:45:00+09:00",
+      "end": "2026-11-03T11:53:00+09:00",
+      "type": "move",
+      "from": "c_shop",
+      "to": "c_bank"
+    },
+    {
+      "person": "c_dalsu",
+      "start": "2026-11-03T11:53:00+09:00",
+      "end": "2026-11-03T12:05:00+09:00",
+      "type": "stay",
+      "place": "c_bank"
+    },
+    {
+      "person": "c_dalsu",
+      "start": "2026-11-03T12:05:00+09:00",
+      "end": "2026-11-03T12:13:00+09:00",
+      "type": "move",
+      "from": "c_bank",
+      "to": "c_shop"
+    },
+    {
+      "person": "c_dalsu",
+      "start": "2026-11-03T12:13:00+09:00",
+      "end": "2026-11-03T20:25:00+09:00",
+      "type": "stay",
+      "place": "c_shop"
+    },
+    {
+      "person": "c_dalsu",
+      "start": "2026-11-03T20:25:00+09:00",
+      "end": "2026-11-03T20:33:00+09:00",
+      "type": "move",
+      "from": "c_shop",
+      "to": "c_home"
+    },
+    {
+      "person": "c_dalsu",
+      "start": "2026-11-03T20:33:00+09:00",
+      "end": "2026-11-04T00:00:00+09:00",
+      "type": "stay",
+      "place": "c_home"
+    },
+    {
+      "person": "c_boram",
+      "start": "2026-11-03T00:00:00+09:00",
+      "end": "2026-11-03T08:30:00+09:00",
+      "type": "stay",
+      "place": "c_home"
+    },
+    {
+      "person": "c_boram",
+      "start": "2026-11-03T08:30:00+09:00",
+      "end": "2026-11-03T08:38:00+09:00",
+      "type": "move",
+      "from": "c_home",
+      "to": "c_shop"
+    },
+    {
+      "person": "c_boram",
+      "start": "2026-11-03T08:38:00+09:00",
+      "end": "2026-11-03T21:05:00+09:00",
+      "type": "stay",
+      "place": "c_shop"
+    },
+    {
+      "person": "c_boram",
+      "start": "2026-11-03T21:05:00+09:00",
+      "end": "2026-11-03T21:13:00+09:00",
+      "type": "move",
+      "from": "c_shop",
+      "to": "c_home"
+    },
+    {
+      "person": "c_boram",
+      "start": "2026-11-03T21:13:00+09:00",
+      "end": "2026-11-04T00:00:00+09:00",
+      "type": "stay",
+      "place": "c_home"
+    },
+    {
+      "person": "c_haneul",
+      "start": "2026-11-03T00:00:00+09:00",
+      "end": "2026-11-03T07:30:00+09:00",
+      "type": "stay",
+      "place": "c_home"
+    },
+    {
+      "person": "c_haneul",
+      "start": "2026-11-03T07:30:00+09:00",
+      "end": "2026-11-03T07:42:00+09:00",
+      "type": "move",
+      "from": "c_home",
+      "to": "c_school"
+    },
+    {
+      "person": "c_haneul",
+      "start": "2026-11-03T07:42:00+09:00",
+      "end": "2026-11-03T21:40:00+09:00",
+      "type": "stay",
+      "place": "c_school"
+    },
+    {
+      "person": "c_haneul",
+      "start": "2026-11-03T21:40:00+09:00",
+      "end": "2026-11-03T21:52:00+09:00",
+      "type": "move",
+      "from": "c_school",
+      "to": "c_home"
+    },
+    {
+      "person": "c_haneul",
+      "start": "2026-11-03T21:52:00+09:00",
+      "end": "2026-11-04T00:00:00+09:00",
+      "type": "stay",
+      "place": "c_home"
+    },
+    {
+      "person": "c_geon",
+      "start": "2026-11-03T00:00:00+09:00",
+      "end": "2026-11-04T00:00:00+09:00",
+      "type": "no_consent"
+    },
+    {
+      "person": "c_dalsu",
+      "start": "2026-11-04T00:00:00+09:00",
+      "end": "2026-11-05T00:00:00+09:00",
+      "type": "paused"
+    },
+    {
+      "person": "c_boram",
+      "start": "2026-11-04T00:00:00+09:00",
+      "end": "2026-11-04T08:25:00+09:00",
+      "type": "stay",
+      "place": "c_home"
+    },
+    {
+      "person": "c_boram",
+      "start": "2026-11-04T08:25:00+09:00",
+      "end": "2026-11-04T08:33:00+09:00",
+      "type": "move",
+      "from": "c_home",
+      "to": "c_shop"
+    },
+    {
+      "person": "c_boram",
+      "start": "2026-11-04T08:33:00+09:00",
+      "end": "2026-11-04T14:05:00+09:00",
+      "type": "stay",
+      "place": "c_shop"
+    },
+    {
+      "person": "c_boram",
+      "start": "2026-11-04T14:05:00+09:00",
+      "end": "2026-11-04T14:13:00+09:00",
+      "type": "move",
+      "from": "c_shop",
+      "to": "c_post"
+    },
+    {
+      "person": "c_boram",
+      "start": "2026-11-04T14:13:00+09:00",
+      "end": "2026-11-04T14:45:00+09:00",
+      "type": "stay",
+      "place": "c_post"
+    },
+    {
+      "person": "c_boram",
+      "start": "2026-11-04T14:45:00+09:00",
+      "end": "2026-11-04T14:53:00+09:00",
+      "type": "move",
+      "from": "c_post",
+      "to": "c_shop"
+    },
+    {
+      "person": "c_boram",
+      "start": "2026-11-04T14:53:00+09:00",
+      "end": "2026-11-04T20:50:00+09:00",
+      "type": "stay",
+      "place": "c_shop"
+    },
+    {
+      "person": "c_boram",
+      "start": "2026-11-04T20:50:00+09:00",
+      "end": "2026-11-04T20:58:00+09:00",
+      "type": "move",
+      "from": "c_shop",
+      "to": "c_home"
+    },
+    {
+      "person": "c_boram",
+      "start": "2026-11-04T20:58:00+09:00",
+      "end": "2026-11-05T00:00:00+09:00",
+      "type": "stay",
+      "place": "c_home"
+    },
+    {
+      "person": "c_haneul",
+      "start": "2026-11-04T00:00:00+09:00",
+      "end": "2026-11-04T07:35:00+09:00",
+      "type": "stay",
+      "place": "c_home"
+    },
+    {
+      "person": "c_haneul",
+      "start": "2026-11-04T07:35:00+09:00",
+      "end": "2026-11-04T07:47:00+09:00",
+      "type": "move",
+      "from": "c_home",
+      "to": "c_school"
+    },
+    {
+      "person": "c_haneul",
+      "start": "2026-11-04T07:47:00+09:00",
+      "end": "2026-11-04T17:40:00+09:00",
+      "type": "stay",
+      "place": "c_school"
+    },
+    {
+      "person": "c_haneul",
+      "start": "2026-11-04T17:40:00+09:00",
+      "end": "2026-11-04T17:48:00+09:00",
+      "type": "move",
+      "from": "c_school",
+      "to": "c_shop"
+    },
+    {
+      "person": "c_haneul",
+      "start": "2026-11-04T17:48:00+09:00",
+      "end": "2026-11-04T18:40:00+09:00",
+      "type": "stay",
+      "place": "c_shop"
+    },
+    {
+      "person": "c_haneul",
+      "start": "2026-11-04T18:40:00+09:00",
+      "end": "2026-11-04T18:48:00+09:00",
+      "type": "move",
+      "from": "c_shop",
+      "to": "c_study"
+    },
+    {
+      "person": "c_haneul",
+      "start": "2026-11-04T18:48:00+09:00",
+      "end": "2026-11-04T22:25:00+09:00",
+      "type": "stay",
+      "place": "c_study"
+    },
+    {
+      "person": "c_haneul",
+      "start": "2026-11-04T22:25:00+09:00",
+      "end": "2026-11-04T22:36:00+09:00",
+      "type": "move",
+      "from": "c_study",
+      "to": "c_home"
+    },
+    {
+      "person": "c_haneul",
+      "start": "2026-11-04T22:36:00+09:00",
+      "end": "2026-11-05T00:00:00+09:00",
+      "type": "stay",
+      "place": "c_home"
+    },
+    {
+      "person": "c_geon",
+      "start": "2026-11-04T00:00:00+09:00",
+      "end": "2026-11-04T08:00:00+09:00",
+      "type": "stay",
+      "place": "c_home"
+    },
+    {
+      "person": "c_geon",
+      "start": "2026-11-04T08:00:00+09:00",
+      "end": "2026-11-04T08:08:00+09:00",
+      "type": "move",
+      "from": "c_home",
+      "to": "c_campus"
+    },
+    {
+      "person": "c_geon",
+      "start": "2026-11-04T08:08:00+09:00",
+      "end": "2026-11-04T14:05:00+09:00",
+      "type": "stay",
+      "place": "c_campus"
+    },
+    {
+      "person": "c_geon",
+      "start": "2026-11-04T14:05:00+09:00",
+      "end": "2026-11-04T14:13:00+09:00",
+      "type": "move",
+      "from": "c_campus",
+      "to": "c_home"
+    },
+    {
+      "person": "c_geon",
+      "start": "2026-11-04T14:13:00+09:00",
+      "end": "2026-11-05T00:00:00+09:00",
+      "type": "stay",
+      "place": "c_home"
+    },
+    {
+      "person": "c_dalsu",
+      "start": "2026-11-05T00:00:00+09:00",
+      "end": "2026-11-06T00:00:00+09:00",
+      "type": "paused"
+    },
+    {
+      "person": "c_boram",
+      "start": "2026-11-05T00:00:00+09:00",
+      "end": "2026-11-05T08:20:00+09:00",
+      "type": "stay",
+      "place": "c_home"
+    },
+    {
+      "person": "c_boram",
+      "start": "2026-11-05T08:20:00+09:00",
+      "end": "2026-11-05T08:28:00+09:00",
+      "type": "move",
+      "from": "c_home",
+      "to": "c_shop"
+    },
+    {
+      "person": "c_boram",
+      "start": "2026-11-05T08:28:00+09:00",
+      "end": "2026-11-05T14:25:00+09:00",
+      "type": "stay",
+      "place": "c_shop"
+    },
+    {
+      "person": "c_boram",
+      "start": "2026-11-05T14:25:00+09:00",
+      "end": "2026-11-05T14:33:00+09:00",
+      "type": "move",
+      "from": "c_shop",
+      "to": "c_post"
+    },
+    {
+      "person": "c_boram",
+      "start": "2026-11-05T14:33:00+09:00",
+      "end": "2026-11-05T14:50:00+09:00",
+      "type": "stay",
+      "place": "c_post"
+    },
+    {
+      "person": "c_boram",
+      "start": "2026-11-05T14:50:00+09:00",
+      "end": "2026-11-05T14:58:00+09:00",
+      "type": "move",
+      "from": "c_post",
+      "to": "c_shop"
+    },
+    {
+      "person": "c_boram",
+      "start": "2026-11-05T14:58:00+09:00",
+      "end": "2026-11-05T21:00:00+09:00",
+      "type": "stay",
+      "place": "c_shop"
+    },
+    {
+      "person": "c_boram",
+      "start": "2026-11-05T21:00:00+09:00",
+      "end": "2026-11-05T21:08:00+09:00",
+      "type": "move",
+      "from": "c_shop",
+      "to": "c_home"
+    },
+    {
+      "person": "c_boram",
+      "start": "2026-11-05T21:08:00+09:00",
+      "end": "2026-11-06T00:00:00+09:00",
+      "type": "stay",
+      "place": "c_home"
+    },
+    {
+      "person": "c_haneul",
+      "start": "2026-11-05T00:00:00+09:00",
+      "end": "2026-11-05T07:40:00+09:00",
+      "type": "stay",
+      "place": "c_home"
+    },
+    {
+      "person": "c_haneul",
+      "start": "2026-11-05T07:40:00+09:00",
+      "end": "2026-11-05T07:52:00+09:00",
+      "type": "move",
+      "from": "c_home",
+      "to": "c_school"
+    },
+    {
+      "person": "c_haneul",
+      "start": "2026-11-05T07:52:00+09:00",
+      "end": "2026-11-05T21:20:00+09:00",
+      "type": "stay",
+      "place": "c_school"
+    },
+    {
+      "person": "c_haneul",
+      "start": "2026-11-05T21:20:00+09:00",
+      "end": "2026-11-05T21:32:00+09:00",
+      "type": "move",
+      "from": "c_school",
+      "to": "c_home"
+    },
+    {
+      "person": "c_haneul",
+      "start": "2026-11-05T21:32:00+09:00",
+      "end": "2026-11-06T00:00:00+09:00",
+      "type": "stay",
+      "place": "c_home"
+    },
+    {
+      "person": "c_geon",
+      "start": "2026-11-05T00:00:00+09:00",
+      "end": "2026-11-05T07:55:00+09:00",
+      "type": "stay",
+      "place": "c_home"
+    },
+    {
+      "person": "c_geon",
+      "start": "2026-11-05T07:55:00+09:00",
+      "end": "2026-11-05T08:03:00+09:00",
+      "type": "move",
+      "from": "c_home",
+      "to": "c_campus"
+    },
+    {
+      "person": "c_geon",
+      "start": "2026-11-05T08:03:00+09:00",
+      "end": "2026-11-05T15:35:00+09:00",
+      "type": "stay",
+      "place": "c_campus"
+    },
+    {
+      "person": "c_geon",
+      "start": "2026-11-05T15:35:00+09:00",
+      "end": "2026-11-05T15:52:00+09:00",
+      "type": "move",
+      "from": "c_campus",
+      "to": "c_club"
+    },
+    {
+      "person": "c_geon",
+      "start": "2026-11-05T15:52:00+09:00",
+      "end": "2026-11-05T19:05:00+09:00",
+      "type": "stay",
+      "place": "c_club"
+    },
+    {
+      "person": "c_geon",
+      "start": "2026-11-05T19:05:00+09:00",
+      "end": "2026-11-05T19:21:00+09:00",
+      "type": "move",
+      "from": "c_club",
+      "to": "c_home"
+    },
+    {
+      "person": "c_geon",
+      "start": "2026-11-05T19:21:00+09:00",
+      "end": "2026-11-06T00:00:00+09:00",
+      "type": "stay",
+      "place": "c_home"
+    },
+    {
+      "person": "c_dalsu",
+      "start": "2026-11-06T00:00:00+09:00",
+      "end": "2026-11-06T04:10:00+09:00",
+      "type": "stay",
+      "place": "c_home"
+    },
+    {
+      "person": "c_dalsu",
+      "start": "2026-11-06T04:10:00+09:00",
+      "end": "2026-11-06T04:18:00+09:00",
+      "type": "move",
+      "from": "c_home",
+      "to": "c_wholesale"
+    },
+    {
+      "person": "c_dalsu",
+      "start": "2026-11-06T04:18:00+09:00",
+      "end": "2026-11-06T05:25:00+09:00",
+      "type": "stay",
+      "place": "c_wholesale"
+    },
+    {
+      "person": "c_dalsu",
+      "start": "2026-11-06T05:25:00+09:00",
+      "end": "2026-11-06T05:33:00+09:00",
+      "type": "move",
+      "from": "c_wholesale",
+      "to": "c_shop"
+    },
+    {
+      "person": "c_dalsu",
+      "start": "2026-11-06T05:33:00+09:00",
+      "end": "2026-11-06T11:40:00+09:00",
+      "type": "stay",
+      "place": "c_shop"
+    },
+    {
+      "person": "c_dalsu",
+      "start": "2026-11-06T11:40:00+09:00",
+      "end": "2026-11-06T11:48:00+09:00",
+      "type": "move",
+      "from": "c_shop",
+      "to": "c_bank"
+    },
+    {
+      "person": "c_dalsu",
+      "start": "2026-11-06T11:48:00+09:00",
+      "end": "2026-11-06T12:00:00+09:00",
+      "type": "stay",
+      "place": "c_bank"
+    },
+    {
+      "person": "c_dalsu",
+      "start": "2026-11-06T12:00:00+09:00",
+      "end": "2026-11-06T12:08:00+09:00",
+      "type": "move",
+      "from": "c_bank",
+      "to": "c_shop"
+    },
+    {
+      "person": "c_dalsu",
+      "start": "2026-11-06T12:08:00+09:00",
+      "end": "2026-11-06T21:05:00+09:00",
+      "type": "stay",
+      "place": "c_shop"
+    },
+    {
+      "person": "c_dalsu",
+      "start": "2026-11-06T21:05:00+09:00",
+      "end": "2026-11-06T21:13:00+09:00",
+      "type": "move",
+      "from": "c_shop",
+      "to": "c_home"
+    },
+    {
+      "person": "c_dalsu",
+      "start": "2026-11-06T21:13:00+09:00",
+      "end": "2026-11-07T00:00:00+09:00",
+      "type": "stay",
+      "place": "c_home"
+    },
+    {
+      "person": "c_boram",
+      "start": "2026-11-06T00:00:00+09:00",
+      "end": "2026-11-06T08:15:00+09:00",
+      "type": "stay",
+      "place": "c_home"
+    },
+    {
+      "person": "c_boram",
+      "start": "2026-11-06T08:15:00+09:00",
+      "end": "2026-11-06T08:23:00+09:00",
+      "type": "move",
+      "from": "c_home",
+      "to": "c_shop"
+    },
+    {
+      "person": "c_boram",
+      "start": "2026-11-06T08:23:00+09:00",
+      "end": "2026-11-06T14:15:00+09:00",
+      "type": "stay",
+      "place": "c_shop"
+    },
+    {
+      "person": "c_boram",
+      "start": "2026-11-06T14:15:00+09:00",
+      "end": "2026-11-06T14:23:00+09:00",
+      "type": "move",
+      "from": "c_shop",
+      "to": "c_post"
+    },
+    {
+      "person": "c_boram",
+      "start": "2026-11-06T14:23:00+09:00",
+      "end": "2026-11-06T14:45:00+09:00",
+      "type": "stay",
+      "place": "c_post"
+    },
+    {
+      "person": "c_boram",
+      "start": "2026-11-06T14:45:00+09:00",
+      "end": "2026-11-06T14:53:00+09:00",
+      "type": "move",
+      "from": "c_post",
+      "to": "c_shop"
+    },
+    {
+      "person": "c_boram",
+      "start": "2026-11-06T14:53:00+09:00",
+      "end": "2026-11-06T20:35:00+09:00",
+      "type": "stay",
+      "place": "c_shop"
+    },
+    {
+      "person": "c_boram",
+      "start": "2026-11-06T20:35:00+09:00",
+      "end": "2026-11-06T20:43:00+09:00",
+      "type": "move",
+      "from": "c_shop",
+      "to": "c_home"
+    },
+    {
+      "person": "c_boram",
+      "start": "2026-11-06T20:43:00+09:00",
+      "end": "2026-11-07T00:00:00+09:00",
+      "type": "stay",
+      "place": "c_home"
+    },
+    {
+      "person": "c_haneul",
+      "start": "2026-11-06T00:00:00+09:00",
+      "end": "2026-11-06T07:35:00+09:00",
+      "type": "stay",
+      "place": "c_home"
+    },
+    {
+      "person": "c_haneul",
+      "start": "2026-11-06T07:35:00+09:00",
+      "end": "2026-11-06T07:47:00+09:00",
+      "type": "move",
+      "from": "c_home",
+      "to": "c_school"
+    },
+    {
+      "person": "c_haneul",
+      "start": "2026-11-06T07:47:00+09:00",
+      "end": "2026-11-06T17:30:00+09:00",
+      "type": "stay",
+      "place": "c_school"
+    },
+    {
+      "person": "c_haneul",
+      "start": "2026-11-06T17:30:00+09:00",
+      "end": "2026-11-06T17:38:00+09:00",
+      "type": "move",
+      "from": "c_school",
+      "to": "c_shop"
+    },
+    {
+      "person": "c_haneul",
+      "start": "2026-11-06T17:38:00+09:00",
+      "end": "2026-11-06T18:45:00+09:00",
+      "type": "stay",
+      "place": "c_shop"
+    },
+    {
+      "person": "c_haneul",
+      "start": "2026-11-06T18:45:00+09:00",
+      "end": "2026-11-06T18:53:00+09:00",
+      "type": "move",
+      "from": "c_shop",
+      "to": "c_study"
+    },
+    {
+      "person": "c_haneul",
+      "start": "2026-11-06T18:53:00+09:00",
+      "end": "2026-11-06T22:10:00+09:00",
+      "type": "stay",
+      "place": "c_study"
+    },
+    {
+      "person": "c_haneul",
+      "start": "2026-11-06T22:10:00+09:00",
+      "end": "2026-11-06T22:21:00+09:00",
+      "type": "move",
+      "from": "c_study",
+      "to": "c_home"
+    },
+    {
+      "person": "c_haneul",
+      "start": "2026-11-06T22:21:00+09:00",
+      "end": "2026-11-07T00:00:00+09:00",
+      "type": "stay",
+      "place": "c_home"
+    },
+    {
+      "person": "c_geon",
+      "start": "2026-11-06T00:00:00+09:00",
+      "end": "2026-11-06T08:55:00+09:00",
+      "type": "stay",
+      "place": "c_home"
+    },
+    {
+      "person": "c_geon",
+      "start": "2026-11-06T08:55:00+09:00",
+      "end": "2026-11-06T09:03:00+09:00",
+      "type": "move",
+      "from": "c_home",
+      "to": "c_campus"
+    },
+    {
+      "person": "c_geon",
+      "start": "2026-11-06T09:03:00+09:00",
+      "end": "2026-11-06T14:55:00+09:00",
+      "type": "stay",
+      "place": "c_campus"
+    },
+    {
+      "person": "c_geon",
+      "start": "2026-11-06T14:55:00+09:00",
+      "end": "2026-11-06T15:12:00+09:00",
+      "type": "move",
+      "from": "c_campus",
+      "to": "c_club"
+    },
+    {
+      "person": "c_geon",
+      "start": "2026-11-06T15:12:00+09:00",
+      "end": "2026-11-06T19:35:00+09:00",
+      "type": "stay",
+      "place": "c_club"
+    },
+    {
+      "person": "c_geon",
+      "start": "2026-11-06T19:35:00+09:00",
+      "end": "2026-11-06T19:43:00+09:00",
+      "type": "move",
+      "from": "c_club",
+      "to": "c_friend"
+    },
+    {
+      "person": "c_geon",
+      "start": "2026-11-06T19:43:00+09:00",
+      "end": "2026-11-07T00:00:00+09:00",
+      "type": "stay",
+      "place": "c_friend"
+    },
+    {
+      "person": "c_dalsu",
+      "start": "2026-11-07T00:00:00+09:00",
+      "end": "2026-11-07T04:15:00+09:00",
+      "type": "stay",
+      "place": "c_home"
+    },
+    {
+      "person": "c_dalsu",
+      "start": "2026-11-07T04:15:00+09:00",
+      "end": "2026-11-07T04:23:00+09:00",
+      "type": "move",
+      "from": "c_home",
+      "to": "c_wholesale"
+    },
+    {
+      "person": "c_dalsu",
+      "start": "2026-11-07T04:23:00+09:00",
+      "end": "2026-11-07T05:25:00+09:00",
+      "type": "stay",
+      "place": "c_wholesale"
+    },
+    {
+      "person": "c_dalsu",
+      "start": "2026-11-07T05:25:00+09:00",
+      "end": "2026-11-07T05:33:00+09:00",
+      "type": "move",
+      "from": "c_wholesale",
+      "to": "c_shop"
+    },
+    {
+      "person": "c_dalsu",
+      "start": "2026-11-07T05:33:00+09:00",
+      "end": "2026-11-07T20:25:00+09:00",
+      "type": "stay",
+      "place": "c_shop"
+    },
+    {
+      "person": "c_dalsu",
+      "start": "2026-11-07T20:25:00+09:00",
+      "end": "2026-11-07T20:33:00+09:00",
+      "type": "move",
+      "from": "c_shop",
+      "to": "c_home"
+    },
+    {
+      "person": "c_dalsu",
+      "start": "2026-11-07T20:33:00+09:00",
+      "end": "2026-11-08T00:00:00+09:00",
+      "type": "stay",
+      "place": "c_home"
+    },
+    {
+      "person": "c_boram",
+      "start": "2026-11-07T00:00:00+09:00",
+      "end": "2026-11-07T08:15:00+09:00",
+      "type": "stay",
+      "place": "c_home"
+    },
+    {
+      "person": "c_boram",
+      "start": "2026-11-07T08:15:00+09:00",
+      "end": "2026-11-07T08:23:00+09:00",
+      "type": "move",
+      "from": "c_home",
+      "to": "c_shop"
+    },
+    {
+      "person": "c_boram",
+      "start": "2026-11-07T08:23:00+09:00",
+      "end": "2026-11-07T20:50:00+09:00",
+      "type": "stay",
+      "place": "c_shop"
+    },
+    {
+      "person": "c_boram",
+      "start": "2026-11-07T20:50:00+09:00",
+      "end": "2026-11-07T20:58:00+09:00",
+      "type": "move",
+      "from": "c_shop",
+      "to": "c_home"
+    },
+    {
+      "person": "c_boram",
+      "start": "2026-11-07T20:58:00+09:00",
+      "end": "2026-11-08T00:00:00+09:00",
+      "type": "stay",
+      "place": "c_home"
+    },
+    {
+      "person": "c_haneul",
+      "start": "2026-11-07T00:00:00+09:00",
+      "end": "2026-11-07T09:50:00+09:00",
+      "type": "stay",
+      "place": "c_home"
+    },
+    {
+      "person": "c_haneul",
+      "start": "2026-11-07T09:50:00+09:00",
+      "end": "2026-11-07T10:01:00+09:00",
+      "type": "move",
+      "from": "c_home",
+      "to": "c_study"
+    },
+    {
+      "person": "c_haneul",
+      "start": "2026-11-07T10:01:00+09:00",
+      "end": "2026-11-07T16:45:00+09:00",
+      "type": "stay",
+      "place": "c_study"
+    },
+    {
+      "person": "c_haneul",
+      "start": "2026-11-07T16:45:00+09:00",
+      "end": "2026-11-07T16:56:00+09:00",
+      "type": "move",
+      "from": "c_study",
+      "to": "c_home"
+    },
+    {
+      "person": "c_haneul",
+      "start": "2026-11-07T16:56:00+09:00",
+      "end": "2026-11-08T00:00:00+09:00",
+      "type": "stay",
+      "place": "c_home"
+    },
+    {
+      "person": "c_geon",
+      "start": "2026-11-07T00:00:00+09:00",
+      "end": "2026-11-07T11:10:00+09:00",
+      "type": "stay",
+      "place": "c_friend"
+    },
+    {
+      "person": "c_geon",
+      "start": "2026-11-07T11:10:00+09:00",
+      "end": "2026-11-07T11:27:00+09:00",
+      "type": "move",
+      "from": "c_friend",
+      "to": "c_home"
+    },
+    {
+      "person": "c_geon",
+      "start": "2026-11-07T11:27:00+09:00",
+      "end": "2026-11-07T16:30:00+09:00",
+      "type": "stay",
+      "place": "c_home"
+    },
+    {
+      "person": "c_geon",
+      "start": "2026-11-07T16:30:00+09:00",
+      "end": "2026-11-07T16:42:00+09:00",
+      "type": "move",
+      "from": "c_home",
+      "to": "c_conv"
+    },
+    {
+      "person": "c_geon",
+      "start": "2026-11-07T16:42:00+09:00",
+      "end": "2026-11-07T22:15:00+09:00",
+      "type": "stay",
+      "place": "c_conv"
+    },
+    {
+      "person": "c_geon",
+      "start": "2026-11-07T22:15:00+09:00",
+      "end": "2026-11-07T22:27:00+09:00",
+      "type": "move",
+      "from": "c_conv",
+      "to": "c_home"
+    },
+    {
+      "person": "c_geon",
+      "start": "2026-11-07T22:27:00+09:00",
+      "end": "2026-11-08T00:00:00+09:00",
+      "type": "stay",
+      "place": "c_home"
+    },
+    {
+      "person": "c_dalsu",
+      "start": "2026-11-08T00:00:00+09:00",
+      "end": "2026-11-08T04:10:00+09:00",
+      "type": "stay",
+      "place": "c_home"
+    },
+    {
+      "person": "c_dalsu",
+      "start": "2026-11-08T04:10:00+09:00",
+      "end": "2026-11-08T04:18:00+09:00",
+      "type": "move",
+      "from": "c_home",
+      "to": "c_wholesale"
+    },
+    {
+      "person": "c_dalsu",
+      "start": "2026-11-08T04:18:00+09:00",
+      "end": "2026-11-08T05:15:00+09:00",
+      "type": "stay",
+      "place": "c_wholesale"
+    },
+    {
+      "person": "c_dalsu",
+      "start": "2026-11-08T05:15:00+09:00",
+      "end": "2026-11-08T05:23:00+09:00",
+      "type": "move",
+      "from": "c_wholesale",
+      "to": "c_shop"
+    },
+    {
+      "person": "c_dalsu",
+      "start": "2026-11-08T05:23:00+09:00",
+      "end": "2026-11-08T20:55:00+09:00",
+      "type": "stay",
+      "place": "c_shop"
+    },
+    {
+      "person": "c_dalsu",
+      "start": "2026-11-08T20:55:00+09:00",
+      "end": "2026-11-08T21:03:00+09:00",
+      "type": "move",
+      "from": "c_shop",
+      "to": "c_home"
+    },
+    {
+      "person": "c_dalsu",
+      "start": "2026-11-08T21:03:00+09:00",
+      "end": "2026-11-09T00:00:00+09:00",
+      "type": "stay",
+      "place": "c_home"
+    },
+    {
+      "person": "c_boram",
+      "start": "2026-11-08T00:00:00+09:00",
+      "end": "2026-11-09T00:00:00+09:00",
+      "type": "stay",
+      "place": "c_home"
+    },
+    {
+      "person": "c_haneul",
+      "start": "2026-11-08T00:00:00+09:00",
+      "end": "2026-11-08T14:25:00+09:00",
+      "type": "stay",
+      "place": "c_home"
+    },
+    {
+      "person": "c_haneul",
+      "start": "2026-11-08T14:25:00+09:00",
+      "end": "2026-11-08T14:36:00+09:00",
+      "type": "move",
+      "from": "c_home",
+      "to": "c_study"
+    },
+    {
+      "person": "c_haneul",
+      "start": "2026-11-08T14:36:00+09:00",
+      "end": "2026-11-08T17:40:00+09:00",
+      "type": "stay",
+      "place": "c_study"
+    },
+    {
+      "person": "c_haneul",
+      "start": "2026-11-08T17:40:00+09:00",
+      "end": "2026-11-08T17:51:00+09:00",
+      "type": "move",
+      "from": "c_study",
+      "to": "c_home"
+    },
+    {
+      "person": "c_haneul",
+      "start": "2026-11-08T17:51:00+09:00",
+      "end": "2026-11-09T00:00:00+09:00",
+      "type": "stay",
+      "place": "c_home"
+    },
+    {
+      "person": "c_geon",
+      "start": "2026-11-08T00:00:00+09:00",
+      "end": "2026-11-08T17:50:00+09:00",
+      "type": "stay",
+      "place": "c_home"
+    },
+    {
+      "person": "c_geon",
+      "start": "2026-11-08T17:50:00+09:00",
+      "end": "2026-11-08T18:02:00+09:00",
+      "type": "move",
+      "from": "c_home",
+      "to": "c_conv"
+    },
+    {
+      "person": "c_geon",
+      "start": "2026-11-08T18:02:00+09:00",
+      "end": "2026-11-08T22:30:00+09:00",
+      "type": "stay",
+      "place": "c_conv"
+    },
+    {
+      "person": "c_geon",
+      "start": "2026-11-08T22:30:00+09:00",
+      "end": "2026-11-08T22:38:00+09:00",
+      "type": "move",
+      "from": "c_conv",
+      "to": "c_post"
+    },
+    {
+      "person": "c_geon",
+      "start": "2026-11-08T22:38:00+09:00",
+      "end": "2026-11-08T23:23:00+09:00",
+      "type": "anomaly",
+      "lat": 37.515,
+      "lng": 126.956
+    },
+    {
+      "person": "c_geon",
+      "start": "2026-11-08T23:23:00+09:00",
+      "end": "2026-11-08T23:31:00+09:00",
+      "type": "move",
+      "from": "c_post",
+      "to": "c_home"
+    },
+    {
+      "person": "c_geon",
+      "start": "2026-11-08T23:31:00+09:00",
+      "end": "2026-11-09T00:00:00+09:00",
+      "type": "stay",
+      "place": "c_home"
+    },
+    {
+      "person": "c_dalsu",
+      "start": "2026-11-09T00:00:00+09:00",
+      "end": "2026-11-09T04:10:00+09:00",
+      "type": "stay",
+      "place": "c_home"
+    },
+    {
+      "person": "c_dalsu",
+      "start": "2026-11-09T04:10:00+09:00",
+      "end": "2026-11-09T04:18:00+09:00",
+      "type": "move",
+      "from": "c_home",
+      "to": "c_wholesale"
+    },
+    {
+      "person": "c_dalsu",
+      "start": "2026-11-09T04:18:00+09:00",
+      "end": "2026-11-09T05:20:00+09:00",
+      "type": "stay",
+      "place": "c_wholesale"
+    },
+    {
+      "person": "c_dalsu",
+      "start": "2026-11-09T05:20:00+09:00",
+      "end": "2026-11-09T05:28:00+09:00",
+      "type": "move",
+      "from": "c_wholesale",
+      "to": "c_shop"
+    },
+    {
+      "person": "c_dalsu",
+      "start": "2026-11-09T05:28:00+09:00",
+      "end": "2026-11-09T11:35:00+09:00",
+      "type": "stay",
+      "place": "c_shop"
+    },
+    {
+      "person": "c_dalsu",
+      "start": "2026-11-09T11:35:00+09:00",
+      "end": "2026-11-09T11:43:00+09:00",
+      "type": "move",
+      "from": "c_shop",
+      "to": "c_bank"
+    },
+    {
+      "person": "c_dalsu",
+      "start": "2026-11-09T11:43:00+09:00",
+      "end": "2026-11-09T12:15:00+09:00",
+      "type": "stay",
+      "place": "c_bank"
+    },
+    {
+      "person": "c_dalsu",
+      "start": "2026-11-09T12:15:00+09:00",
+      "end": "2026-11-09T12:23:00+09:00",
+      "type": "move",
+      "from": "c_bank",
+      "to": "c_shop"
+    },
+    {
+      "person": "c_dalsu",
+      "start": "2026-11-09T12:23:00+09:00",
+      "end": "2026-11-09T20:55:00+09:00",
+      "type": "stay",
+      "place": "c_shop"
+    },
+    {
+      "person": "c_dalsu",
+      "start": "2026-11-09T20:55:00+09:00",
+      "end": "2026-11-09T21:03:00+09:00",
+      "type": "move",
+      "from": "c_shop",
+      "to": "c_home"
+    },
+    {
+      "person": "c_dalsu",
+      "start": "2026-11-09T21:03:00+09:00",
+      "end": "2026-11-10T00:00:00+09:00",
+      "type": "stay",
+      "place": "c_home"
+    },
+    {
+      "person": "c_boram",
+      "start": "2026-11-09T00:00:00+09:00",
+      "end": "2026-11-09T08:30:00+09:00",
+      "type": "stay",
+      "place": "c_home"
+    },
+    {
+      "person": "c_boram",
+      "start": "2026-11-09T08:30:00+09:00",
+      "end": "2026-11-09T08:38:00+09:00",
+      "type": "move",
+      "from": "c_home",
+      "to": "c_shop"
+    },
+    {
+      "person": "c_boram",
+      "start": "2026-11-09T08:38:00+09:00",
+      "end": "2026-11-09T14:10:00+09:00",
+      "type": "stay",
+      "place": "c_shop"
+    },
+    {
+      "person": "c_boram",
+      "start": "2026-11-09T14:10:00+09:00",
+      "end": "2026-11-09T14:18:00+09:00",
+      "type": "move",
+      "from": "c_shop",
+      "to": "c_post"
+    },
+    {
+      "person": "c_boram",
+      "start": "2026-11-09T14:18:00+09:00",
+      "end": "2026-11-09T14:40:00+09:00",
+      "type": "stay",
+      "place": "c_post"
+    },
+    {
+      "person": "c_boram",
+      "start": "2026-11-09T14:40:00+09:00",
+      "end": "2026-11-09T14:48:00+09:00",
+      "type": "move",
+      "from": "c_post",
+      "to": "c_shop"
+    },
+    {
+      "person": "c_boram",
+      "start": "2026-11-09T14:48:00+09:00",
+      "end": "2026-11-09T21:05:00+09:00",
+      "type": "stay",
+      "place": "c_shop"
+    },
+    {
+      "person": "c_boram",
+      "start": "2026-11-09T21:05:00+09:00",
+      "end": "2026-11-09T21:13:00+09:00",
+      "type": "move",
+      "from": "c_shop",
+      "to": "c_home"
+    },
+    {
+      "person": "c_boram",
+      "start": "2026-11-09T21:13:00+09:00",
+      "end": "2026-11-10T00:00:00+09:00",
+      "type": "stay",
+      "place": "c_home"
+    },
+    {
+      "person": "c_haneul",
+      "start": "2026-11-09T00:00:00+09:00",
+      "end": "2026-11-09T07:40:00+09:00",
+      "type": "stay",
+      "place": "c_home"
+    },
+    {
+      "person": "c_haneul",
+      "start": "2026-11-09T07:40:00+09:00",
+      "end": "2026-11-09T07:52:00+09:00",
+      "type": "move",
+      "from": "c_home",
+      "to": "c_school"
+    },
+    {
+      "person": "c_haneul",
+      "start": "2026-11-09T07:52:00+09:00",
+      "end": "2026-11-09T21:30:00+09:00",
+      "type": "stay",
+      "place": "c_school"
+    },
+    {
+      "person": "c_haneul",
+      "start": "2026-11-09T21:30:00+09:00",
+      "end": "2026-11-09T21:42:00+09:00",
+      "type": "move",
+      "from": "c_school",
+      "to": "c_home"
+    },
+    {
+      "person": "c_haneul",
+      "start": "2026-11-09T21:42:00+09:00",
+      "end": "2026-11-10T00:00:00+09:00",
+      "type": "stay",
+      "place": "c_home"
+    },
+    {
+      "person": "c_geon",
+      "start": "2026-11-09T00:00:00+09:00",
+      "end": "2026-11-09T08:05:00+09:00",
+      "type": "stay",
+      "place": "c_home"
+    },
+    {
+      "person": "c_geon",
+      "start": "2026-11-09T08:05:00+09:00",
+      "end": "2026-11-09T08:13:00+09:00",
+      "type": "move",
+      "from": "c_home",
+      "to": "c_campus"
+    },
+    {
+      "person": "c_geon",
+      "start": "2026-11-09T08:13:00+09:00",
+      "end": "2026-11-09T15:35:00+09:00",
+      "type": "stay",
+      "place": "c_campus"
+    },
+    {
+      "person": "c_geon",
+      "start": "2026-11-09T15:35:00+09:00",
+      "end": "2026-11-09T15:52:00+09:00",
+      "type": "move",
+      "from": "c_campus",
+      "to": "c_club"
+    },
+    {
+      "person": "c_geon",
+      "start": "2026-11-09T15:52:00+09:00",
+      "end": "2026-11-09T18:50:00+09:00",
+      "type": "stay",
+      "place": "c_club"
+    },
+    {
+      "person": "c_geon",
+      "start": "2026-11-09T18:50:00+09:00",
+      "end": "2026-11-09T19:06:00+09:00",
+      "type": "move",
+      "from": "c_club",
+      "to": "c_home"
+    },
+    {
+      "person": "c_geon",
+      "start": "2026-11-09T19:06:00+09:00",
+      "end": "2026-11-10T00:00:00+09:00",
+      "type": "stay",
+      "place": "c_home"
+    }
+  ]
+}

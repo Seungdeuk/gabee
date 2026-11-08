@@ -1,0 +1,1998 @@
+{
+  "family": {
+    "name": "가짜 가족 A (자취 대학생과 부모)",
+    "timezone": "Asia/Seoul"
+  },
+  "people": [
+    {
+      "id": "a_minseo",
+      "name": "민서",
+      "role": "child"
+    },
+    {
+      "id": "a_appa",
+      "name": "준호",
+      "role": "parent"
+    },
+    {
+      "id": "a_eomma",
+      "name": "유진",
+      "role": "parent"
+    }
+  ],
+  "places": [
+    {
+      "id": "a_room",
+      "name": "자취방",
+      "kind": "home",
+      "lat": 36.52,
+      "lng": 128.01,
+      "radius_m": 80
+    },
+    {
+      "id": "a_campus",
+      "name": "한솔 대학교",
+      "kind": "school",
+      "lat": 36.53,
+      "lng": 128.02,
+      "radius_m": 200
+    },
+    {
+      "id": "a_library",
+      "name": "마루 도서관",
+      "kind": "library",
+      "lat": 36.54,
+      "lng": 128.02,
+      "radius_m": 100
+    },
+    {
+      "id": "a_cafe",
+      "name": "하늘빛 카페",
+      "kind": "cafe",
+      "lat": 36.53,
+      "lng": 128.04,
+      "radius_m": 60
+    },
+    {
+      "id": "a_gym",
+      "name": "단단 헬스장",
+      "kind": "gym",
+      "lat": 36.52,
+      "lng": 128.03,
+      "radius_m": 70
+    },
+    {
+      "id": "a_conv",
+      "name": "모아 편의점",
+      "kind": "convenience",
+      "lat": 36.51,
+      "lng": 128.02,
+      "radius_m": 50
+    },
+    {
+      "id": "a_parents",
+      "name": "부모님 집",
+      "kind": "home",
+      "lat": 36.57,
+      "lng": 128.06,
+      "radius_m": 100
+    },
+    {
+      "id": "a_work_dad",
+      "name": "새움 물류센터",
+      "kind": "work",
+      "lat": 36.58,
+      "lng": 128.04,
+      "radius_m": 200
+    },
+    {
+      "id": "a_work_mom",
+      "name": "다온 사무소",
+      "kind": "work",
+      "lat": 36.56,
+      "lng": 128.08,
+      "radius_m": 150
+    },
+    {
+      "id": "a_mart",
+      "name": "누리 마트",
+      "kind": "market",
+      "lat": 36.57,
+      "lng": 128.07,
+      "radius_m": 120
+    },
+    {
+      "id": "a_hospital",
+      "name": "청솔 병원",
+      "kind": "hospital",
+      "lat": 36.56,
+      "lng": 128.05,
+      "radius_m": 150
+    },
+    {
+      "id": "a_market",
+      "name": "두레 시장",
+      "kind": "market",
+      "lat": 36.58,
+      "lng": 128.07,
+      "radius_m": 120
+    },
+    {
+      "id": "a_trip",
+      "name": "바람결 리조트",
+      "kind": "travel",
+      "lat": 36.5,
+      "lng": 128.09,
+      "radius_m": 250
+    }
+  ],
+  "segments": [
+    {
+      "person": "a_minseo",
+      "start": "2026-10-27T00:00:00+09:00",
+      "end": "2026-10-27T08:25:00+09:00",
+      "type": "stay",
+      "place": "a_room"
+    },
+    {
+      "person": "a_minseo",
+      "start": "2026-10-27T08:25:00+09:00",
+      "end": "2026-10-27T08:45:00+09:00",
+      "type": "move",
+      "from": "a_room",
+      "to": "a_campus"
+    },
+    {
+      "person": "a_minseo",
+      "start": "2026-10-27T08:45:00+09:00",
+      "end": "2026-10-27T16:50:00+09:00",
+      "type": "stay",
+      "place": "a_campus"
+    },
+    {
+      "person": "a_minseo",
+      "start": "2026-10-27T16:50:00+09:00",
+      "end": "2026-10-27T17:20:00+09:00",
+      "type": "move",
+      "from": "a_campus",
+      "to": "a_gym"
+    },
+    {
+      "person": "a_minseo",
+      "start": "2026-10-27T17:20:00+09:00",
+      "end": "2026-10-27T19:05:00+09:00",
+      "type": "stay",
+      "place": "a_gym"
+    },
+    {
+      "person": "a_minseo",
+      "start": "2026-10-27T19:05:00+09:00",
+      "end": "2026-10-27T19:20:00+09:00",
+      "type": "move",
+      "from": "a_gym",
+      "to": "a_conv"
+    },
+    {
+      "person": "a_minseo",
+      "start": "2026-10-27T19:20:00+09:00",
+      "end": "2026-10-27T20:45:00+09:00",
+      "type": "stay",
+      "place": "a_conv"
+    },
+    {
+      "person": "a_minseo",
+      "start": "2026-10-27T20:45:00+09:00",
+      "end": "2026-10-27T21:05:00+09:00",
+      "type": "move",
+      "from": "a_conv",
+      "to": "a_room"
+    },
+    {
+      "person": "a_minseo",
+      "start": "2026-10-27T21:05:00+09:00",
+      "end": "2026-10-28T00:00:00+09:00",
+      "type": "stay",
+      "place": "a_room"
+    },
+    {
+      "person": "a_minseo",
+      "start": "2026-10-28T00:00:00+09:00",
+      "end": "2026-10-28T09:20:00+09:00",
+      "type": "stay",
+      "place": "a_room"
+    },
+    {
+      "person": "a_minseo",
+      "start": "2026-10-28T09:20:00+09:00",
+      "end": "2026-10-28T09:50:00+09:00",
+      "type": "move",
+      "from": "a_room",
+      "to": "a_campus"
+    },
+    {
+      "person": "a_minseo",
+      "start": "2026-10-28T09:50:00+09:00",
+      "end": "2026-10-28T14:10:00+09:00",
+      "type": "stay",
+      "place": "a_campus"
+    },
+    {
+      "person": "a_minseo",
+      "start": "2026-10-28T14:10:00+09:00",
+      "end": "2026-10-28T14:40:00+09:00",
+      "type": "move",
+      "from": "a_campus",
+      "to": "a_library"
+    },
+    {
+      "person": "a_minseo",
+      "start": "2026-10-28T14:40:00+09:00",
+      "end": "2026-10-28T18:45:00+09:00",
+      "type": "stay",
+      "place": "a_library"
+    },
+    {
+      "person": "a_minseo",
+      "start": "2026-10-28T18:45:00+09:00",
+      "end": "2026-10-28T19:00:00+09:00",
+      "type": "move",
+      "from": "a_library",
+      "to": "a_room"
+    },
+    {
+      "person": "a_minseo",
+      "start": "2026-10-28T19:00:00+09:00",
+      "end": "2026-10-29T00:00:00+09:00",
+      "type": "stay",
+      "place": "a_room"
+    },
+    {
+      "person": "a_minseo",
+      "start": "2026-10-29T00:00:00+09:00",
+      "end": "2026-10-29T01:00:00+09:00",
+      "type": "stay",
+      "place": "a_room"
+    },
+    {
+      "person": "a_minseo",
+      "start": "2026-10-29T01:00:00+09:00",
+      "end": "2026-10-29T01:10:00+09:00",
+      "type": "move",
+      "from": "a_room",
+      "to": "a_room"
+    },
+    {
+      "person": "a_minseo",
+      "start": "2026-10-29T01:10:00+09:00",
+      "end": "2026-10-29T02:30:00+09:00",
+      "type": "anomaly",
+      "lat": 36.553,
+      "lng": 128.098
+    },
+    {
+      "person": "a_minseo",
+      "start": "2026-10-29T02:30:00+09:00",
+      "end": "2026-10-29T02:45:00+09:00",
+      "type": "move",
+      "from": "a_room",
+      "to": "a_room"
+    },
+    {
+      "person": "a_minseo",
+      "start": "2026-10-29T02:45:00+09:00",
+      "end": "2026-10-29T09:40:00+09:00",
+      "type": "stay",
+      "place": "a_room"
+    },
+    {
+      "person": "a_minseo",
+      "start": "2026-10-29T09:40:00+09:00",
+      "end": "2026-10-29T10:00:00+09:00",
+      "type": "move",
+      "from": "a_room",
+      "to": "a_campus"
+    },
+    {
+      "person": "a_minseo",
+      "start": "2026-10-29T10:00:00+09:00",
+      "end": "2026-10-29T15:10:00+09:00",
+      "type": "stay",
+      "place": "a_campus"
+    },
+    {
+      "person": "a_minseo",
+      "start": "2026-10-29T15:10:00+09:00",
+      "end": "2026-10-29T15:30:00+09:00",
+      "type": "move",
+      "from": "a_campus",
+      "to": "a_cafe"
+    },
+    {
+      "person": "a_minseo",
+      "start": "2026-10-29T15:30:00+09:00",
+      "end": "2026-10-29T18:05:00+09:00",
+      "type": "stay",
+      "place": "a_cafe"
+    },
+    {
+      "person": "a_minseo",
+      "start": "2026-10-29T18:05:00+09:00",
+      "end": "2026-10-29T18:25:00+09:00",
+      "type": "move",
+      "from": "a_cafe",
+      "to": "a_room"
+    },
+    {
+      "person": "a_minseo",
+      "start": "2026-10-29T18:25:00+09:00",
+      "end": "2026-10-30T00:00:00+09:00",
+      "type": "stay",
+      "place": "a_room"
+    },
+    {
+      "person": "a_minseo",
+      "start": "2026-10-30T00:00:00+09:00",
+      "end": "2026-10-30T08:55:00+09:00",
+      "type": "stay",
+      "place": "a_room"
+    },
+    {
+      "person": "a_minseo",
+      "start": "2026-10-30T08:55:00+09:00",
+      "end": "2026-10-30T09:15:00+09:00",
+      "type": "move",
+      "from": "a_room",
+      "to": "a_campus"
+    },
+    {
+      "person": "a_minseo",
+      "start": "2026-10-30T09:15:00+09:00",
+      "end": "2026-10-30T15:05:00+09:00",
+      "type": "stay",
+      "place": "a_campus"
+    },
+    {
+      "person": "a_minseo",
+      "start": "2026-10-30T15:05:00+09:00",
+      "end": "2026-10-30T15:25:00+09:00",
+      "type": "move",
+      "from": "a_campus",
+      "to": "a_cafe"
+    },
+    {
+      "person": "a_minseo",
+      "start": "2026-10-30T15:25:00+09:00",
+      "end": "2026-10-30T17:35:00+09:00",
+      "type": "stay",
+      "place": "a_cafe"
+    },
+    {
+      "person": "a_minseo",
+      "start": "2026-10-30T17:35:00+09:00",
+      "end": "2026-10-30T18:05:00+09:00",
+      "type": "move",
+      "from": "a_cafe",
+      "to": "a_room"
+    },
+    {
+      "person": "a_minseo",
+      "start": "2026-10-30T18:05:00+09:00",
+      "end": "2026-10-30T22:10:00+09:00",
+      "type": "stay",
+      "place": "a_room"
+    },
+    {
+      "person": "a_minseo",
+      "start": "2026-10-30T22:10:00+09:00",
+      "end": "2026-10-30T22:35:00+09:00",
+      "type": "move",
+      "from": "a_room",
+      "to": "a_conv"
+    },
+    {
+      "person": "a_minseo",
+      "start": "2026-10-30T22:35:00+09:00",
+      "end": "2026-10-30T23:25:00+09:00",
+      "type": "stay",
+      "place": "a_conv"
+    },
+    {
+      "person": "a_minseo",
+      "start": "2026-10-30T23:25:00+09:00",
+      "end": "2026-10-30T23:55:00+09:00",
+      "type": "move",
+      "from": "a_conv",
+      "to": "a_room"
+    },
+    {
+      "person": "a_minseo",
+      "start": "2026-10-30T23:55:00+09:00",
+      "end": "2026-10-31T00:00:00+09:00",
+      "type": "stay",
+      "place": "a_room"
+    },
+    {
+      "person": "a_minseo",
+      "start": "2026-10-31T00:00:00+09:00",
+      "end": "2026-10-31T10:55:00+09:00",
+      "type": "stay",
+      "place": "a_room"
+    },
+    {
+      "person": "a_minseo",
+      "start": "2026-10-31T10:55:00+09:00",
+      "end": "2026-10-31T11:20:00+09:00",
+      "type": "move",
+      "from": "a_room",
+      "to": "a_gym"
+    },
+    {
+      "person": "a_minseo",
+      "start": "2026-10-31T11:20:00+09:00",
+      "end": "2026-10-31T12:40:00+09:00",
+      "type": "stay",
+      "place": "a_gym"
+    },
+    {
+      "person": "a_minseo",
+      "start": "2026-10-31T12:40:00+09:00",
+      "end": "2026-10-31T12:55:00+09:00",
+      "type": "move",
+      "from": "a_gym",
+      "to": "a_cafe"
+    },
+    {
+      "person": "a_minseo",
+      "start": "2026-10-31T12:55:00+09:00",
+      "end": "2026-10-31T16:20:00+09:00",
+      "type": "stay",
+      "place": "a_cafe"
+    },
+    {
+      "person": "a_minseo",
+      "start": "2026-10-31T16:20:00+09:00",
+      "end": "2026-10-31T16:35:00+09:00",
+      "type": "move",
+      "from": "a_cafe",
+      "to": "a_room"
+    },
+    {
+      "person": "a_minseo",
+      "start": "2026-10-31T16:35:00+09:00",
+      "end": "2026-11-01T00:00:00+09:00",
+      "type": "stay",
+      "place": "a_room"
+    },
+    {
+      "person": "a_minseo",
+      "start": "2026-11-01T00:00:00+09:00",
+      "end": "2026-11-01T12:50:00+09:00",
+      "type": "stay",
+      "place": "a_room"
+    },
+    {
+      "person": "a_minseo",
+      "start": "2026-11-01T12:50:00+09:00",
+      "end": "2026-11-01T13:10:00+09:00",
+      "type": "move",
+      "from": "a_room",
+      "to": "a_conv"
+    },
+    {
+      "person": "a_minseo",
+      "start": "2026-11-01T13:10:00+09:00",
+      "end": "2026-11-01T14:15:00+09:00",
+      "type": "stay",
+      "place": "a_conv"
+    },
+    {
+      "person": "a_minseo",
+      "start": "2026-11-01T14:15:00+09:00",
+      "end": "2026-11-01T14:40:00+09:00",
+      "type": "move",
+      "from": "a_conv",
+      "to": "a_room"
+    },
+    {
+      "person": "a_minseo",
+      "start": "2026-11-01T14:40:00+09:00",
+      "end": "2026-11-01T19:00:00+09:00",
+      "type": "stay",
+      "place": "a_room"
+    },
+    {
+      "person": "a_minseo",
+      "start": "2026-11-01T19:00:00+09:00",
+      "end": "2026-11-01T19:15:00+09:00",
+      "type": "move",
+      "from": "a_room",
+      "to": "a_gym"
+    },
+    {
+      "person": "a_minseo",
+      "start": "2026-11-01T19:15:00+09:00",
+      "end": "2026-11-01T20:10:00+09:00",
+      "type": "stay",
+      "place": "a_gym"
+    },
+    {
+      "person": "a_minseo",
+      "start": "2026-11-01T20:10:00+09:00",
+      "end": "2026-11-01T20:35:00+09:00",
+      "type": "move",
+      "from": "a_gym",
+      "to": "a_room"
+    },
+    {
+      "person": "a_minseo",
+      "start": "2026-11-01T20:35:00+09:00",
+      "end": "2026-11-02T00:00:00+09:00",
+      "type": "stay",
+      "place": "a_room"
+    },
+    {
+      "person": "a_minseo",
+      "start": "2026-11-02T00:00:00+09:00",
+      "end": "2026-11-02T08:35:00+09:00",
+      "type": "stay",
+      "place": "a_room"
+    },
+    {
+      "person": "a_minseo",
+      "start": "2026-11-02T08:35:00+09:00",
+      "end": "2026-11-02T09:00:00+09:00",
+      "type": "move",
+      "from": "a_room",
+      "to": "a_campus"
+    },
+    {
+      "person": "a_minseo",
+      "start": "2026-11-02T09:00:00+09:00",
+      "end": "2026-11-02T16:30:00+09:00",
+      "type": "stay",
+      "place": "a_campus"
+    },
+    {
+      "person": "a_minseo",
+      "start": "2026-11-02T16:30:00+09:00",
+      "end": "2026-11-02T16:45:00+09:00",
+      "type": "move",
+      "from": "a_campus",
+      "to": "a_library"
+    },
+    {
+      "person": "a_minseo",
+      "start": "2026-11-02T16:45:00+09:00",
+      "end": "2026-11-02T20:25:00+09:00",
+      "type": "stay",
+      "place": "a_library"
+    },
+    {
+      "person": "a_minseo",
+      "start": "2026-11-02T20:25:00+09:00",
+      "end": "2026-11-02T20:55:00+09:00",
+      "type": "move",
+      "from": "a_library",
+      "to": "a_conv"
+    },
+    {
+      "person": "a_minseo",
+      "start": "2026-11-02T20:55:00+09:00",
+      "end": "2026-11-02T21:30:00+09:00",
+      "type": "stay",
+      "place": "a_conv"
+    },
+    {
+      "person": "a_minseo",
+      "start": "2026-11-02T21:30:00+09:00",
+      "end": "2026-11-02T22:00:00+09:00",
+      "type": "move",
+      "from": "a_conv",
+      "to": "a_room"
+    },
+    {
+      "person": "a_minseo",
+      "start": "2026-11-02T22:00:00+09:00",
+      "end": "2026-11-03T00:00:00+09:00",
+      "type": "stay",
+      "place": "a_room"
+    },
+    {
+      "person": "a_minseo",
+      "start": "2026-11-03T00:00:00+09:00",
+      "end": "2026-11-03T07:30:00+09:00",
+      "type": "stay",
+      "place": "a_room"
+    },
+    {
+      "person": "a_minseo",
+      "start": "2026-11-03T07:30:00+09:00",
+      "end": "2026-11-03T08:00:00+09:00",
+      "type": "move",
+      "from": "a_room",
+      "to": "a_library"
+    },
+    {
+      "person": "a_minseo",
+      "start": "2026-11-03T08:00:00+09:00",
+      "end": "2026-11-03T23:30:00+09:00",
+      "type": "stay",
+      "place": "a_library"
+    },
+    {
+      "person": "a_minseo",
+      "start": "2026-11-03T23:30:00+09:00",
+      "end": "2026-11-03T23:55:00+09:00",
+      "type": "move",
+      "from": "a_library",
+      "to": "a_room"
+    },
+    {
+      "person": "a_minseo",
+      "start": "2026-11-03T23:55:00+09:00",
+      "end": "2026-11-04T00:00:00+09:00",
+      "type": "stay",
+      "place": "a_room"
+    },
+    {
+      "person": "a_minseo",
+      "start": "2026-11-04T00:00:00+09:00",
+      "end": "2026-11-04T07:10:00+09:00",
+      "type": "stay",
+      "place": "a_room"
+    },
+    {
+      "person": "a_minseo",
+      "start": "2026-11-04T07:10:00+09:00",
+      "end": "2026-11-04T07:40:00+09:00",
+      "type": "move",
+      "from": "a_room",
+      "to": "a_library"
+    },
+    {
+      "person": "a_minseo",
+      "start": "2026-11-04T07:40:00+09:00",
+      "end": "2026-11-04T12:25:00+09:00",
+      "type": "stay",
+      "place": "a_library"
+    },
+    {
+      "person": "a_minseo",
+      "start": "2026-11-04T12:25:00+09:00",
+      "end": "2026-11-04T12:50:00+09:00",
+      "type": "move",
+      "from": "a_library",
+      "to": "a_conv"
+    },
+    {
+      "person": "a_minseo",
+      "start": "2026-11-04T12:50:00+09:00",
+      "end": "2026-11-04T13:40:00+09:00",
+      "type": "stay",
+      "place": "a_conv"
+    },
+    {
+      "person": "a_minseo",
+      "start": "2026-11-04T13:40:00+09:00",
+      "end": "2026-11-04T14:05:00+09:00",
+      "type": "move",
+      "from": "a_conv",
+      "to": "a_library"
+    },
+    {
+      "person": "a_minseo",
+      "start": "2026-11-04T14:05:00+09:00",
+      "end": "2026-11-04T23:35:00+09:00",
+      "type": "stay",
+      "place": "a_library"
+    },
+    {
+      "person": "a_minseo",
+      "start": "2026-11-04T23:35:00+09:00",
+      "end": "2026-11-04T23:55:00+09:00",
+      "type": "move",
+      "from": "a_library",
+      "to": "a_room"
+    },
+    {
+      "person": "a_minseo",
+      "start": "2026-11-04T23:55:00+09:00",
+      "end": "2026-11-05T00:00:00+09:00",
+      "type": "stay",
+      "place": "a_room"
+    },
+    {
+      "person": "a_minseo",
+      "start": "2026-11-05T00:00:00+09:00",
+      "end": "2026-11-05T07:30:00+09:00",
+      "type": "stay",
+      "place": "a_room"
+    },
+    {
+      "person": "a_minseo",
+      "start": "2026-11-05T07:30:00+09:00",
+      "end": "2026-11-05T07:45:00+09:00",
+      "type": "move",
+      "from": "a_room",
+      "to": "a_library"
+    },
+    {
+      "person": "a_minseo",
+      "start": "2026-11-05T07:45:00+09:00",
+      "end": "2026-11-05T22:40:00+09:00",
+      "type": "stay",
+      "place": "a_library"
+    },
+    {
+      "person": "a_minseo",
+      "start": "2026-11-05T22:40:00+09:00",
+      "end": "2026-11-05T23:00:00+09:00",
+      "type": "move",
+      "from": "a_library",
+      "to": "a_room"
+    },
+    {
+      "person": "a_minseo",
+      "start": "2026-11-05T23:00:00+09:00",
+      "end": "2026-11-06T00:00:00+09:00",
+      "type": "stay",
+      "place": "a_room"
+    },
+    {
+      "person": "a_minseo",
+      "start": "2026-11-06T00:00:00+09:00",
+      "end": "2026-11-06T10:20:00+09:00",
+      "type": "stay",
+      "place": "a_room"
+    },
+    {
+      "person": "a_minseo",
+      "start": "2026-11-06T10:20:00+09:00",
+      "end": "2026-11-06T10:40:00+09:00",
+      "type": "move",
+      "from": "a_room",
+      "to": "a_campus"
+    },
+    {
+      "person": "a_minseo",
+      "start": "2026-11-06T10:40:00+09:00",
+      "end": "2026-11-06T13:05:00+09:00",
+      "type": "stay",
+      "place": "a_campus"
+    },
+    {
+      "person": "a_minseo",
+      "start": "2026-11-06T13:05:00+09:00",
+      "end": "2026-11-06T13:25:00+09:00",
+      "type": "move",
+      "from": "a_campus",
+      "to": "a_cafe"
+    },
+    {
+      "person": "a_minseo",
+      "start": "2026-11-06T13:25:00+09:00",
+      "end": "2026-11-06T16:55:00+09:00",
+      "type": "stay",
+      "place": "a_cafe"
+    },
+    {
+      "person": "a_minseo",
+      "start": "2026-11-06T16:55:00+09:00",
+      "end": "2026-11-06T17:20:00+09:00",
+      "type": "move",
+      "from": "a_cafe",
+      "to": "a_gym"
+    },
+    {
+      "person": "a_minseo",
+      "start": "2026-11-06T17:20:00+09:00",
+      "end": "2026-11-06T19:40:00+09:00",
+      "type": "stay",
+      "place": "a_gym"
+    },
+    {
+      "person": "a_minseo",
+      "start": "2026-11-06T19:40:00+09:00",
+      "end": "2026-11-06T20:00:00+09:00",
+      "type": "move",
+      "from": "a_gym",
+      "to": "a_room"
+    },
+    {
+      "person": "a_minseo",
+      "start": "2026-11-06T20:00:00+09:00",
+      "end": "2026-11-07T00:00:00+09:00",
+      "type": "stay",
+      "place": "a_room"
+    },
+    {
+      "person": "a_minseo",
+      "start": "2026-11-07T00:00:00+09:00",
+      "end": "2026-11-07T09:30:00+09:00",
+      "type": "stay",
+      "place": "a_room"
+    },
+    {
+      "person": "a_minseo",
+      "start": "2026-11-07T09:30:00+09:00",
+      "end": "2026-11-07T09:50:00+09:00",
+      "type": "move",
+      "from": "a_room",
+      "to": "a_parents"
+    },
+    {
+      "person": "a_minseo",
+      "start": "2026-11-07T09:50:00+09:00",
+      "end": "2026-11-08T00:00:00+09:00",
+      "type": "stay",
+      "place": "a_parents"
+    },
+    {
+      "person": "a_minseo",
+      "start": "2026-11-08T00:00:00+09:00",
+      "end": "2026-11-08T17:05:00+09:00",
+      "type": "stay",
+      "place": "a_parents"
+    },
+    {
+      "person": "a_minseo",
+      "start": "2026-11-08T17:05:00+09:00",
+      "end": "2026-11-08T17:20:00+09:00",
+      "type": "move",
+      "from": "a_parents",
+      "to": "a_room"
+    },
+    {
+      "person": "a_minseo",
+      "start": "2026-11-08T17:20:00+09:00",
+      "end": "2026-11-09T00:00:00+09:00",
+      "type": "stay",
+      "place": "a_room"
+    },
+    {
+      "person": "a_minseo",
+      "start": "2026-11-09T00:00:00+09:00",
+      "end": "2026-11-09T08:40:00+09:00",
+      "type": "stay",
+      "place": "a_room"
+    },
+    {
+      "person": "a_minseo",
+      "start": "2026-11-09T08:40:00+09:00",
+      "end": "2026-11-09T09:05:00+09:00",
+      "type": "move",
+      "from": "a_room",
+      "to": "a_campus"
+    },
+    {
+      "person": "a_minseo",
+      "start": "2026-11-09T09:05:00+09:00",
+      "end": "2026-11-09T17:40:00+09:00",
+      "type": "stay",
+      "place": "a_campus"
+    },
+    {
+      "person": "a_minseo",
+      "start": "2026-11-09T17:40:00+09:00",
+      "end": "2026-11-09T18:10:00+09:00",
+      "type": "move",
+      "from": "a_campus",
+      "to": "a_cafe"
+    },
+    {
+      "person": "a_minseo",
+      "start": "2026-11-09T18:10:00+09:00",
+      "end": "2026-11-09T19:20:00+09:00",
+      "type": "stay",
+      "place": "a_cafe"
+    },
+    {
+      "person": "a_minseo",
+      "start": "2026-11-09T19:20:00+09:00",
+      "end": "2026-11-09T19:50:00+09:00",
+      "type": "move",
+      "from": "a_cafe",
+      "to": "a_room"
+    },
+    {
+      "person": "a_minseo",
+      "start": "2026-11-09T19:50:00+09:00",
+      "end": "2026-11-10T00:00:00+09:00",
+      "type": "stay",
+      "place": "a_room"
+    },
+    {
+      "person": "a_appa",
+      "start": "2026-10-27T00:00:00+09:00",
+      "end": "2026-10-27T07:50:00+09:00",
+      "type": "stay",
+      "place": "a_parents"
+    },
+    {
+      "person": "a_appa",
+      "start": "2026-10-27T07:50:00+09:00",
+      "end": "2026-10-27T08:15:00+09:00",
+      "type": "move",
+      "from": "a_parents",
+      "to": "a_work_dad"
+    },
+    {
+      "person": "a_appa",
+      "start": "2026-10-27T08:15:00+09:00",
+      "end": "2026-10-27T18:20:00+09:00",
+      "type": "stay",
+      "place": "a_work_dad"
+    },
+    {
+      "person": "a_appa",
+      "start": "2026-10-27T18:20:00+09:00",
+      "end": "2026-10-27T18:45:00+09:00",
+      "type": "move",
+      "from": "a_work_dad",
+      "to": "a_market"
+    },
+    {
+      "person": "a_appa",
+      "start": "2026-10-27T18:45:00+09:00",
+      "end": "2026-10-27T19:25:00+09:00",
+      "type": "stay",
+      "place": "a_market"
+    },
+    {
+      "person": "a_appa",
+      "start": "2026-10-27T19:25:00+09:00",
+      "end": "2026-10-27T19:55:00+09:00",
+      "type": "move",
+      "from": "a_market",
+      "to": "a_parents"
+    },
+    {
+      "person": "a_appa",
+      "start": "2026-10-27T19:55:00+09:00",
+      "end": "2026-10-28T00:00:00+09:00",
+      "type": "stay",
+      "place": "a_parents"
+    },
+    {
+      "person": "a_eomma",
+      "start": "2026-10-27T00:00:00+09:00",
+      "end": "2026-10-27T08:10:00+09:00",
+      "type": "stay",
+      "place": "a_parents"
+    },
+    {
+      "person": "a_eomma",
+      "start": "2026-10-27T08:10:00+09:00",
+      "end": "2026-10-27T08:30:00+09:00",
+      "type": "move",
+      "from": "a_parents",
+      "to": "a_work_mom"
+    },
+    {
+      "person": "a_eomma",
+      "start": "2026-10-27T08:30:00+09:00",
+      "end": "2026-10-27T17:50:00+09:00",
+      "type": "stay",
+      "place": "a_work_mom"
+    },
+    {
+      "person": "a_eomma",
+      "start": "2026-10-27T17:50:00+09:00",
+      "end": "2026-10-27T18:20:00+09:00",
+      "type": "move",
+      "from": "a_work_mom",
+      "to": "a_parents"
+    },
+    {
+      "person": "a_eomma",
+      "start": "2026-10-27T18:20:00+09:00",
+      "end": "2026-10-28T00:00:00+09:00",
+      "type": "stay",
+      "place": "a_parents"
+    },
+    {
+      "person": "a_appa",
+      "start": "2026-10-28T00:00:00+09:00",
+      "end": "2026-10-28T07:55:00+09:00",
+      "type": "stay",
+      "place": "a_parents"
+    },
+    {
+      "person": "a_appa",
+      "start": "2026-10-28T07:55:00+09:00",
+      "end": "2026-10-28T08:15:00+09:00",
+      "type": "move",
+      "from": "a_parents",
+      "to": "a_work_dad"
+    },
+    {
+      "person": "a_appa",
+      "start": "2026-10-28T08:15:00+09:00",
+      "end": "2026-10-28T18:20:00+09:00",
+      "type": "stay",
+      "place": "a_work_dad"
+    },
+    {
+      "person": "a_appa",
+      "start": "2026-10-28T18:20:00+09:00",
+      "end": "2026-10-28T18:45:00+09:00",
+      "type": "move",
+      "from": "a_work_dad",
+      "to": "a_mart"
+    },
+    {
+      "person": "a_appa",
+      "start": "2026-10-28T18:45:00+09:00",
+      "end": "2026-10-28T19:40:00+09:00",
+      "type": "stay",
+      "place": "a_mart"
+    },
+    {
+      "person": "a_appa",
+      "start": "2026-10-28T19:40:00+09:00",
+      "end": "2026-10-28T19:55:00+09:00",
+      "type": "move",
+      "from": "a_mart",
+      "to": "a_parents"
+    },
+    {
+      "person": "a_appa",
+      "start": "2026-10-28T19:55:00+09:00",
+      "end": "2026-10-29T00:00:00+09:00",
+      "type": "stay",
+      "place": "a_parents"
+    },
+    {
+      "person": "a_eomma",
+      "start": "2026-10-28T00:00:00+09:00",
+      "end": "2026-10-28T08:15:00+09:00",
+      "type": "stay",
+      "place": "a_parents"
+    },
+    {
+      "person": "a_eomma",
+      "start": "2026-10-28T08:15:00+09:00",
+      "end": "2026-10-28T08:35:00+09:00",
+      "type": "move",
+      "from": "a_parents",
+      "to": "a_work_mom"
+    },
+    {
+      "person": "a_eomma",
+      "start": "2026-10-28T08:35:00+09:00",
+      "end": "2026-10-28T17:55:00+09:00",
+      "type": "stay",
+      "place": "a_work_mom"
+    },
+    {
+      "person": "a_eomma",
+      "start": "2026-10-28T17:55:00+09:00",
+      "end": "2026-10-28T18:15:00+09:00",
+      "type": "move",
+      "from": "a_work_mom",
+      "to": "a_market"
+    },
+    {
+      "person": "a_eomma",
+      "start": "2026-10-28T18:15:00+09:00",
+      "end": "2026-10-28T19:00:00+09:00",
+      "type": "stay",
+      "place": "a_market"
+    },
+    {
+      "person": "a_eomma",
+      "start": "2026-10-28T19:00:00+09:00",
+      "end": "2026-10-28T19:20:00+09:00",
+      "type": "move",
+      "from": "a_market",
+      "to": "a_parents"
+    },
+    {
+      "person": "a_eomma",
+      "start": "2026-10-28T19:20:00+09:00",
+      "end": "2026-10-29T00:00:00+09:00",
+      "type": "stay",
+      "place": "a_parents"
+    },
+    {
+      "person": "a_appa",
+      "start": "2026-10-29T00:00:00+09:00",
+      "end": "2026-10-29T07:50:00+09:00",
+      "type": "stay",
+      "place": "a_parents"
+    },
+    {
+      "person": "a_appa",
+      "start": "2026-10-29T07:50:00+09:00",
+      "end": "2026-10-29T08:20:00+09:00",
+      "type": "move",
+      "from": "a_parents",
+      "to": "a_work_dad"
+    },
+    {
+      "person": "a_appa",
+      "start": "2026-10-29T08:20:00+09:00",
+      "end": "2026-10-29T18:25:00+09:00",
+      "type": "stay",
+      "place": "a_work_dad"
+    },
+    {
+      "person": "a_appa",
+      "start": "2026-10-29T18:25:00+09:00",
+      "end": "2026-10-29T18:50:00+09:00",
+      "type": "move",
+      "from": "a_work_dad",
+      "to": "a_market"
+    },
+    {
+      "person": "a_appa",
+      "start": "2026-10-29T18:50:00+09:00",
+      "end": "2026-10-29T19:30:00+09:00",
+      "type": "stay",
+      "place": "a_market"
+    },
+    {
+      "person": "a_appa",
+      "start": "2026-10-29T19:30:00+09:00",
+      "end": "2026-10-29T19:50:00+09:00",
+      "type": "move",
+      "from": "a_market",
+      "to": "a_parents"
+    },
+    {
+      "person": "a_appa",
+      "start": "2026-10-29T19:50:00+09:00",
+      "end": "2026-10-30T00:00:00+09:00",
+      "type": "stay",
+      "place": "a_parents"
+    },
+    {
+      "person": "a_eomma",
+      "start": "2026-10-29T00:00:00+09:00",
+      "end": "2026-10-29T08:30:00+09:00",
+      "type": "stay",
+      "place": "a_parents"
+    },
+    {
+      "person": "a_eomma",
+      "start": "2026-10-29T08:30:00+09:00",
+      "end": "2026-10-29T08:50:00+09:00",
+      "type": "move",
+      "from": "a_parents",
+      "to": "a_work_mom"
+    },
+    {
+      "person": "a_eomma",
+      "start": "2026-10-29T08:50:00+09:00",
+      "end": "2026-10-29T18:00:00+09:00",
+      "type": "stay",
+      "place": "a_work_mom"
+    },
+    {
+      "person": "a_eomma",
+      "start": "2026-10-29T18:00:00+09:00",
+      "end": "2026-10-29T18:25:00+09:00",
+      "type": "move",
+      "from": "a_work_mom",
+      "to": "a_parents"
+    },
+    {
+      "person": "a_eomma",
+      "start": "2026-10-29T18:25:00+09:00",
+      "end": "2026-10-30T00:00:00+09:00",
+      "type": "stay",
+      "place": "a_parents"
+    },
+    {
+      "person": "a_appa",
+      "start": "2026-10-30T00:00:00+09:00",
+      "end": "2026-10-30T07:45:00+09:00",
+      "type": "stay",
+      "place": "a_parents"
+    },
+    {
+      "person": "a_appa",
+      "start": "2026-10-30T07:45:00+09:00",
+      "end": "2026-10-30T08:00:00+09:00",
+      "type": "move",
+      "from": "a_parents",
+      "to": "a_work_dad"
+    },
+    {
+      "person": "a_appa",
+      "start": "2026-10-30T08:00:00+09:00",
+      "end": "2026-10-30T18:25:00+09:00",
+      "type": "stay",
+      "place": "a_work_dad"
+    },
+    {
+      "person": "a_appa",
+      "start": "2026-10-30T18:25:00+09:00",
+      "end": "2026-10-30T18:45:00+09:00",
+      "type": "move",
+      "from": "a_work_dad",
+      "to": "a_market"
+    },
+    {
+      "person": "a_appa",
+      "start": "2026-10-30T18:45:00+09:00",
+      "end": "2026-10-30T19:30:00+09:00",
+      "type": "stay",
+      "place": "a_market"
+    },
+    {
+      "person": "a_appa",
+      "start": "2026-10-30T19:30:00+09:00",
+      "end": "2026-10-30T19:55:00+09:00",
+      "type": "move",
+      "from": "a_market",
+      "to": "a_parents"
+    },
+    {
+      "person": "a_appa",
+      "start": "2026-10-30T19:55:00+09:00",
+      "end": "2026-10-31T00:00:00+09:00",
+      "type": "stay",
+      "place": "a_parents"
+    },
+    {
+      "person": "a_eomma",
+      "start": "2026-10-30T00:00:00+09:00",
+      "end": "2026-10-30T08:10:00+09:00",
+      "type": "stay",
+      "place": "a_parents"
+    },
+    {
+      "person": "a_eomma",
+      "start": "2026-10-30T08:10:00+09:00",
+      "end": "2026-10-30T08:40:00+09:00",
+      "type": "move",
+      "from": "a_parents",
+      "to": "a_work_mom"
+    },
+    {
+      "person": "a_eomma",
+      "start": "2026-10-30T08:40:00+09:00",
+      "end": "2026-10-30T17:55:00+09:00",
+      "type": "stay",
+      "place": "a_work_mom"
+    },
+    {
+      "person": "a_eomma",
+      "start": "2026-10-30T17:55:00+09:00",
+      "end": "2026-10-30T18:10:00+09:00",
+      "type": "move",
+      "from": "a_work_mom",
+      "to": "a_market"
+    },
+    {
+      "person": "a_eomma",
+      "start": "2026-10-30T18:10:00+09:00",
+      "end": "2026-10-30T19:15:00+09:00",
+      "type": "stay",
+      "place": "a_market"
+    },
+    {
+      "person": "a_eomma",
+      "start": "2026-10-30T19:15:00+09:00",
+      "end": "2026-10-30T19:35:00+09:00",
+      "type": "move",
+      "from": "a_market",
+      "to": "a_parents"
+    },
+    {
+      "person": "a_eomma",
+      "start": "2026-10-30T19:35:00+09:00",
+      "end": "2026-10-31T00:00:00+09:00",
+      "type": "stay",
+      "place": "a_parents"
+    },
+    {
+      "person": "a_appa",
+      "start": "2026-10-31T00:00:00+09:00",
+      "end": "2026-10-31T09:50:00+09:00",
+      "type": "stay",
+      "place": "a_parents"
+    },
+    {
+      "person": "a_appa",
+      "start": "2026-10-31T09:50:00+09:00",
+      "end": "2026-10-31T10:15:00+09:00",
+      "type": "move",
+      "from": "a_parents",
+      "to": "a_market"
+    },
+    {
+      "person": "a_appa",
+      "start": "2026-10-31T10:15:00+09:00",
+      "end": "2026-10-31T12:10:00+09:00",
+      "type": "stay",
+      "place": "a_market"
+    },
+    {
+      "person": "a_appa",
+      "start": "2026-10-31T12:10:00+09:00",
+      "end": "2026-10-31T12:40:00+09:00",
+      "type": "move",
+      "from": "a_market",
+      "to": "a_parents"
+    },
+    {
+      "person": "a_appa",
+      "start": "2026-10-31T12:40:00+09:00",
+      "end": "2026-11-01T00:00:00+09:00",
+      "type": "stay",
+      "place": "a_parents"
+    },
+    {
+      "person": "a_eomma",
+      "start": "2026-10-31T00:00:00+09:00",
+      "end": "2026-10-31T10:20:00+09:00",
+      "type": "stay",
+      "place": "a_parents"
+    },
+    {
+      "person": "a_eomma",
+      "start": "2026-10-31T10:20:00+09:00",
+      "end": "2026-10-31T10:45:00+09:00",
+      "type": "move",
+      "from": "a_parents",
+      "to": "a_mart"
+    },
+    {
+      "person": "a_eomma",
+      "start": "2026-10-31T10:45:00+09:00",
+      "end": "2026-10-31T11:50:00+09:00",
+      "type": "stay",
+      "place": "a_mart"
+    },
+    {
+      "person": "a_eomma",
+      "start": "2026-10-31T11:50:00+09:00",
+      "end": "2026-10-31T12:10:00+09:00",
+      "type": "move",
+      "from": "a_mart",
+      "to": "a_parents"
+    },
+    {
+      "person": "a_eomma",
+      "start": "2026-10-31T12:10:00+09:00",
+      "end": "2026-11-01T00:00:00+09:00",
+      "type": "stay",
+      "place": "a_parents"
+    },
+    {
+      "person": "a_appa",
+      "start": "2026-11-01T00:00:00+09:00",
+      "end": "2026-11-02T00:00:00+09:00",
+      "type": "stay",
+      "place": "a_parents"
+    },
+    {
+      "person": "a_eomma",
+      "start": "2026-11-01T00:00:00+09:00",
+      "end": "2026-11-02T00:00:00+09:00",
+      "type": "no_consent"
+    },
+    {
+      "person": "a_appa",
+      "start": "2026-11-02T00:00:00+09:00",
+      "end": "2026-11-02T07:45:00+09:00",
+      "type": "stay",
+      "place": "a_parents"
+    },
+    {
+      "person": "a_appa",
+      "start": "2026-11-02T07:45:00+09:00",
+      "end": "2026-11-02T08:15:00+09:00",
+      "type": "move",
+      "from": "a_parents",
+      "to": "a_work_dad"
+    },
+    {
+      "person": "a_appa",
+      "start": "2026-11-02T08:15:00+09:00",
+      "end": "2026-11-02T18:25:00+09:00",
+      "type": "stay",
+      "place": "a_work_dad"
+    },
+    {
+      "person": "a_appa",
+      "start": "2026-11-02T18:25:00+09:00",
+      "end": "2026-11-02T18:45:00+09:00",
+      "type": "move",
+      "from": "a_work_dad",
+      "to": "a_mart"
+    },
+    {
+      "person": "a_appa",
+      "start": "2026-11-02T18:45:00+09:00",
+      "end": "2026-11-02T19:25:00+09:00",
+      "type": "stay",
+      "place": "a_mart"
+    },
+    {
+      "person": "a_appa",
+      "start": "2026-11-02T19:25:00+09:00",
+      "end": "2026-11-02T19:50:00+09:00",
+      "type": "move",
+      "from": "a_mart",
+      "to": "a_parents"
+    },
+    {
+      "person": "a_appa",
+      "start": "2026-11-02T19:50:00+09:00",
+      "end": "2026-11-03T00:00:00+09:00",
+      "type": "stay",
+      "place": "a_parents"
+    },
+    {
+      "person": "a_eomma",
+      "start": "2026-11-02T00:00:00+09:00",
+      "end": "2026-11-02T08:20:00+09:00",
+      "type": "stay",
+      "place": "a_parents"
+    },
+    {
+      "person": "a_eomma",
+      "start": "2026-11-02T08:20:00+09:00",
+      "end": "2026-11-02T08:40:00+09:00",
+      "type": "move",
+      "from": "a_parents",
+      "to": "a_work_mom"
+    },
+    {
+      "person": "a_eomma",
+      "start": "2026-11-02T08:40:00+09:00",
+      "end": "2026-11-02T18:00:00+09:00",
+      "type": "stay",
+      "place": "a_work_mom"
+    },
+    {
+      "person": "a_eomma",
+      "start": "2026-11-02T18:00:00+09:00",
+      "end": "2026-11-02T18:30:00+09:00",
+      "type": "move",
+      "from": "a_work_mom",
+      "to": "a_parents"
+    },
+    {
+      "person": "a_eomma",
+      "start": "2026-11-02T18:30:00+09:00",
+      "end": "2026-11-03T00:00:00+09:00",
+      "type": "stay",
+      "place": "a_parents"
+    },
+    {
+      "person": "a_appa",
+      "start": "2026-11-03T00:00:00+09:00",
+      "end": "2026-11-03T07:45:00+09:00",
+      "type": "stay",
+      "place": "a_parents"
+    },
+    {
+      "person": "a_appa",
+      "start": "2026-11-03T07:45:00+09:00",
+      "end": "2026-11-03T08:05:00+09:00",
+      "type": "move",
+      "from": "a_parents",
+      "to": "a_work_dad"
+    },
+    {
+      "person": "a_appa",
+      "start": "2026-11-03T08:05:00+09:00",
+      "end": "2026-11-03T18:35:00+09:00",
+      "type": "stay",
+      "place": "a_work_dad"
+    },
+    {
+      "person": "a_appa",
+      "start": "2026-11-03T18:35:00+09:00",
+      "end": "2026-11-03T18:55:00+09:00",
+      "type": "move",
+      "from": "a_work_dad",
+      "to": "a_parents"
+    },
+    {
+      "person": "a_appa",
+      "start": "2026-11-03T18:55:00+09:00",
+      "end": "2026-11-04T00:00:00+09:00",
+      "type": "stay",
+      "place": "a_parents"
+    },
+    {
+      "person": "a_eomma",
+      "start": "2026-11-03T00:00:00+09:00",
+      "end": "2026-11-03T08:25:00+09:00",
+      "type": "stay",
+      "place": "a_parents"
+    },
+    {
+      "person": "a_eomma",
+      "start": "2026-11-03T08:25:00+09:00",
+      "end": "2026-11-03T08:40:00+09:00",
+      "type": "move",
+      "from": "a_parents",
+      "to": "a_work_mom"
+    },
+    {
+      "person": "a_eomma",
+      "start": "2026-11-03T08:40:00+09:00",
+      "end": "2026-11-03T17:55:00+09:00",
+      "type": "stay",
+      "place": "a_work_mom"
+    },
+    {
+      "person": "a_eomma",
+      "start": "2026-11-03T17:55:00+09:00",
+      "end": "2026-11-03T18:25:00+09:00",
+      "type": "move",
+      "from": "a_work_mom",
+      "to": "a_mart"
+    },
+    {
+      "person": "a_eomma",
+      "start": "2026-11-03T18:25:00+09:00",
+      "end": "2026-11-03T18:55:00+09:00",
+      "type": "stay",
+      "place": "a_mart"
+    },
+    {
+      "person": "a_eomma",
+      "start": "2026-11-03T18:55:00+09:00",
+      "end": "2026-11-03T19:25:00+09:00",
+      "type": "move",
+      "from": "a_mart",
+      "to": "a_parents"
+    },
+    {
+      "person": "a_eomma",
+      "start": "2026-11-03T19:25:00+09:00",
+      "end": "2026-11-04T00:00:00+09:00",
+      "type": "stay",
+      "place": "a_parents"
+    },
+    {
+      "person": "a_appa",
+      "start": "2026-11-04T00:00:00+09:00",
+      "end": "2026-11-04T07:40:00+09:00",
+      "type": "stay",
+      "place": "a_parents"
+    },
+    {
+      "person": "a_appa",
+      "start": "2026-11-04T07:40:00+09:00",
+      "end": "2026-11-04T08:05:00+09:00",
+      "type": "move",
+      "from": "a_parents",
+      "to": "a_work_dad"
+    },
+    {
+      "person": "a_appa",
+      "start": "2026-11-04T08:05:00+09:00",
+      "end": "2026-11-04T18:20:00+09:00",
+      "type": "stay",
+      "place": "a_work_dad"
+    },
+    {
+      "person": "a_appa",
+      "start": "2026-11-04T18:20:00+09:00",
+      "end": "2026-11-04T18:40:00+09:00",
+      "type": "move",
+      "from": "a_work_dad",
+      "to": "a_mart"
+    },
+    {
+      "person": "a_appa",
+      "start": "2026-11-04T18:40:00+09:00",
+      "end": "2026-11-04T19:20:00+09:00",
+      "type": "stay",
+      "place": "a_mart"
+    },
+    {
+      "person": "a_appa",
+      "start": "2026-11-04T19:20:00+09:00",
+      "end": "2026-11-04T19:35:00+09:00",
+      "type": "move",
+      "from": "a_mart",
+      "to": "a_parents"
+    },
+    {
+      "person": "a_appa",
+      "start": "2026-11-04T19:35:00+09:00",
+      "end": "2026-11-05T00:00:00+09:00",
+      "type": "stay",
+      "place": "a_parents"
+    },
+    {
+      "person": "a_eomma",
+      "start": "2026-11-04T00:00:00+09:00",
+      "end": "2026-11-04T03:00:00+09:00",
+      "type": "stay",
+      "place": "a_parents"
+    },
+    {
+      "person": "a_eomma",
+      "start": "2026-11-04T03:00:00+09:00",
+      "end": "2026-11-04T03:15:00+09:00",
+      "type": "move",
+      "from": "a_parents",
+      "to": "a_parents"
+    },
+    {
+      "person": "a_eomma",
+      "start": "2026-11-04T03:15:00+09:00",
+      "end": "2026-11-04T04:15:00+09:00",
+      "type": "anomaly",
+      "lat": 36.548,
+      "lng": 128.099
+    },
+    {
+      "person": "a_eomma",
+      "start": "2026-11-04T04:15:00+09:00",
+      "end": "2026-11-04T04:30:00+09:00",
+      "type": "move",
+      "from": "a_parents",
+      "to": "a_parents"
+    },
+    {
+      "person": "a_eomma",
+      "start": "2026-11-04T04:30:00+09:00",
+      "end": "2026-11-04T08:20:00+09:00",
+      "type": "stay",
+      "place": "a_parents"
+    },
+    {
+      "person": "a_eomma",
+      "start": "2026-11-04T08:20:00+09:00",
+      "end": "2026-11-04T08:40:00+09:00",
+      "type": "move",
+      "from": "a_parents",
+      "to": "a_work_mom"
+    },
+    {
+      "person": "a_eomma",
+      "start": "2026-11-04T08:40:00+09:00",
+      "end": "2026-11-04T18:00:00+09:00",
+      "type": "stay",
+      "place": "a_work_mom"
+    },
+    {
+      "person": "a_eomma",
+      "start": "2026-11-04T18:00:00+09:00",
+      "end": "2026-11-04T18:20:00+09:00",
+      "type": "move",
+      "from": "a_work_mom",
+      "to": "a_parents"
+    },
+    {
+      "person": "a_eomma",
+      "start": "2026-11-04T18:20:00+09:00",
+      "end": "2026-11-05T00:00:00+09:00",
+      "type": "stay",
+      "place": "a_parents"
+    },
+    {
+      "person": "a_appa",
+      "start": "2026-11-05T00:00:00+09:00",
+      "end": "2026-11-06T00:00:00+09:00",
+      "type": "paused"
+    },
+    {
+      "person": "a_eomma",
+      "start": "2026-11-05T00:00:00+09:00",
+      "end": "2026-11-05T08:50:00+09:00",
+      "type": "stay",
+      "place": "a_parents"
+    },
+    {
+      "person": "a_eomma",
+      "start": "2026-11-05T08:50:00+09:00",
+      "end": "2026-11-05T09:20:00+09:00",
+      "type": "move",
+      "from": "a_parents",
+      "to": "a_hospital"
+    },
+    {
+      "person": "a_eomma",
+      "start": "2026-11-05T09:20:00+09:00",
+      "end": "2026-11-05T11:20:00+09:00",
+      "type": "stay",
+      "place": "a_hospital"
+    },
+    {
+      "person": "a_eomma",
+      "start": "2026-11-05T11:20:00+09:00",
+      "end": "2026-11-05T11:40:00+09:00",
+      "type": "move",
+      "from": "a_hospital",
+      "to": "a_work_mom"
+    },
+    {
+      "person": "a_eomma",
+      "start": "2026-11-05T11:40:00+09:00",
+      "end": "2026-11-05T18:00:00+09:00",
+      "type": "stay",
+      "place": "a_work_mom"
+    },
+    {
+      "person": "a_eomma",
+      "start": "2026-11-05T18:00:00+09:00",
+      "end": "2026-11-05T18:20:00+09:00",
+      "type": "move",
+      "from": "a_work_mom",
+      "to": "a_parents"
+    },
+    {
+      "person": "a_eomma",
+      "start": "2026-11-05T18:20:00+09:00",
+      "end": "2026-11-06T00:00:00+09:00",
+      "type": "stay",
+      "place": "a_parents"
+    },
+    {
+      "person": "a_appa",
+      "start": "2026-11-06T00:00:00+09:00",
+      "end": "2026-11-07T00:00:00+09:00",
+      "type": "paused"
+    },
+    {
+      "person": "a_eomma",
+      "start": "2026-11-06T00:00:00+09:00",
+      "end": "2026-11-06T08:20:00+09:00",
+      "type": "stay",
+      "place": "a_parents"
+    },
+    {
+      "person": "a_eomma",
+      "start": "2026-11-06T08:20:00+09:00",
+      "end": "2026-11-06T08:50:00+09:00",
+      "type": "move",
+      "from": "a_parents",
+      "to": "a_work_mom"
+    },
+    {
+      "person": "a_eomma",
+      "start": "2026-11-06T08:50:00+09:00",
+      "end": "2026-11-06T18:00:00+09:00",
+      "type": "stay",
+      "place": "a_work_mom"
+    },
+    {
+      "person": "a_eomma",
+      "start": "2026-11-06T18:00:00+09:00",
+      "end": "2026-11-06T18:30:00+09:00",
+      "type": "move",
+      "from": "a_work_mom",
+      "to": "a_mart"
+    },
+    {
+      "person": "a_eomma",
+      "start": "2026-11-06T18:30:00+09:00",
+      "end": "2026-11-06T18:50:00+09:00",
+      "type": "stay",
+      "place": "a_mart"
+    },
+    {
+      "person": "a_eomma",
+      "start": "2026-11-06T18:50:00+09:00",
+      "end": "2026-11-06T19:20:00+09:00",
+      "type": "move",
+      "from": "a_mart",
+      "to": "a_parents"
+    },
+    {
+      "person": "a_eomma",
+      "start": "2026-11-06T19:20:00+09:00",
+      "end": "2026-11-07T00:00:00+09:00",
+      "type": "stay",
+      "place": "a_parents"
+    },
+    {
+      "person": "a_appa",
+      "start": "2026-11-07T00:00:00+09:00",
+      "end": "2026-11-08T00:00:00+09:00",
+      "type": "paused"
+    },
+    {
+      "person": "a_eomma",
+      "start": "2026-11-07T00:00:00+09:00",
+      "end": "2026-11-07T09:25:00+09:00",
+      "type": "stay",
+      "place": "a_parents"
+    },
+    {
+      "person": "a_eomma",
+      "start": "2026-11-07T09:25:00+09:00",
+      "end": "2026-11-07T09:55:00+09:00",
+      "type": "move",
+      "from": "a_parents",
+      "to": "a_market"
+    },
+    {
+      "person": "a_eomma",
+      "start": "2026-11-07T09:55:00+09:00",
+      "end": "2026-11-07T11:05:00+09:00",
+      "type": "stay",
+      "place": "a_market"
+    },
+    {
+      "person": "a_eomma",
+      "start": "2026-11-07T11:05:00+09:00",
+      "end": "2026-11-07T11:20:00+09:00",
+      "type": "move",
+      "from": "a_market",
+      "to": "a_parents"
+    },
+    {
+      "person": "a_eomma",
+      "start": "2026-11-07T11:20:00+09:00",
+      "end": "2026-11-08T00:00:00+09:00",
+      "type": "stay",
+      "place": "a_parents"
+    },
+    {
+      "person": "a_appa",
+      "start": "2026-11-08T00:00:00+09:00",
+      "end": "2026-11-08T15:10:00+09:00",
+      "type": "stay",
+      "place": "a_parents"
+    },
+    {
+      "person": "a_appa",
+      "start": "2026-11-08T15:10:00+09:00",
+      "end": "2026-11-08T15:25:00+09:00",
+      "type": "move",
+      "from": "a_parents",
+      "to": "a_mart"
+    },
+    {
+      "person": "a_appa",
+      "start": "2026-11-08T15:25:00+09:00",
+      "end": "2026-11-08T16:15:00+09:00",
+      "type": "stay",
+      "place": "a_mart"
+    },
+    {
+      "person": "a_appa",
+      "start": "2026-11-08T16:15:00+09:00",
+      "end": "2026-11-08T16:35:00+09:00",
+      "type": "move",
+      "from": "a_mart",
+      "to": "a_parents"
+    },
+    {
+      "person": "a_appa",
+      "start": "2026-11-08T16:35:00+09:00",
+      "end": "2026-11-09T00:00:00+09:00",
+      "type": "stay",
+      "place": "a_parents"
+    },
+    {
+      "person": "a_eomma",
+      "start": "2026-11-08T00:00:00+09:00",
+      "end": "2026-11-08T09:50:00+09:00",
+      "type": "stay",
+      "place": "a_parents"
+    },
+    {
+      "person": "a_eomma",
+      "start": "2026-11-08T09:50:00+09:00",
+      "end": "2026-11-08T10:05:00+09:00",
+      "type": "move",
+      "from": "a_parents",
+      "to": "a_mart"
+    },
+    {
+      "person": "a_eomma",
+      "start": "2026-11-08T10:05:00+09:00",
+      "end": "2026-11-08T11:30:00+09:00",
+      "type": "stay",
+      "place": "a_mart"
+    },
+    {
+      "person": "a_eomma",
+      "start": "2026-11-08T11:30:00+09:00",
+      "end": "2026-11-08T12:00:00+09:00",
+      "type": "move",
+      "from": "a_mart",
+      "to": "a_parents"
+    },
+    {
+      "person": "a_eomma",
+      "start": "2026-11-08T12:00:00+09:00",
+      "end": "2026-11-09T00:00:00+09:00",
+      "type": "stay",
+      "place": "a_parents"
+    },
+    {
+      "person": "a_appa",
+      "start": "2026-11-09T00:00:00+09:00",
+      "end": "2026-11-09T07:55:00+09:00",
+      "type": "stay",
+      "place": "a_parents"
+    },
+    {
+      "person": "a_appa",
+      "start": "2026-11-09T07:55:00+09:00",
+      "end": "2026-11-09T08:15:00+09:00",
+      "type": "move",
+      "from": "a_parents",
+      "to": "a_work_dad"
+    },
+    {
+      "person": "a_appa",
+      "start": "2026-11-09T08:15:00+09:00",
+      "end": "2026-11-09T18:20:00+09:00",
+      "type": "stay",
+      "place": "a_work_dad"
+    },
+    {
+      "person": "a_appa",
+      "start": "2026-11-09T18:20:00+09:00",
+      "end": "2026-11-09T18:40:00+09:00",
+      "type": "move",
+      "from": "a_work_dad",
+      "to": "a_parents"
+    },
+    {
+      "person": "a_appa",
+      "start": "2026-11-09T18:40:00+09:00",
+      "end": "2026-11-10T00:00:00+09:00",
+      "type": "stay",
+      "place": "a_parents"
+    },
+    {
+      "person": "a_eomma",
+      "start": "2026-11-09T00:00:00+09:00",
+      "end": "2026-11-09T09:05:00+09:00",
+      "type": "stay",
+      "place": "a_parents"
+    },
+    {
+      "person": "a_eomma",
+      "start": "2026-11-09T09:05:00+09:00",
+      "end": "2026-11-09T09:30:00+09:00",
+      "type": "move",
+      "from": "a_parents",
+      "to": "a_hospital"
+    },
+    {
+      "person": "a_eomma",
+      "start": "2026-11-09T09:30:00+09:00",
+      "end": "2026-11-09T10:05:00+09:00",
+      "type": "stay",
+      "place": "a_hospital"
+    },
+    {
+      "person": "a_eomma",
+      "start": "2026-11-09T10:05:00+09:00",
+      "end": "2026-11-09T10:30:00+09:00",
+      "type": "move",
+      "from": "a_hospital",
+      "to": "a_work_mom"
+    },
+    {
+      "person": "a_eomma",
+      "start": "2026-11-09T10:30:00+09:00",
+      "end": "2026-11-09T18:15:00+09:00",
+      "type": "stay",
+      "place": "a_work_mom"
+    },
+    {
+      "person": "a_eomma",
+      "start": "2026-11-09T18:15:00+09:00",
+      "end": "2026-11-09T18:35:00+09:00",
+      "type": "move",
+      "from": "a_work_mom",
+      "to": "a_parents"
+    },
+    {
+      "person": "a_eomma",
+      "start": "2026-11-09T18:35:00+09:00",
+      "end": "2026-11-10T00:00:00+09:00",
+      "type": "stay",
+      "place": "a_parents"
+    }
+  ]
+}
