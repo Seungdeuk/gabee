@@ -1,0 +1,1622 @@
+{
+ "split": "dev",
+ "meta": {
+  "created_at": "2026-11-08T13:06:36+00:00",
+  "model": "settings.llm_model",
+  "per_chunk": 2,
+  "batch": 10,
+  "final_ratio": 0.3,
+  "seed": "gabee-loc-1",
+  "kinds": [
+   "day",
+   "move",
+   "place",
+   "span"
+  ],
+  "chunks": 50,
+  "calls": 10,
+  "note": "가짜 시나리오에서 만든 질문. 정답은 gold.key 의 조각(바뀌지 않는 키)."
+ },
+ "questions": [
+  {
+   "id": "g-dev-0100ad5c",
+   "split": "dev",
+   "question": "민서가 하늘빛 카페에 몇 번 갔고, 그때 머문 시간을 다 합치면 얼마야?",
+   "scenario": "a_student_home",
+   "gold": {
+    "key": "place|a_minseo|2026-10-29T15:30|2026-11-09T19:20|하늘빛 카페",
+    "kind": "place",
+    "person": "a_minseo",
+    "starts_at": "2026-10-29T15:30",
+    "ends_at": "2026-11-09T19:20",
+    "place": "하늘빛 카페",
+    "text": "민서 | 10-29~11-09 기간 | 하늘빛 카페 방문 5번 (머문 시간 합계 12시간 50분): 10-29 15:30, 10-30 15:25, 10-31 12:55, 11-06 13:25, 11-09 18:10"
+   },
+   "overlaps_other_split": true
+  },
+  {
+   "id": "g-dev-0364b756",
+   "split": "dev",
+   "question": "건이가 11월 6일 금요일 저녁 7시 35분부터 7시 43분 사이에 옮겨 간 곳은 어디야?",
+   "scenario": "c_shop_family",
+   "gold": {
+    "key": "move|c_geon|2026-11-06T19:35|2026-11-06T19:43|",
+    "kind": "move",
+    "person": "c_geon",
+    "starts_at": "2026-11-06T19:35",
+    "ends_at": "2026-11-06T19:43",
+    "place": null,
+    "text": "건 | 11-06(금) 19:35~19:43 | 별무리 동아리방에서 도윤네 원룸(으)로 이동"
+   },
+   "overlaps_other_split": false
+  },
+  {
+   "id": "g-dev-0710e5bc",
+   "split": "dev",
+   "question": "11월 2일(월) 하루 동안 보람 님이 은행나무 신협을 방문하셨는지 확인해 주시겠어요?",
+   "scenario": "c_shop_family",
+   "gold": {
+    "key": "day|c_boram|2026-11-02T00:00|2026-11-03T00:00|",
+    "kind": "day",
+    "person": "c_boram",
+    "starts_at": "2026-11-02T00:00",
+    "ends_at": "2026-11-03T00:00",
+    "place": null,
+    "text": "보람 | 11-02(월) 하루 | 소나무길 단독 3호 → 달콤모퉁이 분식집 → 은행나무 신협 → 달콤모퉁이 분식집 → 소나무길 단독 3호"
+   },
+   "overlaps_other_split": false
+  },
+  {
+   "id": "g-dev-078e1f36",
+   "split": "dev",
+   "question": "11월 7일(토) 밤 10시 15분쯤 건 씨가 반달 편의점을 떠나 향한 곳은 어디인지 알려 주시겠어요?",
+   "scenario": "c_shop_family",
+   "gold": {
+    "key": "move|c_geon|2026-11-07T22:15|2026-11-07T22:27|",
+    "kind": "move",
+    "person": "c_geon",
+    "starts_at": "2026-11-07T22:15",
+    "ends_at": "2026-11-07T22:27",
+    "place": null,
+    "text": "건 | 11-07(토) 22:15~22:27 | 반달 편의점에서 소나무길 단독 3호(으)로 이동"
+   },
+   "overlaps_other_split": false
+  },
+  {
+   "id": "g-dev-0d509f23",
+   "split": "dev",
+   "question": "달수가 11월 9일 월요일 새벽 4시 18분부터 5시 20분까지 있었던 곳이 큰물 도매시장 맞지?",
+   "scenario": "c_shop_family",
+   "gold": {
+    "key": "span|c_dalsu|2026-11-09T04:18|2026-11-09T05:20|큰물 도매시장",
+    "kind": "span",
+    "person": "c_dalsu",
+    "starts_at": "2026-11-09T04:18",
+    "ends_at": "2026-11-09T05:20",
+    "place": "큰물 도매시장",
+    "text": "달수 | 11-09(월) 04:18~05:20 | 큰물 도매시장에서 머묾"
+   },
+   "overlaps_other_split": false
+  },
+  {
+   "id": "g-dev-10ff362c",
+   "split": "dev",
+   "question": "10월 29일 목요일 오전 7시부터 7시 30분 사이에 지민이가 집에서 느티나무 회사까지 이동한 기록이 있나요?",
+   "scenario": "base",
+   "gold": {
+    "key": "move|jimin|2026-10-29T07:00|2026-10-29T07:30|",
+    "kind": "move",
+    "person": "jimin",
+    "starts_at": "2026-10-29T07:00",
+    "ends_at": "2026-10-29T07:30",
+    "place": null,
+    "text": "지민 | 10-29(목) 07:00~07:30 | 집에서 느티나무 회사(으)로 이동"
+   },
+   "overlaps_other_split": false
+  },
+  {
+   "id": "g-dev-11145f29",
+   "split": "dev",
+   "question": "11월 6일 금요일 아침에 건이 소나무길 단독 3호에서 바람결 대학교로 옮겨 간 게 몇 시쯤이야?",
+   "scenario": "c_shop_family",
+   "gold": {
+    "key": "move|c_geon|2026-11-06T08:55|2026-11-06T09:03|",
+    "kind": "move",
+    "person": "c_geon",
+    "starts_at": "2026-11-06T08:55",
+    "ends_at": "2026-11-06T09:03",
+    "place": null,
+    "text": "건 | 11-06(금) 08:55~09:03 | 소나무길 단독 3호에서 바람결 대학교(으)로 이동"
+   },
+   "overlaps_other_split": false
+  },
+  {
+   "id": "g-dev-16a517cb",
+   "split": "dev",
+   "question": "건이가 11월 7일 토요일 밤에 반달 편의점에서 어디로 이동했어?",
+   "scenario": "c_shop_family",
+   "gold": {
+    "key": "move|c_geon|2026-11-07T22:15|2026-11-07T22:27|",
+    "kind": "move",
+    "person": "c_geon",
+    "starts_at": "2026-11-07T22:15",
+    "ends_at": "2026-11-07T22:27",
+    "place": null,
+    "text": "건 | 11-07(토) 22:15~22:27 | 반달 편의점에서 소나무길 단독 3호(으)로 이동"
+   },
+   "overlaps_other_split": false
+  },
+  {
+   "id": "g-dev-18027356",
+   "split": "dev",
+   "question": "11월 7일(토)에 하준 씨가 달맞이 시장 다음으로 방문한 장소는 어디였는지 여쭤봐도 될까요?",
+   "scenario": "base",
+   "gold": {
+    "key": "day|hajun|2026-11-07T00:00|2026-11-08T00:00|",
+    "kind": "day",
+    "person": "hajun",
+    "starts_at": "2026-11-07T00:00",
+    "ends_at": "2026-11-08T00:00",
+    "place": null,
+    "text": "하준 | 11-07(토) 하루 | 집 → 달맞이 시장 → 솔바람 공원 → 집"
+   },
+   "overlaps_other_split": false
+  },
+  {
+   "id": "g-dev-19d06e77",
+   "split": "dev",
+   "question": "보람이 11월 2일 월요일에 제일 처음 간 곳이 소나무길 단독 3호 맞아?",
+   "scenario": "c_shop_family",
+   "gold": {
+    "key": "day|c_boram|2026-11-02T00:00|2026-11-03T00:00|",
+    "kind": "day",
+    "person": "c_boram",
+    "starts_at": "2026-11-02T00:00",
+    "ends_at": "2026-11-03T00:00",
+    "place": null,
+    "text": "보람 | 11-02(월) 하루 | 소나무길 단독 3호 → 달콤모퉁이 분식집 → 은행나무 신협 → 달콤모퉁이 분식집 → 소나무길 단독 3호"
+   },
+   "overlaps_other_split": false
+  },
+  {
+   "id": "g-dev-1cb1959f",
+   "split": "dev",
+   "question": "10-31(토) 10:45~11:50에 유진 님이 머무신 장소의 이름을 알려 주실 수 있을까요?",
+   "scenario": "a_student_home",
+   "gold": {
+    "key": "span|a_eomma|2026-10-31T10:45|2026-10-31T11:50|누리 마트",
+    "kind": "span",
+    "person": "a_eomma",
+    "starts_at": "2026-10-31T10:45",
+    "ends_at": "2026-10-31T11:50",
+    "place": "누리 마트",
+    "text": "유진 | 10-31(토) 10:45~11:50 | 누리 마트에서 머묾"
+   },
+   "overlaps_other_split": false
+  },
+  {
+   "id": "g-dev-1fcc7450",
+   "split": "dev",
+   "question": "건이 10-31(토) 11시 42분부터 자정까지 어디에 머물렀어?",
+   "scenario": "c_shop_family",
+   "gold": {
+    "key": "span|c_geon|2026-10-31T11:42|2026-11-01T00:00|소나무길 단독 3호",
+    "kind": "span",
+    "person": "c_geon",
+    "starts_at": "2026-10-31T11:42",
+    "ends_at": "2026-11-01T00:00",
+    "place": "소나무길 단독 3호",
+    "text": "건 | 10-31(토) 11:42~24:00 | 소나무길 단독 3호에서 머묾"
+   },
+   "overlaps_other_split": false
+  },
+  {
+   "id": "g-dev-220b85b2",
+   "split": "dev",
+   "question": "지민이 10-29(목) 아침 7시에 느티나무 회사로 가려고 집을 나섰던 거 맞지?",
+   "scenario": "base",
+   "gold": {
+    "key": "move|jimin|2026-10-29T07:00|2026-10-29T07:30|",
+    "kind": "move",
+    "person": "jimin",
+    "starts_at": "2026-10-29T07:00",
+    "ends_at": "2026-10-29T07:30",
+    "place": null,
+    "text": "지민 | 10-29(목) 07:00~07:30 | 집에서 느티나무 회사(으)로 이동"
+   },
+   "overlaps_other_split": false
+  },
+  {
+   "id": "g-dev-22dad1ba",
+   "split": "dev",
+   "question": "11월 2일 월요일 오후에 건 님이 바람결 대학교에서 향한 곳은 어디였는지 알려 주시겠어요?",
+   "scenario": "c_shop_family",
+   "gold": {
+    "key": "move|c_geon|2026-11-02T15:45|2026-11-02T16:02|",
+    "kind": "move",
+    "person": "c_geon",
+    "starts_at": "2026-11-02T15:45",
+    "ends_at": "2026-11-02T16:02",
+    "place": null,
+    "text": "건 | 11-02(월) 15:45~16:02 | 바람결 대학교에서 별무리 동아리방(으)로 이동"
+   },
+   "overlaps_other_split": false
+  },
+  {
+   "id": "g-dev-23516472",
+   "split": "dev",
+   "question": "11월 5일 목요일 하루 동안 준호 님의 상태는 어떠했는지 알려주실 수 있을까요?",
+   "scenario": "a_student_home",
+   "gold": {
+    "key": "day|a_appa|2026-11-05T00:00|2026-11-06T00:00|",
+    "kind": "day",
+    "person": "a_appa",
+    "starts_at": "2026-11-05T00:00",
+    "ends_at": "2026-11-06T00:00",
+    "place": null,
+    "text": "준호 | 11-05(목) 하루 | 일시정지"
+   },
+   "overlaps_other_split": false
+  },
+  {
+   "id": "g-dev-29470641",
+   "split": "dev",
+   "question": "10월 28일 수요일 8시 26분에서 8시 48분 사이, 유나 님은 어떤 경로로 이동하셨나요?",
+   "scenario": "b_shift_family",
+   "gold": {
+    "key": "move|b_yuna|2026-10-28T20:26|2026-10-28T20:48|",
+    "kind": "move",
+    "person": "b_yuna",
+    "starts_at": "2026-10-28T20:26",
+    "ends_at": "2026-10-28T20:48",
+    "place": null,
+    "text": "유나 | 10-28(수) 20:26~20:48 | 오름새 학원에서 보리내 우리집(으)로 이동"
+   },
+   "overlaps_other_split": false
+  },
+  {
+   "id": "g-dev-2d357c28",
+   "split": "dev",
+   "question": "10월 28일 수요일 새벽 0시부터 오전 8시 15분까지 유진이 계셨던 장소를 알려주실 수 있을까요?",
+   "scenario": "a_student_home",
+   "gold": {
+    "key": "span|a_eomma|2026-10-28T00:00|2026-10-28T08:15|부모님 집",
+    "kind": "span",
+    "person": "a_eomma",
+    "starts_at": "2026-10-28T00:00",
+    "ends_at": "2026-10-28T08:15",
+    "place": "부모님 집",
+    "text": "유진 | 10-28(수) 00:00~08:15 | 부모님 집에서 머묾"
+   },
+   "overlaps_other_split": false
+  },
+  {
+   "id": "g-dev-302a9f75",
+   "split": "dev",
+   "question": "11-03(화)에 달수 씨가 머문 장소와 머문 시간대를 알려주실 수 있을까요?",
+   "scenario": "c_shop_family",
+   "gold": {
+    "key": "span|c_dalsu|2026-11-03T05:23|2026-11-03T11:45|달콤모퉁이 분식집",
+    "kind": "span",
+    "person": "c_dalsu",
+    "starts_at": "2026-11-03T05:23",
+    "ends_at": "2026-11-03T11:45",
+    "place": "달콤모퉁이 분식집",
+    "text": "달수 | 11-03(화) 05:23~11:45 | 달콤모퉁이 분식집에서 머묾"
+   },
+   "overlaps_other_split": false
+  },
+  {
+   "id": "g-dev-31723bd5",
+   "split": "dev",
+   "question": "민서가 금요일인 10월 30일에 한솔 대학교 다음으로 들른 곳이 어디야?",
+   "scenario": "a_student_home",
+   "gold": {
+    "key": "day|a_minseo|2026-10-30T00:00|2026-10-31T00:00|",
+    "kind": "day",
+    "person": "a_minseo",
+    "starts_at": "2026-10-30T00:00",
+    "ends_at": "2026-10-31T00:00",
+    "place": null,
+    "text": "민서 | 10-30(금) 하루 | 자취방 → 한솔 대학교 → 하늘빛 카페 → 자취방 → 모아 편의점 → 자취방"
+   },
+   "overlaps_other_split": false
+  },
+  {
+   "id": "g-dev-37108399",
+   "split": "dev",
+   "question": "11월 4일 수요일 오후 2시 5분부터 밤 11시 35분까지 민서 님이 계셨던 장소를 여쭤봐도 될까요?",
+   "scenario": "a_student_home",
+   "gold": {
+    "key": "span|a_minseo|2026-11-04T14:05|2026-11-04T23:35|마루 도서관",
+    "kind": "span",
+    "person": "a_minseo",
+    "starts_at": "2026-11-04T14:05",
+    "ends_at": "2026-11-04T23:35",
+    "place": "마루 도서관",
+    "text": "민서 | 11-04(수) 14:05~23:35 | 마루 도서관에서 머묾"
+   },
+   "overlaps_other_split": false
+  },
+  {
+   "id": "g-dev-37c28b41",
+   "split": "dev",
+   "question": "10월 30일(금)에 지민님의 이동 경로는 어떻게 되는지 알려주시겠어요?",
+   "scenario": "base",
+   "gold": {
+    "key": "day|jimin|2026-10-30T00:00|2026-10-31T00:00|",
+    "kind": "day",
+    "person": "jimin",
+    "starts_at": "2026-10-30T00:00",
+    "ends_at": "2026-10-31T00:00",
+    "place": null,
+    "text": "지민 | 10-30(금) 하루 | 집 → 느티나무 회사 → 집"
+   },
+   "overlaps_other_split": false
+  },
+  {
+   "id": "g-dev-40a366c1",
+   "split": "dev",
+   "question": "건이 11월 2일 월요일 오후 3시 45분에서 4시 2분 사이에 어디서 어디로 옮겨 갔어?",
+   "scenario": "c_shop_family",
+   "gold": {
+    "key": "move|c_geon|2026-11-02T15:45|2026-11-02T16:02|",
+    "kind": "move",
+    "person": "c_geon",
+    "starts_at": "2026-11-02T15:45",
+    "ends_at": "2026-11-02T16:02",
+    "place": null,
+    "text": "건 | 11-02(월) 15:45~16:02 | 바람결 대학교에서 별무리 동아리방(으)로 이동"
+   },
+   "overlaps_other_split": false
+  },
+  {
+   "id": "g-dev-4644c4d8",
+   "split": "dev",
+   "question": "유진은 10월 31일 토요일 10시 45분에서 11시 50분 사이에 어느 마트에 있었니?",
+   "scenario": "a_student_home",
+   "gold": {
+    "key": "span|a_eomma|2026-10-31T10:45|2026-10-31T11:50|누리 마트",
+    "kind": "span",
+    "person": "a_eomma",
+    "starts_at": "2026-10-31T10:45",
+    "ends_at": "2026-10-31T11:50",
+    "place": "누리 마트",
+    "text": "유진 | 10-31(토) 10:45~11:50 | 누리 마트에서 머묾"
+   },
+   "overlaps_other_split": false
+  },
+  {
+   "id": "g-dev-46e441a7",
+   "split": "dev",
+   "question": "하준이 11-02(월) 10:20부터 11:00까지 어디 있었는지 알려줄래?",
+   "scenario": "base",
+   "gold": {
+    "key": "span|hajun|2026-11-02T10:20|2026-11-02T11:00|달맞이 시장",
+    "kind": "span",
+    "person": "hajun",
+    "starts_at": "2026-11-02T10:20",
+    "ends_at": "2026-11-02T11:00",
+    "place": "달맞이 시장",
+    "text": "하준 | 11-02(월) 10:20~11:00 | 달맞이 시장에서 머묾"
+   },
+   "overlaps_other_split": false
+  },
+  {
+   "id": "g-dev-4c99d74d",
+   "split": "dev",
+   "question": "하늘이 11월 6일 금요일 하루 동안 거쳐 간 곳들을 순서대로 말해줄래?",
+   "scenario": "c_shop_family",
+   "gold": {
+    "key": "day|c_haneul|2026-11-06T00:00|2026-11-07T00:00|",
+    "kind": "day",
+    "person": "c_haneul",
+    "starts_at": "2026-11-06T00:00",
+    "ends_at": "2026-11-07T00:00",
+    "place": null,
+    "text": "하늘 | 11-06(금) 하루 | 소나무길 단독 3호 → 새솔 고등학교 → 달콤모퉁이 분식집 → 고요 독서실 → 소나무길 단독 3호"
+   },
+   "overlaps_other_split": false
+  },
+  {
+   "id": "g-dev-4cb2a745",
+   "split": "dev",
+   "question": "11월 2일 월요일 오전 10시 20분에서 11시 사이, 하준이 머문 곳은 어디인지 여쭙고 싶습니다.",
+   "scenario": "base",
+   "gold": {
+    "key": "span|hajun|2026-11-02T10:20|2026-11-02T11:00|달맞이 시장",
+    "kind": "span",
+    "person": "hajun",
+    "starts_at": "2026-11-02T10:20",
+    "ends_at": "2026-11-02T11:00",
+    "place": "달맞이 시장",
+    "text": "하준 | 11-02(월) 10:20~11:00 | 달맞이 시장에서 머묾"
+   },
+   "overlaps_other_split": false
+  },
+  {
+   "id": "g-dev-4cf29197",
+   "split": "dev",
+   "question": "하준이 10월 27일 화요일 11시에 행복 약국을 떠나서 어디로 갔는지 알려 줘.",
+   "scenario": "base",
+   "gold": {
+    "key": "move|hajun|2026-10-27T11:00|2026-10-27T11:20|",
+    "kind": "move",
+    "person": "hajun",
+    "starts_at": "2026-10-27T11:00",
+    "ends_at": "2026-10-27T11:20",
+    "place": null,
+    "text": "하준 | 10-27(화) 11:00~11:20 | 행복 약국에서 집(으)로 이동"
+   },
+   "overlaps_other_split": false
+  },
+  {
+   "id": "g-dev-510fcdad",
+   "split": "dev",
+   "question": "10월 27일 화요일에 달수 님은 어느 분식집에서 하루 종일 계셨는지 알려 주시겠어요?",
+   "scenario": "c_shop_family",
+   "gold": {
+    "key": "span|c_dalsu|2026-10-27T05:18|2026-10-27T20:15|달콤모퉁이 분식집",
+    "kind": "span",
+    "person": "c_dalsu",
+    "starts_at": "2026-10-27T05:18",
+    "ends_at": "2026-10-27T20:15",
+    "place": "달콤모퉁이 분식집",
+    "text": "달수 | 10-27(화) 05:18~20:15 | 달콤모퉁이 분식집에서 머묾"
+   },
+   "overlaps_other_split": false
+  },
+  {
+   "id": "g-dev-53604849",
+   "split": "dev",
+   "question": "말순이 11월 6일 금요일 아침 10시 33분에서 11시 32분까지 어느 시장에 머물렀니?",
+   "scenario": "b_shift_family",
+   "gold": {
+    "key": "span|b_malsun|2026-11-06T10:33|2026-11-06T11:32|달무리 시장",
+    "kind": "span",
+    "person": "b_malsun",
+    "starts_at": "2026-11-06T10:33",
+    "ends_at": "2026-11-06T11:32",
+    "place": "달무리 시장",
+    "text": "말순 | 11-06(금) 10:33~11:32 | 달무리 시장에서 머묾"
+   },
+   "overlaps_other_split": false
+  },
+  {
+   "id": "g-dev-5450ed7e",
+   "split": "dev",
+   "question": "달수는 11월 3일 화요일에 달콤모퉁이 분식집에서 몇 시부터 몇 시까지 머물렀어?",
+   "scenario": "c_shop_family",
+   "gold": {
+    "key": "span|c_dalsu|2026-11-03T05:23|2026-11-03T11:45|달콤모퉁이 분식집",
+    "kind": "span",
+    "person": "c_dalsu",
+    "starts_at": "2026-11-03T05:23",
+    "ends_at": "2026-11-03T11:45",
+    "place": "달콤모퉁이 분식집",
+    "text": "달수 | 11-03(화) 05:23~11:45 | 달콤모퉁이 분식집에서 머묾"
+   },
+   "overlaps_other_split": false
+  },
+  {
+   "id": "g-dev-58f4b672",
+   "split": "dev",
+   "question": "하준이가 11월 7일 토요일에 들른 곳들을 순서대로 말해 줄래?",
+   "scenario": "base",
+   "gold": {
+    "key": "day|hajun|2026-11-07T00:00|2026-11-08T00:00|",
+    "kind": "day",
+    "person": "hajun",
+    "starts_at": "2026-11-07T00:00",
+    "ends_at": "2026-11-08T00:00",
+    "place": null,
+    "text": "하준 | 11-07(토) 하루 | 집 → 달맞이 시장 → 솔바람 공원 → 집"
+   },
+   "overlaps_other_split": false
+  },
+  {
+   "id": "g-dev-59586ba7",
+   "split": "dev",
+   "question": "달수 님께서 10월 27일부터 11월 9일까지 큰물 도매시장을 방문하신 횟수와 총 체류 시간을 알려 주시겠어요?",
+   "scenario": "c_shop_family",
+   "gold": {
+    "key": "place|c_dalsu|2026-10-27T04:13|2026-11-09T05:20|큰물 도매시장",
+    "kind": "place",
+    "person": "c_dalsu",
+    "starts_at": "2026-10-27T04:13",
+    "ends_at": "2026-11-09T05:20",
+    "place": "큰물 도매시장",
+    "text": "달수 | 10-27~11-09 기간 | 큰물 도매시장 방문 11번 (머문 시간 합계 11시간 2분): 10-27 04:13, 10-29 04:18, 10-30 04:23, 10-31 04:23, 11-01 04:18, 11-02 04:13, 11-03 04:23, 11-06 04:18, 11-07 04:23, 11-08 04:18, 11-09 04:18"
+   },
+   "overlaps_other_split": true
+  },
+  {
+   "id": "g-dev-5a5c10a9",
+   "split": "dev",
+   "question": "민서가 11-09(월) 저녁 7시 20분쯤 하늘빛 카페를 나와 향한 곳은 어디야?",
+   "scenario": "a_student_home",
+   "gold": {
+    "key": "move|a_minseo|2026-11-09T19:20|2026-11-09T19:50|",
+    "kind": "move",
+    "person": "a_minseo",
+    "starts_at": "2026-11-09T19:20",
+    "ends_at": "2026-11-09T19:50",
+    "place": null,
+    "text": "민서 | 11-09(월) 19:20~19:50 | 하늘빛 카페에서 자취방(으)로 이동"
+   },
+   "overlaps_other_split": false
+  },
+  {
+   "id": "g-dev-5b337040",
+   "split": "dev",
+   "question": "유진이 10-28(수) 자정부터 08시 15분까지 머문 곳이 어디야?",
+   "scenario": "a_student_home",
+   "gold": {
+    "key": "span|a_eomma|2026-10-28T00:00|2026-10-28T08:15|부모님 집",
+    "kind": "span",
+    "person": "a_eomma",
+    "starts_at": "2026-10-28T00:00",
+    "ends_at": "2026-10-28T08:15",
+    "place": "부모님 집",
+    "text": "유진 | 10-28(수) 00:00~08:15 | 부모님 집에서 머묾"
+   },
+   "overlaps_other_split": false
+  },
+  {
+   "id": "g-dev-6028b87d",
+   "split": "dev",
+   "question": "말순이가 11월 9일 월요일 오후 3시 25분부터 밤 12시까지 머문 곳은 어디인가요?",
+   "scenario": "b_shift_family",
+   "gold": {
+    "key": "span|b_malsun|2026-11-09T15:25|2026-11-10T00:00|보리내 우리집",
+    "kind": "span",
+    "person": "b_malsun",
+    "starts_at": "2026-11-09T15:25",
+    "ends_at": "2026-11-10T00:00",
+    "place": "보리내 우리집",
+    "text": "말순 | 11-09(월) 15:25~24:00 | 보리내 우리집에서 머묾"
+   },
+   "overlaps_other_split": false
+  },
+  {
+   "id": "g-dev-6428a278",
+   "split": "dev",
+   "question": "11월 9일 월요일 저녁 무렵 태호 님은 어느 시장에 머물렀는지 알려 주시겠어요?",
+   "scenario": "b_shift_family",
+   "gold": {
+    "key": "span|b_taeho|2026-11-09T17:23|2026-11-09T18:08|달무리 시장",
+    "kind": "span",
+    "person": "b_taeho",
+    "starts_at": "2026-11-09T17:23",
+    "ends_at": "2026-11-09T18:08",
+    "place": "달무리 시장",
+    "text": "태호 | 11-09(월) 17:23~18:08 | 달무리 시장에서 머묾"
+   },
+   "overlaps_other_split": false
+  },
+  {
+   "id": "g-dev-6529c8bb",
+   "split": "dev",
+   "question": "민서가 10-29(목)에 방문했던 장소들을 순서대로 말해 줄래?",
+   "scenario": "a_student_home",
+   "gold": {
+    "key": "day|a_minseo|2026-10-29T00:00|2026-10-30T00:00|",
+    "kind": "day",
+    "person": "a_minseo",
+    "starts_at": "2026-10-29T00:00",
+    "ends_at": "2026-10-30T00:00",
+    "place": null,
+    "text": "민서 | 10-29(목) 하루 | 자취방 → 평소 구역 밖(이상 위치 기록) → 자취방 → 한솔 대학교 → 하늘빛 카페 → 자취방"
+   },
+   "overlaps_other_split": false
+  },
+  {
+   "id": "g-dev-66ed4daf",
+   "split": "dev",
+   "question": "준호는 11-05(목)에 하루 종일 무엇을 하고 있었어?",
+   "scenario": "a_student_home",
+   "gold": {
+    "key": "day|a_appa|2026-11-05T00:00|2026-11-06T00:00|",
+    "kind": "day",
+    "person": "a_appa",
+    "starts_at": "2026-11-05T00:00",
+    "ends_at": "2026-11-06T00:00",
+    "place": null,
+    "text": "준호 | 11-05(목) 하루 | 일시정지"
+   },
+   "overlaps_other_split": false
+  },
+  {
+   "id": "g-dev-69070167",
+   "split": "dev",
+   "question": "달수가 11-01(일) 새벽 5시 25분부터 5시 33분 사이에 큰물 도매시장에서 어디로 옮겨 갔어?",
+   "scenario": "c_shop_family",
+   "gold": {
+    "key": "move|c_dalsu|2026-11-01T05:25|2026-11-01T05:33|",
+    "kind": "move",
+    "person": "c_dalsu",
+    "starts_at": "2026-11-01T05:25",
+    "ends_at": "2026-11-01T05:33",
+    "place": null,
+    "text": "달수 | 11-01(일) 05:25~05:33 | 큰물 도매시장에서 달콤모퉁이 분식집(으)로 이동"
+   },
+   "overlaps_other_split": false
+  },
+  {
+   "id": "g-dev-6cb9b254",
+   "split": "dev",
+   "question": "준호는 11월 3일 화요일 저녁 7시에서 자정까지 어디에 있었어?",
+   "scenario": "a_student_home",
+   "gold": {
+    "key": "span|a_appa|2026-11-03T18:55|2026-11-04T00:00|부모님 집",
+    "kind": "span",
+    "person": "a_appa",
+    "starts_at": "2026-11-03T18:55",
+    "ends_at": "2026-11-04T00:00",
+    "place": "부모님 집",
+    "text": "준호 | 11-03(화) 18:55~24:00 | 부모님 집에서 머묾"
+   },
+   "overlaps_other_split": false
+  },
+  {
+   "id": "g-dev-6d63c590",
+   "split": "dev",
+   "question": "11-05(목) 하루 동안 말순 님이 거쳐 간 경로를 말씀해 주실 수 있을까요?",
+   "scenario": "b_shift_family",
+   "gold": {
+    "key": "day|b_malsun|2026-11-05T00:00|2026-11-06T00:00|",
+    "kind": "day",
+    "person": "b_malsun",
+    "starts_at": "2026-11-05T00:00",
+    "ends_at": "2026-11-06T00:00",
+    "place": null,
+    "text": "말순 | 11-05(목) 하루 | 보리내 우리집 → 솔바람 경로당 → 보리내 우리집"
+   },
+   "overlaps_other_split": false
+  },
+  {
+   "id": "g-dev-6f8942ba",
+   "split": "dev",
+   "question": "수진이 10-28(수) 저녁 7시 반부터 자정까지 어디에 있었어?",
+   "scenario": "base",
+   "gold": {
+    "key": "span|sujin|2026-10-28T19:30|2026-10-29T00:00|집",
+    "kind": "span",
+    "person": "sujin",
+    "starts_at": "2026-10-28T19:30",
+    "ends_at": "2026-10-29T00:00",
+    "place": "집",
+    "text": "수진 | 10-28(수) 19:30~24:00 | 집에서 머묾"
+   },
+   "overlaps_other_split": false
+  },
+  {
+   "id": "g-dev-714d6b10",
+   "split": "dev",
+   "question": "10-30(금) 10:30~10:50에 하준 님이 달맞이 시장에서 이동하신 목적지는 어디였나요?",
+   "scenario": "base",
+   "gold": {
+    "key": "move|hajun|2026-10-30T10:30|2026-10-30T10:50|",
+    "kind": "move",
+    "person": "hajun",
+    "starts_at": "2026-10-30T10:30",
+    "ends_at": "2026-10-30T10:50",
+    "place": null,
+    "text": "하준 | 10-30(금) 10:30~10:50 | 달맞이 시장에서 온유 병원(으)로 이동"
+   },
+   "overlaps_other_split": false
+  },
+  {
+   "id": "g-dev-74b66d70",
+   "split": "dev",
+   "question": "11-02(월) 15:33~15:47에 유나 님이 갈마루 중학교를 떠나 이동한 장소를 알려 주시겠습니까?",
+   "scenario": "b_shift_family",
+   "gold": {
+    "key": "move|b_yuna|2026-11-02T15:33|2026-11-02T15:47|",
+    "kind": "move",
+    "person": "b_yuna",
+    "starts_at": "2026-11-02T15:33",
+    "ends_at": "2026-11-02T15:47",
+    "place": null,
+    "text": "유나 | 11-02(월) 15:33~15:47 | 갈마루 중학교에서 오름새 학원(으)로 이동"
+   },
+   "overlaps_other_split": false
+  },
+  {
+   "id": "g-dev-7533d540",
+   "split": "dev",
+   "question": "유나가 10-28(수)에 오름새 학원을 떠나 어디로 갔어?",
+   "scenario": "b_shift_family",
+   "gold": {
+    "key": "move|b_yuna|2026-10-28T20:26|2026-10-28T20:48|",
+    "kind": "move",
+    "person": "b_yuna",
+    "starts_at": "2026-10-28T20:26",
+    "ends_at": "2026-10-28T20:48",
+    "place": null,
+    "text": "유나 | 10-28(수) 20:26~20:48 | 오름새 학원에서 보리내 우리집(으)로 이동"
+   },
+   "overlaps_other_split": false
+  },
+  {
+   "id": "g-dev-76a6630e",
+   "split": "dev",
+   "question": "10월 29일(목) 18시 22분부터 24시까지 유나가 머문 장소를 알려 주시겠어요?",
+   "scenario": "b_shift_family",
+   "gold": {
+    "key": "span|b_yuna|2026-10-29T18:22|2026-10-30T00:00|보리내 우리집",
+    "kind": "span",
+    "person": "b_yuna",
+    "starts_at": "2026-10-29T18:22",
+    "ends_at": "2026-10-30T00:00",
+    "place": "보리내 우리집",
+    "text": "유나 | 10-29(목) 18:22~24:00 | 보리내 우리집에서 머묾"
+   },
+   "overlaps_other_split": false
+  },
+  {
+   "id": "g-dev-77365169",
+   "split": "dev",
+   "question": "준호가 11-04(수) 저녁 6시 40분부터 7시 20분까지 어디 있었어?",
+   "scenario": "a_student_home",
+   "gold": {
+    "key": "span|a_appa|2026-11-04T18:40|2026-11-04T19:20|누리 마트",
+    "kind": "span",
+    "person": "a_appa",
+    "starts_at": "2026-11-04T18:40",
+    "ends_at": "2026-11-04T19:20",
+    "place": "누리 마트",
+    "text": "준호 | 11-04(수) 18:40~19:20 | 누리 마트에서 머묾"
+   },
+   "overlaps_other_split": false
+  },
+  {
+   "id": "g-dev-7a3befbc",
+   "split": "dev",
+   "question": "달수가 10월 27일부터 11월 9일까지 달콤모퉁이 분식집을 몇 번 방문했고, 머문 시간을 모두 합치면 얼마야?",
+   "scenario": "c_shop_family",
+   "gold": {
+    "key": "place|c_dalsu|2026-10-27T05:18|2026-11-09T20:55|달콤모퉁이 분식집",
+    "kind": "place",
+    "person": "c_dalsu",
+    "starts_at": "2026-10-27T05:18",
+    "ends_at": "2026-11-09T20:55",
+    "place": "달콤모퉁이 분식집",
+    "text": "달수 | 10-27~11-09 기간 | 달콤모퉁이 분식집 방문 16번 (머문 시간 합계 164시간 37분): 10-27 05:18, 10-29 05:23, 10-30 05:23, 10-30 12:13, 10-31 05:38, 11-01 05:33, 11-02 05:23, 11-02 12:18, 11-03 05:23, 11-03 12:13, 11-06 05:33, 11-06 12:08, 11-07 05:33, 11-08 05:23, 11-09 05:28, 11-09 12:23"
+   },
+   "overlaps_other_split": true
+  },
+  {
+   "id": "g-dev-7c280e5b",
+   "split": "dev",
+   "question": "10월 30일 금요일에 지민이 하루 동안 어떤 장소들을 다녔는지 말해줄래?",
+   "scenario": "base",
+   "gold": {
+    "key": "day|jimin|2026-10-30T00:00|2026-10-31T00:00|",
+    "kind": "day",
+    "person": "jimin",
+    "starts_at": "2026-10-30T00:00",
+    "ends_at": "2026-10-31T00:00",
+    "place": null,
+    "text": "지민 | 10-30(금) 하루 | 집 → 느티나무 회사 → 집"
+   },
+   "overlaps_other_split": false
+  },
+  {
+   "id": "g-dev-7edfb564",
+   "split": "dev",
+   "question": "하준이가 10월 29일 목요일 오전 11시부터 11시 20분 사이에 달맞이 시장을 떠나 향한 곳은 어디야?",
+   "scenario": "base",
+   "gold": {
+    "key": "move|hajun|2026-10-29T11:00|2026-10-29T11:20|",
+    "kind": "move",
+    "person": "hajun",
+    "starts_at": "2026-10-29T11:00",
+    "ends_at": "2026-10-29T11:20",
+    "place": null,
+    "text": "하준 | 10-29(목) 11:00~11:20 | 달맞이 시장에서 집(으)로 이동"
+   },
+   "overlaps_other_split": false
+  },
+  {
+   "id": "g-dev-80fab0e3",
+   "split": "dev",
+   "question": "11월 3일(화) 10시에서 10시 20분 사이, 하준 님의 이동 목적지는 어디였는지 여쭤봐도 될까요?",
+   "scenario": "base",
+   "gold": {
+    "key": "move|hajun|2026-11-03T10:00|2026-11-03T10:20|",
+    "kind": "move",
+    "person": "hajun",
+    "starts_at": "2026-11-03T10:00",
+    "ends_at": "2026-11-03T10:20",
+    "place": null,
+    "text": "하준 | 11-03(화) 10:00~10:20 | 온유 병원에서 달맞이 시장(으)로 이동"
+   },
+   "overlaps_other_split": false
+  },
+  {
+   "id": "g-dev-847531ab",
+   "split": "dev",
+   "question": "유나가 10-28(수) 하루 동안 거쳐 간 장소를 순서대로 말해줄래?",
+   "scenario": "b_shift_family",
+   "gold": {
+    "key": "day|b_yuna|2026-10-28T00:00|2026-10-29T00:00|",
+    "kind": "day",
+    "person": "b_yuna",
+    "starts_at": "2026-10-28T00:00",
+    "ends_at": "2026-10-29T00:00",
+    "place": null,
+    "text": "유나 | 10-28(수) 하루 | 보리내 우리집 → 갈마루 중학교 → 오름새 학원 → 보리내 우리집"
+   },
+   "overlaps_other_split": false
+  },
+  {
+   "id": "g-dev-8526de39",
+   "split": "dev",
+   "question": "11월 5일(목) 하루 동안 유나님이 방문하신 장소를 차례대로 알려주실 수 있을까요?",
+   "scenario": "b_shift_family",
+   "gold": {
+    "key": "day|b_yuna|2026-11-05T00:00|2026-11-06T00:00|",
+    "kind": "day",
+    "person": "b_yuna",
+    "starts_at": "2026-11-05T00:00",
+    "ends_at": "2026-11-06T00:00",
+    "place": null,
+    "text": "유나 | 11-05(목) 하루 | 보리내 우리집 → 갈마루 중학교 → 잔물결 도서관 → 보리내 우리집"
+   },
+   "overlaps_other_split": false
+  },
+  {
+   "id": "g-dev-869cb5f2",
+   "split": "dev",
+   "question": "민서가 수요일인 11월 4일에 마루 도서관을 두 번 가기 전에 들른 편의점 이름이 뭐야?",
+   "scenario": "a_student_home",
+   "gold": {
+    "key": "day|a_minseo|2026-11-04T00:00|2026-11-05T00:00|",
+    "kind": "day",
+    "person": "a_minseo",
+    "starts_at": "2026-11-04T00:00",
+    "ends_at": "2026-11-05T00:00",
+    "place": null,
+    "text": "민서 | 11-04(수) 하루 | 자취방 → 마루 도서관 → 모아 편의점 → 마루 도서관 → 자취방"
+   },
+   "overlaps_other_split": false
+  },
+  {
+   "id": "g-dev-87fb906f",
+   "split": "dev",
+   "question": "11월 4일 수요일에 민서 씨는 자취방을 떠나 어디를 먼저 들르셨나요?",
+   "scenario": "a_student_home",
+   "gold": {
+    "key": "day|a_minseo|2026-11-04T00:00|2026-11-05T00:00|",
+    "kind": "day",
+    "person": "a_minseo",
+    "starts_at": "2026-11-04T00:00",
+    "ends_at": "2026-11-05T00:00",
+    "place": null,
+    "text": "민서 | 11-04(수) 하루 | 자취방 → 마루 도서관 → 모아 편의점 → 마루 도서관 → 자취방"
+   },
+   "overlaps_other_split": false
+  },
+  {
+   "id": "g-dev-89673c5a",
+   "split": "dev",
+   "question": "민서가 11-04(수) 14시 05분부터 23시 35분까지 머문 곳이 어디였어?",
+   "scenario": "a_student_home",
+   "gold": {
+    "key": "span|a_minseo|2026-11-04T14:05|2026-11-04T23:35|마루 도서관",
+    "kind": "span",
+    "person": "a_minseo",
+    "starts_at": "2026-11-04T14:05",
+    "ends_at": "2026-11-04T23:35",
+    "place": "마루 도서관",
+    "text": "민서 | 11-04(수) 14:05~23:35 | 마루 도서관에서 머묾"
+   },
+   "overlaps_other_split": false
+  },
+  {
+   "id": "g-dev-8c1cb9b2",
+   "split": "dev",
+   "question": "10월 31일 토요일 자정부터 오전 10시 20분까지 유진이 어디에 있었어?",
+   "scenario": "a_student_home",
+   "gold": {
+    "key": "span|a_eomma|2026-10-31T00:00|2026-10-31T10:20|부모님 집",
+    "kind": "span",
+    "person": "a_eomma",
+    "starts_at": "2026-10-31T00:00",
+    "ends_at": "2026-10-31T10:20",
+    "place": "부모님 집",
+    "text": "유진 | 10-31(토) 00:00~10:20 | 부모님 집에서 머묾"
+   },
+   "overlaps_other_split": false
+  },
+  {
+   "id": "g-dev-8d15fb6e",
+   "split": "dev",
+   "question": "10월 31일(토) 00:00~10:20 동안 유진님이 머물던 곳이 어디였는지 여쭤봐도 될까요?",
+   "scenario": "a_student_home",
+   "gold": {
+    "key": "span|a_eomma|2026-10-31T00:00|2026-10-31T10:20|부모님 집",
+    "kind": "span",
+    "person": "a_eomma",
+    "starts_at": "2026-10-31T00:00",
+    "ends_at": "2026-10-31T10:20",
+    "place": "부모님 집",
+    "text": "유진 | 10-31(토) 00:00~10:20 | 부모님 집에서 머묾"
+   },
+   "overlaps_other_split": false
+  },
+  {
+   "id": "g-dev-8d88b773",
+   "split": "dev",
+   "question": "10월 31일(금)에 민서는 하늘빛 카페에서 몇 시쯤 머물렀는지 알려 주시겠어요?",
+   "scenario": "a_student_home",
+   "gold": {
+    "key": "place|a_minseo|2026-10-29T15:30|2026-11-09T19:20|하늘빛 카페",
+    "kind": "place",
+    "person": "a_minseo",
+    "starts_at": "2026-10-29T15:30",
+    "ends_at": "2026-11-09T19:20",
+    "place": "하늘빛 카페",
+    "text": "민서 | 10-29~11-09 기간 | 하늘빛 카페 방문 5번 (머문 시간 합계 12시간 50분): 10-29 15:30, 10-30 15:25, 10-31 12:55, 11-06 13:25, 11-09 18:10"
+   },
+   "overlaps_other_split": true
+  },
+  {
+   "id": "g-dev-8ffe99ca",
+   "split": "dev",
+   "question": "10월 28일 수요일 19시 30분부터 24시까지 수진 님의 머문 장소를 알려 주실 수 있을까요?",
+   "scenario": "base",
+   "gold": {
+    "key": "span|sujin|2026-10-28T19:30|2026-10-29T00:00|집",
+    "kind": "span",
+    "person": "sujin",
+    "starts_at": "2026-10-28T19:30",
+    "ends_at": "2026-10-29T00:00",
+    "place": "집",
+    "text": "수진 | 10-28(수) 19:30~24:00 | 집에서 머묾"
+   },
+   "overlaps_other_split": false
+  },
+  {
+   "id": "g-dev-90527db5",
+   "split": "dev",
+   "question": "지민이는 10월 29일(목) 저녁에 어디에 있었어?",
+   "scenario": "base",
+   "gold": {
+    "key": "span|jimin|2026-10-29T17:30|2026-10-29T18:30|도담 마트",
+    "kind": "span",
+    "person": "jimin",
+    "starts_at": "2026-10-29T17:30",
+    "ends_at": "2026-10-29T18:30",
+    "place": "도담 마트",
+    "text": "지민 | 10-29(목) 17:30~18:30 | 도담 마트에서 머묾"
+   },
+   "overlaps_other_split": false
+  },
+  {
+   "id": "g-dev-911366d3",
+   "split": "dev",
+   "question": "10월 30일 금요일에 민서 씨는 자취방을 나선 뒤 하늘빛 카페 말고 어느 편의점에 들르셨나요?",
+   "scenario": "a_student_home",
+   "gold": {
+    "key": "day|a_minseo|2026-10-30T00:00|2026-10-31T00:00|",
+    "kind": "day",
+    "person": "a_minseo",
+    "starts_at": "2026-10-30T00:00",
+    "ends_at": "2026-10-31T00:00",
+    "place": null,
+    "text": "민서 | 10-30(금) 하루 | 자취방 → 한솔 대학교 → 하늘빛 카페 → 자취방 → 모아 편의점 → 자취방"
+   },
+   "overlaps_other_split": false
+  },
+  {
+   "id": "g-dev-940afaa3",
+   "split": "dev",
+   "question": "11월 9일 월요일에 말순 님이 하루 종일 있었던 장소가 어디인지 궁금해.",
+   "scenario": "b_shift_family",
+   "gold": {
+    "key": "span|b_malsun|2026-11-09T15:25|2026-11-10T00:00|보리내 우리집",
+    "kind": "span",
+    "person": "b_malsun",
+    "starts_at": "2026-11-09T15:25",
+    "ends_at": "2026-11-10T00:00",
+    "place": "보리내 우리집",
+    "text": "말순 | 11-09(월) 15:25~24:00 | 보리내 우리집에서 머묾"
+   },
+   "overlaps_other_split": false
+  },
+  {
+   "id": "g-dev-975598d4",
+   "split": "dev",
+   "question": "11-06(금) 10:33~11:32에 말순 님이 계셨던 곳은 어디인가요?",
+   "scenario": "b_shift_family",
+   "gold": {
+    "key": "span|b_malsun|2026-11-06T10:33|2026-11-06T11:32|달무리 시장",
+    "kind": "span",
+    "person": "b_malsun",
+    "starts_at": "2026-11-06T10:33",
+    "ends_at": "2026-11-06T11:32",
+    "place": "달무리 시장",
+    "text": "말순 | 11-06(금) 10:33~11:32 | 달무리 시장에서 머묾"
+   },
+   "overlaps_other_split": false
+  },
+  {
+   "id": "g-dev-9f78d699",
+   "split": "dev",
+   "question": "10월 29일 목요일 오후 5시 30분부터 6시 30분까지 지민 씨가 머문 곳은 어디인지 말씀해 주실 수 있을까요?",
+   "scenario": "base",
+   "gold": {
+    "key": "span|jimin|2026-10-29T17:30|2026-10-29T18:30|도담 마트",
+    "kind": "span",
+    "person": "jimin",
+    "starts_at": "2026-10-29T17:30",
+    "ends_at": "2026-10-29T18:30",
+    "place": "도담 마트",
+    "text": "지민 | 10-29(목) 17:30~18:30 | 도담 마트에서 머묾"
+   },
+   "overlaps_other_split": false
+  },
+  {
+   "id": "g-dev-a020f0ac",
+   "split": "dev",
+   "question": "11월 8일 일요일 오후 5시 31분부터 밤 12시까지 태호 님이 머무신 곳을 알고 싶습니다.",
+   "scenario": "b_shift_family",
+   "gold": {
+    "key": "span|b_taeho|2026-11-08T17:31|2026-11-09T00:00|보리내 우리집",
+    "kind": "span",
+    "person": "b_taeho",
+    "starts_at": "2026-11-08T17:31",
+    "ends_at": "2026-11-09T00:00",
+    "place": "보리내 우리집",
+    "text": "태호 | 11-08(일) 17:31~24:00 | 보리내 우리집에서 머묾"
+   },
+   "overlaps_other_split": false
+  },
+  {
+   "id": "g-dev-a11e704a",
+   "split": "dev",
+   "question": "11-04(수) 하루 동안 달수의 위치 기록이 일시정지였는지 여쭤봐도 될까요?",
+   "scenario": "c_shop_family",
+   "gold": {
+    "key": "day|c_dalsu|2026-11-04T00:00|2026-11-05T00:00|",
+    "kind": "day",
+    "person": "c_dalsu",
+    "starts_at": "2026-11-04T00:00",
+    "ends_at": "2026-11-05T00:00",
+    "place": null,
+    "text": "달수 | 11-04(수) 하루 | 일시정지"
+   },
+   "overlaps_other_split": false
+  },
+  {
+   "id": "g-dev-a147078f",
+   "split": "dev",
+   "question": "하늘이 11-03(화) 아침 7시 30분부터 42분까지 어디서 어디로 옮겨 갔어?",
+   "scenario": "c_shop_family",
+   "gold": {
+    "key": "move|c_haneul|2026-11-03T07:30|2026-11-03T07:42|",
+    "kind": "move",
+    "person": "c_haneul",
+    "starts_at": "2026-11-03T07:30",
+    "ends_at": "2026-11-03T07:42",
+    "place": null,
+    "text": "하늘 | 11-03(화) 07:30~07:42 | 소나무길 단독 3호에서 새솔 고등학교(으)로 이동"
+   },
+   "overlaps_other_split": false
+  },
+  {
+   "id": "g-dev-a5cdae00",
+   "split": "dev",
+   "question": "10-29(목)에 하준 님이 달맞이 시장에서 이동하신 목적지는 어디였는지 여쭤봐도 될까요?",
+   "scenario": "base",
+   "gold": {
+    "key": "move|hajun|2026-10-29T11:00|2026-10-29T11:20|",
+    "kind": "move",
+    "person": "hajun",
+    "starts_at": "2026-10-29T11:00",
+    "ends_at": "2026-10-29T11:20",
+    "place": null,
+    "text": "하준 | 10-29(목) 11:00~11:20 | 달맞이 시장에서 집(으)로 이동"
+   },
+   "overlaps_other_split": false
+  },
+  {
+   "id": "g-dev-a89ccacf",
+   "split": "dev",
+   "question": "11-09(월) 새벽 시간에 달수는 어디에 머물렀는지 정중하게 알려 주실 수 있을까요?",
+   "scenario": "c_shop_family",
+   "gold": {
+    "key": "span|c_dalsu|2026-11-09T04:18|2026-11-09T05:20|큰물 도매시장",
+    "kind": "span",
+    "person": "c_dalsu",
+    "starts_at": "2026-11-09T04:18",
+    "ends_at": "2026-11-09T05:20",
+    "place": "큰물 도매시장",
+    "text": "달수 | 11-09(월) 04:18~05:20 | 큰물 도매시장에서 머묾"
+   },
+   "overlaps_other_split": false
+  },
+  {
+   "id": "g-dev-ae3787e1",
+   "split": "dev",
+   "question": "11-04(수) 18:40~19:20에 준호님이 머무르신 곳이 어디였는지 여쭤봅니다.",
+   "scenario": "a_student_home",
+   "gold": {
+    "key": "span|a_appa|2026-11-04T18:40|2026-11-04T19:20|누리 마트",
+    "kind": "span",
+    "person": "a_appa",
+    "starts_at": "2026-11-04T18:40",
+    "ends_at": "2026-11-04T19:20",
+    "place": "누리 마트",
+    "text": "준호 | 11-04(수) 18:40~19:20 | 누리 마트에서 머묾"
+   },
+   "overlaps_other_split": false
+  },
+  {
+   "id": "g-dev-b0322081",
+   "split": "dev",
+   "question": "11-03(화) 07:30~07:42 동안 하늘님이 이동하신 출발지와 도착지를 알려주시겠어요?",
+   "scenario": "c_shop_family",
+   "gold": {
+    "key": "move|c_haneul|2026-11-03T07:30|2026-11-03T07:42|",
+    "kind": "move",
+    "person": "c_haneul",
+    "starts_at": "2026-11-03T07:30",
+    "ends_at": "2026-11-03T07:42",
+    "place": null,
+    "text": "하늘 | 11-03(화) 07:30~07:42 | 소나무길 단독 3호에서 새솔 고등학교(으)로 이동"
+   },
+   "overlaps_other_split": false
+  },
+  {
+   "id": "g-dev-b137ece2",
+   "split": "dev",
+   "question": "달수 님이 달콤모퉁이 분식집에 간 횟수와 누적 체류 시간(164시간 37분)을 확인해 주실 수 있을까요?",
+   "scenario": "c_shop_family",
+   "gold": {
+    "key": "place|c_dalsu|2026-10-27T05:18|2026-11-09T20:55|달콤모퉁이 분식집",
+    "kind": "place",
+    "person": "c_dalsu",
+    "starts_at": "2026-10-27T05:18",
+    "ends_at": "2026-11-09T20:55",
+    "place": "달콤모퉁이 분식집",
+    "text": "달수 | 10-27~11-09 기간 | 달콤모퉁이 분식집 방문 16번 (머문 시간 합계 164시간 37분): 10-27 05:18, 10-29 05:23, 10-30 05:23, 10-30 12:13, 10-31 05:38, 11-01 05:33, 11-02 05:23, 11-02 12:18, 11-03 05:23, 11-03 12:13, 11-06 05:33, 11-06 12:08, 11-07 05:33, 11-08 05:23, 11-09 05:28, 11-09 12:23"
+   },
+   "overlaps_other_split": true
+  },
+  {
+   "id": "g-dev-b60bb78a",
+   "split": "dev",
+   "question": "10월 27일(화) 11시에서 11시 20분 사이에 하준 님이 행복 약국에서 이동하신 곳은 어디인가요?",
+   "scenario": "base",
+   "gold": {
+    "key": "move|hajun|2026-10-27T11:00|2026-10-27T11:20|",
+    "kind": "move",
+    "person": "hajun",
+    "starts_at": "2026-10-27T11:00",
+    "ends_at": "2026-10-27T11:20",
+    "place": null,
+    "text": "하준 | 10-27(화) 11:00~11:20 | 행복 약국에서 집(으)로 이동"
+   },
+   "overlaps_other_split": false
+  },
+  {
+   "id": "g-dev-b61ad98a",
+   "split": "dev",
+   "question": "보람이 11월 6일 금요일 오전 8시 23분부터 오후 2시 15분까지 어디에 머물렀어?",
+   "scenario": "c_shop_family",
+   "gold": {
+    "key": "span|c_boram|2026-11-06T08:23|2026-11-06T14:15|달콤모퉁이 분식집",
+    "kind": "span",
+    "person": "c_boram",
+    "starts_at": "2026-11-06T08:23",
+    "ends_at": "2026-11-06T14:15",
+    "place": "달콤모퉁이 분식집",
+    "text": "보람 | 11-06(금) 08:23~14:15 | 달콤모퉁이 분식집에서 머묾"
+   },
+   "overlaps_other_split": false
+  },
+  {
+   "id": "g-dev-b7be2e99",
+   "split": "dev",
+   "question": "11-03(화) 07:34~07:50 사이에 유나님이 보리내 우리집에서 어느 학교로 이동하셨는지 알려주실 수 있을까요?",
+   "scenario": "b_shift_family",
+   "gold": {
+    "key": "move|b_yuna|2026-11-03T07:34|2026-11-03T07:50|",
+    "kind": "move",
+    "person": "b_yuna",
+    "starts_at": "2026-11-03T07:34",
+    "ends_at": "2026-11-03T07:50",
+    "place": null,
+    "text": "유나 | 11-03(화) 07:34~07:50 | 보리내 우리집에서 갈마루 중학교(으)로 이동"
+   },
+   "overlaps_other_split": false
+  },
+  {
+   "id": "g-dev-b8e17a1e",
+   "split": "dev",
+   "question": "유나 어디 있었어? 10월 29일 목요일 저녁 6시 22분부터 자정까지 보리내 우리집에 있었지?",
+   "scenario": "b_shift_family",
+   "gold": {
+    "key": "span|b_yuna|2026-10-29T18:22|2026-10-30T00:00|보리내 우리집",
+    "kind": "span",
+    "person": "b_yuna",
+    "starts_at": "2026-10-29T18:22",
+    "ends_at": "2026-10-30T00:00",
+    "place": "보리내 우리집",
+    "text": "유나 | 10-29(목) 18:22~24:00 | 보리내 우리집에서 머묾"
+   },
+   "overlaps_other_split": false
+  },
+  {
+   "id": "g-dev-bc5f9bb5",
+   "split": "dev",
+   "question": "10-31(토) 11:42부터 24:00까지 건님이 머무신 장소는 어디인가요?",
+   "scenario": "c_shop_family",
+   "gold": {
+    "key": "span|c_geon|2026-10-31T11:42|2026-11-01T00:00|소나무길 단독 3호",
+    "kind": "span",
+    "person": "c_geon",
+    "starts_at": "2026-10-31T11:42",
+    "ends_at": "2026-11-01T00:00",
+    "place": "소나무길 단독 3호",
+    "text": "건 | 10-31(토) 11:42~24:00 | 소나무길 단독 3호에서 머묾"
+   },
+   "overlaps_other_split": false
+  },
+  {
+   "id": "g-dev-c23b0475",
+   "split": "dev",
+   "question": "11-06(금)에 보람 님이 08:23부터 14:15까지 계셨던 곳은 어느 분식집인가요?",
+   "scenario": "c_shop_family",
+   "gold": {
+    "key": "span|c_boram|2026-11-06T08:23|2026-11-06T14:15|달콤모퉁이 분식집",
+    "kind": "span",
+    "person": "c_boram",
+    "starts_at": "2026-11-06T08:23",
+    "ends_at": "2026-11-06T14:15",
+    "place": "달콤모퉁이 분식집",
+    "text": "보람 | 11-06(금) 08:23~14:15 | 달콤모퉁이 분식집에서 머묾"
+   },
+   "overlaps_other_split": false
+  },
+  {
+   "id": "g-dev-c9072fe3",
+   "split": "dev",
+   "question": "달수가 11-04(수)에 하루 종일 일시정지 상태였어?",
+   "scenario": "c_shop_family",
+   "gold": {
+    "key": "day|c_dalsu|2026-11-04T00:00|2026-11-05T00:00|",
+    "kind": "day",
+    "person": "c_dalsu",
+    "starts_at": "2026-11-04T00:00",
+    "ends_at": "2026-11-05T00:00",
+    "place": null,
+    "text": "달수 | 11-04(수) 하루 | 일시정지"
+   },
+   "overlaps_other_split": false
+  },
+  {
+   "id": "g-dev-cb94ac3b",
+   "split": "dev",
+   "question": "11월 9일 월요일 민서 님이 하늘빛 카페에서 이동한 목적지를 알려 주실 수 있나요?",
+   "scenario": "a_student_home",
+   "gold": {
+    "key": "move|a_minseo|2026-11-09T19:20|2026-11-09T19:50|",
+    "kind": "move",
+    "person": "a_minseo",
+    "starts_at": "2026-11-09T19:20",
+    "ends_at": "2026-11-09T19:50",
+    "place": null,
+    "text": "민서 | 11-09(월) 19:20~19:50 | 하늘빛 카페에서 자취방(으)로 이동"
+   },
+   "overlaps_other_split": false
+  },
+  {
+   "id": "g-dev-ce84e1ac",
+   "split": "dev",
+   "question": "하준이 10월 30일 금요일 오전 10시 30분부터 10시 50분까지 있던 곳에서 어디로 옮겨 갔어?",
+   "scenario": "base",
+   "gold": {
+    "key": "move|hajun|2026-10-30T10:30|2026-10-30T10:50|",
+    "kind": "move",
+    "person": "hajun",
+    "starts_at": "2026-10-30T10:30",
+    "ends_at": "2026-10-30T10:50",
+    "place": null,
+    "text": "하준 | 10-30(금) 10:30~10:50 | 달맞이 시장에서 온유 병원(으)로 이동"
+   },
+   "overlaps_other_split": false
+  },
+  {
+   "id": "g-dev-d623f3c0",
+   "split": "dev",
+   "question": "11-06(금)에 하늘 님의 하루 이동 경로가 어떻게 되는지 알려주시겠어요?",
+   "scenario": "c_shop_family",
+   "gold": {
+    "key": "day|c_haneul|2026-11-06T00:00|2026-11-07T00:00|",
+    "kind": "day",
+    "person": "c_haneul",
+    "starts_at": "2026-11-06T00:00",
+    "ends_at": "2026-11-07T00:00",
+    "place": null,
+    "text": "하늘 | 11-06(금) 하루 | 소나무길 단독 3호 → 새솔 고등학교 → 달콤모퉁이 분식집 → 고요 독서실 → 소나무길 단독 3호"
+   },
+   "overlaps_other_split": false
+  },
+  {
+   "id": "g-dev-d8da34f2",
+   "split": "dev",
+   "question": "11월 5일 목요일에 말순이는 어느 경로당을 다녀왔어?",
+   "scenario": "b_shift_family",
+   "gold": {
+    "key": "day|b_malsun|2026-11-05T00:00|2026-11-06T00:00|",
+    "kind": "day",
+    "person": "b_malsun",
+    "starts_at": "2026-11-05T00:00",
+    "ends_at": "2026-11-06T00:00",
+    "place": null,
+    "text": "말순 | 11-05(목) 하루 | 보리내 우리집 → 솔바람 경로당 → 보리내 우리집"
+   },
+   "overlaps_other_split": false
+  },
+  {
+   "id": "g-dev-d9b9fe04",
+   "split": "dev",
+   "question": "태호가 11-09(월) 오후 5시 23분부터 6시 8분까지 머문 곳이 어디야?",
+   "scenario": "b_shift_family",
+   "gold": {
+    "key": "span|b_taeho|2026-11-09T17:23|2026-11-09T18:08|달무리 시장",
+    "kind": "span",
+    "person": "b_taeho",
+    "starts_at": "2026-11-09T17:23",
+    "ends_at": "2026-11-09T18:08",
+    "place": "달무리 시장",
+    "text": "태호 | 11-09(월) 17:23~18:08 | 달무리 시장에서 머묾"
+   },
+   "overlaps_other_split": false
+  },
+  {
+   "id": "g-dev-da1988fb",
+   "split": "dev",
+   "question": "11월 1일 일요일 오전 5시 25분에서 5시 33분까지 달수 님이 큰물 도매시장에서 달콤모퉁이 분식집으로 이동하셨나요?",
+   "scenario": "c_shop_family",
+   "gold": {
+    "key": "move|c_dalsu|2026-11-01T05:25|2026-11-01T05:33|",
+    "kind": "move",
+    "person": "c_dalsu",
+    "starts_at": "2026-11-01T05:25",
+    "ends_at": "2026-11-01T05:33",
+    "place": null,
+    "text": "달수 | 11-01(일) 05:25~05:33 | 큰물 도매시장에서 달콤모퉁이 분식집(으)로 이동"
+   },
+   "overlaps_other_split": false
+  },
+  {
+   "id": "g-dev-da6c0cac",
+   "split": "dev",
+   "question": "11월 6일(금) 오전 8시 55분부터 9시 3분 사이에 건이 어디서 어디로 이동했는지 알려주실 수 있을까요?",
+   "scenario": "c_shop_family",
+   "gold": {
+    "key": "move|c_geon|2026-11-06T08:55|2026-11-06T09:03|",
+    "kind": "move",
+    "person": "c_geon",
+    "starts_at": "2026-11-06T08:55",
+    "ends_at": "2026-11-06T09:03",
+    "place": null,
+    "text": "건 | 11-06(금) 08:55~09:03 | 소나무길 단독 3호에서 바람결 대학교(으)로 이동"
+   },
+   "overlaps_other_split": false
+  },
+  {
+   "id": "g-dev-de7e4e6f",
+   "split": "dev",
+   "question": "10월 27일(화) 07:30~14:00에 수진님이 계셨던 장소를 알려주시겠어요?",
+   "scenario": "base",
+   "gold": {
+    "key": "span|sujin|2026-10-27T07:30|2026-10-27T14:00|푸른샘 학교",
+    "kind": "span",
+    "person": "sujin",
+    "starts_at": "2026-10-27T07:30",
+    "ends_at": "2026-10-27T14:00",
+    "place": "푸른샘 학교",
+    "text": "수진 | 10-27(화) 07:30~14:00 | 푸른샘 학교에서 머묾"
+   },
+   "overlaps_other_split": false
+  },
+  {
+   "id": "g-dev-dea5e534",
+   "split": "dev",
+   "question": "태호가 11-08(일) 17시 31분부터 자정까지 있었던 데가 어디야?",
+   "scenario": "b_shift_family",
+   "gold": {
+    "key": "span|b_taeho|2026-11-08T17:31|2026-11-09T00:00|보리내 우리집",
+    "kind": "span",
+    "person": "b_taeho",
+    "starts_at": "2026-11-08T17:31",
+    "ends_at": "2026-11-09T00:00",
+    "place": "보리내 우리집",
+    "text": "태호 | 11-08(일) 17:31~24:00 | 보리내 우리집에서 머묾"
+   },
+   "overlaps_other_split": false
+  },
+  {
+   "id": "g-dev-e461e975",
+   "split": "dev",
+   "question": "유나가 11-03(화) 아침 7시 34분부터 50분까지 어디서 어디로 이동했어?",
+   "scenario": "b_shift_family",
+   "gold": {
+    "key": "move|b_yuna|2026-11-03T07:34|2026-11-03T07:50|",
+    "kind": "move",
+    "person": "b_yuna",
+    "starts_at": "2026-11-03T07:34",
+    "ends_at": "2026-11-03T07:50",
+    "place": null,
+    "text": "유나 | 11-03(화) 07:34~07:50 | 보리내 우리집에서 갈마루 중학교(으)로 이동"
+   },
+   "overlaps_other_split": false
+  },
+  {
+   "id": "g-dev-e5a2aa9b",
+   "split": "dev",
+   "question": "달수가 화요일 10월 27일 오전 5시 18분부터 저녁 8시 15분까지 머문 데가 어디야?",
+   "scenario": "c_shop_family",
+   "gold": {
+    "key": "span|c_dalsu|2026-10-27T05:18|2026-10-27T20:15|달콤모퉁이 분식집",
+    "kind": "span",
+    "person": "c_dalsu",
+    "starts_at": "2026-10-27T05:18",
+    "ends_at": "2026-10-27T20:15",
+    "place": "달콤모퉁이 분식집",
+    "text": "달수 | 10-27(화) 05:18~20:15 | 달콤모퉁이 분식집에서 머묾"
+   },
+   "overlaps_other_split": false
+  },
+  {
+   "id": "g-dev-e9a702bd",
+   "split": "dev",
+   "question": "10월 29일 목요일에 민서 님이 평소 다니던 구역 밖에 간 기록이 있었는지 확인해 주시겠어요?",
+   "scenario": "a_student_home",
+   "gold": {
+    "key": "day|a_minseo|2026-10-29T00:00|2026-10-30T00:00|",
+    "kind": "day",
+    "person": "a_minseo",
+    "starts_at": "2026-10-29T00:00",
+    "ends_at": "2026-10-30T00:00",
+    "place": null,
+    "text": "민서 | 10-29(목) 하루 | 자취방 → 평소 구역 밖(이상 위치 기록) → 자취방 → 한솔 대학교 → 하늘빛 카페 → 자취방"
+   },
+   "overlaps_other_split": false
+  },
+  {
+   "id": "g-dev-eb2efae8",
+   "split": "dev",
+   "question": "10월 28일 수요일 하루 동안 유나 씨가 방문하신 곳들을 차례대로 안내해 주시겠어요?",
+   "scenario": "b_shift_family",
+   "gold": {
+    "key": "day|b_yuna|2026-10-28T00:00|2026-10-29T00:00|",
+    "kind": "day",
+    "person": "b_yuna",
+    "starts_at": "2026-10-28T00:00",
+    "ends_at": "2026-10-29T00:00",
+    "place": null,
+    "text": "유나 | 10-28(수) 하루 | 보리내 우리집 → 갈마루 중학교 → 오름새 학원 → 보리내 우리집"
+   },
+   "overlaps_other_split": false
+  },
+  {
+   "id": "g-dev-ed0248e0",
+   "split": "dev",
+   "question": "11월 3일(화) 저녁 6시 55분부터 밤 12시까지 준호 씨가 머문 장소를 알려 주시겠습니까?",
+   "scenario": "a_student_home",
+   "gold": {
+    "key": "span|a_appa|2026-11-03T18:55|2026-11-04T00:00|부모님 집",
+    "kind": "span",
+    "person": "a_appa",
+    "starts_at": "2026-11-03T18:55",
+    "ends_at": "2026-11-04T00:00",
+    "place": "부모님 집",
+    "text": "준호 | 11-03(화) 18:55~24:00 | 부모님 집에서 머묾"
+   },
+   "overlaps_other_split": false
+  },
+  {
+   "id": "g-dev-ef3f3431",
+   "split": "dev",
+   "question": "달수가 10월 27일부터 11월 9일 사이에 큰물 도매시장에 몇 번 갔고, 거기 머문 시간을 다 합치면 얼마야?",
+   "scenario": "c_shop_family",
+   "gold": {
+    "key": "place|c_dalsu|2026-10-27T04:13|2026-11-09T05:20|큰물 도매시장",
+    "kind": "place",
+    "person": "c_dalsu",
+    "starts_at": "2026-10-27T04:13",
+    "ends_at": "2026-11-09T05:20",
+    "place": "큰물 도매시장",
+    "text": "달수 | 10-27~11-09 기간 | 큰물 도매시장 방문 11번 (머문 시간 합계 11시간 2분): 10-27 04:13, 10-29 04:18, 10-30 04:23, 10-31 04:23, 11-01 04:18, 11-02 04:13, 11-03 04:23, 11-06 04:18, 11-07 04:23, 11-08 04:18, 11-09 04:18"
+   },
+   "overlaps_other_split": true
+  },
+  {
+   "id": "g-dev-f90311e6",
+   "split": "dev",
+   "question": "유나가 11월 2일 월요일 오후 3시 33분부터 3시 47분 사이에 갈마루 중학교에서 간 곳은 어디야?",
+   "scenario": "b_shift_family",
+   "gold": {
+    "key": "move|b_yuna|2026-11-02T15:33|2026-11-02T15:47|",
+    "kind": "move",
+    "person": "b_yuna",
+    "starts_at": "2026-11-02T15:33",
+    "ends_at": "2026-11-02T15:47",
+    "place": null,
+    "text": "유나 | 11-02(월) 15:33~15:47 | 갈마루 중학교에서 오름새 학원(으)로 이동"
+   },
+   "overlaps_other_split": false
+  },
+  {
+   "id": "g-dev-f969e7e9",
+   "split": "dev",
+   "question": "10월 27일 화요일 아침 7시 30분부터 오후 2시까지 수진이 어디에 머물렀어?",
+   "scenario": "base",
+   "gold": {
+    "key": "span|sujin|2026-10-27T07:30|2026-10-27T14:00|푸른샘 학교",
+    "kind": "span",
+    "person": "sujin",
+    "starts_at": "2026-10-27T07:30",
+    "ends_at": "2026-10-27T14:00",
+    "place": "푸른샘 학교",
+    "text": "수진 | 10-27(화) 07:30~14:00 | 푸른샘 학교에서 머묾"
+   },
+   "overlaps_other_split": false
+  },
+  {
+   "id": "g-dev-fb716a83",
+   "split": "dev",
+   "question": "하준이 11월 3일 화요일 오전 10시부터 10시 20분 사이에 온유 병원에서 어디로 옮겨 갔어?",
+   "scenario": "base",
+   "gold": {
+    "key": "move|hajun|2026-11-03T10:00|2026-11-03T10:20|",
+    "kind": "move",
+    "person": "hajun",
+    "starts_at": "2026-11-03T10:00",
+    "ends_at": "2026-11-03T10:20",
+    "place": null,
+    "text": "하준 | 11-03(화) 10:00~10:20 | 온유 병원에서 달맞이 시장(으)로 이동"
+   },
+   "overlaps_other_split": false
+  },
+  {
+   "id": "g-dev-fec2598f",
+   "split": "dev",
+   "question": "11-06(금) 19:35~19:43에 건 님은 별무리 동아리방에서 어느 장소로 이동하셨는지 알려 주시겠어요?",
+   "scenario": "c_shop_family",
+   "gold": {
+    "key": "move|c_geon|2026-11-06T19:35|2026-11-06T19:43|",
+    "kind": "move",
+    "person": "c_geon",
+    "starts_at": "2026-11-06T19:35",
+    "ends_at": "2026-11-06T19:43",
+    "place": null,
+    "text": "건 | 11-06(금) 19:35~19:43 | 별무리 동아리방에서 도윤네 원룸(으)로 이동"
+   },
+   "overlaps_other_split": false
+  },
+  {
+   "id": "g-dev-fee29438",
+   "split": "dev",
+   "question": "11월 5일 목요일에 유나가 하루 동안 들른 곳들을 순서대로 말해줘.",
+   "scenario": "b_shift_family",
+   "gold": {
+    "key": "day|b_yuna|2026-11-05T00:00|2026-11-06T00:00|",
+    "kind": "day",
+    "person": "b_yuna",
+    "starts_at": "2026-11-05T00:00",
+    "ends_at": "2026-11-06T00:00",
+    "place": null,
+    "text": "유나 | 11-05(목) 하루 | 보리내 우리집 → 갈마루 중학교 → 잔물결 도서관 → 보리내 우리집"
+   },
+   "overlaps_other_split": false
+  }
+ ]
+}

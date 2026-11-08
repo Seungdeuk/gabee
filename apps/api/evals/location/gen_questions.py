@@ -97,7 +97,11 @@ def plan(
     for name, c in eligible(kinds):
         out[sc.split_of(c, final_ratio, seed)].append((name, c))
     if limit is not None:
-        out = {k: v[:limit] for k, v in out.items()}
+        # 앞에서 자르면 첫 시나리오·첫 날짜에 쏠린다. 조각 키의 해시 순서로 골라 시나리오·종류·날짜가 고르게 섞이게 한다
+        def order(item: tuple[str, sc.ChunkDraft]) -> str:
+            return hashlib.sha1(f"{seed}|{sc.chunk_key(item[1])}".encode()).hexdigest()
+
+        out = {k: sorted(v, key=order)[:limit] for k, v in out.items()}
     return out
 
 
