@@ -7,6 +7,7 @@ import { needsTesterConsent } from "@/features/consent/consentState";
 import useTotalUnread from "@/features/family-chat/useTotalUnread";
 import { unreadBadgeText } from "@/features/family-chat/listUtils";
 import { useAuth } from "@/shared/auth/AuthProvider";
+import { rememberTab } from "@/shared/navigation/lastTab";
 import { colors, font, fonts } from "@/theme";
 
 // 하단 탭 5개(가계는 돌봄 탭에 합쳤고, 마지막 탭은 마이 페이지). 마이 페이지(계정·가족 그룹·앱 관리)가 마지막 탭이고, 각 화면 위 설정 버튼도 이 탭으로 온다.
@@ -50,6 +51,7 @@ export default function TabLayout() {
         <Tabs.Screen
           key={name}
           name={name}
+          listeners={{ focus: () => rememberTab(name) }} // 알림함에서 뒤로 갈 때 마지막으로 보던 탭으로 돌아가도록 기억한다
           options={{
             title,
             tabBarBadge: name === "family-chat" && unread > 0 ? unreadBadgeText(unread) : undefined,

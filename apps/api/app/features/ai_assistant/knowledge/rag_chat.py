@@ -19,7 +19,7 @@ from app.shared.config import settings
 from app.shared.errors import ApiError
 from app.shared.high_risk_guard import has_high_risk
 from app.shared.llm import client as llm
-from app.shared.llm import transport
+from app.shared.llm import tool_graph, transport
 from app.shared.llm.agent import build_messages
 from app.shared.llm.chat_model import PostChatModel, to_langchain_messages
 
@@ -28,7 +28,7 @@ from .. import (
     limits,  # noqa: F401  (limits: 어시스턴트 호출 한도를 따로 세도록 등록)
     reminders,
 )
-from . import rag_graph, service, tools
+from . import service, tools
 
 # 말투: 믿고 맡길 수 있는 가족 비서처럼(차분하고 정중하되 딱딱하지 않게). 결론부터, 군더더기 없이, 다음 행동 한 가지 제안
 TONE_NOTE = (
@@ -286,7 +286,7 @@ def _handle_calls(
     seen: set[str],
     refs: dict[str, int],
     restore: Callable[[str], str] | None = None,
-) -> rag_graph.ToolRound:
+) -> tool_graph.ToolRound:
     """모델이 부른 도구를 실행하고 출처·제안·확인 카드를 `result` 에 모은다. 직통 응답이 되면 그 글도 함께 돌려준다.
 
     질문·도구 결과는 가리지 않고 그대로 모델에 보낸다(외부 전송은 공지로 처리하기로 한 결정, 2026-11-04). 다만 탭 에이전트에 넘기는
@@ -328,10 +328,10 @@ def _handle_calls(
                 result.sources.append(_source(r, r["ref"]))
         outputs.append((call["id"], json.dumps(data, ensure_ascii=False), err))
     if _direct_reply_ready(calls, result, direct, err):
-        return rag_graph.ToolRound(
+        return tool_graph.ToolRound(
             outputs, _direct_text(direct)
         )  # 에이전트의 답을 그대로(메인 모델 호출 1번 절약)
-    return rag_graph.ToolRound(outputs)
+    return tool_graph.ToolRound(outputs)
 
 
 def _reminder_lines(db: Session, group_id: str, user: User | None) -> str:
@@ -355,7 +355,7 @@ def ask(
     """질문 하나에 답한다. `post` 는 테스트에서 가짜 LLM 을 끼우는 자리다.
 
     `user` 가 있으면 정산·돌봄 탭 에이전트에게 물어볼 수 있다(DB 는 탭 에이전트만 읽는다). 탭 에이전트의 모델 호출도
-    같은 `post` 를 쓰므로 `ask_guarded` 의 관문 한 번에 함께 센다. 도구를 부르며 답하는 반복은 `rag_graph`(랭그래프)가 한다."""
+    같은 `post` 를 쓰므로 `ask_guarded` 의 관문 한 번에 함께 센다. 도구를 부르며 답하는 반복은 `shared/llm/tool_graph`(랭그래프)가 한다."""
     if post is None:
         if not settings.anthropic_api_key:
             return _fallback(db, group_id, question)
@@ -378,7 +378,7 @@ def ask(
             ),
             tools=tools.TOOL_SPECS + (agents.tool_specs() if with_agents else []),
         )
-        run = rag_graph.Run(
+        run = tool_graph.Run(
             model=model,
             handle=lambda calls: _handle_calls(
                 calls,
@@ -395,7 +395,7 @@ def ask(
             ),
             max_steps=MAX_STEPS,
         )
-        rag_graph.run_chat(run, to_langchain_messages(build_messages(question, history)))
+        tool_graph.run_graph(run, to_langchain_messages(build_messages(question, history)))
     except (httpx.HTTPError, ValueError, KeyError):
         return _fallback(db, group_id, question)
     result.answer = run.answer

@@ -1,5 +1,6 @@
 """먼저 챙겨주기: 문서 날짜에서 챙길 일 뽑기, 앱을 열 때 먼저 하는 말, 채팅 답 반영, 켜고 끄기. 가짜 Claude 로 돈다."""
 
+import uuid
 from datetime import UTC, date, datetime, time, timedelta, timezone
 
 import pytest
@@ -66,6 +67,108 @@ def _plans(*plans):
 
 def P(label, day, urgent=False, lead=0, t=""):
     return doc_ai.ReminderPlan(label, day, t, urgent, lead)
+
+
+def _event(db, group, uid, title="치과", day=date(2026, 11, 10), start=time(15, 0), **kw):
+    fields = dict(
+        id=f"e{uuid.uuid4().hex[:12]}",
+        group_id=group["id"],
+        user_id=uid,
+        created_by=uid,
+        title=title,
+        starts_at=datetime.combine(day, start, tzinfo=KST),
+        start_date=day,
+        start_time=start,
+        source="manual",
+        kind=1,
+    )
+    fields.update(kw)
+    ev = Event(**fields)
+    db.add(ev)
+    db.commit()
+    return ev
+
+
+# ---------- 직접 잡은 일정 ----------
+def test_direct_event_is_asked_once_on_the_day_before(clan, monkeypatch):
+    monkeypatch.setattr(settings, "ingest_reminders", True)
+    _, _, group, ids = clan
+    uid = ids["강민훈"]
+    with SessionLocal() as db:
+        _event(db, group, uid)
+        gid = group["id"]
+        assert (
+            reminders.due_nudges(db, gid, uid, now=at("2026-11-08")) == []
+        )  # 이틀 전에는 안 묻는다
+        found = reminders.due_nudges(db, gid, uid, now=at("2026-11-09", 8))
+        assert [n["kind"] for n in found] == ["urgent"]
+        assert found[0]["text"] == "내일(11월 10일) 오후 3시에 ‘치과’가 있어요. 준비는 되셨나요?"
+        assert (
+            reminders.due_nudges(db, gid, uid, now=at("2026-11-09", 20)) == []
+        )  # 같은 날 다시 안 묻는다
+        assert (
+            reminders.due_nudges(db, gid, uid, now=at("2026-11-10", 9)) == []
+        )  # 당일에도 안 묻는다
+        assert (
+            reminders.due_nudges(db, gid, uid, now=at("2026-11-11", 9)) == []
+        )  # 지난 뒤 안 묻는다
+        assert db.scalars(select(DocumentReminder)).one().status == "done"
+
+
+def test_direct_event_skips_all_day_todo_checked_deleted_and_document_events(clan, monkeypatch):
+    monkeypatch.setattr(settings, "ingest_reminders", True)
+    _, _, group, ids = clan
+    uid = ids["강민훈"]
+    with SessionLocal() as db:
+        _event(db, group, uid, "종일", start=time(0, 0), end_time=time(23, 59))
+        _event(db, group, uid, "할 일", kind=2)
+        _event(db, group, uid, "체크함", checked=True)
+        _event(db, group, uid, "지움", deleted_at=datetime.now(UTC))
+        _event(db, group, uid, "문서 카드", source="photo")
+        _event(db, group, ids["강민수"], "다른 사람")
+        assert reminders.due_nudges(db, group["id"], uid, now=at("2026-11-09")) == []
+
+
+def test_direct_event_follows_flag_switch_and_moved_date(clan, monkeypatch):
+    _, _, group, ids = clan
+    uid = ids["강민훈"]
+    gid = group["id"]
+    with SessionLocal() as db:
+        ev = _event(db, group, uid)
+        monkeypatch.setattr(settings, "ingest_reminders", False)
+        assert reminders.due_nudges(db, gid, uid, now=at("2026-11-09")) == []
+        monkeypatch.setattr(settings, "ingest_reminders", True)
+        reminders.set_enabled(db, uid, False)
+        assert reminders.due_nudges(db, gid, uid, now=at("2026-11-09")) == []
+        reminders.set_enabled(db, uid, True)
+        assert len(reminders.due_nudges(db, gid, uid, now=at("2026-11-09"))) == 1
+        ev.start_date = date(2026, 11, 13)  # 날짜를 옮기면 새 전날에 다시 묻는다
+        db.commit()
+        assert len(reminders.due_nudges(db, gid, uid, now=at("2026-11-12"))) == 1
+
+
+def test_direct_event_answer_goes_through_chat_and_document_can_still_adopt(clan, monkeypatch):
+    monkeypatch.setattr(settings, "ingest_reminders", True)
+    _, _, group, ids = clan
+    uid = ids["강민훈"]
+    gid = group["id"]
+    with SessionLocal() as db:
+        ev = _event(db, group, uid)
+        doc = _row(db, group, uid, title="치과 검진", due_date=date(2026, 11, 10))
+        found = reminders.due_nudges(
+            db, gid, uid, now=at("2026-11-09")
+        )  # 문서 줄이 먼저 이어져 두 번 묻지 않는다
+        assert [n["kind"] for n in found] == []
+        assert doc.event_id == ev.id and doc.status == "scheduled"
+
+    with SessionLocal() as db:
+        other = _event(db, group, uid, "미용실")
+        nudge = reminders.due_nudges(db, gid, uid, now=at("2026-11-09", 13))[0]
+        assert {r.id for r in reminders.pending_for_chat(db, gid, uid, now=at("2026-11-09"))} >= {
+            nudge["id"]
+        }
+        assert reminders.resolve(db, gid, uid, nudge["id"], "done", now=at("2026-11-09"))["ok"]
+        assert db.get(Event, other.id).checked
 
 
 # ---------- 뽑기 ----------
@@ -419,7 +522,7 @@ def test_several_nudges_are_said_as_one_tidy_message_and_one_stays_a_sentence(cl
         assert reminders.compose([]) == ""
 
 
-def test_mixed_nudges_put_urgent_first_and_api_returns_the_message(client, clan):
+def test_mixed_nudges_put_urgent_first_and_api_returns_the_message(client, clan, monkeypatch):
     a, _, group, ids = clan
     uid = ids["강민훈"]
     with SessionLocal() as db:
@@ -434,6 +537,8 @@ def test_mixed_nudges_put_urgent_first_and_api_returns_the_message(client, clan)
         msg = reminders.compose(found)
         assert msg.index("곧 다가오는") < msg.index("일정에 넣어 드릴까요?")
         assert "- 남은 시간: 약 21시간" in msg
+    # API 는 실제 시각을 쓰므로, 같은 날 다시 부른 것으로 시각을 고정한다(날짜가 지나면 시험이 깨졌다)
+    monkeypatch.setattr(reminders, "_local", lambda now: at("2026-11-06", 13))
     body = client.post("/ai-assistant/reminders/nudges", headers=a).json()
     assert body["nudges"] == [] and body["message"] == ""  # 이미 말한 것은 다시 주지 않는다
 

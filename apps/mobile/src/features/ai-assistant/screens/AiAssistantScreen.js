@@ -14,6 +14,7 @@ import AnswerView from "../components/AnswerView";
 import AiOffCard from "../components/AiOffCard";
 import ChatInput from "../components/ChatInput";
 import DescribeCard from "../components/DescribeCard";
+import OriginalViewer from "../components/OriginalViewer";
 import SchedulePromptCard from "../components/SchedulePromptCard";
 import DoubtCard from "../components/DoubtCard";
 import ScheduleConfirmCard from "../components/ScheduleConfirmCard";
@@ -34,9 +35,9 @@ import mascot from "../../../../assets/images/gabee-mascot.png";
 /**
  * 홈: AI 채팅. 상태는 빈 화면 → (음성 입력) → 처리 중 → 답변/초안 승인 순으로 바뀐다.
  * 상단 ⋮ 는 기타 화면(가족 그룹·설정)으로 들어간다.
- * emptyAction 은 빈 화면 인사말 아래에 붙는 요소(라우트에서 조립한다).
+ * emptyAction 은 빈 화면 인사말 아래에 붙는 요소, bell 은 상단 맨 오른쪽 알림 종이다(둘 다 라우트에서 조립한다).
  */
-export default function AiAssistantScreen({ onBell, bellBadge, emptyAction }) {
+export default function AiAssistantScreen({ bell, emptyAction }) {
   const { messages, phase, readingSince, confirmDoubts, markAiEnabled, resolveConfirm, saveDescription, skipDescription, acceptSchedulePrompt, skipSchedulePrompt, send, sendPhoto, startListening, stopListening, editDraft, addAssistantMessages, reset, load } = useChat();
   const voice = useVoiceInput({ onEnd: stopListening });
   const toggleMic = async () => {
@@ -54,6 +55,7 @@ export default function AiAssistantScreen({ onBell, bellBadge, emptyAction }) {
   const scope = auth.status === "loading" ? null : auth.user?.id ? `user-${auth.user.id}` : legacyStorageScope();
   const { sessions, currentId, startNew, open, remove } = useSessions({ messages, load, reset, scope });
   const [menuOpen, setMenuOpen] = useState(false);
+  const [photoView, setPhotoView] = useState(null); // 채팅에 올린 사진을 크게 보는 중이면 { title, sources }
   const [reviewCount, setReviewCount] = useState(0); // 확인이 필요한 기록 수(메뉴 점·기록 탭 숫자)
   const [focusRecordId, setFocusRecordId] = useState(null);
 
@@ -83,7 +85,16 @@ export default function AiAssistantScreen({ onBell, bellBadge, emptyAction }) {
   };
 
   const renderItem = ({ item, index }) => {
-    if (item.role === "user") return <UserBubble text={item.text} voice={item.voice} imageUri={item.imageUri} />;
+    if (item.role === "user") {
+      return (
+        <UserBubble
+          text={item.text}
+          voice={item.voice}
+          imageUri={item.imageUri}
+          onPressImage={() => setPhotoView({ title: "올린 사진", sources: [{ uri: item.imageUri }] })}
+        />
+      );
+    }
     if (item.aiOff) return <AiOffCard onEnabled={() => markAiEnabled(item.id)} />;
     const isReport = item.sources.length > 1; // 여러 기록을 모은 답에는 저장·복사 버튼을 붙인다
     return (
@@ -146,7 +157,7 @@ export default function AiAssistantScreen({ onBell, bellBadge, emptyAction }) {
   return (
     <SafeAreaView style={styles.safe} edges={["top"]}>
       <SoftBackdrop />
-      <AppHeader onMenu={() => setMenuOpen(true)} onNew={startNew} menuBadge={reviewCount > 0} onBell={onBell} bellBadge={bellBadge} />
+      <AppHeader onMenu={() => setMenuOpen(true)} onNew={startNew} menuBadge={reviewCount > 0} bell={bell} />
       <Sidebar
         open={menuOpen}
         onClose={() => setMenuOpen(false)}
@@ -239,6 +250,7 @@ export default function AiAssistantScreen({ onBell, bellBadge, emptyAction }) {
           <ChatInput mode={inputMode} voiceText={voice.transcript} onSend={send} onAttach={sendPhoto} onMic={toggleMic} />
         </View>
       </KeyboardAvoidingView>
+      <OriginalViewer state={photoView} onClose={() => setPhotoView(null)} />
     </SafeAreaView>
   );
 }

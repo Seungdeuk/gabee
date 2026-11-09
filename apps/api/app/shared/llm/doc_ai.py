@@ -12,10 +12,12 @@ import copy
 from dataclasses import dataclass, field
 
 import httpx
+from langchain_core.runnables import RunnableLambda
 
 from app.shared.config import settings
 
 from . import transport
+from .no_trace import no_trace
 from .transport import LLMUnavailable
 
 INVISIBLE = "​‌‍⁠﻿"  # 눈에 안 보이는 글자: 번호 규칙을 피해 갈 수 있어 출력에서 지운다
@@ -352,20 +354,37 @@ class ReminderPlan:
     prep: str = ""  # 준비물·제출 서류(쉼표로 이은 목록, 없으면 빈 문자열)
 
 
-def plan_reminders(title: str, text: str, dates: list[str], today: str) -> list[ReminderPlan]:
-    """문서에서 챙길 일을 고른다. 호출이 실패하면 LLMUnavailable 을 올린다(호출한 쪽이 건너뛴다)."""
+def _remind_request(args: dict) -> dict:
+    """1단계(입력 묶기): 문서 글·날짜를 Claude 요청 인자로 묶는다. 모델은 호출 시점의 설정을 쓴다."""
     body = (
-        f"오늘 날짜: {today}\n문서 제목: {title}\n문서에서 찾은 날짜: {', '.join(dates)}\n\n"
-        f"<문서>\n{text}\n</문서>"
+        f"오늘 날짜: {args['today']}\n문서 제목: {args['title']}\n"
+        f"문서에서 찾은 날짜: {', '.join(args['dates'])}\n\n"
+        f"<문서>\n{args['text']}\n</문서>"
     )
-    reply = _call(
-        settings.ingest_mask_model or settings.llm_model,
-        REMIND_SYSTEM,
-        [{"type": "text", "text": body}],
-        REMIND_TOOL,
-        max_tokens=1024,
-        timeout=60.0,
+    return {
+        "model": settings.ingest_mask_model or settings.llm_model,
+        "system": REMIND_SYSTEM,
+        "content": [{"type": "text", "text": body}],
+        "tool": REMIND_TOOL,
+        "max_tokens": 1024,
+        "timeout": 60.0,
+    }
+
+
+def _remind_ask(req: dict) -> dict:
+    """2단계(Claude 호출): `_call` 을 그대로 쓴다(재시도 1회·LLMUnavailable 변환 포함, 체인에서 따로 재시도하지 않는다)."""
+    return _call(
+        req["model"],
+        req["system"],
+        req["content"],
+        req["tool"],
+        max_tokens=req["max_tokens"],
+        timeout=req["timeout"],
     )
+
+
+def _remind_parse(reply: dict) -> list[ReminderPlan]:
+    """3단계(응답 읽기): tool_use 의 reminders 를 ReminderPlan 으로 바꾼다. 이상한 항목은 건너뛴다."""
     data: dict = {}
     for b in reply.get("content", []):
         if b.get("type") == "tool_use":
@@ -389,3 +408,15 @@ def plan_reminders(title: str, text: str, dates: list[str], today: str) -> list[
             )
         )
     return out
+
+
+# 입력 묶기 | Claude 호출 | 응답 읽기. 호출한 스레드에서 동기로 돈다(invoke). 재시도·콜백·추적은 붙이지 않는다.
+REMINDER_CHAIN = (
+    RunnableLambda(_remind_request) | RunnableLambda(_remind_ask) | RunnableLambda(_remind_parse)
+)
+
+
+def plan_reminders(title: str, text: str, dates: list[str], today: str) -> list[ReminderPlan]:
+    """문서에서 챙길 일을 고른다. 호출이 실패하면 LLMUnavailable 을 올린다(호출한 쪽이 건너뛴다)."""
+    with no_trace():  # 추적(LangSmith)은 환경변수와 상관없이 끈다: 문서 글이 외부로 나가면 안 된다
+        return REMINDER_CHAIN.invoke({"title": title, "text": text, "dates": dates, "today": today})

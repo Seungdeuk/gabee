@@ -10,8 +10,10 @@ import { colors, font } from "@/theme";
 /**
  * 지갑 탭: 정산·지출·용돈(엔빵)과 월말 정산 알림.
  * 돌봄(데일리 체크·현황판·위치)은 지웠다.
+ * bell 은 상단 오른쪽 끝 알림 종이다(라우트에서 조립한다).
+ * @param {{ bell?: import("react").ReactNode }} props
  */
-export default function CareScreen() {
+export default function CareScreen({ bell = null }) {
   const [month, setMonth] = useState(currentMonth());
   const [message, setMessage] = useState(null);
   const [refreshKey, setRefreshKey] = useState(0); // 무언가 바뀌면 월말 정산 알림과 정산 화면도 다시 확인한다
@@ -27,7 +29,7 @@ export default function CareScreen() {
   useEffect(() => () => clearTimeout(timer.current), []);
 
   return (
-    <Screen title="지갑">
+    <Screen title="지갑" right={bell}>
       {message ? (
         <View style={[styles.message, message.isError && styles.messageError]} accessibilityLiveRegion="polite" testID="message">
           <Text style={[styles.messageText, message.isError && styles.messageTextError]}>{message.text}</Text>

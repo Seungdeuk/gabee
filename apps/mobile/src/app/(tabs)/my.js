@@ -1,4 +1,5 @@
 import MoreScreen from "@/features/more/screens/MoreScreen";
+import TabBell from "@/features/notifications/components/TabBell";
 import useFamilyState from "@/features/family-group/useFamilyState";
 import { relationText } from "@/features/family-group/relations";
 import { roleLabel } from "@/features/family-group/messages";
@@ -29,6 +30,7 @@ export default function MyRoute() {
       roleText={roleText}
       canEdit={Boolean(group)}
       pendingCount={family.pendingCount ?? 0}
+      bell={<TabBell />}
     />
   );
 }
