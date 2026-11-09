@@ -18593,6 +18593,11 @@
               }
             ],
             "title": "Content Type"
+          },
+          "in_library": {
+            "type": "boolean",
+            "title": "In Library",
+            "default": false
           }
         },
         "type": "object",

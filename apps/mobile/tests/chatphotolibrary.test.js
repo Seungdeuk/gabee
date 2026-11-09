@@ -74,3 +74,13 @@ test("화면 배선: 사진 보기·앨범 뷰어·말풍선·채팅방이 '문�
   const room = src("screens/ChatRoomScreen.js");
   assert.match(room, /canSaveToLibrary\(\{ direct, attachment: item\.message\.attachment \}\) \? savePhotoToLibraryDoc : undefined/);
 });
+
+test("이미 문서함에 있는 사진(in_library)은 사진 보기·앨범 뷰어에서 '문서로 저장' 버튼을 숨긴다", () => {
+  const bubble = src("components/MessageBubble.js");
+  // 한 장짜리: 서버가 in_library 를 알려 주면 버튼 핸들러를 넘기지 않는다
+  assert.match(bubble, /onSaveToLibrary=\{onSaveToLibrary && !attachment\.in_library \? saveLibrary : undefined\}/);
+  // 앨범: 사진마다 inLibrary 를 넘기고, 뷰어는 지금 보는 사진이 문서함에 있으면 버튼을 그리지 않는다
+  assert.match(bubble, /inLibrary: Boolean\(m\.attachment\.in_library\)/);
+  const album = src("components/AlbumViewer.js");
+  assert.match(album, /onSaveToLibrary && !current\.inLibrary \?/);
+});

@@ -93,6 +93,20 @@ def get_by_attachment(db: Session, group_id: str, attachment_id: str) -> Knowled
     )
 
 
+def registered_attachment_ids(db: Session, group_id: str, attachment_ids: list[str]) -> set[str]:
+    """주어진 채팅 첨부 중 이 가족의 기록이 이미 있는 것의 id(한 번의 쿼리)."""
+    if not attachment_ids:
+        return set()
+    return set(
+        db.scalars(
+            select(KnowledgeItem.source_attachment_id).where(
+                KnowledgeItem.group_id == group_id,
+                KnowledgeItem.source_attachment_id.in_(attachment_ids),
+            )
+        )
+    )
+
+
 def get_item(db: Session, group_id: str, item_id: str) -> KnowledgeItem | None:
     return db.scalar(
         select(KnowledgeItem).where(KnowledgeItem.id == item_id, KnowledgeItem.group_id == group_id)

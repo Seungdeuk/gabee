@@ -63,14 +63,30 @@ def document_posted(
 OnPhoto = Callable[[str, str, str, bytes, bool], None]
 # (db, group_id, attachment_id) → 그 채팅 사진이 이미 문서함에 등록돼 있는지
 IsRegistered = Callable[[Session, str, str], bool]
+# (db, group_id, attachment_ids) → 그중 이미 문서함에 등록된 것의 id(메시지 목록용, 한 번의 쿼리)
+RegisteredIds = Callable[[Session, str, list[str]], set[str]]
 _on_photo: OnPhoto | None = None
 _is_registered: IsRegistered | None = None
+_registered_ids: RegisteredIds | None = None
 
 
-def register_photo_handler(on_photo: OnPhoto, is_registered: IsRegistered) -> None:
-    """ai_assistant 가 시작할 때 사진 처리 함수와 "이미 등록했는지" 확인 함수를 등록한다."""
-    global _on_photo, _is_registered
-    _on_photo, _is_registered = on_photo, is_registered
+def register_photo_handler(
+    on_photo: OnPhoto, is_registered: IsRegistered, registered_ids: RegisteredIds | None = None
+) -> None:
+    """ai_assistant 가 시작할 때 사진 처리 함수와 "이미 등록했는지" 확인 함수(한 장·여러 장)를 등록한다."""
+    global _on_photo, _is_registered, _registered_ids
+    _on_photo, _is_registered, _registered_ids = on_photo, is_registered, registered_ids
+
+
+def registered_ids(db: Session, group_id: str, attachment_ids: list[str]) -> set[str]:
+    """채팅 첨부들 중 이미 문서함에 등록된 것의 id. 확인 함수가 없거나 확인하지 못하면 빈 집합(버튼이 그대로 보일 뿐이다)."""
+    if _registered_ids is None or not attachment_ids:
+        return set()
+    try:
+        return _registered_ids(db, group_id, attachment_ids)
+    except Exception as exc:  # noqa: BLE001  메시지 목록을 깨면 안 된다
+        logger.warning("chat library registered ids failed error=%s", type(exc).__name__)
+        return set()
 
 
 def is_registered(db: Session, group_id: str, attachment_id: str) -> bool:

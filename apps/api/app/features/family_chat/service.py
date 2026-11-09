@@ -1,6 +1,7 @@
 from sqlalchemy.orm import Session
 
 from app.features.family_group.models import User
+from app.shared import chat_library
 from app.shared.errors import bad_request, not_found
 
 from . import chat_push
@@ -19,7 +20,7 @@ from .schemas import (
 )
 
 
-def _attachment_out(a: MessageAttachment) -> AttachmentOut:
+def _attachment_out(a: MessageAttachment, in_library: bool = False) -> AttachmentOut:
     if a.kind == "file":
         return AttachmentOut(
             id=a.id,
@@ -38,6 +39,7 @@ def _attachment_out(a: MessageAttachment) -> AttachmentOut:
         height=a.height,
         batch_id=a.batch_id,
         size_bytes=a.size_bytes,
+        in_library=in_library,
     )
 
 
@@ -65,6 +67,7 @@ def message_out(
     attachment: MessageAttachment | None = None,
     reply: ReplyOut | None = None,
     reactions: list[ReactionOut] | None = None,
+    in_library: bool = False,
 ) -> MessageOut:
     deleted = m.deleted_at is not None
     return MessageOut(
@@ -73,7 +76,7 @@ def message_out(
         user_name=user_name,
         text="" if deleted else m.text,
         created_at=m.created_at,
-        attachment=_attachment_out(attachment) if attachment and not deleted else None,
+        attachment=_attachment_out(attachment, in_library) if attachment and not deleted else None,
         is_assistant=m.user_id == ASSISTANT_USER_ID,
         reply_to=None if deleted else reply,  # 지운 메시지는 답장 표시도 내용도 남기지 않는다
         reactions=[] if deleted else (reactions or []),
@@ -97,6 +100,9 @@ def _outs(
     reactions = repo.reaction_summary(
         db, [m.id for m, _ in rows if m.deleted_at is None], viewer_id
     )
+    saved = chat_library.registered_ids(
+        db, room.group_id, [a.id for a in attachments.values() if a.kind == "image"]
+    )
     return [
         message_out(
             m,
@@ -104,6 +110,7 @@ def _outs(
             attachments.get(m.id),
             reply_out(parents[m.reply_to_id]) if m.reply_to_id in parents else None,
             reaction_outs(reactions.get(m.id)),
+            m.id in attachments and attachments[m.id].id in saved,
         )
         for m, name in rows
     ]

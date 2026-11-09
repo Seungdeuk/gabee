@@ -241,7 +241,7 @@ export default function MessageBubble({ message, mine, showName, showTime = true
         <>
           <AlbumGrid album={album} onOpen={setAlbumStart} onLongPress={onActions ? openAlbumMenu : undefined} />
           <AlbumViewer
-            photos={album.map((m) => ({ id: m.attachment.id, url: m.attachment.url }))}
+            photos={album.map((m) => ({ id: m.attachment.id, url: m.attachment.url, inLibrary: Boolean(m.attachment.in_library) }))}
             startIndex={albumStart ?? 0}
             visible={albumStart != null}
             onClose={() => setAlbumStart(null)}
@@ -269,7 +269,7 @@ export default function MessageBubble({ message, mine, showName, showTime = true
             recordSaving={record.saving}
             recordDone={record.done}
             recordNotice={record.notice}
-            onSaveToLibrary={onSaveToLibrary ? saveLibrary : undefined}
+            onSaveToLibrary={onSaveToLibrary && !attachment.in_library ? saveLibrary : undefined}
             librarySaving={library.saving}
             libraryDone={library.done}
             libraryNotice={library.notice}
