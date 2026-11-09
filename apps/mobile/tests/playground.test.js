@@ -452,6 +452,14 @@ test("폭탄 채팅: 말풍선, 문장 끝냄·시간 초과 안내, 응원", ()
   assert.deepEqual(bombChat(null, "me"), []);
 });
 
+test("폭탄 화면 이동: 판이 끝난 방은 결과로 가지만 로비에서는 머문다", () => {
+  const done = { phase: "finished", my_status: "player", result: {} };
+  assert.equal(bombScreen(done), "result");
+  assert.equal(bombScreen(done, "play"), "result");
+  assert.equal(bombScreen(done, "lobby"), "lobby"); // 결과의 닫기로 온 로비
+  assert.equal(bombScreen({ phase: "playing", my_status: "player" }, "lobby"), "play"); // 게임이 시작되면 로비에서도 옮겨 간다
+});
+
 test("폭탄 채팅: 투표 결과 줄과 어라? 칩이 붙을 말", () => {
   const p = (id, name) => ({ id, name });
   const msgs = [

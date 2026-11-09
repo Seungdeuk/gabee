@@ -329,6 +329,7 @@ export function LiveBombResult({ id }) {
     <PlayScreen
       title="결과"
       close
+      onBack={() => router.replace(bombPath("lobby", id))} // 로비에서 한 판 더 하거나 방을 닫는다
       fixed
       footer={
         <>
@@ -336,7 +337,7 @@ export function LiveBombResult({ id }) {
           {!room.is_host && room.phase === "finished" ? <Text style={styles.note}>방장이 한 판 더를 시작하면 이어서 해요</Text> : null}
           <View style={styles.footerRow}>
             <View style={styles.footerCell}>
-              <Button label="닫기" variant="secondary" onPress={() => router.replace("/play")} />
+              <Button label="닫기" variant="secondary" onPress={() => router.replace(bombPath("lobby", id))} />
             </View>
             {canAgain ? (
               <View style={styles.footerCell}>
@@ -376,7 +377,7 @@ export function LiveBombResult({ id }) {
         <View style={styles.mine}>
           <Text style={styles.mineBig}>내가 받은 점수 {result.my_points}점</Text>
           <Text style={styles.mineSub}>
-            참여 +{SCORE.join} 우승하면 +{SCORE.bombWin}
+            {result.maker_paid_before ? `이 방에서는 이미 문제 내기 +${SCORE.make}을 받았어요` : `참여 +${SCORE.join} 우승하면 +${SCORE.bombWin}`}
           </Text>
         </View>
       ) : null}

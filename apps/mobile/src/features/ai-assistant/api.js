@@ -89,6 +89,7 @@ export async function confirmCardAction(card, share, postToRoom = false) {
   if (card.kind !== "proposal") return confirmScheduleAction(card, share, postToRoom);
   if (!isApiConfigured()) return { text: "(임시) 반영했어요." };
   const res = await apiFetch(`/${card.tab}/agent/confirm`, { method: "POST", body: { token: card.token } });
+  if (card.tab === "ai-assistant") return { text: "소통 채팅으로 보냈어요." };
   return { text: res?.summary ? `반영했어요 · ${res.summary}` : "반영했어요." };
 }
 
@@ -203,6 +204,43 @@ export async function openOriginal(id, sourcePath) {
     }
   }
   return { sources: [], message: "이 형식의 파일은 아직 앱에서 열 수 없어요. 읽어 낸 글로 확인해 주세요." };
+}
+
+/**
+ * 가비의 기억: 내가 기억해 달라고 한 내용 목록(최근 순, 본인 것만).
+ * @returns {Promise<{ id: string, text: string, created_at: string }[]>}
+ */
+export async function listMemories() {
+  if (!isApiConfigured()) return [];
+  const res = await apiFetch("/ai-assistant/memories");
+  return res.items ?? [];
+}
+
+/**
+ * 가비의 기억 내용을 고친다. 서버가 빈 글, 긴 글, 같은 내용, 주민번호 같은 값을 거절한다.
+ * @param {string} id
+ * @param {string} text 고친 뒤의 내용
+ * @returns {Promise<{ id: string, text: string, created_at: string }>}
+ */
+export async function updateMemory(id, text) {
+  return apiFetch(`/ai-assistant/memories/${encodeURIComponent(id)}`, { method: "PATCH", body: { text } });
+}
+
+/**
+ * 가비의 기억 하나를 지운다.
+ * @param {string} id
+ * @returns {Promise<void>}
+ */
+export async function deleteMemory(id) {
+  await apiFetch(`/ai-assistant/memories/${encodeURIComponent(id)}`, { method: "DELETE" });
+}
+
+/**
+ * 내 기억을 모두 지운다.
+ * @returns {Promise<void>}
+ */
+export async function deleteAllMemories() {
+  await apiFetch("/ai-assistant/memories", { method: "DELETE" });
 }
 
 /**

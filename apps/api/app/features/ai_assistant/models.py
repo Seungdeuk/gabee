@@ -74,6 +74,21 @@ class DocumentReminder(Base):
     )
 
 
+class AssistantMemory(Base):
+    """가비의 기억: 사용자가 기억해 달라고 한 짧은 사실. 본인에게만 쓰고, 대화 원문은 저장하지 않는다."""
+
+    __tablename__ = "assistant_memories"
+    __table_args__ = (Index("ix_assistant_memories_user_group", "user_id", "group_id"),)
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    group_id: Mapped[str] = mapped_column(String(32))
+    user_id: Mapped[str] = mapped_column(String(32))
+    text: Mapped[str] = mapped_column(String(200))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(UTC)
+    )
+
+
 class ReminderSetting(Base):
     """챙겨주기(문서 날짜 알림)를 사람마다 켜고 끄는 스위치. 줄이 없으면 켜진 것으로 본다."""
 

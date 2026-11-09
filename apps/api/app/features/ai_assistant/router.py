@@ -5,9 +5,11 @@ from sqlalchemy.orm import Session
 
 from app.shared.auth import current_group_id, current_user, ensure_group_member
 from app.shared.db import get_db
-from app.shared.errors import not_found
+from app.shared.errors import bad_request, not_found
+from app.shared.llm import agent_chat
+from app.shared.llm.schemas import AgentConfirmOut
 
-from . import files, library, reminders, repository, service
+from . import files, library, memories, reminders, repository, service, sharing
 from .knowledge.router import router as knowledge_router
 from .models import Photo
 from .schemas import (
@@ -16,11 +18,16 @@ from .schemas import (
     DescriptionIn,
     FileOut,
     FileStatusOut,
+    MemoriesOut,
+    MemoryDeletedOut,
+    MemoryIn,
+    MemoryOut,
     NudgeOut,
     NudgesOut,
     PhotoOut,
     ReminderSettingsIn,
     ReminderSettingsOut,
+    ShareConfirmIn,
 )
 
 router = APIRouter(prefix="/ai-assistant", tags=["ai-assistant"])
@@ -78,6 +85,64 @@ def reminder_nudges(
         nudges=[NudgeOut(**{k: n[k] for k in ("id", "kind", "text")}) for n in found],
         message=reminders.compose(found),
     )
+
+
+@router.post("/agent/confirm", response_model=AgentConfirmOut)
+def confirm_share(
+    body: ShareConfirmIn,
+    user=Depends(current_user),
+    group_id: str = Depends(current_group_id),
+    db: Session = Depends(get_db),
+) -> AgentConfirmOut:
+    """사용자가 확인 카드를 눌렀을 때 대화 내용을 소통 채팅으로 보낸다. 토큰은 이 사용자·이 가족만, 한 번만 쓸 수 있다."""
+    return agent_chat.confirm(db, group_id, user, body, sharing.TAB, sharing.execute)
+
+
+@router.get("/memories", response_model=MemoriesOut)
+def list_memories(
+    user=Depends(current_user),
+    group_id: str = Depends(current_group_id),
+    db: Session = Depends(get_db),
+) -> MemoriesOut:
+    """가비의 기억: 내가 기억해 달라고 한 것 목록(본인 것만)."""
+    rows = memories.list_for(db, group_id, user.id)
+    return MemoriesOut(items=[MemoryOut.model_validate(r) for r in rows])
+
+
+@router.delete("/memories", response_model=MemoryDeletedOut)
+def forget_all_memories(
+    user=Depends(current_user),
+    group_id: str = Depends(current_group_id),
+    db: Session = Depends(get_db),
+) -> MemoryDeletedOut:
+    return MemoryDeletedOut(deleted=memories.forget_all(db, group_id, user.id))
+
+
+@router.patch("/memories/{memory_id}", response_model=MemoryOut)
+def update_memory(
+    memory_id: str,
+    body: MemoryIn,
+    user=Depends(current_user),
+    group_id: str = Depends(current_group_id),
+    db: Session = Depends(get_db),
+) -> MemoryOut:
+    """내 기억의 내용을 고친다."""
+    try:
+        row = memories.update(db, group_id, user.id, memory_id, body.text)
+    except ValueError as e:
+        raise bad_request("invalid_memory", str(e)) from None
+    return MemoryOut.model_validate(row)
+
+
+@router.delete("/memories/{memory_id}", response_model=MemoryDeletedOut)
+def forget_memory(
+    memory_id: str,
+    user=Depends(current_user),
+    group_id: str = Depends(current_group_id),
+    db: Session = Depends(get_db),
+) -> MemoryDeletedOut:
+    memories.forget(db, group_id, user.id, memory_id)
+    return MemoryDeletedOut(deleted=1)
 
 
 @router.get("/reminders/settings", response_model=ReminderSettingsOut)

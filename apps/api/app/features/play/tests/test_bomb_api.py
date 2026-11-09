@@ -688,6 +688,22 @@ def test_unfair_vote_still_available_after_others_keep_playing(client, family, c
     assert out["chain"] == 6  # 문장이 이어졌으니 엄마가·시장에서·사과를·샀다·누가·어제
 
 
+def test_result_tells_host_the_make_bonus_was_paid_in_an_earlier_round(client, family, clock):
+    a, b, rid, _ = two_room(client, family, clock, life=1)
+    clock.at(
+        10.5
+    )  # 지민(방장)이 시간 초과로 탈락, 수진 우승. 첫 판 끝에 방장이 문제 내기 +20을 받는다
+    first = state(client, a, rid)["result"]
+    assert first["round_no"] == 1 and first["my_points"] == 20 and not first["maker_paid_before"]
+    start(client, a, rid, life=1, sec=10)  # 한 판 더
+    clock.at(25)
+    second_host = state(client, a, rid)["result"]
+    assert second_host["round_no"] == 2 and second_host["my_points"] == 0
+    assert second_host["maker_paid_before"]  # 이 방에서는 이미 받았다
+    second_guest = state(client, b, rid)["result"]
+    assert not second_guest["maker_paid_before"]  # 손님에게는 해당 없음
+
+
 def test_unfair_vote_when_only_a_life_was_lost(client, family, clock):
     a, c, b, rid = three_room(client, family, clock, life=2)
     for who, word in ((a, "엄마가"), (c, "시장에서"), (b, "사과를")):

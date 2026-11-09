@@ -345,10 +345,12 @@ export function zoomBoxStyle({ x, y, zoom }) {
 
 /**
  * 폭탄방 상태에 따라 지금 보여 줄 화면. 모든 폭탄 화면이 상태를 받을 때마다 이 값과 자기 화면을 비교해서 옮겨 간다.
+ * from 은 지금 보고 있는 화면이다("lobby" 이고 판이 끝난 방이면 로비에 머문다).
  * @param {{ phase: "lobby" | "playing" | "finished" | "closed", my_status: "none" | "player" | "out" | "spectator", result?: object | null }} room
  * @returns {"lobby" | "play" | "spectate" | "result"}
  */
-export function bombScreen(room) {
+export function bombScreen(room, from = null) {
+  if (from === "lobby" && room.phase === "finished") return "lobby"; // 결과에서 닫기를 눌러 온 로비: 판이 끝난 방을 닫거나 한 판 더 하는 곳이라 결과로 되돌리지 않는다
   if (room.phase === "playing") return room.my_status === "player" ? "play" : room.my_status === "none" ? "lobby" : "spectate";
   if (room.phase === "finished" || (room.phase === "closed" && room.result)) return "result";
   return "lobby";

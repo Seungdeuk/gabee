@@ -14,13 +14,14 @@ export const SHORTCUTS = [
 ];
 
 /**
- * 마이 페이지 목록 7줄(위에서 아래 순서, section 별로 묶여 보인다). 규칙은 SHORTCUTS 와 같다. subtitle 은 화면에는 보이지 않고 접근성 읽기에만 쓴다.
+ * 마이 페이지 목록 8줄(위에서 아래 순서, section 별로 묶여 보인다). 규칙은 SHORTCUTS 와 같다. subtitle 은 화면에는 보이지 않고 접근성 읽기에만 쓴다.
  * @type {{ key: string, icon: string, title: string, subtitle: string, route?: string, soon?: boolean }[]}
  */
 export const MENU = [
   { key: "family", section: "service", icon: "people-outline", title: "우리 가족", subtitle: "구성원 · 역할 · 내 프로필", route: "/family" },
   { key: "docs", section: "service", icon: "location-outline", title: "가족 위치 확인", subtitle: "가족 위치 공유", soon: true },
   { key: "ai", section: "service", icon: "sparkles-outline", title: "가비 AI 이용 안내", subtitle: "사용 방법 · 개인정보 처리", route: "/ai-guide" },
+  { key: "memory", section: "service", icon: "bookmark-outline", title: "가비의 기억", subtitle: "기억해 달라고 한 내용 보기 · 지우기", route: "/memories" },
   { key: "account", section: "support", icon: "lock-closed-outline", title: "계정 및 보안", subtitle: "비밀번호 · 로그인 · 계정", route: "/account-security" },
   { key: "notice", section: "support", icon: "megaphone-outline", title: "공지사항", subtitle: "서비스 소식 · 업데이트", route: "/notices" },
   { key: "help", section: "support", icon: "help-circle-outline", title: "고객센터", subtitle: "FAQ · 문의 · 오류 신고", route: "/support" },

@@ -69,7 +69,7 @@ export function buildShareText(items, selectedIds) {
     .join("\n");
 }
 
-export const PROPOSAL_TABS = { billing: "정산", care: "돌봄" };
+export const PROPOSAL_TABS = { billing: "정산", care: "돌봄", "ai-assistant": "가비" };
 
 /**
  * 정산·돌봄 에이전트의 쓰기 제안(proposals)을 카드로 바꾼다. 모르는 탭이나 토큰이 없는 제안은 버린다(누르면 실행되는 것만 보인다).
@@ -84,7 +84,7 @@ export function mapProposals(proposals) {
       kind: "proposal",
       action: "propose",
       tab: p.tab,
-      title: `${PROPOSAL_TABS[p.tab]} 에이전트의 제안`,
+      title: p.tab === "ai-assistant" ? "가족에게 전달하기" : `${PROPOSAL_TABS[p.tab]} 에이전트의 제안`,
       lines: [String(p.summary ?? "")].filter(Boolean),
       sharedWith: [],
       token: p.token,

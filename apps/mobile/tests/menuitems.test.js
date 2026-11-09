@@ -6,9 +6,9 @@ import { MENU, MENU_SECTIONS, SHORTCUTS, itemAction, menuSections, profileSubtit
 
 const byKey = (list, key) => list.find((i) => i.key === key);
 
-test("바로가기는 4칸, 목록은 7줄이고 key 가 겹치지 않는다", () => {
+test("바로가기는 4칸, 목록은 8줄이고 key 가 겹치지 않는다", () => {
   assert.equal(SHORTCUTS.length, 4);
-  assert.equal(MENU.length, 7);
+  assert.equal(MENU.length, 8);
   const keys = [...SHORTCUTS, ...MENU].map((i) => i.key);
   assert.equal(new Set(keys).size, keys.length);
 });
@@ -20,7 +20,7 @@ test("항목 제목 순서", () => {
   );
   assert.deepEqual(
     MENU.map((i) => i.title),
-    ["우리 가족", "가족 위치 확인", "가비 AI 이용 안내", "계정 및 보안", "공지사항", "고객센터", "서비스 정보"],
+    ["우리 가족", "가족 위치 확인", "가비 AI 이용 안내", "가비의 기억", "계정 및 보안", "공지사항", "고객센터", "서비스 정보"],
   );
 });
 
@@ -57,11 +57,11 @@ test("프로필 둘째 줄 문구", () => {
   assert.equal(profileSubtitle(null, undefined), "가족 그룹에 참여해 보세요");
 });
 
-test("목록은 가족 및 AI 서비스 3줄, 계정 및 고객지원 4줄로 묶인다", () => {
+test("목록은 가족 및 AI 서비스 4줄, 계정 및 고객지원 4줄로 묶인다", () => {
   const sections = menuSections(MENU);
   assert.deepEqual(sections.map((x) => x.title), ["가족 및 AI 서비스", "계정 및 고객지원"]);
   assert.deepEqual(sections.map((x) => x.items.map((i) => i.title)), [
-    ["우리 가족", "가족 위치 확인", "가비 AI 이용 안내"],
+    ["우리 가족", "가족 위치 확인", "가비 AI 이용 안내", "가비의 기억"],
     ["계정 및 보안", "공지사항", "고객센터", "서비스 정보"],
   ]);
   // 모든 항목이 정의된 묶음에 들어간다
