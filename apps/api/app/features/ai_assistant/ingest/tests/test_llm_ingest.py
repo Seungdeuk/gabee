@@ -319,3 +319,7 @@ def test_without_family_members_no_name_waits_for_the_user(claude):
     claude.items = [item("강민혼", "PERSON")]
     masked, counts, _ = llm_ingest.mask("보호자 강민혼")
     assert masked == "보호자 [이름]" and counts == {"person": 1}
+
+
+def test_upload_ocr_uses_claude_by_default():
+    assert type(settings).model_fields["ingest_llm_ocr"].default is True
