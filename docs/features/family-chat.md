@@ -584,3 +584,7 @@
 - 앱: 가족 전체방에서 문서를 처음 올리기 전에 "가족 문서함에 자동으로 모여요" 안내를 한 번 보인다(`libraryNotice.js`, `AsyncStorage` 키 `gabee.library.notice.v1`, 1:1 방은 보이지 않음).
 - DB: `knowledge_items.source_attachment_id` 추가(Alembic, `docs/contracts/db.md`).
 - 시험: `ai_assistant/tests/test_chat_library.py`(14개), 앱 `tests/librarynotice.test.js`.
+
+## 묶음 사진의 안 읽은 수 (2026-11-09)
+- 같은 묶음(`batch_id`)으로 올린 사진은 안 읽은 수에서 **1건**으로 센다(`repository._unread_unit`: 묶음 번호가 있으면 그 번호, 없으면 메시지 id). 채팅 화면이 묶음을 한 덩어리로 보여 주는데 방 목록 숫자가 5장이면 5로 보이던 문제를 고쳤다. 가족 전체방·1:1 방·전체 안 읽은 수(`GET /family-chat/unread`)가 모두 같다.
+- 시험: `family_chat/tests/test_photo_batch_unread.py`.

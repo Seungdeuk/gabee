@@ -1,6 +1,6 @@
 from datetime import UTC, datetime
 
-from sqlalchemy import and_, case, delete, func, or_, select, update
+from sqlalchemy import String, and_, case, cast, delete, func, or_, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.exc import IntegrityError
@@ -391,11 +391,20 @@ def read_states(db: Session, room: ChatRoom) -> list[tuple[str, int]]:
     return [(uid, last or 0) for uid, last in rows]
 
 
+def _unread_unit():
+    """안 읽은 수를 세는 단위: 같은 묶음(batch_id)으로 올린 사진은 한 건, 그 밖의 메시지는 한 건씩.
+    채팅 화면이 묶음 사진을 한 덩어리로 보여 주므로 5장 묶음이 "안 읽은 5건"으로 보이지 않게 한다."""
+    return func.coalesce(MessageAttachment.batch_id, cast(Message.id, String))
+
+
 def count_unread(db: Session, room: ChatRoom, user_id: str, last_read: int) -> int:
-    """last_read 이후 다른 사람이 보낸 메시지 수(UNREAD_CAP 에서 자른다)."""
+    """last_read 이후 다른 사람이 보낸 메시지 수(같은 묶음의 사진은 1건, UNREAD_CAP 에서 자른다)."""
     capped = (
-        select(Message.id)
+        select(_unread_unit().label("unit"))
+        .select_from(Message)
+        .outerjoin(MessageAttachment, MessageAttachment.message_id == Message.id)
         .where(room_messages(room), Message.id > last_read, Message.user_id != user_id)
+        .distinct()
         .limit(UNREAD_CAP)
         .subquery()
     )
@@ -426,7 +435,8 @@ def rooms_summary(
         last_by_id = {m.room_id: (m, name) for m, name in rows}
     unread = dict(
         db.execute(
-            select(Message.room_id, func.count(Message.id))
+            select(Message.room_id, func.count(_unread_unit().distinct()))
+            .outerjoin(MessageAttachment, MessageAttachment.message_id == Message.id)
             .outerjoin(
                 ChatRoomRead,
                 (ChatRoomRead.room_id == Message.room_id) & (ChatRoomRead.user_id == user_id),
