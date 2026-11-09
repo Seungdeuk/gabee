@@ -6,7 +6,7 @@
 - 차례: 내 차례에 한 단어나 짧은 구(10자)를 이어 말한다. 지금까지 이어 말한 문장 전체를 Kiwi 로 판정해서 문장이 끝났으면 생명 -1,
   제한 시간을 넘기면 생명 -1(시간 초과). 생명을 잃으면 문장은 새로 시작한다. 생명이 0이 되면 탈락이고 마지막 1명이 이긴다.
 - 시간 초과는 별도 배치 없이 방 상태를 조회하거나 말할 때 계산해서 기록한다(마감 방식은 다른 놀이와 같다).
-- 점수: 판마다 참여한 사람 +10, 우승 +30.
+- 점수: 판마다 참여한 사람 +10, 우승 +30. 방장은 참여 점수 없이 방마다 한 번 문제 내기 +20(하루 한도 안에서).
 - 관전 응원은 서버 메모리에만 둔다(저장하지 않음). 한 사람이 5초에 한 번만 보낼 수 있다(난타 방지).
 """
 
@@ -33,11 +33,12 @@ from .bomb_schemas import (
     PlayBombStateOut,
     PlayBombTurnOut,
 )
-from .constants import POINT_BOMB_WIN, POINT_JOIN
+from .constants import DAILY_MAKE_LIMIT, POINT_BOMB_WIN, POINT_JOIN, POINT_MAKE
 from .models import (
     GAME_BOMB,
     REASON_BOMB_WIN,
     REASON_JOIN,
+    REASON_MAKE,
     PlayBombPlayer,
     PlayBombRound,
     PlayBombTurn,
@@ -171,7 +172,12 @@ def _finish(
     with _cheer_lock:
         _cheer_books.pop(item.id, None)  # 응원은 저장하지 않는다: 판이 끝나면 버린다
     item.close_at = when + timedelta(hours=AFTER_HOURS)
-    rows = [(pid, REASON_JOIN, POINT_JOIN) for pid in g.order]
+    # 방장은 참여 점수 대신 방마다 한 번 "문제 내기" +20 을 받는다(하루 한도 안에서). 참여 횟수는 세도록 0점 줄을 남긴다.
+    rows = [(pid, REASON_JOIN, 0 if pid == item.maker_id else POINT_JOIN) for pid in g.order]
+    if item.maker_id in g.order and not repository.score_exists(db, item.id, REASON_MAKE):
+        rank = repository.maker_daily_rank(db, item)
+        if rank is not None and rank <= DAILY_MAKE_LIMIT:
+            rows.append((item.maker_id, REASON_MAKE, POINT_MAKE))
     if winner:
         rows.append((winner, REASON_BOMB_WIN, POINT_BOMB_WIN))
     repository.add(
@@ -512,14 +518,16 @@ def _result(
     first_out = sorted(out_at, key=lambda pid: out_at[pid])  # 먼저 탈락한 순서
     ranking = []
     ordered = ([winner] if winner else []) + losers
+    make_paid = repository.score_in_round_exists(db, item.id, REASON_MAKE, rnd.round_no)
     for i, pid in enumerate(ordered, start=1):
+        # 방장: 참여 점수 없음, 이 판에서 문제 내기 +20 을 받았으면 그 점수
+        points = (POINT_MAKE if make_paid else 0) if pid == item.maker_id else POINT_JOIN
         if pid == winner:
             sub = f"생명 {g.lives.get(pid, 0)}개 · 끝까지 살아남음"
-            points = POINT_JOIN + POINT_BOMB_WIN
+            points += POINT_BOMB_WIN
         else:
             n = first_out.index(pid) + 1 if pid in first_out else len(g.order)
             sub = f"{n}번째로 탈락" if pid in out_at else "게임이 끝나 마무리"
-            points = POINT_JOIN
         ranking.append(
             PlayBombRankOut(player=_person(by_id.get(pid)), rank=i, sub=sub, points=points)
         )

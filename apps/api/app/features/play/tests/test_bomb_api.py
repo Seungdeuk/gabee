@@ -264,18 +264,18 @@ def test_elimination_ends_round_winner_and_scores(client, family, clock):
     res = out["result"]
     assert res["winner"]["name"] == "지민" and res["round_no"] == 1
     assert [(r["player"]["name"], r["rank"], r["points"]) for r in res["ranking"]] == [
-        ("지민", 1, 40),
+        ("지민", 1, 50),  # 방장: 참여 점수 없이 문제 내기 20 + 우승 30
         ("수진", 2, 10),
     ]
     assert res["ranking"][1]["sub"] == "1번째로 탈락"
     assert res["longest_len"] == 1 and res["is_record"] and res["prev_record"] is None
     assert res["my_points"] == 10  # 진 사람(수진)이 본 것
-    assert state(client, a, room_id)["result"]["my_points"] == 40  # 이긴 사람(지민)이 본 것
-    assert scores(room_id) == [(1, 10, 1), (1, 10, 1), (4, 30, 1)]
+    assert state(client, a, room_id)["result"]["my_points"] == 50  # 이긴 사람(방장 지민)이 본 것
+    assert scores(room_id) == [(1, 0, 1), (1, 10, 1), (3, 20, 1), (4, 30, 1)]  # 방장 참여 0점 줄, 수진 참여 10, 방장 문제 내기 20, 우승 30
     # 같은 판은 다시 정산하지 않는다
     state(client, a, room_id)
     state(client, b, room_id)
-    assert len(scores(room_id)) == 3
+    assert len(scores(room_id)) == 4
     # 이긴 사람의 순위 점수: 우승 30, 참여 10
     ranking = client.get("/play/ranking?period=all", headers=a).json()["rows"]
     by_name = {r["player"]["name"]: r for r in ranking}
@@ -304,7 +304,7 @@ def test_nobody_polling_still_fills_all_missed_turns(client, family, clock):
     out = state(client, a, room_id)
     assert out["phase"] == "finished" and out["result"]["winner"]["name"] == "수진"
     assert [m["kind"] for m in out["messages"]] == ["timeout"]
-    assert scores(room_id) == [(1, 10, 1), (1, 10, 1), (4, 30, 1)]
+    assert scores(room_id) == [(1, 0, 1), (1, 10, 1), (3, 20, 1), (4, 30, 1)]
 
 
 def test_say_after_timeout_is_rejected_and_timeout_is_kept(client, family, clock):
@@ -371,7 +371,7 @@ def test_leaving_during_game_eliminates_and_may_end_it(client, family, clock):
     out = client.post(f"{BASE}/{room_id}/leave", headers=b).json()
     assert out["my_status"] == "none"
     assert out["phase"] == "finished" and out["result"]["winner"]["name"] == "지민"
-    assert scores(room_id) == [(1, 10, 1), (1, 10, 1), (4, 30, 1)]
+    assert scores(room_id) == [(1, 0, 1), (1, 10, 1), (3, 20, 1), (4, 30, 1)]
 
 
 def test_play_again_and_family_record(client, family, clock):
@@ -393,7 +393,16 @@ def test_play_again_and_family_record(client, family, clock):
     assert (
         not out["result"]["is_record"] and out["result"]["prev_record"] == 4
     )  # 우리 가족 신기록은 그대로
-    assert len(scores(room_id)) == 6  # 판마다 참여 2줄 + 우승 1줄
+    # 1판: 참여 2줄(방장 0점) + 방장 문제 내기 + 우승, 2판: 참여 2줄(방장 0점) + 우승. 방장의 문제 내기 20은 방마다 한 번
+    assert scores(room_id) == [
+        (1, 0, 1),
+        (1, 0, 2),
+        (1, 10, 1),
+        (1, 10, 2),
+        (3, 20, 1),
+        (4, 30, 1),
+        (4, 30, 2),
+    ]
 
 
 def test_game_cap_two_hours_ends_without_winner(client, family, clock):
@@ -402,7 +411,7 @@ def test_game_cap_two_hours_ends_without_winner(client, family, clock):
     out = state(client, a, room_id)
     assert out["phase"] == "finished" or out["phase"] == "closed"
     assert out["result"]["winner"] is None
-    assert [s[0] for s in scores(room_id)] == [1, 1]  # 우승 점수 없이 참여만
+    assert [s[0] for s in scores(room_id)] == [1, 1, 3]  # 우승 점수 없이 참여 둘과 방장 문제 내기만
 
 
 # ---------- 관전 응원 ----------
@@ -499,3 +508,13 @@ def test_room_model_row(client, family, clock):
     with SessionLocal() as db:
         item = db.get(PlayItem, room["id"])
         assert item.game == 4 and item.player_ids == []
+
+
+def test_started_bomb_room_counts_in_daily_make_quota(client, family, clock):
+    a, b, _ = family
+    room = open_room(client, a)
+    assert client.get("/play/quota", headers=a).json()["used"] == 0  # 판을 시작하기 전에는 세지 않는다
+    join(client, b, room["id"])
+    start(client, a, room["id"])
+    assert client.get("/play/quota", headers=a).json() == {"limit": 3, "used": 1, "left": 2}
+    assert client.get("/play/quota", headers=b).json()["used"] == 0  # 방장만 센다
