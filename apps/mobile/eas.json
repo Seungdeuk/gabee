@@ -22,7 +22,7 @@
     "beta-apk": {
       "distribution": "internal",
       "android": { "buildType": "apk" },
-      "env": { "EXPO_PUBLIC_API_URL": "http://192.168.0.15:8000" }
+      "env": { "EXPO_PUBLIC_API_URL": "http://100.127.251.73:8000" }
     },
     "production": {
       "environment": "production",
