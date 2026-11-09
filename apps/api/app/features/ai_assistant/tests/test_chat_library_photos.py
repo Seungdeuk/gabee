@@ -8,6 +8,7 @@ from PIL import Image
 from sqlalchemy import select
 
 from app.features.ai_assistant import files, library
+from app.features.ai_assistant.ingest import converters
 from app.features.ai_assistant.ingest.converters import OcrLine
 from app.features.ai_assistant.knowledge.models import KnowledgeItem
 from app.features.ai_assistant.models import Photo
@@ -16,7 +17,7 @@ from app.shared.config import settings
 from app.shared.db import SessionLocal
 from app.shared.llm import doc_ai
 from app.shared.llm.transport import LLMUnavailable
-from tests.helpers import join_family, signup  # noqa: F401  (family 픽스처가 쓴다)
+from tests.helpers import allow_ai, join_family, signup  # noqa: F401  (family 픽스처가 쓴다)
 
 NOTICE_LINES = [
     "해솔초등학교 가정통신문",
@@ -57,8 +58,11 @@ def _isolated(monkeypatch, tmp_path):
     monkeypatch.setattr(settings, "data_dir", str(tmp_path))
     file_service.upload_limiter._failures.clear()
     photo_service.upload_limiter._failures.clear()
+    photo_service.library_limiter._failures.clear()
     monkeypatch.setattr(library, "_submit", lambda fn, *args: fn(*args))
     library._photo_counts.clear()
+    library._photo_pending.clear()
+    library._photo_inflight.clear()
     old = files.processors
     yield
     files.processors = old
@@ -68,12 +72,14 @@ def _use_ocr(ocr):
     files.processors = files.Processors(ocr=ocr)
 
 
-def _send_photo(client, headers, room_id=None):
-    out = io.BytesIO()
-    Image.new("RGB", (320, 240), (235, 235, 235)).save(out, format="JPEG")
+def _send_photo(client, headers, room_id=None, data=None):
+    if data is None:
+        out = io.BytesIO()
+        Image.new("RGB", (320, 240), (235, 235, 235)).save(out, format="JPEG")
+        data = out.getvalue()
     r = client.post(
         "/family-chat/photos",
-        files={"file": ("a.jpg", out.getvalue(), "image/jpeg")},
+        files={"file": ("a.jpg", data, "image/jpeg")},
         data={"room_id": room_id} if room_id else None,
         headers=headers,
     )
@@ -162,9 +168,10 @@ def test_deleting_the_message_removes_the_registered_photo(client, family):
 
 
 @pytest.fixture
-def judge(monkeypatch):
-    """Claude 판별을 켜고 답을 정해 둔다. 몇 번 불렸는지 센다."""
+def judge(client, family, monkeypatch):
+    """Claude 판별을 켜고(가족 AI 동의도 켠다) 답을 정해 둔다. 몇 번 불렸는지 센다."""
     monkeypatch.setattr(settings, "photo_judge_llm", True)
+    allow_ai(client, family[0], monkeypatch)
 
     class Judge:
         calls = 0
@@ -305,3 +312,146 @@ def test_saving_an_unknown_photo_or_as_an_outsider_is_refused(client, family):
     outsider = signup(client, "남")
     # 가족이 없는 사용자는 기존 규칙(current_group_id)대로 거절된다: 사진이 있는지도 알려주지 않는다
     assert _save(client, outsider, msg["attachment"]["id"]).status_code in (400, 403, 404)
+
+
+# ---------- 리뷰 반영: 운영 기본 OCR, 위치 정보, AI 동의, 중복·상한 ----------
+
+
+def _jpeg_with_metadata() -> bytes:
+    img = Image.new("RGB", (320, 240), (235, 235, 235))
+    exif = img.getexif()
+    exif[0x010F] = "TestCam"  # 제조사
+    exif[0x8825] = {1: "N", 2: (37.0, 33.0, 59.0)}  # GPS
+    out = io.BytesIO()
+    img.save(out, format="JPEG", exif=exif, comment=b"secret-comment")
+    return out.getvalue()
+
+
+def test_the_default_ocr_is_used_when_the_server_has_no_ocr_configured(client, family, monkeypatch):
+    """운영 서버는 files.processors.ocr 가 None 이다: 판별도 기본 OCR 을 써야 하고, 안 쓰면 늘 애매함이라 자동 등록이 영영 안 된다."""
+    a, _, group = family
+    files.processors = files.Processors()  # ocr=None
+    monkeypatch.setattr(converters, "default_ocr", lambda: ScriptedOcr(NOTICE_LINES))
+    _send_photo(client, a)
+    assert len(_items(group["id"])) == 1
+
+
+def test_a_failed_judge_never_sends_the_photo_to_claude(client, family, judge):
+    a, _, group = family
+
+    class BrokenOcr:
+        def read(self, image):
+            raise RuntimeError("model missing")
+
+    _use_ocr(BrokenOcr())
+    _send_photo(client, a)
+    assert judge.calls == 0 and _items(group["id"]) == []  # 읽지 못한 사진은 외부로 나가지 않는다
+
+
+def test_the_library_original_has_no_location_or_comment_metadata(client, family):
+    a, b, group = family
+    _use_ocr(ScriptedOcr(NOTICE_LINES))
+    msg = _send_photo(client, a, data=_jpeg_with_metadata())
+    items = _items(group["id"])
+    assert len(items) == 1
+    r = client.get(
+        f"/ai-assistant/files/{items[0].id}/original", headers=b
+    )  # 가족 누구나 내려받는다
+    assert r.status_code == 200, r.text
+    with Image.open(io.BytesIO(r.content)) as stored:
+        exif = stored.getexif()
+        assert (
+            0x8825 not in exif and 0x010F not in exif
+        )  # 촬영 위치·기기 정보가 문서함에 남지 않는다
+        assert not stored.info.get("comment")
+    assert msg["attachment"]["id"] == items[0].source_attachment_id
+
+
+def test_without_the_family_ai_consent_claude_never_sees_the_photo(client, family, monkeypatch):
+    a, _, group = family
+    monkeypatch.setattr(settings, "photo_judge_llm", True)  # 가족 AI 동의는 켜지 않았다
+
+    def boom(jpeg):
+        raise AssertionError("AI 동의를 켜지 않은 가족의 사진을 외부 AI 로 보내면 안 된다")
+
+    monkeypatch.setattr(doc_ai, "classify_photo", boom)
+    _use_ocr(ScriptedOcr(NOTICE_LINES))
+    _send_photo(client, a)
+    assert len(_items(group["id"])) == 1  # OCR 이 문서라고 한 사진은 로컬 판별만으로 등록
+    _use_ocr(ScriptedOcr(["큐드럼 뮤직동호회 회원을 모집합니다 문의 전화 010 3454 3193"] * 3))
+    _send_photo(client, a)
+    assert len(_items(group["id"])) == 1  # 애매한 사진은 Claude 없이는 등록하지 않는다
+
+
+def test_claude_says_document_but_the_full_read_finds_a_picture_so_it_is_dropped(
+    client, family, judge
+):
+    a, _, group = family
+    _use_ocr(ScriptedOcr(NOTICE_LINES, ["간판"]))
+    _send_photo(client, a)
+    assert judge.calls == 1 and _items(group["id"]) == []
+
+
+def test_saving_a_sensitive_photo_by_hand_registers_nothing(client, family):
+    a, _, group = family
+    _use_ocr(ScriptedOcr(PRESCRIPTION_LINES))
+    msg = _send_photo(client, a)
+    assert _save(client, a, msg["attachment"]["id"]).status_code == 200
+    assert _items(group["id"]) == []
+    with SessionLocal() as db:
+        assert (
+            db.scalars(select(Photo)).all() == []
+        )  # 민감 문서는 직접 저장해도 문서함에 넣지 않는다
+
+
+def test_a_second_save_while_the_first_is_still_running_is_ignored(client, family, monkeypatch):
+    a, _, group = family
+    queued = []
+    monkeypatch.setattr(library, "_submit", lambda fn, *args: queued.append((fn, args)))
+    _use_ocr(ScriptedOcr([]))
+    msg = _send_photo(client, a)  # 자동 판별 작업 1개가 대기한다
+    att = msg["attachment"]["id"]
+    assert _save(client, a, att).json() == {"status": "queued"}
+    assert _save(client, a, att).json() == {
+        "status": "queued"
+    }  # 진행 중인 같은 요청은 한 번만 처리한다
+    assert len(queued) == 2  # 자동 1 + 직접 저장 1
+    for fn, args in queued:
+        fn(*args)
+    assert len(_items(group["id"])) == 1
+
+
+def test_saving_is_rate_limited_per_user(client, family, monkeypatch):
+    a, _, _ = family
+    monkeypatch.setattr(photo_service, "LIBRARY_SAVE_LIMIT", 2)
+    _use_ocr(ScriptedOcr([]))
+    msg = _send_photo(client, a)
+    att = msg["attachment"]["id"]
+    assert _save(client, a, att).status_code == 200
+    assert _save(client, a, att).status_code == 200
+    r = _save(client, a, att)
+    assert r.status_code == 429 and r.headers.get("Retry-After")
+
+
+def test_one_familys_backlog_does_not_block_another_family(monkeypatch):
+    queued = []
+    monkeypatch.setattr(library, "_submit", lambda fn, *args: queued.append((fn, args)))
+    monkeypatch.setattr(library, "PHOTO_QUEUE_LIMIT", 1)
+    library._on_photo("g1", "u1", "a1", b"x", False)
+    library._on_photo("g1", "u1", "a2", b"x", False)  # 같은 가족의 두 번째는 대기열이 차서 건너뛴다
+    library._on_photo("g2", "u2", "a3", b"x", False)  # 다른 가족은 영향이 없다
+    assert len(queued) == 2
+
+
+def test_a_failed_submit_gives_the_queue_slot_back(monkeypatch):
+    monkeypatch.setattr(library, "PHOTO_QUEUE_LIMIT", 1)
+
+    def boom(fn, *args):
+        raise RuntimeError("executor shut down")
+
+    monkeypatch.setattr(library, "_submit", boom)
+    library._on_photo("g1", "u1", "a1", b"x", False)
+    queued = []
+    monkeypatch.setattr(library, "_submit", lambda fn, *args: queued.append(fn))
+    library._on_photo("g1", "u1", "a2", b"x", False)
+    assert len(queued) == 1  # 실패한 자리가 영영 차 있지 않다

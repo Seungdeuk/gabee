@@ -8,7 +8,7 @@ import IconButton from "@/shared/components/IconButton";
 import { colors, font, radius, spacing } from "@/theme";
 
 import { PHOTO_SAVE_LABEL } from "../fileUtils";
-import { LIBRARY_BUTTON_LABEL, LIBRARY_SAVING_LABEL } from "../saveToLibrary";
+import { LIBRARY_BUTTON_LABEL, LIBRARY_DONE_LABEL, LIBRARY_SAVING_LABEL } from "../saveToLibrary";
 import { RECORD_BUTTON_LABEL } from "../saveToRecord";
 
 /**
@@ -94,7 +94,7 @@ export default function AlbumViewer({ photos, startIndex = 0, visible, onClose, 
                   style={({ pressed }) => [styles.button, (pressed || library.saving || library.done) && styles.pressed]}
                 >
                   <Ionicons name={library.done ? "checkmark-circle-outline" : "document-text-outline"} size={18} color={colors.text} />
-                  <Text style={styles.buttonText}>{library.saving ? LIBRARY_SAVING_LABEL : library.done ? "저장했어요" : LIBRARY_BUTTON_LABEL}</Text>
+                  <Text style={styles.buttonText}>{library.saving ? LIBRARY_SAVING_LABEL : library.done ? LIBRARY_DONE_LABEL : LIBRARY_BUTTON_LABEL}</Text>
                 </Pressable>
               ) : null}
             </View>

@@ -76,3 +76,30 @@ def test_an_ocr_failure_is_unsure_not_an_error():
             raise RuntimeError("model missing")
 
     assert photo_judge.judge(_jpeg(), Broken()).kind == photo_judge.UNSURE
+
+
+def test_the_jpeg_sent_to_claude_has_no_exif_location_or_comment():
+    img = Image.new("RGB", (800, 600), (240, 240, 240))
+    exif = img.getexif()
+    exif[0x010F] = "TestCam"
+    exif[0x8825] = {1: "N", 2: (37.0, 33.0, 59.0)}
+    src = io.BytesIO()
+    img.save(src, format="JPEG", exif=exif, comment=b"secret-comment")
+    sent = photo_judge.to_judge_jpeg(src.getvalue())
+    with Image.open(io.BytesIO(sent)) as out:
+        assert max(out.size) <= photo_judge.READ_SIDE_PX
+        assert 0x8825 not in out.getexif() and 0x010F not in out.getexif()
+        assert not out.info.get("comment")
+
+
+def test_a_failed_read_is_marked_failed_so_it_is_never_sent_outside():
+    class Broken:
+        def read(self, image):
+            raise RuntimeError("model missing")
+
+    verdict = photo_judge.judge(_jpeg(), Broken())
+    assert verdict.kind == photo_judge.UNSURE and verdict.failed is True
+    assert photo_judge.judge(b"not an image", LinesOcr([])).failed is True
+    assert (
+        photo_judge.judge(_jpeg(), LinesOcr(_lines(3, 40))).failed is False
+    )  # 읽었지만 애매한 것은 실패가 아니다

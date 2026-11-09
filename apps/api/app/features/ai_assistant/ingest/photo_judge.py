@@ -38,28 +38,33 @@ class Verdict:
     kind: str  # DOCUMENT | PHOTO | UNSURE
     chars: int
     lines: int
+    failed: bool = False  # 열 수 없거나 읽기에 실패해 판별하지 못했다(애매함과 달리 외부로 보내 확인하지 않는다)
+
+
+def _small_image(data: bytes) -> Image.Image:
+    """긴 변 READ_SIDE_PX 이하로 줄인 RGB 사진. 큰 JPEG 는 줄여서 디코딩하고(draft), EXIF 회전을 반영한 뒤 메타데이터(EXIF·위치·주석)는 모두 버린다."""
+    with Image.open(io.BytesIO(data)) as opened:
+        opened.draft("RGB", (READ_SIDE_PX, READ_SIDE_PX))
+        image = ImageOps.exif_transpose(opened).convert("RGB")
+    image.thumbnail((READ_SIDE_PX, READ_SIDE_PX), Image.Resampling.LANCZOS)
+    image.info = {}  # JPEG 주석(COM)·PNG 텍스트는 저장할 때 다시 쓰이므로 비운다
+    return image
 
 
 def to_judge_jpeg(data: bytes) -> bytes:
-    """Claude 판별에 보낼 사진: EXIF 회전을 반영하고 긴 변 1024px 이하 JPEG 로 줄인다(위치 같은 메타데이터는 옮기지 않는다)."""
-    with Image.open(io.BytesIO(data)) as opened:
-        image = ImageOps.exif_transpose(opened).convert("RGB")
-    image.thumbnail((READ_SIDE_PX, READ_SIDE_PX), Image.Resampling.LANCZOS)
+    """Claude 판별에 보낼 사진: EXIF 회전을 반영하고 긴 변 1024px 이하 JPEG 로 줄인다(위치·주석 같은 메타데이터는 옮기지 않는다)."""
     out = io.BytesIO()
-    image.save(out, "JPEG", quality=80)
+    _small_image(data).save(out, "JPEG", quality=80)
     return out.getvalue()
 
 
 def judge(data: bytes, ocr: Ocr) -> Verdict:
-    """사진 바이트를 문서/일반 사진/애매함으로 가른다. 열 수 없거나 읽기에 실패하면 애매함(자동으로 하지 않는다)."""
+    """사진 바이트를 문서/일반 사진/애매함으로 가른다. 열 수 없거나 읽기에 실패하면 failed 인 애매함(자동으로 하지 않고 외부로도 보내지 않는다)."""
     try:
-        with Image.open(io.BytesIO(data)) as opened:
-            image = ImageOps.exif_transpose(opened).convert("RGB")
-        image.thumbnail((READ_SIDE_PX, READ_SIDE_PX), Image.Resampling.LANCZOS)
-        lines = [ln for ln in ocr.read(image) if ln.confidence >= MIN_CONFIDENCE]
+        lines = [ln for ln in ocr.read(_small_image(data)) if ln.confidence >= MIN_CONFIDENCE]
     except Exception as exc:  # noqa: BLE001  내용이 로그에 남지 않게 종류만 적는다
         logger.warning("photo judge failed error=%s", type(exc).__name__)
-        return Verdict(UNSURE, 0, 0)
+        return Verdict(UNSURE, 0, 0, failed=True)
     chars = sum(len(_MEANINGFUL.findall(ln.text)) for ln in lines)
     if chars >= DOCUMENT_MIN_CHARS and len(lines) >= DOCUMENT_MIN_LINES:
         return Verdict(DOCUMENT, chars, len(lines))

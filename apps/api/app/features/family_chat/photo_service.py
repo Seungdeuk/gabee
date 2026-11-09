@@ -43,12 +43,16 @@ THUMB_QUALITY = 75
 MAX_CONCURRENT = 2  # 동시에 처리하는 업로드 수
 UPLOAD_LIMIT = 20  # 사용자당 분당 업로드 시도 수
 UPLOAD_WINDOW_SECONDS = 60
+LIBRARY_SAVE_LIMIT = (
+    10  # 사용자당 분당 "문서로 저장" 요청 수(직접 저장은 하루 상한을 건너뛰므로 요청 횟수로 막는다)
+)
 CACHE_CONTROL = "private, max-age=31536000, immutable"  # 사진은 바뀌지 않는다(새 사진은 새 id)
 ALLOWED_FORMATS = {"JPEG", "PNG", "WEBP"}
 _SAFE_ID = re.compile(r"^[A-Za-z0-9]{1,32}$")
 
 _slots = threading.BoundedSemaphore(MAX_CONCURRENT)
 upload_limiter = FailureLimiter()  # 프로세스 메모리(shared/rate_limit.py 의 한계 참고)
+library_limiter = FailureLimiter()
 
 
 def _photo_dir() -> Path:
@@ -211,13 +215,29 @@ def send_photo(
     if (
         room.kind == FAMILY
     ):  # 가족 전체방 사진만: 문서를 찍은 사진이면 가족 문서함에 자동 등록한다(판별·읽기는 뒤에서, 실패해도 전송은 그대로)
-        chat_library.photo_posted(group_id, user.id, attachment.id, data)
+        # 업로드 원본(EXIF·촬영 위치가 남아 있다)이 아니라 서버가 다시 만든 사본(메타데이터 없음, 긴 변 1600px)을 넘긴다: 문서함 원본으로 가족에게 내려가기 때문
+        chat_library.photo_posted(group_id, user.id, attachment.id, full)
     return service.message_out(message, user.name, attachment)
+
+
+def _check_save_rate(user_id: str) -> None:
+    key = f"chatphotolib:{user_id}"
+    wait = library_limiter.retry_after(key, LIBRARY_SAVE_LIMIT, UPLOAD_WINDOW_SECONDS)
+    if wait:
+        raise ApiError(
+            429,
+            "too_many_saves",
+            "문서함 저장을 너무 자주 눌렀어요. 잠시 후 다시 해 주세요",
+            headers={"Retry-After": str(wait)},
+        )
+    library_limiter.record(key)
 
 
 def save_to_library(db: Session, user: User, group_id: str, attachment_id: str) -> str:
     """사진을 가족 공유 문서함에 직접 저장한다(판별·하루 상한을 건너뛴다). "queued" 또는 "already".
-    방에 들어갈 수 없거나 없는 사진은 404, 가족 전체방이 아닌(1:1) 방의 사진은 409."""
+    방에 들어갈 수 없거나 없는 사진은 404, 가족 전체방이 아닌(1:1) 방의 사진은 409, 너무 자주 누르면 429.
+    "queued" 는 저장을 시작했다는 뜻이다: 읽어 보니 민감 문서(처방전·신분증 등)이거나 읽지 못하면 문서함에 넣지 않는다."""
+    _check_save_rate(user.id)
     data, _ = photo_for_viewer(db, user, group_id, attachment_id, False)  # 못 보는 사진은 404
     attachment = repo.get_attachment(db, attachment_id)
     room = service.resolve_room(db, user, group_id, attachment.room_id)

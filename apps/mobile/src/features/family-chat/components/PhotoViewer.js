@@ -7,7 +7,7 @@ import IconButton from "@/shared/components/IconButton";
 import { colors, font, radius, spacing } from "@/theme";
 
 import { PHOTO_SAVE_LABEL } from "../fileUtils";
-import { LIBRARY_BUTTON_LABEL, LIBRARY_SAVING_LABEL } from "../saveToLibrary";
+import { LIBRARY_BUTTON_LABEL, LIBRARY_DONE_LABEL, LIBRARY_SAVING_LABEL } from "../saveToLibrary";
 import { RECORD_BUTTON_LABEL } from "../saveToRecord";
 
 /**
@@ -67,7 +67,7 @@ export default function PhotoViewer({ path, visible, onClose, onSaveToRecord, re
                   testID="chat-photo-save-library"
                 >
                   <Ionicons name={libraryDone ? "checkmark-circle-outline" : "document-text-outline"} size={18} color={colors.text} />
-                  <Text style={styles.recordText}>{librarySaving ? LIBRARY_SAVING_LABEL : libraryDone ? "저장했어요" : LIBRARY_BUTTON_LABEL}</Text>
+                  <Text style={styles.recordText}>{librarySaving ? LIBRARY_SAVING_LABEL : libraryDone ? LIBRARY_DONE_LABEL : LIBRARY_BUTTON_LABEL}</Text>
                 </Pressable>
               ) : null}
             </View>

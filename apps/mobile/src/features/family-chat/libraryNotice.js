@@ -1,7 +1,7 @@
 // 가족 전체방에 올린 문서(와 문서를 찍은 사진)가 가족 공유 문서함에 자동 등록된다는 처음 한 번 안내(순수 함수 + 문구). 저장소는 주입해서 시험한다(앱은 AsyncStorage 를 넘긴다).
 
 /** 안내를 이미 봤다고 이 폰에 기억하는 키. */
-export const LIBRARY_NOTICE_KEY = "gabee.library.notice.v1";
+export const LIBRARY_NOTICE_KEY = "gabee.library.notice.v2";
 
 export const LIBRARY_NOTICE_TITLE = "가족 문서함에 자동으로 모여요";
 export const LIBRARY_NOTICE_BODY =

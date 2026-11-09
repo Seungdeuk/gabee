@@ -25,6 +25,7 @@ test("처음에는 안내를 보이고, 확인한 뒤에는 다시 보이지 않
   assert.equal(await shouldShowLibraryNotice(storage), true);
   await markLibraryNoticeSeen(storage);
   assert.equal(storage.data.get(LIBRARY_NOTICE_KEY), "1");
+  assert.equal(LIBRARY_NOTICE_KEY, "gabee.library.notice.v2"); // 사진도 자동 등록되도록 범위가 넓어졌으니, 이전 안내를 본 사람에게도 다시 보인다
   assert.equal(await shouldShowLibraryNotice(storage), false);
 });
 
