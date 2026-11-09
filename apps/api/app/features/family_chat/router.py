@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Response
 from sqlalchemy.orm import Session
 
 from app.features.family_group.models import User
@@ -70,6 +70,19 @@ def set_room_mute(
 ) -> MuteOut:
     """이 방의 알림을 나만 끄거나 켠다(멱등). 설정만 저장한다."""
     return service.set_room_muted(db, user, group_id, room_id, body.muted)
+
+
+@router.post("/rooms/{room_id}/leave", status_code=204)
+def leave_room(
+    room_id: str,
+    user: User = Depends(current_user),
+    group_id: str = Depends(current_group_id),
+    db: Session = Depends(get_db),
+) -> Response:
+    """1:1 방을 나간다(204). 내 목록에서만 사라지고 상대는 기록을 그대로 갖는다(상대 방은 읽기 전용, 새 메시지는 409 peer_left_room).
+    둘 다 나가면 대화·사진·문서 파일이 모두 지워진다(되돌릴 수 없다). 가족 전체방은 400 cannot_leave_family_room, 내 방이 아니거나 이미 나갔으면 404."""
+    service.leave_room(db, user, group_id, room_id)
+    return Response(status_code=204)
 
 
 @router.post("/rooms/direct", response_model=RoomOut)

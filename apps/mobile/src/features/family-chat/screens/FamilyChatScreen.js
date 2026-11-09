@@ -5,10 +5,11 @@ import { SafeAreaView } from "react-native-safe-area-context";
 
 import Button from "@/shared/components/Button";
 import Card from "@/shared/components/Card";
+import ConfirmDialog from "@/shared/components/ConfirmDialog";
 import SectionTitle from "@/shared/components/SectionTitle";
 import { colors, font, radius, spacing } from "@/theme";
 
-import { getRoomInfo, listRooms, openDirectRoom, setRoomMuted } from "../api";
+import { getRoomInfo, leaveRoom, listRooms, openDirectRoom, setRoomMuted } from "../api";
 import { isNoGroup, previewText, roomErrorMessage } from "../chatUtils";
 import ChatListHeader from "../components/ChatListHeader";
 import ContentSearchSection from "../components/ContentSearchSection";
@@ -147,7 +148,27 @@ export default function FamilyChatScreen({ playEntry = null, bell = null }) {
   const members = state.members;
   const shown = useMemo(() => state.rooms.filter((room) => matchesQuery(room.name, query)), [query, state.rooms]);
 
-  const openRoom = (room) => router.push(room.kind === "direct" ? { pathname: "/chat-room", params: { roomId: room.id, peer: room.peerId ?? "" } } : "/chat-room");
+  const openRoom = (room) => router.push(room.kind === "direct" ? { pathname: "/chat-room", params: { roomId: room.id, peer: room.peerId ?? "", peerLeft: room.peerLeft ? "1" : "" } } : "/chat-room");
+
+  const [leaving, setLeaving] = useState(null); // 나가기 확인창에 띄운 1:1 방(없으면 null)
+  const leavingRef = useRef(false);
+  const askLeave = (room) => setLeaving(room);
+  /** 확인창에서 "나가기": 서버에 나가기를 요청하고 성공하면 목록에서 지운다(실패하면 안내만 보이고 방은 그대로). */
+  const confirmLeave = async () => {
+    const room = leaving;
+    setLeaving(null);
+    if (!room || leavingRef.current) return;
+    leavingRef.current = true;
+    setMuteNotice("");
+    try {
+      await leaveRoom(room.id);
+      setState((prev) => ({ ...prev, rooms: prev.rooms.filter((r) => r.id !== room.id) }));
+    } catch (e) {
+      setMuteNotice(roomErrorMessage(e));
+    } finally {
+      leavingRef.current = false;
+    }
+  };
 
   const startDirect = async (userId) => {
     if (openingRef.current) return;
@@ -216,7 +237,14 @@ export default function FamilyChatScreen({ playEntry = null, bell = null }) {
           ) : (
             <Card tone="white" style={styles.roomCard}>
               {shown.map((room, i) => (
-                <SwipeableRoomRow key={room.id} room={room} divider={i < shown.length - 1} onPress={() => openRoom(room)} onToggleMute={() => toggleMute(room)} />
+                <SwipeableRoomRow
+                  key={room.id}
+                  room={room}
+                  divider={i < shown.length - 1}
+                  onPress={() => openRoom(room)}
+                  onToggleMute={() => toggleMute(room)}
+                  onLeave={room.kind === "direct" ? () => askLeave(room) : undefined}
+                />
               ))}
             </Card>
           )}
@@ -226,6 +254,15 @@ export default function FamilyChatScreen({ playEntry = null, bell = null }) {
           <ContentSearchSection search={search} roomLabel={(item) => searchRoomLabel(item, state.rooms, members)} onPick={(item) => router.push(focusRoute(item))} />
         ) : null}
       </ScrollView>
+      <ConfirmDialog
+        visible={leaving != null}
+        title="채팅방을 나갈까요?"
+        message="나가면 이 대화가 내 목록에서 사라지고 되돌릴 수 없어요. 상대방은 지난 대화를 그대로 볼 수 있고, 상대방도 나가면 대화가 모두 삭제돼요."
+        cancelLabel="취소"
+        confirmLabel="나가기"
+        onCancel={() => setLeaving(null)}
+        onConfirm={confirmLeave}
+      />
     </SafeAreaView>
   );
 }

@@ -16,6 +16,8 @@ const BY_CODE = {
   llm_failed: "AI가 결과를 만들지 못했어요. 잠시 후 다시 시도해 주세요",
   no_group: "가족 그룹에 먼저 참여해 주세요",
   peer_left: "상대가 가족을 나가서 이 대화에는 AI를 쓸 수 없어요",
+  peer_left_room: "상대방이 나가서 메시지를 보낼 수 없어요",
+  cannot_leave_family_room: "가족 전체방은 나갈 수 없어요",
   token_required: "로그인이 필요해요",
   token_invalid: "로그인이 필요해요",
   session_expired: "로그인이 만료됐어요. 다시 로그인해 주세요",

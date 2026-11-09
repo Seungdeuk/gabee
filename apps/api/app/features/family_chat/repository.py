@@ -11,6 +11,8 @@ from app.features.family_group.models import GroupMember, User
 from .models import (
     DIRECT,
     FAMILY,
+    ChatPinHide,
+    ChatPinnedMessage,
     ChatRoom,
     ChatRoomMember,
     ChatRoomMute,
@@ -592,3 +594,39 @@ def attachments_for(db: Session, message_ids: list[int]) -> dict[int, MessageAtt
 
 def get_attachment(db: Session, attachment_id: str) -> MessageAttachment | None:
     return db.get(MessageAttachment, attachment_id)
+
+
+def lock_room(db: Session, room_id: str) -> None:
+    """방 줄을 잠근다(PostgreSQL 은 FOR UPDATE, SQLite 는 무시). 두 사람이 동시에 나가도 마지막으로 나가는 쪽이 방을 지우게 한다."""
+    db.scalars(select(ChatRoom.id).where(ChatRoom.id == room_id).with_for_update()).first()
+
+
+def count_room_members(db: Session, room_id: str) -> int:
+    """1:1 방에 남은 참여자 수."""
+    return (
+        db.scalar(
+            select(func.count())
+            .select_from(ChatRoomMember)
+            .where(ChatRoomMember.room_id == room_id)
+        )
+        or 0
+    )
+
+
+def remove_room_member(db: Session, room_id: str, user_id: str) -> None:
+    """1:1 방에서 내 참여와 내 방별 기록(공지 숨김·읽음 표시·알림 끄기)을 지운다(커밋은 부르는 쪽). 방과 상대의 기록은 그대로다."""
+    pin_ids = select(ChatPinnedMessage.id).where(ChatPinnedMessage.room_id == room_id)
+    statements = (
+        delete(ChatPinHide).where(ChatPinHide.user_id == user_id, ChatPinHide.pin_id.in_(pin_ids)),
+        delete(ChatRoomRead).where(
+            ChatRoomRead.room_id == room_id, ChatRoomRead.user_id == user_id
+        ),
+        delete(ChatRoomMute).where(
+            ChatRoomMute.room_id == room_id, ChatRoomMute.user_id == user_id
+        ),
+        delete(ChatRoomMember).where(
+            ChatRoomMember.room_id == room_id, ChatRoomMember.user_id == user_id
+        ),
+    )
+    for statement in statements:
+        db.execute(statement.execution_options(synchronize_session=False))

@@ -125,6 +125,14 @@ export const openDirectRoom = (userId) => apiFetch("/family-chat/rooms/direct", 
 export const setRoomMuted = (roomId, muted) => apiFetch(`/family-chat/rooms/${encodeURIComponent(roomId)}/mute`, { method: "PUT", body: { muted: Boolean(muted) } });
 
 /**
+ * 1:1 방을 나간다(POST /family-chat/rooms/{id}/leave, 204). 내 목록에서만 사라지고 상대는 기록을 그대로 갖는다(상대 방은 읽기 전용). 둘 다 나가면 대화가 지워진다.
+ * 가족 전체방은 400 cannot_leave_family_room, 내 방이 아니거나 이미 나갔으면 404.
+ * @param {string} roomId 나갈 1:1 방 id
+ * @returns {Promise<null>}
+ */
+export const leaveRoom = (roomId) => apiFetch(`/family-chat/rooms/${encodeURIComponent(roomId)}/leave`, { method: "POST" });
+
+/**
  * 채팅 메시지 조회. 결과는 항상 오래된 순이다. 대화 글자는 쿼리에 넣지 않는다(숫자 범위만).
  * - latest: 가장 최근 limit 개 / beforeId: 그 id 보다 오래된 것 중 가장 최근 limit 개 / afterId: 그 id 뒤의 새 메시지
  * - aroundId: 그 메시지를 가운데로 앞뒤 메시지(검색 결과로 이동할 때). 서버 계약은 별도 PR 의 `around_id` 이고, 다른 범위 옵션과 함께 쓰지 않아 aroundId 가 있으면 나머지 범위는 무시한다.
