@@ -2,10 +2,10 @@
 
 from datetime import datetime
 
-from sqlalchemy import delete, or_, select, update
+from sqlalchemy import delete, func, or_, select, update
 from sqlalchemy.orm import Session
 
-from .models import GroupMember, MemberNickname, User
+from .models import Group, GroupMember, MemberNickname, User
 
 
 def get_membership(db: Session, group_id: str, user_id: str) -> GroupMember | None:
@@ -119,5 +119,31 @@ def clear_active_group(db: Session, user_id: str, group_id: str) -> None:
         update(User)
         .where(User.id == user_id, User.active_group_id == group_id)
         .values(active_group_id=fallback)
+        .execution_options(synchronize_session=False)
+    )
+
+
+def lock_group(db: Session, group_id: str) -> None:
+    """groups 줄을 잠근다(PostgreSQL 은 FOR UPDATE, SQLite 는 무시). 구성원 추가는 외래 키 검사로 이 줄을 공유 잠금하므로,
+    잠근 뒤에 센 구성원 수와 가입이 겹치지 않는다(가입은 잠금이 풀리길 기다리거나 가족이 지워진 뒤 실패한다)."""
+    db.scalars(select(Group.id).where(Group.id == group_id).with_for_update()).first()
+
+
+def count_members(db: Session, group_id: str) -> int:
+    """이 그룹의 구성원 수."""
+    return (
+        db.scalar(
+            select(func.count()).select_from(GroupMember).where(GroupMember.group_id == group_id)
+        )
+        or 0
+    )
+
+
+def clear_active_group_for_all(db: Session, group_id: str) -> None:
+    """이 그룹을 활성 그룹으로 쓰던 사용자의 활성 그룹을 비운다(그룹을 지우기 전에, 외래 키 때문에)."""
+    db.execute(
+        update(User)
+        .where(User.active_group_id == group_id)
+        .values(active_group_id=None)
         .execution_options(synchronize_session=False)
     )

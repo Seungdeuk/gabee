@@ -89,7 +89,7 @@ export default function FamilyScreen() {
    * 가족을 나간다. 성공하면 가족 정보를 다시 읽어 "가족 없음" 화면으로 바뀌고, 안내 문구가 거기서 보인다.
    * @returns {Promise<void>}
    */
-  const leave = () => run(leaveFamily, "가족을 나갔어요. 다시 들어오려면 초대 코드가 필요해요");
+  const leave = () => run(leaveFamily, group.my_role === "owner" && group.members.length <= 1 ? "가족을 삭제하고 나갔어요" : "가족을 나갔어요. 다시 들어오려면 초대 코드가 필요해요");
   return (
     <FamilyFrame title="우리 가족">
       <Notice tone="error" text={error} />
@@ -116,7 +116,7 @@ export default function FamilyScreen() {
         />
       ) : null}
 
-      <LeaveFamilySection isOwner={group.my_role === "owner"} onLeave={leave} busy={busy} />
+      <LeaveFamilySection isOwner={group.my_role === "owner"} memberCount={group.members.length} onLeave={leave} busy={busy} />
     </FamilyFrame>
   );
 }

@@ -10,6 +10,7 @@ from datetime import UTC, datetime
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.shared import group_purge
 from app.shared.errors import ApiError, bad_request, not_found
 
 from . import profile_repository as prepo
@@ -87,7 +88,13 @@ def leave_group(db: Session, user: User, group_id: str) -> None:
         if me is None:
             raise ApiError(403, "not_member", "이 가족 그룹의 구성원이 아니에요")
         if me.role == "owner":
-            raise bad_request("cannot_leave_owner", "소유자는 가족을 나갈 수 없어요.")
+            prepo.lock_group(db, group_id)  # 동시에 들어오는 가입과 겹치지 않게 먼저 잠근다
+            if prepo.count_members(db, group_id) > 1:
+                raise bad_request("cannot_leave_owner", "소유자는 가족을 나갈 수 없어요.")
+            _leave_as_last_member(
+                db, user, group_id
+            )  # 혼자 남은 소유자: 가족과 데이터를 모두 지운다
+            return
         try:
             prepo.delete_member_nicknames_of(db, group_id, user.id)
             if not prepo.delete_member_if_not_owner(db, group_id, user.id):
@@ -104,6 +111,19 @@ def leave_group(db: Session, user: User, group_id: str) -> None:
             db.rollback()
             if attempt == 1:
                 raise
+
+
+def _leave_as_last_member(db: Session, user: User, group_id: str) -> None:
+    """구성원이 나 혼자인 가족을 나간다: 대기 중인 가입 요청·초대 코드·가족의 모든 데이터를 한 트랜잭션에서 지운다(되돌릴 수 없다).
+    실패하면 롤백해 아무것도 지우지 않는다. 디스크 파일은 커밋 뒤에 지운다."""
+    try:
+        prepo.clear_active_group_for_all(db, group_id)
+        files = group_purge.purge_group(db, group_id)
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+    group_purge.purge_files(files)
 
 
 def list_my_nicknames(db: Session, user: User, group_id: str):

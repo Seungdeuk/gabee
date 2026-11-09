@@ -1,4 +1,4 @@
-"""가족 나가기(POST /family-group/groups/me/leave): 구성원·관리자는 나갈 수 있고 소유자는 못 나간다."""
+"""가족 나가기(POST /family-group/groups/me/leave): 구성원·관리자는 나갈 수 있고, 소유자는 다른 구성원이 있으면 못 나간다."""
 
 from concurrent.futures import ThreadPoolExecutor
 
@@ -84,18 +84,14 @@ def test_admin_leaves(client):
     assert jimin_id not in roles(group["id"])
 
 
-def test_owner_cannot_leave_even_alone(client):
+def test_owner_cannot_leave_while_others_are_members(client):
     owner, owner_id, _, _, group = family(client)
     r = client.post(LEAVE, headers=owner)
     assert r.status_code == 400 and r.json()["code"] == "cannot_leave_owner"
     assert roles(group["id"])[owner_id] == "owner"
     assert client.get(f"{P}/groups/me", headers=owner).status_code == 200
 
-    alone, alone_id = account(client, "solo_choi", "혼자")
-    g2 = create_group(client, alone, "혼자 가족")
-    r = client.post(LEAVE, headers=alone)
-    assert r.status_code == 400 and r.json()["code"] == "cannot_leave_owner"
-    assert roles(g2["id"]) == {alone_id: "owner"}
+    # 혼자인 소유자는 나갈 수 있다(가족 데이터가 모두 지워진다: test_leave_empty_group.py)
 
 
 def test_user_without_group_gets_no_group(client):
