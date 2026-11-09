@@ -503,3 +503,67 @@ def test_a_passbook_copy_is_still_not_registered(client, family):
     assert _items(group["id"]) == []
     assert _save(client, a, msg["attachment"]["id"]).status_code == 200  # 직접 저장해도 같다
     assert _items(group["id"]) == []
+
+
+PASSBOOK_TITLE_ALONE_LINES = [
+    "KB국민은행",
+    "통장사본",  # 줄 하나에 혼자 있으면 가리기가 이름으로 보고 가려서 낱말이 사라진다
+    "예금주 김가비",
+    "계좌번호 123456-12-345678",
+    "신규일 2024년 3월 2일 개설",
+    "거래점 서울지점 보관용 사본입니다",
+    "본인 확인 후 사용하세요 감사합니다",
+    "국민은행 서울지점 발급",
+]
+TRANSFER_PROOF_LINES = [
+    "이체확인증",
+    "출금계좌 국민은행 123456-12-345678 예금주 김가비",
+    "입금계좌 우리은행 1002-345-678901",
+    "받는분 이철수",
+    "이체금액 1,500,000원 이체일시 2026년 11월 3일",
+    "메모 3월 월세 입금 완료되었습니다",
+    "본 확인증은 이체 사실을 증명합니다",
+    "국민은행 모바일뱅킹에서 발급",
+]
+TRANSACTION_LIST_LINES = [
+    "입출금 거래내역 조회",
+    "우리은행 1002-123-456789 예금주 김가비",
+    "2026.11.01 이철수 입금 300,000",
+    "2026.11.03 관리비 출금 120,000",
+    "2026.11.05 월급 입금 2,500,000",
+    "2026.11.08 카드대금 출금 450,000",
+    "조회 기간 2026년 11월 1일부터 11월 8일",
+    "잔액 2,345,000원 조회 완료",
+]
+
+
+@pytest.mark.parametrize(
+    "lines", [PASSBOOK_TITLE_ALONE_LINES, TRANSFER_PROOF_LINES, TRANSACTION_LIST_LINES]
+)
+def test_personal_bank_documents_are_never_registered_automatically_or_by_hand(
+    client, family, lines
+):
+    a, _, group = family
+    _use_ocr(ScriptedOcr(lines))
+    msg = _send_photo(client, a)
+    assert _items(group["id"]) == []
+    assert _save(client, a, msg["attachment"]["id"]).status_code == 200
+    assert _items(group["id"]) == []
+
+
+def test_editing_or_confirming_a_registered_fee_notice_keeps_it_a_normal_document(client, family):
+    a, _, group = family
+    _use_ocr(ScriptedOcr(FEE_NOTICE_LINES))
+    _send_photo(client, a)
+    item = _items(group["id"])[0]
+    assert item.sensitivity == "normal"
+    r = client.patch(
+        f"/ai-assistant/knowledge/items/{item.id}", json={"title": "과회비 안내"}, headers=a
+    )
+    assert r.status_code == 200, r.text
+    assert (
+        _items(group["id"])[0].sensitivity == "normal"
+    )  # 확인·수정 뒤 다시 민감 문서로 바뀌지 않는다
+    r = client.patch(f"/ai-assistant/knowledge/items/{item.id}", json={}, headers=a)  # "확인했다"
+    assert r.status_code == 200, r.text
+    assert _items(group["id"])[0].sensitivity == "normal"

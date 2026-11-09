@@ -139,11 +139,9 @@ def _drop_chat_upload(group_id: str, photo_id: str, data: bytes) -> None:
 
 
 def _only_a_bank_account(result) -> bool:
-    """통장류(`bankbook`)로 잡힌 이유가 계좌번호·예금주 안내뿐인가: 글에 "통장" 낱말이 없으면 납부 계좌를 알리는 안내문으로 본다
-    (통장 사본·통장 첫 장 사진은 "통장"이 적혀 있어 그대로 민감 문서다)."""
-    if result.privacy.sensitive != "bankbook":
-        return False
-    return "통장" not in "".join(result.content.text.split())
+    """통장류(`bankbook`)로 잡힌 문서가 학교·기관의 납부 계좌 안내문인가. 판단은 읽기 단계가 가리기 **전의** 글로 해 둔 값이다
+    (통장 사본·이체확인증·거래내역은 통장·받는분·잔액 같은 낱말이 있어 그대로 민감 문서다)."""
+    return result.privacy.sensitive == "bankbook" and result.privacy.account_notice
 
 
 def _plan_reminders(photo_id: str, group_id: str, user_id: str) -> None:

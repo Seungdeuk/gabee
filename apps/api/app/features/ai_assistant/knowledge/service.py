@@ -128,7 +128,14 @@ def update_item(db: Session, group_id: str, item_id: str, changes: dict) -> Know
     tagger = family_names.FamilyTagger(family_names.load_members(db, group_id))
     title = tagger.tag(title)
     body = tagger.protect(changes.get("body_md") or item.body_md)
-    body = tagger.expand(masking.mask_text(body, masking.sensitive_kind(body)))
+    privacy_kind = masking.sensitive_kind(body)
+    if (
+        privacy_kind == "bankbook"
+        and item.sensitivity != "sensitive"
+        and masking.is_account_notice(body)
+    ):
+        privacy_kind = "none"  # 이미 일반 문서로 등록된 납부 계좌 안내문: 확인·수정해도 다시 민감 문서로 바뀌지 않는다
+    body = tagger.expand(masking.mask_text(body, privacy_kind))
     lines = [
         ln.removesuffix(DOUBT_MARK).rstrip()  # 사용자가 확인했으니 [불확실] 표시는 지운다
         for ln in body.split("\n")
@@ -143,7 +150,7 @@ def update_item(db: Session, group_id: str, item_id: str, changes: dict) -> Know
         raise ApiError(422, "empty_body", "내용이 비어 있어요")
     sensitive = (
         item.sensitivity == "sensitive"
-        or masking.sensitive_kind(body) != "none"
+        or privacy_kind != "none"
         or _sensitivity(kind, None) == "sensitive"
     )
     item.title, item.kind_label, item.body_md = title, kind, body
