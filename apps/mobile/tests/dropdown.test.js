@@ -28,3 +28,10 @@ test("Dropdown: 칸 배경은 흰색 토큰(colors.card)이다", () => {
   assert.match(src, /box: \{[\s\S]*?backgroundColor: colors\.card,[\s\S]*?\}/);
   assert.doesNotMatch(src.match(/box: \{[\s\S]*?\},\n  boxText/)?.[0] ?? "", /colors\.surface\b/);
 });
+
+test("Dropdown: 한 줄에 여섯 칸이 들어가도록 칸 가로 여백이 좁고(spacing.xs) 최소 가로 폭을 강제하지 않는다", () => {
+  const box = src.match(/box: \{[\s\S]*?\},\n  boxText/)?.[0] ?? "";
+  assert.match(box, /paddingHorizontal: spacing\.xs/);
+  assert.doesNotMatch(box, /minWidth/);
+  assert.match(box, /minHeight: 44/);
+});

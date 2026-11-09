@@ -14,6 +14,7 @@ import { KIND_META } from "../kinds";
 import { prepareThisDevice, readPermissionState } from "../PushBootstrap";
 import {
   QUIET_HOUR_OPTIONS,
+  QUIET_MERIDIEM_OPTIONS,
   QUIET_MINUTE_OPTIONS,
   formatQuietSummary,
   isQuietClash,
@@ -21,6 +22,7 @@ import {
   parseTime,
   permissionNotice,
   setQuietPart,
+  toTwelveHour,
   toggleKind,
   withQuiet,
 } from "../push";
@@ -115,8 +117,8 @@ export default function PushSettingsScreen() {
     change(setQuietPart(settings, field, part, value));
   };
 
-  const quietStart = parseTime(settings?.quiet_start); // 서버는 "22:00:00" 으로도 돌려준다
-  const quietEnd = parseTime(settings?.quiet_end);
+  const quietStart = twelve(settings?.quiet_start); // 서버는 "22:00:00" 으로도 돌려준다
+  const quietEnd = twelve(settings?.quiet_end);
 
   const notice = settings ? permissionNotice(device, settings.enabled) : null;
   const onNoticeAction = () => (notice?.action === "settings" ? Linking.openSettings() : allowOnDevice());
@@ -168,11 +170,13 @@ export default function PushSettingsScreen() {
                 <Row label="방해금지 켜기" value={isQuietOn(settings)} onChange={(on) => change(withQuiet(settings, on))} />
                 {isQuietOn(settings) ? (
                   <View style={styles.timeLine}>
-                    <Dropdown label="시작 시" value={quietStart?.hour} display={two(quietStart?.hour)} options={QUIET_HOUR_OPTIONS} onChange={(v) => pickQuiet("quiet_start", "hour", v)} />
+                    <Dropdown label="시작 오전/오후" value={quietStart?.meridiem} options={QUIET_MERIDIEM_OPTIONS} onChange={(v) => pickQuiet("quiet_start", "meridiem", v)} />
+                    <Dropdown label="시작 시" value={quietStart?.hour12} display={two(quietStart?.hour12)} options={QUIET_HOUR_OPTIONS} onChange={(v) => pickQuiet("quiet_start", "hour", v)} />
                     <Text style={styles.sep}>:</Text>
                     <Dropdown label="시작 분" value={quietStart?.minute} display={two(quietStart?.minute)} options={QUIET_MINUTE_OPTIONS} onChange={(v) => pickQuiet("quiet_start", "minute", v)} />
                     <Text style={styles.sep}>~</Text>
-                    <Dropdown label="끝 시" value={quietEnd?.hour} display={two(quietEnd?.hour)} options={QUIET_HOUR_OPTIONS} onChange={(v) => pickQuiet("quiet_end", "hour", v)} />
+                    <Dropdown label="끝 오전/오후" value={quietEnd?.meridiem} options={QUIET_MERIDIEM_OPTIONS} onChange={(v) => pickQuiet("quiet_end", "meridiem", v)} />
+                    <Dropdown label="끝 시" value={quietEnd?.hour12} display={two(quietEnd?.hour12)} options={QUIET_HOUR_OPTIONS} onChange={(v) => pickQuiet("quiet_end", "hour", v)} />
                     <Text style={styles.sep}>:</Text>
                     <Dropdown label="끝 분" value={quietEnd?.minute} display={two(quietEnd?.minute)} options={QUIET_MINUTE_OPTIONS} onChange={(v) => pickQuiet("quiet_end", "minute", v)} />
                   </View>
@@ -193,7 +197,13 @@ export default function PushSettingsScreen() {
   );
 }
 
-/** 칸에 보일 24시간 두 자리 표기("00"). */
+/** 서버 시각 문자열을 칸에 보일 오전/오후·1~12시·분으로 바꾼다. 읽을 수 없으면 null. */
+function twelve(value) {
+  const time = parseTime(value);
+  return time ? { ...toTwelveHour(time.hour), minute: time.minute } : null;
+}
+
+/** 칸에 보일 두 자리 표기("00"). */
 function two(n) {
   return String(n ?? 0).padStart(2, "0");
 }

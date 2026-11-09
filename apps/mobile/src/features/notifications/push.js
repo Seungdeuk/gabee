@@ -112,8 +112,33 @@ export function toClockString({ hour, minute }) {
 
 const two = (n) => String(n).padStart(2, "0");
 
-/** 방해금지 시 드롭다운 목록: 00~23. */
-export const QUIET_HOUR_OPTIONS = Array.from({ length: 24 }, (_, hour) => ({ value: hour, label: two(hour) }));
+/** 방해금지 오전/오후 드롭다운 목록. */
+export const QUIET_MERIDIEM_OPTIONS = [
+  { value: "AM", label: "오전" },
+  { value: "PM", label: "오후" },
+];
+
+/** 방해금지 시 드롭다운 목록: 1~12(칸에는 01~12). */
+export const QUIET_HOUR_OPTIONS = Array.from({ length: 12 }, (_, i) => ({ value: i + 1, label: two(i + 1) }));
+
+/**
+ * 24시간 시(0~23)를 오전/오후와 1~12시로 바꾼다(0시 = 오전 12, 12시 = 오후 12).
+ * @param {number} hour 0~23
+ * @returns {{ meridiem: "AM" | "PM", hour12: number }}
+ */
+export function toTwelveHour(hour) {
+  return { meridiem: hour < 12 ? "AM" : "PM", hour12: hour % 12 === 0 ? 12 : hour % 12 };
+}
+
+/**
+ * 오전/오후와 1~12시를 24시간 시(0~23)로 바꾼다(오전 12 = 0시, 오후 12 = 12시).
+ * @param {"AM" | "PM"} meridiem
+ * @param {number} hour12 1~12
+ * @returns {number}
+ */
+export function fromTwelveHour(meridiem, hour12) {
+  return (hour12 % 12) + (meridiem === "PM" ? 12 : 0);
+}
 
 /** 방해금지 분 드롭다운 목록: 00, 05, … 55(5분 단위). */
 export const QUIET_MINUTE_OPTIONS = Array.from({ length: 12 }, (_, i) => ({ value: i * 5, label: two(i * 5) }));
@@ -135,21 +160,31 @@ export function withQuiet(settings, on) {
   return { ...settings, ...QUIET_PRESET };
 }
 
-/** 시·분 선택값을 적용한 새 시각을 만든다. 범위(시 0~23, 분 0~55 의 5 배수 정수)를 벗어나거나 읽을 수 없으면 null. */
+/** 오전/오후·시(1~12)·분(0~55 의 5 배수) 선택값을 적용한 새 시각을 만든다. 값이 맞지 않거나 읽을 수 없으면 null. */
 function applyPart(settings, field, part, value) {
   const current = parseTime(settings?.[field]);
   const other = parseTime(settings?.[field === "quiet_start" ? "quiet_end" : "quiet_start"]);
-  if (!current || !other || !Number.isInteger(value)) return null;
-  if (part === "hour" ? value < 0 || value > 23 : value < 0 || value > 55 || value % 5 !== 0) return null;
-  return { next: part === "hour" ? { hour: value, minute: current.minute } : { hour: current.hour, minute: value }, other };
+  if (!current || !other) return null;
+  const { meridiem, hour12 } = toTwelveHour(current.hour);
+  if (part === "meridiem") {
+    if (value !== "AM" && value !== "PM") return null;
+    return { next: { hour: fromTwelveHour(value, hour12), minute: current.minute }, other };
+  }
+  if (!Number.isInteger(value)) return null;
+  if (part === "hour") {
+    if (value < 1 || value > 12) return null;
+    return { next: { hour: fromTwelveHour(meridiem, value), minute: current.minute }, other };
+  }
+  if (part === "minute" && value >= 0 && value <= 55 && value % 5 === 0) return { next: { hour: current.hour, minute: value }, other };
+  return null;
 }
 
 /**
  * 이 선택으로 시작과 끝이 같아지는지(같으면 서버에서 방해금지가 걸리지 않아 저장하지 않는다).
  * @param {{ quiet_start?: string | null, quiet_end?: string | null }} settings
  * @param {"quiet_start" | "quiet_end"} field
- * @param {"hour" | "minute"} part
- * @param {number} value
+ * @param {"meridiem" | "hour" | "minute"} part
+ * @param {"AM" | "PM" | number} value 오전/오후, 시 1~12, 분 0~55(5 단위)
  * @returns {boolean}
  */
 export function isQuietClash(settings, field, part, value) {
@@ -158,13 +193,13 @@ export function isQuietClash(settings, field, part, value) {
 }
 
 /**
- * 시작 또는 끝 시각의 시나 분 하나를 고른 새 설정을 만든다(입력은 바꾸지 않는다).
- * 값이 범위를 벗어나거나(분은 5 의 배수만) 시작과 끝이 같아지거나 방해금지가 꺼져 있으면 받은 설정을 그대로 돌려준다.
+ * 시작 또는 끝 시각의 오전/오후·시·분 하나를 고른 새 설정을 만든다(입력은 바꾸지 않는다). 저장 형식은 24시간 "HH:MM" 이다.
+ * 값이 맞지 않거나(시는 1~12, 분은 5 의 배수만) 시작과 끝이 같아지거나 방해금지가 꺼져 있으면 받은 설정을 그대로 돌려준다.
  * @template {{ quiet_start?: string | null, quiet_end?: string | null }} T
  * @param {T} settings
  * @param {"quiet_start" | "quiet_end"} field 바꿀 쪽
- * @param {"hour" | "minute"} part
- * @param {number} value 시 0~23, 분 0~55(5 단위)
+ * @param {"meridiem" | "hour" | "minute"} part
+ * @param {"AM" | "PM" | number} value 오전/오후, 시 1~12, 분 0~55(5 단위)
  * @returns {T}
  */
 export function setQuietPart(settings, field, part, value) {
@@ -175,7 +210,7 @@ export function setQuietPart(settings, field, part, value) {
 }
 
 /**
- * 방해금지 안내 문구. 끝이 시작보다 이르거나 같으면 다음 날 끝나는 것이다.
+ * 방해금지 안내 문구("오후 10:00 ~ 다음 날 오전 07:00에는 …"). 끝이 시작보다 이르거나 같으면 다음 날 끝나는 것이다.
  * @param {{ quiet_start?: string | null, quiet_end?: string | null }} settings
  * @returns {string} 시간을 읽을 수 없으면 빈 문자열
  */
@@ -184,7 +219,11 @@ export function formatQuietSummary(settings) {
   const end = parseTime(settings?.quiet_end);
   if (!start || !end) return "";
   const nextDay = toClockString(end) <= toClockString(start);
-  return `${toClockString(start)} ~ ${nextDay ? "다음 날 " : ""}${toClockString(end)}에는 푸시를 보내지 않아요`;
+  const label = ({ hour, minute }) => {
+    const { meridiem, hour12 } = toTwelveHour(hour);
+    return `${meridiem === "AM" ? "오전" : "오후"} ${two(hour12)}:${two(minute)}`;
+  };
+  return `${label(start)} ~ ${nextDay ? "다음 날 " : ""}${label(end)}에는 푸시를 보내지 않아요`;
 }
 
 /**

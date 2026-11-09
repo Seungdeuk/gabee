@@ -64,12 +64,10 @@ export default function Dropdown({ value, options, onChange, label, display, tes
 const styles = StyleSheet.create({
   box: {
     minHeight: 44,
-    minWidth: 44,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: spacing.xs,
-    paddingHorizontal: spacing.sm,
+    paddingHorizontal: spacing.xs,
     borderRadius: radius.sm,
     borderWidth: 1,
     borderColor: colors.border,
