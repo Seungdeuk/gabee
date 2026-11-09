@@ -85,7 +85,7 @@ function KakaoButton({ onToken, disabled }) {
  * @param {{ onToken: (provider: "google" | "kakao", token: string) => void, onFail?: (provider: "google" | "kakao") => void, disabled?: boolean, only?: ("google" | "kakao")[] }} props
  */
 export default function SocialButtons({ onToken, onFail, disabled = false, only }) {
-  const providers = enabledProviders().filter((p) => !only || only.includes(p));
+  const providers = enabledProviders(Platform.OS).filter((p) => !only || only.includes(p));
   const handle = (provider, token) => (token ? onToken(provider, token) : onFail?.(provider));
   return (
     <>
