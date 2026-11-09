@@ -1043,7 +1043,7 @@
           "family-group"
         ],
         "summary": "Leave Group",
-        "description": "내가 현재 가족 그룹을 나간다. 소유자는 나갈 수 없다(400 cannot_leave_owner).",
+        "description": "내가 현재 가족 그룹을 나간다. 소유자는 다른 구성원이 있으면 나갈 수 없다(400 cannot_leave_owner). 구성원이 소유자 혼자뿐이면 나갈 수 있고, 그때는 가족의 모든 데이터(채팅·사진 파일·일정·가계·기록·가입 요청·초대 코드)가 한 트랜잭션에서 지워진다(되돌릴 수 없다).",
         "operationId": "leave_group_family_group_groups_me_leave_post",
         "parameters": [
           {
