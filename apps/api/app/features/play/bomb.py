@@ -8,6 +8,7 @@
 - 시간 초과는 별도 배치 없이 방 상태를 조회하거나 말할 때 계산해서 기록한다(마감 방식은 다른 놀이와 같다).
 - 점수: 판마다 참여한 사람 +10, 우승 +30. 방장은 참여 점수 없이 방마다 한 번 문제 내기 +20(하루 한도 안에서).
 - 관전 응원은 서버 메모리에만 둔다(저장하지 않음). 한 사람이 5초에 한 번만 보낼 수 있다(난타 방지).
+- 판정 투표(어라?·억울해요)는 bomb_vote.py 규칙대로 서버 메모리에서 열고, 통과하면 마지막 차례 기록(끝 표시·생명)을 고친다.
 """
 
 import threading
@@ -20,6 +21,7 @@ from app.features.family_group import repository as group_repo
 from app.features.family_group.models import User
 from app.shared.errors import ApiError, bad_request, not_found
 
+from . import bomb_vote as vote
 from . import repository
 from .bomb_judge import is_ended, is_repeat
 from .bomb_schemas import (
@@ -32,6 +34,7 @@ from .bomb_schemas import (
     PlayBombStartIn,
     PlayBombStateOut,
     PlayBombTurnOut,
+    PlayBombVoteOut,
 )
 from .constants import DAILY_MAKE_LIMIT, POINT_BOMB_WIN, POINT_JOIN, POINT_MAKE
 from .models import (
@@ -156,7 +159,16 @@ def _derive(
     limit = turn_limit(rnd.sec, len(turns))
     deadline = base + timedelta(seconds=limit) if cur else None
     return _Game(
-        order, lives, alive, cur, deadline, chain, longest, words, last.turn_seq if last else 0, limit
+        order,
+        lives,
+        alive,
+        cur,
+        deadline,
+        chain,
+        longest,
+        words,
+        last.turn_seq if last else 0,
+        limit,
     )
 
 
@@ -177,6 +189,7 @@ def _finish(
         return
     rnd.ended_at = when
     rnd.winner_id = winner
+    vote.drop_active(item.id)
     rnd.longest_len = g.longest
     with _cheer_lock:
         _cheer_books.pop(item.id, None)  # 응원은 저장하지 않는다: 판이 끝나면 버린다
@@ -207,7 +220,9 @@ def _finish(
     )
 
 
-def _settle_time(db: Session, item: PlayItem, rnd: PlayBombRound, now: datetime) -> None:
+def _settle_time(
+    db: Session, item: PlayItem, rnd: PlayBombRound, now: datetime, *, paused: bool = False
+) -> None:
     """제한 시간이 지난 차례를 시간 초과로 기록한다. 아무도 조회하지 않은 사이 여러 차례가 지났어도 순서대로 채운다."""
     players = repository.bomb_players(db, item.id)
     while rnd.ended_at is None:
@@ -220,8 +235,8 @@ def _settle_time(db: Session, item: PlayItem, rnd: PlayBombRound, now: datetime)
         if now >= aware(item.close_at):  # 한 판의 상한: 우승자 없이 끝낸다
             _finish(db, item, rnd, g, aware(item.close_at), None)
             return
-        if g.cur is None or g.deadline is None or now < g.deadline:
-            return
+        if paused or g.cur is None or g.deadline is None or now < g.deadline:
+            return  # 투표 중에는 게임 시계가 멈춘다
         repository.add(
             db,
             PlayBombTurn(
@@ -249,7 +264,8 @@ def _load(db: Session, group_id: str, room_id: str, *, lock: bool) -> PlayItem:
 def _settled(db: Session, item: PlayItem, now: datetime) -> PlayBombRound | None:
     rnd = repository.latest_bomb_round(db, item.id)
     if rnd is not None and rnd.ended_at is None:
-        _settle_time(db, item, rnd, now)
+        paused = _close_vote(db, item, rnd, now)
+        _settle_time(db, item, rnd, now, paused=paused)
     return rnd
 
 
@@ -331,6 +347,10 @@ def leave_room(db: Session, user: User, group_id: str, room_id: str) -> PlayBomb
                     ),
                 )
                 _after_turn(db, item, rnd, players, now)
+        v = vote.active(item.id)
+        if v is not None:
+            with vote.lock:
+                v.voters.discard(user.id)
         db.delete(row)
     db.commit()
     return build_state(db, item, user, group_repo.members(db, group_id), now)
@@ -381,6 +401,7 @@ def start_round(
     item.close_at = now + timedelta(hours=PLAY_HOURS)
     with _cheer_lock:
         _cheer_books.pop(item.id, None)  # 새 판에서는 응원도 새로 시작
+    vote.drop(item.id)
     db.commit()
     return build_state(db, item, user, group_repo.members(db, group_id), now)
 
@@ -403,6 +424,9 @@ def say(db: Session, user: User, group_id: str, room_id: str, word: str) -> Play
     if rnd is None or rnd.ended_at is not None:
         db.commit()
         raise ApiError(409, "not_playing", "지금은 게임 중이 아니에요")
+    if vote.active(item.id) is not None:
+        db.commit()
+        raise ApiError(409, "vote_open", "투표 중이에요. 끝나면 이어 말할 수 있어요")
     players = repository.bomb_players(db, item.id)
     turns = repository.bomb_turns(db, item.id, rnd.round_no)
     g = _derive(item, rnd, players, turns)
@@ -428,6 +452,140 @@ def say(db: Session, user: User, group_id: str, room_id: str, word: str) -> Play
         ),
     )
     _after_turn(db, item, rnd, players, now)
+    db.commit()
+    return build_state(db, item, user, group_repo.members(db, group_id), now)
+
+
+# ---------- 판정 투표 ----------
+def _ended_turn(turns: list[PlayBombTurn], player_id: str) -> PlayBombTurn | None:
+    """이 선수의 마지막 차례가 "끝난 말"로 판정된 것이면 그 차례(생명이 줄었거나 탈락). 아니면 None.
+    판이 계속되는 동안은 그 뒤에 다른 사람이 말해도 억울해요를 누를 수 있다."""
+    for t in reversed(turns):
+        if t.player_id == player_id:
+            return t if t.is_say and t.is_end else None
+    return None
+
+
+def _vote_text(v: "vote.Vote", passed: bool) -> str:
+    if v.kind == vote.KIND_UNFAIR and not v.requester_out:
+        return vote.TEXT_ALIVE[passed]
+    return vote.TEXT[(v.kind, passed)]
+
+
+def _close_vote(db: Session, item: PlayItem, rnd: PlayBombRound, now: datetime) -> bool:
+    """열린 투표가 끝났으면(모두 골랐거나 시간이 다 됐으면) 결과를 반영한다. 아직 열려 있으면 True(게임 시계는 멈춰 있음)."""
+    v = vote.active(item.id)
+    if v is None:
+        return False
+    if v.round_no != rnd.round_no:  # 지난 판의 투표가 남았으면 버린다
+        vote.drop_active(item.id)
+        return False
+    decided = v.decided()
+    if not decided and now < v.deadline:
+        return True
+    end_at = (v.decided_at or v.deadline) if decided else v.deadline
+    yes, no = v.counts()
+    passed = vote.passes(yes, no)
+    players = repository.bomb_players(db, item.id)
+    turns = repository.bomb_turns(db, item.id, rnd.round_no)
+    if turns:  # 멈춰 있던 만큼 지금 차례의 시계 기준(마지막 차례의 시각)을 뒤로 민다
+        turns[-1].created_at = aware(turns[-1].created_at) + (end_at - v.started)
+    t = next((x for x in turns if x.turn_seq == v.target_seq), None)
+    if t is not None and passed:
+        if v.kind == vote.KIND_CALL:  # 끝난 말로 바뀐다: 생명 -1
+            t.is_end = True
+            t.life = max(0, t.life - 1)
+        else:  # 탈락이 취소된다: 생명을 돌려받고 문장은 이어진다
+            t.is_end = False
+            t.life += 1
+    if turns:  # 이어지는 시계: 남은 시간이 너무 적으면 최소한은 준다(투표 직후 바로 터지지 않게)
+        g = _derive(item, rnd, players, turns)
+        if g.deadline is not None:
+            short = min(vote.MIN_LEFT_AFTER, g.limit) - (g.deadline - end_at).total_seconds()
+            if short > 0:
+                turns[-1].created_at = aware(turns[-1].created_at) + timedelta(seconds=short)
+    with vote.lock:
+        b = vote.book(item.id)
+        b.active = None
+        b.seq += 1
+        b.results.append(
+            vote.Result(b.seq, rnd.round_no, v.requester_id, _vote_text(v, passed), end_at)
+        )
+        del b.results[: -vote.RESULT_KEEP]
+    if passed:
+        _after_turn(db, item, rnd, players, end_at)
+    return False
+
+
+def start_vote(db: Session, user: User, group_id: str, room_id: str, kind: str) -> PlayBombStateOut:
+    """판정 투표를 연다. call 어라?(다른 사람의 방금 말이 끝난 말인데 통과됐다), unfair 억울해요(내가 끝난 말이 아닌데 탈락했다)."""
+    now = _now()
+    if kind not in (vote.KIND_CALL, vote.KIND_UNFAIR):
+        raise bad_request("invalid_vote", "알 수 없는 투표예요")
+    item = _load(db, group_id, room_id, lock=True)
+    rnd = _settled(db, item, now)
+    db.commit()
+    if rnd is None or rnd.ended_at is not None:
+        raise ApiError(409, "not_playing", "게임 중에만 투표할 수 있어요")
+    if vote.active(item.id) is not None:
+        raise ApiError(409, "vote_open", "이미 투표 중이에요")
+    if vote.used(item.id, rnd.round_no, user.id, kind):
+        raise ApiError(409, "vote_used", "이번 판에서는 이미 신청했어요")
+    players = repository.bomb_players(db, item.id)
+    turns = repository.bomb_turns(db, item.id, rnd.round_no)
+    g = _derive(item, rnd, players, turns)
+    if not turns:
+        raise ApiError(409, "nothing_to_call", "아직 다툴 말이 없어요")
+    if kind == vote.KIND_CALL:
+        t = turns[-1]
+        ok = user.id in g.alive and t.is_say and not t.is_end and t.player_id != user.id
+        msg = "다른 사람이 방금 한 말만 신청할 수 있어요"
+    else:
+        t = _ended_turn(turns, user.id)
+        ok = t is not None and len(set(g.alive) - {user.id}) >= vote.MIN_YES
+        msg = "내 말이 끝난 말로 판정됐을 때만 신청할 수 있어요"
+    if not ok:
+        raise ApiError(409, "cannot_call", msg)
+    v = vote.Vote(
+        kind=kind,
+        round_no=rnd.round_no,
+        target_seq=t.turn_seq,
+        target_id=t.player_id,
+        requester_id=user.id,
+        started=now,
+        deadline=now + timedelta(seconds=vote.VOTE_SEC),
+        voters=set(g.alive) - ({user.id} if kind == vote.KIND_UNFAIR else set()),
+        requester_out=g.lives.get(user.id, 0) <= 0,
+    )
+    if kind == vote.KIND_CALL:
+        v.choices[user.id] = True  # 신청한 사람은 찬성으로 시작한다
+    with vote.lock:
+        b = vote.book(item.id)
+        b.active = v
+        b.used.add((rnd.round_no, user.id, kind))
+    return build_state(db, item, user, group_repo.members(db, group_id), now)
+
+
+def cast_vote(db: Session, user: User, group_id: str, room_id: str, yes: bool) -> PlayBombStateOut:
+    """열린 투표에 한 번 고른다(살아있는 사람만). 모두 고르면 바로 결과가 나온다."""
+    now = _now()
+    item = _load(db, group_id, room_id, lock=True)
+    rnd = _settled(db, item, now)
+    v = vote.active(item.id)
+    if rnd is None or rnd.ended_at is not None or v is None:
+        db.commit()
+        raise ApiError(409, "no_vote", "열려 있는 투표가 없어요")
+    if user.id not in v.voters:
+        db.commit()
+        raise ApiError(403, "cannot_vote", "게임 중인 사람만 투표할 수 있어요")
+    with vote.lock:
+        if user.id in v.choices:
+            db.commit()
+            raise ApiError(409, "already_voted", "이미 골랐어요")
+        v.choices[user.id] = yes
+        if v.decided():
+            v.decided_at = now
+    _close_vote(db, item, rnd, now)  # 모두 골랐으면 여기서 결과가 난다
     db.commit()
     return build_state(db, item, user, group_repo.members(db, group_id), now)
 
@@ -504,6 +662,18 @@ def _messages(
             at=c.at,
         )
         for c in cheers
+    )
+    with vote.lock:
+        results = [x for x in vote.book(item.id).results if x.round_no == rnd.round_no]
+    out.extend(
+        PlayBombMessageOut(
+            id=f"v{x.seq}",
+            kind="vote",
+            player=_person(by_id.get(x.requester_id)),
+            text=x.text,
+            at=x.at,
+        )
+        for x in results
     )
     out.sort(key=lambda m: m.at)
     return out[-MESSAGE_KEEP:]
@@ -597,14 +767,54 @@ def build_state(
     else:
         my_status = "player"
 
+    v = vote.active(item.id) if playing else None
+    if v is not None and v.round_no != (rnd.round_no if rnd else 0):
+        v = None
     turn = None
     if playing and g and g.cur and g.deadline:
+        # 투표하는 동안 게임 시계가 멈춰 있으므로 남은 시간은 투표가 시작된 순간 그대로다
+        left = (g.deadline - (v.started if v else now)).total_seconds()
         turn = PlayBombTurnOut(
             player=_person(by_id.get(g.cur)),
-            seconds_left=max(0.0, round((g.deadline - now).total_seconds(), 2)),
+            seconds_left=max(0.0, round(left, 2)),
             limit=g.limit,
             deadline=g.deadline,
         )
+    vote_out = None
+    can_call = can_unfair = False
+    call_msg_id = None
+    if playing and g and turns:
+        t = turns[-1]
+        call_msg_id = f"t{t.turn_seq}"
+        if v is not None:
+            yes, no = v.counts()
+            vote_out = PlayBombVoteOut(
+                kind=v.kind,
+                requester=_person(by_id.get(v.requester_id)),
+                target=_person(by_id.get(v.target_id)),
+                word=next((x.word or "" for x in turns if x.turn_seq == v.target_seq), ""),
+                seconds_left=max(0.0, round((v.deadline - now).total_seconds(), 2)),
+                yes=yes,
+                no=no,
+                waiting=len(v.voters - set(v.choices)),
+                my_choice=None
+                if user.id not in v.choices
+                else ("yes" if v.choices[user.id] else "no"),
+                can_vote=user.id in v.voters and user.id not in v.choices,
+            )
+        else:
+            can_call = (
+                user.id in g.alive
+                and t.is_say
+                and not t.is_end
+                and t.player_id != user.id
+                and not vote.used(item.id, rnd.round_no, user.id, vote.KIND_CALL)
+            )
+            can_unfair = (
+                _ended_turn(turns, user.id) is not None
+                and len(set(g.alive) - {user.id}) >= vote.MIN_YES
+                and not vote.used(item.id, rnd.round_no, user.id, vote.KIND_UNFAIR)
+            )
 
     with _cheer_lock:
         last = _cheer_book(item.id).last.get(user.id) if item.id in _cheer_books else None
@@ -631,6 +841,10 @@ def build_state(
         turn=turn,
         chain=g.chain if g else 0,
         messages=_messages(item, rnd, turns, by_id) if rnd else [],
+        vote=vote_out,
+        can_call=can_call,
+        can_unfair=can_unfair,
+        call_msg_id=call_msg_id,
         cheers=list(CHEERS),
         cheer_wait=round(wait, 2),
         result=result,
@@ -638,4 +852,4 @@ def build_state(
     )
 
 
-__all__ = ["LIFE_RANGE", "SEC_RANGE", "CHEERS", "CHEER_COOLDOWN_SEC"]
+__all__ = ["LIFE_RANGE", "SEC_RANGE", "CHEERS", "CHEER_COOLDOWN_SEC", "cast_vote", "start_vote"]

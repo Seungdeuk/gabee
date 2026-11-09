@@ -33,6 +33,18 @@ class PlayBombSayIn(BaseModel):
         return v
 
 
+class PlayBombVoteStartIn(BaseModel):
+    """판정 투표 신청: call 어라?, unfair 억울해요."""
+
+    kind: Literal["call", "unfair"]
+
+
+class PlayBombVoteIn(BaseModel):
+    """투표: 찬성(맞아요) 또는 반대(아니에요)."""
+
+    yes: bool
+
+
 class PlayBombCheerIn(BaseModel):
     """관전 응원. 정해진 말 중에서 고른다."""
 
@@ -51,10 +63,10 @@ class PlayBombPlayerOut(BaseModel):
 
 
 class PlayBombMessageOut(BaseModel):
-    """채팅 한 줄. say 말함, timeout 시간 초과, cheer 관전 응원."""
+    """채팅 한 줄. say 말함, timeout 시간 초과, cheer 관전 응원, vote 판정 투표 결과."""
 
     id: str
-    kind: Literal["say", "timeout", "cheer"]
+    kind: Literal["say", "timeout", "cheer", "vote"]
     player: PlayPersonOut
     text: str
     ended: bool = False  # 이 말로 문장이 끝나 생명이 줄었다
@@ -71,6 +83,21 @@ class PlayBombTurnOut(BaseModel):
     seconds_left: float  # 응답을 만든 순간 기준 남은 초(화면은 이 값에서 줄여 나가고 다음 조회 때 다시 맞춘다)
     limit: float  # 이번 차례의 제한 시간(초): 차례가 지날수록 방에서 정한 시간보다 짧아진다
     deadline: datetime
+
+
+class PlayBombVoteOut(BaseModel):
+    """열려 있는 판정 투표. call 어라?(끝난 말인데 통과됐다), unfair 억울해요(끝난 말이 아닌데 탈락했다)."""
+
+    kind: Literal["call", "unfair"]
+    requester: PlayPersonOut
+    target: PlayPersonOut  # 다투는 차례의 선수
+    word: str  # 다투는 말
+    seconds_left: float
+    yes: int
+    no: int
+    waiting: int  # 아직 안 고른 사람(시간이 지나면 기권)
+    my_choice: Literal["yes", "no"] | None = None
+    can_vote: bool = False  # 내가 투표할 수 있는 사람이고 아직 안 골랐다
 
 
 class PlayBombRankOut(BaseModel):
@@ -103,6 +130,10 @@ class PlayBombStateOut(BaseModel):
     turn: PlayBombTurnOut | None = None
     chain: int = 0  # 지금 문장을 이어가는 중인 말 개수
     messages: list[PlayBombMessageOut] = []
+    vote: PlayBombVoteOut | None = None  # 열려 있는 판정 투표(없으면 None)
+    can_call: bool = False  # 지금 "어라?"를 신청할 수 있다
+    can_unfair: bool = False  # 지금 "억울해요"를 신청할 수 있다
+    call_msg_id: str | None = None  # 방금 말(가장 최근 차례)의 채팅 줄 id: "어라?" 칩이 붙는 줄
     cheers: list[str] = []  # 고를 수 있는 응원 말
     cheer_wait: float = 0  # 다음 응원까지 남은 초(0이면 보낼 수 있음)
     result: PlayBombResultOut | None = None

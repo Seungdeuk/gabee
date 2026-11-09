@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { afterEach, beforeEach, test } from "node:test";
 
 import { base64ToBytes } from "../src/features/playground/upload.js";
-import { bestView, bitsOf, bombChat, bombPath, bombScreen, boardRow, recordNote, drawResultView, photoGuessView, photoResultView, zoomBoxStyle, familyView, quizAnswerBody, quizPlayView, quizQuestions, quizResultView, boardView, clockLabel, indexOfBits, pastLabel, playRoute, rankingView, revealLabel, withIga } from "../src/features/playground/adapt.js";
+import { unfairMessageId, bestView, bitsOf, bombChat, bombPath, bombScreen, boardRow, recordNote, drawResultView, photoGuessView, photoResultView, zoomBoxStyle, familyView, quizAnswerBody, quizPlayView, quizQuestions, quizResultView, boardView, clockLabel, indexOfBits, pastLabel, playRoute, rankingView, revealLabel, withIga } from "../src/features/playground/adapt.js";
 
 process.env.EXPO_PUBLIC_API_URL = "http://api.test";
 process.env.EXPO_PUBLIC_DEV_TOKEN = "legacy-dev-token";
@@ -450,4 +450,33 @@ test("폭탄 채팅: 말풍선, 문장 끝냄·시간 초과 안내, 응원", ()
     ["system", "엄마가 같은 말을 또 했어요 · 생명 -1", false],
   ]);
   assert.deepEqual(bombChat(null, "me"), []);
+});
+
+test("폭탄 채팅: 투표 결과 줄과 어라? 칩이 붙을 말", () => {
+  const p = (id, name) => ({ id, name });
+  const msgs = [
+    { id: "t1", kind: "say", player: p("u1", "엄마"), text: "누가", ended: false, lost_life: false, out: false },
+    { id: "t2", kind: "say", player: p("u2", "아빠"), text: "날씨가", ended: false, lost_life: false, out: false },
+    { id: "v1", kind: "vote", player: p("u1", "엄마"), text: "투표 기각, 판정은 그대로예요", ended: false, lost_life: false, out: false },
+  ];
+  const chat = bombChat(msgs, "me", "t2");
+  assert.deepEqual(chat.map((c) => [c.id, c.kind, c.call ?? false]), [["t1", "say", false], ["t2", "say", true], ["v1", "system", false]]);
+  assert.equal(chat[2].text, "투표 기각, 판정은 그대로예요");
+  assert.ok(bombChat(msgs, "me").every((c) => !c.call)); // callId 가 없으면 칩은 어디에도 없다
+});
+
+test("폭탄 채팅: 억울해요 칩은 끝난 말로 판정된 내 마지막 말에 붙는다", () => {
+  const p = (id, name) => ({ id, name });
+  const msgs = [
+    { id: "t1", kind: "say", player: p("me", "수진"), text: "누가", ended: false, out: false },
+    { id: "t2", kind: "say", player: p("u1", "엄마"), text: "어제", ended: false, out: false },
+    { id: "t3", kind: "say", player: p("me", "수진"), text: "먹었다", ended: true, out: true },
+    { id: "t4", kind: "say", player: p("u1", "엄마"), text: "밥을", ended: true, out: true },
+  ];
+  assert.equal(unfairMessageId(msgs, "me"), "t3"); // 탈락하지 않고 생명만 줄었어도 붙고, 엄마의 말은 내 것이 아니다
+  assert.equal(unfairMessageId([...msgs, { id: "t5", kind: "say", player: p("me", "수진"), text: "또", ended: false, out: false }], "me"), null); // 그 뒤에 내가 또 말하면 없다
+  assert.equal(unfairMessageId(msgs, "u9"), null);
+  assert.equal(unfairMessageId(null, "me"), null);
+  const chat = bombChat(msgs, "me", null, "t3");
+  assert.deepEqual(chat.filter((c) => c.kind === "say").map((c) => [c.id, c.unfair]), [["t1", false], ["t2", false], ["t3", true], ["t4", false]]);
 });

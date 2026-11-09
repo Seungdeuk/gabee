@@ -14469,6 +14469,176 @@
         }
       }
     },
+    "/play/bomb/{room_id}/vote/start": {
+      "post": {
+        "tags": [
+          "play"
+        ],
+        "summary": "Vote Start",
+        "description": "판정 투표를 연다. call 어라?(다른 사람의 방금 말이 끝난 말인데 통과됐다, 살아있는 사람), unfair 억울해요(끝난 말이 아닌데 탈락한 본인). 한 사람이 한 판에 종류마다 한 번.",
+        "operationId": "vote_start_play_bomb__room_id__vote_start_post",
+        "parameters": [
+          {
+            "name": "room_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Room Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-gyeot-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Gyeot-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PlayBombVoteStartIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlayBombStateOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/play/bomb/{room_id}/vote": {
+      "post": {
+        "tags": [
+          "play"
+        ],
+        "summary": "Vote",
+        "description": "열린 판정 투표에 찬성/반대를 고른다(살아있는 사람, 한 번). 안 고르면 기권이고, 찬성이 반대보다 많고 2표 이상이면 통과한다.",
+        "operationId": "vote_play_bomb__room_id__vote_post",
+        "parameters": [
+          {
+            "name": "room_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Room Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-gyeot-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Gyeot-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PlayBombVoteIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlayBombStateOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/play/bomb/{room_id}/close": {
       "post": {
         "tags": [
@@ -24112,7 +24282,8 @@
             "enum": [
               "say",
               "timeout",
-              "cheer"
+              "cheer",
+              "vote"
             ],
             "title": "Kind"
           },
@@ -24168,7 +24339,7 @@
           "at"
         ],
         "title": "PlayBombMessageOut",
-        "description": "채팅 한 줄. say 말함, timeout 시간 초과, cheer 관전 응원."
+        "description": "채팅 한 줄. say 말함, timeout 시간 초과, cheer 관전 응원, vote 판정 투표 결과."
       },
       "PlayBombPlayerOut": {
         "properties": {
@@ -24439,6 +24610,37 @@
             "title": "Messages",
             "default": []
           },
+          "vote": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PlayBombVoteOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "can_call": {
+            "type": "boolean",
+            "title": "Can Call",
+            "default": false
+          },
+          "can_unfair": {
+            "type": "boolean",
+            "title": "Can Unfair",
+            "default": false
+          },
+          "call_msg_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Call Msg Id"
+          },
           "cheers": {
             "items": {
               "type": "string"
@@ -24509,6 +24711,109 @@
           "deadline"
         ],
         "title": "PlayBombTurnOut"
+      },
+      "PlayBombVoteIn": {
+        "properties": {
+          "yes": {
+            "type": "boolean",
+            "title": "Yes"
+          }
+        },
+        "type": "object",
+        "required": [
+          "yes"
+        ],
+        "title": "PlayBombVoteIn",
+        "description": "투표: 찬성(맞아요) 또는 반대(아니에요)."
+      },
+      "PlayBombVoteOut": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "call",
+              "unfair"
+            ],
+            "title": "Kind"
+          },
+          "requester": {
+            "$ref": "#/components/schemas/PlayPersonOut"
+          },
+          "target": {
+            "$ref": "#/components/schemas/PlayPersonOut"
+          },
+          "word": {
+            "type": "string",
+            "title": "Word"
+          },
+          "seconds_left": {
+            "type": "number",
+            "title": "Seconds Left"
+          },
+          "yes": {
+            "type": "integer",
+            "title": "Yes"
+          },
+          "no": {
+            "type": "integer",
+            "title": "No"
+          },
+          "waiting": {
+            "type": "integer",
+            "title": "Waiting"
+          },
+          "my_choice": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "yes",
+                  "no"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "My Choice"
+          },
+          "can_vote": {
+            "type": "boolean",
+            "title": "Can Vote",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "kind",
+          "requester",
+          "target",
+          "word",
+          "seconds_left",
+          "yes",
+          "no",
+          "waiting"
+        ],
+        "title": "PlayBombVoteOut",
+        "description": "열려 있는 판정 투표. call 어라?(끝난 말인데 통과됐다), unfair 억울해요(끝난 말이 아닌데 탈락했다)."
+      },
+      "PlayBombVoteStartIn": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "call",
+              "unfair"
+            ],
+            "title": "Kind"
+          }
+        },
+        "type": "object",
+        "required": [
+          "kind"
+        ],
+        "title": "PlayBombVoteStartIn",
+        "description": "판정 투표 신청: call 어라?, unfair 억울해요."
       },
       "PlayDrawOut": {
         "properties": {
