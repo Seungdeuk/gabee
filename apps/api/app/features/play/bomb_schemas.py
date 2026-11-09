@@ -115,6 +115,9 @@ class PlayBombResultOut(BaseModel):
     is_record: bool = False
     ranking: list[PlayBombRankOut]
     my_points: int | None = None
+    maker_paid_before: bool = (
+        False  # 방장이 이 방의 앞선 판에서 이미 문제 내기 +20을 받았다(이번 판 점수에는 없음)
+    )
 
 
 class PlayBombStateOut(BaseModel):

@@ -720,6 +720,9 @@ def _result(
         is_record=longest > 0 and longest > (prev or 0),
         ranking=ranking,
         my_points=next((r.points for r in ranking if r.player.id == my_id), None),
+        maker_paid_before=my_id == item.maker_id
+        and not make_paid
+        and repository.score_exists(db, item.id, REASON_MAKE),
     )
 
 
