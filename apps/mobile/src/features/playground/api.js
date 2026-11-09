@@ -86,4 +86,8 @@ export const startBomb = (id, { life, sec }) => apiFetch(bombPath(id, "/start"),
 export const sayBomb = (id, word) => apiFetch(bombPath(id, "/say"), { method: "POST", body: { word } });
 /** 탈락·구경하는 사람의 응원(정해진 말, 5초에 한 번) */
 export const cheerBomb = (id, text) => apiFetch(bombPath(id, "/cheer"), { method: "POST", body: { text } });
+/** 판정 투표를 연다. kind: "call" 어라?(다른 사람의 방금 말이 끝난 말인데 통과됐다) / "unfair" 억울해요(내가 끝난 말이 아닌데 탈락했다) */
+export const startBombVote = (id, kind) => apiFetch(bombPath(id, "/vote/start"), { method: "POST", body: { kind } });
+/** 열린 투표에 맞아요(true) / 아니에요(false). 게임 중인 사람만, 한 번 */
+export const voteBomb = (id, yes) => apiFetch(bombPath(id, "/vote"), { method: "POST", body: { yes } });
 export const closeBomb = (id) => apiFetch(bombPath(id, "/close"), { method: "POST" });

@@ -8,11 +8,12 @@ import Button from "@/shared/components/Button";
 import ConfirmDialog from "@/shared/components/ConfirmDialog";
 import { colors, font, fonts, radius } from "@/theme";
 
-import { bombChat, bombPath, recordNote } from "../adapt";
-import { cheerBomb, closeBomb, createBomb, getBombCurrent, joinBomb, leaveBomb, sayBomb, startBomb } from "../api";
+import { bombChat, bombPath, recordNote, unfairMessageId } from "../adapt";
+import { cheerBomb, closeBomb, createBomb, getBombCurrent, joinBomb, leaveBomb, sayBomb, startBomb, startBombVote, voteBomb } from "../api";
 import { Bubble, BOMB_RED, PlayerStrip, TimeBar } from "../components/bomb/BombParts";
 import PlayerRow from "../components/bomb/PlayerRow";
 import RuleCard, { LIFE, SEC } from "../components/bomb/RuleCard";
+import VoteBanner from "../components/bomb/VoteBanner";
 import { useInvite } from "../components/InviteSheet";
 import LoadNote from "../components/LoadNote";
 import PlayHeader from "../components/PlayHeader";
@@ -164,7 +165,7 @@ function GameTop({ room, left, compact = false, activeId }) {
   );
 }
 
-function Chat({ chat, header }) {
+function Chat({ chat, header, onCall, onUnfair, footer }) {
   const scroll = useRef(null);
   return (
     <ScrollView ref={scroll} onContentSizeChange={() => scroll.current?.scrollToEnd({ animated: true })} contentContainerStyle={styles.chat}>
@@ -175,9 +176,22 @@ function Chat({ chat, header }) {
             {m.text}
           </Text>
         ) : (
-          <Bubble key={m.id} msg={{ id: m.uid, name: m.name, text: m.text }} mine={m.mine} />
+          <View key={m.id} style={styles.msgWrap}>
+            <Bubble msg={{ id: m.uid, name: m.name, text: m.text }} mine={m.mine} />
+            {m.call && onCall ? (
+              <Pressable onPress={onCall} accessibilityRole="button" accessibilityLabel="어라? 끝난 말인데 통과됐어요" style={styles.callChip}>
+                <Text style={styles.callChipText}>어라?</Text>
+              </Pressable>
+            ) : null}
+            {m.unfair && onUnfair ? (
+              <Pressable onPress={onUnfair} accessibilityRole="button" accessibilityLabel="억울해요 끝난 말이 아닌데 탈락했어요" style={[styles.callChip, styles.unfairChip]}>
+                <Text style={styles.callChipText}>억울해요</Text>
+              </Pressable>
+            ) : null}
+          </View>
         ),
       )}
+      {footer}
     </ScrollView>
   );
 }
@@ -185,7 +199,7 @@ function Chat({ chat, header }) {
 // ---------- 게임 ----------
 export function LiveBombPlay({ id }) {
   const router = useRouter();
-  const { room, error, busy, act, left } = useBombRoom(id);
+  const { room, error, busy, act, left, voteLeft } = useBombRoom(id);
   const myId = useMyId();
   useBombRedirect(room, "play");
   const [text, setText] = useState("");
@@ -208,7 +222,7 @@ export function LiveBombPlay({ id }) {
       </SafeAreaView>
     );
   }
-  const myTurn = room.turn?.player.id === myId;
+  const myTurn = room.turn?.player.id === myId && !room.vote; // 투표 중에는 이어 말할 수 없다
   const send = async () => {
     const word = text.trim();
     if (!word || !myTurn || busy) return;
@@ -219,8 +233,13 @@ export function LiveBombPlay({ id }) {
     <SafeAreaView style={styles.safe} edges={["top", "bottom"]}>
       <PlayHeader title="문장 폭탄" close fallback="/play" onBack={() => router.replace("/play")} />
       <GameTop room={room} left={left} compact={kb} />
+      {room.vote ? <VoteBanner vote={room.vote} left={voteLeft} busy={busy} onVote={(yes) => act(() => voteBomb(id, yes))} /> : null}
       <KeyboardAvoidingView style={styles.flex} behavior="padding">
-        <Chat chat={bombChat(room.messages, myId)} />
+        <Chat
+          chat={bombChat(room.messages, myId, room.can_call ? room.call_msg_id : null, room.can_unfair ? unfairMessageId(room.messages, myId) : null)}
+          onCall={() => act(() => startBombVote(id, "call"))}
+          onUnfair={busy ? undefined : () => act(() => startBombVote(id, "unfair"))}
+        />
         <View style={styles.bar}>
           {error ? <Text style={styles.error}>{error}</Text> : kb ? null : <Text style={styles.rule}>한 단어나 짧은 구, {MAX_LEN}자까지 · 끝내는 말을 하면 생명이 줄어요</Text>}
           <View style={styles.inputRow}>
@@ -228,7 +247,7 @@ export function LiveBombPlay({ id }) {
               value={text}
               onChangeText={(v) => setText(v.slice(0, MAX_LEN))}
               editable={myTurn}
-              placeholder={myTurn ? "이어 말하기" : "차례를 기다려요"}
+              placeholder={myTurn ? "이어 말하기" : room.vote ? "투표 중이에요" : "차례를 기다려요"}
               placeholderTextColor={colors.placeholder}
               accessibilityLabel="이어 말하기"
               onSubmitEditing={send}
@@ -247,7 +266,7 @@ export function LiveBombPlay({ id }) {
 // ---------- 관전 ----------
 export function LiveBombSpectate({ id }) {
   const router = useRouter();
-  const { room, error, act, left, cheerLeft } = useBombRoom(id);
+  const { room, error, busy, act, left, voteLeft, cheerLeft } = useBombRoom(id);
   const myId = useMyId();
   useBombRedirect(room, "spectate");
   if (!room) {
@@ -265,8 +284,13 @@ export function LiveBombSpectate({ id }) {
     <SafeAreaView style={styles.safe} edges={["top", "bottom"]}>
       <PlayHeader title="문장 폭탄" close fallback="/play" onBack={() => router.replace("/play")} />
       <GameTop room={room} left={left} />
+      {room.vote ? <VoteBanner vote={room.vote} left={voteLeft} busy={busy} onVote={(yes) => act(() => voteBomb(id, yes))} /> : null}
       <KeyboardAvoidingView style={styles.flex} behavior="padding">
-        <Chat chat={bombChat(room.messages, myId)} header={room.my_status === "out" ? "탈락했어요 · 구경 중" : "구경 중이에요"} />
+        <Chat
+          chat={bombChat(room.messages, myId, null, room.can_unfair ? unfairMessageId(room.messages, myId) : null)}
+          header={room.my_status === "out" ? "탈락했어요" : "구경 중이에요"}
+          onUnfair={busy ? undefined : () => act(() => startBombVote(id, "unfair"))}
+        />
         <View style={styles.bar}>
           {error ? (
             <Text style={styles.error}>{error}</Text>
@@ -388,6 +412,10 @@ const styles = StyleSheet.create({
   send: { minWidth: 68, height: 40, borderRadius: 20, backgroundColor: colors.peach, alignItems: "center", justifyContent: "center" },
   sendOff: { backgroundColor: colors.honeySoft },
   sendText: { fontSize: 15, fontFamily: fonts.bold, color: colors.text },
+  msgWrap: { gap: 3 },
+  callChip: { alignSelf: "flex-start", marginLeft: 32, height: 24, paddingHorizontal: 10, borderRadius: 12, borderWidth: 1, borderColor: BOMB_RED, backgroundColor: "#FBEAE3", alignItems: "center", justifyContent: "center" },
+  callChipText: { fontSize: 12, lineHeight: 16, fontFamily: fonts.bold, color: BOMB_RED },
+  unfairChip: { alignSelf: "flex-end", marginLeft: 0 }, // 내 말풍선은 오른쪽이라 칩도 오른쪽 아래
   chips: { flexDirection: "row", gap: 8, justifyContent: "center" },
   chip: { height: 40, paddingHorizontal: 16, borderRadius: 20, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.card, alignItems: "center", justifyContent: "center" },
   chipOff: { backgroundColor: colors.surface },

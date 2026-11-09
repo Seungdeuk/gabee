@@ -359,6 +359,12 @@ const BOMB_PATH = { lobby: "bomb-lobby", play: "bomb-play", spectate: "bomb-spec
 /** 폭탄 화면 주소 */
 export const bombPath = (screen, id) => `/play/${BOMB_PATH[screen]}?id=${encodeURIComponent(id)}`;
 
+/** 내 마지막 차례가 "끝난 말"로 판정된 말의 채팅 줄 id("억울해요" 칩이 붙는 곳). 내 마지막 차례가 그게 아니면 null. */
+export function unfairMessageId(messages, myId) {
+  const mine = [...(messages ?? [])].reverse().find((m) => (m.kind === "say" || m.kind === "timeout") && m.player.id === myId);
+  return mine && mine.kind === "say" && mine.ended ? mine.id : null;
+}
+
 /** 우리 가족 기록 안내(결과 화면) */
 export function recordNote(result) {
   if (result.is_record) return result.prev_record ? `우리 가족 신기록이에요\n(이전 ${result.prev_record}개)` : "우리 가족 첫 기록이에요";
@@ -366,19 +372,23 @@ export function recordNote(result) {
 }
 
 /**
- * 채팅 한 줄 → 화면에 그릴 모양. kind: say(말풍선) / system(시간 초과·문장 끝냄 안내) / cheer(응원).
+ * 채팅 한 줄 → 화면에 그릴 모양. kind: say(말풍선) / system(시간 초과·문장 끝냄·투표 결과 안내) / cheer(응원).
+ * callId 는 "어라?" 칩이 붙을 말(방 상태의 call_msg_id)이고, 그 말풍선에 call 이 참이 된다.
+ * unfairId 는 "억울해요" 칩이 붙을 내 말(끝난 말로 판정된 내 마지막 말, unfairMessageId 로 찾는다)이다.
  * 말 한 줄이 문장을 끝냈거나 시간이 지나 생명이 줄었으면 뒤에 안내 줄을 하나 더 붙인다.
  */
-export function bombChat(messages, myId) {
+export function bombChat(messages, myId, callId = null, unfairId = null) {
   const out = [];
   for (const m of messages ?? []) {
     const mine = m.player.id === myId;
-    if (m.kind === "timeout") {
+    if (m.kind === "vote") {
+      out.push({ id: m.id, kind: "system", text: m.text });
+    } else if (m.kind === "timeout") {
       out.push({ id: m.id, kind: "system", text: `${m.player.name} 시간 초과 · 생명 -1${m.out ? " · 탈락" : ""}` });
     } else if (m.kind === "cheer") {
       out.push({ id: m.id, kind: "cheer", uid: m.player.id, name: m.player.name, text: `${m.text}`.replace(/!?$/, "!").replace("!!", "!"), mine });
     } else {
-      out.push({ id: m.id, kind: "say", uid: m.player.id, name: m.player.name, text: m.text, mine });
+      out.push({ id: m.id, kind: "say", uid: m.player.id, name: m.player.name, text: m.text, mine, call: Boolean(callId) && m.id === callId, unfair: Boolean(unfairId) && m.id === unfairId });
       if (m.ended) {
         const what = m.reason === "repeat" ? "같은 말을 또 했어요" : "문장을 끝냈어요"; // 이번 문장에서 나온 말을 또 해도 생명이 줄어든다
         out.push({ id: `${m.id}e`, kind: "system", text: `${m.player.name}${hasFinalConsonant(m.player.name) ? "이" : "가"} ${what} · 생명 -1${m.out ? " · 탈락" : ""}` });
