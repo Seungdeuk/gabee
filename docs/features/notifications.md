@@ -41,7 +41,7 @@
   - `features/notifications/PushBootstrap.js`: 로그인하면 안드로이드 알림 채널(`default`)을 만들고 권한을 요청한 뒤(처음이면 안내 문구 후 시스템 창) Expo 푸시 토큰을 받아 `PUT /notifications/push-token` 으로 등록한다. 거절·오류·Expo Go·에뮬레이터 실패는 조용히 넘기고 알림함은 그대로 쓴다. 웹에서는 아무것도 하지 않는다.
   - 로그아웃 직전(세션이 살아 있을 때) `shared/auth/signOutHooks.js` 의 `onBeforeSignOut` 로 `DELETE /notifications/push-token` 을 부른다(실패·3초 초과해도 로그아웃은 계속).
   - 앱이 켜져 있을 때 오는 푸시는 상단 배너로 보이고, 푸시를 누르면 알림함 사건은 알림함(`/notifications`)으로, **소통 푸시(`kind=chat`)는 그 채팅방으로** 이동한다. 푸시에는 방 id 만 있어서 `/chat-open?roomId=…`(`ChatOpenScreen`)가 방 목록(`GET /family-chat/rooms`)으로 가족방(`/chat-room`)인지 1:1(`/chat-room?roomId&peer`)인지 찾아 바꿔서 열고, 방을 못 찾거나 목록을 못 읽으면 소통 탭(`/family-chat`)으로 간다(순수 함수 `chatRouteFor`).
-  - 마이 > 알림설정(`/push-settings`, `screens/PushSettingsScreen.js`): 푸시 켜기·끄기, 분류별 켜기·끄기(맨 위 "소통" 포함 — 소통 푸시는 "새 메시지가 도착했어요" 고정 문구라 예전의 "메시지 내용 표시 방식" 선택은 없앴다), 방해금지(밤 10시~아침 7시 고정, 직접 시간 고르기는 후속). 바꾸는 즉시 저장하고 실패하면 되돌린다.
+  - 마이 > 알림설정(`/push-settings`, `screens/PushSettingsScreen.js`): 푸시 켜기·끄기, 분류별 켜기·끄기(맨 위 "소통" 포함 — 소통 푸시는 "새 메시지가 도착했어요" 고정 문구라 예전의 "메시지 내용 표시 방식" 선택은 없앴다), 방해금지(스위치를 켜면 "시작 시간"·"끝 시간" 줄이 나타나고 끄면 사라진다. 처음 켤 때 기본값 22:00~07:00, 이미 켜져 있으면 정한 시간을 유지한다. 시 −/+ 는 1시간씩 0~23 순환, 분 −/+ 는 5분 단위 0~55 순환이며 바꾸는 즉시 저장한다. 시작과 끝이 같아지면 서버에서 방해금지가 걸리지 않으므로 같아지는 값은 한 칸 더 건너뛴다. 안내 문구는 현재 설정으로 만든다: "22:00 ~ 다음 날 07:00에는 푸시를 보내지 않아요". 로직은 `push.js` 순수 함수). 바꾸는 즉시 저장하고 실패하면 되돌린다.
   - 개발용 빌드(development build)가 필요하다(Expo Go 에서는 안드로이드 원격 푸시가 안 된다). 안드로이드는 Firebase FCM 설정(`google-services.json` → `android.googleServicesFile`)과 EAS 에 올린 FCM 키가 있어야 푸시를 받는다. 이 설정은 Firebase 프로젝트 소유자가 정해지면 추가한다(아직 없음).
 - 2차로 미룬 것: 구성원 변경(서버에 나가기·역할 변경 기능이 없다), 돌봄(서버 `care` 기능이 없다).
 

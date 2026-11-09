@@ -1,17 +1,17 @@
 import { useFocusEffect, useRouter } from "expo-router";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ActivityIndicator, AppState, Linking, Platform, StyleSheet, Switch, Text, View } from "react-native";
+import { ActivityIndicator, AppState, Linking, Platform, Pressable, StyleSheet, Switch, Text, View } from "react-native";
 
 import Button from "@/shared/components/Button";
 import Card from "@/shared/components/Card";
 import IconButton from "@/shared/components/IconButton";
 import Screen from "@/shared/components/Screen";
-import { colors, font, spacing } from "@/theme";
+import { colors, font, radius, spacing } from "@/theme";
 
 import { getPushSettings, savePushSettings } from "../api";
 import { KIND_META } from "../kinds";
 import { prepareThisDevice, readPermissionState } from "../PushBootstrap";
-import { isQuietOn, permissionNotice, toggleKind, withQuiet } from "../push";
+import { formatQuietSummary, formatTimeKorean, isQuietOn, permissionNotice, stepQuietTime, toggleKind, withQuiet } from "../push";
 
 const KIND_KEYS = ["chat", "schedule", "billing", "care", "family_group", "ai_record", "support"];
 
@@ -139,18 +139,53 @@ export default function PushSettingsScreen() {
               <Text style={styles.hint}>{"소통 푸시는 '새 메시지가 도착했어요'로만 와요. 내용은 앱에서 확인해요."}</Text>
               <Text style={styles.section}>방해금지</Text>
               <Card tone="white">
-                <Row
-                  label="밤 10시 ~ 아침 7시에는 푸시 끄기"
-                  value={isQuietOn(settings)}
-                  onChange={(on) => change(withQuiet(settings, on))}
-                />
+                <Row label="방해금지 켜기" value={isQuietOn(settings)} onChange={(on) => change(withQuiet(settings, on))} />
+                {isQuietOn(settings) ? (
+                  <>
+                    <TimeRow label="시작 시간" time={settings.quiet_start} onStep={(unit, dir) => change(stepQuietTime(settings, "quiet_start", unit, dir))} />
+                    <TimeRow label="끝 시간" time={settings.quiet_end} onStep={(unit, dir) => change(stepQuietTime(settings, "quiet_end", unit, dir))} />
+                  </>
+                ) : null}
               </Card>
+              {isQuietOn(settings) ? <Text style={styles.hint}>{formatQuietSummary(settings)}</Text> : null}
               <Text style={styles.hint}>알림함에는 그대로 쌓여요.</Text>
             </>
           ) : null}
         </View>
       ) : null}
     </Screen>
+  );
+}
+
+/** 시간 한 줄: 현재 시각을 크게 보이고, 시·분을 각각 줄이고 늘리는 버튼을 둔다. */
+function TimeRow({ label, time, onStep }) {
+  return (
+    <View style={styles.timeRow}>
+      <View style={styles.timeHead}>
+        <Text style={styles.rowLabel}>{label}</Text>
+        <Text style={styles.timeValue} accessibilityLabel={`${label} ${formatTimeKorean(time)}`}>
+          {formatTimeKorean(time)}
+        </Text>
+      </View>
+      <View style={styles.stepRow}>
+        <Stepper name="시" label={`${label} 시`} onStep={(dir) => onStep("hour", dir)} />
+        <Stepper name="분" label={`${label} 분`} onStep={(dir) => onStep("minute", dir)} />
+      </View>
+    </View>
+  );
+}
+
+function Stepper({ name, label, onStep }) {
+  return (
+    <View style={styles.stepper}>
+      <Text style={styles.stepName}>{name}</Text>
+      <Pressable accessibilityRole="button" accessibilityLabel={`${label} 줄이기`} onPress={() => onStep(-1)} style={styles.stepButton}>
+        <Text style={styles.stepText}>−</Text>
+      </Pressable>
+      <Pressable accessibilityRole="button" accessibilityLabel={`${label} 늘리기`} onPress={() => onStep(1)} style={styles.stepButton}>
+        <Text style={styles.stepText}>+</Text>
+      </Pressable>
+    </View>
   );
 }
 
@@ -178,5 +213,13 @@ const styles = StyleSheet.create({
   hint: { ...font.caption, color: colors.textMuted },
   notice: { ...font.body, color: colors.text, marginBottom: spacing.sm },
   row: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingVertical: spacing.sm },
+  timeRow: { paddingVertical: spacing.sm, gap: spacing.sm },
+  timeHead: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  timeValue: { ...font.bodyStrong, color: colors.text },
+  stepRow: { flexDirection: "row", justifyContent: "space-around" },
+  stepper: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
+  stepName: { ...font.body, color: colors.textMuted },
+  stepButton: { minWidth: 44, minHeight: 44, alignItems: "center", justifyContent: "center", borderRadius: radius.pill, backgroundColor: colors.surfaceStrong },
+  stepText: { ...font.bodyStrong, color: colors.text },
   rowLabel: { ...font.body, color: colors.text, flex: 1, paddingRight: spacing.md },
 });
