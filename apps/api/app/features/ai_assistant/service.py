@@ -12,7 +12,7 @@ from app.shared.llm.agent_chat import to_out as to_proposal_out
 from . import repository as repo
 from .knowledge import rag_chat
 from .models import Photo
-from .schemas import ChatOut, ChatSource, ConfirmCardOut
+from .schemas import ChatOut, ChatSource, ConfirmCardOut, WebSource
 
 NO_GROUP_REPLY = (
     "가족 그룹에 먼저 참여하면 가비가 가족의 기록을 바탕으로 도와드릴 수 있어요. "
@@ -66,6 +66,7 @@ def chat(
         # 1:1 방이면 탭 에이전트에게 "direct" 로 알린다(일정 에이전트는 아직 1:1 을 다루지 않는다)
         audience="direct" if direct else audience,
         context_factory=factory,
+        web=audience == "me",  # 방 대화가 검색어로 나가지 않게 AI 채팅 탭에서만 켠다
     )
     sources = [
         ChatSource(n=s["n"], title=s["title"], item_id=s["item_id"], source_path=s["source_path"])
@@ -75,6 +76,7 @@ def chat(
         reply=r.answer,
         source=r.source,
         sources=sources,
+        web_sources=[WebSource(**s) for s in r.web_sources],
         proposals=to_proposal_out(r.proposals),
         confirm_cards=[ConfirmCardOut(**c) for c in r.confirmations],
     )

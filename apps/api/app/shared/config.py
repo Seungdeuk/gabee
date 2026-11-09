@@ -53,6 +53,9 @@ class Settings(BaseSettings):
     ingest_retry_wait_seconds: int = 20
     # 올린 문서의 날짜에서 챙길 일을 뽑는다(Claude 1회 호출). 켜도 사용자마다 챙겨주기 스위치로 끌 수 있다
     ingest_reminders: bool = False
+    # AI 채팅 탭에서 Claude 가 웹 검색을 쓸 수 있게 한다(docs/requirements/ai_assistant-web-search.md). 검색 1,000회에 10달러가 더 든다
+    web_search_enabled: bool = False
+    web_search_max_uses: int = 3  # 질문 하나에 검색할 수 있는 횟수
 
     # 임시 경로 스위치(app/shared/route_switch.py): 쉼표로 구분한 `METHOD /path`(경로에 * 허용). 걸린 요청은 503 route_disabled. 비우면 끄는 경로 없음
     disabled_ai_routes: str = ""

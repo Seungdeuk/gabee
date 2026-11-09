@@ -99,7 +99,7 @@ export default function AiAssistantScreen({ bell, emptyAction }) {
     const isReport = item.sources.length > 1; // 여러 기록을 모은 답에는 저장·복사 버튼을 붙인다
     return (
       <View style={styles.answer}>
-        <AnswerView text={item.text} sources={item.sources} showActions={isReport && index === messages.length - 1}>
+        <AnswerView text={item.text} sources={item.sources} webSources={item.webSources} showActions={isReport && index === messages.length - 1}>
           {item.draft ? (
             <DraftCard to={item.draft.to} text={item.draftText} onChangeText={(t) => editDraft(item.id, t)} />
           ) : null}

@@ -6,6 +6,7 @@
     START ─▶ model ──도구 호출 없음──────────────────────▶ END
               ▲  └─도구 호출 있음─▶ tools ──직통 응답 또는 max_steps 번째 호출이었음─▶ END
               └──────────────────────────┘ 그 밖에는 다시 model
+    (서버 도구가 길어져 멈춘 응답 pause_turn 은 도구 칸 없이 바로 model 로 돌아간다)
 
 이 파일은 흐름만 안다. 도구를 실제로 실행하고 결과를 글로 바꾸는 일(출처·제안·확인 카드 모으기, 길이 자르기, 오류 표시)은 `Run.handle` 을 넘긴
 쪽이 한다. 모델 호출은 `PostChatModel` 이 `post` 로 하므로 호출 수 집계·재시도 정책(`transport.post_messages(retry=…)`)은 `post` 를 고른 쪽 그대로다.
@@ -63,13 +64,21 @@ def _model(state: State, config: RunnableConfig) -> dict:
     run = _run(config)
     run.steps += 1
     reply = run.model.invoke(state["messages"])
-    if not reply.tool_calls:
+    if not reply.tool_calls and not _keep_going(reply, run):
         run.answer, run.finished = text_of(reply), True
     return {"messages": [reply]}
 
 
-def _after_model(state: State) -> str:
-    return "tools" if state["messages"][-1].tool_calls else END
+def _keep_going(reply: BaseMessage, run: Run) -> bool:
+    """서버 도구(웹 검색)가 길어져 잠시 멈춘 응답이면 그대로 돌려보내 이어서 받는다. 아직 답이 끝난 게 아니다."""
+    return reply.response_metadata.get("stop_reason") == "pause_turn" and run.steps < run.max_steps
+
+
+def _after_model(state: State, config: RunnableConfig) -> str:
+    reply = state["messages"][-1]
+    if reply.tool_calls:
+        return "tools"
+    return "model" if _keep_going(reply, _run(config)) else END
 
 
 def _tools(state: State, config: RunnableConfig) -> dict:
@@ -97,7 +106,9 @@ def _build():
     graph.add_node("model", _model)
     graph.add_node("tools", _tools)
     graph.add_edge(START, "model")
-    graph.add_conditional_edges("model", _after_model, {"tools": "tools", END: END})
+    graph.add_conditional_edges(
+        "model", _after_model, {"tools": "tools", "model": "model", END: END}
+    )
     graph.add_conditional_edges("tools", _after_tools, {"model": "model", END: END})
     return graph.compile()
 

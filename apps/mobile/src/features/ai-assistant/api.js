@@ -7,6 +7,7 @@ import { confirmResultText, mapChatCards } from "./scheduleCard";
  * @typedef {object} AssistantReply
  * @property {string} reply 답변 본문(간단한 마크다운: `## 제목`, `- 목록`, `**굵게**`, `[1]` 출처 번호)
  * @property {{ n: number, title: string, itemId?: string, sourcePath?: string | null }[]} [sources] 답변이 근거로 쓴 기록(itemId 가 있으면 원본을 열 수 있다)
+ * @property {{ title: string, url: string }[]} [webSources] 답변이 인용한 웹 페이지(웹 검색을 썼을 때만)
  * @property {{ to: string, text: string } | null} [draft] 가족에게 보낼 메시지 초안(승인 전)
  */
 
@@ -60,7 +61,7 @@ export async function sendMessage(text, history = []) {
   }
   const res = await apiFetch("/ai-assistant/chat", { method: "POST", body: { message: text, history: history.slice(-10) } });
   const sources = (res.sources ?? []).map(({ n, title, item_id: itemId, source_path: sourcePath }) => ({ n, title, itemId, sourcePath }));
-  return { reply: res.reply, sources, draft: null, confirmCards: mapChatCards(res) };
+  return { reply: res.reply, sources, webSources: res.web_sources ?? [], draft: null, confirmCards: mapChatCards(res) };
 }
 
 /**

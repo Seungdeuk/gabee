@@ -62,6 +62,7 @@ def test_graph_has_the_expected_nodes_and_edges():
     assert edges == {
         ("__start__", "model"),
         ("model", "tools"),
+        ("model", "model"),  # 서버 도구가 길어져 멈춘 응답(pause_turn)을 이어 받는다
         ("model", "__end__"),
         ("tools", "model"),
         ("tools", "__end__"),

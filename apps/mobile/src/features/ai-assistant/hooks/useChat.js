@@ -14,7 +14,7 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
  * 채팅 상태와 동작을 관리한다.
  *
  * phase: idle(대기) | listening(음성 입력 중) | thinking(가비가 답을 만드는 중) | reading(올린 파일을 읽는 중)
- * 메시지: { id, role: "user" | "assistant", text, voice?, imageUri?, sources?, draft?, draftText?, doubts?, describe? }
+ * 메시지: { id, role: "user" | "assistant", text, voice?, imageUri?, sources?, webSources?, draft?, draftText?, doubts?, describe? }
  * describe: 글자 없는 사진의 설명 카드 { recordId, status: "pending" | "done" | "skipped" }. 메시지에 들어 있어서 대화와 함께 저장된다.
  * 읽는 중 표시는 메시지가 아니라 phase 로만 보여 줘서 서버로 보내는 대화 이력에 섞이지 않는다.
  *
@@ -57,10 +57,10 @@ export default function useChat() {
     setMessages((prev) => [...prev, { id: id(), role: "user", text: trimmed, voice }]);
     setPhase("thinking");
     try {
-      const { reply, sources = [], draft = null, confirmCards = [] } = await sendMessage(trimmed, history);
+      const { reply, sources = [], webSources = [], draft = null, confirmCards = [] } = await sendMessage(trimmed, history);
       setMessages((prev) => [
         ...prev,
-        { id: id(), role: "assistant", text: reply, sources, draft, draftText: draft?.text, ...(confirmCards.length > 0 ? { confirmCards } : {}) },
+        { id: id(), role: "assistant", text: reply, sources, webSources, draft, draftText: draft?.text, ...(confirmCards.length > 0 ? { confirmCards } : {}) },
       ]);
     } catch (e) {
       setMessages((prev) => [...prev, errorMessage(id(), e)]);

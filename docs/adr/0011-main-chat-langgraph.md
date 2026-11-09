@@ -61,3 +61,4 @@
 - 여전히 쓰지 않는 것: 상태 저장소(checkpointer), 스트리밍, interrupt, 병렬 실행. 모든 노드는 호출한 스레드에서 차례로 돈다
   (`ai_guard.tally_scope` 와 DB 세션이 그 스레드에 묶여 있다).
 - 시험: `tests/test_rag_graph.py`(그래프), `tests/test_llm_agent_loop.py`(탭 에이전트 루프), `ai_assistant/tests/test_handle_calls_restore.py`.
+- 2026-11-09: 웹 검색 서버 도구의 `pause_turn` 을 이어 받으려고 `model → model` 선을 더했다(`docs/features/ai_assistant-web-search.md`).
