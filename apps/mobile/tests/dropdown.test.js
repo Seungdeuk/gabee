@@ -19,3 +19,12 @@ test("Dropdown highlights the current value, has a 44 high touch area and access
   assert.match(src, /accessibilityLabel/);
   assert.match(src, /from "@\/theme"/);
 });
+
+test("Dropdown: 칸 옆에 화살표를 두지 않는다(시·분 숫자만 보인다)", () => {
+  assert.doesNotMatch(src, /▾|caret|chevron/);
+});
+
+test("Dropdown: 칸 배경은 흰색 토큰(colors.card)이다", () => {
+  assert.match(src, /box: \{[\s\S]*?backgroundColor: colors\.card,[\s\S]*?\}/);
+  assert.doesNotMatch(src.match(/box: \{[\s\S]*?\},\n  boxText/)?.[0] ?? "", /colors\.surface\b/);
+});

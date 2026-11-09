@@ -29,7 +29,6 @@ export default function Dropdown({ value, options, onChange, label, display, tes
         testID={testID}
       >
         <Text style={styles.boxText}>{shown}</Text>
-        <Text style={styles.caret}>▾</Text>
       </Pressable>
       <Modal transparent visible={open} animationType="fade" onRequestClose={() => setOpen(false)}>
         <Pressable style={styles.backdrop} onPress={() => setOpen(false)} accessibilityLabel="닫기">
@@ -74,10 +73,9 @@ const styles = StyleSheet.create({
     borderRadius: radius.sm,
     borderWidth: 1,
     borderColor: colors.border,
-    backgroundColor: colors.surface,
+    backgroundColor: colors.card,
   },
   boxText: { ...font.bodyStrong, color: colors.text },
-  caret: { ...font.caption, color: colors.textMuted },
   backdrop: { flex: 1, backgroundColor: "rgba(85,59,41,0.35)", alignItems: "center", justifyContent: "center", padding: spacing.xl }, // ConfirmDialog 와 같은 반투명 배경(theme 에 토큰이 없다)
   sheet: { width: "60%", maxHeight: "60%", borderRadius: radius.card, backgroundColor: colors.card, paddingVertical: spacing.sm },
   title: { ...font.bodyStrong, color: colors.textMuted, textAlign: "center", paddingVertical: spacing.sm },
