@@ -584,3 +584,7 @@
 - 앱: 가족 전체방에서 문서를 처음 올리기 전에 "가족 문서함에 자동으로 모여요" 안내를 한 번 보인다(`libraryNotice.js`, `AsyncStorage` 키 `gabee.library.notice.v1`, 1:1 방은 보이지 않음).
 - DB: `knowledge_items.source_attachment_id` 추가(Alembic, `docs/contracts/db.md`).
 - 시험: `ai_assistant/tests/test_chat_library.py`(14개), 앱 `tests/librarynotice.test.js`.
+
+## 앨범 뷰어 사진이 비어 보이던 문제 (2026-11-09)
+- 묶음 사진을 크게 열어 옆으로 넘기면 2번째부터 사진 칸이 바탕색만 보이던 문제(BlueStacks)와, 웹에서 처음부터 사진이 안 보이던 문제를 `AlbumViewer` 에서 고쳤다: 안드로이드가 화면 밖 칸을 떼어 내지 않게 하고(`removeClippedSubviews={false}`), 칸 높이를 목록이 잰 높이로 정했다(웹에서 높이가 0 으로 접히지 않게). 서버는 사진을 정상으로 보냈다(로그 200).
+- 확인: 시험은 구성(소스)만 검사한다. 실제 화면은 BlueStacks·웹에서 묶음 사진을 넘겨 보며 확인해야 한다(이 수정을 화면에서 직접 확인하지는 못했다). 시험: `tests/albumviewerlayout.test.js`.
