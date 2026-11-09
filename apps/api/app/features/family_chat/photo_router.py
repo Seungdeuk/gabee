@@ -37,7 +37,7 @@ def save_photo_to_library(
     db: Session = Depends(get_db),
 ) -> LibrarySaveOut:
     """가족 전체방에 올린 사진을 가족 공유 문서함에 직접 저장한다("문서로 저장"). 방에 들어갈 수 있는 가족 누구나 누를 수 있다.
-    문서 사진 판별과 하루 상한을 건너뛰고, 글을 읽는 데는 시간이 걸려 바로 `queued` 로 답한다(이미 있으면 `already`). 1:1 방 사진은 409, 없는 사진·못 들어가는 방은 404, 너무 자주 누르면 429. `queued` 는 "저장을 시작했다"는 뜻이라, 읽어 보니 민감 문서이거나 읽지 못하면 직접 저장해도 문서함에 넣지 않는다."""
+    문서 사진 판별과 하루 상한을 건너뛰고, 글을 읽는 데는 시간이 걸려 바로 `queued` 로 답한다(이미 있으면 `already`). 1:1 방 사진은 409, 없는 사진·못 들어가는 방은 404, 너무 자주 누르면 429. `queued` 는 "저장을 시작했다"는 뜻이라, 읽지 못하면 직접 저장해도 문서함에 넣지 않는다(민감 문서도 넣고 민감 표시를 붙인다)."""
     return LibrarySaveOut(status=photo_service.save_to_library(db, user, group_id, attachment_id))
 
 

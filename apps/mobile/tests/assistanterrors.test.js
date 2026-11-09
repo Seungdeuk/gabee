@@ -32,7 +32,8 @@ test("오류 코드별 안내 문구", () => {
 
 test("안내 카드 문구에는 외부 AI 전송 설명과 민감 기록 제외가 들어 있다", () => {
   assert.match(AI_OFF_BODY, /외부 AI\(Anthropic\)로 전송/);
-  assert.match(AI_OFF_BODY, /민감한 기록은 기본으로 제외/);
+  assert.match(AI_OFF_BODY, /민감한 기록도/); // 민감 기록도 가린 글이 전송될 수 있다(CHAT_INCLUDE_SENSITIVE 기본 켜짐)
+  assert.doesNotMatch(AI_OFF_BODY, /기본으로 제외/);
   assert.match(AI_OFF_BODY, /소유자나 관리자가 켤 수 있어요/);
 });
 

@@ -1,4 +1,4 @@
-"""가족 전체방에 올린 문서가 가족 공유 문서함(knowledge)에 자동 등록된다: 가족방의 문서 첨부만(1:1 방·사진 제외), 민감 문서와 지원하지 않는 형식은 등록하지 않고,
+"""가족 전체방에 올린 문서가 가족 공유 문서함(knowledge)에 자동 등록된다: 가족방의 문서 첨부만(1:1 방·사진 제외), 지원하지 않는 형식은 등록하지 않고 민감 문서는 민감 표시를 붙여 등록하며,
 같은 첨부는 한 번만, 채팅 메시지를 지우면 연결된 기록도 함께 지워지고, 등록이 실패해도 채팅 전송은 그대로다. 모델이나 인터넷 없이 돈다."""
 
 import io
@@ -311,4 +311,35 @@ def test_a_medical_certificate_is_registered_from_the_chat(client, family, tmp_p
     _send_file(client, a)
     items = _items(group["id"])
     assert len(items) == 1 and items[0].kind_label == "진단서"
+    assert (
+        items[0].sensitivity == "sensitive"
+    )  # 이름만 민감한 문서도 민감 표시가 붙는다(@가비 제외 설정·AI 리포트 집계가 이 표시를 쓴다)
     assert _raw_files(tmp_path) != []
+
+
+@pytest.mark.parametrize("kind", ["외국인등록증", "통장 사본", "소견서", "검사결과지"])
+def test_documents_that_are_only_sensitive_by_name_are_flagged_sensitive(
+    client, family, monkeypatch, kind
+):
+    a, _, group = family
+    original = files.from_ingest.to_item
+    monkeypatch.setattr(
+        files.from_ingest,
+        "to_item",
+        lambda result: {**original(result), "kind_label": kind, "sensitivity": None},
+    )
+    _send_file(client, a)
+    items = _items(group["id"])
+    assert len(items) == 1 and items[0].sensitivity == "sensitive", kind
+
+
+def test_reminders_are_not_planned_for_sensitive_chat_documents(client, family, monkeypatch):
+    """챙길 일 뽑기(INGEST_REMINDERS)는 문서 본문을 Claude 로 보내므로, 민감 문서는 건너뛴다. 일반 문서는 그대로 뽑는다."""
+    a, _, group = family
+    monkeypatch.setattr(settings, "ingest_reminders", True)
+    planned: list[str] = []
+    monkeypatch.setattr(files.reminders, "plan", lambda db, gid, uid, pid: planned.append(pid))
+    _send_file(client, a, data=PRESCRIPTION, name="처방전.txt")
+    assert len(_items(group["id"])) == 1 and planned == []  # 민감 문서는 외부로 보내지 않는다
+    _send_file(client, a)  # 일반 문서
+    assert len(planned) == 1

@@ -1,5 +1,5 @@
 """가족 전체방에 올린 사진 중 문서를 찍은 사진은 가족 공유 문서함에 자동 등록된다(일반 사진·애매한 사진·1:1 방·민감 문서는 등록하지 않는다).
-판별은 로컬 OCR 의 글자 수·줄 수로 하고, 가족당 하루 상한을 넘으면 자동 등록을 멈춘다. 모델이나 인터넷 없이 돈다."""
+판별은 로컬 OCR 의 글자 수·줄 수로 하고, 하루 상한은 없다(2026-11-09 사용자 결정). 모델이나 인터넷 없이 돈다."""
 
 import io
 
@@ -60,7 +60,6 @@ def _isolated(monkeypatch, tmp_path):
     photo_service.upload_limiter._failures.clear()
     photo_service.library_limiter._failures.clear()
     monkeypatch.setattr(library, "_submit", lambda fn, *args: fn(*args))
-    library._photo_counts.clear()
     library._photo_pending.clear()
     library._photo_inflight.clear()
     old = files.processors
@@ -144,13 +143,14 @@ def test_a_photo_that_reads_as_a_picture_after_the_full_read_is_dropped(client, 
     assert _items(group["id"]) == []
 
 
-def test_the_daily_limit_stops_automatic_registration(client, family, monkeypatch):
+def test_there_is_no_daily_limit_on_automatic_registration(client, family):
+    """하루 30장 상한은 없앴다(2026-11-09 사용자 결정): 문서 사진은 몇 장이든 자동 등록된다."""
     a, _, group = family
-    monkeypatch.setattr(library, "PHOTO_DAILY_LIMIT", 1)
+    assert not hasattr(library, "PHOTO_DAILY_LIMIT")
     _use_ocr(ScriptedOcr(NOTICE_LINES))
-    _send_photo(client, a)
-    _send_photo(client, a)
-    assert len(_items(group["id"])) == 1  # 두 번째는 상한 때문에 건너뛴다
+    for _ in range(4):
+        _send_photo(client, a)
+    assert len(_items(group["id"])) == 4
 
 
 def test_deleting_the_message_removes_the_registered_photo(client, family):
@@ -245,16 +245,15 @@ def test_the_claude_judge_is_off_by_default(client, family, monkeypatch):
     assert len(_items(group["id"])) == 1  # 로컬 OCR 판별만으로 등록
 
 
-def test_the_daily_limit_also_bounds_claude_judging(client, family, judge, monkeypatch):
+def test_claude_judges_every_readable_photo_without_a_daily_limit(client, family, judge):
     a, _, group = family
-    monkeypatch.setattr(library, "PHOTO_DAILY_LIMIT", 1)
     _use_ocr(ScriptedOcr(NOTICE_LINES))
-    _send_photo(client, a)
-    _send_photo(client, a)
-    assert judge.calls == 1 and len(_items(group["id"])) == 1
+    for _ in range(3):
+        _send_photo(client, a)
+    assert judge.calls == 3 and len(_items(group["id"])) == 3
 
 
-# ---------- "문서로 저장": 사용자가 직접 문서함에 넣는다(판별·하루 상한을 건너뛴다) ----------
+# ---------- "문서로 저장": 사용자가 직접 문서함에 넣는다(판별을 건너뛴다) ----------
 
 
 def _save(client, headers, attachment_id):
@@ -280,16 +279,6 @@ def test_saving_twice_does_not_register_twice(client, family):
     msg = _send_photo(client, a)  # 자동으로 이미 등록됨
     r = _save(client, a, msg["attachment"]["id"])
     assert r.status_code == 200 and r.json() == {"status": "already"}
-    assert len(_items(group["id"])) == 1
-
-
-def test_saving_ignores_the_daily_limit(client, family, monkeypatch):
-    a, _, group = family
-    monkeypatch.setattr(library, "PHOTO_DAILY_LIMIT", 0)
-    _use_ocr(ScriptedOcr(NOTICE_LINES))
-    msg = _send_photo(client, a)
-    assert _items(group["id"]) == []  # 상한 때문에 자동 등록은 멈췄다
-    assert _save(client, a, msg["attachment"]["id"]).status_code == 200
     assert len(_items(group["id"])) == 1
 
 
@@ -550,7 +539,9 @@ def test_personal_bank_documents_are_registered_with_account_numbers_masked(clie
         _save(client, a, msg["attachment"]["id"]).status_code == 200
     )  # 자동 판별이 못 잡아도 직접 저장하면 들어간다
     items = _items(group["id"])
-    assert len(items) == 1
+    assert (
+        len(items) == 1 and items[0].sensitivity == "sensitive"
+    )  # 개인 금융 문서는 민감 표시가 붙는다
     for number in ("123456-12-345678", "1002-345-678901", "1002-123-456789"):
         assert number not in items[0].body_md  # 문서함에 들어가도 계좌번호는 읽을 때 이미 가려진다
     assert _save(client, a, msg["attachment"]["id"]).json() == {"status": "already"}
