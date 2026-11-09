@@ -68,6 +68,7 @@ docker compose 의 개발용 PostgreSQL(`pgvector/pgvector:pg16` 이미지, `pgv
 | knowledge_chunks | ai_assistant/knowledge | 기록을 쪽·슬라이드·길이로 자른 조각과 임베딩 벡터(PostgreSQL 은 pgvector `vector(384)` + 코사인 HNSW 인덱스, SQLite 는 JSON). Alembic 리비전 c3a9f21d7e54 |
 | knowledge_item_reads | ai_assistant/knowledge | 구성원별 문서 읽음 기록. 기본키 (item_id → knowledge_items.id ON DELETE CASCADE, user_id → users.id), read_at. 문서 상세를 열면 한 행이 생기고 문서를 지우면 함께 지운다. `group_id` 없이 `item_id` 로 가족을 구분하며(문서가 가족에 속한다), 읽음은 본인 것만 조회한다. Alembic 리비전 27c7716f7207 |
 | document_reminders | ai_assistant | 올린 문서의 날짜에서 뽑은 "챙길 일". 기록 id(`item_id`), 챙길 사람(`user_id`), 일 이름(가린 글에서 뽑은 짧은 말), 날짜·시각, 급함(`urgent`)·며칠 전부터(`lead_days`), 문서에 적힌 장소(`place`)·준비물(`prep`, "준비물 챙기셨나요?"로 묻는다)·핵심 메모(`memo`, 일정을 만들 때 넣는다), 상태(proposed → scheduled → done/dismissed), 만든 일정(`event_id`), 물어본 기록(`asked_count`·`last_asked_on`·`asked_hours`·`followup_asked_on`). 일정 표(events)는 건드리지 않는다. Alembic 0dd1c204d717 |
+| assistant_memories | ai_assistant | 가비의 기억. 사용자가 기억해 달라고 한 짧은 사실(`text`, 200자). 본인(`user_id`)에게만 쓰고 대화 원문은 저장하지 않는다. 사람당 50개 |
 | reminder_settings | ai_assistant | 사람마다 먼저 챙겨주기를 켜고 끄는 스위치(기본키 user_id, enabled). 줄이 없으면 켜진 것으로 본다. Alembic 0dd1c204d717 |
 
 | ops_request_metrics | ops_admin | 운영 관리자 페이지용 요청 지표 집계. 구간 시작 `bucket_start`(기본 5분), `method`, 경로 패턴 `route`(`/items/{id}` 또는 `unmatched`), 상태코드 구분 `status_class`(2xx~5xx)별 요청 수·지연 시간 합·최댓값. 기본키는 앞의 네 컬럼이라 인스턴스가 여러 개여도 같은 행에 더해진다. 보관 90일(기본, `OPS_METRICS_RETENTION_DAYS`). URL 원문·본문·쿼리·헤더·사용자·가족 id 를 담는 컬럼이 없다. 기본 꺼짐(`OPS_METRICS_ENABLED`). Alembic 리비전 fcf5ce5e68e1 |

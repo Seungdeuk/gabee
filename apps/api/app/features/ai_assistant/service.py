@@ -67,6 +67,7 @@ def chat(
         audience="direct" if direct else audience,
         context_factory=factory,
         web=audience == "me",  # 방 대화가 검색어로 나가지 않게 AI 채팅 탭에서만 켠다
+        personal=audience == "me",  # 답이 방에 올라갈 수 있으니 개인 기억·내용 전달은 AI 채팅 탭에서만 쓴다
     )
     sources = [
         ChatSource(n=s["n"], title=s["title"], item_id=s["item_id"], source_path=s["source_path"])

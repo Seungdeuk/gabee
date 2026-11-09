@@ -59,6 +59,34 @@ class ConfirmCardOut(BaseModel):
     items: list[ShareItemOut] = []
 
 
+class ShareConfirmIn(BaseModel):
+    """토큰에 보낼 글(최대 500자)이 들어 있어 정산 확인보다 길다."""
+
+    token: str = Field(min_length=10, max_length=16000)
+
+
+class MemoryOut(BaseModel):
+    """가비의 기억 한 줄."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    text: str
+    created_at: datetime
+
+
+class MemoryIn(BaseModel):
+    text: str = Field(min_length=1, max_length=400)  # 공백 정리 뒤 200자 안인지는 서버가 다시 본다
+
+
+class MemoriesOut(BaseModel):
+    items: list[MemoryOut]
+
+
+class MemoryDeletedOut(BaseModel):
+    deleted: int
+
+
 class WebSource(BaseModel):
     """답이 인용한 웹 페이지."""
 

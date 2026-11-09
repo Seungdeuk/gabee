@@ -77,6 +77,10 @@ def test_main_asks_billing_agent_and_never_gets_db_tools(client, family, monkeyp
         "resolve_name_check",
         "resolve_reminder",
         "set_reminders",
+        "remember",  # 본인 기억만 다룬다(가계·일정 DB 를 읽지 않는다)
+        "update_memory",
+        "forget",
+        "prepare_share",  # 확인 카드만 만든다
         "ask_billing",
         "ask_family_chat",
         "ask_schedule",

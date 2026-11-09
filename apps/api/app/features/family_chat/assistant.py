@@ -22,7 +22,7 @@ from . import ai_service
 from . import repository as repo
 from .models import ASSISTANT_NAME, ASSISTANT_USER_ID, Message
 from .schemas import MessageOut
-from .service import message_out
+from .service import message_out, open_direct_room, post
 
 MAX_TEXT = 2000  # 사람이 보내는 메시지의 길이 제한과 같다
 
@@ -119,6 +119,15 @@ def post_as_assistant(
         db, Message(group_id=group_id, room_id=target, user_id=assistant.id, text=clip(text))
     )
     return message_out(message, assistant.name)
+
+
+def share_as_user(
+    db: Session, user: User, group_id: str, text: str, peer_id: str | None = None
+) -> MessageOut:
+    """사용자가 AI 채팅에서 확인한 글을 그 사람 이름으로 보낸다(peer_id 가 없으면 가족 전체방, 있으면 그 사람과의 1:1 방).
+    구성원 확인·저장·푸시는 일반 메시지와 같은 길을 탄다."""
+    room_id = open_direct_room(db, user, group_id, peer_id).id if peer_id else None
+    return post(db, user, group_id, text, room_id)
 
 
 room_assistant.register_poster(lambda db, group_id, text: post_as_assistant(db, group_id, text).id)
