@@ -25,6 +25,7 @@ test("처음에는 안내를 보이고, 확인한 뒤에는 다시 보이지 않
   assert.equal(await shouldShowLibraryNotice(storage), true);
   await markLibraryNoticeSeen(storage);
   assert.equal(storage.data.get(LIBRARY_NOTICE_KEY), "1");
+  assert.equal(LIBRARY_NOTICE_KEY, "gabee.library.notice.v2"); // 사진도 자동 등록되도록 범위가 넓어졌으니, 이전 안내를 본 사람에게도 다시 보인다
   assert.equal(await shouldShowLibraryNotice(storage), false);
 });
 
@@ -47,18 +48,26 @@ test("안내 문구: 가족방 문서가 문서함에 자동 저장되고, 민�
   assert.match(LIBRARY_NOTICE_BODY, /민감/);
   assert.match(LIBRARY_NOTICE_BODY, /1:1/);
   assert.match(LIBRARY_NOTICE_BODY, /지우면/);
+  assert.match(LIBRARY_NOTICE_BODY, /사진/); // 문서를 찍은 사진도 자동 등록된다
+  assert.match(LIBRARY_NOTICE_BODY, /문서로 저장/); // 자동으로 안 된 사진은 직접 넣을 수 있다
 });
 
-test("채팅방 화면: 가족 전체방에서 문서를 고르기 전에만(1:1 방 제외) 안내를 한 번 보인다", () => {
+test("채팅방 화면: 가족 전체방에서 문서나 사진을 고르기 전에만(1:1 방 제외) 같은 안내를 한 번 보인다", () => {
   const room = readFileSync(new URL("../src/features/family-chat/screens/ChatRoomScreen.js", import.meta.url), "utf8");
   assert.match(room, /!direct && \(await shouldShowLibraryNotice\(AsyncStorage\)\)/);
+  assert.equal(room.split("shouldShowLibraryNotice(AsyncStorage)").length - 1, 1, "안내 판단은 한 곳(같은 저장 키)에서만 한다");
   assert.match(room, /markLibraryNoticeSeen\(AsyncStorage\)/);
-  assert.ok(room.indexOf("shouldShowLibraryNotice(AsyncStorage)") < room.indexOf("await pickChatDocument()"), "문서를 고르기 전에 안내한다");
+  const notice = room.indexOf("await noticeLibraryOnce()");
+  assert.ok(notice > 0);
+  assert.ok(room.indexOf("await noticeLibraryOnce()") < room.indexOf("await pickChatDocument()"), "문서를 고르기 전에 안내한다");
+  assert.ok(room.indexOf("await noticeLibraryOnce()", notice + 1) > 0, "사진 쪽에서도 안내를 부른다");
+  const photoFlow = room.slice(room.indexOf("const onPickPhoto"), room.indexOf("const onPickFile"));
+  assert.ok(photoFlow.indexOf("await noticeLibraryOnce()") > 0 && photoFlow.indexOf("await noticeLibraryOnce()") < photoFlow.indexOf("await pickChatPhotos()"), "사진을 고르기 전에 안내한다");
 });
 
 test("채팅방 화면: 웹에서는 Alert 대신 브라우저 알림으로 안내하고(웹 Alert 는 동작하지 않아 버튼이 잠긴다), 안드로이드 뒤로 가기로도 닫힌다", () => {
   const room = readFileSync(new URL("../src/features/family-chat/screens/ChatRoomScreen.js", import.meta.url), "utf8");
   assert.match(room, /function showLibraryNotice\(\)[\s\S]*Platform\.OS === "web"[\s\S]*globalThis\.alert/);
   assert.match(room, /cancelable: true/);
-  assert.match(room, /await showLibraryNotice\(\)/);
+  assert.match(room, /await showLibraryNotice\(\)/); // 안내를 보이는 곳은 noticeLibraryOnce 한 곳
 });

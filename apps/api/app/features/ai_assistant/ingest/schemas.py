@@ -45,6 +45,8 @@ class Quality(BaseModel):
 class Privacy(BaseModel):
     # 처방전·신분증·통장·가족관계증명서면 민감 문서(개인정보를 모두 가림). none 이면 주민번호만
     sensitive: Literal["none", "prescription", "id_card", "bankbook", "family_cert"] = "none"
+    # bankbook 으로 잡혔지만 학교·기관의 납부 계좌 안내문이다(통장 사본·이체확인증이 아니다). 가리기 전의 글로 판단한 값: 가족방 자동 등록이 쓴다
+    account_notice: bool = False
     # 가린 개수 (rrn, card, phone, …) — 가린 값 자체는 어디에도 남기지 않는다
     masked: dict[str, int] = Field(default_factory=dict)
 

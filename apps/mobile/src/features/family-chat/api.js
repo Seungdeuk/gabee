@@ -359,6 +359,13 @@ export function listMedia({ roomId, kind = "image", limit = 40, beforeId } = {})
 }
 
 /**
+ * 채팅 사진 한 장을 가족 공유 문서함에 직접 넣는다("문서로 저장"). 가족 전체방 사진만 된다(1:1 방은 409 not_family_room, 없는 사진·못 들어가는 방은 404).
+ * @param {string} attachmentId 사진 첨부 id(attachment.id)
+ * @returns {Promise<{ status: "queued" | "already" }>} queued 는 저장을 시작했다(글을 읽는 데 시간이 걸린다), already 는 이미 문서함에 있다
+ */
+export const savePhotoToLibrary = (attachmentId) => apiFetch(`/family-chat/photos/${encodeURIComponent(attachmentId)}/library`, { method: "POST" });
+
+/**
  * 사진 원본을 로그인 헤더로 받아 Blob 으로 돌려준다(웹 저장용). 서버가 준 사진 경로만 받고, 토큰은 주소에 넣지 않는다.
  * @param {string} path 서버가 준 attachment.url
  * @returns {Promise<Blob>}

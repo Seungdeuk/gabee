@@ -43,6 +43,9 @@ class Settings(BaseSettings):
     ingest_llm_mask: bool = False  # 글을 Claude 로 가리고 가족 이름 후보를 문맥으로 판단한다
     ingest_ocr_model: str = "claude-sonnet-5-5"  # 표·머리말 구분이 좋은 모델
     ingest_mask_model: str = ""  # 비우면 llm_model(Haiku)
+    # 가족방 사진이 문서 사진인지 Claude 로 가린다(기본 false: 로컬 OCR 판별만). 켜면 글자가 있는 사진이 Anthropic API 로 전송된다(docs/adr/0015)
+    photo_judge_llm: bool = False
+    photo_judge_model: str = ""  # 비우면 llm_model(Haiku)
     ingest_mask_chunk_chars: int = 6000  # 가리기 호출 한 번에 보내는 최대 글자 수(긴 문서는 나눠서)
     ingest_pdf_max_pages: int = 20  # Claude 로 읽는 PDF 최대 쪽 수(비용 상한)
     # Claude 연결 실패(llm_unavailable)로 failed 가 될 파일을 자동으로 다시 처리하는 횟수와 기다리는 시간(n번째 재시도는 n×이 초)

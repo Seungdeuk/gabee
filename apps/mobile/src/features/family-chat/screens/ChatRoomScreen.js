@@ -24,6 +24,7 @@ import RoomDrawer from "../components/RoomDrawer";
 import { HEART, canOpenMenu, messageActionError, reactionAction, replyPreview } from "../messageActions";
 import { COPIED_NOTICE, COPY_FAILED_NOTICE, pinTapAction } from "../pinUtils";
 import { parseFocusParam, roomSearchOptions, shouldLoadNewer } from "../searchUtils";
+import { canSaveToLibrary, saveToLibrary } from "../saveToLibrary";
 import { canSaveToRecord, saveToRecord } from "../saveToRecord";
 import useChatLinks from "../useChatLinks";
 import useChatMessages, { useRoomInfo } from "../useChatMessages";
@@ -52,6 +53,9 @@ const END_SETTLE_MS = 150; // 맨 아래로 간 뒤 마지막 항목 높이가 �
 
 /** 가족 전체방의 사진을 AI 비서의 가족 기록으로 올린다(사진 보기의 "가비 기록에 저장"). */
 const savePhotoToRecord = (attachment) => saveToRecord(attachment, Platform.OS);
+
+/** 가족 전체방의 사진을 가족 공유 문서함에 직접 넣는다(사진 보기의 "문서로 저장"). */
+const savePhotoToLibraryDoc = (attachment) => saveToLibrary(attachment);
 
 /**
  * 가족 문서함 자동 등록 안내를 보이고 닫힐 때까지 기다린다. 웹의 Alert 는 아무 동작도 하지 않아(끝나지 않아 문서 버튼이 잠긴다) 브라우저 알림 창을 쓴다.
@@ -221,6 +225,14 @@ export default function ChatRoomScreen() {
     if (!(await chat.send(text, null))) throw new Error("방에 보내지 못했어요. 잠시 후 다시 시도해 주세요.");
   };
 
+  /** 가족 전체방에서만(1:1 방 제외) 문서함 자동 등록 안내를 처음 한 번 보이고 확인을 기억한다. 사진을 고를 때와 문서를 고를 때가 같은 저장 키를 쓴다. */
+  const noticeLibraryOnce = async () => {
+    if (!direct && (await shouldShowLibraryNotice(AsyncStorage))) {
+      await showLibraryNotice();
+      await markLibraryNoticeSeen(AsyncStorage);
+    }
+  };
+
   /** 갤러리에서 사진을 한 장 또는 여러 장(최대 10장) 골라 보낸다. 2장 이상이면 같은 묶음 번호를 붙여 앨범으로 보이게 하고, 한 장이 실패하면 거기서 멈춘다. 고르는 동안·보내는 동안은 다시 누를 수 없다. */
   const onPickPhoto = async () => {
     if (picking.current || chat.photoBusy) return;
@@ -228,6 +240,7 @@ export default function ChatRoomScreen() {
     setPicking(true);
     chat.setPhotoError("");
     try {
+      await noticeLibraryOnce(); // 문서를 찍은 사진도 자동 등록되므로 사진을 처음 보낼 때도(문서와 같은 키로 한 번만) 안내한다
       const { assets, skipped } = await pickChatPhotos();
       if (!assets.length) {
         if (skipped) chat.setPhotoError(photoSendErrorMessage({ code: "photo_too_large" }));
@@ -259,11 +272,7 @@ export default function ChatRoomScreen() {
     setPickingFile(true);
     chat.setPhotoError("");
     try {
-      if (!direct && (await shouldShowLibraryNotice(AsyncStorage))) {
-        // 가족 전체방에 올린 문서는 가족 공유 문서함에 자동 등록된다는 안내를 처음 한 번만 보이고, 확인한 뒤 파일을 고른다
-        await showLibraryNotice();
-        await markLibraryNoticeSeen(AsyncStorage);
-      }
+      await noticeLibraryOnce(); // 가족 전체방이면 문서함 자동 등록 안내를 처음 한 번만 보이고, 확인한 뒤 파일을 고른다
       const asset = await pickChatDocument();
       if (!asset) return;
       nearBottom.current = true;
@@ -633,6 +642,7 @@ export default function ChatRoomScreen() {
                 onReplyPress={pickPin}
                 linkBadges={item.album ? albumBadges(item.album, links.badgesOf) : links.badgesOf(item.message.id)}
                 onSaveToRecord={canSaveToRecord({ direct, attachment: item.message.attachment }) ? savePhotoToRecord : undefined}
+                onSaveToLibrary={canSaveToLibrary({ direct, attachment: item.message.attachment }) ? savePhotoToLibraryDoc : undefined}
               />
             )
           }

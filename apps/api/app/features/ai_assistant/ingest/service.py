@@ -112,17 +112,23 @@ def _mask(text: str, family=None) -> tuple[str, Privacy]:
     if settings.ingest_llm_mask:
         # Claude 가 위치를 찾고(가족 이름 후보는 문맥으로 판단) 코드가 바꾼다. 호출이 실패하면 LLMUnavailable 이 올라가 파일이 failed 가 된다
         masked, counts, sensitive = llm_ingest.mask(text, family)
-        return masked, Privacy(sensitive=sensitive, masked=counts)
+        notice = sensitive == "bankbook" and masking.is_account_notice(
+            text
+        )  # 가리기 전의 글로 판단
+        return masked, Privacy(sensitive=sensitive, masked=counts, account_notice=notice)
     # 가족 이름은 가리기보다 먼저 자리표시로 바꾼다: 가린 뒤에는 `강**` 가 되어 누구인지 되돌릴 수 없다
     if family is not None:
         text = family.protect(text)
     # 처방전·신분증만 모두 가리고, 그 밖의 문서는 주민등록번호만 가린다
     kind = masking.sensitive_kind(text)
+    notice = kind == "bankbook" and masking.is_account_notice(text)  # 가리기 전의 글로 판단
     counts: Counter = Counter()
     masked = masking.mask_text(text, kind, counts=counts)
     if family is not None:
         masked = family.expand(masked)
-    return masked, Privacy(sensitive=kind, masked={k: v for k, v in counts.items() if v})
+    return masked, Privacy(
+        sensitive=kind, masked={k: v for k, v in counts.items() if v}, account_notice=notice
+    )
 
 
 def _from_image_llm(source: SourceInfo, data: bytes, family=None) -> PreprocessResult:

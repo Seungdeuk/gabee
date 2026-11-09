@@ -7,14 +7,19 @@
 - 채팅 메시지를 지우면 연결된 기록·원본도 함께 지운다(`files.delete_record`)."""
 
 import logging
+import threading
 from concurrent.futures import ThreadPoolExecutor
+from datetime import date
 
 from sqlalchemy.orm import Session
 
-from app.shared import chat_library
+from app.shared import ai_guard, chat_library
+from app.shared.config import settings
 from app.shared.db import SessionLocal
+from app.shared.llm import doc_ai
 
 from . import files, service
+from .ingest import converters, photo_judge
 from .ingest.detect import Unsupported, detect
 from .knowledge import repository as knowledge_repo
 
@@ -76,6 +81,133 @@ def _on_removed(db: Session, group_id: str, attachment_id: str) -> None:
         files.delete_record(db, group_id, item.id)
 
 
+# ---------- 사진 ----------
+
+PHOTO_DAILY_LIMIT = (
+    30  # 가족당 하루에 자동으로 읽는 문서 사진 수(Claude 읽기 비용 상한). 넘으면 자동 등록만 멈춘다
+)
+PHOTO_JUDGE_MIN_CONFIDENCE = 0.7  # Claude 가 "문서"라고 해도 확신이 이보다 낮으면 자동 등록하지 않는다(실측: 0.7 이면 애매함 0%, 0.9 면 오인 0 에 애매함 11%)
+PHOTO_QUEUE_LIMIT = 20  # 가족마다 처리를 기다리는 사진 수(사진 바이트가 메모리에 있으므로 상한을 둔다). 한 가족이 다른 가족을 막지 않는다
+_photo_lock = threading.Lock()
+_photo_counts: dict[
+    tuple[str, str], int
+] = {}  # (가족, 날짜) → 오늘 자동으로 읽은 수. 프로세스 메모리라 재시작하면 0 부터
+_photo_pending: dict[str, int] = {}  # 가족 → 처리를 기다리는 사진 수
+_photo_inflight: set[tuple[str, str, bool]] = (
+    set()
+)  # (가족, 첨부, 직접 저장 여부) 진행 중인 것: 같은 요청을 겹쳐 처리하지 않는다
+
+
+def _take_daily_slot(group_id: str) -> bool:
+    key = (group_id, date.today().isoformat())
+    with _photo_lock:
+        for old in [k for k in _photo_counts if k[1] != key[1]]:
+            del _photo_counts[old]
+        if _photo_counts.get(key, 0) >= PHOTO_DAILY_LIMIT:
+            return False
+        _photo_counts[key] = _photo_counts.get(key, 0) + 1
+        return True
+
+
+def _family_allows_ai(group_id: str) -> bool:
+    """가족 그룹이 AI 사용에 동의했는지(외부 AI 는 동의한 가족에게만 쓴다)."""
+    with SessionLocal() as db:
+        return ai_guard.is_enabled(db, group_id)
+
+
+def _is_document_photo(group_id: str, data: bytes) -> bool:
+    """자동 등록할 문서 사진인지. 글자가 거의 안 읽히는 사진은 로컬 OCR 로 바로 일반 사진 처리하고(외부 전송 없음),
+    `PHOTO_JUDGE_LLM` 이 켜져 있고 이 가족이 AI 사용에 동의했으면 글자가 읽힌 사진(문서·애매)만 Claude 에게 묻는다.
+    꺼져 있거나 동의하지 않았으면 OCR 판별이 문서일 때만 등록한다(외부로 나가지 않는다).
+    판별 자체가 실패한 사진(열 수 없음·OCR 오류)은 외부로 보내지 않고 등록하지 않는다.
+    하루 상한은 Claude 판별과 읽기를 합쳐 센다. 애매하거나 확신이 낮거나 Claude 가 실패하면 등록하지 않는다(사용자가 "문서로 저장")."""
+    verdict = photo_judge.judge(data, files.processors.ocr or converters.default_ocr())
+    if verdict.failed or verdict.kind == photo_judge.PHOTO:
+        return False
+    use_claude = settings.photo_judge_llm and _family_allows_ai(group_id)
+    if not use_claude and verdict.kind != photo_judge.DOCUMENT:
+        return False
+    if not _take_daily_slot(group_id):
+        logger.info("chat library photo daily limit reached")
+        return False
+    if not use_claude:
+        return True
+    try:
+        answer = doc_ai.classify_photo(photo_judge.to_judge_jpeg(data))
+    except Exception as exc:  # noqa: BLE001  사진·응답 내용은 남기지 않고 종류만 적는다
+        logger.warning("chat library photo judge failed error=%s", type(exc).__name__)
+        return False
+    return answer.kind == "document" and answer.confidence >= PHOTO_JUDGE_MIN_CONFIDENCE
+
+
+def register_chat_photo(
+    group_id: str, user_id: str, attachment_id: str, data: bytes, forced: bool = False
+) -> None:
+    """채팅 사진 하나를 판별해서 문서 사진이면 문서함에 등록한다(읽기 → 민감하지 않으면 저장). 어떤 실패도 던지지 않는다.
+    forced 는 사용자가 직접 저장을 눌러 판별과 하루 상한을 건너뛰는 경우다."""
+    try:
+        with SessionLocal() as db:
+            if knowledge_repo.get_by_attachment(db, group_id, attachment_id) is not None:
+                return
+            if not chat_library.attachment_exists(db, group_id, attachment_id):
+                return
+        if not forced and not _is_document_photo(group_id, data):
+            return
+        with SessionLocal() as db:
+            photo = service.receive_file(
+                db, group_id, user_id, f"{attachment_id}.jpg", "image/jpeg", data
+            )
+            photo_id = photo.id
+        files.process_file(
+            photo_id, group_id, user_id, data, f"{attachment_id}.jpg",
+            source_attachment_id=attachment_id, keep_photo=forced,
+        )  # fmt: skip
+    except Exception as exc:  # noqa: BLE001  내용이 로그에 남지 않게 종류만 적는다
+        logger.warning("chat library photo register failed error=%s", type(exc).__name__)
+
+
+def _on_photo(
+    group_id: str, user_id: str, attachment_id: str, data: bytes, forced: bool = False
+) -> None:
+    key = (group_id, attachment_id, forced)
+    with _photo_lock:
+        if key in _photo_inflight:
+            return  # 같은 요청이 이미 처리 중이다(연타·재요청)
+        if _photo_pending.get(group_id, 0) >= PHOTO_QUEUE_LIMIT and not forced:
+            logger.info(
+                "chat library photo queue full"
+            )  # 직접 누른 저장은 버리지 않는다(요청 횟수는 라우터가 제한한다)
+            return
+        _photo_pending[group_id] = _photo_pending.get(group_id, 0) + 1
+        _photo_inflight.add(key)
+
+    def release() -> None:
+        with _photo_lock:
+            _photo_inflight.discard(key)
+            left = _photo_pending.get(group_id, 1) - 1
+            if left > 0:
+                _photo_pending[group_id] = left
+            else:
+                _photo_pending.pop(group_id, None)
+
+    def run() -> None:
+        try:
+            register_chat_photo(group_id, user_id, attachment_id, data, forced)
+        finally:
+            release()
+
+    try:
+        _submit(run)
+    except Exception as exc:  # noqa: BLE001  서버를 끄는 중이면 작업이 들어가지 않는다: 자리를 되돌린다
+        release()
+        logger.warning("chat library photo submit failed error=%s", type(exc).__name__)
+
+
+def _photo_registered(db: Session, group_id: str, attachment_id: str) -> bool:
+    return knowledge_repo.get_by_attachment(db, group_id, attachment_id) is not None
+
+
 def register() -> None:
     """ai_assistant 가 시작할 때 처리 함수를 채팅 쪽 통로에 등록한다."""
     chat_library.register_handlers(_on_document, _on_removed)
+    chat_library.register_photo_handler(_on_photo, _photo_registered)

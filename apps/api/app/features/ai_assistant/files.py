@@ -90,8 +90,10 @@ def process_file(
     data: bytes,
     filename: str,
     source_attachment_id: str | None = None,
+    keep_photo: bool = False,
 ) -> None:
     """전처리해서 knowledge 에 넣고 `photos.status` 를 바꾼다. 어떤 실패도 서버를 멈추지 않는다.
+    `keep_photo` 는 채팅 사진을 사용자가 직접 "문서로 저장"한 경우다: 글자가 거의 없어 "사진" 기록이 돼도 문서함에 남긴다.
 
     Claude 연결이 잠깐 안 돼서 실패(`llm_unavailable`)했으면 기다렸다가 같은 파일을 다시 처리한다(원본 바이트는 이미 메모리에 있다).
     깨진 파일·지원 안 하는 형식은 다시 해도 같으므로 다시 하지 않는다. 기다리는 동안은 처리 칸을 비워 다른 파일이 지나가게 한다."""
@@ -101,7 +103,7 @@ def process_file(
             time.sleep(settings.ingest_retry_wait_seconds * attempt)
         with _SLOTS:
             status, retry = _process_once(
-                photo_id, group_id, user_id, data, filename, source_attachment_id
+                photo_id, group_id, user_id, data, filename, source_attachment_id, keep_photo
             )
         if not retry:
             break
@@ -136,6 +138,12 @@ def _drop_chat_upload(group_id: str, photo_id: str, data: bytes) -> None:
                 logger.warning("원본 파일을 지우지 못했어요 id=%s", photo_id)
 
 
+def _only_a_bank_account(result) -> bool:
+    """통장류(`bankbook`)로 잡힌 문서가 학교·기관의 납부 계좌 안내문인가. 판단은 읽기 단계가 가리기 **전의** 글로 해 둔 값이다
+    (통장 사본·이체확인증·거래내역은 통장·받는분·잔액 같은 낱말이 있어 그대로 민감 문서다)."""
+    return result.privacy.sensitive == "bankbook" and result.privacy.account_notice
+
+
 def _plan_reminders(photo_id: str, group_id: str, user_id: str) -> None:
     """저장된 기록에서 챙길 일을 뽑는다(설정이 켜진 경우). 실패해도 파일은 그대로 저장된 상태로 둔다."""
     if not settings.ingest_reminders:
@@ -154,6 +162,7 @@ def _process_once(
     data: bytes,
     filename: str,
     source_attachment_id: str | None = None,
+    keep_photo: bool = False,
 ) -> tuple[str, bool]:
     """한 번 처리한다. (상태, 다시 해 볼 만한 실패인지)"""
     try:
@@ -174,6 +183,18 @@ def _process_once(
                 _drop_chat_upload(group_id, photo_id, data)
             return "failed", retry
         fields = from_ingest.to_item(result)
+        if (
+            source_attachment_id
+            and not keep_photo
+            and fields["kind_label"] == from_ingest.PHOTO_KIND
+        ):
+            # 문서 사진으로 보고 읽었는데 글자가 거의 없다: 일반 사진은 문서함에 넣지 않는다
+            _drop_chat_upload(group_id, photo_id, data)
+            return "skipped", False
+        if source_attachment_id and _only_a_bank_account(result):
+            # 학교 납부 안내처럼 계좌번호만 이유로 통장류로 잡힌 문서(통장 사본이 아니다)는 등록한다. 계좌번호는 읽을 때 이미 가려진다.
+            # 분류 이름이 처방전·신분증·통장 같은 민감 종류면 아래 검사가 그대로 제외한다.
+            fields["sensitivity"] = None
         if source_attachment_id and knowledge_service.is_sensitive(
             fields["kind_label"], fields.get("sensitivity"), strict=True
         ):

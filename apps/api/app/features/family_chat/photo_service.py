@@ -5,7 +5,9 @@
 - 위치: settings.data_dir/chat_photos/<첨부 id>.jpg, <첨부 id>_t.jpg. 파일 이름은 서버가 만든 id 로만 정한다(사용자 입력 무관).
   파일을 먼저 쓰고 → 메시지와 첨부를 한 번에 DB 에 저장하고 → 실패하면 파일을 지운다.
 - 보기: 그 방에 들어갈 수 있는 사람만(가족 전체방은 가족 구성원, 1:1 방은 두 사람). 아니면 사진이 있는지도 알려주지 않는다(404).
-- 사진 내용·파일 경로는 로그에 남기지 않고 외부 서비스(AI 포함)로 보내지 않는다.
+- 사진 내용·파일 경로는 로그에 남기지 않는다. 사진 전송 자체는 AI 를 부르지 않는다. 가족 전체방 사진은 보낸 뒤 뒤에서(`shared/chat_library.py`)
+  로컬 OCR 로 문서 사진인지 판별해 문서면 가족 문서함에 읽어 넣는다. 이때 `PHOTO_JUDGE_LLM`·`INGEST_LLM_OCR` 설정이 켜져 있으면 글자가 읽히는 사진만
+  Anthropic API 로 전송된다(기본은 꺼짐, docs/adr/0015). 1:1 방 사진은 어디에도 넘기지 않는다.
 """
 
 import io
@@ -20,13 +22,14 @@ from PIL import Image, ImageOps
 from sqlalchemy.orm import Session
 
 from app.features.family_group.models import User
+from app.shared import chat_library
 from app.shared.config import settings
 from app.shared.errors import ApiError, bad_request, not_found
 from app.shared.rate_limit import FailureLimiter
 
 from . import chat_push, service
 from . import repository as repo
-from .models import Message, MessageAttachment
+from .models import FAMILY, Message, MessageAttachment
 from .schemas import MessageOut
 
 MAX_BYTES = 8 * 1024 * 1024
@@ -40,12 +43,16 @@ THUMB_QUALITY = 75
 MAX_CONCURRENT = 2  # 동시에 처리하는 업로드 수
 UPLOAD_LIMIT = 20  # 사용자당 분당 업로드 시도 수
 UPLOAD_WINDOW_SECONDS = 60
+LIBRARY_SAVE_LIMIT = (
+    10  # 사용자당 분당 "문서로 저장" 요청 수(직접 저장은 하루 상한을 건너뛰므로 요청 횟수로 막는다)
+)
 CACHE_CONTROL = "private, max-age=31536000, immutable"  # 사진은 바뀌지 않는다(새 사진은 새 id)
 ALLOWED_FORMATS = {"JPEG", "PNG", "WEBP"}
 _SAFE_ID = re.compile(r"^[A-Za-z0-9]{1,32}$")
 
 _slots = threading.BoundedSemaphore(MAX_CONCURRENT)
 upload_limiter = FailureLimiter()  # 프로세스 메모리(shared/rate_limit.py 의 한계 참고)
+library_limiter = FailureLimiter()
 
 
 def _photo_dir() -> Path:
@@ -205,7 +212,43 @@ def send_photo(
     chat_push.notify_new_message(
         db, room, message, attachment.batch_id
     )  # 같은 묶음은 첫 사진에서만 푸시
+    if (
+        room.kind == FAMILY
+    ):  # 가족 전체방 사진만: 문서를 찍은 사진이면 가족 문서함에 자동 등록한다(판별·읽기는 뒤에서, 실패해도 전송은 그대로)
+        # 업로드 원본(EXIF·촬영 위치가 남아 있다)이 아니라 서버가 다시 만든 사본(메타데이터 없음, 긴 변 1600px)을 넘긴다: 문서함 원본으로 가족에게 내려가기 때문
+        chat_library.photo_posted(group_id, user.id, attachment.id, full)
     return service.message_out(message, user.name, attachment)
+
+
+def _check_save_rate(user_id: str) -> None:
+    key = f"chatphotolib:{user_id}"
+    wait = library_limiter.retry_after(key, LIBRARY_SAVE_LIMIT, UPLOAD_WINDOW_SECONDS)
+    if wait:
+        raise ApiError(
+            429,
+            "too_many_saves",
+            "문서함 저장을 너무 자주 눌렀어요. 잠시 후 다시 해 주세요",
+            headers={"Retry-After": str(wait)},
+        )
+    library_limiter.record(key)
+
+
+def save_to_library(db: Session, user: User, group_id: str, attachment_id: str) -> str:
+    """사진을 가족 공유 문서함에 직접 저장한다(판별·하루 상한을 건너뛴다). "queued" 또는 "already".
+    방에 들어갈 수 없거나 없는 사진은 404, 가족 전체방이 아닌(1:1) 방의 사진은 409, 너무 자주 누르면 429.
+    "queued" 는 저장을 시작했다는 뜻이다: 읽어 보니 민감 문서(처방전·신분증 등)이거나 읽지 못하면 문서함에 넣지 않는다."""
+    _check_save_rate(user.id)
+    data, _ = photo_for_viewer(db, user, group_id, attachment_id, False)  # 못 보는 사진은 404
+    attachment = repo.get_attachment(db, attachment_id)
+    room = service.resolve_room(db, user, group_id, attachment.room_id)
+    if room.kind != FAMILY:
+        raise ApiError(
+            409, "not_family_room", "가족 전체방에 올린 사진만 가족 문서함에 저장할 수 있어요"
+        )
+    if chat_library.is_registered(db, group_id, attachment_id):
+        return "already"
+    chat_library.photo_requested(group_id, user.id, attachment_id, data)
+    return "queued"
 
 
 def photo_for_viewer(
