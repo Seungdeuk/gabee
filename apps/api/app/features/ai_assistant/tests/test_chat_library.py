@@ -95,15 +95,14 @@ def test_a_document_sent_to_the_family_room_is_registered_in_the_library(client,
     assert len(_raw_files(tmp_path)) == 1  # 원본은 한 번 보관된다
 
 
-def test_the_chat_upload_does_not_also_announce_a_new_document(client, family):
-    """채팅에 이미 올라온 파일이라 "새 문서가 올라왔어요" 알림을 한 번 더 보내지 않는다."""
+def test_the_chat_upload_creates_no_notification_for_the_new_document(client, family):
+    """채팅 문서 자동 등록은 "새 문서" 알림을 포함해 알림 행을 하나도 만들지 않는다(문서 등록 알림은 없앴다)."""
     a, _, _ = family
+    with SessionLocal() as db:
+        before = len(db.scalars(select(Notification)).all())
     _send_file(client, a)
     with SessionLocal() as db:
-        assert (
-            db.scalars(select(Notification).where(Notification.event == "document_added")).all()
-            == []
-        )
+        assert len(db.scalars(select(Notification)).all()) == before
 
 
 def test_documents_in_one_to_one_rooms_are_not_registered(client, family):
