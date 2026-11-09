@@ -90,7 +90,7 @@
 - 휴대폰 업로드는 1600px WebP q80 추천(크기 52% 줄고 OCR 0.90) — 앱 담당과 협의 필요. 서버는 어떤 크기로 와도 위 세 가지를 만든다.
 - 실측(실제 사진 5장): 화면용 사본 합계 원본의 20%, 장당 0.14~0.34초. 영수증 원본에 있던 위치 정보(GPS)가 사본에는 없음.
 
-## Claude 로 읽고 가리기 (2026-11-04. 글자 읽기 `INGEST_LLM_OCR` 은 2026-11-09 부터 기본 켜짐, 가리기 `INGEST_LLM_MASK` 는 기본 꺼짐, 결정: [ADR 0014](../adr/0014-upload-llm-ocr-masking.md))
+## Claude 로 읽고 가리기 (2026-11-04. 2026-11-09 부터 글자 읽기 `INGEST_LLM_OCR` 과 가리기 `INGEST_LLM_MASK` 모두 기본 켜짐, 결정: [ADR 0014](../adr/0014-upload-llm-ocr-masking.md))
 ```
 사진·스캔·PDF 쪽 ─▶ Claude OCR(shared/llm/doc_ai.read_image·read_pdf) ─┐   [?] 줄 → 확신도 0.5 → 기존 [불확실] 표시
 Word·PPT·텍스트·CSV ─▶ MarkItDown(지금 방식) ───────────────────────────┤
