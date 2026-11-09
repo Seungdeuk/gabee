@@ -1,17 +1,29 @@
 import { useFocusEffect, useRouter } from "expo-router";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ActivityIndicator, AppState, Linking, Platform, Pressable, StyleSheet, Switch, Text, View } from "react-native";
+import { ActivityIndicator, AppState, Linking, Platform, StyleSheet, Switch, Text, View } from "react-native";
 
 import Button from "@/shared/components/Button";
 import Card from "@/shared/components/Card";
+import Dropdown from "@/shared/components/Dropdown";
 import IconButton from "@/shared/components/IconButton";
 import Screen from "@/shared/components/Screen";
-import { colors, font, radius, spacing } from "@/theme";
+import { colors, font, spacing } from "@/theme";
 
 import { getPushSettings, savePushSettings } from "../api";
 import { KIND_META } from "../kinds";
 import { prepareThisDevice, readPermissionState } from "../PushBootstrap";
-import { formatQuietSummary, formatTimeKorean, isQuietOn, permissionNotice, stepQuietTime, toggleKind, withQuiet } from "../push";
+import {
+  QUIET_HOUR_OPTIONS,
+  QUIET_MINUTE_OPTIONS,
+  formatQuietSummary,
+  isQuietClash,
+  isQuietOn,
+  parseTime,
+  permissionNotice,
+  setQuietPart,
+  toggleKind,
+  withQuiet,
+} from "../push";
 
 const KIND_KEYS = ["chat", "schedule", "billing", "care", "family_group", "ai_record", "support"];
 
@@ -25,6 +37,7 @@ export default function PushSettingsScreen() {
   const [settings, setSettings] = useState(null);
   const [status, setStatus] = useState("loading"); // loading | ready | error
   const [saveError, setSaveError] = useState(false);
+  const [clash, setClash] = useState(false); // 시작과 끝이 같아지는 선택을 했을 때 안내
   const [device, setDevice] = useState("unknown"); // 이 기기의 푸시 준비 상태: granted | ask | blocked | failed | unknown
   const busy = useRef(false); // 권한 창·토큰 등록이 도는 동안 겹쳐 부르지 않는다
 
@@ -92,6 +105,19 @@ export default function PushSettingsScreen() {
     }
   };
 
+  /** 방해금지 시·분 드롭다운에서 고른 값을 저장한다. 시작과 끝이 같아지면 저장하지 않고 안내만 보인다. */
+  const pickQuiet = (field, part, value) => {
+    if (isQuietClash(settings, field, part, value)) {
+      setClash(true);
+      return;
+    }
+    setClash(false);
+    change(setQuietPart(settings, field, part, value));
+  };
+
+  const quietStart = parseTime(settings?.quiet_start); // 서버는 "22:00:00" 으로도 돌려준다
+  const quietEnd = parseTime(settings?.quiet_end);
+
   const notice = settings ? permissionNotice(device, settings.enabled) : null;
   const onNoticeAction = () => (notice?.action === "settings" ? Linking.openSettings() : allowOnDevice());
 
@@ -141,12 +167,22 @@ export default function PushSettingsScreen() {
               <Card tone="white">
                 <Row label="방해금지 켜기" value={isQuietOn(settings)} onChange={(on) => change(withQuiet(settings, on))} />
                 {isQuietOn(settings) ? (
-                  <>
-                    <TimeRow label="시작 시간" time={settings.quiet_start} onStep={(unit, dir) => change(stepQuietTime(settings, "quiet_start", unit, dir))} />
-                    <TimeRow label="끝 시간" time={settings.quiet_end} onStep={(unit, dir) => change(stepQuietTime(settings, "quiet_end", unit, dir))} />
-                  </>
+                  <View style={styles.timeLine}>
+                    <Dropdown label="시작 시" value={quietStart?.hour} display={two(quietStart?.hour)} options={QUIET_HOUR_OPTIONS} onChange={(v) => pickQuiet("quiet_start", "hour", v)} />
+                    <Text style={styles.sep}>:</Text>
+                    <Dropdown label="시작 분" value={quietStart?.minute} display={two(quietStart?.minute)} options={QUIET_MINUTE_OPTIONS} onChange={(v) => pickQuiet("quiet_start", "minute", v)} />
+                    <Text style={styles.sep}>~</Text>
+                    <Dropdown label="끝 시" value={quietEnd?.hour} display={two(quietEnd?.hour)} options={QUIET_HOUR_OPTIONS} onChange={(v) => pickQuiet("quiet_end", "hour", v)} />
+                    <Text style={styles.sep}>:</Text>
+                    <Dropdown label="끝 분" value={quietEnd?.minute} display={two(quietEnd?.minute)} options={QUIET_MINUTE_OPTIONS} onChange={(v) => pickQuiet("quiet_end", "minute", v)} />
+                  </View>
                 ) : null}
               </Card>
+              {isQuietOn(settings) && clash ? (
+                <Text style={styles.error} accessibilityLiveRegion="polite">
+                  시작과 끝 시간이 같을 수 없어요
+                </Text>
+              ) : null}
               {isQuietOn(settings) ? <Text style={styles.hint}>{formatQuietSummary(settings)}</Text> : null}
               <Text style={styles.hint}>알림함에는 그대로 쌓여요.</Text>
             </>
@@ -157,36 +193,9 @@ export default function PushSettingsScreen() {
   );
 }
 
-/** 시간 한 줄: 현재 시각을 크게 보이고, 시·분을 각각 줄이고 늘리는 버튼을 둔다. */
-function TimeRow({ label, time, onStep }) {
-  return (
-    <View style={styles.timeRow}>
-      <View style={styles.timeHead}>
-        <Text style={styles.rowLabel}>{label}</Text>
-        <Text style={styles.timeValue} accessibilityLabel={`${label} ${formatTimeKorean(time)}`}>
-          {formatTimeKorean(time)}
-        </Text>
-      </View>
-      <View style={styles.stepRow}>
-        <Stepper name="시" label={`${label} 시`} onStep={(dir) => onStep("hour", dir)} />
-        <Stepper name="분" label={`${label} 분`} onStep={(dir) => onStep("minute", dir)} />
-      </View>
-    </View>
-  );
-}
-
-function Stepper({ name, label, onStep }) {
-  return (
-    <View style={styles.stepper}>
-      <Text style={styles.stepName}>{name}</Text>
-      <Pressable accessibilityRole="button" accessibilityLabel={`${label} 줄이기`} onPress={() => onStep(-1)} style={styles.stepButton}>
-        <Text style={styles.stepText}>−</Text>
-      </Pressable>
-      <Pressable accessibilityRole="button" accessibilityLabel={`${label} 늘리기`} onPress={() => onStep(1)} style={styles.stepButton}>
-        <Text style={styles.stepText}>+</Text>
-      </Pressable>
-    </View>
-  );
+/** 칸에 보일 24시간 두 자리 표기("00"). */
+function two(n) {
+  return String(n ?? 0).padStart(2, "0");
 }
 
 function Row({ label, value, onChange }) {
@@ -213,13 +222,7 @@ const styles = StyleSheet.create({
   hint: { ...font.caption, color: colors.textMuted },
   notice: { ...font.body, color: colors.text, marginBottom: spacing.sm },
   row: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingVertical: spacing.sm },
-  timeRow: { paddingVertical: spacing.sm, gap: spacing.sm },
-  timeHead: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
-  timeValue: { ...font.bodyStrong, color: colors.text },
-  stepRow: { flexDirection: "row", justifyContent: "space-around" },
-  stepper: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
-  stepName: { ...font.body, color: colors.textMuted },
-  stepButton: { minWidth: 44, minHeight: 44, alignItems: "center", justifyContent: "center", borderRadius: radius.pill, backgroundColor: colors.surfaceStrong },
-  stepText: { ...font.bodyStrong, color: colors.text },
+  timeLine: { flexDirection: "row", flexWrap: "nowrap", alignItems: "center", justifyContent: "center", gap: spacing.xs, paddingVertical: spacing.sm },
+  sep: { ...font.bodyStrong, color: colors.textMuted },
   rowLabel: { ...font.body, color: colors.text, flex: 1, paddingRight: spacing.md },
 });
