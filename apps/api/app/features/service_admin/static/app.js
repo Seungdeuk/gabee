@@ -896,7 +896,13 @@
       const res = await api("/admin/knowledge/ask", { q: question }, "POST");
       wait.textContent = res.answer;
     } catch (err) {
-      if (err.message === "unauthorized") return;
+      if (err.message === "unauthorized") {
+        // 로그인 화면으로 넘어갔다. "찾는 중…" 으로 멈춰 보이지 않게 알려 둔다
+        wait.textContent = "로그인이 풀려서 답하지 못했어요. 다시 로그인한 뒤 물어봐 주세요.";
+        chatAsked.delete(question);
+        chatNext("이어서 물어볼 만한 질문");
+        return;
+      }
       wait.textContent = err.message === "HTTP 503" ? "AI 연결이 준비되지 않았어요. 잠시 뒤 다시 해 주세요." : "지금은 답할 수 없어요. 잠시 뒤 다시 해 주세요.";
     }
     chatNext("이어서 물어볼 만한 질문");
@@ -916,8 +922,14 @@
   function chatSend() {
     const input = document.querySelector("#chat-form input");
     const question = input.value.trim();
-    if (question.length < 2) return;
+    if (!question) return;
+    // 한글 Enter 는 글자 확정과 Enter 로 두 번 들어올 수 있다. 먼저 비워서 두 번째는 빈칸으로 끝나게 한다
     input.value = "";
+    if (question.length < 2) {
+      // 서버도 두 글자 미만은 받지 않는다(AdminAskIn). 조용히 무시하면 고장처럼 보인다
+      chatAdd("bot", esc("두 글자 이상으로 물어봐 주세요. 예: 회원 몇 명이야"));
+      return;
+    }
     chatAsk(question);
   }
 

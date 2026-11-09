@@ -1,4 +1,4 @@
-"""통합관리자 챗봇: 관리자만, 키 없음, 실패, 하루 한도. 시험에서는 실제 AI 를 부르지 않는다."""
+"""통합관리자 챗봇: 관리자만, 키 없음, 실패. 시험에서는 실제 AI 를 부르지 않는다."""
 
 from types import SimpleNamespace
 
@@ -31,7 +31,6 @@ def _login(client) -> tuple[dict, str]:
 def admin(client, monkeypatch) -> dict:
     headers, user_id = _login(client)
     monkeypatch.setattr(settings, "admin_user_ids", user_id)
-    monkeypatch.setattr(service, "_ask_counts", {})
     return headers
 
 
@@ -77,15 +76,6 @@ def test_call_failure_is_503(client, admin, monkeypatch):
     _fake_llm(monkeypatch, service.llm.LLMUnavailable("실패"))
     r = client.post(ASK, json={"q": "공지 알림"}, headers=admin)
     assert r.status_code == 503 and r.json()["code"] == "llm_failed"
-
-
-def test_daily_limit(client, admin, monkeypatch):
-    seen = _fake_llm(monkeypatch)
-    monkeypatch.setattr(service, "ASK_DAILY_LIMIT", 1)
-    assert client.post(ASK, json={"q": "공지 알림"}, headers=admin).status_code == 200
-    seen.clear()
-    r = client.post(ASK, json={"q": "공지 알림"}, headers=admin)
-    assert r.status_code == 429 and r.json()["code"] == "ai_daily_limit" and seen == {}
 
 
 def test_numbers_match_the_admin_screen(client, admin):

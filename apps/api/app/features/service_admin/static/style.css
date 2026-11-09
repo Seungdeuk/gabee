@@ -245,9 +245,9 @@ details summary { cursor: pointer; }
 .chat-suggest { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; max-width: 92%; }
 .chat-suggest:empty { display: none; }
 .chat-suggest-title { margin: 0; color: var(--chat-muted); font-size: 12px; }
-.chat-chip { max-width: 100%; padding: 6px 12px; border: 1px solid var(--chat-accent); border-radius: 14px 14px 14px 4px; background: var(--chat-bg); color: var(--chat-fg); font: inherit; font-size: 13px; text-align: left; cursor: pointer; }
-.chat-chip:hover, .chat-chip:focus-visible { background: var(--chat-soft); }
-.chat-chip small { display: block; color: var(--chat-muted); font-size: 11px; }
+.chat-chip { max-width: 100%; padding: 6px 12px; border: 1px solid var(--chat-accent); border-radius: 14px 14px 14px 4px; background: var(--chat-accent); color: var(--chat-on); font: inherit; font-size: 13px; text-align: left; cursor: pointer; }
+.chat-chip:hover, .chat-chip:focus-visible { filter: brightness(1.12); }
+.chat-chip small { display: block; color: var(--chat-on); opacity: .75; font-size: 11px; }
 .chat-form { display: flex; gap: 6px; padding: 10px 14px; border-top: 1px solid var(--chat-line); }
 .chat-form input { flex: 1; min-width: 0; height: 36px; padding: 0 10px; border: 1px solid var(--chat-line); border-radius: 10px; background: var(--chat-bg); color: var(--chat-fg); font: inherit; font-size: 14px; }
 .chat-form .btn { height: 36px; border: 0; background: var(--chat-accent); color: var(--chat-on); }

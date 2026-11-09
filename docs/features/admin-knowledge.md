@@ -12,10 +12,10 @@
 - 질문은 `mask_text` 로 가린 뒤 보낸다.
 - 숫자: `live.py` 가 관리자 화면과 같은 조회 함수를 불러 개수와 오류 종류·경로·횟수만 골라 Claude 에게 준다. 이름, 이메일, 사용자 id, 오류 message, trace id 는 보내지 않는다(시험으로 확인). 수집이 꺼진 값은 0 이라고 하지 않는다. 데이터 분석 탭 숫자는 무거워서 넣지 않았다.
 - 키: 서버 환경변수 `ANTHROPIC_API_KEY`. 모델은 `ANTHROPIC_MODEL`(기본 `claude-haiku-5-5`).
-- 오류: 키 없음 503 `ai_key_missing`, 호출 실패 503 `llm_failed`, 하루 한도(한 명 100번, 서버 메모리) 429 `ai_daily_limit`.
+- 오류: 키 없음 503 `ai_key_missing`, 호출 실패 503 `llm_failed`. 하루 한도는 두지 않는다(2026-11-09 결정).
 
 ## 남은 것
 
 - 실제 키로 답 품질 확인.
-- 하루 한도 값과 월 예산 결정. `ai_usage_logs` 는 가족 id 가 필요해서 아직 기록하지 않는다.
+- 하루 한도가 없어서 비용은 월 예산·Claude 콘솔 사용 한도로 지켜야 한다. `ai_usage_logs` 는 가족 id 가 필요해서 아직 기록하지 않는다.
 - `live.py` 가 `service_admin`, `ops_admin` 내부 함수를 직접 부른다(기능 간 import 규칙과 충돌, 공유 필요).
