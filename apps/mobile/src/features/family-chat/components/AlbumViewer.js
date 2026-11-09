@@ -27,9 +27,12 @@ export default function AlbumViewer({ photos, startIndex = 0, visible, onClose, 
   const current = photos[index];
   const record = current && recordOf ? recordOf(current.id) : { saving: false, done: false, notice: "" };
 
+  // 네이티브는 넘김이 끝날 때(onMomentumScrollEnd), 웹은 스크롤하는 동안(onScroll) 몇 번째 사진인지 갱신한다(웹은 momentum 이벤트가 없다).
+  // 번호가 그대로면 다시 그리지 않는다.
   const onScrollEnd = (e) => {
     const next = Math.round(e.nativeEvent.contentOffset.x / Math.max(1, width));
-    setPage((prev) => ({ ...prev, index: Math.min(last, Math.max(0, next)) }));
+    const index = Math.min(last, Math.max(0, next));
+    setPage((prev) => (prev.index === index ? prev : { ...prev, index }));
   };
 
   return (
@@ -53,8 +56,10 @@ export default function AlbumViewer({ photos, startIndex = 0, visible, onClose, 
           initialScrollIndex={Math.min(startIndex, last)}
           getItemLayout={(_, i) => ({ length: width, offset: width * i, index: i })}
           onMomentumScrollEnd={onScrollEnd}
+          onScroll={onScrollEnd}
+          scrollEventThrottle={32}
           renderItem={({ item }) => (
-            <View style={{ width, height: listHeight }}>
+            <View style={{ width, height: listHeight > 0 ? listHeight : undefined }}>
               <AuthImage path={item.url} contentFit="contain" style={styles.image} accessibilityLabel="사진" />
             </View>
           )}
