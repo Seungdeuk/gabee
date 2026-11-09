@@ -394,7 +394,14 @@ def read_states(db: Session, room: ChatRoom) -> list[tuple[str, int]]:
 def _unread_unit():
     """안 읽은 수를 세는 단위: 같은 묶음(batch_id)으로 올린 사진은 한 건, 그 밖의 메시지는 한 건씩.
     채팅 화면이 묶음 사진을 한 덩어리로 보여 주므로 5장 묶음이 "안 읽은 5건"으로 보이지 않게 한다."""
-    return func.coalesce(MessageAttachment.batch_id, cast(Message.id, String))
+    # 묶음 번호는 앱이 만든다: 보낸 사람까지 단위에 넣어 다른 사람이 같은 번호를 써도 합쳐 세지 않고, 접두어로 메시지 id 와 겹치지 않게 한다
+    return case(
+        (
+            MessageAttachment.batch_id.is_not(None),
+            "b|" + Message.user_id + "|" + MessageAttachment.batch_id,
+        ),
+        else_="m|" + cast(Message.id, String),
+    )
 
 
 def count_unread(db: Session, room: ChatRoom, user_id: str, last_read: int) -> int:

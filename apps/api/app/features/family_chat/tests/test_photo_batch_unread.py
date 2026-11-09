@@ -9,6 +9,7 @@ from PIL import Image
 from app.features.family_chat import photo_service as ps
 from app.shared.config import settings
 from app.shared.llm import client as llm
+from tests.helpers import join_family, signup
 
 PHOTOS = "/family-chat/photos"
 MSG = "/family-chat/messages"
@@ -88,3 +89,24 @@ def test_direct_room_list_counts_a_batch_once(client, family):
     _send(client, a, room_id=room)
     direct = [r for r in client.get(ROOMS, headers=b).json() if r["kind"] == "direct"]
     assert [r["unread"] for r in direct] == [2]  # 묶음 1 + 낱장 1
+
+
+def test_the_same_batch_id_from_two_senders_is_counted_separately(client, family):
+    """묶음 번호는 앱이 만든다: 다른 사람이 같은 번호를 써도 두 사람의 사진을 합쳐 세지 않는다."""
+    a, b, group = family
+    c = signup(client, "삼촌")
+    assert join_family(client, a, group["invite_code"], c).status_code == 200
+    for _ in range(2):
+        _send(client, a, BATCH)
+    for _ in range(2):
+        _send(client, b, BATCH)
+    assert _unread(client, c) == 2  # a 의 묶음 1 + b 의 묶음 1
+
+
+def test_a_numeric_batch_id_never_merges_with_a_message_id(client, family):
+    """묶음 번호가 숫자여도 같은 숫자의 다른 메시지 id 와 한 건으로 합쳐지지 않는다."""
+    a, b, _ = family
+    first = _send(client, a).json()["id"]  # 묶음 번호 없는 낱장
+    numeric = f"{first:08d}"  # 형식(8~32자 영숫자)을 지키는 숫자 묶음 번호
+    _send(client, a, numeric)
+    assert _unread(client, b) == 2
