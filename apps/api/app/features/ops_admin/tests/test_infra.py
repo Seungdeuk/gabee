@@ -149,9 +149,9 @@ def test_endpoint_requires_operator(client, monkeypatch):
     assert client.post(SIGNUP, json=body).status_code == 201
     login = client.post(LOGIN, json={"login_id": "infra_tester", "password": PASSWORD}).json()
     headers = {"Authorization": f"Bearer {login['access_token']}"}
-    monkeypatch.setattr(settings, "ops_admin_user_ids", "")
+    monkeypatch.setattr(settings, "admin_user_ids", "")
     assert client.get("/admin/ops/infra", headers=headers).status_code == 403
-    monkeypatch.setattr(settings, "ops_admin_user_ids", login["user"]["id"])
+    monkeypatch.setattr(settings, "admin_user_ids", login["user"]["id"])
     monkeypatch.delenv("K_SERVICE", raising=False)
     r = client.get("/admin/ops/infra", headers=headers)
     assert r.status_code == 200 and r.json()["collected"] is False

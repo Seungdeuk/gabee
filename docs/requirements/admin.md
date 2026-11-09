@@ -23,7 +23,7 @@
 - 휴대폰 너비에서도 가로 스크롤 없이 보인다(넓은 표는 표 안에서만 스크롤).
 
 ## 권한
-- 모든 API 는 `Depends(require_operator("service_admin"))` 를 거친다. Bearer(JWT) 정식 회원 + 환경변수 `SERVICE_ADMIN_USER_IDS` 허용 목록.
+- 모든 API 는 `Depends(require_operator("admin"))` 를 거친다. Bearer(JWT) 정식 회원 + 환경변수 `ADMIN_USER_IDS`(통합관리자) 허용 목록(2026-11-06 결정).
 - 로그인 안 함·레거시 토큰: 401. 목록에 없음(가족 owner·운영 관리자 목록 포함): 403 `operator_required`.
 - 허용할 사용자 id 는 코드·Git·문서·테스트에 쓰지 않는다. DB 관리자 칸(`users.is_staff`)은 만들지 않는다.
 

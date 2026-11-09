@@ -12,10 +12,10 @@
 | 운영(인프라) 관리자 (별도 문서, 다른 담당자) | 요청·응답·오류율, 인프라·DB·배포, 전체 AI 토큰·오류·비용, 기능별 호출 집계(식별자 없음), 로그인 실패율(비율만) |
 
 ## 권한
-- 모든 서비스 관리자 API 는 공통 함수 `Depends(require_operator("service_admin"))` 를 거친다(운영 담당자가 구현, 병합 전).
+- 모든 서비스 관리자 API 는 공통 함수 `Depends(require_operator("admin"))` 를 거친다(2026-11-06 결정: 권한은 통합관리자 하나. 예전 `service_admin` scope 를 대체).
   - JWT(Bearer) 정식 회원만 통과한다. 레거시 `X-Gyeot-Token` 은 401.
-  - 허용 목록은 환경변수 `SERVICE_ADMIN_USER_IDS`(쉼표로 구분한 사용자 id)다. 목록에 없으면 403 `operator_required`. 비었거나 없으면 아무도 통과하지 못한다.
-  - 가족 owner·admin 이어도 목록에 없으면 403 이다. 운영 관리자 목록(`OPS_ADMIN_USER_IDS`)과 서로 포함하지 않는다.
+  - 허용 목록은 환경변수 `ADMIN_USER_IDS`(쉼표로 구분한 사용자 id)다. 목록에 없으면 403 `operator_required`. 비었거나 없으면 아무도 통과하지 못한다.
+  - 가족 owner·admin 이어도 목록에 없으면 403 이다. 같은 목록으로 운영 관리(`/admin/ops/*`)도 열린다.
   - `REQUIRE_TESTER_CONSENT` 가 켜진 환경에서는 관리자 계정도 테스터 동의가 필요하다.
 - 허용할 사용자 id 는 코드·Git·문서·테스트에 쓰지 않는다. 운영 담당자에게 개인 채널로 전달하고, 운영 담당자가 서버 환경변수에 넣는다.
 - 별도의 DB 관리자 칸(`users.is_staff` 등)은 만들지 않는다.

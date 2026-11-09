@@ -230,7 +230,7 @@ NO_GROUP_OK = {
     ("DELETE", "/notifications/push-token"),
     # 테스트 참여 동의 버전·시각은 본인 계정에 저장하는 값이다(가족 데이터 아님, service.record_tester_consent)
     ("PUT", "/family-group/auth/me/tester-consent"),
-    # 서비스 관리자 경로는 가족 데이터가 아니다. 권한은 require_operator("service_admin") 허용 목록이 정한다(admin/tests 에서 401·403 확인)
+    # 서비스 관리자 경로는 가족 데이터가 아니다. 권한은 require_operator("admin") 허용 목록이 정한다(admin/tests 에서 401·403 확인)
     ("GET", "/admin/service/me"),
     ("GET", "/admin/service/members"),
     ("GET", "/admin/service/groups"),
@@ -244,7 +244,7 @@ NO_GROUP_OK = {
     ("PUT", "/admin/service/notices/{notice_id}"),
     ("DELETE", "/admin/service/notices/{notice_id}"),
     ("GET", "/notices"),
-    # 운영 관리자 조회 경로도 가족 데이터가 아니다(요청 지표·오류 이벤트). 권한은 require_operator("ops_admin") 허용 목록이 정한다
+    # 운영 관리자 조회 경로도 가족 데이터가 아니다(요청 지표·오류 이벤트). 권한은 require_operator("admin") 허용 목록이 정한다
     # (ops_admin/tests 에서 401·403 확인)
     ("GET", "/admin/ops/summary"),
     ("GET", "/admin/ops/apis"),

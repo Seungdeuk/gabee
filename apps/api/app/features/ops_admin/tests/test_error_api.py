@@ -31,7 +31,7 @@ def _member(client, login_id: str) -> tuple[dict, str]:
 @pytest.fixture
 def ops(client, monkeypatch):
     headers, user_id = _member(client, "ops_err_tester")
-    monkeypatch.setattr(settings, "ops_admin_user_ids", user_id)
+    monkeypatch.setattr(settings, "admin_user_ids", user_id)
     with SessionLocal() as db:
         db.execute(delete(OpsErrorEvent))
         db.commit()
@@ -69,7 +69,7 @@ def _fp(n: int) -> str:
 def test_requires_login_and_operator(client, monkeypatch):
     assert client.get("/admin/ops/errors").status_code == 401
     headers, _ = _member(client, "plain_err_user")
-    monkeypatch.setattr(settings, "ops_admin_user_ids", "")
+    monkeypatch.setattr(settings, "admin_user_ids", "")
     r = client.get("/admin/ops/errors", headers=headers)
     assert r.status_code == 403 and r.json()["code"] == "operator_required"
     assert client.get(f"/admin/ops/errors/{_fp(1)}", headers=headers).status_code == 403
