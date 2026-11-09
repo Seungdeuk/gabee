@@ -2530,7 +2530,7 @@
           "family-chat"
         ],
         "summary": "Send Photo",
-        "description": "사진 메시지를 보낸다(multipart `file`, 선택 `room_id`, 선택 `batch_id`: 여러 장을 한 번에 올릴 때 장마다 같은 번호). JPEG/PNG/WebP 8MB 이하, 서버가 EXIF 를 지우고 다시 만든다. AI 를 부르지 않는다.",
+        "description": "사진 메시지를 보낸다(multipart `file`, 선택 `room_id`, 선택 `batch_id`: 여러 장을 한 번에 올릴 때 장마다 같은 번호). JPEG/PNG/WebP 8MB 이하, 서버가 EXIF 를 지우고 다시 만든다. 가족 전체방 사진은 보낸 뒤 서버가 뒤에서 문서 사진인지 판별해 문서면 가족 문서함에 자동 등록한다(`/photos/{id}/library` 참고).",
         "operationId": "send_photo_family_chat_photos_post",
         "parameters": [
           {
@@ -2583,6 +2583,81 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/MessageOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/family-chat/photos/{attachment_id}/library": {
+      "post": {
+        "tags": [
+          "family-chat"
+        ],
+        "summary": "Save Photo To Library",
+        "description": "가족 전체방에 올린 사진을 가족 공유 문서함에 직접 저장한다(\"문서로 저장\"). 방에 들어갈 수 있는 가족 누구나 누를 수 있다.\n문서 사진 판별과 하루 상한을 건너뛰고, 글을 읽는 데는 시간이 걸려 바로 `queued` 로 답한다(이미 있으면 `already`). 1:1 방 사진은 409, 없는 사진·못 들어가는 방은 404.",
+        "operationId": "save_photo_to_library_family_chat_photos__attachment_id__library_post",
+        "parameters": [
+          {
+            "name": "attachment_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Attachment Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-gyeot-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Gyeot-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibrarySaveOut"
                 }
               }
             }
@@ -13708,6 +13783,1535 @@
         }
       }
     },
+    "/play/bomb/current": {
+      "get": {
+        "tags": [
+          "play"
+        ],
+        "summary": "Current",
+        "description": "우리 가족의 열려 있는 폭탄방(없으면 null). 가족마다 한 번에 하나만 열 수 있다.",
+        "operationId": "current_play_bomb_current_get",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-gyeot-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Gyeot-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/PlayBombStateOut"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "title": "Response Current Play Bomb Current Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/play/bomb": {
+      "post": {
+        "tags": [
+          "play"
+        ],
+        "summary": "Create",
+        "description": "폭탄방을 연다(방장). 이미 열린 방이 있으면 409 room_open.",
+        "operationId": "create_play_bomb_post",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-gyeot-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Gyeot-Token"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlayBombStateOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/play/bomb/{room_id}": {
+      "get": {
+        "tags": [
+          "play"
+        ],
+        "summary": "Get Room",
+        "description": "방 상태: 선수·생명, 지금 차례와 남은 시간, 채팅, 판이 끝났으면 결과. 제한 시간이 지난 차례는 이때 시간 초과로 기록한다.",
+        "operationId": "get_room_play_bomb__room_id__get",
+        "parameters": [
+          {
+            "name": "room_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Room Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-gyeot-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Gyeot-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlayBombStateOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/play/bomb/{room_id}/join": {
+      "post": {
+        "tags": [
+          "play"
+        ],
+        "summary": "Join",
+        "description": "방에 들어온다. 게임이 시작된 뒤에 들어오면 이번 판은 구경한다.",
+        "operationId": "join_play_bomb__room_id__join_post",
+        "parameters": [
+          {
+            "name": "room_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Room Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-gyeot-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Gyeot-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlayBombStateOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/play/bomb/{room_id}/leave": {
+      "post": {
+        "tags": [
+          "play"
+        ],
+        "summary": "Leave",
+        "description": "방을 나간다(방장은 불가). 게임 중에 나가면 탈락한다.",
+        "operationId": "leave_play_bomb__room_id__leave_post",
+        "parameters": [
+          {
+            "name": "room_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Room Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-gyeot-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Gyeot-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlayBombStateOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/play/bomb/{room_id}/start": {
+      "post": {
+        "tags": [
+          "play"
+        ],
+        "summary": "Start",
+        "description": "게임 시작 또는 한 판 더(방장). 생명 1~5, 차례당 1~60초. 방에 2명 이상 있어야 한다.",
+        "operationId": "start_play_bomb__room_id__start_post",
+        "parameters": [
+          {
+            "name": "room_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Room Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-gyeot-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Gyeot-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PlayBombStartIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlayBombStateOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/play/bomb/{room_id}/say": {
+      "post": {
+        "tags": [
+          "play"
+        ],
+        "summary": "Say",
+        "description": "내 차례에 이어 말한다(10자까지). 이어 말한 문장이 끝났다고 판정되면 생명이 줄어든다.",
+        "operationId": "say_play_bomb__room_id__say_post",
+        "parameters": [
+          {
+            "name": "room_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Room Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-gyeot-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Gyeot-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PlayBombSayIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlayBombStateOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/play/bomb/{room_id}/cheer": {
+      "post": {
+        "tags": [
+          "play"
+        ],
+        "summary": "Cheer",
+        "description": "탈락했거나 구경하는 사람의 응원. 정해진 말만 보낼 수 있고 한 사람이 5초에 한 번이다(429 cheer_cooldown).",
+        "operationId": "cheer_play_bomb__room_id__cheer_post",
+        "parameters": [
+          {
+            "name": "room_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Room Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-gyeot-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Gyeot-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PlayBombCheerIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlayBombStateOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/play/bomb/{room_id}/close": {
+      "post": {
+        "tags": [
+          "play"
+        ],
+        "summary": "Close",
+        "description": "방을 닫는다(방장, 게임 중에는 불가).",
+        "operationId": "close_play_bomb__room_id__close_post",
+        "parameters": [
+          {
+            "name": "room_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Room Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-gyeot-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Gyeot-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlayBombStateOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/play/quiz": {
+      "post": {
+        "tags": [
+          "play"
+        ],
+        "summary": "Create Quiz",
+        "description": "골든벨 세트(1~5문항)를 낸다. 받는 사람을 비우면 가족 모두이고, 24시간 뒤(모두 답하면 그 순간) 닫힌다.",
+        "operationId": "create_quiz_play_quiz_post",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-gyeot-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Gyeot-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PlayQuizCreateIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlayItemOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/play/draws": {
+      "post": {
+        "tags": [
+          "play"
+        ],
+        "summary": "Create Draw",
+        "description": "이게 뭐게 문제를 낸다(그림 + 정답). 파일은 서버 디스크에 두고 24시간 뒤 닫힌다.",
+        "operationId": "create_draw_play_draws_post",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-gyeot-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Gyeot-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_create_draw_play_draws_post"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlayItemOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/play/photos": {
+      "post": {
+        "tags": [
+          "play"
+        ],
+        "summary": "Create Photo",
+        "description": "찰칵! 탐정단 문제를 낸다(사진 + 확대 위치 + 선택식 보기).",
+        "operationId": "create_photo_play_photos_post",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-gyeot-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Gyeot-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_create_photo_play_photos_post"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlayItemOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/play/board": {
+      "get": {
+        "tags": [
+          "play"
+        ],
+        "summary": "Board",
+        "description": "놀이터 현황: 받은(내가 할 차례·참여했어요·지난 결과 3일)과 보낸(내가 낸 문제·지난 결과).",
+        "operationId": "board_play_board_get",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-gyeot-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Gyeot-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlayBoardOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/play/items/{item_id}": {
+      "get": {
+        "tags": [
+          "play"
+        ],
+        "summary": "Get Item",
+        "description": "문제 한 건. 정답은 낸 사람·이미 끝낸 사람·닫힌 뒤에만, 가족 모두의 답은 닫힌 뒤에만 보인다.",
+        "operationId": "get_item_play_items__item_id__get",
+        "parameters": [
+          {
+            "name": "item_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Item Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-gyeot-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Gyeot-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlayItemOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/play/items/{item_id}/image": {
+      "get": {
+        "tags": [
+          "play"
+        ],
+        "summary": "Get Image",
+        "description": "그림(PNG) 또는 사진(JPEG). 탐정단은 푸는 중에는 확대한 조각만, 끝낸 뒤·낸 사람·닫힌 뒤에는 전체가 나간다.",
+        "operationId": "get_image_play_items__item_id__image_get",
+        "parameters": [
+          {
+            "name": "item_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Item Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-gyeot-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Gyeot-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/play/items/{item_id}/answers": {
+      "post": {
+        "tags": [
+          "play"
+        ],
+        "summary": "Submit Answers",
+        "description": "골든벨은 문항 수만큼 한 번에, 탐정단은 보기 하나(quiz_no 0)를 보낸다. 보낸 답은 고칠 수 없다.",
+        "operationId": "submit_answers_play_items__item_id__answers_post",
+        "parameters": [
+          {
+            "name": "item_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Item Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-gyeot-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Gyeot-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PlayQuizAnswerIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlayItemOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/play/items/{item_id}/hints": {
+      "post": {
+        "tags": [
+          "play"
+        ],
+        "summary": "Open Hint",
+        "description": "이게 뭐게 힌트 열기 / 탐정단 조금 줄여 보기. 한 번에 -5점(맞혔을 때), 최대 2번.",
+        "operationId": "open_hint_play_items__item_id__hints_post",
+        "parameters": [
+          {
+            "name": "item_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Item Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-gyeot-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Gyeot-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlayItemOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/play/items/{item_id}/tries": {
+      "post": {
+        "tags": [
+          "play"
+        ],
+        "summary": "Submit Try",
+        "description": "이게 뭐게 정답 쓰기(최대 10번). 틀려도 깎이지 않고, 맞히거나 10번을 다 쓰면 끝난다.",
+        "operationId": "submit_try_play_items__item_id__tries_post",
+        "parameters": [
+          {
+            "name": "item_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Item Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-gyeot-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Gyeot-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PlayDrawTryIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlayItemOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/play/quota": {
+      "get": {
+        "tags": [
+          "play"
+        ],
+        "summary": "Quota",
+        "description": "오늘 내가 낸 문제 수와 문제 내기 점수(+20)를 받을 수 있는 남은 횟수.",
+        "operationId": "quota_play_quota_get",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-gyeot-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Gyeot-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlayQuotaOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/play/ranking": {
+      "get": {
+        "tags": [
+          "play"
+        ],
+        "summary": "Ranking",
+        "description": "이번 주(월요일 시작)·이번 달·전체 순위. 점수 장부를 합산한다.",
+        "operationId": "ranking_play_ranking_get",
+        "parameters": [
+          {
+            "name": "period",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "week",
+                "month",
+                "all"
+              ],
+              "type": "string",
+              "default": "week",
+              "title": "Period"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-gyeot-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Gyeot-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlayRankingOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/admin/ops/summary": {
       "get": {
         "tags": [
@@ -14714,1535 +16318,6 @@
                   },
                   "type": "object",
                   "title": "Response Health Health Get"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/play/quiz": {
-      "post": {
-        "tags": [
-          "play"
-        ],
-        "summary": "Create Quiz",
-        "description": "골든벨 세트(1~5문항)를 낸다. 받는 사람을 비우면 가족 모두이고, 24시간 뒤(모두 답하면 그 순간) 닫힌다.",
-        "operationId": "create_quiz_play_quiz_post",
-        "parameters": [
-          {
-            "name": "authorization",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Authorization"
-            }
-          },
-          {
-            "name": "x-gyeot-token",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Gyeot-Token"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/PlayQuizCreateIn"
-              }
-            }
-          }
-        },
-        "responses": {
-          "201": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PlayItemOut"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/play/draws": {
-      "post": {
-        "tags": [
-          "play"
-        ],
-        "summary": "Create Draw",
-        "description": "이게 뭐게 문제를 낸다(그림 + 정답). 파일은 서버 디스크에 두고 24시간 뒤 닫힌다.",
-        "operationId": "create_draw_play_draws_post",
-        "parameters": [
-          {
-            "name": "authorization",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Authorization"
-            }
-          },
-          {
-            "name": "x-gyeot-token",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Gyeot-Token"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "multipart/form-data": {
-              "schema": {
-                "$ref": "#/components/schemas/Body_create_draw_play_draws_post"
-              }
-            }
-          }
-        },
-        "responses": {
-          "201": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PlayItemOut"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/play/photos": {
-      "post": {
-        "tags": [
-          "play"
-        ],
-        "summary": "Create Photo",
-        "description": "찰칵! 탐정단 문제를 낸다(사진 + 확대 위치 + 선택식 보기).",
-        "operationId": "create_photo_play_photos_post",
-        "parameters": [
-          {
-            "name": "authorization",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Authorization"
-            }
-          },
-          {
-            "name": "x-gyeot-token",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Gyeot-Token"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "multipart/form-data": {
-              "schema": {
-                "$ref": "#/components/schemas/Body_create_photo_play_photos_post"
-              }
-            }
-          }
-        },
-        "responses": {
-          "201": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PlayItemOut"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/play/board": {
-      "get": {
-        "tags": [
-          "play"
-        ],
-        "summary": "Board",
-        "description": "놀이터 현황: 받은(내가 할 차례·참여했어요·지난 결과 3일)과 보낸(내가 낸 문제·지난 결과).",
-        "operationId": "board_play_board_get",
-        "parameters": [
-          {
-            "name": "authorization",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Authorization"
-            }
-          },
-          {
-            "name": "x-gyeot-token",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Gyeot-Token"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PlayBoardOut"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/play/items/{item_id}": {
-      "get": {
-        "tags": [
-          "play"
-        ],
-        "summary": "Get Item",
-        "description": "문제 한 건. 정답은 낸 사람·이미 끝낸 사람·닫힌 뒤에만, 가족 모두의 답은 닫힌 뒤에만 보인다.",
-        "operationId": "get_item_play_items__item_id__get",
-        "parameters": [
-          {
-            "name": "item_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Item Id"
-            }
-          },
-          {
-            "name": "authorization",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Authorization"
-            }
-          },
-          {
-            "name": "x-gyeot-token",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Gyeot-Token"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PlayItemOut"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/play/items/{item_id}/image": {
-      "get": {
-        "tags": [
-          "play"
-        ],
-        "summary": "Get Image",
-        "description": "그림(PNG) 또는 사진(JPEG). 탐정단은 푸는 중에는 확대한 조각만, 끝낸 뒤·낸 사람·닫힌 뒤에는 전체가 나간다.",
-        "operationId": "get_image_play_items__item_id__image_get",
-        "parameters": [
-          {
-            "name": "item_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Item Id"
-            }
-          },
-          {
-            "name": "authorization",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Authorization"
-            }
-          },
-          {
-            "name": "x-gyeot-token",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Gyeot-Token"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/play/items/{item_id}/answers": {
-      "post": {
-        "tags": [
-          "play"
-        ],
-        "summary": "Submit Answers",
-        "description": "골든벨은 문항 수만큼 한 번에, 탐정단은 보기 하나(quiz_no 0)를 보낸다. 보낸 답은 고칠 수 없다.",
-        "operationId": "submit_answers_play_items__item_id__answers_post",
-        "parameters": [
-          {
-            "name": "item_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Item Id"
-            }
-          },
-          {
-            "name": "authorization",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Authorization"
-            }
-          },
-          {
-            "name": "x-gyeot-token",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Gyeot-Token"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/PlayQuizAnswerIn"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PlayItemOut"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/play/items/{item_id}/hints": {
-      "post": {
-        "tags": [
-          "play"
-        ],
-        "summary": "Open Hint",
-        "description": "이게 뭐게 힌트 열기 / 탐정단 조금 줄여 보기. 한 번에 -5점(맞혔을 때), 최대 2번.",
-        "operationId": "open_hint_play_items__item_id__hints_post",
-        "parameters": [
-          {
-            "name": "item_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Item Id"
-            }
-          },
-          {
-            "name": "authorization",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Authorization"
-            }
-          },
-          {
-            "name": "x-gyeot-token",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Gyeot-Token"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PlayItemOut"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/play/items/{item_id}/tries": {
-      "post": {
-        "tags": [
-          "play"
-        ],
-        "summary": "Submit Try",
-        "description": "이게 뭐게 정답 쓰기(최대 10번). 틀려도 깎이지 않고, 맞히거나 10번을 다 쓰면 끝난다.",
-        "operationId": "submit_try_play_items__item_id__tries_post",
-        "parameters": [
-          {
-            "name": "item_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Item Id"
-            }
-          },
-          {
-            "name": "authorization",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Authorization"
-            }
-          },
-          {
-            "name": "x-gyeot-token",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Gyeot-Token"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/PlayDrawTryIn"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PlayItemOut"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/play/ranking": {
-      "get": {
-        "tags": [
-          "play"
-        ],
-        "summary": "Ranking",
-        "description": "이번 주(월요일 시작)·이번 달·전체 순위. 점수 장부를 합산한다.",
-        "operationId": "ranking_play_ranking_get",
-        "parameters": [
-          {
-            "name": "period",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "enum": [
-                "week",
-                "month",
-                "all"
-              ],
-              "type": "string",
-              "default": "week",
-              "title": "Period"
-            }
-          },
-          {
-            "name": "authorization",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Authorization"
-            }
-          },
-          {
-            "name": "x-gyeot-token",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Gyeot-Token"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PlayRankingOut"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/play/quota": {
-      "get": {
-        "tags": [
-          "play"
-        ],
-        "summary": "Quota",
-        "description": "오늘 내가 낸 문제 수와 문제 내기 점수(+20)를 받을 수 있는 남은 횟수.",
-        "operationId": "quota_play_quota_get",
-        "parameters": [
-          {
-            "name": "authorization",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Authorization"
-            }
-          },
-          {
-            "name": "x-gyeot-token",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Gyeot-Token"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PlayQuotaOut"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/play/bomb/current": {
-      "get": {
-        "tags": [
-          "play"
-        ],
-        "summary": "Current",
-        "description": "우리 가족의 열려 있는 폭탄방(없으면 null). 가족마다 한 번에 하나만 열 수 있다.",
-        "operationId": "current_play_bomb_current_get",
-        "parameters": [
-          {
-            "name": "authorization",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Authorization"
-            }
-          },
-          {
-            "name": "x-gyeot-token",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Gyeot-Token"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "anyOf": [
-                    {
-                      "$ref": "#/components/schemas/PlayBombStateOut"
-                    },
-                    {
-                      "type": "null"
-                    }
-                  ],
-                  "title": "Response Current Play Bomb Current Get"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/play/bomb": {
-      "post": {
-        "tags": [
-          "play"
-        ],
-        "summary": "Create",
-        "description": "폭탄방을 연다(방장). 이미 열린 방이 있으면 409 room_open.",
-        "operationId": "create_play_bomb_post",
-        "parameters": [
-          {
-            "name": "authorization",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Authorization"
-            }
-          },
-          {
-            "name": "x-gyeot-token",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Gyeot-Token"
-            }
-          }
-        ],
-        "responses": {
-          "201": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PlayBombStateOut"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/play/bomb/{room_id}": {
-      "get": {
-        "tags": [
-          "play"
-        ],
-        "summary": "Get Room",
-        "description": "방 상태: 선수·생명, 지금 차례와 남은 시간, 채팅, 판이 끝났으면 결과. 제한 시간이 지난 차례는 이때 시간 초과로 기록한다.",
-        "operationId": "get_room_play_bomb__room_id__get",
-        "parameters": [
-          {
-            "name": "room_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Room Id"
-            }
-          },
-          {
-            "name": "authorization",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Authorization"
-            }
-          },
-          {
-            "name": "x-gyeot-token",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Gyeot-Token"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PlayBombStateOut"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/play/bomb/{room_id}/join": {
-      "post": {
-        "tags": [
-          "play"
-        ],
-        "summary": "Join",
-        "description": "방에 들어온다. 게임이 시작된 뒤에 들어오면 이번 판은 구경한다.",
-        "operationId": "join_play_bomb__room_id__join_post",
-        "parameters": [
-          {
-            "name": "room_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Room Id"
-            }
-          },
-          {
-            "name": "authorization",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Authorization"
-            }
-          },
-          {
-            "name": "x-gyeot-token",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Gyeot-Token"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PlayBombStateOut"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/play/bomb/{room_id}/leave": {
-      "post": {
-        "tags": [
-          "play"
-        ],
-        "summary": "Leave",
-        "description": "방을 나간다(방장은 불가). 게임 중에 나가면 탈락한다.",
-        "operationId": "leave_play_bomb__room_id__leave_post",
-        "parameters": [
-          {
-            "name": "room_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Room Id"
-            }
-          },
-          {
-            "name": "authorization",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Authorization"
-            }
-          },
-          {
-            "name": "x-gyeot-token",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Gyeot-Token"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PlayBombStateOut"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/play/bomb/{room_id}/start": {
-      "post": {
-        "tags": [
-          "play"
-        ],
-        "summary": "Start",
-        "description": "게임 시작 또는 한 판 더(방장). 생명 1~5, 차례당 1~60초. 방에 2명 이상 있어야 한다.",
-        "operationId": "start_play_bomb__room_id__start_post",
-        "parameters": [
-          {
-            "name": "room_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Room Id"
-            }
-          },
-          {
-            "name": "authorization",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Authorization"
-            }
-          },
-          {
-            "name": "x-gyeot-token",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Gyeot-Token"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/PlayBombStartIn"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PlayBombStateOut"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/play/bomb/{room_id}/say": {
-      "post": {
-        "tags": [
-          "play"
-        ],
-        "summary": "Say",
-        "description": "내 차례에 이어 말한다(10자까지). 이어 말한 문장이 끝났다고 판정되면 생명이 줄어든다.",
-        "operationId": "say_play_bomb__room_id__say_post",
-        "parameters": [
-          {
-            "name": "room_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Room Id"
-            }
-          },
-          {
-            "name": "authorization",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Authorization"
-            }
-          },
-          {
-            "name": "x-gyeot-token",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Gyeot-Token"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/PlayBombSayIn"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PlayBombStateOut"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/play/bomb/{room_id}/cheer": {
-      "post": {
-        "tags": [
-          "play"
-        ],
-        "summary": "Cheer",
-        "description": "탈락했거나 구경하는 사람의 응원. 정해진 말만 보낼 수 있고 한 사람이 5초에 한 번이다(429 cheer_cooldown).",
-        "operationId": "cheer_play_bomb__room_id__cheer_post",
-        "parameters": [
-          {
-            "name": "room_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Room Id"
-            }
-          },
-          {
-            "name": "authorization",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Authorization"
-            }
-          },
-          {
-            "name": "x-gyeot-token",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Gyeot-Token"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/PlayBombCheerIn"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PlayBombStateOut"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/play/bomb/{room_id}/close": {
-      "post": {
-        "tags": [
-          "play"
-        ],
-        "summary": "Close",
-        "description": "방을 닫는다(방장, 게임 중에는 불가).",
-        "operationId": "close_play_bomb__room_id__close_post",
-        "parameters": [
-          {
-            "name": "room_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Room Id"
-            }
-          },
-          {
-            "name": "authorization",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Authorization"
-            }
-          },
-          {
-            "name": "x-gyeot-token",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Gyeot-Token"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PlayBombStateOut"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
                 }
               }
             }
@@ -18572,6 +18647,144 @@
           "next_before"
         ],
         "title": "BoardOut"
+      },
+      "Body_create_draw_play_draws_post": {
+        "properties": {
+          "file": {
+            "type": "string",
+            "contentMediaType": "application/octet-stream",
+            "title": "File",
+            "description": "그림 PNG(2MB 이하)"
+          },
+          "answer": {
+            "type": "string",
+            "title": "Answer",
+            "description": "정답(40자 이하)"
+          },
+          "alt_answers": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Alt Answers",
+            "description": "이것도 정답(5개까지)",
+            "default": []
+          },
+          "hint2": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hint2",
+            "description": "힌트 2(20자 이하). 힌트 1은 글자 수로 만든다"
+          },
+          "player_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Player Ids",
+            "description": "받는 사람. 비우면 가족 모두",
+            "default": []
+          }
+        },
+        "type": "object",
+        "required": [
+          "file",
+          "answer"
+        ],
+        "title": "Body_create_draw_play_draws_post"
+      },
+      "Body_create_photo_play_photos_post": {
+        "properties": {
+          "file": {
+            "type": "string",
+            "contentMediaType": "application/octet-stream",
+            "title": "File",
+            "description": "사진 JPEG/PNG/WebP(8MB 이하)"
+          },
+          "source": {
+            "type": "integer",
+            "title": "Source",
+            "description": "1 가족 앨범, 2 내 폰"
+          },
+          "zoom": {
+            "type": "integer",
+            "title": "Zoom",
+            "description": "확대 배율 4·6·8·16·32"
+          },
+          "box_x": {
+            "type": "number",
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Box X",
+            "description": "확대 창 가운데 가로 위치 0~1"
+          },
+          "box_y": {
+            "type": "number",
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Box Y",
+            "description": "확대 창 가운데 세로 위치 0~1"
+          },
+          "question": {
+            "type": "string",
+            "title": "Question",
+            "description": "질문(20자 이하)"
+          },
+          "options": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Options",
+            "description": "보기 2~4개"
+          },
+          "answer_index": {
+            "type": "integer",
+            "maximum": 3.0,
+            "minimum": 0.0,
+            "title": "Answer Index",
+            "description": "정답 보기 위치(0부터)"
+          },
+          "comment": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Comment",
+            "description": "한마디(100자 이하)"
+          },
+          "player_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Player Ids",
+            "description": "받는 사람. 비우면 가족 모두",
+            "default": []
+          }
+        },
+        "type": "object",
+        "required": [
+          "file",
+          "source",
+          "zoom",
+          "box_x",
+          "box_y",
+          "question",
+          "options",
+          "answer_index"
+        ],
+        "title": "Body_create_photo_play_photos_post"
       },
       "Body_send_file_family_chat_files_post": {
         "properties": {
@@ -21853,6 +22066,24 @@
         "title": "JoinRequestOut",
         "description": "내가 낸 가입 요청. status: pending(승인 대기) | approved | rejected | cancelled."
       },
+      "LibrarySaveOut": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "queued",
+              "already"
+            ],
+            "title": "Status"
+          }
+        },
+        "type": "object",
+        "required": [
+          "status"
+        ],
+        "title": "LibrarySaveOut",
+        "description": "사진을 문서함에 저장한 결과: queued = 저장을 시작했다(읽는 데 시간이 걸린다), already = 이미 문서함에 있다."
+      },
       "LinkCreate": {
         "properties": {
           "room_id": {
@@ -23541,6 +23772,1294 @@
           "items"
         ],
         "title": "PinsOut"
+      },
+      "PlayAnswerItemIn": {
+        "properties": {
+          "quiz_no": {
+            "type": "integer",
+            "maximum": 5.0,
+            "minimum": 0.0,
+            "title": "Quiz No"
+          },
+          "answer": {
+            "type": "string",
+            "pattern": "^[01]{2,4}$",
+            "title": "Answer"
+          }
+        },
+        "type": "object",
+        "required": [
+          "quiz_no",
+          "answer"
+        ],
+        "title": "PlayAnswerItemIn"
+      },
+      "PlayAnswerOut": {
+        "properties": {
+          "quiz_no": {
+            "type": "integer",
+            "title": "Quiz No"
+          },
+          "answer": {
+            "type": "string",
+            "title": "Answer"
+          },
+          "is_correct": {
+            "type": "boolean",
+            "title": "Is Correct"
+          },
+          "hints_used": {
+            "type": "integer",
+            "title": "Hints Used",
+            "default": 0
+          }
+        },
+        "type": "object",
+        "required": [
+          "quiz_no",
+          "answer",
+          "is_correct"
+        ],
+        "title": "PlayAnswerOut"
+      },
+      "PlayBoardItemOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "game": {
+            "type": "integer",
+            "title": "Game"
+          },
+          "maker": {
+            "$ref": "#/components/schemas/PlayPersonOut"
+          },
+          "close_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Close At"
+          },
+          "closed": {
+            "type": "boolean",
+            "title": "Closed"
+          },
+          "progress_done": {
+            "type": "integer",
+            "title": "Progress Done"
+          },
+          "progress_total": {
+            "type": "integer",
+            "title": "Progress Total"
+          },
+          "question_count": {
+            "type": "integer",
+            "title": "Question Count",
+            "default": 0
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "game",
+          "maker",
+          "close_at",
+          "closed",
+          "progress_done",
+          "progress_total"
+        ],
+        "title": "PlayBoardItemOut"
+      },
+      "PlayBoardOut": {
+        "properties": {
+          "todo": {
+            "items": {
+              "$ref": "#/components/schemas/PlayBoardItemOut"
+            },
+            "type": "array",
+            "title": "Todo"
+          },
+          "joined": {
+            "items": {
+              "$ref": "#/components/schemas/PlayBoardItemOut"
+            },
+            "type": "array",
+            "title": "Joined"
+          },
+          "past": {
+            "items": {
+              "$ref": "#/components/schemas/PlayBoardItemOut"
+            },
+            "type": "array",
+            "title": "Past"
+          },
+          "sent": {
+            "items": {
+              "$ref": "#/components/schemas/PlayBoardItemOut"
+            },
+            "type": "array",
+            "title": "Sent"
+          },
+          "sent_past": {
+            "items": {
+              "$ref": "#/components/schemas/PlayBoardItemOut"
+            },
+            "type": "array",
+            "title": "Sent Past"
+          }
+        },
+        "type": "object",
+        "required": [
+          "todo",
+          "joined",
+          "past",
+          "sent",
+          "sent_past"
+        ],
+        "title": "PlayBoardOut"
+      },
+      "PlayBombCheerIn": {
+        "properties": {
+          "text": {
+            "type": "string",
+            "maxLength": 10,
+            "minLength": 1,
+            "title": "Text"
+          }
+        },
+        "type": "object",
+        "required": [
+          "text"
+        ],
+        "title": "PlayBombCheerIn",
+        "description": "관전 응원. 정해진 말 중에서 고른다."
+      },
+      "PlayBombMessageOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "say",
+              "timeout",
+              "cheer"
+            ],
+            "title": "Kind"
+          },
+          "player": {
+            "$ref": "#/components/schemas/PlayPersonOut"
+          },
+          "text": {
+            "type": "string",
+            "title": "Text"
+          },
+          "ended": {
+            "type": "boolean",
+            "title": "Ended",
+            "default": false
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "end",
+                  "repeat"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "lost_life": {
+            "type": "boolean",
+            "title": "Lost Life",
+            "default": false
+          },
+          "out": {
+            "type": "boolean",
+            "title": "Out",
+            "default": false
+          },
+          "at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "kind",
+          "player",
+          "text",
+          "at"
+        ],
+        "title": "PlayBombMessageOut",
+        "description": "채팅 한 줄. say 말함, timeout 시간 초과, cheer 관전 응원."
+      },
+      "PlayBombPlayerOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "joined": {
+            "type": "boolean",
+            "title": "Joined"
+          },
+          "host": {
+            "type": "boolean",
+            "title": "Host",
+            "default": false
+          },
+          "lives": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lives"
+          },
+          "total": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total"
+          },
+          "out": {
+            "type": "boolean",
+            "title": "Out",
+            "default": false
+          },
+          "spectator": {
+            "type": "boolean",
+            "title": "Spectator",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "joined"
+        ],
+        "title": "PlayBombPlayerOut"
+      },
+      "PlayBombRankOut": {
+        "properties": {
+          "player": {
+            "$ref": "#/components/schemas/PlayPersonOut"
+          },
+          "rank": {
+            "type": "integer",
+            "title": "Rank"
+          },
+          "sub": {
+            "type": "string",
+            "title": "Sub"
+          },
+          "points": {
+            "type": "integer",
+            "title": "Points"
+          }
+        },
+        "type": "object",
+        "required": [
+          "player",
+          "rank",
+          "sub",
+          "points"
+        ],
+        "title": "PlayBombRankOut"
+      },
+      "PlayBombResultOut": {
+        "properties": {
+          "round_no": {
+            "type": "integer",
+            "title": "Round No"
+          },
+          "winner": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PlayPersonOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "longest_len": {
+            "type": "integer",
+            "title": "Longest Len"
+          },
+          "prev_record": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Prev Record"
+          },
+          "is_record": {
+            "type": "boolean",
+            "title": "Is Record",
+            "default": false
+          },
+          "ranking": {
+            "items": {
+              "$ref": "#/components/schemas/PlayBombRankOut"
+            },
+            "type": "array",
+            "title": "Ranking"
+          },
+          "my_points": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "My Points"
+          }
+        },
+        "type": "object",
+        "required": [
+          "round_no",
+          "longest_len",
+          "ranking"
+        ],
+        "title": "PlayBombResultOut"
+      },
+      "PlayBombSayIn": {
+        "properties": {
+          "word": {
+            "type": "string",
+            "maxLength": 30,
+            "minLength": 1,
+            "title": "Word"
+          }
+        },
+        "type": "object",
+        "required": [
+          "word"
+        ],
+        "title": "PlayBombSayIn",
+        "description": "내 차례에 이어 말하는 한 단어나 짧은 구(10자까지)."
+      },
+      "PlayBombStartIn": {
+        "properties": {
+          "life": {
+            "type": "integer",
+            "maximum": 5.0,
+            "minimum": 1.0,
+            "title": "Life",
+            "default": 3
+          },
+          "sec": {
+            "type": "integer",
+            "maximum": 60.0,
+            "minimum": 1.0,
+            "title": "Sec",
+            "default": 10
+          }
+        },
+        "type": "object",
+        "title": "PlayBombStartIn",
+        "description": "방장이 게임을 시작할 때 정하는 규칙. 생명 1~5(기본 3), 차례당 시간 1~60초(기본 10)."
+      },
+      "PlayBombStateOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "phase": {
+            "type": "string",
+            "enum": [
+              "lobby",
+              "playing",
+              "finished",
+              "closed"
+            ],
+            "title": "Phase"
+          },
+          "host": {
+            "$ref": "#/components/schemas/PlayPersonOut"
+          },
+          "is_host": {
+            "type": "boolean",
+            "title": "Is Host"
+          },
+          "my_status": {
+            "type": "string",
+            "enum": [
+              "none",
+              "player",
+              "out",
+              "spectator"
+            ],
+            "title": "My Status"
+          },
+          "players": {
+            "items": {
+              "$ref": "#/components/schemas/PlayBombPlayerOut"
+            },
+            "type": "array",
+            "title": "Players"
+          },
+          "round_no": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Round No"
+          },
+          "life": {
+            "type": "integer",
+            "title": "Life"
+          },
+          "sec": {
+            "type": "integer",
+            "title": "Sec"
+          },
+          "turn": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PlayBombTurnOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "chain": {
+            "type": "integer",
+            "title": "Chain",
+            "default": 0
+          },
+          "messages": {
+            "items": {
+              "$ref": "#/components/schemas/PlayBombMessageOut"
+            },
+            "type": "array",
+            "title": "Messages",
+            "default": []
+          },
+          "cheers": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Cheers",
+            "default": []
+          },
+          "cheer_wait": {
+            "type": "number",
+            "title": "Cheer Wait",
+            "default": 0
+          },
+          "result": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PlayBombResultOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "close_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Close At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "phase",
+          "host",
+          "is_host",
+          "my_status",
+          "players",
+          "life",
+          "sec",
+          "close_at"
+        ],
+        "title": "PlayBombStateOut"
+      },
+      "PlayBombTurnOut": {
+        "properties": {
+          "player": {
+            "$ref": "#/components/schemas/PlayPersonOut"
+          },
+          "seconds_left": {
+            "type": "number",
+            "title": "Seconds Left"
+          },
+          "deadline": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Deadline"
+          }
+        },
+        "type": "object",
+        "required": [
+          "player",
+          "seconds_left",
+          "deadline"
+        ],
+        "title": "PlayBombTurnOut"
+      },
+      "PlayDrawOut": {
+        "properties": {
+          "tries_used": {
+            "type": "integer",
+            "title": "Tries Used"
+          },
+          "max_tries": {
+            "type": "integer",
+            "title": "Max Tries"
+          },
+          "solved": {
+            "type": "boolean",
+            "title": "Solved"
+          },
+          "finished": {
+            "type": "boolean",
+            "title": "Finished"
+          },
+          "last_try_correct": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Try Correct"
+          },
+          "hints_used": {
+            "type": "integer",
+            "title": "Hints Used"
+          },
+          "max_hints": {
+            "type": "integer",
+            "title": "Max Hints"
+          },
+          "hint1": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hint1"
+          },
+          "hint2": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hint2"
+          },
+          "answer": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Answer"
+          },
+          "alt_answers": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Alt Answers"
+          }
+        },
+        "type": "object",
+        "required": [
+          "tries_used",
+          "max_tries",
+          "solved",
+          "finished",
+          "hints_used",
+          "max_hints"
+        ],
+        "title": "PlayDrawOut",
+        "description": "이게 뭐게. 힌트는 연 만큼만, 정답은 낸 사람·끝낸 사람·닫힌 뒤에만 보인다."
+      },
+      "PlayDrawTryIn": {
+        "properties": {
+          "answer": {
+            "type": "string",
+            "maxLength": 40,
+            "minLength": 1,
+            "title": "Answer"
+          }
+        },
+        "type": "object",
+        "required": [
+          "answer"
+        ],
+        "title": "PlayDrawTryIn"
+      },
+      "PlayFamilyAnswersOut": {
+        "properties": {
+          "player": {
+            "$ref": "#/components/schemas/PlayPersonOut"
+          },
+          "answered_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Answered At"
+          },
+          "answers": {
+            "items": {
+              "$ref": "#/components/schemas/PlayAnswerOut"
+            },
+            "type": "array",
+            "title": "Answers"
+          }
+        },
+        "type": "object",
+        "required": [
+          "player",
+          "answered_at",
+          "answers"
+        ],
+        "title": "PlayFamilyAnswersOut"
+      },
+      "PlayFamilyStatusOut": {
+        "properties": {
+          "player": {
+            "$ref": "#/components/schemas/PlayPersonOut"
+          },
+          "done": {
+            "type": "boolean",
+            "title": "Done"
+          },
+          "answered_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Answered At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "player",
+          "done"
+        ],
+        "title": "PlayFamilyStatusOut"
+      },
+      "PlayItemOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "game": {
+            "type": "integer",
+            "title": "Game"
+          },
+          "maker": {
+            "$ref": "#/components/schemas/PlayPersonOut"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "close_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Close At"
+          },
+          "closed": {
+            "type": "boolean",
+            "title": "Closed"
+          },
+          "is_maker": {
+            "type": "boolean",
+            "title": "Is Maker"
+          },
+          "my_state": {
+            "type": "string",
+            "enum": [
+              "maker",
+              "todo",
+              "done"
+            ],
+            "title": "My State"
+          },
+          "progress_done": {
+            "type": "integer",
+            "title": "Progress Done"
+          },
+          "progress_total": {
+            "type": "integer",
+            "title": "Progress Total"
+          },
+          "questions": {
+            "items": {
+              "$ref": "#/components/schemas/PlayQuestionOut"
+            },
+            "type": "array",
+            "title": "Questions",
+            "default": []
+          },
+          "draw": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PlayDrawOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "photo": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PlayPhotoOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "image_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Image Url"
+          },
+          "my_answers": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/PlayAnswerOut"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "My Answers"
+          },
+          "my_score": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PlayScoreOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "family_status": {
+            "items": {
+              "$ref": "#/components/schemas/PlayFamilyStatusOut"
+            },
+            "type": "array",
+            "title": "Family Status",
+            "default": []
+          },
+          "family_answers": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/PlayFamilyAnswersOut"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Family Answers"
+          },
+          "maker_score": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Maker Score"
+          },
+          "maker_score_state": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "pending",
+                  "paid",
+                  "none_solved",
+                  "daily_limit"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Maker Score State"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "game",
+          "maker",
+          "created_at",
+          "close_at",
+          "closed",
+          "is_maker",
+          "my_state",
+          "progress_done",
+          "progress_total"
+        ],
+        "title": "PlayItemOut"
+      },
+      "PlayPersonOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name"
+        ],
+        "title": "PlayPersonOut"
+      },
+      "PlayPhotoOut": {
+        "properties": {
+          "question": {
+            "type": "string",
+            "title": "Question"
+          },
+          "options": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Options"
+          },
+          "zoom": {
+            "type": "integer",
+            "title": "Zoom"
+          },
+          "source": {
+            "type": "integer",
+            "title": "Source"
+          },
+          "shrinks_used": {
+            "type": "integer",
+            "title": "Shrinks Used"
+          },
+          "max_shrinks": {
+            "type": "integer",
+            "title": "Max Shrinks"
+          },
+          "answer": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Answer"
+          },
+          "comment": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Comment"
+          },
+          "box_x": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Box X"
+          },
+          "box_y": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Box Y"
+          }
+        },
+        "type": "object",
+        "required": [
+          "question",
+          "options",
+          "zoom",
+          "source",
+          "shrinks_used",
+          "max_shrinks"
+        ],
+        "title": "PlayPhotoOut",
+        "description": "찰칵! 탐정단(선택식). 풀고 있는 사람의 사진은 확대해서 자른 부분만 나간다."
+      },
+      "PlayQuestionOut": {
+        "properties": {
+          "quiz_no": {
+            "type": "integer",
+            "title": "Quiz No"
+          },
+          "qtype": {
+            "type": "integer",
+            "title": "Qtype"
+          },
+          "question": {
+            "type": "string",
+            "title": "Question"
+          },
+          "options": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Options"
+          },
+          "answer": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Answer"
+          },
+          "comment": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Comment"
+          }
+        },
+        "type": "object",
+        "required": [
+          "quiz_no",
+          "qtype",
+          "question",
+          "options"
+        ],
+        "title": "PlayQuestionOut"
+      },
+      "PlayQuizAnswerIn": {
+        "properties": {
+          "answers": {
+            "items": {
+              "$ref": "#/components/schemas/PlayAnswerItemIn"
+            },
+            "type": "array",
+            "maxItems": 5,
+            "minItems": 1,
+            "title": "Answers"
+          }
+        },
+        "type": "object",
+        "required": [
+          "answers"
+        ],
+        "title": "PlayQuizAnswerIn",
+        "description": "골든벨은 마지막 `답 보내기` 에서 문항 수만큼 한 번에 보낸다."
+      },
+      "PlayQuizCreateIn": {
+        "properties": {
+          "questions": {
+            "items": {
+              "$ref": "#/components/schemas/PlayQuizQuestionIn"
+            },
+            "type": "array",
+            "maxItems": 5,
+            "minItems": 1,
+            "title": "Questions"
+          },
+          "player_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 30,
+            "title": "Player Ids"
+          }
+        },
+        "type": "object",
+        "required": [
+          "questions"
+        ],
+        "title": "PlayQuizCreateIn"
+      },
+      "PlayQuizQuestionIn": {
+        "properties": {
+          "qtype": {
+            "type": "integer",
+            "enum": [
+              1,
+              2
+            ],
+            "title": "Qtype"
+          },
+          "question": {
+            "type": "string",
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Question"
+          },
+          "options": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 4,
+            "minItems": 2,
+            "title": "Options"
+          },
+          "answer_index": {
+            "type": "integer",
+            "maximum": 3.0,
+            "minimum": 0.0,
+            "title": "Answer Index"
+          },
+          "comment": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 100
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Comment"
+          }
+        },
+        "type": "object",
+        "required": [
+          "qtype",
+          "question",
+          "options",
+          "answer_index"
+        ],
+        "title": "PlayQuizQuestionIn"
+      },
+      "PlayQuotaOut": {
+        "properties": {
+          "limit": {
+            "type": "integer",
+            "title": "Limit"
+          },
+          "used": {
+            "type": "integer",
+            "title": "Used"
+          },
+          "left": {
+            "type": "integer",
+            "title": "Left"
+          }
+        },
+        "type": "object",
+        "required": [
+          "limit",
+          "used",
+          "left"
+        ],
+        "title": "PlayQuotaOut",
+        "description": "오늘(한국 시간) 내가 낸 문제 수와 문제 내기 점수(+20)를 받을 수 있는 남은 횟수."
+      },
+      "PlayRankRow": {
+        "properties": {
+          "player": {
+            "$ref": "#/components/schemas/PlayPersonOut"
+          },
+          "score": {
+            "type": "integer",
+            "title": "Score"
+          },
+          "by_game": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "type": "object",
+            "title": "By Game"
+          },
+          "etc": {
+            "type": "integer",
+            "title": "Etc"
+          },
+          "counts": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "type": "object",
+            "title": "Counts"
+          },
+          "corrects": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "type": "object",
+            "title": "Corrects"
+          }
+        },
+        "type": "object",
+        "required": [
+          "player",
+          "score",
+          "by_game",
+          "etc",
+          "counts",
+          "corrects"
+        ],
+        "title": "PlayRankRow"
+      },
+      "PlayRankingOut": {
+        "properties": {
+          "period": {
+            "type": "string",
+            "enum": [
+              "week",
+              "month",
+              "all"
+            ],
+            "title": "Period"
+          },
+          "rows": {
+            "items": {
+              "$ref": "#/components/schemas/PlayRankRow"
+            },
+            "type": "array",
+            "title": "Rows"
+          }
+        },
+        "type": "object",
+        "required": [
+          "period",
+          "rows"
+        ],
+        "title": "PlayRankingOut"
+      },
+      "PlayScoreOut": {
+        "properties": {
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          },
+          "join": {
+            "type": "integer",
+            "title": "Join"
+          },
+          "correct": {
+            "type": "integer",
+            "title": "Correct"
+          },
+          "hint": {
+            "type": "integer",
+            "title": "Hint",
+            "default": 0
+          }
+        },
+        "type": "object",
+        "required": [
+          "total",
+          "join",
+          "correct"
+        ],
+        "title": "PlayScoreOut"
       },
       "PreviewLine": {
         "properties": {
@@ -26618,1432 +28137,6 @@
           "next_before_id"
         ],
         "title": "SearchOut"
-      },
-      "Body_create_draw_play_draws_post": {
-        "properties": {
-          "file": {
-            "type": "string",
-            "contentMediaType": "application/octet-stream",
-            "title": "File",
-            "description": "그림 PNG(2MB 이하)"
-          },
-          "answer": {
-            "type": "string",
-            "title": "Answer",
-            "description": "정답(40자 이하)"
-          },
-          "alt_answers": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "title": "Alt Answers",
-            "description": "이것도 정답(5개까지)",
-            "default": []
-          },
-          "hint2": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Hint2",
-            "description": "힌트 2(20자 이하). 힌트 1은 글자 수로 만든다"
-          },
-          "player_ids": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "title": "Player Ids",
-            "description": "받는 사람. 비우면 가족 모두",
-            "default": []
-          }
-        },
-        "type": "object",
-        "required": [
-          "file",
-          "answer"
-        ],
-        "title": "Body_create_draw_play_draws_post"
-      },
-      "Body_create_photo_play_photos_post": {
-        "properties": {
-          "file": {
-            "type": "string",
-            "contentMediaType": "application/octet-stream",
-            "title": "File",
-            "description": "사진 JPEG/PNG/WebP(8MB 이하)"
-          },
-          "source": {
-            "type": "integer",
-            "title": "Source",
-            "description": "1 가족 앨범, 2 내 폰"
-          },
-          "zoom": {
-            "type": "integer",
-            "title": "Zoom",
-            "description": "확대 배율 4·6·8·16·32"
-          },
-          "box_x": {
-            "type": "number",
-            "maximum": 1.0,
-            "minimum": 0.0,
-            "title": "Box X",
-            "description": "확대 창 가운데 가로 위치 0~1"
-          },
-          "box_y": {
-            "type": "number",
-            "maximum": 1.0,
-            "minimum": 0.0,
-            "title": "Box Y",
-            "description": "확대 창 가운데 세로 위치 0~1"
-          },
-          "question": {
-            "type": "string",
-            "title": "Question",
-            "description": "질문(20자 이하)"
-          },
-          "options": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "title": "Options",
-            "description": "보기 2~4개"
-          },
-          "answer_index": {
-            "type": "integer",
-            "maximum": 3.0,
-            "minimum": 0.0,
-            "title": "Answer Index",
-            "description": "정답 보기 위치(0부터)"
-          },
-          "comment": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Comment",
-            "description": "한마디(100자 이하)"
-          },
-          "player_ids": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "title": "Player Ids",
-            "description": "받는 사람. 비우면 가족 모두",
-            "default": []
-          }
-        },
-        "type": "object",
-        "required": [
-          "file",
-          "source",
-          "zoom",
-          "box_x",
-          "box_y",
-          "question",
-          "options",
-          "answer_index"
-        ],
-        "title": "Body_create_photo_play_photos_post"
-      },
-      "PlayAnswerItemIn": {
-        "properties": {
-          "quiz_no": {
-            "type": "integer",
-            "maximum": 5.0,
-            "minimum": 0.0,
-            "title": "Quiz No"
-          },
-          "answer": {
-            "type": "string",
-            "pattern": "^[01]{2,4}$",
-            "title": "Answer"
-          }
-        },
-        "type": "object",
-        "required": [
-          "quiz_no",
-          "answer"
-        ],
-        "title": "PlayAnswerItemIn"
-      },
-      "PlayAnswerOut": {
-        "properties": {
-          "quiz_no": {
-            "type": "integer",
-            "title": "Quiz No"
-          },
-          "answer": {
-            "type": "string",
-            "title": "Answer"
-          },
-          "is_correct": {
-            "type": "boolean",
-            "title": "Is Correct"
-          },
-          "hints_used": {
-            "type": "integer",
-            "title": "Hints Used",
-            "default": 0
-          }
-        },
-        "type": "object",
-        "required": [
-          "quiz_no",
-          "answer",
-          "is_correct"
-        ],
-        "title": "PlayAnswerOut"
-      },
-      "PlayBoardItemOut": {
-        "properties": {
-          "id": {
-            "type": "string",
-            "title": "Id"
-          },
-          "game": {
-            "type": "integer",
-            "title": "Game"
-          },
-          "maker": {
-            "$ref": "#/components/schemas/PlayPersonOut"
-          },
-          "close_at": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Close At"
-          },
-          "closed": {
-            "type": "boolean",
-            "title": "Closed"
-          },
-          "progress_done": {
-            "type": "integer",
-            "title": "Progress Done"
-          },
-          "progress_total": {
-            "type": "integer",
-            "title": "Progress Total"
-          },
-          "question_count": {
-            "type": "integer",
-            "title": "Question Count",
-            "default": 0
-          }
-        },
-        "type": "object",
-        "required": [
-          "id",
-          "game",
-          "maker",
-          "close_at",
-          "closed",
-          "progress_done",
-          "progress_total"
-        ],
-        "title": "PlayBoardItemOut"
-      },
-      "PlayBoardOut": {
-        "properties": {
-          "todo": {
-            "items": {
-              "$ref": "#/components/schemas/PlayBoardItemOut"
-            },
-            "type": "array",
-            "title": "Todo"
-          },
-          "joined": {
-            "items": {
-              "$ref": "#/components/schemas/PlayBoardItemOut"
-            },
-            "type": "array",
-            "title": "Joined"
-          },
-          "past": {
-            "items": {
-              "$ref": "#/components/schemas/PlayBoardItemOut"
-            },
-            "type": "array",
-            "title": "Past"
-          },
-          "sent": {
-            "items": {
-              "$ref": "#/components/schemas/PlayBoardItemOut"
-            },
-            "type": "array",
-            "title": "Sent"
-          },
-          "sent_past": {
-            "items": {
-              "$ref": "#/components/schemas/PlayBoardItemOut"
-            },
-            "type": "array",
-            "title": "Sent Past"
-          }
-        },
-        "type": "object",
-        "required": [
-          "todo",
-          "joined",
-          "past",
-          "sent",
-          "sent_past"
-        ],
-        "title": "PlayBoardOut"
-      },
-      "PlayDrawOut": {
-        "properties": {
-          "tries_used": {
-            "type": "integer",
-            "title": "Tries Used"
-          },
-          "max_tries": {
-            "type": "integer",
-            "title": "Max Tries"
-          },
-          "solved": {
-            "type": "boolean",
-            "title": "Solved"
-          },
-          "finished": {
-            "type": "boolean",
-            "title": "Finished"
-          },
-          "last_try_correct": {
-            "anyOf": [
-              {
-                "type": "boolean"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Last Try Correct"
-          },
-          "hints_used": {
-            "type": "integer",
-            "title": "Hints Used"
-          },
-          "max_hints": {
-            "type": "integer",
-            "title": "Max Hints"
-          },
-          "hint1": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Hint1"
-          },
-          "hint2": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Hint2"
-          },
-          "answer": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Answer"
-          },
-          "alt_answers": {
-            "anyOf": [
-              {
-                "items": {
-                  "type": "string"
-                },
-                "type": "array"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Alt Answers"
-          }
-        },
-        "type": "object",
-        "required": [
-          "tries_used",
-          "max_tries",
-          "solved",
-          "finished",
-          "hints_used",
-          "max_hints"
-        ],
-        "title": "PlayDrawOut",
-        "description": "이게 뭐게. 힌트는 연 만큼만, 정답은 낸 사람·끝낸 사람·닫힌 뒤에만 보인다."
-      },
-      "PlayDrawTryIn": {
-        "properties": {
-          "answer": {
-            "type": "string",
-            "maxLength": 40,
-            "minLength": 1,
-            "title": "Answer"
-          }
-        },
-        "type": "object",
-        "required": [
-          "answer"
-        ],
-        "title": "PlayDrawTryIn"
-      },
-      "PlayFamilyAnswersOut": {
-        "properties": {
-          "player": {
-            "$ref": "#/components/schemas/PlayPersonOut"
-          },
-          "answered_at": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Answered At"
-          },
-          "answers": {
-            "items": {
-              "$ref": "#/components/schemas/PlayAnswerOut"
-            },
-            "type": "array",
-            "title": "Answers"
-          }
-        },
-        "type": "object",
-        "required": [
-          "player",
-          "answered_at",
-          "answers"
-        ],
-        "title": "PlayFamilyAnswersOut"
-      },
-      "PlayFamilyStatusOut": {
-        "properties": {
-          "player": {
-            "$ref": "#/components/schemas/PlayPersonOut"
-          },
-          "done": {
-            "type": "boolean",
-            "title": "Done"
-          },
-          "answered_at": {
-            "anyOf": [
-              {
-                "type": "string",
-                "format": "date-time"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Answered At"
-          }
-        },
-        "type": "object",
-        "required": [
-          "player",
-          "done"
-        ],
-        "title": "PlayFamilyStatusOut"
-      },
-      "PlayItemOut": {
-        "properties": {
-          "id": {
-            "type": "string",
-            "title": "Id"
-          },
-          "game": {
-            "type": "integer",
-            "title": "Game"
-          },
-          "maker": {
-            "$ref": "#/components/schemas/PlayPersonOut"
-          },
-          "created_at": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Created At"
-          },
-          "close_at": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Close At"
-          },
-          "closed": {
-            "type": "boolean",
-            "title": "Closed"
-          },
-          "is_maker": {
-            "type": "boolean",
-            "title": "Is Maker"
-          },
-          "my_state": {
-            "type": "string",
-            "enum": [
-              "maker",
-              "todo",
-              "done"
-            ],
-            "title": "My State"
-          },
-          "progress_done": {
-            "type": "integer",
-            "title": "Progress Done"
-          },
-          "progress_total": {
-            "type": "integer",
-            "title": "Progress Total"
-          },
-          "questions": {
-            "items": {
-              "$ref": "#/components/schemas/PlayQuestionOut"
-            },
-            "type": "array",
-            "title": "Questions",
-            "default": []
-          },
-          "draw": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/PlayDrawOut"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "photo": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/PlayPhotoOut"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "image_url": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Image Url"
-          },
-          "my_answers": {
-            "anyOf": [
-              {
-                "items": {
-                  "$ref": "#/components/schemas/PlayAnswerOut"
-                },
-                "type": "array"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "My Answers"
-          },
-          "my_score": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/PlayScoreOut"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "family_status": {
-            "items": {
-              "$ref": "#/components/schemas/PlayFamilyStatusOut"
-            },
-            "type": "array",
-            "title": "Family Status",
-            "default": []
-          },
-          "family_answers": {
-            "anyOf": [
-              {
-                "items": {
-                  "$ref": "#/components/schemas/PlayFamilyAnswersOut"
-                },
-                "type": "array"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Family Answers"
-          },
-          "maker_score": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Maker Score"
-          },
-          "maker_score_state": {
-            "anyOf": [
-              {
-                "type": "string",
-                "enum": [
-                  "pending",
-                  "paid",
-                  "none_solved",
-                  "daily_limit"
-                ]
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Maker Score State"
-          }
-        },
-        "type": "object",
-        "required": [
-          "id",
-          "game",
-          "maker",
-          "created_at",
-          "close_at",
-          "closed",
-          "is_maker",
-          "my_state",
-          "progress_done",
-          "progress_total"
-        ],
-        "title": "PlayItemOut"
-      },
-      "PlayPersonOut": {
-        "properties": {
-          "id": {
-            "type": "string",
-            "title": "Id"
-          },
-          "name": {
-            "type": "string",
-            "title": "Name"
-          }
-        },
-        "type": "object",
-        "required": [
-          "id",
-          "name"
-        ],
-        "title": "PlayPersonOut"
-      },
-      "PlayPhotoOut": {
-        "properties": {
-          "question": {
-            "type": "string",
-            "title": "Question"
-          },
-          "options": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "title": "Options"
-          },
-          "zoom": {
-            "type": "integer",
-            "title": "Zoom"
-          },
-          "source": {
-            "type": "integer",
-            "title": "Source"
-          },
-          "shrinks_used": {
-            "type": "integer",
-            "title": "Shrinks Used"
-          },
-          "max_shrinks": {
-            "type": "integer",
-            "title": "Max Shrinks"
-          },
-          "answer": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Answer"
-          },
-          "comment": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Comment"
-          },
-          "box_x": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Box X"
-          },
-          "box_y": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Box Y"
-          }
-        },
-        "type": "object",
-        "required": [
-          "question",
-          "options",
-          "zoom",
-          "source",
-          "shrinks_used",
-          "max_shrinks"
-        ],
-        "title": "PlayPhotoOut",
-        "description": "찰칵! 탐정단(선택식). 풀고 있는 사람의 사진은 확대해서 자른 부분만 나간다."
-      },
-      "PlayQuestionOut": {
-        "properties": {
-          "quiz_no": {
-            "type": "integer",
-            "title": "Quiz No"
-          },
-          "qtype": {
-            "type": "integer",
-            "title": "Qtype"
-          },
-          "question": {
-            "type": "string",
-            "title": "Question"
-          },
-          "options": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "title": "Options"
-          },
-          "answer": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Answer"
-          },
-          "comment": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Comment"
-          }
-        },
-        "type": "object",
-        "required": [
-          "quiz_no",
-          "qtype",
-          "question",
-          "options"
-        ],
-        "title": "PlayQuestionOut"
-      },
-      "PlayQuizAnswerIn": {
-        "properties": {
-          "answers": {
-            "items": {
-              "$ref": "#/components/schemas/PlayAnswerItemIn"
-            },
-            "type": "array",
-            "maxItems": 5,
-            "minItems": 1,
-            "title": "Answers"
-          }
-        },
-        "type": "object",
-        "required": [
-          "answers"
-        ],
-        "title": "PlayQuizAnswerIn",
-        "description": "골든벨은 마지막 `답 보내기` 에서 문항 수만큼 한 번에 보낸다."
-      },
-      "PlayQuizCreateIn": {
-        "properties": {
-          "questions": {
-            "items": {
-              "$ref": "#/components/schemas/PlayQuizQuestionIn"
-            },
-            "type": "array",
-            "maxItems": 5,
-            "minItems": 1,
-            "title": "Questions"
-          },
-          "player_ids": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "maxItems": 30,
-            "title": "Player Ids"
-          }
-        },
-        "type": "object",
-        "required": [
-          "questions"
-        ],
-        "title": "PlayQuizCreateIn"
-      },
-      "PlayQuizQuestionIn": {
-        "properties": {
-          "qtype": {
-            "type": "integer",
-            "enum": [
-              1,
-              2
-            ],
-            "title": "Qtype"
-          },
-          "question": {
-            "type": "string",
-            "maxLength": 100,
-            "minLength": 1,
-            "title": "Question"
-          },
-          "options": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "maxItems": 4,
-            "minItems": 2,
-            "title": "Options"
-          },
-          "answer_index": {
-            "type": "integer",
-            "maximum": 3.0,
-            "minimum": 0.0,
-            "title": "Answer Index"
-          },
-          "comment": {
-            "anyOf": [
-              {
-                "type": "string",
-                "maxLength": 100
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Comment"
-          }
-        },
-        "type": "object",
-        "required": [
-          "qtype",
-          "question",
-          "options",
-          "answer_index"
-        ],
-        "title": "PlayQuizQuestionIn"
-      },
-      "PlayRankRow": {
-        "properties": {
-          "player": {
-            "$ref": "#/components/schemas/PlayPersonOut"
-          },
-          "score": {
-            "type": "integer",
-            "title": "Score"
-          },
-          "by_game": {
-            "additionalProperties": {
-              "type": "integer"
-            },
-            "type": "object",
-            "title": "By Game"
-          },
-          "etc": {
-            "type": "integer",
-            "title": "Etc"
-          },
-          "counts": {
-            "additionalProperties": {
-              "type": "integer"
-            },
-            "type": "object",
-            "title": "Counts"
-          },
-          "corrects": {
-            "additionalProperties": {
-              "type": "integer"
-            },
-            "type": "object",
-            "title": "Corrects"
-          }
-        },
-        "type": "object",
-        "required": [
-          "player",
-          "score",
-          "by_game",
-          "etc",
-          "counts",
-          "corrects"
-        ],
-        "title": "PlayRankRow"
-      },
-      "PlayRankingOut": {
-        "properties": {
-          "period": {
-            "type": "string",
-            "enum": [
-              "week",
-              "month",
-              "all"
-            ],
-            "title": "Period"
-          },
-          "rows": {
-            "items": {
-              "$ref": "#/components/schemas/PlayRankRow"
-            },
-            "type": "array",
-            "title": "Rows"
-          }
-        },
-        "type": "object",
-        "required": [
-          "period",
-          "rows"
-        ],
-        "title": "PlayRankingOut"
-      },
-      "PlayScoreOut": {
-        "properties": {
-          "total": {
-            "type": "integer",
-            "title": "Total"
-          },
-          "join": {
-            "type": "integer",
-            "title": "Join"
-          },
-          "correct": {
-            "type": "integer",
-            "title": "Correct"
-          },
-          "hint": {
-            "type": "integer",
-            "title": "Hint",
-            "default": 0
-          }
-        },
-        "type": "object",
-        "required": [
-          "total",
-          "join",
-          "correct"
-        ],
-        "title": "PlayScoreOut"
-      },
-      "PlayQuotaOut": {
-        "properties": {
-          "limit": {
-            "type": "integer",
-            "title": "Limit"
-          },
-          "used": {
-            "type": "integer",
-            "title": "Used"
-          },
-          "left": {
-            "type": "integer",
-            "title": "Left"
-          }
-        },
-        "type": "object",
-        "required": [
-          "limit",
-          "used",
-          "left"
-        ],
-        "title": "PlayQuotaOut",
-        "description": "오늘(한국 시간) 내가 낸 문제 수와 문제 내기 점수(+20)를 받을 수 있는 남은 횟수."
-      },
-      "PlayBombCheerIn": {
-        "properties": {
-          "text": {
-            "type": "string",
-            "maxLength": 10,
-            "minLength": 1,
-            "title": "Text"
-          }
-        },
-        "type": "object",
-        "required": [
-          "text"
-        ],
-        "title": "PlayBombCheerIn",
-        "description": "관전 응원. 정해진 말 중에서 고른다."
-      },
-      "PlayBombMessageOut": {
-        "properties": {
-          "id": {
-            "type": "string",
-            "title": "Id"
-          },
-          "kind": {
-            "type": "string",
-            "enum": [
-              "say",
-              "timeout",
-              "cheer"
-            ],
-            "title": "Kind"
-          },
-          "player": {
-            "$ref": "#/components/schemas/PlayPersonOut"
-          },
-          "text": {
-            "type": "string",
-            "title": "Text"
-          },
-          "ended": {
-            "type": "boolean",
-            "title": "Ended",
-            "default": false
-          },
-          "reason": {
-            "anyOf": [
-              {
-                "type": "string",
-                "enum": [
-                  "end",
-                  "repeat"
-                ]
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Reason"
-          },
-          "lost_life": {
-            "type": "boolean",
-            "title": "Lost Life",
-            "default": false
-          },
-          "out": {
-            "type": "boolean",
-            "title": "Out",
-            "default": false
-          },
-          "at": {
-            "type": "string",
-            "format": "date-time",
-            "title": "At"
-          }
-        },
-        "type": "object",
-        "required": [
-          "id",
-          "kind",
-          "player",
-          "text",
-          "at"
-        ],
-        "title": "PlayBombMessageOut",
-        "description": "채팅 한 줄. say 말함, timeout 시간 초과, cheer 관전 응원."
-      },
-      "PlayBombPlayerOut": {
-        "properties": {
-          "id": {
-            "type": "string",
-            "title": "Id"
-          },
-          "name": {
-            "type": "string",
-            "title": "Name"
-          },
-          "joined": {
-            "type": "boolean",
-            "title": "Joined"
-          },
-          "host": {
-            "type": "boolean",
-            "title": "Host",
-            "default": false
-          },
-          "lives": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Lives"
-          },
-          "total": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Total"
-          },
-          "out": {
-            "type": "boolean",
-            "title": "Out",
-            "default": false
-          },
-          "spectator": {
-            "type": "boolean",
-            "title": "Spectator",
-            "default": false
-          }
-        },
-        "type": "object",
-        "required": [
-          "id",
-          "name",
-          "joined"
-        ],
-        "title": "PlayBombPlayerOut"
-      },
-      "PlayBombRankOut": {
-        "properties": {
-          "player": {
-            "$ref": "#/components/schemas/PlayPersonOut"
-          },
-          "rank": {
-            "type": "integer",
-            "title": "Rank"
-          },
-          "sub": {
-            "type": "string",
-            "title": "Sub"
-          },
-          "points": {
-            "type": "integer",
-            "title": "Points"
-          }
-        },
-        "type": "object",
-        "required": [
-          "player",
-          "rank",
-          "sub",
-          "points"
-        ],
-        "title": "PlayBombRankOut"
-      },
-      "PlayBombResultOut": {
-        "properties": {
-          "round_no": {
-            "type": "integer",
-            "title": "Round No"
-          },
-          "winner": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/PlayPersonOut"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "longest_len": {
-            "type": "integer",
-            "title": "Longest Len"
-          },
-          "prev_record": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Prev Record"
-          },
-          "is_record": {
-            "type": "boolean",
-            "title": "Is Record",
-            "default": false
-          },
-          "ranking": {
-            "items": {
-              "$ref": "#/components/schemas/PlayBombRankOut"
-            },
-            "type": "array",
-            "title": "Ranking"
-          },
-          "my_points": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "My Points"
-          }
-        },
-        "type": "object",
-        "required": [
-          "round_no",
-          "longest_len",
-          "ranking"
-        ],
-        "title": "PlayBombResultOut"
-      },
-      "PlayBombSayIn": {
-        "properties": {
-          "word": {
-            "type": "string",
-            "maxLength": 30,
-            "minLength": 1,
-            "title": "Word"
-          }
-        },
-        "type": "object",
-        "required": [
-          "word"
-        ],
-        "title": "PlayBombSayIn",
-        "description": "내 차례에 이어 말하는 한 단어나 짧은 구(10자까지)."
-      },
-      "PlayBombStartIn": {
-        "properties": {
-          "life": {
-            "type": "integer",
-            "maximum": 5.0,
-            "minimum": 1.0,
-            "title": "Life",
-            "default": 3
-          },
-          "sec": {
-            "type": "integer",
-            "maximum": 60.0,
-            "minimum": 1.0,
-            "title": "Sec",
-            "default": 10
-          }
-        },
-        "type": "object",
-        "title": "PlayBombStartIn",
-        "description": "방장이 게임을 시작할 때 정하는 규칙. 생명 1~5(기본 3), 차례당 시간 1~60초(기본 10)."
-      },
-      "PlayBombStateOut": {
-        "properties": {
-          "id": {
-            "type": "string",
-            "title": "Id"
-          },
-          "phase": {
-            "type": "string",
-            "enum": [
-              "lobby",
-              "playing",
-              "finished",
-              "closed"
-            ],
-            "title": "Phase"
-          },
-          "host": {
-            "$ref": "#/components/schemas/PlayPersonOut"
-          },
-          "is_host": {
-            "type": "boolean",
-            "title": "Is Host"
-          },
-          "my_status": {
-            "type": "string",
-            "enum": [
-              "none",
-              "player",
-              "out",
-              "spectator"
-            ],
-            "title": "My Status"
-          },
-          "players": {
-            "items": {
-              "$ref": "#/components/schemas/PlayBombPlayerOut"
-            },
-            "type": "array",
-            "title": "Players"
-          },
-          "round_no": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Round No"
-          },
-          "life": {
-            "type": "integer",
-            "title": "Life"
-          },
-          "sec": {
-            "type": "integer",
-            "title": "Sec"
-          },
-          "turn": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/PlayBombTurnOut"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "chain": {
-            "type": "integer",
-            "title": "Chain",
-            "default": 0
-          },
-          "messages": {
-            "items": {
-              "$ref": "#/components/schemas/PlayBombMessageOut"
-            },
-            "type": "array",
-            "title": "Messages",
-            "default": []
-          },
-          "cheers": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "title": "Cheers",
-            "default": []
-          },
-          "cheer_wait": {
-            "type": "number",
-            "title": "Cheer Wait",
-            "default": 0
-          },
-          "result": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/PlayBombResultOut"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "close_at": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Close At"
-          }
-        },
-        "type": "object",
-        "required": [
-          "id",
-          "phase",
-          "host",
-          "is_host",
-          "my_status",
-          "players",
-          "life",
-          "sec",
-          "close_at"
-        ],
-        "title": "PlayBombStateOut"
-      },
-      "PlayBombTurnOut": {
-        "properties": {
-          "player": {
-            "$ref": "#/components/schemas/PlayPersonOut"
-          },
-          "seconds_left": {
-            "type": "number",
-            "title": "Seconds Left"
-          },
-          "deadline": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Deadline"
-          }
-        },
-        "type": "object",
-        "required": [
-          "player",
-          "seconds_left",
-          "deadline"
-        ],
-        "title": "PlayBombTurnOut"
       }
     }
   }
