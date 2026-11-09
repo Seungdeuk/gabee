@@ -28,6 +28,7 @@ class AttachmentOut(BaseModel):
     filename: str | None = None  # 문서만(사용자가 올린 이름을 정리한 것)
     size_bytes: int | None = None
     content_type: str | None = None  # 문서만(허용 목록의 안전한 값)
+    in_library: bool = False  # 사진이 이미 가족 문서함에 등록돼 있음(앱이 "문서로 저장" 버튼을 숨긴다). 메시지 목록에서만 채워진다
 
 
 class ReplyOut(BaseModel):

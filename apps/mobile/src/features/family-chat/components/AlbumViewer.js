@@ -14,7 +14,7 @@ import { RECORD_BUTTON_LABEL } from "../saveToRecord";
 /**
  * 앨범 전체 화면 보기. 좌우로 넘기며 묶음의 사진을 모두 본다(맨 위에 "2 / 5"). 닫기 버튼(또는 뒤로 가기)으로 닫는다.
  * 아래 버튼은 지금 보고 있는 사진 한 장에 적용된다: "사진첩에 저장"(onSaveToDevice), "가비 기록에 저장"(onSaveToRecord, 저장 중·저장함은 recordOf 가 사진 id 별로 알려 준다), "문서로 저장"(onSaveToLibrary, 상태는 libraryOf 가 같은 방식으로 알려 준다), 맨 위 오른쪽 "메뉴"(onMenu: 답장·삭제 같은 메시지 메뉴, 뷰어를 닫고 연다).
- * @param {{ photos: { id: string, url: string }[], startIndex?: number, visible: boolean, onClose: () => void, onSaveToDevice?: (photo: { id: string, url: string }, index: number) => void, saving?: boolean, notice?: string, onSaveToRecord?: (photo: { id: string, url: string }, index: number) => void, recordOf?: (photoId: string) => { saving: boolean, done: boolean, notice: string }, onSaveToLibrary?: (photo: { id: string, url: string }, index: number) => void, libraryOf?: (photoId: string) => { saving: boolean, done: boolean, notice: string }, onMenu?: (index: number) => void }} props photos 의 url 은 서버가 준 attachment.url
+ * @param {{ photos: { id: string, url: string, inLibrary?: boolean }[], startIndex?: number, visible: boolean, onClose: () => void, onSaveToDevice?: (photo: { id: string, url: string }, index: number) => void, saving?: boolean, notice?: string, onSaveToRecord?: (photo: { id: string, url: string }, index: number) => void, recordOf?: (photoId: string) => { saving: boolean, done: boolean, notice: string }, onSaveToLibrary?: (photo: { id: string, url: string }, index: number) => void, libraryOf?: (photoId: string) => { saving: boolean, done: boolean, notice: string }, onMenu?: (index: number) => void }} props photos 의 url 은 서버가 준 attachment.url
  */
 export default function AlbumViewer({ photos, startIndex = 0, visible, onClose, onSaveToDevice, saving = false, notice = "", onSaveToRecord, recordOf, onSaveToLibrary, libraryOf, onMenu }) {
   const { width } = useWindowDimensions();
@@ -95,7 +95,7 @@ export default function AlbumViewer({ photos, startIndex = 0, visible, onClose, 
                   <Text style={styles.buttonText}>{record.saving ? "저장하는 중…" : record.done ? "저장했어요" : RECORD_BUTTON_LABEL}</Text>
                 </Pressable>
               ) : null}
-              {onSaveToLibrary ? (
+              {onSaveToLibrary && !current.inLibrary ? (
                 <Pressable
                   onPress={() => onSaveToLibrary(current, index)}
                   disabled={library.saving || library.done}

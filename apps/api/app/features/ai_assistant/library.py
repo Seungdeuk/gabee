@@ -207,7 +207,11 @@ def _photo_registered(db: Session, group_id: str, attachment_id: str) -> bool:
     return knowledge_repo.get_by_attachment(db, group_id, attachment_id) is not None
 
 
+def _photos_registered(db: Session, group_id: str, attachment_ids: list[str]) -> set[str]:
+    return knowledge_repo.registered_attachment_ids(db, group_id, attachment_ids)
+
+
 def register() -> None:
     """ai_assistant 가 시작할 때 처리 함수를 채팅 쪽 통로에 등록한다."""
     chat_library.register_handlers(_on_document, _on_removed)
-    chat_library.register_photo_handler(_on_photo, _photo_registered)
+    chat_library.register_photo_handler(_on_photo, _photo_registered, _photos_registered)

@@ -567,3 +567,32 @@ def test_editing_or_confirming_a_registered_fee_notice_keeps_it_a_normal_documen
     r = client.patch(f"/ai-assistant/knowledge/items/{item.id}", json={}, headers=a)  # "확인했다"
     assert r.status_code == 200, r.text
     assert _items(group["id"])[0].sensitivity == "normal"
+
+
+def _flags(client, headers):
+    """가족방 메시지 목록에서 사진 id 별 in_library 값."""
+    rows = client.get("/family-chat/messages", headers=headers).json()
+    return {
+        r["attachment"]["id"]: r["attachment"]["in_library"] for r in rows if r.get("attachment")
+    }
+
+
+def test_a_photo_already_in_the_library_is_flagged_in_the_message_list(client, family):
+    a, b, _ = family
+    _use_ocr(ScriptedOcr(NOTICE_LINES))
+    saved = _send_photo(client, a)  # 문서라서 자동 등록된다
+    _use_ocr(ScriptedOcr([]))
+    plain = _send_photo(client, a)  # 일반 사진은 등록되지 않는다
+    flags = _flags(client, b)  # 가족 누구에게나 같다
+    assert flags[saved["attachment"]["id"]] is True
+    assert flags[plain["attachment"]["id"]] is False
+
+
+def test_a_photo_saved_by_the_button_is_flagged_afterwards(client, family):
+    a, _, _ = family
+    _use_ocr(ScriptedOcr([]))
+    msg = _send_photo(client, a)
+    pid = msg["attachment"]["id"]
+    assert _flags(client, a)[pid] is False
+    assert _save(client, a, pid).status_code == 200
+    assert _flags(client, a)[pid] is True
