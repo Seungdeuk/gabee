@@ -25,7 +25,6 @@ import { HEART, canOpenMenu, messageActionError, reactionAction, replyPreview } 
 import { COPIED_NOTICE, COPY_FAILED_NOTICE, pinTapAction } from "../pinUtils";
 import { parseFocusParam, roomSearchOptions, shouldLoadNewer } from "../searchUtils";
 import { canSaveToLibrary, saveToLibrary } from "../saveToLibrary";
-import { canSaveToRecord, saveToRecord } from "../saveToRecord";
 import useChatLinks from "../useChatLinks";
 import useChatMessages, { useRoomInfo } from "../useChatMessages";
 import useChatPins from "../useChatPins";
@@ -50,9 +49,6 @@ const LIST_READY_MAX_MS = 1500; // 처음 맨 아래로 자리 잡는 동안 목
 const DIVIDER_VIEW_POSITION = 0.05; // 입장 때 "여기까지 읽었습니다" 줄이 화면 위쪽에 오도록(0 이 맨 위)
 const DIVIDER_READY_MS = 350; // 구분선으로 이동한 뒤 목록을 보이기까지 기다리는 시간(첫 시도가 실패해도 재시도가 끝나도록)
 const END_SETTLE_MS = 150; // 맨 아래로 간 뒤 마지막 항목 높이가 확정되길 기다리는 시간
-
-/** 가족 전체방의 사진을 AI 비서의 가족 기록으로 올린다(사진 보기의 "가비 기록에 저장"). */
-const savePhotoToRecord = (attachment) => saveToRecord(attachment, Platform.OS);
 
 /** 가족 전체방의 사진을 가족 공유 문서함에 직접 넣는다(사진 보기의 "문서로 저장"). */
 const savePhotoToLibraryDoc = (attachment) => saveToLibrary(attachment);
@@ -642,7 +638,6 @@ export default function ChatRoomScreen() {
                 onReactionPress={canOpenMenu(item.message) ? runReaction : undefined}
                 onReplyPress={pickPin}
                 linkBadges={item.album ? albumBadges(item.album, links.badgesOf) : links.badgesOf(item.message.id)}
-                onSaveToRecord={canSaveToRecord({ direct, attachment: item.message.attachment }) ? savePhotoToRecord : undefined}
                 onSaveToLibrary={canSaveToLibrary({ direct, attachment: item.message.attachment }) ? savePhotoToLibraryDoc : undefined}
               />
             )

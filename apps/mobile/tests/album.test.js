@@ -141,10 +141,10 @@ test("buildItems: 안 읽음 구분선이 앨범 안 사진을 가리키면 앨�
   assert.equal(items[idx + 1].showName, true);
 });
 
-test("보기 연결: 앨범 뷰어는 메뉴·가비 기록 저장을 받고 반응은 대표 사진에 건다", () => {
+test("보기 연결: 앨범 뷰어는 메뉴·문서로 저장을 받고 반응은 대표 사진에 건다", () => {
   const viewer = src("components/AlbumViewer.js");
   assert.match(viewer, /onMenu/);
-  assert.match(viewer, /onSaveToRecord/);
+  assert.match(viewer, /onSaveToLibrary/);
   assert.match(viewer, /Math\.min\(last, Math\.max\(0, page\.index\)\)/); // 사진이 줄어도 번호가 범위를 넘지 않는다
   const room = src("screens/ChatRoomScreen.js");
   assert.match(room, /menu\?\.reactTo \?\? menu\?\.message/);
