@@ -23,7 +23,7 @@ test("목록 화면: 채팅방 줄은 한 장의 흰 카드 안에 모이고 줄
 test("채팅방 줄: 가족 전체방은 육각형 아바타, 1:1 방은 옅은 테두리 원형 프로필", () => {
   const row = read("features/family-chat/components/RoomRow.js");
   assert.match(row, /import HexAvatar from "@\/shared\/components\/HexAvatar"/);
-  assert.match(row, /<HexAvatar name=\{room\.name\}/);
+  assert.match(row, /<HexAvatar size=\{AVATAR_SIZE\} \/>/); // 글자가 아니라 아이콘이라 이름을 넘기지 않는다
   assert.match(row, /styles\.ring/); // 1:1 방 프로필의 옅은 테두리
   assert.match(row, /<UserAvatar name=\{room\.name\} userId=\{room\.peerId\}/);
 });
@@ -53,4 +53,10 @@ test("1:1 프로필 테두리: 바깥 크기가 아바타 크기(56)와 정확�
   const row = read("features/family-chat/components/RoomRow.js");
   assert.match(row, /const RING_SPACE = RING_BORDER \* 4;/);
   assert.match(row, /ring: \{ width: AVATAR_SIZE, height: AVATAR_SIZE, padding: RING_BORDER, borderWidth: RING_BORDER/);
+});
+
+test("육각형 아바타: 첫 글자 대신 가족 아이콘(people)을 가운데에 보인다", () => {
+  const hex = read("shared/components/HexAvatar.js");
+  assert.match(hex, /<Ionicons name="people"/);
+  assert.doesNotMatch(hex, /slice\(0, 1\)/); // 이름 첫 글자를 쓰지 않는다
 });

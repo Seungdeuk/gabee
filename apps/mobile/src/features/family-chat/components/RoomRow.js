@@ -12,7 +12,7 @@ const MUTE_ACTION = "mute";
 /**
  * 채팅방 한 줄(메신저 목록 모양): 큰 원형 프로필, 방 이름+구성원 수, 마지막 말 한 줄, 오른쪽 위 시각.
  * 안 읽은 메시지가 있으면 오른쪽 아래에 복숭아색 원 배지(99 넘으면 "99+")를 보이고 마지막 말을 굵게 한다.
- * 1:1 방(peerId 가 있음)은 상대의 프로필 사진/이니셜(옅은 테두리 원형), 가족 전체방은 육각형 가족 아바타를 보인다.
+ * 1:1 방(peerId 가 있음)은 상대의 프로필 사진/이니셜(옅은 테두리 원형), 가족 전체방은 육각형 가족 아이콘 아바타를 보인다.
  * 알림을 끈 방(muted)은 방 이름(구성원 수) 오른쪽에 알림 꺼짐 아이콘을 보이되 안 읽은 숫자 배지는 그대로 둔다.
  * divider 가 true 면 행 아래에 사진 오른쪽부터 시작하는 얇은 구분선을 그린다(마지막 행은 false).
  * onToggleMute 가 있으면 스크린 리더용 접근성 액션("알림 끄기"/"알림 켜기")을 함께 제공한다(스와이프를 못 쓰는 환경의 대체).
@@ -37,7 +37,7 @@ export default function RoomRow({ room, onPress, onToggleMute, divider = false }
             <UserAvatar name={room.name} userId={room.peerId} photoUrl={room.photoUrl} size={AVATAR_SIZE - RING_SPACE} />
           </View>
         ) : (
-          <HexAvatar name={room.name} size={AVATAR_SIZE} />
+          <HexAvatar size={AVATAR_SIZE} />
         )}
         <View style={styles.main}>
           <View style={styles.titleLine}>
