@@ -4,6 +4,7 @@ import { AppState, ScrollView, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import Button from "@/shared/components/Button";
+import Card from "@/shared/components/Card";
 import SectionTitle from "@/shared/components/SectionTitle";
 import { colors, font, radius, spacing } from "@/theme";
 
@@ -213,7 +214,11 @@ export default function FamilyChatScreen({ playEntry = null, bell = null }) {
           ) : shown.length === 0 ? (
             query.trim() ? null : <Text style={styles.empty}>찾는 대화가 없어요</Text>
           ) : (
-            shown.map((room, i) => <SwipeableRoomRow key={room.id} room={room} divider={i < shown.length - 1} onPress={() => openRoom(room)} onToggleMute={() => toggleMute(room)} />)
+            <Card tone="white" style={styles.roomCard}>
+              {shown.map((room, i) => (
+                <SwipeableRoomRow key={room.id} room={room} divider={i < shown.length - 1} onPress={() => openRoom(room)} onToggleMute={() => toggleMute(room)} />
+              ))}
+            </Card>
           )}
         </View>
 
@@ -245,4 +250,6 @@ const styles = StyleSheet.create({
   muteNotice: { ...font.caption, color: colors.danger, textAlign: "center" },
   empty: { paddingVertical: spacing.xxl, textAlign: "center", color: colors.textMuted },
   contacts: { gap: spacing.sm },
+  // 채팅방 줄 전체를 한 장의 둥근 흰 카드로 감싼다(눌린 줄의 배경이 모서리 밖으로 나가지 않게 overflow 를 자른다)
+  roomCard: { paddingVertical: spacing.xs, paddingHorizontal: spacing.xs, gap: 0, overflow: "hidden" },
 });

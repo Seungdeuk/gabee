@@ -19,7 +19,7 @@ export default function ChatListHeader({ query, onQuery, onNew, bell = null }) {
           우리 도란도란
         </Text>
         <View style={styles.buttons}>
-          <IconButton name="create-outline" label="새 대화" onPress={onNew} />
+          <IconButton name="add" label="새 대화" onPress={onNew} />
           {bell}
         </View>
       </View>
