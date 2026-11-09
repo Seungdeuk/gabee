@@ -9,14 +9,13 @@ import { colors, font, radius, spacing } from "@/theme";
 
 import { PHOTO_SAVE_LABEL } from "../fileUtils";
 import { LIBRARY_BUTTON_LABEL, LIBRARY_DONE_LABEL, LIBRARY_SAVING_LABEL } from "../saveToLibrary";
-import { RECORD_BUTTON_LABEL } from "../saveToRecord";
 
 /**
  * 앨범 전체 화면 보기. 좌우로 넘기며 묶음의 사진을 모두 본다(맨 위에 "2 / 5"). 닫기 버튼(또는 뒤로 가기)으로 닫는다.
- * 아래 버튼은 지금 보고 있는 사진 한 장에 적용된다: "사진첩에 저장"(onSaveToDevice), "가비 기록에 저장"(onSaveToRecord, 저장 중·저장함은 recordOf 가 사진 id 별로 알려 준다), "문서로 저장"(onSaveToLibrary, 상태는 libraryOf 가 같은 방식으로 알려 준다), 맨 위 오른쪽 "메뉴"(onMenu: 답장·삭제 같은 메시지 메뉴, 뷰어를 닫고 연다).
- * @param {{ photos: { id: string, url: string, inLibrary?: boolean }[], startIndex?: number, visible: boolean, onClose: () => void, onSaveToDevice?: (photo: { id: string, url: string }, index: number) => void, saving?: boolean, notice?: string, onSaveToRecord?: (photo: { id: string, url: string }, index: number) => void, recordOf?: (photoId: string) => { saving: boolean, done: boolean, notice: string }, onSaveToLibrary?: (photo: { id: string, url: string }, index: number) => void, libraryOf?: (photoId: string) => { saving: boolean, done: boolean, notice: string }, onMenu?: (index: number) => void }} props photos 의 url 은 서버가 준 attachment.url
+ * 아래 버튼은 지금 보고 있는 사진 한 장에 적용된다: "사진첩에 저장"(onSaveToDevice), "문서로 저장"(onSaveToLibrary, 상태는 libraryOf 가 같은 방식으로 알려 준다), 맨 위 오른쪽 "메뉴"(onMenu: 답장·삭제 같은 메시지 메뉴, 뷰어를 닫고 연다).
+ * @param {{ photos: { id: string, url: string, inLibrary?: boolean }[], startIndex?: number, visible: boolean, onClose: () => void, onSaveToDevice?: (photo: { id: string, url: string }, index: number) => void, saving?: boolean, notice?: string, onSaveToLibrary?: (photo: { id: string, url: string }, index: number) => void, libraryOf?: (photoId: string) => { saving: boolean, done: boolean, notice: string }, onMenu?: (index: number) => void }} props photos 의 url 은 서버가 준 attachment.url
  */
-export default function AlbumViewer({ photos, startIndex = 0, visible, onClose, onSaveToDevice, saving = false, notice = "", onSaveToRecord, recordOf, onSaveToLibrary, libraryOf, onMenu }) {
+export default function AlbumViewer({ photos, startIndex = 0, visible, onClose, onSaveToDevice, saving = false, notice = "", onSaveToLibrary, libraryOf, onMenu }) {
   const { width } = useWindowDimensions();
   // 사진 칸의 높이는 목록이 잰 높이로 정한다: 칸에 높이가 없으면 웹에서 사진 영역이 0 으로 접혀 사진이 보이지 않는다
   const [listHeight, setListHeight] = useState(0);
@@ -26,7 +25,6 @@ export default function AlbumViewer({ photos, startIndex = 0, visible, onClose, 
   const last = Math.max(0, photos.length - 1);
   const index = Math.min(last, Math.max(0, page.index)); // 보는 동안 사진이 지워져 줄어도 범위를 넘지 않는다
   const current = photos[index];
-  const record = current && recordOf ? recordOf(current.id) : { saving: false, done: false, notice: "" };
   const library = current && libraryOf ? libraryOf(current.id) : { saving: false, done: false, notice: "" };
 
   // 네이티브는 넘김이 끝날 때(onMomentumScrollEnd), 웹은 스크롤하는 동안(onScroll) 몇 번째 사진인지 갱신한다(웹은 momentum 이벤트가 없다).
@@ -66,7 +64,7 @@ export default function AlbumViewer({ photos, startIndex = 0, visible, onClose, 
             </View>
           )}
         />
-        {current && (onSaveToDevice || onSaveToRecord || onSaveToLibrary) ? (
+        {current && (onSaveToDevice || onSaveToLibrary) ? (
           <View style={styles.footer}>
             <View style={styles.buttons}>
               {onSaveToDevice ? (
@@ -80,19 +78,6 @@ export default function AlbumViewer({ photos, startIndex = 0, visible, onClose, 
                 >
                   <Ionicons name="download-outline" size={18} color={colors.text} />
                   <Text style={styles.buttonText}>{saving ? "저장하는 중…" : PHOTO_SAVE_LABEL}</Text>
-                </Pressable>
-              ) : null}
-              {onSaveToRecord ? (
-                <Pressable
-                  onPress={() => onSaveToRecord(current, index)}
-                  disabled={record.saving || record.done}
-                  accessibilityRole="button"
-                  accessibilityLabel={RECORD_BUTTON_LABEL}
-                  accessibilityState={{ disabled: record.saving || record.done }}
-                  style={({ pressed }) => [styles.button, (pressed || record.saving || record.done) && styles.pressed]}
-                >
-                  <Ionicons name={record.done ? "checkmark-circle-outline" : "sparkles-outline"} size={18} color={colors.text} />
-                  <Text style={styles.buttonText}>{record.saving ? "저장하는 중…" : record.done ? "저장했어요" : RECORD_BUTTON_LABEL}</Text>
                 </Pressable>
               ) : null}
               {onSaveToLibrary && !current.inLibrary ? (
@@ -112,11 +97,6 @@ export default function AlbumViewer({ photos, startIndex = 0, visible, onClose, 
             {notice ? (
               <Text style={styles.notice} accessibilityLiveRegion="polite">
                 {notice}
-              </Text>
-            ) : null}
-            {record.notice ? (
-              <Text style={styles.notice} accessibilityLiveRegion="polite">
-                {record.notice}
               </Text>
             ) : null}
             {library.notice ? (
