@@ -4,9 +4,9 @@ import { ActivityIndicator, AppState, Linking, Platform, StyleSheet, Switch, Tex
 
 import Button from "@/shared/components/Button";
 import Card from "@/shared/components/Card";
-import Dropdown from "@/shared/components/Dropdown";
 import IconButton from "@/shared/components/IconButton";
 import Screen from "@/shared/components/Screen";
+import WheelPicker from "@/shared/components/WheelPicker";
 import { colors, font, spacing } from "@/theme";
 
 import { getPushSettings, savePushSettings } from "../api";
@@ -14,15 +14,14 @@ import { KIND_META } from "../kinds";
 import { prepareThisDevice, readPermissionState } from "../PushBootstrap";
 import {
   QUIET_HOUR_OPTIONS,
-  QUIET_MERIDIEM_OPTIONS,
   QUIET_MINUTE_OPTIONS,
   formatQuietSummary,
   isQuietClash,
   isQuietOn,
+  parseQuietInput,
   parseTime,
   permissionNotice,
   setQuietPart,
-  toTwelveHour,
   toggleKind,
   withQuiet,
 } from "../push";
@@ -107,18 +106,22 @@ export default function PushSettingsScreen() {
     }
   };
 
-  /** 방해금지 시·분 드롭다운에서 고른 값을 저장한다. 시작과 끝이 같아지면 저장하지 않고 안내만 보인다. */
+  /**
+   * 방해금지 시·분 휠에서 고르거나 직접 입력한 값을 저장한다. 시작과 끝이 같아지면 저장하지 않고 안내만 보인다.
+   * @returns {boolean} 저장했으면 true, 거부했으면 false(휠이 이전 값으로 돌아간다)
+   */
   const pickQuiet = (field, part, value) => {
     if (isQuietClash(settings, field, part, value)) {
       setClash(true);
-      return;
+      return false;
     }
     setClash(false);
     change(setQuietPart(settings, field, part, value));
+    return true;
   };
 
-  const quietStart = twelve(settings?.quiet_start); // 서버는 "22:00:00" 으로도 돌려준다
-  const quietEnd = twelve(settings?.quiet_end);
+  const quietStart = parseTime(settings?.quiet_start); // 서버는 "22:00:00" 으로도 돌려준다
+  const quietEnd = parseTime(settings?.quiet_end);
 
   const notice = settings ? permissionNotice(device, settings.enabled) : null;
   const onNoticeAction = () => (notice?.action === "settings" ? Linking.openSettings() : allowOnDevice());
@@ -170,15 +173,13 @@ export default function PushSettingsScreen() {
                 <Row label="방해금지 켜기" value={isQuietOn(settings)} onChange={(on) => change(withQuiet(settings, on))} />
                 {isQuietOn(settings) ? (
                   <View style={styles.timeLine}>
-                    <Dropdown label="시작 오전/오후" value={quietStart?.meridiem} options={QUIET_MERIDIEM_OPTIONS} onChange={(v) => pickQuiet("quiet_start", "meridiem", v)} />
-                    <Dropdown label="시작 시" value={quietStart?.hour12} display={two(quietStart?.hour12)} options={QUIET_HOUR_OPTIONS} onChange={(v) => pickQuiet("quiet_start", "hour", v)} />
+                    <WheelPicker label="시작 시" value={quietStart?.hour} options={QUIET_HOUR_OPTIONS} parseInput={(t) => parseQuietInput(t, "hour")} onChange={(v) => pickQuiet("quiet_start", "hour", v)} />
                     <Text style={styles.sep}>:</Text>
-                    <Dropdown label="시작 분" value={quietStart?.minute} display={two(quietStart?.minute)} options={QUIET_MINUTE_OPTIONS} onChange={(v) => pickQuiet("quiet_start", "minute", v)} />
+                    <WheelPicker label="시작 분" value={quietStart?.minute} options={QUIET_MINUTE_OPTIONS} parseInput={(t) => parseQuietInput(t, "minute")} onChange={(v) => pickQuiet("quiet_start", "minute", v)} />
                     <Text style={styles.sep}>~</Text>
-                    <Dropdown label="끝 오전/오후" value={quietEnd?.meridiem} options={QUIET_MERIDIEM_OPTIONS} onChange={(v) => pickQuiet("quiet_end", "meridiem", v)} />
-                    <Dropdown label="끝 시" value={quietEnd?.hour12} display={two(quietEnd?.hour12)} options={QUIET_HOUR_OPTIONS} onChange={(v) => pickQuiet("quiet_end", "hour", v)} />
+                    <WheelPicker label="끝 시" value={quietEnd?.hour} options={QUIET_HOUR_OPTIONS} parseInput={(t) => parseQuietInput(t, "hour")} onChange={(v) => pickQuiet("quiet_end", "hour", v)} />
                     <Text style={styles.sep}>:</Text>
-                    <Dropdown label="끝 분" value={quietEnd?.minute} display={two(quietEnd?.minute)} options={QUIET_MINUTE_OPTIONS} onChange={(v) => pickQuiet("quiet_end", "minute", v)} />
+                    <WheelPicker label="끝 분" value={quietEnd?.minute} options={QUIET_MINUTE_OPTIONS} parseInput={(t) => parseQuietInput(t, "minute")} onChange={(v) => pickQuiet("quiet_end", "minute", v)} />
                   </View>
                 ) : null}
               </Card>
@@ -195,17 +196,6 @@ export default function PushSettingsScreen() {
       ) : null}
     </Screen>
   );
-}
-
-/** 서버 시각 문자열을 칸에 보일 오전/오후·1~12시·분으로 바꾼다. 읽을 수 없으면 null. */
-function twelve(value) {
-  const time = parseTime(value);
-  return time ? { ...toTwelveHour(time.hour), minute: time.minute } : null;
-}
-
-/** 칸에 보일 두 자리 표기("00"). */
-function two(n) {
-  return String(n ?? 0).padStart(2, "0");
 }
 
 function Row({ label, value, onChange }) {
