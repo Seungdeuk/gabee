@@ -52,6 +52,8 @@ LOBBY_HOURS = 1  # 방을 만든 뒤 아무도 시작하지 않으면 닫힌다
 PLAY_HOURS = 2  # 한 판의 상한
 AFTER_HOURS = 1  # 판이 끝난 뒤 "한 판 더"를 기다리는 시간
 MIN_PLAYERS = 2
+SPEEDUP_RATE = 0.95  # 한 차례가 지날 때마다 제한 시간이 이 비율로 줄어든다(판이 새로 시작되면 처음 시간으로 돌아감)
+MIN_TURN_SEC = 3  # 줄어들어도 이 밑으로는 안 내려간다(방에서 정한 시간이 더 짧으면 그 시간 그대로)
 CHEER_COOLDOWN_SEC = 5  # 응원 난타 방지
 CHEER_KEEP = 40  # 방마다 기억하는 응원 수
 CHEERS = ("힘내요", "아슬아슬", "끝내지 마!")
@@ -104,6 +106,11 @@ def reset_cheers() -> None:
 
 
 # ---------- 판 상태 계산 ----------
+def turn_limit(sec: int, done: int) -> float:
+    """이번 차례의 제한 시간(초). done 은 이 판에서 이미 지나간 차례 수(말하기·시간 초과 모두)."""
+    return round(max(min(sec, MIN_TURN_SEC), sec * SPEEDUP_RATE**done), 2)
+
+
 @dataclass
 class _Game:
     order: list[str]  # 이번 판에 참여한 사람(방장 → 들어온 순서)
@@ -115,6 +122,7 @@ class _Game:
     longest: int  # 이 판의 최장 이어가기
     words: list[str]  # 지금 문장의 말들
     last_seq: int
+    limit: float  # 지금 차례의 제한 시간(초)
 
 
 def _derive(
@@ -145,9 +153,10 @@ def _derive(
     last = turns[-1] if turns else None
     cur = _next_alive(order, lives, last.player_id if last else None)
     base = aware(last.created_at) if last else started
-    deadline = base + timedelta(seconds=rnd.sec) if cur else None
+    limit = turn_limit(rnd.sec, len(turns))
+    deadline = base + timedelta(seconds=limit) if cur else None
     return _Game(
-        order, lives, alive, cur, deadline, chain, longest, words, last.turn_seq if last else 0
+        order, lives, alive, cur, deadline, chain, longest, words, last.turn_seq if last else 0, limit
     )
 
 
@@ -593,6 +602,7 @@ def build_state(
         turn = PlayBombTurnOut(
             player=_person(by_id.get(g.cur)),
             seconds_left=max(0.0, round((g.deadline - now).total_seconds(), 2)),
+            limit=g.limit,
             deadline=g.deadline,
         )
 

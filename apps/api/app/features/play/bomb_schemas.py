@@ -69,6 +69,7 @@ class PlayBombMessageOut(BaseModel):
 class PlayBombTurnOut(BaseModel):
     player: PlayPersonOut
     seconds_left: float  # 응답을 만든 순간 기준 남은 초(화면은 이 값에서 줄여 나가고 다음 조회 때 다시 맞춘다)
+    limit: float  # 이번 차례의 제한 시간(초): 차례가 지날수록 방에서 정한 시간보다 짧아진다
     deadline: datetime
 
 

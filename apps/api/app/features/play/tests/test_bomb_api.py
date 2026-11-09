@@ -293,9 +293,28 @@ def test_timeout_costs_a_life_lazily(client, family, clock):
     assert first["kind"] == "timeout" and first["player"]["name"] == "지민" and first["lost_life"]
     assert {p["name"]: p["lives"] for p in out["players"] if p["joined"]} == {"지민": 1, "수진": 2}
     assert out["turn"]["player"]["name"] == "수진"
-    assert out["turn"]["seconds_left"] == pytest.approx(
-        9.5, abs=0.01
-    )  # 수진의 시간은 지민이 시간 초과된 순간부터
+    # 수진의 시간은 지민이 시간 초과된 순간(10초)부터, 한 차례 지났으니 제한이 9.5초로 줄었다
+    assert out["turn"]["limit"] == 9.5
+    assert out["turn"]["seconds_left"] == pytest.approx(9.0, abs=0.01)
+
+
+def test_turn_limit_shrinks_each_turn_down_to_the_floor():
+    assert bomb.turn_limit(10, 0) == 10
+    assert bomb.turn_limit(10, 1) == 9.5
+    assert bomb.turn_limit(10, 2) == 9.03
+    assert bomb.turn_limit(10, 200) == 3  # 아무리 지나도 3초 밑으로는 안 내려간다
+    assert bomb.turn_limit(60, 1) == 57
+    assert bomb.turn_limit(2, 0) == 2 and bomb.turn_limit(2, 50) == 2  # 방에서 정한 시간이 3초보다 짧으면 그대로
+    assert bomb.turn_limit(1, 9) == 1
+
+
+def test_first_turn_of_a_new_round_resets_the_speed(client, family, clock):
+    a, b, room_id, _ = two_room(client, family, clock, life=1, sec=10)
+    assert state(client, a, room_id)["turn"]["limit"] == 10
+    clock.at(10.5)  # 지민 시간 초과로 한 판이 끝난다
+    assert state(client, b, room_id)["phase"] == "finished"
+    out = start(client, a, room_id, life=1, sec=10)  # 한 판 더
+    assert out["turn"]["limit"] == 10 and out["turn"]["seconds_left"] == 10
 
 
 def test_nobody_polling_still_fills_all_missed_turns(client, family, clock):

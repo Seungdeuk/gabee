@@ -159,7 +159,7 @@ function GameTop({ room, left, compact = false, activeId }) {
         </Text>
         <Text style={styles.chain}>이어가는 중 · {room.chain}개</Text>
       </View>
-      <TimeBar left={left ?? 0} total={room.sec} danger={(left ?? 0) <= 3} />
+      <TimeBar left={left ?? 0} total={room.turn?.limit ?? room.sec} danger={(left ?? 0) <= 3} />
     </View>
   );
 }
@@ -168,7 +168,7 @@ function Chat({ chat, header }) {
   const scroll = useRef(null);
   return (
     <ScrollView ref={scroll} onContentSizeChange={() => scroll.current?.scrollToEnd({ animated: true })} contentContainerStyle={styles.chat}>
-      <Text style={styles.sys}>{header}</Text>
+      {header ? <Text style={styles.sys}>{header}</Text> : null}
       {chat.map((m) =>
         m.kind === "system" ? (
           <Text key={m.id} style={styles.sys}>
@@ -220,7 +220,7 @@ export function LiveBombPlay({ id }) {
       <PlayHeader title="문장 폭탄" close fallback="/play" onBack={() => router.replace("/play")} />
       <GameTop room={room} left={left} compact={kb} />
       <KeyboardAvoidingView style={styles.flex} behavior="padding">
-        <Chat chat={bombChat(room.messages, myId)} header={`${room.players.filter((p) => p.lives != null).length}명 · 생명 ${room.life}개 · ${room.sec}초`} />
+        <Chat chat={bombChat(room.messages, myId)} />
         <View style={styles.bar}>
           {error ? <Text style={styles.error}>{error}</Text> : kb ? null : <Text style={styles.rule}>한 단어나 짧은 구, {MAX_LEN}자까지 · 끝내는 말을 하면 생명이 줄어요</Text>}
           <View style={styles.inputRow}>

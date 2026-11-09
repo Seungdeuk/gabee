@@ -137,9 +137,6 @@ function MockBombPlayScreen() {
       </View>
       <KeyboardAvoidingView style={styles.flex} behavior="padding">
         <ScrollView ref={scroll} onContentSizeChange={() => scroll.current?.scrollToEnd({ animated: true })} contentContainerStyle={styles.chat}>
-          <Text style={styles.sys}>
-            {players.length}명 · 생명 {total}개 · {sec}초
-          </Text>
           {msgs.map((m) => (m.system ? <Text key={m.id} style={styles.sys}>{m.name} {m.text}</Text> : <Bubble key={m.id} msg={{ id: m.uid, name: m.name, text: m.text }} mine={m.mine} />))}
         </ScrollView>
         <View style={styles.bar}>
