@@ -9,7 +9,7 @@ import PlayIcon from "../components/PlayIcon";
 import PlayScreen from "../components/PlayScreen";
 import TurnRow from "../components/TurnRow";
 import { GAME_LIST } from "../games";
-import { usePlayBoard, usePlayRanking } from "../hooks";
+import { useMakeLeft, usePlayBoard, usePlayRanking } from "../hooks";
 import { reopenRooms } from "../mock";
 
 const SHOWN = 3; // 홈 "내 차례"는 3개까지. 나머지는 + 로 현황판에서 본다
@@ -21,6 +21,7 @@ export default function PlayMainScreen() {
   const board = usePlayBoard();
   const todo = board.data?.todo ?? [];
   const top = (usePlayRanking("week").data ?? []).slice(0, 3);
+  const makeLeft = useMakeLeft(); // 오늘 문제 내기 +20점을 더 받을 수 있는 횟수(불러오기 전·실패하면 null)
   return (
     <PlayScreen
       title="가족 놀이터"
@@ -47,7 +48,10 @@ export default function PlayMainScreen() {
       </View>
 
       <View style={styles.section}>
-        <Text style={styles.h2}>새 게임 시작하기</Text>
+        <View style={styles.startHead}>
+          <Text style={styles.h2}>새 게임 시작하기</Text>
+          {makeLeft != null ? <Text style={styles.makeLeft}>문제를 내면 +20점, 오늘 {makeLeft}번 남았어요</Text> : null}
+        </View>
         <View style={styles.grid}>
           {GAME_LIST.map((g) => (
             <Pressable key={g.key} onPress={() => router.push(g.create)} accessibilityRole="button" accessibilityLabel={`${g.name}. ${g.tagline}`} style={styles.card}>
@@ -87,6 +91,8 @@ const styles = StyleSheet.create({
   boardBtn: { width: 32, height: 32, marginRight: -4, alignItems: "center", justifyContent: "center" }, // 테두리 없이 아이콘만
   h2: { ...font.cardTitle, color: colors.text },
   count: { ...font.caption, color: colors.textSub },
+  startHead: { flexDirection: "row", alignItems: "baseline", gap: 8 },
+  makeLeft: { ...font.caption, color: colors.textSub, flexShrink: 1 },
   empty: { ...font.caption, color: colors.textSub, paddingVertical: 12, textAlign: "center" },
   grid: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
   card: { width: "48%", flexGrow: 1, padding: 14, borderRadius: radius.lg, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border, gap: 4 },
@@ -97,8 +103,8 @@ const styles = StyleSheet.create({
   rankHead: { flexDirection: "row", alignItems: "baseline", justifyContent: "space-between" },
   rankTitle: { fontSize: 17, fontFamily: fonts.bold, color: colors.text },
   rankAll: { ...font.caption, color: colors.textSub },
-  podium: { flexDirection: "row", gap: 8 },
-  pod: { flex: 1, aspectRatio: 1, borderRadius: 14, backgroundColor: "#F7F0E6", alignItems: "center", justifyContent: "center", gap: 6 },
+  podium: { flexDirection: "row", justifyContent: "center", gap: 8 }, // 1~2명이어도 칸은 1/3 크기, 가운데 정렬
+  pod: { width: "31.5%", aspectRatio: 1, borderRadius: 14, backgroundColor: "#F7F0E6", alignItems: "center", justifyContent: "center", gap: 6 },
   podFirst: { backgroundColor: colors.surfaceStrong },
   podNo: { fontSize: 13, lineHeight: 16, includeFontPadding: false, fontFamily: fonts.bold, color: colors.textSub },
   podNoFirst: { color: "#8A5A2B" },
