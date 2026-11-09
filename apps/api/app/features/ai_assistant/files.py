@@ -138,6 +138,14 @@ def _drop_chat_upload(group_id: str, photo_id: str, data: bytes) -> None:
                 logger.warning("원본 파일을 지우지 못했어요 id=%s", photo_id)
 
 
+def _only_a_bank_account(result) -> bool:
+    """통장류(`bankbook`)로 잡힌 이유가 계좌번호·예금주 안내뿐인가: 글에 "통장" 낱말이 없으면 납부 계좌를 알리는 안내문으로 본다
+    (통장 사본·통장 첫 장 사진은 "통장"이 적혀 있어 그대로 민감 문서다)."""
+    if result.privacy.sensitive != "bankbook":
+        return False
+    return "통장" not in "".join(result.content.text.split())
+
+
 def _plan_reminders(photo_id: str, group_id: str, user_id: str) -> None:
     """저장된 기록에서 챙길 일을 뽑는다(설정이 켜진 경우). 실패해도 파일은 그대로 저장된 상태로 둔다."""
     if not settings.ingest_reminders:
@@ -185,6 +193,10 @@ def _process_once(
             # 문서 사진으로 보고 읽었는데 글자가 거의 없다: 일반 사진은 문서함에 넣지 않는다
             _drop_chat_upload(group_id, photo_id, data)
             return "skipped", False
+        if source_attachment_id and _only_a_bank_account(result):
+            # 학교 납부 안내처럼 계좌번호만 이유로 통장류로 잡힌 문서(통장 사본이 아니다)는 등록한다. 계좌번호는 읽을 때 이미 가려진다.
+            # 분류 이름이 처방전·신분증·통장 같은 민감 종류면 아래 검사가 그대로 제외한다.
+            fields["sensitivity"] = None
         if source_attachment_id and knowledge_service.is_sensitive(
             fields["kind_label"], fields.get("sensitivity"), strict=True
         ):

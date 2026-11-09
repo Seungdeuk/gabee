@@ -455,3 +455,51 @@ def test_a_failed_submit_gives_the_queue_slot_back(monkeypatch):
     monkeypatch.setattr(library, "_submit", lambda fn, *args: queued.append(fn))
     library._on_photo("g1", "u1", "a2", b"x", False)
     assert len(queued) == 1  # 실패한 자리가 영영 차 있지 않다
+
+
+# ---------- 학교 납부 계좌가 든 안내문은 등록한다(계좌번호만 이유로 민감해진 문서) ----------
+
+FEE_NOTICE_LINES = [
+    "해솔초등학교 과회비 납부 안내문",
+    "과회비 200,000원 이십만원을 납부해 주세요",
+    "기간 2026년 11월 4일부터 11월 8일까지",
+    "방법 우리은행 1002-123-456789 예금주 해솔초등학교",
+    "계좌이체 시 학생 본인 이름으로 입금해 주세요",
+    "과회비 내역 1학기 40,000원 2학기 40,000원",
+    "문의 담임선생님 또는 행정실 감사합니다",
+    "해솔초등학교장 드림",
+]
+PASSBOOK_LINES = [
+    "국민은행 통장 사본",
+    "예금주 김가비 보통예금 통장",
+    "계좌번호 123456-12-345678",
+    "개설일 2024년 3월 2일 입출금 통장",
+    "거래점 서울지점 은행 보관용 사본",
+    "예금거래 내역 확인용 통장 첫 장",
+    "본인 확인 후 사용하세요 통장 사본",
+    "국민은행 서울지점 통장 발급",
+]
+
+
+def test_a_school_fee_notice_with_a_bank_account_is_registered_with_the_number_masked(
+    client, family
+):
+    a, _, group = family
+    _use_ocr(ScriptedOcr(FEE_NOTICE_LINES))
+    _send_photo(client, a)
+    items = _items(group["id"])
+    assert (
+        len(items) == 1 and items[0].sensitivity == "normal"
+    )  # 학교 납부 계좌 안내는 개인 민감 문서가 아니다
+    assert (
+        "1002" not in items[0].body_md and "456789" not in items[0].body_md
+    )  # 계좌번호는 가려서 저장한다
+
+
+def test_a_passbook_copy_is_still_not_registered(client, family):
+    a, _, group = family
+    _use_ocr(ScriptedOcr(PASSBOOK_LINES))
+    msg = _send_photo(client, a)
+    assert _items(group["id"]) == []
+    assert _save(client, a, msg["attachment"]["id"]).status_code == 200  # 직접 저장해도 같다
+    assert _items(group["id"]) == []
