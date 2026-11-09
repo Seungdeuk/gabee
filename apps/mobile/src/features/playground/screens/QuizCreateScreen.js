@@ -272,7 +272,7 @@ function Manual({ cur, patch }) {
       </View>
       {cur.withNote ? (
         <View style={styles.block}>
-          <TextInput value={cur.note} onChangeText={(v) => patch({ note: v.slice(0, NOTE_MAX) })} placeholder="정답 공개될 때 같이 보여요" placeholderTextColor={colors.placeholder} style={styles.input} accessibilityLabel="한마디" />
+          <TextInput value={cur.note} onChangeText={(v) => patch({ note: v.slice(0, NOTE_MAX) })} multiline numberOfLines={3} placeholder="남기고 싶은 말을 써보세요" placeholderTextColor={colors.placeholder} style={[styles.input, styles.noteArea]} accessibilityLabel="한마디" />
           <Text style={styles.counterRight}>
             {cur.note.length}/{NOTE_MAX}
           </Text>
@@ -303,8 +303,8 @@ const styles = StyleSheet.create({
   hint: { fontSize: 13, fontFamily: fonts.regular, color: colors.textSub },
   counter: { fontSize: 13, fontFamily: fonts.regular, color: colors.textSub },
   counterRight: { fontSize: 13, fontFamily: fonts.regular, color: colors.textSub, textAlign: "right" },
-  input: { height: 44, paddingHorizontal: 14, paddingVertical: 0, borderRadius: 12, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.card, color: colors.text, fontSize: 15, fontFamily: fonts.regular },
-  oxRow: { flexDirection: "row", gap: 10 },
+  input: { height: 44, paddingHorizontal: 14, paddingVertical: 0, borderRadius: 12, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.card, color: colors.text, fontSize: 15, lineHeight: 20, includeFontPadding: false, fontFamily: fonts.regular },
+oxRow: { flexDirection: "row", gap: 10 },
   ox: { flex: 1, height: 64, borderRadius: 16, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.card, alignItems: "center", justifyContent: "center" },
   oxOn: { backgroundColor: colors.successSoft, borderColor: colors.success },
   oxText: { fontSize: 26, fontFamily: fonts.bold, color: colors.textSub },
@@ -314,7 +314,8 @@ const styles = StyleSheet.create({
   radio: { width: 26, height: 26, borderRadius: 13, borderWidth: 1.5, borderColor: "#D9C7B4", alignItems: "center", justifyContent: "center" },
   radioOn: { backgroundColor: colors.success, borderColor: colors.success },
   radioMark: { fontSize: 14, lineHeight: 18, color: "#FFFFFF", fontFamily: fonts.bold },
-  optInput: { flex: 1, height: 44, paddingVertical: 0, fontSize: 15, fontFamily: fonts.regular, color: colors.text },
+  noteArea: { height: 88, paddingTop: 10, textAlignVertical: "top" }, // 한마디: 엔터로 줄을 바꿀 수 있게 탐정단과 같은 높이
+  optInput: { flex: 1, height: 44, paddingVertical: 0, fontSize: 15, lineHeight: 20, includeFontPadding: false, fontFamily: fonts.regular, color: colors.text },
   optDel: { width: 32, height: 32, alignItems: "center", justifyContent: "center" },
   optDelText: { fontSize: 14, color: colors.textSub },
   addOpt: { height: 40, borderRadius: 12, borderWidth: 1, borderColor: colors.border, alignItems: "center", justifyContent: "center", backgroundColor: colors.card },
