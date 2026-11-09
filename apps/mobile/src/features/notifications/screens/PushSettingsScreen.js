@@ -6,12 +6,25 @@ import Button from "@/shared/components/Button";
 import Card from "@/shared/components/Card";
 import IconButton from "@/shared/components/IconButton";
 import Screen from "@/shared/components/Screen";
+import WheelPicker from "@/shared/components/WheelPicker";
 import { colors, font, spacing } from "@/theme";
 
 import { getPushSettings, savePushSettings } from "../api";
 import { KIND_META } from "../kinds";
 import { prepareThisDevice, readPermissionState } from "../PushBootstrap";
-import { isQuietOn, permissionNotice, toggleKind, withQuiet } from "../push";
+import {
+  QUIET_HOUR_OPTIONS,
+  QUIET_MINUTE_OPTIONS,
+  formatQuietSummary,
+  isQuietClash,
+  isQuietOn,
+  parseQuietInput,
+  parseTime,
+  permissionNotice,
+  setQuietPart,
+  toggleKind,
+  withQuiet,
+} from "../push";
 
 const KIND_KEYS = ["chat", "schedule", "billing", "family_group", "support"];
 
@@ -25,6 +38,7 @@ export default function PushSettingsScreen() {
   const [settings, setSettings] = useState(null);
   const [status, setStatus] = useState("loading"); // loading | ready | error
   const [saveError, setSaveError] = useState(false);
+  const [clash, setClash] = useState(false); // 시작과 끝이 같아지는 선택을 했을 때 안내
   const [device, setDevice] = useState("unknown"); // 이 기기의 푸시 준비 상태: granted | ask | blocked | failed | unknown
   const busy = useRef(false); // 권한 창·토큰 등록이 도는 동안 겹쳐 부르지 않는다
 
@@ -92,6 +106,23 @@ export default function PushSettingsScreen() {
     }
   };
 
+  /**
+   * 방해금지 시·분 휠에서 고르거나 직접 입력한 값을 저장한다. 시작과 끝이 같아지면 저장하지 않고 안내만 보인다.
+   * @returns {boolean} 저장했으면 true, 거부했으면 false(휠이 이전 값으로 돌아간다)
+   */
+  const pickQuiet = (field, part, value) => {
+    if (isQuietClash(settings, field, part, value)) {
+      setClash(true);
+      return false;
+    }
+    setClash(false);
+    change(setQuietPart(settings, field, part, value));
+    return true;
+  };
+
+  const quietStart = parseTime(settings?.quiet_start); // 서버는 "22:00:00" 으로도 돌려준다
+  const quietEnd = parseTime(settings?.quiet_end);
+
   const notice = settings ? permissionNotice(device, settings.enabled) : null;
   const onNoticeAction = () => (notice?.action === "settings" ? Linking.openSettings() : allowOnDevice());
 
@@ -139,12 +170,25 @@ export default function PushSettingsScreen() {
               <Text style={styles.hint}>{"소통 푸시는 '새 메시지가 도착했어요'로만 와요. 내용은 앱에서 확인해요."}</Text>
               <Text style={styles.section}>방해금지</Text>
               <Card tone="white">
-                <Row
-                  label="밤 10시 ~ 아침 7시에는 푸시 끄기"
-                  value={isQuietOn(settings)}
-                  onChange={(on) => change(withQuiet(settings, on))}
-                />
+                <Row label="방해금지 켜기" value={isQuietOn(settings)} onChange={(on) => change(withQuiet(settings, on))} />
+                {isQuietOn(settings) ? (
+                  <View style={styles.timeLine}>
+                    <WheelPicker label="시작 시" value={quietStart?.hour} options={QUIET_HOUR_OPTIONS} parseInput={(t) => parseQuietInput(t, "hour")} onChange={(v) => pickQuiet("quiet_start", "hour", v)} />
+                    <Text style={styles.sep}>:</Text>
+                    <WheelPicker label="시작 분" value={quietStart?.minute} options={QUIET_MINUTE_OPTIONS} parseInput={(t) => parseQuietInput(t, "minute")} onChange={(v) => pickQuiet("quiet_start", "minute", v)} />
+                    <Text style={styles.sep}>~</Text>
+                    <WheelPicker label="끝 시" value={quietEnd?.hour} options={QUIET_HOUR_OPTIONS} parseInput={(t) => parseQuietInput(t, "hour")} onChange={(v) => pickQuiet("quiet_end", "hour", v)} />
+                    <Text style={styles.sep}>:</Text>
+                    <WheelPicker label="끝 분" value={quietEnd?.minute} options={QUIET_MINUTE_OPTIONS} parseInput={(t) => parseQuietInput(t, "minute")} onChange={(v) => pickQuiet("quiet_end", "minute", v)} />
+                  </View>
+                ) : null}
               </Card>
+              {isQuietOn(settings) && clash ? (
+                <Text style={styles.error} accessibilityLiveRegion="polite">
+                  시작과 끝 시간이 같을 수 없어요
+                </Text>
+              ) : null}
+              {isQuietOn(settings) ? <Text style={styles.hint}>{formatQuietSummary(settings)}</Text> : null}
               <Text style={styles.hint}>알림함에는 그대로 쌓여요.</Text>
             </>
           ) : null}
@@ -178,5 +222,7 @@ const styles = StyleSheet.create({
   hint: { ...font.caption, color: colors.textMuted },
   notice: { ...font.body, color: colors.text, marginBottom: spacing.sm },
   row: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingVertical: spacing.sm },
+  timeLine: { flexDirection: "row", flexWrap: "nowrap", alignItems: "center", justifyContent: "center", gap: spacing.xs, paddingVertical: spacing.sm },
+  sep: { ...font.bodyStrong, color: colors.textMuted },
   rowLabel: { ...font.body, color: colors.text, flex: 1, paddingRight: spacing.md },
 });
