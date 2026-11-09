@@ -88,6 +88,7 @@ def leave_group(db: Session, user: User, group_id: str) -> None:
         if me is None:
             raise ApiError(403, "not_member", "이 가족 그룹의 구성원이 아니에요")
         if me.role == "owner":
+            prepo.lock_group(db, group_id)  # 동시에 들어오는 가입과 겹치지 않게 먼저 잠근다
             if prepo.count_members(db, group_id) > 1:
                 raise bad_request("cannot_leave_owner", "소유자는 가족을 나갈 수 없어요.")
             _leave_as_last_member(

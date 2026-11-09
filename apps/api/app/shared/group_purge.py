@@ -2,15 +2,19 @@
 
 지우는 대상은 모델 메타데이터에서 찾는다: `group_id` 열이 있는 모든 테이블, 그 테이블을 외래 키로 가리키는 자식 테이블(손자까지),
 마지막으로 `groups` 줄 자체. 새 기능이 `group_id` 테이블을 추가해도 이 파일을 고치지 않아도 지워진다.
-예외(`KEEP_TABLES`): 고객센터 문의는 운영자가 답한 기록이라 가족과 함께 지우지 않는다(`group_id` 는 외래 키가 아니다).
+- 여러 열로 이뤄진 외래 키(예: 폭탄방 말 기록의 (play_id, round_no))는 열을 한 쌍으로 비교한다(열마다 따로 비교하면 다른 가족의 줄까지 지운다).
+- 외래 키는 없지만 부모 id 열만 있는 테이블은 `VIRTUAL_CHILDREN` 에 적는다(예: 옛 용돈 사용 내역).
+- `KEEP_TABLES`: 고객센터 문의는 운영자가 답한 기록이라 지우지 않고, 지워진 가족을 가리키지 않도록 `group_id` 만 비운다.
 
 한 트랜잭션 안에서만 지우고 커밋은 부르는 쪽이 한다(중간에 실패하면 부르는 쪽이 롤백해 아무것도 지워지지 않는다).
-디스크의 채팅 사진·문서 파일은 DB 가 지워진 뒤(`purge_files`) 부르는 쪽이 지운다 — 파일 지우기가 실패해도 DB 는 되돌리지 않는다."""
+디스크 파일(채팅 사진·문서, 앱이 올린 사진, 문서함 원본, 놀이터 그림·사진)은 DB 가 커밋된 뒤(`purge_files`) 지운다 — 파일 지우기가 실패해도 DB 는 되돌리지 않는다."""
 
 import logging
+import re
+import shutil
 from pathlib import Path
 
-from sqlalchemy import Table, delete, or_, select
+from sqlalchemy import Table, delete, or_, select, tuple_, update
 from sqlalchemy.orm import Session
 
 from app.shared.config import settings
@@ -20,7 +24,24 @@ logger = logging.getLogger(__name__)
 
 KEEP_TABLES = frozenset({"support_tickets"})
 GROUP_TABLE = "groups"
-SAFE_NAME_CHARS = set("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-.")
+# 외래 키가 없지만 부모 id 를 담은 열이 있는 테이블: {테이블: (열, 부모 테이블)}
+VIRTUAL_CHILDREN = {"allowance_uses": ("allowance_id", "allowances")}
+_SAFE_ID = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
+_CHAT_FILE = re.compile(r"^chat_files/[A-Za-z0-9_-]{1,64}\.[a-z0-9]{1,5}$")
+
+
+def _parents(table: Table) -> list[tuple[list, Table, list]]:
+    """이 테이블이 가리키는 부모들: (내 열들, 부모 테이블, 부모 열들). 외래 키 하나(여러 열 포함)가 한 항목이다."""
+    found = []
+    for constraint in {fk.constraint for fk in table.foreign_keys if fk.constraint is not None}:
+        mine = [table.c[e.parent.name] for e in constraint.elements]
+        theirs = [e.column for e in constraint.elements]
+        found.append((mine, theirs[0].table, theirs))
+    virtual = VIRTUAL_CHILDREN.get(table.name)
+    if virtual:
+        parent = Base.metadata.tables[virtual[1]]
+        found.append(([table.c[virtual[0]]], parent, [parent.c.id]))
+    return found
 
 
 def _scoped_tables() -> list[Table]:
@@ -32,15 +53,18 @@ def _scoped_tables() -> list[Table]:
         if name not in KEEP_TABLES and name != GROUP_TABLE and "group_id" in t.c
     }
     changed = True
-    while changed:  # 범위 안 테이블을 외래 키로 가리키는 테이블도 범위에 넣는다(손자까지)
+    while changed:  # 범위 안 테이블을 가리키는 테이블도 범위에 넣는다(손자까지)
         changed = False
         for name, t in tables.items():
             if name in scoped or name in KEEP_TABLES or name == GROUP_TABLE:
                 continue
-            if any(fk.column.table.name in scoped for fk in t.foreign_keys):
+            if any(parent.name in scoped for _, parent, _ in _parents(t)):
                 scoped.add(name)
                 changed = True
-    return [t for t in reversed(Base.metadata.sorted_tables) if t.name in scoped]
+    ordered = [t for t in reversed(Base.metadata.sorted_tables) if t.name in scoped]
+    # 외래 키가 없는 자식은 부모 줄이 남아 있을 때 먼저 지워야 부모를 가리키는 조건이 맞는다
+    virtual = [t for t in ordered if t.name in VIRTUAL_CHILDREN]
+    return virtual + [t for t in ordered if t.name not in VIRTUAL_CHILDREN]
 
 
 def _condition(table: Table, group_id: str, scoped_names: set[str]):
@@ -48,58 +72,83 @@ def _condition(table: Table, group_id: str, scoped_names: set[str]):
     if "group_id" in table.c:
         return table.c.group_id == group_id
     parts = []
-    for fk in table.foreign_keys:
-        parent = fk.column.table
-        if parent.name in scoped_names:
-            parts.append(
-                table.c[fk.parent.name].in_(
-                    select(fk.column).where(_condition(parent, group_id, scoped_names))
-                )
-            )
-    # 부모가 둘 이상이면 하나라도 이 가족이면 이 가족 줄이다(같은 가족 안에서만 이어져 있다)
+    for mine, parent, theirs in _parents(table):
+        if parent.name not in scoped_names:
+            continue
+        subquery = select(*theirs).where(_condition(parent, group_id, scoped_names))
+        parts.append(mine[0].in_(subquery) if len(mine) == 1 else tuple_(*mine).in_(subquery))
     return or_(*parts)
 
 
 def _delete_group_row(db: Session, group_id: str) -> None:
-    db.execute(
-        delete(Base.metadata.tables[GROUP_TABLE]).where(
-            Base.metadata.tables[GROUP_TABLE].c.id == group_id
-        )
-    )
+    groups = Base.metadata.tables[GROUP_TABLE]
+    db.execute(delete(groups).where(groups.c.id == group_id))
+
+
+def _detach_kept_tables(db: Session, group_id: str) -> None:
+    """지우지 않는 테이블(고객센터 문의)이 지워질 가족을 가리키지 않도록 group_id 를 비운다."""
+    for name in KEEP_TABLES:
+        table = Base.metadata.tables.get(name)
+        if table is not None and "group_id" in table.c:
+            db.execute(update(table).where(table.c.group_id == group_id).values(group_id=None))
+
+
+def _inside(base: Path, path: Path) -> bool:
+    try:
+        return path.resolve().is_relative_to(base.resolve())
+    except OSError:
+        return False
 
 
 def _file_paths(db: Session, group_id: str) -> list[Path]:
-    """이 가족의 채팅 첨부 파일 경로(서버가 만든 이름 형태일 때만)."""
-    table = Base.metadata.tables.get("message_attachments")
-    if table is None:
+    """이 가족의 디스크 파일·폴더 경로(서버가 만든 이름 형태이고 보관 폴더 안일 때만). 폴더는 통째로 지운다."""
+    if not _SAFE_ID.match(group_id):
         return []
     base = Path(settings.data_dir)
     paths: list[Path] = []
-    for attachment_id, kind, path in db.execute(
-        select(table.c.id, table.c.kind, table.c.path).where(table.c.group_id == group_id)
-    ):
-        if not attachment_id or not set(attachment_id) <= SAFE_NAME_CHARS:
-            continue
-        if kind == "image":
-            paths += [
-                base / "chat_photos" / f"{attachment_id}.jpg",
-                base / "chat_photos" / f"{attachment_id}_t.jpg",
-            ]
-        elif (
-            isinstance(path, str)
-            and path.startswith(f"chat_files/{attachment_id}")
-            and set(path) <= SAFE_NAME_CHARS | {"/"}
-            and ".." not in path
+
+    attachments = Base.metadata.tables.get("message_attachments")
+    if attachments is not None:
+        for attachment_id, kind, path in db.execute(
+            select(attachments.c.id, attachments.c.kind, attachments.c.path).where(
+                attachments.c.group_id == group_id
+            )
         ):
-            paths.append(base / path)
-    return paths
+            if not isinstance(attachment_id, str) or not _SAFE_ID.match(attachment_id):
+                continue
+            if kind == "image":
+                paths += [
+                    base / "chat_photos" / f"{attachment_id}.jpg",
+                    base / "chat_photos" / f"{attachment_id}_t.jpg",
+                ]
+            elif (
+                isinstance(path, str)
+                and _CHAT_FILE.match(path)
+                and path.startswith(f"chat_files/{attachment_id}.")
+            ):
+                paths.append(base / path)
+
+    photos = Base.metadata.tables.get("photos")
+    if photos is not None:
+        for (photo_id,) in db.execute(select(photos.c.id).where(photos.c.group_id == group_id)):
+            if isinstance(photo_id, str) and _SAFE_ID.match(photo_id):
+                paths += [base / "photos" / f"{photo_id}.jpg", base / "photos" / f"{photo_id}.png"]
+
+    raw_root = Path(settings.raw_dir or base / "raw")
+    paths += [
+        raw_root / group_id,
+        base / "play" / "drawings" / group_id,
+        base / "play" / "photos" / group_id,
+    ]
+    return [p for p in paths if _inside(base, p) or _inside(raw_root, p)]
 
 
 def purge_group(db: Session, group_id: str) -> list[Path]:
-    """이 가족의 모든 데이터(DB 줄)를 지우고 지워야 할 디스크 파일 경로를 돌려준다. 커밋은 하지 않는다."""
+    """이 가족의 모든 데이터(DB 줄)를 지우고 지워야 할 디스크 파일·폴더 경로를 돌려준다. 커밋은 하지 않는다."""
     files = _file_paths(db, group_id)  # 줄이 지워지기 전에 모은다
     tables = _scoped_tables()
     names = {t.name for t in tables}
+    _detach_kept_tables(db, group_id)
     for table in tables:
         db.execute(
             delete(table)
@@ -111,9 +160,12 @@ def purge_group(db: Session, group_id: str) -> list[Path]:
 
 
 def purge_files(paths: list[Path]) -> None:
-    """DB 삭제가 커밋된 뒤 파일을 지운다. 이미 없거나 지우지 못해도 넘어간다(경로·이름은 로그에 남기지 않는다)."""
+    """DB 삭제가 커밋된 뒤 파일·폴더를 지운다. 이미 없거나 지우지 못해도 넘어간다(경로·이름은 로그에 남기지 않는다)."""
     for path in paths:
         try:
-            path.unlink(missing_ok=True)
+            if path.is_dir():
+                shutil.rmtree(path, ignore_errors=True)
+            else:
+                path.unlink(missing_ok=True)
         except OSError as exc:
             logger.warning("group purge file failed error=%s", type(exc).__name__)
