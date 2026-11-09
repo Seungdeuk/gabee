@@ -1,4 +1,4 @@
-"""서비스 관리자 API. 모든 경로는 `require_operator("service_admin")`(Bearer 정식 회원 + SERVICE_ADMIN_USER_IDS 허용 목록)를 거친다.
+"""서비스 관리자 API. 모든 경로는 `require_operator("admin")`(Bearer 정식 회원 + ADMIN_USER_IDS 통합관리자 허용 목록)를 거친다.
 문의·신고의 상태·답변 바꾸기와 공지사항 쓰기·고치기·지우기만 쓰기이고 나머지는 읽기 전용이다. 가족 데이터(문서·채팅·가계)의 내용은 다루지 않고 개수만 센다 — docs/requirements/admin.md 참고."""
 
 from fastapi import APIRouter, Depends
@@ -25,7 +25,7 @@ from .schemas import (
 )
 
 router = APIRouter(prefix="/admin/service", tags=["service-admin"])
-service_admin = require_operator("service_admin")
+service_admin = require_operator("admin")  # 통합관리자(운영 관리 /admin/ops/* 와 같은 목록)
 # 문의·신고 표가 아직 없는 DB 에서는 그 경로만 503
 SUPPORT = [Depends(service_admin), Depends(schema_ready("support"))]
 NOTICES = [Depends(schema_ready("notices"))]  # 공지 표가 없는 DB 에서는 공지 경로만 503

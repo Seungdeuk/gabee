@@ -19,7 +19,7 @@
 ### 조회 API (PR 4, `/admin/ops/*`, 읽기 전용)
 - `GET /admin/ops/summary?range=1h|24h|7d`: 요청 수, 5xx·4xx 건수, 5xx 비율, 평균·최대 응답 시간, 구간별 추이(빈 구간은 0). 막대 길이는 1h=5분, 24h=1시간, 7d=1일.
 - `GET /admin/ops/apis?range=...`: 메서드+경로 패턴별 요청 수, 상태코드 구분별 건수, 5xx 비율, 평균·최대 응답 시간(요청 수 순, 최대 100개).
-- 권한: `require_operator("ops_admin")` — 로그인 없으면 401, 허용 목록에 없으면 403 `operator_required`. 응답에는 `metrics_enabled` 가 있어 계측이 꺼져 있어 0 인지 구분할 수 있다.
+- 권한: `require_operator("admin")`(통합관리자 `ADMIN_USER_IDS`, 2026-11-06 결정으로 `ops_admin` 에서 바뀜) — 로그인 없으면 401, 허용 목록에 없으면 403 `operator_required`. 응답에는 `metrics_enabled` 가 있어 계측이 꺼져 있어 0 인지 구분할 수 있다.
 - **p95 같은 백분위는 없다**: 저장값이 구간별 합계·최댓값뿐이라 계산할 수 없다. 평균은 합계/요청 수이다.
 - `/admin/ops/` 아래 호출은 계측에서 제외한다(화면 자동 갱신이 자기 지표를 부풀리지 않게).
 - 한계: DB 에 저장된 구간만 읽는다(아직 닫히지 않은 최신 구간은 구간이 바뀐 뒤 반영). 평균 응답 시간은 모든 상태코드 구분을 합친 값이다. 조회 시작은 저장 구간 경계로 내리고, 막대 간격은 저장 구간보다 가늘어지지 않는다. `/apis` 는 최대 100개이며 `total_routes`·`truncated` 로 잘림을 알린다.
@@ -30,7 +30,7 @@
 - `app/features/ops_admin/error_service.py`: 5xx 응답, 처리되지 않은 예외, 401/403 만 지문별로 합쳐 `ops_error_events` 에 저장한다(4xx 나머지는 저장 안 함). 응답을 보내기 전 요청 안에서 저장한다(Cloud Run 요청 기반 CPU 에서 응답 뒤 작업이 유실될 수 있어서). 저장 실패는 삼켜 응답에 영향이 없고, 오류 응답에만 저장 시간이 더해진다. 인증 실패는 메시지 없이 응답 code 만 둔다. 예외는 클래스 이름과 발생 위치(`app/...py:줄`)만 남기고 스택의 변수 값은 남기지 않는다.
 - `app/shared/errors.py`: **처리되지 않은 예외 응답이 앱 공통 형식 `{code:"internal_error", message}` 로 바뀌었다**(전에는 Starlette 기본 "Internal Server Error" 텍스트). 하위 호환이 깨지는 변경이다. 계측이 켜져 있으면 이 응답에도 `X-Trace-Id` 를 붙인다. shared 가 기능 코드를 import 하지 않도록 관찰자 등록 함수(`set_error_observer`)만 두고 `main.py` 가 연결한다.
 - 테이블 `ops_error_events`(Alembic `2110458d9b12`, 테이블·인덱스 추가만): `docs/contracts/db.md`. 설정: `OPS_ERRORS_ENABLED`(기본 false), `OPS_ERRORS_RETENTION_DAYS`(90).
-- 조회 API(1-c-3, 읽기 전용, `require_operator("ops_admin")`):
+- 조회 API(1-c-3, 읽기 전용, `require_operator("admin")`):
   - `GET /admin/ops/errors?range=1h|24h|7d&kind=server_error|auth_failure&limit=1~100(기본 50)`: 마지막 발생이 기간 안인 오류 이벤트를 최근순으로. 응답에 `total`(잘리기 전 전체 수), `truncated`, `errors_enabled`(수집이 꺼져 있어 비어 있는지 구분)가 있다.
   - `GET /admin/ops/errors/{event_id}`: 한 건(지문 64자리 16진수). 형식이 틀리면 422, 없으면 404 `not_found`.
   - `GET /admin/ops/infra`: Cloud Run 인프라 상태(읽기 전용, 60초 캐시). 서비스 이름·리전·리비전·최소/최대 인스턴스·CPU 할당 방식(Cloud Run Admin API)과 최근 10분 인스턴스 수(활성/유휴)·CPU/메모리 p99 사용률(Cloud Monitoring). `OPS_INFRA_ENABLED`(기본 꺼짐)이고 Cloud Run 이며 실행 서비스 계정에 `roles/run.viewer`·`roles/monitoring.viewer` 가 있어야 값이 나온다. 아니면 `collected:false` 와 이유(권한 없음 등)만 돌려주고 샘플 값을 섞지 않는다. 새 의존성 없이 `httpx` 로 메타데이터 서버 토큰을 받아 REST 를 부른다. **시험은 가짜 HTTP 응답으로만 했고 실제 Cloud Run·GCP 에서는 확인하지 않았다(미확인)**: 지표 이름·필터·집계 방식과 응답 필드명은 공식 문서 기준 설계이다.

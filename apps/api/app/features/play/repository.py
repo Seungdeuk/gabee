@@ -1,6 +1,6 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 
-from sqlalchemy import and_, exists, func, select
+from sqlalchemy import and_, exists, func, or_, select
 from sqlalchemy.orm import Session
 
 from .constants import ASYNC_GAMES
@@ -16,6 +16,7 @@ from .models import (
     PlayQuiz,
     PlayScore,
 )
+from .timeutil import local_day_start
 
 
 def add(db: Session, *rows) -> None:
@@ -116,13 +117,16 @@ def unsettled_closed_items(
 def maker_items_between(
     db: Session, maker_id: str, start: datetime, end: datetime
 ) -> list[PlayItem]:
-    """한 사람이 [start, end) 에 낸 비동기 놀이(낸 순서)."""
+    """한 사람이 [start, end) 에 낸 놀이(낸 순서): 비동기 3종과, 한 판이라도 시작한 폭탄 방. 문제 내기 하루 한도를 센다."""
     return list(
         db.scalars(
             select(PlayItem)
             .where(
                 PlayItem.maker_id == maker_id,
-                PlayItem.game.in_(ASYNC_GAMES),
+                or_(
+                    PlayItem.game.in_(ASYNC_GAMES),
+                    and_(PlayItem.game == GAME_BOMB, exists().where(PlayBombRound.play_id == PlayItem.id)),
+                ),
                 PlayItem.created_at >= start,
                 PlayItem.created_at < end,
             )
@@ -137,6 +141,27 @@ def scores_of(db: Session, play_id: str, player_id: str) -> list[PlayScore]:
             select(PlayScore).where(PlayScore.play_id == play_id, PlayScore.player_id == player_id)
         )
     )
+
+
+def maker_daily_rank(db: Session, item: PlayItem) -> int | None:
+    """낸 날(한국 시간) 안에서 이 놀이가 몇 번째로 낸 것인지(1부터). 세지 않는 놀이면 None."""
+    start = local_day_start(item.created_at)
+    items = maker_items_between(db, item.maker_id, start, start + timedelta(days=1))
+    for i, it in enumerate(items, start=1):
+        if it.id == item.id:
+            return i
+    return None
+
+
+def score_in_round_exists(db: Session, play_id: str, reason: int, round_no: int) -> bool:
+    return (
+        db.scalar(
+            select(func.count())
+            .select_from(PlayScore)
+            .where(PlayScore.play_id == play_id, PlayScore.reason == reason, PlayScore.round_no == round_no)
+        )
+        or 0
+    ) > 0
 
 
 def score_exists(db: Session, play_id: str, reason: int) -> bool:

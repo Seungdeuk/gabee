@@ -7,7 +7,7 @@
 ## 구현된 것
 
 - 경로: API 는 `/admin/service/*`, 화면은 `/admin/service/ui`, 폴더는 `app/features/service_admin/`(2026-11-05, 운영 관리자 `/admin/ops/*`·`app/features/ops_admin/` 와 짝을 맞춤).
-- 권한: 모든 `/admin/service/*` API 는 `require_operator("service_admin")`(`app/shared/auth.py`)를 거친다. Bearer(JWT) 정식 회원이면서 환경변수 `SERVICE_ADMIN_USER_IDS` 허용 목록에 있어야 한다. 없으면 403 `operator_required`, 로그인 안 함·레거시 토큰은 401. 별도 DB 칸(`users.is_staff`)은 만들지 않았다.
+- 권한: 모든 `/admin/service/*` API 는 `require_operator("admin")`(`app/shared/auth.py`)를 거친다. Bearer(JWT) 정식 회원이면서 환경변수 `ADMIN_USER_IDS`(통합관리자) 허용 목록에 있어야 한다. 운영 관리(`/admin/ops/*`)도 같은 목록이다(2026-11-06 결정: 권한은 통합관리자 하나). 없으면 403 `operator_required`, 로그인 안 함·레거시 토큰은 401. 별도 DB 칸(`users.is_staff`)은 만들지 않았다.
 - `app/features/service_admin/`
   - `router.py`: `GET /admin/service/me`, `/admin/service/members`, `/admin/service/groups`, `/admin/service/features`, `/admin/service/ai-usage` (읽기 전용), `GET /admin/service/support`, `PATCH /admin/service/support/{ticket_id}`(문의·신고 상태·답변). `main.py` 에서 `schema_ready("family_group")` 로 등록하고, 문의·신고 두 경로는 `schema_ready("support")` 도 거친다.
   - `repository.py`: 다른 기능의 모델 파일을 import 하지 않고 공용 메타데이터의 표에서 개수·시각만 읽는다.
@@ -21,12 +21,21 @@
 
 ## 관리자 지정 방법
 
-운영 담당자가 서버 환경변수 `SERVICE_ADMIN_USER_IDS` 에 관리자 사용자 id 를 쉼표로 넣는다. 실제 id 는 코드·Git·문서·테스트에 쓰지 않고 개인 채널로 전달한다.
+운영 담당자가 서버 환경변수 `ADMIN_USER_IDS` 에 통합관리자 사용자 id 를 쉼표로 넣는다(서비스·운영 관리가 함께 열린다). 실제 id 는 코드·Git·문서·테스트에 쓰지 않고 개인 채널로 전달한다.
 
 ## 보는 방법 (로컬)
 
-1. 내 로컬 `.env` 에 `SERVICE_ADMIN_USER_IDS=<내 사용자 id>` 를 넣고 `apps/api` 에서 서버를 켠다(`uvicorn app.main:app --reload`).
+1. 내 로컬 `.env` 에 `ADMIN_USER_IDS=<내 사용자 id>` 를 넣고 `apps/api` 에서 서버를 켠다(`uvicorn app.main:app --reload`).
 2. 브라우저로 `http://127.0.0.1:8000/admin/service/ui/` 를 열고 가비 앱 계정으로 로그인한다.
+
+## 운영 탭 (운영 관리자 화면 합치기 1단계, 2026-11-06)
+
+- 왼쪽 메뉴 맨 아래 **운영 › 서버 상태**. 운영 관리자 대시보드(`apps/ops-admin`, release/1.2 `1f4eac0`)를 이 화면 안에서 연다.
+- **로그인은 한 번**: 서비스 관리자 로그인 토큰(같은 탭의 sessionStorage)을 운영 화면이 그대로 쓴다. 다시 로그인하지 않는다.
+- **권한**: 통합관리자 하나라서 로그인한 관리자에게는 '운영' 묶음이 늘 보인다. 통합관리자가 아니면 로그인 단계에서 막힌다("관리자 계정이 아니에요"). 최종 판단은 언제나 서버(`require_operator("admin")`)가 한다.
+- 파일: `static/ops/` 는 `apps/ops-admin` 의 `index.html`·`css/style.css`·`js/api.js`·`js/auth.js`·`js/config.js`·`js/app.js` 복사본이다. API 서버 이미지(`apps/api/Dockerfile`)에는 `apps/api` 만 들어가서, 운영 웹 폴더를 그대로 쓸 수 없다.
+  - 원본과 다른 점: `index.html`(샘플 모드 파일 대신 `js/embed.js`, CSP `connect-src 'self'` 만), `js/app.js` 네 군데(바깥 토큰으로 바로 대시보드, 안쪽 로그아웃 버튼 숨김, 로그인 만료를 바깥 화면에 알림), 새 파일 `js/embed.js`.
+  - 운영 원본(`apps/ops-admin`)을 고치면 이 복사본도 맞춰야 한다. 원본을 계속 둘지, 이 복사본 하나로 합칠지는 운영 담당과 정한다(미정).
 
 ## 남은 것
 

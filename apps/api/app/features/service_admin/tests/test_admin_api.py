@@ -1,4 +1,4 @@
-"""서비스 관리자 API(/admin)의 안쪽 문: Bearer 정식 회원 + SERVICE_ADMIN_USER_IDS 허용 목록만 통과한다.
+"""서비스 관리자 API(/admin)의 안쪽 문: Bearer 정식 회원 + ADMIN_USER_IDS(통합관리자) 허용 목록만 통과한다.
 
 허용 목록에는 시험에서 만든 가짜 계정의 id 만 넣는다(실제 운영 id 는 어디에도 쓰지 않는다)."""
 
@@ -37,14 +37,11 @@ def _group_of(user_id: str) -> str:
 
 @pytest.fixture
 def make_admin(monkeypatch):
-    """서비스 관리자 허용 목록에 시험 계정 id 를 넣는다. 시험이 끝나면 원래 값(빈 목록)으로 돌아간다."""
-    monkeypatch.setattr(settings, "service_admin_user_ids", "")
-    monkeypatch.setattr(settings, "ops_admin_user_ids", "")
+    """통합관리자 허용 목록에 시험 계정 id 를 넣는다. 시험이 끝나면 원래 값(빈 목록)으로 돌아간다."""
+    monkeypatch.setattr(settings, "admin_user_ids", "")
 
     def add(user_id: str) -> None:
-        settings.service_admin_user_ids = ",".join(
-            filter(None, [settings.service_admin_user_ids, user_id])
-        )
+        settings.admin_user_ids = ",".join(filter(None, [settings.admin_user_ids, user_id]))
 
     return add
 
@@ -78,12 +75,14 @@ def test_family_owner_role_is_not_admin(client, make_admin):
     assert _denied(client.get(ME, headers=headers))
 
 
-def test_ops_admin_list_is_not_service_admin(client, make_admin):
+def test_one_admin_list_opens_service_and_ops(client, make_admin):
+    """권한은 통합관리자 하나(2026-11-06): 같은 목록으로 서비스 관리와 운영 관리가 함께 열린다."""
     headers, user_id = _login(client)
-    settings.ops_admin_user_ids = (
-        user_id  # 운영(인프라) 관리자 목록은 서비스 관리자를 포함하지 않는다
-    )
     assert _denied(client.get(ME, headers=headers))
+    assert _denied(client.get("/admin/ops/summary", headers=headers))
+    make_admin(user_id)
+    assert client.get(ME, headers=headers).status_code == 200
+    assert client.get("/admin/ops/summary", headers=headers).status_code == 200
 
 
 LISTS = (
@@ -523,3 +522,15 @@ def test_analytics_is_admin_only(client, make_admin):
     headers, _ = _login(client)
     assert client.get("/admin/service/analytics").status_code == 401
     assert _denied(client.get("/admin/service/analytics", headers=headers))
+
+
+def test_ops_tab_page_is_served(client):
+    """'운영 › 서버 상태' 탭이 띄우는 운영 화면 파일(static/ops/)이 서비스 관리자 화면 아래에 있다.
+    로그인 없이 받는 정적 파일이고, 데이터는 화면이 토큰으로 /admin/ops/* 를 불러야 나온다."""
+    page = client.get("/admin/service/ui/ops/")
+    assert page.status_code == 200
+    assert 'src="js/embed.js' in page.text
+    assert "connect-src 'self'" in page.text  # 같은 출처(API 서버)만 부른다
+    for path in ("ops/js/embed.js", "ops/js/app.js", "ops/js/api.js", "ops/css/style.css"):
+        assert client.get(f"/admin/service/ui/{path}").status_code == 200, path
+    assert 'class="ops-frame"' in client.get("/admin/service/ui/app.js").text

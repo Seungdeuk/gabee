@@ -14672,6 +14672,66 @@
         }
       }
     },
+    "/admin/knowledge/ask": {
+      "post": {
+        "tags": [
+          "admin-knowledge"
+        ],
+        "summary": "Ask",
+        "description": "챗봇 질문을 지금 숫자와 함께 Claude 에게 보낸다.",
+        "operationId": "ask_admin_knowledge_ask_post",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdminAskIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminAskOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/health/db": {
       "get": {
         "tags": [
@@ -16551,6 +16611,34 @@
           "errors"
         ],
         "title": "AdminAiUserRow"
+      },
+      "AdminAskIn": {
+        "properties": {
+          "q": {
+            "type": "string",
+            "maxLength": 300,
+            "minLength": 2,
+            "title": "Q"
+          }
+        },
+        "type": "object",
+        "required": [
+          "q"
+        ],
+        "title": "AdminAskIn"
+      },
+      "AdminAskOut": {
+        "properties": {
+          "answer": {
+            "type": "string",
+            "title": "Answer"
+          }
+        },
+        "type": "object",
+        "required": [
+          "answer"
+        ],
+        "title": "AdminAskOut"
       },
       "AdminMeOut": {
         "properties": {

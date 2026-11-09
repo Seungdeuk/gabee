@@ -134,12 +134,8 @@ def _hint_row(answers: list[PlayAnswer], player_id: str) -> PlayAnswer | None:
 
 # ---------- 정산 ----------
 def _daily_rank(db: Session, item: PlayItem) -> int:
-    start = local_day_start(item.created_at)
-    items = repository.maker_items_between(db, item.maker_id, start, start + timedelta(days=1))
-    for i, it in enumerate(items, start=1):
-        if it.id == item.id:
-            return i
-    return DAILY_MAKE_LIMIT + 1
+    rank = repository.maker_daily_rank(db, item)
+    return rank if rank is not None else DAILY_MAKE_LIMIT + 1
 
 
 def _settle_unfinished_draws(db: Session, item: PlayItem, answers: list[PlayAnswer]) -> None:
