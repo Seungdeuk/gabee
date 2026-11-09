@@ -21,11 +21,13 @@ import { deleteRecord, getRecord, originalImageSource, submitDescription, update
 import useOriginal from "../hooks/useOriginal";
 import { reviewGuide } from "../reviewGuide";
 import OriginalViewer from "./OriginalViewer";
+import RecordContent from "./RecordContent";
 
 const DATE_FORMAT = /^\d{4}-\d{2}-\d{2}$/;
 
 /**
  * 올린 기록 한 건의 상세. 읽어 낸 글(개인정보는 가려진 상태)을 원본과 비교하며 고칠 수 있다.
+ * - 읽어 낸 내용은 처음에 접혀 있고 "자세히 보기"를 누르면 보기 좋게 펼쳐진다.
  * - 확인 필요 기록: 위에 안내가 뜨고, 맞으면 "확인 완료", 틀렸으면 고쳐서 "저장"한다.
  * - 저장하면 서버가 검색용으로 다시 만들어서 이후 질문에 고친 내용이 쓰인다.
  * @param {{ record: object | null, onClose: () => void, onChanged: () => void }} props record: 목록의 한 항목
@@ -39,11 +41,13 @@ export default function RecordDetail({ record, onClose, onChanged }) {
   const [saving, setSaving] = useState(false);
   const [descText, setDescText] = useState(""); // "설명 추가" 칸의 글
   const [described, setDescribed] = useState(false); // 이 화면에서 설명을 저장했는지(저장하면 영역을 숨긴다)
+  const [showContent, setShowContent] = useState(false); // "자세히 보기"로 읽어 낸 내용을 펼쳤는지
 
   useEffect(() => {
     setDetail(null);
     setError("");
     setEditing(false);
+    setShowContent(false);
     setDescText("");
     setDescribed(false);
     if (!record) return undefined;
@@ -254,17 +258,27 @@ export default function RecordDetail({ record, onClose, onChanged }) {
             ) : (
               <>
                 <Text style={styles.meta}>{[detail?.kind_label ?? record?.kind_label, detail?.occurred_on ?? record?.occurred_on].filter(Boolean).join(" · ")}</Text>
-                <Text style={styles.section}>읽어 낸 내용</Text>
                 {detail ? (
-                  <Text style={styles.content} selectable>
-                    {detail.body_md}
-                  </Text>
+                  <Pressable
+                    onPress={() => setShowContent((v) => !v)}
+                    accessibilityRole="button"
+                    accessibilityState={{ expanded: showContent }}
+                    style={styles.moreBtn}
+                  >
+                    <Text style={styles.moreText}>{showContent ? "접기" : "자세히 보기"}</Text>
+                    <Ionicons name={showContent ? "chevron-up" : "chevron-down"} size={18} color={colors.text} />
+                  </Pressable>
                 ) : error ? (
                   <Text style={styles.warn}>{error}</Text>
                 ) : (
                   <ActivityIndicator color={colors.textMuted} />
                 )}
-                <Text style={styles.note}>개인정보(주민번호·전화·카드 등)는 가려진 상태로 저장돼요.</Text>
+                {detail && showContent ? (
+                  <>
+                    <RecordContent markdown={detail.body_md} />
+                    <Text style={styles.note}>개인정보(주민번호·전화·카드 등)는 가려진 상태로 저장돼요.</Text>
+                  </>
+                ) : null}
                 <View style={styles.row}>
                   <Pressable onPress={startEdit} disabled={!detail || saving} accessibilityRole="button" style={[styles.btn, styles.btnGhost]}>
                     <Ionicons name="create-outline" size={17} color={colors.text} />
@@ -310,8 +324,8 @@ const styles = StyleSheet.create({
   previewHint: { marginTop: 4, textAlign: "center", fontSize: 12, color: colors.textMuted },
   meta: { fontSize: 13, color: colors.textMuted },
   warn: { fontSize: 13, lineHeight: 20, color: colors.warning },
-  section: { marginTop: 8, fontSize: 13, fontWeight: "700", color: colors.textSub },
-  content: { fontSize: 14, lineHeight: 22, color: colors.text },
+  moreBtn: { minHeight: 48, paddingHorizontal: 16, borderRadius: 14, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.card, flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  moreText: { fontSize: 15, fontWeight: "600", color: colors.text },
   note: { fontSize: 12, lineHeight: 18, color: colors.textMuted },
   describe: { gap: 8, padding: 12, borderRadius: 12, backgroundColor: colors.honeySoft },
   count: { alignSelf: "flex-end", fontSize: 11, color: colors.textMuted },

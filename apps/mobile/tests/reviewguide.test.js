@@ -2,7 +2,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { reviewGuide } from "../src/features/ai-assistant/reviewGuide.js";
+import { reviewGuide, unreadableParts } from "../src/features/ai-assistant/reviewGuide.js";
 
 const body = (...lines) => ["# 제목", "분류: 영수증", ...lines].join("\n");
 const record = (extra = {}) => ({ title: "마트 영수증", kind_label: "", body_md: body("- 날짜: 2026-10-15", "우유 2,000원"), has_unread_parts: false, ...extra });
@@ -63,4 +63,15 @@ test("아무 이유도 종류도 없거나 기록이 비어 있으면 빈 목록
   assert.deepEqual(reviewGuide(undefined), []);
   assert.deepEqual(reviewGuide({}), []);
   assert.deepEqual(reviewGuide({ title: 5, body_md: null, kind_label: "  " }), []);
+});
+
+test("줄을 일반 글과 못 읽은 자리로 나눈다", () => {
+  assert.deepEqual(unreadableParts("합계 [판독불가]원"), [
+    { text: "합계 ", unreadable: false },
+    { text: "못 읽음", unreadable: true },
+    { text: "원", unreadable: false },
+  ]);
+  assert.deepEqual(unreadableParts("[판독불가]"), [{ text: "못 읽음", unreadable: true }]);
+  assert.deepEqual(unreadableParts("합계 12,500원"), [{ text: "합계 12,500원", unreadable: false }]);
+  assert.deepEqual(unreadableParts(undefined), []);
 });

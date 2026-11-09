@@ -37,10 +37,10 @@ class Settings(BaseSettings):
         True  # 가린 글만 채팅 근거로 쓴다. 끄려면 CHAT_INCLUDE_SENSITIVE=false
     )
 
-    # 업로드 파일의 글자 읽기(OCR)·개인정보 가리기를 Claude 로 할지(docs/adr/0014). 외부 API 로 파일 내용이 나가므로 평가 기준을 통과하기 전까지 기본은 끈다.
-    # 꺼져 있으면 기존 방식(RapidOCR·규칙 가리기)을 그대로 쓴다. 켜면 호출이 실패할 때 가리지 않은 글을 저장하지 않고 파일을 failed 로 둔다.
-    ingest_llm_ocr: bool = False  # 사진·PDF 쪽을 Claude 로 읽는다
-    ingest_llm_mask: bool = False  # 글을 Claude 로 가리고 가족 이름 후보를 문맥으로 판단한다
+    # 업로드 파일의 글자 읽기(OCR)·개인정보 가리기를 Claude 로 한다(docs/adr/0014). 호출이 실패하면 가리지 않은 글을 저장하지 않고 파일을 failed 로 둔다.
+    # 글자 읽기와 가리기는 항상 Claude 로 한다(사용자 결정 2026-11-09). false 는 외부 호출 없이 도는 시험에서만 쓴다(conftest.py).
+    ingest_llm_ocr: bool = True  # 사진·PDF 쪽을 Claude 로 읽는다
+    ingest_llm_mask: bool = True  # 글을 Claude 로 가리고 가족 이름 후보를 문맥으로 판단한다
     ingest_ocr_model: str = "claude-sonnet-5-5"  # 표·머리말 구분이 좋은 모델
     ingest_mask_model: str = ""  # 비우면 llm_model(Haiku)
     # 가족방 사진이 문서 사진인지 Claude 로 가린다(기본 false: 로컬 OCR 판별만). 켜면 글자가 있는 사진이 Anthropic API 로 전송된다(docs/adr/0015)
