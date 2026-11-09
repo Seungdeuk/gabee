@@ -41,9 +41,10 @@ const AVATAR = 36;
  * 지운 메시지(deleted)는 말풍선 대신 가운데에 "삭제된 메시지입니다"만 보인다.
  * onSaveToRecord 가 있으면(가족 전체방의 사진) 전체 화면 사진 보기에 "가비 기록에 저장" 버튼이 붙고, 누르면 그 사진을 AI 비서의 가족 기록으로 올린다(결과 문구는 사진 보기에 보인다).
  * 파일 메시지(attachment.kind === "file")는 사진 대신 파일 카드를 보인다: 본문을 누르면 열기/공유, 다운로드 아이콘은 내 파일/드라이브에 저장. 사진 보기에는 "사진첩에 저장" 버튼이 붙는다.
- * @param {{ message: object, mine: boolean, showName: boolean, showTime?: boolean, unread?: number, photoUrl?: string | null, highlighted?: boolean, searchTerms?: string[], searchCurrent?: boolean, onRetry?: (clientId: string) => void, onDiscard?: (clientId: string) => void, onActions?: (message: object, anchor: { x: number, y: number } | null) => void, onHeart?: (message: object) => void, onReactionPress?: (message: object, emoji: string) => void, onReplyPress?: (messageId: number) => void, linkBadges?: { kind: "event" | "todo", label: string }[], onSaveToRecord?: (attachment: object) => Promise<{ ok: boolean, message: string }>, nameOf?: (userId: string) => string | undefined }} props
+ * onSaveToLibrary 가 있으면(가족 전체방의 사진) 사진 보기에 "문서로 저장" 버튼이 붙고, 누르면 그 사진을 가족 공유 문서함에 직접 넣는다(결과 문구는 사진 보기에 보인다).
+ * @param {{ message: object, mine: boolean, showName: boolean, showTime?: boolean, unread?: number, photoUrl?: string | null, highlighted?: boolean, searchTerms?: string[], searchCurrent?: boolean, onRetry?: (clientId: string) => void, onDiscard?: (clientId: string) => void, onActions?: (message: object, anchor: { x: number, y: number } | null) => void, onHeart?: (message: object) => void, onReactionPress?: (message: object, emoji: string) => void, onReplyPress?: (messageId: number) => void, linkBadges?: { kind: "event" | "todo", label: string }[], onSaveToRecord?: (attachment: object) => Promise<{ ok: boolean, message: string }>, onSaveToLibrary?: (attachment: object) => Promise<{ ok: boolean, message: string }>, nameOf?: (userId: string) => string | undefined }} props
  */
-export default function MessageBubble({ message, mine, showName, showTime = true, unread = 0, photoUrl, highlighted = false, searchTerms, searchCurrent = false, onRetry, onDiscard, onActions, onHeart, onReactionPress, onReplyPress, linkBadges, onSaveToRecord, nameOf, album }) {
+export default function MessageBubble({ message, mine, showName, showTime = true, unread = 0, photoUrl, highlighted = false, searchTerms, searchCurrent = false, onRetry, onDiscard, onActions, onHeart, onReactionPress, onReplyPress, linkBadges, onSaveToRecord, onSaveToLibrary, nameOf, album }) {
   const senderName = nameOf?.(message.user_id) || message.user_name; // 내가 붙인 별명이 있으면 별명
   const failed = message.status === "failed";
   const sending = message.status === "sending";
@@ -53,6 +54,8 @@ export default function MessageBubble({ message, mine, showName, showTime = true
   const [albumStart, setAlbumStart] = useState(null); // 앨범 뷰어를 연 사진 순서(닫혀 있으면 null)
   const [albumRecords, setAlbumRecords] = useState({}); // 앨범 사진별(첨부 id) 가비 기록 저장 상태
   const [record, setRecord] = useState({ saving: false, done: false, notice: "" }); // 가비 기록에 저장한 상태(이 사진 하나의 것)
+  const [albumLibraries, setAlbumLibraries] = useState({}); // 앨범 사진별(첨부 id) 문서함 저장 상태
+  const [library, setLibrary] = useState({ saving: false, done: false, notice: "" }); // 문서함에 저장한 상태(이 사진 하나의 것)
   const isFile = isFileMessage(message);
   const [fileState, setFileState] = useState({ busy: null, notice: "" }); // 파일 열기·저장 진행/결과
   const fileBusyRef = useRef(false);
@@ -97,6 +100,14 @@ export default function MessageBubble({ message, mine, showName, showTime = true
     const result = await onSaveToRecord(album[index].attachment);
     setAlbumRecords((prev) => ({ ...prev, [photo.id]: { saving: false, done: result.ok, notice: result.message } }));
   };
+  /** 앨범 뷰어의 "문서로 저장": 지금 보는 사진 한 장을 문서함에 넣는다(저장 중이거나 이미 저장했으면 다시 누르지 않는다). 실패하면 다시 누를 수 있다. */
+  const saveAlbumLibrary = async (photo, index) => {
+    const state = albumLibraries[photo.id];
+    if (!onSaveToLibrary || state?.saving || state?.done) return;
+    setAlbumLibraries((prev) => ({ ...prev, [photo.id]: { saving: true, done: false, notice: "" } }));
+    const result = await onSaveToLibrary(album[index].attachment);
+    setAlbumLibraries((prev) => ({ ...prev, [photo.id]: { saving: false, done: result.ok, notice: result.message } }));
+  };
   /** 앨범 뷰어의 "메뉴": 뷰어를 닫고(모달이 겹치지 않게) 그 사진의 메시지로 메뉴를 연다. */
   const openAlbumViewerMenu = (index) => {
     setAlbumStart(null);
@@ -117,6 +128,14 @@ export default function MessageBubble({ message, mine, showName, showTime = true
     setRecord({ saving: true, done: false, notice: "" });
     const result = await onSaveToRecord(attachment);
     setRecord({ saving: false, done: result.ok, notice: result.message });
+  };
+
+  /** "문서로 저장"을 눌렀을 때: 저장 중이거나 이미 저장했으면 다시 누르지 않는다. 실패하면 문구를 보이고 다시 누를 수 있다. */
+  const saveLibrary = async () => {
+    if (!onSaveToLibrary || library.saving || library.done) return;
+    setLibrary({ saving: true, done: false, notice: "" });
+    const result = await onSaveToLibrary(attachment);
+    setLibrary({ saving: false, done: result.ok, notice: result.message });
   };
 
   /** 파일 카드: 열기/공유(open) 또는 내 파일/드라이브에 저장(save). 진행 중에는 다시 누를 수 없다. */
@@ -214,6 +233,8 @@ export default function MessageBubble({ message, mine, showName, showTime = true
             notice={device.notice}
             onSaveToRecord={onSaveToRecord ? saveAlbumRecord : undefined}
             recordOf={(id) => albumRecords[id] ?? { saving: false, done: false, notice: "" }}
+            onSaveToLibrary={onSaveToLibrary ? saveAlbumLibrary : undefined}
+            libraryOf={(id) => albumLibraries[id] ?? { saving: false, done: false, notice: "" }}
             onMenu={onActions ? openAlbumViewerMenu : undefined}
           />
         </>
@@ -231,6 +252,10 @@ export default function MessageBubble({ message, mine, showName, showTime = true
             recordSaving={record.saving}
             recordDone={record.done}
             recordNotice={record.notice}
+            onSaveToLibrary={onSaveToLibrary ? saveLibrary : undefined}
+            librarySaving={library.saving}
+            libraryDone={library.done}
+            libraryNotice={library.notice}
             onSaveToDevice={saveToDevice}
             deviceSaving={device.saving}
             deviceNotice={device.notice}
