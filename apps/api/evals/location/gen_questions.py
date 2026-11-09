@@ -21,6 +21,7 @@ from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
 
+from app.shared.config import settings
 from evals import budget
 from evals.location import scenarios as sc
 
@@ -54,8 +55,14 @@ SYSTEM = (
     "너는 가족 위치 기록 검색을 평가할 질문을 만든다. 각 번호의 '기록 문장'을 보고, 그 문장 하나만으로 답할 수 있는 질문을 만든다. "
     "규칙: (1) 질문은 기록 문장의 낱말을 그대로 베끼지 말고 말투와 문장 구조를 바꿔 쓴다. 사람 이름과 장소 이름은 문장에 있는 그대로 쓴다. "
     "(2) 어제·오늘·지난주 같은 상대 날짜는 쓰지 말고 문장에 있는 '월-일'과 요일로 말한다. "
-    "(3) 질문에 답을 적지 않는다. (4) 같은 번호의 질문들은 서로 말투나 묻는 방식이 달라야 한다. "
-    "(5) 기록 문장에 없는 사실은 묻지 않는다."
+    "(3) 질문에 답을 적지 않는다. 특히 정답이 되는 장소 이름을 질문에 쓰는 '~에 있었나요?' 같은 예/아니오 질문은 만들지 않고, "
+    "'어디', '몇 번', '언제', '누가'처럼 답을 묻는다(이동은 출발지와 도착지 중 질문에 쓰는 쪽은 하나만). "
+    "(4) 같은 번호의 질문들은 서로 말투나 묻는 방식이 달라야 한다. "
+    "(5) 기록 문장에 없는 사실은 묻지 않는다. "
+    "(6) 시각은 기록 문장의 '10:20~11:00' 같은 분 단위 숫자를 그대로 쓰지 말고 사람이 말하듯 흐리게 말한다"
+    "(예: '아침 일곱 시쯤', '오전 열 시 무렵', '점심 때', '밤 열한 시쯤', '저녁'). "
+    "시각 숫자를 쓸 때는 정각이나 반 정도로만 어림하고, 시작과 끝 시각을 둘 다 적지 않는다. "
+    "단 월-일과 요일은 (2)대로 정확히 말한다."
 )
 
 
@@ -219,7 +226,7 @@ def main(argv: list[str] | None = None) -> int:
         used += calls
         meta = {
             "created_at": datetime.now(UTC).isoformat(timespec="seconds"),
-            "model": args.model or "settings.llm_model",
+            "model": args.model or settings.llm_model,
             "per_chunk": args.per_chunk,
             "batch": args.batch,
             "final_ratio": args.final_ratio,
