@@ -1,6 +1,6 @@
 import { useRouter } from "expo-router";
 import { useEffect, useRef, useState } from "react";
-import { Keyboard, KeyboardAvoidingView, Pressable, ScrollView, Share, StyleSheet, Text, TextInput, View } from "react-native";
+import { Keyboard, KeyboardAvoidingView, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import Avatar from "@/shared/components/Avatar";
@@ -13,6 +13,7 @@ import { cheerBomb, closeBomb, createBomb, getBombCurrent, joinBomb, leaveBomb, 
 import { Bubble, BOMB_RED, PlayerStrip, TimeBar } from "../components/bomb/BombParts";
 import PlayerRow from "../components/bomb/PlayerRow";
 import RuleCard, { LIFE, SEC } from "../components/bomb/RuleCard";
+import { useInvite } from "../components/InviteSheet";
 import LoadNote from "../components/LoadNote";
 import PlayHeader from "../components/PlayHeader";
 import PlayIcon from "../components/PlayIcon";
@@ -62,6 +63,7 @@ export function LiveBombLobby({ id }) {
   const [life, setLife] = useState(LIFE.def);
   const [sec, setSec] = useState(SEC.def);
   const [askClose, setAskClose] = useState(false);
+  const { ask: askInvite, sheet: inviteSheet } = useInvite();
   if (!room) {
     return (
       <PlayScreen title="끝내는 순간 터진다!" close>
@@ -71,7 +73,6 @@ export function LiveBombLobby({ id }) {
   }
   const joined = room.players.filter((p) => p.joined).length;
   const isClosed = room.phase === "closed";
-  const invite = (name) => Share.share({ message: `${name}야, 문장 폭탄 방에 들어와! 가비 앱에서 가족 놀이터를 열어 봐.` }).catch(() => {});
   let footer;
   if (isClosed) {
     footer = (
@@ -126,9 +127,10 @@ export function LiveBombLobby({ id }) {
       </Text>
       <ScrollView style={styles.playerList} nestedScrollEnabled showsVerticalScrollIndicator={room.players.length > VISIBLE_PLAYERS}>
         {room.players.map((p) => (
-          <PlayerRow key={p.id} id={p.id} name={p.name} note={p.host ? "방장" : ""} joined={p.joined} onInvite={() => invite(p.name)} />
+          <PlayerRow key={p.id} id={p.id} name={p.name} note={p.host ? "방장" : ""} joined={p.joined} onInvite={() => askInvite({ name: p.name, kind: "bomb" })} />
         ))}
       </ScrollView>
+      {inviteSheet}
       <ConfirmDialog
         visible={askClose}
         title="방을 닫을까요?"

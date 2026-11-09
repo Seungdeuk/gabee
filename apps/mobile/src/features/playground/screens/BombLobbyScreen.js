@@ -1,6 +1,6 @@
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useState } from "react";
-import { ScrollView, Share, StyleSheet, Text } from "react-native";
+import { ScrollView, StyleSheet, Text } from "react-native";
 
 import Button from "@/shared/components/Button";
 import ConfirmDialog from "@/shared/components/ConfirmDialog";
@@ -9,6 +9,7 @@ import { colors, font, fonts } from "@/theme";
 import { BOMB_RED } from "../components/bomb/BombParts";
 import PlayerRow from "../components/bomb/PlayerRow";
 import RuleCard, { LIFE, SEC } from "../components/bomb/RuleCard";
+import { useInvite } from "../components/InviteSheet";
 import PlayIcon from "../components/PlayIcon";
 import PlayScreen from "../components/PlayScreen";
 import { GAMES } from "../games";
@@ -31,7 +32,7 @@ function MockBombLobbyScreen() {
   const [life, setLife] = useState(Number(lifeParam) || LIFE.def);
   const [sec, setSec] = useState(Number(secParam) || SEC.def);
   const joined = ROOM.filter((r) => r.joined).length;
-  const invite = (name) => Share.share({ message: `${name}야, 문장 폭탄 방에 들어와! 가비 앱에서 가족 놀이터를 열어 봐.` }).catch(() => {});
+  const { ask: askInvite, sheet: inviteSheet } = useInvite();
 
   return (
     <PlayScreen
@@ -42,7 +43,7 @@ function MockBombLobbyScreen() {
       footer={
         host ? (
           <>
-            <Text style={styles.note}>2명부터 시작할 수 있어요 · 초대하기로 공유 링크를 보내요</Text>
+            <Text style={styles.note}>2명부터 시작할 수 있어요 · 초대하기로 링크를 보내요</Text>
             <Button label={`게임 시작 (${joined}명)`} disabled={joined < 2} onPress={() => router.push({ pathname: "/play/bomb-play", params: { life: String(life), sec: String(sec), host: host ? "me" : "mom" } })} />
             <Button label="방 닫기" variant="secondary" onPress={() => setAskClose(true)} />
           </>
@@ -61,9 +62,10 @@ function MockBombLobbyScreen() {
       </Text>
       <ScrollView style={styles.playerList} nestedScrollEnabled showsVerticalScrollIndicator={ROOM.length > VISIBLE_PLAYERS}>
         {ROOM.map((r) => (
-          <PlayerRow key={r.id} {...r} onInvite={() => invite(r.name)} />
+          <PlayerRow key={r.id} {...r} onInvite={() => askInvite({ name: r.name, kind: "bomb" })} />
         ))}
       </ScrollView>
+      {inviteSheet}
       <ConfirmDialog
         visible={askClose}
         title="방을 닫을까요?"

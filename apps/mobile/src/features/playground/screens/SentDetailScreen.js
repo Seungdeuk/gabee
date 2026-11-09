@@ -1,6 +1,6 @@
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect, useState } from "react";
-import { ScrollView, Share, StyleSheet, Text, View } from "react-native";
+import { ScrollView, StyleSheet, Text, View } from "react-native";
 import Svg, { Circle, Path } from "react-native-svg";
 
 import AuthImage from "@/shared/components/AuthImage";
@@ -10,6 +10,7 @@ import ConfirmDialog from "@/shared/components/ConfirmDialog";
 import { colors, font, fonts, radius } from "@/theme";
 
 import { gameKey, quizResultView, revealLabel } from "../adapt";
+import { useInvite } from "../components/InviteSheet";
 import LoadNote from "../components/LoadNote";
 import PhotoStage from "../components/PhotoStage";
 import PlayIcon from "../components/PlayIcon";
@@ -198,7 +199,7 @@ function MockSentDetail() {
   const { kind = "draw" } = useLocalSearchParams();
   const router = useRouter();
   const [askClose, setAskClose] = useState(false);
-  const invite = (name) => Share.share({ message: `${name}야, 문장 폭탄 방에 들어와! 가비 앱에서 가족 놀이터를 열어 봐.` }).catch(() => {});
+  const { ask: askInvite, sheet: inviteSheet } = useInvite();
   const [life, setLife] = useState(LIFE.def);
   const [sec, setSec] = useState(SEC.def);
   const k = FAMILY[kind] ? kind : "draw";
@@ -242,7 +243,7 @@ function MockSentDetail() {
         {k === "bomb" ? (
           <ScrollView style={styles.playerList} nestedScrollEnabled showsVerticalScrollIndicator={members.length > VISIBLE_PLAYERS}>
             {members.map((m) => (
-              <PlayerRow key={m.id} id={m.id} name={m.name} note={m.note} joined={m.state === "in"} onInvite={() => invite(m.name)} />
+              <PlayerRow key={m.id} id={m.id} name={m.name} note={m.note} joined={m.state === "in"} onInvite={() => askInvite({ name: m.name, kind: "bomb" })} />
             ))}
           </ScrollView>
         ) : null}
@@ -281,6 +282,7 @@ function MockSentDetail() {
           </Text>
         </>
       )}
+      {inviteSheet}
     </PlayScreen>
   );
 }

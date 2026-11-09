@@ -1,11 +1,12 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useState } from "react";
-import { Pressable, Share, StyleSheet, Text, View } from "react-native";
+import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import avatarTone from "@/shared/avatarTone";
 import { colors, font, fonts, radius } from "@/theme";
 
 import { bestView } from "../adapt";
+import { useInvite } from "../components/InviteSheet";
 import LoadNote from "../components/LoadNote";
 import PlayIcon from "../components/PlayIcon";
 import PlayScreen from "../components/PlayScreen";
@@ -30,6 +31,7 @@ const avatarPair = (id) => {
 export default function PlayRankingScreen() {
   const [tab, setTab] = useState("week");
   const [open, setOpen] = useState(null);
+  const { ask: askInvite, sheet: inviteSheet } = useInvite();
 
   const ranking = usePlayRanking(tab);
   const myId = useMyId();
@@ -66,7 +68,7 @@ export default function PlayRankingScreen() {
                   <Text style={styles.name}>{r.name}</Text>
                 </View>
                 {idle ? (
-                  <Pressable onPress={() => Share.share({ message: `${r.name}야, 가족 놀이터에서 같이 놀자!` }).catch(() => {})} accessibilityRole="button" accessibilityLabel={`${r.name} 초대하기`} hitSlop={8}>
+                  <Pressable onPress={() => askInvite({ name: r.name, kind: "play" })} accessibilityRole="button" accessibilityLabel={`${r.name} 초대하기`} hitSlop={8}>
                     <Text style={styles.invite}>초대하기</Text>
                   </Pressable>
                 ) : (
@@ -111,6 +113,7 @@ export default function PlayRankingScreen() {
         <Text style={styles.ruleTitle}>점수 받는 법</Text>
         <Text style={styles.ruleText}>{"문제 내면 +20 / 참여하면 +10\n(문제 출제는 하루 3개까지, 가족이 풀면 받아요)\n정답 맞추면 +20 / 폭탄 우승은 +30\n매주 월요일에 이번 주 순위가 새로 시작돼요"}</Text>
       </View>
+      {inviteSheet}
     </PlayScreen>
   );
 }

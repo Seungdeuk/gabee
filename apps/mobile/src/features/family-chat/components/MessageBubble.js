@@ -1,4 +1,5 @@
 import { Ionicons } from "@expo/vector-icons";
+import { router } from "expo-router";
 import { useEffect, useRef, useState } from "react";
 import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
 
@@ -7,6 +8,7 @@ import UserAvatar from "@/shared/components/UserAvatar";
 import { colors, font, radius, spacing } from "@/theme";
 
 import { ALBUM_WIDTH, albumCells } from "../album";
+import { playPathFromLink, splitPlayLink } from "@/features/playground/invite";
 import { formatTime } from "../chatUtils";
 import { unreadByA11yLabel } from "../listUtils";
 import { fitSize } from "../photo";
@@ -25,6 +27,21 @@ import ReactionRow from "./ReactionRow";
 import ReplyQuote from "./ReplyQuote";
 
 const AVATAR = 36;
+
+/** 글자 속 놀이터 초대 링크(gabee://play…)를 눌러 그 게임 화면을 열 수 있게 한다. 링크가 없으면 글자 그대로. */
+function playLinkNodes(text) {
+  const parts = splitPlayLink(text);
+  if (parts.length === 1 && !parts[0].link) return text;
+  return parts.map((part, i) =>
+    part.link ? (
+      <Text key={i} style={styles.playLink} onPress={() => { const path = playPathFromLink(part.text); if (path) router.push(path); }} accessibilityRole="link">
+        {part.text}
+      </Text>
+    ) : (
+      part.text
+    ),
+  );
+}
 
 /**
  * 말풍선 한 줄. 내 말은 오른쪽(복숭아색, 시각은 왼쪽 아래), 상대는 왼쪽(아바타·이름·카드색, 시각은 오른쪽 아래).
@@ -264,7 +281,7 @@ export default function MessageBubble({ message, mine, showName, showTime = true
       ) : null}
       {message.text ? (
         <Text style={bubbleTextStyle({ selectable, base: styles.text, photo: attachment ? styles.photoText : null, noSelect: styles.noSelect })} selectable={selectable}>
-          {searchTerms?.length ? highlightNodes(message.text, searchTerms, searchCurrent ? hitStyles.current : message.is_assistant ? styles.hitOnAssistant : styles.hit) : message.text}
+          {searchTerms?.length ? highlightNodes(message.text, searchTerms, searchCurrent ? hitStyles.current : message.is_assistant ? styles.hitOnAssistant : styles.hit) : playLinkNodes(message.text)}
         </Text>
       ) : null}
       {(linkBadges ?? []).map((b) => (
@@ -380,6 +397,7 @@ function AlbumGrid({ album, onOpen, onLongPress }) {
 }
 
 const styles = StyleSheet.create({
+  playLink: { color: colors.accent, textDecorationLine: "underline", fontWeight: "700" },
   row: { flexDirection: "row", alignItems: "flex-end", gap: spacing.sm, paddingHorizontal: spacing.md, paddingVertical: 1 },
   mineRow: { justifyContent: "flex-end" },
   deletedRow: { alignItems: "center", paddingVertical: spacing.sm, paddingHorizontal: spacing.md },
