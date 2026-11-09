@@ -42,3 +42,15 @@ test("hexPoints: 꼭짓점이 위로 향한 정육각형의 여섯 점이 정사
   const xs = pts.map(([x]) => x);
   assert.ok(Math.abs(Math.min(...xs) + Math.max(...xs) - size) < 0.01); // 좌우 대칭
 });
+
+test("스와이프 행: 앞면 배경은 카드와 같은 흰색이다(앱에서 흰 카드 안에 크림색 칸이 깔리지 않게)", () => {
+  const swipe = read("features/family-chat/components/SwipeableRoomRow.js");
+  assert.match(swipe, /front: \{[^}]*backgroundColor: colors\.card/);
+  assert.doesNotMatch(swipe, /front: \{[^}]*colors\.background/);
+});
+
+test("1:1 프로필 테두리: 바깥 크기가 아바타 크기(56)와 정확히 같다(테두리 두 겹이 차지하는 폭 = 테두리 두께 × 4)", () => {
+  const row = read("features/family-chat/components/RoomRow.js");
+  assert.match(row, /const RING_SPACE = RING_BORDER \* 4;/);
+  assert.match(row, /ring: \{ width: AVATAR_SIZE, height: AVATAR_SIZE, padding: RING_BORDER, borderWidth: RING_BORDER/);
+});
