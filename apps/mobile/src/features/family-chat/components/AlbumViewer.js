@@ -12,7 +12,7 @@ import { LIBRARY_BUTTON_LABEL, LIBRARY_DONE_LABEL, LIBRARY_SAVING_LABEL } from "
 
 /**
  * 앨범 전체 화면 보기. 좌우로 넘기며 묶음의 사진을 모두 본다(맨 위에 "2 / 5"). 닫기 버튼(또는 뒤로 가기)으로 닫는다.
- * 아래 버튼은 지금 보고 있는 사진 한 장에 적용된다: "사진첩에 저장"(onSaveToDevice), "문서로 저장"(onSaveToLibrary, 상태는 libraryOf 가 같은 방식으로 알려 준다), 맨 위 오른쪽 "메뉴"(onMenu: 답장·삭제 같은 메시지 메뉴, 뷰어를 닫고 연다).
+ * 아래 버튼은 지금 보고 있는 사진 한 장에 적용된다: "사진첩에 저장"(onSaveToDevice), "문서로 저장"(onSaveToLibrary, 저장 중·저장함·결과 문구는 libraryOf 가 사진 id 별로 알려 준다), 맨 위 오른쪽 "메뉴"(onMenu: 답장·삭제 같은 메시지 메뉴, 뷰어를 닫고 연다).
  * @param {{ photos: { id: string, url: string, inLibrary?: boolean }[], startIndex?: number, visible: boolean, onClose: () => void, onSaveToDevice?: (photo: { id: string, url: string }, index: number) => void, saving?: boolean, notice?: string, onSaveToLibrary?: (photo: { id: string, url: string }, index: number) => void, libraryOf?: (photoId: string) => { saving: boolean, done: boolean, notice: string }, onMenu?: (index: number) => void }} props photos 의 url 은 서버가 준 attachment.url
  */
 export default function AlbumViewer({ photos, startIndex = 0, visible, onClose, onSaveToDevice, saving = false, notice = "", onSaveToLibrary, libraryOf, onMenu }) {
