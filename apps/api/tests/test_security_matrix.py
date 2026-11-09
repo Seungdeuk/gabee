@@ -244,6 +244,8 @@ NO_GROUP_OK = {
     ("PUT", "/admin/service/notices/{notice_id}"),
     ("DELETE", "/admin/service/notices/{notice_id}"),
     ("GET", "/notices"),
+    # 통합관리자 챗봇: 가족 데이터가 아니다. 권한은 require_operator("admin")(admin_knowledge/tests 에서 401·403 확인)
+    ("POST", "/admin/knowledge/ask"),
     # 운영 관리자 조회 경로도 가족 데이터가 아니다(요청 지표·오류 이벤트). 권한은 require_operator("admin") 허용 목록이 정한다
     # (ops_admin/tests 에서 401·403 확인)
     ("GET", "/admin/ops/summary"),
