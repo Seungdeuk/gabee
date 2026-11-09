@@ -25,7 +25,7 @@ test("처음에는 안내를 보이고, 확인한 뒤에는 다시 보이지 않
   assert.equal(await shouldShowLibraryNotice(storage), true);
   await markLibraryNoticeSeen(storage);
   assert.equal(storage.data.get(LIBRARY_NOTICE_KEY), "1");
-  assert.equal(LIBRARY_NOTICE_KEY, "gabee.library.notice.v2"); // 사진도 자동 등록되도록 범위가 넓어졌으니, 이전 안내를 본 사람에게도 다시 보인다
+  assert.equal(LIBRARY_NOTICE_KEY, "gabee.library.notice.v3"); // 민감 문서도 등록되는 것으로 정책이 바뀌었으니, 이전 안내를 본 사람에게도 다시 보인다
   assert.equal(await shouldShowLibraryNotice(storage), false);
 });
 
@@ -42,10 +42,12 @@ test("기억을 읽지 못하면 안내를 보인다(안내가 조용히 사라�
   await assert.doesNotReject(() => markLibraryNoticeSeen(broken));
 });
 
-test("안내 문구: 가족방 문서가 문서함에 자동 저장되고, 민감 문서·1:1 파일은 저장하지 않으며, 메시지를 지우면 함께 지워진다고 알린다", () => {
+test("안내 문구: 가족방 문서가 문서함에 자동 저장되고, 민감한 문서도 가족 모두가 본다고 알리며, 1:1 파일은 해당하지 않고, 메시지를 지우면 함께 지워진다", () => {
   assert.match(LIBRARY_NOTICE_TITLE, /문서함/);
   assert.match(LIBRARY_NOTICE_BODY, /자동/);
   assert.match(LIBRARY_NOTICE_BODY, /민감/);
+  assert.match(LIBRARY_NOTICE_BODY, /가족 모두/); // 민감한 문서도 가족이 함께 본다
+  assert.doesNotMatch(LIBRARY_NOTICE_BODY, /저장하지 않고/); // 민감 문서를 저장하지 않는다는 옛 안내가 없다
   assert.match(LIBRARY_NOTICE_BODY, /1:1/);
   assert.match(LIBRARY_NOTICE_BODY, /지우면/);
   assert.match(LIBRARY_NOTICE_BODY, /사진/); // 문서를 찍은 사진도 자동 등록된다

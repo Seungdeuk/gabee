@@ -3,7 +3,7 @@ import { chatErrorMessage } from "./messages";
 
 export const LIBRARY_BUTTON_LABEL = "문서로 저장";
 export const LIBRARY_SAVING_LABEL = "저장하는 중…";
-export const LIBRARY_QUEUED_MESSAGE = "문서함에 저장을 시작했어요. 글을 읽는 데 시간이 걸리고, 처방전·신분증 같은 민감한 문서는 저장하지 않아요";
+export const LIBRARY_QUEUED_MESSAGE = "문서함에 저장을 시작했어요. 글을 읽는 데 시간이 걸려요. 가족 모두가 볼 수 있어요";
 export const LIBRARY_DONE_LABEL = "저장 요청했어요";
 export const LIBRARY_ALREADY_MESSAGE = "이미 가족 문서함에 있어요";
 export const LIBRARY_FAIL_MESSAGE = "문서함에 저장하지 못했어요";

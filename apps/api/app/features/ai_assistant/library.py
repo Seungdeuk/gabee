@@ -1,6 +1,6 @@
 """가족 채팅에 올린 문서를 가족 공유 문서함(knowledge)에 자동 등록한다(`shared/chat_library.py` 통로의 처리 쪽).
 
-- 가족 전체방의 문서 첨부만 온다. **민감 문서(처방전·신분증 등)는 등록하지 않고** 가리기 전 원본 사본도 남기지 않는다.
+- 가족 전체방의 문서 첨부만 온다. 민감 문서(처방전·신분증 등)도 등록한다(2026-11-09 사용자 결정): 기록에 민감 표시가 붙고, 그 문서의 챙길 일 뽑기는 건너뛴다.
 - ingest 가 지원하지 않는 형식(hwp·hwpx·예전 doc/xls/ppt 등)은 읽기 전에 거르고 보관하지도 않는다(채팅 파일로만 남는다).
 - 같은 첨부는 한 번만(`knowledge_items.source_attachment_id` 유일). 읽기·저장은 기존 업로드 뒷처리(`files.process_file`)를 그대로 쓴다:
   `photos` 행을 만들고 knowledge 기록 id 를 그 id 와 같게 둬서 상태·원본 보기·삭제가 기존 문서와 똑같이 동작한다.
@@ -9,7 +9,6 @@
 import logging
 import threading
 from concurrent.futures import ThreadPoolExecutor
-from datetime import date
 
 from sqlalchemy.orm import Session
 
@@ -51,7 +50,7 @@ def register_chat_document(
     content_type: str,
     data: bytes,
 ) -> None:
-    """채팅 문서 첨부 하나를 문서함에 등록한다(읽기 → 민감하지 않으면 저장). 어떤 실패도 던지지 않는다."""
+    """채팅 문서 첨부 하나를 문서함에 등록한다(읽기 → 저장, 민감 문서는 민감 표시를 붙여 저장). 어떤 실패도 던지지 않는다."""
     try:
         if not supported(data, filename):
             return
@@ -83,30 +82,13 @@ def _on_removed(db: Session, group_id: str, attachment_id: str) -> None:
 
 # ---------- 사진 ----------
 
-PHOTO_DAILY_LIMIT = (
-    30  # 가족당 하루에 자동으로 읽는 문서 사진 수(Claude 읽기 비용 상한). 넘으면 자동 등록만 멈춘다
-)
 PHOTO_JUDGE_MIN_CONFIDENCE = 0.7  # Claude 가 "문서"라고 해도 확신이 이보다 낮으면 자동 등록하지 않는다(실측: 0.7 이면 애매함 0%, 0.9 면 오인 0 에 애매함 11%)
 PHOTO_QUEUE_LIMIT = 20  # 가족마다 처리를 기다리는 사진 수(사진 바이트가 메모리에 있으므로 상한을 둔다). 한 가족이 다른 가족을 막지 않는다
 _photo_lock = threading.Lock()
-_photo_counts: dict[
-    tuple[str, str], int
-] = {}  # (가족, 날짜) → 오늘 자동으로 읽은 수. 프로세스 메모리라 재시작하면 0 부터
 _photo_pending: dict[str, int] = {}  # 가족 → 처리를 기다리는 사진 수
 _photo_inflight: set[tuple[str, str, bool]] = (
     set()
 )  # (가족, 첨부, 직접 저장 여부) 진행 중인 것: 같은 요청을 겹쳐 처리하지 않는다
-
-
-def _take_daily_slot(group_id: str) -> bool:
-    key = (group_id, date.today().isoformat())
-    with _photo_lock:
-        for old in [k for k in _photo_counts if k[1] != key[1]]:
-            del _photo_counts[old]
-        if _photo_counts.get(key, 0) >= PHOTO_DAILY_LIMIT:
-            return False
-        _photo_counts[key] = _photo_counts.get(key, 0) + 1
-        return True
 
 
 def _family_allows_ai(group_id: str) -> bool:
@@ -120,15 +102,12 @@ def _is_document_photo(group_id: str, data: bytes) -> bool:
     `PHOTO_JUDGE_LLM` 이 켜져 있고 이 가족이 AI 사용에 동의했으면 글자가 읽힌 사진(문서·애매)만 Claude 에게 묻는다.
     꺼져 있거나 동의하지 않았으면 OCR 판별이 문서일 때만 등록한다(외부로 나가지 않는다).
     판별 자체가 실패한 사진(열 수 없음·OCR 오류)은 외부로 보내지 않고 등록하지 않는다.
-    하루 상한은 Claude 판별과 읽기를 합쳐 센다. 애매하거나 확신이 낮거나 Claude 가 실패하면 등록하지 않는다(사용자가 "문서로 저장")."""
+    하루 상한은 없다(2026-11-09 사용자 결정). 애매하거나 확신이 낮거나 Claude 가 실패하면 등록하지 않는다(사용자가 "문서로 저장")."""
     verdict = photo_judge.judge(data, files.processors.ocr or converters.default_ocr())
     if verdict.failed or verdict.kind == photo_judge.PHOTO:
         return False
     use_claude = settings.photo_judge_llm and _family_allows_ai(group_id)
     if not use_claude and verdict.kind != photo_judge.DOCUMENT:
-        return False
-    if not _take_daily_slot(group_id):
-        logger.info("chat library photo daily limit reached")
         return False
     if not use_claude:
         return True
@@ -143,8 +122,8 @@ def _is_document_photo(group_id: str, data: bytes) -> bool:
 def register_chat_photo(
     group_id: str, user_id: str, attachment_id: str, data: bytes, forced: bool = False
 ) -> None:
-    """채팅 사진 하나를 판별해서 문서 사진이면 문서함에 등록한다(읽기 → 민감하지 않으면 저장). 어떤 실패도 던지지 않는다.
-    forced 는 사용자가 직접 저장을 눌러 판별과 하루 상한을 건너뛰는 경우다."""
+    """채팅 사진 하나를 판별해서 문서 사진이면 문서함에 등록한다(읽기 → 저장, 민감 문서는 민감 표시를 붙여 저장). 어떤 실패도 던지지 않는다.
+    forced 는 사용자가 직접 저장을 눌러 판별을 건너뛰는 경우다."""
     try:
         with SessionLocal() as db:
             if knowledge_repo.get_by_attachment(db, group_id, attachment_id) is not None:

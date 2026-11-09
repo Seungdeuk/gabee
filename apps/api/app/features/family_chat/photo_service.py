@@ -237,7 +237,7 @@ def _check_save_rate(user_id: str) -> None:
 def save_to_library(db: Session, user: User, group_id: str, attachment_id: str) -> str:
     """사진을 가족 공유 문서함에 직접 저장한다(판별·하루 상한을 건너뛴다). "queued" 또는 "already".
     방에 들어갈 수 없거나 없는 사진은 404, 가족 전체방이 아닌(1:1) 방의 사진은 409, 너무 자주 누르면 429.
-    "queued" 는 저장을 시작했다는 뜻이다: 읽어 보니 민감 문서(처방전·신분증 등)이거나 읽지 못하면 문서함에 넣지 않는다."""
+    "queued" 는 저장을 시작했다는 뜻이다: 읽지 못하면 문서함에 넣지 않는다(민감 문서도 넣고 민감 표시를 붙인다)."""
     _check_save_rate(user.id)
     data, _ = photo_for_viewer(db, user, group_id, attachment_id, False)  # 못 보는 사진은 404
     attachment = repo.get_attachment(db, attachment_id)

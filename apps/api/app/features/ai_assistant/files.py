@@ -100,7 +100,7 @@ def process_file(
 
 
 def _drop_chat_upload(group_id: str, photo_id: str, data: bytes) -> None:
-    """등록하지 않기로 한(민감·실패·중복·지워진) 채팅 문서의 처리 기록(photos)과, 읽는 도중 보관한 원본·사본을 지운다.
+    """등록하지 않기로 한(실패·중복·지워진·일반 사진) 채팅 문서의 처리 기록(photos)과, 읽는 도중 보관한 원본·사본을 지운다.
     파일은 내용(sha256)으로 찾아서 결과 객체가 없는 실패·예외에서도 정리된다. 다른 기록이 쓰는 원본은 그대로 둔다."""
     with SessionLocal() as db:
         repo.delete_photo(db, photo_id)
@@ -170,16 +170,19 @@ def _process_once(
             _drop_chat_upload(group_id, photo_id, data)
             return "skipped", False
         if source_attachment_id and _only_a_bank_account(result):
-            # 학교 납부 안내처럼 계좌번호만 이유로 통장류로 잡힌 문서(통장 사본이 아니다)는 등록한다. 계좌번호는 읽을 때 이미 가려진다.
-            # 분류 이름이 처방전·신분증·통장 같은 민감 종류면 아래 검사가 그대로 제외한다.
+            # 학교 납부 안내처럼 계좌번호만 이유로 통장류로 잡힌 문서(통장 사본이 아니다)는 민감 표시를 달지 않는다. 계좌번호는 읽을 때 이미 가려진다.
+            # 처방전·신분증·통장 사본 같은 민감 문서도 가족 전체방에서 올린 것이면 문서함에 등록한다(2026-11-09 사용자 결정): 기록에는 민감 표시가 붙는다.
             fields["sensitivity"] = None
-        if source_attachment_id and knowledge_service.is_sensitive(
-            fields["kind_label"], fields.get("sensitivity"), strict=True
-        ):
-            _drop_chat_upload(
-                group_id, photo_id, data
-            )  # 민감 문서(처방전·신분증·진단서 등)는 자동 등록하지 않는다
-            return "skipped", False
+        chat_sensitive = bool(
+            source_attachment_id
+            and knowledge_service.is_sensitive(
+                fields["kind_label"], fields.get("sensitivity"), strict=True
+            )
+        )
+        if chat_sensitive:
+            fields["sensitivity"] = (
+                "sensitive"  # 이름만 민감한 분류(진단서·외국인등록증·통장 사본 등)도 민감 표시를 붙인다
+            )
         with SessionLocal() as db:
             try:
                 knowledge_service.ingest(
@@ -204,7 +207,10 @@ def _process_once(
                 # 읽는 사이에 채팅 메시지가 지워졌다: 방금 저장한 기록을 되돌린다(지운 메시지의 문서가 문서함에 남지 않게)
                 delete_record(db, group_id, photo_id)
                 return "skipped", False
-        _plan_reminders(photo_id, group_id, user_id)
+        if (
+            not chat_sensitive
+        ):  # 챙길 일 뽑기는 본문을 외부 Claude 로 보내므로, 가족방에서 온 민감 문서는 건너뛴다
+            _plan_reminders(photo_id, group_id, user_id)
         return ("needs_review" if from_ingest.needs_review(result) else "analyzed"), False
     except Exception as e:  # noqa: BLE001  내용이 로그에 남지 않게 종류만 적는다
         logger.error("파일 처리에 실패했어요 id=%s 종류=%s", photo_id, type(e).__name__)

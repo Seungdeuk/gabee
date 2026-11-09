@@ -29,7 +29,7 @@ SENSITIVE_WORDS = (
 )
 
 
-# 채팅 자동 등록에서만 더 제외하는 이름(신분·금융·의료). 기존 업로드의 민감 판단(SENSITIVE_WORDS)은 바꾸지 않는다.
+# 가족방 채팅 문서에서만 민감 표시를 더 붙이는 이름(신분·금융·의료). 기존 업로드의 민감 판단(SENSITIVE_WORDS)은 바꾸지 않는다.
 CHAT_EXTRA_SENSITIVE_WORDS = ("외국인등록", "통장", "진단", "소견", "검사결과")
 
 
@@ -59,7 +59,7 @@ def _sensitivity(kind_label: str, given: str | None) -> str:
 
 
 def is_sensitive(kind_label: str, given: str | None = None, *, strict: bool = False) -> bool:
-    """이 분류(또는 전처리가 준 값)가 민감 기록인지. strict 는 채팅 문서 자동 등록용으로, 신분·금융·의료 이름도 민감으로 본다."""
+    """이 분류(또는 전처리가 준 값)가 민감 기록인지. strict 는 가족방 채팅 문서용으로, 신분·금융·의료 이름도 민감으로 본다(등록은 하되 민감 표시를 붙인다)."""
     if _sensitivity(kind_label, given) == "sensitive":
         return True
     return strict and any(w in kind_label for w in CHAT_EXTRA_SENSITIVE_WORDS)
