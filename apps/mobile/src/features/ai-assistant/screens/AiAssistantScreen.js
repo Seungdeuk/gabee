@@ -16,7 +16,6 @@ import ChatInput from "../components/ChatInput";
 import DescribeCard from "../components/DescribeCard";
 import OriginalViewer from "../components/OriginalViewer";
 import SchedulePromptCard from "../components/SchedulePromptCard";
-import DoubtCard from "../components/DoubtCard";
 import ScheduleConfirmCard from "../components/ScheduleConfirmCard";
 import DraftCard from "../components/DraftCard";
 import PromptChips from "../components/PromptChips";
@@ -38,7 +37,7 @@ import mascot from "../../../../assets/images/gabee-mascot.png";
  * emptyAction 은 빈 화면 인사말 아래에 붙는 요소, bell 은 상단 맨 오른쪽 알림 종이다(둘 다 라우트에서 조립한다).
  */
 export default function AiAssistantScreen({ bell, emptyAction }) {
-  const { messages, phase, readingSince, confirmDoubts, markAiEnabled, resolveConfirm, saveDescription, skipDescription, acceptSchedulePrompt, skipSchedulePrompt, send, sendPhoto, startListening, stopListening, editDraft, addAssistantMessages, reset, load } = useChat();
+  const { messages, phase, readingSince, markAiEnabled, resolveConfirm, saveDescription, skipDescription, acceptSchedulePrompt, skipSchedulePrompt, send, sendPhoto, startListening, stopListening, editDraft, addAssistantMessages, reset, load } = useChat();
   const voice = useVoiceInput({ onEnd: stopListening });
   const toggleMic = async () => {
     if (phase === "listening") {
@@ -107,16 +106,6 @@ export default function AiAssistantScreen({ bell, emptyAction }) {
         {(item.confirmCards ?? []).map((card, i) => (
           <ScheduleConfirmCard key={`confirm-${i}`} card={card} onResolve={(status, text) => resolveConfirm(item.id, i, status, text)} />
         ))}
-        {item.doubts ? (
-          <DoubtCard
-            lines={item.doubts.lines}
-            done={item.doubts.done}
-            onSubmit={async (edits) => {
-              await confirmDoubts(item.id, edits);
-              refreshReview();
-            }}
-          />
-        ) : null}
         {item.describe ? (
           <DescribeCard
             mode={item.describe.status === "pending" ? "edit" : item.describe.status}
@@ -147,7 +136,7 @@ export default function AiAssistantScreen({ bell, emptyAction }) {
             style={styles.reviewBtn}
           >
             <Ionicons name="create-outline" size={16} color={colors.text} />
-            <Text style={styles.reviewBtnText}>지금 확인하기</Text>
+            <Text style={styles.reviewBtnText}>기록에서 확인하기</Text>
           </Pressable>
         ) : null}
       </View>

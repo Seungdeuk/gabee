@@ -4,6 +4,18 @@ const DOUBT = "[불확실]";
 const UNREAD_PART = "[읽지 못한 부분]";
 
 /**
+ * 한 줄을 일반 글과 못 읽은 자리로 나눈다(화면에서 못 읽은 자리만 눈에 띄게 보여 준다).
+ * @param {string} line 읽어 낸 글 한 줄
+ * @returns {{ text: string, unreadable: boolean }[]} 순서대로 나눈 조각. 빈 조각은 없다
+ */
+export function unreadableParts(line) {
+  return String(line ?? "")
+    .split(UNREADABLE)
+    .flatMap((text, i) => (i === 0 ? [{ text, unreadable: false }] : [{ text: "못 읽음", unreadable: true }, { text, unreadable: false }]))
+    .filter((p) => p.text);
+}
+
+/**
  * 글자의 받침 유무에 맞는 조사(이/가)를 고른다. 한글이 아니면 "가".
  * @param {string} word 조사가 붙을 낱말
  * @returns {string} "이" 또는 "가"

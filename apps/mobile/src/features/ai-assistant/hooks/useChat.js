@@ -1,9 +1,8 @@
 import { useCallback, useRef, useState } from "react";
 
-import { getFileStatus, getRecord, sendMessage, submitDescription, updateRecord, uploadFile } from "../api";
+import { getFileStatus, getRecord, sendMessage, submitDescription, uploadFile } from "../api";
 import { formatSeconds } from "../components/ReadingStatus";
 import { AI_ON_DONE, errorMessage, historyForServer } from "../errors";
-import { reviewGuide } from "../reviewGuide";
 import { schedulePromptFor, schedulePromptSentence } from "../uploadSchedule";
 
 const POLL_INTERVAL_MS = 2000;
@@ -14,7 +13,7 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
  * 채팅 상태와 동작을 관리한다.
  *
  * phase: idle(대기) | listening(음성 입력 중) | thinking(가비가 답을 만드는 중) | reading(올린 파일을 읽는 중)
- * 메시지: { id, role: "user" | "assistant", text, voice?, imageUri?, sources?, webSources?, draft?, draftText?, doubts?, describe? }
+ * 메시지: { id, role: "user" | "assistant", text, voice?, imageUri?, sources?, webSources?, draft?, draftText?, reviewId?, describe? }
  * describe: 글자 없는 사진의 설명 카드 { recordId, status: "pending" | "done" | "skipped" }. 메시지에 들어 있어서 대화와 함께 저장된다.
  * 읽는 중 표시는 메시지가 아니라 phase 로만 보여 줘서 서버로 보내는 대화 이력에 섞이지 않는다.
  *
@@ -22,7 +21,6 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
  *   messages: object[],
  *   phase: "idle" | "listening" | "thinking" | "reading",
  *   readingSince: number | null,
- *   confirmDoubts: (messageId: string, edits: string[]) => Promise<void>,   // 흐린 줄 확인 카드의 결과 반영
  *   saveDescription: (messageId: string, text: string) => Promise<void>,   // 설명 카드 저장(실패하면 던진다. 카드가 오류를 보여 준다)
  *   skipDescription: (messageId: string) => void,   // 설명 카드 "나중에 할게요"
  *   acceptSchedulePrompt: (messageId: string) => void,   // 업로드 직후 "일정에 넣을까요?" 카드의 "일정에 넣기"(채팅으로 요청을 보낸다)
@@ -122,31 +120,25 @@ export default function useChat() {
         const detail = [result.kind_label && `분류: ${result.kind_label}`, result.title && `제목: ${result.title}`, result.description]
           .filter(Boolean)
           .join("\n");
-        const head = result.status === "needs_review" ? "저장했지만 내용을 한 번 확인해 주세요." : "저장했어요.";
-        const review = result.status === "needs_review";
-        const doubts = result.doubts ?? [];
+        // 못 읽었거나 자신 없는 글자는 어디인지 짚어 줄 수 없으니 카드로 묻지 않고, 기록에서 원본과 비교하도록 안내한다
+        const review = result.status === "needs_review" || (result.doubts ?? []).length > 0;
+        const head = review ? "저장했어요. 읽지 못한 부분이 있을 수 있어요." : "저장했어요.";
         // 같은 파일에 설명 카드가 이미 있으면 또 만들지 않는다
         const needsDescription =
           result.needs_description === true && !messagesRef.current.some((m) => m.describe?.recordId === fileId);
-        let guide = []; // 확인 필요일 때 어느 부분을 고칠지(기록을 못 읽으면 비어 일반 안내로 대신한다)
         let prompt = null; // 분석된 날짜가 오늘 이후면 "일정에 넣을까요?"를 묻는다(AI 호출 없음, 기록 한 건 읽기)
         try {
           const saved = await getRecord(fileId);
           prompt = schedulePromptFor(saved);
-          if (review) guide = reviewGuide(saved);
         } catch {
           prompt = null; // 못 읽어도 업로드 결과 안내에는 영향이 없다
         }
         say(
-          `${guide.length > 0 ? "저장했지만 확인할 부분이 있어요." : head}${detail ? `\n${detail}` : ""}\n${
-            guide.length > 0
-              ? guide.map((g) => `- ${g.field}: ${g.text}`).join("\n")
-              : review
-                ? "원본과 비교해서 맞는지 확인해 주세요."
-                : "이어서 궁금한 걸 물어보세요."
+          `${head}${detail ? `\n${detail}` : ""}\n${
+            review ? "기록에서 원본을 보고 고쳐 주세요." : "이어서 궁금한 걸 물어보세요."
           }\n(걸린 시간 ${took()})`,
           {
-            ...(doubts.length > 0 ? { doubts: { recordId: fileId, lines: doubts, done: false } } : review ? { reviewId: fileId } : {}),
+            ...(review ? { reviewId: fileId } : {}),
             ...(needsDescription ? { describe: { recordId: fileId, status: "pending" } } : {}),
             ...(prompt ? { schedulePrompt: { recordId: fileId, ...prompt, status: "pending" } } : {}),
           },
@@ -159,34 +151,6 @@ export default function useChat() {
         setPhase("idle");
         setReadingSince(null);
       }
-    }
-  }, []);
-
-  /**
-   * 채팅 카드에서 흐린 줄을 확인한 결과를 기록에 반영한다. 고친 줄이 없으면 확인만 한다.
-   * @param {string} messageId 카드가 붙은 메시지
-   * @param {string[]} edits 줄마다 사용자가 확인한(고친) 글
-   */
-  const confirmDoubts = useCallback(async (messageId, edits) => {
-    const card = messagesRef.current.find((m) => m.id === messageId)?.doubts;
-    if (!card) return;
-    try {
-      const changed = card.lines.some((line, i) => edits[i] !== line);
-      if (changed) {
-        let body = (await getRecord(card.recordId)).body_md;
-        card.lines.forEach((line, i) => {
-          if (edits[i] !== line) body = body.replace(`${line} [불확실]`, edits[i]);
-        });
-        await updateRecord(card.recordId, { body_md: body });
-      } else {
-        await updateRecord(card.recordId, {});
-      }
-      setMessages((prev) => prev.map((m) => (m.id === messageId ? { ...m, doubts: { ...card, done: true } } : m)));
-    } catch (e) {
-      setMessages((prev) => [
-        ...prev,
-        { id: id(), role: "assistant", text: e?.message || "저장하지 못했어요. 잠시 후 다시 시도해 주세요.", sources: [] },
-      ]);
     }
   }, []);
 
@@ -248,5 +212,5 @@ export default function useChat() {
     setPhase("idle");
   }, []);
 
-  return { messages, phase, readingSince, confirmDoubts, markAiEnabled, resolveConfirm, saveDescription, skipDescription, acceptSchedulePrompt, skipSchedulePrompt, send, sendPhoto, startListening, stopListening, editDraft, addAssistantMessages, reset, load };
+  return { messages, phase, readingSince, markAiEnabled, resolveConfirm, saveDescription, skipDescription, acceptSchedulePrompt, skipSchedulePrompt, send, sendPhoto, startListening, stopListening, editDraft, addAssistantMessages, reset, load };
 }
