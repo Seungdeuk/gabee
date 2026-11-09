@@ -1,6 +1,7 @@
 """혼자인 소유자가 가족을 나갈 때 데이터 삭제의 범위·잠금(Opus 리뷰 반영): 다른 가족 데이터를 건드리지 않고, 빠지는 것 없이 지운다."""
 
-from sqlalchemy import select
+import pytest
+from sqlalchemy import event, select
 
 import app.main  # noqa: F401  모든 모델을 불러온다
 from app.shared.config import settings
@@ -133,10 +134,6 @@ def test_the_group_row_is_locked_before_members_are_counted(client, monkeypatch)
     assert calls[:2] == ["lock", "count"]
 
 
-import pytest
-from sqlalchemy import event
-
-
 @pytest.fixture
 def enforce_foreign_keys():
     """SQLite 는 기본으로 외래 키를 검사하지 않아 삭제 순서 오류를 숨긴다. 이 시험 동안만 검사를 켠다(PostgreSQL 과 같게)."""
@@ -181,3 +178,31 @@ def test_leaving_with_chat_data_passes_foreign_key_checks(
         from app.features.family_group.models import Group
 
         assert db.get(Group, group["id"]) is None
+
+
+def test_a_document_still_being_read_when_the_family_is_deleted_leaves_nothing(
+    client, tmp_path, monkeypatch
+):
+    """문서를 읽는 중에 가족이 지워지면, 읽기가 끝난 뒤 지워진 가족의 기록·사진 줄·원본이 새로 남지 않는다."""
+    from app.features.ai_assistant import files, service
+    from app.features.ai_assistant.knowledge.models import KnowledgeItem
+    from app.features.ai_assistant.models import Photo
+
+    monkeypatch.setattr(settings, "data_dir", str(tmp_path))
+    monkeypatch.setattr(settings, "raw_dir", "")
+    owner, owner_id, group = _solo(client)
+    gid = group["id"]
+    lines = [f"{i}월 가족 모임 안내 장소 우리 집 준비물 음식" for i in range(1, 9)]
+    data = "\n".join(lines).encode()
+    with SessionLocal() as db:
+        photo = service.receive_file(db, gid, owner_id, "notice.txt", "text/plain", data)
+        photo_id = photo.id
+    assert (
+        client.post(LEAVE, headers=owner).status_code == 204
+    )  # 읽기가 끝나기 전에 가족이 지워진다
+    files.process_file(photo_id, gid, owner_id, data, "notice.txt")
+    with SessionLocal() as db:
+        assert db.scalar(select(KnowledgeItem.id).where(KnowledgeItem.group_id == gid)) is None
+        assert db.scalar(select(Photo.id).where(Photo.group_id == gid)) is None
+    leftover = [f for f in (tmp_path / "raw" / gid).rglob("*") if f.is_file()]
+    assert leftover == []  # 빈 폴더는 남아도 파일은 하나도 남지 않는다

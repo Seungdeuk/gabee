@@ -17,7 +17,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.features.family_group.models import GroupMember
+from app.features.family_group.models import Group, GroupMember
 from app.shared import chat_library
 from app.shared.config import settings
 from app.shared.db import SessionLocal
@@ -215,6 +215,10 @@ def _process_once(
             except IntegrityError:  # 같은 채팅 첨부를 다른 요청이 먼저 등록했다
                 db.rollback()
                 _drop_chat_upload(group_id, photo_id, data)
+                return "skipped", False
+            if db.get(Group, group_id) is None:
+                # 읽는 사이에 가족이 지워졌다(혼자인 소유자가 나감): 방금 저장한 기록과 원본이 주인 없이 남지 않게 되돌린다
+                delete_record(db, group_id, photo_id)
                 return "skipped", False
             if source_attachment_id and not chat_library.attachment_exists(
                 db, group_id, source_attachment_id
