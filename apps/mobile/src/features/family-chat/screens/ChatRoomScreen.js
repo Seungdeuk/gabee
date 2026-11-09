@@ -98,6 +98,7 @@ export default function ChatRoomScreen() {
   const params = useLocalSearchParams();
   const roomId = typeof params.roomId === "string" && params.roomId ? params.roomId : null;
   const peerId = typeof params.peer === "string" ? params.peer : null;
+  const peerLeft = params.peerLeft === "1"; // 상대가 방을 나갔다: 지난 대화는 읽을 수 있고 새 메시지는 보낼 수 없다
   const direct = roomId != null;
   const initialFocus = parseFocusParam(params.focus);
   const info = useRoomInfo();
@@ -693,20 +694,26 @@ export default function ChatRoomScreen() {
           </Pressable>
         ) : null}
         </View>
-        <Composer
-          value={draft}
-          onChangeText={setDraft}
-          onSend={onSend}
-          onPickPhoto={onPickPhoto}
-          onPickFile={onPickFile}
-          fileBusy={pickingFileUi || chat.fileBusy}
-          photoBusy={pickingUi || chat.photoBusy}
-          photoError={chat.photoError}
-          onDismissPhotoError={() => chat.setPhotoError("")}
-          replyTo={replyTo}
-          onCancelReply={() => setReplyTo(null)}
-          direct={direct}
-        />
+        {peerLeft ? (
+          <View style={styles.leftNotice} accessibilityRole="alert">
+            <Text style={styles.leftNoticeText}>상대방이 나가서 메시지를 보낼 수 없어요</Text>
+          </View>
+        ) : (
+          <Composer
+            value={draft}
+            onChangeText={setDraft}
+            onSend={onSend}
+            onPickPhoto={onPickPhoto}
+            onPickFile={onPickFile}
+            fileBusy={pickingFileUi || chat.fileBusy}
+            photoBusy={pickingUi || chat.photoBusy}
+            photoError={chat.photoError}
+            onDismissPhotoError={() => chat.setPhotoError("")}
+            replyTo={replyTo}
+            onCancelReply={() => setReplyTo(null)}
+            direct={direct}
+          />
+        )}
       </>
     );
   }
@@ -730,6 +737,8 @@ export default function ChatRoomScreen() {
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.background },
   flex: { flex: 1 },
+  leftNotice: { padding: spacing.lg, alignItems: "center", backgroundColor: colors.surface },
+  leftNoticeText: { ...font.caption, color: colors.textSub },
   bar: {
     flexDirection: "row",
     alignItems: "center",

@@ -162,6 +162,7 @@ def send_photo(
 ) -> MessageOut:
     """사진 메시지를 보낸다. 방에 들어갈 수 없으면 404(존재 여부를 숨김). batch_id 는 같은 번호끼리 한 묶음으로 보이게 저장한다."""
     room = service.resolve_room(db, user, group_id, room_id)
+    service.ensure_can_send(room)
     _check_rate(user.id)
     if not _slots.acquire(blocking=False):  # 대기하지 않고 바로 거절(메모리 보호)
         raise ApiError(

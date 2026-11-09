@@ -134,7 +134,9 @@ export function buildRoomRows(rooms, group, preview, timeLabel) {
     if (room.kind === "direct") {
       const peer = byId[room.peer_user_id];
       const name = peer ? memberName(peer) : "나간 가족";
-      return { ...base, name, peerId: room.peer_user_id ?? undefined, photoUrl: peer?.photo_url ?? null, a11yTitle: mutedTitle(`${name}님과 1:1 대화`, base.muted) };
+      const peerLeft = room.peer_left === true; // 상대가 방을 나갔다: 읽기 전용(구 서버는 필드가 없다 → false)
+      const title = mutedTitle(`${name}님과 1:1 대화`, base.muted);
+      return { ...base, last: peerLeft ? "상대방이 나갔어요" : base.last, peerLeft, name, peerId: room.peer_user_id ?? undefined, photoUrl: peer?.photo_url ?? null, a11yTitle: peerLeft ? `${title}, 상대방이 나갔어요` : title };
     }
     return { ...base, name: group?.name ?? "가족 채팅", count: members.length, tone: "blue", photoUrl: null, a11yTitle: mutedTitle("가족 채팅방", base.muted) };
   });

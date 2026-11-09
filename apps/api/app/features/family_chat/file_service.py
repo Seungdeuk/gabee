@@ -227,6 +227,7 @@ def send_file(
 ) -> MessageOut:
     """문서 메시지를 보낸다. 방에 들어갈 수 없으면 404(존재 여부를 숨김)."""
     room = service.resolve_room(db, user, group_id, room_id)
+    service.ensure_can_send(room)
     clean, ext = clean_filename(filename)
     _check_rate(user.id)
     if not _slots.acquire(blocking=False):  # 대기하지 않고 바로 거절(메모리 보호)

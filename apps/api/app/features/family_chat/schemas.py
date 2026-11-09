@@ -106,6 +106,7 @@ class RoomOut(BaseModel):
     last_message: MessageOut | None
     unread: int
     muted: bool = False  # 내가 이 방의 알림을 껐는지(기본 켜짐)
+    peer_left: bool = False  # 1:1 방에서 상대가 방을 나가 읽기만 할 수 있음(peer_user_id 는 나간 사람, 새 메시지는 409 peer_left_room)
 
 
 class MuteSet(BaseModel):
