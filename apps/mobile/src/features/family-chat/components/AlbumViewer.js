@@ -17,6 +17,8 @@ import { RECORD_BUTTON_LABEL } from "../saveToRecord";
  */
 export default function AlbumViewer({ photos, startIndex = 0, visible, onClose, onSaveToDevice, saving = false, notice = "", onSaveToRecord, recordOf, onMenu }) {
   const { width } = useWindowDimensions();
+  // 사진 칸의 높이는 목록이 잰 높이로 정한다: 칸에 높이가 없으면 웹에서 사진 영역이 0 으로 접혀 사진이 보이지 않는다
+  const [listHeight, setListHeight] = useState(0);
   const [page, setPage] = useState({ start: startIndex, index: startIndex });
   // 열 때마다(startIndex 가 바뀔 때) 그 사진부터 시작한다. 효과 대신 렌더 중에 맞춰 첫 프레임에 이전 번호가 보이지 않게 한다
   if (page.start !== startIndex) setPage({ start: startIndex, index: startIndex });
@@ -25,9 +27,12 @@ export default function AlbumViewer({ photos, startIndex = 0, visible, onClose, 
   const current = photos[index];
   const record = current && recordOf ? recordOf(current.id) : { saving: false, done: false, notice: "" };
 
+  // 네이티브는 넘김이 끝날 때(onMomentumScrollEnd), 웹은 스크롤하는 동안(onScroll) 몇 번째 사진인지 갱신한다(웹은 momentum 이벤트가 없다).
+  // 번호가 그대로면 다시 그리지 않는다.
   const onScrollEnd = (e) => {
     const next = Math.round(e.nativeEvent.contentOffset.x / Math.max(1, width));
-    setPage((prev) => ({ ...prev, index: Math.min(last, Math.max(0, next)) }));
+    const index = Math.min(last, Math.max(0, next));
+    setPage((prev) => (prev.index === index ? prev : { ...prev, index }));
   };
 
   return (
@@ -39,16 +44,22 @@ export default function AlbumViewer({ photos, startIndex = 0, visible, onClose, 
           {onMenu ? <IconButton name="ellipsis-horizontal" label="이 사진의 메뉴" onPress={() => onMenu(index)} color={colors.onDark} /> : <View style={styles.spacer} />}
         </View>
         <FlatList
+          style={styles.list}
+          onLayout={(e) => setListHeight(e.nativeEvent.layout.height)}
           data={photos}
           horizontal
           pagingEnabled
+          // 안드로이드는 기본으로 화면 밖 칸을 떼어 내는데, 다시 넘기면 사진이 그려지지 않고 바탕만 보이는 경우가 있다(앨범은 사진 몇 장뿐이라 떼어 낼 필요가 없다)
+          removeClippedSubviews={false}
           showsHorizontalScrollIndicator={false}
           keyExtractor={(p) => p.id}
           initialScrollIndex={Math.min(startIndex, last)}
           getItemLayout={(_, i) => ({ length: width, offset: width * i, index: i })}
           onMomentumScrollEnd={onScrollEnd}
+          onScroll={onScrollEnd}
+          scrollEventThrottle={32}
           renderItem={({ item }) => (
-            <View style={{ width }}>
+            <View style={{ width, height: listHeight > 0 ? listHeight : undefined }}>
               <AuthImage path={item.url} contentFit="contain" style={styles.image} accessibilityLabel="사진" />
             </View>
           )}
@@ -105,6 +116,7 @@ const styles = StyleSheet.create({
   bar: { flexDirection: "row", alignItems: "center", paddingHorizontal: spacing.sm },
   count: { ...font.body, flex: 1, textAlign: "center", color: colors.onDark },
   spacer: { width: 44 },
+  list: { flex: 1 },
   image: { flex: 1, width: "100%" },
   footer: { alignItems: "center", gap: spacing.xs, paddingVertical: spacing.md },
   buttons: { flexDirection: "row", flexWrap: "wrap", justifyContent: "center", gap: spacing.sm },

@@ -585,6 +585,11 @@
 - DB: `knowledge_items.source_attachment_id` 추가(Alembic, `docs/contracts/db.md`).
 - 시험: `ai_assistant/tests/test_chat_library.py`(14개), 앱 `tests/librarynotice.test.js`.
 
+## 앨범 뷰어 사진이 비어 보이던 문제 (2026-11-09)
+- 묶음 사진을 크게 열어 옆으로 넘기면 2번째부터 사진 칸이 바탕색만 보이던 문제(BlueStacks)와, 웹에서 처음부터 사진이 안 보이던 문제를 `AlbumViewer` 에서 고쳤다: 안드로이드가 화면 밖 칸을 떼어 내지 않게 하고(`removeClippedSubviews={false}`), 칸 높이를 목록이 잰 높이로 정했다(웹에서 높이가 0 으로 접히지 않게). 서버는 사진을 정상으로 보냈다(로그 200).
+- 확인: 시험은 구성(소스)만 검사한다. 실제 화면은 BlueStacks·웹에서 묶음 사진을 넘겨 보며 확인해야 한다(이 수정을 화면에서 직접 확인하지는 못했다). 시험: `tests/albumviewerlayout.test.js`.
+- 리뷰 반영: 웹에서는 넘겨도 "1 / N" 이 바뀌지 않아 저장·메뉴가 첫 사진에 적용되던 기존 결함도 고쳤다(react-native-web 은 `onMomentumScrollEnd` 를 내보내지 않아 `onScroll` 로도 번호를 갱신한다). 잰 높이가 0 인 첫 프레임에는 높이를 지정하지 않는다. 사진이 계속 비면 다음 후보는 `AuthImage` 가 한 번 실패한 칸을 다시 받지 않는 점이다(뷰어를 다시 열어야 한다).
+
 ## 묶음 사진의 안 읽은 수 (2026-11-09)
 - 같은 묶음(`batch_id`)으로 올린 사진은 안 읽은 수에서 **1건**으로 센다(`repository._unread_unit`: 묶음 번호가 있으면 그 번호, 없으면 메시지 id). 채팅 화면이 묶음을 한 덩어리로 보여 주는데 방 목록 숫자가 5장이면 5로 보이던 문제를 고쳤다. 가족 전체방·1:1 방·전체 안 읽은 수(`GET /family-chat/unread`)가 모두 같다.
 - 시험: `family_chat/tests/test_photo_batch_unread.py`.
