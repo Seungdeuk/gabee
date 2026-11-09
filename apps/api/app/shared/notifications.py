@@ -18,13 +18,12 @@ from app.shared.push import queue_push
 logger = logging.getLogger(__name__)
 
 # 알림 분류. 소통(가족 채팅) 메시지 알림은 알림함에 담지 않는다.
+# 돌봄(care)·기록(ai_record)은 2026-11-09 에 없앴다. 옛 행은 DB 에 남아 있지만 조회에서 가린다.
 # support(고객센터 답변)는 사용자 개인에게 가는 알림이라 group_id 가 없다.
 KINDS = (
     "schedule",
     "billing",
-    "care",
     "family_group",
-    "ai_record",
     "support",
 )
 # 푸시 설정에서 끌 수 있는 분류: 알림함 분류 + 소통(chat). 소통은 알림함에 남기지 않고 푸시만 보낸다(push_only)

@@ -80,7 +80,7 @@ export function permissionNotice(state, enabled) {
 const QUIET_PRESET = { quiet_start: "22:00", quiet_end: "07:00" };
 
 /**
- * 방해금지(밤 10시~아침 7시)가 켜져 있는지. 서버는 "22:00:00" 처럼 초까지 돌려준다.
+ * 방해금지가 켜져 있는지(시작·끝이 둘 다 있을 때). 서버는 "22:00:00" 처럼 초까지 돌려준다.
  * @param {{ quiet_start?: string | null, quiet_end?: string | null }} settings
  * @returns {boolean}
  */
@@ -89,14 +89,115 @@ export function isQuietOn(settings) {
 }
 
 /**
- * 방해금지를 켜거나 끈 새 설정을 만든다(입력은 바꾸지 않는다). 시간은 밤 10시~아침 7시로 정해 둔다.
+ * "22:00" 또는 "22:00:00" 을 시·분으로 읽는다.
+ * @param {unknown} value
+ * @returns {{ hour: number, minute: number } | null} 읽을 수 없으면 null
+ */
+export function parseTime(value) {
+  const match = typeof value === "string" ? /^(\d{1,2}):(\d{2})(?::\d{2}(?:\.\d+)?)?$/.exec(value) : null;
+  if (!match) return null;
+  const hour = Number(match[1]);
+  const minute = Number(match[2]);
+  return hour <= 23 && minute <= 59 ? { hour, minute } : null;
+}
+
+/**
+ * 시·분을 서버로 보내는 "HH:MM" 으로 만든다.
+ * @param {{ hour: number, minute: number }} time
+ * @returns {string}
+ */
+export function toClockString({ hour, minute }) {
+  return `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
+}
+
+const two = (n) => String(n).padStart(2, "0");
+
+/** 방해금지 시 휠 목록: 00~23. */
+export const QUIET_HOUR_OPTIONS = Array.from({ length: 24 }, (_, i) => ({ value: i, label: two(i) }));
+
+/** 방해금지 분 휠 목록: 00~59(1분 단위). */
+export const QUIET_MINUTE_OPTIONS = Array.from({ length: 60 }, (_, i) => ({ value: i, label: two(i) }));
+
+/**
+ * 직접 입력한 글자를 시(0~23) 또는 분(0~59) 값으로 읽는다. 한 자리("7")도 받고, 비었거나 숫자가 아니거나 범위 밖이면 null.
+ * @param {unknown} text 입력한 글자
+ * @param {"hour" | "minute"} part
+ * @returns {number | null}
+ */
+export function parseQuietInput(text, part) {
+  if (typeof text !== "string" || !/^\d{1,2}$/.test(text.trim())) return null;
+  const value = Number(text.trim());
+  return value <= (part === "hour" ? 23 : 59) ? value : null;
+}
+
+/**
+ * 방해금지를 켜거나 끈 새 설정을 만든다(입력은 바꾸지 않는다). 처음 켜면 밤 10시~아침 7시, 이미 켜져 있으면 정해 둔 시간을 "HH:MM" 으로 유지한다.
  * @template {{ quiet_start?: string | null, quiet_end?: string | null }} T
  * @param {T} settings
  * @param {boolean} on
  * @returns {T}
  */
 export function withQuiet(settings, on) {
-  return { ...settings, ...(on ? QUIET_PRESET : { quiet_start: null, quiet_end: null }) };
+  if (!on) return { ...settings, quiet_start: null, quiet_end: null };
+  const start = parseTime(settings?.quiet_start);
+  const end = parseTime(settings?.quiet_end);
+  if (start && end && toClockString(start) !== toClockString(end)) {
+    return { ...settings, quiet_start: toClockString(start), quiet_end: toClockString(end) };
+  }
+  return { ...settings, ...QUIET_PRESET };
+}
+
+/** 시(0~23)·분(0~59) 선택값을 적용한 새 시각을 만든다. 값이 정수가 아니거나 범위 밖이거나 읽을 수 없으면 null. */
+function applyPart(settings, field, part, value) {
+  const current = parseTime(settings?.[field]);
+  const other = parseTime(settings?.[field === "quiet_start" ? "quiet_end" : "quiet_start"]);
+  if (!current || !other || !Number.isInteger(value)) return null;
+  if (part === "hour" && value >= 0 && value <= 23) return { next: { hour: value, minute: current.minute }, other };
+  if (part === "minute" && value >= 0 && value <= 59) return { next: { hour: current.hour, minute: value }, other };
+  return null;
+}
+
+/**
+ * 이 선택으로 시작과 끝이 같아지는지(같으면 서버에서 방해금지가 걸리지 않아 저장하지 않는다).
+ * @param {{ quiet_start?: string | null, quiet_end?: string | null }} settings
+ * @param {"quiet_start" | "quiet_end"} field
+ * @param {"hour" | "minute"} part
+ * @param {number} value 시 0~23, 분 0~59
+ * @returns {boolean}
+ */
+export function isQuietClash(settings, field, part, value) {
+  const applied = applyPart(settings, field, part, value);
+  return Boolean(applied) && toClockString(applied.next) === toClockString(applied.other);
+}
+
+/**
+ * 시작 또는 끝 시각의 시·분 하나를 고른 새 설정을 만든다(입력은 바꾸지 않는다). 저장 형식은 24시간 "HH:MM" 이다.
+ * 값이 맞지 않거나(시 0~23, 분 0~59 정수) 시작과 끝이 같아지거나 방해금지가 꺼져 있으면 받은 설정을 그대로 돌려준다.
+ * @template {{ quiet_start?: string | null, quiet_end?: string | null }} T
+ * @param {T} settings
+ * @param {"quiet_start" | "quiet_end"} field 바꿀 쪽
+ * @param {"hour" | "minute"} part
+ * @param {number} value 시 0~23, 분 0~59
+ * @returns {T}
+ */
+export function setQuietPart(settings, field, part, value) {
+  const applied = applyPart(settings, field, part, value);
+  if (!applied || toClockString(applied.next) === toClockString(applied.other)) return settings;
+  const other = field === "quiet_start" ? "quiet_end" : "quiet_start";
+  return { ...settings, [field]: toClockString(applied.next), [other]: toClockString(applied.other) }; // 둘 다 "HH:MM" 으로 보낸다
+}
+
+/**
+ * 방해금지 안내 문구("22:00 ~ 다음 날 07:00에는 …"). 끝이 시작보다 이르거나 같으면 다음 날 끝나는 것이다.
+ * @param {{ quiet_start?: string | null, quiet_end?: string | null }} settings
+ * @returns {string} 시간을 읽을 수 없으면 빈 문자열
+ */
+export function formatQuietSummary(settings) {
+  const start = parseTime(settings?.quiet_start);
+  const end = parseTime(settings?.quiet_end);
+  if (!start || !end) return "";
+  const nextDay = toClockString(end) <= toClockString(start);
+  return `${toClockString(start)} ~ ${nextDay ? "다음 날 " : ""}${toClockString(end)}에는 푸시를 보내지 않아요`;
 }
 
 /**

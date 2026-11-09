@@ -155,10 +155,13 @@ with new_session(ASSISTANT, members=[("김민수", "민수"), "이영희"]) as s
 
 **이번 PR 에서는 아래를 하지 않았다.** 담당 팀과 협의한 뒤 별도 PR 로 한다.
 
-> **2026-11-02 현황 (메인 AI 채팅)**: 1(질문·앞 대화)·2(도구 결과, 모델이 쓴 인자의 복원과 쓰기 도구 거부)·3(응답 복원)·4(캐시·로그 규칙 유지)·6(시험)은
-> `ai_assistant/knowledge/rag_privacy.py`·`rag_graph.py` 로 **메인 채팅에 구현됐다**(ADR 0013, 시험 `tests/test_rag_privacy_unit.py`·`test_main_chat_privacy.py`).
-> **아직 안 된 것**: 탭 에이전트(`billing`·`care`·`family_chat`)가 자기 모델을 부르는 경로의 가명화(2의 `agent.py` 지점)와 5(`agent_guard` 규칙 위반 정리)다.
-> 메인이 탭 에이전트에 넘기는 질문은 이름표를 되돌린 실제 글이라 그 에이전트들의 규칙 가리기가 막지 못하는 이름은 나간다.
+> **2026-11-04 현황 (메인 AI 채팅)**: 2026-11-02 에 메인 채팅에 연결했던 가명화(`rag_privacy.py`, ADR 0013)는 **걷어냈다**(`rag_privacy.py` 와 시험은 삭제됨, ADR 0014).
+> 메인 채팅은 질문·앞 대화·도구 결과를 가리지 않고 모델로 보낸다(채팅은 서버 DB 에 저장되지 않고 외부 전송은 공지로 처리). 메인 채팅의 도구 반복 그래프
+> (현재 `shared/llm/tool_graph.py`)에도 가리기·되돌리기 노드는 없다. 아래 1~4·6은 **메인 채팅에는 적용되지 않고**, 탭 에이전트(`billing`·`family_chat`)가
+> 자기 모델을 부르는 경로에 가명화를 붙일 때의 가이드로 남긴다(`family_chat` 에이전트는 이미 요청당 세션으로 가명화·복원한다). 돌봄 에이전트(`care/agent.py`)는
+> 없어져 대상이 아니다(다시 붙일 때 새로 만든다). 아직 안 된 것은 정산 에이전트의 가명화(2의 `agent.py` 지점)와 5(`agent_guard` 규칙 위반 정리)다.
+> 메인이 탭 에이전트에 넘기는 질문은 방 대화 문맥이 있으면 이름 토큰이 풀리지 않은 채로 간다: `rag_chat._handle_calls` 가 일정 에이전트(자체 가명화가 있다)에게만 원래 이름으로 되돌려 넘기고,
+> 정산·가족채팅 에이전트에는 토큰을 그대로 둔다. 방 대화 문맥이 없으면 질문은 가리지 않은 실제 글이라 그 에이전트들의 규칙 가리기가 막지 못하는 이름은 나간다.
 
 1. **`rag_chat.ask` 의 `build_messages(question, history)` 호출 지점**(`ai_assistant/knowledge/rag_chat.py`, 함수는 `shared/llm/agent.py` 와 공용): 질문과 앞 대화를 만들기 전에 요청당 세션을 만들고(`new_session(ASSISTANT, members=가족 구성원 이름·표시 이름)`), 질문과 각 `turn["text"]` 를 `sess.prepare_text` 로 바꾼다. 같은 세션을 도구 결과와 공유한다. 세션은 `try/finally` 또는 `with` 로 닫는다.
 2. **탭 에이전트 도구 결과**(`shared/llm/agent.py` 의 `_result_text`, `json.dumps(data, default=str)` 지점): dumps 하기 전에 `sess.prepare_json(data, keys_to_drop=..., pseudonymize_keys=필요 시)` 를 거친다. 돌봄은 좌표(`lat`/`lng`)가 기본 일반화 대상이다. 정산은 지출 제목·구성원 이름이 문자열 값이므로 가려지고, 금액은 `numbers` 로 선택한다. `MAX_TOOL_RESULT_CHARS` 자르기는 **가명화 뒤 길이 기준**으로 한다. 도구 호출 **입력**(모델이 만든 인자)은 **조회용**이면 서버가 실행 전에 `restore_json` 으로 이름·주소 토큰을 되돌려 쓰고, **쓰기 도구**(일정·지출·돌봄 기록 저장 등)는 복원한 뒤에도 `contains_placeholders(args)` 가 True 이면(`(연락처)` 같은 일반화 문구, `[RRN]` 같은 고정 토큰, 안 풀린 `[PERSON_3]`) **그 호출을 거부**하고 모델에 다시 묻거나 사용자에게 알린다. 그대로 저장하면 자리표시가 DB 에 들어간다.

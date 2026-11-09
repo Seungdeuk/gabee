@@ -3,6 +3,7 @@ import { useCallback, useRef, useState } from "react";
 import { getFileStatus, getRecord, sendMessage, submitDescription, updateRecord, uploadFile } from "../api";
 import { formatSeconds } from "../components/ReadingStatus";
 import { AI_ON_DONE, errorMessage, historyForServer } from "../errors";
+import { reviewGuide } from "../reviewGuide";
 import { schedulePromptFor, schedulePromptSentence } from "../uploadSchedule";
 
 const POLL_INTERVAL_MS = 2000;
@@ -13,7 +14,7 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
  * 채팅 상태와 동작을 관리한다.
  *
  * phase: idle(대기) | listening(음성 입력 중) | thinking(가비가 답을 만드는 중) | reading(올린 파일을 읽는 중)
- * 메시지: { id, role: "user" | "assistant", text, voice?, imageUri?, sources?, draft?, draftText?, doubts?, describe? }
+ * 메시지: { id, role: "user" | "assistant", text, voice?, imageUri?, sources?, webSources?, draft?, draftText?, doubts?, describe? }
  * describe: 글자 없는 사진의 설명 카드 { recordId, status: "pending" | "done" | "skipped" }. 메시지에 들어 있어서 대화와 함께 저장된다.
  * 읽는 중 표시는 메시지가 아니라 phase 로만 보여 줘서 서버로 보내는 대화 이력에 섞이지 않는다.
  *
@@ -56,10 +57,10 @@ export default function useChat() {
     setMessages((prev) => [...prev, { id: id(), role: "user", text: trimmed, voice }]);
     setPhase("thinking");
     try {
-      const { reply, sources = [], draft = null, confirmCards = [] } = await sendMessage(trimmed, history);
+      const { reply, sources = [], webSources = [], draft = null, confirmCards = [] } = await sendMessage(trimmed, history);
       setMessages((prev) => [
         ...prev,
-        { id: id(), role: "assistant", text: reply, sources, draft, draftText: draft?.text, ...(confirmCards.length > 0 ? { confirmCards } : {}) },
+        { id: id(), role: "assistant", text: reply, sources, webSources, draft, draftText: draft?.text, ...(confirmCards.length > 0 ? { confirmCards } : {}) },
       ]);
     } catch (e) {
       setMessages((prev) => [...prev, errorMessage(id(), e)]);
@@ -127,14 +128,23 @@ export default function useChat() {
         // 같은 파일에 설명 카드가 이미 있으면 또 만들지 않는다
         const needsDescription =
           result.needs_description === true && !messagesRef.current.some((m) => m.describe?.recordId === fileId);
+        let guide = []; // 확인 필요일 때 어느 부분을 고칠지(기록을 못 읽으면 비어 일반 안내로 대신한다)
         let prompt = null; // 분석된 날짜가 오늘 이후면 "일정에 넣을까요?"를 묻는다(AI 호출 없음, 기록 한 건 읽기)
         try {
-          prompt = schedulePromptFor(await getRecord(fileId));
+          const saved = await getRecord(fileId);
+          prompt = schedulePromptFor(saved);
+          if (review) guide = reviewGuide(saved);
         } catch {
           prompt = null; // 못 읽어도 업로드 결과 안내에는 영향이 없다
         }
         say(
-          `${head}${detail ? `\n${detail}` : ""}\n${review ? "원본과 비교해서 맞는지 확인해 주세요." : "이어서 궁금한 걸 물어보세요."}\n(걸린 시간 ${took()})`,
+          `${guide.length > 0 ? "저장했지만 확인할 부분이 있어요." : head}${detail ? `\n${detail}` : ""}\n${
+            guide.length > 0
+              ? guide.map((g) => `- ${g.field}: ${g.text}`).join("\n")
+              : review
+                ? "원본과 비교해서 맞는지 확인해 주세요."
+                : "이어서 궁금한 걸 물어보세요."
+          }\n(걸린 시간 ${took()})`,
           {
             ...(doubts.length > 0 ? { doubts: { recordId: fileId, lines: doubts, done: false } } : review ? { reviewId: fileId } : {}),
             ...(needsDescription ? { describe: { recordId: fileId, status: "pending" } } : {}),

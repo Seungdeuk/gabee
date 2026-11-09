@@ -6,12 +6,12 @@ import { SETTINGS_EDGE_GAP, SETTINGS_RAISE } from "@/shared/components/SettingsB
 import { colors, font, spacing } from "@/theme";
 
 /**
- * 소통 탭 상단: 큰 제목 "우리 도란도란", 오른쪽 새 대화 버튼, 그 아래 항상 보이는 검색창.
+ * 소통 탭 상단: 큰 제목 "우리 도란도란", 오른쪽 새 대화 버튼과 맨 오른쪽 알림 종(bell, 라우트에서 조립), 그 아래 항상 보이는 검색창.
  * 검색 입력은 방 이름과 대화 내용을 함께 찾는다(대화 내용 결과는 화면이 입력값으로 따로 불러와 보여 준다).
- * 새 대화 버튼은 제목 줄 높이와 상관없이 다른 탭과 같은 자리(화면 오른쪽 끝에서 6, 상단바 높이 56 의 세로 가운데)에 고정한다.
- * @param {{ query: string, onQuery: (text: string) => void, onNew: () => void }} props
+ * 새 대화·알림 버튼 줄은 제목 줄 높이와 상관없이 다른 탭과 같은 자리(화면 오른쪽 끝에서 6, 상단바 높이 56 의 세로 가운데)에 고정한다.
+ * @param {{ query: string, onQuery: (text: string) => void, onNew: () => void, bell?: import("react").ReactNode }} props
  */
-export default function ChatListHeader({ query, onQuery, onNew }) {
+export default function ChatListHeader({ query, onQuery, onNew, bell = null }) {
   return (
     <View style={styles.wrap}>
       <View style={styles.top}>
@@ -20,6 +20,7 @@ export default function ChatListHeader({ query, onQuery, onNew }) {
         </Text>
         <View style={styles.buttons}>
           <IconButton name="create-outline" label="새 대화" onPress={onNew} />
+          {bell}
         </View>
       </View>
       <View style={styles.search}>

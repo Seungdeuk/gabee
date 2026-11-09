@@ -12976,9 +12976,7 @@
                   "enum": [
                     "schedule",
                     "billing",
-                    "care",
                     "family_group",
-                    "ai_record",
                     "support"
                   ],
                   "type": "string"
@@ -19151,6 +19149,14 @@
             },
             "type": "array",
             "title": "Sources",
+            "default": []
+          },
+          "web_sources": {
+            "items": {
+              "$ref": "#/components/schemas/WebSource"
+            },
+            "type": "array",
+            "title": "Web Sources",
             "default": []
           },
           "proposals": {
@@ -25374,9 +25380,7 @@
               "enum": [
                 "schedule",
                 "billing",
-                "care",
                 "family_group",
-                "ai_record",
                 "support",
                 "chat"
               ]
@@ -25437,9 +25441,7 @@
               "enum": [
                 "schedule",
                 "billing",
-                "care",
                 "family_group",
-                "ai_record",
                 "support",
                 "chat"
               ]
@@ -25604,9 +25606,7 @@
                 "enum": [
                   "schedule",
                   "billing",
-                  "care",
                   "family_group",
-                  "ai_record",
                   "support"
                 ]
               },
@@ -28181,6 +28181,25 @@
           "type"
         ],
         "title": "ValidationError"
+      },
+      "WebSource": {
+        "properties": {
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "url": {
+            "type": "string",
+            "title": "Url"
+          }
+        },
+        "type": "object",
+        "required": [
+          "title",
+          "url"
+        ],
+        "title": "WebSource",
+        "description": "답이 인용한 웹 페이지."
       },
       "app__features__ai_assistant__knowledge__schemas__SearchOut": {
         "properties": {

@@ -1,11 +1,12 @@
 import { Ionicons } from "@expo/vector-icons";
 import * as Clipboard from "expo-clipboard";
 import { useState } from "react";
-import { Pressable, Share, StyleSheet, Text, View } from "react-native";
+import { Linking, Pressable, Share, StyleSheet, Text, View } from "react-native";
 
 import { colors } from "@/theme";
 
 import useOriginal from "../hooks/useOriginal";
+import { canOpenWebSource, webSourceHost } from "../webSources";
 import OriginalViewer from "./OriginalViewer";
 
 /** 한 줄 안의 **굵게** 와 [1] 출처 번호를 글자 조각으로 나눈다. */
@@ -45,11 +46,12 @@ export function parseBlocks(text) {
 
 /**
  * 가비의 답변. 문단·제목·목록을 보여 주고, 아래에 출처 칩과 저장·복사 버튼을 둔다.
- * @param {{ text: string, sources?: { n: number, title: string, itemId?: string, sourcePath?: string | null }[], showActions?: boolean, children?: import("react").ReactNode }} props
- * children: 본문 아래, 출처 칩 위에 놓을 것(메시지 초안 카드 등)
+ * @param {{ text: string, sources?: { n: number, title: string, itemId?: string, sourcePath?: string | null }[], webSources?: { title: string, url: string }[], showActions?: boolean, children?: import("react").ReactNode }} props
+ * children: 본문 아래, 출처 칩 위에 놓을 것(메시지 초안 카드 등). webSources: 답이 인용한 웹 페이지(눌러서 브라우저로 연다)
  */
-export default function AnswerView({ text, sources = [], showActions = false, children }) {
+export default function AnswerView({ text, sources = [], webSources = [], showActions = false, children }) {
   const [openSources, setOpenSources] = useState(false);
+  const links = webSources.filter((s) => canOpenWebSource(s.url));
   const [copied, setCopied] = useState(false);
   const original = useOriginal();
   const blocks = parseBlocks(text);
@@ -120,6 +122,34 @@ export default function AnswerView({ text, sources = [], showActions = false, ch
         </>
       ) : null}
 
+      {links.length > 0 ? (
+        <View style={styles.webCard}>
+          <View style={styles.webHeader}>
+            <Ionicons name="globe-outline" size={18} color={colors.accent} />
+            <Text style={styles.webHeading}>웹에서 찾았어요 · {links.length}곳</Text>
+          </View>
+          {links.map((s) => (
+            <Pressable
+              key={s.url}
+              onPress={() => Linking.openURL(s.url).catch(() => {})}
+              style={styles.webRow}
+              accessibilityRole="link"
+              accessibilityLabel={`${s.title} 페이지 열기`}
+            >
+              <View style={styles.webText}>
+                <Text style={styles.webTitle} numberOfLines={2}>
+                  {s.title}
+                </Text>
+                <Text style={styles.webHost} numberOfLines={1}>
+                  {webSourceHost(s.url)}
+                </Text>
+              </View>
+              <Ionicons name="open-outline" size={18} color={colors.accent} />
+            </Pressable>
+          ))}
+        </View>
+      ) : null}
+
       {showActions ? (
         <View style={styles.actions}>
           <Pressable onPress={saveMd} style={styles.action} accessibilityRole="button">
@@ -165,6 +195,28 @@ const styles = StyleSheet.create({
   sourceList: { gap: 6, paddingLeft: 4 },
   sourceRow: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 8 },
   source: { fontSize: 13, color: colors.textSub },
+  webCard: {
+    padding: 12,
+    gap: 4,
+    borderWidth: 1,
+    borderColor: colors.accent,
+    borderRadius: 14,
+    backgroundColor: colors.honeySoft,
+  },
+  webHeader: { flexDirection: "row", alignItems: "center", gap: 6, paddingBottom: 4 },
+  webHeading: { fontSize: 14, fontWeight: "700", color: colors.text },
+  webRow: {
+    minHeight: 52,
+    paddingVertical: 8,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+  webText: { flex: 1, gap: 2 },
+  webTitle: { fontSize: 14, fontWeight: "600", color: colors.text },
+  webHost: { fontSize: 12, color: colors.textSub },
   actions: { flexDirection: "row", gap: 8 },
   action: {
     minHeight: 36,

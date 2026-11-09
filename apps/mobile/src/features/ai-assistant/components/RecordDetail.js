@@ -19,6 +19,7 @@ import { colors } from "@/theme";
 
 import { deleteRecord, getRecord, originalImageSource, submitDescription, updateRecord } from "../api";
 import useOriginal from "../hooks/useOriginal";
+import { reviewGuide } from "../reviewGuide";
 import OriginalViewer from "./OriginalViewer";
 
 const DATE_FORMAT = /^\d{4}-\d{2}-\d{2}$/;
@@ -58,6 +59,7 @@ export default function RecordDetail({ record, onClose, onChanged }) {
   const isImage = /\.(jpe?g|png|webp|gif|bmp|heic|heif)$/i.test(record?.source_path ?? "");
   const preview = record?.hasOriginal && isImage ? originalImageSource(record.id) : null;
   const needsReview = detail ? detail.needs_review : record?.needs_review;
+  const guide = needsReview ? reviewGuide({ ...record, ...detail }) : []; // 상세를 아직 못 불러왔으면 목록 값만으로 만든다
   const needsDescription = !described && (detail ? detail.needs_description : record?.needs_description) === true;
 
   const startEdit = () => {
@@ -159,9 +161,19 @@ export default function RecordDetail({ record, onClose, onChanged }) {
             {needsReview ? (
               <View style={styles.review}>
                 <Ionicons name="alert-circle-outline" size={18} color={colors.warning} />
-                <Text style={styles.reviewText}>
-                  {"글자가 흐리거나 종류가 확실하지 않아요. 원본과 비교해서 맞으면 '확인 완료', 틀렸으면 고쳐 주세요."}
-                </Text>
+                {guide.length > 0 ? (
+                  <View style={styles.reviewBox}>
+                    <Text style={styles.reviewHead}>이 부분을 확인해 주세요</Text>
+                    {guide.map((g, i) => (
+                      <Text key={`${g.field}-${i}`} style={styles.reviewLine}>{`${g.field}: ${g.text}`}</Text>
+                    ))}
+                    <Text style={styles.reviewLine}>{"맞으면 '확인 완료', 틀리면 '고치기'를 눌러 주세요."}</Text>
+                  </View>
+                ) : (
+                  <Text style={styles.reviewText}>
+                    {"글자가 흐리거나 종류가 확실하지 않아요. 원본과 비교해서 맞으면 '확인 완료', 틀렸으면 고쳐 주세요."}
+                  </Text>
+                )}
               </View>
             ) : null}
 
@@ -286,6 +298,9 @@ const styles = StyleSheet.create({
   topTitle: { flex: 1, fontSize: 17, fontWeight: "700", color: colors.text },
   body: { paddingHorizontal: 20, paddingBottom: 40, gap: 12 },
   review: { flexDirection: "row", gap: 8, padding: 12, borderRadius: 12, backgroundColor: colors.honeySoft },
+  reviewBox: { flex: 1, gap: 4 },
+  reviewHead: { fontSize: 13, fontWeight: "700", color: colors.text },
+  reviewLine: { fontSize: 13, lineHeight: 20, color: colors.text },
   reviewText: { flex: 1, fontSize: 13, lineHeight: 20, color: colors.text },
   preview: { width: "100%", height: 220, borderRadius: 12, backgroundColor: colors.surface },
   deleteBtn: { alignSelf: "center", marginTop: 16, minHeight: 40, paddingHorizontal: 14, flexDirection: "row", alignItems: "center", gap: 6 },

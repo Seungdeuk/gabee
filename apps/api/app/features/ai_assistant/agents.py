@@ -1,6 +1,6 @@
 """메인 에이전트가 쓰는 탭 에이전트 목록. 메인은 DB 를 직접 읽지 않고 여기 도구로 탭 담당 에이전트에게 묻는다.
 
-각 탭 에이전트의 코드는 그 기능 폴더(billing/agent.py, care/agent.py, schedule/agent/ask.py)에 있고, 여기는 이름·설명·호출만 모은다.
+각 탭 에이전트의 코드는 그 기능 폴더(billing/agent.py, family_chat/agent.py, schedule/agent/ask.py)에 있고, 여기는 이름·설명·호출만 모은다.
 탭을 더 붙일 때는 `AGENTS` 에 한 줄을 더하면 된다."""
 
 import re
@@ -23,7 +23,7 @@ AskFn = Callable[[Session, str, User, str, Post | None], AgentReply]
 
 AGENTS: dict[str, tuple[str, AskFn]] = {
     "ask_billing": (billing_agent.DESCRIPTION, billing_agent.ask),
-    # 돌봄 에이전트는 팀 회의 결과로 지갑 탭 개편 동안 메인 에이전트에서 뺀다(코드는 care/agent.py 에 그대로 있다).
+    # 돌봄 에이전트는 팀 회의 결과로 지갑 탭 개편 동안 메인 에이전트에서 뺀다(care/agent.py 는 이미 지워졌고, 다시 붙일 때는 새로 만든다).
     # "ask_care": (care_agent.DESCRIPTION, care_agent.ask),
     "ask_family_chat": (family_chat_agent.DESCRIPTION, family_chat_agent.ask),
     "ask_schedule": (schedule_agent.DESCRIPTION, schedule_agent.ask),

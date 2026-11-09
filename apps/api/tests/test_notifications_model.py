@@ -9,7 +9,7 @@ def test_schema_registered_and_kinds():
     tables = feature_tables()
     assert "notifications" in tables
     assert "notifications" in tables["notifications"]
-    assert KINDS == ("schedule", "billing", "care", "family_group", "ai_record", "support")
+    assert KINDS == ("schedule", "billing", "family_group", "support")
     assert PUSH_KINDS == (*KINDS, "chat")  # 소통은 푸시 설정에서만 끌 수 있고 알림함 분류는 아니다
 
 

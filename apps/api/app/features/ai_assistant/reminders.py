@@ -7,6 +7,7 @@
      - 일정에 넣어 드릴까요?  (아직 일정에 없는 문서 날짜, 하루 한 번씩 최대 3번)
      - 급한 일 미리 알림   (일정 시각 기준 24시간 단위. 하루 전이면 24시간 전, 이틀 전이면 48시간 전·24시간 전)
      - 지난 일 확인        (일정 날짜가 지났는데 체크가 안 되어 있으면 한 번: 하셨나요?)
+     - 직접 잡은 일정      (문서와 상관없이 내일 시각이 있는 약속, 전날 처음 앱을 열 때 한 번만)
   ③ 사용자의 답은 채팅에서 `resolve` 가 반영한다(일정으로 잡기·했어요·오늘로 다시 잡기·그만 알리기).
 사람마다 스위치(`ReminderSetting`)로 끌 수 있고, 꺼져 있으면 아무것도 말하지 않고 새로 뽑지도 않는다.
 문구는 고정 템플릿이며 일 이름(문서에서 이름·번호를 뺀 짧은 말)만 들어간다.
@@ -22,6 +23,7 @@ from sqlalchemy.orm import Session
 
 from app.features.schedule import repository as schedule_repo
 from app.features.schedule import service as schedule_service
+from app.features.schedule.constants import KIND_APPOINTMENT
 from app.features.schedule.models import Event
 from app.features.schedule.schemas import EventCreate
 from app.shared.config import settings
@@ -49,6 +51,9 @@ PREP_LIMIT = 120
 DEFAULT_MEMO = "올려 주신 문서에서 가져왔어요"
 ACTIONS = ("schedule", "done", "prepared", "redo_today", "dismiss")
 WEEKDAYS = "월화수목금토일"
+NO_ITEM = ""  # 문서 없이 직접 잡은 일정을 챙기는 줄의 item_id
+DIRECT_SOURCES = ("manual", "chat")  # 사용자가 직접 잡은 일정의 source
+ALL_DAY = (time(0, 0), time(23, 59))  # 종일 일정은 앱이 00:00~23:59 로 저장한다
 
 
 def _tz() -> timezone:
@@ -241,7 +246,9 @@ def _already_scheduled(db: Session, r: DocumentReminder) -> Event | None:
     taken = set(
         db.scalars(
             select(DocumentReminder.event_id).where(
-                DocumentReminder.event_id.is_not(None), DocumentReminder.id != r.id
+                DocumentReminder.event_id.is_not(None),
+                DocumentReminder.id != r.id,
+                DocumentReminder.item_id != NO_ITEM,  # 직접 잡은 일정 줄은 문서와 이어져도 된다
             )
         )
     )
@@ -258,6 +265,71 @@ def _already_scheduled(db: Session, r: DocumentReminder) -> Event | None:
     scored = [(_match_score(r, e), e) for e in events if e.id not in taken]
     best = max(scored, key=lambda s: s[0], default=(0, None))
     return best[1] if best[0] > 0 else None
+
+
+def _day_before_nudges(db: Session, group_id: str, user_id: str, today: date) -> list[dict]:
+    """직접 잡은 내일 약속을 한 번만 묻는다. 물어본 기록은 챙길 일 줄로 남겨 채팅 답(resolve)이 그대로 통한다.
+    지난 뒤 "하셨나요?"는 묻지 않는다(followup_asked_on 을 미리 채운다)."""
+    tomorrow = today + timedelta(days=1)
+    events = db.scalars(
+        select(Event)
+        .where(
+            Event.user_id == user_id,
+            Event.group_id == group_id,
+            Event.start_date == tomorrow,
+            Event.kind == KIND_APPOINTMENT,
+            Event.start_time.is_not(None),
+            Event.source.in_(DIRECT_SOURCES),
+            Event.checked.is_(False),
+            Event.deleted_at.is_(None),
+        )
+        .order_by(Event.start_time, Event.created_at)
+    ).all()
+    if not events:
+        return []
+    linked = db.execute(
+        select(
+            DocumentReminder.event_id, DocumentReminder.item_id, DocumentReminder.due_date
+        ).where(DocumentReminder.user_id == user_id, DocumentReminder.event_id.is_not(None))
+    ).all()
+    # 문서에서 온 일은 문서 쪽 규칙으로 챙긴다. 직접 잡은 일정은 날짜를 옮기면 새 전날에 다시 묻는다.
+    skip = {e for e, item, due in linked if item != NO_ITEM or due == tomorrow}
+    out: list[dict] = []
+    for ev in events:
+        if ev.id in skip or (ev.start_time, ev.end_time) == ALL_DAY:
+            continue
+        place = _clean_text(ev.place, PLACE_LIMIT)
+        when = _when_text(tomorrow, ev.start_time, today)
+        row = DocumentReminder(
+            id=_new_id(),
+            group_id=group_id,
+            user_id=user_id,
+            item_id=NO_ITEM,
+            title=ev.title[:120],
+            due_date=tomorrow,
+            due_time=ev.start_time,
+            place=place,
+            status="scheduled",
+            event_id=ev.id,
+            asked_count=1,
+            last_asked_on=today,
+            asked_hours=24,
+            followup_asked_on=today,
+        )
+        db.add(row)
+        out.append(
+            {
+                "id": row.id,
+                "kind": "urgent",
+                "title": ev.title,
+                "when": when,
+                "place": place,
+                "prep": "",
+                "at": datetime.combine(tomorrow, ev.start_time).isoformat(),
+                "text": f"{when}에 ‘{ev.title}’{_josa(ev.title, '이', '가')} 있어요. 준비는 되셨나요?",
+            }
+        )
+    return out
 
 
 def due_nudges(db: Session, group_id: str, user_id: str, now: datetime | None = None) -> list[dict]:
@@ -319,6 +391,9 @@ def due_nudges(db: Session, group_id: str, user_id: str, now: datetime | None = 
         ):  # 오늘 이미 말했거나 사용자가 답했다: 같은 일은 하루에 한 번만 챙긴다
             continue
         start = _start_of(r, event)
+        if r.item_id == NO_ITEM and start.date() < today:
+            r.status = "done"  # 직접 잡은 일정은 전날 한 번만 묻고 끝낸다
+            continue
         if here < start:
             if not r.urgent:
                 continue
@@ -368,6 +443,9 @@ def due_nudges(db: Session, group_id: str, user_id: str, now: datetime | None = 
                     ),
                 }
             )
+    if settings.ingest_reminders:
+        db.flush()  # 위에서 문서와 이어진 일정을 먼저 반영해 두 번 묻지 않게 한다
+        out += _day_before_nudges(db, group_id, user_id, today)
     db.commit()
     return out
 

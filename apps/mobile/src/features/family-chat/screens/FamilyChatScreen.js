@@ -41,8 +41,8 @@ function Skeleton() {
  * 화면에 올 때마다 한 번만 불러온다(폴링 없음). 줄을 누르면 채팅방으로 들어가고, 새 대화 버튼으로 가족 구성원과 1:1 방을 연다.
  * 상단 검색창은 방 이름 일치 아래에 "대화 내용" 검색 결과(서버 글자 일치)를 함께 보여 주고, 결과를 누르면 그 방의 해당 메시지 위치로 열린다.
  */
-/** @param {{ playEntry?: import("react").ReactNode }} props playEntry: 가족 연락처 아래에 놓을 가족 놀이터 입구(라우트에서 조립) */
-export default function FamilyChatScreen({ playEntry = null }) {
+/** @param {{ playEntry?: import("react").ReactNode, bell?: import("react").ReactNode }} props playEntry: 가족 연락처 아래에 놓을 가족 놀이터 입구, bell: 상단 오른쪽 끝 알림 종(둘 다 라우트에서 조립) */
+export default function FamilyChatScreen({ playEntry = null, bell = null }) {
   const router = useRouter();
   const search = useChatSearch();
   const query = search.query;
@@ -171,6 +171,7 @@ export default function FamilyChatScreen({ playEntry = null }) {
         <ChatListHeader
           query={query}
           onQuery={search.setQuery}
+          bell={bell}
           onNew={() => {
             if (state.status !== "ready") return; // 가족 정보를 읽기 전에는 상대 목록이 없다
             setPickError("");

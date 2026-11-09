@@ -53,7 +53,7 @@ export default function PhotoCreateScreen() {
     setAnsIdx((a) => (a != null && a >= c ? null : a)); // 정답 보기가 사라지면 다시 고르게
   };
   const [withNote, setWithNote] = useState(true);
-  const [note, setNote] = useState("그날 비가 와서 협재 해변에서 우동을 먹었어요. 언제 어디서 찍었는지 기억나는 사람?");
+  const [note, setNote] = useState("");
   const [target, setTarget] = useState([]);
   const [box, setBox] = useState({ x: 130, y: 80 });
   const [stageW, setStageW] = useState(350);
@@ -256,7 +256,7 @@ export default function PhotoCreateScreen() {
         <View style={styles.optHead}>
           <View style={styles.labelRow}>
             <Text style={styles.label}>보기</Text>
-            
+            <Text style={styles.sub}>눌러서 고칠 수 있어요</Text>
           </View>
           <View style={styles.stepper}>
             <Pressable onPress={() => changeCount(count - 1)} disabled={count <= 2} accessibilityRole="button" accessibilityLabel="보기 줄이기" style={[styles.stepBtn, count <= 2 && styles.stepOff]}>
@@ -288,7 +288,7 @@ export default function PhotoCreateScreen() {
         {withNote ? (
           <>
             <Text style={styles.sub}>{`그날 이야기나 언제·어디서·무엇을 했는지 적어요\n정답 공개될 때 같이 보여요 (${note.length}/${NOTE_MAX}자)`}</Text>
-            <TextInput value={note} onChangeText={(v) => setNote(v.slice(0, NOTE_MAX))} multiline numberOfLines={3} placeholder="정답 공개될 때 같이 보여요" placeholderTextColor={colors.placeholder} style={[styles.input, styles.area]} accessibilityLabel="한마디" />
+            <TextInput value={note} onChangeText={(v) => setNote(v.slice(0, NOTE_MAX))} multiline numberOfLines={3} placeholder="남기고 싶은 말을 써보세요" placeholderTextColor={colors.placeholder} style={[styles.input, styles.area]} accessibilityLabel="한마디" />
           </>
         ) : null}
       </View>
@@ -349,7 +349,7 @@ const styles = StyleSheet.create({
   insetBadge: { position: "absolute", left: 6, top: 6, paddingVertical: 2, paddingHorizontal: 7, borderRadius: 999, overflow: "hidden", backgroundColor: colors.background, fontSize: 11, fontFamily: fonts.bold, color: colors.text },
   box: { position: "absolute", borderWidth: 3, borderColor: colors.background, borderRadius: 10, backgroundColor: "rgba(255,252,247,0.25)" },
   stageNote: { position: "absolute", left: 0, right: 0, top: 12, textAlign: "center", fontSize: 13, color: "#3A2719" },
-  input: { height: 44, paddingVertical: 0, paddingHorizontal: 14, borderRadius: 12, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.card, color: colors.text, fontSize: 15, fontFamily: fonts.regular },
+  input: { height: 44, paddingVertical: 0, paddingHorizontal: 14, borderRadius: 12, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.card, color: colors.text, fontSize: 15, lineHeight: 20, includeFontPadding: false, fontFamily: fonts.regular },
   optHead: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   stepper: { flexDirection: "row", alignItems: "center", gap: 6 },
   stepBtn: { width: 32, height: 32, borderRadius: 16, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.card, alignItems: "center", justifyContent: "center" },
@@ -361,7 +361,7 @@ const styles = StyleSheet.create({
   radio: { width: 26, height: 26, borderRadius: 13, borderWidth: 1.5, borderColor: "#D9C7B4", alignItems: "center", justifyContent: "center" },
   radioOn: { backgroundColor: colors.success, borderColor: colors.success },
   radioMark: { fontSize: 14, lineHeight: 18, color: "#FFFFFF", fontFamily: fonts.bold },
-  optInput: { flex: 1, height: 44, paddingVertical: 0, fontSize: 15, fontFamily: fonts.regular, color: colors.text },
+  optInput: { flex: 1, height: 44, paddingVertical: 0, fontSize: 15, lineHeight: 20, includeFontPadding: false, fontFamily: fonts.regular, color: colors.text },
   area: { height: 88, paddingTop: 10, textAlignVertical: "top" },
   noteRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", minHeight: 44 },
   noteLabel: { ...font.body, color: colors.text },

@@ -34,8 +34,12 @@ export default function DoubtCard({ lines, done, onSubmit }) {
 
   return (
     <View style={styles.card}>
-      <Text style={styles.title}>이 줄은 글자가 흐려서 확실하지 않아요</Text>
-      <Text style={styles.sub}>맞으면 그대로 두고, 틀린 곳은 고쳐 주세요.</Text>
+      <Text style={styles.title}>읽어 낸 내용 중 이 줄이 확실하지 않아요</Text>
+      <Text style={styles.sub}>
+        {lines.some((l) => l.includes("[판독불가]"))
+          ? "[판독불가]는 못 읽은 글자예요. 원본을 보고 맞는 글자로 고쳐 주세요."
+          : "맞으면 그대로 두고, 틀린 곳은 고쳐 주세요."}
+      </Text>
       {lines.map((line, i) => (
         <TextInput
           key={`${i}-${line}`}

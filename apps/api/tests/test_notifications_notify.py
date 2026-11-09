@@ -69,13 +69,28 @@ def test_unknown_kind_raises_value_error(client, family):
         _send(db, group["id"], [_id(client, a)], kind="chat")
 
 
+@pytest.mark.parametrize("kind", ["care", "ai_record"])
+def test_removed_kinds_are_rejected_and_leave_no_row(client, family, kind):
+    """삭제된 분류(돌봄·기록)로 부르면 모르는 분류와 같이 거부하고 행을 남기지 않는다."""
+    a, _b, group = family
+    with SessionLocal() as db:
+        with pytest.raises(ValueError):
+            _send(db, group["id"], [_id(client, a)], kind=kind)
+        db.commit()
+        assert _rows(db) == []
+
+
 def test_failure_is_isolated(client, family, monkeypatch):
     a, b, group = family
     ids = [_id(client, a), _id(client, b)]
     with SessionLocal() as db:
         db.add(
             Notification(
-                user_id=ids[0], group_id=group["id"], kind="care", event="x", title="먼저 있던 행"
+                user_id=ids[0],
+                group_id=group["id"],
+                kind="billing",
+                event="x",
+                title="먼저 있던 행",
             )
         )
         real_add = db.add

@@ -13,16 +13,14 @@ import time
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.features.family_group.models import Group, GroupMember
+from app.features.family_group.models import Group
 from app.shared import chat_library
 from app.shared.config import settings
 from app.shared.db import SessionLocal
 from app.shared.errors import ApiError
-from app.shared.notifications import notify
 
 from . import family_names, reminders
 from . import repository as repo
@@ -61,26 +59,6 @@ class Processors:
 
 
 processors = Processors()
-
-
-def _notify_document(db: Session, group_id: str, user_id: str, item) -> None:
-    """가족 문서함에 새 문서가 저장되면 올린 사람을 뺀 가족에게 고정 문구로 알린다. 문서 제목·내용은 담지 않고, 민감 문서는 존재도 알리지 않는다.
-    알림이 실패해도 문서 저장에는 영향이 없다(notify 가 삼킨다)."""
-    if item.sensitivity == "sensitive":
-        return
-    members = list(db.scalars(select(GroupMember.user_id).where(GroupMember.group_id == group_id)))
-    notify(
-        db,
-        group_id=group_id,
-        kind="ai_record",
-        event="document_added",
-        recipients=members,
-        title="가족 문서함에 새 문서가 올라왔어요",
-        target_type="knowledge_item",
-        target_id=item.id,
-        actor_user_id=user_id,
-    )
-    db.commit()
 
 
 def process_file(
@@ -204,7 +182,7 @@ def _process_once(
             return "skipped", False
         with SessionLocal() as db:
             try:
-                item = knowledge_service.ingest(
+                knowledge_service.ingest(
                     db,
                     group_id,
                     user_id,
@@ -226,16 +204,6 @@ def _process_once(
                 # 읽는 사이에 채팅 메시지가 지워졌다: 방금 저장한 기록을 되돌린다(지운 메시지의 문서가 문서함에 남지 않게)
                 delete_record(db, group_id, photo_id)
                 return "skipped", False
-            if (
-                not source_attachment_id
-            ):  # 채팅에 이미 올라온 파일이라 "새 문서" 알림은 한 번 더 보내지 않는다
-                try:
-                    _notify_document(db, group_id, user_id, item)
-                except Exception as e:  # noqa: BLE001  문서는 이미 저장됐다: 알림 실패가 처리 실패로 바뀌지 않게 종류만 적는다
-                    db.rollback()
-                    logger.warning(
-                        "문서 알림에 실패했어요 id=%s 종류=%s", photo_id, type(e).__name__
-                    )
         _plan_reminders(photo_id, group_id, user_id)
         return ("needs_review" if from_ingest.needs_review(result) else "analyzed"), False
     except Exception as e:  # noqa: BLE001  내용이 로그에 남지 않게 종류만 적는다

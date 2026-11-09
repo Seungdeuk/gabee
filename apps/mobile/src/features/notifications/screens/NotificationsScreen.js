@@ -1,10 +1,11 @@
 import { useFocusEffect, useRouter } from "expo-router";
 import { useCallback, useRef, useState } from "react";
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, BackHandler, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 
 import Button from "@/shared/components/Button";
 import IconButton from "@/shared/components/IconButton";
 import Screen from "@/shared/components/Screen";
+import { backTarget, lastTabPath } from "@/shared/navigation/lastTab";
 import { colors, font, radius, spacing } from "@/theme";
 
 import { listNotifications, markAllRead, markRead } from "../api";
@@ -22,6 +23,28 @@ export default function NotificationsScreen() {
   const [status, setStatus] = useState("loading"); // loading | ready | error
   const [loadingMore, setLoadingMore] = useState(false);
   const requestId = useRef(0); // 분류를 빠르게 바꿨을 때 늦게 온 옛 응답이 덮어쓰지 않게 한다
+
+  /**
+   * 뒤로 가기: 돌아갈 화면이 있으면 뒤로, 없으면(푸시로 바로 열린 경우) 마지막으로 보던 탭으로 간다.
+   * @returns {void}
+   */
+  const goBack = useCallback(() => {
+    const target = backTarget(router.canGoBack(), lastTabPath());
+    if (target === "back") router.back();
+    else router.replace(target);
+  }, [router]);
+
+  // 안드로이드 뒤로 가기 버튼: 돌아갈 화면이 없을 때만 앱이 종료되지 않게 마지막 탭으로 보낸다(있으면 기본 동작)
+  useFocusEffect(
+    useCallback(() => {
+      const sub = BackHandler.addEventListener("hardwareBackPress", () => {
+        if (router.canGoBack()) return false;
+        router.replace(lastTabPath());
+        return true;
+      });
+      return () => sub.remove();
+    }, [router]),
+  );
 
   const load = useCallback(async (nextKind) => {
     const id = ++requestId.current;
@@ -82,7 +105,7 @@ export default function NotificationsScreen() {
       title="알림"
       subtitle="가족과 일어난 일을 모아 봐요"
       centered
-      left={<IconButton name="chevron-back" label="뒤로" onPress={() => router.back()} />}
+      left={<IconButton name="chevron-back" label="뒤로" onPress={goBack} />}
       pinned={
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={[styles.chips, styles.chipsCenter]} style={styles.chipsBar}>
           <Chip label="전체" selected={kind === null} onPress={() => setKind(null)} />
