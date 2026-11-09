@@ -577,10 +577,11 @@
 ## 가족 전체방 문서 → 가족 공유 문서함 자동 등록 (GaBee 2.0 1단계, 2026-11)
 - 요구사항·결정: `docs/requirements/family-library.md`. 가족 **전체방**에 올린 **문서 첨부**(`POST /family-chat/files`)가 저장되면 `shared/chat_library.document_posted` → `ai_assistant/library.py` 가 백그라운드에서 읽어(`files.process_file` 재사용: 원본 보관·가리기·분류) 가족 공유 문서함(`knowledge_items`)에 등록한다. `family_chat` 이 `ai_assistant` 를 직접 import 하지 않도록 `ai_assistant` 가 시작할 때(`router` 가 `library.register()`) 처리 함수를 통로에 등록한다.
 - 연결 키: `knowledge_items.source_attachment_id`(채팅 첨부 id, 유일). 같은 첨부는 한 번만 등록되고(재시도·중복 요청 포함), 같은 파일을 다른 메시지로 다시 올리면 기록은 메시지마다 한 건이고 보관 원본은 한 번만이다.
-- **등록하지 않는 것**: 1:1 방의 파일, 사진(일반 사진은 읽지 않는다 — "문서로 저장"은 다음 단계), **민감 문서**(처방전·신분증 등, 가리기 전 원본 사본도 남기지 않음), ingest 가 지원하지 않는 형식(hwp·hwpx·예전 doc/xls/ppt, 읽기 전에 거르고 보관하지 않음), 읽지 못한 문서(실패 기록을 남기지 않음, 채팅 파일로는 남는다).
+- **등록하지 않는 것**: 1:1 방의 파일, 일반 사진(문서를 찍은 사진은 판별해서 등록하고, 애매한 사진은 "문서로 저장"으로 직접 넣는다 — `docs/requirements/family-library.md`), **민감 문서**(처방전·신분증 등, 가리기 전 원본 사본도 남기지 않음), ingest 가 지원하지 않는 형식(hwp·hwpx·예전 doc/xls/ppt, 읽기 전에 거르고 보관하지 않음), 읽지 못한 문서(실패 기록을 남기지 않음, 채팅 파일로는 남는다).
 - 채팅에 이미 올라온 파일이라 "가족 문서함에 새 문서가 올라왔어요" 알림은 보내지 않는다(`files._process_once` 가 `source_attachment_id` 가 있으면 건너뜀).
 - **삭제 동기화**: `DELETE /family-chat/messages/{id}` 가 첨부를 지우면 `chat_library.attachment_removed` 로 연결된 기록·검색 조각·원본(다른 기록이 쓰지 않을 때)도 `files.delete_record` 로 함께 지운다.
 - 등록은 어떤 경우에도 채팅 전송·삭제를 깨지 않는다(실패는 로그에 종류만 남김).
+- **문서 사진 자동 등록·"문서로 저장"(PR 1b, 서버 2026-11-09)**: 가족 전체방 사진을 보내면 `photo_service.send_photo` 가 `chat_library.photo_posted` 로 알리고, `ai_assistant/library.py` 가 뒤에서 판별(`ingest/photo_judge.py`: 로컬 OCR 의 글자 수·줄 수 → 필요하면 `doc_ai.classify_photo` 로 Claude haiku 판별, `PHOTO_JUDGE_LLM`)해 문서면 같은 읽기 경로로 등록한다. 가족당 하루 30장·대기 20장 상한. 애매한 사진은 `POST /family-chat/photos/{attachment_id}/library`("문서로 저장", 판별·상한 건너뜀, `queued`/`already`, 1:1 방 409)로 직접 넣는다. 결정·평가는 `docs/adr/0015-family-room-photo-to-library.md`.
 - 앱: 가족 전체방에서 문서를 처음 올리기 전에 "가족 문서함에 자동으로 모여요" 안내를 한 번 보인다(`libraryNotice.js`, `AsyncStorage` 키 `gabee.library.notice.v1`, 1:1 방은 보이지 않음).
 - DB: `knowledge_items.source_attachment_id` 추가(Alembic, `docs/contracts/db.md`).
 - 시험: `ai_assistant/tests/test_chat_library.py`(14개), 앱 `tests/librarynotice.test.js`.

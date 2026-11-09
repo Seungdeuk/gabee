@@ -51,6 +51,12 @@ class ReactionOut(BaseModel):
     mine: bool  # 요청한 사람이 이 이모지를 눌렀는지
 
 
+class LibrarySaveOut(BaseModel):
+    """사진을 문서함에 저장한 결과: queued = 저장을 시작했다(읽는 데 시간이 걸린다), already = 이미 문서함에 있다."""
+
+    status: Literal["queued", "already"]
+
+
 class MessageOut(BaseModel):
     id: int
     user_id: str

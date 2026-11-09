@@ -14,7 +14,9 @@ from datetime import date
 from sqlalchemy.orm import Session
 
 from app.shared import chat_library
+from app.shared.config import settings
 from app.shared.db import SessionLocal
+from app.shared.llm import doc_ai
 
 from . import files, service
 from .ingest import photo_judge
@@ -84,6 +86,7 @@ def _on_removed(db: Session, group_id: str, attachment_id: str) -> None:
 PHOTO_DAILY_LIMIT = (
     30  # 가족당 하루에 자동으로 읽는 문서 사진 수(Claude 읽기 비용 상한). 넘으면 자동 등록만 멈춘다
 )
+PHOTO_JUDGE_MIN_CONFIDENCE = 0.7  # Claude 가 "문서"라고 해도 확신이 이보다 낮으면 자동 등록하지 않는다(실측: 0.7 이면 애매함 0%, 0.9 면 오인 0 에 애매함 11%)
 PHOTO_QUEUE_LIMIT = 20  # 처리를 기다리는 사진 수(원본 바이트가 메모리에 있으므로 상한을 둔다)
 _photo_lock = threading.Lock()
 _photo_counts: dict[
@@ -103,6 +106,28 @@ def _take_daily_slot(group_id: str) -> bool:
         return True
 
 
+def _is_document_photo(group_id: str, data: bytes) -> bool:
+    """자동 등록할 문서 사진인지. 글자가 거의 안 읽히는 사진은 로컬 OCR 로 바로 일반 사진 처리하고(외부 전송 없음),
+    `PHOTO_JUDGE_LLM` 이 켜져 있으면 글자가 읽힌 사진(문서·애매)만 Claude 에게 묻는다. 꺼져 있으면 OCR 판별이 문서일 때만 등록한다.
+    하루 상한은 Claude 판별과 읽기를 합쳐 센다. 애매하거나 확신이 낮거나 Claude 가 실패하면 등록하지 않는다(사용자가 "문서로 저장")."""
+    verdict = photo_judge.judge(data, files.processors.ocr)
+    if verdict.kind == photo_judge.PHOTO:
+        return False
+    if not settings.photo_judge_llm and verdict.kind != photo_judge.DOCUMENT:
+        return False
+    if not _take_daily_slot(group_id):
+        logger.info("chat library photo daily limit reached")
+        return False
+    if not settings.photo_judge_llm:
+        return True
+    try:
+        answer = doc_ai.classify_photo(photo_judge.to_judge_jpeg(data))
+    except Exception as exc:  # noqa: BLE001  사진·응답 내용은 남기지 않고 종류만 적는다
+        logger.warning("chat library photo judge failed error=%s", type(exc).__name__)
+        return False
+    return answer.kind == "document" and answer.confidence >= PHOTO_JUDGE_MIN_CONFIDENCE
+
+
 def register_chat_photo(
     group_id: str, user_id: str, attachment_id: str, data: bytes, forced: bool = False
 ) -> None:
@@ -114,12 +139,8 @@ def register_chat_photo(
                 return
             if not chat_library.attachment_exists(db, group_id, attachment_id):
                 return
-        if not forced:
-            if photo_judge.judge(data, files.processors.ocr).kind != photo_judge.DOCUMENT:
-                return  # 일반 사진·애매한 사진은 자동 등록하지 않는다(애매하면 사용자가 "문서로 저장")
-            if not _take_daily_slot(group_id):
-                logger.info("chat library photo daily limit reached")
-                return
+        if not forced and not _is_document_photo(group_id, data):
+            return
         with SessionLocal() as db:
             photo = service.receive_file(
                 db, group_id, user_id, f"{attachment_id}.jpg", "image/jpeg", data
@@ -127,7 +148,7 @@ def register_chat_photo(
             photo_id = photo.id
         files.process_file(
             photo_id, group_id, user_id, data, f"{attachment_id}.jpg",
-            source_attachment_id=attachment_id,
+            source_attachment_id=attachment_id, keep_photo=forced,
         )  # fmt: skip
     except Exception as exc:  # noqa: BLE001  내용이 로그에 남지 않게 종류만 적는다
         logger.warning("chat library photo register failed error=%s", type(exc).__name__)
@@ -138,7 +159,9 @@ def _on_photo(
 ) -> None:
     global _photo_pending
     with _photo_lock:
-        if _photo_pending >= PHOTO_QUEUE_LIMIT:
+        if (
+            _photo_pending >= PHOTO_QUEUE_LIMIT and not forced
+        ):  # 사용자가 직접 누른 저장은 버리지 않는다
             logger.info("chat library photo queue full")
             return
         _photo_pending += 1
@@ -154,7 +177,11 @@ def _on_photo(
     _submit(run)
 
 
+def _photo_registered(db: Session, group_id: str, attachment_id: str) -> bool:
+    return knowledge_repo.get_by_attachment(db, group_id, attachment_id) is not None
+
+
 def register() -> None:
     """ai_assistant 가 시작할 때 처리 함수를 채팅 쪽 통로에 등록한다."""
     chat_library.register_handlers(_on_document, _on_removed)
-    chat_library.register_photo_handler(_on_photo)
+    chat_library.register_photo_handler(_on_photo, _photo_registered)

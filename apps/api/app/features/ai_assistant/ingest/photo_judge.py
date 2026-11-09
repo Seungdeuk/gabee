@@ -40,6 +40,16 @@ class Verdict:
     lines: int
 
 
+def to_judge_jpeg(data: bytes) -> bytes:
+    """Claude 판별에 보낼 사진: EXIF 회전을 반영하고 긴 변 1024px 이하 JPEG 로 줄인다(위치 같은 메타데이터는 옮기지 않는다)."""
+    with Image.open(io.BytesIO(data)) as opened:
+        image = ImageOps.exif_transpose(opened).convert("RGB")
+    image.thumbnail((READ_SIDE_PX, READ_SIDE_PX), Image.Resampling.LANCZOS)
+    out = io.BytesIO()
+    image.save(out, "JPEG", quality=80)
+    return out.getvalue()
+
+
 def judge(data: bytes, ocr: Ocr) -> Verdict:
     """사진 바이트를 문서/일반 사진/애매함으로 가른다. 열 수 없거나 읽기에 실패하면 애매함(자동으로 하지 않는다)."""
     try:

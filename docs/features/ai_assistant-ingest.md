@@ -105,6 +105,11 @@ Excel ─▶ converters.xlsx_to_markdown (금액 쉼표·날짜·병합 칸 반�
 - 이름 오타 확인: Claude 가 이름으로 본 값이 가족 이름과 **한 글자 차이**(정확히 같지는 않음)면 `[이름]` 대신 `[확인필요:<후보 user_id>]` 를 남긴다(OCR 이 틀리게 읽었을 수 있음. 글자는 저장하지 않는다). 새 DB 칸은 없고 기록 본문의 표시로 대기 상태를 나타낸다. 메인 채팅은 대기가 있으면 시스템 안내(`NAME_CHECK_NOTE`)로 사용자에게 한 번 물어보고(`list_name_checks`), 답을 `resolve_name_check` 로 반영한다: 같은 사람이면 `[가족:<id>]`(사람 필터 검색·현재 이름 표시), 아니면 `[이름]` 이며 검색 조각을 다시 만든다. 후보 id 는 그 기록에 남은 표시의 것만 받고, 답이 true/false 로 분명하지 않으면 거부한다. 표시 중에는 읽는 쪽에 `[이름 확인 필요]` 로 보인다. 앱 화면 변경 없음.
 - 시험: `ingest/tests/test_llm_ingest.py`(가짜 Claude 응답), 이름 확인 흐름은 `tests/test_family_names.py`.
 
+## 가족방 문서 사진 판별 (2026-11-09)
+- `ingest/photo_judge.py`: 사진을 긴 변 1024px 로 줄여 로컬 OCR(RapidOCR)로 읽고, 확신도 0.6 이상 줄의 글자 수·줄 수로 문서(100자·6줄 이상)/일반 사진(50자 미만)/애매함으로 가른다. 기준은 실사진 15장(문서 8, 거리·음식 7)과 무료 라이선스 사진 227장으로 정했다.
+- `shared/llm/doc_ai.classify_photo`: 글자가 읽힌 사진만 Claude(haiku, `PHOTO_JUDGE_MODEL`)에게 "문서 사진인가"를 묻는다(도구 호출 형식, 문서·사진 + 확신도). `ai_assistant/library.py` 는 `PHOTO_JUDGE_LLM=true` 일 때만 쓰고, 문서이고 확신 0.7 이상일 때만 등록한다. 결정·평가: `docs/adr/0015-family-room-photo-to-library.md`.
+- 시험: `ingest/tests/test_photo_judge.py`, `shared/llm/tests/test_photo_classify.py`, `ai_assistant/tests/test_chat_library_photos.py`.
+
 ## 남은 것
 - 업로드 통로·DB 저장(`photos` 확장 또는 `files` 표)·백그라운드 처리 연결 — 요구사항 미정 4·5
 - 스캔 PDF 쪽별 OCR, 복잡한 표 PDF(Docling) — v2

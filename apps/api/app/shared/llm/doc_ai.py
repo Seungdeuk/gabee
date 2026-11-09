@@ -183,6 +183,69 @@ def read_image(jpeg: bytes) -> OcrOut:
     return _read(block, "이 이미지의 글을 옮겨 적으세요.")
 
 
+PHOTO_JUDGE_SYSTEM = (
+    "당신은 가족 채팅방에 올라온 사진이 '종이·인쇄물 문서를 찍은 사진'인지 가려내는 분류기입니다.\n"
+    "document: 글을 읽어서 보관·검색하려고 찍은 문서(가정통신문, 학교·기관 안내문, 공고문, 영수증, 고지서, 청구서, 서류, 편지, "
+    "메뉴판·시간표 같은 정보 인쇄물, 신문·잡지 기사, 안내 포스터 한 장을 정면으로 찍은 것).\n"
+    "photo: 그 밖의 모든 사진(풍경, 사람, 음식, 동물, 건물, 거리·시장·상점 풍경). "
+    "거리 사진에 간판·현수막 글자가 많이 보여도 문서가 아니라 photo 입니다.\n"
+    "애매하면 confidence 를 낮게 주세요. 반드시 classify 도구로만 답하세요."
+)
+PHOTO_JUDGE_TOOL = {
+    "name": "classify",
+    "description": "사진 분류 결과",
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "kind": {"type": "string", "enum": ["document", "photo"]},
+            "confidence": {"type": "number", "description": "0~1, 이 판단이 맞을 확신"},
+            "reason": {"type": "string", "description": "한 줄 이유"},
+        },
+        "required": ["kind", "confidence", "reason"],
+    },
+}
+
+
+@dataclass(frozen=True)
+class PhotoVerdict:
+    kind: str  # "document" | "photo"
+    confidence: float  # 0~1
+    reason: str
+    input_tokens: int
+    output_tokens: int
+
+
+def classify_photo(jpeg: bytes) -> PhotoVerdict:
+    """사진 한 장이 문서 사진인지 일반 사진인지 가른다(JPEG, 긴 변 1024px 안팎이면 충분하다). 답이 없거나 모르는 값이면 LLMUnavailable."""
+    block = {
+        "type": "image",
+        "source": {
+            "type": "base64",
+            "media_type": "image/jpeg",
+            "data": base64.b64encode(jpeg).decode(),
+        },
+    }
+    reply = _call(
+        settings.photo_judge_model or settings.llm_model,
+        PHOTO_JUDGE_SYSTEM,
+        [block, {"type": "text", "text": "이 사진을 분류하세요."}],
+        tool=PHOTO_JUDGE_TOOL,
+        max_tokens=300,
+        timeout=60.0,
+    )
+    answer = next(
+        (b.get("input") for b in reply.get("content", []) if b.get("type") == "tool_use"), None
+    )
+    if not isinstance(answer, dict) or answer.get("kind") not in ("document", "photo"):
+        raise LLMUnavailable("AI 분류 응답을 쓸 수 없어요")
+    try:
+        confidence = min(1.0, max(0.0, float(answer.get("confidence", 0))))
+    except (TypeError, ValueError):
+        confidence = 0.0
+    tin, tout = transport.usage_of(reply)
+    return PhotoVerdict(answer["kind"], confidence, str(answer.get("reason", ""))[:200], tin, tout)
+
+
 def read_pdf(pdf: bytes) -> OcrOut:
     """한 쪽짜리 PDF 의 글을 옮긴다(쪽을 나누는 일은 호출한 쪽이 한다)."""
     block = {

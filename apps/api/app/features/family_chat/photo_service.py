@@ -5,7 +5,9 @@
 - 위치: settings.data_dir/chat_photos/<첨부 id>.jpg, <첨부 id>_t.jpg. 파일 이름은 서버가 만든 id 로만 정한다(사용자 입력 무관).
   파일을 먼저 쓰고 → 메시지와 첨부를 한 번에 DB 에 저장하고 → 실패하면 파일을 지운다.
 - 보기: 그 방에 들어갈 수 있는 사람만(가족 전체방은 가족 구성원, 1:1 방은 두 사람). 아니면 사진이 있는지도 알려주지 않는다(404).
-- 사진 내용·파일 경로는 로그에 남기지 않고 외부 서비스(AI 포함)로 보내지 않는다.
+- 사진 내용·파일 경로는 로그에 남기지 않는다. 사진 전송 자체는 AI 를 부르지 않는다. 가족 전체방 사진은 보낸 뒤 뒤에서(`shared/chat_library.py`)
+  로컬 OCR 로 문서 사진인지 판별해 문서면 가족 문서함에 읽어 넣는다. 이때 `PHOTO_JUDGE_LLM`·`INGEST_LLM_OCR` 설정이 켜져 있으면 글자가 읽히는 사진만
+  Anthropic API 로 전송된다(기본은 꺼짐, docs/adr/0015). 1:1 방 사진은 어디에도 넘기지 않는다.
 """
 
 import io
@@ -211,6 +213,22 @@ def send_photo(
     ):  # 가족 전체방 사진만: 문서를 찍은 사진이면 가족 문서함에 자동 등록한다(판별·읽기는 뒤에서, 실패해도 전송은 그대로)
         chat_library.photo_posted(group_id, user.id, attachment.id, data)
     return service.message_out(message, user.name, attachment)
+
+
+def save_to_library(db: Session, user: User, group_id: str, attachment_id: str) -> str:
+    """사진을 가족 공유 문서함에 직접 저장한다(판별·하루 상한을 건너뛴다). "queued" 또는 "already".
+    방에 들어갈 수 없거나 없는 사진은 404, 가족 전체방이 아닌(1:1) 방의 사진은 409."""
+    data, _ = photo_for_viewer(db, user, group_id, attachment_id, False)  # 못 보는 사진은 404
+    attachment = repo.get_attachment(db, attachment_id)
+    room = service.resolve_room(db, user, group_id, attachment.room_id)
+    if room.kind != FAMILY:
+        raise ApiError(
+            409, "not_family_room", "가족 전체방에 올린 사진만 가족 문서함에 저장할 수 있어요"
+        )
+    if chat_library.is_registered(db, group_id, attachment_id):
+        return "already"
+    chat_library.photo_requested(group_id, user.id, attachment_id, data)
+    return "queued"
 
 
 def photo_for_viewer(

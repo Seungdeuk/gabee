@@ -90,8 +90,10 @@ def process_file(
     data: bytes,
     filename: str,
     source_attachment_id: str | None = None,
+    keep_photo: bool = False,
 ) -> None:
     """전처리해서 knowledge 에 넣고 `photos.status` 를 바꾼다. 어떤 실패도 서버를 멈추지 않는다.
+    `keep_photo` 는 채팅 사진을 사용자가 직접 "문서로 저장"한 경우다: 글자가 거의 없어 "사진" 기록이 돼도 문서함에 남긴다.
 
     Claude 연결이 잠깐 안 돼서 실패(`llm_unavailable`)했으면 기다렸다가 같은 파일을 다시 처리한다(원본 바이트는 이미 메모리에 있다).
     깨진 파일·지원 안 하는 형식은 다시 해도 같으므로 다시 하지 않는다. 기다리는 동안은 처리 칸을 비워 다른 파일이 지나가게 한다."""
@@ -101,7 +103,7 @@ def process_file(
             time.sleep(settings.ingest_retry_wait_seconds * attempt)
         with _SLOTS:
             status, retry = _process_once(
-                photo_id, group_id, user_id, data, filename, source_attachment_id
+                photo_id, group_id, user_id, data, filename, source_attachment_id, keep_photo
             )
         if not retry:
             break
@@ -154,6 +156,7 @@ def _process_once(
     data: bytes,
     filename: str,
     source_attachment_id: str | None = None,
+    keep_photo: bool = False,
 ) -> tuple[str, bool]:
     """한 번 처리한다. (상태, 다시 해 볼 만한 실패인지)"""
     try:
@@ -174,7 +177,11 @@ def _process_once(
                 _drop_chat_upload(group_id, photo_id, data)
             return "failed", retry
         fields = from_ingest.to_item(result)
-        if source_attachment_id and fields["kind_label"] == from_ingest.PHOTO_KIND:
+        if (
+            source_attachment_id
+            and not keep_photo
+            and fields["kind_label"] == from_ingest.PHOTO_KIND
+        ):
             # 문서 사진으로 보고 읽었는데 글자가 거의 없다: 일반 사진은 문서함에 넣지 않는다
             _drop_chat_upload(group_id, photo_id, data)
             return "skipped", False

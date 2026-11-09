@@ -61,13 +61,37 @@ def document_posted(
 
 # (group_id, user_id, attachment_id, data, forced) → 사진 등록(백그라운드). forced 는 사용자가 "문서로 저장"을 눌러 판별을 건너뛴 경우
 OnPhoto = Callable[[str, str, str, bytes, bool], None]
+# (db, group_id, attachment_id) → 그 채팅 사진이 이미 문서함에 등록돼 있는지
+IsRegistered = Callable[[Session, str, str], bool]
 _on_photo: OnPhoto | None = None
+_is_registered: IsRegistered | None = None
 
 
-def register_photo_handler(on_photo: OnPhoto) -> None:
-    """ai_assistant 가 시작할 때 사진 처리 함수를 등록한다."""
-    global _on_photo
-    _on_photo = on_photo
+def register_photo_handler(on_photo: OnPhoto, is_registered: IsRegistered) -> None:
+    """ai_assistant 가 시작할 때 사진 처리 함수와 "이미 등록했는지" 확인 함수를 등록한다."""
+    global _on_photo, _is_registered
+    _on_photo, _is_registered = on_photo, is_registered
+
+
+def is_registered(db: Session, group_id: str, attachment_id: str) -> bool:
+    """채팅 첨부가 이미 문서함에 등록돼 있는지. 확인 함수가 없거나 확인하지 못하면 아직 아닌 것으로 본다(다시 시도해도 한 번만 등록된다)."""
+    if _is_registered is None:
+        return False
+    try:
+        return _is_registered(db, group_id, attachment_id)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("chat library registered check failed error=%s", type(exc).__name__)
+        return False
+
+
+def photo_requested(group_id: str, user_id: str, attachment_id: str, data: bytes) -> None:
+    """사용자가 사진의 "문서로 저장"을 눌렀을 때 부른다. 판별과 하루 상한을 건너뛰고 문서함에 등록한다(뒤에서 처리, 실패해도 던지지 않는다)."""
+    if _on_photo is None:
+        return
+    try:
+        _on_photo(group_id, user_id, attachment_id, data, True)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("chat library photo save failed error=%s", type(exc).__name__)
 
 
 def photo_posted(group_id: str, user_id: str, attachment_id: str, data: bytes) -> None:
