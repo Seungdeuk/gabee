@@ -86,7 +86,7 @@ test("toggleKind adds then removes and never mutates its input", () => {
   assert.deepEqual(added, ["billing", "schedule"]);
   assert.deepEqual(start, ["billing"]);
   assert.deepEqual(toggleKind(added, "billing"), ["schedule"]);
-  assert.deepEqual(toggleKind(undefined, "care"), ["care"]);
+  assert.deepEqual(toggleKind(undefined, "schedule"), ["schedule"]);
 });
 
 test("registerPushToken PUTs the token with platform and device label", async () => {

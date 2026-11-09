@@ -4,17 +4,15 @@ import { colors } from "@/theme/index"; // 시험 환경(Node)이 디렉터리 i
 export const KIND_META = {
   schedule: { label: "일정", icon: "calendar-outline", color: colors.primary },
   billing: { label: "정산", icon: "wallet-outline", color: colors.accent },
-  care: { label: "돌봄", icon: "heart-outline", color: colors.success },
   family_group: { label: "가족", icon: "people-outline", color: colors.peach },
-  ai_record: { label: "기록", icon: "document-text-outline", color: colors.textMuted },
   support: { label: "고객센터", icon: "chatbubble-ellipses-outline", color: colors.accent },
   chat: { label: "소통", icon: "chatbubbles-outline", color: colors.primary }, // 푸시 설정에서만 끄는 분류(알림함에는 남지 않아 칩이 없다)
 };
 
 const FALLBACK_META = { label: "알림", icon: "notifications-outline", color: colors.textMuted };
 
-/** 칩 필터에 보이는 분류 순서(전체 칩은 따로 있다). 가족·기록 알림은 "전체"에서만 보이게 칩을 두지 않는다. */
-export const KIND_ORDER = ["schedule", "billing", "care"];
+/** 칩 필터에 보이는 분류 순서(전체 칩은 따로 있다). 가족 알림은 "전체"에서만 보이게 칩을 두지 않는다. 돌봄·기록 분류는 없앴다. */
+export const KIND_ORDER = ["schedule", "billing"];
 
 /**
  * 분류의 표시 정보. 모르는 분류(서버가 먼저 새로 만든 것)도 깨지지 않게 기본값을 돌려준다.

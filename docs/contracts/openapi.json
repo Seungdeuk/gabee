@@ -12976,9 +12976,7 @@
                   "enum": [
                     "schedule",
                     "billing",
-                    "care",
                     "family_group",
-                    "ai_record",
                     "support"
                   ],
                   "type": "string"
@@ -25374,9 +25372,7 @@
               "enum": [
                 "schedule",
                 "billing",
-                "care",
                 "family_group",
-                "ai_record",
                 "support",
                 "chat"
               ]
@@ -25437,9 +25433,7 @@
               "enum": [
                 "schedule",
                 "billing",
-                "care",
                 "family_group",
-                "ai_record",
                 "support",
                 "chat"
               ]
@@ -25604,9 +25598,7 @@
                 "enum": [
                   "schedule",
                   "billing",
-                  "care",
                   "family_group",
-                  "ai_record",
                   "support"
                 ]
               },

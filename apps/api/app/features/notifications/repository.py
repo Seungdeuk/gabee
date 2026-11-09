@@ -6,12 +6,13 @@ from sqlalchemy import and_, delete, func, or_, select, update
 from sqlalchemy.orm import Session
 
 from app.features.family_group.models import GroupMember
-from app.shared.notifications import Notification
+from app.shared.notifications import KINDS, Notification
 from app.shared.push_models import PushSetting, PushToken
 
 
 def _visible(user_id: str):
-    """내 알림 중 지금도 구성원인 그룹의 것(탈퇴한 그룹의 옛 알림은 제외)과 그룹과 무관한 개인 알림."""
+    """내 알림 중 지금도 구성원인 그룹의 것(탈퇴한 그룹의 옛 알림은 제외)과 그룹과 무관한 개인 알림.
+    없앤 분류(돌봄·기록)의 옛 행은 DB 에 남아 있어도 보이지 않는다."""
     return (
         select(Notification)
         .outerjoin(
@@ -23,6 +24,7 @@ def _visible(user_id: str):
         )
         .where(
             Notification.user_id == user_id,
+            Notification.kind.in_(KINDS),
             or_(Notification.group_id.is_(None), GroupMember.user_id.is_not(None)),
         )
     )

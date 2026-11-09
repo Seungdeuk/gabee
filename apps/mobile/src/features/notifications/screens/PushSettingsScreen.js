@@ -13,7 +13,7 @@ import { KIND_META } from "../kinds";
 import { prepareThisDevice, readPermissionState } from "../PushBootstrap";
 import { isQuietOn, permissionNotice, toggleKind, withQuiet } from "../push";
 
-const KIND_KEYS = ["chat", "schedule", "billing", "care", "family_group", "ai_record", "support"];
+const KIND_KEYS = ["chat", "schedule", "billing", "family_group", "support"];
 
 /**
  * 마이 > 알림 설정: 푸시 켜기·끄기, 분류별 켜기·끄기, 방해금지 시간. 바꾸는 즉시 저장한다.

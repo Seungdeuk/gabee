@@ -76,8 +76,10 @@ def test_kind_filter_and_invalid_kind(client, family):
     only = client.get("/notifications", params={"kind": "schedule"}, headers=a).json()
     assert [n["title"] for n in only["items"]] == ["일정"]
     assert client.get("/notifications", params={"kind": "chat"}, headers=a).status_code == 422
-    empty = client.get("/notifications", params={"kind": "care"}, headers=a).json()
+    empty = client.get("/notifications", params={"kind": "family_group"}, headers=a).json()
     assert empty == {"items": [], "next_cursor": None}
+    for removed in ("care", "ai_record"):  # 삭제된 분류는 걸러 보기에도 쓸 수 없다
+        assert client.get("/notifications", params={"kind": removed}, headers=a).status_code == 422
 
 
 def test_unread_count_by_kind(client, family):
@@ -85,13 +87,13 @@ def test_unread_count_by_kind(client, family):
     me = _me(client, a)
     first = _make(me, group["id"], "하나", kind="schedule", minutes=1)
     _make(me, group["id"], "둘", kind="schedule", minutes=2)
-    _make(me, group["id"], "셋", kind="care", minutes=3)
-    _make(me, group["id"], "읽음", kind="care", minutes=4, read=True)
+    _make(me, group["id"], "셋", kind="billing", minutes=3)
+    _make(me, group["id"], "읽음", kind="billing", minutes=4, read=True)
     count = client.get("/notifications/unread-count", headers=a).json()
-    assert count == {"total": 3, "by_kind": {"schedule": 2, "care": 1}}
+    assert count == {"total": 3, "by_kind": {"schedule": 2, "billing": 1}}
     client.post(f"/notifications/{first}/read", headers=a)
     count = client.get("/notifications/unread-count", headers=a).json()
-    assert count == {"total": 2, "by_kind": {"schedule": 1, "care": 1}}
+    assert count == {"total": 2, "by_kind": {"schedule": 1, "billing": 1}}
 
 
 def test_read_marks_and_is_idempotent(client, family):
@@ -118,13 +120,36 @@ def test_read_all_optionally_by_kind(client, family):
     me = _me(client, a)
     _make(me, group["id"], "일정1", kind="schedule", minutes=1)
     _make(me, group["id"], "일정2", kind="schedule", minutes=2)
-    _make(me, group["id"], "돌봄", kind="care", minutes=3)
+    _make(me, group["id"], "가계", kind="billing", minutes=3)
     done = client.post("/notifications/read-all", json={"kind": "schedule"}, headers=a)
     assert done.status_code == 200 and done.json() == {"updated": 2}
     assert client.get("/notifications/unread-count", headers=a).json()["total"] == 1
     rest = client.post("/notifications/read-all", headers=a)
     assert rest.json() == {"updated": 1}
     assert client.get("/notifications/unread-count", headers=a).json()["total"] == 0
+
+
+REMOVED = ("care", "ai_record")
+
+
+def test_removed_kind_rows_are_hidden_everywhere(client, family):
+    """DB 에 남은 옛 돌봄·기록 알림은 목록·안 읽은 수·모두 읽음·단건 읽음에서 보이지 않는다."""
+    a, _b, group = family
+    me = _me(client, a)
+    _make(me, group["id"], "일정", kind="schedule", minutes=1)
+    old = [_make(me, group["id"], f"옛 {k}", kind=k, minutes=2) for k in REMOVED]
+    listed = client.get("/notifications", headers=a).json()
+    assert [n["title"] for n in listed["items"]] == ["일정"]
+    assert client.get("/notifications/unread-count", headers=a).json() == {
+        "total": 1,
+        "by_kind": {"schedule": 1},
+    }
+    for note in old:
+        assert client.post(f"/notifications/{note}/read", headers=a).status_code == 404
+    assert client.post("/notifications/read-all", headers=a).json() == {"updated": 1}
+    with SessionLocal() as db:  # 옛 행은 지우지도 읽음 처리하지도 않는다
+        rows = db.query(Notification).filter(Notification.kind.in_(REMOVED)).all()
+        assert len(rows) == 2 and all(r.read_at is None for r in rows)
 
 
 def test_left_group_notifications_hidden(client, family):

@@ -60,6 +60,25 @@ def test_invalid_values_are_422(client, family):
         assert client.put(URL, json=bad, headers=a).status_code == 422, bad
 
 
+def test_removed_kinds_are_422_on_put(client, family):
+    a, _b, _group = family
+    for removed in ("care", "ai_record"):
+        body = {**DEFAULTS, "muted_kinds": [removed]}
+        assert client.put(URL, json=body, headers=a).status_code == 422, removed
+
+
+def test_saved_removed_kinds_are_dropped_when_reading(client, family):
+    """옛날에 저장된 muted_kinds 에 삭제된 분류가 있어도 조회가 깨지지 않고 그 분류만 빠진다."""
+    a, _b, _group = family
+    me = client.get("/family-group/me", headers=a).json()["id"]
+    with SessionLocal() as db:
+        db.add(PushSetting(user_id=me, muted_kinds=["care", "billing", "ai_record", "chat"]))
+        db.commit()
+    got = client.get(URL, headers=a)
+    assert got.status_code == 200, got.text
+    assert got.json()["muted_kinds"] == ["billing", "chat"]
+
+
 def test_chat_is_a_kind_users_can_mute_for_push(client, family):
     """소통(chat)은 알림함 분류는 아니지만 푸시 설정에서는 끌 수 있다."""
     a, _b, _group = family
