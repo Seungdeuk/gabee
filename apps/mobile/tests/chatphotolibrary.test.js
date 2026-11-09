@@ -45,8 +45,8 @@ test("saveToLibrary: queued·already 는 문구와 함께 ok, 오류는 문구�
   const m = await import(MOD);
   assert.deepEqual(await m.saveToLibrary(GOOD, { save: async () => ({ status: "queued" }) }), { ok: true, message: m.LIBRARY_QUEUED_MESSAGE });
   assert.deepEqual(await m.saveToLibrary(GOOD, { save: async () => ({ status: "already" }) }), { ok: true, message: m.LIBRARY_ALREADY_MESSAGE });
-  assert.equal(m.LIBRARY_QUEUED_MESSAGE, "문서함에 저장을 시작했어요. 글을 읽는 데 시간이 걸리고, 처방전·신분증 같은 민감한 문서는 저장하지 않아요");
-  assert.equal(m.LIBRARY_DONE_LABEL, "저장 요청했어요"); // 서버가 읽은 뒤 민감 문서 등을 거를 수 있어 "저장했어요"라고 단정하지 않는다
+  assert.equal(m.LIBRARY_QUEUED_MESSAGE, "문서함에 저장을 시작했어요. 글을 읽는 데 시간이 걸려요. 가족 모두가 볼 수 있어요");
+  assert.equal(m.LIBRARY_DONE_LABEL, "저장 요청했어요"); // 서버가 글을 읽는 동안이라 "저장했어요"라고 단정하지 않는다
   assert.equal(m.LIBRARY_ALREADY_MESSAGE, "이미 가족 문서함에 있어요");
   const failed = await m.saveToLibrary(GOOD, {
     save: async () => {

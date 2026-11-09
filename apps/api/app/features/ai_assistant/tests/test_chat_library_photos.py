@@ -128,13 +128,12 @@ def test_document_photos_in_one_to_one_rooms_are_not_registered(client, family):
     assert _items(group["id"]) == []
 
 
-def test_a_sensitive_document_photo_is_not_registered(client, family, tmp_path):
+def test_a_sensitive_document_photo_is_registered_and_flagged_sensitive(client, family, tmp_path):
     a, _, group = family
     _use_ocr(ScriptedOcr(PRESCRIPTION_LINES))
     _send_photo(client, a)
-    assert _items(group["id"]) == []
-    with SessionLocal() as db:
-        assert db.scalars(select(Photo)).all() == []
+    items = _items(group["id"])
+    assert len(items) == 1 and items[0].sensitivity == "sensitive"
 
 
 def test_a_photo_that_reads_as_a_picture_after_the_full_read_is_dropped(client, family):
@@ -392,16 +391,16 @@ def test_claude_says_document_but_the_full_read_finds_a_picture_so_it_is_dropped
     assert judge.calls == 1 and _items(group["id"]) == []
 
 
-def test_saving_a_sensitive_photo_by_hand_registers_nothing(client, family):
+def test_saving_a_sensitive_photo_by_hand_registers_it_flagged_sensitive(client, family):
     a, _, group = family
     _use_ocr(ScriptedOcr(PRESCRIPTION_LINES))
     msg = _send_photo(client, a)
-    assert _save(client, a, msg["attachment"]["id"]).status_code == 200
-    assert _items(group["id"]) == []
-    with SessionLocal() as db:
-        assert (
-            db.scalars(select(Photo)).all() == []
-        )  # 민감 문서는 직접 저장해도 문서함에 넣지 않는다
+    r = _save(client, a, msg["attachment"]["id"])
+    assert r.status_code == 200
+    items = _items(group["id"])
+    assert (
+        len(items) == 1 and items[0].sensitivity == "sensitive"
+    )  # 민감 문서도 직접 저장하면 문서함에 들어간다
 
 
 def test_a_second_save_while_the_first_is_still_running_is_ignored(client, family, monkeypatch):
@@ -496,13 +495,16 @@ def test_a_school_fee_notice_with_a_bank_account_is_registered_with_the_number_m
     )  # 계좌번호는 가려서 저장한다
 
 
-def test_a_passbook_copy_is_still_not_registered(client, family):
+def test_a_passbook_copy_is_registered_with_the_account_number_masked(client, family):
     a, _, group = family
     _use_ocr(ScriptedOcr(PASSBOOK_LINES))
     msg = _send_photo(client, a)
-    assert _items(group["id"]) == []
-    assert _save(client, a, msg["attachment"]["id"]).status_code == 200  # 직접 저장해도 같다
-    assert _items(group["id"]) == []
+    items = _items(group["id"])
+    assert len(items) == 1 and items[0].sensitivity == "sensitive"
+    assert _save(client, a, msg["attachment"]["id"]).json() == {
+        "status": "already"
+    }  # 직접 저장해도 한 번만 들어간다
+    assert len(_items(group["id"])) == 1
 
 
 PASSBOOK_TITLE_ALONE_LINES = [
@@ -540,15 +542,19 @@ TRANSACTION_LIST_LINES = [
 @pytest.mark.parametrize(
     "lines", [PASSBOOK_TITLE_ALONE_LINES, TRANSFER_PROOF_LINES, TRANSACTION_LIST_LINES]
 )
-def test_personal_bank_documents_are_never_registered_automatically_or_by_hand(
-    client, family, lines
-):
+def test_personal_bank_documents_are_registered_with_account_numbers_masked(client, family, lines):
     a, _, group = family
     _use_ocr(ScriptedOcr(lines))
     msg = _send_photo(client, a)
-    assert _items(group["id"]) == []
-    assert _save(client, a, msg["attachment"]["id"]).status_code == 200
-    assert _items(group["id"]) == []
+    assert (
+        _save(client, a, msg["attachment"]["id"]).status_code == 200
+    )  # 자동 판별이 못 잡아도 직접 저장하면 들어간다
+    items = _items(group["id"])
+    assert len(items) == 1
+    for number in ("123456-12-345678", "1002-345-678901", "1002-123-456789"):
+        assert number not in items[0].body_md  # 문서함에 들어가도 계좌번호는 읽을 때 이미 가려진다
+    assert _save(client, a, msg["attachment"]["id"]).json() == {"status": "already"}
+    assert len(_items(group["id"])) == 1
 
 
 def test_editing_or_confirming_a_registered_fee_notice_keeps_it_a_normal_document(client, family):

@@ -42,10 +42,12 @@ test("기억을 읽지 못하면 안내를 보인다(안내가 조용히 사라�
   await assert.doesNotReject(() => markLibraryNoticeSeen(broken));
 });
 
-test("안내 문구: 가족방 문서가 문서함에 자동 저장되고, 민감 문서·1:1 파일은 저장하지 않으며, 메시지를 지우면 함께 지워진다고 알린다", () => {
+test("안내 문구: 가족방 문서가 문서함에 자동 저장되고, 민감한 문서도 가족 모두가 본다고 알리며, 1:1 파일은 해당하지 않고, 메시지를 지우면 함께 지워진다", () => {
   assert.match(LIBRARY_NOTICE_TITLE, /문서함/);
   assert.match(LIBRARY_NOTICE_BODY, /자동/);
   assert.match(LIBRARY_NOTICE_BODY, /민감/);
+  assert.match(LIBRARY_NOTICE_BODY, /가족 모두/); // 민감한 문서도 가족이 함께 본다
+  assert.doesNotMatch(LIBRARY_NOTICE_BODY, /저장하지 않고/); // 민감 문서를 저장하지 않는다는 옛 안내가 없다
   assert.match(LIBRARY_NOTICE_BODY, /1:1/);
   assert.match(LIBRARY_NOTICE_BODY, /지우면/);
   assert.match(LIBRARY_NOTICE_BODY, /사진/); // 문서를 찍은 사진도 자동 등록된다

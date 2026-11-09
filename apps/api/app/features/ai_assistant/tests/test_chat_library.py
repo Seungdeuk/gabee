@@ -10,7 +10,6 @@ from sqlalchemy import select
 
 from app.features.ai_assistant import files, library
 from app.features.ai_assistant.ingest.converters import OcrLine
-from app.features.ai_assistant.knowledge import service as knowledge_service
 from app.features.ai_assistant.knowledge.models import KnowledgeItem
 from app.features.ai_assistant.models import Photo
 from app.features.family_chat import file_service, photo_service
@@ -125,13 +124,13 @@ def test_photos_are_not_registered_automatically(client, family):
     assert _items(group["id"]) == []  # 사진은 "문서로 저장"을 눌렀을 때만
 
 
-def test_sensitive_documents_are_not_registered_and_leave_nothing_behind(client, family, tmp_path):
+def test_sensitive_documents_are_registered_and_flagged_sensitive(client, family, tmp_path):
+    """가족 전체방에 올린 문서는 민감 문서(처방전 등)도 문서함에 들어간다(2026-11-09 사용자 결정). 기록에는 민감 표시가 붙는다."""
     a, _, group = family
     _send_file(client, a, data=PRESCRIPTION, name="처방전.txt")
-    assert _items(group["id"]) == []
-    with SessionLocal() as db:
-        assert db.scalars(select(Photo)).all() == []  # 처리 기록도 남기지 않는다
-    assert _raw_files(tmp_path) == []  # 가리기 전 원본 사본도 남기지 않는다
+    items = _items(group["id"])
+    assert len(items) == 1 and items[0].sensitivity == "sensitive"
+    assert _raw_files(tmp_path) != []  # 원본도 문서함의 다른 문서와 같게 보관한다
 
 
 def test_unsupported_formats_are_not_registered(client, family, tmp_path):
@@ -300,20 +299,8 @@ def test_an_unexpected_error_while_registering_leaves_no_original_behind(
         assert db.scalars(select(Photo)).all() == []
 
 
-def test_the_chat_path_also_skips_identity_and_medical_names_the_general_list_misses():
-    """일반 민감 낱말에 없는 신분·금융·의료 분류도 채팅 자동 등록에서는 제외한다(모르면 등록이 되는 빈틈을 줄인다)."""
-    for kind in ("외국인등록증", "통장 사본", "진단서", "소견서", "검사결과지"):
-        assert knowledge_service.is_sensitive(kind, None, strict=True) is True, kind
-        assert knowledge_service.is_sensitive(kind, None) is False, (
-            kind
-        )  # 기존 업로드 규칙은 바뀌지 않는다
-    assert knowledge_service.is_sensitive("가정통신문", None, strict=True) is False
-    assert knowledge_service.is_sensitive("처방전", None) is True
-
-
-def test_a_medical_certificate_is_not_registered_from_the_chat(
-    client, family, tmp_path, monkeypatch
-):
+def test_a_medical_certificate_is_registered_from_the_chat(client, family, tmp_path, monkeypatch):
+    """진단서처럼 이름만 민감한 문서도 가족 전체방에서 올리면 문서함에 들어간다(2026-11-09 사용자 결정)."""
     a, _, group = family
     original = files.from_ingest.to_item
 
@@ -322,4 +309,6 @@ def test_a_medical_certificate_is_not_registered_from_the_chat(
 
     monkeypatch.setattr(files.from_ingest, "to_item", as_certificate)
     _send_file(client, a)
-    assert _items(group["id"]) == [] and _raw_files(tmp_path) == []
+    items = _items(group["id"])
+    assert len(items) == 1 and items[0].kind_label == "진단서"
+    assert _raw_files(tmp_path) != []

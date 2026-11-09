@@ -170,16 +170,9 @@ def _process_once(
             _drop_chat_upload(group_id, photo_id, data)
             return "skipped", False
         if source_attachment_id and _only_a_bank_account(result):
-            # 학교 납부 안내처럼 계좌번호만 이유로 통장류로 잡힌 문서(통장 사본이 아니다)는 등록한다. 계좌번호는 읽을 때 이미 가려진다.
-            # 분류 이름이 처방전·신분증·통장 같은 민감 종류면 아래 검사가 그대로 제외한다.
+            # 학교 납부 안내처럼 계좌번호만 이유로 통장류로 잡힌 문서(통장 사본이 아니다)는 민감 표시를 달지 않는다. 계좌번호는 읽을 때 이미 가려진다.
+            # 처방전·신분증·통장 사본 같은 민감 문서도 가족 전체방에서 올린 것이면 문서함에 등록한다(2026-11-09 사용자 결정): 기록에는 민감 표시가 붙는다.
             fields["sensitivity"] = None
-        if source_attachment_id and knowledge_service.is_sensitive(
-            fields["kind_label"], fields.get("sensitivity"), strict=True
-        ):
-            _drop_chat_upload(
-                group_id, photo_id, data
-            )  # 민감 문서(처방전·신분증·진단서 등)는 자동 등록하지 않는다
-            return "skipped", False
         with SessionLocal() as db:
             try:
                 knowledge_service.ingest(
