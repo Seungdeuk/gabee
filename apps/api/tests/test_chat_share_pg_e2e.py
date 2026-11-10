@@ -40,7 +40,12 @@ def _me(client, headers):
 def _event(client, headers):
     r = client.post(
         "/schedule/events",
-        json={"title": "치과", "start_date": "2030-01-05", "start_time": "10:00:00", "memo": "비밀"},
+        json={
+            "title": "치과",
+            "start_date": "2030-01-05",
+            "start_time": "10:00:00",
+            "memo": "비밀",
+        },
         headers=headers,
     )
     assert r.status_code == 201, r.text
@@ -85,7 +90,10 @@ def test_cards_are_stored_deleted_and_purged_on_postgres(pg_client):
     assert settle.json()["share"]["payload"]["remaining"] == 15000
 
     # 3) 메시지를 지우면 카드 내용도 지워진다(남의 카드는 못 지움)
-    assert client.delete(f"/family-chat/messages/{card.json()['id']}", headers=guest).status_code == 403
+    assert (
+        client.delete(f"/family-chat/messages/{card.json()['id']}", headers=guest).status_code
+        == 403
+    )
     r = client.delete(f"/family-chat/messages/{card.json()['id']}", headers=owner)
     assert r.status_code == 200 and r.json()["share"] is None
     assert rows(pg, "SELECT count(*) FROM message_shares") == [(1,)]

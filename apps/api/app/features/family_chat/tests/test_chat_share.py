@@ -1,12 +1,14 @@
 """채팅방 공유 카드(내 일정 한 건·내 정산 몫): 서버가 직접 읽어 보낸 시점 내용으로 저장하고, 클라이언트 값은 믿지 않는다.
 가족 전체방과 1:1 방에서 보낼 수 있고, 지우면 카드 내용도 서버에서 비운다. AI 를 부르지 않는다."""
 
+import copy
+
 import httpx
 import pytest
 from sqlalchemy import func, select
 
 from app.features.family_chat import chat_push, service
-from app.features.family_chat.models import ChatRoom, MessageShare
+from app.features.family_chat.models import ChatRoom, Message, MessageShare
 from app.shared import chat_share
 from app.shared.db import SessionLocal
 from app.shared.llm import client as llm
@@ -272,9 +274,104 @@ def test_share_api_is_closed_with_503_when_the_table_is_not_ready(client, family
     real = schema_module.monitor.status
 
     def not_ready(*args, **kwargs):
-        status = real(*args, **kwargs)
+        status = copy.deepcopy(real(*args, **kwargs))  # 캐시된 상태를 바꾸면 다음 시험이 영향받는다
         status.features["chat_share"] = {"ready": False, "reason": "missing"}
         return status
 
     monkeypatch.setattr(schema_module.monitor, "status", not_ready)
     assert _share(client, a, "event", event["id"]).status_code == 503
+
+
+# ---------- 리뷰 반영 ----------
+
+LEAVE_FAMILY = "/family-group/groups/me/leave"
+
+
+def _drop_share_table():
+    from app.shared.db import engine
+
+    MessageShare.__table__.drop(engine)
+    return lambda: MessageShare.__table__.create(engine)
+
+
+def test_leaving_a_direct_room_still_works_when_the_share_table_is_missing(client, trio):  # noqa: F811
+    """표(message_shares)가 아직 없는 DB(공용 DB 반영 전)에서도 1:1 방 마지막 나가기가 500 이 되지 않는다."""
+    a, b, _ = trio
+    room = _direct(client, a, _uid(client, b))
+    restore = _drop_share_table()
+    try:
+        assert client.post(f"/family-chat/rooms/{room['id']}/leave", headers=a).status_code == 204
+        assert client.post(f"/family-chat/rooms/{room['id']}/leave", headers=b).status_code == 204
+    finally:
+        restore()
+    with SessionLocal() as db:
+        assert db.get(ChatRoom, room["id"]) is None
+
+
+def test_deleting_a_family_still_works_when_the_share_table_is_missing(client, family):
+    a, b, _ = family
+    assert client.post(LEAVE_FAMILY, headers=b).status_code in (200, 204)
+    restore = _drop_share_table()
+    try:
+        assert client.post(LEAVE_FAMILY, headers=a).status_code in (200, 204)  # 혼자 남은 소유자
+    finally:
+        restore()
+
+
+def test_deleting_a_family_removes_its_cards(client, family):
+    a, b, _ = family
+    _share(client, a, "event", _event(client, a)["id"])
+    assert _share_rows() == 1
+    assert client.post(LEAVE_FAMILY, headers=b).status_code in (200, 204)
+    assert client.post(LEAVE_FAMILY, headers=a).status_code in (200, 204)
+    assert _share_rows() == 0
+
+
+def test_the_message_and_its_card_are_saved_together(client, family, monkeypatch):
+    """카드 행을 저장하다 실패하면 카드 없는 메시지가 남지 않는다(폴링하는 다른 기기가 빈 카드를 영구히 받지 않게)."""
+    from app.features.family_chat import repository as repo
+
+    a, _, _ = family
+    event = _event(client, a)
+
+    def boom(*args, **kwargs):
+        raise RuntimeError("카드 저장 실패")
+
+    monkeypatch.setattr(repo, "add_share", boom)
+    with pytest.raises(RuntimeError):
+        _share(client, a, "event", event["id"])
+    with SessionLocal() as db:
+        assert db.scalar(select(func.count()).select_from(Message)) == 0
+
+
+def test_a_card_cannot_be_sent_to_a_direct_room_whose_peer_left_the_family(client, trio):  # noqa: F811
+    a, b, _ = trio
+    room = _direct(client, a, _uid(client, b))
+    assert client.post(LEAVE_FAMILY, headers=b).status_code in (200, 204)
+    r = _share(client, a, "event", _event(client, a)["id"], room["id"])
+    assert (
+        r.status_code == 409 and r.json()["code"] == "peer_left_room"
+    )  # 상대 없이 정산 줄이 풀리지 않는다
+
+
+def test_old_ownerless_rows_of_someone_else_and_deleted_events_cannot_be_shared(client, family):
+    from app.features.schedule.models import Event
+
+    a, b, _ = family
+    event = _event(client, a)
+    with SessionLocal() as db:  # 주인(user_id)이 없던 옛 줄: 만든 사람이 아니면 못 보낸다
+        row = db.get(Event, event["id"])
+        row.user_id, row.created_by = None, _uid(client, b)
+        db.commit()
+    assert _share(client, a, "event", event["id"]).status_code == 404
+    mine = _event(client, a)
+    assert client.delete(f"/schedule/events/{mine['id']}", headers=a).status_code in (200, 204)
+    assert _share(client, a, "event", mine["id"]).status_code == 404  # 지운 일정
+
+
+def test_a_received_copy_of_a_shared_event_can_be_shared_by_the_receiver(client, family):
+    a, b, _ = family
+    _event(client, a, share_with=[_uid(client, b)])
+    copy_row = client.get("/schedule/events", params={"include_past": True}, headers=b).json()[0]
+    r = _share(client, b, "event", copy_row["id"])
+    assert r.status_code == 201 and r.json()["share"]["payload"]["title"] == "치과"

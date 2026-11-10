@@ -48,8 +48,8 @@
 - `POST /family-chat/shares {kind:"event"|"settlement", ref, room_id?}` — 201 `MessageOut`. 내 일정 한 건(`ref`=일정 id) 또는 그 달 내 정산 몫(`ref`=`YYYY-MM`)을 카드 메시지로 방에 올린다(가족 전체방·1:1 방). **카드 내용은 서버가 데이터 주인 기능에서 읽어 만들고**(`shared/chat_share.py` 등록 구조, schedule·billing 이 `chat_share.py` 로 등록) 클라이언트가 보낸 제목·금액은 받지 않는다(`payload` 등 추가 필드는 422). 내가 포함된 것이 아니거나 없으면 404(남의 일정·다른 가족 일정·정산 내역 없음), 월 형식이 틀리면 400, 만드는 함수가 없으면 503(`share_unavailable`), 상대가 나간 1:1 방이면 409 `peer_left_room`, 1분에 10장 넘게 보내면 429.
 - 일정 카드 `payload`: `title`·`date`·`start_time`·`end_time`·`place`·`kind`·`with_names`(같이하는 사람 이름). **메모는 담지 않는다.** 정산 카드: `month`·`remaining`(내 남은 잔액, 받을 돈 +/보낼 돈 −)·`lines`(내가 보내거나 받을 송금 줄 `direction`·`name`·`amount`, 남들끼리의 줄은 없음, **1:1 방에서는 그 상대와의 줄만**).
 - 응답·메시지 목록의 `MessageOut.share = {kind, payload}`(카드가 아니면 null). 메시지 `text` 는 개인정보 없는 고정 문구라 구버전 앱·방 목록 미리보기·답장 인용에도 말풍선이 비지 않는다. 푸시는 일반 메시지와 같은 고정 문구만 보낸다(카드 내용은 싣지 않는다). 안 읽은 수에 일반 메시지처럼 센다.
-- 삭제: 보낸 사람만 지울 수 있고(기존 메시지 삭제), 지우면 카드 내용 행(`message_shares`)도 서버에서 지운다. 방·가족 삭제(`group_purge`)는 새 테이블을 자동 포함한다. 보낸 시점 내용 그대로이며 원본을 고쳐도 카드는 바뀌지 않는다.
-- 준비 안 된 DB: `message_shares` 가 아직 없는 DB 에서는 `POST /shares` 만 503 이고 메시지 목록·삭제는 그대로 열린다(카드 내용만 빠진다). 시험: `tests/test_chat_share.py`. 앱 화면(말풍선·공유 시트)과 `@가비` 의 카드 참고는 이어지는 PR.
+- 삭제: 보낸 사람만 지울 수 있고(기존 메시지 삭제), 지우면 카드 내용 행(`message_shares`)도 서버에서 지운다. 방·가족 삭제(`group_purge`)는 새 테이블을 자동 포함하고, DB 에 아직 없는 테이블은 건너뛴다(표가 없는 DB 에서도 삭제·나가기가 동작). 보낸 시점 내용 그대로이며 원본을 고쳐도 카드는 바뀌지 않는다.
+- 준비 안 된 DB: `message_shares` 가 아직 없는 DB 에서는 `POST /shares` 만 503 이고 메시지 목록·삭제는 그대로 열린다(카드 내용만 빠진다). 시험: `tests/test_chat_share.py`. 앱 화면(말풍선·공유 시트)은 아래 "공유 카드 (앱)" 절, `@가비`·AI 도우미의 카드 참고는 이어지는 PR.
 
 ### 문서 파일 보내기 (서버)
 
