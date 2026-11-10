@@ -9,6 +9,7 @@ from app.shared.db import get_db
 
 from . import bomb
 from .bomb_schemas import (
+    PlayBombBriefOut,
     PlayBombChatIn,
     PlayBombCheerIn,
     PlayBombHistoryOut,
@@ -28,8 +29,18 @@ def current(
     group_id: str = Depends(current_group_id),
     db: Session = Depends(get_db),
 ) -> PlayBombStateOut | None:
-    """우리 가족의 열려 있는 폭탄방(없으면 null). 가족마다 한 번에 하나만 열 수 있다."""
+    """내가 들어와 있는 열린 폭탄방(없으면 null)."""
     return bomb.current_room(db, user, group_id)
+
+
+@router.get("/open", response_model=list[PlayBombBriefOut])
+def open_rooms(
+    user: User = Depends(current_user),
+    group_id: str = Depends(current_group_id),
+    db: Session = Depends(get_db),
+) -> list[PlayBombBriefOut]:
+    """우리 가족의 열려 있는 폭탄방 목록(최근에 연 방이 먼저)."""
+    return bomb.list_rooms(db, user, group_id)
 
 
 @router.post("", response_model=PlayBombStateOut, status_code=201)
@@ -38,7 +49,7 @@ def create(
     group_id: str = Depends(current_group_id),
     db: Session = Depends(get_db),
 ) -> PlayBombStateOut:
-    """폭탄방을 연다(방장). 이미 열린 방이 있으면 409 room_open."""
+    """폭탄방을 연다(방장). 이미 다른 방에 들어와 있으면 409 already_in_room."""
     return bomb.create_room(db, user, group_id)
 
 

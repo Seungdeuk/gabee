@@ -1,6 +1,6 @@
 """가족 놀이터 문장 폭탄방: 실시간 턴제 게임. 화면이 1초쯤마다 방 상태를 물어보는 폴링 방식이라 서버는 요청을 받을 때 시간을 계산한다.
 
-- 방: 가족마다 열린 방은 하나. 방장이 만들고 가족이 들어온다. 닫히는 시각(`close_at`)은 로비 1시간, 판이 시작되면 시작 + 2시간(상한),
+- 방: 방장이 만들고 가족이 들어온다. 가족 안에 열린 방은 여러 개일 수 있지만 한 사람은 한 방에만 들어가 있을 수 있다(이미 다른 방에 있으면 새 방 개설·다른 방 입장은 409 already_in_room). 닫히는 시각(`close_at`)은 로비 1시간, 판이 시작되면 시작 + 2시간(상한),
   판이 끝나면 끝난 시각 + 1시간, 방장이 닫으면 그 순간이다.
 - 판: 생명(1~5)·차례당 시간(1~60초)을 방장이 시작할 때 정한다. 진행 순서는 방장 → 들어온 순서. 판이 시작된 뒤에 들어온 사람은 관전한다.
 - 차례: 내 차례에 한 단어나 짧은 구(10자)를 이어 말한다. 지금까지 이어 말한 문장 전체를 Kiwi 로 판정해서 문장이 끝났으면 생명 -1,
@@ -27,6 +27,7 @@ from .bomb_judge import fix_spacing, is_ended, is_multi_phrase, is_repeat
 from .bomb_schemas import (
     LIFE_RANGE,
     SEC_RANGE,
+    PlayBombBriefOut,
     PlayBombHistoryOut,
     PlayBombHistoryRoundOut,
     PlayBombMessageOut,
@@ -60,7 +61,7 @@ PLAY_HOURS = 2  # 한 판의 상한
 AFTER_HOURS = 1  # 판이 끝난 뒤 "한 판 더"를 기다리는 시간
 MIN_PLAYERS = 2
 SPEEDUP_RATE = 0.95  # 한 차례가 지날 때마다 제한 시간이 이 비율로 줄어든다(판이 새로 시작되면 처음 시간으로 돌아감)
-MIN_TURN_SEC = 3  # 줄어들어도 이 밑으로는 안 내려간다(방에서 정한 시간이 더 짧으면 그 시간 그대로)
+MIN_TURN_SEC = 5  # 줄어들어도 이 밑으로는 안 내려간다(방 시간은 5초 이상이라, 이보다 짧은 방은 옛 데이터뿐이고 그때는 그 시간 그대로)
 CHEER_COOLDOWN_SEC = 2  # 응원 난타 방지
 CHAT_COOLDOWN_SEC = 2  # 탈락자 채팅 난타 방지
 CHAT_KEEP = 100  # 방마다 기억하는 채팅 수
@@ -278,11 +279,46 @@ def _settled(db: Session, item: PlayItem, now: datetime) -> PlayBombRound | None
 
 
 def current_room(db: Session, user: User, group_id: str) -> PlayBombStateOut | None:
-    now = _now()
-    item = repository.open_bomb_room(db, group_id, now)
+    """내가 들어와 있는 열린 방(없으면 None)."""
+    item = repository.my_open_bomb_room(db, group_id, user.id, _now())
     if item is None:
         return None
     return get_room(db, user, group_id, item.id)
+
+
+def list_rooms(db: Session, user: User, group_id: str) -> list[PlayBombBriefOut]:
+    """열려 있는 방 전부(최근에 연 방이 먼저). 게임 중인 방도 나오고 들어가면 구경할 수 있다."""
+    now = _now()
+    by_id = {m.id: m for m in group_repo.members(db, group_id)}
+    out: list[PlayBombBriefOut] = []
+    for item in repository.open_bomb_rooms(db, group_id, now):
+        rnd = _settled(db, item, now)
+        rows = sorted(
+            repository.bomb_players(db, item.id),
+            key=lambda r: (r.player_id != item.maker_id, aware(r.joined_at)),
+        )
+        out.append(
+            PlayBombBriefOut(
+                id=item.id,
+                phase="lobby" if rnd is None else "playing" if rnd.ended_at is None else "finished",
+                host=_person(by_id.get(item.maker_id)),
+                players=[_person(by_id.get(r.player_id)) for r in rows],
+                mine=any(r.player_id == user.id for r in rows),
+                life=rnd.life if rnd else 3,
+                sec=rnd.sec if rnd else 10,
+                close_at=aware(item.close_at),
+            )
+        )
+    db.commit()  # 시간 초과를 기록했을 수 있다
+    return out
+
+
+def _ensure_free(
+    db: Session, group_id: str, user_id: str, now: datetime, *, except_id: str | None = None
+) -> None:
+    """이미 다른 열린 방에 들어와 있으면 새 방을 열거나 다른 방에 들어올 수 없다(409 already_in_room)."""
+    if repository.my_open_bomb_room(db, group_id, user_id, now, except_id=except_id) is not None:
+        raise ApiError(409, "already_in_room", "이미 다른 방에 있어요. 먼저 그 방에서 나가 주세요")
 
 
 def create_room(db: Session, user: User, group_id: str) -> PlayBombStateOut:
@@ -290,8 +326,7 @@ def create_room(db: Session, user: User, group_id: str) -> PlayBombStateOut:
     members = group_repo.members(db, group_id)
     if len(members) < MIN_PLAYERS:
         raise bad_request("no_recipient", "함께 할 가족이 아직 없어요")
-    if repository.open_bomb_room(db, group_id, now) is not None:
-        raise ApiError(409, "room_open", "이미 열려 있는 폭탄방이 있어요")
+    _ensure_free(db, group_id, user.id, now)
     item = PlayItem(
         group_id=group_id,
         game=GAME_BOMB,
@@ -321,6 +356,7 @@ def join_room(db: Session, user: User, group_id: str, room_id: str) -> PlayBombS
     if aware(item.close_at) <= now:
         raise ApiError(409, "closed", "이미 닫힌 방이에요")
     if repository.bomb_player(db, item.id, user.id) is None:
+        _ensure_free(db, group_id, user.id, now, except_id=item.id)
         repository.add(db, PlayBombPlayer(play_id=item.id, player_id=user.id, joined_at=now))
     db.commit()
     return build_state(db, item, user, group_repo.members(db, group_id), now)

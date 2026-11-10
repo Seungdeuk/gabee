@@ -6,7 +6,7 @@ import { isApiConfigured } from "@/shared/api/client";
 import useResource from "@/shared/hooks/useResource";
 
 import { bombPath, bombScreen, boardView, rankingView } from "./adapt";
-import { getBoard, getBomb, getItem, getQuota, getRanking } from "./api";
+import { getBoard, getBomb, getBombOpen, getItem, getQuota, getRanking } from "./api";
 import { ME, makeLeft, openSent, PAST, RANKING_BY, SENT_PAST, TODO, WAITING } from "./mock";
 
 /** 서버 주소가 있으면 서버에서, 없으면 시안(mock.js)으로 동작한다. */
@@ -55,6 +55,30 @@ export function useAudience() {
 export function useMakeLeft() {
   const loader = useCallback(async () => (playLive() ? (await getQuota()).left : makeLeft()), []);
   return useResource(loader).data ?? null;
+}
+
+const ROOMS_POLL_MS = 3000;
+
+/** 우리 가족의 열린 폭탄방 목록. 화면이 보이는 동안 3초마다 새로 받는다. rooms 가 null 이면 아직 못 받은 것. */
+export function useBombRooms() {
+  const [rooms, setRooms] = useState(null);
+  const [error, setError] = useState("");
+  const refresh = useCallback(async () => {
+    try {
+      setRooms(await getBombOpen());
+      setError("");
+    } catch (e) {
+      setError(e.message || "방 목록을 불러오지 못했어요");
+    }
+  }, []);
+  useFocusEffect(
+    useCallback(() => {
+      refresh();
+      const timer = setInterval(refresh, ROOMS_POLL_MS);
+      return () => clearInterval(timer);
+    }, [refresh]),
+  );
+  return { rooms, error, refresh };
 }
 
 const BOMB_POLL_MS = 1000;

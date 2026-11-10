@@ -209,3 +209,11 @@ def test_fix_spacing_merges_only_single_phrases():
     assert fix_spacing("그 것도") == "그것도"
     assert fix_spacing("시장 가서") == "시장 가서"  # 진짜 두 어절은 그대로
     assert fix_spacing("바다") == "바다"
+
+
+def test_colloquial_neoga_is_not_a_verb():
+    # 너가(= 네가)를 Kiwi 가 너 + 가다로 읽어 첫 말부터 탈락시키던 문제
+    assert is_multi_phrase("너가") is False
+    assert is_ended(fix_spacing("너가")) is False
+    assert is_ended("엄마가 너가") is False
+    assert is_ended("너가 먹었다") is True

@@ -94,14 +94,49 @@ def test_room_lifecycle_and_lobby(client, family, clock):
         ("수진", False, False),  # 아직 안 들어온 가족
     ]
     assert (room["life"], room["sec"]) == (3, 10)  # 로비에서는 기본값
-    cur = client.get(BASE + "/current", headers=b).json()
-    assert cur["id"] == room["id"] and cur["my_status"] == "none" and not cur["is_host"]
-    r = client.post(BASE, headers=b)
-    assert r.status_code == 409 and r.json()["code"] == "room_open"  # 가족마다 방은 하나
+    assert client.get(BASE + "/current", headers=b).json() is None  # 아직 어느 방에도 안 들어옴
+    listing = client.get(BASE + "/open", headers=b).json()
+    assert [(r["id"], r["mine"], r["phase"]) for r in listing] == [(room["id"], False, "lobby")]
+    assert [p["name"] for p in listing[0]["players"]] == ["지민"]  # 들어와 있는 사람만, 방장이 먼저
     joined = join(client, b, room["id"])
     assert joined["my_status"] == "player"
+    assert client.get(BASE + "/current", headers=b).json()["id"] == room["id"]  # 이제 내가 있는 방
     assert [p["name"] for p in joined["players"] if p["joined"]] == ["지민", "수진"]
     assert join(client, b, room["id"])["my_status"] == "player"  # 다시 들어와도 그대로
+
+
+def test_everyone_can_open_a_room_but_a_person_is_in_one_room_at_a_time(client, family, clock):
+    a, b, _ = family
+    ra = open_room(client, a)
+    rb = open_room(client, b)  # 다른 가족도 자기 방을 열 수 있다
+    listing = client.get(BASE + "/open", headers=a).json()
+    assert [r["id"] for r in listing] == [rb["id"], ra["id"]]  # 최근에 연 방이 먼저
+    assert {r["id"]: r["mine"] for r in listing} == {
+        ra["id"]: True,
+        rb["id"]: False,
+    }  # a 가 보는 목록: 내 방만 mine
+    assert [r["host"]["name"] for r in listing] == ["수진", "지민"]
+    # 이미 방에 있으면 새 방을 못 열고 다른 방에도 못 들어간다
+    r = client.post(BASE, headers=a)
+    assert r.status_code == 409 and r.json()["code"] == "already_in_room"
+    r = client.post(f"{BASE}/{rb['id']}/join", headers=a)
+    assert r.status_code == 409 and r.json()["code"] == "already_in_room"
+    assert client.get(BASE + "/current", headers=a).json()["id"] == ra["id"]
+    # 방을 닫고 나면 다른 방에 들어갈 수 있다
+    assert client.post(f"{BASE}/{ra['id']}/close", headers=a).json()["phase"] == "closed"
+    assert join(client, a, rb["id"])["my_status"] == "player"
+    assert [r["id"] for r in client.get(BASE + "/open", headers=a).json()] == [rb["id"]]
+
+
+def test_leaving_a_room_frees_the_person(client, family, clock):
+    a, b, _ = family
+    ra = open_room(client, a)
+    join(client, b, ra["id"])
+    rb_blocked = client.post(BASE, headers=b)
+    assert rb_blocked.status_code == 409 and rb_blocked.json()["code"] == "already_in_room"
+    assert client.post(f"{BASE}/{ra['id']}/leave", headers=b).status_code == 200
+    assert client.get(BASE + "/current", headers=b).json() is None
+    assert open_room(client, b)["is_host"]  # 나간 뒤에는 자기 방을 열 수 있다
 
 
 def test_cannot_open_alone(client):
@@ -141,7 +176,7 @@ def test_only_host_starts_and_needs_two(client, family, clock):
     for bad in (
         {"life": 0, "sec": 10},
         {"life": 6, "sec": 10},
-        {"life": 3, "sec": 0},
+        {"life": 3, "sec": 4},  # 5초 밑
         {"life": 3, "sec": 61},
     ):
         assert client.post(f"{BASE}/{room['id']}/start", json=bad, headers=a).status_code == 422
@@ -309,11 +344,11 @@ def test_turn_limit_shrinks_each_turn_down_to_the_floor():
     assert bomb.turn_limit(10, 0) == 10
     assert bomb.turn_limit(10, 1) == 9.5
     assert bomb.turn_limit(10, 2) == 9.03
-    assert bomb.turn_limit(10, 200) == 3  # 아무리 지나도 3초 밑으로는 안 내려간다
+    assert bomb.turn_limit(10, 200) == 5  # 아무리 지나도 5초 밑으로는 안 내려간다
     assert bomb.turn_limit(60, 1) == 57
     assert (
         bomb.turn_limit(2, 0) == 2 and bomb.turn_limit(2, 50) == 2
-    )  # 방에서 정한 시간이 3초보다 짧으면 그대로
+    )  # 옛 데이터처럼 방 시간이 5초보다 짧으면 그대로
     assert bomb.turn_limit(1, 9) == 1
 
 
@@ -948,20 +983,20 @@ def test_call_vote_pass_can_eliminate_and_finish_the_round(client, family, clock
     assert out["vote"] is None and not out["can_call"]
 
 
-def test_vote_end_gives_at_least_three_seconds(client, family, clock):
+def test_vote_end_gives_at_least_five_seconds(client, family, clock):
     a, c, b, rid = three_room(client, family, clock)
     three_words(client, a, c, b, rid)
     clock.at(8)  # 지민 차례에 0.57초 남았을 때 어라?
     assert state(client, a, rid)["turn"]["seconds_left"] < 1
     vote_start(client, a, rid, "call")
-    clock.at(18)  # 투표 마감(기각): 남은 시간이 0.57초였지만 이어질 때는 3초
+    clock.at(18)  # 투표 마감(기각): 남은 시간이 0.57초였지만 이어질 때는 5초
     out = state(client, a, rid)
     assert out["vote"] is None and out["phase"] == "playing"
-    assert out["turn"]["seconds_left"] == pytest.approx(3.0, abs=0.05)
+    assert out["turn"]["seconds_left"] == pytest.approx(5.0, abs=0.05)
     clock.at(20)
     out = state(client, a, rid)
-    assert out["turn"]["seconds_left"] == pytest.approx(1.0, abs=0.05) and lives(out)["지민"] == 2
-    clock.at(21.5)  # 3초를 쓰고도 말하지 않으면 그때 시간 초과
+    assert out["turn"]["seconds_left"] == pytest.approx(3.0, abs=0.05) and lives(out)["지민"] == 2
+    clock.at(23.5)  # 5초를 쓰고도 말하지 않으면 그때 시간 초과
     out = state(client, a, rid)
     assert lives(out)["지민"] == 1
 

@@ -209,13 +209,36 @@ def correct_counts(
 
 
 # ---------- 문장 폭탄방 ----------
-def open_bomb_room(db: Session, group_id: str, now: datetime) -> PlayItem | None:
-    """가족의 열려 있는 폭탄방(닫히는 시각 전) 한 개. 가족마다 한 번에 하나만 둔다."""
-    return db.scalars(
+def open_bomb_rooms(db: Session, group_id: str, now: datetime) -> list[PlayItem]:
+    """가족의 열려 있는 폭탄방(닫히는 시각 전) 전부. 최근에 연 방이 먼저."""
+    return list(
+        db.scalars(
+            select(PlayItem)
+            .where(
+                PlayItem.group_id == group_id, PlayItem.game == GAME_BOMB, PlayItem.close_at > now
+            )
+            .order_by(PlayItem.created_at.desc())
+        )
+    )
+
+
+def my_open_bomb_room(
+    db: Session, group_id: str, user_id: str, now: datetime, *, except_id: str | None = None
+) -> PlayItem | None:
+    """내가 선수로 들어와 있는 열린 폭탄방 한 개(없으면 None). except_id 방은 빼고 찾는다."""
+    q = (
         select(PlayItem)
-        .where(PlayItem.group_id == group_id, PlayItem.game == GAME_BOMB, PlayItem.close_at > now)
-        .order_by(PlayItem.created_at.desc())
-    ).first()
+        .join(PlayBombPlayer, PlayBombPlayer.play_id == PlayItem.id)
+        .where(
+            PlayItem.group_id == group_id,
+            PlayItem.game == GAME_BOMB,
+            PlayItem.close_at > now,
+            PlayBombPlayer.player_id == user_id,
+        )
+    )
+    if except_id is not None:
+        q = q.where(PlayItem.id != except_id)
+    return db.scalars(q.order_by(PlayItem.created_at.desc())).first()
 
 
 def bomb_players(db: Session, play_id: str) -> list[PlayBombPlayer]:

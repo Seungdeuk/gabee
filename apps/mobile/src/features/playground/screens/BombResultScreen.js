@@ -9,6 +9,7 @@ import PlayScreen from "../components/PlayScreen";
 import { SCORE } from "../games";
 import { playLive } from "../hooks";
 import { LiveBombResult } from "./BombLiveScreens";
+import { leaveToPlayMain } from "../nav";
 
 const ROW_H = 64;
 const VISIBLE = 3; // 순위는 3줄만 보이고 나머지는 목록 안에서 스크롤
@@ -35,7 +36,7 @@ function MockBombResultScreen() {
       footer={
         <View style={styles.footerRow}>
           <View style={styles.footerCell}>
-            <Button label="닫기" variant="secondary" onPress={() => router.replace("/play")} />
+            <Button label="닫기" variant="secondary" onPress={() => leaveToPlayMain(router)} />
           </View>
           <View style={styles.footerCell}>
             <Button label="한 판 더" onPress={() => router.replace("/play/bomb-lobby")} />

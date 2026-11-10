@@ -68,6 +68,9 @@
   "multi_phrase_exception_patterns": [
     "\\S+?(?:려|려고|다|다고|라고|자고|냐고)\\s?하니(?:까)?"
   ],
+  "colloquial_forms": {
+    "너가": "네가"
+  },
   "bare_noun_exceptions": [
     "산"
   ],

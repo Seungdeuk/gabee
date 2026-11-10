@@ -13,7 +13,7 @@ from datetime import datetime
 VOTE_SEC = 10  # 투표 시간
 MIN_YES = 2  # 통과에 필요한 찬성 최소 표
 RESULT_KEEP = 20  # 방마다 기억하는 결과 줄 수
-MIN_LEFT_AFTER = 3  # 투표가 끝나 시계가 이어질 때 남은 시간이 이보다 적으면 이만큼으로 올려 준다(바로 시간 초과 나는 것을 막음)
+MIN_LEFT_AFTER = 5  # 투표가 끝나 시계가 이어질 때 남은 시간이 이보다 적으면 이만큼으로 올려 준다(바로 시간 초과 나는 것을 막음, 최소 차례 시간과 같다)
 
 KIND_CALL = "call"
 KIND_UNFAIR = "unfair"

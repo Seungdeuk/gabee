@@ -6,7 +6,7 @@ from pydantic import BaseModel, Field, field_validator
 from .schemas import PlayPersonOut
 
 LIFE_RANGE = (1, 5)
-SEC_RANGE = (1, 60)
+SEC_RANGE = (5, 60)  # 5초 밑이면 키보드가 올라오고 칠 틈이 없다
 WORD_MAX = 10
 CHEER_MAX = 20  # 응원 직접 쓰기 글자 수
 CHAT_MAX = 50  # 탈락자 채팅 글자 수
@@ -178,6 +178,19 @@ class PlayBombResultOut(BaseModel):
     maker_paid_before: bool = (
         False  # 방장이 이 방의 앞선 판에서 이미 문제 내기 +20을 받았다(이번 판 점수에는 없음)
     )
+
+
+class PlayBombBriefOut(BaseModel):
+    """방 목록의 한 줄: 홈의 "문장 폭탄"을 누르면 보이는 열린 방."""
+
+    id: str
+    phase: Literal["lobby", "playing", "finished"]
+    host: PlayPersonOut
+    players: list[PlayPersonOut]  # 지금 들어와 있는 사람(방장이 먼저, 그다음 들어온 순서)
+    mine: bool  # 내가 들어와 있는 방
+    life: int  # 이번(또는 마지막) 판 규칙. 로비에서는 기본값
+    sec: int
+    close_at: datetime
 
 
 class PlayBombStateOut(BaseModel):

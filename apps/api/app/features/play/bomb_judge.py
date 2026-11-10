@@ -187,6 +187,13 @@ def _eojeols(text: str) -> list[list[str]]:
     return out
 
 
+def _colloquial(text: str) -> str:
+    """구어체 표기를 표준 표기로 바꾼다(너가 → 네가). Kiwi 가 너가를 너 + 가다로 읽어 탈락시키던 것을 막는다."""
+    for old, new in RULES["colloquial_forms"].items():
+        text = re.sub(rf"(?<!\S){old}(?!\S)", new, text)
+    return text
+
+
 def is_multi_phrase(word: str) -> bool:
     """한 번에 여러 어절을 이어 썼으면 참(그것만으로 탈락). 띄어 썼는지가 아니라 교정 결과로 본다.
 
@@ -195,6 +202,7 @@ def is_multi_phrase(word: str) -> bool:
     여러 어절로 보는 때: 3어절 이상이거나, 마지막 어절에 동사·형용사가 있거나(밥 먹고·시장 가서·안 돼),
     마지막 앞 어절이 조사로 끝날 때(엄마가 학교에·비가 오니).
     """
+    word = _colloquial(word)
     squeezed = "".join(word.split())
     if any("".join(e.split()) == squeezed for e in RULES["multi_phrase_exceptions"]):
         return False  # 띄어 쓰는 고정 표현(그리고 나서)은 한 구절로 본다
@@ -217,6 +225,7 @@ def is_multi_phrase(word: str) -> bool:
 
 def fix_spacing(word: str) -> str:
     """띄어쓰기 교정으로 한 어절이 되는 말(그 것도·아 니)은 합친 형태로 돌려준다. 그 밖에는 그대로."""
+    word = _colloquial(word)
     if len(word.split()) < 2:
         return word
     fixed = _get_kiwi().space(word, reset_whitespace=True)
@@ -225,7 +234,7 @@ def fix_spacing(word: str) -> str:
 
 def judge_sentence(text: str) -> str:
     """지금까지 이어 말한 문장 전체를 판정한다. "Y" 면 마지막으로 말한 사람이 문장을 끝낸 것이다."""
-    text = text.strip()
+    text = _colloquial(text.strip())
     if not text:
         return "N"
     asked = text.endswith("?")

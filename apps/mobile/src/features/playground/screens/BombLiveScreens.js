@@ -1,3 +1,4 @@
+import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { useEffect, useRef, useState } from "react";
 import { Keyboard, KeyboardAvoidingView, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
@@ -8,8 +9,8 @@ import Button from "@/shared/components/Button";
 import ConfirmDialog from "@/shared/components/ConfirmDialog";
 import { colors, font, fonts, radius } from "@/theme";
 
-import { bombChat, bombPath, recordNote, unfairMessageId } from "../adapt";
-import { chatBomb, cheerBomb, closeBomb, createBomb, getBombCurrent, joinBomb, leaveBomb, sayBomb, startBomb, startBombVote, voteBomb } from "../api";
+import { bombChat, bombPath, lobbyPlayers, nextTurnPlayerId, recordNote, unfairMessageId } from "../adapt";
+import { chatBomb, cheerBomb, closeBomb, createBomb, joinBomb, leaveBomb, sayBomb, startBomb, startBombVote, voteBomb } from "../api";
 import { Bubble, BOMB_RED, PlayerStrip, TimeBar } from "../components/bomb/BombParts";
 import PlayerRow from "../components/bomb/PlayerRow";
 import RuleCard, { LIFE, SEC } from "../components/bomb/RuleCard";
@@ -20,7 +21,8 @@ import PlayHeader from "../components/PlayHeader";
 import PlayIcon from "../components/PlayIcon";
 import PlayScreen from "../components/PlayScreen";
 import { GAMES, SCORE } from "../games";
-import { useBombRedirect, useBombRoom, useMyId } from "../hooks";
+import { useBombRedirect, useBombRoom, useBombRooms, useMyId } from "../hooks";
+import { leaveToPlayMain } from "../nav";
 
 /*
  * 서버에 연결됐을 때 쓰는 문장 폭탄 화면들. 방 상태는 useBombRoom 이 1초마다 서버에서 받고(폴링),
@@ -31,27 +33,82 @@ const MAX_LEN = 10; // 한 번에 한 단어나 짧은 구, 10자까지
 const ROW_H = 52;
 const VISIBLE_PLAYERS = 4;
 
-/** 방을 찾아서 있으면 들어가고, 없으면 새로 연다. 홈의 "문장 폭탄" 카드가 여기로 온다. */
+const PHASE_LABEL = { lobby: "대기 중", playing: "게임 중", finished: "게임 끝" };
+
+/** 열린 방 한 줄: 방장 이름, 상태 칩, 들어온 사람 얼굴, 규칙. dim 이면 눌리지 않는다(내가 다른 방에 있을 때). */
+function RoomCard({ room, mine = false, dim = false, onPress }) {
+  const action = mine ? "돌아가기" : room.phase === "playing" ? "구경하기" : "들어가기";
+  return (
+    <Pressable
+      disabled={dim}
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={`${room.host.name} 방. ${PHASE_LABEL[room.phase]}. ${room.players.length}명 입장. ${dim ? "지금 방에서 나가야 들어갈 수 있어요" : action}`}
+      style={[styles.roomCard, mine && styles.roomMine, dim && styles.roomDim]}
+    >
+      <View style={styles.roomTop}>
+        <Text style={styles.roomName}>{room.host.name} 방</Text>
+        <Text style={[styles.roomChip, room.phase === "playing" && styles.roomChipPlay]}>{PHASE_LABEL[room.phase]}</Text>
+      </View>
+      <View style={styles.faces}>
+        {room.players.slice(0, 6).map((p) => (
+          <Avatar key={p.id} name={p.name} userId={p.id} size={24} />
+        ))}
+      </View>
+      <Text style={styles.roomMeta}>
+        {room.players.length}명 입장 · 생명 {room.life} · {room.sec}초
+      </Text>
+      {dim ? null : <Text style={styles.roomGo}>{action} ›</Text>}
+    </Pressable>
+  );
+}
+
+/** 홈의 "문장 폭탄" 카드: 열린 방 목록. 눌러서 들어가거나 새 방을 만든다. 한 사람은 한 방에만 있을 수 있어 내가 방에 있으면 다른 방·새 방은 막힌다. */
 export function LiveBombEntry() {
   const router = useRouter();
-  const [error, setError] = useState("");
-  const [round, setRound] = useState(0);
-  const ran = useRef(-1);
-  useEffect(() => {
-    if (ran.current === round) return;
-    ran.current = round;
-    (async () => {
-      try {
-        const room = (await getBombCurrent()) ?? (await createBomb());
-        router.replace(bombPath("lobby", room.id));
-      } catch (e) {
-        setError(e.message || "방을 열지 못했어요");
-      }
-    })();
-  }, [round, router]);
+  const { rooms, error, refresh } = useBombRooms();
+  const [busy, setBusy] = useState(false);
+  const [makeError, setMakeError] = useState("");
+  const mine = rooms?.find((r) => r.mine) ?? null;
+  const others = (rooms ?? []).filter((r) => !r.mine);
+  const open = (room) => router.push(bombPath("lobby", room.id));
+  const create = async () => {
+    if (busy || mine) return;
+    setBusy(true);
+    setMakeError("");
+    try {
+      open(await createBomb());
+    } catch (e) {
+      setMakeError(e.message || "방을 열지 못했어요");
+      refresh();
+    } finally {
+      setBusy(false);
+    }
+  };
   return (
-    <PlayScreen title="문장 폭탄" close>
-      <LoadNote loading={!error} error={error} data={null} reload={() => { setError(""); setRound((n) => n + 1); }} what="방" />
+    <PlayScreen title="문장 폭탄" titleIcon={<PlayIcon icon={GAMES.bomb.icon} size={24} color={BOMB_RED} />} close>
+      <Text style={styles.noteLeft}>{mine ? "지금 방에서 나가야 다른 방에 들어갈 수 있어요" : "열린 방에 들어가거나 새 방을 만들어요"}</Text>
+      <Button label="새 방 만들기" disabled={busy || !!mine || rooms == null} onPress={create} />
+      {makeError ? <Text style={styles.error}>{makeError}</Text> : null}
+      <LoadNote loading={rooms == null && !error} error={rooms == null ? error : ""} data={rooms} reload={refresh} what="방 목록" />
+      {rooms != null && mine ? (
+        <>
+          <Text style={styles.section}>내가 있는 방</Text>
+          <RoomCard room={mine} mine onPress={() => open(mine)} />
+        </>
+      ) : null}
+      {rooms != null && others.length > 0 ? (
+        <>
+          <Text style={styles.section}>
+            {mine ? "다른 방" : "열린 방"} <Text style={styles.sectionSub}>({others.length}개)</Text>
+          </Text>
+          {others.map((r) => (
+            <RoomCard key={r.id} room={r} dim={!!mine} onPress={() => open(r)} />
+          ))}
+          {mine ? <Text style={styles.noteLeft}>다른 방에 들어가거나 새 방을 열려면 먼저 내 방에서 “방 나가기”를 눌러요</Text> : null}
+        </>
+      ) : null}
+      {rooms != null && !mine && others.length === 0 ? <Text style={styles.emptyRooms}>{"열린 방이 없어요\n새 방을 만들면 가족이 들어올 수 있어요"}</Text> : null}
     </PlayScreen>
   );
 }
@@ -65,6 +122,7 @@ export function LiveBombLobby({ id }) {
   const [sec, setSec] = useState(SEC.def);
   const [askClose, setAskClose] = useState(false);
   const { ask: askInvite, sheet: inviteSheet } = useInvite();
+  const myId = useMyId();
   if (!room) {
     return (
       <PlayScreen title="끝내는 순간 터진다!" close>
@@ -73,13 +131,16 @@ export function LiveBombLobby({ id }) {
     );
   }
   const joined = room.players.filter((p) => p.joined).length;
+  const entered = room.my_status !== "none"; // 방에 들어와 있나(들어오기 전이 대기방, 들어온 뒤가 로비)
+  const shown = lobbyPlayers(room.players, myId, entered, room.is_host);
+  const invitees = room.players.filter((p) => !p.joined); // 아직 안 들어온 가족(로비 목록에는 없고 아래 초대하기로만 부른다)
   const isClosed = room.phase === "closed";
   let footer;
   if (isClosed) {
     footer = (
       <>
         <Text style={styles.note}>방이 닫혔어요</Text>
-        <Button label="나가기" onPress={() => router.replace("/play")} />
+        <Button label="나가기" onPress={() => leaveToPlayMain(router)} />
       </>
     );
   } else if (room.is_host) {
@@ -93,20 +154,20 @@ export function LiveBombLobby({ id }) {
   } else if (room.my_status === "none") {
     footer = (
       <>
-        {error ? <Text style={styles.error}>{error}</Text> : <Text style={styles.note}>{room.phase === "playing" ? "게임 중이에요. 들어가면 구경할 수 있어요" : "들어가면 방장이 시작할 때 함께해요"}</Text>}
+        {error ? <Text style={styles.error}>{error}</Text> : null}
         <Button label="방에 들어가기" disabled={busy} onPress={() => act(() => joinBomb(id))} />
       </>
     );
   } else {
     footer = (
       <>
-        {error ? <Text style={styles.error}>{error}</Text> : <Text style={styles.note}>방장이 시작하면 바로 게임이 시작돼요</Text>}
+        {error ? <Text style={styles.error}>{error}</Text> : null}
         <Button label="기다리는 중" disabled onPress={() => {}} />
         <Button
           label="방 나가기"
           variant="secondary"
           onPress={async () => {
-            if (await act(() => leaveBomb(id))) router.replace("/play");
+            if (await act(() => leaveBomb(id))) leaveToPlayMain(router);
           }}
         />
       </>
@@ -123,14 +184,43 @@ export function LiveBombLobby({ id }) {
       <Text style={styles.intro}>{"차례대로 이어 말해요. 문장을 끝내면 생명이 줄어요!\n마지막까지 살아남은 사람이 이겨요."}</Text>
       <RuleCard life={room.is_host ? life : room.life} sec={room.is_host ? sec : room.sec} onLife={room.is_host ? setLife : undefined} onSec={room.is_host ? setSec : undefined} />
       {room.is_host ? null : <Text style={styles.noteLeft}>생명과 시간은 방장이 시작할 때 정해요</Text>}
+      {room.is_host || isClosed ? null : entered ? (
+        <View style={[styles.state, styles.stateAfter]} accessible accessibilityLabel="방에 들어왔어요. 방장이 시작하면 바로 게임이 시작돼요">
+          <Text style={styles.stateTitleAfter}>방에 들어왔어요</Text>
+          <Text style={styles.stateTextAfter}>방장이 시작하면 바로 게임이 시작돼요</Text>
+        </View>
+      ) : (
+        <View style={[styles.state, styles.stateBefore]} accessible accessibilityLabel="아직 들어가지 않았어요">
+          <Text style={styles.stateTitleBefore}>아직 들어가지 않았어요</Text>
+          <Text style={styles.stateTextBefore}>{room.phase === "playing" ? "게임 중이에요. 들어가면 구경할 수 있어요" : "들어가면 방장이 시작할 때 함께해요"}</Text>
+        </View>
+      )}
       <Text style={styles.section}>
-        선수 대기 <Text style={styles.sectionSub}>({joined}명)</Text>
+        {entered && !room.is_host ? "선수 대기" : "방에 부른 가족"} <Text style={styles.sectionSub}>({entered && !room.is_host ? `${joined}명` : `${joined}/${room.players.length}명 입장`})</Text>
       </Text>
-      <ScrollView style={styles.playerList} nestedScrollEnabled showsVerticalScrollIndicator={room.players.length > VISIBLE_PLAYERS}>
-        {room.players.map((p) => (
-          <PlayerRow key={p.id} id={p.id} name={p.name} note={p.host ? "방장" : ""} joined={p.joined} onInvite={() => askInvite({ name: p.name, kind: "bomb" })} />
+      <ScrollView style={styles.playerList} nestedScrollEnabled showsVerticalScrollIndicator={shown.length > VISIBLE_PLAYERS}>
+        {shown.map((p) => (
+          <PlayerRow
+            key={p.id}
+            id={p.id}
+            name={p.name}
+            note={p.host && p.id === myId ? "방장 · 나" : p.host ? "방장" : p.id === myId ? "나" : ""}
+            joined={p.joined}
+            mine={entered && p.id === myId && !p.host}
+            onInvite={() => askInvite({ name: p.name, kind: "bomb" })}
+          />
         ))}
       </ScrollView>
+      {entered && !room.is_host && !isClosed && invitees.length > 0 ? (
+        <Pressable
+          onPress={() => askInvite({ name: invitees.length === 1 ? invitees[0].name : "가족", kind: "bomb" })}
+          accessibilityRole="button"
+          accessibilityLabel={`가족 초대하기. 아직 안 들어온 가족 ${invitees.length}명`}
+          style={styles.inviteMore}
+        >
+          <Text style={styles.inviteMoreText}>+ 가족 초대하기 · 아직 {invitees.length}명이 안 들어왔어요</Text>
+        </Pressable>
+      ) : null}
       {inviteSheet}
       <ConfirmDialog
         visible={askClose}
@@ -140,7 +230,7 @@ export function LiveBombLobby({ id }) {
         onCancel={() => setAskClose(false)}
         onConfirm={async () => {
           setAskClose(false);
-          if (await act(() => closeBomb(id))) router.replace("/play");
+          if (await act(() => closeBomb(id))) leaveToPlayMain(router);
         }}
       />
     </PlayScreen>
@@ -240,6 +330,7 @@ export function LiveBombPlay({ id }) {
     );
   }
   const myTurn = room.turn?.player.id === myId && !room.vote; // 투표 중에는 이어 말할 수 없다
+  const nextIsMe = !myTurn && !room.vote && room.phase === "playing" && nextTurnPlayerId(room) === myId; // 내 바로 앞사람이 말하는 중
   const send = async () => {
     const word = text.trim();
     if (!word || !myTurn || busy) return;
@@ -248,7 +339,7 @@ export function LiveBombPlay({ id }) {
   };
   return (
     <SafeAreaView style={styles.safe} edges={["top", "bottom"]}>
-      <PlayHeader title="문장 폭탄" close fallback="/play" onBack={() => router.replace("/play")} compact={kb} />
+      <PlayHeader title="문장 폭탄" close fallback="/play" onBack={() => leaveToPlayMain(router)} compact={kb} />
       <GameTop room={room} left={left} compact={kb} />
       {room.vote ? <VoteBanner vote={room.vote} left={voteLeft} busy={busy} onVote={(yes) => act(() => voteBomb(id, yes))} /> : null}
       <KeyboardAvoidingView style={styles.flex} behavior="padding">
@@ -261,17 +352,18 @@ export function LiveBombPlay({ id }) {
           <EndBar onResult={() => router.push(bombPath("result", id))} onLeave={() => router.replace(bombPath("lobby", id))} />
         ) : (
         <View style={styles.bar}>
+          {nextIsMe ? <Text style={styles.nextBadge} accessibilityLiveRegion="polite">다음은 내 차례예요</Text> : null}
           {error ? <Text style={styles.error}>{error}</Text> : kb ? null : <Text style={styles.rule}>한 단어나 짧은 구, {MAX_LEN}자까지 · 끝내는 말을 하면 생명이 줄어요</Text>}
           <View style={styles.inputRow}>
             <TextInput
               value={text}
               onChangeText={(v) => setText(v.slice(0, MAX_LEN))}
-              editable={myTurn}
-              placeholder={myTurn ? "이어 말하기" : room.vote ? "투표 중이에요" : "차례를 기다려요"}
+              editable={myTurn || nextIsMe} // 내 바로 앞사람 차례에도 미리 칠 수 있다(보내기는 내 차례가 돼야 눌림, 쳐 둔 글자는 그대로 둔다)
+              placeholder={myTurn ? "이어 말하기" : room.vote ? "투표 중이에요" : nextIsMe ? "곧 내 차례예요" : "차례를 기다려요"}
               placeholderTextColor={colors.placeholder}
               accessibilityLabel="이어 말하기"
               onSubmitEditing={send}
-              style={[styles.input, !myTurn && styles.inputOff]}
+              style={[styles.input, !(myTurn || nextIsMe) && styles.inputOff]}
             />
             <Pressable onPress={send} disabled={!myTurn || !text.trim() || busy} accessibilityRole="button" accessibilityLabel="보내기" style={[styles.send, (!myTurn || !text.trim() || busy) && styles.sendOff]}>
               <Text style={styles.sendText}>보내기</Text>
@@ -291,6 +383,7 @@ export function LiveBombSpectate({ id }) {
   const myId = useMyId();
   useBombRedirect(room, "spectate");
   const [mode, setMode] = useState("chat"); // 채팅(탈락한 사람끼리) / 응원(모두에게)
+  const [askLeave, setAskLeave] = useState(false);
   const [kb, setKb] = useState(false); // 키보드가 올라오면 위쪽을 줄이고 입력 칸만 남겨서 채팅이 보이게 한다
   useEffect(() => {
     const show = Keyboard.addListener("keyboardDidShow", () => setKb(true));
@@ -322,7 +415,20 @@ export function LiveBombSpectate({ id }) {
   };
   return (
     <SafeAreaView style={styles.safe} edges={["top", "bottom"]}>
-      <PlayHeader title="문장 폭탄" close fallback="/play" onBack={() => router.replace("/play")} compact={kb} />
+      <PlayHeader
+        title="문장 폭탄"
+        close
+        fallback="/play"
+        onBack={() => leaveToPlayMain(router)}
+        compact={kb}
+        right={
+          room.is_host ? null : (
+            <Pressable onPress={() => setAskLeave(true)} accessibilityRole="button" accessibilityLabel="방 나가기" hitSlop={8}>
+              <Ionicons name="exit-outline" size={22} color={colors.text} />
+            </Pressable>
+          )
+        }
+      />
       <GameTop room={room} left={left} compact={kb} />
       {room.vote ? <VoteBanner vote={room.vote} left={voteLeft} busy={busy} onVote={(yes) => act(() => voteBomb(id, yes))} /> : null}
       <KeyboardAvoidingView style={styles.flex} behavior="padding">
@@ -380,6 +486,17 @@ export function LiveBombSpectate({ id }) {
           </View>
         )}
       </KeyboardAvoidingView>
+      <ConfirmDialog
+        visible={askLeave}
+        title="방에서 나갈까요?"
+        message="나가면 이 판은 더 볼 수 없어요. 다른 방에 들어갈 수 있어요."
+        confirmLabel="나가기"
+        onCancel={() => setAskLeave(false)}
+        onConfirm={async () => {
+          setAskLeave(false);
+          if (await act(() => leaveBomb(id))) leaveToPlayMain(router);
+        }}
+      />
     </SafeAreaView>
   );
 }
@@ -489,6 +606,27 @@ const styles = StyleSheet.create({
   sendOff: { backgroundColor: colors.honeySoft },
   sendText: { fontSize: 15, fontFamily: fonts.bold, color: colors.text },
   msgWrap: { gap: 3 },
+  inviteMore: { alignSelf: "center", paddingVertical: 8, paddingHorizontal: 12 },
+  inviteMoreText: { fontSize: 13, fontFamily: fonts.bold, color: "#8A5A2B" },
+  roomCard: { padding: 14, gap: 8, borderRadius: radius.card, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.card },
+  roomMine: { borderWidth: 2, borderColor: "#E3CFB0", padding: 13 },
+  roomDim: { opacity: 0.55 },
+  roomTop: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8 },
+  roomName: { ...font.bodyStrong, color: colors.text, flexShrink: 1 },
+  roomChip: { paddingVertical: 3, paddingHorizontal: 10, borderRadius: 12, overflow: "hidden", backgroundColor: colors.successSoft, color: "#2F4A3B", fontSize: 12, fontFamily: fonts.bold },
+  roomChipPlay: { backgroundColor: "#FBEAE3", color: BOMB_RED },
+  faces: { flexDirection: "row", gap: 4 },
+  roomMeta: { ...font.caption, color: colors.textSub },
+  roomGo: { alignSelf: "flex-end", fontSize: 13, fontFamily: fonts.bold, color: "#8A5A2B" },
+  emptyRooms: { ...font.body, color: colors.textSub, textAlign: "center", paddingVertical: 32 },
+  state: { paddingVertical: 10, paddingHorizontal: 14, borderRadius: radius.lg, gap: 2 },
+  stateBefore: { borderWidth: 1, borderStyle: "dashed", borderColor: "#8A5A2B", backgroundColor: colors.surface },
+  stateAfter: { backgroundColor: colors.successSoft },
+  stateTitleBefore: { fontSize: 14, fontFamily: fonts.bold, color: colors.text },
+  stateTextBefore: { ...font.caption, color: colors.textSub },
+  stateTitleAfter: { fontSize: 14, fontFamily: fonts.bold, color: "#2F4A3B" },
+  stateTextAfter: { ...font.caption, color: "#2F4A3B" },
+  nextBadge: { alignSelf: "center", paddingVertical: 4, paddingHorizontal: 14, borderRadius: 14, overflow: "hidden", backgroundColor: colors.peach, color: colors.text, fontSize: 13, fontFamily: fonts.bold },
   callChip: { alignSelf: "flex-start", marginLeft: 32, height: 24, paddingHorizontal: 10, borderRadius: 12, borderWidth: 1, borderColor: BOMB_RED, backgroundColor: "#FBEAE3", alignItems: "center", justifyContent: "center" },
   callChipText: { fontSize: 12, lineHeight: 16, fontFamily: fonts.bold, color: BOMB_RED },
   unfairChip: { alignSelf: "flex-end", marginLeft: 0 }, // 내 말풍선은 오른쪽이라 칩도 오른쪽 아래

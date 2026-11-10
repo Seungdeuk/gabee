@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { afterEach, beforeEach, test } from "node:test";
 
 import { base64ToBytes } from "../src/features/playground/upload.js";
-import { bombHistoryView, endedLabel, unfairMessageId, bestView, bitsOf, bombChat, bombPath, bombScreen, boardRow, recordNote, drawResultView, photoGuessView, photoResultView, zoomBoxStyle, familyView, quizAnswerBody, quizPlayView, quizQuestions, quizResultView, boardView, clockLabel, indexOfBits, pastLabel, playRoute, rankingView, revealLabel, withIga } from "../src/features/playground/adapt.js";
+import { lobbyPlayers, nextTurnPlayerId, bombHistoryView, endedLabel, unfairMessageId, bestView, bitsOf, bombChat, bombPath, bombScreen, boardRow, recordNote, drawResultView, photoGuessView, photoResultView, zoomBoxStyle, familyView, quizAnswerBody, quizPlayView, quizQuestions, quizResultView, boardView, clockLabel, indexOfBits, pastLabel, playRoute, rankingView, revealLabel, withIga } from "../src/features/playground/adapt.js";
 
 process.env.EXPO_PUBLIC_API_URL = "http://api.test";
 process.env.EXPO_PUBLIC_DEV_TOKEN = "legacy-dev-token";
@@ -527,4 +527,35 @@ test("폭탄 채팅: 억울해요 칩은 끝난 말로 판정된 내 마지막 �
   assert.equal(unfairMessageId(null, "me"), null);
   const chat = bombChat(msgs, "me", null, "t3");
   assert.deepEqual(chat.filter((c) => c.kind === "say").map((c) => [c.id, c.unfair]), [["t1", false], ["t2", false], ["t3", true], ["t4", false]]);
+});
+
+
+test("선수 목록: 로비는 참여한 사람만 방장 → 나 → 입장 순, 대기방은 부른 가족 전부", () => {
+  const players = [
+    { id: "h", name: "엄마", joined: true, host: true },
+    { id: "a", name: "아빠", joined: true },
+    { id: "m", name: "나", joined: true },
+    { id: "k", name: "하윤", joined: true },
+    { id: "z", name: "민준", joined: false },
+  ];
+  assert.deepEqual(lobbyPlayers(players, "m", true).map((p) => p.id), ["h", "m", "a", "k"]);
+  // 내가 방장이면 방을 열면서 이미 들어가 있어 대기방을 거치지 않으니 부른 가족 전부(입장·대기)를 본다
+  assert.deepEqual(lobbyPlayers(players, "h", true, true).map((p) => p.id), ["h", "a", "m", "k", "z"]);
+  // 들어오기 전(대기방)에는 부른 가족 전부, 서버 순서 그대로(안 들어온 가족이 맨 아래)
+  assert.deepEqual(lobbyPlayers(players, "z", false).map((p) => p.id), ["h", "a", "m", "k", "z"]);
+});
+
+test("다음 차례: 살아서 참여 중인 선수 중 지금 차례 바로 다음 사람", () => {
+  const p = (id, extra = {}) => ({ id, joined: true, lives: 2, out: false, spectator: false, ...extra });
+  const room = (cur, players) => ({ turn: { player: { id: cur } }, players });
+  const four = [p("h"), p("a"), p("m"), p("k")];
+  assert.equal(nextTurnPlayerId(room("a", four)), "m");
+  assert.equal(nextTurnPlayerId(room("k", four)), "h"); // 마지막 다음은 처음
+  // 탈락자와 구경하는 사람은 건너뛴다
+  const mixed = [p("h"), p("a", { out: true, lives: 0 }), p("m"), p("k", { spectator: true, lives: null })];
+  assert.equal(nextTurnPlayerId(room("h", mixed)), "m");
+  assert.equal(nextTurnPlayerId(room("m", mixed)), "h");
+  // 차례가 없거나 살아 있는 사람이 하나면 없음
+  assert.equal(nextTurnPlayerId({ turn: null, players: four }), null);
+  assert.equal(nextTurnPlayerId(room("h", [p("h")])), null);
 });

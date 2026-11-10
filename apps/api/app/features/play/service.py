@@ -849,8 +849,9 @@ def board(db: Session, user: User, group_id: str) -> PlayBoardOut:
     answers = repository.answers_of_many(db, ids)
     counts = repository.quiz_counts(db, ids)
     out = PlayBoardOut(todo=[], joined=[], past=[], sent=[], sent_past=[])
-    room = repository.open_bomb_room(db, group_id, now)  # 열린 폭탄방은 맨 위
-    if room is not None:
+    for room in repository.open_bomb_rooms(
+        db, group_id, now
+    ):  # 열린 폭탄방은 맨 위(여러 개일 수 있다)
         row = PlayBoardItemOut(
             id=room.id,
             game=room.game,

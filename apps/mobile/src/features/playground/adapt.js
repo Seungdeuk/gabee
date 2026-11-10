@@ -459,3 +459,36 @@ export function bombChat(messages, myId, callId = null, unfairId = null) {
   }
   return out;
 }
+
+/**
+ * 폭탄 방 선수 목록.
+ * 대기방(입장 전): 방에 부른 가족 전부, 서버 순서(방장 → 들어온 순서 → 아직 안 들어온 가족) 그대로.
+ * 로비(입장 후): 참여한 사람만, 방장 → 나 → 먼저 들어온 순서. 서버 목록은 방장 → 들어온 순서라 내가 방장이 아닐 때 나를 방장 바로 아래로 옮긴다.
+ * 방장은 방을 열면서 이미 들어가 있어 대기방을 거치지 않으므로 늘 부른 가족 전부(입장·대기)를 본다.
+ * @param {{ id: string, joined: boolean, host?: boolean }[]} players
+ * @param {string | null | undefined} myId
+ * @param {boolean} entered 내가 이미 방에 들어와 있나
+ * @param {boolean} [isHost] 내가 방장인가
+ */
+export function lobbyPlayers(players, myId, entered, isHost = false) {
+  if (!entered || isHost) return players;
+  const joined = players.filter((p) => p.joined);
+  const host = joined.filter((p) => p.host);
+  const me = joined.filter((p) => !p.host && p.id === myId);
+  const rest = joined.filter((p) => !p.host && p.id !== myId);
+  return [...host, ...me, ...rest];
+}
+
+/**
+ * 지금 차례 바로 다음에 말할 사람의 id. 살아서 이번 판에 참여 중인 선수만, 서버와 같은 순서(방장 → 들어온 순서)로 센다.
+ * 차례가 없거나 살아 있는 사람이 둘보다 적으면 null.
+ * @param {{ turn?: { player: { id: string } } | null, players: { id: string, joined: boolean, lives?: number | null, out?: boolean, spectator?: boolean }[] }} room
+ */
+export function nextTurnPlayerId(room) {
+  const cur = room?.turn?.player?.id;
+  if (!cur) return null;
+  const alive = room.players.filter((p) => p.joined && p.lives != null && !p.out && !p.spectator);
+  if (alive.length < 2) return null;
+  const i = alive.findIndex((p) => p.id === cur);
+  return i < 0 ? null : alive[(i + 1) % alive.length].id;
+}

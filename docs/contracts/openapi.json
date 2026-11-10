@@ -14359,7 +14359,7 @@
           "play"
         ],
         "summary": "Current",
-        "description": "우리 가족의 열려 있는 폭탄방(없으면 null). 가족마다 한 번에 하나만 열 수 있다.",
+        "description": "내가 들어와 있는 열린 폭탄방(없으면 null).",
         "operationId": "current_play_bomb_current_get",
         "parameters": [
           {
@@ -14427,13 +14427,83 @@
         }
       }
     },
+    "/play/bomb/open": {
+      "get": {
+        "tags": [
+          "play"
+        ],
+        "summary": "Open Rooms",
+        "description": "우리 가족의 열려 있는 폭탄방 목록(최근에 연 방이 먼저).",
+        "operationId": "open_rooms_play_bomb_open_get",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-gyeot-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Gyeot-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/PlayBombBriefOut"
+                  },
+                  "title": "Response Open Rooms Play Bomb Open Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/play/bomb": {
       "post": {
         "tags": [
           "play"
         ],
         "summary": "Create",
-        "description": "폭탄방을 연다(방장). 이미 열린 방이 있으면 409 room_open.",
+        "description": "폭탄방을 연다(방장). 이미 다른 방에 들어와 있으면 409 already_in_room.",
         "operationId": "create_play_bomb_post",
         "parameters": [
           {
@@ -25008,6 +25078,63 @@
         ],
         "title": "PlayBoardOut"
       },
+      "PlayBombBriefOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "phase": {
+            "type": "string",
+            "enum": [
+              "lobby",
+              "playing",
+              "finished"
+            ],
+            "title": "Phase"
+          },
+          "host": {
+            "$ref": "#/components/schemas/PlayPersonOut"
+          },
+          "players": {
+            "items": {
+              "$ref": "#/components/schemas/PlayPersonOut"
+            },
+            "type": "array",
+            "title": "Players"
+          },
+          "mine": {
+            "type": "boolean",
+            "title": "Mine"
+          },
+          "life": {
+            "type": "integer",
+            "title": "Life"
+          },
+          "sec": {
+            "type": "integer",
+            "title": "Sec"
+          },
+          "close_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Close At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "phase",
+          "host",
+          "players",
+          "mine",
+          "life",
+          "sec",
+          "close_at"
+        ],
+        "title": "PlayBombBriefOut",
+        "description": "방 목록의 한 줄: 홈의 \"문장 폭탄\"을 누르면 보이는 열린 방."
+      },
       "PlayBombChatIn": {
         "properties": {
           "text": {
@@ -25423,7 +25550,7 @@
           "sec": {
             "type": "integer",
             "maximum": 60.0,
-            "minimum": 1.0,
+            "minimum": 5.0,
             "title": "Sec",
             "default": 10
           }

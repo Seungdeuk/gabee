@@ -7,7 +7,7 @@ import { colors, fonts, radius } from "@/theme";
 import { BOMB_RED } from "./BombParts";
 
 export const LIFE = { min: 1, max: 5, def: 3 };
-export const SEC = { min: 1, max: 60, def: 10 };
+export const SEC = { min: 5, max: 60, def: 10 };
 export const clampTo = (n, r) => Math.max(r.min, Math.min(r.max, n));
 
 /**

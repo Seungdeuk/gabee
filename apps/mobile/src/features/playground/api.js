@@ -72,9 +72,11 @@ export async function createPhoto({ image, source, zoom, boxX, boxY, question, o
 // ---------- 문장 폭탄방(폴링: 화면이 1초쯤마다 getBomb 을 부른다) ----------
 const bombPath = (id, tail = "") => `/play/bomb/${encodeURIComponent(id)}${tail}`;
 
-/** 우리 가족의 열려 있는 폭탄방(없으면 null) */
+/** 내가 들어와 있는 열린 폭탄방(없으면 null) */
 export const getBombCurrent = () => apiFetch("/play/bomb/current");
-/** 폭탄방을 연다(방장). 이미 열려 있으면 409 room_open */
+/** 우리 가족의 열린 폭탄방 목록(최근에 연 방이 먼저, mine 은 내가 들어와 있는 방) */
+export const getBombOpen = () => apiFetch("/play/bomb/open");
+/** 폭탄방을 연다(누구나). 이미 다른 방에 들어와 있으면 409 already_in_room */
 export const createBomb = () => apiFetch("/play/bomb", { method: "POST" });
 /** 방 상태: 선수·생명, 지금 차례와 남은 시간, 채팅, 끝났으면 결과 */
 export const getBomb = (id) => apiFetch(bombPath(id));
