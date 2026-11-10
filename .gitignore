@@ -50,3 +50,5 @@ apps/api/env.yaml
 
 # Agent 평가 결과(합성 데이터지만 저장소에는 올리지 않는다)
 apps/api/evals/agent_eval/results/
+apps/api/evals/agent_eval/test_runs.json.lock
+apps/api/evals/agent_eval/.test_runs-*.tmp
