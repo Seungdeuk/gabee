@@ -534,7 +534,7 @@ export default function useChatMessages({ me, enabled = true, roomId = null, ini
         update((prev) => applySavedNow(prev, saved, ms.current, null));
         return true;
       } catch (e) {
-        if (alive.current) setPhotoError(shareSendErrorMessage(e));
+        if (alive.current) setPhotoError(shareSendErrorMessage(e, kind));
         return false;
       } finally {
         shareLock.current = false;

@@ -31,9 +31,15 @@ test("route 가 있는 항목은 이동 동작을 돌려준다", () => {
   assert.deepEqual(itemAction(byKey(SHORTCUTS, "report")), { type: "route", path: "/report" });
 });
 
+test("key 는 제목의 뜻과 맞는다(타임라인=timeline, 가족 위치 확인=location)", () => {
+  assert.equal(byKey(SHORTCUTS, "timeline")?.title, "타임라인");
+  assert.equal(byKey(MENU, "location")?.title, "가족 위치 확인");
+  for (const old of ["ranking", "docs"]) assert.equal(byKey([...SHORTCUTS, ...MENU], old), undefined, old);
+});
+
 test("준비 중 항목과 잘못된 입력은 soon 이다", () => {
   assert.deepEqual(itemAction(byKey(SHORTCUTS, "settings")), { type: "soon" });
-  assert.deepEqual(itemAction(byKey(SHORTCUTS, "ranking")), { type: "soon" });
+  assert.deepEqual(itemAction(byKey(SHORTCUTS, "timeline")), { type: "soon" });
   assert.deepEqual(itemAction(undefined), { type: "soon" });
   assert.deepEqual(itemAction({}), { type: "soon" });
   assert.deepEqual(itemAction({ route: "" }), { type: "soon" });

@@ -228,21 +228,42 @@ const SHEET_COPY = {
  */
 export const shareSheetCopy = (kind) => SHEET_COPY[kind] ?? { title: "", hint: "", empty: "" };
 
+const KST_OFFSET_MS = 9 * 60 * 60 * 1000;
+
+/**
+ * 일정의 날짜(YYYY-MM-DD): start_date 가 있으면 그것, 없으면 starts_at(ISO 시각)의 한국 시간(Asia/Seoul, UTC+9) 날짜.
+ * 서버 카드(`chat_share.py` 의 `_date_of`)와 같은 규칙이다. 둘 다 없거나 시각이 틀리면 null.
+ * @param {{ start_date?: string | null, starts_at?: string | null } | null | undefined} event listScheduleEvents 의 한 줄
+ * @returns {string | null}
+ */
+export function shareEventDate(event) {
+  if (!event) return null;
+  if (typeof event.start_date === "string" && event.start_date) return event.start_date;
+  if (typeof event.starts_at !== "string" || !event.starts_at) return null;
+  const iso = /(Z|[+-]\d{2}:?\d{2})$/i.test(event.starts_at) ? event.starts_at : `${event.starts_at}Z`; // 오프셋이 없으면 UTC(기기 시간대로 읽지 않는다)
+  const ms = new Date(iso).getTime();
+  if (Number.isNaN(ms)) return null;
+  return new Date(ms + KST_OFFSET_MS).toISOString().slice(0, 10); // UTC 필드로 읽으면 한국 날짜가 된다
+}
+
 /**
  * 일정 시트의 항목: 오늘 이후(오늘 포함)의 약속·할 일만, 날짜·시간 오름차순(시간 없는 것이 그날 먼저).
- * 날짜가 없는 일정·끝낸 할 일·모르는 종류는 뺀다(날짜가 없으면 오늘 이후인지 알 수 없다).
- * @param {{ id: string, title?: string, kind?: number, start_date?: string | null, start_time?: string | null, checked?: boolean }[] | null | undefined} events listScheduleEvents 결과
+ * 날짜는 shareEventDate 로 구한다(start_date 가 비어 있는 옛 일정은 starts_at 의 한국 날짜). 날짜를 알 수 없는 일정·끝낸 할 일·모르는 종류는 뺀다.
+ * @param {{ id: string, title?: string, kind?: number, start_date?: string | null, starts_at?: string | null, start_time?: string | null, checked?: boolean }[] | null | undefined} events listScheduleEvents 결과
  * @param {string} today YYYY-MM-DD(기기의 오늘)
  * @returns {{ key: string, ref: string, title: string, line: string, badge: "약속" | "할 일" }[]}
  */
 export function buildShareEventItems(events, today) {
-  const rows = (Array.isArray(events) ? events : []).filter((e) => e && (e.kind === 1 || e.kind === 2) && !(e.kind === 2 && e.checked) && typeof e.start_date === "string" && e.start_date >= today);
-  rows.sort((a, b) => a.start_date.localeCompare(b.start_date) || String(a.start_time ?? "").localeCompare(String(b.start_time ?? "")));
-  return rows.map((e) => ({
+  const rows = (Array.isArray(events) ? events : [])
+    .filter((e) => e && (e.kind === 1 || e.kind === 2) && !(e.kind === 2 && e.checked))
+    .map((e) => ({ e, date: shareEventDate(e) }))
+    .filter((r) => r.date !== null && r.date >= today);
+  rows.sort((a, b) => a.date.localeCompare(b.date) || String(a.e.start_time ?? "").localeCompare(String(b.e.start_time ?? "")));
+  return rows.map(({ e, date }) => ({
     key: `e:${e.id}`,
     ref: e.id,
     title: String(e.title ?? "").trim() || "(제목 없음)",
-    line: [formatShareDate(e.start_date), formatShareTime(e.start_time, null)].filter(Boolean).join(" · "),
+    line: [formatShareDate(date), formatShareTime(e.start_time, null)].filter(Boolean).join(" · "),
     badge: e.kind === 2 ? "할 일" : "약속",
   }));
 }
@@ -282,12 +303,19 @@ const waitText = (seconds) => (seconds < 60 ? `${seconds}초` : `${Math.ceil(sec
 
 /**
  * 공유 보내기 오류를 사용자 문장으로(카드 내용은 넣지 않는다). 상태·코드로 알아본다.
+ * 404 는 서버가 방 접근 불가·내 일정 아님·정산 내역 없음을 모두 `not_found` 로 돌려줘 오류 코드로는 가를 수 없다.
+ * 그래서 보내려던 종류(kind)를 알면 그 종류의 가장 흔한 사유로 안내하고(방이 없는 드문 경우도 같은 문구), 모르면 기존 문구를 쓴다.
  * @param {{ status?: number, code?: string, retryAfter?: number } | null | undefined} error
+ * @param {"event" | "settlement" | null} [kind] 보내려던 카드 종류(선택)
  * @returns {string}
  */
-export function shareSendErrorMessage(error) {
+export function shareSendErrorMessage(error, kind) {
   const { status, code } = error ?? {};
-  if (status === 404) return "공유할 내용을 찾지 못했어요. 이미 지워졌거나 정산 내역이 없는 달일 수 있어요";
+  if (status === 404) {
+    if (kind === "settlement") return "그 달에는 정산 내역이 없어요";
+    if (kind === "event") return "이미 지워졌거나 내 일정이 아니에요";
+    return "공유할 내용을 찾지 못했어요. 이미 지워졌거나 정산 내역이 없는 달일 수 있어요";
+  }
   if (code === "invalid_month") return "정산 달이 올바르지 않아요. 다시 골라 주세요";
   if (code === "share_too_large") return "내용이 너무 길어서 공유할 수 없어요";
   if (code === "peer_left_room" || status === 409) return "상대방이 나가서 메시지를 보낼 수 없어요";

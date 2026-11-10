@@ -5,6 +5,7 @@
 # 다른 시험 파일의 fixture(fake·trio)를 가져다 쓰고, 시험 함수 인자로 받는다(pytest 방식이라 F811 은 무시한다)
 # ruff: noqa: F811
 import json
+import re
 
 import pytest
 from sqlalchemy import select
@@ -419,6 +420,42 @@ def test_names_of_someone_who_left_the_family_are_still_masked(client, trio, fak
     prompt = fake.calls[-1]["prompt"]
     assert "수진" not in prompt  # 나간 사람의 실명이 그대로 나가지 않는다
     assert "[PERSON_" in prompt and "20,000원" in prompt
+
+
+def test_assignee_known_only_from_a_card_of_someone_who_left_is_not_accepted(client, trio, fake):
+    """카드 이름에만 있던 나간 구성원은 가명 토큰이 복원돼도 담당자로 인정하지 않는다(후보는 남고 담당자만 비운다)."""
+    a, b, c = trio
+    enable(client, a)
+    _event_card(client, a, share_with=[_uid(client, b)])
+    say(client, c, "그날 봐요")
+    say(client, a, "병원 예약 누가 할까요")
+    say(client, c, "제가 알아볼게요")
+    assert client.post(LEAVE_FAMILY, headers=b).status_code in (200, 204)
+    lines = [json.loads(line) for line in _context(client, a).splitlines()]
+    card_line = next(line for line in lines if "치과" in line["text"])
+    left_tokens = set(re.findall(r"\[PERSON_\d+\]", card_line["text"]))
+    # 카드의 '함께' 이름은 나간 수진 하나다(이 가명 토큰이 AI 가 돌려줄 값)
+    assert len(left_tokens) == 1
+    # 현재 구성원 지민의 가명 토큰(대조용)
+    member_token = next(line["name"] for line in lines if line["text"] == "병원 예약 누가 할까요")
+    todo = {"due": None, "source_message_ids": []}
+    fake.data = {
+        "summary": "요약",
+        "important_messages": [],
+        "schedule_candidates": [],
+        "todo_candidates": [
+            {**todo, "title": "진료 예약", "assignee_name": left_tokens.pop()},
+            {**todo, "title": "병원 가기", "assignee_name": member_token},
+        ],
+    }
+    r = analyze(client, a)
+    assert r.status_code == 200, r.text
+    body = r.json()
+    todos = body["todo_candidates"]
+    assert [t["title"] for t in todos] == ["진료 예약", "병원 가기"]  # 후보는 둘 다 남는다
+    # 나간 사람만 비워지고 현재 구성원은 그대로다
+    assert [t["assignee_name"] for t in todos] == [None, "지민"]
+    assert "수진" not in json.dumps(body, ensure_ascii=False)
 
 
 @pytest.mark.parametrize(
