@@ -1,0 +1,324 @@
+"""채팅방 공유 카드의 내용이 @가비·AI 도우미(대화 분석·답장·주제)의 대화 맥락에 들어간다.
+카드 메시지의 글자(messages.text)는 고정 문구라서, AI 로 읽을 때만 카드 내용을 한 줄 요약으로 바꿔 넣고
+(DB 는 그대로), 요약도 일반 메시지와 같은 가명화(이름·전화번호 가리기)를 거쳐 나간다. 실제 Anthropic 은 부르지 않는다."""
+
+# 다른 시험 파일의 fixture(fake·trio)를 가져다 쓰고, 시험 함수 인자로 받는다(pytest 방식이라 F811 은 무시한다)
+# ruff: noqa: F811
+import pytest
+from sqlalchemy import select
+
+from app.features.ai_assistant.knowledge import rag_chat
+from app.features.family_chat import ai_service
+from app.features.family_chat.models import Message
+from app.features.family_chat.share_text import card_text
+from app.shared.config import settings
+from app.shared.db import SessionLocal
+from tests.ai_consent import enable_ai
+
+from .test_ai_analysis import analyze, enable, fake, say  # noqa: F401  (fake 는 fixture)
+from .test_chat_share import MSG, _drop_share_table, _event, _settled, _share
+from .test_rooms import _direct, _send, _uid, trio  # noqa: F401  (trio 는 fixture)
+
+EVENT_FIXED = "일정을 공유했어요"
+SETTLEMENT_FIXED = "정산을 공유했어요"
+
+
+def _group_id(client, headers) -> str:
+    return client.get("/family-group/me", headers=headers).json()["active_group_id"]
+
+
+def _context(client, headers, room_id=None):
+    """@가비 맥락(room_context)이 만든 가명화된 대화. 부른 쪽이 닫아야 하는 대응표는 여기서 닫는다."""
+    with SessionLocal() as db:
+        ctx = ai_service.room_context(db, _group_id(client, headers), room_id)
+        if ctx is None:
+            return None
+        try:
+            return ctx.transcript
+        finally:
+            ctx.close()
+
+
+def _event_card(client, headers, room_id=None, **extra):
+    event = _event(client, headers, title="치과 정기검진", place="미소치과", **extra)
+    r = _share(client, headers, "event", event["id"], room_id)
+    assert r.status_code == 201, r.text
+    return r.json()
+
+
+# ---------- card_text 단위 ----------
+
+
+def test_event_text_has_title_date_time_place_and_who():
+    payload = {
+        "title": "치과 정기검진",
+        "date": "2026-11-12",
+        "start_time": "10:00",
+        "end_time": "11:00",
+        "place": "역삼 미소치과",
+        "kind": 1,
+        "with_names": ["아빠"],
+    }
+    assert (
+        card_text("event", payload)
+        == "[일정 공유] 치과 정기검진 · 11/12 10:00~11:00 · 역삼 미소치과 · 함께: 아빠"
+    )
+
+
+def test_event_text_leaves_out_what_is_missing():
+    base = {"title": "장보기", "date": None, "start_time": None, "end_time": None}
+    assert (
+        card_text("event", {**base, "place": "", "with_names": []})
+        == "[일정 공유] 장보기 · 날짜 미정"
+    )
+    only_start = {**base, "date": "2026-11-12", "start_time": "09:30"}
+    assert card_text("event", only_start) == "[일정 공유] 장보기 · 11/12 09:30"
+    only_day = {**base, "date": "2026-11-12", "with_names": ["엄마", "아빠"]}
+    assert card_text("event", only_day) == "[일정 공유] 장보기 · 11/12 · 함께: 엄마, 아빠"
+
+
+def test_todo_kind_is_called_a_todo():
+    payload = {"title": "택배 받기", "date": None, "kind": 2}
+    assert card_text("event", payload).startswith("[할 일 공유] 택배 받기")
+
+
+def test_settlement_text_uses_thousands_commas_and_directions():
+    payload = {
+        "month": "2026-11",
+        "remaining": 1333,
+        "lines": [
+            {"direction": "send", "name": "아빠", "amount": 667},
+            {"direction": "receive", "name": "하늘", "amount": 2000},
+        ],
+    }
+    assert (
+        card_text("settlement", payload)
+        == "[정산 공유 2026-11] 받을 돈 1,333원 · 아빠에게 667원 보낼 돈 · 하늘에게 2,000원 받을 돈"
+    )
+
+
+def test_settlement_text_for_money_to_send_zero_and_no_lines():
+    owe = {"month": "2026-11", "remaining": -667, "lines": []}
+    assert card_text("settlement", owe) == "[정산 공유 2026-11] 보낼 돈 667원"
+    zero = {"month": "2026-11", "remaining": 0, "lines": []}
+    assert card_text("settlement", zero) == "[정산 공유 2026-11] 정산할 돈 없음"
+    no_lines = {"month": "2026-11", "remaining": 1234567}
+    assert card_text("settlement", no_lines) == "[정산 공유 2026-11] 받을 돈 1,234,567원"
+
+
+@pytest.mark.parametrize(
+    ("kind", "payload", "fixed"),
+    [
+        ("event", None, EVENT_FIXED),
+        ("event", "문자열", EVENT_FIXED),
+        ("event", {}, EVENT_FIXED),
+        ("event", {"title": 123}, EVENT_FIXED),
+        ("event", {"title": "  "}, EVENT_FIXED),
+        ("settlement", None, SETTLEMENT_FIXED),
+        ("settlement", {}, SETTLEMENT_FIXED),
+        ("settlement", {"month": "2026-11", "remaining": "많이"}, SETTLEMENT_FIXED),
+        ("settlement", {"month": "2026-11", "remaining": True}, SETTLEMENT_FIXED),
+        ("unknown", {"title": "x"}, "공유했어요"),
+    ],
+)
+def test_broken_payload_or_unknown_kind_falls_back_to_a_fixed_phrase(kind, payload, fixed):
+    assert fixed in card_text(kind, payload)  # 예외 없이 고정 문구
+
+
+def test_broken_parts_are_skipped_without_raising():
+    payload = {
+        "title": "치과",
+        "date": "내일쯤",
+        "start_time": 10,
+        "end_time": None,
+        "place": None,
+        "with_names": "아빠",
+    }
+    assert card_text("event", payload) == "[일정 공유] 치과 · 날짜 미정"
+    settlement = {
+        "month": "2026-11",
+        "remaining": 100,
+        "lines": [
+            "깨짐",
+            {"direction": "send", "name": "아빠"},
+            {"direction": "sideways", "name": "삼촌", "amount": 5},
+            {"direction": "send", "name": "엄마", "amount": 300},
+        ],
+    }
+    assert (
+        card_text("settlement", settlement)
+        == "[정산 공유 2026-11] 받을 돈 100원 · 엄마에게 300원 보낼 돈"
+    )
+
+
+def test_long_text_is_cut_and_whitespace_is_collapsed():
+    payload = {"title": "가" * 1000, "date": None, "place": "나" * 1000}
+    text = card_text("event", payload)
+    assert len(text) <= 400 and text.startswith("[일정 공유] 가가")
+    spaced = card_text("event", {"title": "치과\n\n  정기검진", "date": None})
+    assert "\n" not in spaced and "치과 정기검진" in spaced
+
+
+# ---------- @가비 맥락 ----------
+
+
+def test_room_context_has_the_event_and_settlement_summaries(client, trio):
+    a, b, c = trio
+    _event_card(client, a, share_with=[_uid(client, b)])
+    _settled(client, a)
+    _share(client, a, "settlement", "2026-10")
+    transcript = _context(client, a)
+    assert "치과 정기검진" in transcript and "01/05" in transcript and "미소치과" in transcript
+    assert "10:00~11:00" in transcript
+    assert "20,000원" in transcript and "2026-10" in transcript
+    assert (
+        EVENT_FIXED not in transcript and SETTLEMENT_FIXED not in transcript
+    )  # 고정 문구 대신 요약
+
+
+def test_names_in_the_summary_are_pseudonymized_like_normal_messages(client, trio):
+    a, b, c = trio
+    _event_card(client, a, share_with=[_uid(client, b)])
+    _settled(client, a)
+    _share(client, a, "settlement", "2026-10")
+    transcript = _context(client, a)
+    # '삼촌' 같은 호칭은 일반 메시지에서도 가명화하지 않는 말이라(엄마·아빠와 같다) 이름으로 확인하지 않는다
+    for real in ("수진", "지민"):
+        assert real not in transcript  # 이름이 그대로 나가지 않는다
+    assert "[PERSON_" in transcript
+
+
+def test_normal_messages_and_other_text_are_unchanged(client, trio):
+    a, b, _ = trio
+    say(client, b, "토요일에 낚시 가자")
+    _event_card(client, a)
+    transcript = _context(client, a)
+    assert "토요일에 낚시 가자" in transcript and "치과 정기검진" in transcript
+
+
+def test_deleted_card_is_left_out(client, trio):
+    a, b, _ = trio
+    card = _event_card(client, a)
+    say(client, b, "그럼 그때 봐요")
+    assert client.delete(f"{MSG}/{card['id']}", headers=a).status_code == 200
+    transcript = _context(client, a)
+    assert "치과 정기검진" not in transcript and EVENT_FIXED not in transcript
+    assert "그럼 그때 봐요" in transcript
+
+
+def test_card_in_the_family_room_is_not_in_a_direct_room_and_the_other_way_round(client, trio):
+    a, b, c = trio
+    direct_ab = _direct(client, a, _uid(client, b))
+    direct_ac = _direct(client, a, _uid(client, c))
+    _event_card(client, a, direct_ab["id"])
+    say(client, a, "가족방 이야기")
+    assert "치과 정기검진" in _context(client, a, direct_ab["id"])
+    assert "치과 정기검진" not in _context(client, a)  # 가족방 맥락
+    assert _context(client, a, direct_ac["id"]) is None  # 다른 1:1 방 맥락(보낸 글이 없다)
+    assert "가족방 이야기" in _context(client, a) and "가족방 이야기" not in _context(
+        client, a, direct_ab["id"]
+    )
+
+
+def test_the_summary_does_not_touch_the_stored_message(client, trio):
+    a, _, _ = trio
+    card = _event_card(client, a)
+    with SessionLocal() as db:
+        ctx = ai_service.room_context(db, _group_id(client, a), None)
+        assert "치과 정기검진" in ctx.transcript
+        ctx.close()
+        assert not db.dirty and not db.new  # 요약 때문에 세션이 더러워지지 않았다
+        db.commit()
+    with SessionLocal() as db:
+        assert db.get(Message, card["id"]).text == EVENT_FIXED  # DB 의 글자는 고정 문구 그대로
+        assert db.scalars(select(Message.text)).all() == [EVENT_FIXED]
+
+
+def test_summary_is_not_used_when_the_share_table_is_missing(client, trio):
+    """표(message_shares)가 아직 없는 DB(공용 DB 반영 전)에서도 예외 없이 고정 문구로 동작한다."""
+    a, _, _ = trio
+    _event_card(client, a)
+    say(client, a, "다른 글")
+    restore = _drop_share_table()
+    try:
+        transcript = _context(client, a)
+    finally:
+        restore()
+    assert EVENT_FIXED in transcript and "치과 정기검진" not in transcript
+    assert "다른 글" in transcript
+
+
+# ---------- 대화 분석 ----------
+
+
+def test_analysis_sends_the_card_summary_masked(client, trio, fake):
+    a, b, _ = trio
+    enable(client, a)
+    say(client, b, "내일 병원 가요")
+    _event_card(client, a, share_with=[_uid(client, b)])
+    _settled(client, a)
+    _share(client, a, "settlement", "2026-10")
+    r = analyze(client, a)
+    assert r.status_code == 200, r.text
+    prompt = fake.calls[-1]["prompt"]
+    assert "치과 정기검진" in prompt and "미소치과" in prompt and "20,000원" in prompt
+    assert EVENT_FIXED not in prompt and SETTLEMENT_FIXED not in prompt
+    assert "수진" not in prompt  # 이름은 가명 토큰으로(호칭인 '삼촌' 은 일반 메시지처럼 그대로)
+    assert "[PERSON_" in prompt
+
+
+def test_analysis_works_when_the_share_table_is_missing(client, trio, fake):
+    a, b, _ = trio
+    enable(client, a)
+    say(client, b, "내일 병원 가요")
+    _event_card(client, a)
+    say(client, a, "다녀올게요")
+    restore = _drop_share_table()
+    try:
+        r = analyze(client, a)
+    finally:
+        restore()
+    assert r.status_code == 200, r.text
+    prompt = fake.calls[-1]["prompt"]
+    assert EVENT_FIXED in prompt and "치과 정기검진" not in prompt
+
+
+def test_direct_room_analysis_has_the_card_but_the_family_room_analysis_does_not(
+    client, trio, fake
+):
+    a, b, _ = trio
+    enable(client, a)
+    direct = _direct(client, a, _uid(client, b))
+    _event_card(client, a, direct["id"])
+    for i in range(2):
+        _send(client, a if i else b, f"둘만의 이야기 {i}", room_id=direct["id"])
+        say(client, a if i else b, f"가족방 이야기 {i}")
+    say(client, a, "가족방 이야기 2")
+    assert analyze(client, a, room_id=direct["id"]).status_code == 200
+    assert "치과 정기검진" in fake.calls[-1]["prompt"]
+    assert analyze(client, a).status_code == 200
+    assert "치과 정기검진" not in fake.calls[-1]["prompt"]
+
+
+# ---------- @가비 호출 전체 길이 ----------
+
+
+def test_asking_gabee_sends_the_card_summary_as_context(client, trio, monkeypatch):
+    a, b, _ = trio
+    enable_ai(_group_id(client, a))
+    monkeypatch.setattr(settings, "anthropic_api_key", "test-key")
+    systems = []
+
+    def fake_post(req):
+        systems.append(req["system"])
+        return {"content": [{"type": "text", "text": "답이에요"}]}
+
+    monkeypatch.setattr(rag_chat, "_post", fake_post)
+    _event_card(client, b)
+    r = client.post(
+        "/ai-assistant/chat", json={"message": "방금 일정 알려줘", "audience": "room"}, headers=a
+    )
+    assert r.status_code == 200, r.text
+    sent = systems[-1]
+    assert "방의 최근 대화" in sent and "치과 정기검진" in sent
+    assert "수진" not in sent.split("방의 최근 대화", 1)[1]  # 보낸 사람 이름도 토큰으로 나간다

@@ -49,7 +49,9 @@ router.include_router(
 router.include_router(
     share_router
 )  # 공유 카드(내 일정 한 건·내 정산 몫, 서버가 읽어 만든다, AI 를 부르지 않는다)
-router.include_router(ai_router)  # AI 대화 분석·추천(사용할 때만 AI 호출, 가족 전체방만)
+router.include_router(
+    ai_router
+)  # AI 대화 분석·추천(사용할 때만 AI 호출, 가족 전체방, room_id 를 주면 그 1:1 방)
 
 # room_id 를 생략하면 가족 전체방이다(방 구조가 생기기 전 앱과 같은 동작).
 ROOM_ID = Query(None, max_length=32, description="대화방 id. 없으면 가족 전체방")

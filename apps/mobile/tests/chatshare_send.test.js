@@ -105,7 +105,7 @@ test("shareSheetCopy: 종류마다 시트 제목·빈 상태·안내 문구가 �
 // 확인창
 
 test("고지 문구: 일정·정산 문구가 확정 문장 그대로다(가족방·1:1 방 같음)", () => {
-  assert.equal(SHARE_NOTICE.event, "이 일정이 이 채팅방 사람들에게 보여요.");
+  assert.equal(SHARE_NOTICE.event, "이 일정이 이 채팅방 사람들에게 보이고, @가비·AI 도우미가 답변에 쓸 수 있어요.");
   assert.equal(SHARE_NOTICE.settlement, "정산 금액이 이 채팅방 사람들에게 보이고, @가비·AI 도우미가 답변에 쓸 수 있어요.");
 });
 
