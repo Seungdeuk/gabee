@@ -9,7 +9,7 @@ import ConfirmDialog from "@/shared/components/ConfirmDialog";
 import { colors, font, fonts, radius } from "@/theme";
 
 import { bombChat, bombPath, recordNote, unfairMessageId } from "../adapt";
-import { cheerBomb, closeBomb, createBomb, getBombCurrent, joinBomb, leaveBomb, sayBomb, startBomb, startBombVote, voteBomb } from "../api";
+import { chatBomb, cheerBomb, closeBomb, createBomb, getBombCurrent, joinBomb, leaveBomb, sayBomb, startBomb, startBombVote, voteBomb } from "../api";
 import { Bubble, BOMB_RED, PlayerStrip, TimeBar } from "../components/bomb/BombParts";
 import PlayerRow from "../components/bomb/PlayerRow";
 import RuleCard, { LIFE, SEC } from "../components/bomb/RuleCard";
@@ -156,7 +156,7 @@ function GameTop({ room, left, compact = false, activeId }) {
       <PlayerStrip players={players} activeId={activeId ?? who?.id} compact={compact} />
       <View style={styles.timeRow}>
         <Text style={styles.timeText} accessibilityLiveRegion="polite">
-          {who ? `${who.name} 차례 ${Math.ceil(left ?? 0)}초` : "잠시만요"}
+          {who ? `${who.name} 차례 ${Math.ceil(left ?? 0)}초` : room.phase === "finished" ? "게임이 끝났어요" : "잠시만요"}
         </Text>
         <Text style={styles.chain}>이어가는 중 · {room.chain}개</Text>
       </View>
@@ -177,7 +177,7 @@ function Chat({ chat, header, onCall, onUnfair, footer }) {
           </Text>
         ) : (
           <View key={m.id} style={styles.msgWrap}>
-            <Bubble msg={{ id: m.uid, name: m.name, text: m.text }} mine={m.mine} />
+            <Bubble msg={{ id: m.uid, name: m.name, text: m.text, chat: m.chat }} mine={m.mine} />
             {m.call && onCall ? (
               <Pressable onPress={onCall} accessibilityRole="button" accessibilityLabel="어라? 끝난 말인데 통과됐어요" style={styles.callChip}>
                 <Text style={styles.callChipText}>어라?</Text>
@@ -193,6 +193,23 @@ function Chat({ chat, header, onCall, onUnfair, footer }) {
       )}
       {footer}
     </ScrollView>
+  );
+}
+
+/** 판이 끝난 뒤 게임 채팅창 아래: 대화를 더 보다가 결과를 보거나 나간다(끝나자마자 결과로 튕기지 않는다). */
+function EndBar({ onResult, onLeave }) {
+  return (
+    <View style={styles.bar}>
+      <Text style={styles.rule}>게임이 끝났어요</Text>
+      <View style={styles.footerRow}>
+        <View style={styles.footerCell}>
+          <Button label="나가기" variant="secondary" onPress={onLeave} />
+        </View>
+        <View style={styles.footerCell}>
+          <Button label="결과 보기" onPress={onResult} />
+        </View>
+      </View>
+    </View>
   );
 }
 
@@ -240,6 +257,9 @@ export function LiveBombPlay({ id }) {
           onCall={() => act(() => startBombVote(id, "call"))}
           onUnfair={busy ? undefined : () => act(() => startBombVote(id, "unfair"))}
         />
+        {room.phase === "finished" ? (
+          <EndBar onResult={() => router.replace(bombPath("result", id))} onLeave={() => router.replace("/play")} />
+        ) : (
         <View style={styles.bar}>
           {error ? <Text style={styles.error}>{error}</Text> : kb ? null : <Text style={styles.rule}>한 단어나 짧은 구, {MAX_LEN}자까지 · 끝내는 말을 하면 생명이 줄어요</Text>}
           <View style={styles.inputRow}>
@@ -258,6 +278,7 @@ export function LiveBombPlay({ id }) {
             </Pressable>
           </View>
         </View>
+        )}
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
@@ -266,9 +287,11 @@ export function LiveBombPlay({ id }) {
 // ---------- 관전 ----------
 export function LiveBombSpectate({ id }) {
   const router = useRouter();
-  const { room, error, busy, act, left, voteLeft, cheerLeft } = useBombRoom(id);
+  const { room, error, busy, act, left, voteLeft, cheerLeft, chatLeft } = useBombRoom(id);
   const myId = useMyId();
   useBombRedirect(room, "spectate");
+  const [mode, setMode] = useState("chat"); // 채팅(탈락한 사람끼리) / 응원(모두에게)
+  const [text, setText] = useState("");
   if (!room) {
     return (
       <SafeAreaView style={styles.safe} edges={["top", "bottom"]}>
@@ -279,7 +302,15 @@ export function LiveBombSpectate({ id }) {
       </SafeAreaView>
     );
   }
-  const waiting = cheerLeft > 0; // 응원 난타 방지: 보낸 뒤 5초는 쉰다
+  const chatMode = mode === "chat";
+  const waiting = (chatMode ? chatLeft : cheerLeft) > 0; // 난타 방지: 보낸 뒤 2초는 쉰다
+  const cheerWaiting = cheerLeft > 0;
+  const send = async () => {
+    const t = text.trim();
+    if (!t || waiting || busy) return;
+    setText("");
+    await act(() => (chatMode ? chatBomb(id, t) : cheerBomb(id, t)));
+  };
   return (
     <SafeAreaView style={styles.safe} edges={["top", "bottom"]}>
       <PlayHeader title="문장 폭탄" close fallback="/play" onBack={() => router.replace("/play")} />
@@ -291,20 +322,49 @@ export function LiveBombSpectate({ id }) {
           header={room.my_status === "out" ? "탈락했어요" : "구경 중이에요"}
           onUnfair={busy ? undefined : () => act(() => startBombVote(id, "unfair"))}
         />
-        <View style={styles.bar}>
-          {error ? (
-            <Text style={styles.error}>{error}</Text>
-          ) : (
-            <Text style={styles.rule}>{waiting ? `${Math.ceil(cheerLeft)}초 뒤에 다시 응원할 수 있어요` : "구경 중이에요 · 탈락해도 끝까지 볼 수 있어요"}</Text>
-          )}
-          <View style={styles.chips}>
-            {room.cheers.map((c) => (
-              <Pressable key={c} onPress={() => act(() => cheerBomb(id, c))} disabled={waiting} accessibilityRole="button" accessibilityState={{ disabled: waiting }} accessibilityLabel={`${c} 응원 보내기`} style={[styles.chip, waiting && styles.chipOff]}>
-                <Text style={[styles.chipText, waiting && styles.chipTextOff]}>{c}</Text>
+        {room.phase === "finished" ? (
+          <EndBar onResult={() => router.replace(bombPath("result", id))} onLeave={() => router.replace("/play")} />
+        ) : (
+          <View style={styles.bar}>
+            <View style={styles.seg}>
+              {[["chat", "채팅"], ["cheer", "응원"]].map(([key, label]) => (
+                <Pressable key={key} onPress={() => setMode(key)} accessibilityRole="button" accessibilityState={{ selected: mode === key }} style={[styles.segBtn, mode === key && styles.segOn]}>
+                  <Text style={[styles.segText, mode === key && styles.segTextOn]}>{label}</Text>
+                </Pressable>
+              ))}
+            </View>
+            {chatMode ? null : (
+              <View style={styles.chips}>
+                {room.cheers.map((c) => (
+                  <Pressable key={c} onPress={() => act(() => cheerBomb(id, c))} disabled={cheerWaiting} accessibilityRole="button" accessibilityState={{ disabled: cheerWaiting }} accessibilityLabel={`${c} 응원 보내기`} style={[styles.chip, cheerWaiting && styles.chipOff]}>
+                    <Text style={[styles.chipText, cheerWaiting && styles.chipTextOff]}>{c}</Text>
+                  </Pressable>
+                ))}
+              </View>
+            )}
+            <View style={styles.inputRow}>
+              <TextInput
+                value={text}
+                onChangeText={(v) => setText(v.slice(0, chatMode ? 50 : 20))}
+                placeholder={chatMode ? "메시지 보내기" : "직접 응원 쓰기"}
+                placeholderTextColor={colors.placeholder}
+                accessibilityLabel={chatMode ? "채팅 메시지" : "직접 쓰는 응원"}
+                onSubmitEditing={send}
+                style={styles.input}
+              />
+              <Pressable onPress={send} disabled={!text.trim() || waiting || busy} accessibilityRole="button" accessibilityLabel={chatMode ? "채팅 보내기" : "응원 보내기"} style={[styles.send, (!text.trim() || waiting || busy) && styles.sendOff]}>
+                <Text style={styles.sendText}>{chatMode ? "보내기" : "응원"}</Text>
               </Pressable>
-            ))}
+            </View>
+            {error ? (
+              <Text style={styles.error}>{error}</Text>
+            ) : (
+              <Text style={styles.rule}>
+                {waiting ? `${Math.ceil(chatMode ? chatLeft : cheerLeft)}초 뒤에 다시 보낼 수 있어요` : chatMode ? "탈락한 사람끼리만 보여요, 50자까지" : "살아있는 사람에게도 보여요, 20자까지"}
+              </Text>
+            )}
           </View>
-        </View>
+        )}
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
@@ -417,6 +477,11 @@ const styles = StyleSheet.create({
   callChip: { alignSelf: "flex-start", marginLeft: 32, height: 24, paddingHorizontal: 10, borderRadius: 12, borderWidth: 1, borderColor: BOMB_RED, backgroundColor: "#FBEAE3", alignItems: "center", justifyContent: "center" },
   callChipText: { fontSize: 12, lineHeight: 16, fontFamily: fonts.bold, color: BOMB_RED },
   unfairChip: { alignSelf: "flex-end", marginLeft: 0 }, // 내 말풍선은 오른쪽이라 칩도 오른쪽 아래
+  seg: { flexDirection: "row", alignSelf: "center", borderWidth: 1, borderColor: colors.border, borderRadius: 999, overflow: "hidden" },
+  segBtn: { paddingVertical: 4, paddingHorizontal: 20, backgroundColor: colors.card },
+  segOn: { backgroundColor: colors.text },
+  segText: { fontSize: 13, lineHeight: 18, fontFamily: fonts.regular, color: colors.text },
+  segTextOn: { fontFamily: fonts.bold, color: colors.card },
   chips: { flexDirection: "row", gap: 8, justifyContent: "center" },
   chip: { height: 40, paddingHorizontal: 16, borderRadius: 20, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.card, alignItems: "center", justifyContent: "center" },
   chipOff: { backgroundColor: colors.surface },

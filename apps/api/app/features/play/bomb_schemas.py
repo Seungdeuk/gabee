@@ -8,6 +8,8 @@ from .schemas import PlayPersonOut
 LIFE_RANGE = (1, 5)
 SEC_RANGE = (1, 60)
 WORD_MAX = 10
+CHEER_MAX = 20  # 응원 직접 쓰기 글자 수
+CHAT_MAX = 50  # 탈락자 채팅 글자 수
 
 
 class PlayBombStartIn(BaseModel):
@@ -45,10 +47,35 @@ class PlayBombVoteIn(BaseModel):
     yes: bool
 
 
-class PlayBombCheerIn(BaseModel):
-    """관전 응원. 정해진 말 중에서 고른다."""
+def _clean_text(v: str, limit: int) -> str:
+    v = " ".join(v.split())  # 앞뒤·겹친 공백과 줄바꿈 정리
+    if not v:
+        raise ValueError("글자를 써 주세요")
+    if len(v) > limit:
+        raise ValueError(f"{limit}자까지 쓸 수 있어요")
+    return v
 
-    text: str = Field(min_length=1, max_length=WORD_MAX)
+
+class PlayBombCheerIn(BaseModel):
+    """관전 응원. 정해진 말을 고르거나 직접 쓴다(20자까지)."""
+
+    text: str = Field(min_length=1, max_length=CHEER_MAX * 3)
+
+    @field_validator("text")
+    @classmethod
+    def _clean(cls, v: str) -> str:
+        return _clean_text(v, CHEER_MAX)
+
+
+class PlayBombChatIn(BaseModel):
+    """탈락·구경하는 사람끼리 하는 채팅(50자까지)."""
+
+    text: str = Field(min_length=1, max_length=CHAT_MAX * 3)
+
+    @field_validator("text")
+    @classmethod
+    def _clean(cls, v: str) -> str:
+        return _clean_text(v, CHAT_MAX)
 
 
 class PlayBombPlayerOut(BaseModel):
@@ -63,10 +90,10 @@ class PlayBombPlayerOut(BaseModel):
 
 
 class PlayBombMessageOut(BaseModel):
-    """채팅 한 줄. say 말함, timeout 시간 초과, cheer 관전 응원, vote 판정 투표 결과."""
+    """채팅 한 줄. say 말함, timeout 시간 초과, cheer 관전 응원(모두에게 보임), chat 탈락·구경하는 사람끼리의 채팅(그 사람들에게만 보임), vote 판정 투표 결과."""
 
     id: str
-    kind: Literal["say", "timeout", "cheer", "vote"]
+    kind: Literal["say", "timeout", "cheer", "chat", "vote"]
     player: PlayPersonOut
     text: str
     ended: bool = False  # 이 말로 문장이 끝나 생명이 줄었다
@@ -139,5 +166,6 @@ class PlayBombStateOut(BaseModel):
     call_msg_id: str | None = None  # 방금 말(가장 최근 차례)의 채팅 줄 id: "어라?" 칩이 붙는 줄
     cheers: list[str] = []  # 고를 수 있는 응원 말
     cheer_wait: float = 0  # 다음 응원까지 남은 초(0이면 보낼 수 있음)
+    chat_wait: float = 0  # 다음 채팅까지 남은 초(0이면 보낼 수 있음)
     result: PlayBombResultOut | None = None
     close_at: datetime

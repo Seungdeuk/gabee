@@ -63,7 +63,7 @@ export function Bubble({ msg, mine }) {
       {!mine ? <Avatar name={msg.name} userId={msg.id} size={26} /> : null}
       <View style={styles.msgBody}>
         {!mine ? <Text style={styles.msgName}>{msg.name}</Text> : null}
-        <Text style={[styles.bubble, mine ? styles.bubbleMine : styles.bubbleOther]}>{msg.text}</Text>
+        <Text style={[styles.bubble, mine ? styles.bubbleMine : styles.bubbleOther, msg.chat && styles.bubbleChat]}>{msg.text}</Text>
       </View>
     </View>
   );
@@ -100,6 +100,7 @@ const styles = StyleSheet.create({
   bubble: { paddingVertical: 5, paddingHorizontal: 12, borderRadius: 15, overflow: "hidden", fontSize: 14, lineHeight: 20, fontFamily: fonts.regular, color: colors.text },
   bubbleOther: { backgroundColor: "#F7F0E6" },
   bubbleMine: { backgroundColor: colors.surfaceStrong },
+  bubbleChat: { backgroundColor: colors.card, borderWidth: 1, borderStyle: "dashed", borderColor: colors.border }, // 탈락·구경하는 사람끼리의 채팅은 게임 말과 구분한다
   track: { height: 8, borderRadius: 4, backgroundColor: colors.border, overflow: "hidden" },
   fill: { height: 8, borderRadius: 4, backgroundColor: colors.accent },
   fillDanger: { backgroundColor: BOMB_RED },

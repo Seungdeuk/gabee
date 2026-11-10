@@ -9,6 +9,7 @@ from app.shared.db import get_db
 
 from . import bomb
 from .bomb_schemas import (
+    PlayBombChatIn,
     PlayBombCheerIn,
     PlayBombSayIn,
     PlayBombStartIn,
@@ -105,7 +106,7 @@ def cheer(
     group_id: str = Depends(current_group_id),
     db: Session = Depends(get_db),
 ) -> PlayBombStateOut:
-    """탈락했거나 구경하는 사람의 응원. 정해진 말만 보낼 수 있고 한 사람이 5초에 한 번이다(429 cheer_cooldown)."""
+    """탈락했거나 구경하는 사람의 응원. 정해진 말을 고르거나 직접 쓴다(20자). 모두에게 보이고 한 사람이 2초에 한 번이다(429 cheer_cooldown)."""
     return bomb.cheer(db, user, group_id, room_id, body.text)
 
 
@@ -131,6 +132,18 @@ def vote(
 ) -> PlayBombStateOut:
     """열린 판정 투표에 찬성/반대를 고른다(살아있는 사람, 한 번). 안 고르면 기권이고, 찬성이 반대보다 많고 2표 이상이면 통과한다."""
     return bomb.cast_vote(db, user, group_id, room_id, body.yes)
+
+
+@router.post("/{room_id}/chat", response_model=PlayBombStateOut)
+def chat(
+    room_id: str,
+    body: PlayBombChatIn,
+    user: User = Depends(current_user),
+    group_id: str = Depends(current_group_id),
+    db: Session = Depends(get_db),
+) -> PlayBombStateOut:
+    """탈락했거나 구경하는 사람끼리의 채팅(50자). 그런 사람들에게만 보이고 한 사람이 2초에 한 번이다(429 chat_cooldown)."""
+    return bomb.chat(db, user, group_id, room_id, body.text)
 
 
 @router.post("/{room_id}/close", response_model=PlayBombStateOut)

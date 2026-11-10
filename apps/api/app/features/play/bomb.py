@@ -7,7 +7,7 @@
   제한 시간을 넘기면 생명 -1(시간 초과). 생명을 잃으면 문장은 새로 시작한다. 생명이 0이 되면 탈락이고 마지막 1명이 이긴다.
 - 시간 초과는 별도 배치 없이 방 상태를 조회하거나 말할 때 계산해서 기록한다(마감 방식은 다른 놀이와 같다).
 - 점수: 판마다 참여한 사람 +10, 우승 +30. 방장은 참여 점수 없이 방마다 한 번 문제 내기 +20(하루 한도 안에서).
-- 관전 응원은 서버 메모리에만 둔다(저장하지 않음). 한 사람이 5초에 한 번만 보낼 수 있다(난타 방지).
+- 관전 응원(정해진 3가지 또는 20자 직접 쓰기, 모두에게 보임)과 탈락·구경하는 사람끼리의 채팅(50자, 그런 사람들에게만 보임)은 서버 메모리에만 둔다(저장하지 않음). 한 사람이 둘 다 2초에 한 번만 보낼 수 있다(난타 방지).
 - 판정 투표(어라?·억울해요)는 bomb_vote.py 규칙대로 서버 메모리에서 열고, 통과하면 마지막 차례 기록(끝 표시·생명)을 고친다.
 """
 
@@ -57,7 +57,9 @@ AFTER_HOURS = 1  # 판이 끝난 뒤 "한 판 더"를 기다리는 시간
 MIN_PLAYERS = 2
 SPEEDUP_RATE = 0.95  # 한 차례가 지날 때마다 제한 시간이 이 비율로 줄어든다(판이 새로 시작되면 처음 시간으로 돌아감)
 MIN_TURN_SEC = 3  # 줄어들어도 이 밑으로는 안 내려간다(방에서 정한 시간이 더 짧으면 그 시간 그대로)
-CHEER_COOLDOWN_SEC = 5  # 응원 난타 방지
+CHEER_COOLDOWN_SEC = 2  # 응원 난타 방지
+CHAT_COOLDOWN_SEC = 2  # 탈락자 채팅 난타 방지
+CHAT_KEEP = 100  # 방마다 기억하는 채팅 수
 CHEER_KEEP = 40  # 방마다 기억하는 응원 수
 CHEERS = ("힘내요", "아슬아슬", "끝내지 마!")
 MESSAGE_KEEP = 200  # 상태에 담는 채팅 줄 수
@@ -85,6 +87,8 @@ class _Cheer:
 class _CheerBook:
     items: list[_Cheer] = field(default_factory=list)
     last: dict[str, datetime] = field(default_factory=dict)
+    chats: list[_Cheer] = field(default_factory=list)  # 탈락·구경하는 사람끼리의 채팅
+    chat_last: dict[str, datetime] = field(default_factory=dict)
     seq: int = 0
 
 
@@ -590,22 +594,49 @@ def cast_vote(db: Session, user: User, group_id: str, room_id: str, yes: bool) -
     return build_state(db, item, user, group_repo.members(db, group_id), now)
 
 
-def cheer(db: Session, user: User, group_id: str, room_id: str, text: str) -> PlayBombStateOut:
-    """탈락했거나 구경하는 사람이 응원을 보낸다. 한 사람이 5초에 한 번만."""
-    now = _now()
-    if text not in CHEERS:
-        raise bad_request("invalid_cheer", "정해진 응원 중에서 골라 주세요")
+def _out_or_watching(
+    db: Session, user: User, group_id: str, room_id: str, now: datetime, what: str
+) -> tuple[PlayItem, PlayBombRound]:
+    """응원·채팅을 보낼 자격(게임 중, 방에 있음, 탈락했거나 구경하는 사람)을 확인한다."""
     item = _load(db, group_id, room_id, lock=True)
     rnd = _settled(db, item, now)
     db.commit()
     if rnd is None or rnd.ended_at is not None:
-        raise ApiError(409, "not_playing", "게임 중에만 응원할 수 있어요")
-    players = repository.bomb_players(db, item.id)
+        raise ApiError(409, "not_playing", f"게임 중에만 {what}할 수 있어요")
     if repository.bomb_player(db, item.id, user.id) is None:
-        raise ApiError(403, "not_in_room", "방에 들어와 있어야 응원할 수 있어요")
+        raise ApiError(403, "not_in_room", f"방에 들어와 있어야 {what}할 수 있어요")
+    players = repository.bomb_players(db, item.id)
     g = _derive(item, rnd, players, repository.bomb_turns(db, item.id, rnd.round_no))
     if user.id in g.alive:
-        raise ApiError(403, "still_playing", "게임 중인 사람은 응원할 수 없어요")
+        raise ApiError(403, "still_playing", f"게임 중인 사람은 {what}할 수 없어요")
+    return item, rnd
+
+
+def chat(db: Session, user: User, group_id: str, room_id: str, text: str) -> PlayBombStateOut:
+    """탈락했거나 구경하는 사람끼리의 채팅(50자). 그런 사람들에게만 보이고 한 사람이 2초에 한 번만."""
+    now = _now()
+    item, rnd = _out_or_watching(db, user, group_id, room_id, now, "채팅")
+    with _cheer_lock:
+        book = _cheer_book(item.id)
+        last = book.chat_last.get(user.id)
+        if last is not None and (wait := CHAT_COOLDOWN_SEC - (now - last).total_seconds()) > 0:
+            raise ApiError(
+                429,
+                "chat_cooldown",
+                f"채팅은 {CHAT_COOLDOWN_SEC}초에 한 번만 보낼 수 있어요",
+                headers={"Retry-After": str(max(1, round(wait)))},
+            )
+        book.chat_last[user.id] = now
+        book.seq += 1
+        book.chats.append(_Cheer(book.seq, rnd.round_no, user.id, text, now))
+        del book.chats[:-CHAT_KEEP]
+    return build_state(db, item, user, group_repo.members(db, group_id), now)
+
+
+def cheer(db: Session, user: User, group_id: str, room_id: str, text: str) -> PlayBombStateOut:
+    """탈락했거나 구경하는 사람이 응원을 보낸다(정해진 말 또는 직접 쓴 20자). 한 사람이 2초에 한 번만."""
+    now = _now()
+    item, rnd = _out_or_watching(db, user, group_id, room_id, now, "응원")
     with _cheer_lock:
         book = _cheer_book(item.id)
         last = book.last.get(user.id)
@@ -625,7 +656,11 @@ def cheer(db: Session, user: User, group_id: str, room_id: str, text: str) -> Pl
 
 # ---------- 보기 ----------
 def _messages(
-    item: PlayItem, rnd: PlayBombRound, turns: list[PlayBombTurn], by_id: dict[str, User]
+    item: PlayItem,
+    rnd: PlayBombRound,
+    turns: list[PlayBombTurn],
+    by_id: dict[str, User],
+    show_chat: bool = False,
 ) -> list[PlayBombMessageOut]:
     out: list[PlayBombMessageOut] = []
     words: list[str] = []  # 지금 문장의 말들(까닭을 다시 가려내려고 기록을 처음부터 따라간다)
@@ -652,7 +687,19 @@ def _messages(
             )
         )
     with _cheer_lock:
-        cheers = [c for c in _cheer_book(item.id).items if c.round_no == rnd.round_no]
+        book = _cheer_book(item.id)
+        cheers = [c for c in book.items if c.round_no == rnd.round_no]
+        chats = [c for c in book.chats if c.round_no == rnd.round_no] if show_chat else []
+    out.extend(
+        PlayBombMessageOut(
+            id=f"h{c.seq}",
+            kind="chat",
+            player=_person(by_id.get(c.player_id)),
+            text=c.text,
+            at=c.at,
+        )
+        for c in chats
+    )
     out.extend(
         PlayBombMessageOut(
             id=f"c{c.seq}",
@@ -822,6 +869,11 @@ def build_state(
     with _cheer_lock:
         last = _cheer_book(item.id).last.get(user.id) if item.id in _cheer_books else None
     wait = max(0.0, CHEER_COOLDOWN_SEC - (now - last).total_seconds()) if last else 0.0
+    with _cheer_lock:
+        last_chat = _cheer_book(item.id).chat_last.get(user.id) if item.id in _cheer_books else None
+    chat_wait = (
+        max(0.0, CHAT_COOLDOWN_SEC - (now - last_chat).total_seconds()) if last_chat else 0.0
+    )
 
     result = None
     if (
@@ -843,16 +895,28 @@ def build_state(
         sec=rnd.sec if rnd else 10,
         turn=turn,
         chain=g.chain if g else 0,
-        messages=_messages(item, rnd, turns, by_id) if rnd else [],
+        messages=_messages(item, rnd, turns, by_id, my_status in ("out", "spectator"))
+        if rnd
+        else [],
         vote=vote_out,
         can_call=can_call,
         can_unfair=can_unfair,
         call_msg_id=call_msg_id,
         cheers=list(CHEERS),
         cheer_wait=round(wait, 2),
+        chat_wait=round(chat_wait, 2),
         result=result,
         close_at=aware(item.close_at),
     )
 
 
-__all__ = ["LIFE_RANGE", "SEC_RANGE", "CHEERS", "CHEER_COOLDOWN_SEC", "cast_vote", "start_vote"]
+__all__ = [
+    "LIFE_RANGE",
+    "SEC_RANGE",
+    "CHEERS",
+    "CHEER_COOLDOWN_SEC",
+    "CHAT_COOLDOWN_SEC",
+    "cast_vote",
+    "chat",
+    "start_vote",
+]

@@ -128,7 +128,8 @@ export function useBombRoom(id) {
   const left = room?.turn ? Math.max(0, room.turn.seconds_left - (room.vote ? 0 : elapsed)) : null; // 투표 중에는 게임 시계가 멈춘다
   const voteLeft = room?.vote ? Math.max(0, room.vote.seconds_left - elapsed) : null;
   const cheerLeft = room ? Math.max(0, room.cheer_wait - elapsed) : 0;
-  return { room, error, busy, act, left, voteLeft, cheerLeft };
+  const chatLeft = room ? Math.max(0, (room.chat_wait ?? 0) - elapsed) : 0;
+  return { room, error, busy, act, left, voteLeft, cheerLeft, chatLeft };
 }
 
 /** 방 상태에 맞지 않는 폭탄 화면에 있으면 알맞은 화면으로 옮겨 간다(게임이 시작되면 로비 → 게임, 탈락하면 게임 → 관전, 끝나면 결과). */

@@ -350,7 +350,10 @@ export function zoomBoxStyle({ x, y, zoom }) {
  * @returns {"lobby" | "play" | "spectate" | "result"}
  */
 export function bombScreen(room, from = null) {
-  if (from === "lobby" && room.phase === "finished") return "lobby"; // 결과에서 닫기를 눌러 온 로비: 판이 끝난 방을 닫거나 한 판 더 하는 곳이라 결과로 되돌리지 않는다
+  // 결과에서 닫기를 눌러 온 로비: 판이 끝난 방을 닫거나 한 판 더 하는 곳이라 결과로 되돌리지 않는다(방을 닫은 뒤에도 머문다)
+  if (from === "lobby" && (room.phase === "finished" || room.phase === "closed")) return "lobby";
+  // 게임 채팅창: 판이 끝나도 바로 결과로 보내지 않는다(대화를 더 볼 수 있게 아래 버튼으로 간다)
+  if ((from === "play" || from === "spectate") && room.phase === "finished") return from;
   if (room.phase === "playing") return room.my_status === "player" ? "play" : room.my_status === "none" ? "lobby" : "spectate";
   if (room.phase === "finished" || (room.phase === "closed" && room.result)) return "result";
   return "lobby";
@@ -387,6 +390,8 @@ export function bombChat(messages, myId, callId = null, unfairId = null) {
       out.push({ id: m.id, kind: "system", text: m.text });
     } else if (m.kind === "timeout") {
       out.push({ id: m.id, kind: "system", text: `${m.player.name} 시간 초과 · 생명 -1${m.out ? " · 탈락" : ""}` });
+    } else if (m.kind === "chat") {
+      out.push({ id: m.id, kind: "say", uid: m.player.id, name: m.player.name, text: m.text, mine, chat: true }); // 탈락·구경하는 사람끼리의 채팅
     } else if (m.kind === "cheer") {
       out.push({ id: m.id, kind: "cheer", uid: m.player.id, name: m.player.name, text: `${m.text}`.replace(/!?$/, "!").replace("!!", "!"), mine });
     } else {

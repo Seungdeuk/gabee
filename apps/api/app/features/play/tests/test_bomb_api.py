@@ -460,15 +460,15 @@ def test_cheer_only_when_out_or_watching_with_cooldown(client, family, clock):
     assert r.status_code == 200
     cheer_msgs = [m for m in r.json()["messages"] if m["kind"] == "cheer"]
     assert [(m["player"]["name"], m["text"]) for m in cheer_msgs] == [("수진", "힘내요")]
-    assert r.json()["cheer_wait"] == 5
-    # 난타 방지: 5초 안에 또 보내면 막힌다
-    clock.at(2)
+    assert r.json()["cheer_wait"] == 2
+    # 난타 방지: 2초 안에 또 보내면 막힌다
+    clock.at(1)
     r = client.post(f"{BASE}/{rid}/cheer", json={"text": "아슬아슬"}, headers=b)
     assert r.status_code == 429 and r.json()["code"] == "cheer_cooldown"
-    assert r.headers["retry-after"] == "3"
-    assert state(client, b, rid)["cheer_wait"] == pytest.approx(3, abs=0.01)
+    assert r.headers["retry-after"] == "1"
+    assert state(client, b, rid)["cheer_wait"] == pytest.approx(1, abs=0.01)
     assert len([m for m in state(client, a, rid)["messages"] if m["kind"] == "cheer"]) == 1
-    clock.at(5.1)
+    clock.at(2.1)
     assert (
         client.post(f"{BASE}/{rid}/cheer", json={"text": "아슬아슬"}, headers=b).status_code == 200
     )
@@ -484,12 +484,16 @@ def test_cheer_validation_and_per_person_cooldown(client, family, clock):
     rid = room["id"]
     start(client, a, rid, life=2, sec=10)
     join(client, c, rid)  # 게임 중에 들어와 구경하는 영희
-    r = client.post(f"{BASE}/{rid}/cheer", json={"text": "아무 말이나"}, headers=c)
-    assert r.status_code == 400 and r.json()["code"] == "invalid_cheer"  # 정해진 말만
-    assert client.post(f"{BASE}/{rid}/cheer", json={"text": "힘내요"}, headers=c).status_code == 200
+    r = client.post(f"{BASE}/{rid}/cheer", json={"text": "가" * 21}, headers=c)
+    assert r.status_code == 422  # 직접 쓰는 응원은 20자까지
+    assert client.post(f"{BASE}/{rid}/cheer", json={"text": "  "}, headers=c).status_code == 422
+    r = client.post(f"{BASE}/{rid}/cheer", json={"text": "화이팅  우리 아빠!"}, headers=c)
+    assert r.status_code == 200  # 정해진 말이 아니어도 직접 쓸 수 있다
     assert client.post(f"{BASE}/{rid}/cheer", json={"text": "힘내요"}, headers=c).status_code == 429
     out = client.get(f"{BASE}/{rid}", headers=a).json()
-    assert [m["text"] for m in out["messages"] if m["kind"] == "cheer"] == ["힘내요"]
+    assert [m["text"] for m in out["messages"] if m["kind"] == "cheer"] == [
+        "화이팅 우리 아빠!"
+    ]  # 공백은 정리된다
 
 
 def test_cheers_are_dropped_when_the_round_ends(client, family, clock):
@@ -513,6 +517,83 @@ def test_cheer_needs_a_running_game_and_room(client, family, clock):
     a, b, _ = family
     room = open_room(client, a)
     r = client.post(f"{BASE}/{room['id']}/cheer", json={"text": "힘내요"}, headers=b)
+    assert r.status_code == 409 and r.json()["code"] == "not_playing"
+
+
+def chat_post(client, headers, room_id, text):
+    return client.post(f"{BASE}/{room_id}/chat", json={"text": text}, headers=headers)
+
+
+def chats(out):
+    return [(m["player"]["name"], m["text"]) for m in out["messages"] if m["kind"] == "chat"]
+
+
+def test_chat_is_only_for_out_or_watching_and_hidden_from_players(client, family, clock):
+    a, b, c = trio(client, family)
+    room = open_room(client, a)
+    join(client, b, room["id"])
+    join(client, c, room["id"])
+    rid = room["id"]
+    start(client, a, rid, life=1, sec=10)
+    r = chat_post(client, a, rid, "나도 할래")
+    assert r.status_code == 403 and r.json()["code"] == "still_playing"  # 게임 중인 사람은 못 한다
+    say(client, a, rid, "엄마가")
+    say(client, b, rid, "일어났다")  # 수진 탈락
+    r = chat_post(client, b, rid, "아  억울해")
+    assert r.status_code == 200
+    assert chats(r.json()) == [("수진", "아 억울해")] and r.json()["chat_wait"] == 2
+    assert chats(state(client, a, rid)) == []  # 게임 중인 사람에게는 안 보인다
+    assert chats(state(client, c, rid)) == []
+    assert chats(state(client, b, rid)) == [("수진", "아 억울해")]
+
+
+def test_chat_cooldown_length_and_independent_from_cheer(client, family, clock):
+    a, b, c = trio(client, family)
+    room = open_room(client, a)
+    join(client, b, room["id"])
+    join(client, c, room["id"])
+    rid = room["id"]
+    start(client, a, rid, life=1, sec=10)
+    say(client, a, rid, "엄마가")
+    say(client, b, rid, "일어났다")  # 수진 탈락
+    assert chat_post(client, b, rid, "가" * 51).status_code == 422  # 50자까지
+    assert chat_post(client, b, rid, " ").status_code == 422
+    assert chat_post(client, b, rid, "가" * 50).status_code == 200
+    # 같은 사람이 2초 안에 또 보내면 막히지만 응원은 따로 센다
+    clock.at(1)
+    r = chat_post(client, b, rid, "또")
+    assert r.status_code == 429 and r.json()["code"] == "chat_cooldown"
+    assert r.headers["retry-after"] == "1"
+    assert state(client, b, rid)["chat_wait"] == pytest.approx(1, abs=0.01)
+    assert client.post(f"{BASE}/{rid}/cheer", json={"text": "힘내요"}, headers=b).status_code == 200
+    clock.at(2.1)
+    assert chat_post(client, b, rid, "또").status_code == 200
+
+
+def test_watcher_chat_is_seen_by_out_players_and_dropped_at_the_end(client, family, clock):
+    a, b, c = trio(client, family)
+    room = open_room(client, a)
+    join(client, b, room["id"])
+    rid = room["id"]
+    start(client, a, rid, life=1, sec=10)
+    join(client, c, rid)  # 게임 중에 들어와 구경하는 영희
+    assert chat_post(client, c, rid, "구경 중").status_code == 200
+    assert chats(state(client, c, rid)) == [("영희", "구경 중")]  # 구경하는 사람은 본다
+    assert chats(state(client, a, rid)) == []  # 게임 중인 사람에게는 안 보인다
+    say(client, a, rid, "엄마가")
+    say(client, b, rid, "일어났다")  # 수진 탈락, 지민만 남아 판이 끝난다
+    out = state(client, a, rid)
+    assert out["phase"] == "finished"
+    assert [
+        m for m in state(client, c, rid)["messages"] if m["kind"] == "chat"
+    ] == []  # 판이 끝나면 버려진다
+    assert out["chat_wait"] == 0
+
+
+def test_chat_needs_a_running_game_and_room(client, family, clock):
+    a, b, _ = family
+    room = open_room(client, a)
+    r = chat_post(client, b, room["id"], "안녕")
     assert r.status_code == 409 and r.json()["code"] == "not_playing"
 
 
