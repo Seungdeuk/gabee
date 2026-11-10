@@ -201,7 +201,8 @@ test("useChatMessages: sendShare 는 사진·파일과 같은 방식(중복 누�
   assert.match(hook, /sendShare as postShare/);
   assert.match(hook, /const shareLock = useRef\(false\)/);
   assert.match(hook, /const sendShare = useCallback\(/);
-  assert.match(hook, /postShare\(\{ kind, ref, roomId: roomRef\.current \}\)/);
+  assert.match(hook, /async \(\{ kind, ref: cardRef \}\)/); // 바깥 const ref(메시지 목록 ref)를 가리지 않는다
+  assert.match(hook, /postShare\(\{ kind, ref: cardRef, roomId: roomRef\.current \}\)/);
   assert.match(hook, /setPhotoError\(shareSendErrorMessage\(e\)\)/);
   assert.match(hook, /sendShare, shareBusy/);
 });

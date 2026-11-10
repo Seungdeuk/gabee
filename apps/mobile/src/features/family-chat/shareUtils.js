@@ -244,7 +244,11 @@ export function shareConfirmCopy(kind, item) {
   return { title: "이 일정을 공유할까요?", message: `${what ? `${what}\n\n` : ""}${SHARE_NOTICE.event}`, confirmLabel: "공유하기" };
 }
 
-/** 초를 "30초" / "2분" 으로(messages.js 의 waitText 와 같은 형식). */
+/**
+ * 초를 "30초" / "2분" 으로(messages.js 의 waitText 와 같은 형식).
+ * @param {number} seconds
+ * @returns {string}
+ */
 const waitText = (seconds) => (seconds < 60 ? `${seconds}초` : `${Math.ceil(seconds / 60)}분`);
 
 /**

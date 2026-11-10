@@ -523,14 +523,14 @@ export default function useChatMessages({ me, enabled = true, roomId = null, ini
    * @returns {Promise<boolean>} 보냈으면 true
    */
   const sendShare = useCallback(
-    async ({ kind, ref }) => {
+    async ({ kind, ref: cardRef }) => {
       if (shareLock.current || !meRef.current) return false;
       shareLock.current = true;
       setShareBusy(true);
       setPhotoError("");
       try {
         if (!(await ensureLive((message) => { setError(""); setPhotoError(message); }))) return false;
-        const saved = await postShare({ kind, ref, roomId: roomRef.current });
+        const saved = await postShare({ kind, ref: cardRef, roomId: roomRef.current });
         update((prev) => applySavedNow(prev, saved, ms.current, null));
         return true;
       } catch (e) {
