@@ -303,3 +303,90 @@ def test_ai_refusal_message_is_the_same_when_the_peer_left_the_family(
     r = client.post(f"{AI}/analysis", json={"room_id": room["id"]}, headers=a)
     assert r.status_code == 403 and r.json()["code"] == "peer_left", r.text
     assert "가족" not in r.json()["message"] and "대화방" in r.json()["message"], r.text
+
+
+def _pin(client, headers, message_id, room_id=None):
+    body = {"message_id": message_id}
+    if room_id is not None:
+        body["room_id"] = room_id
+    return client.post("/family-chat/pins", json=body, headers=headers)
+
+
+def _link(client, headers, message_id, target_id, room_id=None):
+    body = {
+        "message_id": message_id,
+        "kind": "event",
+        "target_id": target_id,
+        "title": "저녁 약속",
+        "date": "2026-11-20",
+    }
+    if room_id is not None:
+        body["room_id"] = room_id
+    return client.post("/family-chat/links", json=body, headers=headers)
+
+
+def _left_room(client, trio):
+    """A 가 나간 1:1 방(B 만 남은 읽기 전용 방)과 A 가 보낸 첫 메시지 id."""
+    a, b, _ = trio
+    room = _direct(client, a, _uid(client, b))
+    first = _say(client, a, room["id"], "저녁 먹자").json()["id"]
+    assert _leave(client, a, room["id"]).status_code == 204
+    return b, room["id"], first
+
+
+def test_pinning_is_blocked_in_a_room_the_peer_left(client, trio):
+    """읽기 전용 방에 새 고정은 새 글처럼 409 peer_left_room 이고 아무것도 만들어지지 않는다."""
+    b, room_id, first = _left_room(client, trio)
+    pinned = _pin(client, b, first, room_id)
+    assert pinned.status_code == 409 and pinned.json()["code"] == "peer_left_room", pinned.text
+    pins = client.get("/family-chat/pins", params={"room_id": room_id}, headers=b)
+    assert pins.json() == {"items": []}
+
+
+def test_linking_is_blocked_in_a_room_the_peer_left(client, trio):
+    """읽기 전용 방에 새 일정·할 일 연결도 409 peer_left_room 이고 만들어지지 않는다."""
+    b, room_id, first = _left_room(client, trio)
+    linked = _link(client, b, first, "evt-1", room_id)
+    assert linked.status_code == 409 and linked.json()["code"] == "peer_left_room", linked.text
+    links = client.get("/family-chat/links", params={"room_id": room_id}, headers=b)
+    assert links.json() == {"items": []}
+
+
+def test_reactions_and_reading_still_work_in_a_room_the_peer_left(client, trio):
+    b, room_id, first = _left_room(client, trio)
+    react = client.put(
+        f"{MSG}/{first}/reaction", json={"emoji": "👍"}, params={"room_id": room_id}, headers=b
+    )
+    assert react.status_code == 200, react.text
+    assert client.get(MSG, params={"room_id": room_id}, headers=b).status_code == 200
+
+
+def test_existing_pins_and_links_can_still_be_cleaned_up_in_a_room_the_peer_left(client, trio):
+    """나가기 전에 만든 고정·연결은 남은 사람이 내리거나 지울 수 있다(정리는 새로 만드는 일이 아니다)."""
+    a, b, _ = trio
+    room = _direct(client, a, _uid(client, b))
+    first = _say(client, b, room["id"], "저녁 먹자").json()["id"]
+    assert _pin(client, b, first, room["id"]).status_code == 200
+    made = _link(client, b, first, "evt-1", room["id"])
+    assert made.status_code == 201, made.text
+    assert _leave(client, a, room["id"]).status_code == 204
+
+    params = {"room_id": room["id"]}
+    hide = client.put(f"/family-chat/pins/{first}/hide", params=params, headers=b)
+    assert hide.status_code == 200, hide.text  # 나만 숨기기도 된다
+    unpin = client.delete(f"/family-chat/pins/{first}", params=params, headers=b)
+    assert unpin.status_code == 204, unpin.text
+    gone = client.delete(f"/family-chat/links/{made.json()['id']}", params=params, headers=b)
+    assert gone.status_code == 204, gone.text
+
+
+def test_pinning_and_linking_still_work_in_the_family_room_and_open_direct_rooms(client, trio):
+    a, b, _ = trio
+    family_msg = client.post(MSG, json={"text": "공지입니다"}, headers=a).json()["id"]
+    assert _pin(client, b, family_msg).status_code == 200
+    assert _link(client, b, family_msg, "evt-1").status_code == 201
+
+    room = _direct(client, a, _uid(client, b))
+    direct_msg = _say(client, a, room["id"], "우리끼리").json()["id"]
+    assert _pin(client, b, direct_msg, room["id"]).status_code == 200
+    assert _link(client, b, direct_msg, "evt-2", room["id"]).status_code == 201

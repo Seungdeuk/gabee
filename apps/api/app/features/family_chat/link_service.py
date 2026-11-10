@@ -19,7 +19,7 @@ from . import repository as repo
 from . import todo_repository as todo_repo
 from .link_schemas import LinkCreate, LinkOut, LinksOut
 from .models import ChatMessageLink, Message
-from .service import resolve_room
+from .service import ensure_can_send, resolve_room
 
 TEXT_LIMIT = 100  # 응답에 싣는 원본 메시지 본문 최대 글자 수
 TITLE_LIMIT = 120
@@ -102,6 +102,7 @@ def create(db: Session, user: User, group_id: str, body: LinkCreate) -> tuple[Li
     title = _title(body.title)
     _reject_controls("invalid_query", body.room_id, body.target_id)
     room = resolve_room(db, user, group_id, body.room_id)
+    ensure_can_send(room)  # 상대가 나간 읽기 전용 방에는 새 연결을 만들 수 없다(삭제는 허용)
     found = repo.get_in_room(db, room, body.message_id)
     if found is None:
         raise bad_request("invalid_message", "이 대화방의 메시지가 아니에요")
