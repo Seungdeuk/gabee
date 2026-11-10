@@ -3,10 +3,19 @@ from sqlalchemy.orm import Session
 from app.features.family_group.models import User
 from app.shared import chat_library, group_purge
 from app.shared.errors import ApiError, bad_request, not_found
+from app.shared.schema import monitor
 
 from . import chat_push
 from . import repository as repo
-from .models import ASSISTANT_USER_ID, DIRECT, FAMILY, ChatRoom, Message, MessageAttachment
+from .models import (
+    ASSISTANT_USER_ID,
+    DIRECT,
+    FAMILY,
+    ChatRoom,
+    Message,
+    MessageAttachment,
+    MessageShare,
+)
 from .schemas import (
     AttachmentOut,
     MessageOut,
@@ -16,6 +25,7 @@ from .schemas import (
     ReadStateOut,
     ReplyOut,
     RoomOut,
+    ShareOut,
     UnreadOut,
 )
 
@@ -68,6 +78,7 @@ def message_out(
     reply: ReplyOut | None = None,
     reactions: list[ReactionOut] | None = None,
     in_library: bool = False,
+    share: MessageShare | None = None,
 ) -> MessageOut:
     deleted = m.deleted_at is not None
     return MessageOut(
@@ -80,6 +91,7 @@ def message_out(
         is_assistant=m.user_id == ASSISTANT_USER_ID,
         reply_to=None if deleted else reply,  # 지운 메시지는 답장 표시도 내용도 남기지 않는다
         reactions=[] if deleted else (reactions or []),
+        share=ShareOut(kind=share.kind, payload=share.payload) if share and not deleted else None,
         deleted=deleted,
     )
 
@@ -103,6 +115,12 @@ def _outs(
     saved = chat_library.registered_ids(
         db, room.group_id, [a.id for a in attachments.values() if a.kind == "image"]
     )
+    # 공유 카드 테이블이 아직 없는 DB(공용 DB 반영 전)에서도 메시지 목록은 열린다: 카드 내용만 빠지고 고정 문구는 그대로 보인다
+    shares = (
+        repo.shares_for(db, [m.id for m, _ in rows if m.deleted_at is None])
+        if share_table_ready()
+        else {}
+    )
     return [
         message_out(
             m,
@@ -111,9 +129,15 @@ def _outs(
             reply_out(parents[m.reply_to_id]) if m.reply_to_id in parents else None,
             reaction_outs(reactions.get(m.id)),
             m.id in attachments and attachments[m.id].id in saved,
+            shares.get(m.id),
         )
         for m, name in rows
     ]
+
+
+def share_table_ready() -> bool:
+    """공유 카드 테이블이 이 DB 에 준비됐는지(준비 안 됐으면 카드 내용을 읽거나 지우지 않는다)."""
+    return monitor.status().feature_ready("chat_share")
 
 
 def message_view(

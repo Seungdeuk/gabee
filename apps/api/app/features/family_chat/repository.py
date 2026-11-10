@@ -1,6 +1,6 @@
 from datetime import UTC, datetime
 
-from sqlalchemy import String, and_, case, cast, delete, func, or_, select, update
+from sqlalchemy import String, and_, case, cast, delete, func, inspect, or_, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.exc import IntegrityError
@@ -20,6 +20,7 @@ from .models import (
     Message,
     MessageAttachment,
     MessageReaction,
+    MessageShare,
 )
 
 UNREAD_CAP = 1000  # 안 읽은 수를 세는 상한(앱이 99+ 로 줄여 보여준다)
@@ -590,6 +591,53 @@ def attachments_for(db: Session, message_ids: list[int]) -> dict[int, MessageAtt
         select(MessageAttachment).where(MessageAttachment.message_id.in_(message_ids))
     )
     return {a.message_id: a for a in rows}
+
+
+def add_share(
+    db: Session, message: Message, kind: str, payload: dict, commit: bool = True
+) -> MessageShare:
+    """공유 카드의 내용을 그 메시지에 붙인다."""
+    share = MessageShare(
+        message_id=message.id,
+        group_id=message.group_id,
+        room_id=message.room_id,
+        kind=kind,
+        payload=payload,
+    )
+    db.add(share)
+    if commit:
+        db.commit()
+    return share
+
+
+def share_table_exists(db: Session) -> bool:
+    """공유 카드 표가 이 DB 에 실제로 있는지(캐시된 준비 상태가 아니라 카탈로그를 본다). 같은 연결로 확인해 풀에서 연결을 더 꺼내지 않는다."""
+    return inspect(db.connection()).has_table(MessageShare.__tablename__)
+
+
+def add_message_with_share(db: Session, message: Message, kind: str, payload: dict) -> None:
+    """메시지와 카드 내용을 한 번에 커밋한다(실패하면 둘 다 저장되지 않아 카드 없는 메시지가 남지 않는다)."""
+    try:
+        db.add(message)
+        db.flush()
+        add_share(db, message, kind, payload, commit=False)
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+
+
+def shares_for(db: Session, message_ids: list[int]) -> dict[int, MessageShare]:
+    """메시지 id 들의 공유 카드를 한 번의 쿼리로."""
+    if not message_ids:
+        return {}
+    rows = db.scalars(select(MessageShare).where(MessageShare.message_id.in_(message_ids)))
+    return {s.message_id: s for s in rows}
+
+
+def delete_share(db: Session, message_id: int) -> None:
+    """메시지의 공유 카드 내용을 지운다(커밋은 부르는 쪽이 한다)."""
+    db.execute(delete(MessageShare).where(MessageShare.message_id == message_id))
 
 
 def get_attachment(db: Session, attachment_id: str) -> MessageAttachment | None:

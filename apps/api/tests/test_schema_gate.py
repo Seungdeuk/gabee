@@ -259,6 +259,7 @@ def test_health_db_reports_ready_state_and_exposes_no_internal_names(client):
     assert set(report["features"]) == {
         "family_group",
         "family_chat",
+        "chat_share",
         "schedule",
         "schedule_check",
         "billing",
@@ -366,3 +367,12 @@ def test_check_log_table_is_part_of_schedule_check_feature():
     from app.shared.schema import feature_tables
 
     assert "events_check_logs" in feature_tables()["schedule_check"]
+
+
+def test_share_card_table_is_part_of_chat_share_feature_not_family_chat():
+    """공유 카드 표(message_shares)는 하위 기능 chat_share 로 따로 점검한다(표가 없는 DB 에서도 소통의 나머지는 열린다)."""
+    from app.shared.schema import feature_tables
+
+    tables = feature_tables()
+    assert "message_shares" in tables["chat_share"]
+    assert "message_shares" not in tables["family_chat"]

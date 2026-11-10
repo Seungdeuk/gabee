@@ -1,7 +1,7 @@
 from datetime import date, datetime
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class MessageCreate(BaseModel):
@@ -58,6 +58,24 @@ class LibrarySaveOut(BaseModel):
     status: Literal["queued", "already"]
 
 
+class ShareCreate(BaseModel):
+    """공유 카드 보내기. 일정이면 ref 는 내 일정 id, 정산이면 월(YYYY-MM). 카드 내용은 서버가 읽어 만든다(클라이언트 값은 받지 않는다)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    kind: Literal["event", "settlement"]
+    ref: str = Field(min_length=1, max_length=32)
+    room_id: str | None = Field(default=None, max_length=32)  # 없으면 가족 전체방
+
+
+class ShareOut(BaseModel):
+    """공유 카드. kind=event: title·date·start_time·end_time·place·kind·with_names.
+    kind=settlement: month·remaining(내 남은 잔액, 받을 돈 +/보낼 돈 −)·lines(direction send|receive, name, amount)."""
+
+    kind: Literal["event", "settlement"]
+    payload: dict
+
+
 class MessageOut(BaseModel):
     id: int
     user_id: str
@@ -72,6 +90,7 @@ class MessageOut(BaseModel):
     reactions: list[
         ReactionOut
     ] = []  # 많은 순(같으면 목록 순서). 방 목록의 마지막 메시지에는 채우지 않는다
+    share: ShareOut | None = None  # 공유 카드 메시지의 내용(지운 메시지·카드가 아닌 메시지는 null)
     deleted: bool = False  # 보낸 사람이 지운 메시지. text 는 빈 문자열, attachment 는 null 이고 앱은 "삭제된 메시지입니다"를 보인다
 
 
