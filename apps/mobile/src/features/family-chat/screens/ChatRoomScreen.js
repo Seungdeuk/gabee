@@ -442,6 +442,10 @@ export default function ChatRoomScreen() {
     else nearBottom.current = false;
   };
 
+  const cancelShareHandoff = share.cancelHandoff;
+  useEffect(() => {
+    if (menu) cancelShareHandoff(); // 메시지 메뉴가 열리면 예약 중인 공유 시트·확인창 열기는 취소해 창이 겹치지 않게 한다
+  }, [menu, cancelShareHandoff]);
   const closeMenu = () => setMenu(null);
   const openMenu = (message, anchor, reactTo) => setMenu({ message, anchor, reactTo }); // reactTo: 앨범 사진의 메뉴일 때 반응을 거는 대표 사진(마지막 사진)
   /** 내 반응을 켜거나(다른 이모지면 바꾸고) 같은 이모지를 다시 누르면 끈다. 실패하면 이유를 안내 줄에 보인다. */
@@ -713,6 +717,7 @@ export default function ChatRoomScreen() {
             onPickPhoto={onPickPhoto}
             onPickFile={onPickFile}
             onShare={share.open}
+            onPlusOpen={share.cancelHandoff}
             fileBusy={pickingFileUi || chat.fileBusy}
             shareBusy={chat.shareBusy}
             photoBusy={pickingUi || chat.photoBusy}

@@ -22,9 +22,9 @@ const INNER_SLOT = INNER_BTN; // 오른쪽 자리: 버튼 한 개 폭으로 고�
  * 메시지 입력줄: 왼쪽 + 버튼(아래에서 올라오는 메뉴 시트: 사진·파일·일정·정산·안부 — 사진은 바로 갤러리에서 한 장, 파일은 문서 파일 한 개를 고르고, 일정·정산은 공유 시트를 열어(onShare) 내 일정·정산 카드를 보내고, 안부는 아직 "준비 중이에요" 안내), 둥근 여러 줄 입력칸(최대 5줄), 입력칸 오른쪽 안의 보내기 버튼(글자가 있을 때만 켜짐).
  * 사진·파일·공유 카드를 보내는 중에는 + 버튼이 진행 표시·비활성이다. 보내지 못하면 입력줄 위에 오류 문구를 보인다(다시 눌러 재시도).
  * 답장 중이면(replyTo) 입력줄 위에 "○○에게 답장" 바(원본 한 줄 미리보기, 닫기)가 뜨고 입력칸에 커서가 간다.
- * @param {{ value: string, onChangeText: (text: string) => void, onSend: () => void, onPickPhoto: () => void, onPickFile?: () => void, onShare?: (kind: "event" | "settlement") => void, photoBusy?: boolean, fileBusy?: boolean, shareBusy?: boolean, photoError?: string, onDismissPhotoError?: () => void, replyTo?: { id: number, user_name: string, text: string, deleted: boolean, has_attachment: boolean } | null, onCancelReply?: () => void, direct?: boolean }} props
+ * @param {{ value: string, onChangeText: (text: string) => void, onSend: () => void, onPickPhoto: () => void, onPickFile?: () => void, onShare?: (kind: "event" | "settlement") => void, onPlusOpen?: () => void, photoBusy?: boolean, fileBusy?: boolean, shareBusy?: boolean, photoError?: string, onDismissPhotoError?: () => void, replyTo?: { id: number, user_name: string, text: string, deleted: boolean, has_attachment: boolean } | null, onCancelReply?: () => void, direct?: boolean }} props
  */
-export default function Composer({ value, onChangeText, onSend, onPickPhoto, onPickFile, onShare, photoBusy = false, fileBusy = false, shareBusy = false, photoError = "", onDismissPhotoError, replyTo = null, onCancelReply, direct = false }) {
+export default function Composer({ value, onChangeText, onSend, onPickPhoto, onPickFile, onShare, onPlusOpen, photoBusy = false, fileBusy = false, shareBusy = false, photoError = "", onDismissPhotoError, replyTo = null, onCancelReply, direct = false }) {
   const [sheetOpen, setSheetOpen] = useState(false);
   const [soon, setSoon] = useState(false); // "준비 중이에요" 안내 줄
   const handoff = useRef(null); // "+" 시트가 닫힌 뒤 공유 시트를 열도록 예약한 일의 취소 함수
@@ -126,6 +126,8 @@ export default function Composer({ value, onChangeText, onSend, onPickPhoto, onP
       <View style={styles.row}>
         <Pressable
           onPress={() => {
+            handoff.current?.(); // 예약 중인 공유 창 넘기기가 "+" 시트 위에 겹쳐 뜨지 않게 취소한다
+            onPlusOpen?.(); // 부모가 예약해 둔 다른 창 열기(공유 시트 다시 열기 등)도 취소할 수 있게 알린다
             Keyboard.dismiss(); // 키보드가 시트를 가리지 않게
             setSheetOpen(true);
           }}

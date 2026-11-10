@@ -128,6 +128,8 @@ test("ConfirmDialog: tone prop(기본 danger, default 면 꿀색 확인 버튼)�
   assert.match(dialog, /tone === "default"/);
   assert.match(dialog, /backgroundColor: colors\.accent/); // 기본 톤 확인 버튼
   assert.match(dialog, /danger: \{ backgroundColor: colors\.danger \}/); // 기존 빨강은 그대로
+  assert.match(dialog, /onPress=\{onCancel\} accessibilityLabel="취소"/); // 바깥 영역을 누르면 하는 일(취소)과 읽어 주는 이름이 같다
+  assert.doesNotMatch(dialog, /accessibilityLabel="닫기"/);
 });
 
 // ---------------------------------------------------------------------------------------------
@@ -246,6 +248,9 @@ test("ShareSheet: theme 토큰만, 로딩·빈 상태·오류(다시 시도)·�
   assert.match(sheet, /ActivityIndicator/);
   assert.match(sheet, /다시 시도/);
   assert.match(sheet, /onPick\(item\)/);
+  assert.match(sheet, /onAccessibilityEscape=\{onClose\}/); // VoiceOver 두 손가락 문지르기
+  assert.match(sheet, /onPress=\{onClose\} accessibilityRole="button" accessibilityLabel="닫기"/); // 바깥 영역에 닿을 수 없는 사용자를 위한 닫기 버튼
+  assert.doesNotMatch(sheet, /닫기 버튼은 없다/);
   assert.doesNotMatch(sheet, /fetch\(|apiFetch/);
 });
 
@@ -305,17 +310,21 @@ test("Composer: '+' 시트를 닫은 뒤 공유 시트를 연다(지연·언마�
   assert.match(composer, /InteractionManager/);
   assert.match(composer, /scheduleAfterSheetClose\(\(\) => onShare\(plusShareKind\(key\)\)/);
   assert.match(composer, /setSheetOpen\(false\);\s*\n\s*if \(isPlusPhoto/); // 시트는 먼저 닫는다
-  assert.match(composer, /handoff\.current\?\.\(\)/); // 언마운트·재선택 때 예약을 취소한다
+  assert.match(composer, /useEffect\(\(\) => \(\) => handoff\.current\?\.\(\), \[\]\)/); // 언마운트 때 예약을 취소한다
+  assert.match(composer, /onPress=\{\(\) => \{\s*handoff\.current\?\.\(\);[^\n]*\n\s*onPlusOpen\?\.\(\);[^\n]*\n\s*Keyboard\.dismiss\(\);/); // "+" 를 열 때 예약 중인 공유 창 넘기기를 취소해 창이 겹치지 않게
 });
 
-test("useChatShare: 항목을 고르면 시트를 닫고 닫힌 뒤 확인창을, 취소하면 확인창을 닫고 닫힌 뒤 시트를 다시 연다(동시에 두 창을 띄우지 않는다)", () => {
+test("useChatShare·ChatRoomScreen: 상태 전이는 reducer, 창 넘기기는 정리되고 다른 창이 열릴 때 취소된다", () => {
   const hook = read("features/family-chat/useChatShare.js");
-  assert.match(hook, /InteractionManager/);
-  assert.match(hook, /scheduleAfterSheetClose/);
-  assert.match(hook, /confirmVisible/);
-  assert.match(hook, /sheetOpen: false/); // 닫아도 kind·items 는 남겨 닫히는 동안 제목이 비지 않는다
-  assert.doesNotMatch(hook, /setState\(IDLE\)/); // 닫을 때 내용을 비우지 않는다
-  assert.match(hook, /confirmCopy: pending && state\.kind \? shareConfirmCopy/); // 확인창 문구는 열림 여부와 무관하게 마지막 항목을 유지한다
+  assert.match(hook, /useReducer\(shareFlowReducer, SHARE_FLOW_IDLE\)/); // 전이 규칙은 shareFlow.js(순수 함수, chatshare_flow.test.js)가 맡는다
+  assert.match(hook, /after\(\(\) => dispatch\(\{ type: "showConfirm" \}\)\)/); // 고르면 닫힌 뒤에만 확인창
+  assert.match(hook, /after\(\(\) => dispatch\(\{ type: "reopenSheet" \}\)\)/); // 취소하면 닫힌 뒤 시트 다시
+  assert.match(hook, /return \(\) => \{\s*alive\.current = false;\s*handoff\.current\?\.\(\);\s*\};/); // 언마운트 때 예약 취소(정리 함수 안)
+  assert.match(hook, /if \(!state\.confirmOpen \|\| confirming\.current\) return;/); // 취소 가드
+  assert.match(hook, /confirmCopy: state\.pending && state\.kind \? shareConfirmCopy\(state\.kind, state\.pending\) : null/); // 확인창 문구는 열림 여부와 무관하게 마지막 항목을 유지한다
+  assert.match(hook, /cancelPending,\s*confirm,\s*cancelHandoff,/); // 화면이 예약을 취소할 수 있다
   const screen = read("features/family-chat/screens/ChatRoomScreen.js");
   assert.match(screen, /visible=\{share\.confirmVisible\}/);
+  assert.match(screen, /onPlusOpen=\{share\.cancelHandoff\}/);
+  assert.match(screen, /const cancelShareHandoff = share\.cancelHandoff;\s*\n\s*useEffect\(\(\) => \{\s*\n\s*if \(menu\) cancelShareHandoff\(\);/); // 메시지 메뉴가 열리면 예약 중인 공유 창은 열지 않는다
 });

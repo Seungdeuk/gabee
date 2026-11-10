@@ -11,7 +11,7 @@ import { colors, font, radius, spacing } from "@/theme";
 export default function ConfirmDialog({ visible, title, message, cancelLabel = "취소", confirmLabel, tone = "danger", onCancel, onConfirm }) {
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onCancel}>
-      <Pressable style={styles.backdrop} onPress={onCancel} accessibilityLabel="닫기">
+      <Pressable style={styles.backdrop} onPress={onCancel} accessibilityLabel="취소">
         <Pressable style={styles.dialog} onPress={() => {}} accessibilityRole="alert">
           <Text style={styles.title}>{title}</Text>
           {message ? <Text style={styles.message}>{message}</Text> : null}
