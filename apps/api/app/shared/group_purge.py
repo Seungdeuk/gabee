@@ -17,7 +17,7 @@ import shutil
 from collections.abc import Callable
 from pathlib import Path
 
-from sqlalchemy import Table, delete, or_, select, tuple_, update
+from sqlalchemy import Table, delete, inspect, or_, select, tuple_, update
 from sqlalchemy.orm import Session
 
 from app.shared.config import settings
@@ -163,13 +163,22 @@ def _file_paths(db: Session, group_id: str) -> list[Path]:
     return [p for p in paths if _inside(base, p) or _inside(raw_root, p)]
 
 
+def _present(db: Session) -> set[str]:
+    """이 DB 에 실제로 있는 테이블 이름. 코드가 DB 보다 먼저 배포돼 아직 만들어지지 않은 테이블은 지울 줄도 없으니 건너뛴다
+    (건너뛰지 않으면 새 테이블 하나 때문에 가족 삭제·1:1 방 나가기가 500 이 된다)."""
+    return set(inspect(db.connection()).get_table_names())
+
+
 def purge_group(db: Session, group_id: str) -> list[Path]:
     """이 가족의 모든 데이터(DB 줄)를 지우고 지워야 할 디스크 파일·폴더 경로를 돌려준다. 커밋은 하지 않는다."""
     files = _file_paths(db, group_id)  # 줄이 지워지기 전에 모은다
     tables = _scoped_tables()
     names = {t.name for t in tables}
     _detach_kept_tables(db, group_id)
+    present = _present(db)
     for table in tables:
+        if table.name not in present:
+            continue
         db.execute(
             delete(table)
             .where(_condition(table, group_id, names))
@@ -185,7 +194,10 @@ def purge_room(db: Session, room_id: str) -> list[Path]:
     files = _attachment_paths(db, lambda t: t.c.room_id == room_id)
     tables = _scoped_tables("room_id", ROOM_TABLE)
     names = {t.name for t in tables}
+    present = _present(db)
     for table in tables:
+        if table.name not in present:
+            continue
         db.execute(
             delete(table)
             .where(_condition(table, room_id, names, "room_id", ROOM_TABLE))
