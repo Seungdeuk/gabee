@@ -4,6 +4,9 @@
 - Task Success Rate: (사례, 반복) 한 번의 실행을 한 단위로 센 성공률. 같은 사례의 반복은 독립 시행이
   아니므로 신뢰구간을 붙이지 않는다.
 - pass@all: 사례 단위. 그 사례의 반복이 모두 통과해야 통과. 신뢰구간을 붙인다.
+
+기록되지 않은 지연·토큰은 0 으로 들어온다(관찰 결과의 기본값). 비용은 여기서 다루지 않고
+manifest·usage 기록(cost, store)에 있다.
 """
 
 import math
@@ -58,6 +61,11 @@ class CaseRun:
             raise ValueError(
                 f"{self.case.id}: 채점 결과와 관찰 결과의 수가 같고 1개 이상이어야 한다"
             )
+        for res in self.results:
+            if res.case_id != self.case.id:
+                raise ValueError(
+                    f"{self.case.id}: 다른 사례({res.case_id})의 채점 결과가 섞여 있다"
+                )
 
 
 @dataclass(frozen=True)
@@ -167,6 +175,11 @@ def summarize(runs: Sequence[CaseRun]) -> Summary:
     """사례 묶음 전체의 지표. 분모는 사례 수(사례 기준 지표)이거나 실행 수(실행 기준 지표)다."""
     if not runs:
         raise ValueError("사례가 하나도 없다")
+    ids = [r.case.id for r in runs]
+    if len(set(ids)) != len(ids):
+        raise ValueError("같은 사례 id 가 두 번 들어 있다")
+    if len({r.case.split for r in runs}) > 1:
+        raise ValueError("분할(dev/val/test/legacy)이 섞여 있다. 분할별로 따로 집계한다")
     pairs = [
         (r.case, res, obs) for r in runs for res, obs in zip(r.results, r.observations, strict=True)
     ]

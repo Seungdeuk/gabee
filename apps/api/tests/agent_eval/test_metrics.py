@@ -140,8 +140,8 @@ def test_efficiency_uses_nearest_rank_percentiles():
 
 def test_breakdown_by_category_and_scenario_includes_legacy():
     runs = [
-        _run(_case("a", "A", "single_tool", REGISTER), GOOD),
-        _run(_case("b", "A", "clarify", REGISTER), BAD),
+        _run(_case("a", "A", "single_tool", REGISTER, split="legacy"), GOOD),
+        _run(_case("b", "A", "clarify", REGISTER, split="legacy"), BAD),
         _run(_case("c", "B", None, REGISTER, split="legacy"), GOOD),
     ]
     s = summarize(runs)
@@ -223,3 +223,40 @@ def test_failure_pareto_sorts_by_count_before_name():
         ),
     ]
     assert summarize(runs).failure_pareto == (("wrong_tool", 2), ("missing_tool", 1))
+
+
+def test_repeats_must_all_pass_for_case_level_tool_metrics():
+    s = summarize([_run(_case("a", expect=REGISTER), GOOD, BAD)])
+    assert (s.tool_selection.k, s.tool_selection.n) == (0, 1)
+    assert (s.tool_argument_cases.k, s.tool_argument_cases.n) == (0, 1)
+    assert (s.task_success_rate.k, s.task_success_rate.n) == (1, 2)
+    assert (s.pass_at_all.k, s.pass_at_all.n) == (0, 1)
+
+
+def test_efficiency_means_follow_each_run():
+    runs = [_run(_case("a"), _obs(llm_calls=1, steps=2), _obs(llm_calls=3, steps=4))]
+    eff = summarize(runs).efficiency
+    assert eff.llm_calls_mean == 2.0 and eff.steps_mean == 3.0
+
+
+def test_precision_counts_errored_calls_and_helper_tools_as_called():
+    case = _case("a", expect=REGISTER)
+    helper = _obs("register", "lookup")
+    s = summarize([_run(case, helper)])
+    assert (s.tool_precision.k, s.tool_precision.n) == (1, 2)
+    assert (s.tool_recall.k, s.tool_recall.n) == (1, 1)
+    errored = Observation(
+        calls=[ToolCall(stage="schedule", name="register", args={"title": "치과"}, is_error=True)]
+    )
+    s = summarize([_run(case, errored)])
+    assert (s.tool_precision.k, s.tool_precision.n) == (1, 1)
+
+
+def test_inconsistent_inputs_are_rejected():
+    a, b = _case("a"), _case("b")
+    with pytest.raises(ValueError):
+        CaseRun(a, (score_case(b, GOOD, NONE),), (GOOD,))
+    with pytest.raises(ValueError):
+        summarize([_run(a, GOOD), _run(a, GOOD)])
+    with pytest.raises(ValueError):
+        summarize([_run(a, GOOD), _run(_case("c", split="val"), GOOD)])
