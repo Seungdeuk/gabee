@@ -91,3 +91,25 @@ def test_without_an_api_key_it_is_unavailable(monkeypatch):
     monkeypatch.setattr(settings, "anthropic_api_key", "")
     with pytest.raises(transport.LLMUnavailable):
         doc_ai.classify_photo(b"x")
+
+
+def test_the_judge_prompt_counts_only_real_documents_not_menus_labels_or_signs():
+    """문서(2026-11-09 사용자 결정): 가정통신문·안내문·공고·영수증·고지서·서류·편지·기사·안내 포스터 한 장.
+    메뉴판·시간표, 제품 포장·성분표, 간판·현수막은 글자가 많아도 일반 사진이다."""
+    prompt = doc_ai.PHOTO_JUDGE_SYSTEM
+    document_part, photo_part = prompt.split("photo:", 1)
+    for word in (
+        "가정통신문",
+        "안내문",
+        "공고문",
+        "영수증",
+        "고지서",
+        "서류",
+        "편지",
+        "기사",
+        "포스터",
+    ):
+        assert word in document_part, word
+    for word in ("메뉴판", "시간표", "성분표", "제품 포장", "간판", "현수막"):
+        assert word not in document_part, word  # 문서 쪽에는 없다
+        assert word in photo_part, word  # 일반 사진 쪽에 있다
