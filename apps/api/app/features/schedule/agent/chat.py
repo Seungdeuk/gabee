@@ -19,6 +19,7 @@ from app.features.ai_assistant.ingest.masking import mask_text
 from app.shared import ai_guard
 from app.shared.errors import ApiError, bad_request
 from app.shared.llm import client as llm
+from app.shared.llm import eval_hook
 from app.shared.privacy import Action, Kind, Policy, Row, prepare_transcript, restore_json
 
 from . import habits, limits, modify, prompts, register, request_flow  # noqa: F401  (limits: 일정 호출 한도를 따로 세도록 등록)
@@ -172,6 +173,36 @@ def _draft_block(draft: Draft | None, title: str, place: str, memo: str) -> str:
     )
 
 
+def _observe(result: dict) -> None:
+    """평가 전용 관찰 훅: 구조화 출력을 `schedule.<intent>` 호출로 담는다(꺼져 있으면 아무 일도 안 한다).
+    일정 요청이 아닌 말(not_schedule)은 도구를 부르지 않은 것이다. 쓰기 결과(되묻기·대체)는 이 뒤 코드가 정하므로
+    호출한 쪽이 `eval_hook.mark_last` 로 표시한다."""
+    intent = result["intent"]
+    if eval_hook.current() is None or intent == "not_schedule":
+        return
+    if intent in ("query", "recommend"):
+        args = {k: result[k] for k in ("period_start", "period_end", "keyword")}
+    elif intent == "register":
+        args = result["register"]
+    elif intent == "edit":
+        args = {"target_id": result["target_id"], **result["changes"]}
+    elif intent == "delete":
+        args = {"target_id": result["target_id"]}
+    elif intent == "check":
+        args = {"check_action": result["check_action"], "event_ids": result["event_ids"]}
+    elif intent == "request":
+        args = result["request"]
+    elif intent == "habit":
+        args = result["habit"]
+    else:
+        args = {}
+    # 목록이 부족하다고 표시해 같은 질문을 한 번 더 분류하면(handler 의 need_wider) 앞선 결과는 대체된 것이다
+    for earlier in eval_hook.current().calls:
+        if earlier["stage"] == "schedule" and earlier["name"].startswith("schedule."):
+            earlier["superseded"] = True
+    eval_hook.observe_call("schedule", f"schedule.{intent}", args)
+
+
 def converse(
     db: Session,
     user_id: str,
@@ -268,4 +299,5 @@ def converse(
     cleaned["request"] = request_flow.clean_fields(
         restored["request"], member_ids, request_ids or set()
     )
+    _observe(cleaned)
     return ChatResult(**cleaned)
