@@ -128,7 +128,8 @@ test("ConfirmDialog: tone prop(기본 danger, default 면 꿀색 확인 버튼)�
   assert.match(dialog, /tone === "default"/);
   assert.match(dialog, /backgroundColor: colors\.accent/); // 기본 톤 확인 버튼
   assert.match(dialog, /danger: \{ backgroundColor: colors\.danger \}/); // 기존 빨강은 그대로
-  assert.match(dialog, /onPress=\{onCancel\} accessibilityLabel="취소"/); // 바깥 영역을 누르면 하는 일(취소)과 읽어 주는 이름이 같다
+  assert.match(dialog, /onPress=\{onCancel\} accessibilityLabel=\{cancelLabel\}/); // 바깥 영역을 누르면 하는 일(취소)과 읽어 주는 이름이 같고, 취소 버튼 라벨을 바꾸는 사용처에서도 맞다
+  assert.match(dialog, /cancelLabel = "취소"/);
   assert.doesNotMatch(dialog, /accessibilityLabel="닫기"/);
 });
 
