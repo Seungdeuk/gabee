@@ -215,7 +215,7 @@ export const isDoubleTap = (previous, now) => previous != null && now - previous
 export const refreshDue = (ticks) => ticks >= REFRESH_EVERY_TICKS;
 
 /**
- * 다시 받은 최근 메시지로 이미 가진 메시지만 갱신한다(반응·삭제 반영). 목록에 없는 메시지는 넣지 않아 새 메시지 확인 기준(cursor)과 겹치지 않는다.
+ * 다시 받은 최근 메시지로 이미 가진 메시지만 갱신한다(반응·삭제·공유 카드 반영: 카드 없이 굳은 메시지도 서버가 카드를 주면 복구한다). 목록에 없는 메시지는 넣지 않아 새 메시지 확인 기준(cursor)과 겹치지 않는다.
  * 임시(전송 중·실패) 메시지는 그대로 둔다.
  * @param {object[]} existing
  * @param {object[]} incoming 서버가 돌려준 최근 메시지
@@ -228,7 +228,7 @@ export function refreshExisting(existing, incoming) {
     if (m.clientId) return m;
     const fresh = byId.get(Number(m.id));
     if (!fresh) return m;
-    const same = Boolean(m.deleted) === Boolean(fresh.deleted) && JSON.stringify(m.reactions ?? []) === JSON.stringify(fresh.reactions ?? []) && m.text === fresh.text && (m.reply_to?.deleted ?? false) === (fresh.reply_to?.deleted ?? false);
+    const same = Boolean(m.deleted) === Boolean(fresh.deleted) && Boolean(m.share) === Boolean(fresh.share) && JSON.stringify(m.reactions ?? []) === JSON.stringify(fresh.reactions ?? []) && m.text === fresh.text && (m.reply_to?.deleted ?? false) === (fresh.reply_to?.deleted ?? false);
     if (same) return m;
     changed = true;
     return { ...m, ...fresh };

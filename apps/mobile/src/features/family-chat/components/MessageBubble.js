@@ -209,7 +209,9 @@ export default function MessageBubble({ message, mine, showName, showTime = true
           else if (name === "jump") onReplyPress?.(message.reply_to.id);
         },
       }
-    : null;
+    : isShare
+      ? { accessible: true, accessibilityLabel: shareA11yLabel(message.share) } // 메뉴가 없는 말풍선도 카드 문구를 하나로 읽는다
+      : null;
   const bubble = (
     <Box {...boxProps} style={[styles.bubble, attachment && !isFile && styles.photoBubble, mine ? styles.mineBubble : styles.otherBubble, message.is_assistant && styles.assistantBubble, sending && styles.dim]}>
       {message.reply_to ? <ReplyQuote reply={message.reply_to} onPress={onReplyPress} onLongPress={onActions ? openMenu : undefined} /> : null}
@@ -259,7 +261,7 @@ export default function MessageBubble({ message, mine, showName, showTime = true
           />
         </>
       ) : null}
-      {isShare ? <ShareCard share={message.share} /> : null}
+      {isShare ? <ShareCard share={message.share} mine={mine} /> : null}
       {message.text && !isShare ? (
         <Text style={bubbleTextStyle({ selectable, base: styles.text, photo: attachment ? styles.photoText : null, noSelect: styles.noSelect })} selectable={selectable}>
           {searchTerms?.length ? highlightNodes(message.text, searchTerms, searchCurrent ? hitStyles.current : message.is_assistant ? styles.hitOnAssistant : styles.hit) : playLinkNodes(message.text)}

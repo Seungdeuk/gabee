@@ -36,7 +36,11 @@ export function formatShareDate(date) {
   return `${mo}월 ${d}일 (${WEEKDAYS[day.getDay()]})`;
 }
 
-/** "HH:MM"(초가 붙어도 된다)을 "오후 3:00" 으로. 틀리면 빈 문구. */
+/**
+ * "HH:MM"(초가 붙어도 된다)을 "오후 3:00" 으로. 틀리면 빈 문구.
+ * @param {string | null | undefined} value
+ * @returns {string}
+ */
 function clock(value) {
   const m = /^(\d{2}):(\d{2})(?::\d{2})?$/.exec(String(value ?? ""));
   if (!m) return "";
@@ -103,7 +107,7 @@ export function formatShareMonth(month) {
 
 /**
  * 정산 카드에 보일 내용: 월, 내 남은 잔액 한 줄(받을 돈·보낼 돈·없음), 송금 줄(최대 SETTLEMENT_LINES_SHOWN 개)과 나머지 개수.
- * 금액은 서버가 만든 값 그대로 보이고 앱이 다시 계산하지 않는다. 이름이 없는 줄은 "상대", 금액이 숫자가 아닌 줄은 건너뛴다.
+ * 금액은 서버가 만든 값 그대로 보이고 앱이 다시 계산하지 않는다. 이름이 없는 줄은 "상대", 금액이 숫자가 아니거나 방향(send·receive)을 모르는 줄은 건너뛴다.
  * @param {{ month?: string, remaining?: number, lines?: ({ direction?: string, name?: string, amount?: number } | null)[] } | null | undefined} payload
  * @returns {{ month: string, summary: { tone: "receive" | "send" | "even", text: string }, lines: { key: string, text: string }[], moreCount: number }}
  */
@@ -114,11 +118,22 @@ export function settlementCardView(payload) {
   const all = [];
   (Array.isArray(p.lines) ? p.lines : []).forEach((line, i) => {
     const money = formatShareMoney(line?.amount);
-    if (!money) return;
+    if (!money || (line.direction !== "send" && line.direction !== "receive")) return; // 돈의 방향을 모르면 건너뛴다(방향을 잘못 말하지 않게)
     const name = String(line.name ?? "").trim() || "상대";
     all.push({ key: String(i), text: `${name}님에게 ${money} ${line.direction === "receive" ? "받아요" : "보내요"}` });
   });
   return { month: formatShareMonth(p.month), summary, lines: all.slice(0, SETTLEMENT_LINES_SHOWN), moreCount: Math.max(0, all.length - SETTLEMENT_LINES_SHOWN) };
+}
+
+/**
+ * 카드 안 글자색의 이름(theme 의 colors 키). 내 말풍선은 복숭아색 바탕이라 초록·빨강·보조색이 대비가 모자라서(약 2.7~4.1:1) 모두 본문색을 쓰고, 받을 돈·보낼 돈은 색이 아니라 문구("받을 돈"·"보낼 돈")로 가린다.
+ * 남의 말풍선(흰 바탕)에서는 정산 요약 줄만 색을 쓴다.
+ * @param {{ mine: boolean, tone: "receive" | "send" | "even" | "sub" }} args tone: 정산 요약 줄의 종류, 또는 보조 글자(sub)
+ * @returns {"text" | "textSub" | "success" | "danger"}
+ */
+export function shareTextTone({ mine, tone }) {
+  if (mine) return "text";
+  return tone === "receive" ? "success" : tone === "send" ? "danger" : "textSub";
 }
 
 /**

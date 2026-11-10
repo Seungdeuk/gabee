@@ -15,6 +15,7 @@ import {
   isShareMessage,
   settlementCardView,
   shareA11yLabel,
+  shareTextTone,
 } from "../src/features/family-chat/shareUtils.js";
 
 const read = (rel) => readFileSync(new URL(`../src/features/family-chat/${rel}`, import.meta.url), "utf8");
@@ -121,6 +122,9 @@ test("settlementCardView: 줄은 최대 SETTLEMENT_LINES_SHOWN 개까지 보이�
   assert.equal(v.moreCount, 3);
   const odd = settlementCardView(settleShare({ lines: [null, { direction: "send", name: "", amount: 2000 }, { direction: "send", name: "x", amount: "큰돈" }, { direction: "receive", name: "수진", amount: 3000 }] }).payload);
   assert.deepEqual(odd.lines.map((l) => l.text), ["상대님에게 2,000원 보내요", "수진님에게 3,000원 받아요"]);
+  // 돈의 방향을 모르는 줄은 건너뛴다(방향을 잘못 말하지 않게)
+  const dir = settlementCardView(settleShare({ lines: [{ direction: "swap", name: "민수", amount: 1000 }, { name: "하늘", amount: 2000 }, { direction: "send", name: "수진", amount: 3000 }] }).payload);
+  assert.deepEqual(dir.lines.map((l) => l.text), ["수진님에게 3,000원 보내요"]);
   assert.doesNotThrow(() => settlementCardView({}));
   assert.doesNotThrow(() => settlementCardView(null));
 });
@@ -160,11 +164,32 @@ test("목록 병합·새로고침: share 가 유지되고, 서버가 지운 카�
   assert.equal(next[0].share, null);
 });
 
+test("refreshExisting: 카드가 없는 채로 굳은 메시지는 서버가 카드를 주면 복구되고, 카드가 사라지면 반영된다", () => {
+  const card = cardMessage(eventShare());
+  const stale = [{ ...card, share: null }]; // 카드 내용을 못 받은 채 저장된 경우(구버전 응답·준비 안 된 DB)
+  const fixed = refreshExisting(stale, [card]);
+  assert.notEqual(fixed, stale);
+  assert.deepEqual(fixed[0].share, card.share);
+  const gone = refreshExisting([card], [{ ...card, share: null }]);
+  assert.equal(gone[0].share, null);
+  assert.equal(refreshExisting([card], [{ ...card }])[0], card); // 같으면 그대로
+});
+
+test("shareTextTone: 내 말풍선(복숭아색)에서는 글자 대비를 위해 모두 본문색, 남의 말풍선은 받을/보낼 돈에 색을 쓴다", () => {
+  for (const tone of ["receive", "send", "even"]) assert.equal(shareTextTone({ mine: true, tone }), "text");
+  assert.equal(shareTextTone({ mine: true, tone: "sub" }), "text");
+  assert.equal(shareTextTone({ mine: false, tone: "receive" }), "success");
+  assert.equal(shareTextTone({ mine: false, tone: "send" }), "danger");
+  assert.equal(shareTextTone({ mine: false, tone: "even" }), "textSub");
+  assert.equal(shareTextTone({ mine: false, tone: "sub" }), "textSub");
+});
+
 test("MessageBubble: 카드이면 ShareCard 를 그리고 본문 글자는 그리지 않으며, 메뉴·하트는 바깥 말풍선이 받고 읽어 주는 문구를 붙인다", () => {
   const bubble = read("components/MessageBubble.js");
   assert.match(bubble, /import ShareCard from "\.\/ShareCard"/);
   assert.match(bubble, /isShareMessage/);
-  assert.match(bubble, /\{isShare \? <ShareCard share=\{message\.share\} \/> : null\}/);
+  assert.match(bubble, /\{isShare \? <ShareCard share=\{message\.share\} mine=\{mine\} \/> : null\}/); // 내 말풍선이면 글자색을 바꾼다
+  assert.match(bubble, /: isShare\s+\? \{ accessible: true, accessibilityLabel: shareA11yLabel\(message\.share\) \}/); // 메뉴가 없는 말풍선도 카드 문구를 하나로 읽는다
   assert.match(bubble, /accessibilityLabel: shareA11yLabel\(message\.share\)/); // 바깥 말풍선이 하나로 묶여도 카드 문구를 읽는다
   assert.match(bubble, /\{message\.text && !isShare \? \(/); // 고정 문구("일정을 공유했어요")는 카드 위에 또 보이지 않는다
 });
@@ -176,5 +201,6 @@ test("ShareCard: 화면 값은 theme 토큰만, 서버 호출 없음, 터치를 
   assert.match(card, /from "@\/theme"/);
   assert.doesNotMatch(card, /Pressable/); // 안쪽 Pressable 이 길게 누르기·더블탭 하트를 가로채지 않는다
   assert.match(card, /share\.kind === "settlement"/);
-  assert.match(card, /accessibilityLabel=\{shareA11yLabel\(share\)\}/);
+  assert.doesNotMatch(card, /accessible|accessibilityLabel/); // 읽어 주는 문구는 바깥 말풍선이 붙인다(안쪽까지 붙이면 TalkBack 이 두 번 읽는다)
+  assert.match(card, /shareTextTone/); // 글자색은 순수 함수가 정한다
 });
