@@ -94,14 +94,29 @@ class OnnxE5Embedder:
 _embedder: TextEmbedder | None = None
 
 
+def _model_dir() -> Path:
+    """임베딩 모델 폴더. `get_embedder()` 와 `expected_model_name()` 이 같은 규칙을 쓴다."""
+    from app.shared.config import settings
+
+    return Path(
+        os.environ.get("EMBED_MODEL_DIR") or Path(settings.data_dir) / "models" / "e5-small-ft"
+    )
+
+
+def expected_model_name() -> str:
+    """지금 설정이면 저장될 임베딩 모델 이름. 모델을 불러오지 않고 폴더와 `model.onnx` 유무만 본다.
+
+    `get_embedder().name` 과 같다(단 onnxruntime 이 없어 해시로 대체되는 경우는 알 수 없다). 점검 스크립트가 쓴다."""
+    model_dir = _model_dir()
+    if (model_dir / "model.onnx").exists():
+        return f"onnx-{model_dir.name}"
+    return f"hashing-{HashingEmbedder.dim}"
+
+
 def get_embedder() -> TextEmbedder:
     global _embedder
     if _embedder is None:
-        from app.shared.config import settings
-
-        model_dir = Path(
-            os.environ.get("EMBED_MODEL_DIR") or Path(settings.data_dir) / "models" / "e5-small-ft"
-        )
+        model_dir = _model_dir()
         _embedder = HashingEmbedder()
         if (model_dir / "model.onnx").exists():
             try:

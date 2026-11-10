@@ -1,9 +1,23 @@
 from datetime import date, datetime
 
 from pgvector.sqlalchemy import Vector
-from sqlalchemy import Float, String, cast, delete, false, literal, or_, select
+from sqlalchemy import (
+    Float,
+    String,
+    cast,
+    delete,
+    distinct,
+    exists,
+    false,
+    func,
+    literal,
+    or_,
+    select,
+    update,
+)
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, aliased
+from sqlalchemy.sql.elements import ColumnElement
 
 from .embedding import cosine
 from .models import EMBED_DIM, KnowledgeChunk, KnowledgeItem, KnowledgeItemRead
@@ -195,10 +209,81 @@ def search_chunks(
     return sorted(scored, key=lambda row: row[2], reverse=True)[:limit]
 
 
+def _stale_where(embedding_model: str, group_id: str | None) -> list[ColumnElement[bool]]:
+    conds = [KnowledgeChunk.embedding_model != embedding_model]
+    if group_id:
+        conds.append(KnowledgeChunk.group_id == group_id)
+    return conds
+
+
 def stale_chunks(
-    db: Session, embedding_model: str, group_id: str | None = None
+    db: Session,
+    embedding_model: str,
+    group_id: str | None = None,
+    *,
+    after_id: int = 0,
+    limit: int | None = None,
 ) -> list[KnowledgeChunk]:
-    q = select(KnowledgeChunk).where(KnowledgeChunk.embedding_model != embedding_model)
+    """지금 모델이 아닌 모델로 만든 조각을 id 순으로. `after_id` 보다 큰 id 에서 `limit` 개까지(키셋 페이지)."""
+    q = select(KnowledgeChunk).where(*_stale_where(embedding_model, group_id))
+    if after_id:
+        q = q.where(KnowledgeChunk.id > after_id)
+    q = q.order_by(KnowledgeChunk.id)
+    if limit is not None:
+        q = q.limit(limit)
+    return list(db.scalars(q))
+
+
+def count_stale(db: Session, embedding_model: str, group_id: str | None = None) -> int:
+    """지금 모델이 아닌 모델로 만든 조각 수."""
+    q = (
+        select(func.count())
+        .select_from(KnowledgeChunk)
+        .where(*_stale_where(embedding_model, group_id))
+    )
+    return int(db.scalar(q) or 0)
+
+
+def count_by_model(db: Session, group_id: str | None = None) -> dict[str, int]:
+    """임베딩 모델 이름별 조각 수."""
+    q = select(KnowledgeChunk.embedding_model, func.count()).group_by(
+        KnowledgeChunk.embedding_model
+    )
     if group_id:
         q = q.where(KnowledgeChunk.group_id == group_id)
-    return list(db.scalars(q))
+    return {model: int(n) for model, n in db.execute(q).all()}
+
+
+def count_stale_items(db: Session, embedding_model: str, group_id: str | None = None) -> int:
+    """다른 모델 조각이 하나라도 있는 기록 수."""
+    q = select(func.count(distinct(KnowledgeChunk.item_id))).where(
+        *_stale_where(embedding_model, group_id)
+    )
+    return int(db.scalar(q) or 0)
+
+
+def count_items_missing_model(
+    db: Session, embedding_model: str, group_id: str | None = None
+) -> int:
+    """조각은 있는데 지금 모델 조각이 하나도 없어, 의미 검색에서 완전히 빠진 기록 수."""
+    current = aliased(KnowledgeChunk)
+    has_current = exists().where(
+        current.item_id == KnowledgeChunk.item_id, current.embedding_model == embedding_model
+    )
+    q = select(func.count(distinct(KnowledgeChunk.item_id))).where(~has_current)
+    if group_id:
+        q = q.where(KnowledgeChunk.group_id == group_id)
+    return int(db.scalar(q) or 0)
+
+
+def update_chunk_embedding(
+    db: Session, chunk_id: int, embedding_model: str, vector: list[float]
+) -> int:
+    """벡터와 모델 이름을 함께 쓴다. 이미 지금 모델이거나 그 사이 지워진 조각은 0행이 바뀐다(commit 은 부른 쪽이 한다)."""
+    table = KnowledgeChunk.__table__
+    result = db.execute(
+        update(table)
+        .where(table.c.id == chunk_id, table.c.embedding_model != embedding_model)
+        .values(embedding=vector, embedding_model=embedding_model)
+    )
+    return int(result.rowcount or 0)

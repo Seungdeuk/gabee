@@ -1,3 +1,4 @@
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, time, timedelta
 
@@ -308,12 +309,44 @@ def list_items(
     return repo.list_items(db, group_id, kind_label, limit, created_from, created_to)
 
 
-def reindex(db: Session, group_id: str | None = None) -> int:
-    """다른 모델로 만든 벡터를 지금 모델로 다시 만든다. 모델을 바꾼 뒤에 한 번 부른다."""
+def reindex(
+    db: Session,
+    group_id: str | None = None,
+    *,
+    batch_size: int | None = None,
+    limit: int | None = None,
+    on_progress: Callable[[int, int], None] | None = None,
+) -> int:
+    """다른 모델로 만든 벡터를 지금 모델로 다시 만든다. 모델을 바꾼 뒤에 부른다. 바뀐 조각 수를 돌려준다.
+
+    `batch_size` 개씩 임베딩해 벡터와 모델 이름을 함께 쓰고 배치마다 commit 한다(None 이면 한 배치). 이미 commit 된 배치는
+    중간에 실패해도 남고, 다시 부르면 남은 조각만 한다. 임베딩 중 지워진 조각은 0행 갱신으로 넘어간다. 실패한 배치는
+    rollback 하고 예외를 그대로 올린다. `limit` 은 이번에 처리할 최대 조각 수, `on_progress(처리한 수, 전체 수)` 는 배치마다 부른다."""
+    if batch_size is not None and batch_size < 1:
+        raise ValueError("batch_size 는 1 이상이어야 해요")
     embedder = _embedder(db)
-    stale = repo.stale_chunks(db, embedder.name, group_id)
-    for chunk, vec in zip(stale, embedder.embed_passages([c.text for c in stale]), strict=True):
-        chunk.embedding = vec
-        chunk.embedding_model = embedder.name
-    db.commit()
-    return len(stale)
+    total = repo.count_stale(db, embedder.name, group_id)
+    if limit is not None:
+        total = min(total, limit)
+    updated = processed = last_id = 0
+    while processed < total:
+        size = total - processed if batch_size is None else min(batch_size, total - processed)
+        batch = [
+            (c.id, c.text)
+            for c in repo.stale_chunks(db, embedder.name, group_id, after_id=last_id, limit=size)
+        ]
+        if not batch:
+            break
+        try:
+            vectors = embedder.embed_passages([text for _, text in batch])
+            for (chunk_id, _), vec in zip(batch, vectors, strict=True):
+                updated += repo.update_chunk_embedding(db, chunk_id, embedder.name, vec)
+            db.commit()
+        except BaseException:
+            db.rollback()
+            raise
+        last_id = batch[-1][0]
+        processed += len(batch)
+        if on_progress:
+            on_progress(processed, total)
+    return updated
