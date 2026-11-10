@@ -57,7 +57,7 @@
  {
   "id": "b-write-propose",
   "agent": "billing",
-  "question": "10월 지출에 치과 50000원 추가해줘",
+  "question": "2026-10-12 치과 50000원 지출 추가해줘",
   "tool": "propose_add_expense",
   "tool_args": {},
   "expect_contains": [
