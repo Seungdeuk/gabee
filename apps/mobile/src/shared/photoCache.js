@@ -7,6 +7,8 @@
 const PHOTO_PATH = /^\/family-group\/users\/[\w-]+\/photo(\?v=\d+)?$/;
 // 채팅 사진: attachment.url(/family-chat/photos/<id>)과 thumb_url(…?size=thumb). 사진은 바뀌지 않는다.
 const CHAT_PHOTO_PATH = /^\/family-chat\/photos\/[\w-]+(\?size=(full|thumb))?$/;
+// 가족 놀이터 그림·사진: /play/items/<id>/image 와 ?v=(줄여 보기 횟수, 결과 공개 때 f). 풀이 중 사진은 서버가 확대한 조각만 준다.
+const PLAY_IMAGE_PATH = /^\/play\/items\/[\w-]+\/image(\?v=\d+f?)?$/;
 
 /**
  * 서버가 준 사진 주소(프로필 photo_url, 채팅 attachment.url·thumb_url)가 우리 경로일 때만 돌려준다.
@@ -14,14 +16,14 @@ const CHAT_PHOTO_PATH = /^\/family-chat\/photos\/[\w-]+(\?size=(full|thumb))?$/;
  * @returns {string | null} 상대 경로(없거나 낯선 형태면 null)
  */
 export function photoPath(photoUrl) {
-  return typeof photoUrl === "string" && (PHOTO_PATH.test(photoUrl) || CHAT_PHOTO_PATH.test(photoUrl)) ? photoUrl : null;
+  return typeof photoUrl === "string" && (PHOTO_PATH.test(photoUrl) || CHAT_PHOTO_PATH.test(photoUrl) || PLAY_IMAGE_PATH.test(photoUrl)) ? photoUrl : null;
 }
 
 /**
  * 같은 사람의 사진끼리 묶는 값(?v= 를 뗀 경로). 채팅 사진은 바뀌지 않으므로 원본·썸네일을 각각 따로 둔다(경로 그대로).
  * @param {string} path
  */
-export const photoOwner = (path) => (CHAT_PHOTO_PATH.test(path) ? path : path.split("?")[0]);
+export const photoOwner = (path) => (CHAT_PHOTO_PATH.test(path) || PLAY_IMAGE_PATH.test(path) ? path : path.split("?")[0]);
 
 /**
  * 같은 키를 여러 곳이 쓰면 한 번만 받고(진행 중인 요청도 공유), 아무도 안 쓰는 사진은 최근 maxIdle 개만 남긴다.

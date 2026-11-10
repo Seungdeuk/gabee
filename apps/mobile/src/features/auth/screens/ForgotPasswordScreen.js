@@ -72,7 +72,7 @@ export default function ForgotPasswordScreen() {
       <Notice tone="error" text={error} />
       <Notice text="이메일을 등록하지 않았다면 가족 관리자에게 문의해 주세요" />
       {sent ? (
-        <Notice tone="success" text="아이디와 이메일이 맞다면 재설정 코드를 메일로 보냈어요. 메일함(스팸함 포함)을 확인해 주세요" />
+        <Notice tone="success" text="재설정 코드를 메일로 보냈어요. 메일함(스팸함 포함)을 확인해 주세요" />
       ) : null}
       <Button label={busy ? "보내는 중..." : sent ? "다시 보내기" : "재설정 메일 보내기"} onPress={submit} disabled={busy} testID="forgot-submit" />
       <Button

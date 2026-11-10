@@ -5,7 +5,6 @@
 `post` 는 테스트에서 가짜 LLM 을 끼우는 자리다."""
 
 import json
-import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
 
@@ -15,19 +14,12 @@ from app.shared.config import settings
 from app.shared.errors import ApiError
 from app.shared.privacy.ner import PrivacyUnavailable
 
-from .client import API_URL, API_VERSION, LLMUnavailable
+from . import tool_graph, transport
+from .chat_model import PostChatModel, to_langchain_messages
+from .transport import LLMUnavailable
 
 Post = Callable[[dict], dict]
 MAX_TOOL_RESULT_CHARS = 12000
-RETRY_STATUS = {
-    429,
-    500,
-    502,
-    503,
-    504,
-    529,
-}  # 잠깐 뒤 다시 하면 될 수 있는 응답(529 는 Anthropic 과부하)
-RETRY_WAIT_SECONDS = 1.0
 
 
 @dataclass
@@ -65,20 +57,8 @@ class AgentReply:
 
 
 def _post(body: dict) -> dict:
-    headers = {"x-api-key": settings.anthropic_api_key, "anthropic-version": API_VERSION}
-    for attempt in (1, 2):
-        try:
-            res = httpx.post(API_URL, json=body, headers=headers, timeout=60.0)
-            if res.status_code in RETRY_STATUS and attempt == 1:
-                time.sleep(RETRY_WAIT_SECONDS)
-                continue
-            res.raise_for_status()
-            return res.json()
-        except (httpx.ConnectError, httpx.TimeoutException):
-            if attempt == 2:
-                raise
-            time.sleep(RETRY_WAIT_SECONDS)
-    raise AssertionError("unreachable")  # 두 번째 시도는 반환하거나 예외를 던진다
+    """탭 에이전트의 호출: 429·5xx·연결 실패는 한 번 더 시도한다(시험은 이 이름을 가짜로 바꾼다)."""
+    return transport.post_messages(body, timeout=60.0, retry=True)
 
 
 def _status_detail(res: httpx.Response) -> str:
@@ -105,71 +85,71 @@ def run_agent(
     max_steps: int = 4,
     max_tokens: int = 1024,
 ) -> AgentReply:
-    """도구를 최대 max_steps 번 부르며 답을 만든다. 키가 없거나 호출이 실패하면 LLMUnavailable."""
+    """도구를 최대 max_steps 번 부르며 답을 만든다. 키가 없거나 호출이 실패하면 LLMUnavailable.
+
+    반복 흐름은 메인 채팅과 같은 `tool_graph`(랭그래프)가 돌리고, 여기서는 탭 에이전트만의 규칙을 더한다:
+    다시 시도하는 기본 `_post`, 도구 결과 길이 제한, 개인정보 엔진 오류 통과, 오류의 LLMUnavailable 변환."""
     if post is None:
         if not settings.anthropic_api_key:
             raise LLMUnavailable("ANTHROPIC_API_KEY 가 설정되지 않았어요")
         post = _post
     by_name = {t.name: t for t in tools}
-    messages = list(messages)
     calls_log: list[dict] = []
-    tokens_in = tokens_out = steps = 0
+    used = [0, 0]  # 입력·출력 토큰 합
+
+    def counting(body: dict) -> dict:
+        reply = post(body)
+        used_in, used_out = transport.usage_of(reply)
+        used[0] += used_in
+        used[1] += used_out
+        return reply
+
+    def handle(calls: list[dict]) -> tool_graph.ToolRound:
+        outputs: list[tuple[str, str, bool]] = []
+        for call in calls:
+            args = call.get("args") or {}
+            calls_log.append({"name": call["name"], "input": args})
+            try:
+                tool = by_name[call["name"]]
+                data, err = tool.run(args), False
+            except PrivacyUnavailable:
+                raise  # 개인정보 보호 엔진을 못 쓰면(required) 도구 오류로 숨기지 않고 503 으로 끝낸다
+            except (KeyError, ValueError, TypeError, ApiError) as e:
+                data, err = {"error": getattr(e, "message", None) or str(e)}, True
+            outputs.append((call["id"], _result_text(data), err))
+        return tool_graph.ToolRound(outputs)
+
+    run = tool_graph.Run(
+        model=PostChatModel(
+            post=counting,
+            llm_model=settings.llm_model,
+            max_tokens=max_tokens,
+            system=system,
+            tools=[t.spec() for t in tools],
+        ),
+        handle=handle,
+        max_steps=max_steps,
+    )
     try:
-        for _ in range(max_steps):
-            steps += 1
-            reply = post(
-                {
-                    "model": settings.llm_model,
-                    "max_tokens": max_tokens,
-                    "system": system,
-                    "tools": [t.spec() for t in tools],
-                    "messages": messages,
-                }
-            )
-            usage = reply.get("usage") or {}
-            tokens_in += int(usage.get("input_tokens") or 0)
-            tokens_out += int(usage.get("output_tokens") or 0)
-            content = reply.get("content") or []
-            calls = [c for c in content if c.get("type") == "tool_use"]
-            if not calls:
-                text = "".join(c.get("text", "") for c in content if c.get("type") == "text")
-                if not text.strip():
-                    raise LLMUnavailable("AI 응답이 비어 있어요")
-                return AgentReply(
-                    text.strip(),
-                    True,
-                    calls_log,
-                    input_tokens=tokens_in,
-                    output_tokens=tokens_out,
-                    model=settings.llm_model,
-                    calls=steps,
-                )
-            messages.append({"role": "assistant", "content": content})
-            outputs = []
-            for call in calls:
-                args = call.get("input") or {}
-                calls_log.append({"name": call["name"], "input": args})
-                try:
-                    tool = by_name[call["name"]]
-                    data, err = tool.run(args), False
-                except PrivacyUnavailable:
-                    raise  # 개인정보 보호 엔진을 못 쓰면(required) 도구 오류로 숨기지 않고 503 으로 끝낸다
-                except (KeyError, ValueError, TypeError, ApiError) as e:
-                    data, err = {"error": getattr(e, "message", None) or str(e)}, True
-                outputs.append(
-                    {
-                        "type": "tool_result",
-                        "tool_use_id": call["id"],
-                        "content": _result_text(data),
-                        "is_error": err,
-                    }
-                )
-            messages.append({"role": "user", "content": outputs})
+        if max_steps > 0:  # 0 번이면 모델을 한 번도 부르지 않고 끝난다
+            tool_graph.run_graph(run, to_langchain_messages(messages))
     except httpx.HTTPStatusError as e:
         raise LLMUnavailable(f"AI 호출에 실패했어요 ({_status_detail(e.response)})") from None
     except (httpx.HTTPError, ValueError, KeyError) as e:
         raise LLMUnavailable(f"AI 호출에 실패했어요 ({type(e).__name__})") from None
-    raise LLMUnavailable("AI 가 정해진 횟수 안에 답을 끝내지 못했어요")
+    if not run.finished:
+        raise LLMUnavailable("AI 가 정해진 횟수 안에 답을 끝내지 못했어요")
+    if not run.answer:
+        raise LLMUnavailable("AI 응답이 비어 있어요")
+    return AgentReply(
+        run.answer,
+        True,
+        calls_log,
+        input_tokens=used[0],
+        output_tokens=used[1],
+        model=settings.llm_model,
+        calls=run.steps,
+    )
 
 
 def build_messages(question: str, history: list[dict] | None) -> list[dict]:

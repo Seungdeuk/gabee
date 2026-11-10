@@ -45,3 +45,8 @@ apps/api/data/
 *.dump.sha256
 *.dump.partial
 gabee-backups/
+
+apps/api/env.yaml
+
+# Agent 평가 결과(합성 데이터지만 저장소에는 올리지 않는다)
+apps/api/evals/agent_eval/results/

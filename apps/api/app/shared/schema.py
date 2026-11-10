@@ -33,10 +33,19 @@ _FEATURE_RE = re.compile(r"^app\.features\.(\w+)\.")
 _SHARED_RE = re.compile(r"^app\.shared\.(\w+)$")
 # app/shared 의 공통 모델이 어떤 기능에서 쓰이는지. 등록되지 않은 공통 모델은 모든 기능의 전제(family_group)로 본다.
 SHARED_MODEL_FEATURES = {
-    "location_consent": ("family_group", "care"),
+    "location_consent": ("family_group",),
     "ai_usage": ("family_chat", "ai_assistant"),  # AI 호출 한도·캐시·사용 기록
-    "used_proposals": ("billing", "care"),  # 에이전트 쓰기 제안 토큰의 사용 기록
+    "used_proposals": ("billing",),  # 에이전트 쓰기 제안 토큰의 사용 기록
     "notifications": ("notifications",),  # 알림함: 알림 기능만 쓴다
+    "push_models": ("notifications",),  # 푸시 토큰·설정: 알림 기능만 쓴다
+}
+
+
+# 한 기능 안의 하위 기능(테이블 이름 접두사 → 하위 기능 이름). 이 접두사의 테이블은 상위 기능(schedule)이 아니라
+# 하위 기능으로 따로 점검해, 준비 안 된 DB 에서 그 API 만 503 이 되게 한다(일정의 나머지 API 는 영향받지 않는다).
+SUB_FEATURE_PREFIXES = {
+    "events_check_": "schedule_check",  # 데일리 체크(schedule/check_router.py)
+    "message_shares": "chat_share",  # 채팅 공유 카드(family_chat/share_router.py): 이 테이블이 없는 DB 에서도 소통의 나머지는 열린다
 }
 
 
@@ -46,6 +55,7 @@ def feature_tables() -> dict[str, dict[str, Table]]:
     features: dict[str, dict[str, Table]] = {}
     for mapper in db.Base.registry.mappers:
         module = mapper.class_.__module__
+        table_name = mapper.local_table.name
         found = _FEATURE_RE.match(module)
         if found:
             owners = (found.group(1),)
@@ -54,8 +64,11 @@ def feature_tables() -> dict[str, dict[str, Table]]:
             if not shared:
                 continue
             owners = SHARED_MODEL_FEATURES.get(shared.group(1), (CORE_FEATURE,))
+        for prefix, sub_feature in SUB_FEATURE_PREFIXES.items():
+            if table_name.startswith(prefix):
+                owners = (sub_feature,)
         for owner in owners:
-            features.setdefault(owner, {})[mapper.local_table.name] = mapper.local_table
+            features.setdefault(owner, {})[table_name] = mapper.local_table
     return features
 
 

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { StyleSheet, Text, View } from "react-native";
+import { Platform, StyleSheet, Text, View } from "react-native";
 
 import { useAuth } from "@/shared/auth/AuthProvider";
 import Button from "@/shared/components/Button";
@@ -77,7 +77,7 @@ export default function SocialAccountsScreen() {
     setBusy(false);
   };
 
-  const providers = enabledProviders();
+  const providers = enabledProviders(Platform.OS);
   const unlinked = providers.filter((p) => !linked?.includes(p));
   return (
     <AuthLayout title="소셜 계정 연동" subtitle="연결하면 Google·카카오로도 같은 계정에 로그인할 수 있어요">

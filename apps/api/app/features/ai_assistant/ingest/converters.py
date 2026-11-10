@@ -1,5 +1,6 @@
 """형식별 변환기. 사진은 OCR, 오피스·PDF·텍스트는 MarkItDown 으로 마크다운을 만든 뒤 블록으로 나눈다."""
 
+import datetime as dt
 import io
 import re
 import threading
@@ -289,8 +290,82 @@ DOC_EXT = {
 }
 
 
+XLSX_MAX_ROWS = 5000  # 한 시트에서 읽는 최대 줄 수(아주 큰 표가 서버를 붙잡지 않게)
+XLSX_MAX_COLS = 100
+
+
+def _xlsx_cell(cell) -> str:
+    """엑셀 화면에 보이는 모습으로 칸 값을 글로 바꾼다(쉼표·날짜·퍼센트 서식 반영)."""
+    v = cell.value
+    if v is None:
+        return ""
+    nf = cell.number_format or "General"
+    if isinstance(v, bool):
+        return "TRUE" if v else "FALSE"
+    if isinstance(v, dt.datetime):
+        return (
+            v.strftime("%Y-%m-%d %H:%M")
+            if (v.hour or v.minute or v.second)
+            else v.strftime("%Y-%m-%d")
+        )
+    if isinstance(v, dt.date):
+        return v.strftime("%Y-%m-%d")
+    if isinstance(v, dt.time):
+        return v.strftime("%H:%M")
+    if isinstance(v, (int, float)):
+        decimals = re.search(r"0\.(0+)", nf)
+        dec = len(decimals.group(1)) if decimals else 0
+        if "%" in nf:
+            return f"{v * 100:.{dec}f}%"
+        if "," in nf:
+            return f"{v:,.{dec}f}"
+        if decimals:
+            return f"{v:.{dec}f}"
+        return str(int(v)) if isinstance(v, float) and v == int(v) else str(v)
+    return str(v).replace("\n", " ").replace("|", "\\|").strip()
+
+
+def xlsx_to_markdown(data: bytes) -> str:
+    """서식을 반영한 엑셀 → 마크다운. MarkItDown(pandas)은 저장된 값 그대로라 금액 쉼표·날짜 서식을 잃고 병합 칸이 `Unnamed`·`NaN` 이 된다.
+    여기서는 보이는 값으로 꺼내고, 병합 칸은 걸친 칸마다 같은 값을 채우며, 숨긴 시트는 건너뛴다. 시트마다 `## 시트이름` 과 표 하나."""
+    import openpyxl
+
+    wb = openpyxl.load_workbook(io.BytesIO(data), data_only=True, read_only=False)
+    out = []
+    for ws in wb.worksheets:
+        if ws.sheet_state != "visible":
+            continue
+        grid: dict[tuple[int, int], str] = {}
+        for row in ws.iter_rows(max_row=XLSX_MAX_ROWS, max_col=XLSX_MAX_COLS):
+            for c in row:
+                grid[(c.row, c.column)] = _xlsx_cell(c)
+        for rng in ws.merged_cells.ranges:  # 병합 칸은 걸친 칸마다 같은 값을 채운다
+            val = grid.get((rng.min_row, rng.min_col), "")
+            for r in range(rng.min_row, min(rng.max_row, XLSX_MAX_ROWS) + 1):
+                for c in range(rng.min_col, min(rng.max_col, XLSX_MAX_COLS) + 1):
+                    grid[(r, c)] = val
+        rows = [
+            r
+            for r in sorted({r for r, _ in grid})
+            if any(grid.get((r, c)) for c in range(1, XLSX_MAX_COLS + 1))
+        ]
+        if not rows:
+            continue
+        cols = [c for c in sorted({c for _, c in grid}) if any(grid.get((r, c)) for r in rows)]
+        table = [[grid.get((r, c), "") for c in cols] for r in rows]
+        lines = [f"## {ws.title}", "| " + " | ".join(table[0]) + " |", "|" + "---|" * len(cols)]
+        lines += ["| " + " | ".join(t) + " |" for t in table[1:]]
+        out.append("\n".join(lines))
+    return "\n\n".join(out)
+
+
 def to_markdown(data: bytes, kind: FileKind) -> str:
-    """MarkItDown 으로 마크다운을 만든다. PDF 는 쪽 사이에 \\f(폼 피드)가 남는다."""
+    """마크다운을 만든다. 엑셀은 서식을 반영한 전용 변환(실패하면 MarkItDown), 나머지는 MarkItDown. PDF 는 쪽 사이에 \\f(폼 피드)가 남는다."""
+    if kind == "xlsx":
+        try:
+            return xlsx_to_markdown(data)
+        except Exception:  # noqa: BLE001  전용 변환이 못 읽는 파일은 MarkItDown 에 맡긴다
+            pass
     from markitdown import MarkItDown, StreamInfo
 
     try:

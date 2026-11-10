@@ -190,13 +190,13 @@ def get_request(
 def settlement_notice_rows(
     db: Session, group_id: str, user_id: str
 ) -> list[tuple[str, str | None, object]]:
-    """이 사용자가 받은 정산 알림(보낼 돈 알림·재알림)의 (사건, 월, 만든 시각). 재알림을 이미 보냈는지도 여기서 본다."""
+    """이 사용자가 받은 정산 알림(정산 내역 업데이트·재알림)의 (사건, 월, 만든 시각). 재알림을 이미 보냈는지도 여기서 본다."""
     rows = db.execute(
         select(Notification.event, Notification.target_id, Notification.created_at).where(
             Notification.group_id == group_id,
             Notification.user_id == user_id,
             Notification.kind == "billing",
-            Notification.event.in_(("settlement_pay", "settlement_remind")),
+            Notification.event.in_(("settlement_updated", "settlement_remind")),
         )
     ).all()
     return [(r[0], r[1], r[2]) for r in rows]

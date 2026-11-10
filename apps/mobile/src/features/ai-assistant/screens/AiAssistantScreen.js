@@ -1,6 +1,5 @@
 import { Ionicons } from "@expo/vector-icons";
 import { Image } from "expo-image";
-import { useRouter } from "expo-router";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { FlatList, KeyboardAvoidingView, Pressable, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -8,17 +7,17 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { legacyStorageScope } from "@/shared/api/client";
 import { useAuth } from "@/shared/auth/AuthProvider";
 import AppHeader from "@/shared/components/AppHeader";
+import SoftBackdrop from "@/shared/components/SoftBackdrop";
 import { colors } from "@/theme";
 
 import AnswerView from "../components/AnswerView";
 import AiOffCard from "../components/AiOffCard";
 import ChatInput from "../components/ChatInput";
 import DescribeCard from "../components/DescribeCard";
+import OriginalViewer from "../components/OriginalViewer";
 import SchedulePromptCard from "../components/SchedulePromptCard";
-import DoubtCard from "../components/DoubtCard";
 import ScheduleConfirmCard from "../components/ScheduleConfirmCard";
 import DraftCard from "../components/DraftCard";
-import MicPendingSheet from "../components/MicPendingSheet";
 import PromptChips from "../components/PromptChips";
 import ReadingStatus from "../components/ReadingStatus";
 import Sidebar from "../components/Sidebar";
@@ -26,26 +25,36 @@ import ThinkingSteps from "../components/ThinkingSteps";
 import UserBubble from "../components/UserBubble";
 import WaveBars from "../components/WaveBars";
 import useChat from "../hooks/useChat";
+import useNudges from "../hooks/useNudges";
 import useSessions from "../hooks/useSessions";
+import useVoiceInput from "../hooks/useVoiceInput";
 import { listRecords } from "../api";
 import mascot from "../../../../assets/images/gabee-mascot.png";
-
-// 음성 입력이 아직 준비되지 않아 마이크를 막아 둔다. 기능이 생기면 true 로 바꾼다.
-const MIC_ENABLED = false;
 
 /**
  * 홈: AI 채팅. 상태는 빈 화면 → (음성 입력) → 처리 중 → 답변/초안 승인 순으로 바뀐다.
  * 상단 ⋮ 는 기타 화면(가족 그룹·설정)으로 들어간다.
+ * emptyAction 은 빈 화면 인사말 아래에 붙는 요소, bell 은 상단 맨 오른쪽 알림 종이다(둘 다 라우트에서 조립한다).
  */
-export default function AiAssistantScreen({ onBell, bellBadge }) {
-  const router = useRouter();
-  const { messages, phase, readingSince, confirmDoubts, markAiEnabled, resolveConfirm, saveDescription, skipDescription, acceptSchedulePrompt, skipSchedulePrompt, send, sendPhoto, startListening, stopListening, editDraft, reset, load } = useChat();
+export default function AiAssistantScreen({ bell, emptyAction }) {
+  const { messages, phase, readingSince, markAiEnabled, resolveConfirm, saveDescription, skipDescription, acceptSchedulePrompt, skipSchedulePrompt, send, sendPhoto, startListening, stopListening, editDraft, addAssistantMessages, reset, load } = useChat();
+  const voice = useVoiceInput({ onEnd: stopListening });
+  const toggleMic = async () => {
+    if (phase === "listening") {
+      voice.stop(); // 마지막 글자는 곧 도착해 입력창에 채워진다. 화면 상태는 바로 푼다
+      stopListening();
+      return;
+    }
+    startListening();
+    if (!(await voice.start())) stopListening();
+  };
   const auth = useAuth();
+  useNudges({ enabled: Boolean(auth.user?.id), busy: phase === "thinking" || phase === "reading", onNudges: addAssistantMessages }); // 앱을 열면(켜 두는 동안에도 5분마다) 챙길 일을 먼저 말한다. 가비가 답하는 중에는 끼어들지 않는다
   // 대화 저장 키: 로그인한 회원은 사용자 id, 익명 계정(개발용 토큰)은 토큰에서 만든 값. 로그인 확인 중에는 null
   const scope = auth.status === "loading" ? null : auth.user?.id ? `user-${auth.user.id}` : legacyStorageScope();
   const { sessions, currentId, startNew, open, remove } = useSessions({ messages, load, reset, scope });
   const [menuOpen, setMenuOpen] = useState(false);
-  const [micPendingOpen, setMicPendingOpen] = useState(false);
+  const [photoView, setPhotoView] = useState(null); // 채팅에 올린 사진을 크게 보는 중이면 { title, sources }
   const [reviewCount, setReviewCount] = useState(0); // 확인이 필요한 기록 수(메뉴 점·기록 탭 숫자)
   const [focusRecordId, setFocusRecordId] = useState(null);
 
@@ -75,12 +84,21 @@ export default function AiAssistantScreen({ onBell, bellBadge }) {
   };
 
   const renderItem = ({ item, index }) => {
-    if (item.role === "user") return <UserBubble text={item.text} voice={item.voice} imageUri={item.imageUri} />;
+    if (item.role === "user") {
+      return (
+        <UserBubble
+          text={item.text}
+          voice={item.voice}
+          imageUri={item.imageUri}
+          onPressImage={() => setPhotoView({ title: "올린 사진", sources: [{ uri: item.imageUri }] })}
+        />
+      );
+    }
     if (item.aiOff) return <AiOffCard onEnabled={() => markAiEnabled(item.id)} />;
     const isReport = item.sources.length > 1; // 여러 기록을 모은 답에는 저장·복사 버튼을 붙인다
     return (
       <View style={styles.answer}>
-        <AnswerView text={item.text} sources={item.sources} showActions={isReport && index === messages.length - 1}>
+        <AnswerView text={item.text} sources={item.sources} webSources={item.webSources} showActions={isReport && index === messages.length - 1}>
           {item.draft ? (
             <DraftCard to={item.draft.to} text={item.draftText} onChangeText={(t) => editDraft(item.id, t)} />
           ) : null}
@@ -88,16 +106,6 @@ export default function AiAssistantScreen({ onBell, bellBadge }) {
         {(item.confirmCards ?? []).map((card, i) => (
           <ScheduleConfirmCard key={`confirm-${i}`} card={card} onResolve={(status, text) => resolveConfirm(item.id, i, status, text)} />
         ))}
-        {item.doubts ? (
-          <DoubtCard
-            lines={item.doubts.lines}
-            done={item.doubts.done}
-            onSubmit={async (edits) => {
-              await confirmDoubts(item.id, edits);
-              refreshReview();
-            }}
-          />
-        ) : null}
         {item.describe ? (
           <DescribeCard
             mode={item.describe.status === "pending" ? "edit" : item.describe.status}
@@ -128,7 +136,7 @@ export default function AiAssistantScreen({ onBell, bellBadge }) {
             style={styles.reviewBtn}
           >
             <Ionicons name="create-outline" size={16} color={colors.text} />
-            <Text style={styles.reviewBtnText}>지금 확인하기</Text>
+            <Text style={styles.reviewBtnText}>기록에서 확인하기</Text>
           </Pressable>
         ) : null}
       </View>
@@ -137,7 +145,8 @@ export default function AiAssistantScreen({ onBell, bellBadge }) {
 
   return (
     <SafeAreaView style={styles.safe} edges={["top"]}>
-      <AppHeader onMenu={() => setMenuOpen(true)} onNew={startNew} onMore={() => router.push("/more")} menuBadge={reviewCount > 0} onBell={onBell} bellBadge={bellBadge} />
+      <SoftBackdrop />
+      <AppHeader onMenu={() => setMenuOpen(true)} onNew={startNew} menuBadge={reviewCount > 0} bell={bell} />
       <Sidebar
         open={menuOpen}
         onClose={() => setMenuOpen(false)}
@@ -165,6 +174,7 @@ export default function AiAssistantScreen({ onBell, bellBadge }) {
           {empty ? (
             <View style={styles.center}>
               <Text style={styles.hello}>{auth.user?.name ? `${auth.user.name}님, 무엇을 도와드릴까요?` : "무엇을 도와드릴까요?"}</Text>
+              {emptyAction}
             </View>
           ) : messages.length === 0 && listening ? (
             <View style={styles.center}>
@@ -224,12 +234,12 @@ export default function AiAssistantScreen({ onBell, bellBadge }) {
             </>
           ) : null}
           {listening ? (
-            <Text style={styles.note}>폰 기본 음성 인식으로 받아 적어요. 말이 끝나면 보내기를 눌러 주세요.</Text>
+            <Text style={styles.note}>말씀해 보세요. 입력창에 글자가 채워지면 확인한 뒤 보내기를 눌러 주세요.</Text>
           ) : null}
-          <ChatInput mode={inputMode} onSend={send} onAttach={sendPhoto} onMic={MIC_ENABLED ? (listening ? stopListening : startListening) : () => setMicPendingOpen(true)} />
-          <MicPendingSheet visible={micPendingOpen} onClose={() => setMicPendingOpen(false)} />
+          <ChatInput mode={inputMode} voiceText={voice.transcript} onSend={send} onAttach={sendPhoto} onMic={toggleMic} />
         </View>
       </KeyboardAvoidingView>
+      <OriginalViewer state={photoView} onClose={() => setPhotoView(null)} />
     </SafeAreaView>
   );
 }

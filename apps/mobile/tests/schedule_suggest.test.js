@@ -7,6 +7,7 @@ import {
   SUGGESTIONS_FILTERED_TEXT,
   SUGGESTIONS_NO_DATA_TEXT,
   SUGGESTIONS_PREPARING_TEXT,
+  SUGGESTIONS_SPENT_EMPTY_TEXT,
   emptySlotView,
 } from "@/features/schedule/suggestion_slot";
 
@@ -44,13 +45,16 @@ test("서버가 나중에로 표시한 추천은 later 로 온다", () => {
 
 const loaded = (patch) => ({ loading: false, loaded: true, failed: false, state: "ok", canRefresh: true, ...patch });
 
-test("추천 카드가 비면 서버 상태로 문구를 정한다: 데이터 없음 🌱 / 새로 줄 게 없음 🌙 / 준비 중 ⏳ / 여기까지", () => {
+test("추천 카드가 비면 서버 상태로 문구를 정한다: 데이터 없음 🌱 / 걸러짐 생각중 / 준비 중 ⏳ / 여기까지", () => {
   assert.deepEqual(emptySlotView(loaded({ state: "no_data" })), { kind: "message", text: SUGGESTIONS_NO_DATA_TEXT, refresh: true });
   assert.deepEqual(emptySlotView(loaded({ state: "filtered" })), { kind: "message", text: SUGGESTIONS_FILTERED_TEXT, refresh: true });
   assert.deepEqual(emptySlotView(loaded({ state: "preparing" })), { kind: "message", text: SUGGESTIONS_PREPARING_TEXT, refresh: true });
+  assert.deepEqual(emptySlotView(loaded({ state: "spent_empty" })), { kind: "message", text: SUGGESTIONS_SPENT_EMPTY_TEXT, refresh: false });
+  assert.notEqual(SUGGESTIONS_SPENT_EMPTY_TEXT, SUGGESTIONS_DONE_TEXT); // 추천을 못 받았는데 마무리 인사를 하지 않는다
   assert.deepEqual(emptySlotView(loaded({ state: "exhausted" })), { kind: "message", text: SUGGESTIONS_DONE_TEXT, refresh: false });
-  assert.notEqual(SUGGESTIONS_NO_DATA_TEXT, SUGGESTIONS_FILTERED_TEXT); // 이모지로만 구분
-  assert.equal(SUGGESTIONS_NO_DATA_TEXT.replace("🌱", ""), SUGGESTIONS_FILTERED_TEXT.replace("🌙", ""));
+  assert.notEqual(SUGGESTIONS_NO_DATA_TEXT, SUGGESTIONS_FILTERED_TEXT);
+  assert.equal(SUGGESTIONS_FILTERED_TEXT, "어울리는 일정을 생각중이에요…"); // 데이터가 있는데 "추천드릴 게 없다"고 하지 않는다
+  assert.ok(!SUGGESTIONS_FILTERED_TEXT.includes("없어요"));
 });
 
 test("새로고침이 의미 없는 오류(AI 꺼짐 등)는 버튼을 숨기고, 서버에 못 간 실패는 준비 중 + 새로고침", () => {

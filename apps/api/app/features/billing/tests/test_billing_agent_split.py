@@ -91,8 +91,6 @@ def test_a_corrected_proposal_replaces_the_earlier_one(client, family, monkeypat
 
 def test_the_asker_name_is_in_the_prompt(client, family):
     from app.features.billing import agent as billing_agent
-    from app.features.care import agent as care_agent
 
     assert "질문한 사람은 '지민'" in billing_agent.system_prompt("지민")
-    assert "질문한 사람은 '지민'" in care_agent.system_prompt("지민")
     assert "질문한 사람은" not in billing_agent.system_prompt()

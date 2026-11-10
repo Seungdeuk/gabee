@@ -22,7 +22,7 @@ class ProposalOut(BaseModel):
 
     token: str
     summary: str  # 서버가 만든 요약문(예: "지출 등록: 치과 50,000원 ...")
-    tab: Literal["billing", "care"]
+    tab: Literal["billing", "care", "ai-assistant"]
 
 
 class AgentChatOut(BaseModel):

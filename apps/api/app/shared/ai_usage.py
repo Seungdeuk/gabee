@@ -42,7 +42,9 @@ class AiUsageLog(Base):
     input_tokens: Mapped[int] = mapped_column(Integer, default=0)
     output_tokens: Mapped[int] = mapped_column(Integer, default=0)
     cache_hit: Mapped[bool] = mapped_column(Boolean, default=False)
-    status: Mapped[str] = mapped_column(String(16))  # pending | ok | error | cached
+    status: Mapped[str] = mapped_column(
+        String(16)
+    )  # pending | ok | error | cached | rejected(한도·쿨다운으로 거절, 사유는 error_code) | nested(메인 질문 안에서 부른 탭 에이전트 표시, 호출 수 0)
     error_code: Mapped[str | None] = mapped_column(String(32), nullable=True)
     model: Mapped[str | None] = mapped_column(String(64), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)

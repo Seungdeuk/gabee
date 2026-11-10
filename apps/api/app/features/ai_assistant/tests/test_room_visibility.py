@@ -1,10 +1,7 @@
-"""가족 채팅방에서 @가비 로 부른 답을 방에 올려도 되는지(visibility) 판단. 실제 LLM 은 부르지 않고 가짜 LLM 이 도구 호출을 흉내 낸다."""
+"""가족 채팅방에서 @가비 로 부른 답은 항상 방에 공유된다(visibility=room). 개인 대화는 항상 private. 실제 LLM 은 부르지 않는다."""
 
 import json
 
-import pytest
-
-from app.features.ai_assistant import room_visibility as rv
 from app.features.ai_assistant.knowledge import rag_chat
 from app.features.ai_assistant.knowledge import service as kservice
 from app.shared.config import settings
@@ -18,51 +15,6 @@ def _tool_use(name, args, id_="t1"):
 
 def _text(text):
     return {"content": [{"type": "text", "text": text}]}
-
-
-def _call(name, *subs):
-    return {"name": name, "input": {}, "agent_tool_calls": [{"name": s, "input": {}} for s in subs]}
-
-
-# ---------- 판단 규칙(순수 함수) ----------
-def test_records_only_is_shareable():
-    out = rv.judge([{"name": "search_knowledge", "input": {}}, {"name": "get_item", "input": {}}])
-    assert out.visibility == rv.ROOM and out.reasons == []
-
-
-def test_shared_tools_of_tab_agents_are_shareable():
-    calls = [
-        _call("ask_billing", "get_month_summary", "list_expenses"),
-        _call("ask_care", "get_meal_suggestions"),
-        _call("ask_family_chat", "search_messages", "analyze_recent_chat", "list_todos"),
-    ]
-    assert rv.judge(calls).visibility == rv.ROOM
-
-
-@pytest.mark.parametrize(
-    ("call", "reason"),
-    [
-        (_call("ask_billing", "list_allowances"), "자녀 용돈 장부"),
-        (_call("ask_billing", "get_month_summary", "get_upcoming_payments"), "내 결제 예정"),
-        (_call("ask_care", "get_family_locations"), "가족 위치"),
-        (_call("ask_billing", "propose_add_expense"), "확인이 필요한 지출 등록 제안"),
-        (_call("ask_schedule"), "내 일정"),
-    ],
-)
-def test_personal_tools_make_the_whole_answer_private(call, reason):
-    out = rv.judge([{"name": "search_knowledge", "input": {}}, call])
-    assert out.visibility == rv.PRIVATE and reason in out.reasons
-
-
-def test_unknown_agents_and_sub_tools_are_private():
-    assert rv.judge([_call("ask_new_tab")]).visibility == rv.PRIVATE
-    out = rv.judge([_call("ask_billing", "some_new_tool")])
-    assert out.visibility == rv.PRIVATE and out.reasons == ["개인 정보가 있을 수 있는 기능"]
-
-
-def test_sensitive_records_and_proposals_are_private():
-    assert rv.judge([], used_sensitive=True).reasons == [rv.SENSITIVE_REASON]
-    assert rv.judge([], has_proposals=True).reasons == [rv.PROPOSAL_REASON]
 
 
 # ---------- 채팅 요청 ----------
@@ -108,23 +60,15 @@ def test_room_billing_summary_is_shareable(client, family, monkeypatch):
     assert out["visibility"] == "room" and out["private_reasons"] == []
 
 
-def test_room_allowance_question_stays_private(client, family, monkeypatch):
+def test_room_allowance_question_is_shared(client, family, monkeypatch):
     a, _, group = family
     enable_ai(group["id"])
     _fake(monkeypatch, "ask_billing", {"question": "용돈 잔액"}, "list_allowances", {})
     out = _chat(client, a, "room")
-    assert out["visibility"] == "private" and out["private_reasons"] == ["자녀 용돈 장부"]
+    assert out["visibility"] == "room" and out["private_reasons"] == []
 
 
-def test_room_location_question_stays_private(client, family, monkeypatch):
-    a, _, group = family
-    enable_ai(group["id"])
-    _fake(monkeypatch, "ask_care", {"question": "아빠 위치"}, "get_family_locations", {})
-    out = _chat(client, a, "room")
-    assert out["visibility"] == "private" and "가족 위치" in out["private_reasons"]
-
-
-def test_room_sensitive_record_stays_private(client, family, monkeypatch):
+def test_room_sensitive_record_is_shared(client, family, monkeypatch):
     a, _, group = family
     enable_ai(group["id"])
     with SessionLocal() as db:
@@ -140,7 +84,7 @@ def test_room_sensitive_record_stays_private(client, family, monkeypatch):
         )
     _fake(monkeypatch, "search_knowledge", {"query": "혈압약 처방전"})
     out = _chat(client, a, "room")
-    assert out["visibility"] == "private" and out["private_reasons"] == ["민감한 기록"]
+    assert out["visibility"] == "room" and out["private_reasons"] == []
 
 
 def test_room_ordinary_record_is_shareable(client, family, monkeypatch):
@@ -161,12 +105,15 @@ def test_room_ordinary_record_is_shareable(client, family, monkeypatch):
     assert out["visibility"] == "room"
 
 
-def test_room_without_ai_answer_is_private(client, family, monkeypatch):
-    a, _, group = family
+def test_room_without_ai_answer_is_not_posted(client, family, monkeypatch):
+    """AI 가 답하지 못한 기본 안내는 방에 올리지 않는다(키가 없으면 동의·쿨다운·한도 검사를 거치지 않아 마구 올라갈 수 있다)."""
+    a, b, group = family
     enable_ai(group["id"])
     monkeypatch.setattr(settings, "anthropic_api_key", "")  # AI 를 못 써서 기본 안내가 나온다
     out = _chat(client, a, "room")
     assert out["source"] == "fallback" and out["visibility"] == "private"
+    assert out["posted_message_id"] is None and out["private_reasons"]
+    assert client.get("/family-chat/messages", headers=b).json() == []
 
 
 def test_room_sensitive_record_found_but_not_used_is_shareable(client, family, monkeypatch):

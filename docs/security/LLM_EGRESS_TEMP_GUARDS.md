@@ -1,6 +1,15 @@
 # AI 비서 외부 전송 임시 방어 (경로 스위치 + 고위험 입력 차단)
 
 팀원이 AI 비서(`ai-assistant`)를 가명화 게이트웨이(`app/shared/privacy`)에 연결하기 전까지의 **임시 방어**다.
+
+> **2026-11-04 현황**: 메인 AI 채팅(`/ai-assistant/chat`, `/ai-assistant/knowledge/ask`)의 가명화 게이트웨이(2026-11-02 에 `rag_privacy.py` 로 연결, ADR 0013)는
+> **걷어냈다**(`rag_privacy.py` 는 삭제됨, ADR 0014). 메인 채팅은 채팅 내역이 서버 DB 에 저장되지 않아 질문·앞 대화·도구 결과를 가리지 않고 모델로 보내며
+> (외부 전송은 공지로 처리), 대신 이 문서의 고위험 값(주민번호·카드·계좌·비밀번호) 판정은 메인 채팅에서는 탭 에이전트에 넘기는 질문에만 쓴다.
+> 따라서 아래 3번 한계 중 "전화·이메일·이름·주소는 막지 못한다"와 "도구 결과는 검사하지 않는다"는 **메인 채팅 경로에도 그대로 해당한다**(2026-11-02 의 "더 이상 해당하지 않는다"는 철회).
+> 이 가드는 계속 둔다. 탭 에이전트별 현황(코드 확인): 가족채팅 에이전트는 요청마다 세션을 만들어 질문·도구 결과를 가명화하고 답을 복원한다
+> (`family_chat/agent.py` 의 `new_session`·`restore_text`). 돌봄 에이전트(`care/agent.py`)는 없어졌고 `/care/agent/chat` 입구도 없다.
+> 정산 에이전트의 자기 모델 호출 경로와 `/billing/agent/chat` 직접 입구(`billing/router.py`)는 가명화 게이트웨이에 연결되지 않았고, 이 문서의 규칙 가리기·고위험 가드만 쓴다.
+> 이 경로는 탭 에이전트 통합 단계에서 다룬다. 제거 조건(4번)은 그때 다시 본다.
 팀원 코드를 건드리지 않고 `app/shared`·`app/main.py` 에서만 동작한다. **완전한 해결이 아니다.**
 
 ## 1. 경로 스위치 — `DISABLED_AI_ROUTES`
@@ -32,9 +41,9 @@ DISABLED_AI_ROUTES=POST /ai-assistant/knowledge/items,POST /ai-assistant/knowled
 | `POST /ai-assistant/chat` | `message`, `history[].text`(user·assistant 모두: 클라이언트가 위조 가능) |
 | `POST /ai-assistant/knowledge/ask` | `question` |
 | `POST /ai-assistant/knowledge/items` | `title`, `body_md` (앱이 쓰지 않는 직접 입력 경로) |
-| `POST /care/agent/chat`, `POST /billing/agent/chat` | `message`, `history[].text` |
+| `POST /billing/agent/chat` | `message`, `history[].text` |
 
-care·billing 에이전트 입구를 넣은 이유: 이 입구는 `agent_guard.prepare` 로 질문을 `mask_text` 로 가린 뒤 Claude 로 보내지만,
+billing 에이전트 입구를 넣은 이유(돌봄 에이전트는 없어져 `/care/agent/chat` 입구는 없다): 이 입구는 `agent_guard.prepare` 로 질문을 `mask_text` 로 가린 뒤 Claude 로 보내지만,
 `mask_text` 는 주민번호·카드만 가리고 **계좌번호·비밀번호·인증번호는 그대로** 보낸다(실측: `국민은행 110-123-456789`, `비밀번호는 abc12345`, `OTP 123456` 이 가려지지 않음).
 일정 에이전트(`/schedule/agent/chat`)는 가명화 게이트웨이를 쓰고 자체적으로 0.7 이상을 400 으로 막으므로 대상에서 뺐다.
 

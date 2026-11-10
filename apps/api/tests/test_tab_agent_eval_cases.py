@@ -9,17 +9,12 @@ import pytest
 from sqlalchemy import select
 
 from app.features.billing import agent as billing_agent
-from app.features.care import agent as care_agent
 from app.features.family_group.models import User
 from app.shared.db import SessionLocal
 from evals.tab_agents.seed import seed, seed_write_targets
 
-pytestmark = pytest.mark.usefixtures(
-    "full_care_samples"
-)  # 평가 데이터는 물·산책·컨디션 항목이 있는 예전 기본 세트를 쓴다
-
 CASES = json.loads((Path(__file__).parents[1] / "evals/tab_agents/cases.json").read_text("utf-8"))
-AGENTS = {"billing": billing_agent, "care": care_agent}
+AGENTS = {"billing": billing_agent}
 
 
 def test_case_ids_are_unique_and_tools_exist(client, family):

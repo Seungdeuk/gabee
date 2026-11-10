@@ -70,8 +70,10 @@ def _when_text(row: dict) -> str:
     return f"{day:%Y-%m-%d}({WEEKDAYS[day.weekday()]}) {clock}"
 
 
-def _line(row: dict, me: str) -> str:
+def _line(row: dict, me: str, detail: bool = True) -> str:
     head = f"{row['id']} | {_when_text(row)} | {mask_text(row['title'])}"
+    if not detail:  # 가족방: 답이 방에 저장되므로 받는 분·수락 현황은 모델에게도 주지 않는다(id 는 부탁을 고르는 데 필요하다)
+        return f"{head} | {'내가 보냄' if row['from_id'] == me else '받음'}"
     recipients = row["recipients"]
     if row["from_id"] == me:
         who = ",".join(f"{r['user_id']}={_STATUS_TEXT[r['status']]}" for r in recipients)
@@ -84,7 +86,7 @@ def _line(row: dict, me: str) -> str:
     return f"{head} | 받음 | 보낸이:{row['from_id']} | 내답:{answer} | 수락:{others or '-'}"
 
 
-def load(db: Session, group_id: str, user_id: str, today: date) -> RequestView:
+def load(db: Session, group_id: str, user_id: str, today: date, detail: bool = True) -> RequestView:
     """내가 보냈거나 받은 부탁 중 취소되지 않았고 너무 오래되지 않은 것. 지금과 가까운 순으로 상한까지, 날짜순으로 돌려준다."""
     oldest = today - timedelta(days=PAST_DAYS)
     rows = [
@@ -96,7 +98,9 @@ def load(db: Session, group_id: str, user_id: str, today: date) -> RequestView:
     rows.sort(
         key=lambda r: (r["start_date"], r["start_time"] is None, r["start_time"] or 0, r["id"])
     )
-    return RequestView(rows={r["id"]: r for r in rows}, lines=[_line(r, user_id) for r in rows])
+    return RequestView(
+        rows={r["id"]: r for r in rows}, lines=[_line(r, user_id, detail) for r in rows]
+    )
 
 
 def clean_fields(raw, member_ids: set[str], request_ids: set[str]) -> dict:

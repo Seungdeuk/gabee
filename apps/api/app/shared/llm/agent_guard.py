@@ -26,9 +26,8 @@ from .agent import AgentReply
 log = logging.getLogger(__name__)
 
 BILLING_FEATURE = "billing_agent"
-CARE_FEATURE = "care_agent"
 FAMILY_CHAT_FEATURE = "family_chat_agent"
-FEATURES = (BILLING_FEATURE, CARE_FEATURE, FAMILY_CHAT_FEATURE)
+FEATURES = (BILLING_FEATURE, FAMILY_CHAT_FEATURE)
 
 
 def register() -> None:

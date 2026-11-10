@@ -10,10 +10,9 @@ from app.shared.errors import bad_request
 from app.shared.llm.agent_chat import to_out as to_proposal_out
 
 from . import repository as repo
-from . import room_visibility
 from .knowledge import rag_chat
 from .models import Photo
-from .schemas import ChatOut, ChatSource, ConfirmCardOut
+from .schemas import ChatOut, ChatSource, ConfirmCardOut, WebSource
 
 NO_GROUP_REPLY = (
     "가족 그룹에 먼저 참여하면 가비가 가족의 기록을 바탕으로 도와드릴 수 있어요. "
@@ -31,6 +30,7 @@ def chat(
     history: list[dict] | None = None,
     user: User | None = None,
     audience: str = "me",
+    room_id: str | None = None,
 ) -> ChatOut:
     """가족 그룹이 있으면 저장된 기록(knowledge)을 검색해서 근거로 답한다.
 
@@ -42,6 +42,19 @@ def chat(
     TODO: 일정·지출·돌봄 기록도 검색 대상에 넣는다(원본의 capture/qa 참고)."""
     if not group_id:
         return ChatOut(reply=NO_GROUP_REPLY, source="fallback")
+    # 1:1 방에서 부른 @가비: 참가자·상대 이탈을 AI 를 부르기 전에 확인한다(막히면 AI 호출·한도 없음)
+    direct = (
+        family_assistant.direct_room(db, user, group_id, room_id)
+        if audience == "room" and room_id and user is not None
+        else None
+    )
+    # 방에서 부른 @가비 에는 그 방의 최근 대화를 개인정보를 가린 채 맥락으로 붙인다("일정 잡아줘"가 무엇을 가리키는지 알도록).
+    # 가명화는 동의·쿨다운·한도 확인을 통과한 뒤 관문 안에서 한다(막힐 요청은 대화를 가명화하지 않는다)
+    factory = (
+        (lambda: family_assistant.room_context(db, group_id, direct, user_id))
+        if audience == "room"
+        else None
+    )
     r = rag_chat.ask_guarded(
         db,
         user_id,
@@ -50,7 +63,12 @@ def chat(
         feature="assistant_chat",
         history=history,
         user=user,
-        audience=audience,
+        # 1:1 방이면 탭 에이전트에게 "direct" 로 알린다(일정 에이전트는 아직 1:1 을 다루지 않는다)
+        audience="direct" if direct else audience,
+        context_factory=factory,
+        web=audience == "me",  # 방 대화가 검색어로 나가지 않게 AI 채팅 탭에서만 켠다
+        personal=audience
+        == "me",  # 답이 방에 올라갈 수 있으니 개인 기억·내용 전달은 AI 채팅 탭에서만 쓴다
     )
     sources = [
         ChatSource(n=s["n"], title=s["title"], item_id=s["item_id"], source_path=s["source_path"])
@@ -60,24 +78,29 @@ def chat(
         reply=r.answer,
         source=r.source,
         sources=sources,
+        web_sources=[WebSource(**s) for s in r.web_sources],
         proposals=to_proposal_out(r.proposals),
         confirm_cards=[ConfirmCardOut(**c) for c in r.confirmations],
     )
     if audience == "room":
-        judged = room_visibility.judge(
-            r.tool_calls, r.used_sensitive, bool(r.proposals) or bool(r.confirmations)
-        )
-        if (
-            r.source != "ai"
-        ):  # AI 가 아닌 기본 안내·검색 결과는 어떤 기록이 섞였는지 알 수 없어 방에 올리지 않는다
-            judged.add("AI 가 답하지 못해 기록 검색 결과만 있어요")
-        if any(turn.get("private") for turn in history or []):
-            # 앞서 질문한 사람에게만 보였던 개인용 답이 맥락에 있으면, 도구를 안 쓴 짧은 후속 답에도 그 내용이 섞일 수 있다
-            judged.add("앞서 개인 정보가 있는 답이 있었어요")
-        out.visibility, out.private_reasons = judged.visibility, judged.reasons
-        if out.visibility == room_visibility.ROOM and out.reply.strip():
-            # 방에 올려도 되는 답은 서버가 직접 가비 이름으로 저장한다(앱이 아무 글이나 가비 이름으로 올리는 입구는 없다)
-            out.posted_message_id = family_assistant.post_as_assistant(db, group_id, out.reply).id
+        # 가족 채팅방에서 @가비 로 부른 AI 답은 가족 전체방에 공유하고 기록으로 남긴다. 서버가 직접 가비 이름으로 저장한다
+        # (앱이 아무 글이나 가비 이름으로 올리는 입구는 없다). 아래 두 경우는 방에 올리지 않고 질문한 사람에게만 돌려준다.
+        # 이전 앱이 visibility 만 보고 카드·안내를 버리지 않도록 이때는 visibility 를 private 으로 둔다.
+        if out.confirm_cards or out.proposals:
+            # 확인 버튼이 딸린 답은 버튼이 없는 다른 구성원에게 열린 질문으로 남고, 부탁 줄에는 받는 분·수락 현황이 들어 있다
+            out.visibility, out.private_reasons = "private", ["확인 버튼이 필요한 제안"]
+        elif r.source != "ai":
+            # AI 를 못 써서 나온 기본 안내: 키가 없으면 동의·쿨다운·한도 검사(ai_guard)를 거치지 않아 마구 올라갈 수 있다
+            out.visibility, out.private_reasons = (
+                "private",
+                ["AI 가 답하지 못해 기록 검색 결과만 있어요"],
+            )
+        else:
+            out.visibility = "room"
+            if out.reply.strip():
+                out.posted_message_id = family_assistant.post_as_assistant(
+                    db, group_id, out.reply, direct
+                ).id
     return out
 
 

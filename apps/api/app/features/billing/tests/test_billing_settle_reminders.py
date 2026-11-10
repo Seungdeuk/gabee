@@ -1,4 +1,4 @@
-"""정산 재알림: 보낼 돈 알림을 받은 지 24시간이 지나도 송금 완료가 안 됐으면, 홈을 연 본인 몫만 알림함에 한 번 남긴다."""
+"""정산 재알림: 정산하기 알림(settlement_updated)을 받은 지 24시간이 지나도 송금 완료가 안 됐으면, 홈을 연 본인 몫만 알림함에 한 번 남긴다."""
 
 from datetime import UTC, datetime, timedelta
 
@@ -37,7 +37,7 @@ def _age(month, hours):
     with SessionLocal() as db:
         db.execute(
             update(Notification)
-            .where(Notification.event == "settlement_pay", Notification.target_id == month)
+            .where(Notification.event == "settlement_updated", Notification.target_id == month)
             .values(created_at=datetime.now(UTC) - timedelta(hours=hours))
         )
         db.commit()

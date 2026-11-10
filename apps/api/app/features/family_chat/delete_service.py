@@ -6,6 +6,7 @@ from datetime import UTC, datetime
 from sqlalchemy.orm import Session
 
 from app.features.family_group.models import User
+from app.shared import chat_library
 from app.shared.errors import ApiError, not_found
 
 from . import file_service, service
@@ -41,7 +42,15 @@ def delete_message(
             raise ApiError(
                 500, "delete_failed", "메시지를 지우지 못했어요. 다시 시도해 주세요"
             ) from None
+    if repo.share_table_exists(
+        db
+    ):  # 공유 카드면 제목·금액 같은 내용도 서버에서 비운다(표가 실제로 있을 때)
+        repo.delete_share(db, message.id)
     repo.soft_delete(db, message, attachment)
+    if (
+        attachment is not None
+    ):  # 이 첨부에서 만든 문서함 기록이 있으면 함께 지운다(없으면 아무 일도 없다)
+        chat_library.attachment_removed(db, group_id, attachment.id)
     return service.message_out(message, name)
 
 

@@ -1,11 +1,14 @@
+from datetime import date
+
 from fastapi import APIRouter, Depends, Response
 from sqlalchemy.orm import Session
 
 from app.shared.auth import current_group_id, current_user
+from app.shared.config import settings
 from app.shared.db import get_db
-from app.shared.errors import not_found
+from app.shared.errors import bad_request, not_found
 
-from .. import files
+from .. import family_names, files
 from .. import repository as photo_repo
 from . import from_ingest, lookup, rag_chat, service
 from .models import KnowledgeItem
@@ -43,11 +46,21 @@ def create_item(
 def list_items(
     kind_label: str | None = None,
     limit: int = 50,
+    created_from: date | None = None,
+    created_to: date | None = None,
+    user=Depends(current_user),
     group_id: str = Depends(current_group_id),
     db: Session = Depends(get_db),
-) -> list[KnowledgeItem]:
-    items = service.list_items(db, group_id, kind_label, min(max(limit, 1), 200))
-    return _mark_review(db, group_id, items)
+) -> list[ItemOut]:
+    """created_from·created_to 는 설정된 날짜 경계(`ai_day_utc_offset_hours`, 기본 한국 시간 KST)의 달력 날짜이고 양끝을 포함한다(created_at 기준)."""
+    try:
+        start, end = service.created_bounds(
+            created_from, created_to, settings.ai_day_utc_offset_hours
+        )
+    except ValueError as exc:
+        raise bad_request("invalid_range", str(exc)) from exc
+    items = service.list_items(db, group_id, kind_label, min(max(limit, 1), 200), start, end)
+    return _show(db, group_id, service.attach_seen(db, user.id, items), ItemOut)
 
 
 @router.delete("/items/{item_id}", status_code=204)
@@ -62,22 +75,30 @@ def delete_item(
 
 @router.get("/items/{item_id}", response_model=ItemDetailOut)
 def get_item(
-    item_id: str, group_id: str = Depends(current_group_id), db: Session = Depends(get_db)
-) -> KnowledgeItem:
-    return _mark_review(db, group_id, [service.get_item(db, group_id, item_id)])[0]
+    item_id: str,
+    user=Depends(current_user),
+    group_id: str = Depends(current_group_id),
+    db: Session = Depends(get_db),
+) -> ItemDetailOut:
+    """기록을 열면 이 사용자의 읽음이 남는다(다른 가족 기록이면 404 이고 남기지 않는다)."""
+    item = service.get_item(db, group_id, item_id)
+    service.mark_read(db, item.id, user.id)
+    item.seen = True
+    return _show(db, group_id, [item], ItemDetailOut)[0]
 
 
 @router.patch("/items/{item_id}", response_model=ItemDetailOut)
 def update_item(
     item_id: str,
     body: ItemUpdateIn,
+    user=Depends(current_user),
     group_id: str = Depends(current_group_id),
     db: Session = Depends(get_db),
-) -> KnowledgeItem:
+) -> ItemDetailOut:
     """확인하며 고친 값으로 기록을 바꾼다. 가족 그룹이 다르면 없는 기록처럼 404 다."""
     item = service.update_item(db, group_id, item_id, body.model_dump(exclude_unset=True))
     photo_repo.set_status(db, item.id, "analyzed")  # 올린 파일이면 확인 필요 표시를 끈다
-    return _mark_review(db, group_id, [item])[0]
+    return _show(db, group_id, service.attach_seen(db, user.id, [item]), ItemDetailOut)[0]
 
 
 @router.post("/ask", response_model=AskOut)
@@ -106,23 +127,22 @@ def search(
         date_to=body.date_to,
         include_sensitive=body.include_sensitive,
     )
-    return SearchOut(
-        hits=[
-            HitOut(
-                item_id=h.item.id,
-                kind_label=h.item.kind_label,
-                title=h.item.title,
-                snippet=h.chunk.text,
-                page_label=h.chunk.page_label,
-                score=round(h.score, 4),
-                source_path=h.item.source_path,
-                occurred_on=h.item.occurred_on,
-                has_unread_parts=h.item.has_unread_parts,
-                sensitivity=h.item.sensitivity,
-            )
-            for h in hits
-        ]
-    )
+    out = [
+        HitOut(
+            item_id=h.item.id,
+            kind_label=h.item.kind_label,
+            title=h.item.title,
+            snippet=h.chunk.text,
+            page_label=h.chunk.page_label,
+            score=round(h.score, 4),
+            source_path=h.item.source_path,
+            occurred_on=h.item.occurred_on,
+            has_unread_parts=h.item.has_unread_parts,
+            sensitivity=h.item.sensitivity,
+        )
+        for h in hits
+    ]
+    return SearchOut(hits=_show_hits(db, group_id, out))
 
 
 @router.post("/find", response_model=FindOut)
@@ -130,7 +150,7 @@ def find(
     body: FindIn, group_id: str = Depends(current_group_id), db: Session = Depends(get_db)
 ) -> FindOut:
     """글자 일치 찾기(LLM 호출 없음). 없고 semantic=true 일 때만 의미 검색."""
-    return lookup.find(
+    found = lookup.find(
         db,
         group_id,
         body.query,
@@ -138,6 +158,7 @@ def find(
         kind_label=body.kind_label,
         semantic=body.semantic,
     )
+    return FindOut(method=found.method, hits=_show_hits(db, group_id, found.hits))
 
 
 def _mark_review(db: Session, group_id: str, items: list[KnowledgeItem]) -> list[KnowledgeItem]:
@@ -147,3 +168,34 @@ def _mark_review(db: Session, group_id: str, items: list[KnowledgeItem]) -> list
         item.needs_review = item.id in waiting or item.has_unread_parts
         item.needs_description = from_ingest.needs_description(item.kind_label, item.body_md)
     return items
+
+
+def _names(db: Session, group_id: str) -> dict[str, str]:
+    return family_names.shown_names(family_names.load_members(db, group_id))
+
+
+def _show(db: Session, group_id: str, items: list[KnowledgeItem], model: type) -> list:
+    """응답 모델로 만들면서 글 속 `[가족:<id>]` 를 현재 이름으로 되돌린다.
+    DB 객체(item)의 글은 건드리지 않는다: 되돌린 글이 세션에 남아 저장되면 안 된다."""
+    names = _names(db, group_id)
+    out = []
+    for item in _mark_review(db, group_id, items):
+        view = model.model_validate(item)
+        view.title = family_names.restore(view.title, names)
+        if hasattr(view, "body_md"):
+            view.body_md = family_names.restore(view.body_md, names)
+        out.append(view)
+    return out
+
+
+def _show_hits(db: Session, group_id: str, hits: list[HitOut]) -> list[HitOut]:
+    names = _names(db, group_id)
+    return [
+        h.model_copy(
+            update={
+                "title": family_names.restore(h.title, names),
+                "snippet": family_names.restore(h.snippet, names),
+            }
+        )
+        for h in hits
+    ]

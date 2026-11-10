@@ -1,11 +1,12 @@
-from datetime import date
+from datetime import date, datetime
 
 from pgvector.sqlalchemy import Vector
-from sqlalchemy import Float, String, cast, delete, literal, select
+from sqlalchemy import Float, String, cast, delete, false, literal, or_, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from .embedding import cosine
-from .models import EMBED_DIM, KnowledgeChunk, KnowledgeItem
+from .models import EMBED_DIM, KnowledgeChunk, KnowledgeItem, KnowledgeItemRead
 
 
 def add_item(db: Session, item: KnowledgeItem, chunks: list[KnowledgeChunk]) -> KnowledgeItem:
@@ -28,11 +29,46 @@ def replace_chunks(db: Session, item: KnowledgeItem, chunks: list[KnowledgeChunk
     return item
 
 
+def items_containing(
+    db: Session, group_id: str, needle: str, limit: int = 20
+) -> list[KnowledgeItem]:
+    """본문에 needle 이 들어 있는 기록(최근 순)."""
+    q = select(KnowledgeItem).where(
+        KnowledgeItem.group_id == group_id, KnowledgeItem.body_md.contains(needle, autoescape=True)
+    )
+    return list(db.scalars(q.order_by(KnowledgeItem.created_at.desc()).limit(limit)))
+
+
 def delete_item(db: Session, item: KnowledgeItem) -> None:
-    """기록과 그 조각을 함께 지운다."""
+    """기록과 그 조각·읽음 기록을 함께 지운다."""
     db.execute(delete(KnowledgeChunk).where(KnowledgeChunk.item_id == item.id))
+    db.execute(delete(KnowledgeItemRead).where(KnowledgeItemRead.item_id == item.id))
     db.delete(item)
     db.commit()
+
+
+def mark_read(db: Session, item_id: str, user_id: str) -> None:
+    """이 사용자가 기록을 읽었다고 남긴다. 이미 있으면 아무것도 하지 않는다(동시에 불려도 안전)."""
+    if db.get(KnowledgeItemRead, (item_id, user_id)) is not None:
+        return
+    db.add(KnowledgeItemRead(item_id=item_id, user_id=user_id))
+    try:
+        db.commit()
+    except IntegrityError:  # 동시에 같은 읽음이 먼저 저장됨
+        db.rollback()
+
+
+def seen_item_ids(db: Session, user_id: str, item_ids: list[str]) -> set[str]:
+    """주어진 기록 중 이 사용자가 읽은 것의 id (쿼리 한 번)."""
+    if not item_ids:
+        return set()
+    return set(
+        db.scalars(
+            select(KnowledgeItemRead.item_id).where(
+                KnowledgeItemRead.user_id == user_id, KnowledgeItemRead.item_id.in_(item_ids)
+            )
+        )
+    )
 
 
 def path_in_use(db: Session, group_id: str, source_path: str) -> bool:
@@ -47,6 +83,30 @@ def path_in_use(db: Session, group_id: str, source_path: str) -> bool:
     )
 
 
+def get_by_attachment(db: Session, group_id: str, attachment_id: str) -> KnowledgeItem | None:
+    """이 채팅 첨부에서 만든 기록(이 가족의 것만). 없으면 None."""
+    return db.scalar(
+        select(KnowledgeItem).where(
+            KnowledgeItem.group_id == group_id,
+            KnowledgeItem.source_attachment_id == attachment_id,
+        )
+    )
+
+
+def registered_attachment_ids(db: Session, group_id: str, attachment_ids: list[str]) -> set[str]:
+    """주어진 채팅 첨부 중 이 가족의 기록이 이미 있는 것의 id(한 번의 쿼리)."""
+    if not attachment_ids:
+        return set()
+    return set(
+        db.scalars(
+            select(KnowledgeItem.source_attachment_id).where(
+                KnowledgeItem.group_id == group_id,
+                KnowledgeItem.source_attachment_id.in_(attachment_ids),
+            )
+        )
+    )
+
+
 def get_item(db: Session, group_id: str, item_id: str) -> KnowledgeItem | None:
     return db.scalar(
         select(KnowledgeItem).where(KnowledgeItem.id == item_id, KnowledgeItem.group_id == group_id)
@@ -54,11 +114,21 @@ def get_item(db: Session, group_id: str, item_id: str) -> KnowledgeItem | None:
 
 
 def list_items(
-    db: Session, group_id: str, kind_label: str | None = None, limit: int = 50
+    db: Session,
+    group_id: str,
+    kind_label: str | None = None,
+    limit: int = 50,
+    created_from: datetime | None = None,
+    created_to: datetime | None = None,
 ) -> list[KnowledgeItem]:
+    """created_from 이상, created_to 미만(둘 다 UTC aware datetime)인 기록만 거른다. 안 주면 거르지 않는다."""
     q = select(KnowledgeItem).where(KnowledgeItem.group_id == group_id)
     if kind_label:
         q = q.where(KnowledgeItem.kind_label == kind_label)
+    if created_from is not None:
+        q = q.where(KnowledgeItem.created_at >= created_from)
+    if created_to is not None:
+        q = q.where(KnowledgeItem.created_at < created_to)
     return list(
         db.scalars(
             q.order_by(KnowledgeItem.occurred_on.desc(), KnowledgeItem.created_at.desc()).limit(
@@ -66,6 +136,16 @@ def list_items(
             )
         )
     )
+
+
+def family_filter(user_ids: list[str]):
+    """family_user_ids(JSON 배열) 에 user_ids 중 하나라도 들어 있는 기록 조건. 비면 어느 기록도 맞지 않는다.
+
+    JSON 칸을 문자열로 바꿔 `"<id>"` 가 들어 있는지 본다(SQLite·PostgreSQL 공통; id 는 따옴표로 감싸여 있어서 다른 id 의
+    일부와 헷갈리지 않는다)."""
+    as_text = cast(KnowledgeItem.family_user_ids, String)
+    safe = [u for u in user_ids if u.replace("-", "").replace("_", "").isalnum()]
+    return or_(false(), *[as_text.like(f'%"{u}"%', escape="\\") for u in safe])
 
 
 def search_chunks(
@@ -78,6 +158,7 @@ def search_chunks(
     date_to: date | None,
     include_sensitive: bool,
     limit: int = 60,
+    family_user_ids: list[str] | None = None,
 ) -> list[tuple[KnowledgeChunk, KnowledgeItem, float]]:
     """질문 벡터와 가까운 조각을 점수(코사인 유사도, 클수록 가까움) 순으로 돌려준다.
 
@@ -100,6 +181,8 @@ def search_chunks(
         q = q.where(KnowledgeItem.occurred_on <= date_to)
     if not include_sensitive:
         q = q.where(KnowledgeItem.sensitivity != "sensitive")
+    if family_user_ids is not None:
+        q = q.where(family_filter(family_user_ids))
 
     if db.get_bind().dialect.name == "postgresql":
         literal_vec = "[" + ",".join(f"{x:.6f}" for x in query_vec) + "]"

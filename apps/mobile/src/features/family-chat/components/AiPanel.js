@@ -3,27 +3,26 @@ import { ActivityIndicator, Modal, Pressable, ScrollView, StyleSheet, Text, View
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import Button from "@/shared/components/Button";
+import { usageGauges } from "@/shared/aiUsage";
+import UsageGauge from "@/shared/components/UsageGauge";
 import { colors, font, radius, spacing } from "@/theme";
 
 import { analyzeChat, getAiSettings, getRoomInfo, registerScheduleCandidate, sendTogetherRequest, setAiEnabled } from "../api";
 import {
-  canRegisterSchedule,
   chatErrorMessage,
   parseAiSettings,
   parseAnalysis,
   rangeCaption,
-  remainingText,
   resultCaption,
-  scheduleMissingNote,
   shouldLoadSettings,
 } from "../messages";
 import { privacyCaption } from "../privacyPreview";
+import { candidateKey, isCandidateDone, markCandidateDone } from "../candidateKey";
+import { claimCandidate, releaseCandidate } from "../scheduleCandidateUtils";
 import { candidateToRequestBody, dayFromChip, hasCandidateDay, requestErrorText, sendErrorMessage } from "../togetherUtils";
-import { CONSENT_CANCEL_LABEL, ENABLE_ON_ANALYZE_BODY, ENABLE_ON_ANALYZE_CONFIRM_LABEL, ENABLE_ON_ANALYZE_TITLE, PANEL_NOTICE } from "../privacyCopy";
+import { CONSENT_CANCEL_LABEL, ENABLE_ON_ANALYZE_BODY, ENABLE_ON_ANALYZE_CONFIRM_LABEL, ENABLE_ON_ANALYZE_TITLE } from "../privacyCopy";
+import ScheduleCandidateRow from "./ScheduleCandidateRow";
 import TodoCandidateRow from "./TodoCandidateRow";
-
-/** 후보 한 줄에 붙는 보조 글(날짜·시간·장소 등). */
-const joinParts = (parts) => parts.filter(Boolean).join(" · ");
 
 /**
  * 추천 문장 목록. 한 줄을 누르면 onPick 으로 알린다(비어 있으면 안내 글).
@@ -41,27 +40,31 @@ function PickList({ items, emptyText, labelPrefix, testIDPrefix, onPick }) {
 
 /**
  * 채팅방 안 AI 대화 도우미 시트. 열릴 때 설정만 한 번 읽는다. "대화 분석하기" 버튼을 누르면 곧바로 AI 를 한 번 부른다(AI 동의는 회원가입 때 받는다).
- * 켜진 상태에는 항상 보이는 한 줄 안내(PANEL_NOTICE)를 둔다. 요약·일정·할 일 후보·답장 추천·대화 주제 추천이 한 결과 화면에 나온다.
- * 결과는 서버에 잠시(약 10분) 저장돼 같은 요청에 다시 쓰인다.
+ * 요약·일정·할 일 후보·답장 추천·대화 주제 추천이 한 결과 화면에 나온다. 결과는 서버에 잠시(약 10분) 저장돼 같은 요청에 다시 쓰인다.
+ * 개인정보 가림·전달·저장 안내는 이 패널에 두지 않고 마이 > 가비 AI 이용 안내에 있다.
  * 닫아도 컴포넌트는 유지되어 마지막 결과를 다시 열면 보여 준다. 닫혀 있는 동안에는 아무 호출도 하지 않는다.
  * 일정·할 일 후보를 등록하면 onLinked 로 알려 원본 메시지와의 연결을 저장하게 한다(연결 저장이 실패해도 등록은 성공으로 둔다).
- * @param {{ visible: boolean, onClose: () => void, onPickReply: (text: string) => void, onLinked?: (link: { kind: "event" | "todo", targetId: string, candidate: object }) => void }} props
+ * @param {{ visible: boolean, onClose: () => void, roomId?: string, peerId?: string, onPickReply: (text: string) => void, onLinked?: (link: { kind: "event" | "todo", targetId: string, candidate: object }) => void }} props
  * @returns {JSX.Element}
  */
-export default function AiPanel({ visible, onClose, onPickReply, onLinked }) {
+export default function AiPanel({ visible, onClose, onPickReply, onLinked, roomId, peerId }) {
   const insets = useSafeAreaInsets(); // 안드로이드 내비게이션 바에 시트 아래쪽(버튼)이 가려지지 않게
   const [settings, setSettings] = useState(null); // parseAiSettings 결과
   const [loadError, setLoadError] = useState("");
   const [busy, setBusy] = useState(""); // "analysis" | ""
   const [error, setError] = useState("");
   const [analysis, setAnalysis] = useState(null);
-  const [registered, setRegistered] = useState({}); // 후보 순번 -> "ok" | "sending" | 오류 문구
-  const [todoRegistered, setTodoRegistered] = useState({}); // 할 일 후보 순번 -> 같은 형태(함께하기로 보낸 결과)
+  const [registered, setRegistered] = useState({}); // 후보 내용 식별자(candidateKey) -> "ok" | "sending" | 오류 문구. 다시 분석해도 같은 후보는 등록한 표시가 이어진다
+  const [todoRegistered, setTodoRegistered] = useState({}); // 할 일 후보 식별자 -> 같은 형태(함께하기로 보낸 결과)
   const [todoDay, setTodoDay] = useState({}); // 날짜가 없는 할 일 후보 순번 -> 고른 날짜 칩 key
   const [todoCustom, setTodoCustom] = useState({}); // 직접 입력을 고른 후보 순번 -> 적은 날짜 글자
+  const [schedDay, setSchedDay] = useState({}); // 날짜가 없는 일정 후보 순번 -> 고른 날짜 칩 key
+  const [schedCustom, setSchedCustom] = useState({}); // 직접 입력을 고른 일정 후보 순번 -> 적은 날짜 글자
+  const [schedTime, setSchedTime] = useState({}); // 시간이 없는 일정 후보 순번 -> 적은 시간(HH:MM)
   const [confirmingEnable, setConfirmingEnable] = useState(false); // 꺼져 있는 가족 AI 를 켜고 분석할지 묻는 중
   const analyzing = useRef(false); // 분석(필요하면 켜기 포함)을 빠르게 두 번 눌러도 한 번만 보낸다
-  const todoBusy = useRef(new Set()); // 등록 중이거나 등록된 할 일 후보 순번: 같은 후보를 두 번 등록하지 않는다
+  const schedBusy = useRef(new Set()); // 등록 중이거나 등록된 일정 후보 식별자: 빠르게 두 번 눌러도 같은 후보를 두 번 등록하지 않는다
+  const todoBusy = useRef(new Set()); // 등록 중이거나 등록된 할 일 후보 식별자(candidateKey): 같은 후보를 두 번 등록하지 않는다
 
   const loadSettings = useCallback(async () => {
     try {
@@ -120,14 +123,14 @@ export default function AiPanel({ visible, onClose, onPickReply, onLinked }) {
   const analyzeNow = () =>
     run("analysis", async () => {
       if (settings?.enabled === false) await setAiEnabled(true);
-      return analyzeChat();
+      return analyzeChat({ roomId });
     }, (res) => {
       setAnalysis(parseAnalysis(res));
-      setRegistered({});
-      setTodoRegistered({});
       setTodoDay({});
       setTodoCustom({});
-      todoBusy.current.clear();
+      setSchedDay({});
+      setSchedCustom({});
+      setSchedTime({});
     });
 
   /** 등록이 끝난 뒤 원본 메시지 연결을 부탁한다. 연결은 부가 기능이라 여기서 나는 오류는 등록 결과에 영향을 주지 않는다. */
@@ -139,14 +142,18 @@ export default function AiPanel({ visible, onClose, onPickReply, onLinked }) {
     }
   };
 
-  const register = async (index, candidate) => {
-    setRegistered((r) => ({ ...r, [index]: "sending" }));
+  const register = async (candidate, completed = candidate) => {
+    const key = candidateKey("schedule", candidate); // 다시 분석해도 같은 후보로 알아보도록 AI 가 준 원래 후보로 식별한다
+    if (!claimCandidate(schedBusy.current, key)) return;
+    setRegistered((r) => ({ ...r, [key]: "sending" }));
     try {
-      const created = await registerScheduleCandidate(candidate);
-      setRegistered((r) => ({ ...r, [index]: "ok" }));
-      notifyLinked({ kind: "event", targetId: created?.id, candidate });
+      const created = await registerScheduleCandidate(completed);
+      markCandidateDone(key);
+      setRegistered((r) => ({ ...r, [key]: "ok" }));
+      notifyLinked({ kind: "event", targetId: created?.id, candidate: completed });
     } catch (e) {
-      setRegistered((r) => ({ ...r, [index]: chatErrorMessage(e) }));
+      releaseCandidate(schedBusy.current, key);
+      setRegistered((r) => ({ ...r, [key]: chatErrorMessage(e) }));
     }
   };
 
@@ -155,27 +162,29 @@ export default function AiPanel({ visible, onClose, onPickReply, onLinked }) {
    * 받는 사람은 담당자 이름이 정확히 같은 한 명이면 그 사람, 아니면 가족 모두(나 제외)다.
    */
   const registerTodo = async (index, candidate) => {
-    if (todoBusy.current.has(index)) return;
+    const key = candidateKey("todo", candidate);
+    if (todoBusy.current.has(key)) return;
     const chosen = dayFromChip(todoDay[index], new Date(), todoCustom[index]);
     if (!hasCandidateDay(candidate) && !chosen) {
-      setTodoRegistered((r) => ({ ...r, [index]: requestErrorText(todoDay[index] === "custom" ? "bad_date" : "no_date") }));
+      setTodoRegistered((r) => ({ ...r, [key]: requestErrorText(todoDay[index] === "custom" ? "bad_date" : "no_date") }));
       return;
     }
-    todoBusy.current.add(index);
-    setTodoRegistered((r) => ({ ...r, [index]: "sending" }));
+    todoBusy.current.add(key);
+    setTodoRegistered((r) => ({ ...r, [key]: "sending" }));
     try {
       const group = await getRoomInfo({ raw: true }); // AI 가 돌려준 담당자 이름은 실제 이름이라 별명을 입히지 않은 구성원과 맞춘다
-      const made = candidateToRequestBody(candidate, group, chosen);
+      const made = candidateToRequestBody(candidate, group, chosen, undefined, peerId);
       if (made.error) {
-        todoBusy.current.delete(index);
-        setTodoRegistered((r) => ({ ...r, [index]: requestErrorText(made.error) }));
+        todoBusy.current.delete(key);
+        setTodoRegistered((r) => ({ ...r, [key]: requestErrorText(made.error) }));
         return;
       }
       await sendTogetherRequest(made.body); // 원본 대화 연결은 만들지 않는다(서버 연결은 공동 할 일 id 만 받는다)
-      setTodoRegistered((r) => ({ ...r, [index]: "ok" }));
+      markCandidateDone(key);
+      setTodoRegistered((r) => ({ ...r, [key]: "ok" }));
     } catch (e) {
-      todoBusy.current.delete(index); // 실패하면 다시 누를 수 있다
-      setTodoRegistered((r) => ({ ...r, [index]: sendErrorMessage(e) }));
+      todoBusy.current.delete(key); // 실패하면 다시 누를 수 있다
+      setTodoRegistered((r) => ({ ...r, [key]: sendErrorMessage(e) }));
     }
   };
 
@@ -206,10 +215,7 @@ export default function AiPanel({ visible, onClose, onPickReply, onLinked }) {
   const disabled = busy !== "";
   return (
     <>
-      <Text style={styles.sub} testID="chat-ai-notice">
-        {PANEL_NOTICE}
-      </Text>
-      {remainingText(settings) ? <Text style={styles.caption}>{remainingText(settings)}</Text> : null}
+      <UsageGauge gauges={usageGauges({ userUsed: settings.userUsedRatio, groupUsed: settings.groupUsedRatio })} />
       {error ? (
         <Text style={styles.error} accessibilityRole="alert">
           {error}
@@ -265,32 +271,21 @@ export default function AiPanel({ visible, onClose, onPickReply, onLinked }) {
             <Text style={styles.caption}>일정 후보가 없어요</Text>
           ) : (
             analysis.schedule_candidates.map((c, i) => {
-              const state = registered[i];
+              const key = candidateKey("schedule", c);
               return (
-                <View key={`${c.title}-${i}`} style={styles.candidate}>
-                  <Text style={styles.bodyStrong}>{c.title}</Text>
-                  <Text style={styles.caption}>{joinParts([c.date, c.time, c.place]) || "-"}</Text>
-                  {scheduleMissingNote(c) ? <Text style={styles.note}>{scheduleMissingNote(c)}</Text> : null}
-                  {state === "ok" ? (
-                    <Text style={styles.success}>일정으로 등록했어요</Text>
-                  ) : (
-                    <>
-                      {state && state !== "sending" ? (
-                        <Text style={styles.error} accessibilityRole="alert">
-                          {state}
-                        </Text>
-                      ) : null}
-                      <Button
-                        label={state === "sending" ? "등록하는 중..." : "일정으로 등록"}
-                        small
-                        variant="secondary"
-                        onPress={() => register(i, c)}
-                        disabled={!canRegisterSchedule(c) || state === "sending"}
-                        testID={`chat-ai-register-${i}`}
-                      />
-                    </>
-                  )}
-                </View>
+                <ScheduleCandidateRow
+                  key={`${c.title}-${i}`}
+                  candidate={c}
+                  state={registered[key] ?? (isCandidateDone(key) ? "ok" : undefined)}
+                  day={schedDay[i] ?? null}
+                  customText={schedCustom[i] ?? ""}
+                  timeText={schedTime[i] ?? ""}
+                  onPickDay={(day) => setSchedDay((d) => ({ ...d, [i]: day }))}
+                  onChangeCustom={(text) => setSchedCustom((d) => ({ ...d, [i]: text }))}
+                  onChangeTime={(text) => setSchedTime((d) => ({ ...d, [i]: text }))}
+                  onRegister={(completed) => register(c, completed)}
+                  testID={`chat-ai-register-${i}`}
+                />
               );
             })
           )}
@@ -300,7 +295,7 @@ export default function AiPanel({ visible, onClose, onPickReply, onLinked }) {
             <Text style={styles.caption}>할 일 후보가 없어요</Text>
           ) : (
             analysis.todo_candidates.map((t, i) => (
-              <TodoCandidateRow key={`${t.title}-${i}`} candidate={t} state={todoRegistered[i]} day={todoDay[i] ?? null} customText={todoCustom[i] ?? ""} onChangeCustom={(text) => setTodoCustom((c) => ({ ...c, [i]: text }))} onPickDay={(key) => setTodoDay((d) => ({ ...d, [i]: key }))} onRegister={() => registerTodo(i, t)} testID={`chat-ai-todo-${i}`} />
+              <TodoCandidateRow key={`${t.title}-${i}`} candidate={t} state={todoRegistered[candidateKey("todo", t)] ?? (isCandidateDone(candidateKey("todo", t)) ? "ok" : undefined)} day={todoDay[i] ?? null} customText={todoCustom[i] ?? ""} onChangeCustom={(text) => setTodoCustom((c) => ({ ...c, [i]: text }))} onPickDay={(key) => setTodoDay((d) => ({ ...d, [i]: key }))} onRegister={() => registerTodo(i, t)} testID={`chat-ai-todo-${i}`} />
             ))
           )}
 
@@ -332,7 +327,9 @@ export default function AiPanel({ visible, onClose, onPickReply, onLinked }) {
               <Text style={styles.close}>닫기</Text>
             </Pressable>
           </View>
-          <ScrollView contentContainerStyle={styles.content}>{content}</ScrollView>
+          <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled" automaticallyAdjustKeyboardInsets>
+            {content}
+          </ScrollView>
         </View>
       </View>
     </Modal>

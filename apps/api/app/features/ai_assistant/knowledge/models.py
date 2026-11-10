@@ -32,6 +32,28 @@ class KnowledgeItem(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(UTC)
     )
+    # 글에 `[가족:<user_id>]` 로 등장한 가족 구성원 user_id 목록(JSON 문자열 배열). 없으면 null.
+    # 글(title·body_md·조각)에서 뽑은 사본이라 "누가 나오는 기록인가" 필터에 쓴다. 이전 기록은 채우지 않는다.
+    family_user_ids: Mapped[list[str] | None] = mapped_column(JSON, default=None)
+    # 이 기록을 만든 가족 채팅 첨부(message_attachments.id). 채팅에 올린 문서가 자동 등록될 때만 채운다(다른 경로로 올린 기록은 null).
+    # 같은 첨부가 두 번 등록되지 않게 유일하고, 채팅 메시지를 지우면 이 키로 기록을 찾아 함께 지운다.
+    source_attachment_id: Mapped[str | None] = mapped_column(
+        String(32), default=None, nullable=True, unique=True
+    )
+
+
+class KnowledgeItemRead(Base):
+    """구성원별 문서 읽음 기록. 상세를 연 사용자마다 한 행이고, 본인 것만 조회한다. 문서를 지우면 함께 지운다."""
+
+    __tablename__ = "knowledge_item_reads"
+
+    item_id: Mapped[str] = mapped_column(
+        String(32), ForeignKey("knowledge_items.id", ondelete="CASCADE"), primary_key=True
+    )
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), primary_key=True)
+    read_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(UTC)
+    )
 
 
 class KnowledgeChunk(Base):

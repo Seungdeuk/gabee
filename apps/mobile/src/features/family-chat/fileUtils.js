@@ -32,7 +32,7 @@ export const FILE_INVALID_MESSAGE = "지원하지 않는 파일이거나 내용�
 export const FILE_BUSY_MESSAGE = "지금 파일을 처리하는 중이 많아요. 잠시 후 다시 해 주세요";
 export const FILE_PREVIEW_TEXT = "파일";
 
-/** "+" 메뉴(아래에서 올라오는 시트) 항목. 사진·파일은 바로 선택 화면을 열고, 나머지(일정·정산·안부)는 실제 기능이 이후 작업이라 누르면 준비 중 안내만 한다. */
+/** "+" 메뉴(아래에서 올라오는 시트) 항목. 사진·파일은 바로 선택 화면을 열고, 일정·정산은 공유 시트를 열고, 안부는 실제 기능이 이후 작업이라 누르면 준비 중 안내만 한다. */
 export const PLUS_MENU_ITEMS = [
   { key: "photo", label: "사진", icon: "image-outline" },
   { key: "file", label: "파일", icon: "document-attach-outline" },
@@ -52,6 +52,18 @@ export const isPlusPhoto = (key) => key === "photo";
  * @returns {boolean}
  */
 export const isPlusFile = (key) => key === "file";
+/**
+ * "+" 메뉴 항목이 공유 카드(일정·정산) 보내기인지.
+ * @param {string} key
+ * @returns {boolean}
+ */
+export const isPlusShare = (key) => key === "schedule" || key === "settle";
+/**
+ * 공유 항목이 서버에 보낼 카드 종류(일정 → "event", 정산 → "settlement"). 공유 항목이 아니면 null.
+ * @param {string} key
+ * @returns {"event" | "settlement" | null}
+ */
+export const plusShareKind = (key) => (key === "schedule" ? "event" : key === "settle" ? "settlement" : null);
 export const PLUS_SOON_NOTICE = "준비 중이에요";
 export const PLUS_SOON_MS = 3000; // 안내가 저절로 사라지는 시간
 
