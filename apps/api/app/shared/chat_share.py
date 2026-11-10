@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 
 from app.shared.errors import ApiError
 from app.shared.rate_limit import FailureLimiter
+from app.shared.schema import monitor
 
 EVENT = "event"
 SETTLEMENT = "settlement"
@@ -22,7 +23,10 @@ KINDS = (EVENT, SETTLEMENT)
 # 채팅 메시지 글자로 저장되는 고정 문구(구버전 앱·방 목록 미리보기·답장 인용에 그대로 보인다)
 SUMMARY_TEXT = {EVENT: "일정을 공유했어요", SETTLEMENT: "정산을 공유했어요"}
 
-MAX_PAYLOAD_BYTES = 4096  # 카드 하나의 내용 크기 상한(JSON 글자 기준)
+MAX_PAYLOAD_CHARS = 4096  # 카드 하나의 내용 크기 상한(JSON 글자 수 기준, 바이트가 아니다)
+
+# 카드 내용을 읽는 기능(일정·정산)의 표가 준비되지 않은 DB 에서는 그 기능의 API 처럼 503 으로 막는다
+OWNER_FEATURE = {EVENT: "schedule", SETTLEMENT: "billing"}
 
 # (db, group_id, user_id, ref, peer_id) → payload. peer_id 는 1:1 방이면 상대, 가족 전체방이면 None.
 Provider = Callable[[Session, str, str, str, str | None], dict[str, Any]]
@@ -42,6 +46,6 @@ def build(
     """카드 내용(payload)을 서버에서 만든다. group_id·user_id 는 호출한 쪽이 실제 구성원인지 확인한 값이어야 한다.
     만드는 함수가 없으면 503, 내가 포함된 것이 아니거나 없으면 404(만드는 함수가 낸다)."""
     provider = _providers.get(kind)
-    if provider is None:
+    if provider is None or not monitor.status().feature_ready(OWNER_FEATURE[kind]):
         raise ApiError(503, "share_unavailable", "지금은 공유할 수 없어요. 잠시 후 다시 해 주세요")
     return provider(db, group_id, user_id, ref, peer_id)

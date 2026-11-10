@@ -35,7 +35,13 @@ def settlement_card(
         if peer_id is not None and other_id != peer_id:
             continue  # 1:1 방이면 그 상대와의 줄만
         lines.append({"direction": direction, "name": other_name, "amount": t.amount})
-    return {"month": month, "remaining": mine.remaining, "lines": lines}
+    # 가족방 카드는 내 전체 남은 잔액, 1:1 카드는 그 상대와의 줄 합계(카드 안에서 줄과 앞뒤가 맞고 제3자와의 관계를 드러내지 않는다)
+    remaining = (
+        sum(x["amount"] if x["direction"] == "receive" else -x["amount"] for x in lines)
+        if peer_id is not None
+        else mine.remaining
+    )
+    return {"month": month, "remaining": remaining, "lines": lines}
 
 
 chat_share.register_provider(chat_share.SETTLEMENT, settlement_card)

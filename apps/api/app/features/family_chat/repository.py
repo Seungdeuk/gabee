@@ -1,6 +1,6 @@
 from datetime import UTC, datetime
 
-from sqlalchemy import String, and_, case, cast, delete, func, or_, select, update
+from sqlalchemy import String, and_, case, cast, delete, func, inspect, or_, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.exc import IntegrityError
@@ -608,6 +608,23 @@ def add_share(
     if commit:
         db.commit()
     return share
+
+
+def share_table_exists(db: Session) -> bool:
+    """공유 카드 표가 이 DB 에 실제로 있는지(캐시된 준비 상태가 아니라 카탈로그를 본다). 같은 연결로 확인해 풀에서 연결을 더 꺼내지 않는다."""
+    return inspect(db.connection()).has_table(MessageShare.__tablename__)
+
+
+def add_message_with_share(db: Session, message: Message, kind: str, payload: dict) -> None:
+    """메시지와 카드 내용을 한 번에 커밋한다(실패하면 둘 다 저장되지 않아 카드 없는 메시지가 남지 않는다)."""
+    try:
+        db.add(message)
+        db.flush()
+        add_share(db, message, kind, payload, commit=False)
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
 
 
 def shares_for(db: Session, message_ids: list[int]) -> dict[int, MessageShare]:

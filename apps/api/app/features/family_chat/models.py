@@ -181,9 +181,13 @@ class MessageShare(Base):
     __tablename__ = "message_shares"
 
     id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uid)
-    message_id: Mapped[int] = mapped_column(ForeignKey("messages.id"), unique=True)
-    group_id: Mapped[str] = mapped_column(ForeignKey("groups.id"), index=True)
-    room_id: Mapped[str] = mapped_column(ForeignKey("chat_rooms.id"), index=True)
+    message_id: Mapped[int] = mapped_column(
+        ForeignKey("messages.id", ondelete="CASCADE"), unique=True
+    )
+    group_id: Mapped[str] = mapped_column(ForeignKey("groups.id", ondelete="CASCADE"), index=True)
+    room_id: Mapped[str] = mapped_column(
+        ForeignKey("chat_rooms.id", ondelete="CASCADE"), index=True
+    )
     kind: Mapped[str] = mapped_column(String(12))
     payload: Mapped[dict] = mapped_column(JSON)
     created_at: Mapped[datetime] = mapped_column(

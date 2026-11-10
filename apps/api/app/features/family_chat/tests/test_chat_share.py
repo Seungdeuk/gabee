@@ -183,7 +183,7 @@ def test_card_can_be_sent_to_a_direct_room_and_only_its_two_people_see_it(client
     event = _event(client, a)
     card = _share(client, a, "event", event["id"], room["id"]).json()
     assert [m["id"] for m in _messages(client, b, room["id"]) if m["share"]] == [card["id"]]
-    assert _messages(client, a) == [] or all(not m["share"] for m in _messages(client, a))
+    assert all(not m["share"] for m in _messages(client, a))  # 가족 전체방에는 카드가 없다
     assert _share(client, c, "event", _event(client, c)["id"], room["id"]).status_code == 404
 
 
@@ -309,13 +309,19 @@ def test_leaving_a_direct_room_still_works_when_the_share_table_is_missing(clien
 
 
 def test_deleting_a_family_still_works_when_the_share_table_is_missing(client, family):
-    a, b, _ = family
+    from app.features.family_group.models import Group
+
+    a, b, group = family
+    _send(client, a, "지워질 글")
     assert client.post(LEAVE_FAMILY, headers=b).status_code in (200, 204)
     restore = _drop_share_table()
     try:
         assert client.post(LEAVE_FAMILY, headers=a).status_code in (200, 204)  # 혼자 남은 소유자
     finally:
         restore()
+    with SessionLocal() as db:  # 상태 코드만이 아니라 가족과 메시지가 실제로 지워졌는지 본다
+        assert db.get(Group, group["id"]) is None
+        assert db.scalar(select(func.count()).select_from(Message)) == 0
 
 
 def test_deleting_a_family_removes_its_cards(client, family):
@@ -375,3 +381,63 @@ def test_a_received_copy_of_a_shared_event_can_be_shared_by_the_receiver(client,
     copy_row = client.get("/schedule/events", params={"include_past": True}, headers=b).json()[0]
     r = _share(client, b, "event", copy_row["id"])
     assert r.status_code == 201 and r.json()["share"]["payload"]["title"] == "치과"
+
+
+# ---------- 최종 리뷰 반영 ----------
+
+
+def test_direct_card_remaining_is_the_total_of_the_lines_with_that_person(client, trio):  # noqa: F811
+    """1:1 카드의 remaining 은 내 전체 잔액이 아니라 그 상대와의 줄 합계라 카드 안에서 앞뒤가 맞는다."""
+    a, b, c = trio
+    _settled(client, a)
+    family = _share(client, a, "settlement", "2026-10").json()["share"]["payload"]
+    assert family["remaining"] == 20000  # 가족방 카드는 내 전체 몫
+    room = _direct(client, a, _uid(client, c))
+    direct = _share(client, a, "settlement", "2026-10", room["id"]).json()["share"]["payload"]
+    assert direct["remaining"] == 10000  # 삼촌과의 줄(받을 돈 10000)과 같다
+    room_b = _direct(client, b, _uid(client, c))
+    payload_b = _share(client, b, "settlement", "2026-10", room_b["id"]).json()["share"]["payload"]
+    assert payload_b["remaining"] == 0 and payload_b["lines"] == []  # 삼촌과 주고받을 돈이 없다
+
+
+def test_share_is_closed_when_the_data_owner_feature_is_not_ready(client, family, monkeypatch):
+    """일정·정산 표가 준비되지 않은 DB 에서는 그 기능의 API 처럼 503 이다(컬럼 없음 500 이 아니라)."""
+    from app.shared import schema as schema_module
+
+    a, _, _ = family
+    event = _event(client, a)
+    real = schema_module.monitor.status
+
+    def not_ready(feature):
+        def patched(*args, **kwargs):
+            status = copy.deepcopy(real(*args, **kwargs))
+            status.features[feature] = {"ready": False, "reason": "missing"}
+            return status
+
+        return patched
+
+    monkeypatch.setattr(schema_module.monitor, "status", not_ready("schedule"))
+    assert _share(client, a, "event", event["id"]).status_code == 503
+    monkeypatch.setattr(schema_module.monitor, "status", not_ready("billing"))
+    assert _share(client, a, "settlement", "2026-10").status_code == 503
+
+
+def test_deleting_a_card_removes_its_content_even_when_the_gate_says_not_ready(
+    client, family, monkeypatch
+):
+    """카드 행을 지울지는 캐시된 준비 상태가 아니라 실제 표 유무로 정한다(제목·금액이 서버에 남지 않게)."""
+    a, _, _ = family
+    card = _share(client, a, "event", _event(client, a)["id"]).json()
+    monkeypatch.setattr(service, "share_table_ready", lambda: False)
+    assert client.delete(f"{MSG}/{card['id']}", headers=a).status_code == 200
+    assert _share_rows() == 0
+
+
+def test_deleting_a_normal_message_works_when_the_share_table_is_missing(client, family):
+    a, _, _ = family
+    message_id = _send(client, a, "그냥 글")
+    restore = _drop_share_table()
+    try:
+        assert client.delete(f"{MSG}/{message_id}", headers=a).status_code == 200
+    finally:
+        restore()
