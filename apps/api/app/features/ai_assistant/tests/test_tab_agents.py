@@ -7,7 +7,6 @@ from sqlalchemy import select
 
 from app.features.ai_assistant.knowledge import rag_chat
 from app.features.billing import agent as billing_agent
-from app.features.care import agent as care_agent
 from app.features.family_group.models import User
 from app.shared.ai_usage import AiResultCache, AiUsageLog
 from app.shared.config import settings
@@ -69,38 +68,23 @@ def test_main_asks_billing_agent_and_never_gets_db_tools(client, family, monkeyp
     r = client.post("/ai-assistant/chat", json={"message": "이번 달 얼마 썼어?"}, headers=a).json()
     assert r["source"] == "ai" and "40,000원" in r["reply"]
     assert sub_results[0]["total"] == 40000
-    # 메인은 탭 에이전트와 기록 검색만 쓸 수 있다(가계·돌봄 DB 를 읽는 도구가 없다)
+    # 메인은 탭 에이전트와 기록 검색만 쓸 수 있다(가계 DB 를 읽는 도구가 없다). 돌봄 에이전트는 지갑 탭 개편 동안 메인에서 뺐다.
     assert set(main_tools[0]) == {
         "search_knowledge",
         "get_item",
         "list_items",
+        "list_name_checks",
+        "resolve_name_check",
+        "resolve_reminder",
+        "set_reminders",
+        "remember",  # 본인 기억만 다룬다(가계·일정 DB 를 읽지 않는다)
+        "update_memory",
+        "forget",
+        "prepare_share",  # 확인 카드만 만든다
         "ask_billing",
-        "ask_care",
         "ask_family_chat",
         "ask_schedule",
     }
-
-
-def test_main_asks_care_agent(client, family, monkeypatch):
-    a, _, group = family
-    enable_ai(group["id"])
-    seen = {}
-
-    def fake_post(body):
-        if "돌봄 담당" in body["system"]:
-            if len(body["messages"]) == 1:
-                return _tool_use("get_today_summary", {})
-            seen["sub"] = _last_tool_result(body)
-            return _text("오늘 돌봄 기록을 확인했어요.")
-        if len(body["messages"]) == 1:
-            return _tool_use("ask_care", {"question": "오늘 돌봄 기록은?"})
-        return _text(_last_tool_result(body)["answer"])
-
-    monkeypatch.setattr(settings, "anthropic_api_key", "test-key")
-    monkeypatch.setattr(rag_chat, "_post", fake_post)
-    r = client.post("/ai-assistant/chat", json={"message": "오늘 돌봄 어때?"}, headers=a).json()
-    assert r["source"] == "ai" and "오늘 돌봄 기록" in r["reply"]
-    assert "error" not in seen["sub"]
 
 
 def test_billing_tools_see_only_own_family(client, family, other_family, monkeypatch):
@@ -120,7 +104,7 @@ def test_tab_agent_refuses_non_member(client, family, other_family):
     with SessionLocal() as db:
         member = _user(db, "지민")
         outsider = _user(db, "남")
-        for ask in (billing_agent.ask, care_agent.ask):
+        for ask in (billing_agent.ask,):
             with pytest.raises(ApiError) as e:
                 ask(db, member.active_group_id, outsider, "질문", None)
             assert (e.value.status, e.value.code) == (403, "not_member")
@@ -144,19 +128,6 @@ def test_bad_tool_arguments_are_returned_to_the_agent_as_errors(client, family, 
         me = _user(db, "지민")
         reply = billing_agent.ask(db, me.active_group_id, me, "13월 지출은?", fake_post)
     assert reply.can_answer and "YYYY-MM" in reply.answer
-
-
-def test_care_locations_hide_coordinates_without_consent(client, family):
-    a, b, _ = family
-    client.put("/care/location/consent", json={"consent": True}, headers=a)
-    with SessionLocal() as db:
-        me = _user(db, "지민")
-        tools = {t.name: t for t in care_agent.build_tools(db, me.active_group_id, me)}
-        members = tools["get_family_locations"].run({})["members"]
-    by_name = {m["name"]: m for m in members}
-    assert by_name["지민"]["sharing"] is True
-    assert by_name["수진"]["sharing"] is False
-    assert by_name["수진"]["lat"] is None and by_name["수진"]["lng"] is None
 
 
 def test_model_failure_becomes_a_safe_503_and_is_logged(client, family, monkeypatch):
@@ -220,6 +191,32 @@ def test_ai_must_be_enabled_for_the_family(client, family, monkeypatch):
     assert (r.status_code, r.json()["code"]) == (403, "ai_not_enabled")
 
 
+def test_main_chat_usage_log_records_which_tab_agent_was_used(client, family, monkeypatch):
+    a, _, group = family
+    enable_ai(group["id"])
+    _spend(client, a, "진료비", 30000)
+
+    def fake_post(body):
+        if "가계(정산) 담당" in body["system"]:
+            return _text("2026-10 지출은 총 30,000원이에요.")
+        if len(body["messages"]) == 1:
+            return _tool_use("ask_billing", {"question": "2026년 10월 지출 합계는?"})
+        return _text(_last_tool_result(body)["answer"])
+
+    monkeypatch.setattr(settings, "anthropic_api_key", "test-key")
+    monkeypatch.setattr(rag_chat, "_post", fake_post)
+    r = client.post("/ai-assistant/chat", json={"message": "이번 달 얼마 썼어?"}, headers=a)
+    assert r.status_code == 200, r.text
+    with SessionLocal() as db:
+        main, nested = db.scalars(select(AiUsageLog).order_by(AiUsageLog.id)).all()
+        # 호출 수는 메인 줄에 모두 센다
+        assert (main.feature, main.status) == ("assistant_chat", "ok") and main.api_calls >= 2
+        # 어느 탭 에이전트를 썼는지만 남긴다(호출 수 0 이라 한도·쿨다운에 다시 세지 않는다)
+        assert (nested.feature, nested.status, nested.api_calls) == ("billing_agent", "nested", 0)
+        assert (nested.user_id, nested.group_id) == (main.user_id, main.group_id)
+        assert nested.input_tokens == 0 and nested.output_tokens == 0
+
+
 def test_usage_is_logged_with_tokens_and_answers_are_not_cached(client, family, monkeypatch):
     a, _, group = family
     _ready(monkeypatch, group)
@@ -229,11 +226,12 @@ def test_usage_is_logged_with_tokens_and_answers_are_not_cached(client, family, 
     }
     monkeypatch.setattr(llm_agent, "_post", lambda body: reply)
     assert (
-        client.post("/care/agent/chat", json={"message": "오늘은?"}, headers=a).status_code == 200
+        client.post("/billing/agent/chat", json={"message": "오늘은?"}, headers=a).status_code
+        == 200
     )
     with SessionLocal() as db:
         row = db.scalars(select(AiUsageLog)).one()
-        assert (row.feature, row.api_calls, row.status) == ("care_agent", 1, "ok")
+        assert (row.feature, row.api_calls, row.status) == ("billing_agent", 1, "ok")
         assert (row.input_tokens, row.output_tokens) == (120, 7)
         assert (
             db.scalars(select(AiResultCache)).all() == []
@@ -265,9 +263,7 @@ def test_tab_agent_daily_limit_uses_the_shared_guard(client, family, monkeypatch
         assert (
             client.post("/billing/agent/chat", json={"message": "a"}, headers=a).status_code == 200
         )
-        again = client.post(
-            "/care/agent/chat", json={"message": "b"}, headers=a
-        )  # 정산·돌봄이 한 묶음
+        again = client.post("/billing/agent/chat", json={"message": "b"}, headers=a)
         assert (again.status_code, again.json()["code"]) == (429, "ai_daily_limit_user")
     finally:
         monkeypatch.undo()

@@ -666,3 +666,60 @@ def test_forged_source_path_cannot_delete_another_familys_original(client, famil
         client.get(f"/ai-assistant/files/{theirs['id']}/original", headers=stranger).status_code
         == 200
     )
+
+
+class FlakyOcr(FakeOcr):
+    """앞의 몇 번은 Claude 연결이 안 되는 것처럼 실패하고 그 뒤로는 읽는다."""
+
+    def __init__(self, lines, fail_times):
+        super().__init__(lines)
+        self.fail_times, self.calls = fail_times, 0
+
+    def read(self, image):
+        from app.shared.llm.transport import LLMUnavailable
+
+        self.calls += 1
+        if self.calls <= self.fail_times:
+            raise LLMUnavailable("test")
+        return super().read(image)
+
+
+def test_file_failed_by_llm_outage_is_retried_and_saved(client, family, pipeline, monkeypatch):
+    a, _, _ = family
+    monkeypatch.setattr(settings, "ingest_retry_max", 2)
+    pipeline.ocr = FlakyOcr([("동대문마트", 0.95), ("합계 34,950원", 0.93)], fail_times=2)
+    up = upload(client, a, png(), "영수증.png")
+    st = client.get(f"/ai-assistant/files/{up['id']}", headers=a).json()
+    assert st["status"] in ("analyzed", "needs_review")
+    assert pipeline.ocr.calls == 3  # 처음 1번 + 다시 2번
+
+
+def test_file_stays_failed_when_retries_run_out(client, family, pipeline, monkeypatch):
+    a, _, _ = family
+    monkeypatch.setattr(settings, "ingest_retry_max", 1)
+    pipeline.ocr = FlakyOcr([("동대문마트", 0.95)], fail_times=99)
+    up = upload(client, a, png(), "영수증.png")
+    st = client.get(f"/ai-assistant/files/{up['id']}", headers=a).json()
+    assert st["status"] == "failed"
+    assert pipeline.ocr.calls == 2  # 처음 1번 + 다시 1번
+
+
+def test_broken_file_is_not_retried(client, family, pipeline, monkeypatch):
+    a, _, _ = family
+    monkeypatch.setattr(settings, "ingest_retry_max", 2)
+    pipeline.ocr = FlakyOcr([("x", 0.9)], fail_times=0)
+    up = upload(
+        client, a, bytes([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]) + b"broken", "깨짐.png"
+    )
+    st = client.get(f"/ai-assistant/files/{up['id']}", headers=a).json()
+    assert st["status"] == "failed"
+    assert pipeline.ocr.calls == 0  # 열 수 없는 파일은 읽기까지 가지 못하고 다시 하지도 않는다
+
+
+def test_retry_can_be_turned_off(client, family, pipeline, monkeypatch):
+    a, _, _ = family
+    monkeypatch.setattr(settings, "ingest_retry_max", 0)
+    pipeline.ocr = FlakyOcr([("동대문마트", 0.95)], fail_times=1)
+    up = upload(client, a, png(), "영수증.png")
+    st = client.get(f"/ai-assistant/files/{up['id']}", headers=a).json()
+    assert st["status"] == "failed" and pipeline.ocr.calls == 1

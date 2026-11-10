@@ -6,12 +6,12 @@
 
 이 대화에서 하는 일: 조회와 등록(제목·날짜가 있으면 내 일정으로 바로 만들고, 없으면 되묻는다).
 이 대화에서 하지 않는 일: 수정·삭제·가족에게 공유하는 등록은 확인 카드가 필요해서 실행하지 않고 일정 화면으로 안내한다.
+데일리 체크(습관)는 조회하고, 체크를 대신 눌러 달라는 말은 확인 카드를 거쳐 실행한다(내 습관만. 가족방에서는 가족에게 보이는 습관만 읽는다).
 되묻는 초안은 서버가 사용자별로 10분 기억하고(`_take_draft`), 메인도 앞 대화를 합쳐 완전한 문장으로 다시 넘긴다. 제목과 날짜를 모두 말한 문장은 새 요청으로 보고 옛 초안을 쓰지 않는다."""
 
 import re
 import threading
 import time
-from datetime import date
 
 from sqlalchemy.orm import Session
 
@@ -20,7 +20,6 @@ from app.shared.llm.agent import AgentReply, Post
 
 from . import handler
 from . import members as members_mod
-from .prompts import WEEKDAYS
 from .schemas import AgentRequest, AgentResponse, Draft
 
 DESCRIPTION = (
@@ -33,7 +32,9 @@ DESCRIPTION = (
     "누구에게·무엇을·언제를 담은 완전한 문장으로 넘긴다. "
     "'가족 모두에게 공유'도 그대로 넘긴다. "
     "'내일 오후 3시 엄마 생신 일정으로 등록해줘'처럼 날짜·시간 표현과 제목을 담은 완전한 문장으로 넘긴다. "
-    "한 번에 일정 하나만 등록하니, 여러 개를 넣으려면 일정마다 따로 부른다."
+    "한 번에 일정 하나만 등록하니, 여러 개를 넣으려면 일정마다 따로 부른다. "
+    "데일리 체크(매일 하는 습관: 약 먹기·물 마시기 등)도 맡는다: '오늘 약 먹었어?'처럼 상태를 물으면 바로 답하고, "
+    "'약 먹었어 체크해줘'처럼 대신 체크해 달라는 말은 확인 카드가 나타나 버튼을 눌러야 반영된다. 내 습관만 체크할 수 있다."
 )
 
 CARD_SHOWN = "아직 실행되지 않았어요. 사용자 화면에 확인 카드가 나타났고, 사용자가 카드의 버튼을 눌러야 반영돼요."
@@ -110,6 +111,8 @@ def _confirmation(response: AgentResponse) -> dict:
     shared: list[str] = []
     if action.type.startswith("request_"):
         lines, shared = _request_lines(action, data)
+    elif action.type == "habit_check":
+        lines = [str(x) for x in data.get("lines", [])]
     elif action.type == "register":
         lines.append(_event_line(data).removeprefix("- "))
         if data.get("place"):
@@ -153,38 +156,6 @@ def _keep_draft(group_id: str, user_id: str, response: AgentResponse) -> None:
             )
 
 
-SHARE_SELECT_TITLE = "방에 공유할 항목을 골라 주세요"
-MAX_SHARE_ITEMS = 20
-
-
-def _share_line(item: dict) -> str:
-    """방에 올릴 한 줄: 'MM/DD(요일) HH:MM 제목'. 시간이 없으면 날짜와 제목만. 관련 구성원 이름은 넣지 않는다."""
-    day = date.fromisoformat(item["date"])
-    clock = item.get("start_time") or item.get("time") or ""
-    when = f"{day:%m/%d}({WEEKDAYS[day.weekday()]})"
-    return " ".join(x for x in (when, clock, item.get("title", "")) if x)
-
-
-def _share_select(events: list[dict], requests_: list[dict]) -> dict | None:
-    """가족방 조회 결과를 방에 올릴지 사용자가 고르는 카드. 후보가 없으면 만들지 않는다."""
-    items = [
-        {"id": str(x["id"]), "line": _share_line(x)}
-        for x in [*events, *requests_]
-        if x.get("id") and x.get("date")
-    ][:MAX_SHARE_ITEMS]
-    if not items:
-        return None
-    return {
-        "kind": "schedule",
-        "action": "share_select",
-        "title": SHARE_SELECT_TITLE,
-        "lines": [],
-        "shared_with": [],
-        "pending_action": {},
-        "items": items,
-    }
-
-
 def _reply(response: AgentResponse, room: bool = False) -> AgentReply:
     """일정 에이전트의 응답을 메인이 사용자에게 전할 글로 바꾼다. 실행되지 않은 일을 실행됐다고 말하게 하지 않는다."""
     if response.intent == "not_schedule":
@@ -211,13 +182,12 @@ def _reply(response: AgentResponse, room: bool = False) -> AgentReply:
     if asked is not None or listed is not None:  # 일정 질의에는 일정 줄과 부탁 줄이 함께 올 수 있다
         events = listed.data.get("events", [])[:MAX_EVENTS_SHOWN] if listed else []
         requests_ = asked.data.get("requests", [])[:MAX_EVENTS_SHOWN] if asked else []
+        # 가족방 답은 방에 저장되므로 부탁 줄에는 날짜·시간·제목만 넣는다(받는 분·수락 현황 이름은 뺀다)
+        request_line = _event_line if room else _request_summary
         lines = "\n".join(
-            [*(_event_line(e) for e in events), *(_request_summary(r) for r in requests_)]
+            [*(_event_line(e) for e in events), *(request_line(r) for r in requests_)]
         )
         text = f"{response.text}\n{lines}".strip()
-        card = _share_select(events, requests_) if room else None
-        if card is not None:  # 가족방: 나에게만 보이는 답에 방에 올릴 항목을 고르는 카드를 붙인다
-            return AgentReply(text, user_text=text, confirmations=[card])
         return AgentReply(text, user_text=text)
     if response.text:
         return AgentReply(response.text, user_text=response.text)

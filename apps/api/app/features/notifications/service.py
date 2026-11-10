@@ -7,9 +7,19 @@ from sqlalchemy.orm import Session
 
 from app.features.family_group.models import User
 from app.shared.errors import bad_request, not_found
+from app.shared.notifications import PUSH_KINDS
 
 from . import repository as repo
-from .schemas import NotificationList, NotificationOut, ReadAllResult, UnreadCount
+from .schemas import (
+    NotificationList,
+    NotificationOut,
+    PushSettingsIn,
+    PushSettingsOut,
+    PushTokenDelete,
+    PushTokenIn,
+    ReadAllResult,
+    UnreadCount,
+)
 
 
 def _encode_cursor(row) -> str:
@@ -56,3 +66,34 @@ def read_all(db: Session, user: User, kind: str | None) -> ReadAllResult:
     updated = repo.mark_all_read(db, user.id, kind, datetime.now(UTC))
     db.commit()
     return ReadAllResult(updated=updated)
+
+
+def get_push_settings(db: Session, user: User) -> PushSettingsOut:
+    """내 푸시 설정. 저장한 적이 없으면 기본값(줄은 만들지 않는다)."""
+    row = repo.get_push_setting(db, user.id)
+    if row is None:
+        return PushSettingsOut()
+    return PushSettingsOut(
+        enabled=row.enabled,
+        preview_mode=row.preview_mode,
+        # 없앤 분류(돌봄·기록)가 옛 설정에 남아 있어도 응답 검증에 걸리지 않게 지금 분류만 남긴다
+        muted_kinds=[k for k in (row.muted_kinds or []) if k in PUSH_KINDS],
+        quiet_start=row.quiet_start,
+        quiet_end=row.quiet_end,
+    )
+
+
+def put_push_settings(db: Session, user: User, body: PushSettingsIn) -> PushSettingsOut:
+    row = repo.save_push_setting(db, user.id, body.model_dump())
+    db.commit()
+    return PushSettingsOut.model_validate(row, from_attributes=True)
+
+
+def register_push_token(db: Session, user: User, body: PushTokenIn) -> None:
+    repo.upsert_push_token(db, user.id, body.token, body.platform, body.device_label)
+    db.commit()
+
+
+def unregister_push_token(db: Session, user: User, body: PushTokenDelete) -> None:
+    repo.delete_push_token(db, user.id, body.token)
+    db.commit()

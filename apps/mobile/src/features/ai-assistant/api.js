@@ -7,6 +7,7 @@ import { confirmResultText, mapChatCards } from "./scheduleCard";
  * @typedef {object} AssistantReply
  * @property {string} reply 답변 본문(간단한 마크다운: `## 제목`, `- 목록`, `**굵게**`, `[1]` 출처 번호)
  * @property {{ n: number, title: string, itemId?: string, sourcePath?: string | null }[]} [sources] 답변이 근거로 쓴 기록(itemId 가 있으면 원본을 열 수 있다)
+ * @property {{ title: string, url: string }[]} [webSources] 답변이 인용한 웹 페이지(웹 검색을 썼을 때만)
  * @property {{ to: string, text: string } | null} [draft] 가족에게 보낼 메시지 초안(승인 전)
  */
 
@@ -60,18 +61,19 @@ export async function sendMessage(text, history = []) {
   }
   const res = await apiFetch("/ai-assistant/chat", { method: "POST", body: { message: text, history: history.slice(-10) } });
   const sources = (res.sources ?? []).map(({ n, title, item_id: itemId, source_path: sourcePath }) => ({ n, title, itemId, sourcePath }));
-  return { reply: res.reply, sources, draft: null, confirmCards: mapChatCards(res) };
+  return { reply: res.reply, sources, webSources: res.web_sources ?? [], draft: null, confirmCards: mapChatCards(res) };
 }
 
 /**
  * 채팅의 일정 확인 카드(가족 공유 등록·수정·삭제)의 버튼을 눌렀을 때. AI 를 부르지 않고, 서버는 돌려받은 내용을 처음부터 다시 검증한다.
  * @param {{ pendingAction: object }} card mapConfirmCards 가 만든 카드
  * @param {boolean} share 등록일 때 true 면 공유 대상에게도 등록, false 면 내 일정만
+ * @param {boolean} [postToRoom] 가족 채팅방 @가비 의 카드면 true: 공유 등록을 마치면 서버가 결과를 가비 이름으로 방에 알린다(문장은 서버가 만든다)
  * @returns {Promise<{ text: string }>} 사용자에게 보여 줄 결과 한 줄
  */
-export async function confirmScheduleAction(card, share) {
+export async function confirmScheduleAction(card, share, postToRoom = false) {
   if (!isApiConfigured()) return { text: "(임시) 반영했어요." };
-  const res = await apiFetch("/schedule/agent/confirm", { method: "POST", body: { action: card.pendingAction, share: Boolean(share) } });
+  const res = await apiFetch("/schedule/agent/confirm", { method: "POST", body: { action: card.pendingAction, share: Boolean(share), post_to_room: Boolean(postToRoom) } });
   return { text: confirmResultText(res) };
 }
 
@@ -80,12 +82,14 @@ export async function confirmScheduleAction(card, share) {
  * 제안 토큰은 10분 안에 한 번만 쓸 수 있고, 서버가 사용자·가족·탭을 다시 확인한다.
  * @param {{ kind: string, tab?: string, token?: string, pendingAction?: object }} card
  * @param {boolean} share 일정 등록일 때만 쓰는 값
+ * @param {boolean} [postToRoom] 가족 채팅방 @가비 의 일정 카드면 true(정산·돌봄 제안은 쓰지 않는다)
  * @returns {Promise<{ text: string }>}
  */
-export async function confirmCardAction(card, share) {
-  if (card.kind !== "proposal") return confirmScheduleAction(card, share);
+export async function confirmCardAction(card, share, postToRoom = false) {
+  if (card.kind !== "proposal") return confirmScheduleAction(card, share, postToRoom);
   if (!isApiConfigured()) return { text: "(임시) 반영했어요." };
   const res = await apiFetch(`/${card.tab}/agent/confirm`, { method: "POST", body: { token: card.token } });
+  if (card.tab === "ai-assistant") return { text: "소통 채팅으로 보냈어요." };
   return { text: res?.summary ? `반영했어요 · ${res.summary}` : "반영했어요." };
 }
 
@@ -203,6 +207,43 @@ export async function openOriginal(id, sourcePath) {
 }
 
 /**
+ * 가비의 기억: 내가 기억해 달라고 한 내용 목록(최근 순, 본인 것만).
+ * @returns {Promise<{ id: string, text: string, created_at: string }[]>}
+ */
+export async function listMemories() {
+  if (!isApiConfigured()) return [];
+  const res = await apiFetch("/ai-assistant/memories");
+  return res.items ?? [];
+}
+
+/**
+ * 가비의 기억 내용을 고친다. 서버가 빈 글, 긴 글, 같은 내용, 주민번호 같은 값을 거절한다.
+ * @param {string} id
+ * @param {string} text 고친 뒤의 내용
+ * @returns {Promise<{ id: string, text: string, created_at: string }>}
+ */
+export async function updateMemory(id, text) {
+  return apiFetch(`/ai-assistant/memories/${encodeURIComponent(id)}`, { method: "PATCH", body: { text } });
+}
+
+/**
+ * 가비의 기억 하나를 지운다.
+ * @param {string} id
+ * @returns {Promise<void>}
+ */
+export async function deleteMemory(id) {
+  await apiFetch(`/ai-assistant/memories/${encodeURIComponent(id)}`, { method: "DELETE" });
+}
+
+/**
+ * 내 기억을 모두 지운다.
+ * @returns {Promise<void>}
+ */
+export async function deleteAllMemories() {
+  await apiFetch("/ai-assistant/memories", { method: "DELETE" });
+}
+
+/**
  * 가족이 올린 기록 목록(최근 순). 사이드바의 "기록" 탭에서 쓴다.
  * needs_review: 읽다 만 부분이 있거나 종류가 애매해서 사용자가 확인해야 하는 기록. 확인이 필요한 것이 앞에 온다.
  * @returns {Promise<{ id: string, title: string, kind_label: string, occurred_on: string | null, has_unread_parts: boolean, needs_review: boolean, needs_description: boolean, hasOriginal: boolean }[]>}
@@ -245,3 +286,38 @@ export async function deleteRecord(id) {
 
 /** 예전 이름. uploadFile 과 같다. */
 export const uploadPhoto = uploadFile;
+
+/**
+ * 앱을 열 때 가비가 먼저 할 말(일정으로 잡을까요 / 미리 알림 / 하셨나요)을 받는다. 서버는 한 번 준 말을 다시 주지 않는다.
+ * 여러 개는 서버가 한 덩어리로 묶어 주므로 말풍선 하나(`message`)만 쓴다.
+ * 먼저 말하기는 부가 기능이라 서버 주소가 없거나 호출이 실패하면 오류를 보이지 않고 빈 목록을 돌려준다.
+ * @returns {Promise<string[]>} 채팅에 넣을 말(없으면 빈 배열, 있으면 한 개)
+ */
+export async function fetchNudges() {
+  if (!isApiConfigured()) return [];
+  try {
+    const res = await apiFetch("/ai-assistant/reminders/nudges", { method: "POST" });
+    return res.message ? [res.message] : [];
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * 먼저 챙겨주기(문서 날짜 알림) 스위치를 읽는다.
+ * @returns {Promise<boolean>} 켜져 있으면 true
+ */
+export async function getReminderSetting() {
+  const res = await apiFetch("/ai-assistant/reminders/settings");
+  return res.enabled === true;
+}
+
+/**
+ * 먼저 챙겨주기 스위치를 켜거나 끈다.
+ * @param {boolean} enabled
+ * @returns {Promise<boolean>} 저장된 값
+ */
+export async function setReminderSetting(enabled) {
+  const res = await apiFetch("/ai-assistant/reminders/settings", { method: "PUT", body: { enabled } });
+  return res.enabled === true;
+}

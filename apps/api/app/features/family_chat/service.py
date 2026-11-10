@@ -1,10 +1,21 @@
 from sqlalchemy.orm import Session
 
 from app.features.family_group.models import User
-from app.shared.errors import bad_request, not_found
+from app.shared import chat_library, group_purge
+from app.shared.errors import ApiError, bad_request, not_found
+from app.shared.schema import monitor
 
+from . import chat_push
 from . import repository as repo
-from .models import ASSISTANT_USER_ID, FAMILY, ChatRoom, Message, MessageAttachment
+from .models import (
+    ASSISTANT_USER_ID,
+    DIRECT,
+    FAMILY,
+    ChatRoom,
+    Message,
+    MessageAttachment,
+    MessageShare,
+)
 from .schemas import (
     AttachmentOut,
     MessageOut,
@@ -14,11 +25,12 @@ from .schemas import (
     ReadStateOut,
     ReplyOut,
     RoomOut,
+    ShareOut,
     UnreadOut,
 )
 
 
-def _attachment_out(a: MessageAttachment) -> AttachmentOut:
+def _attachment_out(a: MessageAttachment, in_library: bool = False) -> AttachmentOut:
     if a.kind == "file":
         return AttachmentOut(
             id=a.id,
@@ -35,7 +47,9 @@ def _attachment_out(a: MessageAttachment) -> AttachmentOut:
         thumb_url=f"/family-chat/photos/{a.id}?size=thumb",
         width=a.width,
         height=a.height,
+        batch_id=a.batch_id,
         size_bytes=a.size_bytes,
+        in_library=in_library,
     )
 
 
@@ -63,6 +77,8 @@ def message_out(
     attachment: MessageAttachment | None = None,
     reply: ReplyOut | None = None,
     reactions: list[ReactionOut] | None = None,
+    in_library: bool = False,
+    share: MessageShare | None = None,
 ) -> MessageOut:
     deleted = m.deleted_at is not None
     return MessageOut(
@@ -71,10 +87,11 @@ def message_out(
         user_name=user_name,
         text="" if deleted else m.text,
         created_at=m.created_at,
-        attachment=_attachment_out(attachment) if attachment and not deleted else None,
+        attachment=_attachment_out(attachment, in_library) if attachment and not deleted else None,
         is_assistant=m.user_id == ASSISTANT_USER_ID,
         reply_to=None if deleted else reply,  # 지운 메시지는 답장 표시도 내용도 남기지 않는다
         reactions=[] if deleted else (reactions or []),
+        share=ShareOut(kind=share.kind, payload=share.payload) if share and not deleted else None,
         deleted=deleted,
     )
 
@@ -95,6 +112,15 @@ def _outs(
     reactions = repo.reaction_summary(
         db, [m.id for m, _ in rows if m.deleted_at is None], viewer_id
     )
+    saved = chat_library.registered_ids(
+        db, room.group_id, [a.id for a in attachments.values() if a.kind == "image"]
+    )
+    # 공유 카드 테이블이 아직 없는 DB(공용 DB 반영 전)에서도 메시지 목록은 열린다: 카드 내용만 빠지고 고정 문구는 그대로 보인다
+    shares = (
+        repo.shares_for(db, [m.id for m, _ in rows if m.deleted_at is None])
+        if share_table_ready()
+        else {}
+    )
     return [
         message_out(
             m,
@@ -102,9 +128,16 @@ def _outs(
             attachments.get(m.id),
             reply_out(parents[m.reply_to_id]) if m.reply_to_id in parents else None,
             reaction_outs(reactions.get(m.id)),
+            m.id in attachments and attachments[m.id].id in saved,
+            shares.get(m.id),
         )
         for m, name in rows
     ]
+
+
+def share_table_ready() -> bool:
+    """공유 카드 테이블이 이 DB 에 준비됐는지(준비 안 됐으면 카드 내용을 읽거나 지우지 않는다)."""
+    return monitor.status().feature_ready("chat_share")
 
 
 def message_view(
@@ -112,6 +145,46 @@ def message_view(
 ) -> MessageOut:
     """메시지 하나를 목록과 같은 모양(첨부·답장·반응 포함)으로."""
     return _outs(db, room, [found], viewer_id)[0]
+
+
+LEFT_PREFIX = "left:"  # 한 사람이 나간 1:1 방의 direct_key 는 "left:<나간 사람 id>:<방 id>" 로 바뀐다(같은 두 사람의 새 방을 만들 수 있게 짝 키를 비운다)
+
+
+def left_by(room: ChatRoom) -> str | None:
+    """1:1 방에서 방을 나간 사람의 id(나간 사람이 없으면 None). 이 방은 남은 사람이 읽기만 할 수 있다."""
+    key = room.direct_key or ""
+    if room.kind != DIRECT or not key.startswith(LEFT_PREFIX):
+        return None
+    return key.split(":")[1] or None
+
+
+def ensure_can_send(room: ChatRoom) -> None:
+    """상대가 나간 1:1 방에는 새 메시지를 보낼 수 없다(409 peer_left_room)."""
+    if left_by(room) is not None:
+        raise ApiError(409, "peer_left_room", "상대방이 나가서 메시지를 보낼 수 없어요")
+
+
+def leave_room(db: Session, user: User, group_id: str, room_id: str) -> None:
+    """1:1 방을 나간다. 내 목록에서만 사라지고 상대는 기록을 그대로 갖는다(방은 읽기 전용이 된다). 둘 다 나가면 방의 모든 데이터와
+    사진·문서 파일을 지운다(되돌릴 수 없다). 가족 전체방은 나갈 수 없다(400). 내 방이 아니거나 이미 나갔으면 404."""
+    room = resolve_room(db, user, group_id, room_id)
+    if room.kind == FAMILY:
+        raise bad_request("cannot_leave_family_room", "가족 전체방은 나갈 수 없어요")
+    repo.lock_room(db, room.id)  # 두 사람이 동시에 나가도 마지막 사람이 방을 지운다
+    if not repo.is_room_member(db, room.id, user.id):
+        raise not_found("대화방")
+    files = []
+    try:
+        repo.remove_room_member(db, room.id, user.id)
+        if repo.count_room_members(db, room.id) == 0:
+            files = group_purge.purge_room(db, room.id)
+        else:
+            room.direct_key = f"{LEFT_PREFIX}{user.id}:{room.id}"
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+    group_purge.purge_files(files)
 
 
 def resolve_room(db: Session, user: User, group_id: str, room_id: str | None) -> ChatRoom:
@@ -136,6 +209,7 @@ def post(
     reply_to_id: int | None = None,
 ) -> MessageOut:
     room = resolve_room(db, user, group_id, room_id)
+    ensure_can_send(room)
     parent = None
     if reply_to_id is not None:
         found = repo.get_in_room(
@@ -159,6 +233,9 @@ def post(
     )
     out = message_out(message, user.name, None, reply_out(parent) if parent else None)
     repo.advance_read(db, room.id, user.id, message.id)  # 내가 보낸 메시지는 읽은 것으로
+    chat_push.notify_new_message(
+        db, room, message
+    )  # 받을 사람에게 고정 문구 푸시(실패해도 전송은 그대로)
     return out
 
 
@@ -233,10 +310,12 @@ def _room_out(
     attachments: dict[int, MessageAttachment],
     muted: bool = False,
 ) -> RoomOut:
+    left = left_by(room)
     return RoomOut(
         id=room.id,
         kind=room.kind,
-        peer_user_id=peer,
+        peer_user_id=peer or left,
+        peer_left=left is not None,
         last_message=message_out(last[0], last[1], attachments.get(last[0].id)) if last else None,
         unread=unread_count,
         muted=muted,

@@ -47,6 +47,31 @@ _slot_held_groups: ContextVar[frozenset[str]] = ContextVar(
 _tally: ContextVar[dict | None] = ContextVar("ai_nested_tally", default=None)
 
 
+# 바깥 질문(메인 채팅) 안에서 부른 탭 에이전트의 feature. 바깥 기록을 저장할 때 status="nested" 줄로 함께 남긴다
+_nested_features: ContextVar[list[str] | None] = ContextVar("ai_nested_features", default=None)
+
+
+def note_nested(feature: str) -> None:
+    """바깥 질문 안에서 탭 에이전트를 불렀다고 표시한다(어느 에이전트를 썼는지 보기 위함). 관문(run) 밖이면 아무것도 하지 않는다.
+    호출 수·토큰은 바깥 줄에 이미 합쳐지므로 nested 줄은 0 으로 남는다 — 한도·쿨다운은 api_calls > 0 만 세서 영향이 없다."""
+    features = _nested_features.get()
+    if features is not None:
+        features.append(feature)
+
+
+def _log_nested(db: Session, outer: AiUsageLog, features: list[str]) -> None:
+    for feature in features:
+        db.add(
+            AiUsageLog(
+                group_id=outer.group_id,
+                user_id=outer.user_id,
+                feature=feature,
+                api_calls=0,
+                status="nested",
+            )
+        )
+
+
 @contextmanager
 def tally_scope(used: dict) -> Iterator[None]:
     """이 안에서 `count_nested` 로 센 호출은 `used`(calls·in·out·model)에 더해져 바깥 질문의 사용 기록·한도로 간다."""
@@ -353,6 +378,34 @@ def _log_cached(db: Session, user_id: str, group_id: str, feature: str, now: dat
         )
 
 
+def _log_limited(
+    db: Session, user_id: str, group_id: str, feature: str, code: str, now: datetime
+) -> None:
+    """하루 한도에 걸려 거절한 요청도 기록한다(관리자가 한도에 걸린 사람을 보기 위함, 호출 수 0 이라 한도에는 안 센다).
+    같은 사용자가 계속 눌러도 짧은 시간 안에는 한 줄만 남긴다."""
+    recent = db.scalar(
+        select(AiUsageLog.id)
+        .where(
+            AiUsageLog.user_id == user_id,
+            AiUsageLog.feature == feature,
+            AiUsageLog.status == "rejected",
+            AiUsageLog.error_code == code,
+            AiUsageLog.created_at > now - timedelta(seconds=CACHED_LOG_DEDUPE_SECONDS),
+        )
+        .limit(1)
+    )
+    if recent is None:
+        _log(
+            db,
+            group_id=group_id,
+            user_id=user_id,
+            feature=feature,
+            api_calls=0,
+            status="rejected",
+            error_code=code,
+        )
+
+
 def run(
     db: Session,
     *,
@@ -382,7 +435,11 @@ def run(
     _check_cooldown(
         db, user_id, now, feature
     )  # 빠른 거절(경합이 있어도 아래에서 칸을 잡은 뒤 다시 확인한다)
-    _check_daily_limits(db, user_id, group_id, feature)
+    try:
+        _check_daily_limits(db, user_id, group_id, feature)
+    except ApiError as exc:
+        _log_limited(db, user_id, group_id, feature, exc.code, now)
+        raise
     nested = (
         group_id in _slot_held_groups.get()
     )  # 바깥 요청이 이 가족의 칸을 쥐고 있다 — 한도·쿨다운은 그대로 센다
@@ -404,11 +461,13 @@ def run(
         try:  # 기록(예약)을 남긴 뒤 한도·쿨다운을 다시 센다: 확인과 기록 사이에 끼어든 요청이 한도를 넘기지 못하게
             _check_cooldown(db, user_id, now, feature, exclude_id=log.id)
             _check_daily_limits(db, user_id, group_id, feature, reserved=1)
-        except ApiError:
+        except ApiError as exc:
             db.rollback()
-            log.api_calls, log.status = 0, "rejected"
+            log.api_calls, log.status, log.error_code = 0, "rejected", exc.code
             db.commit()
             raise
+        nested_features: list[str] = []
+        nested_token = _nested_features.set(nested_features)
         try:
             result, response = call()
         except (llm.LLMUnavailable, ValueError) as exc:
@@ -416,13 +475,25 @@ def run(
             log.status = "error"
             log.api_calls = max(1, int(getattr(exc, "calls", 1)))  # 실패 전까지 부른 횟수
             log.error_code = "invalid_output" if isinstance(exc, ValueError) else "llm_failed"
+            _log_nested(db, log, nested_features)
             db.commit()
             raise ApiError(
                 503, "llm_failed", "AI 요청을 처리하지 못했어요. 잠시 후 다시 시도해 주세요"
             ) from None
+        except ApiError as exc:
+            # 호출 도중 난 공통 오류(예: 개인정보 보호 503). 예약해 둔 기록을 열어 둔 채(pending) 두지 않고 닫는다.
+            # 호출 수는 오류가 알려 준 만큼만 센다(외부 모델을 부르기 전에 끝났으면 0)
+            db.rollback()
+            log.status, log.error_code = "error", exc.code
+            log.api_calls = max(0, int(getattr(exc, "calls", 0)))
+            db.commit()
+            raise
+        finally:
+            _nested_features.reset(nested_token)
         calls = max(1, int(getattr(response, "calls", 1)))
         log.status, log.model, log.api_calls = "ok", response.model, calls
         log.input_tokens, log.output_tokens = response.input_tokens, response.output_tokens
+        _log_nested(db, log, nested_features)
         db.commit()
         if cache_key is not None:
             _store_cache(db, group_id, feature, cache_key, result, now)

@@ -8,7 +8,7 @@ import { apiFetch } from "@/shared/api/client";
  * @typedef {{ shared_by: string | null, shared_with: string[] }} Sharing
  * @typedef {ReturnType<import("./members").buildFamily>} Family
  * @typedef {{ id: string, title: string, kind: 1 | 2, start_date: string, place: string, later: boolean }} ServerSuggestion
- * @typedef {{ suggestions: ServerSuggestion[], exhausted: boolean, state: "ok" | "exhausted" | "no_data" | "filtered" | "preparing", can_refresh: boolean }} SuggestionList
+ * @typedef {{ suggestions: ServerSuggestion[], exhausted: boolean, state: "ok" | "exhausted" | "spent_empty" | "no_data" | "filtered" | "preparing", can_refresh: boolean }} SuggestionList
  * @typedef {{ user_id: string, status: "waiting" | "accepted" | "declined" }} ServerRecipient
  * @typedef {{ id: string, from_id: string, title: string, start_date: string, start_time: string | null, end_time: string | null, place: string, memo: string, created_at: string, canceled: boolean, recipients: ServerRecipient[], my_event_id: string | null, edited_at?: string | null }} ServerRequest
  */

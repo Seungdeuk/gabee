@@ -6,7 +6,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import IconButton from "@/shared/components/IconButton";
 import { colors, font, radius, spacing } from "@/theme";
 
-import ConfirmDialog from "../components/ConfirmDialog";
+import ConfirmDialog from "@/shared/components/ConfirmDialog";
 import DateSheet from "../components/DateSheet";
 import FilterChip from "../components/FilterChip";
 import { FormField, PressBox, TextBox } from "../components/FormControls";

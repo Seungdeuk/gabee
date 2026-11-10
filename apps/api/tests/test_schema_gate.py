@@ -97,7 +97,6 @@ def test_behind_db_only_blocks_features_whose_schema_is_missing(client, family_h
     assert client.get("/health").json() == {"status": "ok"}
     assert client.get("/family-group/me", headers=family_headers).status_code == 200
     assert client.get("/schedule/events", headers=family_headers).status_code == 200
-    assert client.get("/care/records", headers=family_headers).status_code == 200
     assert client.get("/family-chat/messages", headers=family_headers).status_code == 200
 
     report = health(client)
@@ -165,7 +164,7 @@ def test_unknown_revision_with_incompatible_core_blocks_every_feature(client, fa
     set_revision("ffffffffffff")
     with engine.begin() as conn:
         conn.execute(text("ALTER TABLE group_members DROP COLUMN joined_at"))
-    for path in ("/family-group/me", "/billing/expenses", "/care/records"):
+    for path in ("/family-group/me", "/billing/expenses", "/schedule/events"):
         assert client.get(path, headers=family_headers).status_code == 503, path
 
 
@@ -260,11 +259,16 @@ def test_health_db_reports_ready_state_and_exposes_no_internal_names(client):
     assert set(report["features"]) == {
         "family_group",
         "family_chat",
+        "chat_share",
         "schedule",
+        "schedule_check",
         "billing",
-        "care",
         "ai_assistant",
         "notifications",
+        "support",
+        "notices",
+        "ops_admin",
+        "play",
     }
     assert "problems" not in str(report) and "expenses" not in str(
         report
@@ -288,7 +292,7 @@ def column(name, nullable=True, default=None, **extra):
 
 
 def test_table_problems_flags_what_would_break_this_codes_inserts():
-    table = Base.metadata.tables["care_records"]
+    table = Base.metadata.tables["expenses"]
     ok = [column(c.name, c.nullable, "x" if not c.nullable else None) for c in table.columns]
     assert table_problems(FakeInspector(ok), table) == []
 
@@ -305,9 +309,9 @@ def test_table_problems_flags_what_would_break_this_codes_inserts():
     assert table_problems(FakeInspector(extra_optional), table) == []
 
     missing = [c for c in ok if c["name"] != "date"]
-    assert "컬럼 care_records.date 없음" in table_problems(FakeInspector(missing), table)
+    assert "컬럼 expenses.date 없음" in table_problems(FakeInspector(missing), table)
 
-    assert table_problems(FakeInspector([], exists=False), table) == ["테이블 care_records 없음"]
+    assert table_problems(FakeInspector([], exists=False), table) == ["테이블 expenses 없음"]
 
 
 def test_nullable_column_tightened_to_not_null_is_incompatible_unless_defaulted():
@@ -321,10 +325,54 @@ def test_nullable_column_tightened_to_not_null_is_incompatible_unless_defaulted(
 
 
 def test_shared_model_table_missing_blocks_the_features_that_use_it(client, family_headers):
-    """app/shared 의 공통 모델(위치 동의 이력)이 없으면 그것을 쓰는 가입(family_group)·돌봄(care)을 연다고 보지 않는다."""
+    """app/shared 의 공통 모델(위치 동의 이력)이 없으면 그것을 쓰는 가입(family_group)을 연다고 보지 않는다."""
     with engine.begin() as conn:
         conn.execute(text("DROP TABLE location_consent_events"))
     report = health(client)
-    assert report["features"]["care"] == {"ready": False, "reason": "missing_schema"}
     assert report["features"]["family_group"]["ready"] is False
-    assert client.get("/care/records", headers=family_headers).status_code == 503
+    assert client.get("/family-group/me", headers=family_headers).status_code == 503
+
+
+# ---------- 데일리 체크 하위 기능(schedule_check): 날짜별 기록 테이블과 소프트 삭제 컬럼 ----------
+def test_check_log_table_missing_blocks_only_check_api(client, family_headers):
+    with engine.begin() as conn:
+        conn.execute(text("DROP TABLE events_check_logs"))
+    try:
+        blocked = client.get("/schedule/check/items", headers=family_headers)
+        assert blocked.status_code == 503 and blocked.json()["code"] == "schema_not_ready"
+        assert client.get("/schedule/events", headers=family_headers).status_code == 200
+        report = health(client)
+        assert report["features"]["schedule_check"]["ready"] is False
+        assert report["features"]["schedule"]["ready"] is True
+    finally:
+        Base.metadata.tables["events_check_logs"].create(engine, checkfirst=True)
+    assert client.get("/schedule/check/items", headers=family_headers).status_code == 200
+
+
+def test_check_item_deleted_at_missing_blocks_only_check_api(client, family_headers):
+    with engine.begin() as conn:
+        conn.execute(text("ALTER TABLE events_check_items DROP COLUMN deleted_at"))
+    try:
+        blocked = client.get("/schedule/check/items", headers=family_headers)
+        assert blocked.status_code == 503 and blocked.json()["code"] == "schema_not_ready"
+        assert client.get("/schedule/events", headers=family_headers).status_code == 200
+        assert health(client)["features"]["schedule_check"]["ready"] is False
+    finally:
+        with engine.begin() as conn:
+            conn.execute(text("ALTER TABLE events_check_items ADD COLUMN deleted_at DATETIME"))
+    assert client.get("/schedule/check/items", headers=family_headers).status_code == 200
+
+
+def test_check_log_table_is_part_of_schedule_check_feature():
+    from app.shared.schema import feature_tables
+
+    assert "events_check_logs" in feature_tables()["schedule_check"]
+
+
+def test_share_card_table_is_part_of_chat_share_feature_not_family_chat():
+    """공유 카드 표(message_shares)는 하위 기능 chat_share 로 따로 점검한다(표가 없는 DB 에서도 소통의 나머지는 열린다)."""
+    from app.shared.schema import feature_tables
+
+    tables = feature_tables()
+    assert "message_shares" in tables["chat_share"]
+    assert "message_shares" not in tables["family_chat"]

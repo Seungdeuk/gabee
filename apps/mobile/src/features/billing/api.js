@@ -206,3 +206,9 @@ export const getReminder = () => apiFetch(`/billing/settlement/reminder${DEV_TOD
  * @returns {Promise<{ show: boolean, within_days: number, items: { id: string, kind: "ott" | "telecom", name: string, amount: number | null, due_date: string, days_left: number, expense_made: boolean }[] }>}
  */
 export const getUpcomingPayments = () => apiFetch(`/billing/subscriptions/upcoming${DEV_TODAY ? `?on=${DEV_TODAY}` : ""}`);
+
+/**
+ * 정산 재알림 확인. 앱 홈을 열 때 부른다. 내 몫이 대상이면 서버가 알림함에 재알림을 한 번 남긴다(대부분 created 0).
+ * @returns {Promise<{ created: number }>}
+ */
+export const checkSettlementReminders = () => apiFetch("/billing/settlement/reminders/check", { method: "POST" });

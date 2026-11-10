@@ -98,6 +98,18 @@ REQUEST_SCHEMA: dict = {
     "additionalProperties": False,
 }
 
+# habit 일 때만 채운다(아니면 빈 문자열·빈 배열·1). action: list 조회 / mark 체크·횟수 더하기 / unmark 체크 취소·횟수 빼기
+HABIT_SCHEMA: dict = {
+    "type": "object",
+    "properties": {
+        "action": {"type": "string", "enum": ["", "list", "mark", "unmark"]},
+        "item_ids": {"type": "array", "items": {"type": "string"}},
+        "amount": {"type": "integer"},
+    },
+    "required": ["action", "item_ids", "amount"],
+    "additionalProperties": False,
+}
+
 CHAT_SCHEMA: dict = {
     "type": "object",
     "properties": {
@@ -117,6 +129,8 @@ CHAT_SCHEMA: dict = {
         "check_action": {"type": "string", "enum": ["", "mark", "unmark", "list"]},
         # request 일 때만: 가족에게 보내는 부탁(함께하기)의 보내기·받는 사람 바꾸기·취소·상세 질의
         "request": REQUEST_SCHEMA,
+        # habit 일 때만: 데일리 체크(매일 하는 습관) 조회·대신 체크
+        "habit": HABIT_SCHEMA,
     },
     "required": [
         "intent",
@@ -131,6 +145,7 @@ CHAT_SCHEMA: dict = {
         "changes",
         "check_action",
         "request",
+        "habit",
     ],
     "additionalProperties": False,
 }
@@ -147,6 +162,9 @@ CHAT_SYSTEM = (
     "- request: 가족에게 일을 같이 해 달라고 보내는 부탁(함께하기)을 새로 보내거나, 보낸 부탁의 받는 사람을 바꾸거나, 보낸 부탁을 "
     "취소하거나, 부탁의 상세·수락 현황을 묻는 말('엄마한테 장 같이 봐달라고 부탁해줘', '아빠도 부탁에 넣어줘', '부탁 취소해줘', "
     "'부탁 누가 수락했어?'). 부탁이 있는지, 몇 개인지, 어떻게 됐는지 묻는 말('내일 부탁 있어?')도 query 가 아니라 request(query)다. 내 일정을 가족에게 공유해서 등록하는 말('엄마한테도 공유해줘')은 부탁이 아니라 register·edit 이다.\n"
+    "- habit: 데일리 체크(매일 하는 습관: 약 먹기·물 마시기·운동 등)를 묻거나 체크해 달라는 말('오늘 약 먹었어?', '물 두 잔 마셨어', "
+    "'습관 체크 다 했어?', '엄마 오늘 약 챙겼어?'). 이름이 [데일리 체크] 목록의 습관과 맞으면 check 가 아니라 habit 이다. "
+    "[일정 목록]의 일정을 확인·완료하는 말만 check 이다.\n"
     "- not_schedule: 정말로 일정과 무관한 말일 때만(앞 단계가 잘못 넘긴 경우)\n"
     "규칙:\n"
     "- 아래 [일정 목록] 에 있는 일정만 근거로 답한다. 없는 일정을 지어내지 않고, 목록에 없으면 그 기간에 일정이 없다고 답한다.\n"
@@ -215,7 +233,14 @@ CHAT_SYSTEM = (
     "대상 일정의 id 를 event_ids 에 모두 넣는다(같은 이름이 여럿이면 지금과 가장 가까운 하나만).\n"
     "- unmark: 체크를 취소하거나 아직 안 했다는 말('치과 확인 취소해줘', '아직 못 했어'). 대상 id 를 event_ids 에 넣는다.\n"
     "- list: 아직 확인하지 않은 일정을 보여 달라는 말. event_ids 는 빈 배열로 둔다(코드가 찾는다).\n"
-    "- check 일 때 reply 는 빈 문자열이다. 답은 코드가 만든다."
+    "- check 일 때 reply 는 빈 문자열이다. 답은 코드가 만든다.\n"
+    "habit 일 때는 habit 객체를 채운다(아니면 action 은 빈 문자열, item_ids 는 빈 배열, amount 는 1):\n"
+    "- list: 습관의 오늘 상태를 묻는 말. 말한 습관의 id 를 item_ids 에 넣는다. 특정 습관 없이 전체를 물으면 빈 배열로 둔다. "
+    "다른 가족의 습관을 물으면 [데일리 체크] 의 주인 칸(가족 구성원 id)으로 그 사람의 줄을 고른다.\n"
+    "- mark: 습관을 했다는 말. 대상 id 를 item_ids 에 넣는다. 횟수 습관에 '두 잔 마셨어'처럼 말하면 amount 에 그 수를 쓴다(말하지 않았으면 1).\n"
+    "- unmark: 체크를 취소하거나 안 했다는 말. 대상 id 를 item_ids 에, 횟수를 줄이는 말이면 amount 에 줄일 수를 쓴다.\n"
+    "- 내 습관(주인이 '나')만 체크할 수 있다. 목록에 없는 습관은 지어내지 않는다.\n"
+    "- habit 일 때 reply 는 빈 문자열이다. 답과 확인 카드는 코드가 만든다."
 )
 
 WEEKDAYS = "월화수목금토일"
@@ -240,6 +265,7 @@ def chat_prompt(
     draft_block: str = "",
     request_lines: list[str] | None = None,
     notice: str = "",
+    habit_lines: list[str] | None = None,
 ) -> str:
     """scope: 목록을 거른 기준 설명(없으면 기간을 몰라 넓게 보낸 것). final: 이미 한 번 넓혀 보낸 두 번째 호출.
     member_lines: 가족 구성원 한 줄씩(id | 이름 | 관계). draft_block: 되묻는 중인 등록 초안(없으면 빈 문자열)."""
@@ -260,11 +286,13 @@ def chat_prompt(
     draft = f"\n\n[등록 초안]\n{draft_block}" if draft_block else ""
     requests = "\n".join(request_lines) if request_lines else "(부탁 없음)"
     notice_block = f"\n\n[알림] {notice}" if notice else ""
+    habits = "\n".join(habit_lines) if habit_lines else "(습관 없음)"
     return (
         f"[지금] {format_when(now)} (한국 시간)\n\n"
         f"[일정 목록] {range_note}. id | 날짜 시간 | 제목 [| 공동 [| 공유:id,id]]\n{listing}{last}{notice_block}\n\n"
         f"[가족 구성원] id | 이름 | 관계\n{members}\n\n"
         f"[부탁 목록] id | 날짜 시간 | 제목 | 보냄·받음 | 현황\n{requests}{draft}\n\n"
+        f"[데일리 체크] 오늘 해당하는 습관. id | 주인 | 이름 | 오늘 상태\n{habits}\n\n"
         f"[사용자 문장]\n{text}"
     )
 
@@ -296,9 +324,8 @@ SUGGEST_SCHEMA: dict = {
 
 SUGGEST_SYSTEM = (
     "가족 일정 앱의 일정 도우미다. 사용자의 일정과 여러 정보를 보고 일정에 추가하면 좋을 것을 최대 5개 추천한다. 추천은 참고용이다.\n"
-    "입력: [일정 목록](내 일정), [부탁 목록](가족에게 보낸·받은 함께하기), [결제일](내가 결제하는 구독의 결제일), "
+    "입력: [일정 목록](내 일정), [부탁 목록](가족에게 보낸·받은 함께하기), "
     "[가족 대화에서 나온 후보](가족 단체 대화 분석 결과), [내가 AI 채팅에서 한 말](최근 7일). 비어 있는 입력은 무시한다.\n"
-    "- 결제일이 [일정 목록] 에 없으면 그 날짜에 '○○ 결제일 확인' 같은 할 일(kind 2)로 제안한다.\n"
     "- 가족 대화의 일정·할 일 후보 중 [일정 목록] 에 비슷한 것이 없으면 그 후보를 제안한다. 약속이면 kind 1, 할 일이면 kind 2. "
     "날짜를 알 수 없는 후보는 제안하지 않는다. 후보는 제목·날짜·종류를 바꾸지 말고 먼저 그대로 제안하고, 준비 할 일은 그다음에 남는 자리에 제안한다.\n"
     "- 이미 있는 일정과 부탁에서 파생되는, 놓치기 쉬운 준비를 할 일(kind 2)로 제안한다. 예: 병원 일정이나 병원 부탁 뒤 약 타기·예약 확인, "
@@ -321,12 +348,11 @@ def suggest_prompt(
     event_lines: list[str],
     existing_titles: list[str],
     request_lines: list[str] | None = None,
-    billing_lines: list[str] | None = None,
     family_lines: list[str] | None = None,
     chat_lines: list[str] | None = None,
 ) -> str:
     """event_lines: chat.event_line 형태의 내 일정(지난 2주~앞으로 60일). existing_titles: 이미 있는 제안 제목(중복 제외용).
-    나머지는 `suggest_sources` 가 만든 줄들(부탁·결제일·가족 대화 후보·내가 AI 채팅에서 한 말)이고 없으면 '(없음)'이다."""
+    나머지는 `suggest_sources` 가 만든 줄들(부탁·가족 대화 후보·내가 AI 채팅에서 한 말)이고 없으면 '(없음)'이다."""
 
     def block(lines: list[str] | None, empty: str = "(없음)") -> str:
         return "\n".join(lines) if lines else empty
@@ -335,7 +361,6 @@ def suggest_prompt(
         f"[오늘] {format_day(today)} (한국 시간)\n\n"
         f"[일정 목록] id | 날짜 시간 | 제목\n{block(event_lines, '(일정 없음)')}\n\n"
         f"[부탁 목록] 날짜 시간 | 제목 | 구분\n{block(request_lines)}\n\n"
-        f"[결제일] 날짜 | 서비스\n{block(billing_lines)}\n\n"
         f"[가족 대화에서 나온 후보] 날짜 시간 | 제목 | 종류\n{block(family_lines)}\n\n"
         f"[내가 AI 채팅에서 한 말]\n{block(chat_lines)}\n\n"
         f"[이미 있는 제안]\n{block(existing_titles)}"

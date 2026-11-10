@@ -8,7 +8,7 @@
   꼴만 낮은 점수로 찾는다. 호칭 없이 쓴 낯선 사람 이름, 별명, 외국 이름은 놓친다. 엄마·아빠 같은 가족 호칭은 이름이
   아니므로 마스킹하지 않는다.
 - 주소: 도로명·지번·동호수와 '시/도 + 시/군/구'만 본다. 건물 이름, 문장 속 약식 표현("강남역 3번 출구 앞 빌라")은 놓친다.
-- 숫자: 띄어쓰기·오탈자가 섞이거나 한글 숫자("공일공")로 쓴 전화번호는 놓친다. 반대로 주문번호가 우연히 규칙에 맞으면 오탐한다.
+- 숫자: 한글 숫자("공일공")·82 붙여 쓰기·끝 묶음 중간 공백·'전화' 문맥이 앞에 있는 010 없는 8자리는 잡는다(2026-11 보강). 그 밖의 오탈자가 섞인 번호는 놓치고, 주문번호가 우연히 규칙에 맞으면 오탐한다.
 - 이 모듈(``detect``)은 규칙만 쓴다. 이름·주소 보강용 NER 은 ``ner.detect_with_ner`` 가 이 결과 위에 더한다(선택). 마스킹은 위험을 줄일 뿐 보호를 보장하지 않는다.
 """
 
@@ -91,6 +91,52 @@ PHONE_RE = re.compile(
 _PHONE_FULL = re.compile(rf"(?:{_PHONE_INTL}|{_PHONE_MOBILE}|{_PHONE_LAND}|{_PHONE_NET})")
 
 
+# 변형 꼴(2026-11 측정으로 놓치던 것). 모양만으로는 다른 숫자와 헷갈려서 점수를 낮추거나 문맥을 요구한다.
+_KO_DIGITS = "공영일이삼사오육칠팔구"
+# 한글 숫자로 쓴 휴대폰: 공일공/영일영으로 시작하는 10~11자(이·일·사·오는 흔한 낱말이라 길이와 시작을 같이 본다)
+_PHONE_KO = re.compile(
+    rf"(?<![{_KO_DIGITS}])(?:공일공|영일영)(?:[ -]?[{_KO_DIGITS}]){{7,8}}(?![{_KO_DIGITS}])"
+)
+# 82 를 +없이 붙여 쓴 번호: 8210… 12자리(운송장·계좌와 길이가 같아 숫자 앞뒤 문맥을 본다)
+_PHONE_GLUED82 = re.compile(
+    rf"{_NUM_START}82{_SEP}(?:10|1[16-9]){_SEP}\d{{3,4}}{_SEP}\d{{4}}(?!\d)"
+)
+# 끝 묶음 한가운데에 공백이 낀 번호(010-1234-56 78): OCR·손글씨 옮기기에서 나온다
+_PHONE_MIDSPACE = re.compile(rf"{_NUM_START}01[016789]{_SEP}\d{{3,4}}{_SEP}\d\d \d\d(?!\d)")
+# 010 을 뺀 8자리(1234-5678, 12345678): 주문번호·금액과 같은 모양이라 '전화' 문맥이 바로 앞에 있을 때만
+_PHONE_NO_PREFIX = re.compile(rf"{_NUM_START}\d{{4}}[- ]?\d{{4}}(?![\d-])")
+_PHONE_CONTEXT = re.compile(
+    r"전화|연락처|연락|휴대폰|핸드폰|휴대전화|폰\s?번호|폰|문의|TEL|Tel|tel|HP|hp|Mobile|mobile|번호(?!표)"
+)
+# 8자리가 날짜(20261103)나 연도 범위처럼 보일 때는 전화가 아니다
+_DATE8 = re.compile(r"(?:19|20)\d\d(?:0[1-9]|1[0-2])(?:0[1-9]|[12]\d|3[01])")
+
+
+def _phone_context_before(text: str, start: int) -> bool:
+    before = text[max(0, start - 12) : start]
+    if _NOT_PII_CONTEXT.search(before):  # 주문번호·승인번호 등은 번호라는 말이 있어도 전화가 아니다
+        return False
+    return bool(_PHONE_CONTEXT.search(before))
+
+
+def _detect_phone_variants(text: str) -> list[Span]:
+    spans = []
+    for m in _PHONE_KO.finditer(text):
+        spans.append(Span(Kind.PHONE, m.start(), m.end(), 0.85, "phone_ko"))
+    for m in _PHONE_GLUED82.finditer(text):
+        if not _near_not_pii(text, m.start(), m.end()):
+            spans.append(Span(Kind.PHONE, m.start(), m.end(), 0.8, "phone_82"))
+    for m in _PHONE_MIDSPACE.finditer(text):
+        spans.append(Span(Kind.PHONE, m.start(), m.end(), 0.8, "phone_midspace"))
+    for m in _PHONE_NO_PREFIX.finditer(text):
+        digits = re.sub(r"\D", "", m.group(0))
+        if len(set(digits)) < 3 or _DATE8.fullmatch(digits):
+            continue
+        if _phone_context_before(text, m.start()):
+            spans.append(Span(Kind.PHONE, m.start(), m.end(), 0.7, "phone_no_prefix"))
+    return spans
+
+
 def _detect_phone(text: str) -> list[Span]:
     spans = []
     for m in PHONE_RE.finditer(text):
@@ -103,7 +149,7 @@ def _detect_phone(text: str) -> list[Span]:
                 Kind.PHONE, m.start(), m.end(), 0.95 if "-" in raw or "+" in raw else 0.85, "phone"
             )
         )
-    return spans
+    return spans + _detect_phone_variants(text)
 
 
 # ---------------------------------------------------------------------------
@@ -335,7 +381,7 @@ def _detect_secret(text: str) -> list[Span]:
 # 주소
 # ---------------------------------------------------------------------------
 _UNIT_AFTER = (
-    r"(?!\s?(?:개|명|분|시|원|살|세|층|번째|번(?!지|길)|일|월|년|kg|km|cm|mm|%|회|대|마리|장|잔|병|"
+    r"(?![ \t]?(?:개|명|분|시|원|살|세|층|번째|번(?!지|길)|일|월|년|kg|km|cm|mm|%|회|대|마리|장|잔|병|"
     r"인분|시간|주|달|호선|퍼센트|코스|바퀴|정거장|단계|가(?![가-힣])))"
 )
 _ROAD_RE = re.compile(
@@ -376,6 +422,21 @@ def _region_before(text: str, pos: int) -> bool:
     return _REGION_BEFORE.search(text[max(0, pos - 12) : pos]) is not None
 
 
+# 도로명·지번 주소 바로 뒤에 붙는 (법정동) · 층 · 호수. 건물번호까지만 가리면 '5층 501호'가 남아 집을 특정한다.
+_UNIT_TAIL = re.compile(
+    r"(?:\s?\([가-힣0-9]{1,8}[동가리읍면]\))?"
+    r"(?:[\s,]{1,2}(?:지하\s?|B)?\d{1,3}층)?"
+    r"(?:[\s,]{1,2}(?:B|지하\s?)?\d{1,5}호(?!선))?"
+)
+
+
+def _extend_unit(text: str, span: Span) -> Span:
+    m = _UNIT_TAIL.match(text, span.end)
+    if not m or m.end() == span.end:
+        return span
+    return Span(span.kind, span.start, m.end(), span.score, span.source, span.canonical)
+
+
 def _detect_address(text: str) -> list[Span]:
     cands: list[Span] = []
     for m in _ROAD_RE.finditer(text):
@@ -410,6 +471,7 @@ def _detect_address(text: str) -> list[Span]:
         if any(d in _DISTRICT_STOP for d in districts) or text.startswith("난방", m.end()):
             continue  # '서울 대도시', '경기 신도시', '중구난방'
         cands.append(Span(Kind.ADDRESS, m.start(), m.end(), 0.6, "region"))
+    cands = [_extend_unit(text, c) if c.source in ("road", "jibun") else c for c in cands]
     return _merge_adjacent(text, cands)
 
 

@@ -5,17 +5,24 @@
 기록의 id 는 파일 id 와 같게 둬서 DB 구조를 바꾸지 않고 둘을 잇는다.
 """
 
+import hashlib
 import logging
 import mimetypes
 import threading
+import time
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.features.family_group.models import Group
+from app.shared import chat_library
+from app.shared.config import settings
 from app.shared.db import SessionLocal
 from app.shared.errors import ApiError
 
+from . import family_names, reminders
 from . import repository as repo
 from .ingest import converters, masking
 from .ingest import service as ingest_service
@@ -54,29 +61,164 @@ class Processors:
 processors = Processors()
 
 
-def process_file(photo_id: str, group_id: str, user_id: str, data: bytes, filename: str) -> None:
-    """전처리해서 knowledge 에 넣고 `photos.status` 를 바꾼다. 어떤 실패도 서버를 멈추지 않는다."""
+def process_file(
+    photo_id: str,
+    group_id: str,
+    user_id: str,
+    data: bytes,
+    filename: str,
+    source_attachment_id: str | None = None,
+    keep_photo: bool = False,
+) -> None:
+    """전처리해서 knowledge 에 넣고 `photos.status` 를 바꾼다. 어떤 실패도 서버를 멈추지 않는다.
+    `keep_photo` 는 채팅 사진을 사용자가 직접 "문서로 저장"한 경우다: 글자가 거의 없어 "사진" 기록이 돼도 문서함에 남긴다.
+
+    Claude 연결이 잠깐 안 돼서 실패(`llm_unavailable`)했으면 기다렸다가 같은 파일을 다시 처리한다(원본 바이트는 이미 메모리에 있다).
+    깨진 파일·지원 안 하는 형식은 다시 해도 같으므로 다시 하지 않는다. 기다리는 동안은 처리 칸을 비워 다른 파일이 지나가게 한다."""
     status = "failed"
-    with _SLOTS:
-        try:
-            result = ingest_service.ingest_file(
-                group_id,
-                data,
-                filename,
-                ocr=processors.ocr,
-                jev=processors.jev,
+    for attempt in range(settings.ingest_retry_max + 1):
+        if attempt:
+            time.sleep(settings.ingest_retry_wait_seconds * attempt)
+        with _SLOTS:
+            status, retry = _process_once(
+                photo_id, group_id, user_id, data, filename, source_attachment_id, keep_photo
             )
-            if result.quality.status != "failed":
-                with SessionLocal() as db:
-                    knowledge_service.ingest(
-                        db, group_id, user_id, item_id=photo_id, **from_ingest.to_item(result)
-                    )
-                status = "needs_review" if from_ingest.needs_review(result) else "analyzed"
-        except Exception as e:  # noqa: BLE001  내용이 로그에 남지 않게 종류만 적는다
-            logger.error("파일 처리에 실패했어요 id=%s 종류=%s", photo_id, type(e).__name__)
-            status = "failed"
+        if not retry:
+            break
+        logger.warning(
+            "Claude 연결이 안 돼 파일을 다시 처리해요 id=%s 시도=%d/%d",
+            photo_id,
+            attempt + 1,
+            settings.ingest_retry_max + 1,
+        )
     with SessionLocal() as db:
-        repo.set_status(db, photo_id, status)
+        if source_attachment_id and status == "failed":
+            # 채팅 문서는 읽지 못해도(재시도를 다 써도) "실패" 기록과 가리기 전 원본을 남기지 않는다(채팅 파일로는 남아 있다)
+            _drop_chat_upload(group_id, photo_id, data)
+        else:
+            repo.set_status(db, photo_id, status)
+
+
+def _drop_chat_upload(group_id: str, photo_id: str, data: bytes) -> None:
+    """등록하지 않기로 한(실패·중복·지워진·일반 사진) 채팅 문서의 처리 기록(photos)과, 읽는 도중 보관한 원본·사본을 지운다.
+    파일은 내용(sha256)으로 찾아서 결과 객체가 없는 실패·예외에서도 정리된다. 다른 기록이 쓰는 원본은 그대로 둔다."""
+    with SessionLocal() as db:
+        repo.delete_photo(db, photo_id)
+        store = LocalRawStore()
+        refs = store.refs_for_sha(group_id, hashlib.sha256(data).hexdigest())
+        main = [r for r in refs if ".display." not in r]
+        if any(path_in_use(db, group_id, r) for r in main):
+            return
+        for ref in refs:
+            try:
+                store.delete_for_group(group_id, ref)
+            except (ValueError, OSError):
+                logger.warning("원본 파일을 지우지 못했어요 id=%s", photo_id)
+
+
+def _only_a_bank_account(result) -> bool:
+    """통장류(`bankbook`)로 잡힌 문서가 학교·기관의 납부 계좌 안내문인가. 판단은 읽기 단계가 가리기 **전의** 글로 해 둔 값이다
+    (통장 사본·이체확인증·거래내역은 통장·받는분·잔액 같은 낱말이 있어 그대로 민감 문서다)."""
+    return result.privacy.sensitive == "bankbook" and result.privacy.account_notice
+
+
+def _plan_reminders(photo_id: str, group_id: str, user_id: str) -> None:
+    """저장된 기록에서 챙길 일을 뽑는다(설정이 켜진 경우). 실패해도 파일은 그대로 저장된 상태로 둔다."""
+    if not settings.ingest_reminders:
+        return
+    try:
+        with SessionLocal() as db:
+            reminders.plan(db, group_id, user_id, photo_id)
+    except Exception as e:  # noqa: BLE001  내용이 로그에 남지 않게 종류만 적는다
+        logger.warning("챙길 일을 뽑지 못했어요 id=%s 종류=%s", photo_id, type(e).__name__)
+
+
+def _process_once(
+    photo_id: str,
+    group_id: str,
+    user_id: str,
+    data: bytes,
+    filename: str,
+    source_attachment_id: str | None = None,
+    keep_photo: bool = False,
+) -> tuple[str, bool]:
+    """한 번 처리한다. (상태, 다시 해 볼 만한 실패인지)"""
+    try:
+        # 가족 이름은 가리기 전에 자리표시로 바꾼다(분류를 외부 서비스에 맡겨도 실명이 나가지 않는다)
+        with SessionLocal() as db:
+            family = family_names.FamilyTagger(family_names.load_members(db, group_id))
+        result = ingest_service.ingest_file(
+            group_id,
+            data,
+            filename,
+            ocr=processors.ocr,
+            jev=processors.jev,
+            family=family,
+        )
+        if result.quality.status == "failed":
+            retry = result.quality.error == "llm_unavailable"
+            if source_attachment_id and not retry:
+                _drop_chat_upload(group_id, photo_id, data)
+            return "failed", retry
+        fields = from_ingest.to_item(result)
+        if (
+            source_attachment_id
+            and not keep_photo
+            and fields["kind_label"] == from_ingest.PHOTO_KIND
+        ):
+            # 문서 사진으로 보고 읽었는데 글자가 거의 없다: 일반 사진은 문서함에 넣지 않는다
+            _drop_chat_upload(group_id, photo_id, data)
+            return "skipped", False
+        if source_attachment_id and _only_a_bank_account(result):
+            # 학교 납부 안내처럼 계좌번호만 이유로 통장류로 잡힌 문서(통장 사본이 아니다)는 민감 표시를 달지 않는다. 계좌번호는 읽을 때 이미 가려진다.
+            # 처방전·신분증·통장 사본 같은 민감 문서도 가족 전체방에서 올린 것이면 문서함에 등록한다(2026-11-09 사용자 결정): 기록에는 민감 표시가 붙는다.
+            fields["sensitivity"] = None
+        chat_sensitive = bool(
+            source_attachment_id
+            and knowledge_service.is_sensitive(
+                fields["kind_label"], fields.get("sensitivity"), strict=True
+            )
+        )
+        if chat_sensitive:
+            fields["sensitivity"] = (
+                "sensitive"  # 이름만 민감한 분류(진단서·외국인등록증·통장 사본 등)도 민감 표시를 붙인다
+            )
+        with SessionLocal() as db:
+            try:
+                knowledge_service.ingest(
+                    db,
+                    group_id,
+                    user_id,
+                    item_id=photo_id,
+                    source_attachment_id=source_attachment_id,
+                    **fields,
+                )
+            except IntegrityError:  # 같은 채팅 첨부를 다른 요청이 먼저 등록했다
+                db.rollback()
+                _drop_chat_upload(group_id, photo_id, data)
+                return "skipped", False
+            if db.get(Group, group_id) is None:
+                # 읽는 사이에 가족이 지워졌다(혼자인 소유자가 나감): 방금 저장한 기록과 원본이 주인 없이 남지 않게 되돌린다
+                delete_record(db, group_id, photo_id)
+                return "skipped", False
+            if source_attachment_id and not chat_library.attachment_exists(
+                db, group_id, source_attachment_id
+            ):
+                # 읽는 사이에 채팅 메시지가 지워졌다: 방금 저장한 기록을 되돌린다(지운 메시지의 문서가 문서함에 남지 않게)
+                delete_record(db, group_id, photo_id)
+                return "skipped", False
+        if (
+            not chat_sensitive
+        ):  # 챙길 일 뽑기는 본문을 외부 Claude 로 보내므로, 가족방에서 온 민감 문서는 건너뛴다
+            _plan_reminders(photo_id, group_id, user_id)
+        return ("needs_review" if from_ingest.needs_review(result) else "analyzed"), False
+    except Exception as e:  # noqa: BLE001  내용이 로그에 남지 않게 종류만 적는다
+        logger.error("파일 처리에 실패했어요 id=%s 종류=%s", photo_id, type(e).__name__)
+        if source_attachment_id:
+            _drop_chat_upload(
+                group_id, photo_id, data
+            )  # 예외로 끝나도 읽는 도중 보관한 원본이 기록 없이 남지 않게
+        return "failed", False
 
 
 def status(db: Session, group_id: str, photo_id: str) -> FileStatusOut | None:
@@ -97,9 +239,11 @@ def status(db: Session, group_id: str, photo_id: str) -> FileStatusOut | None:
         get_item(db, group_id, photo_id) if photo.status in ("analyzed", "needs_review") else None
     )
     if item is not None:
-        out.title, out.kind_label = item.title, item.kind_label
-        out.description = _describe(item.body_md)
-        out.doubts = _doubts(item.body_md)
+        names = family_names.shown_names(family_names.load_members(db, group_id))
+        body = family_names.restore(item.body_md, names)  # 자리표시를 현재 이름으로(자르기 전에)
+        out.title, out.kind_label = family_names.restore(item.title, names), item.kind_label
+        out.description = _describe(body)
+        out.doubts = _doubts(body)
         out.needs_description = from_ingest.needs_description(item.kind_label, item.body_md)
     return out
 
@@ -113,13 +257,18 @@ def set_description(db: Session, group_id: str, photo_id: str, text: str) -> Fil
         return None
     if item.kind_label != from_ingest.PHOTO_KIND:
         raise ApiError(409, "not_a_photo", "사진에만 설명을 달 수 있어요")
-    text = " ".join(masking.mask_text(text).split())[: from_ingest.DESCRIPTION_MAX]
+    # 설명에 쓴 가족 이름도 가리기 전에 자리표시로 바꾼다(저장되는 글에는 실명이 없다)
+    tagger = family_names.FamilyTagger(family_names.load_members(db, group_id))
+    masked = " ".join(tagger.expand(masking.mask_text(tagger.protect(text))).split())
+    text = family_names.clip(masked, from_ingest.DESCRIPTION_MAX)
     changes = {"body_md": from_ingest.with_description(item.body_md, text)}
     before = from_ingest.current_description(item.body_md)
     if from_ingest.is_default_title(item.title, item.kind_label) or (
-        before and item.title == before[:50]
+        before and item.title == family_names.clip(before, 50)
     ):
-        changes["title"] = text[:50]  # 제목이 기본값이거나 이전 설명이면 새 설명이 제목이 된다
+        changes["title"] = family_names.clip(
+            text, 50
+        )  # 제목이 기본값이거나 이전 설명이면 새 설명이 제목이 된다
     knowledge_service.update_item(db, group_id, photo_id, changes)
     return status(db, group_id, photo_id)
 

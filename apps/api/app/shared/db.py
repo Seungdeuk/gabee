@@ -46,13 +46,17 @@ def import_all_models() -> None:
     from app.features.ai_assistant import models as _ai  # noqa: F401
     from app.features.ai_assistant.knowledge import models as _knowledge  # noqa: F401
     from app.features.billing import models as _billing  # noqa: F401
-    from app.features.care import models as _care  # noqa: F401
     from app.features.family_chat import models as _chat  # noqa: F401
     from app.features.family_group import models as _group  # noqa: F401
+    from app.features.notices import models as _notices  # noqa: F401
+    from app.features.ops_admin import models as _ops_admin  # noqa: F401
+    from app.features.play import models as _play  # noqa: F401
     from app.features.schedule import models as _schedule  # noqa: F401
+    from app.features.support import models as _support  # noqa: F401
     from app.shared import ai_usage as _ai_usage  # noqa: F401
     from app.shared import location_consent as _consent  # noqa: F401
     from app.shared import notifications as _notifications  # noqa: F401
+    from app.shared import push_models as _push_models  # noqa: F401
     from app.shared import used_proposals as _used_proposals  # noqa: F401
 
 

@@ -137,7 +137,7 @@ def test_bearer_authenticates_me_and_existing_apis(client, monkeypatch):
         db.commit()
     group = client.post("/family-group/groups", json={"name": "우리 가족"}, headers=bearer(access))
     assert group.status_code == 201
-    for path in ("/family-chat/messages", "/schedule/events", "/billing/expenses", "/care/records"):
+    for path in ("/family-chat/messages", "/schedule/events", "/billing/expenses"):
         assert client.get(path, headers=bearer(access)).status_code == 200, path
 
 

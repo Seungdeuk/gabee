@@ -1,14 +1,14 @@
 # 구현 현황: family-chat (가족 채팅)
 
 - 요구사항: docs/requirements/family-chat.md
-- 결정 기록: docs/adr/0009-ai-call-minimization.md
+- 결정 기록: docs/adr/0011-ai-call-minimization.md
 
 ## 구현된 것
 
 ### 기존 (뼈대)
 
 - `GET /family-chat/messages`(`latest`·`before_id`·`after_id`·`limit`, 결과는 항상 오래된 순), `POST /family-chat/messages` — 가족 그룹 단체 대화(`messages` 테이블). 일반 전송은 AI 를 부르지 않는다. 쿼리 규칙은 아래 "채팅방" 절.
-- 모바일 소통 탭: 방 목록(가족 전체방 + 1:1 방)은 서버의 `GET /family-chat/rooms` 로 그리고, 가족 연락처 카드는 실제 가족 구성원이다.
+- 모바일 소통 탭: 방 목록(가족 전체방 + 1:1 방)은 서버의 `GET /family-chat/rooms` 로 그리고, 가족 연락처는 "전체 보기 →" 줄만 두고 안의 카드 박스는 뺐다.
 
 ### 대화방 (서버, Chat 2)
 
@@ -18,7 +18,7 @@
 - 기존 `messages`·`read`·`read-states`·`unread` 는 **`room_id`(쿼리/본문, 선택)** 를 받는다. 생략하면 가족 전체방이라 기존 앱은 그대로 동작한다. 다른 가족의 방, 내가 참여자가 아닌 1:1 방, 없는 방은 모두 404(존재 여부를 숨김). 다른 방의 메시지 id 로 읽음 위치를 올리면 400 `invalid_message`.
 - 읽음·안 읽은 수는 방별로 센다. 가족 전체방만 합류 시점 기준선을 쓰고, 1:1 방은 기준선 0 이다.
 - `room_id` 가 비어 있는 옛 메시지(배포 중 구 서버가 쓴 것 포함)는 가족 전체방으로 본다.
-- **1:1 대화는 AI 로 보내지 않는다**: AI 분석·추천은 가족 전체방 메시지만 쓴다(`ai_repository.recent_messages`). 시험: `tests/test_rooms.py`.
+- **1:1 방에서도 AI 도우미(분석·답장·주제·미리보기)를 쓴다**(2026-11-05 결정, 이전 "1:1 은 AI 로 보내지 않는다" 정책을 바꿈): `/family-chat/ai/*` 요청에 `room_id` 를 주면 그 1:1 방 대화만 읽는다(`ai_repository.recent_messages(room_id=)`). `room_id` 가 없으면 예전처럼 가족 전체방만 읽는다. 동의 화면·설정은 따로 두지 않고 가족방과 같은 게이트(한도·쿨다운·개인정보 가리기)를 쓴다. 호출한 사람이 그 방의 참가자가 아니면 404(방이 있는지도 드러내지 않음), **상대가 가족을 나갔으면 403 `peer_left`** 로 막는다(`ai_service._room_scope`). 분석 캐시는 메시지 id 범위·가명화한 내용 해시에 **요청한 사용자**가 더해진 키라 방마다·사람마다 따로 쌓인다(답장·주제 추천이 요청한 사람 본인의 입장으로 만들어지기 때문이다. 같은 1:1 방의 두 사람도 각자 새로 만든다). 프롬프트에 "요청한 사람"(그 사람이 대화에서 쓰인 가명화 이름, 말한 적이 없으면 그렇게 표시)을 알려, 상대가 할 말이 아니라 요청한 사람이 보낼 말을 추천하고, 요약은 친근한 말투로 쓰게 한다(`PROMPT_VERSION=v5`). 1:1 에서 '함께하기'는 받는 사람이 상대 한 명으로 고정된다(`candidateToRequestBody(..., peerId)`). 시험: `tests/test_ai_direct.py`. @가비·일정 에이전트의 1:1 사용은 후속 PR 이다(`docs/superpowers/specs/2026-11-05-direct-chat-ai-design.md`).
 - 방 목록은 1:1 방 수와 상관없이 쿼리 수가 일정하다(`rooms_summary` 가 마지막 메시지·안 읽은 수·상대를 묶어서 조회).
 - 알려진 한계: 상대가 가족을 나가도 1:1 방과 대화는 남는다(같은 가족에 다시 들어오면 다시 보임, 정책 미정). 구 서버 코드로 되돌리면 1:1 메시지가 가족 전체방 조회와 AI 분석에 섞이므로 롤백 전에 1:1 메시지를 먼저 처리해야 한다. 배포 중 구 서버가 `chat_read_states` 에 쓴 읽음 위치는 반영되지 않는다.
 - 모바일의 방 목록·1:1 화면은 아직 없다(다음 PR).
@@ -34,14 +34,32 @@
 
 ### 사진 보내기 (서버, Chat 3)
 
-- `POST /family-chat/photos`(multipart `file`, 선택 `room_id`): 사진 메시지를 보낸다. JPEG/PNG/WebP 8MB 이하(초과 413 `photo_too_large`), 긴 변 12000px·2500만 화소 이하, 실제 이미지가 아니면 400 `invalid_image`. 서버가 EXIF 회전을 반영한 뒤 **EXIF·GPS 등 메타데이터를 모두 지우고** 긴 변 1600px 이하 JPEG와 400px 이하 썸네일로 다시 만들어 저장한다. 응답은 `MessageOut` 이고 `text` 는 빈 문자열, `attachment` 에 `{id, kind, url, thumb_url, width, height}`.
+- `POST /family-chat/photos`(multipart `file`, 선택 `room_id`, 선택 `batch_id`): 사진 메시지를 보낸다. JPEG/PNG/WebP 8MB 이하(초과 413 `photo_too_large`), 긴 변 12000px·2500만 화소 이하, 실제 이미지가 아니면 400 `invalid_image`. 서버가 EXIF 회전을 반영한 뒤 **EXIF·GPS 등 메타데이터를 모두 지우고** 긴 변 1600px 이하 JPEG와 400px 이하 썸네일로 다시 만들어 저장한다. 응답은 `MessageOut` 이고 `text` 는 빈 문자열, `attachment` 에 `{id, kind, url, thumb_url, width, height, batch_id}`. `batch_id`(영문·숫자·`_-` 8~32자, 형식이 틀리면 422)는 한 번에 여러 장 올릴 때 장마다 같은 번호를 보내 서버가 `message_attachments.batch_id` 로 저장하고, 메시지·사진 모음(`/family-chat/media`) 응답에 그대로 내려 앱이 같은 번호끼리 한 묶음(앨범)으로 보이게 한다(없으면 null=한 장짜리, 옛 사진도 null).
 - `GET /family-chat/photos/{id}?size=full|thumb`: 그 방에 들어갈 수 있는 사람만 본다(가족 전체방은 가족 구성원, 1:1 방은 두 사람). 못 들어가는 방·다른 가족·없는 사진은 모두 같은 404. 사진은 바뀌지 않으므로 `Cache-Control: private, max-age=31536000, immutable`, ETag(304), `nosniff`.
 - 메시지 목록·방 목록의 마지막 메시지에 `attachment`(없으면 null)가 붙는다(첨부는 한 번의 쿼리로 모아 조회). 사진 메시지도 안 읽은 수에 센다.
 - **AI 로 가지 않는다**: 사진 파일은 AI 에 보내지 않고, 글자 없는 사진 메시지는 AI 분석 대화에서 제외한다. 사진 보내기·보기는 AI 를 부르지 않는다.
 - 저장: `DATA_DIR/chat_photos/<첨부 id>.jpg`, `<첨부 id>_t.jpg`(파일 이름은 서버가 만든 id, DB 경로가 서버가 만든 형태가 아니면 읽지 않는다). 파일을 먼저 쓰고 메시지·첨부를 한 번에 저장하며, 저장에 실패하면 파일을 지운다. 테이블 `message_attachments`(Alembic `c9a4d7e2b605`).
 - 방어: 디코딩 전 크기·화소 거절, 축소 디코딩, 동시 처리 2건(초과 503 `photo_busy`), 사용자당 분당 20장(429 + `Retry-After`), 인증 전 큰 본문은 Content-Length 8MB(+여유) 초과 시 파싱 전에 413(해당 경로 한정 ASGI 미들웨어, 프로필 사진 미들웨어를 경로·한도만 바꿔 재사용).
 - **운영 확인 필요**: `DATA_DIR` 이 컨테이너 볼륨에 있어야 사진이 유지된다(프로필 사진과 같다). Caddy 를 쓴다면 `/family-chat/photos` 업로드 경로에 `request_body { max_size 8.2MB }` 를 권고한다(`deploy/` 는 요청 없이 수정하지 않아 문서에만 적는다). 사진 저장량 한도·정리(삭제)는 아직 없다.
-- 시험: `tests/test_chat_photos.py`. 모바일의 사진 고르기·보내기·보기는 아직 없다(다음 PR).
+- 시험: `tests/test_chat_photos.py`, 묶음 번호는 `tests/test_photo_batch.py`.
+- **앨범 묶음(앱)**: 사진 고르기에서 최대 10장을 순서대로 고르고(`pickChatPhotos`), 2장 이상이면 앱이 묶음 번호(`makeBatchId`)를 만들어 장마다 같은 번호로 올린다(한 장은 번호 없음, 한 장이 실패하면 거기서 멈춘다). 같은 사람이 같은 번호로 **연달아**(사이에 다른 글 없이, 같은 날짜) 올린 사진은 목록에서 말풍선 하나(앨범)로 묶인다: 2장은 나란히, 3장은 위 한 장+아래 두 장, 4장 이상은 2×2 에 마지막 칸 "+N"(`album.js`·`chatUtils.buildItems`). 앨범을 누르면 좌우로 넘기는 뷰어(`AlbumViewer`), 사진을 길게 누르면 그 사진의 메뉴가 열린다. 시각·읽음·반응은 마지막 사진 기준이다. 검색·고정·답장 원본 이동은 앨범 안 사진도 찾아간다(`itemHasMessage`). 시험: `tests/album.test.js`.
+
+### 공유 카드 (서버, 일정·정산)
+- `POST /family-chat/shares {kind:"event"|"settlement", ref, room_id?}` — 201 `MessageOut`. 내 일정 한 건(`ref`=일정 id) 또는 그 달 내 정산 몫(`ref`=`YYYY-MM`)을 카드 메시지로 방에 올린다(가족 전체방·1:1 방). **카드 내용은 서버가 데이터 주인 기능에서 읽어 만들고**(`shared/chat_share.py` 등록 구조, schedule·billing 이 `chat_share.py` 로 등록) 클라이언트가 보낸 제목·금액은 받지 않는다(`payload` 등 추가 필드는 422). 내가 포함된 것이 아니거나 없으면 404(남의 일정·다른 가족 일정·정산 내역 없음), 월 형식이 틀리면 400, 만드는 함수가 없으면 503(`share_unavailable`), 상대가 나간(또는 가족을 나간) 1:1 방이면 일정·정산 카드 모두 409 `peer_left_room`, 1분에 10번 넘게 시도하면 429(실패한 시도도 센다, 프로세스 메모리 제한이라 재시작·다중 워커에서는 근사). 일정·정산 표가 준비되지 않은 DB 에서는 해당 카드만 503 `share_unavailable`. 카드 내용 크기 상한은 JSON 글자 수 4096(바이트 아님, 초과 400 `share_too_large`).
+- 일정 카드 `payload`: `title`·`date`·`start_time`·`end_time`·`place`·`kind`·`with_names`(같이하는 사람 이름). **메모는 담지 않는다.** 정산 카드: `month`·`remaining`(내 남은 잔액, 받을 돈 +/보낼 돈 −)·`lines`(내가 보내거나 받을 송금 줄 `direction`·`name`·`amount`, 남들끼리의 줄은 없음, **1:1 방에서는 그 상대와의 줄만**, 이때 `remaining` 도 내 전체 잔액이 아니라 그 상대와의 줄 합계(받을 돈 +/보낼 돈 −)다).
+- 응답·메시지 목록의 `MessageOut.share = {kind, payload}`(카드가 아니면 null). 메시지 `text` 는 개인정보 없는 고정 문구라 구버전 앱·방 목록 미리보기·답장 인용에도 말풍선이 비지 않는다. 푸시는 일반 메시지와 같은 고정 문구만 보낸다(카드 내용은 싣지 않는다). 안 읽은 수에 일반 메시지처럼 센다.
+- 삭제: 보낸 사람만 지울 수 있고(기존 메시지 삭제), 지우면 카드 내용 행(`message_shares`)도 서버에서 지운다. 방·가족 삭제(`group_purge`)는 새 테이블을 자동 포함하고, DB 에 아직 없는 테이블은 건너뛴다(표가 없는 DB 에서도 삭제·나가기가 동작). 보낸 시점 내용 그대로이며 원본을 고쳐도 카드는 바뀌지 않는다.
+- 준비 안 된 DB: `message_shares` 가 아직 없는 DB 에서는 `POST /shares` 만 503 이고 메시지 목록·삭제는 그대로 열린다(카드 내용만 빠진다). 시험: `tests/test_chat_share.py`. 앱 화면(말풍선·공유 시트)은 아래 "공유 카드 (앱)" 절.
+- **@가비·AI 도우미의 카드 참고(2026-11-10)**: 카드 메시지의 `text` 는 고정 문구라서, AI 로 읽을 때만 `ai_service._with_cards` 가 카드가 있는 메시지를 읽기 전용 복사본(`AiMessage`, ORM 객체는 바꾸지 않아 DB 의 고정 문구는 그대로)으로 바꿔 `share_text.card_text`(순수 함수)의 한 줄 요약을 글자로 넣는다(`ai_repository.recent_messages` 는 그대로 DB 행을 돌려준다). 요약은 항목(제목·날짜·장소·함께·줄) 단위이고 날짜는 연도까지 쓴다(예: `[일정 공유] 치과 · 2026-11-12 10:00~11:00 · 미소치과 · 함께: 수진`). 정산 요약은 **카드를 올린 사람 기준**임을 주어로 밝혀(`[정산 공유 2026-11] 공유한 사람이 받을 돈 20,000원 · 수진에게서 10,000원 받을 돈`, 보낼 돈은 `…에게 N원 보낼 돈`, 0원은 `공유한 사람은 정산할 돈 없음`) 요청한 사람 입장으로 읽다가 돈 방향이 거꾸로 되지 않게 한다. 400자를 넘으면 뒤 항목을 통째로 빼고 ` …` 를 붙인다(이름·줄 중간에서 자르지 않고, 제목만 상한을 넘으면 제목만 자른다). 이 요약을 쓰는 곳은 @가비 맥락(`room_context`, 최근 10개·30분)과 대화 분석·답장·주제·미리보기(`_prepare`) 둘뿐이라 둘 다 자동으로 카드를 읽고, 요약도 일반 메시지와 같은 가명화(`prepare_transcript`)를 거쳐 나간다(금액은 그대로 나간다, 사용자 승인). 카드에 든 이름(같이하는 사람·정산 상대)은 보낸 시점에 찍힌 값이라 **지금 구성원이 아닌(가족을 나간) 사람의 이름일 수 있어서**, 카드 이름(`share_text.card_names`)을 가명화 이름 사전에 더해 나간 구성원 이름도 `[PERSON_n]` 으로 가린다(담당자로는 인정하지 않는다). 카드 조회는 `shares_for` 한 번의 쿼리이고, 카드 표가 이 DB 에 실제로 없으면(`share_table_exists`) 건너뛰어 고정 문구 그대로 동작한다. 지운 카드는 메시지·카드 행이 모두 비어 제외된다. 1:1 방 카드는 그 방 맥락에만 들어간다(방 범위는 기존 `room_id` 조건 그대로). 시험: `tests/test_chat_share_ai.py`.
+- 한계: 에이전트의 `search_messages` 도구는 `messages.text`(고정 문구)로 검색하므로 카드 내용을 키워드로 찾지 못한다(분석·@가비 맥락은 카드 요약을 읽는다). 지운 카드의 내용이 들어간 분석 결과는 `ai_result_cache` 에 TTL 동안 남지만 다시 쓰이지 않는다(일반 메시지와 같은 기존 동작).
+
+### 공유 카드 (앱)
+- 요구사항: `docs/requirements/family-chat.md` "채팅방 공유 카드". 서버 계약은 위 "공유 카드 (서버, 일정·정산)" 절(`MessageOut.share = {kind: "event"|"settlement", payload}`, 카드가 아니면 null, `text` 는 고정 문구).
+- **말풍선(읽기 전용)**: `share` 가 있는 메시지는 고정 문구 `text` 대신 `ShareCard` 를 그린다(`MessageBubble`의 `isShareMessage`). 일정 카드는 라벨(약속·할 일)·제목·"11월 12일 (목) · 오후 3:00 ~ 오후 4:30"(시간 없으면 "종일", 날짜 없으면 "날짜 미정")·장소·"함께 수진, 민수"(3명까지, 나머지 "외 N명"), 정산 카드는 "2026년 11월 정산"·**보낸 사람 기준** 남은 잔액(1:1 방에서는 그 상대와의 줄 합계; 내 카드는 "받을 돈/보낼 돈 12,000원", **남의 카드는 보낸 사람 이름을 주어로** "하늘님이 받을 돈/보낼 돈 12,000원", 0이면 내 카드는 "정산할 돈이 없어요"·남의 카드는 "하늘님은 정산할 돈이 없어요", 이름이 비면 "보낸 사람")·송금 줄(내 카드 "수진님에게 12,000원 받아요/보내요", 남의 카드 "수진님이 하늘님에게 12,000원 보내요"처럼 방향이 문장에 드러남, 5줄까지 "외 N건", 금액이 잘리지 않게 줄바꿈 허용, 돈의 방향을 모르는 줄은 건너뜀). 서버 payload 가 보낸 사람 기준이라 남의 카드에 주어 없이 "보낼 돈"만 쓰면 보는 사람이 자기 돈으로 오해하기 때문이다. 금액은 서버가 만든 값을 그대로 보이고 앱이 계산하지 않는다. 내용은 `shareUtils.js` 의 순수 함수(`eventCardView`·`settlementCardView(payload, {mine, senderName})`·`shareA11yLabel`)가 만든다. 보낸 사람 이름은 `MessageBubble` 이 `ShareCard` 의 `senderName` 으로 넘긴다(내가 붙인 별명 우선).
+- 카드는 누름을 받지 않는 `View` 라서 길게 누르기(메뉴)·두 번 누르기(하트)는 일반 말풍선과 같다. 읽어 주는 문구(`shareA11yLabel`)는 바깥 말풍선이 붙인다(카드 안쪽에는 접근성 속성 없음). 받을 돈·보낼 돈은 색이 아니라 글자로만 구분하므로 카드 글자는 본문색이다(`shareTextTone`: 보조 글자만 남의 카드에서 `textSub`, 내 복숭아색 말풍선에서는 대비를 위해 본문색). 서버가 다시 받은 최근 메시지에 카드가 있으면 카드 없이 굳은 메시지도 복구한다(`refreshExisting`). 메뉴는 반응·답장, 내 카드면 삭제만 열리고 공지·복사는 없다(`menuKeys`). 지우면 `markDeleted` 가 `share` 도 비운다. 방 목록 미리보기·답장 인용은 고정 문구를 그대로 쓴다(바꾸지 않음). 모르는 `kind` 는 일반 글 말풍선으로 보인다(구버전·새 종류 대비).
+- **보내기**: "+" 메뉴의 일정·정산(`isPlusShare`·`plusShareKind`)이 `Composer` 의 `onShare(kind)` 로 공유 시트(`ShareSheet`)를 연다(`onShare` 가 없으면 예전처럼 "준비 중" 안내). 일정 시트는 일정 탭의 내 일정·할 일(`listScheduleEvents`) 중 **오늘 이후**만(지난 일정·날짜 없는 일정·끝낸 할 일 제외) 날짜·시간 오름차순으로, 정산 시트는 이번 달부터 최근 6개월(월 목록 API 가 없어 앱이 만든다, 정산 내역이 없는 달은 서버가 404)로 보인다. 항목을 누르면 시트가 닫히고 **닫힌 뒤**(상호작용 완료 + 500ms, `scheduleAfterSheetClose`·`SHEET_HANDOFF_MS`, ai-assistant `ChatInput` 선례) 확인창(`ConfirmDialog tone="default"`, 꿀색 확인 버튼)이 뜬다(취소하면 확인창이 닫힌 뒤 시트가 다시 열리고, "+" 시트에서 공유 시트로 넘어갈 때도 같은 지연이 있다. 닫히는 동안에는 마지막 제목·문구를 유지한다): 일정은 제목·날짜와 "이 일정이 이 채팅방 사람들에게 보이고, @가비·AI 도우미가 답변에 쓸 수 있어요.", 정산은 **달만** 보이고(금액은 앱이 계산하지 않는다) "정산 금액이 이 채팅방 사람들에게 보이고, @가비·AI 도우미가 답변에 쓸 수 있어요."(가족방·1:1 방 같은 문구, 상수는 `shareUtils.SHARE_NOTICE`).
+- 전송은 `api.sendShare({kind, ref, roomId})`(`POST /family-chat/shares`, 본문은 kind·ref·room_id 만, 가족 전체방이면 room_id 생략) → `useChatMessages.sendShare`: 사진·파일과 같이 임시 메시지 없이 서버가 돌려준 메시지를 병합하고, 과거 창이면 먼저 최신으로 돌아오며, 중복 누름은 락으로 막고, 보내는 동안 + 버튼이 진행 표시다. 확인하면 확인창을 닫고 보내므로 실패 문구는 입력줄 위 안내(`photoError`)에 보인다(`shareSendErrorMessage`: 404·invalid_month·share_too_large·409·429(+대기 시간)·503·네트워크). 화면 상태는 `useChatShare.js` 가 맡고, 시트→확인창→전송의 상태 전이(한 번에 창 하나·고르면 대기 뒤에만 확인창·취소하면 시트 재오픈·늦은 목록 응답 무시·확인 중복 누름 무시)는 순수 함수 `shareFlow.js`(`shareFlowReducer`, `tests/chatshare_flow.test.js`)가 정한다. 공유 시트에는 "닫기" 버튼과 VoiceOver 탈출 동작이 있고, "+" 시트나 메시지 메뉴가 열리면 예약 중인 공유 창 넘기기는 취소된다.
+- 알려진 한계: 카드를 눌러 받는 사람의 일정·지갑 탭으로 가는 "열기"는 없다(후속 PR). 날짜가 없는 일정은 일정 시트에 나오지 않는다. 공유 시트·확인창은 Modal 을 하나씩 순서대로 여는데 iOS 실기기에서 실제로 뜨는지 확인이 필요하다. 화면은 렌더 시험 환경이 없어 소스 구조·순수 함수 시험만 있고 실기기(Expo Go) 확인이 필요하다. 시험: `tests/chatshare.test.js`(말풍선), `tests/chatshare_send.test.js`(보내기), `tests/chatshare_flow.test.js`(화면 흐름).
 
 ### 문서 파일 보내기 (서버)
 
@@ -130,7 +148,7 @@
 **화면 흐름**
 
 - 소통 탭(`src/app/(tabs)/family-chat.js` → `screens/FamilyChatScreen.js`)의 "채팅방" 아래 실제 가족 채팅방 한 줄(가족 이름, 마지막 메시지 한 줄, 시각)을 누르면 `router.push("/chat-room")` 로 간다. `src/app/chat-room.js` 는 `screens/ChatRoomScreen.js` 를 다시 내보낸다.
-- 소통 탭은 화면에 올 때마다 가족 정보(`GET /family-group/groups/me`)와 대화방 목록(`GET /family-chat/rooms`: 마지막 메시지·안 읽은 수 포함)을 한 번 읽는다. 폴링은 없다. 상단 검색창은 방 이름으로 거른다.
+- 소통 탭은 화면에 올 때마다 가족 정보(`GET /family-group/groups/me`)와 대화방 목록(`GET /family-chat/rooms`: 마지막 메시지·안 읽은 수 포함)을 한 번 읽는다. 화면이 보이는 동안에는 10초마다(`ROOM_REFRESH_MS`) 방 목록만 조용히 다시 읽어 방별 안 읽은 수·마지막 말·시각을 갱신한다(가족 정보는 다시 읽지 않고, 실패하면 화면을 그대로 두며, 앱이 뒤에 있거나 읽는 중이면 건너뛴다). 하단 탭의 전체 합계(30초 폴링)와 같은 데이터라 숫자가 어긋나지 않는다. 하단 탭 합계(`useTotalUnread`)도 방을 막 나왔다면 읽음 올리기가 끝난 뒤에 읽어(`waitForPendingMarkRead`), 방 목록과 같은 기준으로 합산한다. 상단 검색창은 방 이름으로 거른다. 가족이 없으면 빈 화면의 "가족 만들기"·"초대 코드로 참여" 버튼이 가족 그룹 화면을 거치지 않고 바로 `/family-create`·`/family-join` 으로 간다.
 - 채팅방 상단: 뒤로가기, 가족 이름과 "구성원 N명", ✨ AI 도우미 버튼. 가족 정보를 아직 읽지 못했으면 ✨ 는 꺼져 있다. 가족이 없으면 "가족 만들기 · 참여하기" 버튼을 보여 준다.
 
 **메시지 목록·전송** (`useChatMessages.js`, `chatUtils.js`, `components/MessageBubble.js`, `components/Composer.js`)
@@ -159,10 +177,10 @@
 - 아래에서 올라오는 시트(React Native Modal). 열 때만 `GET /family-chat/ai/settings` 로 동의·권한·남은 횟수를 읽는다. 패널이 닫혀 있으면 AI 호출은 한 번도 없다.
 - **알려진 우회(팀 영역)**: `features/ai-assistant/components/AiOffCard.js`(`enableAi`)는 같은 PUT 을 확인 카드 없이 보낸다(그 카드의 "관리자에게 요청" 안내는 AI 켜기 권한이 구성원 누구나로 바뀐 뒤 맞지 않아 팀 정리가 필요하다). `tests/privacycopy.test.js` 가 PUT 호출 위치를 허용 목록으로 검사해 새 우회가 생기면 실패한다. 담당 팀과 확인 카드를 shared 로 올려 통합해야 한다.
 - **동의 문구의 근거와 한 곳 관리**: 문구는 `features/family-chat/privacyCopy.js` 상수에만 있다. 서버에서 이 동의(`ai_guard.is_enabled`/`run` 의 동의 단계)는 가족 채팅 AI(analysis·reply·topics, 가명화), AI 비서(`assistant_chat`: 질문·찾은 문서가 가려지지 않음), 일정(`schedule` 질문·일정 제목 정규식 마스킹), 가계·돌봄 도우미(`billing_agent`·`care_agent`: 질문만 `mask_text`, 조회 결과의 이름·금액·위치는 가려지지 않음)에 모두 쓰인다. 그래서 안내는 "대화 분석(답장·주제 추천 포함)만 가려서 보내고 나머지는 가려지지 않을 수 있다"고 쓴다. 대화 분석 줄은 "한 번에 보내고, 켜 두면 누를 때마다 별도 확인 없이 바로 전송되며 가려진 내용은 결과 화면에 개수로 알린다"까지 밝히고(요약 두 번째 줄에도 "별도 확인 없이 바로 AI로 전송"을 쓴다), AI 비서 줄은 "주민번호·카드·계좌·비밀번호가 든 입력은 서버가 막는다"를 덧붙인다. 서버가 다른 기능에도 가명화를 넓히면 `privacyCopy.js` 만 고친다. 시험 `tests/privacycopy.test.js`.
-- **켜져 있으면**: "오늘 남은 횟수: 나 N번 · 가족 N번"을 보인다(`parseAiSettings`). 호출이 끝날 때마다 설정을 다시 읽는다.
+- **켜져 있으면**: 오늘 사용량을 횟수 없이 **Claude 사용량 화면처럼 게이지 바 두 줄(나·가족)과 "N% 사용됨"** 으로 보인다(`parseAiSettings` 의 `userUsedRatio`·`groupUsedRatio`, `shared/aiUsage.js` 의 `usageGauges`, `shared/components/UsageGauge.js`). 80% 이상 썼으면 붉은색과 함께 "거의 다 썼어요" 글을 붙인다. 스크린리더에는 사용한 퍼센트를 읽어 준다. 패널에는 상시 안내문을 두지 않는다("대화 분석하기" 버튼과 사용량만). 개인정보 가림·바로 전달·결과 약 10분 저장 안내는 마이 > 가비 AI 이용 안내(`aiGuide.js`)와 동의 상세(`CONSENT_DETAILS` 의 대화 분석 줄)에 있다. 호출이 끝날 때마다 설정을 다시 읽는다.
 - **버튼은 "대화 분석하기" 하나**(분석한 뒤에는 "다시 분석하기"). 답장 추천·대화 주제 추천 버튼은 없다. **누르면 확인 카드 없이 바로** `POST /family-chat/ai/analysis` 를 한 번 부른다. 개인정보 설명·동의는 "AI 기능 켜기" 동의 카드(소유자·관리자가 켤 때 한 번)에서 받고, 켜진 패널에는 버튼 위에 항상 "“대화 분석하기”를 누르면 개인정보를 가린 최근 대화가 바로 AI로 전달돼요. 분석 결과는 잠시(약 10분) 저장돼 같은 요청에 다시 쓰여요." 안내(`privacyCopy.js` 의 `PANEL_NOTICE`)를 보인다.
 - **결과는 한 화면**: 요약 -> 중요 메시지 -> 일정 후보 -> 할 일·부탁 후보 -> 답장 추천 -> 대화 주제 추천 순서. 비어 있는 섹션은 "…가 없어요" 안내를 보인다. 결과 아래에 "대화 N개 기준 · 시각", "방금 분석 · AI 호출 N번 · 토큰 N" 또는 "저장된 결과(AI 호출 없음)", 그리고 가려진 개수(`meta.privacy`)를 보인다.
-  - 일정 후보는 날짜·시간이 모두 있어야 "일정으로 등록"이 켜진다. 누르면 기존 `POST /schedule/events` 로 등록한다(`scheduleEventBody`: 날짜·시간은 기기 시간대로 해석해 UTC 로 보내고, 장소는 메모에 "장소: …"로 넣는다). 등록 결과는 후보마다 따로 보인다.
+  - 일정 후보는 날짜·시간이 모두 있어야 "일정으로 등록"이 켜진다. 누르면 기존 `POST /schedule/events` 로 등록한다(`scheduleEventBody`: 날짜·시간은 기기 시간대로 해석해 UTC 로 보내고, 장소는 메모에 "장소: …"로 넣는다). 등록 결과는 후보마다 따로 보인다. **날짜나 시간이 빠진 후보는 그 자리에서 채울 수 있다**(`ScheduleCandidateRow`, 순수 함수 `scheduleCandidateUtils.js`): 날짜가 없으면 날짜 칩(오늘·내일·직접 입력 YYYY-MM-DD, 지난 날짜·없는 날짜는 안 됨), 시간이 없으면 시간 입력(HH:MM, 숫자를 치면 콜론이 붙고 00:00~23:59 만 인정)이 나타나고, 둘 다 정해지면 바로 등록 버튼이 켜진다. 후보에 이미 있는 값은 덮어쓰지 않고 없는 값은 지어내지 않는다. 가족방에서 가비가 올린 긴 답(목록)이 어색하게 꺾이지 않도록 가비 말풍선 폭은 92%까지 넓다.
   - 할 일 후보는 "할 일로 등록"으로 등록한다(아래 "할 일" 절).
   - **답장 추천·대화 주제 추천**은 분석 응답의 `replies`·`topics`(문자열 목록)를 쓴다. 한 줄을 누르면 채팅 입력창에 넣고 패널을 닫는다(입력창에 이미 글이 있으면 공백을 두고 이어 붙인다). 보내기는 구성원이 직접 누른다. 구 서버 응답에 이 필드가 없으면 빈 목록으로 본다(`messages.js` 의 `parseAnalysis`). 앱은 `/family-chat/ai/replies`·`/topics` 를 더 부르지 않는다(`suggestReplies`·`suggestTopics` 삭제).
 - 분석 요청은 범위를 따로 고르지 않는다(최근 대화 100개, `after_id=0` 기본값).
@@ -175,6 +193,7 @@
 - **결과 아래 한 줄**: 응답 `meta.privacy`(`{masked, blocked_messages}`, 선택 필드)가 있으면 "개인정보 N개를 가려서 보냈고 메시지 M개는 제외했어요"(한쪽만 0 이면 해당 부분만, 둘 다 0 이면 생략)를 분석 결과 아래에 보인다(`privacyCaption`). "저장된 결과(AI 호출 없음)" 안내와 함께 보인다.
 - **보낼 수 있는 대화가 부족하면** 분석이 400 `too_few_messages` 를 돌려주고 기존 오류 문구(`chatErrorMessage`)로 보인다.
 - **승인 정책**: AI 호출은 가족 AI 동의(`enabled`)가 켜진 패널에서 "대화 분석하기"/"다시 분석하기"를 누를 때만 일어난다(동의가 꺼져 있으면 버튼이 없다). 일정 후보 "일정으로 등록"·할 일 후보 "할 일로 등록"은 사용자가 누를 때만 동작하고, 답장·주제 추천(분석 결과 안)은 누르면 입력창에 **넣기만** 한다(`pickReply` 는 `setDraft` 만, 자동 전송 없음).
+- **등록한 후보 표시는 다시 분석해도 이어진다(release/1.1 수정)**: 일정으로 등록하거나 함께하기로 보낸 후보는 순번이 아니라 내용(`candidateKey`: 필드를 정렬한 값, 일정·할 일 구분)으로 기억해 두어서, "다시 분석하기"를 눌러 같은 후보가 다시 와도 "일정으로 등록했어요"/보냄 표시가 유지되고 버튼이 다시 켜지지 않는다. 기록은 앱을 켜 둔 동안만 메모리에 있고(`candidateKey.js`, 저장소·서버에 남기지 않는다) 앱을 다시 켜면 사라진다. 등록 실패·진행 중 상태는 기억하지 않는다. 시험 `tests/chatcandidatekey.test.js`.
 - 시험: `apps/mobile/tests/privacypreview.test.js`(`privacyCaption`·`maskedTotal`, 승인 정책 소스 확인: 확인 카드 없음, 버튼 한 번에 `analyzeChat`, 동의 게이트, 상시 안내문). 실기기·서버 연동은 직접 확인하지 못했다.
 
 **소통 탭에서 AI 를 뺀 것**: 소통 탭에는 AI 카드(`AiCard.js`)를 두지 않는다(작업 트리에서 파일 삭제). AI 진입점은 채팅방의 ✨ 하나다.
@@ -189,7 +208,7 @@
 
 - **소통 탭**(`FamilyChatScreen`): 서버 방 목록을 `buildRoomRows`(`listUtils.js`)로 행으로 바꿔 보인다. 가족 전체방이 맨 위, 1:1 방은 서버 순서(최근 메시지 순). 1:1 행은 상대 프로필 사진/이니셜(`UserAvatar`)과 상대 이름(별명 우선), 마지막 메시지 미리보기, 안 읽은 수 배지를 보인다. 상대가 구성원 목록에 없으면 이름을 "가족"으로 둔다. 접근성 라벨은 "<이름>님과 1:1 대화, …".
 - **새 대화**(상단 ✎ 버튼): 나를 뺀 가족 구성원 목록(`NewChatPicker`)을 펼치고, 한 명을 누르면 `POST /family-chat/rooms/direct` 로 1:1 방을 열거나(없으면 만들고) 그 방으로 간다. 열고 있는 동안 다른 줄은 눌리지 않고, 실패하면 목록 아래에 오류 문구를 보인다.
-- **채팅방**(`ChatRoomScreen`): 경로 인자 `roomId`(없으면 가족 전체방)와 `peer`(1:1 상대 id, 방 이름을 정하는 데만 사용)를 받는다. 1:1 방에는 구성원 수와 **AI 도우미(✨) 버튼·패널이 없다** — 1:1 대화는 AI 로 보내지 않는다. 메시지 조회/전송, 읽음 올리기, 읽음 상태 조회가 모두 `roomId` 를 같이 보낸다(`api.js`; `roomId` 가 없으면 이전과 같은 요청). 안 읽은 사람 수는 그 방의 읽음 상태(1:1 이면 두 사람)로 센다.
+- **채팅방**(`ChatRoomScreen`): 경로 인자 `roomId`(없으면 가족 전체방)와 `peer`(1:1 상대 id, 방 이름을 정하는 데만 사용)를 받는다. 1:1 방에도 **AI 도우미(✨) 버튼·패널**이 있고 `AiPanel` 이 `roomId` 를 분석 요청에 실어 보낸다(상대가 가족을 나갔으면 서버가 `peer_left` 로 거절하고 앱이 안내 문구를 보인다). 메시지 조회/전송, 읽음 올리기, 읽음 상태 조회가 모두 `roomId` 를 같이 보낸다(`api.js`; `roomId` 가 없으면 이전과 같은 요청). 안 읽은 사람 수는 그 방의 읽음 상태(1:1 이면 두 사람)로 센다.
 - 시험: `tests/rooms.test.js`(행 만들기·상대 이름/사진·나간 상대·후보 목록·접근성 라벨·API 경로와 본문).
 - 아직 없는 것: 1:1 방 나가기/삭제, 방 이름 바꾸기, 두 명 넘는 그룹 방.
 
@@ -201,7 +220,14 @@
 - **말풍선**(`MessageBubble`): 내 말풍선의 시각 위(왼쪽 아래)에 0 보다 클 때만 작은 꿀색 숫자를 보인다(접근성 라벨 "아직 N명이 읽지 않았어요"). 모두 읽었으면 아무것도 보이지 않는다.
 - **말풍선 폭 수정**: 웹(react-native-web)에서 상대(왼쪽) 말풍선이 내용 폭인 column 의 70% 로 계산돼 "강/남/구" 처럼 한 글자씩 줄바꿈되던 문제를, 상대 column 에 `maxWidth: "80%"`(row 기준) 를 주고 상대 말풍선의 70% 를 100% 로 바꿔 고쳤다(`tests/bubblelayout.test.js`).
 - **소통 탭 방 행**(`RoomRow`, `FamilyChatScreen`): 화면이 올 때마다 한 번 `GET /family-chat/unread` 를 `getRoomInfo`·`listMessages` 와 함께 부른다(폴링 없음, 실패해도 목록은 그대로). 오른쪽 아래에 복숭아색 원 배지(99 초과는 "99+", 0 이면 숨김)를 보이고 안 읽은 수가 있으면 마지막 메시지를 굵게 한다. 접근성 라벨에 수가 들어간다. 채팅방에서 돌아오면(포커스) 다시 불러 갱신된다.
+- **소통 탭 목록 모양(2026-11-09)**: 채팅방 줄 전체를 한 장의 둥근 흰 카드(`Card tone="white"`, `FamilyChatScreen` 의 `roomCard`) 안에 두고 줄 사이에만 구분선을 그린다(마지막 줄은 없음). 가족 전체방은 가족(people) 아이콘이 든 육각형 아바타(`shared/components/HexAvatar.js`, 꼭짓점 계산은 `shared/hexagon.js` 의 `hexPoints`, 이미 설치된 `react-native-svg` 사용), 1:1 방은 옅은 복숭아색 테두리를 두른 원형 프로필이다. 새 대화 버튼은 `+` 아이콘이다. 제목("우리 도란도란")·배경은 그대로다. 시험은 `tests/chatlistcard.test.js`.
 - 대화 글자는 이 호출들에 없다(메시지 번호와 사용자 id 만 오간다). 일반 전송과 읽음 처리는 AI 를 부르지 않는다.
+- **"여기까지 읽었습니다" 구분선(17번)**: 방에 들어올 때 내 마지막 읽음 메시지 바로 뒤, 첫 안 읽은 메시지 위에 가운데 정렬 한 줄(양쪽 가는 선 + 꿀색 글자)을 보이고, 입장하면 그 위치(화면 위쪽)로 스크롤한다(카카오톡 방식). 구분선이 없으면 이전처럼 맨 아래로 간다.
+  - **기준 고정**(`useReadBaseline.js`): 방 정보가 준비되면 즉시 `GET /family-chat/unread` 를 한 번 불러 `{lastRead, unread}` 를 고정한다(서버 변경 없음). 읽음 올리기(`useReadMarker`)는 입장 약 0.8초 뒤라 그보다 먼저 요청이 나가고, 이후 읽음이 올라가도 구분선은 그대로다. 방이 바뀌면 초기화, 실패하거나 1.2초 안에 못 받으면 구분선 없이 열린다.
+  - **위치 규칙**(`chatUtils.unreadDividerId`, `buildItems(messages, { dividerBeforeId })`): 기준보다 id 가 큰 첫 서버 메시지 앞(임시·실패·가비 개인 답 제외, 삭제된 메시지는 센다). 그 뒤에 남이 보낸 메시지가 없거나 안 읽은 수가 0 이거나 기준이 없으면 없다. 안 읽은 메시지가 처음 불러온 50개를 넘어 기준이 목록 밖이면 목록 맨 위(가장 오래된 메시지 앞)에 놓인다. 날짜가 바뀌는 곳에서는 날짜 줄 다음에 온다. 과거 창(`focusing`)이나 검색·고정 공지로 열 때는 만들지 않는다. 열린 방에서 새 메시지가 와도 같은 자리에 머문다. 안 읽은 메시지가 50개를 넘어 구분선이 맨 위일 때는 위로 불러오기(`loadOlder`)가 그대로 동작하며, 새로 불러온 메시지의 id 가 기준보다 크면 구분선이 새 맨 위로 옮겨 간다. 구분선 바로 아래 메시지는 이름을 다시 보인다(카카오톡 방식). 입장 직후(자리 잡기 전) 내가 보내면 구분선으로 가지 않고 맨 아래에 둔다.
+  - **입장 스크롤**: 기준과 첫 메시지가 모두 준비될 때까지 목록은 숨겨 둔 채(기존 `listReady`, 최대 1.5초) 맨 아래 따라가기를 잠시 멈추고, 구분선 줄로 `scrollToIndex`(`viewPosition` 0.05)한다. 이동 동안 `nearBottom=false`·`settling=true` 로 두어 `scrollToEnd` 나 위로 불러오기가 위치를 덮어쓰지 않게 하고, 실패하면 `onScrollToIndexFailed` 재시도(같은 위치 값)를 쓰고, 재시도가 모두 끝난 뒤에 목록을 보이고 구분선 모드를 푼다. 사용자가 맨 아래 근처로 내려오면 기존 `onScroll` 이 `nearBottom=true` 로 되돌린다. 이동한 뒤 새 메시지가 오면 "새 메시지, 맨 아래로" 버튼이 뜬다.
+  - **읽음 올리기와의 관계**: 읽음 올리기는 이번 작업 범위 밖이라 기존대로 입장 0.8초 뒤 최신 id 로 올린다. 그래서 구분선 위치에서 시작하면 아직 화면에 보이지 않은 아래 메시지도 읽음 처리된다(구분선은 방 화면을 닫을 때 사라진다. 서랍에서 다른 화면을 열었다 돌아오면 구분선은 그대로 두고 화면만 맨 아래로 간다).
+  - 시험: `tests/readdivider.test.js`(위치 규칙·buildItems 끼우기·날짜 경계). 실제 기기·웹에서의 스크롤 위치와 재시도는 아직 직접 확인하지 못했다.
 - 시험: `apps/mobile/tests/readreceipts.test.js`(`unreadCount` 경계, `shouldMarkRead`, 배지 문구 "99+", 접근성 라벨, API 경로·본문·Bearer). 실제 기기·웹 화면에서의 동작(포커스 전환, 배지 갱신 등)은 아직 직접 확인하지 못했다.
 
 ### 공동 할 일·가족 연락처 (앱, Chat 4)
@@ -227,7 +253,8 @@
 - **진행·오류**: 고르는 동안·보내는 동안 + 버튼이 비활성(진행 표시)이고, 중복 누름은 ref 로 막는다(`ChatRoomScreen` 의 `picking`, `useChatMessages` 의 `photoLock`). 실패하면 입력줄 위에 오류 문구를 보이고(닫기 가능), 다시 + 를 눌러 고르면 재시도다. 문구는 `chatUtils.photoSendErrorMessage`(413 `photo_too_large`, 400 `invalid_image`, 429 `too_many_uploads`, 503 `photo_busy`, 404 방 없음). 사진·대화 내용은 문구·로그에 넣지 않는다.
 - **목록 반영**: 성공하면 서버가 돌려준 메시지를 `useChatMessages.sendImage` 가 `mergeMessages` 로 병합하고 아래로 스크롤한다(임시 "전송 중" 메시지는 없다. 폴링이 먼저 가져와도 id 로 중복 제거).
 - **보기**: `MessageBubble` 이 `attachment` 가 있으면 말풍선 안에 썸네일(`thumb_url`)을 보인다. 크기는 `attachment.width/height` 로 `photo.fitSize` 가 미리 계산한다(최대 220x280, 확대 없음, 크기를 모르면 정사각형이라 레이아웃이 점프하지 않는다). 누르면 `PhotoViewer`(Modal, 원본 `attachment.url`, contain, "사진 닫기" 버튼)로 전체 화면으로 본다. 시각·읽음 숫자는 기존 규칙 그대로다.
-- **가비 기록에 저장(B안, 서버 변경 없음)**: 가족 전체방의 사진을 전체 화면으로 볼 때 아래에 "가비 기록에 저장" 버튼이 있다(`PhotoViewer` 의 `onSaveToRecord`, 1:1 방의 사진에는 없다 — 기록은 가족 그룹 단위로만 나뉘어 있어 한번 저장되면 가족 누구나 볼 수 있기 때문에 `canSaveToRecord({direct, attachment})` 가 막는다). 누르면 `saveToRecord.js` 가 사진 원본을 받아 **기존 파일 올리기 `POST /ai-assistant/files`** 로 올린다(`api.uploadToAssistantRecord`, AI 비서의 api 파일을 가져오지 않고 공통 래퍼로 직접 호출). 서버는 받자마자 `received` 로 응답하고 원본 보관 -> 글자 읽기(OCR) -> 개인정보 가리기 -> 분류 -> 기록 저장을 뒤에서 한다. 그 뒤 `@가비` 가 기록 검색으로 찾을 수 있다(처리에 몇 초~1분, 글자가 없는 사진은 설명 입력이 필요할 수 있다). **웹**은 `downloadPhoto` 로 받은 blob 을 multipart `file` 로 올리고(AI 비서 `uploadFile` 의 웹 422 문제는 이 경로에 없다), **네이티브**는 `loadNativeDeps` 로 캐시 파일에 받아 `{uri, name, type: "image/jpeg"}` 로 올린 뒤 임시 파일을 성공·실패 모두 지운다. 서버가 준 사진 경로만 받고(낯선 경로는 받기 전에 거절), 저장 중이거나 이미 저장한 사진은 다시 올리지 않는다(같은 사진이 기록에 두 번 쌓이지 않게, 앱 안의 상태이고 서버가 중복을 막는 것은 아니다). 결과 문구는 "가비 기록에 저장했어요. 읽는 데 잠시 걸릴 수 있어요" / "가비 기록에 저장하지 못했어요" / "이 환경에서는 저장할 수 없어요". 시험 `tests/chatphotorecord.test.js`. 앱 화면과 실제 기록 저장은 아직 직접 확인하지 못했다.
+- **가비 기록에 저장 버튼은 "문서로 저장"과 합쳐 없앴다(2026-11-09)**: 예전에는 사진 보기에 "가비 기록에 저장"(앱이 사진을 받아 `POST /ai-assistant/files` 로 다시 올림)과 "문서로 저장"(서버가 이미 가진 사진을 바로 등록, `POST /family-chat/photos/{id}/library`)이 둘 다 있었고, 둘 다 같은 가족 기록(문서함)에 넣는 버튼이었다. 서버 경로가 하나이고 EXIF·위치를 지운 사본을 쓰는 "문서로 저장" 하나만 남겼다. 앱에서 `saveToRecord.js`·`api.uploadToAssistantRecord`·`onSaveToRecord`·`recordOf` 와 그 시험(`chatphotorecord.test.js`)을 지웠다. 서버의 `POST /ai-assistant/files`(문서함 화면의 직접 올리기)는 그대로다. 남은 버튼은 "사진첩에 저장"과 "문서로 저장"이고, 시험은 `tests/savebuttons.test.js`.
+  - **사용자에게 달라지는 점**: ① 민감 문서(처방전·신분증·진단서 등): 합칠 때는 "문서로 저장"이 민감 문서를 걸러 차이가 있었지만, 같은 날 정책이 바뀌어(가족방 문서는 민감 문서도 등록, 기록에 민감 표시) **두 버튼의 차이가 없어졌다**. ② 글자가 거의 없는 사진: 옛 경로는 설명 입력이 필요할 수 있었고, 새 경로는 "사진 기록"으로 남고 읽지 못하면 넣지 않는다. ③ 사용자당 분당 10번 제한(429 `too_many_saves`, 서버 문구가 그대로 보인다). ④ 이미 문서함에 있는 사진은 버튼이 사라진다(`in_library`). ⑤ 1:1 방 사진은 서버도 409 로 막는다(옛 경로는 앱만 막았다). (1:1 방 제외 규칙은 "문서로 저장"의 `canSaveToLibrary` 가 그대로 지킨다.)
 - **인증 이미지**: 공용 `shared/components/AuthImage.js` 가 `useProfilePhoto`(네이티브 expo-image 헤더, 웹 blob 캐시)로 받는다. `shared/photoCache.js` 의 `photoPath` 는 프로필 사진 경로에 더해 서버가 준 `/family-chat/photos/<id>` 와 `?size=thumb|full` 형태만 허용한다(그 밖의 주소에는 로그인 헤더가 나가지 않는다). 채팅 사진은 바뀌지 않으므로 캐시에서 원본·썸네일을 서로 밀어내지 않는다. 토큰은 주소·캐시 키에 들어가지 않는다. `UserAvatar` 동작은 그대로다.
 - **미리보기**: 마지막 메시지가 사진(글자 없음)이면 소통 탭 방 목록과 접근성 라벨에 "사진"(내 것은 "나: 사진")으로 보인다(`chatUtils.previewText`, `buildRoomRows` 가 이를 사용).
 - 시험: `apps/mobile/tests/chatphotos.test.js`(미리보기, 경로 허용/거부, 캐시 키, `sendPhoto` 요청 모양, 오류 문구, 표시 크기, 파일 형식·한도). 실기기·웹의 파일 선택, canvas 줄이기, 네이티브 헤더 로딩, 전체 화면 보기는 아직 직접 확인하지 못했다.
@@ -267,10 +294,12 @@
 
 ### 대화 검색 (돋보기, 앱)
 
+> 소통 탭 목록 상단: 돋보기 버튼을 없애고 검색창만 항상 보인다. 오른쪽 위 "새 대화" 버튼은 제목 줄 높이에 따라 내려가지 않도록 절대 위치로 고정해(오른쪽 끝 6, 세로 가운데 28) 다른 탭과 같은 자리에 둔다. 채팅방 안 검색의 돋보기는 그대로다.
+
 서버 계약은 **별도 PR** 의 `GET /family-chat/search`(`q`·`room_id`·`limit`·`before_id`, 응답 `{items, next_before_id}`)와 `GET /family-chat/messages?around_id=`(그 메시지를 가운데로 앞뒤 창)다. 이 브랜치에는 서버가 없어 가짜 fetch 로만 시험했다. **키워드(글자 일치) 전용**이며 임베딩·AI 를 쓰지 않는다. 검색어·결과 글자는 요청 주소 외에는 로그·저장소·오류 문구 어디에도 남기지 않는다.
 
 - **채팅방 안 검색**(`ChatRoomScreen`, 카톡 방식): 상단 바의 돋보기(접근성 라벨 "대화 검색")를 누르면 상단이 검색 바(`ChatSearchBar`)로 바뀌고, **결과 목록 화면은 없다**(대화 화면이 그대로 보인다). 검색어가 있으면 검색 바 아래 줄에 안내 문구와 현재 위치 `n/m`(서버가 20개씩 주므로 더 있으면 `1/20+`), 더 오래된 일치(▲)·더 최근 일치(▼) 버튼이 보이고 키보드의 검색 키는 ▲ 와 같다. 검색이 끝나면 가장 최근 일치로 바로 이동하고(`useChatSearch` 의 `current`, 이동은 고정 바와 같은 `pickPin`: 이미 목록에 있으면 스크롤, 아니면 그 위치 창), ▲▼ 는 `stepSearchIndex` 로 한 칸씩 옮기며 ▲ 가 끝에 닿았는데 서버에 더 있으면 다음 쪽을 받아 이어 간다. 말풍선(`MessageBubble`) 안 검색어는 옅은 꿀색 바탕+굵게, 지금 가리키는 일치 메시지는 줄 배경과 검색어가 더 진하게(`Highlighted` 의 `highlightNodes`) 보인다. 결과 없음("일치하는 대화가 없어요")·오류(429 "너무 자주 검색", 422 검색어 길이, 다시 시도)·검색 중·방 정보 대기는 같은 줄의 안내 문구로 나온다. 검색 바를 닫으면 보던 위치에 그대로 있고 강조만 사라진다. 입력은 300ms 쉬었다가 한 번 부르고(`useChatSearch`), 공백만이면 부르지 않으며, 같은 검색어는 다시 부르지 않고, 더 새 요청이 시작되면 오래된 응답은 버린다. 앱 화면은 아직 실기기에서 직접 확인하지 못했다.
-- **소통 탭 검색**(`FamilyChatScreen`, `ChatListHeader`): 기존 입력에 글자를 넣으면 방 이름 일치 행 아래에 "대화 내용" 섹션(`ContentSearchSection`)이 나온다. 모든 방(가족 전체방 + 내 1:1)에서 찾고, 각 결과에 방 이름(가족 전체방은 가족 이름, 1:1 은 상대 표시 이름, 모르면 "대화")을 붙인다. 결과를 누르면 `/chat-room` 으로 가며(가족 전체방은 `focus` 만, 1:1 은 `roomId`·`peer`·`focus`) 그 메시지 위치로 열린다. `src/app/chat-room.js` 의 화면 key 가 `방:focus` 라 같은 방이라도 focus 가 다르면 새로 열린다.
+- **소통 탭 검색**(`FamilyChatScreen`, `ChatListHeader`): 제목 아래에 **항상 보이는 검색창**(돋보기 버튼과 열고 닫는 토글은 없앴다, 2026-11)에 글자를 넣으면 방 이름 일치 행 아래에 "대화 내용" 섹션(`ContentSearchSection`)이 나온다. 모든 방(가족 전체방 + 내 1:1)에서 찾고, 각 결과에 방 이름(가족 전체방은 가족 이름, 1:1 은 상대 표시 이름, 모르면 "대화")을 붙인다. 결과를 누르면 `/chat-room` 으로 가며(가족 전체방은 `focus` 만, 1:1 은 `roomId`·`peer`·`focus`) 그 메시지 위치로 열린다. `src/app/chat-room.js` 의 화면 key 가 `방:focus` 라 같은 방이라도 focus 가 다르면 새로 열린다.
 - **과거 보기(포커스 모드)**(`useChatMessages`): 결과를 누르면 `focusOn(id)` 이 `listMessages({aroundId})` 로 앞뒤 50개 창을 받아 서버 메시지를 **통째로 교체**(임시 전송 중/실패 메시지는 유지, 떨어진 구간이 이어 붙지 않게)하고, 화면이 해당 메시지로 스크롤하며 2초간 배경색(`honeySoft`)으로 강조한다. 이 동안 새 메시지 확인(폴링)은 멈추고 확인 기준(cursor)은 라이브 끝에 그대로 둔다(읽음 상태 조회는 계속). 위로 스크롤하면 `loadOlder`, 아래 끝에 닿으면 `loadNewer`(after_id)로 이어 받고, 요청한 개수보다 적게 오면 라이브 끝에 닿은 것이라 자동으로 라이브로 돌아간다. 화면 아래의 "최신 대화로 이동" 버튼은 최근 50개를 다시 받아 라이브(폴링 재개)로 돌아간다. 과거 보기에서 글·사진을 보내면 먼저 라이브로 돌아간 뒤 보낸다. 포커스 요청이 실패(400 `invalid_message`/404)하면 최근 대화로 열고 안내 문구를 띄운다. 모드가 바뀔 때 올라가는 세대 번호(`modeGen`)로, 바뀌기 전에 시작한 요청의 응답은 버린다.
 - **읽음 처리**: 과거 창을 보는 동안은 `useReadMarker` 에 빈 목록을 넘겨 읽음 위치를 올리지 않는다(보고 있지 않은 최신 메시지를 읽음 처리하지 않기 위해). 라이브로 돌아오면 평소처럼 최신 id 로 올린다.
 - 순수 함수는 `searchUtils.js`(낱말 분리·정규화, 강조 구간, 시각 라벨, 결과 병합, 방 라벨, 이동 경로, 창 교체, 라이브 끝 판단), 오류 문구는 `chatUtils.searchErrorMessage`·`focusErrorMessage`, API 는 `api.js` 의 `searchMessages`·`listMessages({aroundId})` 다.
@@ -390,7 +419,7 @@
 | `ai_result_cache` | 검증된 결과 JSON(분석 결과만), 가족 그룹·기능·캐시 키 단위 유일, 만료 시각까지만 사용 | 결과 요약 JSON 은 TTL 동안 저장(대화 원문은 아님) |
 | `ai_inflight` | 가족 그룹별 진행 중 AI 호출 칸(`group_id`, `slot` 복합 키). 동시 실행 제한 | 없음 |
 
-- 모든 상태를 PostgreSQL 에 둬서 여러 워커에서도 한도·캐시·동시 실행이 일관된다. **Redis 는 쓰지 않는다**(이유는 ADR 0009).
+- 모든 상태를 PostgreSQL 에 둬서 여러 워커에서도 한도·캐시·동시 실행이 일관된다. **Redis 는 쓰지 않는다**(이유는 ADR 0011).
 - SQLite(로컬)에서도 같은 테이블이 생기지만 여러 프로세스 간 일관성은 PostgreSQL 에서만 의미가 있다.
 - 스키마 변경은 Alembic 으로만 한다. `ai_usage` 모델을 공유하므로 `schema.py` 의 `SHARED_MODEL_FEATURES` 에 `family_chat`, `ai_assistant` 가 등록되어 있다.
 
@@ -522,6 +551,14 @@
 - 이 가족의 AI 설정이 꺼져 있는 경우(예전에 꺼 둔 가족)에는 "대화 분석하기"를 눌러도 바로 켜지 않고, 켜는 것이 **가족 전체에 적용된다**는 확인 카드(`ENABLE_ON_ANALYZE_*`: "가족의 AI 기능이 꺼져 있어요" + 설명 + "켜고 분석하기"/"취소")를 먼저 보인다. **"켜고 분석하기"를 눌렀을 때만** `PUT /family-chat/ai/settings`(enabled true)로 켠 뒤 분석하고, 취소하면 아무것도 켜지지 않는다(안 켜면 서버가 `ai_not_enabled` 로 막는다). 이미 켜져 있으면 확인 없이 곧바로 분석한다. 끄는 UI는 없다(서버 API 는 구성원 누구나 가능, #160 — 앱에 끄는 화면이 없는 점은 후속 과제).
 - `tests/privacycopy.test.js`·`privacypreview.test.js` 의 동의 흐름 시험(켜기 확인·관리자만 끄기 등)은 이 정책 변경으로 새 시험(버튼 없음, 꺼져 있을 때만 분석 직전에 켬, PUT 호출 위치 허용 목록 유지)으로 바꿨다. 동의 문구(`privacyCopy.js`)는 가입 동의 화면 등에서 쓸 수 있어 남겼다.
 
+## 1:1 채팅방 나가기 (2026-11-09, 1차)
+- 요구사항: `docs/requirements/family-chat.md` "1:1 채팅방 나가기".
+- **서버**: `POST /family-chat/rooms/{room_id}/leave`(204). `service.leave_room` 이 방 줄을 잠근 뒤(`repo.lock_room`, 두 사람이 동시에 나가도 마지막 사람이 지운다) 내 참여와 내 방별 기록(공지 숨김·읽음 표시·알림 끄기)을 지운다(`repo.remove_room_member`). 남은 사람이 있으면 방의 `direct_key` 를 `left:<나간 사람 id>:<방 id>` 로 바꿔(DB 구조 변경 없음) 같은 두 사람의 새 방을 만들 수 있게 하고, 아무도 안 남으면 `shared/group_purge.purge_room` 이 모델 메타데이터로 방의 모든 줄(메시지·첨부·반응·고정·읽음 등)과 방 줄을 한 트랜잭션으로 지우고 커밋 뒤 채팅 사진·문서 파일을 지운다. 가족 전체방은 400 `cannot_leave_family_room`, 내 방이 아니거나 이미 나갔으면 404.
+- `RoomOut.peer_left`(bool): 상대가 나가 읽기 전용인 방. 이때 `peer_user_id` 는 나간 사람이다. 이런 방에 글·사진·파일을 보내면 409 `peer_left_room`(`service.ensure_can_send`), @가비 는 기존 규칙(`peer_left`)으로 막힌다. 읽기·반응은 허용.
+- 시험: `family_chat/tests/test_leave_direct_room.py`(나가기·상대 읽기 전용·전송 막기·새 방·가족방 거절·404·읽음/알림 정리·둘 다 나가면 삭제와 파일 삭제·외래 키 검사를 켠 삭제), 앱 `tests/leaveroom.test.js`.
+- **앱**: 방 줄을 밀면 `SwipeableRoomRow` 가 1:1 방에만 "알림 끄기 | 나가기"(나가기는 오류 색)를 보이고, 누르면 `FamilyChatScreen` 의 확인창(`ConfirmDialog`)을 거쳐 `leaveRoom` 을 부른 뒤 성공하면 목록에서 지운다(실패하면 안내만). 상대가 나간 방은 목록 줄이 "상대방이 나갔어요"로 보이고(`buildRoomRows` 의 `peerLeft`), 열면 입력창 대신 "상대방이 나가서 메시지를 보낼 수 없어요" 안내가 보인다(`ChatRoomScreen`, 라우트 파라미터 `peerLeft`).
+- 남은 일(2차): 같은 방을 다시 이어 쓰되 나간 사람은 이후 메시지만 보기.
+
 ## 채팅방 알림 끄기 (서버, release/1.1)
 - `PUT /family-chat/rooms/{room_id}/mute {muted}` → 200 `{room_id, muted}`(멱등). 방 접근 규칙은 `resolve_room` 과 같다: 다른 가족의 방·내가 참여자가 아닌 1:1 방·없는 방은 404. `GET /family-chat/rooms` 의 각 방과 1:1 방 열기(`POST /rooms/direct`) 응답에 `muted: bool`(기본 false)이 붙는다.
 - DB: 새 테이블 `chat_room_mutes`(기본키 `(room_id, user_id)`, 리비전 `c606f5b0deb6`, expand). 행이 있으면 끈 것, 켜면 행을 지운다. 방 목록은 내 방들의 muted 를 쿼리 한 번(`repo.muted_room_ids`)으로 모아 방 수와 상관없이 쿼리 수가 일정하다.
@@ -545,8 +582,44 @@
 
 ### 입력줄 개편·문서 첨부·저장 (앱, release/1.1)
 
-- 입력줄: 왼쪽 + 는 아래에서 올라오는 시트(사진·파일·일정·정산·안부)를 연다. 사진을 누르면 시트를 닫고 바로 갤러리가, 파일을 누르면 문서 선택 화면이 열려 보낸다(보내는 동안 + 버튼이 진행 표시). 일정·정산·안부는 아직 준비 중이라 누르면 시트를 닫고 입력줄 위에 "준비 중이에요"를 보인다. 입력칸 안 오른쪽에는 보내기 버튼만 있고 글자가 있을 때만 켜진다(`Composer`, `PlusSheet`, 순수 로직 `fileUtils.js`).
+- 입력줄: 왼쪽 + 는 아래에서 올라오는 시트(사진·파일·일정·정산·안부)를 연다. 사진을 누르면 시트를 닫고 바로 갤러리가, 파일을 누르면 문서 선택 화면이 열려 보낸다(보내는 동안 + 버튼이 진행 표시). 일정·정산은 공유 시트를 열어 카드를 보낸다(아래 "공유 카드 (앱)" 절). 안부만 아직 준비 중이라 누르면 시트를 닫고 입력줄 위에 "준비 중이에요"를 보인다. 입력칸 안 오른쪽에는 보내기 버튼만 있고 글자가 있을 때만 켜진다(`Composer`, `PlusSheet`, 순수 로직 `fileUtils.js`).
 - 문서 보내기: `pickChatDocument.js`(expo-document-picker)에서 pdf·doc(x)·xls(x)·ppt(x)·hwp(x)·txt·csv, 20MB 이하만 앱에서 먼저 검사하고(서버도 다시 검사) `POST /family-chat/files` 로 보낸다(`api.sendFile`, `useChatMessages.sendDocument`). 서버 계약은 서버 작업 완료 전이라 `kind`/`filename`/`size_bytes`/`content_type` 를 가정했다.
 - 말풍선: `attachment.kind === "file"` 이면 파일 카드(`FileCard`: 파일명 2줄, 크기). 카드 본문은 열기/공유(`openFile.js`: 캐시에 받아 expo-sharing 공유 시트, 웹은 내려받기). 방 목록·답장 미리보기는 "파일".
 - 저장 방법: 사진은 사진 보기의 "사진첩에 저장"(기존 `savePhoto.js`, expo-media-library, 쓰기 전용 권한). 문서는 카드 오른쪽 다운로드 아이콘("내 파일/드라이브에 저장"): 안드로이드는 폴더 선택(SAF, 드라이브 포함)에 쓰고 안 되면 공유 시트, 아이폰은 공유 시트의 "파일에 저장", 웹은 내려받기.
 - 실기기(Expo Go)에서 파일 열기·저장(안드로이드 폴더/드라이브, 아이폰 파일 저장, 사진첩 저장)과 새 입력줄 모양은 아직 확인하지 못했다.
+
+### @가비 기능 예시 목록 (15번, 앱, release/1.1)
+
+- 입력창 글(앞뒤 공백 제외)이 `@`, 한글 조합 중간(`@ㄱ`·`@갑`·`@가ㅂ`), `@가비`, 또는 `@가비 `(질문이 빈 상태)일 때만 입력줄 위에 예시 목록을 보인다. 질문을 쓰기 시작하면(`@가비 이번…`) 사라진다. `@가비야` 처럼 이어 붙은 글은 부름이 아니라 보이지 않는다. 판단은 순수 함수 `mentionHintsVisible(text, direct)`(`mention.js`, `parseMention` 과 같은 규칙).
+- 1:1 방에서도 `@` 예시 목록을 가족 전체방과 같게 보인다. `@가비` 는 1:1 방에서도 부를 수 있고(`useMention(roomId)` → `askAssistantInRoom(q, history, roomId)`), 서버가 답을 그 1:1 방에 가비 이름으로 저장해 두 사람에게만 보인다(상대가 가족을 나갔으면 403 `peer_left`, 참가자가 아니면 404). 1:1 에서는 일정 에이전트를 아직 쓰지 않는다(상대 한 명 기준 조회·공유는 후속 PR). **이전 대화 복원**: 방에 들어올 때(처음 불러온 메시지) 내 `@가비 질문` 바로 다음 메시지가 가비의 답이면 한 쌍으로 되살려 이어 간다(`restoreThread`, `useMention.seed`; 사이에 다른 사람 글이 끼면 건너뛰고, 서버로는 여전히 15분 이내 최근 6개만 보낸다).
+- 항목을 누르면 예시 문장 전체가 입력창에 채워진다(보내지 않음, 포커스 유지, 고쳐서 보낼 수 있음). 채워지면 목록은 저절로 사라진다. 목록은 입력줄 위 일반 흐름에 있고 최대 4줄 높이에서 스크롤한다.
+- 예시(`MENTION_EXAMPLES`)와 서버 근거: 지출 "이번 달 지출 알려줘", 일정 "내일 일정 알려줘", 일정 등록 "토요일 저녁 가족 식사 일정 넣어줘"(`ai_assistant/agents.py` 탭 에이전트), 채팅 검색·요약(`family_chat/agent.py`), 문서 "올려 둔 영수증 찾아줘"(`ai_assistant/knowledge/rag_chat.py`). 날씨·일반 질문은 서버가 처리하지 않아 넣지 않았다.
+- 예시를 바꿀 때는 서버 프롬프트·탭 에이전트가 그 질문을 실제로 처리하는지 대조한다. `EMPTY_QUESTION_HINT` 의 예는 첫 예시에서 만든다.
+- 실기기 확인 전: 키보드가 올라온 상태의 목록 높이, 항목을 눌렀을 때 포커스 유지(웹·안드로이드·iOS).
+- 가족 전체방에서 실제 동작: 일정 등록은 바로 반영되지 않고 다른 구성원에게 공유하는 확인 카드가 질문한 사람에게만 보이며, 공유 확인 뒤에 반영된다(`schedule/agent/ask.py`). 공유해서 등록을 확인하면 가비가 결과("'제목' 일정을 11/07 18:00에 등록하고 가족 N명에게 공유했어요")를 방에 알린다. 그래서 예시는 개인 일정이 아닌 공동 일정 문구로 했다. @가비 의 AI 답은 가비 이름으로 방에 저장되어 가족 모두에게 보이고 기록으로 남는다(일정 조회는 공동 일정만 읽고 날짜·시간·제목만 보인다). 확인 카드가 딸린 질문("등록할까요?")과 AI 가 답하지 못한 안내는 방에 올리지 않고 질문한 사람 화면에만 보이며 화면을 닫으면 사라진다. 지출 요약·용돈 장부·문서 답은 방 전체에 올라가므로 사용자가 알고 써야 한다.
+- 예시 문구를 바꿀 때는 서버 프롬프트와 탭 에이전트 도구와 대조해야 한다.
+- 예시를 채운 직후에만 `TextInput` 의 `selection` 을 끝으로 지정해 안드로이드에서 커서가 끝에 가게 하고, 다음 글자 입력·선택 변경 때 해제한다.
+- **가족 연락처 카드 박스 제거**: 소통 탭의 "가족 연락처 · 전체 보기 →" 제목 줄은 그대로 두고, 그 아래 구성원 사진·"가족 N명 등록됨" 카드 박스만 뺐다. `/family-contacts` 화면은 그대로다.
+
+## 가족 전체방 문서 → 가족 공유 문서함 자동 등록 (GaBee 2.0 1단계, 2026-11)
+- 요구사항·결정: `docs/requirements/family-library.md`. 가족 **전체방**에 올린 **문서 첨부**(`POST /family-chat/files`)가 저장되면 `shared/chat_library.document_posted` → `ai_assistant/library.py` 가 백그라운드에서 읽어(`files.process_file` 재사용: 원본 보관·가리기·분류) 가족 공유 문서함(`knowledge_items`)에 등록한다. `family_chat` 이 `ai_assistant` 를 직접 import 하지 않도록 `ai_assistant` 가 시작할 때(`router` 가 `library.register()`) 처리 함수를 통로에 등록한다.
+- 연결 키: `knowledge_items.source_attachment_id`(채팅 첨부 id, 유일). 같은 첨부는 한 번만 등록되고(재시도·중복 요청 포함), 같은 파일을 다른 메시지로 다시 올리면 기록은 메시지마다 한 건이고 보관 원본은 한 번만이다.
+- **(2026-11-09 변경) 민감 문서(처방전·신분증·통장 사본 등)도 가족 전체방에서 올리면 문서함에 등록한다**: `files._process_once` 의 민감 문서 제외를 없앴다(기록에 민감 표시, `is_sensitive(strict)` 와 `CHAT_EXTRA_SENSITIVE_WORDS` 삭제). 가린 글이 @가비 근거로 쓰이고(`CHAT_INCLUDE_SENSITIVE` 기본 켜짐) 보관한 원본은 가족이 볼 수 있다. 앱 안내·결과 문구는 "가족 모두가 볼 수 있어요"로 바꿨다. 시험은 `test_chat_library*.py`.
+- **등록하지 않는 것**: 1:1 방의 파일, 일반 사진(문서를 찍은 사진은 판별해서 등록하고, 애매한 사진은 "문서로 저장"으로 직접 넣는다 — `docs/requirements/family-library.md`), ingest 가 지원하지 않는 형식(hwp·hwpx·예전 doc/xls/ppt, 읽기 전에 거르고 보관하지 않음), 읽지 못한 문서(실패 기록을 남기지 않음, 채팅 파일로는 남는다).
+- 채팅에 이미 올라온 파일이라 "가족 문서함에 새 문서가 올라왔어요" 알림은 보내지 않는다(`files._process_once` 가 `source_attachment_id` 가 있으면 건너뜀).
+- **삭제 동기화**: `DELETE /family-chat/messages/{id}` 가 첨부를 지우면 `chat_library.attachment_removed` 로 연결된 기록·검색 조각·원본(다른 기록이 쓰지 않을 때)도 `files.delete_record` 로 함께 지운다.
+- 등록은 어떤 경우에도 채팅 전송·삭제를 깨지 않는다(실패는 로그에 종류만 남김).
+- **문서 사진 자동 등록·"문서로 저장"(PR 1b, 서버 2026-11-09)**: 가족 전체방 사진을 보내면 `photo_service.send_photo` 가 `chat_library.photo_posted` 로 알리고, `ai_assistant/library.py` 가 뒤에서 판별(`ingest/photo_judge.py`: 로컬 OCR 의 글자 수·줄 수 → 필요하면 `doc_ai.classify_photo` 로 Claude haiku 판별, `PHOTO_JUDGE_LLM`)해 문서면 같은 읽기 경로로 등록한다. 하루 상한 없음(2026-11-09 사용자 결정)·가족당 대기 20장 상한. 애매한 사진은 `POST /family-chat/photos/{attachment_id}/library`("문서로 저장", 판별·`queued`/`already`, 1:1 방 409, 사용자당 분당 10번 429, 민감 문서도 직접 저장하면 등록(2026-11-09 변경))로 직접 넣는다. 문서함에는 EXIF·위치를 지운 1600px 사본이 보관된다(업로드 원본 아님). `PHOTO_JUDGE_LLM` 은 가족이 AI 에 동의했을 때만 쓴다. 결정·평가는 `docs/adr/0015-family-room-photo-to-library.md`. 앱: 사진 보기·앨범 뷰어(`PhotoViewer`·`AlbumViewer`)의 가족 전체방 사진에만 "문서로 저장" 버튼(`saveToLibrary.js`, 저장 중·저장함·`queued`/`already` 문구는 사진 id 별로 보관), 문서 안내(`libraryNotice.js`)는 사진을 처음 보낼 때도 같은 키로 한 번만 보이고 문구에 사진을 포함, 시험은 `tests/chatphotolibrary.test.js`·`tests/librarynotice.test.js`.
+- **이미 문서함에 있는 사진은 "문서로 저장" 숨김(2026-11-09)**: 메시지 목록의 사진 첨부에 `in_library`(bool)가 붙는다. `family_chat/service._outs` 가 목록의 사진 id 를 모아 `chat_library.registered_ids`(ai_assistant 가 등록한 확인 함수, 지식 기록을 한 번의 쿼리로 조회)로 한 번에 확인한다(사진마다 조회하지 않음). 앱은 `in_library` 인 사진에서는 사진 보기·앨범 뷰어의 버튼을 그리지 않는다. 방금 보낸 사진·방금 저장한 사진은 목록을 다시 불러와야 반영된다(전송 응답은 항상 false). 시험은 `test_chat_library_photos.py`·`tests/chatphotolibrary.test.js`.
+- 앱: 가족 전체방에서 문서를 처음 올리기 전에 "가족 문서함에 자동으로 모여요" 안내를 한 번 보인다(`libraryNotice.js`, `AsyncStorage` 키 `gabee.library.notice.v3`, 1:1 방은 보이지 않음).
+- DB: `knowledge_items.source_attachment_id` 추가(Alembic, `docs/contracts/db.md`).
+- 시험: `ai_assistant/tests/test_chat_library.py`(14개), 앱 `tests/librarynotice.test.js`.
+
+## 앨범 뷰어 사진이 비어 보이던 문제 (2026-11-09)
+- 묶음 사진을 크게 열어 옆으로 넘기면 2번째부터 사진 칸이 바탕색만 보이던 문제(BlueStacks)와, 웹에서 처음부터 사진이 안 보이던 문제를 `AlbumViewer` 에서 고쳤다: 안드로이드가 화면 밖 칸을 떼어 내지 않게 하고(`removeClippedSubviews={false}`), 칸 높이를 목록이 잰 높이로 정했다(웹에서 높이가 0 으로 접히지 않게). 서버는 사진을 정상으로 보냈다(로그 200).
+- 확인: 시험은 구성(소스)만 검사한다. 실제 화면은 BlueStacks·웹에서 묶음 사진을 넘겨 보며 확인해야 한다(이 수정을 화면에서 직접 확인하지는 못했다). 시험: `tests/albumviewerlayout.test.js`.
+- 리뷰 반영: 웹에서는 넘겨도 "1 / N" 이 바뀌지 않아 저장·메뉴가 첫 사진에 적용되던 기존 결함도 고쳤다(react-native-web 은 `onMomentumScrollEnd` 를 내보내지 않아 `onScroll` 로도 번호를 갱신한다). 잰 높이가 0 인 첫 프레임에는 높이를 지정하지 않는다. 사진이 계속 비면 다음 후보는 `AuthImage` 가 한 번 실패한 칸을 다시 받지 않는 점이다(뷰어를 다시 열어야 한다).
+
+## 묶음 사진의 안 읽은 수 (2026-11-09)
+- 같은 묶음(`batch_id`)으로 올린 사진은 안 읽은 수에서 **1건**으로 센다(`repository._unread_unit`: 묶음 번호가 있으면 그 번호, 없으면 메시지 id). 채팅 화면이 묶음을 한 덩어리로 보여 주는데 방 목록 숫자가 5장이면 5로 보이던 문제를 고쳤다. 가족 전체방·1:1 방·전체 안 읽은 수(`GET /family-chat/unread`)가 모두 같다.
+- 시험: `family_chat/tests/test_photo_batch_unread.py`.

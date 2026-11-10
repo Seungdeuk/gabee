@@ -1,7 +1,7 @@
 from datetime import date, datetime
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class MessageCreate(BaseModel):
@@ -22,9 +22,13 @@ class AttachmentOut(BaseModel):
     thumb_url: str | None = None  # 사진: 목록용 작은 그림 경로, 문서: null
     width: int | None = None  # 문서는 null
     height: int | None = None  # 문서는 null
+    batch_id: str | None = (
+        None  # 한 번에 여러 장 올린 사진의 묶음 번호(같으면 한 묶음). 한 장짜리·문서는 null
+    )
     filename: str | None = None  # 문서만(사용자가 올린 이름을 정리한 것)
     size_bytes: int | None = None
     content_type: str | None = None  # 문서만(허용 목록의 안전한 값)
+    in_library: bool = False  # 사진이 이미 가족 문서함에 등록돼 있음(앱이 "문서로 저장" 버튼을 숨긴다). 메시지 목록에서만 채워진다
 
 
 class ReplyOut(BaseModel):
@@ -48,6 +52,30 @@ class ReactionOut(BaseModel):
     mine: bool  # 요청한 사람이 이 이모지를 눌렀는지
 
 
+class LibrarySaveOut(BaseModel):
+    """사진을 문서함에 저장한 결과: queued = 저장을 시작했다(읽는 데 시간이 걸린다), already = 이미 문서함에 있다."""
+
+    status: Literal["queued", "already"]
+
+
+class ShareCreate(BaseModel):
+    """공유 카드 보내기. 일정이면 ref 는 내 일정 id, 정산이면 월(YYYY-MM). 카드 내용은 서버가 읽어 만든다(클라이언트 값은 받지 않는다)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    kind: Literal["event", "settlement"]
+    ref: str = Field(min_length=1, max_length=32)
+    room_id: str | None = Field(default=None, max_length=32)  # 없으면 가족 전체방
+
+
+class ShareOut(BaseModel):
+    """공유 카드. kind=event: title·date·start_time·end_time·place·kind·with_names.
+    kind=settlement: month·remaining(내 남은 잔액, 받을 돈 +/보낼 돈 −)·lines(direction send|receive, name, amount)."""
+
+    kind: Literal["event", "settlement"]
+    payload: dict
+
+
 class MessageOut(BaseModel):
     id: int
     user_id: str
@@ -62,6 +90,7 @@ class MessageOut(BaseModel):
     reactions: list[
         ReactionOut
     ] = []  # 많은 순(같으면 목록 순서). 방 목록의 마지막 메시지에는 채우지 않는다
+    share: ShareOut | None = None  # 공유 카드 메시지의 내용(지운 메시지·카드가 아닌 메시지는 null)
     deleted: bool = False  # 보낸 사람이 지운 메시지. text 는 빈 문자열, attachment 는 null 이고 앱은 "삭제된 메시지입니다"를 보인다
 
 
@@ -96,6 +125,7 @@ class RoomOut(BaseModel):
     last_message: MessageOut | None
     unread: int
     muted: bool = False  # 내가 이 방의 알림을 껐는지(기본 켜짐)
+    peer_left: bool = False  # 1:1 방에서 상대가 방을 나가 읽기만 할 수 있음(peer_user_id 는 나간 사람, 새 메시지는 409 peer_left_room)
 
 
 class MuteSet(BaseModel):

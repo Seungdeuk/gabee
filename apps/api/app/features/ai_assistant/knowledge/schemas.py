@@ -37,6 +37,7 @@ class ItemOut(BaseModel):
     created_at: datetime
     needs_review: bool = False  # 읽다 만 부분이 있거나 종류가 애매해서 사용자가 확인해야 하는 기록
     needs_description: bool = False  # 글자가 안 읽힌 사진인데 사용자가 단 설명이 아직 없는 기록
+    seen: bool = True  # 요청한 사용자가 읽었거나 직접 올린 기록(본인 것만 알려 준다)
 
 
 class ItemDetailOut(ItemOut):

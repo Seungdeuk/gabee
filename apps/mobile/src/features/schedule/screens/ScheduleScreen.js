@@ -1,11 +1,11 @@
-import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { useRef, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { isApiConfigured } from "@/shared/api/client";
-import SettingsButton, { SETTINGS_EDGE_GAP } from "@/shared/components/SettingsButton";
+import IconButton from "@/shared/components/IconButton";
+import { SETTINGS_EDGE_GAP, SETTINGS_RAISE } from "@/shared/components/SettingsButton";
 import { colors, font, radius, spacing } from "@/theme";
 
 import DaySection from "../components/DaySection";
@@ -36,8 +36,10 @@ const REFRESH_GAP_MS = 300;
 /**
  * 일정 탭 메인: 헤더 + 주간 스트립 / 오늘·내일 / 함께하기 / 먼저 권해드려요 / 채팅 입력.
  * 카드를 누르면 상세로, 함께하기의 샘플·같이하기는 같이 보내기로, "주고 받은"은 같이의 메인 화면(주고 받은)으로 간다. 채팅으로 가는 이동은 채팅을 만들 때 연결한다.
+ * bell 은 상단 오른쪽 맨 끝 알림 종이다(라우트에서 조립한다).
+ * @param {{ bell?: import("react").ReactNode }} props
  */
-export default function ScheduleScreen() {
+export default function ScheduleScreen({ bell = null }) {
   const router = useRouter();
   const items = useScheduleItems();
   const newCount = useNewReceivedCount();
@@ -66,7 +68,7 @@ export default function ScheduleScreen() {
   const candidates = (useServer ? server.list : MOCK_SUGGESTIONS).filter((suggestion) => !isAdded(suggestion));
   const addCard = candidates.length > 0 ? candidates[addCursor % candidates.length] : null;
   // 추가 카드 자리의 상태. 서버 추천은 불러오는 동안 "찾고 있어요", 비었으면 서버 상태에 따라
-  // 데이터 없음 🌱 / 새로 줄 게 없음 🌙 / 준비 중 ⏳(새로고침) / 오늘 추천은 여기까지(전부 확정, 호출 소진).
+  // 데이터 없음🌱 / 걸러짐 "생각중이에요…" / 준비 중⏳(새로고침) / 호출 소진인데 받은 추천 없음 "찾지 못했어요😢" / 오늘 추천은 여기까지(전부 확정, 호출 소진).
   const empty = useServer ? emptySlotView(server) : { kind: "message", text: SUGGESTIONS_DONE_TEXT, refresh: false };
   const addState = addCard ? "card" : empty.kind === "loading" ? "loading" : "message";
   // 서버 추천의 "나중에"는 서버에 기록하고, 예전 임시 제안은 화면 표시만 한다.
@@ -100,6 +102,7 @@ export default function ScheduleScreen() {
     action();
   };
   const openCalendar = (date) => router.push({ pathname: "/schedule/calendar", params: { date } });
+  const openDailyCheck = () => router.push("/schedule/daily-check");
   const openDetail = (id) => router.push({ pathname: "/schedule/detail", params: { id } });
   const openRequest = (id) => router.push({ pathname: "/schedule/together-detail", params: { id } });
   const openTogether = (params) => router.push({ pathname: "/schedule/together", params });
@@ -123,20 +126,14 @@ export default function ScheduleScreen() {
           <View style={styles.topSection}>
             <View style={styles.head}>
               <View style={styles.headText}>
-                <Text style={styles.title} accessibilityRole="header">
+                <Text style={styles.title} accessibilityRole="header" numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.85}>
                   오늘도 차근차근
                 </Text>
               </View>
               <View style={styles.actions}>
-                <Pressable
-                  onPress={() => openCalendar(selected)}
-                  accessibilityRole="button"
-                  accessibilityLabel="달력 열기"
-                  style={styles.plus}
-                >
-                  <Ionicons name="add" size={28} color={colors.text} />
-                </Pressable>
-                <SettingsButton />
+                <IconButton name="checkmark-circle-outline" size={24} label="데일리 체크 열기" onPress={() => openDailyCheck()} />
+                <IconButton name="calendar-outline" size={24} label="달력 열기" onPress={() => openCalendar(selected)} />
+                {bell}
               </View>
             </View>
             <WeekStrip selected={selected} markedDates={new Set(items.map((item) => item.date))} onSelect={setSelected} />
@@ -246,16 +243,8 @@ const styles = StyleSheet.create({
   head: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", gap: spacing.md },
   headText: { flex: 1 },
   title: { ...font.page, color: colors.text },
-  // 48 높이 묶음의 중심(44)을 상단바 가운데(28)로 올리고, 오른쪽 끝에서 6 만큼 띄운다
-  actions: { flexDirection: "row", alignItems: "center", marginRight: SETTINGS_EDGE_GAP - spacing.xxl, transform: [{ translateY: -16 }] },
-  plus: {
-    width: 48,
-    height: 48,
-    borderRadius: radius.button,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: colors.peach,
-  },
+  // 44 높이 버튼 줄이 위 여백 20 에서 시작하므로 SETTINGS_RAISE(14)만큼 올려 버튼 중심을 상단바 가운데(28)에 두고, 오른쪽 끝에서 6 만큼 띄운다
+  actions: { flexDirection: "row", alignItems: "flex-start", marginRight: SETTINGS_EDGE_GAP - spacing.xxl, transform: [{ translateY: -SETTINGS_RAISE }] },
   heading: { ...font.title, color: colors.text },
   addButton: {
     minHeight: 56,

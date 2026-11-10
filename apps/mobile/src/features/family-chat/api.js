@@ -24,23 +24,22 @@ export const getAiSettings = () => apiFetch("/family-chat/ai/settings");
  */
 export const setAiEnabled = (enabled) => apiFetch("/family-chat/ai/settings", { method: "PUT", body: { enabled } });
 
-const rangeBody = ({ limit = 100, afterId = 0 } = {}) => ({ limit, after_id: afterId });
+const rangeBody = ({ limit = 100, afterId = 0, roomId } = {}) => ({ limit, after_id: afterId, ...(roomId ? { room_id: roomId } : {}) });
 
 /**
  * 가족 채팅방에서 @가비 로 부른 질문을 메인 AI 비서에게 보낸다(개인 대화와 같은 입구, 같은 한도).
- * 서버가 답을 방에 올려도 되는지(visibility)를 정한다: room 이면 서버가 가비 이름으로 방에 저장한다(앱이 다시 올리지 않는다),
- * private 이면 저장하지 않고 이유(private_reasons)와 함께 돌려주며 앱은 질문한 사람 화면에만 보여 준다.
- * history 는 내가 @가비 로 나눈 앞 대화뿐이다(방의 다른 사람 글은 보내지 않는다). 개인용이었던 가비의 답에는 private: true 를 단다.
+ * 서버가 답을 가비 이름으로 가족 전체방에 저장한다(앱이 다시 올리지 않는다). 확인 버튼이 필요한 요청은 질문한 사람 응답에만 카드로 온다.
+ * history 는 내가 @가비 로 나눈 앞 대화뿐이다(방의 다른 사람 글은 보내지 않는다).
  * @param {string} question @가비 를 뺀 질문
- * @param {{ role: "user" | "assistant", text: string, private?: boolean }[]} [history]
- * @returns {Promise<{ reply: string, visibility: "room" | "private", reasons: string[], postedMessageId: number | null, confirmCards: object[] }>}
+ * @param {{ role: "user" | "assistant", text: string }[]} [history]
+ * @param {string} [roomId] 1:1 방에서 부른 것이면 그 방 id(답을 그 1:1 방에 저장한다). 없으면 가족 전체방
+ * @returns {Promise<{ reply: string, postedMessageId: number | null, confirmCards: object[] }>} postedMessageId 가 null 이면 서버가 방에 저장하지 않은 답(구 서버)
  */
-export async function askAssistantInRoom(question, history = []) {
-  const res = await apiFetch("/ai-assistant/chat", { method: "POST", body: { message: question, audience: "room", history: history.slice(-10) } });
+export async function askAssistantInRoom(question, history = [], roomId) {
+  const turns = history.slice(-10).map(({ role, text }) => ({ role, text }));
+  const res = await apiFetch("/ai-assistant/chat", { method: "POST", body: { message: question, audience: "room", history: turns, ...(roomId ? { room_id: roomId } : {}) } });
   return {
     reply: res.reply ?? "",
-    visibility: res.visibility === "room" ? "room" : "private", // 모르는 값은 개인용으로(방에 올리지 않는 쪽)
-    reasons: res.private_reasons ?? [],
     postedMessageId: res.posted_message_id ?? null,
     confirmCards: mapChatCards(res), // 확인 버튼이 필요한 일정 요청·정산/돌봄 제안은 질문한 사람 화면에만 카드로 보인다
   };
@@ -49,7 +48,7 @@ export async function askAssistantInRoom(question, history = []) {
 /**
  * 대화 분석(요약·중요 메시지·일정 후보·할 일 후보·답장 추천·대화 주제 추천을 한 번에). 누를 때만 호출한다.
  * replies·topics 는 구 서버 응답에 없을 수 있다(parseAnalysis 로 방어).
- * @param {{ limit?: number, afterId?: number }} [range] 최근 limit 개(기본 100), afterId 를 주면 그 뒤의 대화
+ * @param {{ limit?: number, afterId?: number, roomId?: string }} [range] 최근 limit 개(기본 100), afterId 를 주면 그 뒤의 대화, roomId 를 주면 그 1:1 방의 대화(없으면 가족 전체방)
  * @returns {Promise<{ summary: string, important_messages: object[], schedule_candidates: object[], todo_candidates: object[], replies?: string[], topics?: string[], meta: object }>}
  */
 export const analyzeChat = (range) => apiFetch("/family-chat/ai/analysis", { method: "POST", body: rangeBody(range) });
@@ -76,14 +75,6 @@ export function scheduleEventBody(candidate) {
     source: "chat",
   };
 }
-
-/**
- * 채팅 사진을 AI 비서의 가족 기록으로 올린다(POST /ai-assistant/files, multipart 'file'). AI 비서 기능의 api 파일을 가져오지 않고
- * 공통 래퍼로 계약대로 직접 호출한다. 서버는 받자마자 received 로 응답하고 읽기·가리기·분류·저장은 뒤에서 한다.
- * @param {FormData} form 'file' 한 개를 담은 폼(웹은 Blob, 네이티브는 {uri, name, type})
- * @returns {Promise<{ id: string, filename: string, status: string }>}
- */
-export const uploadToAssistantRecord = (form) => apiFetch("/ai-assistant/files", { method: "POST", body: form });
 
 /**
  * 사용자가 확인한 일정 후보를 서버 일정으로 등록한다(POST /schedule/events, EventCreate).
@@ -126,11 +117,20 @@ export const openDirectRoom = (userId) => apiFetch("/family-chat/rooms/direct", 
 export const setRoomMuted = (roomId, muted) => apiFetch(`/family-chat/rooms/${encodeURIComponent(roomId)}/mute`, { method: "PUT", body: { muted: Boolean(muted) } });
 
 /**
+ * 1:1 방을 나간다(POST /family-chat/rooms/{id}/leave, 204). 내 목록에서만 사라지고 상대는 기록을 그대로 갖는다(상대 방은 읽기 전용). 둘 다 나가면 대화가 지워진다.
+ * 가족 전체방은 400 cannot_leave_family_room, 내 방이 아니거나 이미 나갔으면 404.
+ * @param {string} roomId 나갈 1:1 방 id
+ * @returns {Promise<null>}
+ */
+export const leaveRoom = (roomId) => apiFetch(`/family-chat/rooms/${encodeURIComponent(roomId)}/leave`, { method: "POST" });
+
+/**
  * 채팅 메시지 조회. 결과는 항상 오래된 순이다. 대화 글자는 쿼리에 넣지 않는다(숫자 범위만).
  * - latest: 가장 최근 limit 개 / beforeId: 그 id 보다 오래된 것 중 가장 최근 limit 개 / afterId: 그 id 뒤의 새 메시지
  * - aroundId: 그 메시지를 가운데로 앞뒤 메시지(검색 결과로 이동할 때). 서버 계약은 별도 PR 의 `around_id` 이고, 다른 범위 옵션과 함께 쓰지 않아 aroundId 가 있으면 나머지 범위는 무시한다.
  * @param {{ latest?: boolean, beforeId?: number, afterId?: number, aroundId?: number, limit?: number, roomId?: string | null }} [options] limit 기본 100, 최대 200, roomId 가 없으면 가족 전체방
- * @returns {Promise<{ id: number, user_id: string, user_name: string, text: string, created_at: string, attachment?: { id: string, kind: string, url: string, thumb_url: string, width: number, height: number } | null }[]>}
+ * 공유 카드 메시지(일정·정산)는 share 에 {kind, payload} 가 오고 text 는 고정 문구다(카드가 아니면 share 는 null 이거나 없다).
+ * @returns {Promise<{ id: number, user_id: string, user_name: string, text: string, created_at: string, attachment?: { id: string, kind: string, url: string, thumb_url: string, width: number, height: number } | null, share?: { kind: "event" | "settlement", payload: object } | null }[]>}
  */
 export function listMessages({ latest = false, beforeId, afterId, aroundId, limit = 100, roomId } = {}) {
   const params = [];
@@ -208,9 +208,10 @@ export const removeReaction = ({ roomId, messageId }) => apiFetch(`/family-chat/
  * 웹은 asset.file(없으면 asset.uri 의 blob)을 그대로, 네이티브는 {uri, name, type} 으로 보낸다. Content-Type 은 fetch 가 boundary 와 함께 붙인다.
  * @param {{ uri: string, file?: Blob, fileName?: string | null, mimeType?: string }} asset expo-image-picker 가 돌려준 asset
  * @param {string | null} [roomId] 대화방 id, 없으면 가족 전체방(form 에 넣지 않는다)
- * @returns {Promise<{ id: number, user_id: string, user_name: string, text: string, created_at: string, attachment: { id: string, kind: "image", url: string, thumb_url: string, width: number, height: number } | null }>}
+ * @param {string | null} [batchId] 한 번에 여러 장 올릴 때 장마다 같은 묶음 번호(없으면 form 에 넣지 않는다)
+ * @returns {Promise<{ id: number, user_id: string, user_name: string, text: string, created_at: string, attachment: { id: string, kind: "image", url: string, thumb_url: string, width: number, height: number, batch_id: string | null } | null }>}
  */
-export async function sendPhoto(asset, roomId) {
+export async function sendPhoto(asset, roomId, batchId) {
   const name = chatPhotoFileName(asset);
   const type = chatPhotoMimeType(asset);
   const form = new FormData();
@@ -223,6 +224,7 @@ export async function sendPhoto(asset, roomId) {
     form.append("file", { uri: asset.uri, name, type });
   }
   if (roomId) form.append("room_id", roomId);
+  if (batchId) form.append("batch_id", batchId);
   return apiFetch("/family-chat/photos", { method: "POST", body: form });
 }
 
@@ -248,6 +250,14 @@ export async function sendFile(asset, roomId) {
   if (roomId) form.append("room_id", roomId);
   return apiFetch("/family-chat/files", { method: "POST", body: form });
 }
+
+/**
+ * 공유 카드(내 일정 한 건 또는 그 달 내 정산 몫)를 채팅방에 올린다(POST /family-chat/shares, 201 MessageOut). 카드 내용은 서버가 읽어 만들고 앱은 종류·참조만 보낸다(제목·금액 등 다른 필드를 보내면 422). AI 를 부르지 않는다.
+ * 오류: 404(내 것이 아니거나 없음·정산 내역 없음), 400(invalid_month·share_too_large), 409(peer_left_room), 429(too_many_shares, Retry-After 는 ApiError.retryAfter), 503(share_unavailable·schema_not_ready).
+ * @param {{ kind: "event" | "settlement", ref: string, roomId?: string | null }} options ref 는 일정이면 일정 id, 정산이면 YYYY-MM. roomId 가 없으면 가족 전체방(본문에 넣지 않는다)
+ * @returns {Promise<{ id: number, user_id: string, user_name: string, text: string, created_at: string, share: { kind: "event" | "settlement", payload: object } | null }>}
+ */
+export const sendShare = ({ kind, ref, roomId }) => apiFetch("/family-chat/shares", { method: "POST", body: { kind, ref, ...(roomId ? { room_id: roomId } : {}) } });
 
 // 서버가 만드는 파일 첨부 경로만 받는다(다른 주소로 인증 헤더가 나가지 않게)
 const CHAT_FILE_PATH = /^\/family-chat\/files\/[\w-]+$/;
@@ -356,6 +366,13 @@ export function listMedia({ roomId, kind = "image", limit = 40, beforeId } = {})
   if (beforeId != null && Number(beforeId) >= 1) params.push(`before_id=${Math.floor(Number(beforeId))}`); // 서버는 1 이상만 받는다
   return apiFetch(`/family-chat/media?${params.join("&")}`);
 }
+
+/**
+ * 채팅 사진 한 장을 가족 공유 문서함에 직접 넣는다("문서로 저장"). 가족 전체방 사진만 된다(1:1 방은 409 not_family_room, 없는 사진·못 들어가는 방은 404).
+ * @param {string} attachmentId 사진 첨부 id(attachment.id)
+ * @returns {Promise<{ status: "queued" | "already" }>} queued 는 저장을 시작했다(글을 읽는 데 시간이 걸린다), already 는 이미 문서함에 있다
+ */
+export const savePhotoToLibrary = (attachmentId) => apiFetch(`/family-chat/photos/${encodeURIComponent(attachmentId)}/library`, { method: "POST" });
 
 /**
  * 사진 원본을 로그인 헤더로 받아 Blob 으로 돌려준다(웹 저장용). 서버가 준 사진 경로만 받고, 토큰은 주소에 넣지 않는다.

@@ -6,6 +6,7 @@
 """
 
 import hashlib
+import re
 from dataclasses import dataclass, field
 from datetime import datetime
 
@@ -20,7 +21,7 @@ from app.shared.errors import ApiError, bad_request
 from app.shared.llm import client as llm
 from app.shared.privacy import Action, Kind, Policy, Row, prepare_transcript, restore_json
 
-from . import limits, modify, prompts, register, request_flow  # noqa: F401  (limits: 일정 호출 한도를 따로 세도록 등록)
+from . import habits, limits, modify, prompts, register, request_flow  # noqa: F401  (limits: 일정 호출 한도를 따로 세도록 등록)
 from .members import Member, line, names
 from .schemas import INTENTS, Draft, Intent
 
@@ -61,6 +62,7 @@ class ChatResult:
     changes: dict = field(default_factory=dict)  # intent 가 edit 일 때 모델이 읽은 바뀔 값(검증 끝)
     check_action: str = ""  # intent 가 check 일 때 mark / unmark / list (아니면 빈 문자열)
     request: dict = field(default_factory=dict)  # intent 가 request 일 때 모델이 읽은 값(검증 끝)
+    habit: dict = field(default_factory=dict)  # intent 가 habit 일 때 모델이 읽은 값(검증 끝)
 
 
 def clean_result(
@@ -68,6 +70,7 @@ def clean_result(
     allowed_ids: set[str],
     member_ids: set[str] | None = None,
     request_ids: set[str] | None = None,
+    habit_ids: set[str] | None = None,
 ) -> dict:
     """LLM 출력을 믿지 않고 검증한다: 보기 밖 종류는 일정 요청이 아닌 것으로, 목록에 없는 id 는 버린다."""
     if not isinstance(data, dict):
@@ -99,6 +102,7 @@ def clean_result(
         "request": request_flow.clean_fields(
             data.get("request"), member_ids or set(), request_ids or set()
         ),
+        "habit": habits.clean_fields(data.get("habit"), habit_ids or set()),
     }
 
 
@@ -121,6 +125,40 @@ def event_line(
     line = f"{event_id} | {prompts.format_day(when)} {clock} | {mask_text(title)}"
     line = f"{line} | 공동" if shared else line
     return f"{line} | 공유:{','.join(share_ids)}" if share_ids else line
+
+
+SHARED_MARK = "(공)"  # 공동(가족과 공유된) 일정
+TOGETHER_MARK = "(함)"  # 함께하기(부탁)
+
+
+def mark_titles(text: str, tagged) -> str:
+    """질의 답에 나온 일정·부탁 제목 뒤에 표시를 붙인다. tagged 는 (제목, 표시) 쌍이고 표시가 빈 글자면 붙이지 않는다.
+    공동 여부는 AI 가 아니라 DB 값(shared)으로 정해진 표시를 코드가 직접 붙인다. 이미 표시가 붙은 곳은 그대로 두고,
+    같은 제목이 서로 다른 표시(없음 포함)로 섞여 있으면 어느 쪽 말인지 알 수 없어 붙이지 않는다."""
+    marks: dict[str, set[str]] = {}
+    for title, mark in tagged:
+        for t in {title, mask_text(title)}:
+            if t:
+                marks.setdefault(t, set()).add(mark)
+    if not marks:
+        return text
+    # 모든 제목을 한 번에, 긴 제목부터 찾는다: 짧은 제목이 긴 제목(표시가 있든 없든) 안에 들어 있어도 잘못 붙지 않는다
+    pattern = re.compile("|".join(re.escape(t) for t in sorted(marks, key=len, reverse=True)))
+
+    def repl(m: re.Match) -> str:
+        found = marks[m.group(0)]
+        mark = next(iter(found)) if len(found) == 1 else ""
+        done = mark and text[m.end() : m.end() + len(mark)] == mark
+        return m.group(0) + ("" if done else mark)
+
+    return pattern.sub(repl, text)
+
+
+def mark_shared(text: str, events) -> str:
+    """일정 목록용: 공동(shared) 일정 제목 뒤에 (공)을 붙인다."""
+    return mark_titles(
+        text, [(e.title, SHARED_MARK if getattr(e, "shared", False) else "") for e in events]
+    )
 
 
 def _draft_block(draft: Draft | None, title: str, place: str, memo: str) -> str:
@@ -151,6 +189,8 @@ def converse(
     request_lines: list[str] | None = None,
     request_ids: set[str] | None = None,
     notice: str = "",
+    habit_lines: list[str] | None = None,
+    habit_ids: set[str] | None = None,
 ) -> ChatResult:
     members = members or []
     member_ids = {m.id for m in members}
@@ -177,6 +217,7 @@ def converse(
             draft_block=_draft_block(draft, sent.get(2, ""), sent.get(3, ""), sent.get(4, "")),
             request_lines=request_lines,
             notice=notice,
+            habit_lines=habit_lines,
         )
 
         def call():
@@ -187,7 +228,9 @@ def converse(
                 max_tokens=900,
                 model=prompts.CHAT_MODEL,
             )
-            return clean_result(response.data, allowed_ids, member_ids, request_ids), response
+            return clean_result(
+                response.data, allowed_ids, member_ids, request_ids, habit_ids
+            ), response
 
         # 같은 가족이 같은 날 같은 일정 목록에서 같은 말을 하면 캐시를 쓴다(목록이 바뀌면 키가 달라진다).
         # 캐시에는 가명화된(토큰 상태의) 결과가 들어가고, 돌려줄 때 이 요청의 대응표로 복원한다.
@@ -207,7 +250,7 @@ def converse(
                     503, "llm_failed", "AI 요청을 처리하지 못했어요. 잠시 후 다시 시도해 주세요"
                 ) from None
             ai_guard.count_nested(response)
-        cleaned = clean_result(result_data, allowed_ids, member_ids, request_ids)
+        cleaned = clean_result(result_data, allowed_ids, member_ids, request_ids, habit_ids)
         restored = restore_json(
             prep,
             {

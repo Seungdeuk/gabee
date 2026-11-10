@@ -585,7 +585,12 @@ HEADERS = {"X-Gyeot-Token": "t1"}  # reset_db 가 만든 가족 그룹(g1)의 �
 
 def api_state(client):
     """(기존 구조만 쓰는 API 상태코드들, 가계 API 상태코드)"""
-    paths = ("/family-group/me", "/schedule/events", "/care/records", "/family-chat/messages")
+    paths = (
+        "/family-group/me",
+        "/schedule/events",
+        "/notifications",
+        "/family-chat/messages",
+    )
     existing = [client.get(path, headers=HEADERS).status_code for path in paths]
     return existing, client.get("/billing/expenses", headers=HEADERS).status_code
 

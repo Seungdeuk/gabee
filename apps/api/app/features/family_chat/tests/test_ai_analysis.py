@@ -189,7 +189,9 @@ def test_second_identical_request_hits_cache(client, ready, fake):
     a, b, _ = ready
     first = analyze(client, a).json()
     assert first["meta"]["cached"] is False and first["meta"]["api_calls"] == 1
-    second = analyze(client, b).json()
+    second = analyze(
+        client, a
+    ).json()  # 같은 사람은 저장된 결과를 다시 쓴다(결과는 사용자마다 따로 저장된다)
     assert second["meta"]["cached"] is True and second["meta"]["api_calls"] == 0
     assert second["summary"] == first["summary"]
     assert len(fake.calls) == 1
@@ -406,7 +408,6 @@ def test_new_message_refreshes_cache_but_none_keeps_hitting(client, ready, fake)
     a, b, _ = ready
     analyze(client, a)
     analyze(client, a)
-    analyze(client, b)
     assert len(fake.calls) == 1
     say(client, b, "새 메시지")
     r = analyze(client, a).json()
@@ -725,8 +726,8 @@ def test_replies_and_topics_separate_and_guarded(client, ready, fake):
     t = client.post(f"{AI}/topics", json={}, headers=a)
     assert t.status_code == 200 and len(fake.calls) == 3
     assert t.json()["topics"]
-    assert client.post(f"{AI}/replies", json={}, headers=b).json()["meta"]["cached"] is True
-    assert client.post(f"{AI}/topics", json={}, headers=b).json()["meta"]["cached"] is True
+    assert client.post(f"{AI}/replies", json={}, headers=a).json()["meta"]["cached"] is True
+    assert client.post(f"{AI}/topics", json={}, headers=a).json()["meta"]["cached"] is True
     assert len(fake.calls) == 3
     assert {r.feature for r in logs()} == {"analysis", "reply", "topics"}
 

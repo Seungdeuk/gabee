@@ -1,4 +1,5 @@
 import calendar
+import logging
 import re
 import uuid
 from datetime import UTC, date, datetime, timedelta, timezone
@@ -8,7 +9,9 @@ from sqlalchemy.orm import Session
 
 from app.features.family_group import repository as group_repo
 from app.features.family_group.models import User
+from app.shared.config import settings
 from app.shared.errors import ApiError, bad_request, not_found
+from app.shared.notifications import notify
 from app.shared.seed_lock import seed_lock
 
 from . import allowance
@@ -61,6 +64,8 @@ from .schemas import (
     UpcomingPayments,
 )
 from .settlement import minimal_transfers, split_equally
+
+log = logging.getLogger(__name__)
 
 _MONTH = re.compile(r"^\d{4}-(0[1-9]|1[0-2])$")
 KST = timezone(timedelta(hours=9))
@@ -290,6 +295,31 @@ def settle_tags(db: Session, group_id: str) -> list[SettleTagOut]:
     ]
 
 
+def _notify_billing(
+    db: Session,
+    group_id: str,
+    actor_id: str | None,
+    event: str,
+    title: str,
+    recipients: list[str],
+    target_type: str,
+    target_id: str,
+) -> None:
+    """정산·용돈 사건을 알림함에 남긴다(고정 문구, 금액·이름·메모는 담지 않는다). 행동한 본인은 notify 가 뺀다."""
+    notify(
+        db,
+        group_id=group_id,
+        kind="billing",
+        event=event,
+        recipients=recipients,
+        title=title,
+        target_type=target_type,
+        target_id=target_id,
+        actor_user_id=actor_id,
+    )
+    db.commit()
+
+
 def settle(db: Session, group_id: str, user_id: str, body: SettleRequest) -> Settlement:
     """'정산하기': 고른 지출에 대상 태그를 걸고 나눌 사람을 정한다. 잔액과 송금 목록은 기존 계산을 그대로 쓴다.
     고정 태그는 역할로 나눌 사람을 채우고, 직접 고르기(custom)는 보낸 사람 목록을 그대로 쓴다."""
@@ -323,7 +353,66 @@ def settle(db: Session, group_id: str, user_id: str, body: SettleRequest) -> Set
         e.target_tag, e.split_among = body.tag, participants
         e.settled_at, e.settled_by = now, user_id
     repo.save_all(db, chosen)
+    payers = [e.paid_by for e in chosen]  # 나눌 사람에 없어도 지출을 낸 사람은 잔액이 바뀐다
+    _notify_billing(
+        db,
+        group_id,
+        user_id,
+        "settlement_updated",
+        "정산 내역이 업데이트됐어요",
+        list(dict.fromkeys([*participants, *payers])),
+        "billing_month",
+        month,
+    )
     return settlement(db, group_id, month)
+
+
+def check_settlement_reminders(
+    db: Session, group_id: str, user: User, now: datetime | None = None
+) -> int:
+    """홈을 연 본인의 정산 재알림을 확인해, 대상이면 알림함에 한 줄 남기고 만든 개수를 돌려준다.
+
+    대상: 정산하기 알림(settlement_updated)을 받은 지 `settlement_remind_hours` 시간이 지났고, 그 달에 보낼 돈이 아직 남았고,
+    그 달 재알림(settlement_remind)을 받은 적이 없는 사람. 재알림을 보냈다는 기록은 알림함의 그 줄 자체다(DB 열 추가 없음).
+    홈을 연 본인 몫만 만든다(가족 다른 사람의 것은 만들지 않는다). 두 기기가 동시에 열면 드물게 두 번 생길 수 있다(유니크 제약이 없다).
+    알림 표가 없거나 어떤 오류가 나도 홈과 정산에는 영향이 없게 0 을 돌려준다. 문구는 고정 템플릿이고 금액은 넣지 않는다."""
+    now = now or datetime.now(UTC)
+    wait = timedelta(hours=settings.settlement_remind_hours)
+    try:
+        with db.begin_nested():
+            rows = repo.settlement_notice_rows(db, group_id, user.id)
+            sent = {month for event, month, _ in rows if event == "settlement_remind"}
+            first_pay: dict[str, datetime] = {}
+            for event, month, made_at in rows:
+                if event != "settlement_updated" or not month or month in sent:
+                    continue
+                made_at = made_at if made_at.tzinfo else made_at.replace(tzinfo=UTC)
+                if month not in first_pay or made_at < first_pay[month]:
+                    first_pay[month] = made_at
+            created = 0
+            for month, made_at in sorted(first_pay.items()):
+                if now - made_at < wait:
+                    continue
+                transfers = settlement(db, group_id, month).transfers
+                if not any(t.from_user_id == user.id for t in transfers):
+                    continue  # 송금 완료를 눌렀거나 더 보낼 돈이 없다
+                created += notify(
+                    db,
+                    group_id=group_id,
+                    kind="billing",
+                    event="settlement_remind",
+                    recipients=[user.id],
+                    title="정산 송금이 아직 남았어요",
+                    body=f"{month} 정산에서 보낼 돈이 있어요",
+                    target_type="billing_month",
+                    target_id=month,
+                )
+        if created:
+            db.commit()
+        return created
+    except Exception as exc:  # 개인 정보는 남기지 않는다(예외 종류만)
+        log.warning("settlement reminder check failed error=%s", type(exc).__name__)
+        return 0
 
 
 # ---- 정산 담당자와 월말 알림 ----
@@ -420,23 +509,31 @@ def reminder(db: Session, group_id: str, user: User, on: str | None) -> Reminder
     )
 
 
-def mark_paid(db: Session, group_id: str, body: PaymentCreate) -> Settlement:
+def mark_paid(db: Session, group_id: str, body: PaymentCreate, actor_id: str | None) -> Settlement:
     month = check_month(body.month)
     _, remaining, _ = _remaining(db, group_id, month)
     if (body.from_user_id, body.to_user_id, body.amount) not in minimal_transfers(remaining):
         raise bad_request(
             "unknown_transfer", "송금 목록에 없는 송금이에요. 목록을 새로고침해 주세요"
         )
-    repo.save(
+    payment = SettlementPayment(
+        id=uuid.uuid4().hex[:12],
+        group_id=group_id,
+        month=month,
+        from_user_id=body.from_user_id,
+        to_user_id=body.to_user_id,
+        amount=body.amount,
+    )
+    repo.save(db, payment)
+    _notify_billing(
         db,
-        SettlementPayment(
-            id=uuid.uuid4().hex[:12],
-            group_id=group_id,
-            month=month,
-            from_user_id=body.from_user_id,
-            to_user_id=body.to_user_id,
-            amount=body.amount,
-        ),
+        group_id,
+        actor_id,
+        "payment_marked",
+        "송금 완료가 표시됐어요",
+        [body.from_user_id, body.to_user_id],
+        "billing_month",
+        month,
     )
     return settlement(db, group_id, month)
 
@@ -1050,6 +1147,19 @@ def request_allowance(
                 memo=body.memo.strip(),
             ),
         )
+    managers = [
+        m.id for m in group_repo.members(db, group_id) if _can_manage_allowance(db, group_id, m)
+    ]
+    _notify_billing(
+        db,
+        group_id,
+        user.id,
+        "allowance_requested",
+        "용돈 요청이 도착했어요",
+        managers,
+        "allowance",
+        child_id,
+    )
     return _one(db, group_id, user, child_id)
 
 
@@ -1062,6 +1172,20 @@ def _pending_request(
     if req.status != "pending":
         raise bad_request("not_pending", "이미 처리된 요청이에요")
     return req
+
+
+def _notify_decided(db: Session, group_id: str, user: User, child_id: str) -> None:
+    """용돈 요청이 처리되면 자녀에게 알린다. 승인·거절 여부와 금액은 문구에 담지 않는다(알림을 열어 확인한다)."""
+    _notify_billing(
+        db,
+        group_id,
+        user.id,
+        "allowance_decided",
+        "용돈 요청이 처리됐어요",
+        [child_id],
+        "allowance",
+        child_id,
+    )
 
 
 def approve_request(
@@ -1092,6 +1216,7 @@ def approve_request(
         req.status, req.decided_by, req.decided_at = "approved", user.id, datetime.now(UTC)
         req.approved_amount, req.decision_note, req.entry_id = amount, body.note.strip(), entry.id
         repo.save_all(db, [entry, req])  # 입금과 승인 표시를 한 번에 저장한다
+    _notify_decided(db, group_id, user, child_id)
     return _one(db, group_id, user, child_id)
 
 
@@ -1110,6 +1235,7 @@ def reject_request(
         req.status, req.decided_by, req.decided_at = "rejected", user.id, datetime.now(UTC)
         req.decision_note = body.note.strip()
         repo.save(db, req)
+    _notify_decided(db, group_id, user, child_id)
     return _one(db, group_id, user, child_id)
 
 

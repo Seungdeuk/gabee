@@ -3,6 +3,8 @@ import { StyleSheet, Text, View } from "react-native";
 
 import { colors } from "@/theme";
 
+import { unreadableParts } from "../reviewGuide";
+
 const UNREAD_MARK = "[읽지 못한 부분]";
 const FIELD = /^- ([^:]{1,12}):\s*(.+)$/; // "- 날짜: 2026-10-05" 같은 요약 줄
 const BLOCK_NO = /^\(블록 \d+\)\s*/; // 읽은 순서를 나타내는 번호는 보여 줄 필요가 없다
@@ -113,7 +115,11 @@ export default function RecordContent({ markdown }) {
               </View>
             ) : (
               <Text key={idx} style={[styles.line, l.doubt && styles.lineDoubt]} selectable>
-                {l.text}
+                {unreadableParts(l.text).map((p, pi) => (
+                  <Text key={pi} style={p.unreadable ? styles.unreadable : undefined}>
+                    {p.unreadable ? ` ${p.text} ` : p.text}
+                  </Text>
+                ))}
                 {l.doubt ? <Text style={styles.doubtTag}>  확인 필요</Text> : null}
               </Text>
             ),
@@ -142,6 +148,7 @@ const styles = StyleSheet.create({
   line: { fontSize: 14, lineHeight: 21, color: colors.text },
   lineDoubt: { backgroundColor: colors.honeySoft },
   doubtTag: { fontSize: 11, fontWeight: "700", color: colors.warning },
+  unreadable: { fontSize: 12, fontWeight: "700", color: colors.warning, backgroundColor: colors.honeySoft },
   tableRow: { flexDirection: "row", gap: 8, paddingVertical: 4, borderBottomWidth: 1, borderBottomColor: colors.divider },
   tableHead: { borderBottomColor: colors.border },
   cell: { flex: 1, minWidth: 0, fontSize: 13, lineHeight: 19, color: colors.text },

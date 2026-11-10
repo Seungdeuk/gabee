@@ -136,6 +136,12 @@ test("인증번호 오류 문구", () => {
   assert.match(errorMessage({ code: "invalid_role_detail" }), /40자/);
 });
 
+test("비밀번호 찾기: 아이디·이메일이 맞지 않으면 '일치하지 않아요' 한 문구이고 어느 쪽이 틀렸는지는 말하지 않는다", () => {
+  const message = errorMessage({ code: "reset_mismatch" });
+  assert.match(message, /아이디와 이메일이 일치하지 않아요/);
+  assert.doesNotMatch(message, /없는 아이디|존재하지|가입되지|이메일이 틀|아이디가 틀/);
+});
+
 test("이메일 선택 칸: 비어 있으면 통과, 적었다면 형식을 본다", async () => {
   const { checkOptionalEmail } = await import("../src/features/auth/validation.js");
   assert.equal(checkOptionalEmail(""), "");

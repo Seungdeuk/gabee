@@ -69,13 +69,28 @@ def test_unknown_kind_raises_value_error(client, family):
         _send(db, group["id"], [_id(client, a)], kind="chat")
 
 
+@pytest.mark.parametrize("kind", ["care", "ai_record"])
+def test_removed_kinds_are_rejected_and_leave_no_row(client, family, kind):
+    """삭제된 분류(돌봄·기록)로 부르면 모르는 분류와 같이 거부하고 행을 남기지 않는다."""
+    a, _b, group = family
+    with SessionLocal() as db:
+        with pytest.raises(ValueError):
+            _send(db, group["id"], [_id(client, a)], kind=kind)
+        db.commit()
+        assert _rows(db) == []
+
+
 def test_failure_is_isolated(client, family, monkeypatch):
     a, b, group = family
     ids = [_id(client, a), _id(client, b)]
     with SessionLocal() as db:
         db.add(
             Notification(
-                user_id=ids[0], group_id=group["id"], kind="care", event="x", title="먼저 있던 행"
+                user_id=ids[0],
+                group_id=group["id"],
+                kind="billing",
+                event="x",
+                title="먼저 있던 행",
             )
         )
         real_add = db.add
@@ -89,3 +104,21 @@ def test_failure_is_isolated(client, family, monkeypatch):
         assert _send(db, group["id"], ids) == 0  # 예외가 밖으로 나오지 않는다
         db.commit()
         assert [r.title for r in _rows(db)] == ["먼저 있던 행"]  # 앞선 변경은 그대로 저장된다
+
+
+def test_personal_notification_has_no_group_and_skips_membership(client, family, other_family):
+    outsider = _id(
+        client, other_family
+    )  # 어느 가족의 구성원이어도 아니어도 개인 알림은 본인에게 간다
+    with SessionLocal() as db:
+        created = notify(
+            db,
+            group_id=None,
+            kind="support",
+            event="ticket_answered",
+            recipients=[outsider, outsider],
+            title="문의에 답변이 달렸어요",
+        )
+        db.commit()
+        assert created == 1  # 같은 사람은 한 번만
+        assert [(r.user_id, r.group_id, r.kind) for r in _rows(db)] == [(outsider, None, "support")]
