@@ -6,6 +6,8 @@ import { afterEach, beforeEach, test } from "node:test";
 import { buildRoomRows, formatRoomTime } from "../src/features/family-chat/listUtils.js";
 import { previewText } from "../src/features/family-chat/chatUtils.js";
 import { chatErrorMessage } from "../src/features/family-chat/messages.js";
+import { menuKeys } from "../src/features/family-chat/messageActions.js";
+import { aiHelperButton } from "../src/features/family-chat/readOnlyRoom.js";
 
 process.env.EXPO_PUBLIC_API_URL = "http://api.test";
 process.env.EXPO_PUBLIC_DEV_TOKEN = "legacy-dev-token";
@@ -78,4 +80,35 @@ test("채팅방 화면: 상대가 나간 방(peerLeft)은 입력창 대신 안�
   const room = read("screens/ChatRoomScreen.js");
   assert.match(room, /const peerLeft = params\.peerLeft === "1"/);
   assert.match(room, /peerLeft \? \([\s\S]*상대방이 나가서 메시지를 보낼 수 없어요[\s\S]*\) : \(\s*<Composer/);
+});
+
+const textMsg = (id, extra = {}) => ({ id, user_id: "u1", text: "안녕", created_at: "2026-11-10T00:00:00Z", ...extra });
+
+test("menuKeys: 읽기 전용 방(readOnly)은 답장·공지 등록을 숨기고 반응·복사·내 글 삭제·공지 내리기는 남긴다", () => {
+  assert.deepEqual(menuKeys({ message: textMsg(1), myId: "u1" }), ["reactions", "reply", "pin", "copy", "delete"]); // 기본은 그대로
+  assert.deepEqual(menuKeys({ message: textMsg(1), myId: "u1", readOnly: true }), ["reactions", "copy", "delete"]);
+  assert.deepEqual(menuKeys({ message: textMsg(1), myId: "u2", readOnly: true }), ["reactions", "copy"]);
+  assert.deepEqual(menuKeys({ message: textMsg(1), myId: "u2", pinned: true, readOnly: true }), ["reactions", "unpin", "copy"]);
+  // 사진·파일(글자 없음)은 반응만, 지운 메시지·임시 메시지는 메뉴 자체가 없다
+  assert.deepEqual(menuKeys({ message: textMsg(2, { text: "", attachment: { id: "a" } }), myId: "u2", readOnly: true }), ["reactions"]);
+  assert.deepEqual(menuKeys({ message: textMsg(3, { deleted: true }), myId: "u1", readOnly: true }), []);
+  assert.deepEqual(menuKeys({ message: { ...textMsg(4), clientId: "tmp" }, myId: "u1", readOnly: true }), []);
+});
+
+test("aiHelperButton: 상대가 나간 방은 AI 도우미를 비활성하고 이유를 라벨에 적는다, 아니면 기존대로", () => {
+  assert.deepEqual(aiHelperButton({ ready: true, peerLeft: false }), { disabled: false, label: "AI 도우미 열기" });
+  assert.deepEqual(aiHelperButton({ ready: false, peerLeft: false }), { disabled: true, label: "AI 도우미 열기" });
+  const left = aiHelperButton({ ready: true, peerLeft: true });
+  assert.equal(left.disabled, true);
+  assert.match(left.label, /AI 도우미/);
+  assert.match(left.label, /상대가 나가서/);
+  assert.equal(aiHelperButton({ ready: false, peerLeft: true }).disabled, true);
+});
+
+test("채팅방 화면: peerLeft 를 AI 버튼과 메시지 메뉴에 넘긴다(소스 확인)", () => {
+  const screen = read("screens/ChatRoomScreen.js");
+  assert.match(screen, /aiHelperButton\(\{ ready: info\.status === "ready", peerLeft \}\)/);
+  assert.match(screen, /<IconButton name="sparkles-outline" label=\{aiButton\.label\} onPress=\{\(\) => setAiOpen\(true\)\} disabled=\{aiButton\.disabled\}/);
+  assert.match(screen, /<MessageMenu [^\n]*readOnly=\{peerLeft\}/);
+  assert.match(read("components/MessageMenu.js"), /menuKeys\(\{ message, myId, pinned, readOnly \}\)/);
 });

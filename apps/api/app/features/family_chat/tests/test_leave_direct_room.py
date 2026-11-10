@@ -20,6 +20,8 @@ from app.shared.config import settings
 from app.shared.db import SessionLocal
 from tests.helpers import join_family, signup
 
+from .test_ai_analysis import AI, enable, fake  # noqa: F401  (fake 는 fixture)
+
 MSG = "/family-chat/messages"
 ROOMS = "/family-chat/rooms"
 DIRECT_ROOM = "/family-chat/rooms/direct"
@@ -267,3 +269,37 @@ def test_deleting_a_room_with_reactions_and_replies_passes_foreign_key_checks(
     assert _leave(client, b, room["id"]).status_code == 204
     with SessionLocal() as db:
         assert db.get(ChatRoom, room["id"]) is None
+
+
+@pytest.mark.parametrize("path", ["analysis", "replies", "topics", "preview"])
+def test_ai_refusal_for_a_room_the_peer_left_does_not_blame_the_family(
+    client,
+    trio,
+    fake,  # noqa: F811
+    path,
+):
+    """상대가 방만 나갔을 때도 AI 는 막히고, 문구는 원인(가족/방)을 가리지 않는다. AI 는 부르지 않는다."""
+    a, b, _ = trio
+    enable(client, a)
+    room = _direct(client, a, _uid(client, b))
+    assert _say(client, a, room["id"], "안녕").status_code == 201
+    assert _leave(client, b, room["id"]).status_code == 204  # b 는 방만 나갔고 가족에는 남아 있다
+    calls = len(fake.calls)
+    r = client.post(f"{AI}/{path}", json={"room_id": room["id"]}, headers=a)
+    assert r.status_code == 403 and r.json()["code"] == "peer_left", r.text
+    assert "가족" not in r.json()["message"] and "대화방" in r.json()["message"], r.text
+    assert len(fake.calls) == calls
+
+
+def test_ai_refusal_message_is_the_same_when_the_peer_left_the_family(
+    client,
+    trio,
+    fake,  # noqa: F811
+):
+    a, b, _ = trio
+    enable(client, a)
+    room = _direct(client, a, _uid(client, b))
+    assert client.post("/family-group/groups/me/leave", headers=b).status_code in (200, 204)
+    r = client.post(f"{AI}/analysis", json={"room_id": room["id"]}, headers=a)
+    assert r.status_code == 403 and r.json()["code"] == "peer_left", r.text
+    assert "가족" not in r.json()["message"] and "대화방" in r.json()["message"], r.text

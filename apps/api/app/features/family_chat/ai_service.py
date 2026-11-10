@@ -310,7 +310,8 @@ def _build_context(
 def room_scope(db: Session, user: User, group_id: str, room_id: str | None) -> str | None:
     """AI 가 읽을 방. 가족 전체방(또는 room_id 없음)이면 None, 1:1 방이면 그 방 id.
     1:1 방은 이 가족의 방이고 호출한 사람이 참가자일 때만 쓸 수 있다(아니면 방이 있는지도 드러내지 않고 404).
-    상대가 가족을 나갔으면 쓸 수 없다(403 peer_left): 나간 사람의 대화를 AI 로 보내지 않는다."""
+    상대가 방을 나갔거나 가족을 나갔으면 쓸 수 없다(403 peer_left): 나간 사람의 대화를 AI 로 보내지 않는다.
+    문구는 어느 쪽인지 가리지 않는다(둘 다 같은 코드·문구)."""
     if not room_id:
         return None
     room = chat_repo.get_room(db, room_id)
@@ -322,7 +323,7 @@ def room_scope(db: Session, user: User, group_id: str, room_id: str | None) -> s
         raise not_found("대화방")
     peer = chat_repo.peer_of(db, room.id, user.id)
     if peer is None or not chat_repo.is_group_member(db, group_id, peer):
-        raise ApiError(403, "peer_left", "상대가 가족을 나가서 이 대화에는 AI 를 쓸 수 없어요")
+        raise ApiError(403, "peer_left", "상대가 이 대화방을 나가서 AI 를 쓸 수 없어요")
     return room.id
 
 

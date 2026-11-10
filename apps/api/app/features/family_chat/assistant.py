@@ -78,7 +78,7 @@ def clip(text: str) -> str:
 
 def direct_room(db: Session, user: User, group_id: str, room_id: str | None) -> str | None:
     """@가비 를 부른 방. 1:1 방이면 그 방 id, 가족 전체방이거나 room_id 가 없으면 None.
-    1:1 방은 참가자 본인만(아니면 404), 상대가 가족을 나갔으면 403 peer_left — AI 대화 도우미와 같은 규칙이다."""
+    1:1 방은 참가자 본인만(아니면 404), 상대가 방이나 가족을 나갔으면 403 peer_left — AI 대화 도우미와 같은 규칙이다."""
     return ai_service.room_scope(db, user, group_id, room_id)
 
 

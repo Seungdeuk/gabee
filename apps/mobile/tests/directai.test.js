@@ -39,14 +39,17 @@ test("analyzeChat: 1:1 방이면 room_id 를 싣고, 가족 전체방 요청은 
   assert.deepEqual(calls[3].body, { limit: 100, after_id: 0 });
 });
 
-test("chatErrorMessage: 상대가 가족을 나갔으면(peer_left) 그 이유를 알려 준다", () => {
-  assert.match(chatErrorMessage({ code: "peer_left" }), /가족을 나가/);
+test("chatErrorMessage: 상대가 나가서 AI 를 못 쓰면(peer_left) 방을 나갔든 가족을 나갔든 같은 중립 문구다", () => {
+  const text = chatErrorMessage({ code: "peer_left", status: 403 });
+  assert.match(text, /상대가/); // 누가 나갔는지
+  assert.match(text, /AI/); // 무엇이 막혔는지
+  assert.doesNotMatch(text, /가족/); // 가족을 나간 것으로 단정하지 않는다(방만 나간 경우도 같은 코드)
 });
 
 test("ChatRoomScreen: 1:1 방에서도 AI 도우미 버튼이 보이고 AiPanel 에 방 id 를 넘긴다(소스 확인)", () => {
   const screen = read("../src/features/family-chat/screens/ChatRoomScreen.js");
   assert.doesNotMatch(screen, /direct \? null : <IconButton name="sparkles-outline"/); // 1:1 에서 숨기지 않는다
-  assert.match(screen, /<IconButton name="sparkles-outline" label="AI 도우미 열기"/);
+  assert.match(screen, /<IconButton name="sparkles-outline" label=\{aiButton\.label\}/); // 라벨·비활성은 readOnlyRoom.aiHelperButton 이 정한다(상대가 나간 방만 비활성)
   assert.doesNotMatch(screen, /direct \? null : <AiPanel/);
   assert.match(screen, /<AiPanel visible=\{aiOpen\}[^\n]*roomId=\{roomId \?\? undefined\}/); // 1:1 방이면 그 방 id, 가족 전체방은 없음
   const panel = read("../src/features/family-chat/components/AiPanel.js");
