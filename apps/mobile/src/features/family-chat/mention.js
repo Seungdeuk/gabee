@@ -1,5 +1,5 @@
 // 가족 채팅방에서 @가비 로 부르기(순수 함수, 시험: tests/mention.test.js)
-// 서버는 POST /ai-assistant/chat 에 audience: "room" 으로 받아 답을 가비 이름으로 가족 전체방에 직접 저장한다(모두에게 공유, 기록으로 남는다).
+// 서버는 POST /ai-assistant/chat 에 audience: "room" 으로 받아 답을 가비 이름으로 그 방(가족 전체방, 1:1 방에서 불렀으면 room_id 로 넘긴 그 방)에 직접 저장한다(방 사람들에게 공유, 기록으로 남는다).
 // 이 앱이 목록 사이에 끼워 보이는 항목은 답을 기다리는 중·안내·오류·확인 카드뿐이다(서버에 남지 않는다).
 
 import { parseTime } from "./chatUtils";

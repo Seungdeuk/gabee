@@ -56,6 +56,7 @@ from .ai_schemas import (
     TopicsOut,
 )
 from .models import ASSISTANT_NAME, ASSISTANT_USER_ID
+from .share_text import card_names, card_text
 
 MIN_MESSAGES = 3
 PROMPT_VERSION = "v5"  # 프롬프트·스키마를 바꾸면 올려서 오래된 캐시를 쓰지 않게 한다 (v3: 가명화 토큰, v4: 분석에 답장·주제 합침, v5: 요청한 사람 입장·친근한 요약)
@@ -192,17 +193,79 @@ def _json_lines(rows: list, prep: Prepared) -> list[str]:
     ]
 
 
+@dataclass(frozen=True)
+class AiMessage:
+    """공유 카드 메시지를 AI 로 읽을 때 쓰는 읽기 전용 복사본. Message 와 같은 필드이고 text 만 카드 요약이다.
+    ORM 객체의 text 를 바꾸면 세션이 더러워져 DB 의 고정 문구가 요약으로 저장될 수 있어서 복사본을 쓴다."""
+
+    id: int
+    group_id: str
+    room_id: str | None
+    user_id: str
+    text: str
+    created_at: datetime
+    deleted_at: datetime | None
+    reply_to_id: int | None
+
+
+def _with_cards(db: Session, rows: list) -> tuple[list, list[str]]:
+    """카드 메시지의 글자(고정 문구)를 카드 내용 요약(`share_text.card_text`)으로 바꾼 (rows, 카드에 든 이름들).
+    카드가 있는 메시지만 AiMessage 복사본으로 바꾸고 ORM 행은 건드리지 않는다. 카드 표가 이 DB 에 없으면(공용 DB 반영 전)
+    조회하지 않고 그대로 돌려준다. 이름들은 보낸 시점에 찍힌 값이라 나간 구성원일 수 있어 호출한 쪽이 가명화 사전에 더한다."""
+    if not rows or not chat_repo.share_table_exists(db):
+        return rows, []
+    shares = chat_repo.shares_for(db, [m.id for m, _ in rows])
+    if not shares:
+        return rows, []
+    out, names = [], []
+    for m, name in rows:
+        share = shares.get(m.id)
+        if share is None:
+            out.append((m, name))
+            continue
+        names.extend(card_names(share.kind, share.payload))
+        out.append(
+            (
+                AiMessage(
+                    id=m.id,
+                    group_id=m.group_id,
+                    room_id=m.room_id,
+                    user_id=m.user_id,
+                    text=card_text(share.kind, share.payload),
+                    created_at=m.created_at,
+                    deleted_at=m.deleted_at,
+                    reply_to_id=m.reply_to_id,
+                ),
+                name,
+            )
+        )
+    return out, list(dict.fromkeys(names))
+
+
+def _masking_names(
+    member_names: list[tuple[str, ...]], card_names_: list[str]
+) -> list[tuple[str, ...]]:
+    """가명화 이름 사전: 현재 구성원 + 카드에만 있는 이름(나간 구성원)을 단일 이름 묶음으로 더한다(이미 있는 이름은 생략).
+    정렬해 같은 구성이면 항상 같은 순서다."""
+    known = {n for person in member_names for n in person}
+    return [*member_names, *((n,) for n in sorted(set(card_names_) - known))]
+
+
 def _build_context(
-    rows: list, member_names: list[tuple[str, ...]], policy: Policy, max_chars: int
+    rows: list,
+    member_names: list[tuple[str, ...]],
+    policy: Policy,
+    max_chars: int,
+    extra_names: list[str] | None = None,
 ) -> _Context:
     """DB 에서 읽은 (메시지, 발화자 이름)을 가명화하고, 글자 수 한도를 넘으면 가장 오래된 메시지부터 뺀다(최신 대화를 남긴다).
     글자 수는 실제로 외부에 나가는 가명화된 줄 기준이다. 뺀 메시지가 있으면 남은 메시지만으로 다시 가명화해 대응표와
-    개수가 보내는 줄과 정확히 맞게 한다(같은 입력이면 항상 같은 토큰 번호 — 캐시 적중 때 대응표를 다시 만들 수 있다)."""
+    개수가 보내는 줄과 정확히 맞게 한다(같은 입력이면 항상 같은 토큰 번호 — 캐시 적중 때 대응표를 다시 만들 수 있다).
+    extra_names 는 구성원은 아니지만 글에 나올 수 있는 이름(카드에 찍힌 나간 구성원)이라 가리기만 하고 담당자로는 인정하지 않는다."""
+    mask_names = _masking_names(member_names, extra_names or [])
 
     def prepare(subset: list) -> Prepared:
-        return prepare_transcript(
-            [(m.id, name, m.text) for m, name in subset], member_names, policy
-        )
+        return prepare_transcript([(m.id, name, m.text) for m, name in subset], mask_names, policy)
 
     prep = prepare(rows)
     try:
@@ -294,11 +357,15 @@ def room_context(
         rows = rows[:-1]
     if not rows:
         return None
+    rows, extra_names = _with_cards(
+        db, rows
+    )  # 공유 카드는 고정 문구 대신 카드 내용 요약으로 읽는다
     ctx = _build_context(
         rows,
         repo.member_names(db, group_id),
         ANALYSIS,
         min(ROOM_CONTEXT_MAX_CHARS, settings.ai_analysis_max_chars),
+        extra_names,
     )
     # 가비의 글은 사람처럼 가명화되지 않게 가비로 되돌린다(모델이 '가비의 답'과 '@가비 요청'을 알아보도록)
     for message, line in zip(ctx.used, ctx.prep.lines, strict=True):
@@ -321,8 +388,11 @@ def _prepare(
     rows = repo.recent_messages(db, group_id, min(body.limit, limit), body.after_id, room_id)
     if len(rows) < MIN_MESSAGES:
         raise bad_request("too_few_messages", "AI가 살펴볼 대화가 아직 충분하지 않아요")
+    rows, extra_names = _with_cards(
+        db, rows
+    )  # 공유 카드는 고정 문구 대신 카드 내용 요약으로 읽는다
     ctx = _build_context(
-        rows, repo.member_names(db, group_id), policy, settings.ai_analysis_max_chars
+        rows, repo.member_names(db, group_id), policy, settings.ai_analysis_max_chars, extra_names
     )
     if need_sendable and not ctx.sendable:
         ctx.close()
