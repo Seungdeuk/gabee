@@ -200,8 +200,8 @@ def test_say_rules(client, family, clock):
     assert r.status_code == 409 and r.json()["code"] == "not_your_turn"
     assert say(client, a, room_id, "").status_code == 422
     assert say(client, a, room_id, "가" * 11).status_code == 422  # 10자까지
-    out = say(client, a, room_id, "  누가   어제 ").json()  # 공백은 정리된다
-    assert out["messages"][-1]["text"] == "누가 어제" and out["chain"] == 1
+    out = say(client, a, room_id, "  누가  ").json()  # 앞뒤 공백은 정리된다
+    assert out["messages"][-1]["text"] == "누가" and out["chain"] == 1
     assert out["turn"]["player"]["name"] == "수진"
     assert say(client, a, room_id, "또").json()["code"] == "not_your_turn"
 

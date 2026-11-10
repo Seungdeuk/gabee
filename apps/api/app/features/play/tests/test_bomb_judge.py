@@ -6,7 +6,9 @@ from pathlib import Path
 import pytest
 
 from app.features.play.bomb_judge import (
+    fix_spacing,
     is_ended,
+    is_multi_phrase,
     is_repeat,
     is_repeat_word,
     judge_sentence,
@@ -31,7 +33,30 @@ CASES = [
     ("그래서 어떻게 됐는데", False),  # -는데 는 통과
     ("밥 먹고", False),  # 연결
     ("나는 학교에", False),
-    ("바다", False),  # 명사 한 단어
+    ("바다", True),  # 조사 없이 명사로 끝나면 탈락(11/10 규칙)
+    ("엄마가 어", True),
+    ("나는 음", True),
+    ("엄마가 글쎄", True),
+    ("엄마가 맞아", True),
+    ("나는 좋아", True),
+    ("엄마가 응", True),  # 대답류는 문장 중간에서도 마지막 말이면 탈락
+    ("나는 네", True),
+    ("엄마가 그래", True),
+    ("오늘 응 응", True),
+    ("나 아니", True),
+    ("응 그래서", False),  # 그래서·아니면은 다른 말이라 통과
+    ("그게 아니면", False),
+    ("산", False),  # 샀던의 줄임이라 통과
+    ("바다가", False),  # 조사가 붙으면 통과
+    ("오늘 저녁 메뉴는 김치찌개", True),
+    ("우리", True),
+    ("우리는", False),
+    ("하나", True),
+    ("하나도", False),
+    ("엄마가 어제", False),  # 부사(어제·오늘·너무·그리고)는 통과
+    ("엄마가 오늘", False),
+    ("너무", False),
+    ("엄마 아빠 그리고", False),
     ("누가 어제 학교에서", False),
 ]
 
@@ -39,6 +64,22 @@ CASES = [
 @pytest.mark.parametrize(("text", "ended"), CASES)
 def test_rule_table(text, ended):
     assert is_ended(text) is ended, (text, judge_sentence(text))
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "ㅋㅋ", "ㅋㅋㅋ", "ㅋㅋㅋㅋ", "ㅠㅠ", "ㅎㅎ", "ㅇㅇ", "ㄴㄴ", "ㅈㅈ",
+        "ㅏ", "ㅓ", "ㅗ", "ㅛ", "ㅇㅁㄹㅇㄻ", "ㅋㅋ!",
+        "나는 ㅋㅋㅋ", "엄마가 ㅠㅠ", "오늘 학교에서 ㅇㅇ", "나는 ㅏ",
+    ],
+)  # fmt: skip
+def test_jamo_only_last_word_is_ended(text):
+    assert is_ended(text) is True, (text, judge_sentence(text))
+
+
+def test_jamo_attached_to_a_word_follows_normal_rules():
+    assert is_ended("나는 학교에ㅋㅋ") is False
 
 
 def test_empty_is_not_ended():
@@ -88,7 +129,16 @@ def _wrong(name):
     ]
 
 
-@pytest.mark.parametrize(("name", "known_misses"), [("v1", set()), ("v2", set()), ("v3", set())])
+# v4(가족 테스트에서 틀린 말): 지금은 모두 맞는다. 못 고치는 말이 생기면 여기에 적는다.
+V4_KNOWN_MISSES: set[str] = set()
+# 산(샀던)을 명사 산(山)으로 읽어서 틀린다. 조사 없는 명사 규칙(11/10) 뒤에 생긴 오판.
+V1_KNOWN_MISSES: set[str] = set()
+
+
+@pytest.mark.parametrize(
+    ("name", "known_misses"),
+    [("v1", V1_KNOWN_MISSES), ("v2", set()), ("v3", set()), ("v4", V4_KNOWN_MISSES)],
+)
 def test_sentence_sets(name, known_misses):
     """model-eval_end 에서 쓴 문장 3세트(약 165개). v3 는 규칙을 만든 뒤 처음 본 문장이다(네네 같은 대답 반복을 막는 규칙을 넣어 0개)."""
     assert len(_rows(name)) >= 50
@@ -116,3 +166,46 @@ def test_repeating_a_word_already_said_in_this_sentence():
     assert not is_repeat("먹었다", ["밥을"])
     assert not is_repeat("누가", [])
     assert not is_repeat("...", ["!!!"])  # 비교할 글자가 없으면 반복으로 보지 않는다
+
+
+@pytest.mark.parametrize(
+    ("word", "multi"),
+    [
+        ("그 것도", False),  # 띄어쓰기 실수는 한 구절
+        ("김치 찌개", False),
+        ("하려 다", False),
+        ("강아지 가", False),
+        ("바다", False),  # 처음부터 한 어절
+        ("어제 산", True),  # 산(샀던의 줄임)이 붙은 두 어절
+        ("그만두려하니", False),  # -고 하니 꼴은 한 구절
+        ("결혼했다하니", False),
+        ("그만두려고하니", False),
+        ("결혼했다고하니", False),
+        ("결혼했다고 하니", False),
+        ("엄마가 그만두려고하니", True),  # 앞에 다른 말이 붙으면 여러 어절
+        ("우리 가족은", False),  # 명사끼리 + 조사는 한 구절
+        ("할머니댁에", False),
+        ("사과주스", False),
+        ("밥먹고", True),  # 붙여 써도 문법상 두 어절
+        ("시장가서", True),
+        ("엄마가학교에", True),
+        ("안돼", True),
+        ("그리고나서", False),  # 예외 목록
+        ("그리고 나서", False),  # 예외 목록의 고정 표현
+        ("시장 가서", True),  # 여러 어절을 이어 쓰면 탈락
+        ("밥 먹고", True),
+        ("엄마가 학교에", True),
+        ("할 수 있어", True),
+        ("엄마 아빠 그리고", True),
+    ],
+)
+def test_multi_phrase_input(word, multi):
+    assert is_multi_phrase(word) is multi
+
+
+def test_fix_spacing_merges_only_single_phrases():
+    assert fix_spacing("아 니") == "아니"  # 합치면 대답류라 탈락해야 한다
+    assert is_ended(fix_spacing("아 니")) is True
+    assert fix_spacing("그 것도") == "그것도"
+    assert fix_spacing("시장 가서") == "시장 가서"  # 진짜 두 어절은 그대로
+    assert fix_spacing("바다") == "바다"

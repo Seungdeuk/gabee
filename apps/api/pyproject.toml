@@ -19,7 +19,9 @@ dependencies = [
     "pillow>=10.4",
     "pillow-heif>=0.18",
     # 가족 놀이터 문장 폭탄: 문장이 끝났는지 판정하는 한국어 형태소 분석기
-    "kiwipiepy>=0.18",
+    # 판정 결과가 버전마다 달라질 수 있어 분석기와 모델 파일을 함께 고정한다
+    "kiwipiepy==0.24.1",
+    "kiwipiepy_model==0.24.0",
     "rapidocr>=3.4",
     "onnxruntime>=1.20",
     "markitdown[docx,xlsx,pptx,pdf]>=0.1",

@@ -44,7 +44,12 @@
     "오키",
     "ㅇㅋ",
     "알겠",
-    "굿"
+    "굿",
+    "어",
+    "음",
+    "글쎄",
+    "맞아",
+    "좋아"
   ],
   "final_ec_forms": [
     "다",
@@ -58,13 +63,26 @@
     "ㄴ데",
     "은데",
     "거든",
-    "는데요",
-    "ㄴ데요",
-    "은데요",
-    "거든요"
+    "려다"
+  ],
+  "multi_phrase_exception_patterns": [
+    "\\S+?(?:려|려고|다|다고|라고|자고|냐고)\\s?하니(?:까)?"
+  ],
+  "bare_noun_exceptions": [
+    "산"
+  ],
+  "multi_phrase_exceptions": [
+    "그리고 나서"
   ],
   "house_tags": [
     "ETN"
+  ],
+  "bare_noun_tags": [
+    "NNG",
+    "NNP",
+    "NNB",
+    "NP",
+    "NR"
   ],
   "predicate_tags": [
     "VV",

@@ -23,7 +23,7 @@ from app.shared.errors import ApiError, bad_request, not_found
 
 from . import bomb_vote as vote
 from . import repository
-from .bomb_judge import is_ended, is_repeat
+from .bomb_judge import fix_spacing, is_ended, is_multi_phrase, is_repeat
 from .bomb_schemas import (
     LIFE_RANGE,
     SEC_RANGE,
@@ -442,8 +442,10 @@ def say(db: Session, user: User, group_id: str, room_id: str, word: str) -> Play
         db.commit()  # 위에서 기록한 시간 초과는 남긴다
         raise ApiError(409, "not_your_turn", "지금은 내 차례가 아니에요")
     # 이번 문장에서 이미 나온 말을 또 하거나 대답을 되풀이하면 문장을 끝낸 것과 같이 생명이 줄어든다
-    ended = is_repeat(word, g.words) or is_ended(
-        " ".join([*g.words, word])
+    ended = (
+        is_repeat(word, g.words)
+        or is_multi_phrase(word)
+        or is_ended(" ".join([*g.words, fix_spacing(word)]))
     )  # 문장은 지금까지 이어 말한 전체를 본다
     repository.add(
         db,
