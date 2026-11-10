@@ -205,7 +205,15 @@ def test_demo_seed_answers_typical_chat_questions(client, family):
 
 def test_llm_tools_shape(client, seeded):
     _, _, group = seeded
-    assert [t["name"] for t in tools.TOOL_SPECS] == ["search_knowledge", "get_item", "list_items"]
+    assert [t["name"] for t in tools.TOOL_SPECS] == [
+        "search_knowledge",
+        "get_item",
+        "list_items",
+        "list_name_checks",
+        "resolve_name_check",
+        "resolve_reminder",
+        "set_reminders",
+    ]
     with SessionLocal() as db:
         found = tools.search_knowledge(db, group["id"], "엄마 약 처방")
         top = found["results"][0]

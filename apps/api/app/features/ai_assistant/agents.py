@@ -1,6 +1,6 @@
 """메인 에이전트가 쓰는 탭 에이전트 목록. 메인은 DB 를 직접 읽지 않고 여기 도구로 탭 담당 에이전트에게 묻는다.
 
-각 탭 에이전트의 코드는 그 기능 폴더(billing/agent.py, care/agent.py, schedule/agent/ask.py)에 있고, 여기는 이름·설명·호출만 모은다.
+각 탭 에이전트의 코드는 그 기능 폴더(billing/agent.py, family_chat/agent.py, schedule/agent/ask.py)에 있고, 여기는 이름·설명·호출만 모은다.
 탭을 더 붙일 때는 `AGENTS` 에 한 줄을 더하면 된다."""
 
 import re
@@ -10,31 +10,45 @@ from dataclasses import replace
 from sqlalchemy.orm import Session
 
 from app.features.billing import agent as billing_agent
-from app.features.care import agent as care_agent
+
+# from app.features.care import agent as care_agent  # 돌봄 에이전트를 메인에서 뺐다(AGENTS 참고)
 from app.features.family_chat import agent as family_chat_agent
 from app.features.family_group.models import User
 from app.features.schedule.agent import ask as schedule_agent
+from app.shared import ai_guard
 from app.shared.llm.agent import AgentReply, Post
+from app.shared.llm.agent_guard import BILLING_FEATURE, FAMILY_CHAT_FEATURE
 
 AskFn = Callable[[Session, str, User, str, Post | None], AgentReply]
 
 AGENTS: dict[str, tuple[str, AskFn]] = {
     "ask_billing": (billing_agent.DESCRIPTION, billing_agent.ask),
-    "ask_care": (care_agent.DESCRIPTION, care_agent.ask),
+    # 돌봄 에이전트는 팀 회의 결과로 지갑 탭 개편 동안 메인 에이전트에서 뺀다(care/agent.py 는 이미 지워졌고, 다시 붙일 때는 새로 만든다).
+    # "ask_care": (care_agent.DESCRIPTION, care_agent.ask),
     "ask_family_chat": (family_chat_agent.DESCRIPTION, family_chat_agent.ask),
     "ask_schedule": (schedule_agent.DESCRIPTION, schedule_agent.ask),
 }
 
+# 탭 에이전트 → 사용 기록(ai_usage_logs.feature) 이름. 각 탭에서 직접 쓸 때 남는 이름과 같게 둔다
+USAGE_FEATURES = {
+    "ask_billing": BILLING_FEATURE,
+    "ask_family_chat": FAMILY_CHAT_FEATURE,
+    "ask_schedule": "schedule_chat",  # schedule/agent/chat.py 의 FEATURE
+}
+
 # 답이 사용자에게 그대로 전할 수 있는 글인 탭 에이전트. 한 질문에 이것 하나만 불렀고 답이 완결이면 메인이 다시 모델을 부르지 않는다.
 # (일정 에이전트의 답은 메인에게 주는 안내 글이 섞여 있어 제외한다)
-DIRECT_REPLY_AGENTS = frozenset({"ask_billing", "ask_care", "ask_family_chat", "ask_schedule"})
+DIRECT_REPLY_AGENTS = frozenset(
+    {"ask_billing", "ask_family_chat", "ask_schedule"}
+)  # "ask_care" 는 주석 처리(위 AGENTS 참고)
 USER_TEXT_AGENTS = frozenset(
     {"ask_schedule"}
 )  # 직통 응답에 answer 가 아니라 사용자에게 줄 글(direct_answer)을 쓰는 에이전트
 
 PROMPT_NOTE = (
-    "지출·정산·구독·용돈 질문은 ask_billing, 돌봄 항목·식단·위치 질문은 ask_care 로 담당 에이전트에게 물어보세요. "
-    "당신은 가계·돌봄 데이터를 직접 볼 수 없으니 추측하지 말고, 질문 내용을 한국어 문장으로 그대로 넘기세요(기간이나 "
+    # 돌봄 문장은 지갑 탭 개편 동안 뺐다. 원래: "지출·정산·구독·용돈 질문은 ask_billing, 돌봄 항목 질문은 ask_care 로 담당 에이전트에게 물어보세요. 당신은 가계·돌봄 데이터를 직접 볼 수 없으니"
+    "지출·정산·용돈 질문은 ask_billing 으로 담당 에이전트에게 물어보세요. 구독·통신비·결제일은 지금 확인할 수 없으니 모른다고 답하세요. 돌봄 항목(데일리 체크 등)은 지금 확인할 수 없으니 모른다고 답하세요. "
+    "당신은 가계 데이터를 직접 볼 수 없으니 추측하지 말고, 질문 내용을 한국어 문장으로 그대로 넘기세요(기간이나 "
     "사람 이름이 있으면 포함). 돌려받은 답의 숫자와 사실은 바꾸지 말고 전하세요. 두 탭에 걸친 질문이면 둘 다 물어보세요. "
     "can_answer 가 false 면 답을 지어내지 말고 지금은 확인하지 못했다고 알려 주세요. "
     "등록·기록 요청도 같은 담당 에이전트에게 넘기세요. pending_confirmation 이 있으면 아직 실행된 것이 아니라 "
@@ -48,7 +62,9 @@ PROMPT_NOTE = (
     "날짜와 할 일만 말했을 뿐 일정에 넣어 달라는 말이 없으면('엄마 생신이야', '내일 병원 가야 돼') 등록하지 말고 "
     "'일정에 넣어 드릴까요?'라고 먼저 물어보세요. 사용자가 그러라고 하면 그때 ask_schedule 로 넘기세요. "
     "'이거 일정에 넣어줘'의 '이거'가 방금 올린 문서나 앞서 찾은 기록이면 search_knowledge 로 그 기록의 날짜·제목을 읽고 "
-    "그 내용을 담은 완전한 문장으로 ask_schedule 에 넘기세요. "
+    "그 내용을 담은 완전한 문장으로 ask_schedule 에 넘기세요. 그 날짜에 하는 일의 시각과 장소가 기록에 적혀 있으면 함께 읽어 문장에 담고"
+    "(예: '2026-11-13 08:40 국립중앙박물관 현장체험학습을 일정에 넣어줘'), 메모는 문서의 핵심 내용만 한두 문장으로 적도록 덧붙이세요"
+    "(시각·장소를 메모에 되풀이하지 않고, 이름·연락처·주소는 쓰지 않습니다). 기록에 없는 시각·장소는 지어내지 마세요. "
     "ask_schedule 이 정보가 더 필요하다며 질문을 돌려주면 그 질문을 사용자에게 그대로 전하고, 사용자가 답하면 앞서 말한 "
     "날짜·시간·제목을 합쳐 하나의 완전한 문장으로 다시 넘기세요. 이미 등록한 일정을 같은 요청으로 다시 등록하지 마세요. "
     "ask_schedule 이 등록했다고 답하기 전에는 등록했다고 말하지 마세요. 일정 수정·삭제와 가족에게 공유하는 등록은 확인 카드가 "
@@ -131,7 +147,18 @@ def call(
     if not question:
         raise ValueError("question 이 비어 있어요")
     # 일정 에이전트만 어디서 불렀는지(가족방 @가비 = room)를 알아야 한다: 방에서는 공동 일정만 다룬다
+    if audience == "direct" and name == "ask_schedule":
+        # 1:1 방에서는 일정 에이전트를 아직 쓰지 않는다(상대 한 명 기준 조회·공유는 별도 작업). 개인 일정이 상대에게 보이지 않게 막는다
+        return (
+            {"answer": "1:1 대화에서는 아직 일정을 다루지 않아요", "can_answer": False},
+            [],
+            [],
+            [],
+        )
     extra = {"audience": audience} if name == "ask_schedule" else {}
+    ai_guard.note_nested(
+        USAGE_FEATURES[name]
+    )  # 사용 기록에 어느 탭 에이전트를 썼는지 남긴다(호출 수는 메인 줄에 센다)
     reply = AGENTS[name][1](
         db, group_id, user, question, post, guarded=False, **extra
     )  # 메인 질문의 관문 한 번에 함께 센다

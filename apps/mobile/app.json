@@ -5,7 +5,7 @@
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "gabee",
+    "scheme": ["gabee", "com.kangminhun.gabee"],
     "userInterfaceStyle": "light",
     "ios": {
       "icon": "./assets/images/icon.png",
@@ -18,6 +18,7 @@
         "foregroundImage": "./assets/images/android-icon-foreground.png"
       },
       "predictiveBackGestureEnabled": false,
+      "googleServicesFile": "./google-services.json",
       "permissions": [
         "android.permission.RECORD_AUDIO",
         "android.permission.READ_EXTERNAL_STORAGE",
@@ -75,7 +76,20 @@
           "isIosBackgroundLocationEnabled": false
         }
       ],
-      "expo-secure-store"
+      [
+        "expo-notifications",
+        {
+          "color": "#B7791C"
+        }
+      ],
+      "expo-secure-store",
+      [
+        "expo-speech-recognition",
+        {
+          "microphonePermission": "가비가 말로 묻는 내용을 글자로 바꾸려고 마이크를 사용해요.",
+          "speechRecognitionPermission": "가비가 말로 묻는 내용을 글자로 바꾸려고 음성 인식을 사용해요."
+        }
+      ]
     ],
     "experiments": {
       "reactCompiler": true

@@ -4,6 +4,7 @@ from datetime import UTC, date, datetime, time, timedelta
 from sqlalchemy.orm import Session
 
 from app.shared.errors import ApiError, bad_request, not_found
+from app.shared.notifications import notify
 
 from . import repository as repo
 from .constants import (
@@ -38,6 +39,25 @@ def _share_targets(db: Session, group_id: str, user_id: str, share_with: list[st
     if wanted and set(wanted) - repo.member_ids(db, group_id, wanted):
         raise bad_request("invalid_share_target", "같은 가족 구성원이 아닌 사람이 있어요")
     return wanted
+
+
+def _notify_shared(
+    db: Session, group_id: str, user_id: str, event_id: str, to_ids: list[str]
+) -> None:
+    """공유를 받은 사람에게 "가족이 일정을 공유했어요". 문구는 고정이라 제목·날짜·장소를 담지 않는다. 커밋은 부르는 쪽이 한다."""
+    if not to_ids:
+        return
+    notify(
+        db,
+        group_id=group_id,
+        kind="schedule",
+        event="event_shared",
+        recipients=to_ids,
+        title="가족이 일정을 공유했어요",
+        target_type="event",
+        target_id=event_id,
+        actor_user_id=user_id,
+    )
 
 
 def create(db: Session, group_id: str, user_id: str, body: EventCreate) -> Event:
@@ -85,6 +105,8 @@ def create(db: Session, group_id: str, user_id: str, body: EventCreate) -> Event
         suggestion.status = SUGGESTION_CONFIRMED
         suggestion.confirmed_at = now
     repo.add_all(db, [original, *copies])
+    _notify_shared(db, group_id, user_id, original.id, targets)
+    db.commit()
     return with_sharing(db, user_id, [original])[0]
 
 
@@ -227,6 +249,9 @@ def _reshare(db: Session, group_id: str, user_id: str, event: Event, share_with:
             for i, t in enumerate(added, start=1)
         ],
     )
+    _notify_shared(
+        db, group_id, user_id, event.id, added
+    )  # 새로 든 사람에게만(이미 받은 사람에게는 다시 가지 않는다)
 
 
 def current_when(event: Event) -> tuple[date, time | None, time | None]:

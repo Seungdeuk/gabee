@@ -79,6 +79,28 @@ test("가족 API 호출: 경로·메서드·본문, 로그인 세션이 있으�
   assert.ok(calls.slice(1).every((c) => c.body === null));
 });
 
+test("소셜 로그인 설정: Google 은 지금 기기(플랫폼)용 클라이언트 ID 가 있을 때만 켠다(없는데 그리면 안드로이드에서 앱이 시작하자마자 오류가 난다)", async () => {
+  const social = await import("../src/features/auth/social.js");
+  const saved = { ...process.env };
+  try {
+    for (const k of Object.keys(process.env)) if (k.startsWith("EXPO_PUBLIC_GOOGLE") || k.startsWith("EXPO_PUBLIC_KAKAO")) delete process.env[k];
+    process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID = "web-id";
+    assert.deepEqual(social.enabledProviders("android"), []); // 웹 ID 만 있으면 안드로이드는 Google 버튼을 숨긴다
+    assert.deepEqual(social.enabledProviders("ios"), []);
+    assert.deepEqual(social.enabledProviders("web"), ["google"]);
+    process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID = "android-id";
+    assert.deepEqual(social.enabledProviders("android"), ["google"]);
+    assert.deepEqual(social.enabledProviders("ios"), []);
+    process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID = "ios-id";
+    assert.deepEqual(social.enabledProviders("ios"), ["google"]);
+    process.env.EXPO_PUBLIC_KAKAO_REST_API_KEY = "rest-key";
+    assert.deepEqual(social.enabledProviders("android"), ["google", "kakao"]); // 카카오는 플랫폼과 무관
+  } finally {
+    for (const k of Object.keys(process.env)) if (!(k in saved)) delete process.env[k];
+    Object.assign(process.env, saved);
+  }
+});
+
 test("소셜 로그인 설정: 값이 있는 제공자만 켜지고, 후보 응답을 알아본다", async () => {
   const social = await import("../src/features/auth/social.js");
   const saved = { ...process.env };
@@ -161,4 +183,21 @@ test("프로필·별명·권한 API 호출 경로와 본문", async () => {
   assert.deepEqual(calls[1].body, { role: "admin" }); // owner 로 올리는 값은 보내지 않는다
   assert.deepEqual(calls[3].body, { nickname: "삼촌", memo: null }); // 빈 값은 null(지우기)
   assert.deepEqual(calls[4].body, { nickname: null, memo: null });
+});
+
+test("가족 나가기: POST /family-group/groups/me/leave, 204 는 null", async () => {
+  const calls = [];
+  globalThis.fetch = async (url, init = {}) => {
+    calls.push(`${init.method ?? "GET"} ${new URL(url).pathname}`);
+    return new Response(null, { status: 204 });
+  };
+  const api = await import("../src/features/family-group/api.js");
+  assert.equal(await api.leaveFamily(), null);
+  assert.deepEqual(calls, ["POST /family-group/groups/me/leave"]);
+});
+
+test("가족 오류 문구: 소유자는 나갈 수 없다", () => {
+  assert.match(familyErrorMessage({ code: "cannot_leave_owner" }), /소유자는 가족을 나갈 수 없어요/);
+  assert.match(familyErrorMessage({ code: "no_group" }), /가족 그룹/);
+  assert.match(familyErrorMessage({ code: "not_member" }), /구성원이 아니에요/);
 });

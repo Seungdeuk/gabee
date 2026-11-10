@@ -132,7 +132,8 @@ def test_the_real_ci_job_checks_the_pr_merge_result_not_only_the_branch():
         (API_ROOT.parents[1] / ".github" / "workflows" / "ci-check.yml").read_text(encoding="utf-8")
     )
     triggers = ci.get("on") or ci.get(True)
-    assert "pull_request" in triggers and "push" in triggers
+    # 결제를 안 하기로 해서 자동 실행을 끈 동안은 수동 실행만 있다. 다시 켜면 pull_request + push 여야 한다
+    assert set(triggers) - {"workflow_dispatch"} in (set(), {"pull_request", "push"})
     for job in ci["jobs"].values():
         for step in job["steps"]:
             if str(step.get("uses", "")).startswith("actions/checkout"):

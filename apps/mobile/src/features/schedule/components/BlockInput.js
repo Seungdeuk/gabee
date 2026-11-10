@@ -9,10 +9,11 @@ import { colors } from "@/theme";
  * - 두 자리 영역은 첫 숫자가 크면 앞에 0을 붙여 바로 확정한다(월에서 9 → 09). 확정되면 다음 영역이 자동으로 선택된다.
  * - 범위를 벗어나는 숫자는 무시한다(월 13, 일 32, 시 24, 분 60). 한 자리만 치고 다른 영역으로 가면 앞에 0을 붙인다.
  * - 키보드의 좌우 화살표로 영역을 옮기고, Backspace 로 지운다(폰 숫자 키보드에는 화살표가 없어 터치로 옮긴다).
- * @param {{ blocks: { key: string, length: number, hint: string, min: number, max: number, padAbove?: number }[], separators: string[], values: string[], onChange: (values: string[]) => void, active?: boolean, onFocus?: () => void, autoFocus?: boolean, large?: boolean, compact?: boolean }} props
+ * 칸 오른쪽 끝에 trailing(스위치 같은 것)을 넣을 수 있다. 그러면 숫자는 왼쪽, trailing 은 오른쪽에 놓인다.
+ * @param {{ blocks: { key: string, length: number, hint: string, min: number, max: number, padAbove?: number }[], separators: string[], values: string[], onChange: (values: string[]) => void, active?: boolean, onFocus?: () => void, autoFocus?: boolean, large?: boolean, compact?: boolean, trailing?: import("react").ReactNode }} props
  *   values 는 영역마다 지금까지 친 숫자(비어 있으면 빈 글자)이고, 빈 자리는 hint 글자가 옅게 보인다. padAbove 는 이 숫자보다 큰 첫 숫자를 치면 0을 붙인다.
  */
-export default function BlockInput({ blocks, separators, values, onChange, active = false, onFocus, autoFocus = false, large = false, compact = false }) {
+export default function BlockInput({ blocks, separators, values, onChange, active = false, onFocus, autoFocus = false, large = false, compact = false, trailing = null }) {
   const inputRef = useRef(null);
   const [sel, setSel] = useState(autoFocus ? 0 : null);
   const [fresh, setFresh] = useState(true);
@@ -83,7 +84,7 @@ export default function BlockInput({ blocks, separators, values, onChange, activ
   };
 
   return (
-    <View style={[styles.box, large && styles.boxLarge, compact && styles.boxCompact, (active || focused) && styles.boxOn]}>
+    <View style={[styles.box, large && styles.boxLarge, compact && styles.boxCompact, trailing && styles.boxTrailing, (active || focused) && styles.boxOn]}>
       <View style={styles.row}>
         {blocks.map((b, i) => (
           <View key={b.key} style={styles.row}>
@@ -102,6 +103,7 @@ export default function BlockInput({ blocks, separators, values, onChange, activ
           </View>
         ))}
       </View>
+      {trailing}
       <TextInput
         ref={inputRef}
         value=""
@@ -143,6 +145,7 @@ const styles = StyleSheet.create({
   },
   boxLarge: { minHeight: 48 },
   boxCompact: { minHeight: 40, paddingHorizontal: 4 },
+  boxTrailing: { flexDirection: "row", justifyContent: "space-between", paddingRight: 8 },
   boxOn: { borderColor: colors.peach },
   row: { flexDirection: "row", alignItems: "center" },
   block: { paddingHorizontal: 4, paddingVertical: 3, borderRadius: 8 },

@@ -1,4 +1,4 @@
-"""@가비 로 부른 답을 방에 올려도 되면(visibility=room) 서버가 가비 이름으로 가족 전체방에 저장한다. 개인용이면 저장하지 않는다."""
+"""가족 채팅방에서 @가비 로 부른 답은 모두 서버가 가비 이름으로 가족 전체방에 저장한다(개인 대화는 저장하지 않는다)."""
 
 import pytest
 from sqlalchemy import func, select
@@ -64,12 +64,14 @@ def test_shareable_room_answer_is_posted_as_gabi(client, family, ask):
         assert msgs[0]["id"] == out["posted_message_id"]
 
 
-def test_private_answer_is_not_posted(client, family, ask):
-    a, _, _ = family
+def test_allowance_answer_in_room_is_posted_too(client, family, ask):
+    """예전에는 개인용이라 저장하지 않던 답(자녀 용돈 장부)도 방에서 부르면 가족 모두에게 저장된다."""
+    a, b, _ = family
     out = ask("ask_billing", {"question": "용돈"}, "list_allowances", audience="room")
-    assert out["visibility"] == "private" and out["posted_message_id"] is None
-    assert out["private_reasons"] == ["자녀 용돈 장부"]
-    assert _room_messages(client, a) == []
+    assert out["visibility"] == "room" and out["private_reasons"] == []
+    assert out["posted_message_id"] is not None
+    for headers in (a, b):
+        assert [m["text"] for m in _room_messages(client, headers)] == [out["reply"]]
 
 
 def test_personal_chat_is_never_posted(client, family, ask):
@@ -78,17 +80,16 @@ def test_personal_chat_is_never_posted(client, family, ask):
     assert out["posted_message_id"] is None and _room_messages(client, a) == []
 
 
-def test_history_with_a_private_turn_keeps_the_room_answer_private(client, family, ask):
-    """앞서 질문한 사람에게만 보였던 개인용 답이 맥락에 있으면, 도구 없이 답해도 방에 올리지 않는다."""
+def test_old_apps_private_flag_in_history_is_ignored(client, family, ask):
+    """예전 앱이 보내는 history 의 private 표시는 더 이상 저장을 막지 않는다."""
     a, _, _ = family
     history = [
         {"role": "user", "text": "아이 용돈 잔액 알려줘"},
         {"role": "assistant", "text": "잔액은 12,000원이에요.", "private": True},
     ]
     out = ask(None, None, audience="room", history=history)
-    assert out["visibility"] == "private" and out["posted_message_id"] is None
-    assert "앞서 개인 정보가 있는 답이 있었어요" in out["private_reasons"]
-    assert _room_messages(client, a) == []
+    assert out["visibility"] == "room" and out["posted_message_id"] is not None
+    assert [m["text"] for m in _room_messages(client, a)] == [out["reply"]]
 
 
 def test_public_history_does_not_block_posting(client, family, ask):
@@ -137,9 +138,37 @@ def test_markdown_marks_are_removed_from_the_room_message():
     text = "## 이번 달 지출\n\n총액은 **205,000원**이에요.\n\n- 식비: 160,000원\n- 교통: 45,000원"
     assert (
         assistant.clip(text)
-        == "이번 달 지출\n\n총액은 205,000원이에요.\n\n- 식비: 160,000원\n- 교통: 45,000원"
+        == "이번 달 지출\n\n총액은 205,000원이에요.\n\n• 식비: 160,000원\n• 교통: 45,000원"
     )
     assert assistant.clip("가격은 #1 입니다") == "가격은 #1 입니다"  # 줄 맨 앞이 아닌 # 는 그대로
+
+
+def test_list_lines_get_bullets_and_short_dates_for_readability():
+    from datetime import date
+
+    year = date.today().year
+    text = (
+        f"**{year}년 11월 지출 내역** (총 203,800원, 5건)\n\n"
+        f"- {year}-11-04: 지우 문구류 9,500원 (기타, 시험 엄마 결제)\n"
+        f"* {year}-11-03: 교통카드 충전 30,000원\n"
+        "- 2024-01-05: 작년 영수증 1,000원\n\n\n\n"
+        "카테고리별 합계\n"
+        "1. 식비 151,500원"
+    )
+    assert (
+        assistant.clip(text)
+        == (
+            f"{year}년 11월 지출 내역 (총 203,800원, 5건)\n\n"
+            "• 11/04 지우 문구류 9,500원 (기타, 시험 엄마 결제)\n"
+            "• 11/03 교통카드 충전 30,000원\n"
+            "• 2024-01-05 작년 영수증 1,000원\n\n"  # 올해가 아닌 날짜는 연도를 지키고, 빈 줄은 한 줄까지만
+            "카테고리별 합계\n"
+            "1. 식비 151,500원"  # 번호 목록은 그대로
+        )
+    )
+    assert (
+        assistant.clip("납부기한은 2026-11-20 까지예요") == "납부기한은 2026-11-20 까지예요"
+    )  # 문장 속 날짜는 건드리지 않는다
 
 
 def test_long_answer_is_clipped_to_the_message_limit():

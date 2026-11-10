@@ -40,7 +40,7 @@
 
 ### 가린 뒤 Jev 분류 (2026-10-22, 담당자 결정)
 ```
-가린 글자 ─▶ 규칙(처방전·고지서·영수증) ─▶ 끝 (어떤 모델에도 안 보냄)
+가린 글자 ─▶ 규칙(처방전·고지서·영수증) ─▶ 끝 (어떤 모델에도 안 보냄. 단 INGEST_LLM_* 를 켜면 읽기·가리기는 Claude 가 한다 — 2026-11-04 회의 결정)
           └▶ 그 밖 ─▶ Jev 한 번 호출 (가린 글자 + 코드가 찾은 날짜·금액 후보)
                        doc_type    choice  문서 종류 22개 + none
                        is_document noul    챙길 문서인가 → document / daily_share
@@ -52,13 +52,14 @@
                      └ 실패·키 없음 ─▶ 로컬 분류기 (아래)
 ```
 > **2026-10-26 변경**: 순서가 `규칙 → 로컬 분류기(확률 0.7 이상이면 확정) → Jev(키가 있을 때만) → 기타 문서 + 확인 필요` 로 바뀌었다. 위 그림은 Jev 호출 부분의 설명으로 남긴다.
+> **2026-11-06 변경**: "기타 문서 + 확인 필요"(종류를 못 정한 경우)에도 글에서 규칙으로 찾은 **날짜·금액 후보는 남긴다**(이전에는 비어 있어, 실제 촬영한 안내문 3장이 모두 날짜 없이 끝났다). 종류 판단은 그대로이고 날짜 앞에 연도가 없는 표기("9. 5.(토)")는 아직 찾지 못한다.
 - Jev 는 글을 만들지 않고 고르기만 한다 → 날짜·금액은 코드가 후보를 찾고 Jev 가 "어느 것이 마감일인지" 고른다. 확신도가 측정된 확률이라 qwen 의 자기 신고(늘 1.0)보다 믿을 만하다.
 - `app/shared/llm/jev.py`(`ask`, httpx 로 `POST https://api.typesafe.ai/v1/systemone`, 새 라이브러리 없음). 설정 `TYPESAFE_API_KEY`, `JEV_MODEL`(기본 `jev-latest`).
 - 테스트는 가짜 Jev. 개발자 `.env` 에 키가 있어도 테스트는 진짜 Jev 를 부르지 않는다.
 
 ### 로컬 분류기 (2026-10-26) — 아래 qwen 분류를 대체했다
 
-`ingest/doc_classifier.py`: 가린 글을 앱 임베딩(e5-small 파인튜닝)과 글자 TF-IDF 로 숫자로 바꿔 로지스틱 회귀로 종류 46개 중 고른다(numpy 만 사용, 문서당 약 16ms). 확률이 0.7 이상이면 `by="classifier"` 로 확정, 아니면 Jev(키가 있을 때), 그래도 모르면 "기타 문서 + 확인 필요". 장소·중요 칸(`fields`)은 만들지 않는다. 파일 전달·재학습은 `docs/features/ai_assistant-upload-chat.md` 의 "문서 분류기 전달", 결정과 시험 결과는 ADR 0007.
+`ingest/doc_classifier.py`: 가린 글을 앱 임베딩(e5-small 파인튜닝)과 글자 TF-IDF 로 숫자로 바꿔 로지스틱 회귀로 종류 46개 중 고른다(numpy 만 사용, 문서당 약 16ms). 확률이 0.7 이상이면 `by="classifier"` 로 확정, 아니면 Jev(키가 있을 때), 그래도 모르면 "기타 문서 + 확인 필요". 장소·중요 칸(`fields`)은 만들지 않는다. 파일 전달·재학습은 `docs/features/ai_assistant-upload-chat.md` 의 "문서 분류기 전달", 결정과 시험 결과는 ADR 0010.
 
 ### (폐지) 로컬 언어 모델 분류 — 2026-10-26 에 제거, 기록으로만 남긴다
 ```
@@ -76,7 +77,7 @@
 
 ### 찍힌 사람 찾기 — 삭제함 (2026-10-25)
 
-얼굴은 생체정보라서 이번 범위에서 뺐고, 코드(`faces.py`)와 테스트, 설정(`FACE_MODEL_DIR`·`FACE_ENABLED`)을 지웠다(사용자 결정, ADR 0007). 필요해지면 깃 이력에서 복구한다. `PreprocessResult.people` 도 없어졌다.
+얼굴은 생체정보라서 이번 범위에서 뺐고, 코드(`faces.py`)와 테스트, 설정(`FACE_MODEL_DIR`·`FACE_ENABLED`)을 지웠다(사용자 결정, ADR 0010). 필요해지면 깃 이력에서 복구한다. `PreprocessResult.people` 도 없어졌다.
 
 ### 사진 전처리 (2026-10-22, 측정해서 정한 방식)
 ```
@@ -88,6 +89,26 @@
 - 1080px WebP q75 는 고지서 글자가 뭉개져(글자 일치 0.10~0.38) **보기용으로만** 쓰고, OCR 은 1600px 로 한다.
 - 휴대폰 업로드는 1600px WebP q80 추천(크기 52% 줄고 OCR 0.90) — 앱 담당과 협의 필요. 서버는 어떤 크기로 와도 위 세 가지를 만든다.
 - 실측(실제 사진 5장): 화면용 사본 합계 원본의 20%, 장당 0.14~0.34초. 영수증 원본에 있던 위치 정보(GPS)가 사본에는 없음.
+
+## Claude 로 읽고 가리기 (2026-11-04. 2026-11-09 부터 글자 읽기 `INGEST_LLM_OCR` 과 가리기 `INGEST_LLM_MASK` 모두 기본 켜짐, 결정: [ADR 0014](../adr/0014-upload-llm-ocr-masking.md))
+```
+사진·스캔·PDF 쪽 ─▶ Claude OCR(shared/llm/doc_ai.read_image·read_pdf) ─┐   [?] 줄 → 확신도 0.5 → 기존 [불확실] 표시
+Word·PPT·텍스트·CSV ─▶ MarkItDown(지금 방식) ───────────────────────────┤
+Excel ─▶ converters.xlsx_to_markdown (금액 쉼표·날짜·병합 칸 반영) ─────┘
+  ─▶ llm_ingest.mask: 긴 글은 6천 글자 단위로 나눠 ─▶ (코드) 가족 이름 후보 ─▶ (Claude 1회) 후보 문맥 판단 + 그 밖의 개인정보 인용
+     ─▶ (코드) 인용 검증 → [가족:id]·[이름]·[주소]… 로 바꾸기 → 번호 규칙 안전망
+  ─▶ 분류·임베딩·저장(그대로)
+```
+- Claude 호출이 실패하면 가리지 않은 글을 저장하지 않고 `quality.error = llm_unavailable` 로 `failed`. 서버가 같은 파일을 자동으로 다시 처리한다(`INGEST_RETRY_MAX` 번, 기본 2번, 기다리는 시간 `INGEST_RETRY_WAIT_SECONDS`×시도 번호 초; 깨진 파일·지원 안 하는 형식은 다시 하지 않는다). 다시 처리하는 API 는 없고, 서버가 꺼져 날아간 작업은 기존대로 15분 뒤 실패로 본다.
+- 주소는 개인 거주지·배송지만 가리고 사업장·공공장소·행정구역은 남긴다. `privacy.masked` 에는 종류별 개수(`person`, `phone`, `family` …)만 남고 값은 남지 않는다.
+- 평가: 새 대화 묶음 600창에서 못 가린 비율 기존(규칙+NER) 37% → Claude(v3) 6%. 현재 코드의 프롬프트는 v5(개인 주소만 가림)이고, v5 기준 주소 제외 누출은 3.6%(기존 33.4%)다. 합격 기준 평가 결과는 ADR 0014 와 PR 설명을 본다.
+- 이름 오타 확인: Claude 가 이름으로 본 값이 가족 이름과 **한 글자 차이**(정확히 같지는 않음)면 `[이름]` 대신 `[확인필요:<후보 user_id>]` 를 남긴다(OCR 이 틀리게 읽었을 수 있음. 글자는 저장하지 않는다). 새 DB 칸은 없고 기록 본문의 표시로 대기 상태를 나타낸다. 메인 채팅은 대기가 있으면 시스템 안내(`NAME_CHECK_NOTE`)로 사용자에게 한 번 물어보고(`list_name_checks`), 답을 `resolve_name_check` 로 반영한다: 같은 사람이면 `[가족:<id>]`(사람 필터 검색·현재 이름 표시), 아니면 `[이름]` 이며 검색 조각을 다시 만든다. 후보 id 는 그 기록에 남은 표시의 것만 받고, 답이 true/false 로 분명하지 않으면 거부한다. 표시 중에는 읽는 쪽에 `[이름 확인 필요]` 로 보인다. 앱 화면 변경 없음.
+- 시험: `ingest/tests/test_llm_ingest.py`(가짜 Claude 응답), 이름 확인 흐름은 `tests/test_family_names.py`.
+
+## 가족방 문서 사진 판별 (2026-11-09)
+- `ingest/photo_judge.py`: 사진을 긴 변 1024px 로 줄여 로컬 OCR(RapidOCR)로 읽고, 확신도 0.6 이상 줄의 글자 수·줄 수로 문서(100자·6줄 이상)/일반 사진(50자 미만)/애매함으로 가른다. 기준은 실사진 15장(문서 8, 거리·음식 7)과 무료 라이선스 사진 227장으로 정했다.
+- `shared/llm/doc_ai.classify_photo`: 글자가 읽힌 사진만 Claude(haiku, `PHOTO_JUDGE_MODEL`)에게 "문서 사진인가"를 묻는다(도구 호출 형식, 문서·사진 + 확신도). `ai_assistant/library.py` 는 `PHOTO_JUDGE_LLM=true` 일 때만 쓰고, 문서이고 확신 0.7 이상일 때만 등록한다. 결정·평가: `docs/adr/0015-family-room-photo-to-library.md`.
+- 시험: `ingest/tests/test_photo_judge.py`, `shared/llm/tests/test_photo_classify.py`, `ai_assistant/tests/test_chat_library_photos.py`.
 
 ## 남은 것
 - 업로드 통로·DB 저장(`photos` 확장 또는 `files` 표)·백그라운드 처리 연결 — 요구사항 미정 4·5

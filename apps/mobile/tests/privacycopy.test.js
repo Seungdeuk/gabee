@@ -12,7 +12,6 @@ import {
   ENABLE_ON_ANALYZE_TITLE,
   CONSENT_SUMMARY,
   CONSENT_TITLE,
-  PANEL_NOTICE,
   consentA11ySummary,
   detailsToggleLabel,
 } from "../src/features/family-chat/privacyCopy.js";
@@ -36,12 +35,12 @@ test("상세에는 E2EE 아님·소유자/관리자만·끄면 멈춤·도우미
   assert.match(all, /AI 기능이 모두 멈추고/);
   assert.match(all, /AI 비서: 질문과 앞 대화\(최근 10개\)를 가리지 않고/);
   assert.match(all, /문서 질문: 문서를 저장할 때/);
-  assert.match(all, /지갑·안부 도우미/);
+  assert.match(all, /정산·돌봄 도우미/);
   assert.match(all, /위치/);
 });
 
-test("요약은 AI 비서·문서 질문·일정·지갑·안부 도우미와 대화 분석(답장·대화 주제 추천 포함)을 모두 언급한다", () => {
-  for (const word of ["대화 분석", "답장 추천", "대화 주제 추천", "AI 비서", "문서 질문", "일정", "지갑", "안부"]) assert.ok(summary.includes(word), word);
+test("요약은 AI 비서·문서 질문·일정·정산·돌봄 도우미와 대화 분석(답장·대화 주제 추천 포함)을 모두 언급한다", () => {
+  for (const word of ["대화 분석", "답장 추천", "대화 주제 추천", "AI 비서", "문서 질문", "일정", "정산", "돌봄"]) assert.ok(summary.includes(word), word);
 });
 
 test("대화 분석 상세: 한 번에 보내고, 누를 때마다 별도 확인 없이 바로 전송되며, 가린 내용은 결과 화면에 개수로 알린다", () => {
@@ -56,11 +55,9 @@ test("대화 분석 상세: 한 번에 보내고, 누를 때마다 별도 확인
   assert.match(CONSENT_DETAILS.find((l) => l.startsWith("AI 비서")), /주민번호·카드·계좌·비밀번호가 든 입력은 서버가 막아요/);
 });
 
-test("요약 두 번째 줄에 '별도 확인 없이 바로 AI로 전송' 이 있고, 패널 상시 안내도 같은 사실을 쓴다", () => {
+test("요약 두 번째 줄에 '별도 확인 없이 바로 AI로 전송' 이 있고, 결과 저장(약 10분) 안내는 동의 상세에 있다", () => {
   assert.equal(CONSENT_SUMMARY[1], "켜면 “대화 분석하기”를 누를 때마다 별도 확인 없이 바로 AI로 전송돼요.");
-  assert.match(PANEL_NOTICE, /“대화 분석하기”를 누르면 개인정보를 가린 최근 대화가 바로 AI로 전달돼요/);
-  assert.match(PANEL_NOTICE, /약 10분/);
-  assert.doesNotMatch(PANEL_NOTICE, /확인 후|AI에 보내기/);
+  assert.match(CONSENT_DETAILS.find((l) => l.startsWith("대화 분석(")), /약 10분\) 저장/);
 });
 
 test("가려서 보낸다는 말은 대화 분석 줄에만 쓰고, 끄면 Claude 로는 나가지 않는다고 한정한다", () => {
@@ -105,7 +102,7 @@ test("AI 패널에는 켜기·끄기 버튼이 없고 대화 분석하기만 있
     assert.ok(!src.includes(gone), `${gone} 는 없어야 한다`);
   }
   assert.match(src, /testID="chat-ai-analyze"/);
-  assert.match(src, /PANEL_NOTICE/);
+  assert.doesNotMatch(src, /PANEL_NOTICE|chat-ai-notice/); // 상시 안내는 마이 > 가비 AI 이용 안내로 옮겼다
 });
 
 test("AI 설정이 꺼져 있으면 확인 카드를 먼저 보이고, '켜고 분석하기'를 눌렀을 때만 켠 뒤 분석한다(켜져 있으면 곧바로 분석)", () => {
@@ -118,7 +115,7 @@ test("AI 설정이 꺼져 있으면 확인 카드를 먼저 보이고, '켜고 �
   // 켜기는 분석 호출 직전 한 곳, 확인 버튼 핸들러에서만 도달한다
   const now = src.match(/const analyzeNow = \(\) =>[\s\S]*?\n {4}\}, \(res\)/)?.[0] ?? "";
   assert.match(now, /settings\?\.enabled === false\) await setAiEnabled\(true\)/);
-  assert.match(now, /return analyzeChat\(\)/);
+  assert.match(now, /return analyzeChat\(\{ roomId \}\)/);
   assert.equal((src.match(/setAiEnabled\(/g) ?? []).length, 1); // 다른 곳에서 켜거나 끄지 않는다
   assert.doesNotMatch(src, /setAiEnabled\(false\)/);
   const confirm = src.match(/const confirmEnableAndAnalyze = async \(\) => \{[\s\S]*?\n {2}\};/)?.[0] ?? "";

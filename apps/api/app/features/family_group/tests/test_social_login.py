@@ -14,6 +14,8 @@ from tests.helpers import signup
 
 from .test_join_approval import P, account, join
 
+pytestmark = pytest.mark.usefixtures("approval_required")  # 승인 대기 흐름을 본다
+
 TOKEN = "x" * 20
 
 

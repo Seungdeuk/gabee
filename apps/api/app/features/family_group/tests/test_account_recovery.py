@@ -34,20 +34,51 @@ def test_reset_mail_goes_out_only_when_login_id_and_email_both_match(client, out
     register(client, "other_kim", "other@example.com")
     assert reset(client, "jimin_kim", "jimin@example.com").status_code == 204
     assert len(outbox.mails) == 1 and outbox.mails[0].to == "jimin@example.com"
-    # 아이디만 맞거나(남의 이메일), 이메일만 맞거나(남의 아이디), 둘 다 없는 경우는 보내지 않는다
-    assert reset(client, "jimin_kim", "other@example.com").status_code == 204
-    assert reset(client, "other_kim", "jimin@example.com").status_code == 204
-    assert reset(client, "ghost_x", "ghost@example.com").status_code == 204
+    # 아이디만 맞거나(남의 이메일), 이메일만 맞거나(남의 아이디), 둘 다 없는 경우는 보내지 않고 "일치하지 않아요"
+    for login_id, email in (
+        ("jimin_kim", "other@example.com"),
+        ("other_kim", "jimin@example.com"),
+        ("ghost_x", "ghost@example.com"),
+    ):
+        r = reset(client, login_id, email)
+        assert r.status_code == 400 and r.json()["code"] == "reset_mismatch", (login_id, email)
     assert len(outbox.mails) == 1
 
 
-def test_reset_responses_are_identical_for_match_and_mismatch(client, outbox):
-    register(client)
+def test_mismatch_gives_one_message_and_never_says_which_part_is_wrong(client, outbox):
+    """짝이 맞지 않으면 "아이디와 이메일이 일치하지 않아요" 하나다. 아이디가 없어서인지, 이메일이 틀려서인지, 이메일이 없는 계정인지
+    구분되지 않아(응답 본문이 모두 같다) 아이디의 존재 여부나 다른 사람의 이메일을 알아낼 수 없다."""
+    register(client, "jimin_kim", "jimin@example.com")
+    assert signup(client, "익명")
     match = reset(client, "jimin_kim", "jimin@example.com")
+    assert match.status_code == 204 and match.content == b""
     wrong_email = reset(client, "jimin_kim", "nobody@example.com")
     wrong_id = reset(client, "nobody_x", "jimin@example.com")
-    assert match.status_code == wrong_email.status_code == wrong_id.status_code == 204
-    assert match.content == wrong_email.content == wrong_id.content == b""
+    no_account = reset(client, "nobody_x", "nobody@example.com")
+    anonymous = reset(client, "anonymous", "anon@example.com")
+    responses = [wrong_email, wrong_id, no_account, anonymous]
+    assert all(r.status_code == 400 for r in responses)
+    assert len({r.content for r in responses}) == 1  # 본문이 모두 같다
+    assert wrong_email.json()["message"] == "아이디와 이메일이 일치하지 않아요"
+    assert wrong_email.json()["code"] == "reset_mismatch"
+
+
+def test_mismatch_attempts_count_toward_the_rate_limit(client, outbox, monkeypatch):
+    """ "일치하지 않아요"를 알려 주는 대신, 짝을 계속 바꿔 대입하는 것은 이메일별·IP별 요청 제한이 막는다(불일치도 횟수에 센다)."""
+    register(client)
+    monkeypatch.setattr(settings, "reset_max_per_email_per_hour", 2)
+    assert [reset(client, "ghost_x", "jimin@example.com").status_code for _ in range(4)] == [
+        400,
+        400,
+        429,
+        429,
+    ]
+    monkeypatch.setattr(settings, "reset_max_per_email_per_hour", 100)
+    monkeypatch.setattr(settings, "reset_max_per_ip_per_hour", 3)
+    service.mail_limiter.reset()
+    guesses = [reset(client, "jimin_kim", f"guess{i}@example.com").status_code for i in range(5)]
+    assert guesses == [400, 400, 400, 429, 429]
+    assert outbox.mails == []
 
 
 def test_reset_login_id_is_case_and_space_insensitive_in_the_request(client, outbox):
@@ -58,7 +89,8 @@ def test_reset_login_id_is_case_and_space_insensitive_in_the_request(client, out
 
 def test_anonymous_accounts_never_get_a_reset_mail(client, outbox):
     assert signup(client, "익명")
-    assert reset(client, "anonymous", "anon@example.com").status_code == 204
+    r = reset(client, "anonymous", "anon@example.com")
+    assert r.status_code == 400 and r.json()["code"] == "reset_mismatch"
     assert outbox.mails == []
 
 

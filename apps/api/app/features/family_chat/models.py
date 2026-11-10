@@ -3,6 +3,7 @@ import uuid
 from datetime import UTC, date, datetime
 
 from sqlalchemy import (
+    JSON,
     Date,
     DateTime,
     ForeignKey,
@@ -159,11 +160,36 @@ class MessageAttachment(Base):
     kind: Mapped[str] = mapped_column(String(10), default="image", server_default="image")
     path: Mapped[str] = mapped_column(String(80))
     thumb_path: Mapped[str | None] = mapped_column(String(80), nullable=True)  # 문서는 없다
+    batch_id: Mapped[str | None] = mapped_column(
+        String(32), nullable=True, index=True
+    )  # 한 번에 여러 장 올린 사진의 묶음 번호(앱이 만든다). 없으면 한 장짜리
     width: Mapped[int | None] = mapped_column(Integer, nullable=True)  # 문서는 없다
     height: Mapped[int | None] = mapped_column(Integer, nullable=True)  # 문서는 없다
     size_bytes: Mapped[int] = mapped_column(Integer)
     filename: Mapped[str | None] = mapped_column(String(120), nullable=True)  # 문서만(표시용)
     content_type: Mapped[str | None] = mapped_column(String(100), nullable=True)  # 문서만
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(UTC)
+    )
+
+
+class MessageShare(Base):
+    """채팅방 공유 카드의 내용(보낸 시점 스냅샷). 메시지 하나에 카드 하나이고, 메시지의 text 는 개인정보 없는 고정 문구다.
+    kind: event(내 일정 한 건) | settlement(그 달 내 정산 몫). payload 는 서버가 만든 JSON 이라 클라이언트 값이 들어오지 않는다.
+    메시지를 지우면 이 행도 지운다(제목·금액을 서버에 남기지 않는다). 방·가족 삭제는 group_id·room_id·message_id 로 자동 포함된다."""
+
+    __tablename__ = "message_shares"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uid)
+    message_id: Mapped[int] = mapped_column(
+        ForeignKey("messages.id", ondelete="CASCADE"), unique=True
+    )
+    group_id: Mapped[str] = mapped_column(ForeignKey("groups.id", ondelete="CASCADE"), index=True)
+    room_id: Mapped[str] = mapped_column(
+        ForeignKey("chat_rooms.id", ondelete="CASCADE"), index=True
+    )
+    kind: Mapped[str] = mapped_column(String(12))
+    payload: Mapped[dict] = mapped_column(JSON)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(UTC)
     )

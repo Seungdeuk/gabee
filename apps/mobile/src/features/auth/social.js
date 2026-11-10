@@ -14,18 +14,36 @@ export const socialConfig = () => ({
 });
 
 /**
- * 이 앱에서 쓸 수 있게 설정된 제공자 목록.
+ * 이 앱에서 쓸 수 있게 설정된 제공자 목록. Google 은 지금 기기(플랫폼)용 클라이언트 ID 가 있을 때만 켠다
+ * (다른 플랫폼 ID 만 있는데 버튼을 그리면 안드로이드·iOS 에서 앱이 시작하자마자 "ClientId must be defined" 오류가 난다).
+ * @param {string} [platform] "web" | "ios" | "android" (기본 "web")
  * @returns {("google" | "kakao")[]}
  */
-export function enabledProviders() {
+export function enabledProviders(platform = "web") {
   // 출시 전 임시로 끔: EXPO_PUBLIC_SOCIAL_LOGIN_DISABLED=true 면 키가 있어도 버튼을 숨긴다(EAS preview·production 환경에 설정)
   if (process.env.EXPO_PUBLIC_SOCIAL_LOGIN_DISABLED === "true") return [];
   const cfg = socialConfig();
   const list = [];
-  if (cfg.google.web || cfg.google.ios || cfg.google.android) list.push("google");
+  const googleId = platform === "android" ? cfg.google.android : platform === "ios" ? cfg.google.ios : cfg.google.web;
+  if (googleId) list.push("google");
   if (cfg.kakao.restApiKey) list.push("kakao");
   return list;
 }
+
+/** 모바일에서 서버 중계가 인증 코드를 넘겨 주는 앱 주소(app.json scheme + 경로). 서버 `KAKAO_APP_RETURN` 과 같아야 한다. */
+export const KAKAO_APP_RETURN_URL = "gabee://kakao";
+
+/** 서버의 카카오 로그인 중계 경로(`/auth/kakao/callback`). 카카오 콘솔의 Redirect URI 에 https 주소로 등록한다. */
+export const KAKAO_RELAY_PATH = "/auth/kakao/callback";
+
+/**
+ * 카카오 로그인이 인증 코드를 돌려받을 주소(Redirect URI).
+ * 카카오는 사용자 지정 앱 주소(gabee://)를 Redirect URI 로 받지 않는다. 그래서 웹은 앱 주소(웹 주소)를 그대로 쓰고,
+ * 모바일은 서버의 https 중계 주소로 돌려받은 뒤 서버가 코드를 앱 주소로 넘겨 준다(앱은 앱 주소로 돌아오기를 기다린다).
+ * @param {{ platform: string, appReturnUrl: string, relayUrl: string }} args platform: "web" | "ios" | "android"
+ * @returns {string}
+ */
+export const kakaoRedirectUri = ({ platform, appReturnUrl, relayUrl }) => (platform === "web" ? appReturnUrl : relayUrl);
 
 export const PROVIDER_LABEL = { google: "Google", kakao: "카카오" };
 

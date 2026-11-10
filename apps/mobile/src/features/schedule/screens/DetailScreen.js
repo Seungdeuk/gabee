@@ -6,7 +6,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import IconButton from "@/shared/components/IconButton";
 import { colors, font, radius, spacing } from "@/theme";
 
-import ConfirmDialog from "../components/ConfirmDialog";
+import ConfirmDialog from "@/shared/components/ConfirmDialog";
 import FormTag from "../components/FormTag";
 import SharedTag from "../components/SharedTag";
 import { KIND, KIND_COLOR, TOPIC_TEXT } from "../constants";

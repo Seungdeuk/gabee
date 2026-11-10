@@ -24,8 +24,6 @@ from sqlalchemy import select  # noqa: E402
 
 from app.features.ai_assistant.knowledge import rag_chat  # noqa: E402
 from app.features.billing import agent as billing_agent  # noqa: E402
-from app.features.care import agent as care_agent  # noqa: E402
-from app.features.care import config as care_config  # noqa: E402
 from app.features.family_group.models import User  # noqa: E402
 from app.main import app  # noqa: E402
 from app.shared import ai_guard  # noqa: E402
@@ -43,7 +41,7 @@ from evals.tab_agents.seed import (  # noqa: E402
 from tests.helpers import join_family, signup  # noqa: E402
 
 CASES = json.loads((Path(__file__).parent / "cases.json").read_text("utf-8"))
-AGENTS = {"billing": billing_agent, "care": care_agent}
+AGENTS = {"billing": billing_agent}
 
 
 def _contains(answer: str, text: str) -> bool:
@@ -64,9 +62,6 @@ def main() -> int:
     settings.ai_tab_agent_max_calls_per_user_per_day = 100000
     settings.ai_tab_agent_max_calls_per_group_per_day = 100000
     agent_guard.register()
-    care_config.SAMPLE_ITEMS = (
-        care_config.FULL_SAMPLE_ITEMS
-    )  # 평가 데이터는 물·산책·컨디션 항목이 있는 예전 기본 세트를 쓴다(서비스 기본값은 4개)
     passed = total = 0
     per_case: dict[str, list[bool]] = {}
     with TestClient(app) as client:

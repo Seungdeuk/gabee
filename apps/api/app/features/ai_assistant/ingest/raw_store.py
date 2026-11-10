@@ -58,6 +58,16 @@ class LocalRawStore:
         """경로의 첫 칸이 요청한 가족 그룹일 때만 읽는다(다른 가족의 원본을 읽지 못하게)."""
         return self._resolve_for_group(group_id, ref_path).read_bytes()
 
+    def refs_for_sha(self, group_id: str, sha256: str) -> list[str]:
+        """이 가족 폴더에서 이 내용(sha256)의 원본과 사본(`<sha256>.*`)의 경로들. 형식이 올바르지 않거나 없으면 빈 목록."""
+        if not _GROUP_ID.match(group_id) or not re.fullmatch(r"[0-9a-f]{64}", sha256):
+            return []
+        folder = self.root / group_id / sha256[:2]
+        if not folder.is_dir():
+            return []
+        found = [p for p in folder.glob(f"{sha256}*") if p.is_file()]
+        return sorted(p.relative_to(self.root).as_posix() for p in found)
+
     def delete(self, ref_path: str) -> None:
         self._resolve(ref_path).unlink(missing_ok=True)
 

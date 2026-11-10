@@ -69,6 +69,22 @@ test("부탁 카드(보내기·받는 사람 바꾸기·취소)도 변환하고 
   assert.equal(cancel[0].tone, "danger");
 });
 
+test("데일리 체크 대신 누르기 카드는 [체크하기][취소] 버튼으로 보인다", () => {
+  const cards = mapConfirmCards([
+    {
+      kind: "schedule",
+      action: "habit_check",
+      title: "이대로 체크할까요?",
+      lines: ["약 먹기: 아직 → 완료"],
+      shared_with: [],
+      pending_action: { type: "habit_check", habit_ids: ["h1"], habit_op: "mark", amount: 1 },
+    },
+  ]);
+  assert.equal(cards.length, 1);
+  assert.equal(cards[0].pendingAction.habit_ids[0], "h1");
+  assert.deepEqual(cardButtons(cards[0]).map((b) => b.label), ["체크하기", "취소"]);
+});
+
 test("모르는 종류·실행 정보가 없는 카드는 버리고, 목록이 아니면 빈 목록", () => {
   assert.deepEqual(mapConfirmCards(undefined), []);
   assert.deepEqual(mapConfirmCards(null), []);
@@ -122,7 +138,7 @@ test("confirmScheduleAction: 카드의 pending_action 과 share 를 그대로 �
   const res = await api.confirmScheduleAction(card, true);
   assert.equal(calls[0].url, "http://api.test/schedule/agent/confirm");
   assert.equal(calls[0].method, "POST");
-  assert.deepEqual(calls[0].body, { action: card.pendingAction, share: true });
+  assert.deepEqual(calls[0].body, { action: card.pendingAction, share: true, post_to_room: false });
   assert.equal(res.text, "등록했어요. (가족 2명에게도 공유했어요)");
   await api.confirmScheduleAction(card, false);
   assert.equal(calls[1].body.share, false);
@@ -135,13 +151,12 @@ test("confirmScheduleAction: 서버가 거절하면 그 메시지를 그대로 �
   await assert.rejects(() => api.confirmScheduleAction(card, true), (e) => e.code === "draft_incomplete" && /제목/.test(e.message));
 });
 
-test("askAssistantInRoom: 방에서 부른 요청의 확인 카드도 돌려준다(질문한 사람 화면에만 보인다)", async () => {
+test("askAssistantInRoom: 방에서 부른 요청의 확인 카드도 돌려준다(답 글은 방에 저장되고 카드는 질문한 사람 화면에만 보인다)", async () => {
   const fam = await import("../src/features/family-chat/api.js");
   globalThis.fetch = async () =>
-    json(200, { reply: "카드를 확인해 주세요", visibility: "private", private_reasons: ["확인 버튼이 필요한 제안"], posted_message_id: null, confirm_cards: [serverCard()] });
+    json(200, { reply: "카드를 확인해 주세요", visibility: "room", private_reasons: [], posted_message_id: 7, confirm_cards: [serverCard()] });
   const res = await fam.askAssistantInRoom("가족 모두에게 공유해서 일정 잡아줘", []);
-  assert.equal(res.visibility, "private");
-  assert.equal(res.postedMessageId, null);
+  assert.equal(res.postedMessageId, 7);
   assert.equal(res.confirmCards.length, 1);
   assert.equal(res.confirmCards[0].action, "register");
 });
@@ -162,7 +177,7 @@ test("정산·돌봄 제안을 카드로 바꾸고, 토큰이 없거나 모르�
     status: CARD_PENDING,
     resultText: "",
   });
-  assert.equal(cards[1].title, "안부 에이전트의 제안");
+  assert.equal(cards[1].title, "돌봄 에이전트의 제안");
   assert.deepEqual(mapProposals(undefined), []);
   assert.deepEqual(mapProposals("x"), []);
 });
@@ -212,6 +227,11 @@ test("confirmCardAction: 일정 카드는 예전처럼 일정 확인 요청으�
   await api.confirmCardAction(card, true);
   assert.equal(calls[0].url, "http://api.test/schedule/agent/confirm");
   assert.equal(calls[0].body.share, true);
+  assert.equal(calls[0].body.post_to_room, false); // 개인 채팅의 카드는 방에 알리지 않는다
+  await api.confirmCardAction(card, true, true); // 가족방 @가비 의 카드
+  assert.equal(calls[1].body.post_to_room, true);
+  await api.confirmCardAction(card, false, true); // 나만 등록이어도 표시는 보내고(올릴지는 서버가 정한다)
+  assert.deepEqual(calls[2].body, { action: card.pendingAction, share: false, post_to_room: true });
 });
 
 test("confirmCardAction: 서버가 거절하면(만료·이미 처리) 그 메시지를 그대로 던진다", async () => {

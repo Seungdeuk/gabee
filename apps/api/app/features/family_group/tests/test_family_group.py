@@ -1,8 +1,12 @@
 """가입, 가족 그룹, 초대 코드, 토큰 검사."""
 
+import pytest
+
 from app.features.family_group.models import GroupMember, Invite
 from app.shared.db import SessionLocal
 from tests.helpers import signup
+
+pytestmark = pytest.mark.usefixtures("approval_required")  # 승인 대기 흐름을 본다
 
 
 def test_signup_group_invite_and_join(client):
@@ -48,7 +52,7 @@ def test_token_is_required_and_errors_have_code_and_message(client):
 
 def test_group_features_need_a_group(client):
     a = signup(client)
-    for path in ("/family-chat/messages", "/schedule/events", "/billing/expenses", "/care/records"):
+    for path in ("/family-chat/messages", "/schedule/events", "/billing/expenses"):
         r = client.get(path, headers=a)
         assert r.status_code == 400 and r.json()["code"] == "no_group", path
 

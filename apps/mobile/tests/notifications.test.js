@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { afterEach, beforeEach, test } from "node:test";
 
 import { badgeLabel, relativeTime, safeTotal } from "../src/features/notifications/format.js";
-import { KIND_META, metaFor, routeFor } from "../src/features/notifications/kinds.js";
+import { KIND_META, KIND_ORDER, metaFor, routeFor } from "../src/features/notifications/kinds.js";
 
 process.env.EXPO_PUBLIC_API_URL = "http://api.test";
 process.env.EXPO_PUBLIC_DEV_TOKEN = "legacy-dev-token";
@@ -27,8 +27,8 @@ afterEach(() => {
 });
 
 test("알림 API 경로: 목록·개수·읽음·전부 읽음", async () => {
-  await listNotifications({ kind: "care", limit: 30, cursor: "abc" });
-  assert.equal(calls.at(-1).url, "http://api.test/notifications?kind=care&limit=30&cursor=abc");
+  await listNotifications({ kind: "billing", limit: 30, cursor: "abc" });
+  assert.equal(calls.at(-1).url, "http://api.test/notifications?kind=billing&limit=30&cursor=abc");
   await listNotifications();
   assert.equal(calls.at(-1).url, "http://api.test/notifications");
   await getUnreadCount();
@@ -36,18 +36,20 @@ test("알림 API 경로: 목록·개수·읽음·전부 읽음", async () => {
   await markRead("n1");
   assert.equal(calls.at(-1).method, "POST");
   assert.equal(calls.at(-1).url, "http://api.test/notifications/n1/read");
-  await markAllRead("care");
+  await markAllRead("billing");
   assert.equal(calls.at(-1).url, "http://api.test/notifications/read-all");
-  assert.deepEqual(JSON.parse(calls.at(-1).body), { kind: "care" });
+  assert.deepEqual(JSON.parse(calls.at(-1).body), { kind: "billing" });
   await markAllRead();
   assert.equal(calls.at(-1).method, "POST");
 });
 
-test("분류 표시: 5개 분류 모두 이름·아이콘·색이 있고 모르는 분류도 깨지지 않는다", () => {
-  for (const kind of ["schedule", "billing", "care", "family_group", "ai_record"]) {
+test("분류 표시: 4개 분류 모두 이름·아이콘·색이 있고 모르는 분류도 깨지지 않는다", () => {
+  for (const kind of ["schedule", "billing", "family_group", "support"]) {
     const meta = KIND_META[kind];
     assert.ok(meta.label && meta.icon && meta.color, kind);
   }
+  for (const removed of ["care", "ai_record"]) assert.equal(KIND_META[removed], undefined, removed); // 돌봄·기록 분류는 없앴다
+  assert.deepEqual(KIND_ORDER, ["schedule", "billing"]);
   assert.equal(metaFor("schedule").label, "일정");
   assert.equal(metaFor("unknown").label, "알림");
   assert.ok(metaFor(undefined).icon);
@@ -59,6 +61,17 @@ test("알림을 누르면 이동할 곳", () => {
   assert.equal(routeFor({ kind: "family_group", event: "something_new" }), null);
   assert.equal(routeFor({ kind: "schedule", event: "event_created" }), null);
   assert.equal(routeFor(null), null);
+});
+
+test("새 공유 일정·할 일 배정은 일정 탭으로, 정산·송금·용돈은 지갑(돌봄) 탭으로 이동하고 문서 알림은 읽음만 한다", () => {
+  assert.equal(routeFor({ kind: "schedule", event: "event_shared" }), "/schedule");
+  assert.equal(routeFor({ kind: "schedule", event: "todo_assigned" }), null); // 공동 할 일을 보는 화면이 앱에 아직 없다(읽음만)
+  for (const event of ["settlement_updated", "payment_marked", "allowance_requested", "allowance_decided"]) {
+    assert.equal(routeFor({ kind: "billing", event }), "/care");
+  }
+  assert.equal(routeFor({ kind: "billing", event: "something_new" }), null);
+  assert.equal(routeFor({ kind: "ai_record", event: "document_added" }), null); // 없앤 분류는 이동 경로가 없다
+  assert.equal(routeFor({ kind: "care", event: "x" }), null);
 });
 
 test("안 읽은 개수를 못 불러와도 0 이고 예외가 나지 않는다", async () => {

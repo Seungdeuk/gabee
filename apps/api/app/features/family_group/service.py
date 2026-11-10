@@ -534,12 +534,16 @@ def _login_key(raw: str) -> str:
     return raw.strip().lower()
 
 
-def request_password_reset(
-    db: Session, body: PasswordResetRequestIn, ip: str
-) -> mailer.Mail | None:
+def _reset_mismatch() -> ApiError:
+    """아이디·이메일 짝이 맞지 않을 때의 응답(요청마다 새 예외를 만든다)."""
+    return ApiError(400, "reset_mismatch", "아이디와 이메일이 일치하지 않아요")
+
+
+def request_password_reset(db: Session, body: PasswordResetRequestIn, ip: str) -> mailer.Mail:
     """재설정 메일을 만들어 돌려준다(발송은 router 가 응답 뒤 백그라운드로). 아이디와 이메일이 **같은 계정과 둘 다 일치할 때만**
-    만든다. 일치 여부와 무관하게 호출자에게는 똑같이 보인다 — 메일 설정이 없을 때의 503 과 요청 제한 429 는 계정과 무관하게
-    같은 조건에서만 나온다."""
+    만들고, 아니면 400 `reset_mismatch`("아이디와 이메일이 일치하지 않아요")를 낸다. 없는 아이디·익명 계정·이메일 없는 계정·이메일 불일치는
+    **같은 응답 하나**라서 아이디가 있는지 이메일이 틀렸는지는 알 수 없다(짝이 맞는지만 알려 준다). 일치 여부를 알려 주는 대신
+    요청 횟수 제한(이메일별·IP별 시간당)은 일치 여부와 무관하게 먼저 세어 짝을 계속 바꿔 대입하는 것을 막는다."""
     mailer.ensure_mail_configured()
     email = credentials.normalize_email(body.email)
     _check_rate(f"reset-email:{email}", settings.reset_max_per_email_per_hour, _HOUR)
@@ -549,7 +553,7 @@ def request_password_reset(
     mail_limiter.record(f"reset-ip:{ip}")
     user = repo.get_user_by_login_id(db, _login_key(body.login_id))
     if user is None or user.login_id is None or user.email != email:
-        return None  # 없는 아이디, 익명 계정, 아이디와 이메일 불일치: 아무것도 하지 않는다
+        raise _reset_mismatch()  # 없는 아이디, 익명 계정, 이메일 없는 계정, 불일치: 어느 쪽인지 알리지 않는 같은 응답
     now = datetime.now(UTC)
     _, code, row = _new_token_row(PasswordReset, user.id, settings.password_reset_ttl_seconds, now)
     repo.supersede_password_resets(db, user.id, now)

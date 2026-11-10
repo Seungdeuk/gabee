@@ -1,89 +1,55 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
 
-import { isApiConfigured } from "@/shared/api/client";
-import useResource from "@/shared/hooks/useResource";
+// 지갑 탭에서는 정산 요약·정산·지출·용돈과 월말 정산 알림만 쓴다. 공동구독·결제일 알림·위치 가져오기는 주석 처리해 두었다(다시 켤 때 되돌린다).
+import { MoneySection, MonthSwitcher, ReminderBanner, SettleSummary, currentMonth } from "@/features/billing/public";
+// import { SubscriptionTab, UpcomingBanner } from "@/features/billing/public"; // 공동구독·결제일 알림은 뺐다
 import Screen from "@/shared/components/Screen";
-import Segmented from "@/shared/components/Segmented";
 import { colors, font } from "@/theme";
 
-import { getDaily } from "../api";
-import CarePreview from "../components/CarePreview";
-import DailyCheckTab from "../components/DailyCheckTab";
-import MealBar from "../components/MealBar";
-import MealTab from "../components/MealTab";
-import MissingBanner from "../components/MissingBanner";
-import RecommendTab from "../components/RecommendTab";
-
-const SECTIONS = [
-  { key: "check", label: "데일리 체크" },
-  { key: "recommend", label: "추천" },
-  { key: "meal", label: "식단" },
-  // 위치 탭은 출시 전 임시로 끔(백그라운드 위치 권한 심사 대응). 다시 켤 때 LocationTab 과 app.json 위치 권한을 함께 되돌린다
-];
-
 /**
- * 돌봄 탭: 데일리 체크, 추천, 식단 추천.
- * 서버 주소(EXPO_PUBLIC_API_URL)가 없으면 임시 데이터 화면을 보여 준다.
+ * 지갑 탭: 정산·지출·용돈(엔빵)과 월말 정산 알림.
+ * 돌봄(데일리 체크·현황판·위치)은 지웠다.
+ * bell 은 상단 오른쪽 끝 알림 종이다(라우트에서 조립한다).
+ * @param {{ bell?: import("react").ReactNode }} props
  */
-export default function CareScreen() {
-  if (!isApiConfigured()) return <CarePreview />;
-  return <CareLive />;
-}
-
-function CareLive() {
-  const [section, setSection] = useState("check");
+export default function CareScreen({ bell = null }) {
+  const [month, setMonth] = useState(currentMonth());
   const [message, setMessage] = useState(null);
+  const [refreshKey, setRefreshKey] = useState(0); // 무언가 바뀌면 월말 정산 알림과 정산 화면도 다시 확인한다
+  const [moneyKey, setMoneyKey] = useState(0); // 알림의 "정산하기"를 누르면 정산 구역으로 돌아가도록 정산·지출·용돈 구역을 다시 연다
   const timer = useRef(null);
-  const daily = useResource(getDaily); // 상단 고정 끼니 바와 데일리 체크가 같이 쓴다
-  const { reload: reloadDaily } = daily;
-
-  // 시각에 따라 다가오는 일정·누락이 바뀌므로 1분마다 다시 불러온다
-  useEffect(() => {
-    const id = setInterval(reloadDaily, 60 * 1000);
-    return () => clearInterval(id);
-  }, [reloadDaily]);
 
   const notify = useCallback((text, isError = false) => {
     setMessage({ text, isError });
+    setRefreshKey((k) => k + 1);
     clearTimeout(timer.current);
     timer.current = setTimeout(() => setMessage(null), 3500);
   }, []);
   useEffect(() => () => clearTimeout(timer.current), []);
 
   return (
-    <Screen
-      title="일상의 안녕"
-      settings
-      pinned={
-        <View>
-          <View style={styles.tabsRow}>
-            <Segmented options={SECTIONS} value={section} onChange={setSection} />
-          </View>
-          <MealBar meals={daily.data?.meals ?? []} />
-        </View>
-      }
-    >
+    <Screen title="지갑" right={bell}>
       {message ? (
         <View style={[styles.message, message.isError && styles.messageError]} accessibilityLiveRegion="polite" testID="message">
           <Text style={[styles.messageText, message.isError && styles.messageTextError]}>{message.text}</Text>
         </View>
       ) : null}
 
-      {section !== "check" && daily.data ? <MissingBanner daily={daily.data} onOpen={() => setSection("check")} /> : null}
-      {section === "check" && !daily.data ? <Text style={styles.muted}>{daily.error || "불러오는 중…"}</Text> : null}
-      {section === "check" && daily.data ? <DailyCheckTab daily={daily.data} reload={reloadDaily} notify={notify} /> : null}
-      {section === "recommend" ? <RecommendTab notify={notify} /> : null}
-      {section === "meal" ? <MealTab notify={notify} onChanged={reloadDaily} /> : null}
+      <MonthSwitcher month={month} onChange={setMonth} />
+      <SettleSummary month={month} refreshKey={refreshKey} onOpen={() => setMoneyKey((k) => k + 1)} />
+      <ReminderBanner refreshKey={refreshKey} onOpen={() => setMoneyKey((k) => k + 1)} />
+
+      <MoneySection key={moneyKey} month={month} notify={notify} refreshKey={refreshKey} />
+      {/* 공동구독 구역은 뺐다.
+      {section === "subscription" ? <SubscriptionTab month={month} notify={notify} /> : null} */}
     </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  tabsRow: { paddingHorizontal: 20, paddingTop: 4, backgroundColor: colors.background },
   message: { backgroundColor: colors.successSoft, borderRadius: 14, paddingHorizontal: 14, paddingVertical: 10 },
   messageError: { backgroundColor: colors.dangerSoft },
   messageText: { ...font.caption, color: colors.success, fontWeight: "600" },
   messageTextError: { color: colors.danger },
-  muted: { ...font.caption, color: colors.textMuted, textAlign: "center", paddingVertical: 8 },
 });

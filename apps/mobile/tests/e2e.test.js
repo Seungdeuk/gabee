@@ -100,7 +100,7 @@ describe("모바일 API 클라이언트 ↔ 실제 서버", { skip }, () => {
     const old = await sessionApi.login(form.loginId, form.password);
     api.setSession({ accessToken: old.access_token, refreshToken: old.refresh_token });
     await auth.requestPasswordReset(form.loginId, form.email);
-    await auth.requestPasswordReset(form.loginId, "nobody@example.com"); // 아이디·이메일이 안 맞아도 같은 성공 응답
+    await assert.rejects(auth.requestPasswordReset(form.loginId, "nobody@example.com"), { code: "reset_mismatch" }); // 아이디·이메일이 안 맞으면 일치하지 않음
     const token = lastMailToken("reset-password");
     assert.ok(token);
     await assert.rejects(auth.confirmPasswordReset(token, "short"), { code: "weak_password" });

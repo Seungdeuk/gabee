@@ -118,8 +118,6 @@ def run_flow(report: Report) -> None:
 
         r = c.post("/billing/agent/confirm", json={"token": token}, headers=b)
         check("다른 사람(수진)의 확인은 거절 400", r.status_code == 400, r.text)
-        r = c.post("/care/agent/confirm", json={"token": token}, headers=a)
-        check("다른 탭(돌봄)에서 쓰면 거절 400", r.status_code == 400, r.text)
         r = c.post("/billing/agent/confirm", json={"token": token[:-3] + "xyz"}, headers=a)
         check("위조한 토큰 거절 400", r.status_code == 400, r.text)
         r = c.post("/billing/agent/confirm", json={"token": token}, headers=outsider)
@@ -139,18 +137,6 @@ def run_flow(report: Report) -> None:
         check("같은 토큰 재사용 409 proposal_used", r.status_code == 409, r.text)
         expenses = c.get("/billing/expenses", params={"month": "2026-10"}, headers=a).json()
         check("재사용해도 지출은 늘지 않음", len(expenses) == 1, str(expenses))
-
-        # --- 돌봄: 제안 → 확인 → 저장
-        r = c.post("/care/agent/chat", json={"message": "식단 기록해줘"}, headers=b)
-        proposals = (r.json() if r.status_code == 200 else {}).get("proposals") or []
-        check("돌봄 chat 200 + 제안 1건", r.status_code == 200 and len(proposals) == 1, r.text)
-        if proposals:
-            r = c.post("/care/agent/confirm", json={"token": proposals[0]["token"]}, headers=b)
-            check("돌봄 확인 200 ok", r.status_code == 200 and r.json().get("ok") is True, r.text)
-            logs = c.get(
-                "/care/meal-log", params={"days": 1, "end": "2026-10-12"}, headers=a
-            ).json()
-            check("식단 기록 저장(다른 가족 구성원도 보임)", "된장찌개" in str(logs), str(logs))
 
         # --- 조회 도구 없이 제안 안 만드는 일반 질문
         r = c.post("/billing/agent/chat", json={"message": "안녕"}, headers=a)
