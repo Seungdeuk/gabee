@@ -1,6 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useEffect, useRef, useState } from "react";
-import { ActivityIndicator, Keyboard, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, InteractionManager, Keyboard, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 
 import { colors, font, radius, spacing } from "@/theme";
 
@@ -8,6 +8,7 @@ import { canSend, MAX_TEXT, shouldSendOnEnter } from "../chatUtils";
 import { isPlusFile, isPlusPhoto, isPlusShare, PLUS_SOON_MS, PLUS_SOON_NOTICE, plusShareKind } from "../fileUtils";
 import { replyLine } from "../messageActions";
 import { MENTION_EXAMPLES, mentionHintsVisible } from "../mention";
+import { scheduleAfterSheetClose } from "../shareUtils";
 import PlusSheet from "./PlusSheet";
 
 const LINE_HEIGHT = font.body.lineHeight;
@@ -26,6 +27,8 @@ const INNER_SLOT = INNER_BTN; // 오른쪽 자리: 버튼 한 개 폭으로 고�
 export default function Composer({ value, onChangeText, onSend, onPickPhoto, onPickFile, onShare, photoBusy = false, fileBusy = false, shareBusy = false, photoError = "", onDismissPhotoError, replyTo = null, onCancelReply, direct = false }) {
   const [sheetOpen, setSheetOpen] = useState(false);
   const [soon, setSoon] = useState(false); // "준비 중이에요" 안내 줄
+  const handoff = useRef(null); // "+" 시트가 닫힌 뒤 공유 시트를 열도록 예약한 일의 취소 함수
+  useEffect(() => () => handoff.current?.(), []); // 화면을 떠나면 예약을 취소한다
   useEffect(() => {
     if (!soon) return undefined;
     const timer = setTimeout(() => setSoon(false), PLUS_SOON_MS); // 안내는 몇 초 뒤 저절로 사라진다
@@ -174,7 +177,11 @@ export default function Composer({ value, onChangeText, onSend, onPickPhoto, onP
           setSheetOpen(false);
           if (isPlusPhoto(key)) onPickPhoto();
           else if (isPlusFile(key)) onPickFile?.();
-          else if (onShare && isPlusShare(key)) onShare(plusShareKind(key));
+          else if (onShare && isPlusShare(key)) {
+            handoff.current?.();
+            // "+" 시트가 완전히 닫힌 뒤에 공유 시트(다른 창)를 연다. 겹쳐 뜨면 iOS 에서 열리지 않는 경우가 있다
+            handoff.current = scheduleAfterSheetClose(() => onShare(plusShareKind(key)), { runAfterInteractions: (cb) => InteractionManager.runAfterInteractions(cb) });
+          }
           else setSoon(true); // 안부의 실제 기능은 이후 작업: 지금은 안내만
         }}
       />

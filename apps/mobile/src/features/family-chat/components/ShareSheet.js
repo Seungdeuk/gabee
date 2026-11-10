@@ -9,9 +9,10 @@ import { shareSheetCopy } from "../shareUtils";
 const ICON = { "약속": "calendar-outline", "할 일": "checkbox-outline", "정산": "wallet-outline" };
 
 /**
- * 공유 카드로 보낼 항목을 고르는 아래 시트: 일정이면 내 일정·할 일(오늘 이후), 정산이면 최근 몇 달. 항목을 누르면 onPick(item) 으로 넘기고(확인창은 부모가 연다), 바깥이나 닫기를 누르면 닫는다.
+ * 공유 카드로 보낼 항목을 고르는 아래 시트: 일정이면 내 일정·할 일(오늘 이후), 정산이면 최근 몇 달. 항목을 누르면 onPick(item) 으로 넘기고(확인창은 부모가 시트가 닫힌 뒤에 연다), 바깥 어두운 곳을 누르거나 뒤로 가기를 하면 onClose 로 닫는다(닫기 버튼은 없다).
  * 불러오는 중에는 진행 표시, 오류면 문구와 "다시 시도", 항목이 없으면 빈 상태 문구를 보인다.
  * @param {{ visible: boolean, kind: "event" | "settlement" | null, status: "idle" | "loading" | "ready" | "error", items: { key: string, ref: string, title: string, line: string, badge: string }[], error?: string, onPick: (item: object) => void, onRetry: () => void, onClose: () => void }} props
+ * @returns {import("react").ReactElement}
  */
 export default function ShareSheet({ visible, kind, status, items, error = "", onPick, onRetry, onClose }) {
   const copy = shareSheetCopy(kind);

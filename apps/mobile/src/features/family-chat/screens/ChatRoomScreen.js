@@ -739,7 +739,7 @@ export default function ChatRoomScreen() {
       <RoomDrawer visible={drawerOpen} onClose={() => setDrawerOpen(false)} room={info.room} roomId={roomId} peerId={peerId} myId={info.me?.id} muted={roomMute.muted} onToggleMute={roomMute.toggle} />
       <MessageMenu target={menu} myId={info.me?.id} pinned={pins.isPinned(menu?.message?.id)} onClose={closeMenu} onReact={reactFromMenu} onReply={replyFromMenu} onPin={pinMessageFromMenu} onUnpin={unpinMessageFromMenu} onCopy={copyMessage} onDelete={deleteFromMenu} />
       <ShareSheet visible={share.visible} kind={share.kind} status={share.status} items={share.items} error={share.error} onPick={share.pick} onRetry={share.retry} onClose={share.close} />
-      <ConfirmDialog visible={Boolean(share.confirmCopy)} title={share.confirmCopy?.title ?? ""} message={share.confirmCopy?.message} confirmLabel={share.confirmCopy?.confirmLabel ?? "공유하기"} tone="default" onCancel={share.cancelPending} onConfirm={share.confirm} />
+      <ConfirmDialog visible={share.confirmVisible} title={share.confirmCopy?.title ?? ""} message={share.confirmCopy?.message} confirmLabel={share.confirmCopy?.confirmLabel ?? "공유하기"} tone="default" onCancel={share.cancelPending} onConfirm={share.confirm} />
       <AiPanel visible={aiOpen} onClose={() => setAiOpen(false)} onPickReply={pickReply} onLinked={links.registerCandidate} roomId={roomId ?? undefined} peerId={peerId ?? undefined} />
     </SafeAreaView>
   );

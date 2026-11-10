@@ -7,8 +7,10 @@ import { PLUS_MENU_ITEMS, PLUS_SOON_NOTICE, isPlusFile, isPlusPhoto, isPlusShare
 import {
   SHARE_MONTHS_SHOWN,
   SHARE_NOTICE,
+  SHEET_HANDOFF_MS,
   buildShareEventItems,
   recentShareMonths,
+  scheduleAfterSheetClose,
   shareConfirmCopy,
   shareSendErrorMessage,
   shareSheetCopy,
@@ -48,7 +50,7 @@ test("+ 메뉴: 라벨·순서는 그대로, 일정·정산만 공유 항목(isP
 test("Composer: onShare 가 있으면 일정·정산은 공유로 가고, 없거나 안부면 '준비 중' 안내다", () => {
   const composer = read("features/family-chat/components/Composer.js");
   assert.match(composer, /isPlusShare/);
-  assert.match(composer, /else if \(onShare && isPlusShare\(key\)\) onShare\(plusShareKind\(key\)\)/);
+  assert.match(composer, /else if \(onShare && isPlusShare\(key\)\) \{/);
   assert.match(composer, /else setSoon\(true\)/); // 안부(와 onShare 가 없는 경우)는 그대로 준비 중
   assert.match(composer, /shareBusy/); // 공유를 보내는 동안 + 버튼이 진행 표시
 });
@@ -245,4 +247,75 @@ test("ShareSheet: theme 토큰만, 로딩·빈 상태·오류(다시 시도)·�
   assert.match(sheet, /다시 시도/);
   assert.match(sheet, /onPick\(item\)/);
   assert.doesNotMatch(sheet, /fetch\(|apiFetch/);
+});
+
+// ---------------------------------------------------------------------------------------------
+// 창(Modal) 넘기기: 시트가 닫힌 뒤에 다음 창을 연다(겹쳐 뜨면 iOS 에서 열리지 않는 경우가 있다)
+
+test("SHEET_HANDOFF_MS: ai-assistant ChatInput 선례와 같은 500ms", () => {
+  assert.equal(SHEET_HANDOFF_MS, 500);
+});
+
+test("scheduleAfterSheetClose: 상호작용이 끝나고 SHEET_HANDOFF_MS 가 지난 뒤에야 한 번 실행한다", () => {
+  const pending = [];
+  const timers = [];
+  let ran = 0;
+  scheduleAfterSheetClose(() => (ran += 1), {
+    runAfterInteractions: (cb) => pending.push(cb),
+    setTimer: (cb, ms) => timers.push({ cb, ms }) && timers.length,
+    clearTimer: () => {},
+  });
+  assert.equal(ran, 0);
+  assert.equal(timers.length, 0); // 상호작용(닫는 애니메이션)이 끝나기 전에는 타이머도 없다
+  pending[0]();
+  assert.equal(ran, 0);
+  assert.equal(timers[0].ms, SHEET_HANDOFF_MS);
+  timers[0].cb();
+  assert.equal(ran, 1);
+});
+
+test("scheduleAfterSheetClose: 취소하면(상호작용 전·타이머 중 모두) 실행하지 않는다", () => {
+  const pending = [];
+  const timers = [];
+  const cleared = [];
+  const deps = { runAfterInteractions: (cb) => pending.push(cb), setTimer: (cb) => timers.push(cb) && timers.length, clearTimer: (id) => cleared.push(id) };
+  let ran = 0;
+  const cancelEarly = scheduleAfterSheetClose(() => (ran += 1), deps);
+  cancelEarly();
+  pending[0](); // 취소했는데 상호작용이 끝나도 타이머를 만들지 않는다
+  assert.equal(timers.length, 0);
+  const cancelLate = scheduleAfterSheetClose(() => (ran += 1), deps);
+  pending[1]();
+  cancelLate();
+  assert.deepEqual(cleared, [1]);
+  assert.equal(ran, 0);
+});
+
+test("scheduleAfterSheetClose: 기본 값(즉시 상호작용 완료)에서도 지연 뒤 실행되고 취소할 수 있다", async () => {
+  let ran = 0;
+  scheduleAfterSheetClose(() => (ran += 1), { delay: 5 });
+  const cancel = scheduleAfterSheetClose(() => (ran += 10), { delay: 5 });
+  cancel();
+  await new Promise((r) => setTimeout(r, 40));
+  assert.equal(ran, 1);
+});
+
+test("Composer: '+' 시트를 닫은 뒤 공유 시트를 연다(지연·언마운트 정리)", () => {
+  const composer = read("features/family-chat/components/Composer.js");
+  assert.match(composer, /InteractionManager/);
+  assert.match(composer, /scheduleAfterSheetClose\(\(\) => onShare\(plusShareKind\(key\)\)/);
+  assert.match(composer, /setSheetOpen\(false\);\s*\n\s*if \(isPlusPhoto/); // 시트는 먼저 닫는다
+  assert.match(composer, /handoff\.current\?\.\(\)/); // 언마운트·재선택 때 예약을 취소한다
+});
+
+test("useChatShare: 항목을 고르면 시트를 닫고 닫힌 뒤 확인창을, 취소하면 확인창을 닫고 닫힌 뒤 시트를 다시 연다(동시에 두 창을 띄우지 않는다)", () => {
+  const hook = read("features/family-chat/useChatShare.js");
+  assert.match(hook, /InteractionManager/);
+  assert.match(hook, /scheduleAfterSheetClose/);
+  assert.match(hook, /confirmVisible/);
+  assert.match(hook, /sheetOpen: false/); // 닫아도 kind·items 는 남겨 닫히는 동안 제목이 비지 않는다
+  assert.doesNotMatch(hook, /setState\(IDLE\)/); // 닫을 때 내용을 비우지 않는다
+  assert.match(hook, /confirmCopy: pending && state\.kind \? shareConfirmCopy/); // 확인창 문구는 열림 여부와 무관하게 마지막 항목을 유지한다
+  const screen = read("features/family-chat/screens/ChatRoomScreen.js");
+  assert.match(screen, /visible=\{share\.confirmVisible\}/);
 });
