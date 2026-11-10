@@ -18,6 +18,7 @@ import { DELETED_TEXT, DOUBLE_TAP_MS, isDoubleTap } from "../messageActions";
 import { openChatFile, saveChatFile } from "../openFile";
 import { saveFileName } from "../mediaUtils";
 import { savePhoto } from "../savePhoto";
+import { isShareMessage, shareA11yLabel } from "../shareUtils";
 import AlbumViewer from "./AlbumViewer";
 import AssistantAvatar from "./AssistantAvatar";
 import FileCard from "./FileCard";
@@ -25,6 +26,7 @@ import { highlightNodes, hitStyles } from "./Highlighted";
 import PhotoViewer from "./PhotoViewer";
 import ReactionRow from "./ReactionRow";
 import ReplyQuote from "./ReplyQuote";
+import ShareCard from "./ShareCard";
 
 const AVATAR = 36;
 
@@ -56,6 +58,7 @@ function playLinkNodes(text) {
  * onHeart 가 있으면 말풍선(사진은 썸네일)을 두 번 눌러 하트 반응을 켜고 끈다(사진은 한 번 누르면 잠깐 기다렸다가 크게 보기).
  * 답장이면(reply_to) 글 위에 원본 인용(ReplyQuote)이 붙고 누르면 onReplyPress 로 원본으로 이동한다. 반응(reactions)은 말풍선 아래 칩으로 보이고 누르면 onReactionPress 가 내 반응을 켜거나 끈다.
  * 지운 메시지(deleted)는 말풍선 대신 가운데에 "삭제된 메시지입니다"만 보인다.
+ * 공유 카드 메시지(message.share, 일정·정산)는 고정 문구 text 대신 ShareCard 를 보인다(읽기 전용, 길게 누르기 메뉴·두 번 눌러 하트는 일반 말풍선과 같다).
  * 파일 메시지(attachment.kind === "file")는 사진 대신 파일 카드를 보인다: 본문을 누르면 열기/공유, 다운로드 아이콘은 내 파일/드라이브에 저장. 사진 보기에는 "사진첩에 저장" 버튼이 붙는다.
  * onSaveToLibrary 가 있으면(가족 전체방의 사진) 사진 보기에 "문서로 저장" 버튼이 붙고, 누르면 그 사진을 가족 공유 문서함에 직접 넣는다(결과 문구는 사진 보기에 보인다).
  * @param {{ message: object, mine: boolean, showName: boolean, showTime?: boolean, unread?: number, photoUrl?: string | null, highlighted?: boolean, searchTerms?: string[], searchCurrent?: boolean, onRetry?: (clientId: string) => void, onDiscard?: (clientId: string) => void, onActions?: (message: object, anchor: { x: number, y: number } | null) => void, onHeart?: (message: object) => void, onReactionPress?: (message: object, emoji: string) => void, onReplyPress?: (messageId: number) => void, linkBadges?: { kind: "event" | "todo", label: string }[], onSaveToLibrary?: (attachment: object) => Promise<{ ok: boolean, message: string }>, nameOf?: (userId: string) => string | undefined }} props
@@ -71,6 +74,7 @@ export default function MessageBubble({ message, mine, showName, showTime = true
   const [albumLibraries, setAlbumLibraries] = useState({}); // 앨범 사진별(첨부 id) 문서함 저장 상태
   const [library, setLibrary] = useState({ saving: false, done: false, notice: "" }); // 문서함에 저장한 상태(이 사진 하나의 것)
   const isFile = isFileMessage(message);
+  const isShare = isShareMessage(message); // 공유 카드(일정·정산): 고정 문구 text 대신 카드를 그린다
   const [fileState, setFileState] = useState({ busy: null, notice: "" }); // 파일 열기·저장 진행/결과
   const fileBusyRef = useRef(false);
   const [device, setDevice] = useState({ saving: false, notice: "" }); // 사진첩 저장 상태
@@ -191,6 +195,7 @@ export default function MessageBubble({ message, mine, showName, showTime = true
         onLongPress: openMenu,
         onPress: attachment || !onHeart ? undefined : tapBubble,
         accessibilityHint: "길게 누르면 메뉴가 열려요",
+        ...(isShare ? { accessibilityLabel: shareA11yLabel(message.share, { mine, senderName }) } : {}), // 바깥 말풍선이 하나로 묶여도 카드 문구를 읽는다
         accessibilityActions: a11yActions,
         onAccessibilityAction: (e) => {
           const name = e.nativeEvent.actionName;
@@ -204,7 +209,9 @@ export default function MessageBubble({ message, mine, showName, showTime = true
           else if (name === "jump") onReplyPress?.(message.reply_to.id);
         },
       }
-    : null;
+    : isShare
+      ? { accessible: true, accessibilityLabel: shareA11yLabel(message.share, { mine, senderName }) } // 메뉴가 없는 말풍선도 카드 문구를 하나로 읽는다
+      : null;
   const bubble = (
     <Box {...boxProps} style={[styles.bubble, attachment && !isFile && styles.photoBubble, mine ? styles.mineBubble : styles.otherBubble, message.is_assistant && styles.assistantBubble, sending && styles.dim]}>
       {message.reply_to ? <ReplyQuote reply={message.reply_to} onPress={onReplyPress} onLongPress={onActions ? openMenu : undefined} /> : null}
@@ -254,7 +261,8 @@ export default function MessageBubble({ message, mine, showName, showTime = true
           />
         </>
       ) : null}
-      {message.text ? (
+      {isShare ? <ShareCard share={message.share} mine={mine} senderName={senderName} /> : null}
+      {message.text && !isShare ? (
         <Text style={bubbleTextStyle({ selectable, base: styles.text, photo: attachment ? styles.photoText : null, noSelect: styles.noSelect })} selectable={selectable}>
           {searchTerms?.length ? highlightNodes(message.text, searchTerms, searchCurrent ? hitStyles.current : message.is_assistant ? styles.hitOnAssistant : styles.hit) : playLinkNodes(message.text)}
         </Text>

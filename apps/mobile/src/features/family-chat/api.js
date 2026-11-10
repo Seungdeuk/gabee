@@ -129,7 +129,8 @@ export const leaveRoom = (roomId) => apiFetch(`/family-chat/rooms/${encodeURICom
  * - latest: 가장 최근 limit 개 / beforeId: 그 id 보다 오래된 것 중 가장 최근 limit 개 / afterId: 그 id 뒤의 새 메시지
  * - aroundId: 그 메시지를 가운데로 앞뒤 메시지(검색 결과로 이동할 때). 서버 계약은 별도 PR 의 `around_id` 이고, 다른 범위 옵션과 함께 쓰지 않아 aroundId 가 있으면 나머지 범위는 무시한다.
  * @param {{ latest?: boolean, beforeId?: number, afterId?: number, aroundId?: number, limit?: number, roomId?: string | null }} [options] limit 기본 100, 최대 200, roomId 가 없으면 가족 전체방
- * @returns {Promise<{ id: number, user_id: string, user_name: string, text: string, created_at: string, attachment?: { id: string, kind: string, url: string, thumb_url: string, width: number, height: number } | null }[]>}
+ * 공유 카드 메시지(일정·정산)는 share 에 {kind, payload} 가 오고 text 는 고정 문구다(카드가 아니면 share 는 null 이거나 없다).
+ * @returns {Promise<{ id: number, user_id: string, user_name: string, text: string, created_at: string, attachment?: { id: string, kind: string, url: string, thumb_url: string, width: number, height: number } | null, share?: { kind: "event" | "settlement", payload: object } | null }[]>}
  */
 export function listMessages({ latest = false, beforeId, afterId, aroundId, limit = 100, roomId } = {}) {
   const params = [];
