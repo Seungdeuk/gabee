@@ -7,6 +7,7 @@ import { ActivityIndicator, Alert, FlatList, KeyboardAvoidingView, Platform, Pre
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import Button from "@/shared/components/Button";
+import ConfirmDialog from "@/shared/components/ConfirmDialog";
 import IconButton from "@/shared/components/IconButton";
 import { colors, font, radius, spacing } from "@/theme";
 
@@ -21,6 +22,7 @@ import MessageBubble from "../components/MessageBubble";
 import MessageMenu from "../components/MessageMenu";
 import PinnedBar from "../components/PinnedBar";
 import RoomDrawer from "../components/RoomDrawer";
+import ShareSheet from "../components/ShareSheet";
 import { HEART, canOpenMenu, messageActionError, reactionAction, replyPreview } from "../messageActions";
 import { COPIED_NOTICE, COPY_FAILED_NOTICE, pinTapAction } from "../pinUtils";
 import { parseFocusParam, roomSearchOptions, shouldLoadNewer } from "../searchUtils";
@@ -28,6 +30,7 @@ import { canSaveToLibrary, saveToLibrary } from "../saveToLibrary";
 import useChatLinks from "../useChatLinks";
 import useChatMessages, { useRoomInfo } from "../useChatMessages";
 import useChatPins from "../useChatPins";
+import useChatShare from "../useChatShare";
 import useMention from "../useMention";
 import useRoomMute from "../useRoomMute";
 import useChatSearch, { useFamilyRoomId } from "../useChatSearch";
@@ -151,6 +154,15 @@ export default function ChatRoomScreen() {
   const back = () => (router.canGoBack() ? router.back() : router.replace("/family-chat"));
 
   const scrollToEnd = useCallback((animated) => listRef.current?.scrollToEnd({ animated }), []);
+  // 일정·정산 공유 카드 보내기("+" 메뉴): 시트에서 고르고 확인창을 거쳐 보낸다. 보내면 사진·파일처럼 맨 아래로 간다
+  const share = useChatShare({
+    send: (card) => {
+      nearBottom.current = true;
+      sentEarly.current = true;
+      return chat.sendShare(card);
+    },
+    onSent: () => scrollToEnd(true),
+  });
 
   // 서랍에서 다른 화면(게시판·가족 할 일·사진 모음 등)을 열었다가 뒤로 돌아오면 가장 최근 메시지가 보이게 한다(검색 결과로 이동한 과거 창을 보는 중이면 그대로 둔다).
   const leftRoom = useRef(false);
@@ -430,6 +442,10 @@ export default function ChatRoomScreen() {
     else nearBottom.current = false;
   };
 
+  const cancelShareHandoff = share.cancelHandoff;
+  useEffect(() => {
+    if (menu) cancelShareHandoff(); // 메시지 메뉴가 열리면 예약 중인 공유 시트·확인창 열기는 취소해 창이 겹치지 않게 한다
+  }, [menu, cancelShareHandoff]);
   const closeMenu = () => setMenu(null);
   const openMenu = (message, anchor, reactTo) => setMenu({ message, anchor, reactTo }); // reactTo: 앨범 사진의 메뉴일 때 반응을 거는 대표 사진(마지막 사진)
   /** 내 반응을 켜거나(다른 이모지면 바꾸고) 같은 이모지를 다시 누르면 끈다. 실패하면 이유를 안내 줄에 보인다. */
@@ -700,7 +716,10 @@ export default function ChatRoomScreen() {
             onSend={onSend}
             onPickPhoto={onPickPhoto}
             onPickFile={onPickFile}
+            onShare={share.open}
+            onPlusOpen={share.cancelHandoff}
             fileBusy={pickingFileUi || chat.fileBusy}
+            shareBusy={chat.shareBusy}
             photoBusy={pickingUi || chat.photoBusy}
             photoError={chat.photoError}
             onDismissPhotoError={() => chat.setPhotoError("")}
@@ -724,6 +743,8 @@ export default function ChatRoomScreen() {
       </KeyboardAvoidingView>
       <RoomDrawer visible={drawerOpen} onClose={() => setDrawerOpen(false)} room={info.room} roomId={roomId} peerId={peerId} myId={info.me?.id} muted={roomMute.muted} onToggleMute={roomMute.toggle} />
       <MessageMenu target={menu} myId={info.me?.id} pinned={pins.isPinned(menu?.message?.id)} onClose={closeMenu} onReact={reactFromMenu} onReply={replyFromMenu} onPin={pinMessageFromMenu} onUnpin={unpinMessageFromMenu} onCopy={copyMessage} onDelete={deleteFromMenu} />
+      <ShareSheet visible={share.visible} kind={share.kind} status={share.status} items={share.items} error={share.error} onPick={share.pick} onRetry={share.retry} onClose={share.close} />
+      <ConfirmDialog visible={share.confirmVisible} title={share.confirmCopy?.title ?? ""} message={share.confirmCopy?.message} confirmLabel={share.confirmCopy?.confirmLabel ?? "공유하기"} tone="default" onCancel={share.cancelPending} onConfirm={share.confirm} />
       <AiPanel visible={aiOpen} onClose={() => setAiOpen(false)} onPickReply={pickReply} onLinked={links.registerCandidate} roomId={roomId ?? undefined} peerId={peerId ?? undefined} />
     </SafeAreaView>
   );

@@ -4,14 +4,14 @@ import { colors, font, radius, spacing } from "@/theme";
 
 /**
  * 화면 가운데 확인 팝업. 되돌릴 수 없는 동작(삭제, 가족 나가기 등)을 확인할 때 쓰고, 하단 시트(날짜·시간 선택)와 구분된다.
- * 안전한 취소를 왼쪽에, 위험한 확인(삭제·나가기)을 오른쪽에 오류 색으로 둔다.
- * @param {{ visible: boolean, title: string, message?: string, cancelLabel?: string, confirmLabel: string, onCancel: () => void, onConfirm: () => void }} props
+ * 안전한 취소를 왼쪽에, 위험한 확인(삭제·나가기)을 오른쪽에 오류 색으로 둔다. 되돌릴 수 있는 일(예: 공유 확인)은 tone="default" 로 꿀색 확인 버튼을 쓴다.
+ * @param {{ visible: boolean, title: string, message?: string, cancelLabel?: string, confirmLabel: string, tone?: "default" | "danger", onCancel: () => void, onConfirm: () => void }} props tone 기본 "danger"
  * @returns {import("react").ReactElement}
  */
-export default function ConfirmDialog({ visible, title, message, cancelLabel = "취소", confirmLabel, onCancel, onConfirm }) {
+export default function ConfirmDialog({ visible, title, message, cancelLabel = "취소", confirmLabel, tone = "danger", onCancel, onConfirm }) {
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onCancel}>
-      <Pressable style={styles.backdrop} onPress={onCancel} accessibilityLabel="닫기">
+      <Pressable style={styles.backdrop} onPress={onCancel} accessibilityLabel={cancelLabel}>
         <Pressable style={styles.dialog} onPress={() => {}} accessibilityRole="alert">
           <Text style={styles.title}>{title}</Text>
           {message ? <Text style={styles.message}>{message}</Text> : null}
@@ -19,7 +19,7 @@ export default function ConfirmDialog({ visible, title, message, cancelLabel = "
             <Pressable onPress={onCancel} style={[styles.button, styles.cancel]} accessibilityRole="button">
               <Text style={styles.cancelText}>{cancelLabel}</Text>
             </Pressable>
-            <Pressable onPress={onConfirm} style={[styles.button, styles.danger]} accessibilityRole="button">
+            <Pressable onPress={onConfirm} style={[styles.button, tone === "default" ? styles.accent : styles.danger]} accessibilityRole="button">
               <Text style={styles.dangerText}>{confirmLabel}</Text>
             </Pressable>
           </View>
@@ -39,5 +39,6 @@ const styles = StyleSheet.create({
   cancel: { backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border },
   cancelText: { fontSize: 15, fontWeight: "500", color: colors.text },
   danger: { backgroundColor: colors.danger },
+  accent: { backgroundColor: colors.accent },
   dangerText: { fontSize: 15, fontWeight: "700", color: colors.onDark },
 });

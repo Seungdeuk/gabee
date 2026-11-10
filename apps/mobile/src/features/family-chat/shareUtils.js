@@ -178,6 +178,35 @@ export function shareA11yLabel(share, { mine = true, senderName = "" } = {}) {
 /** 일정 목록을 받아 오지 못했을 때 시트에 보이는 문구. */
 export const SHARE_LOAD_ERROR = "일정을 불러오지 못했어요. 다시 시도해 주세요";
 
+/** 시트가 닫힌 뒤 다음 창을 열기까지 더 기다리는 시간(밀리초). ai-assistant 의 ChatInput 선례와 같다. 창 두 개가 겹쳐 뜨면 iOS 에서 열리지 않는 경우가 있다. */
+export const SHEET_HANDOFF_MS = 500;
+
+/**
+ * 시트(Modal)를 닫은 직후가 아니라 닫힘이 끝난 뒤에 다음 일을(보통 다른 Modal 을 여는 것) 실행한다: 상호작용(닫는 애니메이션)이 끝나면 delay 만큼 더 기다렸다가 한 번 실행한다.
+ * 화면 쪽은 runAfterInteractions 에 InteractionManager.runAfterInteractions 를 넘기고, 시험은 가짜 함수를 넘긴다(기본은 즉시).
+ * @param {() => void} fn 닫힘이 끝난 뒤 실행할 일
+ * @param {{ runAfterInteractions?: (cb: () => void) => void, setTimer?: (cb: () => void, ms: number) => unknown, clearTimer?: (id: unknown) => void, delay?: number }} [deps]
+ * @returns {() => void} 취소 함수(실행 전에 부르면 실행하지 않는다, 여러 번 불러도 된다)
+ */
+export function scheduleAfterSheetClose(fn, { runAfterInteractions = (cb) => cb(), setTimer = setTimeout, clearTimer = clearTimeout, delay = SHEET_HANDOFF_MS } = {}) {
+  let canceled = false;
+  let timer = null;
+  runAfterInteractions(() => {
+    if (canceled) return;
+    timer = setTimer(() => {
+      timer = null;
+      if (!canceled) fn();
+    }, delay);
+  });
+  return () => {
+    canceled = true;
+    if (timer != null) {
+      clearTimer(timer);
+      timer = null;
+    }
+  };
+}
+
 /** 정산 시트에 보일 달 수(이번 달부터 거슬러). 월 목록 API 가 없어 앱이 만든다. */
 export const SHARE_MONTHS_SHOWN = 6;
 
