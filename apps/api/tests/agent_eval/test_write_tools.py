@@ -44,3 +44,36 @@ def test_web_search_is_external_and_never_listed():
         "billing", "list_expenses"
     )
     assert not wt.is_write("unknown_agent", "anything")
+
+
+def test_a_write_tool_moved_to_the_read_list_is_caught_by_the_name_cross_check(monkeypatch):
+    monkeypatch.setitem(wt.WRITE_TOOLS, "main", wt.WRITE_TOOLS["main"] - {"remember"})
+    monkeypatch.setitem(wt.READ_TOOLS, "main", wt.READ_TOOLS["main"] | {"remember"})
+    with pytest.raises(ValueError, match="remember 은 이름으로는 write"):
+        wt.verify_against_code()
+
+
+def test_a_new_tool_with_an_unclassifiable_name_is_reported(monkeypatch):
+    real = wt.real_tool_names()
+    real["family_chat"]["all"] = real["family_chat"]["all"] | {"frobnicate"}
+    monkeypatch.setattr(wt, "real_tool_names", lambda: real)
+    monkeypatch.setitem(wt.READ_TOOLS, "family_chat", wt.READ_TOOLS["family_chat"] | {"frobnicate"})
+    with pytest.raises(ValueError, match="분류할 수 없는 도구 frobnicate"):
+        wt.verify_against_code()
+
+
+def test_main_tool_assembly_in_rag_chat_has_not_changed_shape():
+    """real_tool_names 가 옮겨 둔 메인의 도구 조합 식이 rag_chat.py 에서 바뀌면 알려 준다."""
+    import re
+    from pathlib import Path
+
+    path = Path(__file__).resolve().parents[2] / "app/features/ai_assistant/knowledge/rag_chat.py"
+    src = path.read_text(encoding="utf-8")
+    block = src[src.index("tools=tools.TOOL_SPECS") : src.index("run = tool_graph.Run(")]
+    assert re.findall(r"tools\.\w+|agents\.tool_specs\(\)|_web_tool\(\)", block) == [
+        "tools.TOOL_SPECS",
+        "agents.tool_specs()",
+        "tools.MEMORY_TOOL_SPECS",
+        "tools.SHARE_TOOL_SPEC",
+        "_web_tool()",
+    ]

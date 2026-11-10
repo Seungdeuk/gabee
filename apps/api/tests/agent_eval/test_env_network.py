@@ -60,3 +60,46 @@ def test_everything_is_restored_after_the_block_even_on_error():
     with pytest.raises(ZeroDivisionError), block_network():
         raise ZeroDivisionError
     assert (socket.getaddrinfo, socket.socket.connect, socket.socket.connect_ex) == before
+
+
+def test_asyncio_connections_are_blocked_too_even_by_ip_which_skips_name_lookup():
+    """Windows 기본 루프(Proactor)는 socket.connect 를 거치지 않고 IP 면 이름 조회도 건너뛴다."""
+    import asyncio
+
+    async def go():
+        await asyncio.open_connection("10.255.255.1", 9)
+
+    with block_network(), pytest.raises(NetworkBlocked):
+        asyncio.run(go())
+
+
+def test_async_httpx_cannot_reach_a_remote_address_either():
+    import asyncio
+
+    async def go():
+        async with httpx.AsyncClient(timeout=2) as client:
+            await client.get("http://10.255.255.1:9/")
+
+    def causes(exc):  # anyio 는 원인을 예외 그룹으로 감싸서 올린다
+        return (
+            [leaf for e in getattr(exc, "exceptions", [exc]) for leaf in causes(e)]
+            if hasattr(exc, "exceptions")
+            else [exc]
+        )
+
+    with block_network(), pytest.raises(BaseException) as raised:
+        asyncio.run(go())
+    assert any(isinstance(e, NetworkBlocked) for e in causes(raised.value))
+
+
+def test_gethostbyname_and_udp_sendto_are_guarded():
+    with block_network():
+        with pytest.raises(NetworkBlocked):
+            socket.gethostbyname("push.example.com")
+        with pytest.raises(NetworkBlocked):
+            socket.gethostbyname_ex("push.example.com")
+        udp = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        with pytest.raises(NetworkBlocked):
+            udp.sendto(b"x", ("10.255.255.1", 9))
+        udp.close()
+        assert socket.gethostbyname("localhost") in ("127.0.0.1", "::1")
