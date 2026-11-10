@@ -10,7 +10,7 @@ from datetime import UTC, datetime
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.shared import group_purge
+from app.shared import group_purge, member_exit
 from app.shared.errors import ApiError, bad_request, not_found
 
 from . import profile_repository as prepo
@@ -81,7 +81,8 @@ def leave_group(db: Session, user: User, group_id: str) -> None:
     """내가 가족을 나간다. owner 는 나갈 수 없다(소유권 이전은 범위 밖).
 
     한 트랜잭션에서 별명(내가 쓴 것·나에게 붙은 것) 삭제 → 멤버십 조건부 삭제 → 활성 그룹 비우기.
-    지난 채팅·일정·가계 등 데이터는 그대로 둔다(제품 결정)."""
+    지난 채팅·일정·가계 등 데이터는 그대로 두되, 내 1:1 방 참여는 함께 지운다(`member_exit`: 남은 상대는 읽기 전용 방을 보고,
+    둘 다 없어지면 방이 지워진다. 되돌릴 수 없다)."""
     for attempt in range(2):
         # 내 멤버십 행을 잠가 동시 별명 INSERT 와 겹치지 않게 한다
         me = prepo.lock_membership(db, group_id, user.id)
@@ -104,13 +105,21 @@ def leave_group(db: Session, user: User, group_id: str) -> None:
                     raise ApiError(403, "not_member", "이 가족 그룹의 구성원이 아니에요")
                 raise bad_request("cannot_leave_owner", "소유자는 가족을 나갈 수 없어요.")
             prepo.clear_active_group(db, user.id, group_id)
+            files = member_exit.member_left(
+                db, group_id, user.id
+            )  # 같은 트랜잭션: 실패하면 나가기도 취소
             db.commit()
+            group_purge.purge_files(files)
             return
         except IntegrityError:
             # 동시에 들어온 별명 INSERT 가 FK 를 깬 경우: 되돌리고 한 번만 처음부터 다시 한다
             db.rollback()
             if attempt == 1:
                 raise
+        except Exception:
+            # 훅·삭제 중 다른 예외(교착 등): 가족 나가기도 함께 취소한다(세션 종료에만 맡기지 않는다)
+            db.rollback()
+            raise
 
 
 def _leave_as_last_member(db: Session, user: User, group_id: str) -> None:

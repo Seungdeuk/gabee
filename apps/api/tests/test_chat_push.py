@@ -233,7 +233,27 @@ def test_member_who_left_the_family_gets_no_direct_room_push(client, trio, sent)
         "/family-chat/rooms/direct", json={"user_id": _me(client, c)}, headers=a
     ).json()
     assert client.post("/family-group/groups/me/leave", headers=c).status_code == 204
-    _say(client, a, room_id=room["id"])  # 1:1 방 참여 기록은 남아 있어도 가족이 아니면 받지 않는다
+    # 가족을 나가면 1:1 방 참여도 지워져 방이 읽기 전용이 되고, 보내는 쪽은 막힌다(푸시도 없다)
+    blocked = client.post(
+        "/family-chat/messages", json={"text": "안녕", "room_id": room["id"]}, headers=a
+    )
+    assert blocked.status_code == 409 and blocked.json()["code"] == "peer_left_room"
+    assert sent() == []
+
+
+def test_a_legacy_direct_room_row_of_a_member_who_left_gets_no_push(client, trio, sent):
+    """이 결정 전에 가족을 나간 사람의 1:1 참여 기록(옛 데이터)이 남아 있어도 지금 가족이 아니면 푸시를 받지 않는다."""
+    from app.features.family_chat.models import ChatRoom, ChatRoomMember
+
+    a, b, c = trio
+    c_id = _me(client, c)
+    room = client.post("/family-chat/rooms/direct", json={"user_id": c_id}, headers=a).json()
+    assert client.post("/family-group/groups/me/leave", headers=c).status_code == 204
+    with SessionLocal() as db:  # 옛 데이터를 만든다: 참여 기록이 남고 방은 읽기 전용 표시가 없다
+        db.add(ChatRoomMember(room_id=room["id"], user_id=c_id))
+        db.get(ChatRoom, room["id"]).direct_key = None
+        db.commit()
+    _say(client, a, room_id=room["id"])
     assert sent() == []
 
 

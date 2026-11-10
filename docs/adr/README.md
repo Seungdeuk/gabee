@@ -19,6 +19,7 @@
 | [0015](0015-family-room-photo-to-library.md) | 가족방 사진은 문서 사진만 골라 가족 문서함에 읽어 넣고, 판별에는 로컬 OCR 과 Claude(haiku)를 함께 쓴다 | 2026-11-09 | 유효 |
 | [0016](0016-agent-eval-loop.md) | Agent 평가는 새 패키지(`evals/agent_eval`)에 단계별로 쌓고, 개선 후보는 개발셋 실패로 만들어 검증셋으로 고르며, 보안 위반은 하드 게이트로 막는다 | 2026-11-10 | 유효 |
 | [0017](0017-chat-share-cards.md) | 채팅 공유 카드는 서버가 읽어 만든 보낸 시점 스냅샷이고, 글자는 고정 문구로 둔다 | 2026-11-10 | 유효 |
+| [0018](0018-leave-family-removes-direct-room-membership.md) | 가족을 나가면 그 사람의 1:1 방 참여도 함께 지우고, 연결은 `shared/member_exit` 훅으로 한다 | 2026-11-10 | 유효 |
 
 ## 번호 변경 이력
 

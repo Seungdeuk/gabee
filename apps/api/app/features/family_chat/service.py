@@ -1,7 +1,9 @@
+from pathlib import Path
+
 from sqlalchemy.orm import Session
 
 from app.features.family_group.models import User
-from app.shared import chat_library, group_purge
+from app.shared import chat_library, group_purge, member_exit
 from app.shared.errors import ApiError, bad_request, not_found
 from app.shared.schema import monitor
 
@@ -173,18 +175,42 @@ def leave_room(db: Session, user: User, group_id: str, room_id: str) -> None:
     repo.lock_room(db, room.id)  # 두 사람이 동시에 나가도 마지막 사람이 방을 지운다
     if not repo.is_room_member(db, room.id, user.id):
         raise not_found("대화방")
-    files = []
     try:
-        repo.remove_room_member(db, room.id, user.id)
-        if repo.count_room_members(db, room.id) == 0:
-            files = group_purge.purge_room(db, room.id)
-        else:
-            room.direct_key = f"{LEFT_PREFIX}{user.id}:{room.id}"
+        files = _exit_direct_room(db, room, user.id)
         db.commit()
     except Exception:
         db.rollback()
         raise
     group_purge.purge_files(files)
+
+
+def _exit_direct_room(db: Session, room: ChatRoom, user_id: str) -> list[Path]:
+    """잠근 1:1 방에서 한 사람의 참여를 지운다(커밋은 부르는 쪽). 남은 사람이 있으면 방을 읽기 전용으로 바꾸고,
+    아무도 없으면 방의 모든 데이터를 지운다(지울 디스크 파일 경로를 돌려준다)."""
+    repo.remove_room_member(db, room.id, user_id)
+    if repo.count_room_members(db, room.id) == 0:
+        return group_purge.purge_room(db, room.id)
+    room.direct_key = f"{LEFT_PREFIX}{user_id}:{room.id}"
+    return []
+
+
+def leave_direct_rooms_of_member(db: Session, group_id: str, user_id: str) -> list[Path]:
+    """가족을 나가는 사람의 1:1 방 참여를 모두 지운다(되돌릴 수 없다: 다시 가입해도 옛 방은 이어지지 않는다). 커밋은 부르는 쪽.
+    방은 id 순으로 잠가, 두 사람이 서로의 방을 동시에 정리해도 잠금 순서가 같아 교착이 생기지 않는다.
+    이 DB 에 소통 테이블이 아직 없으면(코드가 DB 보다 먼저 배포) 지울 방도 없으니 건너뛴다."""
+    if not monitor.status().feature_ready("family_chat"):
+        return []
+    files: list[Path] = []
+    for room_id in sorted(r.id for r in repo.my_direct_rooms(db, group_id, user_id)):
+        repo.lock_room(db, room_id)
+        room = repo.get_room(db, room_id)
+        if room is None or not repo.is_room_member(db, room_id, user_id):
+            continue  # 잠그는 사이 방이 지워졌거나 이미 처리됨
+        files += _exit_direct_room(db, room, user_id)
+    return files
+
+
+member_exit.register(leave_direct_rooms_of_member)
 
 
 def resolve_room(db: Session, user: User, group_id: str, room_id: str | None) -> ChatRoom:
