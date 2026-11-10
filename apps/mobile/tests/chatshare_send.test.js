@@ -12,6 +12,7 @@ import {
   recentShareMonths,
   scheduleAfterSheetClose,
   shareConfirmCopy,
+  shareEventDate,
   shareSendErrorMessage,
   shareSheetCopy,
 } from "../src/features/family-chat/shareUtils.js";
@@ -77,6 +78,32 @@ test("buildShareEventItems: 오늘 이후(오늘 포함)만, 날짜·시간 오�
   assert.deepEqual(items[0], { key: "e:today-am", ref: "today-am", title: "오늘 오전", line: "11월 10일 (화) · 오전 9:00", badge: "약속" });
   assert.equal(items[2].badge, "할 일");
   assert.equal(items[2].line, "11월 11일 (수) · 종일");
+});
+
+test("shareEventDate: start_date 가 있으면 그대로, 없으면 starts_at 의 한국 시간(UTC+9) 날짜, 둘 다 없거나 틀리면 null", () => {
+  assert.equal(shareEventDate({ start_date: "2026-11-12", starts_at: "2026-11-01T00:00:00Z" }), "2026-11-12"); // start_date 가 우선
+  assert.equal(shareEventDate({ start_date: null, starts_at: "2026-11-10T15:30:00Z" }), "2026-11-11"); // UTC 15:30 → 한국 다음날 00:30
+  assert.equal(shareEventDate({ starts_at: "2026-11-10T14:59:59Z" }), "2026-11-10"); // 한국 23:59:59
+  assert.equal(shareEventDate({ starts_at: "2026-12-31T15:00:00+00:00" }), "2027-01-01"); // 해가 바뀐다
+  assert.equal(shareEventDate({ starts_at: "2026-11-10T20:00:00+09:00" }), "2026-11-10"); // 오프셋이 붙은 값
+  assert.equal(shareEventDate({ starts_at: "2026-11-10T15:30:00" }), "2026-11-11"); // 오프셋이 없으면 UTC 로 본다(기기 시간대와 무관)
+  assert.equal(shareEventDate({ start_date: null, starts_at: null }), null);
+  assert.equal(shareEventDate({ starts_at: "not a date" }), null);
+  assert.equal(shareEventDate(null), null);
+});
+
+test("buildShareEventItems: start_date 가 비어 있는 옛 일정도 starts_at 의 한국 날짜로 오늘 이후면 보이고, 날짜·정렬·표시에 그 날짜를 쓴다(ref 는 id 그대로)", () => {
+  const events = [
+    ev({ id: "old-next", title: "옛 일정", start_date: null, start_time: null, starts_at: "2026-11-10T15:30:00Z" }), // 한국 11-11
+    ev({ id: "old-past", title: "옛 지난", start_date: null, starts_at: "2026-11-09T14:00:00Z" }), // 한국 11-09 23:00 → 지난
+    ev({ id: "old-today", title: "옛 오늘", start_date: null, start_time: null, starts_at: "2026-11-09T15:00:00Z" }), // 한국 11-10 00:00 → 오늘(경계)
+    ev({ id: "both", title: "둘 다", start_date: "2026-11-12", starts_at: "2026-11-01T00:00:00Z" }), // start_date 가 우선
+    ev({ id: "none", title: "둘 다 없음", start_date: null }),
+  ];
+  const items = buildShareEventItems(events, "2026-11-10");
+  assert.deepEqual(items.map((i) => i.ref), ["old-today", "old-next", "both"]);
+  assert.equal(items[0].line, "11월 10일 (화) · 종일");
+  assert.equal(items[1].line, "11월 11일 (수) · 종일");
 });
 
 test("buildShareEventItems: 목록이 아니거나 비어 있어도 빈 배열", () => {
@@ -207,6 +234,17 @@ test("shareSendErrorMessage: 404·invalid_month·share_too_large·409·429·503�
   assert.match(shareSendErrorMessage({ status: 429, retryAfter: 90 }), /2분 뒤에 다시 시도할 수 있어요/);
 });
 
+test("shareSendErrorMessage(error, kind): 404 는 kind 에 따라 일정·정산 문구로 가르고, kind 가 없으면 기존 문구, 다른 오류는 kind 와 상관없다", () => {
+  const nf = { status: 404, code: "not_found" };
+  assert.equal(shareSendErrorMessage(nf, "settlement"), "그 달에는 정산 내역이 없어요");
+  assert.equal(shareSendErrorMessage(nf, "event"), "이미 지워졌거나 내 일정이 아니에요");
+  assert.match(shareSendErrorMessage(nf), /공유할 내용을 찾지 못했어요/);
+  assert.equal(shareSendErrorMessage(nf, "unknown"), shareSendErrorMessage(nf));
+  assert.equal(shareSendErrorMessage({ status: 429, retryAfter: 0 }, "event"), shareSendErrorMessage({ status: 429, retryAfter: 0 }));
+  assert.equal(shareSendErrorMessage({ status: 503 }, "settlement"), shareSendErrorMessage({ status: 503 }));
+  assert.doesNotMatch(shareSendErrorMessage({ status: 404, message: "치과 12,000원" }, "event"), /치과|12,000/);
+});
+
 test("오류 문구에는 카드 내용(제목·금액)이 들어가지 않는다", () => {
   const text = shareSendErrorMessage({ status: 404, message: "치과 12,000원" });
   assert.doesNotMatch(text, /치과|12,000/);
@@ -222,7 +260,7 @@ test("useChatMessages: sendShare 는 사진·파일과 같은 방식(중복 누�
   assert.match(hook, /const sendShare = useCallback\(/);
   assert.match(hook, /async \(\{ kind, ref: cardRef \}\)/); // 바깥 const ref(메시지 목록 ref)를 가리지 않는다
   assert.match(hook, /postShare\(\{ kind, ref: cardRef, roomId: roomRef\.current \}\)/);
-  assert.match(hook, /setPhotoError\(shareSendErrorMessage\(e\)\)/);
+  assert.match(hook, /setPhotoError\(shareSendErrorMessage\(e, kind\)\)/); // 종류별 404 문구
   assert.match(hook, /sendShare, shareBusy/);
 });
 
