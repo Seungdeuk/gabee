@@ -11,6 +11,7 @@ from . import bomb
 from .bomb_schemas import (
     PlayBombChatIn,
     PlayBombCheerIn,
+    PlayBombHistoryOut,
     PlayBombSayIn,
     PlayBombStartIn,
     PlayBombStateOut,
@@ -39,6 +40,17 @@ def create(
 ) -> PlayBombStateOut:
     """폭탄방을 연다(방장). 이미 열린 방이 있으면 409 room_open."""
     return bomb.create_room(db, user, group_id)
+
+
+@router.get("/{room_id}/history", response_model=PlayBombHistoryOut)
+def history(
+    room_id: str,
+    user: User = Depends(current_user),
+    group_id: str = Depends(current_group_id),
+    db: Session = Depends(get_db),
+) -> PlayBombHistoryOut:
+    """지난 방 기록: 끝난 판마다 이어 말한 문장과 끝낸 사람. 방에 참여한 가족만 볼 수 있다(403 not_in_room)."""
+    return bomb.history(db, user, group_id, room_id)
 
 
 @router.get("/{room_id}", response_model=PlayBombStateOut)

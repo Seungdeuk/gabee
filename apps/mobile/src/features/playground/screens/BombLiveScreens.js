@@ -155,10 +155,10 @@ function GameTop({ room, left, compact = false, activeId }) {
     <View style={styles.top}>
       <PlayerStrip players={players} activeId={activeId ?? who?.id} compact={compact} />
       <View style={styles.timeRow}>
-        <Text style={styles.timeText} accessibilityLiveRegion="polite">
+        <Text style={[styles.timeText, compact && styles.timeTextSm]} accessibilityLiveRegion="polite">
           {who ? `${who.name} 차례 ${Math.ceil(left ?? 0)}초` : room.phase === "finished" ? "게임이 끝났어요" : "잠시만요"}
         </Text>
-        <Text style={styles.chain}>이어가는 중 · {room.chain}개</Text>
+        {compact ? null : <Text style={styles.chain}>이어가는 중 · {room.chain}개</Text>}
       </View>
       <TimeBar left={left ?? 0} total={room.turn?.limit ?? room.sec} danger={(left ?? 0) <= 3} />
     </View>
@@ -248,7 +248,7 @@ export function LiveBombPlay({ id }) {
   };
   return (
     <SafeAreaView style={styles.safe} edges={["top", "bottom"]}>
-      <PlayHeader title="문장 폭탄" close fallback="/play" onBack={() => router.replace("/play")} />
+      <PlayHeader title="문장 폭탄" close fallback="/play" onBack={() => router.replace("/play")} compact={kb} />
       <GameTop room={room} left={left} compact={kb} />
       {room.vote ? <VoteBanner vote={room.vote} left={voteLeft} busy={busy} onVote={(yes) => act(() => voteBomb(id, yes))} /> : null}
       <KeyboardAvoidingView style={styles.flex} behavior="padding">
@@ -258,7 +258,7 @@ export function LiveBombPlay({ id }) {
           onUnfair={busy ? undefined : () => act(() => startBombVote(id, "unfair"))}
         />
         {room.phase === "finished" ? (
-          <EndBar onResult={() => router.replace(bombPath("result", id))} onLeave={() => router.replace("/play")} />
+          <EndBar onResult={() => router.push(bombPath("result", id))} onLeave={() => router.replace(bombPath("lobby", id))} />
         ) : (
         <View style={styles.bar}>
           {error ? <Text style={styles.error}>{error}</Text> : kb ? null : <Text style={styles.rule}>한 단어나 짧은 구, {MAX_LEN}자까지 · 끝내는 말을 하면 생명이 줄어요</Text>}
@@ -291,6 +291,15 @@ export function LiveBombSpectate({ id }) {
   const myId = useMyId();
   useBombRedirect(room, "spectate");
   const [mode, setMode] = useState("chat"); // 채팅(탈락한 사람끼리) / 응원(모두에게)
+  const [kb, setKb] = useState(false); // 키보드가 올라오면 위쪽을 줄이고 입력 칸만 남겨서 채팅이 보이게 한다
+  useEffect(() => {
+    const show = Keyboard.addListener("keyboardDidShow", () => setKb(true));
+    const hide = Keyboard.addListener("keyboardDidHide", () => setKb(false));
+    return () => {
+      show.remove();
+      hide.remove();
+    };
+  }, []);
   const [text, setText] = useState("");
   if (!room) {
     return (
@@ -313,8 +322,8 @@ export function LiveBombSpectate({ id }) {
   };
   return (
     <SafeAreaView style={styles.safe} edges={["top", "bottom"]}>
-      <PlayHeader title="문장 폭탄" close fallback="/play" onBack={() => router.replace("/play")} />
-      <GameTop room={room} left={left} />
+      <PlayHeader title="문장 폭탄" close fallback="/play" onBack={() => router.replace("/play")} compact={kb} />
+      <GameTop room={room} left={left} compact={kb} />
       {room.vote ? <VoteBanner vote={room.vote} left={voteLeft} busy={busy} onVote={(yes) => act(() => voteBomb(id, yes))} /> : null}
       <KeyboardAvoidingView style={styles.flex} behavior="padding">
         <Chat
@@ -323,10 +332,10 @@ export function LiveBombSpectate({ id }) {
           onUnfair={busy ? undefined : () => act(() => startBombVote(id, "unfair"))}
         />
         {room.phase === "finished" ? (
-          <EndBar onResult={() => router.replace(bombPath("result", id))} onLeave={() => router.replace("/play")} />
+          <EndBar onResult={() => router.push(bombPath("result", id))} onLeave={() => router.replace(bombPath("lobby", id))} />
         ) : (
           <View style={styles.bar}>
-            <View style={styles.seg}>
+            <View style={[styles.seg, kb && styles.hide]}>
               {[["chat", "채팅"], ["cheer", "응원"]].map(([key, label]) => (
                 <Pressable key={key} onPress={() => setMode(key)} accessibilityRole="button" accessibilityState={{ selected: mode === key }} style={[styles.segBtn, mode === key && styles.segOn]}>
                   <Text style={[styles.segText, mode === key && styles.segTextOn]}>{label}</Text>
@@ -343,6 +352,11 @@ export function LiveBombSpectate({ id }) {
               </View>
             )}
             <View style={styles.inputRow}>
+              {kb ? (
+                <Pressable onPress={() => setMode(chatMode ? "cheer" : "chat")} accessibilityRole="button" accessibilityLabel={`${chatMode ? "채팅" : "응원"} 중, 누르면 ${chatMode ? "응원" : "채팅"}으로 바꿔요`} style={styles.modeBtn}>
+                  <Text style={styles.modeBtnText}>{chatMode ? "채팅" : "응원"}</Text>
+                </Pressable>
+              ) : null}
               <TextInput
                 value={text}
                 onChangeText={(v) => setText(v.slice(0, chatMode ? 50 : 20))}
@@ -359,7 +373,7 @@ export function LiveBombSpectate({ id }) {
             {error ? (
               <Text style={styles.error}>{error}</Text>
             ) : (
-              <Text style={styles.rule}>
+              <Text style={[styles.rule, kb && styles.hide]}>
                 {waiting ? `${Math.ceil(chatMode ? chatLeft : cheerLeft)}초 뒤에 다시 보낼 수 있어요` : chatMode ? "탈락한 사람끼리만 보여요, 50자까지" : "살아있는 사람에게도 보여요, 20자까지"}
               </Text>
             )}
@@ -389,7 +403,7 @@ export function LiveBombResult({ id }) {
     <PlayScreen
       title="결과"
       close
-      onBack={() => router.replace(bombPath("lobby", id))} // 로비에서 한 판 더 하거나 방을 닫는다
+      onBack={() => (router.canGoBack() ? router.back() : router.replace(bombPath("lobby", id)))} // 게임 채팅창에서 왔으면 채팅창으로, 아니면 로비로
       fixed
       footer={
         <>
@@ -462,6 +476,7 @@ const styles = StyleSheet.create({
   top: { paddingHorizontal: 20, gap: 8 },
   timeRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "baseline" },
   timeText: { fontSize: 16, fontFamily: fonts.bold, color: colors.text },
+  timeTextSm: { fontSize: 13 },
   chain: { ...font.caption, color: colors.textSub },
   chat: { paddingHorizontal: 20, paddingVertical: 12, gap: 6 },
   sys: { ...font.caption, color: colors.textSub, textAlign: "center" },
@@ -477,6 +492,9 @@ const styles = StyleSheet.create({
   callChip: { alignSelf: "flex-start", marginLeft: 32, height: 24, paddingHorizontal: 10, borderRadius: 12, borderWidth: 1, borderColor: BOMB_RED, backgroundColor: "#FBEAE3", alignItems: "center", justifyContent: "center" },
   callChipText: { fontSize: 12, lineHeight: 16, fontFamily: fonts.bold, color: BOMB_RED },
   unfairChip: { alignSelf: "flex-end", marginLeft: 0 }, // 내 말풍선은 오른쪽이라 칩도 오른쪽 아래
+  hide: { display: "none" },
+  modeBtn: { height: 40, paddingHorizontal: 12, borderRadius: 20, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.card, alignItems: "center", justifyContent: "center" },
+  modeBtnText: { fontSize: 13, fontFamily: fonts.bold, color: colors.text },
   seg: { flexDirection: "row", alignSelf: "center", borderWidth: 1, borderColor: colors.border, borderRadius: 999, overflow: "hidden" },
   segBtn: { paddingVertical: 4, paddingHorizontal: 20, backgroundColor: colors.card },
   segOn: { backgroundColor: colors.text },

@@ -186,6 +186,7 @@ class PlayBoardItemOut(BaseModel):
     progress_done: int
     progress_total: int
     question_count: int = 0
+    winner: PlayPersonOut | None = None  # 닫힌 폭탄 방: 마지막 판의 우승자(판 수는 question_count)
 
 
 class PlayBoardOut(BaseModel):

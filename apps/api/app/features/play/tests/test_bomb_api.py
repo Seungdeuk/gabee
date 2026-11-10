@@ -597,6 +597,114 @@ def test_chat_needs_a_running_game_and_room(client, family, clock):
     assert r.status_code == 409 and r.json()["code"] == "not_playing"
 
 
+# ---------- 지난 방 기록 ----------
+def finished_room(client, family, clock):
+    """지민(방장)·영희·수진 방에서 한 판을 끝낸다. 지민 탈락 → 영희가 같은 말을 또 해서 탈락 → 수진 우승. 방도 닫는다."""
+    a, c, b, rid = three_room(client, family, clock, life=1)
+    for who, word in ((a, "엄마가"), (c, "시장에서"), (b, "사과를"), (a, "샀다")):
+        say(client, who, rid, word)  # 지민이 문장을 끝내 탈락
+    for who, word in ((c, "누가"), (b, "어제"), (c, "누가")):
+        say(client, who, rid, word)  # 영희가 앞에서 한 말을 또 해서 탈락 → 수진 우승
+    assert state(client, a, rid)["phase"] == "finished"
+    return a, c, b, rid
+
+
+def test_history_joins_words_into_sentences(client, family, clock):
+    a, c, b, rid = finished_room(client, family, clock)
+    r = client.get(f"{BASE}/{rid}/history", headers=b)
+    assert r.status_code == 200
+    h = r.json()
+    assert [p["name"] for p in h["players"]] == ["지민", "영희", "수진"] and h["host"][
+        "name"
+    ] == "지민"
+    assert len(h["rounds"]) == 1
+    rnd = h["rounds"][0]
+    assert rnd["winner"]["name"] == "수진" and rnd["life"] == 1 and rnd["sec"] == 10
+    first, second = rnd["sentences"]
+    assert [w["text"] for w in first["words"]] == ["엄마가", "시장에서", "사과를", "샀다"]
+    assert [w["player"]["name"] for w in first["words"]] == ["지민", "영희", "수진", "지민"]
+    assert first["end"] == "end" and first["ender"]["name"] == "지민"
+    assert [w["text"] for w in second["words"]] == ["누가", "어제", "누가"]
+    assert second["end"] == "repeat" and second["ender"]["name"] == "영희"
+
+
+def test_history_timeout_open_sentence_and_vote_change(client, family, clock):
+    a, c, b, rid = three_room(client, family, clock, life=2)
+    three_words(client, a, c, b, rid)
+    vote_start(client, a, rid, "call")  # 수진의 "사과를"이 끝난 말인데 통과됐다고 신청
+    cast(client, c, rid, True)
+    cast(client, b, rid, False)  # 찬성 2 > 반대 1: 끝난 말로 바뀐다
+    clock.at(60)  # 지민 시간 초과 → 영희·수진도 차례로 시간 초과가 이어져 판이 끝날 때까지 간다
+    out = state(client, a, rid)
+    assert out["phase"] == "finished"
+    rnd = client.get(f"{BASE}/{rid}/history", headers=a).json()["rounds"][0]
+    kinds = [x["end"] for x in rnd["sentences"]]
+    assert (
+        kinds[0] == "end" and rnd["sentences"][0]["ender"]["name"] == "수진"
+    )  # 투표로 바뀐 끝남이 그대로 보인다
+    assert "timeout" in kinds and all(w["text"] for x in rnd["sentences"] for w in x["words"])
+
+
+def test_history_is_only_for_participants_and_finished_rounds(client, family, clock):
+    a, b, c = trio(client, family)
+    room = open_room(client, a)
+    join(client, b, room["id"])
+    rid = room["id"]
+    assert (
+        client.get(f"{BASE}/{rid}/history", headers=c).json()["code"] == "not_in_room"
+    )  # 방에 안 들어온 가족
+    assert (
+        client.get(f"{BASE}/{rid}/history", headers=a).json()["rounds"] == []
+    )  # 아직 끝난 판이 없다
+    start(client, a, rid, life=1, sec=10)
+    assert (
+        client.get(f"{BASE}/{rid}/history", headers=a).json()["rounds"] == []
+    )  # 진행 중인 판은 안 나온다
+
+
+def test_closed_room_shows_in_past_for_participants_for_three_days(client, family, clock):
+    a, c, b, rid = finished_room(client, family, clock)
+    assert client.post(f"{BASE}/{rid}/close", headers=a).json()["phase"] == "closed"
+    mine = client.get("/play/board", headers=a).json()
+    row = next(r for r in mine["sent_past"] if r["id"] == rid)
+    assert row["game"] == 4 and row["closed"] and row["question_count"] == 1
+    assert row["winner"]["name"] == "수진" and row["progress_done"] == 3
+    guest = client.get("/play/board", headers=b).json()
+    assert [r["id"] for r in guest["past"] if r["game"] == 4] == [rid] and guest["sent_past"] == []
+    # 3일이 지난 방은 목록에서 빠진다
+    with SessionLocal() as db:
+        item = db.get(PlayItem, rid)
+        item.close_at = T0 - timedelta(days=4)
+        db.commit()
+    assert [
+        r for r in client.get("/play/board", headers=a).json()["sent_past"] if r["game"] == 4
+    ] == []
+
+
+def test_closed_room_is_hidden_from_family_who_did_not_join(client, family, clock):
+    a, b, c = trio(client, family)
+    room = open_room(client, a)
+    join(client, b, room["id"])
+    rid = room["id"]
+    start(client, a, rid, life=1, sec=10)
+    clock.at(10.5)  # 지민 시간 초과로 한 판이 끝난다
+    assert state(client, a, rid)["phase"] == "finished"
+    client.post(f"{BASE}/{rid}/close", headers=a)
+    assert [r for r in client.get("/play/board", headers=c).json()["past"] if r["game"] == 4] == []
+    assert [
+        r["id"] for r in client.get("/play/board", headers=b).json()["past"] if r["game"] == 4
+    ] == [rid]
+
+
+def test_closed_room_without_any_finished_round_is_not_listed(client, family, clock):
+    a, b, _ = family
+    room = open_room(client, a)
+    join(client, b, room["id"])
+    client.post(f"{BASE}/{room['id']}/close", headers=a)  # 한 판도 안 하고 닫았다
+    board = client.get("/play/board", headers=a).json()
+    assert [r for r in board["sent_past"] if r["game"] == 4] == []
+
+
 # ---------- 현황판 ----------
 def test_open_room_shows_on_board(client, family, clock):
     a, b, _ = family

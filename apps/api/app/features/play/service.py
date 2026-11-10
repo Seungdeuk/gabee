@@ -862,6 +862,24 @@ def board(db: Session, user: User, group_id: str) -> PlayBoardOut:
             question_count=0,
         )
         (out.sent if room.maker_id == user.id else out.todo).append(row)
+    for room in repository.closed_bomb_rooms(db, group_id, now, now - timedelta(days=RESULT_DAYS)):
+        people = repository.bomb_participants(db, room.id)
+        if user.id not in people:  # 지난 결과는 참여한 가족에게만
+            continue
+        ended = [r for r in repository.bomb_rounds(db, room.id) if r.ended_at is not None]
+        last_winner = ended[-1].winner_id if ended else None
+        row = PlayBoardItemOut(
+            id=room.id,
+            game=room.game,
+            maker=_person(by_id.get(room.maker_id)),
+            close_at=aware(room.close_at),
+            closed=True,
+            progress_done=len(people),
+            progress_total=0,
+            question_count=len(ended),
+            winner=_person(by_id.get(last_winner)) if last_winner else None,
+        )
+        (out.sent_past if room.maker_id == user.id else out.past).append(row)
     for item in items:
         closed = is_closed(item, now)
         joined = participants(item, answers[item.id], closed)

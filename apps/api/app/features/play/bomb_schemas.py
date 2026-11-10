@@ -127,6 +127,39 @@ class PlayBombVoteOut(BaseModel):
     can_vote: bool = False  # 내가 투표할 수 있는 사람이고 아직 안 골랐다
 
 
+class PlayBombWordOut(BaseModel):
+    text: str
+    player: PlayPersonOut
+
+
+class PlayBombSentenceOut(BaseModel):
+    """한 문장: 이어 말한 말들(끝낸 말 포함)과 어떻게 끝났는가. end 문장을 끝냄, repeat 같은 말을 또 함, timeout 시간 초과, open 판이 끝날 때까지 이어가던 중."""
+
+    words: list[PlayBombWordOut]
+    end: Literal["end", "repeat", "timeout", "open"]
+    ender: PlayPersonOut | None = None  # 끝낸(또는 시간을 넘긴) 사람
+
+
+class PlayBombHistoryRoundOut(BaseModel):
+    round_no: int
+    life: int
+    sec: int
+    winner: PlayPersonOut | None = None
+    longest_len: int
+    sentences: list[PlayBombSentenceOut]
+
+
+class PlayBombHistoryOut(BaseModel):
+    """지난 방 기록: 끝난 판마다 이어 말한 문장. 방에 참여한 사람만 볼 수 있다."""
+
+    id: str
+    host: PlayPersonOut
+    players: list[PlayPersonOut]
+    closed: bool
+    close_at: datetime
+    rounds: list[PlayBombHistoryRoundOut]
+
+
 class PlayBombRankOut(BaseModel):
     player: PlayPersonOut
     rank: int

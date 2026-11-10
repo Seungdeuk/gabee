@@ -78,6 +78,8 @@ export const getBombCurrent = () => apiFetch("/play/bomb/current");
 export const createBomb = () => apiFetch("/play/bomb", { method: "POST" });
 /** 방 상태: 선수·생명, 지금 차례와 남은 시간, 채팅, 끝났으면 결과 */
 export const getBomb = (id) => apiFetch(bombPath(id));
+/** 지난 방 기록: 끝난 판마다 이어 말한 문장(방에 참여한 가족만) */
+export const getBombHistory = (id) => apiFetch(bombPath(id, "/history"));
 export const joinBomb = (id) => apiFetch(bombPath(id, "/join"), { method: "POST" });
 export const leaveBomb = (id) => apiFetch(bombPath(id, "/leave"), { method: "POST" });
 /** 게임 시작 / 한 판 더(방장). 생명 1~5, 차례당 1~60초 */
@@ -92,4 +94,5 @@ export const chatBomb = (id, text) => apiFetch(bombPath(id, "/chat"), { method: 
 export const startBombVote = (id, kind) => apiFetch(bombPath(id, "/vote/start"), { method: "POST", body: { kind } });
 /** 열린 투표에 맞아요(true) / 아니에요(false). 게임 중인 사람만, 한 번 */
 export const voteBomb = (id, yes) => apiFetch(bombPath(id, "/vote"), { method: "POST", body: { yes } });
+/** 임시 개발용(커밋 금지): 판을 바로 끝낸다 */
 export const closeBomb = (id) => apiFetch(bombPath(id, "/close"), { method: "POST" });

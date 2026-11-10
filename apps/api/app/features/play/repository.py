@@ -125,7 +125,10 @@ def maker_items_between(
                 PlayItem.maker_id == maker_id,
                 or_(
                     PlayItem.game.in_(ASYNC_GAMES),
-                    and_(PlayItem.game == GAME_BOMB, exists().where(PlayBombRound.play_id == PlayItem.id)),
+                    and_(
+                        PlayItem.game == GAME_BOMB,
+                        exists().where(PlayBombRound.play_id == PlayItem.id),
+                    ),
                 ),
                 PlayItem.created_at >= start,
                 PlayItem.created_at < end,
@@ -158,7 +161,11 @@ def score_in_round_exists(db: Session, play_id: str, reason: int, round_no: int)
         db.scalar(
             select(func.count())
             .select_from(PlayScore)
-            .where(PlayScore.play_id == play_id, PlayScore.reason == reason, PlayScore.round_no == round_no)
+            .where(
+                PlayScore.play_id == play_id,
+                PlayScore.reason == reason,
+                PlayScore.round_no == round_no,
+            )
         )
         or 0
     ) > 0
@@ -239,6 +246,43 @@ def bomb_turns(db: Session, play_id: str, round_no: int) -> list[PlayBombTurn]:
             select(PlayBombTurn)
             .where(PlayBombTurn.play_id == play_id, PlayBombTurn.round_no == round_no)
             .order_by(PlayBombTurn.turn_seq)
+        )
+    )
+
+
+def bomb_rounds(db: Session, play_id: str) -> list[PlayBombRound]:
+    return list(
+        db.scalars(
+            select(PlayBombRound)
+            .where(PlayBombRound.play_id == play_id)
+            .order_by(PlayBombRound.round_no)
+        )
+    )
+
+
+def bomb_participants(db: Session, play_id: str) -> set[str]:
+    """이 방에 들어왔거나 한 번이라도 말한 사람(중간에 나간 사람 포함)."""
+    joined = db.scalars(select(PlayBombPlayer.player_id).where(PlayBombPlayer.play_id == play_id))
+    spoke = db.scalars(select(PlayBombTurn.player_id).where(PlayBombTurn.play_id == play_id))
+    return set(joined) | set(spoke)
+
+
+def closed_bomb_rooms(db: Session, group_id: str, now: datetime, since: datetime) -> list[PlayItem]:
+    """since 이후에 닫혔고 끝난 판이 하나라도 있는 폭탄 방(최근 닫힌 순)."""
+    played = exists().where(
+        and_(PlayBombRound.play_id == PlayItem.id, PlayBombRound.ended_at.is_not(None))
+    )
+    return list(
+        db.scalars(
+            select(PlayItem)
+            .where(
+                PlayItem.group_id == group_id,
+                PlayItem.game == GAME_BOMB,
+                PlayItem.close_at <= now,
+                PlayItem.close_at >= since,
+                played,
+            )
+            .order_by(PlayItem.close_at.desc())
         )
     )
 

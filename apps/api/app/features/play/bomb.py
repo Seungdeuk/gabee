@@ -27,14 +27,18 @@ from .bomb_judge import is_ended, is_repeat
 from .bomb_schemas import (
     LIFE_RANGE,
     SEC_RANGE,
+    PlayBombHistoryOut,
+    PlayBombHistoryRoundOut,
     PlayBombMessageOut,
     PlayBombPlayerOut,
     PlayBombRankOut,
     PlayBombResultOut,
+    PlayBombSentenceOut,
     PlayBombStartIn,
     PlayBombStateOut,
     PlayBombTurnOut,
     PlayBombVoteOut,
+    PlayBombWordOut,
 )
 from .constants import DAILY_MAKE_LIMIT, POINT_BOMB_WIN, POINT_JOIN, POINT_MAKE
 from .models import (
@@ -652,6 +656,70 @@ def cheer(db: Session, user: User, group_id: str, room_id: str, text: str) -> Pl
         book.items.append(_Cheer(book.seq, rnd.round_no, user.id, text, now))
         del book.items[:-CHEER_KEEP]
     return build_state(db, item, user, group_repo.members(db, group_id), now)
+
+
+# ---------- 지난 방 기록 ----------
+def _sentences(turns: list[PlayBombTurn], by_id: dict[str, User]) -> list[PlayBombSentenceOut]:
+    """차례 기록을 처음부터 따라가며 문장으로 묶는다(판정이 투표로 바뀐 기록은 고쳐진 그대로 따른다)."""
+    out: list[PlayBombSentenceOut] = []
+    words: list[PlayBombWordOut] = []
+    for t in turns:
+        who = _person(by_id.get(t.player_id))
+        if t.is_say:
+            kind = None
+            if t.is_end:
+                kind = "repeat" if is_repeat(t.word or "", [w.text for w in words]) else "end"
+            words.append(PlayBombWordOut(text=t.word or "", player=who))
+            if kind:
+                out.append(PlayBombSentenceOut(words=words, end=kind, ender=who))
+                words = []
+        else:  # 시간 초과: 지금까지의 문장이 끊긴다
+            out.append(PlayBombSentenceOut(words=words, end="timeout", ender=who))
+            words = []
+    if words:
+        out.append(PlayBombSentenceOut(words=words, end="open"))
+    return out
+
+
+def history(db: Session, user: User, group_id: str, room_id: str) -> PlayBombHistoryOut:
+    """끝난 판마다 이어 말한 문장. 방에 들어왔거나 말한 사람만 볼 수 있다."""
+    now = _now()
+    item = _load(db, group_id, room_id, lock=True)
+    _settled(db, item, now)  # 제한 시간이 지난 판이 있으면 먼저 끝낸다
+    db.commit()
+    if user.id not in repository.bomb_participants(db, item.id):
+        raise ApiError(403, "not_in_room", "이 방에 참여한 가족만 기록을 볼 수 있어요")
+    members = group_repo.members(db, group_id)
+    by_id = {m.id: m for m in members}
+    people = repository.bomb_participants(db, item.id)
+    rounds = [
+        PlayBombHistoryRoundOut(
+            round_no=r.round_no,
+            life=r.life,
+            sec=r.sec,
+            winner=_person(by_id.get(r.winner_id)) if r.winner_id else None,
+            longest_len=r.longest_len,
+            sentences=_sentences(repository.bomb_turns(db, item.id, r.round_no), by_id),
+        )
+        for r in repository.bomb_rounds(db, item.id)
+        if r.ended_at is not None
+    ]
+    order = [  # 방장 → 들어온 순서(게임 진행 순서와 같다). 중간에 나가서 기록만 남은 사람은 뒤에
+        r.player_id
+        for r in sorted(
+            repository.bomb_players(db, item.id),
+            key=lambda r: (r.player_id != item.maker_id, aware(r.joined_at)),
+        )
+    ]
+    order += sorted(people - set(order))
+    return PlayBombHistoryOut(
+        id=item.id,
+        host=_person(by_id.get(item.maker_id)),
+        players=[_person(by_id.get(pid)) for pid in order if pid in by_id],
+        closed=aware(item.close_at) <= now,
+        close_at=aware(item.close_at),
+        rounds=rounds,
+    )
 
 
 # ---------- 보기 ----------

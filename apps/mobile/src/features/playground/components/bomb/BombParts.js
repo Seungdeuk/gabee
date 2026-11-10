@@ -47,7 +47,7 @@ export function PlayerStrip({ players, activeId, compact = false }) {
     <View style={styles.strip}>
       {players.map((p) => (
         <View key={p.id} style={[styles.col, compact && styles.colCompact]}>
-          <PlayerAvatar player={p} active={p.id === activeId && !p.out} size={compact ? 30 : 44} />
+          <PlayerAvatar player={p} active={p.id === activeId && !p.out} size={compact ? 24 : 44} />
           {compact ? null : <Text style={[styles.name, p.out && styles.nameOut]}>{p.name}</Text>}
           {p.out ? <Text style={styles.out}>탈락</Text> : <Hearts left={p.lives} total={p.total} size={compact ? 11 : 13} />}
         </View>
@@ -88,7 +88,7 @@ const styles = StyleSheet.create({
   hearts: { flexDirection: "row", gap: 1 },
   strip: { flexDirection: "row" },
   col: { flex: 1, alignItems: "center", gap: 2, minHeight: 96 },
-  colCompact: { minHeight: 52, gap: 0 },
+  colCompact: { minHeight: 44, gap: 0 },
   fuseText: { fontFamily: fonts.bold, color: "#FFFFFF" },
   name: { ...font.caption, fontFamily: fonts.bold, color: colors.text },
   nameOut: { color: colors.disabled },

@@ -44,6 +44,12 @@ export function revealLabel(iso, now = new Date()) {
 export const closeLabel = (now = new Date()) => revealLabel(new Date(now.getTime() + 24 * 3600 * 1000).toISOString(), now);
 
 /** 이미 닫힌 때: "오늘 공개", "어제 공개", "2일 전 공개" */
+/** 닫힌 폭탄 방 기록의 날짜 글자: 오늘 끝남 / 어제 끝남 / N일 전 끝남 */
+export function endedLabel(iso, now = new Date()) {
+  const ago = -dayDiff(new Date(iso), now);
+  return ago <= 0 ? "오늘 끝남" : ago === 1 ? "어제 끝남" : `${ago}일 전 끝남`;
+}
+
 export function pastLabel(iso, now = new Date()) {
   const ago = -dayDiff(new Date(iso), now);
   return ago <= 0 ? "오늘 공개" : ago === 1 ? "어제 공개" : `${ago}일 전 공개`;
@@ -85,6 +91,19 @@ export function boardRow(row, section, now = new Date()) {
   const key = gameKey(row.game);
   const game = GAMES[key];
   const mine = section === "sent" || section === "sentPast";
+  if (key === "bomb" && (section === "past" || section === "sentPast")) {
+    // 닫힌 폭탄 방(최근 3일, 참여한 방): 누르면 판별 문장 기록
+    const rounds = row.question_count ?? 0;
+    const winner = row.winner ? `우승 ${row.winner.name}, ` : "";
+    return {
+      id: row.id,
+      game: key,
+      route: `/play/bomb-history?id=${encodeURIComponent(row.id)}`,
+      title: section === "sentPast" ? "내가 연 문장 폭탄 방" : `${withIga(row.maker?.name ?? "가족")} 연 문장 폭탄 방`,
+      sub: `${rounds}판, ${winner}${endedLabel(row.close_at, now)}`,
+      action: "기록 보기",
+    };
+  }
   if (key === "bomb") {
     // 열려 있는 폭탄방: 받는 쪽은 맨 위 노란 카드, 방장은 입장 인원만 보인다
     const base = { id: row.id, game: key, route: playRoute(section, row.game, row.id) };
@@ -368,6 +387,42 @@ export const bombPath = (screen, id) => `/play/${BOMB_PATH[screen]}?id=${encodeU
 export function unfairMessageId(messages, myId) {
   const mine = [...(messages ?? [])].reverse().find((m) => (m.kind === "say" || m.kind === "timeout") && m.player.id === myId);
   return mine && mine.kind === "say" && mine.ended ? mine.id : null;
+}
+
+/** 지난 방 기록에서 사람마다 칩 색을 달리하는 색 번호 수(화면의 팔레트 길이) */
+export const HISTORY_TONES = 6;
+
+/**
+ * 지난 방 기록(서버 PlayBombHistoryOut) → 화면 모양. 판마다 카드 하나: 제목은 "N판, 최종 승자", 그 판에서 이어 말한 문장을 처음부터 끝까지 이어서 보여준다.
+ * players: 방 사람과 칩 색 번호(tone). items: 말(word)과 시간 초과(timeout)가 말한 순서대로.
+ * 문장을 끝낸 말과 시간 초과는 out(빨갛게 취소선, 탈락과 같은 모양)이다.
+ */
+export function bombHistoryView(h) {
+  const last = h.rounds[h.rounds.length - 1];
+  const tone = new Map(h.players.map((p, i) => [p.id, i % HISTORY_TONES]));
+  const winners = [...new Set(h.rounds.filter((r) => r.winner).map((r) => r.winner.name))]; // 이긴 사람을 처음 이긴 판 순서로, 이름만
+  const winLine = winners.length ? `우승 ${winners.join(", ")}` : "";
+  return {
+    summary: `${h.players.length}명, 생명 ${last?.life ?? 0}개, ${last?.sec ?? 0}초, ${h.rounds.length}판`,
+    winLine,
+    players: h.players.map((p) => ({ id: p.id, name: p.name, tone: tone.get(p.id) ?? 0 })),
+    rounds: h.rounds.map((r) => ({
+      id: String(r.round_no),
+      title: `${r.round_no}판, ${r.winner ? r.winner.name : "우승자 없음"}`,
+      items: r.sentences.flatMap((s, i) => [
+        ...s.words.map((w, j) => ({
+          id: `${i}-${j}`,
+          type: "word",
+          text: w.text,
+          tone: tone.get(w.player.id) ?? 0,
+          out: j === s.words.length - 1 && (s.end === "end" || s.end === "repeat"),
+        })),
+        ...(s.end === "timeout"
+          ? [{ id: `${i}-t`, type: "timeout", text: "시간 초과", tone: tone.get(s.ender?.id) ?? 0, out: true }]
+          : []),
+      ]),
+    })),
+  };
 }
 
 /** 우리 가족 기록 안내(결과 화면) */

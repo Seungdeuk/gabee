@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { afterEach, beforeEach, test } from "node:test";
 
 import { base64ToBytes } from "../src/features/playground/upload.js";
-import { unfairMessageId, bestView, bitsOf, bombChat, bombPath, bombScreen, boardRow, recordNote, drawResultView, photoGuessView, photoResultView, zoomBoxStyle, familyView, quizAnswerBody, quizPlayView, quizQuestions, quizResultView, boardView, clockLabel, indexOfBits, pastLabel, playRoute, rankingView, revealLabel, withIga } from "../src/features/playground/adapt.js";
+import { bombHistoryView, endedLabel, unfairMessageId, bestView, bitsOf, bombChat, bombPath, bombScreen, boardRow, recordNote, drawResultView, photoGuessView, photoResultView, zoomBoxStyle, familyView, quizAnswerBody, quizPlayView, quizQuestions, quizResultView, boardView, clockLabel, indexOfBits, pastLabel, playRoute, rankingView, revealLabel, withIga } from "../src/features/playground/adapt.js";
 
 process.env.EXPO_PUBLIC_API_URL = "http://api.test";
 process.env.EXPO_PUBLIC_DEV_TOKEN = "legacy-dev-token";
@@ -450,6 +450,43 @@ test("폭탄 채팅: 말풍선, 문장 끝냄·시간 초과 안내, 응원", ()
     ["system", "엄마가 같은 말을 또 했어요 · 생명 -1", false],
   ]);
   assert.deepEqual(bombChat(null, "me"), []);
+});
+
+test("지난 폭탄 방: 현황판 줄과 기록 화면 모양", () => {
+  const now = new Date("2026-11-09T12:00:00+09:00");
+  const row = { id: "r1", game: 4, maker: { id: "u1", name: "엄마" }, close_at: "2026-11-08T08:00:00Z", closed: true, progress_done: 4, progress_total: 0, question_count: 3, winner: { id: "u2", name: "하윤" } };
+  const item = boardRow(row, "past", now);
+  assert.equal(item.title, "엄마가 연 문장 폭탄 방");
+  assert.equal(item.sub, "3판, 우승 하윤, 어제 끝남");
+  assert.equal(item.action, "기록 보기");
+  assert.equal(item.route, "/play/bomb-history?id=r1");
+  assert.equal(boardRow({ ...row, winner: null }, "sentPast", now).title, "내가 연 문장 폭탄 방");
+  assert.equal(boardRow({ ...row, winner: null }, "sentPast", now).sub, "3판, 어제 끝남");
+  assert.equal(endedLabel("2026-11-09T01:00:00Z", now), "오늘 끝남");
+  assert.equal(endedLabel("2026-11-06T01:00:00Z", now), "3일 전 끝남");
+  const p = (id, name) => ({ id, name });
+  const view = bombHistoryView({
+    host: p("u1", "엄마"),
+    players: [p("u1", "엄마"), p("u2", "하윤")],
+    rounds: [{ round_no: 1, life: 3, sec: 10, winner: p("u2", "하윤"), longest_len: 3, sentences: [
+      { words: [{ text: "밥", player: p("u1", "엄마") }, { text: "먹었다", player: p("u2", "하윤") }], end: "end", ender: p("u2", "하윤") },
+      { words: [], end: "timeout", ender: p("u1", "엄마") },
+    ] }],
+  });
+  assert.equal(view.summary, "2명, 생명 3개, 10초, 1판");
+  assert.equal(view.winLine, "우승 하윤");
+  const [one] = view.rounds;
+  assert.equal(one.title, "1판, 하윤");
+  assert.deepEqual(view.players, [{ id: "u1", name: "엄마", tone: 0 }, { id: "u2", name: "하윤", tone: 1 }]);
+  assert.deepEqual(
+    one.items.map((x) => [x.type, x.text, x.tone, x.out]),
+    [["word", "밥", 0, false], ["word", "먹었다", 1, true], ["timeout", "시간 초과", 0, true]],
+  );
+  const two = bombHistoryView({ host: p("u1", "엄마"), players: [p("u1", "엄마"), p("u2", "하윤")], rounds: [
+    { round_no: 1, life: 3, sec: 10, winner: p("u1", "엄마"), longest_len: 1, sentences: [] },
+    { round_no: 2, life: 3, sec: 10, winner: p("u2", "하윤"), longest_len: 1, sentences: [] },
+  ] });
+  assert.equal(two.winLine, "우승 엄마, 하윤");
 });
 
 test("폭탄 화면 이동: 판이 끝난 방은 결과로 가지만 로비에서는 머문다", () => {
