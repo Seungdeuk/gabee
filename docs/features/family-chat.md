@@ -51,6 +51,12 @@
 - 삭제: 보낸 사람만 지울 수 있고(기존 메시지 삭제), 지우면 카드 내용 행(`message_shares`)도 서버에서 지운다. 방·가족 삭제(`group_purge`)는 새 테이블을 자동 포함하고, DB 에 아직 없는 테이블은 건너뛴다(표가 없는 DB 에서도 삭제·나가기가 동작). 보낸 시점 내용 그대로이며 원본을 고쳐도 카드는 바뀌지 않는다.
 - 준비 안 된 DB: `message_shares` 가 아직 없는 DB 에서는 `POST /shares` 만 503 이고 메시지 목록·삭제는 그대로 열린다(카드 내용만 빠진다). 시험: `tests/test_chat_share.py`. 앱 화면(말풍선·공유 시트)과 `@가비`·AI 도우미의 카드 참고는 이어지는 PR.
 
+### 공유 카드 (앱)
+- 요구사항: `docs/requirements/family-chat.md` "채팅방 공유 카드". 서버 계약은 "공유 카드 (서버)" 절(`MessageOut.share = {kind: "event"|"settlement", payload}`, 카드가 아니면 null, `text` 는 고정 문구).
+- **말풍선(읽기 전용)**: `share` 가 있는 메시지는 고정 문구 `text` 대신 `ShareCard` 를 그린다(`MessageBubble`의 `isShareMessage`). 일정 카드는 라벨(약속·할 일)·제목·"11월 12일 (목) · 오후 3:00 ~ 오후 4:30"(시간 없으면 "종일", 날짜 없으면 "날짜 미정")·장소·"함께 수진, 민수"(3명까지, 나머지 "외 N명"), 정산 카드는 "2026년 11월 정산"·내 남은 잔액("받을 돈/보낼 돈 12,000원"·0이면 "정산할 돈이 없어요")·송금 줄("수진님에게 12,000원 받아요/보내요", 5줄까지 "외 N건"). 금액은 서버가 만든 값을 그대로 보이고 앱이 계산하지 않는다. 내용은 `shareUtils.js` 의 순수 함수(`eventCardView`·`settlementCardView`·`shareA11yLabel`)가 만든다.
+- 카드는 누름을 받지 않는 `View` 라서 길게 누르기(메뉴)·두 번 누르기(하트)는 일반 말풍선과 같다. 메뉴는 반응·답장, 내 카드면 삭제만 열리고 공지·복사는 없다(`menuKeys`). 지우면 `markDeleted` 가 `share` 도 비운다. 방 목록 미리보기·답장 인용은 고정 문구를 그대로 쓴다(바꾸지 않음). 모르는 `kind` 는 일반 글 말풍선으로 보인다(구버전·새 종류 대비).
+- 알려진 한계: 카드를 눌러 받는 사람의 일정·지갑 탭으로 가는 "열기"는 없다(후속 PR). 화면은 렌더 시험 환경이 없어 소스 구조·순수 함수 시험만 있고 실기기(Expo Go) 확인이 필요하다. 시험: `tests/chatshare.test.js`. 공유 시트(보내기)는 이어지는 PR.
+
 ### 문서 파일 보내기 (서버)
 
 - `POST /family-chat/files`(multipart `file`, 선택 `room_id`): 문서 메시지를 보낸다(201 `MessageOut`, `text` 는 빈 문자열). **문서류만, 20MB 이하**: pdf, doc/docx, xls/xlsx, ppt/pptx, hwp/hwpx, txt, csv. 이미지는 사진 경로, 실행 파일·zip 등 압축 파일·HTML·SVG·스크립트는 400 `invalid_file`, 20MB 초과는 413 `file_too_large`, 빈 파일은 400.

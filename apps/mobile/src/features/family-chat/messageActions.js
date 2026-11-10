@@ -39,7 +39,7 @@ export const canOpenMenu = (message) => isSaved(message) && !message.deleted;
 
 /**
  * 메뉴에 보일 항목 키를 순서대로. 반응 줄은 항상 맨 위(reactions)다.
- * 답장·삭제(내가 보낸 것만, 가비의 답 제외)는 사진 메시지에도 열리고, 복사·공지는 글자가 있는 메시지에만 열린다.
+ * 답장·삭제(내가 보낸 것만, 가비의 답 제외)는 사진 메시지·공유 카드에도 열리고, 복사·공지는 글자가 있는 메시지에만 열린다(공유 카드는 제외).
  * @param {{ message: object, myId?: string | null, pinned?: boolean }} args
  * @returns {("reactions" | "reply" | "pin" | "unpin" | "copy" | "delete")[]}
  */
@@ -47,8 +47,9 @@ export function menuKeys({ message, myId = null, pinned = false }) {
   if (!canOpenMenu(message)) return [];
   const keys = ["reactions", "reply"];
   const hasText = String(message.text ?? "").trim().length > 0;
-  if (hasText && !message.attachment) keys.push(pinned ? "unpin" : "pin");
-  if (hasText) keys.push("copy");
+  const isCard = Boolean(message.share); // 공유 카드의 text 는 고정 문구라 공지·복사 대상이 아니다
+  if (hasText && !message.attachment && !isCard) keys.push(pinned ? "unpin" : "pin");
+  if (hasText && !isCard) keys.push("copy");
   if (myId && message.user_id === myId && !message.is_assistant) keys.push("delete");
   return keys;
 }
@@ -102,11 +103,11 @@ export function withMyReaction(message, emoji) {
 export const reactionAction = (message, emoji) => (myReaction(message) === emoji ? { type: "remove", emoji } : { type: "set", emoji });
 
 /**
- * 지운 메시지를 미리 그려 본다(서버 응답 전): 글자·사진·반응·답장 표시를 비운다.
+ * 지운 메시지를 미리 그려 본다(서버 응답 전): 글자·사진·공유 카드·반응·답장 표시를 비운다.
  * @param {object} message
  * @returns {object}
  */
-export const markDeleted = (message) => ({ ...message, deleted: true, text: "", attachment: null, reactions: [], reply_to: null });
+export const markDeleted = (message) => ({ ...message, deleted: true, text: "", attachment: null, share: null, reactions: [], reply_to: null });
 
 /**
  * 서버가 알려 준 삭제 id 를 목록에 반영한다: 아직 지우지 않은 그 메시지를 삭제 표시로 바꾸고, 그 메시지를 인용한 답장도 삭제 표시로 바꾼다. 목록에 없는 id 는 무시한다.
