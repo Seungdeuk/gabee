@@ -134,6 +134,10 @@ test("shareA11yLabel: 일정·정산 카드의 읽어 주는 문구", () => {
   assert.equal(shareA11yLabel(eventShare({ with_names: ["수진"], place: "" })), "일정 공유 카드, 약속, 치과 예약, 11월 12일 (목) · 오후 3:00 ~ 오후 4:30, 함께 수진");
   assert.equal(shareA11yLabel(settleShare()), "정산 공유 카드, 2026년 11월, 받을 돈 12,000원, 수진님에게 12,000원 받아요");
   assert.equal(shareA11yLabel(settleShare({ remaining: 0, lines: [] })), "정산 공유 카드, 2026년 11월, 정산할 돈이 없어요");
+  // 남의 카드는 보낸 사람 이름이 들어간다(이름이 없으면 '보낸 사람')
+  assert.equal(shareA11yLabel(settleShare(), { mine: false, senderName: "하늘" }), "정산 공유 카드, 하늘님이 공유, 2026년 11월, 하늘님이 받을 돈 12,000원, 수진님이 하늘님에게 12,000원 보내요");
+  assert.equal(shareA11yLabel(settleShare(), { mine: false, senderName: "" }), "정산 공유 카드, 보낸 사람이 공유, 2026년 11월, 보낸 사람이 받을 돈 12,000원, 수진님이 보낸 사람에게 12,000원 보내요");
+  assert.equal(shareA11yLabel(eventShare(), { mine: false, senderName: "하늘" }), shareA11yLabel(eventShare())); // 일정 카드는 그대로
 });
 
 test("menuKeys: 카드에는 공지(pin)·복사가 없고 반응·답장은 있다. 삭제는 내 카드에만", () => {
@@ -175,22 +179,42 @@ test("refreshExisting: 카드가 없는 채로 굳은 메시지는 서버가 카
   assert.equal(refreshExisting([card], [{ ...card }])[0], card); // 같으면 그대로
 });
 
-test("shareTextTone: 내 말풍선(복숭아색)에서는 글자 대비를 위해 모두 본문색, 남의 말풍선은 받을/보낼 돈에 색을 쓴다", () => {
-  for (const tone of ["receive", "send", "even"]) assert.equal(shareTextTone({ mine: true, tone }), "text");
-  assert.equal(shareTextTone({ mine: true, tone: "sub" }), "text");
-  assert.equal(shareTextTone({ mine: false, tone: "receive" }), "success");
-  assert.equal(shareTextTone({ mine: false, tone: "send" }), "danger");
-  assert.equal(shareTextTone({ mine: false, tone: "even" }), "textSub");
+test("shareTextTone: 정산의 받을 돈·보낼 돈은 색이 아니라 글자로 가려서 어느 말풍선에서든 본문색, 보조 글자는 남의 카드에서만 textSub", () => {
+  for (const tone of ["receive", "send", "even", "sub"]) assert.equal(shareTextTone({ mine: true, tone }), "text"); // 내 말풍선은 복숭아색 바탕이라 모두 본문색
+  for (const tone of ["receive", "send", "even"]) assert.equal(shareTextTone({ mine: false, tone }), "text");
   assert.equal(shareTextTone({ mine: false, tone: "sub" }), "textSub");
+});
+
+test("settlementCardView: 남의 카드는 보낸 사람 이름을 주어로 받을 돈·보낼 돈·송금 방향을 문장에서 드러낸다", () => {
+  const other = { mine: false, senderName: "하늘" };
+  const recv = settlementCardView(settleShare({ lines: [{ direction: "receive", name: "수진", amount: 12000 }, { direction: "send", name: "민수", amount: 5000 }] }).payload, other);
+  assert.deepEqual(recv.summary, { tone: "receive", text: "하늘님이 받을 돈 12,000원" });
+  assert.deepEqual(recv.lines.map((l) => l.text), ["수진님이 하늘님에게 12,000원 보내요", "하늘님이 민수님에게 5,000원 보내요"]);
+  const send = settlementCardView(settleShare({ remaining: -5000, lines: [{ direction: "send", name: "민수", amount: 5000 }] }).payload, other);
+  assert.deepEqual(send.summary, { tone: "send", text: "하늘님이 보낼 돈 5,000원" });
+  assert.deepEqual(send.lines.map((l) => l.text), ["하늘님이 민수님에게 5,000원 보내요"]);
+  assert.deepEqual(settlementCardView(settleShare({ remaining: 0, lines: [] }).payload, other).summary, { tone: "even", text: "정산할 돈이 없어요" }); // 0원은 기존 문구
+});
+
+test("settlementCardView: 보낸 사람 이름이 비면 '보낸 사람' 으로, 내 카드(mine)는 지금 그대로다", () => {
+  for (const senderName of [undefined, "", "   ", null]) {
+    const v = settlementCardView(settleShare().payload, { mine: false, senderName });
+    assert.equal(v.summary.text, "보낸 사람이 받을 돈 12,000원");
+    assert.deepEqual(v.lines.map((l) => l.text), ["수진님이 보낸 사람에게 12,000원 보내요"]);
+  }
+  const mineView = settlementCardView(settleShare().payload, { mine: true, senderName: "하늘" });
+  assert.deepEqual(mineView.summary, { tone: "receive", text: "받을 돈 12,000원" });
+  assert.deepEqual(mineView.lines, [{ key: "0", text: "수진님에게 12,000원 받아요" }]);
+  assert.deepEqual(settlementCardView(settleShare().payload).summary, mineView.summary); // 두 번째 인자가 없으면 내 카드
 });
 
 test("MessageBubble: 카드이면 ShareCard 를 그리고 본문 글자는 그리지 않으며, 메뉴·하트는 바깥 말풍선이 받고 읽어 주는 문구를 붙인다", () => {
   const bubble = read("components/MessageBubble.js");
   assert.match(bubble, /import ShareCard from "\.\/ShareCard"/);
   assert.match(bubble, /isShareMessage/);
-  assert.match(bubble, /\{isShare \? <ShareCard share=\{message\.share\} mine=\{mine\} \/> : null\}/); // 내 말풍선이면 글자색을 바꾼다
-  assert.match(bubble, /: isShare\s+\? \{ accessible: true, accessibilityLabel: shareA11yLabel\(message\.share\) \}/); // 메뉴가 없는 말풍선도 카드 문구를 하나로 읽는다
-  assert.match(bubble, /accessibilityLabel: shareA11yLabel\(message\.share\)/); // 바깥 말풍선이 하나로 묶여도 카드 문구를 읽는다
+  assert.match(bubble, /\{isShare \? <ShareCard share=\{message\.share\} mine=\{mine\} senderName=\{senderName\} \/> : null\}/); // 남의 카드는 보낸 사람 이름을 주어로 쓴다
+  assert.match(bubble, /: isShare\s+\? \{ accessible: true, accessibilityLabel: shareA11yLabel\(message\.share, \{ mine, senderName \}\) \}/); // 메뉴가 없는 말풍선도 카드 문구를 하나로 읽는다
+  assert.equal([...bubble.matchAll(/accessibilityLabel: shareA11yLabel\(message\.share, \{ mine, senderName \}\)/g)].length, 2); // 메뉴가 있는 말풍선과 없는 말풍선 두 곳 모두 보낸 사람 이름이 들어간 문구를 읽는다
   assert.match(bubble, /\{message\.text && !isShare \? \(/); // 고정 문구("일정을 공유했어요")는 카드 위에 또 보이지 않는다
 });
 
@@ -203,4 +227,5 @@ test("ShareCard: 화면 값은 theme 토큰만, 서버 호출 없음, 터치를 
   assert.match(card, /share\.kind === "settlement"/);
   assert.doesNotMatch(card, /accessible|accessibilityLabel/); // 읽어 주는 문구는 바깥 말풍선이 붙인다(안쪽까지 붙이면 TalkBack 이 두 번 읽는다)
   assert.match(card, /shareTextTone/); // 글자색은 순수 함수가 정한다
+  assert.match(card, /settlementCardView\(payload, \{ mine, senderName \}\)/); // 문구도 보낸 사람 이름·내 카드 여부를 받는다
 });

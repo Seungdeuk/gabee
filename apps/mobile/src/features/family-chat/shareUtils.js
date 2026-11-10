@@ -105,46 +105,68 @@ export function formatShareMonth(month) {
   return `${m[1]}년 ${Number(m[2])}월`;
 }
 
+/** 보낸 사람 이름이 비었을 때 문장에 쓰는 이름. */
+const SENDER_FALLBACK = "보낸 사람";
+
 /**
- * 정산 카드에 보일 내용: 월, 내 남은 잔액 한 줄(받을 돈·보낼 돈·없음), 송금 줄(최대 SETTLEMENT_LINES_SHOWN 개)과 나머지 개수.
- * 금액은 서버가 만든 값 그대로 보이고 앱이 다시 계산하지 않는다. 이름이 없는 줄은 "상대", 금액이 숫자가 아니거나 방향(send·receive)을 모르는 줄은 건너뛴다.
+ * 문장에 쓸 보낸 사람 이름: 이름이 있으면 "하늘님", 없으면 "보낸 사람"(이름 뒤에 "님"을 붙이지 않는다).
+ * @param {string | null | undefined} senderName
+ * @returns {string}
+ */
+function senderLabel(senderName) {
+  const name = String(senderName ?? "").trim();
+  return name ? `${name}님` : SENDER_FALLBACK;
+}
+
+/**
+ * 정산 카드에 보일 내용: 월, 보낸 사람 기준 남은 잔액 한 줄(받을 돈·보낼 돈·없음), 송금 줄(최대 SETTLEMENT_LINES_SHOWN 개)과 나머지 개수.
+ * 서버 payload 는 카드를 보낸 사람 기준이다(remaining +/− 와 lines 의 send·receive 모두. 1:1 방에서는 그 상대와의 줄과 그 합계).
+ * 내 카드(mine, 기본)는 "받을 돈 12,000원"·"수진님에게 12,000원 받아요" 처럼 주어 없이, 남의 카드는 보는 사람이 자기 돈으로 오해하지 않도록 보낸 사람 이름을 주어로 쓴다
+ * ("하늘님이 받을 돈 12,000원"·"수진님이 하늘님에게 12,000원 보내요"). 이름이 비면 "보낸 사람". 0원이면 두 경우 모두 "정산할 돈이 없어요".
+ * 금액은 서버가 만든 값 그대로 보이고 앱이 다시 계산하지 않는다. 이름이 없는 상대 줄은 "상대", 금액이 숫자가 아니거나 방향(send·receive)을 모르는 줄은 건너뛴다.
  * @param {{ month?: string, remaining?: number, lines?: ({ direction?: string, name?: string, amount?: number } | null)[] } | null | undefined} payload
+ * @param {{ mine?: boolean, senderName?: string | null }} [options] mine 기본 true(내 카드), senderName 은 남의 카드의 보낸 사람 이름
  * @returns {{ month: string, summary: { tone: "receive" | "send" | "even", text: string }, lines: { key: string, text: string }[], moreCount: number }}
  */
-export function settlementCardView(payload) {
+export function settlementCardView(payload, { mine = true, senderName = "" } = {}) {
   const p = payload ?? {};
+  const who = senderLabel(senderName);
+  const subject = mine ? "" : `${who}이 `;
   const rem = typeof p.remaining === "number" && Number.isFinite(p.remaining) ? p.remaining : 0;
-  const summary = rem > 0 ? { tone: "receive", text: `받을 돈 ${formatShareMoney(rem)}` } : rem < 0 ? { tone: "send", text: `보낼 돈 ${formatShareMoney(rem)}` } : { tone: "even", text: "정산할 돈이 없어요" };
+  const summary = rem > 0 ? { tone: "receive", text: `${subject}받을 돈 ${formatShareMoney(rem)}` } : rem < 0 ? { tone: "send", text: `${subject}보낼 돈 ${formatShareMoney(rem)}` } : { tone: "even", text: "정산할 돈이 없어요" };
   const all = [];
   (Array.isArray(p.lines) ? p.lines : []).forEach((line, i) => {
     const money = formatShareMoney(line?.amount);
     if (!money || (line.direction !== "send" && line.direction !== "receive")) return; // 돈의 방향을 모르면 건너뛴다(방향을 잘못 말하지 않게)
-    const name = String(line.name ?? "").trim() || "상대";
-    all.push({ key: String(i), text: `${name}님에게 ${money} ${line.direction === "receive" ? "받아요" : "보내요"}` });
+    const other = String(line.name ?? "").trim() || "상대";
+    let text;
+    if (mine) text = `${other}님에게 ${money} ${line.direction === "receive" ? "받아요" : "보내요"}`;
+    else text = line.direction === "send" ? `${who}이 ${other}님에게 ${money} 보내요` : `${other}님이 ${who}에게 ${money} 보내요`;
+    all.push({ key: String(i), text });
   });
   return { month: formatShareMonth(p.month), summary, lines: all.slice(0, SETTLEMENT_LINES_SHOWN), moreCount: Math.max(0, all.length - SETTLEMENT_LINES_SHOWN) };
 }
 
 /**
- * 카드 안 글자색의 이름(theme 의 colors 키). 내 말풍선은 복숭아색 바탕이라 초록·빨강·보조색이 대비가 모자라서(약 2.7~4.1:1) 모두 본문색을 쓰고, 받을 돈·보낼 돈은 색이 아니라 문구("받을 돈"·"보낼 돈")로 가린다.
- * 남의 말풍선(흰 바탕)에서는 정산 요약 줄만 색을 쓴다.
+ * 카드 안 글자색의 이름(theme 의 colors 키). 정산의 받을 돈·보낼 돈은 색이 아니라 글자("받을 돈"·"보낼 돈")로 가리므로 어느 말풍선에서든 본문색이다
+ * (복숭아색 내 말풍선 위의 초록·빨강은 대비가 2.7~3.5:1 이고 남의 카드는 주어가 있는 문장으로 구분한다). 보조 글자(sub)만 남의 카드(흰 바탕)에서 textSub, 내 말풍선에서는 대비를 위해 본문색이다.
  * @param {{ mine: boolean, tone: "receive" | "send" | "even" | "sub" }} args tone: 정산 요약 줄의 종류, 또는 보조 글자(sub)
- * @returns {"text" | "textSub" | "success" | "danger"}
+ * @returns {"text" | "textSub"}
  */
 export function shareTextTone({ mine, tone }) {
-  if (mine) return "text";
-  return tone === "receive" ? "success" : tone === "send" ? "danger" : "textSub";
+  return !mine && tone === "sub" ? "textSub" : "text";
 }
 
 /**
- * 스크린리더가 읽어 줄 카드 문구(일정: 라벨·제목·날짜시간·장소·함께, 정산: 월·잔액·송금 줄).
+ * 스크린리더가 읽어 줄 카드 문구(일정: 라벨·제목·날짜시간·장소·함께, 정산: 월·잔액·송금 줄). 남의 정산 카드는 "하늘님이 공유"처럼 보낸 사람 이름(없으면 "보낸 사람")을 넣고 주어가 있는 문장으로 읽는다.
  * @param {{ kind: "event" | "settlement", payload: object }} share
+ * @param {{ mine?: boolean, senderName?: string | null }} [options] mine 기본 true(내 카드)
  * @returns {string}
  */
-export function shareA11yLabel(share) {
+export function shareA11yLabel(share, { mine = true, senderName = "" } = {}) {
   if (share?.kind === "settlement") {
-    const v = settlementCardView(share.payload);
-    return ["정산 공유 카드", v.month, v.summary.text, ...v.lines.map((l) => l.text), v.moreCount ? `외 ${v.moreCount}건` : ""].filter(Boolean).join(", ");
+    const v = settlementCardView(share.payload, { mine, senderName });
+    return ["정산 공유 카드", mine ? "" : `${senderLabel(senderName)}이 공유`, v.month, v.summary.text, ...v.lines.map((l) => l.text), v.moreCount ? `외 ${v.moreCount}건` : ""].filter(Boolean).join(", ");
   }
   const v = eventCardView(share?.payload);
   return ["일정 공유 카드", v.badge, v.title, v.when, v.place ? `장소 ${v.place}` : "", v.withText].filter(Boolean).join(", ");

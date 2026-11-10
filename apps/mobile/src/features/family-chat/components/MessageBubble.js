@@ -195,7 +195,7 @@ export default function MessageBubble({ message, mine, showName, showTime = true
         onLongPress: openMenu,
         onPress: attachment || !onHeart ? undefined : tapBubble,
         accessibilityHint: "길게 누르면 메뉴가 열려요",
-        ...(isShare ? { accessibilityLabel: shareA11yLabel(message.share) } : {}), // 바깥 말풍선이 하나로 묶여도 카드 문구를 읽는다
+        ...(isShare ? { accessibilityLabel: shareA11yLabel(message.share, { mine, senderName }) } : {}), // 바깥 말풍선이 하나로 묶여도 카드 문구를 읽는다
         accessibilityActions: a11yActions,
         onAccessibilityAction: (e) => {
           const name = e.nativeEvent.actionName;
@@ -210,7 +210,7 @@ export default function MessageBubble({ message, mine, showName, showTime = true
         },
       }
     : isShare
-      ? { accessible: true, accessibilityLabel: shareA11yLabel(message.share) } // 메뉴가 없는 말풍선도 카드 문구를 하나로 읽는다
+      ? { accessible: true, accessibilityLabel: shareA11yLabel(message.share, { mine, senderName }) } // 메뉴가 없는 말풍선도 카드 문구를 하나로 읽는다
       : null;
   const bubble = (
     <Box {...boxProps} style={[styles.bubble, attachment && !isFile && styles.photoBubble, mine ? styles.mineBubble : styles.otherBubble, message.is_assistant && styles.assistantBubble, sending && styles.dim]}>
@@ -261,7 +261,7 @@ export default function MessageBubble({ message, mine, showName, showTime = true
           />
         </>
       ) : null}
-      {isShare ? <ShareCard share={message.share} mine={mine} /> : null}
+      {isShare ? <ShareCard share={message.share} mine={mine} senderName={senderName} /> : null}
       {message.text && !isShare ? (
         <Text style={bubbleTextStyle({ selectable, base: styles.text, photo: attachment ? styles.photoText : null, noSelect: styles.noSelect })} selectable={selectable}>
           {searchTerms?.length ? highlightNodes(message.text, searchTerms, searchCurrent ? hitStyles.current : message.is_assistant ? styles.hitOnAssistant : styles.hit) : playLinkNodes(message.text)}

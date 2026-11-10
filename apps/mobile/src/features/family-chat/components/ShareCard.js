@@ -17,13 +17,14 @@ const toneColor = (args) => colors[shareTextTone(args)];
  * 내용은 보낸 시점의 스냅샷이다. 카드 자체는 누름을 받지 않아(안쪽 누름 영역이 터치를 가로채지 않도록) 길게 누르기(메뉴)·두 번 누르기(하트)는 바깥 말풍선이 그대로 받는다. 카드를 눌러 해당 탭으로 가는 "열기"는 아직 없다.
  * 읽어 주는 문구는 바깥 말풍선이 붙이므로(TalkBack 이 두 번 읽지 않게) 카드 자체에는 접근성 속성을 두지 않는다.
  * 내 말풍선(mine)은 복숭아색 바탕이라 글자색을 모두 본문색으로 한다(정산의 받을/보낼 돈은 문구로 가린다).
- * @param {{ share: { kind: "event" | "settlement", payload: object }, mine?: boolean }} props
+ * 정산 카드는 보낸 사람 기준이라 남의 카드는 senderName(비면 "보낸 사람")을 주어로 보이고, 받을 돈·보낼 돈은 색이 아니라 글자로 구분한다.
+ * @param {{ share: { kind: "event" | "settlement", payload: object }, mine?: boolean, senderName?: string }} props
  * @returns {import("react").ReactElement}
  */
-export default function ShareCard({ share, mine = false }) {
+export default function ShareCard({ share, mine = false, senderName = "" }) {
   return (
     <View style={styles.card}>
-      {share.kind === "settlement" ? <SettlementBody payload={share.payload} mine={mine} /> : <EventBody payload={share.payload} mine={mine} />}
+      {share.kind === "settlement" ? <SettlementBody payload={share.payload} mine={mine} senderName={senderName} /> : <EventBody payload={share.payload} mine={mine} />}
     </View>
   );
 }
@@ -63,11 +64,11 @@ function EventBody({ payload, mine }) {
 
 /**
  * 정산 카드 본문.
- * @param {{ payload: object, mine: boolean }} props
+ * @param {{ payload: object, mine: boolean, senderName: string }} props
  * @returns {import("react").ReactElement}
  */
-function SettlementBody({ payload, mine }) {
-  const v = settlementCardView(payload);
+function SettlementBody({ payload, mine, senderName }) {
+  const v = settlementCardView(payload, { mine, senderName });
   return (
     <>
       <View style={styles.head}>
