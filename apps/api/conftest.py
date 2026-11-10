@@ -19,10 +19,14 @@ for _name in ("MAIL_BACKEND", "SMTP_HOST", "SMTP_USER", "SMTP_PASSWORD", "SMTP_F
 # 개발자의 .env 에 업로드 Claude 읽기·가리기를 켜 두어도 시험은 가짜 OCR·규칙 가리기만 쓴다(켠 경로의 시험은 각자 settings 를 바꾼다).
 os.environ["INGEST_LLM_OCR"] = "false"
 os.environ["INGEST_LLM_MASK"] = "false"
-os.environ["PHOTO_JUDGE_LLM"] = "false"  # 가족방 사진 판별도 시험에서는 외부 AI 를 쓰지 않는다(켠 경로의 시험은 각자 settings 를 바꾼다)
+os.environ["PHOTO_JUDGE_LLM"] = (
+    "false"  # 가족방 사진 판별도 시험에서는 외부 AI 를 쓰지 않는다(켠 경로의 시험은 각자 settings 를 바꾼다)
+)
 # 개발자의 .env 에 분류 보조(Jev) 키가 있어도 시험 문서가 외부로 나가지 않게 비운다.
 os.environ["TYPESAFE_API_KEY"] = ""
-os.environ["INGEST_REMINDERS"] = "false"  # 챙길 일 뽑기도 기본은 끈다(켠 경로의 시험은 각자 settings 를 바꾼다)
+os.environ["INGEST_REMINDERS"] = (
+    "false"  # 챙길 일 뽑기도 기본은 끈다(켠 경로의 시험은 각자 settings 를 바꾼다)
+)
 os.environ["INGEST_RETRY_WAIT_SECONDS"] = (
     "0"  # 자동 재시도(실패 파일)가 시험을 기다리게 하지 않는다
 )
