@@ -40,15 +40,16 @@ export const canOpenMenu = (message) => isSaved(message) && !message.deleted;
 /**
  * 메뉴에 보일 항목 키를 순서대로. 반응 줄은 항상 맨 위(reactions)다.
  * 답장·삭제(내가 보낸 것만, 가비의 답 제외)는 사진 메시지·공유 카드에도 열리고, 복사·공지는 글자가 있는 메시지에만 열린다(공유 카드는 제외).
- * @param {{ message: object, myId?: string | null, pinned?: boolean }} args
+ * readOnly(상대가 나간 1:1 방)이면 새로 보내는 일인 답장과 공지 등록을 뺀다(반응·복사·내 글 삭제·공지 내리기는 그대로).
+ * @param {{ message: object, myId?: string | null, pinned?: boolean, readOnly?: boolean }} args
  * @returns {("reactions" | "reply" | "pin" | "unpin" | "copy" | "delete")[]}
  */
-export function menuKeys({ message, myId = null, pinned = false }) {
+export function menuKeys({ message, myId = null, pinned = false, readOnly = false }) {
   if (!canOpenMenu(message)) return [];
-  const keys = ["reactions", "reply"];
+  const keys = readOnly ? ["reactions"] : ["reactions", "reply"];
   const hasText = String(message.text ?? "").trim().length > 0;
   const isCard = Boolean(message.share); // 공유 카드의 text 는 고정 문구라 공지·복사 대상이 아니다
-  if (hasText && !message.attachment && !isCard) keys.push(pinned ? "unpin" : "pin");
+  if (hasText && !message.attachment && !isCard && (pinned || !readOnly)) keys.push(pinned ? "unpin" : "pin");
   if (hasText && !isCard) keys.push("copy");
   if (myId && message.user_id === myId && !message.is_assistant) keys.push("delete");
   return keys;

@@ -15,7 +15,7 @@ const BY_CODE = {
   llm_unavailable: "AI 기능이 아직 서버에 설정되지 않았어요. 서버 관리자에게 AI 설정을 부탁해 주세요",
   llm_failed: "AI가 결과를 만들지 못했어요. 잠시 후 다시 시도해 주세요",
   no_group: "가족 그룹에 먼저 참여해 주세요",
-  peer_left: "상대가 가족을 나가서 이 대화에는 AI를 쓸 수 없어요",
+  peer_left: "상대가 이 대화방을 나가서 AI를 쓸 수 없어요", // 방만 나갔든 가족을 나갔든 같은 코드라 원인을 가리지 않는다
   peer_left_room: "상대방이 나가서 메시지를 보낼 수 없어요",
   cannot_leave_family_room: "가족 전체방은 나갈 수 없어요",
   token_required: "로그인이 필요해요",

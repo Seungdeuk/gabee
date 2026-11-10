@@ -24,6 +24,7 @@ import PinnedBar from "../components/PinnedBar";
 import RoomDrawer from "../components/RoomDrawer";
 import ShareSheet from "../components/ShareSheet";
 import { HEART, canOpenMenu, messageActionError, reactionAction, replyPreview } from "../messageActions";
+import { aiHelperButton } from "../readOnlyRoom";
 import { COPIED_NOTICE, COPY_FAILED_NOTICE, pinTapAction } from "../pinUtils";
 import { parseFocusParam, roomSearchOptions, shouldLoadNewer } from "../searchUtils";
 import { canSaveToLibrary, saveToLibrary } from "../saveToLibrary";
@@ -88,7 +89,7 @@ function Center({ children }) {
 /**
  * 실제 채팅방: 메시지 목록, 입력창, AI 도우미(✨) 시트.
  * 경로 인자 roomId 가 없으면 가족 전체방이고, 있으면 그 방(1:1)이다. peer 는 1:1 상대의 id 로 방 이름을 정하는 데만 쓴다.
- * 1:1 대화는 AI 로 보내지 않아서 1:1 방에는 AI 도우미 버튼이 없다.
+ * 1:1 방에도 AI 도우미 버튼이 있고 그 방 대화만 읽는다. 다만 상대가 나간 방(peerLeft)은 버튼이 비활성이고, 메시지 메뉴에서 답장·공지 등록이 빠진다(readOnlyRoom.js, messageActions.menuKeys).
  * 상단 돋보기(대화 검색)는 이 방 안에서 글자 일치로 찾고, 결과를 누르면 그 메시지 위치(과거 창)로 이동한다. 경로 인자 focus 가 있으면 처음부터 그 위치로 열린다.
  * 과거 창을 보는 동안은 "최신 대화로 이동" 버튼이 뜨고, 새 메시지 확인과 읽음 처리는 멈춘다.
  */
@@ -540,6 +541,7 @@ export default function ChatRoomScreen() {
   const members = info.room?.members?.length ?? 0;
   const peer = direct ? info.room?.members?.find((m) => m.id === peerId) : null;
   const title = direct ? (info.room ? memberName(peer) : "1:1 대화") : (info.room?.name ?? "가족 채팅");
+  const aiButton = aiHelperButton({ ready: info.status === "ready", peerLeft }); // 상대가 나간 방은 AI 도우미 비활성
 
   const header = searchOpen ? (
     <ChatSearchBar search={search} scope={familyRoom} onClose={closeSearch} onJumpCurrent={() => currentMatchId != null && pickPin(currentMatchId, true)} />
@@ -558,7 +560,7 @@ export default function ChatRoomScreen() {
           ) : null}
         </View>
         <IconButton name="search-outline" label="대화 검색" onPress={() => setSearchOpen(true)} disabled={info.status !== "ready"} />
-        <IconButton name="sparkles-outline" label="AI 도우미 열기" onPress={() => setAiOpen(true)} disabled={info.status !== "ready"} />
+        <IconButton name="sparkles-outline" label={aiButton.label} onPress={() => setAiOpen(true)} disabled={aiButton.disabled} />
         <IconButton name="ellipsis-vertical" label="채팅방 메뉴" onPress={() => setDrawerOpen(true)} />
       </View>
     </>
@@ -742,7 +744,7 @@ export default function ChatRoomScreen() {
         {body}
       </KeyboardAvoidingView>
       <RoomDrawer visible={drawerOpen} onClose={() => setDrawerOpen(false)} room={info.room} roomId={roomId} peerId={peerId} myId={info.me?.id} muted={roomMute.muted} onToggleMute={roomMute.toggle} />
-      <MessageMenu target={menu} myId={info.me?.id} pinned={pins.isPinned(menu?.message?.id)} onClose={closeMenu} onReact={reactFromMenu} onReply={replyFromMenu} onPin={pinMessageFromMenu} onUnpin={unpinMessageFromMenu} onCopy={copyMessage} onDelete={deleteFromMenu} />
+      <MessageMenu target={menu} myId={info.me?.id} pinned={pins.isPinned(menu?.message?.id)} readOnly={peerLeft} onClose={closeMenu} onReact={reactFromMenu} onReply={replyFromMenu} onPin={pinMessageFromMenu} onUnpin={unpinMessageFromMenu} onCopy={copyMessage} onDelete={deleteFromMenu} />
       <ShareSheet visible={share.visible} kind={share.kind} status={share.status} items={share.items} error={share.error} onPick={share.pick} onRetry={share.retry} onClose={share.close} />
       <ConfirmDialog visible={share.confirmVisible} title={share.confirmCopy?.title ?? ""} message={share.confirmCopy?.message} confirmLabel={share.confirmCopy?.confirmLabel ?? "공유하기"} tone="default" onCancel={share.cancelPending} onConfirm={share.confirm} />
       <AiPanel visible={aiOpen} onClose={() => setAiOpen(false)} onPickReply={pickReply} onLinked={links.registerCandidate} roomId={roomId ?? undefined} peerId={peerId ?? undefined} />

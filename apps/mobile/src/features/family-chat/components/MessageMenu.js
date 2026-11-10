@@ -24,16 +24,16 @@ const ITEMS = {
  * 메시지를 길게 눌렀을 때 그 메시지 근처에 뜨는 팝업 메뉴(Modal 이라 웹에서도 같다). 맨 위에 반응 이모지 6개(내가 누른 것은 강조), 아래로 답장·공지 등록(또는 게시판에서 내리기)·복사·삭제.
  * 어떤 항목이 열리는지는 messageActions.menuKeys 가 정한다(삭제는 내가 보낸 메시지만, 복사·공지는 글자가 있는 메시지만). 삭제를 누르면 같은 팝업이 "모두에게서 삭제돼요" 확인으로 바뀐다.
  * target 이 없으면 닫힌 상태다. 누른 지점을 모르면(웹 등) 화면 가운데에 뜬다.
- * @param {{ target: { message: object, anchor?: { x: number, y: number } | null } | null, myId?: string | null, pinned: boolean, onClose: () => void, onReact: (emoji: string) => void, onReply: () => void, onPin: () => void, onUnpin: () => void, onCopy: () => void, onDelete: () => void }} props
+ * @param {{ target: { message: object, anchor?: { x: number, y: number } | null } | null, myId?: string | null, pinned: boolean, readOnly?: boolean, onClose: () => void, onReact: (emoji: string) => void, onReply: () => void, onPin: () => void, onUnpin: () => void, onCopy: () => void, onDelete: () => void }} props readOnly: 상대가 나간 방이면 답장·공지 등록을 숨긴다
  */
-export default function MessageMenu({ target, myId = null, pinned, onClose, onReact, onReply, onPin, onUnpin, onCopy, onDelete }) {
+export default function MessageMenu({ target, myId = null, pinned, readOnly = false, onClose, onReact, onReply, onPin, onUnpin, onCopy, onDelete }) {
   const screen = useWindowDimensions();
   const [confirming, setConfirming] = useState(false);
   const message = target?.message ?? null;
   useEffect(() => setConfirming(false), [message?.id]); // 다른 메시지로 열면 확인 단계를 처음으로
   if (!message) return null;
 
-  const keys = menuKeys({ message, myId, pinned });
+  const keys = menuKeys({ message, myId, pinned, readOnly });
   const rows = keys.filter((k) => k !== "reactions");
   const height = confirming ? CONFIRM_HEIGHT : (keys.includes("reactions") ? REACTION_ROW : 0) + rows.length * ITEM_HEIGHT;
   const width = confirming ? CONFIRM_WIDTH : MENU_WIDTH;
