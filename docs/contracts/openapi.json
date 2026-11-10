@@ -9731,6 +9731,72 @@
         }
       }
     },
+    "/billing/settlement/reminders/check": {
+      "post": {
+        "tags": [
+          "billing"
+        ],
+        "summary": "Check Settlement Reminders",
+        "description": "앱 홈을 열 때 부른다. 내 정산 재알림(보낼 돈 알림 후 24시간, 송금 완료 전)을 알림함에 한 번만 남긴다.",
+        "operationId": "check_settlement_reminders_billing_settlement_reminders_check_post",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-gyeot-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Gyeot-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReminderCheck"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/billing/settlement/payments": {
       "post": {
         "tags": [
@@ -27045,6 +27111,20 @@
         ],
         "title": "Reminder",
         "description": "월말 정산 알림. 정산 담당자에게만 show=true 로 내려간다."
+      },
+      "ReminderCheck": {
+        "properties": {
+          "created": {
+            "type": "integer",
+            "title": "Created"
+          }
+        },
+        "type": "object",
+        "required": [
+          "created"
+        ],
+        "title": "ReminderCheck",
+        "description": "정산 재알림 확인 결과. created 는 이번에 알림함에 새로 남긴 재알림 수(대부분 0)."
       },
       "ReminderSettingsIn": {
         "properties": {

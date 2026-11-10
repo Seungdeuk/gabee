@@ -33,6 +33,7 @@ from .schemas import (
     MonthlyResult,
     PaymentCreate,
     Reminder,
+    ReminderCheck,
     Settlement,
     SettleRequest,
     SettleTagOut,
@@ -159,6 +160,16 @@ def settlement_reminder(
 ) -> Reminder:
     """월말 정산 알림. 정산 담당자에게만 show=true 가 내려간다. `on` 은 화면 테스트용 날짜(YYYY-MM-DD)."""
     return service.reminder(db, group_id, user, on)
+
+
+@router.post("/settlement/reminders/check", response_model=ReminderCheck)
+def check_settlement_reminders(
+    user=Depends(current_user),
+    group_id: str = Depends(current_group_id),
+    db: Session = Depends(get_db),
+) -> ReminderCheck:
+    """앱 홈을 열 때 부른다. 내 정산 재알림(보낼 돈 알림 후 24시간, 송금 완료 전)을 알림함에 한 번만 남긴다."""
+    return ReminderCheck(created=service.check_settlement_reminders(db, group_id, user))
 
 
 @router.post("/settlement/payments", response_model=Settlement, status_code=201)

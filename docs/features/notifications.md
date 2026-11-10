@@ -80,6 +80,7 @@
 - 지갑(`kind=billing`, 모두 → `/care`): `settlement_updated`("정산 내역이 업데이트됐어요", 정산하기 완료 시 나눌 사람과 지출을 낸 사람에게), `payment_marked`("송금 완료가 표시됐어요", 송금 완료 표시 시 송금하는 사람·받는 사람 중 표시한 사람을 뺀 상대에게, 표시한 사람은 서버가 `actor_id` 로 받는다), `allowance_requested`("용돈 요청이 도착했어요", 자녀의 요청을 부모 역할·그룹을 만든 사람에게), `allowance_decided`("용돈 요청이 처리됐어요", 처리 결과를 자녀에게, 승인·거절 여부는 담지 않음).
 - (2026-11-09 삭제됨, 아래 "돌봄·기록 분류 삭제" 참고) AI 기록(`kind=ai_record`): `document_added`("가족 문서함에 새 문서가 올라왔어요", 가비가 문서를 읽어 저장한 뒤 올린 사람을 뺀 가족에게, **민감 문서·읽기 실패는 알리지 않음**, 이동 화면은 아직 없음).
 - 연결하지 않은 것: 일정 **변경·취소** 알림(공유 일정은 받은 사람마다 독립된 복사본이라 원본을 고쳐도 받은 사람의 일정은 그대로여서 "바뀌었어요"가 사실과 다르다), 가족 구성원 변경, 돌봄.
+- 정산 재알림(`kind=billing`, `settlement_remind`, `billing/service.py` 의 `check_settlement_reminders`): 앱 홈을 열 때 `POST /billing/settlement/reminders/check` 로 본인 몫만 확인해, 정산하기 알림(`settlement_updated`)을 받은 지 24시간(`SETTLEMENT_REMIND_HOURS`)이 지나도 그 달 송금 완료가 안 됐으면 한 번 남긴다(같은 사용자·같은 월에 이 줄이 있으면 다시 만들지 않는다). 두 기기가 동시에 열면 드물게 두 번 생길 수 있다.
 - 시험: `tests/test_push_events.py`(일정·할 일·정산·송금·용돈), `ai_assistant/tests/test_document_notification.py`, 앱 `tests/notifications.test.js`(`routeFor`).
 
 ## 앱
