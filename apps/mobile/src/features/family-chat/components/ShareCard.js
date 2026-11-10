@@ -13,7 +13,7 @@ import { eventCardView, settlementCardView, shareTextTone } from "../shareUtils"
 const toneColor = (args) => colors[shareTextTone(args)];
 
 /**
- * 말풍선 안의 공유 카드(읽기 전용): 일정이면 라벨(약속·할 일)·제목·날짜시간·장소·함께하는 사람, 정산이면 월·내 남은 잔액·송금 줄.
+ * 말풍선 안의 공유 카드(읽기 전용): 일정이면 라벨(약속·할 일)·제목·날짜시간·장소·함께하는 사람, 정산이면 월·보낸 사람 기준 남은 잔액(1:1 방에서는 그 상대와의 줄 합계)·송금 줄.
  * 내용은 보낸 시점의 스냅샷이다. 카드 자체는 누름을 받지 않아(안쪽 누름 영역이 터치를 가로채지 않도록) 길게 누르기(메뉴)·두 번 누르기(하트)는 바깥 말풍선이 그대로 받는다. 카드를 눌러 해당 탭으로 가는 "열기"는 아직 없다.
  * 읽어 주는 문구는 바깥 말풍선이 붙이므로(TalkBack 이 두 번 읽지 않게) 카드 자체에는 접근성 속성을 두지 않는다.
  * 내 말풍선(mine)은 복숭아색 바탕이라 글자색을 모두 본문색으로 한다(정산의 받을/보낼 돈은 문구로 가린다).
@@ -79,7 +79,7 @@ function SettlementBody({ payload, mine, senderName }) {
       </View>
       <Text style={[styles.title, { color: toneColor({ mine, tone: v.summary.tone }) }]}>{v.summary.text}</Text>
       {v.lines.map((line) => (
-        <Text key={line.key} style={[styles.sub, { color: toneColor({ mine, tone: "sub" }) }]} numberOfLines={1}>
+        <Text key={line.key} style={[styles.sub, { color: toneColor({ mine, tone: "sub" }) }]}>
           {line.text}
         </Text>
       ))}

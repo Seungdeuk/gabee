@@ -122,7 +122,7 @@ function senderLabel(senderName) {
  * 정산 카드에 보일 내용: 월, 보낸 사람 기준 남은 잔액 한 줄(받을 돈·보낼 돈·없음), 송금 줄(최대 SETTLEMENT_LINES_SHOWN 개)과 나머지 개수.
  * 서버 payload 는 카드를 보낸 사람 기준이다(remaining +/− 와 lines 의 send·receive 모두. 1:1 방에서는 그 상대와의 줄과 그 합계).
  * 내 카드(mine, 기본)는 "받을 돈 12,000원"·"수진님에게 12,000원 받아요" 처럼 주어 없이, 남의 카드는 보는 사람이 자기 돈으로 오해하지 않도록 보낸 사람 이름을 주어로 쓴다
- * ("하늘님이 받을 돈 12,000원"·"수진님이 하늘님에게 12,000원 보내요"). 이름이 비면 "보낸 사람". 0원이면 두 경우 모두 "정산할 돈이 없어요".
+ * ("하늘님이 받을 돈 12,000원"·"수진님이 하늘님에게 12,000원 보내요"). 이름이 비면 "보낸 사람". 0원이면 내 카드는 "정산할 돈이 없어요", 남의 카드는 "하늘님은 정산할 돈이 없어요".
  * 금액은 서버가 만든 값 그대로 보이고 앱이 다시 계산하지 않는다. 이름이 없는 상대 줄은 "상대", 금액이 숫자가 아니거나 방향(send·receive)을 모르는 줄은 건너뛴다.
  * @param {{ month?: string, remaining?: number, lines?: ({ direction?: string, name?: string, amount?: number } | null)[] } | null | undefined} payload
  * @param {{ mine?: boolean, senderName?: string | null }} [options] mine 기본 true(내 카드), senderName 은 남의 카드의 보낸 사람 이름
@@ -133,7 +133,7 @@ export function settlementCardView(payload, { mine = true, senderName = "" } = {
   const who = senderLabel(senderName);
   const subject = mine ? "" : `${who}이 `;
   const rem = typeof p.remaining === "number" && Number.isFinite(p.remaining) ? p.remaining : 0;
-  const summary = rem > 0 ? { tone: "receive", text: `${subject}받을 돈 ${formatShareMoney(rem)}` } : rem < 0 ? { tone: "send", text: `${subject}보낼 돈 ${formatShareMoney(rem)}` } : { tone: "even", text: "정산할 돈이 없어요" };
+  const summary = rem > 0 ? { tone: "receive", text: `${subject}받을 돈 ${formatShareMoney(rem)}` } : rem < 0 ? { tone: "send", text: `${subject}보낼 돈 ${formatShareMoney(rem)}` } : { tone: "even", text: mine ? "정산할 돈이 없어요" : `${who}은 정산할 돈이 없어요` };
   const all = [];
   (Array.isArray(p.lines) ? p.lines : []).forEach((line, i) => {
     const money = formatShareMoney(line?.amount);

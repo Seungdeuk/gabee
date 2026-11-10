@@ -193,7 +193,9 @@ test("settlementCardView: 남의 카드는 보낸 사람 이름을 주어로 받
   const send = settlementCardView(settleShare({ remaining: -5000, lines: [{ direction: "send", name: "민수", amount: 5000 }] }).payload, other);
   assert.deepEqual(send.summary, { tone: "send", text: "하늘님이 보낼 돈 5,000원" });
   assert.deepEqual(send.lines.map((l) => l.text), ["하늘님이 민수님에게 5,000원 보내요"]);
-  assert.deepEqual(settlementCardView(settleShare({ remaining: 0, lines: [] }).payload, other).summary, { tone: "even", text: "정산할 돈이 없어요" }); // 0원은 기존 문구
+  assert.deepEqual(settlementCardView(settleShare({ remaining: 0, lines: [] }).payload, other).summary, { tone: "even", text: "하늘님은 정산할 돈이 없어요" }); // 남의 카드 0원도 누구 이야기인지 주어를 쓴다
+  assert.equal(settlementCardView(settleShare({ remaining: 0, lines: [] }).payload, { mine: false, senderName: "" }).summary.text, "보낸 사람은 정산할 돈이 없어요");
+  assert.equal(settlementCardView(settleShare({ remaining: 0, lines: [] }).payload, { mine: true }).summary.text, "정산할 돈이 없어요"); // 내 카드 0원은 기존 그대로
 });
 
 test("settlementCardView: 보낸 사람 이름이 비면 '보낸 사람' 으로, 내 카드(mine)는 지금 그대로다", () => {
@@ -225,6 +227,9 @@ test("ShareCard: 화면 값은 theme 토큰만, 서버 호출 없음, 터치를 
   assert.match(card, /from "@\/theme"/);
   assert.doesNotMatch(card, /Pressable/); // 안쪽 Pressable 이 길게 누르기·더블탭 하트를 가로채지 않는다
   assert.match(card, /share\.kind === "settlement"/);
+  assert.match(card, /key=\{line\.key\}/);
+  assert.doesNotMatch(card, /key=\{line\.key\}[^\n]*numberOfLines/); // 송금 줄은 길어도 금액이 …로 가려지지 않게 줄바꿈을 허용한다
+  assert.doesNotMatch(card, /내 남은 잔액/); // 정산 금액은 보낸 사람 기준이다
   assert.doesNotMatch(card, /accessible|accessibilityLabel/); // 읽어 주는 문구는 바깥 말풍선이 붙인다(안쪽까지 붙이면 TalkBack 이 두 번 읽는다)
   assert.match(card, /shareTextTone/); // 글자색은 순수 함수가 정한다
   assert.match(card, /settlementCardView\(payload, \{ mine, senderName \}\)/); // 문구도 보낸 사람 이름·내 카드 여부를 받는다
