@@ -50,7 +50,9 @@ def _check(client, headers):
 
 
 def _reminders(client, headers):
-    items = client.get("/notifications", params={"kind": "billing"}, headers=headers).json()["items"]
+    items = client.get("/notifications", params={"kind": "billing"}, headers=headers).json()[
+        "items"
+    ]
     return [(n["event"], n["target_id"]) for n in items if n["event"] == "settlement_remind"]
 
 
@@ -106,7 +108,9 @@ def test_only_the_member_who_opened_home_and_only_the_overdue_month(client, fami
     _settle(client, a, "2026-10")
     _age("2026-10", settings.settlement_remind_hours + 1)  # 10월만 지났고 9월은 방금 정산했다
     assert _check(client, a) == 0  # 받을 사람(지출을 낸 지민)에게는 만들지 않는다
-    assert _reminders(client, b) == []  # 수진이 홈을 열기 전에는 수진 몫도 만들지 않는다(가족 몫을 대신 만들지 않는다)
+    assert (
+        _reminders(client, b) == []
+    )  # 수진이 홈을 열기 전에는 수진 몫도 만들지 않는다(가족 몫을 대신 만들지 않는다)
     assert _check(client, b) == 1
     assert _reminders(client, b) == [("settlement_remind", "2026-10")]  # 9월은 아직 아니다
     assert _reminders(client, a) == []
