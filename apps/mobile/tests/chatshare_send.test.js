@@ -45,6 +45,13 @@ test("+ 메뉴: 라벨·순서는 그대로, 일정·정산만 공유 항목(isP
   assert.equal(plusShareKind("safety"), null);
 });
 
+test("Composer: onShare 가 있으면 일정·정산은 공유로 가고, 없거나 안부면 '준비 중' 안내다", () => {
+  const composer = read("features/family-chat/components/Composer.js");
+  assert.match(composer, /isPlusShare/);
+  assert.match(composer, /else if \(onShare && isPlusShare\(key\)\) onShare\(plusShareKind\(key\)\)/);
+  assert.match(composer, /else setSoon\(true\)/); // 안부(와 onShare 가 없는 경우)는 그대로 준비 중
+  assert.match(composer, /shareBusy/); // 공유를 보내는 동안 + 버튼이 진행 표시
+});
 
 // ---------------------------------------------------------------------------------------------
 // 시트 항목
@@ -113,6 +120,13 @@ test("shareConfirmCopy: 일정은 제목·날짜와 고지, 정산은 월만 보
   assert.equal(shareConfirmCopy("event", null).title, "이 일정을 공유할까요?"); // 항목이 없어도 깨지지 않는다
 });
 
+test("ConfirmDialog: tone prop(기본 danger, default 면 꿀색 확인 버튼)이 있고 다른 화면은 그대로 빨강이다", () => {
+  const dialog = read("shared/components/ConfirmDialog.js");
+  assert.match(dialog, /tone = "danger"/);
+  assert.match(dialog, /tone === "default"/);
+  assert.match(dialog, /backgroundColor: colors\.accent/); // 기본 톤 확인 버튼
+  assert.match(dialog, /danger: \{ backgroundColor: colors\.danger \}/); // 기존 빨강은 그대로
+});
 
 // ---------------------------------------------------------------------------------------------
 // 전송 API
@@ -205,4 +219,30 @@ test("useChatMessages: sendShare 는 사진·파일과 같은 방식(중복 누�
   assert.match(hook, /postShare\(\{ kind, ref: cardRef, roomId: roomRef\.current \}\)/);
   assert.match(hook, /setPhotoError\(shareSendErrorMessage\(e\)\)/);
   assert.match(hook, /sendShare, shareBusy/);
+});
+
+test("ChatRoomScreen·useChatShare: 시트·확인창을 훅이 맡고 화면은 연결만 한다, 전송 뒤 맨 아래로 스크롤한다", () => {
+  const screen = read("features/family-chat/screens/ChatRoomScreen.js");
+  assert.match(screen, /import useChatShare from "\.\.\/useChatShare"/);
+  assert.match(screen, /onShare=\{share\.open\}/);
+  assert.match(screen, /<ShareSheet /);
+  assert.match(screen, /<ConfirmDialog /);
+  assert.match(screen, /tone="default"/);
+  const hook = read("features/family-chat/useChatShare.js");
+  assert.match(hook, /listScheduleEvents/);
+  assert.match(hook, /await send\(card\)/); // 전송은 useChatMessages.sendShare 를 받아 쓴다
+  assert.match(hook, /onSent\?\.\(\)/);
+  assert.match(hook, /confirming\.current/); // 확인 중복 누름 방지
+  assert.match(hook, /export default function useChatShare/);
+  assert.doesNotMatch(hook, /fetch\(/);
+});
+
+test("ShareSheet: theme 토큰만, 로딩·빈 상태·오류(다시 시도)·항목 선택을 처리한다", () => {
+  const sheet = read("features/family-chat/components/ShareSheet.js");
+  assert.doesNotMatch(sheet, /#[0-9a-fA-F]{3,8}\b/);
+  assert.match(sheet, /from "@\/theme"/);
+  assert.match(sheet, /ActivityIndicator/);
+  assert.match(sheet, /다시 시도/);
+  assert.match(sheet, /onPick\(item\)/);
+  assert.doesNotMatch(sheet, /fetch\(|apiFetch/);
 });

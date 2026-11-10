@@ -32,7 +32,7 @@ export const FILE_INVALID_MESSAGE = "지원하지 않는 파일이거나 내용�
 export const FILE_BUSY_MESSAGE = "지금 파일을 처리하는 중이 많아요. 잠시 후 다시 해 주세요";
 export const FILE_PREVIEW_TEXT = "파일";
 
-/** "+" 메뉴(아래에서 올라오는 시트) 항목. 사진·파일은 바로 선택 화면을 열고, 나머지(일정·정산·안부)는 실제 기능이 이후 작업이라 누르면 준비 중 안내만 한다. */
+/** "+" 메뉴(아래에서 올라오는 시트) 항목. 사진·파일은 바로 선택 화면을 열고, 일정·정산은 공유 시트를 열고, 안부는 실제 기능이 이후 작업이라 누르면 준비 중 안내만 한다. */
 export const PLUS_MENU_ITEMS = [
   { key: "photo", label: "사진", icon: "image-outline" },
   { key: "file", label: "파일", icon: "document-attach-outline" },
