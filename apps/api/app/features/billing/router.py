@@ -14,7 +14,7 @@ from app.shared.llm.schemas import (
     AgentConfirmOut,
 )
 
-from . import agent, service
+from . import agent, chat_share, service  # noqa: F401  (chat_share: import 하면 공유 카드의 정산 내용 만들기가 등록된다)
 from .schemas import (
     AllowanceApproveIn,
     AllowanceMoneyIn,
