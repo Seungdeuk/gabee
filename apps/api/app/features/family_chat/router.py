@@ -30,6 +30,7 @@ from .schemas import (
     UnreadOut,
 )
 from .search_router import router as search_router
+from .share_router import router as share_router
 from .todo_router import router as todo_router
 
 router = APIRouter(prefix="/family-chat", tags=["family-chat"])
@@ -45,6 +46,9 @@ router.include_router(pin_router)  # 고정 메시지(공지, 방 안의 누구�
 router.include_router(
     link_router
 )  # 메시지-일정·할 일 연결(등록됨 표시·원본 이동, AI 를 부르지 않는다)
+router.include_router(
+    share_router
+)  # 공유 카드(내 일정 한 건·내 정산 몫, 서버가 읽어 만든다, AI 를 부르지 않는다)
 router.include_router(ai_router)  # AI 대화 분석·추천(사용할 때만 AI 호출, 가족 전체방만)
 
 # room_id 를 생략하면 가족 전체방이다(방 구조가 생기기 전 앱과 같은 동작).
