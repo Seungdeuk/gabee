@@ -17,7 +17,7 @@ from . import pin_repository as prepo
 from . import repository as repo
 from .models import ChatPinnedMessage, Message
 from .pin_schemas import PinItem, PinResult, PinsOut
-from .service import resolve_room
+from .service import ensure_can_send, resolve_room
 
 TEXT_LIMIT = 200  # 응답에 싣는 본문 최대 글자 수
 WRITE_LIMIT = 30  # 사용자별 분당 고정·해제 수
@@ -68,6 +68,7 @@ def list_pins(db: Session, user: User, group_id: str, room_id: str | None = None
 def pin(db: Session, user: User, group_id: str, message_id: int, room_id: str | None) -> PinResult:
     _check_rate(user.id)
     room = resolve_room(db, user, group_id, room_id)
+    ensure_can_send(room)  # 읽기 전용 방은 새 고정 불가(내리기·숨기기는 허용)
     found = repo.get_in_room(db, room, message_id)
     if found is None:
         raise bad_request("invalid_message", "이 대화방의 메시지가 아니에요")

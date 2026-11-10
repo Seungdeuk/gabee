@@ -34,7 +34,8 @@ def pin_message(
     db: Session = Depends(get_db),
 ) -> PinResult:
     """메시지를 고정한다(방 안의 누구나). 이미 고정돼 있으면 그대로 두고 already_pinned=true.
-    방당 최대 2개라 3번째면 가장 오래된 고정이 풀리고 그 메시지 id 가 replaced_message_id 로 온다."""
+    방당 최대 2개라 3번째면 가장 오래된 고정이 풀리고 그 메시지 id 가 replaced_message_id 로 온다.
+    상대가 나간 1:1 방이면 409 `peer_left_room`."""
     return pin_service.pin(db, user, group_id, body.message_id, body.room_id)
 
 

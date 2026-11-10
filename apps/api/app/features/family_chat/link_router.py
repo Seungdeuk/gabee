@@ -39,7 +39,8 @@ def create_link(
     group_id: str = Depends(current_group_id),
     db: Session = Depends(get_db),
 ) -> LinkOut:
-    """메시지와 등록한 일정·할 일을 연결한다(방 안의 누구나). 이미 있으면 새로 만들지 않고 기존 연결을 200 으로 돌려준다."""
+    """메시지와 등록한 일정·할 일을 연결한다(방 안의 누구나). 이미 있으면 새로 만들지 않고 기존 연결을 200 으로 돌려준다.
+    상대가 나간 1:1 방이면 409 `peer_left_room`."""
     out, created = link_service.create(db, user, group_id, body)
     if not created:
         response.status_code = 200
