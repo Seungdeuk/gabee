@@ -52,6 +52,18 @@ export const isPlusPhoto = (key) => key === "photo";
  * @returns {boolean}
  */
 export const isPlusFile = (key) => key === "file";
+/**
+ * "+" 메뉴 항목이 공유 카드(일정·정산) 보내기인지.
+ * @param {string} key
+ * @returns {boolean}
+ */
+export const isPlusShare = (key) => key === "schedule" || key === "settle";
+/**
+ * 공유 항목이 서버에 보낼 카드 종류(일정 → "event", 정산 → "settlement"). 공유 항목이 아니면 null.
+ * @param {string} key
+ * @returns {"event" | "settlement" | null}
+ */
+export const plusShareKind = (key) => (key === "schedule" ? "event" : key === "settle" ? "settlement" : null);
 export const PLUS_SOON_NOTICE = "준비 중이에요";
 export const PLUS_SOON_MS = 3000; // 안내가 저절로 사라지는 시간
 

@@ -251,6 +251,14 @@ export async function sendFile(asset, roomId) {
   return apiFetch("/family-chat/files", { method: "POST", body: form });
 }
 
+/**
+ * 공유 카드(내 일정 한 건 또는 그 달 내 정산 몫)를 채팅방에 올린다(POST /family-chat/shares, 201 MessageOut). 카드 내용은 서버가 읽어 만들고 앱은 종류·참조만 보낸다(제목·금액 등 다른 필드를 보내면 422). AI 를 부르지 않는다.
+ * 오류: 404(내 것이 아니거나 없음·정산 내역 없음), 400(invalid_month·share_too_large), 409(peer_left_room), 429(too_many_shares, Retry-After 는 ApiError.retryAfter), 503(share_unavailable·schema_not_ready).
+ * @param {{ kind: "event" | "settlement", ref: string, roomId?: string | null }} options ref 는 일정이면 일정 id, 정산이면 YYYY-MM. roomId 가 없으면 가족 전체방(본문에 넣지 않는다)
+ * @returns {Promise<{ id: number, user_id: string, user_name: string, text: string, created_at: string, share: { kind: "event" | "settlement", payload: object } | null }>}
+ */
+export const sendShare = ({ kind, ref, roomId }) => apiFetch("/family-chat/shares", { method: "POST", body: { kind, ref, ...(roomId ? { room_id: roomId } : {}) } });
+
 // 서버가 만드는 파일 첨부 경로만 받는다(다른 주소로 인증 헤더가 나가지 않게)
 const CHAT_FILE_PATH = /^\/family-chat\/files\/[\w-]+$/;
 

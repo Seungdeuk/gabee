@@ -171,3 +171,99 @@ export function shareA11yLabel(share, { mine = true, senderName = "" } = {}) {
   const v = eventCardView(share?.payload);
   return ["일정 공유 카드", v.badge, v.title, v.when, v.place ? `장소 ${v.place}` : "", v.withText].filter(Boolean).join(", ");
 }
+
+// ---------------------------------------------------------------------------------------------
+// 공유 시트(보내기): 항목 구성, 확인창 문구, 오류 문구
+
+/** 일정 목록을 받아 오지 못했을 때 시트에 보이는 문구. */
+export const SHARE_LOAD_ERROR = "일정을 불러오지 못했어요. 다시 시도해 주세요";
+
+/** 정산 시트에 보일 달 수(이번 달부터 거슬러). 월 목록 API 가 없어 앱이 만든다. */
+export const SHARE_MONTHS_SHOWN = 6;
+
+/** 확인창 고지 문구(가족방·1:1 방 같음). 정산 금액은 앱이 계산하지 않아 확인창에 금액은 없다. */
+export const SHARE_NOTICE = {
+  event: "이 일정이 이 채팅방 사람들에게 보여요.",
+  settlement: "정산 금액이 이 채팅방 사람들에게 보이고, @가비·AI 도우미가 답변에 쓸 수 있어요.",
+};
+
+const SHEET_COPY = {
+  event: { title: "공유할 일정 고르기", hint: "내 일정과 할 일 중 오늘 이후의 것만 보여요", empty: "공유할 일정이 없어요. 오늘 이후의 내 일정만 보낼 수 있어요" },
+  settlement: { title: "공유할 정산 달 고르기", hint: "정산 내역이 있는 달만 보낼 수 있어요", empty: "공유할 달이 없어요" },
+};
+
+/**
+ * 공유 시트의 제목·안내·빈 상태 문구.
+ * @param {"event" | "settlement" | null | undefined} kind
+ * @returns {{ title: string, hint: string, empty: string }}
+ */
+export const shareSheetCopy = (kind) => SHEET_COPY[kind] ?? { title: "", hint: "", empty: "" };
+
+/**
+ * 일정 시트의 항목: 오늘 이후(오늘 포함)의 약속·할 일만, 날짜·시간 오름차순(시간 없는 것이 그날 먼저).
+ * 날짜가 없는 일정·끝낸 할 일·모르는 종류는 뺀다(날짜가 없으면 오늘 이후인지 알 수 없다).
+ * @param {{ id: string, title?: string, kind?: number, start_date?: string | null, start_time?: string | null, checked?: boolean }[] | null | undefined} events listScheduleEvents 결과
+ * @param {string} today YYYY-MM-DD(기기의 오늘)
+ * @returns {{ key: string, ref: string, title: string, line: string, badge: "약속" | "할 일" }[]}
+ */
+export function buildShareEventItems(events, today) {
+  const rows = (Array.isArray(events) ? events : []).filter((e) => e && (e.kind === 1 || e.kind === 2) && !(e.kind === 2 && e.checked) && typeof e.start_date === "string" && e.start_date >= today);
+  rows.sort((a, b) => a.start_date.localeCompare(b.start_date) || String(a.start_time ?? "").localeCompare(String(b.start_time ?? "")));
+  return rows.map((e) => ({
+    key: `e:${e.id}`,
+    ref: e.id,
+    title: String(e.title ?? "").trim() || "(제목 없음)",
+    line: [formatShareDate(e.start_date), formatShareTime(e.start_time, null)].filter(Boolean).join(" · "),
+    badge: e.kind === 2 ? "할 일" : "약속",
+  }));
+}
+
+/**
+ * 정산 시트의 항목: 기기 기준 이번 달부터 거슬러 올라간 달들(ref 는 서버가 받는 YYYY-MM).
+ * @param {Date} [now]
+ * @param {number} [count]
+ * @returns {{ key: string, ref: string, title: string, line: string, badge: "정산" }[]}
+ */
+export function recentShareMonths(now = new Date(), count = SHARE_MONTHS_SHOWN) {
+  return Array.from({ length: count }, (_, i) => {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    const ref = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+    return { key: `m:${ref}`, ref, title: formatShareMonth(ref), line: "", badge: "정산" };
+  });
+}
+
+/**
+ * 공유 확인창 문구: 제목·본문(고지 포함)·확인 버튼 라벨. 일정은 제목·날짜를 보여 주고, 정산은 달만 보인다.
+ * @param {"event" | "settlement"} kind
+ * @param {{ title: string, line: string } | null | undefined} item 고른 시트 항목
+ * @returns {{ title: string, message: string, confirmLabel: string }}
+ */
+export function shareConfirmCopy(kind, item) {
+  if (kind === "settlement") return { title: `${item?.title ?? ""} 정산을 공유할까요?`.trim(), message: SHARE_NOTICE.settlement, confirmLabel: "공유하기" };
+  const what = [item?.title, item?.line].filter(Boolean).join("\n");
+  return { title: "이 일정을 공유할까요?", message: `${what ? `${what}\n\n` : ""}${SHARE_NOTICE.event}`, confirmLabel: "공유하기" };
+}
+
+/**
+ * 초를 "30초" / "2분" 으로(messages.js 의 waitText 와 같은 형식).
+ * @param {number} seconds
+ * @returns {string}
+ */
+const waitText = (seconds) => (seconds < 60 ? `${seconds}초` : `${Math.ceil(seconds / 60)}분`);
+
+/**
+ * 공유 보내기 오류를 사용자 문장으로(카드 내용은 넣지 않는다). 상태·코드로 알아본다.
+ * @param {{ status?: number, code?: string, retryAfter?: number } | null | undefined} error
+ * @returns {string}
+ */
+export function shareSendErrorMessage(error) {
+  const { status, code } = error ?? {};
+  if (status === 404) return "공유할 내용을 찾지 못했어요. 이미 지워졌거나 정산 내역이 없는 달일 수 있어요";
+  if (code === "invalid_month") return "정산 달이 올바르지 않아요. 다시 골라 주세요";
+  if (code === "share_too_large") return "내용이 너무 길어서 공유할 수 없어요";
+  if (code === "peer_left_room" || status === 409) return "상대방이 나가서 메시지를 보낼 수 없어요";
+  if (status === 429) return `공유를 너무 자주 했어요. 잠시 후 다시 해 주세요${error.retryAfter ? ` (${waitText(error.retryAfter)} 뒤에 다시 시도할 수 있어요)` : ""}`;
+  if (status === 503 || code === "share_unavailable" || code === "schema_not_ready") return "지금은 공유할 수 없어요. 잠시 후 다시 시도해 주세요";
+  if (code === "network_error" || status === 0) return "서버에 연결하지 못했어요. 인터넷 연결을 확인해 주세요";
+  return "공유하지 못했어요. 잠시 후 다시 시도해 주세요";
+}
