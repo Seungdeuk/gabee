@@ -26,6 +26,10 @@
   - 공식 가격표로 호출별 비용을 `Decimal` 로 계산(Haiku 5.5 는 10만 토큰 초과 구간 단가). `Ledger` 가 호출별 사용량(`CallUsage`)과 누적 비용을 기록하고, 실행 2 / 베이스라인 5 / 루프 15 / 전체 40달러 범위별 상한을 넘으면 `BudgetExceeded`. 누적 범위는 시작 값(opening)이 필수이고 `spawn` 으로 풀을 공유한다. 토큰 상한은 가장 비싼 출력 단가로 보수적으로 잡는다. 시험: `test_cost.py`.
 - E2c-3: `scrub.py`, `store.py`
   - 스크러버는 기존 개인정보 탐지기 `detect` 를 재사용(전화·이메일·주민번호·카드·계좌·비밀 값). 결과는 `results/<run_id>/` 6개 파일로 허용 필드만 저장하고(합성 사례만, 값 형식 검사, 인자·답 스크러빙 후 자름), 임시 폴더에 쓴 뒤 옮기며 기존 실행은 덮어쓰지 않는다. `opening_spent` 가 manifest 에서 범위별 합을 복원한다. `results/` 는 git 제외. 시험: `test_scrub.py`, `test_store.py`.
+- E3: `app/shared/llm/eval_hook.py`(새 파일), `tool_graph.py`, `schedule/agent/chat.py`
+  - 평가가 `eval_hook.recording()` 으로 켠 동안만 도구 호출(이름·평탄화한 인자·단계·오류 여부)과 루프의 모델 호출 수·토큰·단계 상한 도달을 메모리에 기록한다. 켜지 않으면 아무 일도 하지 않고(운영 동작 불변), 기록은 로그·파일·외부로 나가지 않는다. 평가 패키지를 가져오지 않는다.
+  - `tool_graph.Run.stage` 로 호출한 쪽이 단계를 넘기고, 비어 있으면 기록하지 않는다. 일정 구조화 출력은 `schedule.<intent>`(not_schedule 제외) 호출로 담고, 같은 질문을 다시 분류하면(need_wider) 앞선 호출을 `superseded` 로 표시한다.
+  - 시험: `test_eval_hook.py`(꺼져 있을 때 동작 불변, 기록 내용, 인자가 틀리면 채점 실패).
 
 ## 알려진 한계
 - 루프에서 후보를 만든 호출의 사용량도 같은 `loop_id` 실행 기록에 넣어야 `opening_spent` 의 루프·전체 합이 맞는다(호출하는 쪽 E8 이 지킨다). 저장 시험은 합성 값만 쓰고, 실제 실행 결과 저장은 E4 이후에 처음 쓰인다.
@@ -35,6 +39,7 @@
 - 대체된 앞선 호출은 E3 훅이 `superseded` 로 표시해야 쓰기로 세지 않는다(표시가 없으면 추가 쓰기로 센다). 인자 값이 dict 이면(`changes` 등) 매처가 맞지 않아 E3 에서 평탄화가 필요하다.
 
 ## 남은 것
+- E4 에서 이어서 할 E3 연결: `rag_chat.py`·`agent.py` 가 `Run(stage=...)` 를 넘기게 하기(지금은 일정 구조화 출력만 기록된다), 되묻기로 끝난 등록에 `eval_hook.mark_last(name, is_error=True)` 표시, 일정 분류 호출의 호출 수·토큰 집계. 기록기는 `contextvars` 라 스레드·이벤트 루프를 넘으면 사라지므로 실행기는 서비스를 직접 호출하거나 요청 안에서 `recording()` 을 연다(기록이 0건이면 실패로 알린다).
 - E3: 평가 전용 관찰 훅(`shared/llm/tool_graph.py`, `schedule/agent/chat.py`).
 - E4: 시드, L2 실행기, 기존 52건 어댑터.
 - E5: 1단계 사례 50~100건과 사례 검증 시험.

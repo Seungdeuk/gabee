@@ -24,6 +24,7 @@ from langgraph.graph import END, START, StateGraph
 from langgraph.graph.message import add_messages
 from typing_extensions import TypedDict
 
+from . import eval_hook
 from .chat_model import text_of
 from .no_trace import no_trace
 
@@ -50,6 +51,7 @@ class Run:
     answer: str = ""
     finished: bool = False  # 모델이 도구 호출 없이 답을 냈다(글이 비어 있을 수는 있다)
     done: bool = False  # 직통 응답으로 끝났다
+    stage: str = ""  # 평가 관찰용 단계 이름(main | billing | family_chat | schedule). 비어 있으면 기록하지 않는다
 
 
 class State(TypedDict):
@@ -64,6 +66,7 @@ def _model(state: State, config: RunnableConfig) -> dict:
     run = _run(config)
     run.steps += 1
     reply = run.model.invoke(state["messages"])
+    eval_hook.observe_model(run.stage, reply)
     if not reply.tool_calls and not _keep_going(reply, run):
         run.answer, run.finished = text_of(reply), True
     return {"messages": [reply]}
@@ -83,7 +86,9 @@ def _after_model(state: State, config: RunnableConfig) -> str:
 
 def _tools(state: State, config: RunnableConfig) -> dict:
     run = _run(config)
-    done = run.handle(state["messages"][-1].tool_calls)
+    tool_calls = state["messages"][-1].tool_calls
+    done = run.handle(tool_calls)
+    eval_hook.observe_tools(run.stage, tool_calls, done.outputs)
     if done.direct_answer is not None:
         run.answer, run.done = done.direct_answer, True
     return {
@@ -128,4 +133,7 @@ def run_graph(run: Run, messages: list[BaseMessage]) -> Run:
                 "recursion_limit": max(50, 2 * run.max_steps + 5),
             },
         )
+    eval_hook.observe_step_limit(
+        run.stage, not run.finished and not run.done and run.steps >= run.max_steps
+    )
     return run
