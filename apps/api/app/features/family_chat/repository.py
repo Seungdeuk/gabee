@@ -20,6 +20,7 @@ from .models import (
     Message,
     MessageAttachment,
     MessageReaction,
+    MessageShare,
 )
 
 UNREAD_CAP = 1000  # 안 읽은 수를 세는 상한(앱이 99+ 로 줄여 보여준다)
@@ -590,6 +591,36 @@ def attachments_for(db: Session, message_ids: list[int]) -> dict[int, MessageAtt
         select(MessageAttachment).where(MessageAttachment.message_id.in_(message_ids))
     )
     return {a.message_id: a for a in rows}
+
+
+def add_share(
+    db: Session, message: Message, kind: str, payload: dict, commit: bool = True
+) -> MessageShare:
+    """공유 카드의 내용을 그 메시지에 붙인다."""
+    share = MessageShare(
+        message_id=message.id,
+        group_id=message.group_id,
+        room_id=message.room_id,
+        kind=kind,
+        payload=payload,
+    )
+    db.add(share)
+    if commit:
+        db.commit()
+    return share
+
+
+def shares_for(db: Session, message_ids: list[int]) -> dict[int, MessageShare]:
+    """메시지 id 들의 공유 카드를 한 번의 쿼리로."""
+    if not message_ids:
+        return {}
+    rows = db.scalars(select(MessageShare).where(MessageShare.message_id.in_(message_ids)))
+    return {s.message_id: s for s in rows}
+
+
+def delete_share(db: Session, message_id: int) -> None:
+    """메시지의 공유 카드 내용을 지운다(커밋은 부르는 쪽이 한다)."""
+    db.execute(delete(MessageShare).where(MessageShare.message_id == message_id))
 
 
 def get_attachment(db: Session, attachment_id: str) -> MessageAttachment | None:

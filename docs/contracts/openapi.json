@@ -4269,6 +4269,82 @@
         }
       }
     },
+    "/family-chat/shares": {
+      "post": {
+        "tags": [
+          "family-chat"
+        ],
+        "summary": "Send Share",
+        "description": "내 일정 한 건 또는 그 달 내 정산 몫을 카드로 방에 올린다. 내용은 서버가 읽어 보낸 시점 그대로 저장하고,\n내가 포함된 것이 아니면 404, 상대가 나간 1:1 방이면 409, 너무 자주 보내면 429 다.",
+        "operationId": "send_share_family_chat_shares_post",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-gyeot-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Gyeot-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ShareCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/family-chat/ai/settings": {
       "get": {
         "tags": [
@@ -14351,6 +14427,81 @@
         }
       }
     },
+    "/play/bomb/{room_id}/history": {
+      "get": {
+        "tags": [
+          "play"
+        ],
+        "summary": "History",
+        "description": "지난 방 기록: 끝난 판마다 이어 말한 문장과 끝낸 사람. 방에 참여한 가족만 볼 수 있다(403 not_in_room).",
+        "operationId": "history_play_bomb__room_id__history_get",
+        "parameters": [
+          {
+            "name": "room_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Room Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-gyeot-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Gyeot-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlayBombHistoryOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/play/bomb/{room_id}": {
       "get": {
         "tags": [
@@ -14752,7 +14903,7 @@
           "play"
         ],
         "summary": "Cheer",
-        "description": "탈락했거나 구경하는 사람의 응원. 정해진 말만 보낼 수 있고 한 사람이 5초에 한 번이다(429 cheer_cooldown).",
+        "description": "탈락했거나 구경하는 사람의 응원. 정해진 말을 고르거나 직접 쓴다(20자). 모두에게 보이고 한 사람이 2초에 한 번이다(429 cheer_cooldown).",
         "operationId": "cheer_play_bomb__room_id__cheer_post",
         "parameters": [
           {
@@ -14973,6 +15124,91 @@
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/PlayBombVoteIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlayBombStateOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/play/bomb/{room_id}/chat": {
+      "post": {
+        "tags": [
+          "play"
+        ],
+        "summary": "Chat",
+        "description": "탈락했거나 구경하는 사람끼리의 채팅(50자). 그런 사람들에게만 보이고 한 사람이 2초에 한 번이다(429 chat_cooldown).",
+        "operationId": "chat_play_bomb__room_id__chat_post",
+        "parameters": [
+          {
+            "name": "room_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Room Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-gyeot-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Gyeot-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PlayBombChatIn"
               }
             }
           }
@@ -23641,6 +23877,16 @@
             "title": "Reactions",
             "default": []
           },
+          "share": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ShareOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "deleted": {
             "type": "boolean",
             "title": "Deleted",
@@ -24624,6 +24870,16 @@
             "type": "integer",
             "title": "Question Count",
             "default": 0
+          },
+          "winner": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PlayPersonOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "type": "object",
@@ -24686,11 +24942,27 @@
         ],
         "title": "PlayBoardOut"
       },
+      "PlayBombChatIn": {
+        "properties": {
+          "text": {
+            "type": "string",
+            "maxLength": 150,
+            "minLength": 1,
+            "title": "Text"
+          }
+        },
+        "type": "object",
+        "required": [
+          "text"
+        ],
+        "title": "PlayBombChatIn",
+        "description": "탈락·구경하는 사람끼리 하는 채팅(50자까지)."
+      },
       "PlayBombCheerIn": {
         "properties": {
           "text": {
             "type": "string",
-            "maxLength": 10,
+            "maxLength": 60,
             "minLength": 1,
             "title": "Text"
           }
@@ -24700,7 +24972,98 @@
           "text"
         ],
         "title": "PlayBombCheerIn",
-        "description": "관전 응원. 정해진 말 중에서 고른다."
+        "description": "관전 응원. 정해진 말을 고르거나 직접 쓴다(20자까지)."
+      },
+      "PlayBombHistoryOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "host": {
+            "$ref": "#/components/schemas/PlayPersonOut"
+          },
+          "players": {
+            "items": {
+              "$ref": "#/components/schemas/PlayPersonOut"
+            },
+            "type": "array",
+            "title": "Players"
+          },
+          "closed": {
+            "type": "boolean",
+            "title": "Closed"
+          },
+          "close_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Close At"
+          },
+          "rounds": {
+            "items": {
+              "$ref": "#/components/schemas/PlayBombHistoryRoundOut"
+            },
+            "type": "array",
+            "title": "Rounds"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "host",
+          "players",
+          "closed",
+          "close_at",
+          "rounds"
+        ],
+        "title": "PlayBombHistoryOut",
+        "description": "지난 방 기록: 끝난 판마다 이어 말한 문장. 방에 참여한 사람만 볼 수 있다."
+      },
+      "PlayBombHistoryRoundOut": {
+        "properties": {
+          "round_no": {
+            "type": "integer",
+            "title": "Round No"
+          },
+          "life": {
+            "type": "integer",
+            "title": "Life"
+          },
+          "sec": {
+            "type": "integer",
+            "title": "Sec"
+          },
+          "winner": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PlayPersonOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "longest_len": {
+            "type": "integer",
+            "title": "Longest Len"
+          },
+          "sentences": {
+            "items": {
+              "$ref": "#/components/schemas/PlayBombSentenceOut"
+            },
+            "type": "array",
+            "title": "Sentences"
+          }
+        },
+        "type": "object",
+        "required": [
+          "round_no",
+          "life",
+          "sec",
+          "longest_len",
+          "sentences"
+        ],
+        "title": "PlayBombHistoryRoundOut"
       },
       "PlayBombMessageOut": {
         "properties": {
@@ -24714,6 +25077,7 @@
               "say",
               "timeout",
               "cheer",
+              "chat",
               "vote"
             ],
             "title": "Kind"
@@ -24770,7 +25134,7 @@
           "at"
         ],
         "title": "PlayBombMessageOut",
-        "description": "채팅 한 줄. say 말함, timeout 시간 초과, cheer 관전 응원, vote 판정 투표 결과."
+        "description": "채팅 한 줄. say 말함, timeout 시간 초과, cheer 관전 응원(모두에게 보임), chat 탈락·구경하는 사람끼리의 채팅(그 사람들에게만 보임), vote 판정 투표 결과."
       },
       "PlayBombPlayerOut": {
         "properties": {
@@ -24912,6 +25276,11 @@
               }
             ],
             "title": "My Points"
+          },
+          "maker_paid_before": {
+            "type": "boolean",
+            "title": "Maker Paid Before",
+            "default": false
           }
         },
         "type": "object",
@@ -24937,6 +25306,44 @@
         ],
         "title": "PlayBombSayIn",
         "description": "내 차례에 이어 말하는 한 단어나 짧은 구(10자까지)."
+      },
+      "PlayBombSentenceOut": {
+        "properties": {
+          "words": {
+            "items": {
+              "$ref": "#/components/schemas/PlayBombWordOut"
+            },
+            "type": "array",
+            "title": "Words"
+          },
+          "end": {
+            "type": "string",
+            "enum": [
+              "end",
+              "repeat",
+              "timeout",
+              "open"
+            ],
+            "title": "End"
+          },
+          "ender": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PlayPersonOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "words",
+          "end"
+        ],
+        "title": "PlayBombSentenceOut",
+        "description": "한 문장: 이어 말한 말들(끝낸 말 포함)과 어떻게 끝났는가. end 문장을 끝냄, repeat 같은 말을 또 함, timeout 시간 초과, open 판이 끝날 때까지 이어가던 중."
       },
       "PlayBombStartIn": {
         "properties": {
@@ -25083,6 +25490,11 @@
           "cheer_wait": {
             "type": "number",
             "title": "Cheer Wait",
+            "default": 0
+          },
+          "chat_wait": {
+            "type": "number",
+            "title": "Chat Wait",
             "default": 0
           },
           "result": {
@@ -25245,6 +25657,23 @@
         ],
         "title": "PlayBombVoteStartIn",
         "description": "판정 투표 신청: call 어라?, unfair 억울해요."
+      },
+      "PlayBombWordOut": {
+        "properties": {
+          "text": {
+            "type": "string",
+            "title": "Text"
+          },
+          "player": {
+            "$ref": "#/components/schemas/PlayPersonOut"
+          }
+        },
+        "type": "object",
+        "required": [
+          "text",
+          "player"
+        ],
+        "title": "PlayBombWordOut"
       },
       "PlayDrawOut": {
         "properties": {
@@ -27360,6 +27789,44 @@
         "title": "ShareConfirmIn",
         "description": "토큰에 보낼 글(최대 500자)이 들어 있어 정산 확인보다 길다."
       },
+      "ShareCreate": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "event",
+              "settlement"
+            ],
+            "title": "Kind"
+          },
+          "ref": {
+            "type": "string",
+            "maxLength": 32,
+            "minLength": 1,
+            "title": "Ref"
+          },
+          "room_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 32
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Room Id"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kind",
+          "ref"
+        ],
+        "title": "ShareCreate",
+        "description": "공유 카드 보내기. 일정이면 ref 는 내 일정 id, 정산이면 월(YYYY-MM). 카드 내용은 서버가 읽어 만든다(클라이언트 값은 받지 않는다)."
+      },
       "ShareItemOut": {
         "properties": {
           "id": {
@@ -27377,6 +27844,30 @@
           "line"
         ],
         "title": "ShareItemOut"
+      },
+      "ShareOut": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "event",
+              "settlement"
+            ],
+            "title": "Kind"
+          },
+          "payload": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Payload"
+          }
+        },
+        "type": "object",
+        "required": [
+          "kind",
+          "payload"
+        ],
+        "title": "ShareOut",
+        "description": "공유 카드. kind=event: title·date·start_time·end_time·place·kind·with_names.\nkind=settlement: month·remaining(내 남은 잔액, 받을 돈 +/보낼 돈 −)·lines(direction send|receive, name, amount)."
       },
       "SharingOut": {
         "properties": {

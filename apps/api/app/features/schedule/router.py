@@ -4,7 +4,10 @@ from sqlalchemy.orm import Session
 from app.shared.auth import current_group_id, current_user
 from app.shared.db import get_db
 
-from . import service
+from . import (
+    chat_share,  # noqa: F401  (import 하면 공유 카드의 일정 내용 만들기가 등록된다)
+    service,
+)
 from . import together as request_service
 from .agent.router import router as agent_router
 from .check_router import router as check_router

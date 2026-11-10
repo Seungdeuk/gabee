@@ -42,6 +42,8 @@ def delete_message(
             raise ApiError(
                 500, "delete_failed", "메시지를 지우지 못했어요. 다시 시도해 주세요"
             ) from None
+    if service.share_table_ready():  # 공유 카드면 제목·금액 같은 내용도 서버에서 비운다
+        repo.delete_share(db, message.id)
     repo.soft_delete(db, message, attachment)
     if (
         attachment is not None
