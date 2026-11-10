@@ -338,3 +338,9 @@ class AllowanceOut(BaseModel):
         AllowanceRequestOut
     ] = []  # 대기 중인 요청 먼저, 그 뒤 최근 처리한 요청(최대 10건)
     months: list[AllowanceMonth] = []  # 최근 6개월 받은 돈·쓴 돈(최신 달부터)
+
+
+class ReminderCheck(BaseModel):
+    """정산 재알림 확인 결과. created 는 이번에 알림함에 새로 남긴 재알림 수(대부분 0)."""
+
+    created: int

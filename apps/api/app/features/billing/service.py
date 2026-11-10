@@ -1,4 +1,5 @@
 import calendar
+import logging
 import re
 import uuid
 from datetime import UTC, date, datetime, timedelta, timezone
@@ -8,6 +9,7 @@ from sqlalchemy.orm import Session
 
 from app.features.family_group import repository as group_repo
 from app.features.family_group.models import User
+from app.shared.config import settings
 from app.shared.errors import ApiError, bad_request, not_found
 from app.shared.notifications import notify
 from app.shared.seed_lock import seed_lock
@@ -62,6 +64,8 @@ from .schemas import (
     UpcomingPayments,
 )
 from .settlement import minimal_transfers, split_equally
+
+log = logging.getLogger(__name__)
 
 _MONTH = re.compile(r"^\d{4}-(0[1-9]|1[0-2])$")
 KST = timezone(timedelta(hours=9))
@@ -361,6 +365,54 @@ def _notify_settled(
         **common,
     )
     db.commit()
+
+
+def check_settlement_reminders(
+    db: Session, group_id: str, user: User, now: datetime | None = None
+) -> int:
+    """홈을 연 본인의 정산 재알림을 확인해, 대상이면 알림함에 한 줄 남기고 만든 개수를 돌려준다.
+
+    대상: 보낼 돈 알림(settlement_pay)을 받은 지 `settlement_remind_hours` 시간이 지났고, 그 달에 보낼 돈이 아직 남았고,
+    그 달 재알림(settlement_remind)을 받은 적이 없는 사람. 재알림을 보냈다는 기록은 알림함의 그 줄 자체다(DB 열 추가 없음).
+    홈을 연 본인 몫만 만든다(가족 다른 사람의 것은 만들지 않는다). 두 기기가 동시에 열면 드물게 두 번 생길 수 있다(유니크 제약이 없다).
+    알림 표가 없거나 어떤 오류가 나도 홈과 정산에는 영향이 없게 0 을 돌려준다. 문구는 고정 템플릿이고 금액은 넣지 않는다."""
+    now = now or datetime.now(UTC)
+    wait = timedelta(hours=settings.settlement_remind_hours)
+    try:
+        with db.begin_nested():
+            rows = repo.settlement_notice_rows(db, group_id, user.id)
+            sent = {month for event, month, _ in rows if event == "settlement_remind"}
+            first_pay: dict[str, datetime] = {}
+            for event, month, made_at in rows:
+                if event != "settlement_pay" or not month or month in sent:
+                    continue
+                made_at = made_at if made_at.tzinfo else made_at.replace(tzinfo=UTC)
+                if month not in first_pay or made_at < first_pay[month]:
+                    first_pay[month] = made_at
+            created = 0
+            for month, made_at in sorted(first_pay.items()):
+                if now - made_at < wait:
+                    continue
+                transfers = settlement(db, group_id, month).transfers
+                if not any(t.from_user_id == user.id for t in transfers):
+                    continue  # 송금 완료를 눌렀거나 더 보낼 돈이 없다
+                created += notify(
+                    db,
+                    group_id=group_id,
+                    kind="billing",
+                    event="settlement_remind",
+                    recipients=[user.id],
+                    title="정산 송금이 아직 남았어요",
+                    body=f"{month} 정산에서 보낼 돈이 있어요",
+                    target_type="settlement",
+                    target_id=month,
+                )
+        if created:
+            db.commit()
+        return created
+    except Exception as exc:  # 개인 정보는 남기지 않는다(예외 종류만)
+        log.warning("settlement reminder check failed error=%s", type(exc).__name__)
+        return 0
 
 
 # ---- 정산 담당자와 월말 알림 ----
