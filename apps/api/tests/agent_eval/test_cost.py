@@ -20,6 +20,7 @@ from evals.agent_eval.cost import (
 )
 
 HAIKU, SONNET, OPUS = "claude-haiku-5-5", "claude-sonnet-5-5", "claude-opus-5-5"
+OPEN = {Scope.BASELINE: D(0), Scope.LOOP: D(0), Scope.PROJECT: D(0)}  # 첫 실행: 지금까지 합 0
 
 
 def test_call_cost_uses_official_per_million_token_prices():
@@ -67,7 +68,7 @@ def test_caps_and_scope_sets_match_the_agreed_budgets():
 
 
 def test_ledger_records_per_call_usage_and_cumulative_cost_exactly():
-    ledger = Ledger(OTHER_RUN_SCOPES)
+    ledger = Ledger(OTHER_RUN_SCOPES, OPEN)
     first = ledger.record("c-1", 0, HAIKU, 1_000, 500)
     second = ledger.record("c-1", 0, HAIKU, 1_000, 500)
     other = ledger.record("c-1", 1, HAIKU, 1_000, 500)
@@ -89,17 +90,17 @@ def test_ledger_has_no_float_drift():
 
 
 def test_run_cap_is_per_runner_invocation_and_stops_after_the_call_that_crosses_it():
-    ledger = Ledger(OTHER_RUN_SCOPES)
+    ledger = Ledger(OTHER_RUN_SCOPES, OPEN)
     ledger.record("c", 0, SONNET, 1_000_000, 0)  # 2달러, 상한과 같음
     with pytest.raises(BudgetExceeded) as err:
         ledger.record("c", 1, SONNET, 1_000, 0)
     assert err.value.scope is Scope.RUN and err.value.cap == D(2)
     assert len(ledger.usages) == 2  # 넘긴 호출도 기록은 남는다
-    assert Ledger(OTHER_RUN_SCOPES).spent[Scope.RUN] == 0  # 새 실행은 0 에서 시작
+    assert Ledger(OTHER_RUN_SCOPES, OPEN).spent[Scope.RUN] == 0  # 새 실행은 0 에서 시작
 
 
 def test_baseline_cap_accumulates_over_several_runs_through_opening():
-    first = Ledger(BASELINE_RUN_SCOPES)
+    first = Ledger(BASELINE_RUN_SCOPES, OPEN)
     first.record("c", 0, SONNET, 600_000, 0)  # 1.2달러
     second = Ledger(
         BASELINE_RUN_SCOPES, opening={Scope.BASELINE: D("4.9"), Scope.PROJECT: D("4.9")}
@@ -112,7 +113,7 @@ def test_baseline_cap_accumulates_over_several_runs_through_opening():
 
 
 def test_loop_calls_are_not_limited_by_the_per_run_cap_but_by_loop_and_project():
-    ledger = Ledger(LOOP_CALL_SCOPES)
+    ledger = Ledger(LOOP_CALL_SCOPES, OPEN)
     ledger.record(
         "gen", 0, SONNET, 1_500_000, 0
     )  # 3달러 > 실행 1회 상한이지만 후보 생성이라 괜찮다
@@ -141,15 +142,95 @@ def test_estimate_is_checked_against_every_scope_before_any_spending():
         ledger.check_estimate(D("0.51"))
     assert err.value.scope is Scope.BASELINE and ledger.usages == []
     with pytest.raises(BudgetExceeded) as run_err:
-        Ledger(OTHER_RUN_SCOPES).check_estimate(D("2.01"))
+        Ledger(OTHER_RUN_SCOPES, OPEN).check_estimate(D("2.01"))
     assert run_err.value.scope is Scope.RUN
 
 
 def test_remaining_shows_what_is_left_per_scope():
-    ledger = Ledger(BASELINE_RUN_SCOPES, opening={Scope.PROJECT: D("10")})
+    ledger = Ledger(BASELINE_RUN_SCOPES, opening={Scope.BASELINE: D(0), Scope.PROJECT: D("10")})
     ledger.record("c", 0, SONNET, 100_000, 0)  # 0.2달러
     assert ledger.remaining() == {
         Scope.RUN: D("1.8"),
         Scope.BASELINE: D("4.8"),
         Scope.PROJECT: D("29.8"),
     }
+
+
+def test_cumulative_scopes_require_an_explicit_opening():
+    with pytest.raises(ValueError):
+        Ledger(BASELINE_RUN_SCOPES)  # 빠뜨리면 상한이 매번 새로 적용되므로 막는다
+    with pytest.raises(ValueError):
+        Ledger(OTHER_RUN_SCOPES, opening={Scope.LOOP: D(0)})  # PROJECT 가 빠짐
+    Ledger((Scope.RUN,))  # RUN 만 쓰면 opening 이 필요 없다
+
+
+def test_spawned_ledgers_share_cumulative_scopes_but_not_the_run_scope():
+    loop = Ledger(LOOP_RUN_SCOPES, {Scope.LOOP: D(0), Scope.PROJECT: D("10")})
+    loop.record("c", 0, SONNET, 600_000, 0)  # 1.2달러
+    generation = loop.spawn(LOOP_CALL_SCOPES)
+    generation.record("gen", 0, SONNET, 1_000_000, 0)  # 2달러
+    assert loop.spent[Scope.LOOP] == generation.spent[Scope.LOOP] == D("3.2")
+    assert loop.spent[Scope.PROJECT] == generation.spent[Scope.PROJECT] == D("13.2")
+    assert loop.spent[Scope.RUN] == D("1.2")  # RUN 은 기록장마다 따로
+    next_run = loop.spawn(LOOP_RUN_SCOPES)
+    assert next_run.spent[Scope.RUN] == 0 and next_run.spent[Scope.LOOP] == D("3.2")
+    with pytest.raises(ValueError):
+        loop.spawn(BASELINE_RUN_SCOPES)  # 공유 풀에 없는 누적 범위
+
+
+def test_loop_wide_estimates_are_checked_with_a_ledger_without_the_run_scope():
+    loop = Ledger(LOOP_RUN_SCOPES, {Scope.LOOP: D(0), Scope.PROJECT: D(0)})
+    loop.spawn(LOOP_CALL_SCOPES).check_estimate(
+        D("14")
+    )  # 실행 2달러 상한과 무관하게 루프 15달러 안
+    with pytest.raises(BudgetExceeded) as err:
+        loop.check_estimate(D("14"))  # RUN 이 있는 기록장은 실행 상한에 걸린다
+    assert err.value.scope is Scope.RUN
+
+
+def test_check_call_blocks_a_call_whose_worst_case_would_cross_a_cap():
+    ledger = Ledger(OTHER_RUN_SCOPES, OPEN)
+    ledger.check_call(OPUS, 0, 100_000)  # 최악 2달러, 상한과 같음
+    with pytest.raises(BudgetExceeded) as err:
+        ledger.check_call(OPUS, 0, 200_000)  # 최악 4달러
+    assert err.value.scope is Scope.RUN and err.value.spent == D("4") and ledger.usages == []
+
+
+@pytest.mark.parametrize(
+    "bad",
+    [
+        lambda: Ledger(OTHER_RUN_SCOPES, {Scope.PROJECT: D(-1)}),
+        lambda: Ledger(OTHER_RUN_SCOPES, {Scope.PROJECT: 5}),  # float·int 는 거부(Decimal 만)
+        lambda: Ledger((Scope.RUN, Scope.RUN)),
+        lambda: Ledger((Scope.RUN,), caps={Scope.LOOP: D(1)}),
+        lambda: Ledger((Scope.RUN,)).check_estimate(D(-5)),
+        lambda: estimate_cost(HAIKU, -10, 1, 1),
+        lambda: token_cap_for(D(-1), HAIKU),
+        lambda: call_cost(HAIKU, 1.5, 0),
+        lambda: call_cost(HAIKU, True, 0),
+        lambda: call_cost(HAIKU, 0, -1),
+    ],
+)
+def test_invalid_inputs_are_rejected(bad):
+    with pytest.raises(ValueError):
+        bad()
+
+
+def test_exceeded_error_and_usage_rows_report_exact_amounts():
+    ledger = Ledger(OTHER_RUN_SCOPES, OPEN)
+    ledger.record("c", 0, SONNET, 1_000_000, 0)  # 2달러
+    with pytest.raises(BudgetExceeded) as err:
+        ledger.record("c", 0, SONNET, 500_000, 0)  # 1달러 더
+    assert err.value.spent == D("3") and err.value.cap == D("2")
+    assert [u.as_dict()["cumulative_usd"] for u in ledger.usages] == ["2.00", "3.00"]
+
+
+def test_caps_can_be_injected_and_remaining_counts_the_opening():
+    ledger = Ledger(
+        (Scope.RUN, Scope.PROJECT),
+        {Scope.PROJECT: D("9.5")},
+        caps={Scope.RUN: D(1), Scope.PROJECT: D(10)},
+    )
+    assert ledger.remaining() == {Scope.RUN: D(1), Scope.PROJECT: D("0.5")}
+    with pytest.raises(BudgetExceeded):
+        ledger.record("c", 0, SONNET, 300_000, 0)  # 0.6달러 → 전체 10.1

@@ -16,7 +16,15 @@ Anthropic API 1차 단가(`PRICES`)로 계산한다. 단가를 모르는 모델�
 
 어떤 지출이 어느 범위에 들어가는지는 `*_SCOPES` 상수가 정한다(예: 베이스라인 실행은 RUN·BASELINE·
 PROJECT, 루프 안의 재평가 실행은 RUN·LOOP·PROJECT, 후보를 만드는 호출은 LOOP·PROJECT).
-BASELINE·LOOP·PROJECT 의 '지금까지의 합'은 호출하는 쪽이 이전 실행 기록(manifest)에서 읽어 `opening` 으로 넘긴다.
+BASELINE·LOOP·PROJECT 의 '지금까지의 합'은 호출하는 쪽이 이전 실행 기록(manifest)에서 읽어 `opening` 으로 넘기고,
+빠뜨리면 상한이 매번 새로 적용되므로 기록장을 만들 때 오류로 막는다(첫 실행이면 0 을 명시한다).
+
+## 쓰는 법
+- 모델 호출 직전에 `check_call(model, tokens_in, max_tokens_out)` 으로 최악의 비용이 상한을 넘기지 않는지 본다
+  (`record` 는 호출이 끝난 뒤 기록하므로 호출 하나의 크기만큼은 상한을 넘을 수 있다).
+- 루프 안에서는 재평가 실행용 기록장과 후보 생성용 기록장이 LOOP·PROJECT 합계를 함께 써야 하므로, 처음 만든
+  기록장에서 `spawn(scopes)` 로 파생한다(누적 범위는 공유하고 RUN 은 각자). 루프 전체의 사전 추정은 RUN 이 없는
+  `LOOP_CALL_SCOPES` 기록장으로 검사한다(RUN 상한은 실행마다 따로 적용된다).
 """
 
 from collections import Counter
@@ -58,8 +66,9 @@ def _price(model: str) -> Price:
 
 def call_cost(model: str, tokens_in: int, tokens_out: int) -> Decimal:
     """모델 호출 한 번의 비용(USD)."""
-    if tokens_in < 0 or tokens_out < 0:
-        raise ValueError("토큰 수는 0 이상이어야 한다")
+    for tokens in (tokens_in, tokens_out):
+        if isinstance(tokens, bool) or not isinstance(tokens, int) or tokens < 0:
+            raise ValueError("토큰 수는 0 이상의 정수여야 한다")
     p = _price(model)
     long = p.long_threshold is not None and tokens_in > p.long_threshold
     in_price = p.long_input_per_mtok if long else p.input_per_mtok
@@ -70,6 +79,8 @@ def call_cost(model: str, tokens_in: int, tokens_out: int) -> Decimal:
 def token_cap_for(budget: Decimal, model: str) -> int:
     """예산을 토큰 상한으로 바꾼다. 입출력 비율을 모르는 동안은 전부 가장 비싼 출력 단가(장문 단가 포함)로
     계산해(보수적) 낮게 잡는다."""
+    if budget < 0:
+        raise ValueError("예산은 0 이상이어야 한다")
     p = _price(model)
     return int(budget / max(p.output_per_mtok, p.long_output_per_mtok or 0) * _MTOK)
 
@@ -78,6 +89,8 @@ def estimate_cost(
     model: str, queries: int, tokens_in_per_query: int, tokens_out_per_query: int
 ) -> Decimal:
     """질의 수와 질의당 토큰(가정값, 호출하는 쪽이 정한다)으로 실행 전에 비용을 추정한다."""
+    if queries < 0:
+        raise ValueError("질의 수는 0 이상이어야 한다")
     return queries * call_cost(model, tokens_in_per_query, tokens_out_per_query)
 
 
@@ -132,36 +145,71 @@ class CallUsage:
         }
 
 
+_CUMULATIVE = (Scope.BASELINE, Scope.LOOP, Scope.PROJECT)  # 실행을 넘어 누적되는 범위
+
+
 class Ledger:
-    """호출별 사용량과 누적 비용을 기록하고, 적용 범위의 상한을 지킨다."""
+    """호출별 사용량과 누적 비용을 기록하고, 적용 범위의 상한을 지킨다.
+
+    누적 범위(BASELINE·LOOP·PROJECT)의 합은 `spawn` 으로 파생한 기록장끼리 공유하고, RUN 은 기록장마다 따로다.
+    """
 
     def __init__(
         self,
         scopes: Sequence[Scope],
         opening: Mapping[Scope, Decimal] | None = None,
         caps: Mapping[Scope, Decimal] = CAPS,
+        _pool: dict[Scope, Decimal] | None = None,
     ) -> None:
         self.scopes = tuple(scopes)
+        if len(set(self.scopes)) != len(self.scopes):
+            raise ValueError("범위가 중복되었다(같은 비용이 두 번 합산된다)")
+        if any(s not in caps for s in self.scopes):
+            raise ValueError("caps 에 없는 범위가 있다")
         self._caps = caps
-        self.spent: dict[Scope, Decimal] = {s: Decimal(0) for s in self.scopes}
-        for scope, amount in (opening or {}).items():
-            if scope in self.spent:
-                self.spent[scope] += amount
+        needed = [s for s in self.scopes if s in _CUMULATIVE]
+        if _pool is None:
+            opening = opening or {}
+            if any(not isinstance(v, Decimal) or v < 0 for v in opening.values()):
+                raise ValueError("opening 은 0 이상의 Decimal 이어야 한다")
+            _pool = {s: opening[s] for s in needed if s in opening}
+        missing = [s.value for s in needed if s not in _pool]
+        if missing:
+            raise ValueError(f"누적 범위의 지금까지 합(opening)이 필요하다: {missing}")
+        self._pool = _pool
+        self._run = Decimal(0)
         self.usages: list[CallUsage] = []
         self.total = Decimal(0)  # 이 기록장이 직접 쓴 합(opening 제외)
         self._counts: Counter[tuple[str, int]] = Counter()
 
+    def spawn(self, scopes: Sequence[Scope]) -> "Ledger":
+        """누적 범위를 공유하는 기록장을 파생한다(같은 루프 안의 재평가 실행, 후보 생성 등)."""
+        return Ledger(scopes, caps=self._caps, _pool=self._pool)
+
+    def _amount(self, scope: Scope) -> Decimal:
+        return self._run if scope is Scope.RUN else self._pool[scope]
+
+    @property
+    def spent(self) -> dict[Scope, Decimal]:
+        return {s: self._amount(s) for s in self.scopes}
+
     def _over(self, extra: Decimal) -> Scope | None:
-        return next((s for s in self.scopes if self.spent[s] + extra > self._caps[s]), None)
+        return next((s for s in self.scopes if self._amount(s) + extra > self._caps[s]), None)
 
     def check_estimate(self, estimate: Decimal) -> None:
         """시작하기 전에 추정 비용이 어느 범위의 상한이라도 넘기면 막는다."""
+        if estimate < 0:
+            raise ValueError("추정 비용은 0 이상이어야 한다")
         scope = self._over(estimate)
         if scope is not None:
-            raise BudgetExceeded(scope, self.spent[scope] + estimate, self._caps[scope])
+            raise BudgetExceeded(scope, self._amount(scope) + estimate, self._caps[scope])
+
+    def check_call(self, model: str, tokens_in: int, max_tokens_out: int) -> None:
+        """모델 호출 직전에 최악의 비용(출력이 max_tokens_out 까지 나올 때)으로 상한을 검사한다."""
+        self.check_estimate(call_cost(model, tokens_in, max_tokens_out))
 
     def remaining(self) -> dict[Scope, Decimal]:
-        return {s: self._caps[s] - self.spent[s] for s in self.scopes}
+        return {s: self._caps[s] - self._amount(s) for s in self.scopes}
 
     def record(
         self, case_id: str, repeat: int, model: str, tokens_in: int, tokens_out: int
@@ -169,7 +217,10 @@ class Ledger:
         """호출 하나를 기록한다. 기록한 뒤 상한을 넘었으면 `BudgetExceeded` 로 남은 호출을 멈추게 한다."""
         cost = call_cost(model, tokens_in, tokens_out)
         for scope in self.scopes:
-            self.spent[scope] += cost
+            if scope is Scope.RUN:
+                self._run += cost
+            else:
+                self._pool[scope] += cost
         self.total += cost
         index = self._counts[(case_id, repeat)]
         self._counts[(case_id, repeat)] += 1
@@ -177,5 +228,5 @@ class Ledger:
         self.usages.append(usage)
         scope = self._over(Decimal(0))
         if scope is not None:
-            raise BudgetExceeded(scope, self.spent[scope], self._caps[scope])
+            raise BudgetExceeded(scope, self._amount(scope), self._caps[scope])
         return usage
