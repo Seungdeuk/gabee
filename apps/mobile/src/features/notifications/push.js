@@ -18,6 +18,9 @@ export function isUsableToken(token) {
   );
 }
 
+/** 예약 푸시(일정 탭으로 가는 것): 시간 있는 약속 30분 전·할 일 30분 전·시간 없는 항목 전날 저녁. `todo_due` 는 옛 서버의 할 일 아침 9시 푸시(이미 보낸 알림을 눌러도 일정 탭으로). */
+const SCHEDULE_PUSH_EVENTS = ["event_soon", "todo_soon", "evening_before", "todo_due"];
+
 /**
  * 푸시를 눌렀을 때 이동할 화면 경로. 알림함 사건은 알림함으로, 소통 푸시(kind=chat)는 그 채팅방으로 간다.
  * 푸시에는 방 id 만 있어서 방 종류·상대는 채팅방을 여는 길(`/chat-open`)이 방 목록으로 찾는다(방 id 가 없으면 소통 탭 목록).
@@ -28,7 +31,7 @@ export function routeForPush(data) {
   if (data?.kind === "chat") {
     return typeof data.room_id === "string" && data.room_id ? `/chat-open?roomId=${encodeURIComponent(data.room_id)}` : "/family-chat";
   }
-  if (data?.kind === "schedule" && (data.event === "event_soon" || data.event === "todo_due")) return "/schedule"; // 예약 푸시(일정 30분 전·할 일 아침)는 일정 탭으로
+  if (data?.kind === "schedule" && SCHEDULE_PUSH_EVENTS.includes(data.event)) return "/schedule"; // 예약 푸시(약속·할 일 30분 전, 시간 없는 항목 전날 저녁)는 일정 탭으로
   return "/notifications";
 }
 
