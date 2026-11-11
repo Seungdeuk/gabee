@@ -99,3 +99,23 @@ export const remaining = (total, shown) => Math.max(0, total - shown);
 
 /** 정산 대상 태그 이름. custom 은 정산하는 사람이 나눌 사람을 직접 고른 경우다. */
 export const TAG_LABEL = { parents: "부모님 대상", children: "자녀 대상", all: "가족 전체", custom: "직접 고름" };
+
+/**
+ * 앱에서 고칠 수 있는 지출인가: 내가 낸 지출이고 정산하기를 마치기 전이어야 한다(서버 규칙과 같다. 송금 완료가 있는 달의 잠금은
+ * 서버가 알려 준다).
+ * @param {{ paid_by: string, settled?: boolean }} expense @param {string | null | undefined} myId 로그인한 나
+ * @returns {boolean}
+ */
+export const canEditExpense = (expense, myId) => Boolean(myId) && expense.paid_by === myId && !expense.settled;
+
+/**
+ * 지금 값과 다른 것만 담은 수정 요청 바디. 바뀐 것이 없으면 빈 객체.
+ * @param {{ title: string, amount: number, date: string }} old 서버에서 받은 지출
+ * @param {{ title: string, amount: number, date: string }} next 폼에서 정한 값(제목은 다듬은 값)
+ * @returns {{ title?: string, amount?: number, date?: string }}
+ */
+export function expensePatch(old, next) {
+  const patch = {};
+  for (const key of ["title", "amount", "date"]) if (next[key] !== old[key]) patch[key] = next[key];
+  return patch;
+}
