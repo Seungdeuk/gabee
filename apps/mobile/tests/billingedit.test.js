@@ -7,7 +7,7 @@ import { canEditExpense, expensePatch } from "../src/features/billing/format.js"
 process.env.EXPO_PUBLIC_API_URL = "http://api.test";
 process.env.EXPO_PUBLIC_DEV_TOKEN = "legacy-dev-token";
 // 서버 주소는 불러올 때 읽으므로 환경변수를 정한 뒤에 불러온다
-const { updateExpense } = await import("../src/features/billing/api.js");
+const { deleteExpense, updateExpense } = await import("../src/features/billing/api.js");
 
 const realFetch = globalThis.fetch;
 beforeEach(() => {
@@ -56,5 +56,22 @@ test("규칙에 어긋나면 서버 문구를 담은 오류가 난다", async ()
   await assert.rejects(
     () => updateExpense("e1", { amount: 1 }),
     (e) => e.status === 400 && e.code === "expense_not_editable" && /정산하기를 마친/.test(e.message),
+  );
+});
+
+test("deleteExpense 는 DELETE /billing/expenses/{id} 를 부르고, 규칙에 어긋나면 서버 문구를 담은 오류가 난다", async () => {
+  const calls = [];
+  globalThis.fetch = async (url, init) => {
+    calls.push({ url: String(url), method: init?.method });
+    return new Response(null, { status: 204 });
+  };
+  await deleteExpense("e1");
+  assert.equal(calls[0].method, "DELETE");
+  assert.match(calls[0].url, /\/billing\/expenses\/e1$/);
+  globalThis.fetch = async () =>
+    new Response(JSON.stringify({ code: "expense_not_deletable", message: "내가 낸 지출만 지울 수 있어요" }), { status: 400, headers: { "Content-Type": "application/json" } });
+  await assert.rejects(
+    () => deleteExpense("e2"),
+    (e) => e.status === 400 && e.code === "expense_not_deletable" && /내가 낸 지출만/.test(e.message),
   );
 });
