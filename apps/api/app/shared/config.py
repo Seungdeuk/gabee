@@ -167,6 +167,10 @@ class Settings(BaseSettings):
     ai_call_talk_max_calls_per_user_per_day: int = 10
     ai_call_talk_max_calls_per_group_per_day: int = 30
     # 먼저 권해드려요 카드 공급(미리 만들어 저장): 하루 3번(5개씩 15개), 요청 간격 5초
+    # 골든벨 가비 추천: 하루 한 번 만들어 당일 자정까지 캐시한다. 실패·결과 없음일 때만 다시 불러서 별도 한도로 센다(ai_guard.register_bucket)
+    ai_play_quiz_rec_cooldown_seconds: int = 5
+    ai_play_quiz_rec_max_calls_per_user_per_day: int = 3
+    ai_play_quiz_rec_max_calls_per_group_per_day: int = 5
     ai_schedule_card_cooldown_seconds: int = 5
     ai_schedule_card_max_calls_per_user_per_day: int = 3
     ai_schedule_card_max_calls_per_group_per_day: int = 15

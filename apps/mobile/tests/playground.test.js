@@ -3,13 +3,13 @@ import assert from "node:assert/strict";
 import { afterEach, beforeEach, test } from "node:test";
 
 import { base64ToBytes } from "../src/features/playground/upload.js";
-import { lobbyPlayers, nextTurnPlayerId, bombHistoryView, endedLabel, unfairMessageId, bestView, bitsOf, bombChat, bombPath, bombScreen, boardRow, recordNote, drawResultView, photoGuessView, photoResultView, zoomBoxStyle, familyView, quizAnswerBody, quizPlayView, quizQuestions, quizResultView, boardView, clockLabel, indexOfBits, pastLabel, playRoute, rankingView, revealLabel, withIga } from "../src/features/playground/adapt.js";
+import { lobbyPlayers, questionFromRec, recLabel, recView, stepIndex, nextTurnPlayerId, bombHistoryView, endedLabel, unfairMessageId, bestView, bitsOf, bombChat, bombPath, bombScreen, boardRow, recordNote, drawResultView, photoGuessView, photoResultView, zoomBoxStyle, familyView, quizAnswerBody, quizPlayView, quizQuestions, quizResultView, boardView, clockLabel, indexOfBits, pastLabel, playRoute, rankingView, revealLabel, withIga } from "../src/features/playground/adapt.js";
 
 process.env.EXPO_PUBLIC_API_URL = "http://api.test";
 process.env.EXPO_PUBLIC_DEV_TOKEN = "legacy-dev-token";
 
 // 서버 주소는 불러올 때 읽으므로 환경 변수를 정한 뒤에 가져온다
-const { createDraw, createPhoto, createQuiz, getQuota, openHint, sendAnswers, sendTry } = await import("../src/features/playground/api.js");
+const { createDraw, createPhoto, createQuiz, getQuizRecs, getQuota, openHint, sendAnswers, sendTry } = await import("../src/features/playground/api.js");
 
 const realFetch = globalThis.fetch;
 beforeEach(() => {
@@ -560,4 +560,55 @@ test("다음 차례: 살아서 참여 중인 선수 중 지금 차례 바로 다
   // 차례가 없거나 살아 있는 사람이 하나면 없음
   assert.equal(nextTurnPlayerId({ turn: null, players: four }), null);
   assert.equal(nextTurnPlayerId(room("h", [p("h")])), null);
+});
+
+// ---------- 골든벨 가비 추천 ----------
+const REC_ITEM = { id: "r1", source: "schedule", kind: "choice", question: "여행지는?", options: ["제주도", "강릉", "부산"], answer_index: 0 };
+
+test("가비 추천: 문제가 있으면 문제를, 없으면 상태별 안내를 보여 준다", () => {
+  assert.deepEqual(recView({ state: "ok", items: [REC_ITEM] }), { items: [REC_ITEM] });
+  assert.equal(recView({ state: "no_data", items: [] }).notice, "가족의 이야기가 더 모이면\n가비가 재미있는 문제를 준비할게요!");
+  assert.equal(recView({ state: "used_up", items: [] }).notice, "오늘 추천은 여기까지예요");
+  assert.equal(recView({ state: "ok", items: [] }).notice, "오늘 추천은 여기까지예요"); // 낸 문제를 숨겨 비게 된 경우
+  assert.equal(recView({ state: "preparing", items: [] }).notice, "가비가 문제를 준비 중이에요");
+  assert.equal(recView({ state: "cooldown", items: [] }).notice, "조금 뒤에 다시 해주세요");
+  assert.equal(recView({ state: "failed", items: [] }).notice, "가비가 문제를 준비하기 어려워요");
+  assert.equal(recView({ state: "ai_off", items: [] }).notice, "가족 소유자나 관리자가 AI를 켜면\n가비가 문제를 준비할 수 있어요");
+  // 서버 응답이 없거나 모르는 상태는 못 만든 것으로 본다
+  assert.equal(recView(null).notice, "가비가 문제를 준비하기 어려워요");
+  assert.equal(recView({ state: "weird", items: [] }).notice, "가비가 문제를 준비하기 어려워요");
+});
+
+test("가비 추천: 새로고침은 다시 해 볼 수 있는 상태에만 둔다", () => {
+  for (const state of ["preparing", "cooldown", "failed"]) assert.equal(recView({ state, items: [] }).refresh, true, state);
+  for (const state of ["no_data", "used_up", "ai_off"]) assert.equal(recView({ state, items: [] }).refresh, false, state);
+});
+
+test("가비 추천: 카드 넘기기는 끝에서 처음으로, 처음에서 끝으로 돌아간다", () => {
+  assert.equal(stepIndex(0, 3, 1), 1);
+  assert.equal(stepIndex(2, 3, 1), 0);
+  assert.equal(stepIndex(0, 3, -1), 2);
+  assert.equal(stepIndex(1, 3, -1), 0);
+  assert.equal(stepIndex(0, 1, 1), 0);
+  assert.equal(stepIndex(5, 0, 1), 0);
+});
+
+test("가비 추천: 출처 알약 글자와 문제 칸에 채울 값", () => {
+  assert.equal(recLabel(REC_ITEM), "일정에서 · 선택");
+  assert.equal(recLabel({ ...REC_ITEM, source: "chat", kind: "ox" }), "소통방에서 · OX");
+  const q = questionFromRec(REC_ITEM);
+  assert.deepEqual(q, { kind: "choice", q: "여행지는?", options: ["제주도", "강릉", "부산"], answer: 0, withNote: false, note: "", rec: "r1" });
+  assert.notEqual(q.options, REC_ITEM.options); // 고쳐도 추천 원본이 바뀌지 않게 복사한다
+  // 채운 문제는 그대로 서버 문항으로 바뀐다
+  assert.deepEqual(quizQuestions([q]), [{ qtype: 2, question: "여행지는?", options: ["제주도", "강릉", "부산"], answer_index: 0, comment: undefined }]);
+});
+
+test("가비 추천: 서버 주소 /play/quiz/recommendations 를 부른다", async () => {
+  const calls = [];
+  globalThis.fetch = async (url, init) => {
+    calls.push([init.method ?? "GET", url.replace("http://api.test", "")]);
+    return new Response(JSON.stringify({ state: "ok", items: [REC_ITEM] }), { status: 200, headers: { "content-type": "application/json" } });
+  };
+  assert.deepEqual(await getQuizRecs(), { state: "ok", items: [REC_ITEM] });
+  assert.deepEqual(calls, [["GET", "/play/quiz/recommendations"]]);
 });

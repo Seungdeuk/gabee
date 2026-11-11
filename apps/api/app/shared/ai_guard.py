@@ -272,10 +272,18 @@ def _find_cache(db: Session, group_id: str, feature: str, key: str, now: datetim
 
 
 def _store_cache(
-    db: Session, group_id: str, feature: str, key: str, result: dict, now: datetime
+    db: Session,
+    group_id: str,
+    feature: str,
+    key: str,
+    result: dict,
+    now: datetime,
+    until: datetime | None = None,
 ) -> None:
     ttl = settings.ai_result_cache_ttl_seconds
-    if ttl <= 0:
+    if until is None and ttl <= 0:
+        return
+    if until is not None and until <= now:
         return
     db.execute(  # 같은 키와, 이미 만료된 이 가족의 결과를 함께 지운다(만료된 요약·후보가 남아 쌓이지 않게)
         delete(AiResultCache).where(
@@ -294,7 +302,7 @@ def _store_cache(
             cache_key=key,
             result=json.dumps(result, ensure_ascii=False),
             created_at=now,
-            expires_at=now + timedelta(seconds=ttl),
+            expires_at=until if until is not None else now + timedelta(seconds=ttl),
         )
     )
     try:
@@ -414,10 +422,12 @@ def run(
     feature: str,
     cache_key: str | None,
     call: Callable[[], tuple[dict, llm.JsonResult]],
+    cache_until: datetime | None = None,
 ) -> Outcome:
     """AI 기능 하나를 가드 아래에서 실행한다. call() 은 (검증이 끝난 결과, LLM 응답)을 돌려주고, 실패하면 llm.LLMUnavailable 이나 ValueError.
     cache_key 는 같은 요청이면 같아야 하고, 분석 범위가 바뀌면(새 메시지 등) 달라져야 한다(그래야 캐시가 갱신된다).
     cache_key=None 이면 결과를 캐시에 읽지도 쓰지도 않는다(대화처럼 같은 요청이 없고 원문을 남기면 안 되는 기능).
+    cache_until 을 주면 결과 캐시가 그 시각까지 남는다(주지 않으면 설정의 기본 시간 `ai_result_cache_ttl_seconds`). 하루 한 번만 만드는 기능이 당일 자정까지 쓰는 값이다.
     call() 이 돌려준 응답에 `calls`(실제 Anthropic 호출 수, 1 이상)가 있으면 그 수를 사용 기록·한도에 센다(도구 루프처럼 한 요청이 여러 번 부르는 경우)."""
     if not is_enabled(db, group_id):
         raise ApiError(
@@ -496,7 +506,7 @@ def run(
         _log_nested(db, log, nested_features)
         db.commit()
         if cache_key is not None:
-            _store_cache(db, group_id, feature, cache_key, result, now)
+            _store_cache(db, group_id, feature, cache_key, result, now, cache_until)
         return Outcome(
             result, False, calls, response.input_tokens, response.output_tokens, response.model
         )
