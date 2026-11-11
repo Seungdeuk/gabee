@@ -10,10 +10,12 @@ import EventList from "../components/report/EventList";
 import GabeeBubble from "../components/report/GabeeBubble";
 import InsightCard from "../components/report/InsightCard";
 import NoFamilyBox from "../components/report/NoFamilyBox";
+import NewsCard from "../components/report/NewsCard";
 import NoticeBox from "../components/report/NoticeBox";
 import ReportSkeleton from "../components/report/ReportSkeleton";
 import StatBand from "../components/report/StatBand";
 import WeekSwitcher from "../components/report/WeekSwitcher";
+import { useWeeklyNews } from "../news/useWeeklyNews";
 import { useWeeklyReport } from "../report/useWeeklyReport";
 
 /**
@@ -24,6 +26,7 @@ export default function ReportScreen() {
   const router = useRouter();
   const r = useWeeklyReport();
   const { status, report, range } = r;
+  const news = useWeeklyNews({ weekStart: range.start, enabled: status === "ready" });
   const openSchedule = () => router.push("/schedule");
 
   let body = null;
@@ -47,6 +50,17 @@ export default function ReportScreen() {
           onCurrent={r.goCurrent}
         />
         <GabeeBubble text={report.line} />
+        <NewsCard
+          phase={news.phase}
+          offset={range.offset}
+          news={news.news}
+          error={news.error}
+          creating={news.creating}
+          createError={news.createError}
+          onCreate={news.create}
+          onReload={news.reload}
+          onOpenItem={(route) => router.push(route)}
+        />
         <StatBand
           sharedCount={report.sharedCount}
           todoDone={report.todoDone}

@@ -32,3 +32,18 @@ export const listSharedDocuments = ({ from, to } = {}) => {
   }
   return apiFetch(`/ai-assistant/knowledge/items?${query.toString()}`);
 };
+
+/**
+ * 한 주의 가족 뉴스(내 것). 읽기 전용이라 저장본이 없어도 만들지 않고 상태만 돌려준다.
+ * @param {string} weekStart 그 주 월요일 "YYYY-MM-DD"
+ * @returns {Promise<object>} NewsOut
+ */
+export const getWeeklyNews = (weekStart) => apiFetch(`/report/news?week_start=${encodeURIComponent(weekStart)}`);
+
+/**
+ * 한 주의 가족 뉴스를 만든다(AI 호출 1회, 이미 있으면 저장본을 그대로 돌려준다).
+ * @param {string} weekStart 그 주 월요일 "YYYY-MM-DD"
+ * @returns {Promise<object>} NewsOut
+ */
+export const createWeeklyNews = (weekStart) =>
+  apiFetch(`/report/news?week_start=${encodeURIComponent(weekStart)}`, { method: "POST" });
