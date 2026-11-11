@@ -813,11 +813,134 @@ def test_huge_candidate_list_is_bounded(sources):
 
 
 def test_known_limit_small_numbers_overlap_counts_and_hours(sources):
-    # 건수(2)·12시간제 시(14:30 → 2)·월(11) 과 겹치는 작은 숫자는 단위가 달라도 통과한다.
-    # 단위 접미사("명"·"월"·"건")까지 구분하는 보강은 T26-b 과제다. 이 시험이 바뀌면 문서도 같이 고친다.
-    for text in ("학교 공연에 2명이 왔어요", "학교 공연에 11명이 왔어요"):
-        r = ok(validate(cand([(text, ["e1"])]), sources, set()))
-        assert len(r.items) == 1, text
+    # 건수(2)와 겹치는 작은 숫자는 단위가 같아도 통과한다(집계와 구분할 수 없다). 날짜·시각 숫자와의 겹침은
+    # 단위 접미사(명·개·번·원·건)가 붙으면 막는다(아래 시험).
+    r = ok(validate(cand([("학교 공연에 2명이 왔어요", ["e1"])]), sources, set()))
+    assert len(r.items) == 1
     # 겹치지 않는 숫자는 막힌다
     r = validate(cand([("학교 공연에 33명이 왔어요", ["e1"])]), sources, set())
     assert isinstance(r, Failed)
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "학교 공연에 11명이 왔어요",  # 11 은 월
+        "학교 공연에 10명이 왔어요",  # 10 은 일
+        "학교 공연에 10개를 샀어요",
+        "학교 공연에 10번 갔어요",
+        "학교 공연에 10원을 냈어요",
+        "학교 공연에 10건이 있어요",
+        "학교 공연에 １１명이 왔어요",  # 전각
+        "학교 공연에 11 명이 왔어요",  # 공백 뒤 단위
+    ],
+)
+def test_count_unit_numbers_must_come_from_counts_or_labels_not_dates(sources, text):
+    assert isinstance(validate(cand([(text, ["e1"])]), sources, set()), Failed), text
+
+
+def test_count_unit_allowed_when_number_is_a_count_or_extra_count_or_label(sources):
+    # 건수(종류별·전체)
+    ok(validate(cand([("할 일 2개와 약속 2건이 있어요", ["e1", "t1"])]), sources, set()))
+    ok(validate(cand([("이번 주 5건이 있어요", ["e1"])]), sources, set()))
+    # 호출한 쪽이 허용한 추가 집계
+    ok(validate(cand([("학교 공연에 7명이 왔어요", ["e1"])]), sources, set(), counts=[7]))
+    # 인용한 근거의 제목에 있는 숫자
+    ok(validate(cand([("가정통신문 11월 소식 11개", ["d1"])]), sources, set()))
+
+
+def test_date_numbers_without_a_count_unit_still_pass(sources):
+    ok(validate(cand([("11월 10일 14:30 학교 공연", ["e1"])]), sources, set()))
+
+
+@pytest.mark.parametrize("mark", ["\u0301", "\u0300", "\u0302", "\u0308", "\u20dd", "\u0e47"])
+def test_combining_marks_inside_a_member_name_do_not_bypass_the_name_rule(sources, mark):
+    # 인용 근거에 없는 구성원 이름 사이에 결합 문자(Mn·Me)를 끼워도 같은 이름으로 본다
+    text = f"김{mark}철수 씨와 학교 공연"
+    r = validate(cand([(text, ["e1"])]), sources, {"김철수"})
+    assert isinstance(r, Failed), mark
+
+
+def test_combining_marks_in_the_member_name_list_are_also_ignored(sources):
+    r = validate(cand([("김철수 씨와 학교 공연", ["e1"])]), sources, {"김\u0301철수"})
+    assert isinstance(r, Failed)
+
+
+def test_name_with_marks_is_still_allowed_when_the_cited_label_has_it():
+    src = build_sources([rec("event", "x", "김철수 생일", D10, None)])
+    r = validate(cand([("김\u0301철수 생일이에요", ["e1"])]), src, {"김철수"})
+    assert isinstance(r, Validated)
+
+
+# ── 리뷰 반영: 보이지 않는 결합 문자로 숫자를 쪼개는 우회, 단위 접미사 오탐 ─────────────
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "학교 공연에 1\ufe0f1명이 왔어요",  # 이체자 선택자(Mn)가 11 을 쪼갠다
+        "학교 공연에 2\u034f5명이 왔어요",  # 결합 그래핌 연결자(CGJ)
+        "학교 공연에 1\u180b1명이 왔어요",  # 몽골 자유 변이 선택자
+        "학교 공연에 11\u0301명이 왔어요",  # 보이는 결합 악센트
+        "학교 공연 2\u034f5일에 가요",  # 단위 없는 숫자 규칙도 같다
+    ],
+)
+def test_invisible_combining_marks_cannot_split_numbers(sources, text):
+    assert isinstance(validate(cand([(text, ["e1"])]), sources, set()), Failed), text
+
+
+def test_invisible_marks_in_the_title_do_not_hide_numbers():
+    src = build_sources([rec("event", "x", "학교 공연", D10, "14:30")])
+    r = ok(
+        validate(
+            cand([("학교 공연이 있어요", ["e1"])], title="11\u034f명 모인 학교 공연"), src, set()
+        )
+    )
+    assert r.title == FALLBACK_TITLE
+
+
+def test_stored_text_has_no_invisible_marks(sources):
+    r = ok(validate(cand([("학교\u034f 공연\ufe0f이 있어요", ["e1"])]), sources, set()))
+    assert r.items[0].text == "학교 공연이 있어요"
+
+
+def test_unit_letters_that_start_a_word_are_not_units():
+    # 시각·날짜 뒤에 띄어 쓴 '원격'·'명동'·'건강검진'·'개학' 은 단위가 아니다(멀쩡한 문장을 버리지 않는다)
+    cases = [
+        ("14:30 원격 수업", "원격 수업"),
+        ("11월 10일 14:30 명동 쇼핑", "명동 쇼핑"),
+        ("11/10 명동 쇼핑", "명동 쇼핑"),
+        ("11월 10일 건강검진", "건강검진"),
+        ("11월 10일 개학식", "개학식"),
+        ("11월 10일 번개 모임", "번개 모임"),
+    ]
+    for text, label in cases:
+        src = build_sources([rec("event", "x", label, D10, "14:30")])
+        assert isinstance(validate(cand([(text, ["e1"])]), src, set()), Validated), text
+
+
+def test_ordinal_beon_jjae_is_not_a_count_unit(sources):
+    ok(validate(cand([("학교 공연 10번째 무대", ["e1"])]), sources, set()))
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "학교 공연에 10명이 왔어요",
+        "학교 공연에 10명 왔어요",
+        "학교 공연에 10명, 11개",
+        "학교 공연 10원.",
+    ],
+)
+def test_unit_followed_by_particle_or_punctuation_is_still_a_unit(sources, text):
+    assert isinstance(validate(cand([(text, ["e1"])]), sources, set()), Failed), text
+
+
+def test_known_limit_other_units_are_not_checked(sources):
+    # 단위 목록(명·개·번·원·건) 밖의 표현은 검증하지 못한다: 존칭 '분', 나이·횟수, 금액 단위 '만원'. 한계로 고정한다.
+    for text in (
+        "학교 공연에 11분이 오셨어요",
+        "학교 공연에 11회 갔어요",
+        "학교 공연에 11만원을 냈어요",
+    ):
+        assert isinstance(validate(cand([(text, ["e1"])]), sources, set()), Validated), text

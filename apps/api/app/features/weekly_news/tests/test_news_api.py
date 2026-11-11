@@ -315,3 +315,30 @@ def test_missing_table_is_503_for_news_only(client, family, at, monkeypatch):
         assert report["features"]["schedule"]["ready"] is True
     finally:
         monitor.reset()
+
+
+# ── 저장된 JSON 이 깨졌을 때(수동 수정·버그·옛 형식)는 500 이 아니라 failed ─────────
+
+
+@pytest.mark.parametrize(
+    "fields",
+    [
+        {"body": ["문자열이 아니라 목록"], "sources": []},
+        {"body": "그냥 문자열", "sources": []},
+        {"body": {"title": 1, "items": []}, "sources": []},
+        {"body": {"title": "제목", "items": "목록 아님"}, "sources": []},
+        {"body": {"title": "제목", "items": [{"text": "글"}]}, "sources": []},
+        {"body": {"title": "제목", "items": [1, 2]}, "sources": []},
+        {"body": BODY, "sources": "목록 아님"},
+        {"body": BODY, "sources": [{"id": "e1"}]},
+        {"body": BODY, "sources": [{"id": "e1", "kind": "alien", "ref": "r", "label": "l"}]},
+    ],
+)
+def test_corrupt_saved_json_is_failed_not_500(client, family, fields):
+    headers, _, _ = family
+    user_id, group_id = _ids(client, headers)
+    _save(user_id, group_id, LAST_MON, status="ok", model="m", **fields)
+    r = client.get(URL, params={"week_start": LAST_MON.isoformat()}, headers=headers)
+    assert r.status_code == 200, r.text
+    assert r.json()["status"] == "failed"
+    assert r.json()["items"] == [] and r.json()["sources"] == []
