@@ -250,3 +250,24 @@ def test_rules_and_prescriptions_never_reach_jev():
     classify(text_result("관리비 고지서\n납기일 2026.10.25\n청구금액 231,500원"), jev)
     classify(text_result("처방전\n환자명 홍길동\n타이레놀정 투약일수 5일\n용법: 식후"), jev)
     assert jev.calls == []
+
+
+def test_review_keeps_the_dates_and_amounts_found_by_rules(fake_classifier):
+    """종류를 못 정해 사람 확인으로 가도, 글에서 규칙으로 찾은 날짜·금액은 버리지 않는다(일정·챙길 일로 이어질 수 있게)."""
+    fake_classifier("학교 가정통신문", 0.5)
+    c = classify(text_result(NOTICE))
+    assert c.needs_review and c.doc_type == "기타 문서"
+    assert c.dates == ["2026-10-15", "2026-10-20"]
+    assert [(a.label, a.value) for a in c.amounts] == [("버스비", 12000)]
+
+
+def test_review_after_a_jev_failure_also_keeps_dates(fake_classifier):
+    fake_classifier("학교 가정통신문", 0.5)
+    for jev in (FakeJev(error=True), FakeJev(jev_answers(doc_type="none"))):
+        c = classify(text_result(NOTICE), jev)
+        assert c.needs_review and c.dates == ["2026-10-15", "2026-10-20"]
+
+
+def test_a_blank_document_review_has_no_dates():
+    c = classify(text_result("   "))
+    assert c.needs_review and c.dates == [] and c.amounts == []

@@ -18,6 +18,8 @@ class ChatIn(BaseModel):
     history: list[ChatTurn] = Field(default_factory=list, max_length=10)  # 앞 대화(오래된 것부터)
     # me: 나와 가비의 대화(기본). room: 가족 채팅방에서 @가비 로 부른 것 — 답을 방에 올려도 되는지 서버가 정해 visibility 로 알려 준다
     audience: Literal["me", "room"] = "me"
+    # audience=room 일 때 @가비 를 부른 1:1 방 id. 있으면 답을 그 1:1 방에 올린다(참가자 본인·상대가 가족일 때만). 없으면 가족 전체방.
+    room_id: str | None = Field(default=None, max_length=32)
 
 
 class ChatSource(BaseModel):
@@ -46,6 +48,7 @@ class ConfirmCardOut(BaseModel):
         "request_register",
         "request_edit",
         "request_cancel",
+        "habit_check",
         "share_select",
     ]
     title: str  # 카드 제목(예: 수진, 서연에게 공유해서 등록할까요?)
@@ -56,21 +59,57 @@ class ConfirmCardOut(BaseModel):
     items: list[ShareItemOut] = []
 
 
+class ShareConfirmIn(BaseModel):
+    """토큰에 보낼 글(최대 500자)이 들어 있어 정산 확인보다 길다."""
+
+    token: str = Field(min_length=10, max_length=16000)
+
+
+class MemoryOut(BaseModel):
+    """가비의 기억 한 줄."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    text: str
+    created_at: datetime
+
+
+class MemoryIn(BaseModel):
+    text: str = Field(min_length=1, max_length=400)  # 공백 정리 뒤 200자 안인지는 서버가 다시 본다
+
+
+class MemoriesOut(BaseModel):
+    items: list[MemoryOut]
+
+
+class MemoryDeletedOut(BaseModel):
+    deleted: int
+
+
+class WebSource(BaseModel):
+    """답이 인용한 웹 페이지."""
+
+    title: str
+    url: str
+
+
 class ChatOut(BaseModel):
     reply: str
     source: str  # ai: AI 가 답함 | fallback: AI 를 쓸 수 없어 기본 안내를 보냄
     sources: list[ChatSource] = []
+    web_sources: list[WebSource] = []  # 답이 인용한 웹 페이지(웹 검색을 썼을 때만)
     proposals: list[
         ProposalOut
     ] = []  # 정산·돌봄 에이전트가 제안한 쓰기. 사용자가 확인해야 실행된다
-    # room: 가족 채팅방에 올려도 되는 답 | private: 질문한 사람에게만 보여 줄 답(audience=me 이면 항상 private)
+    # room: 가족 채팅방에서 부른 답(모두에게 공유, audience=room 이면 항상 room) | private: 나와 가비의 개인 대화(audience=me 이면 항상 private)
     visibility: Literal["room", "private"] = "private"
-    private_reasons: list[str] = []  # private 인 이유(audience=room 일 때만. 예: 자녀 용돈 장부)
+    private_reasons: list[str] = []  # 이전 앱 호환용(항상 빈 목록)
     confirm_cards: list[
         ConfirmCardOut
     ] = []  # 확인 버튼이 필요한 일정 요청(질문한 사람에게만 보인다)
     posted_message_id: int | None = (
-        None  # visibility=room 이라 가비 이름으로 가족 전체방에 올린 메시지 id(없으면 올리지 않음)
+        None  # audience=room 이라 가비 이름으로 방(가족 전체방 또는 1:1 방)에 올린 메시지 id(개인 대화이거나 답이 비면 없음)
     )
 
 
@@ -104,3 +143,22 @@ class PhotoOut(BaseModel):
     size: int
     status: str
     created_at: datetime
+
+
+class NudgeOut(BaseModel):
+    id: str  # 챙길 일 id
+    kind: str  # propose(일정으로 잡을까요) | urgent(미리 알림) | followup(하셨나요)
+    text: str
+
+
+class NudgesOut(BaseModel):
+    nudges: list[NudgeOut]
+    message: str = ""  # 여러 개를 한 번에 보기 좋게 묶은 말(하나뿐이면 그 문장, 없으면 빈 문자열). 앱은 이것만 보여 준다
+
+
+class ReminderSettingsIn(BaseModel):
+    enabled: bool
+
+
+class ReminderSettingsOut(BaseModel):
+    enabled: bool

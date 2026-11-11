@@ -13,8 +13,8 @@ export default function EmptyChats({ onCreate, onJoin }) {
       <Text style={styles.title}>아직 가족이 없어요</Text>
       <Text style={styles.sub}>가족을 만들거나 초대 코드로 참여하면 대화를 시작할 수 있어요</Text>
       <View style={styles.buttons}>
-        <Button label="가족 만들기" small onPress={onCreate} />
-        <Button label="초대 코드로 참여" small variant="secondary" onPress={onJoin} />
+        <Button label="가족 만들기" small icon="add-circle-outline" onPress={onCreate} />
+        <Button label="초대 코드로 참여" small variant="secondary" icon="people-outline" onPress={onJoin} />
       </View>
     </View>
   );

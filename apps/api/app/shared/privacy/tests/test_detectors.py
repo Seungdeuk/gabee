@@ -38,6 +38,38 @@ def test_phone_negative(text):
     assert Kind.PHONE not in kinds(text)
 
 
+# 변형 꼴(2026-11 문서체 측정에서 놓치던 것)
+@pytest.mark.parametrize(
+    "number",
+    [
+        "공일공일이삼사오육칠팔", "공일공 일이삼사 오육칠팔", "공일공-일이삼사-오육칠팔", "영일영구팔칠육오사삼이",
+        "821012345678", "010-1234-56 78", "010 1234 56 78",
+    ],
+)  # fmt: skip
+def test_phone_variants_are_found(number):
+    assert found(f"번호는 {number} 이야") == [(Kind.PHONE, number)]
+
+
+@pytest.mark.parametrize(
+    "text",
+    ["전화 1234-5678 로 주세요", "연락처: 12345678", "문의 4321 8765", "휴대폰 번호 5678-1234"],
+)
+def test_eight_digits_after_phone_context_is_phone(text):
+    assert Kind.PHONE in kinds(text)
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "주문번호 1234-5678", "합계 12345678원", "20261103 에 만나", "주문 1234 5678 접수", "승인번호 12345678",
+        "금액 1234-5678원 결제", "운송장 821012345678", "사업자등록번호 1234-5678", "번호표 12345678번",
+        "재고 12345678", "일이삼사오육칠팔구 순서대로", "전화 20261103",
+    ],
+)  # fmt: skip
+def test_phone_variants_do_not_flag_order_numbers_amounts_or_dates(text):
+    assert Kind.PHONE not in kinds(text)
+
+
 def test_phone_not_part_of_longer_digits():
     assert Kind.PHONE not in kinds("번호 010123456789012 야")
 
@@ -329,3 +361,37 @@ def test_results_sorted_and_non_overlapping():
 def test_empty_and_plain_text():
     assert detect("") == []
     assert detect("안녕 오늘 뭐 해?") == []
+
+
+# ---------- 주소 뒤 (동 이름) · 층 · 호수 (2026-11 보강)
+@pytest.mark.parametrize(
+    ("text", "whole"),
+    [
+        ("서울 강남구 소나무로 152번길 9, 3층 301호", "서울 강남구 소나무로 152번길 9, 3층 301호"),
+        ("보라매로 457 4층 1691호", "보라매로 457 4층 1691호"),
+        ("마포구 다람쥐로 77 301호", "다람쥐로 77 301호"),
+        ("테헤란로 303 5층", "테헤란로 303 5층"),
+        ("서울 강남구 테헤란로 303 B1층 12호", "서울 강남구 테헤란로 303 B1층 12호"),
+        ("강남구 테헤란로 152 지하 1층 B101호", "테헤란로 152 지하 1층 B101호"),
+        ("서울시 강남구 역삼동 123-45 2층", "서울시 강남구 역삼동 123-45 2층"),
+        ("경기 성남시 분당구 정자일로 95 (정자동) 12층 1203호", "경기 성남시 분당구 정자일로 95 (정자동) 12층 1203호"),
+    ],
+)  # fmt: skip
+def test_address_unit_tail_is_included(text, whole):
+    assert [t for k, t in found(text) if k == Kind.ADDRESS] == [whole]
+
+
+@pytest.mark.parametrize(
+    "text",
+    ["테헤란로 5층 회의실", "중앙로 2호선 근처", "사과 3개 5층 식당 301호선", "서울 강남구 테헤란로 303 에서 만나"],
+)  # fmt: skip
+def test_address_unit_tail_does_not_swallow_ordinary_words(text):
+    for k, t in found(text):
+        if k == Kind.ADDRESS:
+            assert "층" not in t and "호" not in t
+
+
+def test_address_number_followed_by_next_line_word_is_not_taken_as_a_unit():
+    # '412' 뒤 줄바꿈 다음 '주문번호'의 '주'를 수량 단위로 오해해 주소를 놓치던 문제
+    text = "배달주소 대전 서구 보라매로 412\n주문번호 1244051092"
+    assert [t for k, t in found(text) if k == Kind.ADDRESS] == ["대전 서구 보라매로 412"]

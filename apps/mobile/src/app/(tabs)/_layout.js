@@ -7,17 +7,20 @@ import { needsTesterConsent } from "@/features/consent/consentState";
 import useTotalUnread from "@/features/family-chat/useTotalUnread";
 import { unreadBadgeText } from "@/features/family-chat/listUtils";
 import { useAuth } from "@/shared/auth/AuthProvider";
+import { rememberTab } from "@/shared/navigation/lastTab";
 import { colors, font, fonts } from "@/theme";
 
-// 디자인의 하단 탭 5개. 기타(가족 그룹·설정)는 탭이 아니라 상단 ⋮ 메뉴로 들어간다.
+// 하단 탭 5개(가계는 돌봄 탭에 합쳤고, 마지막 탭은 마이 페이지). 마이 페이지(계정·가족 그룹·앱 관리)가 마지막 탭이고, 각 화면 위 설정 버튼도 이 탭으로 온다.
+// 돌봄 탭은 팀 회의 결과로 지갑이 됐다(정산·지출·용돈).
 const TAB_CONTENT_HEIGHT = 64;
 
 const tabs = [
   { name: "chat", title: "AI 채팅", icon: "chatbubble-ellipses-outline" },
   { name: "family-chat", title: "소통", icon: "people-outline" },
   { name: "schedule", title: "일정", icon: "calendar-outline" },
-  { name: "billing", title: "지갑", icon: "wallet-outline" },
-  { name: "care", title: "안부", icon: "heart-outline" },
+  // 라우트 이름(care)은 그대로 두고 탭 이름만 지갑으로 바꾼다(딥링크·기존 참조를 건드리지 않기 위해)
+  { name: "care", title: "지갑", icon: "wallet-outline" },
+  { name: "my", title: "마이", icon: "person-outline" },
 ];
 
 export default function TabLayout() {
@@ -48,6 +51,7 @@ export default function TabLayout() {
         <Tabs.Screen
           key={name}
           name={name}
+          listeners={{ focus: () => rememberTab(name) }} // 알림함에서 뒤로 갈 때 마지막으로 보던 탭으로 돌아가도록 기억한다
           options={{
             title,
             tabBarBadge: name === "family-chat" && unread > 0 ? unreadBadgeText(unread) : undefined,

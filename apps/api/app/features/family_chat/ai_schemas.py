@@ -34,6 +34,8 @@ class RangeIn(BaseModel):
 
     limit: int = Field(default=100, ge=1, le=200)
     after_id: int = Field(default=0, ge=0)
+    # 1:1 방 id. 있으면 그 1:1 방 대화만 분석한다(참가자 본인이고 상대가 아직 가족일 때만). 없으면 가족 전체방.
+    room_id: str | None = Field(default=None, max_length=32)
 
 
 class PrivacyMeta(BaseModel):

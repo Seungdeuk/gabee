@@ -315,3 +315,50 @@ def test_accepted_request_event_is_shared_with_the_sender(client, family):
     assert (
         client.get("/schedule/events", headers=a).json() == []
     )  # 보낸 사람은 일정이 생기지 않는다
+
+
+def _notices(client, headers) -> list[dict]:
+    r = client.get("/notifications", params={"kind": "schedule"}, headers=headers)
+    return r.json()["items"]
+
+
+def test_send_notifies_recipients_only_with_fixed_text(client, family):
+    a, b, group = family
+    c = _member(client, a, group, "민수")
+    b_id, c_id = _me(client, b), _me(client, c)
+    rid = _send(
+        client, a, [b_id, c_id], title="비밀 병원", place="서울병원", memo="검사 결과"
+    ).json()["id"]
+    for h in (b, c):
+        [n] = _notices(client, h)
+        assert (n["event"], n["title"], n["target_id"]) == (
+            "request_received",
+            "같이해요가 도착했어요",
+            rid,
+        )
+        assert n["body"] is None  # 제목·장소·메모를 담지 않는다
+    assert _notices(client, a) == []  # 보낸 본인은 받지 않는다
+
+
+def test_answer_notifies_sender_once_per_change(client, family):
+    a, b, _ = family
+    b_id = _me(client, b)
+    rid = _send(client, a, [b_id]).json()["id"]
+    assert _answer(client, b, rid, "declined", None).status_code == 200
+    assert _answer(client, b, rid, "declined", None).status_code == 200  # 같은 답 다시: 알림 없음
+    [n] = _notices(client, a)
+    assert (n["event"], n["title"]) == ("request_answered", "같이해요에 답이 왔어요")
+    assert "어렵" not in (n["body"] or "") and n["body"] is None
+    assert _answer(client, b, rid, "accepted", 1).status_code == 200  # 답을 바꾸면 다시 알린다
+    assert len(_notices(client, a)) == 2
+    assert [x["event"] for x in _notices(client, b)] == ["request_received"]
+
+
+def test_change_recipients_notifies_only_added(client, family):
+    a, b, group = family
+    c = _member(client, a, group, "민수")
+    b_id, c_id = _me(client, b), _me(client, c)
+    rid = _send(client, a, [b_id]).json()["id"]
+    assert _recipients(client, a, rid, [b_id, c_id]).status_code == 200
+    assert len(_notices(client, b)) == 1  # 이미 받은 사람에게는 다시 가지 않는다
+    assert [n["event"] for n in _notices(client, c)] == ["request_received"]

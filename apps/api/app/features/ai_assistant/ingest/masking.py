@@ -16,6 +16,9 @@ import re
 from collections import Counter
 from typing import Literal
 
+from app.shared.privacy.detectors import detect as _detect_spans
+from app.shared.privacy.types import Kind
+
 Sensitive = Literal["none", "prescription", "id_card", "bankbook", "family_cert"]
 
 # 구분은 하이픈·점·긴 대시·공백 모두, 구분 없는 13자리는 생년월일 모양(월 01~12, 일 01~31)일 때만
@@ -120,6 +123,26 @@ def _account_repl(m: re.Match) -> str:
     return re.sub(r"\d", "*", m.group(0)) if 10 <= digits <= 16 else m.group(0)
 
 
+def _mask_phone_variants(text: str) -> str:
+    """정규식이 못 잡는 전화번호 꼴(한글 숫자, 82 붙임, 010 없는 8자리 …)은 공용 탐지기가 찾은 구간을 가린다."""
+    spans = [s for s in _detect_spans(text) if s.kind == Kind.PHONE]
+    for s in reversed(spans):  # 뒤에서부터 바꿔야 앞 구간의 위치가 안 밀린다
+        text = text[: s.start] + "[연락처 가림]" + text[s.end :]
+    return text
+
+
+def _mask_home_units(text: str) -> str:
+    """공용 탐지기가 찾은 주소 중 호수가 붙은 것(집 주소 꼴)만 가린다. 호수 없는 가게 주소는 남긴다."""
+    spans = [
+        s
+        for s in _detect_spans(text)
+        if s.kind == Kind.ADDRESS and re.search(r"\d\s?호", text[s.start : s.end])
+    ]
+    for s in reversed(spans):
+        text = text[: s.start] + "[주소 가림]" + text[s.end :]
+    return text
+
+
 def is_prescription(text: str) -> bool:
     """처방전 낱말이 두 가지 이상 보이면 처방전으로 본다(자동 분류 전 단계의 보수적 판단)."""
     flat = re.sub(r"\s+", "", text)
@@ -149,6 +172,51 @@ def is_bankbook(text: str) -> bool:
         _BANKS.search(text)
         or any(_account_repl(m) != m.group(0) for m in _ACCOUNT_NUM.finditer(text))
     )
+
+
+# 개인 금융 문서의 낱말: 통장 사본·이체확인증·거래내역은 받는 사람 이름·금액·잔액이 함께 있다
+_NOT_NOTICE_WORDS = (
+    "통장",
+    "보통예금",
+    "저축예금",
+    "예금거래",
+    "입출금",
+    "이체확인",
+    "이체내역",
+    "송금확인",
+    "거래내역",
+    "거래명세",
+    "잔액",
+    "받는분",
+    "받는사람",
+    "보낸분",
+    "보내는분",
+    "출금계좌",
+    "입금계좌",
+)
+# 납부·학교 안내의 낱말: 계좌를 알리는 안내문이라는 증거
+_NOTICE_WORDS = (
+    "납부",
+    "납입",
+    "수납",
+    "회비",
+    "가정통신",
+    "학부모",
+    "학교",
+    "유치원",
+    "어린이집",
+    "학원",
+)
+
+
+def is_account_notice(text: str) -> bool:
+    """통장류(`bankbook`)로 잡힌 글이 학교·기관의 납부 계좌 안내문인가. **가리기 전의 글**로 판단한다
+    (가린 뒤에는 줄 하나에 혼자 있는 "통장"이 이름처럼 `통***` 로 가려져 낱말이 사라진다).
+    통장·이체확인증·거래내역 같은 개인 금융 낱말이 하나도 없고, 납부·학교 같은 안내 낱말이 있어야 한다."""
+    flat = re.sub(r"\s+", "", text)
+    if any(w in flat for w in _NOT_NOTICE_WORDS):
+        return False
+    return any(w in flat for w in _NOTICE_WORDS)
 
 
 def is_family_cert(text: str) -> bool:
@@ -192,6 +260,7 @@ def mask_text(text: str, kind: Sensitive = "none", *, counts: Counter | None = N
     ):  # 일반 문서도 연락처·카드·계좌·이메일·라벨 있는 이름·주소는 가린다(외부 모델로 나가므로)
         sub("card", _CARD, lambda m: f"{m.group(1)}-****-****-{m.group(2)[-4:]}")
         sub("phone", _PHONE, lambda m: f"{m.group(1)}-****-****")
+        text = _mask_phone_variants(text)
         sub("email", _EMAIL, lambda m: f"{m.group(1)}***@{m.group(2)}")
         sub("account", _ACCOUNT, lambda m: m.group(1) + re.sub(r"\d", "*", m.group(2)))
         sub("name", _NAME, lambda m: m.group(1) + m.group(2)[0] + "*" * (len(m.group(2)) - 1))
@@ -199,6 +268,7 @@ def mask_text(text: str, kind: Sensitive = "none", *, counts: Counter | None = N
         sub("address", _ADDRESS, lambda m: m.group(1) + "[주소 가림]")
         sub("address", _ADDRESS_INLINE, lambda m: m.group(1) + "[주소 가림]")
         sub("address", _RESIDENCE, "[주소 가림]")
+        text = _mask_home_units(text)
         return text
     if kind == "id_card":  # 카드번호 패턴보다 먼저: 면허번호(12자리)가 카드번호로 잘못 걸리지 않게
         sub("license", _DRIVER, "**-**-******-**")
@@ -220,6 +290,7 @@ def mask_text(text: str, kind: Sensitive = "none", *, counts: Counter | None = N
         text = _ACCOUNT_NUM.sub(_account_repl, text)
     sub("card", _CARD, lambda m: f"{m.group(1)}-****-****-{m.group(2)[-4:]}")
     sub("phone", _PHONE, lambda m: f"{m.group(1)}-****-****")
+    text = _mask_phone_variants(text)
     sub("email", _EMAIL, lambda m: f"{m.group(1)}***@{m.group(2)}")
     sub("account", _ACCOUNT, lambda m: m.group(1) + re.sub(r"\d", "*", m.group(2)))
     sub(
@@ -231,6 +302,7 @@ def mask_text(text: str, kind: Sensitive = "none", *, counts: Counter | None = N
     sub("address", _ADDRESS, lambda m: m.group(1) + "[주소 가림]")
     sub("address", _ADDRESS_INLINE, lambda m: m.group(1) + "[주소 가림]")
     sub("address", _RESIDENCE, "[주소 가림]")
+    text = _mask_home_units(text)
     if kind == "prescription":
         sub("disease_code", _DISEASE, lambda m: m.group(1) + "[병명 코드 가림]")
         sub("license", _LICENSE, lambda m: m.group(1) + "*" * len(m.group(2)))

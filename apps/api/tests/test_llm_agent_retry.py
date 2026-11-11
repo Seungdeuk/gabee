@@ -4,18 +4,18 @@ import httpx
 import pytest
 
 from app.shared.config import settings
-from app.shared.llm import agent
+from app.shared.llm import agent, transport
 from app.shared.llm.client import LLMUnavailable
 
 
 def _resp(status: int, body: dict | None = None) -> httpx.Response:
-    return httpx.Response(status, json=body or {}, request=httpx.Request("POST", agent.API_URL))
+    return httpx.Response(status, json=body or {}, request=httpx.Request("POST", transport.API_URL))
 
 
 @pytest.fixture
 def calls(monkeypatch):
     """httpx.post 를 가짜로 바꾸고 time.sleep 을 없앤다. 반환값: 부른 횟수가 담긴 리스트."""
-    monkeypatch.setattr(agent.time, "sleep", lambda _s: None)
+    monkeypatch.setattr(transport.time, "sleep", lambda _s: None)
     monkeypatch.setattr(settings, "anthropic_api_key", "test-key")
     return []
 

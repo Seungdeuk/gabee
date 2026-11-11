@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.features.family_group.models import User
 from app.shared.errors import ApiError, bad_request, not_found
+from app.shared.notifications import notify
 
 from . import todo_repository as repo
 from .models import FamilyTodo
@@ -46,6 +47,22 @@ def list_todos(db: Session, group_id: str, status: str, limit: int) -> list[Todo
     return [_out(t) for t in repo.list_todos(db, group_id, status, limit)]
 
 
+def _notify_assigned(db: Session, user: User, group_id: str, todo: FamilyTodo) -> None:
+    """담당자로 정해진 사람에게 "할 일이 배정됐어요"(본인이 맡은 경우는 notify 가 건너뛴다). 문구는 고정이라 할 일 제목을 담지 않는다."""
+    notify(
+        db,
+        group_id=group_id,
+        kind="schedule",
+        event="todo_assigned",
+        recipients=[todo.assignee_id],
+        title="할 일이 배정됐어요",
+        target_type="family_todo",
+        target_id=todo.id,
+        actor_user_id=user.id,
+    )
+    db.commit()
+
+
 def create(db: Session, user: User, group_id: str, body: TodoCreate) -> TodoOut:
     title = _title(body.title)
     _check_assignee(db, group_id, body.assignee_id)
@@ -62,7 +79,10 @@ def create(db: Session, user: User, group_id: str, body: TodoCreate) -> TodoOut:
         created_at=now,
         updated_at=now,
     )
-    return _out(repo.add(db, todo))
+    saved = repo.add(db, todo)
+    if saved.assignee_id:
+        _notify_assigned(db, user, group_id, saved)
+    return _out(saved)
 
 
 def update(db: Session, user: User, group_id: str, todo_id: str, body: TodoUpdate) -> TodoOut:
@@ -76,6 +96,7 @@ def update(db: Session, user: User, group_id: str, todo_id: str, body: TodoUpdat
         if body.title is None:
             raise bad_request("invalid_title", "할 일 제목을 적어 주세요")
         todo.title = _title(body.title)
+    previous = todo.assignee_id
     if "assignee_id" in sent:
         _check_assignee(db, group_id, body.assignee_id)
         todo.assignee_id = body.assignee_id
@@ -89,7 +110,12 @@ def update(db: Session, user: User, group_id: str, todo_id: str, body: TodoUpdat
         elif not body.done:
             todo.done_at = todo.done_by = None
     todo.updated_at = datetime.now(UTC)
-    return _out(repo.save(db, todo))
+    saved = repo.save(db, todo)
+    if (
+        saved.assignee_id and saved.assignee_id != previous
+    ):  # 담당자가 새로 바뀐 때만(다른 수정에는 보내지 않는다)
+        _notify_assigned(db, user, group_id, saved)
+    return _out(saved)
 
 
 def delete(db: Session, user: User, group_id: str, todo_id: str) -> None:

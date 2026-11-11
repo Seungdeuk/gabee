@@ -92,3 +92,27 @@ def test_residence_without_label_needs_building_and_unit():
 
 def test_address_book_word_is_not_an_address_label():
     assert mask_text("주소록 백업") == "주소록 백업"
+
+
+@pytest.mark.parametrize(
+    ("line", "hidden"),
+    [
+        ("연락처 공일공칠오팔육삼구육일", "공일공칠오팔육삼구육일"),
+        ("연락처 821061186401", "821061186401"),
+        ("연락처 +82-10-7592-7233", "7592-7233"),
+        ("전화 1234-5678 로 주세요", "1234-5678"),
+        ("문의 010-3243-56 77", "3243-56 77"),
+    ],
+)
+def test_phone_variants_are_masked(line, hidden):
+    out = mask_text(line)
+    assert hidden not in out
+    assert "연락처 가림" in out or "****" in out
+
+
+@pytest.mark.parametrize(
+    "line",
+    ["주문번호 1234-5678", "합계 12345678원", "운송장번호 821012345678", "번호표 12345678번"],
+)
+def test_order_numbers_and_amounts_are_kept(line):
+    assert mask_text(line) == line

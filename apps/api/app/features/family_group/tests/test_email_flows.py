@@ -13,6 +13,8 @@ from app.shared.config import settings
 from app.shared.db import SessionLocal
 from tests.helpers import signup
 
+pytestmark = pytest.mark.usefixtures("approval_required")  # 승인 대기 흐름을 본다
+
 SIGNUP, LOGIN, REFRESH = (
     "/family-group/auth/signup",
     "/family-group/auth/login",
@@ -481,15 +483,15 @@ def test_new_password_must_follow_the_rules_and_a_weak_one_keeps_the_token(clien
     )
 
 
-def test_request_response_does_not_reveal_whether_the_account_exists(client, outbox):
+def test_request_with_a_wrong_pair_is_rejected_without_mail_or_reset_row(client, outbox):
+    """아이디·이메일 짝이 맞지 않으면 400 reset_mismatch 이고 메일도 재설정 기록도 만들지 않는다(맞는 짝은 204 와 메일 한 통)."""
     register(client)
     anonymous = signup(client, "익명")
     assert anonymous
     known = request_reset(client, "jimin@example.com")
     unknown = request_reset(client, "nobody@example.com")
-    assert (
-        known.status_code == unknown.status_code == 204 and known.content == unknown.content == b""
-    )
+    assert known.status_code == 204 and known.content == b""
+    assert unknown.status_code == 400 and unknown.json()["code"] == "reset_mismatch"
     assert (
         len(outbox.mails) == 1 and outbox.mails[0].to == "jimin@example.com"
     )  # 없는 주소로는 메일을 보내지 않는다
@@ -497,21 +499,21 @@ def test_request_response_does_not_reveal_whether_the_account_exists(client, out
         assert len(db.scalars(select(PasswordReset)).all()) == 1
 
 
-def test_reset_request_is_rate_limited_per_email_and_per_ip_without_revealing_accounts(
+def test_reset_request_is_rate_limited_per_email_and_per_ip_even_for_wrong_pairs(
     client, outbox, monkeypatch
 ):
     register(client)
     monkeypatch.setattr(settings, "reset_max_per_email_per_hour", 2)
     results = [request_reset(client).status_code for _ in range(4)]
     assert results == [204, 204, 429, 429]
-    # 없는 이메일도 똑같이 제한된다(제한 여부로 계정 존재를 알 수 없다)
+    # 맞지 않는 짝도 똑같이 횟수에 세어 제한된다(짝을 계속 바꿔 대입하는 것을 막는다)
     ghost = [request_reset(client, "ghost@example.com").status_code for _ in range(4)]
-    assert ghost == [204, 204, 429, 429]
+    assert ghost == [400, 400, 429, 429]
     monkeypatch.setattr(settings, "reset_max_per_email_per_hour", 100)
     monkeypatch.setattr(settings, "reset_max_per_ip_per_hour", 3)
     service.mail_limiter.reset()
     mixed = [request_reset(client, f"user{i}@example.com").status_code for i in range(5)]
-    assert mixed == [204, 204, 204, 429, 429]
+    assert mixed == [400, 400, 400, 429, 429]
 
 
 def test_newer_reset_link_invalidates_older_ones(client, outbox):
@@ -579,17 +581,19 @@ def test_other_users_access_tokens_survive_someones_password_reset(client, outbo
     assert client.get(ME, headers=other).status_code == 200
 
 
-def test_background_send_failure_is_logged_but_the_response_stays_uniform(client, caplog):
+def test_background_send_failure_is_logged_but_not_shown_to_the_requester(client, caplog):
+    """맞는 짝의 요청은 발송이 실패해도 요청자에게는 204 이고(백그라운드 발송), 실패는 서버 로그에만 남는다. 맞지 않는 짝은 발송을 시도하지 않는다."""
     mailer.set_mailer(Outbox(fail=True))
     register(client)
     with caplog.at_level("ERROR"):
         known = request_reset(client, "jimin@example.com")
         unknown = request_reset(client, "ghost@example.com")
-    assert known.status_code == unknown.status_code == 204 and known.content == unknown.content
+    assert known.status_code == 204 and known.content == b""
+    assert unknown.status_code == 400 and unknown.json()["code"] == "reset_mismatch"
     failures = [r.getMessage() for r in caplog.records if "mail_delivery_failed" in r.getMessage()]
     assert failures == [
         "mail_delivery_failed kind=password_reset reason=boom"
-    ]  # 존재하는 계정 1건만 시도·기록
+    ]  # 맞는 짝 1건만 시도·기록
     assert "jimin@example.com" not in caplog.text and "token" not in caplog.text.lower().replace(
         "kind", ""
     )
@@ -675,7 +679,8 @@ def test_token_bound_to_an_email_does_not_verify_a_changed_email(client, outbox)
 
 def test_anonymous_and_unknown_emails_get_no_reset_mail(client, outbox):
     signup(client, "익명")
-    assert request_reset(client, "anyone@example.com").status_code == 204
+    r = request_reset(client, "anyone@example.com")
+    assert r.status_code == 400 and r.json()["code"] == "reset_mismatch"
     assert outbox.mails == []
     assert (
         client.post(RESET_REQ, json={"login_id": "jimin_kim", "email": "not-an-email"}).status_code

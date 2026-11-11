@@ -1,4 +1,4 @@
-"""로컬 개발 DB 에 정산·돌봄 가짜 데이터를 채운다(데모 가족 한 팀). 공용 DB 에는 절대 쓰지 않는다.
+"""로컬 개발 DB 에 정산·지출·용돈 가짜 데이터를 채운다(데모 가족 한 팀). 공용 DB 에는 절대 쓰지 않는다.
 
     cd apps/api
     DATABASE_URL=postgresql+psycopg://postgres:<비번>@127.0.0.1:5433/gabee python -m scripts.seed_local_demo
@@ -10,7 +10,7 @@
 """
 
 import sys
-from datetime import UTC, date, datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 
 from fastapi.testclient import TestClient
 from sqlalchemy import select
@@ -121,42 +121,6 @@ def main() -> int:
             200,
             201,
         )
-
-        # ---- 돌봄: 최근 7일 항목 기록, 식단, 위치 ----
-        daily = _ok(client.get("/care/daily", headers=a))  # 기본 항목이 없으면 이때 만들어진다
-        for offset in range(7):
-            day = (today - timedelta(days=offset)).isoformat()
-            for item in daily["items"]:
-                if offset == 0 and item["mode"] != "yesno":
-                    continue
-                if item["mode"] == "yesno":
-                    entry = {"date": day, "done": offset != 3}  # 3일 전은 안 함
-                elif item["mode"] == "number":
-                    entry = {"date": day, "number": 1200 + 100 * (offset % 3)}
-                else:
-                    entry = {"date": day, "condition": ["good", "normal", "good"][offset % 3]}
-                _ok(client.put(f"/care/items/{item['id']}/entry", json=entry, headers=a))
-        menus = [
-            ("breakfast", "죽"),
-            ("lunch", "비빔밥"),
-            ("dinner", "된장찌개"),
-        ]
-        for offset in range(7):
-            day = (today - timedelta(days=offset)).isoformat()
-            for meal, menu in menus:
-                _ok(
-                    client.put(
-                        "/care/meal-log", json={"date": day, "meal": meal, "menu": menu}, headers=b
-                    )
-                )
-        _ok(client.put("/care/location/consent", json={"consent": True}, headers=a))
-        point = {
-            "lat": 37.5665,
-            "lng": 126.978,
-            "accuracy_m": 15,
-            "recorded_at": datetime.now(UTC).isoformat(),
-        }
-        _ok(client.post("/care/locations", json={"points": [point]}, headers=a))
 
         # ---- 가족의 AI 동의 켜기 ----
         with SessionLocal() as db:

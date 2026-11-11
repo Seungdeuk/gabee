@@ -3,7 +3,7 @@
 키가 없거나 호출이 실패하면 LLMUnavailable 을 내고, 호출한 쪽이 대체 동작(규칙 기반 답)을 쓴다.
 - `complete`: 글자 답(AI 채팅 등). `model` 을 주면 그 모델로, 안 주면 설정값(`llm_model`)으로 부른다(`complete_json` 도 같다).
 - `complete_json`: 구조화 출력(Structured Outputs, `output_config.format` json_schema)으로 검증 가능한 JSON 을 받고, 입력·출력 토큰 수도 돌려준다.
-호출은 한 번만 한다(실패해도 여기서 다시 시도하지 않는다 — 비용·한도는 호출한 쪽(ai_guard)이 관리한다).
+호출은 한 번만 한다(실패해도 여기서 다시 시도하지 않는다 — 비용·한도는 호출한 쪽(ai_guard)이 관리한다). HTTP 는 `transport` 가 부른다.
 TODO: 이미지 입력 — 원본 프로젝트의 common/gabi_llm.py 를 참고한다.
 """
 
@@ -14,12 +14,8 @@ import httpx
 
 from app.shared.config import settings
 
-API_URL = "https://api.anthropic.com/v1/messages"
-API_VERSION = "2023-06-01"
-
-
-class LLMUnavailable(Exception):
-    pass
+from . import transport
+from .transport import LLMUnavailable
 
 
 @dataclass(frozen=True)
@@ -34,15 +30,9 @@ def available() -> bool:
     return bool(settings.anthropic_api_key)
 
 
-def _headers() -> dict[str, str]:
-    return {"x-api-key": settings.anthropic_api_key, "anthropic-version": API_VERSION}
-
-
 def _post(body: dict, timeout: float) -> dict:
     try:
-        res = httpx.post(API_URL, json=body, headers=_headers(), timeout=timeout)
-        res.raise_for_status()
-        return res.json()
+        return transport.post_messages(body, timeout=timeout, retry=False)
     except (
         httpx.HTTPError,
         ValueError,
@@ -108,10 +98,10 @@ def complete_json(
         raise LLMUnavailable("AI 응답이 JSON 이 아니에요") from None
     if not isinstance(data, dict):
         raise LLMUnavailable("AI 응답 형식이 올바르지 않아요")
-    usage = payload.get("usage") or {}
+    tokens_in, tokens_out = transport.usage_of(payload)
     return JsonResult(
         data=data,
-        input_tokens=int(usage.get("input_tokens") or 0),
-        output_tokens=int(usage.get("output_tokens") or 0),
+        input_tokens=tokens_in,
+        output_tokens=tokens_out,
         model=str(payload.get("model") or model or settings.llm_model),
     )

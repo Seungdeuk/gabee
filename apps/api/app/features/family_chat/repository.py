@@ -1,6 +1,6 @@
 from datetime import UTC, datetime
 
-from sqlalchemy import and_, case, delete, func, or_, select, update
+from sqlalchemy import String, and_, case, cast, delete, func, inspect, or_, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.exc import IntegrityError
@@ -11,6 +11,8 @@ from app.features.family_group.models import GroupMember, User
 from .models import (
     DIRECT,
     FAMILY,
+    ChatPinHide,
+    ChatPinnedMessage,
     ChatRoom,
     ChatRoomMember,
     ChatRoomMute,
@@ -18,6 +20,7 @@ from .models import (
     Message,
     MessageAttachment,
     MessageReaction,
+    MessageShare,
 )
 
 UNREAD_CAP = 1000  # 안 읽은 수를 세는 상한(앱이 99+ 로 줄여 보여준다)
@@ -391,11 +394,27 @@ def read_states(db: Session, room: ChatRoom) -> list[tuple[str, int]]:
     return [(uid, last or 0) for uid, last in rows]
 
 
+def _unread_unit():
+    """안 읽은 수를 세는 단위: 같은 묶음(batch_id)으로 올린 사진은 한 건, 그 밖의 메시지는 한 건씩.
+    채팅 화면이 묶음 사진을 한 덩어리로 보여 주므로 5장 묶음이 "안 읽은 5건"으로 보이지 않게 한다."""
+    # 묶음 번호는 앱이 만든다: 보낸 사람까지 단위에 넣어 다른 사람이 같은 번호를 써도 합쳐 세지 않고, 접두어로 메시지 id 와 겹치지 않게 한다
+    return case(
+        (
+            MessageAttachment.batch_id.is_not(None),
+            "b|" + Message.user_id + "|" + MessageAttachment.batch_id,
+        ),
+        else_="m|" + cast(Message.id, String),
+    )
+
+
 def count_unread(db: Session, room: ChatRoom, user_id: str, last_read: int) -> int:
-    """last_read 이후 다른 사람이 보낸 메시지 수(UNREAD_CAP 에서 자른다)."""
+    """last_read 이후 다른 사람이 보낸 메시지 수(같은 묶음의 사진은 1건, UNREAD_CAP 에서 자른다)."""
     capped = (
-        select(Message.id)
+        select(_unread_unit().label("unit"))
+        .select_from(Message)
+        .outerjoin(MessageAttachment, MessageAttachment.message_id == Message.id)
         .where(room_messages(room), Message.id > last_read, Message.user_id != user_id)
+        .distinct()
         .limit(UNREAD_CAP)
         .subquery()
     )
@@ -426,7 +445,8 @@ def rooms_summary(
         last_by_id = {m.room_id: (m, name) for m, name in rows}
     unread = dict(
         db.execute(
-            select(Message.room_id, func.count(Message.id))
+            select(Message.room_id, func.count(_unread_unit().distinct()))
+            .outerjoin(MessageAttachment, MessageAttachment.message_id == Message.id)
             .outerjoin(
                 ChatRoomRead,
                 (ChatRoomRead.room_id == Message.room_id) & (ChatRoomRead.user_id == user_id),
@@ -450,6 +470,67 @@ def rooms_summary(
         rid: (last_by_id.get(rid), min(unread.get(rid, 0), UNREAD_CAP), peers.get(rid))
         for rid in ids
     }
+
+
+def room_member_ids(db: Session, room: ChatRoom) -> list[str]:
+    """이 방에 들어갈 수 있는 사람: 가족 전체방은 가족 구성원 전원, 1:1 은 참여자 두 사람."""
+    if room.kind == FAMILY:
+        stmt = select(GroupMember.user_id).where(GroupMember.group_id == room.group_id)
+    else:  # 가족을 나간 사람의 1:1 방 참여 기록은 남아 있으니 지금도 이 가족인 사람만
+        stmt = (
+            select(ChatRoomMember.user_id)
+            .join(
+                GroupMember,
+                and_(
+                    GroupMember.user_id == ChatRoomMember.user_id,
+                    GroupMember.group_id == room.group_id,
+                ),
+            )
+            .where(ChatRoomMember.room_id == room.id)
+        )
+    return list(db.scalars(stmt))
+
+
+def muted_user_ids(db: Session, room_id: str) -> set[str]:
+    """이 방의 알림을 끈 사람들의 id."""
+    return set(db.scalars(select(ChatRoomMute.user_id).where(ChatRoomMute.room_id == room_id)))
+
+
+def earlier_batch_photo_exists(
+    db: Session, room: ChatRoom, message: Message, batch_id: str, since: datetime
+) -> bool:
+    """같은 사람이 같은 방에 같은 묶음 번호로 since 이후에 이 메시지보다 먼저 올린 지우지 않은 사진이 있는지(묶음의 첫 사진이 아닌지).
+    같은 번호를 오래 뒤에 다시 쓰는 경우를 새 묶음으로 보려고 기간을 둔다."""
+    found = db.scalar(
+        select(MessageAttachment.id)
+        .join(Message, Message.id == MessageAttachment.message_id)
+        .where(
+            room_messages(room),
+            Message.user_id == message.user_id,
+            Message.id < message.id,
+            Message.deleted_at.is_(None),
+            Message.created_at >= since,
+            MessageAttachment.batch_id == batch_id,
+        )
+        .limit(1)
+    )
+    return found is not None
+
+
+def sent_since(db: Session, room: ChatRoom, message: Message, since: datetime) -> bool:
+    """같은 사람이 같은 방에 이 메시지보다 먼저 since 이후에 보낸 지우지 않은 메시지가 있는지."""
+    found = db.scalar(
+        select(Message.id)
+        .where(
+            room_messages(room),
+            Message.user_id == message.user_id,
+            Message.id < message.id,
+            Message.deleted_at.is_(None),
+            Message.created_at >= since,
+        )
+        .limit(1)
+    )
+    return found is not None
 
 
 def muted_room_ids(db: Session, user_id: str, room_ids: list[str]) -> set[str]:
@@ -512,5 +593,88 @@ def attachments_for(db: Session, message_ids: list[int]) -> dict[int, MessageAtt
     return {a.message_id: a for a in rows}
 
 
+def add_share(
+    db: Session, message: Message, kind: str, payload: dict, commit: bool = True
+) -> MessageShare:
+    """공유 카드의 내용을 그 메시지에 붙인다."""
+    share = MessageShare(
+        message_id=message.id,
+        group_id=message.group_id,
+        room_id=message.room_id,
+        kind=kind,
+        payload=payload,
+    )
+    db.add(share)
+    if commit:
+        db.commit()
+    return share
+
+
+def share_table_exists(db: Session) -> bool:
+    """공유 카드 표가 이 DB 에 실제로 있는지(캐시된 준비 상태가 아니라 카탈로그를 본다). 같은 연결로 확인해 풀에서 연결을 더 꺼내지 않는다."""
+    return inspect(db.connection()).has_table(MessageShare.__tablename__)
+
+
+def add_message_with_share(db: Session, message: Message, kind: str, payload: dict) -> None:
+    """메시지와 카드 내용을 한 번에 커밋한다(실패하면 둘 다 저장되지 않아 카드 없는 메시지가 남지 않는다)."""
+    try:
+        db.add(message)
+        db.flush()
+        add_share(db, message, kind, payload, commit=False)
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+
+
+def shares_for(db: Session, message_ids: list[int]) -> dict[int, MessageShare]:
+    """메시지 id 들의 공유 카드를 한 번의 쿼리로."""
+    if not message_ids:
+        return {}
+    rows = db.scalars(select(MessageShare).where(MessageShare.message_id.in_(message_ids)))
+    return {s.message_id: s for s in rows}
+
+
+def delete_share(db: Session, message_id: int) -> None:
+    """메시지의 공유 카드 내용을 지운다(커밋은 부르는 쪽이 한다)."""
+    db.execute(delete(MessageShare).where(MessageShare.message_id == message_id))
+
+
 def get_attachment(db: Session, attachment_id: str) -> MessageAttachment | None:
     return db.get(MessageAttachment, attachment_id)
+
+
+def lock_room(db: Session, room_id: str) -> None:
+    """방 줄을 잠근다(PostgreSQL 은 FOR UPDATE, SQLite 는 무시). 두 사람이 동시에 나가도 마지막으로 나가는 쪽이 방을 지우게 한다."""
+    db.scalars(select(ChatRoom.id).where(ChatRoom.id == room_id).with_for_update()).first()
+
+
+def count_room_members(db: Session, room_id: str) -> int:
+    """1:1 방에 남은 참여자 수."""
+    return (
+        db.scalar(
+            select(func.count())
+            .select_from(ChatRoomMember)
+            .where(ChatRoomMember.room_id == room_id)
+        )
+        or 0
+    )
+
+
+def remove_room_member(db: Session, room_id: str, user_id: str) -> None:
+    """1:1 방에서 내 참여와 내 방별 기록(공지 숨김·읽음 표시·알림 끄기)을 지운다(커밋은 부르는 쪽). 방과 상대의 기록은 그대로다."""
+    pin_ids = select(ChatPinnedMessage.id).where(ChatPinnedMessage.room_id == room_id)
+    statements = (
+        delete(ChatPinHide).where(ChatPinHide.user_id == user_id, ChatPinHide.pin_id.in_(pin_ids)),
+        delete(ChatRoomRead).where(
+            ChatRoomRead.room_id == room_id, ChatRoomRead.user_id == user_id
+        ),
+        delete(ChatRoomMute).where(
+            ChatRoomMute.room_id == room_id, ChatRoomMute.user_id == user_id
+        ),
+        delete(ChatRoomMember).where(
+            ChatRoomMember.room_id == room_id, ChatRoomMember.user_id == user_id
+        ),
+    )
+    for statement in statements:
+        db.execute(statement.execution_options(synchronize_session=False))

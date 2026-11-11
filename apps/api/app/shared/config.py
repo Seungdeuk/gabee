@@ -16,6 +16,7 @@ class Settings(BaseSettings):
     database_url: str = "sqlite:///./data/gabee.db"
     data_dir: str = "./data"
     cors_origins: str = "*"
+    support_email: str = ""  # 공개 안내 페이지(/privacy·/terms 등)에 보이는 문의 이메일. 비우면 이메일 줄은 보이지 않는다
     anthropic_api_key: str = ""
     # Anthropic 모델은 환경변수 ANTHROPIC_MODEL 로 고른다(예전 이름 LLM_MODEL 도 읽는다). 비우면 기본값.
     llm_model: str = Field(
@@ -35,6 +36,26 @@ class Settings(BaseSettings):
     chat_include_sensitive: bool = (
         True  # 가린 글만 채팅 근거로 쓴다. 끄려면 CHAT_INCLUDE_SENSITIVE=false
     )
+
+    # 업로드 파일의 글자 읽기(OCR)·개인정보 가리기를 Claude 로 한다(docs/adr/0014). 호출이 실패하면 가리지 않은 글을 저장하지 않고 파일을 failed 로 둔다.
+    # 글자 읽기와 가리기는 항상 Claude 로 한다(사용자 결정 2026-11-09). false 는 외부 호출 없이 도는 시험에서만 쓴다(conftest.py).
+    ingest_llm_ocr: bool = True  # 사진·PDF 쪽을 Claude 로 읽는다
+    ingest_llm_mask: bool = True  # 글을 Claude 로 가리고 가족 이름 후보를 문맥으로 판단한다
+    ingest_ocr_model: str = "claude-sonnet-5-5"  # 표·머리말 구분이 좋은 모델
+    ingest_mask_model: str = ""  # 비우면 llm_model(Haiku)
+    # 가족방 사진이 문서 사진인지 Claude 로 가린다(기본 false: 로컬 OCR 판별만). 켜면 글자가 있는 사진이 Anthropic API 로 전송된다(docs/adr/0015)
+    photo_judge_llm: bool = False
+    photo_judge_model: str = ""  # 비우면 llm_model(Haiku)
+    ingest_mask_chunk_chars: int = 6000  # 가리기 호출 한 번에 보내는 최대 글자 수(긴 문서는 나눠서)
+    ingest_pdf_max_pages: int = 20  # Claude 로 읽는 PDF 최대 쪽 수(비용 상한)
+    # Claude 연결 실패(llm_unavailable)로 failed 가 될 파일을 자동으로 다시 처리하는 횟수와 기다리는 시간(n번째 재시도는 n×이 초)
+    ingest_retry_max: int = 2
+    ingest_retry_wait_seconds: int = 20
+    # 올린 문서의 날짜에서 챙길 일을 뽑는다(Claude 1회 호출). 켜도 사용자마다 챙겨주기 스위치로 끌 수 있다
+    ingest_reminders: bool = False
+    # AI 채팅 탭에서 Claude 가 웹 검색을 쓸 수 있게 한다(docs/requirements/ai_assistant-web-search.md). 검색 1,000회에 10달러가 더 든다
+    web_search_enabled: bool = False
+    web_search_max_uses: int = 3  # 질문 하나에 검색할 수 있는 횟수
 
     # 임시 경로 스위치(app/shared/route_switch.py): 쉼표로 구분한 `METHOD /path`(경로에 * 허용). 걸린 요청은 503 route_disabled. 비우면 끄는 경로 없음
     disabled_ai_routes: str = ""
@@ -79,6 +100,13 @@ class Settings(BaseSettings):
     # 테스트 참여 동의서에 동의한 회원만 API 를 쓸 수 있게 한다(기본은 꺼짐). 앱의 동의서 버전(CONSENT_VERSION)과 같게 둔다.
     require_tester_consent: bool = False
     tester_consent_version: str = "v0.2"
+    # 통합관리자 허용 목록(app/shared/auth.py require_operator("admin")): 쉼표로 구분한 사용자 id. 비어 있거나 없으면 아무도 허용하지 않는다.
+    # 서비스 관리(/admin/service/*)와 운영 관리(/admin/ops/*)를 함께 연다(2026-11-06 결정: 권한은 통합관리자 하나).
+    # 실제 id 는 환경변수(.env·비밀 관리)에만 두고 코드·Git·문서에 넣지 않는다.
+    admin_user_ids: str = ""
+    # 구독·통신비 서버 API(/billing/subscriptions*) 사용 여부(기본 꺼짐). 지갑 탭에서 구독 기능을 빼면서 닫았다. 꺼져 있으면 403 subscription_disabled 로 막고,
+    # 일정 추천도 구독 결제일을 읽지 않는다. 테이블과 데이터는 그대로 둔다.
+    subscription_api_enabled: bool = False
     # 메일 요청 제한(프로세스 메모리, login 제한과 같은 한계): 인증 메일 재발송 간격/시간당, 재설정 메일 이메일별/IP별 시간당
     verify_resend_cooldown_seconds: int = 60
     verify_max_per_hour: int = 5
@@ -132,6 +160,10 @@ class Settings(BaseSettings):
     ai_schedule_chat_cooldown_seconds: int = 0
     ai_schedule_chat_max_calls_per_user_per_day: int = 30
     ai_schedule_chat_max_calls_per_group_per_day: int = 100
+    # 전화 이야깃거리(데일리 체크): 쿨다운 없음, 하루 10번(가족 30번). 결과 캐시는 서버 기본 시간(ai_result_cache_ttl_seconds)을 따른다
+    ai_call_talk_cooldown_seconds: int = 0
+    ai_call_talk_max_calls_per_user_per_day: int = 10
+    ai_call_talk_max_calls_per_group_per_day: int = 30
     # 먼저 권해드려요 카드 공급(미리 만들어 저장): 하루 3번(5개씩 15개), 요청 간격 5초
     ai_schedule_card_cooldown_seconds: int = 5
     ai_schedule_card_max_calls_per_user_per_day: int = 3
@@ -153,6 +185,23 @@ class Settings(BaseSettings):
         2  # 동시에 돌리는 추론 수(요청이 몰리면 대기, 오래 걸리면 auto 는 규칙만·required 는 503)
     )
     privacy_ner_model_file: str = "model.onnx"  # 폴더 안 모델 파일(양자화 모델은 model.int8.onnx)
+    # 운영 관리자 요청 지표(app/features/ops_admin). 기본 꺼짐: 공용 DB 에 ops_request_metrics 가 생긴 뒤 켠다.
+    # 켜면 요청마다 X-Trace-Id 를 내려주고 메서드·경로 패턴·상태코드 구분·지연 시간만 집계한다(URL 원문·본문·헤더·사용자 id 저장 안 함).
+    # 구간 길이와 보관 일수는 추측으로 정한 초기값이라 실제 트래픽·저장량을 본 뒤 조정한다.
+    ops_metrics_enabled: bool = False
+    ops_metrics_bucket_seconds: int = 300
+    ops_metrics_retention_days: int = 90
+    # 운영 관리자 오류 이벤트(5xx·처리되지 않은 예외·401/403): 기본 꺼짐. 공용 DB 에 ops_error_events 가 생긴 뒤 켠다.
+    # 켜도 응답에는 영향이 없고(응답을 보내기 전 요청 안에서 저장), 메시지는 가려서 200자까지만, 인증 실패는 메시지 없이 code 만 저장한다.
+    ops_errors_enabled: bool = False
+    ops_errors_retention_days: int = 90
+    # 운영 관리자 인프라 상태(Cloud Run 설정·Cloud Monitoring 조회, 읽기 전용): 기본 꺼짐. 실행 서비스 계정에 roles/run.viewer·monitoring.viewer 가 필요하다.
+    ops_infra_enabled: bool = False
+    # 폰 푸시(app/shared/push.py). 기본 꺼짐: 켜면 알림함 알림을 저장한 뒤(커밋 후) Expo 푸시 서비스로 발송한다.
+    # 푸시 토큰이 없거나 발송이 실패해도 원래 기능에는 영향이 없다. Expo 계정에서 '푸시 보안'을 켠 경우에만
+    # PUSH_EXPO_ACCESS_TOKEN 을 넣는다(안드로이드 FCM 키는 EAS 에 올리며 서버에는 두지 않는다).
+    push_enabled: bool = False
+    push_expo_access_token: str = ""
 
     model_config = SettingsConfigDict(env_file=_ENV_FILE, extra="ignore", populate_by_name=True)
 

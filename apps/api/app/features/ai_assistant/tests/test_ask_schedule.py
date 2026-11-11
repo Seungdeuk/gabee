@@ -202,22 +202,30 @@ def test_chat_without_ai_consent_is_refused_before_any_model_call(client, family
 def test_schedule_call_is_counted_under_the_main_chat_not_the_schedule_limit(
     client, family, schedule_llm, monkeypatch
 ):
-    """일정 요청 하나 = 메인 질문의 사용 기록 한 줄(모델 호출 2회: 메인 1 + 일정 1). 일정 한도(schedule_chat)에는 따로 쌓이지 않는다."""
+    """일정 요청 하나 = 메인 질문의 사용 기록 한 줄(모델 호출 2회: 메인 1 + 일정 1). 일정 한도(schedule_chat)에는 따로 쌓이지 않는다.
+    어느 에이전트를 썼는지 보려고 일정 에이전트 이름의 nested 줄(호출 수 0)을 같이 남긴다."""
     from sqlalchemy import select
 
+    from app.shared import ai_guard
     from app.shared.ai_usage import AiUsageLog
     from app.shared.db import SessionLocal
 
     a, _, group = family
     enable_ai(group["id"])
+    user_id = client.get("/family-group/me", headers=a).json()["id"]
+    with SessionLocal() as db:
+        before = ai_guard.calls_left(db, user_id, group["id"], "schedule_chat")
     schedule_llm.data = _register_data(title="엄마 생신", date=_tomorrow(), start_time="15:00:00")
     _main_llm(monkeypatch, "내일 3시 엄마 생신 일정 잡아줘", [])
     _chat(client, a, "내일 3시 엄마 생신 일정 잡아줘")
     with SessionLocal() as db:
         logs = db.scalars(select(AiUsageLog).where(AiUsageLog.group_id == group["id"])).all()
-    assert [(row.feature, row.api_calls, row.status) for row in logs] == [
-        ("assistant_chat", 2, "ok")
-    ]
+        assert [(row.feature, row.api_calls, row.status) for row in logs] == [
+            ("assistant_chat", 2, "ok"),
+            ("schedule_chat", 0, "nested"),
+        ]
+        # nested 줄은 일정 한도를 쓰지 않는다
+        assert ai_guard.calls_left(db, user_id, group["id"], "schedule_chat") == before
     assert len(schedule_llm.calls) == 1
 
 

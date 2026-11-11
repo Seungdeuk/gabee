@@ -198,8 +198,8 @@ def test_analysis_restores_address_in_the_schedule_but_not_in_replies_and_topics
     assert body["replies"] == ["지민 고마워", "(주소) 에서 봐", "연락은 (연락처) 로"]
     assert body["topics"] == ["수진 은 뭐 하고 싶대?", "(주소) 근처 맛집은?", "(이메일) 로 보낼까?"]
     assert ADDR not in json.dumps(body["replies"] + body["topics"], ensure_ascii=False)
-    # 캐시 적중(다른 구성원)에서도 같은 복원 범위가 지켜진다
-    again = analyze(client, b).json()
+    # 캐시 적중(같은 사람의 다시 누르기)에서도 같은 복원 범위가 지켜진다
+    again = analyze(client, a).json()
     assert again["meta"]["cached"] is True
     assert again["replies"] == body["replies"] and again["topics"] == body["topics"]
     assert ADDR in again["schedule_candidates"][0]["place"]
@@ -215,7 +215,7 @@ def test_cache_holds_tokens_only_and_hit_restores_same_answer(client, chat, fake
     assert "[PERSON_2]" in stored and "[ADDR_1]" in stored  # 토큰 상태로 저장
     for raw in RAW_VALUES:
         assert raw not in stored, raw
-    second = analyze(client, b).json()
+    second = analyze(client, a).json()
     assert len(fake.calls) == 1
     assert second["meta"]["cached"] is True and second["meta"]["api_calls"] == 0
     for field in ("summary", "important_messages", "schedule_candidates", "todo_candidates"):
@@ -260,7 +260,7 @@ def test_limit_truncation_uses_pseudonymized_lines_and_stays_consistent(
     }
     first = analyze(client, a).json()
     assert 3 <= first["meta"]["message_count"] < 7
-    second = analyze(client, b).json()
+    second = analyze(client, a).json()
     assert second["meta"]["cached"] is True and second["summary"] == first["summary"]
     assert len(fake.calls) == 1
 

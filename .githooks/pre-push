@@ -1,0 +1,9 @@
+#!/bin/sh
+# push 전에 빠른 검사를 돌린다. GitHub Actions CI 를 꺼 둔 동안은 이 검사가 병합 전 유일한 관문이다.
+# 켜기(저장소마다 한 번): git config core.hooksPath .githooks
+# 정말 건너뛸 때만: git push --no-verify
+cd "$(git rev-parse --show-toplevel)/apps/api" || exit 1
+PY=.venv/Scripts/python.exe
+[ -x "$PY" ] || PY=.venv/bin/python
+[ -x "$PY" ] || PY=python
+exec "$PY" scripts/check_local.py

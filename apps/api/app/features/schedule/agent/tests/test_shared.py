@@ -3,7 +3,7 @@
 from datetime import UTC, datetime, timedelta
 
 from app.features.schedule import service
-from app.features.schedule.agent import chat, reader
+from app.features.schedule.agent import chat, handler, prompts, reader
 from app.features.schedule.schemas import EventCreate
 from app.shared.db import SessionLocal
 
@@ -50,3 +50,60 @@ def test_prompt_line_and_card_brief_mark_shared(client, family):
     assert chat.event_line(shared.id, when, shared.title, None, shared.shared).endswith(" | 공동")
     assert not chat.event_line(alone.id, when, alone.title, None, alone.shared).endswith("공동")
     assert reader.brief(shared)["shared"] is True and reader.brief(alone)["shared"] is False
+
+
+class _Ev:
+    def __init__(self, title, shared):
+        self.title = title
+        self.shared = shared
+
+
+def test_mark_shared_adds_mark_after_shared_titles_only():
+    events = [_Ev("치과 예약", True), _Ev("장보기", False)]
+    out = chat.mark_shared("내일 치과 예약이 있고, 장보기도 있어요.", events)
+    assert out == "내일 치과 예약(공)이 있고, 장보기도 있어요."
+
+
+def test_mark_shared_keeps_existing_mark_and_handles_repeats():
+    events = [_Ev("가족 식사", True)]
+    assert chat.mark_shared("가족 식사(공)가 있어요", events) == "가족 식사(공)가 있어요"
+    assert (
+        chat.mark_shared("가족 식사, 그리고 가족 식사", events)
+        == "가족 식사(공), 그리고 가족 식사(공)"
+    )
+
+
+def test_mark_shared_skips_ambiguous_title_and_empty_events():
+    mixed = [
+        _Ev("병원", True),
+        _Ev("병원", False),
+    ]  # 같은 제목이 공동·비공동으로 섞이면 구분할 수 없다
+    assert chat.mark_shared("병원 가는 날이에요", mixed) == "병원 가는 날이에요"
+    assert chat.mark_shared("일정이 없어요", []) == "일정이 없어요"
+
+
+def test_mark_shared_longer_title_wins_over_contained_title():
+    events = [_Ev("가족 식사 준비", True), _Ev("가족 식사", True)]
+    assert (
+        chat.mark_shared("가족 식사 준비와 가족 식사", events)
+        == "가족 식사 준비(공)와 가족 식사(공)"
+    )
+
+
+def test_mark_titles_marks_together_requests_and_shared_events():
+    tagged = [("치과 예약", "(공)"), ("장보기", "(함)"), ("헬스장", "")]
+    out = chat.mark_titles("치과 예약, 장보기, 헬스장이 있어요.", tagged)
+    assert out == "치과 예약(공), 장보기(함), 헬스장이 있어요."
+    assert (
+        chat.mark_titles("장보기(함) 있어요", tagged) == "장보기(함) 있어요"
+    )  # 이미 붙은 곳은 그대로
+
+
+def test_mark_titles_skips_title_with_different_marks():
+    tagged = [("병원", "(공)"), ("병원", "(함)")]  # 같은 제목이 공동·함께로 섞이면 구분할 수 없다
+    assert chat.mark_titles("병원 가는 날", tagged) == "병원 가는 날"
+
+
+def test_system_prompt_and_notices_do_not_ask_model_for_marks():
+    # (공)·(함)은 DB 값 기준으로 코드가 붙인다. 모델에게 따로 시키지 않는다.
+    assert "(공)" not in prompts.CHAT_SYSTEM and "(공)" not in handler.FAMILY_NOTICE

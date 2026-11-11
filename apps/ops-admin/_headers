@@ -1,0 +1,12 @@
+# Cloudflare Pages 응답 헤더(배포본 전용). 로컬 정적 서버는 이 파일을 쓰지 않는다.
+# meta CSP 와 이 헤더는 둘 다 적용되므로 더 좁은 쪽이 이긴다. frame-ancestors 는 헤더로만 동작한다.
+/*
+  Content-Security-Policy: default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self'; connect-src 'self' https://api.gabee.cloud; base-uri 'none'; form-action 'none'; frame-ancestors 'none'
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: no-referrer
+  X-Frame-Options: DENY
+  Permissions-Policy: camera=(), microphone=(), geolocation=()
+/js/*
+  Cache-Control: no-cache
+/css/*
+  Cache-Control: no-cache

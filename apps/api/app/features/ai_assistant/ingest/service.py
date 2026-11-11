@@ -14,7 +14,10 @@ import re
 from collections import Counter
 from pathlib import PurePath
 
-from . import converters, masking
+from app.shared.config import settings
+from app.shared.llm.transport import LLMUnavailable
+
+from . import converters, llm_ingest, masking
 from .classify import Jev, classify
 from .converters import BrokenFile, Ocr
 from .detect import Unsupported, decode_text, detect
@@ -46,10 +49,12 @@ def ingest_file(
     store: LocalRawStore | None = None,
     ocr: Ocr | None = None,
     jev: Jev | None = None,
+    family=None,
 ) -> PreprocessResult:
     """원본을 원본 데이터 센터에 그대로 보관하고, 가린 결과와 (가린 글자로 한) 분류를 돌려준다.
-    지원하지 않는 형식도 원본은 보관한다(나중에 지원되면 다시 처리할 수 있게)."""
-    result = preprocess(data, filename, ocr=ocr)
+    지원하지 않는 형식도 원본은 보관한다(나중에 지원되면 다시 처리할 수 있게).
+    family(FamilyTagger)를 주면 가리기 전에 가족 이름을 `[가족:<user_id>]` 로 바꾼다(분류에도 실명이 나가지 않는다)."""
+    result = preprocess(data, filename, ocr=ocr, family=family)
     if result.quality.error in ("empty_file", "too_large"):
         return result
     src = result.source
@@ -68,7 +73,9 @@ def ingest_file(
     return result.model_copy(update=update)
 
 
-def preprocess(data: bytes, filename: str = "", *, ocr: Ocr | None = None) -> PreprocessResult:
+def preprocess(
+    data: bytes, filename: str = "", *, ocr: Ocr | None = None, family=None
+) -> PreprocessResult:
     """실패해도 예외를 내지 않고 quality.status = failed 로 돌려준다. content 는 가린 글자다."""
     name = PurePath(filename or "file").name[:200]
     source = SourceInfo(
@@ -88,21 +95,74 @@ def preprocess(data: bytes, filename: str = "", *, ocr: Ocr | None = None) -> Pr
         return _failed(source, "unsupported_type", str(e))
     try:
         if source.kind == "image":
-            return _from_image(source, data, ocr or converters.default_ocr())
-        return _from_document(source, data, ocr)
+            return _from_image(source, data, ocr or converters.default_ocr(), family)
+        return _from_document(source, data, ocr, family)
     except BrokenFile as e:
         return _failed(source, "broken_file", str(e))
+    except LLMUnavailable:
+        # Claude 로 읽거나 가리는 중이었다면 가리지 않은 글을 저장하지 않는다. 원본은 보관했으니 나중에 다시 처리할 수 있다
+        return _failed(
+            source,
+            "llm_unavailable",
+            "글을 읽는 서비스에 연결하지 못했어요. 잠시 뒤 다시 시도해 주세요",
+        )
 
 
-def _mask(text: str) -> tuple[str, Privacy]:
+def _mask(text: str, family=None) -> tuple[str, Privacy]:
+    if settings.ingest_llm_mask:
+        # Claude 가 위치를 찾고(가족 이름 후보는 문맥으로 판단) 코드가 바꾼다. 호출이 실패하면 LLMUnavailable 이 올라가 파일이 failed 가 된다
+        masked, counts, sensitive = llm_ingest.mask(text, family)
+        notice = sensitive == "bankbook" and masking.is_account_notice(
+            text
+        )  # 가리기 전의 글로 판단
+        return masked, Privacy(sensitive=sensitive, masked=counts, account_notice=notice)
+    # 가족 이름은 가리기보다 먼저 자리표시로 바꾼다: 가린 뒤에는 `강**` 가 되어 누구인지 되돌릴 수 없다
+    if family is not None:
+        text = family.protect(text)
     # 처방전·신분증만 모두 가리고, 그 밖의 문서는 주민등록번호만 가린다
     kind = masking.sensitive_kind(text)
+    notice = kind == "bankbook" and masking.is_account_notice(text)  # 가리기 전의 글로 판단
     counts: Counter = Counter()
     masked = masking.mask_text(text, kind, counts=counts)
-    return masked, Privacy(sensitive=kind, masked={k: v for k, v in counts.items() if v})
+    if family is not None:
+        masked = family.expand(masked)
+    return masked, Privacy(
+        sensitive=kind, masked={k: v for k, v in counts.items() if v}, account_notice=notice
+    )
 
 
-def _from_image(source: SourceInfo, data: bytes, ocr: Ocr) -> PreprocessResult:
+def _from_image_llm(source: SourceInfo, data: bytes, family=None) -> PreprocessResult:
+    """사진을 Claude 로 읽는다. 자신 없는 줄([?])은 확신도를 낮춰 기존 [불확실] 표시와 이어지게 한다."""
+    image = converters.prepare_image(data)
+    out = llm_ingest.ocr_image(image)
+    if not out.text.strip():
+        return PreprocessResult(
+            source=source, quality=Quality(status="ok", warnings=["사진에 글자가 없어요"])
+        )
+    masked, privacy = _mask(
+        out.text, family
+    )  # 가리기가 줄 수를 바꿀 수 있어 가린 글에서 줄을 나눈다
+    lines, confs = llm_ingest.line_confidence(masked)
+    kept = [(t, c) for t, c in zip(lines, confs, strict=True) if t.strip()]
+    blocks = [
+        Block(index=i, type="ocr_line", text=t, confidence=c) for i, (t, c) in enumerate(kept)
+    ]
+    conf = round(sum(c for _, c in kept) / max(1, len(kept)), 3)
+    doubtful = out.truncated or any(c < 0.75 for _, c in kept)
+    warnings = ["글자가 흐려 일부만 읽혔을 수 있어요"] if doubtful else []
+    return PreprocessResult(
+        source=source,
+        content=Content(text="\n".join(t for t, _ in kept), blocks=blocks),
+        quality=Quality(
+            status="partial" if warnings else "ok", text_confidence=conf, warnings=warnings
+        ),
+        privacy=privacy,
+    )
+
+
+def _from_image(source: SourceInfo, data: bytes, ocr: Ocr, family=None) -> PreprocessResult:
+    if settings.ingest_llm_ocr:
+        return _from_image_llm(source, data, family)
     image = converters.prepare_image(data)
     lines = ocr.read(image)
     if not lines:
@@ -110,10 +170,10 @@ def _from_image(source: SourceInfo, data: bytes, ocr: Ocr) -> PreprocessResult:
             source=source, quality=Quality(status="ok", warnings=["사진에 글자가 없어요"])
         )
     # 줄을 이어 붙여 한 번에 가린 뒤 다시 줄로 나눈다(가리기는 줄 수를 바꾸지 않는다)
-    text, privacy = _mask("\n".join(ln.text for ln in lines))
+    text, privacy = _mask("\n".join(ln.text for ln in lines), family)
     masked_lines = text.split("\n")
     if len(masked_lines) != len(lines):  # 만일을 대비: 줄마다 따로 가린다
-        masked_lines = [_mask(ln.text)[0] for ln in lines]
+        masked_lines = [_mask(ln.text, family)[0] for ln in lines]
     blocks = [
         Block(index=i, type="ocr_line", text=t, confidence=round(ln.confidence, 3))
         for i, (t, ln) in enumerate(zip(masked_lines, lines, strict=True))
@@ -130,7 +190,9 @@ def _from_image(source: SourceInfo, data: bytes, ocr: Ocr) -> PreprocessResult:
     )
 
 
-def _from_document(source: SourceInfo, data: bytes, ocr: Ocr | None = None) -> PreprocessResult:
+def _from_document(
+    source: SourceInfo, data: bytes, ocr: Ocr | None = None, family=None
+) -> PreprocessResult:
     if source.kind == "text":
         markdown = decode_text(data) or ""
     elif source.kind in ("csv", "html"):  # 한국 엑셀·메모장 CSV 는 CP949 라서 UTF-8 로 바꿔 넘긴다
@@ -142,7 +204,7 @@ def _from_document(source: SourceInfo, data: bytes, ocr: Ocr | None = None) -> P
         markdown = converters.to_markdown(data, source.kind)
     if source.kind != "pdf":
         ocr_note = None
-    markdown, privacy = _mask(markdown)
+    markdown, privacy = _mask(markdown, family)
     blocks, pages = converters.markdown_blocks(markdown, source.kind)
     if source.kind in ("pptx", "xlsx"):  # 슬라이드·시트 번호와 블록 번호를 붙여 넘긴다
         text = converters.numbered_markdown(blocks, source.kind)
@@ -166,7 +228,10 @@ def _from_document(source: SourceInfo, data: bytes, ocr: Ocr | None = None) -> P
 
 def _read_pdf(data: bytes, ocr: Ocr | None) -> tuple[str, str | None]:
     """글자 층이 있는 쪽은 그대로 두고, 글자가 없는 쪽(스캔·사진)만 그림으로 바꿔 OCR 한다.
-    (쪽을 \\f 로 이은 글, 확인이 필요한 이유). 스캔 쪽이 없으면 입력 글을 그대로 돌려준다."""
+    (쪽을 \\f 로 이은 글, 확인이 필요한 이유). 스캔 쪽이 없으면 입력 글을 그대로 돌려준다.
+    INGEST_LLM_OCR 가 켜져 있으면 글자 층이 있어도 표·머리말 구분이 더 정확한 Claude 로 쪽마다 읽는다(평가: 글자 층 꺼내기는 표를 한 줄로 이어 붙인다)."""
+    if settings.ingest_llm_ocr:
+        return llm_ingest.ocr_pdf(data)
     texts = converters.pdf_page_texts(data)
     scan = [
         i for i, t in enumerate(texts) if len(re.sub(r"\s+", "", t)) < converters.PDF_MIN_PAGE_CHARS

@@ -12,7 +12,8 @@
 1. 그룹에 속한 데이터(메시지·일정·지출·돌봄 기록·사진 등)를 다루는 라우터는 `group_id`를 요청(URL/쿼리/바디)에서 절대 받지 않고, 반드시 `Depends(current_group_id)`로만 받는다. 클라이언트가 보낸 `group_id`는 신뢰하지 않는다.
 2. `created_by`/`paid_by`/`uploaded_by`처럼 "누가 썼는지"를 나타내는 값도 요청 바디에서 받지 않고 `Depends(current_user)`로 받은 사용자에서 유도한다. Pydantic 스키마에 그런 필드를 아예 넣지 않는 것이 기본 방어선이다(지금 모든 도메인이 이렇게 돼 있다).
 3. 단일 리소스를 id로 조회·수정·삭제할 때(예: 일정 하나를 `event_id`로)는 **SQL 쿼리 자체에 `group_id` 조건을 포함**시킨다. PK로만 조회한 뒤 파이썬에서 `obj.group_id == group_id`를 비교하는 방식은 누군가 "단순화"하면서 그 비교를 지우기 쉬우므로 쓰지 않는다 (`schedule/repository.get()` 참고: `select(Event).where(Event.id == event_id, Event.group_id == group_id)`).
-4. 새 도메인(Report 등)을 추가할 때도 위 1~3을 그대로 따른다.
+4. 구성원 개인 상태(문서 읽음 `knowledge_item_reads`, 대화방 읽음 `chat_room_reads` 등)는 요청한 사용자 **본인 것만** 조회·기록한다. 다른 구성원의 읽음 여부는 어떤 API로도 알 수 없다.
+5. 새 도메인(Report 등)을 추가할 때도 위 1~4를 그대로 따른다.
 
 ## 공통 권한 함수 (`apps/api/app/shared/auth.py`)
 
@@ -40,7 +41,9 @@
 
 ## 아직 없는 기능 (이번 PR에서 만들지 않음)
 
-- **가족 탈퇴**, **활성 그룹 전환** API는 코드에 없다. 나중에 만들 때는 `GroupMember` 행 삭제(또는 생성)와 `active_group_id` 갱신을 같은 트랜잭션에서 함께 처리해야 한다 — 다만 이제 `current_group_id`가 `group_members`를 직접 확인하므로, 둘이 어긋나더라도(예: 탈퇴 로직이 `active_group_id`를 못 지우는 버그) 권한 검증 자체는 여전히 안전하다. `apps/api/tests/test_membership_enforcement.py`가 이 상황(멤버십은 없는데 `active_group_id`는 남은 상태)을 직접 시뮬레이션해서 막히는지 확인한다.
+- **활성 그룹 전환** API는 코드에 없다.
+- **가족 이름 변경**: `PUT /family-group/groups/me/name`(본문 `{name}`, 1~60자, 앞뒤 공백 제거, 공백뿐이면 422). **가족 관리자(owner/admin)만** 바꿀 수 있고 일반 구성원은 403 `not_manager`, 가족이 없으면 400 `no_group`. 권한은 `group_members.role` 로만 판단한다.
+- **가족 나가기**: `POST /family-group/groups/me/leave`(204). 일반 구성원·관리자(admin)는 자발적으로 나갈 수 있고, **소유자(owner)는 다른 구성원이 있으면 나갈 수 없다**(400 `cannot_leave_owner`, 소유권 이전이 생기기 전까지). 구성원이 소유자 혼자뿐이면 나갈 수 있고 가족의 모든 데이터가 지워진다. 멤버십 삭제(`role != 'owner'` 조건부 DELETE)·그 사람이 쓰거나 받은 별명 삭제·`active_group_id` 정리(이 그룹이 활성이었으면 남은 가족 중 가장 최근에 들어간 곳으로 바꾸고, 없으면 NULL)를 한 트랜잭션에서 처리한다. **토큰은 폐기하지 않는다** — 나간 뒤의 접근은 토큰이 아니라 `current_group_id` 의 `group_members` 확인(400 `no_group`/403 `not_member`)으로 막힌다. 이름 변경·구성원 강제 퇴출 API는 제품 결정으로 만들지 않는다. `apps/api/tests/test_membership_enforcement.py`는 멤버십은 없는데 `active_group_id`는 남은 상태도 시뮬레이션해서 막히는지 확인한다.
 
 ## 기존 인증 방식의 잔여 위험
 
@@ -49,3 +52,4 @@
 - 레이트 리밋, 토큰 재발급/폐기, 세션 무효화가 없다.
 
 이번 PR은 "로그인한 사람이 자기 가족 데이터만 보게" 하는 권한 계층을 고친 것이고, 인증 자체(토큰 방식)는 바꾸지 않았다. 다음 PR(정식 사용자 인증)에서 다룰 항목: 토큰 해시 저장(평문 대신), 만료/재발급, 가능하다면 실제 로그인(소셜 로그인 등 — `current_user`만 바꾸면 되도록 이미 분리돼 있음), 탈퇴 시 토큰 즉시 무효화.
+
