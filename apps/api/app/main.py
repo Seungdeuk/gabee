@@ -36,7 +36,7 @@ from app.shared.schema_gate import health_router, schema_ready
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     init_db()
-    push_schedule.start()  # 예약 푸시(일정 30분 전·할 일 아침 9시): PUSH_ENABLED 가 켜져 있을 때만 1분마다 확인한다
+    push_schedule.start()  # 예약 푸시(시간 있으면 30분 전, 시간 없으면 전날 밤 9시): PUSH_ENABLED 가 켜져 있을 때만 1분마다 확인한다
     privacy_ner.start_preload()  # NER 모델을 백그라운드로 미리 불러온다(off 면 아무 일도 안 함, 실패해도 기동은 계속)
     yield
     ops_metrics.flush(
