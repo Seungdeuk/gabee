@@ -4,9 +4,9 @@ import Avatar from "@/shared/components/Avatar";
 import { colors, font, fonts } from "@/theme";
 
 /** 폭탄 방 선수 한 줄: 아바타, 이름 옆에 입장 시각, 오른쪽에 입장 칩. 아직 안 들어온 사람은 초대하기 + 대기 칩. */
-export default function PlayerRow({ id, name, note, joined, mine = false, onInvite }) {
+export default function PlayerRow({ id, name, note, joined, onInvite }) {
   return (
-    <View style={[styles.row, mine && styles.mine]}>
+    <View style={styles.row}>
       <Avatar name={id === "me" ? "나" : name} userId={id} size={36} />
       <View style={styles.text}>
         <Text style={styles.name}>{name}</Text>
@@ -24,7 +24,6 @@ export default function PlayerRow({ id, name, note, joined, mine = false, onInvi
 
 const styles = StyleSheet.create({
   row: { minHeight: 52, flexDirection: "row", alignItems: "center", gap: 12 },
-  mine: { paddingHorizontal: 8, borderRadius: 12, borderWidth: 2, borderColor: "#E3CFB0", backgroundColor: colors.card }, // 내 줄
   text: { flex: 1, flexDirection: "row", alignItems: "baseline", gap: 8 },
   name: { ...font.bodyStrong, color: colors.text },
   note: { ...font.caption, color: colors.textSub },

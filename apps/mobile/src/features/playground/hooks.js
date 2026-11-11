@@ -157,11 +157,11 @@ export function useBombRoom(id) {
 }
 
 /** 방 상태에 맞지 않는 폭탄 화면에 있으면 알맞은 화면으로 옮겨 간다(게임이 시작되면 로비 → 게임, 탈락하면 게임 → 관전, 끝나면 결과). */
-export function useBombRedirect(room, self) {
+export function useBombRedirect(room, self, enabled = true) {
   const router = useRouter();
   const target = room ? bombScreen(room, self) : self;
   const id = room?.id;
   useEffect(() => {
-    if (id && target !== self) router.replace(bombPath(target, id));
-  }, [id, target, self, router]);
+    if (enabled && id && target !== self) router.replace(bombPath(target, id));
+  }, [enabled, id, target, self, router]);
 }

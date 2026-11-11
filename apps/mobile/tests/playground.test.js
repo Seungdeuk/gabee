@@ -537,12 +537,14 @@ test("선수 목록: 로비는 참여한 사람만 방장 → 나 → 입장 순
     { id: "m", name: "나", joined: true },
     { id: "k", name: "하윤", joined: true },
     { id: "z", name: "민준", joined: false },
+    { id: "g", name: "가온", joined: false },
   ];
   assert.deepEqual(lobbyPlayers(players, "m", true).map((p) => p.id), ["h", "m", "a", "k"]);
-  // 내가 방장이면 방을 열면서 이미 들어가 있어 대기방을 거치지 않으니 부른 가족 전부(입장·대기)를 본다
-  assert.deepEqual(lobbyPlayers(players, "h", true, true).map((p) => p.id), ["h", "a", "m", "k", "z"]);
-  // 들어오기 전(대기방)에는 부른 가족 전부, 서버 순서 그대로(안 들어온 가족이 맨 아래)
-  assert.deepEqual(lobbyPlayers(players, "z", false).map((p) => p.id), ["h", "a", "m", "k", "z"]);
+  // 내가 방장이면 방장(나) → 입장 순서 → 대기(가나다 순)
+  assert.deepEqual(lobbyPlayers(players, "h", true, true).map((p) => p.id), ["h", "a", "m", "k", "g", "z"]);
+  // 들어오기 전(대기방)에는 방장 → 나 → 입장 순서 → 대기(가나다 순). 아직 안 들어온 나도 방장 바로 아래
+  assert.deepEqual(lobbyPlayers(players, "z", false).map((p) => p.id), ["h", "z", "a", "m", "k", "g"]);
+  assert.deepEqual(lobbyPlayers(players, "m", false).map((p) => p.id), ["h", "m", "a", "k", "g", "z"]);
 });
 
 test("다음 차례: 살아서 참여 중인 선수 중 지금 차례 바로 다음 사람", () => {
