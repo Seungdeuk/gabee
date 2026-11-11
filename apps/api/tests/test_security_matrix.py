@@ -1663,6 +1663,7 @@ LLM_CALLER_FILES = {
     "features/schedule/agent/chat.py": "ai_guard.run",
     "features/schedule/agent/suggest.py": "ai_guard.run",
     "features/schedule/call_talk/service.py": "ai_guard.run",
+    "features/weekly_news/generate.py": "ai_guard.run",
     "features/billing/agent.py": "agent_guard.run_turn",
     "features/family_chat/agent.py": "agent_guard.run_turn",
 }

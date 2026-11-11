@@ -5,7 +5,7 @@ LLM·네트워크 호출은 하지 않는다(부르면 시험이 실패한다). 
 """
 
 import uuid
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 
 import httpx
 import pytest
@@ -68,15 +68,14 @@ def _ids(client, headers) -> tuple[str, str]:
 
 def _save(user_id: str, group_id: str, week: date, status: str = "ok", **fields) -> None:
     now = datetime.now(UTC)
+    values = {"created_at": now, "updated_at": now, **fields}  # fields 가 시각을 덮어쓸 수 있다
     row = MemberWeeklyNews(
         id=uuid.uuid4().hex,
         group_id=group_id,
         user_id=user_id,
         week_start=week,
         status=status,
-        created_at=now,
-        updated_at=now,
-        **fields,
+        **values,
     )
     with SessionLocal() as db:
         db.add(row)
@@ -147,7 +146,8 @@ def test_saved_ok_news_is_returned_without_internal_fields(client, family, at):
 @pytest.mark.parametrize(
     "db_status,expected,fields",
     [
-        ("pending", "pending", {}),
+        # 시험의 현재(WED)보다 방금 시작한 pending 은 만드는 중으로 보인다(5분 넘은 pending 은 not_generated, test_generate 에서 본다)
+        ("pending", "pending", {"updated_at": WED - timedelta(seconds=30)}),
         ("failed", "failed", {"error_code": "llm_error"}),
         ("empty", "empty", {}),
     ],

@@ -295,7 +295,7 @@ def test_other_family_is_never_mixed(client, family):
 def test_memo_place_and_body_never_leak_into_records(client, family):
     a, b, group = family
     ua, ub = _uid(client, a), _uid(client, b)
-    _event(client, a, "병원 예약", share_with=[ub], memo=SECRET, place=SECRET, start_time="09:00")
+    _event(client, a, "가족 외식", share_with=[ub], memo=SECRET, place=SECRET, start_time="09:00")
     _doc(client, a, "검진 안내", "2026-11-04T03:00:00+00:00", body=SECRET)
     got = _collect(group["id"], ua)
     assert {r.kind for r in got.records} == {"event", "document"}
@@ -314,15 +314,16 @@ def test_memo_place_and_body_never_leak_into_records(client, family):
 
 def test_document_week_boundary_in_kst(client, family):
     a, _, group = family
-    _doc(client, a, "전 일요일 밤", "2026-11-01T14:59:59+00:00")
-    _doc(client, a, "월요일 0시", "2026-11-01T15:00:00+00:00")
-    _doc(client, a, "일요일 끝", "2026-11-08T14:59:59+00:00")
-    _doc(client, a, "다음 월요일 0시", "2026-11-08T15:00:00+00:00")
+    # 문서 재료의 제목은 종류 라벨이라, 경계를 구분하려고 라벨을 다르게 둔다
+    _doc(client, a, "전 일요일 밤", "2026-11-01T14:59:59+00:00", label="전 일요일 밤")
+    _doc(client, a, "월요일 0시", "2026-11-01T15:00:00+00:00", label="월요일 0시")
+    _doc(client, a, "일요일 끝", "2026-11-08T14:59:59+00:00", label="일요일 끝")
+    _doc(client, a, "다음 월요일 0시", "2026-11-08T15:00:00+00:00", label="다음 월요일 0시")
     got = _collect(group["id"], _uid(client, a))
-    assert sorted(r.title for r in got.records) == ["메모: 월요일 0시", "메모: 일요일 끝"]
+    assert sorted(r.title for r in got.records) == ["월요일 0시", "일요일 끝"]
     assert {r.title: r.day for r in got.records} == {
-        "메모: 월요일 0시": date(2026, 11, 2),
-        "메모: 일요일 끝": date(2026, 11, 8),
+        "월요일 0시": date(2026, 11, 2),
+        "일요일 끝": date(2026, 11, 8),
     }
     assert all(r.kind == "document" and r.start_time is None for r in got.records)
 
@@ -338,21 +339,21 @@ def test_document_sensitive_by_label_alone_is_excluded(client, family, label):
             select(KnowledgeItem.sensitivity).where(KnowledgeItem.title == "라벨로 민감")
         )
     assert stored == "sensitive"  # 시험 전제: 실제 저장 경로가 민감으로 판정했다
-    assert _titles(_collect(group["id"], _uid(client, a)), "document") == ["안내문: 그냥 안내"]
+    assert _titles(_collect(group["id"], _uid(client, a)), "document") == ["안내문"]
 
 
 def test_sensitive_document_is_excluded(client, family):
     a, _, group = family
     _doc(client, a, "일반 문서", "2026-11-04T03:00:00+00:00")
     _doc(client, a, "민감 문서", "2026-11-04T03:00:00+00:00", sensitivity="sensitive")
-    assert _titles(_collect(group["id"], _uid(client, a)), "document") == ["메모: 일반 문서"]
+    assert _titles(_collect(group["id"], _uid(client, a)), "document") == ["메모"]
 
 
-def test_document_ref_is_the_item_id_and_label_is_included(client, family):
+def test_document_ref_is_the_item_id_and_only_the_label_is_the_title(client, family):
     a, _, group = family
     item_id = _doc(client, a, "독감 접종 안내", "2026-11-04T03:00:00+00:00", label="안내문")
     rec = _collect(group["id"], _uid(client, a)).records[0]
-    assert (rec.ref, rec.title) == (item_id, "안내문: 독감 접종 안내")
+    assert (rec.ref, rec.title) == (item_id, "안내문")  # 원래 제목은 재료에 없다
 
 
 def test_documents_are_family_shared_but_not_other_families(client, family, other_family):
@@ -360,10 +361,11 @@ def test_documents_are_family_shared_but_not_other_families(client, family, othe
     _doc(client, a, "지민이 올린 문서", "2026-11-04T03:00:00+00:00")
     _doc(client, other_family, "남의 가족 문서", "2026-11-04T03:00:00+00:00")
     # 문서함은 가족 공유라 올린 사람과 상관없이 같은 가족이면 같은 재료다
-    assert _titles(_collect(group["id"], _uid(client, b))) == ["메모: 지민이 올린 문서"]
+    assert _titles(_collect(group["id"], _uid(client, b))) == ["메모"]
 
 
-def test_family_name_tokens_in_title_are_restored(client, family):
+def test_original_document_title_never_reaches_the_records(client, family):
+    """문서 재료는 종류 라벨·날짜만 낸다. 제목(가족 이름 자리표시·제3자 이름·진단서 같은 정보 포함)은 읽지도 않는다."""
     a, b, group = family
     ub = _uid(client, b)
     with SessionLocal() as db:
@@ -372,15 +374,15 @@ def test_family_name_tokens_in_title_are_restored(client, family):
                 group_id=group["id"],
                 created_by=_uid(client, a),
                 kind_label="안내문",
-                title=f"[가족:{ub}] 접종 기록 [가족:ghost123]",
+                title=f"[가족:{ub}] 박서연 접종 기록 [가족:ghost123]",
                 body_md=SECRET,
                 created_at=datetime(2026, 11, 4, 3, tzinfo=UTC),
             )
         )
         db.commit()
     got = _collect(group["id"], _uid(client, a))
-    assert [r.title for r in got.records] == ["안내문: 수진 접종 기록 가족 구성원"]
-    assert "[가족:" not in repr(got)
+    assert [r.title for r in got.records] == ["안내문"]
+    assert "박서연" not in repr(got) and "[가족:" not in repr(got) and "수진" not in repr(got)
 
 
 # ---------- 수집기: 미등록·준비 안 됨·예외 ----------
@@ -506,7 +508,7 @@ def test_real_providers_report_unavailable_when_their_feature_is_not_ready(
 
     monkeypatch.setattr(schema_module.monitor, "status", not_ready("schedule"))
     got = _collect(group["id"], _uid(client, a))
-    assert got.unavailable == ["schedule"] and _titles(got) == ["메모: 문서"]
+    assert got.unavailable == ["schedule"] and _titles(got) == ["메모"]
     monkeypatch.setattr(schema_module.monitor, "status", not_ready("ai_assistant"))
     got = _collect(group["id"], _uid(client, a))
     assert got.unavailable == ["documents"] and _titles(got) == ["공유 약속"]
