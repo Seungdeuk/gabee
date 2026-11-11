@@ -6,6 +6,7 @@ from app.shared.db import get_db
 
 from . import (
     chat_share,  # noqa: F401  (import 하면 공유 카드의 일정 내용 만들기가 등록된다)
+    news_source,  # noqa: F401  (import 하면 주간 뉴스의 일정 재료 읽기가 등록된다)
     service,
 )
 from . import together as request_service

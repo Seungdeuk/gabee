@@ -10,6 +10,7 @@ from app.shared.llm import agent_chat
 from app.shared.llm.schemas import AgentConfirmOut
 
 from . import files, library, memories, reminders, repository, service, sharing
+from .knowledge import news_source  # noqa: F401  (import 하면 주간 뉴스의 문서함 재료 읽기가 등록된다)
 from .knowledge.router import router as knowledge_router
 from .models import Photo
 from .schemas import (

@@ -1,10 +1,11 @@
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 
-from sqlalchemy import or_, select, update
+from sqlalchemy import and_, or_, select, update
 from sqlalchemy.orm import Session
 
 from app.features.family_group.models import GroupMember
 
+from .constants import KIND_APPOINTMENT, KIND_TODO
 from .models import Event, EventRequest, EventRequestRecipient, EventTopic
 
 
@@ -100,6 +101,29 @@ def list_from(
     if since is not None:
         q = q.where(Event.starts_at >= since)
     return list(db.scalars(q))
+
+
+def list_week(
+    db: Session,
+    group_id: str,
+    user_id: str,
+    start: date,
+    end: date,
+    utc_start: datetime,
+    utc_end: datetime,
+) -> list[Event]:
+    """내 줄의 한 주(start~end 양끝 포함)의 약속(kind=1)과 완료한 할 일(kind=2). start_date 가 없는 옛 줄은
+    starts_at(utc_start 이상, utc_end 미만의 UTC 시각)으로 가른다. "공유"는 컬럼이 아니라 호출한 쪽이 `with_sharing` 으로 계산한다."""
+    in_week = or_(
+        Event.start_date.between(start, end),
+        and_(Event.start_date.is_(None), Event.starts_at >= utc_start, Event.starts_at < utc_end),
+    )
+    wanted = or_(Event.kind == KIND_APPOINTMENT, and_(Event.kind == KIND_TODO, Event.checked))
+    return list(
+        db.scalars(
+            select(Event).where(Event.group_id == group_id, *_visible(user_id), in_week, wanted)
+        )
+    )
 
 
 def member_ids(db: Session, group_id: str, user_ids: list[str]) -> set[str]:

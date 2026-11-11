@@ -1,8 +1,9 @@
-"""주간 가족 뉴스의 근거 목록 만들기와 문장 검증기(외부 의존 없는 순수 함수).
+"""주간 가족 뉴스의 근거 목록 만들기와 문장 검증기(함수 동작은 DB·LLM·네트워크 없는 순수 함수).
 
 흐름: 재료 기록(`SourceRecord`) → `build_sources` 가 불투명한 짧은 id(e1·t1·d1)를 붙여 `Source` 목록을 만든다 →
 (나중에 LLM 이) `{"title", "items": [{"text", "source_ids"}]}` 형태의 JSON 후보를 주면 → `validate` 가
-엄격하게 걸러 `Validated` 또는 `Failed` 를 돌려준다. 이 모듈은 LLM·DB·네트워크를 부르지 않는다.
+엄격하게 걸러 `Validated` 또는 `Failed` 를 돌려준다. 이 모듈의 함수는 LLM·DB·네트워크를 부르지 않는다. import 는
+`app.shared.weekly_sources` 의 `SourceRecord` 하나뿐이다(그 모듈은 스키마 점검기를 import 하지만 여기서는 쓰지 않는다).
 
 `Source` 에는 id·종류·원본 참조·제목(label)·날짜·시각만 담는다. 메모·장소·본문·담당자는 담지 않는다.
 `Failed.reason` 은 짧은 고정 코드 문자열이고 후보 문장 원문을 담지 않는다(로그에 남겨도 안전).
@@ -41,6 +42,9 @@ from collections.abc import Collection, Iterable
 from dataclasses import dataclass
 from datetime import date
 
+# 재료 수집 통로(shared)가 `SourceRecord` 의 주인이다(shared 가 기능 폴더를 import 하지 않으려고 옮겼다)
+from app.shared.weekly_sources import SourceRecord
+
 MAX_TEXT = 120
 MAX_ITEMS = 6
 FALLBACK_TITLE = "이번 주 우리 가족"
@@ -62,17 +66,6 @@ MAX_CANDIDATES = 50
 _DIGITS = re.compile(r"\d+")
 # Cf(서식 문자) 외에 NFKC 로도 없어지지 않는 한글 채움 문자(보이지 않는 Lo 문자)
 _FILLERS = frozenset("ᅟᅠㅤﾠ")
-
-
-@dataclass(frozen=True)
-class SourceRecord:
-    """근거 목록의 재료 한 건. 제목·날짜·시각 말고는 받지 않는다."""
-
-    kind: str  # "event" | "todo" | "document"
-    ref: str  # 원본 기록 id(일정·문서). 화면 이동에 쓴다
-    title: str
-    day: date
-    start_time: str | None = None  # "HH:MM"
 
 
 @dataclass(frozen=True)
