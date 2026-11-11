@@ -15,8 +15,8 @@ import ExpenseForm from "./ExpenseForm";
 import TagBadge from "./TagBadge";
 
 /**
- * 지출 추가·수정과 내역. 낸 사람은 로그인한 나로 서버가 정하고, 삭제는 소프트 삭제다.
- * 수정은 내가 낸 지출 중 정산하기 전인 것만(줄의 "수정"): 항목·금액·날짜를 그 자리에서 고친다. 송금 완료가 있는 달의 잠금은 서버가 알려 준다.
+ * 지출 추가·수정·삭제와 내역. 낸 사람은 로그인한 나로 서버가 정하고, 삭제는 소프트 삭제다.
+ * 수정과 삭제는 내가 낸 지출 중 정산하기 전인 것만(줄의 "수정"·"삭제", 서버 규칙과 같다): 수정은 항목·금액·날짜를 그 자리에서 고친다. 송금 완료가 있는 달의 잠금은 서버가 알려 준다.
  * 누구 몫으로 나눌지(대상 태그)는 정산 탭의 "정산하기"에서 정한다. 그 전까지는 가족 전체로 나눈다.
  * @param {{ month: string, notify: (text: string, isError?: boolean) => void }} props
  */
@@ -133,9 +133,11 @@ export default function ExpenseTab({ month, notify }) {
                     {e.subscription_id ? <Tag label="구독" tone="blue" /> : null}
                     <TagBadge tag={e.target_tag} settled={e.settled} />
                     {canEditExpense(e, me.data) ? (
-                      <Button small variant="secondary" label="수정" a11yLabel={`${e.title} 수정`} onPress={() => setEditId(e.id)} />
+                      <>
+                        <Button small variant="secondary" label="수정" a11yLabel={`${e.title} 수정`} onPress={() => setEditId(e.id)} />
+                        <Button small variant="ghost" label="삭제" a11yLabel={`${e.title} 삭제`} onPress={() => remove(e.id)} />
+                      </>
                     ) : null}
-                    <Button small variant="ghost" label="삭제" a11yLabel={`${e.title} 삭제`} onPress={() => remove(e.id)} />
                   </View>
                 </View>
               }
