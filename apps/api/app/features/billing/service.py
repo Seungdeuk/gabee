@@ -270,7 +270,20 @@ def update_my_expense(
     return update_expense(db, group_id, expense_id, ExpenseUpdate.model_validate(changes))
 
 
+def delete_my_expense(db: Session, group_id: str, user_id: str, expense_id: str) -> None:
+    """앱의 지출 삭제(DELETE). 수정과 같은 규칙: 내가 낸 지출만, 정산하기 전만, 그 달에 송금 완료가 없을 때만.
+    없는 지출은 404, 규칙에 어긋나면 400 `expense_not_deletable` 이다(AI 에이전트의 삭제 제안·실행과 같은 규칙)."""
+    if repo.get_expense(db, group_id, expense_id) is None:
+        raise not_found("지출")
+    try:
+        open_own_expense(db, group_id, user_id, expense_id, "지울")
+    except ValueError as e:
+        raise bad_request("expense_not_deletable", str(e)) from None
+    delete_expense(db, group_id, expense_id)
+
+
 def delete_expense(db: Session, group_id: str, expense_id: str) -> None:
+    """규칙 검사 없는 소프트 삭제(내부용). 사용자 요청은 `delete_my_expense` 로 부른다."""
     expense = repo.get_expense(db, group_id, expense_id)
     if expense is None:
         raise not_found("지출")
