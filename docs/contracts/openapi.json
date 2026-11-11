@@ -16614,6 +16614,89 @@
         }
       }
     },
+    "/report/news": {
+      "get": {
+        "tags": [
+          "report"
+        ],
+        "summary": "Get News",
+        "description": "내 가족 뉴스(저장본). 본인 것만 돌려주고, 저장본이 없어도 만들지 않는다.",
+        "operationId": "get_news_report_news_get",
+        "parameters": [
+          {
+            "name": "week_start",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Week Start"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-gyeot-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Gyeot-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NewsOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/admin/service/me": {
       "get": {
         "tags": [
@@ -24214,6 +24297,159 @@
           "muted"
         ],
         "title": "MuteSet"
+      },
+      "NewsItemOut": {
+        "properties": {
+          "text": {
+            "type": "string",
+            "title": "Text"
+          },
+          "source_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Source Ids"
+          }
+        },
+        "type": "object",
+        "required": [
+          "text",
+          "source_ids"
+        ],
+        "title": "NewsItemOut"
+      },
+      "NewsOut": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "ready",
+              "pending",
+              "failed",
+              "empty",
+              "not_generated",
+              "too_early"
+            ],
+            "title": "Status"
+          },
+          "week_start": {
+            "type": "string",
+            "format": "date",
+            "title": "Week Start"
+          },
+          "week_end": {
+            "type": "string",
+            "format": "date",
+            "title": "Week End"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/NewsItemOut"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "sources": {
+            "items": {
+              "$ref": "#/components/schemas/NewsSourceOut"
+            },
+            "type": "array",
+            "title": "Sources"
+          },
+          "generated_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Generated At"
+          },
+          "ai_generated": {
+            "type": "boolean",
+            "title": "Ai Generated",
+            "default": false
+          },
+          "model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model"
+          }
+        },
+        "type": "object",
+        "required": [
+          "status",
+          "week_start",
+          "week_end"
+        ],
+        "title": "NewsOut",
+        "description": "한 구성원의 한 주 뉴스. 저장본이 없으면 status 만 있고 나머지는 비어 있다(읽기는 아무것도 만들지 않는다)."
+      },
+      "NewsSourceOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "event",
+              "todo",
+              "document"
+            ],
+            "title": "Kind"
+          },
+          "ref": {
+            "type": "string",
+            "title": "Ref"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Date"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "kind",
+          "ref",
+          "label"
+        ],
+        "title": "NewsSourceOut"
       },
       "NicknameIn": {
         "properties": {

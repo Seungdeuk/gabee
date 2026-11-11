@@ -22,6 +22,7 @@ from app.features.schedule import push_schedule
 from app.features.schedule.router import router as schedule_router
 from app.features.service_admin.router import router as admin_router
 from app.features.support.router import router as support_router
+from app.features.weekly_news.router import router as weekly_news_router
 from app.shared.config import settings
 from app.shared.db import init_db
 from app.shared.errors import register_error_handlers, set_error_observer
@@ -86,6 +87,7 @@ for feature, router in (
     ("notices", notices_router),
     ("play", play_router),
     ("ops_admin", ops_admin_router),
+    ("weekly_news", weekly_news_router),
 ):
     deps = []
     deps.append(Depends(schema_ready(feature)))

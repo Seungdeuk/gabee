@@ -53,6 +53,7 @@ def import_all_models() -> None:
     from app.features.play import models as _play  # noqa: F401
     from app.features.schedule import models as _schedule  # noqa: F401
     from app.features.support import models as _support  # noqa: F401
+    from app.features.weekly_news import models as _weekly_news  # noqa: F401
     from app.shared import ai_usage as _ai_usage  # noqa: F401
     from app.shared import location_consent as _consent  # noqa: F401
     from app.shared import notifications as _notifications  # noqa: F401
