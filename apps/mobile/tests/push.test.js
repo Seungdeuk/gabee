@@ -58,6 +58,8 @@ test("routeForPush: 알림함 사건은 알림함으로, 소통 푸시는 채팅
   assert.equal(routeForPush({ kind: "chat" }), "/family-chat"); // 방 id 가 없으면 소통 탭 목록
   assert.equal(routeForPush({ kind: "schedule", event: "event_soon" }), "/schedule"); // 예약 푸시는 일정 탭으로
   assert.equal(routeForPush({ kind: "schedule", event: "todo_due" }), "/schedule");
+  assert.equal(routeForPush({ kind: "schedule", event: "todo_soon" }), "/schedule"); // 할 일 30분 전
+  assert.equal(routeForPush({ kind: "schedule", event: "evening_before" }), "/schedule"); // 시간 없는 항목 전날 저녁
   assert.equal(routeForPush({ kind: "schedule", event: "request_received" }), "/notifications"); // 알림함 사건은 그대로
   assert.equal(routeForPush({ kind: "chat", room_id: 7 }), "/family-chat"); // 문자열이 아니면 믿지 않는다
 });
