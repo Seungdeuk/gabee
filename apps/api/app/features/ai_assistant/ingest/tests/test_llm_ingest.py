@@ -324,3 +324,48 @@ def test_without_family_members_no_name_waits_for_the_user(claude):
 def test_upload_reading_and_masking_use_claude_by_default():
     assert type(settings).model_fields["ingest_llm_ocr"].default is True
     assert type(settings).model_fields["ingest_llm_mask"].default is True
+
+
+# ---------- 주소 안전망: 동·호수까지 있는 집 주소 ----------
+def test_apartment_address_claude_missed_is_masked_by_the_rule_net(claude):
+    claude.items = []
+    text = "| 신청인 | 주소 서울특별시 가상구 테스트길 8, 104동 1507호 | 비고 |"
+    masked, counts, _ = llm_ingest.mask(text)
+    assert masked == "| 신청인 | 주소 [주소] | 비고 |" and counts == {"address": 1}
+
+
+def test_address_net_does_not_cross_cells_and_leaves_business_addresses_alone(claude):
+    claude.items = []
+    text = "병원 서울특별시 강남구 테헤란로 152\n| 부산 | 합계 12,000원 | 104동 | 1507호 |\n2024년 5월 3일 경기 안내"
+    masked, counts, _ = llm_ingest.mask(text)
+    assert masked == text and counts == {}
+
+
+def test_address_net_skips_business_location_even_with_dong_ho(claude):
+    claude.items = []
+    text = "| 사업장 소재지 | 대전광역시 샘플구 테스트길 80, 111동 1485호 |\n영업소 주소: 서울특별시 가상구 길 3, 2동 301호"
+    masked, counts, _ = llm_ingest.mask(text)
+    assert masked == text and counts == {}
+
+
+def test_address_net_masks_person_address_after_a_business_label(claude):
+    claude.items = []
+    text = "사업장 상호 가비마트 / 신청인 주소 서울특별시 가상구 테스트길 8, 104동 1507호"
+    masked, counts, _ = llm_ingest.mask(text)
+    assert "104동" not in masked and counts == {"address": 1}
+
+
+@pytest.mark.parametrize(
+    "region",
+    ["충청남도", "충청북도", "전라북도", "전라남도", "경상남도", "경상북도", "충남", "경북"],
+)
+def test_address_net_accepts_full_province_names(claude, region):
+    claude.items = []
+    masked, counts, _ = llm_ingest.mask(f"신청인 주소 {region} 가상시 테스트길 8, 104동 1507호")
+    assert "104동" not in masked and counts == {"address": 1}
+
+
+def test_address_reported_by_claude_is_not_counted_twice(claude):
+    claude.items = [item("서울특별시 가상구 테스트길 8, 104동 1507호", "ADDRESS")]
+    masked, counts, _ = llm_ingest.mask("주소 서울특별시 가상구 테스트길 8, 104동 1507호")
+    assert masked == "주소 [주소]" and counts == {"address": 1}

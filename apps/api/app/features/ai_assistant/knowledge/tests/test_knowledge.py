@@ -7,7 +7,9 @@ import pytest
 
 from app.features.ai_assistant.knowledge import embedding, rag_chat, service, tools
 from app.features.ai_assistant.knowledge.chunking import split_markdown
+from app.shared.config import settings
 from app.shared.db import SessionLocal
+from app.shared.llm.chat_model import LAST_CALL_NOTE
 from tests.helpers import signup
 
 BILL = """# 2026년 10월 전기요금 고지서
@@ -382,3 +384,175 @@ def test_demo_seed_has_receipts_for_expense_reports(client, family):
         assert len(titles) == 4
         top = tools.search_knowledge(db, group["id"], "영수증", top_k=20)["results"]
         assert sum("영수증" in r["kind_label"] for r in top) == 4
+
+
+def _search_call(n):
+    return {
+        "stop_reason": "tool_use",
+        "content": [
+            {
+                "type": "tool_use",
+                "id": f"t{n}",
+                "name": "search_knowledge",
+                "input": {"query": "고지서"},
+            }
+        ],
+    }
+
+
+def test_last_step_forbids_tools_so_the_answer_is_written(client, seeded):
+    """도구를 세 번 쓰고 네 번째 호출에서는 도구를 못 쓰게 해 답을 받는다(예전에는 답이 비어 'AI 연결' 안내가 나갔다)."""
+    _, _, group = seeded
+    bodies = []
+
+    def fake_post(body):
+        bodies.append(body)
+        if len(bodies) < rag_chat.MAX_STEPS:
+            return _search_call(len(bodies))
+        return {"stop_reason": "end_turn", "content": [{"type": "text", "text": "찾은 근거예요."}]}
+
+    with SessionLocal() as db:
+        r = rag_chat.ask(db, group["id"], "수도요금", post=fake_post)
+    assert len(bodies) == rag_chat.MAX_STEPS  # 호출 수는 그대로
+    assert all("tool_choice" not in b for b in bodies[:-1])
+    assert bodies[-1]["tool_choice"] == {"type": "none"} and bodies[-1]["tools"]
+    last = bodies[-1]["messages"][-1][
+        "content"
+    ]  # 사고만 쓰고 끝나지 않게 마지막 user 메시지에 안내 한 줄
+    assert last[-1] == {"type": "text", "text": LAST_CALL_NOTE} and last[0]["type"] == "tool_result"
+    assert r.source == "ai" and r.answer == "찾은 근거예요."
+
+
+def test_empty_answer_with_a_successful_call_is_not_called_an_ai_outage(client, seeded):
+    _, _, group = seeded
+
+    def thinking_only(body):
+        return {"stop_reason": "max_tokens", "content": [{"type": "thinking", "thinking": ""}]}
+
+    with SessionLocal() as db:
+        r = rag_chat.ask(db, group["id"], "수도요금", post=thinking_only)
+    assert r.source == "fallback" and "AI 연결" not in r.answer
+    assert "답을 만들지 못했어요" in r.answer and r.sources
+
+
+def test_plain_chat_leaves_room_for_thinking_and_answer(client, seeded):
+    """웹 검색이 없는 일반 질문도 상한이 1024 면 사고가 다 쓰고 글 답이 없었다(q257)."""
+    _, _, group = seeded
+    bodies: list[dict] = []
+
+    def fake_post(body):
+        bodies.append(body)
+        return {"stop_reason": "end_turn", "content": [{"type": "text", "text": "안녕하세요."}]}
+
+    with SessionLocal() as db:
+        r = rag_chat.ask(db, group["id"], "안녕", post=fake_post)
+    assert r.answer == "안녕하세요."
+    assert bodies[0]["max_tokens"] == rag_chat.CHAT_MAX_TOKENS == 2048
+    assert rag_chat.WEB_MAX_TOKENS == 4096
+
+
+def test_failed_ai_call_still_says_the_connection_is_off(client, seeded):
+    import httpx
+
+    _, _, group = seeded
+
+    def broken(body):
+        raise httpx.ConnectError("down")
+
+    with SessionLocal() as db:
+        r = rag_chat.ask(db, group["id"], "수도요금", post=broken)
+    assert r.source == "fallback" and r.answer.startswith("AI 연결이 꺼져 있어서")
+
+
+def _bodies_for(group_id, question, monkeypatch, *, score, web=False, model=None):
+    """검색 최고 점수를 정해 두고 첫 호출이 도구를 부르게 한 뒤 보낸 요청 본문들을 모은다."""
+    from types import SimpleNamespace
+
+    real_search = service.search
+
+    def search(
+        *a, **k
+    ):  # 첫 호출 전 한 건 확인(top_k=1)만 점수를 정해 두고, 도구의 검색은 그대로 둔다
+        if k.get("top_k") == 1:
+            return [SimpleNamespace(score=score)] if score else []
+        return real_search(*a, **k)
+
+    monkeypatch.setattr(rag_chat.service, "search", search)
+    if model:
+        monkeypatch.setattr(settings, "llm_model", model)
+    if web:
+        monkeypatch.setattr(settings, "web_search_enabled", True)
+    bodies = []
+
+    def fake_post(body):
+        bodies.append(body)
+        if len(bodies) == 1:
+            return _search_call(1)
+        return {"stop_reason": "end_turn", "content": [{"type": "text", "text": "답이에요."}]}
+
+    with SessionLocal() as db:
+        rag_chat.ask(db, group_id, question, post=fake_post, web=web)
+    return bodies
+
+
+def test_first_call_forces_a_tool_when_documents_look_relevant(client, seeded, monkeypatch):
+    _, _, group = seeded
+    threshold = settings.chat_force_search_min_score
+    bodies = _bodies_for(group["id"], "수도요금", monkeypatch, score=threshold)
+    assert bodies[0]["tool_choice"] == {"type": "any"}
+    assert "tool_choice" not in bodies[1]  # 두 번째 호출부터는 모델이 고른다
+
+
+def test_first_call_is_not_forced_for_write_requests(client, seeded, monkeypatch):
+    _, _, group = seeded
+    threshold = settings.chat_force_search_min_score
+    bodies = _bodies_for(group["id"], "수도요금 지출로 등록해줘", monkeypatch, score=threshold)
+    assert "tool_choice" not in bodies[0]
+
+
+def test_first_call_is_free_below_the_threshold_or_without_hits(client, seeded, monkeypatch):
+    _, _, group = seeded
+    below = settings.chat_force_search_min_score - 0.01
+    assert "tool_choice" not in _bodies_for(group["id"], "안녕", monkeypatch, score=below)[0]
+    assert "tool_choice" not in _bodies_for(group["id"], "안녕", monkeypatch, score=0)[0]
+
+
+def test_force_can_be_turned_off(client, seeded, monkeypatch):
+    _, _, group = seeded
+    monkeypatch.setattr(settings, "chat_force_search_min_score", 0)
+    assert "tool_choice" not in _bodies_for(group["id"], "수도요금", monkeypatch, score=0.99)[0]
+
+
+def test_search_failure_does_not_block_the_question(client, seeded, monkeypatch):
+    _, _, group = seeded
+
+    def boom(*a, **k):
+        raise RuntimeError("embedder down")
+
+    monkeypatch.setattr(rag_chat.service, "search", boom)
+    with SessionLocal() as db:
+        assert rag_chat._documents_likely(db, group["id"], "수도요금") is False
+
+
+def test_web_search_keeps_the_free_choice_and_its_own_token_limit(client, seeded, monkeypatch):
+    _, _, group = seeded
+    bodies = _bodies_for(group["id"], "수도요금", monkeypatch, score=0.99, web=True)
+    assert "tool_choice" not in bodies[0]
+    assert bodies[0]["max_tokens"] == rag_chat.WEB_MAX_TOKENS == 4096
+    assert any(t.get("name") == "web_search" for t in bodies[0]["tools"])
+
+
+def test_models_that_reject_forced_tool_use_are_not_forced(client, seeded, monkeypatch):
+    _, _, group = seeded
+    for model in ("claude-sonnet-5-5", "claude-opus-5-5"):
+        bodies = _bodies_for(group["id"], "수도요금", monkeypatch, score=0.99, model=model)
+        assert "tool_choice" not in bodies[0]
+
+
+def test_ledger_empty_reply_is_not_returned_directly():
+    """장부에 기록이 없다는 가계 답은 바로 돌려주지 않고 메인이 문서도 찾게 한다."""
+    from app.features.ai_assistant.knowledge import rag_chat as rc
+
+    assert rc.LEDGER_EMPTY.search("2025-05에는 정산 기록이 없어서 보낼 금액을 확인할 수 없어요.")
+    assert rc.LEDGER_EMPTY.search("10월 지출 내역에는 칠순 비용이 없었어요.")
+    assert not rc.LEDGER_EMPTY.search("10월 지출은 3건, 합계 52,000원이에요.")

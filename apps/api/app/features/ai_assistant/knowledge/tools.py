@@ -10,6 +10,13 @@ from sqlalchemy.orm import Session
 from .. import family_names, reminders
 from . import service
 
+# 검색 결과에 한 기록의 조각을 더 담는 한도: 기록당 추가 2개(모두 3개), 위쪽 3개 기록까지, 추가 글 합계 2000자(조각 하나가 700자 안팎이라 3개쯤).
+EXTRA_CHUNKS_PER_ITEM = 2
+EXTRA_ITEMS = 3
+EXTRA_CHARS = 2000
+# get_item 이 돌려주는 글 상한. 큰 문서(6만 자)를 통째로 주면 입력이 수만 토큰이 되어 앞 12000자(약 8000토큰)에서 자르고 note 로 알린다.
+GET_ITEM_MAX_CHARS = 12000
+
 TOOL_SPECS = [
     {
         "name": "search_knowledge",
@@ -34,7 +41,7 @@ TOOL_SPECS = [
     },
     {
         "name": "get_item",
-        "description": "기록 한 건의 전체 글을 가져온다. 검색 결과의 item_id 를 쓴다.",
+        "description": "기록 한 건의 전체 글을 가져온다. 검색 결과의 item_id 를 쓴다. 검색 결과의 조각에 답이 안 보여도 관련 기록이면 못 찾았다고 하기 전에 이것으로 읽어 본다.",
         "input_schema": {
             "type": "object",
             "properties": {"item_id": {"type": "string"}},
@@ -202,7 +209,9 @@ def search_knowledge(
     names = family_names.shown_names(members)
     wanted: list[str] | None = None
     notes = [
-        "has_unread_parts 가 true 이면 원본에서 읽지 못한 부분이 있으니 값을 단정하지 말고 확인을 권하세요."
+        "has_unread_parts 가 true 이면 원본에서 읽지 못한 부분이 있으니 값을 단정하지 말고 확인을 권하세요.",
+        "결과에 답이 없으면 일반 지식, 외부 기관·사이트 안내, 추정을 덧붙이지 말고, 비슷한 다른 값(다른 달·다른 사람·다른 상품·다른 기록의 값)도 대신 적지 말고 찾지 못했다고만 말하세요. 답은 결과에 나온 내용 범위로 짧게 쓰세요.",
+        "질문과 관련된 기록이 있는데 조각에 답이 안 보이면 찾지 못했다고 하기 전에 get_item 으로 그 기록을 읽어 보세요. more 는 같은 기록의 다른 부분 조각입니다.",
     ]
     if member and member.strip():
         wanted = family_names.match_member(members, member)
@@ -231,27 +240,37 @@ def search_knowledge(
         date_to=_day(date_to),
         include_sensitive=include_sensitive,
         family_user_ids=wanted,
+        per_item=1 + EXTRA_CHUNKS_PER_ITEM,
     )
     hits = _one_per_file(hits)
-    return {
-        "results": [
-            {
-                "item_id": h.item.id,
-                "kind_label": h.item.kind_label,
-                "title": family_names.restore(h.item.title, names),
-                "family": family_names.family_of(h.item.family_user_ids, names),
-                "text": family_names.restore(h.chunk.text, names),
-                "page": h.chunk.page_label,
-                "date": h.item.occurred_on.isoformat() if h.item.occurred_on else None,
-                "source_path": h.item.source_path,
-                "score": round(h.score, 4),
-                "has_unread_parts": h.item.has_unread_parts,
-                "sensitive": h.item.sensitivity == "sensitive",
-            }
-            for h in hits
-        ],
-        "note": " ".join(notes),
-    }
+    left = EXTRA_CHARS
+    results = []
+    for rank, h in enumerate(hits):
+        row = {
+            "item_id": h.item.id,
+            "kind_label": h.item.kind_label,
+            "title": family_names.restore(h.item.title, names),
+            "family": family_names.family_of(h.item.family_user_ids, names),
+            "text": family_names.restore(h.chunk.text, names),
+            "page": h.chunk.page_label,
+            "date": h.item.occurred_on.isoformat() if h.item.occurred_on else None,
+            "source_path": h.item.source_path,
+            "score": round(h.score, 4),
+            "has_unread_parts": h.item.has_unread_parts,
+            "sensitive": h.item.sensitivity == "sensitive",
+        }
+        more = []
+        if rank < EXTRA_ITEMS:
+            for c in h.more:
+                text = family_names.restore(c.text, names)
+                if len(text) > left:
+                    break
+                left -= len(text)
+                more.append({"page": c.page_label, "text": text})
+        if more:
+            row["more"] = more
+        results.append(row)
+    return {"results": results, "note": " ".join(notes)}
 
 
 def _one_per_file(hits: list) -> list:
@@ -276,17 +295,25 @@ def get_item(db: Session, group_id: str, item_id: str, include_sensitive: bool =
             "error": "민감한 기록이라 이 대화에서는 내용을 볼 수 없어요. 앱의 기록 화면에서 직접 확인해 주세요."
         }
     names = family_names.shown_names(family_names.load_members(db, group_id))
-    return {
+    text = family_names.restore(item.body_md, names)
+    out = {
         "item_id": item.id,
         "kind_label": item.kind_label,
         "title": family_names.restore(item.title, names),
         "family": family_names.family_of(item.family_user_ids, names),
-        "text": family_names.restore(item.body_md, names),
+        "text": text,
         "date": item.occurred_on.isoformat() if item.occurred_on else None,
         "source_path": item.source_path,
         "has_unread_parts": item.has_unread_parts,
         "sensitive": item.sensitivity == "sensitive",
     }
+    if len(text) > GET_ITEM_MAX_CHARS:
+        out["text"] = text[:GET_ITEM_MAX_CHARS]
+        out["note"] = (
+            f"글이 길어 앞 {GET_ITEM_MAX_CHARS}자만 보여요(전체 {len(text)}자). "
+            "뒷부분이 필요하면 search_knowledge 로 구체적인 낱말을 넣어 찾아보세요."
+        )
+    return out
 
 
 def list_items(

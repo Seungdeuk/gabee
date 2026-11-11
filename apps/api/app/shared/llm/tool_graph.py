@@ -6,6 +6,7 @@
     START ─▶ model ──도구 호출 없음──────────────────────▶ END
               ▲  └─도구 호출 있음─▶ tools ──직통 응답 또는 max_steps 번째 호출이었음─▶ END
               └──────────────────────────┘ 그 밖에는 다시 model
+    (max_steps 번째 호출이 도구 결과 뒤면 `tool_choice: none` 으로 도구를 못 쓰게 해 모은 근거로 답만 쓰게 한다)
     (서버 도구가 길어져 멈춘 응답 pause_turn 은 도구 칸 없이 바로 model 로 돌아간다)
 
 이 파일은 흐름만 안다. 도구를 실제로 실행하고 결과를 글로 바꾸는 일(출처·제안·확인 카드 모으기, 길이 자르기, 오류 표시)은 `Run.handle` 을 넘긴
@@ -52,6 +53,12 @@ class Run:
     finished: bool = False  # 모델이 도구 호출 없이 답을 냈다(글이 비어 있을 수는 있다)
     done: bool = False  # 직통 응답으로 끝났다
     stage: str = ""  # 평가 관찰용 단계 이름(main | billing | family_chat | schedule). 비어 있으면 기록하지 않는다
+    force_first_tool: bool = (
+        False  # 첫 모델 호출에서 도구 하나는 꼭 부르게 한다(`tool_choice: any`)
+    )
+
+
+TRUNCATED_NOTE = "\n\n(답이 길어서 여기서 끊겼어요. '계속'이라고 보내 주시면 이어서 알려 드릴게요.)"
 
 
 class State(TypedDict):
@@ -65,10 +72,21 @@ def _run(config: RunnableConfig) -> Run:
 def _model(state: State, config: RunnableConfig) -> dict:
     run = _run(config)
     run.steps += 1
-    reply = run.model.invoke(state["messages"])
+    # 마지막 호출이 도구 결과 뒤라면 더 부르지 못하게 해 지금까지 찾은 근거로 답을 쓰게 한다(호출 수는 그대로)
+    last_call = run.steps >= run.max_steps and isinstance(state["messages"][-1], ToolMessage)
+    if last_call:
+        reply = run.model.invoke(state["messages"], no_tools=True)
+    elif run.force_first_tool and run.steps == 1:
+        reply = run.model.invoke(state["messages"], force_tool=True)
+    else:
+        reply = run.model.invoke(state["messages"])
     eval_hook.observe_model(run.stage, reply)
     if not reply.tool_calls and not _keep_going(reply, run):
         run.answer, run.finished = text_of(reply), True
+        if run.answer and reply.response_metadata.get("stop_reason") == "max_tokens":
+            run.answer += (
+                TRUNCATED_NOTE  # 길이 상한에서 끊긴 답은 끊겼다고 알린다(호출은 늘리지 않는다)
+            )
     return {"messages": [reply]}
 
 

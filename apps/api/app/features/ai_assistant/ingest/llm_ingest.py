@@ -45,6 +45,22 @@ _NON_PERSONAL_LABEL = re.compile(
     r"(거래|주문|승인|접수|운송장|송장|사업자|문서|관리|고유|전표|일련)\s*번호\s*[:：]?\s*$"
 )
 _LABEL_SENSITIVE = {Kind.PHONE, Kind.ACCOUNT}
+# 주소 안전망: 시·도로 시작하고 아파트 동·호수(104동 1507호)까지 이어진 주소만 가린다. 동·호수는 집 주소의 표지라
+# 병원·가게·관공서 주소(도로명+번호까지)는 건드리지 않는다. 칸 구분(|)·줄바꿈은 넘지 않는다.
+# 시·도는 약칭(충남)과 정식 이름(충청남도·전라북도·경상남도·특별시·광역시·특별자치도)을 모두 받는다
+_ADDRESS_NET = re.compile(
+    r"(?:서울|부산|대구|인천|광주|대전|울산|세종|경기|강원|제주"
+    r"|충청[남북]|충[남북]|전라[남북]|전[남북]|경상[남북]|경[남북])"
+    r"[가-힣]*[^\n|]{2,60}?\d+\s*동\s*\d+\s*호"
+)
+# 사업장 라벨(사업장 소재지·영업소·상호 …) 옆의 주소는 가게·병원 주소라 안전망을 적용하지 않는다.
+# 같은 줄에 사람 항목 라벨(신청인·신고인·보호자·세대주·수령인·거주지 …)이 사업장 라벨 뒤에 다시 나오면 집 주소로 본다
+_BUSINESS_LABEL = re.compile(
+    r"(사업장|소재지|영업소|사업자|상호|가맹점|판매점|판매자|판매원|제조원|제조사|수입원|수입자|본점|지점|매장|점포|병원|의원|약국|대표자)"
+)
+_PERSON_LABEL = re.compile(
+    r"(신청인|신고인|보호자|세대주|수령인|수취인|받는\s*분|거주지|현\s*주소|자택|집\s*주소|배송지)"
+)
 MAX_SPAN = (
     200  # 이보다 긴 인용은 개인정보 한 덩어리로 보지 않는다(글 전체를 가리게 하는 지시문·오류 방지)
 )
@@ -222,6 +238,35 @@ def _numeric_net(text: str, counts: Counter) -> str:
     return _apply(text, spans, counts)
 
 
+def _is_business_address(text: str, start: int) -> bool:
+    """주소 앞(같은 줄, 줄 앞쪽이 비었으면 윗줄까지)에 사업장 라벨이 있고, 그 뒤에 사람 항목 라벨이 없으면 True."""
+    line_start = text.rfind("\n", 0, start) + 1
+    before = text[line_start:start]
+    if len(re.sub(r"[\s|:：]", "", before)) <= 2 and line_start > 0:
+        prev_start = text.rfind("\n", 0, line_start - 1) + 1
+        before = text[prev_start:start]
+    before = before[-80:]
+    last_business = None
+    for m in _BUSINESS_LABEL.finditer(before):
+        last_business = m
+    if last_business is None:
+        return False
+    return _PERSON_LABEL.search(before, last_business.end()) is None
+
+
+def _address_net(text: str, counts: Counter) -> str:
+    """Claude 가 놓친 동·호수까지 있는 집 주소를 규칙으로 한 번 더 가린다. 사업장 라벨 옆 주소는 건드리지 않는다."""
+    return _apply(
+        text,
+        [
+            (m.start(), m.end(), "ADDRESS")
+            for m in _ADDRESS_NET.finditer(text)
+            if not _is_business_address(text, m.start())
+        ],
+        counts,
+    )
+
+
 def mask(text: str, family=None) -> tuple[str, dict[str, int], str]:
     """(가린 글, 종류별 가린 개수, 문서 종류 sensitive). Claude 호출이 실패하면 LLMUnavailable 을 그대로 올린다."""
     raw = _strip(text)
@@ -238,16 +283,19 @@ def mask(text: str, family=None) -> tuple[str, dict[str, int], str]:
         found = doc_ai.find_pii(chunk, _candidate_lines(chunk, cands))
         # 가족 후보를 먼저 둔다: Claude 가 같은 자리를 PERSON 으로도 보고하면 겹친 자리에서 가족 이름표가 이기게
         # (답이 빠진 후보는 가족으로 본다: 가려도 안전하고 예전 동작과 같다)
-        family_spans = [
-            (c.start, c.end, f"가족:{c.user_id}")
-            for i, c in enumerate(cands, 1)
-            if found.family.get(i, True)
-        ]
+        family_spans = []
+        for i, c in enumerate(cands, 1):
+            if found.family.get(i, True):
+                family_spans.append((c.start, c.end, f"가족:{c.user_id}"))
+            elif len(c.spelling.replace(" ", "")) >= 3:
+                # 가족으로 보지 않았어도 성+이름(세 글자 이상)이 그대로 남으면 실명이 새므로 일반 이름으로 가린다.
+                # 두 글자 이름자('채용' 같은 낱말과 겹칠 수 있음)만 Claude 의 판단대로 둔다
+                family_spans.append((c.start, c.end, "PERSON"))
         items = _near_family(found.items, family)
         pii_spans, bad = _locate(chunk, items)
         ungrounded += bad
         parts.append(_apply(chunk, family_spans + pii_spans, counts))
-    masked = _numeric_net("".join(parts), counts)
+    masked = _address_net(_numeric_net("".join(parts), counts), counts)
     if ungrounded:
         logger.info("Claude 가 원문에 없는 인용 %d개를 보고해 버렸어요", ungrounded)
     return masked, {k: v for k, v in counts.items() if v}, sensitive

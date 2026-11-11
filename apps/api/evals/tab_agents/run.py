@@ -18,6 +18,11 @@ from pathlib import Path
 _tmp = tempfile.mkdtemp(prefix="gabee-eval-")
 os.environ["DATABASE_URL"] = f"sqlite:///{_tmp}/eval.db"  # 실제 DB 는 건드리지 않는다
 os.environ["DATA_DIR"] = _tmp
+# DATA_DIR 을 임시 폴더로 바꾸면 모델 폴더(<DATA_DIR>/models)를 못 찾아 NER·임베딩이 꺼진다. 실제 폴더로 고정하고 NER 은 필수로 둔다
+_MODELS = Path(__file__).resolve().parents[2] / "data" / "models"
+os.environ["PRIVACY_NER_MODEL_DIR"] = str(_MODELS / "ner")
+os.environ["EMBED_MODEL_DIR"] = str(_MODELS / "e5-small-ft")
+os.environ["PRIVACY_NER_MODE"] = "required"
 
 from fastapi.testclient import TestClient  # noqa: E402
 from sqlalchemy import select  # noqa: E402
@@ -109,6 +114,9 @@ def main() -> int:
                                 history=case.get("history"),
                             )
                         except ApiError as e:  # 관문이 막은 경우(동의·한도·모델 실패)도 실패로 센다
+                            if e.code == "privacy_unavailable":
+                                print("privacy_unavailable: 개인정보 엔진을 쓸 수 없어 중단합니다.")
+                                return 6
                             reply = AgentReply(
                                 f"[{e.status} {e.code}] {e.message}", can_answer=False
                             )

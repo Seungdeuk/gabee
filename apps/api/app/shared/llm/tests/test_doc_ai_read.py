@@ -1,0 +1,42 @@
+"""글자 읽기: 출력 상한에서 잘린 쪽만 사고를 줄여 한 번 더 읽는다."""
+
+from app.shared.llm import doc_ai
+
+
+def _reply(text: str, stop: str) -> dict:
+    return {
+        "content": [{"type": "text", "text": text}],
+        "stop_reason": stop,
+        "usage": {"input_tokens": 10, "output_tokens": 5},
+    }
+
+
+def test_read_retries_with_low_effort_only_when_truncated(monkeypatch):
+    calls: list[str | None] = []
+
+    def fake_call(model, system, content, tool, max_tokens, timeout, effort=None):
+        calls.append(effort)
+        return _reply(
+            "잘린 글" if effort is None else "끝까지 읽은 긴 글",
+            "max_tokens" if effort is None else "end_turn",
+        )
+
+    monkeypatch.setattr(doc_ai, "_call", fake_call)
+    out = doc_ai._read({"type": "text", "text": "x"}, "옮겨 적으세요")
+    assert calls == [None, "low"]
+    assert out.text == "끝까지 읽은 긴 글"
+    assert out.truncated is False
+    assert (out.input_tokens, out.output_tokens) == (20, 10)
+
+
+def test_read_once_when_not_truncated(monkeypatch):
+    calls: list[str | None] = []
+
+    def fake_call(model, system, content, tool, max_tokens, timeout, effort=None):
+        calls.append(effort)
+        return _reply("다 읽음", "end_turn")
+
+    monkeypatch.setattr(doc_ai, "_call", fake_call)
+    out = doc_ai._read({"type": "text", "text": "x"}, "옮겨 적으세요")
+    assert calls == [None]
+    assert out.text == "다 읽음"

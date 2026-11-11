@@ -256,7 +256,7 @@ def converse(
                 prompt,
                 prompts.CHAT_SCHEMA,
                 system=prompts.CHAT_SYSTEM,
-                max_tokens=900,
+                max_tokens=1600,
                 model=prompts.CHAT_MODEL,
             )
             return clean_result(

@@ -1,13 +1,15 @@
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, date, datetime, time, timedelta
 
 from sqlalchemy.orm import Session
 
+from app.shared.config import settings
 from app.shared.errors import ApiError, not_found
 
 from .. import family_names
 from ..ingest import masking
+from . import hybrid as hybrid_search
 from . import repository as repo
 from .chunking import DOUBT_MARK, UNREAD_MARK, split_markdown
 from .embedding import TextEmbedder, get_embedder
@@ -39,6 +41,8 @@ class Hit:
     item: KnowledgeItem
     chunk: KnowledgeChunk
     score: float
+    # 같은 기록의 다음으로 가까운 조각(per_item > 1 일 때만), 점수 순
+    more: tuple[KnowledgeChunk, ...] = ()
 
 
 def _embedder(db: Session) -> TextEmbedder:
@@ -174,10 +178,18 @@ def search(
     date_to: date | None = None,
     include_sensitive: bool = True,
     family_user_ids: list[str] | None = None,
+    per_item: int = 1,
+    hybrid: bool | None = None,
 ) -> list[Hit]:
-    """질문과 가장 가까운 기록을 점수 순으로 돌려준다(기록마다 가장 가까운 조각 하나).
-    family_user_ids 를 주면 그 가족 중 한 명이라도 등장한 기록만 본다(빈 목록이면 결과 없음)."""
+    """질문과 가장 가까운 기록을 돌려준다(기록마다 가장 가까운 조각 하나, per_item 을 키우면 `more` 에 조각을 더 담는다).
+    family_user_ids 를 주면 그 가족 중 한 명이라도 등장한 기록만 본다(빈 목록이면 결과 없음).
+
+    hybrid(안 주면 설정 `chat_hybrid_search`)가 켜지면 임베딩 상위 후보를 글자 TF-IDF 와 섞어 다시 정렬한다. 이때 결과 순서는
+    섞은 순서이고, `Hit.score` 는 여전히 임베딩 코사인 유사도다(그래서 점수가 순서대로 내려가지 않을 수 있다).
+    꺼 두면 점수 순이다. 최고 유사도만 필요한 곳(첫 호출 검색 강제)은 hybrid=False 로 부른다."""
     embedder = _embedder(db)
+    mix = settings.chat_hybrid_search if hybrid is None else hybrid
+    candidates = max(settings.chat_hybrid_candidates, top_k * per_item) if mix else 60
     rows = repo.search_chunks(
         db,
         group_id,
@@ -187,12 +199,26 @@ def search(
         date_from,
         date_to,
         include_sensitive,
+        limit=candidates,
         family_user_ids=family_user_ids,
     )
+    if mix and len(rows) > 1:
+        order = hybrid_search.fuse_order(
+            query, [c.text for c, _i, _s in rows], settings.chat_hybrid_text_weight
+        )
+        rows = [rows[i] for i in order]
     best: dict[str, Hit] = {}
-    for chunk, item, score in rows:  # 점수 순이라 기록마다 처음 나온 조각이 가장 가깝다
-        best.setdefault(item.id, Hit(item=item, chunk=chunk, score=score))
-    return sorted(best.values(), key=lambda h: h.score, reverse=True)[:top_k]
+    extra: dict[str, list[KnowledgeChunk]] = {}
+    # 정렬 순서(섞었으면 섞은 순서)에서 기록마다 처음 나온 조각이 대표 조각이다
+    for chunk, item, score in rows:
+        if item.id not in best:
+            best[item.id] = Hit(item=item, chunk=chunk, score=score)
+        elif len(extra.setdefault(item.id, [])) < per_item - 1:
+            extra[item.id].append(chunk)
+    ranked = list(best.values())  # 기록은 대표 조각이 처음 나온 순서
+    top = ranked if mix else sorted(ranked, key=lambda h: h.score, reverse=True)
+    top = top[:top_k]
+    return [replace(h, more=tuple(extra.get(h.item.id, ()))) for h in top]
 
 
 def name_checks(db: Session, group_id: str, limit: int = 5) -> list[dict]:

@@ -45,6 +45,8 @@ FIND_SYSTEM = (
     "- ADDRESS: **개인·가족의 집(거주지)이나 배송 받는 곳의 주소**만 보고합니다. 시·도부터 상세(동·호수·층)까지 이어진 한 덩어리로 인용합니다. "
     "병원·학교·학원·가게·식당·회사 본점과 사업장·관공서·공공장소의 주소, 그리고 시·도·시·군·구 같은 행정구역 이름만 나온 경우는 개인의 거주지가 아니므로 보고하지 않습니다. "
     '특히 상품 라벨·영수증·안내문의 제조원·제조사·수입자·수입판매원·판매원·판매업자·유통전문판매원·소비자상담실·고객센터·본점·지점 옆에 적힌 주소와, 사업자 대표자 이름 옆의 가게 주소는 모두 사업장 주소이므로 보고하지 않습니다("주소:" 라벨이 붙어 있어도 마찬가지). '
+    "사업장 소재지·영업소·사업장 주소·소재지 라벨 옆의 주소는 동·호수(예: 104동 1507호)가 적혀 있어도 사업장 주소이므로 보고하지 않습니다. "
+    "신청인·신고인·보호자·세대주 같은 사람 항목 옆의 주소, 그리고 그런 사업장 라벨이 없는 곳에 아파트 동·호수까지 적힌 주소는 집 주소이므로 보고합니다. "
     "반대로 동·리 이름 뒤에 번지(예: 마음동 3-29번지, 향교동 232-15)가 붙어 있고 사람이 사는 곳으로 쓰였으면 집 주소이므로 번지까지 보고합니다. "
     "같은 문서에 두 종류가 함께 있으면 문맥으로 구분하세요(예: 병원 주소는 남기고 보호자 집 주소만 보고).\n"
     "- PHONE 전화번호, EMAIL 이메일, RRN 주민·외국인등록번호, CARD 카드번호, ACCOUNT 계좌번호, "
@@ -128,8 +130,19 @@ def available() -> bool:
     return bool(settings.anthropic_api_key)
 
 
+# effort 를 받는 모델(그 밖의 모델은 400): 글자 옮기기는 깊이 생각할 일이 아니라, 생각이 출력 상한(max_tokens)을 먼저 써 버려
+# 글이 빈 채로 끊기는 일을 줄인다
+_EFFORT_MODELS = ("claude-sonnet-5", "claude-haiku-5", "claude-opus-5", "claude-fable-5")
+
+
 def _call(
-    model: str, system: str, content: list[dict], tool: dict | None, max_tokens: int, timeout: float
+    model: str,
+    system: str,
+    content: list[dict],
+    tool: dict | None,
+    max_tokens: int,
+    timeout: float,
+    effort: str | None = None,
 ) -> dict:
     if not available():
         raise LLMUnavailable("ANTHROPIC_API_KEY 가 설정되지 않았어요")
@@ -148,6 +161,8 @@ def _call(
             body["system"] = system + "\n\n반드시 " + tool["name"] + " 도구로만 답하세요."
         else:
             body["tool_choice"] = {"type": "tool", "name": tool["name"]}
+    if effort and model.startswith(_EFFORT_MODELS):
+        body["output_config"] = {"effort": effort}
     try:
         return transport.post_messages(body, timeout=timeout, retry=True)
     except (httpx.HTTPError, ValueError) as e:
@@ -158,18 +173,36 @@ def _clean(text: str) -> str:
     return "".join(ch for ch in text if ch not in INVISIBLE)
 
 
-def _read(block: dict, ask: str) -> OcrOut:
+def _read_once(block: dict, ask: str, effort: str | None) -> OcrOut:
     reply = _call(
         settings.ingest_ocr_model,
         OCR_SYSTEM,
         [block, {"type": "text", "text": ask}],
         tool=None,
-        max_tokens=8000,
+        max_tokens=16000,
         timeout=300.0,
+        effort=effort,
     )
     text = "".join(b.get("text", "") for b in reply.get("content", []) if b.get("type") == "text")
     tin, tout = transport.usage_of(reply)
     return OcrOut(_clean(text).strip(), reply.get("stop_reason") == "max_tokens", tin, tout)
+
+
+def _read(block: dict, ask: str) -> OcrOut:
+    """기본 사고로 읽는다(흐린 사진에서 오류가 적고, 확신 없는 곳을 [?] 로 남긴다). 글이 많아 출력 상한에서
+    잘렸을 때만 사고를 줄여 한 번 더 읽는다(통계표처럼 글이 많은 쪽). 평가 근거: eval/upload/runs 의
+    ocr_sonnet_r7p6_*(low) 와 ocr_sonnet_r7p6b_*(기본) 비교, 2026-11-10."""
+    first = _read_once(block, ask, None)
+    if not first.truncated:
+        return first
+    second = _read_once(block, ask, "low")
+    better = second if len(second.text) >= len(first.text) else first
+    return OcrOut(
+        better.text,
+        better.truncated,
+        first.input_tokens + second.input_tokens,
+        first.output_tokens + second.output_tokens,
+    )
 
 
 def read_image(jpeg: bytes) -> OcrOut:
@@ -286,7 +319,8 @@ def find_pii(text: str, candidates: list[str] | None = None) -> PiiFindings:
         if isinstance(i, dict) and i.get("kind") in KINDS
     ]
     family = {
-        int(d["id"]): bool(d.get("is_family"))
+        int(d["id"]): d.get("is_family")
+        is not False  # 값이 빠졌거나 글자 "false" 면 가족으로 본다(가리는 쪽이 안전)
         for d in data.get("family_decisions", []) or []
         if isinstance(d, dict) and isinstance(d.get("id"), int)
     }

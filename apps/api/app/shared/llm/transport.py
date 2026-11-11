@@ -50,6 +50,22 @@ def post_messages(body: dict, *, timeout: float = 60.0, retry: bool = False) -> 
 
 
 def usage_of(reply: dict) -> tuple[int, int]:
-    """응답의 (입력 토큰, 출력 토큰). 사용량이 없으면 0, 0."""
+    """응답의 (입력 토큰, 출력 토큰). 사용량이 없으면 0, 0. 입력에는 캐시에 쓰거나 읽은 토큰도 더한다(캐시를 켜면
+    `input_tokens` 는 캐시 밖 토큰만 세므로, 그대로 두면 호출 한도·사용량 집계가 실제보다 작게 나온다)."""
     usage = reply.get("usage") or {}
-    return int(usage.get("input_tokens") or 0), int(usage.get("output_tokens") or 0)
+    tokens_in = (
+        int(usage.get("input_tokens") or 0)
+        + int(usage.get("cache_creation_input_tokens") or 0)
+        + int(usage.get("cache_read_input_tokens") or 0)
+    )
+    return tokens_in, int(usage.get("output_tokens") or 0)
+
+
+def billed_input_of(reply: dict) -> float:
+    """요금으로 환산한 입력 토큰(캐시 쓰기 1.25배, 캐시 읽기 0.1배). 비용 계산은 `usage_of` 의 입력 대신 이 값을 쓴다."""
+    usage = reply.get("usage") or {}
+    return (
+        int(usage.get("input_tokens") or 0)
+        + 1.25 * int(usage.get("cache_creation_input_tokens") or 0)
+        + 0.1 * int(usage.get("cache_read_input_tokens") or 0)
+    )

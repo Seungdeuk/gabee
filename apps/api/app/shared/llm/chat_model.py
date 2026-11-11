@@ -25,6 +25,16 @@ from langchain_core.outputs import ChatGeneration, ChatResult
 
 from . import transport
 
+# 강제 도구 호출(`tool_choice: any`)을 400 으로 거절하는 모델(claude-api 문서 "Forcing tool use", 2026-11-09 확인)
+FORCED_TOOL_UNSUPPORTED = (
+    "claude-fable-5-1",
+    "claude-mythos-5-1",
+    "claude-opus-5-5",
+    "claude-sonnet-5-5",
+)
+# 도구를 못 쓰는 마지막 호출에 붙이는 한 줄: 이것이 없으면 사고 블록만 내고 글 답을 쓰지 않는 일이 있었다
+LAST_CALL_NOTE = "도구는 더 쓸 수 없어요. 지금까지 찾은 기록만으로 답을 쓰세요. 기록에 없으면 찾지 못했다고 말하세요."
+
 
 def to_anthropic_messages(messages: list[BaseMessage]) -> list[dict]:
     """랭체인 메시지를 Anthropic Messages API 의 `messages` 로 바꾼다(SystemMessage 는 `system` 으로 가므로 뺀다)."""
@@ -133,6 +143,18 @@ class PostChatModel(BaseChatModel):
             "system": self.system,
             "tools": self.tools,
             "messages": to_anthropic_messages(messages),
+            # 도구 루프는 단계마다 앞 내용(시스템·도구·앞 도구 결과)을 그대로 다시 보낸다: 자동 캐시로 다시 보내는 부분을 싸게 읽는다
+            "cache_control": {"type": "ephemeral"},
         }
+        if kwargs.get("no_tools"):
+            # 마지막 단계: 도구를 정의에서 빼면 앞 대화의 tool_use 블록이 거절되므로 정의는 두고 부르지 못하게만 한다
+            body["tool_choice"] = {"type": "none"}
+            last = body["messages"][-1] if body["messages"] else None
+            if last and last["role"] == "user" and isinstance(last["content"], list):
+                # 새로 붙는 마지막 user 메시지에만 글을 덧붙인다(앞 대화는 그대로)
+                last["content"] = [*last["content"], {"type": "text", "text": LAST_CALL_NOTE}]
+        elif kwargs.get("force_tool") and not self.llm_model.startswith(FORCED_TOOL_UNSUPPORTED):
+            # 첫 호출: 도구(검색 등) 하나는 꼭 부르게 한다. 강제 호출은 사고를 건너뛴다(응답이 도구 호출로 시작)
+            body["tool_choice"] = {"type": "any"}
         message = from_anthropic_reply(self.post(body))
         return ChatResult(generations=[ChatGeneration(message=message)])

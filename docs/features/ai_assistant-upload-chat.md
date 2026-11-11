@@ -308,6 +308,7 @@ SELECT item_id, seq, embedding_model, vector_dims(embedding) AS dim, left(text, 
 ## 가족 이름 메타데이터화 (2026-11-02, ADR 0012)
 
 - 업로드 글의 가족 이름(이름·표시 이름, 조사·성 뗀 이름자 포함)은 가리기 전에 `[가족:<user_id>]` 로 바뀌어 저장되고, `knowledge_items.family_user_ids` 에 등장한 가족이 남는다. 읽을 때(상세·목록·검색·파일 상태·기록 도구) 현재 표시 이름으로 되돌린다. 동명이인은 치환하지 않는다.
+- (RAG 개선 라운드 5) `search_knowledge` 결과는 기록 단위 그대로이되 위쪽 3개 기록에는 `more`(같은 기록의 다음으로 가까운 조각 최대 2개, `page` 포함, 추가 글 합계 2000자 상한)를 싣는다. 출처·`ref`·`_renumber` 는 기록 단위라 그대로이고 출처 칩의 쪽은 가장 가까운 조각의 쪽이다. 라우터 `/knowledge/search`·`lookup` 은 `service.search` 기본값(기록당 1조각)이라 동작이 같다. `get_item` 은 앞 12000자(약 8000토큰)에서 자르고 `note` 로 알린다(최대 6만 자 문서가 입력을 키우는 것을 막음). 메인 프롬프트는 관련 기록이 있는데 조각에 답이 안 보이면 `get_item` 으로 읽어 본 뒤에 못 찾았다고 하도록 한다.
 - `search_knowledge` 에 `member`(이름·별칭) 필터, 도구 결과에 `family`(등장한 가족의 현재 이름) 추가. 메인 채팅(`rag_chat._run_tool`)의 허용 인자 목록에 `member` 를 넣어야 AI 가 쓸 수 있다(1팀 작업 파일).
 - 기존 기록은 백필하지 않는다(`강**` 그대로).
 
@@ -331,3 +332,4 @@ SELECT item_id, seq, embedding_model, vector_dims(embedding) AS dim, left(text, 
 - **제스처 구성 주의**: 두 번 누르기와 핀치·드래그는 `Gesture.Race` 로 묶는다. `Exclusive` 로 묶으면 두 번 누르기가 실패할 때까지 핀치·드래그가 시작되지 못해 빠른 동작이 씹힌다. 제스처는 움직이지 않는 바깥 뷰에 붙인다. Modal 안에서는 안쪽에 `GestureHandlerRootView` 가 있어야 안드로이드에서 제스처를 받는다.
 - **기록 탭의 원본 보기**도 같은 뷰어라 사진은 바로 확대된다. PDF 처럼 여러 쪽이면 쪽을 위아래로 이어서 보여 주다가 **쪽을 누르면 그 쪽을 전체 화면에서 확대**해 보고(이전·다음 쪽 버튼, 왼쪽 위 뒤로 가기로 목록), 한 쪽짜리면 바로 확대된다.
 - 시험: 순수 계산은 `tests/zoommath.test.js`. 손가락 제스처는 자동 시험이 어려워 폰(Expo Go)에서 직접 만져 확인한다.
+- **문서 검색 섞기(2026-11-10)**: `search_knowledge` 는 임베딩 상위 100개 조각을 글자 2·3개 묶음 TF-IDF 와 RRF 로 섞어 정렬한다(설정 `chat_hybrid_search`). 자세한 측정은 `docs/features/ai_assistant-knowledge-hybrid.md`, 결정은 ADR 0019.
