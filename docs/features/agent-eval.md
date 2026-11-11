@@ -69,7 +69,15 @@
 - 알려진 한계: `eval_hook.mark_last` 는 운영 코드에서 부르지 않기로 했다(`eval_hook.py` 의 `mark_last` 설명이 되묻기를 오류로 표시한다고 적혀 있어 낡았다. 고치려면 별도 승인이 필요하다).
 - 알려진 한계(E4b-1 리뷰에서 나온 것, 운영 파일이라 이 PR 에서 고치지 않았다): ① `eval_hook.mark_last` 와 `schedule/agent/chat.py::_observe` 의 설명이 되묻기를 `mark_last` 로 오류 표시한다고 적혀 있어 낡았다. ② `chat._observe` 는 같은 기록 안의 앞선 `schedule.*` 호출을 모두 대체로 표시한다. 일정 Agent 를 직접 한 번 부르는 경로는 맞지만, 메인이 `ask_schedule` 을 한 질문에 여러 번 부르면(일정 둘을 따로 등록) 앞선 등록이 대체돼 쓰기 수와 호출 대응에서 빠진다(need_wider 안에서만 대체하도록 고치는 것은 별도 승인). ③ 메인의 `ask_schedule` 경로는 일정 Agent 의 `AgentResponse` 가 메인에게 보이지 않아 `schedule_outcome` 판정을 쓸 수 없다(E4c). ④ 메인 기록의 `steps`·`llm_calls` 에는 하위 Agent 의 몫이 섞인다(단계 상한 두 값은 `Recording.stage_limits` 로 단계별로 따로 기록하고 관찰 결과에서 하나라도 있으면 True 로 합친다). ⑤ `usage` 는 `transport` 를 지나지 않는 호출(`jev.py`·`doc_ai.py` 의 직접 httpx)과 웹 검색 사용량을 세지 않고, 프로세스 전체를 바꾸므로 측정 중 다른 스레드의 호출도 센다.
 - 알려진 한계: 채점기는 쓰기 도구를 `calls` 없이 `tools.required` 에만 적은 사례를 사례 오류로 거부한다(`_check_case`). 그래서 일정 쓰기 도구의 `tool_error` 사례는 지금 방식으로는 쓸 수 없다(E5 사례를 쓰기 전에 규칙을 정해야 한다).
-- E4c: L2 실행기와 기존 52건 어댑터. AI 동의는 시드가 켠다(E4b-2). 실제 모델 호출은 비용 추정을 보여 주고 승인을 받은 뒤에 따로 한다.
+- E4c-1: 기존 52건 어댑터 `evals/agent_eval/adapter.py`(운영 코드 변경 없음, 스키마·`score_case` 불변)
+  - 52건을 `Case`(`split=legacy`, 합성 표시)로 바꾸고, `Case` 로 표현되는 조건(기대 도구 하나, 답 문구·금지 문구, 제안 수, 답 가능 여부)은 `Case` 에 넣는다. 표현되지 않는 기존 조건은 `LegacyChecks` 로 둔다.
+  - 기존 조건의 의미: `expect_any` 는 하나라도 있으면 통과(OR), `expect_not_endswith`(끝 공백 무시)·`expect_not_regex`(`re.search`)는 걸리면 실패, `expect_in_proposal` 은 제안 요약을 공백으로 이은 글에 부분 문자열로 있어야 한다(쉼표를 무시하지 않는다), `tool_optional` 은 도구를 채점하지 않고 `tool_any`·`tool` 보다 우선, `tool_any` 는 하나만 불러도 통과, 도구가 없고 선택도 아닌 정산 사례는 어떤 도구도 부르지 않아야 한다, 메인 사례는 부른 `ask_*` 도구 집합이 `main_tools` 와 정확히 같아야 한다(없으면 채점 안 함). 도구 호출은 그 사례 단계의 호출만 센다(안쪽 Agent 호출은 세지 않는다).
+  - 기존 실행기가 읽지 않는 키는 의미를 만들지 않는다: `skip_tool_check` 는 `tests/test_tab_agent_eval_cases.py` 가 도구 출력 검증을 건너뛰는 표시일 뿐 채점에 영향이 없고, `tool_args` 는 채점하지 않는다(인자 매처로 옮기면 기존보다 엄격해진다). 모르는 키가 나오면 버리지 않고 `LegacyAdapterError` 로 멈춘다.
+  - `judge(legacy, obs)` 는 `score_case` 결과(`generic`)의 각 부분에 기존 추가 검사를 합쳐 최종 결과(`result`)를 만들고, 기존 실행기의 네 판정(`components`: 답 가능·도구·문구·제안)을 함께 돌려준다. `passed` 는 공통 보안 조건 위반까지 반영한 최종 판정이고 `legacy_passed` 는 기존 네 부분의 AND 다(공통 조건을 넘기지 않으면 둘이 같다). 기존 실행기에는 실패 원인 분류가 없어서 새 결과의 원인은 도구 판정에서 나온 `missing_tool`·`wrong_tool`, 일반 채점이 붙이는 원인(공통 조건을 넘기면 `unapproved_write`·`scope_leak` 포함), 이미 실패한 사례의 `step_limit` 이다.
+  - **미결정(E4c-2)**: 기존 실행기에는 쓰기 게이트가 없다. 기존 쓰기 사례(`propose_*`, 16건)의 기대를 `expect.calls` 로 옮기는 정책(제안 수, 도구 선택 사례)이 정해지기 전에는 `judge` 에 `forbidden_writes` 가 든 공통 조건을 넘기면 `LegacyAdapterError` 로 멈춘다(조용히 약화하지 않는다).
+  - 범주(`category`)는 형식상 붙인 표시다(`poison` 이 든 id 는 F, 제안·쓰기 사례는 E, 나머지는 D). legacy 묶음은 따로 집계한다.
+  - 시험: `test_legacy_parity.py`(Golden Parity: `tab_agents/run.py` 의 판정을 옮긴 기준과 어댑터를 사례마다 완전 관찰과 조건 하나씩 깨뜨린 관찰로 비교, 안쪽 Agent 호출이 섞인 관찰 포함), `test_legacy_adapter.py`(변환·조건별 의미). 기존 실행 결과(실제 LLM 답)는 파일로 남아 있지 않아 관찰 결과는 사례 기대값에서 만든다.
+- E4c-2(예정): L2 실행기·CLI(`--dry-run` 기본, `--fake`, 실제 호출은 `--real` 과 `--approve-usd` 모두 필요). AI 동의는 시드가 켠다(E4b-2). 실제 모델 호출은 비용 추정을 보여 주고 승인을 받은 뒤에 따로 한다.
 - E5: 1단계 사례 50~100건과 사례 검증 시험.
 - E6: L1 고정 응답 모드. E7: 1단계 베이스라인. E8: 루프 실행기.
 - E9 이후: 2·3단계 사례 확장(단계마다 사용자 승인).
