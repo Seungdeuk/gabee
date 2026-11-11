@@ -8,10 +8,11 @@ import ListItem from "@/shared/components/ListItem";
 import SectionTitle from "@/shared/components/SectionTitle";
 import Tag from "@/shared/components/Tag";
 import useResource from "@/shared/hooks/useResource";
+import WheelPicker from "@/shared/components/WheelPicker";
 import { colors, font } from "@/theme";
 
 import { createExpense, deleteExpense, getExpenses } from "../api";
-import { formatMoneyInput, PAGE_SIZE, parseWon, remaining, won } from "../format";
+import { dayOptions, defaultDay, expenseDate, formatMoneyInput, PAGE_SIZE, parseDayInput, parseWon, quickDays, remaining, won } from "../format";
 import TagBadge from "./TagBadge";
 
 /**
@@ -26,9 +27,14 @@ export default function ExpenseTab({ month, notify }) {
   const [open, setOpen] = useState(false); // 지출 추가 폼은 "+ 지출 추가"를 눌렀을 때만 보인다
   const [title, setTitle] = useState("");
   const [amount, setAmount] = useState("");
+  const [day, setDay] = useState(() => defaultDay(month)); // 지출 날짜(일). 보고 있는 달 안에서만 고른다
   const [shown, setShown] = useState(PAGE_SIZE); // 내역은 5개씩 더보기
 
-  useEffect(() => setShown(PAGE_SIZE), [month]);
+  // 달을 바꾸면 내역도 그 달이라 날짜 처음값을 다시 정한다. 폼을 닫아도 날짜는 두어 같은 날 여러 건을 이어서 넣을 수 있다.
+  useEffect(() => {
+    setShown(PAGE_SIZE);
+    setDay(defaultDay(month));
+  }, [month]);
 
   const closeForm = () => {
     setOpen(false);
@@ -40,11 +46,11 @@ export default function ExpenseTab({ month, notify }) {
     const value = parseWon(amount);
     if (!title.trim()) return notify("항목을 입력해 주세요", true);
     if (!(value > 0)) return notify("금액은 1원 이상의 정수로 입력해 주세요", true);
-    const date = `${month}-${String(new Date().getDate()).padStart(2, "0")}`;
+    const date = expenseDate(month, day);
     try {
       await createExpense({ title: title.trim(), amount: value, date });
       closeForm();
-      notify("지출을 추가했어요");
+      notify(`지출을 추가했어요 (${date})`);
       await list.reload();
     } catch (e) {
       notify(e.message, true);
@@ -74,6 +80,28 @@ export default function ExpenseTab({ month, notify }) {
             placeholder="숫자만"
             keyboardType="numeric"
           />
+          <View style={styles.dateHead}>
+            <Text style={styles.label}>날짜</Text>
+            <Text style={styles.dateValue} testID="expense-date">
+              {expenseDate(month, day)}
+            </Text>
+          </View>
+          <View style={styles.quick}>
+            {quickDays(month).map((q) => (
+              <Button
+                key={q.label}
+                small
+                variant="secondary"
+                selected={day === q.day}
+                label={q.label}
+                a11yLabel={`${q.label}(${q.day}일)로 정하기`}
+                onPress={() => setDay(q.day)}
+              />
+            ))}
+          </View>
+          <View style={styles.wheel}>
+            <WheelPicker label="일" value={day} options={dayOptions(month)} parseInput={(text) => parseDayInput(month, text)} onChange={setDay} testID="expense-day" />
+          </View>
           <Text style={styles.caption}>낸 사람은 로그인한 나로 기록돼요.</Text>
           <Text style={styles.caption}>{"누구 몫인지는 정산 탭의 \"정산하기\"에서 정해요."}</Text>
           <View style={styles.formButtons}>
@@ -136,6 +164,11 @@ const styles = StyleSheet.create({
   muted: { ...font.caption, color: colors.textMuted, textAlign: "center", paddingVertical: 8 },
   right: { alignItems: "flex-end", gap: 6, maxWidth: "62%" },
   actions: { flexDirection: "row", alignItems: "center", justifyContent: "flex-end", flexWrap: "wrap", gap: 6 },
+  label: { ...font.caption, color: colors.text, fontWeight: "600" },
+  dateHead: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  dateValue: { ...font.bodyStrong, fontWeight: "700", color: colors.text },
+  quick: { flexDirection: "row", gap: 8 },
+  wheel: { alignItems: "center" },
   formButtons: { flexDirection: "row", gap: 10 },
   formButton: { flex: 1 },
   moreRow: { flexDirection: "row", justifyContent: "center", gap: 8, paddingTop: 8 },
