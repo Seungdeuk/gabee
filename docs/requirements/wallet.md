@@ -30,7 +30,7 @@
 
 ## API
 - 지갑 탭은 기존 `/billing/*`를 그대로 쓴다. 새 엔드포인트는 없다.
-  - 지출: `GET·POST /billing/expenses`, `DELETE /billing/expenses/{id}`, `GET /billing/summary`
+  - 지출: `GET·POST /billing/expenses`, `PATCH /billing/expenses/{id}`(수정), `DELETE /billing/expenses/{id}`, `GET /billing/summary`
   - 정산: `GET /billing/settlement`, `GET /billing/settlement/tags`, `POST /billing/settlement/tag`, `GET·PUT /billing/settlement/manager`, `PUT /billing/settlement/minors`, `POST /billing/settlement/payments`, `DELETE /billing/settlement/payments/{id}`
   - 용돈: `GET /billing/allowances`, `PUT·DELETE …/{child_id}/plan`, `POST …/plan/pay`, `POST …/credits`, `POST …/uses`, `POST …/requests`(+ approve·reject·취소), `DELETE …/entries/{id}`
   - 에이전트: `POST /billing/agent/chat`, `POST /billing/agent/confirm`
