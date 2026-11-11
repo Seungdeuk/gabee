@@ -9147,7 +9147,7 @@
           "billing"
         ],
         "summary": "Delete Expense",
-        "description": "소프트 삭제: 행은 남기고 `deleted_at` 만 채운다.",
+        "description": "소프트 삭제: 행은 남기고 `deleted_at` 만 채운다. 수정과 같은 규칙(내가 낸 지출만, 정산하기 전만, 송금 완료가 있는 달은 잠금)이고 어긋나면 400 `expense_not_deletable`.",
         "operationId": "delete_expense_billing_expenses__expense_id__delete",
         "parameters": [
           {
