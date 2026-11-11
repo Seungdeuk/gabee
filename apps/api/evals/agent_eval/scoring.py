@@ -243,6 +243,7 @@ def score_case(case: Case, obs: Observation, common: Security) -> CaseResult:
         failures.add("wrong_tool")
     if any(c.called and not c.passed for c in calls):
         failures.add("arg_error")
-    if obs.step_limit_hit and not result.passed:
+    # 도달만으로 실패시키지 않는다: 이미 실패한 사례의 원인으로만 센다
+    if obs.step_limit_reached and not result.passed:
         failures.add("step_limit")
     return replace(result, failure_types=tuple(t for t in _FAILURE_ORDER if t in failures))

@@ -169,7 +169,8 @@ def test_expected_call_may_name_a_stage_and_repeat_a_tool():
 
 def test_observation_defaults_and_validation():
     obs = Observation()
-    assert obs.can_answer is None and obs.calls == [] and not obs.step_limit_hit
+    assert obs.can_answer is None and obs.calls == []
+    assert not obs.step_limit_reached and not obs.forced_final
     call = ToolCall(stage="main", name="ask_schedule")
     assert call.is_error is False and call.superseded is False
     with pytest.raises(ValidationError):

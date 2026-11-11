@@ -56,6 +56,8 @@ class Run:
     force_first_tool: bool = (
         False  # 첫 모델 호출에서 도구 하나는 꼭 부르게 한다(`tool_choice: any`)
     )
+    # 평가 관찰용: 단계 상한 때문에 도구 없이 최종 답을 받는 호출을 했다. 일반적인 도구 없는 답변은 아니다. 실행 흐름에는 쓰지 않는다.
+    forced_final: bool = False
 
 
 TRUNCATED_NOTE = "\n\n(답이 길어서 여기서 끊겼어요. '계속'이라고 보내 주시면 이어서 알려 드릴게요.)"
@@ -75,6 +77,7 @@ def _model(state: State, config: RunnableConfig) -> dict:
     # 마지막 호출이 도구 결과 뒤라면 더 부르지 못하게 해 지금까지 찾은 근거로 답을 쓰게 한다(호출 수는 그대로)
     last_call = run.steps >= run.max_steps and isinstance(state["messages"][-1], ToolMessage)
     if last_call:
+        run.forced_final = True
         reply = run.model.invoke(state["messages"], no_tools=True)
     elif run.force_first_tool and run.steps == 1:
         reply = run.model.invoke(state["messages"], force_tool=True)
@@ -143,7 +146,7 @@ def run_graph(run: Run, messages: list[BaseMessage]) -> Run:
     """그래프를 돌린다. 모델·도구 호출의 예외는 그대로 올라간다(호출한 쪽이 대체 답이나 오류로 바꾼다)."""
     # 추적(LangSmith)은 환경변수와 상관없이 끈다: 켜지면 질문·도구 결과·답이 외부로 나간다
     with no_trace():
-        GRAPH.invoke(
+        final = GRAPH.invoke(
             {"messages": messages},
             # 한 번 반복이 노드 둘이라 단계 수의 두 배 남짓이면 충분하다(기본 50 은 25번 반복까지)
             config={
@@ -151,7 +154,24 @@ def run_graph(run: Run, messages: list[BaseMessage]) -> Run:
                 "recursion_limit": max(50, 2 * run.max_steps + 5),
             },
         )
-    eval_hook.observe_step_limit(
-        run.stage, not run.finished and not run.done and run.steps >= run.max_steps
-    )
+    # 평가가 켜져 있을 때만 계산한다(꺼져 있으면 아무것도 하지 않는다)
+    if eval_hook.current() is not None:
+        reached, forced = _step_limit_state(run, final)
+        eval_hook.observe_step_limit(run.stage, reached, forced)
     return run
+
+
+def _step_limit_state(run: Run, final: object) -> tuple[bool, bool]:
+    """평가 관찰용 (단계 상한에 닿았는가, 상한 때문에 도구 없이 최종 답을 받았는가). 계산이 어긋나도 실행에는 영향이 없다.
+
+    닿은 경우: 상한 때문에 도구 없는 마지막 호출을 했거나, 답 없이 상한에서 끊겼거나(마지막 단계의 도구 호출 뒤 끝), 서버 도구 대기(pause_turn)로
+    끝났다. 마지막 단계에서 정상적으로 답한 경우는 닿은 것이 아니다.
+    """
+    try:
+        messages = final.get("messages") if isinstance(final, dict) else None
+        meta = getattr(messages[-1], "response_metadata", None) if messages else None
+        paused = bool(meta) and meta.get("stop_reason") == "pause_turn"
+        cut = not run.finished and not run.done and run.steps >= run.max_steps
+        return run.forced_final or paused or cut, run.forced_final
+    except Exception:  # noqa: BLE001  관찰이 운영 동작을 바꾸면 안 된다
+        return False, run.forced_final

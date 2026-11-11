@@ -76,7 +76,8 @@ class Efficiency:
     tokens_out_total: int
     latency_p50_ms: int | None
     latency_p95_ms: int | None
-    step_limit: Rate  # 실행 단위
+    step_limit: Rate  # 실행 단위: 단계 상한에 닿은 비율(참고용, 성공·실패 판정에 쓰지 않는다)
+    forced_final: Rate  # 실행 단위: 상한 때문에 도구 없이 최종 답을 받은 비율(참고용)
 
 
 @dataclass(frozen=True)
@@ -118,6 +119,7 @@ class Summary:
             "tool_argument_cases": self.tool_argument_cases,
             "same_toolset": self.same_toolset,
             "step_limit_rate": self.efficiency.step_limit,
+            "forced_final_rate": self.efficiency.forced_final,
         }
         for name, r in rates.items():
             rows += [(name, r.value), (f"{name}_n", r.n)]
@@ -208,7 +210,8 @@ def summarize(runs: Sequence[CaseRun]) -> Summary:
         tokens_out_total=sum(o.tokens_out for o in obs_all),
         latency_p50_ms=_percentile(latencies, 50),
         latency_p95_ms=_percentile(latencies, 95),
-        step_limit=_rate(sum(o.step_limit_hit for o in obs_all), len(obs_all)),
+        step_limit=_rate(sum(o.step_limit_reached for o in obs_all), len(obs_all)),
+        forced_final=_rate(sum(o.forced_final for o in obs_all), len(obs_all)),
     )
     return Summary(
         cases=len(runs),

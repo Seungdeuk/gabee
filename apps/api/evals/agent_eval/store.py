@@ -236,7 +236,8 @@ def _build(runs: Sequence[RunLike]) -> tuple[list[dict], list[dict], list[list]]
                     "tokens_in": obs.tokens_in,
                     "tokens_out": obs.tokens_out,
                     "latency_ms": obs.latency_ms,
-                    "step_limit_hit": obs.step_limit_hit,
+                    "step_limit_reached": obs.step_limit_reached,
+                    "forced_final": obs.forced_final,
                 }
             )
             if not res.passed:
@@ -337,3 +338,19 @@ def opening_spent(root: Path, stage: str, loop_id: str | None = None) -> dict[st
         if run_stage == "loop" and stage == "loop" and run_loop == loop_id:
             spent["loop"] += cost
     return spent
+
+
+def read_trajectories(run_dir: Path) -> list[dict]:
+    """저장된 궤적을 읽는다. 옛 키 `step_limit_hit` 로 저장된 결과도 새 키(`step_limit_reached`)로 바꿔 돌려주고, 없는 새 키는 False 로 채운다."""
+    rows = []
+    for line in (run_dir / "trajectories.jsonl").read_text(encoding="utf-8").splitlines():
+        if not line.strip():
+            continue
+        row = json.loads(line)
+        legacy = row.pop("step_limit_hit", None)
+        if legacy is not None:
+            row.setdefault("step_limit_reached", bool(legacy))
+        row.setdefault("step_limit_reached", False)
+        row.setdefault("forced_final", False)
+        rows.append(row)
+    return rows

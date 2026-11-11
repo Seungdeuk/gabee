@@ -223,4 +223,28 @@ class Observation(_Strict):
     tokens_in: NonNegativeInt = 0
     tokens_out: NonNegativeInt = 0
     latency_ms: NonNegativeInt = 0
-    step_limit_hit: bool = False
+    step_limit_reached: bool = (
+        False  # 실행이 단계 상한에 닿았다(마지막 단계에서 정상적으로 답한 경우는 아니다)
+    )
+    forced_final: bool = False  # 상한 때문에 도구 없이 최종 답을 받았다(상한 도달의 하위 사실: True 면 step_limit_reached 도 True)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _read_the_old_name(cls, data: Any) -> Any:
+        """옛 이름 `step_limit_hit`(저장된 관찰 결과)을 `step_limit_reached` 로 읽는다. 둘 다 있으면 새 이름이 이긴다."""
+        if isinstance(data, dict) and "step_limit_hit" in data:
+            data = dict(data)
+            legacy = data.pop("step_limit_hit")
+            data.setdefault("step_limit_reached", legacy)
+        return data
+
+    @model_validator(mode="after")
+    def _forced_final_means_reached(self) -> "Observation":
+        if self.forced_final and not self.step_limit_reached:
+            raise ValueError("forced_final 이면 step_limit_reached 도 True 여야 한다")
+        return self
+
+    @property
+    def step_limit_hit(self) -> bool:
+        """옛 이름(하위 호환). `step_limit_reached` 와 같다."""
+        return self.step_limit_reached
