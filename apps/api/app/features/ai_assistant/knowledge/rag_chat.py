@@ -502,6 +502,7 @@ def ask(
                 restore=restore,
             ),
             max_steps=MAX_STEPS,
+            stage="main",  # 평가 관찰용 단계 이름(평가가 꺼져 있으면 아무 일도 하지 않는다)
         )
         tool_graph.run_graph(run, to_langchain_messages(build_messages(question, history)))
     except (httpx.HTTPError, ValueError, KeyError):

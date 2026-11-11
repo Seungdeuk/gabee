@@ -37,6 +37,10 @@
   - `runs_guard.py`: `test_runs.json` 을 읽기 전에 확인·예약한다. 이력 파일이 없거나 깨지면 멈추고(새로 만들지 않음), 목적(baseline·final)마다 실행은 단 한 번이고 분할 전체를 예약한다(사례를 나눠 후보별로 돌리거나 사례 id 를 바꿔 한도를 되돌릴 수 없다). 사례는 `GuardedCases` 로만 돌려주고 한 번만 반복할 수 있다(반복할 때 먼저 started 표시). 이어서 돌릴 때는 목적·분할 파일·후보(git 해시)가 같아야 한다. 끊겨 started 로 남은 사례는 다시 돌리지 않고 보고서에서 평가하지 못한 사례로 따로 적어 전후 비교에서 뺀다. 파일 잠금·교체 쓰기·쓰기 전 형식 검사로 중단·재시작·동시 실행에서도 지킨다. 1단계에서 끝낸 뒤 확장의 새 테스트 사례는 이력 파일을 사람이 고쳐(커밋으로 남는다) 연다.
   - `write_tools.py`: Agent 별 쓰기·읽기 도구 목록과 실제 코드와의 대조(`verify_against_code`). 이름 규칙(쓰기·읽기 접두사)으로 목록의 분류를 교차 확인하고, 가계는 코드의 읽기 전용 모드와도 맞춘다. 새 도구를 분류하지 않거나 분류할 수 없는 이름이면 실패한다. 메인의 도구 조합은 `rag_chat.py` 의 식을 옮긴 것이라 그 식이 바뀌면 시험이 알려 준다. `estimate.py`: 실행 전 비용 추정 요약과 예산 상한 확인.
   - 시험: `test_env*.py`, `test_runs_guard.py`, `test_write_tools.py`, `test_estimate.py`(가짜 모델만, 외부 호출 없음).
+- E4b-1: 운영 코드 4곳(`shared/llm/agent.py`·`billing/agent.py`·`family_chat/agent.py`·`ai_assistant/knowledge/rag_chat.py`, 12줄)이 `stage` 를 넘겨 메인·가계·소통의 도구 호출이 기록된다(기본값이 빈 값이라 평가가 꺼져 있으면 기존 동작과 같다).
+  - `schedule_outcome.py`(평가 쪽, 운영 코드 무변경): 일정 응답으로 쓰기 요청의 결과를 `done`·`clarified`·`declined`·`gave_up`·`error` 로 가려 관찰 기록에 반영한다. 정상 되묻기와 올바른 거절은 실패도 쓰기도 아니라서 호출을 기록에서 빼고, 포기와 실행 오류만 `is_error` 로 표시한다. 대체된(need_wider) 앞선 분류는 항상 뺀다. 카드 없이 글만 돌려주는 성공(습관 체크 등)이 있어 거절은 알려진 문구 목록(`REFUSAL_TEXTS`)으로만 판정하고 모르는 글은 `done`(쓰기가 일어난 것으로 보수적으로)으로 센다.
+  - `usage.py`(평가 쪽): `transport.post_messages` 를 감싸 일정 분류를 포함한 Anthropic 호출의 횟수·토큰을 세고, `ledger` 를 주면 호출 직전에 최악 비용을 확인하고 끝나는 즉시 기록장에 더해 한 사례 안의 호출도 누적해서 상한을 지킨다. 상한 초과·단가 없는 모델은 앱의 `except` 가 삼키지 못하는 `RunHalted`(BaseException)로 멈춘다. 입력 토큰은 한글 글자당 1토큰과 숨은 프롬프트 여유 1500토큰으로 보수적으로 추정한다.
+  - 시험: `test_stage_wiring.py`, `test_schedule_outcome.py`, `test_usage.py`.
 
 ## 알려진 한계
 - 루프에서 후보를 만든 호출의 사용량도 같은 `loop_id` 실행 기록에 넣어야 `opening_spent` 의 루프·전체 합이 맞는다(호출하는 쪽 E8 이 지킨다). 저장 시험은 합성 값만 쓰고, 실제 실행 결과 저장은 E4 이후에 처음 쓰인다.
@@ -46,8 +50,10 @@
 - 대체된 앞선 호출은 E3 훅이 `superseded` 로 표시해야 쓰기로 세지 않는다(표시가 없으면 추가 쓰기로 센다). 인자 값이 dict 이면(`changes` 등) 매처가 맞지 않아 E3 에서 평탄화가 필요하다.
 
 ## 남은 것
-- E4 에서 이어서 할 E3 연결: `rag_chat.py`·`agent.py` 가 `Run(stage=...)` 를 넘기게 하기(지금은 일정 구조화 출력만 기록된다), 되묻기로 끝난 등록에 `eval_hook.mark_last(name, is_error=True)` 표시, 일정 분류 호출의 호출 수·토큰 집계. 기록기는 `contextvars` 라 스레드·이벤트 루프를 넘으면 사라지므로 실행기는 서비스를 직접 호출하거나 요청 안에서 `recording()` 을 연다(기록이 0건이면 실패로 알린다).
-- E4b: `stage` 연결·`mark_last` 표시 같은 운영 코드 소폭 수정(수정 전에 대상·영향을 보고하고 승인을 받는다)과 가족방·1:1·일정 시드.
+- 기록기는 `contextvars` 라 스레드·이벤트 루프를 넘으면 사라지므로 실행기는 서비스를 직접 호출하거나 요청 안에서 `recording()` 을 연다(기록이 0건이면 실패로 알린다).
+- E4b-2: 가족방·1:1·일정 합성 시드(운영 코드 변경 없음). `eval_hook.mark_last` 는 운영 코드에서 부르지 않기로 했다(`eval_hook.py` 의 `mark_last` 설명이 되묻기를 오류로 표시한다고 적혀 있어 낡았다. 고치려면 별도 승인이 필요하다).
+- 알려진 한계(E4b-1 리뷰에서 나온 것, 운영 파일이라 이 PR 에서 고치지 않았다): ① `eval_hook.mark_last` 와 `schedule/agent/chat.py::_observe` 의 설명이 되묻기를 `mark_last` 로 오류 표시한다고 적혀 있어 낡았다. ② `chat._observe` 는 같은 기록 안의 앞선 `schedule.*` 호출을 모두 대체로 표시한다. 일정 Agent 를 직접 한 번 부르는 경로는 맞지만, 메인이 `ask_schedule` 을 한 질문에 여러 번 부르면(일정 둘을 따로 등록) 앞선 등록이 대체돼 쓰기 수와 호출 대응에서 빠진다(need_wider 안에서만 대체하도록 고치는 것은 별도 승인). ③ 메인의 `ask_schedule` 경로는 일정 Agent 의 `AgentResponse` 가 메인에게 보이지 않아 `schedule_outcome` 판정을 쓸 수 없다(E4c). ④ 메인 기록의 `steps`·`llm_calls`·`step_limit_hit` 에는 하위 Agent 의 몫이 섞인다(`eval_hook` 은 단계별로 나누지 않는다). ⑤ `usage` 는 `transport` 를 지나지 않는 호출(`jev.py`·`doc_ai.py` 의 직접 httpx)과 웹 검색 사용량을 세지 않고, 프로세스 전체를 바꾸므로 측정 중 다른 스레드의 호출도 센다.
+- 알려진 한계: 채점기는 쓰기 도구를 `calls` 없이 `tools.required` 에만 적은 사례를 사례 오류로 거부한다(`_check_case`). 그래서 일정 쓰기 도구의 `tool_error` 사례는 지금 방식으로는 쓸 수 없다(E5 사례를 쓰기 전에 규칙을 정해야 한다).
 - E4c: L2 실행기와 기존 52건 어댑터. AI 동의는 시드 뒤에 켜므로 E4b·E4c 에서 한다. 실제 모델 호출은 비용 추정을 보여 주고 승인을 받은 뒤에 따로 한다.
 - E5: 1단계 사례 50~100건과 사례 검증 시험.
 - E6: L1 고정 응답 모드. E7: 1단계 베이스라인. E8: 루프 실행기.

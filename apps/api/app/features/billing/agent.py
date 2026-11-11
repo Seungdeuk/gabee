@@ -498,6 +498,7 @@ def ask(
             post=post,
             history=history,
             proposals=proposed,
+            stage="billing",
         ),
         guarded=guarded,
     )

@@ -205,7 +205,7 @@ class ToolCall(_Strict):
     stage: AgentPath  # 어느 Agent 단계의 호출인가
     name: NonEmpty
     args: dict[str, Any] = Field(default_factory=dict)
-    is_error: bool = False  # 도구가 오류를 돌려줘 아무것도 하지 못한 호출(되묻기로 끝난 등록 포함)
+    is_error: bool = False  # 도구가 오류를 돌려줘 아무것도 하지 못한 호출(포기·실행 오류 포함, 정상적인 되묻기는 호출에서 뺀다)
     superseded: bool = False  # 같은 대상을 다시 제안해 앞선 제안이 대체된 호출
 
 

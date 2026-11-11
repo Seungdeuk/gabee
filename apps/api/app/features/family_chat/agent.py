@@ -218,6 +218,7 @@ def ask(
                 build_tools(db, group_id, user, session),
                 post=post,
                 history=history,
+                stage="family_chat",
             )
             if reply.can_answer:
                 restored = session.restore_text(reply.answer, generalize_unknown=True, scrub=True)

@@ -84,6 +84,7 @@ def run_agent(
     post: Post | None = None,
     max_steps: int = 4,
     max_tokens: int = 1024,
+    stage: str = "",
 ) -> AgentReply:
     """도구를 최대 max_steps 번 부르며 답을 만든다. 키가 없거나 호출이 실패하면 LLMUnavailable.
 
@@ -129,6 +130,7 @@ def run_agent(
         ),
         handle=handle,
         max_steps=max_steps,
+        stage=stage,  # 평가 관찰용 단계 이름(비어 있으면 기록하지 않는다)
     )
     try:
         if max_steps > 0:  # 0 번이면 모델을 한 번도 부르지 않고 끝난다
@@ -178,11 +180,17 @@ def ask_agent(
     max_steps: int = 4,
     history: list[dict] | None = None,
     proposals: list | None = None,
+    stage: str = "",
 ) -> AgentReply:
     """run_agent 를 부르되 실패하면 예외 대신 can_answer=False 인 답을 돌려준다(부른 에이전트가 이어서 말하도록)."""
     try:
         reply = run_agent(
-            system, build_messages(question, history), tools, post=post, max_steps=max_steps
+            system,
+            build_messages(question, history),
+            tools,
+            post=post,
+            max_steps=max_steps,
+            stage=stage,
         )
         reply.proposals = list(proposals or [])
         return reply
