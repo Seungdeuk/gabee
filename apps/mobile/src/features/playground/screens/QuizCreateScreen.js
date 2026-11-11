@@ -1,3 +1,4 @@
+import { Ionicons } from "@expo/vector-icons";
 import { useNavigation, useRouter } from "expo-router";
 import { useEffect, useRef, useState } from "react";
 import { Pressable, StyleSheet, Switch, Text, TextInput, View } from "react-native";
@@ -6,11 +7,11 @@ import Button from "@/shared/components/Button";
 import ConfirmDialog from "@/shared/components/ConfirmDialog";
 import { colors, font, fonts } from "@/theme";
 
-import { quizQuestions } from "../adapt";
+import { questionFromRec, quizQuestions, recLabel, recView, stepIndex } from "../adapt";
 import { createQuiz } from "../api";
 import PlayScreen from "../components/PlayScreen";
 import { AudiencePicker, QuestionTabs, RevealNote, MakeQuotaNote, Toggle } from "../components/quiz/QuizParts";
-import { playLive } from "../hooks";
+import { playLive, useQuizRecs } from "../hooks";
 import { recordMade } from "../mock";
 
 const Q_MAX = 60; // 문제 글자 수
@@ -18,13 +19,7 @@ const OPT_MAX = 20; // 보기 글자 수
 const NOTE_MAX = 100; // 정답 뒤 한마디
 const MAX_Q = 5;
 
-// 가비가 가족이 공유한 사진·일정·안부에서 만든 추천 문제 (시안 데이터)
-const RECS = [
-  { id: "r1", source: "앨범에서 · 선택", tone: "amber", kind: "choice", q: "작년 여름 가족 여행지는 어디였을까?", options: ["제주도", "강릉", "부산", "여수"], answer: 0 },
-  { id: "r2", source: "일정에서 · OX", tone: "blue", kind: "ox", q: "엄마 생신은 12월이다", options: ["O", "X"], answer: 1 },
-  { id: "r3", source: "안부 기록에서 · 선택", tone: "green", kind: "choice", q: "이번 주 아빠가 산책한 날은 며칠일까?", options: ["2일", "3일", "4일", "5일"], answer: 2 },
-];
-const TONES = { amber: ["#FFFCF7", "#8A5A2B"], blue: ["#E6F0F8", "#3A6E99"], green: ["#E4F0E8", "#2F4A3B"] };
+const TONES = { schedule: ["#E6F0F8", "#3A6E99"], chat: ["#E4F0E8", "#2F4A3B"] }; // 추천 출처 알약 색: 일정에서 / 소통방에서
 
 // 문제 하나가 보낼 수 있는 상태인지 본다. 안 되면 이유 한 줄, 되면 null
 function problemOf(q, i) {
@@ -37,7 +32,6 @@ function problemOf(q, i) {
 }
 
 const blank = () => ({ kind: "choice", q: "", options: ["", "", ""], answer: null, withNote: false, note: "" });
-const fromRec = (r) => ({ kind: r.kind, q: r.q, options: [...r.options], answer: r.answer, withNote: false, note: "", rec: r.id });
 
 /**
  * 가족 골든벨 내기. 가비 추천 / 직접 내기, OX / 선택 을 한 화면 안에서 바꾼다(화면이 새로고침처럼 넘어가지 않게).
@@ -48,7 +42,10 @@ export default function QuizCreateScreen({ initialMode = "rec" }) {
   const navigation = useNavigation();
   const leaving = useRef(false); // 문제를 보내서 나가는 중이면 뒤로가기를 막지 않는다
   const [mode, setMode] = useState(initialMode);
-  const [qs, setQs] = useState([fromRec(RECS[0]), blank(), blank()]);
+  const [qs, setQs] = useState([blank(), blank(), blank()]);
+  const recs = useQuizRecs();
+  const [recIndex, setRecIndex] = useState(0); // 가비 추천 카드 위치(직접 내기에 다녀와도 유지)
+  const [refreshing, setRefreshing] = useState(false);
   const [active, setActive] = useState(0);
   const [target, setTarget] = useState([]);
   const [confirmRemove, setConfirmRemove] = useState(false); // 문제 삭제 확인 창
@@ -65,7 +62,12 @@ export default function QuizCreateScreen({ initialMode = "rec" }) {
     setQs((l) => [...l, blank()]);
     setActive(qs.length);
   };
-  const pickRec = (r) => patch(fromRec(r));
+  const pickRec = (r) => patch(questionFromRec(r));
+  const refreshRecs = async () => {
+    setRefreshing(true);
+    await recs.reload();
+    setRefreshing(false);
+  };
   const removeQuestion = () => {
     setConfirmRemove(false);
     if (qs.length <= 1) return;
@@ -145,7 +147,11 @@ export default function QuizCreateScreen({ initialMode = "rec" }) {
           { key: "manual", label: "직접 내기" },
         ]}
       />
-      {mode === "rec" ? <Recommend active={active} cur={cur} onPick={pickRec} onEdit={() => setMode("manual")} /> : <Manual cur={cur} patch={patch} />}
+      {mode === "rec" ? (
+        <Recommend recs={recs} index={recIndex} onIndex={setRecIndex} active={active} cur={cur} onPick={pickRec} onEdit={() => setMode("manual")} refreshing={refreshing} onRefresh={refreshRecs} />
+      ) : (
+        <Manual cur={cur} patch={patch} />
+      )}
       <AudiencePicker value={target} onChange={setTarget} />
       <ConfirmDialog
         visible={confirmRemove}
@@ -159,40 +165,72 @@ export default function QuizCreateScreen({ initialMode = "rec" }) {
   );
 }
 
-/** 가비 추천 목록: 고른 카드는 노랑, 나머지는 흰 카드. */
-function Recommend({ active, cur, onPick, onEdit }) {
+/** 가비 추천: 카드 한 장을 `<` `>` 로 넘겨 보고(끝에서 처음으로), "이 문제로 쓰기"로 편집 중인 문제 칸에 채운다. 못 보여 줄 때는 상태별 안내. */
+function Recommend({ recs, index, onIndex, active, cur, onPick, onEdit, refreshing, onRefresh }) {
+  const view = recView(recs.error && !recs.data ? { state: "failed" } : recs.data);
+  if (recs.loading && !recs.data) return <Text style={styles.recNotice}>가비가 문제를 준비 중이에요</Text>;
+  if (view.items.length === 0) {
+    return (
+      <View style={styles.recEmpty}>
+        <Text style={styles.recNotice}>{view.notice}</Text>
+        {view.refresh ? (
+          <Pressable onPress={onRefresh} disabled={refreshing} accessibilityRole="button" accessibilityLabel="추천 새로고침" style={styles.refreshBtn}>
+            <Text style={styles.refreshText}>{refreshing ? "불러오는 중…" : "새로고침"}</Text>
+          </Pressable>
+        ) : null}
+      </View>
+    );
+  }
+  const count = view.items.length;
+  const at = Math.min(index, count - 1);
+  const r = view.items[at];
+  const on = cur.rec === r.id;
+  const [pillBg, pillFg] = TONES[r.source] ?? TONES.schedule;
   return (
     <>
-      <Text style={styles.note}>가족이 공유한 사진·일정에서 만든 문제예요 · 하나를 골라 문제 {active + 1}로 써요</Text>
-      {RECS.map((r) => {
-        const on = cur.rec === r.id;
-        const [pillBg, pillFg] = TONES[r.tone];
-        return (
-          <Pressable key={r.id} onPress={() => onPick(r)} accessibilityRole="button" accessibilityState={{ selected: on }} style={[styles.card, on && styles.cardOn]}>
-            <View style={styles.cardHead}>
-              <Text style={[styles.pill, { backgroundColor: pillBg, color: pillFg }]}>{r.source}</Text>
-              {on ? <Text style={styles.picked}>문제 {active + 1}로 선택됨</Text> : null}
-            </View>
-            <Text style={styles.recQ}>{r.q}</Text>
-            {on && r.kind === "choice" ? (
-              <View style={styles.optGrid}>
-                {r.options.map((o, i) => (
-                  <Text key={o} style={[styles.optCell, i === r.answer && styles.optCellAns]}>
-                    {o}
-                    {i === r.answer ? " (정답)" : ""}
-                  </Text>
-                ))}
-              </View>
-            ) : null}
-            {on && r.kind === "ox" ? <Text style={styles.oxHint}>정답 {r.options[r.answer]}</Text> : null}
-            {on ? (
-              <Pressable onPress={onEdit} accessibilityRole="button" style={styles.editBtn}>
-                <Text style={styles.editText}>문제·보기 고치기</Text>
-              </Pressable>
-            ) : null}
+      <View style={styles.noteBlock}>
+        <Text style={styles.note}>가족의 일정과 대화로 만든 문제예요</Text>
+        <Text style={styles.note}>마음에 드는 문제를 골라 문제 {active + 1}에 써요</Text>
+      </View>
+      <View style={[styles.card, on && styles.cardOn]}>
+        <View style={styles.cardHead}>
+          <Text style={[styles.pill, { backgroundColor: pillBg, color: pillFg }]}>{recLabel(r)}</Text>
+          <View style={styles.pager}>
+            <Pressable onPress={() => onIndex(stepIndex(at, count, -1))} accessibilityRole="button" accessibilityLabel="이전 추천" hitSlop={8} style={styles.arrow}>
+              <Ionicons name="chevron-back" size={16} color={colors.textSub} />
+            </Pressable>
+            <Text style={styles.pageText} accessibilityLabel={`추천 ${count}개 중 ${at + 1}번째`}>
+              {at + 1} / {count}
+            </Text>
+            <Pressable onPress={() => onIndex(stepIndex(at, count, 1))} accessibilityRole="button" accessibilityLabel="다음 추천" hitSlop={8} style={styles.arrow}>
+              <Ionicons name="chevron-forward" size={16} color={colors.textSub} />
+            </Pressable>
+          </View>
+        </View>
+        {on ? <Text style={styles.picked}>문제 {active + 1}로 선택됨</Text> : null}
+        <Text style={styles.recQ}>{r.question}</Text>
+        {r.kind === "choice" ? (
+          <View style={styles.optGrid}>
+            {r.options.map((o, i) => (
+              <Text key={o} style={[styles.optCell, i === r.answer_index && styles.optCellAns]}>
+                {o}
+                {i === r.answer_index ? " (정답)" : ""}
+              </Text>
+            ))}
+          </View>
+        ) : (
+          <Text style={styles.oxHint}>정답 {r.options[r.answer_index]}</Text>
+        )}
+        {on ? (
+          <Pressable onPress={onEdit} accessibilityRole="button" style={styles.editBtn}>
+            <Text style={styles.editText}>문제·보기 고치기</Text>
           </Pressable>
-        );
-      })}
+        ) : (
+          <Pressable onPress={() => onPick(r)} accessibilityRole="button" accessibilityLabel={`이 문제로 쓰기, 문제 ${active + 1}`} style={styles.useBtn}>
+            <Text style={styles.useText}>이 문제로 쓰기</Text>
+          </Pressable>
+        )}
+      </View>
     </>
   );
 }
@@ -283,7 +321,17 @@ function Manual({ cur, patch }) {
 }
 
 const styles = StyleSheet.create({
+  noteBlock: { gap: 2 },
   note: { ...font.caption, color: colors.textSub },
+  recEmpty: { alignItems: "center", gap: 12, paddingVertical: 24 },
+  recNotice: { ...font.body, color: colors.textSub, textAlign: "center", lineHeight: 24 },
+  refreshBtn: { minHeight: 40, paddingHorizontal: 18, borderRadius: 999, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.card, alignItems: "center", justifyContent: "center" },
+  refreshText: { fontSize: 14, fontFamily: fonts.medium, color: colors.text },
+  pager: { flexDirection: "row", alignItems: "center", gap: 8 },
+  arrow: { width: 32, height: 32, borderRadius: 16, borderWidth: 1, borderColor: colors.textSub, backgroundColor: colors.card, alignItems: "center", justifyContent: "center" }, // 화살표와 같은 색 외곽선, 아이콘이라 세로 가운데에 정확히 놓인다, 아이콘이라 세로 가운데에 정확히 놓인다
+  pageText: { fontSize: 14, fontFamily: fonts.medium, color: colors.textSub },
+  useBtn: { alignSelf: "stretch", height: 44, borderRadius: 12, backgroundColor: colors.surfaceStrong, alignItems: "center", justifyContent: "center" },
+  useText: { fontSize: 15, fontFamily: fonts.bold, color: colors.text },
   error: { ...font.caption, color: colors.danger, textAlign: "center", fontFamily: fonts.bold },
   card: { padding: 16, borderRadius: 18, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border, gap: 10 },
   cardOn: { backgroundColor: colors.surfaceStrong, borderColor: colors.surfaceStrong },

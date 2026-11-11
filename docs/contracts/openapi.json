@@ -15524,6 +15524,72 @@
         }
       }
     },
+    "/play/quiz/recommendations": {
+      "get": {
+        "tags": [
+          "play"
+        ],
+        "summary": "Quiz Recommendations",
+        "description": "골든벨 가비 추천(가족이 함께 보는 일정과 가족 전체방 최근 대화로 만든 문제). 하루 한 번 만들어 자정까지 가족이 같이 쓰고,\n이미 낸 문제는 숨긴다. 실패·한도 같은 경우는 오류 대신 state 로 알린다(AI 가 꺼져 있거나 재료가 없을 때도 200).",
+        "operationId": "quiz_recommendations_play_quiz_recommendations_get",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-gyeot-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Gyeot-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlayQuizRecOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/play/draws": {
       "post": {
         "tags": [
@@ -26702,6 +26768,85 @@
           "answer_index"
         ],
         "title": "PlayQuizQuestionIn"
+      },
+      "PlayQuizRecItem": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "schedule",
+              "chat"
+            ],
+            "title": "Source"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "ox",
+              "choice"
+            ],
+            "title": "Kind"
+          },
+          "question": {
+            "type": "string",
+            "title": "Question"
+          },
+          "options": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Options"
+          },
+          "answer_index": {
+            "type": "integer",
+            "title": "Answer Index"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "source",
+          "kind",
+          "question",
+          "options",
+          "answer_index"
+        ],
+        "title": "PlayQuizRecItem"
+      },
+      "PlayQuizRecOut": {
+        "properties": {
+          "state": {
+            "type": "string",
+            "enum": [
+              "ok",
+              "no_data",
+              "used_up",
+              "preparing",
+              "cooldown",
+              "failed",
+              "ai_off"
+            ],
+            "title": "State"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/PlayQuizRecItem"
+            },
+            "type": "array",
+            "title": "Items"
+          }
+        },
+        "type": "object",
+        "required": [
+          "state"
+        ],
+        "title": "PlayQuizRecOut",
+        "description": "가비 추천. state 가 ok 일 때만 items 가 있다. no_data 재료 없음, used_up 오늘 추천을 다 썼음(또는 한도), preparing 다른 가족이 만드는 중,\ncooldown 방금 불렀음, failed 만들지 못함, ai_off 가족 AI 꺼짐."
       },
       "PlayQuotaOut": {
         "properties": {
