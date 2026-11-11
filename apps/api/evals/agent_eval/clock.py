@@ -22,6 +22,17 @@ KST = timezone(timedelta(hours=9))
 REFERENCE_NOW = datetime(2026, 11, 10, 12, 0, tzinfo=KST)  # 화요일 낮 12시(한국 시간)
 TICK = timedelta(milliseconds=1)
 _active = False
+_reference: datetime | None = None
+
+
+def reference_now() -> datetime | None:
+    """열려 있는 고정 시계의 기준 시각(없으면 None). 시드가 기준 날짜가 맞는지 확인할 때 쓴다."""
+    return _reference
+
+
+def is_frozen() -> bool:
+    """고정 시계가 열려 있는가(시드는 날짜가 고정된 안에서만 만든다)."""
+    return _active
 
 
 def _midnight_after(now: datetime) -> datetime:
@@ -72,7 +83,7 @@ def make_clock(now: datetime) -> tuple[type[datetime], type[date]]:
 
 @contextmanager
 def frozen_clock(now: datetime = REFERENCE_NOW, prefix: str = "app.") -> Iterator[None]:
-    global _active
+    global _active, _reference
     if _active:
         raise RuntimeError("고정 시계는 겹쳐 열 수 없다")
     import app.main  # noqa: F401  모든 기능 모듈을 먼저 불러온다(켠 뒤에 처음 불러오는 모듈이 실제 시각을 읽지 않게)
@@ -88,6 +99,7 @@ def frozen_clock(now: datetime = REFERENCE_NOW, prefix: str = "app.") -> Iterato
                 patched.append((module, attr, real))
                 setattr(module, attr, fake)
     _active = True
+    _reference = now
     try:
         yield
         late = sorted(
@@ -102,5 +114,6 @@ def frozen_clock(now: datetime = REFERENCE_NOW, prefix: str = "app.") -> Iterato
             raise RuntimeError(f"시계를 켠 뒤에 불러온 모듈이 실제 시각을 읽는다: {late}")
     finally:
         _active = False
+        _reference = None
         for module, attr, real in patched:
             setattr(module, attr, real)
