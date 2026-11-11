@@ -14,8 +14,8 @@ import { reopenRooms } from "../mock";
 
 const SHOWN = 3; // 홈 "내 차례"는 3개까지. 나머지는 + 로 현황판에서 본다
 
-/** 가족 놀이터 메인: 내 차례(최대 3개), 새 게임 시작하기(2×2), 이번 주 순위 요약. */
-export default function PlayMainScreen() {
+/** 가족 놀이터 메인: 내 차례(최대 3개), 새 게임 시작하기(2×2), 이번 주 순위 요약. bell 은 순위 아이콘 오른쪽 알림 종이다(라우트에서 조립한다). */
+export default function PlayMainScreen({ bell = null }) {
   const router = useRouter();
   useEffect(() => reopenRooms(), []); // 시안: 닫았던 폭탄 방을 다시 열어 둔다
   const board = usePlayBoard();
@@ -25,10 +25,14 @@ export default function PlayMainScreen() {
   return (
     <PlayScreen
       title="가족 놀이터"
+      rightWide={Boolean(bell)}
       right={
-        <Pressable onPress={() => router.push("/play/ranking")} accessibilityRole="button" accessibilityLabel="순위 보기" hitSlop={8}>
-          <Ionicons name="trophy-outline" size={22} color={colors.text} />
-        </Pressable>
+        <>
+          <Pressable onPress={() => router.push("/play/ranking")} accessibilityRole="button" accessibilityLabel="순위 보기" hitSlop={8} style={styles.rankBtn}>
+            <Ionicons name="trophy-outline" size={22} color={colors.text} />
+          </Pressable>
+          {bell}
+        </>
       }
     >
       <View style={styles.section}>
@@ -88,6 +92,7 @@ const styles = StyleSheet.create({
   section: { gap: 10 },
   turnHead: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   turnRight: { flexDirection: "row", alignItems: "center", gap: 4 },
+  rankBtn: { width: 44, height: 44, alignItems: "center", justifyContent: "center" },
   boardBtn: { width: 32, height: 32, marginRight: -4, alignItems: "center", justifyContent: "center" }, // 테두리 없이 아이콘만
   h2: { ...font.cardTitle, color: colors.text },
   count: { ...font.caption, color: colors.textSub },
