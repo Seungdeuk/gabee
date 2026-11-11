@@ -8,6 +8,7 @@
 
 ## 구현된 것
 ### 서버 (`apps/api/app/features/billing`)
+- 지출 수정 `PATCH /billing/expenses/{id}`(제목·금액·날짜·분류 중 보낸 것만): **내가 낸 지출만**, **정산하기 전만**, **그 달에 송금 완료 표시가 없을 때만**(날짜를 다른 달로 옮기면 옮기려는 달도). 규칙에 어긋나면 400 `expense_not_editable`(사용자에게 보일 문장 포함), 없는 지출이나 다른 가족의 지출은 404, 바꿀 값이 없거나 날짜·금액 형식이 틀리면 422. 낸 사람·나눌 사람·정산 상태는 바뀌지 않는다. 규칙은 `service.open_own_expense`·`plan_expense_update` 한 곳에 있고 AI 에이전트의 수정 제안(`propose_update_expense`)과 같이 쓴다(제안·실행·앱이 어긋나지 않게).
 - 지출 추가·내역: 항목, 금액(정수 원), 날짜. **낸 사람은 요청 바디에서 받지 않고 로그인한 사용자로 서버가 정한다**(`permissions.md` 규칙 2; 바디에 `paid_by`를 보내도 무시). 삭제는 `deleted_at` 소프트 삭제.
 - 비용 정산 `GET /billing/settlement`: 구성원별 잔액, 최소 송금 목록, 송금 완료 표시(`POST /billing/settlement/payments`)와 취소.
   - 지출마다 나눌 사람끼리 정수로 나누고 나머지 원은 앞 사람(가족 그룹 가입 순서)부터 1원씩 더한다. 잔액 합계는 항상 0.
