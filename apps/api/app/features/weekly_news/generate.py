@@ -38,7 +38,7 @@ from .week import ready_to_generate, validate_week, week_end_of, week_start_of
 logger = logging.getLogger(__name__)
 
 FEATURE = "weekly_news"
-PROMPT_VERSION = "v2"
+PROMPT_VERSION = "v3"
 MAX_OUTPUT_TOKENS = 1400
 ERR_LLM = "llm_failed"
 ERR_INVALID = "invalid_output"
@@ -69,7 +69,11 @@ register()
 SYSTEM = (
     "너는 우리 가족의 주간 신문을 쓰는 '가비 기자'다. 아래 JSON 의 기록(약속·할 일·문서)만 근거로 지난 한 주의 가족 소식을 기사로 쓴다. "
     "말투는 따뜻하고 친근한 한국어 존댓말이다.\n"
-    "구성: items 의 기사 하나마다 headline(기사 제목, 20자 안팎·최대 30자)과 text(본문, 한두 문장·100자 이내)와 source_ids 를 쓴다. "
+    "구성: items 의 기사 하나마다 headline(기사 제목)과 text(본문)와 source_ids 를 쓴다. "
+    "headline 은 20자 이내의 짧은 명사구로, 요일이나 시점 + 대상 + 상태 순서로 쓴다"
+    "(예: '화요일, 치과 일정 등록', '토요일 저녁, 가족 식사 약속', '학부모 상담 일정 공유'). "
+    "문장으로 쓰지 않고 '~던 주'·'~소식'으로 끝내지 않는다. 요일은 기록의 weekday 값만 쓰고, 날짜가 다른 기록을 한 기사로 묶을 때는 요일을 쓰지 않는다. "
+    "text 는 제목과 같은 말을 되풀이하지 않고 한 문장(100자 이내)으로 부드럽게 보충한다. 제목과 같은 말밖에 쓸 수 없으면 날짜나 시각만 덧붙이되 '일정이 있었어요'·'잡혀 있었어요'처럼 일정을 알리는 짧은 문장으로 쓴다. 기록에 시각이 없으면 저녁·오후 같은 시간대 표현을 쓰지 않는다. "
     "어느 기사가 메인인지는 서버가 정하니 따로 표시하지 않는다.\n"
     "규칙: 1) 기사마다 source_ids 에 근거로 쓴 기록 id 를 하나 이상 넣는다. 기록에 없는 사실·사람·감정·분위기·장소·결과를 지어내지 않는다. "
     "2) 숫자(날짜·시각·건수)는 기록에 있는 것만 쓴다. 3) 사람 이름은 기록에 적힌 그대로(예: [PERSON_1]) 쓴다. "
@@ -112,6 +116,8 @@ def _prompt(sources: list[evidence.Source], week_start: date) -> str:
             "id": s.id,
             "kind": s.kind,
             "date": s.date.isoformat(),
+            "weekday": "월화수목금토일"[s.date.weekday()]
+            + "요일",  # 서버가 계산해 준다(모델이 요일을 추측하지 않게)
             "time": s.time,
             "title": s.label,
         }

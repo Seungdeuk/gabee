@@ -56,7 +56,7 @@ def test_prompt_version_and_schema_ask_for_headline_text_and_ids_only(client, re
         "text",
         "source_ids",
     }  # 역할·분류는 모델이 정하지 않는다
-    assert generate.PROMPT_VERSION == "v2"
+    assert generate.PROMPT_VERSION == "v3"
     system = fake.calls[0]["system"]
     for phrase in ("headline", "가비 기자", "관계", "원인", "결과", "참석", "있었어요"):
         assert phrase in system
@@ -84,7 +84,7 @@ def test_articles_are_saved_with_headline_role_category_and_restored_names(clien
     assert items[1]["text"] == "지민 생일 파티가 있었어요"
     assert not any("[PERSON" in (i["headline"] or "") + i["text"] for i in items)
     saved = rows()[0]
-    assert saved.prompt_version == "v2"
+    assert saved.prompt_version == "v3"
     assert (
         saved.body["items"][0]["role"] == "lead"
         and saved.body["items"][0]["headline"] == "학교 공연 소식"

@@ -54,7 +54,7 @@ FALLBACK_TITLE = "이번 주 우리 가족"
 
 # 기사 모드(헤드라인·메인·단신). 기사는 재료 수보다 많을 수 없고 최대 MAX_ARTICLES 개다(메인 1 + 단신 최대 4).
 MAX_ARTICLES = 5
-MAX_HEADLINE = 30
+MAX_HEADLINE = 20
 # 분류는 모델이 정하지 않는다: 인용한 근거의 종류가 하나면 그 종류의 이름, 섞이면 MIXED_CATEGORY.
 CATEGORY_BY_KIND = {"event": "일정", "todo": "할 일", "document": "문서"}
 MIXED_CATEGORY = "가족 소식"
@@ -166,8 +166,15 @@ _ATTACHED_PREDICATE = r"(?!\s?(?:[을를은는이가도]\s?)?(?:\S{1,4}\s)?(?:�
 _SCHEDULE_PHRASE = re.compile(
     r"(?:참석|참가|참여|방문|관람)(?:하는|할)?(?:[이가을를은는]\s?)? ?(?:일정|예정)"
 )
-# 가명 토큰(`[PERSON_1]`)은 복원하면 이름(2~4자)이 되므로 헤드라인 길이를 잴 때 짧게 센다(복원 뒤 검증에서 실제 길이로 다시 본다).
+# 가명 토큰(`[PERSON_1]`)은 복원하면 이름(2~4자)이 되므로 복원 전 헤드라인 길이는 토큰을 2자로 센다(2자 이름까지 살리고, 복원 뒤 검증이 실제 길이로 다시 본다).
 _PSEUDONYM_TOKEN = re.compile(r"\[[A-Z]+_\d+\]")
+# 기사에 쓴 요일은 인용한 근거 날짜의 요일이어야 한다(모델이 엉뚱한 요일을 쓰지 못하게). '요일' 이 붙은 낱말만 요일로 본다.
+_WEEKDAY_LETTER = "[월화수목금토일]"
+# `X요일`·`X욜`, 범위·나열(`월·화요일`, `월, 화요일`, `월~화요일`)의 모든 글자, 날짜 표기의 괄호 요일(`11월 10일(수)`)
+_WEEKDAY_WORD = re.compile(
+    rf"((?:{_WEEKDAY_LETTER}\s?[·,~\-/]\s?)*{_WEEKDAY_LETTER})\s?(?:요일|욜)|\(\s?({_WEEKDAY_LETTER})\s?\)"
+)
+_WEEKDAY_LETTERS = "월화수목금토일"
 
 KINDS = ("event", "todo", "document")
 _ID_PREFIX = {"event": "e", "todo": "t", "document": "d"}
@@ -347,6 +354,28 @@ def _supported(text: str, cited: list[Source], names: list[str], counts: set[str
     return all(name not in folded_text or any(name in label for label in labels) for name in names)
 
 
+def _weekdays_ok(text: str, cited: list[Source]) -> bool:
+    """글에 나온 요일이 모두 인용한 근거 날짜의 요일 안에 있는가. 요일을 쓰지 않았으면 True.
+
+    - 근거 제목을 그대로 인용한 부분(예: 제목 "금요일의 약속")은 요일 주장이 아니므로 먼저 지운다.
+    - 요일 사이 공백("금 요일")과 줄임("금욜")도 요일로 본다.
+    - 날짜(요일)가 다른 근거를 묶은 기사는 요일을 쓰지 않는다: 요일을 일정별로 연결해 확인할 수 없어서(뒤바꿔도 집합은 같다) 안전하게 막는다.
+    """
+    rest = _fold(text)
+    for label in sorted({_fold(s.label) for s in cited}, key=len, reverse=True):
+        if label:
+            rest = rest.replace(label, " ")
+    mentioned = [
+        day
+        for run, paren in _WEEKDAY_WORD.findall(rest)
+        for day in re.findall(_WEEKDAY_LETTER, run or paren)
+    ]
+    if not mentioned:
+        return True
+    allowed = {_WEEKDAY_LETTERS[s.date.weekday()] for s in cited}
+    return len(allowed) == 1 and all(day in allowed for day in mentioned)
+
+
 def _quoted_out(text: str, cited: list[Source]) -> str:
     """근거 제목을 그대로 인용한 부분을 지운 비교용 사본(제목 속 낱말 때문에 멀쩡한 문장을 버리지 않으려고)."""
     rest = _fold(text)
@@ -391,9 +420,9 @@ def _check_headline(
     if not isinstance(raw, str) or len(raw) > MAX_RAW:
         return None
     headline = _clean(raw)
-    if not headline or len(_PSEUDONYM_TOKEN.sub("가나다", headline)) > MAX_HEADLINE:
+    if not headline or len(_PSEUDONYM_TOKEN.sub("가나", headline)) > MAX_HEADLINE:
         return None
-    if not _supported(headline, cited, names, counts):
+    if not _supported(headline, cited, names, counts) or not _weekdays_ok(headline, cited):
         return None
     if check_wording and (_claims_activity(headline, cited) or _states_relation(headline, cited)):
         return None
@@ -426,6 +455,8 @@ def _check_item(
         return None
     if not article_mode:
         return ValidatedItem(text=text, source_ids=unique_ids)
+    if not _weekdays_ok(text, cited):
+        return None
     if len(cited) > 1 and not _groupable(cited):
         return None
     if check_wording:
@@ -475,6 +506,8 @@ def _check_title(
         return FALLBACK_TITLE
     title = _clean(raw)
     if not title or len(title) > MAX_TEXT or not _supported(title, used, names, counts):
+        return FALLBACK_TITLE
+    if article_mode and not _weekdays_ok(title, used):
         return FALLBACK_TITLE
     if (
         article_mode

@@ -169,7 +169,7 @@ def test_generates_validates_restores_names_and_saves(client, ready, fake):
     assert body["model"] == "fake-model"
     assert len(fake.calls) == 1
     saved = rows()
-    assert len(saved) == 1 and saved[0].status == "ok" and saved[0].prompt_version == "v2"
+    assert len(saved) == 1 and saved[0].status == "ok" and saved[0].prompt_version == "v3"
     assert saved[0].input_tokens == 120 and saved[0].output_tokens == 40
     assert [lg.status for lg in logs()] == ["ok"]
 
@@ -181,11 +181,12 @@ def test_real_names_never_reach_the_llm_prompt(client, ready, fake):
     assert "지민" not in sent and "수진" not in sent
     assert "[PERSON_1]" in sent
     assert "학교 공연" in sent  # 이름이 아닌 제목은 그대로
-    # 메모·장소·본문 같은 필드는 프롬프트에 없다: 기록은 id·종류·날짜·시각·제목만
+    # 메모·장소·본문 같은 필드는 프롬프트에 없다: 기록은 id·종류·날짜·요일(서버가 날짜에서 계산)·시각·제목만
     assert set(__import__("json").loads(fake.calls[0]["prompt"].split("기록:\n")[1])[0]) == {
         "id",
         "kind",
         "date",
+        "weekday",
         "time",
         "title",
     }
@@ -748,7 +749,7 @@ def test_sensitive_titles_never_reach_the_prompt_and_all_sensitive_is_empty(
     a, _ = ready
     records.items = [
         SourceRecord("event", "ev-1", "항암 치료 일정", date(2026, 11, 3), "10:00"),
-        SourceRecord("event", "ev-2", "학교 공연", date(2026, 11, 4), "14:30"),
+        SourceRecord("event", "ev-2", "학교 공연", date(2026, 11, 3), "14:30"),
         SourceRecord("document", "d-1", "진단서", date(2026, 11, 5), None),
     ]
     body = post(client, a).json()
