@@ -169,6 +169,7 @@ ADDR_T = [
     "근무지는 {A} 입니다",
 ]
 
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--synth", required=True)
@@ -186,9 +187,7 @@ def main() -> None:
     excluded = collect_excluded_names(synth_path, baseline_dirs, extra_paths)
     givens = [g for g in dict.fromkeys(GIVEN_CANDIDATES) if not _name_excluded(g, excluded)]
     if len(givens) < 60:
-        raise SystemExit(
-            f"처음 보는 given 이름이 너무 적다({len(givens)}개, 최소 60개 필요)"
-        )
+        raise SystemExit(f"처음 보는 given 이름이 너무 적다({len(givens)}개, 최소 60개 필요)")
 
     template_texts = _synth_skeletons(synth_path)
     for d in baseline_dirs:
