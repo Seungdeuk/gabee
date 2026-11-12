@@ -20,7 +20,7 @@ import { useWeeklyNews } from "../news/useWeeklyNews";
 import { useWeeklyReport } from "../report/useWeeklyReport";
 
 /**
- * 마이 > 우리 가족 뉴스: 신문형 머리글, 메인 기사와 단신, 그리고 접을 수 있는 "한 주의 기록"(공유한 일정·할 일·문서를 규칙으로 모은 통계).
+ * 마이 > 주간 뉴스: 신문형 머리글, 메인 기사와 단신, 그리고 접을 수 있는 "한 주의 기록"(공유한 일정·할 일·문서를 규칙으로 모은 통계).
  * 뉴스가 읽힌 주는 기록을 접어 두고, 뉴스가 없는 주는 기록 요약을 펼쳐서 보여 준다.
  * @returns {import("react").ReactElement}
  */
@@ -117,7 +117,7 @@ export default function ReportScreen() {
 
   return (
     <Screen
-      title="가족 뉴스"
+      title="주간 뉴스"
       left={<IconButton name="chevron-back" label="뒤로" onPress={() => (router.canGoBack() ? router.back() : router.replace("/my"))} />}
     >
       {body}

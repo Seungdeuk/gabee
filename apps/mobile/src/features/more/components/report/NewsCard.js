@@ -51,7 +51,7 @@ export default function NewsCard({ phase, offset, news, error, creating, createE
   return (
     <View style={styles.card}>
       <View style={styles.head}>
-        <Text style={styles.label} accessibilityRole="header">가족 뉴스</Text>
+        <Text style={styles.label} accessibilityRole="header">주간 뉴스</Text>
         <Text style={styles.source}>AI가 공유 기록으로 정리해요</Text>
       </View>
       {v.kind === "loading" ? (
