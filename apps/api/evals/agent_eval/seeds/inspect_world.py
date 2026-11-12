@@ -72,7 +72,58 @@ def reachable_texts(client: TestClient, world: World, user: str) -> list[str]:
     texts += [t["title"] for t in _get(client, "/family-chat/todos", headers).json()]
     texts += [r["title"] for r in _get(client, "/schedule/requests", headers).json()]
     texts += reachable_habits(client, world, user)
+    texts += reachable_docs(client, world, user)
+    declared = {
+        x.title for x in data.EXPENSES
+    }  # 기존 정산 시드의 제목('치과 진료' 등)은 일정 제목과 겹쳐 비교가 흐려지므로 뺀다
+    texts += [
+        e["title"]
+        for month in EXPENSE_MONTHS
+        for e in _expenses(client, headers, month)
+        if e["title"] in declared
+    ]
     return texts
+
+
+EXPENSE_MONTHS = ("2026-05", "2026-06", "2026-07", "2026-08", "2026-09", "2026-10", "2026-11")
+
+
+def _expenses(client: TestClient, headers: dict, month: str) -> list[dict]:
+    r = _get(client, "/billing/expenses", headers, month=month)
+    return r.json() if r.status_code == 200 else []
+
+
+def reachable_docs(client: TestClient, world: World, user: str) -> list[str]:
+    """`user` 가 문서함 API 로 읽을 수 있는 글: 기록 제목과 본문(본문을 열면 읽음 표시가 남는다)."""
+    headers = world.headers(user)
+    out: list[str] = []
+    for item in _get(client, "/ai-assistant/knowledge/items", headers, limit=200).json():
+        out.append(item["title"])
+        detail = _get(client, f"/ai-assistant/knowledge/items/{item['id']}", headers)
+        out.append(detail.json()["body_md"])
+    return out
+
+
+def tool_texts(world: World, user: str) -> list[str]:
+    """Agent 의 문서 검색 도구(`search_knowledge`·`list_items`·`get_item`)가 `user` 의 가족 그룹에서 돌려주는 글(제목·본문 조각·전체 글).
+
+    도구는 LLM 없이 부르고, 임베딩 모델이 없으면 해시 임베딩으로 찾는다. 문서 전체 목록(`list_items`)의 모든 기록을 `get_item` 으로 열고,
+    선언한 문서 제목마다 제목 낱말로 `search_knowledge` 도 부른다(도구 경로가 API 경로와 같은 경계를 지키는지 본다).
+    """
+    from app.features.ai_assistant.knowledge import tools
+    from app.shared.db import SessionLocal
+
+    group_id = world.members[user].group_id
+    out: list[str] = []
+    with SessionLocal() as db:
+        listed = tools.list_items(db, group_id, limit=50)["items"]
+        out += [i["title"] for i in listed]
+        for i in listed:
+            out.append(tools.get_item(db, group_id, i["item_id"])["text"])
+        for d in data.DOCS:
+            for r in tools.search_knowledge(db, group_id, d.title, top_k=20)["results"]:
+                out += [r["title"], r["text"], *(m["text"] for m in r.get("more", []))]
+    return out
 
 
 def leaks(client: TestClient, world: World) -> list[tuple[str, str]]:
@@ -95,10 +146,8 @@ def leaks(client: TestClient, world: World) -> list[tuple[str, str]]:
 def _billing_titles(client: TestClient, world: World, user: str) -> tuple[str, ...]:
     """그 사람이 정당하게 보는 기존 정산 시드의 지출 제목(금지 문자열에서 빼는 데 쓴다)."""
     titles: list[str] = []
-    for month in ("2026-06", "2026-07", "2026-08", "2026-09", "2026-10", "2026-11"):
-        r = _get(client, "/billing/expenses", world.headers(user), month=month)
-        if r.status_code == 200:
-            titles += [e["title"] for e in r.json()]
+    for month in EXPENSE_MONTHS:
+        titles += [e["title"] for e in _expenses(client, world.headers(user), month)]
     return tuple(titles)
 
 
@@ -120,6 +169,11 @@ def raw_leaks(client: TestClient, world: World) -> list[tuple[str, str, str]]:
             ("habits", "/schedule/check/items", {}),
             ("habit summary", "/schedule/check/members/summary", {}),
             ("group", "/family-group/groups/me", {}),
+            ("knowledge", "/ai-assistant/knowledge/items", {"limit": LIMIT}),
+        ]
+        queries += [(f"expenses {m}", "/billing/expenses", {"month": m}) for m in EXPENSE_MONTHS]
+        queries += [
+            (f"doc {i[:4]}", f"/ai-assistant/knowledge/items/{i}", {}) for i in world.docs.values()
         ]
         queries += [(f"today {i[:4]}", f"/schedule/check/members/{i}/today", {}) for i in others]
         queries += [
@@ -178,6 +232,10 @@ def stored_texts(client: TestClient, world: World) -> set[str]:
         for r in _get(client, "/schedule/requests", headers).json():
             out |= {r["place"], r["memo"]}
         out |= {h["unit"] for h in _get(client, "/schedule/check/items", headers).json()}
+        out |= {
+            i["kind_label"]
+            for i in _get(client, "/ai-assistant/knowledge/items", headers, limit=LIMIT).json()
+        }
         out.add(_get(client, "/family-group/groups/me", headers).json()["name"])
     out.discard("")
     return out
@@ -247,6 +305,24 @@ def snapshot(client: TestClient, world: World) -> dict:
         )
         for name in data.ALL_USERS
     }  # fmt: skip
+    snap["docs"] = {
+        name: sorted(
+            (
+                (i["kind_label"], i["title"], i["occurred_on"], i["sensitivity"])
+                for i in _get(client, "/ai-assistant/knowledge/items", world.headers(name), limit=LIMIT).json()
+            ),
+            key=repr,
+        )
+        for name in data.ALL_USERS
+    }  # fmt: skip
+    snap["expenses"] = {
+        name: sorted(
+            (e["date"], e["title"], e["amount"])
+            for m in EXPENSE_MONTHS
+            for e in _expenses(client, world.headers(name), m)
+        )
+        for name in data.ALL_USERS
+    }
     snap["habits"] = {  # 기준 날짜를 명시해서 읽는다: 기록이 그날에 붙었는지도 비교된다
         name: sorted(
             (

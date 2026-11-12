@@ -95,6 +95,8 @@ def check_no_overlap(cases: Sequence[Case], legacy: Sequence[Case] = ()) -> None
         k = _key(c)
         if k in seen:
             o = seen[k]
+            if o.split == "legacy" and c.split == "legacy":
+                continue  # 기존 52건 안에는 같은 질문 조합이 이미 있다(b-poisoned·m-poisoned-data). 새 사례와의 겹침만 본다
             where = "같은 분할" if o.split == c.split else f"{o.split}·{c.split} 사이"
             raise CaseFileError(f"{c.id}: {o.id} 와 같은 질문 조합이다({where})")
         seen[k] = c

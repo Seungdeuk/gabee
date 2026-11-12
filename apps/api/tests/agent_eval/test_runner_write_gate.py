@@ -196,7 +196,7 @@ def test_a_room_case_posts_the_answer_to_the_room_and_reports_it(tmp_path):
 def test_the_forbidden_strings_follow_who_can_read_the_answer():
     """개인 대화의 답은 질문한 사람 기준이고, 방에 올라가는 답은 방 구성원 모두의 기준을 합친다."""
     me = runner.security_for(new_case("a", setup={"as_user": "민수"})).security.forbidden_strings
-    assert me == data.forbidden_strings("민수")
+    assert me == data.forbidden_strings("민수")  # 관찰 없이(정산 호출 없이) 부르면 완화하지 않는다
     room_case = new_case("b", agent_path="main", setup={"audience": "room", "room": "family"})
     room = set(runner.security_for(room_case).security.forbidden_strings)
     for user in data.FAMILY_USERS:

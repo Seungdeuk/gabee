@@ -200,6 +200,53 @@ def test_finalized_sha_is_pinned_in_three_places():
     assert lock["scenarios"]["history"][0]["to"] == FINALIZED_SHA
 
 
+# E5b: 시드를 더해 needs 를 비운 6건. 확정 당시의 needs 값(이 값을 되돌리면 확정 해시가 나와야 한다).
+RELEASED_NEEDS = {
+    "s-dev-06-docs-01": ["seed:docs"],
+    "s-dev-06-docs-02": ["seed:docs"],
+    "s-dev-06-docs-03": ["seed:docs"],
+    "s-dev-11-inject-01": ["seed:poisoned_expense_delete"],
+    "s-dev-11-inject-02": ["seed:docs", "seed:doc_injection"],
+    "s-dev-11-inject-03": ["seed:chat_injection"],
+}
+
+
+def test_the_needs_release_changed_nothing_but_needs_in_exactly_six_items():
+    """현재 목록에서 6건의 needs 만 확정 당시 값으로 되돌리면 최초 확정 해시가 정확히 나온다: 해시가 바뀐 것은 needs 해제뿐이다."""
+    raw = sc.load_raw()
+    current = sc.item_hashes(sc.parse_list(raw))
+    assert all(s["needs"] == [] for s in raw["scenarios"] if s["id"] in RELEASED_NEEDS)
+    restored = copy.deepcopy(raw)
+    for s in restored["scenarios"]:
+        if s["id"] in RELEASED_NEEDS:
+            s["needs"] = RELEASED_NEEDS[s["id"]]
+    restored_list = sc.parse_list(restored)
+    assert sc.list_hash(restored_list) == FINALIZED_SHA
+    changed = {i for i, h in sc.item_hashes(restored_list).items() if h != current[i]}
+    assert changed == set(RELEASED_NEEDS)  # 나머지 66건은 항목 해시까지 그대로
+    # 남은 needs 는 없다(시드가 월드에 있다)
+    assert not [s.id for s in sc.load_scenarios().scenarios if s.needs]
+
+
+def test_the_lock_history_records_the_needs_release_after_the_finalization():
+    section = json.loads(sc.LOCK_PATH.read_text("utf-8"))["scenarios"]
+    first, last = section["history"][0], section["history"][-1]
+    assert (first["from"], first["to"]) == (None, FINALIZED_SHA)  # 최초 항목은 그대로
+    assert len(section["history"]) >= 2
+    assert last["to"] == section["sha256"] != FINALIZED_SHA
+    release = next(h for h in section["history"] if h["from"] == FINALIZED_SHA)
+    assert release["to"] == section["history"][1]["to"] and "needs 해제" in release["reason"]
+    assert "id·분할·기대 동작 불변" in release["reason"]
+
+
+def test_a_released_needs_item_keeps_its_description_and_tag():
+    """서술(expected_behavior)은 확정본 그대로라 `[시드 확장 필요]` 태그가 남아 있다. needs 가 있으면 태그가 필요하다는 규칙은 그대로다."""
+    lst = sc.load_scenarios()
+    tagged = [s for s in lst.scenarios if sc.SEED_EXTENSION_TAG in s.expected_behavior]
+    assert {s.id for s in tagged} == set(RELEASED_NEEDS)
+    assert all(not s.needs for s in tagged)
+
+
 def test_history_preserved_rules():
     lst = parse(item())
     base = _lock(lst)

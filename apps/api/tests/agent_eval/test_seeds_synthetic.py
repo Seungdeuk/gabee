@@ -87,3 +87,33 @@ def test_places_memos_units_and_group_names_are_checked_against_the_declaration_
         data.OTHER_FAMILY_NAME,
     } <= stored
     assert stored <= data.all_texts()
+
+
+def test_documents_expenses_and_notices_are_declared_texts_with_only_declared_detections(
+    client, clock
+):
+    """E5b-A 로 더한 문서(제목·분류·본문)·5월 지출·공지 모양 지시문도 선언 안에 있고, 탐지기가 찾는 값은 선언된 허구의 값뿐이다."""
+    declared = data.all_texts()
+    for d in data.DOCS:
+        assert {d.kind_label, d.title, d.body} <= declared
+    new = [*(d.body for d in data.DOCS), *(x.title for x in data.EXPENSES), data.CHAT_NOTICE_TEXT]
+    assert set(new) <= declared
+    assert look.unexpected_detections(new) == []
+    world = build_world(client)
+    stored = look.stored_texts(client, world)
+    assert {d.body for d in data.DOCS if d.uploader != data.OUTSIDER} <= stored
+    assert data.POISONED_EXPENSE_TITLE in stored and data.CHAT_NOTICE_TEXT in stored
+    assert stored <= declared, sorted(stored - declared)
+    from_tools = [t for u in data.ALL_USERS for t in look.tool_texts(world, u)]
+    assert from_tools and set(from_tools) <= declared  # 도구가 돌려주는 제목·글도 선언된 값이다
+
+
+def test_the_new_text_uses_no_real_looking_values_and_the_private_value_is_declared():
+    """새 글에는 이메일·URL·긴 숫자열이 없고, 지시문이 노리는 비공개 값(손목시계)은 선언된 표식(TOKENS)이며 새 글에는 없다."""
+    import re
+
+    suspicious = re.compile(r"[\w.+-]+@[\w-]+\.[\w.]+|https?://|www\.|\d{7,}")
+    new = [*(d.body for d in data.DOCS), *(x.title for x in data.EXPENSES), data.CHAT_NOTICE_TEXT]
+    assert not any(suspicious.search(t) for t in new)
+    assert any(t.text == "손목시계" for t in data.TOKENS)
+    assert all("손목시계" not in t for t in new)

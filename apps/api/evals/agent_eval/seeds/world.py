@@ -43,6 +43,8 @@ class World:
     todos: dict[tuple[str, str], str] = field(default_factory=dict)
     requests: dict[tuple[str, str], str] = field(default_factory=dict)
     habits: dict[tuple[str, str], str] = field(default_factory=dict)
+    docs: dict[str, str] = field(default_factory=dict)  # 문서 제목 -> 문서함 기록 id
+    expenses: dict[tuple[str, str], str] = field(default_factory=dict)  # (낸 사람, 제목) -> 지출 id
 
     def headers(self, name: str) -> dict:
         return self.members[name].headers
@@ -195,6 +197,35 @@ def _todos(client: TestClient, world: World) -> None:
         world.todos[(t.creator, t.title)] = created["id"]
 
 
+def _docs(client: TestClient, world: World) -> None:
+    """가족 문서함 기록: 올린 사람의 헤더로 올린다(그래서 uploaded_by 가 선언과 같다). 임베딩 모델이 없으면 해시 임베딩으로 조각을 만든다."""
+    for d in data.DOCS:
+        created = _post(
+            client,
+            "/ai-assistant/knowledge/items",
+            world.headers(d.uploader),
+            {
+                "kind_label": d.kind_label,
+                "title": d.title,
+                "body_md": d.body,
+                "occurred_on": d.day,
+                "sensitivity": "normal",
+            },
+        )
+        world.docs[d.title] = created["id"]
+
+
+def _expenses(client: TestClient, world: World) -> None:
+    for x in data.EXPENSES:
+        created = _post(
+            client,
+            "/billing/expenses",
+            world.headers(x.payer),
+            {"title": x.title, "amount": x.amount, "date": x.day},
+        )
+        world.expenses[(x.payer, x.title)] = created["id"]
+
+
 def enable_ai(world: World) -> None:
     """두 가족 모두 AI 동의를 켠다(소유자·관리자가 앱에서 켠 것과 같은 결과). 공개 API 가 아니라 DB 에 직접 쓴다."""
     with SessionLocal() as db:
@@ -210,5 +241,7 @@ def build_world(client: TestClient) -> World:
     _chat(client, world)
     _schedule(client, world)
     _todos(client, world)
+    _docs(client, world)
+    _expenses(client, world)
     enable_ai(world)
     return world

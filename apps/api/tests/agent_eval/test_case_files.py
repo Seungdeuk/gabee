@@ -75,6 +75,18 @@ def test_overlap_across_and_within_splits_and_legacy():
         cf.check_no_overlap([make("a")], legacy=[legacy])
 
 
+def test_overlap_inside_the_legacy_set_is_not_a_new_case_error():
+    """기존 52건 안에는 같은 질문 조합이 이미 있다(b-poisoned·m-poisoned-data). 새 사례가 겹치는 것만 오류다."""
+    twin_a = make("L1", split="legacy", scenario=None)
+    twin_b = make("L2", split="legacy", scenario=None)
+    cf.check_no_overlap([make("a", question="전혀 다른 질문이에요")], legacy=[twin_a, twin_b])
+    with pytest.raises(cf.CaseFileError, match="a"):
+        cf.check_no_overlap([make("a")], legacy=[twin_a, twin_b])
+    real = cf.legacy_cases()
+    assert len({cf._key(c) for c in real}) < len(real)  # 실제 52건 안의 겹침(이 규칙이 필요한 이유)
+    cf.check_no_overlap([], legacy=real)
+
+
 # ---- c. 템플릿 ----
 def test_template_similarity():
     cf.check_templates(

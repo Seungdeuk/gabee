@@ -78,6 +78,34 @@ class ScriptContext:
             raise ScriptError(f"'{child_name}' 의 대기 중인 용돈 요청이 시드에 없다")
         return found
 
+    def event_id(self, title: str) -> str:
+        """제목이 `title` 인 일정(삭제되지 않은 것)의 id. 일정 Agent 구조화 출력의 `event_ids` 에 시드가 정하는 id 를 넣을 때 쓴다."""
+        from sqlalchemy import select
+
+        from app.features.schedule.models import Event
+        from app.shared.db import SessionLocal
+
+        with SessionLocal() as db:
+            found = db.scalars(
+                select(Event.id).where(Event.title == title, Event.deleted_at.is_(None))
+            ).first()
+        if found is None:
+            raise ScriptError(f"제목이 '{title}' 인 일정이 시드에 없다")
+        return found
+
+    def request_id(self, title: str) -> str:
+        """제목이 `title` 인 부탁(일정 함께하기)의 id."""
+        from sqlalchemy import select
+
+        from app.features.schedule.models import EventRequest
+        from app.shared.db import SessionLocal
+
+        with SessionLocal() as db:
+            found = db.scalars(select(EventRequest.id).where(EventRequest.title == title)).first()
+        if found is None:
+            raise ScriptError(f"제목이 '{title}' 인 부탁이 시드에 없다")
+        return found
+
 
 Args = Mapping[str, Any] | Callable[[ScriptContext], Mapping[str, Any]]
 
@@ -94,7 +122,7 @@ class Reply:
 
     text: str | None = None
     tools: tuple[ToolUse, ...] = ()
-    data: Mapping[str, Any] | None = None
+    data: Mapping[str, Any] | Callable[[ScriptContext], Mapping[str, Any]] | None = None
     tokens: tuple[int, int] | None = None
 
     def __post_init__(self) -> None:
@@ -119,7 +147,10 @@ def round_of(*uses: ToolUse, tokens: tuple[int, int] | None = None) -> Reply:
     return Reply(tools=tuple(uses), tokens=tokens)
 
 
-def json_reply(data: Mapping[str, Any], tokens: tuple[int, int] | None = None) -> Reply:
+def json_reply(
+    data: Mapping[str, Any] | Callable[[ScriptContext], Mapping[str, Any]],
+    tokens: tuple[int, int] | None = None,
+) -> Reply:
     return Reply(data=data, tokens=tokens)
 
 
@@ -207,9 +238,8 @@ class FakeModel:
                 )
             stop = "tool_use"
         else:
-            text = (
-                reply.text if reply.text is not None else json.dumps(reply.data, ensure_ascii=False)
-            )
+            data = reply.data(self._context) if callable(reply.data) else reply.data
+            text = reply.text if reply.text is not None else json.dumps(data, ensure_ascii=False)
             content = [{"type": "text", "text": text}]
             stop = "end_turn"
         return {

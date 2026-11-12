@@ -164,7 +164,10 @@ class ScenarioItem(_Strict):
         if ":" not in self.target_key:
             raise ValueError(f"{self.id}: target_key 는 '<종류>:<대상>' 형식이다")
         tagged = SEED_EXTENSION_TAG in self.expected_behavior
-        if bool(self.needs) != tagged:
+        # needs 가 남아 있으면 태그가 있어야 한다. E5b 가 시드를 더해 needs 를 비운 뒤에도 서술(expected_behavior)은 확정본 그대로
+        # 둬야 하므로 태그만 남은 것(needs 없음)은 **개발 항목에만** 허용한다(서술을 고치면 id·기대 동작 불변 원칙과 해시가 어긋난다).
+        # 검증·테스트 항목은 needs 가 없으므로 태그도 있으면 안 된다(E5a 의 규칙 그대로).
+        if (self.needs and not tagged) or (not self.needs and tagged and self.split != "dev"):
             raise ValueError(
                 f"{self.id}: needs 와 expected_behavior 의 {SEED_EXTENSION_TAG} 태그가 맞지 않는다"
             )

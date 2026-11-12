@@ -34,7 +34,7 @@ from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Any
 
-from . import adapter, estimate, runs_guard, store, switches
+from . import adapter, estimate, exposure, runs_guard, store, switches
 from .cost import BASELINE_RUN_SCOPES, OTHER_RUN_SCOPES, BudgetExceeded, Ledger, Scope
 from .schema import Case
 
@@ -185,10 +185,15 @@ def make_plan(args: argparse.Namespace, now: datetime | None = None) -> Plan:
 
 
 def _read_cases(path: Path, split: str) -> list[Case]:
-    cases = [Case.model_validate(item) for item in json.loads(path.read_text(encoding="utf-8"))]
-    if any(c.split != split for c in cases):
-        raise Refusal(ACCESS, f"{path.name} 에 {split} 분할이 아닌 사례가 섞여 있다")
-    return cases
+    """사례 파일을 노출 가드(`exposure`)를 거쳐 읽는다: dev 는 val·test 로 보이는 이름이면 거부, val 은 `validation` 단계로만 읽는다.
+    test 는 이 함수를 거치지 않는다(`runs_guard` 가 예약 뒤에 읽는다)."""
+    try:
+        if split in exposure.OPEN_SPLITS:
+            exposure.assert_open_path(path)
+        rows = exposure.read_split_file(path, split, stage="validation" if split == "val" else None)
+    except exposure.ExposureError as e:
+        raise Refusal(ACCESS, str(e)) from None
+    return [Case.model_validate(item) for item in rows]
 
 
 def _filter(items: list, wanted: tuple[str, ...]) -> list:
@@ -327,7 +332,7 @@ def _load(args: argparse.Namespace, plan: Plan, split: str, run_id: str) -> Any:
 
 
 def _execute(args: argparse.Namespace, plan: Plan, out: Callable[[str], None]) -> int:
-    from . import runner  # app 을 불러오므로 환경 준비 뒤에 불러온다
+    from . import dev_scripts, runner  # app 을 불러오므로 환경 준비 뒤에 불러온다
     from .env import UnsafeEnvironment
 
     mode = "real" if plan.mode == "real" else "fake"
@@ -382,7 +387,10 @@ def _execute(args: argparse.Namespace, plan: Plan, out: Callable[[str], None]) -
         )
         try:
             source = _load(args, plan, split, run_id)
-            report = runner.run_cases(source, options, ledger=ledger)
+            # 가짜 모드의 개발셋은 사례별 정상 대본을 쓴다(없는 사례는 기존처럼 지원 안 함). legacy 는 기존 대본 그대로
+            scripts = dev_scripts.scripts_for(split) if mode == "fake" else {}
+            extra = {"scripts": scripts} if scripts else {}  # 대본이 없으면 호출 모양이 이전과 같다
+            report = runner.run_cases(source, options, ledger=ledger, **extra)
         except runner.RunnerRefused as e:
             out(f"거부: {e}")
             return ACCESS
