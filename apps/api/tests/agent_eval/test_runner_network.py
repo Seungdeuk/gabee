@@ -106,3 +106,148 @@ def test_the_chat_entrance_also_makes_no_real_call(no_real_http):
     case = new_case("n-net")
     report = run([case], scripts={"n-net": ask_billing_script()})
     assert report.records[0].status == "judged" and no_real_http == []
+
+
+def _loopback_listener():
+    """루프백에서 연결을 세는 가짜 프록시. 닿으면 accepted 가 늘어난다."""
+    import threading
+
+    server = socket.socket()
+    server.bind(("127.0.0.1", 0))
+    server.listen(5)
+    server.settimeout(0.3)
+    state = {"accepted": 0, "stop": False}
+
+    def loop():
+        while not state["stop"]:
+            try:
+                conn, _ = server.accept()
+            except (TimeoutError, OSError):
+                continue
+            state["accepted"] += 1
+            conn.close()
+
+    thread = threading.Thread(target=loop, daemon=True)
+    thread.start()
+
+    def close():
+        state["stop"] = True
+        thread.join(2)
+        server.close()
+
+    return server.getsockname()[1], state, close
+
+
+def test_a_loopback_proxy_cannot_carry_a_connection_outside_during_the_block(monkeypatch):
+    from evals.agent_eval import network
+
+    port, state, close = _loopback_listener()
+    try:
+        for name in ("HTTP_PROXY", "http_proxy", "ALL_PROXY"):
+            monkeypatch.setenv(name, f"http://127.0.0.1:{port}")
+        with network.block_network():
+            with pytest.raises(Exception):  # noqa: B017, PT011  어떤 오류든 좋다: 프록시에 닿지 않는 것이 요점이다
+                httpx.get("http://proxy-bypass.invalid/", timeout=1)
+            assert state["accepted"] == 0  # 루프백 프록시에 연결하지 않았다
+    finally:
+        close()
+
+
+def test_proxy_variables_set_during_the_block_do_not_leak_out_and_a_failure_restores_everything(
+    monkeypatch,
+):
+    import os
+
+    from evals.agent_eval import network
+
+    monkeypatch.setenv("HTTP_PROXY", "http://127.0.0.1:9")
+    with network.block_network():
+        os.environ["HTTPS_PROXY"] = "http://127.0.0.1:10"  # 차단 중에 생긴 값
+    assert os.environ["HTTP_PROXY"] == "http://127.0.0.1:9" and "HTTPS_PROXY" not in os.environ
+
+    import httpx._utils as httpx_utils
+
+    monkeypatch.delattr(httpx_utils, "getproxies")  # httpx 내부 이름이 사라진 경우
+    with pytest.raises(AttributeError), network.block_network():
+        pass
+    assert (
+        os.environ["HTTP_PROXY"] == "http://127.0.0.1:9"
+    )  # 환경변수를 먼저 지우지 않으므로 그대로다
+
+
+def test_proxy_settings_come_back_after_the_block(monkeypatch):
+    import os
+    import urllib.request
+
+    import httpx._utils as httpx_utils
+
+    from evals.agent_eval import network
+
+    monkeypatch.setenv("HTTPS_PROXY", "http://127.0.0.1:9")
+    before = (urllib.request.getproxies, httpx_utils.getproxies)
+    with network.block_network():
+        assert "HTTPS_PROXY" not in os.environ and urllib.request.getproxies() == {}
+    assert os.environ["HTTPS_PROXY"] == "http://127.0.0.1:9"
+    assert (urllib.request.getproxies, httpx_utils.getproxies) == before
+
+
+def test_a_client_built_before_the_block_still_cannot_reach_a_loopback_proxy(monkeypatch):
+    """진입 전 환경 프록시로 만든 클라이언트는 프록시 설정을 이미 쥐고 있다. 루프백 연결 자체를 막아 둔다."""
+    from evals.agent_eval import network
+
+    port, state, close = _loopback_listener()
+    try:
+        monkeypatch.setenv("HTTP_PROXY", f"http://127.0.0.1:{port}")
+        client = httpx.Client(timeout=1)  # 차단 전에 만든다(프록시 설정을 가져간다)
+        with network.block_network():
+            with pytest.raises(Exception):  # noqa: B017, PT011
+                client.get("http://prebuilt-client.invalid/")
+            assert state["accepted"] == 0
+        client.close()
+    finally:
+        close()
+
+
+def test_loopback_sockets_the_process_opens_itself_still_work_during_the_block():
+    """asyncio 의 socketpair 처럼 차단 중에 이 프로세스가 bind 한 루프백 포트는 연결된다."""
+    import asyncio
+
+    from evals.agent_eval import network
+
+    async def go():
+        return await asyncio.sleep(0, "ok")
+
+    with network.block_network():
+        assert asyncio.run(go()) == "ok"
+        server = socket.socket()
+        server.bind(("127.0.0.1", 0))
+        server.listen(1)
+        client = socket.create_connection(server.getsockname(), 1)
+        client.close()
+        server.close()
+
+
+def test_the_block_cannot_be_opened_twice_at_once_and_everything_is_restored():
+    import urllib.request
+
+    from evals.agent_eval import network
+
+    before = (
+        socket.getaddrinfo,
+        socket.socket.connect,
+        socket.socket.bind,
+        urllib.request.getproxies,
+    )
+    with network.block_network():
+        with pytest.raises(RuntimeError, match="겹쳐"):
+            with network.block_network():
+                pass
+        assert socket.getaddrinfo is not before[0]  # 바깥 구간은 그대로 켜져 있다
+    assert (
+        socket.getaddrinfo,
+        socket.socket.connect,
+        socket.socket.bind,
+        urllib.request.getproxies,
+    ) == before
+    with network.block_network():  # 거부된 뒤에도 다시 열 수 있다
+        pass

@@ -2,7 +2,7 @@
 
     기본(--dry-run)  사례 수·반복·추정 토큰·추정 비용을 출력하고 끝낸다. 모델도 네트워크도 부르지 않는다.
     --fake           가짜 모델로 전체를 실행한다(시험·시연). 실제 호출 없음.
-    --real           실제 모델. `--approve-usd <금액>` 이 함께 있어야만 시작하고, 추정 비용이 승인 금액보다 크면 거부한다.
+    --real           실제 모델(현재 꺼져 있어 항상 거부한다. E7 에서 안전장치를 다시 점검한 뒤 켠다). 켜진 뒤에는 `--approve-usd <금액>` 이 함께 있어야만 시작하고, 추정 비용이 승인 금액보다 크면 거부한다.
 
 실행 중 누적 비용이 승인 금액과 `cost` 의 상한 중 작은 쪽에 닿으면 다음 호출 전에 중단한다. 실제 모델의 키는 서버 `settings` 에서만 읽고 출력·저장하지
 않는다. 이 파일은 `app` 을 불러오지 않는다(환경변수를 정한 뒤에 `runner` 를 불러와야 해서 `main` 안에서 늦게 불러온다).
@@ -34,7 +34,7 @@ from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Any
 
-from . import adapter, estimate, runs_guard, store
+from . import adapter, estimate, runs_guard, store, switches
 from .cost import BASELINE_RUN_SCOPES, OTHER_RUN_SCOPES, BudgetExceeded, Ledger, Scope
 from .schema import Case
 
@@ -55,6 +55,11 @@ class Refusal(Exception):  # noqa: N818  종료 코드가 붙은 거부
     def __init__(self, code: int, message: str) -> None:
         super().__init__(message)
         self.code, self.message = code, message
+
+
+# 실제 모델 호출 스위치는 `switches.REAL_ENABLED`(기본 꺼짐)다. 추정 가정만으로는 승인 금액을 넘는 지출을 막았다고 말할 수 없다(런타임 상한이 마지막 방어선일 뿐).
+# 추정 가정의 하한(기본값). 사용자가 낮춰 추정을 줄이지 못하게 올리기만 허용한다.
+DEFAULT_CALLS_PER_CASE, DEFAULT_TOKENS_IN, DEFAULT_TOKENS_OUT = 4, 8000, 500
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -81,11 +86,21 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument(
         "--calls-per-case",
         type=int,
-        default=4,
-        help="추정 가정: 질문 하나가 모델을 부르는 최대 횟수",
+        default=DEFAULT_CALLS_PER_CASE,
+        help="추정 가정: 질문 하나가 모델을 부르는 최대 횟수(기본값보다 낮출 수 없다)",
     )
-    p.add_argument("--tokens-in", type=int, default=8000, help="추정 가정: 호출당 입력 토큰")
-    p.add_argument("--tokens-out", type=int, default=500, help="추정 가정: 호출당 출력 토큰")
+    p.add_argument(
+        "--tokens-in",
+        type=int,
+        default=DEFAULT_TOKENS_IN,
+        help="추정 가정: 호출당 입력 토큰(기본값보다 낮출 수 없다)",
+    )
+    p.add_argument(
+        "--tokens-out",
+        type=int,
+        default=DEFAULT_TOKENS_OUT,
+        help="추정 가정: 호출당 출력 토큰(기본값보다 낮출 수 없다)",
+    )
     return p
 
 
@@ -120,6 +135,11 @@ def make_plan(args: argparse.Namespace, now: datetime | None = None) -> Plan:
     mode = flags[0].replace("_", "-") if flags else "dry-run"
     approve: Decimal | None = None
     if mode == "real":
+        if not switches.REAL_ENABLED:
+            raise Refusal(
+                REFUSED,
+                "--real 은 아직 꺼져 있다(E7 에서 비용 추정·승인·안전장치를 다시 점검한 뒤 켠다). --fake 나 --dry-run 만 쓴다",
+            )
         if args.approve_usd is None:
             raise Refusal(REFUSED, "--real 은 --approve-usd <금액> 이 함께 있어야만 시작한다")
         approve = _approve(args.approve_usd)
@@ -127,9 +147,14 @@ def make_plan(args: argparse.Namespace, now: datetime | None = None) -> Plan:
         raise Refusal(REFUSED, "--approve-usd 는 --real 에서만 쓴다")
     if args.repeat < 1:
         raise Refusal(USAGE, "--repeat 는 1 이상이어야 한다")
-    if min(args.calls_per_case, args.tokens_in, args.tokens_out) < 1:
+    if (
+        args.calls_per_case < DEFAULT_CALLS_PER_CASE
+        or args.tokens_in < DEFAULT_TOKENS_IN
+        or args.tokens_out < DEFAULT_TOKENS_OUT
+    ):
         raise Refusal(
-            USAGE, "추정 가정(--calls-per-case·--tokens-in·--tokens-out)은 1 이상이어야 한다"
+            USAGE,
+            f"추정 가정은 기본값({DEFAULT_CALLS_PER_CASE}회·{DEFAULT_TOKENS_IN}/{DEFAULT_TOKENS_OUT} 토큰)보다 낮출 수 없다",
         )
     splits = ALL_SPLITS if args.split == "all" else (args.split,)
     stamp = (now or datetime.now()).strftime("%Y%m%d-%H%M%S")
@@ -306,6 +331,9 @@ def _execute(args: argparse.Namespace, plan: Plan, out: Callable[[str], None]) -
     from .env import UnsafeEnvironment
 
     mode = "real" if plan.mode == "real" else "fake"
+    if mode == "real" and not switches.REAL_ENABLED:  # make_plan 을 거치지 않은 호출도 막는다
+        out("거부: --real 은 아직 꺼져 있다")
+        return REFUSED
     results = args.results_dir or (DEFAULT_RESULTS if mode == "real" else DEFAULT_FAKE_RESULTS)
     if mode == "real":
         from app.shared.config import settings

@@ -187,7 +187,33 @@ def _check_summary(rows: Sequence[tuple[str, Any]]) -> None:
             raise ValueError(f"summary 행은 (이름, 숫자 또는 None)이어야 한다: {name!r}")
 
 
-def _build(runs: Sequence[RunLike]) -> tuple[list[dict], list[dict], list[list]]:
+ROW_EXTRA_KEYS = ("write_gate", "skipped_checks")
+WRITE_GATES = ("applied", "not_evaluated")
+RowExtras = Mapping[tuple[str, int], Mapping[str, Any]]
+
+
+def _check_row_extras(extras: RowExtras) -> None:
+    """cases.jsonl 의 행에 덧붙일 값(쓰기 게이트 적용 여부). 형식이 다르면 아무것도 쓰지 않는다."""
+    for key, extra in extras.items():
+        if not (
+            isinstance(key, tuple) and len(key) == 2 and isinstance(key[0], str) and _is_int(key[1])
+        ):
+            raise ValueError(f"row_extras 키는 (case_id, repeat) 여야 한다: {key!r}")
+        unknown = sorted(set(extra) - set(ROW_EXTRA_KEYS))
+        if unknown:
+            raise ValueError(f"row_extras 에 허용하지 않은 키: {unknown}")
+        if extra.get("write_gate") not in WRITE_GATES:
+            raise ValueError(f"write_gate 는 {WRITE_GATES} 중 하나: {extra.get('write_gate')!r}")
+        skipped = extra.get("skipped_checks", ())
+        if not isinstance(skipped, list | tuple) or not all(isinstance(x, str) for x in skipped):
+            raise ValueError("skipped_checks 는 문자열 목록이어야 한다")
+        if extra["write_gate"] == "applied" and skipped:
+            raise ValueError("write_gate 가 applied 면 생략한 검사가 없어야 한다")
+
+
+def _build(
+    runs: Sequence[RunLike], extras: RowExtras | None = None
+) -> tuple[list[dict], list[dict], list[list]]:
     cases, trajectories, failures = [], [], []
     for run in runs:
         case = run.case
@@ -212,6 +238,10 @@ def _build(runs: Sequence[RunLike]) -> tuple[list[dict], list[dict], list[list]]
                     "failure_types": list(res.failure_types),
                 }
             )
+            extra = (extras or {}).get((case.id, repeat))
+            if extra is not None:
+                cases[-1]["write_gate"] = extra["write_gate"]
+                cases[-1]["skipped_checks"] = list(extra.get("skipped_checks", ()))
             trajectories.append(
                 {
                     "case_id": case.id,
@@ -261,6 +291,7 @@ def write_run(
     runs: Sequence[RunLike],
     usages: Sequence[Mapping[str, Any]],
     summary_rows: Sequence[tuple[str, Any]],
+    row_extras: RowExtras | None = None,
 ) -> Path:
     """실행 하나의 결과를 `root/<run_id>/` 에 쓴다. usages 는 `cost.CallUsage.as_dict()` 의 목록이다.
 
@@ -270,7 +301,13 @@ def write_run(
     _check_manifest(manifest)
     total = sum((_check_usage(u) for u in usages), Decimal(0))
     _check_summary(summary_rows)
-    cases, trajectories, failures = _build(runs)
+    if row_extras:
+        _check_row_extras(row_extras)
+        rows = {(r.case.id, i) for r in runs for i in range(len(r.results))}
+        stray = sorted(set(row_extras) - rows)
+        if stray:
+            raise ValueError(f"row_extras 가 저장하지 않는 행을 가리킨다: {stray[:3]}")
+    cases, trajectories, failures = _build(runs, row_extras)
     final = {**manifest, "cost_usd": format(total, "f"), "calls": len(usages), "cases": len(runs)}
     contents = {
         "manifest.json": json.dumps(final, ensure_ascii=False, sort_keys=True, indent=2) + "\n",

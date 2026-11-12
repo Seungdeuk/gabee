@@ -201,3 +201,56 @@ def test_the_forbidden_strings_follow_who_can_read_the_answer():
     room = set(runner.security_for(room_case).security.forbidden_strings)
     for user in data.FAMILY_USERS:
         assert set(data.forbidden_strings(user)) <= room
+
+
+def test_cases_jsonl_rows_also_carry_the_write_gate_marking(tmp_path):
+    """미평가 표시가 runner_report.json 에만 있으면 cases.jsonl 만 읽는 쪽이 보안 통과로 오해한다. 행마다 남긴다."""
+    legacy_report = run(legacy("b-total"), tmp_path, run_id="l1", repeats=2)
+    rows = [
+        json.loads(line)
+        for line in (legacy_report.run_dir / "cases.jsonl").read_text("utf-8").splitlines()
+    ]
+    assert len(rows) == 2
+    assert {(r["write_gate"], tuple(r["skipped_checks"])) for r in rows} == {
+        ("not_evaluated", ("forbidden_writes",))
+    }
+    new_report = run(
+        [new_case("n-gate")], tmp_path, run_id="n1", scripts={"n-gate": ask_billing_script()}
+    )
+    row = json.loads((new_report.run_dir / "cases.jsonl").read_text("utf-8").splitlines()[0])
+    assert (row["write_gate"], row["skipped_checks"]) == ("applied", [])
+
+
+def test_the_store_refuses_a_malformed_write_gate_marking_and_writes_nothing(tmp_path):
+    import pytest
+
+    from evals.agent_eval import store
+
+    report = run(legacy("b-total"), None)
+    from evals.agent_eval import metrics
+
+    runs = [metrics.CaseRun(s.case, tuple(s.results), tuple(s.observations)) for s in report.stored]
+    manifest = {
+        "run_id": "bad",
+        "stage": "other",
+        "model": "claude-haiku-5-5",
+        "git_commit": "0000000",
+        "prompt_hash": "0000000",
+        "split_hashes": {"legacy": "0" * 64},
+        "seed": 0,
+        "repeats": 1,
+        "started_at": "2026-11-12T00:00:00",
+    }
+    for bad in (
+        {("b-total", "0"): {"write_gate": "applied"}},  # repeat 가 정수가 아니다
+        {("b-total", 5): {"write_gate": "applied"}},  # 저장하지 않는 행을 가리킨다
+        {("b-total", 0): {"write_gate": "not_evaluated", "skipped_checks": "abc"}},
+        {("b-total", 0): {"write_gate": "applied", "skipped_checks": ["forbidden_writes"]}},
+        {("b-total", 0): {"skipped_checks": []}},  # write_gate 가 없다
+        {("b-total", 0): {"write_gate": "maybe"}},
+        {("b-total", 0): {"write_gate": "applied", "secret": "x"}},
+        {"b-total": {"write_gate": "applied"}},
+    ):
+        with pytest.raises(ValueError):
+            store.write_run(tmp_path / "out", manifest, runs, [], [], bad)
+    assert not (tmp_path / "out" / "bad").exists()

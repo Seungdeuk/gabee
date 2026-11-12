@@ -9,7 +9,7 @@ from decimal import Decimal as D
 import pytest
 
 from app.shared.llm import transport
-from evals.agent_eval import cli, estimate, fake_model, runs_guard, store
+from evals.agent_eval import cli, estimate, fake_model, runs_guard, store, switches
 from evals.agent_eval.cost import Ledger
 from tests.agent_eval.runner_support import ask_billing_script, legacy, new_case
 
@@ -20,6 +20,12 @@ def main(argv, tmp_path):
     lines: list[str] = []
     code = cli.main([*argv, "--results-dir", str(tmp_path / "results")], out=lines.append)
     return code, "\n".join(lines)
+
+
+@pytest.fixture(autouse=True)
+def real_enabled(monkeypatch):
+    """`--real` 은 기본으로 꺼져 있다(`switches.REAL_ENABLED`). 승인·예산 조건 시험은 전송 함수를 가짜로 바꾼 상태에서만 켠다."""
+    monkeypatch.setattr(switches, "REAL_ENABLED", True)
 
 
 @pytest.fixture
@@ -62,14 +68,14 @@ def test_the_dry_run_estimate_matches_the_estimate_module_and_follows_the_option
             "--calls-per-case",
             "5",
             "--tokens-in",
-            "1000",
+            "9000",
             "--tokens-out",
-            "100",
+            "600",
         ],
         tmp_path,
     )
     expected, _ = estimate.build_estimate(
-        Ledger((cli.Scope.RUN,)), "claude-haiku-5-5", 2, 3, 5, 1000, 100
+        Ledger((cli.Scope.RUN,)), "claude-haiku-5-5", 2, 3, 5, 9000, 600
     )
     assert code == 0 and "사례 2 x 반복 3 x 사례당 최대 5회 = 호출 30회" in text
     assert f"추정 비용: {format(expected, 'f')} USD" in text
@@ -169,29 +175,55 @@ def test_an_approved_real_run_goes_through_the_same_path_with_the_transport_swap
 def test_an_approved_real_run_stops_before_the_call_that_could_exceed_the_approved_amount(
     tmp_path, monkeypatch
 ):
+    """추정 단계는 건너뛰고(_execute 직접 호출) 실행 중 상한만 본다: 승인 금액을 넘을 수 있는 첫 호출 전에 멈춘다."""
     from app.shared.config import settings
 
     monkeypatch.setattr(settings, "anthropic_api_key", "sk-test-secret")
     fake = fake_model.FakeModel(fake_model.script_for(legacy("b-total")[0]))
+    plan = cli.Plan("real", ("legacy",), D("0.0003"), "stop-1", 1, ("b-total",))
+    lines: list[str] = []
     with fake_model.installed(fake):
-        code, text = main(
-            [
-                "--real",
-                "--approve-usd",
-                "0.0003",
-                "--case",
-                "b-total",
-                "--calls-per-case",
-                "1",
-                "--tokens-in",
-                "100",
-                "--tokens-out",
-                "10",
-            ],
-            tmp_path,
-        )
-    assert code == cli.HALTED and fake.calls == 0  # 승인 금액을 넘을 수 있는 첫 호출 전에 멈췄다
-    assert "중단" in text
+        code = cli._execute(_real_args(tmp_path), plan, lines.append)
+    assert code == cli.HALTED and fake.calls == 0
+    assert "중단" in "\n".join(lines) or "승인 금액" in "\n".join(lines)
+
+
+def test_real_is_off_by_default_and_every_real_request_is_refused(tmp_path, monkeypatch):
+    monkeypatch.setattr(switches, "REAL_ENABLED", False)  # 기본값 그대로
+    assert switches.REAL_ENABLED is False
+    code, text = main(["--real", "--approve-usd", "1", "--case", "b-total"], tmp_path)
+    assert code == cli.REFUSED and "꺼져 있다" in text and not (tmp_path / "results").exists()
+    # make_plan 을 거치지 않고 실행기를 직접 불러도 막힌다
+    plan = cli.Plan("real", ("legacy",), D("1"), "r", 1, ())
+    lines: list[str] = []
+    assert cli._execute(_real_args(tmp_path), plan, lines.append) == cli.REFUSED
+    assert "꺼져 있다" in "\n".join(lines)
+
+
+def test_the_module_default_really_is_off():
+    """소스에 적힌 기본값이 꺼짐이다(시험의 autouse 픽스처가 켜 둔 값이 아니라 코드 자체를 본다)."""
+    import inspect
+
+    assert "\nREAL_ENABLED = False\n" in inspect.getsource(switches)
+
+
+@pytest.mark.parametrize(
+    "flag, value",
+    [
+        ("--calls-per-case", "3"),
+        ("--tokens-in", "7999"),
+        ("--tokens-out", "499"),
+        ("--tokens-in", "1"),
+    ],
+)
+def test_the_estimate_assumptions_cannot_be_lowered_below_the_defaults(
+    flag, value, tmp_path, untouchable
+):
+    code, text = main(["--dry-run", flag, value], tmp_path)
+    assert code == cli.USAGE and "낮출 수 없다" in text and untouchable == []
+    # 기본값과 같거나 높이는 것은 된다
+    code, _ = main(["--dry-run", "--calls-per-case", "4", "--tokens-in", "8001"], tmp_path)
+    assert code == 0
 
 
 def test_a_fake_run_prints_the_summary_and_saves_outside_the_real_totals(tmp_path):

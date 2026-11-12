@@ -58,7 +58,18 @@ from typing import Any, Literal
 
 from app.shared.llm import eval_hook
 
-from . import adapter, env, fake_model, metrics, network, runs_guard, scoring, store, usage
+from . import (
+    adapter,
+    env,
+    fake_model,
+    metrics,
+    network,
+    runs_guard,
+    scoring,
+    store,
+    switches,
+    usage,
+)
 from .adapter import LegacyCase
 from .clock import frozen_clock
 from .cost import BASELINE_RUN_SCOPES, CAPS, OTHER_RUN_SCOPES, CallUsage, Ledger, Scope
@@ -694,6 +705,8 @@ def _check_options(options: RunOptions, ledger: Ledger) -> None:
     if options.repeats < 1:
         raise RunnerRefused("반복 수는 1 이상이어야 한다")
     if options.mode == "real":
+        if not switches.REAL_ENABLED:  # CLI 를 거치지 않고 실행기를 직접 불러도 실제 호출은 막는다
+            raise RunnerRefused("실제 모델 호출은 아직 꺼져 있다(switches.REAL_ENABLED)")
         if options.approved_usd is None or options.approved_usd <= 0:
             raise RunnerRefused("실제 모델 실행은 사용자가 승인한 상한(approved_usd)이 있어야 한다")
         cap = ledger.remaining().get(Scope.RUN)
@@ -821,7 +834,18 @@ def _save(report: RunReport, options: RunOptions, ids: list[str], started: str) 
     if (
         report.stored or usages
     ):  # 사례가 없어도 지출이 있으면 manifest·usage 를 남겨 누적(opening_spent)에 합친다
-        run_dir = store.write_run(root, manifest, report.stored, usages, _summary_rows(report))
+        stored_ids = {s.case.id for s in report.stored}
+        extras = {
+            (rec.case_id, rec.repeat): {
+                "write_gate": rec.write_gate,
+                "skipped_checks": list(rec.skipped_checks),
+            }
+            for rec in report.records
+            if rec.write_gate is not None and rec.case_id in stored_ids
+        }
+        run_dir = store.write_run(
+            root, manifest, report.stored, usages, _summary_rows(report), extras
+        )
     else:  # 지출도 저장할 사례도 없으면(전부 지원 안 함) 사유만 남긴다
         run_dir = root / options.run_id
         run_dir.mkdir(parents=True, exist_ok=False)

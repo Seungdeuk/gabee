@@ -21,14 +21,21 @@ def test_literal_remote_address_is_blocked():
         socket.socket().connect_ex(("93.184.216.34", 80))
 
 
-def test_loopback_and_unix_style_addresses_still_work():
-    server = socket.socket()
-    server.bind(("127.0.0.1", 0))
-    server.listen(1)
+def test_loopback_to_a_service_that_was_already_running_is_blocked_but_one_opened_inside_works():
+    """미리 떠 있던 로컬 서비스(프록시 등)는 바깥으로 이어질 수 있어 막고, 차단 중에 이 프로세스가 연 포트만 허용한다."""
+    outside = socket.socket()
+    outside.bind(("127.0.0.1", 0))
+    outside.listen(1)
     with block_network():
-        client = socket.create_connection(server.getsockname(), timeout=2)
-    client.close()
-    server.close()
+        with pytest.raises(NetworkBlocked):
+            socket.create_connection(outside.getsockname(), timeout=2)
+        inside = socket.socket()
+        inside.bind(("127.0.0.1", 0))
+        inside.listen(1)
+        client = socket.create_connection(inside.getsockname(), timeout=2)
+        client.close()
+        inside.close()
+    outside.close()
 
 
 def test_real_clients_for_push_and_mail_cannot_leave_the_machine():

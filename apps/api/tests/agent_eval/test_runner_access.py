@@ -104,7 +104,22 @@ def test_a_halted_test_case_stays_started_so_it_is_not_rerun_after_seeing_its_re
     ]  # 끊긴 사례는 다시 돌리지 않는다
 
 
-def test_the_real_mode_needs_an_approved_amount_that_covers_the_ledger_cap():
+def test_the_runner_itself_refuses_real_mode_while_the_switch_is_off(monkeypatch):
+    """CLI 를 거치지 않고 run_cases 를 직접 불러도 실제 모델 호출은 시작하지 않는다(승인 금액이 있어도)."""
+    from evals.agent_eval import switches
+
+    assert switches.REAL_ENABLED is False  # 기본값
+    ledger = Ledger((Scope.RUN,), caps={Scope.RUN: D("1")})
+    with pytest.raises(RunnerRefused, match="꺼져 있다"):
+        run_cases(
+            [new_case("d-1")], RunOptions("r", mode="real", approved_usd=D("1")), ledger=ledger
+        )
+
+
+def test_the_real_mode_needs_an_approved_amount_that_covers_the_ledger_cap(monkeypatch):
+    from evals.agent_eval import switches
+
+    monkeypatch.setattr(switches, "REAL_ENABLED", True)
     cases = [new_case("d-1")]
     unlimited = Ledger((Scope.RUN,))  # 기본 상한 2달러
     with pytest.raises(RunnerRefused, match="승인"):
