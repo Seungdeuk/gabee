@@ -13,13 +13,15 @@ import statistics
 import sys
 import time
 from collections import defaultdict
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parent
 sys.path.insert(0, str(ROOT))
 
+from app.shared.config import settings  # noqa: E402
 from app.shared.privacy import ner  # noqa: E402
 from app.shared.privacy.detectors import detect  # noqa: E402
 from app.shared.privacy.types import Kind, Span  # noqa: E402
@@ -40,6 +42,7 @@ def score_rows(
             "full": 0,
             "partial": 0,
             "none": 0,
+            "extra": 0,
             "sentences": 0,
             "flagged": 0,
             "miss_examples": [],
@@ -57,21 +60,29 @@ def score_rows(
                     ["과마스킹", text, [text[s.start : s.end] for s in spans]]
                 )
             continue
+        matched: set[int] = set()
         for g in r["spans"]:
             st["spans"] += 1
             cov: set[int] = set()
-            for s in spans:
+            for si, s in enumerate(spans):
                 if s.kind is KIND[g["kind"]]:
-                    cov.update(range(max(s.start, g["start"]), min(s.end, g["end"])))
+                    overlap = range(max(s.start, g["start"]), min(s.end, g["end"]))
+                    if overlap:
+                        cov.update(overlap)
+                        matched.add(si)
             n = g["end"] - g["start"]
             key = "full" if len(cov) >= n else ("partial" if cov else "none")
             st[key] += 1
             if key != "full" and len(st["miss_examples"]) < 6:
                 st["miss_examples"].append([key, text, text[g["start"] : g["end"]]])
+        # 정답 구간 어디와도 안 겹친 예측(같은 종류) = 과잉 예측(허위 양성)
+        st["extra"] += sum(
+            1 for si, s in enumerate(spans) if si not in matched and s.kind in KIND.values()
+        )
     categories = dict(stats)
     person_total = {
         k: sum(v[k] for c, v in categories.items() if c not in ("주소", "비인명"))
-        for k in ("spans", "full", "partial", "none")
+        for k in ("spans", "full", "partial", "none", "extra")
     }
     return {"categories": categories, "person_total": person_total}
 
@@ -115,21 +126,20 @@ def main(argv: list[str] | None = None) -> None:
     ap.add_argument("out")
     a = ap.parse_args(argv)
 
-    import os
-
+    # os.environ 이 아니라 settings 객체를 직접 바꾼다: settings 는 앱이 처음 뜰 때(예: pytest 의 conftest) 한 번
+    # 만들어져 그 이후로는 환경변수를 다시 읽지 않으므로, 이 스크립트를 pytest 안에서 함수로 부르면(실제 CLI 실행은
+    # 매번 새 프로세스라 문제가 없었다) os.environ 설정은 조용히 무시된다.
     ner.reset()
     if a.model_dir_or_off == "off":
-        os.environ["PRIVACY_NER_MODE"] = "off"
+        settings.privacy_ner_mode = "off"
     else:
-        os.environ["PRIVACY_NER_MODE"] = "required"
-        os.environ["PRIVACY_NER_MODEL_DIR"] = a.model_dir_or_off
-        os.environ["PRIVACY_NER_THREADS"] = "2"
+        settings.privacy_ner_mode = "required"
+        settings.privacy_ner_model_dir = a.model_dir_or_off
+        settings.privacy_ner_threads = 2
 
     status = ner.ner_status()
     if a.model_dir_or_off != "off" and not status["active"]:
-        raise SystemExit(
-            f"NER 엔진을 쓸 수 없다(모델 폴더 확인 필요): {a.model_dir_or_off}"
-        )
+        raise SystemExit(f"NER 엔진을 쓸 수 없다(모델 폴더 확인 필요): {a.model_dir_or_off}")
 
     if a.model_dir_or_off == "off":
         predict2 = lambda text, known: detect(text, known)  # noqa: E731
@@ -137,9 +147,16 @@ def main(argv: list[str] | None = None) -> None:
         predict2 = lambda text, known: ner.detect_with_ner(text, known)  # noqa: E731
     predict1 = lambda text: predict2(text, ())  # noqa: E731
 
-    rows = [json.loads(line) for line in Path(a.evalset).read_text(encoding="utf-8").splitlines() if line.strip()]
+    rows = [
+        json.loads(line)
+        for line in Path(a.evalset).read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
     out = {
-        "mode": a.model_dir_or_off,
+        # 전체 경로가 아니라 폴더 이름만 기록한다(결과 json을 커밋해도 로컬 사용자 경로가 안 남게).
+        "mode": a.model_dir_or_off
+        if a.model_dir_or_off == "off"
+        else Path(a.model_dir_or_off).name,
         "ner_status": status,
         **score_rows(rows, predict2),
         "latency_100chars": measure_latency(rows, predict1),

@@ -18,10 +18,10 @@ def _given_pool_from_synth(synth_path: Path) -> set[str]:
         m = re.search(var + r'\s*=\s*(?:list\()?\(?\s*"(.*?)"\s*\)', text, re.S)
         if m:
             pool.update(
-                re.sub(r'"\s*"', " ", m.group(1)).split()
-                if var == "GIVEN2"
-                else list(m.group(1))
+                re.sub(r'"\s*"', " ", m.group(1)).split() if var == "GIVEN2" else list(m.group(1))
             )
+    if not pool:
+        raise ValueError(f"{synth_path} 에서 GIVEN1/GIVEN2 를 찾지 못했다(조용히 건너뛰지 않는다)")
     return pool
 
 
@@ -46,7 +46,12 @@ def collect_excluded_names(
     """
     excluded = _given_pool_from_synth(synth_path)
     for d in baseline_dirs:
-        for f in sorted(d.glob("*.jsonl")):
+        if not d.is_dir():
+            raise FileNotFoundError(f"baseline 폴더가 없다(조용히 건너뛰지 않는다): {d}")
+        files = sorted(d.glob("*.jsonl"))
+        if not files:
+            raise FileNotFoundError(f"baseline 폴더에 jsonl 이 없다: {d}")
+        for f in files:
             excluded.update(_person_values_from_jsonl(f))
     for p in extra_eval_paths:
         excluded.update(_person_values_from_jsonl(p))

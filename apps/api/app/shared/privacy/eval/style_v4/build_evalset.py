@@ -23,23 +23,53 @@ sys.path.insert(0, str(HERE))
 
 from exclusions import collect_excluded_names  # noqa: E402
 
-SURNAMES = list("김이박최정강조윤장임한오서신권황안송류전홍고문양손배백허유남심노하곽성차주우구민나진지")
+SURNAMES = list(
+    "김이박최정강조윤장임한오서신권황안송류전홍고문양손배백허유남심노하곽성차주우구민나진지"
+)
 
 # 처음 보는 이름 후보. v3 는 고정된 ~140개 목록을 썼는데, 제외 집합에 v3 자체(483개 이름, 거의 이 목록 전부를 이미 썼다)까지
-# 더하면 그 목록 거의 전부가 막힌다(실측: 140개 중 3개만 생존). 그래서 흔한 한국어 이름 음절 조합(초성×종성)으로 훨씬 큰 후보
-# 풀(최대 30×30=900개)을 만들어, 제외 집합이 넓어져도 충분히 생존하게 한다.
-_SYL_A = list(
-    "민서지현도하유준시우주윤승태성재은소가예채다보나효세연아혜진건해정상대원대병철동한근호영용덕명송송은진동유장"
-)
-_SYL_B = list(
-    "준현우민서호윤원영진율온아은희주하연빈성훈규철식겸오결솔별찬경지영호율환영준헌호훈아지성은지온호율"
-)
-GIVEN_CANDIDATES = list(dict.fromkeys(a + b for a in _SYL_A for b in _SYL_B))
+# 더하면 그 목록 거의 전부가 막힌다(실측: 140개 중 3개만 생존). 그래서 "실제 사람 이름에 쓰인 음절"끼리 성·이름 자리를
+# 서로 바꿔 다시 묶는다(v3가 쓴 140개 이름을 첫 음절/둘째 음절로 쪼개 교차 조합) — 아무 한글 음절이나 섞지 않으므로
+# 일반 명사·불변어가 나올 확률이 (완전 임의 조합보다) 낮다. 그래도 우연히 실제 단어와 같아지는 조합은 남을 수 있어
+# 검토 중 발견된 것만 BLOCKLIST 로 뺀다(비속어 1건 포함) — 완전한 사전 검증은 아니다.
+_V3_NAMES = (
+    "민규 지환 현성 동우 승환 도율 건후 시완 은호 재이 하온 태율 주혁 해성 윤성 정민 상우 재현 우혁 성준 대윤 지석 원준 찬영 영훈 준영 기현 병헌 "
+    "철민 동진 성호 한성 민혁 재호 진호 상민 종민 현석 도영 시형 경민 종훈 우성 태훈 용민 근호 호진 덕수 명철 서율 가윤 채윤 하연 다윤 서희 예나 "
+    "지현 수연 민지 은지 혜원 보라 유경 세린 주하 시연 나영 은하 소정 효진 미래 현아 지수 아영 연주 소라 승아 다경 초원 은빈 채연 보경 윤지 도연 "
+    "가현 시아 서영 예원 지은 혜인 소은 진아 미주 수현 영은 송이 지연 승희 준호 지성 동건 태영 민호 서원 유건 정원 하늘 도훈 승찬 재우 성우 현철 "
+    "다온 채아 서우 하음 유하 나린 소윤 아인 이레 지안 시하 은유 도아 주은 보윤 세아 연아 가인 효주 미소 수민 은솔 하빈 채민 연수 지율 수호 이현"
+).split()
+_GIVEN_BLOCKLIST = {
+    "연결",
+    "시민",
+    "철원",
+    "한식",
+    "세율",
+    "대지",
+    "한우",
+    "진지",
+    "송별",
+    "해서",
+    "해주",
+    "양보",
+    "주주",
+    "보지",
+    "해결",
+    "보호",
+    "지원",
+    "정지",
+    "소주",
+}
+_syl_firsts = sorted({t[0] for t in _V3_NAMES if len(t) == 2})
+_syl_seconds = sorted(
+    {t[1] for t in _V3_NAMES if len(t) == 2} - {"늘"}
+)  # "늘"(하늘)은 이름 음절이 아니라 뺀다
+GIVEN_CANDIDATES = sorted({a + b for a in _syl_firsts for b in _syl_seconds} - _GIVEN_BLOCKLIST)
 
 TEMPLATES: dict[str, list[str]] = {
     "가족대화": [
         "{N} 지금 올라오고 있대",
-        "{N|이/가} 숙제 다 했대",
+        "{N} 지금 숙제하고 있대",
         "{N|한테/한테} 저녁 먹었는지 물어봐",
         "{N} 오늘 늦게 온다고 했어",
         "할머니가 {N} 보고 싶다셔",
@@ -80,7 +110,7 @@ TEMPLATES: dict[str, list[str]] = {
     "기사체": [
         "{N} 대표가 사업 계획을 공개했다",
         "{N} 의원이 개정안을 제출했다",
-        "목격자 {N}(37)씨는 \"놀랐다\"고 전했다",
+        '목격자 {N}(37)씨는 "놀랐다"고 전했다',
         "{N} 감독이 인터뷰에서 소감을 밝혔다",
         "검찰은 {N|를/를} 참고인으로 소환했다",
         "{N} 연구원이 논문을 공개했다",
@@ -111,26 +141,70 @@ TEMPLATES: dict[str, list[str]] = {
 
 # 비인명 음성 문장: 이름처럼 보이는 일반어(하늘·바다·기쁨·초원 등, v3 과마스킹 이력)를 포함
 NEGATIVES = [
-    "하늘이 흐려서 우산을 챙겼어", "바다로 드라이브 다녀왔어", "기쁨이 넘치는 하루였어", "초원에서 사진을 많이 찍었어",
-    "노을이 예뻐서 한참 봤어", "구름이 많아서 비 올 것 같아", "겨울 코트를 꺼내 입었어", "여름 휴가 계획을 세웠어",
-    "새벽에 택배가 도착했어", "달빛이 밝아서 산책했어", "서류 접수증을 다시 뽑아줘", "지원 동기를 다시 써야 해",
-    "분홍색 커튼을 새로 달았어", "보람을 느끼는 일이었어", "마당 잔디를 깎았어", "저녁은 비빔밥 먹자",
-    "미래를 위해 저축을 늘렸어", "소음이 심해서 잠을 못 잤어", "지구 온도가 계속 오르고 있대", "초록색 가방을 새로 샀어",
-    "도서관에서 자료를 찾아왔어", "접수 번호를 다시 확인해줘", "주차 등록 방법을 알려줘", "진료 시간이 변경됐대",
-    "전화 요금이 많이 나왔어", "결제가 두 번 됐나봐", "통장 잔고를 확인해봐", "배송비가 추가됐다고 해",
-    "냉동실에 재료가 다 떨어졌어", "주차장 출입구가 막혔어", "오늘따라 날씨가 쌀쌀하다", "아이스커피 한 잔 하자",
-    "버스를 놓쳐서 택시 탔어", "지갑을 어디 두고 왔는지 모르겠어", "회의실 예약이 겹쳤어", "인터넷이 자꾸 끊겨",
-    "세탁기가 또 고장났어", "창문을 열어서 환기했어", "정류장에서 한참 기다렸어", "엘리베이터가 공사 중이래",
+    "하늘이 흐려서 우산을 챙겼어",
+    "바다로 드라이브 다녀왔어",
+    "기쁨이 넘치는 하루였어",
+    "초원에서 사진을 많이 찍었어",
+    "노을이 예뻐서 한참 봤어",
+    "구름이 많아서 비 올 것 같아",
+    "겨울 코트를 꺼내 입었어",
+    "여름 휴가 계획을 세웠어",
+    "새벽에 택배가 도착했어",
+    "달빛이 밝아서 산책했어",
+    "서류 접수증을 다시 뽑아줘",
+    "지원 동기를 다시 써야 해",
+    "분홍색 커튼을 새로 달았어",
+    "보람을 느끼는 일이었어",
+    "마당 잔디를 깎았어",
+    "저녁은 비빔밥 먹자",
+    "미래를 위해 저축을 늘렸어",
+    "소음이 심해서 잠을 못 잤어",
+    "지구 온도가 계속 오르고 있대",
+    "초록색 가방을 새로 샀어",
+    "도서관에서 자료를 찾아왔어",
+    "접수 번호를 다시 확인해줘",
+    "주차 등록 방법을 알려줘",
+    "진료 시간이 변경됐대",
+    "전화 요금이 많이 나왔어",
+    "결제가 두 번 됐나봐",
+    "통장 잔고를 확인해봐",
+    "배송비가 추가됐다고 해",
+    "냉동실에 재료가 다 떨어졌어",
+    "주차장 출입구가 막혔어",
+    "오늘따라 날씨가 쌀쌀하다",
+    "아이스커피 한 잔 하자",
+    "버스를 놓쳐서 택시 탔어",
+    "지갑을 어디 두고 왔는지 모르겠어",
+    "회의실 예약이 겹쳤어",
+    "인터넷이 자꾸 끊겨",
+    "세탁기가 또 고장났어",
+    "창문을 열어서 환기했어",
+    "정류장에서 한참 기다렸어",
+    "엘리베이터가 공사 중이래",
 ]
 
 ADDRESSES = [
-    "서울특별시 강남구 테헤란로 152", "경기도 수원시 영통구 광교로 145", "인천 남동구 구월동 e스마트타워 702호",
-    "부산광역시 동래구 충렬대로 167", "대전 서구 둔산로 100 7층", "광주광역시 서구 상무중앙로 56",
-    "서울 영등포구 여의대로 108 IFC몰 3층", "경북 경주시 보문로 73", "충남 아산시 배방읍 희망로 20 305호",
-    "제주특별자치도 서귀포시 중앙로 45", "강원도 원주시 북원로 2 4층", "전북 익산시 함라로 88",
-    "신촌역 2번 출구 옆 오피스텔 1501호", "울산 중구 성남로 200 다온빌딩 6층",
+    "서울특별시 강남구 테헤란로 152",
+    "경기도 수원시 영통구 광교로 145",
+    "인천 남동구 구월동 e스마트타워 702호",
+    "부산광역시 동래구 충렬대로 167",
+    "대전 서구 둔산로 100 7층",
+    "광주광역시 서구 상무중앙로 56",
+    "서울 영등포구 여의대로 108 IFC몰 3층",
+    "경북 경주시 보문로 73",
+    "충남 아산시 배방읍 희망로 20 305호",
+    "제주특별자치도 서귀포시 중앙로 45",
+    "강원도 원주시 북원로 2 4층",
+    "전북 익산시 함라로 88",
+    "신촌역 2번 출구 옆 오피스텔 1501호",
+    "울산 중구 성남로 200 다온빌딩 6층",
 ]
-ADDR_T = ["자택 주소는 {A} 입니다", "배송 주소: {A}", "{A}쪽으로 와주세요", "사업장 위치는 {A} 입니다"]
+ADDR_T = [
+    "자택 주소는 {A} 입니다",
+    "배송 주소: {A}",
+    "{A}쪽으로 와주세요",
+    "사업장 위치는 {A} 입니다",
+]
 
 JOSA = re.compile(r"\{(N2|N3|N|G|A)(?:\|([가-힣]*)/([가-힣]*))?\}")
 _SLOT = re.compile(r"\{[^}]*\}")
@@ -168,23 +242,49 @@ def skeleton_from_spans(text: str, spans: list[dict]) -> str:
     return "".join(out)
 
 
-def skeleton_from_template(template: str) -> str:
-    """``{...}`` 슬롯을 지운 뼈대(슬롯 이름·문법이 달라도 비교 가능)."""
-    return _SLOT.sub("", template)
+_SYNTH_JOSA = re.compile(r"@([가-힣]+)/([가-힣]+)")
 
 
-def assert_no_overlap(
-    rows: list[dict], excluded_names: set[str], template_texts: set[str]
-) -> None:
+def skeleton_from_template(template: str) -> set[str]:
+    """``{...}`` 슬롯을 지운 뼈대 집합을 돌려준다.
+
+    내 템플릿은 조사를 슬롯 안({N|이/가})에 적어 한 번에 지워지지만, ``ml/ner/data/synth.py`` 는 조사를 슬롯
+    **밖**(``{G}@이/가``)에 적는다. 이걸 통째로 지우면 "@이/가" 글자가 그대로 남아 어떤 생성 문장과도 다시는
+    같아지지 않는다(뼈대 비교가 조용히 무력화된다) — 그래서 지우지 않고 가능한 조사 둘로 각각 펼쳐서 돌려준다
+    (``{G}@이/가 X`` -> ``{"이 X", "가 X"}``), 실제로 조사가 어느 쪽으로 풀리든 뼈대 하나와는 반드시 맞아떨어지게.
+    """
+    base = _SLOT.sub("", template)
+    skeletons = {base}
+    while True:
+        expanded: set[str] = set()
+        changed = False
+        for s in skeletons:
+            m = _SYNTH_JOSA.search(s)
+            if not m:
+                expanded.add(s)
+                continue
+            changed = True
+            for g in (m.group(1), m.group(2)):
+                expanded.add(s[: m.start()] + g + s[m.end() :])
+        skeletons = expanded
+        if not changed:
+            return skeletons
+
+
+def _name_excluded(value: str, excluded_names: set[str]) -> bool:
+    """``value`` 가 제외 집합의 어떤 이름과 같거나, 제외 집합의 이름이 ``value`` 로 끝나면(= 성 없이 given 만 써도
+    그 given 이 이미 다른 성과 묶여 나온 적 있으면) True."""
+    return any(e == value or e.endswith(value) for e in excluded_names)
+
+
+def assert_no_overlap(rows: list[dict], excluded_names: set[str], template_texts: set[str]) -> None:
     """생성된 각 행이 제외 집합의 이름을 쓰거나 기존 문장 틀과 뼈대가 같으면 SystemExit(1)."""
     for row in rows:
         for sp in row.get("spans", []):
             if sp.get("kind") in ("PERSON", "PERSON_ALIAS"):
                 value = row["text"][sp["start"] : sp["end"]]
-                if value in excluded_names:
-                    raise SystemExit(
-                        f"이름 겹침: {value!r} (문장={row['text']!r})"
-                    )
+                if _name_excluded(value, excluded_names):
+                    raise SystemExit(f"이름 겹침: {value!r} (문장={row['text']!r})")
         skel = skeleton_from_spans(row["text"], row.get("spans", []))
         if skel in template_texts:
             raise SystemExit(f"문장 틀 겹침: {skel!r} (문장={row['text']!r})")
@@ -198,7 +298,10 @@ def _synth_skeletons(synth_path: Path) -> set[str]:
     texts: list[str] = []
     for name in ("TEMPLATES", "AUG_TEMPLATES", "AUG_TEMPLATES_2"):
         texts.extend(t for _, t in getattr(mod, name, []))
-    return {skeleton_from_template(t) for t in texts}
+    out: set[str] = set()
+    for t in texts:
+        out |= skeleton_from_template(t)
+    return out
 
 
 def _jsonl_skeletons(path: Path) -> set[str]:
@@ -214,7 +317,7 @@ def _jsonl_skeletons(path: Path) -> set[str]:
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--synth", required=True)
-    ap.add_argument("--baseline", nargs="*", default=[])
+    ap.add_argument("--baseline", nargs="+", required=True)
     ap.add_argument("--v3", required=True)
     ap.add_argument("--out", required=True)
     ap.add_argument("--seed", type=int, default=20261112)
@@ -225,14 +328,15 @@ def main() -> None:
     baseline_dirs = [Path(p) for p in a.baseline]
 
     excluded = collect_excluded_names(synth_path, baseline_dirs, [v3_path])
-    # 주어진 이름(given)이 제외 집합의 어떤 전체 이름(성+이름)의 끝부분으로도 나타나면 뺀다(build_evalset_v3.py와 같은 방식).
-    # 성은 공유 풀이라 재사용하지만, given이 어떤 성과 결합해서라도 이미 쓰였으면 "새 이름"이 아니다.
-    givens = [
-        g
-        for g in dict.fromkeys(GIVEN_CANDIDATES)
-        if not any(e == g or e.endswith(g) for e in excluded)
-    ]
-    assert len(givens) >= 60, len(givens)
+    # 주어진 이름(given)이 제외 집합의 어떤 전체 이름(성+이름)의 끝부분으로도 나타나면 뺀다(assert_no_overlap 과
+    # 같은 _name_excluded 규칙). 성은 공유 풀이라 재사용하지만, given이 어떤 성과 결합해서라도 이미 쓰였으면
+    # "새 이름"이 아니다.
+    givens = [g for g in dict.fromkeys(GIVEN_CANDIDATES) if not _name_excluded(g, excluded)]
+    if len(givens) < 60:
+        raise SystemExit(
+            f"처음 보는 given 이름이 너무 적다({len(givens)}개, 최소 60개 필요) — "
+            "GIVEN_CANDIDATES 풀을 늘려야 한다"
+        )
 
     template_texts = _synth_skeletons(synth_path)
     for d in baseline_dirs:
