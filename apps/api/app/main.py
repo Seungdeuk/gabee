@@ -6,6 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from app.features.admin_knowledge.router import router as admin_knowledge_router
+from app.features.ai_assistant.knowledge import index_health as knowledge_index
 from app.features.ai_assistant.router import router as ai_assistant_router
 from app.features.billing.router import router as billing_router
 from app.features.family_chat.router import router as family_chat_router
@@ -38,6 +39,7 @@ async def lifespan(_: FastAPI):
     init_db()
     push_schedule.start()  # 예약 푸시(시간 있으면 30분 전, 시간 없으면 전날 밤 9시): PUSH_ENABLED 가 켜져 있을 때만 1분마다 확인한다
     privacy_ner.start_preload()  # NER 모델을 백그라운드로 미리 불러온다(off 면 아무 일도 안 함, 실패해도 기동은 계속)
+    knowledge_index.start_startup_check()  # 임베딩 모델 이름이 DB 조각과 어긋나 검색에서 문서가 빠지는지 백그라운드로 점검해 로그로 알린다(기다리지 않고, 실패해도 기동은 계속)
     yield
     ops_metrics.flush(
         final=True

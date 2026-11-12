@@ -3,14 +3,14 @@ from datetime import date
 from fastapi import APIRouter, Depends, Response
 from sqlalchemy.orm import Session
 
-from app.shared.auth import current_group_id, current_user
+from app.shared.auth import current_group_id, current_user, require_operator
 from app.shared.config import settings
 from app.shared.db import get_db
 from app.shared.errors import bad_request, not_found
 
 from .. import family_names, files
 from .. import repository as photo_repo
-from . import from_ingest, lookup, rag_chat, service
+from . import embedding, from_ingest, index_health, lookup, rag_chat, service
 from .models import KnowledgeItem
 from .schemas import (
     AskIn,
@@ -18,6 +18,7 @@ from .schemas import (
     FindIn,
     FindOut,
     HitOut,
+    IndexStatusOut,
     ItemDetailOut,
     ItemIn,
     ItemOut,
@@ -111,6 +112,18 @@ def ask(
     """knowledge 시험용 채팅: LLM 이 검색 함수를 불러 기록을 근거로 답한다(가족 AI 동의·쿨다운·하루 한도 가드를 거친다)."""
     r = rag_chat.ask_guarded(db, user.id, group_id, body.question, feature="knowledge_ask")
     return AskOut(answer=r.answer, source=r.source, sources=r.sources, tool_calls=r.tool_calls)
+
+
+@router.get("/index-status", response_model=IndexStatusOut)
+def index_status(
+    _: object = Depends(require_operator("admin")), db: Session = Depends(get_db)
+) -> IndexStatusOut:
+    """검색 색인 점검(운영자 전용, 읽기 전용): 서버가 쓰는 임베딩 모델 이름과 DB 조각의 모델별 개수.
+    이름이 어긋나면 문서가 오류 없이 의미 검색에서 빠지므로 개수와 경고만 알려 준다(내용·가족 그룹 id 는 싣지 않는다)."""
+    report = index_health.collect(db, embedding.expected_model_name())
+    return IndexStatusOut(
+        **report, warnings=index_health.warnings(db.get_bind().dialect.name, report)
+    )
 
 
 @router.post("/search", response_model=SearchOut)

@@ -12208,6 +12208,73 @@
         }
       }
     },
+    "/ai-assistant/knowledge/index-status": {
+      "get": {
+        "tags": [
+          "ai-assistant",
+          "ai-assistant-knowledge"
+        ],
+        "summary": "Index Status",
+        "description": "검색 색인 점검(운영자 전용, 읽기 전용): 서버가 쓰는 임베딩 모델 이름과 DB 조각의 모델별 개수.\n이름이 어긋나면 문서가 오류 없이 의미 검색에서 빠지므로 개수와 경고만 알려 준다(내용·가족 그룹 id 는 싣지 않는다).",
+        "operationId": "index_status_ai_assistant_knowledge_index_status_get",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-gyeot-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Gyeot-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IndexStatusOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/ai-assistant/knowledge/search": {
       "post": {
         "tags": [
@@ -22916,6 +22983,51 @@
           "reason"
         ],
         "title": "ImportantMessage"
+      },
+      "IndexStatusOut": {
+        "properties": {
+          "current_model": {
+            "type": "string",
+            "title": "Current Model"
+          },
+          "by_model": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "type": "object",
+            "title": "By Model"
+          },
+          "stale_chunks": {
+            "type": "integer",
+            "title": "Stale Chunks"
+          },
+          "stale_items": {
+            "type": "integer",
+            "title": "Stale Items"
+          },
+          "missing_items": {
+            "type": "integer",
+            "title": "Missing Items"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Warnings"
+          }
+        },
+        "type": "object",
+        "required": [
+          "current_model",
+          "by_model",
+          "stale_chunks",
+          "stale_items",
+          "missing_items",
+          "warnings"
+        ],
+        "title": "IndexStatusOut",
+        "description": "검색 색인 점검(운영자용). 개수와 모델 이름만 있다."
       },
       "InfraMetrics": {
         "properties": {

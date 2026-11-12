@@ -30,7 +30,8 @@
 - 개인정보 가리기 확대(일반 문서도 카드·전화·이메일·계좌·라벨 있는 이름·주소), 민감 기록은 가린 상태로 채팅 근거에 사용(`CHAT_INCLUDE_SENSITIVE`)
 - 스캔 PDF 는 글자 없는 쪽만 OCR, 같은 파일은 출처 하나로 합침
 - 글자 없는 사진은 사용자가 한 줄 설명을 직접 단다(채팅 카드, 기록 상세에서 나중에도 가능). 문서 종류는 로컬 분류기(앱 임베딩 + 글자 TF-IDF)가 정하고 애매하면 Jev 또는 "확인 필요". qwen·Ollama 는 쓰지 않는다
-- 임베딩 재색인(2026-11-10, T12 PR-1): `knowledge.service.reindex` 가 배치·진행률·이어하기를 지원하고, 점검·재계산 스크립트 `apps/api/scripts/reindex_embeddings.py`(`--check` 기본, `--apply --yes`)를 추가했다. 모델 폴더 이름이 바뀌어 옛 조각이 검색에서 빠지는 경우의 조치다("임베딩 모델 전달" 아래 절). 마이그레이션·API 변경 없음. 격리 PostgreSQL(pgvector 컨테이너)에서 `test_knowledge_pgvector.py` 의 재색인 시험(`vector_dims`=384, 모델 이름 갱신, 검색, 스크립트 `--check`·`--apply --yes --limit`)을 통과했다. 아직 없는 것: 시작 시 경고 로그·운영자 조회 API(PR-2), tokenizer 누락 처리(PR-3)
+- 임베딩 재색인(2026-11-10, T12 PR-1): `knowledge.service.reindex` 가 배치·진행률·이어하기를 지원하고, 점검·재계산 스크립트 `apps/api/scripts/reindex_embeddings.py`(`--check` 기본, `--apply --yes`)를 추가했다. 모델 폴더 이름이 바뀌어 옛 조각이 검색에서 빠지는 경우의 조치다("임베딩 모델 전달" 아래 절). 마이그레이션·API 변경 없음. 격리 PostgreSQL(pgvector 컨테이너)에서 `test_knowledge_pgvector.py` 의 재색인 시험(`vector_dims`=384, 모델 이름 갱신, 검색, 스크립트 `--check`·`--apply --yes --limit`)을 통과했다. 아직 없는 것: tokenizer 누락 처리(PR-3)
+- 검색 색인 점검(2026-11-12, T12 PR-2): `knowledge/index_health.py` 가 모델별 조각 수·현재 모델과 다른 조각 수·영향받는 기록 수·의미 검색에서 빠진 기록 수를 **개수만** 계산한다. ① 서버가 시작할 때 한 번 점검해 어긋남이 있으면 WARNING, 없으면 INFO 한 줄을 남긴다(모델을 불러오지 않고, DB 가 안 닿거나 표가 없어도 서버 시작은 막지 않으며 예외는 클래스 이름만 기록한다). ② 운영자 조회 API `GET /ai-assistant/knowledge/index-status`(`require_operator("admin")`, 읽기 전용, 응답은 개수·모델 이름·경고 문구). ③ 재색인 도구에 `--expect-model`. DB·마이그레이션 변경 없음, 하위 호환 변경 없음(경로 추가만, `openapi.json` 갱신).
 - 테스트: 서버 462개 통과(병합 후), 앱 린트·Android 번들 빌드 통과
 
 ## 남은 것
@@ -148,6 +149,8 @@ python -m scripts.reindex_embeddings            # --check 와 같다
 ```bash
 python -m scripts.reindex_embeddings --apply --yes --batch-size 128
 ```
+
+`--expect-model <서버가 쓰는 이름>`(운영자 조회 API 의 `current_model`)을 주면 지금 설정의 이름과 다를 때 `--apply` 를 DB·모델에 손대기 전에 거부하고(종료 코드 1), `--check` 에서는 같은 안내를 덧붙인다. 다른 설정에서 다시 만든 조각은 서버가 검색하지 않는 이름이 되기 때문이다.
 
 `--yes` 가 없으면 개수만 보여 주고 다시 만들 조각이 있을 때 종료 코드 2 로 끝난다(없으면 0, 모델도 불러오지 않는다). 배치마다 commit 하고 `reindex 128/1,340 (9%)` 처럼 진행률을 찍는다. 중간에 멈추거나 실패해도 끝난 배치는 남고, 다시 실행하면 남은 조각만 한다. ONNX 모델을 불러오지 못해 해시 임베더인 상태에서는 거부한다. `--group-id`(한 가족만), `--limit`(시험용)도 있다.
 

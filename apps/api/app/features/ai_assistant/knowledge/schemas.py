@@ -66,6 +66,17 @@ class HitOut(BaseModel):
     sensitivity: str
 
 
+class IndexStatusOut(BaseModel):
+    """검색 색인 점검(운영자용). 개수와 모델 이름만 있다."""
+
+    current_model: str
+    by_model: dict[str, int]
+    stale_chunks: int
+    stale_items: int
+    missing_items: int
+    warnings: list[str]
+
+
 class SearchOut(BaseModel):
     hits: list[HitOut]
 
