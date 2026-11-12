@@ -296,7 +296,7 @@ def _synth_skeletons(synth_path: Path) -> set[str]:
     sys.modules[spec.name] = mod
     spec.loader.exec_module(mod)
     texts: list[str] = []
-    for name in ("TEMPLATES", "AUG_TEMPLATES", "AUG_TEMPLATES_2"):
+    for name in ("TEMPLATES", "AUG_TEMPLATES", "AUG_TEMPLATES_2", "AUG_TEMPLATES_3"):
         texts.extend(t for _, t in getattr(mod, name, []))
     out: set[str] = set()
     for t in texts:

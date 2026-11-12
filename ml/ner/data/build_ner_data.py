@@ -209,7 +209,12 @@ def main():
     ap.add_argument("--per-template", type=int, default=40)
     ap.add_argument("--seed", type=int, default=42)
     ap.add_argument("--no-klue", action="store_true")
-    ap.add_argument("--augment", type=int, default=0, help="오탐 감소 보강 단계: 0 없음, 1 보강 틀, 2 +처음 보는 금융기관 음성")
+    ap.add_argument(
+        "--augment",
+        type=int,
+        default=0,
+        help="오탐 감소 보강 단계: 0 없음, 1 보강 틀, 2 +처음 보는 금융기관 음성(+기사체), 3 +메신저 다인칭 문장",
+    )
     a = ap.parse_args()
     res = build_all(a.out, a.per_template, a.seed, not a.no_klue, a.augment)
     print(json.dumps({k: v["sentences"] if isinstance(v, dict) and "sentences" in v else v for k, v in res["stats"].items()},

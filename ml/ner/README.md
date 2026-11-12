@@ -97,6 +97,6 @@ span·토큰 비율이 아니다). r = 0 / 0.1 / 0.3. 검증 집합에는 KLUE �
 
 ## 오탐 감소 보강 (augment)
 
-`build_ner_data.py --augment 1`: 새 틀 47종(가족 호칭 음성 `kin_neg2`, 일반 명사 음성 `generic_neg`, 일반 장소 명사 음성 `place_neg`, 어려운 양성 `person_given2`·`name_hard`·`alias_hard`·`org_hard`). `--augment 2`: 처음 보는 금융기관명 음성(`bank_neg2`, 9종)을 더한다.
+`build_ner_data.py --augment 1`: 새 틀 47종(가족 호칭 음성 `kin_neg2`, 일반 명사 음성 `generic_neg`, 일반 장소 명사 음성 `place_neg`, 어려운 양성 `person_given2`·`name_hard`·`alias_hard`·`org_hard`). `--augment 2`: 처음 보는 금융기관명 음성(`bank_neg2`, 9종)과 기사체(`news_title`, 10종, apps/api NER_VALIDATION.md 12절)를 더한다. `--augment 3`: 가족 메신저 다인칭 문장(`family_msg`, 20종, 한 문장에 사람 2명 이상 섞인 틀) — 메신저체 완전미탐 보강 2차 시도(NER_VALIDATION.md 17절).
 train/val 틀·값 분리와 test 누출 검사는 그대로(보강 틀도 test 의 문장 틀과 같으면 건너뛴다). Baseline val/test 에 나오는 가족 호칭·송장·박수·강아지는 평가의 일반화 측정을 흐리지 않도록 보강 어휘에서 일부러 뺐다.
 합성 val 은 보강 전후를 같은 틀로 비교하도록 `synth_val_core.jsonl`(보강 전 틀)과 `synth_val_aug.jsonl`(보강 틀)로 나눠 쓴다.

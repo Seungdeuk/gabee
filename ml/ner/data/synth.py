@@ -570,7 +570,36 @@ AUG_TEMPLATES_2 += [
     ("news_title", "{P2} 부위원장이 성명을 발표했다"),
     ("news_title", "목격자 {P2}({NUM}대)씨가 상황을 설명했다"),
 ]
-AUG_CATEGORIES = sorted({c for c, _ in AUG_TEMPLATES + AUG_TEMPLATES_2})
+# 로드맵 2단계 보조 확인(apps/api NER_VALIDATION.md 15~16절): 실제 가족 메신저 대화체(합성)로 평가했을 때
+# 완전미탐이 기사체 보강 전후로 거의 안 줄었다. 이름 토큰을 더 늘리는 보강(16절)은 효과가 없었다 — 평가셋이
+# 애초에 train 과 다른 이름 조합을 쓰도록 만들어졌기 때문에(누출 방지 설계), 이름을 얼마나 늘려도 "안 겹치는
+# 이름"은 항상 새로 나온다. 대신 이번엔 문장 구조 쪽을 보강한다: 가족 채팅방은 한 메시지에 사람이 2명 이상
+# 섞여 나오는 경우가 많은데(틀 "mix" 가 일부 다루지만 적다), 기존 틀의 대부분은 사람 1명짜리라 모델이 "문장에
+# 이름이 여러 개 나오는 맥락"을 상대적으로 적게 본다. evalset_v4/v5/realistic_family(apps/api 쪽, 전부 합성)의
+# 문장 틀과 글자 그대로 같은 문장은 넣지 않는다(학습·평가 오염 방지, 스크립트로 확인).
+AUG_TEMPLATES_3 = [
+    ("family_msg", "{P} 이번 주 알림장에 현장학습 적어왔대"),
+    ("family_msg", "{P}@이/가 {G} 손 잡고 유치원 갔어"),
+    ("family_msg", "저녁에 {P}랑 {G} 피아노 학원 데려다줄 사람?"),
+    ("family_msg", "{P} 머리 잘랐는데 완전 달라보여 ㅋㅋ"),
+    ("family_msg", "{G}@은/는 줄넘기 연습 다 했어?"),
+    ("family_msg", "{P}@이/가 {G} 숙제 봐주고 있어"),
+    ("family_msg", "오늘 {P} 태권도 승급 시험 봤대!!"),
+    ("family_msg", "{G} 핸드폰 게임만 해서 걱정이야"),
+    ("family_msg", "{P}랑 {G} 둘 다 늦잠 자서 지각했어"),
+    ("family_msg", "{P} 짝꿍이 바뀌었다고 좋아하더라"),
+    ("family_msg", "{G} 받아쓰기 100점 맞았대 ㅎㅎ"),
+    ("family_msg", "{P}한테 예방접종 날짜 확인해달라고 해"),
+    ("family_msg", "할머니가 {P} 간식 투표하자셔"),
+    ("family_msg", "{G} 사진 찍어서 가족방에 올려줘"),
+    ("family_msg", "{P} 방학 계획 짜놨는데 같이 볼래?"),
+    ("family_msg", "{NK}@이/가 {G} 데리고 급식 먹으러 갔어"),
+    ("family_msg", "{P}@이랑/랑 {G} 체험학습 가방 다 쌌어"),
+    ("family_msg", "{AL} 전화 안 받는데 혹시 알아?"),
+    ("family_msg", "{P} 알러지 검사 결과 나왔대"),
+    ("family_msg", "{G}@이/가 {P}@이랑/랑 또 투닥거렸대 ㅋㅋㅋ"),
+]
+AUG_CATEGORIES = sorted({c for c, _ in AUG_TEMPLATES + AUG_TEMPLATES_2 + AUG_TEMPLATES_3})
 
 # --------------------------------------------------------------------------- 보조
 _SLOT = re.compile(r"\{(\w+)\}(?:@([가-힣]+)/([가-힣]+))?")
@@ -626,8 +655,10 @@ def split_templates(templates=TEMPLATES, augment=False):
     @returns: [{"template_id", "category", "text", "split"}]
     """
     counters, out = {}, []
-    extra = (AUG_TEMPLATES if augment else []) + (
-        AUG_TEMPLATES_2 if augment and int(augment) >= 2 else []
+    extra = (
+        (AUG_TEMPLATES if augment else [])
+        + (AUG_TEMPLATES_2 if augment and int(augment) >= 2 else [])
+        + (AUG_TEMPLATES_3 if augment and int(augment) >= 3 else [])
     )
     for cat, text in list(templates) + extra:
         n = counters.get(cat, 0)
