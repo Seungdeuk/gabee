@@ -130,14 +130,22 @@ def test_saved_ok_news_is_returned_without_internal_fields(client, family, at):
     body = r.json()
     assert body["status"] == "ready" and body["ai_generated"] is True
     assert body["title"] == "이번 주 우리 가족"
-    assert body["items"] == [{"text": "치과 진료를 다녀왔어요", "source_ids": ["e1"]}]
+    assert body["items"] == [
+        {
+            "text": "치과 진료를 다녀왔어요",
+            "source_ids": ["e1"],
+            "headline": None,
+            "role": None,
+            "category": None,
+        }
+    ]
     assert body["sources"] == [
         {"id": "e1", "kind": "event", "ref": "ev123", "label": "치과", "date": "2026-11-03"}
     ]
     assert body["model"] == "test-model" and body["generated_at"]
     assert set(body) == {
         "status", "week_start", "week_end", "title", "items", "sources",
-        "generated_at", "ai_generated", "model",
+        "generated_at", "ai_generated", "model", "issue_year", "issue_no",
     }  # fmt: skip
     assert "prompt_version" not in r.text and "input_tokens" not in r.text
     assert "error_code" not in r.text

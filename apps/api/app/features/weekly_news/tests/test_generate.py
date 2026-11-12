@@ -169,7 +169,7 @@ def test_generates_validates_restores_names_and_saves(client, ready, fake):
     assert body["model"] == "fake-model"
     assert len(fake.calls) == 1
     saved = rows()
-    assert len(saved) == 1 and saved[0].status == "ok" and saved[0].prompt_version == "v1"
+    assert len(saved) == 1 and saved[0].status == "ok" and saved[0].prompt_version == "v2"
     assert saved[0].input_tokens == 120 and saved[0].output_tokens == 40
     assert [lg.status for lg in logs()] == ["ok"]
 
@@ -542,7 +542,7 @@ def test_first_name_only_title_survives_restoration_to_the_full_name(client, rea
     records.items = [SourceRecord("event", "ev-1", "지민 수학학원", date(2026, 11, 3), "15:00")]
     fake.data = {
         "title": "수학학원이 있던 주",
-        "items": [{"text": "[PERSON_1]이 15시에 수학학원에 갔어요", "source_ids": ["e1"]}],
+        "items": [{"text": "[PERSON_1]의 수학학원 일정이 15시에 있었어요", "source_ids": ["e1"]}],
     }
     body = post(client, a).json()
     assert body["status"] == "ready", body
@@ -556,7 +556,7 @@ def test_display_name_title_survives_restoration(client, ready, fake, records):
     records.items = [SourceRecord("event", "ev-1", "지니 축구", date(2026, 11, 3), "15:00")]
     fake.data = {
         "title": "축구가 있던 주",
-        "items": [{"text": "[PERSON_1]가 축구를 했어요", "source_ids": ["e1"]}],
+        "items": [{"text": "[PERSON_1]의 축구 일정이 있었어요", "source_ids": ["e1"]}],
     }
     assert post(client, a).json()["status"] == "ready"
     assert "지니" not in fake.calls[0]["prompt"]
@@ -838,7 +838,7 @@ def test_stored_sentence_uses_the_display_name_not_the_account_real_name(
     records.items = [SourceRecord("event", "ev-1", "지니 축구", date(2026, 11, 3), "15:00")]
     fake.data = {
         "title": "축구가 있던 주",
-        "items": [{"text": "[PERSON_1]가 15시에 축구를 했어요", "source_ids": ["e1"]}],
+        "items": [{"text": "[PERSON_1]의 축구 일정이 15시에 있었어요", "source_ids": ["e1"]}],
     }
     body = post(client, a).json()
     assert body["status"] == "ready", body
@@ -860,7 +860,7 @@ def test_news_made_for_a_member_keeps_a_child_name_after_the_child_leaves(
     records.items = [SourceRecord("event", "ev-1", "하늘 축구", date(2026, 11, 3), "15:00")]
     fake.data = {
         "title": "축구가 있던 주",
-        "items": [{"text": "[PERSON_1]가 15시에 축구를 했어요", "source_ids": ["e1"]}],
+        "items": [{"text": "[PERSON_1]의 축구 일정이 15시에 있었어요", "source_ids": ["e1"]}],
     }
     assert post(client, mom).json()["status"] == "ready"
     assert post(client, child).json()["status"] == "ready"

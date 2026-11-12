@@ -42,7 +42,7 @@ ZWSP·ZWJ·BOM·방향 제어 등과 한글 채움 문자)를 지우고 → NFKC
 import re
 import unicodedata
 from collections.abc import Collection, Iterable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date
 
 # 재료 수집 통로(shared)가 `SourceRecord` 의 주인이다(shared 가 기능 폴더를 import 하지 않으려고 옮겼다)
@@ -51,6 +51,123 @@ from app.shared.weekly_sources import SourceRecord
 MAX_TEXT = 120
 MAX_ITEMS = 6
 FALLBACK_TITLE = "이번 주 우리 가족"
+
+# 기사 모드(헤드라인·메인·단신). 기사는 재료 수보다 많을 수 없고 최대 MAX_ARTICLES 개다(메인 1 + 단신 최대 4).
+MAX_ARTICLES = 5
+MAX_HEADLINE = 30
+# 분류는 모델이 정하지 않는다: 인용한 근거의 종류가 하나면 그 종류의 이름, 섞이면 MIXED_CATEGORY.
+CATEGORY_BY_KIND = {"event": "일정", "todo": "할 일", "document": "문서"}
+MIXED_CATEGORY = "가족 소식"
+
+# 약속(event)은 실제로 있었는지 알 수 없다(참석·완료 정보가 없다). 약속을 인용한 문장·헤드라인이 활동이 이루어진 것처럼 쓰면 버린다.
+# 어간 부분 문자열로 거른다(활용형을 한꺼번에 잡으려고). 근거 제목에 있는 말은 제목을 그대로 인용한 것이므로 먼저 지우고 본다.
+# 한계: 목록 밖의 우회 표현은 막지 못한다(의미 일치는 평가에서 따로 본다). 완료한 할 일(todo)만 인용한 문장은 해당 없다.
+ACTIVITY_STEMS = (
+    "다녀",
+    "다녔",
+    "참석",
+    "참가",
+    "참여",
+    "방문",
+    "들렀",
+    "들러",
+    "갔",
+    "왔",
+    "마쳤",
+    "마친",
+    "마무리",
+    "끝났",
+    "끝난",
+    "끝냈",
+    "완료",
+    "진행됐",
+    "진행되었",
+    "진행된",
+    "열렸",
+    "열린",
+    "치렀",
+    "치른",
+    "만났",
+    "만난",
+    "함께했",
+    "함께 했",
+    "함께한",
+    "즐겼",
+    "즐긴",
+    "즐거",
+    "보냈",
+    "보낸",
+    "성공",
+    "관람",
+    "해냈",
+    "먹었",
+    "받았",
+    "가졌",
+    "가셨",
+    "오셨",
+    "보셨",
+    "봤",
+    "들었",
+    # 감정·분위기: 재료에 없는 정보다
+    "행복",
+    "기뻤",
+    "기쁜",
+    "뿌듯",
+    "신났",
+    "설렜",
+    "재미있",
+    "웃었",
+    "웃음",
+)
+# 약속을 인용한 문장(본문)은 일정을 일정으로 말하는 표현이 하나는 있어야 한다. 금지 어간 목록 밖의 우회 표현으로 활동을 말하는 문장을
+# 막으려는 허용 목록이다(헤드라인은 명사구라 해당 없다). 프롬프트가 쓰라고 안내한 표현과 같다.
+SCHEDULE_WORDS = ("있었", "잡혀", "예정", "등록", "공유")
+# 묶은 기사나 헤드라인이 사건 사이의 관계·원인·결과·순서를 말하는 표현. 재료에는 그런 정보가 없으므로 지어낸 것이다.
+RELATION_WORDS = (
+    "때문",
+    "덕분",
+    "덕에",
+    "덕택",
+    "그래서",
+    "따라서",
+    "그러자",
+    "그러면서",
+    "그러다",
+    "곧이어",
+    "결과",
+    "바람에",
+    "인해",
+    "탓",
+    "이후",
+    "직후",
+    "뒤에",
+    "한 뒤",
+    "끝나고",
+    "나서",
+    "위해",
+    "이어서",
+    "에 이어",
+    "이어진",
+    "이어졌",
+    "계기",
+    "힘입",
+    "영향",
+    "비롯",
+    "앞서",
+    "뒤이",
+    "잇따",
+    "연이어",
+    "바탕으로",
+    "말미암",
+)
+# 제목 바로 뒤에 붙은 서술어(활동을 했다는 주장). 제목 `방문` + `했어요`.
+_ATTACHED_PREDICATE = r"(?!\s?(?:[을를은는이가도]\s?)?(?:\S{1,4}\s)?(?:했|하였|한|해|함|하는|하고|하러|하며|됐|되었|된|돼))"
+# 활동이 아니라 일정을 설명하는 표현('참석 일정', '참석할 예정', '방문이 예정')은 활동 주장이 아니다.
+_SCHEDULE_PHRASE = re.compile(
+    r"(?:참석|참가|참여|방문|관람)(?:하는|할)?(?:[이가을를은는]\s?)? ?(?:일정|예정)"
+)
+# 가명 토큰(`[PERSON_1]`)은 복원하면 이름(2~4자)이 되므로 헤드라인 길이를 잴 때 짧게 센다(복원 뒤 검증에서 실제 길이로 다시 본다).
+_PSEUDONYM_TOKEN = re.compile(r"\[[A-Z]+_\d+\]")
 
 KINDS = ("event", "todo", "document")
 _ID_PREFIX = {"event": "e", "todo": "t", "document": "d"}
@@ -99,6 +216,10 @@ class Source:
 class ValidatedItem:
     text: str
     source_ids: tuple[str, ...]
+    # 기사 모드(`article_mode=True`)에서만 채운다. role·category 는 모델이 아니라 서버가 정한다.
+    headline: str | None = None
+    role: str | None = None  # "lead"(메인 기사 하나) | "brief"(단신)
+    category: str | None = None  # 인용 근거의 종류에서 정한 고정 이름
 
 
 @dataclass(frozen=True)
@@ -226,11 +347,66 @@ def _supported(text: str, cited: list[Source], names: list[str], counts: set[str
     return all(name not in folded_text or any(name in label for label in labels) for name in names)
 
 
+def _quoted_out(text: str, cited: list[Source]) -> str:
+    """근거 제목을 그대로 인용한 부분을 지운 비교용 사본(제목 속 낱말 때문에 멀쩡한 문장을 버리지 않으려고)."""
+    rest = _fold(text)
+    for label in sorted({_fold(s.label) for s in cited}, key=len, reverse=True):
+        if label:
+            # 제목 바로 뒤에 서술어('했어요'·'을 했어요')가 붙으면 제목 인용이 아니라 활동 주장이므로 지우지 않는다
+            rest = re.sub(re.escape(label) + _ATTACHED_PREDICATE, " ", rest)
+    return _SCHEDULE_PHRASE.sub(" ", rest)
+
+
+def _claims_activity(text: str, cited: list[Source]) -> bool:
+    """약속(event)을 인용했는데 참석·완료·방문 같은 활동이 이루어진 것처럼 쓴 문장인가."""
+    if not any(s.kind == "event" for s in cited):
+        return False
+    rest = _quoted_out(text, cited)
+    return any(stem in rest for stem in ACTIVITY_STEMS)
+
+
+def _states_relation(text: str, cited: list[Source]) -> bool:
+    rest = _quoted_out(text, cited)
+    return any(word in rest for word in RELATION_WORDS)
+
+
+def _groupable(cited: list[Source]) -> bool:
+    """한 기사로 묶을 수 있는 근거인가: 모두 같은 날짜이거나 모두 같은 종류."""
+    return len({s.date for s in cited}) == 1 or len({s.kind for s in cited}) == 1
+
+
+def _category_of(cited: list[Source]) -> str:
+    kinds = {s.kind for s in cited}
+    return CATEGORY_BY_KIND[next(iter(kinds))] if len(kinds) == 1 else MIXED_CATEGORY
+
+
+def _check_headline(
+    raw: object,
+    cited: list[Source],
+    names: list[str],
+    counts: set[str],
+    check_wording: bool = True,
+) -> str | None:
+    """헤드라인도 문장과 같은 근거로 검증한다. 하나라도 어기면 헤드라인만 버린다(기사는 남는다)."""
+    if not isinstance(raw, str) or len(raw) > MAX_RAW:
+        return None
+    headline = _clean(raw)
+    if not headline or len(_PSEUDONYM_TOKEN.sub("가나다", headline)) > MAX_HEADLINE:
+        return None
+    if not _supported(headline, cited, names, counts):
+        return None
+    if check_wording and (_claims_activity(headline, cited) or _states_relation(headline, cited)):
+        return None
+    return headline
+
+
 def _check_item(
     raw: object,
     by_id: dict[str, Source],
     names: list[str],
     counts: set[str],
+    article_mode: bool = False,
+    check_wording: bool = True,
 ) -> ValidatedItem | None:
     if not isinstance(raw, dict):
         return None
@@ -245,17 +421,67 @@ def _check_item(
     if not text or len(text) > MAX_TEXT:
         return None
     unique_ids = tuple(dict.fromkeys(ids))
-    if not _supported(text, [by_id[i] for i in unique_ids], names, counts):
+    cited = [by_id[i] for i in unique_ids]
+    if not _supported(text, cited, names, counts):
         return None
-    return ValidatedItem(text=text, source_ids=unique_ids)
+    if not article_mode:
+        return ValidatedItem(text=text, source_ids=unique_ids)
+    if len(cited) > 1 and not _groupable(cited):
+        return None
+    if check_wording:
+        if len(cited) > 1 and _states_relation(text, cited):
+            return None
+        if _claims_activity(text, cited):
+            return None
+        # 약속은 일정을 일정으로 말하는 표현이 있어야 한다(활동을 우회해 말하는 문장을 막는 허용 목록)
+        if any(s.kind == "event" for s in cited) and not any(w in text for w in SCHEDULE_WORDS):
+            return None
+    return ValidatedItem(
+        text=text,
+        source_ids=unique_ids,
+        headline=_check_headline(raw.get("headline"), cited, names, counts, check_wording),
+        category=_category_of(cited),
+    )
 
 
-def _check_title(raw: object, used: list[Source], names: list[str], counts: set[str]) -> str:
+def _arrange(
+    kept: list[ValidatedItem], by_id: dict[str, Source], limit: int
+) -> list[ValidatedItem]:
+    """메인 기사 하나를 정하고(근거가 많은 기사 → 같으면 가장 이른 날짜 → 같으면 후보 순서) 나머지는 이른 날짜 순 단신으로 둔다.
+
+    주관적 중요도나 감정은 보지 않는다. 기사는 `limit` 개까지만 남긴다(메인은 항상 남는다).
+    """
+
+    def earliest(item: ValidatedItem):
+        return min(by_id[i].date for i in item.source_ids)
+
+    order = list(enumerate(kept))
+    lead_pos, lead = min(order, key=lambda p: (-len(p[1].source_ids), earliest(p[1]), p[0]))
+    briefs = sorted((p for p in order if p[0] != lead_pos), key=lambda p: (earliest(p[1]), p[0]))
+    arranged = [replace(lead, role="lead")]
+    arranged += [replace(item, role="brief") for _, item in briefs]
+    return arranged[:limit]
+
+
+def _check_title(
+    raw: object,
+    used: list[Source],
+    names: list[str],
+    counts: set[str],
+    article_mode: bool = False,
+    check_wording: bool = True,
+) -> str:
     if not isinstance(raw, str) or len(raw) > MAX_RAW:
         return FALLBACK_TITLE
     title = _clean(raw)
     if not title or len(title) > MAX_TEXT or not _supported(title, used, names, counts):
         return FALLBACK_TITLE
+    if (
+        article_mode
+        and check_wording
+        and (_claims_activity(title, used) or _states_relation(title, used))
+    ):
+        return FALLBACK_TITLE  # 최상위 제목도 헤드라인과 같은 규칙을 지킨다
     return title
 
 
@@ -264,6 +490,8 @@ def validate(
     sources: list[Source],
     member_names: Collection[str],
     counts: Collection[int] | None = None,
+    article_mode: bool = False,
+    check_wording: bool = True,
 ) -> Validated | Failed:
     """LLM 후보 JSON 을 근거 목록에 맞춰 검증한다.
 
@@ -272,6 +500,9 @@ def validate(
         sources: `build_sources` 가 만든 근거 목록.
         member_names: 가족 구성원 이름(가명 처리 전 원래 이름이든 가명이든 문장에 나오는 형태와 같아야 한다).
         counts: 추가로 허용할 집계 숫자. 기본 허용은 재료 전체의 종류별 건수와 전체 건수다.
+        article_mode: 기사형(헤드라인·메인·단신) 규칙을 적용한다(묶기 제한·역할·분류·기사 수·중복 기사).
+        check_wording: 기사형에서 완료·관계·감정 표현(어간 목록)과 일정 표현(허용 목록)을 검사한다. 이름을 복원한 뒤의 재검증은 끈다 —
+            복원된 이름이 근거 제목의 이름과 달라 제목 인용을 알아보지 못하므로(표현 검사는 가명 상태에서 이미 했다).
 
     Returns:
         남은 문장이 있으면 `Validated`, 없으면 `Failed(reason)`. 예외로 알리지 않는다.
@@ -290,18 +521,30 @@ def validate(
 
     kept: list[ValidatedItem] = []
     seen_texts: set[str] = set()
+    seen_source_sets: set[frozenset[str]] = set()
     for raw in raw_items:
-        item = _check_item(raw, by_id, names, allowed_counts)
+        item = _check_item(raw, by_id, names, allowed_counts, article_mode, check_wording)
         if item is None or item.text in seen_texts:
             continue
+        # 같은 근거만 인용한 기사를 되풀이하면 다른 근거의 기사가 상한에 밀려나므로 먼저 나온 것만 둔다
+        if article_mode:
+            ids = frozenset(item.source_ids)
+            if ids in seen_source_sets:
+                continue
+            seen_source_sets.add(ids)
         seen_texts.add(item.text)
         kept.append(item)
         if len(kept) == MAX_ITEMS:
             break
     if not kept:
         return Failed(REASON_NO_VALID_ITEMS)
+    if article_mode:
+        # 기사 수는 재료 수보다 많을 수 없다(억지로 채우지 않는다)
+        kept = _arrange(kept, by_id, min(MAX_ARTICLES, len(sources)))
 
     cited_ids = {i for item in kept for i in item.source_ids}
     used = [s for s in sources if s.id in cited_ids]
-    title = _check_title(candidate.get("title"), used, names, allowed_counts)
+    title = _check_title(
+        candidate.get("title"), used, names, allowed_counts, article_mode, check_wording
+    )
     return Validated(title=title, items=tuple(kept), used_sources=tuple(used))

@@ -24597,6 +24597,43 @@
             },
             "type": "array",
             "title": "Source Ids"
+          },
+          "headline": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Headline"
+          },
+          "role": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "lead",
+                  "brief"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Role"
+          },
+          "category": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category"
           }
         },
         "type": "object",
@@ -24604,7 +24641,8 @@
           "text",
           "source_ids"
         ],
-        "title": "NewsItemOut"
+        "title": "NewsItemOut",
+        "description": "기사 하나. headline·role·category 는 기사형(v2) 뉴스에만 있고, 옛 저장본(v1)에서는 모두 null 이다.\n\nrole: lead(메인 기사, 하나) | brief(단신). category 는 인용한 근거의 종류에서 서버가 정한 고정 이름이다."
       },
       "NewsOut": {
         "properties": {
@@ -24682,13 +24720,27 @@
               }
             ],
             "title": "Model"
+          },
+          "issue_year": {
+            "type": "integer",
+            "title": "Issue Year",
+            "description": "신문 호수의 연도(ISO). 모든 상태에서 week_start 로 계산한다(저장하지 않는다).",
+            "readOnly": true
+          },
+          "issue_no": {
+            "type": "integer",
+            "title": "Issue No",
+            "description": "신문 호수(ISO 주 번호).",
+            "readOnly": true
           }
         },
         "type": "object",
         "required": [
           "status",
           "week_start",
-          "week_end"
+          "week_end",
+          "issue_year",
+          "issue_no"
         ],
         "title": "NewsOut",
         "description": "한 구성원의 한 주 뉴스. 저장본이 없으면 status 만 있고 나머지는 비어 있다(읽기는 아무것도 만들지 않는다)."
