@@ -18,7 +18,7 @@
 | 주소 | 4×14 | 56 | |
 | 비인명 | - | 40 | 이름 없는 문장. 하늘·바다·기쁨·초원 등 과마스킹 이력이 있는 일반어 포함 |
 
-생성 실행 시 `build_evalset.py`가 출력하는 통계 json(`sentences`, `by_category`, `excluded_names`, `sha256_12`)이 실제 숫자의 근거다.
+생성 실행 시 `build_evalset.py`가 출력하는 통계 json(`sentences`, `by_category`, `excluded_names`, `sha256_12`)이 실제 숫자의 근거다. 2026-11-12 실행 결과: 문장 488개(위 표와 정확히 일치), 제외한 이름 808개, 제외 후 쓸 수 있는 처음 보는 이름 1,435개, `evalset_v4.jsonl` sha256 앞 12자 `0a201c830865`.
 
 ## 겹치지 않게 한 방법
 

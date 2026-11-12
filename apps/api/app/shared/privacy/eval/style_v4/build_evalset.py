@@ -25,14 +25,16 @@ from exclusions import collect_excluded_names  # noqa: E402
 
 SURNAMES = list("김이박최정강조윤장임한오서신권황안송류전홍고문양손배백허유남심노하곽성차주우구민나진지")
 
-# 처음 보는 이름 후보(제외 집합에 들어 있으면 생성 때 자동으로 빠진다)
-GIVEN_CANDIDATES = (
-    "민규 지환 현성 동우 승환 도율 건후 시완 은호 재이 하온 태율 주혁 해성 윤성 정민 상우 재현 우혁 성준 대윤 지석 원준 찬영 영훈 준영 기현 병헌 "
-    "철민 동진 성호 한성 민혁 재호 진호 상민 종민 현석 도영 시형 경민 종훈 우성 태훈 용민 근호 호진 덕수 명철 서율 가윤 채윤 하연 다윤 서희 예나 "
-    "지현 수연 민지 은지 혜원 보라 유경 세린 주하 시연 나영 은하 소정 효진 미래 현아 지수 아영 연주 소라 승아 다경 초원 은빈 채연 보경 윤지 도연 "
-    "가현 시아 서영 예원 지은 혜인 소은 진아 미주 수현 영은 송이 지연 승희 준호 지성 동건 태영 민호 서원 유건 정원 하늘 도훈 승찬 재우 성우 현철 "
-    "다온 채아 서우 하음 유하 나린 소윤 아인 이레 지안 시하 은유 도아 주은 보윤 세아 연아 가인 효주 미소 수민 은솔 하빈 채민 연수 지율 수호 이현"
-).split()
+# 처음 보는 이름 후보. v3 는 고정된 ~140개 목록을 썼는데, 제외 집합에 v3 자체(483개 이름, 거의 이 목록 전부를 이미 썼다)까지
+# 더하면 그 목록 거의 전부가 막힌다(실측: 140개 중 3개만 생존). 그래서 흔한 한국어 이름 음절 조합(초성×종성)으로 훨씬 큰 후보
+# 풀(최대 30×30=900개)을 만들어, 제외 집합이 넓어져도 충분히 생존하게 한다.
+_SYL_A = list(
+    "민서지현도하유준시우주윤승태성재은소가예채다보나효세연아혜진건해정상대원대병철동한근호영용덕명송송은진동유장"
+)
+_SYL_B = list(
+    "준현우민서호윤원영진율온아은희주하연빈성훈규철식겸오결솔별찬경지영호율환영준헌호훈아지성은지온호율"
+)
+GIVEN_CANDIDATES = list(dict.fromkeys(a + b for a in _SYL_A for b in _SYL_B))
 
 TEMPLATES: dict[str, list[str]] = {
     "가족대화": [
@@ -223,7 +225,13 @@ def main() -> None:
     baseline_dirs = [Path(p) for p in a.baseline]
 
     excluded = collect_excluded_names(synth_path, baseline_dirs, [v3_path])
-    givens = [g for g in dict.fromkeys(GIVEN_CANDIDATES) if g not in excluded]
+    # 주어진 이름(given)이 제외 집합의 어떤 전체 이름(성+이름)의 끝부분으로도 나타나면 뺀다(build_evalset_v3.py와 같은 방식).
+    # 성은 공유 풀이라 재사용하지만, given이 어떤 성과 결합해서라도 이미 쓰였으면 "새 이름"이 아니다.
+    givens = [
+        g
+        for g in dict.fromkeys(GIVEN_CANDIDATES)
+        if not any(e == g or e.endswith(g) for e in excluded)
+    ]
     assert len(givens) >= 60, len(givens)
 
     template_texts = _synth_skeletons(synth_path)
