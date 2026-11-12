@@ -87,6 +87,17 @@ def score_rows(
     return {"categories": categories, "person_total": person_total}
 
 
+def ner_only_predict(text: str, known_names: tuple[str, ...]) -> list[Span]:
+    """규칙 없이 NER 만(로드맵 4단계: NER 단독과 규칙+NER 파이프라인을 구분해 측정).
+
+    ``known_names``(가족 이름 사전)는 규칙 쪼그만 쓰므로 여기서는 무시한다. ``ner.merge_ner``에 빈 규칙
+    구간을 넘겨, 서비스가 실제로 쓰는 것과 같은 정리(점수 범위 제한·가족호칭 제거·2글자 미만 PERSON 버림)는
+    그대로 거친다 — "규칙이 하나도 못 찾았을 때 NER만 있으면 어떻게 되는지"와 같다.
+    """
+    raw = ner.spans_for(text) or []
+    return ner.merge_ner(text, [], raw)
+
+
 def _make_texts(pool: list[str], length: int, n: int) -> list[str]:
     """pool 문장을 이어 붙여 정확히 length 자인 문장 n 개를 만든다(bench_onnx.py 와 같은 방식)."""
     out = []
@@ -124,6 +135,11 @@ def main(argv: list[str] | None = None) -> None:
     ap.add_argument("evalset")
     ap.add_argument("model_dir_or_off")
     ap.add_argument("out")
+    ap.add_argument(
+        "--ner-only",
+        action="store_true",
+        help="규칙 없이 NER 단독으로만 측정한다(기본은 서비스 경로인 규칙+NER)",
+    )
     a = ap.parse_args(argv)
 
     # os.environ 이 아니라 settings 객체를 직접 바꾼다: settings 는 앱이 처음 뜰 때(예: pytest 의 conftest) 한 번
@@ -140,9 +156,13 @@ def main(argv: list[str] | None = None) -> None:
     status = ner.ner_status()
     if a.model_dir_or_off != "off" and not status["active"]:
         raise SystemExit(f"NER 엔진을 쓸 수 없다(모델 폴더 확인 필요): {a.model_dir_or_off}")
+    if a.ner_only and a.model_dir_or_off == "off":
+        raise SystemExit("--ner-only 는 off(규칙만)와 같이 쓸 수 없다")
 
     if a.model_dir_or_off == "off":
         predict2 = lambda text, known: detect(text, known)  # noqa: E731
+    elif a.ner_only:
+        predict2 = ner_only_predict
     else:
         predict2 = lambda text, known: ner.detect_with_ner(text, known)  # noqa: E731
     predict1 = lambda text: predict2(text, ())  # noqa: E731
@@ -158,6 +178,7 @@ def main(argv: list[str] | None = None) -> None:
         if a.model_dir_or_off == "off"
         else Path(a.model_dir_or_off).name,
         "ner_status": status,
+        "ner_only": a.ner_only,
         **score_rows(rows, predict2),
         "latency_100chars": measure_latency(rows, predict1),
     }

@@ -5,7 +5,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 
-from eval_style_set import main, score_rows  # noqa: E402
+from eval_style_set import main, ner_only_predict, score_rows  # noqa: E402
 
 from app.shared.config import settings  # noqa: E402
 from app.shared.privacy import ner  # noqa: E402
@@ -83,6 +83,54 @@ def test_eval_style_set_rejects_inactive_ner(monkeypatch, tmp_path):
         main([str(evalset), str(tmp_path / "missing-model-dir"), str(tmp_path / "out.json")])
     # required 모드로 바뀐 뒤에 막힌 것이어야 한다(꺼짐 상태로 그냥 지나간 게 아니라).
     assert settings.privacy_ner_mode == "required"
+
+
+def test_ner_only_predict_ignores_rule_only_detections(monkeypatch):
+    """로드맵 4단계: NER 단독은 규칙(known_names 사전)만으로 잡히는 것을 보면 안 된다."""
+    monkeypatch.setattr(ner, "spans_for", lambda text: [])  # NER 은 아무것도 못 찾음
+    spans = ner_only_predict("김철수가 왔어", ("김철수",))
+    assert spans == []
+
+
+def test_ner_only_predict_runs_ner_spans_through_merge_ner(monkeypatch):
+    """NER 이 실제로 찾은 것은(규칙 없이도) 그대로 나온다 — detect_with_ner 와 같은 정리(merge_ner)를 거친다."""
+    monkeypatch.setattr(ner, "spans_for", lambda text: [NerSpan("PERSON", 0, 3, 0.9)])
+    spans = ner_only_predict("김철수가 왔어", ())
+    assert len(spans) == 1
+    assert spans[0].kind is Kind.PERSON
+    assert (spans[0].start, spans[0].end) == (0, 3)
+
+
+class _EmptyStubEngine:
+    """NER 이 항상 아무것도 못 찾는 가짜 엔진(규칙만으로 잡히는지 보는 대조용)."""
+
+    fingerprint = "emptyengine0"
+    max_chars = 10000
+
+    def analyze_many(self, texts, deadline=None):
+        return [NerResult(()) for _ in texts]
+
+
+def test_eval_style_set_ner_only_flag_bypasses_rule_matches(monkeypatch, tmp_path):
+    """--ner-only 면 known_names 사전(규칙)만으로 잡히는 이름은 "none"(누출)으로 남아야 한다."""
+    monkeypatch.setattr(settings, "privacy_ner_mode", "off")
+    monkeypatch.setattr(settings, "privacy_ner_model_dir", settings.privacy_ner_model_dir)
+    monkeypatch.setattr(settings, "privacy_ner_threads", settings.privacy_ner_threads)
+    monkeypatch.setattr(ner, "_load_engine", lambda cfg: _EmptyStubEngine())
+    evalset = tmp_path / "e.jsonl"
+    evalset.write_text(
+        '{"text": "김철수가 왔어", "spans": [{"kind": "PERSON", "start": 0, "end": 3}], '
+        '"known_names": ["김철수"], "category": "가족대화"}\n',
+        encoding="utf-8",
+    )
+    out_path = tmp_path / "out.json"
+    main([str(evalset), str(tmp_path / "fake-model-dir"), str(out_path), "--ner-only"])
+
+    import json
+
+    out = json.loads(out_path.read_text(encoding="utf-8"))
+    assert out["categories"]["가족대화"]["full"] == 0
+    assert out["categories"]["가족대화"]["none"] == 1
 
 
 def test_eval_style_set_records_fingerprint_for_active_model(monkeypatch, tmp_path):
