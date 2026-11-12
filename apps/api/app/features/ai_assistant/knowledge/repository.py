@@ -134,11 +134,15 @@ def list_items(
     limit: int = 50,
     created_from: datetime | None = None,
     created_to: datetime | None = None,
+    created_by: list[str] | None = None,
 ) -> list[KnowledgeItem]:
-    """created_from 이상, created_to 미만(둘 다 UTC aware datetime)인 기록만 거른다. 안 주면 거르지 않는다."""
+    """created_from 이상, created_to 미만(둘 다 UTC aware datetime)인 기록만 거른다. 안 주면 거르지 않는다.
+    created_by 를 주면 그 사용자들이 올린 기록만 본다(빈 목록이면 결과 없음)."""
     q = select(KnowledgeItem).where(KnowledgeItem.group_id == group_id)
     if kind_label:
         q = q.where(KnowledgeItem.kind_label == kind_label)
+    if created_by is not None:
+        q = q.where(KnowledgeItem.created_by.in_(created_by))
     if created_from is not None:
         q = q.where(KnowledgeItem.created_at >= created_from)
     if created_to is not None:
@@ -173,6 +177,9 @@ def search_chunks(
     include_sensitive: bool,
     limit: int = 60,
     family_user_ids: list[str] | None = None,
+    created_from: datetime | None = None,
+    created_to: datetime | None = None,
+    created_by: list[str] | None = None,
 ) -> list[tuple[KnowledgeChunk, KnowledgeItem, float]]:
     """질문 벡터와 가까운 조각을 점수(코사인 유사도, 클수록 가까움) 순으로 돌려준다.
 
@@ -197,6 +204,12 @@ def search_chunks(
         q = q.where(KnowledgeItem.sensitivity != "sensitive")
     if family_user_ids is not None:
         q = q.where(family_filter(family_user_ids))
+    if created_from is not None:
+        q = q.where(KnowledgeItem.created_at >= created_from)  # 올린 날(UTC 경계, 시작 이상)
+    if created_to is not None:
+        q = q.where(KnowledgeItem.created_at < created_to)  # (끝 미만)
+    if created_by is not None:
+        q = q.where(KnowledgeItem.created_by.in_(created_by))  # 올린 사람
 
     if db.get_bind().dialect.name == "postgresql":
         literal_vec = "[" + ",".join(f"{x:.6f}" for x in query_vec) + "]"

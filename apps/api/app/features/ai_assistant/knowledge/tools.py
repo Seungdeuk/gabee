@@ -3,9 +3,11 @@
 `TOOL_SPECS` 는 LLM 에 함수 목록으로 넘기는 정의(이름·설명·입력 모양)이고, 각 함수는 LLM 이 그대로 읽을 수
 있는 dict 를 돌려준다. 근거 글에는 출처 경로와 쪽 번호를 붙이고, 읽지 못한 부분이 있으면 알려 준다."""
 
-from datetime import date
+from datetime import UTC, date, datetime, timedelta, timezone
 
 from sqlalchemy.orm import Session
+
+from app.shared.config import settings
 
 from .. import family_names, reminders
 from . import service
@@ -22,7 +24,8 @@ TOOL_SPECS = [
         "name": "search_knowledge",
         "description": "가족이 올려 둔 문서·사진 기록(고지서, 영수증, 병원 내역, 증명서 등)에서 질문과 관련된 기록을 찾는다. "
         "올려 둔 문서의 내용이 필요할 때만 부른다. 가계 장부 지출, 돌봄 기록, 일정, 채팅 대화는 여기에 없다. "
-        "특정 가족의 기록만 보려면 member 에 그 가족의 이름이나 별칭을 넣는다. 결과의 family 는 그 기록에 나오는 가족이다.",
+        "특정 가족의 기록만 보려면 member 에 그 가족의 이름이나 별칭을 넣는다. 결과의 family 는 그 기록에 나오는 가족이고, "
+        "uploaded_on·uploaded_by 는 올린 날과 올린 사람이다.",
         "input_schema": {
             "type": "object",
             "properties": {
@@ -34,6 +37,18 @@ TOOL_SPECS = [
                 "member": {
                     "type": "string",
                     "description": "이 가족이 등장하는 기록만(가족 구성원의 이름이나 별칭, 예: 민훈)",
+                },
+                "uploaded_from": {
+                    "type": "string",
+                    "description": "올린 날 시작(YYYY-MM-DD, 한국 날짜, 그날 포함). 문서 안 날짜(date_from)와 다르다: '지난달에 올린'은 이쪽",
+                },
+                "uploaded_to": {
+                    "type": "string",
+                    "description": "올린 날 끝(YYYY-MM-DD, 그날 포함)",
+                },
+                "uploaded_by": {
+                    "type": "string",
+                    "description": "이 가족이 올린 기록만(가족 구성원의 이름이나 별칭). 기록에 등장하는 사람(member)과 다르다: '엄마가 올린'은 이쪽",
                 },
             },
             "required": ["query"],
@@ -50,12 +65,24 @@ TOOL_SPECS = [
     },
     {
         "name": "list_items",
-        "description": "저장된 기록 목록을 최근 순으로 본다. 분류 이름으로 좁힐 수 있다.",
+        "description": "저장된 기록 목록을 최근 순으로 본다. 분류 이름, 올린 날, 올린 사람으로 좁힐 수 있다. 결과의 uploaded_on·uploaded_by 는 올린 날과 올린 사람이다.",
         "input_schema": {
             "type": "object",
             "properties": {
                 "kind_label": {"type": "string"},
                 "limit": {"type": "integer", "minimum": 1, "maximum": 50, "default": 20},
+                "uploaded_from": {
+                    "type": "string",
+                    "description": "올린 날 시작(YYYY-MM-DD, 그날 포함)",
+                },
+                "uploaded_to": {
+                    "type": "string",
+                    "description": "올린 날 끝(YYYY-MM-DD, 그날 포함)",
+                },
+                "uploaded_by": {
+                    "type": "string",
+                    "description": "이 가족이 올린 기록만(이름이나 별칭)",
+                },
             },
         },
     },
@@ -192,6 +219,76 @@ def _day(value: str | None) -> date | None:
     return date.fromisoformat(value) if value else None
 
 
+def _uploaded_filter(
+    members: list,
+    uploaded_from: str | None,
+    uploaded_to: str | None,
+    uploaded_by: str | None,
+) -> tuple[datetime | None, datetime | None, list[str] | None, str | None, str | None]:
+    """올린 날(한국 날짜, 양끝 포함)과 올린 사람 조건을 DB 조건으로 바꾼다.
+
+    (시작 이상 UTC, 끝 미만 UTC, 올린 사람 user_id 들, 막힌 이유, 덧붙일 안내) 를 돌려준다. 막힌 이유가 있으면 호출한 쪽이
+    빈 결과와 함께 그 이유를 알린다(이름을 모르거나 날짜가 잘못돼도 필터를 조용히 무시하지 않는다)."""
+    try:
+        start, end = service.created_bounds(
+            _day(uploaded_from), _day(uploaded_to), settings.ai_day_utc_offset_hours
+        )
+    except ValueError as exc:
+        return (
+            None,
+            None,
+            None,
+            f"올린 날 범위가 올바르지 않아요: {exc} YYYY-MM-DD 로 다시 넣어 주세요.",
+            None,
+        )
+    if uploaded_by is not None and not isinstance(uploaded_by, str):
+        return (
+            None,
+            None,
+            None,
+            "올린 사람은 가족 구성원의 이름이나 별칭 글자로 넣어 주세요.",
+            None,
+        )
+    if not (uploaded_by and uploaded_by.strip()):
+        return start, end, None, None, None
+    ids = family_names.match_member(members, uploaded_by)
+    if not ids:
+        near = family_names.suggest_members(members, uploaded_by)
+        hint = (
+            f" 비슷한 이름의 가족: {', '.join(near)}. 이 이름이 맞는지 사용자 말과 비교해 다시 찾아보세요."
+            if near
+            else " 가족 구성원의 이름이나 별칭으로 다시 찾아보세요."
+        )
+        return (
+            None,
+            None,
+            None,
+            f"'{uploaded_by.strip()}' 이름의 올린 사람(가족 구성원)을 찾지 못했어요." + hint,
+            None,
+        )
+    more = (
+        f"'{uploaded_by.strip()}' 와 이름이 같은 가족이 여러 명이라 모두 합쳐 찾았어요. 결과의 uploaded_by 로 구분하세요."
+        if len(ids) > 1
+        else None
+    )
+    return start, end, ids, None, more
+
+
+def _upload_info(item, names: dict[str, str]) -> dict:
+    """올린 날(한국 날짜)·올린 사람(현재 표시 이름, 나간 사람이면 None)·원본 채팅 사진 id(없으면 None)."""
+    created = item.created_at
+    if created is not None and created.tzinfo is None:
+        created = created.replace(tzinfo=UTC)  # SQLite 는 시간대를 잃는다(UTC 로 저장됨)
+    # 시간대를 명시해 바꾼다(PostgreSQL 은 세션 시간대 기준의 값을 줄 수 있어 UTC 라고 가정하면 하루가 밀린다)
+    day_zone = timezone(timedelta(hours=settings.ai_day_utc_offset_hours))
+    uploaded_on = created.astimezone(day_zone).date().isoformat() if created else None
+    return {
+        "uploaded_on": uploaded_on,
+        "uploaded_by": names.get(item.created_by),
+        "source_attachment_id": item.source_attachment_id,
+    }
+
+
 def search_knowledge(
     db: Session,
     group_id: str,
@@ -202,17 +299,28 @@ def search_knowledge(
     date_to: str | None = None,
     include_sensitive: bool = True,
     member: str | None = None,
+    uploaded_from: str | None = None,
+    uploaded_to: str | None = None,
+    uploaded_by: str | None = None,
 ) -> dict:
     """member 를 주면 그 가족이 등장한 기록만 찾는다. 이름을 모르면 빈 결과와 안내를 돌려준다(필터를 조용히 무시하지 않는다).
+    uploaded_from·uploaded_to(올린 날, 한국 날짜 양끝 포함)·uploaded_by(올린 사람)는 문서 안 날짜·등장 가족과 별개의 조건이다.
     글 속 `[가족:<id>]` 는 이 그룹의 현재 이름으로 되돌려서 준다."""
     members = family_names.load_members(db, group_id)
     names = family_names.shown_names(members)
     wanted: list[str] | None = None
+    up_start, up_end, uploaders, blocked, up_note = _uploaded_filter(
+        members, uploaded_from, uploaded_to, uploaded_by
+    )
+    if blocked:
+        return {"results": [], "note": blocked}
     notes = [
         "has_unread_parts 가 true 이면 원본에서 읽지 못한 부분이 있으니 값을 단정하지 말고 확인을 권하세요.",
         "결과에 답이 없으면 일반 지식, 외부 기관·사이트 안내, 추정을 덧붙이지 말고, 비슷한 다른 값(다른 달·다른 사람·다른 상품·다른 기록의 값)도 대신 적지 말고 찾지 못했다고만 말하세요. 답은 결과에 나온 내용 범위로 짧게 쓰세요.",
         "질문과 관련된 기록이 있는데 조각에 답이 안 보이면 찾지 못했다고 하기 전에 get_item 으로 그 기록을 읽어 보세요. more 는 같은 기록의 다른 부분 조각입니다.",
     ]
+    if up_note:
+        notes.append(up_note)
     if member and member.strip():
         wanted = family_names.match_member(members, member)
         if not wanted:
@@ -241,6 +349,9 @@ def search_knowledge(
         include_sensitive=include_sensitive,
         family_user_ids=wanted,
         per_item=1 + EXTRA_CHUNKS_PER_ITEM,
+        created_from=up_start,
+        created_to=up_end,
+        created_by=uploaders,
     )
     hits = _one_per_file(hits)
     left = EXTRA_CHARS
@@ -258,6 +369,7 @@ def search_knowledge(
             "score": round(h.score, 4),
             "has_unread_parts": h.item.has_unread_parts,
             "sensitive": h.item.sensitivity == "sensitive",
+            **_upload_info(h.item, names),
         }
         more = []
         if rank < EXTRA_ITEMS:
@@ -322,12 +434,24 @@ def list_items(
     kind_label: str | None = None,
     limit: int = 20,
     include_sensitive: bool = True,
+    uploaded_from: str | None = None,
+    uploaded_to: str | None = None,
+    uploaded_by: str | None = None,
 ) -> dict:
-    items = service.list_items(db, group_id, kind_label, min(max(limit, 1), 50))
+    """올린 날(한국 날짜 양끝 포함)·올린 사람으로 좁힐 수 있다. 이름을 모르거나 날짜가 틀리면 빈 목록과 이유를 돌려준다."""
+    members = family_names.load_members(db, group_id)
+    names = family_names.shown_names(members)
+    up_start, up_end, uploaders, blocked, up_note = _uploaded_filter(
+        members, uploaded_from, uploaded_to, uploaded_by
+    )
+    if blocked:
+        return {"items": [], "note": blocked}
+    items = service.list_items(
+        db, group_id, kind_label, min(max(limit, 1), 50), up_start, up_end, uploaders
+    )
     if not include_sensitive:
         items = [i for i in items if i.sensitivity != "sensitive"]
-    names = family_names.shown_names(family_names.load_members(db, group_id))
-    return {
+    out: dict = {
         "items": [
             {
                 "item_id": i.id,
@@ -335,7 +459,11 @@ def list_items(
                 "title": family_names.restore(i.title, names),
                 "family": family_names.family_of(i.family_user_ids, names),
                 "date": i.occurred_on.isoformat() if i.occurred_on else None,
+                **_upload_info(i, names),
             }
             for i in items
         ]
     }
+    if up_note:
+        out["note"] = up_note
+    return out

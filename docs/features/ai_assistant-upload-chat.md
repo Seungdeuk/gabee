@@ -310,6 +310,7 @@ SELECT item_id, seq, embedding_model, vector_dims(embedding) AS dim, left(text, 
 - 업로드 글의 가족 이름(이름·표시 이름, 조사·성 뗀 이름자 포함)은 가리기 전에 `[가족:<user_id>]` 로 바뀌어 저장되고, `knowledge_items.family_user_ids` 에 등장한 가족이 남는다. 읽을 때(상세·목록·검색·파일 상태·기록 도구) 현재 표시 이름으로 되돌린다. 동명이인은 치환하지 않는다.
 - (RAG 개선 라운드 5) `search_knowledge` 결과는 기록 단위 그대로이되 위쪽 3개 기록에는 `more`(같은 기록의 다음으로 가까운 조각 최대 2개, `page` 포함, 추가 글 합계 2000자 상한)를 싣는다. 출처·`ref`·`_renumber` 는 기록 단위라 그대로이고 출처 칩의 쪽은 가장 가까운 조각의 쪽이다. 라우터 `/knowledge/search`·`lookup` 은 `service.search` 기본값(기록당 1조각)이라 동작이 같다. `get_item` 은 앞 12000자(약 8000토큰)에서 자르고 `note` 로 알린다(최대 6만 자 문서가 입력을 키우는 것을 막음). 메인 프롬프트는 관련 기록이 있는데 조각에 답이 안 보이면 `get_item` 으로 읽어 본 뒤에 못 찾았다고 하도록 한다.
 - `search_knowledge` 에 `member`(이름·별칭) 필터, 도구 결과에 `family`(등장한 가족의 현재 이름) 추가. 메인 채팅(`rag_chat._run_tool`)의 허용 인자 목록에 `member` 를 넣어야 AI 가 쓸 수 있다(1팀 작업 파일).
+- **올린 날·올린 사람 필터(T23 P-05, 2026-11-11)**: `search_knowledge` 와 `list_items` 가 `uploaded_from`·`uploaded_to`(올린 날, 한국 날짜 양끝 포함, `created_at` 기준)와 `uploaded_by`(올린 사람의 이름·별칭, `created_by` 기준)를 받는다. 문서 안 날짜(`date_from/to`)·기록에 등장하는 가족(`member`)과 별개 조건이다("지난달에 엄마가 올린 가정통신문"). 올린 사람 이름을 모르거나 날짜가 틀리면 필터를 조용히 무시하지 않고 빈 결과와 안내(`note`)를 돌려준다. 결과 행에 `uploaded_on`(올린 날)·`uploaded_by`(올린 사람의 현재 표시 이름, 나간 사람이면 `null`)·`source_attachment_id`(채팅 사진에서 자동 등록된 기록의 원본 첨부 id, 아니면 `null`)가 추가됐다. 가족 그룹 격리·민감 기록 규칙(`include_sensitive`)은 그대로이고, 검색 순위·임베딩은 바꾸지 않았다. 메인 채팅 허용 인자(`rag_chat._run_tool`)에 세 인자를 추가했다. 후속(P-06·P-07): AI 0회 문서 목록 응답, 앱 문서 카드.
 - 기존 기록은 백필하지 않는다(`강**` 그대로).
 
 ## 문서 목록 날짜 조건

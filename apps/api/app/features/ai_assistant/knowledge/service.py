@@ -180,6 +180,9 @@ def search(
     family_user_ids: list[str] | None = None,
     per_item: int = 1,
     hybrid: bool | None = None,
+    created_from: datetime | None = None,
+    created_to: datetime | None = None,
+    created_by: list[str] | None = None,
 ) -> list[Hit]:
     """질문과 가장 가까운 기록을 돌려준다(기록마다 가장 가까운 조각 하나, per_item 을 키우면 `more` 에 조각을 더 담는다).
     family_user_ids 를 주면 그 가족 중 한 명이라도 등장한 기록만 본다(빈 목록이면 결과 없음).
@@ -201,6 +204,9 @@ def search(
         include_sensitive,
         limit=candidates,
         family_user_ids=family_user_ids,
+        created_from=created_from,
+        created_to=created_to,
+        created_by=created_by,
     )
     if mix and len(rows) > 1:
         order = hybrid_search.fuse_order(
@@ -331,8 +337,9 @@ def list_items(
     limit: int = 50,
     created_from: datetime | None = None,
     created_to: datetime | None = None,
+    created_by: list[str] | None = None,
 ) -> list[KnowledgeItem]:
-    return repo.list_items(db, group_id, kind_label, limit, created_from, created_to)
+    return repo.list_items(db, group_id, kind_label, limit, created_from, created_to, created_by)
 
 
 def reindex(
