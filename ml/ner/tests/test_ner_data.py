@@ -121,6 +121,45 @@ def test_augment_adds_categories_and_stays_leak_free(tmp_path):
     assert all(not r["augment"] for r in core)
 
 
+# 로드맵 2단계 오류 분석에서 AI-Hub 교체 모델이 특히 못 맞힌 "직함+이름" 기사체 문장(저장소 apps/api 쪽
+# evalset_v4 의 기사체 틀). 학습에 이 틀이 그대로 섞여 들어가면(=평가셋과 겹침) 오염이라, 글자 그대로 같은 틀을
+# 여기서 다시 만들지 않는다는 걸 명시적으로 검사한다.
+EVALSET_V4_기사체_틀 = {
+    "{N} 대표가 사업 계획을 공개했다",
+    "{N} 의원이 개정안을 제출했다",
+    '목격자 {N}(37)씨는 "놀랐다"고 전했다',
+    "{N} 감독이 인터뷰에서 소감을 밝혔다",
+    "검찰은 {N|를/를} 참고인으로 소환했다",
+    "{N} 연구원이 논문을 공개했다",
+    "{N} 선수가 역전 홈런을 쳤다",
+    "{N} 군수는 피해 지역을 점검했다",
+}
+
+
+def test_news_title_augment_adds_person_exposure_without_leak(tmp_path, guard):
+    """news_title 보강 틀(기사체 노출 늘리기, 2단계 오류 분석 대응)이 2단계 증강에 포함되고, PERSON 라벨이
+    실제로 나오며, evalset_v4 기사체 틀과 글자 그대로 겹치지 않는지 확인한다."""
+    news_templates = [t for c, t in synth.AUG_TEMPLATES_2 if c == "news_title"]
+    assert len(news_templates) >= 8
+    for t in news_templates:
+        assert t not in EVALSET_V4_기사체_틀
+
+    res = b.build_all(tmp_path, per_template=4, seed=5, use_klue=False, augment=2)
+    assert res["violations"] == {}, res["violations"]
+    cats = set(res["stats"]["synth_categories"])
+    assert "news_title" in cats
+
+    rows = nc.read_jsonl(tmp_path / "synth_train.jsonl") + nc.read_jsonl(tmp_path / "synth_val.jsonl")
+    news_rows = [r for r in rows if r["category"] == "news_title"]
+    assert news_rows
+    for r in news_rows:
+        person_spans = [s for s in r["spans"] if s["kind"] == "PERSON"]
+        assert person_spans, r
+        for s in person_spans:
+            assert r["text"][s["start"] : s["end"]].strip() == r["text"][s["start"] : s["end"]]
+            assert s["end"] > s["start"]
+
+
 def test_test_file_only_read_by_guard_and_no_test_rows_in_outputs(built):
     out, _, calls = built
     test_reads = [c for c in calls if c[0] == "test.jsonl"]

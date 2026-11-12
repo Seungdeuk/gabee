@@ -282,11 +282,26 @@ AUG_TEMPLATES_2 = [
     ("bank_neg2", "월급이 {OB2} 로 들어와"),
     ("bank_neg2", "{OB2} {AC} 계좌 확인해줘"),
 ]
+# 로드맵 2단계 오류 분석(apps/api NER_VALIDATION.md 11절): 기사체(직함이 붙은 이름, 나이 괄호+인용) 문장에서
+# 완전미탐·기관명 오분류가 많았다. 가족 대화체 학습 틀에는 이런 문장이 전혀 없어서 보강한다. evalset_v4(저장소
+# apps/api 쪽)의 기사체 틀과 글자 그대로 같은 문장은 넣지 않는다(학습·평가 오염 방지, 시험으로 확인).
+AUG_TEMPLATES_2 += [
+    ("news_title", "{P2}@이/가 기자회견을 열었다"),
+    ("news_title", "{P2} 사장이 입장을 밝혔다"),
+    ("news_title", "{P2} 시장이 현장을 찾았다"),
+    ("news_title", "{P2} 교수가 연구 결과를 공개했다"),
+    ("news_title", "참고인 {P2}@이/가 조사를 받았다"),
+    ("news_title", '증인 {P2}({NUM}세)씨는 "기억이 안 난다"고 말했다'),
+    ("news_title", "{P2} 선수가 결승에 올랐다"),
+    ("news_title", "{P2} 위원장이 회의를 주재했다"),
+    ("news_title", "{P2} 부위원장이 성명을 발표했다"),
+    ("news_title", "목격자 {P2}({NUM}대)씨가 상황을 설명했다"),
+]
 AUG_CATEGORIES = sorted({c for c, _ in AUG_TEMPLATES + AUG_TEMPLATES_2})
 
 # --------------------------------------------------------------------------- 보조
 _SLOT = re.compile(r"\{(\w+)\}(?:@([가-힣]+)/([가-힣]+))?")
-LABEL_OF = {"P": "PERSON", "G": "PERSON", "AL": "PERSON_ALIAS", "NK": "PERSON_ALIAS",
+LABEL_OF = {"P": "PERSON", "P2": "PERSON", "G": "PERSON", "AL": "PERSON_ALIAS", "NK": "PERSON_ALIAS",
             "ADF": "ADDRESS", "ADR": "ADDRESS", "ADA": "ADDRESS", "ADC": "ADDRESS", "ADD": "ADDRESS", "ADS": "ADDRESS",
             "LC": "LOCATION", "ST": "LOCATION", "SR": "LOCATION",
             "OH": "ORGANIZATION", "OS": "ORGANIZATION", "OC": "ORGANIZATION", "OP": "ORGANIZATION",
@@ -373,6 +388,20 @@ class Pools:
                 return v
         raise RuntimeError("name pool exhausted")
 
+    def full_name_g2(self, rng):
+        """성+이름(given2 전용, GIVEN1 분기 없음).
+
+        ``full_name`` 의 GIVEN1(한 글자 이름) 분기는 성 한 글자 + GIVEN1 한 글자가 우연히 GIVEN2 의 다른
+        이름과 완전히 같은 문자열이 될 수 있다(예: 성 "하" + GIVEN1 "준" = "하준", GIVEN2 에도 "하준" 이
+        있음). 이 조합이 train/val 다른 분할에서 뽑히면 "같은 PERSON 값이 train/val 에 걸침" 누출이 된다.
+        뽑는 문장이 많아지면(보강 틀 추가 등) 실제로 자주 걸려서, given1 을 안 쓰는 버전을 따로 둔다.
+        """
+        for _ in range(100):
+            v = rng.choice(self.surnames) + rng.choice(self.given2)
+            if self.guard is None or not self.guard.blocked_name(v):
+                return v
+        raise RuntimeError("name pool exhausted")
+
 
 def make_value(slot, pools, rng):
     """슬롯 이름에 맞는 합성 값을 만든다.
@@ -385,6 +414,8 @@ def make_value(slot, pools, rng):
     r = rng
     if slot == "P":
         return pools.full_name(r)
+    if slot == "P2":
+        return pools.full_name_g2(r)
     if slot == "G":
         return r.choice(pools.given2)
     if slot == "AL":
