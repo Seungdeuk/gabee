@@ -1,13 +1,15 @@
 import { Ionicons } from "@expo/vector-icons";
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
 
 import Button from "@/shared/components/Button";
 import { colors, font, radius, spacing } from "@/theme";
 
-import { itemRoute, newsCardView, sentenceSources } from "../../news/newsView";
+import { newsCardView } from "../../news/newsView";
+import { BriefList, LeadArticle, SingleArticle } from "./NewsArticles";
 
 /**
- * 가족 뉴스 카드: 그 주 공유 기록으로 AI 가 만든 뉴스. 상태(없음·만드는 중·실패 등)마다 같은 자리에 안내를 보인다.
+ * 가족 뉴스: 그 주 공유 기록으로 AI 가 만든 기사. 뉴스가 있으면 소식 수에 따라 짧은 카드 하나(1개)·메인 기사 + 단신(2~3개)·메인 기사 + 기사 목록(4개 이상)으로 펼치고,
+ * 없음·만드는 중·실패 같은 상태는 같은 자리에 안내 카드로 보인다(기사를 억지로 채우지 않는다).
  * @param {{
  *   phase: "loading" | "loaded" | "error",
  *   offset: number,
@@ -24,52 +26,39 @@ import { itemRoute, newsCardView, sentenceSources } from "../../news/newsView";
 export default function NewsCard({ phase, offset, news, error, creating, createError, onCreate, onReload, onOpenItem }) {
   const v = newsCardView({ phase, offset, news, error, creating, createError });
   const onAction = v.action === "create" ? onCreate : onReload;
+
+  if (v.kind === "ready") {
+    return (
+      <View style={styles.news}>
+        {v.layout === "single" ? <SingleArticle article={v.lead} sources={v.sources} onOpenItem={onOpenItem} /> : null}
+        {v.layout === "lead_brief" || v.layout === "lead_list" ? (
+          <>
+            <LeadArticle article={v.lead} sources={v.sources} onOpenItem={onOpenItem} />
+            <BriefList
+              briefs={v.briefs}
+              sources={v.sources}
+              mode={v.layout === "lead_list" ? "list" : "compact"}
+              onOpenItem={onOpenItem}
+            />
+          </>
+        ) : null}
+        {v.layout === "none" ? <Text style={styles.message}>이 주에는 발행할 소식이 없어요.</Text> : null}
+        {v.layout !== "none" ? <Text style={styles.note}>AI가 공유 기록으로 정리했어요. {v.note}</Text> : null}
+      </View>
+    );
+  }
+
   return (
     <View style={styles.card}>
       <View style={styles.head}>
         <Text style={styles.label} accessibilityRole="header">가족 뉴스</Text>
-        <Text style={styles.source}>AI가 공유 기록으로 정리했어요</Text>
+        <Text style={styles.source}>AI가 공유 기록으로 정리해요</Text>
       </View>
       {v.kind === "loading" ? (
         <View style={styles.center} accessibilityRole="progressbar" accessibilityLabel="뉴스를 불러오는 중">
           <ActivityIndicator color={colors.accent} />
         </View>
-      ) : null}
-      {v.kind === "ready" ? (
-        <>
-          <Text style={styles.title}>{v.title}</Text>
-          {v.items.map((item, i) => {
-            const route = itemRoute(item, v.sources);
-            const labels = sentenceSources(item, v.sources)
-              .map((s) => s.label)
-              .join(" · ");
-            const body = (
-              <View style={styles.item}>
-                <View style={styles.line}>
-                  <View style={styles.dot} />
-                  <Text style={styles.text}>{item.text}</Text>
-                  {route ? <Ionicons name="chevron-forward" size={16} color={colors.accent} /> : null}
-                </View>
-                {labels ? <Text style={styles.evidence}>근거: {labels}</Text> : null}
-              </View>
-            );
-            return route ? (
-              <Pressable
-                key={`${i}-${item.text}`}
-                onPress={() => onOpenItem(route)}
-                accessibilityRole="button"
-                accessibilityLabel={`${item.text}${labels ? `. 근거: ${labels}` : ""}. 일정에서 확인하기`}
-              >
-                {body}
-              </Pressable>
-            ) : (
-              <View key={`${i}-${item.text}`}>{body}</View>
-            );
-          })}
-          <Text style={styles.note}>{v.note}</Text>
-        </>
-      ) : null}
-      {v.kind !== "loading" && v.kind !== "ready" ? (
+      ) : (
         <>
           {v.title ? <Text style={styles.title}>{v.title}</Text> : null}
           <Text style={styles.message}>{v.message}</Text>
@@ -88,12 +77,13 @@ export default function NewsCard({ phase, offset, news, error, creating, createE
             </View>
           ) : null}
         </>
-      ) : null}
+      )}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
+  news: { gap: spacing.lg },
   card: {
     gap: spacing.md,
     padding: spacing.lg,
@@ -107,11 +97,6 @@ const styles = StyleSheet.create({
   source: { ...font.tab, color: colors.textMuted },
   center: { alignItems: "center", paddingVertical: spacing.lg },
   title: { ...font.cardTitle, color: colors.text },
-  item: { gap: spacing.xs, minHeight: 44, justifyContent: "center" },
-  line: { flexDirection: "row", alignItems: "flex-start", gap: spacing.sm },
-  dot: { width: 6, height: 6, marginTop: spacing.sm, borderRadius: radius.pill, backgroundColor: colors.accent },
-  text: { ...font.body, flex: 1, color: colors.text },
-  evidence: { ...font.tab, color: colors.textMuted, marginLeft: spacing.lg },
   note: { ...font.tab, color: colors.textMuted },
   message: { ...font.body, color: colors.textSub },
   notice: {
