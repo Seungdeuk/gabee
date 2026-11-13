@@ -5,6 +5,8 @@
 모든 데이터는 합성이다. 아래 수치는 이 합성 데이터에서의 값이며 실제 가족 대화에서 같은 성능을 보장하지 않는다.
 **모델 파일(`*.onnx`)·체크포인트·학습 산출물은 저장소에 올리지 않는다**(`.gitignore`, 크기 54MB~4GB, 라이선스 이유). 모델은 모델 카드의 SHA256 으로 식별한다.
 
+R1 시드7을 운영 서버에 실제로 적용할 때 쓰는 담당자용 체크리스트는 `docs/security/NER_R1_OPS_CHECKLIST.md`에 별도로 정리했다(39절까지의 분석을 반영한 실행용 요약).
+
 ## 1. 모델 비교 (val 분할, Baseline v2 val 180문장)
 
 후보: `monologg/koelectra-small-v3-discriminator`(1,406만 파라미터, 54MB) 와 `klue/roberta-small`(6,751만 파라미터, 258MB).
