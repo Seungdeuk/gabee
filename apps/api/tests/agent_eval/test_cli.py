@@ -9,9 +9,18 @@ from decimal import Decimal as D
 import pytest
 
 from app.shared.llm import transport
-from evals.agent_eval import cli, estimate, fake_model, runs_guard, store, switches
+from evals.agent_eval import (
+    adapter,
+    cli,
+    estimate,
+    fake_model,
+    preflight,
+    real_gate,
+    runs_guard,
+    store,
+)
 from evals.agent_eval.cost import Ledger
-from tests.agent_eval.runner_support import ask_billing_script, legacy, new_case
+from tests.agent_eval.runner_support import legacy, new_case
 
 LEGACY_52_ESTIMATE = "0.21840 USD"  # 52 x 1 x 4 호출, 호출당 8000/500 토큰, Haiku 5.5
 
@@ -23,9 +32,15 @@ def main(argv, tmp_path):
 
 
 @pytest.fixture(autouse=True)
-def real_enabled(monkeypatch):
-    """`--real` 은 기본으로 꺼져 있다(`switches.REAL_ENABLED`). 승인·예산 조건 시험은 전송 함수를 가짜로 바꾼 상태에서만 켠다."""
-    monkeypatch.setattr(switches, "REAL_ENABLED", True)
+def real_allowed(monkeypatch, tmp_path):
+    """`--real` 은 기본으로 막혀 있고 환경변수·`--approve-usd`·`--case` 가 모두 있어야 열린다. 승인·예산 조건 시험은 전송 함수를 가짜로 바꾼 상태에서만 연다.
+
+    환경변수를 켜 두고(`real_gate.ENV_NAME`), 기본 결과 폴더를 시험 임시 폴더로 바꾼다(실제 결과 폴더에는 쓰지 않는다). NER 필수 모드 점검은 이 PC 의 모델 폴더에
+    달려 있어서 여기서는 통과로 둔다(그 점검 자체는 `test_preflight.py` 가 별도로 시험한다)."""
+    monkeypatch.setenv(real_gate.ENV_NAME, "1")
+    monkeypatch.setattr(cli, "DEFAULT_RESULTS", tmp_path / "results")
+    monkeypatch.setattr(cli, "DEFAULT_FAKE_RESULTS", tmp_path / "results" / "_fake")
+    monkeypatch.setattr(preflight, "ner_probe", lambda: (True, "시험용 통과"))
 
 
 @pytest.fixture
@@ -95,6 +110,11 @@ def test_the_dry_run_estimate_matches_the_estimate_module_and_follows_the_option
         ["--real", "--approve-usd", "-3"],
         ["--real", "--approve-usd", "nan"],
         ["--real", "--approve-usd", "inf"],
+        ["--real", "--approve-usd", "1"],  # --case 없음: 전체 실행은 없다
+        ["--real", "--approve-usd", "1", "--case", "b-total", "--case", "b-total"],
+        ["--preflight"],
+        ["--preflight", "--real", "--approve-usd", "1", "--case", "b-total"],
+        ["--preflight", "--fake"],
     ],
 )
 def test_unapproved_or_unknown_combinations_are_refused_before_anything_runs(
@@ -105,18 +125,23 @@ def test_unapproved_or_unknown_combinations_are_refused_before_anything_runs(
 
 
 def test_real_is_refused_when_the_estimate_exceeds_the_approved_amount(tmp_path, untouchable):
-    code, text = main(["--real", "--approve-usd", "0.1"], tmp_path)  # 추정 0.2184 > 0.1
+    code, text = main(
+        ["--real", "--approve-usd", "0.001", "--case", "b-total"], tmp_path
+    )  # 추정 0.0042 > 0.001
     assert code == cli.OVER_BUDGET and untouchable == []
     assert code not in (0, 1, 2, cli.REFUSED)  # 인자 오류(2)나 다른 거부와 다른 값이다
-    assert "거부" in text and "0.1" in text and not (tmp_path / "results").exists()
+    assert "거부" in text and "0.001" in text and not (tmp_path / "results").exists()
 
 
 def test_real_is_refused_when_the_estimate_exceeds_the_global_budget_even_if_approved(
     tmp_path, untouchable
 ):
+    ids = [c.case.id for c in adapter.load_legacy_cases()[:10]]
+    # 실호출은 반복 3회까지라 이 크기의 추정은 --real 로 만들 수 없다(반복 상한은 test_real_hardening). 같은 추정 상한 검사는 dry-run 에서 본다
+    argv = ["--dry-run", "--repeat", "50"]
     code, text = main(
-        ["--real", "--approve-usd", "100", "--repeat", "20"], tmp_path
-    )  # 4.4달러 > 실행 상한 2달러
+        [*argv, *[a for i in ids for a in ("--case", i)]], tmp_path
+    )  # 2.1달러 > 실행 상한 2달러
     assert code == cli.OVER_BUDGET and "예산 초과" in text and untouchable == []
 
 
@@ -128,7 +153,7 @@ def test_real_without_an_api_key_is_refused_after_the_gate_and_the_value_is_neve
     monkeypatch.setattr(settings, "anthropic_api_key", "")
     monkeypatch.setattr(transport, "post_messages", lambda *a, **k: pytest.fail("호출하면 안 된다"))
     code, text = main(["--real", "--approve-usd", "1", "--case", "b-total"], tmp_path)
-    assert code == cli.REFUSED and "ANTHROPIC_API_KEY" in text
+    assert code == cli.REFUSED and "ANTHROPIC_API_KEY" in text and "[실패]" in text
 
 
 def test_real_with_a_different_model_than_the_server_setting_is_refused(tmp_path, monkeypatch):
@@ -181,30 +206,34 @@ def test_an_approved_real_run_stops_before_the_call_that_could_exceed_the_approv
     monkeypatch.setattr(settings, "anthropic_api_key", "sk-test-secret")
     fake = fake_model.FakeModel(fake_model.script_for(legacy("b-total")[0]))
     plan = cli.Plan("real", ("legacy",), D("0.0003"), "stop-1", 1, ("b-total",))
+    from evals.agent_eval import runner
+
+    digest = runner.case_fingerprint(legacy("b-total"))
+    record = real_gate._mint_preflight(
+        "stop-1", D("0.0003"), "legacy", frozenset({"b-total"}), D("0.001"), digest, 1
+    )
     lines: list[str] = []
     with fake_model.installed(fake):
-        code = cli._execute(_real_args(tmp_path), plan, lines.append)
+        code = cli._execute(_real_args(tmp_path), plan, lines.append, record)
     assert code == cli.HALTED and fake.calls == 0
     assert "중단" in "\n".join(lines) or "승인 금액" in "\n".join(lines)
 
 
-def test_real_is_off_by_default_and_every_real_request_is_refused(tmp_path, monkeypatch):
-    monkeypatch.setattr(switches, "REAL_ENABLED", False)  # 기본값 그대로
-    assert switches.REAL_ENABLED is False
+def test_real_is_blocked_by_default_and_every_real_request_without_the_gate_is_refused(
+    tmp_path, monkeypatch
+):
+    monkeypatch.delenv(real_gate.ENV_NAME)  # 기본 상태: 환경변수 없음
     code, text = main(["--real", "--approve-usd", "1", "--case", "b-total"], tmp_path)
-    assert code == cli.REFUSED and "꺼져 있다" in text and not (tmp_path / "results").exists()
-    # make_plan 을 거치지 않고 실행기를 직접 불러도 막힌다
-    plan = cli.Plan("real", ("legacy",), D("1"), "r", 1, ())
+    assert (
+        code == cli.REFUSED and real_gate.ENV_NAME in text and not (tmp_path / "results").exists()
+    )
+    # 환경변수가 있어도 사전 점검 기록 없이 `_execute` 를 직접 불러서는 허가가 나오지 않는다(make_plan·사전 점검을 거치지 않은 호출도 막힌다)
+    monkeypatch.setenv(real_gate.ENV_NAME, "1")
+    plan = cli.Plan("real", ("legacy",), D("1"), "r", 1, ("b-total",))
     lines: list[str] = []
     assert cli._execute(_real_args(tmp_path), plan, lines.append) == cli.REFUSED
-    assert "꺼져 있다" in "\n".join(lines)
-
-
-def test_the_module_default_really_is_off():
-    """소스에 적힌 기본값이 꺼짐이다(시험의 autouse 픽스처가 켜 둔 값이 아니라 코드 자체를 본다)."""
-    import inspect
-
-    assert "\nREAL_ENABLED = False\n" in inspect.getsource(switches)
+    assert "사전 점검" in "\n".join(lines) and not (tmp_path / "results").exists()
+    assert real_gate.real_grant() is None
 
 
 @pytest.mark.parametrize(
@@ -358,29 +387,43 @@ def test_a_test_dry_run_only_counts_the_cases_and_does_not_touch_the_history_fil
     assert json.loads(runs.read_text("utf-8"))["runs"] == []
 
 
-def test_a_real_test_run_reserves_the_history_and_marks_the_cases_done(tmp_path, monkeypatch):
+def test_a_real_run_of_val_test_or_all_is_refused_even_with_every_other_condition(
+    tmp_path, monkeypatch
+):
+    """val·test·all 의 실제 호출은 이번 단계에서 금지다. 이력 파일은 예약하지 않는다."""
     from app.shared.config import settings
 
     monkeypatch.setattr(settings, "anthropic_api_key", "sk-test-secret")
     split_file = _cases_file(tmp_path / "t.json", new_case("t-1", split="test"))
+    val_file = _cases_file(tmp_path / "v.json", new_case("v-1", split="val"))
     runs = tmp_path / "test_runs.json"
     runs_guard.init_runs_file(runs)
-    fake = fake_model.FakeModel(ask_billing_script())
-
-    def argv(run_id):
-        return [
-            "--split", "test", "--real", "--approve-usd", "1", "--run-id", run_id,
-            "--purpose", "baseline", "--split-file", split_file, "--candidate", "abc1234",
-            "--runs-file", str(runs),
-        ]  # fmt: skip
-
-    with fake_model.installed(fake):
-        code, text = main(argv("t1"), tmp_path)
-        assert code == 0, text
-        assert runs_guard.status(runs, "t1") == {"t-1": "done"}
-        again, text2 = main(argv("t2"), tmp_path)
-    assert again == cli.ACCESS and "한 번뿐" in text2  # 같은 목적의 두 번째 평가는 예약되지 않는다
-    assert fake.calls == 3
+    monkeypatch.setattr(
+        runs_guard, "load_test_cases", lambda *a, **k: pytest.fail("예약하면 안 된다")
+    )
+    monkeypatch.setattr(transport, "post_messages", lambda *a, **k: pytest.fail("호출하면 안 된다"))
+    common = [
+        "--real",
+        "--approve-usd",
+        "1",
+        "--case",
+        "t-1",
+        "--purpose",
+        "baseline",
+        "--run-id",
+        "t1",
+    ]
+    for split in ("test", "val", "all"):
+        code, text = main(
+            [
+                *common, "--split", split, "--split-file", split_file, "--val-file", val_file,
+                "--candidate", "abc1234", "--runs-file", str(runs),
+            ],
+            tmp_path,
+        )  # fmt: skip
+        assert code == cli.ACCESS and "legacy·dev" in text, split
+    assert json.loads(runs.read_text("utf-8"))["runs"] == []
+    assert not (tmp_path / "results").exists()
 
 
 def test_a_dev_dry_run_counts_the_file_and_rejects_cases_of_another_split(tmp_path, untouchable):
@@ -401,9 +444,9 @@ def _stub_runner(monkeypatch, tmp_path, spends, halted_at=None):
 
     monkeypatch.setattr(settings, "anthropic_api_key", "sk-test-secret")
     monkeypatch.setattr(cli, "_load", lambda *a, **k: [])
-    seen: list[D] = []
+    seen: list[D | None] = []
 
-    def fake_run(source, options, ledger=None):
+    def fake_run(source, options, ledger=None, **_):
         i = len(seen)
         seen.append(options.approved_usd)
         ledger.total = D(spends[i])
@@ -423,17 +466,53 @@ def _real_args(tmp_path):
     return cli.build_parser().parse_args(["--results-dir", str(tmp_path / "results")])
 
 
-def test_a_multi_split_real_command_shares_one_approved_amount(tmp_path, monkeypatch):
+def test_a_multi_split_real_command_is_refused_before_anything_runs(tmp_path, monkeypatch):
     seen = _stub_runner(monkeypatch, tmp_path, ["0.6", "0.6", "0.1"])
-    plan = cli.Plan("real", ("legacy", "dev", "val"), D("1"), "r", 1, ())
+    plan = cli.Plan("real", ("legacy", "dev", "val"), D("1"), "r", 1, ("b-total",))
     lines: list[str] = []
     code = cli._execute(_real_args(tmp_path), plan, lines.append)
-    assert seen == [D("1"), D("0.4")]  # 둘째 분할은 남은 금액만 받는다
-    assert code == cli.HALTED and "다 써서" in "\n".join(lines)  # 셋째 분할은 시작하지 않았다
+    assert code == cli.REFUSED and seen == [] and "한 분할만" in "\n".join(lines)
 
 
 def test_a_budget_halt_in_one_split_stops_the_remaining_splits(tmp_path, monkeypatch):
     seen = _stub_runner(monkeypatch, tmp_path, ["0.1", "0.1", "0.1"], halted_at=0)
-    plan = cli.Plan("real", ("legacy", "dev", "val"), D("1"), "r", 1, ())
+    plan = cli.Plan("fake", ("legacy", "dev", "val"), None, "r", 1, ())
     code = cli._execute(_real_args(tmp_path), plan, lambda _: None)
     assert code == cli.HALTED and len(seen) == 1
+
+
+def test_a_real_run_exhausting_the_approved_amount_stops_before_the_next_call(
+    tmp_path, monkeypatch
+):
+    """실호출 경로(허가 발급 -> run_cases)에서 승인액을 소진하면 다음 호출을 시작하지 않고 종료 코드 7 로 끝난다(가짜 전송)."""
+    from app.shared.config import settings
+    from evals.agent_eval import runner
+
+    monkeypatch.setattr(settings, "anthropic_api_key", "sk-test-secret")
+    items = legacy("b-total", "m-billing", "b-nov-total", "b-list")
+    ids = tuple(i.case.id for i in items)
+    fake = fake_model.FakeModel(fake_model.script_for(items[0]))
+    plan = cli.Plan("real", ("legacy",), D("0.0015"), "halt-1", 1, ids)
+    record = real_gate._mint_preflight(
+        "halt-1",
+        D("0.0015"),
+        "legacy",
+        frozenset(ids),
+        D("0.01"),
+        runner.case_fingerprint(items),
+        1,
+    )
+    lines: list[str] = []
+    with fake_model.installed(fake):
+        code = cli._execute(_real_args(tmp_path), plan, lines.append, record)
+    text = "\n".join(lines)
+    assert code == cli.HALTED and "호출 전에 멈춘다" in text
+    assert 0 < fake.calls < 9  # 몇 번은 호출했고 나머지는 시작하지 않았다
+    spent = sum(
+        D(json.loads(line)["cost_usd"])
+        for line in (tmp_path / "results" / "halt-1" / "usage.jsonl")
+        .read_text("utf-8")
+        .splitlines()
+    )
+    assert 0 < spent <= D("0.0015")  # 승인액을 넘기 전에 멈췄다
+    assert real_gate.real_grant() is None

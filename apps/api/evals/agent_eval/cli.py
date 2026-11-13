@@ -2,7 +2,9 @@
 
     기본(--dry-run)  사례 수·반복·추정 토큰·추정 비용을 출력하고 끝낸다. 모델도 네트워크도 부르지 않는다.
     --fake           가짜 모델로 전체를 실행한다(시험·시연). 실제 호출 없음.
-    --real           실제 모델(현재 꺼져 있어 항상 거부한다. E7 에서 안전장치를 다시 점검한 뒤 켠다). 켜진 뒤에는 `--approve-usd <금액>` 이 함께 있어야만 시작하고, 추정 비용이 승인 금액보다 크면 거부한다.
+    --real           실제 모델. 기본은 항상 거부하고, 환경변수 `GABEE_EVAL_ALLOW_REAL_LLM=1` + `--real` + `--approve-usd <금액>` + 허용 분할(legacy·dev) +
+                     명시적 `--case` 목록(10건 이하)을 모두 갖추고 사전 점검(`--preflight` 와 같은 점검)을 통과해야 시작한다. 허가는 그 실행 한 번에만 유효하다(`real_gate`).
+    --preflight      실제 호출 없이 사전 점검만 한다(`--real` 과 같은 인자). 하나라도 실패하면 0 이 아닌 종료 코드.
 
 실행 중 누적 비용이 승인 금액과 `cost` 의 상한 중 작은 쪽에 닿으면 다음 호출 전에 중단한다. 실제 모델의 키는 서버 `settings` 에서만 읽고 출력·저장하지
 않는다. 이 파일은 `app` 을 불러오지 않는다(환경변수를 정한 뒤에 `runner` 를 불러와야 해서 `main` 안에서 늦게 불러온다).
@@ -15,7 +17,8 @@
 - `--case` 로 사례를 고르는 것은 legacy·dev 만 된다(val·test 는 분할 전체를 한 번에 예약한다).
 
 종료 코드: 0 성공 / 1 실패·관찰 누락·오류가 있다 / 2 인자 오류(argparse) / 3 조합·승인 거부 / 4 추정 비용이 승인 금액이나 예산 상한을 넘는다 /
-5 분할 접근 거부(조건 부족, 예약 실패) / 6 개인정보 엔진을 쓸 수 없다 / 7 예산 상한에 닿아 중단 / 8 허용하지 않은 DB·폴더.
+5 분할 접근 거부(조건 부족, 예약 실패, 실호출 불허 분할) / 6 개인정보 엔진을 쓸 수 없다 / 7 예산 상한에 닿아 중단 / 8 허용하지 않은 DB·폴더.
+사전 점검 실패는 3(보수적 최악 비용만 승인액·상한을 넘으면 4)이다.
 """
 
 import argparse
@@ -28,14 +31,15 @@ import subprocess
 import sys
 import tempfile
 from collections.abc import Callable, Sequence
+from contextlib import nullcontext
 from dataclasses import dataclass
 from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Any
 
-from . import adapter, estimate, exposure, runs_guard, store, switches
-from .cost import BASELINE_RUN_SCOPES, OTHER_RUN_SCOPES, BudgetExceeded, Ledger, Scope
+from . import adapter, estimate, exposure, preflight, real_gate, runs_guard, store
+from .cost import BASELINE_RUN_SCOPES, OTHER_RUN_SCOPES, PRICES, BudgetExceeded, Ledger, Scope
 from .schema import Case
 
 EVAL_DIR = Path(__file__).resolve().parent
@@ -57,7 +61,7 @@ class Refusal(Exception):  # noqa: N818  종료 코드가 붙은 거부
         self.code, self.message = code, message
 
 
-# 실제 모델 호출 스위치는 `switches.REAL_ENABLED`(기본 꺼짐)다. 추정 가정만으로는 승인 금액을 넘는 지출을 막았다고 말할 수 없다(런타임 상한이 마지막 방어선일 뿐).
+# 실제 모델 호출은 `real_gate` 의 허가로만 열린다(상수 스위치는 없다). 추정 가정만으로는 승인 금액을 넘는 지출을 막았다고 말할 수 없다(런타임 상한이 마지막 방어선일 뿐).
 # 추정 가정의 하한(기본값). 사용자가 낮춰 추정을 줄이지 못하게 올리기만 허용한다.
 DEFAULT_CALLS_PER_CASE, DEFAULT_TOKENS_IN, DEFAULT_TOKENS_OUT = 4, 8000, 500
 
@@ -68,7 +72,16 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p.add_argument("--dry-run", action="store_true", help="추정만 출력하고 끝낸다(기본)")
     p.add_argument("--fake", action="store_true", help="가짜 모델로 실행한다(실제 호출 없음)")
-    p.add_argument("--real", action="store_true", help="실제 모델로 실행한다(--approve-usd 필요)")
+    p.add_argument(
+        "--real",
+        action="store_true",
+        help=f"실제 모델로 실행한다(환경변수 {real_gate.ENV_NAME}=1, --approve-usd, --case 필요. 분할은 legacy·dev)",
+    )
+    p.add_argument(
+        "--preflight",
+        action="store_true",
+        help="실제 호출 없이 사전 점검만 한다(--real 과 같은 인자, 실패하면 종료 코드 0 아님)",
+    )
     p.add_argument("--approve-usd", help="사용자가 승인한 비용 상한(USD). --real 에만 쓴다")
     p.add_argument("--split", choices=SPLITS, default="legacy")
     p.add_argument("--case", action="append", help="사례 id(여러 번 가능). legacy·dev 만")
@@ -106,7 +119,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 @dataclass(frozen=True)
 class Plan:
-    mode: str  # dry-run | fake | real
+    mode: str  # dry-run | fake | real | preflight
     splits: tuple[str, ...]
     approve: Decimal | None
     run_id: str
@@ -124,9 +137,33 @@ def _approve(raw: str | None) -> Decimal:
     return value
 
 
+def _check_real_request(args: argparse.Namespace, mode: str) -> Decimal:
+    """`--real`·`--preflight` 의 사전 조건: 승인 금액, 허용 분할(legacy·dev), 명시적 `--case`, 환경변수. 어기면 `Refusal`. 통과하면 승인 금액."""
+    if args.approve_usd is None:
+        raise Refusal(REFUSED, f"--{mode} 는 --approve-usd <금액> 이 함께 있어야만 시작한다")
+    approve = _approve(args.approve_usd)
+    if args.split not in real_gate.ALLOWED_SPLITS:
+        raise Refusal(
+            ACCESS,
+            f"--{mode} 는 {'·'.join(real_gate.ALLOWED_SPLITS)} 분할만 쓴다(val·test·all 의 실제 호출은 이번 단계에서 금지, 받은 값: {args.split})",
+        )
+    try:
+        real_gate.check_request(
+            approve_usd=approve,
+            split=args.split,
+            case_ids=args.case or (),
+            repeat=max(args.repeat, 1),  # 1 미만은 아래 공통 검사가 USAGE 로 거부한다
+            require_env=mode
+            == "real",  # --preflight 는 실호출이 아니라 환경변수가 없어도 점검을 돈다(점검표가 알려 준다)
+        )
+    except real_gate.RealGateRefused as e:
+        raise Refusal(REFUSED, f"--{mode}: {e}") from None
+    return approve
+
+
 def make_plan(args: argparse.Namespace, now: datetime | None = None) -> Plan:
     """인자의 조합을 검사한다. 규칙을 어기면 `Refusal`. 모델·네트워크·DB·사례 파일을 건드리지 않는다."""
-    flags = [name for name in ("dry_run", "fake", "real") if getattr(args, name)]
+    flags = [name for name in ("dry_run", "fake", "real", "preflight") if getattr(args, name)]
     if len(flags) > 1:
         raise Refusal(
             REFUSED,
@@ -134,17 +171,10 @@ def make_plan(args: argparse.Namespace, now: datetime | None = None) -> Plan:
         )
     mode = flags[0].replace("_", "-") if flags else "dry-run"
     approve: Decimal | None = None
-    if mode == "real":
-        if not switches.REAL_ENABLED:
-            raise Refusal(
-                REFUSED,
-                "--real 은 아직 꺼져 있다(E7 에서 비용 추정·승인·안전장치를 다시 점검한 뒤 켠다). --fake 나 --dry-run 만 쓴다",
-            )
-        if args.approve_usd is None:
-            raise Refusal(REFUSED, "--real 은 --approve-usd <금액> 이 함께 있어야만 시작한다")
-        approve = _approve(args.approve_usd)
+    if mode in ("real", "preflight"):
+        approve = _check_real_request(args, mode)
     elif args.approve_usd is not None:
-        raise Refusal(REFUSED, "--approve-usd 는 --real 에서만 쓴다")
+        raise Refusal(REFUSED, "--approve-usd 는 --real(또는 --preflight)에서만 쓴다")
     if args.repeat < 1:
         raise Refusal(USAGE, "--repeat 는 1 이상이어야 한다")
     if (
@@ -217,6 +247,10 @@ def count_cases(args: argparse.Namespace, plan: Plan, split: str) -> int:
 
 def estimate_text(args: argparse.Namespace, plan: Plan, ledger: Ledger) -> tuple[Decimal, str]:
     """분할별 사례 수를 더해 추정한다. 상한을 넘으면 `BudgetExceeded`."""
+    if args.model not in PRICES:  # 사례를 읽을 수 없다는 말로 가려지지 않게 먼저 정확히 알린다
+        raise Refusal(
+            REFUSED, f"단가표에 없는 모델: {args.model}(단가를 모르는 모델은 추정하지 않는다)"
+        )
     counts = {s: count_cases(args, plan, s) for s in plan.splits}
     total_cases = sum(counts.values())
     if total_cases < 1:
@@ -331,26 +365,89 @@ def _load(args: argparse.Namespace, plan: Plan, split: str, run_id: str) -> Any:
     return _filter(_read_cases(getattr(args, f"{split}_file"), split), plan.case_filter)
 
 
-def _execute(args: argparse.Namespace, plan: Plan, out: Callable[[str], None]) -> int:
+def _known_items(args: argparse.Namespace, split: str) -> list:
+    """분할의 모든 사례(사례 id 존재 확인용). legacy·dev 만 쓴다."""
+    if split == "legacy":
+        return adapter.load_legacy_cases()
+    return _read_cases(getattr(args, f"{split}_file"), split)
+
+
+def _run_preflight(
+    args: argparse.Namespace, plan: Plan, results: Path
+) -> preflight.PreflightReport:
+    """사전 점검을 돌린다(앱을 불러온 뒤에만). 실제 호출·네트워크 전송은 없다."""
+    from . import dev_scripts
+
+    assert plan.approve is not None
+    split = plan.splits[0]
+    known = _known_items(args, split)
+    ids = {getattr(i, "case", i).id for i in known}
+    wanted = set(plan.case_filter)
+    inp = preflight.PreflightInput(
+        split=split,
+        run_id=plan.run_id,
+        approve=plan.approve,
+        model=args.model,
+        repeat=plan.repeat,
+        requested_ids=plan.case_filter,
+        items=[i for i in known if getattr(i, "case", i).id in wanted],
+        missing_ids=tuple(i for i in plan.case_filter if i not in ids),
+        calls_per_case=args.calls_per_case,
+        tokens_in=args.tokens_in,
+        tokens_out=args.tokens_out,
+        results_root=results,
+        default_results=DEFAULT_RESULTS,
+        ledger=_estimate_ledger(args, plan, results),
+        scripts=dev_scripts.scripts_for(split),
+        stage=args.stage,
+        require_env=plan.mode == "real",
+    )
+    return preflight.run_preflight(inp)
+
+
+def _preflight_code(report: preflight.PreflightReport) -> int:
+    """사전 점검 실패의 종료 코드: 보수적 최악 비용 점검만 실패했으면 OVER_BUDGET, 그 밖에는 REFUSED."""
+    return OVER_BUDGET if {c.no for c in report.failed()} == {8} else REFUSED
+
+
+def _execute(
+    args: argparse.Namespace,
+    plan: Plan,
+    out: Callable[[str], None],
+    record: real_gate.PreflightRecord | None = None,
+) -> int:
     from . import dev_scripts, runner  # app 을 불러오므로 환경 준비 뒤에 불러온다
     from .env import UnsafeEnvironment
 
     mode = "real" if plan.mode == "real" else "fake"
-    if mode == "real" and not switches.REAL_ENABLED:  # make_plan 을 거치지 않은 호출도 막는다
-        out("거부: --real 은 아직 꺼져 있다")
-        return REFUSED
     results = args.results_dir or (DEFAULT_RESULTS if mode == "real" else DEFAULT_FAKE_RESULTS)
-    if mode == "real":
-        from app.shared.config import settings
-
-        if settings.llm_model != args.model:
-            out(
-                f"거부: 모델은 서버 설정(ANTHROPIC_MODEL)으로 고른다. 설정은 {settings.llm_model}, 요청은 {args.model}"
+    grant: real_gate.RealGrant | None = None
+    if (
+        mode == "real"
+    ):  # make_plan·사전 점검을 거치지 않은 호출도 허가 조건을 다시 검사한다(키·모델은 사전 점검 항목 1·2)
+        if len(plan.splits) != 1:
+            out("거부: 실제 호출은 한 분할만 쓴다(val·test·all 의 실제 호출은 이번 단계에서 금지)")
+            return REFUSED
+        try:
+            grant = real_gate.issue_grant(
+                approve_usd=plan.approve,
+                split=plan.splits[0],
+                case_ids=plan.case_filter,
+                known_ids={getattr(i, "case", i).id for i in _known_items(args, plan.splits[0])},
+                run_id=plan.run_id,
+                preflight=record,
+                content_hash=runner.case_fingerprint(
+                    _load(args, plan, plan.splits[0], plan.run_id)
+                ),
+                repeat=plan.repeat,
+                results_root=results,
             )
+        except real_gate.RealGateRefused as e:
+            out(f"거부: {e}")
             return REFUSED
-        if not settings.anthropic_api_key:  # 값은 출력하지 않는다(있는지만 본다)
-            out("거부: 서버 설정에 ANTHROPIC_API_KEY 가 없어 실제 모델을 쓸 수 없다")
-            return REFUSED
+        except Refusal as e:
+            out(f"거부: {e.message}")
+            return e.code
     exit_code = OK
     commit, phash = _git_commit(), _prompt_hash()
     command_spent = Decimal(0)  # 이 명령에서 앞선 분할이 쓴 금액(승인 금액은 명령 전체에서 하나다)
@@ -390,7 +487,8 @@ def _execute(args: argparse.Namespace, plan: Plan, out: Callable[[str], None]) -
             # 가짜 모드의 개발셋은 사례별 정상 대본을 쓴다(없는 사례는 기존처럼 지원 안 함). legacy 는 기존 대본 그대로
             scripts = dev_scripts.scripts_for(split) if mode == "fake" else {}
             extra = {"scripts": scripts} if scripts else {}  # 대본이 없으면 호출 모양이 이전과 같다
-            report = runner.run_cases(source, options, ledger=ledger, **extra)
+            with real_gate.real_grant_scope(grant) if grant is not None else nullcontext():
+                report = runner.run_cases(source, options, ledger=ledger, **extra)
         except runner.RunnerRefused as e:
             out(f"거부: {e}")
             return ACCESS
@@ -419,8 +517,11 @@ def main(argv: Sequence[str] | None = None, out: Callable[[str], None] = print) 
     args = build_parser().parse_args(argv)
     try:
         plan = make_plan(args)
-        if plan.mode != "fake":  # 가짜 실행은 실제 지출이 없어 비용 추정·예산 상한을 보지 않는다
-            ledger = _estimate_ledger(args, plan, args.results_dir or DEFAULT_RESULTS)
+        results = args.results_dir or DEFAULT_RESULTS
+        if (
+            plan.mode in ("dry-run", "real")
+        ):  # 가짜 실행은 실제 지출이 없어 추정을 보지 않는다. --preflight 는 점검표(8번)에 추정이 있다
+            ledger = _estimate_ledger(args, plan, results)
             cost, text = estimate_text(args, plan, ledger)
             out(text)
         if plan.mode == "dry-run":
@@ -433,9 +534,6 @@ def main(argv: Sequence[str] | None = None, out: Callable[[str], None] = print) 
                     OVER_BUDGET,
                     f"추정 비용 {format(cost, 'f')} USD 가 승인 금액 {format(plan.approve, 'f')} USD 보다 크다",
                 )
-            out(
-                f"  승인 금액 {format(plan.approve, 'f')} USD 이하로 실행한다. 누적이 상한에 닿으면 다음 호출 전에 멈춘다."
-            )
     except Refusal as e:
         out(f"거부: {e.message}")
         return e.code
@@ -445,8 +543,32 @@ def main(argv: Sequence[str] | None = None, out: Callable[[str], None] = print) 
     except (OSError, ValueError) as e:
         out(f"거부: 사례를 읽을 수 없다({type(e).__name__})")
         return ACCESS
-    _, cleanup = prepare_environment(real=plan.mode == "real")
+    _, cleanup = prepare_environment(real=plan.mode in ("real", "preflight"))
     try:
-        return _execute(args, plan, out)
+        record = None
+        if plan.mode in (
+            "real",
+            "preflight",
+        ):  # 실제 호출은 같은 사전 점검을 통과해야 시작한다(실패하면 호출은 시작되지 않는다)
+            try:
+                report = _run_preflight(args, plan, results)
+            except Refusal as e:
+                out(f"거부: {e.message}")
+                return e.code
+            except (OSError, ValueError) as e:
+                out(f"거부: 사례를 읽을 수 없다({type(e).__name__})")
+                return ACCESS
+            for line in report.lines():
+                out(line)
+            if not report.ok:
+                return _preflight_code(report)
+            if plan.mode == "preflight":
+                return OK
+            record = report.record
+            assert plan.approve is not None
+            out(
+                f"  승인 금액 {format(plan.approve, 'f')} USD 이하로 실행한다. 누적이 상한에 닿으면 다음 호출 전에 멈춘다."
+            )
+        return _execute(args, plan, out, record)
     finally:
         cleanup()

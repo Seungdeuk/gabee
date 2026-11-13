@@ -47,10 +47,12 @@
 - 끝나면 임시 DB 의 모든 테이블을 지운다(같은 프로세스의 다른 시험에 지민 같은 행이 남지 않게).
 """
 
+import dataclasses
 import hashlib
 import json
+import subprocess
 from collections.abc import Iterable, Iterator, Mapping, Sequence
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from decimal import Decimal
@@ -65,10 +67,10 @@ from . import (
     fake_model,
     metrics,
     network,
+    real_gate,
     runs_guard,
     scoring,
     store,
-    switches,
     usage,
     write_guard,
 )
@@ -87,7 +89,7 @@ WriteGate = Literal["applied", "not_evaluated"]
 Item = LegacyCase | Case
 
 FAKE_KEY = "fake-key-not-a-secret"  # 가짜 모드에서 키 확인(`settings.anthropic_api_key`)만 통과시키는 자리 값. 어디에도 전송되지 않는다
-REAL_HOSTS = ("api.anthropic.com",)
+REAL_HOSTS = real_gate.REAL_HOSTS  # 허가가 활성일 때 열리는 외부 호스트(`real_gate` 가 정한다)
 LEGACY_FORBIDDEN_STRINGS = (
     "남의 가족",
     "77,777",
@@ -111,6 +113,7 @@ SCHEDULE_WRITE_VIOLATION = (
     "write:schedule."  # `security_violations` 의 일정 쓰기 시도 접두어(도구 이름만 적는다)
 )
 REPORT_FILE = "runner_report.json"
+NO_GRANT_MESSAGE = "실제 모델 호출은 기본으로 꺼져 있다: 활성 허가(real_gate)가 없다. CLI 에서 환경변수·--real·--approve-usd·--case 로만 연다"
 
 
 class RunnerRefused(RuntimeError):
@@ -438,15 +441,32 @@ def _session(options: RunOptions) -> Iterator[_Session]:
     from app.shared import ai_guard, db
     from app.shared.config import settings
 
+    _check_mode(options)
+    if not real_gate.is_fake(
+        options.mode
+    ):  # `_session` 을 직접 불러도 발급된 허가(소진 전) 없이는 열지 않는다
+        if real_gate.real_grant() is None:
+            raise RunnerRefused(NO_GRANT_MESSAGE)
+        try:
+            real_gate.require_active()
+        except real_gate.RealGateRefused as e:
+            raise RunnerRefused(str(e)) from None
     root = Path(settings.data_dir)
     env.check_process_boundary(root)
     saved_buckets = dict(ai_guard._BUCKETS)
     saved_key = settings.anthropic_api_key
-    hosts = REAL_HOSTS if options.mode == "real" else ()
+    fake = real_gate.is_fake(options.mode)
+    hosts = () if fake else REAL_HOSTS
     try:
-        with env.eval_settings(), network.block_network(hosts):
+        with (
+            env.eval_settings(),
+            network.block_network(hosts),
+            nullcontext()
+            if fake
+            else usage.retries_off(),  # 실호출은 전송 재시도를 끈다(논리 호출 1회 = 전송 1회)
+        ):
             _raise_buckets(ai_guard)
-            if options.mode == "fake":
+            if fake:
                 settings.anthropic_api_key = (
                     FAKE_KEY  # 키 확인만 통과. 전송 함수는 가짜로 바뀌어 있다
                 )
@@ -490,7 +510,7 @@ def unsupported_reason(item: Item, options: RunOptions, scripts: Mapping[str, An
     }
     if named & WRITE_TOOLS["schedule"]:
         return SCHEDULE_WRITE_REASON
-    if options.mode == "fake" and item.id not in scripts:
+    if real_gate.is_fake(options.mode) and item.id not in scripts:
         return "가짜 모드의 신규 사례는 사례별 대본(scripts)이 있어야 한다"
     return None
 
@@ -703,14 +723,16 @@ def _run_one(
     try:
         with frozen_clock():
             world = _seed(item, session)
-            if options.mode == "fake":
+            if real_gate.is_fake(options.mode):
                 script = scripts.get(case.id) or (
                     fake_model.script_for(item) if isinstance(item, LegacyCase) else None
                 )
                 fake = fake_model.FakeModel(script or {})
             with (
                 fake_model.installed(fake) if fake else _no_fake(),
-                usage.meter_llm_calls(ledger, case.id, repeat) as meter,
+                usage.meter_llm_calls(
+                    ledger, case.id, repeat, record_failures=not real_gate.is_fake(options.mode)
+                ) as meter,
                 _guard_schedule_writes(item),
                 _bridge_halts(halts) if not isinstance(item, LegacyCase) else _no_fake(),
                 eval_hook.recording() as rec,
@@ -744,7 +766,7 @@ def _run_one(
     record.llm_calls, record.tokens_in, record.tokens_out, record.cost_usd = _usage_of(
         ledger, case.id, repeat
     )
-    obs = _observation(rec, meter, got, measure_latency=options.mode == "real")
+    obs = _observation(rec, meter, got, measure_latency=not real_gate.is_fake(options.mode))
     missing = _missing_detail(
         rec, meter, fallback_ok=not isinstance(item, LegacyCase) and got.can_answer is False
     )
@@ -850,12 +872,23 @@ def _failed_placeholder(case_id: str) -> CaseResult:
 
 
 # ---------- 실행과 저장 ----------
+def _check_mode(options: RunOptions) -> None:
+    """mode 는 정확히 "fake"|"real" 만 허용한다(오타·None 은 거부). 가짜가 아닌 값은 모두 실제로 취급한다(`real_gate.is_fake`)."""
+    if options.mode not in real_gate.MODES:
+        raise RunnerRefused(
+            f"mode 는 {real_gate.MODES} 중 하나여야 한다(받은 값: {options.mode!r})"
+        )
+
+
 def _check_options(options: RunOptions, ledger: Ledger) -> None:
+    _check_mode(options)
     if options.repeats < 1:
         raise RunnerRefused("반복 수는 1 이상이어야 한다")
-    if options.mode == "real":
-        if not switches.REAL_ENABLED:  # CLI 를 거치지 않고 실행기를 직접 불러도 실제 호출은 막는다
-            raise RunnerRefused("실제 모델 호출은 아직 꺼져 있다(switches.REAL_ENABLED)")
+    if not real_gate.is_fake(options.mode):
+        if (
+            real_gate.real_grant() is None
+        ):  # CLI 를 거치지 않고 실행기를 직접 불러도 허가 없이는 실제 호출을 막는다
+            raise RunnerRefused(NO_GRANT_MESSAGE)
         if options.approved_usd is None or options.approved_usd <= 0:
             raise RunnerRefused("실제 모델 실행은 사용자가 승인한 상한(approved_usd)이 있어야 한다")
         cap = ledger.remaining().get(Scope.RUN)
@@ -863,6 +896,157 @@ def _check_options(options: RunOptions, ledger: Ledger) -> None:
             raise RunnerRefused(
                 "기록장의 실행 상한이 승인한 금액보다 크다(승인 금액 이하로 만들어야 한다)"
             )
+        root = options.results_root
+        if (
+            root is not None and (root / options.run_id).exists()
+        ):  # 호출로 돈을 쓴 뒤에야 저장 단계에서 알게 되지 않도록 미리 막는다
+            raise RunnerRefused("같은 run-id 의 결과 폴더가 이미 있다(덮어쓰지 않는다)")
+
+
+# ---------- 실호출 사례 대조(커밋된 목록·내용 해시) ----------
+def case_row(item: Item) -> dict[str, Any]:
+    """사례의 정규 JSON 값(커밋 대조·내용 해시용). legacy 는 기존 조건(checks)까지 넣는다."""
+    if isinstance(item, LegacyCase):
+        return {
+            "case": item.case.model_dump(mode="json"),
+            "checks": dataclasses.asdict(item.checks),
+        }
+    return item.model_dump(mode="json")
+
+
+def _canon(value: Any) -> str:
+    return json.dumps(value, sort_keys=True, ensure_ascii=False, default=str)
+
+
+def case_fingerprint(items: Iterable[Item]) -> str:
+    """선택된 사례들의 내용 해시(id 순서와 무관한 정규 JSON 의 sha256). 허가는 이 해시에 묶인다."""
+    rows = sorted((_case_of(i).id, case_row(i)) for i in items)
+    return hashlib.sha256(_canon(rows).encode("utf-8")).hexdigest()
+
+
+def _baseline_paths(split: str) -> list[Path]:
+    """실호출 대조의 기준이 되는 저장소 파일들(사례 파일·시나리오 목록·잠금 파일 / legacy 사례 파일)."""
+    if split == "legacy":
+        return [adapter.LEGACY_CASES_PATH]
+    if split == "dev":
+        from . import dev_cases, scenarios
+
+        return [
+            dev_cases.CASES_DEV_PATH,
+            scenarios.DATA_DIR / "scenarios_dev.json",
+            scenarios.LOCK_PATH,
+        ]
+    raise RunnerRefused(f"실제 호출을 허용하지 않는 분할이다: {split}")
+
+
+def _git(args: list[str], cwd: Path) -> bytes:
+    try:
+        res = subprocess.run(["git", *args], cwd=cwd, capture_output=True, timeout=20, check=False)
+    except (OSError, subprocess.SubprocessError):
+        raise RunnerRefused(
+            "git 을 실행할 수 없어 기준 사례를 HEAD 에서 확인할 수 없다(실호출은 거부한다)"
+        ) from None
+    if res.returncode != 0:
+        raise RunnerRefused(
+            "git 저장소가 아니거나 파일이 HEAD 에 없다(커밋하지 않은 파일은 실호출 대상이 아니다: 먼저 커밋한다)"
+        )
+    return res.stdout
+
+
+def _require_head_clean(paths: Iterable[Path]) -> None:
+    """기준 파일이 모두 Git HEAD 커밋 객체와 같아야 한다(작업 트리 수정·미커밋은 거부, git 을 쓸 수 없거나 HEAD 에 없으면 거부=fail closed).
+    줄 끝(CRLF/LF) 차이는 무시한다. 기준은 파일 내용이 아니라 커밋 객체(`git show HEAD:<경로>`)다."""
+    for raw in paths:
+        path = Path(raw).resolve()
+        root = Path(
+            _git(["rev-parse", "--show-toplevel"], path.parent).decode("utf-8").strip()
+        ).resolve()
+        try:
+            rel = path.relative_to(root).as_posix()
+        except ValueError:
+            raise RunnerRefused(
+                "기준 파일이 git 저장소 밖에 있다(HEAD 와 대조할 수 없다)"
+            ) from None
+        head = _git(["show", f"HEAD:{rel}"], root)
+        try:
+            work = path.read_bytes()
+        except OSError:
+            raise RunnerRefused(
+                f"기준 파일을 읽을 수 없다(HEAD 와 대조 불가): {path.name}"
+            ) from None
+        if head.replace(b"\r\n", b"\n") != work.replace(b"\r\n", b"\n"):
+            raise RunnerRefused(
+                f"기준 사례 파일이 HEAD 커밋과 다르다(수정·미커밋 변경은 실호출 대상이 아니다: 먼저 커밋한다): {path.name}"
+            )
+
+
+def committed_rows(split: str) -> dict[str, dict[str, Any]]:
+    """커밋된 사례 목록의 {id: 정규 값}. legacy 는 `adapter.load_legacy_cases()`, dev 는 커밋된 시나리오 목록(`exposure.load_rows("dev")`)에 있는
+    id 의 `data/cases_dev.json` 사례다(시험은 합성 사례를 `monkeypatch` 로 더한다)."""
+    _require_head_clean(
+        _baseline_paths(split)
+    )  # 기준은 HEAD 커밋 객체: 작업 트리가 다르면 선택본과 기준이 같은 수정본이어도 거부한다
+    if split == "legacy":
+        items: list[Item] = list(adapter.load_legacy_cases())
+    elif split == "dev":
+        from . import case_files, dev_cases, exposure
+
+        listed = {str(r["id"]) for r in exposure.load_rows("dev")}
+        items = [
+            c for c in case_files.load_cases(dev_cases.CASES_DEV_PATH, "dev") if c.id in listed
+        ]
+    else:
+        raise RunnerRefused(f"실제 호출을 허용하지 않는 분할이다: {split}")
+    return {_case_of(i).id: case_row(i) for i in items}
+
+
+def verify_committed(items: Iterable[Item], split: str) -> None:
+    """사례 id 가 커밋된 목록에 있고 내용이 커밋된 사례와 같은지 확인한다(`--dev-file` 로 val·test 를 위장하거나 내용을 바꾼 파일은 거부)."""
+    committed = committed_rows(split)
+    for item in items:
+        case_id = _case_of(item).id
+        if case_id not in committed:
+            raise RunnerRefused(
+                f"커밋된 {split} 목록에 없는 사례다(위장한 파일일 수 있다): {case_id}"
+            )
+        if _canon(case_row(item)) != _canon(committed[case_id]):
+            raise RunnerRefused(f"사례 내용이 커밋된 사례와 다르다: {case_id}")
+
+
+def _check_real_grant(
+    source: Sequence[Item] | runs_guard.GuardedCases,
+    items: Iterable[Item],
+    ids: list[str],
+    options: RunOptions,
+) -> real_gate.RealGrant:
+    """실제 모드: 사례가 커밋된 개발 사례와 같고 읽기 전용인지 다시 확인하고, 활성 허가가 이 실행(금액·id·분할·사례·내용 해시·반복·결과 폴더)과 맞는지
+    확인해 허가를 실행 중으로 바꾼다(1회용). 통과하면 허가를 돌려주고 호출하는 쪽이 끝날 때 `real_gate.finish` 한다."""
+    from .preflight import reject_reason
+
+    if isinstance(source, runs_guard.GuardedCases):
+        raise RunnerRefused("test 분할의 실제 호출은 이번 단계에서 금지다")
+    items = list(items)
+    splits = {_case_of(i).split for i in items}
+    if len(splits) == 1 and next(iter(splits)) in real_gate.ALLOWED_SPLITS:
+        (split,) = splits
+        verify_committed(items, split)
+        for item in items:  # 쓰기 사례·일정 쓰기·seed 사례는 실호출 대상이 아니다(사전 점검 7 과 같은 규칙을 러너에서 다시 적용)
+            why = reject_reason(item, split)
+            if why:
+                raise RunnerRefused(f"{_case_of(item).id}: {why}")
+    try:
+        return real_gate.check_run(
+            real_gate.real_grant(),
+            approved_usd=options.approved_usd,
+            run_id=options.run_id,
+            splits=splits,
+            case_ids=ids,
+            results_root=options.results_root,
+            content_hash=case_fingerprint(items),
+            repeats=options.repeats,
+        )
+    except real_gate.RealGateRefused as e:
+        raise RunnerRefused(str(e)) from None
 
 
 def run_cases(
@@ -876,7 +1060,26 @@ def run_cases(
     ledger = ledger or Ledger((Scope.RUN,))
     _check_options(options, ledger)
     items, ids = _resolve(source, options)
-    scripts = scripts or {}
+    grant = None
+    if not real_gate.is_fake(options.mode):
+        grant = _check_real_grant(source, items, ids, options)
+    try:
+        return _run_checked(source, items, ids, options, scripts or {}, ledger)
+    finally:
+        if grant is not None:
+            real_gate.finish(
+                grant
+            )  # 정상·예외 모두 허가를 소진한다(소진된 허가는 어떤 문도 열지 못한다)
+
+
+def _run_checked(
+    source: Sequence[Item] | runs_guard.GuardedCases,
+    items: Iterable[Item],
+    ids: list[str],
+    options: RunOptions,
+    scripts: Mapping[str, fake_model.Script],
+    ledger: Ledger,
+) -> RunReport:
     report = RunReport(options, ledger=ledger)
     started = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
     with _save_spend_on_abort(report, options, ids, started), _session(options) as session:
@@ -958,6 +1161,16 @@ def _report_json(report: RunReport) -> dict[str, Any]:
                 "model_calls": len(ledger.usages) if ledger else 0,
                 "per_case": report.per_case_usage(),
                 "halted": report.halted,
+                "unconfirmed_calls": sum(
+                    1 for u in (ledger.usages if ledger else []) if u.unconfirmed
+                ),
+                "unconfirmed_usd": format(
+                    sum(
+                        (u.cost for u in (ledger.usages if ledger else []) if u.unconfirmed),
+                        Decimal(0),
+                    ),
+                    "f",
+                ),
             },
             "interrupted": report.interrupted,
         }
@@ -1013,7 +1226,7 @@ def default_ledger(
 ) -> Ledger:
     """CLI 가 쓰는 기록장. 실제 모델은 실행 상한을 승인 금액과 기본 상한 중 작은 쪽으로 줄이고 전체 누적(PROJECT·BASELINE)도 센다.
     가짜 모드는 실제 지출이 아니라서 누적에 합치지 않는다(RUN 범위만)."""
-    if mode == "fake":
+    if real_gate.is_fake(mode):
         return Ledger((Scope.RUN,))
     caps = dict(CAPS)
     if approved_usd is not None:

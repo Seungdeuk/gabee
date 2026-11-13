@@ -131,6 +131,9 @@ class CallUsage:
     tokens_out: int
     cost: Decimal
     cumulative: Decimal  # 이 기록장에서 지금까지의 합
+    # 응답을 받지 못해 사용량을 모르는 호출: 서버가 과금했을 수 있어 최악 비용(입력 추정 + max_tokens 출력)으로 기록했다.
+    # `usage.jsonl`(store 의 허용 키)에는 쓰지 않고 `runner_report.json` 의 budget 에 건수·금액으로만 나온다.
+    unconfirmed: bool = False
 
     def as_dict(self) -> dict[str, int | str]:
         return {
@@ -212,7 +215,13 @@ class Ledger:
         return {s: self._caps[s] - self._amount(s) for s in self.scopes}
 
     def record(
-        self, case_id: str, repeat: int, model: str, tokens_in: int, tokens_out: int
+        self,
+        case_id: str,
+        repeat: int,
+        model: str,
+        tokens_in: int,
+        tokens_out: int,
+        unconfirmed: bool = False,
     ) -> CallUsage:
         """호출 하나를 기록한다. 기록한 뒤 상한을 넘었으면 `BudgetExceeded` 로 남은 호출을 멈추게 한다."""
         cost = call_cost(model, tokens_in, tokens_out)
@@ -224,7 +233,9 @@ class Ledger:
         self.total += cost
         index = self._counts[(case_id, repeat)]
         self._counts[(case_id, repeat)] += 1
-        usage = CallUsage(case_id, repeat, index, model, tokens_in, tokens_out, cost, self.total)
+        usage = CallUsage(
+            case_id, repeat, index, model, tokens_in, tokens_out, cost, self.total, unconfirmed
+        )
         self.usages.append(usage)
         scope = self._over(Decimal(0))
         if scope is not None:
