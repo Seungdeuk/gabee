@@ -1789,6 +1789,101 @@ docker exec <API 컨테이너 이름> python -c "from app.shared.config import s
 
 출처: `apps/api/app/shared/config.py`(`settings.privacy_ner_model_file` 기본값), `apps/api/.env.example`, 두 모델의 `model_card.json`(재확인), 36절, 2026-11-14.
 
+## 38. 이 PC에서의 교체·롤백 절차 확정 + 로컬 경로-운영 서버 일치 여부 확인 방법 (2026-11-14, 확인·절차 준비만 — 파일 이동·덮어쓰기·재시작 없음)
+
+사용자가 이 PC(`C:\Users\403\Documents\gabee`, 메인 체크아웃)에서 서비스 모델 해시·`PRIVACY_NER_MODE=required`·`PRIVACY_NER_MODEL_FILE=model.onnx`를 확인해 전달했다. 이번 절은 R1 쪽을 독립적으로 재확인하고, 교체·롤백 절차를 이 PC의 실제 경로로 구체화한 뒤, "이 로컬 경로가 운영 서버에 쓰이는 경로인지"를 확인하는 방법을 제시한다. **아무 파일도 옮기거나 덮어쓰지 않았고, 서버를 재시작하지 않았다.**
+
+### 1) 서비스 모델 재확인(사용자 보고값과 독립적으로)
+
+이 PC의 `C:\Users\403\Documents\gabee\apps\api\data\models\ner\`에서 직접 `sha256sum`을 돌려 사용자가 보고한 값과 대조했다 — **정확히 일치**(`46210943c45f01b6a9fa500894fb9821b1c130be63de8d8f7ef603d2d87ccf8e`). 이 폴더엔 `model.onnx`·`tokenizer.json`·`labels.json`·`model_card.json` 4개만 있고 `model.int8.onnx`는 없다(카드 메타데이터에는 기록돼 있지만 실제 파일은 이 폴더에 없음 — `PRIVACY_NER_MODEL_FILE=model.onnx`이므로 문제 없음, 37절 분기 A가 맞다).
+
+### 2) R1 시드7 원본 경로·해시 독립 재확인(조건 핵심)
+
+**경로**: `C:\Users\403\venvs\ner-runs\export\r1pilot-koelectra-small-klue10msg-s7`(모델 가중치, 레포 밖 — `.gitignore`·"모델 파일은 Git에 안 올린다" 원칙대로).
+
+`model_card.json`을 참고하지 않고 **파일에서 직접** `sha256sum`을 돌렸다:
+
+| 파일 | 직접 계산한 sha256 | model_card.json 자체 기록 | 일치 |
+|---|---|---|---|
+| `model.onnx` | `c536eadeb5a15c2c00755c10934d5862f0e9e53c2bd85ec8ab0b5891854c31f9` | 동일 | ✅ |
+| `tokenizer.json` | `d5c7a9a8996aca4fee55a3664381b012bd7dbb3e190061b2591c02502b7171b6` | 동일 | ✅ |
+| `labels.json` | `f5cf8bd55bf4c31df0da444131a7b68ff0ace3e482ca7dad6e2f55f3fd216fe4` | 동일 | ✅ |
+
+**사전 기록된 지문 `c536eadeb5a1`과 일치한다(`model.onnx` sha256 앞 12자).** 파일·카드 둘 다 무결하고 서로 어긋나지 않는다.
+
+### 3) 필수 파일 구성 최종 비교
+
+| 파일 | 서비스 모델(이 PC) | R1 시드7 | 비고 |
+|---|---|---|---|
+| `model.onnx` | 있음(`46210943c45f...`) | 있음(`c536eadeb5a1...`) | **서로 다름 — 교체 대상** |
+| `tokenizer.json` | 있음(`d5c7a9a8996a...`) | 있음(`d5c7a9a8996a...`) | **바이트까지 동일**(직접 재확인) |
+| `labels.json` | 있음(`f5cf8bd55bf4...`) | 있음(`f5cf8bd55bf4...`) | **바이트까지 동일**(직접 재확인) |
+| `model_card.json` | 있음 | 있음 | 내용 다름(지문·학습 정보) — 같이 교체 |
+| `model.int8.onnx` | 카드엔 기록돼 있으나 이 폴더엔 없음 | 없음 | `PRIVACY_NER_MODEL_FILE=model.onnx`이므로 **양쪽 다 영향 없음** |
+
+**필수 파일 4종(`model.onnx`·`tokenizer.json`·`labels.json`·`model_card.json`) 전부 R1 폴더에 있다 — 파일 구성 관점에서 교체 가능 상태다.**
+
+### 4) 이 PC에서의 교체·롤백 절차(정확한 경로로 구체화, 실행하지 않음)
+
+36절의 공식 절차(폴더 이름 바꾸기 방식)를 **이 PC의 실제 경로**로 구체화한다. PowerShell 기준(이 PC는 Windows), **아래는 절차 설명이고 지금 실행하지 않는다**:
+
+```powershell
+# 0. (실행 전 확인, 명령만 — 결과는 이미 1절에서 확인함) 현재 서비스 모델이 정상인지
+Get-FileHash "C:\Users\403\Documents\gabee\apps\api\data\models\ner\model.onnx" -Algorithm SHA256
+
+# 1. R1 폴더를 서비스 모델 폴더 옆에 .new 이름으로 통째로 복사(원본은 그대로 둠)
+Copy-Item "C:\Users\403\venvs\ner-runs\export\r1pilot-koelectra-small-klue10msg-s7" `
+          "C:\Users\403\Documents\gabee\apps\api\data\models\ner.new" -Recurse
+
+# 2. 복사된 파일의 해시를 다시 재서 R1 원본과 같은지 확인(복사 중 손상 확인)
+Get-FileHash "C:\Users\403\Documents\gabee\apps\api\data\models\ner.new\model.onnx" -Algorithm SHA256
+# -> c536eadeb5a15c2c00755c10934d5862f0e9e53c2bd85ec8ab0b5891854c31f9 와 일치해야 함
+
+# 3. (실제 교체 시점에만, 서버를 내린 뒤) 폴더 이름 맞바꾸기
+Rename-Item "C:\Users\403\Documents\gabee\apps\api\data\models\ner" "ner.prev"
+Rename-Item "C:\Users\403\Documents\gabee\apps\api\data\models\ner.new" "ner"
+
+# 4. 서버 재시작 → 로그에서 지문 c536eadeb5a1 확인 → 36·37절 체크리스트(헬스체크·모드 재확인·왕복 테스트·CPU 스팟체크) 진행
+
+# 롤백(문제 발생 시)
+Rename-Item "C:\Users\403\Documents\gabee\apps\api\data\models\ner" "ner.failed"
+Rename-Item "C:\Users\403\Documents\gabee\apps\api\data\models\ner.prev" "ner"
+# → 서버 재시작 → 지문 46210943c45f·PRIVACY_NER_MODE=required 재확인
+```
+
+1~2단계(복사+해시 재검증)는 **언제든 미리 해둬도 안전하다**(서비스 중인 `ner` 폴더를 안 건드리므로). 3~4단계(실제 폴더 맞바꿈+재시작)만 "실제 교체" 순간이다 — **이번 보고에서는 1~2단계까지도 실행하지 않았다**(사용자가 "파일 이동·덮어쓰기·재시작을 하지 말라"고 명시했으므로 복사조차 하지 않았다).
+
+### 5) 이 PC의 모델 경로가 실제 운영 서버에 적용되는 경로인지 확인하는 방법(조건 핵심)
+
+**중요하게 구분해야 할 것**: "이 PC의 로컬 파일 해시가 운영과 같은 값이다"와 "이 PC의 이 폴더가 운영이 실제로 읽는 폴더다"는 **서로 다른 주장**이다. 전자는 이번 절에서 확인했지만, 후자는 별도로 확인해야 한다 — 같은 내용의 파일을 여러 곳(로컬 개발 PC, 실제 서버)에 각각 복사해 둔 것일 수도 있기 때때문이다.
+
+**구체적인 의심 근거**: `apps/api/Dockerfile`은 컨테이너 안에서 `PRIVACY_NER_MODEL_DIR=/srv/data/models/ner-koelectra-small-v2b`로 **폴더 이름을 명시**한다. 그런데 이 PC에서 확인된 경로는 `.../models/ner`다(`PRIVACY_NER_MODEL_DIR`를 비워 둘 때 코드가 기본으로 쓰는 이름, `app/shared/config.py` 참고) — **폴더 이름 자체가 다르다.** 이건 이 PC의 파일이 실제 운영 컨테이너를 그대로 백업하는 경로가 아니라, **이 PC에서 로컬로 서버를 직접 띄울 때(Docker 없이) 쓰는 별도의 로컬 사본일 가능성이 있다는 뜻**이다(내용은 동일한 모델을 복사해 둔 것일 수 있지만, 그렇다고 이 폴더를 바꾼다고 운영이 바뀐다는 보장은 없다).
+
+**가장 신뢰할 수 있는 확인 방법(경로에 의존하지 않음)**: 로컬 경로가 무엇이든 상관없이, **실제로 운영 트래픽을 받는 프로세스/컨테이너가 스스로 보고하는 값**만이 "운영에 적용 중"이라는 증거다. 35~37절에서 쓴 것과 같은 방식으로, 운영 서버에서 직접 실행한다:
+
+```bash
+# 운영 서버(또는 그 컨테이너) 안에서
+docker exec <API 컨테이너 이름> python -c "from app.shared.privacy import ner; print(ner.ner_status())"
+# -> {'mode': 'required', 'active': True, 'fingerprint': '46210943c45f'} 처럼 나와야 한다
+docker exec <API 컨테이너 이름> python -c "from app.shared.config import settings; print(settings.privacy_ner_model_dir)"
+# -> 이 값이 실제로 어느 폴더를 가리키는지 확인
+```
+
+**컨테이너 기반 배포라면 추가로**: `docker inspect <API 컨테이너 이름>`의 `"Mounts"` 섹션을 보면, 컨테이너 내부 경로(`/srv/data/models/...`)가 호스트의 **어느 실제 경로**에 연결돼 있는지 나온다 — 그 호스트 경로가 이 PC의 `C:\Users\403\Documents\gabee\apps\api\data\models\ner`와 같은 경로인지 **그때 비교하면** 이 PC가 실제로 운영 파일을 들고 있는 머신인지 알 수 있다. 바인드 마운트가 아니라 이미지에 빌드 시점에 `COPY`로 들어간 것이라면(`Dockerfile`이 실제로 이렇게 한다 — 11절·34절에서 확인) 호스트의 어떤 로컬 폴더를 "실시간으로" 바꿔도 이미 떠 있는 컨테이너에는 반영되지 않는다 — **이미지를 다시 빌드하거나 교체된 폴더를 컨테이너에 다시 복사/마운트해야** 반영된다는 뜻이다.
+
+**이번 세션은 이 확인을 직접 실행하지 못한다**(실제 서버 접근 불가, 지금까지와 동일) — 위 명령을 사용자(운영팀)가 실행해 알려주면, 이 PC의 로컬 경로가 실제로 운영에 쓰이는지, 아니면 별도의 로컬 테스트용 사본인지가 가려진다. **이 확인이 끝나기 전에는 "이 PC에서 폴더만 바꾸면 운영이 바뀐다"고 단정하지 않는다.**
+
+### 최종 보고
+
+- 서비스 모델(이 PC)·R1(원본 경로) 둘 다 해시 독립 재검증 완료, 사전 기록된 지문과 정확히 일치.
+- 필수 파일 4종 전부 갖춰져 있어 **파일 구성 관점에서는 교체 가능한 상태**다.
+- 교체·롤백 절차는 이 PC의 실제 경로로 구체화해 준비했다(위 PowerShell 절차) — **아직 실행하지 않았다**(복사조차 안 함).
+- 다만 **이 PC의 폴더가 실제 운영 서버가 읽는 그 폴더인지는 아직 증명되지 않았다** — 위 5)절의 확인(운영 서버에서 `ner_status()`·`docker inspect`의 마운트 확인)이 먼저 필요하다. 이게 확인돼야 "이 PC에서 교체하면 운영이 바뀐다"는 전제 자체가 성립한다.
+
+사용자의 최종 승인과 5)절 확인이 끝나면, 4)절 절차(1~2단계부터)를 시작할 수 있다.
+
+출처: `C:\Users\403\Documents\gabee\apps\api\data\models\ner\`(사용자 보고 경로, 이 세션이 독립 재검증), `C:\Users\403\venvs\ner-runs\export\r1pilot-koelectra-small-klue10msg-s7\`(이 세션이 독립 재검증), `apps/api/Dockerfile`, `apps/api/app/shared/config.py`(기본 모델 폴더 경로), 36·37절, 2026-11-14.
+
 ## 재현 방법
 
 ```bash
