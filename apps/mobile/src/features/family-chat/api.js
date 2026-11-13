@@ -206,7 +206,8 @@ export const removeReaction = ({ roomId, messageId }) => apiFetch(`/family-chat/
 /**
  * 사진 메시지를 보낸다(POST /family-chat/photos, multipart 'file' + 선택 form 필드 room_id). 8MB 이하 JPEG/PNG/WebP, 서버가 다시 만든다. AI 를 부르지 않는다.
  * 웹은 asset.file(없으면 asset.uri 의 blob)을 그대로, 네이티브는 {uri, name, type} 으로 보낸다. Content-Type 은 fetch 가 boundary 와 함께 붙인다.
- * @param {{ uri: string, file?: Blob, fileName?: string | null, mimeType?: string }} asset expo-image-picker 가 돌려준 asset
+ * 촬영 시각은 asset.takenAt(시간대가 확인된 ISO 8601 한 값, pickPhoto 가 EXIF 에서 꺼냄)이 있을 때만 form 'taken_at' 한 칸으로 보낸다. EXIF 객체나 위치·기기 정보는 보내지 않는다. 서버는 자기가 읽은 EXIF 를 먼저 쓰고 이 값은 못 읽었을 때만 쓴다.
+ * @param {{ uri: string, file?: Blob, fileName?: string | null, mimeType?: string, takenAt?: string | null }} asset expo-image-picker 가 돌려준 asset(EXIF 는 떼어 낸 것)
  * @param {string | null} [roomId] 대화방 id, 없으면 가족 전체방(form 에 넣지 않는다)
  * @param {string | null} [batchId] 한 번에 여러 장 올릴 때 장마다 같은 묶음 번호(없으면 form 에 넣지 않는다)
  * @returns {Promise<{ id: number, user_id: string, user_name: string, text: string, created_at: string, attachment: { id: string, kind: "image", url: string, thumb_url: string, width: number, height: number, batch_id: string | null } | null }>}
@@ -225,6 +226,8 @@ export async function sendPhoto(asset, roomId, batchId) {
   }
   if (roomId) form.append("room_id", roomId);
   if (batchId) form.append("batch_id", batchId);
+  // 서버는 40자 초과를 422 로 막으므로, 업로드가 촬영 시각 때문에 실패하지 않게 문자열이고 40자 이하일 때만 보낸다
+  if (typeof asset.takenAt === "string" && asset.takenAt && asset.takenAt.length <= 40) form.append("taken_at", asset.takenAt);
   return apiFetch("/family-chat/photos", { method: "POST", body: form });
 }
 

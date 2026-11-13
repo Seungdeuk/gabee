@@ -463,7 +463,7 @@ export default function useChatMessages({ me, enabled = true, roomId = null, ini
   /**
    * 사진 한 장을 보낸다. 과거 창에서는 먼저 라이브로 돌아가야 하고, 돌아가지 못하면 보내지 않는다. 성공하면 서버가 돌려준 메시지를 목록에 병합한다(임시 메시지 없음, 폴링이 먼저 가져와도 id 로 중복 제거).
    * 보내는 중에 다시 부르면 무시한다. 실패하면 photoError 에 사용자 문구를 둔다.
-   * @param {{ uri: string, file?: Blob, fileName?: string | null, mimeType?: string }} asset
+   * @param {{ uri: string, file?: Blob, fileName?: string | null, mimeType?: string, takenAt?: string | null }} asset takenAt 은 갤러리가 꺼낸 촬영 시각(시간대 확인된 값만, 없으면 null)
    * @param {string} [batchId] 한 번에 여러 장 올릴 때 장마다 같은 묶음 번호
    * @returns {Promise<boolean>} 보냈으면 true
    */

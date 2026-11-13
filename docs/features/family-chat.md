@@ -633,4 +633,12 @@
 - **위치(GPS)·기기 모델·제조사·소프트웨어 정보는 저장·응답·로그에 남지 않는다**(저장 사본·썸네일은 메타데이터 없음 유지). Pillow 가 EXIF 태그 값을 DEBUG 로그로 찍기 때문에 `photo_service` 가 `PIL` 로거를 WARNING 으로 고정한다.
 - DB: Alembic `4c1f8a62b7d9`(칸 추가만). **배포 순서: 마이그레이션 먼저, 코드 나중** — 칸이 없는 DB 에 새 코드가 먼저 뜨면 스키마 점검이 `family_chat` 전체를 503 으로 막는다(`docs/contracts/db.md`).
 - 시험: `family_chat/tests/test_photo_taken_at.py`, PostgreSQL 마이그레이션 `tests/test_photo_taken_at_pg_e2e.py`(`GABEE_PG16_E2E=1`).
-- 아직 없는 것: 앱의 촬영 시각 전송(T05-c, iOS·Android 실기기 확인 필요), 타임라인 조회·화면(T05-b·d), 판별 결과 저장(T05-b0).
+- 아직 없는 것: 타임라인 조회·화면(T05-b·d), 판별 결과 저장(T05-b0). (앱의 촬영 시각 전송은 아래 T05-c)
+
+## 사진 촬영 시각 전송 (앱, T05-c, 2026-11-13)
+- 갤러리에서 사진을 고를 때(`pickPhoto.js`) **iOS 에서만** `exif` 를 받아 **촬영 시각 한 값(`takenAt`)만** 꺼내고 EXIF 객체(위치·기기 정보 포함)는 바로 버린다(`takenAt.js` 의 `withTakenAt`이 asset 에서 `exif` 칸을 떼어 낸 새 객체를 돌려준다). 업로드(`api.sendPhoto`)는 `takenAt` 이 있을 때만 폼 `taken_at` 한 칸을 더한다(문자열이고 40자 이하일 때만, 서버 422 로 업로드가 막히지 않게).
+- 읽는 키는 바깥에 있는 `DateTimeOriginal`·`OffsetTimeOriginal` 두 개뿐이다. GPS·기기 키와 중첩 `"{Exif}"` 는 읽지 않는다(시험이 접근한 키를 검사). expo-image-picker 17.0.11 iOS 네이티브(`ImageUtils.readExifFrom`)가 `{Exif}` 를 바깥으로 펼쳐 주므로 바깥 키로 온다.
+- **시간대(오프셋)가 확인된 값만 보낸다.** `OffsetTimeOriginal` 이 없거나 틀리면 앱은 한국·UTC 로 추측하지 않고 `taken_at` 을 보내지 않는다(NULL → 보낸 날 기준). 서버가 자기가 읽은 EXIF 를 우선하는 정책과 서버의 "시간대 없으면 한국 시간" 규칙(Q3)은 그대로이고, 이번 앱 규칙은 그보다 보수적이다. 형식·범위(1990-01-01 ~ 현재+1일)가 서버와 같다.
+- **플랫폼별 동작(expo-image-picker 17.0.11 네이티브 소스 기준, 실기기 확인 전):** iOS 는 앱이 다시 인코딩한 업로드 파일에 EXIF 가 없어 앱 값이 실제로 쓰이는 경로다. **안드로이드는 갤러리가 `OffsetTimeOriginal` 을 돌려주지 않아**(`EXIF_TAGS` 에 `DateTimeOriginal` 은 있고 오프셋 태그는 없다) 앱 값이 항상 NULL 이라 `exif` 를 받지 않는다. 안드로이드의 촬영일은 서버가 업로드 파일의 EXIF `DateTimeOriginal` 을 읽어 정한다(서버 규칙: 오프셋이 없으면 한국 시간). 웹은 EXIF 가 없어 항상 NULL 이다.
+- 시험: `apps/mobile/tests/takenat.test.js`.
+- **실기기 확인 필요:** iOS 에서 `quality: 0.8`·다중 선택 때 `DateTimeOriginal`·`OffsetTimeOriginal` 이 실제로 오는지와 오프셋이 없는 사진의 비율, 안드로이드 업로드 파일에 `DateTimeOriginal` 이 남아 서버가 읽는지(`CompressionImageExporter` 의 EXIF 복사). 확인 전에는 화면 문구로 "촬영일"을 단정하지 않는다.
