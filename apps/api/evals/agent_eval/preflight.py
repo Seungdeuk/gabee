@@ -50,6 +50,67 @@ NER_PROBE_TEXT = (
 )
 
 
+# 합성 PERSON(가족 이름) 발신 기록 라벨. 정책: 합성 PERSON 의 외부 전송은 실제 개인정보 유출과 같게 집계하지 않는다(실패 조건 아님).
+# 가명화 대상 경로에서 원문이 남으면 "가명화 정책 미준수"로 별도 기록한다. 이 PR 은 앱의 가명화 동작을 바꾸지 않는다.
+PERSON_EXEMPT = "의도된 예외(ADR 0014: 메인 채팅은 가명화를 걷어냄)"
+PERSON_MISS = "가명화 정책 미준수(기록)"
+PERSON_GAP = "알려진 갭(정산 가명화 미구현, 문서 기록)"
+PERSON_NONE = "원문 없음"
+PERSON_UNKNOWN = "경로 미확인(기록)"
+
+
+def classify_person(stage: str, count: int) -> str:
+    """호출 경로(stage)와 합성 PERSON 원문 건수로 분류 라벨을 정한다."""
+    if count == 0:
+        return PERSON_NONE
+    return {
+        "main": PERSON_EXEMPT,
+        "billing": PERSON_GAP,
+        "family_chat": PERSON_MISS,
+        "schedule": PERSON_MISS,
+    }.get(stage, PERSON_UNKNOWN)
+
+
+class _Bodies(list):
+    """가로챈 본문 목록(list)에 PERSON 발신 기록(`person_rows`: (사례, 경로, 원문 건수, 라벨))을 붙인 것."""
+
+    person_rows: tuple[tuple[str, str, int, str], ...] = ()
+
+
+def _person_names() -> tuple[str, ...]:
+    from .seeds import data as seed_data
+
+    return tuple(
+        sorted((n for n in seed_data.FICTIONAL_NAMES if len(n) >= 2), key=len, reverse=True)
+    )
+
+
+CONTEXT_CHARS = 12  # 고위험 탐지 실패 메시지에 넣는 '앞 글 종류' 요약의 최대 길이(글자 수)
+
+
+def _char_class(ch: str) -> str:
+    if ch == "#":
+        return "#"  # 가려진 고위험 구간
+    if ch.isdigit():
+        return "9"
+    if ch.isspace():
+        return "_"
+    if "a" <= ch.lower() <= "z" and ch.isascii():
+        return "a"
+    if "가" <= ch <= "힣" or "ㄱ" <= ch <= "ㅣ":
+        return "가"
+    return "."
+
+
+def _context_summary(chunk: str, start: int, high_spans: list[tuple[int, int]]) -> str:
+    """값 바로 앞 글을 **글자 종류로만** 요약한다(원문을 넣지 않는다). 같은 글의 고위험 구간을 모두 먼저 `#` 로 가린 뒤 숫자 9·영문 a·한글 가·공백 _·기호 .
+    으로 바꾼다(길이는 `CONTEXT_CHARS` 이하). 인접한 다른 고위험 값의 끝자리 숫자 등이 진단 정보로 새지 않게 하려는 것이다."""
+    masked = list(chunk)
+    for a, b in high_spans:
+        masked[a:b] = "#" * (b - a)
+    return "".join(_char_class(ch) for ch in masked[max(0, start - CONTEXT_CHARS) : start])
+
+
 class TripwireCalled(AssertionError):
     """점검 중 실제 전송 함수가 불렸다(일어나면 안 된다)."""
 
@@ -88,6 +149,7 @@ class PreflightReport:
     checks: list[Check] = field(default_factory=list)
     record: PreflightRecord | None = None
     worst_case: Decimal | None = None
+    person_rows: tuple[tuple[str, str, int, str], ...] = ()
 
     @property
     def ok(self) -> bool:
@@ -257,6 +319,17 @@ def _needles_of(item: Any, relax: bool = False) -> tuple[list[str], int]:
     return kept, len(needles) - len(kept)
 
 
+def _person_lines(rows: tuple[tuple[str, str, int, str], ...]) -> str:
+    """합성 PERSON 원문 발신 기록 표(사례별·경로별 건수와 분류). 실패 조건이 아니라 기록이다."""
+    if not rows:
+        return ""
+    miss = sum(n for _, _, n, label in rows if label == PERSON_MISS)
+    head = f"\nPERSON 원문 발신 기록(실패 아님, 합성 이름 기준) - {PERSON_MISS} {miss}건"
+    return head + "".join(
+        f"\n  {cid} | {stage} | 원문 {n}건 | {label}" for cid, stage, n, label in rows
+    )
+
+
 def _fake_pass(inp: PreflightInput) -> tuple[Check, list[dict], int]:
     """가짜 전송 함수로 앱 경로를 끝까지 돌리고 본문을 가로채 점검한다. 돌려주는 것: (점검, 본문 목록, 최대 추정 입력 토큰)."""
     from app.shared.config import settings
@@ -301,11 +374,13 @@ def _fake_pass(inp: PreflightInput) -> tuple[Check, list[dict], int]:
             0,
         )
     problems: list[str] = []
-    bodies: list[dict] = []
+    bodies = _Bodies()
     skipped = 0
     max_in = 0
     kinds_seen: dict[str, int] = {}
     seen_person = 0
+    names = _person_names()
+    person: dict[tuple[str, str], int] = {}
     for item in inp.items:
         case = runner._case_of(item)
         skipped += _needles_of(item)[1]
@@ -314,9 +389,17 @@ def _fake_pass(inp: PreflightInput) -> tuple[Check, list[dict], int]:
                 continue
             obs = getattr(report, "observations", {}).get((cid, repeat))
             needles, _ = _needles_of(item, runner.expense_titles_visible(case, obs))
-            for body in fake.bodies:
+            stages = (
+                list(getattr(fake, "agents", ()))
+                if len(getattr(fake, "agents", ())) == len(fake.bodies)
+                else ["unknown"] * len(fake.bodies)
+            )
+            for stage, body in zip(stages, fake.bodies, strict=True):
                 bodies.append(body)
                 text = _texts_of(body)
+                person[(case.id, stage)] = person.get((case.id, stage), 0) + sum(
+                    text.count(n) for n in names
+                )
                 dump = json.dumps(body, ensure_ascii=False).lower()
                 if any(f in dump for f in AUTH_FRAGMENTS) or KEY_PATTERN.search(dump):
                     problems.append(f"{case.id}: 본문에 키·인증 헤더 문자열이 있다")
@@ -339,18 +422,32 @@ def _fake_pass(inp: PreflightInput) -> tuple[Check, list[dict], int]:
                 if hit:
                     problems.append(f"{case.id}: 비공개 문자열 {len(hit)}건이 본문에 그대로 있다")
                 try:
-                    spans = [sp for chunk in _chunks(text) for sp in detect_with_ner(chunk)]
+                    spans = [
+                        (chunk, sp) for chunk in _chunks(text) for sp in detect_with_ner(chunk)
+                    ]
                 except Exception as e:  # noqa: BLE001  탐지기를 못 쓰면 본문을 검증할 수 없다
                     problems.append(f"{case.id}: 개인정보 탐지기를 쓸 수 없다({type(e).__name__})")
                     spans = []
-                for span in spans:
+                for chunk, span in spans:
                     kind = str(span.kind.value)
                     kinds_seen[kind] = kinds_seen.get(kind, 0) + 1
                     if kind in HIGH_KINDS:
-                        problems.append(f"{case.id}: 본문에서 {kind} 로 탐지된 값이 있다")
+                        # 원인 추적용 진단: 경로·탐지 규칙·점수·값 길이·종류와 앞 글의 글자 종류 요약만 남긴다(원문 앞뒤 글·값·값 일부는 적지 않는다)
+                        marks = [
+                            (s.start, s.end)
+                            for c, s in spans
+                            if c is chunk and str(s.kind.value) in HIGH_KINDS
+                        ]
+                        summary = _context_summary(chunk, span.start, marks)
+                        problems.append(
+                            f"{case.id}: 본문({stage})에서 {kind}({span.source}, 점수 {span.score:.2f}, 길이 {span.end - span.start}) 로 탐지된 값이 있다(앞 글 종류: {summary})"
+                        )
                     elif kind == "PERSON":
                         seen_person += 1
                 max_in = max(max_in, usage.estimate_input_tokens(body))
+    bodies.person_rows = tuple(
+        (cid, stage, n, classify_person(stage, n)) for (cid, stage), n in sorted(person.items())
+    )
     if not bodies:
         problems.append("가로챈 요청 본문이 없다(점검할 호출이 없었다)")
     if problems:
@@ -373,7 +470,8 @@ def _fake_pass(inp: PreflightInput) -> tuple[Check, list[dict], int]:
             PASS,
             f"가짜 전송으로 사례 {len(inp.items)}건·본문 {len(bodies)}개 점검(실제 전송 0회): 키·인증 헤더 문자열 없음, model·max_tokens 일치, "
             f"비공개 문자열 0건(질문에 이미 있는 글 {skipped}건 제외), 고위험 탐지 0건(탐지 종류 {shown}), 추정 입력 토큰 최대 {max_in}. "
-            "한계: 가짜 대본이 정한 경로의 본문만 본다(실제 모델이 다른 도구·인자를 고르면 달라진다), 개인정보 탐지는 이 환경의 NER 설정을 따르고(NER 은 3번이 따로 확인), 첫 실호출에서 실제 본문 길이·model·max_tokens 를 usage 로 확인한다",
+            "한계: 가짜 대본이 정한 경로의 본문만 본다(실제 모델이 다른 도구·인자를 고르면 달라진다), 개인정보 탐지는 이 환경의 NER 설정을 따르고(NER 은 3번이 따로 확인), 첫 실호출에서 실제 본문 길이·model·max_tokens 를 usage 로 확인한다"
+            + _person_lines(bodies.person_rows),
         ),
         bodies,
         max_in,
@@ -589,11 +687,12 @@ def _check_cost(inp: PreflightInput, measured_in: int) -> tuple[Check, Decimal |
         basic, loop_worst
     )  # 사전 거부 기준: 기본 가정 추정과 메인 루프 기준 최악 상한 중 큰 값
     lines = [
-        f"기본 가정 추정 {format(basic, 'f')} USD(사례 {n} x 반복 {inp.repeat} x 사례당 {inp.calls_per_case}회, 호출당 {inp.tokens_in}/{inp.tokens_out} 토큰)",
-        f"메인 루프 기준 최악 상한(하위 Agent 호출 포함 안 함) {format(loop_worst, 'f')} USD = 사례 {n} x 반복 {inp.repeat} x (메인 단계 상한 {steps} + 답 검증 1) = 호출 "
+        f"추정치(실측 전) 기본 가정 추정 {format(basic, 'f')} USD(사례 {n} x 반복 {inp.repeat} x 사례당 {inp.calls_per_case}회, 호출당 {inp.tokens_in}/{inp.tokens_out} 토큰)",
+        f"추정치(실측 전) 메인 루프 기준 최악 상한(하위 Agent 호출 포함 안 함) {format(loop_worst, 'f')} USD = 사례 {n} x 반복 {inp.repeat} x (메인 단계 상한 {steps} + 답 검증 1) = 호출 "
         f"{n * inp.repeat * (steps + 1)}회 x (입력 {tin} 토큰 + 출력 {tout} 토큰[max_tokens]) 단가",
-        f"구조적 이론 최대(정보용, 거부 기준 아님) {format(theory, 'f')} USD = 질문당 최대 {theory_calls}회(메인 {steps} + 검증 1 + 도구 단계 {steps - 1} x 하위 Agent 합) x 사례 {n} x 반복 {inp.repeat}",
+        f"추정치(실측 전) 구조적 이론 최대(정보용, 거부 기준 아님) {format(theory, 'f')} USD = 질문당 최대 {theory_calls}회(메인 {steps} + 검증 1 + 도구 단계 {steps - 1} x 하위 Agent 합) x 사례 {n} x 반복 {inp.repeat}",
         f"승인 금액 {format(inp.approve, 'f')} USD, 사전 거부 기준값 {format(gate, 'f')} USD(위 기본 가정 추정과 메인 루프 기준 최악 상한 중 큰 값), 단가 출처는 cost.PRICE_SOURCE",
+        "위 비용은 모두 추정치다: 1건 연결 시험 후 실측 토큰·단가로 보정한다(실측 전에는 확정 비용으로 보지 않는다).",
         "하드 보장은 실행 중 호출 직전 검사다: 이번 호출의 최악 비용(입력 추정 + max_tokens)이 잔여 예산을 넘으면 그 호출을 시작하지 않는다 -> 총지출은 승인액을 한 호출의 최악 비용 이상 넘지 않는다.",
         "사전 점검 통과가 '중간에 예산 중단이 없다'를 보장하지는 않는다(구조적 이론 최대가 승인 금액을 넘으면 중단될 수 있다).",
     ]
@@ -696,6 +795,7 @@ def run_preflight(inp: PreflightInput) -> PreflightReport:
     if four is not None:
         report.checks.append(four[0])
         measured = four[2]
+        report.person_rows = tuple(getattr(four[1], "person_rows", ()))
     elif not inp.items:
         report.checks.append(
             Check(
@@ -726,6 +826,7 @@ def run_preflight(inp: PreflightInput) -> PreflightReport:
             report.worst_case,
             runner.case_fingerprint(inp.items),
             inp.repeat,
+            report.person_rows,
         )
     return report
 

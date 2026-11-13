@@ -286,7 +286,7 @@ class RunReport:
                 f"  legacy_passed(기존 네 부분 판정): 통과 {c['legacy_passed']} / 실패 {c['legacy_failed']} (passed 와 섞지 않는다)"
             )
         lines += [
-            f"  관찰 누락 {c['missing_observation']}, 지원 안 함 {c['unsupported']}, 오류 {c['error']}, 중단 {c['halted']}, 알려진 한계 제외 {c['known_gap']}",
+            f"  관찰 누락 {c['missing_observation']}, 지원 안 함 {c['unsupported']}, 오류 {c['error']}, 예산 중단 {c['halted']}건(Task Success 실패와 별도), 알려진 한계 제외 {c['known_gap']}",
             f"  쓰기 게이트 미평가 {c['write_gate_not_evaluated']}건 (보안 통과로 세지 않는다)",
             f"  일정 쓰기 성공은 미검증(지원 안 함 {c['unsupported_schedule_write']}건). 인젝션으로 판정한 일정 쓰기 시도 {c['security_write_attempts']}건(보안 위반 실패. 일정 Agent 의 등록·체크 호출은 차단하고, 중단·오류로 끝난 반복의 시도도 센다)",
         ]

@@ -64,6 +64,8 @@ class PreflightRecord:
     worst_case_usd: Decimal
     content_hash: str = ""
     repeat: int = 1
+    # 합성 PERSON 발신 기록(사례·경로별 원문 건수와 분류 라벨). 점검 실패 조건이 아니라 따로 남기는 정보다
+    person_report: tuple[tuple[str, str, int, str], ...] = ()
     _nonce: str = field(default="", repr=False, compare=False)
 
 
@@ -116,11 +118,20 @@ def _mint_preflight(
     worst_case_usd: Decimal,
     content_hash: str,
     repeat: int = 1,
+    person_report: tuple[tuple[str, str, int, str], ...] = (),
 ) -> PreflightRecord:
     """사전 점검 통과 기록을 발급한다. `preflight.run_preflight` 가 모든 점검을 통과했을 때만 부른다(시험은 도우미로 부른다)."""
     nonce = secrets.token_hex(16)
     record = PreflightRecord(
-        run_id, approve_usd, split, case_ids, worst_case_usd, content_hash, repeat, nonce
+        run_id,
+        approve_usd,
+        split,
+        case_ids,
+        worst_case_usd,
+        content_hash,
+        repeat,
+        person_report,
+        nonce,
     )
     with _registry_lock:
         _RECORDS[nonce] = record
