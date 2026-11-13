@@ -11,11 +11,12 @@
 """
 
 import io
+import logging
 import os
 import re
 import threading
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta, timezone
 from pathlib import Path
 
 from PIL import Image, ImageOps
@@ -50,6 +51,10 @@ CACHE_CONTROL = "private, max-age=31536000, immutable"  # 사진은 바뀌지 �
 ALLOWED_FORMATS = {"JPEG", "PNG", "WEBP"}
 _SAFE_ID = re.compile(r"^[A-Za-z0-9]{1,32}$")
 
+# Pillow 는 EXIF 를 읽을 때 태그 이름·값(촬영 시각, 제조사, GPS 좌표 등)을 DEBUG 로그로 찍는다. 디버그 로그를 켜도 사진 메타데이터가
+# 로그에 남지 않게 PIL 로거를 WARNING 으로 고정한다(사진 내용·위치는 로그에 남기지 않는다는 규칙).
+logging.getLogger("PIL").setLevel(logging.WARNING)
+
 _slots = threading.BoundedSemaphore(MAX_CONCURRENT)
 upload_limiter = FailureLimiter()  # 프로세스 메모리(shared/rate_limit.py 의 한계 참고)
 library_limiter = FailureLimiter()
@@ -71,6 +76,86 @@ def _flatten(image: Image.Image) -> Image.Image:
         flat.paste(rgba, mask=rgba.getchannel("A"))
         return flat
     return image.convert("RGB")
+
+
+# ---------- 촬영 시각 (T05-a) ----------
+# EXIF 의 촬영 시각 태그 둘(DateTimeOriginal, OffsetTimeOriginal)만 쓴다. 위치(GPS)·기기 모델·제조사·소프트웨어 태그는 값을 꺼내지도 저장하지도 않는다
+# (Pillow 가 기본 IFD 를 메모리에 파싱하지만 우리 코드는 그 값을 쓰지 않고, GPS IFD 는 열어 보지도 않는다).
+KST = timezone(timedelta(hours=9))  # 시간대 정보가 없으면 한국 시간으로 본다
+TAKEN_MIN = datetime(1990, 1, 1, tzinfo=UTC)  # 이보다 이른 값은 버린다
+TAKEN_MAX_AHEAD = timedelta(days=1)  # 현재보다 이만큼보다 먼 미래 값은 버린다
+_EXIF_SUB_IFD = 0x8769
+_TAG_DATETIME_ORIGINAL = 0x9003
+_TAG_OFFSET_ORIGINAL = 0x9011
+_EXIF_DATETIME = re.compile(r"^(\d{4}):(\d{2}):(\d{2}) (\d{2}):(\d{2}):(\d{2})$")
+_EXIF_OFFSET = re.compile(r"^([+-])(\d{2}):(\d{2})$")
+
+
+def _text(value: object) -> str | None:
+    if isinstance(value, bytes):
+        value = value.decode("ascii", errors="ignore")
+    return value.strip("\x00 ") if isinstance(value, str) else None
+
+
+def _in_range(value: datetime, now: datetime) -> bool:
+    return TAKEN_MIN <= value <= now + TAKEN_MAX_AHEAD
+
+
+def _from_exif_parts(raw: object, offset: object, now: datetime) -> datetime | None:
+    """EXIF 형식("YYYY:MM:DD HH:MM:SS")과 선택 오프셋("+09:00")을 UTC 로. 틀리거나 범위 밖이면 None."""
+    match = _EXIF_DATETIME.match(_text(raw) or "")
+    if match is None:
+        return None
+    zone = KST
+    off = _EXIF_OFFSET.match(_text(offset) or "")
+    if off is not None:
+        hours, minutes = int(off.group(2)), int(off.group(3))
+        if hours <= 14 and minutes < 60:
+            delta = timedelta(hours=hours, minutes=minutes)
+            zone = timezone(delta if off.group(1) == "+" else -delta)
+    try:
+        value = datetime(*(int(g) for g in match.groups()), tzinfo=zone).astimezone(UTC)
+    except (
+        ValueError,
+        OverflowError,
+    ):  # 0001·9999 년 같은 극단값은 UTC 변환에서 OverflowError 가 난다
+        return None
+    return value if _in_range(value, now) else None
+
+
+def read_taken_at(data: bytes, now: datetime | None = None) -> datetime | None:
+    """업로드 원본에서 촬영 시각만 읽어 UTC 로 돌려준다. 없거나 형식이 틀리거나 범위(1990-01-01 ~ 현재+1일) 밖이거나
+    읽다가 어떤 오류가 나도 None(= 보낸 날 기준)이다. 값·태그는 로그에 남기지 않는다.
+    PNG 는 EXIF 가 이미지 데이터 뒤에 올 수 있어 읽으려면 전체를 다시 디코딩해야 하므로 읽지 않는다(앱이 보낸 값만 쓴다)."""
+    now = now or datetime.now(UTC)
+    try:
+        with Image.open(io.BytesIO(data)) as image:
+            if image.format == "PNG" and "exif" not in image.info:
+                return None  # Pillow 는 EXIF 청크가 없는 PNG 의 getexif() 에서 전체를 다시 디코딩한다(process_image 에서 이미 한 번 했다)
+            sub = image.getexif().get_ifd(_EXIF_SUB_IFD)
+            raw, offset = sub.get(_TAG_DATETIME_ORIGINAL), sub.get(_TAG_OFFSET_ORIGINAL)
+    except Exception:  # noqa: BLE001  깨진 EXIF·이상한 태그는 촬영일 없음으로 본다(업로드는 막지 않는다)
+        return None
+    return _from_exif_parts(raw, offset, now)
+
+
+def parse_client_taken_at(value: str | None, now: datetime | None = None) -> datetime | None:
+    """앱이 보낸 촬영 시각(ISO 8601 또는 EXIF 형식)을 UTC 로. 서버가 EXIF 에서 못 읽었을 때만 쓴다. 시간대가 없으면 한국 시간.
+    형식 오류·범위 밖은 None 이다(길이 제한은 라우터의 Form 이 422 로 막는다)."""
+    text = (value or "").strip()
+    if not text:
+        return None
+    now = now or datetime.now(UTC)
+    if _EXIF_DATETIME.match(text):
+        return _from_exif_parts(text, None, now)
+    try:
+        parsed = datetime.fromisoformat(text)
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=KST)
+        parsed = parsed.astimezone(UTC)
+    except (ValueError, OverflowError):
+        return None
+    return parsed if _in_range(parsed, now) else None
 
 
 def _jpeg(image: Image.Image, quality: int) -> bytes:
@@ -159,8 +244,10 @@ def send_photo(
     data: bytes,
     room_id: str | None = None,
     batch_id: str | None = None,
+    taken_at: str | None = None,
 ) -> MessageOut:
-    """사진 메시지를 보낸다. 방에 들어갈 수 없으면 404(존재 여부를 숨김). batch_id 는 같은 번호끼리 한 묶음으로 보이게 저장한다."""
+    """사진 메시지를 보낸다. 방에 들어갈 수 없으면 404(존재 여부를 숨김). batch_id 는 같은 번호끼리 한 묶음으로 보이게 저장한다.
+    촬영 시각은 서버가 EXIF 에서 읽은 값이 우선이고, 없을 때만 앱이 보낸 `taken_at` 을 쓴다(둘 다 없거나 틀리면 NULL = 보낸 날 기준)."""
     room = service.resolve_room(db, user, group_id, room_id)
     service.ensure_can_send(room)
     _check_rate(user.id)
@@ -170,6 +257,9 @@ def send_photo(
         )
     try:
         full, thumb, width, height = process_image(data)
+        taken = read_taken_at(data) or parse_client_taken_at(
+            taken_at
+        )  # 형식·크기 검증을 통과한 뒤에만 읽는다
     finally:
         _slots.release()
     attachment = MessageAttachment(
@@ -178,6 +268,7 @@ def send_photo(
         width=width,
         height=height,
         batch_id=batch_id,
+        taken_at=taken,
         size_bytes=len(full),
         path="",
         thumb_path="",

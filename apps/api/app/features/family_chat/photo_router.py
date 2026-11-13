@@ -20,13 +20,14 @@ def send_photo(
     file: UploadFile = File(...),
     room_id: str | None = Form(None, max_length=32),
     batch_id: str | None = Form(None, pattern=r"^[A-Za-z0-9_-]{8,32}$"),
+    taken_at: str | None = Form(None, max_length=40),
     user: User = Depends(current_user),
     group_id: str = Depends(current_group_id),
     db: Session = Depends(get_db),
 ) -> MessageOut:
-    """사진 메시지를 보낸다(multipart `file`, 선택 `room_id`, 선택 `batch_id`: 여러 장을 한 번에 올릴 때 장마다 같은 번호). JPEG/PNG/WebP 8MB 이하, 서버가 EXIF 를 지우고 다시 만든다. 가족 전체방 사진은 보낸 뒤 서버가 뒤에서 문서 사진인지 판별해 문서면 가족 문서함에 자동 등록한다(`/photos/{id}/library` 참고)."""
+    """사진 메시지를 보낸다(multipart `file`, 선택 `room_id`, 선택 `batch_id`: 여러 장을 한 번에 올릴 때 장마다 같은 번호, 선택 `taken_at`: 앱이 읽은 촬영 시각(ISO 8601), 서버가 EXIF 에서 못 읽었을 때만 쓰고 40자 초과는 422, 형식이 틀리면 무시). JPEG/PNG/WebP 8MB 이하, 서버가 EXIF 를 지우고 다시 만든다(촬영 시각만 `taken_at` 으로 남기고 위치·기기 정보는 저장하지 않는다). 가족 전체방 사진은 보낸 뒤 서버가 뒤에서 문서 사진인지 판별해 문서면 가족 문서함에 자동 등록한다(`/photos/{id}/library` 참고)."""
     data = file.file.read(photo_service.MAX_BYTES + 1)  # 한도보다 1바이트만 더 읽어 초과를 안다
-    return photo_service.send_photo(db, user, group_id, data, room_id, batch_id)
+    return photo_service.send_photo(db, user, group_id, data, room_id, batch_id, taken_at)
 
 
 @router.post("/photos/{attachment_id}/library", response_model=LibrarySaveOut)

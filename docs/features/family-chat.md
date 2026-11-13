@@ -625,3 +625,12 @@
 ## 묶음 사진의 안 읽은 수 (2026-11-09)
 - 같은 묶음(`batch_id`)으로 올린 사진은 안 읽은 수에서 **1건**으로 센다(`repository._unread_unit`: 묶음 번호가 있으면 그 번호, 없으면 메시지 id). 채팅 화면이 묶음을 한 덩어리로 보여 주는데 방 목록 숫자가 5장이면 5로 보이던 문제를 고쳤다. 가족 전체방·1:1 방·전체 안 읽은 수(`GET /family-chat/unread`)가 모두 같다.
 - 시험: `family_chat/tests/test_photo_batch_unread.py`.
+
+## 사진 촬영일 저장 (서버, T05-a, 2026-11-12)
+- 사진을 올릴 때 **촬영 시각**을 `message_attachments.taken_at`(UTC, NULL 허용)에 저장하고 `AttachmentOut.taken_at` 으로 내려준다. NULL 이면 촬영일을 알 수 없어 **보낸 날 기준**이다(이미 올라간 사진은 모두 NULL, 복구 불가).
+- 우선순위: 서버가 업로드 원본 EXIF 의 `DateTimeOriginal`(+`OffsetTimeOriginal`)에서 읽은 값 → 없을 때만 앱이 보낸 `taken_at` 폼 값(ISO 8601 또는 EXIF 형식) → NULL. 시간대 정보가 없으면 한국 시간으로 본다. 범위(1990-01-01 ~ 현재+1일) 밖이거나 형식이 틀리면 버리고 업로드는 막지 않는다. `taken_at` 폼 값이 40자를 넘으면 422.
+- **PNG 는 서버가 EXIF 를 읽지 않는다**(EXIF 가 이미지 데이터 뒤에 올 수 있어 읽으려면 최대 2500만 화소를 다시 디코딩해야 한다). PNG 는 앱이 보낸 값만 쓴다. 연도 `0001`·`9999` 같은 극단값은 500 이 아니라 NULL 이다.
+- **위치(GPS)·기기 모델·제조사·소프트웨어 정보는 저장·응답·로그에 남지 않는다**(저장 사본·썸네일은 메타데이터 없음 유지). Pillow 가 EXIF 태그 값을 DEBUG 로그로 찍기 때문에 `photo_service` 가 `PIL` 로거를 WARNING 으로 고정한다.
+- DB: Alembic `4c1f8a62b7d9`(칸 추가만). **배포 순서: 마이그레이션 먼저, 코드 나중** — 칸이 없는 DB 에 새 코드가 먼저 뜨면 스키마 점검이 `family_chat` 전체를 503 으로 막는다(`docs/contracts/db.md`).
+- 시험: `family_chat/tests/test_photo_taken_at.py`, PostgreSQL 마이그레이션 `tests/test_photo_taken_at_pg_e2e.py`(`GABEE_PG16_E2E=1`).
+- 아직 없는 것: 앱의 촬영 시각 전송(T05-c, iOS·Android 실기기 확인 필요), 타임라인 조회·화면(T05-b·d), 판별 결과 저장(T05-b0).

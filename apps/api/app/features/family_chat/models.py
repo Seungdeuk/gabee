@@ -171,6 +171,9 @@ class MessageAttachment(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(UTC)
     )
+    taken_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, default=None
+    )  # 사진을 찍은 시각(UTC). EXIF 촬영 시각 또는 앱이 보낸 값. 없으면(NULL) 보낸 날(created_at) 기준이다
 
 
 class MessageShare(Base):

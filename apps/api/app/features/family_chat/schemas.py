@@ -29,6 +29,9 @@ class AttachmentOut(BaseModel):
     size_bytes: int | None = None
     content_type: str | None = None  # 문서만(허용 목록의 안전한 값)
     in_library: bool = False  # 사진이 이미 가족 문서함에 등록돼 있음(앱이 "문서로 저장" 버튼을 숨긴다). 메시지 목록에서만 채워진다
+    taken_at: datetime | None = (
+        None  # 사진을 찍은 시각(UTC, 시간대 포함). null 이면 촬영일을 알 수 없어 보낸 날 기준이다(이미 올라간 사진은 모두 null). 문서는 항상 null
+    )
 
 
 class ReplyOut(BaseModel):
