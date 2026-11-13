@@ -1653,6 +1653,72 @@ systemctl show <서비스 이름> -p Environment | tr ' ' '\n' | grep PRIVACY_NE
 
 출처: `apps/api/app/shared/config.py`(`Settings.model_config`), `apps/api/app/shared/privacy/ner.py`(`_config`·`_fail`·`_engine_or_none`), `apps/api/app/features/family_chat/ai_service.py`(`analysis`·`reply_suggestions`·`topic_suggestions`), `apps/api/app/features/schedule/agent/chat.py`, `apps/api/app/features/weekly_news/generate.py`, `apps/api/Dockerfile`, pydantic-settings 표준 우선순위 동작, 2026-11-14.
 
+## 36. R1 시드7 실제 서비스 배포 절차 (2026-11-14, 절차 준비·사전 확인만 — 모델 교체·운영 설정 변경 없음)
+
+사용자가 실제 서버에서 `PRIVACY_NER_MODE=required`를 직접 확인했다(35절의 마지막 미검증 항목 해소). 이번 절은 **라이선스를 범위에서 제외**하고 실제 배포 절차를 준비한다. 절차는 이미 이 저장소에 문서화된 공식 절차(`docs/security/PRIVACY_PIPELINE_MODULE.md`의 "모델 교체·롤백")를 그대로 따르고, 거기에 R1 전용 사전 확인·검증 스크립트(이번 세션에서 만든 `diag_*` 스크립트)를 끼워 넣은 것이다. **이번에도 실제 모델 교체·운영 설정 변경은 하지 않았다** — 절차 정리와 사전 상태 확인까지만 했다.
+
+### 1) 경로·해시 확인(조건 1)
+
+| | 서비스 모델 | R1 시드7 |
+|---|---|---|
+| 참고 경로(이 PC) | `C:\Users\403\Documents\gabee-model-delivery\ner-koelectra-small-v2b` | `C:\Users\403\venvs\ner-runs\export\r1pilot-koelectra-small-klue10msg-s7` |
+| `model.onnx` sha256 | `46210943c45f...87ccf8e`(지문 `46210943c45f`) | `c536eadeb5a1...54c31f9`(지문 `c536eadeb5a1`) |
+| `tokenizer.json` sha256 | `d5c7a9a8996a...7171b6` | **동일**(`d5c7a9a8996a...7171b6`) |
+| `labels.json` sha256 | `f5cf8bd55bf4...f216fe4` | **동일**(`f5cf8bd55bf4...f216fe4`) |
+| `model.int8.onnx`(양자화) | **있음**(`4fbfbab991dd...bcbf7048c`) | **없음** |
+
+`tokenizer.json`·`labels.json`은 두 모델이 완전히 같다(같은 기반 모델·같은 라벨 체계에서 미세조정했으므로 당연하다) — **실제로 바뀌는 파일은 `model.onnx`와 `model_card.json`뿐**이다. 다만 **서비스 모델에는 양자화 버전(`model.int8.onnx`)이 있고 R1에는 없다** — 운영 서버가 지금 `PRIVACY_NER_MODEL_FILE=model.int8.onnx`로 양자화 버전을 쓰고 있다면(기본값은 `model.onnx`), R1 폴더에는 그 파일이 없어 전환 직후 `FileNotFoundError`로 안전하게는 막히지만(설계상 fail-closed) 계획에 없던 서비스 중단이 될 수 있다 — **사전 확인 필수 항목으로 추가한다(아래 2단계 0번).**
+
+### 2) 안전한 전달·무결성 검증 절차(조건 2)
+
+기존 공식 절차("새 모델 폴더를 옆 이름에 복사하고 sha256 대조")에 **전송 전·전송 직후 수동 검증을 덧붙인다**(파일 손상이 서버에 닿기 전에 걸러내기 위해서다 — model_card.json 내장 검사는 "로드할 때"만 돈다):
+
+0. **사전 확인**: 서버에서 현재 `PRIVACY_NER_MODEL_FILE`이 `model.onnx`(기본값)인지 확인한다 — 아래 3)의 "설정 확인" 한 줄과 같은 방식으로 `settings.privacy_ner_model_file`을 출력해서 본다. `model.int8.onnx`라면 R1에는 그 파일이 없으므로, R1용 양자화 파일을 새로 만들거나(이번 세션 범위 밖, 새로 학습/양자화 없음 원칙과 충돌하지 않게 "기존 R1 가중치를 그대로 양자화"만 하는 것도 모델 수정으로 볼지 운영팀과 상의) `model.onnx`로 되돌리는 것 중 하나를 먼저 정해야 한다.
+1. **전송 전**: 이 PC에서 R1 폴더(`model.onnx`·`tokenizer.json`·`labels.json`·`model_card.json` 4개 파일)의 sha256을 다시 계산해 위 1)절 표와 일치하는지 확인한다(`Get-FileHash` 또는 `sha256sum`).
+2. **전송**: 회사·팀에서 쓰는 안전한 전송 방식(예: 암호화된 scp/rsync, 사내 아티팩트 저장소)으로 서버에 올린다 — 공용 채널·비암호화 전송은 쓰지 않는다. **이 세션은 실제 서버에 접근할 수 없으므로 전송 자체는 운영팀이 수행한다.**
+3. **전송 직후(서버에서)**: 받은 파일 4개의 sha256을 다시 계산해 1)절 표와 **다시** 대조한다(전송 중 손상 확인 — `model_card.json`의 내장 검사가 "로드 시점"에 같은 걸 또 해주지만, 로드 전에 먼저 걸러내면 실패한 재시작을 피할 수 있다).
+4. 4개 파일을 전부 새 폴더(예: 현재 모델 폴더 옆에 `.new` 접미사)에 둔다 — **아직 서비스 중인 폴더는 건드리지 않는다.**
+
+### 3) 실행 순서(조건 3) — 모델 교체 → 재시작 → 헬스체크 → 가명화·복원 검증 → CPU 성능 → 롤백 분기
+
+공식 절차(`PRIVACY_PIPELINE_MODULE.md`)의 폴더 교체 방식을 그대로 쓴다(환경변수를 바꾸는 방식이 아니라, `PRIVACY_NER_MODEL_DIR`이 가리키는 폴더 자체를 바꿔치기한다 — 설정 변경이 없어 재시작 외에 다른 배포 단계가 필요 없다):
+
+1. **(2절에서 이미 끝남)** 검증된 R1 폴더가 서버에 `<모델폴더>.new`로 준비돼 있다.
+2. **트래픽이 적은 시간에 서버를 내린다.**
+3. **폴더 이름을 바꾼다**: 현재 폴더 → `<모델폴더>.prev`(백업, 즉시 롤백용), `<모델폴더>.new` → `<모델폴더>`.
+4. **서버를 다시 시작한다.**
+5. **헬스체크**: 로그에서 `NER 엔진 준비 완료 (mode=required, 모델 파일=model.onnx, 지문=c536eadeb5a1, ...)` 줄을 확인한다 — 지문이 1)절 표의 R1 값과 정확히 같은지 본다. `FileNotFoundError`나 `ModelIntegrityError`가 보이면 즉시 6)의 롤백으로 간다.
+6. **`PRIVACY_NER_MODE=required` 유지 확인**(조건 4, 아래 4절의 명령으로): 모델 전환 작업이 `PRIVACY_NER_MODE`를 건드리지 않았는지 재확인한다.
+7. **가명화·복원 검증**: 서버 컨테이너(또는 그 프로세스가 도는 환경)에 이번 세션이 커밋한 `apps/api/scripts/diag_roundtrip.py <모델폴더>`를 실행해 소통·일정·주간뉴스 3경로가 전부 `OK`인지 확인한다(합성 데이터만 쓰는 스크립트라 안전하다).
+8. **CPU 성능 스팟체크**: `apps/api/scripts/diag_prod_env_bench.py <모델폴더> --n 100` 정도로 짧게 돌려, 34절에서 측정한 수치(p50 8ms대, p95 12ms대)와 크게 다르지 않은지 확인한다(실제 서버 수치는 이번에 처음 확인하게 된다 — 34절은 이 PC의 Docker였다).
+9. **일정 시간 모니터링**(수 시간~하루): 에러율·지연·503(`privacy_unavailable`) 비율을 지켜본다.
+10. **문제 없으면 확정**(`<모델폴더>.prev` 백업은 당분간 보존). **문제가 있으면 롤백**: `<모델폴더>` → `<모델폴더>.new`(실패한 버전, 조사용으로 보존)로 옮기고, `<모델폴더>.prev` → `<모델폴더>`로 되돌린 뒤 서버 재시작, 5~6단계(헬스체크·모드 확인)를 롤백 결과에 대해 다시 수행한다.
+
+### 4) 모델 교체 후 `PRIVACY_NER_MODE=required` 유지 확인(조건 4)
+
+35절에서 안내한 것과 **같은 안전한 확인 방법**을 교체 직후와 롤백 직후 **두 번 다** 실행한다(모델 폴더만 바꾸는 절차이므로 이론상 `PRIVACY_NER_MODE`는 안 바뀌어야 하지만, 재시작마다 직접 확인해 가정에 기대지 않는다):
+
+```bash
+docker exec <API 컨테이너 이름> python -c "from app.shared.config import settings; print('PRIVACY_NER_MODE:', settings.privacy_ner_mode, '| MODEL_DIR:', settings.privacy_ner_model_dir)"
+```
+
+(컨테이너가 아니라 직접 프로세스로 띄운 경우는 그 프로세스가 돌아가는 환경에서 같은 파이썬 한 줄을 실행한다.) `required`가 아니거나 `MODEL_DIR`이 의도한 폴더가 아니면, 5)의 헬스체크를 통과했더라도 배포를 멈추고 원인을 먼저 찾는다.
+
+### 5) 배포 후 남는 위험과 모니터링 항목(조건 5)
+
+이번 세션 전체(27~36절)에서 이미 확인한 것들을 모니터링 관점으로 정리한다. **새로 생기는 위험은 없다** — R1이 서비스 모델보다 나쁘지 않거나 더 낫다는 것이 이번 세션의 일관된 결론이다. 다만 **교체 여부와 무관하게 계속 남는 것**들이다:
+
+| 위험 | 내용 | 모니터링 방법 |
+|---|---|---|
+| 미등록 제3자 이름 노출 | 가족 그룹에 등록 안 된 사람(친구·선생님 등) 이름은 NER 성능에만 의존 — R1도 완전히는 못 막는다(29·30절) | 정기적으로(분기 등) 새 합성 진단셋으로 재평가 검토(v6 블라인드셋은 다시 안 씀) |
+| 등록 안 된 애칭 | 가족이 `display_name`에 애칭을 등록하지 않으면 그 애칭은 NER에만 의존(31절) | 서비스 안내로 등록 유도(32절의 선택 개선) |
+| 표시이름 충돌 오귀속 | 두 사람이 같은 표시이름을 쓰면 일정 공유 대상이 틀어질 수 있음(33·34절, 드물고 노출은 아님) | 그룹 내 중복 검사(32·33절 제안) 반영 전까지는 사용자 문의로 감지 |
+| `privacy_ner_max_concurrency=2` 과부하 | 동시 AI 요청이 몰리면 p95/p99 급등·503 증가 가능(34절, R1·서비스 모델 공통) | 503(`privacy_unavailable`) 비율, AI 요청 지연 모니터링 |
+| 모델 파일 손상·삭제 | `required`에서는 503으로 안전하게 막히지만 AI 기능 전체가 멈춘다(33·34절 화재훈련) | 서버 로그의 `ModelIntegrityError`/`FileNotFoundError`, 503 비율 알람 |
+| 라이선스(이번 절 제외) | base_model 가중치 라이선스가 공식 확인 후에도 미확정(33절) | 별도 트랙에서 운영·법무가 진행 |
+
+출처: `docs/security/PRIVACY_PIPELINE_MODULE.md`("배포"·"운영 확인"·"모델 교체·롤백" 절), 두 모델의 `model_card.json`(sha256 전체 재확인), `apps/api/.env.example`(`PRIVACY_NER_MODEL_FILE` 주석), `apps/api/scripts/diag_roundtrip.py`·`diag_prod_env_bench.py`(기존 커밋), 2026-11-14.
+
 ## 재현 방법
 
 ```bash
