@@ -1549,6 +1549,110 @@ v6은 재사용하지 않았다. 서비스 모델·운영 설정은 변경하지
 
 출처: 이번 절에서 빌드·실행·삭제한 Docker 컨테이너(`gabee-api-verify:local`, 작업 후 삭제됨) 실행 로그, `apps/api/Dockerfile`, `apps/api/app/shared/config.py`(`privacy_ner_mode` 기본값), `apps/api/.env.example`, `docs/adr/0013-main-chat-privacy-gateway.md`, `docs/security/PRIVACY_PIPELINE_MODULE.md`, `apps/api/app/shared/privacy/ner.py`(`_fail`·`_infer`·`_engine_or_none`), `apps/api/app/features/schedule/agent/register.py`, 2026-11-14.
 
+## 35. 운영 환경 개인정보 보호 설정(`PRIVACY_NER_MODE`) 확인 (2026-11-14, 설정 확인·배포 준비만 — 운영 설정 변경·모델 교체 없음)
+
+Docker 기술 검증(34절)은 통과로 보고 유지한다. 이번 절은 34절에서 새로 찾은 `PRIVACY_NER_MODE` 운영 설정 미확인 항목을 다룬다. v6 미재사용, 합성 데이터만 사용, 운영 설정·모델은 변경하지 않았다.
+
+### 1) 기본값과 실제 적용값의 우선순위(조건 1)
+
+`apps/api/app/shared/config.py:238`의 `Settings`는 `SettingsConfigDict(env_file=_ENV_FILE, extra="ignore", populate_by_name=True)`로, 우선순위를 따로 덮어쓰지 않았다 — **pydantic-settings의 표준 우선순위**가 그대로 적용된다:
+
+1. **OS 환경변수**(프로세스에 직접 주입된 값 — `docker run -e`, `docker-compose`의 `environment:`, systemd `Environment=` 등) — **가장 우선**
+2. **`.env` 파일**(`apps/api/.env`)의 값
+3. **코드 기본값**(`privacy_ner_mode: str = "auto"`)
+
+`apps/api/Dockerfile`은 `PRIVACY_NER_MODEL_DIR`·`DOC_CLASSIFIER_DIR`·`EMBED_MODEL_DIR`만 `ENV`로 고정하고 **`PRIVACY_NER_MODE`는 Dockerfile 자체에 없다** — 즉 실제 적용값은 전적으로 배포 시점에 서버에 주입되는 OS 환경변수나 `.env`에 달려 있고, 이 레포만 봐서는 알 수 없다. 참고로 `ner.py:400`의 `_config()`는 "알 수 없는 문자열(오타)은 안전 쪽인 `required`로 본다"고 되어 있지만, 명시적으로 `auto`라고 쓰거나 변수 자체가 없으면 코드 기본값 그대로 `auto`로 동작한다 — 오타 방어가 "값이 없는 경우"를 안전하게 만들어주지는 않는다.
+
+### 2) 실제 서버 설정값을 안전하게 확인하는 절차(조건 2)
+
+아래 중 **서버 운영 방식에 맞는 것 하나**를 실행하면 된다. **전체 환경변수 덤프(`printenv`·`env`·`.env` 전체 `cat`)는 절대 하지 않는다** — 비밀번호·API 키 등 다른 값이 함께 노출되기 때문이다. 항상 변수 **이름을 지정**해서 그 값만 뽑는다.
+
+**가장 정확한 방법(권장)** — API 컨테이너 안에서 코드가 실제로 읽은 최종 값을 직접 확인한다(OS 환경변수든 `.env`든 어디서 왔는지 신경 쓸 필요 없이 pydantic-settings가 계산한 결과 그대로):
+```bash
+docker exec <API 컨테이너 이름> python -c "from app.shared.config import settings; print('PRIVACY_NER_MODE 적용값:', settings.privacy_ner_mode)"
+```
+이 한 줄만 출력되고 다른 설정값은 전혀 노출되지 않는다. 컨테이너 이름은 `docker ps`(이름만 보임, 값 아님)로 확인한다.
+
+**대안 1** — 컨테이너에 주입된 환경변수만 확인(코드가 `.env`를 덮어쓰기 전 단계라 `.env`에만 있고 OS 환경변수로는 안 주입된 값은 안 보일 수 있다 — 위 방법이 더 정확하다):
+```bash
+docker exec <API 컨테이너 이름> sh -c 'echo "PRIVACY_NER_MODE=$PRIVACY_NER_MODE"'
+```
+
+**대안 2** — 서버의 `.env` 파일에서 그 줄만 뽑기(파일 전체를 열지 않는다):
+```bash
+grep '^PRIVACY_NER_MODE=' /path/to/apps/api/.env
+```
+(아무 줄도 안 나오면 `.env`에 명시가 안 된 것 — OS 환경변수가 따로 없다면 기본값 `auto`가 적용된다는 뜻이다.)
+
+**대안 3**(systemd로 직접 띄우는 경우라면):
+```bash
+systemctl show <서비스 이름> -p Environment | tr ' ' '\n' | grep PRIVACY_NER_MODE
+```
+
+**이번 세션은 실제 운영 서버에 접근할 수 없어 이 절차를 실행하지 못했다 — 미검증으로 남긴다.** 위 절차는 운영팀이 직접 실행할 수 있도록 안내하는 것이다.
+
+### 3) `required`에서 모든 실패 경로가 LLM 전송 전에 차단되는지 최종 확인(조건 3)
+
+34절에서 `ner.py`의 `_fail()`·`_infer()`·`_engine_or_none()`을 코드로 추적해 "로딩·추론·타임아웃·과부하 전부 `required`에서 예외"임을 확인했다. 이번엔 **그 예외가 실제로 LLM 호출 전에 끊기는지** 호출부 3곳을 전부 직접 추적했다(코드 읽기, 이번엔 실행 재현은 안 함 — 33절 화재 훈련으로 이미 실행 확인된 부분과 결합해서 본다):
+
+- **소통(family_chat)**: `analysis`/`reply_suggestions`/`topic_suggestions` 전부 `ctx = _prepare(...)`(= `prepare_transcript` 호출)가 **`try:` 블록 밖에서** 먼저 실행된다 — `prepare_transcript`가 예외를 던지면 `ctx` 대입 자체가 안 되고, `llm.complete_json(...)`이 들어있는 `try:` 블록에는 진입조차 안 한다.
+- **일정(schedule)**: `with prepare_transcript(...) as prep:` 블록이 `llm.complete_json(...)` 호출을 **통째로 감싸고 있다** — `prepare_transcript`가 예외를 던지면 `with` 블록 본문(LLM 호출 포함)이 전혀 실행되지 않는다(언어 차원에서 보장).
+- **주간뉴스(weekly_news)**: `sess.prepare_text(...)`가 `try: ... except Exception: 정리 후 raise` 안에 있는데, 이 `except`는 **정리(claim 해제)만 하고 그대로 재던진다** — 실제 LLM을 호출하는 `_generate_claimed(...)`는 이 지점보다 한참 뒤(`claimed = repository.claim(...)` 다음)에서야 불리므로, 예외가 나면 거기 도달하지 못한다.
+
+**세 경로 모두 "모델 오류 시 원문이 LLM으로 못 나간다"는 보장이 구조적으로(우연이 아니라 코드 구조상) 성립한다** — 이건 `mode=required`가 실제로 켜져 있다는 전제에서다(2절의 확인 절차가 끝나야 이 보장이 "지금 이 서비스에 적용 중"이라고 말할 수 있다).
+
+### 4) `required` 전환이 AI 기능 가용성에 미치는 영향과 대응(조건 4)
+
+`required`로 설정하면, 모델이 어떤 이유로든(파일 손상·삭제, 추론 중 예외, 8초 초과 대기, 타임아웃, 입력 과다) 실패하는 **그 요청 하나는 503(`privacy_unavailable`)으로 거부된다** — 전체 서버가 멈추는 게 아니라 AI 관련 기능(소통 분석·답장·주제 추천, 일정 AI, 주간뉴스 생성)만 그 순간 쓸 수 없게 된다. `auto`라면 같은 상황에서 "규칙만 써서라도 응답은 나간다(미등록 이름이 그 요청에서만 노출될 위험을 안고)".
+
+**트레이드오프**: 개인정보 노출 위험을 낮추는 대신 AI 기능의 가용성을 그만큼 모델 안정성에 더 의존하게 만든다. 이 프로젝트의 기존 설계 철학(`CLAUDE.md`의 "서버는... 연결이 안 돼도 시작한다"·`schema_ready` 패턴)과 같은 방향이다 — 기능 하나가 막히는 것이 조용히 틀린 결과를 내는 것보다 낫다는 원칙.
+
+**대응 방법(제안)**:
+1. 모델 파일 상주 안정성 확보(이미 32~34절에서 체크한 사항 — 해시 검증, 백업 보존).
+2. 503 비율 모니터링/경보(현재 `ops_admin`에 이미 있는 에러 수집 체계가 이 503을 `privacy_unavailable` 코드로 잡아낼 수 있는지는 운영팀이 확인 — 이번 세션에서는 코드만 확인했고 실제 알람 설정까지는 범위 밖).
+3. `privacy_ner_max_concurrency=2`(현재 기본값)는 동시 요청이 몰리면 503을 늘릴 수 있다 — 실제 가족 수·동시 사용 빈도를 보고 운영팀이 별도로 조정을 검토할 사항(R1 교체와 무관, 이번 세션에서 바꾸지 않았다).
+4. 문제 발생 시 33·34절에서 실행으로 검증한 롤백 절차(설정값 되돌리기+재시작)로 즉시 대응 가능.
+
+### 5) R1 교체·롤백 양쪽에서 `required`가 유지되는지(조건 5)
+
+`PRIVACY_NER_MODE`(동작 방식)와 `PRIVACY_NER_MODEL_DIR`(모델 선택)은 **서로 독립된 설정값**이다(코드상 완전히 별개 필드, 서로 참조하지 않음) — 모델을 R1로 바꾸든 서비스 모델로 롤백하든, `PRIVACY_NER_MODE`는 그 전환 작업이 건드리지 않는다. 즉 **`required`가 한 번 배포 환경에 고정되어 있으면, 모델 전환·롤백 어느 쪽을 하더라도 저절로 유지된다** — 둘을 같이 바꿔야 하는 절차가 아니다.
+
+다만 이건 "건드리지 않으면 유지된다"는 뜻이지 "지금 켜져 있다"는 보장은 아니다(2절 미확인). **배포 체크리스트에 추가 권장**: 모델 전환·롤백 때 `ner_status()`로 지문만 확인하지 말고, `settings.privacy_ner_mode`도 같이 확인하는 단계를 넣을 것(실수로 `.env`를 통째로 바꿔치기하는 배포라면 의도치 않게 `mode`도 같이 바뀔 수 있으니, "모델만 바꾼다"는 절차를 분리해서 명시).
+
+### 6) 미검증으로 남기는 항목(조건 6)
+
+- **실제 운영 서버의 `PRIVACY_NER_MODE` 적용값** — 이 세션은 서버에 접근할 수 없어 2절의 절차를 실행하지 못했다. **운영팀이 직접 확인해야 한다.**
+- **라이선스**(33절 그대로, 이번 절 범위 밖).
+- **실제 운영 서버 기계 자체에서의 성능 재현**(34절, 이 컨테이너와 다른 CPU·네트워크 조건).
+- **503 모니터링/경보가 실제로 설정돼 있는지**(4절 대응책 2번 — 이번 세션은 코드 구조만 확인, 운영 설정은 미확인).
+
+### R1 시드7 교체에 필요한 기술적 조건 — 최종 표
+
+| 조건 | 상태 | 근거 |
+|---|---|---|
+| 서비스 모델 대비 통계적으로 유의한 개선 | ✅ 확인됨 | 27~30절 |
+| known_names 등록·미등록·조사·부분일치·띄어쓰기 | ✅ 확인됨 | 31·32절 |
+| 소통·일정·주간뉴스 가명화↔복원 왕복 | ✅ 확인됨(컨테이너 포함 2회) | 33·34절 |
+| ONNX 로딩·호환성(Docker 격리 환경) | ✅ 확인됨 | 34절 |
+| CPU 지연 p50/p95/p99, 메모리, 동시 요청 | ✅ 확인됨(서비스 모델과 큰 차이 없음) | 34절 |
+| 모델 파일 무결성 검사(변조 시 안전 거부) | ✅ 확인됨(화재 훈련 2회) | 33·34절 |
+| 재시작·헬스체크·롤백 절차 | ✅ 확인됨(실행 검증) | 33·34절 |
+| `required`에서 모델 오류 시 LLM 전송 전 차단(코드 구조) | ✅ 확인됨(3경로 전부 추적) | 35절 |
+| `required` 전환 시 가용성 영향·대응책 | ✅ 정리됨 | 35절 |
+| 모델 전환·롤백 시 `required` 유지 여부(설계상) | ✅ 확인됨(독립 설정값) | 35절 |
+| **`PRIVACY_NER_MODE`가 실제로 `required`인지** | ❌ **미검증**(서버 접근 불가) | 35절 |
+| **base_model 가중치 라이선스** | ❌ **미확정**(공식 출처 확인 후에도) | 33절 |
+| 실제 운영 서버 기계 자체 성능 재현 | ❌ 미검증(접근 불가) | 34절 |
+| 실제 가족 대화로 검증 | — 금지됨(합성 데이터만 사용) | 전체 세션 |
+
+### 최종 보고 — 교체 승인 가능 여부
+
+**조건부 승인 가능.** 기술적 조건(성능·호환성·무결성·왕복·롤백·코드 구조)은 전부 충족됐다고 판단한다. 그러나 표의 두 항목(`PRIVACY_NER_MODE` 실제값, 라이선스)은 **이번 세션의 접근 권한으로는 끝낼 수 없어 "미검증"으로 남긴다** — 임의로 통과시키지 않았다. 사용자가 밝힌 "모든 검증이 통과하면 최종 승인" 기준으로 보면, 이 2가지가 확인(또는 운영팀의 별도 판단)되기 전까지는 전부 통과라고 보고할 수 없다.
+
+운영 설정 변경·R1 모델 교체는 이번에도 하지 않았다.
+
+출처: `apps/api/app/shared/config.py`(`Settings.model_config`), `apps/api/app/shared/privacy/ner.py`(`_config`·`_fail`·`_engine_or_none`), `apps/api/app/features/family_chat/ai_service.py`(`analysis`·`reply_suggestions`·`topic_suggestions`), `apps/api/app/features/schedule/agent/chat.py`, `apps/api/app/features/weekly_news/generate.py`, `apps/api/Dockerfile`, pydantic-settings 표준 우선순위 동작, 2026-11-14.
+
 ## 재현 방법
 
 ```bash
