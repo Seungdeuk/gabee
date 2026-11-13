@@ -1884,6 +1884,107 @@ docker exec <API 컨테이너 이름> python -c "from app.shared.config import s
 
 출처: `C:\Users\403\Documents\gabee\apps\api\data\models\ner\`(사용자 보고 경로, 이 세션이 독립 재검증), `C:\Users\403\venvs\ner-runs\export\r1pilot-koelectra-small-klue10msg-s7\`(이 세션이 독립 재검증), `apps/api/Dockerfile`, `apps/api/app/shared/config.py`(기본 모델 폴더 경로), 36·37절, 2026-11-14.
 
+## 39. 가비 API 실제 실행 환경·모델 참조 경로 분석 (2026-11-14, 저장소 분석·확인용 명령 준비만 — 새 검증 실험·파일 작업·재시작 없음)
+
+무결성 검증(38절)은 완료된 것으로 보고 반복하지 않는다. 이번 절의 목표는 "R1이 안전한가"가 아니라 **"실제 서비스가 지금 어떤 모델 파일을 읽고 있는가"를 확인하는 방법을 정리하는 것**이다. 전부 저장소 안의 설정 파일을 읽어서 분석했고, 아무 것도 실행·복사·재시작하지 않았다.
+
+### 1) 가비 API의 실행 방식 — 저장소 안에서 확정할 수 있는 것과 없는 것
+
+저장소를 전수 검색했다(`Caddyfile`·`docker-compose*.yml`·`.github/workflows/`·`docs/adr/*`·`README.md`):
+
+- **`apps/api/Dockerfile`은 있다** — API를 컨테이너 이미지로 만들 수 있게 돼 있다.
+- **루트 `docker-compose.yml`은 `# 개발용 구성(DB + API). 운영 구성은 deploy/ 에 둔다`라고 스스로 적어 두었다** — 즉 **이 파일은 로컬 개발 전용**이고, `README.md`의 "docker 로 서버 + DB 실행" 절도 전부 로컬 PC 기준 안내다(`localhost:8000`, 포트 충돌·Windows IPv6 등 개발 환경 문제만 다룬다).
+- **`deploy/`에는 `shared-db-agent/`(공용 DB 전용 에이전트)만 있다** — API 서버 자체의 운영 compose·Caddy 설정은 **이 폴더에도 없다.**
+- **`Caddyfile`·`docker-compose.prod.yml` 같은 운영용 파일은 저장소 어디에도 없다.**
+- **`.github/workflows/`에는 `ci-check.yml`(테스트) 하나뿐** — 배포를 수행하는 워크플로우가 없다.
+- `docs/adr/` 전체를 검색해도 "Caddy"·"production"·"운영 서버"를 다루는 문서가 없다(공용 **DB**의 배포 절차 ADR만 여러 개 있다).
+
+**결론**: `CLAUDE.md`의 "배포: API는 Docker + Caddy, 앱은 EAS Build"라는 한 줄 외에는, **실제 운영 서버가 어느 머신에서 어떤 compose/오케스트레이션으로 떠 있는지를 보여주는 설정이 이 저장소에 없다.** Docker를 쓴다는 것 자체는 거의 확실해 보이지만(Dockerfile이 있고 CLAUDE.md가 그렇게 명시), **정확한 운영 compose 파일·Caddy 설정·호스트 정보는 이 저장소 밖에서(운영 PC나 별도 설정으로) 관리되는 것으로 보인다** — 사용자가 알려준 "이 PC에서는 Docker API 컨테이너가 확인되지 않았다"는 사실과도 맞아떨어진다(이 PC=로컬 개발 환경, 운영 서버=다른 어딘가).
+
+### 2) 실행 환경별 NER 모델 참조 경로(조건 2)
+
+Dockerfile·루트 `docker-compose.yml`·`app/shared/config.py`의 기본값을 종합하면, **"어떻게 띄우는가"에 따라 실제 적용 경로가 완전히 다르다**:
+
+| 실행 방식 | `PRIVACY_NER_MODEL_DIR` 적용값 | 근거 |
+|---|---|---|
+| **Dockerfile로 빌드한 이미지**(ENV 덮어쓰기 없이) | `/srv/data/models/ner-koelectra-small-v2b`(컨테이너 내부 경로) | `Dockerfile:17`에 `ENV PRIVACY_NER_MODEL_DIR=...`로 고정 |
+| **루트 `docker-compose.yml`로 띄운 `api`(개발용)** | 위와 **동일**(`/srv/.../ner-koelectra-small-v2b`) | compose의 `api.environment`에 `PRIVACY_NER_MODEL_DIR`이 없음 → Dockerfile의 ENV 기본값이 그대로 적용됨(덮어쓰는 값 없음) |
+| **Docker 없이 로컬 `uvicorn`(이 PC가 지금 이 방식으로 보임)** | `.env`에 값이 있으면 그 값, 없으면 코드 기본값 `<DATA_DIR>/models/ner`(기본 `DATA_DIR=./data`라 결과는 `./data/models/ner`) | `app/shared/config.py:214` 기본값. **38절에서 사용자가 보고한 경로(`apps/api/data/models/ner`)가 정확히 이 패턴과 일치한다** — 이 PC는 Docker가 아니라 로컬 uvicorn으로 돌고 있었다는 것과 정합적이다 |
+| **실제 운영 서버**(별도 compose/설정, 이 레포엔 없음) | **알 수 없음** — Dockerfile 기본값을 그대로 쓸 수도, 운영 compose에서 다른 값으로 덮어썼을 수도 있다 | 1)절에서 확인했듯 이 레포에는 운영 설정이 없다 |
+
+### 3) 모델이 이미지에 포함되는가, 호스트 폴더를 마운트하는가(조건 3)
+
+**이 레포가 보여주는 구성(Dockerfile + 루트 compose)만 보면: 이미지에 포함되는 방식이다, 마운트가 아니다.**
+
+- `Dockerfile:14`의 `COPY data/models ./data/models`는 **빌드 시점에 호스트의 `apps/api/data/models/`를 이미지 레이어에 고정으로 집어넣는다** — 런타임에 연결되는 게 아니라 이미지 자체에 박힌다.
+- 루트 `docker-compose.yml`의 `api` 서비스에 선언된 볼륨은 `api-data:/data` **하나뿐**이고, 이건 `DATA_DIR`(업로드 파일 등 런타임 데이터) 용이다 — 경로가 `/data`로, 모델이 있는 `/srv/data/models/...`와는 전혀 다른 경로다. **모델 폴더에 대한 볼륨 마운트는 이 compose에 없다.**
+
+**이게 실제 운영에 그대로 적용되는지는 1)절처럼 확정할 수 없다.** 만약 운영이 이 Dockerfile을 그대로(볼륨 마운트 추가 없이) 쓴다면, **모델을 바꾸려면 이미지를 다시 빌드해야 한다** — 서버의 호스트 디스크에서 모델 폴더만 바꿔치기해도 이미 떠 있는 컨테이너에는 반영되지 않는다(38절에서 이미 경고한 바로 그 함의를 이번엔 compose 파일로 직접 재확인했다).
+
+### 4) 실제로 로딩한 모델의 경로·해시를 안전하게 확인하는 명령(조건 4)
+
+**0단계 — 먼저 "어떻게 떠 있는지" 자체를 확인**(이 PC처럼 운영도 Docker가 아닐 수 있으므로):
+```bash
+docker ps                                    # Docker 컨테이너가 있는지(이름만 보임, 값 노출 없음)
+ps aux | grep -i uvicorn                     # 없다면 직접 프로세스로 떠 있는지
+systemctl list-units --type=service | grep -i gabee   # systemd 서비스로 등록돼 있는지
+```
+
+**1단계 — 실제로 로딩된 모델의 "지문"을 직접 조회**(경로를 몰라도 되는, 가장 믿을 수 있는 방법 — 35~38절과 같은 패턴):
+```bash
+# Docker라면
+docker exec <API 컨테이너 이름> python -c "from app.shared.privacy import ner; print(ner.ner_status())"
+docker exec <API 컨테이너 이름> python -c "from app.shared.config import settings; print('MODEL_DIR:', settings.privacy_ner_model_dir, '| MODEL_FILE:', settings.privacy_ner_model_file)"
+
+# 직접 프로세스(uvicorn)로 떠 있다면, 그 프로세스가 도는 셸/venv에서 그대로
+python -c "from app.shared.privacy import ner; print(ner.ner_status())"
+```
+결과의 `fingerprint`가 서비스 모델(`46210943c45f`)·R1(`c536eadeb5a1`) 중 어느 것과 일치하는지로 **지금 실제로 쓰는 모델이 무엇인지 확정**된다 — 경로를 추측할 필요가 없다.
+
+**2단계 — 그 경로에 있는 파일 자체를 서버에서 직접 재확인**(1단계가 보여준 `MODEL_DIR` 폴더에서):
+```bash
+docker exec <API 컨테이너 이름> sh -c 'sha256sum $(python -c "from app.shared.config import settings; print(settings.privacy_ner_model_dir)")/model.onnx'
+```
+(Docker가 아니면 그 서버에서 같은 파이썬 한 줄로 경로를 얻은 뒤 `sha256sum`/`Get-FileHash`로 직접 확인한다.)
+
+**3단계(컨테이너라면) — 호스트-컨테이너 경로 매핑 확인**:
+```bash
+docker inspect <API 컨테이너 이름> --format '{{json .Mounts}}'
+```
+`Mounts`가 비어 있거나 모델 경로와 무관하면 **이미지 COPY 방식**(3)절의 결론)이라는 뜻이고, 모델 폴더가 실제로 바인드 마운트돼 있다면 호스트의 어느 경로인지 여기서 바로 나온다.
+
+**이번 세션은 실제 운영 서버에 접근할 수 없어 0~3단계를 실행하지 못했다 — 전부 미확인으로 남긴다.**
+
+### 5) 배포 방식별 R1 시드7 교체·롤백 절차(조건 5) — 확인되는 즉시 맞는 분기를 바로 쓸 수 있게 4가지 다 준비
+
+어떤 방식인지 아직 모르므로(4절), 가능한 경우를 전부 미리 정리해 둔다:
+
+**분기 1 — Docker, 이미지 COPY 방식(이 레포의 Dockerfile을 그대로 쓰는 경우, 3)절 결론)**:
+1. R1 모델 파일을 `apps/api/data/models/<폴더명>/`(운영이 쓰는 이름 그대로, 1)절에서 확인된 `MODEL_DIR` 값과 맞춰서)에 놓고 **이미지를 다시 빌드**한다(`docker build` 또는 `docker compose build api`).
+2. 새 이미지로 컨테이너를 재생성한다(기존 컨테이너를 내리고 새 이미지로 올림 — 단순 재시작이 아니라 **이미지 교체**가 필요하다).
+3. 헬스체크·지문 확인(4절 1단계)·36~38절의 왕복 테스트·CPU 스팟체크.
+4. 롤백은 **이전 이미지로 되돌리는 것**(이전 이미지 태그를 보존해 두거나, 이전 모델 폴더로 다시 빌드) — 36절의 "폴더 이름만 바꾸기" 롤백은 이 분기에는 **맞지 않는다**(재시작만으로 반영 안 됨).
+
+**분기 2 — Docker, 운영이 별도로 볼륨 마운트를 추가해 쓰는 경우(이 레포엔 없지만 가능성 있음)**:
+- 36절의 폴더 이름 맞바꾸기 절차가 그대로 유효하다(컨테이너 재시작만으로 반영).
+
+**분기 3 — Docker 없이 로컬/서버에서 직접 `uvicorn`**:
+- 36절의 PowerShell(또는 해당 OS의) 폴더 교체 절차가 그대로 유효하다 — `<DATA_DIR>/models/ner` 폴더를 바꾸고 프로세스를 재시작한다(`--reload`는 코드 변경에만 반응하고 모델은 시작 시 1회만 읽으므로 수동 재시작이 필요하다).
+
+**분기 4 — 전혀 다른 별도 서버/오케스트레이션(이 레포로는 전혀 알 수 없는 방식)**:
+- 그 서버의 실제 배포 방식을 운영팀이 먼저 설명해 주지 않으면, 이 세션은 맞는 절차를 추천할 수 없다 — **미확인으로 남긴다.**
+
+**공통(분기 무관)**: 교체 전 반드시 4절의 1~2단계로 "지금 로딩된 모델이 무엇인지"부터 확인하고, 1)절에서 확정되지 않은 "운영이 정확히 어느 분기인지"를 운영팀에게 먼저 확인받는다. 어느 분기인지 모른 채 36절의 "폴더만 바꾸면 된다"는 절차를 실행하면, 분기 1(이미지 COPY)인 경우 **아무 효과도 없이** 재시작만 하게 될 수 있다(위험하지는 않지만 교체가 실패한 것처럼 보일 수 있다 — 지문이 안 바뀐 걸 보고 그제서야 분기를 잘못 짚었다는 걸 알게 된다).
+
+### 최종 보고
+
+- **확인된 사실**(저장소 분석만으로): Dockerfile 존재, 루트 compose는 개발용임이 스스로 명시됨, 운영 compose·Caddy 설정은 저장소에 없음, 모델은 이 레포의 구성상 "이미지 COPY" 방식(마운트 아님), 실행 환경별 모델 경로 계산 로직(표 2절).
+- **서버 접근이 필요해 미확인인 것**: 실제 운영이 어떤 방식(Docker/로컬 uvicorn/별도 서버)으로 떠 있는지, 운영의 `PRIVACY_NER_MODEL_DIR`/`MODEL_FILE` 실제 적용값, 운영이 이 레포의 Dockerfile을 그대로 쓰는지 아니면 별도 compose로 마운트 방식을 쓰는지.
+- 이 두 가지가 확인되면 5)절의 4가지 분기 중 맞는 절차로 바로 진행할 수 있다.
+- 파일 복사·교체·재시작·설정 변경은 전혀 하지 않았다. 무결성 검증(38절)은 반복하지 않았다.
+
+출처: `apps/api/Dockerfile`, `docker-compose.yml`(루트), `README.md`, `deploy/`(전체 구조), `.github/workflows/ci-check.yml`, `docs/adr/`(전체 목록), `apps/api/app/shared/config.py`, `apps/api/.dockerignore`, 2026-11-14.
+
 ## 재현 방법
 
 ```bash
