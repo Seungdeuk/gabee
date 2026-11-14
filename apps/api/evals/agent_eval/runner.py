@@ -77,7 +77,7 @@ from . import (
 from .adapter import LegacyCase
 from .clock import frozen_clock
 from .cost import BASELINE_RUN_SCOPES, CAPS, OTHER_RUN_SCOPES, CallUsage, Ledger, Scope
-from .schema import Case, Observation, Security, ToolCall
+from .schema import Case, Observation, Security, ToolCall, dump_case
 from .scoring import CaseResult
 from .scrub import scrub_text, scrub_value
 from .seeds import data as seed_data
@@ -772,7 +772,7 @@ def _run_one(
     )
     if missing:
         record.status, record.detail = "missing_observation", missing
-        return _Iteration(record, obs, _failed_placeholder(case.id), fake)
+        return _Iteration(record, obs, _failed_placeholder(case.id, _tools_checked_of(item)), fake)
     try:
         judged = judge(item, obs)
     except ValueError as e:  # 잘못 쓴 사례(scoring._check_case)는 위반으로 세지 않고 오류로 알린다
@@ -866,9 +866,23 @@ def _bridge_halts(halts: list[usage.RunHalted]) -> Iterator[None]:
         transport.post_messages = inner
 
 
-def _failed_placeholder(case_id: str) -> CaseResult:
-    """관찰 누락 반복의 저장용 결과: 어떤 부분도 통과하지 않은 것으로 둔다(실패 원인 분류는 지어내지 않는다)."""
-    return CaseResult(case_id, False, (), False, False, (), ())
+def _failed_placeholder(case_id: str, tools_checked: bool = True) -> CaseResult:
+    """관찰 누락 반복의 저장용 결과: 어떤 부분도 통과하지 않은 것으로 둔다(실패 원인 분류는 지어내지 않는다).
+    `tools_checked` 는 사례가 도구 선택을 실제로 판정하는 사례인지(반복마다 같은 값이어야 지표가 반복 순서에 흔들리지 않는다)."""
+    return CaseResult(case_id, False, (), False, False, (), (), tools_checked)
+
+
+def _tools_checked_of(item: Item) -> bool:
+    """이 사례가 도구 선택을 실제로 판정하는가(`scoring.score_case` 의 `tools_checked` 와 같은 기준, legacy 는 기존 도구 모드 포함)."""
+    if isinstance(item, LegacyCase):
+        tools = item.case.expect.tools
+        return bool(tools.required or tools.forbidden) or item.checks.tool_mode in (
+            "exact",
+            "any_of",
+            "none",
+            "main_set",
+        )
+    return bool(item.expect.tools.required or item.expect.tools.forbidden)
 
 
 # ---------- 실행과 저장 ----------
@@ -908,10 +922,10 @@ def case_row(item: Item) -> dict[str, Any]:
     """사례의 정규 JSON 값(커밋 대조·내용 해시용). legacy 는 기존 조건(checks)까지 넣는다."""
     if isinstance(item, LegacyCase):
         return {
-            "case": item.case.model_dump(mode="json"),
+            "case": dump_case(item.case),
             "checks": dataclasses.asdict(item.checks),
         }
-    return item.model_dump(mode="json")
+    return dump_case(item)
 
 
 def _canon(value: Any) -> str:

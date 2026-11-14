@@ -18,7 +18,7 @@ from typing import Any
 
 from . import exposure
 from .scenarios import DATA_DIR, META_FILE, ScenarioItem, ScenarioList, parse_list
-from .schema import Case
+from .schema import Case, dump_case
 from .seeds import data as seed_data
 from .write_tools import WRITE_TOOLS
 
@@ -347,6 +347,11 @@ def load_dev_list(directory: Path | None = None) -> ScenarioList:
     return parse_list({**meta, "scenarios": exposure.load_rows("dev", directory=directory)})
 
 
+def _dump(case: Case) -> dict:
+    """`schema.dump_case`: 채점기 v2 의 빈 선택 필드를 적지 않아 쓰지 않는 사례의 파일이 v1 과 바이트까지 같다."""
+    return dump_case(case)
+
+
 def build(directory: Path | None = None) -> list[dict]:
     """확정 목록의 개발 36건으로 사례 36건을 만든다(JSON 으로 쓸 수 있는 dict, `Case` 로 검증한 뒤 다시 덤프)."""
     lst = load_dev_list(directory)
@@ -371,7 +376,7 @@ def build(directory: Path | None = None) -> list[dict]:
                 "meta": {"synthetic": True, "note": f"E5b 개발셋({item.topic}): {item.purpose}"},
             }
         )
-        rows.append(case.model_dump(mode="json"))
+        rows.append(_dump(case))
     return rows
 
 

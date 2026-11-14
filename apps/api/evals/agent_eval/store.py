@@ -49,9 +49,17 @@ MANIFEST_KEYS = (
     "seed",
     "repeats",
 )
+RESCORE_KEYS = (
+    "rescored_from",
+    "source_git_commit",
+    "scorer_version",
+    "cases_hash",
+    "rescore_label",
+)  # 소급 재채점 결과(`rescore.py`)에만 쓴다. 다섯 개가 모두 있거나 모두 없어야 한다
 MANIFEST_OPTIONAL = (
     "loop_id",
     "started_at",
+    *RESCORE_KEYS,
 )  # loop_id 는 stage 가 loop 일 때만(그리고 반드시) 둔다
 USAGE_KEYS = frozenset(
     {
@@ -136,6 +144,25 @@ def _check_manifest(manifest: Mapping[str, Any]) -> None:
         raise ValueError("run_id 는 소문자·숫자·`_.-` 만, 64자 이하, 끝은 영숫자, 장치 이름 불가")
     if manifest["stage"] not in STAGES:
         raise ValueError(f"stage 는 {STAGES} 중 하나")
+    present = [k for k in RESCORE_KEYS if k in manifest]
+    if present and len(present) != len(RESCORE_KEYS):
+        raise ValueError(f"재채점 키는 모두 있거나 모두 없어야 한다(있는 것: {present})")
+    if (
+        present and manifest["stage"] != "other"
+    ):  # 재채점 결과가 baseline·loop 실행인 척하지 못하게 한다
+        raise ValueError("재채점 결과의 stage 는 other 여야 한다")
+    if present and not (
+        isinstance(manifest["rescored_from"], str)
+        and RUN_ID.fullmatch(manifest["rescored_from"])
+        and isinstance(manifest["source_git_commit"], str)
+        and _HEX.fullmatch(manifest["source_git_commit"])
+        and _is_int(manifest["scorer_version"], 1)
+        and isinstance(manifest["cases_hash"], str)
+        and _HEX.fullmatch(manifest["cases_hash"])
+        and isinstance(manifest["rescore_label"], str)
+        and _NAME.fullmatch(manifest["rescore_label"])
+    ):
+        raise ValueError("재채점 키의 값 형식이 맞지 않는다")
     loop_id = manifest.get("loop_id")
     if (manifest["stage"] == "loop") != (loop_id is not None):
         raise ValueError("loop_id 는 stage 가 loop 일 때만, 그리고 반드시 있어야 한다")

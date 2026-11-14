@@ -254,7 +254,8 @@ def test_step_limit_is_a_cause_whenever_the_final_result_failed():
     legacy = _convert(_raw(expect_any=["꼭 있어야"]))
     obs = _obs("get_month_summary", answer="없음").model_copy(update={"step_limit_reached": True})
     got = judge(legacy, obs)
-    assert not got.result.passed and got.result.failure_types == ("step_limit",)
+    # v2: 기존 추가 검사로 답이 틀려진 것도 같은 이름(answer_mismatch)의 원인으로 적힌다(step_limit 은 그대로 함께)
+    assert not got.result.passed and got.result.failure_types == ("step_limit", "answer_mismatch")
     ok = _obs("get_month_summary", answer="꼭 있어야").model_copy(
         update={"step_limit_reached": True}
     )
@@ -284,3 +285,14 @@ def test_values_the_new_format_rejects_stop_the_conversion_with_an_adapter_error
     assert (
         main.checks.tool_mode == "unscored" and main.checks.tool is None
     )  # 메인은 tool 키가 없어도 된다
+
+
+def test_legacy_tool_modes_that_really_judge_tools_count_as_checked_in_v2():
+    """`any_of`·`none` 은 일반 사례로는 필수·금지가 비어 보이지만 도구 선택을 실제로 판정한다(공허한 판정이 아니다)."""
+    called = _obs("list_expenses")
+    none = _judge(_raw(tool=None), called).result
+    assert not none.tools_ok and none.tools_checked  # 도구가 없어야 하는 사례에서 불렀다
+    any_of = _judge(_raw(tool=None, tool_any=["get_month_summary", "list_expenses"]), called).result
+    assert any_of.tools_checked
+    optional = _judge(_raw(tool_optional=True), called).result
+    assert not optional.tools_checked  # 도구를 채점하지 않는 모드는 공허하다

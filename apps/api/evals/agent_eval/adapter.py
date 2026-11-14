@@ -276,11 +276,20 @@ def judge(legacy: LegacyCase, obs: Observation, common: Security | None = None) 
         tools_ok=generic.tools_ok and tool_ok,
         answer_ok=generic.answer_ok and text_ok,
         outcome_ok=generic.outcome_ok and in_proposal_ok,
+        # v2: 기존 도구 모드(정확히·하나라도·없어야 함·메인 집합)는 도구 선택을 실제로 판정한다. 일반 사례로는 필수·금지가
+        # 비어 보여도(any_of·none) 공허한 판정이 아니다. optional·unscored 만 도구를 채점하지 않는다.
+        tools_checked=generic.tools_checked
+        or ck.tool_mode in ("exact", "any_of", "none", "main_set"),
     )
     if (
         obs.step_limit_reached and not result.passed
     ):  # 일반 채점과 같게, 이미 실패한 사례의 원인으로만 센다
         failures.add("step_limit")
+    # v2: 기존 추가 검사로 답·결과 판정이 틀려진 경우에도 일반 채점과 같은 이름의 원인을 단다(판정은 그대로)
+    if not result.answer_ok:
+        failures.add("answer_mismatch")
+    if not result.outcome_ok:
+        failures.add("outcome_mismatch")
     result = replace(result, failure_types=tuple(t for t in _FAILURE_ORDER if t in failures))
     return LegacyJudgement(result=result, components=components, generic=generic)
 

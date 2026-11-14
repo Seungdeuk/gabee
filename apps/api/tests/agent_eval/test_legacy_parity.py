@@ -230,14 +230,20 @@ def test_the_matrix_exercises_every_condition_kind_and_both_verdicts():
                 assert names, (raw["id"], key)
 
 
-def test_failure_causes_are_only_tool_kinds_and_follow_the_tool_judgement():
-    """기존 실행기에는 실패 원인 분류가 없다. 새 결과의 원인은 도구 판정과 같이 움직이는 도구 종류뿐이다."""
+def test_failure_causes_are_tool_kinds_and_v2_answer_outcome_kinds_that_follow_the_judgement():
+    """기존 실행기에는 실패 원인 분류가 없다. 도구 원인(missing_tool·wrong_tool)은 도구 판정과 같이 움직이고,
+    v2 에서 더해진 답·결과 원인(answer_mismatch·outcome_mismatch)은 그 판정이 틀렸을 때만, 틀리면 반드시 붙는다."""
+    tool_kinds = {"missing_tool", "wrong_tool"}
+    v2_kinds = {"answer_mismatch", "outcome_mismatch"}
     for legacy in CASES:
         raw = RAW[legacy.case.id]
         for _, seen in mutations(raw):
             got = judge(legacy, to_observation(legacy, seen))
-            assert set(got.result.failure_types) <= {"missing_tool", "wrong_tool"}
+            types = set(got.result.failure_types)
+            assert types <= tool_kinds | v2_kinds
             if got.components["tool"]:
-                assert not got.result.failure_types
+                assert not types & tool_kinds
             elif legacy.checks.tool_mode in ("exact", "any_of", "main_set", "none"):
-                assert got.result.failure_types  # 도구 판정이 틀렸으면 원인이 적힌다
+                assert types & tool_kinds  # 도구 판정이 틀렸으면 원인이 적힌다
+            assert ("answer_mismatch" in types) == (not got.result.answer_ok)
+            assert ("outcome_mismatch" in types) == (not got.result.outcome_ok)
