@@ -179,6 +179,16 @@
 - legacy: 어댑터는 기존 추가 검사로 답·결과가 틀려진 경우에도 `answer_mismatch`·`outcome_mismatch` 를 달고, 기존 도구 모드(`exact`·`any_of`·`none`·`main_set`)는 `tools_checked=True` 로 둔다(`optional`·`unscored` 만 공허). 관찰 누락 자리표시 결과의 `tools_checked` 는 사례 기준으로 정해서(`runner._tools_checked_of`) 반복 순서에 지표가 흔들리지 않는다. 기존 시험 두 개(`test_legacy_parity.py` 의 원인 종류, `test_legacy_adapter.py` 의 단계 상한 원인)는 새 유형이 붙는 명세로 갱신했다(판정 `passed`·components 는 그대로이고 새 유형이 판정과 일치함을 양방향으로 확인한다).
 - 시험: `tests/agent_eval/test_scorer_v2.py`(변이 23종을 모두 잡는다: 답 규칙·실패 유형·도구 검사·allowed 규칙·재채점 보안 유지·재현 비교·출력 보호).
 
+## 개발셋 사례 정정 (PR-B, 운영 코드·프롬프트 변경 없음, 평가 설계 오류 정정)
+- 실호출 9건(개발셋)에서 드러난 **평가 설계 오류**만 `dev_cases.py` 에서 고쳐 `data/cases_dev.json` 을 다시 만들었다. 9건(schedq-01~03, isolation-01~03, docs-01~03)만 바뀌고 나머지 27건의 내용 해시는 같다. 검증·테스트셋은 열지 않았다.
+  - schedq-01~03: `schedule.query` 의 `period_start`·`period_end`·`keyword` 는 첫 목록으로 모자랄 때 쓰는 `need_wider` 힌트(빈 값 = 첫 목록으로 충분)라서 날짜 범위 인자 기대를 뺐다. 도구를 불렀는지(`required`)와 답의 사실은 그대로다. 가짜 대본(`dev_scripts.py`)도 같은 힌트를 쓰지 않게 고쳤다.
+  - isolation-01~03: 거절 표현을 "알 수 없" 한 가지만 받던 기준을 같은 뜻의 표현(`contains_any` 한 묶음)까지 받도록 보완했다. 금지 문자열·점검 대상(보안)은 그대로라서 누출 판정은 느슨해지지 않는다.
+  - docs-01~03: 정답 날짜 값은 그대로 두고 표기만 한글("2026년 11월 11일")과 ISO("2026-11-11") 두 가지를 받는다(`contains_any`). 연도 없는 표기는 받지 않아 틀린 연도는 그대로 걸린다. 실제 모델이 docs-03 에서 `search_knowledge` 를 맞게 부르고 날짜도 맞게 답했지만 ISO 로 써서 FAIL 한 것이 계기다(비용 $0.0031, 재채점: 기존 사례 0/1 → 수정 사례 1/1, 사후 보정이며 Agent 개선이 아니다).
+  - `allowed`: 목록 서술이 이름으로 허용한 읽기 도구만 둔다(isolation-01: `ask_family_chat`, isolation-03: `ask_schedule`·`ask_family_chat`). **chat-01 의 `analyze_recent_chat` 은 허용하지 않기로 했다**(단일 검색 도구 선택 시험이고 서술이 `search_messages` 만 이름으로 든다).
+- 기록: `data/cases_dev.revisions.json` 에 사례별 전후 해시·수정 사유·허용하지 않은 판단(근거)을 남기고, `tests/agent_eval/test_dev_revisions.py` 가 현재 파일과 맞는지·기록에 없는 사례에 새 필드가 없는지·`allowed` 가 서술이 이름으로 든 도구뿐인지를 지킨다.
+- 실호출 결과는 건드리지 않고 **새 채점기+기존 사례(`oldcases`)** 와 **새 채점기+수정 사례(`revised`)** 를 별도 폴더(`results/_rescore/`)에 따로 재채점해 비교했다. 기존 사례 재채점은 원본 판정(7/9)을 재현한다. 수정 사례에서 오른 판정은 사후 보정이며 **Agent 성능 개선이 아니다**.
+- 알게 된 것: isolation-01 의 원래 실패는 단계 상한이 아니라 거절 표현 기준 때문이었다(`step_limit` 는 실패 시 붙는 원인 표지). 사례를 고치면 통과하지만 단계 상한·강제 최종 답·`analyze_recent_chat` 오류 재시도 같은 효율 문제는 그대로 남는다. schedq-01 은 답에 `한우식당` 이 없어 `answer_mismatch` 로 남는다(목록 서술이 "18:00(한우식당)"이라고 적어 기준을 유지했다).
+
 ## 평가 데이터 노출 경로
 검증(val)·테스트(test) 사례 본문이 개발·튜닝에 쓰이면 평가가 무의미해진다. 코드로 막는 것과 막지 못하는 것을 나눠 적는다.
 
