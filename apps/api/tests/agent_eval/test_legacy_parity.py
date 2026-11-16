@@ -23,7 +23,19 @@ from evals.agent_eval.schema import Observation, ToolCall
 
 RAW = {r["id"]: r for r in json.loads(LEGACY_CASES_PATH.read_text("utf-8"))}
 CASES = load_legacy_cases()
-REGEX_SAMPLE = "수진이 낸 돈은 80,000원이에요"
+# 금지 정규식마다 그 식에 걸리는 문장(변이용). 새 정규식 사례를 넣으면 걸리는 문장도 여기에 더한다.
+REGEX_SAMPLES = (
+    "수진이 낸 돈은 80,000원이에요",
+    "우리 가족 일정을 전부 삭제했어요",
+    "연락처는 010-1234-5678 이에요",
+)
+
+
+def _regex_sample(pattern: str) -> str:
+    for sample in REGEX_SAMPLES:
+        if re.search(pattern, sample):
+            return sample
+    raise AssertionError(f"정규식 변이용 문장이 맞지 않는다: {pattern}")
 
 
 def _contains(answer: str, text: str) -> bool:  # run.py 의 _contains
@@ -50,6 +62,8 @@ def oracle(case: dict, seen: Seen) -> dict[str, bool]:
         tool_ok = True
     elif case.get("tool_any"):
         tool_ok = any(t in used for t in case["tool_any"])
+    elif case.get("tool_all"):
+        tool_ok = all(t in used for t in case["tool_all"])
     else:
         tool_ok = (case["tool"] in used) if case["tool"] else not used
     text_ok = (
@@ -96,6 +110,8 @@ def perfect(raw: dict) -> Seen:
         used = ()
     elif raw.get("tool_any"):
         used = (raw["tool_any"][0],)
+    elif raw.get("tool_all"):
+        used = tuple(raw["tool_all"])
     else:
         used = (raw["tool"],) if raw["tool"] else ()
     parts = [*raw["expect_contains"], *raw.get("expect_any", [])[:1]]
@@ -128,9 +144,12 @@ def mutations(raw: dict) -> list[tuple[str, Seen]]:
     add("one_proposal_more", summaries=(*base.summaries, "또 하나"))
     add("one_proposal_less", summaries=base.summaries[:-1] if base.summaries else ())
     add("no_proposals", summaries=())
-    for tool in {*(raw.get("tool_any") or []), *(raw.get("main_tools") or []), raw.get("tool")} - {
-        None
-    }:
+    for tool in {
+        *(raw.get("tool_any") or []),
+        *(raw.get("tool_all") or []),
+        *(raw.get("main_tools") or []),
+        raw.get("tool"),
+    } - {None}:
         add(f"missing_{tool}", used=tuple(u for u in base.used if u != tool))
     for needle in raw["expect_contains"]:
         add(f"drop_{needle}", answer=base.answer.replace(needle, ""))
@@ -144,8 +163,7 @@ def mutations(raw: dict) -> list[tuple[str, Seen]]:
         add(f"ends_{tail}", answer=f"{base.answer} {tail}  ")
         add(f"mid_{tail}", answer=f"{tail} {base.answer}")
     for pattern in raw.get("expect_not_regex", []):
-        assert re.search(pattern, REGEX_SAMPLE), "정규식 변이용 문장이 맞지 않는다"
-        add("regex_hit", answer=f"{base.answer} {REGEX_SAMPLE}")
+        add("regex_hit", answer=f"{base.answer} {_regex_sample(pattern)}")
     for needle in raw.get("expect_in_proposal", []):
         add(
             f"proposal_lacks_{needle}",
@@ -243,7 +261,7 @@ def test_failure_causes_are_tool_kinds_and_v2_answer_outcome_kinds_that_follow_t
             assert types <= tool_kinds | v2_kinds
             if got.components["tool"]:
                 assert not types & tool_kinds
-            elif legacy.checks.tool_mode in ("exact", "any_of", "main_set", "none"):
+            elif legacy.checks.tool_mode in ("exact", "any_of", "all_of", "main_set", "none"):
                 assert types & tool_kinds  # 도구 판정이 틀렸으면 원인이 적힌다
             assert ("answer_mismatch" in types) == (not got.result.answer_ok)
             assert ("outcome_mismatch" in types) == (not got.result.outcome_ok)
