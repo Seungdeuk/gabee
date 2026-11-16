@@ -2510,6 +2510,33 @@ LOCATION, 끝 위치에서 ORGANIZATION으로 오분류됐는데, R1은 시작 �
 
 출처: `apps/api/scripts/analyze_v8_exposure_breakdown.py`, `apps/api/app/shared/privacy/eval/style_v8_independent/exposure_breakdown.json`, 2026-11-16.
 
+## 47. 중의적 단어는 문맥으로 풀리는가 — 소규모 탐침(2026-11-16)
+
+**질문**: 46절의 "연준"(이름이자 "연방준비제도" 줄임말) 오분류가 문맥을 더 주면 풀리는지 직접 떠봤다.
+`ner.spans_for`로 1차 후보 라벨·점수만 본 소규모 수동 탐침이다(정식 평가셋 아님, 읽기 전용).
+
+| 문맥 | 서비스 | R1 |
+|---|---|---|
+| "연준이 아침부터 기분이 좋아 보이더라"(기준) | ORGANIZATION 0.76 | ORGANIZATION 0.69 |
+| "**우리 아들** 연준이 아침부터..." | PERSON 0.59 | 후보 없음 |
+| "연준이 오늘 **유치원** 다녀왔대" | ORGANIZATION 0.77 | ORGANIZATION 0.68 |
+| "연준이가 **숙제**를 안 해서 **혼났어**" | PERSON 0.64 | PERSON 0.78 |
+| "방금 통화한 **내 친구**가 연준이었어" | ORGANIZATION 0.74 | PERSON 0.63 |
+| "연준이 오늘 **생일**이래" | ORGANIZATION 0.77 | ORGANIZATION 0.76 |
+| "연준이랑 **놀이터**에서 놀았어" | ORGANIZATION 0.73 | PERSON 0.81 |
+| "**김연준**이 아침부터..."(성씨) | PERSON **0.92** | PERSON **0.97** |
+
+(같은 방식으로 "상원"도 떠봤다 — `ambiguous_word_context_probe.txt`에 전체 기록.)
+
+**결론**: 문맥이 가끔 풀어주긴 하지만(숙제·혼남, 가족 호칭 등은 종종 성공) **일관적이지 않다** —
+"유치원"·"생일"·"내 친구" 같이 사람한테만 쓰는 게 당연해 보이는 표현도 번번이 안 풀리고, 두 모델이
+같은 문맥에서 서로 다르게 반응한다(모델마다 학습 데이터의 공기 패턴이 달라서로 보인다). **유일하게
+모든 테스트에서 예외 없이 통한 건 성씨를 붙이는 것**(0.92~0.97, 압도적으로 안정적)이다. 실제 가족
+메신저는 문장이 짧고 맥락이 적어서, "문맥을 더 주면 풀린다"에 기대는 건 신뢰할 수 있는 완화책이 아니다
+— `known_names` 등록(또는 완전한 성명 사용)이 유일하게 확실한 방법이라는 결론이 다시 확인된다.
+
+출처: `apps/api/app/shared/privacy/eval/style_v8_independent/ambiguous_word_context_probe.txt`, 2026-11-16.
+
 ## 재현 방법
 
 ```bash
