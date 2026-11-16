@@ -35,13 +35,26 @@ def _log() -> dict:
 
 def test_log_matches_current_cases_file():
     log, cases = _log(), _cases()
-    assert log["dev_file_sha256"]["after"] == file_sha256(CASES_DEV_PATH.read_bytes())
+    followups = log.get("followups", [])
+    # 현재 파일 해시는 마지막 후속 정정의 '이후' 해시(없으면 PR-B 의 해시)와 같다
+    latest = (
+        followups[-1]["dev_file_sha256"]["after"] if followups else log["dev_file_sha256"]["after"]
+    )
+    assert latest == file_sha256(CASES_DEV_PATH.read_bytes())
     ids = [r["case_id"] for r in log["revisions"]]
     assert len(ids) == len(set(ids)) and set(ids) == REVISED
+    later = {r["case_id"]: r for f in followups for r in f["revisions"]}
     for rev in log["revisions"]:
-        assert rev["after_sha256"] == case_sha256(cases[rev["case_id"]])
         assert rev["before_sha256"] != rev["after_sha256"]
         assert rev["reason"].strip() and rev["kind"] == "eval_design_fix"
+        if rev["case_id"] in later:  # 후속 정정이 있으면 현재 사례는 후속의 '이후' 해시다
+            fix = later[rev["case_id"]]
+            assert fix["before_sha256"] == rev["after_sha256"]  # 해시 사슬이 끊기지 않는다
+            assert fix["after_sha256"] == case_sha256(cases[rev["case_id"]])
+            assert fix["before_sha256"] != fix["after_sha256"]
+            assert fix["reason"].strip() and fix["kind"] == "eval_criteria_fix"
+        else:
+            assert rev["after_sha256"] == case_sha256(cases[rev["case_id"]])
 
 
 def test_only_recorded_cases_carry_new_fields():
@@ -119,6 +132,28 @@ def test_docs_date_check_accepts_both_formats_but_not_a_wrong_date():
 def test_docs_date_check_known_limit_a_negated_correct_date_still_passes():
     """알려진 한계(부분 문자열 검사): 정답 날짜를 부정하면서 언급하는 문장은 구별하지 못한다. 문장 이해가 필요한 판정은 이 기준 밖이다."""
     assert _docs_verdict("s-dev-06-docs-03", "마감은 2026-11-11이 아니라 2026-11-13이에요")
+
+
+def test_schedq01_followup_only_dropped_the_place_and_kept_the_time_and_tool():
+    """후속 정정은 장소(한우식당)만 뺐다: 시각(18:00)·도구·보안 기대는 그대로이고 틀린 시각은 여전히 걸린다."""
+    expect = _cases()["s-dev-02-schedq-01"]["expect"]
+    assert expect["answer"]["contains"] == ["18:00"]
+    assert expect["tools"]["required"] == ["schedule.query"] and expect["calls"] == []
+    assert not expect["answer"].get("contains_any")
+
+    from evals.agent_eval import scoring
+    from evals.agent_eval.schema import Case, Observation, Security, ToolCall
+
+    case = Case.model_validate(_cases()["s-dev-02-schedq-01"])
+    call = ToolCall(stage="schedule", name="schedule.query", args={})
+
+    def ok(answer: str) -> bool:
+        obs = Observation(calls=[call], answer=answer, can_answer=True)
+        return scoring.score_case(case, obs, Security()).answer_ok
+
+    assert ok("가족 외식은 18:00에 시작해요")
+    assert not ok("가족 외식은 19:00에 시작해요")  # 틀린 시각
+    assert not ok("가족 외식 일정은 찾지 못했어요")  # 시각 없음
 
 
 def test_schedule_query_cases_no_longer_expect_widening_hints():

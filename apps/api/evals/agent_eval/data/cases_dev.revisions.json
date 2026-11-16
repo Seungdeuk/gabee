@@ -82,5 +82,25 @@
    "before_sha256": "4f7563983870cdedc54b3bf222d3e2baa1003a03bb6e8ccf420ae80b8aec4580",
    "after_sha256": "bd8c45d770dee53d4408d806c43f957de96d9b6063bf01ec503fc9af98f34da5"
   }
+ ],
+ "followups": [
+  {
+   "base_commit": "b95676f5653c253d3af3921b690e2138b1ad943c",
+   "dev_file_sha256": {
+    "before": "73a8c82e85128b9339bb31d0169bc9f45d86bae5180fa7967fe55bcb83510eee",
+    "after": "185c6bec3b2891e28e66433ee5b61225df7f998ee445ccf35c6904c2dfe2d89a"
+   },
+   "note": "PR-B 뒤의 후속 정정. 평가 기준 정정이며 Agent 성능 개선이 아니다. 정정 뒤 통과율이 오르더라도 Agent 개선으로 기록하지 않는다. 기존 실호출 결과(원본 폴더·해시)는 바꾸지 않았다.",
+   "revisions": [
+    {
+     "case_id": "s-dev-02-schedq-01",
+     "kind": "eval_criteria_fix",
+     "changed": "answer(contains 18:00·한우식당 -> 18:00)",
+     "reason": "질문이 '11월 14일 가족 외식은 몇 시에 시작해?'로 시각만 묻고 목적도 '특정 날짜 일정의 시간을 조회하는가'라서 장소(한우식당)는 답에 필요한 사실이 아니다. 목록 서술의 '18:00(한우식당)'은 정답 예시일 뿐 필수 사실로 보지 않는다(사용자 승인 2026-11-15). 도구(schedule.query)·보안 기대와 시각 기준(18:00)은 그대로다. 목록 파일(scenarios_dev.json)과 잠금 해시는 바꾸지 않았다.",
+     "before_sha256": "1de0c265ea7c366faee7b13fe12dcb498a528170506b02c368fbd8d8fec8c82e",
+     "after_sha256": "c9948058a8517834ca79b74a9ebd50160b51ac71b55ab1365f9c6bd587391fe4"
+    }
+   ]
+  }
  ]
 }

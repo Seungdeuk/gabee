@@ -140,9 +140,10 @@ def expects(item: ScenarioItem) -> dict:
         # 2 schedule_query (일정 쓰기 금지는 실행기 공통 규칙이 지킨다)
         # schedule.query 의 period_start·period_end·keyword 는 "첫 목록으로 모자라 더 넓게 볼 때"의 힌트(need_wider)이고 비어 있으면 첫 목록으로 충분했다는 뜻이다
         # (PR-B). 그래서 인자 값을 기대하지 않고 도구를 불렀는지(required)와 답의 사실만 본다.
-        "s-dev-02-schedq-01": _expect(  # schedule.query, 18:00(한우식당)
+        # 질문이 "몇 시에 시작해?"뿐이라 시각만 본다(장소는 묻지 않았다. 후속 정정: cases_dev.revisions.json 의 followups)
+        "s-dev-02-schedq-01": _expect(  # schedule.query, 18:00
             required=("schedule.query",),
-            contains=("18:00", "한우식당"),
+            contains=("18:00",),
         ),
         "s-dev-02-schedq-02": _expect(  # 11/9~15 조회, 확정 3건, 15일 후보는 확정 전, 부탁은 부탁으로, 비공유 일정 비언급
             required=("schedule.query",),
