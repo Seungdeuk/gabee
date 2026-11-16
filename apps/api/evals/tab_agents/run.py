@@ -1,10 +1,13 @@
 """탭 에이전트를 실제 LLM 으로 평가한다(ANTHROPIC_API_KEY 필요). 임시 SQLite 에 가짜 가족 데이터만 넣고 돌린다.
 
-    cd apps/api && python -m evals.tab_agents.run [--case b-total] [--repeat 3]
+    cd apps/api && python -m evals.tab_agents.run [--case b-total] [--repeat 3] [--max-answers 2]
 
 사례마다 (1) 기대한 도구를 불렀는지(tool 이 null 이면 도구를 부르면 안 됨, tool_optional 이면 도구 사용은 채점 안 함)
 (2) 답에 expect_contains 가 있는지 본다. as_user 로 질문하는 사람(기본 지민)을 고를 수 있다.
-금액은 쉼표 있는/없는 형태를 모두 인정한다. 결과 표와 통과율만 출력하고 질문·답은 가짜 데이터라 그대로 보여 준다."""
+금액은 쉼표 있는/없는 형태를 모두 인정한다. 결과 표와 통과율만 출력하고 질문·답은 가짜 데이터라 그대로 보여 준다.
+
+--max-answers N: 호출 상한. 사례 × 반복 횟수(= 모델에게 답을 받는 횟수)가 N 을 넘으면 **하나도 부르지 않고** 종료한다(종료 코드 5).
+한 번의 답 안에서 모델은 도구 단계마다 부르므로(정산 에이전트는 최대 4단계, 메인을 거치면 더) 실제 모델 호출 수는 답 수보다 많을 수 있다."""
 
 import argparse
 import json
@@ -58,11 +61,25 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--case", action="append", help="사례 id(여러 번 가능). 비우면 전체")
     parser.add_argument("--repeat", type=int, default=1, help="사례마다 반복 횟수")
+    parser.add_argument(
+        "--max-answers",
+        type=int,
+        default=None,
+        help="호출 상한: 사례 × 반복이 이 값을 넘으면 아무것도 부르지 않고 종료",
+    )
     args = parser.parse_args()
+    cases = [c for c in CASES if not args.case or c["id"] in args.case]
+    planned = len(cases) * args.repeat
+    if (
+        args.max_answers is not None and planned > args.max_answers
+    ):  # 키 확인보다 먼저: 비용이 나가기 전에 막는다
+        print(
+            f"호출 상한 초과: 사례 {len(cases)}개 × 반복 {args.repeat} = {planned}번 답을 받아야 해서 --max-answers {args.max_answers} 를 넘습니다. 아무것도 부르지 않고 종료합니다."
+        )
+        return 5
     if not settings.anthropic_api_key:
         print("ANTHROPIC_API_KEY 가 설정되지 않아 실제 평가를 건너뜁니다.")
         return 2
-    cases = [c for c in CASES if not args.case or c["id"] in args.case]
     # 평가는 한 사용자가 짧은 시간에 많이 부르므로 하루 한도를 넉넉히 한다(실서비스 설정은 그대로)
     settings.ai_tab_agent_max_calls_per_user_per_day = 100000
     settings.ai_tab_agent_max_calls_per_group_per_day = 100000
@@ -157,7 +174,7 @@ def main() -> int:
                     passed, total = passed + ok, total + 1
                 per_case.setdefault(case["id"], []).append(ok)
                 label = ("GAP-PASS" if ok else "GAP") if gap else ("PASS" if ok else "FAIL")
-                print(f"[{label}] {case['id']} tools={used}")
+                print(f"[{label}] {case['id']} tools={used} proposals={n_proposals}")
                 if not ok and not gap:
                     print(f"    답: {answer[:200]}")
         print(chr(10) + "사례별 통과율")
