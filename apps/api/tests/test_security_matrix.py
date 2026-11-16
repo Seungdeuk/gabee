@@ -246,6 +246,9 @@ NO_GROUP_OK = {
     ("GET", "/notices"),
     # 통합관리자 챗봇: 가족 데이터가 아니다. 권한은 require_operator("admin")(admin_knowledge/tests 에서 401·403 확인)
     ("POST", "/admin/knowledge/ask"),
+    # 검색 색인 점검(읽기 전용): 모델 이름과 모델별 조각 개수만 돌려주고 내용·가족 그룹 id 는 싣지 않는다. 권한은 require_operator("admin")
+    # (ai_assistant/knowledge/tests/test_index_health.py 의 test_status_api_requires_operator 에서 401·403 확인)
+    ("GET", "/ai-assistant/knowledge/index-status"),
     # 운영 관리자 조회 경로도 가족 데이터가 아니다(요청 지표·오류 이벤트). 권한은 require_operator("admin") 허용 목록이 정한다
     # (ops_admin/tests 에서 401·403 확인)
     ("GET", "/admin/ops/summary"),
@@ -1666,6 +1669,13 @@ LLM_CALLER_FILES = {
     "features/weekly_news/generate.py": "ai_guard.run",
     "features/billing/agent.py": "agent_guard.run_turn",
     "features/family_chat/agent.py": "agent_guard.run_turn",
+    # 가족 기능 안에서 LLM 을 부르는 화면 추천(퀴즈): 같은 공통 관문(기능 play_quiz_rec, 별도 한도)을 거친다
+    "features/play/quiz_rec.py": "ai_guard.run",
+}
+# 운영자 전용 LLM 호출: 가족 AI 관문(ai_guard) 대신 라우터가 require_operator("admin") 로 막는다. 가족 데이터를 보내지 않고(현재 숫자 요약과
+# 개인정보를 가린 질문만) 하루 한도는 두지 않기로 했다(2026-11-09 결정, admin_knowledge/service.py). 값은 그 권한을 거는 라우터 파일이다
+OPERATOR_LLM_CALLER_FILES = {
+    "features/admin_knowledge/service.py": "features/admin_knowledge/router.py",
 }
 _OUTBOUND = re.compile(
     r"\bhttpx\.(post|get|put|patch|delete|request|stream|Client|AsyncClient)\b|from httpx import"
@@ -1710,9 +1720,15 @@ def test_every_llm_caller_goes_through_a_guard():
         and rel not in wrapper
         and not rel.startswith("features/ai_assistant/ingest/")
     }
-    assert callers == set(LLM_CALLER_FILES), callers ^ set(LLM_CALLER_FILES)
+    known = set(LLM_CALLER_FILES) | set(OPERATOR_LLM_CALLER_FILES)
+    assert callers == known, callers ^ known
     for rel, gate in LLM_CALLER_FILES.items():
         assert gate in sources[rel], f"{rel} 에 {gate} 가 없다"
+    for rel, router in OPERATOR_LLM_CALLER_FILES.items():
+        assert 'require_operator("admin")' in sources[router], f"{router} 에 운영자 권한이 없다"
+        assert "ai_guard" not in sources[rel], (
+            f"{rel} 가 가족 관문을 쓰면 LLM_CALLER_FILES 로 옮긴다"
+        )
     # 도구 루프 래퍼(rag_chat)는 ask_guarded 안에서 ai_guard.run 을 부르고, 라우터는 ask_guarded 만 쓴다
     assert "ai_guard.run(" in sources["features/ai_assistant/knowledge/rag_chat.py"]
     assert "rag_chat.ask(" not in sources["features/ai_assistant/service.py"]

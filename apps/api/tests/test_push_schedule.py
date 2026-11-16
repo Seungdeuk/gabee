@@ -32,6 +32,8 @@ def sent(monkeypatch):
     monkeypatch.setattr(settings, "push_enabled", True)
     monkeypatch.setattr(push, "_submit", lambda fn, *args: fn(*args))
     monkeypatch.setattr(push, "_post", fake_post)
+    # 발송 단계도 고정 시각을 쓴다: 실제 시각을 쓰면 시험이 도는 시각이 방해금지에 걸릴 때 결과가 달라진다
+    monkeypatch.setattr(push, "_now", lambda: NOW)
     return lambda: [m for batch in batches for m in batch]
 
 
