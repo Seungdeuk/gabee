@@ -141,9 +141,11 @@ def register_chat_photo(
         if not forced:
             status, error = _judge_photo(group_id, data)
             # 결과를 판별 상태 표에 적는다(문서함 등록보다 먼저: 문서면 바로 숨김 상태가 된다). 못 적어도 pending 으로 남아 안전하다
-            chat_library.photo_judged(group_id, attachment_id, status, error)
+            may_register = chat_library.photo_judged(group_id, attachment_id, status, error)
             if status != "document":
                 return
+            if not may_register:
+                return  # 업로더가 이미 일반 사진으로 확인한 사진: 문서함에 올리면 타임라인과 문서함에 둘 다 있게 된다(b0-2a 리뷰)
         with SessionLocal() as db:
             photo = service.receive_file(
                 db, group_id, user_id, f"{attachment_id}.jpg", "image/jpeg", data

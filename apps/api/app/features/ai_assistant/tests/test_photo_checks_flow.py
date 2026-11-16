@@ -215,6 +215,39 @@ def test_a_late_result_does_not_overwrite_a_manual_document(client, family):
     assert (row.status, row.source) == ("document", "manual")
 
 
+def test_a_late_document_verdict_after_the_uploader_confirmed_does_not_register_the_photo(
+    client, family
+):
+    """b0-2a 리뷰: 업로더가 일반 사진으로 확인(photo/manual)한 뒤 늦게 문서 판정이 와도 상태는 그대로이고, 문서함에 등록하지도 않는다
+    (등록하면 타임라인과 문서함 양쪽에 있게 된다)."""
+    a, _, group = family
+    _use_ocr(ScriptedOcr(NOTICE_LINES))  # 판별하면 문서다
+    old = chat_library._on_photo
+    chat_library._on_photo = None  # 업로드 직후 자동 판별이 돌지 않게 하고(대기열이 밀린 상황)
+    try:
+        att = _send_photo(client, a)
+    finally:
+        chat_library._on_photo = old
+    with SessionLocal() as db:
+        row = db.get(ChatPhotoCheck, att)
+        row.status, row.source = "photo", "manual"  # 업로더 확인(b0-2a)
+        db.commit()
+    library.register_chat_photo(group["id"], family_user_id(client, a), att, _jpeg_bytes(), False)
+    row = _check(att)
+    assert (row.status, row.source) == ("photo", "manual")
+    assert _items(group["id"]) == []
+
+
+def family_user_id(client, headers) -> str:
+    return client.get("/family-group/me", headers=headers).json()["id"]
+
+
+def _jpeg_bytes() -> bytes:
+    out = io.BytesIO()
+    Image.new("RGB", (320, 240), (235, 235, 235)).save(out, format="JPEG")
+    return out.getvalue()
+
+
 def test_the_one_to_one_room_photo_is_not_judged_into_the_table(client, family):
     a, b, group = family
     other = client.get("/family-group/me", headers=b).json()["id"]

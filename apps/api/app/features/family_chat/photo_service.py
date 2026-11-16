@@ -340,7 +340,7 @@ def save_to_library(db: Session, user: User, group_id: str, attachment_id: str) 
             409, "not_family_room", "가족 전체방에 올린 사진만 가족 문서함에 저장할 수 있어요"
         )
     photo_check_service.mark_document(
-        db, group_id, attachment_id
+        db, group_id, attachment_id, user.id
     )  # D-15: 가족 누구나 문서로 저장 가능. 상태를 문서(수동)로 맞춘다(자동 판별이 못 바꾼다)
     if chat_library.is_registered(db, group_id, attachment_id):
         return "already"

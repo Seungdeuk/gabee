@@ -9,10 +9,59 @@ from app.features.family_group.models import User
 from app.shared.auth import current_group_id, current_user
 from app.shared.db import get_db
 
-from . import photo_service
-from .schemas import LibrarySaveOut, MessageOut
+from . import photo_check_service, photo_service
+from .schemas import (
+    LibrarySaveOut,
+    LibraryStateOut,
+    MessageOut,
+    PhotoCheckIn,
+    PhotoCheckOut,
+    PhotoChecksOut,
+)
 
 router = APIRouter()
+
+
+@router.get("/photos/checks/mine", response_model=PhotoChecksOut)
+def my_photo_checks(
+    limit: int = Query(30, ge=1, le=50),
+    before: int | None = Query(None, ge=1),
+    user: User = Depends(current_user),
+    group_id: str = Depends(current_group_id),
+    db: Session = Depends(get_db),
+) -> PhotoChecksOut:
+    """내가 가족 전체방에 올린 사진 중 확인이 필요한 것만(최신순): 애매(`unsure`)·판별 실패(`failed`)·올린 지 15분 넘게 판별되지 않은(`pending`) 사진.
+    다른 가족이 올린 사진은 절대 섞이지 않고, 가족에게 새로 알리는 것도 없다(푸시 없음). `before` 는 이전 응답의 `next_before`. 조회에 실패하면
+    빈 목록이 아니라 503. `pending` 을 일반 사진으로 보지 않는다: 15분은 "처리 지연" 표시 기준일 뿐이다."""
+    return photo_check_service.review_list(db, user, group_id, limit, before)
+
+
+@router.post("/photos/{attachment_id}/check", response_model=PhotoCheckOut)
+def confirm_general_photo(
+    attachment_id: str,
+    body: PhotoCheckIn,
+    user: User = Depends(current_user),
+    group_id: str = Depends(current_group_id),
+    db: Session = Depends(get_db),
+) -> PhotoCheckOut:
+    """업로더가 "일반 사진이에요"를 명시적으로 확인한다(가족 타임라인에 보이게 된다). 본문 `acknowledge` 는 반드시 true(아니면 422).
+    업로더 본인이 가족 전체방에 올린 살아 있는 사진만(그 밖은 모두 404: 존재를 숨긴다). 문서로 판별·저장됐거나 문서함에 등록된 사진은 409
+    `document_to_photo_blocked`(문서→일반 전환은 MVP 에서 막는다), 올린 지 15분 안 된 판별 대기는 409 `check_in_progress`, 문서함 등록 여부를
+    확인하지 못하면 503. 같은 요청을 다시 보내도 결과는 같고(200) 이력은 한 줄만 남는다. 자동 판별은 이 확인을 덮어쓰지 못한다."""
+    return photo_check_service.confirm_general(db, user, group_id, attachment_id)
+
+
+@router.get("/photos/{attachment_id}/library", response_model=LibraryStateOut)
+def photo_library_state(
+    attachment_id: str,
+    user: User = Depends(current_user),
+    group_id: str = Depends(current_group_id),
+    db: Session = Depends(get_db),
+) -> LibraryStateOut:
+    """사진이 가족 문서함에 등록됐는지(`registered`/`not_registered`). 방에 들어갈 수 있는 가족 누구나. 없는 사진·못 들어가는 방은 404, 1:1 방은 409.
+    "문서로 저장"이 `queued` 만 답하므로 앱은 이것으로 결과를 확인한다. 확인하지 못하면 `not_registered`(성공으로 보이지 않게)이고,
+    아직 없으면 `POST /photos/{id}/library` 를 다시 요청해 이어서 등록한다(같은 요청은 한 번만 등록된다)."""
+    return photo_check_service.library_state(db, user, group_id, attachment_id)
 
 
 @router.post("/photos", response_model=MessageOut, status_code=201)

@@ -2524,6 +2524,334 @@
         }
       }
     },
+    "/family-chat/photos/checks/mine": {
+      "get": {
+        "tags": [
+          "family-chat"
+        ],
+        "summary": "My Photo Checks",
+        "description": "내가 가족 전체방에 올린 사진 중 확인이 필요한 것만(최신순): 애매(`unsure`)·판별 실패(`failed`)·올린 지 15분 넘게 판별되지 않은(`pending`) 사진.\n다른 가족이 올린 사진은 절대 섞이지 않고, 가족에게 새로 알리는 것도 없다(푸시 없음). `before` 는 이전 응답의 `next_before`. 조회에 실패하면\n빈 목록이 아니라 503. `pending` 을 일반 사진으로 보지 않는다: 15분은 \"처리 지연\" 표시 기준일 뿐이다.",
+        "operationId": "my_photo_checks_family_chat_photos_checks_mine_get",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 50,
+              "minimum": 1,
+              "default": 30,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "before",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Before"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-gyeot-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Gyeot-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PhotoChecksOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/family-chat/photos/{attachment_id}/check": {
+      "post": {
+        "tags": [
+          "family-chat"
+        ],
+        "summary": "Confirm General Photo",
+        "description": "업로더가 \"일반 사진이에요\"를 명시적으로 확인한다(가족 타임라인에 보이게 된다). 본문 `acknowledge` 는 반드시 true(아니면 422).\n업로더 본인이 가족 전체방에 올린 살아 있는 사진만(그 밖은 모두 404: 존재를 숨긴다). 문서로 판별·저장됐거나 문서함에 등록된 사진은 409\n`document_to_photo_blocked`(문서→일반 전환은 MVP 에서 막는다), 올린 지 15분 안 된 판별 대기는 409 `check_in_progress`, 문서함 등록 여부를\n확인하지 못하면 503. 같은 요청을 다시 보내도 결과는 같고(200) 이력은 한 줄만 남는다. 자동 판별은 이 확인을 덮어쓰지 못한다.",
+        "operationId": "confirm_general_photo_family_chat_photos__attachment_id__check_post",
+        "parameters": [
+          {
+            "name": "attachment_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Attachment Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-gyeot-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Gyeot-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PhotoCheckIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PhotoCheckOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/family-chat/photos/{attachment_id}/library": {
+      "get": {
+        "tags": [
+          "family-chat"
+        ],
+        "summary": "Photo Library State",
+        "description": "사진이 가족 문서함에 등록됐는지(`registered`/`not_registered`). 방에 들어갈 수 있는 가족 누구나. 없는 사진·못 들어가는 방은 404, 1:1 방은 409.\n\"문서로 저장\"이 `queued` 만 답하므로 앱은 이것으로 결과를 확인한다. 확인하지 못하면 `not_registered`(성공으로 보이지 않게)이고,\n아직 없으면 `POST /photos/{id}/library` 를 다시 요청해 이어서 등록한다(같은 요청은 한 번만 등록된다).",
+        "operationId": "photo_library_state_family_chat_photos__attachment_id__library_get",
+        "parameters": [
+          {
+            "name": "attachment_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Attachment Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-gyeot-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Gyeot-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryStateOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "family-chat"
+        ],
+        "summary": "Save Photo To Library",
+        "description": "가족 전체방에 올린 사진을 가족 공유 문서함에 직접 저장한다(\"문서로 저장\"). 방에 들어갈 수 있는 가족 누구나 누를 수 있다.\n문서 사진 판별과 하루 상한을 건너뛰고, 글을 읽는 데는 시간이 걸려 바로 `queued` 로 답한다(이미 있으면 `already`). 1:1 방 사진은 409, 없는 사진·못 들어가는 방은 404, 너무 자주 누르면 429. `queued` 는 \"저장을 시작했다\"는 뜻이라, 읽지 못하면 직접 저장해도 문서함에 넣지 않는다(민감 문서도 넣고 민감 표시를 붙인다).",
+        "operationId": "save_photo_to_library_family_chat_photos__attachment_id__library_post",
+        "parameters": [
+          {
+            "name": "attachment_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Attachment Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-gyeot-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Gyeot-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibrarySaveOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/family-chat/photos": {
       "post": {
         "tags": [
@@ -2583,81 +2911,6 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/MessageOut"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/family-chat/photos/{attachment_id}/library": {
-      "post": {
-        "tags": [
-          "family-chat"
-        ],
-        "summary": "Save Photo To Library",
-        "description": "가족 전체방에 올린 사진을 가족 공유 문서함에 직접 저장한다(\"문서로 저장\"). 방에 들어갈 수 있는 가족 누구나 누를 수 있다.\n문서 사진 판별과 하루 상한을 건너뛰고, 글을 읽는 데는 시간이 걸려 바로 `queued` 로 답한다(이미 있으면 `already`). 1:1 방 사진은 409, 없는 사진·못 들어가는 방은 404, 너무 자주 누르면 429. `queued` 는 \"저장을 시작했다\"는 뜻이라, 읽지 못하면 직접 저장해도 문서함에 넣지 않는다(민감 문서도 넣고 민감 표시를 붙인다).",
-        "operationId": "save_photo_to_library_family_chat_photos__attachment_id__library_post",
-        "parameters": [
-          {
-            "name": "attachment_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Attachment Id"
-            }
-          },
-          {
-            "name": "authorization",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Authorization"
-            }
-          },
-          {
-            "name": "x-gyeot-token",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Gyeot-Token"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/LibrarySaveOut"
                 }
               }
             }
@@ -23661,6 +23914,24 @@
         "title": "LibrarySaveOut",
         "description": "사진을 문서함에 저장한 결과: queued = 저장을 시작했다(읽는 데 시간이 걸린다), already = 이미 문서함에 있다."
       },
+      "LibraryStateOut": {
+        "properties": {
+          "state": {
+            "type": "string",
+            "enum": [
+              "registered",
+              "not_registered"
+            ],
+            "title": "State"
+          }
+        },
+        "type": "object",
+        "required": [
+          "state"
+        ],
+        "title": "LibraryStateOut",
+        "description": "사진의 문서함 등록 여부. 확인하지 못하면 not_registered(성공으로 보이지 않게)."
+      },
       "LinkCreate": {
         "properties": {
           "room_id": {
@@ -25462,6 +25733,133 @@
         ],
         "title": "PendingJoinOut",
         "description": "관리자가 보는 승인 대기 요청."
+      },
+      "PhotoCheckIn": {
+        "properties": {
+          "to": {
+            "type": "string",
+            "const": "photo",
+            "title": "To"
+          },
+          "reason": {
+            "type": "string",
+            "const": "uploader_confirmed_general",
+            "title": "Reason"
+          },
+          "acknowledge": {
+            "type": "boolean",
+            "const": true,
+            "title": "Acknowledge"
+          }
+        },
+        "type": "object",
+        "required": [
+          "to",
+          "reason",
+          "acknowledge"
+        ],
+        "title": "PhotoCheckIn",
+        "description": "일반 사진으로 확인. 문서·카드·서류가 찍힌 사진이면 확인하지 않는다. `acknowledge` 는 \"가족 타임라인에 보이게 된다\"는 안내를\n보고 확인했다는 뜻이라 반드시 true(서버가 강제한다). 이유 코드도 정해진 값 하나뿐이다."
+      },
+      "PhotoCheckItemOut": {
+        "properties": {
+          "attachment_id": {
+            "type": "string",
+            "title": "Attachment Id"
+          },
+          "thumb_url": {
+            "type": "string",
+            "title": "Thumb Url"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "taken_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Taken At"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "unsure",
+              "failed",
+              "pending"
+            ],
+            "title": "Status"
+          }
+        },
+        "type": "object",
+        "required": [
+          "attachment_id",
+          "thumb_url",
+          "created_at",
+          "status"
+        ],
+        "title": "PhotoCheckItemOut",
+        "description": "업로더 본인의 \"확인 필요\" 사진 한 장. status: unsure(애매) | failed(판별 실패) | pending(처리 지연: 올린 지 15분 넘음)."
+      },
+      "PhotoCheckOut": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "const": "photo",
+            "title": "Status"
+          },
+          "source": {
+            "type": "string",
+            "const": "manual",
+            "title": "Source"
+          }
+        },
+        "type": "object",
+        "required": [
+          "status",
+          "source"
+        ],
+        "title": "PhotoCheckOut"
+      },
+      "PhotoChecksOut": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/PhotoCheckItemOut"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "needs_review_count": {
+            "type": "integer",
+            "title": "Needs Review Count"
+          },
+          "next_before": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Before"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items",
+          "needs_review_count"
+        ],
+        "title": "PhotoChecksOut",
+        "description": "내가 올린 사진 중 확인이 필요한 것(최신순). needs_review_count 는 전체 개수, next_before 는 다음 쪽을 받을 때 `before` 에 넣는 값(없으면 끝)."
       },
       "PhotoOut": {
         "properties": {

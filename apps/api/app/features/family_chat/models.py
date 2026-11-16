@@ -198,6 +198,29 @@ class ChatPhotoCheck(Base):
     )
 
 
+class ChatPhotoCheckEvent(Base):
+    """사진 판별 상태가 사람 손으로 바뀐 이력(T05-b0-2a, D-19). 전후 상태·이유 코드·시각만 남기고 사진 내용·자유 글은 없다.
+    `actor_user_id` 는 nullable FK + ON DELETE SET NULL: 사용자 행이 지워져도(또는 익명화돼도) 이력은 남고 "누가"만 비워진다.
+    사용자 식별자를 문자열로 따로 보관하지 않는다. 첨부·가족을 지우면 이력도 함께 지운다. `from_status` NULL = 이전 줄이 없던 예전 사진."""
+
+    __tablename__ = "chat_photo_check_events"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    attachment_id: Mapped[str] = mapped_column(
+        ForeignKey("message_attachments.id", ondelete="CASCADE"), index=True
+    )
+    group_id: Mapped[str] = mapped_column(ForeignKey("groups.id", ondelete="CASCADE"), index=True)
+    actor_user_id: Mapped[str | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    from_status: Mapped[str | None] = mapped_column(String(12), nullable=True)
+    to_status: Mapped[str] = mapped_column(String(12))
+    reason: Mapped[str] = mapped_column(String(40))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(UTC)
+    )
+
+
 class MessageShare(Base):
     """채팅방 공유 카드의 내용(보낸 시점 스냅샷). 메시지 하나에 카드 하나이고, 메시지의 text 는 개인정보 없는 고정 문구다.
     kind: event(내 일정 한 건) | settlement(그 달 내 정산 몫). payload 는 서버가 만든 JSON 이라 클라이언트 값이 들어오지 않는다.

@@ -461,6 +461,20 @@ CROSS = [
     ("GET", "/family-chat/unread", {"params": {"room_id": "{direct_room_id}"}}, (403, 404)),
     ("GET", "/family-chat/photos/{attachment_id}", {}, (403, 404)),
     ("GET", "/family-chat/photos/{attachment_id}", {"params": {"size": "thumb"}}, (403, 404)),
+    ("GET", "/family-chat/photos/{attachment_id}/library", {}, (403, 404)),
+    (
+        "POST",
+        "/family-chat/photos/{attachment_id}/check",
+        {
+            "json": {
+                "to": "photo",
+                "reason": "uploader_confirmed_general",
+                "acknowledge": True,
+            },
+            "_setup": ["photo_unsure"],
+        },
+        (403, 404),
+    ),
     ("GET", "/family-chat/media", {"params": {"room_id": "{direct_room_id}"}}, (403, 404)),
     ("GET", "/family-chat/search", {"params": {"q": "{secret}"}}, (200,)),
     (
@@ -711,6 +725,16 @@ def _setup(api, fam: Family, s: dict, name: str) -> None:
     if name == "pin_message":
         r = api.post("/family-chat/pins", json={"message_id": s["message_id"]}, headers=h)
         assert r.status_code == 200, r.text
+    elif (
+        name == "photo_unsure"
+    ):  # 업로더 확인 대상(판별 결과가 애매한 사진)으로 만든다: 방금 올린 pending 은 확인할 수 없다
+        from app.features.family_chat.models import ChatPhotoCheck
+        from app.shared.db import SessionLocal
+
+        with SessionLocal() as db:
+            row = db.get(ChatPhotoCheck, s["attachment_id"])
+            row.status = "unsure"
+            db.commit()
     elif name == "allowance_plan":
         from datetime import UTC, datetime, timedelta
 

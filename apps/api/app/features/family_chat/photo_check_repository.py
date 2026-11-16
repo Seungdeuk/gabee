@@ -1,12 +1,25 @@
 """사진 판별 상태(`chat_photo_checks`) DB 접근. 모든 쓰기는 조건부 UPDATE 하나로 끝내 늦게 오거나 겹쳐 온 결과가 상태를 덮어쓰지 못하게 한다."""
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import delete, select, update
+from sqlalchemy import and_, delete, func, or_, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from .models import ChatPhotoCheck, MessageAttachment
+from .models import (
+    FAMILY,
+    ChatPhotoCheck,
+    ChatPhotoCheckEvent,
+    ChatRoom,
+    Message,
+    MessageAttachment,
+)
+
+# 이력 이유 코드(자유 글 없음). 새 이유는 여기에만 추가한다.
+REASON_UPLOADER_CONFIRMED = "uploader_confirmed_general"
+REASON_FAMILY_DOCUMENT = "family_saved_as_document"
+# 업로드 뒤 이 시간이 지난 pending 은 "처리 지연"으로 업로더에게 보인다(초기값, b0-3 재시도 구현 뒤 재조정). 자동 판별 실패·일반 사진 확정 기준이 아니다.
+STALE_PENDING = timedelta(minutes=15)
 
 PENDING = "pending"
 PHOTO = "photo"
@@ -63,20 +76,75 @@ def record_auto(
     return result.rowcount == 1
 
 
-def _set_manual_document(db: Session, group_id: str, attachment_id: str) -> int:
-    result = db.execute(
-        update(ChatPhotoCheck)
-        .where(ChatPhotoCheck.attachment_id == attachment_id, ChatPhotoCheck.group_id == group_id)
-        .values(status=DOCUMENT, source=MANUAL, last_error=None, checked_at=datetime.now(UTC))
-        .execution_options(synchronize_session=False)
+def _add_event(
+    db: Session,
+    group_id: str,
+    attachment_id: str,
+    actor_user_id: str | None,
+    from_status: str | None,
+    to_status: str,
+    reason: str,
+    now: datetime,
+) -> None:
+    """이력 한 줄(커밋은 부르는 쪽). 상태를 바꾸는 UPDATE 와 같은 트랜잭션에서만 부른다."""
+    db.add(
+        ChatPhotoCheckEvent(
+            attachment_id=attachment_id,
+            group_id=group_id,
+            actor_user_id=actor_user_id,
+            from_status=from_status,
+            to_status=to_status,
+            reason=reason,
+            created_at=now,
+        )
     )
-    return result.rowcount
 
 
-def mark_document_manual(db: Session, group_id: str, attachment_id: str) -> None:
+def mark_document_manual(
+    db: Session, group_id: str, attachment_id: str, actor_user_id: str | None = None
+) -> None:
     """사람이 "문서로 저장"을 눌렀다(D-15: 가족 누구나). 어떤 상태든 `document`(수동)로 맞춘다. 줄이 없는 예전 사진은 새로 만든다.
-    문서로 숨기는 방향이라 안전하다. 이후 자동 판별은 이 줄을 바꾸지 못한다."""
-    if _set_manual_document(db, group_id, attachment_id) == 0:
+    문서로 숨기는 방향이라 안전하다. 이후 자동 판별은 이 줄을 바꾸지 못한다. 상태나 출처가 실제로 바뀔 때만 이력을 한 줄 남긴다
+    (이미 수동 문서면 아무것도 쓰지 않는다: 같은 요청이 두 번 와도 이력은 한 줄). 이전 상태는 행 잠금(PostgreSQL)과 조건부 UPDATE 로 정확히 적는다."""
+    now = datetime.now(UTC)
+    for _ in range(3):
+        prior = db.execute(
+            select(ChatPhotoCheck.status, ChatPhotoCheck.source)
+            .where(
+                ChatPhotoCheck.attachment_id == attachment_id, ChatPhotoCheck.group_id == group_id
+            )
+            .with_for_update()
+        ).first()
+        if prior is not None:
+            if (prior.status, prior.source) == (DOCUMENT, MANUAL):
+                db.commit()
+                return
+            result = db.execute(
+                update(ChatPhotoCheck)
+                .where(
+                    ChatPhotoCheck.attachment_id == attachment_id,
+                    ChatPhotoCheck.group_id == group_id,
+                    ChatPhotoCheck.status == prior.status,
+                    ChatPhotoCheck.source == prior.source,
+                )
+                .values(status=DOCUMENT, source=MANUAL, last_error=None, checked_at=now)
+                .execution_options(synchronize_session=False)
+            )
+            if result.rowcount == 1:
+                _add_event(
+                    db,
+                    group_id,
+                    attachment_id,
+                    actor_user_id,
+                    prior.status,
+                    DOCUMENT,
+                    REASON_FAMILY_DOCUMENT,
+                    now,
+                )
+                db.commit()
+                return
+            db.rollback()  # 읽은 뒤 다른 요청이 바꿨다: 다시 읽는다
+            continue
         attachment = db.get(MessageAttachment, attachment_id)
         if attachment is None or attachment.group_id != group_id:
             db.commit()  # 그 사이 지워진 사진: 줄을 만들지 않는다(FK 를 검사하지 않는 SQLite 에서 고아 줄이 생기지 않게)
@@ -88,18 +156,162 @@ def mark_document_manual(db: Session, group_id: str, attachment_id: str) -> None
                     group_id=group_id,
                     status=DOCUMENT,
                     source=MANUAL,
-                    checked_at=datetime.now(UTC),
+                    checked_at=now,
                 )
             )
             db.flush()
-        except IntegrityError:  # 동시에 다른 요청이 줄을 만들었다: 그 줄을 갱신한다
+            _add_event(
+                db,
+                group_id,
+                attachment_id,
+                actor_user_id,
+                None,
+                DOCUMENT,
+                REASON_FAMILY_DOCUMENT,
+                now,
+            )
+            db.commit()
+            return
+        except IntegrityError:  # 동시에 다른 요청이 줄을 만들었다: 처음부터 다시 읽는다
             db.rollback()
-            _set_manual_document(db, group_id, attachment_id)
-    db.commit()
+    raise RuntimeError("photo check changed concurrently")
+
+
+def confirm_general(
+    db: Session, group_id: str, attachment_id: str, actor_user_id: str, now: datetime | None = None
+) -> str:
+    """업로더가 "일반 사진이에요"를 명시적으로 확인했다(D-13). 결과 문자열:
+    `confirmed`(photo/manual 로 바꿈, 이력 한 줄) | `already`(이미 photo, 이력 없음) | `document`(문서라 막음, D-15·D-16: document→photo 는 MVP 차단)
+    | `in_progress`(pending 이고 15분 안 지남) | `missing`(줄이 없다: 예전 사진·지워진 사진, 확인 대상이 아니다).
+    상태 변경은 `WHERE status=<읽은 값>` 조건부 UPDATE 하나라 자동 판별·다른 요청과 겹쳐도 한쪽만 이긴다. 업로더·방 종류 검사는 부르는 쪽."""
+    now = now or datetime.now(UTC)
+    for _ in range(3):
+        row = db.execute(
+            select(ChatPhotoCheck.status, ChatPhotoCheck.created_at)
+            .where(
+                ChatPhotoCheck.attachment_id == attachment_id, ChatPhotoCheck.group_id == group_id
+            )
+            .with_for_update()
+        ).first()
+        if row is None:
+            db.commit()
+            return "missing"
+        if row.status == PHOTO:
+            db.commit()
+            return "already"
+        if row.status == DOCUMENT:
+            db.commit()
+            return "document"
+        conditions = [
+            ChatPhotoCheck.attachment_id == attachment_id,
+            ChatPhotoCheck.group_id == group_id,
+            ChatPhotoCheck.status == row.status,
+        ]
+        if row.status == PENDING:
+            cutoff = now - STALE_PENDING
+            created = row.created_at
+            if created.tzinfo is None:
+                created = created.replace(tzinfo=UTC)
+            if created > cutoff:
+                db.commit()
+                return "in_progress"
+            conditions.append(ChatPhotoCheck.created_at <= cutoff)
+        result = db.execute(
+            update(ChatPhotoCheck)
+            .where(*conditions)
+            .values(status=PHOTO, source=MANUAL, last_error=None, checked_at=now)
+            .execution_options(synchronize_session=False)
+        )
+        if result.rowcount == 1:
+            _add_event(
+                db,
+                group_id,
+                attachment_id,
+                actor_user_id,
+                row.status,
+                PHOTO,
+                REASON_UPLOADER_CONFIRMED,
+                now,
+            )
+            db.commit()
+            return "confirmed"
+        db.rollback()  # 읽은 뒤 바뀌었다(자동 결과·다른 확인): 다시 읽어 알맞은 답을 낸다
+    raise RuntimeError("photo check changed concurrently")
+
+
+def uploader_context(
+    db: Session, group_id: str, attachment_id: str
+) -> tuple[str, str, bool] | None:
+    """(업로더 user_id, 방 종류, 메시지가 살아 있는가). 첨부가 없거나 다른 가족 것이면 None."""
+    row = db.execute(
+        select(Message.user_id, ChatRoom.kind, Message.deleted_at)
+        .join(MessageAttachment, MessageAttachment.message_id == Message.id)
+        .join(ChatRoom, ChatRoom.id == MessageAttachment.room_id)
+        .where(MessageAttachment.id == attachment_id, MessageAttachment.group_id == group_id)
+    ).first()
+    if row is None:
+        return None
+    return row.user_id, row.kind, row.deleted_at is None
+
+
+def _review_filter(group_id: str, user_id: str, cutoff: datetime) -> list:
+    return [
+        ChatPhotoCheck.group_id == group_id,
+        MessageAttachment.group_id == group_id,
+        Message.user_id == user_id,
+        Message.deleted_at.is_(None),
+        ChatRoom.kind == FAMILY,
+        MessageAttachment.kind == "image",
+        or_(
+            ChatPhotoCheck.status.in_((UNSURE, FAILED)),
+            and_(ChatPhotoCheck.status == PENDING, ChatPhotoCheck.created_at <= cutoff),
+        ),
+    ]
+
+
+def _review_base(stmt):
+    return (
+        stmt.select_from(ChatPhotoCheck)
+        .join(MessageAttachment, MessageAttachment.id == ChatPhotoCheck.attachment_id)
+        .join(Message, Message.id == MessageAttachment.message_id)
+        .join(ChatRoom, ChatRoom.id == MessageAttachment.room_id)
+    )
+
+
+def list_review(
+    db: Session,
+    group_id: str,
+    user_id: str,
+    limit: int,
+    before_message_id: int | None = None,
+    now: datetime | None = None,
+) -> tuple[list[tuple[str, int, str, datetime, datetime | None]], int]:
+    """업로더 본인의 "확인 필요" 사진: (attachment_id, message_id, status, created_at, taken_at) 최신순 + 전체 개수.
+    unsure·failed 와 15분 넘은 pending 만, 가족 전체방·살아 있는 메시지·이미지만. 다른 사람의 사진은 절대 섞이지 않는다.
+    조회 오류는 삼키지 않는다(호출한 쪽이 503 으로 답한다)."""
+    cutoff = (now or datetime.now(UTC)) - STALE_PENDING
+    where = _review_filter(group_id, user_id, cutoff)
+    total = db.scalar(_review_base(select(func.count())).where(*where)) or 0
+    stmt = _review_base(
+        select(
+            ChatPhotoCheck.attachment_id,
+            Message.id,
+            ChatPhotoCheck.status,
+            MessageAttachment.created_at,
+            MessageAttachment.taken_at,
+        )
+    ).where(*where)
+    if before_message_id is not None:
+        stmt = stmt.where(Message.id < before_message_id)
+    rows = db.execute(stmt.order_by(Message.id.desc()).limit(limit)).all()
+    return [(r[0], r[1], r[2], r[3], r[4]) for r in rows], int(total)
 
 
 def delete_for_attachment(db: Session, attachment_id: str) -> None:
     """첨부를 지울 때 함께 지운다(커밋은 부르는 쪽). SQLite 는 연쇄 삭제가 없어 코드로도 지운다."""
+    db.execute(
+        delete(ChatPhotoCheckEvent).where(ChatPhotoCheckEvent.attachment_id == attachment_id)
+    )
     db.execute(delete(ChatPhotoCheck).where(ChatPhotoCheck.attachment_id == attachment_id))
 
 
