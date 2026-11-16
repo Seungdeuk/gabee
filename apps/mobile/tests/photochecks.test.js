@@ -396,8 +396,8 @@ test("cellLabel: 문서함 저장을 시작한 사진은 원래 상태 대신 �
 test("서랍: 가족 전체방에서 확인이 필요한 사진이 1장 이상이면 사진 · 동영상 바로 아래에 행이 생긴다", () => {
   const manage = buildDrawerSections({ direct: false, reviewCount: 3 })[0].rows;
   const keys = manage.map((r) => r.key);
-  assert.deepEqual(keys, ["pins", "media", REVIEW_ENTRY_KEY, "familytodos"]);
-  const row = manage[2];
+  assert.deepEqual(keys, ["pins", "media", "timeline", REVIEW_ENTRY_KEY, "familytodos"]);
+  const row = manage[3];
   assert.equal(row.title, "확인이 필요한 사진 3장");
   assert.equal(row.state, "open");
   assert.deepEqual(resolveRowAction(row), { type: "photochecks" });
@@ -408,7 +408,8 @@ test("서랍: 0장·모름·1:1 방에서는 행이 없고, 다른 행은 그대
   for (const reviewCount of [0, null, undefined, -2, 1.5, "4"]) {
     assert.deepEqual(rows(buildDrawerSections({ direct: false, reviewCount })).map((r) => r.key), base, String(reviewCount));
   }
-  assert.deepEqual(rows(buildDrawerSections({ direct: true, reviewCount: 5 })).map((r) => r.key), base); // 1:1 방에는 절대 없다
+  // 1:1 방에는 절대 없다(가족 타임라인 행도 가족 전체방만이라 그것만 빠진다)
+  assert.deepEqual(rows(buildDrawerSections({ direct: true, reviewCount: 5 })).map((r) => r.key), base.filter((key) => key !== "timeline"));
   assert.ok(!base.includes(REVIEW_ENTRY_KEY));
 });
 

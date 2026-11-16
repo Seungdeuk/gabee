@@ -402,6 +402,26 @@ export const confirmGeneralPhoto = (attachmentId) =>
   });
 
 /**
+ * 가족 타임라인: 가족 전체방 사진 중 일반 사진으로 확인된 것만, 촬영일(없으면 보낸 시각) 최신순. 판별 결과를 읽지 못하면 빈 목록이 아니라 503 이다.
+ * 오류: 503(photo_checks_unavailable), 429(too_many_checks), 422(invalid_cursor), 401.
+ * @param {{ limit?: number, before?: string | null }} [options] limit 1~60(기본 30), before 는 이전 응답의 next_before 를 그대로
+ * @returns {Promise<{ items: { attachment_id: string, message_id: number, thumb_url: string, display_at: string, taken_at: string | null, created_at: string, batch_id: string | null, mine: boolean }[], next_before: string | null }>}
+ */
+export function listTimelinePhotos({ limit = 30, before } = {}) {
+  const params = [`limit=${Math.min(60, Math.max(1, Math.floor(Number(limit)) || 30))}`];
+  if (typeof before === "string" && before) params.push(`before=${encodeURIComponent(before)}`);
+  return apiFetch(`/family-chat/timeline/photos?${params.join("&")}`);
+}
+
+/**
+ * 업로더 본인이 자기 사진을 가족 타임라인에서 뺀다(채팅 원본은 그대로). 같은 요청을 다시 보내도 성공이다.
+ * 오류: 404(내 사진이 아님·지운 사진·1:1 방), 409(not_in_timeline: 타임라인에 있는 사진이 아님), 429, 503(photo_checks_unavailable), 401.
+ * @param {string} attachmentId 사진 첨부 id
+ * @returns {Promise<{ status: "excluded", source: "manual" }>}
+ */
+export const excludePhotoFromTimeline = (attachmentId) => apiFetch(`/family-chat/photos/${encodeURIComponent(attachmentId)}/exclude`, { method: "POST" });
+
+/**
  * 사진이 가족 문서함에 실제로 등록됐는지. 확인하지 못하면 서버가 not_registered 로 답한다(성공으로 보이지 않게).
  * @param {string} attachmentId 사진 첨부 id
  * @returns {Promise<{ state: "registered" | "not_registered" }>}
