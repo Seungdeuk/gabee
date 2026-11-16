@@ -71,12 +71,15 @@ def _aware(at: datetime | None) -> datetime | None:
     return at.replace(tzinfo=UTC) if at is not None and at.tzinfo is None else at
 
 
-def member_daily(db: Session, now: datetime) -> dict[str, list[int]]:
+def member_daily(
+    db: Session, now: datetime, *, first: datetime | None = None, days: int = MEMBER_DAYS
+) -> dict[str, list[int]]:
     """회원 카드별 하루 그래프(30일 전 → 오늘, 한국 시간 자정 경계). 표마다 시각만 한 번씩 읽어 날짜별로 센다.
+    first(그날 0시, UTC)·days 를 주면 그 기간을 센다(관리자 챗봇의 날짜 지정 질문). 비우면 화면과 같은 최근 30일.
     total·no_family·verified 는 그날 끝 기준 누적, joined 는 그날 가입, active 는 그날 토큰을 받은 사람 수.
     가족을 떠나거나 토큰이 지워진 기록은 남지 않아서 지난날 값은 지금 남은 기록으로 센 것이다."""
-    start = day_start(now) - (MEMBER_DAYS - 1) * DAY
-    ends = [start + (i + 1) * DAY for i in range(MEMBER_DAYS)]
+    start = first if first is not None else day_start(now) - (days - 1) * DAY
+    ends = [start + (i + 1) * DAY for i in range(days)]
     t = repository.member_timestamps(db, start)
     created = [_aware(a) for a in t["created"]]
     verified = [_aware(a) for a in t["verified"] if a is not None]
@@ -193,6 +196,14 @@ def _limited(hits: list[dict]) -> list[AdminAiLimitedRow]:
     return rows[: repository.LIST_LIMIT]
 
 
+def ai_daily(db: Session, first: datetime, days: int) -> list[int]:
+    """first(그날 0시, UTC)부터 days 일 동안의 날짜별 AI 요청 수(오래된 날 → 최근)."""
+    return [
+        repository.count_ai_requests(db, first + i * DAY, first + (i + 1) * DAY)
+        for i in range(days)
+    ]
+
+
 def ai_usage(db: Session, now: datetime | None = None) -> AdminAiUsageOut:
     now = now or datetime.now(UTC)
     today = day_start(now)
@@ -201,10 +212,7 @@ def ai_usage(db: Session, now: datetime | None = None) -> AdminAiUsageOut:
         today=repository.count_ai_requests(db, today),
         week=repository.count_ai_requests(db, today - 6 * DAY),
         month=repository.count_ai_requests(db, month_start),
-        daily=[
-            repository.count_ai_requests(db, today - i * DAY, today - (i - 1) * DAY)
-            for i in range(13, -1, -1)
-        ],
+        daily=ai_daily(db, today - 13 * DAY, 14),
         rows=[
             AdminAiFeatureRow(
                 key=key,
