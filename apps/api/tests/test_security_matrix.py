@@ -475,6 +475,12 @@ CROSS = [
         },
         (403, 404),
     ),
+    (
+        "POST",
+        "/family-chat/photos/{attachment_id}/exclude",
+        {"_setup": ["photo_in_timeline"]},
+        (403, 404),
+    ),
     ("GET", "/family-chat/media", {"params": {"room_id": "{direct_room_id}"}}, (403, 404)),
     ("GET", "/family-chat/search", {"params": {"q": "{secret}"}}, (200,)),
     (
@@ -734,6 +740,16 @@ def _setup(api, fam: Family, s: dict, name: str) -> None:
         with SessionLocal() as db:
             row = db.get(ChatPhotoCheck, s["attachment_id"])
             row.status = "unsure"
+            db.commit()
+    elif (
+        name == "photo_in_timeline"
+    ):  # 타임라인에 보이는(일반 사진으로 확인된) 사진으로 만든다: 빼기의 대조 시험용
+        from app.features.family_chat.models import ChatPhotoCheck
+        from app.shared.db import SessionLocal
+
+        with SessionLocal() as db:
+            row = db.get(ChatPhotoCheck, s["attachment_id"])
+            row.status, row.source = "photo", "manual"
             db.commit()
     elif name == "allowance_plan":
         from datetime import UTC, datetime, timedelta

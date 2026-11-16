@@ -2524,14 +2524,14 @@
         }
       }
     },
-    "/family-chat/photos/checks/mine": {
+    "/family-chat/timeline/photos": {
       "get": {
         "tags": [
           "family-chat"
         ],
-        "summary": "My Photo Checks",
-        "description": "내가 가족 전체방에 올린 사진 중 확인이 필요한 것만(최신순): 애매(`unsure`)·판별 실패(`failed`)·올린 지 15분 넘게 판별되지 않은(`pending`) 사진.\n다른 가족이 올린 사진은 절대 섞이지 않고, 가족에게 새로 알리는 것도 없다(푸시 없음). `before` 는 이전 응답의 `next_before`. 조회에 실패하면\n빈 목록이 아니라 503. `pending` 을 일반 사진으로 보지 않는다: 15분은 \"처리 지연\" 표시 기준일 뿐이다.",
-        "operationId": "my_photo_checks_family_chat_photos_checks_mine_get",
+        "summary": "Family Timeline",
+        "description": "가족 타임라인: 가족 전체방에 올린 사진 중 **일반 사진으로 확인된 것만** 촬영일(없으면 보낸 시각) 최신순. 판별 대기·애매·실패·문서·\n타임라인에서 뺀 사진, 1:1 방·지운 메시지의 사진은 나오지 않는다. `before` 는 이전 응답의 `next_before` 를 그대로(형식이 틀리면 422).\n판별 결과를 읽지 못하면 빈 목록이 아니라 503. 다른 가족의 사진은 존재도 알 수 없다. `mine` 인 사진은 내가 뺄 수 있다.",
+        "operationId": "family_timeline_family_chat_timeline_photos_get",
         "parameters": [
           {
             "name": "limit",
@@ -2539,7 +2539,7 @@
             "required": false,
             "schema": {
               "type": "integer",
-              "maximum": 50,
+              "maximum": 60,
               "minimum": 1,
               "default": 30,
               "title": "Limit"
@@ -2552,8 +2552,8 @@
             "schema": {
               "anyOf": [
                 {
-                  "type": "integer",
-                  "minimum": 1
+                  "type": "string",
+                  "maxLength": 60
                 },
                 {
                   "type": "null"
@@ -2601,7 +2601,191 @@
             "content": {
               "application/json": {
                 "schema": {
+                  "$ref": "#/components/schemas/TimelineOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/family-chat/photos/checks/mine": {
+      "get": {
+        "tags": [
+          "family-chat"
+        ],
+        "summary": "My Photo Checks",
+        "description": "내가 가족 전체방에 올린 사진 중 확인이 필요한 것만(최신순): 애매(`unsure`)·판별 실패(`failed`)·올린 지 15분 넘게 판별되지 않은(`pending`) 사진.\n`kind=excluded` 면 내가 타임라인에서 뺀 사진만(다시 넣으려고 볼 때). 다른 가족이 올린 사진은 절대 섞이지 않고, 가족에게 새로 알리는 것도 없다(푸시 없음).\n`before` 는 이전 응답의 `next_before`. 조회에 실패하면 빈 목록이 아니라 503. `pending` 을 일반 사진으로 보지 않는다: 15분은 \"처리 지연\" 표시 기준일 뿐이다.",
+        "operationId": "my_photo_checks_family_chat_photos_checks_mine_get",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 50,
+              "minimum": 1,
+              "default": 30,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "before",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Before"
+            }
+          },
+          {
+            "name": "kind",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "review",
+                "excluded"
+              ],
+              "type": "string",
+              "default": "review",
+              "title": "Kind"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-gyeot-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Gyeot-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
                   "$ref": "#/components/schemas/PhotoChecksOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/family-chat/photos/{attachment_id}/exclude": {
+      "post": {
+        "tags": [
+          "family-chat"
+        ],
+        "summary": "Exclude Photo From Timeline",
+        "description": "업로더가 자기 사진을 가족 타임라인에서 뺀다(채팅 원본은 그대로). 올린 사람 본인이 가족 전체방에 올린 살아 있는 사진만(그 밖은 404:\n존재를 숨긴다). 타임라인에 있는 사진이 아니면 409 `not_in_timeline`. 같은 요청을 다시 보내도 200 이고 이력은 한 줄. 다시 넣으려면\n`POST /photos/{id}/check`(안내 확인 포함).",
+        "operationId": "exclude_photo_from_timeline_family_chat_photos__attachment_id__exclude_post",
+        "parameters": [
+          {
+            "name": "attachment_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Attachment Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-gyeot-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Gyeot-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PhotoExcludeOut"
                 }
               }
             }
@@ -25793,7 +25977,8 @@
             "enum": [
               "unsure",
               "failed",
-              "pending"
+              "pending",
+              "excluded"
             ],
             "title": "Status"
           }
@@ -25806,7 +25991,7 @@
           "status"
         ],
         "title": "PhotoCheckItemOut",
-        "description": "업로더 본인의 \"확인 필요\" 사진 한 장. status: unsure(애매) | failed(판별 실패) | pending(처리 지연: 올린 지 15분 넘음)."
+        "description": "업로더 본인의 \"확인 필요\" 사진 한 장. status: unsure(애매) | failed(판별 실패) | pending(처리 지연: 올린 지 15분 넘음)\n| excluded(`kind=excluded` 목록에서만: 내가 타임라인에서 뺀 사진)."
       },
       "PhotoCheckOut": {
         "properties": {
@@ -25859,7 +26044,28 @@
           "needs_review_count"
         ],
         "title": "PhotoChecksOut",
-        "description": "내가 올린 사진 중 확인이 필요한 것(최신순). needs_review_count 는 전체 개수, next_before 는 다음 쪽을 받을 때 `before` 에 넣는 값(없으면 끝)."
+        "description": "내가 올린 사진 중 확인이 필요한 것(최신순). needs_review_count 는 전체 개수(`kind=excluded` 면 뺀 사진 전체 개수), next_before 는 다음 쪽을 받을 때 `before` 에 넣는 값(없으면 끝)."
+      },
+      "PhotoExcludeOut": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "const": "excluded",
+            "title": "Status"
+          },
+          "source": {
+            "type": "string",
+            "const": "manual",
+            "title": "Source"
+          }
+        },
+        "type": "object",
+        "required": [
+          "status",
+          "source"
+        ],
+        "title": "PhotoExcludeOut",
+        "description": "타임라인에서 뺐다(이미 뺀 사진에 다시 요청해도 같은 응답). 다시 넣으려면 일반 사진 확인(`POST /photos/{id}/check`)을 한다."
       },
       "PhotoOut": {
         "properties": {
@@ -30202,6 +30408,98 @@
         ],
         "title": "TicketOut",
         "description": "보낸 사람 본인에게 보여 주는 모양."
+      },
+      "TimelineOut": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/TimelinePhotoOut"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "next_before": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Before"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items"
+        ],
+        "title": "TimelineOut",
+        "description": "가족 타임라인(최신순). next_before 는 다음 쪽을 받을 때 `before` 에 그대로 넣는 값(없으면 끝)."
+      },
+      "TimelinePhotoOut": {
+        "properties": {
+          "attachment_id": {
+            "type": "string",
+            "title": "Attachment Id"
+          },
+          "message_id": {
+            "type": "integer",
+            "title": "Message Id"
+          },
+          "thumb_url": {
+            "type": "string",
+            "title": "Thumb Url"
+          },
+          "display_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Display At"
+          },
+          "taken_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Taken At"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "batch_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Batch Id"
+          },
+          "mine": {
+            "type": "boolean",
+            "title": "Mine"
+          }
+        },
+        "type": "object",
+        "required": [
+          "attachment_id",
+          "message_id",
+          "thumb_url",
+          "display_at",
+          "created_at",
+          "mine"
+        ],
+        "title": "TimelinePhotoOut",
+        "description": "가족 타임라인의 사진 한 장. display_at 은 촬영일(없으면 보낸 시각, `taken_at` 이 null 이면 \"보낸 날 기준\")이고 같은\nbatch_id 묶음은 가장 이른 값으로 맞춘다. mine 은 내가 올린 사진(내가 뺄 수 있다)."
       },
       "TodoCandidate": {
         "properties": {

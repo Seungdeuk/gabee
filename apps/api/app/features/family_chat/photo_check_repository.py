@@ -18,6 +18,7 @@ from .models import (
 # 이력 이유 코드(자유 글 없음). 새 이유는 여기에만 추가한다.
 REASON_UPLOADER_CONFIRMED = "uploader_confirmed_general"
 REASON_FAMILY_DOCUMENT = "family_saved_as_document"
+REASON_UPLOADER_REMOVED = "uploader_removed"
 # 업로드 뒤 이 시간이 지난 pending 은 "처리 지연"으로 업로더에게 보인다(초기값, b0-3 재시도 구현 뒤 재조정). 자동 판별 실패·일반 사진 확정 기준이 아니다.
 STALE_PENDING = timedelta(minutes=15)
 
@@ -26,7 +27,8 @@ PHOTO = "photo"
 DOCUMENT = "document"
 UNSURE = "unsure"
 FAILED = "failed"
-STATUSES = frozenset({PENDING, PHOTO, DOCUMENT, UNSURE, FAILED})
+EXCLUDED = "excluded"  # 업로더가 타임라인에서 뺀 사진(수동). 확인 필요 목록에는 다시 뜨지 않고, 업로더가 다시 넣을 수 있다
+STATUSES = frozenset({PENDING, PHOTO, DOCUMENT, UNSURE, FAILED, EXCLUDED})
 AUTO = "auto"
 MANUAL = "manual"
 # 자동 판별이 쓸 수 있는 결과. PHOTO 는 없다: OCR·실험 모델의 판정만으로 일반 사진을 확정하지 않는다(D-13, 업로더 확인은 b0-2).
@@ -239,6 +241,58 @@ def confirm_general(
     raise RuntimeError("photo check changed concurrently")
 
 
+def exclude_photo(
+    db: Session, group_id: str, attachment_id: str, actor_user_id: str, now: datetime | None = None
+) -> str:
+    """업로더가 일반 사진을 타임라인에서 뺀다(`photo`→`excluded`/수동, 이력 한 줄). 결과 문자열:
+    `excluded`(뺐다) | `already`(이미 뺐다, 이력 없음) | `not_in_timeline`(`photo` 가 아니라 뺄 것이 없다) | `missing`(줄이 없다).
+    다시 넣는 것은 `confirm_general`(안내 확인 포함)이 한다. `WHERE status='photo'` 조건부 UPDATE 하나라 겹친 요청과도 한쪽만 이긴다.
+    업로더·방 종류 검사는 부르는 쪽."""
+    now = now or datetime.now(UTC)
+    for _ in range(3):
+        row = db.execute(
+            select(ChatPhotoCheck.status)
+            .where(
+                ChatPhotoCheck.attachment_id == attachment_id, ChatPhotoCheck.group_id == group_id
+            )
+            .with_for_update()
+        ).first()
+        if row is None:
+            db.commit()
+            return "missing"
+        if row.status == EXCLUDED:
+            db.commit()
+            return "already"
+        if row.status != PHOTO:
+            db.commit()
+            return "not_in_timeline"
+        result = db.execute(
+            update(ChatPhotoCheck)
+            .where(
+                ChatPhotoCheck.attachment_id == attachment_id,
+                ChatPhotoCheck.group_id == group_id,
+                ChatPhotoCheck.status == PHOTO,
+            )
+            .values(status=EXCLUDED, source=MANUAL, last_error=None, checked_at=now)
+            .execution_options(synchronize_session=False)
+        )
+        if result.rowcount == 1:
+            _add_event(
+                db,
+                group_id,
+                attachment_id,
+                actor_user_id,
+                PHOTO,
+                EXCLUDED,
+                REASON_UPLOADER_REMOVED,
+                now,
+            )
+            db.commit()
+            return "excluded"
+        db.rollback()  # 읽은 뒤 바뀌었다(문서로 저장 등): 다시 읽어 알맞은 답을 낸다
+    raise RuntimeError("photo check changed concurrently")
+
+
 def uploader_context(
     db: Session, group_id: str, attachment_id: str
 ) -> tuple[str, str, bool] | None:
@@ -254,7 +308,15 @@ def uploader_context(
     return row.user_id, row.kind, row.deleted_at is None
 
 
-def _review_filter(group_id: str, user_id: str, cutoff: datetime) -> list:
+def _review_filter(group_id: str, user_id: str, cutoff: datetime, excluded: bool = False) -> list:
+    status_filter = (
+        ChatPhotoCheck.status == EXCLUDED
+        if excluded
+        else or_(
+            ChatPhotoCheck.status.in_((UNSURE, FAILED)),
+            and_(ChatPhotoCheck.status == PENDING, ChatPhotoCheck.created_at <= cutoff),
+        )
+    )
     return [
         ChatPhotoCheck.group_id == group_id,
         MessageAttachment.group_id == group_id,
@@ -262,10 +324,7 @@ def _review_filter(group_id: str, user_id: str, cutoff: datetime) -> list:
         Message.deleted_at.is_(None),
         ChatRoom.kind == FAMILY,
         MessageAttachment.kind == "image",
-        or_(
-            ChatPhotoCheck.status.in_((UNSURE, FAILED)),
-            and_(ChatPhotoCheck.status == PENDING, ChatPhotoCheck.created_at <= cutoff),
-        ),
+        status_filter,
     ]
 
 
@@ -285,12 +344,13 @@ def list_review(
     limit: int,
     before_message_id: int | None = None,
     now: datetime | None = None,
+    excluded: bool = False,
 ) -> tuple[list[tuple[str, int, str, datetime, datetime | None]], int]:
     """업로더 본인의 "확인 필요" 사진: (attachment_id, message_id, status, created_at, taken_at) 최신순 + 전체 개수.
-    unsure·failed 와 15분 넘은 pending 만, 가족 전체방·살아 있는 메시지·이미지만. 다른 사람의 사진은 절대 섞이지 않는다.
-    조회 오류는 삼키지 않는다(호출한 쪽이 503 으로 답한다)."""
+    unsure·failed 와 15분 넘은 pending 만(`excluded=True` 면 내가 타임라인에서 뺀 사진만), 가족 전체방·살아 있는 메시지·이미지만.
+    다른 사람의 사진은 절대 섞이지 않는다. 조회 오류는 삼키지 않는다(호출한 쪽이 503 으로 답한다)."""
     cutoff = (now or datetime.now(UTC)) - STALE_PENDING
-    where = _review_filter(group_id, user_id, cutoff)
+    where = _review_filter(group_id, user_id, cutoff, excluded)
     total = db.scalar(_review_base(select(func.count())).where(*where)) or 0
     stmt = _review_base(
         select(
@@ -305,6 +365,56 @@ def list_review(
         stmt = stmt.where(Message.id < before_message_id)
     rows = db.execute(stmt.order_by(Message.id.desc()).limit(limit)).all()
     return [(r[0], r[1], r[2], r[3], r[4]) for r in rows], int(total)
+
+
+def list_timeline(
+    db: Session,
+    group_id: str,
+    limit: int,
+    before: tuple[datetime, int] | None = None,
+) -> list[tuple[str, int, datetime, datetime | None, datetime, str | None, str]]:
+    """가족 타임라인: 일반 사진(`photo`)으로 확인된 가족 전체방 사진만. 줄이 없거나 pending·unsure·failed·document·excluded 면 나오지
+    않는다(fail-closed). (attachment_id, message_id, display_at, taken_at, created_at, batch_id, uploader_id) 를 최신순으로.
+    `display_at` 은 촬영일(없으면 보낸 시각)이고, 같은 `batch_id` 묶음은 보이는 사진 중 가장 이른 값으로 맞춘다(Q4).
+    `before` 는 이전 쪽 마지막 (display_at, message_id). 조회 오류는 삼키지 않는다(호출한 쪽이 503 으로 답한다)."""
+    own_at = func.coalesce(MessageAttachment.taken_at, MessageAttachment.created_at)
+    where = [
+        ChatPhotoCheck.group_id == group_id,
+        MessageAttachment.group_id == group_id,
+        Message.deleted_at.is_(None),
+        ChatRoom.kind == FAMILY,
+        MessageAttachment.kind == "image",
+        ChatPhotoCheck.status == PHOTO,
+    ]
+    batch_min = (
+        _review_base(
+            select(MessageAttachment.batch_id.label("batch_id"), func.min(own_at).label("min_at"))
+        )
+        .where(*where, MessageAttachment.batch_id.is_not(None))
+        .group_by(MessageAttachment.batch_id)
+        .subquery()
+    )
+    display_at = func.coalesce(batch_min.c.min_at, own_at).label("display_at")
+    stmt = (
+        _review_base(
+            select(
+                ChatPhotoCheck.attachment_id,
+                Message.id,
+                display_at,
+                MessageAttachment.taken_at,
+                MessageAttachment.created_at,
+                MessageAttachment.batch_id,
+                Message.user_id,
+            )
+        )
+        .outerjoin(batch_min, batch_min.c.batch_id == MessageAttachment.batch_id)
+        .where(*where)
+    )
+    if before is not None:
+        b_at, b_id = before
+        stmt = stmt.where(or_(display_at < b_at, and_(display_at == b_at, Message.id < b_id)))
+    rows = db.execute(stmt.order_by(display_at.desc(), Message.id.desc()).limit(limit)).all()
+    return [tuple(r) for r in rows]
 
 
 def delete_for_attachment(db: Session, attachment_id: str) -> None:

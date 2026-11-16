@@ -4,6 +4,7 @@
 규칙(D-13): 자동 판별은 `photo` 를 만들지 못한다. 결과를 못 적거나 줄이 없으면 `pending` 그대로라 타임라인에 나오지 않는다."""
 
 import logging
+from datetime import UTC, datetime
 
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
@@ -23,18 +24,26 @@ from .schemas import (
     PhotoCheckItemOut,
     PhotoCheckOut,
     PhotoChecksOut,
+    PhotoExcludeOut,
+    TimelineOut,
+    TimelinePhotoOut,
 )
 
 logger = logging.getLogger(__name__)
 
 CHECK_LIMIT = 30  # 사용자당 분당 "확인 필요" 조회·확인 요청 수(남용 방지)
+TIMELINE_LIMIT = (
+    60  # 사용자당 분당 타임라인 조회 수(스크롤로 쪽을 이어 받으므로 확인 요청보다 넉넉히)
+)
 CHECK_WINDOW_SECONDS = 60
 check_limiter = FailureLimiter()  # 프로세스 메모리(한계는 shared/rate_limit.py 참고)
 
 
-def _rate(user_id: str) -> None:
-    key = f"photocheck:{user_id}"
-    wait = check_limiter.retry_after(key, CHECK_LIMIT, CHECK_WINDOW_SECONDS)
+def _rate(user_id: str, prefix: str = "photocheck", limit: int | None = None) -> None:
+    key = f"{prefix}:{user_id}"
+    wait = check_limiter.retry_after(
+        key, CHECK_LIMIT if limit is None else limit, CHECK_WINDOW_SECONDS
+    )
     if wait:
         raise ApiError(
             429,
@@ -54,13 +63,20 @@ def _unavailable() -> ApiError:
 
 
 def review_list(
-    db: Session, user: User, group_id: str, limit: int, before: int | None
+    db: Session,
+    user: User,
+    group_id: str,
+    limit: int,
+    before: int | None,
+    excluded: bool = False,
 ) -> PhotoChecksOut:
-    """내가 올린 사진 중 확인 필요(unsure·failed·15분 넘은 pending)만. 다른 가족 구성원에게는 그 사진의 존재가 보이지 않는다
-    (다른 사람이 올린 사진은 이 목록에 들어오지 않는다). 조회가 실패하면 빈 목록이 아니라 503."""
+    """내가 올린 사진 중 확인 필요(unsure·failed·15분 넘은 pending)만(`excluded=True` 면 내가 타임라인에서 뺀 사진만). 다른 가족
+    구성원에게는 그 사진의 존재가 보이지 않는다(다른 사람이 올린 사진은 이 목록에 들어오지 않는다). 조회가 실패하면 빈 목록이 아니라 503."""
     _rate(user.id)
     try:
-        rows, total = checks.list_review(db, group_id, user.id, limit + 1, before)
+        rows, total = checks.list_review(
+            db, group_id, user.id, limit + 1, before, excluded=excluded
+        )
     except SQLAlchemyError:
         db.rollback()
         raise _unavailable() from None
@@ -119,6 +135,77 @@ def confirm_general(db: Session, user: User, group_id: str, attachment_id: str) 
     raise not_found(
         "사진"
     )  # missing: 판별 줄이 없는 예전 사진은 확인 대상이 아니다(타임라인에도 나오지 않는다)
+
+
+def exclude_from_timeline(
+    db: Session, user: User, group_id: str, attachment_id: str
+) -> PhotoExcludeOut:
+    """업로더가 자기 사진을 가족 타임라인에서 뺀다(결정 1: 올린 사람만). 채팅 원본은 그대로 남고 타임라인에서만 숨는다.
+    업로더 본인·가족 전체방·살아 있는 사진만(아니면 404: 존재를 숨긴다). 타임라인에 있는(`photo`) 사진만 뺄 수 있고 아니면 409
+    `not_in_timeline`. 이미 뺐으면 같은 200(이력은 한 줄). 다시 넣는 것은 일반 사진 확인(안내 확인란 포함)이다."""
+    _rate(user.id)
+    try:
+        ctx = checks.uploader_context(db, group_id, attachment_id)
+        if ctx is None:
+            raise not_found("사진")
+        uploader_id, room_kind, alive = ctx
+        if uploader_id != user.id or room_kind != FAMILY or not alive:
+            raise not_found("사진")
+        outcome = checks.exclude_photo(db, group_id, attachment_id, user.id)
+    except SQLAlchemyError:
+        db.rollback()
+        raise _unavailable() from None
+    if outcome in ("excluded", "already"):
+        return PhotoExcludeOut(status="excluded", source="manual")
+    if outcome == "not_in_timeline":
+        raise ApiError(409, "not_in_timeline", "타임라인에 있는 사진만 뺄 수 있어요")
+    raise not_found("사진")
+
+
+def _encode_cursor(display_at: datetime, message_id: int) -> str:
+    return f"{_utc(display_at).isoformat()}_{message_id}"
+
+
+def _utc(value: datetime) -> datetime:
+    return value.replace(tzinfo=UTC) if value.tzinfo is None else value.astimezone(UTC)
+
+
+def _decode_cursor(before: str) -> tuple[datetime, int]:
+    try:
+        stamp, _, raw_id = before.rpartition("_")
+        message_id = int(raw_id)
+        return _utc(datetime.fromisoformat(stamp)), message_id
+    except ValueError:
+        raise ApiError(422, "invalid_cursor", "다음 쪽을 불러올 수 없어요") from None
+
+
+def timeline(db: Session, user: User, group_id: str, limit: int, before: str | None) -> TimelineOut:
+    """가족 타임라인: 일반 사진으로 확인된 가족 전체방 사진만 촬영일(없으면 보낸 시각) 최신순. 판별 결과를 읽지 못하면 빈 목록이
+    아니라 503(fail-closed). 가족 그룹은 로그인한 사용자의 멤버십으로만 정해진다."""
+    _rate(user.id, "timeline", TIMELINE_LIMIT)
+    cursor = _decode_cursor(before) if before else None
+    try:
+        rows = checks.list_timeline(db, group_id, limit + 1, cursor)
+    except SQLAlchemyError:
+        db.rollback()
+        raise _unavailable() from None
+    page = rows[:limit]
+    return TimelineOut(
+        items=[
+            TimelinePhotoOut(
+                attachment_id=att_id,
+                message_id=message_id,
+                thumb_url=f"/family-chat/photos/{att_id}?size=thumb",
+                display_at=_utc(display_at),
+                taken_at=taken_at,
+                created_at=created_at,
+                batch_id=batch_id,
+                mine=uploader_id == user.id,
+            )
+            for att_id, message_id, display_at, taken_at, created_at, batch_id, uploader_id in page
+        ],
+        next_before=(_encode_cursor(page[-1][2], page[-1][1]) if len(rows) > limit else None),
+    )
 
 
 def library_state(db: Session, user: User, group_id: str, attachment_id: str) -> LibraryStateOut:

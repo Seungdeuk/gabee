@@ -62,17 +62,18 @@ class LibrarySaveOut(BaseModel):
 
 
 class PhotoCheckItemOut(BaseModel):
-    """업로더 본인의 "확인 필요" 사진 한 장. status: unsure(애매) | failed(판별 실패) | pending(처리 지연: 올린 지 15분 넘음)."""
+    """업로더 본인의 "확인 필요" 사진 한 장. status: unsure(애매) | failed(판별 실패) | pending(처리 지연: 올린 지 15분 넘음)
+    | excluded(`kind=excluded` 목록에서만: 내가 타임라인에서 뺀 사진)."""
 
     attachment_id: str
     thumb_url: str
     created_at: datetime
     taken_at: datetime | None = None
-    status: Literal["unsure", "failed", "pending"]
+    status: Literal["unsure", "failed", "pending", "excluded"]
 
 
 class PhotoChecksOut(BaseModel):
-    """내가 올린 사진 중 확인이 필요한 것(최신순). needs_review_count 는 전체 개수, next_before 는 다음 쪽을 받을 때 `before` 에 넣는 값(없으면 끝)."""
+    """내가 올린 사진 중 확인이 필요한 것(최신순). needs_review_count 는 전체 개수(`kind=excluded` 면 뺀 사진 전체 개수), next_before 는 다음 쪽을 받을 때 `before` 에 넣는 값(없으면 끝)."""
 
     items: list[PhotoCheckItemOut]
     needs_review_count: int
@@ -91,6 +92,34 @@ class PhotoCheckIn(BaseModel):
 class PhotoCheckOut(BaseModel):
     status: Literal["photo"]
     source: Literal["manual"]
+
+
+class PhotoExcludeOut(BaseModel):
+    """타임라인에서 뺐다(이미 뺀 사진에 다시 요청해도 같은 응답). 다시 넣으려면 일반 사진 확인(`POST /photos/{id}/check`)을 한다."""
+
+    status: Literal["excluded"]
+    source: Literal["manual"]
+
+
+class TimelinePhotoOut(BaseModel):
+    """가족 타임라인의 사진 한 장. display_at 은 촬영일(없으면 보낸 시각, `taken_at` 이 null 이면 "보낸 날 기준")이고 같은
+    batch_id 묶음은 가장 이른 값으로 맞춘다. mine 은 내가 올린 사진(내가 뺄 수 있다)."""
+
+    attachment_id: str
+    message_id: int
+    thumb_url: str
+    display_at: datetime
+    taken_at: datetime | None = None
+    created_at: datetime
+    batch_id: str | None = None
+    mine: bool
+
+
+class TimelineOut(BaseModel):
+    """가족 타임라인(최신순). next_before 는 다음 쪽을 받을 때 `before` 에 그대로 넣는 값(없으면 끝)."""
+
+    items: list[TimelinePhotoOut]
+    next_before: str | None = None
 
 
 class LibraryStateOut(BaseModel):

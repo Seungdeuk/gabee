@@ -17,23 +17,55 @@ from .schemas import (
     PhotoCheckIn,
     PhotoCheckOut,
     PhotoChecksOut,
+    PhotoExcludeOut,
+    TimelineOut,
 )
 
 router = APIRouter()
+
+
+@router.get("/timeline/photos", response_model=TimelineOut)
+def family_timeline(
+    limit: int = Query(30, ge=1, le=60),
+    before: str | None = Query(None, max_length=60),
+    user: User = Depends(current_user),
+    group_id: str = Depends(current_group_id),
+    db: Session = Depends(get_db),
+) -> TimelineOut:
+    """가족 타임라인: 가족 전체방에 올린 사진 중 **일반 사진으로 확인된 것만** 촬영일(없으면 보낸 시각) 최신순. 판별 대기·애매·실패·문서·
+    타임라인에서 뺀 사진, 1:1 방·지운 메시지의 사진은 나오지 않는다. `before` 는 이전 응답의 `next_before` 를 그대로(형식이 틀리면 422).
+    판별 결과를 읽지 못하면 빈 목록이 아니라 503. 다른 가족의 사진은 존재도 알 수 없다. `mine` 인 사진은 내가 뺄 수 있다."""
+    return photo_check_service.timeline(db, user, group_id, limit, before)
 
 
 @router.get("/photos/checks/mine", response_model=PhotoChecksOut)
 def my_photo_checks(
     limit: int = Query(30, ge=1, le=50),
     before: int | None = Query(None, ge=1),
+    kind: Literal["review", "excluded"] = Query("review"),
     user: User = Depends(current_user),
     group_id: str = Depends(current_group_id),
     db: Session = Depends(get_db),
 ) -> PhotoChecksOut:
     """내가 가족 전체방에 올린 사진 중 확인이 필요한 것만(최신순): 애매(`unsure`)·판별 실패(`failed`)·올린 지 15분 넘게 판별되지 않은(`pending`) 사진.
-    다른 가족이 올린 사진은 절대 섞이지 않고, 가족에게 새로 알리는 것도 없다(푸시 없음). `before` 는 이전 응답의 `next_before`. 조회에 실패하면
-    빈 목록이 아니라 503. `pending` 을 일반 사진으로 보지 않는다: 15분은 "처리 지연" 표시 기준일 뿐이다."""
-    return photo_check_service.review_list(db, user, group_id, limit, before)
+    `kind=excluded` 면 내가 타임라인에서 뺀 사진만(다시 넣으려고 볼 때). 다른 가족이 올린 사진은 절대 섞이지 않고, 가족에게 새로 알리는 것도 없다(푸시 없음).
+    `before` 는 이전 응답의 `next_before`. 조회에 실패하면 빈 목록이 아니라 503. `pending` 을 일반 사진으로 보지 않는다: 15분은 "처리 지연" 표시 기준일 뿐이다."""
+    return photo_check_service.review_list(
+        db, user, group_id, limit, before, excluded=kind == "excluded"
+    )
+
+
+@router.post("/photos/{attachment_id}/exclude", response_model=PhotoExcludeOut)
+def exclude_photo_from_timeline(
+    attachment_id: str,
+    user: User = Depends(current_user),
+    group_id: str = Depends(current_group_id),
+    db: Session = Depends(get_db),
+) -> PhotoExcludeOut:
+    """업로더가 자기 사진을 가족 타임라인에서 뺀다(채팅 원본은 그대로). 올린 사람 본인이 가족 전체방에 올린 살아 있는 사진만(그 밖은 404:
+    존재를 숨긴다). 타임라인에 있는 사진이 아니면 409 `not_in_timeline`. 같은 요청을 다시 보내도 200 이고 이력은 한 줄. 다시 넣으려면
+    `POST /photos/{id}/check`(안내 확인 포함)."""
+    return photo_check_service.exclude_from_timeline(db, user, group_id, attachment_id)
 
 
 @router.post("/photos/{attachment_id}/check", response_model=PhotoCheckOut)
