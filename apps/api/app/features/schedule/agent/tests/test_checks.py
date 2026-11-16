@@ -76,7 +76,9 @@ def test_mark_appointment_and_todo_with_matching_words(client, setup, fake):
     chore = _new(client, a, "세탁물 찾기", kind=2)
     fake.data = _data("mark", visit["id"])
     body = _say(client, a, "치과 확인했어").json()
-    assert body["intent"] == "check" and body["text"].endswith("'치과' 확인했어요")  # 약속은 확인, 어떤 일정인지 날짜와 함께
+    assert body["intent"] == "check" and body["text"].endswith(
+        "'치과' 확인했어요"
+    )  # 약속은 확인, 어떤 일정인지 날짜와 함께
     assert body["cards"][0]["data"]["events"][0]["checked"] is True
     assert body["pending_action"] is None  # 확인 카드를 거치지 않는다
     fake.data = _data("mark", chore["id"])

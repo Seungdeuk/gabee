@@ -81,7 +81,9 @@ def _ask(
         guarded,
         request_view.lines if request_view else None,
         set(request_view.rows) if request_view else None,
-        " ".join(x for x in (FAMILY_NOTICE if request.channel == "family" else "", period_note) if x),
+        " ".join(
+            x for x in (FAMILY_NOTICE if request.channel == "family" else "", period_note) if x
+        ),
         habit_view.lines if habit_view else None,
         set(habit_view.rows) if habit_view else None,
     )
@@ -108,7 +110,9 @@ def handle(
     now = datetime.now(UTC)
     local_now = now.astimezone(reader.local_tz())
     data = reader.read(db, group_id, request.channel, now, user_id)  # 내 일정만, 과거·미래 1년
-    period = period_mod.extract_for_prompt(request.text, local_now.date())  # 목록을 거를 기간(없으면 None)
+    period = period_mod.extract_for_prompt(
+        request.text, local_now.date()
+    )  # 목록을 거를 기간(없으면 None)
     shown, omitted = reader.select_for_prompt(data.events, now, period)
     scope = f"문장에서 읽은 기간 {period.widened().label()}" if period else None
     members = members_mod.load(db, group_id)
