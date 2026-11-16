@@ -19,10 +19,16 @@ from evals.agent_eval import (
     runs_guard,
     store,
 )
+from evals.agent_eval.adapter import load_legacy_cases
 from evals.agent_eval.cost import Ledger
 from tests.agent_eval.runner_support import legacy, new_case
 
-LEGACY_52_ESTIMATE = "0.21840 USD"  # 52 x 1 x 4 호출, 호출당 8000/500 토큰, Haiku 5.5
+LEGACY_COUNT = len(
+    load_legacy_cases()
+)  # 기존 사례 파일의 사례 수(사례를 더해도 시험이 깨지지 않게 파일에서 읽는다)
+LEGACY_ESTIMATE = (
+    f"{D('0.00105') * LEGACY_COUNT * 4:.5f} USD"  # N x 1 x 4 호출, 호출당 8000/500 토큰, Haiku 5.5
+)
 
 
 def main(argv, tmp_path):
@@ -61,8 +67,8 @@ def untouchable(monkeypatch):
 def test_the_default_is_a_dry_run_that_prints_the_estimate_and_calls_nothing(tmp_path, untouchable):
     code, text = main([], tmp_path)
     assert code == 0 and untouchable == []
-    assert "사례 52 x 반복 1 x 사례당 최대 4회 = 호출 208회" in text
-    assert LEGACY_52_ESTIMATE in text
+    assert f"사례 {LEGACY_COUNT} x 반복 1 x 사례당 최대 4회 = 호출 {LEGACY_COUNT * 4}회" in text
+    assert LEGACY_ESTIMATE in text
     assert "가정: 호출당 입력 8000 / 출력 500 토큰" in text
     assert "아무것도 저장하지 않았다" in text
     assert not (tmp_path / "results").exists()  # 결과 폴더도 만들지 않았다

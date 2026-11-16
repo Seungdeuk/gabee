@@ -28,7 +28,7 @@ from app.shared.config import settings
 from app.shared.errors import ApiError, bad_request, not_found
 from app.shared.rate_limit import FailureLimiter
 
-from . import chat_push, service
+from . import chat_push, photo_check_service, service
 from . import repository as repo
 from .models import FAMILY, Message, MessageAttachment
 from .schemas import MessageOut
@@ -292,7 +292,9 @@ def send_photo(
             text="",
             created_at=datetime.now(UTC),
         )
-        message, attachment = repo.add_photo_message(db, message, attachment)
+        message, attachment = repo.add_photo_message(
+            db, message, attachment, with_check=room.kind == FAMILY
+        )  # 가족 전체방 사진만 판별 상태 줄(pending)을 같은 트랜잭션에 만든다(1:1 방은 타임라인 대상이 아니다)
     except Exception:
         for path in written:
             path.unlink(missing_ok=True)
@@ -337,6 +339,9 @@ def save_to_library(db: Session, user: User, group_id: str, attachment_id: str) 
         raise ApiError(
             409, "not_family_room", "가족 전체방에 올린 사진만 가족 문서함에 저장할 수 있어요"
         )
+    photo_check_service.mark_document(
+        db, group_id, attachment_id, user.id
+    )  # D-15: 가족 누구나 문서로 저장 가능. 상태를 문서(수동)로 맞춘다(자동 판별이 못 바꾼다)
     if chat_library.is_registered(db, group_id, attachment_id):
         return "already"
     chat_library.photo_requested(group_id, user.id, attachment_id, data)

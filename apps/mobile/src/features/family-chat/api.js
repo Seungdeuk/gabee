@@ -378,6 +378,37 @@ export function listMedia({ roomId, kind = "image", limit = 40, beforeId } = {})
 export const savePhotoToLibrary = (attachmentId) => apiFetch(`/family-chat/photos/${encodeURIComponent(attachmentId)}/library`, { method: "POST" });
 
 /**
+ * 내가 올린 가족 전체방 사진 중 확인이 필요한 것(판별 불확실·실패·올린 지 15분 넘게 판별이 끝나지 않은 것)만. 다른 사람이 올린 사진은 오지 않는다. 조회가 실패하면 빈 목록이 아니라 503 이다.
+ * 오류: 503(photo_checks_unavailable), 429(too_many_checks), 401.
+ * @param {{ limit?: number, before?: number | null }} [options] limit 1~50(기본 20), before 는 이전 응답의 next_before
+ * @returns {Promise<{ items: { attachment_id: string, thumb_url: string, created_at: string, taken_at: string | null, status: "unsure" | "failed" | "pending" }[], needs_review_count: number, next_before: number | null }>}
+ */
+export function listMyPhotoChecks({ limit = 20, before } = {}) {
+  const params = [`limit=${Math.min(50, Math.max(1, Math.floor(Number(limit)) || 20))}`];
+  if (before != null && Number(before) >= 1) params.push(`before=${Math.floor(Number(before))}`);
+  return apiFetch(`/family-chat/photos/checks/mine?${params.join("&")}`);
+}
+
+/**
+ * 업로더 본인이 "일반 사진이에요"로 확인한다. 이 사진이 가족 타임라인에 보인다는 안내를 확인했다는 뜻(acknowledge)을 함께 보낸다. 문서로 판단됐거나 문서함에 저장된 사진은 409 로 막힌다.
+ * 오류: 404(내 사진이 아님·지운 사진·1:1 방), 409(document_to_photo_blocked·check_in_progress), 429, 503(photo_checks_unavailable), 422.
+ * @param {string} attachmentId 사진 첨부 id
+ * @returns {Promise<{ status: "photo", source: "manual" }>}
+ */
+export const confirmGeneralPhoto = (attachmentId) =>
+  apiFetch(`/family-chat/photos/${encodeURIComponent(attachmentId)}/check`, {
+    method: "POST",
+    body: { to: "photo", reason: "uploader_confirmed_general", acknowledge: true },
+  });
+
+/**
+ * 사진이 가족 문서함에 실제로 등록됐는지. 확인하지 못하면 서버가 not_registered 로 답한다(성공으로 보이지 않게).
+ * @param {string} attachmentId 사진 첨부 id
+ * @returns {Promise<{ state: "registered" | "not_registered" }>}
+ */
+export const getPhotoLibraryState = (attachmentId) => apiFetch(`/family-chat/photos/${encodeURIComponent(attachmentId)}/library`);
+
+/**
  * 사진 원본을 로그인 헤더로 받아 Blob 으로 돌려준다(웹 저장용). 서버가 준 사진 경로만 받고, 토큰은 주소에 넣지 않는다.
  * @param {string} path 서버가 준 attachment.url
  * @returns {Promise<Blob>}

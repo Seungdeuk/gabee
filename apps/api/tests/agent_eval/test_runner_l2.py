@@ -1,6 +1,6 @@
 """L2 실행기 전체 연결 시험(L0 규칙: 가짜 모델·임시 SQLite·네트워크 차단, 실제 LLM 없음).
 
-가짜 모델 -> 실제 도구 -> 합성 DB -> 관찰 -> 채점 -> 저장 이 기존 52건 전부에서 이어지는지 본다. 가짜 대본의 최종 답은 사례의 기대 문구를 담으므로
+가짜 모델 -> 실제 도구 -> 합성 DB -> 관찰 -> 채점 -> 저장 이 기존 사례 전부에서 이어지는지 본다. 가짜 대본의 최종 답은 사례의 기대 문구를 담으므로
 이 통과는 "연결이 된다"는 뜻이고 Agent 의 정확도가 아니다(`fake_model` 머리말). 기대값과 채점은 바꾸지 않았다: 대본이 기대를 못 채우면 아래의 마지막 시험처럼
 그대로 실패로 나온다.
 """
@@ -15,6 +15,8 @@ from evals.agent_eval import adapter
 from evals.agent_eval.fake_model import call, say
 from tests.agent_eval.runner_support import legacy, run
 
+N = len(adapter.load_legacy_cases())  # 기존 사례 파일의 사례 수
+
 
 @pytest.fixture(scope="module")
 def full(tmp_path_factory):
@@ -26,21 +28,21 @@ def _rec(full_run, case_id):
     return next(r for r in full_run[0].records if r.case_id == case_id)
 
 
-def test_all_52_legacy_cases_run_end_to_end_and_none_is_unsupported_or_missing(full):
+def test_all_legacy_cases_run_end_to_end_and_none_is_unsupported_or_missing(full):
     report, _ = full
     ids = [lc.case.id for lc in adapter.load_legacy_cases()]
-    assert len(ids) == 52 and [r.case_id for r in report.records] == ids
+    assert len(ids) == N and [r.case_id for r in report.records] == ids
     c = report.counts()
-    assert c["iterations"] == c["judged"] == 52
+    assert c["iterations"] == c["judged"] == N
     assert (c["unsupported"], c["missing_observation"], c["error"], c["halted"]) == (0, 0, 0, 0)
-    # 가짜 대본이 기대를 채우므로 52건 모두 통과한다(연결 시험). 통과를 만들려고 기대값·채점을 바꾸지 않았다
-    assert (c["passed"], c["failed"], c["legacy_passed"], c["legacy_failed"]) == (52, 0, 52, 0)
-    assert c["write_gate_not_evaluated"] == 52 and report.all_counted_passed
+    # 가짜 대본이 기대를 채우므로 모든 사례가 통과한다(연결 시험). 통과를 만들려고 기대값·채점을 바꾸지 않았다
+    assert (c["passed"], c["failed"], c["legacy_passed"], c["legacy_failed"]) == (N, 0, N, 0)
+    assert c["write_gate_not_evaluated"] == N and report.all_counted_passed
 
 
 def test_every_run_used_its_script_from_the_start_without_running_out(full):
     report, _ = full
-    assert len(report.fakes) == 52
+    assert len(report.fakes) == N
     assert all(f.exhausted == [] and f.calls >= 1 for f in report.fakes.values())
     assert all(r.llm_calls == report.fakes[(r.case_id, r.repeat)].calls for r in report.records)
 
@@ -102,9 +104,9 @@ def test_results_are_saved_with_the_allowed_fields_and_the_runner_report_has_no_
     ):
         assert (run_dir / name).is_file(), name
     cases = [json.loads(line) for line in (run_dir / "cases.jsonl").read_text("utf-8").splitlines()]
-    assert len(cases) == 52 and all(c["passed"] for c in cases)
+    assert len(cases) == N and all(c["passed"] for c in cases)
     manifest = json.loads((run_dir / "manifest.json").read_text("utf-8"))
-    assert manifest["cases"] == 52 and manifest["calls"] == len(report.ledger.usages)
+    assert manifest["cases"] == N and manifest["calls"] == len(report.ledger.usages)
     text = (run_dir / "runner_report.json").read_text("utf-8")
     saved = json.loads(text)
     assert [c["case_id"] for c in saved["cases"]] == [r.case_id for r in report.records]
@@ -113,7 +115,7 @@ def test_results_are_saved_with_the_allowed_fields_and_the_runner_report_has_no_
         assert lc.case.question not in text
     assert "answer" not in text and "question" not in text
     rows = dict(csv.reader((run_dir / "summary.csv").open(encoding="utf-8")))
-    assert rows["runner.passed"] == "52" and rows["runner.write_gate_not_evaluated"] == "52"
+    assert rows["runner.passed"] == str(N) and rows["runner.write_gate_not_evaluated"] == str(N)
 
 
 def test_per_case_usage_is_separate_from_the_run_total(full):

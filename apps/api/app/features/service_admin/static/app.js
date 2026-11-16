@@ -888,13 +888,23 @@
     return el;
   }
 
+  // 답의 **숫자** 를 굵게 보여 준다. innerHTML 을 쓰지 않아 답에 태그가 있어도 글자로만 보인다
+  function chatBold(text) {
+    return text.split(/\*\*(.+?)\*\*/s).map((part, i) => {
+      if (i % 2 === 0) return document.createTextNode(part);
+      const strong = document.createElement("strong");
+      strong.textContent = part;
+      return strong;
+    });
+  }
+
   async function chatAsk(question) {
     chatAsked.add(question);
     chatAdd("me", esc(question));
     const wait = chatAdd("bot", "찾는 중…");
     try {
       const res = await api("/admin/knowledge/ask", { q: question }, "POST");
-      wait.textContent = res.answer;
+      wait.replaceChildren(...chatBold(res.answer));
     } catch (err) {
       if (err.message === "unauthorized") {
         // 로그인 화면으로 넘어갔다. "찾는 중…" 으로 멈춰 보이지 않게 알려 둔다

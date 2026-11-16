@@ -61,6 +61,73 @@ class LibrarySaveOut(BaseModel):
     status: Literal["queued", "already"]
 
 
+class PhotoCheckItemOut(BaseModel):
+    """업로더 본인의 "확인 필요" 사진 한 장. status: unsure(애매) | failed(판별 실패) | pending(처리 지연: 올린 지 15분 넘음)
+    | excluded(`kind=excluded` 목록에서만: 내가 타임라인에서 뺀 사진)."""
+
+    attachment_id: str
+    thumb_url: str
+    created_at: datetime
+    taken_at: datetime | None = None
+    status: Literal["unsure", "failed", "pending", "excluded"]
+
+
+class PhotoChecksOut(BaseModel):
+    """내가 올린 사진 중 확인이 필요한 것(최신순). needs_review_count 는 전체 개수(`kind=excluded` 면 뺀 사진 전체 개수), next_before 는 다음 쪽을 받을 때 `before` 에 넣는 값(없으면 끝)."""
+
+    items: list[PhotoCheckItemOut]
+    needs_review_count: int
+    next_before: int | None = None
+
+
+class PhotoCheckIn(BaseModel):
+    """일반 사진으로 확인. 문서·카드·서류가 찍힌 사진이면 확인하지 않는다. `acknowledge` 는 "가족 타임라인에 보이게 된다"는 안내를
+    보고 확인했다는 뜻이라 반드시 true(서버가 강제한다). 이유 코드도 정해진 값 하나뿐이다."""
+
+    to: Literal["photo"]
+    reason: Literal["uploader_confirmed_general"]
+    acknowledge: Literal[True]
+
+
+class PhotoCheckOut(BaseModel):
+    status: Literal["photo"]
+    source: Literal["manual"]
+
+
+class PhotoExcludeOut(BaseModel):
+    """타임라인에서 뺐다(이미 뺀 사진에 다시 요청해도 같은 응답). 다시 넣으려면 일반 사진 확인(`POST /photos/{id}/check`)을 한다."""
+
+    status: Literal["excluded"]
+    source: Literal["manual"]
+
+
+class TimelinePhotoOut(BaseModel):
+    """가족 타임라인의 사진 한 장. display_at 은 촬영일(없으면 보낸 시각, `taken_at` 이 null 이면 "보낸 날 기준")이고 같은
+    batch_id 묶음은 가장 이른 값으로 맞춘다. mine 은 내가 올린 사진(내가 뺄 수 있다)."""
+
+    attachment_id: str
+    message_id: int
+    thumb_url: str
+    display_at: datetime
+    taken_at: datetime | None = None
+    created_at: datetime
+    batch_id: str | None = None
+    mine: bool
+
+
+class TimelineOut(BaseModel):
+    """가족 타임라인(최신순). next_before 는 다음 쪽을 받을 때 `before` 에 그대로 넣는 값(없으면 끝)."""
+
+    items: list[TimelinePhotoOut]
+    next_before: str | None = None
+
+
+class LibraryStateOut(BaseModel):
+    """사진의 문서함 등록 여부. 확인하지 못하면 not_registered(성공으로 보이지 않게)."""
+
+    state: Literal["registered", "not_registered"]
+
+
 class ShareCreate(BaseModel):
     """공유 카드 보내기. 일정이면 ref 는 내 일정 id, 정산이면 월(YYYY-MM). 카드 내용은 서버가 읽어 만든다(클라이언트 값은 받지 않는다)."""
 

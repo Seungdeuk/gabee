@@ -213,7 +213,7 @@ def test_photo_messages_are_not_sent_to_ai(client, family):
 def test_files_are_removed_when_db_save_fails(client, family, monkeypatch, tmp_path):
     a, _, _ = family
 
-    def boom(db, message, attachment):
+    def boom(db, message, attachment, with_check=False):
         raise RuntimeError("db down")
 
     monkeypatch.setattr(chat_repo, "add_photo_message", boom)

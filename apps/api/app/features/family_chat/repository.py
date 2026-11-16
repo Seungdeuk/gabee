@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.features.family_group.models import GroupMember, User
 
+from . import photo_check_repository as photo_checks
 from .models import (
     DIRECT,
     FAMILY,
@@ -172,6 +173,7 @@ def soft_delete(db: Session, message: Message, attachment: MessageAttachment | N
     message.reply_to_id = None  # 지우면 어느 글에 답했는지도 남기지 않는다
     message.deleted_at = datetime.now(UTC)
     if attachment is not None:
+        photo_checks.delete_for_attachment(db, attachment.id)  # 판별 상태 줄도 함께(같은 트랜잭션)
         db.delete(attachment)
     db.execute(
         delete(MessageReaction).where(MessageReaction.message_id == message.id)
@@ -568,14 +570,18 @@ def set_muted(db: Session, room_id: str, user_id: str, muted: bool) -> None:
 
 
 def add_photo_message(
-    db: Session, message: Message, attachment: MessageAttachment
+    db: Session, message: Message, attachment: MessageAttachment, with_check: bool = False
 ) -> tuple[Message, MessageAttachment]:
-    """사진 메시지와 첨부를 한 번에 저장한다(둘 다 되거나 둘 다 안 된다)."""
+    """사진 메시지와 첨부를 한 번에 저장한다(둘 다 되거나 둘 다 안 된다). with_check 면 판별 상태 `pending` 줄도 같은 트랜잭션에서
+    저장한다(셋 다 되거나 셋 다 안 된다: 첨부는 있는데 상태 줄이 없는 사진이 생기지 않고, 판별은 커밋된 뒤에만 시작한다)."""
     try:
         db.add(message)
         db.flush()
         attachment.message_id = message.id
         db.add(attachment)
+        if with_check:
+            db.flush()
+            db.add(photo_checks.new_pending(attachment.id, attachment.group_id))
         db.commit()
     except Exception:
         db.rollback()

@@ -38,14 +38,14 @@ def _judge(raw, obs):
     return judge(_convert(raw), obs)
 
 
-def test_all_52_legacy_cases_convert_to_valid_cases():
+def test_all_legacy_cases_convert_to_valid_cases():
     cases = load_legacy_cases()
-    assert len(cases) == len(RAW) == 52
-    assert len({c.case.id for c in cases}) == 52
+    assert len(cases) == len(RAW)
+    assert len({c.case.id for c in cases}) == len(RAW)
     assert {c.case.split for c in cases} == {"legacy"} and all(c.case.meta.synthetic for c in cases)
     assert {a: sum(c.case.agent_path == a for c in cases) for a in ("billing", "main")} == {
-        "billing": 39,
-        "main": 13,
+        "billing": sum(r["agent"] == "billing" for r in RAW),
+        "main": sum(r["agent"] == "main" for r in RAW),
     }
     assert {k for r in RAW for k in r} <= KNOWN_KEYS
 
@@ -219,7 +219,11 @@ def test_expected_tools_are_carried_into_the_case_for_the_general_score():
     assert cases["m-billing"].case.expect.tools.required == ["ask_billing"]
     for c in cases.values():
         mode = c.checks.tool_mode
-        want = {"exact": [c.checks.tool], "main_set": list(c.checks.main_tools or ())}.get(mode, [])
+        want = {
+            "exact": [c.checks.tool],
+            "all_of": list(c.checks.tool_all),
+            "main_set": list(c.checks.main_tools or ()),
+        }.get(mode, [])
         assert c.case.expect.tools.required == want, c.case.id
     got = judge(_convert(_raw()), _obs())
     assert not got.generic.tools_ok and got.generic.failure_types == ("missing_tool",)

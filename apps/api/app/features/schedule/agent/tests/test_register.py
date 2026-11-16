@@ -80,7 +80,7 @@ def test_registers_right_away_without_asking(client, setup, fake):
     r = _say(client, a, "내일 병원 예약하기 등록해줘")
     assert r.status_code == 200, r.text
     body = r.json()
-    assert body["intent"] == "register" and body["text"] == "등록했어요."
+    assert body["intent"] == "register" and body["text"].endswith("일정을 등록했어요.")
     assert body["draft"] is None and body["pending_action"] is None
     card = body["cards"][0]
     assert card["type"] == "registered"
@@ -116,7 +116,7 @@ def test_missing_date_asks_and_next_answer_completes(client, setup, fake):
     assert _events(client, a) == []  # 필수가 다 모이기 전에는 저장하지 않는다
     fake.data = _register_data(title="병원 예약", date=_tomorrow())
     second = _say(client, a, "내일", draft=first["draft"]).json()
-    assert second["text"] == "등록했어요." and second["draft"] is None
+    assert second["text"].endswith("'병원 예약' 일정을 등록했어요.") and second["draft"] is None
     assert "병원 예약" in fake.calls[1]["prompt"]  # 초안이 두 번째 호출에 실려 간다
     assert len(_events(client, a)) == 1
 

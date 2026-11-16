@@ -52,6 +52,7 @@ def _ask(
     guarded=True,
     request_view=None,
     habit_view=None,
+    period_note="",
 ) -> chat.ChatResult:
     lines = [
         chat.event_line(
@@ -80,7 +81,9 @@ def _ask(
         guarded,
         request_view.lines if request_view else None,
         set(request_view.rows) if request_view else None,
-        FAMILY_NOTICE if request.channel == "family" else "",
+        " ".join(
+            x for x in (FAMILY_NOTICE if request.channel == "family" else "", period_note) if x
+        ),
         habit_view.lines if habit_view else None,
         set(habit_view.rows) if habit_view else None,
     )
@@ -107,7 +110,9 @@ def handle(
     now = datetime.now(UTC)
     local_now = now.astimezone(reader.local_tz())
     data = reader.read(db, group_id, request.channel, now, user_id)  # 내 일정만, 과거·미래 1년
-    period = period_mod.extract(request.text, local_now.date())  # 문장의 기간(없으면 None)
+    period = period_mod.extract_for_prompt(
+        request.text, local_now.date()
+    )  # 목록을 거를 기간(없으면 None)
     shown, omitted = reader.select_for_prompt(data.events, now, period)
     scope = f"문장에서 읽은 기간 {period.widened().label()}" if period else None
     members = members_mod.load(db, group_id)
@@ -130,6 +135,7 @@ def handle(
         guarded,
         request_view,
         habit_view,
+        period.note if period else "",
     )
     if result.need_wider:
         # 목록이 부족하다고 모델이 표시하면, 모델이 돌려준 기간·키워드로 이미 읽어 둔 일정 안에서 다시 걸러 한 번 더 묻는다

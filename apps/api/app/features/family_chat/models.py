@@ -176,6 +176,51 @@ class MessageAttachment(Base):
     )  # 사진을 찍은 시각(UTC). EXIF 촬영 시각 또는 앱이 보낸 값. 없으면(NULL) 보낸 날(created_at) 기준이다
 
 
+class ChatPhotoCheck(Base):
+    """가족 전체방 사진의 판별 상태(T05-b0-1, 사진 한 장당 한 줄, 업로드와 같은 트랜잭션에서 `pending` 으로 만든다).
+    status: pending(판별 전) | photo(일반 사진으로 확인) | document(문서) | unsure(애매·업로더 확인 필요) | failed(판별 실패).
+    source: auto(자동 판별) | manual(사람이 직접). 자동 판별은 `auto` 줄의 `pending` 만 바꾸고 `photo` 로는 절대 바꾸지 않는다(D-13).
+    줄이 없거나 `photo` 가 아니면 타임라인에 나오지 않는다(fail-closed). 사진 내용·글자 수·OCR 글자는 저장하지 않고 실패는 종류 이름만 남긴다.
+    첨부를 지우면 줄도 함께 지운다(DB 연쇄 삭제 + 메시지 삭제 코드)."""
+
+    __tablename__ = "chat_photo_checks"
+
+    attachment_id: Mapped[str] = mapped_column(
+        ForeignKey("message_attachments.id", ondelete="CASCADE"), primary_key=True
+    )
+    group_id: Mapped[str] = mapped_column(ForeignKey("groups.id", ondelete="CASCADE"), index=True)
+    status: Mapped[str] = mapped_column(String(12), default="pending", server_default="pending")
+    source: Mapped[str] = mapped_column(String(8), default="auto", server_default="auto")
+    last_error: Mapped[str | None] = mapped_column(String(40), nullable=True)  # 실패 종류 이름만
+    checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(UTC)
+    )
+
+
+class ChatPhotoCheckEvent(Base):
+    """사진 판별 상태가 사람 손으로 바뀐 이력(T05-b0-2a, D-19). 전후 상태·이유 코드·시각만 남기고 사진 내용·자유 글은 없다.
+    `actor_user_id` 는 nullable FK + ON DELETE SET NULL: 사용자 행이 지워져도(또는 익명화돼도) 이력은 남고 "누가"만 비워진다.
+    사용자 식별자를 문자열로 따로 보관하지 않는다. 첨부·가족을 지우면 이력도 함께 지운다. `from_status` NULL = 이전 줄이 없던 예전 사진."""
+
+    __tablename__ = "chat_photo_check_events"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    attachment_id: Mapped[str] = mapped_column(
+        ForeignKey("message_attachments.id", ondelete="CASCADE"), index=True
+    )
+    group_id: Mapped[str] = mapped_column(ForeignKey("groups.id", ondelete="CASCADE"), index=True)
+    actor_user_id: Mapped[str | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    from_status: Mapped[str | None] = mapped_column(String(12), nullable=True)
+    to_status: Mapped[str] = mapped_column(String(12))
+    reason: Mapped[str] = mapped_column(String(40))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(UTC)
+    )
+
+
 class MessageShare(Base):
     """채팅방 공유 카드의 내용(보낸 시점 스냅샷). 메시지 하나에 카드 하나이고, 메시지의 text 는 개인정보 없는 고정 문구다.
     kind: event(내 일정 한 건) | settlement(그 달 내 정산 몫). payload 는 서버가 만든 JSON 이라 클라이언트 값이 들어오지 않는다.

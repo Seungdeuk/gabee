@@ -25,10 +25,12 @@ from contextlib import contextmanager
 from . import real_gate
 
 LOOPBACK_NAMES = frozenset({"localhost", "localhost.localdomain", "ip6-localhost"})
+# 소문자(`http_proxy`)와 전부 대문자(`HTTP_PROXY`) 두 철자를 모두 다룬다. Windows 는 환경변수 이름의 대소문자를 구분하지 않아 한 철자만 있어도
+# 둘 다 잡히지만, Linux 는 구분하므로 `HTTP_PROXY` 를 빠뜨리면 차단 중에도 프록시가 남는다
 PROXY_ENV = tuple(
-    f"{n}{suffix}"
+    name
     for n in ("http", "https", "all", "ftp", "no", "ws", "wss")
-    for suffix in ("_proxy", "_PROXY")
+    for name in (f"{n}_proxy", f"{n}_proxy".upper())
 )
 
 
