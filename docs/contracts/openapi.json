@@ -2524,15 +2524,303 @@
         }
       }
     },
-    "/family-chat/photos": {
+    "/family-chat/timeline/photos": {
+      "get": {
+        "tags": [
+          "family-chat"
+        ],
+        "summary": "Family Timeline",
+        "description": "가족 타임라인: 가족 전체방에 올린 사진 중 **일반 사진으로 확인된 것만** 촬영일(없으면 보낸 시각) 최신순. 판별 대기·애매·실패·문서·\n타임라인에서 뺀 사진, 1:1 방·지운 메시지의 사진은 나오지 않는다. `before` 는 이전 응답의 `next_before` 를 그대로(형식이 틀리면 422).\n판별 결과를 읽지 못하면 빈 목록이 아니라 503. 다른 가족의 사진은 존재도 알 수 없다. `mine` 인 사진은 내가 뺄 수 있다.",
+        "operationId": "family_timeline_family_chat_timeline_photos_get",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 60,
+              "minimum": 1,
+              "default": 30,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "before",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 60
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Before"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-gyeot-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Gyeot-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TimelineOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/family-chat/photos/checks/mine": {
+      "get": {
+        "tags": [
+          "family-chat"
+        ],
+        "summary": "My Photo Checks",
+        "description": "내가 가족 전체방에 올린 사진 중 확인이 필요한 것만(최신순): 애매(`unsure`)·판별 실패(`failed`)·올린 지 15분 넘게 판별되지 않은(`pending`) 사진.\n`kind=excluded` 면 내가 타임라인에서 뺀 사진만(다시 넣으려고 볼 때). 다른 가족이 올린 사진은 절대 섞이지 않고, 가족에게 새로 알리는 것도 없다(푸시 없음).\n`before` 는 이전 응답의 `next_before`. 조회에 실패하면 빈 목록이 아니라 503. `pending` 을 일반 사진으로 보지 않는다: 15분은 \"처리 지연\" 표시 기준일 뿐이다.",
+        "operationId": "my_photo_checks_family_chat_photos_checks_mine_get",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 50,
+              "minimum": 1,
+              "default": 30,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "before",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Before"
+            }
+          },
+          {
+            "name": "kind",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "review",
+                "excluded"
+              ],
+              "type": "string",
+              "default": "review",
+              "title": "Kind"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-gyeot-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Gyeot-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PhotoChecksOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/family-chat/photos/{attachment_id}/exclude": {
       "post": {
         "tags": [
           "family-chat"
         ],
-        "summary": "Send Photo",
-        "description": "사진 메시지를 보낸다(multipart `file`, 선택 `room_id`, 선택 `batch_id`: 여러 장을 한 번에 올릴 때 장마다 같은 번호). JPEG/PNG/WebP 8MB 이하, 서버가 EXIF 를 지우고 다시 만든다. 가족 전체방 사진은 보낸 뒤 서버가 뒤에서 문서 사진인지 판별해 문서면 가족 문서함에 자동 등록한다(`/photos/{id}/library` 참고).",
-        "operationId": "send_photo_family_chat_photos_post",
+        "summary": "Exclude Photo From Timeline",
+        "description": "업로더가 자기 사진을 가족 타임라인에서 뺀다(채팅 원본은 그대로). 올린 사람 본인이 가족 전체방에 올린 살아 있는 사진만(그 밖은 404:\n존재를 숨긴다). 타임라인에 있는 사진이 아니면 409 `not_in_timeline`. 같은 요청을 다시 보내도 200 이고 이력은 한 줄. 다시 넣으려면\n`POST /photos/{id}/check`(안내 확인 포함).",
+        "operationId": "exclude_photo_from_timeline_family_chat_photos__attachment_id__exclude_post",
         "parameters": [
+          {
+            "name": "attachment_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Attachment Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-gyeot-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Gyeot-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PhotoExcludeOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/family-chat/photos/{attachment_id}/check": {
+      "post": {
+        "tags": [
+          "family-chat"
+        ],
+        "summary": "Confirm General Photo",
+        "description": "업로더가 \"일반 사진이에요\"를 명시적으로 확인한다(가족 타임라인에 보이게 된다). 본문 `acknowledge` 는 반드시 true(아니면 422).\n업로더 본인이 가족 전체방에 올린 살아 있는 사진만(그 밖은 모두 404: 존재를 숨긴다). 문서로 판별·저장됐거나 문서함에 등록된 사진은 409\n`document_to_photo_blocked`(문서→일반 전환은 MVP 에서 막는다), 올린 지 15분 안 된 판별 대기는 409 `check_in_progress`, 문서함 등록 여부를\n확인하지 못하면 503. 같은 요청을 다시 보내도 결과는 같고(200) 이력은 한 줄만 남는다. 자동 판별은 이 확인을 덮어쓰지 못한다.",
+        "operationId": "confirm_general_photo_family_chat_photos__attachment_id__check_post",
+        "parameters": [
+          {
+            "name": "attachment_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Attachment Id"
+            }
+          },
           {
             "name": "authorization",
             "in": "header",
@@ -2569,20 +2857,20 @@
         "requestBody": {
           "required": true,
           "content": {
-            "multipart/form-data": {
+            "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/Body_send_photo_family_chat_photos_post"
+                "$ref": "#/components/schemas/PhotoCheckIn"
               }
             }
           }
         },
         "responses": {
-          "201": {
+          "200": {
             "description": "Successful Response",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/MessageOut"
+                  "$ref": "#/components/schemas/PhotoCheckOut"
                 }
               }
             }
@@ -2601,6 +2889,79 @@
       }
     },
     "/family-chat/photos/{attachment_id}/library": {
+      "get": {
+        "tags": [
+          "family-chat"
+        ],
+        "summary": "Photo Library State",
+        "description": "사진이 가족 문서함에 등록됐는지(`registered`/`not_registered`). 방에 들어갈 수 있는 가족 누구나. 없는 사진·못 들어가는 방은 404, 1:1 방은 409.\n\"문서로 저장\"이 `queued` 만 답하므로 앱은 이것으로 결과를 확인한다. 확인하지 못하면 `not_registered`(성공으로 보이지 않게)이고,\n아직 없으면 `POST /photos/{id}/library` 를 다시 요청해 이어서 등록한다(같은 요청은 한 번만 등록된다).",
+        "operationId": "photo_library_state_family_chat_photos__attachment_id__library_get",
+        "parameters": [
+          {
+            "name": "attachment_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Attachment Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-gyeot-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Gyeot-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryStateOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
       "post": {
         "tags": [
           "family-chat"
@@ -2658,6 +3019,82 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/LibrarySaveOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/family-chat/photos": {
+      "post": {
+        "tags": [
+          "family-chat"
+        ],
+        "summary": "Send Photo",
+        "description": "사진 메시지를 보낸다(multipart `file`, 선택 `room_id`, 선택 `batch_id`: 여러 장을 한 번에 올릴 때 장마다 같은 번호, 선택 `taken_at`: 앱이 읽은 촬영 시각(ISO 8601), 서버가 EXIF 에서 못 읽었을 때만 쓰고 40자 초과는 422, 형식이 틀리면 무시). JPEG/PNG/WebP 8MB 이하, 서버가 EXIF 를 지우고 다시 만든다(촬영 시각만 `taken_at` 으로 남기고 위치·기기 정보는 저장하지 않는다). 가족 전체방 사진은 보낸 뒤 서버가 뒤에서 문서 사진인지 판별해 문서면 가족 문서함에 자동 등록한다(`/photos/{id}/library` 참고).",
+        "operationId": "send_photo_family_chat_photos_post",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-gyeot-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Gyeot-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_send_photo_family_chat_photos_post"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageOut"
                 }
               }
             }
@@ -9059,12 +9496,95 @@
       }
     },
     "/billing/expenses/{expense_id}": {
+      "patch": {
+        "tags": [
+          "billing"
+        ],
+        "summary": "Update Expense",
+        "description": "내가 낸 지출의 제목·금액·날짜·카테고리를 고친다(보낸 값만). 정산하기를 마친 지출과 송금 완료가 있는 달은 400 `expense_not_editable`.",
+        "operationId": "update_expense_billing_expenses__expense_id__patch",
+        "parameters": [
+          {
+            "name": "expense_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Expense Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-gyeot-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Gyeot-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExpenseUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExpenseOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
       "delete": {
         "tags": [
           "billing"
         ],
         "summary": "Delete Expense",
-        "description": "소프트 삭제: 행은 남기고 `deleted_at` 만 채운다.",
+        "description": "소프트 삭제: 행은 남기고 `deleted_at` 만 채운다. 수정과 같은 규칙(내가 낸 지출만, 정산하기 전만, 송금 완료가 있는 달은 잠금)이고 어긋나면 400 `expense_not_deletable`.",
         "operationId": "delete_expense_billing_expenses__expense_id__delete",
         "parameters": [
           {
@@ -12108,6 +12628,73 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/AskOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/ai-assistant/knowledge/index-status": {
+      "get": {
+        "tags": [
+          "ai-assistant",
+          "ai-assistant-knowledge"
+        ],
+        "summary": "Index Status",
+        "description": "검색 색인 점검(운영자 전용, 읽기 전용): 서버가 쓰는 임베딩 모델 이름과 DB 조각의 모델별 개수.\n이름이 어긋나면 문서가 오류 없이 의미 검색에서 빠지므로 개수와 경고만 알려 준다(내용·가족 그룹 id 는 싣지 않는다).",
+        "operationId": "index_status_ai_assistant_knowledge_index_status_get",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-gyeot-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Gyeot-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IndexStatusOut"
                 }
               }
             }
@@ -15524,6 +16111,72 @@
         }
       }
     },
+    "/play/quiz/recommendations": {
+      "get": {
+        "tags": [
+          "play"
+        ],
+        "summary": "Quiz Recommendations",
+        "description": "골든벨 가비 추천(가족이 함께 보는 일정과 가족 전체방 최근 대화로 만든 문제). 하루 한 번 만들어 자정까지 가족이 같이 쓰고,\n이미 낸 문제는 숨긴다. 실패·한도 같은 경우는 오류 대신 state 로 알린다(AI 가 꺼져 있거나 재료가 없을 때도 200).",
+        "operationId": "quiz_recommendations_play_quiz_recommendations_get",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-gyeot-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Gyeot-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlayQuizRecOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/play/draws": {
       "post": {
         "tags": [
@@ -16622,6 +17275,87 @@
         "summary": "Get News",
         "description": "내 가족 뉴스(저장본). 본인 것만 돌려주고, 저장본이 없어도 만들지 않는다.",
         "operationId": "get_news_report_news_get",
+        "parameters": [
+          {
+            "name": "week_start",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Week Start"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-gyeot-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Gyeot-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NewsOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "report"
+        ],
+        "summary": "Create News",
+        "description": "내 그 주 가족 뉴스를 만든다(이미 만들었으면 AI 를 부르지 않고 저장본). 만들지 못하면 status=failed 로 돌려준다.",
+        "operationId": "create_news_report_news_post",
         "parameters": [
           {
             "name": "week_start",
@@ -19653,6 +20387,18 @@
             "type": "boolean",
             "title": "In Library",
             "default": false
+          },
+          "taken_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Taken At"
           }
         },
         "type": "object",
@@ -19988,6 +20734,18 @@
               }
             ],
             "title": "Batch Id"
+          },
+          "taken_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 40
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Taken At"
           }
         },
         "type": "object",
@@ -21997,6 +22755,63 @@
         ],
         "title": "ExpenseOut"
       },
+      "ExpenseUpdate": {
+        "properties": {
+          "title": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 120,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          },
+          "amount": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Amount"
+          },
+          "date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Date"
+          },
+          "category": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 16,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category"
+          }
+        },
+        "type": "object",
+        "title": "ExpenseUpdate",
+        "description": "지출에서 바꿀 값만 보낸다(에이전트의 수정 제안과 앱의 지출 수정 PATCH 가 같이 쓴다). 나눌 사람·낸 사람은 바꾸지 않는다."
+      },
       "FeatureRow": {
         "properties": {
           "key": {
@@ -22630,6 +23445,51 @@
         ],
         "title": "ImportantMessage"
       },
+      "IndexStatusOut": {
+        "properties": {
+          "current_model": {
+            "type": "string",
+            "title": "Current Model"
+          },
+          "by_model": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "type": "object",
+            "title": "By Model"
+          },
+          "stale_chunks": {
+            "type": "integer",
+            "title": "Stale Chunks"
+          },
+          "stale_items": {
+            "type": "integer",
+            "title": "Stale Items"
+          },
+          "missing_items": {
+            "type": "integer",
+            "title": "Missing Items"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Warnings"
+          }
+        },
+        "type": "object",
+        "required": [
+          "current_model",
+          "by_model",
+          "stale_chunks",
+          "stale_items",
+          "missing_items",
+          "warnings"
+        ],
+        "title": "IndexStatusOut",
+        "description": "검색 색인 점검(운영자용). 개수와 모델 이름만 있다."
+      },
       "InfraMetrics": {
         "properties": {
           "instances_active": {
@@ -23237,6 +24097,24 @@
         ],
         "title": "LibrarySaveOut",
         "description": "사진을 문서함에 저장한 결과: queued = 저장을 시작했다(읽는 데 시간이 걸린다), already = 이미 문서함에 있다."
+      },
+      "LibraryStateOut": {
+        "properties": {
+          "state": {
+            "type": "string",
+            "enum": [
+              "registered",
+              "not_registered"
+            ],
+            "title": "State"
+          }
+        },
+        "type": "object",
+        "required": [
+          "state"
+        ],
+        "title": "LibraryStateOut",
+        "description": "사진의 문서함 등록 여부. 확인하지 못하면 not_registered(성공으로 보이지 않게)."
       },
       "LinkCreate": {
         "properties": {
@@ -24310,6 +25188,43 @@
             },
             "type": "array",
             "title": "Source Ids"
+          },
+          "headline": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Headline"
+          },
+          "role": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "lead",
+                  "brief"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Role"
+          },
+          "category": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category"
           }
         },
         "type": "object",
@@ -24317,7 +25232,8 @@
           "text",
           "source_ids"
         ],
-        "title": "NewsItemOut"
+        "title": "NewsItemOut",
+        "description": "기사 하나. headline·role·category 는 기사형(v2) 뉴스에만 있고, 옛 저장본(v1)에서는 모두 null 이다.\n\nrole: lead(메인 기사, 하나) | brief(단신). category 는 인용한 근거의 종류에서 서버가 정한 고정 이름이다."
       },
       "NewsOut": {
         "properties": {
@@ -24395,13 +25311,27 @@
               }
             ],
             "title": "Model"
+          },
+          "issue_year": {
+            "type": "integer",
+            "title": "Issue Year",
+            "description": "신문 호수의 연도(ISO). 모든 상태에서 week_start 로 계산한다(저장하지 않는다).",
+            "readOnly": true
+          },
+          "issue_no": {
+            "type": "integer",
+            "title": "Issue No",
+            "description": "신문 호수(ISO 주 번호).",
+            "readOnly": true
           }
         },
         "type": "object",
         "required": [
           "status",
           "week_start",
-          "week_end"
+          "week_end",
+          "issue_year",
+          "issue_no"
         ],
         "title": "NewsOut",
         "description": "한 구성원의 한 주 뉴스. 저장본이 없으면 status 만 있고 나머지는 비어 있다(읽기는 아무것도 만들지 않는다)."
@@ -24987,6 +25917,155 @@
         ],
         "title": "PendingJoinOut",
         "description": "관리자가 보는 승인 대기 요청."
+      },
+      "PhotoCheckIn": {
+        "properties": {
+          "to": {
+            "type": "string",
+            "const": "photo",
+            "title": "To"
+          },
+          "reason": {
+            "type": "string",
+            "const": "uploader_confirmed_general",
+            "title": "Reason"
+          },
+          "acknowledge": {
+            "type": "boolean",
+            "const": true,
+            "title": "Acknowledge"
+          }
+        },
+        "type": "object",
+        "required": [
+          "to",
+          "reason",
+          "acknowledge"
+        ],
+        "title": "PhotoCheckIn",
+        "description": "일반 사진으로 확인. 문서·카드·서류가 찍힌 사진이면 확인하지 않는다. `acknowledge` 는 \"가족 타임라인에 보이게 된다\"는 안내를\n보고 확인했다는 뜻이라 반드시 true(서버가 강제한다). 이유 코드도 정해진 값 하나뿐이다."
+      },
+      "PhotoCheckItemOut": {
+        "properties": {
+          "attachment_id": {
+            "type": "string",
+            "title": "Attachment Id"
+          },
+          "thumb_url": {
+            "type": "string",
+            "title": "Thumb Url"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "taken_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Taken At"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "unsure",
+              "failed",
+              "pending",
+              "excluded"
+            ],
+            "title": "Status"
+          }
+        },
+        "type": "object",
+        "required": [
+          "attachment_id",
+          "thumb_url",
+          "created_at",
+          "status"
+        ],
+        "title": "PhotoCheckItemOut",
+        "description": "업로더 본인의 \"확인 필요\" 사진 한 장. status: unsure(애매) | failed(판별 실패) | pending(처리 지연: 올린 지 15분 넘음)\n| excluded(`kind=excluded` 목록에서만: 내가 타임라인에서 뺀 사진)."
+      },
+      "PhotoCheckOut": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "const": "photo",
+            "title": "Status"
+          },
+          "source": {
+            "type": "string",
+            "const": "manual",
+            "title": "Source"
+          }
+        },
+        "type": "object",
+        "required": [
+          "status",
+          "source"
+        ],
+        "title": "PhotoCheckOut"
+      },
+      "PhotoChecksOut": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/PhotoCheckItemOut"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "needs_review_count": {
+            "type": "integer",
+            "title": "Needs Review Count"
+          },
+          "next_before": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Before"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items",
+          "needs_review_count"
+        ],
+        "title": "PhotoChecksOut",
+        "description": "내가 올린 사진 중 확인이 필요한 것(최신순). needs_review_count 는 전체 개수(`kind=excluded` 면 뺀 사진 전체 개수), next_before 는 다음 쪽을 받을 때 `before` 에 넣는 값(없으면 끝)."
+      },
+      "PhotoExcludeOut": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "const": "excluded",
+            "title": "Status"
+          },
+          "source": {
+            "type": "string",
+            "const": "manual",
+            "title": "Source"
+          }
+        },
+        "type": "object",
+        "required": [
+          "status",
+          "source"
+        ],
+        "title": "PhotoExcludeOut",
+        "description": "타임라인에서 뺐다(이미 뺀 사진에 다시 요청해도 같은 응답). 다시 넣으려면 일반 사진 확인(`POST /photos/{id}/check`)을 한다."
       },
       "PhotoOut": {
         "properties": {
@@ -26702,6 +27781,85 @@
           "answer_index"
         ],
         "title": "PlayQuizQuestionIn"
+      },
+      "PlayQuizRecItem": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "schedule",
+              "chat"
+            ],
+            "title": "Source"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "ox",
+              "choice"
+            ],
+            "title": "Kind"
+          },
+          "question": {
+            "type": "string",
+            "title": "Question"
+          },
+          "options": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Options"
+          },
+          "answer_index": {
+            "type": "integer",
+            "title": "Answer Index"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "source",
+          "kind",
+          "question",
+          "options",
+          "answer_index"
+        ],
+        "title": "PlayQuizRecItem"
+      },
+      "PlayQuizRecOut": {
+        "properties": {
+          "state": {
+            "type": "string",
+            "enum": [
+              "ok",
+              "no_data",
+              "used_up",
+              "preparing",
+              "cooldown",
+              "failed",
+              "ai_off"
+            ],
+            "title": "State"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/PlayQuizRecItem"
+            },
+            "type": "array",
+            "title": "Items"
+          }
+        },
+        "type": "object",
+        "required": [
+          "state"
+        ],
+        "title": "PlayQuizRecOut",
+        "description": "가비 추천. state 가 ok 일 때만 items 가 있다. no_data 재료 없음, used_up 오늘 추천을 다 썼음(또는 한도), preparing 다른 가족이 만드는 중,\ncooldown 방금 불렀음, failed 만들지 못함, ai_off 가족 AI 꺼짐."
       },
       "PlayQuotaOut": {
         "properties": {
@@ -29250,6 +30408,98 @@
         ],
         "title": "TicketOut",
         "description": "보낸 사람 본인에게 보여 주는 모양."
+      },
+      "TimelineOut": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/TimelinePhotoOut"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "next_before": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Before"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items"
+        ],
+        "title": "TimelineOut",
+        "description": "가족 타임라인(최신순). next_before 는 다음 쪽을 받을 때 `before` 에 그대로 넣는 값(없으면 끝)."
+      },
+      "TimelinePhotoOut": {
+        "properties": {
+          "attachment_id": {
+            "type": "string",
+            "title": "Attachment Id"
+          },
+          "message_id": {
+            "type": "integer",
+            "title": "Message Id"
+          },
+          "thumb_url": {
+            "type": "string",
+            "title": "Thumb Url"
+          },
+          "display_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Display At"
+          },
+          "taken_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Taken At"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "batch_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Batch Id"
+          },
+          "mine": {
+            "type": "boolean",
+            "title": "Mine"
+          }
+        },
+        "type": "object",
+        "required": [
+          "attachment_id",
+          "message_id",
+          "thumb_url",
+          "display_at",
+          "created_at",
+          "mine"
+        ],
+        "title": "TimelinePhotoOut",
+        "description": "가족 타임라인의 사진 한 장. display_at 은 촬영일(없으면 보낸 시각, `taken_at` 이 null 이면 \"보낸 날 기준\")이고 같은\nbatch_id 묶음은 가장 이른 값으로 맞춘다. mine 은 내가 올린 사진(내가 뺄 수 있다)."
       },
       "TodoCandidate": {
         "properties": {

@@ -625,3 +625,77 @@
 ## 묶음 사진의 안 읽은 수 (2026-11-09)
 - 같은 묶음(`batch_id`)으로 올린 사진은 안 읽은 수에서 **1건**으로 센다(`repository._unread_unit`: 묶음 번호가 있으면 그 번호, 없으면 메시지 id). 채팅 화면이 묶음을 한 덩어리로 보여 주는데 방 목록 숫자가 5장이면 5로 보이던 문제를 고쳤다. 가족 전체방·1:1 방·전체 안 읽은 수(`GET /family-chat/unread`)가 모두 같다.
 - 시험: `family_chat/tests/test_photo_batch_unread.py`.
+
+## 사진 촬영일 저장 (서버, T05-a, 2026-11-12)
+- 사진을 올릴 때 **촬영 시각**을 `message_attachments.taken_at`(UTC, NULL 허용)에 저장하고 `AttachmentOut.taken_at` 으로 내려준다. NULL 이면 촬영일을 알 수 없어 **보낸 날 기준**이다(이미 올라간 사진은 모두 NULL, 복구 불가).
+- 우선순위: 서버가 업로드 원본 EXIF 의 `DateTimeOriginal`(+`OffsetTimeOriginal`)에서 읽은 값 → 없을 때만 앱이 보낸 `taken_at` 폼 값(ISO 8601 또는 EXIF 형식) → NULL. 시간대 정보가 없으면 한국 시간으로 본다. 범위(1990-01-01 ~ 현재+1일) 밖이거나 형식이 틀리면 버리고 업로드는 막지 않는다. `taken_at` 폼 값이 40자를 넘으면 422.
+- **PNG 는 서버가 EXIF 를 읽지 않는다**(EXIF 가 이미지 데이터 뒤에 올 수 있어 읽으려면 최대 2500만 화소를 다시 디코딩해야 한다). PNG 는 앱이 보낸 값만 쓴다. 연도 `0001`·`9999` 같은 극단값은 500 이 아니라 NULL 이다.
+- **위치(GPS)·기기 모델·제조사·소프트웨어 정보는 저장·응답·로그에 남지 않는다**(저장 사본·썸네일은 메타데이터 없음 유지). Pillow 가 EXIF 태그 값을 DEBUG 로그로 찍기 때문에 `photo_service` 가 `PIL` 로거를 WARNING 으로 고정한다.
+- DB: Alembic `4c1f8a62b7d9`(칸 추가만). **배포 순서: 마이그레이션 먼저, 코드 나중** — 칸이 없는 DB 에 새 코드가 먼저 뜨면 스키마 점검이 `family_chat` 전체를 503 으로 막는다(`docs/contracts/db.md`).
+- 시험: `family_chat/tests/test_photo_taken_at.py`, PostgreSQL 마이그레이션 `tests/test_photo_taken_at_pg_e2e.py`(`GABEE_PG16_E2E=1`).
+- 아직 없는 것: 타임라인 조회·화면(T05-b·d), 업로더 확인·재시도(T05-b0-2·3). (앱의 촬영 시각 전송은 아래 T05-c, 판별 상태 저장은 아래 T05-b0-1)
+
+## 사진 촬영 시각 전송 (앱, T05-c, 2026-11-13)
+- 갤러리에서 사진을 고를 때(`pickPhoto.js`) **iOS 에서만** `exif` 를 받아 **촬영 시각 한 값(`takenAt`)만** 꺼내고 EXIF 객체(위치·기기 정보 포함)는 바로 버린다(`takenAt.js` 의 `withTakenAt`이 asset 에서 `exif` 칸을 떼어 낸 새 객체를 돌려준다). 업로드(`api.sendPhoto`)는 `takenAt` 이 있을 때만 폼 `taken_at` 한 칸을 더한다(문자열이고 40자 이하일 때만, 서버 422 로 업로드가 막히지 않게).
+- 읽는 키는 바깥에 있는 `DateTimeOriginal`·`OffsetTimeOriginal` 두 개뿐이다. GPS·기기 키와 중첩 `"{Exif}"` 는 읽지 않는다(시험이 접근한 키를 검사). expo-image-picker 17.0.11 iOS 네이티브(`ImageUtils.readExifFrom`)가 `{Exif}` 를 바깥으로 펼쳐 주므로 바깥 키로 온다.
+- **시간대(오프셋)가 확인된 값만 보낸다.** `OffsetTimeOriginal` 이 없거나 틀리면 앱은 한국·UTC 로 추측하지 않고 `taken_at` 을 보내지 않는다(NULL → 보낸 날 기준). 서버가 자기가 읽은 EXIF 를 우선하는 정책과 서버의 "시간대 없으면 한국 시간" 규칙(Q3)은 그대로이고, 이번 앱 규칙은 그보다 보수적이다. 형식·범위(1990-01-01 ~ 현재+1일)가 서버와 같다.
+- **플랫폼별 동작(expo-image-picker 17.0.11 네이티브 소스 기준, 실기기 확인 전):** iOS 는 앱이 다시 인코딩한 업로드 파일에 EXIF 가 없어 앱 값이 실제로 쓰이는 경로다. **안드로이드는 갤러리가 `OffsetTimeOriginal` 을 돌려주지 않아**(`EXIF_TAGS` 에 `DateTimeOriginal` 은 있고 오프셋 태그는 없다) 앱 값이 항상 NULL 이라 `exif` 를 받지 않는다. 안드로이드의 촬영일은 서버가 업로드 파일의 EXIF `DateTimeOriginal` 을 읽어 정한다(서버 규칙: 오프셋이 없으면 한국 시간). 웹은 EXIF 가 없어 항상 NULL 이다.
+- 시험: `apps/mobile/tests/takenat.test.js`.
+- **실기기 확인 필요(병합 후에도 남아 있다, 아직 하지 않았다):** iOS 에서 `quality: 0.8`·다중 선택 때 `DateTimeOriginal`·`OffsetTimeOriginal` 이 실제로 오는지와 오프셋이 없는 사진의 비율, 안드로이드 업로드 파일에 `DateTimeOriginal` 이 남아 서버가 읽는지(`CompressionImageExporter` 의 EXIF 복사). 확인 전에는 화면 문구로 "촬영일"을 단정하지 않는다.
+
+## 사진 판별 상태 저장 (서버, T05-b0-1, 2026-11-13)
+- 가족 전체방 사진마다 판별 상태 한 줄(`chat_photo_checks`)을 **첨부·메시지와 같은 트랜잭션에서 `pending` 으로** 만든다(`repository.add_photo_message(with_check=True)`). 1:1 방 사진은 줄이 없다. 저장이 하나라도 실패하면 메시지·첨부·줄이 함께 롤백되고 파일도 지워진다. 판별 작업은 커밋 뒤(`chat_library.photo_posted`)에만 시작하므로 줄이 없는 채로 판별이 도는 경쟁이 없다.
+- 상태: `pending`(판별 전) | `photo`(일반 사진으로 확인) | `document` | `unsure`(애매·업로더 확인 필요) | `failed`. 출처: `auto` | `manual`.
+- **D-13 준수: 자동 판별은 `photo` 를 만들지 못한다.** 판별 결과 → 상태: OCR 문서 또는 Claude 문서(확신 0.7 이상) → `document`, 글자가 안 읽히는 사진(OCR 일반)·애매·Claude 가 일반 사진/낮은 확신 → `unsure`, OCR·Claude 실패 → `failed`(오류 종류 이름만 저장). `record_auto` 가 `photo` 를 거부한다(시험으로 고정).
+- 덮어쓰기 방지: 자동 결과는 조건부 UPDATE 한 번으로 `auto` 줄의 `pending` 만 바꾼다. 중복·늦은 결과는 아무것도 바꾸지 않는다(`document` 만 숨기는 방향이라 `unsure`·`failed`(자동) 위로 올라간다). 사람이 정한 줄(`manual`)과 `photo` 는 자동이 바꾸지 못한다. 결과를 못 적으면 줄이 `pending` 으로 남아 사진은 나오지 않는다(대기열이 가득 차 버려진 사진도 같다 — 재시도는 b0-3).
+- "문서로 저장"(`POST /family-chat/photos/{id}/library`, D-15: 가족 누구나)은 상태를 `document`+`manual` 로 맞춘다(줄이 없는 예전 사진은 새로 만든다). 상태를 못 적으면 문서함 요청도 하지 않는다. 문서→일반 되돌리기는 이 PR 에 없고 정책(D-16) 확정 전까지 막혀 있다.
+- **타임라인에는 `photo` 만 나온다**: 조회 함수 `photo_check_repository.confirmed_photo_ids`(줄 없음·pending·unsure·failed·document·다른 가족은 제외, 조회 오류는 삼키지 않아 호출하는 타임라인이 503 으로 답해야 한다). 타임라인 API 자체는 T05-b.
+- **예전 사진은 줄이 없다 = 처음에는 모두 숨는다.** 기존 사진 재판별은 이 PR 에 없다. 업로더가 일반 사진으로 확인하는 기능은 b0-2 다(그 전에는 어떤 사진도 `photo` 가 되지 않는다).
+- DB: Alembic `d7a41c9e5b02`(새 표 하나, expand). **마이그레이션 먼저, 코드 나중**(2026-11-13 결정: 표가 없을 때 판별 기록만 건너뛰는 하위 기능 분리는 하지 않고 fail-closed 를 유지한다 → 아래 "배포 조건"). 이력 표(`chat_photo_check_events`)와 재시도 칸(`attempts`·`claimed_at`)은 D-16·D-19·D-18 확정 뒤 b0-2·b0-3 에서 추가한다(이번에 두지 않아 되돌리기 어려운 설계를 피했다).
+- 시험: `family_chat/tests/test_photo_checks.py`(업로드 트랜잭션·롤백·삭제 정리·덮어쓰기·수동 저장·격리·fail-closed), `ai_assistant/tests/test_photo_checks_flow.py`(판별 결과 → 상태). PostgreSQL 은 격리 임시 클러스터에서 DDL·모델 일치·연쇄 삭제·동시 기록·왕복(upgrade/downgrade)을 확인했다.
+
+### 배포 조건 (T05-b0-1, 필수 — 공용 DB 반영은 DB 담당자 승인 뒤에만)
+이 변경은 `family_chat` 모델에 새 표(`chat_photo_checks`)를 더하고 업로드가 그 표에 줄을 같은 트랜잭션으로 쓴다. 표가 없는 DB 에 새 코드가 먼저 뜨면 스키마 점검(`shared/schema.py`, `docs/adr/0006-schema-gate-degraded-start.md`)이 `family_chat` 전체를 503(`schema_not_ready`)으로 막는다(데이터는 안전하고 마이그레이션 적용 뒤 바로 복구된다). 그래서 아래 순서를 지킨다. **Claude Code 는 공용 DB 에 직접 마이그레이션을 실행하지 않는다.**
+1. **호환성 확인(배포 전):** 새 리비전은 새 표 하나만 만든다(기존 표·열·데이터 변경 없음, `migration_risk` 위험 대상 아님). 반대 방향도 안전하다: DB 를 먼저 올려도 이전 코드는 새 표를 모르고 그대로 동작한다(업로드·채팅·문서함 변화 없음). `alembic heads` 가 1개인지, `ci-check` 의 `api-postgres`(전체 upgrade·스키마 일치)가 통과인지 확인한다.
+2. **마이그레이션을 코드보다 먼저:** `main` 병합 뒤 통합 때 DB 담당자가 공용 DB PC 에서 Pull Agent(`apps/api/scripts/deploy_agent.py`)를 수동으로 한 번 실행한다(기존 절차 그대로: CI 통과 확인·새 백업·복원 검증·리허설·사후 검증). 그 뒤에 서비스 코드를 배포한다.
+3. **성공 확인:** `alembic current` 가 `d7a41c9e5b02` 이고 `chat_photo_checks` 표(칸 7개, 인덱스 `ix_chat_photo_checks_group_id`, 외래 키 2개 ON DELETE CASCADE)가 있는지, `GET /health/db` 에서 `family_chat` 이 준비 상태인지 본다.
+4. **실패하면 코드 배포를 중단한다:** 마이그레이션이 실패했거나 표가 없으면 새 코드를 올리지 않는다(이미 올렸다면 아래 롤백). 서버는 DB 가 뒤처져도 시작은 하지만 소통 기능이 503 이다.
+5. **배포 후 확인(스모크):** 가족 전체방에 사진 한 장 올리기 → 201 과 목록에 보임, DB 에 그 첨부의 `chat_photo_checks` 줄이 `pending`(이후 판별에 따라 `document`·`unsure`·`failed`)으로 있음, 글 보내기·목록·삭제 정상, 1:1 방 사진은 줄이 없음, 가족 문서함 자동 등록(문서 사진)이 그대로 동작. 어떤 사진도 `photo` 상태가 아니어야 한다(이 PR 에는 `photo` 로 만드는 경로가 없다).
+6. **장애 시 롤백·복구:** (가) 새 코드가 먼저 떠서 소통이 503 이면 → 마이그레이션을 적용한다(코드 롤백 불필요, 즉시 복구). (나) 새 코드에 문제가 있으면 → 이전 코드 이미지로 되돌린다: 표는 남아도 이전 코드는 쓰지 않으므로 무해하고 데이터 손실이 없다(그동안 올라온 사진의 줄은 `pending` 으로 남아 보이지 않을 뿐이다). (다) 표까지 되돌려야 하면 `alembic downgrade 4c1f8a62b7d9` 로 표를 지우지만 저장된 판별 상태가 사라지므로 DB 담당자 승인과 백업 확인 뒤에만 한다(공용 DB 에는 사람이나 Claude Code 가 직접 실행하지 않는다).
+## 업로더 확인·변경 이력·문서함 조회 (서버, T05-b0-2a, 2026-11-14)
+PR #409(b0-1, 병합 대기) 위에 쌓인 변경이다. **#409 가 먼저 병합돼야 하고, 마이그레이션도 `d7a41c9e5b02` → `a3e92b6d1f48` 순서다.** 앱 화면은 b0-2b 다(이 PR 에 없다).
+- **API 3개** (모두 로그인·가족 구성원, `group_id` 는 요청에서 받지 않는다):
+  - `GET /family-chat/photos/checks/mine?limit&before` — 내가 가족 전체방에 올린 사진 중 `unsure`·`failed`·올린 지 **15분 넘은** `pending` 만(최신순, `needs_review_count`·`next_before`). 다른 사람이 올린 사진은 섞이지 않고, 1:1 방·지운 메시지·판별 줄이 없는 예전 사진은 나오지 않는다. 조회가 실패하면 빈 목록이 아니라 503(`photo_checks_unavailable`). 푸시·가족 알림 없음. 15분은 "처리 지연" 표시 기준일 뿐 자동 판별 실패·일반 사진 확정 기준이 아니다(`STALE_PENDING`, b0-3 재시도 구현 뒤 재조정).
+  - `POST /family-chat/photos/{id}/check` — 업로더가 "일반 사진이에요"를 **명시적으로** 확인(본문 `to:"photo"`, `reason:"uploader_confirmed_general"`, `acknowledge:true` 모두 필수, 아니면 422). 업로더 본인이 가족 전체방에 올린 살아 있는 사진만(그 밖은 모두 404). 문서(자동·수동)이거나 문서함에 등록된 사진은 409 `document_to_photo_blocked`(D-15·D-16: **document→photo 는 MVP 에서 전부 차단**), 올린 지 15분 안 된 대기는 409 `check_in_progress`, 문서함 등록 여부를 확인하지 못하면 503(막는 쪽), 분당 30회 제한 429. 같은 요청을 다시 보내면 200 이고 이력은 한 줄이다.
+  - `GET /family-chat/photos/{id}/library` — 문서함 등록 여부(`registered`/`not_registered`), 가족 누구나. 확인하지 못하면 `not_registered`(성공으로 보이지 않게). 1:1 방 409.
+- **상태 전이** (서버가 최종 확인): `unsure`·`failed`·(15분 넘은) `pending` → `photo`(+`manual`, 업로더만). `photo` → `photo` 는 200(이력 없음). `document` → `photo` 는 아무도 못 한다. 어떤 상태든 → `document`(가족 누구나, D-15)는 기존 "문서로 저장" 그대로이고 `photo` 를 타임라인에서 빼는 방향도 포함한다. 모두 `WHERE status=<읽은 값>` 조건부 UPDATE 하나(+PostgreSQL 행 잠금)라 자동 판별·다른 요청과 겹쳐도 한쪽만 이긴다.
+- **b0-1 수동 보호와의 관계:** `manual` 줄은 자동 판별이 바꾸지 못한다(그대로). 업로더 확인 직후 늦게 도착한 자동 `document` 결과도 못 바꾼다 → 문서 사진을 일반 사진으로 잘못 확인하면 타임라인에 나올 수 있는 좁은 틈이 있다. 막는 장치: 문서함에 이미 등록됐거나 등록 여부를 모르면 확인 자체를 막고, `pending` 은 15분이 지나야 확인할 수 있으며, 확인 화면은 "문서·카드·서류면 확인하지 마세요"를 먼저 보여 준다(b0-2b). 남는 위험은 PR 본문 "남은 위험" 에 적었다.
+- **변경 이력** `chat_photo_check_events`(D-19): 전후 상태·이유 코드(`uploader_confirmed_general`·`family_saved_as_document`)·시각, `actor_user_id` 는 nullable FK + **ON DELETE SET NULL**. 사용자 행이 지워지든 익명화되든 이력은 남고 "누가"만 비워진다(문자열 식별자를 따로 두지 않는다). 사진·메시지·가족을 지우면 이력도 함께 지운다(SQLite 는 코드로, PostgreSQL 은 CASCADE). 이력은 상태가 실제로 바뀔 때만 한 줄이고 자동 판별 결과는 기록하지 않는다.
+  - **D-7 은 확인 전이다:** 앱 안의 계정 탈퇴 경로가 없고(이메일 요청 → 운영자 처리), 지금은 다른 표들의 외래 키 때문에 사용자 행을 지울 수 없다. 이 표는 삭제·익명화 어느 쪽이든 안전하도록 만들었고 기존 탈퇴 정책은 바꾸지 않았다. **실제 탈퇴 절차는 DB 담당자 확인 전이라 이 스키마(특히 SET NULL)의 최종 확정은 그 확인을 조건으로 한다.**
+- **문서함 등록 실패:** 상태는 `document` 로 남아 사진은 타임라인에 나오지 않는다(등록이 끝내 실패해도 같다). "문서로 저장"은 계속 `queued` 만 답하므로 앱은 `GET .../library` 로 결과를 확인하고, 없으면 `POST .../library` 를 다시 요청한다(같은 사진은 한 번만 등록되고 이미 있으면 `already`). 서버가 알아서 이어받는 자동 복구는 b0-3.
+- **이 PR 에 없는 것:** 앱 화면(b0-2b), 예전 사진 편입(별도 백필 PR, 실행하지 않음), 재시도 작업(b0-3), 푸시, 소유자·관리자 승인, 이력 조회 화면.
+- DB: Alembic `a3e92b6d1f48`(새 표 하나, expand, 위험 변경 아님). 배포 조건은 위 "배포 조건"과 같다: 마이그레이션 먼저 → 성공 확인(`alembic current` = `a3e92b6d1f48`, 표 칸 8개·인덱스 2개·외래 키 3개) → 코드 → 스모크(내 확인 필요 목록 200, 확인 요청의 404·409·422, 이력 한 줄) → 장애 시 코드부터 롤백(표는 남아도 무해). 공용 DB 적용은 DB 담당자 승인 뒤에만.
+- 시험: `family_chat/tests/test_photo_review.py`(전이 전부·권한·15분 경계·`acknowledge`·document→photo 차단·이력·사용자 삭제 SET NULL(FK 켠 SQLite)·목록 격리·503·문서함 조회/재시도·동시성). 보안 매트릭스에 새 경로 2개 등록. PostgreSQL 은 격리 임시 클러스터에서 DDL·모델 일치·왕복·FK 동작과 동시 확인 12건·확인 vs 자동 `document` ×30·확인 vs 문서로 저장 ×30·예전 사진 동시 저장을 확인했다.
+
+## 확인이 필요한 사진 (앱, T05-b0-2b, 2026-11-16)
+서버(b0-2a, #411)의 API 3개를 쓰는 앱 화면이다. **서버 변경 없음·새 의존성 없음·푸시 없음.** 공용 DB 에 `chat_photo_checks`·`chat_photo_check_events` 표가 없으면 소통 API 가 503 이라 이 화면도 "불러오지 못했어요"를 보인다(표를 먼저 적용해야 한다).
+- **진입:** 가족 전체방 서랍 "채팅 관리"의 사진 · 동영상 바로 아래에 "확인이 필요한 사진 N장"(서랍을 열 때마다 `GET /photos/checks/mine?limit=1` 의 `needs_review_count` 로 센다). **0장·개수를 모를 때(조회 실패)·1:1 방에는 행이 없다.** 조회 실패를 0장으로 단정하거나 행을 억지로 보이지 않는다.
+- **목록 화면** `/chat-photo-review`: 내가 올린 가족 전체방 사진 중 서버가 돌려준 것만 3열 격자로 보인다(라벨: 확인 필요·판별 실패·처리 지연). 자동 판별 결과를 앱이 바꾸거나 숨기지 않는다 — 판단은 서버가 한다. 로딩·오류("다시 시도")·빈 상태·다음 쪽 오류를 구분하고, 목록 조회 실패를 빈 목록으로 보이지 않는다 — 보이는 사진을 모두 처리해 목록이 비었어도 서버에 더 남은 쪽이 있으면 "없어요"가 아니라 이어서 불러오거나(실패하면 오류와 "다시 시도") 한다(`reviewBodyKind`).
+- **사진 시트:** 안내("타임라인에 보일 수 있어요. 문서·카드·서류·화면 캡처면 확인하지 마세요")를 읽고 **확인란을 체크해야만** "일반 사진이에요"가 켜진다. 체크 전·처리 중에는 눌러도 서버를 부르지 않고, 같은 사진을 연달아 눌러도 요청은 한 번이다. 성공하면 목록에서 빠지고 안내가 보인다. 문구에서 촬영일을 단정하지 않는다(실기기 확인 전).
+- **오류:** 404(지운 사진·내 사진 아님)·409 `document_to_photo_blocked`(문서로 판단됐거나 문서함에 저장됨)은 "더 이상 확인 대상 아님"이라 목록에서 빼고 안내한다. 409 `check_in_progress`·503·429·네트워크 오류는 일시 오류라 사진을 목록에 남기고 시트를 열어 둔 채 다시 시도하게 한다(429 는 기다릴 시간을 말한다). 서버 문구·내부 사정은 그대로 보이지 않는다.
+- **문서로 저장:** 시트의 "문서로 저장"은 기존 흐름(`POST .../library`)을 쓰고, **저장을 시작했다고 성공으로 보이지 않는다** — 3·10·30초 간격으로 `GET .../library` 를 물어 `registered` 가 확인돼야 목록에서 빼고 "저장됐어요"를 보인다. 끝까지 `not_registered` 이면 "아직 문서함에서 확인되지 않았어요. 조금 뒤에 다시 저장해 주세요"와 "다시 저장"만 보인다(등록이 오래 걸리는 중일 수도 있어 "없다"고 단정하지 않는다. 이때 사진은 이미 문서 상태라 일반 사진 확인은 막혀 있고, 화면을 다시 열면 서버 목록에서 빠지므로 이 화면에서 다시 저장할 길은 b0-3 범위다). 저장 확인 중에는 시트의 닫기(덮개·뒤로가기·"나중에")가 모두 막히고, 격자 칸은 "저장 확인 중"/"저장 확인 필요"로 보인다. 처리 중 표시·시트 문구는 사진별이라 한 사진의 결과가 다른 사진의 표시를 풀거나 지우지 않는다. 화면을 떠나면 더 묻지 않는다.
+- **구현:** 순수 함수·문구·상태 전이·흐름은 `photoChecks.js`(`runConfirm`·`runDocumentSave`·`waitUntilRegistered`·`reviewReducer`), 목록 훅 `useChatPhotoChecks.js`, 서랍 개수 `usePhotoCheckCount.js`, 시트 `components/PhotoReviewSheet.js`, 화면 `screens/ChatPhotoReviewScreen.js`, 라우트 `src/app/chat-photo-review.js`(얇게), 서랍 행은 `mediaUtils.buildDrawerSections({ reviewCount })`.
+- **이 PR 에 없는 것:** 자동 `document` 판정이 업로더 확인(`manual photo`)을 내리는 예외(정책 미결정), 재시도·복구(b0-3), 타임라인 화면(T05-d), 예전 사진 백필, 푸시·알림 배지, 일반 사진 확인을 되돌리는 기능.
+- **알려진 한계:** 서랍은 열 때마다 개수를 물어 응답이 늦으면 행이 뒤늦게 끼어들 수 있다(위치가 밀린다). 서버 분당 30회 한도를 서랍 조회와 확인 요청이 함께 쓴다(서랍을 아주 자주 여닫으면 확인이 429 가 될 수 있고 문구는 기다릴 시간을 알려 준다). 화면·훅은 React Native 렌더러가 없어 자동 시험이 없다(순수 함수·상태 전이·흐름만 시험). 실제 폰 화면 확인은 아직 하지 않았다.
+- 시험: `tests/photochecks.test.js` 35개(문구·조건·오류 변환, 목록 상태 전이[옛 응답·겹침·실패 뒤 재시도·중복 제거], 빈 목록 판단·칸 라벨, 확인·문서 저장 흐름[체크 전 차단·중복 누름·오류별 결과·등록 확인], 서랍 진입 조건[가족방만·0장/모름 숨김], API 경로·본문). 변이 검사 21종 모두 포착.
+
+## 가족 타임라인 조회·빼기 (서버, T05-b, 2026-11-16)
+앱 화면(T05-d)이 쓰는 서버 API 3개와 `excluded` 상태다. **DB 변경 없음**(상태 컬럼은 문자열이고 CHECK 가 없어 값만 늘었다. 마이그레이션·공용 DB 작업이 새로 생기지 않는다). 결정(2026-11-16): 빼기는 올린 사람만, 빼면 새 상태 `excluded`, 채팅 원본은 그대로.
+- `GET /family-chat/timeline/photos?limit&before` → `{items:[{attachment_id,message_id,thumb_url,display_at,taken_at,created_at,batch_id,mine}], next_before}`. 가족 전체방의 **일반 사진(`photo`)으로 확인된 사진만**. 줄이 없거나 pending·unsure·failed·document·excluded 면 나오지 않고(fail-closed), 1:1 방·지운 메시지·다른 가족 사진도 나오지 않는다. 정렬은 `display_at`(촬영일, 없으면 보낸 시각) 최신순·같으면 메시지 번호 최신순, **같은 `batch_id` 묶음은 보이는 사진 중 가장 이른 값으로 맞춘다(Q4, 숨은 사진은 날짜에 영향 없음)**. `taken_at` 이 null 이면 앱이 "보낸 날 기준"을 표시한다. `before` 는 이전 응답의 `next_before` 를 그대로(형식이 틀리면 422 `invalid_cursor`). 조회를 못 하면 빈 목록이 아니라 503. 분당 60회(확인 필요 조회·확인의 분당 30회와 별도 한도).
+- `POST /family-chat/photos/{id}/exclude`(본문 없음) → `{status:"excluded",source:"manual"}`. 업로더 본인이 가족 전체방에 올린 살아 있는 사진만(그 밖은 모두 404). 타임라인에 있는(`photo`) 사진만 뺄 수 있고 아니면 409 `not_in_timeline`. 같은 요청을 다시 보내도 200 이고 이력은 한 줄(`photo`→`excluded`, 이유 `uploader_removed`).
+- `GET /family-chat/photos/checks/mine?kind=excluded` → 내가 뺀 사진 목록(같은 응답 모양, `status:"excluded"`). 기본 `kind=review` 는 지금과 같다. 뺀 사진은 확인 필요 목록·개수에 다시 뜨지 않는다.
+- **다시 넣기:** 기존 `POST /photos/{id}/check`(`acknowledge:true`)를 그대로 쓴다(`excluded`→`photo`, 이력 한 줄). 안내 확인란이 다시 필요하다.
+- **자동 판별과의 관계:** `excluded` 는 수동이라 늦게 온 자동 결과(`document`·`unsure`·`failed`)가 바꾸지 못한다. 가족이 "문서로 저장"하면 `excluded` 에서도 `document` 가 되고 그 뒤 일반 사진 확인은 막힌다(D-15·D-16).
+- **이 PR 에 없는 것:** 앱 화면·일괄 확인(T05-d), 예전 사진 백필, 자동 `document` 판정이 확인된 사진을 내리는 예외(정책 미결정), 재시도·복구(b0-3), 월별 요약 API.
+- **알려진 한계:** 묶음 대표 날짜는 보이는 사진 기준이라, 묶음의 일부를 나중에 확인하면 그 사진이 들어오면서 묶음 날짜와 위치가 바뀔 수 있다. 같은 묶음이 쪽 경계에 걸리면 대표 날짜는 같지만 두 쪽에 나뉘어 나올 수 있다(앱이 같은 `batch_id` 를 한 묶음으로 합쳐 그린다).
+- 시험: `family_chat/tests/test_photo_timeline.py`(표시 조건 전부·격리·정렬·묶음 대표·쪽 넘기기·동점·잘못된 커서·빼기 권한·멱등·이력·다시 넣기·자동 결과 불변·문서 저장 상호작용·503·한도).

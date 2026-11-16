@@ -116,7 +116,7 @@ def test_delete_asks_first_and_runs_on_confirm(client, setup, fake):
 
     r = _confirm(client, a, body["pending_action"])
     assert r.status_code == 200, r.text
-    assert r.json()["text"] == "지웠어요." and r.json()["intent"] == "delete"
+    assert r.json()["text"].endswith("'치과' 일정을 지웠어요.") and r.json()["intent"] == "delete"
     assert _events(client, a) == []
     assert len(fake.calls) == calls  # 확인은 AI 를 부르지 않는다
     with SessionLocal() as db:
@@ -170,7 +170,7 @@ def test_edit_shows_before_and_after_then_applies(client, setup, fake):
     e = _new(client, a, place="강남")
     fake.data = _data("edit", e["id"], start_time="16:00", place="서초")
     body = _say(client, a, "치과 4시로 장소는 서초로 바꿔줘").json()
-    assert body["intent"] == "edit" and body["text"] == "이렇게 바꿀까요?"
+    assert body["intent"] == "edit" and body["text"].endswith("'치과' 일정을 이렇게 바꿀까요?")
     card = body["cards"][0]
     assert card["type"] == "edit_confirm" and card["data"]["event"]["title"] == "치과"
     by_label = {c["label"]: c for c in card["data"]["changes"]}
@@ -186,7 +186,7 @@ def test_edit_shows_before_and_after_then_applies(client, setup, fake):
 
     r = _confirm(client, a, body["pending_action"])
     assert r.status_code == 200, r.text
-    assert r.json()["text"] == "바꿨어요."
+    assert r.json()["text"].endswith("'치과' 일정을 바꿨어요.")
     saved = _events(client, a)[0]
     assert (saved["start_time"], saved["end_time"], saved["place"]) == (
         "16:00:00",
@@ -282,7 +282,7 @@ def test_owner_adds_share_target_via_agent(client, setup, fake):
     e = _new(client, a)
     fake.data = _data("edit", e["id"], share_change=True, share_ids=[other])
     body = _say(client, a, "치과 엄마한테도 공유해줘").json()
-    assert body["text"] == "이렇게 바꿀까요?"
+    assert body["text"].endswith("'치과' 일정을 이렇게 바꿀까요?")
     by_label = {c["label"]: c for c in body["cards"][0]["data"]["changes"]}
     assert by_label["공유"]["before"] == "없음" and by_label["공유"]["after"] != "없음"
     assert body["pending_action"]["changes"] == {"share_with": [other]}

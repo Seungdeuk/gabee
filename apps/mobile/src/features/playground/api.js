@@ -18,6 +18,12 @@ export const getItem = (id) => apiFetch(itemPath(id));
 /** 오늘 내가 낸 문제 수와 문제 내기 점수(+20)를 받을 수 있는 남은 횟수: { limit, used, left } */
 export const getQuota = () => apiFetch("/play/quota");
 
+/**
+ * 골든벨 가비 추천(하루 한 번 만들어 가족이 같이 쓴다): { state, items }.
+ * state: ok(items 있음) | no_data | used_up | preparing | cooldown | failed | ai_off. 문제는 { id, source: "schedule" | "chat", kind: "ox" | "choice", question, options, answer_index }.
+ */
+export const getQuizRecs = () => apiFetch("/play/quiz/recommendations");
+
 /** 순위. period: "week" | "month" | "all" */
 export const getRanking = (period) => apiFetch(`/play/ranking?period=${period}`);
 

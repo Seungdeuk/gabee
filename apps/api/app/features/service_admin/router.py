@@ -9,7 +9,11 @@ from app.shared.auth import require_operator
 from app.shared.db import get_db
 from app.shared.schema_gate import schema_ready
 
-from . import analytics, service
+from . import (
+    admin_facts,  # noqa: F401  관리자 챗봇 숫자 명단에 올린다
+    analytics,
+    service,
+)
 from .schemas import (
     AdminAiUsageOut,
     AdminMeOut,

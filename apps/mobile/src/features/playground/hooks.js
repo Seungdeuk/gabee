@@ -6,8 +6,8 @@ import { isApiConfigured } from "@/shared/api/client";
 import useResource from "@/shared/hooks/useResource";
 
 import { bombPath, bombScreen, boardView, rankingView } from "./adapt";
-import { getBoard, getBomb, getBombOpen, getItem, getQuota, getRanking } from "./api";
-import { ME, makeLeft, openSent, PAST, RANKING_BY, SENT_PAST, TODO, WAITING } from "./mock";
+import { getBoard, getBomb, getBombOpen, getItem, getQuizRecs, getQuota, getRanking } from "./api";
+import { ME, MOCK_RECS, makeLeft, openSent, PAST, RANKING_BY, SENT_PAST, TODO, WAITING } from "./mock";
 
 /** 서버 주소가 있으면 서버에서, 없으면 시안(mock.js)으로 동작한다. */
 export const playLive = () => isApiConfigured();
@@ -49,6 +49,12 @@ export function useAudience() {
     return group.members.filter((m) => m.id !== group.my_id).map((m) => ({ id: m.id, name: m.display_name || m.name }));
   }, []);
   return useResource(loader).data ?? [];
+}
+
+/** 골든벨 가비 추천 { state, items }. 서버 주소가 없으면 시안(MOCK_RECS). 서버는 하루 한 번만 만들고 같은 날은 같은 묶음을 준다(실패일 때만 다시 만든다). */
+export function useQuizRecs() {
+  const loader = useCallback(async () => (playLive() ? getQuizRecs() : MOCK_RECS), []);
+  return useResource(loader);
 }
 
 /** 오늘 문제 내기 점수(+20)를 받을 수 있는 남은 횟수. 불러오기 전·실패하면 null(안내를 숨긴다). */
@@ -157,11 +163,11 @@ export function useBombRoom(id) {
 }
 
 /** 방 상태에 맞지 않는 폭탄 화면에 있으면 알맞은 화면으로 옮겨 간다(게임이 시작되면 로비 → 게임, 탈락하면 게임 → 관전, 끝나면 결과). */
-export function useBombRedirect(room, self) {
+export function useBombRedirect(room, self, enabled = true) {
   const router = useRouter();
   const target = room ? bombScreen(room, self) : self;
   const id = room?.id;
   useEffect(() => {
-    if (id && target !== self) router.replace(bombPath(target, id));
-  }, [id, target, self, router]);
+    if (enabled && id && target !== self) router.replace(bombPath(target, id));
+  }, [enabled, id, target, self, router]);
 }

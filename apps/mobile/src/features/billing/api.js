@@ -212,3 +212,10 @@ export const getUpcomingPayments = () => apiFetch(`/billing/subscriptions/upcomi
  * @returns {Promise<{ created: number }>}
  */
 export const checkSettlementReminders = () => apiFetch("/billing/settlement/reminders/check", { method: "POST" });
+
+/**
+ * 내가 낸 지출의 제목·금액·날짜를 고친다(보낸 것만). 정산하기를 마쳤거나 송금 완료가 있는 달이면 400 `expense_not_editable`.
+ * @param {string} id 지출 id @param {{ title?: string, amount?: number, date?: string }} patch
+ * @returns {Promise<{ id: string, title: string, amount: number, date: string }>}
+ */
+export const updateExpense = (id, patch) => apiFetch(`/billing/expenses/${id}`, { method: "PATCH", body: patch });

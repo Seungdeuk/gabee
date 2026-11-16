@@ -76,7 +76,8 @@ class Efficiency:
     tokens_out_total: int
     latency_p50_ms: int | None
     latency_p95_ms: int | None
-    step_limit: Rate  # 실행 단위
+    step_limit: Rate  # 실행 단위: 단계 상한에 닿은 비율(참고용, 성공·실패 판정에 쓰지 않는다)
+    forced_final: Rate  # 실행 단위: 상한 때문에 도구 없이 최종 답을 받은 비율(참고용)
 
 
 @dataclass(frozen=True)
@@ -104,6 +105,10 @@ class Summary:
     by_category: dict[str, Breakdown]
     by_scenario: dict[str, Breakdown]
     failure_pareto: tuple[tuple[str, int], ...]
+    # v2 추가 지표(기본값 있음): `tool_selection` 은 의미를 바꾸지 않고, 도구 선택을 실제로 검사한(필수·금지 도구가 있는)
+    # 사례만으로 다시 센 값과, Precision 에서 뺀 허용(allowed) 도구 호출 수를 따로 보인다.
+    tool_selection_checked: Rate = Rate(0, 0)
+    allowed_calls_excluded: int = 0
 
     def as_rows(self) -> list[tuple[str, float | int | None]]:
         """summary.csv 용으로 (이름, 값)을 평평하게 편다."""
@@ -118,6 +123,7 @@ class Summary:
             "tool_argument_cases": self.tool_argument_cases,
             "same_toolset": self.same_toolset,
             "step_limit_rate": self.efficiency.step_limit,
+            "forced_final_rate": self.efficiency.forced_final,
         }
         for name, r in rates.items():
             rows += [(name, r.value), (f"{name}_n", r.n)]
@@ -133,6 +139,15 @@ class Summary:
             ("latency_p50_ms", self.efficiency.latency_p50_ms),
             ("latency_p95_ms", self.efficiency.latency_p95_ms),
         ]
+        # v2 추가 행은 기존 행의 순서를 건드리지 않도록 맨 끝에 둔다
+        checked = self.tool_selection_checked
+        rows += [("tool_selection_checked", checked.value), ("tool_selection_checked_n", checked.n)]
+        if checked.low is not None:
+            rows += [
+                ("tool_selection_checked_ci_low", checked.low),
+                ("tool_selection_checked_ci_high", checked.high),
+            ]
+        rows.append(("tool_allowed_calls_excluded", self.allowed_calls_excluded))
         return rows
 
 
@@ -188,12 +203,16 @@ def summarize(runs: Sequence[CaseRun]) -> Summary:
 
     expected_calls = [r for r in runs if r.case.expect.calls]
     items = [c for r in runs for res in r.results for c in res.calls]
-    hits = got = want = 0
+    hits = got = want = allowed_excluded = 0
     for case, _, obs in pairs:
         called, expected = _toolset(case, obs), _expected_tools(case)
+        # 허용(allowed) 도구는 필수가 아니라서 불러도 hit·miss 로 세지 않는다(사례가 미리 정한 것만, 기본은 빔)
+        optional = called & frozenset(case.expect.tools.allowed)
         hits += len(called & expected)
-        got += len(called)
+        got += len(called) - len(optional)
         want += len(expected)
+        allowed_excluded += len(optional)
+    checked = [r for r in runs if any(res.tools_checked for res in r.results)]  # 반복 순서와 무관
 
     repeated = [r for r in runs if len(r.observations) >= 2]
     same = sum(len({_toolset(r.case, o) for o in r.observations}) == 1 for r in repeated)
@@ -208,7 +227,8 @@ def summarize(runs: Sequence[CaseRun]) -> Summary:
         tokens_out_total=sum(o.tokens_out for o in obs_all),
         latency_p50_ms=_percentile(latencies, 50),
         latency_p95_ms=_percentile(latencies, 95),
-        step_limit=_rate(sum(o.step_limit_hit for o in obs_all), len(obs_all)),
+        step_limit=_rate(sum(o.step_limit_reached for o in obs_all), len(obs_all)),
+        forced_final=_rate(sum(o.forced_final for o in obs_all), len(obs_all)),
     )
     return Summary(
         cases=len(runs),
@@ -235,4 +255,8 @@ def summarize(runs: Sequence[CaseRun]) -> Summary:
         by_category=_group(runs, lambda c: c.category),
         by_scenario=_group(runs, lambda c: c.scenario or "legacy"),
         failure_pareto=tuple(sorted(pareto.items(), key=lambda kv: (-kv[1], kv[0]))),
+        tool_selection_checked=_rate(
+            sum(all(res.tools_ok for res in r.results) for r in checked), len(checked), ci=True
+        ),
+        allowed_calls_excluded=allowed_excluded,
     )

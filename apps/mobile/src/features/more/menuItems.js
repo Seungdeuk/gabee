@@ -7,7 +7,7 @@ export const SOON_MESSAGE = "준비 중이에요";
  * @type {{ key: string, icon: string, title: string, subtitle: string, route?: string, soon?: boolean }[]}
  */
 export const SHORTCUTS = [
-  { key: "report", icon: "stats-chart-outline", title: "AI 리포트", subtitle: "주간 가족 요약", route: "/report" },
+  { key: "report", icon: "newspaper-outline", title: "주간 뉴스", subtitle: "우리 가족 한 주 이야기", route: "/report" },
   { key: "timeline", icon: "time-outline", title: "타임라인", subtitle: "함께한 추억 모아 보기", soon: true },
   { key: "subscription", icon: "diamond-outline", title: "구독 관리", subtitle: "요금제 · 사용량", route: "/subscription" },
   { key: "invite", icon: "person-add-outline", title: "가족 초대", subtitle: "초대 코드 · 가입 요청", route: "/family-invite" },

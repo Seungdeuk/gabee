@@ -200,7 +200,90 @@ def update_expense(db: Session, group_id: str, expense_id: str, body: ExpenseUpd
     return _expense_out(expense, {m.id: m.name for m in members}, [m.id for m in members])
 
 
+def open_own_expense(
+    db: Session, group_id: str, user_id: str, expense_id: str, verb: str
+) -> Expense:
+    """지우거나 고칠 수 있는 지출인지 본다. 에이전트의 제안·실행과 앱의 지출 수정(REST)이 같은 규칙을 쓴다.
+    내가 낸 지출만, 정산하기를 마치지 않은 것만, 그 달에 송금 완료 표시가 없을 때만. verb 는 '지울'/'고칠'.
+    규칙에 어긋나면 사용자에게 보여 줄 문장으로 ValueError 를 낸다."""
+    expense = repo.get_expense(db, group_id, expense_id)
+    if expense is None:
+        raise ValueError("그런 지출이 없어요")
+    if expense.paid_by != user_id:
+        raise ValueError(
+            f"내가 낸 지출만 {verb} 수 있어요. 다른 사람의 지출은 돌봄 탭의 정산·용돈에서 그 사람이 직접 해야 해요"
+        )
+    if expense.settled_at is not None:
+        raise ValueError(
+            f"정산하기를 마친 지출은 {verb} 수 없어요. 돌봄 탭의 정산·용돈에서 정산을 먼저 확인해 주세요"
+        )
+    if repo.list_payments(db, group_id, expense.date[:7]):
+        raise ValueError(
+            f"이 달에 송금 완료 표시가 있어서 {verb} 수 없어요. 송금 완료를 먼저 취소해 주세요"
+        )
+    return expense
+
+
+def plan_expense_update(
+    db: Session, group_id: str, user_id: str, expense_id: str, raw: dict
+) -> tuple[Expense, dict, dict]:
+    """수정할 지출과 '실제로 바뀌는 값'을 검증해서 (지출, 이전 값, 바뀌는 값)으로 돌려준다. 아직 저장하지 않는다.
+    raw 는 title·amount·date(YYYY-MM-DD 글자)·category 중 보낸 것. 에이전트의 제안·실행과 앱의 수정이 같이 쓴다.
+    다른 달로 옮기면 옮기려는 달에도 송금 완료 표시가 없어야 한다. 규칙에 어긋나면 ValueError."""
+    expense = open_own_expense(db, group_id, user_id, expense_id, "고칠")
+    new = ExpenseUpdate.model_validate(raw).model_dump(mode="json", exclude_none=True)
+    if "title" in new:
+        new["title"] = new["title"].strip()
+        if not new["title"]:
+            raise ValueError("제목을 비울 수 없어요")
+    old = {
+        "title": expense.title,
+        "amount": expense.amount,
+        "date": expense.date,
+        "category": expense.category,
+    }
+    changes = {k: v for k, v in new.items() if v != old[k]}
+    if not changes:
+        raise ValueError("지금 값과 같아서 바뀌는 것이 없어요")
+    new_date = changes.get("date")
+    if (
+        new_date
+        and new_date[:7] != expense.date[:7]
+        and repo.list_payments(db, group_id, new_date[:7])
+    ):
+        raise ValueError("옮기려는 달에 송금 완료 표시가 있어서 고칠 수 없어요")
+    return expense, old, changes
+
+
+def update_my_expense(
+    db: Session, group_id: str, user_id: str, expense_id: str, body: ExpenseUpdate
+) -> ExpenseOut:
+    """앱의 지출 수정(PATCH). 없는 지출은 404, 규칙에 어긋나면 400 `expense_not_editable` 이다."""
+    if repo.get_expense(db, group_id, expense_id) is None:
+        raise not_found("지출")
+    try:
+        _, _, changes = plan_expense_update(
+            db, group_id, user_id, expense_id, body.model_dump(mode="json", exclude_none=True)
+        )
+    except ValueError as e:
+        raise bad_request("expense_not_editable", str(e)) from None
+    return update_expense(db, group_id, expense_id, ExpenseUpdate.model_validate(changes))
+
+
+def delete_my_expense(db: Session, group_id: str, user_id: str, expense_id: str) -> None:
+    """앱의 지출 삭제(DELETE). 수정과 같은 규칙: 내가 낸 지출만, 정산하기 전만, 그 달에 송금 완료가 없을 때만.
+    없는 지출은 404, 규칙에 어긋나면 400 `expense_not_deletable` 이다(AI 에이전트의 삭제 제안·실행과 같은 규칙)."""
+    if repo.get_expense(db, group_id, expense_id) is None:
+        raise not_found("지출")
+    try:
+        open_own_expense(db, group_id, user_id, expense_id, "지울")
+    except ValueError as e:
+        raise bad_request("expense_not_deletable", str(e)) from None
+    delete_expense(db, group_id, expense_id)
+
+
 def delete_expense(db: Session, group_id: str, expense_id: str) -> None:
+    """규칙 검사 없는 소프트 삭제(내부용). 사용자 요청은 `delete_my_expense` 로 부른다."""
     expense = repo.get_expense(db, group_id, expense_id)
     if expense is None:
         raise not_found("지출")

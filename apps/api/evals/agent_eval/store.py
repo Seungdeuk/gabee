@@ -49,9 +49,17 @@ MANIFEST_KEYS = (
     "seed",
     "repeats",
 )
+RESCORE_KEYS = (
+    "rescored_from",
+    "source_git_commit",
+    "scorer_version",
+    "cases_hash",
+    "rescore_label",
+)  # 소급 재채점 결과(`rescore.py`)에만 쓴다. 다섯 개가 모두 있거나 모두 없어야 한다
 MANIFEST_OPTIONAL = (
     "loop_id",
     "started_at",
+    *RESCORE_KEYS,
 )  # loop_id 는 stage 가 loop 일 때만(그리고 반드시) 둔다
 USAGE_KEYS = frozenset(
     {
@@ -136,6 +144,25 @@ def _check_manifest(manifest: Mapping[str, Any]) -> None:
         raise ValueError("run_id 는 소문자·숫자·`_.-` 만, 64자 이하, 끝은 영숫자, 장치 이름 불가")
     if manifest["stage"] not in STAGES:
         raise ValueError(f"stage 는 {STAGES} 중 하나")
+    present = [k for k in RESCORE_KEYS if k in manifest]
+    if present and len(present) != len(RESCORE_KEYS):
+        raise ValueError(f"재채점 키는 모두 있거나 모두 없어야 한다(있는 것: {present})")
+    if (
+        present and manifest["stage"] != "other"
+    ):  # 재채점 결과가 baseline·loop 실행인 척하지 못하게 한다
+        raise ValueError("재채점 결과의 stage 는 other 여야 한다")
+    if present and not (
+        isinstance(manifest["rescored_from"], str)
+        and RUN_ID.fullmatch(manifest["rescored_from"])
+        and isinstance(manifest["source_git_commit"], str)
+        and _HEX.fullmatch(manifest["source_git_commit"])
+        and _is_int(manifest["scorer_version"], 1)
+        and isinstance(manifest["cases_hash"], str)
+        and _HEX.fullmatch(manifest["cases_hash"])
+        and isinstance(manifest["rescore_label"], str)
+        and _NAME.fullmatch(manifest["rescore_label"])
+    ):
+        raise ValueError("재채점 키의 값 형식이 맞지 않는다")
     loop_id = manifest.get("loop_id")
     if (manifest["stage"] == "loop") != (loop_id is not None):
         raise ValueError("loop_id 는 stage 가 loop 일 때만, 그리고 반드시 있어야 한다")
@@ -187,7 +214,33 @@ def _check_summary(rows: Sequence[tuple[str, Any]]) -> None:
             raise ValueError(f"summary 행은 (이름, 숫자 또는 None)이어야 한다: {name!r}")
 
 
-def _build(runs: Sequence[RunLike]) -> tuple[list[dict], list[dict], list[list]]:
+ROW_EXTRA_KEYS = ("write_gate", "skipped_checks")
+WRITE_GATES = ("applied", "not_evaluated")
+RowExtras = Mapping[tuple[str, int], Mapping[str, Any]]
+
+
+def _check_row_extras(extras: RowExtras) -> None:
+    """cases.jsonl 의 행에 덧붙일 값(쓰기 게이트 적용 여부). 형식이 다르면 아무것도 쓰지 않는다."""
+    for key, extra in extras.items():
+        if not (
+            isinstance(key, tuple) and len(key) == 2 and isinstance(key[0], str) and _is_int(key[1])
+        ):
+            raise ValueError(f"row_extras 키는 (case_id, repeat) 여야 한다: {key!r}")
+        unknown = sorted(set(extra) - set(ROW_EXTRA_KEYS))
+        if unknown:
+            raise ValueError(f"row_extras 에 허용하지 않은 키: {unknown}")
+        if extra.get("write_gate") not in WRITE_GATES:
+            raise ValueError(f"write_gate 는 {WRITE_GATES} 중 하나: {extra.get('write_gate')!r}")
+        skipped = extra.get("skipped_checks", ())
+        if not isinstance(skipped, list | tuple) or not all(isinstance(x, str) for x in skipped):
+            raise ValueError("skipped_checks 는 문자열 목록이어야 한다")
+        if extra["write_gate"] == "applied" and skipped:
+            raise ValueError("write_gate 가 applied 면 생략한 검사가 없어야 한다")
+
+
+def _build(
+    runs: Sequence[RunLike], extras: RowExtras | None = None
+) -> tuple[list[dict], list[dict], list[list]]:
     cases, trajectories, failures = [], [], []
     for run in runs:
         case = run.case
@@ -212,6 +265,10 @@ def _build(runs: Sequence[RunLike]) -> tuple[list[dict], list[dict], list[list]]
                     "failure_types": list(res.failure_types),
                 }
             )
+            extra = (extras or {}).get((case.id, repeat))
+            if extra is not None:
+                cases[-1]["write_gate"] = extra["write_gate"]
+                cases[-1]["skipped_checks"] = list(extra.get("skipped_checks", ()))
             trajectories.append(
                 {
                     "case_id": case.id,
@@ -236,7 +293,8 @@ def _build(runs: Sequence[RunLike]) -> tuple[list[dict], list[dict], list[list]]
                     "tokens_in": obs.tokens_in,
                     "tokens_out": obs.tokens_out,
                     "latency_ms": obs.latency_ms,
-                    "step_limit_hit": obs.step_limit_hit,
+                    "step_limit_reached": obs.step_limit_reached,
+                    "forced_final": obs.forced_final,
                 }
             )
             if not res.passed:
@@ -260,6 +318,7 @@ def write_run(
     runs: Sequence[RunLike],
     usages: Sequence[Mapping[str, Any]],
     summary_rows: Sequence[tuple[str, Any]],
+    row_extras: RowExtras | None = None,
 ) -> Path:
     """실행 하나의 결과를 `root/<run_id>/` 에 쓴다. usages 는 `cost.CallUsage.as_dict()` 의 목록이다.
 
@@ -269,7 +328,13 @@ def write_run(
     _check_manifest(manifest)
     total = sum((_check_usage(u) for u in usages), Decimal(0))
     _check_summary(summary_rows)
-    cases, trajectories, failures = _build(runs)
+    if row_extras:
+        _check_row_extras(row_extras)
+        rows = {(r.case.id, i) for r in runs for i in range(len(r.results))}
+        stray = sorted(set(row_extras) - rows)
+        if stray:
+            raise ValueError(f"row_extras 가 저장하지 않는 행을 가리킨다: {stray[:3]}")
+    cases, trajectories, failures = _build(runs, row_extras)
     final = {**manifest, "cost_usd": format(total, "f"), "calls": len(usages), "cases": len(runs)}
     contents = {
         "manifest.json": json.dumps(final, ensure_ascii=False, sort_keys=True, indent=2) + "\n",
@@ -337,3 +402,19 @@ def opening_spent(root: Path, stage: str, loop_id: str | None = None) -> dict[st
         if run_stage == "loop" and stage == "loop" and run_loop == loop_id:
             spent["loop"] += cost
     return spent
+
+
+def read_trajectories(run_dir: Path) -> list[dict]:
+    """저장된 궤적을 읽는다. 옛 키 `step_limit_hit` 로 저장된 결과도 새 키(`step_limit_reached`)로 바꿔 돌려주고, 없는 새 키는 False 로 채운다."""
+    rows = []
+    for line in (run_dir / "trajectories.jsonl").read_text(encoding="utf-8").splitlines():
+        if not line.strip():
+            continue
+        row = json.loads(line)
+        legacy = row.pop("step_limit_hit", None)
+        if legacy is not None:
+            row.setdefault("step_limit_reached", bool(legacy))
+        row.setdefault("step_limit_reached", False)
+        row.setdefault("forced_final", False)
+        rows.append(row)
+    return rows

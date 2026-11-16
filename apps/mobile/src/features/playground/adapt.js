@@ -462,7 +462,7 @@ export function bombChat(messages, myId, callId = null, unfairId = null) {
 
 /**
  * 폭탄 방 선수 목록.
- * 대기방(입장 전): 방에 부른 가족 전부, 서버 순서(방장 → 들어온 순서 → 아직 안 들어온 가족) 그대로.
+ * 대기방(입장 전): 방에 부른 가족 전부, 방장 → 나 → 입장한 사람(들어온 순서) → 아직 안 들어온(대기) 가족(가나다 순).
  * 로비(입장 후): 참여한 사람만, 방장 → 나 → 먼저 들어온 순서. 서버 목록은 방장 → 들어온 순서라 내가 방장이 아닐 때 나를 방장 바로 아래로 옮긴다.
  * 방장은 방을 열면서 이미 들어가 있어 대기방을 거치지 않으므로 늘 부른 가족 전부(입장·대기)를 본다.
  * @param {{ id: string, joined: boolean, host?: boolean }[]} players
@@ -471,7 +471,14 @@ export function bombChat(messages, myId, callId = null, unfairId = null) {
  * @param {boolean} [isHost] 내가 방장인가
  */
 export function lobbyPlayers(players, myId, entered, isHost = false) {
-  if (!entered || isHost) return players;
+  if (!entered || isHost) {
+    const host = players.filter((p) => p.host);
+    const me = players.filter((p) => !p.host && p.id === myId);
+    const others = players.filter((p) => !p.host && p.id !== myId);
+    const inRoom = others.filter((p) => p.joined); // 서버 목록이 이미 들어온 순서
+    const waiting = others.filter((p) => !p.joined).sort((a, b) => (a.name ?? "").localeCompare(b.name ?? "", "ko"));
+    return [...host, ...me, ...inRoom, ...waiting];
+  }
   const joined = players.filter((p) => p.joined);
   const host = joined.filter((p) => p.host);
   const me = joined.filter((p) => !p.host && p.id === myId);
@@ -492,3 +499,35 @@ export function nextTurnPlayerId(room) {
   const i = alive.findIndex((p) => p.id === cur);
   return i < 0 ? null : alive[(i + 1) % alive.length].id;
 }
+
+// ---------- 골든벨 가비 추천 ----------
+/** 추천을 못 보여 줄 때의 안내 글자. refresh 는 "새로고침" 버튼을 둘지(다시 해 볼 수 있는 경우). */
+const REC_NOTICE = {
+  no_data: { text: "가족의 이야기가 더 모이면\n가비가 재미있는 문제를 준비할게요!", refresh: false },
+  used_up: { text: "오늘 추천은 여기까지예요", refresh: false },
+  preparing: { text: "가비가 문제를 준비 중이에요", refresh: true },
+  cooldown: { text: "조금 뒤에 다시 해주세요", refresh: true },
+  failed: { text: "가비가 문제를 준비하기 어려워요", refresh: true },
+  ai_off: { text: "가족 소유자나 관리자가 AI를 켜면\n가비가 문제를 준비할 수 있어요", refresh: false },
+};
+
+/**
+ * 추천 응답을 화면에 보일 모양으로: 문제가 있으면 { items }, 없으면 { notice, refresh } 안내.
+ * 서버 응답이 없거나(아직·네트워크 오류) 모르는 상태이면 "문제를 준비하기 어려워요"로 본다.
+ * @param {{ state?: string, items?: object[] } | null | undefined} recs
+ */
+export function recView(recs) {
+  const items = recs?.state === "ok" ? (recs.items ?? []) : [];
+  if (items.length > 0) return { items };
+  const notice = REC_NOTICE[recs?.state === "ok" ? "used_up" : recs?.state] ?? REC_NOTICE.failed;
+  return { items: [], notice: notice.text, refresh: notice.refresh };
+}
+
+/** 카드 위 알약 글자: "일정에서 · 선택", "소통방에서 · OX" */
+export const recLabel = (item) => `${item.source === "schedule" ? "일정에서" : "소통방에서"} · ${item.kind === "ox" ? "OX" : "선택"}`;
+
+/** 추천 문제를 문제 칸(편집 중인 문제)에 채울 값으로 */
+export const questionFromRec = (item) => ({ kind: item.kind, q: item.question, options: [...item.options], answer: item.answer_index, withNote: false, note: "", rec: item.id });
+
+/** 추천 카드 넘기기: 끝에서 처음으로, 처음에서 끝으로 돌아간다. step 은 1(>) 또는 -1(<). */
+export const stepIndex = (index, count, step) => (count <= 0 ? 0 : (((index + step) % count) + count) % count);

@@ -8,6 +8,7 @@ import { colors, font, spacing } from "@/theme";
 
 import { MUTE_FAILED_NOTICE } from "../listUtils";
 import { buildDrawerSections, canNavigateFromDrawer, drawerMembers, drawerTitle, resolveRowAction } from "../mediaUtils";
+import usePhotoCheckCount from "../usePhotoCheckCount";
 import DrawerRow from "./DrawerRow";
 import MemberStrip from "./MemberStrip";
 
@@ -19,7 +20,7 @@ const NATIVE = Platform.OS !== "web";
 
 /**
  * 채팅방 서랍(오른쪽에서 열린다). 방 이름, 구성원 줄, "채팅 관리"·"채팅방 설정" 행들.
- * 동작하는 행: 사진 · 동영상(모음 화면), 가족 할 일(/family-together: 일정 탭의 할 일·함께하기 내역), 게시판(서랍을 닫고 지난 공지까지 모아 보는 게시판 화면으로 이동), 이 방 알림(켜기/끄기 스위치, onToggleMute). 채팅방 나가기는 안내만 한다. 구성원은 맨 위 "가족 구성원 N명"을 눌러 펼쳐 본다.
+ * 동작하는 행: 사진 · 동영상(모음 화면), 확인이 필요한 사진(가족 전체방에서 내가 올린 사진 중 확인이 필요한 것이 1장 이상일 때만), 가족 할 일(/family-together: 일정 탭의 할 일·함께하기 내역), 게시판(서랍을 닫고 지난 공지까지 모아 보는 게시판 화면으로 이동), 이 방 알림(켜기/끄기 스위치, onToggleMute). 채팅방 나가기는 안내만 한다. 구성원은 맨 위 "가족 구성원 N명"을 눌러 펼쳐 본다.
  * 덮개를 누르거나 X, 안드로이드 뒤로가기로 닫는다.
  * @param {{ visible: boolean, onClose: () => void, room?: { name?: string, members?: object[] } | null, roomId?: string | null, peerId?: string | null, myId?: string | null, muted?: boolean | null, onToggleMute?: (muted: boolean) => Promise<boolean | null> }} props roomId 가 없으면 가족 전체방, 있으면 1:1. muted 는 이 방의 알림 끔 여부(모르면 null이라 스위치가 비활성), onToggleMute 는 저장에 성공하면 true, 실패하면 false(안내를 보인다), 무시한 누름이면 null 을 돌려준다
  */
@@ -55,7 +56,8 @@ export default function RoomDrawer({ visible, onClose, room, roomId, peerId, myI
 
   const title = drawerTitle({ direct, room, peerId });
   const strip = drawerMembers({ direct, room, peerId, myId });
-  const sections = buildDrawerSections({ direct, pinsReady: true, muted });
+  const reviewCount = usePhotoCheckCount({ enabled: visible && !direct }); // 가족 전체방에서 서랍을 열 때만 묻는다(1:1 방에는 없다)
+  const sections = buildDrawerSections({ direct, pinsReady: true, muted, reviewCount });
 
   /**
    * 행을 눌렀을 때: 이동 행은 한 번만(닫히는 중이면 무시), 나머지는 안내 문구.
@@ -79,6 +81,7 @@ export default function RoomDrawer({ visible, onClose, room, roomId, peerId, myI
     locked.current = true;
     onClose();
     if (action.type === "media") router.push({ pathname: "/chat-media", params: { ...(roomId ? { roomId } : {}), ...(peerId ? { peer: peerId } : {}) } });
+    else if (action.type === "photochecks") router.push("/chat-photo-review");
     else if (action.type === "familytodos") router.push("/family-together");
     else if (action.type === "pins") router.push({ pathname: "/chat-board", params: { ...(roomId ? { roomId } : {}), ...(peerId ? { peer: peerId } : {}) } });
   };

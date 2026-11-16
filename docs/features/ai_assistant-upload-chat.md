@@ -30,7 +30,8 @@
 - 개인정보 가리기 확대(일반 문서도 카드·전화·이메일·계좌·라벨 있는 이름·주소), 민감 기록은 가린 상태로 채팅 근거에 사용(`CHAT_INCLUDE_SENSITIVE`)
 - 스캔 PDF 는 글자 없는 쪽만 OCR, 같은 파일은 출처 하나로 합침
 - 글자 없는 사진은 사용자가 한 줄 설명을 직접 단다(채팅 카드, 기록 상세에서 나중에도 가능). 문서 종류는 로컬 분류기(앱 임베딩 + 글자 TF-IDF)가 정하고 애매하면 Jev 또는 "확인 필요". qwen·Ollama 는 쓰지 않는다
-- 임베딩 재색인(2026-11-10, T12 PR-1): `knowledge.service.reindex` 가 배치·진행률·이어하기를 지원하고, 점검·재계산 스크립트 `apps/api/scripts/reindex_embeddings.py`(`--check` 기본, `--apply --yes`)를 추가했다. 모델 폴더 이름이 바뀌어 옛 조각이 검색에서 빠지는 경우의 조치다("임베딩 모델 전달" 아래 절). 마이그레이션·API 변경 없음. 격리 PostgreSQL(pgvector 컨테이너)에서 `test_knowledge_pgvector.py` 의 재색인 시험(`vector_dims`=384, 모델 이름 갱신, 검색, 스크립트 `--check`·`--apply --yes --limit`)을 통과했다. 아직 없는 것: 시작 시 경고 로그·운영자 조회 API(PR-2), tokenizer 누락 처리(PR-3)
+- 임베딩 재색인(2026-11-10, T12 PR-1): `knowledge.service.reindex` 가 배치·진행률·이어하기를 지원하고, 점검·재계산 스크립트 `apps/api/scripts/reindex_embeddings.py`(`--check` 기본, `--apply --yes`)를 추가했다. 모델 폴더 이름이 바뀌어 옛 조각이 검색에서 빠지는 경우의 조치다("임베딩 모델 전달" 아래 절). 마이그레이션·API 변경 없음. 격리 PostgreSQL(pgvector 컨테이너)에서 `test_knowledge_pgvector.py` 의 재색인 시험(`vector_dims`=384, 모델 이름 갱신, 검색, 스크립트 `--check`·`--apply --yes --limit`)을 통과했다. 아직 없는 것: tokenizer 누락 처리(PR-3)
+- 검색 색인 점검(2026-11-12, T12 PR-2): `knowledge/index_health.py` 가 모델별 조각 수·현재 모델과 다른 조각 수·영향받는 기록 수·의미 검색에서 빠진 기록 수를 **개수만** 계산한다. ① 서버가 시작할 때 한 번 점검해 어긋남이 있으면 WARNING, 없으면 INFO 한 줄을 남긴다(모델을 불러오지 않고, DB 가 안 닿거나 표가 없어도 서버 시작은 막지 않으며 예외는 클래스 이름만 기록한다). ② 운영자 조회 API `GET /ai-assistant/knowledge/index-status`(`require_operator("admin")`, 읽기 전용, 응답은 개수·모델 이름·경고 문구). ③ 재색인 도구에 `--expect-model`. DB·마이그레이션 변경 없음, 하위 호환 변경 없음(경로 추가만, `openapi.json` 갱신).
 - 테스트: 서버 462개 통과(병합 후), 앱 린트·Android 번들 빌드 통과
 
 ## 남은 것
@@ -148,6 +149,8 @@ python -m scripts.reindex_embeddings            # --check 와 같다
 ```bash
 python -m scripts.reindex_embeddings --apply --yes --batch-size 128
 ```
+
+`--expect-model <서버가 쓰는 이름>`(운영자 조회 API 의 `current_model`)을 주면 지금 설정의 이름과 다를 때 `--apply` 를 DB·모델에 손대기 전에 거부하고(종료 코드 1), `--check` 에서는 같은 안내를 덧붙인다. 다른 설정에서 다시 만든 조각은 서버가 검색하지 않는 이름이 되기 때문이다.
 
 `--yes` 가 없으면 개수만 보여 주고 다시 만들 조각이 있을 때 종료 코드 2 로 끝난다(없으면 0, 모델도 불러오지 않는다). 배치마다 commit 하고 `reindex 128/1,340 (9%)` 처럼 진행률을 찍는다. 중간에 멈추거나 실패해도 끝난 배치는 남고, 다시 실행하면 남은 조각만 한다. ONNX 모델을 불러오지 못해 해시 임베더인 상태에서는 거부한다. `--group-id`(한 가족만), `--limit`(시험용)도 있다.
 
@@ -310,6 +313,7 @@ SELECT item_id, seq, embedding_model, vector_dims(embedding) AS dim, left(text, 
 - 업로드 글의 가족 이름(이름·표시 이름, 조사·성 뗀 이름자 포함)은 가리기 전에 `[가족:<user_id>]` 로 바뀌어 저장되고, `knowledge_items.family_user_ids` 에 등장한 가족이 남는다. 읽을 때(상세·목록·검색·파일 상태·기록 도구) 현재 표시 이름으로 되돌린다. 동명이인은 치환하지 않는다.
 - (RAG 개선 라운드 5) `search_knowledge` 결과는 기록 단위 그대로이되 위쪽 3개 기록에는 `more`(같은 기록의 다음으로 가까운 조각 최대 2개, `page` 포함, 추가 글 합계 2000자 상한)를 싣는다. 출처·`ref`·`_renumber` 는 기록 단위라 그대로이고 출처 칩의 쪽은 가장 가까운 조각의 쪽이다. 라우터 `/knowledge/search`·`lookup` 은 `service.search` 기본값(기록당 1조각)이라 동작이 같다. `get_item` 은 앞 12000자(약 8000토큰)에서 자르고 `note` 로 알린다(최대 6만 자 문서가 입력을 키우는 것을 막음). 메인 프롬프트는 관련 기록이 있는데 조각에 답이 안 보이면 `get_item` 으로 읽어 본 뒤에 못 찾았다고 하도록 한다.
 - `search_knowledge` 에 `member`(이름·별칭) 필터, 도구 결과에 `family`(등장한 가족의 현재 이름) 추가. 메인 채팅(`rag_chat._run_tool`)의 허용 인자 목록에 `member` 를 넣어야 AI 가 쓸 수 있다(1팀 작업 파일).
+- **올린 날·올린 사람 필터(T23 P-05, 2026-11-11)**: `search_knowledge` 와 `list_items` 가 `uploaded_from`·`uploaded_to`(올린 날, 한국 날짜 양끝 포함, `created_at` 기준)와 `uploaded_by`(올린 사람의 이름·별칭, `created_by` 기준)를 받는다. 문서 안 날짜(`date_from/to`)·기록에 등장하는 가족(`member`)과 별개 조건이다("지난달에 엄마가 올린 가정통신문"). 올린 사람 이름을 모르거나 날짜가 틀리면 필터를 조용히 무시하지 않고 빈 결과와 안내(`note`)를 돌려준다. 결과 행에 `uploaded_on`(올린 날)·`uploaded_by`(올린 사람의 현재 표시 이름, 나간 사람이면 `null`)·`source_attachment_id`(채팅 사진에서 자동 등록된 기록의 원본 첨부 id, 아니면 `null`)가 추가됐다. 가족 그룹 격리·민감 기록 규칙(`include_sensitive`)은 그대로이고, 검색 순위·임베딩은 바꾸지 않았다. 메인 채팅 허용 인자(`rag_chat._run_tool`)에 세 인자를 추가했다. 후속(P-06·P-07): AI 0회 문서 목록 응답, 앱 문서 카드.
 - 기존 기록은 백필하지 않는다(`강**` 그대로).
 
 ## 문서 목록 날짜 조건

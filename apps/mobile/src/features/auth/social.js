@@ -45,6 +45,24 @@ export const KAKAO_RELAY_PATH = "/auth/kakao/callback";
  */
 export const kakaoRedirectUri = ({ platform, appReturnUrl, relayUrl }) => (platform === "web" ? appReturnUrl : relayUrl);
 
+/** 카카오톡 앱에서 돌아온 코드를 기다리는 시간(로그인을 시작한 뒤). 카카오톡 앱에서 비밀번호·인증을 거치는 시간을 넉넉히 둔다. */
+export const KAKAO_RETURN_WAIT_MS = 180_000;
+
+/**
+ * 카카오톡 앱으로 로그인하고 돌아온 주소(gabee://kakao?code=…&state=…)의 값을 받아도 되는지 판정한다.
+ * 이번 로그인 요청의 state 와 같고(위조 방지), 아직 기다리는 중이며, 이미 처리한 코드가 아닐 때만 받는다.
+ * @param {{ params: Record<string, unknown> | null | undefined, expectedState: string | undefined, pendingUntil: number, now: number, handledCode: string | null }} args
+ * @returns {{ code: string } | { error: true } | null} 받을 코드, 카카오가 돌려준 오류, 또는 받지 않음(null)
+ */
+export function acceptKakaoReturn({ params, expectedState, pendingUntil, now, handledCode }) {
+  if (!expectedState || !params || params.state !== expectedState) return null;
+  if (!(now < pendingUntil)) return null;
+  if (typeof params.error === "string" && params.error) return { error: true };
+  const code = params.code;
+  if (typeof code !== "string" || !code || code === handledCode) return null;
+  return { code };
+}
+
 export const PROVIDER_LABEL = { google: "Google", kakao: "카카오" };
 
 /**

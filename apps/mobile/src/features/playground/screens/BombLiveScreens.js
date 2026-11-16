@@ -22,7 +22,7 @@ import PlayIcon from "../components/PlayIcon";
 import PlayScreen from "../components/PlayScreen";
 import { GAMES, SCORE } from "../games";
 import { useBombRedirect, useBombRoom, useBombRooms, useMyId } from "../hooks";
-import { leaveToPlayMain } from "../nav";
+import { leaveToPlayMain, leaveToRoomList } from "../nav";
 
 /*
  * 서버에 연결됐을 때 쓰는 문장 폭탄 화면들. 방 상태는 useBombRoom 이 1초마다 서버에서 받고(폴링),
@@ -86,7 +86,7 @@ export function LiveBombEntry() {
     }
   };
   return (
-    <PlayScreen title="문장 폭탄" titleIcon={<PlayIcon icon={GAMES.bomb.icon} size={24} color={BOMB_RED} />} close>
+    <PlayScreen title="문장 폭탄" titleIcon={<PlayIcon icon={GAMES.bomb.icon} size={24} color={BOMB_RED} />} close onBack={() => leaveToPlayMain(router)}>
       <Text style={styles.noteLeft}>{mine ? "지금 방에서 나가야 다른 방에 들어갈 수 있어요" : "열린 방에 들어가거나 새 방을 만들어요"}</Text>
       <Button label="새 방 만들기" disabled={busy || !!mine || rooms == null} onPress={create} />
       {makeError ? <Text style={styles.error}>{makeError}</Text> : null}
@@ -121,6 +121,7 @@ export function LiveBombLobby({ id }) {
   const [life, setLife] = useState(LIFE.def);
   const [sec, setSec] = useState(SEC.def);
   const [askClose, setAskClose] = useState(false);
+  const [waitView, setWaitView] = useState(false); // 입장한 뒤 X 를 누르면 같은 방 화면이 대기방 모습(부른 가족 전부, 초대하기)으로 바뀐다
   const { ask: askInvite, sheet: inviteSheet } = useInvite();
   const myId = useMyId();
   if (!room) {
@@ -132,7 +133,8 @@ export function LiveBombLobby({ id }) {
   }
   const joined = room.players.filter((p) => p.joined).length;
   const entered = room.my_status !== "none"; // 방에 들어와 있나(들어오기 전이 대기방, 들어온 뒤가 로비)
-  const shown = lobbyPlayers(room.players, myId, entered, room.is_host);
+  const lobbyView = entered && !room.is_host && !waitView; // 로비(참여한 사람만) 모습인가, 아니면 대기방 모습인가
+  const shown = lobbyPlayers(room.players, myId, lobbyView, room.is_host);
   const invitees = room.players.filter((p) => !p.joined); // 아직 안 들어온 가족(로비 목록에는 없고 아래 초대하기로만 부른다)
   const isClosed = room.phase === "closed";
   let footer;
@@ -140,7 +142,7 @@ export function LiveBombLobby({ id }) {
     footer = (
       <>
         <Text style={styles.note}>방이 닫혔어요</Text>
-        <Button label="나가기" onPress={() => leaveToPlayMain(router)} />
+        <Button label="나가기" onPress={() => leaveToRoomList(router)} />
       </>
     );
   } else if (room.is_host) {
@@ -162,12 +164,12 @@ export function LiveBombLobby({ id }) {
     footer = (
       <>
         {error ? <Text style={styles.error}>{error}</Text> : null}
-        <Button label="기다리는 중" disabled onPress={() => {}} />
+        {waitView ? <Button label="로비로 돌아가기" onPress={() => setWaitView(false)} /> : <Button label="기다리는 중" disabled onPress={() => {}} />}
         <Button
           label="방 나가기"
           variant="secondary"
           onPress={async () => {
-            if (await act(() => leaveBomb(id))) leaveToPlayMain(router);
+            if (await act(() => leaveBomb(id))) leaveToRoomList(router);
           }}
         />
       </>
@@ -179,6 +181,7 @@ export function LiveBombLobby({ id }) {
       fixed // 화면은 고정하고 선수 목록만 스크롤한다
       titleIcon={<PlayIcon icon={GAMES.bomb.icon} size={24} color={BOMB_RED} />}
       close
+      onBack={() => (entered && !room.is_host && !isClosed && !waitView ? setWaitView(true) : leaveToRoomList(router))} // 입장한 뒤 첫 X 는 대기방 모습으로, 그다음 X 는 열린 방 목록으로
       footer={footer}
     >
       <Text style={styles.intro}>{"차례대로 이어 말해요. 문장을 끝내면 생명이 줄어요!\n마지막까지 살아남은 사람이 이겨요."}</Text>
@@ -196,7 +199,7 @@ export function LiveBombLobby({ id }) {
         </View>
       )}
       <Text style={styles.section}>
-        {entered && !room.is_host ? "선수 대기" : "방에 부른 가족"} <Text style={styles.sectionSub}>({entered && !room.is_host ? `${joined}명` : `${joined}/${room.players.length}명 입장`})</Text>
+        {lobbyView ? "선수 대기" : "방에 부른 가족"} <Text style={styles.sectionSub}>({lobbyView ? `${joined}명` : `${joined}/${room.players.length}명 입장`})</Text>
       </Text>
       <ScrollView style={styles.playerList} nestedScrollEnabled showsVerticalScrollIndicator={shown.length > VISIBLE_PLAYERS}>
         {shown.map((p) => (
@@ -206,12 +209,11 @@ export function LiveBombLobby({ id }) {
             name={p.name}
             note={p.host && p.id === myId ? "방장 · 나" : p.host ? "방장" : p.id === myId ? "나" : ""}
             joined={p.joined}
-            mine={entered && p.id === myId && !p.host}
             onInvite={() => askInvite({ name: p.name, kind: "bomb" })}
           />
         ))}
       </ScrollView>
-      {entered && !room.is_host && !isClosed && invitees.length > 0 ? (
+      {lobbyView && !isClosed && invitees.length > 0 ? (
         <Pressable
           onPress={() => askInvite({ name: invitees.length === 1 ? invitees[0].name : "가족", kind: "bomb" })}
           accessibilityRole="button"
@@ -230,7 +232,7 @@ export function LiveBombLobby({ id }) {
         onCancel={() => setAskClose(false)}
         onConfirm={async () => {
           setAskClose(false);
-          if (await act(() => closeBomb(id))) leaveToPlayMain(router);
+          if (await act(() => closeBomb(id))) leaveToRoomList(router);
         }}
       />
     </PlayScreen>
@@ -287,13 +289,13 @@ function Chat({ chat, header, onCall, onUnfair, footer }) {
 }
 
 /** 판이 끝난 뒤 게임 채팅창 아래: 대화를 더 보다가 결과를 보거나 나간다(끝나자마자 결과로 튕기지 않는다). */
-function EndBar({ onResult, onLeave }) {
+function EndBar({ onResult, onLeave, host = false }) {
   return (
     <View style={styles.bar}>
       <Text style={styles.rule}>게임이 끝났어요</Text>
       <View style={styles.footerRow}>
         <View style={styles.footerCell}>
-          <Button label="나가기" variant="secondary" onPress={onLeave} />
+          <Button label={host ? "방 닫기" : "방 나가기"} variant="secondary" onPress={onLeave} />
         </View>
         <View style={styles.footerCell}>
           <Button label="결과 보기" onPress={onResult} />
@@ -306,9 +308,11 @@ function EndBar({ onResult, onLeave }) {
 // ---------- 게임 ----------
 export function LiveBombPlay({ id }) {
   const router = useRouter();
+  const [askCloseRoom, setAskCloseRoom] = useState(false);
   const { room, error, busy, act, left, voteLeft } = useBombRoom(id);
   const myId = useMyId();
-  useBombRedirect(room, "play");
+  const [closing, setClosing] = useState(false); // 방을 닫는 중에는 결과창으로 자동 이동하지 않는다
+  useBombRedirect(room, "play", !closing);
   const [text, setText] = useState("");
   const [kb, setKb] = useState(false); // 키보드가 올라오면 위쪽을 낮춘다
   useEffect(() => {
@@ -339,7 +343,7 @@ export function LiveBombPlay({ id }) {
   };
   return (
     <SafeAreaView style={styles.safe} edges={["top", "bottom"]}>
-      <PlayHeader title="문장 폭탄" close fallback="/play" onBack={() => leaveToPlayMain(router)} compact={kb} />
+      <PlayHeader title="문장 폭탄" close fallback="/play" onBack={() => (room.phase === "finished" ? router.replace(bombPath("lobby", id)) : leaveToPlayMain(router))} compact={kb} />
       <GameTop room={room} left={left} compact={kb} />
       {room.vote ? <VoteBanner vote={room.vote} left={voteLeft} busy={busy} onVote={(yes) => act(() => voteBomb(id, yes))} /> : null}
       <KeyboardAvoidingView style={styles.flex} behavior="padding">
@@ -349,7 +353,14 @@ export function LiveBombPlay({ id }) {
           onUnfair={busy ? undefined : () => act(() => startBombVote(id, "unfair"))}
         />
         {room.phase === "finished" ? (
-          <EndBar onResult={() => router.push(bombPath("result", id))} onLeave={() => router.replace(bombPath("lobby", id))} />
+          <EndBar
+            host={room.is_host}
+            onResult={() => router.push(bombPath("result", id))}
+            onLeave={async () => {
+              if (room.is_host) setAskCloseRoom(true); // 방장은 방 닫기(확인 뒤 닫고 열린 방 목록으로)
+              else if (await act(() => leaveBomb(id))) router.replace(bombPath("lobby", id)); // 방장이 아니면 방에서 나가고 입장 전 대기방으로
+            }}
+          />
         ) : (
         <View style={styles.bar}>
           {nextIsMe ? <Text style={styles.nextBadge} accessibilityLiveRegion="polite">다음은 내 차례예요</Text> : null}
@@ -372,6 +383,19 @@ export function LiveBombPlay({ id }) {
         </View>
         )}
       </KeyboardAvoidingView>
+      <ConfirmDialog
+        visible={askCloseRoom}
+        title="방을 닫을까요?"
+        message="들어온 가족은 나가게 돼요."
+        confirmLabel="닫기"
+        onCancel={() => setAskCloseRoom(false)}
+        onConfirm={async () => {
+          setAskCloseRoom(false);
+          setClosing(true);
+          if (await act(() => closeBomb(id))) leaveToRoomList(router);
+          else setClosing(false);
+        }}
+      />
     </SafeAreaView>
   );
 }
@@ -381,9 +405,11 @@ export function LiveBombSpectate({ id }) {
   const router = useRouter();
   const { room, error, busy, act, left, voteLeft, cheerLeft, chatLeft } = useBombRoom(id);
   const myId = useMyId();
-  useBombRedirect(room, "spectate");
+  const [closing, setClosing] = useState(false); // 방을 닫는 중에는 결과창으로 자동 이동하지 않는다
+  useBombRedirect(room, "spectate", !closing);
   const [mode, setMode] = useState("chat"); // 채팅(탈락한 사람끼리) / 응원(모두에게)
   const [askLeave, setAskLeave] = useState(false);
+  const [askCloseRoom, setAskCloseRoom] = useState(false);
   const [kb, setKb] = useState(false); // 키보드가 올라오면 위쪽을 줄이고 입력 칸만 남겨서 채팅이 보이게 한다
   useEffect(() => {
     const show = Keyboard.addListener("keyboardDidShow", () => setKb(true));
@@ -419,7 +445,7 @@ export function LiveBombSpectate({ id }) {
         title="문장 폭탄"
         close
         fallback="/play"
-        onBack={() => leaveToPlayMain(router)}
+        onBack={() => (room.phase === "finished" ? router.replace(bombPath("lobby", id)) : leaveToPlayMain(router))} // 끝난 뒤 X 는 로비로(방장은 방장 로비, 참가자는 입장 로비)
         compact={kb}
         right={
           room.is_host ? null : (
@@ -438,7 +464,14 @@ export function LiveBombSpectate({ id }) {
           onUnfair={busy ? undefined : () => act(() => startBombVote(id, "unfair"))}
         />
         {room.phase === "finished" ? (
-          <EndBar onResult={() => router.push(bombPath("result", id))} onLeave={() => router.replace(bombPath("lobby", id))} />
+          <EndBar
+            host={room.is_host}
+            onResult={() => router.push(bombPath("result", id))}
+            onLeave={async () => {
+              if (room.is_host) setAskCloseRoom(true); // 방장은 방 닫기(확인 뒤 닫고 열린 방 목록으로)
+              else if (await act(() => leaveBomb(id))) router.replace(bombPath("lobby", id)); // 방장이 아니면 방에서 나가고 입장 전 대기방으로
+            }}
+          />
         ) : (
           <View style={styles.bar}>
             <View style={[styles.seg, kb && styles.hide]}>
@@ -494,7 +527,20 @@ export function LiveBombSpectate({ id }) {
         onCancel={() => setAskLeave(false)}
         onConfirm={async () => {
           setAskLeave(false);
-          if (await act(() => leaveBomb(id))) leaveToPlayMain(router);
+          if (await act(() => leaveBomb(id))) leaveToRoomList(router);
+        }}
+      />
+      <ConfirmDialog
+        visible={askCloseRoom}
+        title="방을 닫을까요?"
+        message="들어온 가족은 나가게 돼요."
+        confirmLabel="닫기"
+        onCancel={() => setAskCloseRoom(false)}
+        onConfirm={async () => {
+          setAskCloseRoom(false);
+          setClosing(true);
+          if (await act(() => closeBomb(id))) leaveToRoomList(router);
+          else setClosing(false);
         }}
       />
     </SafeAreaView>

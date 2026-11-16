@@ -14,6 +14,7 @@ from datetime import date, datetime, timedelta
 from pydantic import ValidationError
 from sqlalchemy.orm import Session
 
+from app.features.schedule import repository as schedule_repo
 from app.features.schedule import service
 from app.features.schedule.models import Event
 from app.features.schedule.schemas import EventUpdate
@@ -215,7 +216,7 @@ def respond_edit(
     except ApiError as e:  # 끝나는 시간이 시작보다 늦지 않은 경우 등
         return AgentResponse(intent="edit", text=e.message)
     lines = _diff(event, body, after)
-    text = "이렇게 바꿀까요?"
+    text = f"{reader.event_text(event)} 일정을 이렇게 바꿀까요?"
     if share_new is not None:
         labels = {m.id: m.label for m in members or []}
         lines.append(_share_line(current, share_new, labels))
@@ -242,7 +243,7 @@ def respond_delete(user_id: str, target_id: str, events: dict[str, Event]) -> Ag
     card = Card(type="delete_confirm", data={"event": reader.brief(event)})
     return AgentResponse(
         intent="delete",
-        text=f"'{event.title}' 일정을 지울까요?",
+        text=f"{reader.event_text(event)} 일정을 지울까요?",
         cards=[card],
         pending_action=PendingAction(type="delete", event_id=event.id),
     )
@@ -259,7 +260,9 @@ def confirm_edit(db: Session, user_id: str, group_id: str, action: PendingAction
         raise bad_request("invalid_action", "바꿀 값이 올바르지 않아요") from e
     updated = service.update(db, group_id, user_id, action.event_id, body)
     card = Card(type="event_list", data={"events": [reader.brief(updated)]})
-    return AgentResponse(intent="edit", text="바꿨어요.", cards=[card])
+    return AgentResponse(
+        intent="edit", text=f"{reader.event_text(updated)} 일정을 바꿨어요.", cards=[card]
+    )
 
 
 def confirm_delete(
@@ -268,5 +271,8 @@ def confirm_delete(
     """확인 카드의 [삭제]. 일정과 소유자를 다시 확인하고 내 줄만 지운다(service.remove)."""
     if not action.event_id:
         raise bad_request("invalid_action", "처리할 수 없는 요청이에요")
+    before = schedule_repo.get(db, group_id, action.event_id, user_id)
+    named = reader.event_text(before) if before else ""  # 지우기 전에 어떤 일정인지 읽어 둔다
     service.remove(db, group_id, user_id, action.event_id)
-    return AgentResponse(intent="delete", text="지웠어요.")
+    text = f"{named} 일정을 지웠어요." if named else "지웠어요."
+    return AgentResponse(intent="delete", text=text)

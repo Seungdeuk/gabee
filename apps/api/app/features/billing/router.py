@@ -25,6 +25,7 @@ from .schemas import (
     AllowanceRequestIn,
     ExpenseCreate,
     ExpenseOut,
+    ExpenseUpdate,
     ManagerOut,
     ManagerSet,
     MinorsSet,
@@ -74,12 +75,27 @@ def create_expense(
     return service.create(db, group_id, user.id, body)
 
 
+@router.patch("/expenses/{expense_id}", response_model=ExpenseOut)
+def update_expense(
+    expense_id: str,
+    body: ExpenseUpdate,
+    user=Depends(current_user),
+    group_id: str = Depends(current_group_id),
+    db: Session = Depends(get_db),
+) -> ExpenseOut:
+    """내가 낸 지출의 제목·금액·날짜·카테고리를 고친다(보낸 값만). 정산하기를 마친 지출과 송금 완료가 있는 달은 400 `expense_not_editable`."""
+    return service.update_my_expense(db, group_id, user.id, expense_id, body)
+
+
 @router.delete("/expenses/{expense_id}", status_code=204)
 def delete_expense(
-    expense_id: str, group_id: str = Depends(current_group_id), db: Session = Depends(get_db)
+    expense_id: str,
+    user=Depends(current_user),
+    group_id: str = Depends(current_group_id),
+    db: Session = Depends(get_db),
 ) -> Response:
-    """소프트 삭제: 행은 남기고 `deleted_at` 만 채운다."""
-    service.delete_expense(db, group_id, expense_id)
+    """소프트 삭제: 행은 남기고 `deleted_at` 만 채운다. 수정과 같은 규칙(내가 낸 지출만, 정산하기 전만, 송금 완료가 있는 달은 잠금)이고 어긋나면 400 `expense_not_deletable`."""
+    service.delete_my_expense(db, group_id, user.id, expense_id)
     return Response(status_code=204)
 
 

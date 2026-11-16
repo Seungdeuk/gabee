@@ -19,7 +19,7 @@ class ExpenseCreate(BaseModel):
 
 
 class ExpenseUpdate(BaseModel):
-    """지출에서 바꿀 값만 보낸다(에이전트의 수정 제안 전용 — 아직 REST 로 열지 않았다). 나눌 사람·낸 사람은 바꾸지 않는다."""
+    """지출에서 바꿀 값만 보낸다(에이전트의 수정 제안과 앱의 지출 수정 PATCH 가 같이 쓴다). 나눌 사람·낸 사람은 바꾸지 않는다."""
 
     title: str | None = Field(default=None, min_length=1, max_length=120)
     amount: int | None = Field(default=None, gt=0)

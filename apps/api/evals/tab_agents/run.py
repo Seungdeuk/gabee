@@ -128,6 +128,8 @@ def main() -> int:
                             tool_ok = True
                         elif case.get("tool_any"):
                             tool_ok = any(t in used for t in case["tool_any"])
+                        elif case.get("tool_all"):  # 여러 도구를 모두 써야 하는 사례
+                            tool_ok = all(t in used for t in case["tool_all"])
                         else:
                             tool_ok = (case["tool"] in used) if case["tool"] else not used
                 text_ok = (

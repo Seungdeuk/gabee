@@ -9,7 +9,7 @@ from app.features.family_group.models import User
 from app.shared.auth import current_group_id, current_user
 from app.shared.db import get_db
 
-from . import media, service
+from . import media, quiz_rec, service
 from .bomb_router import router as bomb_router
 from .schemas import (
     PlayBoardOut,
@@ -17,6 +17,7 @@ from .schemas import (
     PlayItemOut,
     PlayQuizAnswerIn,
     PlayQuizCreateIn,
+    PlayQuizRecOut,
     PlayQuotaOut,
     PlayRankingOut,
 )
@@ -34,6 +35,17 @@ def create_quiz(
 ) -> PlayItemOut:
     """골든벨 세트(1~5문항)를 낸다. 받는 사람을 비우면 가족 모두이고, 24시간 뒤(모두 답하면 그 순간) 닫힌다."""
     return service.create_quiz(db, user, group_id, body)
+
+
+@router.get("/quiz/recommendations", response_model=PlayQuizRecOut)
+def quiz_recommendations(
+    user: User = Depends(current_user),
+    group_id: str = Depends(current_group_id),
+    db: Session = Depends(get_db),
+) -> PlayQuizRecOut:
+    """골든벨 가비 추천(가족이 함께 보는 일정과 가족 전체방 최근 대화로 만든 문제). 하루 한 번 만들어 자정까지 가족이 같이 쓰고,
+    이미 낸 문제는 숨긴다. 실패·한도 같은 경우는 오류 대신 state 로 알린다(AI 가 꺼져 있거나 재료가 없을 때도 200)."""
+    return PlayQuizRecOut(**quiz_rec.recommend(db, user, group_id))
 
 
 @router.post("/draws", response_model=PlayItemOut, status_code=201)

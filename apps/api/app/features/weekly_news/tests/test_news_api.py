@@ -5,7 +5,7 @@ LLM·네트워크 호출은 하지 않는다(부르면 시험이 실패한다). 
 """
 
 import uuid
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 
 import httpx
 import pytest
@@ -68,15 +68,14 @@ def _ids(client, headers) -> tuple[str, str]:
 
 def _save(user_id: str, group_id: str, week: date, status: str = "ok", **fields) -> None:
     now = datetime.now(UTC)
+    values = {"created_at": now, "updated_at": now, **fields}  # fields 가 시각을 덮어쓸 수 있다
     row = MemberWeeklyNews(
         id=uuid.uuid4().hex,
         group_id=group_id,
         user_id=user_id,
         week_start=week,
         status=status,
-        created_at=now,
-        updated_at=now,
-        **fields,
+        **values,
     )
     with SessionLocal() as db:
         db.add(row)
@@ -131,14 +130,22 @@ def test_saved_ok_news_is_returned_without_internal_fields(client, family, at):
     body = r.json()
     assert body["status"] == "ready" and body["ai_generated"] is True
     assert body["title"] == "이번 주 우리 가족"
-    assert body["items"] == [{"text": "치과 진료를 다녀왔어요", "source_ids": ["e1"]}]
+    assert body["items"] == [
+        {
+            "text": "치과 진료를 다녀왔어요",
+            "source_ids": ["e1"],
+            "headline": None,
+            "role": None,
+            "category": None,
+        }
+    ]
     assert body["sources"] == [
         {"id": "e1", "kind": "event", "ref": "ev123", "label": "치과", "date": "2026-11-03"}
     ]
     assert body["model"] == "test-model" and body["generated_at"]
     assert set(body) == {
         "status", "week_start", "week_end", "title", "items", "sources",
-        "generated_at", "ai_generated", "model",
+        "generated_at", "ai_generated", "model", "issue_year", "issue_no",
     }  # fmt: skip
     assert "prompt_version" not in r.text and "input_tokens" not in r.text
     assert "error_code" not in r.text
@@ -147,7 +154,8 @@ def test_saved_ok_news_is_returned_without_internal_fields(client, family, at):
 @pytest.mark.parametrize(
     "db_status,expected,fields",
     [
-        ("pending", "pending", {}),
+        # 시험의 현재(WED)보다 방금 시작한 pending 은 만드는 중으로 보인다(5분 넘은 pending 은 not_generated, test_generate 에서 본다)
+        ("pending", "pending", {"updated_at": WED - timedelta(seconds=30)}),
         ("failed", "failed", {"error_code": "llm_error"}),
         ("empty", "empty", {}),
     ],
@@ -315,3 +323,30 @@ def test_missing_table_is_503_for_news_only(client, family, at, monkeypatch):
         assert report["features"]["schedule"]["ready"] is True
     finally:
         monitor.reset()
+
+
+# ── 저장된 JSON 이 깨졌을 때(수동 수정·버그·옛 형식)는 500 이 아니라 failed ─────────
+
+
+@pytest.mark.parametrize(
+    "fields",
+    [
+        {"body": ["문자열이 아니라 목록"], "sources": []},
+        {"body": "그냥 문자열", "sources": []},
+        {"body": {"title": 1, "items": []}, "sources": []},
+        {"body": {"title": "제목", "items": "목록 아님"}, "sources": []},
+        {"body": {"title": "제목", "items": [{"text": "글"}]}, "sources": []},
+        {"body": {"title": "제목", "items": [1, 2]}, "sources": []},
+        {"body": BODY, "sources": "목록 아님"},
+        {"body": BODY, "sources": [{"id": "e1"}]},
+        {"body": BODY, "sources": [{"id": "e1", "kind": "alien", "ref": "r", "label": "l"}]},
+    ],
+)
+def test_corrupt_saved_json_is_failed_not_500(client, family, fields):
+    headers, _, _ = family
+    user_id, group_id = _ids(client, headers)
+    _save(user_id, group_id, LAST_MON, status="ok", model="m", **fields)
+    r = client.get(URL, params={"week_start": LAST_MON.isoformat()}, headers=headers)
+    assert r.status_code == 200, r.text
+    assert r.json()["status"] == "failed"
+    assert r.json()["items"] == [] and r.json()["sources"] == []

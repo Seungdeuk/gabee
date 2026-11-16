@@ -60,10 +60,16 @@ class Setup(_Strict):
 
 
 class ToolExpect(_Strict):
-    """`agent_path` 단계의 호출만 본다."""
+    """`agent_path` 단계의 호출만 본다.
+
+    `allowed` 는 필수는 아니지만 불러도 되는 읽기 도구다. Tool Precision 에서만 감점하지 않고(`metrics`),
+    판정(`tools_ok`)·보안(`forbidden`·쓰기 금지)에는 영향이 없다. 이 사례의 `agent_path` 에 등록된 읽기 도구여야 하고
+    (`scoring._check_case` 가 확인한다), 필수·금지·쓰기 도구와 겹치면 거부한다. 모델이 불렀다는 이유로 사후에 더하지 않는다.
+    """
 
     required: list[NonEmpty] = Field(default_factory=list)
     forbidden: list[NonEmpty] = Field(default_factory=list)
+    allowed: list[NonEmpty] = Field(default_factory=list)
 
 
 def _finite(value: Any) -> bool:
@@ -131,7 +137,19 @@ class OutcomeExpect(_Strict):
 
 
 class AnswerExpect(_Strict):
+    """답에 대한 조건. 모두 만족해야 `answer_ok` 다(결정론적 부분 문자열 검사, LLM 심판 없음).
+
+    - `contains`: 나열한 문구가 **모두** 있어야 한다.
+    - `contains_any`: 그룹마다 대안 문구 중 **하나 이상** 있어야 한다(같은 뜻의 다른 표현 허용). 그룹은 서로 AND 다.
+      그룹에는 대안이 2개 이상 있어야 한다(하나면 `contains` 를 쓴다).
+    - `not_contains`: 나열한 문구가 **하나도** 없어야 한다.
+    같은 문구는 `text_contains` 규칙으로 비교한다(금액 쉼표 무시). 부분 문자열이라 부정·다른 문맥은 구별하지 못한다
+    (`확인되지 않` 이 `확인되지 않은 일정이 있어요` 에도 든다). 그래서 모순되는 문구는 `not_contains` 로 막고,
+    보안(금지 문자열 누출)은 이 검사와 별개로 `Security` 가 판정한다. 이 필드는 `answer_ok` 에만 영향을 준다.
+    """
+
     contains: list[Needle] = Field(default_factory=list)
+    contains_any: list[Annotated[list[Needle], Field(min_length=2)]] = Field(default_factory=list)
     not_contains: list[Needle] = Field(default_factory=list)
 
 
@@ -164,10 +182,29 @@ class Expect(_Strict):
         wanted = {*self.tools.required, *(c.tool for c in self.calls)}
         if wanted & banned:
             raise ValueError("필수·기대 도구가 금지 도구나 금지 쓰기와 겹친다")
-        if set(self.answer.contains) & (
-            set(self.answer.not_contains) | set(self.security.forbidden_strings)
-        ):
+        blocked_text = set(self.answer.not_contains) | set(self.security.forbidden_strings)
+        if set(self.answer.contains) & blocked_text:
             raise ValueError("답에 있어야 할 문구가 금지 문구와 겹친다")
+        for group in self.answer.contains_any:
+            if len(set(group)) != len(group):
+                raise ValueError("contains_any 그룹에 같은 문구가 두 번 있다")
+            if set(group) & blocked_text:
+                raise ValueError("contains_any 의 대안 문구가 금지 문구와 겹친다")
+        tools = self.tools
+        if tools.allowed:
+            if len(set(tools.allowed)) != len(tools.allowed):
+                raise ValueError("allowed 도구가 겹친다")
+            clash = set(tools.allowed) & {
+                *tools.required,
+                *tools.forbidden,
+                *(c.tool for c in self.calls),
+                *self.security.forbidden_tools,
+                *self.security.forbidden_writes,
+            }
+            if clash:
+                raise ValueError(
+                    f"allowed 도구가 필수·기대·금지·쓰기 도구와 겹친다: {sorted(clash)}"
+                )
         return self
 
 
@@ -201,6 +238,17 @@ class Case(_Strict):
         return self
 
 
+def dump_case(case: Case) -> dict[str, Any]:
+    """사례를 JSON 용 dict 로 덤프한다(파일 쓰기·내용 해시용). 채점기 v2 의 선택 필드(`allowed`·`contains_any`)는 비어 있으면
+    적지 않는다: 쓰지 않는 사례의 파일 바이트와 내용 해시(`runner.case_fingerprint`)가 v1 과 같게 유지된다."""
+    row = case.model_dump(mode="json")
+    if not row["expect"]["tools"].get("allowed"):
+        row["expect"]["tools"].pop("allowed", None)
+    if not row["expect"]["answer"].get("contains_any"):
+        row["expect"]["answer"].pop("contains_any", None)
+    return row
+
+
 class ToolCall(_Strict):
     stage: AgentPath  # 어느 Agent 단계의 호출인가
     name: NonEmpty
@@ -223,4 +271,28 @@ class Observation(_Strict):
     tokens_in: NonNegativeInt = 0
     tokens_out: NonNegativeInt = 0
     latency_ms: NonNegativeInt = 0
-    step_limit_hit: bool = False
+    step_limit_reached: bool = (
+        False  # 실행이 단계 상한에 닿았다(마지막 단계에서 정상적으로 답한 경우는 아니다)
+    )
+    forced_final: bool = False  # 상한 때문에 도구 없이 최종 답을 받았다(상한 도달의 하위 사실: True 면 step_limit_reached 도 True)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _read_the_old_name(cls, data: Any) -> Any:
+        """옛 이름 `step_limit_hit`(저장된 관찰 결과)을 `step_limit_reached` 로 읽는다. 둘 다 있으면 새 이름이 이긴다."""
+        if isinstance(data, dict) and "step_limit_hit" in data:
+            data = dict(data)
+            legacy = data.pop("step_limit_hit")
+            data.setdefault("step_limit_reached", legacy)
+        return data
+
+    @model_validator(mode="after")
+    def _forced_final_means_reached(self) -> "Observation":
+        if self.forced_final and not self.step_limit_reached:
+            raise ValueError("forced_final 이면 step_limit_reached 도 True 여야 한다")
+        return self
+
+    @property
+    def step_limit_hit(self) -> bool:
+        """옛 이름(하위 호환). `step_limit_reached` 와 같다."""
+        return self.step_limit_reached

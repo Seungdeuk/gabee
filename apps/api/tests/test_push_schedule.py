@@ -1,8 +1,9 @@
-"""예약 푸시: 일정 시작 30분 전, 할 일 마감 당일 아침 9시. 서버가 주기적으로 "곧 시작하는 일정"을 직접 찾아 보내므로
-일정을 고치거나 지워도 따로 고칠 예약이 없고, 같은 푸시는 보냈음 기록(고유 키)으로 한 번만 간다. 문구는 고정이라 내용을 싣지 않는다."""
+"""예약 푸시(2026-11-11 규칙): 약속·할 일 모두 **시간이 있으면 시작 30분 전**, **시간이 없으면(종일 포함) 전날 저녁 9시에 한 번**.
+서버가 주기적으로 알릴 항목을 직접 찾아 보내므로 일정을 고치거나 지워도 따로 고칠 예약이 없고, 같은 푸시는 보냈음 기록(고유 키)으로
+한 번만 간다. 문구는 고정이라 내용을 싣지 않는다."""
 
 import uuid
-from datetime import datetime, time, timedelta
+from datetime import UTC, datetime, time, timedelta
 
 import pytest
 from sqlalchemy import func, select
@@ -31,6 +32,8 @@ def sent(monkeypatch):
     monkeypatch.setattr(settings, "push_enabled", True)
     monkeypatch.setattr(push, "_submit", lambda fn, *args: fn(*args))
     monkeypatch.setattr(push, "_post", fake_post)
+    # 발송 단계도 고정 시각을 쓴다: 실제 시각을 쓰면 시험이 도는 시각이 방해금지에 걸릴 때 결과가 달라진다
+    monkeypatch.setattr(push, "_now", lambda: NOW)
     return lambda: [m for batch in batches for m in batch]
 
 
@@ -145,30 +148,6 @@ def test_several_events_in_a_row_push_once_per_person(client, home, sent):
     assert len(sent()) == 1  # 푸시는 한 번만
 
 
-def test_todo_due_today_pushes_a_fixed_text_at_9am_once(client, home, sent):
-    a, _, group = home
-    uid = _me(client, a)
-    morning = datetime(2026, 11, 10, 9, 0, tzinfo=KST)
-    _event(uid, group["id"], morning + timedelta(hours=9), kind=2, all_day=True, title="비밀 할 일")
-    assert _run(morning - timedelta(minutes=1)) == 0  # 9시 전에는 보내지 않는다
-    assert _run(morning) == 1
-    [msg] = sent()
-    assert msg["title"] == "오늘까지인 할 일이 있어요"
-    assert msg["data"] == {"kind": "schedule", "event": "todo_due"}
-    assert "비밀 할 일" not in str(msg)
-    assert _run(morning + timedelta(hours=3)) == 0  # 같은 날 다시 보내지 않는다
-    assert len(sent()) == 1
-
-
-def test_finished_or_other_day_todos_do_not_push(client, home, sent):
-    a, _, group = home
-    uid = _me(client, a)
-    morning = datetime(2026, 11, 10, 9, 0, tzinfo=KST)
-    _event(uid, group["id"], morning, kind=2, all_day=True, checked=True)  # 이미 끝낸 할 일
-    _event(uid, group["id"], morning + timedelta(days=1), kind=2, all_day=True)  # 내일 할 일
-    assert _run(morning) == 0 and sent() == []
-
-
 def test_user_push_settings_still_apply(client, home, sent):
     a, _, group = home
     assert (
@@ -197,15 +176,6 @@ def test_tick_swallows_errors_so_the_loop_keeps_running(monkeypatch):
 
     monkeypatch.setattr(push_schedule, "run_due", boom)
     push_schedule.tick()  # 예외가 밖으로 나오지 않는다
-
-
-def test_all_day_event_is_not_pushed_the_night_before(client, home, sent):
-    """종일 일정은 00:00~23:59 로 저장돼서, 시작 시각만 보면 전날 23:30 에 "30분 안에 시작" 푸시가 간다."""
-    a, _, group = home
-    day = datetime(2026, 11, 11, 0, 0, tzinfo=KST)
-    _event(_me(client, a), group["id"], day, all_day=True)
-    assert _run(day - timedelta(minutes=30)) == 0 and sent() == []  # 전날 23:30
-    assert _run(day - timedelta(minutes=1)) == 0 and sent() == []
 
 
 def test_an_event_that_starts_at_midnight_is_still_pushed_when_it_is_not_all_day(
@@ -247,32 +217,171 @@ def test_shared_copies_each_push_to_their_own_owner(client, home, sent):
     assert _tokens(sent()) == ["ExponentPushToken[a]", "ExponentPushToken[b]"]
 
 
-def test_a_todo_created_after_9am_is_not_pushed_right_away(client, home, sent):
-    """22:30 에 "오늘 할 일"을 만든 사람에게 1분 뒤 "오늘까지인 할 일이 있어요"가 가면 소음이다."""
+# ── 2026-11-11 규칙: 시간 있으면 30분 전, 없으면 전날 저녁 9시 한 번(약속·할 일 공통) ──
+
+SOON_TODO_TITLE = "30분 뒤에 챙길 할 일이 있어요"
+EVENING_TITLE = "내일 챙길 일정이 있어요"
+EVE = datetime(2026, 11, 10, 21, 0, tzinfo=KST)  # 화요일 저녁 9시 → 내일(수요일) 항목을 알린다
+TOMORROW = datetime(2026, 11, 11, 0, 0, tzinfo=KST)
+
+
+def _notimed(user_id, group_id, day: datetime, *, kind=1, all_day=True, **over):
+    """시간이 없는 항목: 종일(00:00~23:59) 또는 시간 칸이 빈 것."""
+    # 시험의 "지금"(2026-11-10)은 실제 오늘보다 이르다: 만든 시각을 안 정하면 실제 지금이 들어가 "저녁 전에 만든 것만" 규칙에 걸린다
+    over.setdefault("created_at", EVE - timedelta(days=2))
+    if all_day:
+        return _event(user_id, group_id, day, kind=kind, all_day=True, **over)
+    return _event(user_id, group_id, day, kind=kind, start_time=None, end_time=None, **over)
+
+
+def test_timed_todo_pushes_30_minutes_before_with_its_own_fixed_text(client, home, sent):
     a, _, group = home
-    morning = datetime(2026, 11, 10, 9, 0, tzinfo=KST)
-    _event(
+    _event(_me(client, a), group["id"], NOW + timedelta(minutes=20), kind=2, title="비밀 할 일")
+    assert _run() == 1
+    [msg] = sent()
+    assert msg["title"] == SOON_TODO_TITLE and not msg.get("body")
+    assert msg["data"] == {"kind": "schedule", "event": "todo_soon"}
+    assert "비밀 할 일" not in str(msg)
+
+
+def test_timed_todo_window_is_30_minutes_before_up_to_the_start(client, home, sent):
+    a, _, group = home
+    uid = _me(client, a)
+    _event(uid, group["id"], NOW + timedelta(minutes=45), kind=2)  # 아직 멀다
+    _event(uid, group["id"], NOW - timedelta(minutes=5), kind=2)  # 이미 시작했다
+    assert _run() == 0 and sent() == []
+    start = NOW + timedelta(minutes=30)
+    _event(uid, group["id"], start, kind=2)
+    assert _run(NOW - timedelta(seconds=1)) == 0  # 30분 1초 전
+    assert _run(NOW) == 1  # 정확히 30분 전
+
+
+def test_checked_deleted_and_left_timed_todos_do_not_push(client, home, sent):
+    a, b, group = home
+    uid, bid = _me(client, a), _me(client, b)
+    _event(uid, group["id"], NOW + timedelta(minutes=20), kind=2, checked=True)
+    _event(uid, group["id"], NOW + timedelta(minutes=20), kind=2, deleted_at=NOW)
+    _event(bid, group["id"], NOW + timedelta(minutes=20), kind=2)
+    assert client.post("/family-group/groups/me/leave", headers=b).status_code == 204
+    assert _run() == 0 and sent() == []
+
+
+def test_the_same_timed_todo_is_pushed_only_once(client, home, sent):
+    a, _, group = home
+    _event(_me(client, a), group["id"], NOW + timedelta(minutes=25), kind=2)
+    assert _run() == 1
+    assert _run(NOW + timedelta(minutes=1)) == 0 and len(sent()) == 1
+
+
+@pytest.mark.parametrize("kind", [1, 2])
+@pytest.mark.parametrize("all_day", [True, False])
+def test_untimed_item_pushes_once_the_evening_before_for_both_kinds(
+    client, home, sent, kind, all_day
+):
+    a, _, group = home
+    _notimed(_me(client, a), group["id"], TOMORROW, kind=kind, all_day=all_day, title="비밀 항목")
+    assert _run(EVE - timedelta(minutes=1)) == 0  # 저녁 9시 전에는 보내지 않는다
+    assert _run(EVE) == 1
+    [msg] = sent()
+    assert msg["to"] == "ExponentPushToken[a]"  # 항목 줄의 주인만
+    assert msg["title"] == EVENING_TITLE and not msg.get("body")
+    assert msg["data"] == {"kind": "schedule", "event": "evening_before"}
+    assert "비밀 항목" not in str(msg)
+    assert (
+        _run(EVE + timedelta(hours=3)) == 0 and len(sent()) == 1
+    )  # 같은 날 저녁 다시 보내지 않는다
+
+
+def test_untimed_evening_push_is_not_sent_for_today_or_two_days_ahead(client, home, sent):
+    a, _, group = home
+    uid = _me(client, a)
+    _notimed(
+        uid, group["id"], EVE.replace(hour=0), kind=2
+    )  # 오늘 항목: 전날이 없으니 알리지 않는다(옛 9시 알림 없음)
+    _notimed(uid, group["id"], TOMORROW + timedelta(days=1), kind=2)  # 모레 항목
+    assert _run(EVE) == 0 and sent() == []
+    assert _run(EVE.replace(hour=9)) == 0 and sent() == []  # 오전 9시에도 아무것도 가지 않는다
+
+
+def test_untimed_evening_window_closes_at_midnight(client, home, sent):
+    a, _, group = home
+    _notimed(_me(client, a), group["id"], TOMORROW, kind=1)
+    assert _run(TOMORROW) == 0 and sent() == []  # 자정이 지나면 그날 항목은 더 알리지 않는다
+
+
+def test_timed_items_are_not_pushed_in_the_evening(client, home, sent):
+    a, _, group = home
+    uid = _me(client, a)
+    before = EVE - timedelta(days=2)  # 저녁 전에 만든 항목이라 "만든 시각" 규칙에 걸리지 않게 한다
+    _event(uid, group["id"], TOMORROW.replace(hour=14), kind=1, created_at=before)
+    _event(uid, group["id"], TOMORROW.replace(hour=15), kind=2, created_at=before)
+    assert _run(EVE) == 0 and sent() == []  # 시간이 있으면 전날 저녁이 아니라 30분 전에만
+
+
+def test_untimed_item_created_after_the_evening_is_not_pushed_right_away(client, home, sent):
+    """밤 10시에 "내일 할 일"을 만든 사람에게 곧바로 "내일 챙길 일정"이 가면 소음이다."""
+    a, _, group = home
+    _notimed(
         _me(client, a),
         group["id"],
-        morning + timedelta(hours=9),
+        TOMORROW,
         kind=2,
-        all_day=True,
-        created_at=morning + timedelta(hours=1),  # 9시 넘어 새로 만든 할 일
-    )
-    assert _run(morning + timedelta(hours=2)) == 0 and sent() == []
+        created_at=(EVE + timedelta(hours=1)).astimezone(UTC),
+    )  # 앱처럼 UTC 로 저장
+    assert _run(EVE + timedelta(hours=2)) == 0 and sent() == []
 
 
-def test_quiet_hours_do_not_use_up_the_push_so_it_goes_out_later(client, home, sent):
-    """방해금지(22:00~09:30)에 걸려 걸러진 아침 알림은 기록을 남기지 않아, 방해금지가 끝난 뒤 다음 확인에서 간다."""
+def test_checked_deleted_untimed_and_left_members_are_skipped_in_the_evening(client, home, sent):
+    a, b, group = home
+    uid, bid = _me(client, a), _me(client, b)
+    _notimed(uid, group["id"], TOMORROW, kind=1, checked=True)
+    _notimed(uid, group["id"], TOMORROW, kind=2, deleted_at=EVE)
+    _notimed(bid, group["id"], TOMORROW, kind=2)
+    assert client.post("/family-group/groups/me/leave", headers=b).status_code == 204
+    assert _run(EVE) == 0 and sent() == []
+
+
+def test_several_untimed_items_push_once_per_person_and_shared_copies_each_push(client, home, sent):
+    a, b, group = home
+    ua, ub = _me(client, a), _me(client, b)
+    for kind in (1, 2, 2):
+        _notimed(ua, group["id"], TOMORROW, kind=kind)
+    _notimed(ub, group["id"], TOMORROW, kind=1)  # 공유 복사본은 받은 사람 몫의 줄
+    assert _run(EVE) == 4  # 모두 보냈음으로 기록하되
+    assert _tokens(sent()) == [
+        "ExponentPushToken[a]",
+        "ExponentPushToken[b]",
+    ]  # 푸시는 사람마다 한 번
+
+
+def test_quiet_hours_do_not_use_up_the_evening_push_so_it_goes_out_later(client, home, sent):
+    """방해금지(20:00~21:30)에 걸려 걸러진 저녁 알림은 기록을 남기지 않아, 끝난 뒤 다음 확인에서 간다."""
     a, _, group = home
     r = client.put(
         "/notifications/push-settings",
-        json={"quiet_start": "08:00:00", "quiet_end": "09:30:00"},
+        json={"quiet_start": "20:00:00", "quiet_end": "21:30:00"},
         headers=a,
     )
     assert r.status_code == 200, r.text
-    morning = datetime(2026, 11, 10, 9, 0, tzinfo=KST)
-    _event(_me(client, a), group["id"], morning + timedelta(hours=9), kind=2, all_day=True)
-    assert _run(morning) == 0 and sent() == []  # 방해금지 중: 보내지도 기록하지도 않는다
-    assert _run(morning + timedelta(minutes=40)) == 1  # 9:40, 방해금지가 끝났다
+    _notimed(_me(client, a), group["id"], TOMORROW, kind=2)
+    assert _run(EVE) == 0 and sent() == []  # 방해금지 중: 보내지도 기록하지도 않는다
+    assert _run(EVE + timedelta(minutes=40)) == 1  # 21:40, 방해금지가 끝났다
     assert len(sent()) == 1
+
+
+def test_the_morning_9am_todo_push_no_longer_exists(client, home, sent):
+    a, _, group = home
+    today = datetime(2026, 11, 10, 9, 0, tzinfo=KST)
+    _notimed(_me(client, a), group["id"], today, kind=2, created_at=today - timedelta(days=1))
+    assert _run(today) == 0 and sent() == []
+    assert not hasattr(push_schedule, "TODO_HOUR")
+
+
+def test_an_untimed_item_is_not_pushed_as_30_minutes_before_the_night_before(client, home, sent):
+    """종일 일정은 00:00~23:59 로 저장돼서 시작 시각만 보면 전날 23:30 에 "30분 안에 시작" 푸시가 갈 수 있다. 가는 것은 저녁 알림 한 번뿐이다."""
+    a, _, group = home
+    _notimed(_me(client, a), group["id"], TOMORROW, kind=1)
+    assert _run(EVE) == 1  # 저녁 9시 알림
+    assert _run(TOMORROW - timedelta(minutes=30)) == 0  # 23:30 에는 다시 보내지 않는다
+    [msg] = sent()
+    assert msg["title"] == EVENING_TITLE

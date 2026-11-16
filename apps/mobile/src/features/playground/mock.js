@@ -101,3 +101,13 @@ export const makeLeft = () => Math.max(0, MAKE_LIMIT - madeToday);
 export const recordMade = () => {
   madeToday += 1;
 };
+
+/** 가비 추천 시안(서버 주소가 없을 때). 서버 응답 `{ state, items }` 와 같은 모양이다. */
+export const MOCK_RECS = {
+  state: "ok",
+  items: [
+    { id: "r1", source: "schedule", kind: "choice", question: "작년 여름 가족 여행지는 어디였을까?", options: ["제주도", "강릉", "부산", "여수"], answer_index: 0 },
+    { id: "r2", source: "schedule", kind: "ox", question: "엄마 생신은 12월이다", options: ["O", "X"], answer_index: 1 },
+    { id: "r3", source: "chat", kind: "choice", question: "이번 주말에 가족이 가기로 한 곳은 어디일까?", options: ["해운대", "남산", "한강", "북촌"], answer_index: 2 },
+  ],
+};

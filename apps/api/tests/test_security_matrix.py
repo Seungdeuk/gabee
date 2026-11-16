@@ -246,6 +246,9 @@ NO_GROUP_OK = {
     ("GET", "/notices"),
     # 통합관리자 챗봇: 가족 데이터가 아니다. 권한은 require_operator("admin")(admin_knowledge/tests 에서 401·403 확인)
     ("POST", "/admin/knowledge/ask"),
+    # 검색 색인 점검(읽기 전용): 모델 이름과 모델별 조각 개수만 돌려주고 내용·가족 그룹 id 는 싣지 않는다. 권한은 require_operator("admin")
+    # (ai_assistant/knowledge/tests/test_index_health.py 의 test_status_api_requires_operator 에서 401·403 확인)
+    ("GET", "/ai-assistant/knowledge/index-status"),
     # 운영 관리자 조회 경로도 가족 데이터가 아니다(요청 지표·오류 이벤트). 권한은 require_operator("admin") 허용 목록이 정한다
     # (ops_admin/tests 에서 401·403 확인)
     ("GET", "/admin/ops/summary"),
@@ -458,6 +461,26 @@ CROSS = [
     ("GET", "/family-chat/unread", {"params": {"room_id": "{direct_room_id}"}}, (403, 404)),
     ("GET", "/family-chat/photos/{attachment_id}", {}, (403, 404)),
     ("GET", "/family-chat/photos/{attachment_id}", {"params": {"size": "thumb"}}, (403, 404)),
+    ("GET", "/family-chat/photos/{attachment_id}/library", {}, (403, 404)),
+    (
+        "POST",
+        "/family-chat/photos/{attachment_id}/check",
+        {
+            "json": {
+                "to": "photo",
+                "reason": "uploader_confirmed_general",
+                "acknowledge": True,
+            },
+            "_setup": ["photo_unsure"],
+        },
+        (403, 404),
+    ),
+    (
+        "POST",
+        "/family-chat/photos/{attachment_id}/exclude",
+        {"_setup": ["photo_in_timeline"]},
+        (403, 404),
+    ),
     ("GET", "/family-chat/media", {"params": {"room_id": "{direct_room_id}"}}, (403, 404)),
     ("GET", "/family-chat/search", {"params": {"q": "{secret}"}}, (200,)),
     (
@@ -708,6 +731,26 @@ def _setup(api, fam: Family, s: dict, name: str) -> None:
     if name == "pin_message":
         r = api.post("/family-chat/pins", json={"message_id": s["message_id"]}, headers=h)
         assert r.status_code == 200, r.text
+    elif (
+        name == "photo_unsure"
+    ):  # 업로더 확인 대상(판별 결과가 애매한 사진)으로 만든다: 방금 올린 pending 은 확인할 수 없다
+        from app.features.family_chat.models import ChatPhotoCheck
+        from app.shared.db import SessionLocal
+
+        with SessionLocal() as db:
+            row = db.get(ChatPhotoCheck, s["attachment_id"])
+            row.status = "unsure"
+            db.commit()
+    elif (
+        name == "photo_in_timeline"
+    ):  # 타임라인에 보이는(일반 사진으로 확인된) 사진으로 만든다: 빼기의 대조 시험용
+        from app.features.family_chat.models import ChatPhotoCheck
+        from app.shared.db import SessionLocal
+
+        with SessionLocal() as db:
+            row = db.get(ChatPhotoCheck, s["attachment_id"])
+            row.status, row.source = "photo", "manual"
+            db.commit()
     elif name == "allowance_plan":
         from datetime import UTC, datetime, timedelta
 
@@ -1663,8 +1706,18 @@ LLM_CALLER_FILES = {
     "features/schedule/agent/chat.py": "ai_guard.run",
     "features/schedule/agent/suggest.py": "ai_guard.run",
     "features/schedule/call_talk/service.py": "ai_guard.run",
+    "features/weekly_news/generate.py": "ai_guard.run",
     "features/billing/agent.py": "agent_guard.run_turn",
     "features/family_chat/agent.py": "agent_guard.run_turn",
+    # 가족 기능 안에서 LLM 을 부르는 화면 추천(퀴즈): 같은 공통 관문(기능 play_quiz_rec, 별도 한도)을 거친다
+    "features/play/quiz_rec.py": "ai_guard.run",
+    # 메인 AI 채팅 도구 루프: 랭체인 모델(PostChatModel)로 부르고 ask_guarded 안에서 ai_guard.run 을 거친다
+    "features/ai_assistant/knowledge/rag_chat.py": "ai_guard.run",
+}
+# 운영자 전용 LLM 호출: 가족 AI 관문(ai_guard) 대신 라우터가 require_operator("admin") 로 막는다. 가족 데이터를 보내지 않고(현재 숫자 요약과
+# 개인정보를 가린 질문만) 하루 한도는 두지 않기로 했다(2026-11-09 결정, admin_knowledge/service.py). 값은 그 권한을 거는 라우터 파일이다
+OPERATOR_LLM_CALLER_FILES = {
+    "features/admin_knowledge/service.py": "features/admin_knowledge/router.py",
 }
 _OUTBOUND = re.compile(
     r"\bhttpx\.(post|get|put|patch|delete|request|stream|Client|AsyncClient)\b|from httpx import"
@@ -1673,6 +1726,8 @@ _OUTBOUND = re.compile(
 )
 _LLM_USE = re.compile(
     r"complete_json\(|llm\.complete\(|(?<!def )\bask_agent\(|(?<!def )\brun_agent\(|jev(_api)?\.ask\(|local\.complete_json\("
+    # 랭체인 모델로 Claude 를 부르는 곳(랭그래프 도구 루프). 클래스 정의(shared/llm/chat_model.py)는 빼고 만드는 곳만 센다
+    r"|(?<!class )\bPostChatModel\("
 )
 
 
@@ -1709,9 +1764,15 @@ def test_every_llm_caller_goes_through_a_guard():
         and rel not in wrapper
         and not rel.startswith("features/ai_assistant/ingest/")
     }
-    assert callers == set(LLM_CALLER_FILES), callers ^ set(LLM_CALLER_FILES)
+    known = set(LLM_CALLER_FILES) | set(OPERATOR_LLM_CALLER_FILES)
+    assert callers == known, callers ^ known
     for rel, gate in LLM_CALLER_FILES.items():
         assert gate in sources[rel], f"{rel} 에 {gate} 가 없다"
+    for rel, router in OPERATOR_LLM_CALLER_FILES.items():
+        assert 'require_operator("admin")' in sources[router], f"{router} 에 운영자 권한이 없다"
+        assert "ai_guard" not in sources[rel], (
+            f"{rel} 가 가족 관문을 쓰면 LLM_CALLER_FILES 로 옮긴다"
+        )
     # 도구 루프 래퍼(rag_chat)는 ask_guarded 안에서 ai_guard.run 을 부르고, 라우터는 ask_guarded 만 쓴다
     assert "ai_guard.run(" in sources["features/ai_assistant/knowledge/rag_chat.py"]
     assert "rag_chat.ask(" not in sources["features/ai_assistant/service.py"]

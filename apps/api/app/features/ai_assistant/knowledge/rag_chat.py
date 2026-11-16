@@ -254,7 +254,17 @@ def _run_tool(
     db: Session, group_id: str, name: str, args: dict, user_id: str | None = None
 ) -> dict:
     if name == "search_knowledge":
-        allowed = {"query", "top_k", "kind_label", "date_from", "date_to", "member"}
+        allowed = {
+            "query",
+            "top_k",
+            "kind_label",
+            "date_from",
+            "date_to",
+            "member",
+            "uploaded_from",
+            "uploaded_to",
+            "uploaded_by",
+        }
         return tools.search_knowledge(
             db,
             group_id,
@@ -269,7 +279,7 @@ def _run_tool(
             include_sensitive=settings.chat_include_sensitive,
         )
     if name == "list_items":
-        allowed = {"kind_label", "limit"}
+        allowed = {"kind_label", "limit", "uploaded_from", "uploaded_to", "uploaded_by"}
         return tools.list_items(
             db,
             group_id,

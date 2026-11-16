@@ -23,8 +23,24 @@ class Recording:
     llm_calls: int = 0  # 도구 루프의 모델 호출(일정 분류 호출은 세지 않는다)
     tokens_in: int = 0
     tokens_out: int = 0
-    step_limit_hit: bool = False
+    # 단계(stage)별로 도달·강제 최종 답 여부를 따로 둔다(중첩 Agent 가 서로 섞이지 않게). 같은 단계가 여러 번 돌면 하나라도 있으면 True
+    stage_limits: dict[str, dict[str, bool]] = field(default_factory=dict)
     started: float = field(default_factory=time.monotonic)
+
+    @property
+    def step_limit_reached(self) -> bool:
+        """어느 단계든 실행이 단계 상한에 닿았다."""
+        return any(v["reached"] for v in self.stage_limits.values())
+
+    @property
+    def forced_final(self) -> bool:
+        """어느 단계든 상한 때문에 도구 없이 최종 답을 받았다(상한 도달의 하위 사실)."""
+        return any(v["forced_final"] for v in self.stage_limits.values())
+
+    @property
+    def step_limit_hit(self) -> bool:
+        """옛 이름(하위 호환). `step_limit_reached` 와 같다."""
+        return self.step_limit_reached
 
     def latency_ms(self) -> int:
         return int((time.monotonic() - self.started) * 1000)
@@ -38,7 +54,8 @@ class Recording:
             "tokens_in": self.tokens_in,
             "tokens_out": self.tokens_out,
             "latency_ms": self.latency_ms(),
-            "step_limit_hit": self.step_limit_hit,
+            "step_limit_reached": self.step_limit_reached,
+            "forced_final": self.forced_final,
         }
 
 
@@ -108,10 +125,14 @@ def observe_tools(stage: str, tool_calls: list[dict], outputs: list[tuple[str, s
         rec.calls.append(entry)
 
 
-def observe_step_limit(stage: str, hit: bool) -> None:
+def observe_step_limit(stage: str, reached: bool, forced_final: bool = False) -> None:
+    """도구 루프 하나가 끝날 때. `reached`: 단계 상한에 닿았다. `forced_final`: 그 때문에 도구 없이 최종 답을 받았다(닿은 경우에만)."""
     rec = _CURRENT.get()
-    if rec is not None and stage and hit:
-        rec.step_limit_hit = True
+    if rec is None or not stage:
+        return
+    entry = rec.stage_limits.setdefault(stage, {"reached": False, "forced_final": False})
+    entry["reached"] = entry["reached"] or bool(reached or forced_final)
+    entry["forced_final"] = entry["forced_final"] or bool(forced_final)
 
 
 def observe_call(stage: str, name: str, args: Mapping[str, Any]) -> None:

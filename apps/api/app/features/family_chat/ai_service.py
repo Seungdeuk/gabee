@@ -375,6 +375,37 @@ def room_context(
     return ctx
 
 
+CHAT_DIGEST_MAX_MESSAGES = (
+    500  # 최근 며칠 대화를 읽을 때 DB 에서 가져오는 메시지 수 상한(글자 수 한도가 따로 있다)
+)
+
+
+def chat_digest(db: Session, group_id: str, days: int) -> _Context | None:
+    """가족 전체방(1:1 방·개인 AI 방 제외)의 최근 days 일 대화를 분석과 같은 규칙으로 가명화해서 돌려준다.
+    글자 수 한도(`ai_analysis_max_chars`)를 넘으면 오래된 메시지부터 뺀다. AI 로 보낼 만한 메시지(MIN_MESSAGES 이상)가 없으면 None.
+    돌려받은 쪽이 끝나면 close() 로 대응표를 지워야 한다. 호출한 사람의 권한과 무관한 가족 공용 재료이므로 요청한 사람 표시는 하지 않는다."""
+    cutoff = datetime.now(UTC) - timedelta(days=days)
+    rows = [
+        (m, name)
+        for m, name in repo.recent_messages(db, group_id, CHAT_DIGEST_MAX_MESSAGES)
+        if (m.created_at if m.created_at.tzinfo else m.created_at.replace(tzinfo=UTC)) >= cutoff
+    ]
+    if len(rows) < MIN_MESSAGES:
+        return None
+    rows, extra_names = _with_cards(db, rows)
+    ctx = _build_context(
+        rows,
+        repo.member_names(db, group_id),
+        ANALYSIS,
+        settings.ai_analysis_max_chars,
+        extra_names,
+    )
+    if not ctx.sendable:
+        ctx.close()
+        return None
+    return ctx
+
+
 def _prepare(
     db: Session,
     group_id: str,

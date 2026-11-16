@@ -6,3 +6,11 @@
 export function leaveToPlayMain(router) {
   router.dismissTo("/play");
 }
+
+/**
+ * 폭탄 열린 방 목록(대기실)으로 간다. 로비 X·방 나가기에서 쓴다. 목록 화면의 X 는 leaveToPlayMain 으로 한 번에 메인까지 닫는다.
+ * @param {{ replace: (href: string) => void }} router
+ */
+export function leaveToRoomList(router) {
+  router.replace("/play/bomb-lobby");
+}

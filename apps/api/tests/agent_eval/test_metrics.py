@@ -126,7 +126,8 @@ def test_efficiency_uses_nearest_rank_percentiles():
             steps=1,
             tokens_in=10,
             tokens_out=5,
-            step_limit_hit=ms == 400,
+            step_limit_reached=ms >= 300,
+            forced_final=ms == 400,
         )
         for ms in (100, 200, 300, 400)
     ]
@@ -135,7 +136,10 @@ def test_efficiency_uses_nearest_rank_percentiles():
     assert (e.latency_p50_ms, e.latency_p95_ms) == (200, 400)
     assert (e.llm_calls_mean, e.steps_mean) == (2, 1)
     assert (e.tokens_in_total, e.tokens_out_total) == (40, 20)
-    assert (e.step_limit.k, e.step_limit.n) == (1, 4)
+    assert (e.step_limit.k, e.step_limit.n) == (2, 4)  # 단계 상한에 닿은 실행
+    assert (e.forced_final.k, e.forced_final.n) == (1, 4)  # 그중 도구 없이 최종 답을 받은 실행
+    rows = dict(s.as_rows())
+    assert rows["step_limit_rate"] == 0.5 and rows["forced_final_rate"] == 0.25
 
 
 def test_breakdown_by_category_and_scenario_includes_legacy():

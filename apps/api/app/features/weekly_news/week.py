@@ -77,3 +77,10 @@ def ready_to_generate(week_start: date, now: datetime) -> bool:
         return True
     ready_at = datetime.combine(week_end_of(week_start), time(READY_HOUR), tzinfo=local_now.tzinfo)
     return local_now >= ready_at
+
+
+def issue_of(week_start: date) -> tuple[int, int]:
+    """신문 호수: (ISO 연도, ISO 주 번호). 서버가 정한 주(월요일)의 ISO 주차라서 연말·연초에는 달력 연도와 다를 수 있다
+    (예: 2025-12-29 주는 2026 년 1호)."""
+    iso = week_start.isocalendar()
+    return iso.year, iso.week

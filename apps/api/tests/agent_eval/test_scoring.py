@@ -380,9 +380,9 @@ def test_violation_labels_do_not_echo_forbidden_text():
 
 def test_step_limit_is_a_failure_type_only_when_the_case_failed():
     case = _case({"tools": {"required": ["register"]}})
-    assert _score(case, Observation(step_limit_hit=True)).failure_types == (
+    assert _score(case, Observation(step_limit_reached=True)).failure_types == (
         "missing_tool",
         "step_limit",
     )
-    ok = _score(case, Observation(calls=[_call("register")], step_limit_hit=True))
+    ok = _score(case, Observation(calls=[_call("register")], step_limit_reached=True))
     assert ok.passed and ok.failure_types == ()

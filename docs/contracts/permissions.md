@@ -33,6 +33,10 @@
 - 사용자가 직접 선택하지 않은 그룹(`active_group_id`가 아닌 그룹)에 대해 쓰기 작업을 하려면, 왜 그 그룹을 대상으로 하는지와 `ensure_group_member` 검사를 통과했는지를 호출 지점에서 분명히 해야 한다.
 - 이 규칙을 지키지 않고 Service를 직접 호출하는 PR은 리뷰에서 반려한다.
 
+## 지출 수정·삭제 규칙 (가계)
+- **수정**(`PATCH /billing/expenses/{id}`와 AI 에이전트의 수정 제안·실행이 같은 규칙): 내가 낸 지출만, 정산하기를 마치기 전만, 그 달(날짜를 옮기면 옮기려는 달도)에 송금 완료 표시가 없을 때만. 코드는 `billing/service.py`의 `open_own_expense`·`plan_expense_update`.
+- **삭제**(`DELETE /billing/expenses/{id}`, 소프트 삭제): 수정과 **같은 규칙**이다(내가 낸 지출만, 정산하기 전만, 그 달에 송금 완료 표시가 없을 때만). 어긋나면 400 `expense_not_deletable`, 없는 지출이나 다른 가족의 지출은 404. 이전에는 같은 가족이면 누구나 지울 수 있었다(2026-11-11 변경). AI 에이전트의 삭제 제안·실행도 같은 규칙이다. 코드는 `delete_my_expense`.
+
 ## 가입 승인 규칙
 
 - **초대 코드 발급·폐기와 가입 요청 승인·거절은 가족 관리자(`group_members.role` 이 owner/admin)만** 할 수 있다(`join_service.require_manager`). 권한은 요청값이 아니라 DB 의 role 로만 판단하고, 승인된 사람은 항상 member 로 들어간다. **익명(레거시 토큰) 계정도 예외 없이** 초대 코드(레거시 코드 포함)로는 승인 대기 요청만 만들 수 있고, 승인 전에는 `group_members` 행이 없어 모든 그룹 API 가 막힌다(`no_group`/`not_member`). 다른 그룹의 가입 요청은 404 로 존재 자체를 숨긴다. 자세한 내용은 `docs/features/family-group.md`.

@@ -104,6 +104,11 @@ class Settings(BaseSettings):
     # 서비스 관리(/admin/service/*)와 운영 관리(/admin/ops/*)를 함께 연다(2026-11-06 결정: 권한은 통합관리자 하나).
     # 실제 id 는 환경변수(.env·비밀 관리)에만 두고 코드·Git·문서에 넣지 않는다.
     admin_user_ids: str = ""
+    # 관리자 챗봇 실행 기록을 LangSmith 로 보낼지(기본 꺼짐). 이 챗봇의 실행에만 붙이고 서버 전체 추적(LANGSMITH_TRACING)은 쓰지 않는다.
+    # 켜면 Claude 에게 보낸 글(가린 질문, 답 규칙·FAQ, 도구가 준 숫자)과 답이 LangSmith 서버에 저장된다. 키는 .env 에만 둔다.
+    admin_langsmith_enabled: bool = False
+    admin_langsmith_api_key: str = ""
+    admin_langsmith_project: str = "gabee-admin-chatbot"
     # 구독·통신비 서버 API(/billing/subscriptions*) 사용 여부(기본 꺼짐). 지갑 탭에서 구독 기능을 빼면서 닫았다. 꺼져 있으면 403 subscription_disabled 로 막고,
     # 일정 추천도 구독 결제일을 읽지 않는다. 테이블과 데이터는 그대로 둔다.
     subscription_api_enabled: bool = False
@@ -166,7 +171,16 @@ class Settings(BaseSettings):
     ai_call_talk_cooldown_seconds: int = 0
     ai_call_talk_max_calls_per_user_per_day: int = 10
     ai_call_talk_max_calls_per_group_per_day: int = 30
+    # 주간 가족 뉴스 생성(구성원당 한 주에 한 번 저장하므로 하루 한도는 재시도 여유): 요청 간격 10초, 구성원 하루 2번(가족 10번)
+    weekly_news_model: str = ""  # 비우면 llm_model(Haiku)
+    ai_news_cooldown_seconds: int = 10
+    ai_news_max_calls_per_user_per_day: int = 2
+    ai_news_max_calls_per_group_per_day: int = 10
     # 먼저 권해드려요 카드 공급(미리 만들어 저장): 하루 3번(5개씩 15개), 요청 간격 5초
+    # 골든벨 가비 추천: 하루 한 번 만들어 당일 자정까지 캐시한다. 실패·결과 없음일 때만 다시 불러서 별도 한도로 센다(ai_guard.register_bucket)
+    ai_play_quiz_rec_cooldown_seconds: int = 5
+    ai_play_quiz_rec_max_calls_per_user_per_day: int = 3
+    ai_play_quiz_rec_max_calls_per_group_per_day: int = 5
     ai_schedule_card_cooldown_seconds: int = 5
     ai_schedule_card_max_calls_per_user_per_day: int = 3
     ai_schedule_card_max_calls_per_group_per_day: int = 15

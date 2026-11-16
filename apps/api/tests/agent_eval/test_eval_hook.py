@@ -4,7 +4,7 @@ from datetime import datetime
 from types import SimpleNamespace
 
 import pytest
-from langchain_core.messages import AIMessage
+from langchain_core.messages import AIMessage, HumanMessage
 
 from app.features.schedule.agent import chat
 from app.shared.llm import eval_hook, tool_graph
@@ -17,8 +17,10 @@ class ScriptedModel:
 
     def __init__(self, *replies):
         self.replies = list(replies)
+        self.kwargs = []  # 호출마다 받은 옵션(no_tools 등)
 
-    def invoke(self, _messages):
+    def invoke(self, _messages, **kwargs):
+        self.kwargs.append(kwargs)
         return self.replies.pop(0)
 
 
@@ -98,13 +100,21 @@ def test_records_calls_args_stage_errors_tokens_and_steps():
     assert rec.calls[0]["args"] == {"title": "치과", "when.date": "2026-11-12"}  # 중첩 인자를 편다
     assert (rec.steps, rec.llm_calls) == (3, 3)
     assert (rec.tokens_in, rec.tokens_out) == (10 + 10 + 7, 5 + 5 + 3)
-    assert rec.step_limit_hit is False
+    assert (rec.step_limit_reached, rec.forced_final) == (False, False)
 
 
-def test_step_limit_is_recorded_only_when_the_loop_was_cut_off():
+def test_step_limit_is_recorded_when_the_loop_hit_the_limit():
+    model = ScriptedModel(_tool_reply(("a", "lookup", {})), _final("최종"))
+    run = tool_graph.Run(
+        model=model,
+        handle=lambda calls: tool_graph.ToolRound([(calls[0]["id"], "결과", False)]),
+        max_steps=2,
+        stage="main",
+    )
     with eval_hook.recording() as rec:
-        run, _ = _go(stage="main", max_steps=2)
-    assert not run.finished and rec.step_limit_hit is True
+        tool_graph.run_graph(run, [HumanMessage("질문")])
+    assert run.finished and run.forced_final and model.kwargs == [{}, {"no_tools": True}]
+    assert (rec.step_limit_reached, rec.forced_final) == (True, True)
 
 
 def test_recording_copies_arguments_and_reports_observation_fields():
@@ -282,5 +292,5 @@ def test_step_limit_is_not_flagged_when_the_model_answers_directly():
         model=model, handle=lambda calls: tool_graph.ToolRound([]), max_steps=1, stage="main"
     )
     with eval_hook.recording() as rec:
-        tool_graph.run_graph(run, [])
-    assert run.finished and rec.step_limit_hit is False
+        tool_graph.run_graph(run, [HumanMessage("질문")])
+    assert run.finished and (rec.step_limit_reached, rec.forced_final) == (False, False)
