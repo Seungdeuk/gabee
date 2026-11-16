@@ -1695,6 +1695,8 @@ LLM_CALLER_FILES = {
     "features/family_chat/agent.py": "agent_guard.run_turn",
     # 가족 기능 안에서 LLM 을 부르는 화면 추천(퀴즈): 같은 공통 관문(기능 play_quiz_rec, 별도 한도)을 거친다
     "features/play/quiz_rec.py": "ai_guard.run",
+    # 메인 AI 채팅 도구 루프: 랭체인 모델(PostChatModel)로 부르고 ask_guarded 안에서 ai_guard.run 을 거친다
+    "features/ai_assistant/knowledge/rag_chat.py": "ai_guard.run",
 }
 # 운영자 전용 LLM 호출: 가족 AI 관문(ai_guard) 대신 라우터가 require_operator("admin") 로 막는다. 가족 데이터를 보내지 않고(현재 숫자 요약과
 # 개인정보를 가린 질문만) 하루 한도는 두지 않기로 했다(2026-11-09 결정, admin_knowledge/service.py). 값은 그 권한을 거는 라우터 파일이다
@@ -1708,6 +1710,8 @@ _OUTBOUND = re.compile(
 )
 _LLM_USE = re.compile(
     r"complete_json\(|llm\.complete\(|(?<!def )\bask_agent\(|(?<!def )\brun_agent\(|jev(_api)?\.ask\(|local\.complete_json\("
+    # 랭체인 모델로 Claude 를 부르는 곳(랭그래프 도구 루프). 클래스 정의(shared/llm/chat_model.py)는 빼고 만드는 곳만 센다
+    r"|(?<!class )\bPostChatModel\("
 )
 
 
