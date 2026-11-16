@@ -63,7 +63,9 @@ def _run(config: RunnableConfig) -> Run:
 def _model(state: State, config: RunnableConfig) -> dict:
     run = _run(config)
     run.steps += 1
-    reply = run.model.invoke(state["messages"], config)  # config 를 넘겨야 랭스미스에 모델 호출이 한 줄로 남는다
+    reply = run.model.invoke(
+        state["messages"], config
+    )  # config 를 넘겨야 랭스미스에 모델 호출이 한 줄로 남는다
     if not reply.tool_calls:
         run.answer = text_of(reply)
     return {"messages": [reply]}
