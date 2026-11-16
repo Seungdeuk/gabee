@@ -879,6 +879,7 @@ def _tools_checked_of(item: Item) -> bool:
         return bool(tools.required or tools.forbidden) or item.checks.tool_mode in (
             "exact",
             "any_of",
+            "all_of",
             "none",
             "main_set",
         )

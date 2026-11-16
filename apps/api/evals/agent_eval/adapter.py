@@ -8,6 +8,7 @@
 - `expect_in_proposal`: 제안 요약을 공백으로 이어 붙인 글에 부분 문자열로 있어야 한다(쉼표를 무시하지 않는다)
 - `tool_optional`: 도구 호출 여부를 채점하지 않는다(`tool_any`·`tool` 보다 우선)
 - `tool_any`: 열거한 도구 중 하나라도 불렀으면 통과
+- `tool_all`: 열거한 도구를 모두 불러야 통과(`tool_any` 다음, `tool` 보다 우선. 새 형식의 `expect.tools.required` 로 옮긴다)
 - 도구가 없고 선택도 아닌 정산 사례: 어떤 도구도 부르지 않아야 한다
 - 메인 사례: `main_tools` 가 있으면 부른 `ask_*` 도구 집합이 정확히 같아야 하고(없으면 도구를 채점하지 않는다)
 - `skip_tool_check`: 기존 실행기는 읽지 않는다(`tests/test_tab_agent_eval_cases.py` 가 도구 출력 검증을 건너뛰는 표시다). 채점에 영향이 없다.
@@ -41,6 +42,7 @@ KNOWN_KEYS = frozenset(
         "tool",
         "tool_args",
         "tool_any",
+        "tool_all",
         "tool_optional",
         "skip_tool_check",
         "main_tools",
@@ -56,7 +58,7 @@ KNOWN_KEYS = frozenset(
         "known_gap",
     }
 )
-ToolMode = Literal["exact", "optional", "any_of", "none", "main_set", "unscored"]
+ToolMode = Literal["exact", "optional", "any_of", "all_of", "none", "main_set", "unscored"]
 COMPONENTS = ("can_answer", "tool", "text", "proposals")
 
 
@@ -72,6 +74,7 @@ class LegacyChecks:
     tool_mode: ToolMode
     tool: str | None
     tool_any: tuple[str, ...]
+    tool_all: tuple[str, ...]
     main_tools: tuple[str, ...] | None
     expect_any: tuple[str, ...]
     not_endswith: tuple[str, ...]
@@ -131,6 +134,8 @@ def _tool_mode(raw: Mapping[str, Any]) -> ToolMode:
         return "optional"
     if raw.get("tool_any"):
         return "any_of"
+    if raw.get("tool_all"):
+        return "all_of"
     return "exact" if raw.get("tool") else "none"
 
 
@@ -144,6 +149,8 @@ def _convert(raw: Mapping[str, Any]) -> LegacyCase:
     required: list[str] = []
     if mode == "exact":
         required = [raw["tool"]]
+    elif mode == "all_of":
+        required = list(raw["tool_all"])
     elif mode == "main_set":
         required = list(raw["main_tools"])
     setup: dict[str, Any] = {"history": list(raw.get("history", []))}
@@ -162,6 +169,7 @@ def _convert(raw: Mapping[str, Any]) -> LegacyCase:
         tool_mode=mode,
         tool=raw.get("tool"),
         tool_any=tuple(raw.get("tool_any", ())),
+        tool_all=tuple(raw.get("tool_all", ())),
         main_tools=tuple(raw["main_tools"]) if raw.get("main_tools") is not None else None,
         expect_any=tuple(raw.get("expect_any", ())),
         not_endswith=tuple(raw.get("expect_not_endswith", ())),
@@ -224,6 +232,9 @@ def _tool_verdict(checks: LegacyChecks, used: list[str]) -> tuple[bool, set[str]
     if mode == "any_of":
         ok = any(t in used for t in checks.tool_any)
         return ok, set() if ok else {"missing_tool"}
+    if mode == "all_of":
+        ok = all(t in used for t in checks.tool_all)
+        return ok, set() if ok else {"missing_tool"}
     if mode == "exact":
         ok = checks.tool in used
         return ok, set() if ok else {"missing_tool"}
@@ -279,7 +290,7 @@ def judge(legacy: LegacyCase, obs: Observation, common: Security | None = None) 
         # v2: 기존 도구 모드(정확히·하나라도·없어야 함·메인 집합)는 도구 선택을 실제로 판정한다. 일반 사례로는 필수·금지가
         # 비어 보여도(any_of·none) 공허한 판정이 아니다. optional·unscored 만 도구를 채점하지 않는다.
         tools_checked=generic.tools_checked
-        or ck.tool_mode in ("exact", "any_of", "none", "main_set"),
+        or ck.tool_mode in ("exact", "any_of", "all_of", "none", "main_set"),
     )
     if (
         obs.step_limit_reached and not result.passed

@@ -304,18 +304,19 @@ def _answer_text(legacy: LegacyCase) -> str:
     raise ScriptError(f"{case.id}: 기대 문구와 금지 조건이 맞물려 기본 답을 만들 수 없다")
 
 
-def _billing_tool(legacy: LegacyCase) -> ToolUse | None:
+def _billing_tools(legacy: LegacyCase) -> list[ToolUse]:
     ck = legacy.checks
     if ck.tool_mode == "exact":
-        return ToolUse(str(ck.tool), dict(ck.tool_args))
+        return [ToolUse(str(ck.tool), dict(ck.tool_args))]
     if ck.tool_mode == "any_of":
-        return ToolUse(ck.tool_any[0], dict(ck.tool_args))
-    return None  # optional·none: 도구를 부르지 않는다
+        return [ToolUse(ck.tool_any[0], dict(ck.tool_args))]
+    if ck.tool_mode == "all_of":  # 모두 불러야 하므로 열거한 도구를 차례로 부른다
+        return [ToolUse(name, dict(ck.tool_args)) for name in ck.tool_all]
+    return []  # optional·none: 도구를 부르지 않는다
 
 
 def _billing_steps(legacy: LegacyCase, text: str) -> list[Reply]:
-    tool = _billing_tool(legacy)
-    return [*([call(tool.name, tool.args)] if tool else []), say(text)]
+    return [*(call(t.name, t.args) for t in _billing_tools(legacy)), say(text)]
 
 
 def _main_billing_steps(legacy: LegacyCase, text: str) -> list[Reply]:
@@ -341,6 +342,12 @@ def default_script(legacy: LegacyCase) -> Script:
     }
     if "ask_billing" in wanted:
         script["billing"] = _main_billing_steps(legacy, text)
+    if (
+        "ask_schedule" in wanted
+    ):  # 일정·가족채팅 하위 에이전트는 도구 없이 글로만 답하는 대본이면 연결 시험에 충분하다
+        script["schedule"] = [say(text)]
+    if "ask_family_chat" in wanted:
+        script["family_chat"] = [say(text)]
     return script
 
 
