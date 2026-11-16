@@ -53,6 +53,81 @@ def test_period_is_widened_by_one_day():
     assert (wide.start, wide.end) == (date(2026, 10, 28), date(2026, 10, 30))
 
 
+NOV11 = date(2026, 11, 11)  # 수요일
+
+
+@pytest.mark.parametrize(
+    "text, start, end",
+    [
+        ("낼 뭐 있어?", "2026-11-12", "2026-11-12"),
+        ("낼은 뭐 해?", "2026-11-12", "2026-11-12"),
+        ("낼모레 약속", "2026-11-13", "2026-11-13"),
+        ("담주 일정 한번에 보여줘", "2026-11-16", "2026-11-22"),
+        ("담주 수요일에 병원 예약 잡아줘", "2026-11-18", "2026-11-18"),
+        ("병언 예약 잡아줘 담주 수요일 열시에요", "2026-11-18", "2026-11-18"),
+        ("담주 화욜 두시에 은행 갔다와야 함", "2026-11-17", "2026-11-17"),
+        ("일욜에 뭐 있었나?", "2026-11-15", "2026-11-15"),
+        ("담달 일정 알려줘", "2026-12-01", "2026-12-31"),
+        ("낼 세시에 엄마랑 그거 하기로 했어 아 맞다 엄마 오늘 몇시에 들어오셔?", "2026-11-11", "2026-11-12"),
+    ],
+)
+def test_colloquial_period_words(text, start, end):
+    assert period.extract(text, NOV11) == Period(date.fromisoformat(start), date.fromisoformat(end))
+
+
+@pytest.mark.parametrize("text", ["보낼 편지 준비", "해낼 수 있어", "이겨낼 거야", "낼름 먹었어"])
+def test_slang_does_not_match_inside_other_words(text):
+    assert period.extract(text, NOV11) is None
+
+
+@pytest.mark.parametrize(
+    "text, start",
+    [
+        ("5월 28일에 뭐 했더라?", "2026-05-28"),  # 과거형 → 지난 날짜
+        ("5월 28일 저녁에 모임 잡아줘", "2027-05-28"),  # 미래형 → 다가올 날짜
+        ("8월에 여행 가자", "2027-08-01"),
+        ("10월 3일에 뭐 했지?", "2026-10-03"),
+        ("12월 25일 약속 잡아줘", "2026-12-25"),
+    ],
+)
+def test_year_follows_tense(text, start):
+    got = period.extract(text, NOV11)
+    assert got.start == date.fromisoformat(start) and not got.also and got.note == ""
+
+
+def test_year_without_tense_picks_nearer_year_with_guide_note():
+    march = period.extract("3월 일정 알려줘", NOV11)  # 2027-03 이 더 가깝다
+    assert (march.start, march.end) == (date(2027, 3, 1), date(2027, 3, 31))
+    assert "2026년 3월이 필요하시면 '올해'" in march.note and not march.also
+    sept = period.extract("9월 일정 알려줘", NOV11)  # 2026-09 이 더 가깝다
+    assert (sept.start, sept.end) == (date(2026, 9, 1), date(2026, 9, 30))
+    assert "2027년 9월이 필요하시면 '내년'" in sept.note
+
+
+def test_year_without_tense_in_the_middle_sends_both_years():
+    got = period.extract("5월 28일 일정 알려줘", NOV11)  # 과거 -167일, 미래 +198일: 중간이라 둘 다
+    assert got.start == date(2026, 5, 28) and got.also == ((date(2027, 5, 28), date(2027, 5, 28)),)
+    assert got.contains(date(2026, 5, 28)) and got.contains(date(2027, 5, 28))
+    assert not got.contains(date(2026, 12, 1))
+    wide = got.widened()
+    assert wide.contains(date(2027, 5, 29)) and "또는" in wide.label()
+    assert "모두 보여 준다" in got.note
+
+
+def test_select_for_prompt_keeps_events_of_both_years():
+    now = datetime(2026, 11, 11, 10, tzinfo=UTC)
+    both = period.extract("5월 28일 일정 알려줘", NOV11)
+
+    class E:
+        def __init__(self, day):
+            self.starts_at = datetime.combine(day, datetime.min.time(), tzinfo=UTC)
+
+    events = [E(date(2026, 5, 28)), E(date(2027, 5, 28)), E(date(2026, 12, 1))]
+    shown, omitted = reader.select_for_prompt(events, now, both)
+    assert [e.starts_at.date() for e in shown] == [date(2026, 5, 28), date(2027, 5, 28)]
+    assert omitted == 0
+
+
 def _make(client, family_ids, titles_days):
     user_id, group_id = family_ids
     now = datetime.now(UTC)
@@ -125,3 +200,20 @@ def test_agent_sends_only_period_events_titles_only(client, family_ids, monkeypa
     assert "문장에서 읽은 기간" in calls[0]
     assert "오늘 치과" in calls[1] and "멀리 있는 일정" in calls[1]  # 기간이 없으면 넓게(1년 안)
     assert "기간을 알 수 없어" in calls[1]
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "이불 꺼내는 거 담주 월욜로 옮겨줘",
+        "가족 나들이 담주로 미뤄줘",
+        "은행 방문 25일로 옮길게",
+        "화요일 팀회의 열한시로 바꿔줘",
+    ],
+)
+def test_move_sentences_do_not_filter_the_list_by_date(text):
+    assert period.extract_for_prompt(text, NOV11) is None  # 옮길 날짜가 대상 일정을 걸러내지 않는다
+
+
+def test_other_sentences_still_filter_by_date():
+    assert period.extract_for_prompt("낼 뭐 있어?", NOV11) == period.extract("낼 뭐 있어?", NOV11)

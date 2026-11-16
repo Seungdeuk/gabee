@@ -18,6 +18,7 @@ from app.features.schedule.schemas import EventCreate
 from app.features.schedule.timeutil import local_tz
 from app.shared.errors import bad_request
 
+from . import reader
 from .members import Member
 from .schemas import AgentResponse, Card, Draft, PendingAction
 
@@ -197,9 +198,9 @@ def _created(db: Session, user_id: str, group_id: str, draft: Draft, members: li
             **({"already": True} if already else {}),
         },
     )
-    return AgentResponse(
-        intent="register", text="이미 있는 일정이에요." if already else "등록했어요.", cards=[card]
-    )
+    named = reader.event_text(event)
+    text = f"{named} 일정이 이미 있어요." if already else f"{named} 일정을 등록했어요."
+    return AgentResponse(intent="register", text=text, cards=[card])
 
 
 def respond(

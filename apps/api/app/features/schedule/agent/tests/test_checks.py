@@ -76,12 +76,12 @@ def test_mark_appointment_and_todo_with_matching_words(client, setup, fake):
     chore = _new(client, a, "세탁물 찾기", kind=2)
     fake.data = _data("mark", visit["id"])
     body = _say(client, a, "치과 확인했어").json()
-    assert body["intent"] == "check" and body["text"] == "'치과' 확인했어요"  # 약속은 확인
+    assert body["intent"] == "check" and body["text"].endswith("'치과' 확인했어요")  # 약속은 확인, 어떤 일정인지 날짜와 함께
     assert body["cards"][0]["data"]["events"][0]["checked"] is True
     assert body["pending_action"] is None  # 확인 카드를 거치지 않는다
     fake.data = _data("mark", chore["id"])
     assert (
-        _say(client, a, "세탁물 찾기 다 했어").json()["text"] == "'세탁물 찾기' 완료했어요"
+        _say(client, a, "세탁물 찾기 다 했어").json()["text"].endswith("'세탁물 찾기' 완료했어요")
     )  # 할 일은 완료
     assert _checked(client, a) == {"치과": True, "세탁물 찾기": True}
     assert len(fake.calls) == 2
@@ -96,7 +96,7 @@ def test_mark_several_and_unmark(client, setup, fake):
     assert "'치과' 확인했어요" in text and "'장보기' 완료했어요" in text
     fake.data = _data("unmark", one["id"])
     body = _say(client, a, "치과 확인 취소해줘").json()
-    assert body["text"] == "'치과' 확인을 취소했어요"
+    assert body["text"].endswith("'치과' 확인을 취소했어요")
     assert _checked(client, a) == {"치과": False, "장보기": True}
 
 
@@ -139,7 +139,7 @@ def test_missing_action_falls_back_by_target(client, setup, fake):
     a, _ = setup
     e = _new(client, a, "치과", kind=1)
     fake.data = _data("", e["id"])  # 모델이 action 을 비웠지만 대상이 있다 → mark
-    assert _say(client, a, "치과 확인").json()["text"] == "'치과' 확인했어요"
+    assert _say(client, a, "치과 확인").json()["text"].endswith("'치과' 확인했어요")
     fake.data = _data("")  # 대상도 없다 → 확인하지 않은 일정 보기
     assert "확인하지 않은 일정이 없어요" in _say(client, a, "확인 현황").json()["text"]
 

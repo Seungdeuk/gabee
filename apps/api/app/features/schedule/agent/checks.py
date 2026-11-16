@@ -56,7 +56,7 @@ def _mark(
     for event in picked:
         saved = service.set_checked(db, group_id, user_id, event.id, done)
         updated.append(saved)
-        lines.append(f"'{saved.title}' {_done_text(saved) if done else _undo_text(saved)}")
+        lines.append(f"{reader.event_text(saved)} {_done_text(saved) if done else _undo_text(saved)}")
     return AgentResponse(intent="check", text="\n".join(lines), cards=_card(updated))
 
 
