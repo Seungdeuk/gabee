@@ -120,6 +120,27 @@ def photo_posted(group_id: str, user_id: str, attachment_id: str, data: bytes) -
         logger.warning("chat library photo failed error=%s", type(exc).__name__)
 
 
+# (group_id, attachment_id, status, error) → 사진 판별 상태 기록(family_chat 이 시작할 때 등록한다). status 는 document|unsure|failed 만(일반 사진 확정은 자동으로 하지 않는다)
+CheckRecorder = Callable[[str, str, str, str | None], None]
+_check_recorder: CheckRecorder | None = None
+
+
+def register_check_recorder(fn: CheckRecorder) -> None:
+    """사진 판별 결과를 적는 함수를 등록한다(family_chat 이 시작할 때 부른다)."""
+    global _check_recorder
+    _check_recorder = fn
+
+
+def photo_judged(group_id: str, attachment_id: str, status: str, error: str | None = None) -> None:
+    """자동 판별이 끝났을 때 부른다. 못 적어도 던지지 않는다: 줄이 `pending` 으로 남아 사진은 타임라인에 나오지 않는다(안전한 쪽)."""
+    if _check_recorder is None:
+        return
+    try:
+        _check_recorder(group_id, attachment_id, status, error)
+    except Exception as exc:  # noqa: BLE001  판별 스레드를 깨면 안 된다(종류만 기록)
+        logger.warning("chat library photo check record failed error=%s", type(exc).__name__)
+
+
 def attachment_removed(db: Session, group_id: str, attachment_id: str) -> None:
     """채팅 첨부(메시지)를 지우면 부른다. 그 첨부에서 만든 기록이 있으면 함께 지운다. 실패해도 던지지 않는다."""
     if _on_removed is None:

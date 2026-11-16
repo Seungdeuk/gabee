@@ -633,7 +633,7 @@
 - **위치(GPS)·기기 모델·제조사·소프트웨어 정보는 저장·응답·로그에 남지 않는다**(저장 사본·썸네일은 메타데이터 없음 유지). Pillow 가 EXIF 태그 값을 DEBUG 로그로 찍기 때문에 `photo_service` 가 `PIL` 로거를 WARNING 으로 고정한다.
 - DB: Alembic `4c1f8a62b7d9`(칸 추가만). **배포 순서: 마이그레이션 먼저, 코드 나중** — 칸이 없는 DB 에 새 코드가 먼저 뜨면 스키마 점검이 `family_chat` 전체를 503 으로 막는다(`docs/contracts/db.md`).
 - 시험: `family_chat/tests/test_photo_taken_at.py`, PostgreSQL 마이그레이션 `tests/test_photo_taken_at_pg_e2e.py`(`GABEE_PG16_E2E=1`).
-- 아직 없는 것: 타임라인 조회·화면(T05-b·d), 판별 결과 저장(T05-b0). (앱의 촬영 시각 전송은 아래 T05-c)
+- 아직 없는 것: 타임라인 조회·화면(T05-b·d), 업로더 확인·재시도(T05-b0-2·3). (앱의 촬영 시각 전송은 아래 T05-c, 판별 상태 저장은 아래 T05-b0-1)
 
 ## 사진 촬영 시각 전송 (앱, T05-c, 2026-11-13)
 - 갤러리에서 사진을 고를 때(`pickPhoto.js`) **iOS 에서만** `exif` 를 받아 **촬영 시각 한 값(`takenAt`)만** 꺼내고 EXIF 객체(위치·기기 정보 포함)는 바로 버린다(`takenAt.js` 의 `withTakenAt`이 asset 에서 `exif` 칸을 떼어 낸 새 객체를 돌려준다). 업로드(`api.sendPhoto`)는 `takenAt` 이 있을 때만 폼 `taken_at` 한 칸을 더한다(문자열이고 40자 이하일 때만, 서버 422 로 업로드가 막히지 않게).
@@ -641,4 +641,24 @@
 - **시간대(오프셋)가 확인된 값만 보낸다.** `OffsetTimeOriginal` 이 없거나 틀리면 앱은 한국·UTC 로 추측하지 않고 `taken_at` 을 보내지 않는다(NULL → 보낸 날 기준). 서버가 자기가 읽은 EXIF 를 우선하는 정책과 서버의 "시간대 없으면 한국 시간" 규칙(Q3)은 그대로이고, 이번 앱 규칙은 그보다 보수적이다. 형식·범위(1990-01-01 ~ 현재+1일)가 서버와 같다.
 - **플랫폼별 동작(expo-image-picker 17.0.11 네이티브 소스 기준, 실기기 확인 전):** iOS 는 앱이 다시 인코딩한 업로드 파일에 EXIF 가 없어 앱 값이 실제로 쓰이는 경로다. **안드로이드는 갤러리가 `OffsetTimeOriginal` 을 돌려주지 않아**(`EXIF_TAGS` 에 `DateTimeOriginal` 은 있고 오프셋 태그는 없다) 앱 값이 항상 NULL 이라 `exif` 를 받지 않는다. 안드로이드의 촬영일은 서버가 업로드 파일의 EXIF `DateTimeOriginal` 을 읽어 정한다(서버 규칙: 오프셋이 없으면 한국 시간). 웹은 EXIF 가 없어 항상 NULL 이다.
 - 시험: `apps/mobile/tests/takenat.test.js`.
-- **실기기 확인 필요:** iOS 에서 `quality: 0.8`·다중 선택 때 `DateTimeOriginal`·`OffsetTimeOriginal` 이 실제로 오는지와 오프셋이 없는 사진의 비율, 안드로이드 업로드 파일에 `DateTimeOriginal` 이 남아 서버가 읽는지(`CompressionImageExporter` 의 EXIF 복사). 확인 전에는 화면 문구로 "촬영일"을 단정하지 않는다.
+- **실기기 확인 필요(병합 후에도 남아 있다, 아직 하지 않았다):** iOS 에서 `quality: 0.8`·다중 선택 때 `DateTimeOriginal`·`OffsetTimeOriginal` 이 실제로 오는지와 오프셋이 없는 사진의 비율, 안드로이드 업로드 파일에 `DateTimeOriginal` 이 남아 서버가 읽는지(`CompressionImageExporter` 의 EXIF 복사). 확인 전에는 화면 문구로 "촬영일"을 단정하지 않는다.
+
+## 사진 판별 상태 저장 (서버, T05-b0-1, 2026-11-13)
+- 가족 전체방 사진마다 판별 상태 한 줄(`chat_photo_checks`)을 **첨부·메시지와 같은 트랜잭션에서 `pending` 으로** 만든다(`repository.add_photo_message(with_check=True)`). 1:1 방 사진은 줄이 없다. 저장이 하나라도 실패하면 메시지·첨부·줄이 함께 롤백되고 파일도 지워진다. 판별 작업은 커밋 뒤(`chat_library.photo_posted`)에만 시작하므로 줄이 없는 채로 판별이 도는 경쟁이 없다.
+- 상태: `pending`(판별 전) | `photo`(일반 사진으로 확인) | `document` | `unsure`(애매·업로더 확인 필요) | `failed`. 출처: `auto` | `manual`.
+- **D-13 준수: 자동 판별은 `photo` 를 만들지 못한다.** 판별 결과 → 상태: OCR 문서 또는 Claude 문서(확신 0.7 이상) → `document`, 글자가 안 읽히는 사진(OCR 일반)·애매·Claude 가 일반 사진/낮은 확신 → `unsure`, OCR·Claude 실패 → `failed`(오류 종류 이름만 저장). `record_auto` 가 `photo` 를 거부한다(시험으로 고정).
+- 덮어쓰기 방지: 자동 결과는 조건부 UPDATE 한 번으로 `auto` 줄의 `pending` 만 바꾼다. 중복·늦은 결과는 아무것도 바꾸지 않는다(`document` 만 숨기는 방향이라 `unsure`·`failed`(자동) 위로 올라간다). 사람이 정한 줄(`manual`)과 `photo` 는 자동이 바꾸지 못한다. 결과를 못 적으면 줄이 `pending` 으로 남아 사진은 나오지 않는다(대기열이 가득 차 버려진 사진도 같다 — 재시도는 b0-3).
+- "문서로 저장"(`POST /family-chat/photos/{id}/library`, D-15: 가족 누구나)은 상태를 `document`+`manual` 로 맞춘다(줄이 없는 예전 사진은 새로 만든다). 상태를 못 적으면 문서함 요청도 하지 않는다. 문서→일반 되돌리기는 이 PR 에 없고 정책(D-16) 확정 전까지 막혀 있다.
+- **타임라인에는 `photo` 만 나온다**: 조회 함수 `photo_check_repository.confirmed_photo_ids`(줄 없음·pending·unsure·failed·document·다른 가족은 제외, 조회 오류는 삼키지 않아 호출하는 타임라인이 503 으로 답해야 한다). 타임라인 API 자체는 T05-b.
+- **예전 사진은 줄이 없다 = 처음에는 모두 숨는다.** 기존 사진 재판별은 이 PR 에 없다. 업로더가 일반 사진으로 확인하는 기능은 b0-2 다(그 전에는 어떤 사진도 `photo` 가 되지 않는다).
+- DB: Alembic `d7a41c9e5b02`(새 표 하나, expand). **마이그레이션 먼저, 코드 나중**(2026-11-13 결정: 표가 없을 때 판별 기록만 건너뛰는 하위 기능 분리는 하지 않고 fail-closed 를 유지한다 → 아래 "배포 조건"). 이력 표(`chat_photo_check_events`)와 재시도 칸(`attempts`·`claimed_at`)은 D-16·D-19·D-18 확정 뒤 b0-2·b0-3 에서 추가한다(이번에 두지 않아 되돌리기 어려운 설계를 피했다).
+- 시험: `family_chat/tests/test_photo_checks.py`(업로드 트랜잭션·롤백·삭제 정리·덮어쓰기·수동 저장·격리·fail-closed), `ai_assistant/tests/test_photo_checks_flow.py`(판별 결과 → 상태). PostgreSQL 은 격리 임시 클러스터에서 DDL·모델 일치·연쇄 삭제·동시 기록·왕복(upgrade/downgrade)을 확인했다.
+
+### 배포 조건 (T05-b0-1, 필수 — 공용 DB 반영은 DB 담당자 승인 뒤에만)
+이 변경은 `family_chat` 모델에 새 표(`chat_photo_checks`)를 더하고 업로드가 그 표에 줄을 같은 트랜잭션으로 쓴다. 표가 없는 DB 에 새 코드가 먼저 뜨면 스키마 점검(`shared/schema.py`, `docs/adr/0006-schema-gate-degraded-start.md`)이 `family_chat` 전체를 503(`schema_not_ready`)으로 막는다(데이터는 안전하고 마이그레이션 적용 뒤 바로 복구된다). 그래서 아래 순서를 지킨다. **Claude Code 는 공용 DB 에 직접 마이그레이션을 실행하지 않는다.**
+1. **호환성 확인(배포 전):** 새 리비전은 새 표 하나만 만든다(기존 표·열·데이터 변경 없음, `migration_risk` 위험 대상 아님). 반대 방향도 안전하다: DB 를 먼저 올려도 이전 코드는 새 표를 모르고 그대로 동작한다(업로드·채팅·문서함 변화 없음). `alembic heads` 가 1개인지, `ci-check` 의 `api-postgres`(전체 upgrade·스키마 일치)가 통과인지 확인한다.
+2. **마이그레이션을 코드보다 먼저:** `main` 병합 뒤 통합 때 DB 담당자가 공용 DB PC 에서 Pull Agent(`apps/api/scripts/deploy_agent.py`)를 수동으로 한 번 실행한다(기존 절차 그대로: CI 통과 확인·새 백업·복원 검증·리허설·사후 검증). 그 뒤에 서비스 코드를 배포한다.
+3. **성공 확인:** `alembic current` 가 `d7a41c9e5b02` 이고 `chat_photo_checks` 표(칸 7개, 인덱스 `ix_chat_photo_checks_group_id`, 외래 키 2개 ON DELETE CASCADE)가 있는지, `GET /health/db` 에서 `family_chat` 이 준비 상태인지 본다.
+4. **실패하면 코드 배포를 중단한다:** 마이그레이션이 실패했거나 표가 없으면 새 코드를 올리지 않는다(이미 올렸다면 아래 롤백). 서버는 DB 가 뒤처져도 시작은 하지만 소통 기능이 503 이다.
+5. **배포 후 확인(스모크):** 가족 전체방에 사진 한 장 올리기 → 201 과 목록에 보임, DB 에 그 첨부의 `chat_photo_checks` 줄이 `pending`(이후 판별에 따라 `document`·`unsure`·`failed`)으로 있음, 글 보내기·목록·삭제 정상, 1:1 방 사진은 줄이 없음, 가족 문서함 자동 등록(문서 사진)이 그대로 동작. 어떤 사진도 `photo` 상태가 아니어야 한다(이 PR 에는 `photo` 로 만드는 경로가 없다).
+6. **장애 시 롤백·복구:** (가) 새 코드가 먼저 떠서 소통이 503 이면 → 마이그레이션을 적용한다(코드 롤백 불필요, 즉시 복구). (나) 새 코드에 문제가 있으면 → 이전 코드 이미지로 되돌린다: 표는 남아도 이전 코드는 쓰지 않으므로 무해하고 데이터 손실이 없다(그동안 올라온 사진의 줄은 `pending` 으로 남아 보이지 않을 뿐이다). (다) 표까지 되돌려야 하면 `alembic downgrade 4c1f8a62b7d9` 로 표를 지우지만 저장된 판별 상태가 사라지므로 DB 담당자 승인과 백업 확인 뒤에만 한다(공용 DB 에는 사람이나 Claude Code 가 직접 실행하지 않는다).
