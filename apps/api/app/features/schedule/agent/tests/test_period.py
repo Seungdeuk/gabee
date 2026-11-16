@@ -48,6 +48,80 @@ def test_no_period_means_none(text):
     assert period.extract(text, TODAY) is None
 
 
+# 메인 Agent 가 질문을 ISO 날짜(YYYY-MM-DD)가 든 문장으로 바꿔 일정 Agent 에 넘긴다. 예전에는 날짜 뒤의 요일 글자("09-월요일")를
+# "9월"로 읽어 기간이 2026-09-01 ~ 2026-11-11 로 틀어졌고, 14·15일 일정이 모델 입력에서 빠졌다(T35 stage A schedq-02).
+TUESDAY = date(2026, 11, 10)
+
+
+@pytest.mark.parametrize(
+    "text, start, end",
+    [
+        (  # 실호출 때 메인이 넘긴 문장 그대로
+            "오늘은 2026-11-10(화요일)이야. 이번 주(2026-11-09 월요일부터 2026-11-15 일요일까지) 내 일정을 날짜순으로 알려줘.",
+            "2026-11-09",
+            "2026-11-15",
+        ),
+        (
+            "이번 주(2026-11-09 월요일부터 2026-11-15 일요일까지) 내 일정을 알려줘",
+            "2026-11-09",
+            "2026-11-15",
+        ),
+        ("2026-11-09 월요일부터 2026-11-15 일요일까지", "2026-11-09", "2026-11-15"),
+        ("이번 주(2026-11-09부터 2026-11-15까지) 일정 알려줘", "2026-11-09", "2026-11-15"),
+        ("2026-11-12 일정", "2026-11-12", "2026-11-12"),  # 예전에는 None
+        ("2026-11-12(목요일) 일정", "2026-11-12", "2026-11-12"),
+        ("2026-11-14 가족 외식은 몇 시야?", "2026-11-14", "2026-11-14"),
+    ],
+)
+def test_iso_dates_are_read_as_those_days(text, start, end):
+    assert period.extract(text, TUESDAY) == Period(
+        date.fromisoformat(start), date.fromisoformat(end)
+    )
+
+
+def test_iso_weekday_letters_are_not_read_as_a_month():
+    """날짜 뒤에 붙은 요일 글자("월요일")를 N월로 읽어 9월·11월 같은 달 전체가 잡히면 안 된다."""
+    got = period.extract("2026-11-09 월요일 일정", TUESDAY)
+    assert got == Period(date(2026, 11, 9), date(2026, 11, 9))
+
+
+@pytest.mark.parametrize("text", ["2026-13-45 일정", "2026-02-30 약속"])
+def test_impossible_iso_dates_give_no_period(text):
+    assert period.extract(text, TUESDAY) is None  # 없는 날짜는 기간으로 읽지 않는다(넓게 보낸다)
+
+
+def test_agent_gets_the_family_dinner_and_pending_visit_for_the_rewritten_sentence(
+    client, family_ids
+):
+    """메인이 바꿔 넘긴 문장으로도 그 주의 확정·확정 전 일정이 모델 입력에 모두 들어간다(schedq-02 재현)."""
+    user_id, group_id = family_ids
+    sentence = (
+        "오늘은 2026-11-10(화요일)이야. 이번 주(2026-11-09 월요일부터 2026-11-15 일요일까지) "
+        "내 일정을 날짜순으로 알려줘."
+    )
+    now = datetime(2026, 11, 10, 3, 0, tzinfo=UTC)  # 한국 시간 11월 10일 정오
+    with SessionLocal() as db:
+        for title, day in [
+            ("치과 진료", 11),
+            ("학부모 상담", 12),
+            ("가족 외식", 14),
+            ("할머니 댁 방문", 15),
+            ("다음 주 일정", 20),
+        ]:
+            service.create(
+                db,
+                group_id,
+                user_id,
+                EventCreate(title=title, starts_at=datetime(2026, 11, day, 5, 0, tzinfo=UTC)),
+            )
+        events = reader.read(db, group_id, "personal", now, user_id).events
+    local_today = now.astimezone(reader.local_tz()).date()
+    shown, _ = reader.select_for_prompt(events, now, period.extract(sentence, local_today))
+    titles = [e.title for e in shown]
+    assert {"치과 진료", "학부모 상담", "가족 외식", "할머니 댁 방문"} <= set(titles)
+    assert "다음 주 일정" not in titles
+
+
 def test_period_is_widened_by_one_day():
     wide = Period(date(2026, 10, 29), date(2026, 10, 29)).widened()
     assert (wide.start, wide.end) == (date(2026, 10, 28), date(2026, 10, 30))

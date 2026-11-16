@@ -162,6 +162,9 @@ _SLANG_DAY = (
     (re.compile(r"(?<![가-힣])낼(?=$|[^가-힣]|은|도|부터|까지|쯤|엔|에(?![가-힣]))"), 1),
 )
 _SLANG_MONTH = ((re.compile(r"(?<![가-힣])담달(?![가-힣])"), 1),)
+# ISO 날짜(YYYY-MM-DD). 메인 Agent 가 질문을 이런 문장으로 바꿔 넘긴다. 날짜 뒤에 붙는 요일 표기("(화요일)", " 월요일")까지 한 덩어리로 읽는다:
+# 안 그러면 "09-월요일" 의 "09월"이 9월로, 요일 글자가 이번 주의 하루로 잘못 읽힌다.
+_ISO_DATE = re.compile(r"(?<!\d)(\d{4})-(\d{1,2})-(\d{1,2})(?!\d)(?:\(?[월화수목금토일]요일\)?)?")
 _MONTH_DAY = re.compile(r"(\d{1,2})월\s*(\d{1,2})일")
 _MONTH_ONLY = re.compile(r"(?<!\d)(\d{1,2})월(?!\s*\d{1,2}일)")
 _WEEKDAY = re.compile(r"([월화수목금토일])(?:요일|욜)")  # 화욜·일욜 같은 구어형도
@@ -176,6 +179,16 @@ def extract(text: str, today: date) -> Period | None:
     found: list[Period] = []
     extras: list[tuple[date, date]] = []
     notes: list[str] = []
+
+    for year, month, day in _ISO_DATE.findall(t):  # 없는 날짜(2026-02-30)는 기간으로 읽지 않는다
+        try:
+            iso_day = date(int(year), int(month), int(day))
+        except ValueError:
+            continue
+        found.append(Period(iso_day, iso_day))
+    t = _ISO_DATE.sub(
+        "", t
+    )  # 읽은 날짜는 지워서 아래 규칙이 그 숫자·요일 글자를 다시 읽지 않게 한다
 
     week_offset = next((offset for pattern, offset in _WEEK_WORDS if pattern.search(t)), None)
     if week_offset is None:
