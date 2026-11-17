@@ -66,9 +66,10 @@ def reachable_texts(client: TestClient, world: World, user: str) -> list[str]:
     for room in _get(client, "/family-chat/rooms", headers).json():
         r = _get(client, "/family-chat/messages", headers, room_id=room["id"], limit=LIMIT)
         texts += [m["text"] for m in r.json()]
-    texts += [
-        e["title"] for e in _get(client, "/schedule/events", headers, include_past=True).json()
-    ]
+    events = _get(client, "/schedule/events", headers, include_past=True).json()
+    texts += [e["title"] for e in events]
+    # 장소·메모도 읽힌 글이다: 일정의 비공개 전용 식별값(`EventSpec.private_ids`)이 소유자 밖에 읽히는지 본다
+    texts += [e[key] for e in events for key in ("place", "memo") if e.get(key)]
     texts += [t["title"] for t in _get(client, "/family-chat/todos", headers).json()]
     texts += [r["title"] for r in _get(client, "/schedule/requests", headers).json()]
     texts += reachable_habits(client, world, user)

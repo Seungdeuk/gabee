@@ -111,8 +111,9 @@ def _expect(
 
 
 def _private(user: str) -> tuple[str, ...]:
-    """질문자에게 비공개인 합성 데이터(`seeds.data.forbidden_strings`)."""
-    return tuple(seed_data.forbidden_strings(user))
+    """질문자에게 비공개인 합성 데이터(`seeds.data.forbidden_strings`). 사례 파일은 시드 개정 1 의 값을 정답지로 보존한다(일정 비공개 전용 식별값은
+    모든 사례에 붙는 공통 보안 조건이 검사하므로 사례 단위 목록에는 더하지 않는다. `seeds.data.SEED_REVISION`)."""
+    return tuple(seed_data.forbidden_strings(user, include_private_ids=False))
 
 
 def expects(item: ScenarioItem) -> dict:
