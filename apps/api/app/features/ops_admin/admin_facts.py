@@ -42,5 +42,12 @@ register(
     "최근 24시간 서버 요청 수, 5xx·4xx 오류, 오류율, 평균 응답 시간.",
     requests,
     order=50,
+    label="서버 요청 확인",
 )
-register("server_errors", "최근 24시간 오류 종류·경로·상태·횟수(최대 5개).", errors, order=60)
+register(
+    "server_errors",
+    "최근 24시간 오류 종류·경로·상태·횟수(최대 5개).",
+    errors,
+    order=60,
+    label="서버 오류 확인",
+)

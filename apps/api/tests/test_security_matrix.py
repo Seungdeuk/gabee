@@ -246,6 +246,7 @@ NO_GROUP_OK = {
     ("GET", "/notices"),
     # 통합관리자 챗봇: 가족 데이터가 아니다. 권한은 require_operator("admin")(admin_knowledge/tests 에서 401·403 확인)
     ("POST", "/admin/knowledge/ask"),
+    ("POST", "/admin/knowledge/ask/stream"),  # 같은 답을 단계 소식과 함께(SSE). 권한도 같다
     # 검색 색인 점검(읽기 전용): 모델 이름과 모델별 조각 개수만 돌려주고 내용·가족 그룹 id 는 싣지 않는다. 권한은 require_operator("admin")
     # (ai_assistant/knowledge/tests/test_index_health.py 의 test_status_api_requires_operator 에서 401·403 확인)
     ("GET", "/ai-assistant/knowledge/index-status"),

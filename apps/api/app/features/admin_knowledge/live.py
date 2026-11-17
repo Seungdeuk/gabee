@@ -26,14 +26,18 @@ def _tool(db: Session, fact: Fact) -> StructuredTool:
         def run() -> str:
             return read()
 
-        return StructuredTool.from_function(func=run, name=fact.name, description=fact.description)
+        tool = StructuredTool.from_function(func=run, name=fact.name, description=fact.description)
+    else:
 
-    def run_with(**args) -> str:  # Claude 가 채운 입력칸(args_schema 로 검사된 값)을 넘긴다
-        return read(**args)
+        def run_with(**args) -> str:  # Claude 가 채운 입력칸(args_schema 로 검사된 값)을 넘긴다
+            return read(**args)
 
-    return StructuredTool.from_function(
-        func=run_with, name=fact.name, description=fact.description, args_schema=fact.params
-    )
+        tool = StructuredTool.from_function(
+            func=run_with, name=fact.name, description=fact.description, args_schema=fact.params
+        )
+    # 답변 단계 화면에 보일 말(label). metadata 는 Claude 에게 보내는 도구 정의(spec)에 들어가지 않는다
+    tool.metadata = {"label": fact.label}
+    return tool
 
 
 def tools(db: Session) -> list[StructuredTool]:

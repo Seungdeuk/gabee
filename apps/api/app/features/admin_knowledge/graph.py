@@ -11,8 +11,16 @@
 아니라 `Run` 에 담아 `config["configurable"]["run"]` 으로 넘긴다(그래프는 한 번만 만들어 모든 요청이 같이 쓴다).
 
 랭스미스 기록은 `ADMIN_LANGSMITH_ENABLED` 가 켜져 있고 키가 있을 때만 이 그래프 실행에 붙는다(`_callbacks`). 서버 전체 추적
-(`LANGSMITH_TRACING`)은 쓰지 않아서 메인 AI 채팅은 기록되지 않는다."""
+(`LANGSMITH_TRACING`)은 쓰지 않아서 메인 AI 채팅은 기록되지 않는다.
 
+답변 단계 소식: 노드가 일을 시작할 때 `get_stream_writer()` 로 단계를 내보낸다. `stream_chat` 으로 돌리면 그 소식을 하나씩 받고,
+`run_chat`(invoke)으로 돌리면 소식은 버려진다. 소식에는 단계와 도구의 화면용 이름(label)만 담고 질문·숫자·답은 넣지 않는다.
+
+    {"step": "understand"}                  Claude 첫 호출(질문 이해)
+    {"step": "tool", "label": "회원 수 확인"}  도구 하나 실행
+    {"step": "write"}                       도구 결과를 받은 뒤 Claude 호출(답 작성)"""
+
+from collections.abc import Iterator
 from dataclasses import dataclass
 from functools import lru_cache
 from typing import Annotated
@@ -22,6 +30,7 @@ from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.messages import BaseMessage, ToolMessage
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import BaseTool
+from langgraph.config import get_stream_writer
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.message import add_messages
 from typing_extensions import TypedDict
@@ -63,6 +72,8 @@ def _run(config: RunnableConfig) -> Run:
 def _model(state: State, config: RunnableConfig) -> dict:
     run = _run(config)
     run.steps += 1
+    # 첫 호출은 질문을 읽고 도구를 고르는 단계, 그 뒤는 도구 결과로 답을 쓰는 단계다
+    get_stream_writer()({"step": "understand" if run.steps == 1 else "write"})
     reply = run.model.invoke(
         state["messages"], config
     )  # config 를 넘겨야 랭스미스에 모델 호출이 한 줄로 남는다
@@ -77,10 +88,11 @@ def _after_model(state: State) -> str:
 
 def _tools(state: State, config: RunnableConfig) -> dict:
     run = _run(config)
+    write = get_stream_writer()
     out: list[ToolMessage] = []
     for call in state["messages"][-1].tool_calls:
         tool = run.tools.get(call["name"])
-        if tool is None:
+        if tool is None:  # Claude 가 지어낸 이름. 화면에는 알리지 않는다
             out.append(
                 ToolMessage(
                     content=f"없는 도구예요: {call['name']}",
@@ -89,6 +101,8 @@ def _tools(state: State, config: RunnableConfig) -> dict:
                 )
             )
         else:
+            # 내부 도구 이름 대신 화면용 이름(label)만 보낸다
+            write({"step": "tool", "label": (tool.metadata or {}).get("label") or tool.name})
             out.append(tool.invoke(call, config))  # 도구 호출을 그대로 주면 ToolMessage 로 돌려준다
     return {"messages": out}
 
@@ -127,16 +141,23 @@ def _callbacks() -> list[BaseCallbackHandler]:
     return [_tracer(settings.admin_langsmith_api_key, settings.admin_langsmith_project)]
 
 
+def _config(run: Run) -> RunnableConfig:
+    return {
+        "configurable": {"run": run},
+        "recursion_limit": 50,
+        "callbacks": _callbacks(),
+        "run_name": RUN_NAME,
+    }
+
+
 def run_chat(run: Run, messages: list[BaseMessage]) -> Run:
     """그래프를 돌린다. 모델 호출의 예외는 그대로 올라간다(호출한 쪽이 503 으로 바꾼다).
     랭스미스로 보내는 일이 실패해도 답에는 영향이 없다(기록 장치는 오류를 로그로만 남긴다)."""
-    GRAPH.invoke(
-        {"messages": messages},
-        config={
-            "configurable": {"run": run},
-            "recursion_limit": 50,
-            "callbacks": _callbacks(),
-            "run_name": RUN_NAME,
-        },
-    )
+    GRAPH.invoke({"messages": messages}, config=_config(run))
     return run
+
+
+def stream_chat(run: Run, messages: list[BaseMessage]) -> Iterator[dict]:
+    """run_chat 과 같이 돌리되, 노드가 내보낸 단계 소식을 생기는 즉시 하나씩 돌려준다. 다 돌면 run.answer 에 답이 있다.
+    예외는 run_chat 과 같이 그대로 올라간다."""
+    yield from GRAPH.stream({"messages": messages}, config=_config(run), stream_mode="custom")

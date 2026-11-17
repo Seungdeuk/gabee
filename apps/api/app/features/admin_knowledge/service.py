@@ -5,6 +5,7 @@ Claude 는 가비의 규칙을 모르므로 answer_format.md(답 형식)와 faq.
 팀 문서를 넣는 곳은 faq.md 하나이고, 가족 데이터는 다루지 않는다."""
 
 import logging
+from collections.abc import Iterator
 from datetime import datetime
 from pathlib import Path
 
@@ -19,9 +20,9 @@ from app.shared.llm import client as llm
 from app.shared.llm import transport
 from app.shared.llm.chat_model import PostChatModel
 
-from .graph import Run, run_chat, spec
+from .graph import Run, run_chat, spec, stream_chat
 from .live import tools
-from .schemas import AdminAskOut
+from .schemas import AdminAskEvent, AdminAskOut
 
 log = logging.getLogger(__name__)
 ASK_MAX_TOKENS = 2000
@@ -37,7 +38,12 @@ def _post(body: dict) -> dict:
     return transport.post_messages(body, timeout=60.0, retry=True)
 
 
-def _answer(db: Session, question: str) -> str:
+FAILED = "AI 가 지금 답하지 못했어요. 잠시 뒤 다시 해 주세요"
+# Claude 호출이 실패했을 때 나는 예외. ask 는 503 으로, ask_stream 은 error 소식으로 바꾼다
+CALL_ERRORS = (llm.LLMUnavailable, httpx.HTTPError, ValueError, KeyError)
+
+
+def _new_run(db: Session) -> Run:
     tool_list = tools(db)
     model = PostChatModel(
         post=_post,
@@ -46,22 +52,53 @@ def _answer(db: Session, question: str) -> str:
         system=ASK_SYSTEM,
         tools=[spec(t) for t in tool_list],
     )
-    run = Run(model=model, tools={t.name: t for t in tool_list}, max_steps=ASK_MAX_STEPS)
-    run_chat(run, [HumanMessage(content=mask_text(question))])
+    return Run(model=model, tools={t.name: t for t in tool_list}, max_steps=ASK_MAX_STEPS)
+
+
+def _check_answer(run: Run) -> str:
     if not run.answer:
         raise llm.LLMUnavailable("AI 가 정해진 횟수 안에 답을 끝내지 못했어요")
     return run.answer
 
 
-def ask(db: Session, user_id: str, question: str, now: datetime | None = None) -> AdminAskOut:
-    """키가 없으면 503 ai_key_missing, 호출이 실패하면 503 llm_failed. 하루 한도는 두지 않는다(2026-11-09 결정)."""
+def _require_key() -> None:
     if not llm.available():
         raise ApiError(503, "ai_key_missing", "AI 키가 아직 설정되지 않았어요")
+
+
+def ask(db: Session, user_id: str, question: str, now: datetime | None = None) -> AdminAskOut:
+    """키가 없으면 503 ai_key_missing, 호출이 실패하면 503 llm_failed. 하루 한도는 두지 않는다(2026-11-09 결정)."""
+    _require_key()
     try:
-        answer = _answer(db, question)
-    except (llm.LLMUnavailable, httpx.HTTPError, ValueError, KeyError) as e:
+        run = _new_run(db)
+        run_chat(run, [HumanMessage(content=mask_text(question))])
+        answer = _check_answer(run)
+    except CALL_ERRORS as e:
         log.warning("관리자 챗봇 호출 실패: %s", e)  # 오류 종류만 있고 질문·키는 없다
-        raise ApiError(
-            503, "llm_failed", "AI 가 지금 답하지 못했어요. 잠시 뒤 다시 해 주세요"
-        ) from None
+        raise ApiError(503, "llm_failed", FAILED) from None
     return AdminAskOut(answer=answer)
+
+
+def ask_stream(db: Session, user_id: str, question: str) -> Iterator[AdminAskEvent]:
+    """ask 와 같은 일을 하며 단계 소식을 하나씩 돌려준다(답변 단계 화면용).
+
+    키가 없으면 소식을 보내기 전에 503 ai_key_missing 을 낸다. 소식을 보내기 시작한 뒤에는 응답이 이미 200 이라
+    호출 실패를 상태 코드로 알릴 수 없어서 마지막 소식을 error(code llm_failed)로 보낸다."""
+    _require_key()  # 제너레이터 밖에서 검사해야 첫 소식 전에 503 이 된다
+    return _stream(db, question)
+
+
+def _stream(db: Session, question: str) -> Iterator[AdminAskEvent]:
+    yield AdminAskEvent(step="received")
+    masked = mask_text(question)
+    yield AdminAskEvent(step="masked")
+    try:
+        run = _new_run(db)
+        for event in stream_chat(run, [HumanMessage(content=masked)]):
+            yield AdminAskEvent(**event)
+        answer = _check_answer(run)
+    except CALL_ERRORS as e:
+        log.warning("관리자 챗봇 호출 실패: %s", e)
+        yield AdminAskEvent(step="error", code="llm_failed", message=FAILED)
+        return
+    yield AdminAskEvent(step="answer", answer=answer)

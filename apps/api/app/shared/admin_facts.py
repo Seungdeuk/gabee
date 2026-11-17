@@ -57,6 +57,7 @@ class Fact:
     read: FactReader
     order: int  # 작은 수가 먼저 나온다
     params: type[BaseModel] | None = None  # 입력칸(없으면 입력 없는 도구). 있으면 read(db, **입력)
+    label: str = ""  # 관리자 화면의 답변 단계에 보이는 짧은 말(예: "회원 수 확인"). 비우면 name
 
 
 _FACTS: dict[str, Fact] = {}
@@ -69,9 +70,10 @@ def register(
     *,
     order: int,
     params: type[BaseModel] | None = None,
+    label: str = "",
 ) -> None:
     """같은 이름으로 다시 올리면 바꾼다(모듈을 다시 읽어도 두 번 들어가지 않는다)."""
-    _FACTS[name] = Fact(name, description, read, order, params)
+    _FACTS[name] = Fact(name, description, read, order, params, label or name)
 
 
 def all_facts() -> list[Fact]:
