@@ -635,6 +635,27 @@ def test_high_confidence_rule_kinds_never_replaced(setup):
         assert r in merged
 
 
+# ---------- 인접 개체(공백 없이 붙은 서로 다른 사람) ----------
+# NER_VALIDATION.md 61~62절: "병합 완화" 실험(PERSON/PERSON_ALIAS 를 같은 묶음으로 보는 안)을 검토하며
+# 서로 다른 두 사람이 공백 없이 붙어 있을 때 하나로 잘못 합쳐지지 않는지 확인했다. 아래 두 시험은
+# **현재(변경 전) merge_ner 의 동작을 고정**한다 — 각 개체가 자기 자리에서 새로 B- 태그로 시작하는
+# 한(실제 모델이 그렇게 예측하는 한), 공백이 없어도 서로 합쳐지지 않는다.
+def test_adjacent_person_entities_without_space_stay_separate_when_each_starts_fresh(setup):
+    setup({"민준": "PERSON", "서윤": "PERSON"})
+    text = "민준서윤이 같이 놀았어"
+    merged = ner.detect_with_ner(text)
+    got = [text[s.start : s.end] for s in merged if s.kind is Kind.PERSON]
+    assert got == ["민준", "서윤"]
+
+
+def test_adjacent_person_and_alias_without_space_stay_separate_when_each_starts_fresh(setup):
+    setup({"민준": "PERSON", "서윤": "PERSON_ALIAS"})
+    text = "민준서윤이 같이 놀았어"
+    merged = ner.detect_with_ner(text)
+    got = [(text[s.start : s.end], s.kind) for s in merged if s.kind is Kind.PERSON]
+    assert got == [("민준", Kind.PERSON), ("서윤", Kind.PERSON)]  # PERSON_ALIAS 도 Kind.PERSON 으로 합류
+
+
 # ---------- NFC ----------
 def test_nfd_hangul_is_recognised_and_positions_map_to_original(setup):
     engine, _ = make_engine({"정채은": "PERSON"})
