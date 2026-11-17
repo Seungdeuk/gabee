@@ -46,7 +46,7 @@ HIGH_KINDS = (
 )  # 본문에서 탐지되면 실패인 개인정보 종류
 # 대화 분석 호출(`family_chat/ai_service.analyze_recent_chat`)만 쓰는 출력 상한. 앱의 `ANALYSIS_MAX_TOKENS` 와 같은 값을 여기에 고정해 두고
 # (시험이 둘이 같은지 본다), 앱 쪽 값만 바뀌면 사전 점검이 실패하도록 한다(앱 값을 읽어 오면 상한이 몰래 커진다).
-ANALYSIS_CALL_MAX_TOKENS = 3000
+ANALYSIS_CALL_MAX_TOKENS = 4096
 ANALYSIS_TOOL = "analyze_recent_chat"
 DETECT_CHUNK_CHARS = 3000  # 본문 탐지는 이 크기로 잘라 넣는다(NER 입력 상한 8000자보다 훨씬 작게). 경계에 걸친 값은 놓칠 수 있다(문서에 적는다)
 NER_PROBE_TEXT = (
@@ -703,7 +703,7 @@ def structural_analysis_calls() -> int:
 def structural_analysis_extra(
     model: str, cases: int, repeats: int, tokens_in: int, default_max_tokens: int
 ) -> Decimal:
-    """구조적 이론 최대에 더할 몫: 그 가운데 분석 호출은 출력 상한이 `ANALYSIS_CALL_MAX_TOKENS` 라 호출마다 (3000 단가 - 기본 상한 단가)가 더 든다."""
+    """구조적 이론 최대에 더할 몫: 그 가운데 분석 호출은 출력 상한이 `ANALYSIS_CALL_MAX_TOKENS` 라 호출마다 (분석 상한 단가 - 기본 상한 단가)가 더 든다."""
     cap = max(default_max_tokens, ANALYSIS_CALL_MAX_TOKENS)
     per_call = call_cost(model, tokens_in, cap) - call_cost(model, tokens_in, default_max_tokens)
     return cases * repeats * structural_analysis_calls() * per_call
@@ -733,7 +733,7 @@ def _check_cost(inp: PreflightInput, measured_in: int) -> tuple[Check, Decimal |
     theory_calls = structural_max_calls()
     ana_calls = expected_analysis_calls(inp.items)
     ana_worst = analysis_call_worst(inp.model, ana_calls, inp.repeat, tin, tout)
-    loop_worst += ana_worst  # 분석 호출(출력 상한 3000)은 하위 Agent 호출이라 메인 루프 곱에 없다: 따로 더한다
+    loop_worst += ana_worst  # 분석 호출(출력 상한 `ANALYSIS_CALL_MAX_TOKENS`)은 하위 Agent 호출이라 메인 루프 곱에 없다: 따로 더한다
     theory = structural_worst_case(inp.model, n, inp.repeat, tin, tout) + structural_analysis_extra(
         inp.model, n, inp.repeat, tin, tout
     )
