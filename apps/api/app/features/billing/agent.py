@@ -10,8 +10,9 @@ from app.shared.auth import ensure_group_member
 from app.shared.errors import bad_request
 from app.shared.llm import agent_guard, proposals
 from app.shared.llm.agent import AgentReply, Post, Tool, ask_agent
+from app.shared.privacy import ASSISTANT, new_session
 
-from . import service
+from . import repository, service
 from .schemas import (
     AllowanceApproveIn,
     AllowanceRejectIn,
@@ -450,19 +451,34 @@ def ask(
     ensure_group_member(db, user.id, group_id)
     proposed: list = []
     question, history = agent_guard.prepare(question, history)
+    members = repository.member_names(db, group_id)
+
+    def turn() -> AgentReply:
+        with new_session(ASSISTANT, members) as session:
+            # 질문·앞 대화만 가명화한다(등록된 가족 이름·별명을 라벨 없이 쓴 대화체도 보호).
+            # 도구 결과(지출·정산의 이름·금액)는 기존 정책대로 가리지 않는다 - session 을
+            # build_tools 에 넘기지 않는다.
+            pseudo_question = session.prepare_text(question)
+            pseudo_history = (
+                [{**h, "text": session.prepare_text(h["text"])} for h in history]
+                if history
+                else history
+            )
+            reply = ask_agent(
+                system_prompt(user.name),
+                pseudo_question,
+                build_tools(db, group_id, user, proposed),
+                post=post,
+                history=pseudo_history,
+                proposals=proposed,
+                stage="billing",
+            )
+            if reply.can_answer:
+                # 질문에서 만든 토큰만 복원한다(도구 결과는 토큰화되지 않으므로 그대로 남는다).
+                restored = session.restore_text(reply.answer, generalize_unknown=True, scrub=True)
+                reply.answer = restored.value
+            return reply
+
     return agent_guard.run_turn(
-        db,
-        user.id,
-        group_id,
-        agent_guard.BILLING_FEATURE,
-        lambda: ask_agent(
-            system_prompt(user.name),
-            question,
-            build_tools(db, group_id, user, proposed),
-            post=post,
-            history=history,
-            proposals=proposed,
-            stage="billing",
-        ),
-        guarded=guarded,
+        db, user.id, group_id, agent_guard.BILLING_FEATURE, turn, guarded=guarded
     )

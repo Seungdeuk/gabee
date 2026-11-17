@@ -1,6 +1,7 @@
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app.features.family_group.models import GroupMember, User
 from app.shared.notifications import Notification
 
 from .models import (
@@ -12,6 +13,25 @@ from .models import (
     SettlementPayment,
     SubscriptionItem,
 )
+
+
+def member_names(db: Session, group_id: str) -> list[tuple[str, ...]]:
+    """이 그룹 구성원의 이름 사전(실제 이름, 표시 이름 묶음). ``family_chat.ai_repository.member_names``와
+    같은 조회·묶음 규칙(가명화 세션에 그대로 넘긴다)."""
+    rows = db.execute(
+        select(User.name, GroupMember.display_name)
+        .join(GroupMember, GroupMember.user_id == User.id)
+        .where(GroupMember.group_id == group_id)
+    ).all()
+    people: set[tuple[str, ...]] = set()
+    for name, display in rows:
+        real = " ".join((name or "").split())
+        shown = " ".join((display or "").split())
+        if real:
+            people.add((real, shown) if shown and shown != real else (real,))
+        elif shown:
+            people.add((shown,))
+    return sorted(people)
 
 
 def add(db: Session, expense: Expense) -> Expense:

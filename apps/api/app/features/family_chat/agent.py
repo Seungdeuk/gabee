@@ -212,12 +212,23 @@ def ask(
 
     def turn() -> AgentReply:
         with new_session(ASSISTANT, members) as session:
+            # 질문·앞 대화도 도구 결과와 같은 세션으로 가명화한다. agent_guard.prepare 의 정규식
+            # 안전망(전화·카드·계좌 등)은 그대로 거치고, 여기서 등록된 가족 이름·별명(라벨 없이 쓴
+            # 대화체 이름 포함)을 더한다. 같은 세션을 써야 질문과 도구 결과에서 같은 이름이 같은
+            # 토큰 번호를 받고(세션이 다르면 번호가 엇갈려 모델이 같은 사람인지 혼동할 수 있다),
+            # 복원도 한 세션의 대응표 하나로 끝난다(여러 세션을 복원하면서 생기는 오류를 피한다).
+            pseudo_question = session.prepare_text(question)
+            pseudo_history = (
+                [{**h, "text": session.prepare_text(h["text"])} for h in history]
+                if history
+                else history
+            )
             reply = ask_agent(
                 system_prompt(),
-                question,
+                pseudo_question,
                 build_tools(db, group_id, user, session),
                 post=post,
-                history=history,
+                history=pseudo_history,
                 stage="family_chat",
             )
             if reply.can_answer:
