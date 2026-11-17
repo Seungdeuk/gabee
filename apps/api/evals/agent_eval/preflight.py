@@ -44,6 +44,10 @@ HIGH_KINDS = (
     "ACCOUNT",
     "SECRET",
 )  # 본문에서 탐지되면 실패인 개인정보 종류
+# 대화 분석 호출(`family_chat/ai_service.analyze_recent_chat`)만 쓰는 출력 상한. 앱의 `ANALYSIS_MAX_TOKENS` 와 같은 값을 여기에 고정해 두고
+# (시험이 둘이 같은지 본다), 앱 쪽 값만 바뀌면 사전 점검이 실패하도록 한다(앱 값을 읽어 오면 상한이 몰래 커진다).
+ANALYSIS_CALL_MAX_TOKENS = 3000
+ANALYSIS_TOOL = "analyze_recent_chat"
 DETECT_CHUNK_CHARS = 3000  # 본문 탐지는 이 크기로 잘라 넣는다(NER 입력 상한 8000자보다 훨씬 작게). 경계에 걸친 값은 놓칠 수 있다(문서에 적는다)
 NER_PROBE_TEXT = (
     "지민이는 어제 수진이한테 전화해서 내일 병원 같이 가자고 했어요. 지민 번호는 {phone}예요."
@@ -75,6 +79,19 @@ class _Bodies(list):
     """가로챈 본문 목록(list)에 PERSON 발신 기록(`person_rows`: (사례, 경로, 원문 건수, 라벨))을 붙인 것."""
 
     person_rows: tuple[tuple[str, str, int, str], ...] = ()
+
+
+def _is_analysis_body(body: Mapping[str, Any]) -> bool:
+    """대화 분석 호출의 본문인가: 구조화 출력(`output_config`)이면서 시스템 프롬프트가 분석용 프롬프트와 정확히 같다.
+    일정 Agent 의 구조화 출력·메인·정산·소통 호출은 해당하지 않는다."""
+    from app.features.family_chat.ai_service import ANALYSIS_SYSTEM
+
+    return "output_config" in body and body.get("system") == ANALYSIS_SYSTEM
+
+
+def max_tokens_cap(body: Mapping[str, Any], default: int) -> int:
+    """이 본문이 넘으면 안 되는 `max_tokens`. 대화 분석 호출만 `ANALYSIS_CALL_MAX_TOKENS`, 나머지는 `default`(설정의 `anthropic_max_tokens`)."""
+    return max(default, ANALYSIS_CALL_MAX_TOKENS) if _is_analysis_body(body) else default
 
 
 def _person_names() -> tuple[str, ...]:
@@ -410,14 +427,9 @@ def _fake_pass(inp: PreflightInput) -> tuple[Check, list[dict], int]:
                 if body.get("model") != settings.llm_model:
                     problems.append(f"{case.id}: 본문 model 이 설정과 다르다")
                 mt = body.get("max_tokens")
-                if (
-                    not isinstance(mt, int)
-                    or isinstance(mt, bool)
-                    or mt > settings.anthropic_max_tokens
-                ):
-                    problems.append(
-                        f"{case.id}: max_tokens 가 없거나 상한({settings.anthropic_max_tokens})보다 크다"
-                    )
+                cap = max_tokens_cap(body, settings.anthropic_max_tokens)
+                if not isinstance(mt, int) or isinstance(mt, bool) or mt > cap:
+                    problems.append(f"{case.id}: max_tokens 가 없거나 상한({cap})보다 크다")
                 hit = [n for n in needles if n in text]
                 if hit:
                     problems.append(f"{case.id}: 비공개 문자열 {len(hit)}건이 본문에 그대로 있다")
@@ -660,6 +672,43 @@ def structural_worst_case(
     return cases * repeats * structural_max_calls() * call_cost(model, tokens_in, max_tokens)
 
 
+def expected_analysis_calls(items: Any) -> int:
+    """대상 사례가 기대하는 대화 분석 호출(`analyze_recent_chat`) 수의 합(기대 호출 목록에서 센다)."""
+    from . import runner
+
+    return sum(
+        1 for item in items for c in runner._case_of(item).expect.calls if c.tool == ANALYSIS_TOOL
+    )
+
+
+def analysis_call_worst(
+    model: str, analysis_calls: int, repeats: int, tokens_in: int, default_max_tokens: int
+) -> Decimal:
+    """기대하는 대화 분석 호출의 최악 비용(출력 `ANALYSIS_CALL_MAX_TOKENS`). 메인 루프 기준 최악 상한에 더한다(하위 Agent 호출이라 그 곱에 들어 있지 않다)."""
+    cap = max(default_max_tokens, ANALYSIS_CALL_MAX_TOKENS)
+    return analysis_calls * repeats * call_cost(model, tokens_in, cap)
+
+
+def structural_analysis_calls() -> int:
+    """구조적 이론 최대 호출 가운데 대화 분석 호출 수: 소통 Agent 가 도는 도구 단계마다 최대 1회(`_calls_per_ask` 의 `2*sub` 중 추가분)."""
+    from app.features.ai_assistant.knowledge import rag_chat
+
+    from .write_tools import READ_TOOLS
+
+    if "ask_family_chat" not in READ_TOOLS["main"]:
+        return 0
+    return (int(rag_chat.MAX_STEPS) - 1) * sub_agent_steps()
+
+
+def structural_analysis_extra(
+    model: str, cases: int, repeats: int, tokens_in: int, default_max_tokens: int
+) -> Decimal:
+    """구조적 이론 최대에 더할 몫: 그 가운데 분석 호출은 출력 상한이 `ANALYSIS_CALL_MAX_TOKENS` 라 호출마다 (3000 단가 - 기본 상한 단가)가 더 든다."""
+    cap = max(default_max_tokens, ANALYSIS_CALL_MAX_TOKENS)
+    per_call = call_cost(model, tokens_in, cap) - call_cost(model, tokens_in, default_max_tokens)
+    return cases * repeats * structural_analysis_calls() * per_call
+
+
 def _check_cost(inp: PreflightInput, measured_in: int) -> tuple[Check, Decimal | None]:
     from app.shared.config import settings
 
@@ -682,14 +731,24 @@ def _check_cost(inp: PreflightInput, measured_in: int) -> tuple[Check, Decimal |
     tout = settings.anthropic_max_tokens
     loop_worst = main_loop_worst(inp.model, n, inp.repeat, tin, tout)
     theory_calls = structural_max_calls()
-    theory = structural_worst_case(inp.model, n, inp.repeat, tin, tout)
+    ana_calls = expected_analysis_calls(inp.items)
+    ana_worst = analysis_call_worst(inp.model, ana_calls, inp.repeat, tin, tout)
+    loop_worst += ana_worst  # 분석 호출(출력 상한 3000)은 하위 Agent 호출이라 메인 루프 곱에 없다: 따로 더한다
+    theory = structural_worst_case(inp.model, n, inp.repeat, tin, tout) + structural_analysis_extra(
+        inp.model, n, inp.repeat, tin, tout
+    )
     gate = max(
         basic, loop_worst
     )  # 사전 거부 기준: 기본 가정 추정과 메인 루프 기준 최악 상한 중 큰 값
     lines = [
         f"추정치(실측 전) 기본 가정 추정 {format(basic, 'f')} USD(사례 {n} x 반복 {inp.repeat} x 사례당 {inp.calls_per_case}회, 호출당 {inp.tokens_in}/{inp.tokens_out} 토큰)",
         f"추정치(실측 전) 메인 루프 기준 최악 상한(하위 Agent 호출 포함 안 함) {format(loop_worst, 'f')} USD = 사례 {n} x 반복 {inp.repeat} x (메인 단계 상한 {steps} + 답 검증 1) = 호출 "
-        f"{n * inp.repeat * (steps + 1)}회 x (입력 {tin} 토큰 + 출력 {tout} 토큰[max_tokens]) 단가",
+        f"{n * inp.repeat * (steps + 1)}회 x (입력 {tin} 토큰 + 출력 {tout} 토큰[max_tokens]) 단가"
+        + (
+            f" + 대화 분석 호출 {ana_calls * inp.repeat}회 x (입력 {tin} 토큰 + 출력 {max(tout, ANALYSIS_CALL_MAX_TOKENS)} 토큰) 단가 {format(ana_worst, 'f')} USD"
+            if ana_calls
+            else ""
+        ),
         f"추정치(실측 전) 구조적 이론 최대(정보용, 거부 기준 아님) {format(theory, 'f')} USD = 질문당 최대 {theory_calls}회(메인 {steps} + 검증 1 + 도구 단계 {steps - 1} x 하위 Agent 합) x 사례 {n} x 반복 {inp.repeat}",
         f"승인 금액 {format(inp.approve, 'f')} USD, 사전 거부 기준값 {format(gate, 'f')} USD(위 기본 가정 추정과 메인 루프 기준 최악 상한 중 큰 값), 단가 출처는 cost.PRICE_SOURCE",
         "위 비용은 모두 추정치다: 1건 연결 시험 후 실측 토큰·단가로 보정한다(실측 전에는 확정 비용으로 보지 않는다).",

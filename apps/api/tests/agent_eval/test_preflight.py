@@ -315,6 +315,101 @@ def test_check_4_runs_the_app_path_for_real_and_never_touches_the_real_transport
     assert fake_model.FakeModel.record_bodies is False
 
 
+# ---------- 4: 대화 분석 호출만 3000 토큰 ----------
+def analysis_body(**over):
+    """앱이 대화 분석(`analyze_recent_chat`)에서 보내는 본문의 모양: 분석 시스템 프롬프트 + 구조화 출력."""
+    from app.features.family_chat.ai_service import ANALYSIS_SYSTEM
+
+    base = body(
+        "최근 대화를 정리해 줘",
+        system=ANALYSIS_SYSTEM,
+        max_tokens=preflight.ANALYSIS_CALL_MAX_TOKENS,
+        output_config={"format": {"type": "json_schema", "schema": {}}},
+    )
+    base.update(over)
+    return base
+
+
+def test_the_pinned_analysis_cap_equals_the_apps_own_constant():
+    """앱의 분석 상한이 바뀌면 이 시험이 실패해 사전 점검 상한을 사람이 다시 정하게 한다(조용히 커지지 않는다)."""
+    from app.features.family_chat import ai_service
+
+    assert preflight.ANALYSIS_CALL_MAX_TOKENS == ai_service.ANALYSIS_MAX_TOKENS == 3000
+    assert settings.anthropic_max_tokens == 2048  # 나머지 호출의 기본 상한은 그대로다
+
+
+def test_check_4_allows_an_analysis_call_up_to_3000_but_no_other_call_above_the_default(
+    tmp_path, monkeypatch
+):
+    stub_run(monkeypatch, [body(), analysis_body()])
+    assert pass_check(tmp_path).status == PASS
+
+
+@pytest.mark.parametrize(
+    ("bad", "cap"),
+    [
+        (analysis_body(max_tokens=3001), "3000"),  # 분석 호출이라도 3000 을 넘으면 막는다
+        (analysis_body(max_tokens=None), "3000"),
+        (body(max_tokens=3000), "2048"),  # 다른 시스템 프롬프트(정산)
+        (body(max_tokens=2049), "2048"),
+        (
+            analysis_body(system="가족 대화를 정리해 줘", max_tokens=3000),
+            "2048",
+        ),  # 분석 프롬프트 아님
+        (analysis_body(system="가계(정산) 담당", max_tokens=3000), "2048"),
+        (
+            {k: v for k, v in analysis_body().items() if k != "output_config"},
+            "2048",
+        ),  # 같은 프롬프트라도 구조화 출력이 아니면 분석 호출이 아니다
+    ],
+)
+def test_check_4_still_blocks_calls_that_are_not_the_analysis_path_or_exceed_its_cap(
+    tmp_path, monkeypatch, bad, cap
+):
+    stub_run(monkeypatch, [body(), bad])
+    check = pass_check(tmp_path)
+    assert check.status == FAIL and f"상한({cap})" in check.detail
+
+
+def test_max_tokens_cap_is_per_call_path():
+    assert preflight.max_tokens_cap(analysis_body(), 2048) == 3000
+    assert preflight.max_tokens_cap(body(), 2048) == 2048
+    structured_other = body(
+        system="일정 담당", output_config={"format": {}}
+    )  # 일정 Agent 구조화 출력
+    assert preflight.max_tokens_cap(structured_other, 2048) == 2048
+
+
+def chat_03_input(tmp_path, **kw):
+    from evals.agent_eval import case_files, dev_cases, dev_scripts
+
+    items = [
+        c
+        for c in case_files.load_cases(dev_cases.CASES_DEV_PATH, "dev")
+        if c.id == "s-dev-05-chat-03"
+    ]
+    assert len(items) == 1
+    base = dict(
+        split="dev",
+        requested_ids=("s-dev-05-chat-03",),
+        items=items,
+        scripts=dev_scripts.scripts_for("dev"),
+    )
+    base.update(kw)
+    return make_input(tmp_path, **base)
+
+
+def test_check_4_passes_for_chat_03_through_the_real_app_path_and_sees_the_analysis_call(
+    tmp_path,
+):
+    """회귀: 예전에는 분석 호출(3000)이 일괄 상한 2048 에 걸려 chat-03 이 항상 실패했다."""
+    check, bodies, _ = preflight._fake_pass(chat_03_input(tmp_path))
+    assert check.status == PASS, check.detail
+    caps = [b["max_tokens"] for b in bodies]
+    assert 3000 in caps and all(c <= 3000 for c in caps)
+    assert all(preflight._is_analysis_body(b) for b in bodies if b["max_tokens"] > 2048)
+
+
 # ---------- 5·6: DB·네트워크 ----------
 def test_check_5_fails_when_the_process_boundary_is_not_safe(tmp_path, monkeypatch, quick_body):
     def boom(root):
@@ -433,6 +528,31 @@ def test_check_8_follows_the_measured_body_size_when_it_is_larger_than_the_assum
     )
     detail = run_preflight(make_input(tmp_path)).checks[7].detail
     assert "입력 40000 토큰" in detail
+
+
+def test_analysis_calls_are_priced_with_the_3000_cap_in_the_worst_case(tmp_path, quick_body):
+    model = "claude-haiku-5-5"
+    item = chat_03_input(tmp_path).items
+    assert preflight.expected_analysis_calls(item) == 1
+    assert preflight.expected_analysis_calls(legacy("b-total")) == 0  # 분석을 기대하지 않는 사례
+    got = preflight.analysis_call_worst(model, 1, 2, 12450, 2048)
+    assert got == 2 * call_cost(model, 12450, 3000) > 2 * call_cost(model, 12450, 2048)
+    extra = preflight.structural_analysis_extra(model, 1, 1, 12450, 2048)
+    per_call = call_cost(model, 12450, 3000) - call_cost(model, 12450, 2048)
+    assert extra == preflight.structural_analysis_calls() * per_call
+    assert preflight.structural_analysis_calls() == 12  # (MAX_STEPS-1) x 하위 Agent 단계 4
+
+
+def test_check_8_adds_the_analysis_call_to_the_gate_for_chat_03_and_not_for_other_cases(
+    tmp_path, quick_body
+):
+    plain = run_preflight(make_input(tmp_path)).checks[7].detail
+    assert "대화 분석 호출" not in plain  # 분석을 기대하지 않는 사례는 이전 출력과 같다
+    detail = run_preflight(chat_03_input(tmp_path)).checks[7].detail
+    assert "대화 분석 호출 1회" in detail and "출력 3000 토큰" in detail
+    only_loop = preflight.main_loop_worst(settings.llm_model, 1, 1, 8000, 2048)
+    ana = preflight.analysis_call_worst(settings.llm_model, 1, 1, 8000, 2048)
+    assert f"사전 거부 기준값 {format(only_loop + ana, 'f')} USD" in detail
 
 
 def test_check_8_rejects_a_model_missing_from_the_price_table(tmp_path, quick_body):
