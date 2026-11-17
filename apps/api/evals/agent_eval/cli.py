@@ -114,6 +114,11 @@ def build_parser() -> argparse.ArgumentParser:
         default=DEFAULT_TOKENS_OUT,
         help="추정 가정: 호출당 출력 토큰(기본값보다 낮출 수 없다)",
     )
+    p.add_argument(
+        "--call-diagnostics",
+        action="store_true",
+        help="호출별 상태값(역할·stop_reason·max_tokens·도구 결과 상태)을 결과 폴더의 call_diagnostics.json 에 더 쓴다(본문·인자 없음, 채점·비용에 영향 없음)",
+    )
     return p
 
 
@@ -481,6 +486,7 @@ def _execute(
             results_root=results,
             git_commit=commit,
             prompt_hash=phash,
+            diagnostics=bool(getattr(args, "call_diagnostics", False)),
         )
         try:
             source = _load(args, plan, split, run_id)

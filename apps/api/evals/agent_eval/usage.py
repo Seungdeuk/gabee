@@ -18,6 +18,7 @@ import inspect
 from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass, field
+from typing import Any
 
 from app.shared.llm import transport
 
@@ -114,11 +115,23 @@ def meter_llm_calls(
     case_id: str = "",
     repeat: int = 0,
     record_failures: bool = False,
+    tracer: Any = None,
 ) -> Iterator[UsageMeter]:
     """`record_failures`(실호출 전용): 전송이 예외로 끝나 응답을 못 받은 호출도 서버가 과금했을 수 있으므로 최악 비용(입력 추정 + `max_tokens` 출력)으로
-    기록장에 더하고 `unconfirmed` 로 표시한다. 가짜 모드는 켜지 않는다(대본 바닥남은 비용이 없다)."""
+    기록장에 더하고 `unconfirmed` 로 표시한다. 가짜 모드는 켜지 않는다(대본 바닥남은 비용이 없다).
+
+    `tracer`(선택, `call_trace.CallTracer`): 호출마다 상태값(역할·stop_reason·max_tokens·도구 결과 상태)을 모은다. 읽기만 하며 어떤 오류도 올리지 않는다.
+    주지 않으면(기본) 이전과 똑같이 동작한다."""
     meter = UsageMeter()
     real = transport.post_messages
+
+    def _trace(body: dict, payload: object, error: BaseException | None) -> None:
+        if tracer is None:
+            return
+        try:  # 관찰은 호출 흐름을 바꾸지 않는다
+            tracer.observe(body, payload, error)
+        except Exception:  # noqa: BLE001
+            pass
 
     def counted(body: dict, **kwargs) -> dict:
         model = str(body.get("model", ""))
@@ -129,7 +142,8 @@ def meter_llm_calls(
                 raise RunHalted(f"호출 전에 멈춘다: {e}") from e
         try:
             payload = real(body, **kwargs)
-        except BaseException:
+        except BaseException as exc:
+            _trace(body, None, exc)
             meter.calls.append(CallRecord(model, 0, 0, False))
             if ledger is not None and record_failures:
                 try:  # 사용량을 모르는 실패: 보수적으로 기록한다(기록이 상한을 넘겨도 원래 예외를 그대로 올린다)
@@ -144,6 +158,7 @@ def meter_llm_calls(
                 except (BudgetExceeded, ValueError, KeyError):
                     pass
             raise
+        _trace(body, payload, None)
         if ledger is not None and record_failures:
             return settle_real(body, model, payload)
         tokens_in, tokens_out = transport.usage_of(payload)

@@ -63,6 +63,7 @@ from app.shared.llm import eval_hook
 
 from . import (
     adapter,
+    call_trace,
     env,
     fake_model,
     metrics,
@@ -113,6 +114,9 @@ SCHEDULE_WRITE_VIOLATION = (
     "write:schedule."  # `security_violations` 의 일정 쓰기 시도 접두어(도구 이름만 적는다)
 )
 REPORT_FILE = "runner_report.json"
+DIAGNOSTICS_FILE = (
+    "call_diagnostics.json"  # `--call-diagnostics` 일 때만(상태값만, `call_trace.py`)
+)
 NO_GRANT_MESSAGE = "실제 모델 호출은 기본으로 꺼져 있다: 활성 허가(real_gate)가 없다. CLI 에서 환경변수·--real·--approve-usd·--case 로만 연다"
 
 
@@ -137,6 +141,8 @@ class RunOptions:
     seed: int = 0
     git_commit: str = "0000000"
     prompt_hash: str = "0000000"
+    # 호출 추적(`call_trace`): 켜면 결과 폴더에 `call_diagnostics.json`(상태값만)을 더 쓴다. 채점·비용·기존 결과 파일은 그대로다
+    diagnostics: bool = False
 
 
 @dataclass(frozen=True)
@@ -215,6 +221,7 @@ class RunReport:
     halted: str | None = None
     run_dir: Path | None = None
     interrupted: list[str] = field(default_factory=list)
+    call_traces: list[dict[str, Any]] = field(default_factory=list)  # `options.diagnostics` 일 때만
 
     def _count(self, predicate) -> int:
         return sum(1 for r in self.records if predicate(r))
@@ -422,6 +429,9 @@ def _resolve(
 class _Session:
     root: Path
     client: Any
+    call_traces: list[dict[str, Any]] = field(
+        default_factory=list
+    )  # `call_trace` 줄(진단을 켠 때만 채운다)
 
 
 def _raise_buckets(ai_guard: Any) -> None:
@@ -720,6 +730,7 @@ def _run_one(
         None  # 예외·중단으로 끝나도 기록기에 남은 호출을 회수하려고 미리 둔다
     )
     halts: list[usage.RunHalted] = []
+    tracer = call_trace.CallTracer(case.id, repeat) if options.diagnostics else None
     try:
         with frozen_clock():
             world = _seed(item, session)
@@ -731,7 +742,11 @@ def _run_one(
             with (
                 fake_model.installed(fake) if fake else _no_fake(),
                 usage.meter_llm_calls(
-                    ledger, case.id, repeat, record_failures=not real_gate.is_fake(options.mode)
+                    ledger,
+                    case.id,
+                    repeat,
+                    record_failures=not real_gate.is_fake(options.mode),
+                    tracer=tracer,
                 ) as meter,
                 _guard_schedule_writes(item),
                 _bridge_halts(halts) if not isinstance(item, LegacyCase) else _no_fake(),
@@ -763,6 +778,9 @@ def _run_one(
         record.detail = scrub_text(f"{type(e).__name__}: {e}")[:300]
         _keep_attempts(record, item, rec)
         return _Iteration(record)
+    finally:
+        if tracer is not None:  # 정상·오류·예산 중단 모두 그때까지의 호출 상태를 남긴다
+            session.call_traces.extend(tracer.rows)
     record.llm_calls, record.tokens_in, record.tokens_out, record.cost_usd = _usage_of(
         ledger, case.id, repeat
     )
@@ -1122,6 +1140,7 @@ def _run_checked(
                 report.stored.append(stored)
             if report.halted:
                 break
+        report.call_traces = list(session.call_traces)
     if isinstance(source, runs_guard.GuardedCases):
         report.interrupted = list(source.interrupted)
     if options.results_root is not None:
@@ -1230,6 +1249,17 @@ def _save(report: RunReport, options: RunOptions, ids: list[str], started: str) 
         json.dumps(_report_json(report), ensure_ascii=False, sort_keys=True, indent=2) + "\n",
         encoding="utf-8",
     )
+    if options.diagnostics and report.call_traces:
+        (run_dir / DIAGNOSTICS_FILE).write_text(
+            json.dumps(
+                scrub_value(call_trace.report(report.call_traces)),
+                ensure_ascii=False,
+                sort_keys=True,
+                indent=2,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
     return run_dir
 
 
