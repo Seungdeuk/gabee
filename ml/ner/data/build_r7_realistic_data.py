@@ -318,90 +318,98 @@ def write(path: Path, rows: list[dict]) -> None:
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--out-dir", required=True)
+    ap.add_argument("--blocks", default="p,r,amb",
+                     help="쉼표로 구분한 포함 블록: p(A-1 무공백 인접 쌍), r(A-2+A-3 실사용 단일개체), "
+                          "amb(B 중의성 대비). 기본값은 전체(R7과 동일)")
     a = ap.parse_args()
     out = Path(a.out_dir)
     out.mkdir(parents=True, exist_ok=True)
+    blocks = set(a.blocks.split(","))
 
     all_texts: list[str] = []
     train_rows, val_rows = [], []
     rid = 0
 
-    # A-1. 무공백 인접 쌍 (PERSON+PERSON, PERSON+PERSON_ALIAS)
-    rows, rid = pair_rows(rid, TRAIN_NAMES, TRAIN_NAMES, PAIR_TEMPLATES_PP, "PERSON", "PERSON", "pair_pp")
-    for r in rows:
-        all_texts.append(r["text"])
-        (train_rows if r["split"] == "train" else val_rows).append(r)
+    if "p" in blocks:
+        # A-1. 무공백 인접 쌍 (PERSON+PERSON, PERSON+PERSON_ALIAS)
+        rows, rid = pair_rows(rid, TRAIN_NAMES, TRAIN_NAMES, PAIR_TEMPLATES_PP, "PERSON", "PERSON", "pair_pp")
+        for r in rows:
+            all_texts.append(r["text"])
+            (train_rows if r["split"] == "train" else val_rows).append(r)
 
-    alias_names = [alias(n, k) for n, k in zip(TRAIN_NAMES[:8], (ALIAS_KIN * 2)[:8])]
-    rows, rid = pair_rows(rid, TRAIN_NAMES[8:16], alias_names, PAIR_TEMPLATES_PA, "PERSON", "PERSON_ALIAS", "pair_pa")
-    for r in rows:
-        all_texts.append(r["text"])
-        (train_rows if r["split"] == "train" else val_rows).append(r)
+        alias_names = [alias(n, k) for n, k in zip(TRAIN_NAMES[:8], (ALIAS_KIN * 2)[:8])]
+        rows, rid = pair_rows(rid, TRAIN_NAMES[8:16], alias_names, PAIR_TEMPLATES_PA, "PERSON", "PERSON_ALIAS", "pair_pa")
+        for r in rows:
+            all_texts.append(r["text"])
+            (train_rows if r["split"] == "train" else val_rows).append(r)
 
-    # 별명+별명(서로 다른 두 사람, 둘 다 PERSON_ALIAS) — 61~62절 "민준이형지호형이"류 과잉병합 방지용,
-    # 문구는 다르게 구성
-    alias_pairs = [(alias(TRAIN_NAMES[16], "형"), alias(TRAIN_NAMES[17], "누나")),
-                   (alias(TRAIN_NAMES[18], "오빠"), alias(TRAIN_NAMES[19], "언니"))]
-    for i, (a1, a2) in enumerate(alias_pairs):
-        text = f"{a1}{a2}가 같이 숙제했대"
-        s1, e1 = 0, len(a1)
-        s2, e2 = len(a1), len(a1) + len(a2)
-        split = "val" if i == 1 else "train"
+        # 별명+별명(서로 다른 두 사람, 둘 다 PERSON_ALIAS) — 61~62절 "민준이형지호형이"류 과잉병합
+        # 방지용, 문구는 다르게 구성
+        alias_pairs = [(alias(TRAIN_NAMES[16], "형"), alias(TRAIN_NAMES[17], "누나")),
+                       (alias(TRAIN_NAMES[18], "오빠"), alias(TRAIN_NAMES[19], "언니"))]
+        for i, (a1, a2) in enumerate(alias_pairs):
+            text = f"{a1}{a2}가 같이 숙제했대"
+            s1, e1 = 0, len(a1)
+            s2, e2 = len(a1), len(a1) + len(a2)
+            split = "val" if i == 1 else "train"
+            rid += 1
+            row = make_span_row(f"r7-pos-{rid:04d}", text, [(s1, e1, "PERSON_ALIAS"), (s2, e2, "PERSON_ALIAS")], "pair_aa", split)
+            all_texts.append(text)
+            (train_rows if split == "train" else val_rows).append(row)
+
+        # 3인 무공백
+        triple_names = TRAIN_NAMES[:3]
+        abc = "".join(triple_names)
+        text = TRIPLE_TEMPLATE.format(ABC=abc)
+        spans = []
+        offset = 0
+        for n in triple_names:
+            spans.append((offset, offset + len(n), "PERSON"))
+            offset += len(n)
         rid += 1
-        row = make_span_row(f"r7-pos-{rid:04d}", text, [(s1, e1, "PERSON_ALIAS"), (s2, e2, "PERSON_ALIAS")], "pair_aa", split)
+        row = make_span_row(f"r7-pos-{rid:04d}", text, spans, "triple_nospace", "train")
         all_texts.append(text)
-        (train_rows if split == "train" else val_rows).append(row)
+        train_rows.append(row)
 
-    # 3인 무공백
-    triple_names = TRAIN_NAMES[:3]
-    abc = "".join(triple_names)
-    text = TRIPLE_TEMPLATE.format(ABC=abc)
-    spans = []
-    offset = 0
-    for n in triple_names:
-        spans.append((offset, offset + len(n), "PERSON"))
-        offset += len(n)
-    rid += 1
-    row = make_span_row(f"r7-pos-{rid:04d}", text, spans, "triple_nospace", "train")
-    all_texts.append(text)
-    train_rows.append(row)
+    if "r" in blocks:
+        # A-2. 일정·학교·가족연락 문맥
+        for cat, split, tpl in SCHEDULE_TEMPLATES:
+            for w in TRAIN_NAMES[:12] + TRAIN_NICKS:
+                label = "PERSON" if w in TRAIN_NAMES else "PERSON_ALIAS"
+                text = fill(tpl, w)
+                all_texts.append(text)
+                rid += 1
+                row = make_span_row(f"r7-pos-{rid:04d}", text, [(*find_span(text, w), label)], cat, split)
+                (train_rows if split == "train" else val_rows).append(row)
 
-    # A-2. 일정·학교·가족연락 문맥
-    for cat, split, tpl in SCHEDULE_TEMPLATES:
-        for w in TRAIN_NAMES[:12] + TRAIN_NICKS:
-            label = "PERSON" if w in TRAIN_NAMES else "PERSON_ALIAS"
-            text = fill(tpl, w)
-            all_texts.append(text)
-            rid += 1
-            row = make_span_row(f"r7-pos-{rid:04d}", text, [(*find_span(text, w), label)], cat, split)
-            (train_rows if split == "train" else val_rows).append(row)
+        # A-3. 짧은 메신저체
+        for cat, split, tpl in SHORT_MSG_TEMPLATES:
+            for w in TRAIN_NAMES[12:20] + TRAIN_NICKS:
+                label = "PERSON" if w in TRAIN_NAMES else "PERSON_ALIAS"
+                text = fill(tpl, w)
+                all_texts.append(text)
+                rid += 1
+                row = make_span_row(f"r7-pos-{rid:04d}", text, [(*find_span(text, w), label)], cat, split)
+                (train_rows if split == "train" else val_rows).append(row)
 
-    # A-3. 짧은 메신저체
-    for cat, split, tpl in SHORT_MSG_TEMPLATES:
-        for w in TRAIN_NAMES[12:20] + TRAIN_NICKS:
-            label = "PERSON" if w in TRAIN_NAMES else "PERSON_ALIAS"
-            text = fill(tpl, w)
-            all_texts.append(text)
-            rid += 1
-            row = make_span_row(f"r7-pos-{rid:04d}", text, [(*find_span(text, w), label)], cat, split)
-            (train_rows if split == "train" else val_rows).append(row)
+    if "amb" in blocks:
+        # B. 중의성 대비(신규 8단어)
+        for cat, split, tpl in PERSON_TEMPLATES_B:
+            for w in TRAIN_WORDS_B:
+                text = fill(tpl, w)
+                all_texts.append(text)
+                rid += 1
+                row = make_span_row(f"r7-pos-{rid:04d}", text, [(*find_span(text, w), "PERSON")], cat, split)
+                (train_rows if split == "train" else val_rows).append(row)
 
-    # B. 중의성 대비(신규 8단어)
-    for cat, split, tpl in PERSON_TEMPLATES_B:
-        for w in TRAIN_WORDS_B:
-            text = fill(tpl, w)
-            all_texts.append(text)
-            rid += 1
-            row = make_span_row(f"r7-pos-{rid:04d}", text, [(*find_span(text, w), "PERSON")], cat, split)
-            (train_rows if split == "train" else val_rows).append(row)
+        for w, sents in NONPERSON_TRAIN_WORDS_B.items():
+            for text, split in sents:
+                all_texts.append(text)
+                rid += 1
+                row = make_neg_row(f"r7-neg-{rid:04d}", text, "ambiguity_neg", split)
+                (train_rows if split == "train" else val_rows).append(row)
 
-    for w, sents in NONPERSON_TRAIN_WORDS_B.items():
-        for text, split in sents:
-            all_texts.append(text)
-            rid += 1
-            row = make_neg_row(f"r7-neg-{rid:04d}", text, "ambiguity_neg", split)
-            (train_rows if split == "train" else val_rows).append(row)
-
+    print(f"포함 블록: {sorted(blocks)} | train {len(train_rows)}행 / val {len(val_rows)}행")
     leak_check(all_texts)
 
     write(out / "r7_train_extra.jsonl", train_rows)
