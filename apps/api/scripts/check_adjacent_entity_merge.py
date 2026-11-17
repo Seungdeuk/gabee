@@ -22,16 +22,27 @@ from app.shared.privacy.types import Kind  # noqa: E402
 import experiment_b_relaxed_merge as eb  # noqa: E402
 
 CASES = [
+    # --- 통제(공백/쉼표로 정상 분리, 전부 안전해야 함) ---
     ("control_space", "민준이랑 서윤이가 같이 놀았어", ["민준", "서윤"]),
     ("control_space2", "민준이가 서윤이 손을 잡았어", ["민준", "서윤"]),
     ("comma_nospace", "민준,서윤이가 같이 왔어", ["민준", "서윤"]),
+    ("control_end_position", "오늘 유치원에서 민준이랑 서윤이를 만났어", ["민준", "서윤"]),
+    ("control_three_people", "민준이랑 서윤이랑 지호가 같이 놀았어", ["민준", "서윤", "지호"]),
+    ("control_particle_hante", "민준이가 서윤이한테 전화했어", ["민준", "서윤"]),
+    ("control_particle_wa", "민준이와 서윤이가 같이 왔어", ["민준", "서윤"]),
+    ("control_particle_object", "선생님이 민준이와 서윤이를 칭찬했어", ["민준", "서윤"]),
+    ("control_family_msg_template", "민준이가 서윤이 손 잡고 유치원 갔어", ["민준", "서윤"]),
+    ("control_alias_then_name", "민준이형이 서윤이를 데려다줬어", ["민준이형", "서윤"]),
+    # --- 스트레스(일부러 무공백/붙여씀, 과잉병합 위험 확인용) ---
     ("concat_nospace", "민준서윤이가 같이 왔어", ["민준", "서윤"]),
     ("concat_nospace2", "지호민준이가 같이 놀았어", ["지호", "민준"]),
+    ("concat_nospace_end", "오늘 민준서윤이를 만났어", ["민준", "서윤"]),
     ("alias_concat", "민준이형서윤이가 같이 왔어", ["민준이형", "서윤"]),
     ("alias_space_ctrl", "민준이형 서윤이가 같이 왔어", ["민준이형", "서윤"]),
     ("nick_concat", "콩이민준이가 같이 놀았어", ["콩이", "민준"]),
     ("nick_space_ctrl", "콩이 민준이가 같이 놀았어", ["콩이", "민준"]),
     ("alias_alias_concat", "민준이형지호형이 같이 왔어", ["민준이형", "지호형"]),
+    ("three_people_nospace", "민준서윤지호가 같이 놀았어", ["민준", "서윤", "지호"]),
 ]
 
 
