@@ -18123,6 +18123,66 @@
         }
       }
     },
+    "/admin/knowledge/ask/stream": {
+      "post": {
+        "tags": [
+          "admin-knowledge"
+        ],
+        "summary": "Ask Stream",
+        "description": "/ask 와 같은 답을 단계 소식과 함께 보낸다(SSE). DB 연결은 스트림이 끝난 뒤 닫힌다.",
+        "operationId": "ask_stream_admin_knowledge_ask_stream_post",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdminAskIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "text/event-stream. `data: ` 줄마다 AdminAskEvent 하나(JSON). 마지막은 answer 또는 error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminAskEvent"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/health/db": {
       "get": {
         "tags": [
@@ -18473,6 +18533,73 @@
           "errors"
         ],
         "title": "AdminAiUserRow"
+      },
+      "AdminAskEvent": {
+        "properties": {
+          "step": {
+            "type": "string",
+            "enum": [
+              "received",
+              "masked",
+              "understand",
+              "tool",
+              "write",
+              "answer",
+              "error"
+            ],
+            "title": "Step"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label"
+          },
+          "answer": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Answer"
+          },
+          "code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Code"
+          },
+          "message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Message"
+          }
+        },
+        "type": "object",
+        "required": [
+          "step"
+        ],
+        "title": "AdminAskEvent",
+        "description": "`POST /admin/knowledge/ask/stream` 이 `data: ` 줄마다 보내는 단계 소식.\n\nreceived 질문 확인 · masked 개인정보 가림 · understand 질문 이해(Claude 첫 호출) · tool 숫자 조회(label 은 화면용 도구 이름)\n· write 답 작성 · answer 끝(answer 에 답) · error 실패(code, message). 질문 글과 도구가 읽은 숫자는 보내지 않는다."
       },
       "AdminAskIn": {
         "properties": {

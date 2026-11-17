@@ -373,3 +373,109 @@ def test_trace_covers_the_model_and_tool_calls(client, admin, monkeypatch):
     assert r.status_code == 200
     assert rec.chains == [graph.RUN_NAME]
     assert rec.models == 2 and "members" in rec.tools
+
+
+def test_stream_chat_reports_steps_in_order(client):
+    """단계 소식: 질문 이해 → 도구마다 화면용 이름 → 답 작성. 내부 도구 이름·숫자·답은 소식에 없다."""
+    from langchain_core.messages import HumanMessage
+
+    from app.features.admin_knowledge import graph
+    from app.shared.llm.chat_model import PostChatModel
+
+    calls = {"n": 0}
+
+    def post(body):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            uses = [
+                {"type": "tool_use", "id": "a", "name": "members", "input": {}},
+                {"type": "tool_use", "id": "b", "name": "no_such_tool", "input": {}},
+            ]
+            return {"content": uses}
+        return {"content": [{"type": "text", "text": "회원은 **1명**이에요."}]}
+
+    with SessionLocal() as db:
+        tool_list = live.tools(db)
+        model = PostChatModel(
+            post=post,
+            llm_model="test",
+            max_tokens=100,
+            system="",
+            tools=[graph.spec(t) for t in tool_list],
+        )
+        run = graph.Run(model=model, tools={t.name: t for t in tool_list}, max_steps=4)
+        events = list(graph.stream_chat(run, [HumanMessage(content="회원 몇 명이야?")]))
+
+    assert events == [
+        {"step": "understand"},
+        {"step": "tool", "label": "회원 수 확인"},  # 없는 도구(no_such_tool)는 알리지 않는다
+        {"step": "write"},
+    ]
+    assert run.answer == "회원은 **1명**이에요."
+    assert "members" not in json.dumps(events, ensure_ascii=False)
+
+
+def test_every_tool_has_a_screen_label():
+    """도구를 새로 올릴 때 화면용 이름을 빠뜨리면 내부 이름이 화면에 보인다."""
+    for fact in admin_facts.all_facts():
+        assert fact.label != fact.name, f"{fact.name} 에 label 이 없어요"
+
+
+STREAM = "/admin/knowledge/ask/stream"
+
+
+def _events(r) -> list[dict]:
+    """SSE 본문을 소식 목록으로 바꾼다."""
+    assert r.headers["content-type"].startswith("text/event-stream")
+    return [json.loads(line[6:]) for line in r.text.splitlines() if line.startswith("data: ")]
+
+
+def test_stream_needs_login_and_admin_list(client):
+    assert client.post(STREAM, json={"q": "공지"}).status_code == 401
+    headers, _ = _login(client)
+    assert client.post(STREAM, json={"q": "공지"}, headers=headers).status_code == 403
+
+
+def test_stream_sends_steps_then_the_answer(client, admin, monkeypatch):
+    seen = _fake_llm(monkeypatch, "전체 회원은 **1명**이에요.")
+    r = client.post(STREAM, json={"q": "회원 몇 명이야? 연락처 010-1234-5678"}, headers=admin)
+    assert r.status_code == 200
+    events = _events(r)
+    steps = [e["step"] for e in events]
+    assert steps[:3] == ["received", "masked", "understand"]
+    assert steps[-2:] == ["write", "answer"]
+    labels = [e["label"] for e in events if e["step"] == "tool"]
+    assert "회원 수 확인" in labels and "서버 오류 확인" in labels
+    assert events[-1]["answer"] == "전체 회원은 **1명**이에요."
+    # 스트림 중에도 DB 연결이 살아 있어 숫자를 읽었다(못 읽으면 "확인할 수 없음")
+    assert "전체 회원 1명" in seen["prompt"] and live.UNKNOWN not in seen["prompt"]
+    # Claude 에게는 가린 질문이 가고, 브라우저로 가는 소식에는 질문·도구 숫자·내부 도구 이름이 없다
+    assert "1234-5678" not in seen["prompt"]
+    body = r.text
+    for secret in ("010-1234-5678", "연락처", "전체 회원 1명", '"members"', "jimin_kim"):
+        assert secret not in body.replace(events[-1]["answer"], "")
+
+
+def test_stream_same_answer_as_ask(client, admin, monkeypatch):
+    _fake_llm(monkeypatch, "같은 답이에요.")
+    plain = client.post(ASK, json={"q": "회원 몇 명이야?"}, headers=admin).json()["answer"]
+    _fake_llm(monkeypatch, "같은 답이에요.")
+    streamed = _events(client.post(STREAM, json={"q": "회원 몇 명이야?"}, headers=admin))
+    assert streamed[-1] == {"step": "answer", "answer": plain}
+
+
+def test_stream_failure_ends_with_an_error_event(client, admin, monkeypatch):
+    import httpx
+
+    _fake_llm(monkeypatch, httpx.ConnectError("down"))
+    r = client.post(STREAM, json={"q": "회원 몇 명이야?"}, headers=admin)
+    assert r.status_code == 200  # 소식을 보내기 시작한 뒤라 상태 코드는 이미 200 이다
+    events = _events(r)
+    assert [e["step"] for e in events] == ["received", "masked", "understand", "error"]
+    assert events[-1]["code"] == "llm_failed" and "down" not in r.text
+
+
+def test_stream_without_key_is_503_before_any_event(client, admin, monkeypatch):
+    monkeypatch.setattr(settings, "anthropic_api_key", "")
+    r = client.post(STREAM, json={"q": "회원 몇 명이야?"}, headers=admin)
+    assert r.status_code == 503 and r.json()["code"] == "ai_key_missing"

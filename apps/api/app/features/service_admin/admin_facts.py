@@ -153,6 +153,7 @@ register(
     "전체 회원, 최근 7일 가입, 최근 7일 활성 사용자, 가족 없는 회원, 이메일 인증 회원 수.",
     members,
     order=10,
+    label="회원 수 확인",
 )
 register(
     "members_daily",
@@ -161,18 +162,30 @@ register(
     "비우면 최근 30일을 줍니다.",
     daily_members,
     order=15,
+    label="날짜별 회원 확인",
     params=DateRange,
 )
 register(
-    "groups", "가족 그룹 수, 1명뿐인 가족, 승인 대기 참가 요청, AI 를 켠 가족 수.", groups, order=20
+    "groups",
+    "가족 그룹 수, 1명뿐인 가족, 승인 대기 참가 요청, AI 를 켠 가족 수.",
+    groups,
+    order=20,
+    label="가족 그룹 확인",
 )
-register("support", "문의·신고의 새 문의, 처리 중, 답변 완료, 신고 건수.", support, order=30)
+register(
+    "support",
+    "문의·신고의 새 문의, 처리 중, 답변 완료, 신고 건수.",
+    support,
+    order=30,
+    label="문의·신고 확인",
+)
 register(
     "ai_usage",
     "AI 요청 수. 사용량 변화를 비교할 때 씁니다. 비우면 오늘·최근 7일·최근 30일 합계와 최근 14일 날짜별 값을, "
     f"start·end(YYYY-MM-DD, 한국 시간)를 주면 그 기간(최대 {MAX_RANGE_DAYS}일)의 날짜별 값과 합계를 줍니다.",
     ai,
     order=40,
+    label="AI 사용량 확인",
     params=DateRange,
 )
 register(
@@ -181,4 +194,5 @@ register(
     "기능 사용 지도, AI 품질(오류율·캐시·한도 거절), 고객 응대.",
     data_analysis,
     order=90,
+    label="데이터 분석 확인",
 )
