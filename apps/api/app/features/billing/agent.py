@@ -5,6 +5,7 @@ LLM 은 월 같은 조회 조건만 고른다. 라우터를 거치지 않으므�
 
 from sqlalchemy.orm import Session
 
+from app.features.ai_assistant.ingest.masking import mask_text
 from app.features.family_group.models import User
 from app.shared.auth import ensure_group_member
 from app.shared.errors import bad_request
@@ -37,6 +38,27 @@ def _month(args: dict) -> str:
 
 def _dump(model) -> dict:
     return model.model_dump(mode="json")
+
+
+# 사용자가 직접 쓴 자유 문장 칸. 읽기 도구 결과에서 이 칸만 외부로 나가기 전에 가린다(id·날짜·금액·이름은 그대로 둔다)
+_FREE_TEXT_KEYS = frozenset({"title", "memo", "note", "reason", "description"})
+
+
+def _mask_free_text(value):
+    """읽기 도구 결과의 자유 문장 칸에서 전화·카드·계좌·이메일·주민번호·주소 같은 형식 값을 가린다(`mask_text`, NER 모델 불필요).
+    이름은 가리지 않는다: 답에 필요하고 규칙으로는 이름을 믿고 찾을 수 없다."""
+    if isinstance(value, dict):
+        return {
+            k: mask_text(v) if k in _FREE_TEXT_KEYS and isinstance(v, str) else _mask_free_text(v)
+            for k, v in value.items()
+        }
+    if isinstance(value, list):
+        return [_mask_free_text(v) for v in value]
+    return value
+
+
+def _masked(read):
+    return lambda args: _mask_free_text(read(args))
 
 
 def _resolve_members(db: Session, group_id: str, names: list) -> tuple[list[str], list[str]]:
@@ -362,7 +384,7 @@ def build_tools(db: Session, group_id: str, user: User, proposed: list | None = 
         if proposed is not None
         else []
     )
-    return write_tools + [
+    read_tools = [
         Tool(
             "get_month_summary",
             "그 달 지출 요약(총액, 카테고리별·사람별 합계).",
@@ -410,6 +432,9 @@ def build_tools(db: Session, group_id: str, user: User, proposed: list | None = 
                 "allowances": [_dump(x) for x in service.list_allowances(db, group_id, user)]
             },
         ),
+    ]
+    return write_tools + [
+        Tool(t.name, t.description, t.input_schema, _masked(t.run)) for t in read_tools
     ]
 
 
