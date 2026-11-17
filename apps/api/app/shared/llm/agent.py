@@ -181,8 +181,12 @@ def ask_agent(
     history: list[dict] | None = None,
     proposals: list | None = None,
     stage: str = "",
+    max_tokens: int | None = None,
 ) -> AgentReply:
-    """run_agent 를 부르되 실패하면 예외 대신 can_answer=False 인 답을 돌려준다(부른 에이전트가 이어서 말하도록)."""
+    """run_agent 를 부르되 실패하면 예외 대신 can_answer=False 인 답을 돌려준다(부른 에이전트가 이어서 말하도록).
+
+    max_tokens: 모델 호출 한 번의 출력 상한. 주지 않으면(None) `run_agent` 의 기본값을 그대로 쓴다(정산·돌봄 Agent 는 주지 않는다)."""
+    limit = {} if max_tokens is None else {"max_tokens": max_tokens}
     try:
         reply = run_agent(
             system,
@@ -191,6 +195,7 @@ def ask_agent(
             post=post,
             max_steps=max_steps,
             stage=stage,
+            **limit,
         )
         reply.proposals = list(proposals or [])
         return reply

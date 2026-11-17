@@ -344,12 +344,42 @@ def test_chat_03_records_each_call_with_role_stop_reason_max_tokens_and_tool_res
     assert [r["role"] for r in rows] == ["main", "family_chat", "analysis", "family_chat"]
     assert [r["call_index"] for r in rows] == [0, 1, 2, 3]
     assert all(r["ok"] and r["stop_reason"] for r in rows)
-    assert rows[2]["max_tokens"] == 3000 and rows[3]["max_tokens"] == 1024
+    # 소통 Agent 호출은 2048(`family_chat.agent.AGENT_MAX_TOKENS`), 대화 분석은 3000, 메인은 2048
+    assert [r["max_tokens"] for r in rows] == [2048, 2048, 3000, 2048]
     assert rows[1]["requested_tools"] == ["analyze_recent_chat", "list_todos"]
     names = [t["tool"] for r in rows for t in r.get("tool_results", [])]
     assert names == ["analyze_recent_chat", "list_todos"]
     # 한계: 메인이 두 번째로 부르지 않으면 `ask_family_chat` 결과가 실린 요청이 없어 그 결과의 can_answer 는 기록에 없다
     assert doc["summary"]["calls"] == 4 and doc["summary"]["calls_by_role"]["analysis"] == 1
+
+
+def test_a_repeated_analysis_request_runs_the_tool_twice_but_calls_the_model_once(chat03, tmp_path):
+    """chat-03 재평가(8회 호출)에서 두 번째 시도가 `analyze_recent_chat` 을 다시 요청했는데 분석 모델 호출은 한 번뿐이었다: 도구 요청 2회, 도구 실행 2회,
+    내부 LLM 호출 1회 — 같은 대화 범위의 분석은 결과 캐시(`ai_guard.run`)에서 꺼내므로 두 번째 실행은 Anthropic 을 부르지 않는다."""
+    from evals.agent_eval.fake_model import ToolUse, call, round_of, say
+
+    both = round_of(ToolUse("analyze_recent_chat", {}), ToolUse("list_todos", {}))
+    script = {
+        "s-dev-05-chat-03": {
+            "main": [call("ask_family_chat", {"question": "정리해 줘"}), say("정리했어요")],
+            "family_chat": [both, both, say("정리했어요")],
+            "schedule": dev_scripts.SCRIPTS["s-dev-05-chat-03"][
+                "schedule"
+            ],  # 분석 응답은 한 번만 있다
+        }
+    }
+    report = run(chat03, tmp_path, run_id="diag-cache", scripts=script, diagnostics=True)
+    rows = report.call_traces
+    requested = [t for r in rows for t in r.get("requested_tools", [])]
+    executed = [c.name for c in report.observations[("s-dev-05-chat-03", 0)].calls]
+    assert requested.count("analyze_recent_chat") == 2  # 도구 요청
+    assert executed.count("analyze_recent_chat") == 2  # 실제 도구 실행
+    assert [r["role"] for r in rows].count("analysis") == 1  # 내부 LLM 호출
+    analyze = [
+        t for r in rows for t in r.get("tool_results", []) if t["tool"] == "analyze_recent_chat"
+    ]
+    assert len(analyze) == 2 and analyze[0]["chars"] == analyze[1]["chars"]  # 같은 결과가 돌아온다
+    assert report.records[0].status == "judged"  # 분석 응답이 한 번뿐인데도 바닥나지 않았다
 
 
 def test_a_failing_family_chat_agent_shows_can_answer_false_and_the_reason_in_the_main_call(

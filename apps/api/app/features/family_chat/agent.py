@@ -30,6 +30,9 @@ DESCRIPTION = (
 )
 MAX_RESULTS = 20
 MAX_TODOS = 30
+# 소통 Agent 모델 호출 한 번의 출력 상한. 기본값(run_agent 1024)이면 모델의 thinking 이 토큰을 다 써 글이 0자로 끝나거나 답이 끊겼다(T35 chat-03).
+# 대화 분석(`ai_service.ANALYSIS_MAX_TOKENS` 3000)과 메인(`rag_chat.CHAT_MAX_TOKENS` 2048)·정산·일정 Agent 의 상한은 그대로다.
+AGENT_MAX_TOKENS = 2048
 _WEEKDAYS = "월화수목금토일"
 # 이름 뒤에 잘못 붙은 조사 -> 받침 유무에 맞는 조사. 토큰을 이름으로 복원하면 모델이 토큰 기준으로 쓴 조사가 남는다.
 _AFTER_BATCHIM = {"가": "이", "는": "은", "를": "을", "와": "과", "랑": "이랑"}  # 받침이 있는 이름
@@ -219,6 +222,7 @@ def ask(
                 post=post,
                 history=history,
                 stage="family_chat",
+                max_tokens=AGENT_MAX_TOKENS,
             )
             if reply.can_answer:
                 restored = session.restore_text(reply.answer, generalize_unknown=True, scrub=True)

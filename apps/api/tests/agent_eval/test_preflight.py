@@ -380,6 +380,19 @@ def test_max_tokens_cap_is_per_call_path():
     assert preflight.max_tokens_cap(structured_other, 2048) == 2048
 
 
+def test_check_4_accepts_the_family_chat_agent_at_2048_and_still_blocks_one_more(
+    tmp_path, monkeypatch
+):
+    """소통 Agent 호출 상한을 2048 로 올려도 사전 점검의 일반 호출 상한(설정 2048)은 그대로라 통과하고, 2049 는 막는다."""
+    assert settings.anthropic_max_tokens == 2048
+    chat = body(system="가족 채팅 담당 에이전트", max_tokens=2048)
+    stub_run(monkeypatch, [body(), chat])
+    assert pass_check(tmp_path).status == PASS
+    stub_run(monkeypatch, [body(), body(system="가족 채팅 담당 에이전트", max_tokens=2049)])
+    check = pass_check(tmp_path)
+    assert check.status == FAIL and "상한(2048)" in check.detail
+
+
 def chat_03_input(tmp_path, **kw):
     from evals.agent_eval import case_files, dev_cases, dev_scripts
 
