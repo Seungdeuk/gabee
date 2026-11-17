@@ -177,6 +177,7 @@ def load_rows(p):
 def main():
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--r6-candidate", required=True)
+    ap.add_argument("--expect-fp12", default="c59b174ba126", help="모델 지문 검증(기본: R6 seed42)")
     ap.add_argument("--out", type=Path, required=True)
     a = ap.parse_args()
 
@@ -198,7 +199,7 @@ def main():
     settings.privacy_ner_mode = "required"
     settings.privacy_ner_model_dir = a.r6_candidate
     status = ner.ner_status()
-    assert status["fingerprint"][:12] == "c59b174ba126", status["fingerprint"][:12]
+    assert status["fingerprint"][:12] == a.expect_fp12, status["fingerprint"][:12]
 
     insp = TokenInspector(a.r6_candidate)
 
