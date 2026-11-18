@@ -27,8 +27,10 @@
 - 결과·주의:
   - 서비스 모델의 알려진 약점은 그대로 남는다: 처음 보는 낯선 이름·한 글자 이름·공백 없이 붙은 별명(예: "민준이형서윤이가"는
     R6 도 하나로 합침). 등록된 가족 이름은 NER 과 무관하게 이름 사전이 1차로 보호한다.
-  - 실제 운영 컨테이너가 로드 중인 모델 지문과 `PRIVACY_NER_MODE` 값은 이 저장소만으로 확인할 수 없다(미확인). 운영은 Dockerfile 이
-    `data/models` 를 이미지에 `COPY` 하므로 폴더를 바꾼다고 운영이 바뀌지 않고, 이미지 재빌드가 필요하다.
+  - 운영 확인(사용자 보고, 2026-11-18): Cloud Run 배포 이미지(revision `gabee-00018-bd2`)를 Cloud Shell 임시 컨테이너에서 검증한
+    결과 mode `auto`, active `True`, 지문 `46210943c45f` 였다(**배포 이미지의 모델 검증 완료**). **실제 Cloud Run 런타임 상태·환경변수는
+    미확인**이다. mode `auto` 는 모델을 못 불러오면 조용히 규칙만 쓴다(fail-closed 는 `required`). 운영은 Dockerfile 이 `data/models`
+    를 이미지에 `COPY` 하므로 폴더를 바꾼다고 운영이 바뀌지 않고, 이미지 재빌드가 필요하다.
   - 이 PC 의 개발용 `data/models/ner` 는 2026-11-18 에 서비스 모델(`46210943c45f`)로 맞췄다(전에는 R1 이었고 삭제함, R1 사본은
     `venvs` 의 export 폴더에 있음). `ner.prev` 는 같은 서비스 모델 사본이다. 정본은
     `gabee-model-delivery\ner-koelectra-small-v2b` 이며 사본 3벌이 모두 이 PC 안에 있어 PC 밖 백업은 없다.
