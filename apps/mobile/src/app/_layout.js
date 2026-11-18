@@ -12,6 +12,7 @@ import { StyleSheet } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 
 // 백그라운드 위치 작업은 앱이 깨어날 때도 등록돼 있어야 해서 전역에서 불러온다(동의한 사람만 켜진다)
+import AcquisitionBootstrap from "@/features/acquisition/AcquisitionBootstrap";
 import PushBootstrap from "@/features/notifications/PushBootstrap";
 import { AuthProvider } from "@/shared/auth/AuthProvider";
 import { colors } from "@/theme";
@@ -33,6 +34,8 @@ export default function RootLayout() {
       <StatusBar style="dark" />
       <AuthProvider>
         <PushBootstrap />
+        {/* 플레이 스토어 설치 꼬리표(유입 경로)를 로그인 뒤 한 번 서버에 보낸다(안드로이드만) */}
+        <AcquisitionBootstrap />
         <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.background } }} />
       </AuthProvider>
     </GestureHandlerRootView>
