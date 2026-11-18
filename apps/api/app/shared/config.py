@@ -216,6 +216,9 @@ class Settings(BaseSettings):
     # 근거 없는 주장 2.6→0.9%, 정확도 유지. 긴 공개 PDF(중앙값 약 1만 1천 자, 상위 25% 2만 3천 자 이상)는 정확도 85.0→78.3%,
     # 질문당 비용 +35%, 지연 2배로 손해. 그래서 짧은 문서에만 확인한다
     chat_verify_max_evidence_chars: int = 8000
+    # 모델의 최종 답 초안이 '찾지 못했다' 유형이고 이 대화에서 문서 검색 결과가 있었으면, 코드가 검색 결과 상위 3개 문서 안을
+    # 원래 질문으로 다시 찾아(search_in_item) 그 조각을 근거로 한 번 더 답하게 한다(최대 1회, 모델 호출 +1). 기본은 꺼짐: 평가에서만 켠다.
+    chat_retry_not_found: bool = False
 
     # 가명화 NER 보강(app/shared/privacy/ner.py, KoELECTRA-small ONNX). 모델 파일은 저장소에 없고 서버 폴더에서 읽는다.
     # off: 안 씀 / auto: 모델이 있고 로드되면 쓰고, 없거나 실패하면 규칙만(프로세스당 한 번 경고) / required: 못 쓰면 503 privacy_unavailable(fail-closed)
