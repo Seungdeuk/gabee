@@ -227,6 +227,43 @@ def search(
     return [replace(h, more=tuple(extra.get(h.item.id, ()))) for h in top]
 
 
+IN_ITEM_CANDIDATES = 300  # 큰 문서(6만 자, 조각 100개 안팎)의 조각을 모두 후보로 본다
+
+
+def search_in_item(
+    db: Session,
+    group_id: str,
+    item_id: str,
+    query: str,
+    *,
+    top_k: int = 5,
+    include_sensitive: bool = True,
+    hybrid: bool | None = None,
+) -> list[Hit]:
+    """한 기록(문서) 안에서만 질문과 가까운 조각을 찾는다. 조각마다 Hit 하나이고 쪽 순서가 아니라 순위(하이브리드면
+    섞은 순서, 아니면 임베딩 점수 순) 로 top_k 개. 다른 그룹·없는 item_id·볼 수 없는 민감 기록은 빈 목록이다."""
+    embedder = _embedder(db)
+    mix = settings.chat_hybrid_search if hybrid is None else hybrid
+    rows = repo.search_chunks(
+        db,
+        group_id,
+        embedder.name,
+        embedder.embed_query(query),
+        None,
+        None,
+        None,
+        include_sensitive,
+        limit=IN_ITEM_CANDIDATES,
+        item_id=item_id,
+    )
+    if mix and len(rows) > 1:
+        order = hybrid_search.fuse_order(
+            query, [c.text for c, _i, _s in rows], settings.chat_hybrid_text_weight
+        )
+        rows = [rows[i] for i in order]
+    return [Hit(item=item, chunk=chunk, score=score) for chunk, item, score in rows[:top_k]]
+
+
 def name_checks(db: Session, group_id: str, limit: int = 5) -> list[dict]:
     """가족 이름과 한 글자 차이인 이름이 있어 사용자 확인을 기다리는 곳(기록, 후보 가족) 목록. 오래된 것부터 limit 개.
 

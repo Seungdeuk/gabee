@@ -11,6 +11,7 @@ from datetime import UTC, datetime, timedelta, timezone
 from typing import Any
 
 import httpx
+from langchain_core.messages import AIMessage, ToolMessage
 from sqlalchemy.orm import Session
 
 from app.features.family_group.models import User
@@ -19,9 +20,9 @@ from app.shared.config import settings
 from app.shared.errors import ApiError
 from app.shared.high_risk_guard import has_high_risk
 from app.shared.llm import client as llm
-from app.shared.llm import tool_graph, transport
+from app.shared.llm import eval_hook, tool_graph, transport
 from app.shared.llm.agent import build_messages
-from app.shared.llm.chat_model import PostChatModel, to_langchain_messages
+from app.shared.llm.chat_model import PostChatModel, text_of, to_langchain_messages
 
 from .. import (
     agents,
@@ -51,8 +52,9 @@ SYSTEM_PROMPT = (
     "질문 낱말로 못 찾으면 다른 낱말(예: 비행기→항공권)로 한 번 더 찾아보세요. "
     "집·가족 생활이나 문서에 있을 수 있는 사실 질문(금액, 날짜, 규정, 기관·연락처, 절차 등)은 상식처럼 보여도 먼저 search_knowledge 로 찾으세요. "
     "찾아보지 않고 기록에 없다고 말하지 마세요. 인사·잡담, 앱 사용법, 명백한 계산에는 검색하지 않아도 됩니다. "
-    "관련 기록은 찾았는데 조각에 답이 안 보이면 포기하기 전에 get_item 으로 그 기록을 읽어 보세요. "
+    "관련 기록은 찾았는데 조각에 답이 안 보이면 포기하기 전에 get_item 으로 그 기록을 읽어 보세요. 질문 주제와 맞는 기록이 검색 결과 위쪽에 있는데 아직 읽지 않았다면, 읽어 보기 전에는 찾지 못했다고 하지 마세요. "
     "읽어 봐도 답이 없으면 '일반 지식으로는' 같은 말, 외부 기관·사이트·번호 안내, 추정을 덧붙이지 말고 찾지 못했다고 한두 문장으로만 말하세요. 찾지 못했다고 답할 때는 비슷한 다른 값(다른 달·다른 사람·다른 상품·다른 기록의 금액, 날짜, 번호, 비율, 개수 등)을 대신 적거나 덧붙이지 말고, 확인한 기록의 제목만 말하세요. "
+    "질문이 묻는 구체적 대상(사건, 사람, 기간, 항목)이 기록에 직접 나오지 않고 비슷한 주제의 기록만 있으면, 그 내용을 질문의 답처럼 말하지 말고 찾지 못했다고만 하세요. "
     "(문서와 무관한 일상 대화는 평소처럼 답해도 됩니다.) 답은 기록에 나온 내용 범위로 짧게 쓰고 답에는 기록 제목을 함께 알려 주세요. "
     "has_unread_parts 가 true 인 기록은 원본에서 읽지 못한 부분이 있으니 값을 단정하지 말고 확인을 권하세요. "
     "기록 글에서 [불확실] 이 붙은 줄은 글자 인식이 흐려 틀렸을 수 있으니, 그 줄의 값을 쓸 때는 단정하지 말고 원본 확인을 권하세요. "
@@ -60,7 +62,13 @@ SYSTEM_PROMPT = (
     # 앱 답변 화면(AnswerView)이 그릴 수 있는 형식만 쓴다: 문단, '## 제목', '- 목록', '**굵게**', [번호]
     "답은 앱 화면에 맞춰 짧은 문단으로 쓰고, 필요하면 '- ' 목록과 '**굵게**'만 쓰세요. "
     "### 제목, 표, 이모지는 쓰지 마세요. 제목이 필요하면 '## 제목' 한 줄만 쓰세요. "
+    "답은 핵심부터 쓰세요. 질문이 묻는 항목마다 값·이름·기간을 담은 한 문장으로 답하고, 배경 설명, 문서의 다른 부분 소개, 같은 말을 다시 정리하는 문장, 묻지 않은 비슷한 항목은 쓰지 마세요. "
+    "항목이 셋 미만이면 제목과 목록 없이 문장으로 쓰고, 질문이 이유·비교·변화를 물으면 그 핵심 문장은 빠뜨리지 마세요. "
     "기록에서 가져온 내용 문장 끝에는 그 기록의 ref 번호를 [1] 처럼 붙이세요. 금액·날짜·개수·차이처럼 값 하나를 묻는 질문은 그 값 하나를 먼저 말하고, 질문이 묻지 않은 다른 기준의 값(할인 후, 포함·제외, 다른 항목)은 덧붙이지 마세요. "
+    "질문이 묻지 않은 계산 값(변화율, 증감폭, 합계, 몇 배)은 기록에 그대로 나온 것이 아니면 새로 계산해 덧붙이지 마세요. "
+    "표에서 값을 고를 때는 질문이 말한 행·열·연도를 문서에 적힌 그대로 맞춰 쓰고, 열이 섞여 읽히면 값을 단정하지 말고 그렇게 말하세요. "
+    "값이 둘 이상 필요한 질문은 질문이 요구한 값의 개수만큼 쓰고, 찾지 못한 값은 찾지 못했다고 적으세요. "
+    "기록에 없는 내용은 덧붙이지 마세요. 약어 풀이, 일반적인 주의 문구, 원인·취지 해석, 답을 마무리하는 정리 문장도 기록에 없으면 쓰지 마세요. "
     # 여러 건을 모아 보여 줘야 하는 요청(지출·영수증 보고서, 공과금 정리 등)
     "'보고서'나 '정리'처럼 여러 기록을 모아야 하는 요청은 search_knowledge 의 top_k 를 20 까지 키워 "
     "해당 기록을 빠짐없이 찾고, '## 제목' 아래에 항목별 금액을 '- ' 목록으로, 마지막에 합계를 적으세요. "
@@ -128,6 +136,8 @@ WEB_NOTE = (
 )
 # 1024 로는 답을 쓰기 전에 끊겼다(적응형 사고가 상한을 다 쓴 일반 질문, 웹 검색을 쓸 때). 4096 은 답이 길어지며 자기 지식이 섞여
 # 2048 로 낮췄다. 웹 검색 경로는 검색 결과를 읽고 쓰므로 4096 을 그대로 둔다 (2026-11-09)
+# 2048 로도 모델의 숨은 생각이 상한을 다 써 답이 끊기거나 글 없이 끝나는 일이 측정마다 1~4건 있었다(stop_reason=max_tokens, 생각 블록만 옴).
+# 3072 로 올렸다가 사용자 결정으로 되돌리고(2026-11-18) 대신 답을 핵심 위주로 짧게 쓰게 했다. 빈 답은 한 번 더 묻는다.
 CHAT_MAX_TOKENS = 2048
 WEB_MAX_TOKENS = 4096
 WEB_SOURCE_LIMIT = 5
@@ -182,6 +192,15 @@ def system_prompt(
 
 MAX_STEPS = 4
 DOC_TOOLS = ("search_knowledge", "get_item")  # 이 도구로만 근거를 얻은 답이 검증(verify) 대상이다
+RETRY_TOOL = "retry_search"  # 기권 초안 뒤 코드가 하는 문서 안 재검색(평가 기록 tool_calls 에 이 이름으로 남는다)
+RETRY_ITEMS = 3  # 재검색할 문서 수(검색 결과 상위, 서로 다른 기록)
+RETRY_CHUNKS_PER_ITEM = 3
+RETRY_TOTAL_CHARS = 6000  # 재검색으로 모델에 주는 조각 글자 합 상한
+RETRY_DRAFT_MAX_CHARS = 500  # 이보다 긴 초안은 값을 담은 답이라 보고 기권 초안으로 보지 않는다
+# 초안이 '찾지 못했다/확인되지 않았다' 유형인지(코드 판정, 모델 호출 없음)
+NOT_FOUND_DRAFT = re.compile(
+    r"찾지 못|찾을 수 없|확인되지 않|확인할 수 없|확인이 어렵|나오지 않|나와 있지 않|보이지 않|담겨 있지 않|기록에 없|언급되어 있지 않|언급돼 있지 않"
+)
 
 Post = Callable[[dict], dict]
 
@@ -264,6 +283,7 @@ def _run_tool(
             "uploaded_from",
             "uploaded_to",
             "uploaded_by",
+            "item_id",
         }
         return tools.search_knowledge(
             db,
@@ -593,9 +613,37 @@ def ask(
         tool_graph.run_graph(run, to_langchain_messages(build_messages(question, history)))
     except (httpx.HTTPError, ValueError, KeyError):
         return _fallback(db, group_id, question)
+    if not run.answer and run.finished and not run.done and run.messages:
+        # 모델이 생각 블록만 보내고 글 없이 끝내는 일이 드물게 있다(같은 질문을 다시 물으면 답한다). 한 번만 다시 부른다
+        try:
+            again = run.model.model_copy(update={"post": verify_post or post}).invoke(
+                run.messages[:-1] if isinstance(run.messages[-1], AIMessage) else run.messages,
+                no_tools=True,
+            )
+        except (httpx.HTTPError, ValueError, KeyError):
+            again = None
+        if again is not None:
+            eval_hook.observe_model(run.stage, again)
+            text = text_of(again)
+            if text and not again.tool_calls:
+                run.answer = text
     result.answer = run.answer
     if not result.answer:
         return _fallback(db, group_id, question, ai_failed=False)  # 호출은 성공했지만 글 답이 없다
+    if _should_retry_not_found(run, result, with_web):
+        _retry_not_found(
+            run.model,
+            verify_post or post,
+            db,
+            group_id,
+            question,
+            history,
+            result,
+            seen=seen,
+            refs=refs,
+            stage=run.stage,
+            base=run.messages,
+        )
     if _should_verify(run, result, with_web):
         # 검증 호출은 실패해도 질문을 막지 않는다(verify_post 는 호출 수만 세고 실패는 기록하지 않는 자리, 시험·직접 호출은 post 를 쓴다)
         outcome = verify.verify_outcome(
@@ -618,6 +666,129 @@ def ask(
     return result
 
 
+def _should_retry_not_found(run: tool_graph.Run, result: AskResult, with_web: bool) -> bool:
+    """설정이 켜져 있고, 문서 검색만 쓴 답 초안이 '찾지 못했다' 유형이며, 이 대화에 search_knowledge 결과가 있을 때만 True."""
+    draft = result.answer
+    return (
+        settings.chat_retry_not_found
+        and not with_web
+        and not run.done
+        and not result.web_sources
+        and not draft.endswith(tool_graph.TRUNCATED_NOTE)
+        and len(draft) <= RETRY_DRAFT_MAX_CHARS
+        and bool(NOT_FOUND_DRAFT.search(draft))
+        and all(c["name"] in DOC_TOOLS for c in result.tool_calls)
+        and any(c["name"] == "search_knowledge" for c in result.tool_calls)
+        and bool(_top_items(result.evidence))
+    )
+
+
+def _top_items(evidence: list[dict]) -> list[str]:
+    """이 대화의 검색 결과(search_knowledge 의 results)에 나온 서로 다른 기록 id, 앞에서부터 RETRY_ITEMS 개."""
+    ids: list[str] = []
+    for data in evidence:
+        for r in data.get("results") or []:
+            item_id = r.get("item_id")
+            if item_id and item_id not in ids:
+                ids.append(item_id)
+    return ids[:RETRY_ITEMS]
+
+
+def _retry_not_found(
+    model: PostChatModel,
+    post: Post,
+    db: Session,
+    group_id: str,
+    question: str,
+    history: list[dict] | None,
+    result: AskResult,
+    *,
+    seen: set[str],
+    refs: dict[str, int],
+    stage: str,
+    base: list | None = None,
+) -> None:
+    """기권 초안이면 모델 판단에 맡기지 않고 코드가 상위 문서 안을 원래 질문으로 다시 찾아 그 조각으로 한 번 더 답하게 한다(최대 1회).
+
+    검색은 이 그룹의 기록만 본다(tools.search_knowledge 의 item_id 검색이 group_id 로 거른다). 조각은 도구 결과 형식(tool_use/tool_result)으로
+    같은 모델 호출 안에서만 쓰고 새로 외부로 보내는 것은 없다. 호출이 실패하거나 글이 비면 초안을 그대로 둔다."""
+    parts: list[tuple[str, dict]] = []
+    budget = RETRY_TOTAL_CHARS
+    for item_id in _top_items(result.evidence):
+        if budget <= 0:
+            break
+        try:
+            data = tools.search_knowledge(
+                db,
+                group_id,
+                question,
+                top_k=RETRY_CHUNKS_PER_ITEM,
+                include_sensitive=settings.chat_include_sensitive,
+                item_id=item_id,
+            )
+        except (ValueError, ApiError):
+            continue
+        kept = []
+        for r in data.get("results", []):
+            text = str(r.get("text") or "")[:budget]
+            if not text:
+                break
+            budget -= len(text)
+            kept.append({**r, "text": text})
+            if budget <= 0:
+                break
+        if not kept:
+            continue
+        data = {**data, "results": kept}
+        for r in kept:
+            r["ref"] = refs.setdefault(r["item_id"], len(refs) + 1)
+            if r["item_id"] not in seen:
+                seen.add(r["item_id"])
+                result.sources.append(_source(r, r["ref"]))
+        parts.append((item_id, data))
+    if not parts:
+        return
+    calls = [
+        {
+            "type": "tool_call",
+            "id": f"retry_{i}",
+            "name": "search_knowledge",
+            "args": {"query": question, "item_id": item_id},
+        }
+        for i, (item_id, _) in enumerate(parts, 1)
+    ]
+    # 처음 검색·읽기 결과를 그대로 두고(마지막 글 답 초안만 뺀다) 그 뒤에 재검색 조각을 붙인다. 처음 근거를 버리면 일부만 못 찾은 답이 더 나빠진다
+    earlier = list(base or [])
+    if earlier and isinstance(earlier[-1], AIMessage) and not earlier[-1].tool_calls:
+        earlier = earlier[:-1]
+    messages = [
+        *(earlier or to_langchain_messages(build_messages(question, history))),
+        AIMessage(
+            content=[
+                {"type": "tool_use", "id": c["id"], "name": c["name"], "input": c["args"]}
+                for c in calls
+            ],
+            tool_calls=calls,
+        ),
+        *[
+            ToolMessage(
+                content=json.dumps(data, ensure_ascii=False), tool_call_id=c["id"], status="success"
+            )
+            for c, (_, data) in zip(calls, parts, strict=True)
+        ],
+    ]
+    try:
+        reply = model.model_copy(update={"post": post}).invoke(messages, no_tools=True)
+    except (httpx.HTTPError, ValueError, KeyError):
+        return  # 재검색 호출 실패는 질문을 막지 않는다(초안을 그대로 쓴다)
+    eval_hook.observe_model(stage, reply)
+    answer = text_of(reply)
+    result.tool_calls.append({"name": RETRY_TOOL, "input": {"item_ids": [i for i, _ in parts]}})
+    result.evidence.extend(data for _, data in parts)
+    if answer and not reply.tool_calls:
+        result.answer = answer
+
+
 def _should_verify(run: tool_graph.Run, result: AskResult, with_web: bool) -> bool:
     """문서 검색(search_knowledge/get_item)만으로 근거를 얻어 모델이 직접 쓴 답일 때만 True.
     웹 검색 답, 탭 에이전트(직통 포함)나 쓰기 도구를 쓴 답, 도구 없는 잡담, 중간에 끊긴 답은 걸지 않는다."""
@@ -626,7 +797,7 @@ def _should_verify(run: tool_graph.Run, result: AskResult, with_web: bool) -> bo
         and not with_web
         and not run.done
         and result.doc_searched
-        and all(c["name"] in DOC_TOOLS for c in result.tool_calls)
+        and all(c["name"] in DOC_TOOLS or c["name"] == RETRY_TOOL for c in result.tool_calls)
         and not result.web_sources
         and not result.answer.endswith(tool_graph.TRUNCATED_NOTE)
     )

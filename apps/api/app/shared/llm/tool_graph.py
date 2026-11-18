@@ -15,7 +15,7 @@
 (그래프는 한 번만 만들어 모든 요청이 같이 쓴다). 반드시 호출한 스레드에서 차례로 돈다(`ai_guard.tally_scope` 와 DB 세션이 그 스레드에 묶여 있다)."""
 
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Annotated
 
 from langchain_core.language_models.chat_models import BaseChatModel
@@ -58,6 +58,9 @@ class Run:
     )
     # 평가 관찰용: 단계 상한 때문에 도구 없이 최종 답을 받는 호출을 했다. 일반적인 도구 없는 답변은 아니다. 실행 흐름에는 쓰지 않는다.
     forced_final: bool = False
+    messages: list[BaseMessage] = field(
+        default_factory=list
+    )  # 그래프가 끝난 뒤의 전체 대화(질문, 도구 호출·결과, 마지막 답). 호출한 쪽이 이어서 쓸 수 있다
 
 
 TRUNCATED_NOTE = "\n\n(답이 길어서 여기서 끊겼어요. '계속'이라고 보내 주시면 이어서 알려 드릴게요.)"
@@ -154,6 +157,7 @@ def run_graph(run: Run, messages: list[BaseMessage]) -> Run:
                 "recursion_limit": max(50, 2 * run.max_steps + 5),
             },
         )
+    run.messages = list(final.get("messages") or [])
     # 평가가 켜져 있을 때만 계산한다(꺼져 있으면 아무것도 하지 않는다)
     if eval_hook.current() is not None:
         reached, forced = _step_limit_state(run, final)
