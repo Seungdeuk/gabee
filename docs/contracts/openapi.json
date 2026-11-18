@@ -18183,6 +18183,163 @@
         }
       }
     },
+    "/admin/alerts": {
+      "get": {
+        "tags": [
+          "admin-alerts"
+        ],
+        "summary": "List Alerts",
+        "operationId": "list_alerts_admin_alerts_get",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AlertListOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/admin/alerts/{key}/ack": {
+      "post": {
+        "tags": [
+          "admin-alerts"
+        ],
+        "summary": "Ack Alert",
+        "operationId": "ack_alert_admin_alerts__key__ack_post",
+        "parameters": [
+          {
+            "name": "key",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Key"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AlertItemOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/internal/alerts/run": {
+      "post": {
+        "tags": [
+          "admin-alerts-internal"
+        ],
+        "summary": "Run Checks",
+        "description": "규칙을 한 번 점검한다. 설정이 꺼져 있으면 아무 일도 하지 않는다.",
+        "operationId": "run_checks_internal_alerts_run_post",
+        "parameters": [
+          {
+            "name": "x-alert-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Alert-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/health/db": {
       "get": {
         "tags": [
@@ -19299,6 +19456,79 @@
           "group_today"
         ],
         "title": "AiUsageOut"
+      },
+      "AlertItemOut": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "rule": {
+            "type": "string",
+            "title": "Rule"
+          },
+          "severity": {
+            "type": "string",
+            "title": "Severity"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          },
+          "menu": {
+            "type": "string",
+            "title": "Menu"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "acked_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Acked At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "key",
+          "rule",
+          "severity",
+          "message",
+          "menu",
+          "created_at",
+          "acked_at"
+        ],
+        "title": "AlertItemOut"
+      },
+      "AlertListOut": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/AlertItemOut"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "unacked": {
+            "type": "integer",
+            "title": "Unacked"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items",
+          "unacked"
+        ],
+        "title": "AlertListOut"
       },
       "AllowanceApproveIn": {
         "properties": {
@@ -29170,6 +29400,29 @@
           "unread"
         ],
         "title": "RoomOut"
+      },
+      "RunOut": {
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "title": "Enabled"
+          },
+          "checked": {
+            "type": "integer",
+            "title": "Checked"
+          },
+          "created": {
+            "type": "integer",
+            "title": "Created"
+          }
+        },
+        "type": "object",
+        "required": [
+          "enabled",
+          "checked",
+          "created"
+        ],
+        "title": "RunOut"
       },
       "ScheduleCandidate": {
         "properties": {

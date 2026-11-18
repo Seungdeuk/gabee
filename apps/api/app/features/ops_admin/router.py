@@ -9,6 +9,7 @@ from app.shared.errors import not_found
 
 from . import (
     admin_facts,  # noqa: F401  관리자 챗봇 숫자 명단에 올린다
+    alert_rules,  # noqa: F401  관리자 알림 규칙(서버 오류율)을 명단에 올린다
     infra_service,
     query_service,
 )
