@@ -531,3 +531,46 @@ export const questionFromRec = (item) => ({ kind: item.kind, q: item.question, o
 
 /** 추천 카드 넘기기: 끝에서 처음으로, 처음에서 끝으로 돌아간다. step 은 1(>) 또는 -1(<). */
 export const stepIndex = (index, count, step) => (count <= 0 ? 0 : (((index + step) % count) + count) % count);
+
+// ---------- 이게 뭐게 가비 추천 ----------
+/** 그림 추천을 못 보여 줄 때의 안내 글자(골든벨 추천과 같은 말투). refresh 는 "새로고침" 버튼을 둘지(다시 해 볼 수 있는 경우). */
+const DRAW_REC_NOTICE = {
+  used_up: { text: "오늘 추천은 여기까지예요", refresh: false },
+  preparing: { text: "가비가 그림을 준비 중이에요", refresh: true },
+  cooldown: { text: "조금 뒤에 다시 해주세요", refresh: true },
+  failed: { text: "가비가 그림을 준비하기 어려워요", refresh: true },
+  ai_off: { text: "가족 소유자나 관리자가 AI를 켜면\n가비가 그림을 준비할 수 있어요", refresh: false },
+};
+
+/**
+ * 그림 추천 응답을 화면에 보일 모양으로: 그림이 있으면 { items }, 없으면 { notice, refresh } 안내.
+ * 서버 응답이 없거나(아직·네트워크 오류) 모르는 상태이면 "그림을 준비하기 어려워요"로 본다.
+ * @param {{ state?: string, items?: object[] } | null | undefined} recs
+ */
+export function drawRecView(recs) {
+  const items = recs?.state === "ok" ? (recs.items ?? []) : [];
+  if (items.length > 0) return { items };
+  const notice = DRAW_REC_NOTICE[recs?.state === "ok" ? "used_up" : recs?.state] ?? DRAW_REC_NOTICE.failed;
+  return { items: [], notice: notice.text, refresh: notice.refresh };
+}
+
+/** 카드 위 알약 글자: 단어를 어디서 가져왔는지("일정에서"·"소통방에서"·"흔한 단어") */
+export const drawRecLabel = (item) => ({ schedule: "일정에서", chat: "소통방에서" })[item.source] ?? "흔한 단어";
+
+const DRAW_MARGIN = 12; // 그림판 가장자리에서 띄우는 여백
+
+/**
+ * 추천 그림의 선(좌표 0~255)을 그림판(width × height) 선 목록으로 바꾼다. 짧은 변에서 여백을 뺀 정사각형으로 맞추고 가로·세로는 가운데로 놓는다.
+ * @param {{ strokes: number[][][] }} item
+ * @param {number} width 그림판 칸 너비
+ * @param {number} height 그림판 칸 높이
+ * @param {string} color 선 색
+ * @returns {{ color: string, pts: { x: number, y: number }[] }[]}
+ */
+export function strokesFromRec(item, width, height, color) {
+  const side = Math.max(1, Math.min(width, height) - DRAW_MARGIN * 2);
+  const left = Math.round((width - side) / 2);
+  const top = Math.round((height - side) / 2);
+  const at = (v, start) => Math.round(start + (v * side) / 255);
+  return item.strokes.map((stroke) => ({ color, pts: stroke.map(([x, y]) => ({ x: at(x, left), y: at(y, top) })) }));
+}
