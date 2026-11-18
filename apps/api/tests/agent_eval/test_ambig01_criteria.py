@@ -84,8 +84,6 @@ def test_only_the_answer_rules_of_ambig_01_changed(case):
     assert len(e.answer.contains_any) == 2 and all(len(g) >= 2 for g in e.answer.contains_any)
     assert e.answer.not_contains  # 처리했다고 단정하는 말을 막는다
     rows = {r["id"]: r for r in json.loads(Path(dev_cases.CASES_DEV_PATH).read_text("utf-8"))}
-    assert rows["s-dev-08-ambig-02"]["expect"]["answer"] == {
-        "contains": ["어느 지출"],
-        "not_contains": [],
-    }  # ambig-02 는 이번 정정 대상이 아니다(빈 contains_any 는 파일에 쓰지 않는다)
+    # ambig-02 는 이 PR 시점에는 정정 대상이 아니었다. 사용자 요청(2026-11-18, S2-B1 재평가 후속)으로 별도 후속 정정에서 바뀌었고
+    # 그 내용은 `test_answer_criteria_followup.py` 가 고정한다. ambig-03 은 계속 그대로다.
     assert rows["s-dev-08-ambig-03"]["expect"]["answer"]["contains"] == ["따뜻"]
