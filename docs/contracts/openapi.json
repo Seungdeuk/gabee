@@ -17431,6 +17431,75 @@
         }
       }
     },
+    "/acquisition/install-source": {
+      "post": {
+        "tags": [
+          "acquisition"
+        ],
+        "summary": "Save Install Source",
+        "description": "앱이 읽은 설치 꼬리표(utm 세 값)를 한 번 저장한다. 이미 있거나 가입 30일이 지났으면 아무것도 바꾸지 않는다.",
+        "operationId": "save_install_source_acquisition_install_source_post",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-gyeot-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Gyeot-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InstallSourceIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/admin/service/me": {
       "get": {
         "tags": [
@@ -20410,6 +20479,17 @@
           },
           "support": {
             "$ref": "#/components/schemas/AnalyticsSupport"
+          },
+          "acquisition": {
+            "items": {
+              "$ref": "#/components/schemas/AnalyticsSource"
+            },
+            "type": "array",
+            "title": "Acquisition"
+          },
+          "acquisition_ready": {
+            "type": "boolean",
+            "title": "Acquisition Ready"
           }
         },
         "type": "object",
@@ -20422,9 +20502,53 @@
           "total_families",
           "ai",
           "heatmap",
-          "support"
+          "support",
+          "acquisition",
+          "acquisition_ready"
         ],
         "title": "AnalyticsOut"
+      },
+      "AnalyticsSource": {
+        "properties": {
+          "source": {
+            "type": "string",
+            "title": "Source"
+          },
+          "signups": {
+            "type": "integer",
+            "title": "Signups"
+          },
+          "share": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Share"
+          },
+          "family_rate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Family Rate"
+          }
+        },
+        "type": "object",
+        "required": [
+          "source",
+          "signups",
+          "share",
+          "family_rate"
+        ],
+        "title": "AnalyticsSource"
       },
       "AnalyticsSupport": {
         "properties": {
@@ -24036,6 +24160,44 @@
         ],
         "title": "InfraService",
         "description": "Cloud Run 서비스 설정. 값을 못 얻은 칸은 None."
+      },
+      "InstallSourceIn": {
+        "properties": {
+          "source": {
+            "type": "string",
+            "pattern": "^[a-z0-9_-]{1,40}$",
+            "title": "Source"
+          },
+          "medium": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^[a-z0-9_-]{1,40}$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Medium"
+          },
+          "campaign": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^[a-z0-9_-]{1,40}$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Campaign"
+          }
+        },
+        "type": "object",
+        "required": [
+          "source"
+        ],
+        "title": "InstallSourceIn"
       },
       "InviteOut": {
         "properties": {

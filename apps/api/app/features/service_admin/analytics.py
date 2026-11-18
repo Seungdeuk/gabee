@@ -11,6 +11,7 @@ from statistics import median
 from sqlalchemy.orm import Session
 
 from app.shared.config import settings
+from app.shared.schema import monitor
 
 from . import repository
 from .schemas import (
@@ -22,6 +23,7 @@ from .schemas import (
     AnalyticsFeature,
     AnalyticsFunnelStep,
     AnalyticsOut,
+    AnalyticsSource,
     AnalyticsSupport,
 )
 
@@ -32,6 +34,7 @@ RETENTION_WEEKS = (1, 2, 4)
 WINDOW = 30 * DAY  # 가족·기능·AI·시간대 분석 기간
 SIZE_LABELS = ("1명", "2명", "3명", "4명", "5명 이상")
 FEATURE_NAMES = (("schedule", "일정"), ("chat", "채팅"), ("billing", "정산"), ("ai", "AI"))
+UNKNOWN_SOURCE = "unknown"  # 유입 경로 기록이 없는 가입자(아이폰·웹·APK 직접 설치·기능 이전 가입)
 
 
 def _aware(at: datetime | None) -> datetime | None:
@@ -127,6 +130,28 @@ def funnel(users: dict[str, datetime], firsts: dict[str, dict[str, datetime]]):
             )
         )
     return out
+
+
+def acquisition(
+    users: dict[str, datetime], sources: list[tuple[str, str]], first_family: dict[str, datetime]
+) -> list[AnalyticsSource]:
+    """유입 경로별 가입 수·비율·가족 연결 비율. 기록이 없는 가입자는 unknown 한 줄로 모아 맨 끝에 둔다."""
+    source_of = {uid: src for uid, src in sources if uid in users}
+    by_source: dict[str, list[str]] = defaultdict(list)
+    for uid in users:
+        by_source[source_of.get(uid, UNKNOWN_SOURCE)].append(uid)
+    order = sorted(by_source, key=lambda src: (src == UNKNOWN_SOURCE, -len(by_source[src]), src))
+    return [
+        AnalyticsSource(
+            source=src,
+            signups=len(by_source[src]),
+            share=_pct(len(by_source[src]), len(users)),
+            family_rate=_pct(
+                sum(1 for uid in by_source[src] if uid in first_family), len(by_source[src])
+            ),
+        )
+        for src in order
+    ]
 
 
 def analytics(db: Session, now: datetime | None = None) -> AnalyticsOut:
@@ -256,6 +281,10 @@ def analytics(db: Session, now: datetime | None = None) -> AnalyticsOut:
         week_start=_local(this_week - (COHORT_WEEKS - 1) * WEEK).date(),
     )
 
+    # 유입 경로: 표가 아직 없는 DB 에서는 이 구역만 비우고 나머지 분석은 그대로 낸다
+    acquisition_ready = monitor.status().feature_ready("acquisition")
+    sources = repository.install_sources(db) if acquisition_ready else []
+
     return AnalyticsOut(
         users=len(users),
         retention=retention(users, tokens, now),
@@ -266,4 +295,6 @@ def analytics(db: Session, now: datetime | None = None) -> AnalyticsOut:
         ai=ai,
         heatmap=heat,
         support=support,
+        acquisition=acquisition(users, sources, first_family) if acquisition_ready else [],
+        acquisition_ready=acquisition_ready,
     )

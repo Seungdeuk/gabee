@@ -447,6 +447,35 @@
   /** 값이 클수록 진한 칸(비율 % 또는 최대값 대비). */
   const shade = (v, max = 100) => (v === null || v === undefined ? "" : `background: color-mix(in srgb, var(--accent) ${Math.round((Math.min(v, max) / Math.max(max, 1)) * 70)}%, transparent);`);
 
+  // 유입 경로(utm_source) 한글 이름. 목록에 없는 값은 받은 값 그대로(esc) 보여 준다
+  const SOURCE_LABEL = {
+    youtube: "유튜브",
+    instagram: "인스타그램",
+    blog: "블로그",
+    cafe: "카페",
+    news: "뉴스 기사",
+    qr: "QR(오프라인)",
+    kakao: "카톡 공유",
+    "google-play": "직접 검색(플레이 스토어)",
+    unknown: "알 수 없음",
+  };
+
+  /** 데이터 분석의 유입 경로 구역. 표가 아직 없는 서버면 "준비 중"만 보인다. */
+  function acquisitionCard(d) {
+    const body = !d.acquisition_ready
+      ? `<p class="small">유입 경로 기록표가 아직 서버 DB 에 없어요(준비 중).</p>`
+      : table(
+          [{ label: "경로" }, { label: "가입", num: true }, { label: "비율" }, { label: "가족 연결", num: true }],
+          d.acquisition.map(
+            (r) => `<tr><td><strong>${esc(SOURCE_LABEL[r.source] ?? r.source)}</strong></td><td class="num">${num(r.signups)}명</td><td style="min-width:140px">${bar(r.share)}<span class="small">${percent(r.share)}</span></td><td class="num">${percent(r.family_rate)}</td></tr>`,
+          ),
+        );
+    return `<section class="card">
+        <div class="card-head"><h2>유입 경로 (어떤 링크로 설치했나)</h2><span class="small">안드로이드 플레이 스토어 설치 꼬리표 기준. 아이폰·APK 설치·기능 이전 가입자는 "알 수 없음"</span></div>
+        ${body}
+      </section>`;
+  }
+
   function viewAnalytics(d) {
     const small = d.users < 30 ? `<p class="note warn">지금은 가입자가 ${num(d.users)}명뿐이라 비율이 크게 흔들려요. 숫자는 흐름만 보고, 사람이 늘면 해석해요.</p>` : "";
 
@@ -487,7 +516,7 @@
     const wTop = Math.max(1, ...s.weekly);
     const weekly = s.weekly.map((c) => `<div title="${c}건"><i style="height:${pct((c / wTop) * 100)}"></i></div>`).join("");
 
-    return `${head("데이터 분석", "재방문 · 가입 퍼널 · 가족 · 기능 · AI · 시간대 · 고객 응대 (개수와 시각만 사용)")}${small}
+    return `${head("데이터 분석", "재방문 · 가입 퍼널 · 유입 경로 · 가족 · 기능 · AI · 시간대 · 고객 응대 (개수와 시각만 사용)")}${small}
       <div class="row">
         <section class="card wide">
           <div class="card-head"><h2>① 재방문(리텐션) 코호트</h2><span class="small">가입 주별로, 가입 1·2·4주 뒤에 다시 로그인한 비율</span></div>
@@ -499,6 +528,7 @@
           <span class="small">각 단계는 앞 단계를 모두 지난 사람만 세요</span>
         </section>
       </div>
+      ${acquisitionCard(d)}
       <div class="row">
         <section class="card wide">
           <div class="card-head"><h2>③ 가족 인원별 활동 (최근 7일)</h2><span class="small">혼자인 가족 ${num(f.solo_families)}곳 · 두 번째 가족이 들어오기까지 ${f.days_to_second_member ?? "-"}일(중앙값)</span></div>
