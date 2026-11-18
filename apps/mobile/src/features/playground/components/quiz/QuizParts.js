@@ -3,7 +3,7 @@ import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import { colors, font, fonts, radius } from "@/theme";
 
-import { MAKE_LIMIT, SCORE } from "../../games";
+import { makeQuotaText } from "../../games";
 import { closeLabel } from "../../adapt";
 import { playLive, useAudience, useMakeLeft } from "../../hooks";
 
@@ -98,7 +98,7 @@ export function RevealNote({ children }) {
 export function MakeQuotaNote() {
   const left = useMakeLeft();
   if (left == null) return null;
-  return <Text style={styles.reveal}>{left > 0 ? `오늘 문제 출제로 받는 +${SCORE.make}은 ${left}회 남았어요` : `오늘은 문제 출제로 +${SCORE.make} 받는 ${MAKE_LIMIT}회를 다 썼어요. 문제는 보낼 수 있지만 점수는 없어요`}</Text>;
+  return <Text style={styles.reveal}>{makeQuotaText(left)}</Text>;
 }
 
 const styles = StyleSheet.create({
