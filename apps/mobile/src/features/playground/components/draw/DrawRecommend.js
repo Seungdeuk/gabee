@@ -24,10 +24,10 @@ function Preview({ strokes }) {
 }
 
 /**
- * 이게 뭐게 가비 추천: 카드 한 장을 `<` `>` 로 넘겨 보고(끝에서 처음으로), "이 그림으로 쓰기"로 정답 칸과 그림판에 채운다. 못 보여 줄 때는 상태별 안내.
- * @param {{ recs: { data: any, error: string, loading: boolean }, index: number, onIndex: (i: number) => void, pickedId: string | null, onPick: (item: any) => void, refreshing: boolean, onRefresh: () => void }} props
+ * 이게 뭐게 가비 추천: 카드 한 장을 `<` `>` 로 넘겨 보고(끝에서 처음으로), "이 그림으로 쓰기"를 누르면 그 카드의 그림 자리가 editor(그림이 들어 있는 그림판)로 바뀐다. 못 보여 줄 때는 상태별 안내.
+ * @param {{ recs: { data: any, error: string, loading: boolean }, index: number, onIndex: (i: number) => void, pickedId: string | null, onPick: (item: any) => void, refreshing: boolean, onRefresh: () => void, onManual?: () => void, editor?: import("react").ReactNode }} props
  */
-export default function DrawRecommend({ recs, index, onIndex, pickedId, onPick, refreshing, onRefresh }) {
+export default function DrawRecommend({ recs, index, onIndex, pickedId, onPick, refreshing, onRefresh, onManual, editor }) {
   const view = drawRecView(recs.error && !recs.data ? { state: "failed" } : recs.data);
   if (recs.loading && !recs.data) {
     return (
@@ -44,6 +44,11 @@ export default function DrawRecommend({ recs, index, onIndex, pickedId, onPick, 
         {view.refresh ? (
           <Pressable onPress={onRefresh} disabled={refreshing} accessibilityRole="button" accessibilityLabel="추천 새로고침" style={styles.refreshBtn}>
             <Text style={styles.refreshText}>{refreshing ? "불러오는 중…" : "새로고침"}</Text>
+          </Pressable>
+        ) : null}
+        {view.manual && onManual ? (
+          <Pressable onPress={onManual} accessibilityRole="button" accessibilityLabel="직접 그리기" style={styles.refreshBtn}>
+            <Text style={styles.refreshText}>직접 그리기</Text>
           </Pressable>
         ) : null}
       </View>
@@ -76,16 +81,23 @@ export default function DrawRecommend({ recs, index, onIndex, pickedId, onPick, 
             </Pressable>
           </View>
         </View>
-        {on ? <Text style={styles.picked}>이 그림으로 쓰는 중</Text> : null}
-        <Preview strokes={r.strokes} />
-        <Text style={styles.answer}>
-          정답 {r.word}
-          {alts ? <Text style={styles.sub}>  (이것도 정답: {alts})</Text> : null}
-        </Text>
-        <Pressable onPress={() => onPick(r)} accessibilityRole="button" accessibilityLabel="이 그림으로 쓰기" style={styles.useBtn}>
-          <Text style={styles.useText}>이 그림으로 쓰기</Text>
+        {on ? <Text style={styles.picked}>이 그림을 고치는 중이에요</Text> : null}
+        {on ? editor : <Preview strokes={r.strokes} />}
+        {on ? null : (
+          <Text style={styles.answer}>
+            정답 {r.word}
+            {alts ? <Text style={styles.sub}>  (이것도 정답: {alts})</Text> : null}
+          </Text>
+        )}
+        <Pressable onPress={() => onPick(r)} accessibilityRole="button" accessibilityLabel={on ? "처음 그림으로 되돌리기" : "이 그림으로 쓰기"} style={styles.useBtn}>
+          <Text style={styles.useText}>{on ? "처음 그림으로 되돌리기" : "이 그림으로 쓰기"}</Text>
         </Pressable>
       </View>
+      {view.more ? (
+        <Pressable onPress={onRefresh} disabled={refreshing} accessibilityRole="button" accessibilityLabel="그림 더 불러오기" style={styles.moreBtn}>
+          <Text style={styles.refreshText}>{refreshing ? "그림을 더 그리는 중…" : "그림 더 불러오기"}</Text>
+        </Pressable>
+      ) : null}
     </>
   );
 }
@@ -96,6 +108,7 @@ const styles = StyleSheet.create({
   sub: { fontSize: 13, fontFamily: fonts.regular, color: colors.textSub },
   refreshBtn: { minHeight: 40, paddingHorizontal: 18, borderRadius: 999, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.card, alignItems: "center", justifyContent: "center" },
   refreshText: { fontSize: 14, fontFamily: fonts.medium, color: colors.text },
+  moreBtn: { alignSelf: "center", minHeight: 40, paddingHorizontal: 18, borderRadius: 999, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.card, alignItems: "center", justifyContent: "center" },
   noteBlock: { gap: 2 },
   note: { ...font.caption, color: colors.textSub },
   card: { padding: 16, borderRadius: 18, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border, gap: 10 },
