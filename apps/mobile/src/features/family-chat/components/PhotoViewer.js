@@ -13,11 +13,9 @@ import { LIBRARY_BUTTON_LABEL, LIBRARY_DONE_LABEL, LIBRARY_SAVING_LABEL } from "
  * 사진 전체 화면 보기. 원본(attachment.url)을 화면 안에 비율대로 맞춰 보여 주고, 닫기 버튼(또는 뒤로 가기)으로 닫는다.
  * onSaveToLibrary 가 있으면(가족 전체방의 사진) "문서로 저장" 버튼으로 가족 공유 문서함에 직접 넣고, 저장 중·저장함·결과 문구는 library* 로 보여 준다.
  * onSaveToDevice 가 있으면 "사진첩에 저장" 버튼으로 기기 사진첩(갤러리)에 저장하고(저장 중·결과 문구는 deviceSaving·deviceNotice), 두 버튼은 한 줄에 나란히(좁으면 줄바꿈) 놓인다.
- * caption 이 있으면 사진 아래에 한 줄로 보이고(타임라인의 날짜), actions 의 버튼들이 문서·사진첩 저장 버튼 위에 한 줄로 놓인다(각 버튼: key·label·icon(Ionicons 이름)·onPress·disabled).
- * actionNotice 는 그 버튼들의 결과·오류 문구다.
- * @param {{ path: string, visible: boolean, onClose: () => void, onSaveToLibrary?: () => void, librarySaving?: boolean, libraryDone?: boolean, libraryNotice?: string, onSaveToDevice?: () => void, deviceSaving?: boolean, deviceNotice?: string, caption?: string, actions?: { key: string, label: string, icon: string, onPress: () => void, disabled?: boolean }[], actionNotice?: string }} props path 는 서버가 준 attachment.url
+ * @param {{ path: string, visible: boolean, onClose: () => void, onSaveToLibrary?: () => void, librarySaving?: boolean, libraryDone?: boolean, libraryNotice?: string, onSaveToDevice?: () => void, deviceSaving?: boolean, deviceNotice?: string }} props path 는 서버가 준 attachment.url
  */
-export default function PhotoViewer({ path, visible, onClose, onSaveToLibrary, librarySaving = false, libraryDone = false, libraryNotice = "", onSaveToDevice, deviceSaving = false, deviceNotice = "", caption = "", actions = [], actionNotice = "" }) {
+export default function PhotoViewer({ path, visible, onClose, onSaveToLibrary, librarySaving = false, libraryDone = false, libraryNotice = "", onSaveToDevice, deviceSaving = false, deviceNotice = "" }) {
   return (
     <Modal visible={visible} animationType="fade" onRequestClose={onClose} statusBarTranslucent>
       <SafeAreaView style={styles.safe}>
@@ -25,33 +23,8 @@ export default function PhotoViewer({ path, visible, onClose, onSaveToLibrary, l
           <IconButton name="close" label="사진 닫기" onPress={onClose} color={colors.onDark} />
         </View>
         <AuthImage path={path} contentFit="contain" style={styles.image} accessibilityLabel="사진" />
-        {onSaveToLibrary || onSaveToDevice || actions.length > 0 || caption ? (
+        {onSaveToLibrary || onSaveToDevice ? (
           <View style={styles.footer}>
-            {caption ? <Text style={styles.caption}>{caption}</Text> : null}
-            {actions.length > 0 ? (
-              <View style={styles.buttons}>
-                {actions.map((action) => (
-                  <Pressable
-                    key={action.key}
-                    onPress={action.onPress}
-                    disabled={action.disabled}
-                    accessibilityRole="button"
-                    accessibilityLabel={action.label}
-                    accessibilityState={{ disabled: !!action.disabled }}
-                    style={({ pressed }) => [styles.record, (pressed || action.disabled) && styles.pressed]}
-                    testID={`photo-viewer-${action.key}`}
-                  >
-                    <Ionicons name={action.icon} size={18} color={colors.text} />
-                    <Text style={styles.recordText}>{action.label}</Text>
-                  </Pressable>
-                ))}
-              </View>
-            ) : null}
-            {actionNotice ? (
-              <Text style={styles.notice} accessibilityLiveRegion="polite">
-                {actionNotice}
-              </Text>
-            ) : null}
             <View style={styles.buttons}>
               {onSaveToDevice ? (
                 <Pressable
@@ -109,5 +82,4 @@ const styles = StyleSheet.create({
   pressed: { opacity: 0.7 },
   recordText: { ...font.bodyStrong, color: colors.text },
   notice: { ...font.caption, color: colors.onDark, textAlign: "center" },
-  caption: { ...font.caption, color: colors.onDark, textAlign: "center" },
 });

@@ -13,9 +13,11 @@ import { LIBRARY_BUTTON_LABEL, LIBRARY_DONE_LABEL, LIBRARY_SAVING_LABEL } from "
 /**
  * 앨범 전체 화면 보기. 좌우로 넘기며 묶음의 사진을 모두 본다(맨 위에 "2 / 5"). 닫기 버튼(또는 뒤로 가기)으로 닫는다.
  * 아래 버튼은 지금 보고 있는 사진 한 장에 적용된다: "사진첩에 저장"(onSaveToDevice), "문서로 저장"(onSaveToLibrary, 저장 중·저장함·결과 문구는 libraryOf 가 사진 id 별로 알려 준다), 맨 위 오른쪽 "메뉴"(onMenu: 답장·삭제 같은 메시지 메뉴, 뷰어를 닫고 연다).
- * @param {{ photos: { id: string, url: string, inLibrary?: boolean }[], startIndex?: number, visible: boolean, onClose: () => void, onSaveToDevice?: (photo: { id: string, url: string }, index: number) => void, saving?: boolean, notice?: string, onSaveToLibrary?: (photo: { id: string, url: string }, index: number) => void, libraryOf?: (photoId: string) => { saving: boolean, done: boolean, notice: string }, onMenu?: (index: number) => void }} props photos 의 url 은 서버가 준 attachment.url
+ * 타임라인용 선택 옵션(주지 않으면 채팅 앨범 동작 그대로): captionFor 는 지금 사진 아래 한 줄(날짜), actionsFor 는 지금 사진에 적용할 버튼들(key·label·icon(Ionicons 이름)·onPress·disabled)을 돌려주고 저장 버튼 위에 한 줄로 놓이며, actionNoticeFor 는 지금 사진의 그 버튼들의 결과·오류 문구다(옆 사진으로 넘기면 그 사진의 문구가 보인다).
+ * actionsFor 를 주면 사진 수가 줄 때(사진을 뺐을 때) 목록을 새로 그려 startIndex 가 가리키는 사진에서 다시 시작한다.
+ * @param {{ photos: { id: string, url: string, inLibrary?: boolean }[], startIndex?: number, visible: boolean, onClose: () => void, onSaveToDevice?: (photo: { id: string, url: string }, index: number) => void, saving?: boolean, notice?: string, onSaveToLibrary?: (photo: { id: string, url: string }, index: number) => void, libraryOf?: (photoId: string) => { saving: boolean, done: boolean, notice: string }, onMenu?: (index: number) => void, captionFor?: (photo: object, index: number) => string, actionsFor?: (photo: object, index: number) => { key: string, label: string, icon: string, onPress: () => void, disabled?: boolean }[], actionNoticeFor?: (photo: object, index: number) => string }} props photos 의 url 은 서버가 준 attachment.url
  */
-export default function AlbumViewer({ photos, startIndex = 0, visible, onClose, onSaveToDevice, saving = false, notice = "", onSaveToLibrary, libraryOf, onMenu }) {
+export default function AlbumViewer({ photos, startIndex = 0, visible, onClose, onSaveToDevice, saving = false, notice = "", onSaveToLibrary, libraryOf, onMenu, captionFor, actionsFor, actionNoticeFor }) {
   const { width } = useWindowDimensions();
   // 사진 칸의 높이는 목록이 잰 높이로 정한다: 칸에 높이가 없으면 웹에서 사진 영역이 0 으로 접혀 사진이 보이지 않는다
   const [listHeight, setListHeight] = useState(0);
@@ -26,6 +28,9 @@ export default function AlbumViewer({ photos, startIndex = 0, visible, onClose, 
   const index = Math.min(last, Math.max(0, page.index)); // 보는 동안 사진이 지워져 줄어도 범위를 넘지 않는다
   const current = photos[index];
   const library = current && libraryOf ? libraryOf(current.id) : { saving: false, done: false, notice: "" };
+  const caption = current && captionFor ? captionFor(current, index) : "";
+  const actions = current && actionsFor ? actionsFor(current, index) : [];
+  const actionNotice = current && actionNoticeFor ? actionNoticeFor(current, index) : "";
 
   // 네이티브는 넘김이 끝날 때(onMomentumScrollEnd), 웹은 스크롤하는 동안(onScroll) 몇 번째 사진인지 갱신한다(웹은 momentum 이벤트가 없다).
   // 번호가 그대로면 다시 그리지 않는다.
@@ -44,6 +49,7 @@ export default function AlbumViewer({ photos, startIndex = 0, visible, onClose, 
           {onMenu ? <IconButton name="ellipsis-horizontal" label="이 사진의 메뉴" onPress={() => onMenu(index)} color={colors.onDark} /> : <View style={styles.spacer} />}
         </View>
         <FlatList
+          key={actionsFor ? `n${photos.length}` : undefined}
           style={styles.list}
           onLayout={(e) => setListHeight(e.nativeEvent.layout.height)}
           data={photos}
@@ -64,8 +70,33 @@ export default function AlbumViewer({ photos, startIndex = 0, visible, onClose, 
             </View>
           )}
         />
-        {current && (onSaveToDevice || onSaveToLibrary) ? (
+        {current && (onSaveToDevice || onSaveToLibrary || caption || actions.length > 0) ? (
           <View style={styles.footer}>
+            {caption ? <Text style={styles.notice}>{caption}</Text> : null}
+            {actions.length > 0 ? (
+              <View style={styles.buttons}>
+                {actions.map((action) => (
+                  <Pressable
+                    key={action.key}
+                    onPress={action.onPress}
+                    disabled={action.disabled}
+                    accessibilityRole="button"
+                    accessibilityLabel={action.label}
+                    accessibilityState={{ disabled: !!action.disabled }}
+                    style={({ pressed }) => [styles.button, (pressed || action.disabled) && styles.pressed]}
+                    testID={`album-viewer-${action.key}`}
+                  >
+                    <Ionicons name={action.icon} size={18} color={colors.text} />
+                    <Text style={styles.buttonText}>{action.label}</Text>
+                  </Pressable>
+                ))}
+              </View>
+            ) : null}
+            {actionNotice ? (
+              <Text style={styles.notice} accessibilityLiveRegion="polite">
+                {actionNotice}
+              </Text>
+            ) : null}
             <View style={styles.buttons}>
               {onSaveToDevice ? (
                 <Pressable

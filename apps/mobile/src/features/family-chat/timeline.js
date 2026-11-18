@@ -1,6 +1,7 @@
 // 가족 타임라인의 순수 함수·문구·상태 전이(화면·네트워크와 분리해 시험한다). 사진 내용·대화 글자는 어디에도 기록하지 않는다.
 // 어떤 사진이 타임라인에 나오는지는 서버가 정한다(일반 사진으로 확인된 가족 전체방 사진만). 앱은 받은 목록을 날짜로 묶어 보일 뿐 숨기거나 더하지 않는다.
 
+import { albumCells } from "./album";
 import { photoCheckErrorMessage } from "./photoChecks";
 
 export const TIMELINE_ENTRY_KEY = "timeline"; // 서랍의 진입 행 key
@@ -16,7 +17,11 @@ export const EXCLUDED_NOTICE = "타임라인에서 뺐어요. 채팅방의 사�
 export const SENT_DAY_NOTE = "보낸 날 기준";
 export const UNKNOWN_DAY = "날짜를 알 수 없어요";
 
-export const TIMELINE_COLUMNS = 3;
+/** 1장짜리 카드의 세로/가로 비율(4:3). 서버가 사진의 가로·세로를 주지 않아 고정 비율로 자른다. */
+export const SINGLE_CARD_RATIO = 0.75;
+
+/** 다음 쪽을 불러오는 요청이 이 시간(ms) 안에 끝나지 않으면, 쪽 경계 때문에 보류하던 묶음을 먼저 보인다(무기한 숨기지 않는다). */
+export const BUNDLE_HOLD_MS = 8000;
 
 const KST_OFFSET_MS = 9 * 60 * 60 * 1000;
 
@@ -53,26 +58,44 @@ export function photoCaption(item) {
   return item?.taken_at == null ? `${day} · ${SENT_DAY_NOTE}` : day;
 }
 
+/** 사진이 속한 한국 시간 날짜 키(읽을 수 없으면 "unknown"). */
+function dayKeyOf(item) {
+  const parts = kstParts(item?.display_at);
+  return parts ? `${parts.y}-${pad(parts.m)}-${pad(parts.d)}` : "unknown";
+}
+
+/** 묶음 안 순서: 올린 순서(메시지 번호 오름차순, 채팅 앨범과 같다). 번호가 없거나 같으면 받은 순서를 지킨다. */
+function byUploadOrder(a, b) {
+  const ma = Number(a.message_id);
+  const mb = Number(b.message_id);
+  return Number.isFinite(ma) && Number.isFinite(mb) && ma !== mb ? ma - mb : 0;
+}
+
 /**
- * 사진 목록(서버가 준 최신순)을 연·월 머리글 → 날짜 → 사진 줄(한 줄에 columns 장)로 펼친다. 같은 날 사진은 이어서 놓이고(묶음은 서버가 같은 날짜로 맞춘다),
- * 날짜가 바뀔 때만 머리글이 나온다. 읽을 수 없는 날짜는 "날짜를 알 수 없어요" 칸에 모은다(사진을 버리지 않는다).
- * @param {{ attachment_id: string, display_at?: string }[]} items
- * @param {number} [columns]
- * @returns {({ type: "month", key: string, title: string } | { type: "day", key: string, title: string } | { type: "photos", key: string, items: object[] })[]}
+ * 사진 목록(서버가 준 최신순)을 연·월 머리글 → 날짜 → 묶음 카드로 펼친다. 같은 날짜 칸 안에서 같은 `batch_id` 사진은 하나의 카드로 모으고(중간에 다른 사진이 끼어 있어도),
+ * `batch_id` 가 없는 사진은 1장짜리 카드다. 카드 안 순서는 올린 순서이고, 카드 순서는 처음 나온 순서(서버의 최신순)다. 같은 `batch_id` 라도 날짜가 다르면 날짜마다 따로 카드가 된다.
+ * 목록에 있는 사진만 그린다(더하거나 숨기지 않는다). 읽을 수 없는 날짜는 "날짜를 알 수 없어요" 칸에 모은다(사진을 버리지 않는다).
+ * 카드 key 는 묶음이 쪽을 넘어 자라도 바뀌지 않는다(`b-날짜-batch_id`, 1장은 `p-사진id`).
+ * @param {{ attachment_id: string, message_id?: number, batch_id?: string | null, display_at?: string }[]} items
+ * @returns {({ type: "month", key: string, title: string } | { type: "day", key: string, title: string } | { type: "bundle", key: string, photos: object[] })[]}
  */
-export function buildTimelineRows(items, columns = TIMELINE_COLUMNS) {
+export function buildTimelineRows(items) {
   const rows = [];
   let monthKey = null;
   let dayKey = null;
-  let bucket = null;
+  let bundles = null; // 지금 날짜 칸의 카드들(처음 나온 순서)
   const flush = () => {
-    if (bucket) rows.push(bucket);
-    bucket = null;
+    if (!bundles) return;
+    for (const bundle of bundles.values()) {
+      bundle.photos.sort(byUploadOrder);
+      rows.push(bundle);
+    }
+    bundles = null;
   };
   for (const item of items ?? []) {
     const parts = kstParts(item.display_at);
     const nextMonth = parts ? `${parts.y}-${pad(parts.m)}` : "unknown";
-    const nextDay = parts ? `${nextMonth}-${pad(parts.d)}` : "unknown";
+    const nextDay = dayKeyOf(item);
     if (nextMonth !== monthKey) {
       flush();
       rows.push({ type: "month", key: `m-${nextMonth}`, title: parts ? monthTitle(parts) : UNKNOWN_DAY });
@@ -83,15 +106,70 @@ export function buildTimelineRows(items, columns = TIMELINE_COLUMNS) {
       flush();
       if (parts) rows.push({ type: "day", key: `d-${nextDay}`, title: dayTitle(parts) });
       dayKey = nextDay;
+      bundles = new Map();
     }
-    if (!bucket || bucket.items.length >= columns) {
-      flush();
-      bucket = { type: "photos", key: `p-${item.attachment_id}`, items: [] };
-    }
-    bucket.items.push(item);
+    const key = item.batch_id ? `b-${nextDay}-${item.batch_id}` : `p-${item.attachment_id}`;
+    const existing = bundles.get(key);
+    if (existing) existing.photos.push(item);
+    else bundles.set(key, { type: "bundle", key, photos: [item] });
   }
   flush();
   return rows;
+}
+
+/**
+ * 묶음 카드의 칸 배치(채팅 앨범과 같은 규칙, 1장만 큰 카드). 1장은 한 칸(가로 전체, 4:3), 2장은 나란히, 3장은 위 한 장 + 아래 두 장, 4장 이상은 2×2 에 마지막 칸 "+N".
+ * @param {number} count 카드의 사진 수
+ * @param {number} width 카드 가로
+ * @returns {{ cells: { width: number, height: number }[], more: number }}
+ */
+export function bundleCells(count, width) {
+  const n = Math.max(0, Math.floor(count) || 0);
+  if (n === 1) return { cells: [{ width, height: Math.round(width * SINGLE_CARD_RATIO) }], more: 0 };
+  return albumCells(n, width);
+}
+
+/**
+ * 쪽 경계에서 같은 묶음이 갈라져 보이지 않게, 더 불러올 쪽이 있으면 목록 **끝에 걸친 묶음**(마지막 사진과 같은 날짜·같은 batch_id)을 잠시 보류한다. 다음 쪽이 오면 묶음이 완성되어 보인다.
+ * 아래 경우에는 보류하지 않고 가진 사진을 모두 보인다: 더 불러올 쪽이 없다 / 다음 쪽 불러오기가 실패했다(failed) / 불러오는 요청이 너무 오래 걸렸다(expired).
+ * 묶음이 없는 사진은 갈라질 일이 없어 보류하지 않는다.
+ * @param {{ attachment_id: string, batch_id?: string | null, display_at?: string }[]} items
+ * @param {{ hasMore: boolean, failed?: boolean, expired?: boolean }} state
+ * @returns {{ shown: object[], held: object[] }} shown 은 그릴 사진(원래 순서), held 는 보류한 사진
+ */
+export function splitHeldBack(items, { hasMore, failed = false, expired = false } = {}) {
+  const list = items ?? [];
+  if (!hasMore || failed || expired || list.length === 0) return { shown: list, held: [] };
+  const last = list[list.length - 1];
+  if (!last.batch_id) return { shown: list, held: [] };
+  const day = dayKeyOf(last);
+  const isHeld = (it) => it.batch_id === last.batch_id && dayKeyOf(it) === day;
+  return { shown: list.filter((it) => !isHeld(it)), held: list.filter(isHeld) };
+}
+
+/**
+ * 뷰어에 넘길 사진들: 카드를 누른 순간의 사진들을 그대로 복사한다(뷰어를 보는 동안 다음 쪽이 와서 카드가 자라도 보던 사진 번호가 밀리지 않는다).
+ * url 은 서버가 준 원본 경로 규칙(`/family-chat/photos/{id}`)이다.
+ * @param {{ photos: object[] } | null | undefined} bundle buildTimelineRows 의 카드
+ * @returns {{ id: string, url: string, item: object }[]}
+ */
+export function viewerPhotos(bundle) {
+  return (bundle?.photos ?? []).map((item) => ({ id: item.attachment_id, url: `/family-chat/photos/${encodeURIComponent(item.attachment_id)}`, item }));
+}
+
+/**
+ * 뷰어 안에서 사진 한 장을 빼거나(타임라인에서 제외) 이미 없는 사진이 된 뒤의 뷰어 상태. 남은 사진이 있으면 그대로 열어 두고(지금 보던 번호에 다음 사진이 온다, 마지막이었으면 새 마지막), 없으면 닫는다(null).
+ * @param {{ photos: { id: string }[], index: number } | null} viewer
+ * @param {string} removedId 뺀 사진 id
+ * @param {number} [currentIndex] 뷰어가 지금 보고 있던 번호(없으면 viewer.index)
+ * @returns {{ photos: { id: string }[], index: number } | null}
+ */
+export function viewerAfterRemoval(viewer, removedId, currentIndex) {
+  if (!viewer) return null;
+  const photos = viewer.photos.filter((p) => p.id !== removedId);
+  if (photos.length === 0) return null;
+  const at = Number.isInteger(currentIndex) ? currentIndex : viewer.index;
+  return { photos, index: Math.max(0, Math.min(at, photos.length - 1)) };
 }
 
 /**

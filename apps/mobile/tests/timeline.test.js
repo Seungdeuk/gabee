@@ -2,14 +2,18 @@
 import assert from "node:assert/strict";
 import { afterEach, beforeEach, test } from "node:test";
 
+import { albumCells } from "../src/features/family-chat/album.js";
 import { buildDrawerSections, resolveRowAction } from "../src/features/family-chat/mediaUtils.js";
 import {
+  BUNDLE_HOLD_MS,
   EXCLUDED_NOTICE,
   SENT_DAY_NOTE,
+  SINGLE_CARD_RATIO,
   TIMELINE_ENTRY_KEY,
   TIMELINE_LOAD_FAILED,
   UNKNOWN_DAY,
   buildTimelineRows,
+  bundleCells,
   canExclude,
   canLoadMoreTimeline,
   initialTimelineState,
@@ -17,9 +21,12 @@ import {
   kstParts,
   photoCaption,
   runExclude,
+  splitHeldBack,
   timelineBodyKind,
   timelineErrorMessage,
   timelineReducer,
+  viewerAfterRemoval,
+  viewerPhotos,
 } from "../src/features/family-chat/timeline.js";
 
 process.env.EXPO_PUBLIC_API_URL = "http://api.test";
@@ -70,21 +77,59 @@ test("photoCaption: 촬영일이 없으면 '보낸 날 기준'을 붙이고, 있
 
 // ---- 날짜 묶음 -------------------------------------------------------------------------------
 
-test("buildTimelineRows: 월 머리글 → 날짜 → 사진 줄(한 줄 3장), 날짜가 바뀔 때만 머리글", () => {
+const ids = (row) => row.photos.map((p) => p.attachment_id).join(",");
+const label = (r) => (r.type === "bundle" ? `bundle:${ids(r)}` : `${r.type}:${r.title}`);
+
+test("buildTimelineRows: 월 머리글 → 날짜 → 묶음 카드, 날짜가 바뀔 때만 머리글, batch_id 없는 사진은 1장 카드", () => {
   const items = [
     photo("a1", "2026-11-16T03:00:00Z"),
     photo("a2", "2026-11-16T02:00:00Z"),
-    photo("a3", "2026-11-16T01:00:00Z"),
-    photo("a4", "2026-11-16T00:30:00Z"),
     photo("b1", "2026-11-10T03:00:00Z"),
     photo("c1", "2026-10-30T03:00:00Z"),
   ];
   const out = buildTimelineRows(items);
-  assert.deepEqual(
-    out.map((r) => (r.type === "photos" ? r.items.map((i) => i.attachment_id).join(",") : `${r.type}:${r.title}`)),
-    ["month:2026년 11월", "day:11월 16일", "a1,a2,a3", "a4", "day:11월 10일", "b1", "month:2026년 10월", "day:10월 30일", "c1"],
-  );
+  assert.deepEqual(out.map(label), ["month:2026년 11월", "day:11월 16일", "bundle:a1", "bundle:a2", "day:11월 10일", "bundle:b1", "month:2026년 10월", "day:10월 30일", "bundle:c1"]);
   assert.equal(new Set(out.map((r) => r.key)).size, out.length); // 목록 key 가 겹치지 않는다
+});
+
+test("buildTimelineRows: 같은 batch_id 사진은 한 카드로 모이고 카드 안은 올린 순서(메시지 번호 오름차순)", () => {
+  // 서버는 최신순(메시지 번호 내림차순)으로 준다. 같은 묶음 3장은 같은 날짜(display_at)다
+  const at = "2026-03-01T03:00:00Z";
+  const items = [photo("p13", at, { batch_id: "bat1" }), photo("p12", at, { batch_id: "bat1" }), photo("p11", at, { batch_id: "bat1" })];
+  const bundles = buildTimelineRows(items).filter((r) => r.type === "bundle");
+  assert.equal(bundles.length, 1);
+  assert.equal(ids(bundles[0]), "p11,p12,p13");
+});
+
+test("buildTimelineRows: 사이에 다른 사진이 끼어 있어도 같은 묶음은 한 카드(카드 순서는 처음 나온 순서)", () => {
+  const at = "2026-03-01T03:00:00Z";
+  const items = [photo("p15", at, { batch_id: "bat1" }), photo("p14", at), photo("p13", at, { batch_id: "bat1" })];
+  const out = buildTimelineRows(items).filter((r) => r.type === "bundle");
+  assert.deepEqual(out.map(ids), ["p13,p15", "p14"]);
+});
+
+test("buildTimelineRows: 같은 batch_id 라도 날짜가 다르면 날짜마다 따로 카드(서로 다른 날짜 칸에 걸치지 않는다)", () => {
+  const items = [photo("p21", "2026-11-16T03:00:00Z", { batch_id: "bat2" }), photo("p20", "2026-11-10T03:00:00Z", { batch_id: "bat2" })];
+  const out = buildTimelineRows(items);
+  assert.deepEqual(out.map(label), ["month:2026년 11월", "day:11월 16일", "bundle:p21", "day:11월 10일", "bundle:p20"]);
+  assert.notEqual(out.filter((r) => r.type === "bundle")[0].key, out.filter((r) => r.type === "bundle")[1].key);
+});
+
+test("buildTimelineRows: 카드 key 는 묶음이 쪽을 넘어 자라도 그대로(batch_id 카드는 날짜+batch_id, 1장은 사진 id)", () => {
+  const at = "2026-03-01T03:00:00Z";
+  const first = buildTimelineRows([photo("p31", at, { batch_id: "bat3" })]).find((r) => r.type === "bundle");
+  const grown = buildTimelineRows([photo("p32", at, { batch_id: "bat3" }), photo("p31", at, { batch_id: "bat3" })]).find((r) => r.type === "bundle");
+  assert.equal(first.key, grown.key);
+  assert.equal(buildTimelineRows([photo("solo1")]).find((r) => r.type === "bundle").key, "p-solo1");
+});
+
+test("buildTimelineRows: 입력의 모든 사진이 정확히 한 번씩만 나온다(더하거나 숨기거나 중복하지 않는다, 여러 날짜·묶음·섞임)", () => {
+  const items = [];
+  let n = 100;
+  const days = ["2026-11-16T03:00:00Z", "2026-11-15T20:00:00Z", "2026-11-10T03:00:00Z", "2026-01-02T03:00:00Z", "깨진 값"];
+  for (const day of days) for (let k = 0; k < 7; k += 1) items.push(photo(`r${n++}`, day, { batch_id: k % 3 === 0 ? null : `bt${k % 3}` }));
+  const seen = buildTimelineRows(items).filter((r) => r.type === "bundle").flatMap((r) => r.photos.map((p) => p.attachment_id));
+  assert.deepEqual([...seen].sort(), items.map((i) => i.attachment_id).sort());
 });
 
 test("buildTimelineRows: 한국 시간 기준으로 같은 날이면 UTC 날짜가 달라도 한 날짜로 묶는다", () => {
@@ -97,14 +142,135 @@ test("buildTimelineRows: 읽을 수 없는 날짜의 사진도 버리지 않고 
   const out = buildTimelineRows([photo("a1", "2026-11-16T03:00:00Z"), photo("z1", "깨진 값"), { ...photo("z2"), display_at: undefined }]);
   const titles = out.filter((r) => r.type === "month").map((r) => r.title);
   assert.deepEqual(titles, ["2026년 11월", UNKNOWN_DAY]);
-  assert.deepEqual(out.filter((r) => r.type === "photos").flatMap((r) => r.items.map((i) => i.attachment_id)), ["a1", "z1", "z2"]);
+  assert.deepEqual(out.filter((r) => r.type === "bundle").flatMap((r) => r.photos.map((p) => p.attachment_id)), ["a1", "z1", "z2"]);
 });
 
-test("buildTimelineRows: 빈 목록·없는 값은 빈 배열, 열 수를 바꿀 수 있다", () => {
+test("buildTimelineRows: 빈 목록·없는 값은 빈 배열", () => {
   assert.deepEqual(buildTimelineRows([]), []);
   assert.deepEqual(buildTimelineRows(undefined), []);
-  const out = buildTimelineRows([photo("a1"), photo("a2"), photo("a3")], 2);
-  assert.deepEqual(out.filter((r) => r.type === "photos").map((r) => r.items.length), [2, 1]);
+});
+
+// ---- 묶음 카드 칸 배치 -----------------------------------------------------------------------
+
+test("bundleCells: 1장은 가로 전체 4:3 한 칸", () => {
+  assert.deepEqual(bundleCells(1, 320), { cells: [{ width: 320, height: 240 }], more: 0 });
+  assert.equal(SINGLE_CARD_RATIO, 0.75);
+});
+
+test("bundleCells: 2장은 나란히, 3장은 위 한 장 + 아래 두 장, 4장은 2×2", () => {
+  const two = bundleCells(2, 320);
+  assert.equal(two.cells.length, 2);
+  assert.ok(two.cells.every((c) => c.width === c.height && c.width * 2 + 2 <= 320 + 1) && two.more === 0);
+  const three = bundleCells(3, 320);
+  assert.equal(three.cells.length, 3);
+  assert.equal(three.cells[0].width, 320); // 위 한 장은 가로 전체
+  assert.ok(three.cells[0].height < three.cells[0].width); // 가로로 긴 칸
+  assert.equal(three.cells[1].width, three.cells[2].width);
+  assert.equal(three.more, 0);
+  const four = bundleCells(4, 320);
+  assert.equal(four.cells.length, 4);
+  assert.equal(four.more, 0);
+});
+
+test("bundleCells: 5장 이상은 4칸 + 남은 수 +N(10장이면 +6)", () => {
+  assert.deepEqual([bundleCells(5, 320).cells.length, bundleCells(5, 320).more], [4, 1]);
+  assert.deepEqual([bundleCells(10, 320).cells.length, bundleCells(10, 320).more], [4, 6]);
+  assert.deepEqual(bundleCells(0, 320), { cells: [], more: 0 });
+});
+
+test("bundleCells: 2장 이상은 채팅 앨범과 같은 규칙(albumCells)이고 가로를 따른다", () => {
+  for (const n of [2, 3, 4, 7]) assert.deepEqual(bundleCells(n, 250), albumCells(n, 250));
+  assert.notDeepEqual(bundleCells(3, 250), bundleCells(3, 320));
+});
+
+// ---- 쪽 경계에서 묶음 분리 방지 ---------------------------------------------------------------
+
+const at = "2026-03-01T03:00:00Z";
+const inBatch = (id, batch) => photo(id, at, { batch_id: batch });
+
+test("splitHeldBack: 더 받을 쪽이 있으면 목록 끝에 걸친 묶음만 보류한다", () => {
+  const items = [photo("a1", "2026-03-02T03:00:00Z"), inBatch("p3", "bt"), inBatch("p2", "bt")];
+  const { shown, held } = splitHeldBack(items, { hasMore: true });
+  assert.deepEqual(shown.map((p) => p.attachment_id), ["a1"]);
+  assert.deepEqual(held.map((p) => p.attachment_id), ["p3", "p2"]);
+});
+
+test("splitHeldBack: 마지막 사진이 묶음 없는 사진이면 아무것도 보류하지 않는다", () => {
+  const items = [inBatch("p3", "bt"), photo("solo", at)];
+  const out = splitHeldBack(items, { hasMore: true });
+  assert.deepEqual([out.shown.length, out.held.length], [2, 0]);
+});
+
+test("splitHeldBack: 더 받을 쪽이 없으면(마지막 쪽) 모두 보인다", () => {
+  const items = [inBatch("p3", "bt"), inBatch("p2", "bt")];
+  assert.deepEqual(splitHeldBack(items, { hasMore: false }).held, []);
+});
+
+test("splitHeldBack: 다음 쪽 불러오기가 실패했거나(failed) 너무 오래 걸리면(expired) 보류하지 않고 가진 사진을 모두 보인다(무기한 숨기지 않는다)", () => {
+  const items = [inBatch("p3", "bt"), inBatch("p2", "bt")];
+  for (const state of [{ hasMore: true, failed: true }, { hasMore: true, expired: true }]) {
+    const out = splitHeldBack(items, state);
+    assert.deepEqual([out.shown.length, out.held.length], [2, 0], JSON.stringify(state));
+  }
+});
+
+test("splitHeldBack: 같은 batch_id 라도 다른 날짜의 사진은 보류하지 않는다, 끼어든 같은 묶음 사진은 함께 보류한다", () => {
+  const items = [photo("old", "2026-01-01T03:00:00Z", { batch_id: "bt" }), inBatch("p4", "bt"), photo("mid", at), inBatch("p2", "bt")];
+  const { shown, held } = splitHeldBack(items, { hasMore: true });
+  assert.deepEqual(held.map((p) => p.attachment_id), ["p4", "p2"]);
+  assert.deepEqual(shown.map((p) => p.attachment_id), ["old", "mid"]);
+});
+
+test("splitHeldBack: 빈 목록과 모두 보류된 경우도 안전하다(모두 보류면 shown 이 비어 화면은 '더 불러오는 중'이 된다)", () => {
+  assert.deepEqual(splitHeldBack([], { hasMore: true }), { shown: [], held: [] });
+  const all = splitHeldBack([inBatch("p3", "bt"), inBatch("p2", "bt")], { hasMore: true });
+  assert.deepEqual([all.shown.length, all.held.length], [0, 2]);
+  const state = { ...initialTimelineState(), status: "ready", items: all.shown, next: "cur" };
+  assert.equal(timelineBodyKind(state), "more"); // 다음 쪽을 이어 불러온다
+});
+
+test("쪽 경계: 갈라진 묶음은 다음 쪽이 오면 한 카드가 되고, 보류하는 동안에도 입력에 없던 사진은 나오지 않는다", () => {
+  let s = timelineReducer(initialTimelineState(), { type: "start", seq: 1 });
+  s = timelineReducer(s, { type: "firstOk", seq: 1, page: page([photo("t1", "2026-03-02T03:00:00Z"), inBatch("p13", "bt"), inBatch("p12", "bt")], "cur") });
+  const before = buildTimelineRows(splitHeldBack(s.items, { hasMore: s.next != null }).shown).filter((r) => r.type === "bundle");
+  assert.deepEqual(before.map(ids), ["t1"]); // 갈라진 묶음은 아직 그리지 않는다
+  s = timelineReducer(s, { type: "moreOk", seq: 1, page: page([inBatch("p11", "bt"), photo("t0", "2026-02-01T03:00:00Z")], null) });
+  const after = buildTimelineRows(splitHeldBack(s.items, { hasMore: s.next != null }).shown).filter((r) => r.type === "bundle");
+  assert.deepEqual(after.map(ids), ["t1", "p11,p12,p13", "t0"]); // 묶음이 한 카드로 완성
+});
+
+test("쪽 경계: 다음 쪽 불러오기가 실패하면 보류하던 묶음도 보인다(오류 문구는 그대로 남는다)", () => {
+  let s = timelineReducer(initialTimelineState(), { type: "start", seq: 1 });
+  s = timelineReducer(s, { type: "firstOk", seq: 1, page: page([inBatch("p13", "bt"), inBatch("p12", "bt")], "cur") });
+  s = timelineReducer(s, { type: "moreStart", seq: 1 });
+  s = timelineReducer(s, { type: "moreFail", seq: 1, error: { status: 503, code: "photo_checks_unavailable" } });
+  const { shown } = splitHeldBack(s.items, { hasMore: s.next != null, failed: Boolean(s.error) });
+  assert.equal(buildTimelineRows(shown).filter((r) => r.type === "bundle").length, 1);
+  assert.match(s.error, /불러오지 못/);
+  assert.equal(BUNDLE_HOLD_MS, 8000);
+});
+
+// ---- 뷰어 연결 -------------------------------------------------------------------------------
+
+test("viewerPhotos: 카드의 사진을 올린 순서 그대로 원본 경로와 함께 복사한다(카드가 자라도 번호가 안 밀린다)", () => {
+  const bundle = { type: "bundle", key: "k", photos: [photo("p11", at), photo("a/b c", at)] };
+  const out = viewerPhotos(bundle);
+  assert.deepEqual(out.map((p) => p.id), ["p11", "a/b c"]);
+  assert.equal(out[1].url, "/family-chat/photos/a%2Fb%20c");
+  assert.equal(out[0].item, bundle.photos[0]);
+  bundle.photos.push(photo("p99", at)); // 이후 카드가 자라도 이미 연 뷰어의 목록은 그대로
+  assert.equal(out.length, 2);
+  assert.deepEqual(viewerPhotos(undefined), []);
+});
+
+test("viewerAfterRemoval: 한 장을 빼면 남은 사진으로 이어 보고, 마지막이었으면 새 마지막, 모두 빠지면 닫는다", () => {
+  const viewer = { photos: [{ id: "a" }, { id: "b" }, { id: "c" }], index: 0 };
+  assert.deepEqual(viewerAfterRemoval(viewer, "b", 1), { photos: [{ id: "a" }, { id: "c" }], index: 1 }); // 지금 보던 번호에 다음 사진
+  assert.deepEqual(viewerAfterRemoval(viewer, "c", 2), { photos: [{ id: "a" }, { id: "b" }], index: 1 }); // 마지막을 뺐으면 새 마지막
+  assert.deepEqual(viewerAfterRemoval(viewer, "a"), { photos: [{ id: "b" }, { id: "c" }], index: 0 }); // 번호를 안 주면 viewer.index
+  assert.deepEqual(viewerAfterRemoval(viewer, "zzz", 1).photos.length, 3); // 없는 사진은 목록이 그대로
+  assert.equal(viewerAfterRemoval({ photos: [{ id: "a" }], index: 0 }, "a", 0), null); // 모두 빠지면 닫는다
+  assert.equal(viewerAfterRemoval(null, "a"), null);
 });
 
 // ---- 빼기 권한·오류 문구 ---------------------------------------------------------------------
