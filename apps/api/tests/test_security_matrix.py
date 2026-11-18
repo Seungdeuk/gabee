@@ -266,6 +266,8 @@ NO_GROUP_OK = {
     # 문의·신고는 로그인한 본인이 보내고 본인 것만 본다. 가족이 없어도 보낼 수 있어야 한다(가족 만들기 문의 등)
     ("POST", "/support/tickets"),
     ("GET", "/support/tickets/mine"),
+    # 유입 경로는 로그인한 본인의 설치 경로(utm 값)만 저장한다. 가족이 생기기 전(가입 직후)에 보낸다
+    ("POST", "/acquisition/install-source"),
 }
 
 
