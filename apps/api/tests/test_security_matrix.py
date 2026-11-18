@@ -171,6 +171,9 @@ OPERATIONS = _operations()
 PUBLIC = {
     ("GET", "/health"): "서버 생존 확인",
     ("GET", "/health/db"): "DB 상태 확인(비밀번호·주소·테이블 이름은 응답에 없음)",
+    # 스케줄러가 부르는 관리자 알림 점검 주소: 사용자 로그인이 아니라 X-Alert-Token 비밀 토큰으로 막는다.
+    # 토큰이 없거나 틀리거나 설정이 비어 있으면 403 forbidden (app/features/admin_alerts/tests 에서 확인)
+    ("POST", "/internal/alerts/run"): "스케줄러 점검 주소: 로그인 대신 X-Alert-Token 으로 막는다",
     ("POST", "/family-group/users"): "익명(레거시) 가입 — 토큰을 발급받는 입구",
     ("POST", "/family-group/auth/signup"): "정식 회원 가입",
     ("GET", "/family-group/auth/login-id-available"): "가입 전 아이디 중복 확인",
@@ -257,6 +260,9 @@ NO_GROUP_OK = {
     ("GET", "/admin/ops/infra"),
     ("GET", "/admin/ops/errors"),
     ("GET", "/admin/ops/errors/{event_id}"),
+    # 관리자 알림 목록·확인: 가족 데이터가 아니다(알림 기록표는 숫자와 고정 문구만 담는다). 권한은 require_operator("admin")
+    ("GET", "/admin/alerts"),
+    ("POST", "/admin/alerts/{key}/ack"),
     # 문의·신고는 로그인한 본인이 보내고 본인 것만 본다. 가족이 없어도 보낼 수 있어야 한다(가족 만들기 문의 등)
     ("POST", "/support/tickets"),
     ("GET", "/support/tickets/mine"),

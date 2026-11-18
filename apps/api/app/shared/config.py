@@ -234,6 +234,10 @@ class Settings(BaseSettings):
     ops_errors_retention_days: int = 90
     # 운영 관리자 인프라 상태(Cloud Run 설정·Cloud Monitoring 조회, 읽기 전용): 기본 꺼짐. 실행 서비스 계정에 roles/run.viewer·monitoring.viewer 가 필요하다.
     ops_infra_enabled: bool = False
+    # 관리자 알림(admin_alerts): 기본 꺼짐. 켜면 점검 주소(/internal/alerts/run)가 규칙을 돌려 알림 기록표에 넣는다.
+    # 점검 주소는 X-Alert-Token 이 이 값과 같을 때만 통과한다. 토큰이 비어 있으면 아무도 통과하지 못한다.
+    admin_alerts_enabled: bool = False
+    admin_alerts_token: str = ""
     # 폰 푸시(app/shared/push.py). 기본 꺼짐: 켜면 알림함 알림을 저장한 뒤(커밋 후) Expo 푸시 서비스로 발송한다.
     # 푸시 토큰이 없거나 발송이 실패해도 원래 기능에는 영향이 없다. Expo 계정에서 '푸시 보안'을 켠 경우에만
     # PUSH_EXPO_ACCESS_TOKEN 을 넣는다(안드로이드 FCM 키는 EAS 에 올리며 서버에는 두지 않는다).
