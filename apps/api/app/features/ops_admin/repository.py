@@ -2,9 +2,9 @@
 
 from datetime import datetime
 
-from sqlalchemy import delete, func, select
+from sqlalchemy import delete, exists, func, select
 from sqlalchemy.dialects import postgresql, sqlite
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, aliased
 
 from .models import OpsErrorEvent, OpsRequestMetric
 
@@ -155,3 +155,39 @@ def list_error_events(
 
 def get_error_event(db: Session, fingerprint: str) -> OpsErrorEvent | None:
     return db.get(OpsErrorEvent, fingerprint)
+
+
+def new_server_error_pairs(
+    db: Session, since: datetime, limit: int
+) -> list[tuple[str, str, int, datetime]]:
+    """since 이후 처음 나온 서버 오류의 (오류 종류, 경로) 조합. 횟수가 많은 것 먼저, 최대 limit 개.
+
+    지문(fingerprint)에는 가린 메시지가 섞여 있어서 같은 종류·같은 경로여도 메시지가 다르면 줄이 따로 생긴다.
+    그래서 줄이 아니라 (종류, 경로) 조합으로 묶고, since 이전에 같은 조합이 한 번이라도 있었으면 새것으로 보지 않는다.
+    행 = (event_type, route, 횟수 합, 처음 본 시각).
+    """
+    older = aliased(OpsErrorEvent)
+    already_seen = exists().where(
+        older.kind == "server_error",
+        older.event_type == OpsErrorEvent.event_type,
+        older.route == OpsErrorEvent.route,
+        older.first_seen < since,
+    )
+    total = func.sum(OpsErrorEvent.occurrences)
+    stmt = (
+        select(
+            OpsErrorEvent.event_type,
+            OpsErrorEvent.route,
+            total,
+            func.min(OpsErrorEvent.first_seen),
+        )
+        .where(
+            OpsErrorEvent.kind == "server_error",
+            OpsErrorEvent.first_seen >= since,
+            ~already_seen,
+        )
+        .group_by(OpsErrorEvent.event_type, OpsErrorEvent.route)
+        .order_by(total.desc(), OpsErrorEvent.event_type, OpsErrorEvent.route)
+        .limit(limit)
+    )
+    return [(t, r, int(n), first) for t, r, n, first in db.execute(stmt)]
