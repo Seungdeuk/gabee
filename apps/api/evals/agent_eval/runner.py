@@ -79,6 +79,7 @@ from . import (
 from .adapter import LegacyCase
 from .clock import frozen_clock
 from .cost import BASELINE_RUN_SCOPES, CAPS, OTHER_RUN_SCOPES, CallUsage, Ledger, Scope
+from .ids import safe_ids
 from .schema import Case, Observation, Security, ToolCall, dump_case
 from .scoring import CaseResult
 from .scrub import scrub_text, scrub_value
@@ -786,7 +787,7 @@ def _run_one(
     halts: list[usage.RunHalted] = []
     tracer = call_trace.CallTracer(case.id, repeat) if options.diagnostics else None
     try:
-        with frozen_clock():
+        with frozen_clock(), safe_ids():
             world = _seed(item, session)
             if real_gate.is_fake(options.mode):
                 script = scripts.get(case.id) or (

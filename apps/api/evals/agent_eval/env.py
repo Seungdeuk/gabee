@@ -25,6 +25,7 @@ from sqlalchemy import text
 from sqlalchemy.engine import Engine, make_url
 
 from .clock import REFERENCE_NOW, frozen_clock
+from .ids import safe_ids
 from .network import block_network
 
 RAISED_LIMIT = 100_000
@@ -179,5 +180,5 @@ def eval_process(
 ) -> Iterator[None]:
     """경계를 확인한 뒤 설정·네트워크 차단·고정 시계를 켠다. 가짜 모델만 쓰면 allow_hosts 를 비운다."""
     check_process_boundary(root)
-    with eval_settings(), block_network(allow_hosts), frozen_clock(now):
+    with eval_settings(), block_network(allow_hosts), frozen_clock(now), safe_ids():
         yield
