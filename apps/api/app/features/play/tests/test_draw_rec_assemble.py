@@ -65,6 +65,7 @@ def fake(monkeypatch):
     f = WordLLM()
     monkeypatch.setattr(llm, "complete_json", f)
     monkeypatch.setattr(settings, "anthropic_api_key", "test-key")
+    monkeypatch.setattr(draw_rec, "MIN_OK", 1)  # 단어 1~3개로 하는 시험이 많아 기본은 1장으로 낮춘다(4장 규칙은 아래에서 따로)
     return f
 
 
@@ -381,3 +382,30 @@ def test_success_ends_it_and_later_opens_do_not_count(client, ready, fake, monke
         for _ in range(5):  # 오늘은 캐시라 몇 번을 열어도 AI 도 한도도 쓰지 않는다
             assert draw_rec.recommend(db, user, group["id"], rng=Rng(0.99)) == first
         assert len(fake.calls) == 1
+
+
+def test_four_of_five_is_ok_and_cached(client, ready, fake, monkeypatch):
+    a, _, group = ready
+    monkeypatch.setattr(draw_rec, "MIN_OK", 4)
+    only(monkeypatch, *[(w, "common") for w in ("케이크", "딸기", "텐트", "사과", "우산")])
+    fake.by_word = {"우산": BAD}
+    with SessionLocal() as db:
+        user = user_of(db, client, a)
+        first = draw_rec.recommend(db, user, group["id"], rng=Rng(0.99))
+        assert first["state"] == "ok" and len(first["items"]) == 4
+        used = len(fake.calls)
+        assert draw_rec.recommend(db, user, group["id"], rng=Rng(0.99)) == first
+        assert len(fake.calls) == used
+
+
+def test_three_of_five_is_failure_and_not_cached(client, ready, fake, monkeypatch):
+    a, _, group = ready
+    monkeypatch.setattr(draw_rec, "MIN_OK", 4)
+    only(monkeypatch, *[(w, "common") for w in ("케이크", "딸기", "텐트", "사과", "우산")])
+    fake.by_word = {"사과": BAD, "우산": BAD}
+    with SessionLocal() as db:
+        user = user_of(db, client, a)
+        assert draw_rec.recommend(db, user, group["id"], rng=Rng(0.99)) == {"state": "failed", "items": []}
+        before = len(fake.calls)
+        draw_rec.recommend(db, user, group["id"], rng=Rng(0.99))
+        assert len(fake.calls) > before

@@ -30,6 +30,7 @@ from .timeutil import aware, local_day_start, local_tz
 FEATURE = "play_draw_rec"
 PROMPT_VERSION = "v1"  # 프롬프트·스키마를 바꾸면 올려서 오래된 캐시를 쓰지 않게 한다
 ASK_COUNT = 5  # 한 번 열 때 보여 주는 그림 수
+MIN_OK = 4  # 이만큼 만들면 5개가 안 돼도 성공으로 본다
 REDRAW_RATE = 0.3  # 저장된 그림이 있어도 새로 그리는 확률
 RECENT_DAYS = 30  # 최근에 낸 단어를 빼는 기간
 EVENT_PAST_DAYS = 30
@@ -247,7 +248,7 @@ def _reply(state: str, items: list[dict] | None = None) -> dict:
 
 def recommend(db: Session, user: User, group_id: str, rng: random.Random | None = None) -> dict:
     """오늘의 이게 뭐게 가비 추천을 돌려준다: {"state": ..., "items": [{id, source, word, alt_answers, strokes}]}.
-    오류는 상태로 바꿔 돌려준다. 하루 한 번 만들어 가족이 오늘 자정까지 같이 쓴다(그림이 1장 이상이면 성공, 0장이면 캐시하지 않는다)."""
+    오류는 상태로 바꿔 돌려준다. 하루 한 번 만들어 가족이 오늘 자정까지 같이 쓴다(그림이 4장 이상이면 성공, 모자라면 캐시하지 않는다)."""
     now = datetime.now(UTC)
     today = now.astimezone(local_tz()).date()
     rng = rng or daily_rng(group_id, today)
@@ -298,8 +299,8 @@ def recommend(db: Session, user: User, group_id: str, rng: random.Random | None 
             for word, source in picked
             if word in chosen
         ]
-        if not items:  # 그림을 하나도 못 만들었다 — 실패로 보고 캐시하지 않는다
-            raise DrawFailed("만든 그림이 없어요", 1, tokens_in, tokens_out)  # 한도에는 시도 1회
+        if len(items) < MIN_OK:  # 그림이 4개도 안 된다 — 실패로 보고 캐시하지 않는다
+            raise DrawFailed("만든 그림이 모자라요", 1, tokens_in, tokens_out)  # 한도에는 시도 1회
         return {"items": items}, _Batch(model or settings.llm_model, tokens_in, tokens_out)
 
     try:
