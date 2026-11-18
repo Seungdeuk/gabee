@@ -16177,6 +16177,72 @@
         }
       }
     },
+    "/play/draw/recommendations": {
+      "get": {
+        "tags": [
+          "play"
+        ],
+        "summary": "Draw Recommendations",
+        "description": "이게 뭐게 가비 추천(정답 단어와 선 그림 5개). 단어는 가족 일정·대화에서 찾은 공개 단어를 먼저 쓰고 모자라면 흔한 단어로 채우며,\n그림은 AI 가 만든다(단어만 보냄). 하루 한 번 만들어 자정까지 가족이 같이 쓴다. 실패·한도 같은 경우는 오류 대신 state 로 알린다(200).",
+        "operationId": "draw_recommendations_play_draw_recommendations_get",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-gyeot-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Gyeot-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlayDrawRecOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/play/draws": {
       "post": {
         "tags": [
@@ -27636,6 +27702,85 @@
         ],
         "title": "PlayDrawOut",
         "description": "이게 뭐게. 힌트는 연 만큼만, 정답은 낸 사람·끝낸 사람·닫힌 뒤에만 보인다."
+      },
+      "PlayDrawRecItem": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "schedule",
+              "chat",
+              "common"
+            ],
+            "title": "Source"
+          },
+          "word": {
+            "type": "string",
+            "title": "Word"
+          },
+          "alt_answers": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Alt Answers"
+          },
+          "strokes": {
+            "items": {
+              "items": {
+                "items": {
+                  "type": "integer"
+                },
+                "type": "array"
+              },
+              "type": "array"
+            },
+            "type": "array",
+            "title": "Strokes"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "source",
+          "word",
+          "strokes"
+        ],
+        "title": "PlayDrawRecItem"
+      },
+      "PlayDrawRecOut": {
+        "properties": {
+          "state": {
+            "type": "string",
+            "enum": [
+              "ok",
+              "partial",
+              "used_up",
+              "preparing",
+              "cooldown",
+              "failed",
+              "ai_off"
+            ],
+            "title": "State"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/PlayDrawRecItem"
+            },
+            "type": "array",
+            "title": "Items"
+          }
+        },
+        "type": "object",
+        "required": [
+          "state"
+        ],
+        "title": "PlayDrawRecOut",
+        "description": "이게 뭐게 가비 추천. items 는 state 가 ok(5개가 다 모임 또는 한도를 다 쓴 뒤 저장된 그림) 또는 partial(일부만 준비됨, 다시 불러오면 모자란 만큼 채움)일 때 있다. used_up 오늘 추천을 다 썼음(또는 한도), preparing 다른 가족이 만드는 중,\ncooldown 방금 불렀음, failed 만들지 못함, ai_off 가족 AI 꺼짐. 재료가 없어도 흔한 단어로 채우므로 no_data 는 없다."
       },
       "PlayDrawTryIn": {
         "properties": {

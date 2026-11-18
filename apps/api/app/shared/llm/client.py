@@ -74,8 +74,10 @@ def complete_json(
     max_tokens: int | None = None,
     timeout: float = 40.0,
     model: str | None = None,
+    effort: str | None = None,
 ) -> JsonResult:
-    """구조화 출력으로 schema 에 맞는 JSON 을 받는다(한 번만 호출). 잘렸거나 거절됐거나 JSON 이 아니면 LLMUnavailable."""
+    """구조화 출력으로 schema 에 맞는 JSON 을 받는다(한 번만 호출). 잘렸거나 거절됐거나 JSON 이 아니면 LLMUnavailable.
+    effort(low|medium|high)를 주면 이 호출만 추론 정도를 바꾼다(주지 않으면 설정 `ai_effort`)."""
     if not available():
         raise LLMUnavailable("ANTHROPIC_API_KEY 가 설정되지 않았어요")
     body: dict = {
@@ -84,7 +86,7 @@ def complete_json(
         "messages": [{"role": "user", "content": prompt}],
         "output_config": {
             "format": {"type": "json_schema", "schema": schema},
-            "effort": settings.ai_effort,
+            "effort": effort or settings.ai_effort,
         },
     }
     if system:

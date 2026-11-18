@@ -181,6 +181,10 @@ class Settings(BaseSettings):
     ai_play_quiz_rec_cooldown_seconds: int = 5
     ai_play_quiz_rec_max_calls_per_user_per_day: int = 3
     ai_play_quiz_rec_max_calls_per_group_per_day: int = 5
+    # 이게 뭐게 가비 추천: 골든벨과 같다. 추천 한 번(그림 5개를 동시에 불러도)이 1회이고 성공하면 당일 자정까지 캐시라 2·3회는 실패했을 때의 시도분
+    ai_play_draw_rec_cooldown_seconds: int = 5
+    ai_play_draw_rec_max_calls_per_user_per_day: int = 3
+    ai_play_draw_rec_max_calls_per_group_per_day: int = 5
     ai_schedule_card_cooldown_seconds: int = 5
     ai_schedule_card_max_calls_per_user_per_day: int = 3
     ai_schedule_card_max_calls_per_group_per_day: int = 15

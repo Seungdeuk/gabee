@@ -9,10 +9,11 @@ from app.features.family_group.models import User
 from app.shared.auth import current_group_id, current_user
 from app.shared.db import get_db
 
-from . import media, quiz_rec, service
+from . import draw_rec, media, quiz_rec, service
 from .bomb_router import router as bomb_router
 from .schemas import (
     PlayBoardOut,
+    PlayDrawRecOut,
     PlayDrawTryIn,
     PlayItemOut,
     PlayQuizAnswerIn,
@@ -46,6 +47,17 @@ def quiz_recommendations(
     """골든벨 가비 추천(가족이 함께 보는 일정과 가족 전체방 최근 대화로 만든 문제). 하루 한 번 만들어 자정까지 가족이 같이 쓰고,
     이미 낸 문제는 숨긴다. 실패·한도 같은 경우는 오류 대신 state 로 알린다(AI 가 꺼져 있거나 재료가 없을 때도 200)."""
     return PlayQuizRecOut(**quiz_rec.recommend(db, user, group_id))
+
+
+@router.get("/draw/recommendations", response_model=PlayDrawRecOut)
+def draw_recommendations(
+    user: User = Depends(current_user),
+    group_id: str = Depends(current_group_id),
+    db: Session = Depends(get_db),
+) -> PlayDrawRecOut:
+    """이게 뭐게 가비 추천(정답 단어와 선 그림 5개). 단어는 가족 일정·대화에서 찾은 공개 단어를 먼저 쓰고 모자라면 흔한 단어로 채우며,
+    그림은 AI 가 만든다(단어만 보냄). 하루 한 번 만들어 자정까지 가족이 같이 쓴다. 실패·한도 같은 경우는 오류 대신 state 로 알린다(200)."""
+    return PlayDrawRecOut(**draw_rec.recommend(db, user, group_id))
 
 
 @router.post("/draws", response_model=PlayItemOut, status_code=201)

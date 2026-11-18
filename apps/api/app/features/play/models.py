@@ -208,3 +208,16 @@ class PlayBombTurn(Base):
     is_end: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("false"))
     life: Mapped[int] = mapped_column(SmallInteger)  # 이 차례 뒤 남은 생명
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+
+class PlayDrawStock(Base):
+    """이게 뭐게 가비 추천이 AI 로 만든 단어별 선 그림. 가족과 무관하게 모든 가족이 30일 동안 다시 쓴다(단어당 최대 3종).
+    strokes 는 선 목록(`[[[x, y], ...], ...]`, 좌표 0~255)이고 가족 정보는 들어 있지 않다."""
+
+    __tablename__ = "play_draw_stock"
+    __table_args__ = (Index("ix_play_draw_stock_word_created_at", "word", "created_at"),)
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uid)
+    word: Mapped[str] = mapped_column(String(8))
+    strokes: Mapped[list] = mapped_column(JSON)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
