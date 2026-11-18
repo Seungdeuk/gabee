@@ -126,9 +126,13 @@ def test_write_case_matches_the_seed(client, family, case_id):
     with SessionLocal() as db:
         me = db.scalars(select(User).where(User.name == user_name)).first()
         proposed: list = []
+        # 정산 Agent 의 삭제 제안은 사용자 문장이 지출을 가리켰는지 서버가 확인한다(`billing/target.py`). 실제 경로(`ask`)처럼 사례 질문을 넘긴다
+        extra = {"question": case["question"]} if case["agent"] == "billing" else {}
         tools = {
             t.name: t
-            for t in AGENTS[case["agent"]].build_tools(db, me.active_group_id, me, proposed)
+            for t in AGENTS[case["agent"]].build_tools(
+                db, me.active_group_id, me, proposed, **extra
+            )
         }
         if case["expect_proposals"] == 0:
             with pytest.raises(ValueError):

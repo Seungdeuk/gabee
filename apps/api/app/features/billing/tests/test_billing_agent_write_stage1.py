@@ -25,12 +25,12 @@ def _llm(name, args):
     return fake
 
 
-def _chat(client, headers, monkeypatch, name, args):
+def _chat(client, headers, monkeypatch, name, args, message="해줘"):
     monkeypatch.setattr(settings, "anthropic_api_key", "test-key")
     monkeypatch.setattr(agent, "_post", _llm(name, args))
     enable_ai_for_user()
     proposals.reset()
-    r = client.post("/billing/agent/chat", json={"message": "해줘"}, headers=headers)
+    r = client.post("/billing/agent/chat", json={"message": message}, headers=headers)
     assert r.status_code == 200, r.text
     return r.json()
 
