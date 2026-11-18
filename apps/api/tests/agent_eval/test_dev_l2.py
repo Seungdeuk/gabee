@@ -18,9 +18,7 @@ from evals.agent_eval.fake_model import ScriptContext
 from tests.agent_eval.runner_support import run
 
 REVERSED_ID = "dev-l2-reversed"
-NO_SCHEDULE_REPLY = (
-    "s-dev-12-toolfail-02"  # 일정 Agent 의 모델 호출이 실패하는 사례(대본이 바닥나는 것이 의도다)
-)
+NO_SCHEDULE_REPLY = "s-dev-12-toolfail-02"  # 메인의 ask_schedule 이 주입된 오류로 실패하는 사례(일정 Agent 는 불리지 않는다)
 
 
 @pytest.fixture(scope="module")
@@ -90,10 +88,11 @@ def test_no_security_violation_and_no_real_model_call(dev_run, tripwire):
         assert r.llm_calls == fake.calls - len(fake.exhausted) >= 1, r.case_id
 
 
-def test_every_script_was_used_from_the_start_except_the_planned_model_failure(dev_run):
+def test_every_script_was_used_from_the_start_and_no_model_call_failed(dev_run):
+    """도구 오류는 이제 실행기가 주입한다(`fault_injection`): toolfail-02 도 일정 Agent 의 모델 호출을 일부러 실패시키지 않으므로 바닥난 대본이 없다."""
     report, _ = dev_run
     exhausted = {cid: f.exhausted for (cid, _), f in report.fakes.items() if f.exhausted}
-    assert exhausted == {NO_SCHEDULE_REPLY: ["schedule"]}
+    assert exhausted == {}
 
 
 def test_a_dev_case_without_a_script_is_unsupported_not_failed(cases, tripwire):

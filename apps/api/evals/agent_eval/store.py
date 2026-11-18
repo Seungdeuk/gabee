@@ -214,7 +214,11 @@ def _check_summary(rows: Sequence[tuple[str, Any]]) -> None:
             raise ValueError(f"summary 행은 (이름, 숫자 또는 None)이어야 한다: {name!r}")
 
 
-ROW_EXTRA_KEYS = ("write_gate", "skipped_checks")
+ROW_EXTRA_KEYS = (
+    "write_gate",
+    "skipped_checks",
+    "faults_injected",
+)  # faults_injected: 주입 명세가 있는 사례만(선택)
 WRITE_GATES = ("applied", "not_evaluated")
 RowExtras = Mapping[tuple[str, int], Mapping[str, Any]]
 
@@ -236,6 +240,9 @@ def _check_row_extras(extras: RowExtras) -> None:
             raise ValueError("skipped_checks 는 문자열 목록이어야 한다")
         if extra["write_gate"] == "applied" and skipped:
             raise ValueError("write_gate 가 applied 면 생략한 검사가 없어야 한다")
+        injected = extra.get("faults_injected")
+        if injected is not None and not _is_int(injected):
+            raise ValueError("faults_injected 는 0 이상의 정수여야 한다")
 
 
 def _build(
@@ -269,6 +276,8 @@ def _build(
             if extra is not None:
                 cases[-1]["write_gate"] = extra["write_gate"]
                 cases[-1]["skipped_checks"] = list(extra.get("skipped_checks", ()))
+                if extra.get("faults_injected") is not None:
+                    cases[-1]["faults_injected"] = int(extra["faults_injected"])
             trajectories.append(
                 {
                     "case_id": case.id,
@@ -295,6 +304,8 @@ def _build(
                     "latency_ms": obs.latency_ms,
                     "step_limit_reached": obs.step_limit_reached,
                     "forced_final": obs.forced_final,
+                    "faults_injected": obs.faults_injected,
+                    "fault_tools": list(obs.fault_tools),
                 }
             )
             if not res.passed:
@@ -416,5 +427,9 @@ def read_trajectories(run_dir: Path) -> list[dict]:
             row.setdefault("step_limit_reached", bool(legacy))
         row.setdefault("step_limit_reached", False)
         row.setdefault("forced_final", False)
+        row.setdefault(
+            "faults_injected", 0
+        )  # 옛 결과(오류 주입 기록이 생기기 전)는 0·빈 목록으로 읽는다
+        row.setdefault("fault_tools", [])
         rows.append(row)
     return rows

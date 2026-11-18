@@ -447,14 +447,17 @@ def test_the_stored_diagnostics_contain_no_question_answer_or_arguments(runs, ch
 
 
 def test_a_failing_model_call_is_still_traced(tmp_path):
-    cases = [
-        c for c in cf.load_cases(dev_cases.CASES_DEV_PATH, "dev") if c.id == "s-dev-12-toolfail-02"
-    ]
+    # 모델 호출이 실패하는 사례를 만든다: 정산 Agent 의 대본 줄을 빼 가짜 모델이 바닥나게 한다.
+    # (예전에는 toolfail-02 가 일정 Agent 대본을 일부러 비워 이 상황을 만들었지만, 이제 그 사례의 도구 오류는 `fault_injection` 이 주입한다)
+    case_id = "s-dev-03-billing-01"
+    cases = [c for c in cf.load_cases(dev_cases.CASES_DEV_PATH, "dev") if c.id == case_id]
+    scripts = dict(dev_scripts.scripts_for("dev"))
+    scripts[case_id] = {k: v for k, v in scripts[case_id].items() if k != "billing"}
     report = run(
         cases,
         tmp_path,
         run_id="diag-fail",
-        scripts=dev_scripts.scripts_for("dev"),
+        scripts=scripts,
         diagnostics=True,
     )
     assert report.call_traces

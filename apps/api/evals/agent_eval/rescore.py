@@ -25,7 +25,7 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
 
-from . import metrics, scoring, store
+from . import fault_injection, metrics, scoring, store
 from .schema import Case, Observation, ToolCall, dump_case
 
 SOURCE_FILES = ("manifest.json", "cases.jsonl", "trajectories.jsonl")
@@ -193,6 +193,12 @@ def observation_of(row: Mapping[str, Any]) -> tuple[Observation, tuple[str, ...]
         for v in (c.get("args") or {}).values()
     ):
         limits.append("args_truncated")
+    if (
+        fault_injection.specs_for(str(row.get("case_id", "")))
+        and int(row.get("faults_injected") or 0) == 0
+    ):
+        # 오류 주입 명세가 있는 사례인데 주입 기록이 0(옛 결과는 주입 장치가 없었다): 도구 오류 복구를 검증한 결과가 아니다
+        limits.append("fault_not_injected")
     obs = Observation(
         calls=[
             ToolCall(
@@ -216,6 +222,8 @@ def observation_of(row: Mapping[str, Any]) -> tuple[Observation, tuple[str, ...]
         latency_ms=row.get("latency_ms", 0),
         step_limit_reached=bool(row.get("step_limit_reached")),
         forced_final=bool(row.get("forced_final")),
+        faults_injected=int(row.get("faults_injected") or 0),
+        fault_tools=list(row.get("fault_tools") or []),
     )
     return obs, tuple(limits)
 

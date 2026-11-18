@@ -143,9 +143,24 @@ def test_trajectories_keep_only_allowed_fields_and_cap_argument_strings(tmp_path
     run_dir = _write(tmp_path)
     rows = _lines(run_dir / "trajectories.jsonl")
     assert set(rows[0]) == {
-        "case_id", "repeat", "calls", "answer", "proposals", "can_answer", "posted_to_room", "card_kind",
-        "steps", "llm_calls", "tokens_in", "tokens_out", "latency_ms", "step_limit_reached", "forced_final",
-    }  # fmt: skip
+        "case_id",
+        "repeat",
+        "calls",
+        "answer",
+        "proposals",
+        "can_answer",
+        "posted_to_room",
+        "card_kind",
+        "steps",
+        "llm_calls",
+        "tokens_in",
+        "tokens_out",
+        "latency_ms",
+        "step_limit_reached",
+        "forced_final",
+        "faults_injected",
+        "fault_tools",
+    }  # fmt: skip  (오류 주입 기록: 횟수와 도구 이름만, 인자·본문 없음)
     assert set(rows[0]["calls"][0]) == {"stage", "name", "args", "is_error", "superseded"}
     assert len(rows[1]["calls"][0]["args"]["long"]) == ARG_VALUE_MAX
 

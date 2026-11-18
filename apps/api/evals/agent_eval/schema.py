@@ -275,6 +275,9 @@ class Observation(_Strict):
         False  # 실행이 단계 상한에 닿았다(마지막 단계에서 정상적으로 답한 경우는 아니다)
     )
     forced_final: bool = False  # 상한 때문에 도구 없이 최종 답을 받았다(상한 도달의 하위 사실: True 면 step_limit_reached 도 True)
+    # 평가 실행기(`fault_injection`)가 이 반복에서 도구 오류를 실제로 주입한 횟수와 도구 이름. 주입 명세가 없는 사례·옛 저장 결과는 0·빈 목록이다
+    faults_injected: NonNegativeInt = 0
+    fault_tools: list[str] = Field(default_factory=list)
 
     @model_validator(mode="before")
     @classmethod
