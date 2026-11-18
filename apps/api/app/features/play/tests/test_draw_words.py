@@ -14,7 +14,10 @@ def test_word_list_is_clean():
         assert re.fullmatch(r"[가-힣]{1,5}", word), word  # 띄어쓰기·합성어 없는 한 단어
         assert item.word == word
         for alt in item.alts:
-            assert re.fullmatch(r"[가-힣A-Za-z]{1,5}", alt), (word, alt)  # 정답 변형은 영문 약어(pc)도 허용
+            assert re.fullmatch(r"[가-힣A-Za-z]{1,5}", alt), (
+                word,
+                alt,
+            )  # 정답 변형은 영문 약어(pc)도 허용
             assert alt != word
     for word in EXAMPLES:
         assert word in words, word
