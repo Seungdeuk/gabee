@@ -65,7 +65,6 @@ def fake(monkeypatch):
     f = WordLLM()
     monkeypatch.setattr(llm, "complete_json", f)
     monkeypatch.setattr(settings, "anthropic_api_key", "test-key")
-    monkeypatch.setattr(draw_rec, "MIN_OK", 1)  # 단어 1~3개로 하는 시험이 많아 기본은 1장으로 낮춘다(4장 규칙은 아래에서 따로)
     return f
 
 
@@ -241,17 +240,50 @@ def test_recommend_item_shape_and_no_family_text_to_ai(client, ready, fake, monk
     )
 
 
-def test_partial_failure_is_ok_and_cached(client, ready, fake, monkeypatch):
+def test_partial_shows_made_and_fills_in_on_retry(client, ready, fake, monkeypatch):
     a, _, group = ready
     only(monkeypatch, ("케이크", "schedule"), ("딸기", "common"), ("텐트", "common"))
     fake.by_word = {"딸기": BAD, "텐트": BAD}
     with SessionLocal() as db:
         user = user_of(db, client, a)
         first = draw_rec.recommend(db, user, group["id"], rng=Rng(0.99))
-        assert first["state"] == "ok" and [i["word"] for i in first["items"]] == ["케이크"]
+        assert first["state"] == "partial" and [i["word"] for i in first["items"]] == ["케이크"]
+        fake.by_word = {}  # 다시 시도하면 모자란 단어를 채운다(만든 그림은 그대로)
         used = len(fake.calls)
-        assert draw_rec.recommend(db, user, group["id"], rng=Rng(0.99)) == first  # 오늘은 캐시
+        second = draw_rec.recommend(db, user, group["id"], rng=Rng(0.99))
+        assert len(fake.calls) > used
+        assert second["state"] == "ok" and [i["word"] for i in second["items"]] == ["케이크", "딸기", "텐트"]
+        assert second["items"][0]["id"] == first["items"][0]["id"]
+        used = len(fake.calls)
+        assert draw_rec.recommend(db, user, group["id"], rng=Rng(0.99)) == second  # 다 모이면 오늘은 캐시
         assert len(fake.calls) == used
+
+
+def test_attempts_are_three_then_made_ones_stay_visible(client, ready, fake, monkeypatch):
+    a, _, group = ready
+    ai_guard.register_bucket(draw_rec.FEATURE, ai_guard.Limits(0, 3, 5), (draw_rec.FEATURE,))
+    only(monkeypatch, ("케이크", "schedule"), ("딸기", "common"))
+    fake.by_word = {"딸기": BAD}
+    with SessionLocal() as db:
+        user = user_of(db, client, a)
+        states = [draw_rec.recommend(db, user, group["id"], rng=Rng(0.99))["state"] for _ in range(3)]
+        assert states == ["partial"] * 3  # 시도 3번(그때마다 1번으로 센다)
+        calls = len(fake.calls)
+        last = draw_rec.recommend(db, user, group["id"], rng=Rng(0.99))
+        assert len(fake.calls) == calls  # 더 부르지 않는다
+        assert last["state"] == "ok" and [i["word"] for i in last["items"]] == ["케이크"]  # 만든 그림은 계속 보인다
+
+
+def test_three_attempts_with_nothing_drawn_is_used_up_without_items(client, ready, fake, monkeypatch):
+    a, _, group = ready
+    ai_guard.register_bucket(draw_rec.FEATURE, ai_guard.Limits(0, 3, 5), (draw_rec.FEATURE,))
+    only(monkeypatch, ("케이크", "schedule"), ("딸기", "common"))
+    fake.by_word = {"케이크": BAD, "딸기": BAD}
+    with SessionLocal() as db:
+        user = user_of(db, client, a)
+        states = [draw_rec.recommend(db, user, group["id"], rng=Rng(0.99))["state"] for _ in range(3)]
+        assert states == ["failed"] * 3
+        assert draw_rec.recommend(db, user, group["id"], rng=Rng(0.99)) == {"state": "used_up", "items": []}
 
 
 def test_all_failed_is_failure_and_not_cached(client, ready, fake, monkeypatch):
@@ -382,30 +414,3 @@ def test_success_ends_it_and_later_opens_do_not_count(client, ready, fake, monke
         for _ in range(5):  # 오늘은 캐시라 몇 번을 열어도 AI 도 한도도 쓰지 않는다
             assert draw_rec.recommend(db, user, group["id"], rng=Rng(0.99)) == first
         assert len(fake.calls) == 1
-
-
-def test_four_of_five_is_ok_and_cached(client, ready, fake, monkeypatch):
-    a, _, group = ready
-    monkeypatch.setattr(draw_rec, "MIN_OK", 4)
-    only(monkeypatch, *[(w, "common") for w in ("케이크", "딸기", "텐트", "사과", "우산")])
-    fake.by_word = {"우산": BAD}
-    with SessionLocal() as db:
-        user = user_of(db, client, a)
-        first = draw_rec.recommend(db, user, group["id"], rng=Rng(0.99))
-        assert first["state"] == "ok" and len(first["items"]) == 4
-        used = len(fake.calls)
-        assert draw_rec.recommend(db, user, group["id"], rng=Rng(0.99)) == first
-        assert len(fake.calls) == used
-
-
-def test_three_of_five_is_failure_and_not_cached(client, ready, fake, monkeypatch):
-    a, _, group = ready
-    monkeypatch.setattr(draw_rec, "MIN_OK", 4)
-    only(monkeypatch, *[(w, "common") for w in ("케이크", "딸기", "텐트", "사과", "우산")])
-    fake.by_word = {"사과": BAD, "우산": BAD}
-    with SessionLocal() as db:
-        user = user_of(db, client, a)
-        assert draw_rec.recommend(db, user, group["id"], rng=Rng(0.99)) == {"state": "failed", "items": []}
-        before = len(fake.calls)
-        draw_rec.recommend(db, user, group["id"], rng=Rng(0.99))
-        assert len(fake.calls) > before

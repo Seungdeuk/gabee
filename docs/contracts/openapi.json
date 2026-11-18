@@ -27758,6 +27758,7 @@
             "type": "string",
             "enum": [
               "ok",
+              "partial",
               "used_up",
               "preparing",
               "cooldown",

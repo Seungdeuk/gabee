@@ -535,7 +535,7 @@ export const stepIndex = (index, count, step) => (count <= 0 ? 0 : (((index + st
 // ---------- 이게 뭐게 가비 추천 ----------
 /** 그림 추천을 못 보여 줄 때의 안내 글자(골든벨 추천과 같은 말투). refresh 는 "새로고침" 버튼을 둘지(다시 해 볼 수 있는 경우). */
 const DRAW_REC_NOTICE = {
-  used_up: { text: "오늘 추천은 여기까지예요", refresh: false },
+  used_up: { text: "가비가 오늘은 그림을 준비하지 못했어요", refresh: false, manual: true }, // 한도를 다 썼는데 보여 줄 그림이 없을 때: 직접 그리기로 가는 버튼을 둔다
   preparing: { text: "가비가 그림을 준비 중이에요", refresh: true },
   cooldown: { text: "조금 뒤에 다시 해주세요", refresh: true },
   failed: { text: "가비가 그림을 준비하기 어려워요", refresh: true },
@@ -543,15 +543,16 @@ const DRAW_REC_NOTICE = {
 };
 
 /**
- * 그림 추천 응답을 화면에 보일 모양으로: 그림이 있으면 { items }, 없으면 { notice, refresh } 안내.
+ * 그림 추천 응답을 화면에 보일 모양으로: 그림이 있으면 { items }(일부만 준비된 partial 이면 more: true 도 붙어 더 불러올 수 있다), 없으면 { notice, refresh } 안내.
  * 서버 응답이 없거나(아직·네트워크 오류) 모르는 상태이면 "그림을 준비하기 어려워요"로 본다.
  * @param {{ state?: string, items?: object[] } | null | undefined} recs
  */
 export function drawRecView(recs) {
-  const items = recs?.state === "ok" ? (recs.items ?? []) : [];
-  if (items.length > 0) return { items };
-  const notice = DRAW_REC_NOTICE[recs?.state === "ok" ? "used_up" : recs?.state] ?? DRAW_REC_NOTICE.failed;
-  return { items: [], notice: notice.text, refresh: notice.refresh };
+  const shows = recs?.state === "ok" || recs?.state === "partial";
+  const items = shows ? (recs.items ?? []) : [];
+  if (items.length > 0) return recs.state === "partial" ? { items, more: true } : { items };
+  const notice = DRAW_REC_NOTICE[recs?.state === "ok" ? "used_up" : recs?.state === "partial" ? "failed" : recs?.state] ?? DRAW_REC_NOTICE.failed;
+  return { items: [], notice: notice.text, refresh: notice.refresh, manual: notice.manual === true };
 }
 
 /** 카드 위 알약 글자: 단어를 어디서 가져왔는지("일정에서"·"소통방에서"·"흔한 단어") */

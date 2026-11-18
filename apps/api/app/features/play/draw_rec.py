@@ -30,7 +30,7 @@ from .timeutil import aware, local_day_start, local_tz
 FEATURE = "play_draw_rec"
 PROMPT_VERSION = "v1"  # 프롬프트·스키마를 바꾸면 올려서 오래된 캐시를 쓰지 않게 한다
 ASK_COUNT = 5  # 한 번 열 때 보여 주는 그림 수
-MIN_OK = 4  # 이만큼 만들면 5개가 안 돼도 성공으로 본다
+PARTIAL = "partial"  # 그림이 5개가 안 된다: 있는 그림은 보여 주고, 다시 불러오면(한도 안에서) 모자란 만큼 더 채운다
 REDRAW_RATE = 0.3  # 저장된 그림이 있어도 새로 그리는 확률
 RECENT_DAYS = 30  # 최근에 낸 단어를 빼는 기간
 EVENT_PAST_DAYS = 30
@@ -246,17 +246,42 @@ def _reply(state: str, items: list[dict] | None = None) -> dict:
     return {"state": state, "items": items or []}
 
 
+def _stock_items(db: Session, picked: list[tuple[str, str]], words: dict, now: datetime) -> list[dict]:
+    """저장소에 그림이 있는 오늘 단어를 추천 항목으로 만든다(단어마다 가장 최근 그림)."""
+    items = []
+    for word, source in picked:
+        variants = draw_stock.stock_variants(db, word, now)
+        if variants:
+            items.append(
+                {
+                    "id": variants[-1].id,
+                    "source": source,
+                    "word": word,
+                    "alt_answers": list(words[word].alts),
+                    "strokes": variants[-1].strokes,
+                }
+            )
+    return items
+
+
 def recommend(db: Session, user: User, group_id: str, rng: random.Random | None = None) -> dict:
     """오늘의 이게 뭐게 가비 추천을 돌려준다: {"state": ..., "items": [{id, source, word, alt_answers, strokes}]}.
-    오류는 상태로 바꿔 돌려준다. 하루 한 번 만들어 가족이 오늘 자정까지 같이 쓴다(그림이 4장 이상이면 성공, 모자라면 캐시하지 않는다)."""
+    오류는 상태로 바꿔 돌려준다. 하루 한 번 만들어 가족이 오늘 자정까지 같이 쓴다(5개가 다 모이면 캐시한다. 모자라면 캐시하지 않고, 저장소에 있는 오늘 단어의 그림을 `partial` 로 보여 주며 다음에 한도 안에서 더 채운다. 한도를 다 쓰면 저장소 그림을 그대로 `ok` 로 보여 준다)."""
     now = datetime.now(UTC)
     today = now.astimezone(local_tz()).date()
     rng = rng or daily_rng(group_id, today)
     recent = recent_words(db, group_id, now)
     words = draw_words.load_words()
 
+    picks: list[list[tuple[str, str]]] = []  # 오늘 뽑은 단어(시도에서 뽑았으면 그대로, 못 뽑았으면 아래에서 같은 난수로 다시 뽑는다)
+
+    def picked_words():
+        if not picks:
+            picks.append(pick_words(family_words(db, group_id, today, now), recent, rng))
+        return picks[0]
+
     def call():
-        picked = pick_words(family_words(db, group_id, today, now), recent, rng)
+        picked = picked_words()
         chosen: dict[str, object] = {}
         to_draw: list[str] = []
         for word, _source in picked:
@@ -299,7 +324,7 @@ def recommend(db: Session, user: User, group_id: str, rng: random.Random | None 
             for word, source in picked
             if word in chosen
         ]
-        if len(items) < MIN_OK:  # 그림이 4개도 안 된다 — 실패로 보고 캐시하지 않는다
+        if len(items) < len(picked):  # 5개가 안 된다 — 만든 그림은 저장소에 남고, 캐시하지 않아 다음에 더 채운다(시도 1회로 센다)
             raise DrawFailed("만든 그림이 모자라요", 1, tokens_in, tokens_out)  # 한도에는 시도 1회
         return {"items": items}, _Batch(model or settings.llm_model, tokens_in, tokens_out)
 
@@ -314,6 +339,13 @@ def recommend(db: Session, user: User, group_id: str, rng: random.Random | None 
             cache_until=local_day_start(now) + timedelta(days=1),
         )
     except ApiError as error:
-        return _reply(quiz_rec._state_of(error))
+        state = quiz_rec._state_of(error)
+        if state == quiz_rec.AI_OFF:
+            return _reply(state)
+        shown = [i for i in _stock_items(db, picked_words(), words, now) if _norm(i["word"]) not in recent]
+        if not shown:
+            return _reply(state)
+        # 저장소에 오늘 단어의 그림이 있으면 보여 준다. 한도를 다 쓴 때는 더 할 게 없으니 ok, 그 밖에는 다시 불러 더 채울 수 있다
+        return _reply(quiz_rec.OK if state == quiz_rec.USED_UP else PARTIAL, shown)
     items = [i for i in outcome.result.get("items", []) if _norm(i["word"]) not in recent]
     return _reply(quiz_rec.OK, items) if items else _reply(quiz_rec.USED_UP)

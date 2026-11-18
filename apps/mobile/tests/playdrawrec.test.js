@@ -42,6 +42,11 @@ test("추천 보기: 그림이 있으면 그대로", () => {
   assert.deepEqual(drawRecView({ state: "ok", items: [ITEM] }), { items: [ITEM] });
 });
 
+test("추천 보기: 일부만 준비됐으면 있는 그림을 보여 주고 더 불러올 수 있다(more)", () => {
+  assert.deepEqual(drawRecView({ state: "partial", items: [ITEM] }), { items: [ITEM], more: true });
+  assert.equal(drawRecView({ state: "partial", items: [] }).refresh, true); // 그림이 없으면 안내와 새로고침
+});
+
 test("추천 보기: 다시 해 볼 수 있는 상태는 새로고침이 있고 아니면 없다", () => {
   for (const state of ["preparing", "cooldown", "failed"]) {
     const view = drawRecView({ state, items: [] });
@@ -59,6 +64,14 @@ test("추천 보기: 응답이 없거나 모르는 상태, 비어 있는 ok 는 
   assert.equal(drawRecView(null).refresh, true); // 아직·네트워크 오류는 "준비하기 어려워요"로 보고 다시 해 볼 수 있다
   assert.equal(drawRecView({ state: "weird", items: [] }).refresh, true);
   assert.equal(drawRecView({ state: "ok", items: [] }).refresh, false); // 낸 단어를 숨겨 비게 된 경우: 오늘은 여기까지
+});
+
+test("추천 보기: 오늘 한도를 다 썼는데 그림이 없으면 안내와 직접 그리기 버튼(manual)", () => {
+  const view = drawRecView({ state: "used_up", items: [] });
+  assert.equal(view.notice, "가비가 오늘은 그림을 준비하지 못했어요");
+  assert.equal(view.manual, true);
+  assert.equal(drawRecView({ state: "ai_off", items: [] }).manual, false);
+  assert.equal(drawRecView({ state: "failed", items: [] }).manual, false);
 });
 
 test("카드 알약 글자", () => {
