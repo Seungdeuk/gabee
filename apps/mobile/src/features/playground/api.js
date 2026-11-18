@@ -107,7 +107,7 @@ export const closeBomb = (id) => apiFetch(bombPath(id, "/close"), { method: "POS
 
 /**
  * 이게 뭐게 가비 추천(하루 한 번 만들어 가족이 같이 쓴다. 처음 열 때는 그림을 만드느라 15~40초쯤 걸릴 수 있다): { state, items }.
- * state: ok(items 있음) | used_up | preparing | cooldown | failed | ai_off. 그림은 { id, source: "schedule" | "chat" | "common", word, alt_answers, strokes }
+ * state: ok(items 있음) | partial(items 있음, 일부만 준비됨 — 다시 부르면 채운다) | used_up | preparing | cooldown | failed | ai_off. 그림은 { id, source: "schedule" | "chat" | "common", word, alt_answers, strokes }
  * 이고 strokes 는 선 목록(선마다 [x, y] 점, 좌표 0~255)이다.
  */
 export const getDrawRecs = () => apiFetch("/play/draw/recommendations");

@@ -80,7 +80,7 @@ class PlayDrawRecItem(BaseModel):
 
 
 class PlayDrawRecOut(BaseModel):
-    """이게 뭐게 가비 추천. state 가 ok 일 때만 items 가 있다. used_up 오늘 추천을 다 썼음(또는 한도), preparing 다른 가족이 만드는 중,
+    """이게 뭐게 가비 추천. items 는 state 가 ok(5개가 다 모임 또는 한도를 다 쓴 뒤 저장된 그림) 또는 partial(일부만 준비됨, 다시 불러오면 모자란 만큼 채움)일 때 있다. used_up 오늘 추천을 다 썼음(또는 한도), preparing 다른 가족이 만드는 중,
     cooldown 방금 불렀음, failed 만들지 못함, ai_off 가족 AI 꺼짐. 재료가 없어도 흔한 단어로 채우므로 no_data 는 없다."""
 
     state: Literal["ok", "partial", "used_up", "preparing", "cooldown", "failed", "ai_off"]

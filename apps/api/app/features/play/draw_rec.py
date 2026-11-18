@@ -208,21 +208,24 @@ def recent_words(db: Session, group_id: str, now: datetime) -> set[str]:
 def pick_words(
     found: list[tuple[str, str]], recent: set[str], rng: random.Random
 ) -> list[tuple[str, str]]:
-    """가족 재료의 단어를 먼저 쓰고(5개보다 많으면 난수로 5개), 모자라면 목록의 흔한 단어("common")로 채운다.
-    최근에 낸 단어(비슷한 정답 포함)는 뺀다. 후보가 모자라면 있는 만큼만 돌려준다."""
+    """가족 재료의 단어를 먼저 쓰고(5개보다 많으면 단어별 키 순으로 5개), 모자라면 목록의 흔한 단어("common")로 채운다.
+    최근에 낸 단어(비슷한 정답 포함)는 뺀다. 후보가 모자라면 있는 만큼만 돌려준다.
+    단어마다 난수 키를 목록 전체에 대해 같은 순서·개수로 뽑아 두고 키 순으로 고른다. 그래서 같은 날 후보가 하나 줄거나 늘어도(그림을 하나 냈거나 대화에 단어가 늘었을 때)
+    그 단어만 바뀌고 나머지는 그대로다(다시 불러와도 앞서 그린 단어가 통째로 바뀌지 않는다)."""
     words = draw_words.load_words()
+    key = {w: rng.random() for w in sorted(words)}
 
     def used(word: str) -> bool:
         return any(_norm(x) in recent for x in (word, *words[word].alts))
 
     chosen = [(w, s) for w, s in found if w in words and not used(w)]
     if len(chosen) > ASK_COUNT:
-        chosen = rng.sample(chosen, ASK_COUNT)
+        chosen = sorted(chosen, key=lambda ws: key[ws[0]])[:ASK_COUNT]
     taken = {w for w, _ in chosen}
-    pool = sorted(w for w in words if w not in taken and not used(w))
+    pool = sorted((w for w in words if w not in taken and not used(w)), key=lambda w: key[w])
     need = ASK_COUNT - len(chosen)
     if need > 0 and pool:
-        chosen += [(w, "common") for w in rng.sample(pool, min(need, len(pool)))]
+        chosen += [(w, "common") for w in pool[:need]]
     return chosen
 
 
@@ -246,19 +249,43 @@ def _reply(state: str, items: list[dict] | None = None) -> dict:
     return {"state": state, "items": items or []}
 
 
-def _stock_items(db: Session, picked: list[tuple[str, str]], words: dict, now: datetime) -> list[dict]:
-    """저장소에 그림이 있는 오늘 단어를 추천 항목으로 만든다(단어마다 가장 최근 그림)."""
+def _made_today(variants: list, day_start: datetime) -> list:
+    """저장된 그림 중 오늘(한국 시간 0시 이후) 만든 것, 오래된 것부터."""
+    return [v for v in variants if aware(v.created_at) >= day_start]
+
+
+def _variant_for(variants: list, group_id: str, today: date, word: str, day_start: datetime):
+    """단어의 저장된 그림(variants 는 비어 있지 않음) 중 이 가족이 오늘 보여 줄 하나. 오늘 만든 게 있으면 가장 최근 것,
+    없으면 가족·날짜·단어로 정한 하나(난수 상태에 의존하지 않아 재사용·일부만 보여 주기·다 모인 뒤가 모두 같은 그림이다)."""
+    made = _made_today(variants, day_start)
+    if made:
+        return made[-1]
+    digest = hashlib.sha256(f"{group_id}|{today.isoformat()}|{word}".encode()).hexdigest()
+    return variants[int(digest[:8], 16) % len(variants)]
+
+
+def _stock_items(
+    db: Session,
+    picked: list[tuple[str, str]],
+    words: dict,
+    now: datetime,
+    group_id: str,
+    today: date,
+) -> list[dict]:
+    """저장소에 그림이 있는 오늘 단어를 추천 항목으로 만든다(단어마다 _variant_for 로 고른 그림 하나)."""
+    day_start = local_day_start(now)
     items = []
     for word, source in picked:
         variants = draw_stock.stock_variants(db, word, now)
         if variants:
+            variant = _variant_for(variants, group_id, today, word, day_start)
             items.append(
                 {
-                    "id": variants[-1].id,
+                    "id": variant.id,
                     "source": source,
                     "word": word,
                     "alt_answers": list(words[word].alts),
-                    "strokes": variants[-1].strokes,
+                    "strokes": variant.strokes,
                 }
             )
     return items
@@ -269,11 +296,14 @@ def recommend(db: Session, user: User, group_id: str, rng: random.Random | None 
     오류는 상태로 바꿔 돌려준다. 하루 한 번 만들어 가족이 오늘 자정까지 같이 쓴다(5개가 다 모이면 캐시한다. 모자라면 캐시하지 않고, 저장소에 있는 오늘 단어의 그림을 `partial` 로 보여 주며 다음에 한도 안에서 더 채운다. 한도를 다 쓰면 저장소 그림을 그대로 `ok` 로 보여 준다)."""
     now = datetime.now(UTC)
     today = now.astimezone(local_tz()).date()
+    day_start = local_day_start(now)
     rng = rng or daily_rng(group_id, today)
     recent = recent_words(db, group_id, now)
     words = draw_words.load_words()
 
-    picks: list[list[tuple[str, str]]] = []  # 오늘 뽑은 단어(시도에서 뽑았으면 그대로, 못 뽑았으면 아래에서 같은 난수로 다시 뽑는다)
+    picks: list[
+        list[tuple[str, str]]
+    ] = []  # 오늘 뽑은 단어(시도에서 뽑았으면 그대로, 못 뽑았으면 아래에서 같은 난수로 다시 뽑는다)
 
     def picked_words():
         if not picks:
@@ -286,8 +316,9 @@ def recommend(db: Session, user: User, group_id: str, rng: random.Random | None 
         to_draw: list[str] = []
         for word, _source in picked:
             variants = draw_stock.stock_variants(db, word, now)
-            if variants and rng.random() >= REDRAW_RATE:
-                chosen[word] = rng.choice(variants)
+            if variants and (_made_today(variants, day_start) or rng.random() >= REDRAW_RATE):
+                # 오늘 그린 그림이 있으면(다시 불러온 경우) 새로 그리지 않고 그대로 쓴다. 없을 때만 일정 확률로 새로 그려 쌓는다
+                chosen[word] = _variant_for(variants, group_id, today, word, day_start)
             else:
                 to_draw.append(word)
         tokens_in = tokens_out = 0
@@ -324,7 +355,9 @@ def recommend(db: Session, user: User, group_id: str, rng: random.Random | None 
             for word, source in picked
             if word in chosen
         ]
-        if len(items) < len(picked):  # 5개가 안 된다 — 만든 그림은 저장소에 남고, 캐시하지 않아 다음에 더 채운다(시도 1회로 센다)
+        if (
+            len(items) < len(picked)
+        ):  # 5개가 안 된다 — 만든 그림은 저장소에 남고, 캐시하지 않아 다음에 더 채운다(시도 1회로 센다)
             raise DrawFailed("만든 그림이 모자라요", 1, tokens_in, tokens_out)  # 한도에는 시도 1회
         return {"items": items}, _Batch(model or settings.llm_model, tokens_in, tokens_out)
 
@@ -342,7 +375,11 @@ def recommend(db: Session, user: User, group_id: str, rng: random.Random | None 
         state = quiz_rec._state_of(error)
         if state == quiz_rec.AI_OFF:
             return _reply(state)
-        shown = [i for i in _stock_items(db, picked_words(), words, now) if _norm(i["word"]) not in recent]
+        shown = [
+            i
+            for i in _stock_items(db, picked_words(), words, now, group_id, today)
+            if _norm(i["word"]) not in recent
+        ]
         if not shown:
             return _reply(state)
         # 저장소에 오늘 단어의 그림이 있으면 보여 준다. 한도를 다 쓴 때는 더 할 게 없으니 ok, 그 밖에는 다시 불러 더 채울 수 있다

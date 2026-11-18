@@ -159,6 +159,23 @@ def test_pick_words_samples_when_material_has_more_than_five():
     assert len(picked) == 5 and set(picked) <= set(found)
 
 
+def test_pick_words_keeps_the_rest_when_one_word_becomes_recent():
+    # 같은 날 같은 가족이 그림 하나를 내면 그 단어만 바뀌고 나머지 4개는 그대로여야 한다(다시 불러올 때 단어가 통째로 바뀌지 않게)
+    first = draw_rec.pick_words([], set(), random.Random(7))
+    gone = first[0][0]
+    again = draw_rec.pick_words([], {gone}, random.Random(7))
+    assert gone not in {w for w, _ in again}
+    assert len({w for w, _ in first} & {w for w, _ in again}) == 4
+
+
+def test_pick_words_keeps_the_rest_when_material_has_more_than_five():
+    found = [(w, "schedule") for w in ("딸기", "텐트", "바다", "케이크", "선물", "돼지", "사과")]
+    first = draw_rec.pick_words(found, set(), random.Random(8))
+    gone = first[0][0]
+    again = draw_rec.pick_words(found, {gone}, random.Random(8))
+    assert len(set(first) & set(again)) == 4 and gone not in {w for w, _ in again}
+
+
 def test_daily_rng_is_stable_per_family_and_day():
     a1 = [draw_rec.daily_rng("g1", TODAY).random() for _ in range(3)]
     a2 = [draw_rec.daily_rng("g1", TODAY).random() for _ in range(3)]
@@ -252,11 +269,65 @@ def test_partial_shows_made_and_fills_in_on_retry(client, ready, fake, monkeypat
         used = len(fake.calls)
         second = draw_rec.recommend(db, user, group["id"], rng=Rng(0.99))
         assert len(fake.calls) > used
-        assert second["state"] == "ok" and [i["word"] for i in second["items"]] == ["케이크", "딸기", "텐트"]
+        assert second["state"] == "ok" and [i["word"] for i in second["items"]] == [
+            "케이크",
+            "딸기",
+            "텐트",
+        ]
         assert second["items"][0]["id"] == first["items"][0]["id"]
         used = len(fake.calls)
-        assert draw_rec.recommend(db, user, group["id"], rng=Rng(0.99)) == second  # 다 모이면 오늘은 캐시
+        assert (
+            draw_rec.recommend(db, user, group["id"], rng=Rng(0.99)) == second
+        )  # 다 모이면 오늘은 캐시
         assert len(fake.calls) == used
+
+
+def test_retry_keeps_pictures_drawn_today_even_when_redraw_roll_says_redraw(
+    client, ready, fake, monkeypatch
+):
+    a, _, group = ready
+    five = [(w, "common") for w in ("케이크", "딸기", "텐트", "사과", "우산")]
+    only(monkeypatch, *five)
+    fake.by_word = {"우산": BAD}
+    with SessionLocal() as db:
+        user = user_of(db, client, a)
+        first = draw_rec.recommend(db, user, group["id"], rng=Rng(0.99))
+        assert first["state"] == "partial" and len(first["items"]) == 4
+        fake.by_word = {}
+        used = len(fake.calls)
+        second = draw_rec.recommend(
+            db, user, group["id"], rng=Rng(0.0)
+        )  # 0.0 은 "새로 그리기" 쪽 값
+        new_prompts = fake.calls[used:]
+        assert second["state"] == "ok" and len(second["items"]) == 5
+        assert new_prompts and all(
+            "그릴 것: 우산" in p for p in new_prompts
+        )  # 모자란 한 단어만 새로 그린다
+        assert [i["id"] for i in second["items"][:4]] == [
+            i["id"] for i in first["items"]
+        ]  # 오늘 그린 4개는 그대로
+
+
+def test_ok_shows_the_same_picture_the_partial_showed(client, ready, fake, monkeypatch):
+    a, _, group = ready
+    only(monkeypatch, ("케이크", "common"), ("우산", "common"))
+    fake.by_word = {"우산": BAD}
+    now = datetime.now(UTC)
+    for days in (3, 2):  # 어제 이전에 쌓인 케이크 그림 둘(오늘 그린 것은 없다)
+        with SessionLocal() as seed:
+            draw_stock.add_variant(seed, "케이크", GOOD["strokes"], now - timedelta(days=days))
+    with (
+        SessionLocal() as db
+    ):  # 요청마다 세션이 따로다(같은 세션을 이어 쓰면 SQLite 에서 시간대 비교 오류가 날 수 있다)
+        first = draw_rec.recommend(db, user_of(db, client, a), group["id"], rng=Rng(0.99))
+    assert first["state"] == "partial" and [i["word"] for i in first["items"]] == ["케이크"]
+    fake.by_word = {}
+    with SessionLocal() as db:
+        second = draw_rec.recommend(db, user_of(db, client, a), group["id"], rng=Rng(0.99))
+    assert second["state"] == "ok"
+    assert (
+        second["items"][0]["id"] == first["items"][0]["id"]
+    )  # 5개가 다 모여도 보던 그림이 바뀌지 않는다
 
 
 def test_attempts_are_three_then_made_ones_stay_visible(client, ready, fake, monkeypatch):
@@ -266,24 +337,35 @@ def test_attempts_are_three_then_made_ones_stay_visible(client, ready, fake, mon
     fake.by_word = {"딸기": BAD}
     with SessionLocal() as db:
         user = user_of(db, client, a)
-        states = [draw_rec.recommend(db, user, group["id"], rng=Rng(0.99))["state"] for _ in range(3)]
+        states = [
+            draw_rec.recommend(db, user, group["id"], rng=Rng(0.99))["state"] for _ in range(3)
+        ]
         assert states == ["partial"] * 3  # 시도 3번(그때마다 1번으로 센다)
         calls = len(fake.calls)
         last = draw_rec.recommend(db, user, group["id"], rng=Rng(0.99))
         assert len(fake.calls) == calls  # 더 부르지 않는다
-        assert last["state"] == "ok" and [i["word"] for i in last["items"]] == ["케이크"]  # 만든 그림은 계속 보인다
+        assert last["state"] == "ok" and [i["word"] for i in last["items"]] == [
+            "케이크"
+        ]  # 만든 그림은 계속 보인다
 
 
-def test_three_attempts_with_nothing_drawn_is_used_up_without_items(client, ready, fake, monkeypatch):
+def test_three_attempts_with_nothing_drawn_is_used_up_without_items(
+    client, ready, fake, monkeypatch
+):
     a, _, group = ready
     ai_guard.register_bucket(draw_rec.FEATURE, ai_guard.Limits(0, 3, 5), (draw_rec.FEATURE,))
     only(monkeypatch, ("케이크", "schedule"), ("딸기", "common"))
     fake.by_word = {"케이크": BAD, "딸기": BAD}
     with SessionLocal() as db:
         user = user_of(db, client, a)
-        states = [draw_rec.recommend(db, user, group["id"], rng=Rng(0.99))["state"] for _ in range(3)]
+        states = [
+            draw_rec.recommend(db, user, group["id"], rng=Rng(0.99))["state"] for _ in range(3)
+        ]
         assert states == ["failed"] * 3
-        assert draw_rec.recommend(db, user, group["id"], rng=Rng(0.99)) == {"state": "used_up", "items": []}
+        assert draw_rec.recommend(db, user, group["id"], rng=Rng(0.99)) == {
+            "state": "used_up",
+            "items": [],
+        }
 
 
 def test_all_failed_is_failure_and_not_cached(client, ready, fake, monkeypatch):
