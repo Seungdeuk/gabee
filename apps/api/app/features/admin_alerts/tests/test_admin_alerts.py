@@ -1,16 +1,17 @@
 """관리자 알림: 점검 주소(토큰·꺼짐·중복·기준선), 목록·확인 주소(권한·멱등·없는 키), 개인 정보 없음, 규칙 하나의 실패. 가짜 계정·가짜 지표만 쓴다."""
 
+import uuid
 from datetime import UTC, datetime, timedelta
 
 import pytest
-from sqlalchemy import delete
+from sqlalchemy import delete, insert
 
 from app.features.admin_alerts import service as alert_service
 from app.features.admin_alerts.models import AdminAlertLog
 from app.features.ops_admin import repository as ops_repo
 from app.features.ops_admin.models import OpsErrorEvent
 from app.shared.config import settings
-from app.shared.db import SessionLocal
+from app.shared.db import Base, SessionLocal
 
 SIGNUP = "/family-group/auth/signup"
 LOGIN = "/family-group/auth/login"
@@ -36,6 +37,8 @@ def _clean_tables(client):  # client 를 먼저 받아 DB 표가 만들어진 �
         ops_repo.delete_before(db, datetime.now(UTC) + timedelta(days=1))
         db.execute(delete(AdminAlertLog))
         db.execute(delete(OpsErrorEvent))
+        for name in ("support_tickets", "join_requests", "ai_usage_logs"):
+            db.execute(delete(Base.metadata.tables[name]))
         db.commit()
     yield
 
@@ -109,7 +112,7 @@ def test_disabled_setting_does_nothing(client, monkeypatch):
 
 def test_critical_rate_creates_one_alert_and_does_not_repeat(client, on, operator):
     _seed(total=100, errors=10)  # 10% → 긴급
-    assert _run(client) == {"enabled": True, "checked": 2, "created": 1}  # 규칙 2개를 돌려 1건 생김
+    assert _run(client) == {"enabled": True, "checked": 5, "created": 1}  # 규칙 5개를 돌려 1건 생김
     assert _run(client)["created"] == 0  # 같은 시간대에는 두 번 만들지 않는다
     body = client.get(LIST, headers=operator).json()
     assert body["unacked"] == 1
@@ -231,7 +234,7 @@ def _seed_error(
 
 def test_new_server_error_alerts_once_without_message_or_trace(client, on, operator):
     _seed_error("KeyError", "/notices", message="비밀 메시지", count=3)
-    assert _run(client) == {"enabled": True, "checked": 2, "created": 1}
+    assert _run(client) == {"enabled": True, "checked": 5, "created": 1}
     assert _run(client)["created"] == 0  # 같은 조합은 다시 알리지 않는다
     body = client.get(LIST, headers=operator)
     item = body.json()["items"][0]
@@ -271,3 +274,146 @@ def test_long_names_fit_the_alert_table(client, on, operator):
     assert _run(client)["created"] == 1
     item = client.get(LIST, headers=operator).json()["items"][0]
     assert len(item["message"]) <= 200 and len(item["key"]) <= 120
+
+
+# ---- 문의·AI 사용·참가 요청 규칙 (service_admin/alert_rules.py)
+
+
+def _uid() -> str:
+    return uuid.uuid4().hex[:32]
+
+
+def _insert(table: str, rows: list[dict]) -> None:
+    """다른 기능의 표는 표 이름으로 직접 넣는다(규칙도 같은 방식으로 읽는다)."""
+    with SessionLocal() as db:
+        db.execute(insert(Base.metadata.tables[table]), rows)
+        db.commit()
+
+
+def _hours_ago(hours: float) -> datetime:
+    return datetime.now(UTC) - timedelta(hours=hours)
+
+
+def _ticket(status: str, hours: float) -> dict:
+    return {
+        "id": _uid(),
+        "user_id": "ticket-user",
+        "kind": "inquiry",
+        "title": "비밀 제목",
+        "body": "비밀 내용",
+        "status": status,
+        "created_at": _hours_ago(hours),
+    }
+
+
+def _join(status: str, hours: float) -> dict:
+    return {
+        "id": _uid(),
+        "group_id": _uid(),
+        "user_id": _uid(),
+        "invite_id": _uid(),
+        "status": status,
+        "requested_at": _hours_ago(hours),
+    }
+
+
+def _day_start() -> datetime:
+    """오늘 한국 시간 자정이 UTC 로 언제인지(규칙과 같은 기준을 시험에서 따로 계산한다)."""
+    offset = timedelta(hours=settings.ai_day_utc_offset_hours)
+    local = datetime.now(UTC) + offset
+    return local.replace(hour=0, minute=0, second=0, microsecond=0) - offset
+
+
+def _ai_rows(count: int, when: datetime, status: str = "ok") -> list[dict]:
+    return [
+        {
+            "group_id": "g-test",
+            "user_id": "u-test",
+            "feature": "analysis",
+            "api_calls": 1,
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "cache_hit": False,
+            "status": status,
+            "created_at": when,
+        }
+        for _ in range(count)
+    ]
+
+
+def _seed_ai(today: int, per_day: int = 0, status: str = "ok") -> None:
+    """오늘 today 건, 그 앞 7일 동안 하루 per_day 건을 넣는다."""
+    start = _day_start()
+    rows = _ai_rows(today, start + timedelta(minutes=1), status)
+    for d in range(1, 8):
+        rows += _ai_rows(per_day, start - timedelta(days=d) + timedelta(hours=12))
+    if rows:
+        _insert("ai_usage_logs", rows)
+
+
+def test_stale_support_alerts_without_ticket_text(client, on, operator):
+    _insert("support_tickets", [_ticket("new", 7), _ticket("working", 9)])
+    assert _run(client) == {"enabled": True, "checked": 5, "created": 1}
+    assert _run(client)["created"] == 0  # 같은 날에는 한 번만
+    body = client.get(LIST, headers=operator)
+    item = body.json()["items"][0]
+    assert item["rule"] == "stale_support" and item["severity"] == "주의"
+    assert item["message"] == "6시간 넘게 답이 없는 문의 2건 (가장 오래된 것 9시간째)"
+    assert item["menu"] == "문의 및 신고"
+    assert "비밀 제목" not in body.text and "비밀 내용" not in body.text
+
+
+def test_stale_support_waits_for_six_hours_and_ignores_answered(client, on):
+    _insert("support_tickets", [_ticket("new", 5.9), _ticket("done", 30)])
+    assert _run(client)["created"] == 0  # 6시간이 안 됐거나 답변 완료
+    _insert("support_tickets", [_ticket("new", 6.1)])
+    assert _run(client)["created"] == 1  # 6시간을 넘기면 울린다
+
+
+def test_stale_join_requests_alert_after_24_hours(client, on, operator):
+    _insert("join_requests", [_join("pending", 25), _join("pending", 30)])
+    assert _run(client)["created"] == 1
+    assert _run(client)["created"] == 0
+    item = client.get(LIST, headers=operator).json()["items"][0]
+    assert item["rule"] == "stale_join" and item["menu"] == "가족 그룹 관리"
+    assert (
+        item["message"] == "24시간 넘게 승인 대기 중인 가족 참가 요청 2건 (가장 오래된 것 30시간째)"
+    )
+
+
+def test_stale_join_ignores_recent_and_decided_requests(client, on):
+    _insert("join_requests", [_join("pending", 23), _join("approved", 48), _join("rejected", 48)])
+    assert _run(client)["created"] == 0
+
+
+def test_ai_spike_alerts_at_three_times_the_average(client, on, operator):
+    _seed_ai(today=60, per_day=10)  # 평균 10건, 오늘 60건 = 6배
+    assert _run(client)["created"] == 1
+    assert _run(client)["created"] == 0
+    item = client.get(LIST, headers=operator).json()["items"][0]
+    assert item["rule"] == "ai_usage_spike" and item["menu"] == "AI 이용 현황"
+    assert item["message"] == "오늘 AI 요청 60건, 최근 7일 하루 평균 10건의 6.0배"
+
+
+def test_ai_spike_needs_fifty_requests(client, on):
+    _seed_ai(today=49)
+    assert _run(client)["created"] == 0
+
+
+def test_ai_spike_needs_three_times_the_average(client, on):
+    _seed_ai(today=60, per_day=30)  # 평균 30건, 오늘 60건 = 2배
+    assert _run(client)["created"] == 0
+
+
+def test_ai_spike_does_not_count_marker_rows(client, on):
+    _seed_ai(today=45)
+    _insert("ai_usage_logs", _ai_rows(10, _day_start() + timedelta(minutes=2), "nested"))
+    _insert("ai_usage_logs", _ai_rows(10, _day_start() + timedelta(minutes=2), "rejected"))
+    assert _run(client)["created"] == 0  # 표식 줄은 빼서 45건
+
+
+def test_ai_spike_without_history_alerts_at_fifty(client, on, operator):
+    _seed_ai(today=50)  # 예전 기록이 없으면 평균 0
+    assert _run(client)["created"] == 1
+    item = client.get(LIST, headers=operator).json()["items"][0]
+    assert item["message"] == "오늘 AI 요청 50건, 최근 7일 하루 평균 0건"
