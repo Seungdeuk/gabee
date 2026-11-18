@@ -8,7 +8,7 @@
     ["한눈에", [["analytics", "데이터 분석"]]],
     ["사람", [["members", "회원 관리"], ["groups", "가족 그룹 관리"]]],
     ["사용", [["features", "기능 관리"], ["ai", "AI 이용 현황"]]],
-    ["운영 업무", [["support", "문의 및 신고"], ["notices", "공지사항"]]],
+    ["운영 업무", [["alerts", "알림"], ["support", "문의 및 신고"], ["notices", "공지사항"]]],
     // 운영 관리자 화면(서버 상태). 권한은 통합관리자 하나라 로그인한 관리자에게 모두 보인다.
     ["운영", [["ops", "서버 상태"]]],
   ];
@@ -116,7 +116,12 @@
     const [me, members, groups, features, ai, support, notices, analytics] = await Promise.all(
       ["/admin/service/me", "/admin/service/members", "/admin/service/groups", "/admin/service/features", "/admin/service/ai-usage", "/admin/service/support", "/admin/service/notices", "/admin/service/analytics"].map((p) => api(p)),
     );
-    return { me, members, groups, features, ai, support, notices, analytics };
+    // 알림은 따로 받는다. 알림 표가 아직 없는 DB 에서도 나머지 화면은 열려야 하므로 실패하면 빈 목록으로 둔다(로그인 만료는 그대로 넘긴다)
+    const alerts = await api("/admin/alerts").catch((err) => {
+      if (err.message === "unauthorized") throw err;
+      return { items: [], unacked: 0 };
+    });
+    return { me, members, groups, features, ai, support, notices, analytics, alerts };
   }
 
   // ── 그리기 도우미 ─────────────────────────────────────
@@ -152,6 +157,7 @@
     notices: "M3 11v2a1 1 0 0 0 1 1h2l5 4V6L6 10H4a1 1 0 0 0-1 1zM15 9a4 4 0 0 1 0 6M18 6a8 8 0 0 1 0 12",
     analytics: "M3 3v18h18M7 15l4-4 3 3 5-6",
     ops: "M3 4h18v6H3zM3 14h18v6H3zM7 7h.01M7 17h.01",
+    alerts: "M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9M13.7 21a2 2 0 0 1-3.4 0",
   };
   const icon = (key) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${ICON_PATHS[key]}"/></svg>`;
 
@@ -533,7 +539,58 @@
       </div>`;
   }
 
+  // ── 알림 ─────────────────────────────────────────────
+
+  let alertError = "";
+  // 심각도 표시: 긴급은 빨강, 주의는 노랑, 보통은 기본 회색
+  const SEVERITY_CLASS = { 긴급: "urgent", 주의: "hot", 보통: "" };
+
+  /**
+   * 알림 목록을 그린다. 문구는 서버가 만든 숫자·고정 글이라 esc 로만 넣는다.
+   * @param {{items: {key: string, severity: string, message: string, menu: string, created_at: string, acked_at: string | null}[], unacked: number}} d
+   * @returns {string}
+   */
+  function viewAlerts(d) {
+    const items = d.items || [];
+    const error = alertError ? `<p class="note warn">${esc(alertError)}</p>` : "";
+    const rows = items.length
+      ? items
+          .map((a) => {
+            const when = (iso) => esc(new Date(iso).toLocaleString("ko-KR"));
+            const action = a.acked_at
+              ? `<span class="small">확인함 · ${when(a.acked_at)}</span>`
+              : `<button type="button" class="btn sm primary" data-alert-ack="${esc(a.key)}">확인함</button>`;
+            return `<li class="alert-item${a.acked_at ? " is-acked" : ""}">
+              <div class="alert-head"><span class="pill ${SEVERITY_CLASS[a.severity] || ""}">${esc(a.severity)}</span><span class="small">${when(a.created_at)}</span></div>
+              <p class="alert-msg">${esc(a.message)}</p>
+              <div class="alert-foot"><span class="small">확인할 곳: ${esc(a.menu)}</span>${action}</div>
+            </li>`;
+          })
+          .join("")
+      : '<li class="alert-empty">지금 알림이 없어요. 기준을 넘는 일이 생기면 여기에 나타나요.</li>';
+    return `${head("알림", "기준을 넘은 서버 신호. 확인하면 목록과 배지에서 빠져요")}${error}
+      <section class="card"><div class="card-head"><h2>알림 (확인 안 된 ${num(d.unacked || 0)}건)</h2></div><ul class="alert-list">${rows}</ul></section>`;
+  }
+
+  /**
+   * 알림을 확인 처리하고 목록을 다시 받는다. 실패하면 화면에 한 줄 안내를 남긴다.
+   * @param {string} key
+   * @returns {Promise<void>}
+   */
+  async function ackAlert(key) {
+    try {
+      await api(`/admin/alerts/${encodeURIComponent(key)}/ack`, undefined, "POST");
+      data.alerts = await api("/admin/alerts");
+      alertError = "";
+    } catch (err) {
+      if (err.message === "unauthorized") return;
+      alertError = "확인하지 못했어요. 잠시 뒤 다시 해 주세요.";
+    }
+    render();
+  }
+
   const VIEWS = {
+    alerts: (data) => viewAlerts(data.alerts),
     members: (data) => viewMembers(data.members),
     groups: (data) => viewGroups(data.groups),
     features: (data) => viewFeatures(data.features),
@@ -565,8 +622,12 @@
   /** 왼쪽 메뉴(묶음 제목 + 탭). 문의 및 신고에는 아직 처리하지 않은 새 문의 건수를 붙인다. */
   function renderTabs(key) {
     const fresh = data && data.support ? Number(data.support.new) || 0 : 0;
+    const unacked = data && data.alerts ? Number(data.alerts.unacked) || 0 : 0;
     const link = ([k, label]) => {
-      const badge = k === "support" && fresh ? `<span class="tab-badge" aria-label="새 문의 ${fresh}건">${num(fresh)}</span>` : "";
+      const badge =
+        k === "support" && fresh ? `<span class="tab-badge" aria-label="새 문의 ${fresh}건">${num(fresh)}</span>`
+        : k === "alerts" && unacked ? `<span class="tab-badge" aria-label="확인 안 된 알림 ${unacked}건">${num(unacked)}</span>`
+        : "";
       return `<a href="#${k}" aria-current="${k === key ? "page" : "false"}">${icon(k)}<span>${label}</span>${badge}</a>`;
     };
     document.getElementById("tabs").innerHTML = TAB_GROUPS.map(([title, tabs]) => `<p class="nav-group">${esc(title)}</p>${tabs.map(link).join("")}`).join("");
@@ -674,6 +735,11 @@
       return;
     }
     // '답변하기': 그 문의를 펼치고 답변 칸으로 바로 간다
+    const alertAck = e.target.closest("[data-alert-ack]");
+    if (alertAck) {
+      ackAlert(alertAck.dataset.alertAck);
+      return;
+    }
     const reply = e.target.closest("[data-reply]");
     if (reply) {
       const box = document.querySelector(`details[data-open="${CSS.escape(reply.dataset.reply)}"]`);

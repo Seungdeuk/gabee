@@ -321,3 +321,12 @@ details summary { cursor: pointer; }
 @media (prefers-reduced-motion: reduce) {
   .chat-msg.chat-steps, .chat-steps-icon.is-run, .chat-step.is-active .chat-step-dot { animation: none; }
 }
+
+/* 관리자 알림 목록: 긴급은 빨강(pill.urgent), 주의는 기존 pill.hot(노랑). 색은 모두 토큰을 쓴다 */
+.pill.urgent { background: var(--err-bg); color: var(--err); }
+.alert-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+.alert-item { display: flex; flex-direction: column; gap: 6px; min-width: 0; padding: 12px 14px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); }
+.alert-item.is-acked { opacity: .65; }
+.alert-head, .alert-foot { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; }
+.alert-msg { margin: 0; font-size: 14px; overflow-wrap: anywhere; }
+.alert-empty { color: var(--muted); padding: 12px 0; }
