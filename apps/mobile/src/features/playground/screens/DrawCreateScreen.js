@@ -6,7 +6,7 @@ import { Pressable, StyleSheet, Text, TextInput, useWindowDimensions, View } fro
 import Button from "@/shared/components/Button";
 import { colors, font, fonts, spacing } from "@/theme";
 
-import { strokesFromRec } from "../adapt";
+import { drawRecView, strokesFromRec } from "../adapt";
 import { createDraw } from "../api";
 import DrawingCanvas from "../components/draw/DrawingCanvas";
 import DrawRecommend from "../components/draw/DrawRecommend";
@@ -136,6 +136,18 @@ export default function DrawCreateScreen() {
     </View>
   );
 
+  // 고른 카드가 아닌 다른 카드를 보는 동안에도 고치던 내용(정답·그림 선)은 상태에 그대로 있다. 그림판은 고른 카드에서만 보이므로, 보낼 때는 그 카드로 돌아가 그림판이 보인 뒤에 PNG 로 저장한다
+  const recItems = drawRecView(recs.error && !recs.data ? { state: "failed" } : recs.data).items;
+  const recAt = Math.min(recIndex, Math.max(recItems.length - 1, 0));
+  const pickedAt = pickedId == null ? -1 : recItems.findIndex((r) => r.id === pickedId);
+  const viewingPicked = recItems[recAt]?.id === pickedId;
+  const hiddenEditing = pickedId != null && !viewingPicked;
+  const goPicked = () => {
+    if (pickedAt < 0) return;
+    setPaint(false);
+    setRecIndex(pickedAt);
+  };
+
   return (
     <PlayScreen
       title="그림 문제 내기"
@@ -164,6 +176,10 @@ export default function DrawCreateScreen() {
                 setSending(true);
                 setSendError("");
                 try {
+                  if (mode === "rec" && hiddenEditing && pickedAt >= 0) {
+                    goPicked(); // 그림판이 화면에 보여야 저장할 수 있다(화면 밖·숨김 상태에서는 빈 그림이 된다)
+                    await new Promise((r) => setTimeout(r, 400));
+                  }
                   const base64 = await new Promise((resolve, reject) => {
                     if (!svgRef.current?.toDataURL) reject(new Error("그림을 저장하지 못했어요"));
                     else svgRef.current.toDataURL(resolve);
@@ -206,7 +222,10 @@ export default function DrawCreateScreen() {
           <DrawRecommend
             recs={recs}
             index={recIndex}
-            onIndex={setRecIndex}
+            onIndex={(i) => {
+              setPaint(false); // 그리던 중 카드를 넘겨도 화면 스크롤 잠금이 남지 않게
+              setRecIndex(i);
+            }}
             pickedId={pickedId}
             onPick={pickRec}
             refreshing={refreshing}
@@ -219,6 +238,13 @@ export default function DrawCreateScreen() {
               </>
             }
           />
+          {hiddenEditing ? (
+            <>
+              <Pressable onPress={goPicked} disabled={pickedAt < 0} accessibilityRole="button" accessibilityLabel="고치던 그림으로 돌아가기" style={styles.editingBar}>
+                <Text style={styles.editingText}>고치던 그림으로 돌아가기</Text>
+              </Pressable>
+            </>
+          ) : null}
           {pickedId != null ? (
             <>
               {answerBlock}
@@ -259,6 +285,8 @@ function Tool({ label, onPress, icon, on = false }) {
 }
 
 const styles = StyleSheet.create({
+  editingBar: { alignSelf: "stretch", paddingVertical: 10, paddingHorizontal: 14, borderRadius: 12, backgroundColor: colors.surfaceStrong, alignItems: "center" },
+  editingText: { fontSize: 14, fontFamily: fonts.bold, color: colors.text },
   error: { ...font.caption, color: colors.danger, textAlign: "center", fontFamily: fonts.bold },
   block: { gap: 8 },
   labelRow: { flexDirection: "row", alignItems: "baseline", gap: 8 },
