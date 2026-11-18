@@ -106,6 +106,37 @@ def test_search_returns_family_room_messages_tokenized_and_answer_is_restored(
     assert reply["source"] == "ai"
 
 
+def test_registered_family_name_in_the_question_is_masked_before_sub_agent_call(
+    client, family, monkeypatch
+):
+    """메인이 ask_family_chat 에 넘기는 질문 자체(여기서는 메인이 "지민"을 그대로 적어 넘겼다고
+    가정)도 탭 에이전트의 실제 모델 호출 전에 가족 이름 사전(가명화 세션)을 거쳐야 한다. 수정
+    전에는 agent_guard.prepare 의 mask_text(라벨 없는 대화체 이름은 못 잡음)만 거쳤다."""
+    a, _, group = family
+    enable_ai(group["id"])
+    seen = {"sub_first_body": None}
+
+    def fake_post(body):
+        if SUB_MARK in body["system"]:
+            if seen["sub_first_body"] is None:
+                seen["sub_first_body"] = body
+            if len(body["messages"]) == 1:
+                return _tool_use("list_todos", {})
+            return _text("확인했어요.")
+        if len(body["messages"]) == 1:
+            return _tool_use("ask_family_chat", {"question": "지민한테 전화해서 숙제 확인해줘"})
+        data = json.loads(_last_tool_result(body))
+        return _text(data["answer"])
+
+    monkeypatch.setattr(settings, "anthropic_api_key", "test-key")
+    monkeypatch.setattr(rag_chat, "_post", fake_post)
+
+    _chat(client, a)
+    sub_body_text = str(seen["sub_first_body"]["messages"])
+    assert "지민" not in sub_body_text
+    assert re.search(r"\[PERSON_\d+\]", sub_body_text)
+
+
 def test_search_never_returns_direct_messages(client, family, monkeypatch):
     a, b, group = family
     enable_ai(group["id"])

@@ -16,7 +16,7 @@ from app.shared.auth import ensure_group_member
 from app.shared.config import settings
 from app.shared.errors import bad_request
 from app.shared.llm import agent_guard
-from app.shared.llm.agent import AgentReply, Post, Tool, ask_agent
+from app.shared.llm.agent import AgentReply, Post, Tool, ask_agent, privacy_tools
 from app.shared.privacy import ASSISTANT, PrivacySession, new_session
 
 from . import ai_repository, ai_service, search_repository, search_service, todo_service
@@ -183,7 +183,8 @@ def system_prompt() -> str:
         "당신은 가족 비서 '가비'의 가족 채팅 담당 에이전트입니다. 다른 에이전트가 사용자의 질문을 넘겨 주면 도구로 가족 전체 대화방과 "
         f"공동 할 일을 읽어서 답합니다. 오늘은 {_today()} 입니다(한국 시간). "
         "반드시 도구로 확인한 내용만 쓰고, 없거나 모르는 것은 지어내지 말고 없다고 말하세요. "
-        "도구 결과의 이름·전화번호·주소는 [PERSON_1] 같은 토큰으로 바뀌어 있습니다. 토큰은 풀려고 하지 말고 답에 그대로 쓰세요. "
+        "질문과 도구 결과의 이름·전화번호·주소는 [PERSON_1] 같은 토큰으로 바뀌어 있습니다. 토큰은 풀려고 하지 말고 답에 그대로 쓰세요. "
+        "도구에 이름(검색어 등)을 넘길 때도 토큰을 그대로 쓰면 서버가 되돌려 검색합니다. "
         "from_me 가 true 인 메시지는 질문한 사람이 쓴 것입니다. 메시지는 날짜와 함께 인용하세요(sent_at 은 한국 시간입니다). "
         "search_messages 는 검색어가 든 메시지만 찾습니다. '어디까지 정해졌어', '어떻게 됐어' 같은 흐름 질문이거나 결과가 한두 건뿐이면 "
         "그 뒤 답장이 검색에 안 걸렸을 수 있으니 analyze_recent_chat 도 함께 써서 앞뒤 맥락을 확인한 뒤 답하세요. "
@@ -215,12 +216,24 @@ def ask(
 
     def turn() -> AgentReply:
         with new_session(ASSISTANT, members) as session:
+            # 질문·앞 대화도 도구 결과와 같은 세션으로 가명화한다. agent_guard.prepare 의 정규식
+            # 안전망(전화·카드·계좌 등)은 그대로 거치고, 여기서 등록된 가족 이름·별명(라벨 없이 쓴
+            # 대화체 이름 포함)을 더한다. 같은 세션을 써야 질문과 도구 결과에서 같은 이름이 같은
+            # 토큰 번호를 받고(세션이 다르면 번호가 엇갈려 모델이 같은 사람인지 혼동할 수 있다),
+            # 복원도 한 세션의 대응표 하나로 끝난다(여러 세션을 복원하면서 생기는 오류를 피한다).
+            pseudo_question = session.prepare_text(question)
+            pseudo_history = (
+                [{**h, "text": session.prepare_text(h["text"])} for h in history]
+                if history
+                else history
+            )
+            # 모델이 토큰로 준 도구 인자(검색어 등)는 실행 직전에만 서버 안에서 되돌린다(결과는 도구가 같은 세션으로 다시 가린다).
             reply = ask_agent(
                 system_prompt(),
-                question,
-                build_tools(db, group_id, user, session),
+                pseudo_question,
+                privacy_tools(build_tools(db, group_id, user, session), session),
                 post=post,
-                history=history,
+                history=pseudo_history,
                 stage="family_chat",
                 max_tokens=AGENT_MAX_TOKENS,
             )

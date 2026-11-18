@@ -10,9 +10,10 @@ from app.features.family_group.models import User
 from app.shared.auth import ensure_group_member
 from app.shared.errors import bad_request
 from app.shared.llm import agent_guard, proposals
-from app.shared.llm.agent import AgentReply, Post, Tool, ask_agent
+from app.shared.llm.agent import AgentReply, Post, Tool, ask_agent, privacy_tools
+from app.shared.privacy import ASSISTANT, new_session
 
-from . import service, target
+from . import repository, service, target
 from .schemas import (
     AllowanceApproveIn,
     AllowanceRejectIn,
@@ -459,7 +460,9 @@ def system_prompt(user_name: str = "") -> str:
             if user_name
             else ""
         )
-        + "반드시 도구로 확인한 값만 쓰고, 없거나 모르는 값은 지어내지 말고 없다고 말하세요. "
+        + "질문과 도구 결과의 일부 사람 이름은 [PERSON_1] 같은 토큰으로 바뀌어 있습니다. 같은 토큰은 같은 사람이니 풀려고 하지 말고, "
+        "도구에 이름을 넘길 때(나눌 사람 등)와 답에 그대로 쓰세요. 서버가 되돌려 처리합니다. "
+        "반드시 도구로 확인한 값만 쓰고, 없거나 모르는 값은 지어내지 말고 없다고 말하세요. "
         "정산 결과(get_settlement)의 잔액·송금 목록에는 앱에서 '정산하기'를 마친 지출만 들어갑니다. unsettled_count 가 있으면 "
         "정산 전인 지출이 있다는 뜻이라 송금 목록이 비는 것이 정상이니, 데이터가 이상하다고 말하지 말고 '아직 정산하기를 하지 않은 "
         "지출이 N건(합계 X원)이라 송금할 내역이 없어요. 돌봄 탭의 정산·용돈에서 정산하기를 먼저 해 주세요'라고 안내하세요. 전체 지출 기준으로 "
@@ -487,19 +490,40 @@ def ask(
     ensure_group_member(db, user.id, group_id)
     proposed: list = []
     question, history = agent_guard.prepare(question, history)
+    members = repository.member_names(db, group_id)
+
+    def turn() -> AgentReply:
+        with new_session(ASSISTANT, members) as session:
+            # 질문·앞 대화를 가명화한다(등록된 가족 이름·별명을 라벨 없이 쓴 대화체도 보호).
+            # 도구 결과(지출·정산의 이름·금액)는 기존 정책대로 통째로 가리지 않는다 - session 을 build_tools 에
+            # 넘기지 않는다. 다만 질문에서 이미 토큰이 된 이름만 결과·오류 글·질문한 사람 이름에서도 같은 토큰으로
+            # 맞춰야 모델이 질문 속 사람과 결과 속 구성원을 같은 사람으로 이어 본다(`privacy_tools`).
+            pseudo_question = session.prepare_text(question)
+            pseudo_history = (
+                [{**h, "text": session.prepare_text(h["text"])} for h in history]
+                if history
+                else history
+            )
+            reply = ask_agent(
+                system_prompt(session.tokenize_mapped_names(user.name)),
+                pseudo_question,
+                # question(원문)은 서버가 삭제 대상 지정 여부를 검사하는 데만 쓰고 모델로는 가지 않는다(상류 #453).
+                privacy_tools(
+                    build_tools(db, group_id, user, proposed, question),
+                    session,
+                    tokenize_results=True,
+                ),
+                post=post,
+                history=pseudo_history,
+                proposals=proposed,
+                stage="billing",
+            )
+            if reply.can_answer:
+                # 이 세션이 만든 토큰만 복원한다(질문·도구 결과에서 맞춘 이름 토큰 포함).
+                restored = session.restore_text(reply.answer, generalize_unknown=True, scrub=True)
+                reply.answer = restored.value
+            return reply
+
     return agent_guard.run_turn(
-        db,
-        user.id,
-        group_id,
-        agent_guard.BILLING_FEATURE,
-        lambda: ask_agent(
-            system_prompt(user.name),
-            question,
-            build_tools(db, group_id, user, proposed, question),
-            post=post,
-            history=history,
-            proposals=proposed,
-            stage="billing",
-        ),
-        guarded=guarded,
+        db, user.id, group_id, agent_guard.BILLING_FEATURE, turn, guarded=guarded
     )

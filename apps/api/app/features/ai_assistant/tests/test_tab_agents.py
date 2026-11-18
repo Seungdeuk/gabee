@@ -253,6 +253,26 @@ def test_personal_info_in_the_question_is_masked_before_it_leaves(client, family
     assert "010-1234-5678" not in sent[0] and "지출은" in sent[0]
 
 
+def test_registered_family_name_in_the_question_is_masked_before_it_leaves(
+    client, family, monkeypatch
+):
+    """mask_text 는 라벨 없는 대화체 이름을 못 잡는다 - 등록된 가족 이름(여기서는 "수진")은 가족
+    이름 사전(가명화 세션)을 거쳐 토큰으로 바뀌어야 한다. 도구 결과는 기존 정책대로 그대로 둔다."""
+    a, _, group = family
+    _ready(monkeypatch, group)
+    sent = []
+
+    def fake(body):
+        sent.append(str(body["messages"]))
+        return _text("네")
+
+    monkeypatch.setattr(llm_agent, "_post", fake)
+    body = {"message": "수진한테 전화해서 이번 달 지출 알려줘"}
+    assert client.post("/billing/agent/chat", json=body, headers=a).status_code == 200
+    assert "수진" not in sent[0]
+    assert "지출" in sent[0]
+
+
 def test_tab_agent_daily_limit_uses_the_shared_guard(client, family, monkeypatch):
     a, _, group = family
     _ready(monkeypatch, group)

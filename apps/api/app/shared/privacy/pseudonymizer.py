@@ -12,8 +12,10 @@
 """
 
 import re
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 
+from .detectors import detect
 from .ner import detect_with_ner
 from .policy import BLOCKED_PLACEHOLDER, Action, Policy
 from .types import Kind, Span
@@ -191,6 +193,61 @@ class Pseudonymizer:
             self._reverse[token] = _neutralize(value)
             self._kind[token] = kind
         return token
+
+    # ----- 이미 토큰을 준 이름만 같은 토큰으로(도구 결과·오류 글용: 새 토큰을 만들지 않는다) -----
+    def known_person_names(self) -> tuple[str, ...]:
+        """이미 PERSON 토큰을 받은 이름과, 그 이름으로 묶이는 다른 표기(표시 이름). 닫혔으면 빈 목록."""
+        if self._closed:
+            return ()
+        names = [key[1] for key in self._forward if key[0] is Kind.PERSON]
+        mapped = set(names)
+        names += [alias for alias, rep in self._aliases.items() if rep in mapped]
+        return tuple(dict.fromkeys(names))
+
+    def mapped_token(self, kind: Kind, value: str) -> str | None:
+        """value 가 이미 받은 토큰(없으면 None). 새로 만들지 않는다."""
+        if self._closed or kind in _NEVER_STORE:
+            return None
+        if kind is Kind.PERSON:
+            value = self._aliases.get(" ".join(value.split()), value)
+        return self._forward.get((kind, _norm_key(kind, value)))
+
+    def tokenize_mapped_names(self, text: str) -> str:
+        """text 안에서 이 객체가 **이미 토큰을 준** 사람 이름만 같은 토큰으로 바꾼다.
+
+        새 토큰을 만들지 않고, 아직 가리지 않은 이름과 다른 종류의 개인정보는 그대로 둔다. 이름이 하나라도 가려진 요청에서는 토큰
+        모양의 글(``[PERSON_1]``)을 무력화해 이 요청의 토큰과 섞이지 않게 한다."""
+        names = self.known_person_names()
+        if not text or not names:
+            return text
+        out: list[str] = []
+        pos = 0
+        for s in detect(text, names):
+            if s.kind is not Kind.PERSON or s.source != "name_dict":
+                continue
+            token = self.mapped_token(Kind.PERSON, s.canonical or text[s.start : s.end])
+            if token is None:
+                continue
+            out.append(_neutralize(text[pos : s.start]))
+            out.append(token)
+            pos = s.end
+        out.append(_neutralize(text[pos:]))
+        return "".join(out)
+
+    def retokenize_values(self, text: str, tokens: Iterable[str]) -> str:
+        """text 안에서 ``tokens`` 의 원래 값과 **똑같은 글자**를 그 토큰으로 되돌려 놓는다.
+
+        도구에 되돌려 넘긴 값이 도구 결과·오류 글에 되비칠 때(예: 토큰 뒤에 글자가 붙은 '수진택시', 검증 오류가 입력값을 담는 글) 다시
+        가리는 용도다. 이 객체가 만든 토큰만 다루고(없는 토큰은 무시), 새 토큰은 만들지 않는다. 닫혔으면 그대로 돌려준다."""
+        if self._closed or not text:
+            return text
+        pairs = sorted(
+            ((self._reverse[t], t) for t in set(tokens) if self._reverse.get(t)),
+            key=lambda p: -len(p[0]),
+        )
+        for value, token in pairs:
+            text = text.replace(value, token)
+        return text
 
     # ----- 가명화 -----
     def apply(
