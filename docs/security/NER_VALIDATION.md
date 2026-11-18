@@ -5358,8 +5358,12 @@ realistic_family 15건 중 11 / 4, v14_realistic 2건 중 1 / 1, Nemotron 전체
   평가 결과·스크립트는 위 백업 폴더(매니페스트 해시 포함)에 있다. 59~69절의 R1~R7b·S0·R6+B 기록은 그대로다.
 - 운영 `ner.py`·`Dockerfile` 은 기존 서비스 디코딩·모델 폴더명(`ner-koelectra-small-v2b`)으로 되돌렸다.
 - **미확인**: 실제 운영 컨테이너가 지금 로드 중인 모델의 지문과 `PRIVACY_NER_MODE` 값. 이 PC 에는 실행 중인
-  서버·Docker 컨테이너가 없어 확인할 수 없었다. 이 PC 의 `apps/api/data/models/ner` 활성 폴더에는 R1(`c536eadeb5a1`),
-  `ner.prev` 에는 서비스 모델(`46210943c45f`)이 들어 있다(폴더 이동·교체는 하지 않았다).
+  서버·Docker 컨테이너가 없어 확인할 수 없었다.
+- **이 PC 의 로컬 모델 폴더(개발용, 운영과 무관)**: 이 절을 쓸 때는 `apps/api/data/models/ner` 활성 폴더에 R1(`c536eadeb5a1`),
+  `ner.prev` 에 서비스 모델(`46210943c45f`)이 들어 있었다. **2026-11-18 사용자 요청으로 `ner` 를 서비스 모델로 교체하고 R1 폴더는
+  삭제했다**(`ner.prev` 사본으로 복사한 뒤 배포 패키지 `gabee-model-delivery\ner-koelectra-small-v2b` 와 4개 파일 해시 일치 확인,
+  `required` 모드 로드로 지문 `46210943c45f` 확인). 삭제한 R1 의 사본은 `venvs\ner-runs\export\r1pilot-koelectra-small-klue10msg-s7`
+  에 남아 있고, `ner.prev` 는 그대로 뒀다. 서비스 모델 파일 3벌(배포 패키지·`backup-local-ner-klue10-s7`·`ner.prev`)은 모두 이 PC 안에 있다.
 
 ## 재현 방법
 
