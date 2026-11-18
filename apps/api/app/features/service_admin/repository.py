@@ -386,3 +386,25 @@ def analytics_rows(db: Session, token_since: datetime, since: datetime) -> dict[
         ),
         "support": rows(select(tickets.c.kind, tickets.c.created_at, tickets.c.answered_at)),
     }
+
+
+def stale_support_tickets(db: Session, before: datetime) -> tuple[int, datetime | None]:
+    """(답이 아직 없는 문의 수, 가장 오래된 등록 시각). before 이전에 등록된 new·working 상태만 센다(done 은 뺀다)."""
+    tickets = _t("support_tickets")
+    count, oldest = db.execute(
+        select(func.count(), func.min(tickets.c.created_at)).where(
+            tickets.c.status.in_(("new", "working")), tickets.c.created_at <= before
+        )
+    ).one()
+    return count or 0, oldest
+
+
+def stale_join_requests(db: Session, before: datetime) -> tuple[int, datetime | None]:
+    """(승인 대기 중인 참가 요청 수, 가장 오래된 요청 시각). before 이전에 요청한 pending 상태만 센다."""
+    join_reqs = _t("join_requests")
+    count, oldest = db.execute(
+        select(func.count(), func.min(join_reqs.c.requested_at)).where(
+            join_reqs.c.status == "pending", join_reqs.c.requested_at <= before
+        )
+    ).one()
+    return count or 0, oldest

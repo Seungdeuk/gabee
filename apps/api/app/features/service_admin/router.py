@@ -11,6 +11,7 @@ from app.shared.schema_gate import schema_ready
 
 from . import (
     admin_facts,  # noqa: F401  관리자 챗봇 숫자 명단에 올린다
+    alert_rules,  # noqa: F401  관리자 알림 규칙(문의·AI 사용·참가 요청)을 명단에 올린다
     analytics,
     service,
 )
