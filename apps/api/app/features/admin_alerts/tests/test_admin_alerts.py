@@ -8,6 +8,7 @@ from sqlalchemy import delete
 from app.features.admin_alerts import service as alert_service
 from app.features.admin_alerts.models import AdminAlertLog
 from app.features.ops_admin import repository as ops_repo
+from app.features.ops_admin.models import OpsErrorEvent
 from app.shared.config import settings
 from app.shared.db import SessionLocal
 
@@ -34,6 +35,7 @@ def _clean_tables(client):  # client 를 먼저 받아 DB 표가 만들어진 �
     with SessionLocal() as db:
         ops_repo.delete_before(db, datetime.now(UTC) + timedelta(days=1))
         db.execute(delete(AdminAlertLog))
+        db.execute(delete(OpsErrorEvent))
         db.commit()
     yield
 
@@ -107,7 +109,7 @@ def test_disabled_setting_does_nothing(client, monkeypatch):
 
 def test_critical_rate_creates_one_alert_and_does_not_repeat(client, on, operator):
     _seed(total=100, errors=10)  # 10% → 긴급
-    assert _run(client) == {"enabled": True, "checked": 1, "created": 1}  # 규칙 1개를 돌려 1건 생김
+    assert _run(client) == {"enabled": True, "checked": 2, "created": 1}  # 규칙 2개를 돌려 1건 생김
     assert _run(client)["created"] == 0  # 같은 시간대에는 두 번 만들지 않는다
     body = client.get(LIST, headers=operator).json()
     assert body["unacked"] == 1
@@ -192,3 +194,80 @@ def test_list_contains_no_personal_data(client, on, operator):
     text = client.get(LIST, headers=operator).text
     for secret in (MEMBER_EMAIL, "alert_operator", "시험", operator["Authorization"][-10:]):
         assert secret not in text
+
+
+# ---- 처음 보는 서버 오류
+
+
+def _seed_error(
+    event_type: str,
+    route: str,
+    *,
+    hours_ago: float = 1,
+    message: str = "가린 메시지",
+    kind: str = "server_error",
+    status: int = 500,
+    count: int = 1,
+) -> None:
+    """오류 기록 한 줄(지문)을 hours_ago 시간 전에 처음 본 것으로 넣는다. count 번 더 나면 횟수가 오른다."""
+    when = datetime.now(UTC) - timedelta(hours=hours_ago)
+    with SessionLocal() as db:
+        for _ in range(count):
+            ops_repo.upsert_error_event(
+                db,
+                fingerprint=f"{kind}|{event_type}|{route}|{status}|{message}",
+                kind=kind,
+                severity="error" if kind == "server_error" else "warning",
+                event_type=event_type,
+                method="GET",
+                route=route,
+                status=status,
+                message=message,
+                location=None,
+                trace_id="trace-secret-123",
+                now=when,
+            )
+
+
+def test_new_server_error_alerts_once_without_message_or_trace(client, on, operator):
+    _seed_error("KeyError", "/notices", message="비밀 메시지", count=3)
+    assert _run(client) == {"enabled": True, "checked": 2, "created": 1}
+    assert _run(client)["created"] == 0  # 같은 조합은 다시 알리지 않는다
+    body = client.get(LIST, headers=operator)
+    item = body.json()["items"][0]
+    assert item["rule"] == "new_error" and item["severity"] == "주의"
+    assert item["message"] == "처음 보는 서버 오류 KeyError · /notices (3회)"
+    assert item["menu"] == "서버 상태"
+    assert "비밀 메시지" not in body.text and "trace-secret-123" not in body.text
+
+
+def test_a_pair_seen_before_the_window_is_not_new(client, on):
+    # 3일 전에 이미 있던 조합은, 오늘 메시지만 달라진 줄이 생겨도 새 오류가 아니다
+    _seed_error("KeyError", "/notices", hours_ago=72, message="예전 메시지")
+    _seed_error("KeyError", "/notices", hours_ago=1, message="오늘 메시지")
+    assert _run(client)["created"] == 0
+
+
+def test_same_pair_with_different_messages_is_counted_once(client, on, operator):
+    _seed_error("ValueError", "/schedule", message="가린 A")
+    _seed_error("ValueError", "/schedule", message="가린 B", count=2)
+    assert _run(client)["created"] == 1
+    assert client.get(LIST, headers=operator).json()["items"][0]["message"].endswith("(3회)")
+
+
+def test_auth_failures_are_not_server_errors(client, on):
+    _seed_error("token_invalid", "/family-chat/messages", kind="auth_failure", status=401)
+    assert _run(client)["created"] == 0
+
+
+def test_at_most_ten_new_errors_per_check(client, on):
+    for i in range(12):
+        _seed_error("RuntimeError", f"/route-{i}")
+    assert _run(client)["created"] == 10
+
+
+def test_long_names_fit_the_alert_table(client, on, operator):
+    _seed_error("E" * 100, "/" + "r" * 199)
+    assert _run(client)["created"] == 1
+    item = client.get(LIST, headers=operator).json()["items"][0]
+    assert len(item["message"]) <= 200 and len(item["key"]) <= 120
