@@ -41,6 +41,7 @@ CARD_SHOWN = "아직 실행되지 않았어요. 사용자 화면에 확인 카�
 ASK_BACK = "일정을 등록하려면 정보가 더 필요해요. 사용자에게 이 질문을 그대로 전하세요. 답을 받으면 날짜·시간·제목을 합친 완전한 문장으로 다시 넘기세요: "
 NOT_SCHEDULE = "일정과 관련된 요청이 아니에요."
 MAX_EVENTS_SHOWN = 10
+PENDING_MARK = "(확정 전)"  # 일정 조회 줄에서 status 가 pending 인 일정에 붙인다(채팅에서 뽑힌 후보 등, 아직 확정되지 않은 일정)
 
 
 def _event_line(event: dict) -> str:
@@ -48,6 +49,13 @@ def _event_line(event: dict) -> str:
     clock = event.get("start_time") or event.get("time") or ""
     when = " ".join(x for x in (event.get("date", ""), clock) if x)
     return f"- {when} {event.get('title', '')}".strip()
+
+
+def _listed_event_line(event: dict) -> str:
+    """일정 조회 답의 한 줄. 확정 전(pending) 일정은 줄 끝에 표시한다. 표시가 없으면 모델이 후보를 '이미 잡힌 일정'으로 옮긴다.
+    카드·API 의 필드(status, title)는 그대로 두고 이 글에서만 표현한다."""
+    line = _event_line(event)
+    return f"{line} {PENDING_MARK}" if event.get("status") == "pending" else line
 
 
 def _request_summary(brief: dict) -> str:
@@ -185,7 +193,7 @@ def _reply(response: AgentResponse, room: bool = False) -> AgentReply:
         # 가족방 답은 방에 저장되므로 부탁 줄에는 날짜·시간·제목만 넣는다(받는 분·수락 현황 이름은 뺀다)
         request_line = _event_line if room else _request_summary
         lines = "\n".join(
-            [*(_event_line(e) for e in events), *(request_line(r) for r in requests_)]
+            [*(_listed_event_line(e) for e in events), *(request_line(r) for r in requests_)]
         )
         text = f"{response.text}\n{lines}".strip()
         return AgentReply(text, user_text=text)
