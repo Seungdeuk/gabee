@@ -33,6 +33,20 @@
 
 PR4 연동 지점: 사진이 일반 사진으로 확인되고 자격이 있을 때 `job_service.enqueue(db, attachment_id)` 를 부르는 곳(자동 등록은 PR3 에 없다), `worker.register_handler(kind, run, save)`. `member_withdrawn` 훅에는 파생 데이터(임베딩 등) 삭제를 PR4 가 더해야 한다(이미 저장된 결과는 이 PR 이 지우지 않는다: 저장된 결과가 없다).
 
+## 이미지 임베딩 (PR4, 2026-11-19)
+**PR3 워커에 SigLIP2 이미지 임베딩 처리 함수를 붙였다. 운영에서는 서버 스위치·워커·인코더가 모두 기본 꺼짐이고, 어떤 사진도 자동으로 등록·실행되지 않는다**(큐에 들어 있는 작업만 처리). 카드 생성·검색·군집화·게시·앱 화면은 없다. 새 표 `photo_embeddings`(Alembic `c9a3e7b2d514`, expand-only, 파생 데이터).
+
+| 항목 | 내용 |
+|---|---|
+| 인코더 | `encoder.py`: `FakeEncoder`(모델 없는 환경용 결정적 가짜, 16차원) · `Siglip2Encoder`(`google/siglip2-base-patch16-224`, PoC 와 같은 모델·`get_image_features`, 768차원). **이미 내려받은 로컬 파일만** 쓰고(`local_files_only`·`HF_HUB_OFFLINE=1`) 다운로드하지 않는다. 모듈은 `torch`·`transformers` 를 `load()` 안에서만 가져온다 |
+| 별도 프로세스 | 모델은 웹 서버가 아니라 `python -m app.features.family_memory.worker_main`(torch·transformers 가 있는 환경)에서만 올라간다. 웹 프로세스는 처리 함수를 등록하지 않아 작업을 선점하지 않는다. 시작 조건: `FAMILY_MEMORY_ENABLED`·`FAMILY_MEMORY_WORKER_ENABLED`·`FAMILY_MEMORY_ENCODER`(siglip2·fake) 모두 켜짐(아니면 종료 코드 2), 모델 로드 실패는 종료 코드 3(작업은 건드리지 않음) |
+| 처리 | 선점·자격 재확인(PR3 ②③)을 통과한 작업만, 채팅이 저장한 사진 파일(EXIF 없는 JPEG)을 읽어 임베딩을 만들고 L2 정규화·차원·유한값을 검증한다. 결과는 **저장 직전 자격 재확인(PR3 ④) 뒤 같은 트랜잭션에서만** `photo_embeddings` 에 저장(모델 이름·버전·차원 기록). 외부 서비스(LLM 포함)로 사진을 보내지 않는다 |
+| 실패 | 모델 로드 실패·추론 오류·사진 파일 없음·GPU 메모리 부족(OOM: 캐시를 비우고 `EncoderResourceError`)은 예외 **종류 이름**만 기록하고 PR3 재시도 규칙(3회·backoff)에 맡긴다. 로드·추론 시간(ms)과 CPU/GPU 메모리(MB)만 로그에 남긴다 |
+| 파생 결과 정리 | 철회·가족 나가기·가족 끄기·사진별 제외·사진 삭제 때 그 임베딩과 끝난 작업 줄을 같은 트랜잭션에서 지운다(끝난 줄이 남으면 재동의 뒤 `exists` 로 막히므로). 정리 훅은 PR3 의 작업 차단 훅 **뒤에** 불린다: 저장 중이던 트랜잭션이 작업 줄을 잠그고 있으면 철회가 그 저장이 끝나기를 기다렸다가 지운다(PG16 e2e) |
+| 성능(실측, RTX 3050 6GB, 합성 640px 이미지 20장, 단일 이미지) | GPU fp32 25.7ms/장·GPU 메모리 약 1.5GB·로드 27초(첫 로드, 이후 7초) · GPU fp16 18.9ms/장·약 0.8GB · CPU 166ms/장·RSS 약 2.2GB. 같은 입력은 완전히 같은 벡터(차이 0). `scripts/siglip2_smoke.py` 로 재현 |
+
+연결 지점(PR5): 자격이 있는 사진에서 `job_service.enqueue(db, att, analysis.KIND_EMBEDDING)` 를 부르는 곳(자동 등록·소급 분석 동의 처리는 PR4 에 없다), 임베딩 검색·군집화·카드(`photo_embeddings` 읽기), pgvector 인덱스가 필요해지면 별도 리비전. 의존성: `torch`·`transformers` 는 API `pyproject.toml` 에 넣지 않았다(워커 환경에만 필요, 추가는 별도 승인).
+
 ## 지키는 것
 - `ai_group_settings`(대화 분석 동의)와 `chat_photo_checks`(사진 판별 상태, D-13)를 읽거나 쓰지 않는다(자격 판정은 판별 상태를 읽기만 한다).
 - 사진 내용·라벨·임베딩·파일 경로를 저장·로그하지 않는다(이 PR 에는 그런 데이터가 없다).
@@ -40,7 +54,7 @@ PR4 연동 지점: 사진이 일반 사진으로 확인되고 자격이 있을 �
 
 ## 아직 없는 것 (이후 PR, 별도 승인)
 - 앱 화면(동의 안내·스위치·사진 제외 버튼) — PR7 또는 별도 화면 PR.
-- SigLIP2·임베딩·카드 생성·게시(PR4 이후; 작업 큐·워커 틀은 PR3 에 있다). 철회 시 파생 데이터(임베딩 등) 삭제는 지금은 지울 데이터가 없어 훅만 있다.
+- 카드 생성·게시·검색·군집화(PR5 이후; 작업 큐는 PR3, 임베딩 추출·파생 결과 삭제는 PR4 에 있다).
 - E1(`unsure` 포함 자동 게시): 독립 안전성 평가와 별도 정책 승인 전에는 열지 않는다.
 - 미결정: 동의 기록 보관 기간, 24시간 삭제 목표 확정, 백업 만료·복원 시 재삭제 절차, 원본 채팅 사진의 탈퇴 처리, 소급 분석 화면·고지.
 

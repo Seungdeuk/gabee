@@ -54,6 +54,11 @@ class Settings(BaseSettings):
     family_memory_job_lease_seconds: int = (
         300  # 선점한 작업의 임대 시간(넘기면 다른 워커가 되찾는다)
     )
+    # 이미지 임베딩 인코더(PR4): off(기본) | siglip2(로컬 모델 파일만, 다운로드 안 함) | fake(개발·시험용 가짜). 모델은 별도 워커 프로세스(worker_main)에서만 올라간다
+    family_memory_encoder: str = "off"
+    family_memory_siglip2_path: str = ""  # 이미 내려받은 SigLIP2 스냅샷 폴더(로컬 경로)
+    family_memory_encoder_device: str = "auto"  # auto | cpu | cuda
+    family_memory_encoder_fp16: bool = False  # GPU 일 때만 반 정밀도(메모리 약 절반)
     ingest_mask_chunk_chars: int = 6000  # 가리기 호출 한 번에 보내는 최대 글자 수(긴 문서는 나눠서)
     ingest_pdf_max_pages: int = 20  # Claude 로 읽는 PDF 최대 쪽 수(비용 상한)
     # Claude 연결 실패(llm_unavailable)로 failed 가 될 파일을 자동으로 다시 처리하는 횟수와 기다리는 시간(n번째 재시도는 n×이 초)

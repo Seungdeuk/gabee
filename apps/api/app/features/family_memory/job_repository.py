@@ -187,6 +187,30 @@ def cancel_for_attachment(db: Session, attachment_id: str, reason: str, now: dat
     return _cancel_where(db, now, reason, FamilyMemoryJob.attachment_id == attachment_id)
 
 
+def delete_done(db: Session, kind: str, *conditions) -> int:
+    """끝난(`done`) 작업 줄을 지운다. 결과(파생 데이터)를 지운 사진은 나중에 다시 동의했을 때 새로 등록할 수 있어야 하는데, `done` 줄이 남아 있으면 `exists` 로 막히기 때문이다."""
+    result = db.execute(
+        delete(FamilyMemoryJob).where(
+            FamilyMemoryJob.status == DONE, FamilyMemoryJob.kind == kind, *conditions
+        )
+    )
+    return result.rowcount or 0
+
+
+def delete_done_for_user(db: Session, kind: str, group_id: str, user_id: str) -> int:
+    return delete_done(
+        db, kind, FamilyMemoryJob.group_id == group_id, FamilyMemoryJob.user_id == user_id
+    )
+
+
+def delete_done_for_group(db: Session, kind: str, group_id: str) -> int:
+    return delete_done(db, kind, FamilyMemoryJob.group_id == group_id)
+
+
+def delete_done_for_attachment(db: Session, kind: str, attachment_id: str) -> int:
+    return delete_done(db, kind, FamilyMemoryJob.attachment_id == attachment_id)
+
+
 def delete_for_attachment(db: Session, attachment_id: str) -> None:
     """첨부를 지울 때 그 작업 줄도 지운다(SQLite 는 연쇄 삭제가 없어 코드로도 지운다)."""
     db.execute(delete(FamilyMemoryJob).where(FamilyMemoryJob.attachment_id == attachment_id))

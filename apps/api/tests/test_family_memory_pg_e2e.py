@@ -396,6 +396,97 @@ def test_withdrawal_and_leave_cancel_jobs_in_the_same_transaction_on_postgres(pg
     ]
 
 
+def test_embedding_is_saved_through_the_gate_and_removed_by_cascade_on_postgres(
+    pg_client, monkeypatch
+):
+    from app.features.family_memory import analysis, worker
+    from app.features.family_memory import job_service as js
+
+    monkeypatch.setattr(settings, "family_memory_encoder", "fake")
+    analysis.reset_encoder()
+    saved = dict(worker._handlers)
+    client, pg = pg_client
+    _, ids = _eligible_photos(client, pg, 1)
+    engines, (db,) = _sessions(pg, 1)
+    try:
+        assert js.enqueue(db, ids[0], analysis.KIND_EMBEDDING).outcome == "queued"
+    finally:
+        db.close()
+        engines[0].dispose()
+    try:
+        analysis.register_handlers()
+        engine = create_engine(url(pg))
+        try:
+            with sessionmaker(bind=engine)() as s:
+                job = js.claim(s, "w1", [analysis.KIND_EMBEDDING])
+            result = analysis.run(job)
+            with sessionmaker(bind=engine)() as s:
+                assert js.complete(s, job, "w1", result, analysis.save) == "done"
+        finally:
+            engine.dispose()
+    finally:
+        worker._handlers.clear()
+        worker._handlers.update(saved)
+        analysis.reset_encoder()
+    assert rows(pg, "SELECT model_id, dim, octet_length(vector) FROM photo_embeddings") == [
+        ("fake-gray4x4", 16, 64)
+    ]
+    with admin(pg) as conn:  # 첨부를 지우면 DB 가 임베딩도 따라 지운다(ON DELETE CASCADE)
+        conn.execute("DELETE FROM message_attachments WHERE id=%s", (ids[0],))
+    assert _count(pg, "photo_embeddings") == 0
+
+
+def test_withdrawal_waits_for_an_in_flight_save_then_removes_the_embedding_on_postgres(
+    pg_client, monkeypatch
+):
+    """저장 중(작업 줄 잠금)에 철회가 들어오면 철회는 저장이 끝날 때까지 기다렸다가 그 임베딩을 지운다(철회 뒤에 남는 파생 데이터가 없다)."""
+    import threading
+    import time
+
+    from app.features.family_memory import analysis
+    from app.features.family_memory import job_repository as jobs
+    from app.features.family_memory import job_service as js
+
+    monkeypatch.setattr(settings, "family_memory_encoder", "fake")
+    analysis.reset_encoder()
+    client, pg = pg_client
+    owner, ids = _eligible_photos(client, pg, 1)
+    engines, (setup, saver) = _sessions(pg, 2)
+    try:
+        js.enqueue(setup, ids[0], analysis.KIND_EMBEDDING)
+        job = js.claim(setup, "w1", [analysis.KIND_EMBEDDING])
+        result = analysis.run(job)
+        row = jobs.lock_running(saver, job.id, "w1")  # 저장 트랜잭션이 작업 줄을 잡고 있다
+        assert row is not None
+        analysis.save(saver, job, result)  # 아직 커밋하지 않았다
+
+        status = {}
+
+        def withdraw():
+            r = client.put(f"{M}/consent", json={"consent": False}, headers=owner)
+            status["code"] = r.status_code
+
+        t = threading.Thread(target=withdraw)
+        t.start()
+        time.sleep(1.5)
+        assert t.is_alive()  # 철회가 작업 줄 잠금 때문에 기다린다
+        row.status = jobs.DONE  # 저장 트랜잭션이 끝난다
+        saver.commit()
+        t.join(timeout=20)
+        assert status["code"] == 200
+    finally:
+        for s in (setup, saver):
+            s.close()
+        for e in engines:
+            e.dispose()
+        analysis.reset_encoder()
+    assert _count(pg, "photo_embeddings") == 0  # 저장이 먼저 끝났어도 철회가 지웠다
+    assert (
+        _count(pg, "family_memory_jobs") == 0
+    )  # 끝난 작업 줄도 지워 재동의 뒤 다시 등록할 수 있다
+    assert rows(pg, "SELECT withdrawn_at IS NOT NULL FROM member_memory_consents") == [(True,)]
+
+
 def test_table_constraints_on_postgres(pg_client):
     _, pg = pg_client
     assert psycopg  # 제약 위반은 psycopg 예외로 확인한다

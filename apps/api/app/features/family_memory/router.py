@@ -8,7 +8,8 @@ from app.shared.auth import current_group_id, current_user
 from app.shared.db import get_db
 
 from . import (
-    job_service,  # noqa: F401  작업 큐의 철회·삭제·제외 차단 훅을 시작할 때 등록한다(서버 워커와 별개로 항상)
+    analysis,  # noqa: F401  작업 큐 차단 훅과 임베딩 정리 훅을 시작할 때 등록한다(모델은 올리지 않는다: 인코더는 워커 프로세스에서만)
+    job_service,  # noqa: F401
     service,
 )
 from .schemas import (
