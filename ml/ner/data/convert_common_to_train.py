@@ -4,6 +4,7 @@
 - 제외 표시(``exclude: true``) 문장은 건너뛴다(1글자 이름 문장 등). 1글자 PERSON 이 라벨된 문장도 건너뛴다(음성으로 바꾸지 않는다).
 - PERSON, PERSON_ALIAS, ADDRESS 는 NER 라벨 그대로. PHONE, EMAIL, ACCOUNT 는 규칙 탐지기 몫이라 NER 라벨은 O 로 두고 ``rule_spans`` 에 기록한다.
 - ``context_entities`` 의 LOCATION, ORGANIZATION 은 NER 학습 라벨로 쓴다(서비스는 예측을 버리지만 학습에서는 PERSON 과의 대비 신호).
+- 정책 r9-1.1: 이름+가족호칭은 이름만 PERSON, 호칭은 라벨 없음, PERSON_ALIAS 는 별명 자체만. 위반 행은 변환하지 않고 오류를 낸다.
 - 토큰 단위 BIO 는 기존 ``ml/ner/train/tokenize_align.py`` 가 만든다. 여기서는 검증용 글자 단위 BIO(``char_bio``)와 역변환(``bio_to_spans``)을 제공한다.
 """
 
@@ -16,6 +17,21 @@ NER_LABELS = ("PERSON", "PERSON_ALIAS", "ADDRESS", "LOCATION", "ORGANIZATION")
 RULE_KIND = {"PHONE": "PHONE", "EMAIL": "EMAIL", "ACCOUNT": "ACCOUNT"}
 
 
+KIN_TERMS = frozenset("엄마 아빠 어머니 아버지 어머님 아버님 할머니 할아버지 외할머니 외할아버지 누나 언니 오빠 형 동생 삼촌 이모 고모 외삼촌 이모부 고모부 큰아들 작은아들 큰딸 막내딸 막내 아들 딸 시어머니 장모님 큰누나 작은이모 큰엄마 작은엄마 외숙모".split())
+KIN_MULTI = frozenset(k for k in KIN_TERMS if len(k) >= 2)
+
+
+def kin_inside(value):
+    if value in KIN_TERMS or any(t in KIN_TERMS for t in value.split()):
+        return True
+    return any(value.endswith(k) and len(value) > len(k) for k in KIN_MULTI)
+
+
+def policy_issues(r):
+    """정책 r9-1.1 위반(별칭·이름 구간에 가족 호칭이 들어 있음) 목록. 있으면 변환하지 않고 호출 쪽이 오류로 처리한다."""
+    return [s["label"] for s in r.get("spans", []) if s.get("label") in ("PERSON", "PERSON_ALIAS") and kin_inside(s.get("value", ""))]
+
+
 def is_one_char_person(r):
     return any(s.get("label") in ("PERSON", "PERSON_ALIAS") and len(s.get("value", "")) == 1 for s in r.get("spans", []))
 
@@ -24,6 +40,8 @@ def convert_row(r, split="train"):
     """공통 행 하나를 학습 행으로. 건너뛰면 None."""
     if r.get("exclude") or is_one_char_person(r):
         return None
+    if policy_issues(r):
+        raise ValueError(f"{r.get('id')}: PERSON_ALIAS/PERSON 구간에 가족 호칭이 포함됨(정책 r9-1.1 위반)")
     spans, rule = [], []
     for s in r.get("spans", []):
         if s["label"] in NER_LABELS:

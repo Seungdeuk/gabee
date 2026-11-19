@@ -228,8 +228,7 @@ def main():
                 ids[f"{tag.upper()}_PERSON_VALUE_CONTAINS_KIN_TERM"].append(r["id"])
         adj = []
         for r, s_ in per:
-            rest = r["text"][s_["end"]:s_["end"] + 8]
-            if re.match(r"^(?:이)?\s?(" + KIN_RX + r")(?![가-힣])", rest):
+            if V.kin_follows(r["text"], s_["end"]):
                 adj.append(r["id"])
         for rid in adj:
             ids[f"{tag.upper()}_PERSON_FOLLOWED_BY_KIN_TERM"].append(rid)

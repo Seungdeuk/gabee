@@ -37,7 +37,7 @@ def mk(rid, text, specs, category="messenger", neg=None, **extra):
 # ※ 이 문장들은 규격 시험용 가짜 픽스처이며 평가셋이 아니다.
 FIXTURE = [
     mk("fx-001", "다온아 오늘 학원 끝나고 바로 와", [("PERSON", "다온")]),
-    mk("fx-002", "지우 엄마가 간식 사 온대", [("PERSON_ALIAS", "지우 엄마")]),
+    mk("fx-002", "콩이가 간식 사 온대", [("PERSON_ALIAS", "콩이")]),
     mk("fx-003", "서도윤이랑 한채원은 같은 반이야", [("PERSON", "서도윤"), ("PERSON", "한채원")]),
     mk("fx-004", "도윤이 집 주소는 서울시 마포구 월드컵로 12 이고 번호는 010-2345-6789 야", [("PERSON", "도윤"), ("ADDRESS", "서울시 마포구 월드컵로 12"), ("PHONE", "010-2345-6789")], category="mixed"),
     mk("fx-005", "자료는 sample.user@example.com 으로 보내 줘", [("EMAIL", "sample.user@example.com")], category="email"),
@@ -125,7 +125,7 @@ def test_existing_eval_code_compat():
     assert pf["exact"]["f1"] == 1.0 and pf["total_exposure_rate"] == 0 and pf["nonperson_fpr"] == 0
     assert s["protected_all_kinds"]["rate"] == 1.0 and s["account_block_policy"]["blocked"] == 1
     import r8_eval_lib as L
-    assert L.gold_person(rows[1]) == [(0, 5)] and len(L.gold_person(rows[2])) == 2   # PERSON_ALIAS 는 PERSON 계열로 채점
+    assert L.gold_person(rows[1]) == [(0, 2)] and len(L.gold_person(rows[2])) == 2   # PERSON_ALIAS 는 PERSON 계열로 채점
 
 
 def test_converter_and_bio():
@@ -175,6 +175,28 @@ def test_tag_converter():
             pass
     rep, _ = run_validator([r, neg])
     assert not rep["errors"], rep["errors"]
+
+
+def test_policy_r9_1_1():
+    """정책 r9-1.1: 이름+가족호칭은 이름만 PERSON(호칭은 구간 밖), PERSON_ALIAS 는 별명 자체만."""
+    ok = [mk("p-1", "지우 엄마가 간식 사 온대", [("PERSON", "지우")]), mk("p-2", "김태형이 방금 왔어", [("PERSON", "김태형")]),
+          mk("p-3", "엄마가 장 봐 왔대", [], neg=True), mk("p-4", "콩이 엄마가 전화했어", [("PERSON_ALIAS", "콩이")])]
+    rep, _ = run_validator(ok + FIXTURE[:2])
+    assert not rep["errors"], rep["errors"]            # 이름 끝 '형'(태형)은 호칭으로 오인하지 않는다
+    assert rep["info"]["kin_adjacent_person_sentences"] == 2 and rep["info"]["negatives_with_kin_term"] == 1
+    bad_alias = ok + [mk("p-5", "지우 엄마가 왔대", [("PERSON_ALIAS", "지우 엄마")])]
+    assert "ALIAS_CONTAINS_KIN_TERM" in run_validator(bad_alias)[0]["errors"]
+    bad_kin_only = ok + [mk("p-6", "엄마가 왔대", [("PERSON_ALIAS", "엄마")])]
+    assert "ALIAS_CONTAINS_KIN_TERM" in run_validator(bad_kin_only)[0]["errors"]
+    bad_person = ok + [mk("p-7", "지우 엄마가 왔대", [("PERSON", "지우 엄마")])]
+    assert "PERSON_CONTAINS_KIN_TERM" in run_validator(bad_person)[0]["errors"]
+    # 변환기도 위반 행을 거부하고, 정상 행(호칭은 구간 밖)은 호칭을 라벨에 넣지 않는다
+    try:
+        C.convert_row(bad_alias[-1]); raise AssertionError("정책 위반 행은 변환되면 안 된다")
+    except ValueError:
+        pass
+    row = C.convert_row(ok[0])
+    assert row["spans"] == [{"label": "PERSON", "start": 0, "end": 2}] and row["text"][2:].startswith(" 엄마")
 
 
 def test_review_sample():

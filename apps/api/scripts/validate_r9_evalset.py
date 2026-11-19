@@ -21,8 +21,8 @@ from collections import Counter, defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
 
-VALIDATOR_VERSION = "r9-1.0"
-SPEC_VERSION = "r9-1.0"
+VALIDATOR_VERSION = "r9-1.1"
+SPEC_VERSION = "r9-1.1"
 
 LABEL_TO_KIND = {"PERSON": "PERSON", "PERSON_ALIAS": "PERSON", "ADDRESS": "ADDRESS", "PHONE": "PHONE", "EMAIL": "EMAIL", "ACCOUNT": "ACCOUNT"}
 CONTEXT_LABELS = {"LOCATION", "ORGANIZATION"}
@@ -40,6 +40,24 @@ TARGETS = {
     "stress": {"total": 800, "person_sentences": 550, "other_only_sentences": 50, "negative_sentences": 200},
 }
 JOSA = set("이가은는을를도만과와랑한에야아의로")
+# 정책 r9-1.1: 이름+가족호칭에서 호칭은 보호 구간 밖, PERSON_ALIAS 는 별명 자체만
+KIN_TERMS = frozenset("엄마 아빠 어머니 아버지 어머님 아버님 할머니 할아버지 외할머니 외할아버지 누나 언니 오빠 형 동생 삼촌 이모 고모 외삼촌 이모부 고모부 큰아들 작은아들 큰딸 막내딸 막내 아들 딸 시어머니 장모님 큰누나 작은이모 큰엄마 작은엄마 외숙모".split())
+KIN_MULTI = frozenset(k for k in KIN_TERMS if len(k) >= 2)
+
+
+def kin_inside(value):
+    """구간 값 안에 가족 호칭이 들어 있는지(값 전체, 공백 토큰, 두 글자 이상 호칭으로 끝남). 한 글자 호칭(형)은 이름 끝 글자와 구분이 안 돼 토큰·전체 일치만 본다."""
+    if value in KIN_TERMS or any(t in KIN_TERMS for t in value.split()):
+        return True
+    return any(value.endswith(k) and len(value) > len(k) for k in KIN_MULTI)
+
+
+def kin_follows(text, end):
+    """span 바로 뒤(접미 '이' 허용, 공백 허용)에 가족 호칭이 이어지는지."""
+    rest = text[end:end + 8]
+    tail = r"(?=$|[^가-힣]|(?:이랑|이가|께서|한테서|한테|에게|이|가|은|는|을|를|도|의|께|랑|와|과|네|야|아)(?:$|[^가-힣]))"
+    m = re.match(r"^(?:이)?\s?(" + "|".join(sorted(KIN_TERMS, key=len, reverse=True)) + r")" + tail, rest)
+    return bool(m)
 
 PHONE_RE = re.compile(r"01[016789][-. ]?\d{3,4}[-. ]?\d{4}")
 EMAIL_RE = re.compile(r"[\w.+-]+@[\w-]+\.[\w.-]+")
@@ -161,6 +179,10 @@ def check_spans(rows, rep):
                 rep.err("SPAN_VALUE_WHITESPACE", rid)
             if s["label"] in ("PERSON", "PERSON_ALIAS") and len(s["value"]) == 1:
                 rep.err("ONE_CHAR_NAME_MUST_BE_EXCLUDED", rid)
+            if s["label"] == "PERSON_ALIAS" and kin_inside(s["value"]):
+                rep.err("ALIAS_CONTAINS_KIN_TERM", rid)
+            if s["label"] == "PERSON" and kin_inside(s["value"]):
+                rep.err("PERSON_CONTAINS_KIN_TERM", rid)
             ok_spans.append(s)
         ss = sorted(ok_spans, key=lambda x: x["start"])
         for a, b in zip(ss, ss[1:]):
@@ -237,6 +259,20 @@ def composition(rows, set_kind, rep):
         "length_chars": {"min": min((len(r["text"]) for r in active), default=0), "max": max((len(r["text"]) for r in active), default=0),
                          "mean": round(sum(len(r["text"]) for r in active) / n, 1) if n else 0},
     }
+    kin_adj = [r["id"] for r in person_s if any(sp["label"] in ("PERSON", "PERSON_ALIAS") and kin_follows(r["text"], sp["end"]) for sp in r["spans"])]
+    neg_kin = [r["id"] for r in neg if any(k in r["text"] for k in KIN_MULTI)]
+    info["kin_adjacent_person_sentences"] = len(kin_adj)
+    info["negatives_with_kin_term"] = len(neg_kin)
+    info["person_2char_share_pct"] = round(100 * lens.get(2, 0) / len(person_spans), 1) if person_spans else None
+    info["alias_share_pct"] = round(100 * sum(1 for sp in person_spans if sp["label"] == "PERSON_ALIAS") / len(person_spans), 1) if person_spans else None
+    info["_kin_adjacent_ids"] = kin_adj
+    if set_kind == "representative":
+        if len(neg_kin) < 30:
+            rep.warn("COMPOSITION_KIN_ONLY_NEGATIVES_BELOW_30", f"{len(neg_kin)}")
+        if info["person_2char_share_pct"] is not None and not (25 <= info["person_2char_share_pct"] <= 35):
+            rep.warn("COMPOSITION_PERSON_2CHAR_SHARE_OUT_OF_25_35", f"{info['person_2char_share_pct']}")
+        if info["alias_share_pct"] is not None and info["alias_share_pct"] < 8:
+            rep.warn("COMPOSITION_ALIAS_SHARE_BELOW_8", f"{info['alias_share_pct']}")
     tg = TARGETS.get(set_kind)
     if tg:
         info["targets"] = tg
@@ -454,12 +490,13 @@ def main(argv=None):
     if a.reference_dir:
         ref = reference_rows(a.reference_dir)
         seen = against_reference(active, ref, rep, info)
+    kin_adj_ids = info.pop("_kin_adjacent_ids", [])
     rep.info = info
     result = rep.to_dict(a.full_ids)
     if a.report_out:
         a.report_out.write_text(json.dumps(result, ensure_ascii=False, indent=1), encoding="utf-8")
     if a.annotations_out:
-        a.annotations_out.write_text(json.dumps({"name_seen_in_reference": sorted(seen)}, ensure_ascii=False), encoding="utf-8")
+        a.annotations_out.write_text(json.dumps({"name_seen_in_reference": sorted(seen), "kin_adjacent_person_sentences": sorted(kin_adj_ids)}, ensure_ascii=False), encoding="utf-8")
     if a.manifest_out:
         a.manifest_out.write_text(json.dumps(make_manifest(a.data, rows, rep, a.set_kind, {"info": info}), ensure_ascii=False, indent=1), encoding="utf-8")
     n_err = sum(len(v) for v in rep.errors.values())
