@@ -116,8 +116,17 @@ def create_draw(
 
 @router.post("/photos", response_model=PlayItemOut, status_code=201)
 def create_photo(
-    file: UploadFile = File(..., description="사진 JPEG/PNG/WebP(8MB 이하)"),
-    source: int = Form(..., description="1 가족 앨범, 2 내 폰"),
+    file: UploadFile | None = File(
+        default=None, description="사진 JPEG/PNG/WebP(8MB 이하). `rec_id` 가 있으면 비워도 된다"
+    ),
+    source: int | None = Form(
+        default=None,
+        description="1 가족 앨범, 2 내 폰. `rec_id` 로 낼 때는 서버가 추천 행 기준(가족 1·흔한 3)으로 정한다",
+    ),
+    rec_id: str | None = Form(
+        default=None,
+        description='가비 추천 카드 id("이 문제로 쓰기"). 파일 없이 보내면 서버가 그 카드의 사진을 쓴다. 파일도 같이 오면 파일(source 2)로 처리하고 rec_id 는 버린다',
+    ),
     zoom: int = Form(..., description="확대 배율 4·6·8·16·32"),
     box_x: float = Form(..., ge=0, le=1, description="확대 창 가운데 가로 위치 0~1"),
     box_y: float = Form(..., ge=0, le=1, description="확대 창 가운데 세로 위치 0~1"),
@@ -130,8 +139,9 @@ def create_photo(
     group_id: str = Depends(current_group_id),
     db: Session = Depends(get_db),
 ) -> PlayItemOut:
-    """찰칵! 탐정단 문제를 낸다(사진 + 확대 위치 + 선택식 보기)."""
-    data = file.file.read(media.PHOTO_MAX_BYTES + 1)
+    """찰칵! 탐정단 문제를 낸다(사진 + 확대 위치 + 선택식 보기). 가비 추천 카드로 낼 때는 `rec_id` 만 보내고 질문·보기·정답·확대는 낸 사람이 고친 값을 쓴다.
+    오류: 404 `rec_not_found`, 409 `photo_not_available`(사진을 더는 쓸 수 없음), 409 `rec_already_sent`(같은 가족이 14일 안에 보냄)."""
+    data = file.file.read(media.PHOTO_MAX_BYTES + 1) if file is not None else None
     return service.create_photo(
         db,
         user,
@@ -146,6 +156,7 @@ def create_photo(
         answer_index=answer_index,
         comment=comment,
         player_ids=player_ids,
+        rec_id=rec_id,
     )
 
 

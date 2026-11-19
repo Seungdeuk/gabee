@@ -24,7 +24,7 @@
 | `GET /play/photo/recommendations` | 탐정단 가비 추천 `{state, items}`(카드 3개). 아래 "찰칵! 탐정단 가비 추천" 참고 |
 | `GET /play/photo/recommendations/{id}/image` | 추천 카드 사진(JPEG). 흔한 사진은 로그인한 구성원 누구나, 가족 사진은 그 가족 구성원만(다른 가족·첨부 없음은 404) |
 | `POST /play/draws` | 이게 뭐게 내기 (multipart: `file` PNG ≤2MB, `answer`, `alt_answers`, `hint2`, `player_ids`) |
-| `POST /play/photos` | 탐정단 내기 (multipart: `file` JPEG/PNG/WebP ≤8MB, `source`, `zoom`, `box_x`, `box_y`, `question`, `options`, `answer_index`, `comment`, `player_ids`) |
+| `POST /play/photos` | 탐정단 내기 (multipart: `file` JPEG/PNG/WebP ≤8MB(선택), `rec_id`(선택), `source`, `zoom`, `box_x`, `box_y`, `question`, `options`, `answer_index`, `comment`, `player_ids`). `file` 과 `rec_id` 중 하나는 있어야 한다(둘 다 없으면 400). 가비 추천 전송 규칙은 "찰칵! 탐정단 가비 추천" 참고 |
 | `GET /play/board` | 받은(할 차례·참여했어요·지난 결과 3일)과 보낸(내가 낸 문제·지난 결과) |
 | `GET /play/items/{id}` | 문제 한 건 |
 | `GET /play/items/{id}/image` | 그림(PNG) 또는 사진(JPEG). 로그인 필요, 같은 가족만 |
@@ -95,6 +95,9 @@
 - 후보와 14일 제외: 가족 전체방 사진 중 "일반 사진으로 확인"된 것만 쓰고, 이 가족이 최근 14일 안에 추천으로 보낸 사진(흔한 사진 포함)과 쓸 수 없는 행은 뺀다.
 - 한도·AI 동의: AI 는 내용 질문에만 쓰고 한 번 열 때 한 묶음(`ai_guard.run`, 기능 `play_photo_rec`, 쿨다운 5초·사용자 하루 3번·가족 하루 5번, 설정 `ai_play_photo_rec_*`)이다. 동의가 꺼졌거나 한도·쿨다운·다른 호출 중이어도 AI 없는 카드(일정·월·흔한 사진)는 그대로 나온다. 동의를 끄면 그 가족의 내용 질문 행은 지워진다.
 - 이미지: 가족 사진 행은 채팅 사진 원본을 `media.make_photo_jpeg` 로 줄여 돌려주고, 저장된 `image` 바이트가 있는 행(흔한 사진)은 그대로 돌려준다. 다른 가족의 가족 행·없는 행·사라진 첨부는 404.
+
+- 보내기("이 문제로 쓰기"): `POST /play/photos` 에 `rec_id` 만 보내면(파일 없이) 서버가 그 추천 행의 사진(가족 행은 채팅 사진 원본, 흔한 행은 저장된 `image`)으로 문제를 만들고 `play_photos.rec_id` 를 채운다. `source` 는 행 기준으로 서버가 정한다(가족 행 1·흔한 행 3, 요청 값은 무시). 질문·보기·정답·확대 위치·배율·한마디는 요청 값(출제자가 고친 값)을 쓴다. 파일도 같이 오면 파일과 `source` 2 로 처리하고 `rec_id` 는 버린다. 파일·`rec_id` 가 모두 없으면 400 `invalid_input`, 파일만 보낼 때 `source` 는 기존대로 1·2 만 된다.
+- 보낼 때의 서버 확인과 오류: 404 `rec_not_found`(없는 행·다른 가족의 가족 행), 409 `photo_not_available`(가족 행인데 첨부가 사라졌거나 파일이 없음·`usable` 거짓·사진 판별 상태가 일반 사진(`photo`)이 아님(업로더가 타임라인에서 뺌 포함)·다른 가족 첨부), 409 `rec_already_sent`(같은 가족이 14일 안에 같은 `rec_id` 로 이미 보냄, 흔한 행도 같다). 문제 내기 점수·하루 3건 한도·받는 사람 처리는 직접 내기와 같고 흔한 사진 문제도 점수를 받는다. 같은 추천을 동시에 두 번 보내면 추천 행을 `SELECT ... FOR UPDATE` 로 잠가 한쪽만 통과한다(PostgreSQL. SQLite 는 잠금이 없어 시험 환경에서는 보장하지 않는다).
 
 ### 이게 뭐게
 

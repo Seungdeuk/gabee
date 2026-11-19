@@ -13,6 +13,7 @@ from app.features.family_chat import photo_check_repository as checks
 from app.features.family_chat.models import MessageAttachment
 from app.features.family_chat.photo_service import attachment_files
 from app.features.family_group.models import User
+from app.features.play import media
 from app.features.play import photo_rec as rec
 from app.features.play import photo_rec_store as store
 from app.features.play.models import GAME_PHOTO, PlayItem, PlayPhoto, PlayPhotoRec
@@ -471,3 +472,133 @@ def test_rec_image_access(client, family, other_family):
         files = attachment_files(att)
     files[0].unlink()
     assert client.get(f"/play/photo/recommendations/{album}/image", headers=a).status_code == 404
+
+
+# ---------- "이 문제로 쓰기" 전송 ----------
+SEND = {
+    "zoom": 8,
+    "box_x": 0.3,
+    "box_y": 0.7,
+    "question": "고쳐 쓴 질문",
+    "options": ["3월", "4월"],
+    "answer_index": 1,
+}
+
+
+def _send(client, headers, rec_id=None, file=False, **over):
+    data = {**SEND, **over}
+    if rec_id is not None:
+        data["rec_id"] = rec_id
+    files = {"file": ("p.jpg", _jpeg(), "image/jpeg")} if file else None
+    return client.post("/play/photos", data=data, files=files, headers=headers)
+
+
+def _photo_row(item_id):
+    with SessionLocal() as db:
+        return db.get(PlayPhoto, item_id)
+
+
+def test_send_with_rec_id_copies_image(client, family):
+    a, _, _ = family
+    album = _album_row(client, a)
+    r = _send(client, a, album)
+    assert r.status_code == 201, r.text
+    row = _photo_row(r.json()["id"])
+    assert (row.rec_id, row.source) == (album, 1)
+    assert (row.question, row.zoom, row.box_x, row.answer) == ("고쳐 쓴 질문", 8, 0.3, "01")
+    with SessionLocal() as db:
+        att = db.get(MessageAttachment, db.get(PlayPhotoRec, album).attachment_id)
+        orig = attachment_files(att)[0].read_bytes()
+    assert media.read(row.image_path) == media.make_photo_jpeg(orig)  # 같은 원본에서 만든다
+    # 공통 행은 source=3
+    seed = _seed(1)[0]
+    r = _send(client, a, seed, source=2)  # 요청의 source 는 무시된다
+    assert r.status_code == 201, r.text
+    row = _photo_row(r.json()["id"])
+    assert (row.rec_id, row.source) == (seed, 3)
+
+
+def test_send_blocked_when_photo_excluded(client, family):
+    a, _, _ = family
+    album = _album_row(client, a)
+    gid, me = _ids(client, a)
+    with SessionLocal() as db:
+        att = db.get(PlayPhotoRec, album).attachment_id
+        assert checks.exclude_photo(db, gid, att, me) == "excluded"
+    r = _send(client, a, album)
+    assert r.status_code == 409 and r.json()["code"] == "photo_not_available"
+
+
+def test_send_blocked_when_row_unusable_or_attachment_gone(client, family):
+    a, _, _ = family
+    album = _album_row(client, a)
+    with SessionLocal() as db:
+        db.get(PlayPhotoRec, album).usable = False
+        db.commit()
+    assert _send(client, a, album).json()["code"] == "photo_not_available"
+    with SessionLocal() as db:
+        db.get(PlayPhotoRec, album).usable = True
+        db.commit()
+        files = attachment_files(
+            db.get(MessageAttachment, db.get(PlayPhotoRec, album).attachment_id)
+        )
+    files[0].unlink()
+    r = _send(client, a, album)
+    assert r.status_code == 409 and r.json()["code"] == "photo_not_available"
+
+
+def test_send_blocked_when_recently_sent(client, family):
+    a, _, _ = family
+    gid, me = _ids(client, a)
+    album = _album_row(client, a)
+    seed = _seed(1)[0]
+    _send_rec(gid, me, album, days_ago=13)
+    _send_rec(gid, me, seed, days_ago=13)
+    for rid in (album, seed):
+        r = _send(client, a, rid)
+        assert r.status_code == 409 and r.json()["code"] == "rec_already_sent"
+    other = _album_row(client, a)
+    _send_rec(gid, me, other, days_ago=15)
+    assert _send(client, a, other).status_code == 201
+
+
+def test_send_twice_second_is_409(client, family):
+    a, _, _ = family
+    album = _album_row(client, a)
+    assert _send(client, a, album).status_code == 201
+    r = _send(client, a, album)
+    assert r.status_code == 409 and r.json()["code"] == "rec_already_sent"
+
+
+def test_send_rec_of_other_family_404(client, family, other_family):
+    a, _, _ = family
+    album = _album_row(client, a)
+    r = _send(client, other_family, album)
+    assert r.status_code == 404 and r.json()["code"] == "rec_not_found"
+    r = _send(client, a, "nope")
+    assert r.status_code == 404 and r.json()["code"] == "rec_not_found"
+
+
+def test_send_without_file_or_rec_id_400(client, family):
+    a, _, _ = family
+    assert _send(client, a, source=2).status_code == 400
+    assert _send(client, a).status_code == 400
+
+
+def test_send_with_both_rec_id_and_file_uses_file(client, family):
+    a, _, _ = family
+    album = _album_row(client, a)
+    r = _send(client, a, album, file=True, source=1)
+    assert r.status_code == 201, r.text
+    row = _photo_row(r.json()["id"])
+    assert (row.rec_id, row.source) == (None, 2)
+
+
+def test_send_file_upload_unchanged(client, family):
+    a, _, _ = family
+    for src in (1, 2):
+        r = _send(client, a, file=True, source=src)
+        assert r.status_code == 201, r.text
+        assert _photo_row(r.json()["id"]).source == src
+    assert _send(client, a, file=True, source=3).status_code == 400
+    assert _send(client, a, file=True).status_code == 400  # source 없음

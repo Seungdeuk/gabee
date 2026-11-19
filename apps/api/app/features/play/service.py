@@ -13,13 +13,17 @@
 
 from datetime import UTC, datetime, timedelta
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.features.family_chat import photo_check_repository
+from app.features.family_chat.models import MessageAttachment
+from app.features.family_chat.photo_service import attachment_files
 from app.features.family_group import repository as group_repo
 from app.features.family_group.models import User
 from app.shared.errors import ApiError, bad_request, not_found
 
-from . import media, repository
+from . import media, photo_rec_store, repository
 from .constants import (
     CLOSE_HOURS,
     DAILY_MAKE_LIMIT,
@@ -51,6 +55,7 @@ from .models import (
     PlayDraw,
     PlayItem,
     PlayPhoto,
+    PlayPhotoRec,
     PlayQuiz,
     PlayScore,
 )
@@ -327,13 +332,42 @@ def create_draw(
     return item_out(db, item, user, members, _now())
 
 
+def _rec_photo(db: Session, group_id: str, rec_id: str) -> tuple[bytes, int]:
+    """가비 추천 카드로 보낼 때의 (사진 바이트, source). 없거나 다른 가족의 가족 행이면 404, 사진을 더는 쓸 수 없으면 409."""
+    row = db.scalar(select(PlayPhotoRec).where(PlayPhotoRec.id == rec_id).with_for_update())
+    if row is None or (row.group_id is not None and row.group_id != group_id):
+        raise ApiError(404, "rec_not_found", "추천 카드를 찾을 수 없어요")
+    if rec_id in photo_rec_store.sent_rec_ids(db, group_id, _now()):
+        raise ApiError(409, "rec_already_sent", "이미 이 추천으로 문제를 냈어요")
+    unavailable = ApiError(409, "photo_not_available", "이 사진은 지금 쓸 수 없어요")
+    if row.attachment_id is None:  # 흔한 사진
+        if row.group_id is not None or row.image is None or not row.usable:
+            raise unavailable
+        return row.image, photo_rec_store.SOURCE_SEED
+    att = db.get(MessageAttachment, row.attachment_id)
+    if (
+        not row.usable
+        or att is None
+        or att.group_id != group_id
+        or att.id not in photo_check_repository.confirmed_photo_ids(db, group_id, [att.id])
+    ):
+        raise unavailable
+    files = attachment_files(att)
+    if files is None or not files[0].is_file():
+        raise unavailable
+    try:
+        return files[0].read_bytes(), photo_rec_store.SOURCE_ALBUM
+    except OSError:
+        raise unavailable from None
+
+
 def create_photo(
     db: Session,
     user: User,
     group_id: str,
     *,
-    data: bytes,
-    source: int,
+    data: bytes | None,
+    source: int | None,
     zoom: int,
     box_x: float,
     box_y: float,
@@ -342,9 +376,16 @@ def create_photo(
     answer_index: int,
     comment: str | None,
     player_ids: list[str],
+    rec_id: str | None = None,
 ) -> PlayItemOut:
-    if source not in (1, 2):
-        raise bad_request("invalid_input", "사진 출처는 1(가족 앨범) 또는 2(내 폰)예요")
+    rec_id = (rec_id or "").strip() or None
+    if data is not None:  # 파일이 오면 파일이 이긴다(rec_id 는 버리고 내 폰 사진으로 처리)
+        if rec_id is not None:
+            rec_id, source = None, 2
+        elif source not in (1, 2):
+            raise bad_request("invalid_input", "사진 출처는 1(가족 앨범) 또는 2(내 폰)예요")
+    elif rec_id is None:
+        raise bad_request("invalid_input", "사진 파일이나 추천 카드(rec_id)가 필요해요")
     if zoom not in PHOTO_ZOOMS:
         raise bad_request(
             "invalid_input", f"확대 배율은 {', '.join(map(str, PHOTO_ZOOMS))} 중 하나예요"
@@ -360,8 +401,11 @@ def create_photo(
     if not 0 <= answer_index < len(opts):
         raise bad_request("invalid_input", "정답 보기가 보기 개수를 넘었어요")
     comment_text = _clean_text(comment, PHOTO_COMMENT_MAX, "한마디", required=False)
-    jpeg = media.make_photo_jpeg(data)
+    if rec_id is not None:
+        # 추천 행을 잠근 채로(PostgreSQL) 14일 안에 보냈는지 확인하고 이 요청이 끝날 때(커밋)까지 놓지 않는다 -> 같은 추천 동시 전송은 한쪽만 통과
+        data, source = _rec_photo(db, group_id, rec_id)
     members, ids = _prepare(db, user, group_id, player_ids)
+    jpeg = media.make_photo_jpeg(data)
     item = _new_item(user, group_id, GAME_PHOTO, ids)
     repository.add(db, item)
     path = media.photo_path(group_id, item.id)
@@ -378,6 +422,7 @@ def create_photo(
             options=opts,
             answer=_bits(opts, answer_index),
             comment=comment_text,
+            rec_id=rec_id,
         ),
     )
     _save_file_and_commit(db, path, jpeg)
