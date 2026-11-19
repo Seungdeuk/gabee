@@ -124,3 +124,42 @@ def photo_context(db: Session, attachment_id: str) -> PhotoContext | None:
         room_kind=row.room_kind,
         check_status=row.status,
     )
+
+
+@dataclass(frozen=True)
+class PhotoRow:
+    attachment_id: str
+    group_id: str
+    uploader_id: str
+    taken_at: datetime | None
+    uploaded_at: datetime
+    batch_id: str | None
+
+
+def group_photo_rows(db: Session, group_id: str) -> list[PhotoRow]:
+    """한 가족의 가족 전체방 사진 후보(살아 있는 메시지의 이미지, 1:1 방 제외) — 자격은 여기서 판정하지 않는다(부르는 쪽이 `check_photo` 로 거른다). 읽기 전용, id 순."""
+    if not chat_tables_ready(db):
+        return []
+    t = Base.metadata.tables
+    att, msg, room = t["message_attachments"], t["messages"], t["chat_rooms"]
+    rows = db.execute(
+        select(
+            att.c.id,
+            att.c.group_id,
+            msg.c.user_id,
+            att.c.taken_at,
+            att.c.created_at,
+            att.c.batch_id,
+        )
+        .select_from(
+            att.join(msg, msg.c.id == att.c.message_id).join(room, room.c.id == att.c.room_id)
+        )
+        .where(
+            att.c.group_id == group_id,
+            att.c.kind == "image",
+            msg.c.deleted_at.is_(None),
+            room.c.kind == "family",
+        )
+        .order_by(att.c.id)
+    ).all()
+    return [PhotoRow(r[0], r[1], r[2], r[3], r[4], r[5]) for r in rows]

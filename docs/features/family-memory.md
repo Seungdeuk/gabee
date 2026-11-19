@@ -46,6 +46,21 @@ PR4 연동 지점: 사진이 일반 사진으로 확인되고 자격이 있을 �
 | 성능(실측, RTX 3050 6GB, 합성 640px 이미지 20장, 단일 이미지) | GPU fp32 25.7ms/장·GPU 메모리 약 1.5GB·로드 27초(첫 로드, 이후 7초) · GPU fp16 18.9ms/장·약 0.8GB · CPU 166ms/장·RSS 약 2.2GB. 같은 입력은 완전히 같은 벡터(차이 0). `scripts/siglip2_smoke.py` 로 재현 |
 
 연결 지점(PR5): 자격이 있는 사진에서 `job_service.enqueue(db, att, analysis.KIND_EMBEDDING)` 를 부르는 곳(자동 등록·소급 분석 동의 처리는 PR4 에 없다), 임베딩 검색·군집화·카드(`photo_embeddings` 읽기), pgvector 인덱스가 필요해지면 별도 리비전. 의존성: `torch`·`transformers` 는 API `pyproject.toml` 에 넣지 않았다(워커 환경에만 필요, 추가는 별도 승인).
+## 추억 후보 그룹화 (PR5, 2026-11-19)
+**가족 사진을 묶어 추억 후보와 대표 사진을 계산하는 최소 알고리즘이다. 저장·공개·자동 게시·카드 DB/API·앱 화면은 없다**(요청할 때마다 계산하므로 철회·삭제·제외가 바로 반영된다). DB 변경 없음. 외부 AI·새 모델 없음(입력 임베딩은 PR4 의 SigLIP2 768차원 인터페이스를 쓰되 이 PR 은 주입된 값만 받는다).
+
+| 모듈 | 내용 |
+|---|---|
+| `grouping.py`(순수) | `group_photos(photos, config) -> list[MemoryCandidate]`. DB·파일·모델 없음, 입력 순서와 무관하게 같은 결과(결정적) |
+| `quality.py` | 사진 한 장의 선명도·노출·내용 해시(sha256)·dHash(서버 안에서만, 숫자·해시뿐) |
+| `discovery.py` | `discover(db, group_id, embeddings, stats)`: 가족 전체방 사진을 읽어 **PR1 `check_photo` 를 통과한 사진만** 그룹화에 넘긴다(자격 없는 사진은 이유 코드별 개수만). 읽기 전용 |
+
+알고리즘 `memgrp-1`: ① 가족별로 따로 처리 ② 날짜 있는 사진을 촬영 시각순으로 훑으며 간격이 8시간을 넘거나(30분을 넘고 그룹 중심과 코사인 0.70 미만) 새 그룹 ③ 간격 36시간 이내이고 중심 유사도 0.85 이상이면 다일 이벤트로 이음(다른 연도는 절대 안 이어짐) ④ **날짜 없는 사진은 같은 batch_id 의 날짜 있는 사진이 모두 한 그룹에 있고 이미지가 0.80 이상 비슷할 때만** 붙임 ⑤ 중복(같은 해시·dHash 해밍 ≤4·임베딩 0.985)은 한 덩어리로 묶고 가장 좋은 한 장만 남김(원본은 지우지 않음) ⑥ 중복을 뺀 고유 사진이 3장 미만이면 후보 없음 ⑦ 대표 사진은 화질·노출·그룹 중심 대표성 점수(중복 많은 장면은 감점) + MMR 다양성으로 최대 3장.
+
+- **근거 원칙:** 업로드 시각을 촬영 시각으로 쓰지 않는다(시간 근거는 `taken_at` 뿐, 없으면 시간만으로 그룹을 만들지 않음). `batch_id` 는 같이 올렸다는 근거일 뿐 사건 확증이 아니다(날짜 있는 사진을 묶지 않음). 장소·인물·관계·감정은 추론하지 않고 출력에도 없다.
+- **출력 `MemoryCandidate`:** `candidate_id`(가족+포함 사진으로 정해지는 결정적 값)·`group_id`·`attachment_ids`·`representative_id`·`representative_ids`·`duplicates`·`time_evidence`(basis·start·end·dated_count·batch_attached_count·bridged)·`score`(0~1, 우선순위용)·`algorithm_version`.
+- **합성 평가(`scripts/grouping_synthetic_eval.py`, 60개 합성 타임라인):** 정답은 합성 이벤트 번호라 **실제 가족 정확도가 아니다**. 이미지 잡음 0.5 에서 pair precision 1.00·recall 0.935·이벤트 복원 0.99, 잡음 0.8(같은 장면 유사도가 낮음)에서 recall 0.70·복원 0.80, 다른 이벤트를 섞은 그룹 0%. 이음 단계를 끄면 recall 0.57 로 떨어져 다일 이벤트 이음이 필요함을 확인. 가중치·임계값은 정답이 아니라 초기값이다.
+- **PR6 데이터 계약:** `discovery.discover(db, group_id, embeddings=..., stats=...)` 에 PR4 `photo_embeddings` 읽기 함수(`attachment_id -> 벡터|None`)와 `quality.image_stats(사진 파일 바이트)` 읽기 함수를 연결하고, 결과(`DiscoveryResult.candidates`)를 카드로 저장·공개할지는 PR6 에서 정한다.
 
 ## 지키는 것
 - `ai_group_settings`(대화 분석 동의)와 `chat_photo_checks`(사진 판별 상태, D-13)를 읽거나 쓰지 않는다(자격 판정은 판별 상태를 읽기만 한다).
@@ -60,4 +75,5 @@ PR4 연동 지점: 사진이 일반 사진으로 확인되고 자격이 있을 �
 
 ## 시험
 `apps/api/app/features/family_memory/tests/test_memory_jobs.py`(작업 큐: 등록 자격·중복·1:1 제외, 선점·임대 복구·재시작 복구·상한, backoff, 자격 재확인 4지점, 철회·나가기·끄기·제외·삭제 차단, 가족 격리, 워커·로그) 와 `tests/test_family_memory_pg_e2e.py`(PG16: 기본값·UNIQUE·CASCADE, 6 워커 동시 선점, 잠긴 줄 건너뛰기, 철회 차단).
+`apps/api/app/features/family_memory/tests/test_grouping.py`(순수: 같은 시점·다른 날짜/연도·같은 날 다른 이벤트·연사, batch_id 경계, 촬영 시각 누락, 중복, 대표 사진 결정성·다양성, 가족 격리, 빈 결과, 입력 순서 불변, 잘못된 임베딩, 화질·해시)와 `test_discovery.py`(DB: 자격·미동의·철회·제외·삭제·서버/가족 끄기·1:1·문서·미확인·가족 격리·읽기 전용).
 `apps/api/app/features/family_memory/tests/test_family_memory.py` — 기본 꺼짐, 서버 스위치, owner/admin/member 권한, 가족 간 격리, 동의·철회 멱등, 소급 동의 분리, 사진별 제외(본인만), 자격 판정 표, D-13·`ai_group_settings` 불변, 훅 실패 롤백, 가족 나가기·사진 삭제·가족 삭제 정리, 로그.
