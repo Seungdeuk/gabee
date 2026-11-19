@@ -93,7 +93,7 @@ def analyze(det_fn, rows):
             protected = blocked or covered_all
             prot[(kind, "protected" if protected else "exposed")] += 1
             if kind == "ACCOUNT":
-                prot[("ACCOUNT", "blocked" if blocked else ("value_masked" if covered_all else "exposed"))] += 1
+                prot[("ACCOUNT_policy", "blocked" if blocked else ("value_masked" if covered_all else "exposed"))] += 1
             entry = {"kind": kind, "span": (a, b), "exact": exact, "protected": protected}
             if kind == "PERSON":
                 pc = set()
@@ -130,7 +130,8 @@ def summarize(rows, parts):
     mask_n = sum(prot[(k, "protected")] + prot[(k, "exposed")] for k in mask_kinds)
     all_prot = sum(prot[(k, "protected")] for k in KINDS)
     all_n = sum(prot[(k, "protected")] + prot[(k, "exposed")] for k in KINDS)
-    acc = {s: prot[("ACCOUNT", s)] for s in ("blocked", "value_masked", "exposed")}
+    acc = {s: prot[("ACCOUNT_policy", s)] for s in ("blocked", "value_masked", "exposed")}
+    assert sum(acc.values()) == prot[("ACCOUNT", "protected")] + prot[("ACCOUNT", "exposed")]
     out = {
         "person_family": {
             "n_gold_spans": n_person, "exact": person,
