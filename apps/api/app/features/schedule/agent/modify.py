@@ -1,8 +1,9 @@
 """에이전트 수정·삭제. 모델이 고른 대상 일정과 바뀔 값을 코드가 검증해 확인 카드로 보여 주고, 사용자가 확인하면
 처음부터 다시 검증해서 실행한다(`service.update`·`service.remove`).
 
-- 대상은 모델이 일정 목록의 id 만 고른다. 같은 이름이 여럿이면 모델이 지금과 가장 가까운 하나를 고르고, 확인 카드에 날짜가
-  보이니 틀리면 사용자가 취소한다. 목록에 없는 id 는 버린다.
+- 대상은 모델이 일정 목록의 id 만 고른다. 삭제는 같은 이름이 여럿이면 지금과 가장 가까운 하나를 고르고, 확인 카드에 날짜가
+  보이니 틀리면 사용자가 취소한다. 수정은 공유 대상을 바꾸지 않으면 카드 없이 바로 처리하므로, 하나를 가릴 수 없으면
+  대상을 비워 되묻는다. 목록에 없는 id 는 버린다.
 - 내 줄만 고치고 지운다(`service.owns`). 복사본은 독립이라 원본을 고치거나 지워도 공유받은 사람의 일정은 그대로다.
 - 공유 대상은 원본 주인만 바꾼다(가족 구성원만). 공유받은 일정과 부탁을 수락해 생긴 일정은 거부하고, 공유받은 사람에게는
   누구에게 공유됐는지도 알려 주지 않는다(`share_targets_for_prompt`). 사람을 빼면 그 사람의 복사본이 지워진다(`service.update`).
@@ -46,6 +47,7 @@ NOT_FOUND_TEXT = "어떤 일정인지 찾지 못했어요. 일정 이름이나 �
 NOT_OWNER_EDIT = "내 일정만 고칠 수 있어요"
 NOT_OWNER_DELETE = "내 일정만 지울 수 있어요"
 NOTHING_TEXT = "바꿀 내용을 찾지 못했어요. 무엇을 어떻게 바꿀지 알려 주세요"
+UNDO_HINT = " 되돌리려면 말씀해 주세요."
 NOT_SHARE_OWNER = "공유 대상은 일정을 처음 만든 분만 바꿀 수 있어요"
 SHARE_PERSONAL_ONLY = "공유 대상은 개인 채팅에서만 바꿀 수 있어요"
 
@@ -188,7 +190,12 @@ def respond_edit(
     now: date,
     members: list[Member] | None = None,
     channel: str = "personal",
+    db: Session | None = None,
+    group_id: str | None = None,
 ) -> AgentResponse:
+    """공유 대상을 바꾸지 않는 수정(제목·날짜·시간·장소·메모)은 카드 없이 바로 처리한다.
+    공유 대상 변경은 받은 사람의 일정이 사라질 수 있어 확인 카드를 거친다(#11 은 이 부분이 남아 있다).
+    db 를 주지 않으면(순수 계산 호출) 항상 카드만 만든다."""
     event = events.get(target_id)
     if event is None:
         return AgentResponse(intent="edit", text=NOT_FOUND_TEXT)
@@ -225,6 +232,12 @@ def respond_edit(
             text += f" {', '.join(removed)}님은 공유에서 빠지고, 받은 일정도 같이 사라져요."
     if not lines:
         return AgentResponse(intent="edit", text=NOTHING_TEXT)
+    if share_new is None and db is not None and group_id:
+        done = confirm_edit(
+            db, user_id, group_id, PendingAction(type="edit", event_id=event.id, changes=update)
+        )
+        done.text += UNDO_HINT
+        return done
     card = Card(type="edit_confirm", data={"event": reader.brief(event), "changes": lines})
     return AgentResponse(
         intent="edit",

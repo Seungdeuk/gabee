@@ -176,6 +176,14 @@ def answer(db: Session, group_id: str, user_id: str, request_id: str, body: Requ
     return _outs(db, [req], user_id)[0]
 
 
+FROM_TOGETHER_NOTE = "함께하기에서 등록된 일정입니다."
+
+
+def _accepted_memo(memo: str) -> str:
+    """수락해서 생기는 일정의 메모: 부탁의 메모를 그대로 두고 줄바꿈 한 번 뒤에 안내 한 줄을 붙인다(부탁 메모가 없으면 이 한 줄만)."""
+    return f"{memo}\n{FROM_TOGETHER_NOTE}" if memo else FROM_TOGETHER_NOTE
+
+
 def _event_from(req: EventRequest, recip: EventRequestRecipient, user_id: str, kind: int) -> Event:
     """부탁 그대로 받는 사람의 일정 한 줄을 만든다. 종일 부탁을 할 일로 받으면 시간은 비운다."""
     start, end = req.start_time, req.end_time
@@ -189,8 +197,8 @@ def _event_from(req: EventRequest, recip: EventRequestRecipient, user_id: str, k
         created_by=user_id,
         title=req.title,
         starts_at=starts_at.astimezone(UTC),
-        note=req.memo,
-        memo=req.memo,
+        note=_accepted_memo(req.memo),
+        memo=_accepted_memo(req.memo),
         status="confirmed",
         source="request",
         kind=kind,
@@ -226,6 +234,18 @@ def _owned_request(db: Session, group_id: str, user_id: str, request_id: str) ->
     if req.user_id != user_id:
         raise ApiError(403, "not_owner", "내가 보낸 부탁만 바꿀 수 있어요")
     return req
+
+
+def change_memo(db: Session, group_id: str, user_id: str, request_id: str, memo: str) -> dict:
+    """보낸 사람이 부탁의 메모만 고친다(수락 여부와 상관없이). 이미 수락한 사람의 일정은 독립이라 바뀌지 않고, 고친 뒤에 수락하면
+    고친 메모가 새 일정의 메모에 들어간다. 제목·날짜·시간·장소는 못 바꾼다."""
+    req = _owned_request(db, group_id, user_id, request_id)
+    if req.canceled_at is not None:
+        raise bad_request("request_canceled", "취소된 부탁이에요")
+    req.memo = memo
+    req.edited_at = datetime.now(UTC)
+    db.commit()
+    return _outs(db, [req], user_id)[0]
 
 
 def change_recipients(

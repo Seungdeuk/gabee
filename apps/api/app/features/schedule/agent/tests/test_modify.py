@@ -170,23 +170,10 @@ def test_edit_shows_before_and_after_then_applies(client, setup, fake):
     e = _new(client, a, place="강남")
     fake.data = _data("edit", e["id"], start_time="16:00", place="서초")
     body = _say(client, a, "치과 4시로 장소는 서초로 바꿔줘").json()
-    assert body["intent"] == "edit" and body["text"].endswith("'치과' 일정을 이렇게 바꿀까요?")
-    card = body["cards"][0]
-    assert card["type"] == "edit_confirm" and card["data"]["event"]["title"] == "치과"
-    by_label = {c["label"]: c for c in card["data"]["changes"]}
-    assert by_label["시간"] == {"label": "시간", "before": "14:00~15:00", "after": "16:00~17:00"}
-    assert by_label["장소"] == {"label": "장소", "before": "강남", "after": "서초"}
-    assert "날짜" not in by_label  # 바뀌지 않는 항목은 보이지 않는다
-    assert body["pending_action"]["changes"] == {
-        "start_time": "16:00",
-        "end_time": "17:00",  # 시작만 말하면 원래 길이(1시간)를 유지한다
-        "place": "서초",
-    }
-    assert _events(client, a)[0]["start_time"] == "14:00:00"  # 확인 전에는 바꾸지 않는다
-
-    r = _confirm(client, a, body["pending_action"])
-    assert r.status_code == 200, r.text
-    assert r.json()["text"].endswith("'치과' 일정을 바꿨어요.")
+    # 공유 대상을 바꾸지 않는 수정은 카드 없이 바로 처리하고 되돌리기를 안내한다
+    assert body["intent"] == "edit" and body["pending_action"] is None
+    assert body["text"].endswith("'치과' 일정을 바꿨어요." + modify.UNDO_HINT)
+    assert body["cards"][0]["type"] == "event_list"
     saved = _events(client, a)[0]
     assert (saved["start_time"], saved["end_time"], saved["place"]) == (
         "16:00:00",
@@ -201,14 +188,23 @@ def test_edit_title_date_and_clear_time(client, setup, fake):
     e = _new(client, a)
     fake.data = _data("edit", e["id"], title="치과 검진", date=_day(5), clear=["time", "bogus"])
     body = _say(client, a, "치과 이름과 날짜 바꾸고 시간은 없애줘").json()
-    by_label = {c["label"]: c for c in body["cards"][0]["data"]["changes"]}
-    assert by_label["제목"]["after"] == "치과 검진"
-    assert by_label["시간"] == {"label": "시간", "before": "14:00~15:00", "after": "시간 없음"}
-    assert by_label["날짜"]["before"] != by_label["날짜"]["after"]
-    assert _confirm(client, a, body["pending_action"]).status_code == 200
+    assert body["pending_action"] is None and "바꿨어요" in body["text"]
     saved = _events(client, a)[0]
     assert saved["title"] == "치과 검진" and saved["start_date"] == _day(5)
     assert saved["start_time"] is None and saved["end_time"] is None
+
+
+def test_edit_memo_only_applies_immediately_and_can_clear(client, setup, fake):
+    a, _, _, _, _ = setup
+    e = _new(client, a, memo="보험증 챙기기")
+    fake.data = _data("edit", e["id"], memo="보험증과 카드 챙기기")
+    body = _say(client, a, "치과 메모를 보험증과 카드 챙기기로 바꿔줘").json()
+    assert body["pending_action"] is None and "바꿨어요" in body["text"]
+    assert _events(client, a)[0]["memo"] == "보험증과 카드 챙기기"
+    fake.data = _data("edit", e["id"], clear=["memo"])
+    body = _say(client, a, "치과 메모 지워줘").json()
+    assert body["pending_action"] is None and "바꿨어요" in body["text"]
+    assert not _events(client, a)[0]["memo"]
 
 
 def test_edit_with_nothing_to_change_or_bad_time(client, setup, fake):
@@ -267,8 +263,7 @@ def test_personal_info_in_edit_is_masked_out_and_restored(client, setup, fake):
     fake.fn = answer
     body = _say(client, a, "치과 이름을 치과 010-1234-5678 로 바꿔줘").json()
     assert "1234-5678" not in fake.calls[0]["prompt"]
-    assert body["pending_action"]["changes"]["title"] == "치과 010-1234-5678"
-    assert _confirm(client, a, body["pending_action"]).status_code == 200
+    assert body["pending_action"] is None and "바꿨어요" in body["text"]
     assert _events(client, a)[0]["title"] == "치과 010-1234-5678"
 
 
