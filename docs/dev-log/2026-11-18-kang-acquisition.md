@@ -9,7 +9,7 @@
 - 관리자: 데이터 분석 탭 "유입 경로" 표(경로별 가입·비율·가족 연결 비율). 기록 없는 가입자는 "알 수 없음". 표가 없는 DB 에서는 이 구역만 "준비 중"(`schema_status.feature_ready("acquisition")`).
 - 앱: `expo-application` 의 `getInstallReferrerAsync()`(안드로이드 전용)로 꼬리표를 읽어 utm 세 값만 로그인 뒤 한 번 보낸다(`features/acquisition/AcquisitionBootstrap.js`, `_layout.js` 의 PushBootstrap 옆).
   - `expo-application` 7.0.8 은 이미 lock 에 있었다(`expo-auth-session`·`expo-notifications` 가 씀). `package.json` 에 직접 등록만 했다.
-  - 실패(플레이 스토어 없음, 서버 준비 전)하면 조용히 넘기고 다음 실행 때 다시 보낸다.
+  - 사용자마다 한 번 확인하면(보냈거나, 꼬리표가 없거나, 플레이 스토어가 꼬리표 기능을 주지 않으면) 다시 묻지 않는다. 플레이 스토어 연결 실패·서버 준비 전(404·503)일 때만 다음 실행 때 다시 시도한다. 처음 버전은 꼬리표 없는 사람에게 앱을 켤 때마다 다시 물어서 고쳤다.
 - 시험: 유입 경로 16개, 서비스 관리자·보안 매트릭스·스키마 검사 통과, 임시 PostgreSQL 에서 upgrade·downgrade·스키마 일치, 임시 서버 + 브라우저로 표 확인, 앱 lint 와 꼬리표 함수 직접 실행.
 - 중간에 바뀐 것:
   - 처음에는 가입 화면에 "어디서 알게 되셨나요?" 선택지를 넣는 안을 생각했다가, 설치 꼬리표를 읽는 방식으로 바꿨다(가입 방법이 세 가지라 로그인 뒤 한 곳에서 보내는 것이 단순).
