@@ -159,6 +159,7 @@ def _attempt(db, now, missing: int, fetch, ask, rng, used: set[str]) -> int:
             tried += 1
             if _try_candidate(db, hit, query, now, fetch, ask, used):
                 added += 1
+                break  # 같은 검색어에서는 하루에 한 장만(빵 3장처럼 소재가 몰리지 않게)
     return added
 
 

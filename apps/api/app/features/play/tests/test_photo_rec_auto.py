@@ -204,7 +204,7 @@ def test_download_or_ai_outage_skips_candidate_without_tombstone(client):
 
 
 def test_bad_tag_candidates_filtered(client):
-    hits = [_hit(1, "woman, pizza"), _hit(2, "snake"), _hit(3, "beer, glass"), _hit(4, "pizza")]
+    hits = [_hit(1, "selfie, pizza"), _hit(2, "snake"), _hit(3, "beer, glass"), _hit(4, "pizza")]
     fetch = FakeFetch(hits)
     _run(fetch)
     assert set(fetch.downloads) == {4}
@@ -336,7 +336,21 @@ def test_pixabay_error_has_no_key():
 
 def test_pixabay_query_list_and_filter():
     assert len(pix.QUERIES) >= 60 and all(len(q) <= 60 for _, q in pix.QUERIES)
-    assert pix.is_clean(_hit(1, "pizza, food")) and not pix.is_clean(_hit(1, "Man, pizza"))
+    queries = {q for _, q in pix.QUERIES}
+    assert not queries & {
+        "balloons",
+        "train",
+        "umbrella",
+        "pencils",
+        "alarm clock",
+        "sushi",
+        "sneakers",
+    }  # 사용자가 뺀 소재
+    assert {"classroom", "bedroom", "cookies", "freesia", "lily", "rose of sharon"} <= queries
+    assert pix.is_clean(_hit(1, "pizza, food")) and not pix.is_clean(_hit(1, "Selfie, pizza"))
+    assert pix.is_clean(
+        _hit(1, "woman, library, book")
+    )  # 사람이 함께 찍혀도 되고 책 태그도 허용(사용자 11/19)
 
 
 # ---- 공개 사진용 AI 질문 ----
@@ -422,3 +436,17 @@ def test_prompt_mentions_rules():
     p = auto_ai.SYSTEM + auto_ai.prompt()
     for word in ("뱀", "국화", "글자", "색"):
         assert word in p
+
+
+def test_one_photo_per_search_query_per_run(client):
+    """같은 검색어에서는 한 번에 한 장만 받는다(같은 소재 3장이 몰리지 않게)."""
+    fetch = FakeFetch([_hit(i) for i in range(1, 30)])
+    result = _run(fetch)
+    assert result.added == 3
+    assert len(fetch.searches) == len(set(fetch.searches)) == 3
+
+
+def test_httpx_request_log_is_silenced_so_key_is_not_logged():
+    import logging
+
+    assert logging.getLogger("httpx").getEffectiveLevel() >= logging.WARNING

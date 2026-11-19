@@ -6,11 +6,15 @@
 """
 
 import io
+import logging
 import re
 import time
 
 import httpx
 from PIL import Image
+
+# httpx 는 요청 주소를 INFO 로 찍는데 Pixabay 요청 주소에는 API 키가 들어 있다. 로그에 키가 남지 않게 올려 둔다
+logging.getLogger("httpx").setLevel(logging.WARNING)
 
 API = "https://pixabay.com/api/"
 LICENSE = "Pixabay Content License"
@@ -20,39 +24,99 @@ SIDE_PX = 1280
 PER_PAGE = 20
 MAX_DOWNLOAD_BYTES = 15 * 1024 * 1024
 
-# (묶음, 검색어). 가족이 흔히 보는 음식·과일·친숙한 동물·쉬운 꽃·일상 풍경·일상 물건만.
+# (묶음, 검색어). 11/19 사용자 검토: 열기구·기차·우산·연필·알람시계·초밥·운동화는 뺐다. 가족이 흔히 보는 음식·과일·친숙한 동물·쉬운 꽃·일상 풍경·일상 물건만.
 QUERIES: list[tuple[str, str]] = [
-    ("food", "hamburger"), ("food", "pizza"), ("food", "jajangmyeon"), ("food", "ramen noodles"),
-    ("food", "fried chicken"), ("food", "kimbap"), ("food", "tteokbokki"), ("food", "bibimbap"),
-    ("food", "sandwich"), ("food", "spaghetti"), ("food", "sushi"), ("food", "cake"),
-    ("food", "ice cream"), ("food", "donuts"), ("food", "french fries"), ("food", "toast"),
-    ("fruit", "apple"), ("fruit", "banana"), ("fruit", "strawberry"), ("fruit", "watermelon"),
-    ("fruit", "grapes"), ("fruit", "tangerine"), ("fruit", "peach"), ("fruit", "cherry tomatoes"),
-    ("fruit", "pineapple"), ("fruit", "kiwi fruit"),
-    ("animal", "puppy"), ("animal", "dog"), ("animal", "cat"), ("animal", "chick"),
-    ("animal", "giraffe"), ("animal", "squirrel"), ("animal", "elephant"), ("animal", "tiger"),
-    ("animal", "monkey"), ("animal", "red panda"), ("animal", "whale"), ("animal", "dolphin"),
-    ("animal", "rabbit"), ("animal", "panda"), ("animal", "penguin"),
-    ("flower", "rose"), ("flower", "tulip"), ("flower", "forsythia"), ("flower", "azalea"),
-    ("flower", "cherry blossom"), ("flower", "sunflower"), ("flower", "dandelion"),
-    ("scene", "park path"), ("scene", "autumn leaves road"), ("scene", "beach sea"),
-    ("scene", "cherry blossom street"), ("scene", "park bench"), ("scene", "playground"),
-    ("scene", "snow park"), ("scene", "tree lined road"),
-    ("item", "coffee cup"), ("item", "cafe interior"), ("item", "classroom"), ("item", "bicycle"),
-    ("item", "bus"), ("item", "train"), ("item", "backpack"), ("item", "umbrella"),
-    ("item", "pencils"), ("item", "alarm clock"), ("item", "sneakers"), ("item", "teddy bear"),
-    ("item", "balloons"), ("item", "bread"),
-]  # fmt: skip
+    ("food", "hamburger"),
+    ("food", "pizza"),
+    ("food", "jajangmyeon"),
+    ("food", "ramen noodles"),
+    ("food", "fried chicken"),
+    ("food", "kimbap"),
+    ("food", "tteokbokki"),
+    ("food", "bibimbap"),
+    ("food", "sandwich"),
+    ("food", "spaghetti"),
+    ("food", "cake"),
+    ("food", "ice cream"),
+    ("food", "donuts"),
+    ("food", "french fries"),
+    ("food", "toast"),
+    ("food", "cookies"),
+    ("food", "crackers"),
+    ("food", "pudding"),
+    ("fruit", "apple"),
+    ("fruit", "banana"),
+    ("fruit", "strawberry"),
+    ("fruit", "watermelon"),
+    ("fruit", "grapes"),
+    ("fruit", "tangerine"),
+    ("fruit", "peach"),
+    ("fruit", "cherry tomatoes"),
+    ("fruit", "pineapple"),
+    ("fruit", "kiwi fruit"),
+    ("animal", "puppy"),
+    ("animal", "dog"),
+    ("animal", "cat"),
+    ("animal", "chick"),
+    ("animal", "giraffe"),
+    ("animal", "squirrel"),
+    ("animal", "elephant"),
+    ("animal", "tiger"),
+    ("animal", "monkey"),
+    ("animal", "red panda"),
+    ("animal", "whale"),
+    ("animal", "dolphin"),
+    ("animal", "rabbit"),
+    ("animal", "panda"),
+    ("animal", "penguin"),
+    ("flower", "rose"),
+    ("flower", "tulip"),
+    ("flower", "forsythia"),
+    ("flower", "azalea"),
+    ("flower", "cherry blossom"),
+    ("flower", "sunflower"),
+    ("flower", "dandelion"),
+    ("flower", "freesia"),
+    ("flower", "rose of sharon"),
+    ("flower", "lily"),
+    ("scene", "park path"),
+    ("scene", "autumn leaves road"),
+    ("scene", "beach sea"),
+    ("scene", "cherry blossom street"),
+    ("scene", "park bench"),
+    ("scene", "playground"),
+    ("scene", "snow park"),
+    ("scene", "tree lined road"),
+    ("scene", "classroom"),
+    ("scene", "bedroom"),
+    ("scene", "movie theater"),
+    ("scene", "library"),
+    ("scene", "living room"),
+    ("scene", "kitchen"),
+    ("scene", "bathroom"),
+    ("scene", "supermarket"),
+    ("scene", "bakery"),
+    ("scene", "restaurant"),
+    ("scene", "amusement park"),
+    ("scene", "swimming pool"),
+    ("scene", "zoo"),
+    ("scene", "museum"),
+    ("scene", "bookstore"),
+    ("scene", "ocean"),
+    ("scene", "mountain path"),
+    ("item", "coffee cup"),
+    ("item", "cafe interior"),
+    ("item", "bicycle"),
+    ("item", "bus"),
+    ("item", "backpack"),
+    ("item", "teddy bear"),
+    ("item", "bread"),
+]
 
-# 태그에 하나라도 있으면 뺀다: 사람·얼굴·손발, 글자·브랜드·간판, 무섭거나 징그러운 동물, 낯선 풍경, 술, 장례·병원
+# 태그에 하나라도 있으면 뺀다: 얼굴 중심(초상·셀카·웨딩), 글자·브랜드·간판(사람·손발이 함께 찍힌 건 허용), 무섭거나 징그러운 동물, 낯선 풍경, 술, 장례·병원
 BAD_TAGS = {
-    "people", "person", "man", "men", "woman", "women", "girl", "boy", "child", "children", "kid",
-    "kids", "baby", "toddler", "portrait", "face", "couple", "family", "model", "lady", "human",
-    "crowd", "student", "students", "wedding", "bride", "groom", "selfie", "smile", "athlete",
-    "player", "runner", "dancer", "farmer", "worker", "tourist", "adult", "teen", "teenager",
-    "hand", "hands", "finger", "fingers", "leg", "legs", "foot", "feet", "silhouette",
-    "text", "sign", "logo", "poster", "typography", "letter", "letters", "label", "brand",
-    "advertisement", "menu", "banner", "billboard", "newspaper", "book", "words", "quote",
+    "portrait", "face", "wedding", "bride", "groom", "selfie", "smile", "text", "sign", "logo", "poster", "typography", "letter", "letters", "label", "brand",
+    "advertisement", "menu", "banner", "billboard", "newspaper", "words", "quote",
     "snake", "lizard", "gecko", "reptile", "reptiles", "insect", "insects", "spider", "beetle",
     "bug", "wasp", "bee", "bees", "ant", "ants", "fly", "mosquito", "cockroach", "worm",
     "caterpillar", "butterfly", "moth", "dragonfly", "frog", "toad", "crocodile", "alligator",

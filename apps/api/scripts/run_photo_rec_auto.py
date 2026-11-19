@@ -15,12 +15,13 @@ from sqlalchemy.engine import make_url
 
 from app.features.play import photo_rec_auto
 from app.shared.config import settings
-from app.shared.db import SessionLocal
+from app.shared.db import SessionLocal, import_all_models
 
 
 def main() -> int:
     logging.basicConfig(level=logging.INFO, format="%(message)s")
     print(f"DB 호스트: {make_url(settings.database_url).host}")
+    import_all_models()  # 모든 표를 불러와야 외래 키가 풀린다(서버는 시작할 때 한다)
     with SessionLocal() as db:
         result = photo_rec_auto.run_daily(db, datetime.now(UTC))
     if result.skipped:
