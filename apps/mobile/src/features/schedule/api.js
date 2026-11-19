@@ -179,3 +179,12 @@ export const cancelRequest = (id) => apiFetch(`/schedule/requests/${id}/cancel`,
  * @returns {Promise<ServerRequest>}
  */
 export const changeRecipients = (id, toIds) => apiFetch(`/schedule/requests/${id}/recipients`, { method: "PUT", body: { to_ids: toIds } });
+
+/**
+ * 보낸 사람이 부탁의 메모를 바꾼다(빈 문자열이면 지운다, 최대 2000자). 수락 여부와 상관없이 바꿀 수 있고, 이미 수락한 사람의 일정 메모는 바뀌지 않는다.
+ * 400 request_canceled, 403 not_owner, 422(2000자 초과)(ApiError.code·status).
+ * @param {string} id
+ * @param {string} memo
+ * @returns {Promise<ServerRequest>}
+ */
+export const changeMemo = (id, memo) => apiFetch(`/schedule/requests/${id}/memo`, { method: "PUT", body: { memo } });

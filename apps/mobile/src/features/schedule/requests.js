@@ -150,6 +150,30 @@ export async function changeRecipients(id, toIds) {
 }
 
 /**
+ * 보낸 사람이 부탁의 메모를 바꾼다. 화면에는 바로 반영하고, 서버가 실패하면 되돌린 뒤 오류를 돌려준다(화면이 문구를 고른다).
+ * 수락한 사람의 일정 메모는 서버가 따로 두므로 여기서 건드리지 않는다.
+ * @param {string} id
+ * @param {string} memo 앞뒤 공백을 뗀 값(빈 문자열이면 지운다)
+ * @returns {Promise<{ ok: true } | { ok: false, error: unknown }>}
+ */
+export async function changeMemo(id, memo) {
+  const before = requests;
+  requests = requests.map((request) => (request.id === id ? { ...request, memo } : request));
+  emit();
+  if (!useServer) return { ok: true };
+  try {
+    const f = await ready();
+    const saved = await api.changeMemo(await serverId(id), memo);
+    replaceRequest(await serverId(id), () => toRequest(saved, f));
+    return { ok: true };
+  } catch (error) {
+    warn("메모 바꾸기", error);
+    restore(before);
+    return { ok: false, error };
+  }
+}
+
+/**
  * 내가 아직 답하지 않은 받은 같이의 개수(날짜가 안 지난 것만, 보낸 사람이 취소한 것 제외). 메인의 "주고 받은" 숫자 배지에 쓴다.
  * @returns {number}
  */

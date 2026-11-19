@@ -137,6 +137,12 @@ class RequestRecipients(BaseModel):
     to_ids: list[str] = Field(min_length=1, max_length=20)
 
 
+class RequestMemo(BaseModel):
+    """부탁의 메모를 바꾼 뒤의 전체 내용(빈 문자열이면 메모를 지운다). 보낸 사람만 바꿀 수 있다."""
+
+    memo: str = Field(max_length=2000)
+
+
 class RecipientOut(BaseModel):
     user_id: str
     status: Literal["waiting", "accepted", "declined"]

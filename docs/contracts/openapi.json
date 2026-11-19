@@ -7830,6 +7830,90 @@
         }
       }
     },
+    "/schedule/requests/{request_id}/memo": {
+      "put": {
+        "tags": [
+          "schedule"
+        ],
+        "summary": "Change Request Memo",
+        "operationId": "change_request_memo_schedule_requests__request_id__memo_put",
+        "parameters": [
+          {
+            "name": "request_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Request Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-gyeot-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Gyeot-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RequestMemo"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RequestOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/schedule/requests/{request_id}/cancel": {
       "post": {
         "tags": [
@@ -29835,6 +29919,21 @@
         ],
         "title": "RequestCreate",
         "description": "같이해요 부탁 보내기. to_ids 는 같은 가족 구성원이어야 하고 나는 뺀다(중복은 하나로)."
+      },
+      "RequestMemo": {
+        "properties": {
+          "memo": {
+            "type": "string",
+            "maxLength": 2000,
+            "title": "Memo"
+          }
+        },
+        "type": "object",
+        "required": [
+          "memo"
+        ],
+        "title": "RequestMemo",
+        "description": "부탁의 메모를 바꾼 뒤의 전체 내용(빈 문자열이면 메모를 지운다). 보낸 사람만 바꿀 수 있다."
       },
       "RequestOut": {
         "properties": {
