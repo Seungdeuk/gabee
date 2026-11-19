@@ -64,7 +64,7 @@ def wilson(k, n, z=1.96):
 def prf(tp, fp, fn):
     p = tp / (tp + fp) if (tp + fp) else None
     r = tp / (tp + fn) if (tp + fn) else None
-    f1 = 2 * p * r / (p + r) if p and r else None
+    f1 = 2 * tp / (2 * tp + fp + fn) if (2 * tp + fp + fn) else None  # 2PR/(P+R) 와 같은 값, TP 0 이면 0.0
     return {"tp": tp, "fp": fp, "fn": fn, "precision": p, "recall": r, "f1": f1}
 
 
@@ -72,7 +72,7 @@ def final_person_spans(text):
     return [(s.start, s.end) for s in ner.detect_with_ner(text, ()) if s.kind is Kind.PERSON]
 
 
-def score_rows(rows, legacy_first_only=False, keep_records=False):
+def score_rows(rows, legacy_first_only=False, keep_records=False, pred_fn=None):
     """rows 전체를 채점한다. keep_records 이면 문장별 판정을 함께 돌려준다."""
     tp = fp = fn = 0
     fp_boundary = fp_pure = 0
@@ -82,7 +82,7 @@ def score_rows(rows, legacy_first_only=False, keep_records=False):
     for r in rows:
         text = r["text"]
         golds = gold_person(r)
-        pred = final_person_spans(text)
+        pred = pred_fn(r) if pred_fn else final_person_spans(text)
         if legacy_first_only and golds:
             g_all = golds
             golds = golds[:1]
