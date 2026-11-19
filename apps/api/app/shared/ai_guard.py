@@ -124,7 +124,9 @@ def set_enabled(db: Session, group_id: str, user_id: str, enabled: bool) -> None
         row.enabled, row.enabled_by, row.updated_at = enabled, user_id, datetime.now(UTC)
         if not enabled:  # 동의를 끄면 이 가족의 분석 결과(대화에서 나온 요약·후보)도 바로 지운다
             db.execute(delete(AiResultCache).where(AiResultCache.group_id == group_id))
-            for callback in list(_on_disabled):  # 기능별 AI 결과(예: 탐정단 추천의 사진 내용 질문)도 같은 트랜잭션에서
+            for callback in list(
+                _on_disabled
+            ):  # 기능별 AI 결과(예: 탐정단 추천의 사진 내용 질문)도 같은 트랜잭션에서
                 callback(db, group_id)
         try:
             db.commit()

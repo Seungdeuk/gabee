@@ -114,7 +114,12 @@ def test_purge_content_rows_on_ai_disable(client, family, other_family):
     other_content = _row(other_id, CONTENT)
     common = _row(None, CONTENT, source=SEED, image=b"x")
     _add(mine_content, mine_month, mine_event, other_content, common)
-    ids = {n: r.id for n, r in dict(c=mine_content, m=mine_month, e=mine_event, o=other_content, s=common).items()}
+    ids = {
+        n: r.id
+        for n, r in dict(
+            c=mine_content, m=mine_month, e=mine_event, o=other_content, s=common
+        ).items()
+    }
     with SessionLocal() as db:
         ai_guard.set_enabled(db, group_id, _first_user_id(), True)
         ai_guard.set_enabled(db, group_id, _first_user_id(), False)

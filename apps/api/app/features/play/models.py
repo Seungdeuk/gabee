@@ -135,7 +135,9 @@ class PlayPhotoRec(Base):
     group_id: Mapped[str | None] = mapped_column(
         ForeignKey("groups.id", ondelete="CASCADE"), nullable=True, index=True
     )
-    source: Mapped[int] = mapped_column(SmallInteger)  # 1 가족 앨범, 3 흔한 사진(시드), 4 흔한 사진(자동)
+    source: Mapped[int] = mapped_column(
+        SmallInteger
+    )  # 1 가족 앨범, 3 흔한 사진(시드), 4 흔한 사진(자동)
     attachment_id: Mapped[str | None] = mapped_column(
         ForeignKey("message_attachments.id", ondelete="CASCADE"), nullable=True, unique=True
     )
