@@ -629,6 +629,101 @@ def test_acquisition_order_and_rates():
     assert acquisition({}, [], {}) == []
 
 
+def _clear_usage() -> None:
+    from app.features.usage.models import UsageDaily
+
+    with SessionLocal() as db:
+        db.query(UsageDaily).delete()
+        db.commit()
+
+
+def test_analytics_usage_time(client, make_admin):
+    """체류시간: 1명당 하루 평균 분·실행 횟수, 탭 비율, 날짜별 값. 숫자만 나온다."""
+    from app.features.usage.service import today
+
+    _clear_usage()
+    headers, user_id = _login(client)
+    make_admin(user_id)
+    a, _ = _login(client, "usage_a")
+    b, _ = _login(client, "usage_b")
+    day = today(datetime.now(UTC)).isoformat()
+    url = "/usage/report"
+    assert (
+        client.post(
+            url, json={"day": day, "opens": 2, "tabs": {"chat": 600, "schedule": 300}}, headers=a
+        ).status_code
+        == 204
+    )
+    assert (
+        client.post(
+            url, json={"day": day, "opens": 1, "tabs": {"chat": 300}}, headers=b
+        ).status_code
+        == 204
+    )
+
+    d = client.get("/admin/service/analytics", headers=headers).json()
+    assert d["usage_ready"] is True
+    u = d["usage"]
+    assert u["users"] == 2
+    assert u["avg_minutes_per_day"] == 10.0  # (900 + 300) 초 / 2명 / 60
+    assert u["avg_opens_per_day"] == 1.5
+    assert [(t["tab"], t["minutes"], t["share"]) for t in u["by_tab"]] == [
+        ("chat", 15.0, 75.0),
+        ("schedule", 5.0, 25.0),
+    ]
+    assert len(u["daily"]) == 30 and u["daily"][-1]["day"] == day
+    assert (u["daily"][-1]["users"], u["daily"][-1]["avg_minutes"]) == (2, 10.0)
+    assert u["daily"][0]["avg_minutes"] is None  # 기록 없는 날
+    assert "usage_a" not in str(u) and user_id not in str(u)
+
+
+def test_analytics_without_usage_table(client, make_admin, monkeypatch):
+    """체류시간 표가 아직 없는 DB: 이 구역만 비고(usage_ready=false) 나머지 분석은 200 이다."""
+    from app.features.service_admin import analytics
+
+    headers, user_id = _login(client)
+    make_admin(user_id)
+    real = analytics.monitor.status()
+
+    class _NotReady:
+        def feature_ready(self, feature: str) -> bool:
+            return feature != "usage" and real.feature_ready(feature)
+
+    monkeypatch.setattr(analytics.monitor, "status", lambda: _NotReady())
+    called = []
+    monkeypatch.setattr(analytics.repository, "usage_rows", lambda db, since: called.append(1))
+    r = client.get("/admin/service/analytics", headers=headers)
+    assert r.status_code == 200, r.text
+    assert (r.json()["usage_ready"], r.json()["usage"]) == (False, None)
+    assert called == []
+
+
+def test_usage_calculation():
+    """계산만: 기록 있는 사람·날 기준 평균, 30일 밖 기록은 뺌, 탭은 많은 순."""
+    from datetime import date as _date
+
+    from app.features.service_admin.analytics import usage
+
+    today = _date(2026, 11, 19)
+    rows = [
+        ("u1", today, "app", 1200, 3),
+        ("u1", today, "chat", 900, 0),
+        ("u1", today, "my", 300, 0),
+        ("u1", _date(2026, 11, 18), "app", 600, 1),
+        ("u1", _date(2026, 11, 18), "care", 600, 0),
+        ("u2", today, "app", 0, 1),
+        ("u3", _date(2026, 10, 1), "app", 9999, 9),  # 30일 밖
+    ]
+    u = usage(rows, today)
+    assert u.users == 2
+    assert u.avg_minutes_per_day == round((1200 + 600 + 0) / 3 / 60, 1)
+    assert u.avg_opens_per_day == round((3 + 1 + 1) / 3, 1)
+    assert [t.tab for t in u.by_tab] == ["chat", "care", "my"]
+    assert u.daily[-1].users == 2 and u.daily[-2].avg_minutes == 10.0
+    empty = usage([], today)
+    assert (empty.users, empty.avg_minutes_per_day, empty.by_tab) == (0, None, [])
+
+
 def test_analytics_is_admin_only(client, make_admin):
     headers, _ = _login(client)
     assert client.get("/admin/service/analytics").status_code == 401

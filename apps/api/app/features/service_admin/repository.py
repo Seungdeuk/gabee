@@ -394,6 +394,13 @@ def install_sources(db: Session) -> list[tuple[str, str]]:
     return [tuple(r) for r in db.execute(select(t.c.user_id, t.c.source))]
 
 
+def usage_rows(db: Session, since_day) -> list[tuple]:
+    """(user_id, day, tab, seconds, opens) 목록, since_day 이후. 체류시간 표가 있는 DB 에서만 부른다."""
+    t = _t("usage_daily")
+    q = select(t.c.user_id, t.c.day, t.c.tab, t.c.seconds, t.c.opens).where(t.c.day >= since_day)
+    return [tuple(r) for r in db.execute(q)]
+
+
 def stale_support_tickets(db: Session, before: datetime) -> tuple[int, datetime | None]:
     """(답이 아직 없는 문의 수, 가장 오래된 등록 시각). before 이전에 등록된 new·working 상태만 센다(done 은 뺀다)."""
     tickets = _t("support_tickets")

@@ -5,7 +5,7 @@
 - 사람이 적을 때는 비율이 크게 흔들린다(화면에 안내한다)."""
 
 from collections import Counter, defaultdict
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from statistics import median
 
 from sqlalchemy.orm import Session
@@ -25,6 +25,9 @@ from .schemas import (
     AnalyticsOut,
     AnalyticsSource,
     AnalyticsSupport,
+    AnalyticsUsage,
+    AnalyticsUsageDay,
+    AnalyticsUsageTab,
 )
 
 DAY = timedelta(days=1)
@@ -152,6 +155,54 @@ def acquisition(
         )
         for src in order
     ]
+
+
+USAGE_DAYS = 30
+USAGE_APP_TAB = "app"  # 앱 전체 합계·실행 횟수 줄(usage 기능의 APP_TAB 과 같은 값)
+
+
+def usage(rows: list[tuple], today: date) -> AnalyticsUsage:
+    """체류시간(최근 30일). rows 는 (user_id, day, tab, seconds, opens).
+    하루 평균은 기록이 있는 '사람·날' 기준이다(안 쓴 날은 0 으로 세지 않는다)."""
+    first = today - timedelta(days=USAGE_DAYS - 1)
+    app_rows = [
+        (uid, d, sec, op)
+        for uid, d, tab, sec, op in rows
+        if tab == USAGE_APP_TAB and first <= d <= today
+    ]
+    tab_secs: Counter = Counter()
+    for _uid, d, tab, sec, _op in rows:
+        if tab != USAGE_APP_TAB and first <= d <= today:
+            tab_secs[tab] += sec
+    person_days = len(app_rows)
+    total_secs = sum(r[2] for r in app_rows)
+    tab_total = sum(tab_secs.values())
+    by_day: dict[date, list[int]] = defaultdict(list)
+    for _uid, d, sec, _op in app_rows:
+        by_day[d].append(sec)
+    daily = []
+    for i in range(USAGE_DAYS):
+        d = first + timedelta(days=i)
+        secs = by_day.get(d, [])
+        daily.append(
+            AnalyticsUsageDay(
+                day=d,
+                users=len(secs),
+                avg_minutes=round(sum(secs) / len(secs) / 60, 1) if secs else None,
+            )
+        )
+    return AnalyticsUsage(
+        users=len({r[0] for r in app_rows}),
+        avg_minutes_per_day=round(total_secs / person_days / 60, 1) if person_days else None,
+        avg_opens_per_day=round(sum(r[3] for r in app_rows) / person_days, 1)
+        if person_days
+        else None,
+        by_tab=[
+            AnalyticsUsageTab(tab=tab, minutes=round(sec / 60, 1), share=_pct(sec, tab_total))
+            for tab, sec in sorted(tab_secs.items(), key=lambda kv: (-kv[1], kv[0]))
+        ],
+        daily=daily,
+    )
 
 
 def analytics(db: Session, now: datetime | None = None) -> AnalyticsOut:
@@ -284,6 +335,14 @@ def analytics(db: Session, now: datetime | None = None) -> AnalyticsOut:
     # 유입 경로: 표가 아직 없는 DB 에서는 이 구역만 비우고 나머지 분석은 그대로 낸다
     acquisition_ready = monitor.status().feature_ready("acquisition")
     sources = repository.install_sources(db) if acquisition_ready else []
+    # 체류시간: 표가 아직 없는 DB 에서는 이 구역만 비운다
+    usage_ready = monitor.status().feature_ready("usage")
+    today = _local(now).date()
+    usage_out = (
+        usage(repository.usage_rows(db, today - timedelta(days=USAGE_DAYS - 1)), today)
+        if usage_ready
+        else None
+    )
 
     return AnalyticsOut(
         users=len(users),
@@ -297,4 +356,6 @@ def analytics(db: Session, now: datetime | None = None) -> AnalyticsOut:
         support=support,
         acquisition=acquisition(users, sources, first_family) if acquisition_ready else [],
         acquisition_ready=acquisition_ready,
+        usage=usage_out,
+        usage_ready=usage_ready,
     )

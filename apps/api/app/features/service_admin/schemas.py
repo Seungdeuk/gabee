@@ -236,6 +236,26 @@ class AnalyticsSource(BaseModel):
     family_rate: float | None  # 그중 가족에 들어간 사람 %
 
 
+class AnalyticsUsageTab(BaseModel):
+    tab: str  # chat, family-chat, schedule, care, my, other
+    minutes: float  # 30일 동안 그 탭에 머문 분 합계
+    share: float | None  # 전체 탭 시간 대비 %
+
+
+class AnalyticsUsageDay(BaseModel):
+    day: date
+    users: int  # 그날 기록이 있는 사람
+    avg_minutes: float | None  # 그날 1명당 평균 사용 분
+
+
+class AnalyticsUsage(BaseModel):
+    users: int  # 30일 동안 기록이 있는 사람
+    avg_minutes_per_day: float | None  # 1명당 하루 평균 사용 분(기록이 있는 날 기준)
+    avg_opens_per_day: float | None  # 1명당 하루 평균 실행 횟수
+    by_tab: list[AnalyticsUsageTab]  # 많은 순
+    daily: list[AnalyticsUsageDay]  # 30일, 오래된 날 → 오늘
+
+
 class AnalyticsOut(BaseModel):
     users: int
     retention: list[AnalyticsCohort]  # 가입 주별(8주)
@@ -248,3 +268,5 @@ class AnalyticsOut(BaseModel):
     support: AnalyticsSupport
     acquisition: list[AnalyticsSource]  # 유입 경로별 가입(많은 순, unknown 은 맨 끝)
     acquisition_ready: bool  # 유입 경로 표가 DB 에 있나(없으면 acquisition 은 빈 목록)
+    usage: AnalyticsUsage | None  # 체류시간(최근 30일). 표가 없으면 None
+    usage_ready: bool  # 체류시간 표가 DB 에 있나

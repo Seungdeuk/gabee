@@ -476,6 +476,41 @@
       </section>`;
   }
 
+  // 체류시간 탭 이름(앱 아래쪽 탭과 같은 말)
+  const USAGE_TAB_LABEL = { chat: "AI 채팅", "family-chat": "소통", schedule: "일정", care: "지갑", my: "마이", other: "그 밖의 화면" };
+  const minutes = (m) => (m === null || m === undefined ? "-" : m < 60 ? `${m}분` : `${Math.floor(m / 60)}시간 ${Math.round(m % 60)}분`);
+
+  /** 데이터 분석의 체류시간 구역(최근 30일). 표가 아직 없는 서버면 "준비 중"만 보인다. */
+  function usageCard(d) {
+    const u = d.usage;
+    if (!d.usage_ready || !u) {
+      return `<section class="card"><div class="card-head"><h2>체류시간 (최근 30일)</h2></div><p class="small">체류시간 기록표가 아직 서버 DB 에 없어요(준비 중).</p></section>`;
+    }
+    const top = Math.max(1, ...u.daily.map((x) => x.avg_minutes || 0));
+    const bars = u.daily
+      .map((x) => `<div title="${esc(x.day)} · ${x.avg_minutes === null ? "기록 없음" : `${minutes(x.avg_minutes)} · ${num(x.users)}명`}"><i style="height:${pct(((x.avg_minutes || 0) / top) * 100)}"></i></div>`)
+      .join("");
+    const tabs = u.by_tab
+      .map((t) => `<div class="meter"><strong>${esc(USAGE_TAB_LABEL[t.tab] ?? t.tab)}</strong>${bar(t.share)}<span class="num">${minutes(t.minutes)} · ${percent(t.share)}</span></div>`)
+      .join("");
+    return `<div class="row">
+        <section class="card wide">
+          <div class="card-head"><h2>체류시간 (최근 30일)</h2><span class="small">앱이 화면에 떠 있던 시간. 앱이 갑자기 꺼지면 그 사용분은 빠져서 실제보다 조금 적을 수 있어요</span></div>
+          <section class="grid compact">
+            ${stat("1명당 하루 평균", minutes(u.avg_minutes_per_day), "쓴 날 기준")}
+            ${stat("1명당 하루 실행", u.avg_opens_per_day === null ? "-" : `${u.avg_opens_per_day}번`)}
+            ${stat("기록된 사람", `${num(u.users)}명`)}
+          </section>
+          <div class="chart" style="height:90px" role="img" aria-label="날짜별 1명당 평균 사용 시간">${bars}</div>
+          <div class="axis"><span>${esc(u.daily[0]?.day ?? "")}</span><span>오늘</span></div>
+        </section>
+        <section class="card side">
+          <h2>탭별 사용 시간</h2>
+          ${tabs || '<p class="small">아직 기록이 없어요</p>'}
+        </section>
+      </div>`;
+  }
+
   function viewAnalytics(d) {
     const small = d.users < 30 ? `<p class="note warn">지금은 가입자가 ${num(d.users)}명뿐이라 비율이 크게 흔들려요. 숫자는 흐름만 보고, 사람이 늘면 해석해요.</p>` : "";
 
@@ -516,7 +551,7 @@
     const wTop = Math.max(1, ...s.weekly);
     const weekly = s.weekly.map((c) => `<div title="${c}건"><i style="height:${pct((c / wTop) * 100)}"></i></div>`).join("");
 
-    return `${head("데이터 분석", "재방문 · 가입 퍼널 · 유입 경로 · 가족 · 기능 · AI · 시간대 · 고객 응대 (개수와 시각만 사용)")}${small}
+    return `${head("데이터 분석", "재방문 · 가입 퍼널 · 유입 경로 · 체류시간 · 가족 · 기능 · AI · 시간대 · 고객 응대 (개수와 시각만 사용)")}${small}
       <div class="row">
         <section class="card wide">
           <div class="card-head"><h2>① 재방문(리텐션) 코호트</h2><span class="small">가입 주별로, 가입 1·2·4주 뒤에 다시 로그인한 비율</span></div>
@@ -529,6 +564,7 @@
         </section>
       </div>
       ${acquisitionCard(d)}
+      ${usageCard(d)}
       <div class="row">
         <section class="card wide">
           <div class="card-head"><h2>③ 가족 인원별 활동 (최근 7일)</h2><span class="small">혼자인 가족 ${num(f.solo_families)}곳 · 두 번째 가족이 들어오기까지 ${f.days_to_second_member ?? "-"}일(중앙값)</span></div>
