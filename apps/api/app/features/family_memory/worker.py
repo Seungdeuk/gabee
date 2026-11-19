@@ -9,6 +9,7 @@
 import logging
 import os
 import threading
+import time
 import uuid
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -71,12 +72,35 @@ def _enabled() -> bool:
     return bool(settings.family_memory_enabled and settings.family_memory_worker_enabled)
 
 
+RECONCILE_EVERY_SECONDS = (
+    60.0  # 철회·가족 끄기 때 정리가 실패해 남은 파생 데이터를 뒤늦게 지우는 주기
+)
+
+
+def reconcile_derived() -> int:
+    """동의가 없거나 가족 기능이 꺼진 쪽의 파생 데이터를 멱등하게 지운다(실패해도 던지지 않는다). 지운 개수를 돌려준다."""
+    from . import reconcile
+
+    try:
+        with SessionLocal() as db:
+            result = reconcile.reconcile(db)
+            db.commit()
+            return result.total
+    except Exception as exc:  # noqa: BLE001  내용이 로그에 남지 않게 종류만 적는다
+        logger.warning("family memory reconcile failed error=%s", type(exc).__name__)
+        return 0
+
+
 def _loop() -> None:
     worker_id = f"w{os.getpid()}-{uuid.uuid4().hex[:6]}"
+    last_reconcile = 0.0
     while not _stop.is_set():
         did = None
         try:
             if monitor.status().feature_ready("family_memory"):
+                if time.monotonic() - last_reconcile >= RECONCILE_EVERY_SECONDS:
+                    last_reconcile = time.monotonic()
+                    reconcile_derived()
                 did = run_once(worker_id)
         except Exception as exc:  # noqa: BLE001
             logger.warning("family memory worker loop error=%s", type(exc).__name__)

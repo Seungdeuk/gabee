@@ -332,9 +332,13 @@ def test_memory_switch_and_chat_ai_consent_are_independent(client, family):
 
 
 # ---------- 정리 훅: 철회·나가기·사진 삭제·가족 삭제 ----------
-def test_withdraw_cleanup_failure_rolls_back_the_withdrawal(client, family):
+def test_withdraw_is_accepted_even_when_cleanup_fails(client, family):
+    """PR6 안전성 검토: 철회 의사는 언제나 먼저 수락된다. 파생 데이터 정리가 실패해도 철회는 되돌려지지 않고(동의가 다시 켜진 채 남지 않는다) 자격은 바로 닫힌다."""
     a, b, group = family
     _enable_all(client, a, b)
+    attachment_id, _ = _photo(client, b)
+    _set_check(attachment_id, "photo")
+    assert _eligibility(attachment_id).eligible is True
 
     def boom(db, group_id, user_id):
         raise RuntimeError("cleanup failed")
@@ -344,11 +348,14 @@ def test_withdraw_cleanup_failure_rolls_back_the_withdrawal(client, family):
         user = db.get(
             __import__("app.features.family_group.models", fromlist=["User"]).User, _uid(client, b)
         )
-        with pytest.raises(RuntimeError):
-            service.set_consent(db, user, group["id"], False)
+        state = service.set_consent(db, user, group["id"], False)  # 던지지 않는다
+    assert state.me.consented is False
     with SessionLocal() as db:
         row = db.get(MemberMemoryConsent, (group["id"], _uid(client, b)))
-        assert row.withdrawn_at is None  # 철회가 반쯤 적용된 상태를 남기지 않는다
+        assert row.withdrawn_at is not None  # 철회가 유지된다
+    assert (
+        _eligibility(attachment_id).reason == "no_consent"
+    )  # 정리가 실패해도 분석 자격은 즉시 닫힌다
 
 
 def test_leaving_family_withdraws_consent_and_rejoin_starts_unconsented(client, family):
@@ -368,19 +375,20 @@ def test_leaving_family_withdraws_consent_and_rejoin_starts_unconsented(client, 
     assert client.get(f"{BASE}/settings", headers=b).json()["me"]["consented"] is False
 
 
-def test_leave_is_rolled_back_when_cleanup_fails(client, family):
+def test_leave_still_succeeds_and_withdraws_when_cleanup_fails(client, family):
+    """정리 실패가 가족 나가기를 막지 않는다: 나가기와 철회는 모두 유지되고 남은 파생 데이터는 대조 정리가 지운다."""
     a, b, group = family
     _enable_all(client, a, b)
+    b_id = _uid(client, b)
 
     def boom(db, group_id, user_id):
         raise RuntimeError("cleanup failed")
 
     memory_hooks.register_member_withdrawn(boom)
-    with pytest.raises(RuntimeError):
-        client.post(LEAVE, headers=b)
+    assert client.post(LEAVE, headers=b).status_code in (200, 204)
     with SessionLocal() as db:
-        assert db.get(GroupMember, (group["id"], _uid(client, b))) is not None  # 나가기도 취소됨
-        assert db.get(MemberMemoryConsent, (group["id"], _uid(client, b))).withdrawn_at is None
+        assert db.get(GroupMember, (group["id"], b_id)) is None
+        assert db.get(MemberMemoryConsent, (group["id"], b_id)).withdrawn_at is not None
 
 
 def test_deleting_photo_removes_exclusion_and_survives_hook_failure(client, family):

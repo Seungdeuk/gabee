@@ -12,8 +12,10 @@ import uuid
 from datetime import UTC, datetime
 
 from sqlalchemy import (
+    JSON,
     Boolean,
     DateTime,
+    Float,
     ForeignKey,
     Index,
     Integer,
@@ -125,3 +127,44 @@ class PhotoEmbedding(Base):
     dim: Mapped[int] = mapped_column(Integer)
     vector: Mapped[bytes] = mapped_column(LargeBinary)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+
+class MemoryCandidate(Base):
+    """추억 후보(PR6): PR5 그룹화가 찾은 사진 묶음의 **저장본**. 가족 ID·후보 식별자·대표 사진·그룹화 근거·점수·알고리즘 버전·시각·비공개 상태만 두고 사진 자체는 복사하지 않는다.
+    `id` 는 가족+포함 사진으로 정해지는 결정적 값(PR5 `candidate_id`)이라 같은 입력을 다시 저장해도 한 줄이다(멱등). 포함 사진은 `MemoryCandidatePhoto` 에 있다.
+    status 는 항상 `private`(자동 게시 없음). 가족·사진이 지워지면 따라 지운다(ON DELETE CASCADE)."""
+
+    __tablename__ = "memory_candidates"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    group_id: Mapped[str] = mapped_column(ForeignKey("groups.id", ondelete="CASCADE"), index=True)
+    representative_id: Mapped[str | None] = mapped_column(
+        ForeignKey("message_attachments.id", ondelete="SET NULL"), nullable=True
+    )
+    status: Mapped[str] = mapped_column(String(10), default="private", server_default="private")
+    score: Mapped[float] = mapped_column(Float)
+    evidence: Mapped[dict] = mapped_column(
+        JSON
+    )  # 시각 근거(basis·start·end·dated_count·batch_attached_count·bridged)
+    algorithm_version: Mapped[str] = mapped_column(String(16))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+
+class MemoryCandidatePhoto(Base):
+    """추억 후보에 포함된 사진 한 장(첨부 id 와 순서뿐). `rank` 는 대표 후보 순서(0 이 대표, 없으면 NULL), `duplicate_of` 는 중복으로 판정돼 남긴 사진 id 이다.
+    `user_id` 는 올린 사람(동의 철회·가족 나가기 때 그 사람의 후보를 지우기 위한 것). 첨부가 지워지면 따라 지운다(ON DELETE CASCADE)."""
+
+    __tablename__ = "memory_candidate_photos"
+
+    candidate_id: Mapped[str] = mapped_column(
+        ForeignKey("memory_candidates.id", ondelete="CASCADE"), primary_key=True
+    )
+    attachment_id: Mapped[str] = mapped_column(
+        ForeignKey("message_attachments.id", ondelete="CASCADE"), primary_key=True, index=True
+    )
+    group_id: Mapped[str] = mapped_column(ForeignKey("groups.id", ondelete="CASCADE"), index=True)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
+    position: Mapped[int] = mapped_column(Integer)
+    rank: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    duplicate_of: Mapped[str | None] = mapped_column(String(32), nullable=True)

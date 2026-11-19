@@ -110,6 +110,34 @@ def check_photo(db: Session, attachment_id: str, *, retro: bool = False) -> Elig
     )
 
 
+def check_group_photos(
+    db: Session, group_id: str
+) -> tuple[list[repo.GroupPhoto], dict[str, Eligibility]]:
+    """한 가족의 가족 전체방 사진 전체를 **일괄**로 판정한다(`check_photo` 와 같은 `evaluate` 규칙, 고정된 4번의 조회: 사진+판별 상태·가족 설정·동의·제외).
+    사진이 몇 장이든 조회 수가 늘지 않는다. 1:1 방·지운 메시지·이미지가 아닌 첨부는 조회에서 이미 빠진다. 읽기 전용."""
+    photos = repo.group_photos_with_status(db, group_id)
+    server = server_enabled()
+    family = repo.family_enabled(db, group_id)
+    consents = repo.consents_for_group(db, group_id)
+    excluded = repo.excluded_ids(db, group_id)
+    result: dict[str, Eligibility] = {}
+    for p in photos:
+        row = consents.get(p.uploader_id)
+        result[p.attachment_id] = evaluate(
+            EligibilityInput(
+                server_enabled=server,
+                family_enabled=family,
+                photo_found=True,
+                in_family_room=True,
+                uploader_consented=_consent_active(row),
+                uploader_retro_consented=_retro_active(row),
+                excluded=p.attachment_id in excluded,
+                check_status=p.check_status,
+            )
+        )
+    return photos, result
+
+
 # ---------- 상태 ----------
 def get_state(db: Session, user: User, group_id: str) -> MemoryStateOut:
     row = repo.get_consent(db, group_id, user.id)

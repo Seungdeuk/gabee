@@ -70,3 +70,13 @@ def count(db: Session, group_id: str | None = None) -> int:
     if group_id is not None:
         stmt = stmt.where(PhotoEmbedding.group_id == group_id)
     return int(db.scalar(stmt) or 0)
+
+
+def get_many(db: Session, attachment_ids: list[str], chunk: int = 500) -> dict[str, PhotoEmbedding]:
+    """여러 사진의 임베딩 줄을 일괄로 읽는다(사진마다 조회하지 않는다). 없는 사진은 빠진다."""
+    out: dict[str, PhotoEmbedding] = {}
+    for i in range(0, len(attachment_ids), chunk):
+        part = attachment_ids[i : i + chunk]
+        rows = db.scalars(select(PhotoEmbedding).where(PhotoEmbedding.attachment_id.in_(part)))
+        out.update({row.attachment_id: row for row in rows})
+    return out

@@ -469,8 +469,10 @@ def test_deleting_the_photo_removes_its_job_and_a_running_worker_loses(client, f
         assert js.complete(db, job, "w1", save=lambda *a: pytest.fail("저장되면 안 된다")) == "lost"
 
 
-def test_a_failing_cleanup_hook_rolls_back_the_withdrawal(client, family, monkeypatch):
-    """철회는 작업 차단과 같은 트랜잭션이다: 차단에 실패하면 철회도 취소돼 반쪽 상태가 없다."""
+def test_a_failing_cancel_hook_does_not_block_the_withdrawal_and_the_gates_still_close_the_job(
+    client, family, monkeypatch
+):
+    """PR6: 작업 차단 훅이 실패해도 철회는 수락된다(동의가 다시 켜진 채 남지 않는다). 못 막은 대기 작업은 선점 때 자격 재확인(②)이 막는다."""
     a, _, _ = family
     att, _ = _eligible_photo(client, a)
     _enqueue(att)
@@ -479,10 +481,11 @@ def test_a_failing_cleanup_hook_rolls_back_the_withdrawal(client, family, monkey
         raise RuntimeError("db down")
 
     monkeypatch.setattr(jobs, "cancel_for_user", boom)
-    with pytest.raises(RuntimeError):
-        client.put(f"{BASE}/consent", json={"consent": False}, headers=a)
-    assert client.get(f"{BASE}/settings", headers=a).json()["me"]["consented"] is True
-    assert _job(att).status == "queued"
+    assert client.put(f"{BASE}/consent", json={"consent": False}, headers=a).status_code == 200
+    assert client.get(f"{BASE}/settings", headers=a).json()["me"]["consented"] is False
+    assert _job(att).status == "queued"  # 훅은 실패해 작업이 그대로 남았지만
+    assert _claim("w1") is None  # 선점 때 자격 재확인이 막는다
+    assert (_job(att).status, _job(att).cancel_reason) == ("canceled", "no_consent")
 
 
 # ---------- 가족 격리 ----------

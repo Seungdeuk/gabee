@@ -18033,6 +18033,72 @@
         }
       }
     },
+    "/family-memory/candidates": {
+      "get": {
+        "tags": [
+          "family-memory"
+        ],
+        "summary": "Get Candidates",
+        "description": "현재 가족의 **비공개** 추억 후보(PR6, 미출시 기능). 다른 가족의 후보는 볼 수 없고, 조회할 때마다 자격(동의·철회·제외·삭제·확인된 사진)을 다시 확인한다.\n빠진 사진의 주소·시각은 어디에도 없고, 남은 사진이 3장면 미만이면 후보가 숨겨진다. 사진 주소는 기존 채팅 사진 권한을 그대로 쓴다. 미출시 가드가 꺼져 있으면(기본) 404.",
+        "operationId": "get_candidates_family_memory_candidates_get",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-gyeot-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Gyeot-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CandidatesOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/admin/service/me": {
       "get": {
         "tags": [
@@ -21809,6 +21875,158 @@
           "ask"
         ],
         "title": "CallTalkPoint"
+      },
+      "CandidateOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "status": {
+            "type": "string",
+            "const": "private",
+            "title": "Status"
+          },
+          "representative": {
+            "$ref": "#/components/schemas/CandidatePhotoOut"
+          },
+          "photos": {
+            "items": {
+              "$ref": "#/components/schemas/CandidatePhotoOut"
+            },
+            "type": "array",
+            "title": "Photos"
+          },
+          "photo_count": {
+            "type": "integer",
+            "title": "Photo Count"
+          },
+          "dated_count": {
+            "type": "integer",
+            "title": "Dated Count"
+          },
+          "undated_count": {
+            "type": "integer",
+            "title": "Undated Count"
+          },
+          "starts_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Starts At"
+          },
+          "ends_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ends At"
+          },
+          "bridged": {
+            "type": "boolean",
+            "title": "Bridged"
+          },
+          "score": {
+            "type": "number",
+            "title": "Score"
+          },
+          "algorithm_version": {
+            "type": "string",
+            "title": "Algorithm Version"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "status",
+          "representative",
+          "photos",
+          "photo_count",
+          "dated_count",
+          "undated_count",
+          "starts_at",
+          "ends_at",
+          "bridged",
+          "score",
+          "algorithm_version",
+          "updated_at"
+        ],
+        "title": "CandidateOut",
+        "description": "비공개 추억 후보(PR7 앱이 쓰는 조회 계약). 조회할 때마다 자격을 다시 확인한 결과이며, 빠진 사진의 정보는 어디에도 없다."
+      },
+      "CandidatePhotoOut": {
+        "properties": {
+          "attachment_id": {
+            "type": "string",
+            "title": "Attachment Id"
+          },
+          "thumb_url": {
+            "type": "string",
+            "title": "Thumb Url"
+          },
+          "photo_url": {
+            "type": "string",
+            "title": "Photo Url"
+          },
+          "taken_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Taken At"
+          },
+          "is_representative": {
+            "type": "boolean",
+            "title": "Is Representative"
+          }
+        },
+        "type": "object",
+        "required": [
+          "attachment_id",
+          "thumb_url",
+          "photo_url",
+          "taken_at",
+          "is_representative"
+        ],
+        "title": "CandidatePhotoOut",
+        "description": "추억 후보에 든 사진 한 장. 사진 주소는 기존 채팅 사진 권한 체계를 그대로 쓴다(방에 들어갈 수 있는 가족만 볼 수 있다)."
+      },
+      "CandidatesOut": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/CandidateOut"
+            },
+            "type": "array",
+            "title": "Items"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items"
+        ],
+        "title": "CandidatesOut"
       },
       "Card": {
         "properties": {

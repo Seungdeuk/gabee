@@ -233,7 +233,10 @@ def test_leaving_family_withdraws_consent_and_purge_deletes_all_rows_on_postgres
     assert rows(pg, "SELECT count(*) FROM groups WHERE id=%s", gid) == [(0,)]
 
 
-def test_failed_cleanup_rolls_back_withdrawal_on_postgres(pg_client):
+def test_failed_cleanup_does_not_roll_back_withdrawal_or_leave_on_postgres(pg_client):
+    """PR6 안전성: 정리가 **실제 DB 오류**로 실패해도(PostgreSQL 은 오류가 나면 트랜잭션이 중단되므로 SAVEPOINT 가 필요하다) 철회·가족 나가기는 수락돼 유지된다."""
+    from sqlalchemy import text
+
     from app.shared import memory_hooks
 
     client, pg = pg_client
@@ -242,22 +245,24 @@ def test_failed_cleanup_rolls_back_withdrawal_on_postgres(pg_client):
     client.put(f"{M}/settings", json={"enabled": True}, headers=owner)
     client.put(f"{M}/consent", json={"consent": True}, headers=guest)
 
-    def boom(db, group_id, user_id):
-        raise RuntimeError("cleanup failed")
+    def db_error(db, group_id, user_id):
+        db.execute(text("SELECT * FROM no_such_table_for_cleanup"))  # 진짜 DB 오류
 
     saved = list(memory_hooks._member_withdrawn)
-    memory_hooks.register_member_withdrawn(boom)
+    memory_hooks.register_member_withdrawn(db_error)
     try:
-        with pytest.raises(RuntimeError):
-            client.put(f"{M}/consent", json={"consent": False}, headers=guest)
-        with pytest.raises(RuntimeError):  # 가족 나가기도 통째로 취소된다
-            client.post(f"{P}/groups/me/leave", headers=guest)
+        assert client.put(f"{M}/consent", json={"consent": False}, headers=guest).status_code == 200
+        assert rows(
+            pg,
+            "SELECT withdrawn_at IS NOT NULL FROM member_memory_consents WHERE user_id=%s",
+            guest_id,
+        ) == [(True,)]  # 철회가 유지된다
+        assert (
+            client.post(f"{P}/groups/me/leave", headers=guest).status_code == 204
+        )  # 나가기도 성공
     finally:
         memory_hooks._member_withdrawn[:] = saved
-    assert rows(
-        pg, "SELECT withdrawn_at IS NULL FROM member_memory_consents WHERE user_id=%s", guest_id
-    ) == [(True,)]
-    assert rows(pg, "SELECT count(*) FROM group_members WHERE user_id=%s", guest_id) == [(1,)]
+    assert rows(pg, "SELECT count(*) FROM group_members WHERE user_id=%s", guest_id) == [(0,)]
 
 
 def _eligible_photos(client, pg, count):
@@ -496,3 +501,77 @@ def test_table_constraints_on_postgres(pg_client):
                 "INSERT INTO member_memory_consents (group_id, user_id, consent_version)"
                 " VALUES ('nope', 'nope', 1)"
             )
+
+
+def test_candidates_tables_defaults_cascade_and_concurrent_refresh_on_postgres(
+    pg_client, monkeypatch
+):
+    """새 표의 기본값·CASCADE 와, 같은 가족을 동시에 새로 고쳐도 후보가 한 벌만 남는지(PG)."""
+    import threading
+    from datetime import UTC, datetime, timedelta
+
+    from app.features.family_memory import candidate_service, discovery, encoder
+    from app.features.family_memory import embedding_repository as emb
+
+    monkeypatch.setattr(settings, "family_memory_candidates_api_enabled", True)
+    # 이 시험의 사진은 모두 같은 합성 이미지라 파일 해시로는 중복이 된다: 화질·해시 값 없이(중복 판정은 임베딩으로) 본다
+    monkeypatch.setattr(discovery, "photo_stats", lambda attachment_id: None)
+    client, pg = pg_client
+    owner, ids = _eligible_photos(client, pg, 4)
+    owner_id, gid = _me(client, owner)
+    # 촬영 시각이 같은 날 5분 간격이 되도록 맞추고(없으면 그룹이 만들어지지 않는다) 합성 임베딩을 넣는다
+    base = datetime(2024, 5, 1, 10, 0, tzinfo=UTC)
+    with admin(pg) as conn:
+        for i, att in enumerate(ids):
+            conn.execute(
+                "UPDATE message_attachments SET taken_at=%s WHERE id=%s",
+                (base + timedelta(minutes=5 * i), att),
+            )
+    engine = create_engine(url(pg))
+    try:
+        with sessionmaker(bind=engine)() as s:
+            for i, att in enumerate(ids):
+                vec = [1.0, 0.6 * i] + [
+                    0.0
+                ] * 30  # 서로 다른 장면 방향(코사인 0.85 안팎: 중복이 아니다)
+                norm = sum(v * v for v in vec) ** 0.5
+                emb.upsert(s, gid, att, owner_id, "siglip2-base-patch16-224", "t", 32,
+                           encoder.pack([v / norm for v in vec]), datetime.now(UTC))  # fmt: skip
+            s.commit()
+        outcomes, errors = [], []
+        barrier = threading.Barrier(3)
+
+        def refresh():
+            e = create_engine(url(pg))
+            try:
+                barrier.wait()
+                with sessionmaker(bind=e)() as s:
+                    outcomes.append(candidate_service.refresh(s, gid))
+            except Exception as exc:  # noqa: BLE001
+                errors.append(type(exc).__name__)
+            finally:
+                e.dispose()
+
+        threads = [threading.Thread(target=refresh) for _ in range(3)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+    finally:
+        engine.dispose()
+    # 동시에 새로 고치면 일부는 IntegrityError 로 실패할 수 있지만(먼저 끝난 쪽이 맞다) 후보는 한 벌뿐이다
+    assert set(errors) <= {"IntegrityError"}
+    assert _count(pg, "memory_candidates") == 1 and _count(pg, "memory_candidate_photos") == 4
+    assert rows(pg, "SELECT status, algorithm_version FROM memory_candidates") == [
+        ("private", "memgrp-1")
+    ]
+    with admin(pg) as conn:  # 첨부를 지우면 DB 가 사진 줄을 따라 지운다(ON DELETE CASCADE)
+        conn.execute("DELETE FROM message_attachments WHERE id=%s", (ids[0],))
+    assert _count(pg, "memory_candidate_photos") == 3
+    items = client.get(f"{M}/candidates", headers=owner).json()["items"]
+    assert len(items) == 1 and items[0]["photo_count"] == 3 and ids[0] not in str(items)
+    with admin(pg) as conn:
+        conn.execute("DELETE FROM message_attachments WHERE id=%s", (ids[1],))
+    assert (
+        client.get(f"{M}/candidates", headers=owner).json()["items"] == []
+    )  # 2장면만 남아 숨겨진다

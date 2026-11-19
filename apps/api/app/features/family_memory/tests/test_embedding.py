@@ -11,7 +11,7 @@ from PIL import Image
 from sqlalchemy import func, select, update
 
 from app.features.family_chat.models import ChatPhotoCheck
-from app.features.family_memory import analysis, encoder, worker, worker_main
+from app.features.family_memory import analysis, encoder, reconcile, worker, worker_main
 from app.features.family_memory import embedding_repository as emb
 from app.features.family_memory import job_repository as jobs
 from app.features.family_memory import job_service as js
@@ -495,7 +495,7 @@ def test_leaving_the_family_deletes_only_that_members_embeddings(client, family)
     assert _embedding(theirs) is None and _embedding(mine) is not None
 
 
-def test_families_are_isolated_and_a_cleanup_failure_rolls_back_the_withdrawal(
+def test_families_are_isolated_and_a_cleanup_failure_does_not_block_the_withdrawal(
     client, family, other_family, monkeypatch
 ):
     a, _, _ = family
@@ -523,10 +523,17 @@ def test_families_are_isolated_and_a_cleanup_failure_rolls_back_the_withdrawal(
         raise RuntimeError("db down")
 
     monkeypatch.setattr(emb, "delete_for_user", boom)
-    with pytest.raises(RuntimeError):
-        client.put(f"{BASE}/consent", json={"consent": False}, headers=a)
-    assert client.get(f"{BASE}/settings", headers=a).json()["me"]["consented"] is True
-    assert _embedding(att) is not None  # 반쪽 상태 없음
+    assert client.put(f"{BASE}/consent", json={"consent": False}, headers=a).status_code == 200
+    assert (
+        client.get(f"{BASE}/settings", headers=a).json()["me"]["consented"] is False
+    )  # 철회는 수락된다
+    assert _embedding(att) is not None  # 정리는 실패해 파생 데이터가 남았지만(자격은 이미 닫혔다)
+    monkeypatch.undo()
+    with SessionLocal() as db:  # 대조 정리가 뒤늦게 멱등하게 지운다
+        assert reconcile.reconcile(db).embeddings == 1
+        db.commit()
+        assert reconcile.reconcile(db).total == 0
+    assert _embedding(att) is None
 
 
 def test_cleanup_hooks_run_after_the_job_blocking_hooks():

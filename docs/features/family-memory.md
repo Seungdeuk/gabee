@@ -62,6 +62,19 @@ PR4 연동 지점: 사진이 일반 사진으로 확인되고 자격이 있을 �
 - **합성 평가(`scripts/grouping_synthetic_eval.py`, 60개 합성 타임라인):** 정답은 합성 이벤트 번호라 **실제 가족 정확도가 아니다**. 이미지 잡음 0.5 에서 pair precision 1.00·recall 0.935·이벤트 복원 0.99, 잡음 0.8(같은 장면 유사도가 낮음)에서 recall 0.70·복원 0.80, 다른 이벤트를 섞은 그룹 0%. 이음 단계를 끄면 recall 0.57 로 떨어져 다일 이벤트 이음이 필요함을 확인. 가중치·임계값은 정답이 아니라 초기값이다.
 - **PR6 데이터 계약:** `discovery.discover(db, group_id, embeddings=..., stats=...)` 에 PR4 `photo_embeddings` 읽기 함수(`attachment_id -> 벡터|None`)와 `quality.image_stats(사진 파일 바이트)` 읽기 함수를 연결하고, 결과(`DiscoveryResult.candidates`)를 카드로 저장·공개할지는 PR6 에서 정한다.
 
+## 추억 후보 저장·조회 (PR6, 2026-11-19)
+**PR4 임베딩과 PR5 그룹화를 실제 DB 조회 경로에 연결하고 후보를 비공개로 저장·조회한다. 자동 등록·자동 게시·앱 화면·외부 AI 없음, 운영 기본 꺼짐.** 새 표 `memory_candidates`·`memory_candidate_photos`(Alembic `d1f4a8c6e293`, expand-only).
+
+| 항목 | 내용 |
+|---|---|
+| 실제 데이터 연결 | `discovery.discover_group(db, group_id)`: 자격 **일괄** 판정(`service.check_group_photos`, 같은 `evaluate` 규칙, 사진 수와 무관하게 조회 4번) → `photo_embeddings` 일괄 조회 1번 → 저장된 사진 파일(EXIF 없는 JPEG)에서 `ImageStats` 계산(내용·경로·EXIF 로그 없음) → PR5 그룹화. 촬영 시각이 없으면 업로드 시각으로 대체하지 않는다. 사진 4장→24장에서도 조회 수가 같음을 시험으로 고정 |
+| 저장 | `candidate_service.refresh(db, group_id)`(**명시적으로 부를 때만**, 자동 호출 없음): 후보 식별자가 결정적이라 **같은 입력은 한 줄**, 내용이 같으면 `updated_at` 도 그대로, 더는 발견되지 않는 후보는 지움. 후보·사진 id·대표·점수·근거·알고리즘 버전·비공개 상태만 저장(사진 복사 없음) |
+| 조회 API | `GET /family-memory/candidates`: 인증 + 현재 가족만 + **미출시 가드**(`FAMILY_MEMORY_CANDIDATES_API_ENABLED`, 기본 꺼짐 → 404). **조회할 때마다 자격 재검증**: 지운·철회·제외·자격 잃은 사진은 응답에서 빠지고 그 사진의 주소·시각도 남지 않음(시각 범위는 남은 사진으로 재계산). 대표가 무효가 되면 남은 대표 후보 → 남은 첫 장면 순으로 재선정, 중복을 뺀 장면이 3 미만이면 후보 숨김. 사진 주소는 기존 `/family-chat/photos/{id}` 권한 체계 |
+| 정리 | 철회·가족 나가기·가족 끄기·사진별 제외·사진 삭제 때 그 사진이 든 후보를 통째로 지움(`memory_hooks`) + `reconcile.reconcile` 대조 정리(동의 없음·가족 꺼짐인 사람·가족의 임베딩·후보·작업을 멱등하게 지움, `refresh` 에서 호출) |
+| **철회 안전성 수정** | 이전에는 파생 데이터 정리 훅이 실패하면 철회·가족 나가기가 통째로 롤백돼 **동의가 다시 켜진 채 남고 사용자가 철회하지 못했다**. 이제 정리는 SAVEPOINT 안에서 최선을 다하되 실패해도 철회는 수락돼 커밋된다(자격은 즉시 닫히고, 남은 파생 데이터는 조회 재검증이 못 보게 막고 `reconcile` 이 지움) |
+
+PR7(앱) 계약: 위 `GET /family-memory/candidates` 응답(`CandidatesOut`: 후보 `id`·`status:"private"`·`representative`·`photos[{attachment_id,thumb_url,photo_url,taken_at,is_representative}]`·`photo_count`·`dated_count`·`undated_count`·`starts_at`·`ends_at`·`bridged`·`score`·`algorithm_version`·`updated_at`). 후보 생성 진입점(자동 enqueue·refresh 호출)은 별도 승인 전까지 없다.
+
 ## 지키는 것
 - `ai_group_settings`(대화 분석 동의)와 `chat_photo_checks`(사진 판별 상태, D-13)를 읽거나 쓰지 않는다(자격 판정은 판별 상태를 읽기만 한다).
 - 사진 내용·라벨·임베딩·파일 경로를 저장·로그하지 않는다(이 PR 에는 그런 데이터가 없다).
@@ -74,6 +87,7 @@ PR4 연동 지점: 사진이 일반 사진으로 확인되고 자격이 있을 �
 - 미결정: 동의 기록 보관 기간, 24시간 삭제 목표 확정, 백업 만료·복원 시 재삭제 절차, 원본 채팅 사진의 탈퇴 처리, 소급 분석 화면·고지.
 
 ## 시험
+`apps/api/app/features/family_memory/tests/test_candidates.py`(PR6: 일괄 조회 N+1 없음, 임베딩·ImageStats 연결, 멱등 저장, 조회 API 계약·미출시 가드·가족 격리, 조회 재검증·대표 재선정·3장면 미만 숨김, 정리 훅·대조 정리, 철회가 정리 실패에 막히지 않음).
 `apps/api/app/features/family_memory/tests/test_memory_jobs.py`(작업 큐: 등록 자격·중복·1:1 제외, 선점·임대 복구·재시작 복구·상한, backoff, 자격 재확인 4지점, 철회·나가기·끄기·제외·삭제 차단, 가족 격리, 워커·로그) 와 `tests/test_family_memory_pg_e2e.py`(PG16: 기본값·UNIQUE·CASCADE, 6 워커 동시 선점, 잠긴 줄 건너뛰기, 철회 차단).
 `apps/api/app/features/family_memory/tests/test_grouping.py`(순수: 같은 시점·다른 날짜/연도·같은 날 다른 이벤트·연사, batch_id 경계, 촬영 시각 누락, 중복, 대표 사진 결정성·다양성, 가족 격리, 빈 결과, 입력 순서 불변, 잘못된 임베딩, 화질·해시)와 `test_discovery.py`(DB: 자격·미동의·철회·제외·삭제·서버/가족 끄기·1:1·문서·미확인·가족 격리·읽기 전용).
 `apps/api/app/features/family_memory/tests/test_family_memory.py` — 기본 꺼짐, 서버 스위치, owner/admin/member 권한, 가족 간 격리, 동의·철회 멱등, 소급 동의 분리, 사진별 제외(본인만), 자격 판정 표, D-13·`ai_group_settings` 불변, 훅 실패 롤백, 가족 나가기·사진 삭제·가족 삭제 정리, 로그.
