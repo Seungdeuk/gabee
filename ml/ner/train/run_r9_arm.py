@@ -21,18 +21,66 @@ DATA_R9 = r"C:\Users\403\venvs\ner-runs\data_r9"
 RUNS = Path(r"C:\Users\403\venvs\ner-runs\r9\runs")
 SEEDS = [7, 13, 21, 42, 99]
 BASE = ["baseline_train", "synth_train", "klue_train:469"]
-EXTRA = {"C1": None, "CP": None, "F-full": "r9_Ffull_train", "E1": "r9_E1_train", "E2": "r9_E2_train", "E3": "r9_E3_train", "E4": "r9_E4_train", "C0": "c0_extra_s{seed}", "C0s": "c0s_extra_s{seed}"}
-VAL = ["baseline_val", "synth_val", "r9_val_extra"]  # 선택은 baseline_val, 나머지는 기록용
+EXTRA = {
+    "C1": None,
+    "CP": None,
+    "F-full": "r9_Ffull_train",
+    "E1": "r9_E1_train",
+    "E2": "r9_E2_train",
+    "E3": "r9_E3_train",
+    "E4": "r9_E4_train",
+    "C0": "c0_extra_s{seed}",
+    "C0s": "c0s_extra_s{seed}",
+}
+VAL = [
+    "baseline_val",
+    "synth_val",
+    "r9_val_extra",
+]  # 선택은 baseline_val, 나머지는 기록용
 
 
 def command(arm, seed, pilot):
     extra = EXTRA[arm]
     train = BASE + ([extra.format(seed=seed)] if extra else [])
     run_id = ("pilot-" if pilot else "") + f"r9-{arm}-s{seed}"
-    cmd = [PY, str(REPO / "ml/ner/train/train_ner.py"), "--model", "monologg/koelectra-small-v3-discriminator", "--run-id", run_id,
-           "--train-files", *train, "--val-files", *VAL, "--klue-ratio", "0", "--max-len", "128", "--batch-size", "32", "--lr", "5e-5",
-           "--epochs", "2" if pilot else "8", "--patience", "2", "--warmup", "0.1", "--weight-decay", "0.01", "--seed", str(seed),
-           "--select-on", "baseline_val", "--select-metric", "overlap", "--data-dir", DATA.get(arm, DATA_R9), "--out-root", str(RUNS)]
+    cmd = [
+        PY,
+        str(REPO / "ml/ner/train/train_ner.py"),
+        "--model",
+        "monologg/koelectra-small-v3-discriminator",
+        "--run-id",
+        run_id,
+        "--train-files",
+        *train,
+        "--val-files",
+        *VAL,
+        "--klue-ratio",
+        "0",
+        "--max-len",
+        "128",
+        "--batch-size",
+        "32",
+        "--lr",
+        "5e-5",
+        "--epochs",
+        "2" if pilot else "8",
+        "--patience",
+        "2",
+        "--warmup",
+        "0.1",
+        "--weight-decay",
+        "0.01",
+        "--seed",
+        str(seed),
+        "--select-on",
+        "baseline_val",
+        "--select-metric",
+        "overlap",
+        "--data-dir",
+        DATA.get(arm, DATA_R9),
+        "--out-root",
+        str(RUNS),
+    ]
     return run_id, cmd
 
 
@@ -41,7 +89,11 @@ def main():
     ap.add_argument("--arms", nargs="+", default=list(EXTRA))
     ap.add_argument("--seeds", nargs="+", type=int, default=SEEDS)
     ap.add_argument("--pilot", action="store_true")
-    ap.add_argument("--execute", action="store_true", help="실제 학습(이번 단계 금지: 별도 승인 필요)")
+    ap.add_argument(
+        "--execute",
+        action="store_true",
+        help="실제 학습(이번 단계 금지: 별도 승인 필요)",
+    )
     a = ap.parse_args()
     for arm in a.arms:
         for seed in a.seeds:
@@ -55,10 +107,34 @@ def main():
                 continue
             log = RUNS / "logs"
             log.mkdir(parents=True, exist_ok=True)
-            with open(log / f"{run_id}.out.log", "w", encoding="utf-8") as o, open(log / f"{run_id}.err.log", "w", encoding="utf-8") as e:
-                rc = subprocess.run(cmd, cwd=str(REPO), stdout=o, stderr=e, env={**__import__("os").environ, "HF_HOME": r"C:\Users\403\venvs\hf-cache", "HF_HUB_OFFLINE": "1", "PYTHONIOENCODING": "utf-8"}).returncode
+            with (
+                open(log / f"{run_id}.out.log", "w", encoding="utf-8") as o,
+                open(log / f"{run_id}.err.log", "w", encoding="utf-8") as e,
+            ):
+                rc = subprocess.run(
+                    cmd,
+                    check=False,
+                    cwd=str(REPO),
+                    stdout=o,
+                    stderr=e,
+                    env={
+                        **__import__("os").environ,
+                        "HF_HOME": r"C:\Users\403\venvs\hf-cache",
+                        "HF_HUB_OFFLINE": "1",
+                        "PYTHONIOENCODING": "utf-8",
+                    },
+                ).returncode
             if rc != 0:
-                print(json.dumps({"failed": run_id, "returncode": rc, "log": str(log / f"{run_id}.err.log")}, ensure_ascii=False))
+                print(
+                    json.dumps(
+                        {
+                            "failed": run_id,
+                            "returncode": rc,
+                            "log": str(log / f"{run_id}.err.log"),
+                        },
+                        ensure_ascii=False,
+                    )
+                )
                 sys.exit(rc)  # 자동 재시작 없음
 
 

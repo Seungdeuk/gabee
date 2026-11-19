@@ -32,4 +32,9 @@ D.load = load_excluding_one_char
 
 if __name__ == "__main__":
     D.main()
-    print(json.dumps({"excluded_one_char_rows_by_file": {k: v for k, v in EXCLUDED.items() if v}}, ensure_ascii=False))
+    print(
+        json.dumps(
+            {"excluded_one_char_rows_by_file": {k: v for k, v in EXCLUDED.items() if v}},
+            ensure_ascii=False,
+        )
+    )
