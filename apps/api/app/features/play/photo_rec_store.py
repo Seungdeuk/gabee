@@ -11,6 +11,7 @@ from datetime import datetime, timedelta
 from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
+from app.features.family_chat.models import FAMILY, ChatRoom, MessageAttachment
 from app.shared import ai_guard, memory_hooks
 
 from .models import GAME_PHOTO, PlayItem, PlayPhoto, PlayPhotoRec
@@ -27,6 +28,30 @@ RECENT_DAYS = 14  # 가족이 보낸 추천을 다시 안 보이는 기간(10~17
 def row_for_attachment(db: Session, attachment_id: str) -> PlayPhotoRec | None:
     """이 채팅 사진의 추천 행(없으면 None). 한 사진에 한 행뿐이다."""
     return db.scalar(select(PlayPhotoRec).where(PlayPhotoRec.attachment_id == attachment_id))
+
+
+def rows_for_attachments(db: Session, attachment_ids: list[str]) -> dict[str, PlayPhotoRec]:
+    """채팅 사진 id -> 추천 행(행이 있는 사진만)."""
+    if not attachment_ids:
+        return {}
+    rows = db.scalars(select(PlayPhotoRec).where(PlayPhotoRec.attachment_id.in_(attachment_ids)))
+    return {r.attachment_id: r for r in rows}
+
+
+def family_image_attachments(db: Session, group_id: str, limit: int) -> list[MessageAttachment]:
+    """가족 전체방의 사진 첨부를 최근순으로 `limit` 개(1:1 방·문서는 빠진다). 후보 거르기는 부르는 쪽."""
+    stmt = (
+        select(MessageAttachment)
+        .join(ChatRoom, ChatRoom.id == MessageAttachment.room_id)
+        .where(
+            MessageAttachment.group_id == group_id,
+            MessageAttachment.kind == "image",
+            ChatRoom.kind == FAMILY,
+        )
+        .order_by(MessageAttachment.created_at.desc(), MessageAttachment.id.desc())
+        .limit(limit)
+    )
+    return list(db.scalars(stmt))
 
 
 def add_row(db: Session, **fields) -> PlayPhotoRec:

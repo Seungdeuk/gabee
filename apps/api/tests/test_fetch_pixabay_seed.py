@@ -94,6 +94,56 @@ def test_run_makes_files_with_fake_api(tmp_path, monkeypatch):
     )
 
 
+def test_is_scenery_filters_creepy_animals_and_unusual_scenes():
+    assert not fps.is_scenery(_hit(1, "lizard, green, nature"))
+    assert not fps.is_scenery(_hit(2, "snake, reptile"))
+    assert not fps.is_scenery(_hit(3, "butterfly, flower"))
+    assert not fps.is_scenery(_hit(4, "galaxy, stars, night"))
+    assert not fps.is_scenery(_hit(5, "island, sea, beach"))
+    assert fps.is_scenery(_hit(6, "puppy, dog, pet"))
+    assert fps.is_scenery(_hit(7, "hamburger, food, burger"))
+
+
+def test_run_queries_collects_by_query_with_labels(tmp_path, monkeypatch):
+    monkeypatch.setattr(fps, "REQUEST_GAP", 0)
+    image = _jpeg()
+    asked = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.host == "pixabay.com":
+            q = request.url.params["q"]
+            asked.append(q)
+            base = {"pizza": 100, "puppy": 200}[q]
+            hits = [
+                _hit(base + i, "food, pizza", f"https://cdn.pixabay.com/{base + i}.jpg")
+                for i in range(4)
+            ]
+            hits.insert(
+                0, _hit(base + 90, "lizard, pet", "https://cdn.pixabay.com/bad.jpg")
+            )  # 걸러진다
+            return httpx.Response(200, json={"hits": hits})
+        return httpx.Response(200, content=image, headers={"content-type": "image/jpeg"})
+
+    queries = [("food", "피자", "pizza", 2), ("animal", "강아지", "puppy", 1)]
+    with httpx.Client(transport=httpx.MockTransport(handler)) as client:
+        found = fps.run_queries(tmp_path, "KEY", client, queries)
+    assert asked == ["pizza", "puppy"]
+    assert [(c["label"], c["query"], c["category"]) for c in found] == [
+        ("피자", "pizza", "food"),
+        ("피자", "pizza", "food"),
+        ("강아지", "puppy", "animal"),
+    ]
+    assert all("lizard" not in c["tags"] for c in found)
+    assert (tmp_path / "img" / "003.jpg").is_file() and (tmp_path / "contact_sheet.jpg").is_file()
+
+
+def test_everyday_queries_exclude_unwanted_subjects():
+    queries = " ".join(q for _, _, q, _ in fps.EVERYDAY)
+    for banned in ("snake", "lizard", "insect", "spider", "butterfly", "galaxy", "island"):
+        assert banned not in queries
+    assert sum(n for *_, n in fps.EVERYDAY) >= 90  # 사람이 50장 고를 여유
+
+
 def test_api_key_from_env_then_dotenv(tmp_path, monkeypatch):
     env = tmp_path / ".env"
     env.write_text('OTHER=1\nPIXABAY_API_KEY="from-file"\n', encoding="utf-8")

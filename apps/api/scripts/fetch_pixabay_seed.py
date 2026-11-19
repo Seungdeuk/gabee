@@ -45,8 +45,56 @@ _BAD_TAGS = {
     "player", "runner", "dancer", "farmer", "worker", "tourist", "adult", "teen", "teenager",
     "text", "sign", "logo", "poster", "typography", "letter", "letters", "label", "brand",
     "advertisement", "menu", "banner", "billboard", "newspaper", "book", "words", "quote",
+    # 징그럽거나 무서운 동물(뱀·도마뱀·곤충·파충류·개구리 등)
+    "snake", "lizard", "gecko", "reptile", "reptiles", "insect", "insects", "spider", "beetle",
+    "bug", "wasp", "bee", "bees", "ant", "ants", "fly", "mosquito", "cockroach", "worm",
+    "caterpillar", "butterfly", "moth", "dragonfly", "frog", "toad", "crocodile", "alligator",
+    "scorpion", "skull",
+    # 일상에서 보기 어려운 풍경·분위기(우주·극지·사막·섬·성 등)
+    "galaxy", "milky", "nebula", "space", "universe", "fantasy", "surreal", "arctic", "antarctic",
+    "glacier", "iceberg", "castle", "ruins", "desert", "volcano", "aurora", "mirage", "island",
+    "lagoon", "atoll", "waterfall", "canyon", "cliff", "fjord",
 }  # fmt: skip
 _TOKEN = re.compile(r"[a-z]+")
+# 일상 모드: (묶음, 한국어 이름, 검색어, 후보 수). 가족이 흔히 보는 음식·과일·친숙한 동물·쉬운 꽃·일상 풍경·일상 물건만 고른다.
+EVERYDAY = [
+    ("food", "햄버거", "hamburger", 2), ("food", "피자", "pizza", 2),
+    ("food", "짜장면", "jajangmyeon", 2), ("food", "라면", "ramen noodles", 2),
+    ("food", "치킨", "fried chicken", 2), ("food", "김밥", "kimbap", 2),
+    ("food", "떡볶이", "tteokbokki", 2), ("food", "비빔밥", "bibimbap", 2),
+    ("food", "샌드위치", "sandwich", 2), ("food", "스파게티", "spaghetti", 2),
+    ("food", "초밥", "sushi", 2), ("food", "케이크", "cake", 2),
+    ("food", "아이스크림", "ice cream", 2), ("food", "도넛", "donuts", 2),
+    ("food", "감자튀김", "french fries", 2), ("food", "토스트", "toast", 2),
+    ("fruit", "사과", "apple", 2), ("fruit", "바나나", "banana", 2),
+    ("fruit", "딸기", "strawberry", 2), ("fruit", "수박", "watermelon", 2),
+    ("fruit", "포도", "grapes", 2), ("fruit", "귤", "tangerine", 2),
+    ("fruit", "복숭아", "peach", 2), ("fruit", "방울토마토", "cherry tomatoes", 2),
+    ("fruit", "파인애플", "pineapple", 2), ("fruit", "키위", "kiwi fruit", 2),
+    ("animal", "강아지", "puppy", 2), ("animal", "개", "dog", 2),
+    ("animal", "고양이", "cat", 2), ("animal", "병아리", "chick", 2),
+    ("animal", "기린", "giraffe", 2), ("animal", "다람쥐", "squirrel", 2),
+    ("animal", "코끼리", "elephant", 2), ("animal", "호랑이", "tiger", 2),
+    ("animal", "원숭이", "monkey", 2), ("animal", "레서판다", "red panda", 2),
+    ("animal", "고래", "whale", 2), ("animal", "돌고래", "dolphin", 2),
+    ("animal", "토끼", "rabbit", 2), ("animal", "판다", "panda", 2),
+    ("animal", "펭귄", "penguin", 2),
+    ("flower", "장미", "rose", 2), ("flower", "튤립", "tulip", 2),
+    ("flower", "개나리", "forsythia", 1), ("flower", "진달래", "azalea", 1),
+    ("flower", "벚꽃", "cherry blossom", 1), ("flower", "해바라기", "sunflower", 1),
+    ("flower", "민들레", "dandelion", 1),
+    ("scene", "공원 산책로", "park path", 1), ("scene", "단풍길", "autumn leaves road", 1),
+    ("scene", "바다 해변", "beach sea", 1), ("scene", "벚꽃길", "cherry blossom street", 1),
+    ("scene", "공원 벤치", "park bench", 1), ("scene", "놀이터", "playground", 1),
+    ("scene", "눈 쌓인 공원", "snow park", 1), ("scene", "가로수길", "tree lined road", 1),
+    ("item", "커피", "coffee cup", 2), ("item", "카페", "cafe interior", 1),
+    ("item", "교실", "classroom", 1), ("item", "자전거", "bicycle", 1),
+    ("item", "버스", "bus", 1), ("item", "기차", "train", 1),
+    ("item", "가방", "backpack", 1), ("item", "우산", "umbrella", 1),
+    ("item", "연필", "pencils", 1), ("item", "알람시계", "alarm clock", 1),
+    ("item", "운동화", "sneakers", 1), ("item", "곰인형", "teddy bear", 1),
+    ("item", "풍선", "balloons", 1), ("item", "빵", "bread", 1),
+]  # fmt: skip
 
 
 def api_key(env_file: Path | None = None) -> str:
@@ -96,6 +144,32 @@ def search(
     params = {
         "key": key,
         "category": category,
+        "image_type": "photo",
+        "orientation": "horizontal",
+        "safesearch": "true",
+        "order": "popular",
+        "min_width": 1280,
+        "per_page": per_page,
+    }
+    response = client.get(API, params=params, timeout=30)
+    response.raise_for_status()
+    data = response.json()
+    cache.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+    time.sleep(REQUEST_GAP)
+    return data.get("hits", [])
+
+
+def search_query(
+    client: httpx.Client, key: str, q: str, per_page: int, cache_dir: Path, *, now=time.time
+) -> list[dict]:
+    """검색어 하나로 인기 사진을 검색한다(24시간 캐시, 없으면 요청 뒤 잠시 쉼)."""
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    cache = cache_dir / ("q_" + re.sub(r"[^a-z0-9]+", "_", q.lower()) + f"_{per_page}.json")
+    if cache.is_file() and now() - cache.stat().st_mtime < CACHE_SECONDS:
+        return json.loads(cache.read_text(encoding="utf-8")).get("hits", [])
+    params = {
+        "key": key,
+        "q": q,
         "image_type": "photo",
         "orientation": "horizontal",
         "safesearch": "true",
@@ -172,13 +246,59 @@ def run(out: Path, key: str, total: int, client: httpx.Client) -> list[dict]:
     return candidates
 
 
+def run_queries(
+    out: Path, key: str, client: httpx.Client, queries: list[tuple] | None = None
+) -> list[dict]:
+    """일상 모드: 검색어마다 사진을 받아 `img/`·`candidates.json`(묶음·이름·검색어 포함)·`contact_sheet.jpg` 를 만든다."""
+    out.mkdir(parents=True, exist_ok=True)
+    seen: set[int] = set()
+    candidates: list[dict] = []
+    files: list[Path] = []
+    for group, label, q, want in queries if queries is not None else EVERYDAY:
+        hits = search_query(client, key, q, 20, out / ".cache")
+        for hit in pick_hits(hits, want, seen):
+            no = len(candidates) + 1
+            dest = out / "img" / f"{no:03d}.jpg"
+            save_resized(client, hit["largeImageURL"], dest)
+            files.append(dest)
+            candidates.append(
+                {
+                    "no": no,
+                    "pixabay_id": hit["id"],
+                    "category": group,
+                    "label": label,
+                    "query": q,
+                    "tags": hit.get("tags", ""),
+                    "user": hit.get("user", ""),
+                    "page_url": hit.get("pageURL", ""),
+                    "license": LICENSE,
+                    "file": f"img/{no:03d}.jpg",
+                }
+            )
+    (out / "candidates.json").write_text(
+        json.dumps(candidates, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
+    if files:
+        contact_sheet(files, out / "contact_sheet.jpg")
+    return candidates
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--out", required=True, type=Path, help="후보를 저장할 새 폴더")
-    parser.add_argument("--total", type=int, default=90, help="후보 사진 수(기본 90)")
+    parser.add_argument("--total", type=int, default=90, help="분류 모드의 후보 사진 수(기본 90)")
+    parser.add_argument(
+        "--mode",
+        choices=["everyday", "category"],
+        default="everyday",
+        help="everyday: 음식·과일·친숙한 동물·쉬운 꽃·일상 풍경·일상 물건을 검색어로(기본), category: Pixabay 분류별 인기",
+    )
     args = parser.parse_args(argv)
     with httpx.Client(follow_redirects=True) as client:
-        found = run(args.out, api_key(), args.total, client)
+        if args.mode == "everyday":
+            found = run_queries(args.out, api_key(), client)
+        else:
+            found = run(args.out, api_key(), args.total, client)
     print(f"후보 {len(found)}장 저장: {args.out} (contact_sheet.jpg 로 확인하세요)")
     return 0
 
