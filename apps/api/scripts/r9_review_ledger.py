@@ -38,8 +38,10 @@ def read_ledger(path):
             else:
                 recs.append({"id": it.get("id"), "verdict": (it.get("verdict") or "unspecified"), "reviewer": it.get("reviewer"), "date": it.get("date")})
     elif p.suffix.lower() == ".csv":
-        for r in csv.DictReader(raw.splitlines()):
-            recs.append({"id": (r.get("id") or "").strip(), "verdict": (r.get("verdict") or "unspecified").strip() or "unspecified", "reviewer": r.get("reviewer"), "date": r.get("date")})
+        for r0 in csv.DictReader(raw.splitlines()):
+            r = {(k or "").strip().lower(): v for k, v in r0.items()}  # 헤더 대소문자·BOM 무시
+            verdict = (r.get("verdict") or r.get("review_status") or "unspecified").strip() or "unspecified"
+            recs.append({"id": (r.get("id") or "").strip(), "verdict": verdict, "reviewer": r.get("reviewer") or r.get("reviewed_by"), "date": r.get("date") or r.get("review_date")})
     else:
         for line in raw.splitlines():
             for m in ID_RX.findall(line):
@@ -47,9 +49,17 @@ def read_ledger(path):
     return recs
 
 
+def _kin_negatives(rows):
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    import validate_r9_evalset as V
+    return {r["id"] for r in rows if r.get("is_negative") and any(k in r["text"] for k in V.KIN_MULTI)}
+
+
 def high_risk_groups(rep, st, compliance=None):
     """고위험 군(문장 id 집합). 원문은 쓰지 않는다."""
     g = defaultdict(set)
+    g["kin_only_negatives_rep"] = _kin_negatives(rep)
+    g["kin_only_negatives_stress"] = _kin_negatives(st)
     for r in rep + st:
         if any(s["label"] == "PERSON_ALIAS" for s in r["spans"]):
             g["alias_sentences"].add(r["id"])
