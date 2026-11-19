@@ -201,8 +201,6 @@ def handle(
             register.today(),
             members,
             request.channel,
-            db,
-            group_id,
         )
     if result.intent == "delete":
         return modify.respond_delete(user_id, result.target_id, by_id)
