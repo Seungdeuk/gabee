@@ -562,6 +562,7 @@ const PHOTO_REC_NOTICE = {
   preparing: { text: "가비가 문제를 준비 중이에요", refresh: true },
   cooldown: { text: "조금 뒤에 다시 해주세요", refresh: true },
   failed: { text: "가비가 문제를 준비하기 어려워요", refresh: true },
+  empty: { text: "가비가 오늘 낼 사진을 아직 준비하지 못했어요", refresh: true },
 };
 
 /**
@@ -572,7 +573,7 @@ const PHOTO_REC_NOTICE = {
 export function photoRecView(recs) {
   const items = recs?.state === "ok" || recs?.state === "ai_off" ? (recs.items ?? []) : [];
   if (items.length > 0) return { items };
-  const key = recs?.state === "ok" ? "used_up" : recs?.state;
+  const key = recs?.state === "ok" ? "empty" : recs?.state; // ok 인데 비었다 = 고를 사진이 없음(한도 도달은 서버가 used_up 으로 알린다)
   const notice = PHOTO_REC_NOTICE[key] ?? PHOTO_REC_NOTICE.failed;
   return { items: [], notice: notice.text, refresh: notice.refresh };
 }

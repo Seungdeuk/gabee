@@ -25,8 +25,11 @@ test("추천 응답: ok 이고 항목이 있으면 항목", () => {
   assert.deepEqual(photoRecView({ state: "ok", items: [item] }), { items: [item] });
 });
 
-test("추천 응답: ok 인데 항목이 없거나 used_up 이면 새로고침 없이 문구", () => {
-  for (const recs of [{ state: "ok", items: [] }, { state: "used_up", items: [] }]) {
+test("추천 응답: used_up 이면 새로고침 없이 문구, ok 인데 항목이 없으면 준비 못 했다는 문구(새로고침 가능)", () => {
+  const empty = photoRecView({ state: "ok", items: [] });
+  assert.equal(empty.refresh, true);
+  assert.match(empty.notice, /준비하지 못했어요/);
+  for (const recs of [{ state: "used_up", items: [] }]) {
     const view = photoRecView(recs);
     assert.deepEqual(view.items, []);
     assert.equal(view.refresh, false);
