@@ -378,7 +378,9 @@ def test_refresh_does_not_store_a_candidate_for_someone_who_withdrew_after_it_co
     assert (
         client.put(f"{BASE}/consent", json={"consent": False}, headers=b).status_code == 200
     )  # 그 뒤 철회
-    monkeypatch.setattr(discovery, "discover_group", lambda db, group_id, config=None: stale)
+    monkeypatch.setattr(
+        discovery, "discover_group", lambda db, group_id, config=None, enforce_retro=False: stale
+    )
     _refresh(client, a)  # 낡은 결과를 저장하려 해도
     assert _count(MemoryCandidate) == 0 and _count(MemoryCandidatePhoto) == 0
     assert _api(client, a) == []

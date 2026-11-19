@@ -24,7 +24,9 @@ import {
   viewerPhotos,
 } from "../memories";
 import { memoryUiMode } from "@/shared/memoryFlag";
+import GenerationPanel from "../components/GenerationPanel";
 import useFamilyMemories from "../useFamilyMemories";
+import useMemoryGeneration from "../useMemoryGeneration";
 
 const MAX_WIDTH = 600; // 웹처럼 넓은 화면에서 카드가 지나치게 커지지 않게 한다
 const COLUMNS = 3;
@@ -39,6 +41,7 @@ export default function FamilyMemoriesScreen() {
   const { width: windowWidth } = useWindowDimensions();
   const width = Math.min(windowWidth, MAX_WIDTH);
   const { state, refresh, photoGone } = useFamilyMemories();
+  const generation = useMemoryGeneration(refresh); // 후보가 달라지면 목록을 다시 불러온다
   const [selectedId, setSelectedId] = useState(null);
   const [viewer, setViewer] = useState(null); // { index }
   const kind = bodyKind(state);
@@ -166,7 +169,10 @@ export default function FamilyMemoriesScreen() {
           {MEMORIES_TITLE}
         </Text>
       </View>
-      <View style={[styles.body, { width }]}>{body}</View>
+      <View style={[styles.body, { width }]}>
+        {selected || kind === "loading" || kind === "unavailable" || kind === "error" ? null : <GenerationPanel state={generation.state} polling={generation.polling} onStart={generation.start} />}
+        {body}
+      </View>
       <AlbumViewer
         visible={viewer != null && selected != null}
         photos={selected ? viewerPhotos(selected) : []}

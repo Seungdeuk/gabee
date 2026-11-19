@@ -104,10 +104,15 @@ def _signature(score: float, evidence: dict, rep: str | None, version: str, phot
     )
 
 
-def refresh(db: Session, group_id: str, config: GroupingConfig | None = None) -> RefreshResult:
+def refresh(
+    db: Session,
+    group_id: str,
+    config: GroupingConfig | None = None,
+    enforce_retro: bool = False,
+) -> RefreshResult:
     """가족 하나의 추억 후보를 새로 계산해 저장한다(멱등). 먼저 파생 데이터 대조 정리를 한 번 한다. 서버 스위치·가족 설정이 꺼져 있으면 후보는 없고 저장본도 지워진다."""
     reconcile.reconcile(db)
-    result = discovery.discover_group(db, group_id, config)
+    result = discovery.discover_group(db, group_id, config, enforce_retro)
     now = _now()
     existing = {row.id: row for row in repo.list_for_group(db, group_id)}
     stored_photos = repo.photos_for(db, list(existing))

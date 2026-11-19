@@ -216,6 +216,22 @@ def delete_for_attachment(db: Session, attachment_id: str) -> None:
     db.execute(delete(FamilyMemoryJob).where(FamilyMemoryJob.attachment_id == attachment_id))
 
 
+def statuses_for(
+    db: Session, attachment_ids: list[str], kind: str, chunk: int = 500
+) -> dict[str, str]:
+    """사진들의 작업 상태(attachment_id → status). 줄이 없는 사진은 들어 있지 않다. 읽기 전용, 조회는 chunk 개씩 나눠 한다."""
+    out: dict[str, str] = {}
+    for i in range(0, len(attachment_ids), chunk):
+        part = attachment_ids[i : i + chunk]
+        rows = db.execute(
+            select(FamilyMemoryJob.attachment_id, FamilyMemoryJob.status).where(
+                FamilyMemoryJob.kind == kind, FamilyMemoryJob.attachment_id.in_(part)
+            )
+        ).all()
+        out.update({att: status for att, status in rows})
+    return out
+
+
 def counts(db: Session, group_id: str | None = None) -> dict[str, int]:
     """상태별 작업 수(운영 점검·시험용). 개인정보는 없다."""
     from sqlalchemy import func

@@ -67,3 +67,16 @@ class CandidateOut(BaseModel):
 
 class CandidatesOut(BaseModel):
     items: list[CandidateOut]
+
+
+class GenerationOut(BaseModel):
+    """사용자 요청형 추억 생성의 진행 상태(PR10). 개수만 담고 사진·사용자 정보는 없다."""
+
+    state: Literal["needs_consent", "not_enough_photos", "idle", "processing", "ready", "failed"]
+    eligible: int  # 분석 자격이 있는 사진 수
+    embedded: int  # 그중 분석이 끝난 사진 수
+    processing: int  # 대기·진행 중인 사진 수
+    failed: int  # 재시도 상한까지 실패한 사진 수
+    candidates: int  # 지금 보이는 추억 후보 수
+    enqueued: int  # 이 요청이 새로 등록한 사진 수(상태 조회는 0)
+    capped: bool  # 요청당 상한 때문에 다음 요청에서 더 등록해야 하는가

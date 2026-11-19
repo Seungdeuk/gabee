@@ -63,6 +63,12 @@ class Settings(BaseSettings):
     family_memory_candidates_api_enabled: bool = False
     # 동의할 때 consent_version 을 **반드시** 보내야 하게 한다(T31 고지문 확정 뒤 켠다). 기본 꺼짐: 켜면 버전을 안 보낸 동의 요청은 409 consent_version_required — 버전 확인을 우회하지 못한다
     family_memory_consent_version_required: bool = False
+    # 사용자 요청형 추억 생성(PR10) 진입점. **실제 가족 사진을 처리하는 입구라서** T31 고지문·동의 UX 와 별도 출시 승인이 끝나기 전에는 켜지 않는다(기본 꺼짐, 꺼져 있으면 404).
+    # 켜져 있어도 `family_memory_consent_version_required` 가 함께 켜져 있어야 열린다(동의 버전 확인 없이는 실제 사진을 처리하지 않는다)
+    family_memory_generate_enabled: bool = False
+    family_memory_generate_max_photos: int = (
+        300  # 요청 한 번에 새로 등록하는 사진 수 상한(나머지는 다음 요청에서)
+    )
     ingest_mask_chunk_chars: int = 6000  # 가리기 호출 한 번에 보내는 최대 글자 수(긴 문서는 나눠서)
     ingest_pdf_max_pages: int = 20  # Claude 로 읽는 PDF 최대 쪽 수(비용 상한)
     # Claude 연결 실패(llm_unavailable)로 failed 가 될 파일을 자동으로 다시 처리하는 횟수와 기다리는 시간(n번째 재시도는 n×이 초)

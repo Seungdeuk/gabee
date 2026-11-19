@@ -33,8 +33,8 @@ class DiscoveryResult:
     )  # 자격 있는 사진의 attachment_id → 올린 사람(후보 저장·정리용)
 
 
-def _select(db: Session, group_id: str):
-    photos, eligibility = service.check_group_photos(db, group_id)
+def _select(db: Session, group_id: str, enforce_retro: bool = False):
+    photos, eligibility = service.check_group_photos(db, group_id, enforce_retro=enforce_retro)
     skipped: Counter[str] = Counter()
     eligible = []
     for p in photos:
@@ -102,10 +102,13 @@ def photo_stats(attachment_id: str) -> ImageStats | None:
 
 
 def discover_group(
-    db: Session, group_id: str, config: GroupingConfig | None = None
+    db: Session,
+    group_id: str,
+    config: GroupingConfig | None = None,
+    enforce_retro: bool = False,
 ) -> DiscoveryResult:
     """실제 데이터로 가족 하나의 추억 후보를 계산한다: 자격(일괄) → 임베딩(일괄 한 번) → 사진 파일의 ImageStats → 그룹화. 읽기 전용."""
-    photos, eligible, skipped = _select(db, group_id)
+    photos, eligible, skipped = _select(db, group_id, enforce_retro)
     rows = embeddings_repo.get_many(db, [p.attachment_id for p in eligible])
     vectors: dict[str, tuple[float, ...]] = {}
     for att, row in rows.items():

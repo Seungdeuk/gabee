@@ -121,3 +121,12 @@ PR7(앱) 계약: 위 `GET /family-memory/candidates` 응답(`CandidatesOut`: 후
 `apps/api/app/features/family_memory/tests/test_memory_jobs.py`(작업 큐: 등록 자격·중복·1:1 제외, 선점·임대 복구·재시작 복구·상한, backoff, 자격 재확인 4지점, 철회·나가기·끄기·제외·삭제 차단, 가족 격리, 워커·로그) 와 `tests/test_family_memory_pg_e2e.py`(PG16: 기본값·UNIQUE·CASCADE, 6 워커 동시 선점, 잠긴 줄 건너뛰기, 철회 차단).
 `apps/api/app/features/family_memory/tests/test_grouping.py`(순수: 같은 시점·다른 날짜/연도·같은 날 다른 이벤트·연사, batch_id 경계, 촬영 시각 누락, 중복, 대표 사진 결정성·다양성, 가족 격리, 빈 결과, 입력 순서 불변, 잘못된 임베딩, 화질·해시)와 `test_discovery.py`(DB: 자격·미동의·철회·제외·삭제·서버/가족 끄기·1:1·문서·미확인·가족 격리·읽기 전용).
 `apps/api/app/features/family_memory/tests/test_family_memory.py` — 기본 꺼짐, 서버 스위치, owner/admin/member 권한, 가족 간 격리, 동의·철회 멱등, 소급 동의 분리, 사진별 제외(본인만), 자격 판정 표, D-13·`ai_group_settings` 불변, 훅 실패 롤백, 가족 나가기·사진 삭제·가족 삭제 정리, 로그.
+
+## 사용자 요청형 추억 생성 (PR10, 2026-11-19)
+자동 생성은 여전히 없다. **사용자가 "추억 만들기"를 눌렀을 때만** 그 가족의 자격 있는 사진을 분석 큐에 올리고 후보를 만든다(새 규칙 없이 PR1~PR9 부품을 이어 붙인 것).
+- **입구 가드(기본 꺼짐):** `FAMILY_MEMORY_GENERATE_ENABLED=false` 이면 `GET·POST /family-memory/generation` 이 404 다. 켜져 있어도 `FAMILY_MEMORY_CONSENT_VERSION_REQUIRED` 가 함께 켜져 있어야 열린다(아니면 403 `generation_not_open`). **실제 가족 사진을 처리하는 입구라서 T31 고지문·동의 UX 와 별도 출시 승인 전에는 켜지 않는다.** 서버 스위치·가족 활성화·요청자 본인 동의도 확인한다(403 `memory_disabled`·`family_off`·`consent_required`).
+- **요청 한 번의 흐름:** ① 입구·서버·가족·요청자 동의 확인 → ② `check_group_photos(enforce_retro=True)` 로 자격 있는 사진만 선택(E0·D-13: 업로더가 일반 사진으로 확인한 가족방 사진만, 업로더별 동의, 1:1·문서·미확인·제외·삭제 사진 제외, **업로더가 동의하기 전에 올린 과거 사진은 소급 분석 동의가 있을 때만**) → ③ 임베딩도 작업도 없는 사진만 `job_service.enqueue`(UNIQUE 라 중복 불가, 요청당 `FAMILY_MEMORY_GENERATE_MAX_PHOTOS=300` 상한, 사진이 3장 미만이면 등록하지 않음) → ④ 대기·진행 작업이 하나도 없고 임베딩이 있으면 `candidate_service.refresh(enforce_retro=True)` → ⑤ 상태 응답(`needs_consent`·`not_enough_photos`·`idle`·`processing`·`ready`·`failed` + 개수만).
+- **멱등:** 요청을 몇 번 보내도 같은 결과(이미 등록·완료된 사진은 다시 등록하지 않고, 후보 식별자는 사진 구성으로 정해진다). `failed` 작업은 요청이 되살리지 않는다(무한 재시도 방지). `GET` 은 읽기 전용이다. 처리 중에는 앱이 같은 `POST` 를 5초 간격(최대 120회)으로 다시 보내 진행을 확인하고, 준비되면 후보 목록을 다시 불러온다.
+- **하지 않는 것:** 사진 판별 상태 변경·E1 자동 승인·자동 게시·자동 enqueue·소급 분석 자동 시작·외부 LLM 사진 전송. 원본 채팅 사진 정책은 그대로다.
+- **앱:** 추억 후보 화면 위에 `GenerationPanel`(진행 상태와 "추억 만들기"/"다시 확인하기" 버튼). 서버 입구가 닫혀 있으면(404) 패널이 보이지 않는다. 가족 전환·로그아웃 때 상태·예약된 확인·늦은 응답을 버린다. 개발용 mock 모드에서는 부르지 않는다.
+- **운영 활성화 전 별도 승인 필요:** T31 고지문·동의 UI, 출시 승인, 워커 실행 환경(torch·transformers)과 모델 사용, 공용 DB 반영(이 PR 은 새 마이그레이션이 없다). 자세한 조건은 `family-memory-launch.md`.

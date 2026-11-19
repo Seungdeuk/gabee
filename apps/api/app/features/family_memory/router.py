@@ -12,6 +12,7 @@ from app.shared.errors import not_found
 from . import (
     analysis,  # noqa: F401  작업 큐 차단 훅과 임베딩 정리 훅을 시작할 때 등록한다(모델은 올리지 않는다: 인코더는 워커 프로세스에서만)
     candidate_service,
+    generate_service,
     job_service,  # noqa: F401
     service,
 )
@@ -23,6 +24,7 @@ from .schemas import (
     ExclusionIn,
     ExclusionOut,
     FamilyEnabledIn,
+    GenerationOut,
     MemoryStateOut,
 )
 
@@ -125,3 +127,23 @@ def get_candidates(
             )
         )
     return CandidatesOut(items=items)
+
+
+@router.get("/generation", response_model=GenerationOut)
+def get_generation(
+    user: User = Depends(current_user),
+    group_id: str = Depends(current_group_id),
+    db: Session = Depends(get_db),
+) -> GenerationOut:
+    """사용자 요청형 추억 생성의 진행 상태(PR10, 읽기 전용). 입구 가드가 꺼져 있으면(기본) 404."""
+    return generate_service.get_status(db, user, group_id)
+
+
+@router.post("/generation", response_model=GenerationOut)
+def post_generation(
+    user: User = Depends(current_user),
+    group_id: str = Depends(current_group_id),
+    db: Session = Depends(get_db),
+) -> GenerationOut:
+    """ "추억 만들기" 요청(멱등, PR10): 내 가족의 자격 있는 사진을 작업 큐에 등록하고 준비되면 후보를 새로 계산한다. 몇 번 보내도 중복 분석·중복 후보가 생기지 않는다. 입구 가드가 꺼져 있으면(기본) 404."""
+    return generate_service.request_generation(db, user, group_id)

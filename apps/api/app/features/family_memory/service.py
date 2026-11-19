@@ -110,11 +110,25 @@ def check_photo(db: Session, attachment_id: str, *, retro: bool = False) -> Elig
     )
 
 
+def _is_past_photo(row: MemberMemoryConsent | None, uploaded_at: datetime) -> bool:
+    """업로더가 동의하기 **전에** 올린 사진인가(소급 분석 대상). 시각에 시간대가 없으면(SQLite) UTC 로 본다."""
+    if row is None or row.consented_at is None:
+        return False
+    consented = row.consented_at
+    uploaded = uploaded_at
+    if consented.tzinfo is None:
+        consented = consented.replace(tzinfo=UTC)
+    if uploaded.tzinfo is None:
+        uploaded = uploaded.replace(tzinfo=UTC)
+    return uploaded < consented
+
+
 def check_group_photos(
-    db: Session, group_id: str
+    db: Session, group_id: str, *, enforce_retro: bool = False
 ) -> tuple[list[repo.GroupPhoto], dict[str, Eligibility]]:
     """한 가족의 가족 전체방 사진 전체를 **일괄**로 판정한다(`check_photo` 와 같은 `evaluate` 규칙, 고정된 4번의 조회: 사진+판별 상태·가족 설정·동의·제외).
-    사진이 몇 장이든 조회 수가 늘지 않는다. 1:1 방·지운 메시지·이미지가 아닌 첨부는 조회에서 이미 빠진다. 읽기 전용."""
+    사진이 몇 장이든 조회 수가 늘지 않는다. 1:1 방·지운 메시지·이미지가 아닌 첨부는 조회에서 이미 빠진다. 읽기 전용.
+    `enforce_retro=True`(사용자 요청형 생성)이면 업로더가 동의하기 전에 올린 과거 사진은 그 업로더의 **소급 분석 동의**가 있을 때만 자격이 있다(없으면 `no_retro_consent`)."""
     photos = repo.group_photos_with_status(db, group_id)
     server = server_enabled()
     family = repo.family_enabled(db, group_id)
@@ -133,6 +147,7 @@ def check_group_photos(
                 uploader_retro_consented=_retro_active(row),
                 excluded=p.attachment_id in excluded,
                 check_status=p.check_status,
+                retro=enforce_retro and _is_past_photo(row, p.uploaded_at),
             )
         )
     return photos, result

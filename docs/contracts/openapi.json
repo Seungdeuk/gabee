@@ -18099,6 +18099,136 @@
         }
       }
     },
+    "/family-memory/generation": {
+      "get": {
+        "tags": [
+          "family-memory"
+        ],
+        "summary": "Get Generation",
+        "description": "사용자 요청형 추억 생성의 진행 상태(PR10, 읽기 전용). 입구 가드가 꺼져 있으면(기본) 404.",
+        "operationId": "get_generation_family_memory_generation_get",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-gyeot-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Gyeot-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenerationOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "family-memory"
+        ],
+        "summary": "Post Generation",
+        "description": "\"추억 만들기\" 요청(멱등, PR10): 내 가족의 자격 있는 사진을 작업 큐에 등록하고 준비되면 후보를 새로 계산한다. 몇 번 보내도 중복 분석·중복 후보가 생기지 않는다. 입구 가드가 꺼져 있으면(기본) 404.",
+        "operationId": "post_generation_family_memory_generation_post",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-gyeot-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Gyeot-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenerationOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/admin/service/me": {
       "get": {
         "tags": [
@@ -24288,6 +24418,63 @@
           "hits"
         ],
         "title": "FindOut"
+      },
+      "GenerationOut": {
+        "properties": {
+          "state": {
+            "type": "string",
+            "enum": [
+              "needs_consent",
+              "not_enough_photos",
+              "idle",
+              "processing",
+              "ready",
+              "failed"
+            ],
+            "title": "State"
+          },
+          "eligible": {
+            "type": "integer",
+            "title": "Eligible"
+          },
+          "embedded": {
+            "type": "integer",
+            "title": "Embedded"
+          },
+          "processing": {
+            "type": "integer",
+            "title": "Processing"
+          },
+          "failed": {
+            "type": "integer",
+            "title": "Failed"
+          },
+          "candidates": {
+            "type": "integer",
+            "title": "Candidates"
+          },
+          "enqueued": {
+            "type": "integer",
+            "title": "Enqueued"
+          },
+          "capped": {
+            "type": "boolean",
+            "title": "Capped"
+          }
+        },
+        "type": "object",
+        "required": [
+          "state",
+          "eligible",
+          "embedded",
+          "processing",
+          "failed",
+          "candidates",
+          "enqueued",
+          "capped"
+        ],
+        "title": "GenerationOut",
+        "description": "사용자 요청형 추억 생성의 진행 상태(PR10). 개수만 담고 사진·사용자 정보는 없다."
       },
       "GroupCreate": {
         "properties": {
