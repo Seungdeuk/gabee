@@ -411,6 +411,32 @@ def test_recent_words_are_hidden_from_cached_items(client, ready, fake, monkeypa
         assert [i["word"] for i in out["items"]] == ["딸기"]
 
 
+def test_prompts_sent_to_ai_hold_only_the_word_never_family_text(client, ready, fake):
+    """가족 일정·대화에서 단어를 찾아도 AI 로 가는 요청은 단어 하나짜리 고정 프롬프트뿐이다(일정 제목·메모·대화 원문은 나가지 않는다)."""
+    a, b, group = ready
+    add_event(
+        client,
+        a,
+        title="딸기 파티 보안메모ZZ",
+        memo="비밀장소QQ 케이크",
+        share_with=[me(client, b)],
+    )
+    say(client, a, "흑돼지 먹으러 갈까 대화원문XX")
+    with SessionLocal() as db:
+        out = draw_rec.recommend(db, user_of(db, client, a), group["id"])
+    words = {i["word"] for i in out["items"]}
+    assert {
+        "딸기",
+        "케이크",
+        "돼지",
+    } <= words  # 가족 재료를 실제로 읽었다(아래 검사가 빈 검사가 아니다)
+    assert fake.calls
+    allowed = {draw_rec.draw_prompt(w) for w in words}
+    for prompt in fake.calls:
+        assert prompt in allowed
+        assert not any(s in prompt for s in ("보안메모ZZ", "비밀장소QQ", "대화원문XX"))
+
+
 def test_ai_off_state(client, family, fake):
     a, _, group = family
     with SessionLocal() as db:
