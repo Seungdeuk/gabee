@@ -14,6 +14,7 @@ from app.features.billing.router import router as billing_router
 from app.features.family_chat.router import router as family_chat_router
 from app.features.family_group.photo_limit import PhotoBodyLimitMiddleware
 from app.features.family_group.router import router as family_group_router
+from app.features.family_memory.router import router as family_memory_router
 from app.features.notices.router import router as notices_router
 from app.features.notifications.router import router as notifications_router
 from app.features.ops_admin.error_service import observe as ops_error_observer
@@ -92,6 +93,7 @@ for feature, router in (
     ("play", play_router),
     ("ops_admin", ops_admin_router),
     ("weekly_news", weekly_news_router),
+    ("family_memory", family_memory_router),
 ):
     deps = []
     deps.append(Depends(schema_ready(feature)))

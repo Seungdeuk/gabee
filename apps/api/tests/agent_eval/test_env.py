@@ -132,6 +132,9 @@ def test_every_module_level_memory_store_in_the_app_is_either_reset_or_known_con
         "app.main.deps",
         "app.shared.chat_share._providers",
         "app.shared.member_exit._handlers",  # 가족 나갈 때 정리 콜백(시작할 때 등록하는 목록)
+        "app.shared.memory_hooks._attachment_removed",  # AI 추억 동의·삭제 콜백(시작할 때 등록하는 목록)
+        "app.shared.memory_hooks._member_withdrawn",
+        "app.shared.memory_hooks._family_disabled",
         "app.shared.weekly_sources._providers",  # 주간 뉴스 재료 수집 통로(시작할 때 등록하는 목록)
         "app.shared.privacy.ner._warned",  # 경고를 한 번만 내는 표시
         "app.shared.privacy.ner._cache",  # 같은 글에 같은 탐지 결과를 돌려주는 순수 함수 캐시

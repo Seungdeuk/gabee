@@ -17497,6 +17497,383 @@
         }
       }
     },
+    "/family-memory/settings": {
+      "get": {
+        "tags": [
+          "family-memory"
+        ],
+        "summary": "Get Settings",
+        "description": "서버 스위치·가족 설정·내 동의 상태. 가족 구성원 누구나 본다.",
+        "operationId": "get_settings_family_memory_settings_get",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-gyeot-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Gyeot-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemoryStateOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "family-memory"
+        ],
+        "summary": "Put Settings",
+        "description": "가족 기능을 켜고 끈다(소유자·관리자만, member 는 403). 켜는 것은 서버 스위치가 켜져 있을 때만.",
+        "operationId": "put_settings_family_memory_settings_put",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-gyeot-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Gyeot-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FamilyEnabledIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemoryStateOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/family-memory/consent": {
+      "put": {
+        "tags": [
+          "family-memory"
+        ],
+        "summary": "Put Consent",
+        "description": "내 사진의 AI 분석에 동의하거나 철회한다(본인 것만). 철회는 항상 가능하고 즉시 효력이 생긴다.",
+        "operationId": "put_consent_family_memory_consent_put",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-gyeot-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Gyeot-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConsentIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemoryStateOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/family-memory/consent/retro": {
+      "put": {
+        "tags": [
+          "family-memory"
+        ],
+        "summary": "Put Retro Consent",
+        "description": "과거 사진 소급 분석 동의(별개, 기본 꺼짐). 이 단계에서는 동의 기록만 남기고 소급 분석 작업은 만들지 않는다.",
+        "operationId": "put_retro_consent_family_memory_consent_retro_put",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-gyeot-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Gyeot-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConsentIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemoryStateOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/family-memory/photos/{attachment_id}/exclusion": {
+      "put": {
+        "tags": [
+          "family-memory"
+        ],
+        "summary": "Put Exclusion",
+        "description": "내가 올린 사진을 AI 분석에서 빼거나 다시 넣는다(업로더 본인만). 타임라인 노출과는 별개다.",
+        "operationId": "put_exclusion_family_memory_photos__attachment_id__exclusion_put",
+        "parameters": [
+          {
+            "name": "attachment_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Attachment Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-gyeot-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Gyeot-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExclusionIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExclusionOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/admin/service/me": {
       "get": {
         "tags": [
@@ -22307,6 +22684,19 @@
         "title": "ConfirmRequest",
         "description": "확인 카드의 버튼을 눌렀을 때. AI 를 부르지 않는다."
       },
+      "ConsentIn": {
+        "properties": {
+          "consent": {
+            "type": "boolean",
+            "title": "Consent"
+          }
+        },
+        "type": "object",
+        "required": [
+          "consent"
+        ],
+        "title": "ConsentIn"
+      },
       "DeletedOut": {
         "properties": {
           "message_ids": {
@@ -23060,6 +23450,37 @@
         "title": "EventUpdate",
         "description": "바꿀 값만 보낸다. 보내지 않은 값은 그대로 둔다. 시간(start_time·end_time)은 null 로 보내면 지운다(시간 없음).\nshare_with 는 공유 대상 전체를 다시 정한다(원본 주인만, 아니면 403 not_share_owner). 새로 든 사람에게는 복사본이 생기고,\n빠진 사람의 복사본은 지워진다. 보내지 않으면 공유는 그대로다."
       },
+      "ExclusionIn": {
+        "properties": {
+          "excluded": {
+            "type": "boolean",
+            "title": "Excluded"
+          }
+        },
+        "type": "object",
+        "required": [
+          "excluded"
+        ],
+        "title": "ExclusionIn"
+      },
+      "ExclusionOut": {
+        "properties": {
+          "attachment_id": {
+            "type": "string",
+            "title": "Attachment Id"
+          },
+          "excluded": {
+            "type": "boolean",
+            "title": "Excluded"
+          }
+        },
+        "type": "object",
+        "required": [
+          "attachment_id",
+          "excluded"
+        ],
+        "title": "ExclusionOut"
+      },
       "ExpenseCreate": {
         "properties": {
           "title": {
@@ -23234,6 +23655,19 @@
         "type": "object",
         "title": "ExpenseUpdate",
         "description": "지출에서 바꿀 값만 보낸다(에이전트의 수정 제안과 앱의 지출 수정 PATCH 가 같이 쓴다). 나눌 사람·낸 사람은 바꾸지 않는다."
+      },
+      "FamilyEnabledIn": {
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "title": "Enabled"
+          }
+        },
+        "type": "object",
+        "required": [
+          "enabled"
+        ],
+        "title": "FamilyEnabledIn"
       },
       "FeatureRow": {
         "properties": {
@@ -25300,6 +25734,33 @@
         "title": "MemoryOut",
         "description": "가비의 기억 한 줄."
       },
+      "MemoryStateOut": {
+        "properties": {
+          "server_enabled": {
+            "type": "boolean",
+            "title": "Server Enabled"
+          },
+          "family_enabled": {
+            "type": "boolean",
+            "title": "Family Enabled"
+          },
+          "can_manage": {
+            "type": "boolean",
+            "title": "Can Manage"
+          },
+          "me": {
+            "$ref": "#/components/schemas/MyConsentOut"
+          }
+        },
+        "type": "object",
+        "required": [
+          "server_enabled",
+          "family_enabled",
+          "can_manage",
+          "me"
+        ],
+        "title": "MemoryStateOut"
+      },
       "MessageCreate": {
         "properties": {
           "text": {
@@ -25598,6 +26059,36 @@
           "muted"
         ],
         "title": "MuteSet"
+      },
+      "MyConsentOut": {
+        "properties": {
+          "consented": {
+            "type": "boolean",
+            "title": "Consented"
+          },
+          "retro_consented": {
+            "type": "boolean",
+            "title": "Retro Consented"
+          },
+          "consent_version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Consent Version"
+          }
+        },
+        "type": "object",
+        "required": [
+          "consented",
+          "retro_consented",
+          "consent_version"
+        ],
+        "title": "MyConsentOut"
       },
       "NewsItemOut": {
         "properties": {

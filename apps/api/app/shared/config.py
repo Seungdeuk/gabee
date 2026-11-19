@@ -46,6 +46,8 @@ class Settings(BaseSettings):
     # 가족방 사진이 문서 사진인지 Claude 로 가린다(기본 false: 로컬 OCR 판별만). 켜면 글자가 있는 사진이 Anthropic API 로 전송된다(docs/adr/0015)
     photo_judge_llm: bool = False
     photo_judge_model: str = ""  # 비우면 llm_model(Haiku)
+    # AI 추억 분석의 서버 기능 스위치(ADR 0020 3중 조건의 ①). 기본 꺼짐: 꺼져 있으면 가족 설정·업로더 동의가 켜져 있어도 분석 자격이 없고 동의를 새로 받지 않는다
+    family_memory_enabled: bool = False
     ingest_mask_chunk_chars: int = 6000  # 가리기 호출 한 번에 보내는 최대 글자 수(긴 문서는 나눠서)
     ingest_pdf_max_pages: int = 20  # Claude 로 읽는 PDF 최대 쪽 수(비용 상한)
     # Claude 연결 실패(llm_unavailable)로 failed 가 될 파일을 자동으로 다시 처리하는 횟수와 기다리는 시간(n번째 재시도는 n×이 초)
