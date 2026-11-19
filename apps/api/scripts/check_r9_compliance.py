@@ -38,6 +38,8 @@ def main():
     ap.add_argument("--rep", required=True, type=Path)
     ap.add_argument("--stress", required=True, type=Path)
     ap.add_argument("--out", required=True, type=Path)
+    ap.add_argument("--prev-rep", type=Path, help="이전 버전 대표 파일(변경 범위 집계용)")
+    ap.add_argument("--prev-stress", type=Path)
     a = ap.parse_args()
     rep, st = load(a.rep), load(a.stress)
     ids = defaultdict(list)
@@ -206,6 +208,63 @@ def main():
                      "oracle_protected_all": s["protected_all_kinds"]["rate"], "account_policy": s["account_block_policy"]}
     out["eval_code_compat"] = comp
 
+    # ---- r9-1.1 PERSON_ALIAS 정책 점검(별명 자체만, 가족 호칭은 구간 밖) ----
+    KIN_ALL = KIN | {"외삼촌", "외숙모", "큰이모", "작은이모", "큰엄마", "작은엄마"}
+    KIN_RX = "|".join(sorted(KIN_ALL, key=len, reverse=True))
+    pol = {}
+    for tag, rows in (("rep", rep), ("stress", st)):
+        al = [(r, s_) for r in rows for s_ in r["spans"] if s_["label"] == "PERSON_ALIAS"]
+        per = [(r, s_) for r in rows for s_ in r["spans"] if s_["label"] == "PERSON"]
+
+        def kin_inside(v):
+            toks = v.split()
+            return v in KIN_ALL or any(t in KIN_ALL for t in toks) or any(v.endswith(k) and len(v) > len(k) for k in KIN_ALL)
+
+        for r, s_ in al:
+            if kin_inside(s_["value"]):
+                ids[f"{tag.upper()}_ALIAS_CONTAINS_KIN_TERM"].append(r["id"])
+        for r, s_ in per:
+            if kin_inside(s_["value"]):
+                ids[f"{tag.upper()}_PERSON_VALUE_CONTAINS_KIN_TERM"].append(r["id"])
+        adj = []
+        for r, s_ in per:
+            rest = r["text"][s_["end"]:s_["end"] + 8]
+            if re.match(r"^(?:이)?\s?(" + KIN_RX + r")(?![가-힣])", rest):
+                adj.append(r["id"])
+        for rid in adj:
+            ids[f"{tag.upper()}_PERSON_FOLLOWED_BY_KIN_TERM"].append(rid)
+        pol[tag] = {"alias_spans": len(al), "alias_share_of_person_family_pct": pct(len(al), len(al) + len(per)),
+                    "alias_contains_kin": len(set(ids[f"{tag.upper()}_ALIAS_CONTAINS_KIN_TERM"])),
+                    "person_contains_kin": len(set(ids[f"{tag.upper()}_PERSON_VALUE_CONTAINS_KIN_TERM"])),
+                    "person_spans_followed_by_kin_term": len(adj),
+                    "alias_len_dist": dict(sorted(Counter(len(s_["value"]) for _, s_ in al).items())),
+                    "alias_sentences": len({r["id"] for r, _ in al}), "alias_distinct_values": len({s_["value"] for _, s_ in al}),
+                    "alias_value_equals_a_person_value": len({s_["value"] for _, s_ in al} & {s_["value"] for _, s_ in per})}
+    out["policy_r9_1_1"] = pol
+    # ---- 이전 버전 대비 변경 범위(id 기준, 원문 미출력) ----
+    if a.prev_rep and a.prev_stress:
+        diff = {}
+        for tag, cur, prev in (("rep", rep, load(a.prev_rep)), ("stress", st, load(a.prev_stress))):
+            pc = {r["id"]: r for r in prev}
+            cc = {r["id"]: r for r in cur}
+            same_text = [i for i in cc if i in pc and cc[i]["text"] == pc[i]["text"]]
+            same_all = [i for i in same_text if cc[i]["spans"] == pc[i]["spans"] and cc[i].get("primary_stress_type") == pc[i].get("primary_stress_type")]
+            sa = set(same_all)
+            changed_spans_only = [i for i in same_text if i not in sa]
+            changed_text = [i for i in cc if i in pc and cc[i]["text"] != pc[i]["text"]]
+            diff[tag] = {"rows_v1": len(pc), "rows_v1_1": len(cc), "ids_added": len(set(cc) - set(pc)), "ids_removed": len(set(pc) - set(cc)),
+                         "unchanged": len(same_all), "text_unchanged_labels_changed": len(changed_spans_only), "text_changed": len(changed_text)}
+            ids[f"DIFF_{tag.upper()}_TEXT_UNCHANGED_LABELS_CHANGED"] = changed_spans_only
+            ids[f"DIFF_{tag.upper()}_TEXT_CHANGED"] = changed_text
+            kinds = Counter()
+            for i in changed_spans_only:
+                la = sorted(x["label"] for x in pc[i]["spans"])
+                lb = sorted(x["label"] for x in cc[i]["spans"])
+                kinds["+".join(la) + " -> " + "+".join(lb)] += 1
+            diff[tag]["label_change_patterns"] = dict(kinds.most_common(8))
+            diff[tag]["changed_text_alias_before"] = sum(1 for i in changed_text if any(x["label"] == "PERSON_ALIAS" for x in pc[i]["spans"]))
+            diff[tag]["changed_text_alias_after"] = sum(1 for i in changed_text if any(x["label"] == "PERSON_ALIAS" for x in cc[i]["spans"]))
+        out["diff_vs_prev"] = diff
     out["id_list_counts"] = {k: len(dict.fromkeys(v)) for k, v in sorted(ids.items())}
     a.out.write_text(json.dumps({"summary": out, "ids": {k: list(dict.fromkeys(v)) for k, v in ids.items()}}, ensure_ascii=False, indent=1), encoding="utf-8")
     print(json.dumps(out, ensure_ascii=False))
