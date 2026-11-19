@@ -57,13 +57,17 @@ export async function createDraw({ image, answer, alts = [], hint2 = "", playerI
 }
 
 /**
- * 탐정단을 낸다(사진 한 장 + 확대 위치 + 선택식 보기).
- * @param {{ image: { uri: string, file?: Blob, fileName?: string | null, mimeType?: string }, source: 1 | 2, zoom: number, boxX: number, boxY: number, question: string, options: string[], answerIndex: number, comment?: string, playerIds?: string[] }} input
+ * 탐정단을 낸다(사진 한 장 + 확대 위치 + 선택식 보기). 가비 추천 카드로 낼 때는 recId 만 보내고 파일·source 는 붙이지 않는다(서버가 카드 기준으로 정한다).
+ * @param {{ image?: { uri: string, file?: Blob, fileName?: string | null, mimeType?: string }, recId?: string, source?: 1 | 2, zoom: number, boxX: number, boxY: number, question: string, options: string[], answerIndex: number, comment?: string, playerIds?: string[] }} input
  */
-export async function createPhoto({ image, source, zoom, boxX, boxY, question, options, answerIndex, comment = "", playerIds = [] }) {
+export async function createPhoto({ image, recId, source, zoom, boxX, boxY, question, options, answerIndex, comment = "", playerIds = [] }) {
   const form = new FormData();
-  await fileForUpload(form, image, image.fileName || "photo.jpg", image.mimeType || "image/jpeg");
-  form.append("source", String(source));
+  if (recId) {
+    form.append("rec_id", recId);
+  } else {
+    await fileForUpload(form, image, image.fileName || "photo.jpg", image.mimeType || "image/jpeg");
+    form.append("source", String(source));
+  }
   form.append("zoom", String(zoom));
   form.append("box_x", String(boxX));
   form.append("box_y", String(boxY));
@@ -111,3 +115,10 @@ export const closeBomb = (id) => apiFetch(bombPath(id, "/close"), { method: "POS
  * 이고 strokes 는 선 목록(선마다 [x, y] 점, 좌표 0~255)이다.
  */
 export const getDrawRecs = () => apiFetch("/play/draw/recommendations");
+
+/**
+ * 찰칵! 탐정단 가비 추천: { state, items }. state: ok | used_up | preparing | cooldown | failed | ai_off.
+ * 카드는 { id, kind: "month" | "event" | "content", source: "album" | "common", question, options, answer_index, box_x, box_y, zoom, image_url }.
+ * apiFetch 에는 요청 제한 시간이 없어 느린 응답(내용 질문을 AI 로 만드는 경우)도 기다린다.
+ */
+export const getPhotoRecs = () => apiFetch("/play/photo/recommendations");
