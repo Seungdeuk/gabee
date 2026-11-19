@@ -105,6 +105,16 @@ def is_enabled(db: Session, group_id: str) -> bool:
     return bool(row and row.enabled)
 
 
+_on_disabled: list[Callable[[Session, str], None]] = []
+
+
+def on_disabled(callback: Callable[[Session, str], None]) -> None:
+    """동의를 끌 때 그 가족의 AI 결과를 지우는 기능별 정리를 등록한다(콜백은 `(db, group_id)`, 같은 트랜잭션에서 불리고 커밋은 하지 않는다).
+    이 모듈이 기능 폴더를 import 하지 않게 하는 등록식이다. 같은 함수를 두 번 등록해도 한 번만 부른다."""
+    if callback not in _on_disabled:
+        _on_disabled.append(callback)
+
+
 def set_enabled(db: Session, group_id: str, user_id: str, enabled: bool) -> None:
     for _ in range(2):
         row = db.get(AiGroupSetting, group_id)
@@ -114,6 +124,8 @@ def set_enabled(db: Session, group_id: str, user_id: str, enabled: bool) -> None
         row.enabled, row.enabled_by, row.updated_at = enabled, user_id, datetime.now(UTC)
         if not enabled:  # 동의를 끄면 이 가족의 분석 결과(대화에서 나온 요약·후보)도 바로 지운다
             db.execute(delete(AiResultCache).where(AiResultCache.group_id == group_id))
+            for callback in list(_on_disabled):  # 기능별 AI 결과(예: 탐정단 추천의 사진 내용 질문)도 같은 트랜잭션에서
+                callback(db, group_id)
         try:
             db.commit()
             return

@@ -10,6 +10,7 @@ from app.shared.auth import current_group_id, current_user
 from app.shared.db import get_db
 
 from . import draw_rec, media, quiz_rec, service
+from . import photo_rec_store as _photo_rec_store  # noqa: F401  채팅 사진 삭제·AI 동의 끔 정리 콜백 등록(가져오기만으로 등록됨)
 from .bomb_router import router as bomb_router
 from .schemas import (
     PlayBoardOut,
