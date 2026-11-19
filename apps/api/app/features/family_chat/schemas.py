@@ -70,6 +70,19 @@ class PhotoCheckItemOut(BaseModel):
     created_at: datetime
     taken_at: datetime | None = None
     status: Literal["unsure", "failed", "pending", "excluded"]
+    # 실패 원인(사진 내용·글자는 담지 않는다): ocr_failed(글자 읽기 실패) | timeout(시간 초과) | ai_failed(AI 판별 오류) | stalled(오래 처리되지 않음) | null
+    failure_kind: Literal["ocr_failed", "timeout", "ai_failed", "stalled"] | None = None
+    can_retry: bool = False  # 지금 재검사(`POST /photos/{id}/recheck`)를 요청할 수 있는 사진인가(실패·처리 지연이고 횟수가 남음)
+    retries_left: int = 0
+
+
+class PhotoRecheckOut(BaseModel):
+    """재검사 요청 결과. queued=true 면 이번 요청이 판별을 다시 맡겼고, false 면 이미 맡겨졌거나 처리 중이라 아무것도 바꾸지 않았다(같은 요청을 다시 보내도 같다).
+    결과는 자동으로 `photo` 가 되지 않는다: 문서·애매·실패 중 하나로 끝나고, 일반 사진은 업로더가 직접 확인한다(D-13)."""
+
+    status: Literal["pending"]
+    queued: bool
+    retries_left: int
 
 
 class PhotoChecksOut(BaseModel):

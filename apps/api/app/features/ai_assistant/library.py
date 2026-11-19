@@ -146,6 +146,9 @@ def register_chat_photo(
                 return
             if not may_register:
                 return  # 업로더가 이미 일반 사진으로 확인한 사진: 문서함에 올리면 타임라인과 문서함에 둘 다 있게 된다(b0-2a 리뷰)
+            with SessionLocal() as db:
+                if not chat_library.attachment_exists(db, group_id, attachment_id):
+                    return  # 판별하는 사이 메시지가 지워졌다: 지운 사진이 문서함에 남지 않게(재검사처럼 오래 걸리는 판별 뒤의 경합)
         with SessionLocal() as db:
             photo = service.receive_file(
                 db, group_id, user_id, f"{attachment_id}.jpg", "image/jpeg", data

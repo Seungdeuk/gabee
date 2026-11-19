@@ -31,7 +31,7 @@ from app.shared.rate_limit import FailureLimiter
 from . import chat_push, photo_check_service, service
 from . import repository as repo
 from .models import FAMILY, Message, MessageAttachment
-from .schemas import MessageOut
+from .schemas import MessageOut, PhotoRecheckOut
 
 MAX_BYTES = 8 * 1024 * 1024
 MAX_SIDE_PX = 12000  # 이보다 큰 그림은 픽셀을 읽기 전에 거절한다
@@ -346,6 +346,25 @@ def save_to_library(db: Session, user: User, group_id: str, attachment_id: str) 
         return "already"
     chat_library.photo_requested(group_id, user.id, attachment_id, data)
     return "queued"
+
+
+def recheck_photo(db: Session, user: User, group_id: str, attachment_id: str) -> PhotoRecheckOut:
+    """판별 실패·처리 지연 사진을 업로더가 다시 검사하게 한다(재시도 횟수 제한·멱등). 사진 파일을 먼저 읽고(없으면 횟수를 쓰지 않고 404),
+    맡기기에 성공했을 때만 같은 판별(자동 판별 통로)을 다시 돌린다. 결과는 `photo` 가 될 수 없고(D-13) 외부 AI 는 기존 판별과 같은 조건(가족 AI 동의)에서만 쓴다."""
+    attachment = repo.get_attachment(db, attachment_id) if _SAFE_ID.match(attachment_id) else None
+    if attachment is None or attachment.group_id != group_id:
+        raise not_found("사진")
+    files = attachment_files(attachment)
+    if files is None:
+        raise not_found("사진")
+    try:
+        data = files[0].read_bytes()
+    except FileNotFoundError:
+        raise not_found("사진") from None
+    outcome, left = photo_check_service.claim_recheck(db, user, group_id, attachment_id)
+    if outcome == "claimed":
+        chat_library.photo_posted(group_id, user.id, attachment_id, data)
+    return PhotoRecheckOut(status="pending", queued=outcome == "claimed", retries_left=left)
 
 
 def photo_for_viewer(
