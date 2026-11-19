@@ -53,6 +53,9 @@ class FakeLLM:
 def _data_dir(monkeypatch, tmp_path):
     monkeypatch.setattr(settings, "data_dir", str(tmp_path))
     monkeypatch.setattr(settings, "anthropic_api_key", "test-key")
+    monkeypatch.setattr(
+        settings, "photo_rec_family_enabled", True
+    )  # 가족 앨범 추천 시험은 켜 두고, 꺼진 동작은 따로 시험
 
 
 @pytest.fixture
@@ -602,3 +605,25 @@ def test_send_file_upload_unchanged(client, family):
         assert _photo_row(r.json()["id"]).source == src
     assert _send(client, a, file=True, source=3).status_code == 400
     assert _send(client, a, file=True).status_code == 400  # source 없음
+
+
+# ---------- 가족 앨범 꺼짐(기본) ----------
+def test_family_album_off_returns_only_common(client, family, fake, monkeypatch):
+    monkeypatch.setattr(settings, "photo_rec_family_enabled", False)
+    a, _, _ = family
+    _enable_ai(client, a)
+    _photo(client, a, taken=TAKEN)
+    _seed(5)
+    out = _recommend(client, a)
+    assert out["state"] == "ok"
+    assert len(out["items"]) == 3 and {i["source"] for i in out["items"]} == {"common"}
+    assert fake.calls == []  # 가족 사진을 AI 에 보내지 않는다
+
+
+def test_family_album_off_blocks_family_rows(client, family, other_family, monkeypatch):
+    a, _, _ = family
+    album = _album_row(client, a)  # 켜 둔 채 만든 가족 행
+    monkeypatch.setattr(settings, "photo_rec_family_enabled", False)
+    assert client.get(f"/play/photo/recommendations/{album}/image", headers=a).status_code == 404
+    sent = _send(client, a, album)
+    assert sent.status_code == 409 and sent.json()["code"] == "photo_not_available"

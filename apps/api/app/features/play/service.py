@@ -21,6 +21,7 @@ from app.features.family_chat.models import MessageAttachment
 from app.features.family_chat.photo_service import attachment_files
 from app.features.family_group import repository as group_repo
 from app.features.family_group.models import User
+from app.shared.config import settings
 from app.shared.errors import ApiError, bad_request, not_found
 
 from . import media, photo_rec_store, repository
@@ -344,6 +345,8 @@ def _rec_photo(db: Session, group_id: str, rec_id: str) -> tuple[bytes, int]:
         if row.group_id is not None or row.image is None or not row.usable:
             raise unavailable
         return row.image, photo_rec_store.SOURCE_SEED
+    if not settings.photo_rec_family_enabled:  # 가족 앨범 추천은 꺼 둠
+        raise unavailable
     att = db.get(MessageAttachment, row.attachment_id)
     if (
         not row.usable

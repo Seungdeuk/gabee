@@ -187,6 +187,8 @@ class Settings(BaseSettings):
     ai_play_draw_rec_cooldown_seconds: int = 5
     ai_play_draw_rec_max_calls_per_user_per_day: int = 3
     ai_play_draw_rec_max_calls_per_group_per_day: int = 5
+    # 탐정단 사진 추천에 가족 앨범 사진을 쓸지(꺼짐이면 카드 3개 모두 흔한 사진, AI 호출·가족 사진 접근 없음). 위험 검토 뒤 켠다
+    photo_rec_family_enabled: bool = False
     # 탐정단 사진 추천(내용 질문): 사진 한 장당 AI 한 번. 값은 이게 뭐게와 같게 시작하고 별도 한도로 센다
     ai_play_photo_rec_cooldown_seconds: int = 5
     ai_play_photo_rec_max_calls_per_user_per_day: int = 3
