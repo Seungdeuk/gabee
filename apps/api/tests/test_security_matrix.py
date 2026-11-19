@@ -268,6 +268,8 @@ NO_GROUP_OK = {
     ("GET", "/support/tickets/mine"),
     # 유입 경로는 로그인한 본인의 설치 경로(utm 값)만 저장한다. 가족이 생기기 전(가입 직후)에 보낸다
     ("POST", "/acquisition/install-source"),
+    # 체류시간은 로그인한 본인의 탭별 하루 합계만 저장한다. 가족이 없어도 앱을 쓰는 시간은 잰다
+    ("POST", "/usage/report"),
 }
 
 
