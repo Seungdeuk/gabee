@@ -17,7 +17,7 @@ from pathlib import PurePath
 from app.shared.config import settings
 from app.shared.llm.transport import LLMUnavailable
 
-from . import converters, llm_ingest, masking
+from . import converters, figures, llm_ingest, masking
 from .classify import Jev, classify
 from .converters import BrokenFile, Ocr
 from .detect import Unsupported, decode_text, detect
@@ -193,6 +193,7 @@ def _from_image(source: SourceInfo, data: bytes, ocr: Ocr, family=None) -> Prepr
 def _from_document(
     source: SourceInfo, data: bytes, ocr: Ocr | None = None, family=None
 ) -> PreprocessResult:
+    ocr_note = None
     if source.kind == "text":
         markdown = decode_text(data) or ""
     elif source.kind in ("csv", "html"):  # 한국 엑셀·메모장 CSV 는 CP949 라서 UTF-8 로 바꿔 넘긴다
@@ -202,8 +203,8 @@ def _from_document(
         markdown, ocr_note = _read_pdf(data, ocr)
     else:
         markdown = converters.to_markdown(data, source.kind)
-    if source.kind != "pdf":
-        ocr_note = None
+        if source.kind == "pptx":  # 변환기가 버린 그림 속 글자·내용을 Claude 로 설명해 넣는다
+            markdown, ocr_note = figures.describe_pptx(data, markdown)
     markdown, privacy = _mask(markdown, family)
     blocks, pages = converters.markdown_blocks(markdown, source.kind)
     if source.kind in ("pptx", "xlsx"):  # 슬라이드·시트 번호와 블록 번호를 붙여 넘긴다
