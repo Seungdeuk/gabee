@@ -9,7 +9,7 @@ from app.features.family_group.models import User
 from app.shared.auth import current_group_id, current_user
 from app.shared.db import get_db
 
-from . import draw_rec, media, photo_rec, quiz_rec, service
+from . import draw_rec, media, photo_rec, photo_rec_auto, quiz_rec, service
 from . import photo_rec_store as _photo_rec_store  # noqa: F401  채팅 사진 삭제·AI 동의 끔 정리 콜백 등록(가져오기만으로 등록됨)
 from .bomb_router import router as bomb_router
 from .schemas import (
@@ -70,7 +70,9 @@ def photo_recommendations(
 ) -> PlayPhotoRecOut:
     """찰칵! 탐정단 가비 추천(가족 사진 문제 최대 2개 + 흔한 사진 문제, 하루 3개). 구성은 저장하지 않고 가족·사용자·날짜로 정한다.
     실패·한도 같은 경우는 오류 대신 state 로 알린다(AI 가 꺼져 있어도 AI 없는 카드는 나온다, 200)."""
-    return PlayPhotoRecOut(**photo_rec.recommend(db, user, group_id))
+    out = PlayPhotoRecOut(**photo_rec.recommend(db, user, group_id))
+    photo_rec_auto.ensure_today_in_background()  # 흔한 사진 오늘 부족분 보충(백그라운드, 기다리지 않음, 오류는 안 샘)
+    return out
 
 
 @router.get("/photo/recommendations/{rec_id}/image")

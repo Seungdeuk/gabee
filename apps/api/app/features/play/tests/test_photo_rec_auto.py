@@ -4,6 +4,7 @@ import io
 import logging
 import random
 import threading
+import time
 from datetime import UTC, datetime
 
 import httpx
@@ -252,38 +253,122 @@ def test_no_llm_key_skips(client, monkeypatch):
     assert result.skipped == "no_llm"
 
 
-def test_start_respects_flag(monkeypatch):
-    monkeypatch.setattr(auto, "_started", threading.Event())
-    started = []
+class _Spy:
+    """스레드 대상(_run_locked)을 가짜로 바꿔 호출 수를 센다. gate 를 열기 전까지 끝나지 않는다."""
 
-    class _T:
-        def __init__(self, *a, **k):
-            started.append(k)
+    def __init__(self, monkeypatch, boom: bool = False):
+        self.calls = 0
+        self.gate = threading.Event()
+        self.entered = threading.Event()
+        self.boom = boom
 
-        def start(self):
-            pass
+        def fake(_now):
+            self.calls += 1
+            self.entered.set()
+            self.gate.wait(5)
+            if self.boom:
+                raise RuntimeError("boom")
+            return True
 
-    monkeypatch.setattr(auto.threading, "Thread", _T)
-    monkeypatch.setattr(settings, "photo_rec_auto_enabled", False)
-    auto.start()
-    assert started == []
+        monkeypatch.setattr(auto, "_run_locked", fake)
+
+    def finish(self):
+        self.gate.set()
+        for _ in range(200):
+            if not auto._running.is_set():
+                return
+            threading.Event().wait(0.01)
+
+
+@pytest.fixture
+def trigger(monkeypatch):
     monkeypatch.setattr(settings, "photo_rec_auto_enabled", True)
-    auto.start()
-    auto.start()  # 두 번 불러도 한 번만
-    assert len(started) == 1
+    monkeypatch.setattr(settings, "photo_rec_auto_cooldown_seconds", 600)
+    monkeypatch.setattr(auto, "_running", threading.Event())
+    monkeypatch.setattr(auto, "_last_start", None)
+    spy = _Spy(monkeypatch)
+    yield spy
+    spy.gate.set()
 
 
-def test_is_due_after_hour_once_per_day():
-    def kst(h: int) -> datetime:  # 한국 시간 11/20 h시
-        return datetime(2026, 11, 20, tzinfo=UTC).replace(hour=0) + (
-            __import__("datetime").timedelta(hours=h - 9)
-        )
+def test_trigger_off_starts_nothing(client, monkeypatch, trigger):
+    monkeypatch.setattr(settings, "photo_rec_auto_enabled", False)
+    assert auto.ensure_today_in_background(NOW) is False
+    assert trigger.calls == 0
 
-    assert auto.is_due(kst(3), 4, None) is False
-    assert auto.is_due(kst(4), 4, None) is True
-    assert auto.is_due(kst(15), 4, None) is True
-    assert auto.is_due(kst(15), 4, "2026-11-20") is False
-    assert auto.is_due(kst(15), 4, "2026-11-19") is True
+
+def test_trigger_skips_when_three_today(client, trigger):
+    _run(FakeFetch([_hit(i) for i in range(1, 4)]))
+    assert auto.ensure_today_in_background(NOW) is False
+    assert trigger.calls == 0
+
+
+def test_trigger_starts_once_when_short(client, trigger):
+    assert auto.ensure_today_in_background(NOW) is True
+    assert trigger.entered.wait(5)
+    trigger.finish()
+    assert trigger.calls == 1
+
+
+def test_trigger_second_access_while_running_skipped(client, monkeypatch, trigger):
+    monkeypatch.setattr(settings, "photo_rec_auto_cooldown_seconds", 0)
+    assert auto.ensure_today_in_background(NOW) is True
+    assert trigger.entered.wait(5)
+    assert auto.ensure_today_in_background(NOW) is False
+    trigger.finish()
+    assert trigger.calls == 1
+
+
+def test_trigger_within_cooldown_skipped(client, trigger):
+    assert auto.ensure_today_in_background(NOW) is True
+    trigger.finish()
+    assert auto.ensure_today_in_background(NOW) is False
+    assert trigger.calls == 1
+
+
+def test_trigger_after_cooldown_runs_again(client, monkeypatch, trigger):
+    assert auto.ensure_today_in_background(NOW) is True
+    trigger.finish()
+    monkeypatch.setattr(auto, "_last_start", time.monotonic() - 601)
+    trigger.gate.clear()
+    trigger.entered.clear()
+    assert auto.ensure_today_in_background(NOW) is True
+    trigger.finish()
+    assert trigger.calls == 2
+
+
+def test_get_ok_with_pool_card_when_run_raises(client, family, monkeypatch, trigger, caplog):
+    a, _, _ = family
+    trigger.boom = True
+    _run(FakeFetch([_hit(i) for i in range(1, 3)]))  # 풀에 2장(목표 3 미만이라 보충이 뜬다)
+    with caplog.at_level(logging.WARNING):
+        r = client.get("/play/photo/recommendations", headers=a)
+        assert trigger.entered.wait(5)
+        trigger.finish()
+    assert r.status_code == 200
+    assert {i["id"] for i in r.json()["items"]} == {"auto1", "auto2"}
+    assert "run failed error=RuntimeError" in caplog.text
+    assert not auto._running.is_set()
+
+
+def test_get_does_not_wait_for_fill(client, family, trigger):
+    a, _, _ = family
+    _run(FakeFetch([_hit(1)]))
+    r = client.get(
+        "/play/photo/recommendations", headers=a
+    )  # 가짜는 gate 가 닫혀 있어 끝나지 않는다
+    assert r.status_code == 200
+    assert auto._running.is_set()  # 아직 도는 중인데 응답은 이미 나왔다
+    trigger.finish()
+
+
+def test_trigger_error_does_not_leak(client, monkeypatch, trigger):
+    def bad(*_a, **_k):
+        raise RuntimeError("x")
+
+    monkeypatch.setattr(auto.threading, "Thread", bad)
+    assert auto.ensure_today_in_background(NOW) is False
+    assert not auto._running.is_set()
 
 
 def test_logs_never_contain_key(client, caplog):

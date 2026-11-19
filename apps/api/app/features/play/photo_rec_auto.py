@@ -1,18 +1,20 @@
-"""찰칵 흔한 사진 자동 보충: 하루 한 번 Pixabay 사진 + AI 질문으로 흔한 사진(source 4)을 채운다.
+"""찰칵 흔한 사진 자동 보충: Pixabay 사진 + AI 질문으로 흔한 사진(source 4)을 채운다.
 
 - `run_daily`: 오늘(한국 날짜) 이미 넣은 자동 행 수를 하루 목표에서 뺀 부족분만 채운다. 시도 한 번 = 검색어 몇 개로 후보를 찾아
   사진을 내려받고(`photo_rec_pixabay`), AI 로 질문을 만들고(`photo_rec_auto_ai`), 규칙을 통과하면 저장한다. 후보가 어느 단계든 실패하면 다음 후보로 넘어간다.
   부족분이 남아 있으면 시도는 최대 `photo_rec_auto_max_attempts` 번(기본 3, 처음 + 재시도 2)이고, 그래도 못 채우면 모자란 채로 두고 로그를 남긴다.
 - 같은 Pixabay id 는 다시 쓰지 않는다. 쓸 수 없다고 하거나 규칙에 안 맞은 사진은 `usable=False`·사진 없는 행으로 남겨 다시 묻지 않는다
   (내려받기·AI 장애 같은 일시 실패는 남기지 않는다).
-- `start()`: 서버 시작 때 부른다. `photo_rec_auto_enabled` 가 켜져 있을 때만 백그라운드 스레드를 한 번 띄우고, 한국 시간 `photo_rec_auto_hour` 시 이후
-  하루 한 번 돈다(그 시각에 꺼져 있었으면 켜졌을 때). PostgreSQL 이면 advisory lock 으로 여러 서버가 동시에 돌지 않게 한다.
+- `ensure_today_in_background()`: 찰칵 추천(`GET /play/photo/recommendations`)을 열 때 부른다(이게 뭐게 추천처럼 접근 시 채운다). `photo_rec_auto_enabled` 가
+  켜져 있고 오늘 자동 행이 목표 미만이고 이 프로세스에서 도는 실행이 없고 마지막 시작 후 `photo_rec_auto_cooldown_seconds` 가 지났을 때만 데몬 스레드를
+  띄워 응답을 기다리지 않고 채운다. PostgreSQL 이면 advisory lock 으로 여러 서버가 동시에 돌지 않게 한다.
 - 로그에는 키·요청 주소를 넣지 않고 예외 종류만 적는다.
 """
 
 import logging
 import random
 import threading
+import time
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
@@ -29,7 +31,7 @@ from . import photo_rec_auto_ai as auto_ai
 from . import photo_rec_pixabay as pix
 from . import photo_rec_store as store
 from .models import PlayPhotoRec
-from .timeutil import aware, local_day_start, local_tz
+from .timeutil import local_day_start
 
 logger = logging.getLogger(__name__)
 
@@ -38,11 +40,11 @@ CANDIDATES_PER_ATTEMPT = (
 )
 QUERIES_PER_ATTEMPT = 4
 ZOOM = 8
-TICK_SECONDS = 600
 LOCK_KEY = 7240001  # pg_try_advisory_lock
 
-_started = threading.Event()
-_last_done: str | None = None  # 오늘(한국 날짜)을 이미 돌았으면 그 날짜
+_state_lock = threading.Lock()
+_running = threading.Event()  # 이 프로세스에서 보충이 도는 중
+_last_start: float | None = None  # 마지막 실행 시작 시각(time.monotonic)
 
 
 @dataclass
@@ -210,12 +212,6 @@ def run_daily(
     return result
 
 
-def is_due(now: datetime, hour: int, last_done_day: str | None) -> bool:
-    """한국 시간 `hour` 시 이후이고 오늘 아직 안 돌았으면 참."""
-    local = aware(now).astimezone(local_tz())
-    return local.hour >= hour and last_done_day != local.date().isoformat()
-
-
 def _run_locked(now: datetime) -> bool:
     """advisory lock(PostgreSQL)을 잡고 한 번 돈다. 다른 서버가 돌고 있어 못 잡았으면 False."""
     if engine.dialect.name != "postgresql":
@@ -235,31 +231,48 @@ def _run_locked(now: datetime) -> bool:
     return True
 
 
-def tick(now: datetime | None = None) -> None:
-    """한 번 확인한다. 어떤 오류도 밖으로 내지 않는다(주기 작업이 멈추지 않게, 로그에는 종류만)."""
-    global _last_done
-    now = now or datetime.now(UTC)
-    if not is_due(now, settings.photo_rec_auto_hour, _last_done):
-        return
+def _worker(now: datetime) -> None:
+    """백그라운드 스레드 본체. 어떤 오류도 밖으로 내지 않고(로그에는 종류만) 끝나면 실행 중 표시를 푼다."""
     try:
-        if _run_locked(now):
-            _last_done = aware(now).astimezone(local_tz()).date().isoformat()
+        _run_locked(now)
     except Exception as exc:  # noqa: BLE001
-        logger.warning("photo rec auto: tick failed error=%s", type(exc).__name__)
-        _last_done = (
-            aware(now).astimezone(local_tz()).date().isoformat()
-        )  # 실패해도 하루 시도 수는 지킨다
+        logger.warning("photo rec auto: run failed error=%s", type(exc).__name__)
+    finally:
+        with _state_lock:
+            _running.clear()
 
 
-def _loop() -> None:
-    while True:
-        tick()
-        threading.Event().wait(TICK_SECONDS)
-
-
-def start() -> None:
-    """서버가 시작할 때 부른다: 자동 보충이 켜져 있으면 백그라운드 스레드를 한 번만 띄운다."""
-    if not settings.photo_rec_auto_enabled or _started.is_set():
-        return
-    _started.set()
-    threading.Thread(target=_loop, name="photo-rec-auto", daemon=True).start()
+def ensure_today_in_background(now: datetime | None = None) -> bool:
+    """찰칵 추천을 열 때 부른다. 켜져 있고 오늘 자동 행이 목표 미만이고 이 프로세스에서 도는 실행이 없고
+    마지막 시작 후 쿨다운이 지났으면 데몬 스레드로 `_run_locked` 를 띄운다(기다리지 않는다). 띄웠으면 True. 오류는 밖으로 내지 않는다."""
+    global _last_start
+    if not settings.photo_rec_auto_enabled:
+        return False
+    try:
+        now = now or datetime.now(UTC)
+        with _state_lock:
+            if _running.is_set():
+                return False
+            mono = time.monotonic()
+            if (
+                _last_start is not None
+                and mono - _last_start < settings.photo_rec_auto_cooldown_seconds
+            ):
+                return False
+            with SessionLocal() as db:
+                if _today_count(db, now) >= settings.photo_rec_auto_per_day:
+                    return False
+            _running.set()
+            _last_start = mono
+        try:
+            threading.Thread(
+                target=_worker, args=(now,), name="photo-rec-auto", daemon=True
+            ).start()
+        except Exception:
+            with _state_lock:
+                _running.clear()
+            raise
+        return True
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("photo rec auto: trigger failed error=%s", type(exc).__name__)
+        return False
