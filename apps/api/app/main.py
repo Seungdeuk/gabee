@@ -14,6 +14,7 @@ from app.features.billing.router import router as billing_router
 from app.features.family_chat.router import router as family_chat_router
 from app.features.family_group.photo_limit import PhotoBodyLimitMiddleware
 from app.features.family_group.router import router as family_group_router
+from app.features.family_memory import worker as family_memory_worker
 from app.features.family_memory.router import router as family_memory_router
 from app.features.notices.router import router as notices_router
 from app.features.notifications.router import router as notifications_router
@@ -43,7 +44,9 @@ async def lifespan(_: FastAPI):
     push_schedule.start()  # 예약 푸시(시간 있으면 30분 전, 시간 없으면 전날 밤 9시): PUSH_ENABLED 가 켜져 있을 때만 1분마다 확인한다
     privacy_ner.start_preload()  # NER 모델을 백그라운드로 미리 불러온다(off 면 아무 일도 안 함, 실패해도 기동은 계속)
     knowledge_index.start_startup_check()  # 임베딩 모델 이름이 DB 조각과 어긋나 검색에서 문서가 빠지는지 백그라운드로 점검해 로그로 알린다(기다리지 않고, 실패해도 기동은 계속)
+    family_memory_worker.start()  # AI 추억 분석 작업 워커(FAMILY_MEMORY_ENABLED·FAMILY_MEMORY_WORKER_ENABLED 가 둘 다 켜져 있을 때만, 기본 꺼짐)
     yield
+    family_memory_worker.stop()
     ops_metrics.flush(
         final=True
     )  # 종료 전에 남은 요청 지표를 저장한다(꺼져 있으면 비어 있고, 실패해도 종료는 계속)

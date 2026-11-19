@@ -218,11 +218,18 @@ def set_exclusion(
         if ctx.room_kind != "family":  # 남의 1:1 방 사진은 있는지도 알려 주지 않는다
             raise not_found("사진")
         raise ApiError(403, "forbidden", "내가 올린 사진만 바꿀 수 있어요")
-    if excluded:
-        repo.add_exclusion(db, group_id, user.id, attachment_id, datetime.now(UTC))
-    else:
-        repo.remove_exclusion(db, attachment_id)
-    db.commit()
+    try:
+        if excluded:
+            repo.add_exclusion(db, group_id, user.id, attachment_id, datetime.now(UTC))
+            memory_hooks.photo_excluded(
+                db, group_id, attachment_id
+            )  # 대기·진행 중인 분석 작업을 즉시 막는다
+        else:
+            repo.remove_exclusion(db, attachment_id)
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
     return ExclusionOut(attachment_id=attachment_id, excluded=excluded)
 
 

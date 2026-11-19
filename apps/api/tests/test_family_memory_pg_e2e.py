@@ -260,6 +260,142 @@ def test_failed_cleanup_rolls_back_withdrawal_on_postgres(pg_client):
     assert rows(pg, "SELECT count(*) FROM group_members WHERE user_id=%s", guest_id) == [(1,)]
 
 
+def _eligible_photos(client, pg, count):
+    """가족 활성화·업로더 동의·확인된 일반 사진 `count` 장(D-13: 확인 상태는 관리자 연결로 만든다)."""
+    owner, _, _ = _family(client)
+    assert client.put(f"{M}/settings", json={"enabled": True}, headers=owner).status_code == 200
+    assert client.put(f"{M}/consent", json={"consent": True}, headers=owner).status_code == 200
+    ids = [_photo(client, owner)[0] for _ in range(count)]
+    with admin(pg) as conn:
+        for att in ids:
+            conn.execute(
+                "UPDATE chat_photo_checks SET status='photo' WHERE attachment_id=%s", (att,)
+            )
+    return owner, ids
+
+
+def _sessions(pg, n):
+    engines = [create_engine(url(pg)) for _ in range(n)]
+    return engines, [sessionmaker(bind=e)() for e in engines]
+
+
+def test_job_table_defaults_unique_and_cascade_on_postgres(pg_client):
+    from app.features.family_memory import job_service as js
+
+    client, pg = pg_client
+    _, ids = _eligible_photos(client, pg, 2)
+    engines, (db,) = _sessions(pg, 1)
+    try:
+        first = js.enqueue(db, ids[0])
+        again = js.enqueue(db, ids[0])
+    finally:
+        db.close()
+        engines[0].dispose()
+    assert (first.outcome, again.outcome) == ("queued", "exists")
+    assert rows(
+        pg, "SELECT status, attempts, max_attempts, lease_until FROM family_memory_jobs"
+    ) == [("queued", 0, 3, None)]
+    with pytest.raises(psycopg.errors.UniqueViolation):  # 같은 사진·종류는 DB 가 한 줄만 허용한다
+        with admin(pg) as conn:
+            conn.execute(
+                "INSERT INTO family_memory_jobs (id, group_id, attachment_id, user_id, kind, run_after,"
+                " created_at, updated_at) SELECT 'dup', group_id, attachment_id, user_id, kind, now(),"
+                " now(), now() FROM family_memory_jobs"
+            )
+    with admin(pg) as conn:  # 첨부를 지우면 DB 가 작업도 따라 지운다(ON DELETE CASCADE)
+        conn.execute("DELETE FROM message_attachments WHERE id=%s", (ids[0],))
+    assert _count(pg, "family_memory_jobs") == 0
+
+
+def test_concurrent_workers_never_claim_the_same_job_on_postgres(pg_client):
+    """여러 워커가 동시에 선점해도 FOR UPDATE SKIP LOCKED 로 작업마다 정확히 한 워커만 가져간다(시도 횟수도 1)."""
+    import threading
+
+    from app.features.family_memory import job_service as js
+
+    client, pg = pg_client
+    _, ids = _eligible_photos(client, pg, 8)
+    engines, sessions = _sessions(pg, 1)
+    try:
+        for att in ids:
+            assert js.enqueue(sessions[0], att).outcome == "queued"
+    finally:
+        sessions[0].close()
+        engines[0].dispose()
+
+    workers = 6
+    barrier = threading.Barrier(workers)
+    taken: list[tuple[str, str]] = []
+    lock = threading.Lock()
+
+    def run(n: int) -> None:
+        engine = create_engine(url(pg))
+        try:
+            barrier.wait()
+            while True:
+                with sessionmaker(bind=engine)() as db:
+                    job = js.claim(db, f"w{n}", [js.KIND_PHOTO])
+                if job is None:
+                    return
+                with lock:
+                    taken.append((job.id, f"w{n}"))
+        finally:
+            engine.dispose()
+
+    threads = [threading.Thread(target=run, args=(n,)) for n in range(workers)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    job_ids = [j for j, _ in taken]
+    assert len(job_ids) == len(set(job_ids)) == 8  # 중복 선점 없음·누락 없음
+    assert rows(pg, "SELECT DISTINCT attempts, status FROM family_memory_jobs") == [(1, "running")]
+
+
+def test_a_row_locked_by_another_worker_is_skipped_not_waited_on_postgres(pg_client):
+    from app.features.family_memory import job_repository as jobs
+    from app.features.family_memory import job_service as js
+
+    client, pg = pg_client
+    _, ids = _eligible_photos(client, pg, 2)
+    engines, (setup, holder, other) = _sessions(pg, 3)
+    try:
+        for att in ids:
+            js.enqueue(setup, att)
+        locked = jobs.next_candidate(holder, [js.KIND_PHOTO], js._now())  # 첫 작업을 잠근 채 둔다
+        assert locked is not None
+        claimed = js.claim(
+            other, "w2", [js.KIND_PHOTO]
+        )  # 기다리지 않고 건너뛰어 다른 작업을 가져온다
+        assert claimed is not None and claimed.id != locked.id
+        holder.rollback()
+        assert (
+            js.claim(other, "w2", [js.KIND_PHOTO]).id == locked.id
+        )  # 잠금이 풀리면 가져갈 수 있다
+    finally:
+        for db in (setup, holder, other):
+            db.close()
+        for e in engines:
+            e.dispose()
+
+
+def test_withdrawal_and_leave_cancel_jobs_in_the_same_transaction_on_postgres(pg_client):
+    from app.features.family_memory import job_service as js
+
+    client, pg = pg_client
+    owner, ids = _eligible_photos(client, pg, 1)
+    engines, (db,) = _sessions(pg, 1)
+    try:
+        assert js.enqueue(db, ids[0]).outcome == "queued"
+    finally:
+        db.close()
+        engines[0].dispose()
+    assert client.put(f"{M}/consent", json={"consent": False}, headers=owner).status_code == 200
+    assert rows(pg, "SELECT status, cancel_reason FROM family_memory_jobs") == [
+        ("canceled", "withdrawn")
+    ]
+
+
 def test_table_constraints_on_postgres(pg_client):
     _, pg = pg_client
     assert psycopg  # 제약 위반은 psycopg 예외로 확인한다

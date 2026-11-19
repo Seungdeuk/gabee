@@ -22,6 +22,21 @@ OnFamilyDisabled = Callable[[Session, str], None]  # (db, group_id)
 _attachment_removed: list[OnAttachmentRemoved] = []
 _member_withdrawn: list[OnMemberWithdrawn] = []
 _family_disabled: list[OnFamilyDisabled] = []
+OnPhotoExcluded = Callable[[Session, str, str], None]  # (db, group_id, attachment_id)
+_photo_excluded: list[
+    OnPhotoExcluded
+] = []  # 업로더가 사진을 AI 분석에서 뺐다(PR3: 대기·진행 중인 작업을 막는다)
+
+
+def register_photo_excluded(fn: OnPhotoExcluded) -> None:
+    if fn not in _photo_excluded:
+        _photo_excluded.append(fn)
+
+
+def photo_excluded(db: Session, group_id: str, attachment_id: str) -> None:
+    """사진별 제외 때 부른다. 오류는 그대로 던진다(커밋·롤백은 부르는 쪽)."""
+    for fn in list(_photo_excluded):
+        fn(db, group_id, attachment_id)
 
 
 def register_attachment_removed(fn: OnAttachmentRemoved) -> None:

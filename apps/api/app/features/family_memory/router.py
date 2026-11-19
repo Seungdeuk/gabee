@@ -7,7 +7,10 @@ from app.features.family_group.models import User
 from app.shared.auth import current_group_id, current_user
 from app.shared.db import get_db
 
-from . import service
+from . import (
+    job_service,  # noqa: F401  작업 큐의 철회·삭제·제외 차단 훅을 시작할 때 등록한다(서버 워커와 별개로 항상)
+    service,
+)
 from .schemas import (
     ConsentIn,
     ExclusionIn,

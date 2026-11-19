@@ -135,6 +135,8 @@ def test_every_module_level_memory_store_in_the_app_is_either_reset_or_known_con
         "app.shared.memory_hooks._attachment_removed",  # AI 추억 동의·삭제 콜백(시작할 때 등록하는 목록)
         "app.shared.memory_hooks._member_withdrawn",
         "app.shared.memory_hooks._family_disabled",
+        "app.shared.memory_hooks._photo_excluded",
+        "app.features.family_memory.worker._handlers",  # AI 추억 작업 처리 함수(종류별, 시작할 때 등록하는 목록)
         "app.shared.weekly_sources._providers",  # 주간 뉴스 재료 수집 통로(시작할 때 등록하는 목록)
         "app.shared.privacy.ner._warned",  # 경고를 한 번만 내는 표시
         "app.shared.privacy.ner._cache",  # 같은 글에 같은 탐지 결과를 돌려주는 순수 함수 캐시

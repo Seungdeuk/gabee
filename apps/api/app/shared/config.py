@@ -48,6 +48,12 @@ class Settings(BaseSettings):
     photo_judge_model: str = ""  # 비우면 llm_model(Haiku)
     # AI 추억 분석의 서버 기능 스위치(ADR 0020 3중 조건의 ①). 기본 꺼짐: 꺼져 있으면 가족 설정·업로더 동의가 켜져 있어도 분석 자격이 없고 동의를 새로 받지 않는다
     family_memory_enabled: bool = False
+    # AI 추억 분석 작업 워커(PR3, 단일 경량 스레드). 기본 꺼짐: `FAMILY_MEMORY_ENABLED` 와 이 값이 모두 켜져 있을 때만 서버가 시작하며 돌린다
+    family_memory_worker_enabled: bool = False
+    family_memory_worker_poll_seconds: float = 5.0  # 일이 없을 때 다음 확인까지 기다리는 시간
+    family_memory_job_lease_seconds: int = (
+        300  # 선점한 작업의 임대 시간(넘기면 다른 워커가 되찾는다)
+    )
     ingest_mask_chunk_chars: int = 6000  # 가리기 호출 한 번에 보내는 최대 글자 수(긴 문서는 나눠서)
     ingest_pdf_max_pages: int = 20  # Claude 로 읽는 PDF 최대 쪽 수(비용 상한)
     # Claude 연결 실패(llm_unavailable)로 failed 가 될 파일을 자동으로 다시 처리하는 횟수와 기다리는 시간(n번째 재시도는 n×이 초)

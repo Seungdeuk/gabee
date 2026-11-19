@@ -7,9 +7,10 @@
 
 세 표 모두 `group_id` 열이 있어 가족 삭제(`group_purge`)가 함께 지운다. 사진 내용·라벨·임베딩은 이 표들에 없다."""
 
+import uuid
 from datetime import UTC, datetime
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer
+from sqlalchemy import Boolean, DateTime, ForeignKey, Index, Integer, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.shared.db import Base
@@ -50,6 +51,39 @@ class MemberMemoryConsent(Base):
     retro_consented_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+
+
+class FamilyMemoryJob(Base):
+    """AI 추억 분석 작업 큐(PR3, 영속). 서버가 재시작돼도 작업이 남고, 같은 사진·같은 종류는 한 줄뿐이다(중복 방지).
+    status: queued(대기) | running(워커가 선점, `lease_until` 까지) | done | failed(시도 상한) | canceled(자격을 잃어 막음).
+    `attempts` 는 선점할 때마다 늘고 `max_attempts` 를 넘기면 다시 돌리지 않는다. `run_after` 는 재시도 대기(backoff) 시각이다.
+    실패는 예외 **종류 이름**만 `last_error` 에 남기고 사진 내용·라벨·경로·OCR 글자는 어디에도 두지 않는다.
+    가족·첨부·사용자가 지워지면 따라 지운다(ON DELETE CASCADE)."""
+
+    __tablename__ = "family_memory_jobs"
+    __table_args__ = (
+        UniqueConstraint("attachment_id", "kind", name="uq_family_memory_jobs_attachment_kind"),
+        Index("ix_family_memory_jobs_claim", "status", "run_after"),
+    )
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=lambda: uuid.uuid4().hex)
+    group_id: Mapped[str] = mapped_column(ForeignKey("groups.id", ondelete="CASCADE"), index=True)
+    attachment_id: Mapped[str] = mapped_column(
+        ForeignKey("message_attachments.id", ondelete="CASCADE")
+    )
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))  # 올린 사람
+    kind: Mapped[str] = mapped_column(String(24), default="photo_analysis")
+    status: Mapped[str] = mapped_column(String(10), default="queued", server_default="queued")
+    attempts: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    max_attempts: Mapped[int] = mapped_column(Integer, default=3, server_default="3")
+    run_after: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    lease_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    locked_by: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    last_error: Mapped[str | None] = mapped_column(String(40), nullable=True)  # 예외 종류 이름만
+    cancel_reason: Mapped[str | None] = mapped_column(String(24), nullable=True)  # 사유 코드만
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 class PhotoAnalysisExclusion(Base):

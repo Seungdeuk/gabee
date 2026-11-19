@@ -17,6 +17,22 @@
 | 정리 | 가족 나가기: `member_exit` 훅으로 그 사람 동의 즉시 종료(같은 트랜잭션, 실패하면 나가기도 취소). 사진 삭제: `shared/memory_hooks` 로 제외 기록 삭제(실패해도 삭제 성공). 가족 삭제: 세 표 모두 `group_id` 열이 있어 `group_purge` 가 지움 |
 | 기본값 | 가족 설정 행이 없으면 꺼짐, 동의 행이 없으면 미동의. 새로 들어온 구성원은 미동의로 시작 |
 
+## 영속 작업 큐 (PR3, 2026-11-19)
+**작업의 등록·선점·재시도·복구·차단만 있다. 이미지 분석·모델(SigLIP2)·임베딩·카드·앱 화면은 없고, 처리 함수(`worker.register_handler`)를 등록하는 곳이 PR4 의 연결 지점이다. 처리 함수가 없으면 워커는 아무 작업도 선점하지 않는다.** 새 표 `family_memory_jobs`(Alembic `b7d2e5f1a846`, expand-only)와 새 인프라 없는 PostgreSQL 큐다. 워커는 기본 꺼짐(`FAMILY_MEMORY_WORKER_ENABLED=false`, 켜려면 `FAMILY_MEMORY_ENABLED` 도 켜야 함).
+
+| 기능 | 내용 |
+|---|---|
+| 중복 방지 | UNIQUE(`attachment_id`,`kind`): 같은 사진·종류는 한 줄. 다시 등록하면 `exists`, 자격을 잃어 막았던(`canceled`) 작업만 `requeued`(횟수 0부터), 시도 상한으로 `failed` 가 된 작업은 되살리지 않는다 |
+| 선점 | `job_service.claim`: `FOR UPDATE SKIP LOCKED` 로 여러 워커가 같은 작업을 가져가지 못한다(PG16 e2e 로 6 워커·8 작업 검증). 선점마다 `attempts`+1, 임대 `lease_until`(기본 300초). 등록된 종류만 선점 |
+| 복구 | 임대가 만료된 `running`(워커 중단·서버 재시작)은 다음 선점 때 되찾는다: 상한 전이면 backoff 뒤 `queued`, 상한이면 `failed`. 느려서 임대를 잃은 워커의 결과·실패 기록은 `lost` 로 버려진다 |
+| 재시도 | 기본 최대 3회, 실패하면 30초·1분·… 최대 15분 backoff 뒤 재시도, 상한이면 `failed`(다시 돌리지 않는다). PR2 의 사람이 누르는 사진 재검사(`/photos/{id}/recheck`)와는 별개이며 그 횟수·D-13 을 바꾸지 않는다 |
+| 자격 재확인 4지점 | ① 등록 ② 선점 ③ 실행 직전 ④ 결과 저장 직전 모두 PR1 `check_photo`(서버 스위치·가족 활성화·업로더 동의·제외·확인된 일반 사진·가족 전체방)를 쓴다. 하나라도 아니면 `canceled`(사유 코드)로 닫고 결과는 저장하지 않는다. ④는 행을 잠근 같은 트랜잭션에서 확인하고 저장한다 |
+| 즉시 차단 훅 | 동의 철회·가족 나가기(`member_withdrawn`)·가족 기능 끄기(`family_disabled`)·사진별 제외(`photo_excluded`, 새 훅)는 대기·진행 중인 작업을 같은 트랜잭션에서 `canceled` 로 막는다(실패하면 철회·나가기도 취소). 사진 삭제는 작업 줄을 지운다 |
+| 로그·기록 | 예외 **종류 이름**과 사유 코드만 `last_error`·`cancel_reason`·로그에 남긴다. 사진 내용·라벨·경로·OCR 글자는 어디에도 없다 |
+| D-13 | 작업 큐는 `chat_photo_checks` 를 읽기만 한다. 확인되지 않은 사진(pending·unsure·failed·document)은 등록이 거절되고 자동 `photo` 승격은 없다 |
+
+PR4 연동 지점: 사진이 일반 사진으로 확인되고 자격이 있을 때 `job_service.enqueue(db, attachment_id)` 를 부르는 곳(자동 등록은 PR3 에 없다), `worker.register_handler(kind, run, save)`. `member_withdrawn` 훅에는 파생 데이터(임베딩 등) 삭제를 PR4 가 더해야 한다(이미 저장된 결과는 이 PR 이 지우지 않는다: 저장된 결과가 없다).
+
 ## 지키는 것
 - `ai_group_settings`(대화 분석 동의)와 `chat_photo_checks`(사진 판별 상태, D-13)를 읽거나 쓰지 않는다(자격 판정은 판별 상태를 읽기만 한다).
 - 사진 내용·라벨·임베딩·파일 경로를 저장·로그하지 않는다(이 PR 에는 그런 데이터가 없다).
@@ -24,9 +40,10 @@
 
 ## 아직 없는 것 (이후 PR, 별도 승인)
 - 앱 화면(동의 안내·스위치·사진 제외 버튼) — PR7 또는 별도 화면 PR.
-- 작업 큐·워커·SigLIP2·카드 생성·게시(PR2 이후). 철회 시 파생 데이터(임베딩 등) 삭제는 지금은 지울 데이터가 없어 훅만 있다.
+- SigLIP2·임베딩·카드 생성·게시(PR4 이후; 작업 큐·워커 틀은 PR3 에 있다). 철회 시 파생 데이터(임베딩 등) 삭제는 지금은 지울 데이터가 없어 훅만 있다.
 - E1(`unsure` 포함 자동 게시): 독립 안전성 평가와 별도 정책 승인 전에는 열지 않는다.
 - 미결정: 동의 기록 보관 기간, 24시간 삭제 목표 확정, 백업 만료·복원 시 재삭제 절차, 원본 채팅 사진의 탈퇴 처리, 소급 분석 화면·고지.
 
 ## 시험
+`apps/api/app/features/family_memory/tests/test_memory_jobs.py`(작업 큐: 등록 자격·중복·1:1 제외, 선점·임대 복구·재시작 복구·상한, backoff, 자격 재확인 4지점, 철회·나가기·끄기·제외·삭제 차단, 가족 격리, 워커·로그) 와 `tests/test_family_memory_pg_e2e.py`(PG16: 기본값·UNIQUE·CASCADE, 6 워커 동시 선점, 잠긴 줄 건너뛰기, 철회 차단).
 `apps/api/app/features/family_memory/tests/test_family_memory.py` — 기본 꺼짐, 서버 스위치, owner/admin/member 권한, 가족 간 격리, 동의·철회 멱등, 소급 동의 분리, 사진별 제외(본인만), 자격 판정 표, D-13·`ai_group_settings` 불변, 훅 실패 롤백, 가족 나가기·사진 삭제·가족 삭제 정리, 로그.
