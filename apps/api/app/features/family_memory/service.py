@@ -205,6 +205,12 @@ def set_consent(
     try:
         if consent:
             _require_server_on()
+            if consent_version is None and settings.family_memory_consent_version_required:
+                raise ApiError(
+                    409,
+                    "consent_version_required",
+                    "동의 안내를 확인한 뒤 다시 동의해 주세요",
+                )
             if consent_version is not None and consent_version != CONSENT_VERSION:
                 raise ApiError(
                     409,

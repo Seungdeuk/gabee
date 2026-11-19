@@ -7,7 +7,7 @@
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
-from sqlalchemy import delete, exists, or_, select, update
+from sqlalchemy import delete, exists, func, or_, select, update
 from sqlalchemy.orm import Session
 
 from . import candidate_repository as cand_repo
@@ -96,11 +96,30 @@ def reconcile(db: Session, now: datetime | None = None) -> ReconcileResult:
     return ReconcileResult(emb, cand, done, canceled)
 
 
-def pending_count(db: Session) -> int:
-    """대조 정리가 지울 것이 남았는지(시험·점검용, 쓰지 않는다)."""
-    return int(
-        db.scalar(
-            select(exists().where(or_(_no_consent(PhotoEmbedding), _family_off(PhotoEmbedding))))
-        )
-        or 0
-    )
+def pending_summary(db: Session) -> dict[str, int]:
+    """대조 정리가 지울 것이 남았는지 **읽기만** 해서 센다(운영 점검용: `reconcile_check` 가 쓴다). 모두 0 이면 동의 없음·가족 꺼짐인 쪽에 남은 파생 데이터가 없다는 뜻이다.
+    키: embeddings(임베딩 줄), candidate_photos(후보에 든 사진 줄), active_jobs(대기·진행 작업), done_jobs(끝난 임베딩 작업 줄)."""
+
+    def count(model, *conditions) -> int:
+        return int(db.scalar(select(func.count()).select_from(model).where(*conditions)) or 0)
+
+    return {
+        "embeddings": count(
+            PhotoEmbedding, or_(_no_consent(PhotoEmbedding), _family_off(PhotoEmbedding))
+        ),
+        "candidate_photos": count(
+            MemoryCandidatePhoto,
+            or_(_no_consent(MemoryCandidatePhoto), _family_off(MemoryCandidatePhoto)),
+        ),
+        "active_jobs": count(
+            FamilyMemoryJob,
+            FamilyMemoryJob.status.in_(jobs.ACTIVE),
+            or_(_no_consent(FamilyMemoryJob), _family_off(FamilyMemoryJob)),
+        ),
+        "done_jobs": count(
+            FamilyMemoryJob,
+            FamilyMemoryJob.status == jobs.DONE,
+            FamilyMemoryJob.kind == KIND_EMBEDDING,
+            or_(_no_consent(FamilyMemoryJob), _family_off(FamilyMemoryJob)),
+        ),
+    }

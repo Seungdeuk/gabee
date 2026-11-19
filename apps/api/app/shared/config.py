@@ -61,6 +61,8 @@ class Settings(BaseSettings):
     family_memory_encoder_fp16: bool = False  # GPU 일 때만 반 정밀도(메모리 약 절반)
     # 추억 후보 조회 API(PR6) 미출시 가드: 기본 꺼짐(꺼져 있으면 404 로 존재를 숨긴다). 앱(PR7) 개발·검증 때만 켠다. 후보는 비공개이며 자동 게시하지 않는다
     family_memory_candidates_api_enabled: bool = False
+    # 동의할 때 consent_version 을 **반드시** 보내야 하게 한다(T31 고지문 확정 뒤 켠다). 기본 꺼짐: 켜면 버전을 안 보낸 동의 요청은 409 consent_version_required — 버전 확인을 우회하지 못한다
+    family_memory_consent_version_required: bool = False
     ingest_mask_chunk_chars: int = 6000  # 가리기 호출 한 번에 보내는 최대 글자 수(긴 문서는 나눠서)
     ingest_pdf_max_pages: int = 20  # Claude 로 읽는 PDF 최대 쪽 수(비용 상한)
     # Claude 연결 실패(llm_unavailable)로 failed 가 될 파일을 자동으로 다시 처리하는 횟수와 기다리는 시간(n번째 재시도는 n×이 초)

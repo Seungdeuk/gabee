@@ -103,6 +103,8 @@ PR7(앱) 계약: 위 `GET /family-memory/candidates` 응답(`CandidatesOut`: 후
 **출시 가능 범위(현재 가능):** 서버 코드·마이그레이션 배포(모든 스위치 꺼짐으로), 개발 서버·시험 환경에서 명시적 `enqueue`·`refresh` 호출로 전체 흐름 검증, 앱의 개발용 화면(`mock`·`on`).
 **출시 불가능 범위(별도 승인·개발 필요):** 사용자에게 AI 추억 기능을 켜는 것 — ① 개인정보 고지문·보관/삭제 정책 확정(T31) 후 동의 UI ② 자동 등록(enqueue)·`refresh` 진입점(지금 없음) ③ 워커 환경 의존성(`torch`·`transformers`) 승인 ④ 실제 가족 사진 평가와 임계값 재조정 ⑤ 24시간 삭제 목표·백업 재삭제·동의 기록 보관 기간 확정 ⑥ Android 실기기 화면 검증 ⑦ 공용 DB 반영(DB 담당자, `main` 병합 뒤 Pull Agent).
 
+## 출시 준비 (PR9, 2026-11-19)
+출시 차단 요소의 최소 해결과 현황 정리. **자세한 내용은 `family-memory-launch.md`(자동 생성 진입점·워커 환경·개인정보 차단 요소·팀 결정 사항), Android 수동 검증은 `family-memory-android-checklist.md`.** 요약: ① 자동 enqueue·`refresh` 진입점은 여전히 없다(운영 자동 분석은 별도 승인) ② 동의 버전 우회 방지 스위치 `FAMILY_MEMORY_CONSENT_VERSION_REQUIRED`(기본 꺼짐, 고지문 확정 뒤 켠다)와 앱·서버 동의 버전 일치 시험 ③ 대조 정리 지속 실패 감지: 연속 3번 실패 시 ERROR 로그, 읽기 전용 점검 `python -m app.features.family_memory.reconcile_check`(남은 개수·종료 코드) ④ 합성 장면의 **실제 SigLIP2 임베딩 고정 자료**로 워커→그룹화→후보→API 와 워커 재시작·임대 만료·새로 고침 중복 방지를 시험(`test_pipeline_real_embeddings.py`) — 실제 임베딩에서 서로 다른 장면 코사인이 0.71~0.83 이라 현재 `split_cos` 0.70 으로는 이미지만으로 같은 날 이벤트가 나뉘지 않을 수 있다는 점을 기록(임계값은 실제 사진 평가 뒤 결정).
 ## 지키는 것
 - `ai_group_settings`(대화 분석 동의)와 `chat_photo_checks`(사진 판별 상태, D-13)를 읽거나 쓰지 않는다(자격 판정은 판별 상태를 읽기만 한다).
 - 사진 내용·라벨·임베딩·파일 경로를 저장·로그하지 않는다(이 PR 에는 그런 데이터가 없다).

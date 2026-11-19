@@ -77,17 +77,61 @@ RECONCILE_EVERY_SECONDS = (
 )
 
 
+RECONCILE_ALERT_AFTER = 3  # 연속 실패가 이 횟수 이상이면 ERROR 로 남긴다(로그 모니터링으로 감지)
+
+
+class ReconcileHealth:
+    """대조 정리의 최근 상태(프로세스 메모리). 운영자는 ERROR 로그와 `reconcile_check`(남은 개수·종료 코드)로 지속 실패를 알 수 있다."""
+
+    def __init__(self) -> None:
+        self.consecutive_failures = 0
+        self.last_error: str | None = None  # 예외 종류 이름만
+        self.last_ok_at: float | None = None
+        self.last_deleted = 0
+
+    def ok(self, deleted: int) -> None:
+        self.consecutive_failures, self.last_error, self.last_ok_at, self.last_deleted = (
+            0,
+            None,
+            time.time(),
+            deleted,
+        )
+
+    def failed(self, error: str) -> None:
+        self.consecutive_failures += 1
+        self.last_error = error
+
+
+reconcile_health = ReconcileHealth()
+
+
 def reconcile_derived() -> int:
-    """동의가 없거나 가족 기능이 꺼진 쪽의 파생 데이터를 멱등하게 지운다(실패해도 던지지 않는다). 지운 개수를 돌려준다."""
+    """동의가 없거나 가족 기능이 꺼진 쪽의 파생 데이터를 멱등하게 지운다(실패해도 던지지 않는다). 지운 개수를 돌려준다.
+    성공하면 지운 개수를 기록하고(0 보다 크면 즉시 정리가 못 지운 것이 있었다는 뜻), 연속 실패가 `RECONCILE_ALERT_AFTER` 번 이상이면 ERROR 로 남긴다."""
     from . import reconcile
 
     try:
         with SessionLocal() as db:
             result = reconcile.reconcile(db)
             db.commit()
-            return result.total
+        reconcile_health.ok(result.total)
+        if result.total:
+            logger.warning("family memory reconcile removed leftovers count=%d", result.total)
+        return result.total
     except Exception as exc:  # noqa: BLE001  내용이 로그에 남지 않게 종류만 적는다
-        logger.warning("family memory reconcile failed error=%s", type(exc).__name__)
+        name = type(exc).__name__
+        reconcile_health.failed(name)
+        level = (
+            logging.ERROR
+            if reconcile_health.consecutive_failures >= RECONCILE_ALERT_AFTER
+            else logging.WARNING
+        )
+        logger.log(
+            level,
+            "family memory reconcile failed error=%s consecutive=%d",
+            name,
+            reconcile_health.consecutive_failures,
+        )
         return 0
 
 
