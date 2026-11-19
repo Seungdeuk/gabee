@@ -22,11 +22,11 @@ from app.features.family_chat.models import MessageAttachment
 from app.features.family_chat.photo_service import attachment_files
 from app.features.family_group.models import User
 from app.shared import ai_guard
-from app.shared.errors import ApiError
+from app.shared.errors import ApiError, not_found
 from app.shared.llm import client as llm
 
+from . import media, quiz_rec
 from . import photo_rec_store as store
-from . import quiz_rec
 from .models import PlayPhotoRec
 from .photo_rec_ai import FEATURE, PROMPT_VERSION, ContentFailed, ContentResult, content_question
 from .photo_rec_pool import pool_rows
@@ -321,3 +321,22 @@ def recommend(db: Session, user: User, group_id: str, rng: random.Random | None 
     common = _sorted_by_key(pool_rows(db, sent), salt, lambda r: r.id)[:ASK_COUNT]
     items = compose([_item(r) for r in rows], [_item(r) for r in common])
     return {"state": quiz_rec.OK if items else (ai_state or quiz_rec.OK), "items": items}
+
+
+def image_for(db: Session, group_id: str, rec_id: str) -> bytes:
+    """추천 행의 사진 JPEG. 흔한 사진은 저장된 바이트 그대로, 가족 사진은 첨부 원본을 줄여서. 다른 가족 행·사라진 첨부는 404."""
+    row = db.get(PlayPhotoRec, rec_id)
+    if row is None or (row.group_id is not None and row.group_id != group_id):
+        raise not_found("이미지")
+    if row.attachment_id is None:
+        if row.image is None:
+            raise not_found("이미지")
+        return row.image
+    att = db.get(MessageAttachment, row.attachment_id)
+    files = attachment_files(att) if att is not None else None
+    if files is None or not files[0].is_file():
+        raise not_found("이미지")
+    try:
+        return media.make_photo_jpeg(files[0].read_bytes())
+    except Exception:
+        raise not_found("이미지") from None

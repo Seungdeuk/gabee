@@ -21,6 +21,8 @@
 | `POST /play/quiz` | 골든벨 세트(1~5문항) 내기 |
 | `GET /play/quiz/recommendations` | 골든벨 가비 추천 `{state, items}`. 아래 "골든벨 가비 추천" 참고 |
 | `GET /play/draw/recommendations` | 이게 뭐게 가비 추천 `{state, items}`(정답 단어와 선 그림 5개). 아래 "이게 뭐게 가비 추천" 참고 |
+| `GET /play/photo/recommendations` | 탐정단 가비 추천 `{state, items}`(카드 3개). 아래 "찰칵! 탐정단 가비 추천" 참고 |
+| `GET /play/photo/recommendations/{id}/image` | 추천 카드 사진(JPEG). 흔한 사진은 로그인한 구성원 누구나, 가족 사진은 그 가족 구성원만(다른 가족·첨부 없음은 404) |
 | `POST /play/draws` | 이게 뭐게 내기 (multipart: `file` PNG ≤2MB, `answer`, `alt_answers`, `hint2`, `player_ids`) |
 | `POST /play/photos` | 탐정단 내기 (multipart: `file` JPEG/PNG/WebP ≤8MB, `source`, `zoom`, `box_x`, `box_y`, `question`, `options`, `answer_index`, `comment`, `player_ids`) |
 | `GET /play/board` | 받은(할 차례·참여했어요·지난 결과 3일)과 보낸(내가 낸 문제·지난 결과) |
@@ -84,6 +86,15 @@
 - 재사용: 단어별 그림을 `play_draw_stock` 에 30일 동안 모든 가족이 같이 쓰도록 단어당 최대 3종 저장한다. 저장된 그림이 있으면 기본은 호출 없이 재사용하고 약 30%(`REDRAW_RATE`)는 새로 그려 쌓는다(3종이 차 있으면 가장 오래된 것을 대체).
 - 한도·캐시: `ai_guard.run`(기능 `play_draw_rec`, 기본 한도와 따로: 쿨다운 5초·사용자 하루 3번·가족 하루 5번, 설정 `ai_play_draw_rec_*`). 그림을 몇 개 불러도 추천 한 번(시도)을 1회로 센다(토큰은 실제만큼). 만든 그림은 바로 `play_draw_stock` 에 저장한다. 오늘 단어 5개의 그림이 다 모이면 그날 자정(한국 시간)까지 가족 단위로 캐시한다. 모자라면 캐시하지 않고 저장소에 있는 오늘 단어의 그림을 `partial` 로 보여 주며, 다시 불러오면(시도 1회) 모자란 단어를 더 그린다. 한도를 다 쓰면 저장소 그림을 `ok` 로 보여 주고(없으면 `used_up`), AI 호출이 실패하거나 쿨다운 중이어도 저장소 그림이 있으면 `partial` 로 보여 준다. 읽을 때 최근에 낸 단어는 숨긴다.
 - 배포: `play_draw_stock` 마이그레이션(`c4e81a7d3f26`)이 DB 에 없으면 놀이터 기능 전체가 스키마 점검에서 503 이므로 서버보다 먼저 DB 에 적용한다.
+
+### 찰칵! 탐정단 가비 추천
+
+- `GET /play/photo/recommendations` 가 `{state, items}` 를 돌려준다(실패·한도도 200 + `state`). `state`: `ok`·`used_up`·`preparing`·`cooldown`·`failed`·`ai_off`. 카드가 하나라도 있으면 `ok`, 하나도 없을 때만 AI 문제 상태(`preparing`·`cooldown`·`failed`·`ai_off`)를 알리고, 오늘 이미 3개를 보냈으면 `used_up`. 항목은 `{id, kind(month|event|content), source(album|common), question, options, answer_index, box_x, box_y, zoom, image_url}`.
+- 카드 구성: 가족 사진 문제 최대 2개 + 흔한 사진 문제로 하루 3개(흔한 사진이 최소 1개). 구성은 저장하지 않고 가족·사용자·한국 시간 날짜로 시드한 난수로 매번 같게 고른다(같은 사용자·같은 날은 같은 카드, 사용자마다 다름).
+- 문제 종류: 일정 맞추기(사진 촬영일의 공유 일정 제목) -> 사진 내용(AI, 가족이 AI 동의를 켠 경우만) -> 촬영 월 순서로 시도한다. 가족 사진 한 장은 문제를 하나만 갖고(`play_photo_rec` 한 줄) 저장 뒤 재사용한다.
+- 후보와 14일 제외: 가족 전체방 사진 중 "일반 사진으로 확인"된 것만 쓰고, 이 가족이 최근 14일 안에 추천으로 보낸 사진(흔한 사진 포함)과 쓸 수 없는 행은 뺀다.
+- 한도·AI 동의: AI 는 내용 질문에만 쓰고 한 번 열 때 한 묶음(`ai_guard.run`, 기능 `play_photo_rec`, 쿨다운 5초·사용자 하루 3번·가족 하루 5번, 설정 `ai_play_photo_rec_*`)이다. 동의가 꺼졌거나 한도·쿨다운·다른 호출 중이어도 AI 없는 카드(일정·월·흔한 사진)는 그대로 나온다. 동의를 끄면 그 가족의 내용 질문 행은 지워진다.
+- 이미지: 가족 사진 행은 채팅 사진 원본을 `media.make_photo_jpeg` 로 줄여 돌려주고, 저장된 `image` 바이트가 있는 행(흔한 사진)은 그대로 돌려준다. 다른 가족의 가족 행·없는 행·사라진 첨부는 404.
 
 ### 이게 뭐게
 

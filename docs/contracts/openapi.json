@@ -16327,6 +16327,145 @@
         }
       }
     },
+    "/play/photo/recommendations": {
+      "get": {
+        "tags": [
+          "play"
+        ],
+        "summary": "Photo Recommendations",
+        "description": "찰칵! 탐정단 가비 추천(가족 사진 문제 최대 2개 + 흔한 사진 문제, 하루 3개). 구성은 저장하지 않고 가족·사용자·날짜로 정한다.\n실패·한도 같은 경우는 오류 대신 state 로 알린다(AI 가 꺼져 있어도 AI 없는 카드는 나온다, 200).",
+        "operationId": "photo_recommendations_play_photo_recommendations_get",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-gyeot-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Gyeot-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlayPhotoRecOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/play/photo/recommendations/{rec_id}/image": {
+      "get": {
+        "tags": [
+          "play"
+        ],
+        "summary": "Photo Recommendation Image",
+        "description": "추천 카드의 사진(JPEG). 흔한 사진은 로그인한 구성원 누구나, 가족 사진은 그 가족 구성원만(아니면 404).",
+        "operationId": "photo_recommendation_image_play_photo_recommendations__rec_id__image_get",
+        "parameters": [
+          {
+            "name": "rec_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Rec Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-gyeot-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Gyeot-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/play/draws": {
       "post": {
         "tags": [
@@ -28707,6 +28846,105 @@
         ],
         "title": "PlayPhotoOut",
         "description": "찰칵! 탐정단(선택식). 풀고 있는 사람의 사진은 확대해서 자른 부분만 나간다."
+      },
+      "PlayPhotoRecItem": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "month",
+              "event",
+              "content"
+            ],
+            "title": "Kind"
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "album",
+              "common"
+            ],
+            "title": "Source"
+          },
+          "question": {
+            "type": "string",
+            "title": "Question"
+          },
+          "options": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Options"
+          },
+          "answer_index": {
+            "type": "integer",
+            "title": "Answer Index"
+          },
+          "box_x": {
+            "type": "number",
+            "title": "Box X"
+          },
+          "box_y": {
+            "type": "number",
+            "title": "Box Y"
+          },
+          "zoom": {
+            "type": "integer",
+            "title": "Zoom"
+          },
+          "image_url": {
+            "type": "string",
+            "title": "Image Url"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "kind",
+          "source",
+          "question",
+          "options",
+          "answer_index",
+          "box_x",
+          "box_y",
+          "zoom",
+          "image_url"
+        ],
+        "title": "PlayPhotoRecItem"
+      },
+      "PlayPhotoRecOut": {
+        "properties": {
+          "state": {
+            "type": "string",
+            "enum": [
+              "ok",
+              "used_up",
+              "preparing",
+              "cooldown",
+              "failed",
+              "ai_off"
+            ],
+            "title": "State"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/PlayPhotoRecItem"
+            },
+            "type": "array",
+            "title": "Items"
+          }
+        },
+        "type": "object",
+        "required": [
+          "state"
+        ],
+        "title": "PlayPhotoRecOut",
+        "description": "찰칵! 탐정단 가비 추천(가족 사진 최대 2개 + 흔한 사진, 하루 3개). state: ok 카드가 있음, used_up 오늘 추천을 다 썼음(또는 한도),\npreparing 다른 가족이 만드는 중, cooldown 방금 불렀음, failed 만들지 못함, ai_off 가족 AI 꺼짐(AI 없는 카드가 있으면 ok)."
       },
       "PlayQuestionOut": {
         "properties": {

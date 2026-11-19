@@ -9,7 +9,7 @@ from app.features.family_group.models import User
 from app.shared.auth import current_group_id, current_user
 from app.shared.db import get_db
 
-from . import draw_rec, media, quiz_rec, service
+from . import draw_rec, media, photo_rec, quiz_rec, service
 from . import photo_rec_store as _photo_rec_store  # noqa: F401  채팅 사진 삭제·AI 동의 끔 정리 콜백 등록(가져오기만으로 등록됨)
 from .bomb_router import router as bomb_router
 from .schemas import (
@@ -17,6 +17,7 @@ from .schemas import (
     PlayDrawRecOut,
     PlayDrawTryIn,
     PlayItemOut,
+    PlayPhotoRecOut,
     PlayQuizAnswerIn,
     PlayQuizCreateIn,
     PlayQuizRecOut,
@@ -59,6 +60,31 @@ def draw_recommendations(
     """이게 뭐게 가비 추천(정답 단어와 선 그림 5개). 단어는 가족 일정·대화에서 찾은 공개 단어를 먼저 쓰고 모자라면 흔한 단어로 채우며,
     그림은 AI 가 만든다(단어만 보냄). 하루 한 번 만들어 자정까지 가족이 같이 쓴다. 실패·한도 같은 경우는 오류 대신 state 로 알린다(200)."""
     return PlayDrawRecOut(**draw_rec.recommend(db, user, group_id))
+
+
+@router.get("/photo/recommendations", response_model=PlayPhotoRecOut)
+def photo_recommendations(
+    user: User = Depends(current_user),
+    group_id: str = Depends(current_group_id),
+    db: Session = Depends(get_db),
+) -> PlayPhotoRecOut:
+    """찰칵! 탐정단 가비 추천(가족 사진 문제 최대 2개 + 흔한 사진 문제, 하루 3개). 구성은 저장하지 않고 가족·사용자·날짜로 정한다.
+    실패·한도 같은 경우는 오류 대신 state 로 알린다(AI 가 꺼져 있어도 AI 없는 카드는 나온다, 200)."""
+    return PlayPhotoRecOut(**photo_rec.recommend(db, user, group_id))
+
+
+@router.get("/photo/recommendations/{rec_id}/image")
+def photo_recommendation_image(
+    rec_id: str,
+    user: User = Depends(current_user),
+    group_id: str = Depends(current_group_id),
+    db: Session = Depends(get_db),
+) -> Response:
+    """추천 카드의 사진(JPEG). 흔한 사진은 로그인한 구성원 누구나, 가족 사진은 그 가족 구성원만(아니면 404)."""
+    data = photo_rec.image_for(db, group_id, rec_id)
+    return Response(
+        content=data, media_type="image/jpeg", headers={"Cache-Control": "private, max-age=3600"}
+    )
 
 
 @router.post("/draws", response_model=PlayItemOut, status_code=201)

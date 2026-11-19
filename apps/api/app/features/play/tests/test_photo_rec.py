@@ -11,6 +11,7 @@ from sqlalchemy import select
 
 from app.features.family_chat import photo_check_repository as checks
 from app.features.family_chat.models import MessageAttachment
+from app.features.family_chat.photo_service import attachment_files
 from app.features.family_group.models import User
 from app.features.play import photo_rec as rec
 from app.features.play import photo_rec_store as store
@@ -407,3 +408,66 @@ def test_recommend_item_shape(client, family, fake):
     assert album["kind"] == "event" and album["options"][album["answer_index"]] == "민수 생일파티"
     assert 0.25 <= album["box_x"] <= 0.75 and 0.25 <= album["box_y"] <= 0.75
     assert fake.calls == []  # 일정 문제라 AI 를 부르지 않았다
+
+
+# ---------- 추천·이미지 API ----------
+def test_photo_rec_endpoint(client, family, fake):
+    a, b, _ = family
+    _photo(client, a, taken=TAKEN)
+    _seed(3)
+    r = client.get("/play/photo/recommendations", headers=b)
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["state"] == "ok" and len(body["items"]) == 3
+    keys = {
+        "id", "kind", "source", "question", "options", "answer_index",
+        "box_x", "box_y", "zoom", "image_url",
+    }  # fmt: skip
+    assert all(set(item) == keys for item in body["items"])
+    assert client.get("/play/photo/recommendations").status_code == 401
+
+
+def _album_row(client, headers) -> str:
+    att = _photo(client, headers, taken=TAKEN)
+    gid, _ = _ids(client, headers)
+    with SessionLocal() as db:
+        row = store.add_row(
+            db,
+            group_id=gid,
+            source=store.SOURCE_ALBUM,
+            attachment_id=att,
+            kind=store.KIND_MONTH,
+            question="몇 월?",
+            options=["3월", "4월"],
+            answer="10",
+            box_x=0.5,
+            box_y=0.5,
+            zoom=8,
+            prompt_version="t",
+        )
+        return row.id
+
+
+def test_rec_image_access(client, family, other_family):
+    a, b, _ = family
+    album = _album_row(client, a)
+    seed = _seed(1)[0]
+    for headers in (a, b):
+        r = client.get(f"/play/photo/recommendations/{album}/image", headers=headers)
+        assert r.status_code == 200 and r.headers["content-type"] == "image/jpeg"
+    # 다른 가족의 가족 행은 404, 공통 행은 어느 가족이든 200
+    assert (
+        client.get(f"/play/photo/recommendations/{album}/image", headers=other_family).status_code
+        == 404
+    )
+    r = client.get(f"/play/photo/recommendations/{seed}/image", headers=other_family)
+    assert r.status_code == 200 and r.headers["content-type"] == "image/jpeg"
+    assert client.get(f"/play/photo/recommendations/{seed}/image").status_code == 401
+    assert client.get("/play/photo/recommendations/nope/image", headers=a).status_code == 404
+    # 첨부가 사라지면 404
+    with SessionLocal() as db:
+        row = db.get(PlayPhotoRec, album)
+        att = db.get(MessageAttachment, row.attachment_id)
+        files = attachment_files(att)
+    files[0].unlink()
+    assert client.get(f"/play/photo/recommendations/{album}/image", headers=a).status_code == 404
