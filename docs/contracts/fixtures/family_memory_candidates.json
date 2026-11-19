@@ -1,0 +1,47 @@
+{
+  "items": [
+    {
+      "id": "0123456789abcdef",
+      "status": "private",
+      "representative": {
+        "attachment_id": "a1b2c3d4e5f6",
+        "thumb_url": "/family-chat/photos/a1b2c3d4e5f6?size=thumb",
+        "photo_url": "/family-chat/photos/a1b2c3d4e5f6",
+        "taken_at": "2026-05-02T01:10:00Z",
+        "is_representative": true
+      },
+      "photos": [
+        {
+          "attachment_id": "a1b2c3d4e5f6",
+          "thumb_url": "/family-chat/photos/a1b2c3d4e5f6?size=thumb",
+          "photo_url": "/family-chat/photos/a1b2c3d4e5f6",
+          "taken_at": "2026-05-02T01:10:00Z",
+          "is_representative": true
+        },
+        {
+          "attachment_id": "b2c3d4e5f6a1",
+          "thumb_url": "/family-chat/photos/b2c3d4e5f6a1?size=thumb",
+          "photo_url": "/family-chat/photos/b2c3d4e5f6a1",
+          "taken_at": "2026-05-02T01:25:00Z",
+          "is_representative": false
+        },
+        {
+          "attachment_id": "c3d4e5f6a1b2",
+          "thumb_url": "/family-chat/photos/c3d4e5f6a1b2?size=thumb",
+          "photo_url": "/family-chat/photos/c3d4e5f6a1b2",
+          "taken_at": "2026-05-02T03:40:00Z",
+          "is_representative": false
+        }
+      ],
+      "photo_count": 3,
+      "dated_count": 3,
+      "undated_count": 0,
+      "starts_at": "2026-05-02T01:10:00Z",
+      "ends_at": "2026-05-02T03:40:00Z",
+      "bridged": false,
+      "score": 0.7,
+      "algorithm_version": "memgrp-1",
+      "updated_at": "2026-11-19T00:00:00Z"
+    }
+  ]
+}

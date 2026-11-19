@@ -208,3 +208,24 @@ export function photoCaption(photo) {
   const d = kstDate(photo?.taken_at);
   return d ? full(d) : UNKNOWN_DATE;
 }
+
+/**
+ * 이전 목록에는 있었지만 새 목록에는 없는 사진의 주소(작은 사진·원본). 서버가 후보에서 뺐거나(철회·제외·삭제) 가족·로그인이 바뀌어 목록이 비워졌을 때, 이 사진들의
+ * 기기 캐시 사본을 지우는 데 쓴다. 같은 사진이 다른 후보에 남아 있으면 지우지 않는다.
+ * @param {{ photos: { attachment_id: string, thumb_url: string, photo_url: string }[] }[]} prevItems
+ * @param {{ photos: { attachment_id: string }[] }[]} nextItems
+ * @returns {string[]}
+ */
+export function removedPhotoPaths(prevItems, nextItems) {
+  const keep = new Set(nextItems.flatMap((c) => c.photos.map((p) => p.attachment_id)));
+  const out = new Set();
+  for (const c of prevItems) {
+    for (const p of c.photos) {
+      if (!keep.has(p.attachment_id)) {
+        out.add(p.thumb_url);
+        out.add(p.photo_url);
+      }
+    }
+  }
+  return [...out];
+}

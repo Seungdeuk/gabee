@@ -166,6 +166,9 @@ def refresh(db: Session, group_id: str, config: GroupingConfig | None = None) ->
                 db.add(MemoryCandidatePhoto(candidate_id=cand.candidate_id, group_id=group_id, **p))
         stale = [cid for cid in existing if cid not in keep]
         removed = repo.delete_candidates(db, stale) if stale else 0
+        # 계산하는 사이에 철회·가족 끄기가 커밋됐을 수 있다: 저장 직전에 한 번 더 대조해, 막 철회한 사람의 사진이 든 후보가 저장된 채 남지 않게 한다
+        db.flush()  # 방금 추가한 후보·사진 줄이 대조 조회에 보이도록(자동 flush 가 꺼져 있다)
+        reconcile.reconcile(db)
         db.commit()
     except IntegrityError:
         db.rollback()  # 같은 가족을 동시에 새로 고쳤다: 먼저 끝난 쪽의 결과가 맞다

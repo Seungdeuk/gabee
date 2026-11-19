@@ -58,7 +58,7 @@ def put_consent(
     db: Session = Depends(get_db),
 ) -> MemoryStateOut:
     """내 사진의 AI 분석에 동의하거나 철회한다(본인 것만). 철회는 항상 가능하고 즉시 효력이 생긴다."""
-    return service.set_consent(db, user, group_id, body.consent)
+    return service.set_consent(db, user, group_id, body.consent, body.consent_version)
 
 
 @router.put("/consent/retro", response_model=MemoryStateOut)

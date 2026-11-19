@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useReducer, useRef } from "react";
 
 import { useAuth } from "@/shared/auth/AuthProvider";
+import { evictPhotoCache } from "@/shared/imageCache";
 
 import { listMemoryCandidates } from "./api";
 import { loadMockCandidates } from "./fixtures";
-import { initialMemoriesState, memoriesReducer, normalizeCandidates, scopeKey } from "./memories";
+import { initialMemoriesState, memoriesReducer, normalizeCandidates, removedPhotoPaths, scopeKey } from "./memories";
 import { memoryUiMode } from "@/shared/memoryFlag";
 
 /**
@@ -43,6 +44,14 @@ export default function useFamilyMemories() {
       seq.current += 1; // 화면이 사라지면 이전 응답은 버려진다
     };
   }, [load]);
+
+  // 목록에서 사라진 사진(서버가 뺐거나 가족·로그인이 바뀜)의 기기 캐시 사본을 지운다. 채팅에서 볼 수 있는 사진은 다시 받으면 되고, 원본 사진 자체는 건드리지 않는다
+  const shown = useRef([]);
+  useEffect(() => {
+    const gone = removedPhotoPaths(shown.current, state.items);
+    shown.current = state.items;
+    if (gone.length > 0) evictPhotoCache(gone);
+  }, [state.items]);
 
   const photoGone = useCallback((candidateId, attachmentId) => dispatch({ type: "photoGone", candidateId, attachmentId }), []);
   return { state, refresh: load, photoGone };

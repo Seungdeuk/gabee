@@ -575,3 +575,99 @@ def test_candidates_tables_defaults_cascade_and_concurrent_refresh_on_postgres(
     assert (
         client.get(f"{M}/candidates", headers=owner).json()["items"] == []
     )  # 2장면만 남아 숨겨진다
+
+
+def test_full_pipeline_and_privacy_events_on_postgres(pg_client, monkeypatch):
+    """전체 흐름(확인된 사진 → 동의 → 작업 등록 → 워커 → 임베딩 → 그룹화 → 후보 새로 고침 → API)을 PG 에서 끝까지 보고, 철회·사진 삭제로 파생 데이터가 모두 사라지는지 본다.
+    합성 이미지·가짜 인코더만 쓰고 운영 설정은 건드리지 않는다. 자동 enqueue·refresh 진입점이 없어 시험에서 명시적으로 부른다."""
+    import io
+    import random
+    from datetime import UTC, datetime, timedelta
+
+    from PIL import Image
+
+    from app.features.family_memory import analysis, candidate_service, worker
+    from app.features.family_memory import job_service as js
+
+    monkeypatch.setattr(settings, "family_memory_encoder", "fake")
+    monkeypatch.setattr(settings, "family_memory_candidates_api_enabled", True)
+    analysis.reset_encoder()
+    saved_handlers = dict(worker._handlers)
+    client, pg = pg_client
+    owner, _, _ = _family(client)
+    owner_id, gid = _me(client, owner)
+    assert client.put(f"{M}/settings", json={"enabled": True}, headers=owner).status_code == 200
+    assert (
+        client.put(
+            f"{M}/consent", json={"consent": True, "consent_version": 1}, headers=owner
+        ).status_code
+        == 200
+    )
+    ids, msgs = [], []
+    for i in range(4):
+        rng = random.Random(i + 1)
+        img = Image.new("RGB", (64, 48))
+        img.putdata(
+            [(rng.randrange(256), rng.randrange(256), rng.randrange(256)) for _ in range(64 * 48)]
+        )
+        out = io.BytesIO()
+        img.save(out, format="JPEG", quality=90)
+        r = client.post(
+            "/family-chat/photos",
+            files={"file": ("a.jpg", out.getvalue(), "image/jpeg")},
+            data={
+                "taken_at": (
+                    datetime(2024, 5, 1, 10, 0, tzinfo=UTC) + timedelta(minutes=5 * i)
+                ).isoformat()
+            },
+            headers=owner,
+        )
+        assert r.status_code == 201, r.text
+        ids.append(r.json()["attachment"]["id"])
+        msgs.append(r.json()["id"])
+    with admin(
+        pg
+    ) as conn:  # 업로더가 일반 사진으로 확인한 상태(D-13: 자동 판별은 photo 를 못 만든다)
+        for att in ids:
+            conn.execute(
+                "UPDATE chat_photo_checks SET status='photo' WHERE attachment_id=%s", (att,)
+            )
+    engine = create_engine(url(pg))
+    try:
+        with sessionmaker(bind=engine)() as s:
+            assert [js.enqueue(s, att, analysis.KIND_EMBEDDING).outcome for att in ids] == [
+                "queued"
+            ] * 4
+        analysis.register_handlers()
+        for _ in ids:
+            job = None
+            with sessionmaker(bind=engine)() as s:
+                job = js.claim(s, "w1", [analysis.KIND_EMBEDDING])
+            result = analysis.run(job)
+            with sessionmaker(bind=engine)() as s:
+                assert js.complete(s, job, "w1", result, analysis.save) == "done"
+        assert _count(pg, "photo_embeddings") == 4
+        with sessionmaker(bind=engine)() as s:
+            assert candidate_service.refresh(s, gid).created == 1
+    finally:
+        engine.dispose()
+        worker._handlers.clear()
+        worker._handlers.update(saved_handlers)
+        analysis.reset_encoder()
+    items = client.get(f"{M}/candidates", headers=owner).json()["items"]
+    assert len(items) == 1 and {p["attachment_id"] for p in items[0]["photos"]} == set(ids)
+    assert items[0]["status"] == "private"
+
+    # 사진 하나를 지우면 그 사진의 임베딩·후보 줄이 사라지고 API 에서도 빠진다(남은 3장은 후보를 유지)
+    assert client.delete(f"/family-chat/messages/{msgs[0]}", headers=owner).status_code == 200
+    assert _count(pg, "photo_embeddings") == 3
+    again = client.get(f"{M}/candidates", headers=owner).json()["items"]
+    assert len(again) == 1 and ids[0] not in str(again) and again[0]["photo_count"] == 3
+
+    # 철회하면 모든 파생 데이터가 사라지고 API 는 비어 있다
+    assert client.put(f"{M}/consent", json={"consent": False}, headers=owner).status_code == 200
+    assert _count(pg, "photo_embeddings") == 0
+    assert _count(pg, "memory_candidates") == 0 and _count(pg, "memory_candidate_photos") == 0
+    assert _count(pg, "family_memory_jobs") == 0
+    assert client.get(f"{M}/candidates", headers=owner).json()["items"] == []
+    assert owner_id

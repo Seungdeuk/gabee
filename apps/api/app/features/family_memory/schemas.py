@@ -23,6 +23,9 @@ class FamilyEnabledIn(BaseModel):
 
 class ConsentIn(BaseModel):
     consent: bool
+    # 앱이 사용자에게 보여 준 고지문 버전(T31). 동의할 때 보내면 서버의 현재 버전과 같은지 확인한다(다르면 409). 고지문이 확정되기 전에는 선택이고,
+    # 확정되면 필수로 바꾼다(그 전까지 이 값만으로 사용자가 고지문을 실제로 봤다고 증명하지 못한다).
+    consent_version: int | None = None
 
 
 class ExclusionIn(BaseModel):

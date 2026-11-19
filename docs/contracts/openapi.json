@@ -23066,6 +23066,17 @@
           "consent": {
             "type": "boolean",
             "title": "Consent"
+          },
+          "consent_version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Consent Version"
           }
         },
         "type": "object",

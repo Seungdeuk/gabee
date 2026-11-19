@@ -196,12 +196,21 @@ def _withdraw(db: Session, group_id: str, user_id: str, now: datetime) -> None:
     memory_hooks.member_withdrawn(db, group_id, user_id)
 
 
-def set_consent(db: Session, user: User, group_id: str, consent: bool) -> MemoryStateOut:
-    """본인 동의만 바꾼다. 동의는 서버 스위치가 켜져 있을 때만 새로 받는다. 철회는 항상 가능하고 즉시 효력이 생기며 두 번 보내도 같다."""
+def set_consent(
+    db: Session, user: User, group_id: str, consent: bool, consent_version: int | None = None
+) -> MemoryStateOut:
+    """본인 동의만 바꾼다. 동의는 서버 스위치가 켜져 있을 때만 새로 받는다. 철회는 항상 가능하고 즉시 효력이 생기며 두 번 보내도 같다.
+    동의할 때 `consent_version`(앱이 보여 준 고지문 버전)을 보내면 현재 버전(`CONSENT_VERSION`)과 같아야 한다(다르면 409 `consent_version_mismatch`). 철회에는 버전을 보지 않는다."""
     now = datetime.now(UTC)
     try:
         if consent:
             _require_server_on()
+            if consent_version is not None and consent_version != CONSENT_VERSION:
+                raise ApiError(
+                    409,
+                    "consent_version_mismatch",
+                    "동의 안내가 바뀌었어요. 앱을 새로 고친 뒤 다시 확인해 주세요",
+                )
             row = repo.get_consent(db, group_id, user.id)
             if not _consent_active(row):
                 if row is None:
