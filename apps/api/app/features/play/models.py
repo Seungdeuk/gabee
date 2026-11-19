@@ -151,6 +151,12 @@ class PlayPhotoRec(Base):
     box_y: Mapped[float] = mapped_column(Float)
     zoom: Mapped[int] = mapped_column(SmallInteger)  # 4·6·8·16·32
     prompt_version: Mapped[str] = mapped_column(String(8))
+    # 흔한 사진(자동)의 출처. 시드·가족 행은 비어 있다
+    credit_user: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    credit_url: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    license: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    search_query: Mapped[str | None] = mapped_column(String(60), nullable=True)
+    external_id: Mapped[str | None] = mapped_column(String(32), nullable=True, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
 
 

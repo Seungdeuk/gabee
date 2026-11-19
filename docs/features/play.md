@@ -99,6 +99,13 @@
 - 보내기("이 문제로 쓰기"): `POST /play/photos` 에 `rec_id` 만 보내면(파일 없이) 서버가 그 추천 행의 사진(가족 행은 채팅 사진 원본, 흔한 행은 저장된 `image`)으로 문제를 만들고 `play_photos.rec_id` 를 채운다. `source` 는 행 기준으로 서버가 정한다(가족 행 1·흔한 행 3, 요청 값은 무시). 질문·보기·정답·확대 위치·배율·한마디는 요청 값(출제자가 고친 값)을 쓴다. 파일도 같이 오면 파일과 `source` 2 로 처리하고 `rec_id` 는 버린다. 파일·`rec_id` 가 모두 없으면 400 `invalid_input`, 파일만 보낼 때 `source` 는 기존대로 1·2 만 된다.
 - 보낼 때의 서버 확인과 오류: 404 `rec_not_found`(없는 행·다른 가족의 가족 행), 409 `photo_not_available`(가족 행인데 첨부가 사라졌거나 파일이 없음·`usable` 거짓·사진 판별 상태가 일반 사진(`photo`)이 아님(업로더가 타임라인에서 뺌 포함)·다른 가족 첨부), 409 `rec_already_sent`(같은 가족이 14일 안에 같은 `rec_id` 로 이미 보냄, 흔한 행도 같다). 문제 내기 점수·하루 3건 한도·받는 사람 처리는 직접 내기와 같고 흔한 사진 문제도 점수를 받는다. 같은 추천을 동시에 두 번 보내면 추천 행을 `SELECT ... FOR UPDATE` 로 잠가 한쪽만 통과한다(PostgreSQL. SQLite 는 잠금이 없어 시험 환경에서는 보장하지 않는다).
 
+#### 흔한 사진 자동 보충 (source 4)
+
+- 서버 안 백그라운드 스레드(`photo_rec_auto.start()`, 푸시 알림 반복 작업과 같은 방식)가 하루 한 번 흔한 사진을 목표 장수(`PHOTO_REC_AUTO_PER_DAY`, 기본 3)까지 채운다. 기본 꺼짐(`PHOTO_REC_AUTO_ENABLED`), 한국 시간 `PHOTO_REC_AUTO_HOUR`(기본 4)시 이후 하루 한 번이고 그 시각에 꺼져 있었으면 켜졌을 때 돈다. 오늘(한국 날짜) 넣은 자동 행 수로 부족분을 정하므로 여러 번 불려도 목표를 넘기지 않는다. PostgreSQL 은 `pg_try_advisory_lock` 으로 서버가 여러 대여도 한 대만 돈다.
+- 시도 한 번: 일상 검색어 4개 안에서 Pixabay(`photo_rec_pixabay`, `PIXABAY_API_KEY`, `safesearch`, 태그 필터, 24시간 캐시, 사진은 직접 내려받아 1280px JPEG 로 저장)로 후보를 찾아 최대 6장을 AI(`photo_rec_auto_ai`, 사진 한 장당 한 번, `ai_guard` 와 가족 정보 없음)에 보낸다. 규칙(`validate_content` + 금지어·질문 형태·보기 한두 단어·허용 꽃 목록)을 통과한 것만 저장한다. 부족분이 남으면 최대 3번(처음 + 재시도 2)까지 부족한 만큼만 다시 하고, 그래도 못 채우면 모자란 채로 두고 경고 로그를 남긴다. 하루 AI 호출은 많아야 3 x 6 = 18번이다.
+- 저장: `play_photo_rec` 행 `source=4`, id `auto<pixabay id>`, `group_id`·`attachment_id` 없음, `prompt_version="auto-v1"`, 출처 칸(`credit_user`·`credit_url`·`license`·`search_query`·`external_id`). 쓸 수 없다고 했거나 규칙에 안 맞은 사진은 `usable=false`·사진 없는 행으로 남겨 같은 Pixabay id 를 다시 AI 에 보내지 않는다. 풀 선택(`pool_rows`)과 14일 제외·점수·보내기(`rec_id`)는 시드와 같고, 보낼 때 `play_photos.source` 는 3(흔한 사진)으로 기록된다.
+- 배포: `d4f7a2b8c351`(출처 칸 추가, nullable·expand 전용) 마이그레이션을 서버보다 먼저 DB 에 적용한다. 로컬 확인은 `python -m scripts.run_photo_rec_auto`(설정과 무관하게 한 번 실행, 실제 Pixabay·AI 호출).
+
 ### 이게 뭐게
 
 - 정답 비교는 공백을 없애고 대소문자를 무시하며 `alt_answers`(이것도 정답)도 맞다. 힌트 1은 정답 글자 수("3글자")를 서버가 만들고 힌트 2는 낸 사람이 쓴 한 줄이다.

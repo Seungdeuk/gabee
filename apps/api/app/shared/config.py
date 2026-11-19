@@ -193,6 +193,13 @@ class Settings(BaseSettings):
     ai_play_photo_rec_cooldown_seconds: int = 5
     ai_play_photo_rec_max_calls_per_user_per_day: int = 3
     ai_play_photo_rec_max_calls_per_group_per_day: int = 5
+    # 찰칵 흔한 사진 자동 보충: 서버 안 백그라운드 작업이 하루 한 번 Pixabay 사진 + AI 질문으로 흔한 사진을 채운다. 기본 꺼짐.
+    # 사진 한 장당 AI 한 번(ai_guard 를 쓰지 않으므로 호출 수는 per_day x max_attempts x 시도당 후보 상한으로 묶인다). 키는 로그에 찍지 않는다
+    pixabay_api_key: str = ""
+    photo_rec_auto_enabled: bool = False
+    photo_rec_auto_hour: int = 4  # 한국 시간 이 시각 이후 하루 한 번(꺼져 있었으면 켜졌을 때)
+    photo_rec_auto_per_day: int = 3
+    photo_rec_auto_max_attempts: int = 3
     ai_schedule_card_cooldown_seconds: int = 5
     ai_schedule_card_max_calls_per_user_per_day: int = 3
     ai_schedule_card_max_calls_per_group_per_day: int = 15
