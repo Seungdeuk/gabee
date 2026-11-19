@@ -81,12 +81,14 @@ class Report:
     def warn(self, code, rid):
         self.warns[code].append(rid)
 
-    def to_dict(self):
-        return {
-            "errors": {k: {"count": len(v), "ids": v[:50]} for k, v in self.errors.items()},
-            "warnings": {k: {"count": len(v), "ids": v[:50]} for k, v in self.warns.items()},
-            "info": self.info,
-        }
+    def to_dict(self, full_ids=False):
+        def pack(d):
+            out = {}
+            for k, v in d.items():
+                u = list(dict.fromkeys(v))  # 같은 id 중복 제거(순서 유지)
+                out[k] = {"count": len(v), "unique_ids": len(u), "ids": u if full_ids else u[:50]}
+            return out
+        return {"errors": pack(self.errors), "warnings": pack(self.warns), "info": self.info}
 
 
 def load_rows(path):
@@ -423,6 +425,7 @@ def main(argv=None):
     ap.add_argument("--review-out", type=Path)
     ap.add_argument("--seed", type=int, default=20261120)
     ap.add_argument("--strict", action="store_true")
+    ap.add_argument("--full-ids", action="store_true", help="보고서에 문장 id 전체를 저장(기본은 코드당 50개)")
     a = ap.parse_args(argv)
 
     if a.verify_manifest:
@@ -452,7 +455,7 @@ def main(argv=None):
         ref = reference_rows(a.reference_dir)
         seen = against_reference(active, ref, rep, info)
     rep.info = info
-    result = rep.to_dict()
+    result = rep.to_dict(a.full_ids)
     if a.report_out:
         a.report_out.write_text(json.dumps(result, ensure_ascii=False, indent=1), encoding="utf-8")
     if a.annotations_out:
