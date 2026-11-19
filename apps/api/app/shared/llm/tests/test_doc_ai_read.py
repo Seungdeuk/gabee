@@ -40,3 +40,19 @@ def test_read_once_when_not_truncated(monkeypatch):
     out = doc_ai._read({"type": "text", "text": "x"}, "옮겨 적으세요")
     assert calls == [None]
     assert out.text == "다 읽음"
+
+
+def test_pdf_page_asks_for_figure_notes_but_photo_does_not(monkeypatch):
+    """PDF 쪽에는 그림 설명 규칙이 붙고, 사진 업로드에는 붙지 않는다(일반 사진이 문서로 저장되면 안 된다)."""
+    systems: list[str] = []
+
+    def fake_call(model, system, content, tool, max_tokens, timeout, effort=None):
+        systems.append(system)
+        return _reply("글", "end_turn")
+
+    monkeypatch.setattr(doc_ai, "_call", fake_call)
+    doc_ai.read_pdf(b"%PDF-")
+    doc_ai.read_image(b"\xff\xd8")
+    assert "[그림:" in systems[0]
+    assert "[그림:" not in systems[1]
+    assert systems[1] == doc_ai.OCR_SYSTEM
