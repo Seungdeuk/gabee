@@ -275,7 +275,7 @@ def estimate_text(args: argparse.Namespace, plan: Plan, ledger: Ledger) -> tuple
 def _estimate_ledger(args: argparse.Namespace, plan: Plan, root: Path) -> Ledger:
     """추정이 보는 기록장: 실제 모델 기준의 상한(RUN·누적). 누적은 이전 실행 기록에서 복원한다."""
     scopes = BASELINE_RUN_SCOPES if args.stage == "baseline" else OTHER_RUN_SCOPES
-    spent = store.opening_spent(root, args.stage)
+    spent = store.read_opening(root, args.stage, extra_roots=store.extra_roots_from_env()).spent
     opening = {s: spent[s.value] for s in scopes if s is not Scope.RUN}
     from .cost import CAPS
 
@@ -464,7 +464,15 @@ def _execute(
                 out(f"중단: 승인 금액을 앞선 분할이 다 써서 {split} 은 실행하지 않는다")
                 return max(exit_code, HALTED)
         run_id = plan.run_id if len(plan.splits) == 1 else f"{plan.run_id}-{split}"
-        spent = store.opening_spent(results, args.stage) if mode == "real" else None
+        reading = (
+            store.read_opening(results, args.stage, extra_roots=store.extra_roots_from_env())
+            if mode == "real"
+            else None
+        )  # 다른 작업 폴더의 결과도 합친 전역 누적(없으면 이 폴더만): 프로젝트 상한은 이 합으로 검사한다
+        spent = reading.spent if reading is not None else None
+        if reading is not None and reading.has_extra:
+            for line in reading.lines():
+                out(line)
         opening = (
             {
                 s: spent[s.value]
@@ -530,6 +538,10 @@ def main(argv: Sequence[str] | None = None, out: Callable[[str], None] = print) 
             ledger = _estimate_ledger(args, plan, results)
             cost, text = estimate_text(args, plan, ledger)
             out(text)
+            extra = store.extra_roots_from_env()
+            if extra:  # 승인 화면에 현재 폴더와 추가 폴더별 내역, 전역 합계를 보인다
+                for line in store.read_opening(results, args.stage, extra_roots=extra).lines():
+                    out(line)
         if plan.mode == "dry-run":
             out("  --dry-run: 모델도 네트워크도 부르지 않았고 아무것도 저장하지 않았다.")
             return OK

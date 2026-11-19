@@ -474,7 +474,7 @@ S2-B1 실모델 실행(`real-dev-s2b1`)에서 드러난 **평가 쪽 문제**를
 - 실행기의 누적은 `store.opening_spent(results 폴더)` 이고 **그 results 폴더 바로 아래 실행 폴더들의 `manifest.json` `cost_usd` 합**이다.
 - 차액의 원인(확정): 2026-11-13 두 실행(`real-dev-20261113-160622` $0.0023779·2회, `real-dev-20261113-170636` $0.0289175·33회, 합 **$0.0312954**·35회)이 다른 작업 폴더 `gabee-eval-pre` 의 results 에 있어 현재 작업 폴더(`gabee-diag`)의 실행기 합에 들어가지 않았다. 수동 합계는 두 폴더를 합친 값이다.
 - 확인: `gabee-diag` 10개 실행 140회 $0.1328580(manifest 합 = usage 합), `gabee-eval-pre` 2개 실행 35회 $0.0312954(manifest 합 = usage 합), 총 12개 실행·175회·**$0.1641534**·사례 실행 47건. 중복 합산 없음, 모든 폴더에서 manifest 합과 usage 행 합이 같음, 재채점 폴더(`_rescore`)는 모두 비용 0·호출 0이라 양쪽 어디에도 비용이 더해지지 않았다. 과거 실측값은 모두 보존돼 있다.
-- 기준: **프로젝트 누적 = 모든 작업 폴더의 results 아래 실행 폴더의 manifest 비용 합. 재채점은 0.** 실행기의 사전 거부·상한 검사는 현재 폴더 합만 본다. 지금 차이는 $40 상한의 0.08%라 실질 위험은 작지만, 새 worktree 에서 실행하면 그 이전 실행이 합계에서 빠지므로 **실행 전에 모든 results 폴더를 합친 수동 합계를 확인하는 절차**를 쓴다(`test_cost_accounting_rules.py` 가 root 별 합·재채점 제외·폴더 분리를 고정). 후속 제안(미구현): 결과를 하나의 고정 폴더에 모으거나 환경변수로 추가 results 루트를 받아 `opening_spent` 가 합치게 하기.
+- 기준: **프로젝트 누적 = 모든 작업 폴더의 results 아래 실행 폴더의 manifest 비용 합. 재채점은 0.** 실행기의 사전 거부·상한 검사는 현재 폴더 합만 본다. 지금 차이는 $40 상한의 0.08%라 실질 위험은 작지만, 새 worktree 에서 실행하면 그 이전 실행이 합계에서 빠지므로 **실행 전에 모든 results 폴더를 합친 수동 합계를 확인하는 절차**를 쓴다(`test_cost_accounting_rules.py` 가 root 별 합·재채점 제외·폴더 분리를 고정). 후속 조치(2026-11-19 구현): 환경변수 `GABEE_EVAL_EXTRA_RESULTS_ROOTS` 로 추가 results 루트를 받아 합친다(아래 '비용 통합 집계' 5절).
 - **dev 36건 반복 평가 전 전역 비용 집계 방안(제안, 구현·실행은 별도 승인)**
   1. (권장) 환경변수 `GABEE_EVAL_EXTRA_RESULTS_ROOTS`(경로 목록)를 `opening_spent` 가 읽어 현재 폴더 합에 더한다. 각 루트는 읽기만 하고, 실행 폴더 id 가 겹치면 한 번만 센다(중복 방지), manifest 가 없는 폴더는 건너뛴다. 승인 비용 확인 화면에 '현재 폴더 / 추가 루트 / 합계'를 따로 보여 준다. 기존 동작(변수 없음)은 그대로다.
   2. 실행 전 절차: `gabee-diag`·`gabee-eval-pre` 등 알려진 worktree 의 results 를 모두 위 변수에 넣고 합계가 이 문서의 기준값($0.1641534 + 이후 실행)과 같은지 확인한 뒤 승인 상한을 정한다.
@@ -545,6 +545,13 @@ S2-B1 실모델 실행(`real-dev-s2b1`)에서 드러난 **평가 쪽 문제**를
 **시험 계획**(`tests/agent_eval/test_cost_accounting_rules.py` 확장 + 새 `test_ledger_extra_roots.py`)
 1. 추가 루트 둘의 합이 전역 합과 같다(정상). 2. 변수 없음 = 현재 폴더 합(하위 호환). 3. 같은 `run_id`·`started_at`·`cost_usd` 가 두 루트에 있으면 한 번만 센다(경계). 4. 설정한 루트가 없거나 비어 있지 않은데 manifest 가 깨져 있으면 오류(합계를 줄이지 않음). 5. `_rescore`·`manifest` 없는 폴더는 건너뛴다(기존 규칙 유지). 6. 같은 루트를 두 번 적어도 한 번만. 7. 상한 검사가 전역 합으로 거부한다(프로젝트 $40 근처에서 현재 폴더 합만으로는 통과하는 경우). 8. 승인 합계와 실행 시점 합계가 다르면 `real_gate` 가 막는다. 9. 옛 manifest(새 키 없음)를 그대로 읽는다. 10. 절대·상대·중복 구분자·빈 문자열 같은 환경변수 파싱.
 검증 순서: 시험 → `tests/agent_eval` 전체 → 사전 점검 9개 → CI 3종. 실제 호출 없음.
+
+**구현 현황 (2026-11-19, 평가 도구만, 운영 Agent 코드·`app/` 변경 없음)**
+- 구현함: `store.py`(`read_opening`·`LedgerReading`·`RootReading`·`extra_roots_from_env`, `opening_spent` 는 `extra_roots=()` 인자를 더해 기존 호출과 같음)와 `cli.py`(추정·실행 승인 화면에 폴더별 내역과 전역 합계, 상한 검사에 전역 합계 사용). 규칙은 위 ①~④ 그대로이고, 상대 경로·같은 `run_id` 인데 내용이 다른 중복은 오류로 멈춘다.
+- 사용법(PowerShell): `$env:GABEE_EVAL_EXTRA_RESULTS_ROOTS = "C:\...\gabee-diag\apps\api\evals\agent_eval\results;C:\...\gabee-eval-pre\apps\api\evals\agent_eval\results"`(구분자는 Windows `;`·POSIX `:`, 절대 경로만). 새 작업 폴더에서 `--dry-run`·`--preflight`·`--real` 을 부르면 '누적 비용 집계' 블록이 폴더별로 나온다. 변수가 없으면 이 폴더 하나만 센다(기존 동작).
+- 실측 확인(읽기 전용, 파일 변경 없음): `gabee-diag`(10건 $0.1328580) + `gabee-eval-pre`(2건 $0.0312954) = **12건 $0.1641534**, 새 빈 작업 폴더에서 두 폴더를 추가해도 같고, 두 폴더를 중복 지정해도 같다. `--dry-run` 의 남은 프로젝트 예산이 $39.8358466(= $40 − $0.1641534)으로 나왔다.
+- 시험: `tests/agent_eval/test_ledger_extra_roots.py`(16): 합산·하위 호환·중복·충돌·없는 폴더·깨진 manifest·`_rescore` 제외·단계별 합·환경변수·읽기 전용·전체 프로젝트 상한과 개별 실행 상한 둘 다·CLI 연결.
+- 구현하지 않음(필요하면 별도 승인): 승인 시점 전역 합계를 `PreflightRecord` 에 묶어 실행 시점과 비교하는 `real_gate` 변경, manifest 에 `cases_revisions_head`·`scorer_version` 추가, `ledger_audit` 명령. 실행 승인서에는 전역 합계를 수동으로 적는다.
 
 ### 6. 승인 요청에 포함할 내용(실행 전)
 최신 release 커밋 SHA·dev 파일 해시·해시 사슬 끝·점검 결과, 전역 누적 합계(수동 확인 또는 5절 구현 뒤 자동), 예상 $0.36·승인 상한 $0.80·호출 상한 약 420회, 실행 id, 중단 조건(상한·사전 점검 실패·고위험 탐지 시 즉시 중단·자동 재실행 없음).
