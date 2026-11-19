@@ -17,7 +17,7 @@ import psutil
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
-import run_r9_arm as R
+import run_r9_arm as R  # noqa: E402
 
 PY = r"C:\Users\403\venvs\gabee-ner\Scripts\python.exe"
 API_PY = r"C:\Users\403\Documents\gabee\apps\api\.venv\Scripts\python.exe"

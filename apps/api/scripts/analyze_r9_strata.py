@@ -63,9 +63,6 @@ def strata_for(label, model_dir, fp12):
                 meta[(sname, r["id"], gi)] = (
                     "kin_adjacent" if kin_adjacent(r["text"], g[1]) else "policy_neutral"
                 )
-    for key, typ in cases.items():
-        if key[2] == "neg" or str(key[2]).startswith("fp"):
-            continue
     agg = defaultdict(Counter)
     for key, typ in cases.items():
         if not isinstance(key[2], int):
