@@ -26,6 +26,7 @@ def main():
     ap.add_argument("--onnx-dir", type=Path, required=True)
     ap.add_argument("--data-dir", default=r"C:\Users\403\venvs\ner-runs\data_r9")
     ap.add_argument("--out", type=Path, required=True)
+    ap.add_argument("--skip-batch64", action="store_true")
     a = ap.parse_args()
     rows = ni.load_rows("baseline_val", a.data_dir, 7)[:300]
     texts = [r["text"] for r in rows]
@@ -78,7 +79,7 @@ def main():
     res["onnx_vs_torch_identical_sentences"] = f"{same_sent}/{len(texts)}"
 
     # 배치 64 한 스텝(학습 모드, fp16, max_len 128 가득)
-    if torch.cuda.is_available():
+    if torch.cuda.is_available() and not a.skip_batch64:
         torch.cuda.reset_peak_memory_stats()
         m = AutoModelForTokenClassification.from_pretrained(a.run_dir / "best").to(dev)
         m.train()
