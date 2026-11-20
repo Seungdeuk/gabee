@@ -241,22 +241,30 @@ const b=new Blob([JSON.stringify(out,null,1)],{type:'application/json'});const a
 </script>"""
 
 
-def packet(sample, outdir):
+def packet(sample, outdir, must_ids=frozenset(), only_must=False, filename="review_packet.html"):
+    """표본 519개는 그대로 두고 화면 순서만 바꾼다: 자동 검사에 걸린 행(must_ids)을 맨 앞에 '우선' 으로 표시. only_must 이면 그 행만 담은 별도 파일."""
     outdir.mkdir(parents=True, exist_ok=True)
     rows_html, ids = [], []
+    sample = sorted(sample, key=lambda x: (x[1]["id"] not in must_ids)) if must_ids else sample
+    if only_must:
+        sample = [x for x in sample if x[1]["id"] in must_ids]
     for i, (name, r) in enumerate(sample):
         ids.append(r["id"])
         radio = lambda n, vals: "".join(f"<label><input type='radio' name='{n}{i}' value='{v}'>{v}</label> " for v in vals)  # noqa: E731
         is_pair = bool(r.get("pair_id"))
         rows_html.append(
-            f"<tr class='{'pair' if is_pair else ''}'><td>{i + 1}</td><td>{name}/{r.get('type', 'train-pair')}<div class='meta'>{html.escape(r['id'])}"
+            f"<tr class='{'pair' if is_pair else ''}'><td>{i + 1}{' <b style="color:#c00">우선</b>' if r['id'] in must_ids else ''}</td><td>{name}/{r.get('type', 'train-pair')}<div class='meta'>{html.escape(r['id'])}"
             f"{' · ' + r['pair_role'] if is_pair else ''}</div></td><td>{render(r, name)}</td><td>{radio('nat', ['1', '2', '3'])}</td>"
             f"<td>{radio('lab', ['Y', 'N'])}</td><td>{radio('bnd', ['Y', 'N'])}</td><td>{radio('pair', ['Y', 'N']) if is_pair else '-'}</td><td><textarea name='note{i}'></textarea></td></tr>")
     page = PAGE.replace("%ROWS%", "\n".join(rows_html)).replace("%IDS%", json.dumps(ids))
-    (outdir / "review_packet.html").write_text(page, encoding="utf-8")
-    (outdir / "review_sample_ids.json").write_text(json.dumps(ids), encoding="utf-8")
+    (outdir / filename).write_text(page, encoding="utf-8")
+    if not only_must:
+        (outdir / "review_sample_ids.json").write_text(json.dumps(ids), encoding="utf-8")
+        (outdir / "review_priority_ids.json").write_text(json.dumps(sorted(must_ids)), encoding="utf-8")
     import csv
 
+    if only_must:
+        return len(ids)
     with open(outdir / "review_packet.csv", "w", encoding="utf-8-sig", newline="") as f:
         w = csv.writer(f)
         w.writerow(["id", "set", "type", "pair_role", "text_with_spans", "natural(1-3)", "label_ok(Y/N)", "boundary_ok(Y/N)", "pair_ok(Y/N)", "note"])
@@ -277,15 +285,17 @@ def main():
 
     tok = ta.load_tokenizer("monologg/koelectra-small-v3-discriminator")
     sets = {"train": rd(DATA / "r11_Dprime_train.jsonl"), "val": rd(DATA / "r11_val.jsonl"), "dev": rd(DATA / "r11_dev.jsonl")}
-    report, sample = {"seed": SEED}, []
+    report, sample, must_all = {"seed": SEED}, [], set()
     rng = random.Random(SEED)
     for name, rows in sets.items():
         rep, flagged, must = auto_checks(name, rows, tok)
+        must_all |= must
         report[name] = rep
         sample += [(name, r) for r in sample_rows(name, rows, flagged, rng, must)]
     report["human_review_sample"] = {"total_items": len(sample), "by_set": dict(Counter(n for n, _ in sample))}
     if a.packet_dir:
-        report["human_review_sample"]["packet_items_written"] = packet(sample, a.packet_dir)
+        report["human_review_sample"]["packet_items_written"] = packet(sample, a.packet_dir, must_all)
+        report["human_review_sample"]["priority_items"] = packet(sample, a.packet_dir, must_all, only_must=True, filename="review_priority_packet.html")
     a.out_report.parent.mkdir(parents=True, exist_ok=True)
     a.out_report.write_text(json.dumps(report, ensure_ascii=False, indent=1), encoding="utf-8")
     print(json.dumps(report, ensure_ascii=False, indent=1))

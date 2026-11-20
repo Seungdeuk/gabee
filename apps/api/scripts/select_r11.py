@@ -8,6 +8,7 @@
 
 import argparse
 import json
+from decimal import ROUND_HALF_UP, Decimal
 import statistics as st
 import sys
 from pathlib import Path
@@ -20,8 +21,13 @@ CAND_VARIANTS = ("B-new", "C-SWA")
 TARGET5 = ("D1P", "B1", "C2", "NEWNAME", "LONGNAME")
 
 
+def rnd(x, nd):
+    """비율 x 를 %로 바꿔 소수 nd 자리에서 반올림(0.5 는 올림). 부동소수 오차(76.05 -> 76.0)를 막으려고 먼저 9자리에서 정리한다."""
+    return float(Decimal(repr(round(100 * x, 9))).quantize(Decimal(1).scaleb(-nd), rounding=ROUND_HALF_UP))
+
+
 def r2(x):
-    return round(100 * x, 2)
+    return rnd(x, 2)
 
 
 def le(a, b):
@@ -74,7 +80,7 @@ def select_candidate(cands):
     """cands: [{label, seed, recall, f1, exposure, targets_macro, neg_fpr_macro, precision, group_sd_sum, latency}] -> (선정 label|None, 근거 dict). §7-4."""
     if not cands:
         return None, {"reason": "후보 없음"}
-    v = lambda c: (round(100 * c["recall"], 1), round(100 * c["f1"], 1), round(100 * c["exposure"], 1))  # noqa: E731
+    v = lambda c: (rnd(c["recall"], 1), rnd(c["f1"], 1), rnd(c["exposure"], 1))  # noqa: E731
 
     def dominates(a, b):
         ra, rb = v(a), v(b)
@@ -99,10 +105,10 @@ def select_candidate(cands):
     tied = [c for c in left if total[c["label"]] == best]
     steps = [
         ("minimax_rank", lambda c: max(r_rec[c["label"]], r_f1[c["label"]], r_exp[c["label"]])),
-        ("targets_macro_exposure", lambda c: round(100 * c["targets_macro"], 1)),
-        ("neg_fpr_macro", lambda c: round(100 * c["neg_fpr_macro"], 1)),
-        ("precision_official(desc)", lambda c: -round(100 * c["precision"], 1)),
-        ("group_sd_sum", lambda c: round(100 * c["group_sd_sum"], 2)),
+        ("targets_macro_exposure", lambda c: rnd(c["targets_macro"], 1)),
+        ("neg_fpr_macro", lambda c: rnd(c["neg_fpr_macro"], 1)),
+        ("precision_official(desc)", lambda c: -rnd(c["precision"], 1)),
+        ("group_sd_sum", lambda c: rnd(c["group_sd_sum"], 2)),
         ("latency", lambda c: c.get("latency") if c.get("latency") is not None else 0.0),
         ("seed", lambda c: c["seed"]),
     ]

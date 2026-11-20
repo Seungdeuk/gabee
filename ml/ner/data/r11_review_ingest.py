@@ -20,14 +20,22 @@ def rd(p):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--result", type=Path, required=True)
+    ap.add_argument("--result", type=Path, nargs="+", required=True, help="결과 JSON 여러 개(우선 파일과 전체 파일). 같은 id 는 뒤 파일이 앞 파일을 덮는다")
     ap.add_argument("--out", type=Path, required=True)
     a = ap.parse_args()
     meta = {}
     for s, f in SETS.items():
         for r in rd(DATA / f"{f}.jsonl"):
             meta[r["id"]] = {"set": s, "type": r.get("type", "TRAIN_PAIR"), "pair_id": r.get("pair_id"), "pair_role": r.get("pair_role")}
-    res = json.loads(a.result.read_text(encoding="utf-8"))
+    merged = {}
+    for rp in a.result:
+        for x in json.loads(rp.read_text(encoding="utf-8")):
+            merged[x["id"]] = x
+    res = list(merged.values())
+    sample_ids = set(json.loads((DATA / "review" / "review_sample_ids.json").read_text(encoding="utf-8")))
+    missing = sorted(sample_ids - set(merged))  # 표본에 있는데 결과가 없는 항목은 미판정으로 센다(자동 통과 처리 금지)
+    for i in missing:
+        res.append({"id": i, "natural": None, "label_ok": None, "boundary_ok": None, "pair_ok": None})
     by_set, by_type = defaultdict(Counter), defaultdict(Counter)
     pair_fail, pair_seen, fail_ids, undecided = defaultdict(set), defaultdict(set), [], Counter()
     for x in res:

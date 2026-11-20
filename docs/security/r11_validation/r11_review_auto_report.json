@@ -135,6 +135,7 @@
    "val": 90,
    "dev": 309
   },
-  "packet_items_written": 519
+  "packet_items_written": 519,
+  "priority_items": 22
  }
 }
