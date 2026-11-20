@@ -1,9 +1,10 @@
 import { Image } from "expo-image";
-import { useRouter } from "expo-router";
+import { Redirect, useRouter } from "expo-router";
 import { useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, FlatList, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View, useWindowDimensions } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
+import { useAuth } from "@/shared/auth/AuthProvider";
 import AlbumViewer from "@/features/family-chat/components/AlbumViewer";
 import Button from "@/shared/components/Button";
 import AuthImage from "@/shared/components/AuthImage";
@@ -19,6 +20,7 @@ import {
   bodyKind,
   candidateSubtitle,
   candidateTitle,
+  needsLogin,
   photoCaption,
   selectedCandidate,
   viewerPhotos,
@@ -38,6 +40,7 @@ const COLUMNS = 3;
  */
 export default function FamilyMemoriesScreen() {
   const router = useRouter();
+  const { status } = useAuth();
   const { width: windowWidth } = useWindowDimensions();
   const width = Math.min(windowWidth, MAX_WIDTH);
   const { state, refresh, photoGone } = useFamilyMemories();
@@ -75,6 +78,9 @@ export default function FamilyMemoriesScreen() {
     else if (router.canGoBack()) router.back();
     else router.replace("/family-chat");
   };
+
+  // 로그아웃 상태로 직접 경로에 들어오면 무한 로딩 대신 로그인 화면으로 보낸다(모든 훅 호출 뒤라야 한다)
+  if (needsLogin(status)) return <Redirect href="/login" />;
 
   let body;
   if (kind === "loading") {

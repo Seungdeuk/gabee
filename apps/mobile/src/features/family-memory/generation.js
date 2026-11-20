@@ -81,6 +81,27 @@ export function shouldReloadCandidates(prev, next, explicit = false) {
   return !prev || prev.state !== "ready" || prev.candidates !== next.candidates;
 }
 
+/**
+ * "추억 만들기/다시 확인하기" 연타 방지: 요청이 끝나기 전에는 두 번째 요청을 시작하지 않는다(서버는 멱등이라 데이터는 안전하지만 불필요한 요청이 쌓인다).
+ * @returns {{ tryStart: () => boolean, done: () => void, reset: () => void }}
+ */
+export function createSingleFlight() {
+  let busy = false;
+  return {
+    tryStart() {
+      if (busy) return false;
+      busy = true;
+      return true;
+    },
+    done() {
+      busy = false;
+    },
+    reset() {
+      busy = false;
+    },
+  };
+}
+
 export const initialGenerationState = () => ({ scope: null, seq: 0, gen: null, hidden: false, error: null, busy: false });
 
 /**

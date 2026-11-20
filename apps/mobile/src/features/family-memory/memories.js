@@ -131,6 +131,9 @@ export function errorState(error) {
 /** 사용자·가족이 바뀌면 달라지는 범위 키. 없으면(로그아웃) null. */
 export const scopeKey = (user) => (user?.id ? `${user.id}:${user.active_group_id ?? ""}` : null);
 
+/** 로그아웃(anonymous) 상태로 추억 화면에 직접 들어오면 로그인으로 보낸다. 세션 확인 중(loading)·서버 연결 불가(unreachable)에는 기다린다. */
+export const needsLogin = (status) => status === "anonymous";
+
 export const initialMemoriesState = () => ({ scope: null, seq: 0, status: "idle", items: [], error: null });
 
 /**
