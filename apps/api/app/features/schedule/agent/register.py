@@ -18,9 +18,10 @@ from app.features.schedule.schemas import EventCreate
 from app.features.schedule.timeutil import local_tz
 from app.shared.errors import bad_request
 
+from . import members as members_mod
 from . import reader
 from .members import Member
-from .schemas import AgentResponse, Card, Draft, PendingAction
+from .schemas import AgentResponse, Card, Choice, Draft, PendingAction
 
 MAX_ASKS = 2  # 같은 등록에서 되묻는 최대 횟수
 DATE_SPAN_DAYS = 730  # 오늘 앞뒤로 받을 수 있는 날짜 범위
@@ -35,6 +36,7 @@ GIVE_UP_TEXT = (
     "여러 번 여쭤봐도 정보가 부족해서 등록하지 못했어요. 일정 등록 화면에서 직접 입력해 주세요"
 )
 AMBIGUOUS_TEXT = "날짜를 정확히 알려 주세요. 예: 10월 30일"
+MEMBER_UNCLEAR_TEXT = "같은 호칭의 가족이 여러 명이에요. 누구인지 이름으로 알려 주세요"
 
 _TIME = re.compile(r"^([01]\d|2[0-3]):[0-5]\d$")
 
@@ -69,6 +71,7 @@ def clean_fields(raw, member_ids: set[str]) -> dict:
         "memo": _text(raw.get("memo"), MEMO_MAX),
         "share_ids": _ids(raw.get("share_ids"), member_ids),
         "date_ambiguous": raw.get("date_ambiguous") is True,
+        "member_ambiguous": raw.get("member_ambiguous") is True,
     }
 
 
@@ -151,23 +154,53 @@ def _to_time(value: str) -> time | None:
     return datetime.strptime(value, "%H:%M").time() if value else None
 
 
+def _same_keywords(a: str, b: str) -> bool:
+    """제목에서 뽑은 키워드(띄어쓰기 단위)가 한쪽이 다른 쪽에 모두 들어 있으면 같은 일정이다('하윤 치과' ↔ '하윤 치과 검진', 순서 무관)."""
+    left, right = a.lower().split(), b.lower().split()
+    if not left or not right:
+        return False
+    short, long_ = (left, right) if len(left) <= len(right) else (right, left)
+    return all(any(k in w or w in k for w in long_) for k in short)
+
+
 def _existing(db: Session, user_id: str, group_id: str, draft: Draft) -> Event | None:
-    """같은 사람이 같은 제목·날짜·시작 시각으로 이미 등록한 일정(지운 것 제외)."""
+    """같은 사람이 같은 날짜에 이미 등록한 같은 일정(지운 것·받은 복사본 제외).
+    제목의 키워드가 한쪽이 다른 쪽에 모두 들어 있고, 시작 시각이 같거나 한쪽이 비어 있으면 같은 일정으로 본다."""
     start = _to_time(draft.start_time)
     query = select(Event).where(
         Event.group_id == group_id,
         Event.user_id == user_id,
         Event.deleted_at.is_(None),
-        Event.title == draft.title,
+        Event.origin_id.is_(None),
         Event.start_date == date.fromisoformat(draft.date),
-        Event.start_time.is_(None) if start is None else Event.start_time == start,
     )
-    return db.scalars(query).first()
+    for event in db.scalars(query):
+        if not _same_keywords(draft.title, event.title):
+            continue
+        if start is None or event.start_time is None or event.start_time == start:
+            return event
+    return None
 
 
-def _created(db: Session, user_id: str, group_id: str, draft: Draft, members: list[Member]):
+def _created(
+    db: Session,
+    user_id: str,
+    group_id: str,
+    draft: Draft,
+    members: list[Member],
+    again: str = "same",
+):
+    """again: same 이면 같은 일정이 이미 있을 때 그 일정을 돌려주고(옛 앱의 확인), ask 이면 또 등록할지 되묻고, force 이면 그래도 등록한다."""
     # 같은 요청을 다시 보내거나 되묻는 답을 합쳐 다시 보내도 같은 일정이 두 번 생기지 않게 한다(공유 등록은 받는 사람 복사본이 있어 제외)
-    already = None if draft.share_ids else _existing(db, user_id, group_id, draft)
+    already = (
+        None if draft.share_ids or again == "force" else _existing(db, user_id, group_id, draft)
+    )
+    if already is not None and again == "ask":
+        return AgentResponse(
+            intent="register",
+            text=f"{reader.event_text(already)} 일정은 이미 등록되어 있어요. 또 등록해 드릴까요?",
+            choice=Choice(kind="register", changes=draft.model_dump()),
+        )
     event: Event = already or service.create(
         db,
         group_id,
@@ -199,7 +232,14 @@ def _created(db: Session, user_id: str, group_id: str, draft: Draft, members: li
         },
     )
     named = reader.event_text(event)
-    text = f"{named} 일정이 이미 있어요." if already else f"{named} 일정을 등록했어요."
+    labels = {m.id: m.label for m in members}
+    who = ", ".join(labels[i] for i in draft.share_ids if i in labels)
+    if already:
+        text = f"{named} 일정이 이미 있어요."
+    elif who:
+        text = f"{named} 일정을 {who}님에게 공유해서 등록했어요."
+    else:
+        text = f"{named} 일정을 등록했어요."
     return AgentResponse(intent="register", text=text, cards=[card])
 
 
@@ -212,6 +252,7 @@ def respond(
     reply: str,
     members: list[Member],
     share_all: bool = False,
+    sentence: str = "",
 ) -> AgentResponse:
     member_ids = {m.id for m in members}
     if share_all:  # 모델이 일부만 고르거나 비워 둬도 가족 전체로 정한다
@@ -223,42 +264,22 @@ def respond(
     if ambiguous:
         draft = draft.model_copy(update={"date": ""})
     need_title, need_date = not draft.title, not draft.date
-    if need_title or need_date:
+    who_unclear = fields[
+        "member_ambiguous"
+    ]  # 같은 호칭의 가족이 여럿이면 누구인지 먼저 되묻는다(정책 #33)
+    if need_title or need_date or who_unclear:
         if draft.asks >= MAX_ASKS:
             return AgentResponse(intent="register", text=GIVE_UP_TEXT)
         asked = draft.model_copy(update={"asks": draft.asks + 1})
-        return AgentResponse(
-            intent="register",
-            text=_question(need_title, need_date, ambiguous, reply),
-            draft=asked,
+        text = (
+            members_mod.ask_text(members, sentence, user_id, reply or MEMBER_UNCLEAR_TEXT)
+            if who_unclear and not ambiguous
+            else _question(need_title, need_date, ambiguous, reply)
         )
-    if draft.share_ids:
-        return _share_confirm(draft, members)
-    return _created(db, user_id, group_id, draft, members)
-
-
-def _share_confirm(draft: Draft, members: list[Member]) -> AgentResponse:
-    labels = {m.id: m.label for m in members}
-    who = [{"id": i, "name": labels[i]} for i in draft.share_ids if i in labels]
-    card = Card(
-        type="register_confirm",
-        data={
-            "title": draft.title,
-            "kind": draft.kind or DEFAULT_KIND,
-            "date": draft.date,
-            "start_time": draft.start_time,
-            "end_time": draft.end_time,
-            "place": draft.place,
-            "share": who,
-        },
-    )
-    names = ", ".join(w["name"] for w in who)
-    return AgentResponse(
-        intent="register",
-        text=f"{names}에게 공유해서 등록할까요?",
-        cards=[card],
-        pending_action=PendingAction(type="register", draft=draft),
-    )
+        return AgentResponse(intent="register", text=text, draft=asked)
+    return _created(
+        db, user_id, group_id, draft, members, "ask"
+    )  # 공유 등록도 카드 없이 바로 등록한다(정책 #32)
 
 
 def confirm(
@@ -279,3 +300,26 @@ def confirm(
     if not draft.title or not draft.date:
         raise bad_request("draft_incomplete", "등록에 필요한 제목이나 날짜가 없어요")
     return _created(db, user_id, group_id, draft, members)
+
+
+def resolve_again(
+    db: Session,
+    user_id: str,
+    group_id: str,
+    asked: Choice,
+    text: str,
+    members: list[Member],
+) -> AgentResponse | None:
+    """ "이미 등록된 일정인데 또 등록해 드릴까요?"에 대한 답. 답으로 읽을 수 없으면 None(새 요청으로 본다)."""
+    from .choice import NO_WORDS, YES_WORDS
+
+    said = text.strip()
+    if NO_WORDS.search(said):
+        return AgentResponse(intent="register", text="알겠어요, 다시 등록하지 않았어요.")
+    if not YES_WORDS.search(said):
+        return None
+    try:
+        draft = Draft(**asked.changes)
+    except ValueError:
+        return None
+    return _created(db, user_id, group_id, draft, members, "force")

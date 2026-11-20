@@ -126,6 +126,8 @@ def _confirmation(response: AgentResponse) -> dict:
         if data.get("place"):
             lines.append(f"장소 {data['place']}")
         shared = [w["name"] for w in data.get("share", [])]
+    elif data.get("events"):  # 여러 건 삭제: 지울 일정을 한 줄씩
+        lines.extend(_event_line(e).removeprefix("- ") for e in data["events"])
     else:
         event = data.get("event", {})
         lines.append(_event_line(event).removeprefix("- "))
@@ -183,6 +185,11 @@ def _reply(response: AgentResponse, room: bool = False) -> AgentReply:
         head = (
             "이미 같은 일정이 있어요." if registered.data.get("already") else "일정을 등록했어요."
         )
+        shared = int(registered.data.get("shared") or 0)
+        if shared and not registered.data.get(
+            "already"
+        ):  # 공유 등록도 카드 없이 바로 하므로 누구에게 갔는지 밝힌다
+            head = f"{head} {shared}명에게 공유했어요."
         text = f"{head}\n{line}"
         return AgentReply(text, user_text=text)
     asked = next((c for c in response.cards if c.type == "request_list"), None)

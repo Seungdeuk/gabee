@@ -444,3 +444,49 @@ def test_main_chat_text_lists_events_and_requests_together(client, setup, fake):
     with SessionLocal() as db:
         reply = ask.ask(db, _group_id(client, a), _user(a, client), "그날 뭐 있어?")
     assert "치과" in reply.answer and "장 같이 봐줘" in reply.answer and "받는 분:" in reply.answer
+
+
+def test_create_with_ambiguous_member_asks_who_and_sends_nothing(client, setup, fake):
+    a, b, _, ids = setup
+    data = _req("create", title="병원 같이 가요", date=_day(), member_ambiguous=True)
+    data["reply"] = "삼촌이 두 분이에요. 누구를 말씀하시나요? (수진, 지훈)"
+    fake.data = data
+    body = _say(client, a, "삼촌한테 병원 같이 가달라고 부탁해줘").json()
+    assert body["text"] == data["reply"] and body["pending_action"] is None
+    assert body["draft"]["mode"] == "request" and _requests(client, b) == []
+
+
+# ---------- 같은 제목의 부탁이 여럿일 때(정책 #33) ----------
+def test_same_title_requests_ask_which_then_cancel_the_chosen_one(client, setup, fake):
+    a, b, _, ids = setup
+    first = _send(client, a, [ids["b"]], start_date=_day(3))
+    second = _send(client, a, [ids["b"]], start_date=_day(10))
+    fake.data = _req("cancel", target_id=first["id"])
+    body = _say(client, a, "장 부탁 취소해줘").json()
+    assert "어느 쪽인가요? 모두인가요?" in body["text"] and body["pending_action"] is None
+    assert [r["id"] for r in body["cards"][0]["data"]["requests"]] == [first["id"], second["id"]]
+    assert not any(r["canceled"] for r in _requests(client, a))
+
+    day = _day(10)
+    done = _say(client, a, f"{int(day[5:7])}/{int(day[8:10])} 걸로").json()
+    assert "취소했어요" in done["text"]
+    canceled = {r["id"]: r["canceled"] for r in _requests(client, a)}
+    assert canceled[second["id"]] is True and canceled[first["id"]] is False
+
+
+def test_same_title_requests_all_answer_and_past_plus_future_uses_future(client, setup, fake):
+    a, b, _, ids = setup
+    first = _send(client, a, [ids["b"]], start_date=_day(3))
+    _send(client, a, [ids["b"]], start_date=_day(10))
+    fake.data = _req("cancel", target_id=first["id"])
+    _say(client, a, "장 부탁 취소해줘")
+    done = _say(client, a, "둘 다 취소해줘").json()
+    assert "취소했어요" in done["text"] and all(r["canceled"] for r in _requests(client, a))
+
+    past = _send(client, a, [ids["b"]], title="청소", start_date=_day(-3))
+    future = _send(client, a, [ids["b"]], title="청소", start_date=_day(6))
+    fake.data = _req("cancel", target_id=past["id"])  # 지난 부탁을 골라도 다가오는 하나만 처리한다
+    body = _say(client, a, "청소 부탁 취소해줘").json()
+    assert body["choice"] is None if "choice" in body else True
+    canceled = {r["id"]: r["canceled"] for r in _requests(client, a)}
+    assert canceled[future["id"]] is True and canceled[past["id"]] is False

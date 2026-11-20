@@ -19759,6 +19759,16 @@
                 "type": "null"
               }
             ]
+          },
+          "choice": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Choice"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "type": "object",
@@ -19811,6 +19821,16 @@
             "anyOf": [
               {
                 "$ref": "#/components/schemas/Draft"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "choice": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Choice"
               },
               {
                 "type": "null"
@@ -22665,6 +22685,50 @@
         ],
         "title": "CheerSuggestionOut",
         "description": "추천 응원 문구 하나."
+      },
+      "Choice": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "edit",
+              "delete",
+              "request_edit",
+              "request_cancel",
+              "register"
+            ],
+            "title": "Kind"
+          },
+          "event_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 20,
+            "title": "Event Ids"
+          },
+          "changes": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Changes"
+          },
+          "past": {
+            "type": "boolean",
+            "title": "Past",
+            "default": false
+          },
+          "members": {
+            "type": "boolean",
+            "title": "Members",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "kind"
+        ],
+        "title": "Choice",
+        "description": "수정·삭제 대상이 하나로 정해지지 않아 후보를 보여 주고 되물은 상태. 서버가 사용자별로 10분 기억하고(`choice.take`),\n앱이 돌려보내도 받는다. 답은 후보 안에서만 읽고, 받을 때마다 일정과 소유자를 다시 확인한다."
       },
       "CodeIn": {
         "properties": {
@@ -26819,6 +26883,14 @@
             "type": "string",
             "title": "Event Id",
             "default": ""
+          },
+          "event_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 10,
+            "title": "Event Ids"
           },
           "changes": {
             "additionalProperties": true,

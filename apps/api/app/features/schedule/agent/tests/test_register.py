@@ -160,31 +160,25 @@ def test_model_output_is_validated(client, setup, fake):
     assert body["cards"][0]["data"]["kind"] == 2
 
 
-def test_share_needs_a_confirmation_card(client, setup, fake):
+def test_share_registers_immediately_without_a_card(client, setup, fake):
     a, b, _, other = setup
     fake.data = _register_data(title="가족 모임", date=_tomorrow(), kind=1, share_ids=[other])
     body = _say(client, a, "가족 모임 내일 수진에게도 공유해서 등록해줘").json()
-    assert body["cards"][0]["type"] == "register_confirm"
-    assert body["cards"][0]["data"]["share"] == [{"id": other, "name": "수진"}]
-    assert "수진" in body["text"] and body["pending_action"]["type"] == "register"
-    assert (
-        _events(client, a) == [] and _events(client, b) == []
-    )  # 확인 전에는 아무것도 만들지 않는다
-    calls_before = len(fake.calls)
-
-    r = client.post("/schedule/agent/confirm", json={"action": body["pending_action"]}, headers=a)
-    assert r.status_code == 200, r.text
-    assert (
-        r.json()["cards"][0]["type"] == "registered" and r.json()["cards"][0]["data"]["shared"] == 1
-    )
-    assert len(fake.calls) == calls_before  # 확인은 AI 를 부르지 않는다
+    # 정책 #32: 공유 등록도 확인 카드 없이 바로 등록하고 누구에게 공유했는지 안내한다
+    assert body["pending_action"] is None
+    assert body["cards"][0]["type"] == "registered" and body["cards"][0]["data"]["shared"] == 1
+    assert "수진" in body["text"] and "공유해서 등록했어요" in body["text"]
+    assert [e["title"] for e in _events(client, a)] == ["가족 모임"]
     assert [e["title"] for e in _events(client, b)] == ["가족 모임"]  # 받은 사람의 복사본
 
 
 def test_confirm_with_mine_only_does_not_share(client, setup, fake):
     a, b, _, other = setup
-    fake.data = _register_data(title="가족 모임", date=_tomorrow(), share_ids=[other])
-    action = _say(client, a, "공유해서 등록해줘").json()["pending_action"]
+    # 예전 앱이 보낸 확인 요청도 계속 받는다(공유 없이 내 일정만 등록)
+    action = {
+        "type": "register",
+        "draft": {"title": "가족 모임", "date": _tomorrow(), "share_ids": [other]},
+    }
     r = client.post("/schedule/agent/confirm", json={"action": action, "share": False}, headers=a)
     assert r.status_code == 200 and r.json()["cards"][0]["data"]["shared"] == 0
     assert len(_events(client, a)) == 1 and _events(client, b) == []
@@ -248,3 +242,77 @@ def test_register_needs_ai_consent_but_confirm_does_not(client, family, fake):
         "/schedule/agent/confirm", json={"action": {"type": "register", "draft": draft}}, headers=a
     )
     assert r.status_code == 200  # AI 를 부르지 않는 확인 단계는 동의와 상관없다
+
+
+def test_ambiguous_member_asks_who_before_registering(client, setup, fake):
+    a, b, _, other = setup
+    data = _register_data(title="가족 모임", date=_tomorrow(), member_ambiguous=True)
+    data["reply"] = "삼촌이 두 분이에요. 누구를 말씀하시나요? (수진, 지훈)"
+    fake.data = data
+    body = _say(client, a, "삼촌한테 공유해서 가족 모임 내일 등록해줘").json()
+    # 제목·날짜가 다 있어도 같은 호칭의 가족이 여럿이면 등록하지 않고 후보를 보여 주며 되묻는다(정책 #33)
+    assert body["text"] == data["reply"] and body["pending_action"] is None
+    assert body["draft"]["title"] == "가족 모임" and body["cards"] == []
+    assert _events(client, a) == [] and _events(client, b) == []
+
+    fake.data = _register_data(
+        share_ids=[other]
+    )  # 사용자가 "수진"이라고 답하면 초안과 합쳐 등록한다
+    done = _say(client, a, "수진", draft=body["draft"]).json()
+    assert done["cards"][0]["type"] == "registered" and "수진" in done["text"]
+    assert [e["title"] for e in _events(client, b)] == ["가족 모임"]
+
+
+def test_register_with_a_delete_in_the_same_sentence_does_each_by_its_own_policy(
+    client, setup, fake
+):
+    a, _, _, _ = setup
+    old = client.post(
+        "/schedule/events", json={"title": "헬스", "start_date": _tomorrow()}, headers=a
+    ).json()
+    data = _register_data(title="치과", date=_tomorrow())
+    data["also_delete_title"] = "헬스"  # 목록에 없어도 제목으로 전체에서 찾는다
+    fake.data = data
+    body = _say(client, a, "치과 내일 등록하고 헬스는 지워줘").json()
+    # 등록은 바로 하고, 삭제는 확인 카드로 묻는다(정책 #34). 삭제 지시를 조용히 버리지 않는다
+    assert [c["type"] for c in body["cards"]] == ["registered", "delete_confirm"]
+    assert "등록했어요" in body["text"] and "지울까요" in body["text"]
+    assert (
+        body["pending_action"]["type"] == "delete"
+        and body["pending_action"]["event_id"] == old["id"]
+    )
+    assert sorted(e["title"] for e in _events(client, a)) == ["치과", "헬스"]  # 삭제는 확인 전
+    done = client.post(
+        "/schedule/agent/confirm", json={"action": body["pending_action"]}, headers=a
+    ).json()
+    assert "지웠어요" in done["text"] and [e["title"] for e in _events(client, a)] == ["치과"]
+
+
+def test_registering_an_existing_event_asks_before_registering_again(client, setup, fake):
+    a, _, _, _ = setup
+    fake.data = _register_data(title="치과", date=_tomorrow(), start_time="15:00", kind=1)
+    _say(client, a, "내일 3시 치과 등록해줘")
+    body = _say(client, a, "내일 3시 치과 등록해줘").json()
+    assert "이미 등록되어 있어요. 또 등록해 드릴까요?" in body["text"]
+    assert len(_events(client, a)) == 1  # 묻기만 하고 아직 만들지 않는다
+    done = _say(client, a, "응").json()  # AI 를 다시 부르지 않고 그대로 또 등록한다
+    assert done["cards"][0]["type"] == "registered" and len(_events(client, a)) == 2
+
+
+def test_no_to_registering_again_keeps_one_event(client, setup, fake):
+    a, _, _, _ = setup
+    fake.data = _register_data(title="치과", date=_tomorrow(), start_time="15:00", kind=1)
+    _say(client, a, "내일 3시 치과 등록해줘")
+    _say(client, a, "내일 3시 치과 등록해줘")
+    body = _say(client, a, "아니").json()
+    assert "다시 등록하지 않았어요" in body["text"] and len(_events(client, a)) == 1
+
+
+def test_registering_with_a_shorter_title_matches_the_existing_event_by_keywords(client, setup, fake):
+    a, _, _, _ = setup
+    fake.data = _register_data(title="하윤 치과 검진", date=_tomorrow(), start_time="15:30", kind=1)
+    _say(client, a, "내일 3시반 하윤 치과 검진 등록해줘")
+    fake.data = _register_data(title="치과 하윤", date=_tomorrow(), start_time="", kind=1)
+    body = _say(client, a, "내일 하윤 치과 등록해줘").json()
+    assert "이미 등록되어 있어요. 또 등록해 드릴까요?" in body["text"]
+    assert len(_events(client, a)) == 1

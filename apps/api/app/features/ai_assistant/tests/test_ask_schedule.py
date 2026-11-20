@@ -125,7 +125,9 @@ def test_missing_title_asks_back_then_full_sentence_registers(
     assert [e["title"] for e in _events(client, a)] == ["치과"]
 
 
-def test_share_register_is_not_executed_in_chat(client, family, schedule_llm, monkeypatch):
+def test_share_register_is_executed_in_chat_without_a_card(
+    client, family, schedule_llm, monkeypatch
+):
     a, b, group = family
     enable_ai(group["id"])
     other = client.get("/family-group/me", headers=b).json()["id"]
@@ -135,8 +137,11 @@ def test_share_register_is_not_executed_in_chat(client, family, schedule_llm, mo
     results = []
     _main_llm(monkeypatch, "내일 가족 모임 수진에게도 공유해서 등록해줘", results)
     reply = _chat(client, a, "내일 가족 모임 수진에게도 공유해서 등록해줘")
-    assert "공유해서 등록할까요" in reply["reply"] and len(reply["confirm_cards"]) == 1
-    assert _events(client, a) == [] and _events(client, b) == []
+    # 정책 #32: 공유 등록도 확인 카드 없이 바로 등록하고 공유 인원을 밝힌다
+    assert "일정을 등록했어요" in reply["reply"] and "1명에게 공유했어요" in reply["reply"]
+    assert len(reply["confirm_cards"]) == 0
+    assert [e["title"] for e in _events(client, a)] == ["가족 모임"]
+    assert [e["title"] for e in _events(client, b)] == ["가족 모임"]
 
 
 def test_delete_is_not_executed_in_chat(client, family, schedule_llm, monkeypatch):
@@ -265,7 +270,7 @@ def test_same_request_twice_registers_only_once(client, family, schedule_llm, mo
     first = _chat(client, a, "내일 3시 치과 일정 잡아줘")
     second = _chat(client, a, "내일 3시 치과 일정 잡아줘")
     assert "일정을 등록했어요" in first["reply"]
-    assert "이미 같은 일정이 있어요" in second["reply"]
+    assert "이미 등록되어 있어요. 또 등록해 드릴까요?" in second["reply"]
     assert [e["title"] for e in _events(client, a)] == ["치과"]
 
 
