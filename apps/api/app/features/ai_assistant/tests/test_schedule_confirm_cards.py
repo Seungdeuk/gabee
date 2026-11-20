@@ -128,7 +128,7 @@ def test_delete_comes_back_as_a_card_and_is_not_executed_until_confirmed(
     assert _events(client, a) == []
 
 
-def test_edit_comes_back_as_a_confirm_card_and_changes_nothing_before_approval(
+def test_edit_is_done_at_once_without_a_card_and_says_what_changed(
     client, setup, schedule_llm, monkeypatch
 ):
     a, _, _ = setup
@@ -155,8 +155,9 @@ def test_edit_comes_back_as_a_confirm_card_and_changes_nothing_before_approval(
         },
     }
     out = _ask(client, a)
-    assert len(out["confirm_cards"]) == 1  # 수정은 확인 카드로 묻고, 누르기 전에는 바뀌지 않는다
-    assert _events(client, a)[0]["start_time"].startswith("14:00")
+    assert out["confirm_cards"] == []  # 수정은 확인 카드 없이 바로 하고, 무엇이 바뀌었는지 안내한다
+    assert "→" in out["reply"] and "16:00" in out["reply"]
+    assert _events(client, a)[0]["start_time"].startswith("16:00")
 
 
 def test_forged_card_payload_is_revalidated_by_the_server(client, setup, schedule_llm, monkeypatch):
@@ -309,7 +310,7 @@ def test_main_prompt_routes_schedule_share_to_the_schedule_agent_and_knows_which
         for k, v in vars(agents).items()
         if k.isupper() and isinstance(v, str) and "ask_schedule" in v
     )
-    assert "수정·삭제·공유 대상 변경은 확인 카드" in text and "카드 없이 바로 실행" in text
+    assert "일정 삭제는 확인 카드" in text and "카드 없이 바로 실행" in text
     assert "선택 카드" in text  # 같은 이름이 여럿이면 글로 되묻지 않고 선택 카드를 안내한다
 
 
