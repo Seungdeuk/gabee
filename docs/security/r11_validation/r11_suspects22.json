@@ -14,7 +14,7 @@
  },
  "by_reason": {
   "M:pair_word_loanword_suspect_by_ending": 14,
-  "S:C2_no_adjacent_names": 1,
+  "M:C2_names_separated_by_connector_gap_over_3(structure ok)": 1,
   "F:josa_batchim_mismatch": 3,
   "M:alias_equals_a_person_name_or_kinship_term": 2
  },
@@ -90,7 +90,7 @@
    "pair_id": null,
    "pair_role": null,
    "reasons": [
-    "S:C2_no_adjacent_names"
+    "M:C2_names_separated_by_connector_gap_over_3(structure ok)"
    ]
   },
   {

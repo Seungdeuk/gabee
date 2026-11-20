@@ -123,6 +123,19 @@ def select_candidate(cands):
     return tied[0]["label"], info
 
 
+RESEARCH_CLASSIFICATION = "연구상 최우수 후보(research-best candidate only)"
+REPLACEMENT_STATUS = "운영 교체 후보 자격 없음: 사람 의미 검수 519건 미완료, 독립 테스트 미실행(사전 등록 r11-2.0). 교체 권고 불가, 결론은 S0 유지 + 연구 결과 보고"
+
+
+def classify(chosen, sensitivity=None):
+    """선정 결과에 연구 후보 지위와 교체 자격 없음을 항상 붙이고, 의심 행 제외 민감도에서 판정이 달라지는 모델이면 quality_sensitive 로 표시한다(대체 기준 아님)."""
+    if chosen is None:
+        return {"classification": None, "replacement_eligibility": REPLACEMENT_STATUS, "quality_sensitive": None}
+    sens = (sensitivity or {}).get("quality_sensitive_models", {})
+    return {"classification": RESEARCH_CLASSIFICATION, "replacement_eligibility": REPLACEMENT_STATUS, "quality_sensitive": chosen in sens,
+            "quality_sensitive_scenarios": sens.get(chosen, []), "note": "공식 게이트 판정은 원본 Development 기준. 민감도 분석은 보조이며 유리한 평가셋 선택에 쓰지 않는다"}
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--runs-dir", type=Path, required=True)
@@ -130,6 +143,7 @@ def main():
     ap.add_argument("--reference", type=Path, required=True)
     ap.add_argument("--recall-gate", type=Path, required=True)
     ap.add_argument("--g12", type=Path)
+    ap.add_argument("--sensitivity", type=Path, help="r11_flagged_sensitivity_B.json(보조 민감도 분석 결과, 선택)")
     ap.add_argument("--out", type=Path, required=True)
     a = ap.parse_args()
     refj = json.loads(a.reference.read_text(encoding="utf-8"))
@@ -172,7 +186,8 @@ def main():
                 cands.append({"label": f"{var}-s{seed}", "seed": seed, "recall": mm["exact_recall"], "f1": mm["f1_official"], "exposure": mm["total_exposure"], "targets_macro": mm["targets_macro_exposure"],
                               "neg_fpr_macro": mm["neg_fpr_macro"], "precision": mm["precision_official"], "group_sd_sum": rec_sd + d1p_sd, "latency": None})
     chosen, info = select_candidate(cands)
-    out["selection"] = {"candidates": [c["label"] for c in cands], "chosen": chosen, "detail": info,
+    sens = json.loads(a.sensitivity.read_text(encoding="utf-8")) if a.sensitivity and a.sensitivity.exists() else None
+    out["selection"] = {"candidates": [c["label"] for c in cands], "chosen": chosen, "detail": info, **classify(chosen, sens),
                         "note": "G12 가 pending 이면 eligible 이 아니므로 후보 없음. 후보 없으면 독립 테스트를 열지 않는다."}
     a.out.write_text(json.dumps(out, ensure_ascii=False, indent=1), encoding="utf-8")
     print(json.dumps({v: {"group_S": x["group_S"], "eligible": [s for s, y in x["per_seed"].items() if y["eligible"]]} for v, x in out["variants"].items()}, ensure_ascii=False, indent=1))

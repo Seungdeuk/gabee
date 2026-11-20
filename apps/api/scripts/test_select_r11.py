@@ -61,3 +61,12 @@ def test_gates_smoke_on_fixed_baselines():
     assert set(g_s0) == {"G1", "G2", "G3", "G4", "G5", "G6", "G7", "G8", "G9", "G10", "G11", "R1", "R2", "R3", "R4"}
     assert g_s0["R2"] is False  # S0 자신은 S0 보다 Recall 이 엄격히 크지 않다
     assert g_s0["R1"] is False  # S0 Recall 이 R9F 평균 -δ 보다 낮다
+
+
+def test_classification_is_research_only_and_marks_quality_sensitivity():
+    assert s.classify(None)["classification"] is None
+    c = s.classify("B-new-s7", {"quality_sensitive_models": {"B-new-s7": ["all_12_dev_flagged"]}})
+    assert c["classification"] == s.RESEARCH_CLASSIFICATION and "교체 후보 자격 없음" in c["replacement_eligibility"]
+    assert c["quality_sensitive"] is True and c["quality_sensitive_scenarios"] == ["all_12_dev_flagged"]
+    assert s.classify("B-new-s7", {"quality_sensitive_models": {}})["quality_sensitive"] is False
+    assert s.classify("B-new-s7")["quality_sensitive"] is False  # 민감도 결과가 없으면 표시하지 않지만 교체 자격 없음은 항상 붙는다

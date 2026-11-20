@@ -35,13 +35,12 @@
  },
  "dev": {
   "rows": 1920,
-  "S_definitive_structural": {
-   "C2_no_adjacent_names": 1
-  },
+  "S_definitive_structural": {},
   "F_definitive_surface_label_neutral": {
    "josa_batchim_mismatch": 3
   },
   "M_semantic_review_warnings": {
+   "C2_names_separated_by_connector_gap_over_3(structure ok)": 1,
    "alias_equals_a_person_name_or_kinship_term": 2,
    "pair_word_loanword_suspect_by_ending": 6,
    "pair_contexts_nearly_identical(cue may be weak)": 18

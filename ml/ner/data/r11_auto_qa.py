@@ -25,6 +25,7 @@ PERSON = ("PERSON", "PERSON_ALIAS")
 ALLOWED = PERSON + ("ORGANIZATION", "LOCATION", "ADDRESS")
 EMOTICON = re.compile(r"(?:[:;=][\"'-]?[()DPp])|(?:[ㅠㅜㅋㅎ]+\)+)|(?:\(\^[^)]*\^\))|(?:\^\))|(?:[0-9]\))")
 BOUNDARY_OK = " \t.,!?~·()[]\"'’”“…:;-/ㅋㅎㅠㅜ"
+C2_MAX_GAP = 8  # r11-2.0: 초기 휴리스틱(3)은 임의 값이었고 사양의 C2 정의(접속·쉼표·중점 나열 포함)보다 엄격했다. 변경 사유와 1행 재분류는 r11-2.0 문서에 기록
 JOSA_PAIRS = {"이": True, "가": False, "은": True, "는": False, "을": True, "를": False, "과": True, "와": False}
 
 
@@ -119,8 +120,11 @@ def run_set(name, rows, tok):
             if r["type"] == "C2":
                 if len(sp) < 2:
                     S["C2_row_with_fewer_than_2_names"].append(r["id"])
-                elif not any(b["start"] - a["end"] <= 3 for a, b in zip(sp, sp[1:], strict=False)):
+                elif not any(b["start"] - a["end"] <= C2_MAX_GAP for a, b in zip(sp, sp[1:], strict=False)):
                     S["C2_no_adjacent_names"].append(r["id"])
+                elif not any(b["start"] - a["end"] <= 3 for a, b in zip(sp, sp[1:], strict=False)):
+                    # 접속 표현(예: 접속 조사+공백)으로 간격이 4글자 이상. 두 이름이 별도 구간으로 분리돼 있어 구조는 정상이며 의미 확인은 사람 몫(자동 판정 아님)
+                    M["C2_names_separated_by_connector_gap_over_3(structure ok)"].append(r["id"])
                 if any(b["start"] < a["end"] for a, b in zip(sp, sp[1:], strict=False)):
                     S["C2_names_overlap"].append(r["id"])
             if r["type"] == "LONGNAME" and not any(s["end"] - s["start"] >= 4 for s in sp if s["label"] == "PERSON"):
