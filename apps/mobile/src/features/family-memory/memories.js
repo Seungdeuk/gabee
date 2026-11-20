@@ -164,6 +164,18 @@ export function memoriesReducer(state, action) {
   }
 }
 
+/**
+ * 사진 로딩 실패를 "사라진 사진" 액션으로 바꾼다. mock 모드의 합성 사진은 서버에 없는 가짜 id 라 늘 404 인데, 그걸 사라진 사진으로 처리하면 후보가 몇 초 만에 모두 사라진다.
+ * @param {"off" | "on" | "mock"} mode
+ * @param {string} candidateId
+ * @param {string} attachmentId
+ * @returns {{ type: "photoGone", candidateId: string, attachmentId: string } | null} mock 이면 null(아무것도 하지 않는다)
+ */
+export function photoGoneAction(mode, candidateId, attachmentId) {
+  if (mode === "mock") return null;
+  return { type: "photoGone", candidateId, attachmentId };
+}
+
 /** 후보에서 사진 한 장을 뺀 새 후보(대표가 빠지면 남은 첫 사진이 대표, 개수·날짜를 다시 센다). */
 export function dropPhoto(candidate, attachmentId) {
   const photos = candidate.photos.filter((p) => p.attachment_id !== attachmentId);

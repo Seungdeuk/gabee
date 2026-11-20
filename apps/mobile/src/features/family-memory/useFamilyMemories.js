@@ -5,7 +5,7 @@ import { evictPhotoCache } from "@/shared/imageCache";
 
 import { listMemoryCandidates } from "./api";
 import { loadMockCandidates } from "./fixtures";
-import { initialMemoriesState, memoriesReducer, normalizeCandidates, removedPhotoPaths, scopeKey } from "./memories";
+import { initialMemoriesState, memoriesReducer, normalizeCandidates, photoGoneAction, removedPhotoPaths, scopeKey } from "./memories";
 import { memoryUiMode } from "@/shared/memoryFlag";
 
 /**
@@ -53,6 +53,12 @@ export default function useFamilyMemories() {
     if (gone.length > 0) evictPhotoCache(gone);
   }, [state.items]);
 
-  const photoGone = useCallback((candidateId, attachmentId) => dispatch({ type: "photoGone", candidateId, attachmentId }), []);
+  const photoGone = useCallback(
+    (candidateId, attachmentId) => {
+      const action = photoGoneAction(mode, candidateId, attachmentId);
+      if (action) dispatch(action);
+    },
+    [mode],
+  );
   return { state, refresh: load, photoGone };
 }
