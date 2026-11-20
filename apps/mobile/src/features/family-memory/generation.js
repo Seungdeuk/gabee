@@ -72,10 +72,12 @@ export const shouldKeepPolling = (gen, polls) => gen?.state === "processing" && 
  * 상태가 바뀌어 후보 목록을 다시 불러와야 하는가(후보 수가 달라졌거나 처리 중에서 준비로 바뀜).
  * @param {{ state?: string, candidates?: number } | null | undefined} prev
  * @param {{ state?: string, candidates?: number } | null | undefined} next
+ * @param {boolean} [explicit] 사용자가 직접 "추억 만들기/다시 확인하기"를 눌렀는가. 철회·삭제로 후보 수는 그대로인데 사진만 줄 수 있어, 직접 누르면 ready 에서 늘 다시 불러온다
  * @returns {boolean}
  */
-export function shouldReloadCandidates(prev, next) {
+export function shouldReloadCandidates(prev, next, explicit = false) {
   if (!next || next.state !== "ready") return false;
+  if (explicit) return true;
   return !prev || prev.state !== "ready" || prev.candidates !== next.candidates;
 }
 
