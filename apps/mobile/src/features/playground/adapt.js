@@ -555,6 +555,29 @@ export function drawRecView(recs) {
   return { items: [], notice: notice.text, refresh: notice.refresh, manual: notice.manual === true };
 }
 
+// ---------- 찰칵! 탐정단 가비 추천 ----------
+/** 사진 추천을 못 보여 줄 때의 안내 글자. refresh 는 "새로고침" 버튼을 둘지(다시 해 볼 수 있는 경우). */
+const PHOTO_REC_NOTICE = {
+  used_up: { text: "오늘 추천은 여기까지예요 — 직접 내 보세요", refresh: false },
+  preparing: { text: "가비가 문제를 준비 중이에요", refresh: true },
+  cooldown: { text: "조금 뒤에 다시 해주세요", refresh: true },
+  failed: { text: "가비가 문제를 준비하기 어려워요", refresh: true },
+  empty: { text: "가비가 오늘 낼 사진을 아직 준비하지 못했어요", refresh: true },
+};
+
+/**
+ * 사진 추천 응답을 화면에 보일 모양으로: 항목이 있으면 { items }, 없으면 { items: [], notice, refresh }.
+ * ai_off 도 항목이 있으면 그대로 보인다(월·일정 문제는 AI 없이 만든다). 응답이 없거나 모르는 상태이면 failed 로 본다.
+ * @param {{ state?: string, items?: object[] } | null | undefined} recs
+ */
+export function photoRecView(recs) {
+  const items = recs?.state === "ok" || recs?.state === "ai_off" ? (recs.items ?? []) : [];
+  if (items.length > 0) return { items };
+  const key = recs?.state === "ok" ? "empty" : recs?.state; // ok 인데 비었다 = 고를 사진이 없음(한도 도달은 서버가 used_up 으로 알린다)
+  const notice = PHOTO_REC_NOTICE[key] ?? PHOTO_REC_NOTICE.failed;
+  return { items: [], notice: notice.text, refresh: notice.refresh };
+}
+
 /** 카드 위 알약 글자: 단어를 어디서 가져왔는지("일정에서"·"소통방에서"·"흔한 단어") */
 export const drawRecLabel = (item) => ({ schedule: "일정에서", chat: "소통방에서" })[item.source] ?? "흔한 단어";
 

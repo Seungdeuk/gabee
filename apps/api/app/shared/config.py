@@ -208,6 +208,21 @@ class Settings(BaseSettings):
     ai_play_draw_rec_cooldown_seconds: int = 5
     ai_play_draw_rec_max_calls_per_user_per_day: int = 3
     ai_play_draw_rec_max_calls_per_group_per_day: int = 5
+    # 탐정단 사진 추천에 가족 앨범 사진을 쓸지(꺼짐이면 카드 3개 모두 흔한 사진, AI 호출·가족 사진 접근 없음). 위험 검토 뒤 켠다
+    photo_rec_family_enabled: bool = False
+    # 탐정단 사진 추천(내용 질문): 사진 한 장당 AI 한 번. 값은 이게 뭐게와 같게 시작하고 별도 한도로 센다
+    ai_play_photo_rec_cooldown_seconds: int = 5
+    ai_play_photo_rec_max_calls_per_user_per_day: int = 3
+    ai_play_photo_rec_max_calls_per_group_per_day: int = 5
+    # 찰칵 흔한 사진 자동 보충: 서버 안 백그라운드 작업이 하루 한 번 Pixabay 사진 + AI 질문으로 흔한 사진을 채운다. 기본 꺼짐.
+    # 사진 한 장당 AI 한 번(ai_guard 를 쓰지 않으므로 호출 수는 per_day x max_attempts x 시도당 후보 상한으로 묶인다). 키는 로그에 찍지 않는다
+    pixabay_api_key: str = ""
+    photo_rec_auto_enabled: bool = False
+    photo_rec_auto_per_day: int = 3
+    photo_rec_auto_max_attempts: int = 3
+    photo_rec_auto_cooldown_seconds: int = (
+        600  # 찰칵 추천을 열 때 보충을 띄우는 최소 간격(이 프로세스 기준)
+    )
     ai_schedule_card_cooldown_seconds: int = 5
     ai_schedule_card_max_calls_per_user_per_day: int = 3
     ai_schedule_card_max_calls_per_group_per_day: int = 15

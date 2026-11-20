@@ -9,13 +9,15 @@ from app.features.family_group.models import User
 from app.shared.auth import current_group_id, current_user
 from app.shared.db import get_db
 
-from . import draw_rec, media, quiz_rec, service
+from . import draw_rec, media, photo_rec, photo_rec_auto, quiz_rec, service
+from . import photo_rec_store as _photo_rec_store  # noqa: F401  채팅 사진 삭제·AI 동의 끔 정리 콜백 등록(가져오기만으로 등록됨)
 from .bomb_router import router as bomb_router
 from .schemas import (
     PlayBoardOut,
     PlayDrawRecOut,
     PlayDrawTryIn,
     PlayItemOut,
+    PlayPhotoRecOut,
     PlayQuizAnswerIn,
     PlayQuizCreateIn,
     PlayQuizRecOut,
@@ -60,6 +62,33 @@ def draw_recommendations(
     return PlayDrawRecOut(**draw_rec.recommend(db, user, group_id))
 
 
+@router.get("/photo/recommendations", response_model=PlayPhotoRecOut)
+def photo_recommendations(
+    user: User = Depends(current_user),
+    group_id: str = Depends(current_group_id),
+    db: Session = Depends(get_db),
+) -> PlayPhotoRecOut:
+    """찰칵! 탐정단 가비 추천(가족 사진 문제 최대 2개 + 흔한 사진 문제, 하루 3개). 구성은 저장하지 않고 가족·사용자·날짜로 정한다.
+    실패·한도 같은 경우는 오류 대신 state 로 알린다(AI 가 꺼져 있어도 AI 없는 카드는 나온다, 200)."""
+    out = PlayPhotoRecOut(**photo_rec.recommend(db, user, group_id))
+    photo_rec_auto.ensure_today_in_background()  # 흔한 사진 오늘 부족분 보충(백그라운드, 기다리지 않음, 오류는 안 샘)
+    return out
+
+
+@router.get("/photo/recommendations/{rec_id}/image")
+def photo_recommendation_image(
+    rec_id: str,
+    user: User = Depends(current_user),
+    group_id: str = Depends(current_group_id),
+    db: Session = Depends(get_db),
+) -> Response:
+    """추천 카드의 사진(JPEG). 흔한 사진은 로그인한 구성원 누구나, 가족 사진은 그 가족 구성원만(아니면 404)."""
+    data = photo_rec.image_for(db, group_id, rec_id)
+    return Response(
+        content=data, media_type="image/jpeg", headers={"Cache-Control": "private, max-age=3600"}
+    )
+
+
 @router.post("/draws", response_model=PlayItemOut, status_code=201)
 def create_draw(
     file: UploadFile = File(..., description="그림 PNG(2MB 이하)"),
@@ -89,8 +118,17 @@ def create_draw(
 
 @router.post("/photos", response_model=PlayItemOut, status_code=201)
 def create_photo(
-    file: UploadFile = File(..., description="사진 JPEG/PNG/WebP(8MB 이하)"),
-    source: int = Form(..., description="1 가족 앨범, 2 내 폰"),
+    file: UploadFile | None = File(
+        default=None, description="사진 JPEG/PNG/WebP(8MB 이하). `rec_id` 가 있으면 비워도 된다"
+    ),
+    source: int | None = Form(
+        default=None,
+        description="1 가족 앨범, 2 내 폰. `rec_id` 로 낼 때는 서버가 추천 행 기준(가족 1·흔한 3)으로 정한다",
+    ),
+    rec_id: str | None = Form(
+        default=None,
+        description='가비 추천 카드 id("이 문제로 쓰기"). 파일 없이 보내면 서버가 그 카드의 사진을 쓴다. 파일도 같이 오면 파일(source 2)로 처리하고 rec_id 는 버린다',
+    ),
     zoom: int = Form(..., description="확대 배율 4·6·8·16·32"),
     box_x: float = Form(..., ge=0, le=1, description="확대 창 가운데 가로 위치 0~1"),
     box_y: float = Form(..., ge=0, le=1, description="확대 창 가운데 세로 위치 0~1"),
@@ -103,8 +141,9 @@ def create_photo(
     group_id: str = Depends(current_group_id),
     db: Session = Depends(get_db),
 ) -> PlayItemOut:
-    """찰칵! 탐정단 문제를 낸다(사진 + 확대 위치 + 선택식 보기)."""
-    data = file.file.read(media.PHOTO_MAX_BYTES + 1)
+    """찰칵! 탐정단 문제를 낸다(사진 + 확대 위치 + 선택식 보기). 가비 추천 카드로 낼 때는 `rec_id` 만 보내고 질문·보기·정답·확대는 낸 사람이 고친 값을 쓴다.
+    오류: 404 `rec_not_found`, 409 `photo_not_available`(사진을 더는 쓸 수 없음), 409 `rec_already_sent`(같은 가족이 14일 안에 보냄)."""
+    data = file.file.read(media.PHOTO_MAX_BYTES + 1) if file is not None else None
     return service.create_photo(
         db,
         user,
@@ -119,6 +158,7 @@ def create_photo(
         answer_index=answer_index,
         comment=comment,
         player_ids=player_ids,
+        rec_id=rec_id,
     )
 
 
