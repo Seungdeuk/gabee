@@ -4,7 +4,7 @@ import { useAuth } from "@/shared/auth/AuthProvider";
 import { memoryUiMode } from "@/shared/memoryFlag";
 
 import { getMemoryGeneration, requestMemoryGeneration } from "./api";
-import { GENERATION_POLL_MS, generationReducer, initialGenerationState, shouldKeepPolling, shouldReloadCandidates } from "./generation";
+import { GENERATION_POLL_MS, createSingleFlight, generationReducer, initialGenerationState, shouldKeepPolling, shouldReloadCandidates } from "./generation";
 import { scopeKey } from "./memories";
 
 /**
@@ -24,6 +24,7 @@ export default function useMemoryGeneration(onChanged) {
   const polls = useRef(0);
   const timer = useRef(null);
   const polling = useRef(false);
+  const flight = useRef(createSingleFlight());
   const changed = useRef(onChanged);
   changed.current = onChanged;
 
@@ -49,8 +50,11 @@ export default function useMemoryGeneration(onChanged) {
   );
 
   const run = useCallback(
-    (call, fresh, explicit = false) => {
-      if (!scope || !enabled) return;
+    (call, fresh, explicit = false, onSettled = null) => {
+      if (!scope || !enabled) {
+        onSettled?.();
+        return;
+      }
       const mine = seq.current;
       if (fresh) polls.current = 0;
       else polls.current += 1;
@@ -58,10 +62,12 @@ export default function useMemoryGeneration(onChanged) {
       dispatch({ type: "start", seq: mine });
       call().then(
         (gen) => {
+          onSettled?.();
           if (mine !== seq.current) return; // 가족·사용자가 바뀌었다
           apply(mine, gen, () => run(requestMemoryGeneration, false), explicit);
         },
         (error) => {
+          onSettled?.();
           if (mine !== seq.current) return;
           dispatch({ type: "fail", seq: mine, error });
         },
@@ -73,6 +79,7 @@ export default function useMemoryGeneration(onChanged) {
   useEffect(() => {
     seq.current += 1;
     prev.current = null;
+    flight.current.reset(); // 가족·사용자가 바뀌면 이전 범위의 요청 중 표시를 푼다
     clear();
     dispatch({ type: "scope", scope, seq: seq.current });
     if (scope && enabled) run(getMemoryGeneration, true);
@@ -82,6 +89,9 @@ export default function useMemoryGeneration(onChanged) {
     };
   }, [scope, enabled, run, clear]);
 
-  const start = useCallback(() => run(requestMemoryGeneration, true, true), [run]);
+  const start = useCallback(() => {
+    if (!flight.current.tryStart()) return; // 이미 요청 중이면 연타를 무시한다
+    run(requestMemoryGeneration, true, true, () => flight.current.done());
+  }, [run]);
   return { state, polling: polling.current, start };
 }
