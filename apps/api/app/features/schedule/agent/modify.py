@@ -245,7 +245,7 @@ def respond_edit(
         )
         found = choice_mod.which_candidates(events, now) if wants and unnamed else []
         if found:  # 일정을 이름 없이 가리켰으면 후보를 보여 주며 어느 일정인지 되묻는다(정책 #35)
-            return choice_mod.ask_which("edit", found, changes)
+            return choice_mod.ask_which("edit", found, changes, choice_mod.which_more(events, now))
         # 이름을 말했는데 없으면 찾지 못했다고 안내하고 새 등록을 권한다
         return AgentResponse(intent="edit", text=NOT_FOUND_OFFER_TEXT)
     if not service.owns(event, user_id):
@@ -359,7 +359,7 @@ def respond_delete(
     if event is None:
         found = choice_mod.which_candidates(events, now) if now is not None and unnamed else []
         if found:
-            return choice_mod.ask_which("delete", found)
+            return choice_mod.ask_which("delete", found, None, choice_mod.which_more(events, now))
         return AgentResponse(intent="delete", text=NOT_FOUND_OFFER_TEXT)
     if not service.owns(event, user_id):
         return AgentResponse(intent="delete", text=NOT_OWNER_DELETE)
@@ -483,6 +483,10 @@ def apply_choice(
         raise bad_request("invalid_action", "고른 항목이 없어요")
     choice_mod.take(group_id, user_id)  # 카드로 골랐으니 글로 답하는 되묻기는 끝난다
     if action.choice_kind == "delete":
+        if (
+            len(ids) > MANY_LIMIT
+        ):  # 선택 카드는 10개까지만 보여 주므로 넘으면 조용히 자르지 않고 거절한다
+            raise bad_request("invalid_action", f"한 번에 {MANY_LIMIT}개까지만 지울 수 있어요")
         done, failed = delete_many(db, user_id, group_id, ids)
         return AgentResponse(intent="delete", text=many_text(done, failed))
     family = members_mod.load(db, group_id)

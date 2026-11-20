@@ -424,3 +424,25 @@ def test_room_keeps_asking_in_text_without_a_selection_card(
     )
     assert ask_mod._reply(response, room=True).confirmations == []
     assert ask_mod._reply(response, room=False).confirmations[0]["action"] == "choice_select"
+
+
+def test_many_same_title_events_show_only_the_nearest_ten_and_say_how_many_are_left(
+    client, setup, schedule_llm, monkeypatch
+):
+    a, _, _ = setup
+    ids = [
+        client.post(
+            "/schedule/events", json={"title": "러닝", "start_date": _day(i + 1)}, headers=a
+        ).json()["id"]
+        for i in range(25)
+    ]
+    _main(monkeypatch)
+    schedule_llm.data = _delete_data(ids[0])
+    card = _ask(client, a)["confirm_cards"][0]
+    assert card["action"] == "choice_select"
+    assert [i["id"] for i in card["items"]] == ids[:10]  # 가까운 순 10개
+    assert "나머지 15개" in card["title"]
+    too_many = {**card["pending_action"], "event_ids": ids[:11]}
+    r = client.post("/schedule/agent/confirm", json={"action": too_many}, headers=a)
+    assert r.status_code == 400  # 10개를 넘으면 조용히 자르지 않고 거절한다
+    assert len(_events(client, a)) == 25

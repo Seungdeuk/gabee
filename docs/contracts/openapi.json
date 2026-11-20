@@ -23316,6 +23316,12 @@
             "type": "array",
             "maxItems": 20,
             "title": "Options"
+          },
+          "more": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "More",
+            "default": 0
           }
         },
         "type": "object",

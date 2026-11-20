@@ -201,6 +201,8 @@ def _choice_card(choice: Choice, text: str) -> dict:
         what = _change_phrase(choice.changes)
         kind, label = "edit", "바꾸기"
         title = f"{what} 바꿀 일정을 골라 주세요." if what else "바꿀 일정을 골라 주세요."
+    if choice.more:
+        title = f"{title} 가까운 {len(choice.options)}개만 보여요. 나머지 {choice.more}개는 날짜를 말해 주세요."
     action = PendingAction(
         type="choice",
         choice_kind=kind,

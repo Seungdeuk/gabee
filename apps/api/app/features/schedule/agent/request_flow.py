@@ -408,10 +408,12 @@ def _narrow(row: dict, view: RequestView, user_id: str, today: date, text: str):
 def _ask_which(
     kind: str, found: list, user_id: str, labels: dict[str, str], fields: dict
 ) -> AgentResponse:
+    more = max(len(found) - choice_mod.OPTION_LIMIT, 0)
+    found = found[: choice_mod.OPTION_LIMIT]
     title = found[0]["title"]
     return AgentResponse(
         intent="request",
-        text=f"'{title}' 부탁이 {len(found)}개 있어요. 어느 쪽인가요? 모두인가요?",
+        text=f"'{title}' 부탁이 {len(found) + more}개 있어요. 어느 쪽인가요? 모두인가요?{choice_mod.more_text(more)}",
         cards=[
             Card(
                 type="request_list", data={"requests": [_brief(r, user_id, labels) for r in found]}
@@ -422,6 +424,7 @@ def _ask_which(
             event_ids=[r["id"] for r in found],
             changes=fields,
             options=[{"id": r["id"], "line": f"{_row_when(r)} '{r['title']}'"} for r in found],
+            more=more,
         ),
     )
 
