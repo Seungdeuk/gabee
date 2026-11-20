@@ -15,12 +15,26 @@ MEMBER_RULE = (
     "한 명으로 정해지면 member_ambiguous 는 false."
 )
 
+# 상대 날짜 표현. weeks·days 는 기준 날짜에 더할 주·일, weekday 는 -1(없음) 또는 0=월..6=일. 코드가 날짜로 계산한다
+DATE_REL_SCHEMA: dict = {
+    "type": "object",
+    "properties": {
+        "weeks": {"type": "integer"},
+        "days": {"type": "integer"},
+        "weekday": {"type": "integer"},
+    },
+    "required": ["weeks", "days", "weekday"],
+    "additionalProperties": False,
+}
+
 # register 일 때만 채운다(아니면 빈 문자열·빈 배열·0·false). 초안이 있으면 초안과 새 문장을 합친 전체를 쓴다
 REGISTER_SCHEMA: dict = {
     "type": "object",
     "properties": {
         "title": {"type": "string"},
         "date": {"type": "string"},
+        # 상대 날짜 표현(담주·이틀 뒤·다음 주 금요일)은 날짜를 계산하지 않고 여기에 쓴다. 없으면 {0, 0, -1}
+        "date_rel": DATE_REL_SCHEMA,
         "start_time": {"type": "string"},
         "end_time": {"type": "string"},
         "kind": {"type": "integer", "enum": [0, 1, 2]},
@@ -33,6 +47,7 @@ REGISTER_SCHEMA: dict = {
     "required": [
         "title",
         "date",
+        "date_rel",
         "start_time",
         "end_time",
         "kind",
@@ -51,6 +66,8 @@ CHANGES_SCHEMA: dict = {
     "properties": {
         "title": {"type": "string"},
         "date": {"type": "string"},
+        # 상대 날짜 표현(담주·이틀 뒤·다음 주 금요일)은 날짜를 계산하지 않고 여기에 쓴다. 없으면 {0, 0, -1}
+        "date_rel": DATE_REL_SCHEMA,
         "start_time": {"type": "string"},
         "end_time": {"type": "string"},
         "kind": {"type": "integer", "enum": [0, 1, 2]},
@@ -65,6 +82,7 @@ CHANGES_SCHEMA: dict = {
     "required": [
         "title",
         "date",
+        "date_rel",
         "start_time",
         "end_time",
         "kind",
@@ -211,7 +229,8 @@ CHAT_SYSTEM = (
     "register 일 때 register 객체를 채운다(register 가 아니면 문자열은 빈 문자열, 배열은 빈 배열, kind 는 0, "
     "date_ambiguous 는 false):\n"
     "- title: 사용자가 말한 제목을 바꾸거나 줄이지 말고 그대로 쓴다. '엄마랑 병원'이면 제목도 '엄마랑 병원'이다.\n"
-    "- date: [지금] 기준으로 계산한 YYYY-MM-DD. 이번 주인지 다음 주인지처럼 날짜가 둘 이상으로 읽히고 결과가 크게 다르면 "
+    "- date: 구체적인 날짜·오늘·내일처럼 [지금] 기준으로 계산한 YYYY-MM-DD. "
+    "담주로 미뤄줘·일주일 뒤로·이틀 뒤로·다음 주 금요일처럼 상대적인 말은 날짜를 계산하지 말고 date_rel 에 쓰고 date 는 빈 문자열로 둔다(weeks·days 는 더할 주·일, weekday 는 요일 지정이 없으면 -1, 월 0 ~ 일 6). 예: 담주로 미뤄줘 → weeks 1·days 0·weekday -1, 이틀 뒤로 → weeks 0·days 2·weekday -1, 다음 주 금요일 → weeks 1·days 0·weekday 4. 구체적인 날짜(12/3)와 오늘·내일·모레처럼 [지금] 기준의 말은 date 에 YYYY-MM-DD 로 쓰고 date_rel 은 {weeks 0, days 0, weekday -1}. 이번 주인지 다음 주인지처럼 날짜가 둘 이상으로 읽히고 결과가 크게 다르면 "
     "date 는 빈 문자열, date_ambiguous 는 true 로 하고 reply 에 두 후보를 물어보는 짧은 문장을 쓴다. 날짜를 전혀 말하지 않았으면 "
     "date 는 빈 문자열, date_ambiguous 는 false.\n"
     "- start_time·end_time: HH:MM(24시간). 말하지 않았으면 빈 문자열. '저녁' 같은 막연한 말은 시간을 정하지 않는다.\n"
@@ -241,7 +260,8 @@ CHAT_SYSTEM = (
     "('오늘 일정 다 삭제해줘', '이번 주 일정 전부 지워줘', '헬스 다 지워줘'). 이때 지울 일정 모두의 id 를 event_ids 에 넣는다(한 번에 10개까지). "
     "한 건이나 이름으로 하나를 가리키면 false.\n"
     "- changes(edit 일 때만): 사용자가 바꾸라고 한 것만 쓰고 나머지는 빈 문자열, kind 는 0, clear 는 빈 배열로 둔다. "
-    "date 는 YYYY-MM-DD([지금] 기준으로 계산), start_time·end_time 은 HH:MM, kind 는 1 약속·2 할 일. "
+    "date 는 구체적인 날짜·오늘·내일이면 YYYY-MM-DD([지금] 기준으로 계산). "
+    "담주로 미뤄줘·일주일 뒤로·이틀 뒤로·다음 주 금요일처럼 상대적인 말은 날짜를 계산하지 말고 date_rel 에 쓰고 date 는 빈 문자열로 둔다(일정의 원래 날짜를 기준으로 코드가 계산한다)(weeks·days 는 더할 주·일, weekday 는 요일 지정이 없으면 -1, 월 0 ~ 일 6). 예: 담주로 미뤄줘 → weeks 1·days 0·weekday -1, 이틀 뒤로 → weeks 0·days 2·weekday -1, 다음 주 금요일 → weeks 1·days 0·weekday 4. 구체적인 날짜(12/3)와 오늘·내일·모레처럼 [지금] 기준의 말은 date 에 YYYY-MM-DD 로 쓰고 date_rel 은 {weeks 0, days 0, weekday -1}. start_time·end_time 은 HH:MM, kind 는 1 약속·2 할 일. "
     "시간을 없애 달라고 하면 clear 에 'time', 장소나 메모를 지워 달라고 하면 'place'·'memo' 를 넣는다. "
     "단 '팀 회의 없애줘', '치과 지워줘', '그 일정 취소할게'처럼 일정 자체를 없애려는 말은 edit 가 아니라 delete 이다 — "
     "clear 는 시간·장소·메모를 콕 집어 지워 달라고 했을 때만 쓴다. "

@@ -308,7 +308,9 @@ def test_no_to_registering_again_keeps_one_event(client, setup, fake):
     assert "다시 등록하지 않았어요" in body["text"] and len(_events(client, a)) == 1
 
 
-def test_registering_with_a_shorter_title_matches_the_existing_event_by_keywords(client, setup, fake):
+def test_registering_with_a_shorter_title_matches_the_existing_event_by_keywords(
+    client, setup, fake
+):
     a, _, _, _ = setup
     fake.data = _register_data(title="하윤 치과 검진", date=_tomorrow(), start_time="15:30", kind=1)
     _say(client, a, "내일 3시반 하윤 치과 검진 등록해줘")
