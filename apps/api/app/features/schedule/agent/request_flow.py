@@ -417,7 +417,12 @@ def _ask_which(
                 type="request_list", data={"requests": [_brief(r, user_id, labels) for r in found]}
             )
         ],
-        choice=Choice(kind=kind, event_ids=[r["id"] for r in found], changes=fields),
+        choice=Choice(
+            kind=kind,
+            event_ids=[r["id"] for r in found],
+            changes=fields,
+            options=[{"id": r["id"], "line": f"{_row_when(r)} '{r['title']}'"} for r in found],
+        ),
     )
 
 
@@ -462,6 +467,38 @@ def resolve_choice(
     if chosen.kind == "request_cancel":
         return _cancel_row(user_id, picked[0], labels)
     return _edit_row(user_id, chosen.changes, picked[0], labels)
+
+
+def apply_choice(
+    db: Session,
+    user_id: str,
+    group_id: str,
+    action: PendingAction,
+    today: date,
+    members: list[Member],
+) -> AgentResponse:
+    """선택 카드에서 체크한 부탁을 확인 카드 없이 바로 취소(또는 받는 사람 바꾸기)한다(정책 #39). 부탁은 다시 찾고 보낸 사람인지 확인한다."""
+    ids = list(dict.fromkeys(action.event_ids))
+    if not ids:
+        raise bad_request("invalid_action", "고른 항목이 없어요")
+    choice_mod.take(group_id, user_id)
+    view = load(db, group_id, user_id, today, detail=True)
+    labels = {m.id: m.label for m in members}
+    texts: list[str] = []
+    for request_id in ids:
+        row = view.rows.get(request_id)
+        if row is None or row["from_id"] != user_id:
+            texts.append(NOT_FOUND_TEXT)
+            continue
+        if action.choice_kind == "request_cancel":
+            one = _cancel_row(user_id, row, labels)
+        else:
+            one = _edit_row(user_id, action.changes, row, labels)
+        if one.pending_action is None:  # 바꿀 게 없거나 채팅에서 할 수 없는 경우
+            texts.append(one.text)
+            continue
+        texts.append(confirm(db, user_id, group_id, one.pending_action, members).text)
+    return AgentResponse(intent="request", text=" ".join(texts))
 
 
 def _query(

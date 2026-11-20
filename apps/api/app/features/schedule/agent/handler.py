@@ -253,10 +253,11 @@ def _handle(
                 )
             )
     found_by_title: dict = {}
+    known_ids = {e.id for e in data.events}
     if result.intent in ("edit", "delete") and not (
-        result.target_id or result.target_unnamed or result.all_targets
+        (result.target_id in known_ids) or result.target_unnamed or result.all_targets
     ):
-        # 모델이 대상을 못 골랐어도 말에 일정 제목이 들어 있으면 전체 일정에서 찾는다(목록이 기간으로 걸러져 빠진 경우)
+        # 모델이 대상을 못 골랐거나 목록에 없는 id 를 골랐어도 말에 일정 제목이 들어 있으면 전체 일정에서 찾는다(목록이 기간으로 걸러져 빠진 경우)
         matches = _by_title(data.events, request.text)
         if matches:
             found_by_title = {e.id: e for e in matches}
@@ -406,6 +407,12 @@ def _confirm(db: Session, user_id: str, group_id: str, body: ConfirmRequest) -> 
         return modify.confirm_delete(db, user_id, group_id, action)
     if action.type == "habit_check":
         return habits.confirm(db, user_id, action)
+    if action.type == "choice":  # 선택 카드: 체크한 것을 확인 카드 없이 바로 처리한다(정책 #39)
+        if action.choice_kind in ("request_edit", "request_cancel"):
+            return request_flow.apply_choice(
+                db, user_id, group_id, action, register.today(), members_mod.load(db, group_id)
+            )
+        return modify.apply_choice(db, user_id, group_id, action, register.today())
     members = members_mod.load(db, group_id)
     if action.type.startswith("request_"):
         return request_flow.confirm(db, user_id, group_id, action, members)

@@ -531,6 +531,26 @@ def test_same_title_requests_all_answer_asks_one_at_a_time_and_past_plus_future_
 
     past = _send(client, a, [ids["b"]], title="청소", start_date=_day(-3))
     future = _send(client, a, [ids["b"]], title="청소", start_date=_day(6))
-    fake.data = _req("cancel", target_id=past["id"])  # 지난 부탁을 골라도 다가오는 하나만 카드로 묻는다
+    fake.data = _req(
+        "cancel", target_id=past["id"]
+    )  # 지난 부탁을 골라도 다가오는 하나만 카드로 묻는다
     body = _say(client, a, "청소 부탁 취소해줘").json()
     assert body["pending_action"]["request_id"] == future["id"]
+
+
+def test_choice_card_cancels_only_the_checked_requests_without_a_confirm_card(client, setup, fake):
+    a, b, _, ids = setup
+    first = _send(client, a, [ids["b"]], start_date=_day(3))
+    second = _send(client, a, [ids["b"]], start_date=_day(10))
+    action = {"type": "choice", "choice_kind": "request_cancel", "event_ids": [first["id"]]}
+    r = client.post("/schedule/agent/confirm", json={"action": action}, headers=a)
+    assert r.status_code == 200 and "취소했어요" in r.json()["text"]
+    canceled = {x["id"]: x["canceled"] for x in _requests(client, a)}
+    assert canceled[first["id"]] is True and canceled[second["id"]] is False
+    stranger = client.post(
+        "/schedule/agent/confirm",
+        json={"action": {**action, "event_ids": [second["id"]]}},
+        headers=b,
+    )  # 보낸 사람이 아니면 취소되지 않는다
+    assert stranger.status_code == 200 and "취소했어요" not in stranger.json()["text"]
+    assert not {x["id"]: x["canceled"] for x in _requests(client, a)}[second["id"]]
