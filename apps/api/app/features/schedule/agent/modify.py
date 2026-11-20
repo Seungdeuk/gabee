@@ -94,6 +94,7 @@ def clean_changes(raw, member_ids=frozenset()) -> dict:
     return {
         "title": _text(raw.get("title"), TITLE_MAX),
         "date": _text(raw.get("date"), 10),
+        "date_rel": register.clean_rel(raw.get("date_rel")),
         "start_time": _text(raw.get("start_time"), 5),
         "end_time": _text(raw.get("end_time"), 5),
         "kind": kind if kind in (1, 2) and not isinstance(kind, bool) else 0,
@@ -125,7 +126,7 @@ def _nothing_text(event: Event, changes: dict) -> str:
     said = any(
         changes.get(k)
         for k in ("title", "date", "start_time", "end_time", "place", "memo", "clear", "kind")
-    )
+    ) or register.has_rel(changes.get("date_rel"))
     if said:
         return f"{reader.event_text(event)} 일정은 이미 그렇게 되어 있어요."
     return NOTHING_TEXT
@@ -137,6 +138,11 @@ def build_update(changes: dict, event: Event, now: date) -> dict:
     if changes["title"]:
         out["title"] = changes["title"]
     new_date = register.valid_date(changes["date"], now)
+    rel = changes.get("date_rel")
+    if not changes["date"] and register.has_rel(rel):
+        # 상대 표현: 요일을 지정하면 오늘 기준, weeks·days 만이면 그 일정의 원래 날짜 기준(같은 요일 유지)
+        base = now if rel["weekday"] != -1 else service.current_when(event)[0]
+        new_date = register.resolve_date(base, rel)
     if new_date:
         out["start_date"] = new_date
     if changes["kind"]:
@@ -231,7 +237,7 @@ def respond_edit(
     db 를 주지 않으면(순수 계산 호출) 바뀔 내용을 카드로만 만든다."""
     event = events.get(target_id)
     if event is None:
-        wants = any(
+        wants = register.has_rel(changes.get("date_rel")) or any(
             changes.get(k)
             for k in (
                 "title",
@@ -253,7 +259,7 @@ def respond_edit(
         return AgentResponse(intent="edit", text=NOT_OWNER_EDIT)
     # 모델이 공유 변경으로 표시하지 못해도, 바꿀 다른 내용이 없고 문장에서 같은 호칭의 가족이 여럿 잡히면 코드가 되묻는다
     # (되묻기 답을 처리할 때는 text 가 비어 있다)
-    only_who = not any(
+    only_who = not register.has_rel(changes.get("date_rel")) and not any(
         changes.get(k)
         for k in ("title", "date", "start_time", "end_time", "place", "memo", "clear", "share_ids")
     )

@@ -30,6 +30,8 @@ PLACE_MAX = 200
 MEMO_MAX = 1000
 MAX_IDS = 20
 DEFAULT_MINUTES = 60  # 시작만 말했을 때 끝 시간 = 시작 + 1시간
+MAX_REL_WEEKS = 104  # date_rel.weeks 절대값 상한
+NO_REL = {"weeks": 0, "days": 0, "weekday": -1}  # 상대 날짜 표현 없음
 DEFAULT_KIND = 2  # 모델이 형태를 못 정하면 할 일(체크하면 되는 쪽이 안전하다)
 
 GIVE_UP_TEXT = (
@@ -56,6 +58,49 @@ def _ids(value, allowed: set[str]) -> list[str]:
     return seen[:MAX_IDS]
 
 
+def _int(value, low: int, high: int) -> int | None:
+    """bool·비정수·범위 밖이면 None."""
+    ok = isinstance(value, int) and not isinstance(value, bool) and low <= value <= high
+    return value if ok else None
+
+
+def clean_rel(raw) -> dict:
+    """모델이 돌려준 date_rel 을 정수 dict 로 검증한다. 없거나 형식이 틀리면 '상대 표현 없음' 기본값."""
+    if not isinstance(raw, dict):
+        return dict(NO_REL)
+    weeks = _int(raw.get("weeks"), -MAX_REL_WEEKS, MAX_REL_WEEKS)
+    days = _int(raw.get("days"), -DATE_SPAN_DAYS, DATE_SPAN_DAYS)
+    weekday = _int(raw.get("weekday"), -1, 6)
+    if weeks is None or days is None or weekday is None:
+        return dict(NO_REL)
+    return {"weeks": weeks, "days": days, "weekday": weekday}
+
+
+def has_rel(rel) -> bool:
+    """date_rel 에 상대 표현이 들어 있는가(기본값이면 False)."""
+    return isinstance(rel, dict) and clean_rel(rel) != NO_REL
+
+
+def resolve_date(base: date, rel: dict) -> str:
+    """상대 표현(weeks·days·weekday)을 base 기준 YYYY-MM-DD 로 계산한다. 범위 밖·형식 오류는 빈 문자열.
+    weekday 가 -1 이면 base + weeks*7 + days(같은 요일 유지), 0~6 이면 base 가 속한 주의 월요일 + weeks*7 + weekday + days."""
+    if not isinstance(rel, dict):
+        return ""
+    weeks = _int(rel.get("weeks"), -MAX_REL_WEEKS, MAX_REL_WEEKS)
+    days = _int(rel.get("days"), -DATE_SPAN_DAYS, DATE_SPAN_DAYS)
+    weekday = _int(rel.get("weekday"), -1, 6)
+    if weeks is None or days is None or weekday is None:
+        return ""
+    anchor = (
+        base if weekday == -1 else base - timedelta(days=base.weekday()) + timedelta(days=weekday)
+    )
+    try:
+        result = anchor + timedelta(weeks=weeks, days=days)
+    except OverflowError:
+        return ""
+    return valid_date(result.isoformat(), base)
+
+
 def clean_fields(raw, member_ids: set[str]) -> dict:
     """모델이 돌려준 register 객체를 검증한다. 형식이 틀린 값은 빈 값으로 둔다(날짜 범위는 `normalize` 에서)."""
     if not isinstance(raw, dict):
@@ -64,6 +109,7 @@ def clean_fields(raw, member_ids: set[str]) -> dict:
     return {
         "title": _text(raw.get("title"), TITLE_MAX),
         "date": _text(raw.get("date"), 10),
+        "date_rel": clean_rel(raw.get("date_rel")),
         "start_time": _text(raw.get("start_time"), 5),
         "end_time": _text(raw.get("end_time"), 5),
         "kind": kind if kind in (1, 2) and not isinstance(kind, bool) else 0,
@@ -255,6 +301,10 @@ def respond(
     sentence: str = "",
 ) -> AgentResponse:
     member_ids = {m.id for m in members}
+    if not fields.get("date") and has_rel(
+        fields.get("date_rel")
+    ):  # 상대 표현은 코드가 오늘 기준으로 계산한다
+        fields = {**fields, "date": resolve_date(today(), fields["date_rel"])}
     if share_all:  # 모델이 일부만 고르거나 비워 둬도 가족 전체로 정한다
         fields = {**fields, "share_ids": [m.id for m in members if m.id != user_id]}
     if fields.get("title") and fields.get("date"):
