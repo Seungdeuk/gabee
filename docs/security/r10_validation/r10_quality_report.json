@@ -1,0 +1,50 @@
+{
+ "rows": {
+  "train": 2100,
+  "val_monitor": 379
+ },
+ "by_bucket": {
+  "r10_D": 800,
+  "r10_B": 420,
+  "r10_C": 320,
+  "r10_N": 400,
+  "r10_G": 160
+ },
+ "negatives": 497,
+ "exact_dup_within": 0,
+ "exact_match_with_r9_train": 0,
+ "exact_match_with_dev_sets": 0,
+ "skeleton_dup_rows_over_2": 0,
+ "frame_reuse_max": 2,
+ "frame_reuse_gt2": 0,
+ "near_dup_4gram_ge0.7_vs_r9_train": 2,
+ "near_dup_4gram_ge0.7_vs_dev": 0,
+ "near_dup_4gram_ge0.7_within": 0,
+ "person_values": {
+  "total": 2081,
+  "distinct": 1520,
+  "max_reuse": 8,
+  "len_dist": {
+   "2": 802,
+   "3": 1053,
+   "4": 226
+  }
+ },
+ "name_overlap": {
+  "train_values_in_r9_train_values": 20,
+  "train_given_in_r9_given": 39,
+  "train_given_in_dev_given": 0,
+  "train_vs_val_monitor_value_overlap": 0,
+  "reserved_given_in_train(len2 whole, len3 v[1:], len4 v[1:] and v[2:] both)": 15
+ },
+ "d1p_pairs": {
+  "person_rows": 400,
+  "noun_rows": 400,
+  "distinct_words": 128,
+  "max_word_uses": 4,
+  "person_rows_with_span": 400,
+  "noun_rows_with_person_span": 20
+ },
+ "kin_inside_label": 0,
+ "one_char_person": 0
+}

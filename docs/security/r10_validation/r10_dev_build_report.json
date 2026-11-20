@@ -1,0 +1,38 @@
+{
+ "rows": 824,
+ "by_stress_type": {
+  "B1": 150,
+  "C2": 120,
+  "NEWNAME": 150,
+  "D2": 30,
+  "D1_STANDALONE": 20,
+  "A3N": 25,
+  "KIN_ONLY": 25,
+  "D1P": 152,
+  "D1": 152
+ },
+ "negatives": 227,
+ "person_spans": 775,
+ "distinct_person_values": 490,
+ "max_person_reuse": 5,
+ "person_spans_name_unseen": 705,
+ "person_spans_name_seen": 70,
+ "reserved_violations": 0,
+ "problems": 0,
+ "frames": {
+  "count": 826,
+  "problems": {
+   "bare_to_lit": 17
+  },
+  "by_file": {
+   "dev_b1c2": 270,
+   "dev_msg_neg": 250,
+   "dev_pairs": 306
+  }
+ },
+ "rejected(counts)": {
+  "spec_example_string": 1
+ },
+ "sealed_access": "없음",
+ "note": "개발 평가용. 학습·체크포인트 선택에 쓰지 않는다. 후보 선정(게이트)에만 쓴다."
+}
