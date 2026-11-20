@@ -16,6 +16,19 @@ from . import reader
 from .schemas import AgentResponse, Card, Choice
 
 CHOICE_TTL_SECONDS = 600  # 되묻기를 기억하는 시간(등록 초안과 같다)
+OPTION_LIMIT = (
+    10  # 후보가 많으면 가까운 일정 순으로 이만큼만 보여 준다(한 번에 지우는 수 상한과 같다)
+)
+
+
+def more_text(more: int) -> str:
+    """후보를 잘라 보여 줬을 때 덧붙이는 안내."""
+    return (
+        f" 가까운 {OPTION_LIMIT}개만 보여 드려요. 나머지 {more}개는 날짜를 말해 주세요."
+        if more
+        else ""
+    )
+
 
 ALL_WORDS = re.compile(
     r"모두|전부|전체|둘 ?다|둘 ?모두|둘 ?똑같이|싹 ?다|다 (?:지워|삭제|옮겨|바꿔|수정)|^다$"
@@ -74,11 +87,13 @@ def narrow(target, events: dict, today: date, kind: str, text: str, related=()):
 
 
 def ask_response(kind: str, found: list, changes: dict | None = None, past: bool = False):
+    more = max(len(found) - OPTION_LIMIT, 0)
+    found = found[:OPTION_LIMIT]
     title = found[0].title
     if past:
         text = f"'{title}' 일정은 다가오는 게 없고 지난 일정뿐이에요. 이 일정이 맞나요?"
     else:
-        text = f"'{title}' 일정이 {len(found)}개 있어요. 어느 쪽인가요? 모두인가요?"
+        text = f"'{title}' 일정이 {len(found) + more}개 있어요. 어느 쪽인가요? 모두인가요?{more_text(more)}"
     return AgentResponse(
         intent=kind,
         text=text,
@@ -89,6 +104,7 @@ def ask_response(kind: str, found: list, changes: dict | None = None, past: bool
             changes=changes or {},
             past=past,
             options=[] if past else event_options(found),
+            more=more,
         ),
     )
 
@@ -113,7 +129,7 @@ def ask_member(event, changes: dict, text: str, options: list[dict] | None = Non
     )
 
 
-WHICH_LIMIT = 5  # 대상을 모를 때 보여 주는 후보 수(다가오는 일정 순)
+WHICH_LIMIT = OPTION_LIMIT  # 대상을 모를 때 보여 주는 후보 수(다가오는 일정 순)
 
 
 def which_candidates(events: dict, today: date) -> list:
@@ -123,17 +139,23 @@ def which_candidates(events: dict, today: date) -> list:
     return upcoming[:WHICH_LIMIT]
 
 
-def ask_which(kind: str, found: list, changes: dict | None = None) -> AgentResponse:
+def which_more(events: dict, today: date) -> int:
+    """다가오는 일정이 후보 수 상한을 넘어 보여 주지 못한 수."""
+    return max(sum(1 for e in events.values() if event_day(e) >= today) - WHICH_LIMIT, 0)
+
+
+def ask_which(kind: str, found: list, changes: dict | None = None, more: int = 0) -> AgentResponse:
     """어느 일정을 말씀하시는지 후보를 보여 주며 되묻는다(정책 #35). 고르면 하려던 일을 이어서 처리한다."""
     return AgentResponse(
         intent=kind,
-        text="어느 일정인가요?",
+        text=f"어느 일정인가요?{more_text(more)}",
         cards=[Card(type="event_list", data={"events": [reader.brief(e) for e in found]})],
         choice=Choice(
             kind=kind,
             event_ids=[e.id for e in found],
             changes=changes or {},
             options=event_options(found),
+            more=more,
         ),
     )
 

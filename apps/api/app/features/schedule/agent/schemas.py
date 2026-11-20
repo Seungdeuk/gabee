@@ -77,6 +77,7 @@ class Choice(BaseModel):
     # kind 가 register 이면 changes 에 등록하려던 초안이 들어 있다(이미 있는 일정을 또 등록할지 묻는 중)
     # 앱이 체크박스 선택 카드로 보여 줄 후보: [{"id": 일정·부탁·구성원 id, "line": 한 줄 표기}]. 개인 채팅에서만 카드로 보인다
     options: list[dict] = Field(default_factory=list, max_length=20)
+    more: int = Field(default=0, ge=0)  # 후보가 많아 가까운 일정 순으로 10개만 보여 줬을 때 보이지 않은 나머지 수
 
 
 class AgentRequest(BaseModel):
