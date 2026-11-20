@@ -60,6 +60,11 @@ class ChatResult:
     keyword: str = ""
     register: dict = field(default_factory=dict)  # intent 가 register 일 때 모델이 읽은 값(검증 끝)
     target_id: str = ""  # intent 가 edit·delete 일 때 모델이 고른 일정 id(보여 준 목록에 있는 것만)
+    all_targets: bool = False  # delete 일 때 여러 건을 한꺼번에 지우라는 말(대상은 event_ids)
+    also_delete_title: str = (
+        ""  # 주된 요청 말고 같은 문장에서 지우라고 한 일정의 제목(삭제는 확인 카드)
+    )
+    target_unnamed: bool = False  # 일정을 이름·날짜 없이 가리킨 문장(대상을 되묻는다)
     changes: dict = field(default_factory=dict)  # intent 가 edit 일 때 모델이 읽은 바뀔 값(검증 끝)
     check_action: str = ""  # intent 가 check 일 때 mark / unmark / list (아니면 빈 문자열)
     request: dict = field(default_factory=dict)  # intent 가 request 일 때 모델이 읽은 값(검증 끝)
@@ -83,6 +88,7 @@ def clean_result(
     ids = data.get("event_ids")
     ids = ids if isinstance(ids, list) else []
     target = data.get("target_id")
+    also = data.get("also_delete_title")
     action = data.get("check_action")
     seen: list[str] = []
     for value in ids:
@@ -92,6 +98,9 @@ def clean_result(
         "intent": intent,
         "reply": reply,
         "event_ids": seen[:MAX_EVENT_IDS],
+        "all_targets": data.get("all_targets") is True,
+        "also_delete_title": _short(also, 40),
+        "target_unnamed": data.get("target_unnamed") is True,
         "need_wider": data.get("need_wider") is True,
         "period_start": _short(data.get("period_start"), 10),
         "period_end": _short(data.get("period_end"), 10),

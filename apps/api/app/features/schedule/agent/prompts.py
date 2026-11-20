@@ -7,6 +7,14 @@ from .schemas import INTENTS
 # 분류와 답변을 한 호출로 받는다. 가벼운 일정 질의·분류는 작은 모델로 시작하고 정확도를 보고 정한다
 CHAT_MODEL = "claude-haiku-5-5"
 
+# 같은 호칭이 가족 여럿에 해당할 때의 되묻기 규칙(정책 #33). 모델이 후보 이름을 보여 주는 질문을 reply 에 쓰고, 코드는 초안을 기억한다
+MEMBER_RULE = (
+    "한 호칭(예: '삼촌', '이모')이 [가족 구성원] 여럿에 해당해 누구인지 정해지지 않으면 그 호칭의 사람은 id 에 넣지 말고 "
+    "member_ambiguous 를 true 로 하고 reply 에 후보 이름을 보여 주며 짧게 묻는다(예: '삼촌이 두 분이에요. 누구를 말씀하시나요? (큰삼촌, 작은삼촌)'). "
+    "사용자가 이름으로 답하면 그 사람의 id 를 쓴다. 후보가 있는데 '찾지 못했어요', '정해지지 않았어요'라고 말하면 사실과 다르다 — 후보 이름만 보여 주며 묻는다. "
+    "한 명으로 정해지면 member_ambiguous 는 false."
+)
+
 # register 일 때만 채운다(아니면 빈 문자열·빈 배열·0·false). 초안이 있으면 초안과 새 문장을 합친 전체를 쓴다
 REGISTER_SCHEMA: dict = {
     "type": "object",
@@ -20,6 +28,7 @@ REGISTER_SCHEMA: dict = {
         "memo": {"type": "string"},
         "share_ids": {"type": "array", "items": {"type": "string"}},
         "date_ambiguous": {"type": "boolean"},
+        "member_ambiguous": {"type": "boolean"},
     },
     "required": [
         "title",
@@ -31,6 +40,7 @@ REGISTER_SCHEMA: dict = {
         "memo",
         "share_ids",
         "date_ambiguous",
+        "member_ambiguous",
     ],
     "additionalProperties": False,
 }
@@ -50,6 +60,7 @@ CHANGES_SCHEMA: dict = {
         # 공유 대상을 바꿔 달라고 했을 때만 share_change 가 true 이고 share_ids 에 바뀐 뒤의 대상 전체를 쓴다
         "share_change": {"type": "boolean"},
         "share_ids": {"type": "array", "items": {"type": "string"}},
+        "member_ambiguous": {"type": "boolean"},
     },
     "required": [
         "title",
@@ -62,6 +73,7 @@ CHANGES_SCHEMA: dict = {
         "clear",
         "share_change",
         "share_ids",
+        "member_ambiguous",
     ],
     "additionalProperties": False,
 }
@@ -81,6 +93,7 @@ REQUEST_SCHEMA: dict = {
         "memo": {"type": "string"},
         "to_ids": {"type": "array", "items": {"type": "string"}},
         "date_ambiguous": {"type": "boolean"},
+        "member_ambiguous": {"type": "boolean"},
     },
     "required": [
         "action",
@@ -94,6 +107,7 @@ REQUEST_SCHEMA: dict = {
         "memo",
         "to_ids",
         "date_ambiguous",
+        "member_ambiguous",
     ],
     "additionalProperties": False,
 }
@@ -124,6 +138,12 @@ CHAT_SCHEMA: dict = {
         "register": REGISTER_SCHEMA,
         # edit·delete 일 때 대상 일정의 id(없으면 빈 문자열)와, edit 일 때 바뀔 값
         "target_id": {"type": "string"},
+        # 같은 조건의 일정 여러 건을 한꺼번에 다루라고 했을 때만 true(delete: 그 일정 모두의 id 가 event_ids 에 들어 있다)
+        "all_targets": {"type": "boolean"},
+        # 한 문장에 다른 일정을 지우라는 말이 섞여 있을 때 그 일정의 id(없으면 빈 문자열)
+        "also_delete_title": {"type": "string"},
+        # edit·delete 일 때 사용자가 일정을 이름·날짜 없이 가리켰으면(그거, 그 일정) true, 이름을 말했는데 목록에 없으면 false
+        "target_unnamed": {"type": "boolean"},
         "changes": CHANGES_SCHEMA,
         # check 일 때만: mark 확인·완료로 표시 / unmark 표시 취소 / list 확인하지 않은 일정 보기 (아니면 빈 문자열)
         "check_action": {"type": "string", "enum": ["", "mark", "unmark", "list"]},
@@ -142,6 +162,9 @@ CHAT_SCHEMA: dict = {
         "keyword",
         "register",
         "target_id",
+        "all_targets",
+        "also_delete_title",
+        "target_unnamed",
         "changes",
         "check_action",
         "request",
@@ -195,30 +218,49 @@ CHAT_SYSTEM = (
     "- kind: 1 은 약속(그날 그 시간에 일어나는 것: 경조사, 식사, 병원 진료, 모임), 2 는 할 일(체크하면 끝나는 것: "
     "'~하기', 예약하기, 사 오기, 제출 같은 해야 할 일). 사용자가 약속이나 할 일이라고 말했으면 그대로 따른다. 모르면 0.\n"
     "- share_ids: 사용자가 다른 가족에게 공유해 달라고 했을 때만 [가족 구성원] 의 id 를 넣는다. '가족 모두', '가족 전체', '다 같이'처럼 "
-    "가족 전체를 말하면 말한 사람(나)을 뺀 [가족 구성원] 전원의 id 를 넣는다.\n"
+    "가족 전체를 말하면 말한 사람(나)을 뺀 [가족 구성원] 전원의 id 를 넣는다. " + MEMBER_RULE + "\n"
     "- place·memo: 사용자가 말했을 때만 쓴다.\n"
     "- [등록 초안] 이 있으면 지금 등록을 진행하는 중이다. 사용자 문장('내일', '엄마 생일 파티'처럼 짧은 말도)은 빠진 값에 "
     "대한 답이므로 intent 는 register 로 한다. 초안과 전혀 상관없는 요청이 분명할 때만 다른 intent 를 고른다. "
     "초안의 값을 유지하고 새 문장으로 채운 전체를 register 에 쓴다. 초안의 종류가 부탁이면 request(create)로 한다.\n"
     "- id 는 [가족 구성원] 목록에 있는 것만 쓴다.\n"
     "edit·delete 일 때는 target_id 와 changes 를 채운다(아니면 target_id 는 빈 문자열, changes 는 비운다):\n"
-    "- target_id: [일정 목록] 에서 사용자가 말한 일정의 id 를 그대로 쓴다. 같은 이름의 일정이 여럿이면 되묻지 말고 지금과 "
-    "가장 가까운 하나를 고른다(앞으로 올 일정을 먼저, 없으면 가장 최근에 지난 일정). 목록에 없으면 빈 문자열이다.\n"
+    "- target_id: [일정 목록] 에서 사용자가 말한 일정의 id 를 그대로 쓴다. 목록에 없으면 빈 문자열이다. "
+    "같은 이름의 일정이 여럿이면 사용자가 말한 날짜·시간에 맞는 하나를 고르고, 가릴 말이 없으면 지금과 가장 가까운 하나를 고른다"
+    "(앞으로 올 일정을 먼저). 나머지는 코드가 확인하고 필요하면 사용자에게 되묻는다.\n"
+    "- also_delete_title: 한 문장에 다른 일정을 지우라는 말이 섞여 있으면(예: '치과 등록하고 헬스는 지워줘') 주된 요청(등록·수정 등)을 intent 로 하고 "
+    "지울 일정의 제목(말한 그대로의 짧은 말, 예: '헬스')을 also_delete_title 에 쓴다. 일정 목록에 없어도 쓴다(코드가 전체에서 찾는다). "
+    "지우라는 말이 없으면 빈 문자열이다. 삭제 확인 카드는 코드가 만든다.\n"
+    "- target_unnamed(edit·delete 일 때): '그 일정 바꿔줘', '엄마한테도 공유해줘'처럼 일정 이름·날짜 없이 가리켰으면 true. "
+    "'미용실 예약 옮겨줘'처럼 이름을 말했는데 [일정 목록] 에 없으면 false(코드가 찾지 못했다고 안내하고 새 등록을 권한다).\n"
+    "- [등록 초안] 이 없는데 '엄마한테도 공유해줘', '시간 바꿔줘', '그거 지워줘'처럼 이미 있는 일정을 가리키는 말이 일정 제목·날짜 없이 오면 "
+    "register 가 아니라 edit(또는 delete)로 하고 target_id 는 빈 문자열로 둔다(코드가 어느 일정인지 되묻는다).\n"
+    "- event_ids(edit·delete 일 때): target_id 와 같은 일을 가리킬 수 있는 다른 일정의 id. 제목에 같은 키워드가 있으면 모두 넣는다"
+    "(예: '치과'라고 했으면 '치과 검진'·'치과 정기검진' 모두). 없으면 빈 배열.\n"
+    "- all_targets(delete 일 때): 사용자가 같은 조건의 일정 여러 건을 한꺼번에 지우라고 했을 때만 true 로 한다"
+    "('오늘 일정 다 삭제해줘', '이번 주 일정 전부 지워줘', '헬스 다 지워줘'). 이때 지울 일정 모두의 id 를 event_ids 에 넣는다(한 번에 10개까지). "
+    "한 건이나 이름으로 하나를 가리키면 false.\n"
     "- changes(edit 일 때만): 사용자가 바꾸라고 한 것만 쓰고 나머지는 빈 문자열, kind 는 0, clear 는 빈 배열로 둔다. "
     "date 는 YYYY-MM-DD([지금] 기준으로 계산), start_time·end_time 은 HH:MM, kind 는 1 약속·2 할 일. "
     "시간을 없애 달라고 하면 clear 에 'time', 장소나 메모를 지워 달라고 하면 'place'·'memo' 를 넣는다. "
+    "단 '팀 회의 없애줘', '치과 지워줘', '그 일정 취소할게'처럼 일정 자체를 없애려는 말은 edit 가 아니라 delete 이다 — "
+    "clear 는 시간·장소·메모를 콕 집어 지워 달라고 했을 때만 쓴다. "
     "'3시로' 처럼 시작 시간만 말하면 start_time 만 쓴다(끝 시간은 코드가 맞춘다).\n"
     "- 공유 대상을 바꿔 달라고 하면(예: '엄마도 같이 공유해줘', '아빠는 공유에서 빼줘', '공유 풀어줘') share_change 를 true 로 하고 "
     "share_ids 에 바뀐 뒤의 공유 대상 전체의 id 를 쓴다: 목록 줄의 '공유:' 대상 중 유지할 사람 + 새로 넣을 사람. 모두 빼 달라면 빈 배열. "
     "'가족 모두'는 말한 사람(나)을 뺀 [가족 구성원] 전원이다. 말하지 않았으면 share_change 는 false, share_ids 는 빈 배열이다. "
-    "공유 대상을 바꿀 수 있는 사람인지는 코드가 확인한다.\n"
-    "- edit·delete 일 때 reply 는 빈 문자열이다. 확인 카드는 코드가 만든다.\n"
+    "공유 대상을 바꿀 수 있는 사람인지는 코드가 확인한다. "
+    + MEMBER_RULE
+    + " 이때 share_change 는 true 로 하고 이미 정해진 사람만 share_ids 에 쓴다.\n"
+    "- edit·delete 일 때 reply 는 빈 문자열이다(공유할 사람을 되묻는 경우만 예외). 삭제 확인 카드는 코드가 만든다.\n"
     "request 일 때 request 객체를 채운다(request 가 아니면 문자열은 빈 문자열, 배열은 빈 배열, date_ambiguous 는 false):\n"
     "- action: create 새 부탁 보내기 / edit 보낸 부탁의 받는 사람 바꾸기(메모 바꾸기 요청도 edit) / cancel 보낸 부탁 취소 / query 부탁의 상세·현황 질문.\n"
     "- create: title(부탁의 핵심을 사용자가 쓴 말로 짧게), date(YYYY-MM-DD, [지금] 기준), start_time·end_time(HH:MM, 말했을 때만), place(말했을 때만), "
     "memo(제목으로 정리한 말 밖의 부연설명은 대부분 memo 에 쓴다. 예: '마트 가서 우유랑 계란 사다 줘' → title '마트 장보기', memo '우유랑 계란'. 부연설명이 없으면 빈 문자열), "
     "to_ids(부탁받을 사람의 [가족 구성원] id. '가족 모두'면 말한 사람(나)을 뺀 전원). 날짜가 둘 이상으로 읽히면 date 는 빈 문자열, "
-    "date_ambiguous 는 true 로 하고 reply 에 두 후보를 물어보는 짧은 문장을 쓴다. [등록 초안]의 종류가 부탁이면 짧은 답도 "
+    "date_ambiguous 는 true 로 하고 reply 에 두 후보를 물어보는 짧은 문장을 쓴다. to_ids 도 같다: "
+    + MEMBER_RULE
+    + " [등록 초안]의 종류가 부탁이면 짧은 답도 "
     "request(create)로 하고 초안의 값을 유지해 합친 전체를 쓴다.\n"
     "- edit: target_id 는 [부탁 목록] 의 id, to_ids 는 바뀐 뒤의 받는 사람 전체 id(목록 줄 '받는분:' 중 유지할 사람 + 새로 넣을 사람). "
     "부탁의 메모는 채팅에서 바꾸지 않는다: 메모를 바꿔 달라는 요청이면 바뀐 뒤의 메모를 memo 에 쓰고(받는 사람을 바꾸지 않으면 to_ids 는 빈 배열) 코드가 앱 상세 화면을 안내한다. "

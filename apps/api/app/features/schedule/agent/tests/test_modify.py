@@ -103,6 +103,7 @@ def test_delete_asks_first_and_runs_on_confirm(client, setup, fake):
     assert body["pending_action"] == {
         "type": "delete",
         "event_id": e["id"],
+        "event_ids": [],
         "changes": {},
         "draft": None,
         "request_id": "",
@@ -137,12 +138,14 @@ def test_unknown_target_is_not_acted_on(client, setup, fake):
     a, _, _, _, _ = setup
     _new(client, a)
     fake.data = _data("delete", "zzzz")  # 보여 준 목록에 없는 id 는 버려진다
-    body = _say(client, a, "치과 지워줘").json()
-    assert body["text"] == modify.NOT_FOUND_TEXT
-    assert body["pending_action"] is None and body["cards"] == []
+    body = _say(client, a, "미용실 지워줘").json()
+    # 이름을 말했는데 목록에 없으면 아무것도 지우지 않고 찾지 못했다고 안내하며 새 등록을 권한다
+    assert body["text"] == modify.NOT_FOUND_OFFER_TEXT and body["pending_action"] is None
+    assert body["cards"] == [] and len(_events(client, a)) == 1
     fake.data = _data("edit", "", title="새 제목")
-    body = _say(client, a, "치과 이름 바꿔줘").json()
-    assert body["text"] == modify.NOT_FOUND_TEXT and body["pending_action"] is None
+    body = _say(client, a, "미용실 이름 바꿔줘").json()
+    assert body["text"] == modify.NOT_FOUND_OFFER_TEXT and body["pending_action"] is None
+    assert _events(client, a)[0]["title"] == "치과"
 
 
 def test_cannot_delete_or_edit_someone_elses_ownerless_event(client, setup, fake):
@@ -217,7 +220,8 @@ def test_edit_with_nothing_to_change_or_bad_time(client, setup, fake):
     fake.data = _data("edit", e["id"])  # 바꿀 값이 없다
     assert _say(client, a, "치과 바꿔줘").json()["text"] == modify.NOTHING_TEXT
     fake.data = _data("edit", e["id"], title="치과")  # 지금과 같은 값
-    assert _say(client, a, "치과 이름 치과로").json()["text"] == modify.NOTHING_TEXT
+    same = _say(client, a, "치과 이름 치과로").json()["text"]
+    assert "이미 그렇게 되어 있어요" in same  # 유효한 값이 이미 그대로면 이미 그렇다고 알린다
     fake.data = _data(
         "edit", e["id"], date="2026-13-45", start_time="25:00", kind=9
     )  # 형식이 틀린 값
@@ -312,14 +316,17 @@ def test_share_change_with_same_targets_or_non_members_changes_nothing(client, s
     a, _, _, other, _ = setup
     e = _new(client, a, share_with=[other])
     fake.data = _data("edit", e["id"], share_change=True, share_ids=[other])  # 지금과 같은 대상
-    assert _say(client, a, "치과 엄마한테 공유").json()["text"] == modify.NOTHING_TEXT
+    same = _say(client, a, "치과 엄마한테 공유").json()
+    assert (
+        "이미" in same["text"] and "공유되어 있어요" in same["text"]
+    )  # 바꿀 게 없으면 이미 공유됐다고 알린다
     e2 = _new(client, a, title="병원")
     fake.data = _data("edit", e2["id"], share_change=True, share_ids=["zzzz"])  # 구성원이 아니다
     body = _say(client, a, "병원 낯선 사람한테 공유").json()
     assert (
         body["pending_action"] is None
     )  # 구성원 아닌 id 는 버려져 "모두 빼기"가 되지만 지금도 비어 있다
-    assert body["text"] == modify.NOTHING_TEXT
+    assert "가족에서 찾지 못했어요" in body["text"]
 
 
 def test_receiver_cannot_change_share_and_does_not_see_targets(client, setup, fake):
@@ -384,7 +391,9 @@ def test_approving_changes_only_the_picked_event_and_only_the_requested_fields(c
     before_b = _snapshot(client, b)
     # 같은 이름이 둘이어도 모델이 하나(둘째)를 고르면 그 일정만, 그리고 시작 시간만 바뀐다
     fake.data = _data("edit", second["id"], start_time="16:00")
-    body = _say(client, a, "치과 4시로 바꿔줘").json()
+    asked = _say(client, a, "치과 4시로 바꿔줘").json()
+    assert asked["pending_action"] is None and "어느 쪽인가요?" in asked["text"]  # 같은 이름이 둘이면 되묻는다
+    body = _say(client, a, f"{_md(9)} 걸로").json()
     assert body["pending_action"]["event_id"] == second["id"]
     assert body["pending_action"]["changes"] == {"start_time": "16:00", "end_time": "17:00"}
     assert body["cards"][0]["data"]["event"]["id"] == second["id"]  # 카드가 어느 일정인지 보여 준다
@@ -445,3 +454,273 @@ def test_confirm_rejects_non_member_share_target(client, setup, fake):
     forged = {"type": "edit", "event_id": e["id"], "changes": {"share_with": ["zzzz"]}}
     r = _confirm(client, a, forged)
     assert r.status_code == 400 and r.json()["code"] == "invalid_share_target"
+
+
+# ---------- 같은 제목 여럿: 시점 규칙·후보 되묻기(정책 #29·#30·#33) ----------
+def _md(n: int) -> str:
+    d = _day(n)
+    return f"{int(d[5:7])}/{int(d[8:10])}"
+
+
+def test_same_title_future_edit_asks_with_candidates_then_applies_chosen(client, setup, fake):
+    a, _, _, _, _ = setup
+    first = _new(client, a, start_date=_day(3))
+    second = _new(client, a, start_date=_day(10))
+    fake.data = _data("edit", first["id"], place="서초")
+    body = _say(client, a, "치과 장소를 서초로 바꿔줘").json()
+    assert body["pending_action"] is None and "어느 쪽인가요? 모두인가요?" in body["text"]
+    shown = [e["id"] for e in body["cards"][0]["data"]["events"]]
+    assert shown == [first["id"], second["id"]]
+    assert {e["place"] for e in _events(client, a)} == {""}  # 답하기 전에는 바꾸지 않는다
+
+    done = _say(client, a, f"{_md(10)} 걸로").json()  # 날짜로 고른다(AI 를 다시 부르지 않는다)
+    assert done["pending_action"]["event_id"] == second["id"]  # 수정은 확인 카드를 거친다
+    assert _confirm(client, a, done["pending_action"]).status_code == 200
+    places = {e["id"]: e["place"] for e in _events(client, a)}
+    assert places[second["id"]] == "서초" and places[first["id"]] == ""
+
+
+def test_same_title_all_answer_applies_to_every_candidate(client, setup, fake):
+    a, _, _, _, _ = setup
+    first = _new(client, a, start_date=_day(3))
+    _new(client, a, start_date=_day(10))
+    fake.data = _data("edit", first["id"], place="서초")
+    _say(client, a, "치과 장소를 서초로 바꿔줘")
+    done = _say(client, a, "모두").json()
+    assert "한 번에 한 일정씩" in done["text"] and done["pending_action"] is None
+    assert {e["place"] for e in _events(client, a)} == {""}  # 카드 확인 전에는 바꾸지 않는다
+
+
+def test_past_and_future_same_title_uses_future_only(client, setup, fake):
+    a, _, _, _, _ = setup
+    past = _new(client, a, start_date=_day(-8))
+    future = _new(client, a, start_date=_day(9))
+    fake.data = _data(
+        "edit", past["id"], place="서초"
+    )  # 모델이 지난 일정을 골라도 미래 하나만 처리한다
+    body = _say(client, a, "치과 장소 서초로").json()
+    assert body["pending_action"]["event_id"] == future["id"]  # 다가오는 하나만 카드로 묻는다
+    assert _confirm(client, a, body["pending_action"]).status_code == 200
+    places = {e["id"]: e["place"] for e in _events(client, a)}
+    assert places[future["id"]] == "서초" and places[past["id"]] == ""
+
+    fake.data = _data("delete", past["id"])
+    body = _say(client, a, "치과 지워줘").json()  # 삭제도 미래 하나가 대상이고 카드는 유지
+    assert body["pending_action"]["event_id"] == future["id"] and body["choice"] is None
+
+
+def test_user_naming_the_date_skips_the_question(client, setup, fake):
+    a, _, _, _, _ = setup
+    first = _new(client, a, start_date=_day(3))
+    _new(client, a, start_date=_day(10))
+    fake.data = _data("edit", first["id"], place="서초")
+    body = _say(client, a, f"{_md(3)} 치과 장소를 서초로 바꿔줘").json()
+    assert body["pending_action"]["event_id"] == first["id"] and body.get("choice") is None
+
+
+def test_delete_choice_deletes_without_card_and_past_only_asks_if_right(client, setup, fake):
+    a, _, _, _, _ = setup
+    one = _new(client, a, start_date=_day(4))
+    two = _new(client, a, start_date=_day(11))
+    fake.data = _data("delete", one["id"])
+    body = _say(client, a, "치과 지워줘").json()
+    assert "어느 쪽인가요" in body["text"] and body["pending_action"] is None
+    done = _say(client, a, "첫 번째").json()
+    assert "지웠어요" in done["text"] and done["pending_action"] is None
+    assert [e["id"] for e in _events(client, a)] == [two["id"]]
+
+    gone = _new(client, a, title="헬스", start_date=_day(-6))
+    fake.data = _data("delete", gone["id"])
+    assert _say(client, a, "헬스 지워줘").json()["pending_action"] is not None  # 하나뿐이면 카드
+    old1 = _new(client, a, title="요가", start_date=_day(-9))
+    old2 = _new(client, a, title="요가", start_date=_day(-3))
+    fake.data = _data("delete", old1["id"])
+    body = _say(client, a, "요가 지워줘").json()
+    assert "지난 일정" in body["text"] and body["cards"][0]["data"]["events"][0]["id"] == old2["id"]
+    done = _say(client, a, "응").json()
+    assert "지웠어요" in done["text"]
+    assert old2["id"] not in [e["id"] for e in _events(client, a)]
+
+
+def test_unreadable_answer_is_a_new_request_and_cancel_does_nothing(client, setup, fake):
+    a, _, _, _, _ = setup
+    one = _new(client, a, start_date=_day(4))
+    _new(client, a, start_date=_day(11))
+    fake.data = _data("delete", one["id"])
+    _say(client, a, "치과 지워줘")
+    fake.data = _data("query")
+    body = _say(client, a, "내일 일정 알려줘").json()  # 답이 아니라 새 요청
+    assert body["intent"] != "delete" and len(_events(client, a)) == 2
+    fake.data = _data("delete", one["id"])
+    _say(client, a, "치과 지워줘")
+    body = _say(client, a, "아니 취소").json()
+    assert "지우지 않았어요" in body["text"] and len(_events(client, a)) == 2
+
+
+def test_similar_titles_sharing_a_keyword_are_candidates_too(client, setup, fake):
+    a, _, _, _, _ = setup
+    first = _new(client, a, title="치과 검진", start_date=_day(3))
+    second = _new(client, a, title="치과 정기검진", start_date=_day(10))
+    data = _data("edit", first["id"], place="서초")
+    data["event_ids"] = [second["id"]]  # 모델이 같은 키워드('치과') 일정도 후보로 돌려준다
+    fake.data = data
+    body = _say(client, a, "치과 장소를 서초로 바꿔줘").json()
+    assert body["pending_action"] is None and "어느 쪽인가요? 모두인가요?" in body["text"]
+    shown = [e["title"] for e in body["cards"][0]["data"]["events"]]
+    assert shown == ["치과 검진", "치과 정기검진"]
+    done = _say(client, a, "두 번째").json()
+    assert done["pending_action"]["event_id"] == second["id"]
+    assert _confirm(client, a, done["pending_action"]).status_code == 200
+    places = {e["id"]: e["place"] for e in _events(client, a)}
+    assert places[second["id"]] == "서초" and places[first["id"]] == ""
+
+
+def test_share_with_ambiguous_member_asks_then_shares_the_named_one(client, setup, fake):
+    a, b, _, other, _ = setup
+    name = client.get("/family-group/me", headers=b).json()["name"]
+    e = _new(client, a)
+    data = _data("edit", e["id"], share_change=True, share_ids=[], member_ambiguous=True)
+    data["reply"] = f"삼촌이 두 분이에요. 누구를 말씀하시나요? ({name}, 지훈)"
+    fake.data = data
+    body = _say(client, a, "치과 삼촌한테 공유해줘").json()
+    assert body["text"] == data["reply"] and body["pending_action"] is None
+    assert _events(client, b) == []  # 누구인지 정해지기 전에는 공유하지 않는다
+
+    done = _say(client, a, f"{name}이야").json()  # 이름으로 답하면 AI 를 다시 부르지 않고 처리한다
+    assert done["pending_action"]["changes"]["share_with"]  # 공유 변경도 확인 카드를 거친다
+    assert _events(client, b) == []
+    assert _confirm(client, a, done["pending_action"]).status_code == 200
+    assert [x["title"] for x in _events(client, b)] == ["치과"]
+    assert other
+
+
+def test_choice_reads_both_and_other_natural_answers():
+    from datetime import UTC, datetime
+
+    from app.features.schedule.agent import choice
+    from app.features.schedule.agent.schemas import Choice
+
+    class Ev:
+        def __init__(self, i, day):
+            self.id = i
+            self.title = f"일정{i}"
+            self.starts_at = datetime(2026, 11, day, 10, tzinfo=UTC)
+
+    events = [Ev("a", 12), Ev("b", 19)]
+    chosen = Choice(kind="edit", event_ids=["a", "b"])
+    for said in ("둘 다", "둘다 바꿔줘", "모두", "전부 다"):
+        assert choice.pick(said, chosen, events) == ["a", "b"], said
+    assert choice.pick("두 번째", chosen, events) == ["b"]
+    assert choice.pick("글쎄", chosen, events) is None
+
+
+# ---------- 여러 건 삭제(정책 #28) ----------
+def _many(fake, ids):
+    data = _data("delete", ids[0])
+    data["all_targets"] = True
+    data["event_ids"] = ids
+    fake.data = data
+
+
+def test_delete_many_asks_once_then_deletes_each(client, setup, fake):
+    a, _, _, _, _ = setup
+    ids = [_new(client, a, title=f"일정{n}", start_date=_day(n + 1))["id"] for n in range(3)]
+    _many(fake, ids)
+    body = _say(client, a, "이번 주 일정 다 삭제해줘").json()
+    assert body["pending_action"]["event_ids"] == ids and "3개 일정을 지울까요" in body["text"]
+    assert len(body["cards"][0]["data"]["events"]) == 3 and len(_events(client, a)) == 3
+
+    done = _confirm(client, a, body["pending_action"]).json()
+    assert "3개 일정을 지웠어요" in done["text"] and _events(client, a) == []
+
+
+def test_delete_many_reports_partial_failure_and_caps_at_ten(client, setup, fake, monkeypatch):
+    from app.features.schedule import service as schedule_service
+    from app.shared.errors import ApiError
+
+    a, _, _, _, _ = setup
+    ids = [_new(client, a, title=f"일정{n}", start_date=_day(n + 1))["id"] for n in range(3)]
+    real = schedule_service.remove
+
+    def flaky(db, group_id, user_id, event_id):
+        if event_id == ids[1]:
+            raise ApiError(500, "boom", "삭제 실패")
+        return real(db, group_id, user_id, event_id)
+
+    monkeypatch.setattr(schedule_service, "remove", flaky)
+    _many(fake, ids)
+    body = _say(client, a, "일정 다 지워줘").json()
+    done = _confirm(client, a, body["pending_action"]).json()
+    assert (
+        "까지 지웠고" in done["text"]
+        and "'일정1'" in done["text"]
+        and "못 지웠어요" in done["text"]
+    )
+    assert [e["id"] for e in _events(client, a)] == [ids[1]]
+
+    monkeypatch.setattr(schedule_service, "remove", real)
+    many = [_new(client, a, title=f"할일{n}", start_date=_day(n + 1))["id"] for n in range(12)]
+    _many(fake, many)
+    body = _say(client, a, "할일 다 지워줘").json()
+    assert len(body["pending_action"]["event_ids"]) == 10 and "나머지 2개" in body["text"]
+
+
+# ---------- 문장에 대상이 없을 때: 후보를 보여 주며 어느 일정인지 되묻기(정책 #35) ----------
+def test_no_target_asks_which_event_then_continues_the_change(client, setup, fake):
+    a, b, _, other, _ = setup
+    first = _new(client, a, title="치과", start_date=_day(3))
+    _new(client, a, title="학부모 상담", start_date=_day(5))
+    fake.data = _data("edit", "", share_change=True, share_ids=[other])
+    fake.data["target_unnamed"] = True  # 이름 없이 가리킨 문장
+    body = _say(client, a, "엄마한테도 공유해줘").json()
+    assert body["text"] == "어느 일정인가요?" and body["pending_action"] is None
+    assert [e["title"] for e in body["cards"][0]["data"]["events"]] == ["치과", "학부모 상담"]
+    assert _events(client, b) == []  # 고르기 전에는 공유하지 않는다
+
+    done = _say(client, a, "치과").json()  # 제목으로 고른다
+    assert done["pending_action"]["event_id"] == first["id"]
+    assert _events(client, b) == []
+    assert _confirm(client, a, done["pending_action"]).status_code == 200
+    assert [x["title"] for x in _events(client, b)] == ["치과"]
+
+
+def test_no_target_delete_asks_which_then_deletes_the_chosen_one(client, setup, fake):
+    a, _, _, _, _ = setup
+    _new(client, a, title="치과", start_date=_day(3))
+    keep = _new(client, a, title="학부모 상담", start_date=_day(5))
+    fake.data = _data("delete", "")
+    fake.data["target_unnamed"] = True
+    assert _say(client, a, "그거 지워줘").json()["text"] == "어느 일정인가요?"
+    done = _say(client, a, "첫 번째").json()
+    assert "지웠어요" in done["text"] and [e["id"] for e in _events(client, a)] == [keep["id"]]
+
+
+def test_target_the_model_missed_is_found_by_the_title_in_the_sentence(client, setup, fake):
+    a, _, _, _, _ = setup
+    e = _new(client, a, title="가족 나들이", start_date=_day(9))
+    fake.data = _data("delete", "")  # 목록(기간으로 걸러진)에 없어서 모델이 대상을 못 골랐다
+    body = _say(client, a, "일요일 가족 나들이 취소할게").json()
+    assert body["pending_action"]["event_id"] == e["id"] and "지울까요" in body["text"]
+
+
+def test_delete_many_only_when_the_sentence_says_all(client, setup, fake):
+    a, _, _, _, _ = setup
+    ids = [_new(client, a, title="헬스", start_date=_day(n + 2))["id"] for n in range(2)]
+    _many(fake, ids)  # 모델이 여러 건 삭제로 읽어도
+    body = _say(client, a, "헬스 지워줘").json()  # '다·전부·모두'가 없으면 어느 쪽인지 되묻는다
+    assert body["pending_action"] is None and "어느 쪽인가요? 모두인가요?" in body["text"]
+    _say(client, a, "아니 그만")  # 앞의 되묻기를 접는다
+    _many(fake, ids)
+    body = _say(client, a, "헬스 다 지워줘").json()
+    assert body["pending_action"]["event_ids"] == ids
+
+
+def test_share_to_someone_already_shared_says_so_instead_of_asking_what_to_change(
+    client, setup, fake
+):
+    a, _, _, other, _ = setup
+    e = _new(client, a, share_with=[other])
+    fake.data = _data("edit", e["id"], share_change=True, share_ids=[other])
+    body = _say(client, a, "치과 엄마한테 공유해줘").json()
+    assert "이미" in body["text"] and "공유되어 있어요" in body["text"]
+    assert body["pending_action"] is None and "무엇을 바꿀지" not in body["text"]

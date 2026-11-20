@@ -195,12 +195,10 @@ def test_room_register_is_shared_with_the_other_members(client, family, schedule
     }
     _main_llm(monkeypatch, "내일 6시 가족 저녁 등록해줘")
     out = _chat(client, a, "내일 6시 가족 저녁 등록해줘", audience="room")
-    card = out["confirm_cards"][0]
-    assert card["action"] == "register" and card["shared_with"] == ["수진"]
-    assert _events(client, b) == []  # 확인 전에는 공유하지 않는다
-
-    r = client.post("/schedule/agent/confirm", json={"action": card["pending_action"]}, headers=a)
-    assert r.status_code == 200, r.text
+    assert (
+        out["confirm_cards"] == []
+    )  # 방에서도 공유 등록은 확인카드 없이 바로 하고, 방에는 "등록했어요" 답만 나간다
+    assert "등록했어요" in out["reply"] and "1명에게 공유했어요" in out["reply"]
     assert [e["title"] for e in _events(client, a)] == ["가족 저녁"]  # 요청한 사람이 생성자
     assert [e["title"] for e in _events(client, b)] == [
         "가족 저녁"
