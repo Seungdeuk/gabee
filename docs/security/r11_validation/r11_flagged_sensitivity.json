@@ -1,0 +1,306 @@
+{
+ "flagged_rows": {
+  "all_12_dev_flagged": 12,
+  "S_and_F_only(4)": 4
+ },
+ "denominators": {
+  "dev_gold_spans": 1497,
+  "dev_pairs": 400
+ },
+ "scenarios": {
+  "all_12_dev_flagged": {
+   "gate_status_flips": {
+    "service": {
+     "G8": [
+      true,
+      false
+     ]
+    },
+    "R9F-s13": {
+     "G5": [
+      false,
+      true
+     ]
+    },
+    "R10full-s13": {
+     "R3": [
+      true,
+      false
+     ]
+    },
+    "R9F-s99": {
+     "R3": [
+      true,
+      false
+     ]
+    }
+   },
+   "n_models_with_flip": 4,
+   "max_abs_metric_change_pp": {
+    "recall_pp": 0.159,
+    "total_exposure_pp": 0.101,
+    "pair_acc_pp": 0.353,
+    "targets_macro_pp": 0.195,
+    "f1_pp": 0.214
+   },
+   "per_model_delta_pp": {
+    "service": {
+     "recall_pp": -0.159,
+     "total_exposure_pp": 0.044,
+     "pair_acc_pp": 0.091,
+     "targets_macro_pp": 0.15,
+     "f1_pp": -0.214
+    },
+    "R9F-s7": {
+     "recall_pp": -0.049,
+     "total_exposure_pp": 0.075,
+     "pair_acc_pp": -0.095,
+     "targets_macro_pp": 0.175,
+     "f1_pp": -0.065
+    },
+    "C10-s7": {
+     "recall_pp": -0.113,
+     "total_exposure_pp": 0.101,
+     "pair_acc_pp": -0.108,
+     "targets_macro_pp": 0.142,
+     "f1_pp": -0.094
+    },
+    "R10full-s7": {
+     "recall_pp": 0.034,
+     "total_exposure_pp": 0.029,
+     "pair_acc_pp": 0.132,
+     "targets_macro_pp": 0.188,
+     "f1_pp": 0.042
+    },
+    "R9F-s13": {
+     "recall_pp": -0.033,
+     "total_exposure_pp": 0.055,
+     "pair_acc_pp": 0.132,
+     "targets_macro_pp": 0.139,
+     "f1_pp": -0.06
+    },
+    "C10-s13": {
+     "recall_pp": -0.02,
+     "total_exposure_pp": 0.052,
+     "pair_acc_pp": 0.091,
+     "targets_macro_pp": 0.151,
+     "f1_pp": -0.044
+    },
+    "R10full-s13": {
+     "recall_pp": 0.016,
+     "total_exposure_pp": 0.007,
+     "pair_acc_pp": -0.093,
+     "targets_macro_pp": 0.077,
+     "f1_pp": 0.026
+    },
+    "R9F-s21": {
+     "recall_pp": 0.113,
+     "total_exposure_pp": -0.088,
+     "pair_acc_pp": 0.153,
+     "targets_macro_pp": 0.037,
+     "f1_pp": 0.032
+    },
+    "C10-s21": {
+     "recall_pp": 0.029,
+     "total_exposure_pp": -0.006,
+     "pair_acc_pp": 0.161,
+     "targets_macro_pp": 0.111,
+     "f1_pp": -0.018
+    },
+    "R10full-s21": {
+     "recall_pp": 0.025,
+     "total_exposure_pp": 0.014,
+     "pair_acc_pp": -0.046,
+     "targets_macro_pp": 0.099,
+     "f1_pp": -0.01
+    },
+    "R9F-s42": {
+     "recall_pp": -0.026,
+     "total_exposure_pp": 0.06,
+     "pair_acc_pp": -0.146,
+     "targets_macro_pp": 0.151,
+     "f1_pp": -0.058
+    },
+    "C10-s42": {
+     "recall_pp": 0.099,
+     "total_exposure_pp": -0.062,
+     "pair_acc_pp": 0.17,
+     "targets_macro_pp": 0.024,
+     "f1_pp": 0.065
+    },
+    "R10full-s42": {
+     "recall_pp": 0.034,
+     "total_exposure_pp": 0.02,
+     "pair_acc_pp": -0.046,
+     "targets_macro_pp": 0.07,
+     "f1_pp": 0.015
+    },
+    "R9F-s99": {
+     "recall_pp": -0.092,
+     "total_exposure_pp": 0.097,
+     "pair_acc_pp": -0.353,
+     "targets_macro_pp": 0.145,
+     "f1_pp": -0.102
+    },
+    "C10-s99": {
+     "recall_pp": -0.077,
+     "total_exposure_pp": 0.095,
+     "pair_acc_pp": -0.089,
+     "targets_macro_pp": 0.195,
+     "f1_pp": -0.085
+    },
+    "R10full-s99": {
+     "recall_pp": 0.001,
+     "total_exposure_pp": 0.049,
+     "pair_acc_pp": -0.05,
+     "targets_macro_pp": 0.147,
+     "f1_pp": 0.006
+    }
+   }
+  },
+  "S_and_F_only(4)": {
+   "gate_status_flips": {
+    "service": {
+     "G8": [
+      true,
+      false
+     ]
+    },
+    "R10full-s13": {
+     "R3": [
+      true,
+      false
+     ]
+    },
+    "R9F-s99": {
+     "R3": [
+      true,
+      false
+     ]
+    }
+   },
+   "n_models_with_flip": 3,
+   "max_abs_metric_change_pp": {
+    "recall_pp": 0.168,
+    "total_exposure_pp": 0.119,
+    "pair_acc_pp": 0.0,
+    "targets_macro_pp": 0.155,
+    "f1_pp": 0.154
+   },
+   "per_model_delta_pp": {
+    "service": {
+     "recall_pp": -0.129,
+     "total_exposure_pp": 0.013,
+     "pair_acc_pp": 0.0,
+     "targets_macro_pp": 0.064,
+     "f1_pp": -0.154
+    },
+    "R9F-s7": {
+     "recall_pp": -0.149,
+     "total_exposure_pp": 0.098,
+     "pair_acc_pp": 0.0,
+     "targets_macro_pp": 0.147,
+     "f1_pp": -0.127
+    },
+    "C10-s7": {
+     "recall_pp": -0.148,
+     "total_exposure_pp": 0.079,
+     "pair_acc_pp": 0.0,
+     "targets_macro_pp": 0.1,
+     "f1_pp": -0.132
+    },
+    "R10full-s7": {
+     "recall_pp": -0.107,
+     "total_exposure_pp": 0.073,
+     "pair_acc_pp": 0.0,
+     "targets_macro_pp": 0.138,
+     "f1_pp": -0.094
+    },
+    "R9F-s13": {
+     "recall_pp": -0.142,
+     "total_exposure_pp": 0.089,
+     "pair_acc_pp": 0.0,
+     "targets_macro_pp": 0.121,
+     "f1_pp": -0.123
+    },
+    "C10-s13": {
+     "recall_pp": -0.168,
+     "total_exposure_pp": 0.119,
+     "pair_acc_pp": 0.0,
+     "targets_macro_pp": 0.136,
+     "f1_pp": -0.142
+    },
+    "R10full-s13": {
+     "recall_pp": -0.119,
+     "total_exposure_pp": 0.066,
+     "pair_acc_pp": 0.0,
+     "targets_macro_pp": 0.081,
+     "f1_pp": -0.106
+    },
+    "R9F-s21": {
+     "recall_pp": -0.07,
+     "total_exposure_pp": 0.018,
+     "pair_acc_pp": 0.0,
+     "targets_macro_pp": 0.057,
+     "f1_pp": -0.077
+    },
+    "C10-s21": {
+     "recall_pp": -0.144,
+     "total_exposure_pp": 0.092,
+     "pair_acc_pp": 0.0,
+     "targets_macro_pp": 0.126,
+     "f1_pp": -0.125
+    },
+    "R10full-s21": {
+     "recall_pp": -0.115,
+     "total_exposure_pp": 0.07,
+     "pair_acc_pp": 0.0,
+     "targets_macro_pp": 0.097,
+     "f1_pp": -0.097
+    },
+    "R9F-s42": {
+     "recall_pp": -0.139,
+     "total_exposure_pp": 0.091,
+     "pair_acc_pp": 0.0,
+     "targets_macro_pp": 0.129,
+     "f1_pp": -0.122
+    },
+    "C10-s42": {
+     "recall_pp": -0.041,
+     "total_exposure_pp": -0.005,
+     "pair_acc_pp": 0.0,
+     "targets_macro_pp": 0.006,
+     "f1_pp": -0.028
+    },
+    "R10full-s42": {
+     "recall_pp": -0.043,
+     "total_exposure_pp": 0.005,
+     "pair_acc_pp": 0.0,
+     "targets_macro_pp": 0.033,
+     "f1_pp": -0.056
+    },
+    "R9F-s99": {
+     "recall_pp": -0.138,
+     "total_exposure_pp": 0.077,
+     "pair_acc_pp": 0.0,
+     "targets_macro_pp": 0.102,
+     "f1_pp": -0.122
+    },
+    "C10-s99": {
+     "recall_pp": -0.162,
+     "total_exposure_pp": 0.108,
+     "pair_acc_pp": 0.0,
+     "targets_macro_pp": 0.155,
+     "f1_pp": -0.138
+    },
+    "R10full-s99": {
+     "recall_pp": -0.09,
+     "total_exposure_pp": 0.051,
+     "pair_acc_pp": 0.0,
+     "targets_macro_pp": 0.096,
+     "f1_pp": -0.057
+    }
+   }
+  }
+ }
+}
