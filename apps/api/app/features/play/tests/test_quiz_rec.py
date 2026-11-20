@@ -7,6 +7,7 @@ from sqlalchemy import select
 
 from app.features.play import quiz_rec
 from app.features.play.models import PlayQuiz
+from app.features.play.rec_pick import pick_for_user
 from app.features.schedule.models import Event
 from app.shared import ai_guard
 from app.shared.ai_usage import AiResultCache
@@ -414,3 +415,52 @@ def test_other_family_does_not_share_the_cache(client, ready, other_family, fake
 
 def test_requires_login(client):
     assert client.get(REC).status_code in (401, 403)
+
+
+# ---------- 사용자마다 다르게 ----------
+def four_questions():
+    return {"questions": [q(question=f"여행지는 어디였을까 {k}?") for k in range(4)]}
+
+
+def expected_ids(group, user_id):
+    everything = [{"id": quiz_rec._item_id(x["question"])} for x in four_questions()["questions"]]
+    return [i["id"] for i in pick_for_user(everything, group["id"], user_id, TODAY)]
+
+
+def test_items_are_half_for_each_user(client, ready, fake):
+    a, b, group = ready
+    fake.data = four_questions()
+    for headers in (a, b):
+        body = get(client, headers)
+        assert body["state"] == "ok"
+        assert [i["id"] for i in body["items"]] == expected_ids(group, me(client, headers))
+        assert len(body["items"]) == 2
+
+
+def test_same_user_gets_same_items_on_reopen_and_ai_is_called_once(client, ready, fake):
+    a, b, _ = ready
+    fake.data = four_questions()
+    first = get(client, a)
+    assert get(client, a) == first
+    get(client, b)
+    assert len(fake.calls) == 1  # 가족 캐시는 전체 목록 그대로
+
+
+def test_all_hidden_is_still_used_up(client, ready, fake):
+    a, b, _ = ready
+    assert get(client, a)["state"] == "ok"
+    client.post(
+        "/play/quiz",
+        json={
+            "questions": [
+                {
+                    "qtype": 1,
+                    "question": "여행지는 어디였을까?",
+                    "options": ["O", "X"],
+                    "answer_index": 0,
+                }
+            ]
+        },
+        headers=a,
+    )
+    assert get(client, b) == {"state": "used_up", "items": []}
