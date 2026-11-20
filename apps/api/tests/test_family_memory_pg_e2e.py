@@ -233,7 +233,10 @@ def test_leaving_family_withdraws_consent_and_purge_deletes_all_rows_on_postgres
     assert rows(pg, "SELECT count(*) FROM groups WHERE id=%s", gid) == [(0,)]
 
 
-def test_failed_cleanup_rolls_back_withdrawal_on_postgres(pg_client):
+def test_failed_cleanup_does_not_roll_back_withdrawal_or_leave_on_postgres(pg_client):
+    """PR6 안전성: 정리가 **실제 DB 오류**로 실패해도(PostgreSQL 은 오류가 나면 트랜잭션이 중단되므로 SAVEPOINT 가 필요하다) 철회·가족 나가기는 수락돼 유지된다."""
+    from sqlalchemy import text
+
     from app.shared import memory_hooks
 
     client, pg = pg_client
@@ -242,22 +245,251 @@ def test_failed_cleanup_rolls_back_withdrawal_on_postgres(pg_client):
     client.put(f"{M}/settings", json={"enabled": True}, headers=owner)
     client.put(f"{M}/consent", json={"consent": True}, headers=guest)
 
-    def boom(db, group_id, user_id):
-        raise RuntimeError("cleanup failed")
+    def db_error(db, group_id, user_id):
+        db.execute(text("SELECT * FROM no_such_table_for_cleanup"))  # 진짜 DB 오류
 
     saved = list(memory_hooks._member_withdrawn)
-    memory_hooks.register_member_withdrawn(boom)
+    memory_hooks.register_member_withdrawn(db_error)
     try:
-        with pytest.raises(RuntimeError):
-            client.put(f"{M}/consent", json={"consent": False}, headers=guest)
-        with pytest.raises(RuntimeError):  # 가족 나가기도 통째로 취소된다
-            client.post(f"{P}/groups/me/leave", headers=guest)
+        assert client.put(f"{M}/consent", json={"consent": False}, headers=guest).status_code == 200
+        assert rows(
+            pg,
+            "SELECT withdrawn_at IS NOT NULL FROM member_memory_consents WHERE user_id=%s",
+            guest_id,
+        ) == [(True,)]  # 철회가 유지된다
+        assert (
+            client.post(f"{P}/groups/me/leave", headers=guest).status_code == 204
+        )  # 나가기도 성공
     finally:
         memory_hooks._member_withdrawn[:] = saved
+    assert rows(pg, "SELECT count(*) FROM group_members WHERE user_id=%s", guest_id) == [(0,)]
+
+
+def _eligible_photos(client, pg, count):
+    """가족 활성화·업로더 동의·확인된 일반 사진 `count` 장(D-13: 확인 상태는 관리자 연결로 만든다)."""
+    owner, _, _ = _family(client)
+    assert client.put(f"{M}/settings", json={"enabled": True}, headers=owner).status_code == 200
+    assert client.put(f"{M}/consent", json={"consent": True}, headers=owner).status_code == 200
+    ids = [_photo(client, owner)[0] for _ in range(count)]
+    with admin(pg) as conn:
+        for att in ids:
+            conn.execute(
+                "UPDATE chat_photo_checks SET status='photo' WHERE attachment_id=%s", (att,)
+            )
+    return owner, ids
+
+
+def _sessions(pg, n):
+    engines = [create_engine(url(pg)) for _ in range(n)]
+    return engines, [sessionmaker(bind=e)() for e in engines]
+
+
+def test_job_table_defaults_unique_and_cascade_on_postgres(pg_client):
+    from app.features.family_memory import job_service as js
+
+    client, pg = pg_client
+    _, ids = _eligible_photos(client, pg, 2)
+    engines, (db,) = _sessions(pg, 1)
+    try:
+        first = js.enqueue(db, ids[0])
+        again = js.enqueue(db, ids[0])
+    finally:
+        db.close()
+        engines[0].dispose()
+    assert (first.outcome, again.outcome) == ("queued", "exists")
     assert rows(
-        pg, "SELECT withdrawn_at IS NULL FROM member_memory_consents WHERE user_id=%s", guest_id
-    ) == [(True,)]
-    assert rows(pg, "SELECT count(*) FROM group_members WHERE user_id=%s", guest_id) == [(1,)]
+        pg, "SELECT status, attempts, max_attempts, lease_until FROM family_memory_jobs"
+    ) == [("queued", 0, 3, None)]
+    with pytest.raises(psycopg.errors.UniqueViolation):  # 같은 사진·종류는 DB 가 한 줄만 허용한다
+        with admin(pg) as conn:
+            conn.execute(
+                "INSERT INTO family_memory_jobs (id, group_id, attachment_id, user_id, kind, run_after,"
+                " created_at, updated_at) SELECT 'dup', group_id, attachment_id, user_id, kind, now(),"
+                " now(), now() FROM family_memory_jobs"
+            )
+    with admin(pg) as conn:  # 첨부를 지우면 DB 가 작업도 따라 지운다(ON DELETE CASCADE)
+        conn.execute("DELETE FROM message_attachments WHERE id=%s", (ids[0],))
+    assert _count(pg, "family_memory_jobs") == 0
+
+
+def test_concurrent_workers_never_claim_the_same_job_on_postgres(pg_client):
+    """여러 워커가 동시에 선점해도 FOR UPDATE SKIP LOCKED 로 작업마다 정확히 한 워커만 가져간다(시도 횟수도 1)."""
+    import threading
+
+    from app.features.family_memory import job_service as js
+
+    client, pg = pg_client
+    _, ids = _eligible_photos(client, pg, 8)
+    engines, sessions = _sessions(pg, 1)
+    try:
+        for att in ids:
+            assert js.enqueue(sessions[0], att).outcome == "queued"
+    finally:
+        sessions[0].close()
+        engines[0].dispose()
+
+    workers = 6
+    barrier = threading.Barrier(workers)
+    taken: list[tuple[str, str]] = []
+    lock = threading.Lock()
+
+    def run(n: int) -> None:
+        engine = create_engine(url(pg))
+        try:
+            barrier.wait()
+            while True:
+                with sessionmaker(bind=engine)() as db:
+                    job = js.claim(db, f"w{n}", [js.KIND_PHOTO])
+                if job is None:
+                    return
+                with lock:
+                    taken.append((job.id, f"w{n}"))
+        finally:
+            engine.dispose()
+
+    threads = [threading.Thread(target=run, args=(n,)) for n in range(workers)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    job_ids = [j for j, _ in taken]
+    assert len(job_ids) == len(set(job_ids)) == 8  # 중복 선점 없음·누락 없음
+    assert rows(pg, "SELECT DISTINCT attempts, status FROM family_memory_jobs") == [(1, "running")]
+
+
+def test_a_row_locked_by_another_worker_is_skipped_not_waited_on_postgres(pg_client):
+    from app.features.family_memory import job_repository as jobs
+    from app.features.family_memory import job_service as js
+
+    client, pg = pg_client
+    _, ids = _eligible_photos(client, pg, 2)
+    engines, (setup, holder, other) = _sessions(pg, 3)
+    try:
+        for att in ids:
+            js.enqueue(setup, att)
+        locked = jobs.next_candidate(holder, [js.KIND_PHOTO], js._now())  # 첫 작업을 잠근 채 둔다
+        assert locked is not None
+        claimed = js.claim(
+            other, "w2", [js.KIND_PHOTO]
+        )  # 기다리지 않고 건너뛰어 다른 작업을 가져온다
+        assert claimed is not None and claimed.id != locked.id
+        holder.rollback()
+        assert (
+            js.claim(other, "w2", [js.KIND_PHOTO]).id == locked.id
+        )  # 잠금이 풀리면 가져갈 수 있다
+    finally:
+        for db in (setup, holder, other):
+            db.close()
+        for e in engines:
+            e.dispose()
+
+
+def test_withdrawal_and_leave_cancel_jobs_in_the_same_transaction_on_postgres(pg_client):
+    from app.features.family_memory import job_service as js
+
+    client, pg = pg_client
+    owner, ids = _eligible_photos(client, pg, 1)
+    engines, (db,) = _sessions(pg, 1)
+    try:
+        assert js.enqueue(db, ids[0]).outcome == "queued"
+    finally:
+        db.close()
+        engines[0].dispose()
+    assert client.put(f"{M}/consent", json={"consent": False}, headers=owner).status_code == 200
+    assert rows(pg, "SELECT status, cancel_reason FROM family_memory_jobs") == [
+        ("canceled", "withdrawn")
+    ]
+
+
+def test_embedding_is_saved_through_the_gate_and_removed_by_cascade_on_postgres(
+    pg_client, monkeypatch
+):
+    from app.features.family_memory import analysis, worker
+    from app.features.family_memory import job_service as js
+
+    monkeypatch.setattr(settings, "family_memory_encoder", "fake")
+    analysis.reset_encoder()
+    saved = dict(worker._handlers)
+    client, pg = pg_client
+    _, ids = _eligible_photos(client, pg, 1)
+    engines, (db,) = _sessions(pg, 1)
+    try:
+        assert js.enqueue(db, ids[0], analysis.KIND_EMBEDDING).outcome == "queued"
+    finally:
+        db.close()
+        engines[0].dispose()
+    try:
+        analysis.register_handlers()
+        engine = create_engine(url(pg))
+        try:
+            with sessionmaker(bind=engine)() as s:
+                job = js.claim(s, "w1", [analysis.KIND_EMBEDDING])
+            result = analysis.run(job)
+            with sessionmaker(bind=engine)() as s:
+                assert js.complete(s, job, "w1", result, analysis.save) == "done"
+        finally:
+            engine.dispose()
+    finally:
+        worker._handlers.clear()
+        worker._handlers.update(saved)
+        analysis.reset_encoder()
+    assert rows(pg, "SELECT model_id, dim, octet_length(vector) FROM photo_embeddings") == [
+        ("fake-gray4x4", 16, 64)
+    ]
+    with admin(pg) as conn:  # 첨부를 지우면 DB 가 임베딩도 따라 지운다(ON DELETE CASCADE)
+        conn.execute("DELETE FROM message_attachments WHERE id=%s", (ids[0],))
+    assert _count(pg, "photo_embeddings") == 0
+
+
+def test_withdrawal_waits_for_an_in_flight_save_then_removes_the_embedding_on_postgres(
+    pg_client, monkeypatch
+):
+    """저장 중(작업 줄 잠금)에 철회가 들어오면 철회는 저장이 끝날 때까지 기다렸다가 그 임베딩을 지운다(철회 뒤에 남는 파생 데이터가 없다)."""
+    import threading
+    import time
+
+    from app.features.family_memory import analysis
+    from app.features.family_memory import job_repository as jobs
+    from app.features.family_memory import job_service as js
+
+    monkeypatch.setattr(settings, "family_memory_encoder", "fake")
+    analysis.reset_encoder()
+    client, pg = pg_client
+    owner, ids = _eligible_photos(client, pg, 1)
+    engines, (setup, saver) = _sessions(pg, 2)
+    try:
+        js.enqueue(setup, ids[0], analysis.KIND_EMBEDDING)
+        job = js.claim(setup, "w1", [analysis.KIND_EMBEDDING])
+        result = analysis.run(job)
+        row = jobs.lock_running(saver, job.id, "w1")  # 저장 트랜잭션이 작업 줄을 잡고 있다
+        assert row is not None
+        analysis.save(saver, job, result)  # 아직 커밋하지 않았다
+
+        status = {}
+
+        def withdraw():
+            r = client.put(f"{M}/consent", json={"consent": False}, headers=owner)
+            status["code"] = r.status_code
+
+        t = threading.Thread(target=withdraw)
+        t.start()
+        time.sleep(1.5)
+        assert t.is_alive()  # 철회가 작업 줄 잠금 때문에 기다린다
+        row.status = jobs.DONE  # 저장 트랜잭션이 끝난다
+        saver.commit()
+        t.join(timeout=20)
+        assert status["code"] == 200
+    finally:
+        for s in (setup, saver):
+            s.close()
+        for e in engines:
+            e.dispose()
+        analysis.reset_encoder()
+    assert _count(pg, "photo_embeddings") == 0  # 저장이 먼저 끝났어도 철회가 지웠다
+    assert (
+        _count(pg, "family_memory_jobs") == 0
+    )  # 끝난 작업 줄도 지워 재동의 뒤 다시 등록할 수 있다
+    assert rows(pg, "SELECT withdrawn_at IS NOT NULL FROM member_memory_consents") == [(True,)]
 
 
 def test_table_constraints_on_postgres(pg_client):
@@ -269,3 +501,173 @@ def test_table_constraints_on_postgres(pg_client):
                 "INSERT INTO member_memory_consents (group_id, user_id, consent_version)"
                 " VALUES ('nope', 'nope', 1)"
             )
+
+
+def test_candidates_tables_defaults_cascade_and_concurrent_refresh_on_postgres(
+    pg_client, monkeypatch
+):
+    """새 표의 기본값·CASCADE 와, 같은 가족을 동시에 새로 고쳐도 후보가 한 벌만 남는지(PG)."""
+    import threading
+    from datetime import UTC, datetime, timedelta
+
+    from app.features.family_memory import candidate_service, discovery, encoder
+    from app.features.family_memory import embedding_repository as emb
+
+    monkeypatch.setattr(settings, "family_memory_candidates_api_enabled", True)
+    # 이 시험의 사진은 모두 같은 합성 이미지라 파일 해시로는 중복이 된다: 화질·해시 값 없이(중복 판정은 임베딩으로) 본다
+    monkeypatch.setattr(discovery, "photo_stats", lambda attachment_id: None)
+    client, pg = pg_client
+    owner, ids = _eligible_photos(client, pg, 4)
+    owner_id, gid = _me(client, owner)
+    # 촬영 시각이 같은 날 5분 간격이 되도록 맞추고(없으면 그룹이 만들어지지 않는다) 합성 임베딩을 넣는다
+    base = datetime(2024, 5, 1, 10, 0, tzinfo=UTC)
+    with admin(pg) as conn:
+        for i, att in enumerate(ids):
+            conn.execute(
+                "UPDATE message_attachments SET taken_at=%s WHERE id=%s",
+                (base + timedelta(minutes=5 * i), att),
+            )
+    engine = create_engine(url(pg))
+    try:
+        with sessionmaker(bind=engine)() as s:
+            for i, att in enumerate(ids):
+                vec = [1.0, 0.6 * i] + [
+                    0.0
+                ] * 30  # 서로 다른 장면 방향(코사인 0.85 안팎: 중복이 아니다)
+                norm = sum(v * v for v in vec) ** 0.5
+                emb.upsert(s, gid, att, owner_id, "siglip2-base-patch16-224", "t", 32,
+                           encoder.pack([v / norm for v in vec]), datetime.now(UTC))  # fmt: skip
+            s.commit()
+        outcomes, errors = [], []
+        barrier = threading.Barrier(3)
+
+        def refresh():
+            e = create_engine(url(pg))
+            try:
+                barrier.wait()
+                with sessionmaker(bind=e)() as s:
+                    outcomes.append(candidate_service.refresh(s, gid))
+            except Exception as exc:  # noqa: BLE001
+                errors.append(type(exc).__name__)
+            finally:
+                e.dispose()
+
+        threads = [threading.Thread(target=refresh) for _ in range(3)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+    finally:
+        engine.dispose()
+    # 동시에 새로 고치면 일부는 IntegrityError 로 실패할 수 있지만(먼저 끝난 쪽이 맞다) 후보는 한 벌뿐이다
+    assert set(errors) <= {"IntegrityError"}
+    assert _count(pg, "memory_candidates") == 1 and _count(pg, "memory_candidate_photos") == 4
+    assert rows(pg, "SELECT status, algorithm_version FROM memory_candidates") == [
+        ("private", "memgrp-1")
+    ]
+    with admin(pg) as conn:  # 첨부를 지우면 DB 가 사진 줄을 따라 지운다(ON DELETE CASCADE)
+        conn.execute("DELETE FROM message_attachments WHERE id=%s", (ids[0],))
+    assert _count(pg, "memory_candidate_photos") == 3
+    items = client.get(f"{M}/candidates", headers=owner).json()["items"]
+    assert len(items) == 1 and items[0]["photo_count"] == 3 and ids[0] not in str(items)
+    with admin(pg) as conn:
+        conn.execute("DELETE FROM message_attachments WHERE id=%s", (ids[1],))
+    assert (
+        client.get(f"{M}/candidates", headers=owner).json()["items"] == []
+    )  # 2장면만 남아 숨겨진다
+
+
+def test_full_pipeline_and_privacy_events_on_postgres(pg_client, monkeypatch):
+    """전체 흐름(확인된 사진 → 동의 → 작업 등록 → 워커 → 임베딩 → 그룹화 → 후보 새로 고침 → API)을 PG 에서 끝까지 보고, 철회·사진 삭제로 파생 데이터가 모두 사라지는지 본다.
+    합성 이미지·가짜 인코더만 쓰고 운영 설정은 건드리지 않는다. 자동 enqueue·refresh 진입점이 없어 시험에서 명시적으로 부른다."""
+    import io
+    import random
+    from datetime import UTC, datetime, timedelta
+
+    from PIL import Image
+
+    from app.features.family_memory import analysis, candidate_service, worker
+    from app.features.family_memory import job_service as js
+
+    monkeypatch.setattr(settings, "family_memory_encoder", "fake")
+    monkeypatch.setattr(settings, "family_memory_candidates_api_enabled", True)
+    analysis.reset_encoder()
+    saved_handlers = dict(worker._handlers)
+    client, pg = pg_client
+    owner, _, _ = _family(client)
+    owner_id, gid = _me(client, owner)
+    assert client.put(f"{M}/settings", json={"enabled": True}, headers=owner).status_code == 200
+    assert (
+        client.put(
+            f"{M}/consent", json={"consent": True, "consent_version": 1}, headers=owner
+        ).status_code
+        == 200
+    )
+    ids, msgs = [], []
+    for i in range(4):
+        rng = random.Random(i + 1)
+        img = Image.new("RGB", (64, 48))
+        img.putdata(
+            [(rng.randrange(256), rng.randrange(256), rng.randrange(256)) for _ in range(64 * 48)]
+        )
+        out = io.BytesIO()
+        img.save(out, format="JPEG", quality=90)
+        r = client.post(
+            "/family-chat/photos",
+            files={"file": ("a.jpg", out.getvalue(), "image/jpeg")},
+            data={
+                "taken_at": (
+                    datetime(2024, 5, 1, 10, 0, tzinfo=UTC) + timedelta(minutes=5 * i)
+                ).isoformat()
+            },
+            headers=owner,
+        )
+        assert r.status_code == 201, r.text
+        ids.append(r.json()["attachment"]["id"])
+        msgs.append(r.json()["id"])
+    with admin(
+        pg
+    ) as conn:  # 업로더가 일반 사진으로 확인한 상태(D-13: 자동 판별은 photo 를 못 만든다)
+        for att in ids:
+            conn.execute(
+                "UPDATE chat_photo_checks SET status='photo' WHERE attachment_id=%s", (att,)
+            )
+    engine = create_engine(url(pg))
+    try:
+        with sessionmaker(bind=engine)() as s:
+            assert [js.enqueue(s, att, analysis.KIND_EMBEDDING).outcome for att in ids] == [
+                "queued"
+            ] * 4
+        analysis.register_handlers()
+        for _ in ids:
+            job = None
+            with sessionmaker(bind=engine)() as s:
+                job = js.claim(s, "w1", [analysis.KIND_EMBEDDING])
+            result = analysis.run(job)
+            with sessionmaker(bind=engine)() as s:
+                assert js.complete(s, job, "w1", result, analysis.save) == "done"
+        assert _count(pg, "photo_embeddings") == 4
+        with sessionmaker(bind=engine)() as s:
+            assert candidate_service.refresh(s, gid).created == 1
+    finally:
+        engine.dispose()
+        worker._handlers.clear()
+        worker._handlers.update(saved_handlers)
+        analysis.reset_encoder()
+    items = client.get(f"{M}/candidates", headers=owner).json()["items"]
+    assert len(items) == 1 and {p["attachment_id"] for p in items[0]["photos"]} == set(ids)
+    assert items[0]["status"] == "private"
+
+    # 사진 하나를 지우면 그 사진의 임베딩·후보 줄이 사라지고 API 에서도 빠진다(남은 3장은 후보를 유지)
+    assert client.delete(f"/family-chat/messages/{msgs[0]}", headers=owner).status_code == 200
+    assert _count(pg, "photo_embeddings") == 3
+    again = client.get(f"{M}/candidates", headers=owner).json()["items"]
+    assert len(again) == 1 and ids[0] not in str(again) and again[0]["photo_count"] == 3
+
+    # 철회하면 모든 파생 데이터가 사라지고 API 는 비어 있다
+    assert client.put(f"{M}/consent", json={"consent": False}, headers=owner).status_code == 200
+    assert _count(pg, "photo_embeddings") == 0
+    assert _count(pg, "memory_candidates") == 0 and _count(pg, "memory_candidate_photos") == 0
+    assert _count(pg, "family_memory_jobs") == 0
+    assert client.get(f"{M}/candidates", headers=owner).json()["items"] == []
+    assert owner_id

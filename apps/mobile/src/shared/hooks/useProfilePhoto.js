@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Platform } from "react-native";
 
 import { apiUrl, authHeaders, ensureFreshAccess, isApiConfigured } from "@/shared/api/client";
@@ -24,11 +24,14 @@ const webCache = createPhotoCache({
  * - 웹: 받아 둔 blob 주소 { uri } (같은 사진은 한 번만 받고, 쓰는 곳이 없어지면 해제한다)
  * 사진이 없거나 받지 못하면 null — 호출한 쪽이 이니셜 아바타로 되돌아간다. photo_url 의 ?v= 가 바뀌면 다시 받는다.
  * @param {string | null | undefined} photoUrl 서버가 준 photo_url(상대 경로)
+ * @param {() => void} [onFail] 사진을 받지 못해 실패로 굳었을 때 부른다(없는 사진·권한 없는 사진을 화면에서 빼는 데 쓴다. 안 주면 기존 동작 그대로)
  * @returns {{ source: { uri: string, headers?: Record<string, string> } | null, markFailed: () => void }}
  */
-export default function useProfilePhoto(photoUrl) {
+export default function useProfilePhoto(photoUrl, onFail) {
   const path = isApiConfigured() ? photoPath(photoUrl) : null;
   const [state, setState] = useState({ path: null, source: null, failed: false });
+  const failRef = useRef(onFail);
+  failRef.current = onFail;
 
   useEffect(() => {
     if (!path) return undefined;
@@ -36,7 +39,10 @@ export default function useProfilePhoto(photoUrl) {
     if (Platform.OS === "web") {
       return holdPhoto(webCache, path, {
         onReady: (uri) => setState({ path, source: { uri }, failed: false }),
-        onFail: () => setState({ path, source: null, failed: true }),
+        onFail: () => {
+          setState({ path, source: null, failed: true });
+          failRef.current?.();
+        },
       });
     }
     ensureFreshAccess()
@@ -50,5 +56,11 @@ export default function useProfilePhoto(photoUrl) {
   }, [path]);
 
   const current = state.path === path && !state.failed ? state.source : null;
-  return { source: path ? current : null, markFailed: () => setState((s) => ({ ...s, path, source: null, failed: true })) };
+  return {
+    source: path ? current : null,
+    markFailed: () => {
+      setState((s) => ({ ...s, path, source: null, failed: true }));
+      failRef.current?.();
+    },
+  };
 }

@@ -1,9 +1,8 @@
 """에이전트 수정·삭제. 모델이 고른 대상 일정과 바뀔 값을 코드가 검증해 확인 카드로 보여 주고, 사용자가 확인하면
 처음부터 다시 검증해서 실행한다(`service.update`·`service.remove`).
 
-- 대상은 모델이 일정 목록의 id 만 고른다. 삭제는 같은 이름이 여럿이면 지금과 가장 가까운 하나를 고르고, 확인 카드에 날짜가
-  보이니 틀리면 사용자가 취소한다. 수정은 공유 대상을 바꾸지 않으면 카드 없이 바로 처리하므로, 하나를 가릴 수 없으면
-  대상을 비워 되묻는다. 목록에 없는 id 는 버린다.
+- 대상은 모델이 일정 목록의 id 만 고른다. 같은 이름이 여럿이면 모델이 지금과 가장 가까운 하나를 고르고, 확인 카드에 날짜가
+  보이니 틀리면 사용자가 취소한다. 목록에 없는 id 는 버린다.
 - 내 줄만 고치고 지운다(`service.owns`). 복사본은 독립이라 원본을 고치거나 지워도 공유받은 사람의 일정은 그대로다.
 - 공유 대상은 원본 주인만 바꾼다(가족 구성원만). 공유받은 일정과 부탁을 수락해 생긴 일정은 거부하고, 공유받은 사람에게는
   누구에게 공유됐는지도 알려 주지 않는다(`share_targets_for_prompt`). 사람을 빼면 그 사람의 복사본이 지워진다(`service.update`).
@@ -26,7 +25,7 @@ from . import choice as choice_mod
 from . import members as members_mod
 from . import reader, register
 from .members import Member
-from .schemas import AgentResponse, Card, PendingAction
+from .schemas import AgentResponse, Card, Choice, PendingAction
 
 TITLE_MAX = 120
 PLACE_MAX = 200
@@ -61,7 +60,6 @@ def _share_nothing(event: Event, text: str) -> str:
         return f"{named} 일정은 이미 공유받는 사람이 없어요."
     return f"{named} 일정을 공유하지 못했어요. 말씀하신 분을 가족에서 찾지 못했어요."
 NOT_FOUND_OFFER_TEXT = "해당하는 일정이 등록되어 있지 않아요. 새로 등록하려면 제목과 날짜를 알려 주세요"
-UNDO_HINT = " 되돌리려면 말씀해 주세요."
 NOT_SHARE_OWNER = "공유 대상은 일정을 처음 만든 분만 바꿀 수 있어요"
 SHARE_PERSONAL_ONLY = "공유 대상은 개인 채팅에서만 바꿀 수 있어요"
 
@@ -223,10 +221,9 @@ def respond_edit(
     reply: str = "",
     unnamed: bool = False,
 ) -> AgentResponse:
-    """수정(제목·날짜·시간·장소·메모와 원본자의 공유 대상 변경)은 카드 없이 바로 처리한다(정책 #32).
-    받은 사람의 일정은 독립이라 원본을 고쳐도 영향이 없고, 삭제만 확인 카드를 거친다.
-    같은 제목의 일정이 여럿이면 시점 규칙으로 좁히거나 후보를 보여 주며 되묻는다(`choice.narrow`, 정책 #33).
-    db 를 주지 않으면(순수 계산 호출) 카드만 만든다."""
+    """수정(제목·날짜·시간·장소·메모와 원본자의 공유 대상 변경)은 항상 확인 카드를 거쳐 사용자가 [바꾸기]를 눌러야 실행한다.
+    같은 제목의 일정이 여럿이면 시점 규칙으로 좁히거나 후보를 보여 주며 되묻는다(`choice.narrow`).
+    db·group_id 는 호출 모양을 맞추려고 받을 뿐 쓰지 않는다(확인 전에는 DB 를 바꾸지 않는다)."""
     event = events.get(target_id)
     if event is None:
         wants = any(
@@ -321,38 +318,6 @@ def respond_edit(
         if share_new is not None:  # 공유만 바꾸려 했는데 바뀐 게 없다: 이유를 밝힌다
             return AgentResponse(intent="edit", text=_share_nothing(event, text))
         return AgentResponse(intent="edit", text=_nothing_text(event, changes))
-    if db is not None and group_id:
-        done = confirm_edit(
-            db, user_id, group_id, PendingAction(type="edit", event_id=event.id, changes=update)
-        )
-        # 카드 없이 바로 바꾸므로 무엇이 어떻게 바뀌었는지 안내에 밝힌다(잘못 읽었으면 사용자가 바로 알아챈다)
-        summary = "; ".join(f"{c['label']} {c['before']} → {c['after']}" for c in lines)
-        if summary:
-            done.text = done.text.replace(" 일정을 바꿨어요.", f" 일정을 바꿨어요 ({summary}).", 1)
-        if share_new is not None:
-            labels = {m.id: m.label for m in members or []}
-            removed = [labels[i] for i in current if i not in share_new and i in labels]
-            added = [labels[i] for i in share_new if i not in current and i in labels]
-            if set(update) == {
-                "share_with"
-            }:  # 공유만 바꿨으면 요약 대신 공유한 사실을 직접 알리고 카드는 붙이지 않는다
-                named = reader.event_text(event)
-                parts = []
-                if added:
-                    parts.append(f"{named} 일정을 {', '.join(added)}님에게 공유했어요.")
-                if removed:
-                    parts.append(
-                        f"{named} 일정 공유에서 {', '.join(removed)}님을 뺐어요. 받은 일정도 같이 사라졌어요."
-                    )
-                done.text = " ".join(parts) or done.text
-                done.cards = []
-                removed = []  # 위 문장에 이미 담았다
-            if removed:
-                done.text += (
-                    f" {', '.join(removed)}님은 공유에서 뺐고, 받은 일정도 같이 사라졌어요."
-                )
-        done.text += UNDO_HINT
-        return done
     card = Card(type="edit_confirm", data={"event": reader.brief(event), "changes": lines})
     return AgentResponse(
         intent="edit",
@@ -550,28 +515,26 @@ def resolve_choice(
         ):  # 사용자가 후보 중에서 골랐으므로 카드 없이 바로 지운다(정책 #29)
             done, failed = delete_many(db, user_id, group_id, [e.id for e in picked])
             return AgentResponse(intent="delete", text=many_text(done, failed))
-        cards = []
-        texts = []
-        family = members_mod.load(db, group_id)
-        for event in picked:
-            one = respond_edit(
-                user_id,
-                event.id,
-                chosen.changes,
-                {event.id: event},
-                today,
-                family,
-                "personal",
-                db,
-                group_id,
+        if len(picked) > 1:  # 수정은 확인 카드 한 장에 한 일정씩이라 하나를 고르게 한다
+            return AgentResponse(
+                intent="edit",
+                text="수정은 한 번에 한 일정씩 확인해야 해요. 어느 쪽부터 바꿀까요?",
+                cards=[Card(type="event_list", data={"events": [reader.brief(e) for e in picked]})],
+                choice=Choice(
+                    kind="edit", event_ids=[e.id for e in picked], changes=chosen.changes
+                ),
             )
-            if one.cards:
-                cards += one.cards
-                texts.append(one.text.removesuffix(UNDO_HINT))
+        family = members_mod.load(db, group_id)
+        return respond_edit(
+            user_id,
+            picked[0].id,
+            chosen.changes,
+            {picked[0].id: picked[0]},
+            today,
+            family,
+            "personal",
+            db,
+            group_id,
+        )
     except ApiError as e:
         return AgentResponse(intent=chosen.kind, text=e.message)
-    if not cards:
-        return AgentResponse(
-            intent="edit", text=_nothing_text(picked[0], chosen.changes) if picked else NOTHING_TEXT
-        )
-    return AgentResponse(intent="edit", text=f"{' '.join(texts)}{UNDO_HINT}", cards=cards)

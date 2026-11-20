@@ -186,9 +186,13 @@ def request_to_join(db: Session, user: User, code: str, ip: str) -> tuple[JoinRe
     except IntegrityError:  # 같은 사람의 동시 요청이 먼저 대기 요청을 만들었다(부분 유니크 인덱스). 사용 횟수 증가도 함께 되돌아간다
         db.rollback()
         existing = jrepo.pending_request(db, group_id, user.id)
-        if existing is None:
-            raise
-        return existing, group
+        if existing is not None:
+            return existing, group
+        # 자동 승인에서 같은 사람의 동시 중복 제출: 먼저 온 요청이 이미 구성원으로 넣었다(group_members 기본 키 위반).
+        # 순서대로 온 두 번째 제출과 같은 응답(409)을 준다. 사용 횟수 증가는 위 rollback 으로 함께 되돌아갔다
+        if jrepo.get_membership(db, group_id, user.id) is not None:
+            raise ApiError(409, "already_member", "이미 이 가족 그룹의 구성원이에요") from None
+        raise
     return row, group
 
 

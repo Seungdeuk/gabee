@@ -21,8 +21,10 @@
 | `POST /play/quiz` | 골든벨 세트(1~5문항) 내기 |
 | `GET /play/quiz/recommendations` | 골든벨 가비 추천 `{state, items}`. 아래 "골든벨 가비 추천" 참고 |
 | `GET /play/draw/recommendations` | 이게 뭐게 가비 추천 `{state, items}`(정답 단어와 선 그림 5개). 아래 "이게 뭐게 가비 추천" 참고 |
+| `GET /play/photo/recommendations` | 탐정단 가비 추천 `{state, items}`(카드 3개). 아래 "찰칵! 탐정단 가비 추천" 참고 |
+| `GET /play/photo/recommendations/{id}/image` | 추천 카드 사진(JPEG). 흔한 사진은 로그인한 구성원 누구나, 가족 사진은 그 가족 구성원만(다른 가족·첨부 없음은 404) |
 | `POST /play/draws` | 이게 뭐게 내기 (multipart: `file` PNG ≤2MB, `answer`, `alt_answers`, `hint2`, `player_ids`) |
-| `POST /play/photos` | 탐정단 내기 (multipart: `file` JPEG/PNG/WebP ≤8MB, `source`, `zoom`, `box_x`, `box_y`, `question`, `options`, `answer_index`, `comment`, `player_ids`) |
+| `POST /play/photos` | 탐정단 내기 (multipart: `file` JPEG/PNG/WebP ≤8MB(선택), `rec_id`(선택), `source`, `zoom`, `box_x`, `box_y`, `question`, `options`, `answer_index`, `comment`, `player_ids`). `file` 과 `rec_id` 중 하나는 있어야 한다(둘 다 없으면 400). 가비 추천 전송 규칙은 "찰칵! 탐정단 가비 추천" 참고 |
 | `GET /play/board` | 받은(할 차례·참여했어요·지난 결과 3일)과 보낸(내가 낸 문제·지난 결과) |
 | `GET /play/items/{id}` | 문제 한 건 |
 | `GET /play/items/{id}/image` | 그림(PNG) 또는 사진(JPEG). 로그인 필요, 같은 가족만 |
@@ -84,6 +86,25 @@
 - 재사용: 단어별 그림을 `play_draw_stock` 에 30일 동안 모든 가족이 같이 쓰도록 단어당 최대 3종 저장한다. 저장된 그림이 있으면 기본은 호출 없이 재사용하고 약 30%(`REDRAW_RATE`)는 새로 그려 쌓는다(3종이 차 있으면 가장 오래된 것을 대체).
 - 한도·캐시: `ai_guard.run`(기능 `play_draw_rec`, 기본 한도와 따로: 쿨다운 5초·사용자 하루 3번·가족 하루 5번, 설정 `ai_play_draw_rec_*`). 그림을 몇 개 불러도 추천 한 번(시도)을 1회로 센다(토큰은 실제만큼). 만든 그림은 바로 `play_draw_stock` 에 저장한다. 오늘 단어 5개의 그림이 다 모이면 그날 자정(한국 시간)까지 가족 단위로 캐시한다. 모자라면 캐시하지 않고 저장소에 있는 오늘 단어의 그림을 `partial` 로 보여 주며, 다시 불러오면(시도 1회) 모자란 단어를 더 그린다. 한도를 다 쓰면 저장소 그림을 `ok` 로 보여 주고(없으면 `used_up`), AI 호출이 실패하거나 쿨다운 중이어도 저장소 그림이 있으면 `partial` 로 보여 준다. 읽을 때 최근에 낸 단어는 숨긴다.
 - 배포: `play_draw_stock` 마이그레이션(`c4e81a7d3f26`)이 DB 에 없으면 놀이터 기능 전체가 스키마 점검에서 503 이므로 서버보다 먼저 DB 에 적용한다.
+
+### 찰칵! 탐정단 가비 추천
+
+- `GET /play/photo/recommendations` 가 `{state, items}` 를 돌려준다(실패·한도도 200 + `state`). `state`: `ok`·`used_up`·`preparing`·`cooldown`·`failed`·`ai_off`. 카드가 하나라도 있으면 `ok`, 하나도 없을 때만 AI 문제 상태(`preparing`·`cooldown`·`failed`·`ai_off`)를 알리고, 오늘 이미 3개를 보냈으면 `used_up`. 항목은 `{id, kind(month|event|content), source(album|common), question, options, answer_index, box_x, box_y, zoom, image_url}`.
+- 카드 구성: 가족 사진 문제 최대 2개 + 흔한 사진 문제로 하루 3개(흔한 사진이 최소 1개). 구성은 저장하지 않고 가족·사용자·한국 시간 날짜로 시드한 난수로 매번 같게 고른다(같은 사용자·같은 날은 같은 카드, 사용자마다 다름).
+- 문제 종류: 일정 맞추기(사진 촬영일의 공유 일정 제목) -> 사진 내용(AI, 가족이 AI 동의를 켠 경우만) -> 촬영 월 순서로 시도한다. 가족 사진 한 장은 문제를 하나만 갖고(`play_photo_rec` 한 줄) 저장 뒤 재사용한다.
+- 후보와 14일 제외: 가족 전체방 사진 중 "일반 사진으로 확인"된 것만 쓰고, 이 가족이 최근 14일 안에 추천으로 보낸 사진(흔한 사진 포함)과 쓸 수 없는 행은 뺀다.
+- 한도·AI 동의: AI 는 내용 질문에만 쓰고 한 번 열 때 한 묶음(`ai_guard.run`, 기능 `play_photo_rec`, 쿨다운 5초·사용자 하루 3번·가족 하루 5번, 설정 `ai_play_photo_rec_*`)이다. 동의가 꺼졌거나 한도·쿨다운·다른 호출 중이어도 AI 없는 카드(일정·월·흔한 사진)는 그대로 나온다. 동의를 끄면 그 가족의 내용 질문 행은 지워진다.
+- 이미지: 가족 사진 행은 채팅 사진 원본을 `media.make_photo_jpeg` 로 줄여 돌려주고, 저장된 `image` 바이트가 있는 행(흔한 사진)은 그대로 돌려준다. 다른 가족의 가족 행·없는 행·사라진 첨부는 404.
+
+- 보내기("이 문제로 쓰기"): `POST /play/photos` 에 `rec_id` 만 보내면(파일 없이) 서버가 그 추천 행의 사진(가족 행은 채팅 사진 원본, 흔한 행은 저장된 `image`)으로 문제를 만들고 `play_photos.rec_id` 를 채운다. `source` 는 행 기준으로 서버가 정한다(가족 행 1·흔한 행 3, 요청 값은 무시). 질문·보기·정답·확대 위치·배율·한마디는 요청 값(출제자가 고친 값)을 쓴다. 파일도 같이 오면 파일과 `source` 2 로 처리하고 `rec_id` 는 버린다. 파일·`rec_id` 가 모두 없으면 400 `invalid_input`, 파일만 보낼 때 `source` 는 기존대로 1·2 만 된다.
+- 보낼 때의 서버 확인과 오류: 404 `rec_not_found`(없는 행·다른 가족의 가족 행), 409 `photo_not_available`(가족 행인데 첨부가 사라졌거나 파일이 없음·`usable` 거짓·사진 판별 상태가 일반 사진(`photo`)이 아님(업로더가 타임라인에서 뺌 포함)·다른 가족 첨부), 409 `rec_already_sent`(같은 가족이 14일 안에 같은 `rec_id` 로 이미 보냄, 흔한 행도 같다). 문제 내기 점수·하루 3건 한도·받는 사람 처리는 직접 내기와 같고 흔한 사진 문제도 점수를 받는다. 같은 추천을 동시에 두 번 보내면 추천 행을 `SELECT ... FOR UPDATE` 로 잠가 한쪽만 통과한다(PostgreSQL. SQLite 는 잠금이 없어 시험 환경에서는 보장하지 않는다).
+
+#### 흔한 사진 자동 보충 (source 4)
+
+- 이게 뭐게 추천처럼 가족 구성원이 찰칵 추천(`GET /play/photo/recommendations`)을 열 때 `photo_rec_auto.ensure_today_in_background()` 가 불려, 오늘 부족분이 있으면 흔한 사진을 목표 장수(`PHOTO_REC_AUTO_PER_DAY`, 기본 3)까지 채운다. 보충은 느리므로 응답은 기다리지 않고 데몬 스레드로 돈다(추천은 지금 풀에서 바로 나감, 채워진 사진은 다음에 연 가족부터). 기본 꺼짐(`PHOTO_REC_AUTO_ENABLED`). 오늘(한국 날짜) 넣은 자동 행이 목표 미만이고, 이 서버 프로세스에서 도는 실행이 없고, 마지막 시작 후 `PHOTO_REC_AUTO_COOLDOWN_SECONDS`(기본 600)초가 지났을 때만 띄운다. 가족의 AI 동의·가족 앨범 설정과 무관하다(공개 사진). PostgreSQL 은 `pg_try_advisory_lock` 으로 서버가 여러 대여도 한 대만 돈다. 오류는 요청 쪽으로 새지 않는다.
+- 시도 한 번: 일상 검색어 4개 안에서 Pixabay(`photo_rec_pixabay`, `PIXABAY_API_KEY`, `safesearch`, 태그 필터, 24시간 캐시, 사진은 직접 내려받아 1280px JPEG 로 저장)로 후보를 찾아 최대 6장을 AI(`photo_rec_auto_ai`, 사진 한 장당 한 번, `ai_guard` 와 가족 정보 없음)에 보낸다. 규칙(`validate_content` + 금지어·질문 형태·보기 한두 단어·허용 꽃 목록)을 통과한 것만 저장한다. 부족분이 남으면 최대 3번(처음 + 재시도 2)까지 부족한 만큼만 다시 하고, 그래도 못 채우면 모자란 채로 두고 경고 로그를 남긴다. 하루 AI 호출은 많아야 3 x 6 = 18번이다.
+- 저장: `play_photo_rec` 행 `source=4`, id `auto<pixabay id>`, `group_id`·`attachment_id` 없음, `prompt_version="auto-v1"`, 출처 칸(`credit_user`·`credit_url`·`license`·`search_query`·`external_id`). 쓸 수 없다고 했거나 규칙에 안 맞은 사진은 `usable=false`·사진 없는 행으로 남겨 같은 Pixabay id 를 다시 AI 에 보내지 않는다. 풀 선택(`pool_rows`)과 14일 제외·점수·보내기(`rec_id`)는 시드와 같고, 보낼 때 `play_photos.source` 는 3(흔한 사진)으로 기록된다.
+- 배포: `d4f7a2b8c351`(출처 칸 추가, nullable·expand 전용) 마이그레이션을 서버보다 먼저 DB 에 적용한다. 로컬 확인은 `python -m scripts.run_photo_rec_auto`(설정과 무관하게 한 번 실행, 실제 Pixabay·AI 호출).
 
 ### 이게 뭐게
 

@@ -128,7 +128,7 @@ def test_delete_comes_back_as_a_card_and_is_not_executed_until_confirmed(
     assert _events(client, a) == []
 
 
-def test_edit_is_done_at_once_and_says_what_changed(client, setup, schedule_llm, monkeypatch):
+def test_edit_comes_back_as_a_confirm_card_and_changes_nothing_before_approval(client, setup, schedule_llm, monkeypatch):
     a, _, _ = setup
     created = client.post(
         "/schedule/events",
@@ -153,9 +153,8 @@ def test_edit_is_done_at_once_and_says_what_changed(client, setup, schedule_llm,
         },
     }
     out = _ask(client, a)
-    assert out["confirm_cards"] == []  # 수정은 확인카드 없이 바로 하고, 무엇이 바뀌었는지 안내한다
-    assert "→" in out["reply"] and "16:00" in out["reply"]
-    assert _events(client, a)[0]["start_time"].startswith("16:00")
+    assert len(out["confirm_cards"]) == 1  # 수정은 확인 카드로 묻고, 누르기 전에는 바뀌지 않는다
+    assert _events(client, a)[0]["start_time"].startswith("14:00")
 
 
 def test_forged_card_payload_is_revalidated_by_the_server(client, setup, schedule_llm, monkeypatch):
@@ -297,7 +296,7 @@ def test_notice_title_is_one_short_line_even_for_a_crafted_title(
     assert msg["text"].startswith("'가족 모임") and msg["text"].endswith("가족 1명에게 공유했어요.")
 
 
-def test_main_prompt_routes_schedule_share_to_the_schedule_agent_and_knows_only_delete_has_a_card():
+def test_main_prompt_routes_schedule_share_to_the_schedule_agent_and_knows_which_actions_have_cards():
     from app.features.ai_assistant import agents
 
     note = rag_chat.SHARE_NOTE
@@ -308,4 +307,4 @@ def test_main_prompt_routes_schedule_share_to_the_schedule_agent_and_knows_only_
         for k, v in vars(agents).items()
         if k.isupper() and isinstance(v, str) and "ask_schedule" in v
     )
-    assert "확인 카드는 일정 삭제에만" in text and "카드 없이 바로 실행" in text
+    assert "수정·삭제·공유 대상 변경은 확인 카드" in text and "카드 없이 바로 실행" in text

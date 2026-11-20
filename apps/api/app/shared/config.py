@@ -48,6 +48,27 @@ class Settings(BaseSettings):
     photo_judge_model: str = ""  # 비우면 llm_model(Haiku)
     # AI 추억 분석의 서버 기능 스위치(ADR 0020 3중 조건의 ①). 기본 꺼짐: 꺼져 있으면 가족 설정·업로더 동의가 켜져 있어도 분석 자격이 없고 동의를 새로 받지 않는다
     family_memory_enabled: bool = False
+    # AI 추억 분석 작업 워커(PR3, 단일 경량 스레드). 기본 꺼짐: `FAMILY_MEMORY_ENABLED` 와 이 값이 모두 켜져 있을 때만 서버가 시작하며 돌린다
+    family_memory_worker_enabled: bool = False
+    family_memory_worker_poll_seconds: float = 5.0  # 일이 없을 때 다음 확인까지 기다리는 시간
+    family_memory_job_lease_seconds: int = (
+        300  # 선점한 작업의 임대 시간(넘기면 다른 워커가 되찾는다)
+    )
+    # 이미지 임베딩 인코더(PR4): off(기본) | siglip2(로컬 모델 파일만, 다운로드 안 함) | fake(개발·시험용 가짜). 모델은 별도 워커 프로세스(worker_main)에서만 올라간다
+    family_memory_encoder: str = "off"
+    family_memory_siglip2_path: str = ""  # 이미 내려받은 SigLIP2 스냅샷 폴더(로컬 경로)
+    family_memory_encoder_device: str = "auto"  # auto | cpu | cuda
+    family_memory_encoder_fp16: bool = False  # GPU 일 때만 반 정밀도(메모리 약 절반)
+    # 추억 후보 조회 API(PR6) 미출시 가드: 기본 꺼짐(꺼져 있으면 404 로 존재를 숨긴다). 앱(PR7) 개발·검증 때만 켠다. 후보는 비공개이며 자동 게시하지 않는다
+    family_memory_candidates_api_enabled: bool = False
+    # 동의할 때 consent_version 을 **반드시** 보내야 하게 한다(T31 고지문 확정 뒤 켠다). 기본 꺼짐: 켜면 버전을 안 보낸 동의 요청은 409 consent_version_required — 버전 확인을 우회하지 못한다
+    family_memory_consent_version_required: bool = False
+    # 사용자 요청형 추억 생성(PR10) 진입점. **실제 가족 사진을 처리하는 입구라서** T31 고지문·동의 UX 와 별도 출시 승인이 끝나기 전에는 켜지 않는다(기본 꺼짐, 꺼져 있으면 404).
+    # 켜져 있어도 `family_memory_consent_version_required` 가 함께 켜져 있어야 열린다(동의 버전 확인 없이는 실제 사진을 처리하지 않는다)
+    family_memory_generate_enabled: bool = False
+    family_memory_generate_max_photos: int = (
+        300  # 요청 한 번에 새로 등록하는 사진 수 상한(나머지는 다음 요청에서)
+    )
     ingest_mask_chunk_chars: int = 6000  # 가리기 호출 한 번에 보내는 최대 글자 수(긴 문서는 나눠서)
     ingest_pdf_max_pages: int = 20  # Claude 로 읽는 PDF 최대 쪽 수(비용 상한)
     # Claude 연결 실패(llm_unavailable)로 failed 가 될 파일을 자동으로 다시 처리하는 횟수와 기다리는 시간(n번째 재시도는 n×이 초)
@@ -187,6 +208,21 @@ class Settings(BaseSettings):
     ai_play_draw_rec_cooldown_seconds: int = 5
     ai_play_draw_rec_max_calls_per_user_per_day: int = 3
     ai_play_draw_rec_max_calls_per_group_per_day: int = 5
+    # 탐정단 사진 추천에 가족 앨범 사진을 쓸지(꺼짐이면 카드 3개 모두 흔한 사진, AI 호출·가족 사진 접근 없음). 위험 검토 뒤 켠다
+    photo_rec_family_enabled: bool = False
+    # 탐정단 사진 추천(내용 질문): 사진 한 장당 AI 한 번. 값은 이게 뭐게와 같게 시작하고 별도 한도로 센다
+    ai_play_photo_rec_cooldown_seconds: int = 5
+    ai_play_photo_rec_max_calls_per_user_per_day: int = 3
+    ai_play_photo_rec_max_calls_per_group_per_day: int = 5
+    # 찰칵 흔한 사진 자동 보충: 서버 안 백그라운드 작업이 하루 한 번 Pixabay 사진 + AI 질문으로 흔한 사진을 채운다. 기본 꺼짐.
+    # 사진 한 장당 AI 한 번(ai_guard 를 쓰지 않으므로 호출 수는 per_day x max_attempts x 시도당 후보 상한으로 묶인다). 키는 로그에 찍지 않는다
+    pixabay_api_key: str = ""
+    photo_rec_auto_enabled: bool = False
+    photo_rec_auto_per_day: int = 3
+    photo_rec_auto_max_attempts: int = 3
+    photo_rec_auto_cooldown_seconds: int = (
+        600  # 찰칵 추천을 열 때 보충을 띄우는 최소 간격(이 프로세스 기준)
+    )
     ai_schedule_card_cooldown_seconds: int = 5
     ai_schedule_card_max_calls_per_user_per_day: int = 3
     ai_schedule_card_max_calls_per_group_per_day: int = 15

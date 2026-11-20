@@ -124,3 +124,109 @@ def photo_context(db: Session, attachment_id: str) -> PhotoContext | None:
         room_kind=row.room_kind,
         check_status=row.status,
     )
+
+
+@dataclass(frozen=True)
+class PhotoRow:
+    attachment_id: str
+    group_id: str
+    uploader_id: str
+    taken_at: datetime | None
+    uploaded_at: datetime
+    batch_id: str | None
+
+
+def group_photo_rows(db: Session, group_id: str) -> list[PhotoRow]:
+    """한 가족의 가족 전체방 사진 후보(살아 있는 메시지의 이미지, 1:1 방 제외) — 자격은 여기서 판정하지 않는다(부르는 쪽이 `check_photo` 로 거른다). 읽기 전용, id 순."""
+    if not chat_tables_ready(db):
+        return []
+    t = Base.metadata.tables
+    att, msg, room = t["message_attachments"], t["messages"], t["chat_rooms"]
+    rows = db.execute(
+        select(
+            att.c.id,
+            att.c.group_id,
+            msg.c.user_id,
+            att.c.taken_at,
+            att.c.created_at,
+            att.c.batch_id,
+        )
+        .select_from(
+            att.join(msg, msg.c.id == att.c.message_id).join(room, room.c.id == att.c.room_id)
+        )
+        .where(
+            att.c.group_id == group_id,
+            att.c.kind == "image",
+            msg.c.deleted_at.is_(None),
+            room.c.kind == "family",
+        )
+        .order_by(att.c.id)
+    ).all()
+    return [PhotoRow(r[0], r[1], r[2], r[3], r[4], r[5]) for r in rows]
+
+
+@dataclass(frozen=True)
+class GroupPhoto:
+    """한 가족의 가족 전체방 사진 한 장 + 판별 상태(일괄 자격 판정용)."""
+
+    attachment_id: str
+    group_id: str
+    uploader_id: str
+    taken_at: datetime | None
+    uploaded_at: datetime
+    batch_id: str | None
+    check_status: str | None  # chat_photo_checks.status, 줄이 없으면 None
+
+
+def group_photos_with_status(db: Session, group_id: str) -> list[GroupPhoto]:
+    """한 가족의 가족 전체방 사진(살아 있는 메시지의 이미지, 1:1 방 제외)과 판별 상태를 **한 번의 조회**로 읽는다(자격 판정의 N+1 을 없앤다). 읽기 전용, id 순."""
+    if not chat_tables_ready(db):
+        return []
+    t = Base.metadata.tables
+    att, msg, room, chk = (
+        t["message_attachments"],
+        t["messages"],
+        t["chat_rooms"],
+        t["chat_photo_checks"],
+    )
+    rows = db.execute(
+        select(
+            att.c.id,
+            att.c.group_id,
+            msg.c.user_id,
+            att.c.taken_at,
+            att.c.created_at,
+            att.c.batch_id,
+            chk.c.status,
+        )
+        .select_from(
+            att.join(msg, msg.c.id == att.c.message_id)
+            .join(room, room.c.id == att.c.room_id)
+            .outerjoin(chk, chk.c.attachment_id == att.c.id)
+        )
+        .where(
+            att.c.group_id == group_id,
+            att.c.kind == "image",
+            msg.c.deleted_at.is_(None),
+            room.c.kind == "family",
+        )
+        .order_by(att.c.id)
+    ).all()
+    return [GroupPhoto(r[0], r[1], r[2], r[3], r[4], r[5], r[6]) for r in rows]
+
+
+def consents_for_group(db: Session, group_id: str) -> dict[str, MemberMemoryConsent]:
+    """가족 구성원별 동의 기록(user_id → 행). 한 번의 조회."""
+    rows = db.scalars(select(MemberMemoryConsent).where(MemberMemoryConsent.group_id == group_id))
+    return {row.user_id: row for row in rows}
+
+
+def excluded_ids(db: Session, group_id: str) -> set[str]:
+    """한 가족에서 업로더가 AI 분석에서 뺀 사진 id. 한 번의 조회."""
+    return set(
+        db.scalars(
+            select(PhotoAnalysisExclusion.attachment_id).where(
+                PhotoAnalysisExclusion.group_id == group_id
+            )
+        )
+    )

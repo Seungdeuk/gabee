@@ -1116,7 +1116,9 @@ def main() -> None:
         help="이 결과 파일의 문항(튜닝에 쓴 표본)을 뺀 나머지만 잰다. dev 전용, 여러 번 쓸 수 있다",
     )
     parser.add_argument("--qid", action="append", help="이 문항만 잰다(원인 확인용, 여러 번)")
-    parser.add_argument("--only-no-answer", action="store_true", help="답 없는 문항만 잰다(답 있는 문항은 건너뜀)")
+    parser.add_argument(
+        "--only-no-answer", action="store_true", help="답 없는 문항만 잰다(답 있는 문항은 건너뜀)"
+    )
     args = parser.parse_args()
     if args.exclude_from and args.split == "test":
         parser.error("--exclude-from 은 dev 에서만 씁니다")

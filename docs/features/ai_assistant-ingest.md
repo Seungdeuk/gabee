@@ -110,6 +110,11 @@ Excel ─▶ converters.xlsx_to_markdown (금액 쉼표·날짜·병합 칸 반�
 - `shared/llm/doc_ai.classify_photo`: 글자가 읽힌 사진만 Claude(haiku, `PHOTO_JUDGE_MODEL`)에게 "문서 사진인가"를 묻는다(도구 호출 형식, 문서·사진 + 확신도). `ai_assistant/library.py` 는 `PHOTO_JUDGE_LLM=true` 일 때만 쓰고, 문서이고 확신 0.7 이상일 때만 등록한다. 결정·평가: `docs/adr/0015-family-room-photo-to-library.md`.
 - 시험: `ingest/tests/test_photo_judge.py`, `shared/llm/tests/test_photo_classify.py`, `ai_assistant/tests/test_chat_library_photos.py`.
 
+## 문서 속 그림 설명 (2026-11-19)
+- PDF: `doc_ai.read_pdf` 가 쪽마다 글을 옮기면서 그림·도표·사진이 있으면 `[그림: …]` 블록(1~3문장, 보이는 글자·값만, 추정 금지)을 붙인다(`FIGURE_RULE`). 사진 OCR(`OCR_SYSTEM`)은 그대로다. `INGEST_LLM_OCR` 이 꺼지면 둘 다 동작하지 않는다.
+- PPTX: `ingest/figures.py` 가 zip·`_rels` 로 슬라이드 그림을 뽑아(150px 미만·15MB 초과 제외, 최대 30장) `doc_ai.describe_figure` 로 설명하고, 변환 결과의 `![…](ImageN)` 자리를 `[그림: …]` 으로 바꾼다. 글자 없는 빈 도형·화살표 흐름도는 `없음` 으로 답하게 해 붙이지 않는다. 설명 못 한 그림은 노트로 알린다. 새 의존성 없음.
+- docx 그림은 아직 안 한다. 시험: `ingest/tests/test_figures.py`, `shared/llm/tests/test_doc_ai_read.py`.
+
 ## 남은 것
 - 업로드 통로·DB 저장(`photos` 확장 또는 `files` 표)·백그라운드 처리 연결 — 요구사항 미정 4·5
 - 스캔 PDF 쪽별 OCR, 복잡한 표 PDF(Docling) — v2

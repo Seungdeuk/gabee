@@ -6,8 +6,8 @@ import { isApiConfigured } from "@/shared/api/client";
 import useResource from "@/shared/hooks/useResource";
 
 import { bombPath, bombScreen, boardView, rankingView } from "./adapt";
-import { getBoard, getBomb, getBombOpen, getDrawRecs, getItem, getQuizRecs, getQuota, getRanking } from "./api";
-import { ME, MOCK_DRAW_RECS, MOCK_RECS, makeLeft, openSent, PAST, RANKING_BY, SENT_PAST, TODO, WAITING } from "./mock";
+import { getBoard, getBomb, getBombOpen, getDrawRecs, getItem, getPhotoRecs, getQuizRecs, getQuota, getRanking } from "./api";
+import { ME, MOCK_DRAW_RECS, MOCK_PHOTO_RECS, MOCK_RECS, makeLeft, openSent, PAST, RANKING_BY, SENT_PAST, TODO, WAITING } from "./mock";
 
 /** 서버 주소가 있으면 서버에서, 없으면 시안(mock.js)으로 동작한다. */
 export const playLive = () => isApiConfigured();
@@ -60,6 +60,12 @@ export function useQuizRecs() {
 /** 이게 뭐게 가비 추천 { state, items }. 서버 주소가 없으면 시안(MOCK_DRAW_RECS). 처음 열 때는 그림을 만드느라 15~40초쯤 걸릴 수 있고, 같은 날은 같은 묶음을 준다. */
 export function useDrawRecs() {
   const loader = useCallback(async () => (playLive() ? getDrawRecs() : MOCK_DRAW_RECS), []);
+  return useResource(loader);
+}
+
+/** 찰칵! 탐정단 가비 추천 { state, items }. 서버 주소가 없으면 시안(MOCK_PHOTO_RECS). */
+export function usePhotoRecs() {
+  const loader = useCallback(async () => (playLive() ? getPhotoRecs() : MOCK_PHOTO_RECS), []);
   return useResource(loader);
 }
 

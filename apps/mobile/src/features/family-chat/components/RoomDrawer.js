@@ -4,6 +4,7 @@ import { Animated, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, Vie
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import IconButton from "@/shared/components/IconButton";
+import { memoryUiVisible } from "@/shared/memoryFlag";
 import { colors, font, spacing } from "@/theme";
 
 import { MUTE_FAILED_NOTICE } from "../listUtils";
@@ -57,7 +58,7 @@ export default function RoomDrawer({ visible, onClose, room, roomId, peerId, myI
   const title = drawerTitle({ direct, room, peerId });
   const strip = drawerMembers({ direct, room, peerId, myId });
   const reviewCount = usePhotoCheckCount({ enabled: visible && !direct }); // 가족 전체방에서 서랍을 열 때만 묻는다(1:1 방에는 없다)
-  const sections = buildDrawerSections({ direct, pinsReady: true, muted, reviewCount });
+  const sections = buildDrawerSections({ direct, pinsReady: true, muted, reviewCount, memoryUi: memoryUiVisible() });
 
   /**
    * 행을 눌렀을 때: 이동 행은 한 번만(닫히는 중이면 무시), 나머지는 안내 문구.
@@ -83,6 +84,7 @@ export default function RoomDrawer({ visible, onClose, room, roomId, peerId, myI
     if (action.type === "media") router.push({ pathname: "/chat-media", params: { ...(roomId ? { roomId } : {}), ...(peerId ? { peer: peerId } : {}) } });
     else if (action.type === "photochecks") router.push("/chat-photo-review");
     else if (action.type === "timeline") router.push("/family-timeline");
+  else if (action.type === "memories") router.push("/family-memories");
     else if (action.type === "familytodos") router.push("/family-together");
     else if (action.type === "pins") router.push({ pathname: "/chat-board", params: { ...(roomId ? { roomId } : {}), ...(peerId ? { peer: peerId } : {}) } });
   };

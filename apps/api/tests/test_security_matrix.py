@@ -1718,6 +1718,9 @@ LLM_CALLER_FILES = {
     "features/family_chat/agent.py": "agent_guard.run_turn",
     # 가족 기능 안에서 LLM 을 부르는 화면 추천(퀴즈): 같은 공통 관문(기능 play_quiz_rec, 별도 한도)을 거친다
     "features/play/quiz_rec.py": "ai_guard.run",
+    # 이게 뭐게 가비 추천(그림): `recommend` 가 그림 호출(`draw_word`)을 모두 `ai_guard.run` 의 call 안에서 부른다(기능 play_draw_rec,
+    # 별도 한도). 가족이 AI 를 끄면 외부 호출 없이 ai_off, AI 로는 공개 단어 목록의 단어 하나만 보낸다(일정·대화 원문은 보내지 않는다)
+    "features/play/draw_rec.py": "ai_guard.run",
     # 메인 AI 채팅 도구 루프: 랭체인 모델(PostChatModel)로 부르고 ask_guarded 안에서 ai_guard.run 을 거친다
     "features/ai_assistant/knowledge/rag_chat.py": "ai_guard.run",
 }

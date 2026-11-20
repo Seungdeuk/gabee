@@ -110,6 +110,49 @@ def check_photo(db: Session, attachment_id: str, *, retro: bool = False) -> Elig
     )
 
 
+def _is_past_photo(row: MemberMemoryConsent | None, uploaded_at: datetime) -> bool:
+    """업로더가 동의하기 **전에** 올린 사진인가(소급 분석 대상). 시각에 시간대가 없으면(SQLite) UTC 로 본다."""
+    if row is None or row.consented_at is None:
+        return False
+    consented = row.consented_at
+    uploaded = uploaded_at
+    if consented.tzinfo is None:
+        consented = consented.replace(tzinfo=UTC)
+    if uploaded.tzinfo is None:
+        uploaded = uploaded.replace(tzinfo=UTC)
+    return uploaded < consented
+
+
+def check_group_photos(
+    db: Session, group_id: str, *, enforce_retro: bool = False
+) -> tuple[list[repo.GroupPhoto], dict[str, Eligibility]]:
+    """한 가족의 가족 전체방 사진 전체를 **일괄**로 판정한다(`check_photo` 와 같은 `evaluate` 규칙, 고정된 4번의 조회: 사진+판별 상태·가족 설정·동의·제외).
+    사진이 몇 장이든 조회 수가 늘지 않는다. 1:1 방·지운 메시지·이미지가 아닌 첨부는 조회에서 이미 빠진다. 읽기 전용.
+    `enforce_retro=True`(사용자 요청형 생성)이면 업로더가 동의하기 전에 올린 과거 사진은 그 업로더의 **소급 분석 동의**가 있을 때만 자격이 있다(없으면 `no_retro_consent`)."""
+    photos = repo.group_photos_with_status(db, group_id)
+    server = server_enabled()
+    family = repo.family_enabled(db, group_id)
+    consents = repo.consents_for_group(db, group_id)
+    excluded = repo.excluded_ids(db, group_id)
+    result: dict[str, Eligibility] = {}
+    for p in photos:
+        row = consents.get(p.uploader_id)
+        result[p.attachment_id] = evaluate(
+            EligibilityInput(
+                server_enabled=server,
+                family_enabled=family,
+                photo_found=True,
+                in_family_room=True,
+                uploader_consented=_consent_active(row),
+                uploader_retro_consented=_retro_active(row),
+                excluded=p.attachment_id in excluded,
+                check_status=p.check_status,
+                retro=enforce_retro and _is_past_photo(row, p.uploaded_at),
+            )
+        )
+    return photos, result
+
+
 # ---------- 상태 ----------
 def get_state(db: Session, user: User, group_id: str) -> MemoryStateOut:
     row = repo.get_consent(db, group_id, user.id)
@@ -168,12 +211,27 @@ def _withdraw(db: Session, group_id: str, user_id: str, now: datetime) -> None:
     memory_hooks.member_withdrawn(db, group_id, user_id)
 
 
-def set_consent(db: Session, user: User, group_id: str, consent: bool) -> MemoryStateOut:
-    """본인 동의만 바꾼다. 동의는 서버 스위치가 켜져 있을 때만 새로 받는다. 철회는 항상 가능하고 즉시 효력이 생기며 두 번 보내도 같다."""
+def set_consent(
+    db: Session, user: User, group_id: str, consent: bool, consent_version: int | None = None
+) -> MemoryStateOut:
+    """본인 동의만 바꾼다. 동의는 서버 스위치가 켜져 있을 때만 새로 받는다. 철회는 항상 가능하고 즉시 효력이 생기며 두 번 보내도 같다.
+    동의할 때 `consent_version`(앱이 보여 준 고지문 버전)을 보내면 현재 버전(`CONSENT_VERSION`)과 같아야 한다(다르면 409 `consent_version_mismatch`). 철회에는 버전을 보지 않는다."""
     now = datetime.now(UTC)
     try:
         if consent:
             _require_server_on()
+            if consent_version is None and settings.family_memory_consent_version_required:
+                raise ApiError(
+                    409,
+                    "consent_version_required",
+                    "동의 안내를 확인한 뒤 다시 동의해 주세요",
+                )
+            if consent_version is not None and consent_version != CONSENT_VERSION:
+                raise ApiError(
+                    409,
+                    "consent_version_mismatch",
+                    "동의 안내가 바뀌었어요. 앱을 새로 고친 뒤 다시 확인해 주세요",
+                )
             row = repo.get_consent(db, group_id, user.id)
             if not _consent_active(row):
                 if row is None:
@@ -218,11 +276,18 @@ def set_exclusion(
         if ctx.room_kind != "family":  # 남의 1:1 방 사진은 있는지도 알려 주지 않는다
             raise not_found("사진")
         raise ApiError(403, "forbidden", "내가 올린 사진만 바꿀 수 있어요")
-    if excluded:
-        repo.add_exclusion(db, group_id, user.id, attachment_id, datetime.now(UTC))
-    else:
-        repo.remove_exclusion(db, attachment_id)
-    db.commit()
+    try:
+        if excluded:
+            repo.add_exclusion(db, group_id, user.id, attachment_id, datetime.now(UTC))
+            memory_hooks.photo_excluded(
+                db, group_id, attachment_id
+            )  # 대기·진행 중인 분석 작업을 즉시 막는다
+        else:
+            repo.remove_exclusion(db, attachment_id)
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
     return ExclusionOut(attachment_id=attachment_id, excluded=excluded)
 
 
