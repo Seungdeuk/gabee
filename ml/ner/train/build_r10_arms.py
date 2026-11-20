@@ -126,6 +126,20 @@ def main():
         ),
         "klue_share_equal_across_C10_R10full": s0["C10"]["klue_share_pct"] == s0["R10-full"]["klue_share_pct"],
         "c10_extra_contains_r10_rows": sum(1 for s in SEEDS for r in (read(d / f"c10_extra_s{s}.jsonl") if (d / f"c10_extra_s{s}.jsonl").exists() else []) if r.get("r10")),
+        "attrD_groups_intact(2 rows: 1 person + 1 noun, same word)": all(
+            len(v) == 2 and {x["pair_role"] for x in v} == {"person", "noun"}
+            for v in __import__("itertools").starmap(lambda k, g: list(g), __import__("itertools").groupby(
+                sorted(attr["r10_attrD_train"], key=lambda r: (r["pair_id"], r["pair_word"])),
+                key=lambda r: (r["pair_id"], r["pair_word"])))
+        ),
+        "attrD_person_noun_rows": [
+            sum(1 for r in attr["r10_attrD_train"] if r["pair_role"] == "person"),
+            sum(1 for r in attr["r10_attrD_train"] if r["pair_role"] == "noun"),
+        ],
+        "r10_full_pair_person_noun_rows": [
+            sum(1 for r in r10 if r.get("pair_role") == "person"),
+            sum(1 for r in r10 if r.get("pair_role") == "noun"),
+        ],
         "pool_size": len(pool),
         "pool_rows_with_relabel_excluded": len(base + f9) - len(pool),
         "r10_full_rows": len(r10),

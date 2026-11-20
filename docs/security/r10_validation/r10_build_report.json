@@ -30,8 +30,7 @@
  "problems": 0,
  "problem_examples": [],
  "rejected_by_reason(counts only)": {
-  "spec_example_string": 11,
-  "existing_training_sentence": 1
+  "spec_example_string": 13
  },
  "reserved_rule": "이름 해시 mod 5 == 0 은 R10 개발셋 전용(학습 제외)"
 }

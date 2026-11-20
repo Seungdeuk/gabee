@@ -97,7 +97,67 @@ def main():
     frame_use = Counter(r["template_id"] for r in tr)
     pair_rows = [r for r in tr if r.get("pair_id")]
     pw = Counter(r["pair_word"] for r in pair_rows if r["pair_role"] == "person")
+
+    # ---- 학습 전 필수 검증(보수적, span offset 기준) ----
+    def cands(v):
+        return b10.given_parts(v)
+
+    def viol(r, v):
+        if v == r.get("pair_word"):
+            return b10.reserved(v)
+        return any(b10.reserved(c) for c in cands(v))
+
+    span_total, viol_rows = 0, []
+    for r in allr:
+        for sp_ in r["spans"]:
+            if sp_.get("label") in ("PERSON", "PERSON_ALIAS"):
+                span_total += 1
+                v = r["text"][sp_["start"] : sp_["end"]]
+                if viol(r, v):
+                    viol_rows.append(r["id"])
+    dev_path = R10 / "r10_dev.jsonl"
+    dev_leak = None
+    if dev_path.exists():
+        dev = read(dev_path)
+        dv = {r["text"][x["start"] : x["end"]] for r in dev for x in r["spans"] if x.get("label") in ("PERSON", "PERSON_ALIAS")}
+        dev_words = {r["pair_word"] for r in dev if r.get("pair_word")}
+        tv = set(person_vals(allr))
+        t_cands = set().union(*[cands(v) for v in tv]) if tv else set()
+        d_res = set().union(*[{c for c in cands(v) if b10.reserved(c)} for v in dv]) if dv else set()
+        t_words = {r["pair_word"] for r in allr if r.get("pair_word")}
+        dev_leak = {
+            "dev_person_values": len(dv),
+            "dev_full_value_in_train_values": len(dv & tv),
+            "dev_reserved_part_in_train_candidate_parts": len(d_res & t_cands),
+            "dev_pair_words_in_train_pair_words": len(dev_words & t_words),
+            "dev_sentences_in_train": len({r8.norm(r["text"]) for r in dev} & {r8.norm(r["text"]) for r in allr}),
+        }
+    groups = defaultdict(list)
+    for r in allr:
+        if r.get("pair_id"):
+            groups[(r["split"], r["pair_id"], r["pair_word"])].append(r)
+    broken = 0
+    for k, g in groups.items():
+        roles_ = Counter(x["pair_role"] for x in g)
+        w = k[2]
+        pr = [x for x in g if x["pair_role"] == "person"]
+        nr = [x for x in g if x["pair_role"] == "noun"]
+        ok = len(g) == 2 and roles_["person"] == 1 and roles_["noun"] == 1
+        ok = ok and any(pr[0]["text"][x["start"] : x["end"]] == w for x in pr[0]["spans"])
+        ok = ok and w in nr[0]["text"] and not any(nr[0]["text"][x["start"] : x["end"]] == w for x in nr[0]["spans"])
+        broken += 0 if ok else 1
+    pre = {
+        "person_spans_checked": span_total,
+        "reserved_name_violations(any decomposition, conservative)": len(viol_rows),
+        "reserved_violation_row_ids": viol_rows[:20],
+        "dev_vs_train": dev_leak,
+        "pair_groups": len(groups),
+        "pair_groups_broken": broken,
+        "pair_rows_person": sum(1 for r in allr if r.get("pair_role") == "person"),
+        "pair_rows_noun": sum(1 for r in allr if r.get("pair_role") == "noun"),
+    }
     rep = {
+        "pre_training_checks": pre,
         "rows": {"train": len(tr), "val_monitor": len(va)},
         "by_bucket": dict(Counter(r["train_bucket"] for r in tr)),
         "negatives": sum(1 for r in tr if not r["spans"]),

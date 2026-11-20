@@ -11,6 +11,15 @@
   "C10s_equals_attr_arms": true,
   "klue_share_equal_across_C10_R10full": true,
   "c10_extra_contains_r10_rows": 0,
+  "attrD_groups_intact(2 rows: 1 person + 1 noun, same word)": true,
+  "attrD_person_noun_rows": [
+   200,
+   200
+  ],
+  "r10_full_pair_person_noun_rows": [
+   400,
+   400
+  ],
   "pool_size": 7054,
   "pool_rows_with_relabel_excluded": 292,
   "r10_full_rows": 2100,
@@ -126,9 +135,9 @@
   "R10-full": {
    "LOCATION": 819,
    "ADDRESS": 716,
-   "PERSON": 6220,
+   "PERSON": 6217,
    "PERSON_ALIAS": 572,
-   "ORGANIZATION": 1026
+   "ORGANIZATION": 1027
   }
  },
  "training_runs": {

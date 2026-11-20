@@ -109,7 +109,9 @@ class Guards10(b9.Guards):
         given = given or full
         if allow_common:  # 일반 명사형 이름 단어(D1P): R9 와 겹쳐도 되지만 예약 구간은 제외
             return not reserved(full) and super().name_ok(full, given, True)
-        if full in self.r9_names or given in self.r9_given or reserved(given):
+        # 보수적 판정: 이름 부분 경계를 행에 기록하지 않으므로 어떤 분해(전체·뒤 2~3글자)든 예약 구간이면 학습에서 뺀다
+        cands = given_parts(full) | given_parts(given)
+        if full in self.r9_names or given in self.r9_given or any(reserved(c) for c in cands):
             return False
         return super().name_ok(full, given, False)
 
@@ -191,7 +193,7 @@ def build(frames, names, g, seed, cfg):
             word = names.pick("nameword", sp)
             pr = pairs[pid]
             rows = []
-            for role, kind in (("person", "NW"), ("noun", "WN")):
+            for role, kind in (("person", "NW"), ("noun", "WN")):  # 정합성: 아래에서 짝 검증
                 fr = pr[role]
 
                 def roles(k, num, _w=word, _fr=fr):
@@ -209,7 +211,16 @@ def build(frames, names, g, seed, cfg):
                     rows = None
                     break
                 rows.append(row)
-            if rows:
+            if rows and len(rows) == 2:
+                p_row, n_row = rows
+                person_ok = any(p_row["text"][x["start"] : x["end"]] == word for x in p_row["spans"])
+                noun_ok = word in n_row["text"] and not any(
+                    n_row["text"][x["start"] : x["end"]] == word for x in n_row["spans"]
+                )
+                if not (person_ok and noun_ok):
+                    seen.discard(r8.norm(p_row["text"]))
+                    seen.discard(r8.norm(n_row["text"]))
+                    continue
                 out[sp]["D"].extend(rows)
                 made += 2
     # 단일 틀 버킷
@@ -259,6 +270,14 @@ def main():
             and g.name_ok(w, allow_common=True)
         ]
         names.split["nameword"][sp] = names.split["nameword"][sp] + add
+    # 보수적: 예약 단어(개발셋 전용)를 부분 문자열로 포함하거나 그 안에 든 학습 단어는 뺀다(예: 개발 '소리' vs 학습 '종소리')
+    res_words = [
+        w for w in dict.fromkeys(list(b9.NAMEWORDS_NOUN) + NAMEWORDS_R10) if reserved(w) and len(w) >= 2
+    ]
+    for sp in ("train", "val"):
+        names.split["nameword"][sp] = [
+            w for w in names.split["nameword"][sp] if not any(r in w or w in r for r in res_words)
+        ]
     # 일반 단어(자연물·사물·이름 단어)는 R9 main() 과 같은 규칙으로 train/val 분할
     def sp_words(lst):
         ok = [w for w in dict.fromkeys(lst) if w not in g.dev_words and w not in g.dev_exact and not reserved(w)]
