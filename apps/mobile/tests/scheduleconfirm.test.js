@@ -5,6 +5,7 @@ import { afterEach, beforeEach, test } from "node:test";
 import {
   CANCELLED_TEXT,
   SHARE_CANCELLED_TEXT,
+  buildChoiceAction,
   buildShareText,
   cancelledText,
   CARD_PENDING,
@@ -286,4 +287,62 @@ test("buildShareText: 목록 순서대로 줄바꿈으로 잇고, 선택이 없�
   assert.equal(buildShareText(items, ["a1", "a1"]), "10/30(금) 14:00 치과");
   assert.equal(buildShareText(items, undefined), "");
   assert.equal(buildShareText(undefined, ["a1"]), "");
+});
+
+const choiceCard = (extra = {}) => ({
+  kind: "schedule",
+  action: "choice_select",
+  title: "지울 일정을 골라 주세요.",
+  lines: [],
+  shared_with: [],
+  pending_action: { type: "choice", choice_kind: "delete", event_id: "", event_ids: [], changes: {} },
+  items: [
+    { id: "e1", line: "11월 20일(금) '헬스'" },
+    { id: "e2", line: "11월 30일(월) '헬스'" },
+  ],
+  ok_label: "삭제",
+  ...extra,
+});
+
+test("choice_select: 카드로 살아남고 items 와 버튼 이름(ok_label)을 정리한다", () => {
+  const [card] = mapConfirmCards([choiceCard()]);
+  assert.equal(card.action, "choice_select");
+  assert.equal(card.okLabel, "삭제");
+  assert.deepEqual(card.items.map((i) => i.id), ["e1", "e2"]);
+  assert.equal(mapConfirmCards([choiceCard({ ok_label: "" })])[0].okLabel, "확인");
+  assert.deepEqual(mapConfirmCards([choiceCard({ items: [] })]), []); // 고를 항목이 없으면 카드를 버린다
+  assert.deepEqual(mapConfirmCards([choiceCard({ pending_action: undefined })]), []); // 실행 정보가 없으면 보이지 않는다
+});
+
+test("choice_select: 버튼은 실행(삭제·부탁 취소는 danger)과 닫기", () => {
+  const del = mapConfirmCards([choiceCard()])[0];
+  assert.deepEqual(cardButtons(del).map((b) => [b.key, b.label, b.tone]), [["ok", "삭제", "danger"], ["cancel", "닫기", "ghost"]]);
+  const edit = mapConfirmCards([choiceCard({ ok_label: "바꾸기" })])[0];
+  assert.equal(cardButtons(edit)[0].tone, "main");
+  assert.equal(cardButtons(mapConfirmCards([choiceCard({ ok_label: "부탁 취소" })])[0])[0].tone, "danger");
+  assert.equal(cancelledText(del), CANCELLED_TEXT);
+});
+
+test("buildChoiceAction: 체크한 id 를 목록 순서대로 event_ids 에 넣고 모르는 id 는 버린다", () => {
+  const card = mapConfirmCards([choiceCard()])[0];
+  assert.deepEqual(buildChoiceAction(card, ["e2", "e1"]).event_ids, ["e1", "e2"]);
+  assert.deepEqual(buildChoiceAction(card, ["zzz", "e2"]).event_ids, ["e2"]);
+  assert.deepEqual(buildChoiceAction(card, []).event_ids, []);
+  assert.equal(buildChoiceAction(card, ["e1"]).choice_kind, "delete");
+  assert.deepEqual(card.pendingAction.event_ids, []); // 원래 카드는 바뀌지 않는다
+});
+
+test("choice_select: 체크한 것을 확인 요청으로 보내고 응답 문장을 결과로 쓴다", async () => {
+  const api = await import("../src/features/ai-assistant/api.js");
+  const calls = [];
+  globalThis.fetch = async (url, init = {}) => {
+    calls.push({ url: String(url), body: JSON.parse(init.body) });
+    return json(200, { intent: "delete", text: "11월 30일(월) '헬스' 일정을 지웠어요.", cards: [] });
+  };
+  const card = mapConfirmCards([choiceCard()])[0];
+  const res = await api.confirmCardAction({ ...card, pendingAction: buildChoiceAction(card, ["e2"]) }, false, false);
+  assert.equal(calls[0].url, "http://api.test/schedule/agent/confirm");
+  assert.deepEqual(calls[0].body.action.event_ids, ["e2"]);
+  assert.equal(calls[0].body.action.type, "choice");
+  assert.equal(res.text, "11월 30일(월) '헬스' 일정을 지웠어요.");
 });

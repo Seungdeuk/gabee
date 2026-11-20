@@ -5,7 +5,7 @@ import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-nati
 import { colors, font, radius, spacing } from "@/theme";
 
 import { confirmCardAction } from "../api";
-import { CARD_CANCELLED, CARD_DONE, CARD_PENDING, buildShareText, cancelledText, cardButtons } from "../scheduleCard";
+import { CARD_CANCELLED, CARD_DONE, CARD_PENDING, buildChoiceAction, buildShareText, cancelledText, cardButtons } from "../scheduleCard";
 
 /**
  * 가족방의 공유 선택 카드(share_select): 일정 조회 결과 중 방에 공유할 항목을 체크해 고르면 선택한 줄만 내 이름의 일반 메시지로 보낸다.
@@ -91,6 +91,86 @@ function ShareSelectCard({ card, onResolve, onShareToRoom }) {
   );
 }
 
+/**
+ * 선택 카드(choice_select): 같은 이름의 일정·모호한 가족·부탁이 여럿일 때 글로 되묻는 대신 체크박스로 고른다(개인 채팅).
+ * 체크하고 버튼을 누르면 서버가 확인 카드 없이 바로 처리하고(삭제·바꾸기·공유·부탁 취소), 카드는 결과 한 줄로 바뀐다. 아무것도 체크하지 않으면 버튼을 누를 수 없다.
+ */
+function ChoiceSelectCard({ card, onResolve }) {
+  const [selected, setSelected] = useState([]);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const status = card.status ?? CARD_PENDING;
+
+  if (status === CARD_DONE || status === CARD_CANCELLED) return <ResolvedLine card={card} status={status} />;
+
+  const toggle = (id) => {
+    if (busy) return;
+    setSelected((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+  };
+
+  const run = async () => {
+    if (busy || selected.length === 0) return;
+    setBusy(true);
+    setError("");
+    try {
+      const { text } = await confirmCardAction({ ...card, pendingAction: buildChoiceAction(card, selected) }, false, false);
+      onResolve?.(CARD_DONE, text);
+    } catch (e) {
+      setError(e?.message || "처리하지 못했어요. 잠시 후 다시 시도해 주세요.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <View style={styles.card} accessibilityLabel="선택 카드">
+      <View style={styles.head}>
+        <Ionicons name="checkbox-outline" size={16} color={colors.accent} />
+        <Text style={styles.title}>{card.title}</Text>
+      </View>
+      {card.items.map((item) => {
+        const on = selected.includes(item.id);
+        return (
+          <Pressable
+            key={item.id}
+            onPress={() => toggle(item.id)}
+            accessibilityRole="checkbox"
+            accessibilityState={{ checked: on, disabled: busy }}
+            accessibilityLabel={item.line}
+            style={styles.item}
+          >
+            <Ionicons name={on ? "checkbox" : "square-outline"} size={22} color={on ? colors.accent : colors.textMuted} />
+            <Text style={styles.itemText}>{item.line}</Text>
+          </Pressable>
+        );
+      })}
+      {error ? (
+        <Text style={styles.error} accessibilityLiveRegion="polite">
+          {error}
+        </Text>
+      ) : null}
+      <View style={styles.row}>
+        {cardButtons(card).map((b) => {
+          const disabled = busy || (b.key === "ok" && selected.length === 0);
+          return (
+            <Pressable
+              key={b.key}
+              onPress={() => (b.key === "cancel" ? onResolve?.(CARD_CANCELLED, "") : run())}
+              disabled={disabled}
+              accessibilityRole="button"
+              accessibilityLabel={b.label}
+              accessibilityState={{ disabled }}
+              style={[styles.btn, b.tone === "ghost" ? styles.ghost : b.tone === "danger" ? styles.danger : styles.main, disabled && styles.off]}
+            >
+              {busy && b.key === "ok" ? <ActivityIndicator color={colors.onDark} /> : <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8} style={b.tone === "ghost" ? styles.ghostText : styles.mainText}>{b.label}</Text>}
+            </Pressable>
+          );
+        })}
+      </View>
+    </View>
+  );
+}
+
 /** 처리했거나 닫은 카드: 결과 한 줄 */
 function ResolvedLine({ card, status }) {
   const done = status === CARD_DONE;
@@ -112,6 +192,7 @@ function ResolvedLine({ card, status }) {
  */
 export default function ScheduleConfirmCard({ card, onResolve, onShareToRoom, postToRoom = false }) {
   if (card.action === "share_select") return <ShareSelectCard card={card} onResolve={onResolve} onShareToRoom={onShareToRoom} />;
+  if (card.action === "choice_select") return <ChoiceSelectCard card={card} onResolve={onResolve} />;
   return <ServerConfirmCard card={card} onResolve={onResolve} postToRoom={postToRoom} />;
 }
 

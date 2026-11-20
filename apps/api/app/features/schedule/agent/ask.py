@@ -20,7 +20,7 @@ from app.shared.llm.agent import AgentReply, Post
 
 from . import handler
 from . import members as members_mod
-from .schemas import AgentRequest, AgentResponse, Draft
+from .schemas import AgentRequest, AgentResponse, Choice, Draft, PendingAction
 
 DESCRIPTION = (
     "일정 탭 담당. 일정 탭에 이미 입력된 내 일정을 조회하고, 사용자가 일정에 넣어 달라고 분명히 말한 새 일정을 등록한다. "
@@ -37,6 +37,7 @@ DESCRIPTION = (
     "'약 먹었어 체크해줘'처럼 대신 체크해 달라는 말은 확인 카드가 나타나 버튼을 눌러야 반영된다. 내 습관만 체크할 수 있다."
 )
 
+SELECT_SHOWN = "아직 실행되지 않았어요. 사용자 화면에 선택 카드가 나타났고, 사용자가 항목을 체크하고 버튼을 눌러야 처리돼요."
 CARD_SHOWN = "아직 실행되지 않았어요. 사용자 화면에 확인 카드가 나타났고, 사용자가 카드의 버튼을 눌러야 반영돼요."
 ASK_BACK = "일정을 등록하려면 정보가 더 필요해요. 사용자에게 이 질문을 그대로 전하세요. 답을 받으면 날짜·시간·제목을 합친 완전한 문장으로 다시 넘기세요: "
 NOT_SCHEDULE = "일정과 관련된 요청이 아니에요."
@@ -166,10 +167,74 @@ def _keep_draft(group_id: str, user_id: str, response: AgentResponse) -> None:
             )
 
 
+def _change_phrase(changes: dict) -> str:
+    """선택 카드 제목에 쓰는 바꿀 내용: "장소를 '서초'로, 시간을 16:00으로"."""
+    parts = []
+    if changes.get("title"):
+        parts.append(f"제목을 '{changes['title']}'(으)로")
+    if changes.get("date"):
+        parts.append(f"날짜를 {changes['date']}(으)로")
+    if changes.get("start_time"):
+        parts.append(f"시간을 {changes['start_time']}(으)로")
+    if changes.get("place"):
+        parts.append(f"장소를 '{changes['place']}'(으)로")
+    if changes.get("memo"):
+        parts.append("메모를")
+    if changes.get("clear"):
+        parts.append("지울 항목을")
+    if changes.get("share_change"):
+        parts.append("공유 대상을")
+    return ", ".join(parts)
+
+
+def _choice_card(choice: Choice, text: str) -> dict:
+    """개인 채팅에서 대상이 여럿일 때 체크박스로 고르는 선택 카드. 체크한 것은 확인 카드 없이 바로 처리한다(정책 #39)."""
+    if choice.members:
+        kind, title, label = "members", "공유할 가족을 골라 주세요.", "공유"
+    elif choice.kind == "delete":
+        kind, title, label = "delete", "지울 일정을 골라 주세요.", "삭제"
+    elif choice.kind == "request_cancel":
+        kind, title, label = "request_cancel", "취소할 부탁을 골라 주세요.", "부탁 취소"
+    elif choice.kind == "request_edit":
+        kind, title, label = "request_edit", "받는 사람을 바꿀 부탁을 골라 주세요.", "바꾸기"
+    else:
+        what = _change_phrase(choice.changes)
+        kind, label = "edit", "바꾸기"
+        title = f"{what} 바꿀 일정을 골라 주세요." if what else "바꿀 일정을 골라 주세요."
+    action = PendingAction(
+        type="choice",
+        choice_kind=kind,
+        event_id=choice.event_ids[0] if kind == "members" and choice.event_ids else "",
+        changes=choice.changes,
+    )
+    return {
+        "kind": "schedule",
+        "action": "choice_select",
+        "title": title,
+        "lines": [],
+        "shared_with": [],
+        "pending_action": action.model_dump(mode="json"),
+        "items": [{"id": str(o["id"]), "line": str(o["line"])} for o in choice.options],
+        "ok_label": label,
+    }
+
+
 def _reply(response: AgentResponse, room: bool = False) -> AgentReply:
     """일정 에이전트의 응답을 메인이 사용자에게 전할 글로 바꾼다. 실행되지 않은 일을 실행됐다고 말하게 하지 않는다."""
     if response.intent == "not_schedule":
         return AgentReply(NOT_SCHEDULE, can_answer=False)
+    choice = response.choice
+    if (
+        choice is not None
+        and not room
+        and choice.options
+        and not choice.past
+        and choice.kind != "register"
+    ):  # 개인 채팅: 되묻는 글 대신 체크박스 선택 카드를 보여 준다
+        card = _choice_card(choice, response.text)
+        return AgentReply(
+            f"{SELECT_SHOWN} ({card['title']})", confirmations=[card], user_text=card["title"]
+        )
     if (
         response.pending_action is not None
     ):  # 공유 등록·수정·삭제: 앱이 확인 카드로 보여 주고 버튼으로 실행한다

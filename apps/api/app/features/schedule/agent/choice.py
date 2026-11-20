@@ -83,16 +83,33 @@ def ask_response(kind: str, found: list, changes: dict | None = None, past: bool
         intent=kind,
         text=text,
         cards=[Card(type="event_list", data={"events": [reader.brief(e) for e in found]})],
-        choice=Choice(kind=kind, event_ids=[e.id for e in found], changes=changes or {}, past=past),
+        choice=Choice(
+            kind=kind,
+            event_ids=[e.id for e in found],
+            changes=changes or {},
+            past=past,
+            options=[] if past else event_options(found),
+        ),
     )
 
 
-def ask_member(event, changes: dict, text: str) -> AgentResponse:
+def event_options(found: list) -> list[dict]:
+    """선택 카드에 보여 줄 일정 후보 한 줄씩."""
+    return [{"id": e.id, "line": reader.event_text(e)} for e in found]
+
+
+def ask_member(event, changes: dict, text: str, options: list[dict] | None = None) -> AgentResponse:
     """공유할 사람이 같은 호칭의 여럿이라 누구인지 되묻는다. 이미 정해진 사람(changes.share_ids)은 답을 받은 뒤 더한다."""
     return AgentResponse(
         intent="edit",
         text=text,
-        choice=Choice(kind="edit", event_ids=[event.id], changes=changes, members=True),
+        choice=Choice(
+            kind="edit",
+            event_ids=[event.id],
+            changes=changes,
+            members=True,
+            options=options or [],
+        ),
     )
 
 
@@ -112,7 +129,12 @@ def ask_which(kind: str, found: list, changes: dict | None = None) -> AgentRespo
         intent=kind,
         text="어느 일정인가요?",
         cards=[Card(type="event_list", data={"events": [reader.brief(e) for e in found]})],
-        choice=Choice(kind=kind, event_ids=[e.id for e in found], changes=changes or {}),
+        choice=Choice(
+            kind=kind,
+            event_ids=[e.id for e in found],
+            changes=changes or {},
+            options=event_options(found),
+        ),
     )
 
 
@@ -133,7 +155,9 @@ def pick(text: str, choice: Choice, events: list) -> list[str] | None:
         and (choice.past or not mentions(said, events[0]))
     ):
         return []
-    if NEW_REQUEST.search(said) and any(e.title.strip() and e.title.strip() in said for e in events):
+    if NEW_REQUEST.search(said) and any(
+        e.title.strip() and e.title.strip() in said for e in events
+    ):
         return None  # 일정 제목을 다시 말하며 시키는 말("헬스 다 지워줘")은 답이 아니라 새 요청이다
     own = OWN_VERBS.get(choice.kind, "")
     if ALL_WORDS.search(said) and not NEW_REQUEST.search(re.sub(own, "", said) if own else said):
