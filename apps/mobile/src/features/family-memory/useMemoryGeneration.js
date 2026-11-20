@@ -34,9 +34,9 @@ export default function useMemoryGeneration(onChanged) {
   }, []);
 
   const apply = useCallback(
-    (mine, gen, step) => {
+    (mine, gen, step, explicit) => {
       dispatch({ type: "ok", seq: mine, gen });
-      if (shouldReloadCandidates(prev.current, gen)) changed.current?.();
+      if (shouldReloadCandidates(prev.current, gen, explicit)) changed.current?.();
       prev.current = gen;
       if (shouldKeepPolling(gen, polls.current)) {
         polling.current = true;
@@ -49,7 +49,7 @@ export default function useMemoryGeneration(onChanged) {
   );
 
   const run = useCallback(
-    (call, fresh) => {
+    (call, fresh, explicit = false) => {
       if (!scope || !enabled) return;
       const mine = seq.current;
       if (fresh) polls.current = 0;
@@ -59,7 +59,7 @@ export default function useMemoryGeneration(onChanged) {
       call().then(
         (gen) => {
           if (mine !== seq.current) return; // 가족·사용자가 바뀌었다
-          apply(mine, gen, () => run(requestMemoryGeneration, false));
+          apply(mine, gen, () => run(requestMemoryGeneration, false), explicit);
         },
         (error) => {
           if (mine !== seq.current) return;
@@ -82,6 +82,6 @@ export default function useMemoryGeneration(onChanged) {
     };
   }, [scope, enabled, run, clear]);
 
-  const start = useCallback(() => run(requestMemoryGeneration, true), [run]);
+  const start = useCallback(() => run(requestMemoryGeneration, true, true), [run]);
   return { state, polling: polling.current, start };
 }
