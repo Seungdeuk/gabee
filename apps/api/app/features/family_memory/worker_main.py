@@ -19,8 +19,18 @@ EXIT_NOT_ENABLED = 2
 EXIT_ENCODER_FAILED = 3
 
 
+def register_models() -> None:
+    """별도 프로세스에는 웹 서버(`app.main`)가 불러 주는 다른 기능의 모델이 없다. 작업 표가 가리키는 `message_attachments` 같은
+    외래키 대상이 메타데이터에 없으면 첫 작업 선점에서 `NoReferencedTableError` 로 루프가 계속 실패하므로, 시작할 때 불러온다.
+    워커 환경(torch)에 불필요한 의존성(pgvector 등)을 요구하지 않도록 `import_all_models()` 대신 외래키가 닿는 모델만 불러온다."""
+    from app.features.family_chat import models as _chat  # noqa: F401
+    from app.features.family_group import models as _group  # noqa: F401
+    from app.features.family_memory import models as _memory  # noqa: F401
+
+
 def main() -> int:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
+    register_models()
     if not (settings.family_memory_enabled and settings.family_memory_worker_enabled):
         logger.warning("family memory worker not enabled: nothing to do")
         return EXIT_NOT_ENABLED
