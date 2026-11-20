@@ -23307,6 +23307,15 @@
             "type": "boolean",
             "title": "Members",
             "default": false
+          },
+          "options": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "maxItems": 20,
+            "title": "Options"
           }
         },
         "type": "object",
@@ -23347,7 +23356,8 @@
               "request_edit",
               "request_cancel",
               "habit_check",
-              "share_select"
+              "share_select",
+              "choice_select"
             ],
             "title": "Action"
           },
@@ -23383,6 +23393,11 @@
             "type": "array",
             "title": "Items",
             "default": []
+          },
+          "ok_label": {
+            "type": "string",
+            "title": "Ok Label",
+            "default": ""
           }
         },
         "type": "object",
@@ -27529,7 +27544,8 @@
               "request_register",
               "request_edit",
               "request_cancel",
-              "habit_check"
+              "habit_check",
+              "choice"
             ],
             "title": "Type"
           },
@@ -27543,8 +27559,21 @@
               "type": "string"
             },
             "type": "array",
-            "maxItems": 10,
+            "maxItems": 20,
             "title": "Event Ids"
+          },
+          "choice_kind": {
+            "type": "string",
+            "enum": [
+              "",
+              "edit",
+              "delete",
+              "request_edit",
+              "request_cancel",
+              "members"
+            ],
+            "title": "Choice Kind",
+            "default": ""
           },
           "changes": {
             "additionalProperties": true,

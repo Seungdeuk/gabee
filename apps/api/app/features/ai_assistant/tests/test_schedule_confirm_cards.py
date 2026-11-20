@@ -128,7 +128,9 @@ def test_delete_comes_back_as_a_card_and_is_not_executed_until_confirmed(
     assert _events(client, a) == []
 
 
-def test_edit_comes_back_as_a_confirm_card_and_changes_nothing_before_approval(client, setup, schedule_llm, monkeypatch):
+def test_edit_comes_back_as_a_confirm_card_and_changes_nothing_before_approval(
+    client, setup, schedule_llm, monkeypatch
+):
     a, _, _ = setup
     created = client.post(
         "/schedule/events",
@@ -308,3 +310,117 @@ def test_main_prompt_routes_schedule_share_to_the_schedule_agent_and_knows_which
         if k.isupper() and isinstance(v, str) and "ask_schedule" in v
     )
     assert "수정·삭제·공유 대상 변경은 확인 카드" in text and "카드 없이 바로 실행" in text
+    assert "선택 카드" in text  # 같은 이름이 여럿이면 글로 되묻지 않고 선택 카드를 안내한다
+
+
+def _delete_data(target_id):
+    data = {
+        "intent": "delete",
+        "reply": "",
+        "event_ids": [],
+        "target_id": target_id,
+        "changes": {
+            "title": "",
+            "date": "",
+            "start_time": "",
+            "end_time": "",
+            "kind": 0,
+            "place": "",
+            "memo": "",
+            "clear": [],
+        },
+    }
+    return data
+
+
+def _two_gym(client, a):
+    first = client.post(
+        "/schedule/events", json={"title": "헬스", "start_date": _day(3)}, headers=a
+    ).json()
+    second = client.post(
+        "/schedule/events", json={"title": "헬스", "start_date": _day(10)}, headers=a
+    ).json()
+    return first, second
+
+
+def _day(n):
+    from datetime import date, timedelta
+
+    return (date.today() + timedelta(days=n)).isoformat()
+
+
+def test_same_title_delete_shows_a_checkbox_card_and_deletes_only_the_checked(
+    client, setup, schedule_llm, monkeypatch
+):
+    a, _, _ = setup
+    first, second = _two_gym(client, a)
+    _main(monkeypatch)
+    schedule_llm.data = _delete_data(first["id"])
+    out = _ask(client, a)
+    card = out["confirm_cards"][0]
+    assert card["action"] == "choice_select" and card["ok_label"] == "삭제"
+    assert [i["id"] for i in card["items"]] == [first["id"], second["id"]]
+    assert all("헬스" in i["line"] for i in card["items"])
+    assert len(_events(client, a)) == 2  # 체크하기 전에는 지우지 않는다
+    action = {**card["pending_action"], "event_ids": [second["id"]]}  # 앱이 체크한 줄만 보낸다
+    r = client.post("/schedule/agent/confirm", json={"action": action}, headers=a)
+    assert r.status_code == 200, r.text
+    assert "지웠어요" in r.json()["text"]
+    assert [e["id"] for e in _events(client, a)] == [
+        first["id"]
+    ]  # 확인 카드 없이 바로, 체크한 것만
+
+
+def test_choice_card_is_revalidated_and_needs_a_checked_item(
+    client, setup, schedule_llm, monkeypatch
+):
+    a, b, _ = setup
+    first, second = _two_gym(client, a)
+    _main(monkeypatch)
+    schedule_llm.data = _delete_data(first["id"])
+    card = _ask(client, a)["confirm_cards"][0]
+    empty = client.post(
+        "/schedule/agent/confirm", json={"action": card["pending_action"]}, headers=a
+    )
+    assert empty.status_code == 400  # 아무것도 체크하지 않았다
+    forged = {**card["pending_action"], "event_ids": ["not-mine"]}
+    r = client.post("/schedule/agent/confirm", json={"action": forged}, headers=b)
+    assert (
+        r.status_code == 200 and "지웠어요" not in r.json()["text"]
+    )  # 남의 일정은 지워지지 않는다
+    assert len(_events(client, a)) == 2
+
+
+def test_same_title_edit_card_applies_to_every_checked_event_at_once(
+    client, setup, schedule_llm, monkeypatch
+):
+    a, _, _ = setup
+    first, second = _two_gym(client, a)
+    _main(monkeypatch)
+    data = _delete_data(first["id"])
+    data["intent"] = "edit"
+    data["changes"] = {**data["changes"], "place": "서초"}
+    schedule_llm.data = data
+    card = _ask(client, a)["confirm_cards"][0]
+    assert card["action"] == "choice_select" and card["ok_label"] == "바꾸기"
+    assert "서초" in card["title"]
+    action = {**card["pending_action"], "event_ids": [first["id"], second["id"]]}
+    r = client.post("/schedule/agent/confirm", json={"action": action}, headers=a)
+    assert r.status_code == 200, r.text
+    assert {e["place"] for e in _events(client, a)} == {"서초"}  # 확인 카드 없이 둘 다 바로
+    assert "바꿨어요" in r.json()["text"]
+
+
+def test_room_keeps_asking_in_text_without_a_selection_card(
+    client, setup, schedule_llm, monkeypatch
+):
+    from app.features.schedule.agent import ask as ask_mod
+    from app.features.schedule.agent.schemas import AgentResponse, Choice
+
+    response = AgentResponse(
+        intent="delete",
+        text="'헬스' 일정이 2개 있어요. 어느 쪽인가요? 모두인가요?",
+        choice=Choice(kind="delete", event_ids=["a", "b"], options=[{"id": "a", "line": "헬스"}]),
+    )
+    assert ask_mod._reply(response, room=True).confirmations == []
+    assert ask_mod._reply(response, room=False).confirmations[0]["action"] == "choice_select"

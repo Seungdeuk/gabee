@@ -59,7 +59,11 @@ def _share_nothing(event: Event, text: str) -> str:
     if REMOVE_WORDS.search(text):
         return f"{named} 일정은 이미 공유받는 사람이 없어요."
     return f"{named} 일정을 공유하지 못했어요. 말씀하신 분을 가족에서 찾지 못했어요."
-NOT_FOUND_OFFER_TEXT = "해당하는 일정이 등록되어 있지 않아요. 새로 등록하려면 제목과 날짜를 알려 주세요"
+
+
+NOT_FOUND_OFFER_TEXT = (
+    "해당하는 일정이 등록되어 있지 않아요. 새로 등록하려면 제목과 날짜를 알려 주세요"
+)
 NOT_SHARE_OWNER = "공유 대상은 일정을 처음 만든 분만 바꿀 수 있어요"
 SHARE_PERSONAL_ONLY = "공유 대상은 개인 채팅에서만 바꿀 수 있어요"
 
@@ -261,7 +265,12 @@ def respond_edit(
         ask = members_mod.ask_text(
             members or [], text, user_id, reply or register.MEMBER_UNCLEAR_TEXT
         )
-        return choice_mod.ask_member(event, changes, ask)
+        return choice_mod.ask_member(
+            event,
+            changes,
+            ask,
+            members_mod.option_lines(members_mod.same_call(members or [], text, user_id)),
+        )
     if not changes.get("share_change"):
         decision, found = choice_mod.narrow(event, events, now, "edit", text, related)
         if decision == "ask" and build_update(changes, event, now):
@@ -462,6 +471,57 @@ def confirm_delete(
     service.remove(db, group_id, user_id, action.event_id)
     text = f"{named} 일정을 지웠어요." if named else "지웠어요."
     return AgentResponse(intent="delete", text=text)
+
+
+def apply_choice(
+    db: Session, user_id: str, group_id: str, action: PendingAction, today: date
+) -> AgentResponse:
+    """선택 카드에서 사용자가 체크한 일정(또는 가족)을 확인 카드 없이 바로 처리한다(정책 #39).
+    앱이 돌려준 내용은 믿지 않는다: 일정을 다시 찾고 소유자와 값을 다시 확인한다(`respond_edit`·`delete_many`)."""
+    ids = list(dict.fromkeys(action.event_ids))
+    if not ids:
+        raise bad_request("invalid_action", "고른 항목이 없어요")
+    choice_mod.take(group_id, user_id)  # 카드로 골랐으니 글로 답하는 되묻기는 끝난다
+    if action.choice_kind == "delete":
+        done, failed = delete_many(db, user_id, group_id, ids)
+        return AgentResponse(intent="delete", text=many_text(done, failed))
+    family = members_mod.load(db, group_id)
+    changes = dict(action.changes)
+    targets = ids
+    if (
+        action.choice_kind == "members"
+    ):  # 체크한 것은 공유할 가족이다: 정해 둔 사람에 더해 그 일정의 공유를 바꾼다
+        known = {m.id for m in family}
+        who = [i for i in ids if i in known and i != user_id]
+        if not who:
+            raise bad_request("invalid_action", "고른 가족을 찾지 못했어요")
+        merged = list(dict.fromkeys([*changes.get("share_ids", []), *who]))
+        changes = {**changes, "share_ids": merged, "member_ambiguous": False, "share_change": True}
+        targets = [action.event_id]
+    texts: list[str] = []
+    cards: list[Card] = []
+    for event_id in targets:
+        event = schedule_repo.get(db, group_id, event_id, user_id)
+        if event is None or not service.owns(event, user_id):
+            texts.append(NOT_FOUND_TEXT)
+            continue
+        one = respond_edit(
+            user_id, event.id, changes, {event.id: event}, today, family, "personal", db, group_id
+        )
+        if (
+            one.pending_action is None
+        ):  # 이미 그렇게 되어 있거나 바꿀 수 없는 경우: 이유를 그대로 알린다
+            texts.append(one.text)
+            continue
+        done = confirm_edit(db, user_id, group_id, one.pending_action)
+        lines = one.cards[0].data.get("changes", []) if one.cards else []
+        summary = "; ".join(f"{c['label']} {c['before']} → {c['after']}" for c in lines)
+        text = done.text
+        if summary:
+            text = text.replace(" 일정을 바꿨어요.", f" 일정을 바꿨어요 ({summary}).", 1)
+        texts.append(text)
+        cards += done.cards
+    return AgentResponse(intent="edit", text=" ".join(texts), cards=cards)
 
 
 def resolve_choice(

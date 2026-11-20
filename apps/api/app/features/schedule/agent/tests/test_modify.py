@@ -111,6 +111,7 @@ def test_delete_asks_first_and_runs_on_confirm(client, setup, fake):
         "habit_ids": [],
         "habit_op": "",
         "amount": 1,
+        "choice_kind": "",
     }
     assert len(_events(client, a)) == 1  # 확인 전에는 지우지 않는다
     calls = len(fake.calls)
@@ -392,7 +393,9 @@ def test_approving_changes_only_the_picked_event_and_only_the_requested_fields(c
     # 같은 이름이 둘이어도 모델이 하나(둘째)를 고르면 그 일정만, 그리고 시작 시간만 바뀐다
     fake.data = _data("edit", second["id"], start_time="16:00")
     asked = _say(client, a, "치과 4시로 바꿔줘").json()
-    assert asked["pending_action"] is None and "어느 쪽인가요?" in asked["text"]  # 같은 이름이 둘이면 되묻는다
+    assert (
+        asked["pending_action"] is None and "어느 쪽인가요?" in asked["text"]
+    )  # 같은 이름이 둘이면 되묻는다
     body = _say(client, a, f"{_md(9)} 걸로").json()
     assert body["pending_action"]["event_id"] == second["id"]
     assert body["pending_action"]["changes"] == {"start_time": "16:00", "end_time": "17:00"}
@@ -724,3 +727,54 @@ def test_share_to_someone_already_shared_says_so_instead_of_asking_what_to_chang
     body = _say(client, a, "치과 엄마한테 공유해줘").json()
     assert "이미" in body["text"] and "공유되어 있어요" in body["text"]
     assert body["pending_action"] is None and "무엇을 바꿀지" not in body["text"]
+
+
+# ---------- 선택 카드(정책 #39): 체크한 것은 확인 카드 없이 바로 처리한다 ----------
+def _confirm_choice(client, headers, **action):
+    base = {"type": "choice", "event_ids": [], "changes": {}}
+    return client.post(
+        "/schedule/agent/confirm", json={"action": {**base, **action}}, headers=headers
+    )
+
+
+def test_choice_card_delete_removes_only_the_checked_events(client, setup, fake):
+    a, _, _, _, _ = setup
+    first = _new(client, a, start_date=_day(3))
+    second = _new(client, a, start_date=_day(10))
+    r = _confirm_choice(client, a, choice_kind="delete", event_ids=[first["id"]])
+    assert r.status_code == 200 and "지웠어요" in r.json()["text"]
+    assert [e["id"] for e in _events(client, a)] == [second["id"]]
+
+
+def test_choice_card_with_nothing_checked_is_rejected(client, setup, fake):
+    a, _, _, _, _ = setup
+    _new(client, a)
+    assert _confirm_choice(client, a, choice_kind="delete").status_code == 400
+    assert len(_events(client, a)) == 1
+
+
+def test_choice_card_edit_changes_every_checked_event_without_a_second_card(client, setup, fake):
+    a, _, _, _, _ = setup
+    first = _new(client, a, start_date=_day(3))
+    second = _new(client, a, start_date=_day(10))
+    changes = _data("edit", "", place="서초")["changes"]
+    r = _confirm_choice(
+        client, a, choice_kind="edit", event_ids=[first["id"], second["id"]], changes=changes
+    ).json()
+    assert r["intent"] == "edit" and r["pending_action"] is None and "바꿨어요" in r["text"]
+    assert {e["place"] for e in _events(client, a)} == {"서초"}
+
+
+def test_choice_card_members_shares_the_checked_family_member(client, setup, fake):
+    a, b, _, other, _ = setup
+    e = _new(client, a)
+    changes = _data("edit", "", share_change=True)["changes"]
+    r = _confirm_choice(
+        client, a, choice_kind="members", event_id=e["id"], event_ids=[other], changes=changes
+    ).json()
+    assert r["pending_action"] is None and "바꿨어요" in r["text"]
+    assert [x["title"] for x in _events(client, b)] == ["치과"]
+    bad = _confirm_choice(
+        client, a, choice_kind="members", event_id=e["id"], event_ids=["zzzz"], changes=changes
+    )
+    assert bad.status_code == 400  # 가족이 아닌 id 는 받지 않는다

@@ -72,6 +72,20 @@ def same_call(members: list[Member], text: str, me: str) -> list[Member]:
     return best
 
 
+def option_lines(found: list[Member]) -> list[dict]:
+    """선택 카드에 보여 줄 가족 후보: 저장된 표시 이름(같은 이름이면 실제 이름을 덧붙인다)."""
+    labels = [m.label for m in found]
+    return [
+        {
+            "id": m.id,
+            "line": f"{m.label}({m.name})"
+            if labels.count(m.label) > 1 and m.name and m.name != m.label
+            else m.label,
+        }
+        for m in found
+    ]
+
+
 def ask_text(members: list[Member], text: str, me: str, fallback: str) -> str:
     """같은 호칭의 가족이 여럿이면 저장된 이름으로 후보를 보여 주며 묻는다. 후보를 못 찾으면 fallback."""
     found = same_call(members, text, me)
