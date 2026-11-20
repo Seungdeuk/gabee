@@ -56,6 +56,8 @@ def parse_args(argv=None):
     ap.add_argument("--out-root", default=str(nc.RUNS_ROOT))
     ap.add_argument("--data-dir", default=str(nc.DATA_OUT))
     ap.add_argument("--no-save-model", action="store_true")
+    ap.add_argument("--save-every-epoch", action="store_true",
+                    help="매 에폭 종료 시 가중치를 epoch_<k>/ 에 추가로 저장(기본 꺼짐, 학습 계산·best 저장은 그대로, --no-save-model 이면 무시)")
     return ap.parse_args(argv)
 
 
@@ -239,6 +241,11 @@ def main(argv=None):
         log["epochs"].append({"epoch": ep, "train_loss": ep_loss / max(n_steps, 1), "val_score": score,
                               "val": val, "elapsed_s": time.time() - t_start})
         print(f"epoch {ep}: loss {ep_loss / max(n_steps, 1):.4f} val({args.select_on}) char-{args.select_metric} F1 {score:.4f}", flush=True)
+        if args.save_every_epoch and not args.no_save_model:
+            # 읽기 전용 저장: 손실·옵티마이저·스케줄·난수 상태를 건드리지 않는다.
+            ep_dir = run_dir / f"epoch_{ep}"
+            model.save_pretrained(ep_dir)
+            log["epochs"][-1]["checkpoint_sha256"] = hashlib.sha256((ep_dir / "model.safetensors").read_bytes()).hexdigest()
         if score > best:
             best, bad = score, 0
             if not args.no_save_model:
