@@ -546,3 +546,27 @@ def test_partial_is_also_picked_per_user(client, ready, fake, monkeypatch):
         out = draw_rec.recommend(db, user, group["id"], rng=Rng(0.99))
         assert out["state"] == "partial" and len(out["items"]) == 2  # 3개 중 절반 올림
         assert {i["id"] for i in out["items"]} <= {i["id"] for i in whole["items"]}
+
+
+def test_used_up_stock_pictures_are_also_picked_per_user(client, ready, fake, monkeypatch):
+    a, _, group = ready
+    ai_guard.register_bucket(draw_rec.FEATURE, ai_guard.Limits(0, 3, 5), (draw_rec.FEATURE,))
+    only(
+        monkeypatch,
+        ("케이크", "schedule"),
+        ("딸기", "common"),
+        ("텐트", "common"),
+        ("수박", "common"),
+    )
+    fake.by_word = {"수박": BAD}
+    with SessionLocal() as db:
+        user = user_of(db, client, a)
+        for _ in range(3):
+            draw_rec.recommend(db, user, group["id"], rng=Rng(0.99))
+        whole = draw_rec._recommend_family(db, user, group["id"], rng=Rng(0.99))
+        assert (
+            whole["state"] == "ok" and len(whole["items"]) == 3
+        )  # 한도를 다 쓰면 저장소 그림을 그대로
+        out = draw_rec.recommend(db, user, group["id"], rng=Rng(0.99))
+        assert out["state"] == "ok" and len(out["items"]) == 2
+        assert {i["id"] for i in out["items"]} <= {i["id"] for i in whole["items"]}
