@@ -24,6 +24,7 @@ API_PY = r"C:\Users\403\Documents\gabee\apps\api\.venv\Scripts\python.exe"
 EXPORT = Path(r"C:\Users\403\venvs\ner-runs\r10\export")
 DEV = Path(r"C:\Users\403\venvs\ner-runs\r10\dev")
 ARMS = ["R10-full", "C10", "R10-D", "R10-BC", "R10-N", "C10s"]
+MIN_AVAIL_MB = 4096  # 런 시작 전 최소 가용 RAM(실행 안전장치, 학습 조건 아님). 측정된 학습 최대 RSS 약 1.5GB, 2GB 기준은 보호 중단을 막지 못했다
 ENV = {
     **os.environ,
     "HF_HOME": r"C:\Users\403\venvs\hf-cache",
@@ -109,7 +110,13 @@ def one(arm, seed):
         print("SKIP(완료)", run_id, flush=True)
         return
     (R.RUNS / "logs").mkdir(parents=True, exist_ok=True)
-    timing = {}
+    # 실행 안전장치(학습 조건 아님, 2026-11-20 재시작 승인): 런 시작 전 가용 RAM 확인. 부족하면 재시도 없이 중단한다.
+    avail_mb = round(psutil.virtual_memory().available / 2**20)
+    print(f"PRE {run_id} avail_ram_mb={avail_mb} gpu_used_mb={gpu_mb()}", flush=True)
+    if avail_mb < MIN_AVAIL_MB:
+        print(json.dumps({"stopped_before": run_id, "reason": "available RAM below gate", "avail_mb": avail_mb, "gate_mb": MIN_AVAIL_MB}, ensure_ascii=False), flush=True)
+        sys.exit(3)
+    timing = {"avail_ram_mb_before": avail_mb}
     t_all = time.time()
     step("train", train_cmd, run_id, timing, monitor=True)
     step(
@@ -231,6 +238,8 @@ def one(arm, seed):
     (run_dir / "pipeline_done.json").write_text(
         json.dumps(rec, ensure_ascii=False, indent=1), encoding="utf-8"
     )
+    time.sleep(3)
+    print(f"POST {run_id} avail_ram_mb={round(psutil.virtual_memory().available / 2**20)} gpu_used_mb={gpu_mb()}", flush=True)
     print(
         f"DONE {run_id} stop_ep={rec['stopped_epoch']} best_ep={rec['best_epoch']} val={rec['best_val_baseline_overlap_f1']:.4f} train={rec['train_time_s']}s total={rec['total_pipeline_s']}s",
         flush=True,
