@@ -25,6 +25,7 @@ from app.shared.llm import client as llm
 from . import draw_stock, draw_words, quiz_rec
 from .constants import GAME_DRAW
 from .models import PlayDraw, PlayItem
+from .rec_pick import pick_for_user
 from .timeutil import aware, local_day_start, local_tz
 
 FEATURE = "play_draw_rec"
@@ -291,8 +292,10 @@ def _stock_items(
     return items
 
 
-def recommend(db: Session, user: User, group_id: str, rng: random.Random | None = None) -> dict:
-    """오늘의 이게 뭐게 가비 추천을 돌려준다: {"state": ..., "items": [{id, source, word, alt_answers, strokes}]}.
+def _recommend_family(
+    db: Session, user: User, group_id: str, rng: random.Random | None = None
+) -> dict:
+    """오늘 이 가족의 이게 뭐게 가비 추천 전체를 돌려준다: {"state": ..., "items": [{id, source, word, alt_answers, strokes}]}.
     오류는 상태로 바꿔 돌려준다. 하루 한 번 만들어 가족이 오늘 자정까지 같이 쓴다(5개가 다 모이면 캐시한다. 모자라면 캐시하지 않고, 저장소에 있는 오늘 단어의 그림을 `partial` 로 보여 주며 다음에 한도 안에서 더 채운다. 한도를 다 쓰면 저장소 그림을 그대로 `ok` 로 보여 준다)."""
     now = datetime.now(UTC)
     today = now.astimezone(local_tz()).date()
@@ -386,3 +389,13 @@ def recommend(db: Session, user: User, group_id: str, rng: random.Random | None 
         return _reply(quiz_rec.OK if state == quiz_rec.USED_UP else PARTIAL, shown)
     items = [i for i in outcome.result.get("items", []) if _norm(i["word"]) not in recent]
     return _reply(quiz_rec.OK, items) if items else _reply(quiz_rec.USED_UP)
+
+
+def recommend(db: Session, user: User, group_id: str, rng: random.Random | None = None) -> dict:
+    """가족 추천(`_recommend_family`) 중 이 사용자에게 보여 줄 일부만 돌려준다. 가족은 같은 목록을 캐시하고, 사람마다 오늘 보는 그림이 다르다
+    (정상·일부만·한도 소진 때 저장소 그림 모두 같다). state 는 그대로다."""
+    reply = _recommend_family(db, user, group_id, rng)
+    if reply["items"]:
+        today = datetime.now(UTC).astimezone(local_tz()).date()
+        reply["items"] = pick_for_user(reply["items"], group_id, user.id, today)
+    return reply

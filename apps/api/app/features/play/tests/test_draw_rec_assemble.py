@@ -208,7 +208,7 @@ def test_recommend_reuses_stock_without_calling_ai(client, ready, fake, monkeypa
     only(monkeypatch, ("케이크", "schedule"))
     with SessionLocal() as db:
         stored = draw_stock.add_variant(db, "케이크", GOOD["strokes"], NOW - timedelta(days=2))
-        out = draw_rec.recommend(db, user_of(db, client, a), group["id"], rng=Rng(0.5))
+        out = draw_rec._recommend_family(db, user_of(db, client, a), group["id"], rng=Rng(0.5))
         assert out["state"] == "ok"
         assert [i["id"] for i in out["items"]] == [stored.id]
     assert fake.calls == []
@@ -219,7 +219,7 @@ def test_recommend_redraws_by_rate_and_adds_variant(client, ready, fake, monkeyp
     only(monkeypatch, ("케이크", "schedule"))
     with SessionLocal() as db:
         stored = draw_stock.add_variant(db, "케이크", GOOD["strokes"], NOW - timedelta(days=2))
-        out = draw_rec.recommend(db, user_of(db, client, a), group["id"], rng=Rng(0.1))
+        out = draw_rec._recommend_family(db, user_of(db, client, a), group["id"], rng=Rng(0.1))
         assert len(fake.calls) == 1
         assert out["items"][0]["id"] != stored.id
         assert len(draw_stock.stock_variants(db, "케이크", NOW)) == 2
@@ -229,7 +229,7 @@ def test_recommend_always_draws_when_nothing_stored(client, ready, fake, monkeyp
     a, _, group = ready
     only(monkeypatch, ("케이크", "schedule"), ("딸기", "chat"))
     with SessionLocal() as db:
-        out = draw_rec.recommend(db, user_of(db, client, a), group["id"], rng=Rng(0.99))
+        out = draw_rec._recommend_family(db, user_of(db, client, a), group["id"], rng=Rng(0.99))
         assert [(i["word"], i["source"]) for i in out["items"]] == [
             ("케이크", "schedule"),
             ("딸기", "chat"),
@@ -244,7 +244,7 @@ def test_recommend_item_shape_and_no_family_text_to_ai(client, ready, fake, monk
     )
     only(monkeypatch, ("케이크", "schedule"))
     with SessionLocal() as db:
-        out = draw_rec.recommend(db, user_of(db, client, a), group["id"], rng=Rng(0.5))
+        out = draw_rec._recommend_family(db, user_of(db, client, a), group["id"], rng=Rng(0.5))
     item = out["items"][0]
     assert set(item) == {"id", "source", "word", "alt_answers", "strokes"}
     assert item["alt_answers"] == ["케익", "케잌"] and item["strokes"] == GOOD["strokes"]
@@ -263,11 +263,11 @@ def test_partial_shows_made_and_fills_in_on_retry(client, ready, fake, monkeypat
     fake.by_word = {"딸기": BAD, "텐트": BAD}
     with SessionLocal() as db:
         user = user_of(db, client, a)
-        first = draw_rec.recommend(db, user, group["id"], rng=Rng(0.99))
+        first = draw_rec._recommend_family(db, user, group["id"], rng=Rng(0.99))
         assert first["state"] == "partial" and [i["word"] for i in first["items"]] == ["케이크"]
         fake.by_word = {}  # 다시 시도하면 모자란 단어를 채운다(만든 그림은 그대로)
         used = len(fake.calls)
-        second = draw_rec.recommend(db, user, group["id"], rng=Rng(0.99))
+        second = draw_rec._recommend_family(db, user, group["id"], rng=Rng(0.99))
         assert len(fake.calls) > used
         assert second["state"] == "ok" and [i["word"] for i in second["items"]] == [
             "케이크",
@@ -277,7 +277,7 @@ def test_partial_shows_made_and_fills_in_on_retry(client, ready, fake, monkeypat
         assert second["items"][0]["id"] == first["items"][0]["id"]
         used = len(fake.calls)
         assert (
-            draw_rec.recommend(db, user, group["id"], rng=Rng(0.99)) == second
+            draw_rec._recommend_family(db, user, group["id"], rng=Rng(0.99)) == second
         )  # 다 모이면 오늘은 캐시
         assert len(fake.calls) == used
 
@@ -291,11 +291,11 @@ def test_retry_keeps_pictures_drawn_today_even_when_redraw_roll_says_redraw(
     fake.by_word = {"우산": BAD}
     with SessionLocal() as db:
         user = user_of(db, client, a)
-        first = draw_rec.recommend(db, user, group["id"], rng=Rng(0.99))
+        first = draw_rec._recommend_family(db, user, group["id"], rng=Rng(0.99))
         assert first["state"] == "partial" and len(first["items"]) == 4
         fake.by_word = {}
         used = len(fake.calls)
-        second = draw_rec.recommend(
+        second = draw_rec._recommend_family(
             db, user, group["id"], rng=Rng(0.0)
         )  # 0.0 은 "새로 그리기" 쪽 값
         new_prompts = fake.calls[used:]
@@ -319,11 +319,11 @@ def test_ok_shows_the_same_picture_the_partial_showed(client, ready, fake, monke
     with (
         SessionLocal() as db
     ):  # 요청마다 세션이 따로다(같은 세션을 이어 쓰면 SQLite 에서 시간대 비교 오류가 날 수 있다)
-        first = draw_rec.recommend(db, user_of(db, client, a), group["id"], rng=Rng(0.99))
+        first = draw_rec._recommend_family(db, user_of(db, client, a), group["id"], rng=Rng(0.99))
     assert first["state"] == "partial" and [i["word"] for i in first["items"]] == ["케이크"]
     fake.by_word = {}
     with SessionLocal() as db:
-        second = draw_rec.recommend(db, user_of(db, client, a), group["id"], rng=Rng(0.99))
+        second = draw_rec._recommend_family(db, user_of(db, client, a), group["id"], rng=Rng(0.99))
     assert second["state"] == "ok"
     assert (
         second["items"][0]["id"] == first["items"][0]["id"]
@@ -338,11 +338,12 @@ def test_attempts_are_three_then_made_ones_stay_visible(client, ready, fake, mon
     with SessionLocal() as db:
         user = user_of(db, client, a)
         states = [
-            draw_rec.recommend(db, user, group["id"], rng=Rng(0.99))["state"] for _ in range(3)
+            draw_rec._recommend_family(db, user, group["id"], rng=Rng(0.99))["state"]
+            for _ in range(3)
         ]
         assert states == ["partial"] * 3  # 시도 3번(그때마다 1번으로 센다)
         calls = len(fake.calls)
-        last = draw_rec.recommend(db, user, group["id"], rng=Rng(0.99))
+        last = draw_rec._recommend_family(db, user, group["id"], rng=Rng(0.99))
         assert len(fake.calls) == calls  # 더 부르지 않는다
         assert last["state"] == "ok" and [i["word"] for i in last["items"]] == [
             "케이크"
@@ -359,10 +360,11 @@ def test_three_attempts_with_nothing_drawn_is_used_up_without_items(
     with SessionLocal() as db:
         user = user_of(db, client, a)
         states = [
-            draw_rec.recommend(db, user, group["id"], rng=Rng(0.99))["state"] for _ in range(3)
+            draw_rec._recommend_family(db, user, group["id"], rng=Rng(0.99))["state"]
+            for _ in range(3)
         ]
         assert states == ["failed"] * 3
-        assert draw_rec.recommend(db, user, group["id"], rng=Rng(0.99)) == {
+        assert draw_rec._recommend_family(db, user, group["id"], rng=Rng(0.99)) == {
             "state": "used_up",
             "items": [],
         }
@@ -374,12 +376,12 @@ def test_all_failed_is_failure_and_not_cached(client, ready, fake, monkeypatch):
     fake.by_word = {"케이크": BAD, "딸기": BAD}
     with SessionLocal() as db:
         user = user_of(db, client, a)
-        assert draw_rec.recommend(db, user, group["id"], rng=Rng(0.99)) == {
+        assert draw_rec._recommend_family(db, user, group["id"], rng=Rng(0.99)) == {
             "state": "failed",
             "items": [],
         }
         before = len(fake.calls)
-        draw_rec.recommend(db, user, group["id"], rng=Rng(0.99))
+        draw_rec._recommend_family(db, user, group["id"], rng=Rng(0.99))
         assert len(fake.calls) > before  # 캐시되지 않아 다음에 다시 시도한다
 
 
@@ -388,7 +390,7 @@ def test_llm_down_is_failure(client, ready, fake, monkeypatch):
     only(monkeypatch, ("케이크", "schedule"))
     fake.error = llm.LLMUnavailable("down")
     with SessionLocal() as db:
-        out = draw_rec.recommend(db, user_of(db, client, a), group["id"], rng=Rng(0.99))
+        out = draw_rec._recommend_family(db, user_of(db, client, a), group["id"], rng=Rng(0.99))
     assert out == {"state": "failed", "items": []}
 
 
@@ -397,7 +399,7 @@ def test_recent_words_are_hidden_from_cached_items(client, ready, fake, monkeypa
     only(monkeypatch, ("케이크", "schedule"), ("딸기", "common"))
     with SessionLocal() as db:
         user = user_of(db, client, a)
-        draw_rec.recommend(db, user, group["id"], rng=Rng(0.99))
+        draw_rec._recommend_family(db, user, group["id"], rng=Rng(0.99))
         item = PlayItem(
             group_id=group["id"], game=GAME_DRAW, maker_id=user.id, close_at=NOW, created_at=NOW
         )
@@ -405,7 +407,7 @@ def test_recent_words_are_hidden_from_cached_items(client, ready, fake, monkeypa
         db.flush()
         db.add(PlayDraw(play_id=item.id, image_path="x.png", answer="케이크", alt_answers=None))
         db.commit()
-        out = draw_rec.recommend(
+        out = draw_rec._recommend_family(
             db, user, group["id"], rng=Rng(0.99)
         )  # 캐시된 묶음에서 낸 단어는 숨긴다
         assert [i["word"] for i in out["items"]] == ["딸기"]
@@ -423,7 +425,7 @@ def test_prompts_sent_to_ai_hold_only_the_word_never_family_text(client, ready, 
     )
     say(client, a, "흑돼지 먹으러 갈까 대화원문XX")
     with SessionLocal() as db:
-        out = draw_rec.recommend(db, user_of(db, client, a), group["id"])
+        out = draw_rec._recommend_family(db, user_of(db, client, a), group["id"])
     words = {i["word"] for i in out["items"]}
     assert {
         "딸기",
@@ -440,7 +442,7 @@ def test_prompts_sent_to_ai_hold_only_the_word_never_family_text(client, ready, 
 def test_ai_off_state(client, family, fake):
     a, _, group = family
     with SessionLocal() as db:
-        out = draw_rec.recommend(db, user_of(db, client, a), group["id"])
+        out = draw_rec._recommend_family(db, user_of(db, client, a), group["id"])
     assert out == {"state": "ai_off", "items": []}
     assert fake.calls == []
 
@@ -462,7 +464,7 @@ def test_guard_errors_become_states(client, ready, fake, monkeypatch, code, stat
 
     monkeypatch.setattr(draw_rec.ai_guard, "run", boom)
     with SessionLocal() as db:
-        assert draw_rec.recommend(db, user_of(db, client, a), group["id"]) == {
+        assert draw_rec._recommend_family(db, user_of(db, client, a), group["id"]) == {
             "state": state,
             "items": [],
         }
@@ -479,7 +481,7 @@ def test_one_recommendation_counts_as_one_attempt(client, ready, fake, monkeypat
     a, _, group = ready
     only(monkeypatch, ("케이크", "schedule"), ("딸기", "common"), ("텐트", "common"))
     with SessionLocal() as db:
-        draw_rec.recommend(db, user_of(db, client, a), group["id"], rng=Rng(0.99))
+        draw_rec._recommend_family(db, user_of(db, client, a), group["id"], rng=Rng(0.99))
         assert len(fake.calls) == 3  # 그림 3개를 불렀어도
         logged = db.scalar(
             select(func.coalesce(func.sum(AiUsageLog.api_calls), 0)).where(
@@ -503,9 +505,12 @@ def test_failed_attempts_use_up_the_three_tries(client, ready, fake, monkeypatch
     with SessionLocal() as db:
         user = user_of(db, client, a)
         for _ in range(3):  # 실패는 캐시하지 않아 다시 시도하고 그때마다 1회로 센다
-            assert draw_rec.recommend(db, user, group["id"], rng=Rng(0.99))["state"] == "failed"
+            assert (
+                draw_rec._recommend_family(db, user, group["id"], rng=Rng(0.99))["state"]
+                == "failed"
+            )
         assert len(fake.calls) == 3
-        assert draw_rec.recommend(db, user, group["id"], rng=Rng(0.99)) == {
+        assert draw_rec._recommend_family(db, user, group["id"], rng=Rng(0.99)) == {
             "state": "used_up",
             "items": [],
         }
@@ -518,7 +523,26 @@ def test_success_ends_it_and_later_opens_do_not_count(client, ready, fake, monke
     only(monkeypatch, ("케이크", "schedule"))
     with SessionLocal() as db:
         user = user_of(db, client, a)
-        first = draw_rec.recommend(db, user, group["id"], rng=Rng(0.99))
+        first = draw_rec._recommend_family(db, user, group["id"], rng=Rng(0.99))
         for _ in range(5):  # 오늘은 캐시라 몇 번을 열어도 AI 도 한도도 쓰지 않는다
-            assert draw_rec.recommend(db, user, group["id"], rng=Rng(0.99)) == first
+            assert draw_rec._recommend_family(db, user, group["id"], rng=Rng(0.99)) == first
         assert len(fake.calls) == 1
+
+
+def test_partial_is_also_picked_per_user(client, ready, fake, monkeypatch):
+    a, _, group = ready
+    only(
+        monkeypatch,
+        ("케이크", "schedule"),
+        ("딸기", "common"),
+        ("텐트", "common"),
+        ("수박", "common"),
+    )
+    fake.by_word = {"수박": BAD}
+    with SessionLocal() as db:
+        user = user_of(db, client, a)
+        whole = draw_rec._recommend_family(db, user, group["id"], rng=Rng(0.99))
+        assert whole["state"] == "partial" and len(whole["items"]) == 3
+        out = draw_rec.recommend(db, user, group["id"], rng=Rng(0.99))
+        assert out["state"] == "partial" and len(out["items"]) == 2  # 3개 중 절반 올림
+        assert {i["id"] for i in out["items"]} <= {i["id"] for i in whole["items"]}
