@@ -16,7 +16,7 @@ export function cancelledText(card) {
 }
 
 // 일정(가족 공유 등록·수정·삭제)과 부탁(보내기·받는 사람 바꾸기·취소), 데일리 체크 대신 누르기(habit_check)의 확인 카드 종류
-export const CONFIRM_ACTIONS = ["register", "edit", "delete", "request_register", "request_edit", "request_cancel", "habit_check", "share_select"];
+export const CONFIRM_ACTIONS = ["register", "edit", "delete", "request_register", "request_edit", "request_cancel", "habit_check", "share_select", "choice_select"];
 
 /**
  * 서버의 confirm_cards 를 앱이 쓰는 모양으로 바꾼다. 모르는 종류는 버린다(눌러서 실행할 수 없는 카드는 보이지 않게).
@@ -34,11 +34,12 @@ export function mapConfirmCards(cards) {
       lines: Array.isArray(c.lines) ? c.lines.map(String) : [],
       sharedWith: Array.isArray(c.shared_with) ? c.shared_with.map(String) : [],
       pendingAction: c.pending_action && typeof c.pending_action === "object" ? c.pending_action : {},
-      ...(c.action === "share_select" ? { items: mapShareItems(c.items) } : {}),
+      ...(c.action === "share_select" || c.action === "choice_select" ? { items: mapShareItems(c.items) } : {}),
+      ...(c.action === "choice_select" ? { okLabel: String(c.ok_label ?? "").trim() || "확인" } : {}),
       status: CARD_PENDING,
       resultText: "",
     }))
-    .filter((c) => c.action !== "share_select" || c.items.length > 0); // 고를 항목이 없는 공유 카드는 보이지 않게
+    .filter((c) => (c.action !== "share_select" && c.action !== "choice_select") || c.items.length > 0); // 고를 항목이 없는 선택 카드는 보이지 않게
 }
 
 /** 공유 후보(items)를 { id, line } 목록으로 정리한다: 문자열이 아니거나 빈 줄·id 없는 것·중복 id 는 버리고 최대 20개. */
@@ -54,6 +55,18 @@ export function mapShareItems(items) {
     if (out.length >= SHARE_ITEMS_MAX) break;
   }
   return out;
+}
+
+/**
+ * 선택 카드(choice_select)의 [실행] 버튼에서 서버에 보낼 pending_action: 사용자가 체크한 id 를 목록 순서대로 event_ids 에 넣는다.
+ * 목록에 없는 id 는 버린다. 서버는 이것을 확인 카드 없이 바로 처리하되, 일정·부탁·가족과 소유자를 다시 확인한다.
+ * @param {{ pendingAction: object, items?: { id: string }[] }} card
+ * @param {string[]} selectedIds
+ */
+export function buildChoiceAction(card, selectedIds) {
+  const picked = new Set(selectedIds ?? []);
+  const ids = (card.items ?? []).map((it) => it.id).filter((id) => picked.has(id));
+  return { ...card.pendingAction, event_ids: ids };
 }
 
 /**
@@ -116,6 +129,13 @@ export function cardButtons(card) {
   if (card.action === "share_select") {
     return [
       { key: "share", label: "방에 공유", share: false, tone: "main" },
+      { key: "cancel", label: "닫기", tone: "ghost" },
+    ];
+  }
+  if (card.action === "choice_select") {
+    const label = card.okLabel || "확인";
+    return [
+      { key: "ok", label, share: false, tone: label === "삭제" || label === "부탁 취소" ? "danger" : "main" },
       { key: "cancel", label: "닫기", tone: "ghost" },
     ];
   }
