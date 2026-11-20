@@ -39,28 +39,63 @@ def enable_ai(client, headers):
     )
 
 
-def test_returns_five_drawings_for_a_family(client, family, fake):
+def test_returns_three_of_the_familys_five_drawings(client, family, fake):
     a, _, _ = family
     enable_ai(client, a)
     r = client.get(PATH, headers=a)
     assert r.status_code == 200, r.text
     body = r.json()
     assert body["state"] == "ok"
-    assert len(body["items"]) == draw_rec.ASK_COUNT == 5
+    assert draw_rec.ASK_COUNT == 5
+    assert len(body["items"]) == 3  # 가족 5개 중 한 사람에게 보이는 몫(절반 올림)
     for item in body["items"]:
         assert set(item) == {"id", "source", "word", "alt_answers", "strokes"}
         assert item["source"] == "common"  # 가족 재료가 없으면 흔한 단어로 채운다
         assert 3 <= len(item["strokes"]) <= 12
-    assert len({i["word"] for i in body["items"]}) == 5
+    assert len({i["word"] for i in body["items"]}) == 3
 
 
-def test_same_day_is_cached_for_the_family(client, family, fake):
+def test_same_day_is_cached_for_the_family(client, family, fake, monkeypatch):
     a, b, _ = family
     enable_ai(client, a)
+    seen = []
+    real = draw_rec.pick_for_user
+
+    def spy(items, *args):
+        seen.append([i["id"] for i in items])
+        return real(items, *args)
+
+    monkeypatch.setattr(draw_rec, "pick_for_user", spy)
     first = client.get(PATH, headers=a).json()
     used = len(fake)
-    assert client.get(PATH, headers=b).json() == first  # 같은 가족은 누가 열어도 같은 묶음
-    assert len(fake) == used
+    second = client.get(PATH, headers=b).json()
+    assert len(fake) == used  # 같은 가족은 AI 를 다시 부르지 않고 같은 5개 목록에서 고른다
+    assert seen[0] == seen[1] and len(seen[0]) == 5
+    for body in (first, second):
+        assert len(body["items"]) == 3
+        assert {i["id"] for i in body["items"]} <= set(seen[0])
+    assert client.get(PATH, headers=a).json() == first  # 같은 사람은 다시 열어도 같다
+
+
+def test_each_member_gets_the_pick_made_for_them(client, family, fake, monkeypatch):
+    a, b, group = family
+    enable_ai(client, a)
+    seen = []
+    real = draw_rec.pick_for_user
+
+    def spy(items, group_id, user_id, today):
+        seen.append((list(items), user_id, today))
+        return real(items, group_id, user_id, today)
+
+    monkeypatch.setattr(draw_rec, "pick_for_user", spy)
+    got = {}
+    for name, headers in (("a", a), ("b", b)):
+        got[name] = client.get(PATH, headers=headers).json()
+    (items_a, uid_a, today), (items_b, uid_b, _) = seen
+    assert uid_a != uid_b
+    for body, items, uid in ((got["a"], items_a, uid_a), (got["b"], items_b, uid_b)):
+        want = [i["id"] for i in real(items, group["id"], uid, today)]
+        assert [i["id"] for i in body["items"]] == want
 
 
 def test_ai_off_state_is_200(client, family, fake):
