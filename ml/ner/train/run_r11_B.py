@@ -117,7 +117,90 @@ def step(name, cmd, run_id, timing, monitor=False, cwd=None):
         sys.exit(p.returncode)  # 자동 재시작 없음
 
 
-def one(seed):
+def stage_marker(run, name):
+    return run / "stages" / f"{name}.done.json"
+
+
+def mark_stage(run, name, outputs):
+    """단계가 정상 종료됐을 때만 출력 파일 해시를 남긴다(재개 시 해시 재확인용)."""
+    d = {"stage": name, "outputs_sha256": {k: sha(v) for k, v in outputs.items()}}
+    stage_marker(run, name).parent.mkdir(parents=True, exist_ok=True)
+    stage_marker(run, name).write_text(json.dumps(d, indent=1), encoding="utf-8")
+
+
+def stage_done(run, name, outputs):
+    """표식이 있고 모든 출력이 표식의 해시와 같을 때만 완료로 본다."""
+    m = stage_marker(run, name)
+    if not m.exists():
+        return False
+    try:
+        rec = json.loads(m.read_text(encoding="utf-8"))["outputs_sha256"]
+    except (OSError, ValueError, KeyError):
+        return False
+    return set(rec) == set(outputs) and all(Path(v).exists() and sha(v) == rec[k] for k, v in outputs.items())
+
+
+def fail(msg, code=5, **kw):
+    print(json.dumps({"stopped": msg, **kw}, ensure_ascii=False), flush=True)
+    sys.exit(code)  # 자동 재시도 없음
+
+
+def verify_resume_base(run, run_id, seed):
+    """재개 전 완료 단계(train, evalfull, export_best, parity, cands)의 산출물을 해시·내용으로 확인한다. 문제 목록(비면 정상)."""
+    sys.path.insert(0, str(HERE))
+    import r11_derive
+
+    pr = []
+    try:
+        tl = json.loads((run / "train_log.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError) as e:
+        return [f"train_log.json 읽기 실패: {e}"]
+    cfg = tl.get("config", {})
+    if cfg.get("seed") != seed or cfg.get("run_id") != run_id or not cfg.get("save_every_epoch"):
+        pr.append("train_log 설정(시드·run_id·save_every_epoch)이 이 런과 다름")
+    if tl.get("train_sentences") != EXPECT_ROWS or not tl.get("finished"):
+        pr.append("학습 행 수가 9,915 가 아니거나 학습이 끝나지 않음")
+    for k, v in tl.get("data_files", {}).items():
+        f = DATA / (k.split(":")[0] + ".jsonl")
+        if not f.exists() or sha(f)[:12] != v.get("sha256_12"):
+            pr.append(f"학습 입력 {k} 해시가 train_log 기록과 다름(고정 데이터 불일치)")
+    try:
+        ev = json.loads((run / "eval_full.json").read_text(encoding="utf-8"))
+        if ev.get("run_id") != run_id or "baseline_val" not in ev.get("sets", {}):
+            pr.append("eval_full.json 의 run_id/세트가 맞지 않음")
+    except (OSError, ValueError) as e:
+        pr.append(f"eval_full.json 읽기 실패: {e}")
+    try:
+        par = json.loads((run / "parity.json").read_text(encoding="utf-8"))
+        if not par.get("checkpoint_reload_identical_predictions") or par.get("onnx_vs_torch_token_agreement_pct", 0) < 99.9:
+            pr.append("parity.json 이 기준(재로드 동일, 토큰 일치 99.9% 이상)에 미달")
+    except (OSError, ValueError) as e:
+        pr.append(f"parity.json 읽기 실패: {e}")
+    ex = EXPORT / run_id
+    for f in ("model.onnx", "model_card.json", "labels.json", "tokenizer.json"):
+        if not (ex / f).exists():
+            pr.append(f"export/{run_id}/{f} 누락(export_best 미완료)")
+    pr += r11_derive.verify_cands(run)
+    return pr
+
+
+def check_cand_eval(run, name, weights_sha, best_epoch):
+    """후보 eval_full.json 이 그 후보의 것인지 확인(복사 금지). best 에폭 후보는 런 전체 평가와 TP/FP/FN 이 같아야 한다."""
+    cd = run / "cand" / name
+    ev = json.loads((cd / "eval_full.json").read_text(encoding="utf-8"))
+    if ev.get("run_id") != name:
+        fail("후보 eval_full.json 의 run_id 가 후보 이름과 다름", stage=f"evalfull_{name}")
+    if sha(cd / "best" / "model.safetensors") != weights_sha:
+        fail("평가 중 후보 가중치가 바뀜", stage=f"evalfull_{name}")
+    if name == f"ep{best_epoch}":
+        top = json.loads((run / "eval_full.json").read_text(encoding="utf-8"))
+        for mode in ("overlap", "exact"):
+            x, y = ev["sets"]["baseline_val"][mode]["micro"], top["sets"]["baseline_val"][mode]["micro"]
+            if any(x[k] != y[k] for k in ("tp", "fp", "fn")):
+                fail("best 에폭 후보의 평가가 런 전체 평가와 다름(저장·평가 정합성 실패)", stage=f"evalfull_{name}", mode=mode)
+
+
+def one(seed, resume=False):
     import psutil
 
     run_id, tcmd = train_cmd(seed)
@@ -126,27 +209,63 @@ def one(seed):
         print("SKIP(완료)", run_id, flush=True)
         return
     avail = round(psutil.virtual_memory().available / 2**20)
-    print(f"PRE {run_id} avail_ram_mb={avail} gpu={gpu_info()}", flush=True)
+    print(f"PRE {run_id} avail_ram_mb={avail} gpu={gpu_info()} resume={resume}", flush=True)
     if avail < MIN_AVAIL_MB:
         print(json.dumps({"stopped_before": run_id, "reason": "available RAM below gate", "avail_mb": avail}), flush=True)
         sys.exit(3)
     timing, t_all = {"avail_ram_mb_before": avail}, time.time()
-    step("train", tcmd, run_id, timing, monitor=True)
-    step("evalfull", [PY, "-X", "utf8", str(REPO / "ml/ner/train/evaluate_full.py"), "--run-dir", str(run), "--data-dir", str(DATA), "--skip-latency"], run_id, timing)
-    out_best = EXPORT / run_id
-    step("export_best", [PY, "-X", "utf8", str(REPO / "ml/ner/export/export_onnx.py"), "--run-dir", str(run), "--out", str(out_best), "--no-int8"], run_id, timing)
-    step("parity", [PY, "-X", "utf8", str(REPO / "ml/ner/train/pilot_checks_r9.py"), "--run-dir", str(run), "--onnx-dir", str(out_best), "--out", str(run / "parity.json"), "--skip-batch64"], run_id, timing)
-    step("cands", [PY, "-X", "utf8", str(HERE / "r11_derive.py"), "cands", "--run-dir", str(run)], run_id, timing)
+    reused = []
+    if run.exists() and not resume:
+        fail("런 폴더가 이미 있음: --resume 없이 덮어쓰지 않는다(재학습 방지)", code=4, run=run_id)
+    if run.exists():
+        problems = verify_resume_base(run, run_id, seed)
+        if problems:
+            fail("재개 전 검증 실패: 정상 완료로 처리하지 않음", run=run_id, problems=problems)
+        reused = ["train", "evalfull", "export_best", "parity", "cands"]
+        print("RESUME 검증 통과, 재사용:", reused, flush=True)
+    else:
+        step("train", tcmd, run_id, timing, monitor=True)
+        step("evalfull", [PY, "-X", "utf8", str(REPO / "ml/ner/train/evaluate_full.py"), "--run-dir", str(run), "--data-dir", str(DATA), "--skip-latency"], run_id, timing)
+        out_best = EXPORT / run_id
+        step("export_best", [PY, "-X", "utf8", str(REPO / "ml/ner/export/export_onnx.py"), "--run-dir", str(run), "--out", str(out_best), "--no-int8"], run_id, timing)
+        step("parity", [PY, "-X", "utf8", str(REPO / "ml/ner/train/pilot_checks_r9.py"), "--run-dir", str(run), "--onnx-dir", str(out_best), "--out", str(run / "parity.json"), "--skip-batch64"], run_id, timing)
+        step("cands", [PY, "-X", "utf8", str(HERE / "r11_derive.py"), "cands", "--run-dir", str(run)], run_id, timing)
     info = json.loads((run / "cand_info.json").read_text(encoding="utf-8"))
-    for name in info["candidates"]:
-        step(f"export_{name}", [PY, "-X", "utf8", str(REPO / "ml/ner/export/export_onnx.py"), "--run-dir", str(run / "cand" / name), "--out", str(EXPORT / f"{run_id}-{name}"), "--no-int8"], run_id, timing)
+    tl = json.loads((run / "train_log.json").read_text(encoding="utf-8"))
+
+    def staged(name, cmd, outputs, cwd=None, pre=None):
+        """재개 모드에서만 완료 단계를 건너뛴다. 표식은 단계가 정상 종료됐을 때만 만든다."""
+        if resume and stage_done(run, name, outputs):
+            reused.append(name)
+            print("SKIP(재개, 해시 확인)", name, flush=True)
+            return
+        if pre:
+            pre()
+        step(name, cmd, run_id, timing, cwd=cwd)
+        for v in outputs.values():
+            if not Path(v).exists():
+                fail("단계 출력 누락", stage=name, missing=str(v))
+        mark_stage(run, name, outputs)
+
+    for name, meta in info["candidates"].items():
+        cd = run / "cand" / name
+        exp = EXPORT / f"{run_id}-{name}"
+
+        def clean(exp=exp):
+            if exp.exists():  # 이 단계의 부분 산출물(예: export_ep1 실패 잔여물)만 지운다
+                assert exp.parent == EXPORT and exp.name.startswith(run_id + "-")
+                shutil.rmtree(exp)
+
+        staged(f"evalfull_{name}", [PY, "-X", "utf8", str(REPO / "ml/ner/train/evaluate_full.py"), "--run-dir", str(cd), "--data-dir", str(DATA), "--skip-latency"], {"eval_full": cd / "eval_full.json"})
+        check_cand_eval(run, name, meta["weights_sha256"], tl["best_epoch"])
+        staged(f"export_{name}", [PY, "-X", "utf8", str(REPO / "ml/ner/export/export_onnx.py"), "--run-dir", str(cd), "--out", str(exp), "--no-int8"], {"onnx": exp / "model.onnx", "model_card": exp / "model_card.json"}, pre=clean)
     val_json = run / "val_by_epoch.json"
     margs = []
     for name in info["candidates"]:
         if name.startswith("ep"):
             margs += ["--model", name, str(EXPORT / f"{run_id}-{name}")]
-    step("valEval", [API_PY, "-X", "utf8", str(REPO / "apps/api/scripts/evaluate_r11_val.py"), *margs, "--out", str(val_json)], run_id, timing, cwd=str(REPO / "apps/api"))
-    step("select", [PY, "-X", "utf8", str(HERE / "r11_derive.py"), "select", "--run-dir", str(run), "--val-json", str(val_json)], run_id, timing)
+    staged("valEval", [API_PY, "-X", "utf8", str(REPO / "apps/api/scripts/evaluate_r11_val.py"), *margs, "--out", str(val_json)], {"val": val_json}, cwd=str(REPO / "apps/api"))
+    staged("select", [PY, "-X", "utf8", str(HERE / "r11_derive.py"), "select", "--run-dir", str(run), "--val-json", str(val_json)], {"selection": run / "selection.json"})
     sel = json.loads((run / "selection.json").read_text(encoding="utf-8"))
     # 개발 평가: B-old(best 에폭), B-new, C-SWA. 같은 ONNX 는 한 번만 평가하고 변형 이름을 매핑해 둔다
     variants = {"B-old": f"{run_id}-ep{sel['B_old_epoch']}", "B-new": f"{run_id}-ep{sel['B_new_epoch']}", "C-SWA": f"{run_id}-swa"}
@@ -155,23 +274,26 @@ def one(seed):
     for u in uniq:
         dargs += ["--model", u, str(EXPORT / u)]
     DEVOUT.mkdir(parents=True, exist_ok=True)
-    step("devEval", [API_PY, "-X", "utf8", str(REPO / "apps/api/scripts/evaluate_r11_dev.py"), *dargs, "--out", str(DEVOUT / f"{run_id}.json")], run_id, timing, cwd=str(REPO / "apps/api"))
-    tl = json.loads((run / "train_log.json").read_text(encoding="utf-8"))
+    staged("devEval", [API_PY, "-X", "utf8", str(REPO / "apps/api/scripts/evaluate_r11_dev.py"), *dargs, "--out", str(DEVOUT / f"{run_id}.json")], {"dev": DEVOUT / f"{run_id}.json"}, cwd=str(REPO / "apps/api"))
     rec = {"run_id": run_id, "seed": seed, "stopped_epoch": tl["stopped_epoch"], "best_epoch": tl["best_epoch"], "epochs": [{"epoch": e["epoch"], "baseline_val_overlap_f1": e["val_score"], "checkpoint_sha256": e.get("checkpoint_sha256")} for e in tl["epochs"]],
            "selection": {k: v for k, v in sel.items() if k != "val_by_epoch"}, "variants": variants, "swa": info["candidates"]["swa"],
            "train_time_s": round(tl["total_train_time_s"], 1), "max_vram_mb": round(tl["max_vram_mb"]), "timing": timing, "total_pipeline_s": round(time.time() - t_all, 1),
-           "sha256": {"best/model.safetensors": sha(run / "best/model.safetensors"), "train_log.json": sha(run / "train_log.json"), "dev_result.json": sha(DEVOUT / f"{run_id}.json"),
+           "resumed": resume and bool(reused), "reused_stages": reused,
+           "sha256": {"best/model.safetensors": sha(run / "best/model.safetensors"), "train_log.json": sha(run / "train_log.json"), "eval_full.json": sha(run / "eval_full.json"), "parity.json": sha(run / "parity.json"),
+                      "cand_info.json": sha(run / "cand_info.json"), "dev_result.json": sha(DEVOUT / f"{run_id}.json"),
+                      "cand_eval_full": {n: sha(run / "cand" / n / "eval_full.json") for n in info["candidates"]},
                       "onnx": {u: sha(EXPORT / u / "model.onnx") for u in uniq}, "train_data_files": {f.split(":")[0]: sha(DATA / (f.split(":")[0] + ".jsonl")) for f in BASE + [EXTRA]}},
            "best_equals_epoch_best_checkpoint": sha(run / "best/model.safetensors") == sha(run / f"epoch_{tl['best_epoch']}/model.safetensors")}
     (run / "pipeline_done.json").write_text(json.dumps(rec, ensure_ascii=False, indent=1), encoding="utf-8")
     time.sleep(3)
-    print(f"DONE {run_id} stop_ep={rec['stopped_epoch']} best_ep={rec['best_epoch']} newsel={sel['B_new_epoch']} total={rec['total_pipeline_s']}s", flush=True)
+    print(f"DONE {run_id} stop_ep={rec['stopped_epoch']} best_ep={rec['best_epoch']} newsel={sel['B_new_epoch']} total={rec['total_pipeline_s']}s resumed={rec['resumed']}", flush=True)
 
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--seeds", nargs="+", type=int, default=SEEDS)
     ap.add_argument("--execute", action="store_true", help="실제 학습(별도 최종 승인 후에만)")
+    ap.add_argument("--resume", action="store_true", help="이미 학습된 런 폴더를 해시로 검증해 재사용하고 미완료 단계부터 이어간다(재학습 없음)")
     a = ap.parse_args()
     chk = preflight()
     print(json.dumps(chk, ensure_ascii=False, indent=1))
@@ -187,7 +309,7 @@ def main():
         print("사전 점검 실패: 중단(재시도 없음)")
         sys.exit(2)
     for s in a.seeds:
-        one(s)
+        one(s, a.resume)
     print("ALL_DONE", flush=True)
 
 

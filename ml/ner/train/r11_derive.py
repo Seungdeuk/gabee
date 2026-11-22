@@ -89,6 +89,44 @@ def cmd_cands(run_dir):
     print(json.dumps(info, indent=1))
 
 
+def verify_cands(run_dir):
+    """재개용: 학습 체크포인트와 파생 후보(cand/)의 해시 정합성을 확인한다. 문제 목록을 돌려주며 비어 있으면 정상이다(파일이 있다는 이유만으로 정상 처리하지 않는다)."""
+    run = Path(run_dir)
+    problems = []
+    try:
+        tl = json.loads((run / "train_log.json").read_text(encoding="utf-8"))
+        info = json.loads((run / "cand_info.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError) as e:
+        return [f"train_log.json/cand_info.json 읽기 실패: {e}"]
+    epoch_sha = {}
+    for e in tl["epochs"]:
+        k = e["epoch"]
+        p = run / f"epoch_{k}" / "model.safetensors"
+        if not p.exists():
+            problems.append(f"epoch_{k} 체크포인트 누락")
+            continue
+        epoch_sha[k] = sha(p)
+        if e.get("checkpoint_sha256") != epoch_sha[k]:
+            problems.append(f"epoch_{k} 체크포인트 SHA256 이 train_log 기록과 다름")
+    best = run / "best" / "model.safetensors"
+    if not best.exists() or tl["best_epoch"] not in epoch_sha or sha(best) != epoch_sha[tl["best_epoch"]]:
+        problems.append("best/ 와 epoch_<best_epoch>/ 불일치 또는 누락")
+    names = [f"ep{k}" for k in epoch_sha] + ["swa"]
+    if sorted(info.get("candidates", {})) != sorted(names):
+        problems.append("cand_info.json 의 후보 목록이 에폭 목록과 다름")
+    tl_sha = sha(run / "train_log.json")
+    for name, meta in info.get("candidates", {}).items():
+        w = run / "cand" / name / "best" / "model.safetensors"
+        if not w.exists() or sha(w) != meta["weights_sha256"]:
+            problems.append(f"cand/{name} 가중치 누락 또는 cand_info 해시와 다름")
+        if name.startswith("ep") and int(name[2:]) in epoch_sha and meta["weights_sha256"] != epoch_sha[int(name[2:])]:
+            problems.append(f"cand/{name} 가 해당 에폭 체크포인트와 다름")
+        t = run / "cand" / name / "train_log.json"
+        if not t.exists() or sha(t) != tl_sha:
+            problems.append(f"cand/{name}/train_log.json 누락 또는 원본과 다름")
+    return problems
+
+
 def cmd_select(run_dir, val_json):
     run = Path(run_dir)
     tl = json.loads((run / "train_log.json").read_text(encoding="utf-8"))
