@@ -803,3 +803,59 @@ def test_assistant_search_is_closed_to_chat_documents_while_consent_is_off(
             r["item_id"] for r in tools.search_knowledge(db, gid, "학교 알림장 준비물")["results"]
         }
     assert main_ai in found and chat not in found
+
+
+# ---------- 시각 기준 경계 (임시 보호책: 보수적 제외) ----------
+
+
+def _set_consent_row(group_id, uid, enabled, at):
+    from app.shared.ai_usage import AiGroupSetting
+
+    with SessionLocal() as db:
+        row = db.get(AiGroupSetting, group_id)
+        if row is None:
+            row = AiGroupSetting(group_id=group_id)
+            db.add(row)
+        row.enabled, row.enabled_by, row.updated_at = enabled, uid, at
+        db.commit()
+
+
+def test_cutoff_boundaries_no_consent_record_tie_and_off_on_cycles(client, family):
+    """동의 기록이 없으면 채팅 문서는 모두 제외, 생성 시각이 동의 시각과 같으면(동률) 보이고(>=), 동의를 껐다 켜면 켠 시각 이전 채팅 문서는 모두 빠진다."""
+    from datetime import UTC, datetime, timedelta
+
+    from app.features.ai_assistant.knowledge import tools
+
+    a, _, group = family
+    gid = group["id"]
+    uid = client.get("/family-group/me", headers=a).json()["id"]
+    t0 = datetime(2026, 11, 1, 9, 0, tzinfo=UTC)
+    first = _ingest_item(gid, uid, title="첫 동의 때", body=SAFE_DOC, attachment_id="att-1")
+    tie = _ingest_item(gid, uid, title="동률", body=SAFE_DOC + " 둘", attachment_id="att-2")
+    main_ai = _ingest_item(gid, uid, title="직접", body=SAFE_DOC + " 셋")
+
+    def visible():
+        with SessionLocal() as db:
+            return {i["item_id"] for i in tools.list_items(db, gid)["items"]}
+
+    with SessionLocal() as db:  # 동의 기록 자체가 없는 가족
+        from app.shared.ai_usage import AiGroupSetting
+
+        row = db.get(AiGroupSetting, gid)
+        if row is not None:
+            db.delete(row)
+            db.commit()
+    assert visible() == {main_ai}  # 기록 없음 = 꺼짐: 채팅 문서는 모두 제외
+
+    _set_created_at(first, t0)
+    _set_created_at(tie, t0 + timedelta(hours=1))
+    _set_consent_row(gid, uid, True, t0)
+    assert visible() == {first, tie, main_ai}  # 첫 동의: 그 시각 이후(동률 포함) 기록은 보인다
+    _set_consent_row(gid, uid, True, t0 + timedelta(hours=1))
+    assert visible() == {tie, main_ai}  # 동률(created_at == 동의 시각)은 보인다, 이전은 빠진다
+    _set_consent_row(gid, uid, False, t0 + timedelta(hours=2))
+    assert visible() == {main_ai}  # 끄면 채팅 문서 전체 제외
+    _set_consent_row(gid, uid, True, t0 + timedelta(hours=3))
+    assert visible() == {
+        main_ai
+    }  # 껐다 다시 켜면 이전(첫 동의 때 포함) 채팅 문서는 보수적으로 제외
