@@ -2,8 +2,10 @@
 글자를 외부로 보낸 뒤 가리는 것으로는 동의 문제가 풀리지 않으므로, 보내기 **전에** 막는지를 본다(Claude 호출 함수를 호출되면 실패하는 대역으로 바꾼다).
 합성 데이터만 쓴다. 로컬 OCR(RapidOCR)은 서비스에 없다: 이 파일은 그것을 import 하지 않는 것도 확인한다."""
 
+import ast
 import io
 import sys
+from pathlib import Path
 
 import pytest
 from PIL import Image
@@ -11,7 +13,7 @@ from PIL import Image
 from app.features.ai_assistant.ingest import classify as classify_mod
 from app.features.ai_assistant.ingest import doc_classifier, figures, llm_ingest
 from app.features.ai_assistant.ingest.converters import OcrLine
-from app.features.ai_assistant.ingest.service import preprocess
+from app.features.ai_assistant.ingest.service import ingest_file, preprocess
 from app.shared.config import settings
 from app.shared.llm import doc_ai, jev
 
@@ -157,3 +159,121 @@ def test_the_local_ocr_package_is_never_imported(monkeypatch):
 
     r = preprocess(png(), "a.png", ocr=Reader(), external=True)
     assert r.quality.status in ("ok", "partial") and "가정통신문" in r.content.text
+
+
+# ---------- 2026-11-23 보완: 기본값은 fail-closed, 외부 전송 직전 재확인, 호출처 점검 ----------
+
+
+def test_the_service_entry_points_require_the_external_flag():
+    """`external` 은 필수 인자다: 빠뜨리면 동의를 조용히 우회하는 대신 TypeError 로 드러난다."""
+    with pytest.raises(TypeError):
+        preprocess(b"hello", "a.txt")
+    with pytest.raises(TypeError):
+        ingest_file("g", b"hello", "a.txt")
+
+
+def test_lower_level_helpers_default_to_not_sending(claude_on_but_trapped):
+    """값을 넘기지 않은 하위 함수는 외부로 보내지 않는다(기본 False)."""
+    from app.features.ai_assistant.ingest import service
+
+    masked, privacy = service._mask(
+        "연락처 010-1234-5678"
+    )  # 가리기 Claude 설정이 켜져 있어도 로컬 규칙이다
+    assert "1234-5678" not in masked
+    assert figures.describe_pptx(b"x", "본문") == ("본문", None)  # 그림을 읽으러 가지 않는다
+    r = preprocess(b"zzz qqq vvv", "a.txt", external=False)
+    assert (
+        classify_mod.classify(r) is not None
+    )  # 기본값: Jev 를 부르지 않는다(대역이 호출되면 실패한다)
+    assert (
+        service._read_pdf(pdf(["Hello family notice about the school trip next week", ""]), None)[1]
+        is not None
+    )
+
+
+def test_an_injected_jev_is_not_called_without_consent(claude_on_but_trapped, monkeypatch):
+    monkeypatch.setattr(doc_classifier, "predict", lambda text: None)
+    r = preprocess(b"zzz qqq vvv", "a.txt", external=False)
+    calls = []
+
+    def injected(state, questions):
+        calls.append(1)
+        return {}
+
+    classify_mod.classify(r, jev=injected, external=False)
+    assert calls == []  # 끼워 준 Jev 도 동의 없이는 부르지 않는다
+    classify_mod.classify(r, jev=injected, external=True)
+    assert calls  # 대조군
+
+
+def test_recheck_blocks_a_photo_when_consent_was_withdrawn_just_before_sending(monkeypatch):
+    monkeypatch.setattr(settings, "ingest_llm_ocr", True)
+    monkeypatch.setattr(
+        llm_ingest, "ocr_image", lambda image: (_ for _ in ()).throw(Sent("보내면 안 된다"))
+    )
+    r = preprocess(png(), "a.png", external=True, recheck=lambda: False)
+    assert r.quality.status == "failed" and r.quality.error == "consent_required"
+
+
+def test_recheck_blocks_only_the_steps_after_the_withdrawal(monkeypatch):
+    """읽기(이미 나간 호출)는 끝났고 그 뒤 동의가 철회되면, 가리기는 로컬 규칙으로 한다."""
+    monkeypatch.setattr(settings, "ingest_llm_ocr", True)
+    monkeypatch.setattr(settings, "ingest_llm_mask", True)
+    seen = {"read": 0, "mask": 0}
+
+    def read(image):
+        seen["read"] += 1
+        return doc_ai.OcrOut("연락처 010-1234-5678 로 알려 주세요", False, 0, 0)
+
+    def mask(text, family=None):
+        seen["mask"] += 1
+        return text, {}, "none"
+
+    monkeypatch.setattr(llm_ingest, "ocr_image", read)
+    monkeypatch.setattr(llm_ingest, "mask", mask)
+    answers = iter([True, False])  # 읽기 직전은 동의 있음, 가리기 직전은 철회됨
+    r = preprocess(png(), "a.png", external=True, recheck=lambda: next(answers))
+    assert seen == {"read": 1, "mask": 0}
+    assert (
+        r.quality.status in ("ok", "partial") and "1234-5678" not in r.content.text
+    )  # 로컬 규칙이 가렸다
+
+
+def test_every_production_call_passes_external_explicitly():
+    """운영 코드가 `ingest_file`·`preprocess`·`classify`·`describe_pptx` 를 부를 때 `external=` 를 반드시 넘긴다(새 호출자가 빠뜨리면 이 시험이 막는다)."""
+    app = Path(__file__).resolve().parents[5] / "app"
+    watched = {"ingest_file", "preprocess", "classify", "describe_pptx"}
+    scope = [
+        app / "features" / "ai_assistant" / "files.py",
+        *(app / "features" / "ai_assistant" / "ingest").glob("*.py"),
+    ]
+    missing, inspected = [], 0
+    for path in scope:
+        if path.name in {
+            "siglip_margin.py",
+            "photo_judge.py",
+        }:  # 이름만 같은 다른 함수(이미지 전처리)
+            continue
+        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+            if not isinstance(node, ast.Call):
+                continue
+            name = (
+                node.func.attr
+                if isinstance(node.func, ast.Attribute)
+                else getattr(node.func, "id", "")
+            )
+            if name in watched:
+                inspected += 1
+            if name in watched and not any(k.arg == "external" for k in node.keywords):
+                missing.append(f"{path.name}:{node.lineno} {name}(")
+    assert inspected >= 4, (
+        inspected
+    )  # files.py 의 ingest_file, service.py 의 preprocess·classify·describe_pptx 를 실제로 봤다(공허한 통과 방지)
+    assert missing == [], missing
+    # 다른 기능이 `ingest_file` 을 직접 부르지 않는다(`files.process_file` 하나만 거친다)
+    for path in app.rglob("*.py"):
+        if "tests" in path.parts or path.name == "files.py" and path.parent.name == "ai_assistant":
+            continue
+        if path.parts[-2] == "ingest" and path.name == "service.py":
+            continue
+        assert "ingest_file(" not in path.read_text(encoding="utf-8"), path
