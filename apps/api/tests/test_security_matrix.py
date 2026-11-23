@@ -1826,9 +1826,6 @@ def test_ingest_uses_only_local_model_or_jev_never_anthropic():
             assert "shared.llm import client" not in text and "api.anthropic.com" not in text, rel
 
 
-_DEFECT_test_file_upload_does_not_call_external_jev_when_family_ai_is_off = "[중간] Jev(api.typesafe.ai, 외부 서비스)는 TYPESAFE_API_KEY 가 있으면 파일 업로드 분류에 쓰이지만 가족 AI 동의(ai_guard)·한도를 거치지 않는다. 가린 글자만 보낸다지만 가족이 AI 를 끄고 있어도 외부로 나간다. 권장: files.process_file 에서 ai_guard.is_enabled 확인 후에만 Jev 사용(꺼져 있으면 로컬 모델)."
-
-
 def test_file_upload_does_not_call_external_jev_when_family_ai_is_off(api, fake, monkeypatch):
     monkeypatch.setattr(settings, "typesafe_api_key", "test-typesafe-key")
     fam = new_family(api, "제브", "JEV")
@@ -1839,10 +1836,8 @@ def test_file_upload_does_not_call_external_jev_when_family_ai_is_off(api, fake,
         headers=fam.owner.headers,
     )
     assert r.status_code == 201
-    known_defect(
-        not [c for c in fake.calls if "typesafe" in c.url],
-        _DEFECT_test_file_upload_does_not_call_external_jev_when_family_ai_is_off,
-    )
+    # 2026-11-23: files.process_file 이 가족 AI 동의(ai_guard)를 읽어 ingest_file(external=…) 로 내려보낸다. 동의가 없으면 Jev 를 쓰지 않는다(고친 결함).
+    assert not [c for c in fake.calls if "typesafe" in c.url]
 
 
 def test_file_upload_never_calls_anthropic(api, fake):
