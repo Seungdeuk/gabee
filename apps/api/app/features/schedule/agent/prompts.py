@@ -26,6 +26,9 @@ DATE_REL_SCHEMA: dict = {
     "required": ["weeks", "days", "weekday"],
     "additionalProperties": False,
 }
+# 구조화 출력 문법이 커져 400(grammar too large)이 나지 않도록, 같은 모양을 여러 곳에서 쓰는 객체는 CHAT_SCHEMA 의 $defs 에 한 번만 두고 $ref 로 가리킨다
+DATE_REL_REF: dict = {"$ref": "#/$defs/date_rel"}
+REGISTER_REF: dict = {"$ref": "#/$defs/register"}
 
 # register 일 때만 채운다(아니면 빈 문자열·빈 배열·0·false). 초안이 있으면 초안과 새 문장을 합친 전체를 쓴다
 REGISTER_SCHEMA: dict = {
@@ -34,7 +37,7 @@ REGISTER_SCHEMA: dict = {
         "title": {"type": "string"},
         "date": {"type": "string"},
         # 상대 날짜 표현(담주·이틀 뒤·다음 주 금요일)은 날짜를 계산하지 않고 여기에 쓴다. 없으면 {0, 0, -1}
-        "date_rel": DATE_REL_SCHEMA,
+        "date_rel": DATE_REL_REF,
         "start_time": {"type": "string"},
         "end_time": {"type": "string"},
         "kind": {"type": "integer", "enum": [0, 1, 2]},
@@ -70,7 +73,7 @@ CHANGES_SCHEMA: dict = {
         "title": {"type": "string"},
         "date": {"type": "string"},
         # 상대 날짜 표현(담주·이틀 뒤·다음 주 금요일)은 날짜를 계산하지 않고 여기에 쓴다. 없으면 {0, 0, -1}
-        "date_rel": DATE_REL_SCHEMA,
+        "date_rel": DATE_REL_REF,
         "start_time": {"type": "string"},
         "end_time": {"type": "string"},
         "kind": {"type": "integer", "enum": [0, 1, 2]},
@@ -147,6 +150,8 @@ HABIT_SCHEMA: dict = {
 
 CHAT_SCHEMA: dict = {
     "type": "object",
+    # register·more_registers·changes 가 같은 객체를 $ref 로 공유한다(펼치면 문법이 커져 400 이 난다)
+    "$defs": {"date_rel": DATE_REL_SCHEMA, "register": REGISTER_SCHEMA},
     "properties": {
         "intent": {"type": "string", "enum": list(INTENTS)},
         "reply": {"type": "string"},
@@ -156,9 +161,9 @@ CHAT_SCHEMA: dict = {
         "period_start": {"type": "string"},
         "period_end": {"type": "string"},
         "keyword": {"type": "string"},
-        "register": REGISTER_SCHEMA,
+        "register": REGISTER_REF,
         # 한 문장에 등록 요청이 둘 이상일 때 두 번째 건부터(최대 4건, 코드가 자른다). 아니면 빈 배열
-        "more_registers": {"type": "array", "items": REGISTER_SCHEMA},
+        "more_registers": {"type": "array", "items": REGISTER_REF},
         # edit·delete 일 때 대상 일정의 id(없으면 빈 문자열)와, edit 일 때 바뀔 값
         "target_id": {"type": "string"},
         # 같은 조건의 일정 여러 건을 한꺼번에 다루라고 했을 때만 true(delete: 그 일정 모두의 id 가 event_ids 에 들어 있다)
@@ -205,7 +210,7 @@ CHAT_SYSTEM = (
     "일정이 있는지 묻거나 알려 달라는 말('헬스 언제야?')만 query 이다.\n"
     "- query: 일정을 알려 달라거나 빈 시간·우선순위를 묻는 질문\n"
     "- recommend: 추가하면 좋을 일정을 추천해 달라는 요청\n"
-    "- register: 일정(약속·할 일)을 새로 등록해 달라는 요청\n"
+    "- register: 일정(약속·할 일)을 새로 등록해 달라는 요청. '금요일까지 뭐 하나 해야 돼'처럼 해야 할 일이 있다고 평서문으로 말하면 할 일 등록이다. 내 일정을 알려 달라고 묻는 물음('금요일에 뭐 있어?', '뭐 해야 돼?')만 query 다.\n"
     "- edit: 이미 있는 일정을 고쳐 달라는 요청\n"
     "- delete: 이미 있는 일정을 지워 달라는 요청\n"
     "- check: 일정을 확인했다거나 할 일을 끝냈다는 체크, 또는 아직 확인하지 않은 일정을 보여 달라는 요청\n"
@@ -243,8 +248,10 @@ CHAT_SYSTEM = (
     "단 같이 하는 사람이 문장에 나오고 키워드가 없으면 '엄마랑 약속'처럼 '○○랑 약속'으로 쓴다(그 사람은 공유 대상이 아니다).\n"
     "- date: 구체적인 날짜·오늘·내일처럼 [지금] 기준으로 계산한 YYYY-MM-DD. "
     "담주로 미뤄줘·일주일 뒤로·이틀 뒤로·다음 주 금요일처럼 상대적인 말은 날짜를 계산하지 말고 date_rel 에 쓰고 date 는 빈 문자열로 둔다(weeks·days 는 더할 주·일, weekday 는 요일 지정이 없으면 -1, 월 0 ~ 일 6). 예: 담주로 미뤄줘 → weeks 1·days 0·weekday -1, 이틀 뒤로 → weeks 0·days 2·weekday -1, 다음 주 금요일 → weeks 1·days 0·weekday 4. 구체적인 날짜(12/3)와 오늘·내일·모레처럼 [지금] 기준의 말은 date 에 YYYY-MM-DD 로 쓰고 date_rel 은 {weeks 0, days 0, weekday -1}. 이번 주인지 다음 주인지처럼 날짜가 둘 이상으로 읽히고 결과가 크게 다르면 "
-    "date 는 빈 문자열, date_ambiguous 는 true 로 하고 reply 에 두 후보를 물어보는 짧은 문장을 쓴다. 날짜를 전혀 말하지 않았으면 "
-    "date 는 빈 문자열, date_ambiguous 는 false.\n"
+    "date 는 빈 문자열, date_ambiguous 는 true 로 하고 reply 에 두 후보를 물어보는 짧은 문장을 쓴다. "
+    "요일만 말하고 이번·다음 주를 붙이지 않은 등록('금요일 저녁 7시에 동창 모임 잡아줘')도 같다: 이번 주 금요일인지 다음 주 금요일인지 가를 수 없으니 되묻는다(오늘과 같은 요일이면 오늘로 본다). "
+    "단 '금요일까지'처럼 기한을 말한 것은 되묻지 않고 오늘 이후 가장 가까운 그 요일로 한다. "
+    "날짜를 전혀 말하지 않았으면('저녁 8시에 가족 회의 잡아줘') date 는 빈 문자열, date_ambiguous 는 false 로 두고, 오늘이나 다른 날을 추측해 채우지 않는다(날짜는 임의로 정하지 않는다).\n"
     "- start_time·end_time: HH:MM(24시간). 말하지 않았으면 빈 문자열. '저녁'·'아침' 같은 숫자 없는 막연한 말은 시간을 정하지 않는다. "
     "숫자 시각에 오전/오후 표시가 없으면('2시에 치과') 일상 시간대로 오전/오후만 판단해 24시간 값으로 쓴다: 1~6시는 오후(2시 → 14:00), "
     "7~11시는 일정 성격에 따라(아침 식사·출근은 오전, 저녁 약속·회식은 오후), 12시는 정오(12:00). 숫자(시)는 바꾸지 않는다. "
