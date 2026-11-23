@@ -7,6 +7,7 @@
 import json
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from typing import TYPE_CHECKING
 
 import httpx
 
@@ -17,6 +18,9 @@ from app.shared.privacy.ner import PrivacyUnavailable
 from . import tool_graph, transport
 from .chat_model import PostChatModel, to_langchain_messages
 from .transport import LLMUnavailable
+
+if TYPE_CHECKING:
+    from app.shared.privacy import PrivacySession
 
 Post = Callable[[dict], dict]
 MAX_TOOL_RESULT_CHARS = 12000
@@ -35,6 +39,45 @@ class Tool:
             "description": self.description,
             "input_schema": self.input_schema,
         }
+
+
+def privacy_tools(
+    tools: list[Tool], session: "PrivacySession", *, tokenize_results: bool = False
+) -> list[Tool]:
+    """질문을 가명화한 **같은 세션**에 도구를 묶는다(모델은 질문 속 이름을 `[PERSON_1]` 같은 토큰으로 본다).
+
+    - 인자: 모델이 토큰으로 준 값을 도구를 실행하기 직전에 서버 안에서만 원래 값으로 되돌린다. 이 세션이 만든 토큰(정책의 복원
+      종류)만 되돌리고, 모르는 토큰·사용자가 쓴 토큰 모양은 그대로 둔다. 되돌린 값은 호출 기록(`tool_calls`)과 모델로 가지 않는다.
+      가족 그룹·권한·인자 검증은 도구가 그대로 한다(되돌린 값도 같은 검사를 거친다).
+    - 되비침: 도구가 되돌려 받은 값을 결과·오류 글에 담아도(예: 토큰 뒤에 글자가 붙은 '수진택시', 검증 오류가 입력값을 담는 글) 이번 호출에서
+      복원한 값과 똑같은 글자는 같은 토큰으로 다시 가려서 모델에 돌려준다.
+    - 오류 글: 이미 가명화한 이름은 같은 토큰으로 바꿔 모델에 돌려준다.
+    - tokenize_results=True: 결과에서도 **이미 가명화한 이름만** 같은 토큰으로 맞춘다(결과 전체를 가명화하지 않는다)."""
+
+    def wrap(tool: Tool) -> Tool:
+        def run(args: dict) -> dict:
+            restored = session.restore_json(args)
+            real_args, tokens = restored.value, restored.restored_tokens
+
+            def hide(
+                obj,
+            ):  # 토큰 모양 글을 무력화하는 처리들이 끝난 뒤 마지막에 적용한다(넣은 토큰이 깨지지 않게)
+                return session.retokenize_values_json(obj, tokens) if tokens else obj
+
+            try:
+                data = tool.run(real_args)
+            except PrivacyUnavailable:
+                raise
+            except (KeyError, ValueError, TypeError, ApiError) as e:
+                message = getattr(e, "message", None) or str(e)
+                raise ValueError(hide(session.tokenize_mapped_names(message))) from None
+            if tokenize_results:
+                data = session.tokenize_mapped_names_json(data)
+            return hide(data)
+
+        return Tool(tool.name, tool.description, tool.input_schema, run)
+
+    return [wrap(t) for t in tools]
 
 
 @dataclass
@@ -181,8 +224,12 @@ def ask_agent(
     history: list[dict] | None = None,
     proposals: list | None = None,
     stage: str = "",
+    max_tokens: int | None = None,
 ) -> AgentReply:
-    """run_agent 를 부르되 실패하면 예외 대신 can_answer=False 인 답을 돌려준다(부른 에이전트가 이어서 말하도록)."""
+    """run_agent 를 부르되 실패하면 예외 대신 can_answer=False 인 답을 돌려준다(부른 에이전트가 이어서 말하도록).
+
+    max_tokens: 모델 호출 한 번의 출력 상한. 주지 않으면(None) `run_agent` 의 기본값을 그대로 쓴다(정산·돌봄 Agent 는 주지 않는다)."""
+    limit = {} if max_tokens is None else {"max_tokens": max_tokens}
     try:
         reply = run_agent(
             system,
@@ -191,6 +238,7 @@ def ask_agent(
             post=post,
             max_steps=max_steps,
             stage=stage,
+            **limit,
         )
         reply.proposals = list(proposals or [])
         return reply

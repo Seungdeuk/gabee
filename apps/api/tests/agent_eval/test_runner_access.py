@@ -6,10 +6,16 @@ from decimal import Decimal as D
 
 import pytest
 
-from evals.agent_eval import runs_guard
+from evals.agent_eval import real_gate, runs_guard
 from evals.agent_eval.cost import Ledger, Scope
 from evals.agent_eval.runner import RunnerRefused, RunOptions, run_cases
-from tests.agent_eval.runner_support import ask_billing_script, legacy, new_case, run
+from tests.agent_eval.runner_support import (
+    ask_billing_script,
+    legacy,
+    new_case,
+    real_grant_for,
+    run,
+)
 
 SCRIPT = ask_billing_script()
 
@@ -104,11 +110,9 @@ def test_a_halted_test_case_stays_started_so_it_is_not_rerun_after_seeing_its_re
     ]  # 끊긴 사례는 다시 돌리지 않는다
 
 
-def test_the_runner_itself_refuses_real_mode_while_the_switch_is_off(monkeypatch):
-    """CLI 를 거치지 않고 run_cases 를 직접 불러도 실제 모델 호출은 시작하지 않는다(승인 금액이 있어도)."""
-    from evals.agent_eval import switches
-
-    assert switches.REAL_ENABLED is False  # 기본값
+def test_the_runner_itself_refuses_real_mode_without_a_grant(monkeypatch):
+    """CLI 를 거치지 않고 run_cases 를 직접 불러도 허가 없이는 실제 모델 호출을 시작하지 않는다(승인 금액이 있어도)."""
+    assert real_gate.real_grant() is None  # 기본 상태
     ledger = Ledger((Scope.RUN,), caps={Scope.RUN: D("1")})
     with pytest.raises(RunnerRefused, match="꺼져 있다"):
         run_cases(
@@ -116,18 +120,18 @@ def test_the_runner_itself_refuses_real_mode_while_the_switch_is_off(monkeypatch
         )
 
 
-def test_the_real_mode_needs_an_approved_amount_that_covers_the_ledger_cap(monkeypatch):
-    from evals.agent_eval import switches
-
-    monkeypatch.setattr(switches, "REAL_ENABLED", True)
+def test_the_real_mode_needs_an_approved_amount_that_covers_the_ledger_cap():
+    grant = real_grant_for([new_case("d-1")])
     cases = [new_case("d-1")]
     unlimited = Ledger((Scope.RUN,))  # 기본 상한 2달러
-    with pytest.raises(RunnerRefused, match="승인"):
-        run_cases(cases, RunOptions("r", mode="real"), ledger=unlimited)
-    with pytest.raises(RunnerRefused, match="승인"):
-        run_cases(cases, RunOptions("r", mode="real", approved_usd=D(0)), ledger=unlimited)
-    with pytest.raises(RunnerRefused, match="승인한 금액보다 크다"):
-        run_cases(cases, RunOptions("r", mode="real", approved_usd=D("1")), ledger=unlimited)
+    with real_gate.real_grant_scope(grant):
+        with pytest.raises(RunnerRefused, match="승인"):
+            run_cases(cases, RunOptions("r", mode="real"), ledger=unlimited)
+        with pytest.raises(RunnerRefused, match="승인"):
+            run_cases(cases, RunOptions("r", mode="real", approved_usd=D(0)), ledger=unlimited)
+        with pytest.raises(RunnerRefused, match="승인한 금액보다 크다"):
+            run_cases(cases, RunOptions("r", mode="real", approved_usd=D("1")), ledger=unlimited)
+        assert not grant.consumed  # 거부된 시도는 허가를 소진하지 않는다
 
 
 def test_zero_repeats_are_refused():

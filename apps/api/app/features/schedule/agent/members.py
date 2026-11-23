@@ -54,3 +54,48 @@ def names(members: list[Member]) -> list[tuple[str, ...]]:
 def line(m: Member) -> str:
     """모델에 보내는 한 줄: id | 표시 이름 | 관계"""
     return f"{m.id} | {m.label} | {m.relation or '-'}"
+
+
+def same_call(members: list[Member], text: str, me: str) -> list[Member]:
+    """문장에서 가리킨 호칭(예: 삼촌)이 둘 이상의 가족 표시 이름에 들어 있으면 그 가족들. 없으면 빈 목록."""
+    others = [m for m in members if m.id != me and m.label]
+    best: list[Member] = []
+    best_len = 0
+    for token in text.split():
+        for size in range(len(token), 1, -1):
+            part = token[:size]
+            found = [m for m in others if part in m.label]
+            if len(found) >= 2:
+                if size > best_len:
+                    best, best_len = found, size
+                break
+    return best
+
+
+def option_lines(found: list[Member]) -> list[dict]:
+    """선택 카드에 보여 줄 가족 후보: 저장된 표시 이름(같은 이름이면 실제 이름을 덧붙인다)."""
+    labels = [m.label for m in found]
+    return [
+        {
+            "id": m.id,
+            "line": f"{m.label}({m.name})"
+            if labels.count(m.label) > 1 and m.name and m.name != m.label
+            else m.label,
+        }
+        for m in found
+    ]
+
+
+def ask_text(members: list[Member], text: str, me: str, fallback: str) -> str:
+    """같은 호칭의 가족이 여럿이면 저장된 이름으로 후보를 보여 주며 묻는다. 후보를 못 찾으면 fallback."""
+    found = same_call(members, text, me)
+    if not found:
+        return fallback
+    labels = [m.label for m in found]
+    shown = [
+        f"{m.label}({m.name})"
+        if labels.count(m.label) > 1 and m.name and m.name != m.label
+        else m.label
+        for m in found
+    ]
+    return f"비슷한 이름의 가족이 {len(found)}분 있어요. 누구인가요? ({', '.join(shown)})"

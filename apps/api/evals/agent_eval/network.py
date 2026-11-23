@@ -1,7 +1,8 @@
 """평가 프로세스의 바깥 연결을 막는다(푸시·메일·소셜 로그인·서버 점검 같은 외부 서비스 쓰기 방지).
 
 허용하는 곳은 이 컴퓨터(루프백·유닉스 소켓)와 `allow_hosts` 로 이름을 정해 준 호스트뿐이다. 가짜 모델만 쓰는
-시험은 `allow_hosts` 를 비워서 이 컴퓨터 밖으로는 아무것도 나가지 못하게 한다.
+시험은 `allow_hosts` 를 비워서 이 컴퓨터 밖으로는 아무것도 나가지 못하게 한다. 실제 모델 호스트(`real_gate.REAL_HOSTS`)는
+활성 허가가 있을 때만 허용할 수 있고, 없으면 `RealGateRefused` 다.
 
 막는 곳(파이썬 수준): `socket.socket.connect`·`connect_ex`·`sendto`, `socket.getaddrinfo`·`gethostbyname`·`gethostbyname_ex`,
 asyncio 이벤트 루프의 `sock_connect`(Windows 기본 루프는 `socket.connect` 를 거치지 않는다). 이름 조회는 허용 밖이면 DNS 를 부르기 전에
@@ -21,11 +22,15 @@ import threading
 from collections.abc import Iterable, Iterator
 from contextlib import contextmanager
 
+from . import real_gate
+
 LOOPBACK_NAMES = frozenset({"localhost", "localhost.localdomain", "ip6-localhost"})
+# 소문자(`http_proxy`)와 전부 대문자(`HTTP_PROXY`) 두 철자를 모두 다룬다. Windows 는 환경변수 이름의 대소문자를 구분하지 않아 한 철자만 있어도
+# 둘 다 잡히지만, Linux 는 구분하므로 `HTTP_PROXY` 를 빠뜨리면 차단 중에도 프록시가 남는다
 PROXY_ENV = tuple(
-    f"{n}{suffix}"
+    name
     for n in ("http", "https", "all", "ftp", "no", "ws", "wss")
-    for suffix in ("_proxy", "_PROXY")
+    for name in (f"{n}_proxy", f"{n}_proxy".upper())
 )
 
 
@@ -76,6 +81,9 @@ def _no_proxies() -> Iterator[None]:
 
 @contextmanager
 def block_network(allow_hosts: Iterable[str] = ()) -> Iterator[None]:
+    allow_hosts = tuple(allow_hosts)
+    if any(h.lower() in real_gate.REAL_HOSTS for h in allow_hosts):
+        real_gate.require_active()  # 실제 모델 호스트는 활성 허가가 있을 때만 연다(없으면 RealGateRefused)
     if not _GUARD.acquire(blocking=False):
         raise RuntimeError("이미 네트워크 차단 구간이 열려 있다(겹쳐 열지 않는다)")
     try:

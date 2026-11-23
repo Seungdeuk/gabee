@@ -8,6 +8,7 @@ import Segmented from "@/shared/components/Segmented";
 import { colors } from "@/theme";
 
 import { useAuth } from "@/shared/auth/AuthProvider";
+import { logMetaSignup } from "@/shared/meta/metaEvents";
 import { checkLoginIdAvailable, requestEmailVerification, signupAccount } from "../api";
 import AuthLayout from "../components/AuthLayout";
 import Notice from "../components/Notice";
@@ -77,6 +78,7 @@ export default function SignupScreen() {
       setBusy(false);
       return;
     }
+    logMetaSignup(); // 메타 광고 측정: 가입 완료(이름·아이디·이메일은 보내지 않음)
     try {
       await signIn(form.loginId, form.password);
     } catch {

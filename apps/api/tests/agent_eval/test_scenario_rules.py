@@ -211,6 +211,14 @@ RELEASED_NEEDS = {
 }
 
 
+# 확정 당시(E5a)의 w2 월드 선언: planned. 2026-11-19 에 w2 를 만들면서 built 와 새 note 로 바꿨다(잠금 history 에 기록).
+W2_AT_FINALIZATION = {
+    "status": "planned",
+    "splits": ["val"],
+    "note": "검증용 변형 월드. E5c 에서 setup.seed 의미와 변형 데이터를 만들 때까지 사례를 실행할 수 없다. 변형이 너무 비싸다고 판명되면 목록을 고치되 변경 이력과 해시를 새로 기록한다.",
+}
+
+
 def test_the_needs_release_changed_nothing_but_needs_in_exactly_six_items():
     """현재 목록에서 6건의 needs 만 확정 당시 값으로 되돌리면 최초 확정 해시가 정확히 나온다: 해시가 바뀐 것은 needs 해제뿐이다."""
     raw = sc.load_raw()
@@ -220,6 +228,9 @@ def test_the_needs_release_changed_nothing_but_needs_in_exactly_six_items():
     for s in restored["scenarios"]:
         if s["id"] in RELEASED_NEEDS:
             s["needs"] = RELEASED_NEEDS[s["id"]]
+    # 월드 선언도 목록 해시에 들어 있다: w2 를 만들어 `built` 로 바꾼 2026-11-19 변경(잠금 history 의 세 번째 항목)도 확정 당시 값으로 되돌린다
+    assert restored["worlds"]["w2"]["status"] == "built"
+    restored["worlds"]["w2"] = W2_AT_FINALIZATION
     restored_list = sc.parse_list(restored)
     assert sc.list_hash(restored_list) == FINALIZED_SHA
     changed = {i for i, h in sc.item_hashes(restored_list).items() if h != current[i]}

@@ -1,0 +1,26 @@
+# 가비 소개 사이트: 검색 엔진과 AI 검색 로봇 모두 읽어도 됩니다.
+User-agent: *
+Allow: /
+
+# ChatGPT 검색 결과에 나오게 하는 로봇
+User-agent: OAI-SearchBot
+Allow: /
+
+# ChatGPT 가 사용자의 요청으로 페이지를 열 때 쓰는 로봇
+User-agent: ChatGPT-User
+Allow: /
+
+# OpenAI 모델 학습용 로봇
+User-agent: GPTBot
+Allow: /
+
+User-agent: ClaudeBot
+Allow: /
+
+User-agent: PerplexityBot
+Allow: /
+
+User-agent: Google-Extended
+Allow: /
+
+Sitemap: https://gabee.cloud/sitemap.xml

@@ -402,6 +402,26 @@ def _held_ids(con: sqlite3.Connection, stems: set[str]) -> list[str]:
     ]
 
 
+def _core_title(title: str) -> str:
+    """제목 앞머리([별첨], (보도자료), 날짜 번호)를 떼고 공백을 없앤 본제목. 같은 문서의 다른 판(별첨·보도자료)을 묶는 데 쓴다."""
+    t = re.sub(r"\.pdf$", "", title, flags=re.I)
+    for _ in range(2):
+        t = re.sub(r"^\s*(\[[^\]]*\]|\([^)]*\))\s*", "", t)
+        t = re.sub(r"^\d{4,8}\s*(\([^)]*\))?\s*", "", t)
+    return re.sub(r"\s+", "", t)
+
+
+def same_document_stems(index: Path, stems: set[str]) -> set[str]:
+    """뺄 문서와 본제목이 같은 다른 문서(같은 문서의 별첨·보도자료 판)의 stem. 정답 문서만 빼면 같은 내용이 남아 '답 없음'이 성립하지 않는다(2026-11-18, q040·q041)."""
+    con = sqlite3.connect(f"file:{index}?mode=ro", uri=True)
+    try:
+        titles = [t for (t,) in con.execute("select title from knowledge_items")]
+    finally:
+        con.close()
+    cores = {_core_title(t) for t in titles if public._stem(t) in stems}
+    return {public._stem(t) for t in titles if _core_title(t) in cores}
+
+
 def _count(con: sqlite3.Connection, table: str) -> int:
     return con.execute(f"select count(*) from {table}").fetchone()[0]
 
@@ -431,6 +451,7 @@ def holdout_db(index: Path, files: set[str]) -> Path:
     """색인 사본에서 고른 파일을 지운다. 원본 색인은 그대로 둔다. 이미 있는 사본은 삭제 수를 검증한 뒤에만 다시 쓴다."""
     target = index.with_name(index.stem + "_holdout.db")
     stems = {public._stem(f) for f in files}
+    stems |= same_document_stems(index, stems)
     if target.exists():
         if _holdout_reusable(index, target, stems):
             return target
@@ -1095,6 +1116,9 @@ def main() -> None:
         help="이 결과 파일의 문항(튜닝에 쓴 표본)을 뺀 나머지만 잰다. dev 전용, 여러 번 쓸 수 있다",
     )
     parser.add_argument("--qid", action="append", help="이 문항만 잰다(원인 확인용, 여러 번)")
+    parser.add_argument(
+        "--only-no-answer", action="store_true", help="답 없는 문항만 잰다(답 있는 문항은 건너뜀)"
+    )
     args = parser.parse_args()
     if args.exclude_from and args.split == "test":
         parser.error("--exclude-from 은 dev 에서만 씁니다")
@@ -1163,6 +1187,8 @@ def main() -> None:
     if args.qid:  # 원인 확인용: 지정한 문항만
         answerable = [q for q in answerable if q["qid"] in args.qid]
         no_answer = [q for q in no_answer if q["qid"] in args.qid]
+    if args.only_no_answer:
+        answerable = []
     answerable = answerable[: args.limit] if args.limit else answerable
     if args.limit:
         no_answer = no_answer[: max(1, args.limit // 3)]

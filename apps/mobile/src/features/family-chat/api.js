@@ -206,7 +206,8 @@ export const removeReaction = ({ roomId, messageId }) => apiFetch(`/family-chat/
 /**
  * 사진 메시지를 보낸다(POST /family-chat/photos, multipart 'file' + 선택 form 필드 room_id). 8MB 이하 JPEG/PNG/WebP, 서버가 다시 만든다. AI 를 부르지 않는다.
  * 웹은 asset.file(없으면 asset.uri 의 blob)을 그대로, 네이티브는 {uri, name, type} 으로 보낸다. Content-Type 은 fetch 가 boundary 와 함께 붙인다.
- * @param {{ uri: string, file?: Blob, fileName?: string | null, mimeType?: string }} asset expo-image-picker 가 돌려준 asset
+ * 촬영 시각은 asset.takenAt(시간대가 확인된 ISO 8601 한 값, pickPhoto 가 EXIF 에서 꺼냄)이 있을 때만 form 'taken_at' 한 칸으로 보낸다. EXIF 객체나 위치·기기 정보는 보내지 않는다. 서버는 자기가 읽은 EXIF 를 먼저 쓰고 이 값은 못 읽었을 때만 쓴다.
+ * @param {{ uri: string, file?: Blob, fileName?: string | null, mimeType?: string, takenAt?: string | null }} asset expo-image-picker 가 돌려준 asset(EXIF 는 떼어 낸 것)
  * @param {string | null} [roomId] 대화방 id, 없으면 가족 전체방(form 에 넣지 않는다)
  * @param {string | null} [batchId] 한 번에 여러 장 올릴 때 장마다 같은 묶음 번호(없으면 form 에 넣지 않는다)
  * @returns {Promise<{ id: number, user_id: string, user_name: string, text: string, created_at: string, attachment: { id: string, kind: "image", url: string, thumb_url: string, width: number, height: number, batch_id: string | null } | null }>}
@@ -225,6 +226,8 @@ export async function sendPhoto(asset, roomId, batchId) {
   }
   if (roomId) form.append("room_id", roomId);
   if (batchId) form.append("batch_id", batchId);
+  // 서버는 40자 초과를 422 로 막으므로, 업로드가 촬영 시각 때문에 실패하지 않게 문자열이고 40자 이하일 때만 보낸다
+  if (typeof asset.takenAt === "string" && asset.takenAt && asset.takenAt.length <= 40) form.append("taken_at", asset.takenAt);
   return apiFetch("/family-chat/photos", { method: "POST", body: form });
 }
 
@@ -373,6 +376,57 @@ export function listMedia({ roomId, kind = "image", limit = 40, beforeId } = {})
  * @returns {Promise<{ status: "queued" | "already" }>} queued 는 저장을 시작했다(글을 읽는 데 시간이 걸린다), already 는 이미 문서함에 있다
  */
 export const savePhotoToLibrary = (attachmentId) => apiFetch(`/family-chat/photos/${encodeURIComponent(attachmentId)}/library`, { method: "POST" });
+
+/**
+ * 내가 올린 가족 전체방 사진 중 확인이 필요한 것(판별 불확실·실패·올린 지 15분 넘게 판별이 끝나지 않은 것)만. 다른 사람이 올린 사진은 오지 않는다. 조회가 실패하면 빈 목록이 아니라 503 이다.
+ * 오류: 503(photo_checks_unavailable), 429(too_many_checks), 401.
+ * @param {{ limit?: number, before?: number | null }} [options] limit 1~50(기본 20), before 는 이전 응답의 next_before
+ * @returns {Promise<{ items: { attachment_id: string, thumb_url: string, created_at: string, taken_at: string | null, status: "unsure" | "failed" | "pending" }[], needs_review_count: number, next_before: number | null }>}
+ */
+export function listMyPhotoChecks({ limit = 20, before } = {}) {
+  const params = [`limit=${Math.min(50, Math.max(1, Math.floor(Number(limit)) || 20))}`];
+  if (before != null && Number(before) >= 1) params.push(`before=${Math.floor(Number(before))}`);
+  return apiFetch(`/family-chat/photos/checks/mine?${params.join("&")}`);
+}
+
+/**
+ * 업로더 본인이 "일반 사진이에요"로 확인한다. 이 사진이 가족 타임라인에 보인다는 안내를 확인했다는 뜻(acknowledge)을 함께 보낸다. 문서로 판단됐거나 문서함에 저장된 사진은 409 로 막힌다.
+ * 오류: 404(내 사진이 아님·지운 사진·1:1 방), 409(document_to_photo_blocked·check_in_progress), 429, 503(photo_checks_unavailable), 422.
+ * @param {string} attachmentId 사진 첨부 id
+ * @returns {Promise<{ status: "photo", source: "manual" }>}
+ */
+export const confirmGeneralPhoto = (attachmentId) =>
+  apiFetch(`/family-chat/photos/${encodeURIComponent(attachmentId)}/check`, {
+    method: "POST",
+    body: { to: "photo", reason: "uploader_confirmed_general", acknowledge: true },
+  });
+
+/**
+ * 가족 타임라인: 가족 전체방 사진 중 일반 사진으로 확인된 것만, 촬영일(없으면 보낸 시각) 최신순. 판별 결과를 읽지 못하면 빈 목록이 아니라 503 이다.
+ * 오류: 503(photo_checks_unavailable), 429(too_many_checks), 422(invalid_cursor), 401.
+ * @param {{ limit?: number, before?: string | null }} [options] limit 1~60(기본 30), before 는 이전 응답의 next_before 를 그대로
+ * @returns {Promise<{ items: { attachment_id: string, message_id: number, thumb_url: string, display_at: string, taken_at: string | null, created_at: string, batch_id: string | null, mine: boolean }[], next_before: string | null }>}
+ */
+export function listTimelinePhotos({ limit = 30, before } = {}) {
+  const params = [`limit=${Math.min(60, Math.max(1, Math.floor(Number(limit)) || 30))}`];
+  if (typeof before === "string" && before) params.push(`before=${encodeURIComponent(before)}`);
+  return apiFetch(`/family-chat/timeline/photos?${params.join("&")}`);
+}
+
+/**
+ * 업로더 본인이 자기 사진을 가족 타임라인에서 뺀다(채팅 원본은 그대로). 같은 요청을 다시 보내도 성공이다.
+ * 오류: 404(내 사진이 아님·지운 사진·1:1 방), 409(not_in_timeline: 타임라인에 있는 사진이 아님), 429, 503(photo_checks_unavailable), 401.
+ * @param {string} attachmentId 사진 첨부 id
+ * @returns {Promise<{ status: "excluded", source: "manual" }>}
+ */
+export const excludePhotoFromTimeline = (attachmentId) => apiFetch(`/family-chat/photos/${encodeURIComponent(attachmentId)}/exclude`, { method: "POST" });
+
+/**
+ * 사진이 가족 문서함에 실제로 등록됐는지. 확인하지 못하면 서버가 not_registered 로 답한다(성공으로 보이지 않게).
+ * @param {string} attachmentId 사진 첨부 id
+ * @returns {Promise<{ state: "registered" | "not_registered" }>}
+ */
+export const getPhotoLibraryState = (attachmentId) => apiFetch(`/family-chat/photos/${encodeURIComponent(attachmentId)}/library`);
 
 /**
  * 사진 원본을 로그인 헤더로 받아 Blob 으로 돌려준다(웹 저장용). 서버가 준 사진 경로만 받고, 토큰은 주소에 넣지 않는다.

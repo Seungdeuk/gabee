@@ -472,3 +472,35 @@ def test_groups_stay_isolated_after_approval(client):
     me = client.get(f"{P}/groups/me", headers=guest).json()
     assert me["id"] == group_a["id"] and me["id"] != group_b["id"]
     assert client.get(f"{P}/groups/me/join-requests", headers=guest).json()["code"] == "not_manager"
+
+
+def test_auto_approve_race_on_membership_returns_already_member_not_500(client, monkeypatch):
+    """자동 승인에서 같은 사람의 동시 중복 제출: 먼저 온 요청이 이미 구성원으로 넣었는데 이 요청은 그걸 못 보고 지나가
+    group_members 기본 키 위반이 나도 500 이 아니라 순서대로 온 두 번째 제출과 같은 409(already_member)를 준다."""
+    from app.features.family_group import join_repository as jrepo
+
+    owner, _ = account(client, "owner_kim")
+    group = create_group(client, owner, auto_approve=True)
+    # 이 파일은 승인 대기가 기본이라(approval_required) 자동 승인을 명시적으로 켠다
+    on = client.put(f"{P}/groups/invites/settings", json={"auto_approve": True}, headers=owner)
+    assert on.status_code == 200, on.text
+    guest, guest_id = account(client, "guest_lee")
+    first = join(client, guest, group["invite_code"])
+    assert first.status_code == 200 and first.json()["status"] == "approved"
+
+    real, seen = jrepo.get_membership, {"skipped": False}
+
+    def racing(db, group_id, user_id):
+        if user_id == guest_id and not seen["skipped"]:
+            seen["skipped"] = True
+            return None  # 사이에 다른 요청이 넣은 구성원을 이 요청은 아직 보지 못한 시점
+        return real(db, group_id, user_id)
+
+    monkeypatch.setattr(jrepo, "get_membership", racing)
+    r = join(client, guest, group["invite_code"])
+    assert seen["skipped"] and r.status_code == 409, r.text
+    assert r.json()["code"] == "already_member"
+    with SessionLocal() as db:
+        assert len(db.scalars(select(JoinRequest)).all()) == 1  # 실패한 시도의 요청은 남지 않는다
+        assert db.scalars(select(Invite)).one().use_count == 1  # 사용 횟수도 되돌아간다
+    assert len(members_of(group["id"])) == 2

@@ -159,6 +159,11 @@ def _submit(fn, *args) -> None:
     _executor.submit(fn, *args)
 
 
+def _now() -> datetime:
+    """발송 시점의 현재 시각(방해금지 판단에 쓴다). 시험은 이 함수를 고정 시각으로 바꿔 실제 시각에 따라 결과가 달라지지 않게 한다."""
+    return datetime.now(UTC)
+
+
 def _post(messages: list[dict[str, Any]]) -> dict[str, Any]:
     """Expo 푸시 API 에 한 묶음을 보내고 JSON 응답을 돌려준다(시험은 이 함수를 바꾼다)."""
     headers = {"Accept": "application/json", "Content-Type": "application/json"}
@@ -189,7 +194,7 @@ def _message(plan: PushPlan) -> dict[str, Any]:
 def _deliver(items: list[dict[str, Any]]) -> None:
     """쌓인 푸시를 실제로 보낸다. 어떤 오류도 밖으로 내지 않는다(로그에는 예외 종류만, 토큰·문구는 남기지 않는다)."""
     try:
-        now = datetime.now(UTC)
+        now = _now()
         with SessionLocal() as db:
             plans: list[PushPlan] = []
             for item in items:

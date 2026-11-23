@@ -186,10 +186,24 @@ def test_the_report_and_store_keep_ids_and_numbers_not_question_or_expected_text
     saved = json.loads((report.run_dir / runner.REPORT_FILE).read_text("utf-8"))
     for row in saved["cases"]:
         assert set(row) == {
-            "case_id", "split", "repeat", "status", "detail", "passed", "legacy_passed",
-            "write_gate", "skipped_checks", "failure_types", "security_violations",
-            "known_gap", "llm_calls", "tokens_in", "tokens_out", "cost_usd",
-        }  # fmt: skip
+            "case_id",
+            "split",
+            "repeat",
+            "status",
+            "detail",
+            "passed",
+            "legacy_passed",
+            "write_gate",
+            "skipped_checks",
+            "failure_types",
+            "security_violations",
+            "known_gap",
+            "llm_calls",
+            "tokens_in",
+            "tokens_out",
+            "cost_usd",
+            "faults_injected",
+        }  # fmt: skip  (faults_injected: 도구 오류 주입 횟수 하나뿐, 질문·답·기대 원문 없음)
     for name in ("cases.jsonl", "manifest.json", "summary.csv", "failures.csv", "usage.jsonl"):
         assert_no_leak((report.run_dir / name).read_text("utf-8"))
     line = json.loads((report.run_dir / "cases.jsonl").read_text("utf-8").splitlines()[0])

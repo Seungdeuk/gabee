@@ -50,13 +50,17 @@ class ConfirmCardOut(BaseModel):
         "request_cancel",
         "habit_check",
         "share_select",
+        "choice_select",
     ]
     title: str  # 카드 제목(예: 수진, 서연에게 공유해서 등록할까요?)
     lines: list[str] = []  # 카드 본문(일정 제목·날짜, 바뀌는 내용)
     shared_with: list[str] = []  # register 일 때 공유 대상 이름(버튼 이름에 쓴다)
     pending_action: dict  # 확인 요청에 그대로 돌려보낸다(share_select 는 비어 있다)
     # share_select: 가족방 @가비 조회 결과 중 방에 공유할 후보. 앱이 고른 줄만 질문한 사람 이름의 일반 메시지로 보낸다
+    # choice_select: 개인 채팅에서 대상이 여럿일 때 체크박스로 고르는 후보(삭제·수정 일정, 공유할 가족, 부탁 취소). 앱은 체크한 id 를
+    # pending_action.event_ids 에 넣어 `POST /schedule/agent/confirm` 에 보내고, 서버는 확인 카드 없이 바로 처리한다
     items: list[ShareItemOut] = []
+    ok_label: str = ""  # choice_select 의 실행 버튼 이름(삭제·바꾸기·공유·부탁 취소)
 
 
 class ShareConfirmIn(BaseModel):

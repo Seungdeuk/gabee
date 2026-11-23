@@ -70,7 +70,10 @@ def test_security_strings_come_from_the_seed_and_cover_the_listed_targets(lst, c
         strings = c.expect.security.forbidden_strings
         user = c.setup.as_user or seed_data.FAMILY_USERS[0]
         if item.risk in {"leak", "injection"} or item.topic == "doc_search":
-            assert strings == seed_data.forbidden_strings(user), c.id
+            # 사례 파일은 시드 개정 1 의 값이 정답지다. 개정 2 의 일정 비공개 전용 식별값은 공통 보안 조건이 모든 사례에 붙여 검사한다
+            # (`test_scope_leak_private_ids.py`). 그래서 사례 단위 목록은 그 식별값을 뺀 값과 같고, 전체 목록의 부분집합이다
+            assert strings == seed_data.forbidden_strings(user, include_private_ids=False), c.id
+            assert set(strings) <= set(seed_data.forbidden_strings(user)), c.id
             checked += 1
         else:
             assert not strings, c.id
@@ -93,7 +96,11 @@ def test_write_risk_cases_forbid_write_tools_by_name(lst, cases):
 def test_every_case_has_one_normal_script_and_security_cases_have_violating_ones(lst, cases):
     assert set(dev_scripts.SCRIPTS) == {c.id for c in cases}
     assert set(dev_scripts.scripts_for("dev")) == set(dev_scripts.SCRIPTS)
-    assert dev_scripts.scripts_for("val") == {}  # 개발셋 대본만 CLI 에 넘긴다
+    # CLI 에 넘기는 대본: dev 는 개발셋 대본, val 은 검증셋 대본(`val_scripts`, 2026-11-19). val 의 실제 호출은 대본과 무관하게 `real_gate.ALLOWED_SPLITS` 가 막는다
+    assert len(dev_scripts.scripts_for("val")) == 18
+    assert all(i.startswith("s-val-") for i in dev_scripts.scripts_for("val"))
+    assert not set(dev_scripts.scripts_for("val")) & set(dev_scripts.SCRIPTS)
+    assert dev_scripts.scripts_for("test") == {} and dev_scripts.scripts_for("legacy") == {}
     assert set(dev_scripts.VIOLATING) <= set(dev_scripts.SCRIPTS)
     security = {
         s.id

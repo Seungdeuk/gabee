@@ -1,7 +1,8 @@
 """에이전트 부탁(함께하기). 모델이 고른 의도와 값을 코드가 검증해 확인 카드로 보여 주고, 사용자가 확인하면 처음부터 다시 검증해서
 실행한다(`together.create`·`together.change_recipients`·`together.cancel`).
 
-- 보내기·받는 사람 바꾸기·취소는 상대에게 영향이 가므로 항상 확인 카드를 거친다. 상세·현황 질의는 바로 답한다.
+- 보내기·받는 사람 바꾸기·취소는 상대에게 영향이 가므로 항상 확인 카드를 거친다(요구사항 schedule-agent.md). 확인 전에는 DB 를 바꾸지 않는다.
+  상세·현황 질의는 바로 답한다. 부탁 메모는 채팅에서 쓰지 않고 앱 상세 화면에서 사용자가 직접 바꾼다(`PUT /schedule/requests/{id}/memo`).
 - 부탁한 사람만 바꾸고 취소한다. 받는 사람이 하면 거부한다. 부탁 내용(제목·날짜 등)은 못 바꾼다 — 취소하고 다시 보낸다.
 - 모델에게 보여 주는 [부탁 목록]은 그 사람이 볼 수 있는 만큼만이다(`together.list_mine`): 받는 사람에게는 내 줄과 수락한 사람만 내려와서
   누가 또 받았는지 알려 줄 수 없다. 보낸 사람에게는 어렵겠어요로 답한 사람도 '대기'로 보여 준다(어렵다는 답은 알리지 않는 규칙).
@@ -9,7 +10,9 @@
 """
 
 from dataclasses import dataclass, field
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
+from datetime import time as dtime
+from types import SimpleNamespace
 
 from pydantic import ValidationError
 from sqlalchemy.orm import Session
@@ -20,10 +23,12 @@ from app.features.schedule import together
 from app.features.schedule.schemas import RequestCreate, RequestRecipients
 from app.shared.errors import bad_request
 
-from . import register
+from . import choice as choice_mod
+from . import members as members_mod
+from . import reader, register
 from .members import Member
 from .prompts import WEEKDAYS
-from .schemas import AgentResponse, Card, Draft, PendingAction
+from .schemas import AgentResponse, Card, Choice, Draft, PendingAction
 
 LIST_LIMIT = 40  # LLM 에 보내는 부탁 수 상한(넘으면 지금과 가까운 순)
 PAST_DAYS = 30  # 지난 부탁은 이 기간까지만 보낸다
@@ -33,9 +38,10 @@ ACTIONS = ("create", "edit", "cancel", "query")
 NOT_FOUND_TEXT = "어떤 부탁인지 찾지 못했어요. 부탁 이름이나 날짜를 함께 알려 주세요"
 NOT_SENDER_EDIT = "내가 보낸 부탁의 받는 사람만 바꿀 수 있어요"
 NOT_SENDER_CANCEL = "내가 보낸 부탁만 취소할 수 있어요"
-CONTENT_FIXED_TEXT = "부탁 내용은 바꿀 수 없어요. 내용을 바꾸려면 부탁을 취소하고 다시 보내 주세요"
+CONTENT_FIXED_TEXT = "부탁의 제목·날짜·시간·장소는 바꿀 수 없어요. 바꾸려면 부탁을 취소하고 다시 보내 주세요(메모는 바꿀 수 있어요)"
+MEMO_SAME_TEXT = "부탁의 메모가 이미 그렇게 되어 있어요"
 WHO_HOW_TEXT = "받는 사람을 어떻게 바꿀지 알려 주세요. 모두 빼려면 부탁을 취소해 주세요"
-NOTHING_TEXT = "받는 사람이 그대로예요. 누구를 넣고 뺄지 알려 주세요"
+NOTHING_TEXT = "받는 사람이 이미 그렇게 되어 있어요"
 NOT_UNDERSTOOD_TEXT = "부탁을 보낼지, 바꿀지, 취소할지, 현황을 볼지 알려 주세요"
 NONE_FOUND_TEXT = "해당하는 부탁을 찾지 못했어요"
 GIVE_UP_TEXT = (
@@ -68,6 +74,16 @@ def _when_text(row: dict) -> str:
         else "시간 미정"
     )
     return f"{day:%Y-%m-%d}({WEEKDAYS[day.weekday()]}) {clock}"
+
+
+def _short_when(day: date, start, end) -> str:
+    """안내 문장에 쓰는 짧은 날짜·시간(예: 11/12(목) 10:00~11:00, 시간이 없으면 날짜만)."""
+    clock = f" {start:%H:%M}~{end:%H:%M}" if start and end else f" {start:%H:%M}" if start else ""
+    return f"{day.month}/{day.day}({WEEKDAYS[day.weekday()]}){clock}"
+
+
+def _row_when(row: dict) -> str:
+    return _short_when(row["start_date"], row["start_time"], row["end_time"])
 
 
 def _line(row: dict, me: str, detail: bool = True) -> str:
@@ -126,6 +142,7 @@ def clean_fields(raw, member_ids: set[str], request_ids: set[str]) -> dict:
         "memo": register._text(raw.get("memo"), register.MEMO_MAX),
         "to_ids": register._ids(raw.get("to_ids"), member_ids),
         "date_ambiguous": raw.get("date_ambiguous") is True,
+        "member_ambiguous": raw.get("member_ambiguous") is True,
     }
 
 
@@ -172,15 +189,17 @@ def respond(
     reply: str,
     members: list[Member],
     view: RequestView,
+    today: date | None = None,
+    text: str = "",
 ) -> AgentResponse:
     action = fields["action"]
     labels = {m.id: m.label for m in members}
     if action == "create":
-        return _create(request_draft, fields, reply, user_id, members, labels)
+        return _create(db, group_id, request_draft, fields, reply, user_id, members, labels, text)
     if action == "edit":
-        return _edit(user_id, fields, view, labels)
+        return _edit(db, group_id, user_id, fields, view, members, labels, today, text)
     if action == "cancel":
-        return _cancel(user_id, fields, view, labels)
+        return _cancel(user_id, fields, view, labels, today, text)
     if action == "query":
         return _query(user_id, fields, reply, view, labels)
     return AgentResponse(intent="request", text=reply or NOT_UNDERSTOOD_TEXT)
@@ -202,12 +221,15 @@ def _question(draft: Draft, ambiguous: bool, reply: str) -> str:
 
 
 def _create(
+    db: Session,
+    group_id: str,
     request_draft: Draft | None,
     fields: dict,
     reply: str,
     user_id: str,
     members: list[Member],
     labels: dict[str, str],
+    text: str = "",
 ) -> AgentResponse:
     member_ids = {m.id for m in members}
     base = request_draft if request_draft is not None and request_draft.mode == "request" else None
@@ -219,86 +241,130 @@ def _create(
     ambiguous = fields["date_ambiguous"]
     if ambiguous:
         draft = draft.model_copy(update={"date": ""})
-    if not (draft.title and draft.date and draft.share_ids):
+    who_unclear = fields[
+        "member_ambiguous"
+    ]  # 같은 호칭의 가족이 여럿이면 누구인지 먼저 되묻는다(정책 #33)
+    if who_unclear or not (draft.title and draft.date and draft.share_ids):
         if draft.asks >= register.MAX_ASKS:
             return AgentResponse(intent="request", text=GIVE_UP_TEXT)
         asked = draft.model_copy(update={"asks": draft.asks + 1})
-        return AgentResponse(intent="request", text=_question(draft, ambiguous, reply), draft=asked)
-    who = [{"id": i, "name": labels[i]} for i in draft.share_ids if i in labels]
-    card = Card(
-        type="request_confirm",
-        data={
-            "action": "create",
-            "title": draft.title,
-            "date": draft.date,
-            "start_time": draft.start_time,
-            "end_time": draft.end_time,
-            "place": draft.place,
-            "memo": draft.memo,
-            "to": who,
-        },
-    )
-    return AgentResponse(
-        intent="request",
-        text=f"{', '.join(w['name'] for w in who)}에게 부탁을 보낼까요?",
-        cards=[card],
-        pending_action=PendingAction(type="request_register", draft=draft),
+        text = (
+            members_mod.ask_text(members, text, user_id, reply or register.MEMBER_UNCLEAR_TEXT)
+            if who_unclear and not ambiguous
+            else _question(draft, ambiguous, reply)
+        )
+        return AgentResponse(intent="request", text=text, draft=asked)
+    # 제목·날짜·받는 사람이 모두 정해졌으면 확인 카드 없이 바로 보낸다(정책 #40)
+    return confirm(
+        db, user_id, group_id, PendingAction(type="request_register", draft=draft), members
     )
 
 
-def _edit(user_id: str, fields: dict, view: RequestView, labels: dict[str, str]) -> AgentResponse:
+def _edit(
+    db: Session,
+    group_id: str,
+    user_id: str,
+    fields: dict,
+    view: RequestView,
+    members: list[Member],
+    labels: dict[str, str],
+    today: date | None = None,
+    text: str = "",
+) -> AgentResponse:
     row = view.rows.get(fields["target_id"])
     if row is None:
         return AgentResponse(intent="request", text=NOT_FOUND_TEXT)
     if row["from_id"] != user_id:
         return AgentResponse(intent="request", text=NOT_SENDER_EDIT)
-    if any(fields[k] for k in ("title", "date", "start_time", "end_time", "place", "memo")):
+    if any(fields[k] for k in ("title", "date", "start_time", "end_time", "place")):
         return AgentResponse(intent="request", text=CONTENT_FIXED_TEXT)
+    if today is not None:
+        decision, found = _narrow(row, view, user_id, today, text)
+        if decision == "ask":
+            return _ask_which("request_edit", found, user_id, labels, fields)
+        row = found
+    return _edit_row(db, group_id, user_id, fields, row, members, labels)
+
+
+def _edit_row(
+    db: Session,
+    group_id: str,
+    user_id: str,
+    fields: dict,
+    row: dict,
+    members: list[Member],
+    labels: dict[str, str],
+) -> AgentResponse:
     wanted = [i for i in fields["to_ids"] if i != user_id]
+    memo = fields["memo"]
+    # 메모는 수락 여부와 상관없이 보낸 사람이 바꿀 수 있다(정책 #25). 이미 수락한 사람의 일정은 독립이라 바뀌지 않는다
+    memo_done = None
+    if memo and memo != row["memo"]:
+        updated = together.change_memo(db, group_id, user_id, row["id"], memo)
+        memo_done = AgentResponse(
+            intent="request",
+            text=f"{_row_when(row)} '{row['title']}' 부탁의 메모를 바꿨어요.",
+            cards=[
+                Card(type="request_list", data={"requests": [_brief(updated, user_id, labels)]})
+            ],
+        )
+    if memo and not wanted:
+        return memo_done or AgentResponse(intent="request", text=MEMO_SAME_TEXT)
     if not wanted:
         return AgentResponse(intent="request", text=WHO_HOW_TEXT)
     current = [r["user_id"] for r in row["recipients"]]
     if set(wanted) == set(current):
-        return AgentResponse(intent="request", text=NOTHING_TEXT)
+        return memo_done or AgentResponse(intent="request", text=NOTHING_TEXT)
     dropped_accepted = [
         r["user_id"]
         for r in row["recipients"]
         if r["status"] == "accepted" and r["user_id"] not in wanted
     ]
-    text = "이렇게 바꿀까요?"
+    # 받는 사람 변경은 확인 카드 없이 바로 처리한다(정책 #10). 수락한 분을 빼면 그분의 일정이 사라지는 것도 알린다
+    done = confirm(
+        db,
+        user_id,
+        group_id,
+        PendingAction(type="request_edit", request_id=row["id"], to_ids=wanted),
+        members,
+    )
     if dropped_accepted:
-        text += " 수락한 분을 제외하면 그 일정도 같이 사라져요."
-    card = Card(
-        type="request_confirm",
-        data={
-            "action": "edit",
-            "request": _brief(row, user_id, labels),
-            "changes": [
-                {
-                    "label": "받는 사람",
-                    "before": _names(current, labels),
-                    "after": _names(wanted, labels),
-                }
-            ],
-        },
-    )
-    return AgentResponse(
-        intent="request",
-        text=text,
-        cards=[card],
-        pending_action=PendingAction(type="request_edit", request_id=row["id"], to_ids=wanted),
-    )
+        done.text += " 수락한 분을 제외해서 그 일정도 같이 사라졌어요."
+    if memo_done:
+        done.text = memo_done.text + " " + done.text
+    return done
 
 
-def _cancel(user_id: str, fields: dict, view: RequestView, labels: dict[str, str]) -> AgentResponse:
+def _cancel(
+    user_id: str,
+    fields: dict,
+    view: RequestView,
+    labels: dict[str, str],
+    today: date | None = None,
+    text: str = "",
+) -> AgentResponse:
     row = view.rows.get(fields["target_id"])
     if row is None:
         return AgentResponse(intent="request", text=NOT_FOUND_TEXT)
     if row["from_id"] != user_id:
         return AgentResponse(intent="request", text=NOT_SENDER_CANCEL)
+    if today is not None:
+        decision, found = _narrow(row, view, user_id, today, text)
+        if decision == "ask":
+            return _ask_which("request_cancel", found, user_id, labels, fields)
+        row = found
+    return _cancel_row(user_id, row, labels)
+
+
+def _cancel_row(user_id: str, row: dict, labels: dict[str, str]) -> AgentResponse:
+    accepted = [r["user_id"] for r in row["recipients"] if r["status"] == "accepted"]
+    # 취소는 상대에게 영향이 가므로 수락한 사람이 없어도 항상 확인 카드를 거친다
     text = f"'{row['title']}' 부탁을 취소할까요?"
-    if any(r["status"] == "accepted" for r in row["recipients"]):
-        text += " 수락하신 분이 만든 일정도 같이 사라져요."
+    if accepted:
+        text = (
+            f"{_row_when(row)} '{row['title']}' 부탁은 {_names(accepted, labels)}이(가) 수락했어요. "
+            "취소하면 수락하신 분이 만든 일정도 같이 사라져요. 취소할까요?"
+        )
     card = Card(
         type="request_confirm",
         data={"action": "cancel", "request": _brief(row, user_id, labels)},
@@ -309,6 +375,129 @@ def _cancel(user_id: str, fields: dict, view: RequestView, labels: dict[str, str
         cards=[card],
         pending_action=PendingAction(type="request_cancel", request_id=row["id"]),
     )
+
+
+def _narrow(row: dict, view: RequestView, user_id: str, today: date, text: str):
+    """같은 제목의 내가 보낸 부탁이 여럿이면 시점 규칙으로 좁힌다(일정과 같은 규칙, 정책 #33)."""
+    same = sorted(
+        (
+            r
+            for r in view.rows.values()
+            if r["from_id"] == user_id and r["title"].strip() == row["title"].strip()
+        ),
+        key=lambda r: (r["start_date"], r["start_time"] is None, r["start_time"] or 0),
+    )
+    if len(same) <= 1 or choice_mod.mentions_day(text, row["start_date"]):
+        return "one", row
+    future = [r for r in same if r["start_date"] >= today]
+    if len(future) == 1:
+        return "one", future[0]
+    if len(future) > 1:
+        return "ask", future
+    return "one", row
+
+
+def _ask_which(
+    kind: str, found: list, user_id: str, labels: dict[str, str], fields: dict
+) -> AgentResponse:
+    more = max(len(found) - choice_mod.OPTION_LIMIT, 0)
+    found = found[: choice_mod.OPTION_LIMIT]
+    title = found[0]["title"]
+    return AgentResponse(
+        intent="request",
+        text=f"'{title}' 부탁이 {len(found) + more}개 있어요. 어느 쪽인가요? 모두인가요?{choice_mod.more_text(more)}",
+        cards=[
+            Card(
+                type="request_list", data={"requests": [_brief(r, user_id, labels) for r in found]}
+            )
+        ],
+        choice=Choice(
+            kind=kind,
+            event_ids=[r["id"] for r in found],
+            changes=fields,
+            options=[{"id": r["id"], "line": f"{_row_when(r)} '{r['title']}'"} for r in found],
+            more=more,
+        ),
+    )
+
+
+def resolve_choice(
+    db: Session,
+    user_id: str,
+    group_id: str,
+    chosen: Choice,
+    text: str,
+    today: date,
+    members: list[Member],
+):
+    """부탁 되묻기에 대한 답을 처리한다. 답으로 읽을 수 없으면 None(새 요청으로 본다)."""
+    view = load(db, group_id, user_id, today, detail=True)
+    labels = {m.id: m.label for m in members}
+    rows = [
+        view.rows[i]
+        for i in chosen.event_ids
+        if i in view.rows and view.rows[i]["from_id"] == user_id
+    ]
+    if not rows:
+        return AgentResponse(intent="request", text=NOT_FOUND_TEXT)
+    stand_ins = [
+        SimpleNamespace(
+            id=r["id"],
+            title=r["title"],
+            starts_at=datetime.combine(r["start_date"], dtime(), tzinfo=reader.local_tz()),
+        )
+        for r in rows
+    ]
+    ids = choice_mod.pick(text, chosen, stand_ins)
+    if ids is None:
+        return None
+    if not ids:
+        return AgentResponse(intent="request", text="알겠어요. 그대로 두었어요.")
+    picked = [r for r in rows if r["id"] in ids]
+    if chosen.kind == "request_cancel":
+        if len(picked) > 1:  # 글로 답한 취소는 확인 카드 한 장에 한 건씩이라 하나를 고르게 한다
+            one = _ask_which(chosen.kind, picked, user_id, labels, chosen.changes)
+            one.text = "부탁 취소는 한 번에 한 건씩 확인해야 해요. 어느 쪽부터 취소할까요?"
+            return one
+        return _cancel_row(user_id, picked[0], labels)
+    texts = [
+        _edit_row(db, group_id, user_id, chosen.changes, r, members, labels).text for r in picked
+    ]
+    return AgentResponse(intent="request", text=" ".join(texts))
+
+
+def apply_choice(
+    db: Session,
+    user_id: str,
+    group_id: str,
+    action: PendingAction,
+    today: date,
+    members: list[Member],
+) -> AgentResponse:
+    """선택 카드에서 체크한 부탁을 확인 카드 없이 바로 취소(또는 받는 사람 바꾸기)한다(정책 #39). 부탁은 다시 찾고 보낸 사람인지 확인한다."""
+    ids = list(dict.fromkeys(action.event_ids))
+    if not ids:
+        raise bad_request("invalid_action", "고른 항목이 없어요")
+    choice_mod.take(group_id, user_id)
+    view = load(db, group_id, user_id, today, detail=True)
+    labels = {m.id: m.label for m in members}
+    texts: list[str] = []
+    for request_id in ids:
+        row = view.rows.get(request_id)
+        if row is None or row["from_id"] != user_id:
+            texts.append(NOT_FOUND_TEXT)
+            continue
+        if action.choice_kind == "request_cancel":
+            one = _cancel_row(user_id, row, labels)
+            if (
+                one.pending_action is not None
+            ):  # 선택 카드에서 골랐으니 확인 카드 없이 바로 취소한다
+                texts.append(confirm(db, user_id, group_id, one.pending_action, members).text)
+                continue
+        else:
+            one = _edit_row(db, group_id, user_id, action.changes, row, members, labels)
+        texts.append(one.text)
+    return AgentResponse(intent="request", text=" ".join(texts))
 
 
 def _query(
@@ -358,19 +547,25 @@ def confirm(
     try:
         if action.type == "request_register":
             row = _send(db, user_id, group_id, action, member_ids)
-            text = "부탁을 보냈어요."
+            text = (
+                f"{_row_when(row)} '{row['title']}' 부탁을 "
+                f"{_names([r['user_id'] for r in row['recipients']], labels)}에게 보냈어요."
+            )
         elif action.type == "request_edit":
             if not action.request_id or not action.to_ids:
                 raise bad_request("invalid_action", "처리할 수 없는 요청이에요")
             row = together.change_recipients(
                 db, group_id, user_id, action.request_id, RequestRecipients(to_ids=action.to_ids)
             )
-            text = "받는 사람을 바꿨어요."
+            text = (
+                f"{_row_when(row)} '{row['title']}' 부탁의 받는 사람을 "
+                f"{_names([r['user_id'] for r in row['recipients']], labels)}(으)로 바꿨어요."
+            )
         else:
             if not action.request_id:
                 raise bad_request("invalid_action", "처리할 수 없는 요청이에요")
             row = together.cancel(db, group_id, user_id, action.request_id)
-            text = "부탁을 취소했어요."
+            text = f"{_row_when(row)} '{row['title']}' 부탁을 취소했어요."
     except ValidationError as e:
         raise bad_request("invalid_action", "처리할 수 없는 요청이에요") from e
     card = Card(type="request_list", data={"requests": [_brief(row, user_id, labels)]})

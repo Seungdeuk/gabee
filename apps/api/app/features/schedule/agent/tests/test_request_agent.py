@@ -140,25 +140,19 @@ def test_query_drops_unknown_request_ids(client, setup, fake):
 
 
 # ---------- 보내기 ----------
-def test_create_asks_confirm_then_sends(client, setup, fake):
+def test_create_sends_immediately_and_announces(client, setup, fake):
     a, b, _, ids = setup
     fake.data = _req(
         "create", title="병원 같이 가요", date=_day(), start_time="10:00", to_ids=[ids["b"]]
     )
     body = _say(client, a, "수진한테 병원 같이 가달라고 부탁해줘").json()
-    assert body["text"].endswith("에게 부탁을 보낼까요?")
-    assert body["cards"][0]["type"] == "request_confirm"
-    assert body["cards"][0]["data"]["to"][0]["id"] == ids["b"]
-    action = body["pending_action"]
-    assert action["type"] == "request_register" and action["draft"]["mode"] == "request"
-    assert _requests(client, b) == []  # 확인 전에는 보내지 않는다
-    calls = len(fake.calls)
-
-    r = _confirm(client, a, action)
-    assert r.status_code == 200, r.text
+    # 확인 카드 없이 바로 보내고 날짜·시간·제목·받는 사람을 안내한다(정책 #10·#20)
+    assert body["pending_action"] is None and body["cards"][0]["type"] == "request_list"
     assert (
-        r.json()["text"] == "부탁을 보냈어요." and len(fake.calls) == calls
-    )  # 확인은 AI 를 부르지 않는다
+        "'병원 같이 가요' 부탁을 수진에게 보냈어요." in body["text"]
+        and "10:00~11:00" in body["text"]
+    )
+    assert body["text"] != "부탁을 보냈어요."
     got = _requests(client, b)
     assert [x["title"] for x in got] == ["병원 같이 가요"] and got[0]["start_time"] == "10:00:00"
     assert got[0]["end_time"] == "11:00:00"  # 시작만 말하면 한 시간 뒤
@@ -176,8 +170,8 @@ def test_create_asks_for_missing_recipient_then_continues(client, setup, fake):
     assert first["pending_action"] is None
     fake.data = _req("create", to_ids=[ids["b"]])  # 초안에 누구만 채워 답한다
     body = _client_say_with_draft(client, a, "수진한테", first["draft"])
-    assert body["cards"][0]["type"] == "request_confirm"
-    assert body["pending_action"]["draft"]["title"] == "장 봐줘"
+    assert body["pending_action"] is None and "'장 봐줘' 부탁을 수진에게 보냈어요." in body["text"]
+    assert [x["title"] for x in _requests(client, b)] == ["장 봐줘"]
     assert "종류: 부탁" in fake.calls[-1]["prompt"]
 
 
@@ -201,40 +195,63 @@ def test_create_gives_up_after_two_questions(client, setup, fake):
 
 
 # ---------- 받는 사람 바꾸기 ----------
-def test_edit_adds_and_removes_recipients(client, setup, fake):
+def test_edit_adds_and_removes_recipients_immediately(client, setup, fake):
     a, b, c, ids = setup
     sent = _send(client, a, [ids["b"]])
     fake.data = _req("edit", target_id=sent["id"], to_ids=[ids["b"], ids["c"]])
     body = _say(client, a, "장 부탁에 민수도 넣어줘").json()
-    assert body["text"] == "이렇게 바꿀까요?"
-    change = body["cards"][0]["data"]["changes"][0]
-    assert (
-        change["label"] == "받는 사람"
-        and "민수" in change["after"]
-        and "민수" not in change["before"]
-    )
-    assert _requests(client, c) == []
-    assert _confirm(client, a, body["pending_action"]).status_code == 200
+    assert body["pending_action"] is None  # 받는 사람 변경은 카드 없이 바로(정책 #10)
+    assert "'장 같이 봐줘' 부탁의 받는 사람을" in body["text"] and "민수" in body["text"]
     assert len(_requests(client, c)) == 1
 
     fake.data = _req("edit", target_id=sent["id"], to_ids=[ids["c"]])
     body = _say(client, a, "수진은 빼줘").json()
     assert "수락한 분" not in body["text"]  # 수락 전이라 일정 삭제 안내는 없다
-    assert _confirm(client, a, body["pending_action"]).status_code == 200
     assert _requests(client, b) == []
 
 
-def test_edit_removing_accepted_warns_and_deletes_their_event(client, setup, fake):
+def test_edit_removing_accepted_deletes_their_event_and_says_so(client, setup, fake):
     a, b, c, ids = setup
     sent = _send(client, a, [ids["b"], ids["c"]])
     _answer(client, b, sent["id"])
     assert len(_events(client, b)) == 1
     fake.data = _req("edit", target_id=sent["id"], to_ids=[ids["c"]])
     body = _say(client, a, "수진 빼줘").json()
-    assert "수락한 분을 제외하면 그 일정도 같이 사라져요" in body["text"]
-    assert len(_events(client, b)) == 1  # 확인 전에는 지우지 않는다
-    assert _confirm(client, a, body["pending_action"]).status_code == 200
+    assert body["pending_action"] is None
+    assert "수락한 분을 제외해서 그 일정도 같이 사라졌어요" in body["text"]
     assert _events(client, b) == []
+
+
+def test_edit_memo_works_after_accept_and_new_accepts_get_the_new_memo(client, setup, fake):
+    a, b, c, ids = setup
+    sent = _send(client, a, [ids["b"], ids["c"]], memo="처음 메모")
+    _answer(client, b, sent["id"])  # b 는 이미 수락했다
+    fake.data = _req("edit", target_id=sent["id"], memo="우유 두 개")
+    body = _say(client, a, "장 부탁 메모를 우유 두 개로 바꿔줘").json()
+    assert body["pending_action"] is None and "부탁의 메모를 바꿨어요" in body["text"]
+    assert body["cards"][0]["data"]["requests"][0]["memo"] == "우유 두 개"
+    assert next(e for e in _events(client, b))["memo"].startswith(
+        "처음 메모"
+    )  # 수락한 사람의 일정은 독립
+    _answer(client, c, sent["id"])  # 고친 뒤에 수락하면 새 메모가 들어간다
+    assert _events(client, c)[0]["memo"] == "우유 두 개\n함께하기에서 등록된 일정입니다."
+
+
+def test_edit_memo_same_and_with_recipients(client, setup, fake):
+    a, b, c, ids = setup
+    sent = _send(client, a, [ids["b"]], memo="그대로")
+    fake.data = _req("edit", target_id=sent["id"], memo="그대로")
+    assert _say(client, a, "메모 그대로").json()["text"] == request_flow.MEMO_SAME_TEXT
+    fake.data = _req("edit", target_id=sent["id"], memo="새 메모", to_ids=[ids["b"], ids["c"]])
+    body = _say(client, a, "메모 바꾸고 민수도 넣어줘").json()
+    assert "메모를 바꿨어요" in body["text"] and "받는 사람을" in body["text"]
+    assert len(_requests(client, c)) == 1 and _requests(client, c)[0]["memo"] == "새 메모"
+    fake.data = _req(
+        "edit", target_id=sent["id"], memo="x", place="서울병원"
+    )  # 장소는 여전히 못 바꾼다
+    assert _say(client, a, "장소도 바꿔줘").json()["text"] == request_flow.CONTENT_FIXED_TEXT
+    fake.data = _req("edit", target_id=sent["id"], memo="x")
+    assert _say(client, b, "메모 바꿔줘").json()["text"] == request_flow.NOT_SENDER_EDIT
 
 
 def test_edit_rules(client, setup, fake):
@@ -272,7 +289,10 @@ def test_cancel_warns_about_accepted_and_deletes_events(client, setup, fake):
     assert "수락하신 분이 만든 일정도 같이 사라져요" in body["text"]
     assert len(_events(client, b)) == 1
     r = _confirm(client, a, body["pending_action"])
-    assert r.status_code == 200 and r.json()["text"] == "부탁을 취소했어요."
+    assert r.status_code == 200
+    assert r.json()["text"].endswith(
+        "'장 같이 봐줘' 부탁을 취소했어요."
+    )  # 어떤 부탁인지 말해 준다(#466)
     assert _events(client, b) == []
     assert _requests(client, a)[0]["canceled"] is True
 
@@ -402,3 +422,88 @@ def test_main_chat_text_lists_events_and_requests_together(client, setup, fake):
     with SessionLocal() as db:
         reply = ask.ask(db, _group_id(client, a), _user(a, client), "그날 뭐 있어?")
     assert "치과" in reply.answer and "장 같이 봐줘" in reply.answer and "받는 분:" in reply.answer
+
+
+def test_create_with_ambiguous_member_asks_who_and_sends_nothing(client, setup, fake):
+    a, b, _, ids = setup
+    data = _req("create", title="병원 같이 가요", date=_day(), member_ambiguous=True)
+    data["reply"] = "삼촌이 두 분이에요. 누구를 말씀하시나요? (수진, 지훈)"
+    fake.data = data
+    body = _say(client, a, "삼촌한테 병원 같이 가달라고 부탁해줘").json()
+    assert body["text"] == data["reply"] and body["pending_action"] is None
+    assert body["draft"]["mode"] == "request" and _requests(client, b) == []
+
+
+# ---------- 승인 전 DB 변경 0건·메모는 채팅에서 쓰지 않는다 ----------
+def _snap_requests(client, setup):
+    a, b, c, _ = setup
+    return [_requests(client, h) for h in (a, b, c)], [_events(client, h) for h in (a, b, c)]
+
+
+def test_create_puts_extra_explanation_in_memo_field(client, setup, fake):
+    a, b, _, ids = setup
+    fake.data = _req(
+        "create", title="마트 장보기", date=_day(), memo="우유랑 계란", to_ids=[ids["b"]]
+    )
+    _say(client, a, "수진한테 마트 가서 우유랑 계란 사다 달라고 부탁해줘")
+    assert _requests(client, b)[0]["memo"] == "우유랑 계란"
+    assert "memo(제목으로 정리한 말 밖의 부연설명" in fake.calls[-1]["system"]  # #26 프롬프트 규칙
+
+
+# ---------- 같은 제목의 부탁이 여럿일 때(정책 #33) ----------
+def test_same_title_requests_ask_which_then_cancel_card_for_the_chosen_one(client, setup, fake):
+    a, b, _, ids = setup
+    first = _send(client, a, [ids["b"]], start_date=_day(3))
+    second = _send(client, a, [ids["b"]], start_date=_day(10))
+    fake.data = _req("cancel", target_id=first["id"])
+    body = _say(client, a, "장 부탁 취소해줘").json()
+    assert "어느 쪽인가요? 모두인가요?" in body["text"] and body["pending_action"] is None
+    assert [r["id"] for r in body["cards"][0]["data"]["requests"]] == [first["id"], second["id"]]
+    assert not any(r["canceled"] for r in _requests(client, a))
+
+    day = _day(10)
+    card = _say(client, a, f"{int(day[5:7])}/{int(day[8:10])} 걸로").json()
+    assert card["pending_action"]["request_id"] == second["id"]  # 취소도 확인 카드를 거친다
+    assert not any(r["canceled"] for r in _requests(client, a))
+    assert _confirm(client, a, card["pending_action"]).status_code == 200
+    canceled = {r["id"]: r["canceled"] for r in _requests(client, a)}
+    assert canceled[second["id"]] is True and canceled[first["id"]] is False
+
+
+def test_same_title_requests_all_answer_asks_one_at_a_time_and_past_plus_future_uses_future(
+    client, setup, fake
+):
+    a, b, _, ids = setup
+    first = _send(client, a, [ids["b"]], start_date=_day(3))
+    _send(client, a, [ids["b"]], start_date=_day(10))
+    fake.data = _req("cancel", target_id=first["id"])
+    _say(client, a, "장 부탁 취소해줘")
+    body = _say(client, a, "둘 다 취소해줘").json()
+    assert "한 번에 한 건씩" in body["text"] and body["pending_action"] is None
+    assert not any(r["canceled"] for r in _requests(client, a))
+
+    past = _send(client, a, [ids["b"]], title="청소", start_date=_day(-3))
+    future = _send(client, a, [ids["b"]], title="청소", start_date=_day(6))
+    fake.data = _req(
+        "cancel", target_id=past["id"]
+    )  # 지난 부탁을 골라도 다가오는 하나만 카드로 묻는다
+    body = _say(client, a, "청소 부탁 취소해줘").json()
+    assert body["pending_action"]["request_id"] == future["id"]
+
+
+def test_choice_card_cancels_only_the_checked_requests_without_a_confirm_card(client, setup, fake):
+    a, b, _, ids = setup
+    first = _send(client, a, [ids["b"]], start_date=_day(3))
+    second = _send(client, a, [ids["b"]], start_date=_day(10))
+    action = {"type": "choice", "choice_kind": "request_cancel", "event_ids": [first["id"]]}
+    r = client.post("/schedule/agent/confirm", json={"action": action}, headers=a)
+    assert r.status_code == 200 and "취소했어요" in r.json()["text"]
+    canceled = {x["id"]: x["canceled"] for x in _requests(client, a)}
+    assert canceled[first["id"]] is True and canceled[second["id"]] is False
+    stranger = client.post(
+        "/schedule/agent/confirm",
+        json={"action": {**action, "event_ids": [second["id"]]}},
+        headers=b,
+    )  # 보낸 사람이 아니면 취소되지 않는다
+    assert stranger.status_code == 200 and "취소했어요" not in stranger.json()["text"]
+    assert not {x["id"]: x["canceled"] for x in _requests(client, a)}[second["id"]]

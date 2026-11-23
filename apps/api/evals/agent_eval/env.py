@@ -25,6 +25,7 @@ from sqlalchemy import text
 from sqlalchemy.engine import Engine, make_url
 
 from .clock import REFERENCE_NOW, frozen_clock
+from .ids import safe_ids
 from .network import block_network
 
 RAISED_LIMIT = 100_000
@@ -33,12 +34,26 @@ DATA_SUBDIRS = ("photos", "chat_files", "chat_photos", "profile_photos", "play",
 # 사례 사이에 비울 모듈 수준 메모리 저장소(모듈, 이름). 속도 제한기(FailureLimiter)는 앱 전체를 훑어 따로 비운다.
 MEMORY_RESETS = (
     ("app.features.schedule.agent.ask", "_pending"),  # 되물은 일정 초안(10분 유지, 락 필요)
+    (
+        "app.features.schedule.agent.choice",
+        "_pending",
+    ),  # 같은 이름이 여럿일 때 어느 쪽인지 되물은 상태(10분 유지)
     ("app.features.ai_assistant.library", "_photo_pending"),
     ("app.features.ai_assistant.library", "_photo_inflight"),
+    (
+        "app.features.schedule.agent.choice",
+        "_last_event",
+    ),  # 방금 다룬 일정 기억('그거 지워줘'의 대상, 10분 유지, #516). 같은 모듈의 _lock 으로 지킨다
     ("app.features.family_group.social_providers", "_overrides"),
     ("app.features.play.bomb", "_cheer_books"),
     ("app.features.play.bomb_vote", "_books"),
 )
+# 저장소를 지키는 락의 이름이 `<저장소 이름>_lock` 이 아닌 곳(모듈이 락 하나로 여러 저장소를 지킨다). 초기화는 앱이 쓰는 바로 그 락을 잡고 비운다.
+# 여기 적은 락이 모듈에 없으면(이름이 바뀌면) 조용히 락 없이 비우지 않고 AttributeError 로 멈춘다.
+MEMORY_LOCKS = {
+    ("app.features.schedule.agent.choice", "_pending"): "_lock",
+    ("app.features.schedule.agent.choice", "_last_event"): "_lock",
+}
 
 
 class UnsafeEnvironment(RuntimeError):
@@ -117,7 +132,12 @@ def reset_memory_state() -> None:
     for module_name, attr in MEMORY_RESETS:
         module = importlib.import_module(module_name)
         container = getattr(module, attr)
-        lock = getattr(module, f"{attr}_lock", None)
+        explicit = MEMORY_LOCKS.get((module_name, attr))
+        lock = (
+            getattr(module, explicit)  # 이름을 적어 둔 락은 반드시 있어야 한다
+            if explicit is not None
+            else getattr(module, f"{attr}_lock", None)
+        )
         if lock is not None:
             with lock:
                 container.clear()
@@ -179,5 +199,5 @@ def eval_process(
 ) -> Iterator[None]:
     """경계를 확인한 뒤 설정·네트워크 차단·고정 시계를 켠다. 가짜 모델만 쓰면 allow_hosts 를 비운다."""
     check_process_boundary(root)
-    with eval_settings(), block_network(allow_hosts), frozen_clock(now):
+    with eval_settings(), block_network(allow_hosts), frozen_clock(now), safe_ids():
         yield

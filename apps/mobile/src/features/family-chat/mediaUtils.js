@@ -1,6 +1,10 @@
 // 채팅방 서랍 · 사진 모음의 순수 함수(화면·네트워크와 분리해 시험한다). 사진 내용·대화 글자는 어디에도 기록하지 않는다.
 import { formatTime, parseTime } from "./chatUtils";
 import { memberName } from "./listUtils";
+import { REVIEW_ENTRY_KEY, reviewRowTitle, shouldShowReviewRow } from "./photoChecks";
+import { TIMELINE_ENTRY_KEY } from "./timeline";
+
+export const MEMORIES_ENTRY_KEY = "family-memories"; // 가족 추억 후보 서랍 줄 key(개발·시험용 스위치가 켜졌을 때만 보인다)
 
 /** 모음 화면 한 줄의 칸 수. */
 export const GRID_COLUMNS = 3;
@@ -209,10 +213,11 @@ const SETTING_ROWS = [
  * 각 행의 state: "open" 이면 동작, "soon" 이면 "준비 중" 배지. 게시판 행은 연결(pinsReady)이 있을 때만 동작한다.
  * 나가기 행의 notice 는 눌렀을 때의 안내 문구다.
  * 알림 행(kind "switch")은 value 가 "알림 켜짐"이고, 이 방의 muted 값을 아직 모르면(muted 가 null/undefined) disabled 다.
- * @param {{ direct: boolean, pinsReady?: boolean, muted?: boolean | null }} args muted 는 이 방의 알림 끔 여부(모르면 null)
+ * 가족 전체방에는 "채팅 관리"의 사진 · 동영상 아래에 "가족 타임라인" 행이 붙고(1:1 방에는 없다), 그 아래에 reviewCount(내가 올린 사진 중 확인이 필요한 장수)가 1 이상일 때만 "확인이 필요한 사진 N장" 행이 붙는다(0·모름·1:1 방에는 없다).
+ * @param {{ direct: boolean, pinsReady?: boolean, muted?: boolean | null, reviewCount?: number | null, memoryUi?: boolean }} args muted 는 이 방의 알림 끔 여부(모르면 null), reviewCount 는 확인이 필요한 사진 수(모르면 null)
  * @returns {{ title: string, rows: { key: string, icon: string, title: string, subtitle: string, action: string, state: "open" | "soon", danger?: boolean, notice?: string, kind?: "switch", value?: boolean, disabled?: boolean }[] }[]}
  */
-export function buildDrawerSections({ direct, pinsReady = false, muted = null }) {
+export function buildDrawerSections({ direct, pinsReady = false, muted = null, reviewCount = null, memoryUi = false }) {
   /**
    * 정의 행을 화면 행으로: 동작 여부(state)와 나가기 안내(notice)를 붙인다.
    * @param {object} row
@@ -224,8 +229,22 @@ export function buildDrawerSections({ direct, pinsReady = false, muted = null })
     const state = row.action === "leave" ? "open" : live ? "open" : "soon";
     return { ...row, state, ...(row.action === "leave" ? { notice: direct ? SOON_NOTICE : FAMILY_LEAVE_NOTICE } : {}) };
   };
+  const manage = MANAGE_ROWS.map(make);
+  if (!direct) {
+    const at = manage.findIndex((r) => r.key === "media") + 1;
+    manage.splice(at, 0, make({ key: TIMELINE_ENTRY_KEY, icon: "time-outline", title: "가족 타임라인", subtitle: "일반 사진으로 확인된 사진 모아보기", action: "open" }));
+  }
+  if (!direct && memoryUi) {
+    // 개발·시험용(EXPO_PUBLIC_FAMILY_MEMORY_UI): 기본(false)에서는 이 줄이 없어 기존 서랍과 똑같다
+    const at = manage.findIndex((r) => r.key === TIMELINE_ENTRY_KEY) + 1;
+    manage.splice(at, 0, make({ key: MEMORIES_ENTRY_KEY, icon: "images-outline", title: "가족 추억 후보", subtitle: "사진을 날짜와 장면으로 묶은 미리보기", action: "open" }));
+  }
+  if (!direct && shouldShowReviewRow(reviewCount)) {
+    const at = manage.findIndex((r) => r.key === TIMELINE_ENTRY_KEY) + 1;
+    manage.splice(at, 0, make({ key: REVIEW_ENTRY_KEY, icon: "alert-circle-outline", title: reviewRowTitle(reviewCount), subtitle: "내가 올린 사진이 일반 사진인지 확인해 주세요", action: "open" }));
+  }
   return [
-    { title: "채팅 관리", rows: MANAGE_ROWS.map(make) },
+    { title: "채팅 관리", rows: manage },
     { title: "채팅방 설정", rows: SETTING_ROWS.map(make) },
   ];
 }
@@ -235,11 +254,14 @@ export function buildDrawerSections({ direct, pinsReady = false, muted = null })
  * 이동이 아닌 행(준비 중, 나가기)이나 아직 동작하지 않는 행은 notice 다.
  * @param {{ key: string, state: "open" | "soon", notice?: string }} row buildDrawerSections 의 행
  * 알림 행은 mute(바뀔 muted 값 — 지금 켜져 있으면 끄는 것)이고, 아직 값을 모르면(disabled) 아무 일도 없다(none).
- * @returns {{ type: "media" | "pins" | "familytodos" | "none" } | { type: "mute", muted: boolean } | { type: "notice", text: string }}
+ * @returns {{ type: "media" | "photochecks" | "timeline" | "memories" | "pins" | "familytodos" | "none" } | { type: "mute", muted: boolean } | { type: "notice", text: string }}
  */
 export function resolveRowAction(row) {
   if (row.key === "notifications") return row.disabled ? { type: "none" } : { type: "mute", muted: row.value === true };
   if (row.key === "media") return { type: "media" };
+  if (row.key === REVIEW_ENTRY_KEY && row.state === "open") return { type: "photochecks" };
+  if (row.key === TIMELINE_ENTRY_KEY && row.state === "open") return { type: "timeline" };
+  if (row.key === MEMORIES_ENTRY_KEY && row.state === "open") return { type: "memories" };
   if (row.key === "pins" && row.state === "open") return { type: "pins" };
   if (row.key === "familytodos" && row.state === "open") return { type: "familytodos" };
   return { type: "notice", text: row.notice ?? SOON_NOTICE };

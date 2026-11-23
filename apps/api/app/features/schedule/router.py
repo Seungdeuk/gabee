@@ -20,6 +20,7 @@ from .schemas import (
     EventUpdate,
     RequestAnswer,
     RequestCreate,
+    RequestMemo,
     RequestOut,
     RequestRecipients,
     SharingOut,
@@ -173,6 +174,17 @@ def change_request_recipients(
     db: Session = Depends(get_db),
 ) -> dict:
     return request_service.change_recipients(db, group_id, user.id, request_id, body)
+
+
+@router.put("/requests/{request_id}/memo", response_model=RequestOut)
+def change_request_memo(
+    request_id: str,
+    body: RequestMemo,
+    user=Depends(current_user),
+    group_id: str = Depends(current_group_id),
+    db: Session = Depends(get_db),
+) -> dict:
+    return request_service.change_memo(db, group_id, user.id, request_id, body.memo)
 
 
 @router.post("/requests/{request_id}/cancel", response_model=RequestOut)

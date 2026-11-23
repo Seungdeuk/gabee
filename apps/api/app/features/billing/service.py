@@ -200,6 +200,11 @@ def update_expense(db: Session, group_id: str, expense_id: str, body: ExpenseUpd
     return _expense_out(expense, {m.id: m.name for m in members}, [m.id for m in members])
 
 
+def own_expenses_in_month(db: Session, group_id: str, user_id: str, month: str) -> list[Expense]:
+    """그 달에 내가 낸 지출 전체(삭제 대상 특정 검사의 후보). 다른 가족 그룹의 지출은 쿼리에 나오지 않는다."""
+    return [e for e in repo.list_month(db, group_id, month) if e.paid_by == user_id]
+
+
 def open_own_expense(
     db: Session, group_id: str, user_id: str, expense_id: str, verb: str
 ) -> Expense:

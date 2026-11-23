@@ -18,7 +18,7 @@ from app.shared.db import SessionLocal
 from app.shared.llm import doc_ai
 
 from . import files, service
-from .ingest import converters, photo_judge
+from .ingest import converters, photo_judge, siglip_margin
 from .ingest.detect import Unsupported, detect
 from .knowledge import repository as knowledge_repo
 
@@ -97,26 +97,51 @@ def _family_allows_ai(group_id: str) -> bool:
         return ai_guard.is_enabled(db, group_id)
 
 
-def _is_document_photo(group_id: str, data: bytes) -> bool:
-    """자동 등록할 문서 사진인지. 글자가 거의 안 읽히는 사진은 로컬 OCR 로 바로 일반 사진 처리하고(외부 전송 없음),
-    `PHOTO_JUDGE_LLM` 이 켜져 있고 이 가족이 AI 사용에 동의했으면 글자가 읽힌 사진(문서·애매)만 Claude 에게 묻는다.
-    꺼져 있거나 동의하지 않았으면 OCR 판별이 문서일 때만 등록한다(외부로 나가지 않는다).
-    판별 자체가 실패한 사진(열 수 없음·OCR 오류)은 외부로 보내지 않고 등록하지 않는다.
-    하루 상한은 없다(2026-11-09 사용자 결정). 애매하거나 확신이 낮거나 Claude 가 실패하면 등록하지 않는다(사용자가 "문서로 저장")."""
+def _judge_photo(group_id: str, data: bytes) -> tuple[str, str | None]:
+    """사진 판별 결과 (상태, 실패 종류). 상태는 document | unsure | failed 셋 중 하나다(**photo 는 없다**: 글자가 거의 안 읽혀도
+    OCR·모델 판정만으로 일반 사진을 확정하지 않는다. 일반 사진 확인은 업로더가 직접 한다, D-13).
+    글자가 거의 안 읽히는 사진(OCR PHOTO)은 외부로 보내지 않고 unsure 다. `PHOTO_JUDGE_LLM` 이 켜져 있고 이 가족이 AI 사용에
+    동의했으면 글자가 읽힌 사진(문서·애매)만 Claude 에게 묻고, 꺼져 있거나 동의하지 않았으면 OCR 판별이 문서일 때만 document 다.
+    판별 자체가 실패한 사진(열 수 없음·OCR 오류)은 외부로 보내지 않고 failed 다. Claude 가 실패하면 failed, 문서가 아니라고 하거나
+    확신이 낮으면 unsure 다. 하루 상한은 없다(2026-11-09 사용자 결정)."""
     verdict = photo_judge.judge(data, files.processors.ocr or converters.default_ocr())
-    if verdict.failed or verdict.kind == photo_judge.PHOTO:
-        return False
+    if verdict.failed:
+        return "failed", "OcrFailed"
+    if settings.photo_classify_siglip:
+        return _judge_staged(verdict.kind, data)
+    if verdict.kind == photo_judge.PHOTO:
+        return "unsure", None
     use_claude = settings.photo_judge_llm and _family_allows_ai(group_id)
-    if not use_claude and verdict.kind != photo_judge.DOCUMENT:
-        return False
     if not use_claude:
-        return True
+        return ("document", None) if verdict.kind == photo_judge.DOCUMENT else ("unsure", None)
     try:
         answer = doc_ai.classify_photo(photo_judge.to_judge_jpeg(data))
     except Exception as exc:  # noqa: BLE001  사진·응답 내용은 남기지 않고 종류만 적는다
         logger.warning("chat library photo judge failed error=%s", type(exc).__name__)
-        return False
-    return answer.kind == "document" and answer.confidence >= PHOTO_JUDGE_MIN_CONFIDENCE
+        return "failed", type(exc).__name__
+    if answer.kind == "document" and answer.confidence >= PHOTO_JUDGE_MIN_CONFIDENCE:
+        return "document", None
+    return "unsure", None
+
+
+def _judge_staged(ocr_kind: str, data: bytes) -> tuple[str, str | None]:
+    """`PHOTO_CLASSIFY_SIGLIP` 가 켜졌을 때의 OCR + SigLIP2 단계형(E) 판별. 상태는 document | unsure | failed(photo 는 없다, D-13).
+    점수를 못 구하면(모델 파일·로드·메모리·추론 오류) 문서·일반 사진으로 확정하지 않고 failed 다(기존 재검사 규칙을 따른다).
+    외부로 사진을 보내지 않는다(Claude 판별 `PHOTO_JUDGE_LLM` 은 이 경로에서 쓰지 않는다)."""
+    try:
+        margin = siglip_margin.get_scorer().score(data)
+    except siglip_margin.MarginError as exc:
+        logger.warning("chat library photo siglip failed error=%s", exc)
+        return "failed", f"Siglip{exc}"[:40]
+    except Exception as exc:  # noqa: BLE001  내용이 로그에 남지 않게 종류만 적는다
+        logger.warning("chat library photo siglip failed error=%s", type(exc).__name__)
+        return "failed", f"Siglip{type(exc).__name__}"[:40]
+    return siglip_margin.staged_status(ocr_kind, margin), None
+
+
+def _is_document_photo(group_id: str, data: bytes) -> bool:
+    """자동 등록할 문서 사진인지(판별 결과가 document 일 때만 True)."""
+    return _judge_photo(group_id, data)[0] == "document"
 
 
 def register_chat_photo(
@@ -130,8 +155,17 @@ def register_chat_photo(
                 return
             if not chat_library.attachment_exists(db, group_id, attachment_id):
                 return
-        if not forced and not _is_document_photo(group_id, data):
-            return
+        if not forced:
+            status, error = _judge_photo(group_id, data)
+            # 결과를 판별 상태 표에 적는다(문서함 등록보다 먼저: 문서면 바로 숨김 상태가 된다). 못 적어도 pending 으로 남아 안전하다
+            may_register = chat_library.photo_judged(group_id, attachment_id, status, error)
+            if status != "document":
+                return
+            if not may_register:
+                return  # 업로더가 이미 일반 사진으로 확인한 사진: 문서함에 올리면 타임라인과 문서함에 둘 다 있게 된다(b0-2a 리뷰)
+            with SessionLocal() as db:
+                if not chat_library.attachment_exists(db, group_id, attachment_id):
+                    return  # 판별하는 사이 메시지가 지워졌다: 지운 사진이 문서함에 남지 않게(재검사처럼 오래 걸리는 판별 뒤의 경합)
         with SessionLocal() as db:
             photo = service.receive_file(
                 db, group_id, user_id, f"{attachment_id}.jpg", "image/jpeg", data
@@ -139,8 +173,10 @@ def register_chat_photo(
             photo_id = photo.id
         files.process_file(
             photo_id, group_id, user_id, data, f"{attachment_id}.jpg",
-            source_attachment_id=attachment_id, keep_photo=forced,
+            source_attachment_id=attachment_id, keep_photo=forced or settings.photo_classify_siglip,
         )  # fmt: skip
+        # 단계형(E)이 켜져 있으면 문서로 판정된 사진은 글자가 적어도 문서함에 남긴다: 글자가 적은 문서를 SigLIP2 가 구한 경우(rescue)를 읽기 단계가
+        # 다시 "사진"으로 버리면, 판별 상태는 document 인데 문서함에는 없는 채로 업로더가 일반 사진 확인도 못 하게 된다.
     except Exception as exc:  # noqa: BLE001  내용이 로그에 남지 않게 종류만 적는다
         logger.warning("chat library photo register failed error=%s", type(exc).__name__)
 

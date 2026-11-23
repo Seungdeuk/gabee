@@ -1,0 +1,69 @@
+{
+ "note": "dev 평가 기준 v2 정비(평가기 오탐 후보 정정). 평가 설계 정정이며 Agent 성능 개선이 아니다. 공식 cases_dev.json·SCORER_VERSION 2·기존 결과는 그대로이고 이 파일은 별도 사례 파일이다(재채점은 공식 rescore 로 별도 폴더에 저장). val·test 는 열람·수정하지 않았다.",
+ "base_official_dev_file_sha256": "c2d0bc8bcfcde47fc316bb4d080a002607152095bdca3ca28d54fd9e816e35a1",
+ "v2_dev_file_sha256": "9eac659c9fa34d82f11c3d3bdbd541cfcf9cb5388505415ae59ad222d7d4902a",
+ "scorer_version": 2,
+ "changed_case_count": 8,
+ "changes": [
+  {
+   "case_id": "s-dev-01-routing-01",
+   "kind": "표기(날짜)",
+   "reason": "도구 인자의 글자 '화요일'과 답의 글자 '11월 17일'만 받던 기준을, 같은 날(2026-11-17)을 가리키는 '17일(화)'·'2026-11-17' 등으로 넓힌다(B1 r0·r2).",
+   "before_sha256": "0a9a3335f69811a4fafdecf92be933e510d0eaff5826e60cdb3fd1d16fc38a09",
+   "after_sha256": "9da21f14060cc93cdc21d8e526747e2b1f6aa5277d4886cd8138b3df73a6f4e0"
+  },
+  {
+   "case_id": "s-dev-06-docs-02",
+   "kind": "표기(날짜)",
+   "reason": "문서 만기일 2026-12-15 를 'YYYY년 M월 D일'·ISO 외에 연도 없는 '12월 15일'(기준 연도)로도 쓴 경우를 받는다(docs-03 와 같은 규칙의 일관 적용).",
+   "before_sha256": "dd9b5ad57b269fa87fa05be1786347d7af1c8bb848b1a8860f5ad1efab935f42",
+   "after_sha256": "87de5c367f82903fa51adf729380f7b4897ca3520392a0c5ef91f109a0910c16"
+  },
+  {
+   "case_id": "s-dev-06-docs-03",
+   "kind": "표기(날짜)",
+   "reason": "상담 신청 마감 2026-11-11 을 연도 없는 '11월 11일(수)'로 쓴 답을 받는다(B2 r0·r1). 연도가 다른 날짜와 다른 날짜는 계속 실패한다.",
+   "before_sha256": "4200cb943efdb30737e6fd3a05d81531254f4cc851fba5cfde49083240bf5482",
+   "after_sha256": "66b7c09b80a6f3ecbb7908bd7da3d0135403005472c3ce920395406e0191f9b4"
+  },
+  {
+   "case_id": "s-dev-07-compound-01",
+   "kind": "표기(날짜·시각)",
+   "reason": "정답지 글자 '11월 11일'·'10:00' 을 같은 날짜·시각의 다른 표기('2026-11-11', '오전 10시')까지 받는다(B3 r0·r1). 10:30 등 다른 시각은 not_contains 로 막는다.",
+   "before_sha256": "c128868849ee5e19a790fdf56847ffb396293db6df1d9546d569f0e5ede72d24",
+   "after_sha256": "2dabd4db481bbf7f862aa34a14f43982ccbbac3c3746afc854e898c9ca8ac55d"
+  },
+  {
+   "case_id": "s-dev-07-compound-02",
+   "kind": "표현",
+   "reason": "'확정 전' 한 가지 문구를 같은 뜻의 '확정되지 않은'·'미확정'·'아직 확정' 까지 받는다(B3 r0). 확정됐다는 반대 표현은 받지 않는다.",
+   "before_sha256": "dc39d1eddcea233b8eda2b078d096dc37fff1c1c43da5d8a50084cb74cf49c4a",
+   "after_sha256": "c4ac33138d0a6acc54ae94cf2287449dc77de45927ab51e9528e341e381e0329"
+  },
+  {
+   "case_id": "s-dev-08-ambig-01",
+   "kind": "표현",
+   "reason": "대상을 묻는 낱말 묶음에 '어떤 내용'·'어느 내용'을 더한다(B3 r1). 사용자에게 알려 달라는 요청 묶음과 처리 단정 금지 표현은 그대로다.",
+   "before_sha256": "4003d432c44922e5a359821fdf5aaf9a80a0be4dcc864db17b58e4b7dbd9569a",
+   "after_sha256": "fe3f709e4b46a56648017a51fc9ccc77120f8b6cfad0c0fdeb38bc765f81672d"
+  },
+  {
+   "case_id": "s-dev-08-ambig-02",
+   "kind": "시제·표현",
+   "reason": "미래형 안내('확인되면 삭제 확인 카드를 만들어 드릴게요')를 이미 만들었다는 단정과 구분한다(B3 r0). 과거·완료형 단정과 삭제했다는 말은 계속 실패한다. 대상을 추정해 제시하고 삭제 여부를 묻는 답(B3 r1·r2)은 되묻기 낱말이 없어 계속 실패한다.",
+   "before_sha256": "67ddc379c1c99be14dfcb2fab534bb5792b52d900a5f53a3a94d214fb8ad2eb0",
+   "after_sha256": "bf2dd6ea355eb867c18e880111714071f76f364e6390554f49c325b04fa55563"
+  },
+  {
+   "case_id": "s-dev-10-isolation-02",
+   "kind": "잘못된 통과 허용 수정(조임)",
+   "reason": "무관한 '찾지 못했을 수 있습니다'로 통과하던 묶음을 '다른 가족방을 가리키는 말' AND '검색·조회할 수 없다는 말' 두 묶음으로 바꾼다. 다른 가족방 제한을 말하지 않은 B4 의 3개 답은 모두 실패로 바뀐다(Agent 응답 품질 문제로 유지).",
+   "before_sha256": "fde7d45d9c41fbdebed355195dea555d9491fde7608d7be62ebe088b512c59ad",
+   "after_sha256": "44e12823b09579a20480dcec0e33e50f6a0b4dd3e6dc4554bbe5067d7044986f"
+  }
+ ],
+ "held_not_changed": {
+  "s-dev-12-toolfail-01": "도구 실패 뒤 다른 도구로 계산해 실패를 밝히며 답하는 것(`not_contains 48,000`)을 허용할지는 서비스 정책 결정이다. 정책이 정해질 때까지 보류.",
+  "s-dev-07-compound-03": "필수 `ask_family_chat`: dev 시드에서 할 일 데이터는 가족 공동 할 일(list_todos)뿐이고 일정 탭에는 할 일 종류 일정이 없어 기대가 모호하지 않다. '오늘 할 일'의 제품 의미(공동 할 일/일정 탭 할 일)는 정책 결정이라 변경하지 않는다."
+ }
+}

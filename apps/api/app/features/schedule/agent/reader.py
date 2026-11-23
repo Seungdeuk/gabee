@@ -87,6 +87,14 @@ def brief(event: Event) -> dict:
     }
 
 
+def event_text(event: Event) -> str:
+    """처리 안내에 쓰는 일정 표기: 11월 12일(목) 15:00 '제목'. 어떤 일정을 처리했는지 항상 밝히기 위한 것이다."""
+    local = to_local(event.starts_at)
+    day = f"{local.month}월 {local.day}일({'월화수목금토일'[local.weekday()]})"
+    clock = f" {local:%H:%M}" if has_time(event) else ""
+    return f"{day}{clock} '{event.title}'"
+
+
 def has_time(event: Event) -> bool:
     """시작 시간이 정해진 일정인가. 날짜만 있는 일정은 시작 시각이 0시로 저장돼 있어 시간이 아니다.
     새 구조의 날짜 칸이 없는 옛 일정은 시각이 있었던 것으로 본다."""
@@ -111,7 +119,7 @@ def select_for_prompt(
     pool = events
     if period is not None:
         wide = period.widened()
-        pool = [e for e in events if wide.start <= to_local(e.starts_at).date() <= wide.end]
+        pool = [e for e in events if wide.contains(to_local(e.starts_at).date())]
     if len(pool) <= limit:
         return sorted(pool, key=lambda e: aware(e.starts_at)), 0
     nearest = sorted(pool, key=lambda e: abs(aware(e.starts_at) - now))[:limit]
@@ -130,7 +138,7 @@ def select_by_model(
     pool = events
     if period is not None:
         wide = period.widened()
-        pool = [e for e in pool if wide.start <= to_local(e.starts_at).date() <= wide.end]
+        pool = [e for e in pool if wide.contains(to_local(e.starts_at).date())]
     needle = "".join(keyword.split()).lower()
     if needle:
         pool = [e for e in pool if needle in "".join(e.title.split()).lower()]

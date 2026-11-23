@@ -60,7 +60,9 @@ from .share_text import card_names, card_text
 
 MIN_MESSAGES = 3
 PROMPT_VERSION = "v5"  # 프롬프트·스키마를 바꾸면 올려서 오래된 캐시를 쓰지 않게 한다 (v3: 가명화 토큰, v4: 분석에 답장·주제 합침, v5: 요청한 사람 입장·친근한 요약)
-ANALYSIS_MAX_TOKENS = 3000  # 분석이 답장·주제까지 한 번에 만들어서 기본 상한(2048)보다 넉넉하게. 잘리면 전체가 실패한다
+# 분석이 답장·주제까지 6개 항목을 한 번에 만들고 thinking 도 같은 출력 예산을 쓴다. 3000 에서 잘리는 일이 있었다(T35 chat-03: 3000/3000 `max_tokens`).
+# 잘린 JSON 은 쓸 수 없어 `complete_json` 이 LLMUnavailable 을 내고 503 이 된다 — 그래서 기본 상한(2048)보다 넉넉하게 둔다.
+ANALYSIS_MAX_TOKENS = 4096
 MAX_REPLIES = 3
 MAX_TOPICS = 5
 _WEEKDAYS = "월화수목금토일"

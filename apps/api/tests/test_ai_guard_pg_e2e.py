@@ -96,10 +96,14 @@ def family(client, tag="a", messages=4):
     group = client.post(f"{P}/groups", json={"name": f"가족 {tag}"}, headers=owner).json()
     guest, guest_id = account(client, f"gst_{tag}")
     req = client.post(f"{P}/groups/join", json={"code": group["invite_code"]}, headers=guest).json()
-    assert (
-        client.post(f"{P}/groups/join-requests/{req['id']}/approve", headers=owner).status_code
-        == 200
-    )
+    if (
+        req["status"] == "pending"
+    ):  # 가족의 자동 승인(기본 켜짐)이면 이미 구성원이라 승인할 요청이 없다
+        assert (
+            client.post(f"{P}/groups/join-requests/{req['id']}/approve", headers=owner).status_code
+            == 200
+        )
+    assert req["status"] in ("pending", "approved"), req
     assert client.put(f"{AI}/settings", json={"enabled": True}, headers=owner).status_code == 200
     for i in range(messages):
         post_message(client, owner if i % 2 == 0 else guest, f"{SECRET} {tag} {i}")
@@ -184,9 +188,11 @@ def test_concurrent_cache_saves_leave_exactly_one_row(pg_client, fake, monkeypat
     client, pg = pg_client
     monkeypatch.setattr(settings, "ai_max_concurrent_requests_per_group", 2)
     f = fake(delay=1.0)  # 두 요청이 같은 시각에 같은 결과를 저장하려고 겨룬다
-    owner, _, guest, _, group = family(client)
+    owner, _, _, _, group = family(client)
 
-    results = parallel(lambda i: analyze(client, (owner, guest)[i]), 2)
+    # 분석 캐시 키에는 보는 사람(viewer_id)이 들어 있어 사람마다 따로 저장한다(가명화·복원이 사람별이다).
+    # 같은 키를 두고 겨루는 경우는 같은 사람의 동시 요청이라 한 사람이 두 번 요청한다
+    results = parallel(lambda i: analyze(client, owner), 2)
     assert [code for code, _ in results] == [200, 200], results
     assert f.calls == 2
     assert rows(
@@ -235,9 +241,13 @@ def test_usage_and_cache_tables_hold_no_conversation_text(pg_client, fake, monke
     fake()
     owner, _, guest, _, _ = family(client)
     assert analyze(client, owner)[0] == 200
-    assert analyze(client, guest)[0] == 200  # 캐시 적중 기록도 남긴다
+    assert analyze(client, owner)[0] == 200  # 같은 사람의 같은 요청은 캐시 적중 기록도 남긴다
     assert rows(pg, "SELECT count(*) FROM ai_usage_logs") == [(2,)]
     assert rows(pg, "SELECT count(*) FROM ai_result_cache") == [(1,)]
+    assert (
+        analyze(client, guest)[0] == 200
+    )  # 캐시 키에 보는 사람이 들어 있어 다른 사람은 따로 저장한다
+    assert rows(pg, "SELECT count(*) FROM ai_result_cache") == [(2,)]
 
     columns = rows(
         pg,

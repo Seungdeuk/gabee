@@ -29,6 +29,7 @@ test("route 가 있는 항목은 이동 동작을 돌려준다", () => {
   assert.deepEqual(itemAction(byKey(MENU, "account")), { type: "route", path: "/account-security" });
   assert.deepEqual(itemAction(byKey(MENU, "help")), { type: "route", path: "/support" });
   assert.deepEqual(itemAction(byKey(SHORTCUTS, "report")), { type: "route", path: "/report" });
+  assert.deepEqual(itemAction(byKey(SHORTCUTS, "timeline")), { type: "route", path: "/family-timeline" }); // 타임라인은 더 이상 준비 중이 아니다
 });
 
 test("key 는 제목의 뜻과 맞는다(타임라인=timeline, 가족 위치 확인=location)", () => {
@@ -39,7 +40,7 @@ test("key 는 제목의 뜻과 맞는다(타임라인=timeline, 가족 위치 �
 
 test("준비 중 항목과 잘못된 입력은 soon 이다", () => {
   assert.deepEqual(itemAction(byKey(SHORTCUTS, "settings")), { type: "soon" });
-  assert.deepEqual(itemAction(byKey(SHORTCUTS, "timeline")), { type: "soon" });
+  assert.deepEqual(itemAction(byKey(MENU, "location")), { type: "soon" });
   assert.deepEqual(itemAction(undefined), { type: "soon" });
   assert.deepEqual(itemAction({}), { type: "soon" });
   assert.deepEqual(itemAction({ route: "" }), { type: "soon" });

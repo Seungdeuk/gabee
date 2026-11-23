@@ -89,7 +89,12 @@ def test_accept_creates_my_event_only(client, family):
     assert len(events) == 1 and out["my_event_id"] == events[0]["id"]
     e = events[0]
     assert (e["user_id"], e["created_by"], e["kind"], e["source"]) == (b_id, b_id, 1, "request")
-    assert (e["title"], e["place"], e["memo"]) == ("병원 같이 가요", "병원", "메모")
+    # 수락하면 부탁의 메모 뒤에 줄바꿈 한 번과 안내 한 줄이 붙는다(정책 #24)
+    assert (e["title"], e["place"], e["memo"]) == (
+        "병원 같이 가요",
+        "병원",
+        "메모\n함께하기에서 등록된 일정입니다.",
+    )
     assert (e["start_date"], e["start_time"], e["end_time"]) == (
         req["start_date"],
         "09:00:00",
@@ -362,3 +367,34 @@ def test_change_recipients_notifies_only_added(client, family):
     assert _recipients(client, a, rid, [b_id, c_id]).status_code == 200
     assert len(_notices(client, b)) == 1  # 이미 받은 사람에게는 다시 가지 않는다
     assert [n["event"] for n in _notices(client, c)] == ["request_received"]
+
+
+def test_change_memo_by_sender_only_and_keeps_accepted_events(client, family):
+    a, b, _ = family
+    b_id = _me(client, b)
+    req = _send(client, a, [b_id], memo="처음 메모").json()
+    _answer(client, b, req["id"], kind=1)  # b 는 이미 수락했다
+
+    r = client.put(f"/schedule/requests/{req['id']}/memo", json={"memo": "우유 두 개"}, headers=a)
+    assert r.status_code == 200, r.text
+    assert r.json()["memo"] == "우유 두 개" and r.json()["title"] == req["title"]
+    assert _events(client, b)[0]["memo"].startswith("처음 메모")  # 수락한 사람의 일정은 독립이다
+
+    assert (
+        client.put(  # 받는 사람은 못 바꾼다
+            f"/schedule/requests/{req['id']}/memo", json={"memo": "x"}, headers=b
+        ).status_code
+        == 403
+    )
+    assert (
+        client.put(  # 길이 제한
+            f"/schedule/requests/{req['id']}/memo", json={"memo": "가" * 2001}, headers=a
+        ).status_code
+        == 422
+    )
+    r = client.put(f"/schedule/requests/{req['id']}/memo", json={"memo": ""}, headers=a)
+    assert r.status_code == 200 and r.json()["memo"] == ""  # 빈 문자열은 메모 지우기
+
+    _cancel(client, a, req["id"])
+    r = client.put(f"/schedule/requests/{req['id']}/memo", json={"memo": "x"}, headers=a)
+    assert r.status_code == 400 and r.json()["code"] == "request_canceled"

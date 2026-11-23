@@ -35,13 +35,26 @@ SCRIPT = ScriptDirectory.from_config(
     )
 )
 HEAD = SCRIPT.get_current_head()
-BEFORE_HEAD = SCRIPT.get_revision(
+_PARENTS = SCRIPT.get_revision(
     HEAD
 ).down_revision  # 방금 병합됐지만 아직 DB 에 적용되지 않은 최신 마이그레이션 직전
-# 최신 마이그레이션이 코드가 쓰는 스키마를 추가하는지(삭제 전용이면 DB 가 한 단계 뒤처져도 막히는 기능이 없다)
+# 최신 리비전이 두 head 를 합치는 병합 리비전이면 부모가 둘이다(튜플). 그때 뒤처진 DB 는 두 갈래 중 한 갈래만 적용한 DB 다
+# (두 부모가 모두 `alembic_version` 에 따로 있는 상태는 서버가 invalid_revision_state 로 보는 상태이고 배포가 병합 리비전으로 합친다)
+BEFORE_HEAD = _PARENTS[0] if isinstance(_PARENTS, (tuple, list)) else _PARENTS
+# BEFORE_HEAD 에서 HEAD 까지 적용 대기 중인 리비전(서버가 알려 주는 순서: 오래된 것부터)
+EXPECTED_PENDING = [
+    r.revision for r in SCRIPT.iterate_revisions(HEAD, BEFORE_HEAD) if r.revision != BEFORE_HEAD
+][::-1]
+# 이 DB 에 아직 없는 마이그레이션 전부(병합 리비전이면 DB 가 적용하지 않은 다른 갈래의 리비전도 든다. 서버의 '대기 리비전' 목록에는
+# 다른 갈래가 안 보이지만 그 갈래의 테이블이 없으면 해당 기능은 막힌다)
+_MISSING = {r.revision for r in SCRIPT.iterate_revisions(HEAD, "base")} - {
+    r.revision for r in SCRIPT.iterate_revisions(BEFORE_HEAD, "base")
+}
+# 그 마이그레이션들이 코드가 쓰는 스키마를 추가하는지(삭제 전용이면 DB 가 뒤처져도 막히는 기능이 없다)
 HEAD_ADDS_SCHEMA = any(
     marker
-    in Path(SCRIPT.get_revision(HEAD).path).read_text(encoding="utf-8").split("def downgrade")[0]
+    in Path(SCRIPT.get_revision(rev).path).read_text(encoding="utf-8").split("def downgrade")[0]
+    for rev in _MISSING
     for marker in ("op.create_table", "op.add_column", "op.create_index", "op.alter_column")
 )
 HEADERS = {"X-Gyeot-Token": "t1"}
@@ -203,7 +216,8 @@ def test_server_starts_one_migration_behind_and_opens_after_upgrade_without_rest
     assert client.get("/health").json() == {"status": "ok"}
     report = health(client)
     assert report["db_connected"] is True and report["revision_state"] == "behind"
-    assert report["pending_revisions"] == [HEAD] and report["status"] == "degraded"
+    assert report["pending_revisions"] == EXPECTED_PENDING and report["status"] == "degraded"
+    assert EXPECTED_PENDING[-1] == HEAD
     assert pg16["password"] not in client.get("/health/db").text
 
     # 최신 마이그레이션이 무엇을 바꾸는지에 의존하지 않는다: 코드가 필요로 하는 스키마가 아직 없는 기능만 막힌다

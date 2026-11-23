@@ -171,6 +171,9 @@ OPERATIONS = _operations()
 PUBLIC = {
     ("GET", "/health"): "서버 생존 확인",
     ("GET", "/health/db"): "DB 상태 확인(비밀번호·주소·테이블 이름은 응답에 없음)",
+    # 스케줄러가 부르는 관리자 알림 점검 주소: 사용자 로그인이 아니라 X-Alert-Token 비밀 토큰으로 막는다.
+    # 토큰이 없거나 틀리거나 설정이 비어 있으면 403 forbidden (app/features/admin_alerts/tests 에서 확인)
+    ("POST", "/internal/alerts/run"): "스케줄러 점검 주소: 로그인 대신 X-Alert-Token 으로 막는다",
     ("POST", "/family-group/users"): "익명(레거시) 가입 — 토큰을 발급받는 입구",
     ("POST", "/family-group/auth/signup"): "정식 회원 가입",
     ("GET", "/family-group/auth/login-id-available"): "가입 전 아이디 중복 확인",
@@ -246,6 +249,10 @@ NO_GROUP_OK = {
     ("GET", "/notices"),
     # 통합관리자 챗봇: 가족 데이터가 아니다. 권한은 require_operator("admin")(admin_knowledge/tests 에서 401·403 확인)
     ("POST", "/admin/knowledge/ask"),
+    ("POST", "/admin/knowledge/ask/stream"),  # 같은 답을 단계 소식과 함께(SSE). 권한도 같다
+    # 검색 색인 점검(읽기 전용): 모델 이름과 모델별 조각 개수만 돌려주고 내용·가족 그룹 id 는 싣지 않는다. 권한은 require_operator("admin")
+    # (ai_assistant/knowledge/tests/test_index_health.py 의 test_status_api_requires_operator 에서 401·403 확인)
+    ("GET", "/ai-assistant/knowledge/index-status"),
     # 운영 관리자 조회 경로도 가족 데이터가 아니다(요청 지표·오류 이벤트). 권한은 require_operator("admin") 허용 목록이 정한다
     # (ops_admin/tests 에서 401·403 확인)
     ("GET", "/admin/ops/summary"),
@@ -253,9 +260,14 @@ NO_GROUP_OK = {
     ("GET", "/admin/ops/infra"),
     ("GET", "/admin/ops/errors"),
     ("GET", "/admin/ops/errors/{event_id}"),
+    # 관리자 알림 목록·확인: 가족 데이터가 아니다(알림 기록표는 숫자와 고정 문구만 담는다). 권한은 require_operator("admin")
+    ("GET", "/admin/alerts"),
+    ("POST", "/admin/alerts/{key}/ack"),
     # 문의·신고는 로그인한 본인이 보내고 본인 것만 본다. 가족이 없어도 보낼 수 있어야 한다(가족 만들기 문의 등)
     ("POST", "/support/tickets"),
     ("GET", "/support/tickets/mine"),
+    # 유입 경로는 로그인한 본인의 설치 경로(utm 값)만 저장한다. 가족이 생기기 전(가입 직후)에 보낸다
+    ("POST", "/acquisition/install-source"),
 }
 
 
@@ -458,6 +470,26 @@ CROSS = [
     ("GET", "/family-chat/unread", {"params": {"room_id": "{direct_room_id}"}}, (403, 404)),
     ("GET", "/family-chat/photos/{attachment_id}", {}, (403, 404)),
     ("GET", "/family-chat/photos/{attachment_id}", {"params": {"size": "thumb"}}, (403, 404)),
+    ("GET", "/family-chat/photos/{attachment_id}/library", {}, (403, 404)),
+    (
+        "POST",
+        "/family-chat/photos/{attachment_id}/check",
+        {
+            "json": {
+                "to": "photo",
+                "reason": "uploader_confirmed_general",
+                "acknowledge": True,
+            },
+            "_setup": ["photo_unsure"],
+        },
+        (403, 404),
+    ),
+    (
+        "POST",
+        "/family-chat/photos/{attachment_id}/exclude",
+        {"_setup": ["photo_in_timeline"]},
+        (403, 404),
+    ),
     ("GET", "/family-chat/media", {"params": {"room_id": "{direct_room_id}"}}, (403, 404)),
     ("GET", "/family-chat/search", {"params": {"q": "{secret}"}}, (200,)),
     (
@@ -708,6 +740,26 @@ def _setup(api, fam: Family, s: dict, name: str) -> None:
     if name == "pin_message":
         r = api.post("/family-chat/pins", json={"message_id": s["message_id"]}, headers=h)
         assert r.status_code == 200, r.text
+    elif (
+        name == "photo_unsure"
+    ):  # 업로더 확인 대상(판별 결과가 애매한 사진)으로 만든다: 방금 올린 pending 은 확인할 수 없다
+        from app.features.family_chat.models import ChatPhotoCheck
+        from app.shared.db import SessionLocal
+
+        with SessionLocal() as db:
+            row = db.get(ChatPhotoCheck, s["attachment_id"])
+            row.status = "unsure"
+            db.commit()
+    elif (
+        name == "photo_in_timeline"
+    ):  # 타임라인에 보이는(일반 사진으로 확인된) 사진으로 만든다: 빼기의 대조 시험용
+        from app.features.family_chat.models import ChatPhotoCheck
+        from app.shared.db import SessionLocal
+
+        with SessionLocal() as db:
+            row = db.get(ChatPhotoCheck, s["attachment_id"])
+            row.status, row.source = "photo", "manual"
+            db.commit()
     elif name == "allowance_plan":
         from datetime import UTC, datetime, timedelta
 
@@ -1657,6 +1709,9 @@ OUTBOUND_FILES = {
     "shared/mailer.py": "인증·비밀번호 재설정 메일 SMTP 발송(AI 아님)",
     "features/ops_admin/infra_service.py": "Cloud Run 메타데이터·Cloud Run Admin·Cloud Monitoring 읽기 전용 조회(AI 아님, 개인 데이터 전송 없음, 운영자 조회 시에만)",
     "shared/push.py": "Expo 푸시 발송(AI 아님). 알림함 사건은 고정 제목만 보내고 본문은 비운다(docs/adr/0012-push-via-expo.md)",
+    # 찰칵 흔한 사진 자동 보충: Pixabay 에서 공개 사진을 검색·내려받는다(AI 아님). 보내는 값은 API 키와 고정 검색어 목록뿐이고 가족 데이터는 없다.
+    # 호출하는 쪽은 photo_rec_auto 하나이며 기본 꺼짐·하루 목표·시도 상한이 있다(tests/test_photo_rec_external_calls.py 가 구조를 고정한다)
+    "features/play/photo_rec_pixabay.py": "Pixabay 공개 사진 검색·내려받기(AI 아님, 가족 데이터 전송 없음, 고정 검색어, 호출자는 photo_rec_auto 뿐)",
 }
 LLM_CALLER_FILES = {
     "features/family_chat/ai_service.py": "ai_guard.run",
@@ -1666,6 +1721,28 @@ LLM_CALLER_FILES = {
     "features/weekly_news/generate.py": "ai_guard.run",
     "features/billing/agent.py": "agent_guard.run_turn",
     "features/family_chat/agent.py": "agent_guard.run_turn",
+    # 가족 기능 안에서 LLM 을 부르는 화면 추천(퀴즈): 같은 공통 관문(기능 play_quiz_rec, 별도 한도)을 거친다
+    "features/play/quiz_rec.py": "ai_guard.run",
+    # 이게 뭐게 가비 추천(그림): `recommend` 가 그림 호출(`draw_word`)을 모두 `ai_guard.run` 의 call 안에서 부른다(기능 play_draw_rec,
+    # 별도 한도). 가족이 AI 를 끄면 외부 호출 없이 ai_off, AI 로는 공개 단어 목록의 단어 하나만 보낸다(일정·대화 원문은 보내지 않는다)
+    "features/play/draw_rec.py": "ai_guard.run",
+    # 메인 AI 채팅 도구 루프: 랭체인 모델(PostChatModel)로 부르고 ask_guarded 안에서 ai_guard.run 을 거친다
+    "features/ai_assistant/knowledge/rag_chat.py": "ai_guard.run",
+}
+# 운영자 전용 LLM 호출: 가족 AI 관문(ai_guard) 대신 라우터가 require_operator("admin") 로 막는다. 가족 데이터를 보내지 않고(현재 숫자 요약과
+# 개인정보를 가린 질문만) 하루 한도는 두지 않기로 했다(2026-11-09 결정, admin_knowledge/service.py). 값은 그 권한을 거는 라우터 파일이다
+OPERATOR_LLM_CALLER_FILES = {
+    "features/admin_knowledge/service.py": "features/admin_knowledge/router.py",
+}
+# 관문을 부르는 쪽 파일 안에서만 LLM 을 부르는 파일: 값은 그 호출을 `ai_guard.run(call=...)` 로 감싸는 파일이다.
+# 찰칵 가비 추천(가족 사진): photo_rec_ai.content_question 은 photo_rec._ask_content 의 call 안에서만 불린다(tests/test_photo_rec_external_calls.py 가 AST 로 확인)
+LLM_GUARDED_BY_CALLER_FILES = {
+    "features/play/photo_rec_ai.py": "features/play/photo_rec.py",
+}
+# 공개 데이터만 보내는 LLM 호출: 가족 AI 관문(ai_guard) 대신 호출자의 기본 꺼짐 설정·하루 목표·시도 상한이 호출 수를 묶는다(찰칵 흔한 사진 자동 보충).
+# Pixabay 공개 사진 한 장과 고정 프롬프트만 보내고 가족·사용자 정보를 불러오지 않는다. 값은 그 상한을 거는 호출자 파일이다
+PUBLIC_DATA_LLM_CALLER_FILES = {
+    "features/play/photo_rec_auto_ai.py": "features/play/photo_rec_auto.py",
 }
 _OUTBOUND = re.compile(
     r"\bhttpx\.(post|get|put|patch|delete|request|stream|Client|AsyncClient)\b|from httpx import"
@@ -1674,6 +1751,8 @@ _OUTBOUND = re.compile(
 )
 _LLM_USE = re.compile(
     r"complete_json\(|llm\.complete\(|(?<!def )\bask_agent\(|(?<!def )\brun_agent\(|jev(_api)?\.ask\(|local\.complete_json\("
+    # 랭체인 모델로 Claude 를 부르는 곳(랭그래프 도구 루프). 클래스 정의(shared/llm/chat_model.py)는 빼고 만드는 곳만 센다
+    r"|(?<!class )\bPostChatModel\("
 )
 
 
@@ -1710,9 +1789,31 @@ def test_every_llm_caller_goes_through_a_guard():
         and rel not in wrapper
         and not rel.startswith("features/ai_assistant/ingest/")
     }
-    assert callers == set(LLM_CALLER_FILES), callers ^ set(LLM_CALLER_FILES)
+    known = (
+        set(LLM_CALLER_FILES)
+        | set(OPERATOR_LLM_CALLER_FILES)
+        | set(LLM_GUARDED_BY_CALLER_FILES)
+        | set(PUBLIC_DATA_LLM_CALLER_FILES)
+    )
+    assert callers == known, callers ^ known
     for rel, gate in LLM_CALLER_FILES.items():
         assert gate in sources[rel], f"{rel} 에 {gate} 가 없다"
+    for rel, caller in LLM_GUARDED_BY_CALLER_FILES.items():
+        assert "ai_guard.run(" in sources[caller], (
+            f"{caller} 가 {rel} 의 호출을 관문으로 감싸지 않는다"
+        )
+    for rel, caller in PUBLIC_DATA_LLM_CALLER_FILES.items():
+        # 가족 관문을 쓰는 파일이면 LLM_CALLER_FILES 로 옮긴다. 호출자는 기본 꺼짐 설정과 하루 목표로 호출 수를 묶는다
+        assert "ai_guard" not in sources[rel].replace("ai_guard` 를 쓰지 않는다", ""), (
+            f"{rel} 가 가족 관문을 쓰면 LLM_CALLER_FILES 로 옮긴다"
+        )
+        assert "photo_rec_auto_enabled" in sources[caller], f"{caller} 에 켜짐 설정 확인이 없다"
+        assert "photo_rec_auto_per_day" in sources[caller], f"{caller} 에 하루 목표 상한이 없다"
+    for rel, router in OPERATOR_LLM_CALLER_FILES.items():
+        assert 'require_operator("admin")' in sources[router], f"{router} 에 운영자 권한이 없다"
+        assert "ai_guard" not in sources[rel], (
+            f"{rel} 가 가족 관문을 쓰면 LLM_CALLER_FILES 로 옮긴다"
+        )
     # 도구 루프 래퍼(rag_chat)는 ask_guarded 안에서 ai_guard.run 을 부르고, 라우터는 ask_guarded 만 쓴다
     assert "ai_guard.run(" in sources["features/ai_assistant/knowledge/rag_chat.py"]
     assert "rag_chat.ask(" not in sources["features/ai_assistant/service.py"]

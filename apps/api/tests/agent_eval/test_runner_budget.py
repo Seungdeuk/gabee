@@ -116,7 +116,8 @@ def test_a_halted_run_with_no_finished_case_still_records_its_spend_for_the_cumu
     from evals.agent_eval import store
 
     found = None
-    for i, cap in enumerate(("0.0004", "0.0006", "0.0008", "0.001", "0.0012", "0.0015")):
+    # 첫 호출은 하고 두 번째 호출 전에 멈추는 상한의 구간은 프롬프트 길이(호출 직전 최악 비용 추정)에 따라 움직인다. 촘촘히 훑어 구간을 찾는다
+    for i, cap in enumerate(f"{n / 10_000:.4f}" for n in range(4, 40)):
         root = tmp_path / f"r{i}"
         report = run(legacy("b-total"), root, run_id="halt-1", ledger=_ledger(cap))
         if report.halted and report.ledger.usages and not report.stored:

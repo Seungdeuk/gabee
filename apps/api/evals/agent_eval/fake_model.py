@@ -14,6 +14,7 @@ L2 실행기가 가짜 모델로 "가짜 모델 -> 실제 도구 -> 합성 DB ->
   이 대본이 사례 기대를 못 채우면 대본의 한계이며, 기대값이나 채점은 바꾸지 않는다.
 """
 
+import copy
 import json
 import re
 from collections import deque
@@ -167,7 +168,12 @@ def agent_of(body: Mapping[str, Any]) -> str:
 
 
 class FakeModel:
-    """`transport.post_messages(body, **kwargs)` 와 같은 모양으로 부를 수 있는 대본형 가짜."""
+    """`transport.post_messages(body, **kwargs)` 와 같은 모양으로 부를 수 있는 대본형 가짜.
+
+    `record_bodies` 를 켜면(사전 점검이 켠다) 받은 요청 본문을 `bodies` 에 복사해 둔다(앱이 모델에게 보내려던 내용을 점검하려는 용도). 기본은 꺼짐.
+    """
+
+    record_bodies = False  # 클래스 수준 스위치: 사전 점검이 잠깐 켠다
 
     def __init__(
         self,
@@ -185,6 +191,7 @@ class FakeModel:
         self._context = context or ScriptContext()
         self._next_id = 0
         self.calls = 0  # 호출 수(전송 함수가 실제로 불린 횟수)
+        self.bodies: list[dict] = []  # `record_bodies` 가 켜졌을 때 받은 요청 본문의 복사본
         self.agents: list[str] = []  # 호출한 Agent 순서
         self.exhausted: list[str] = []  # 대본이 바닥난 Agent
         self.tool_results: dict[
@@ -219,6 +226,8 @@ class FakeModel:
 
     def __call__(self, body: dict, **_: Any) -> dict:
         self.calls += 1
+        if FakeModel.record_bodies:
+            self.bodies.append(copy.deepcopy(body))
         agent = agent_of(body)
         self.agents.append(agent)
         self._scan_tool_results(body)
@@ -295,18 +304,19 @@ def _answer_text(legacy: LegacyCase) -> str:
     raise ScriptError(f"{case.id}: 기대 문구와 금지 조건이 맞물려 기본 답을 만들 수 없다")
 
 
-def _billing_tool(legacy: LegacyCase) -> ToolUse | None:
+def _billing_tools(legacy: LegacyCase) -> list[ToolUse]:
     ck = legacy.checks
     if ck.tool_mode == "exact":
-        return ToolUse(str(ck.tool), dict(ck.tool_args))
+        return [ToolUse(str(ck.tool), dict(ck.tool_args))]
     if ck.tool_mode == "any_of":
-        return ToolUse(ck.tool_any[0], dict(ck.tool_args))
-    return None  # optional·none: 도구를 부르지 않는다
+        return [ToolUse(ck.tool_any[0], dict(ck.tool_args))]
+    if ck.tool_mode == "all_of":  # 모두 불러야 하므로 열거한 도구를 차례로 부른다
+        return [ToolUse(name, dict(ck.tool_args)) for name in ck.tool_all]
+    return []  # optional·none: 도구를 부르지 않는다
 
 
 def _billing_steps(legacy: LegacyCase, text: str) -> list[Reply]:
-    tool = _billing_tool(legacy)
-    return [*([call(tool.name, tool.args)] if tool else []), say(text)]
+    return [*(call(t.name, t.args) for t in _billing_tools(legacy)), say(text)]
 
 
 def _main_billing_steps(legacy: LegacyCase, text: str) -> list[Reply]:
@@ -332,6 +342,12 @@ def default_script(legacy: LegacyCase) -> Script:
     }
     if "ask_billing" in wanted:
         script["billing"] = _main_billing_steps(legacy, text)
+    if (
+        "ask_schedule" in wanted
+    ):  # 일정·가족채팅 하위 에이전트는 도구 없이 글로만 답하는 대본이면 연결 시험에 충분하다
+        script["schedule"] = [say(text)]
+    if "ask_family_chat" in wanted:
+        script["family_chat"] = [say(text)]
     return script
 
 

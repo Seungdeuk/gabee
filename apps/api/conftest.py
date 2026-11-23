@@ -40,7 +40,11 @@ from sqlalchemy import event  # noqa: E402
 from app.features.family_group.models import Group  # noqa: E402
 from app.main import app  # noqa: E402
 from app.shared.db import Base, engine  # noqa: E402
+from tests import sqlite_pragmas  # noqa: E402
 from tests.helpers import join_family, signup  # noqa: E402
+
+# 임시 SQLite 파일에만 속도 설정(PRAGMA)을 적용한다. 조건과 근거는 tests/sqlite_pragmas.py, 시험은 tests/test_sqlite_test_pragmas.py.
+sqlite_pragmas.apply(engine, _tmp)
 
 
 def pytest_sessionfinish(session, exitstatus):

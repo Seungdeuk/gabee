@@ -7,7 +7,12 @@ from app.shared.auth import require_operator
 from app.shared.db import get_db
 from app.shared.errors import not_found
 
-from . import infra_service, query_service
+from . import (
+    admin_facts,  # noqa: F401  관리자 챗봇 숫자 명단에 올린다
+    alert_rules,  # noqa: F401  관리자 알림 규칙(서버 오류율)을 명단에 올린다
+    infra_service,
+    query_service,
+)
 from .schemas import (
     ApisOut,
     ErrorEventOut,

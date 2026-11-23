@@ -62,6 +62,8 @@ def test_request_body_and_reply_fields():
             {"name": "look", "description": "설명", "input_schema": _tool(None).input_schema}
         ],
         "messages": [{"role": "user", "content": "질문"}],
+        # 도구 루프는 단계마다 앞 내용을 다시 보내므로 자동 캐시를 켠다(chat_model.py, #371)
+        "cache_control": {"type": "ephemeral"},
     }
     assert [m["role"] for m in second["messages"]] == ["user", "assistant", "user"]
     assert second["messages"][1]["content"] == [_use(args={"m": 1})]

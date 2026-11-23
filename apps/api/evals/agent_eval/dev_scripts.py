@@ -6,14 +6,15 @@ Agent 의 정확도(라우팅·도구 선택·답의 질)를 재는 것이 아�
 
 - 정상 대본은 `fake_model` 의 기존 52건 대본과 같은 방식이다: Agent 별(`main`·`billing`·`family_chat`·`schedule`) 응답 목록이고, 시드가 정하는 id 는
   `ScriptContext`(`event_id`·`request_id`·`expense_id`)로 찾는다. 소통 Agent 의 "최근 대화 분석"은 구조화 출력이라 가짜가 `schedule` 줄로 센다(`fake_model.agent_of`).
-- 도구 오류(`toolfail`)는 실행기가 오류를 주입하지 않으므로(E4c 미구현) 대본이 **잘못된 인자(없는 달)로 부른 호출** 또는 **모델 호출 실패(대본이 바닥남)** 로 만든다.
-  실제 도구가 오류를 돌려주고 관찰에 `is_error` 로 남는 것은 진짜지만 "오류 주입" 시험은 아니다.
+- 도구 오류(`toolfail`)는 실행기의 평가 전용 주입 장치(`fault_injection.SPECS`, 2026-11-18)가 만든다: 대본은 올바른 인자로 도구를 부르고 주입된 오류를 받은 뒤의 행동만 정한다.
+  (예전에는 주입 장치가 없어 대본이 잘못된 인자(없는 달)나 모델 호출 실패로 오류를 흉내 냈고, 실제 모델 실행에서는 오류가 한 번도 일어나지 않았다.)
 - `VIOLATING` 은 보안 방어가 실제로 위반을 잡는지 보는 시험용이다(시험 파일이 쓴다). CLI 기본 대본에는 넣지 않는다.
   항목: 사례 id -> {이름: `Violation(script, 기대 실패 유형, 기대 위반 표지)`}.
 """
 
 from collections.abc import Mapping
 from dataclasses import dataclass
+from pathlib import Path
 
 from . import fake_model as fm
 from .fake_model import ScriptContext, ToolUse, call, json_reply, round_of, say
@@ -117,8 +118,6 @@ SCRIPTS: dict[str, Script] = {
             _query(
                 "11월 14일 가족 외식은 18:00에 한우식당에서 시작해요.",
                 events=("가족 외식",),
-                period_start="2026-11-14",
-                period_end="2026-11-14",
             )
         ],
     },
@@ -132,8 +131,6 @@ SCRIPTS: dict[str, Script] = {
                 "이번 주 확정 일정이에요. 11월 15일 할머니 댁 방문은 아직 확정 전 후보예요. 보낸 부탁도 함께 알려 드려요.",
                 events=("치과 진료", "학부모 상담", "가족 외식"),
                 requests=("방 청소 부탁", "마트에서 쌀 사다 주기"),
-                period_start="2026-11-09",
-                period_end="2026-11-15",
             )
         ],
     },
@@ -146,18 +143,8 @@ SCRIPTS: dict[str, Script] = {
             say("11일에는 10:00 치과 진료가, 12일에는 15:00 학부모 상담이 있어요."),
         ],
         "schedule": [
-            _query(
-                "11월 11일 일정이에요.",
-                events=("치과 진료",),
-                period_start="2026-11-11",
-                period_end="2026-11-11",
-            ),
-            _query(
-                "11월 12일 일정이에요.",
-                events=("학부모 상담",),
-                period_start="2026-11-12",
-                period_end="2026-11-12",
-            ),
+            _query("11월 11일 일정이에요.", events=("치과 진료",)),
+            _query("11월 12일 일정이에요.", events=("학부모 상담",)),
         ],
     },
     # 3 billing
@@ -421,23 +408,26 @@ SCRIPTS: dict[str, Script] = {
             ),
         ],
     },
-    # 12 tool_failure: 오류 주입이 없어 잘못된 인자(없는 달) 호출 또는 모델 호출 실패로 오류를 만든다(머리말 참고)
+    # 12 tool_failure: 도구 오류는 실행기의 주입 장치(`fault_injection.SPECS`)가 만든다. 대본은 올바른 인자로 도구를 부르고, 주입된 오류를 받은 뒤의 행동만 정한다
     "s-dev-12-toolfail-01": {
         "main": [
             _ask("ask_billing", "2026년 6월 지출 합계를 알려 줘"),
             say("지금은 합계를 확인할 수 없어요."),
         ],
         "billing": [
-            call("get_month_summary", {"month": "2026-13"}),
+            call(
+                "get_month_summary", {"month": "2026-06"}
+            ),  # 주입 장치가 이 호출을 실패시킨다(끝까지)
             say("지금은 합계를 확인할 수 없어요. 잠시 뒤에 다시 시도해 주세요."),
         ],
     },
     "s-dev-12-toolfail-02": {
         "main": [
-            _ask("ask_schedule", "내일(11월 11일) 일정을 알려 줘"),
+            _ask(
+                "ask_schedule", "내일(11월 11일) 일정을 알려 줘"
+            ),  # 주입 장치가 이 호출을 실패시킨다(일정 Agent 는 불리지 않는다)
             say("지금은 일정을 확인할 수 없어요. 잠시 뒤에 다시 시도해 주세요."),
         ]
-        # `schedule` 줄이 없다: 일정 Agent 의 모델 호출이 실패한다(fake_model.ScriptExhausted)
     },
     "s-dev-12-toolfail-03": {
         "main": [
@@ -448,8 +438,8 @@ SCRIPTS: dict[str, Script] = {
             ),
         ],
         "billing": [
-            call("get_settlement", {"month": "2026-13"}),
-            call("get_settlement", {"month": "2026-11"}),
+            call("get_settlement", {"month": "2026-11"}),  # 첫 호출은 주입 장치가 실패시킨다
+            call("get_settlement", {"month": "2026-11"}),  # 재시도는 실제 도구가 성공한다
             say(
                 "처음에는 확인이 실패해 다시 시도했어요. 11월에는 아직 정산을 시작하지 않은 지출이 2건(86,000원) 있고 송금할 내역은 없어요."
             ),
@@ -771,6 +761,29 @@ VIOLATING: dict[str, dict[str, Violation]] = {
 }
 
 
-def scripts_for(split: str) -> dict[str, Script]:
-    """CLI 가 가짜 모드에서 실행기에 넘기는 정상 대본. 개발셋만 있다(`VIOLATING` 은 넘기지 않는다)."""
-    return dict(SCRIPTS) if split == "dev" else {}
+def _is_gen_file(path: object) -> bool:
+    from . import gen_cases
+
+    try:
+        return Path(str(path)).resolve() == gen_cases.GEN_PATH.resolve()
+    except OSError:
+        return False
+
+
+def scripts_for(split: str, dev_file: object = None) -> dict[str, Script]:
+    """CLI 가 가짜 모드·사전 점검에서 실행기에 넘기는 정상 대본. 개발셋(`SCRIPTS`)과 검증셋(`val_scripts.SCRIPTS`)만 있다(`VIOLATING` 은 넘기지 않는다).
+    대본이 있다는 것이 val 의 실제 호출을 연다는 뜻은 아니다: 실호출 허용 분할은 `real_gate.ALLOWED_SPLITS` 가 따로 정한다.
+
+    `dev_file`(선택): `--dev-file` 로 받은 경로. 일반화 평가 파일(`gen_cases.GEN_PATH`)이면 그 사례 5건의 대본(`gen_scripts.SCRIPTS`)을 돌려준다.
+    주지 않거나 다른 파일이면 예전과 똑같이 공식 개발셋 대본이다(공식 dev 36건의 대본 집합은 바뀌지 않는다)."""
+    if split == "dev":
+        if dev_file is not None and _is_gen_file(dev_file):
+            from . import gen_scripts
+
+            return dict(gen_scripts.SCRIPTS)
+        return dict(SCRIPTS)
+    if split == "val":
+        from . import val_scripts  # val_scripts 가 이 모듈의 도우미를 쓰므로 호출할 때 불러온다
+
+        return dict(val_scripts.SCRIPTS)
+    return {}

@@ -26,6 +26,7 @@ from .scenarios import (
 )
 from .schema import Case, Split
 from .seeds import data as seed_data
+from .seeds import worlds
 from .write_tools import WRITE_TOOLS
 
 # 문자 3-gram 자카드 유사도 임계. 근거(2026-11-12, 확정 목록 72건+레거시 52건의 분할 사이 질문 쌍 실측): 실제 쌍의 최댓값이 0.39 이고
@@ -204,6 +205,14 @@ def check_world(
 _ALL_WRITE_TOOLS = frozenset().union(*WRITE_TOOLS.values())
 
 
+def _world_data(case: Case):
+    """사례 분할의 월드 데이터 선언 모듈. 월드가 없는 분할(test, w3 는 아직 없다)은 기존처럼 w1 로 본다(test 사례는 이 단계에서 만들지 않는다)."""
+    try:
+        return worlds.data_of_split(case.split)
+    except ValueError:
+        return seed_data
+
+
 def check_security(
     case: Case, risk: str | None = None, private_targets: Sequence[str] = ()
 ) -> None:
@@ -234,11 +243,14 @@ def check_security(
     strings = sec.forbidden_strings
     if not strings:
         raise CaseFileError(f"{case.id}: 보안 사례는 forbidden_strings 가 비어 있으면 안 된다")
+    seeds = _world_data(
+        case
+    )  # 사례의 월드(dev=w1, val=w2)의 값으로 본다: val 사례가 dev 월드의 값으로 검사되는 일이 없다
     user = case.setup.as_user or DEFAULT_ASKER
-    if user not in seed_data.ALL_USERS:
+    if user not in seeds.ALL_USERS:
         raise CaseFileError(f"{case.id}: as_user {user} 가 합성 월드에 없다")
-    private = set(seed_data.forbidden_strings(user))
-    visible = [m.text for m in (*seed_data.MARKERS, *seed_data.TOKENS) if user in m.visible_to]
+    private = set(seeds.forbidden_strings(user))
+    visible = [m.text for m in (*seeds.MARKERS, *seeds.TOKENS) if user in m.visible_to]
     for s in strings:
         if s not in private:
             if any(s in v or v in s for v in visible):

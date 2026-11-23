@@ -12,14 +12,17 @@
 import csv
 import io
 import json
+import os
 import re
 import shutil
 import uuid
 from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Any, Protocol
 
+from .agent_hashes import AGENTS, integrated_hash
 from .schema import Case, Observation
 from .scoring import CaseResult
 from .scrub import scrub_text, scrub_value
@@ -27,6 +30,7 @@ from .scrub import scrub_text, scrub_value
 RUN_ID = re.compile(r"[a-z0-9](?:[a-z0-9_.-]{0,62}[a-z0-9])?")  # 소문자만, 끝은 영숫자
 _NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.:-]{0,63}")
 _HEX = re.compile(r"[0-9a-f]{7,64}")
+_SHA256 = re.compile(r"[0-9a-f]{64}")
 _STARTED_AT = re.compile(r"\d{4}-\d{2}-\d{2}T[0-9:.+Z-]{1,40}")
 _RESERVED = {
     "con",
@@ -49,9 +53,22 @@ MANIFEST_KEYS = (
     "seed",
     "repeats",
 )
+RESCORE_KEYS = (
+    "rescored_from",
+    "source_git_commit",
+    "scorer_version",
+    "cases_hash",
+    "rescore_label",
+)  # 소급 재채점 결과(`rescore.py`)에만 쓴다. 다섯 개가 모두 있거나 모두 없어야 한다
+AGENT_HASH_KEYS = (
+    "agent_prompt_hashes",
+    "integrated_prompt_hash",
+)  # 하위 Agent(가족 대화·정산·일정)까지 포함한 프롬프트 해시(`agent_hashes.py`). 두 키는 함께 있거나 함께 없어야 한다. 이 키가 생기기 전의 기록에는 없다
 MANIFEST_OPTIONAL = (
     "loop_id",
     "started_at",
+    *RESCORE_KEYS,
+    *AGENT_HASH_KEYS,
 )  # loop_id 는 stage 가 loop 일 때만(그리고 반드시) 둔다
 USAGE_KEYS = frozenset(
     {
@@ -122,6 +139,27 @@ def _csv(header: Sequence[str], rows: Sequence[Sequence[Any]]) -> str:
     return out.getvalue()
 
 
+def _check_agent_hashes(manifest: Mapping[str, Any]) -> None:
+    """Agent 별 해시는 메인·가족 대화·정산·일정 네 개가 모두 있고(64자리), `main` 은 기존 `prompt_hash` 와 같으며,
+    통합 해시는 Agent 별 해시에서 다시 계산한 값과 같아야 한다(앞뒤가 맞지 않는 기록을 남기지 않는다)."""
+    hashes = manifest["agent_prompt_hashes"]
+    integrated = manifest["integrated_prompt_hash"]
+    if not (
+        isinstance(hashes, dict)
+        and set(hashes) == set(AGENTS)
+        and all(isinstance(v, str) and _SHA256.fullmatch(v) for v in hashes.values())
+        and isinstance(integrated, str)
+        and _SHA256.fullmatch(integrated)
+    ):
+        raise ValueError(
+            "Agent 프롬프트 해시의 형식이 맞지 않는다(네 Agent 모두, 64자리 소문자 16진수)"
+        )
+    if hashes["main"] != manifest["prompt_hash"]:
+        raise ValueError("agent_prompt_hashes.main 이 prompt_hash 와 다르다")
+    if integrated != integrated_hash(hashes):
+        raise ValueError("integrated_prompt_hash 가 Agent 별 해시에서 다시 계산한 값과 다르다")
+
+
 def _check_manifest(manifest: Mapping[str, Any]) -> None:
     extra = set(manifest) - set(MANIFEST_KEYS) - set(MANIFEST_OPTIONAL)
     missing = [k for k in MANIFEST_KEYS if k not in manifest]
@@ -136,6 +174,32 @@ def _check_manifest(manifest: Mapping[str, Any]) -> None:
         raise ValueError("run_id 는 소문자·숫자·`_.-` 만, 64자 이하, 끝은 영숫자, 장치 이름 불가")
     if manifest["stage"] not in STAGES:
         raise ValueError(f"stage 는 {STAGES} 중 하나")
+    present = [k for k in RESCORE_KEYS if k in manifest]
+    if present and len(present) != len(RESCORE_KEYS):
+        raise ValueError(f"재채점 키는 모두 있거나 모두 없어야 한다(있는 것: {present})")
+    if (
+        present and manifest["stage"] != "other"
+    ):  # 재채점 결과가 baseline·loop 실행인 척하지 못하게 한다
+        raise ValueError("재채점 결과의 stage 는 other 여야 한다")
+    if present and not (
+        isinstance(manifest["rescored_from"], str)
+        and RUN_ID.fullmatch(manifest["rescored_from"])
+        and isinstance(manifest["source_git_commit"], str)
+        and _HEX.fullmatch(manifest["source_git_commit"])
+        and _is_int(manifest["scorer_version"], 1)
+        and isinstance(manifest["cases_hash"], str)
+        and _HEX.fullmatch(manifest["cases_hash"])
+        and isinstance(manifest["rescore_label"], str)
+        and _NAME.fullmatch(manifest["rescore_label"])
+    ):
+        raise ValueError("재채점 키의 값 형식이 맞지 않는다")
+    hash_keys = [k for k in AGENT_HASH_KEYS if k in manifest]
+    if hash_keys and len(hash_keys) != len(AGENT_HASH_KEYS):
+        raise ValueError(
+            f"Agent 프롬프트 해시 키는 모두 있거나 모두 없어야 한다(있는 것: {hash_keys})"
+        )
+    if hash_keys:
+        _check_agent_hashes(manifest)
     loop_id = manifest.get("loop_id")
     if (manifest["stage"] == "loop") != (loop_id is not None):
         raise ValueError("loop_id 는 stage 가 loop 일 때만, 그리고 반드시 있어야 한다")
@@ -187,7 +251,11 @@ def _check_summary(rows: Sequence[tuple[str, Any]]) -> None:
             raise ValueError(f"summary 행은 (이름, 숫자 또는 None)이어야 한다: {name!r}")
 
 
-ROW_EXTRA_KEYS = ("write_gate", "skipped_checks")
+ROW_EXTRA_KEYS = (
+    "write_gate",
+    "skipped_checks",
+    "faults_injected",
+)  # faults_injected: 주입 명세가 있는 사례만(선택)
 WRITE_GATES = ("applied", "not_evaluated")
 RowExtras = Mapping[tuple[str, int], Mapping[str, Any]]
 
@@ -209,6 +277,9 @@ def _check_row_extras(extras: RowExtras) -> None:
             raise ValueError("skipped_checks 는 문자열 목록이어야 한다")
         if extra["write_gate"] == "applied" and skipped:
             raise ValueError("write_gate 가 applied 면 생략한 검사가 없어야 한다")
+        injected = extra.get("faults_injected")
+        if injected is not None and not _is_int(injected):
+            raise ValueError("faults_injected 는 0 이상의 정수여야 한다")
 
 
 def _build(
@@ -242,6 +313,8 @@ def _build(
             if extra is not None:
                 cases[-1]["write_gate"] = extra["write_gate"]
                 cases[-1]["skipped_checks"] = list(extra.get("skipped_checks", ()))
+                if extra.get("faults_injected") is not None:
+                    cases[-1]["faults_injected"] = int(extra["faults_injected"])
             trajectories.append(
                 {
                     "case_id": case.id,
@@ -268,6 +341,8 @@ def _build(
                     "latency_ms": obs.latency_ms,
                     "step_limit_reached": obs.step_limit_reached,
                     "forced_final": obs.forced_final,
+                    "faults_injected": obs.faults_injected,
+                    "fault_tools": list(obs.fault_tools),
                 }
             )
             if not res.passed:
@@ -344,37 +419,134 @@ def write_run(
     return run_dir
 
 
-def opening_spent(root: Path, stage: str, loop_id: str | None = None) -> dict[str, Decimal]:
-    """이전 실행 기록(manifest)에서 예산 범위별 지금까지의 합을 복원한다.
+EXTRA_ROOTS_ENV = "GABEE_EVAL_EXTRA_RESULTS_ROOTS"  # 다른 작업 폴더(worktree)의 results 경로들(os.pathsep 로 구분)
 
-    키는 `cost.Scope` 의 값("project"·"baseline"·"loop")이라 `Ledger(opening=...)` 에 그대로 쓸 수 있다.
-    stage 가 loop 면 loop_id 가 필요하고, 같은 loop_id 의 실행만 loop 합에 센다. 읽을 수 없거나 값이 이상한
-    manifest 는 합을 줄일 수 있으므로 오류로 멈춘다.
+
+@dataclass(frozen=True)
+class RootReading:
+    """결과 폴더 하나에서 읽은 값. `skipped_duplicates` 는 다른 폴더에서 이미 센 같은 실행이라 건너뛴 수다."""
+
+    root: Path
+    runs: int
+    cost: Decimal
+    skipped_duplicates: int
+
+
+@dataclass(frozen=True)
+class LedgerReading:
+    """예산 범위별 누적(`spent`)과 폴더별 내역. 프로젝트 누적(`total`)은 모든 폴더의 실행을 한 번씩만 센 합이다."""
+
+    spent: dict[str, Decimal]
+    roots: tuple[RootReading, ...]
+
+    @property
+    def total(self) -> Decimal:
+        return self.spent["project"]
+
+    @property
+    def has_extra(self) -> bool:
+        return len(self.roots) > 1
+
+    def lines(self) -> list[str]:
+        """사람이 읽는 집계 내역(승인 화면용). 폴더별 실행 수·비용과 건너뛴 중복, 전역 합계."""
+        out = ["  누적 비용 집계(모든 결과 폴더, 같은 실행은 한 번만):"]
+        for r in self.roots:
+            dup = f", 중복 건너뜀 {r.skipped_duplicates}" if r.skipped_duplicates else ""
+            out.append(f"    - {r.root}: 실행 {r.runs}건 {format(r.cost, 'f')} USD{dup}")
+        out.append(f"    프로젝트 누적(전역): {format(self.total, 'f')} USD")
+        return out
+
+
+def extra_roots_from_env(environ: Mapping[str, str] | None = None) -> tuple[Path, ...]:
+    """`GABEE_EVAL_EXTRA_RESULTS_ROOTS` 의 추가 결과 폴더 경로들. 비어 있으면 빈 튜플(기존 동작 그대로).
+    상대 경로는 작업 위치에 따라 달라져 합계가 조용히 바뀔 수 있으므로 거부한다(절대 경로만)."""
+    raw = (os.environ if environ is None else environ).get(EXTRA_ROOTS_ENV, "")
+    roots: list[Path] = []
+    for part in raw.split(os.pathsep):
+        part = part.strip()
+        if not part:
+            continue
+        path = Path(part)
+        if not path.is_absolute():
+            raise ValueError(f"{EXTRA_ROOTS_ENV} 의 경로는 절대 경로여야 한다: {part}")
+        roots.append(path)
+    return tuple(roots)
+
+
+def _read_manifest(path: Path) -> tuple[Decimal, str, str | None, tuple[str, str]]:
+    """(비용, stage, loop_id, 실행 식별값(run_id, started_at)). 읽을 수 없거나 값이 이상하면 오류로 멈춘다(합을 줄일 수 있다)."""
+    try:
+        m = json.loads(path.read_text(encoding="utf-8"))
+        if not isinstance(m, dict):
+            raise ValueError("manifest 가 객체가 아니다")
+        cost = _money(m["cost_usd"])
+        run_stage, run_loop = m["stage"], m.get("loop_id")
+        if run_stage not in STAGES:
+            raise ValueError("알 수 없는 stage")
+        return (
+            cost,
+            run_stage,
+            run_loop,
+            (str(m.get("run_id", path.parent.name)), str(m.get("started_at", ""))),
+        )
+    except (OSError, ValueError, KeyError) as e:
+        raise ValueError(f"manifest 를 읽을 수 없다: {path.parent.name}") from e
+
+
+def read_opening(
+    root: Path,
+    stage: str,
+    loop_id: str | None = None,
+    extra_roots: Sequence[Path] = (),
+) -> LedgerReading:
+    """이전 실행 기록(manifest)에서 예산 범위별 지금까지의 합을 복원하고 폴더별 내역도 돌려준다. 읽기 전용이다.
+
+    root 와 extra_roots(다른 작업 폴더의 결과 폴더) 바로 아래 실행 폴더들의 `manifest.json` 을 합친다(`_rescore/` 같은 하위 폴더는
+    세지 않는다). 같은 경로를 여러 번 적어도 한 번만 읽고, 같은 실행(run_id·started_at·비용이 모두 같음)이 두 폴더에 있으면 한 번만
+    센다. run_id 는 같은데 내용이 다르면 어느 쪽이 맞는지 알 수 없으므로 오류로 멈춘다. extra_roots 에 적은 폴더가 없으면 합계를
+    조용히 줄이지 않도록 오류로 멈춘다(기본 root 가 없으면 예전처럼 0).
     """
     if stage not in STAGES:
         raise ValueError(f"stage 는 {STAGES} 중 하나")
     if (stage == "loop") != (loop_id is not None):
         raise ValueError("loop_id 는 stage 가 loop 일 때만, 그리고 반드시 필요하다")
     spent = {"project": Decimal(0), "baseline": Decimal(0), "loop": Decimal(0)}
-    if not root.exists():
-        return spent
-    for path in sorted(root.glob("*/manifest.json")):
-        try:
-            m = json.loads(path.read_text(encoding="utf-8"))
-            if not isinstance(m, dict):
-                raise ValueError("manifest 가 객체가 아니다")
-            cost = _money(m["cost_usd"])
-            run_stage, run_loop = m["stage"], m.get("loop_id")
-            if run_stage not in STAGES:
-                raise ValueError("알 수 없는 stage")
-        except (OSError, ValueError, KeyError) as e:
-            raise ValueError(f"manifest 를 읽을 수 없다: {path.parent.name}") from e
-        spent["project"] += cost
-        if run_stage == "baseline" and stage == "baseline":
-            spent["baseline"] += cost
-        if run_stage == "loop" and stage == "loop" and run_loop == loop_id:
-            spent["loop"] += cost
-    return spent
+    ordered: list[Path] = []
+    for index, candidate in enumerate((root, *extra_roots)):
+        if index > 0 and not candidate.is_dir():
+            raise ValueError(f"추가 결과 폴더가 없다: {candidate}")
+        resolved = candidate.resolve()
+        if resolved not in ordered:
+            ordered.append(resolved)
+    seen: dict[str, tuple[str, Decimal]] = {}
+    readings: list[RootReading] = []
+    for one in ordered:
+        runs, cost_sum, dups = 0, Decimal(0), 0
+        for path in sorted(one.glob("*/manifest.json")) if one.exists() else []:
+            cost, run_stage, run_loop, (run_id, started) = _read_manifest(path)
+            if run_id in seen:
+                if seen[run_id] != (started, cost):
+                    raise ValueError(f"같은 실행 id 인데 내용이 다르다: {run_id}")
+                dups += 1
+                continue
+            seen[run_id] = (started, cost)
+            runs += 1
+            cost_sum += cost
+            spent["project"] += cost
+            if run_stage == "baseline" and stage == "baseline":
+                spent["baseline"] += cost
+            if run_stage == "loop" and stage == "loop" and run_loop == loop_id:
+                spent["loop"] += cost
+        readings.append(RootReading(one, runs, cost_sum, dups))
+    return LedgerReading(spent, tuple(readings))
+
+
+def opening_spent(
+    root: Path, stage: str, loop_id: str | None = None, extra_roots: Sequence[Path] = ()
+) -> dict[str, Decimal]:
+    """`read_opening` 의 누적만 돌려준다. 키는 `cost.Scope` 의 값("project"·"baseline"·"loop")이라 `Ledger(opening=...)` 에
+    그대로 쓸 수 있다. extra_roots 를 주지 않으면 root 한 폴더의 합이다(기존 동작)."""
+    return read_opening(root, stage, loop_id, extra_roots).spent
 
 
 def read_trajectories(run_dir: Path) -> list[dict]:
@@ -389,5 +561,9 @@ def read_trajectories(run_dir: Path) -> list[dict]:
             row.setdefault("step_limit_reached", bool(legacy))
         row.setdefault("step_limit_reached", False)
         row.setdefault("forced_final", False)
+        row.setdefault(
+            "faults_injected", 0
+        )  # 옛 결과(오류 주입 기록이 생기기 전)는 0·빈 목록으로 읽는다
+        row.setdefault("fault_tools", [])
         rows.append(row)
     return rows

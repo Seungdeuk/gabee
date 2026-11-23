@@ -66,15 +66,16 @@ def reachable_texts(client: TestClient, world: World, user: str) -> list[str]:
     for room in _get(client, "/family-chat/rooms", headers).json():
         r = _get(client, "/family-chat/messages", headers, room_id=room["id"], limit=LIMIT)
         texts += [m["text"] for m in r.json()]
-    texts += [
-        e["title"] for e in _get(client, "/schedule/events", headers, include_past=True).json()
-    ]
+    events = _get(client, "/schedule/events", headers, include_past=True).json()
+    texts += [e["title"] for e in events]
+    # 장소·메모도 읽힌 글이다: 일정의 비공개 전용 식별값(`EventSpec.private_ids`)이 소유자 밖에 읽히는지 본다
+    texts += [e[key] for e in events for key in ("place", "memo") if e.get(key)]
     texts += [t["title"] for t in _get(client, "/family-chat/todos", headers).json()]
     texts += [r["title"] for r in _get(client, "/schedule/requests", headers).json()]
     texts += reachable_habits(client, world, user)
     texts += reachable_docs(client, world, user)
     declared = {
-        x.title for x in data.EXPENSES
+        x.title for x in world.data.EXPENSES
     }  # 기존 정산 시드의 제목('치과 진료' 등)은 일정 제목과 겹쳐 비교가 흐려지므로 뺀다
     texts += [
         e["title"]
@@ -120,7 +121,7 @@ def tool_texts(world: World, user: str) -> list[str]:
         out += [i["title"] for i in listed]
         for i in listed:
             out.append(tools.get_item(db, group_id, i["item_id"])["text"])
-        for d in data.DOCS:
+        for d in world.data.DOCS:
             for r in tools.search_knowledge(db, group_id, d.title, top_k=20)["results"]:
                 out += [r["title"], r["text"], *(m["text"] for m in r.get("more", []))]
     return out
@@ -134,10 +135,10 @@ def leaks(client: TestClient, world: World) -> list[tuple[str, str]]:
     problems = []
     for user in data.ALL_USERS:
         seen = reachable_texts(client, world, user)
-        for marker in data.MARKERS:
+        for marker in world.data.MARKERS:
             if (marker.text in seen) != (user in marker.visible_to):
                 problems.append((user, marker.text))
-        for token in data.TOKENS:
+        for token in world.data.TOKENS:
             if any(token.text in t for t in seen) != (user in token.visible_to):
                 problems.append((user, token.text))
     return problems
@@ -157,7 +158,9 @@ def raw_leaks(client: TestClient, world: World) -> list[tuple[str, str, str]]:
     found = []
     for user in data.ALL_USERS:
         headers = world.headers(user)
-        forbidden = data.forbidden_strings(user, also_visible=_billing_titles(client, world, user))
+        forbidden = world.data.forbidden_strings(
+            user, also_visible=_billing_titles(client, world, user)
+        )
         others = [m.user_id for m in world.members.values() if m.name != user]
         queries = [
             ("rooms", "/family-chat/rooms", {}),
@@ -193,7 +196,8 @@ def raw_leaks(client: TestClient, world: World) -> list[tuple[str, str, str]]:
 def extra_access(client: TestClient, world: World) -> dict[str, int]:
     """쓰기·검색·읽음 상태·공유 현황·구성원 현황에서 막혀야 하는 요청의 상태 코드(모두 404 여야 한다)."""
     ab = world.rooms["ab"]
-    dental = world.events[("지민", "치과 진료")]
+    # 지민이 소유한 일정 하나: 남이 공유 현황을 열 수 없는지 본다(w1 은 '치과 진료', 다른 월드는 선언의 `SHARING_PROBE_EVENT`)
+    dental = world.events[getattr(world.data, "SHARING_PROBE_EVENT", ("지민", "치과 진료"))]
     jimin = world.id_of("지민")
     outsider, minsu = world.headers(data.OUTSIDER), world.headers("민수")
     return {
@@ -338,7 +342,7 @@ def snapshot(client: TestClient, world: World) -> dict:
     return snap
 
 
-def unexpected_detections(texts) -> list[tuple[str, str]]:
+def unexpected_detections(texts, declared=data) -> list[tuple[str, str]]:
     """개인정보 탐지기가 찾은 구간 중 코드에 선언된 허구의 값(이름·표식 번호)이 아닌 것: (글, 찾은 값).
 
     이것은 보조 신호다. 규칙 기반 탐지기는 사전에 없는 이름이나 일부 번호 형식을 찾지 못하므로(NER 이 꺼져 있을 때 '김철수' 같은 이름은 탐지되지 않는다)
@@ -346,10 +350,10 @@ def unexpected_detections(texts) -> list[tuple[str, str]]:
     """
     from app.shared.privacy.detectors import detect
 
-    allowed = data.FICTIONAL_NAMES | data.FICTIONAL_SENSITIVE
+    allowed = declared.FICTIONAL_NAMES | declared.FICTIONAL_SENSITIVE
     problems = []
     for text in texts:
-        for span in detect(text, known_names=tuple(data.FICTIONAL_NAMES)):
+        for span in detect(text, known_names=tuple(declared.FICTIONAL_NAMES)):
             found = text[span.start : span.end]
             if found not in allowed:
                 problems.append((text, found))

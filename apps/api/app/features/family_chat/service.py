@@ -1,3 +1,4 @@
+from datetime import UTC, datetime
 from pathlib import Path
 
 from sqlalchemy.orm import Session
@@ -32,6 +33,13 @@ from .schemas import (
 )
 
 
+def _utc(value: datetime | None) -> datetime | None:
+    """시간대 없는 값(SQLite)은 UTC 로 보고 시간대를 붙인다(응답은 항상 시간대가 있는 UTC)."""
+    if value is None:
+        return None
+    return value.replace(tzinfo=UTC) if value.tzinfo is None else value.astimezone(UTC)
+
+
 def _attachment_out(a: MessageAttachment, in_library: bool = False) -> AttachmentOut:
     if a.kind == "file":
         return AttachmentOut(
@@ -52,6 +60,7 @@ def _attachment_out(a: MessageAttachment, in_library: bool = False) -> Attachmen
         batch_id=a.batch_id,
         size_bytes=a.size_bytes,
         in_library=in_library,
+        taken_at=_utc(a.taken_at),
     )
 
 

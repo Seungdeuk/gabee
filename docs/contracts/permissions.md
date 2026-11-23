@@ -37,6 +37,15 @@
 - **수정**(`PATCH /billing/expenses/{id}`와 AI 에이전트의 수정 제안·실행이 같은 규칙): 내가 낸 지출만, 정산하기를 마치기 전만, 그 달(날짜를 옮기면 옮기려는 달도)에 송금 완료 표시가 없을 때만. 코드는 `billing/service.py`의 `open_own_expense`·`plan_expense_update`.
 - **삭제**(`DELETE /billing/expenses/{id}`, 소프트 삭제): 수정과 **같은 규칙**이다(내가 낸 지출만, 정산하기 전만, 그 달에 송금 완료 표시가 없을 때만). 어긋나면 400 `expense_not_deletable`, 없는 지출이나 다른 가족의 지출은 404. 이전에는 같은 가족이면 누구나 지울 수 있었다(2026-11-11 변경). AI 에이전트의 삭제 제안·실행도 같은 규칙이다. 코드는 `delete_my_expense`.
 
+## AI 추억 동의·설정 규칙 (`/family-memory/*`, ADR 0020·0021)
+
+- **가족 활성화**(`PUT /family-memory/settings`): 가족 관리자(`group_members.role` 이 owner/admin)만, member 는 403 `not_manager`. 켜는 것은 서버 스위치(`FAMILY_MEMORY_ENABLED`, 기본 꺼짐)가 켜져 있을 때만(꺼져 있으면 403 `memory_disabled`). 끄는 것은 스위치와 무관하게 항상 가능하다.
+- **동의·철회**(`PUT /family-memory/consent`, `PUT /family-memory/consent/retro`): **본인 것만** 바꾼다(남의 동의를 바꾸는 API 는 없다). 동의는 서버 스위치가 켜져 있을 때만 새로 받고, 철회는 항상 가능하며 요청이 끝나는 순간부터 그 사람 사진의 분석 자격이 없다(두 번 보내도 결과가 같다). 소급 분석 동의는 기본 동의와 별개이고 기본 동의가 유효할 때만 켤 수 있다. 가족에 새로 들어온 사람은 미동의로 시작한다.
+- **사진별 AI 분석 제외**(`PUT /family-memory/photos/{attachment_id}/exclusion`): 사진을 올린 **본인만**(가족 전체방 사진을 남이 바꾸면 403 `forbidden`, 다른 가족·남의 1:1 방 사진은 404). 서버 스위치와 무관하게 항상 가능하다.
+- 그룹은 요청에서 받지 않고 `current_group_id` 로만 정한다. 가족마다 설정·동의·제외가 따로이며 다른 가족에 영향을 주지 않는다.
+- 이 표들은 `ai_group_settings`(대화 분석 동의)와 `chat_photo_checks`(사진 판별 상태, D-13)를 읽거나 쓰지 않는다.
+- 가족을 나가면 그 사람의 AI 분석 동의가 즉시 끝난다(`shared/member_exit` 훅, 같은 트랜잭션: 정리가 실패하면 나가기도 취소). 채팅 사진을 지우면 제외 기록도 지운다(`shared/memory_hooks`, 실패해도 삭제는 성공). 가족 삭제는 `group_purge` 가 `group_id` 열로 지운다.
+
 ## 가입 승인 규칙
 
 - **초대 코드 발급·폐기와 가입 요청 승인·거절은 가족 관리자(`group_members.role` 이 owner/admin)만** 할 수 있다(`join_service.require_manager`). 권한은 요청값이 아니라 DB 의 role 로만 판단하고, 승인된 사람은 항상 member 로 들어간다. **익명(레거시 토큰) 계정도 예외 없이** 초대 코드(레거시 코드 포함)로는 승인 대기 요청만 만들 수 있고, 승인 전에는 `group_members` 행이 없어 모든 그룹 API 가 막힌다(`no_group`/`not_member`). 다른 그룹의 가입 요청은 404 로 존재 자체를 숨긴다. 자세한 내용은 `docs/features/family-group.md`.

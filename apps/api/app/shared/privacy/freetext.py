@@ -18,7 +18,7 @@ E2EE 가 아니며 완전한 보호를 보장하지 않는다. 자세한 설명�
 import math
 import re
 import unicodedata
-from collections.abc import Iterable, Sequence
+from collections.abc import Callable, Iterable, Sequence
 from datetime import date, datetime, time
 from decimal import ROUND_DOWN, ROUND_HALF_UP, Decimal, InvalidOperation
 from typing import Any
@@ -397,6 +397,39 @@ class PrivacySession:
     ) -> JsonRestoreResult:
         """응답 JSON 을 복원한다(``gateway.restore_json`` 과 같은 규칙)."""
         return restore_json(self, obj, generalize_unknown=generalize_unknown, scrub=scrub)  # type: ignore[arg-type]
+
+    def tokenize_mapped_names(self, text: str) -> str:
+        """글에서 이 세션이 **이미 가명화한** 사람 이름만 같은 토큰으로 바꾼다(새 토큰·다른 개인정보·아직 가리지 않은 이름은 그대로)."""
+        return self.pseudonymizer.tokenize_mapped_names(text)
+
+    def tokenize_mapped_names_json(self, obj: Any) -> Any:
+        """JSON 의 문자열 **값**에 ``tokenize_mapped_names`` 를 적용한 새 객체를 돌려준다(키·숫자·구조는 그대로). prepare_json 과 달리 결과 전체를
+        가명화하지 않고, 질문 등에서 이미 토큰을 준 이름만 같은 토큰으로 맞춘다."""
+        return _map_strings(obj, self.pseudonymizer.tokenize_mapped_names)
+
+    def retokenize_values_json(self, obj: Any, tokens: Iterable[str]) -> Any:
+        """JSON(또는 글)의 문자열 **값**에서, ``tokens`` 로 복원해 도구에 넘긴 원래 값과 똑같은 글자를 같은 토큰으로 되돌려 놓는다."""
+        tokens = tuple(tokens)
+        return _map_strings(obj, lambda text: self.pseudonymizer.retokenize_values(text, tokens))
+
+
+def _map_strings(obj: Any, fn: Callable[[str], str]) -> Any:
+    """JSON 의 문자열 값에 fn 을 적용한 새 객체(키·숫자·구조는 그대로)."""
+
+    def walk(node: Any, depth: int) -> Any:
+        if depth > MAX_DEPTH:
+            raise ValueError("JSON 이 너무 깊다")
+        if isinstance(node, str):
+            return fn(node)
+        if isinstance(node, list):
+            return [walk(x, depth + 1) for x in node]
+        if isinstance(node, tuple):
+            return tuple(walk(x, depth + 1) for x in node)
+        if isinstance(node, dict):
+            return {k: walk(v, depth + 1) for k, v in node.items()}
+        return node
+
+    return walk(obj, 0)
 
 
 def _collect_texts(node: Any, with_keys: bool, precision: int) -> list[str]:

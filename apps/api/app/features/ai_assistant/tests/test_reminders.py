@@ -61,6 +61,11 @@ def _row(db, group, uid, **kw):
     return r
 
 
+def _soon() -> date:
+    """실제 현재 시각을 쓰는 시험용: 마감일을 고정하면 시간이 지나 "날짜가 지난 일"이 되어 실패한다. 현재 기준 이틀 뒤로 둔다."""
+    return reminders._local(None).date() + timedelta(days=2)
+
+
 def _plans(*plans):
     return lambda *a, **k: list(plans)
 
@@ -375,7 +380,7 @@ def test_chat_prompt_lists_recently_asked_items_and_tools_work(clan):
     uid = ids["강민훈"]
     with SessionLocal() as db:
         assert reminders.note_lines(reminders.pending_for_chat(db, group["id"], uid)) == ""
-        r = _row(db, group, uid, id="ask-1")
+        r = _row(db, group, uid, id="ask-1", due_date=_soon())
         reminders.due_nudges(db, group["id"], uid)  # 물어봤다
         lines = reminders.note_lines(reminders.pending_for_chat(db, group["id"], uid))
         assert "ask-1" in lines and "독감 예방접종" in lines
@@ -403,7 +408,7 @@ def test_chat_prompt_lists_recently_asked_items_and_tools_work(clan):
 def test_nudges_and_settings_api(client, clan):
     a, b, group, ids = clan
     with SessionLocal() as db:
-        _row(db, group, ids["강민훈"], id="api-1")
+        _row(db, group, ids["강민훈"], id="api-1", due_date=_soon())
     assert client.get("/ai-assistant/reminders/settings", headers=a).json() == {"enabled": True}
     got = client.post("/ai-assistant/reminders/nudges", headers=a).json()["nudges"]
     assert [n["id"] for n in got] == ["api-1"] and got[0]["kind"] == "propose"

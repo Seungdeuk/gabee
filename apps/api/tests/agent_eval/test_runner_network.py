@@ -175,6 +175,17 @@ def test_proxy_variables_set_during_the_block_do_not_leak_out_and_a_failure_rest
     )  # 환경변수를 먼저 지우지 않으므로 그대로다
 
 
+def test_both_spellings_of_every_proxy_variable_are_cleared():
+    """Windows 는 환경변수 이름의 대소문자를 구분하지 않아 한 철자만 있어도 시험이 통과하지만, Linux 는 구분한다.
+    `HTTP_PROXY` 같은 전부 대문자 철자가 목록에 없으면 차단 중에도 프록시가 남는다(CI 에서만 드러났다)."""
+    from evals.agent_eval import network
+
+    for base in ("http", "https", "all", "ftp", "no", "ws", "wss"):
+        assert f"{base}_proxy" in network.PROXY_ENV
+        assert f"{base}_proxy".upper() in network.PROXY_ENV
+    assert len(set(network.PROXY_ENV)) == len(network.PROXY_ENV)
+
+
 def test_proxy_settings_come_back_after_the_block(monkeypatch):
     import os
     import urllib.request

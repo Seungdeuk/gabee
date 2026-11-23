@@ -111,3 +111,22 @@ export const MOCK_RECS = {
     { id: "r3", source: "chat", kind: "choice", question: "이번 주말에 가족이 가기로 한 곳은 어디일까?", options: ["해운대", "남산", "한강", "북촌"], answer_index: 2 },
   ],
 };
+
+/** 찰칵! 탐정단 가비 추천 시안(서버 주소가 없을 때). 서버 응답 `{ state, items }` 와 같은 모양이고 image_url 이 없어 화면은 색 블록을 그린다. */
+export const MOCK_PHOTO_RECS = {
+  state: "ok",
+  items: [
+    { id: "pr1", kind: "month", source: "album", question: "이 사진은 몇 월에 찍었을까?", options: ["3월", "5월", "8월", "11월"], answer_index: 1, box_x: 0.4, box_y: 0.55, zoom: 8 },
+    { id: "pr2", kind: "event", source: "album", question: "이 사진은 어떤 일정 날에 찍었을까?", options: ["할머니 생신", "봄 소풍", "운동회", "병원 가는 날"], answer_index: 0, box_x: 0.6, box_y: 0.4, zoom: 8 },
+    { id: "pr3", kind: "content", source: "common", question: "사진 속 동물은 무엇일까?", options: ["고양이", "강아지", "토끼", "여우"], answer_index: 0, box_x: 0.5, box_y: 0.5, zoom: 6 },
+  ],
+};
+
+/** 이게 뭐게 가비 추천 시안(서버 주소가 없을 때). 서버 응답 `{ state, items }` 와 같은 모양이고 그림은 선 좌표(0~255)다. */
+export const MOCK_DRAW_RECS = {
+  state: "ok",
+  items: [
+    { id: "d1", source: "common", word: "집", alt_answers: [], strokes: [[[30, 120], [128, 30], [226, 120]], [[50, 110], [50, 225], [206, 225], [206, 110]], [[110, 225], [110, 160], [146, 160], [146, 225]]] },
+    { id: "d2", source: "schedule", word: "우산", alt_answers: [], strokes: [[[28, 120], [60, 50], [128, 25], [196, 50], [228, 120]], [[28, 120], [60, 105], [92, 120], [128, 105], [164, 120], [196, 105], [228, 120]], [[128, 25], [128, 210], [150, 235], [175, 215]]] },
+  ],
+};

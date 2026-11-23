@@ -8,7 +8,7 @@
     ["한눈에", [["analytics", "데이터 분석"]]],
     ["사람", [["members", "회원 관리"], ["groups", "가족 그룹 관리"]]],
     ["사용", [["features", "기능 관리"], ["ai", "AI 이용 현황"]]],
-    ["운영 업무", [["support", "문의 및 신고"], ["notices", "공지사항"]]],
+    ["운영 업무", [["alerts", "알림"], ["support", "문의 및 신고"], ["notices", "공지사항"]]],
     // 운영 관리자 화면(서버 상태). 권한은 통합관리자 하나라 로그인한 관리자에게 모두 보인다.
     ["운영", [["ops", "서버 상태"]]],
   ];
@@ -116,7 +116,12 @@
     const [me, members, groups, features, ai, support, notices, analytics] = await Promise.all(
       ["/admin/service/me", "/admin/service/members", "/admin/service/groups", "/admin/service/features", "/admin/service/ai-usage", "/admin/service/support", "/admin/service/notices", "/admin/service/analytics"].map((p) => api(p)),
     );
-    return { me, members, groups, features, ai, support, notices, analytics };
+    // 알림은 따로 받는다. 알림 표가 아직 없는 DB 에서도 나머지 화면은 열려야 하므로 실패하면 빈 목록으로 둔다(로그인 만료는 그대로 넘긴다)
+    const alerts = await api("/admin/alerts").catch((err) => {
+      if (err.message === "unauthorized") throw err;
+      return { items: [], unacked: 0 };
+    });
+    return { me, members, groups, features, ai, support, notices, analytics, alerts };
   }
 
   // ── 그리기 도우미 ─────────────────────────────────────
@@ -152,6 +157,7 @@
     notices: "M3 11v2a1 1 0 0 0 1 1h2l5 4V6L6 10H4a1 1 0 0 0-1 1zM15 9a4 4 0 0 1 0 6M18 6a8 8 0 0 1 0 12",
     analytics: "M3 3v18h18M7 15l4-4 3 3 5-6",
     ops: "M3 4h18v6H3zM3 14h18v6H3zM7 7h.01M7 17h.01",
+    alerts: "M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9M13.7 21a2 2 0 0 1-3.4 0",
   };
   const icon = (key) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${ICON_PATHS[key]}"/></svg>`;
 
@@ -441,6 +447,35 @@
   /** 값이 클수록 진한 칸(비율 % 또는 최대값 대비). */
   const shade = (v, max = 100) => (v === null || v === undefined ? "" : `background: color-mix(in srgb, var(--accent) ${Math.round((Math.min(v, max) / Math.max(max, 1)) * 70)}%, transparent);`);
 
+  // 유입 경로(utm_source) 한글 이름. 목록에 없는 값은 받은 값 그대로(esc) 보여 준다
+  const SOURCE_LABEL = {
+    youtube: "유튜브",
+    instagram: "인스타그램",
+    blog: "블로그",
+    cafe: "카페",
+    news: "뉴스 기사",
+    qr: "QR(오프라인)",
+    kakao: "카톡 공유",
+    "google-play": "직접 검색(플레이 스토어)",
+    unknown: "알 수 없음",
+  };
+
+  /** 데이터 분석의 유입 경로 구역. 표가 아직 없는 서버면 "준비 중"만 보인다. */
+  function acquisitionCard(d) {
+    const body = !d.acquisition_ready
+      ? `<p class="small">유입 경로 기록표가 아직 서버 DB 에 없어요(준비 중).</p>`
+      : table(
+          [{ label: "경로" }, { label: "가입", num: true }, { label: "비율" }, { label: "가족 연결", num: true }],
+          d.acquisition.map(
+            (r) => `<tr><td><strong>${esc(SOURCE_LABEL[r.source] ?? r.source)}</strong></td><td class="num">${num(r.signups)}명</td><td style="min-width:140px">${bar(r.share)}<span class="small">${percent(r.share)}</span></td><td class="num">${percent(r.family_rate)}</td></tr>`,
+          ),
+        );
+    return `<section class="card">
+        <div class="card-head"><h2>유입 경로 (어떤 링크로 설치했나)</h2><span class="small">안드로이드 플레이 스토어 설치 꼬리표 기준. 아이폰·APK 설치·기능 이전 가입자는 "알 수 없음"</span></div>
+        ${body}
+      </section>`;
+  }
+
   function viewAnalytics(d) {
     const small = d.users < 30 ? `<p class="note warn">지금은 가입자가 ${num(d.users)}명뿐이라 비율이 크게 흔들려요. 숫자는 흐름만 보고, 사람이 늘면 해석해요.</p>` : "";
 
@@ -481,7 +516,7 @@
     const wTop = Math.max(1, ...s.weekly);
     const weekly = s.weekly.map((c) => `<div title="${c}건"><i style="height:${pct((c / wTop) * 100)}"></i></div>`).join("");
 
-    return `${head("데이터 분석", "재방문 · 가입 퍼널 · 가족 · 기능 · AI · 시간대 · 고객 응대 (개수와 시각만 사용)")}${small}
+    return `${head("데이터 분석", "재방문 · 가입 퍼널 · 유입 경로 · 가족 · 기능 · AI · 시간대 · 고객 응대 (개수와 시각만 사용)")}${small}
       <div class="row">
         <section class="card wide">
           <div class="card-head"><h2>① 재방문(리텐션) 코호트</h2><span class="small">가입 주별로, 가입 1·2·4주 뒤에 다시 로그인한 비율</span></div>
@@ -493,6 +528,7 @@
           <span class="small">각 단계는 앞 단계를 모두 지난 사람만 세요</span>
         </section>
       </div>
+      ${acquisitionCard(d)}
       <div class="row">
         <section class="card wide">
           <div class="card-head"><h2>③ 가족 인원별 활동 (최근 7일)</h2><span class="small">혼자인 가족 ${num(f.solo_families)}곳 · 두 번째 가족이 들어오기까지 ${f.days_to_second_member ?? "-"}일(중앙값)</span></div>
@@ -533,7 +569,58 @@
       </div>`;
   }
 
+  // ── 알림 ─────────────────────────────────────────────
+
+  let alertError = "";
+  // 심각도 표시: 긴급은 빨강, 주의는 노랑, 보통은 기본 회색
+  const SEVERITY_CLASS = { 긴급: "urgent", 주의: "hot", 보통: "" };
+
+  /**
+   * 알림 목록을 그린다. 문구는 서버가 만든 숫자·고정 글이라 esc 로만 넣는다.
+   * @param {{items: {key: string, severity: string, message: string, menu: string, created_at: string, acked_at: string | null}[], unacked: number}} d
+   * @returns {string}
+   */
+  function viewAlerts(d) {
+    const items = d.items || [];
+    const error = alertError ? `<p class="note warn">${esc(alertError)}</p>` : "";
+    const rows = items.length
+      ? items
+          .map((a) => {
+            const when = (iso) => esc(new Date(iso).toLocaleString("ko-KR"));
+            const action = a.acked_at
+              ? `<span class="small">확인함 · ${when(a.acked_at)}</span>`
+              : `<button type="button" class="btn sm primary" data-alert-ack="${esc(a.key)}">확인함</button>`;
+            return `<li class="alert-item${a.acked_at ? " is-acked" : ""}">
+              <div class="alert-head"><span class="pill ${SEVERITY_CLASS[a.severity] || ""}">${esc(a.severity)}</span><span class="small">${when(a.created_at)}</span></div>
+              <p class="alert-msg">${esc(a.message)}</p>
+              <div class="alert-foot"><span class="small">확인할 곳: ${esc(a.menu)}</span>${action}</div>
+            </li>`;
+          })
+          .join("")
+      : '<li class="alert-empty">지금 알림이 없어요. 기준을 넘는 일이 생기면 여기에 나타나요.</li>';
+    return `${head("알림", "기준을 넘은 서버 신호. 확인하면 목록과 배지에서 빠져요")}${error}
+      <section class="card"><div class="card-head"><h2>알림 (확인 안 된 ${num(d.unacked || 0)}건)</h2></div><ul class="alert-list">${rows}</ul></section>`;
+  }
+
+  /**
+   * 알림을 확인 처리하고 목록을 다시 받는다. 실패하면 화면에 한 줄 안내를 남긴다.
+   * @param {string} key
+   * @returns {Promise<void>}
+   */
+  async function ackAlert(key) {
+    try {
+      await api(`/admin/alerts/${encodeURIComponent(key)}/ack`, undefined, "POST");
+      data.alerts = await api("/admin/alerts");
+      alertError = "";
+    } catch (err) {
+      if (err.message === "unauthorized") return;
+      alertError = "확인하지 못했어요. 잠시 뒤 다시 해 주세요.";
+    }
+    render();
+  }
+
   const VIEWS = {
+    alerts: (data) => viewAlerts(data.alerts),
     members: (data) => viewMembers(data.members),
     groups: (data) => viewGroups(data.groups),
     features: (data) => viewFeatures(data.features),
@@ -565,8 +652,12 @@
   /** 왼쪽 메뉴(묶음 제목 + 탭). 문의 및 신고에는 아직 처리하지 않은 새 문의 건수를 붙인다. */
   function renderTabs(key) {
     const fresh = data && data.support ? Number(data.support.new) || 0 : 0;
+    const unacked = data && data.alerts ? Number(data.alerts.unacked) || 0 : 0;
     const link = ([k, label]) => {
-      const badge = k === "support" && fresh ? `<span class="tab-badge" aria-label="새 문의 ${fresh}건">${num(fresh)}</span>` : "";
+      const badge =
+        k === "support" && fresh ? `<span class="tab-badge" aria-label="새 문의 ${fresh}건">${num(fresh)}</span>`
+        : k === "alerts" && unacked ? `<span class="tab-badge" aria-label="확인 안 된 알림 ${unacked}건">${num(unacked)}</span>`
+        : "";
       return `<a href="#${k}" aria-current="${k === key ? "page" : "false"}">${icon(k)}<span>${label}</span>${badge}</a>`;
     };
     document.getElementById("tabs").innerHTML = TAB_GROUPS.map(([title, tabs]) => `<p class="nav-group">${esc(title)}</p>${tabs.map(link).join("")}`).join("");
@@ -674,6 +765,11 @@
       return;
     }
     // '답변하기': 그 문의를 펼치고 답변 칸으로 바로 간다
+    const alertAck = e.target.closest("[data-alert-ack]");
+    if (alertAck) {
+      ackAlert(alertAck.dataset.alertAck);
+      return;
+    }
     const reply = e.target.closest("[data-reply]");
     if (reply) {
       const box = document.querySelector(`details[data-open="${CSS.escape(reply.dataset.reply)}"]`);
@@ -888,23 +984,273 @@
     return el;
   }
 
+  // 답의 **숫자** 를 굵게 보여 준다. innerHTML 을 쓰지 않아 답에 태그가 있어도 글자로만 보인다
+  function chatBold(text) {
+    return text.split(/\*\*(.+?)\*\*/s).map((part, i) => {
+      if (i % 2 === 0) return document.createTextNode(part);
+      const strong = document.createElement("strong");
+      strong.textContent = part;
+      return strong;
+    });
+  }
+
+  /**
+   * 챗봇 질문을 보내고 서버가 보내는 단계 소식(SSE)을 도착하는 대로 하나씩 넘긴다.
+   * EventSource 는 POST 와 Authorization 헤더를 못 써서 fetch 본문을 직접 읽는다.
+   * @param {string} question
+   * @param {(event: {step: string, label?: string, answer?: string, code?: string, message?: string}) => void} onEvent
+   * @returns {Promise<void>} 스트림이 끝나면 끝난다. 401 이면 로그인 화면으로 돌아가고 "unauthorized" 로 실패한다
+   */
+  async function chatStream(question, onEvent) {
+    const res = await fetch("/admin/knowledge/ask/stream", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token()}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ q: question }),
+    });
+    if (res.status === 401) {
+      setToken(null);
+      showLogin("로그인이 만료됐어요. 다시 로그인해 주세요.");
+      throw new Error("unauthorized");
+    }
+    if (!res.ok || !res.body) throw new Error(`HTTP ${res.status}`);
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buf = "";
+    for (;;) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buf += decoder.decode(value, { stream: true });
+      // 소식 하나는 빈 줄(\n\n)로 끝난다. 조각이 소식 중간에서 끊겨 올 수 있어서 끝난 것만 꺼낸다
+      let cut;
+      while ((cut = buf.indexOf("\n\n")) >= 0) {
+        const block = buf.slice(0, cut);
+        buf = buf.slice(cut + 2);
+        for (const line of block.split("\n")) if (line.startsWith("data: ")) onEvent(JSON.parse(line.slice(6)));
+      }
+    }
+  }
+
+  // 답변 단계. 서버 소식(step)이 오면 그 단계가 진행 중이 되고 앞 단계는 끝난다. 오지 않고 넘어간 단계는 "건너뜀"
+  const CHAT_STEPS = [
+    { key: "received", label: "질문 확인", detail: "관리자 권한과 글자 수를 확인해요" },
+    { key: "masked", label: "개인정보 가리기", detail: "전화번호·이메일·주소를 가린 뒤 보내요" },
+    { key: "understand", label: "질문 이해", detail: "필요한 자료를 고르고 있어요" },
+    { key: "tool", label: "숫자 조회", detail: "관리자 화면과 같은 기준으로 세요" },
+    { key: "write", label: "답 작성", detail: "받은 결과로 문장을 만들고 있어요" },
+  ];
+  const secs = (ms) => (ms < 100 ? "<0.1초" : `${(ms / 1000).toFixed(1)}초`);
+
+  /**
+   * 답변 단계 카드를 대화에 붙인다.
+   * @param {() => void} retry 실패했을 때 "다시 물어보기" 가 부른다
+   * @returns {{step: (e: {step: string, label?: string}) => void, finish: (answer: string) => void, fail: (message: string) => void}}
+   */
+  function chatProgress(retry) {
+    const log = document.getElementById("chat-log");
+    const make = (tag, cls, text) => {
+      const el = document.createElement(tag);
+      if (cls) el.className = cls;
+      if (text !== undefined) el.textContent = text;
+      return el;
+    };
+    const card = make("div", "chat-msg chat-steps");
+    const head = make("div", "chat-steps-head");
+    const icon = make("span", "chat-steps-icon is-run");
+    icon.setAttribute("aria-hidden", "true");
+    const titles = make("div", "chat-steps-titles");
+    const title = make("div", "chat-steps-title", "답을 찾고 있어요");
+    const subtitle = make("div", "chat-steps-sub", "단계마다 진행 상황을 보여 드려요");
+    titles.append(title, subtitle);
+    const clock = make("span", "chat-steps-time", "0.0초");
+    head.append(icon, titles, clock);
+    const bar = make("div", "chat-steps-bar");
+    const fill = make("div", "chat-steps-fill");
+    bar.append(fill);
+    const list = make("ol", "chat-steps-list");
+    const rows = CHAT_STEPS.map((s) => {
+      const li = make("li", "chat-step is-todo");
+      const dot = make("span", "chat-step-dot");
+      dot.setAttribute("aria-hidden", "true");
+      const body = make("div", "chat-step-body");
+      const name = make("div", "chat-step-name", s.label);
+      const detail = make("div", "chat-step-detail", s.detail);
+      const chips = make("div", "chat-step-chips");
+      body.append(name, detail, chips);
+      const time = make("span", "chat-step-time", "");
+      li.append(dot, body, time);
+      list.append(li);
+      return { li, detail, chips, time, state: "todo", started: 0, tools: [] };
+    });
+    card.append(head, bar, list);
+    log.appendChild(card);
+    log.scrollTop = log.scrollHeight;
+
+    const t0 = performance.now();
+    let current = -1;
+    const timer = setInterval(() => {
+      if (!card.isConnected) return clearInterval(timer); // 대화 비우기로 카드가 사라졌다
+      clock.textContent = secs(performance.now() - t0);
+    }, 100);
+    const set = (i, state) => {
+      rows[i].state = state;
+      rows[i].li.className = `chat-step is-${state}`;
+    };
+    const close = (i, now) => {
+      if (rows[i].state !== "active") return;
+      set(i, "done");
+      rows[i].time.textContent = secs(now - rows[i].started);
+    };
+    const progress = () => {
+      const done = rows.filter((r) => r.state === "done" || r.state === "skip").length;
+      fill.style.width = `${Math.round((done / rows.length) * 100)}%`;
+    };
+    const stop = (state, heading, sub, end) => {
+      clearInterval(timer);
+      clock.textContent = secs(end - t0); // 화면을 천천히 넘겨도 총 시간은 실제로 걸린 시간이다
+      icon.className = `chat-steps-icon is-${state}`;
+      card.classList.add(`is-${state}`);
+      title.textContent = heading;
+      subtitle.textContent = sub;
+    };
+
+    // at 은 소식이 실제로 도착한 시각이다. 단계 시간은 이 값으로 잰다(화면에 그린 시각이 아니다)
+    const showStep = (e, at) => {
+      const i = CHAT_STEPS.findIndex((s) => s.key === e.step);
+      if (i < 0) return;
+      if (e.step === "tool" && e.label && !rows[3].tools.includes(e.label)) {
+        rows[3].tools.push(e.label);
+        rows[3].chips.append(make("span", "chat-step-chip", e.label));
+      }
+      if (i <= current) return; // 답을 쓰다가 도구를 한 번 더 부른 경우: 칩만 늘린다
+      for (let j = 0; j < i; j += 1) {
+        if (rows[j].state === "active") close(j, at);
+        else if (rows[j].state === "todo") set(j, "skip");
+      }
+      set(i, "active");
+      rows[i].started = at;
+      current = i;
+      progress();
+      log.scrollTop = log.scrollHeight;
+    };
+
+    // 숫자 조회는 0.03초, 답 작성은 0.5초쯤이라 그대로 그리면 눈에 안 보인다.
+    // 소식은 도착 순서대로 줄을 세우고, 단계가 바뀔 때는 지금 보이는 단계가 MIN_STEP_MS 만큼 보인 뒤에 그린다.
+    // 단계 옆 시간과 총 시간은 실제 값이다(보여 주는 속도만 늦춘다)
+    const MIN_STEP_MS = { received: 500, masked: 500, understand: 1000, tool: 1500, write: 1500 };
+    const DONE_HOLD_MS = 2000; // 다 끝난 카드를 접기 전에 보여 주는 시간
+    let queue = Promise.resolve();
+    let shownAt = 0;
+    const later = (paced, draw) => {
+      const at = performance.now();
+      queue = queue.then(async () => {
+        if (paced()) {
+          const min = current >= 0 ? MIN_STEP_MS[CHAT_STEPS[current].key] : 0;
+          const wait = shownAt + min - performance.now();
+          if (wait > 0) await new Promise((r) => setTimeout(r, wait));
+          shownAt = performance.now();
+        }
+        draw(at);
+      });
+    };
+    const moves = (e) => () => CHAT_STEPS.findIndex((s) => s.key === e.step) > current;
+
+    return {
+      step(e) {
+        later(moves(e), (at) => showStep(e, at));
+      },
+      finish(answer) {
+        later(() => true, (at) => showFinish(answer, at));
+      },
+      fail(message) {
+        later(() => false, (at) => showFail(message, at)); // 실패는 기다리지 않고 바로 알린다
+      },
+      /** 줄 선 소식을 다 그리면 끝난다. @returns {Promise<void>} */
+      idle: () => queue,
+    };
+
+    function showFinish(answer, at) {
+      rows.forEach((r, i) => (r.state === "active" ? close(i, at) : r.state === "todo" && set(i, "skip")));
+      rows.forEach((r) => r.state === "skip" && (r.time.textContent = "건너뜀"));
+      if (rows[3].state === "skip") rows[3].detail.textContent = "숫자가 필요 없는 질문이라 세지 않았어요";
+      progress();
+      stop("done", "답을 만들었어요", "", at);
+      const total = clock.textContent;
+      // 답은 바로 보여 주고, 다 끝난 카드는 DONE_HOLD_MS 뒤에 접는다. 아래 버튼으로 다시 펼친다
+      const reply = chatAdd("bot", "");
+      reply.replaceChildren(...chatBold(answer));
+      const used = rows.filter((r) => r.state === "done").length;
+      const tools = rows[3].tools.length;
+      const toggle = make("button", "chat-msg chat-steps-toggle");
+      toggle.type = "button";
+      const summary = `처리 과정 보기 · ${used}단계 · ${total} · ${tools ? `도구 ${tools}개` : "도구 없음"}`;
+      toggle.textContent = summary;
+      toggle.setAttribute("aria-expanded", "false");
+      toggle.addEventListener("click", () => {
+        const open = card.hidden;
+        card.hidden = !open;
+        toggle.setAttribute("aria-expanded", String(open));
+        toggle.textContent = open ? "처리 과정 접기" : summary;
+      });
+      log.scrollTop = log.scrollHeight;
+      setTimeout(() => {
+        if (!card.isConnected) return; // 그 사이 대화를 비웠다
+        card.hidden = true;
+        reply.after(toggle);
+        log.scrollTop = log.scrollHeight;
+      }, DONE_HOLD_MS);
+    }
+
+    function showFail(message, at) {
+      const i = current >= 0 ? current : 0;
+      if (rows[i].state === "active" || rows[i].state === "todo") {
+        set(i, "fail");
+        rows[i].time.textContent = "실패";
+      }
+      progress();
+      stop("fail", "답하지 못했어요", "숫자를 추측해서 답하지 않았어요", at);
+      const box = make("div", "chat-steps-error");
+      box.append(make("span", "", message));
+      const again = make("button", "chat-steps-retry", "다시 물어보기");
+      again.type = "button";
+      again.addEventListener("click", () => {
+        again.disabled = true;
+        retry();
+      });
+      box.append(again);
+      card.append(box);
+      log.scrollTop = log.scrollHeight;
+    }
+  }
+
   async function chatAsk(question) {
     chatAsked.add(question);
     chatAdd("me", esc(question));
-    const wait = chatAdd("bot", "찾는 중…");
+    const progress = chatProgress(() => chatAsk(question));
+    let ended = false;
     try {
-      const res = await api("/admin/knowledge/ask", { q: question }, "POST");
-      wait.textContent = res.answer;
+      await chatStream(question, (e) => {
+        if (e.step === "answer") {
+          ended = true;
+          progress.finish(e.answer || "");
+        } else if (e.step === "error") {
+          ended = true;
+          progress.fail(e.message || "지금은 답할 수 없어요. 잠시 뒤 다시 해 주세요.");
+        } else {
+          progress.step(e);
+        }
+      });
+      // answer·error 없이 끝났다: 중간에 연결이 끊겼다
+      if (!ended) progress.fail("연결이 끊겼어요. 잠시 뒤 다시 해 주세요.");
     } catch (err) {
       if (err.message === "unauthorized") {
-        // 로그인 화면으로 넘어갔다. "찾는 중…" 으로 멈춰 보이지 않게 알려 둔다
-        wait.textContent = "로그인이 풀려서 답하지 못했어요. 다시 로그인한 뒤 물어봐 주세요.";
+        // 로그인 화면으로 넘어갔다. 카드가 돌아가는 채로 멈춰 보이지 않게 알려 둔다
+        progress.fail("로그인이 풀려서 답하지 못했어요. 다시 로그인한 뒤 물어봐 주세요.");
         chatAsked.delete(question);
-        chatNext("이어서 물어볼 만한 질문");
-        return;
+      } else {
+        progress.fail(err.message === "HTTP 503" ? "AI 연결이 준비되지 않았어요. 잠시 뒤 다시 해 주세요." : "지금은 답할 수 없어요. 잠시 뒤 다시 해 주세요.");
       }
-      wait.textContent = err.message === "HTTP 503" ? "AI 연결이 준비되지 않았어요. 잠시 뒤 다시 해 주세요." : "지금은 답할 수 없어요. 잠시 뒤 다시 해 주세요.";
     }
+    await progress.idle(); // 단계를 천천히 그리는 중이면 답이 뜬 뒤에 추천 질문을 붙인다
     chatNext("이어서 물어볼 만한 질문");
   }
 

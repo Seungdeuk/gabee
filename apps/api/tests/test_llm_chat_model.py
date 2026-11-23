@@ -170,6 +170,8 @@ def test_request_body_has_exactly_the_keys_the_old_loop_sent():
             "system": "시스템",
             "tools": tools,
             "messages": [{"role": "user", "content": "질문"}],
+            # 옛 루프의 키에 더해, 도구 루프가 앞 내용을 다시 보내는 비용을 줄이려고 자동 캐시를 켠다(chat_model.py, #371)
+            "cache_control": {"type": "ephemeral"},
         }
     ]
 

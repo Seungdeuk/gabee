@@ -46,6 +46,34 @@ class Settings(BaseSettings):
     # 가족방 사진이 문서 사진인지 Claude 로 가린다(기본 false: 로컬 OCR 판별만). 켜면 글자가 있는 사진이 Anthropic API 로 전송된다(docs/adr/0015)
     photo_judge_llm: bool = False
     photo_judge_model: str = ""  # 비우면 llm_model(Haiku)
+    # 가족방 사진 판별을 OCR + SigLIP2 단계형(E)으로 한다(기본 꺼짐: 켜지 않으면 기존 OCR 판별 그대로). 켜면 외부 AI 호출 없이 로컬 모델만 쓰고
+    # `PHOTO_JUDGE_LLM` 은 이 경로에서 쓰지 않는다. 모델은 ONNX 이미지 인코더(CPU, torch 없음)이고 폴더에 `siglip2_vision.onnx`·`head.json` 이 있어야 한다
+    photo_classify_siglip: bool = False
+    photo_classify_model_dir: str = ""  # 변환한 SigLIP2 ONNX 모델 폴더(저장소에 없다). 비었거나 파일이 없으면 판별은 failed 가 된다
+    photo_classify_threads: int = 2  # onnxruntime CPU 스레드 수
+    # AI 추억 분석의 서버 기능 스위치(ADR 0020 3중 조건의 ①). 기본 꺼짐: 꺼져 있으면 가족 설정·업로더 동의가 켜져 있어도 분석 자격이 없고 동의를 새로 받지 않는다
+    family_memory_enabled: bool = False
+    # AI 추억 분석 작업 워커(PR3, 단일 경량 스레드). 기본 꺼짐: `FAMILY_MEMORY_ENABLED` 와 이 값이 모두 켜져 있을 때만 서버가 시작하며 돌린다
+    family_memory_worker_enabled: bool = False
+    family_memory_worker_poll_seconds: float = 5.0  # 일이 없을 때 다음 확인까지 기다리는 시간
+    family_memory_job_lease_seconds: int = (
+        300  # 선점한 작업의 임대 시간(넘기면 다른 워커가 되찾는다)
+    )
+    # 이미지 임베딩 인코더(PR4): off(기본) | siglip2(로컬 모델 파일만, 다운로드 안 함) | fake(개발·시험용 가짜). 모델은 별도 워커 프로세스(worker_main)에서만 올라간다
+    family_memory_encoder: str = "off"
+    family_memory_siglip2_path: str = ""  # 이미 내려받은 SigLIP2 스냅샷 폴더(로컬 경로)
+    family_memory_encoder_device: str = "auto"  # auto | cpu | cuda
+    family_memory_encoder_fp16: bool = False  # GPU 일 때만 반 정밀도(메모리 약 절반)
+    # 추억 후보 조회 API(PR6) 미출시 가드: 기본 꺼짐(꺼져 있으면 404 로 존재를 숨긴다). 앱(PR7) 개발·검증 때만 켠다. 후보는 비공개이며 자동 게시하지 않는다
+    family_memory_candidates_api_enabled: bool = False
+    # 동의할 때 consent_version 을 **반드시** 보내야 하게 한다(T31 고지문 확정 뒤 켠다). 기본 꺼짐: 켜면 버전을 안 보낸 동의 요청은 409 consent_version_required — 버전 확인을 우회하지 못한다
+    family_memory_consent_version_required: bool = False
+    # 사용자 요청형 추억 생성(PR10) 진입점. **실제 가족 사진을 처리하는 입구라서** T31 고지문·동의 UX 와 별도 출시 승인이 끝나기 전에는 켜지 않는다(기본 꺼짐, 꺼져 있으면 404).
+    # 켜져 있어도 `family_memory_consent_version_required` 가 함께 켜져 있어야 열린다(동의 버전 확인 없이는 실제 사진을 처리하지 않는다)
+    family_memory_generate_enabled: bool = False
+    family_memory_generate_max_photos: int = (
+        300  # 요청 한 번에 새로 등록하는 사진 수 상한(나머지는 다음 요청에서)
+    )
     ingest_mask_chunk_chars: int = 6000  # 가리기 호출 한 번에 보내는 최대 글자 수(긴 문서는 나눠서)
     ingest_pdf_max_pages: int = 20  # Claude 로 읽는 PDF 최대 쪽 수(비용 상한)
     # Claude 연결 실패(llm_unavailable)로 failed 가 될 파일을 자동으로 다시 처리하는 횟수와 기다리는 시간(n번째 재시도는 n×이 초)
@@ -104,6 +132,11 @@ class Settings(BaseSettings):
     # 서비스 관리(/admin/service/*)와 운영 관리(/admin/ops/*)를 함께 연다(2026-11-06 결정: 권한은 통합관리자 하나).
     # 실제 id 는 환경변수(.env·비밀 관리)에만 두고 코드·Git·문서에 넣지 않는다.
     admin_user_ids: str = ""
+    # 관리자 챗봇 실행 기록을 LangSmith 로 보낼지(기본 꺼짐). 이 챗봇의 실행에만 붙이고 서버 전체 추적(LANGSMITH_TRACING)은 쓰지 않는다.
+    # 켜면 Claude 에게 보낸 글(가린 질문, 답 규칙·FAQ, 도구가 준 숫자)과 답이 LangSmith 서버에 저장된다. 키는 .env 에만 둔다.
+    admin_langsmith_enabled: bool = False
+    admin_langsmith_api_key: str = ""
+    admin_langsmith_project: str = "gabee-admin-chatbot"
     # 구독·통신비 서버 API(/billing/subscriptions*) 사용 여부(기본 꺼짐). 지갑 탭에서 구독 기능을 빼면서 닫았다. 꺼져 있으면 403 subscription_disabled 로 막고,
     # 일정 추천도 구독 결제일을 읽지 않는다. 테이블과 데이터는 그대로 둔다.
     subscription_api_enabled: bool = False
@@ -176,6 +209,25 @@ class Settings(BaseSettings):
     ai_play_quiz_rec_cooldown_seconds: int = 5
     ai_play_quiz_rec_max_calls_per_user_per_day: int = 3
     ai_play_quiz_rec_max_calls_per_group_per_day: int = 5
+    # 이게 뭐게 가비 추천: 골든벨과 같다. 추천 한 번(그림 5개를 동시에 불러도)이 1회이고 성공하면 당일 자정까지 캐시라 2·3회는 실패했을 때의 시도분
+    ai_play_draw_rec_cooldown_seconds: int = 5
+    ai_play_draw_rec_max_calls_per_user_per_day: int = 3
+    ai_play_draw_rec_max_calls_per_group_per_day: int = 5
+    # 탐정단 사진 추천에 가족 앨범 사진을 쓸지(꺼짐이면 카드 3개 모두 흔한 사진, AI 호출·가족 사진 접근 없음). 위험 검토 뒤 켠다
+    photo_rec_family_enabled: bool = False
+    # 탐정단 사진 추천(내용 질문): 사진 한 장당 AI 한 번. 값은 이게 뭐게와 같게 시작하고 별도 한도로 센다
+    ai_play_photo_rec_cooldown_seconds: int = 5
+    ai_play_photo_rec_max_calls_per_user_per_day: int = 3
+    ai_play_photo_rec_max_calls_per_group_per_day: int = 5
+    # 찰칵 흔한 사진 자동 보충: 서버 안 백그라운드 작업이 하루 한 번 Pixabay 사진 + AI 질문으로 흔한 사진을 채운다. 기본 꺼짐.
+    # 사진 한 장당 AI 한 번(ai_guard 를 쓰지 않으므로 호출 수는 per_day x max_attempts x 시도당 후보 상한으로 묶인다). 키는 로그에 찍지 않는다
+    pixabay_api_key: str = ""
+    photo_rec_auto_enabled: bool = False
+    photo_rec_auto_per_day: int = 3
+    photo_rec_auto_max_attempts: int = 3
+    photo_rec_auto_cooldown_seconds: int = (
+        600  # 찰칵 추천을 열 때 보충을 띄우는 최소 간격(이 프로세스 기준)
+    )
     ai_schedule_card_cooldown_seconds: int = 5
     ai_schedule_card_max_calls_per_user_per_day: int = 3
     ai_schedule_card_max_calls_per_group_per_day: int = 15
@@ -207,6 +259,9 @@ class Settings(BaseSettings):
     # 근거 없는 주장 2.6→0.9%, 정확도 유지. 긴 공개 PDF(중앙값 약 1만 1천 자, 상위 25% 2만 3천 자 이상)는 정확도 85.0→78.3%,
     # 질문당 비용 +35%, 지연 2배로 손해. 그래서 짧은 문서에만 확인한다
     chat_verify_max_evidence_chars: int = 8000
+    # 모델의 최종 답 초안이 '찾지 못했다' 유형이고 이 대화에서 문서 검색 결과가 있었으면, 코드가 검색 결과 상위 3개 문서 안을
+    # 원래 질문으로 다시 찾아(search_in_item) 그 조각을 근거로 한 번 더 답하게 한다(최대 1회, 모델 호출 +1). 기본은 꺼짐: 평가에서만 켠다.
+    chat_retry_not_found: bool = False
 
     # 가명화 NER 보강(app/shared/privacy/ner.py, KoELECTRA-small ONNX). 모델 파일은 저장소에 없고 서버 폴더에서 읽는다.
     # off: 안 씀 / auto: 모델이 있고 로드되면 쓰고, 없거나 실패하면 규칙만(프로세스당 한 번 경고) / required: 못 쓰면 503 privacy_unavailable(fail-closed)
@@ -229,6 +284,10 @@ class Settings(BaseSettings):
     ops_errors_retention_days: int = 90
     # 운영 관리자 인프라 상태(Cloud Run 설정·Cloud Monitoring 조회, 읽기 전용): 기본 꺼짐. 실행 서비스 계정에 roles/run.viewer·monitoring.viewer 가 필요하다.
     ops_infra_enabled: bool = False
+    # 관리자 알림(admin_alerts): 기본 꺼짐. 켜면 점검 주소(/internal/alerts/run)가 규칙을 돌려 알림 기록표에 넣는다.
+    # 점검 주소는 X-Alert-Token 이 이 값과 같을 때만 통과한다. 토큰이 비어 있으면 아무도 통과하지 못한다.
+    admin_alerts_enabled: bool = False
+    admin_alerts_token: str = ""
     # 폰 푸시(app/shared/push.py). 기본 꺼짐: 켜면 알림함 알림을 저장한 뒤(커밋 후) Expo 푸시 서비스로 발송한다.
     # 푸시 토큰이 없거나 발송이 실패해도 원래 기능에는 영향이 없다. Expo 계정에서 '푸시 보안'을 켠 경우에만
     # PUSH_EXPO_ACCESS_TOKEN 을 넣는다(안드로이드 FCM 키는 EAS 에 올리며 서버에는 두지 않는다).

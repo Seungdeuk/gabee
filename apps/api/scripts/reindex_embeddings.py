@@ -22,7 +22,7 @@ from typing import Any
 from sqlalchemy.engine import make_url
 from sqlalchemy.orm import Session
 
-from app.features.ai_assistant.knowledge import embedding, service
+from app.features.ai_assistant.knowledge import embedding, index_health, service
 from app.features.ai_assistant.knowledge import repository as repo
 from app.shared.config import settings
 from app.shared.db import SessionLocal
@@ -40,6 +40,11 @@ def _parse(argv: list[str]) -> argparse.Namespace:
     p.add_argument("--batch-size", type=int, default=DEFAULT_BATCH_SIZE)
     p.add_argument("--group-id", default=None, help="이 가족 그룹만(선택)")
     p.add_argument("--limit", type=int, default=None, help="이번에 처리할 최대 조각 수(시험용)")
+    p.add_argument(
+        "--expect-model",
+        default=None,
+        help="서버가 쓰는 임베딩 모델 이름(운영자 조회 API 의 current_model). 다르면 --apply 를 거부한다",
+    )
     return p.parse_args(argv)
 
 
@@ -52,23 +57,26 @@ SERVER_MATCH_WARNING = (
 
 def model_warnings(dialect: str, current_model: str) -> list[str]:
     """PostgreSQL 인데 기대 모델이 해시(모델 폴더를 못 찾음)면 알린다. SQLite 는 해시 임베더도 정상이다."""
-    if dialect == "postgresql" and current_model.startswith("hashing-"):
-        return [
-            "경고: 모델 폴더를 찾지 못했어요(model.onnx 없음). 서버는 PostgreSQL 검색에서 이 설정으로 "
-            "동작하지 못해요. EMBED_MODEL_DIR·DATA_DIR 을 서버와 같게 맞췄는지 확인하세요(데이터는 바뀌지 않았어요)."
-        ]
-    return []
+    return index_health.model_folder_warnings(dialect, current_model)
 
 
 def collect_report(db: Session, current_model: str, group_id: str | None = None) -> dict[str, Any]:
     """점검 숫자(개수만)."""
-    return {
-        "current_model": current_model,
-        "by_model": repo.count_by_model(db, group_id),
-        "stale_chunks": repo.count_stale(db, current_model, group_id),
-        "stale_items": repo.count_stale_items(db, current_model, group_id),
-        "missing_items": repo.count_items_missing_model(db, current_model, group_id),
-    }
+    return index_health.collect(db, current_model, group_id)
+
+
+def expect_model_problem(expected: str | None) -> str | None:
+    """--expect-model 이 지금 설정이 가리키는 모델 이름과 다르면 안내 문구를, 같거나 안 줬으면 None 을 돌려준다.
+    모델을 불러오지 않는다. 다른 설정에서 다시 만든 조각은 서버가 검색하지 않는 이름이 되기 때문이다."""
+    if expected is None:  # 빈 문자열은 "안 줌"이 아니라 어긋남으로 본다
+        return None
+    actual = embedding.expected_model_name()
+    if actual == expected:
+        return None
+    return (
+        f"모델 이름이 달라요: 서버가 쓰는 이름 '{expected}', 지금 설정의 이름 '{actual}'. "
+        "EMBED_MODEL_DIR·DATA_DIR 을 서버와 같게 맞춘 뒤 다시 실행하세요."
+    )
 
 
 def format_report(report: dict[str, Any], group_id: str | None = None) -> list[str]:
@@ -101,7 +109,10 @@ def _check(args: argparse.Namespace) -> int:
     with SessionLocal() as db:
         report = collect_report(db, name, args.group_id)
         warnings = model_warnings(db.get_bind().dialect.name, name)
-    print("\n".join(format_report(report, args.group_id) + warnings))
+    problem = expect_model_problem(args.expect_model)
+    print(
+        "\n".join(format_report(report, args.group_id) + warnings + ([problem] if problem else []))
+    )
     if report["stale_chunks"]:
         print("다시 만들려면 --apply --yes 를 붙여 실행하세요(공용 DB 는 DB 담당자만).")
     return 0
@@ -110,6 +121,10 @@ def _check(args: argparse.Namespace) -> int:
 def _apply(args: argparse.Namespace) -> int:
     if args.batch_size < 1 or (args.limit is not None and args.limit < 1):
         print("--batch-size 와 --limit 은 1 이상이어야 해요.")
+        return 1
+    problem = expect_model_problem(args.expect_model)
+    if problem:  # 모델을 불러오기 전, DB 를 건드리기 전에 거부한다
+        print(problem)
         return 1
     if not args.yes:  # 확인만: 모델을 불러오기 전에 끝낸다
         name = embedding.expected_model_name()
@@ -137,6 +152,12 @@ def _apply(args: argparse.Namespace) -> int:
             print("다시 만들 조각이 없어요.")
             return 0
         print(SERVER_MATCH_WARNING, flush=True)
+        if args.expect_model is None:
+            print(
+                "--expect-model 을 주지 않아 서버가 쓰는 모델 이름과 같은지 검사하지 않았어요"
+                "(운영자 조회 API 의 current_model 을 --expect-model 로 주세요).",
+                flush=True,
+            )
         try:
             done = service.reindex(
                 db,

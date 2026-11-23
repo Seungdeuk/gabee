@@ -1,0 +1,116 @@
+{
+ "note": "이 정답지(cases_val.json)와 평가 기준 v2 는 어떤 모델 출력도 보기 전에 확정했다(val 사례에 대한 실제 모델의 출력은 한 번도 본 적이 없다). val 실행 0회, 실제 Claude 호출 0회로 만들고 가짜 모델과 직접 만든 관찰로만 시험했다. val 결과를 본 뒤에는 이 값들을 소급해서 바꾸지 않는다. 바뀌면 test_val_pins.py 가 실패하고, 그 val 결과는 무효로 표시한 뒤 변경 이력을 새로 기록한다.",
+ "frozen_before_any_model_output": true,
+ "created_in_commit": "e6bc806922a7ed42cd12d61c0ed64d87247bd4d2",
+ "final_key_commit": "b4536ce8f85dfcea8fce293b4b09db968c91997f",
+ "pinned_on_top_of_commit": "4c09cafc334ddc8c9bd4821900dbeed3482118af",
+ "split": "val",
+ "world": "w2",
+ "case_count": 18,
+ "cases_val_file_sha256": "3c12480bcfd8c79292cb6261843cee5f52c2c089417a24dba9f5f73322ce55b2",
+ "cases": [
+  {
+   "case_id": "s-val-01-routing-01",
+   "case_sha256": "9a06e4fb99e4e8bd046cf75ddb30ea3bce98e024616ea91800c705e928ac677e"
+  },
+  {
+   "case_id": "s-val-01-routing-02",
+   "case_sha256": "38a5fe56e54e1b846e430d19aa01adc7cc2a33f86b923aaabccc8ecdecd5a2f5"
+  },
+  {
+   "case_id": "s-val-02-schedq-01",
+   "case_sha256": "7e934dfdee0c301f62523fec73a6833f29ccda0355beabe2a394106c96f9722c"
+  },
+  {
+   "case_id": "s-val-02-schedq-02",
+   "case_sha256": "506fd50ccb8e90785ffada2d0b657f7cf754c2aa6bd9787bb7e2f13361d60092"
+  },
+  {
+   "case_id": "s-val-03-billing-01",
+   "case_sha256": "772ef11ddf9d3d3e7cfa0ad9a3ce6f18114342d758e4b141bb43d7d06b35f0c0"
+  },
+  {
+   "case_id": "s-val-03-billing-02",
+   "case_sha256": "512c4e349827de9cdf0eb87570fd72425103b3bea03f42e3cea5738e0cce426a"
+  },
+  {
+   "case_id": "s-val-04-care-01",
+   "case_sha256": "23f0ca4212609d7a4b465c61b0c55b615fd7b1335205198d9eeba89ac7f99969"
+  },
+  {
+   "case_id": "s-val-04-care-02",
+   "case_sha256": "8c8e11d5790d6fda1d7e61b9f6de76f13db4a725a961a6029f320e58ae644aac"
+  },
+  {
+   "case_id": "s-val-05-chat-01",
+   "case_sha256": "cd002b9e327b1a6257b34a6777c1b5ceb3a01b2100455ffa3016f68fb51eb288"
+  },
+  {
+   "case_id": "s-val-05-chat-02",
+   "case_sha256": "568203fa96367a0b0cdfd6a04954b76f710b20db10e32b9fd03cc62db85fd992"
+  },
+  {
+   "case_id": "s-val-06-docs-01",
+   "case_sha256": "96d7b7f3f85a9c31f9b937415c11ec9735156e4b10da9f4335bfb5add548d010"
+  },
+  {
+   "case_id": "s-val-06-docs-02",
+   "case_sha256": "458935170ad21b1cd3a42301fea1bd94712973b6778745c0da10545925555d47"
+  },
+  {
+   "case_id": "s-val-07-compound-01",
+   "case_sha256": "eb15a5264aaea768f9464580954d840397929997ab5087bb7ab4cf1bd72ff7e0"
+  },
+  {
+   "case_id": "s-val-08-ambig-01",
+   "case_sha256": "4b06b0abebfb1ef9cc864205e63e3cc5b42eb4a74919936cc62e1ea21b3abdc0"
+  },
+  {
+   "case_id": "s-val-09-p1to1-01",
+   "case_sha256": "cc46bf38ea5b758a018832cc1cd88a1ca4a25ed742ca86ee9d4be3ad1f68b612"
+  },
+  {
+   "case_id": "s-val-10-isolation-01",
+   "case_sha256": "e54f1578be4201bf0987d7360cd5abf4ad54350a2842a9bf124d10b3640604a0"
+  },
+  {
+   "case_id": "s-val-11-inject-01",
+   "case_sha256": "793dfe42148795adfc6cc14e97e364073a7ad96f75d71a08fe85b09394121bce"
+  },
+  {
+   "case_id": "s-val-12-toolfail-01",
+   "case_sha256": "7580d94f99a8e1ba98991269710f2251827417cefbf7120be7a57abc92a7513a"
+  }
+ ],
+ "scorer_version": 2,
+ "criteria": {
+  "name": "criteria v2",
+  "criteria_v2_py_sha256": "ff1d2b1158d6c710b040312e3f2d11e82e800004155c953def4fc560b77ab03a",
+  "cases_dev_v2_file_sha256": "9eac659c9fa34d82f11c3d3bdbd541cfcf9cb5388505415ae59ad222d7d4902a",
+  "cases_dev_v2_revisions_v2_dev_file_sha256": "9eac659c9fa34d82f11c3d3bdbd541cfcf9cb5388505415ae59ad222d7d4902a",
+  "scoring_py_sha256": "6579715541fbda17ed045bb64c59b631a7fc1f3c8a5d81871b53c4c1346da298",
+  "matchers_py_sha256": "625608abec5740f2fb185e37b074c22c63a6c1deed165f8768f301fb778b5cd3",
+  "scorer_version": 2
+ },
+ "prompt_hash": "adb89f60e67dd926261c1aa27f72b671a0536cb91d19c9669a9fca86cc1c23c6",
+ "dev_manifest_prompt_hash_prefix": "d658d8e1",
+ "dev_manifest_prompt_hash": "d658d8e16968b5fd099ca3e9e340039ccd960118a0cd487ae02db26ff878b36d",
+ "prompt_changed_since_dev108": true,
+ "prompt_change_note": "운영 일정 에이전트 프롬프트·도구 설명이 dev 108 case-run 이후 release/1.3 에서 바뀌고(#496 앱에이전트 수정·삭제 개선, #505 앱에이전트 정책 개선, #506 앱 에이전트 날짜 계산 방식 개선, #516 앱 에이전트 등록 묶음 개선, #522 앱 에이전트 응답 스키마 크기 축소·등록 인식 보완), 메인 어시스턴트 PROMPT_NOTE 에 '다른 가족방이 섞인 요청의 범위와 주제를 지우지 않고 소통 Agent 로 넘긴다'는 지침이 더해지고(isolation-02 원인 분석, 평가 질문과 같은 예시 문장은 일반 규칙으로 바꿔 뺐다) 프롬프트 해시가 dev 값(DEV_MANIFEST_PROMPT_HASH)과 다르다. dev 108 공식 결과·v2 재채점은 옛 해시에 묶인 그대로이고, val 은 이 새 해시의 프롬프트로만 돈다(dev 점수와 직접 비교하지 않는다).",
+ "agent_prompt_hashes": {
+  "main": "adb89f60e67dd926261c1aa27f72b671a0536cb91d19c9669a9fca86cc1c23c6",
+  "family_chat": "ba3391bde81fb8b11041a017098e874d76d36ab2d7982f5d8d9cc853762af949",
+  "billing": "a0b737cebf4408c64acc26a930c6c98d2066a9acc62e392f5f27399b938afc0a",
+  "schedule": "5c1b0f4a3fe0c8ecbdd4500356bb778a2eb3ab8871a0783f75286fb483b52176"
+ },
+ "integrated_prompt_hash": "38067e487c5c0a24a938d618193bb4e5d016299ec8b8db04b4e16f9097f63a2d",
+ "scenarios": {
+  "scenarios_val_file_sha256": "525e15243185bae56e95f75b67314da247f46ac1eeacec2ec633b5bb93b7cefd",
+  "scenario_list_sha256": "621fbbd672dc43a8f86b3537648348c4338d377c599f03f631e8d5c1259d542a",
+  "per_split_val_sha256": "978b6425919c401db9fe24c0efc1223bea43892b00549095b79ca313733f468a",
+  "val_world_status": "built"
+ },
+ "world_digests": {
+  "w2": "4e015c20390c1f3969771ff8a5c371139529c973781e40aeaa5666d7dfecf196"
+ }
+}

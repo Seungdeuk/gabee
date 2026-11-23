@@ -38,14 +38,14 @@ def _judge(raw, obs):
     return judge(_convert(raw), obs)
 
 
-def test_all_52_legacy_cases_convert_to_valid_cases():
+def test_all_legacy_cases_convert_to_valid_cases():
     cases = load_legacy_cases()
-    assert len(cases) == len(RAW) == 52
-    assert len({c.case.id for c in cases}) == 52
+    assert len(cases) == len(RAW)
+    assert len({c.case.id for c in cases}) == len(RAW)
     assert {c.case.split for c in cases} == {"legacy"} and all(c.case.meta.synthetic for c in cases)
     assert {a: sum(c.case.agent_path == a for c in cases) for a in ("billing", "main")} == {
-        "billing": 39,
-        "main": 13,
+        "billing": sum(r["agent"] == "billing" for r in RAW),
+        "main": sum(r["agent"] == "main" for r in RAW),
     }
     assert {k for r in RAW for k in r} <= KNOWN_KEYS
 
@@ -219,7 +219,11 @@ def test_expected_tools_are_carried_into_the_case_for_the_general_score():
     assert cases["m-billing"].case.expect.tools.required == ["ask_billing"]
     for c in cases.values():
         mode = c.checks.tool_mode
-        want = {"exact": [c.checks.tool], "main_set": list(c.checks.main_tools or ())}.get(mode, [])
+        want = {
+            "exact": [c.checks.tool],
+            "all_of": list(c.checks.tool_all),
+            "main_set": list(c.checks.main_tools or ()),
+        }.get(mode, [])
         assert c.case.expect.tools.required == want, c.case.id
     got = judge(_convert(_raw()), _obs())
     assert not got.generic.tools_ok and got.generic.failure_types == ("missing_tool",)
@@ -254,7 +258,8 @@ def test_step_limit_is_a_cause_whenever_the_final_result_failed():
     legacy = _convert(_raw(expect_any=["꼭 있어야"]))
     obs = _obs("get_month_summary", answer="없음").model_copy(update={"step_limit_reached": True})
     got = judge(legacy, obs)
-    assert not got.result.passed and got.result.failure_types == ("step_limit",)
+    # v2: 기존 추가 검사로 답이 틀려진 것도 같은 이름(answer_mismatch)의 원인으로 적힌다(step_limit 은 그대로 함께)
+    assert not got.result.passed and got.result.failure_types == ("step_limit", "answer_mismatch")
     ok = _obs("get_month_summary", answer="꼭 있어야").model_copy(
         update={"step_limit_reached": True}
     )
@@ -284,3 +289,14 @@ def test_values_the_new_format_rejects_stop_the_conversion_with_an_adapter_error
     assert (
         main.checks.tool_mode == "unscored" and main.checks.tool is None
     )  # 메인은 tool 키가 없어도 된다
+
+
+def test_legacy_tool_modes_that_really_judge_tools_count_as_checked_in_v2():
+    """`any_of`·`none` 은 일반 사례로는 필수·금지가 비어 보이지만 도구 선택을 실제로 판정한다(공허한 판정이 아니다)."""
+    called = _obs("list_expenses")
+    none = _judge(_raw(tool=None), called).result
+    assert not none.tools_ok and none.tools_checked  # 도구가 없어야 하는 사례에서 불렀다
+    any_of = _judge(_raw(tool=None, tool_any=["get_month_summary", "list_expenses"]), called).result
+    assert any_of.tools_checked
+    optional = _judge(_raw(tool_optional=True), called).result
+    assert not optional.tools_checked  # 도구를 채점하지 않는 모드는 공허하다

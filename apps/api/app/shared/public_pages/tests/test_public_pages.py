@@ -54,9 +54,13 @@ def test_no_pending_placeholders_left(client):
 
 def test_key_values_are_shown(client):
     text = client.get("/privacy").text
-    assert "2026년 11월 3일" in text
+    assert "2026년 11월 23일" in text
     assert "개인정보 보호책임자: 백승득" in text
     assert "온디바이스" in text
+    # 설치 경로·사용 시간·Meta 광고 측정 고지가 빠지지 않는다
+    assert "설치 경로" in text and "앱 사용 시간" in text
+    assert "Meta Platforms" in text and "광고 ID" in text
+    assert "분석 SDK)도 사용하지 않아요" not in text
 
 
 def test_contact_email_only_when_configured(client, monkeypatch):

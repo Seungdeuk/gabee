@@ -195,16 +195,95 @@ def test_room_register_is_shared_with_the_other_members(client, family, schedule
     }
     _main_llm(monkeypatch, "내일 6시 가족 저녁 등록해줘")
     out = _chat(client, a, "내일 6시 가족 저녁 등록해줘", audience="room")
-    card = out["confirm_cards"][0]
-    assert card["action"] == "register" and card["shared_with"] == ["수진"]
-    assert _events(client, b) == []  # 확인 전에는 공유하지 않는다
-
-    r = client.post("/schedule/agent/confirm", json={"action": card["pending_action"]}, headers=a)
-    assert r.status_code == 200, r.text
+    assert (
+        out["confirm_cards"] == []
+    )  # 방에서도 공유 등록은 확인카드 없이 바로 하고, 방에는 "등록했어요" 답만 나간다
+    assert "등록했어요" in out["reply"] and "1명에게 공유했어요" in out["reply"]
     assert [e["title"] for e in _events(client, a)] == ["가족 저녁"]  # 요청한 사람이 생성자
     assert [e["title"] for e in _events(client, b)] == [
         "가족 저녁"
     ]  # 방의 다른 구성원은 공유받는 사람(복사본)
+
+
+def _register_llm(title="가족 저녁", **extra):
+    return {
+        "intent": "register",
+        "reply": "",
+        "event_ids": [],
+        "register": {
+            "title": title,
+            "date": _tomorrow(),
+            "start_time": "18:00",
+            "end_time": "",
+            "kind": 1,
+            "place": "",
+            "memo": "",
+            "share_ids": [],
+            "date_ambiguous": False,
+            **extra,
+        },
+    }
+
+
+def test_room_register_for_me_only_shows_only_a_private_notice(
+    client, family, schedule_llm, monkeypatch
+):
+    a, b, group = family
+    enable_ai(group["id"])
+    schedule_llm.data = _register_llm()
+    question = "내일 6시 가족 저녁 나만 보게 등록해줘"
+    _main_llm(monkeypatch, question)
+    out = _chat(client, a, question, audience="room")
+    assert out["reply"] == "개인 일정으로 등록했어요."  # 제목·날짜는 방에 올리지 않는다
+    assert [e["title"] for e in _events(client, a)] == ["가족 저녁"]
+    assert _events(client, b) == []  # 방의 다른 구성원에게 공유하지 않는다
+
+
+def test_room_register_for_me_only_wins_over_whole_family_words(
+    client, family, schedule_llm, monkeypatch
+):
+    a, b, group = family
+    enable_ai(group["id"])
+    me, other = _me(client, a), _me(client, b)
+    schedule_llm.data = _register_llm(share_ids=[other])  # 모델이 일부를 골라도 비운다
+    question = "내일 6시 가족 모두 공유 말고 나만 볼래 가족 저녁 등록해줘"
+    _main_llm(monkeypatch, question)
+    out = _chat(client, a, question, audience="room")
+    assert out["reply"] == "개인 일정으로 등록했어요." and me != other
+    assert _events(client, b) == []
+
+
+def test_personal_chat_for_me_only_keeps_the_usual_notice_without_sharing(
+    client, family, schedule_llm, monkeypatch
+):
+    a, b, group = family
+    enable_ai(group["id"])
+    schedule_llm.data = _register_llm()
+    question = "가족 모두 공유 말고 내일 6시 가족 저녁 나만 보게 등록해줘"
+    _main_llm(monkeypatch, question)
+    out = _chat(client, a, question)
+    assert "가족 저녁" in out["reply"] and "공유했어요" not in out["reply"]
+    assert _events(client, b) == []
+
+
+def test_room_register_does_not_tell_about_overlaps(client, family, schedule_llm, monkeypatch):
+    a, _, group = family
+    enable_ai(group["id"])
+    _new(client, a, "비공개 치과", start_time="18:00:00", end_time="19:00:00")
+    schedule_llm.data = _register_llm()
+    _main_llm(monkeypatch, "내일 6시 가족 저녁 등록해줘")
+    out = _chat(client, a, "내일 6시 가족 저녁 등록해줘", audience="room")
+    assert "겹쳐요" not in out["reply"] and "비공개 치과" not in out["reply"]
+
+
+def test_personal_chat_tells_about_overlaps(client, family, schedule_llm, monkeypatch):
+    a, _, group = family
+    enable_ai(group["id"])
+    _new(client, a, "치과", start_time="18:00:00", end_time="19:00:00")
+    schedule_llm.data = _register_llm()
+    _main_llm(monkeypatch, "내일 6시 가족 저녁 등록해줘")
+    out = _chat(client, a, "내일 6시 가족 저녁 등록해줘")
+    assert "18:00 치과 일정과 시간이 겹쳐요." in out["reply"]
 
 
 def test_room_prompt_hides_request_recipients_and_status_but_personal_chat_keeps_them(

@@ -5,12 +5,18 @@ from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
+from app.features.acquisition.router import router as acquisition_router
+from app.features.admin_alerts.router import admin_router as admin_alerts_router
+from app.features.admin_alerts.router import internal_router as admin_alerts_internal_router
 from app.features.admin_knowledge.router import router as admin_knowledge_router
+from app.features.ai_assistant.knowledge import index_health as knowledge_index
 from app.features.ai_assistant.router import router as ai_assistant_router
 from app.features.billing.router import router as billing_router
 from app.features.family_chat.router import router as family_chat_router
 from app.features.family_group.photo_limit import PhotoBodyLimitMiddleware
 from app.features.family_group.router import router as family_group_router
+from app.features.family_memory import worker as family_memory_worker
+from app.features.family_memory.router import router as family_memory_router
 from app.features.notices.router import router as notices_router
 from app.features.notifications.router import router as notifications_router
 from app.features.ops_admin.error_service import observe as ops_error_observer
@@ -38,7 +44,10 @@ async def lifespan(_: FastAPI):
     init_db()
     push_schedule.start()  # 예약 푸시(시간 있으면 30분 전, 시간 없으면 전날 밤 9시): PUSH_ENABLED 가 켜져 있을 때만 1분마다 확인한다
     privacy_ner.start_preload()  # NER 모델을 백그라운드로 미리 불러온다(off 면 아무 일도 안 함, 실패해도 기동은 계속)
+    knowledge_index.start_startup_check()  # 임베딩 모델 이름이 DB 조각과 어긋나 검색에서 문서가 빠지는지 백그라운드로 점검해 로그로 알린다(기다리지 않고, 실패해도 기동은 계속)
+    family_memory_worker.start()  # AI 추억 분석 작업 워커(FAMILY_MEMORY_ENABLED·FAMILY_MEMORY_WORKER_ENABLED 가 둘 다 켜져 있을 때만, 기본 꺼짐)
     yield
+    family_memory_worker.stop()
     ops_metrics.flush(
         final=True
     )  # 종료 전에 남은 요청 지표를 저장한다(꺼져 있으면 비어 있고, 실패해도 종료는 계속)
@@ -88,6 +97,8 @@ for feature, router in (
     ("play", play_router),
     ("ops_admin", ops_admin_router),
     ("weekly_news", weekly_news_router),
+    ("family_memory", family_memory_router),
+    ("acquisition", acquisition_router),
 ):
     deps = []
     deps.append(Depends(schema_ready(feature)))
@@ -97,6 +108,11 @@ for feature, router in (
 # 서비스 관리자 API 는 자기 모델이 없고 다른 기능의 표를 개수만 읽는다(권한은 통합관리자 require_operator("admin"))
 app.include_router(admin_router, dependencies=[Depends(schema_ready("family_group"))])
 app.include_router(admin_knowledge_router)  # 통합관리자 챗봇(Claude API 만 쓴다, DB 표 없음)
+# 관리자 알림: 목록·확인(통합관리자), 점검(비밀 토큰). 기록표가 없는 DB 에서는 503 schema_not_ready
+app.include_router(admin_alerts_router, dependencies=[Depends(schema_ready("admin_alerts"))])
+app.include_router(
+    admin_alerts_internal_router, dependencies=[Depends(schema_ready("admin_alerts"))]
+)
 # 서비스 관리자 화면(정적 파일). 데이터는 화면이 로그인한 뒤 /admin/service/* API 로 받는다
 _ADMIN_STATIC = Path(__file__).parent / "features" / "service_admin" / "static"
 app.mount(
