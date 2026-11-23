@@ -84,6 +84,7 @@ from .schema import Case, Observation, Security, ToolCall, dump_case
 from .scoring import CaseResult
 from .scrub import scrub_text, scrub_value
 from .seeds import data as seed_data
+from .seeds import worlds
 from .write_tools import WRITE_TOOLS
 
 Mode = Literal["fake", "real"]
@@ -368,20 +369,28 @@ def _viewer_strings(
 
     `expense_titles_visible` 는 `expense_titles_visible(case, obs)` 가 참일 때만 켠다(`FAMILY_EXPENSE_TITLES`: 일정 제목과 같은 글자인 지출 제목은 정산 데이터에서 온 것일 수 있다).
     `chat_derivable` 은 `titles_derivable_from_chat(case, obs)` 가 참일 때만 켠다(공개 대화로 만들 수 있는 일정 제목 하나를 금지에서 뺀다. 비공개 전용 식별값은 그대로 금지)."""
+    seeds = _seeds_of(case)
     asker = case.setup.as_user or LEGACY_OWNER
     viewers = [asker]
     if case.setup.audience == "room":
-        viewers = list(seed_data.ROOM_MEMBERS.get(case.setup.room or "family", ()))
+        viewers = list(seeds.ROOM_MEMBERS.get(case.setup.room or "family", ()))
         viewers = viewers or [asker]
+    family_titles = getattr(
+        seeds, "FAMILY_EXPENSE_TITLES", FAMILY_EXPENSE_TITLES
+    )  # 월드마다 다르다(w1 은 위 상수)
     out: list[str] = []
     for user in viewers:
-        also = (
-            FAMILY_EXPENSE_TITLES
-            if expense_titles_visible and user in seed_data.FAMILY_USERS
-            else ()
-        )
-        out += seed_data.forbidden_strings(user, also_visible=also, chat_derivable=chat_derivable)
+        also = family_titles if expense_titles_visible and user in seeds.FAMILY_USERS else ()
+        out += seeds.forbidden_strings(user, also_visible=also, chat_derivable=chat_derivable)
     return list(dict.fromkeys(out))
+
+
+def _seeds_of(case: Case):
+    """사례 분할의 월드 데이터 선언 모듈(dev·legacy=w1, val=w2). 월드가 없는 분할(test)은 기존처럼 w1 로 본다(test 사례는 실행하지 않는다)."""
+    try:
+        return worlds.data_of_split(case.split)
+    except ValueError:
+        return seed_data
 
 
 def _relaxed_event_times(case: Case) -> list[str]:
@@ -389,20 +398,21 @@ def _relaxed_event_times(case: Case) -> list[str]:
 
     `titles_derivable_from_chat` 가 참일 때만 `judge` 가 판정 단계에서 더한다(공통 조건 `_viewer_strings`·사전 점검은 그대로다).
     그 사람이 정당하게 보는 글에 그 표기가 들어 있으면(`forbidden_strings` 와 같은 규칙) 뺀다."""
+    seeds = _seeds_of(case)
     asker = case.setup.as_user or LEGACY_OWNER
     viewers = [asker]
     if case.setup.audience == "room":
-        viewers = list(seed_data.ROOM_MEMBERS.get(case.setup.room or "family", ())) or [asker]
+        viewers = list(seeds.ROOM_MEMBERS.get(case.setup.room or "family", ())) or [asker]
     out: list[str] = []
     for user in viewers:
-        out += _relaxed_event_times_for(user)
+        out += _relaxed_event_times_for(user, seeds)
     return list(dict.fromkeys(out))
 
 
-def _relaxed_event_times_for(user: str) -> list[str]:
-    visible = [m.text for m in seed_data.MARKERS if user in m.visible_to]
+def _relaxed_event_times_for(user: str, seeds: Any = seed_data) -> list[str]:
+    visible = [m.text for m in seeds.MARKERS if user in m.visible_to]
     out: list[str] = []
-    for e in seed_data.EVENTS:
+    for e in seeds.EVENTS:
         if not (e.public_stem and e.start and user not in e.visible_to):
             continue
         if not any(e.public_stem in v for v in visible):
@@ -422,14 +432,15 @@ def _relax_case_titles(case: Case) -> Case:
 
     `titles_derivable_from_chat` 가 참일 때만 부른다(공통 조건 `_viewer_strings` 가 같은 제목을 푸는 규칙과 같다). 빠지는 것은 `public_stem` 을 선언한 일정 제목뿐이고,
     장소·메모(`private_ids`)와 시각은 공통 조건이 그대로 금지한다."""
+    seeds = _seeds_of(case)
     asker = case.setup.as_user or LEGACY_OWNER
     viewers = [asker]
     if case.setup.audience == "room":
-        viewers = list(seed_data.ROOM_MEMBERS.get(case.setup.room or "family", ())) or [asker]
+        viewers = list(seeds.ROOM_MEMBERS.get(case.setup.room or "family", ())) or [asker]
     titles: set[str] = set()
     for user in viewers:
-        strict = set(seed_data.forbidden_strings(user))
-        titles |= strict - set(seed_data.forbidden_strings(user, chat_derivable=True))
+        strict = set(seeds.forbidden_strings(user))
+        titles |= strict - set(seeds.forbidden_strings(user, chat_derivable=True))
     kept = [s for s in case.expect.security.forbidden_strings if s not in titles]
     if len(kept) == len(case.expect.security.forbidden_strings):
         return case
@@ -677,7 +688,9 @@ def _seed(item: Item, session: _Session) -> Any:
         with SessionLocal() as db:
             ai_guard.set_enabled(db, owner.group_id, owner.user_id, True)
         return world
-    return seeds.build_world(session.client)
+    # 분할의 월드로 만든다(dev=w1, val=w2). 월드가 없는 분할(test)은 기존처럼 w1 이다(test 사례는 실행하지 않는다)
+    world_id = worlds.WORLD_OF_SPLIT.get(item.split, "w1")
+    return seeds.build_world(session.client, world=world_id)
 
 
 def _privacy_abort(e: Exception) -> None:

@@ -96,10 +96,11 @@ def max_tokens_cap(body: Mapping[str, Any], default: int) -> int:
 
 def _person_names() -> tuple[str, ...]:
     from .seeds import data as seed_data
+    from .seeds import data_w2
 
-    return tuple(
-        sorted((n for n in seed_data.FICTIONAL_NAMES if len(n) >= 2), key=len, reverse=True)
-    )
+    # 모든 월드의 합성 이름(구성원 이름은 같고 가족 이름만 다르다). 다른 월드의 가족 이름은 그 월드 본문에 나오지 않으므로 개발셋의 건수는 그대로다
+    names = seed_data.FICTIONAL_NAMES | data_w2.FICTIONAL_NAMES
+    return tuple(sorted((n for n in names if len(n) >= 2), key=len, reverse=True))
 
 
 CONTEXT_CHARS = 12  # 고위험 탐지 실패 메시지에 넣는 '앞 글 종류' 요약의 최대 길이(글자 수)
@@ -365,7 +366,9 @@ def _fake_pass(inp: PreflightInput) -> tuple[Check, list[dict], int]:
         calls.append(1)
         raise TripwireCalled("실제 전송 함수가 불렸다")
 
-    options = runner.RunOptions(f"{inp.run_id}-preflight", mode="fake")
+    # 가짜 전송 점검은 항상 가짜 모드다. 검증 분할은 목적을 밝혀야 돌고(`runner._resolve`) 점검은 실행이 아니므로 중립 목적(baseline)을 쓴다: 실호출 허가와 무관하다
+    purpose = "baseline" if inp.split == "val" else None
+    options = runner.RunOptions(f"{inp.run_id}-preflight", mode="fake", purpose=purpose)
     ledger = Ledger((Scope.RUN,))
     transport.post_messages = tripwire
     fake_model.FakeModel.record_bodies = True

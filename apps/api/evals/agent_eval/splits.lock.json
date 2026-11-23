@@ -14,6 +14,12 @@
     "from": "aa23c8e65a67c853bb0e641a39a54931c0431a65e6cfe2a3cbb041d0041ac855",
     "reason": "E5b 시드 확장으로 needs 해제, id·분할·기대 동작 불변",
     "to": "2dd7e3311f61482524bb513cc13e9747263cbf7f74b18bafd6d085ab14afeadd"
+   },
+   {
+    "at": "2026-11-19",
+    "from": "2dd7e3311f61482524bb513cc13e9747263cbf7f74b18bafd6d085ab14afeadd",
+    "reason": "w2(검증용 변형 월드) 를 만들었다: scenarios_meta.json 의 worlds.w2 status planned -> built 와 note 수정. 시나리오 항목·분할·id·기대 동작은 바뀌지 않았다(항목별·분할별 해시 불변, 전체 해시만 월드 선언이 들어 있어 바뀐다)",
+    "to": "621fbbd672dc43a8f86b3537648348c4338d377c599f03f631e8d5c1259d542a"
    }
   ],
   "items": {
@@ -95,7 +101,7 @@
    "test": "9312e7a364c78b4becaa51da704b217e23d9942f566f04943b45f986450f4ea4",
    "val": "978b6425919c401db9fe24c0efc1223bea43892b00549095b79ca313733f468a"
   },
-  "sha256": "2dd7e3311f61482524bb513cc13e9747263cbf7f74b18bafd6d085ab14afeadd",
+  "sha256": "621fbbd672dc43a8f86b3537648348c4338d377c599f03f631e8d5c1259d542a",
   "version": 1
  }
 }
