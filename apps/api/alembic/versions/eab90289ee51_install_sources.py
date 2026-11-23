@@ -5,7 +5,7 @@
 downgrade 는 이 표만 지운다(유입 경로 기록이 사라진다).
 
 Revision ID: eab90289ee51
-Revises: 9c4e7a2b1d63
+Revises: a3c7e1f5b829
 Create Date: 2026-11-18 10:00:00.000000
 
 """
@@ -18,7 +18,7 @@ from alembic import op
 
 # revision identifiers, used by Alembic.
 revision: str = "eab90289ee51"
-down_revision: str | Sequence[str] | None = "9c4e7a2b1d63"
+down_revision: str | Sequence[str] | None = "a3c7e1f5b829"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

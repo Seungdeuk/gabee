@@ -4,6 +4,9 @@
 추천은 `suggest.supply` 로 연결한다. 수정·삭제는 확인 카드를 거친 뒤 `confirm` 에서 실행한다. 일정 요청이 아니면 `not_schedule` 로 돌려줘 메인이 직접 답하게 한다.
 """
 
+import re
+from contextvars import ContextVar
+from dataclasses import replace
 from datetime import UTC, datetime
 
 from sqlalchemy.orm import Session
@@ -12,6 +15,7 @@ from app.shared.auth import ensure_group_member
 
 from ..constants import SUGGESTION_DISMISSED
 from . import chat, checks, habits, modify, reader, register, request_flow, room_notice, suggest
+from . import choice as choice_mod
 from . import members as members_mod
 from . import period as period_mod
 from .schemas import AgentRequest, AgentResponse, Card, ConfirmRequest, SuggestionOut
@@ -98,6 +102,83 @@ def _wider_scope(period: period_mod.Period | None, keyword: str) -> str | None:
     return "모델이 다시 요청한 " + ", ".join(parts) if parts else None
 
 
+_also_delete: ContextVar[AgentResponse | None] = ContextVar("also_delete", default=None)
+
+
+def _by_title(events, probe: str) -> list:
+    """제목이 말(probe)에 들어 있거나 말이 제목에 들어 있는 일정. 지금 이후 일정을 먼저, 날짜순."""
+    probe = probe.strip()
+    if len(probe) < 2:
+        return []
+    found = [
+        e
+        for e in events
+        if e.title.strip() and (e.title.strip() in probe or probe in e.title.strip())
+    ]
+    today = register.today()
+    found.sort(
+        key=lambda e: (reader.to_local(e.starts_at).date() < today, reader.to_local(e.starts_at))
+    )
+    return found
+
+
+def _merge_also_delete(response: AgentResponse, extra: AgentResponse) -> AgentResponse:
+    """한 문장에 섞인 삭제는 주된 요청과 따로 처리한다: 주된 요청은 정책대로 하고, 삭제는 확인 카드로 묻는다(정책 #34)."""
+    if response.pending_action is not None or response.intent in ("delete", "not_schedule"):
+        return response
+    if not (extra.pending_action or extra.choice):
+        return response
+    return response.model_copy(
+        update={
+            "text": f"{response.text}\n{extra.text}".strip(),
+            "cards": [*response.cards, *extra.cards],
+            "pending_action": extra.pending_action,
+            "choice": extra.choice or response.choice,
+        }
+    )
+
+
+# 삭제 요청형 문장('헬스 다 지워줘'): 모델이 query 로 잘못 분류했을 때 코드가 바로잡는 방어선
+DELETE_ASK = re.compile(
+    r"(지워|지우|삭제|없애)\s*(줘|주세요|줄래)|(삭제|없애)\s*해\s*(줘|주세요|줄래)"
+)
+NOT_A_REQUEST = re.compile(r"\?|알려|궁금|있어")
+
+
+def looks_like_delete(text: str) -> bool:
+    """삭제를 부탁하는 말인가(물음표·'알려'가 있으면 묻는 말이다)."""
+    return bool(DELETE_ASK.search(text)) and not NOT_A_REQUEST.search(text)
+
+
+def _has_content(fields: dict) -> bool:
+    """추가 등록 건이 비어 있지 않은가(모델이 빈 객체를 채워 보내는 일을 걸러낸다)."""
+    return bool(
+        fields.get("title") or fields.get("date") or register.has_rel(fields.get("date_rel"))
+    )
+
+
+def _merge_registers(main: AgentResponse, extras: list[tuple[str, AgentResponse]]) -> AgentResponse:
+    """한 문장의 등록 여러 건: 카드는 모두 모으고 글은 이어 붙인다. 되묻는 초안은 하나뿐이라 첫 번째 빠진 건만 되묻고,
+    그 뒤의 빠진 건은 등록하지 못했다고 안내한다."""
+    response = main
+    for title, extra in extras:
+        if extra.draft is not None:
+            if response.draft is not None:  # 되묻기는 한 번에 하나
+                name = f"'{title}' " if title else ""
+                note = f"{name}일정은 날짜를 알 수 없어 등록하지 못했어요."
+                response = response.model_copy(update={"text": f"{response.text}\n{note}".strip()})
+                continue
+            response = response.model_copy(update={"draft": extra.draft})
+        response = response.model_copy(
+            update={
+                "text": f"{response.text}\n{extra.text}".strip(),
+                "cards": [*response.cards, *extra.cards],
+                "choice": response.choice or extra.choice,
+            }
+        )
+    return response
+
+
 def handle(
     db: Session,
     user_id: str,
@@ -105,8 +186,50 @@ def handle(
     request: AgentRequest,
     share_all: bool = False,
     guarded: bool = True,
+    private: bool = False,
 ) -> AgentResponse:
+    """직전에 수정·삭제 대상을 되물었다면(서버 기억이나 앱이 돌려준 값) 사용자의 답을 먼저 읽고, 답으로 읽을 수 없으면 새 요청으로 처리한다."""
     ensure_group_member(db, user_id, group_id)  # 라우터 밖에서 service 를 부르므로 직접 확인한다
+    asked = choice_mod.take(group_id, user_id) or request.choice
+    if asked is not None:
+        if asked.kind == "register":  # 이미 있는 일정을 또 등록할지 되물은 답
+            answer = register.resolve_again(
+                db, user_id, group_id, asked, request.text, members_mod.load(db, group_id)
+            )
+        elif asked.kind.startswith("request_"):  # 부탁(같은 제목 여럿) 되묻기의 답
+            answer = request_flow.resolve_choice(
+                db,
+                user_id,
+                group_id,
+                asked,
+                request.text,
+                register.today(),
+                members_mod.load(db, group_id),
+            )
+        else:
+            answer = modify.resolve_choice(
+                db, user_id, group_id, asked, request.text, register.today()
+            )
+        if answer is not None:
+            return answer
+    _also_delete.set(None)
+    response = _handle(db, user_id, group_id, request, share_all, guarded, private)
+    extra = _also_delete.get()
+    if extra is not None:
+        response = _merge_also_delete(response, extra)
+    choice_mod.keep(group_id, user_id, response)
+    return response
+
+
+def _handle(
+    db: Session,
+    user_id: str,
+    group_id: str,
+    request: AgentRequest,
+    share_all: bool = False,
+    guarded: bool = True,
+    private: bool = False,
+) -> AgentResponse:
     now = datetime.now(UTC)
     local_now = now.astimezone(reader.local_tz())
     data = reader.read(db, group_id, request.channel, now, user_id)  # 내 일정만, 과거·미래 1년
@@ -160,17 +283,64 @@ def handle(
         )
     if result.intent == "not_schedule":
         return AgentResponse(intent=result.intent)
+    forced_delete = result.intent == "query" and looks_like_delete(request.text)
+    if (
+        forced_delete
+    ):  # '헬스 다 지워줘'를 모델이 조회로 분류해도 삭제로 처리한다(삭제는 항상 확인 카드를 거친다)
+        result = replace(result, intent="delete", target_id="", all_targets=False, event_ids=[])
+    if result.also_delete_title and result.intent != "delete":
+        # 목록(기간으로 거른 것)에 없어도 전체 일정에서 제목으로 찾는다
+        matches = _by_title(data.events, result.also_delete_title)
+        if matches:
+            _also_delete.set(
+                modify.respond_delete(
+                    user_id,
+                    matches[0].id,
+                    {e.id: e for e in matches},
+                    register.today(),
+                    request.text,
+                )
+            )
+    found_by_title: dict = {}
+    known_ids = {e.id for e in data.events}
+    if result.intent in ("edit", "delete") and not (
+        (result.target_id in known_ids) or result.target_unnamed or result.all_targets
+    ):
+        # 모델이 대상을 못 골랐거나 목록에 없는 id 를 골랐어도 말에 일정 제목이 들어 있으면 전체 일정에서 찾는다(목록이 기간으로 걸러져 빠진 경우)
+        matches = _by_title(data.events, request.text)
+        if matches:
+            found_by_title = {e.id: e for e in matches}
+            result = replace(result, target_id=matches[0].id)
+            if forced_delete and choice_mod.ALL_WORDS.search(request.text):
+                ids = [e.id for e in matches][: modify.MANY_LIMIT]
+                result = replace(result, all_targets=True, event_ids=ids)
     if result.intent == "register":
-        return register.respond(
-            db,
-            user_id,
-            group_id,
-            request.draft,
-            result.register,
-            result.reply,
-            members,
-            share_all,
-        )
+        room = request.channel == "family"
+
+        def run(fields: dict, draft, reply: str) -> AgentResponse:
+            return register.respond(
+                db,
+                user_id,
+                group_id,
+                draft,
+                fields,
+                reply,
+                members,
+                share_all,
+                request.text,
+                private,
+                room,
+            )
+
+        response = run(result.register, request.draft, result.reply)
+        extras = [
+            (f.get("title", ""), run(f, None, "")) for f in result.more_registers if _has_content(f)
+        ]
+        if extras:
+            response = _merge_registers(response, extras)
+        if room and private and response.cards and response.draft is None:
+            response = response.model_copy(update={"text": register.PRIVATE_ROOM_TEXT})
+        return response
     if result.intent == "request":
         return request_flow.respond(
             db,
@@ -181,6 +351,8 @@ def handle(
             result.reply,
             members,
             request_view,
+            register.today(),
+            request.text,
         )
     if result.intent == "habit":
         return habits.respond(
@@ -191,7 +363,7 @@ def handle(
             result.habit["amount"],
             request.channel,
         )
-    by_id = {e.id: e for e in shown}
+    by_id = {**{e.id: e for e in shown}, **found_by_title}
     if result.intent == "edit":
         return modify.respond_edit(
             user_id,
@@ -201,9 +373,27 @@ def handle(
             register.today(),
             members,
             request.channel,
+            db,
+            group_id,
+            request.text,
+            set(result.event_ids),
+            result.reply,
+            result.target_unnamed,
         )
     if result.intent == "delete":
-        return modify.respond_delete(user_id, result.target_id, by_id)
+        return modify.respond_delete(
+            user_id,
+            result.target_id,
+            by_id,
+            register.today(),
+            request.text,
+            set(result.event_ids),
+            # '다·전부·모두'라는 말이 있을 때만 여러 건 삭제로 본다. 아니면 같은 이름이 여럿일 때 어느 쪽인지 되묻는다
+            result.event_ids
+            if result.all_targets and choice_mod.ALL_WORDS.search(request.text)
+            else (),
+            result.target_unnamed,
+        )
     if result.intent == "check":
         return checks.respond(
             db,
@@ -284,6 +474,12 @@ def _confirm(db: Session, user_id: str, group_id: str, body: ConfirmRequest) -> 
         return modify.confirm_delete(db, user_id, group_id, action)
     if action.type == "habit_check":
         return habits.confirm(db, user_id, action)
+    if action.type == "choice":  # 선택 카드: 체크한 것을 확인 카드 없이 바로 처리한다(정책 #39)
+        if action.choice_kind in ("request_edit", "request_cancel"):
+            return request_flow.apply_choice(
+                db, user_id, group_id, action, register.today(), members_mod.load(db, group_id)
+            )
+        return modify.apply_choice(db, user_id, group_id, action, register.today())
     members = members_mod.load(db, group_id)
     if action.type.startswith("request_"):
         return request_flow.confirm(db, user_id, group_id, action, members)

@@ -612,3 +612,9 @@ test("가비 추천: 서버 주소 /play/quiz/recommendations 를 부른다", as
   assert.deepEqual(await getQuizRecs(), { state: "ok", items: [REC_ITEM] });
   assert.deepEqual(calls, [["GET", "/play/quiz/recommendations"]]);
 });
+
+test("문제 내기 점수 안내: 남았으면 횟수, 다 썼으면 두 줄(점수는 없어도 문제는 보낼 수 있다)", async () => {
+  const { makeQuotaText } = await import("../src/features/playground/games.js");
+  assert.equal(makeQuotaText(2), "오늘 문제 출제로 받는 +20은 2회 남았어요");
+  assert.equal(makeQuotaText(0), "오늘은 문제 출제로 +20 받는 3회를 다 썼어요\n문제는 보낼 수 있지만 점수는 없어요");
+});

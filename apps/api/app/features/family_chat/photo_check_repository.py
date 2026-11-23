@@ -19,6 +19,10 @@ from .models import (
 REASON_UPLOADER_CONFIRMED = "uploader_confirmed_general"
 REASON_FAMILY_DOCUMENT = "family_saved_as_document"
 REASON_UPLOADER_REMOVED = "uploader_removed"
+REASON_RECHECK = "recheck_requested"  # 업로더가 판별 실패·처리 지연 사진의 재검사를 요청했다(횟수는 이 이력 줄 수로 센다: 새 열 없음)
+# 재검사: 사진 한 장당 최대 횟수와, 같은 사진을 다시 맡기기 전 기다리는 시간(겹친 요청·연타가 판별을 중복으로 돌리지 않게)
+RECHECK_MAX = 3
+RECHECK_COOLDOWN = timedelta(minutes=2)
 # 업로드 뒤 이 시간이 지난 pending 은 "처리 지연"으로 업로더에게 보인다(초기값, b0-3 재시도 구현 뒤 재조정). 자동 판별 실패·일반 사진 확정 기준이 아니다.
 STALE_PENDING = timedelta(minutes=15)
 
@@ -291,6 +295,107 @@ def exclude_photo(
             return "excluded"
         db.rollback()  # 읽은 뒤 바뀌었다(문서로 저장 등): 다시 읽어 알맞은 답을 낸다
     raise RuntimeError("photo check changed concurrently")
+
+
+def _utc(value: datetime) -> datetime:
+    return value.replace(tzinfo=UTC) if value.tzinfo is None else value.astimezone(UTC)
+
+
+def recheck_counts(db: Session, attachment_ids: list[str]) -> dict[str, int]:
+    """사진별 재검사 요청 횟수(이력 줄 수). 줄이 없는 사진은 0."""
+    if not attachment_ids:
+        return {}
+    rows = db.execute(
+        select(ChatPhotoCheckEvent.attachment_id, func.count())
+        .where(
+            ChatPhotoCheckEvent.attachment_id.in_(attachment_ids),
+            ChatPhotoCheckEvent.reason == REASON_RECHECK,
+        )
+        .group_by(ChatPhotoCheckEvent.attachment_id)
+    ).all()
+    return {r[0]: int(r[1]) for r in rows}
+
+
+def review_details(
+    db: Session, group_id: str, attachment_ids: list[str]
+) -> dict[str, tuple[str | None, int]]:
+    """확인 필요 목록 한 쪽의 실패 종류 이름(`last_error`)과 재검사 횟수: {attachment_id: (last_error, 횟수)}."""
+    if not attachment_ids:
+        return {}
+    errors = dict(
+        db.execute(
+            select(ChatPhotoCheck.attachment_id, ChatPhotoCheck.last_error).where(
+                ChatPhotoCheck.group_id == group_id,
+                ChatPhotoCheck.attachment_id.in_(attachment_ids),
+            )
+        ).all()
+    )
+    counts = recheck_counts(db, attachment_ids)
+    return {a: (errors.get(a), counts.get(a, 0)) for a in attachment_ids}
+
+
+def claim_recheck(
+    db: Session, group_id: str, attachment_id: str, actor_user_id: str, now: datetime | None = None
+) -> str:
+    """판별 실패(`failed`) 또는 처리 지연(15분 넘은 `pending`)인 **자동** 줄을 다시 `pending` 으로 맡는다(판별을 실제로 다시 돌리는 것은 부르는 쪽).
+    결과 문자열: `claimed`(맡았다: 이력 한 줄 + 판별을 다시 돌려야 함) | `in_progress`(이미 맡겨졌거나 아직 처리 중이다: 아무것도 바꾸지 않는다, 같은 요청을
+    다시 보내도 같다) | `not_needed`(실패·지연이 아니다: unsure·photo·document·excluded 이거나 사람이 정한 줄) | `limit`(재검사 횟수를 다 썼다) | `missing`(줄이 없다).
+    상태를 바꾸는 것은 `WHERE status=<읽은 값> AND checked_at=<읽은 값>` 조건부 UPDATE 하나라 겹친 요청은 한쪽만 맡는다. 결과가 `photo` 가 되는 길은 없다(D-13)."""
+    now = now or datetime.now(UTC)
+    for _ in range(3):
+        row = db.execute(
+            select(
+                ChatPhotoCheck.status,
+                ChatPhotoCheck.source,
+                ChatPhotoCheck.created_at,
+                ChatPhotoCheck.checked_at,
+            )
+            .where(
+                ChatPhotoCheck.attachment_id == attachment_id, ChatPhotoCheck.group_id == group_id
+            )
+            .with_for_update()
+        ).first()
+        if row is None:
+            db.commit()
+            return "missing"
+        if row.source != AUTO or row.status not in (PENDING, FAILED):
+            db.commit()
+            return "not_needed"
+        cooled = row.checked_at is None or _utc(row.checked_at) <= now - RECHECK_COOLDOWN
+        if row.status == PENDING:
+            stale = _utc(row.created_at) <= now - STALE_PENDING
+            if not (stale and cooled):
+                db.commit()
+                return "in_progress"  # 올린 지 얼마 안 됐거나 방금 맡겼다
+        # failed 는 바로 다시 맡길 수 있다(맡으면 pending 이 되어, 겹친 요청은 위 분기에서 in_progress 로 끝난다)
+        if recheck_counts(db, [attachment_id]).get(attachment_id, 0) >= RECHECK_MAX:
+            db.commit()
+            return "limit"
+        same_checked = (
+            ChatPhotoCheck.checked_at.is_(None)
+            if row.checked_at is None
+            else ChatPhotoCheck.checked_at == row.checked_at
+        )
+        result = db.execute(
+            update(ChatPhotoCheck)
+            .where(
+                ChatPhotoCheck.attachment_id == attachment_id,
+                ChatPhotoCheck.group_id == group_id,
+                ChatPhotoCheck.status == row.status,
+                ChatPhotoCheck.source == AUTO,
+                same_checked,
+            )
+            .values(status=PENDING, last_error=None, checked_at=now)
+            .execution_options(synchronize_session=False)
+        )
+        if result.rowcount == 1:
+            _add_event(
+                db, group_id, attachment_id, actor_user_id, row.status, PENDING, REASON_RECHECK, now
+            )
+            db.commit()
+            return "claimed"
+        db.rollback()  # 읽은 뒤 바뀌었다(자동 결과·다른 재검사): 다시 읽어 알맞은 답을 낸다
+    return "in_progress"
 
 
 def uploader_context(

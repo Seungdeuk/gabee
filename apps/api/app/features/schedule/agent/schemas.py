@@ -65,10 +65,28 @@ class Draft(BaseModel):
     mode: Literal["event", "request"] = "event"
 
 
+class Choice(BaseModel):
+    """수정·삭제 대상이 하나로 정해지지 않아 후보를 보여 주고 되물은 상태. 서버가 사용자별로 10분 기억하고(`choice.take`),
+    앱이 돌려보내도 받는다. 답은 후보 안에서만 읽고, 받을 때마다 일정과 소유자를 다시 확인한다."""
+
+    kind: Literal["edit", "delete", "request_edit", "request_cancel", "register"]
+    event_ids: list[str] = Field(default_factory=list, max_length=20)  # 보여 준 후보
+    changes: dict = Field(default_factory=dict)  # 수정일 때 바뀔 값(후보마다 다시 계산한다)
+    past: bool = False  # 지난 일정 하나가 맞는지 묻는 중(삭제)
+    members: bool = False  # 공유할 사람(같은 호칭의 가족이 여럿)을 묻는 중(수정)
+    # kind 가 register 이면 changes 에 등록하려던 초안이 들어 있다(이미 있는 일정을 또 등록할지 묻는 중)
+    # 앱이 체크박스 선택 카드로 보여 줄 후보: [{"id": 일정·부탁·구성원 id, "line": 한 줄 표기}]. 개인 채팅에서만 카드로 보인다
+    options: list[dict] = Field(default_factory=list, max_length=20)
+    more: int = Field(
+        default=0, ge=0
+    )  # 후보가 많아 가까운 일정 순으로 10개만 보여 줬을 때 보이지 않은 나머지 수
+
+
 class AgentRequest(BaseModel):
     text: str = Field(min_length=1, max_length=2000)
     channel: Channel
     draft: Draft | None = None  # 직전 응답이 되물으며 준 초안(없으면 새 요청)
+    choice: Choice | None = None  # 직전 응답이 후보를 보여 주며 되물은 상태(없으면 새 요청)
 
 
 class Card(BaseModel):
@@ -87,8 +105,14 @@ class PendingAction(BaseModel):
         "request_edit",
         "request_cancel",
         "habit_check",
+        "choice",
     ]
-    event_id: str = ""  # 수정·삭제 대상(등록은 비어 있음)
+    event_id: str = ""  # 수정·삭제 대상(등록은 비어 있음). choice 이고 choice_kind 가 members 이면 공유를 바꿀 일정
+    event_ids: list[str] = Field(
+        default_factory=list, max_length=20
+    )  # 여러 건 삭제의 대상(한 번에 10개까지). choice 이면 사용자가 체크한 일정·부탁·구성원 id
+    # choice: 선택 카드에서 체크한 것을 바로 처리한다(확인 카드 없이). 무엇을 처리할지
+    choice_kind: Literal["", "edit", "delete", "request_edit", "request_cancel", "members"] = ""
     changes: dict = Field(default_factory=dict)  # 수정일 때 바뀌는 값
     draft: Draft | None = None  # 등록(공유 확인)·부탁 보내기일 때 등록할 내용
     request_id: str = ""  # 부탁 받는 사람 바꾸기·취소 대상
@@ -114,6 +138,7 @@ class AgentResponse(BaseModel):
     cards: list[Card] = Field(default_factory=list)
     pending_action: PendingAction | None = None
     draft: Draft | None = None  # 되묻는 응답에만
+    choice: Choice | None = None  # 수정·삭제 대상을 되묻는 응답에만
 
 
 class SuggestionOut(BaseModel):

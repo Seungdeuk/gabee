@@ -25,6 +25,7 @@ from sqlalchemy import text
 from sqlalchemy.engine import Engine, make_url
 
 from .clock import REFERENCE_NOW, frozen_clock
+from .ids import safe_ids
 from .network import block_network
 
 RAISED_LIMIT = 100_000
@@ -33,6 +34,10 @@ DATA_SUBDIRS = ("photos", "chat_files", "chat_photos", "profile_photos", "play",
 # 사례 사이에 비울 모듈 수준 메모리 저장소(모듈, 이름). 속도 제한기(FailureLimiter)는 앱 전체를 훑어 따로 비운다.
 MEMORY_RESETS = (
     ("app.features.schedule.agent.ask", "_pending"),  # 되물은 일정 초안(10분 유지, 락 필요)
+    (
+        "app.features.schedule.agent.choice",
+        "_pending",
+    ),  # 같은 이름이 여럿일 때 어느 쪽인지 되물은 상태(10분 유지)
     ("app.features.ai_assistant.library", "_photo_pending"),
     ("app.features.ai_assistant.library", "_photo_inflight"),
     ("app.features.family_group.social_providers", "_overrides"),
@@ -179,5 +184,5 @@ def eval_process(
 ) -> Iterator[None]:
     """경계를 확인한 뒤 설정·네트워크 차단·고정 시계를 켠다. 가짜 모델만 쓰면 allow_hosts 를 비운다."""
     check_process_boundary(root)
-    with eval_settings(), block_network(allow_hosts), frozen_clock(now):
+    with eval_settings(), block_network(allow_hosts), frozen_clock(now), safe_ids():
         yield

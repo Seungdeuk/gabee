@@ -45,8 +45,10 @@ def test_category_counts_follow_topics(lst):
 
 
 def test_world_rules(lst):
-    assert lst.worlds["w1"].status == "built"
-    assert lst.worlds["w2"].status == lst.worlds["w3"].status == "planned"
+    assert (
+        lst.worlds["w1"].status == lst.worlds["w2"].status == "built"
+    )  # w2(검증)는 2026-11-19 에 만들었다
+    assert lst.worlds["w3"].status == "planned"  # w3(테스트)는 아직 만들지 않았다
     assert {s.world_id for s in lst.scenarios if s.split == "dev"} == {"w1"}
     assert {s.world_id for s in lst.scenarios if s.split == "val"} == {"w2"}
     assert {s.world_id for s in lst.scenarios if s.split == "test"} == {"w3"}
@@ -100,6 +102,27 @@ def test_lock_matches_and_history(lst, lock):
     assert set(section["per_split"]) == {"dev", "val", "test"}
     assert section["history"][0]["from"] is None
     assert section["history"][-1]["to"] == section["sha256"]
+
+
+def test_the_w2_world_change_kept_every_item_and_split_hash_and_only_added_a_history_entry(lock):
+    """2026-11-19 w2 를 `built` 로 바꾼 변경: 전체 해시만 바뀌고(월드 선언이 해시에 들어 있다) 시나리오 항목·분할 해시는 E5b 확정 때 그대로다."""
+    section = lock["scenarios"]
+    e5b = "2dd7e3311f61482524bb513cc13e9747263cbf7f74b18bafd6d085ab14afeadd"
+    history = section["history"]
+    assert [h["to"] for h in history[:2]] == [sc.FINALIZED_SHA, e5b]
+    assert (
+        history[2]["from"] == e5b
+        and history[2]["at"] == "2026-11-19"
+        and "w2" in history[2]["reason"]
+    )
+    assert section["per_split"] == {
+        "dev": "4e286324a2448f63d9e4a005abcfb3380d9fe3ce3d558fbe111f26b74d495935",
+        "test": "9312e7a364c78b4becaa51da704b217e23d9942f566f04943b45f986450f4ea4",
+        "val": "978b6425919c401db9fe24c0efc1223bea43892b00549095b79ca313733f468a",
+    }
+    assert section["items"]["s-val-12-toolfail-01"] == (
+        "88bf0d89f9af3d324351339d1b3b3d0dd78d862b749998a672af5356050600ea"
+    )
 
 
 def test_changed_list_breaks_lock(raw, lock):

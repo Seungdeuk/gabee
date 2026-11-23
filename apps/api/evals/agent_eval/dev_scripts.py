@@ -761,5 +761,12 @@ VIOLATING: dict[str, dict[str, Violation]] = {
 
 
 def scripts_for(split: str) -> dict[str, Script]:
-    """CLI 가 가짜 모드에서 실행기에 넘기는 정상 대본. 개발셋만 있다(`VIOLATING` 은 넘기지 않는다)."""
-    return dict(SCRIPTS) if split == "dev" else {}
+    """CLI 가 가짜 모드·사전 점검에서 실행기에 넘기는 정상 대본. 개발셋(`SCRIPTS`)과 검증셋(`val_scripts.SCRIPTS`)만 있다(`VIOLATING` 은 넘기지 않는다).
+    대본이 있다는 것이 val 의 실제 호출을 연다는 뜻은 아니다: 실호출 허용 분할은 `real_gate.ALLOWED_SPLITS` 가 따로 정한다."""
+    if split == "dev":
+        return dict(SCRIPTS)
+    if split == "val":
+        from . import val_scripts  # val_scripts 가 이 모듈의 도우미를 쓰므로 호출할 때 불러온다
+
+        return dict(val_scripts.SCRIPTS)
+    return {}

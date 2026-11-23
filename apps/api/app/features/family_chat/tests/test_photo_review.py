@@ -142,7 +142,19 @@ def test_list_item_shape_and_thumb_url(client, family):
     _set(att, "unsure")
     item = _mine(client, a).json()["items"][0]
     assert item["thumb_url"] == f"/family-chat/photos/{att}?size=thumb"
-    assert set(item) == {"attachment_id", "thumb_url", "created_at", "taken_at", "status"}
+    # 기존 필드는 그대로이고, PR2 가 원인 코드·재검사 가능 여부·남은 횟수만 더했다(예외 이름·사진 내용·글자는 내보내지 않는다)
+    assert set(item) == {
+        "attachment_id",
+        "thumb_url",
+        "created_at",
+        "taken_at",
+        "status",
+        "failure_kind",
+        "can_retry",
+        "retries_left",
+    }
+    # unsure 는 재검사 대상이 아니다
+    assert (item["failure_kind"], item["can_retry"]) == (None, False)
 
 
 def test_list_excludes_one_to_one_deleted_and_other_group_photos(client, family, other_family):

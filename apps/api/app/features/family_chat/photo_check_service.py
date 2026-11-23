@@ -54,6 +54,56 @@ def _rate(user_id: str, prefix: str = "photocheck", limit: int | None = None) ->
     check_limiter.record(key)
 
 
+def failure_kind(status: str, last_error: str | None) -> str | None:
+    """`last_error`(예외 종류 이름만 남긴다)를 앱이 쓸 수 있는 원인 코드로 바꾼다. 사진 내용·글자는 다루지 않는다.
+    failed → ocr_failed(`OcrFailed`) | timeout(이름에 Timeout) | ai_failed(그 밖의 종류). 오래 pending 이면 stalled. 그 밖의 상태는 None."""
+    if status == checks.FAILED:
+        if last_error == "OcrFailed":
+            return "ocr_failed"
+        if last_error and "timeout" in last_error.lower():
+            return "timeout"
+        return "ai_failed"
+    if status == checks.PENDING:
+        return "stalled"
+    return None
+
+
+def claim_recheck(db: Session, user: User, group_id: str, attachment_id: str) -> tuple[str, int]:
+    """재검사 요청의 권한·상태 검사와 맡기기(판별을 실제로 돌리는 것은 `photo_service.recheck_photo`). 업로더 본인·가족 전체방·살아 있는 사진만
+    (아니면 404: 존재를 숨긴다). (결과, 남은 횟수): `claimed` | `in_progress`. 실패·지연이 아니면 409 `recheck_not_needed`, 횟수를 다 썼으면
+    409 `recheck_limit_reached`. 어떤 경우에도 사진을 `photo` 로 바꾸지 않는다(D-13)."""
+    _rate(user.id)
+    try:
+        ctx = checks.uploader_context(db, group_id, attachment_id)
+        if ctx is None:
+            raise not_found("사진")
+        uploader_id, room_kind, alive = ctx
+        if uploader_id != user.id or room_kind != FAMILY or not alive:
+            raise not_found("사진")
+        outcome = checks.claim_recheck(db, group_id, attachment_id, user.id)
+        left = max(
+            checks.RECHECK_MAX - checks.recheck_counts(db, [attachment_id]).get(attachment_id, 0), 0
+        )
+    except SQLAlchemyError:
+        db.rollback()
+        raise _unavailable() from None
+    if outcome in ("claimed", "in_progress"):
+        return outcome, left
+    if outcome == "not_needed":
+        raise ApiError(
+            409,
+            "recheck_not_needed",
+            "다시 확인할 필요가 없는 사진이에요(실패·처리 지연만 가능해요)",
+        )
+    if outcome == "limit":
+        raise ApiError(
+            409,
+            "recheck_limit_reached",
+            "다시 확인할 수 있는 횟수를 넘었어요. 문서로 저장하거나 일반 사진으로 직접 확인해 주세요",
+        )
+    raise not_found("사진")
+
+
 def _unavailable() -> ApiError:
     return ApiError(
         503,
@@ -81,17 +131,29 @@ def review_list(
         db.rollback()
         raise _unavailable() from None
     page = rows[:limit]
-    return PhotoChecksOut(
-        items=[
+    try:
+        details = checks.review_details(db, group_id, [r[0] for r in page])
+    except SQLAlchemyError:
+        db.rollback()
+        raise _unavailable() from None
+    items = []
+    for attachment_id, _message_id, status, created_at, taken_at in page:
+        last_error, used = details.get(attachment_id, (None, 0))
+        left = max(checks.RECHECK_MAX - used, 0)
+        items.append(
             PhotoCheckItemOut(
                 attachment_id=attachment_id,
                 thumb_url=f"/family-chat/photos/{attachment_id}?size=thumb",
                 created_at=created_at,
                 taken_at=taken_at,
                 status=status,
+                failure_kind=failure_kind(status, last_error),
+                can_retry=status in (checks.FAILED, checks.PENDING) and left > 0,
+                retries_left=left if status in (checks.FAILED, checks.PENDING) else 0,
             )
-            for attachment_id, _message_id, status, created_at, taken_at in page
-        ],
+        )
+    return PhotoChecksOut(
+        items=items,
         needs_review_count=total,
         next_before=page[-1][1] if len(rows) > limit else None,
     )

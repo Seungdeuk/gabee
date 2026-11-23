@@ -6,14 +6,20 @@
 - 이 호출의 요청 본문에 **처음 실려 온** 도구 결과의 상태: 도구 이름, 오류 여부, 글자 수. 탭 Agent 를 부른 `ask_*` 결과는 `can_answer`,
   못 답한 사유(앱이 쓰는 고정 머리말 뒤의 예외 종류·HTTP 상태만, 최대 `REASON_MAX` 자·스크러버 통과), 잘림 안내 포함 여부를 더한다.
 
-저장하지 않는 것: 질문·답·도구 인자·도구 결과 본문·대화·문서·이름·키. 값을 알 수 없으면 항목을 빼거나 `None` 으로 두고 추측해서 채우지 않는다.
+- 호출이 HTTP 오류 응답(`httpx.HTTPStatusError`)으로 끝났으면 상태 코드(`http_status`, 정수)와 응답 JSON 의 `error.type` 중 허용 목록(`API_ERROR_TYPES`)에 있는 값(`api_error_type`,
+  없거나 목록 밖이면 `unknown`)을 더한다. 연결 오류·시간 초과 같은 다른 예외는 예전처럼 예외 종류(`error_type`)만 남긴다.
+
+저장하지 않는 것: 질문·답·도구 인자·도구 결과 본문·대화·문서·이름·키, 예외 메시지, 요청 주소, 응답 헤더·본문. 값을 알 수 없으면 항목을 빼거나 `None` 으로 두고 추측해서 채우지 않는다.
 관찰이 평가 동작을 바꾸면 안 되므로 어떤 오류도 호출 쪽으로 올리지 않는다(실패하면 `trace_error` 만 남긴다).
 """
 
 import json
+import re
 from collections import Counter
 from collections.abc import Mapping
 from typing import Any
+
+import httpx
 
 from app.shared.llm import transport
 
@@ -21,6 +27,23 @@ from .scrub import scrub_text
 
 SCHEMA_VERSION = 1
 REASON_MAX = 120
+# Anthropic Messages API 의 오류 종류(`{"type":"error","error":{"type":...}}` 의 `error.type`). 이 목록에 있는 값만 그대로 남기고 나머지는 `unknown` 으로 적는다
+# (응답 글을 그대로 옮기면 서버가 돌려준 임의의 글이 파일에 들어갈 수 있다). 새 종류가 생기면 여기에 더한다.
+API_ERROR_TYPES = frozenset(
+    {
+        "invalid_request_error",
+        "authentication_error",
+        "billing_error",
+        "permission_error",
+        "not_found_error",
+        "request_too_large",
+        "rate_limit_error",
+        "timeout_error",
+        "api_error",
+        "overloaded_error",
+    }
+)
+UNKNOWN_ERROR_TYPE = "unknown"
 ASK_PREFIX = "담당 에이전트가 답하지 못했어요: "  # `shared/llm/agent.ask_agent` 가 LLMUnavailable 때 쓰는 머리말
 ASK_TOOLS = ("ask_billing", "ask_family_chat", "ask_schedule", "ask_care")
 OTHER_STRUCTURED = "structured_other"  # 구조화 출력이지만 대화 분석이 아닌 호출(일정 Agent 등)
@@ -35,6 +58,32 @@ def role_of(body: Mapping[str, Any]) -> str:
     if "output_config" in body:
         return "analysis" if body.get("system") == ANALYSIS_SYSTEM else OTHER_STRUCTURED
     return fake_model.agent_of(body)
+
+
+def http_status_of(error: BaseException | None) -> int | None:
+    """`httpx.HTTPStatusError` 의 HTTP 상태 코드(정수, 100~599). 그 예외가 아니거나 값이 정수가 아니면 None. 연결 오류·시간 초과는 상태 코드가 없다."""
+    if not isinstance(error, httpx.HTTPStatusError):
+        return None
+    code = getattr(getattr(error, "response", None), "status_code", None)
+    if isinstance(code, int) and not isinstance(code, bool) and 100 <= code <= 599:
+        return code
+    return None
+
+
+def api_error_type_of(error: BaseException | None) -> str | None:
+    """`HTTPStatusError` 응답 JSON 의 `error.type` 중 `API_ERROR_TYPES` 에 있는 값. 상태 오류가 아니면 None, 응답이 JSON 이 아니거나 `error.type` 이 없거나
+    목록에 없는 값이면 `unknown`. 응답 글·메시지·헤더·요청 주소는 읽어도 돌려주지 않는다(허용 목록의 상수만 돌려준다)."""
+    if http_status_of(error) is None:
+        return None
+    try:
+        data = error.response.json()  # type: ignore[union-attr]
+    except Exception:  # noqa: BLE001  본문이 비었거나 JSON 이 아니면 알 수 없다
+        return UNKNOWN_ERROR_TYPE
+    detail = data.get("error") if isinstance(data, Mapping) else None
+    kind = detail.get("type") if isinstance(detail, Mapping) else None
+    if isinstance(kind, str) and kind in API_ERROR_TYPES:
+        return kind  # 허용 목록에 있는 값과 정확히 같은 글만 여기까지 온다
+    return UNKNOWN_ERROR_TYPE
 
 
 def _chars(content: Any) -> int:
@@ -55,6 +104,28 @@ def _text_of(content: Any) -> str:
     return ""
 
 
+HTTP_REASON_HEAD = "AI 호출에 실패했어요 (HTTP "  # (공백까지: 예외 이름 `(HTTPStatusError)` 는 HTTP 사유가 아니다)`shared/llm/agent._status_detail` 이 만드는 글: "(HTTP 401 authentication_error: <API 오류 메시지>)"
+_HTTP_REASON = re.compile(
+    r"AI 호출에 실패했어요 \(HTTP (?P<code>\d{3})(?: (?P<kind>[A-Za-z0-9_]{1,64}))?\s*(?::.*)?\)?\s*",
+    re.DOTALL,
+)
+
+
+def _fallback_reason(rest: str) -> str | None:
+    """앱이 못 답한 사유로 쓴 글(고정 머리말 뒤)에서 남길 것만 고른다.
+
+    앱은 HTTP 오류일 때 API 가 돌려준 오류 `message` 까지 그 글에 넣는다. 그 메시지 원문은 저장하지 않고 상태 코드와 허용 목록의 오류 종류만 남긴다.
+    모양이 맞지 않는 HTTP 사유는 글을 남기지 않는다(None). 그 밖의 고정 사유(예외 종류 등)는 예전처럼 스크러버를 지난 앞부분만 남긴다."""
+    if rest.startswith(HTTP_REASON_HEAD):
+        m = _HTTP_REASON.fullmatch(rest)
+        if m is None:
+            return None
+        kind = m.group("kind")
+        kind = kind if kind in API_ERROR_TYPES else UNKNOWN_ERROR_TYPE
+        return f"AI 호출에 실패했어요 (HTTP {m.group('code')} {kind})"
+    return scrub_text(rest)[:REASON_MAX]
+
+
 def _ask_fields(content: Any) -> dict[str, Any]:
     """`ask_*` 도구 결과(JSON 글)에서 상태만 읽는다: can_answer, 못 답한 사유, 잘림 안내 여부. 읽을 수 없으면 `can_answer` 를 None 으로 둔다."""
     from app.shared.llm.tool_graph import TRUNCATED_NOTE
@@ -73,7 +144,7 @@ def _ask_fields(content: Any) -> dict[str, Any]:
         out["truncated_note"] = TRUNCATED_NOTE.strip() in answer
         if can is False:
             if answer.startswith(ASK_PREFIX):  # 앱의 고정 머리말 뒤(예외 종류·HTTP 상태)만 남긴다
-                out["fallback_reason"] = scrub_text(answer[len(ASK_PREFIX) :])[:REASON_MAX]
+                out["fallback_reason"] = _fallback_reason(answer[len(ASK_PREFIX) :])
             else:
                 out["fallback_reason"] = None  # 알려진 머리말이 아니면 글을 남기지 않는다
     return out
@@ -122,6 +193,12 @@ class CallTracer:
             row["tool_results"] = results
         if error is not None:
             row["error_type"] = type(error).__name__
+            status = http_status_of(error)
+            if (
+                status is not None
+            ):  # HTTP 오류 응답일 때만: 상태 코드와 허용 목록의 오류 종류(그 밖의 오류는 예전 모양 그대로)
+                row["http_status"] = status
+                row["api_error_type"] = api_error_type_of(error)
             return row
         if not isinstance(payload, Mapping):
             row["ok"] = False
@@ -186,7 +263,7 @@ def summarize(rows: list[dict[str, Any]]) -> dict[str, Any]:
     ok_rows = [r for r in rows if "trace_error" not in r]
     answered = [r for r in ok_rows if r.get("ok") and "stop_reason" in r]  # 응답을 받은 호출
     results = [t for r in ok_rows for t in r.get("tool_results", [])]
-    return {
+    out = {
         "calls": len(rows),
         "calls_by_role": dict(sorted(Counter(r.get("role") for r in ok_rows).items())),
         "stop_reasons": dict(sorted(Counter(str(r.get("stop_reason")) for r in answered).items())),
@@ -200,6 +277,10 @@ def summarize(rows: list[dict[str, Any]]) -> dict[str, Any]:
         "ask_results_cannot_answer": sum(1 for t in results if t.get("can_answer") is False),
         "trace_errors": len(rows) - len(ok_rows),
     }
+    statuses = Counter(r["http_status"] for r in ok_rows if isinstance(r.get("http_status"), int))
+    if statuses:  # HTTP 오류 응답이 있을 때만 더한다(없으면 예전 요약과 키까지 같다)
+        out["http_status_counts"] = {str(k): v for k, v in sorted(statuses.items())}
+    return out
 
 
 def report(rows: list[dict[str, Any]]) -> dict[str, Any]:

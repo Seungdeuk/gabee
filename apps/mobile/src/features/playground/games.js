@@ -12,3 +12,7 @@ export const SCORE = { join: 10, correct: 20, make: 20, bombWin: 30, hintCost: 5
 
 // 문제 내기 점수는 한 사람이 하루에 낸 문제 전체(게임 구분 없이) 3건까지. 한도를 넘어도 문제는 보낼 수 있고 점수만 없다
 export const MAKE_LIMIT = 3;
+
+/** 문제 내기 점수(+20)를 받을 수 있는 남은 횟수 안내. 다 썼으면 두 줄: 점수는 없어도 문제는 보낼 수 있다는 것을 알린다. */
+export const makeQuotaText = (left) =>
+  left > 0 ? `오늘 문제 출제로 받는 +${SCORE.make}은 ${left}회 남았어요` : `오늘은 문제 출제로 +${SCORE.make} 받는 ${MAKE_LIMIT}회를 다 썼어요\n문제는 보낼 수 있지만 점수는 없어요`;

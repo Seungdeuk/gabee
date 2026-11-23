@@ -8,6 +8,7 @@ import pytest
 from sqlalchemy import update
 
 from app.features.family_group.models import GroupMember, JoinRequest, User
+from app.shared.ai_guard import day_start
 from app.shared.ai_usage import AiGroupSetting, AiUsageLog
 from app.shared.config import settings
 from app.shared.db import SessionLocal
@@ -201,6 +202,39 @@ def test_groups_summary_empty(client, make_admin):
     assert d["oldest_pending_at"] is None
 
 
+def _two_days_ago_noon(now: datetime) -> datetime:
+    """2일 전 한국 날짜의 정오. `now - 2일 - 1시간` 처럼 잡으면 한국 시간 00~01시(또 월·연 경계)에 실행할 때 두 기록이 서로 다른
+    날짜가 돼 '한도에 막힌 날 수'가 시각에 따라 달라진다(집계 규칙 오류가 아니라 시험 입력 문제). 정오 기준이면 항상 같은 날짜다."""
+    return day_start(now) - timedelta(days=2) + timedelta(hours=12)
+
+
+@pytest.mark.parametrize(
+    "now_utc",
+    [
+        datetime(
+            2026, 11, 18, 15, 30, tzinfo=UTC
+        ),  # 한국 11/19 00:30 — 이 시각에 옛 입력은 3일로 셌다
+        datetime(2026, 11, 18, 15, 59, tzinfo=UTC),  # 한국 00:59
+        datetime(2026, 11, 19, 0, 16, tzinfo=UTC),  # 한국 09:16
+        datetime(2026, 11, 19, 14, 59, tzinfo=UTC),  # 한국 23:59
+        datetime(2026, 11, 30, 15, 10, tzinfo=UTC),  # 한국 12/01 00:10(월 경계)
+        datetime(2026, 12, 31, 15, 30, tzinfo=UTC),  # 한국 2027/01/01 00:30(연 경계)
+    ],
+)
+def test_limited_days_do_not_depend_on_the_hour_the_test_runs(now_utc):
+    """같은 날 두 번, 다른 날 한 번 막힌 사람은 어느 시각에 시험해도 2일로 센다. 실제로 이틀에 걸친 기록은 그대로 3일이다."""
+    from app.features.service_admin import service
+
+    def days(times):
+        hits = [{"user_id": "u", "name": "n", "group_name": None, "created_at": t} for t in times]
+        return service._limited(hits)[0].days
+
+    noon = _two_days_ago_noon(now_utc)
+    assert days([now_utc - timedelta(hours=1), noon, noon - timedelta(hours=1)]) == 2
+    # 집계 규칙 자체는 그대로: 서로 다른 한국 날짜 3개면 3일
+    assert days([now_utc - timedelta(hours=1), noon, noon - timedelta(days=1)]) == 3
+
+
 def test_ai_usage_excludes_markers_and_lists(client, make_admin):
     headers, user_id = _login(client)
     make_admin(user_id)
@@ -208,6 +242,8 @@ def test_ai_usage_excludes_markers_and_lists(client, make_admin):
     client.post("/family-group/groups", json={"name": "우리 가족"}, headers=headers)
     now = datetime.now(UTC)
     g = "g1"
+
+    two_days_ago_noon = _two_days_ago_noon(now)
 
     def row(uid, status, feature="analysis", code=None, at=now, group=g):
         return AiUsageLog(
@@ -228,9 +264,12 @@ def test_ai_usage_excludes_markers_and_lists(client, make_admin):
                 row(u2, "ok", "reply"),
                 row(u2, "rejected", code="ai_cooldown"),
                 row(u2, "rejected", code="ai_daily_limit_user", at=now - timedelta(hours=1)),
-                row(u2, "rejected", code="ai_daily_limit_user", at=now - timedelta(days=2)),
+                row(u2, "rejected", code="ai_daily_limit_user", at=two_days_ago_noon),
                 row(
-                    u2, "rejected", code="ai_daily_limit_group", at=now - timedelta(days=2, hours=1)
+                    u2,
+                    "rejected",
+                    code="ai_daily_limit_group",
+                    at=two_days_ago_noon - timedelta(hours=1),
                 ),
                 row(user_id, "rejected", code="ai_cooldown", at=now - timedelta(days=1)),
             ]

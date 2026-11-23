@@ -18,6 +18,7 @@ from .schemas import (
     PhotoCheckOut,
     PhotoChecksOut,
     PhotoExcludeOut,
+    PhotoRecheckOut,
     TimelineOut,
 )
 
@@ -81,6 +82,20 @@ def confirm_general_photo(
     `document_to_photo_blocked`(문서→일반 전환은 MVP 에서 막는다), 올린 지 15분 안 된 판별 대기는 409 `check_in_progress`, 문서함 등록 여부를
     확인하지 못하면 503. 같은 요청을 다시 보내도 결과는 같고(200) 이력은 한 줄만 남는다. 자동 판별은 이 확인을 덮어쓰지 못한다."""
     return photo_check_service.confirm_general(db, user, group_id, attachment_id)
+
+
+@router.post("/photos/{attachment_id}/recheck", response_model=PhotoRecheckOut)
+def recheck_photo(
+    attachment_id: str,
+    user: User = Depends(current_user),
+    group_id: str = Depends(current_group_id),
+    db: Session = Depends(get_db),
+) -> PhotoRecheckOut:
+    """판별에 실패했거나(`failed`) 올린 지 15분 넘게 처리되지 않은(`pending`) 내 사진을 다시 검사하게 한다(PR2). 업로더 본인이 가족 전체방에 올린
+    살아 있는 사진만(그 밖은 404: 존재를 숨긴다). 한 사진당 최대 3번이고(넘으면 409 `recheck_limit_reached`), 실패·지연이 아니면 409 `recheck_not_needed`.
+    방금 맡겼거나 처리 중이면 `queued=false` 로 같은 200(같은 요청을 다시 보내도 판별은 한 번만 돈다). 결과는 자동으로 `photo` 가 되지 않는다
+    (문서·애매·실패로 끝나고 일반 사진은 `POST /photos/{id}/check` 로 업로더가 직접 확인한다, D-13)."""
+    return photo_service.recheck_photo(db, user, group_id, attachment_id)
 
 
 @router.get("/photos/{attachment_id}/library", response_model=LibraryStateOut)

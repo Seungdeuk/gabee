@@ -432,6 +432,9 @@ def write(rescored: Rescored, out_root: Path, *, git_commit: str) -> Path:
         "cases_hash": rescored.cases_hash,
         "rescore_label": rescored.label,
     }
+    # 원본이 하위 Agent 해시를 적어 두었다면 그대로 옮긴다(그 이전 원본에는 없고, 없어도 재채점은 그대로 된다)
+    if all(k in rescored.manifest for k in store.AGENT_HASH_KEYS):
+        manifest.update({k: rescored.manifest[k] for k in store.AGENT_HASH_KEYS})
     rows = [(f"metrics.{name}", value) for name, value in s.as_rows()]
     return store.write_run(out_root, manifest, rescored.runs, [], rows)
 

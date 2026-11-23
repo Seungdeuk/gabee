@@ -18,6 +18,8 @@ EXTRA_ITEMS = 3
 EXTRA_CHARS = 2000
 # get_item 이 돌려주는 글 상한. 큰 문서(6만 자)를 통째로 주면 입력이 수만 토큰이 되어 앞 12000자(약 8000토큰)에서 자르고 note 로 알린다.
 GET_ITEM_MAX_CHARS = 12000
+# item_id 로 한 기록 안에서 찾을 때 돌려주는 조각 최대 개수
+IN_ITEM_MAX_TOP_K = 8
 
 TOOL_SPECS = [
     {
@@ -49,6 +51,10 @@ TOOL_SPECS = [
                 "uploaded_by": {
                     "type": "string",
                     "description": "이 가족이 올린 기록만(가족 구성원의 이름이나 별칭). 기록에 등장하는 사람(member)과 다르다: '엄마가 올린'은 이쪽",
+                },
+                "item_id": {
+                    "type": "string",
+                    "description": "주면 그 기록(문서) 안에서만 찾는다. 긴 문서의 뒷부분을 낱말로 다시 찾을 때 쓴다(top_k 는 최대 8, 쪽 순서가 아니라 가까운 순)",
                 },
             },
             "required": ["query"],
@@ -302,10 +308,14 @@ def search_knowledge(
     uploaded_from: str | None = None,
     uploaded_to: str | None = None,
     uploaded_by: str | None = None,
+    item_id: str | None = None,
 ) -> dict:
-    """member 를 주면 그 가족이 등장한 기록만 찾는다. 이름을 모르면 빈 결과와 안내를 돌려준다(필터를 조용히 무시하지 않는다).
+    """item_id 를 주면 그 기록 안의 조각만 점수 순으로 찾는다(다른 필터는 무시). 없는 id·다른 그룹의 id 는 빈 결과와 안내다.
+    member 를 주면 그 가족이 등장한 기록만 찾는다. 이름을 모르면 빈 결과와 안내를 돌려준다(필터를 조용히 무시하지 않는다).
     uploaded_from·uploaded_to(올린 날, 한국 날짜 양끝 포함)·uploaded_by(올린 사람)는 문서 안 날짜·등장 가족과 별개의 조건이다.
     글 속 `[가족:<id>]` 는 이 그룹의 현재 이름으로 되돌려서 준다."""
+    if item_id and str(item_id).strip():
+        return _search_in_item(db, group_id, str(item_id).strip(), query, top_k, include_sensitive)
     members = family_names.load_members(db, group_id)
     names = family_names.shown_names(members)
     wanted: list[str] | None = None
@@ -385,6 +395,46 @@ def search_knowledge(
     return {"results": results, "note": " ".join(notes)}
 
 
+def _search_in_item(
+    db: Session, group_id: str, item_id: str, query: str, top_k: int, include_sensitive: bool
+) -> dict:
+    hits = service.search_in_item(
+        db,
+        group_id,
+        item_id,
+        query,
+        top_k=min(max(top_k, 1), IN_ITEM_MAX_TOP_K),
+        include_sensitive=include_sensitive,
+    )
+    if not hits:
+        return {
+            "results": [],
+            "note": "이 item_id 의 기록을 찾지 못했거나 이 대화에서 볼 수 없어요. 검색 결과에 나온 item_id 를 그대로 쓰세요.",
+        }
+    names = family_names.shown_names(family_names.load_members(db, group_id))
+    results = [
+        {
+            "item_id": h.item.id,
+            "kind_label": h.item.kind_label,
+            "title": family_names.restore(h.item.title, names),
+            "family": family_names.family_of(h.item.family_user_ids, names),
+            "text": family_names.restore(h.chunk.text, names),
+            "page": h.chunk.page_label,
+            "date": h.item.occurred_on.isoformat() if h.item.occurred_on else None,
+            "source_path": h.item.source_path,
+            "score": round(h.score, 4),
+            "has_unread_parts": h.item.has_unread_parts,
+            "sensitive": h.item.sensitivity == "sensitive",
+        }
+        for h in hits
+    ]
+    return {
+        "results": results,
+        "note": "이 기록 안에서 찾은 조각이며 쪽 순서가 아니라 질문과 가까운 순이에요. "
+        "답이 없으면 낱말을 바꿔 한 번 더 찾아보세요. has_unread_parts 가 true 이면 읽지 못한 부분이 있으니 값을 단정하지 마세요.",
+    }
+
+
 def _one_per_file(hits: list) -> list:
     """같은 원본 파일에서 나온 기록은 점수가 높은 하나만 남긴다(같은 파일을 두 번 올렸을 때 출처가 겹치지 않게)."""
     seen: set[str] = set()
@@ -423,7 +473,7 @@ def get_item(db: Session, group_id: str, item_id: str, include_sensitive: bool =
         out["text"] = text[:GET_ITEM_MAX_CHARS]
         out["note"] = (
             f"글이 길어 앞 {GET_ITEM_MAX_CHARS}자만 보여요(전체 {len(text)}자). "
-            "뒷부분이 필요하면 search_knowledge 로 구체적인 낱말을 넣어 찾아보세요."
+            "뒷부분이 필요하면 search_knowledge 에 item_id 와 구체적인 낱말을 넣어 이 문서 안에서 찾아보세요."
         )
     return out
 

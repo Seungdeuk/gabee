@@ -46,10 +46,14 @@ def family(client):
     group = client.post(f"{P}/groups", json={"name": "우리 가족"}, headers=owner).json()
     guest, guest_id = account(client, "guest_lee")
     req = client.post(f"{P}/groups/join", json={"code": group["invite_code"]}, headers=guest).json()
-    assert (
-        client.post(f"{P}/groups/join-requests/{req['id']}/approve", headers=owner).status_code
-        == 200
-    )
+    if (
+        req["status"] == "pending"
+    ):  # 가족의 자동 승인(기본 켜짐)이면 이미 구성원이라 승인할 요청이 없다
+        assert (
+            client.post(f"{P}/groups/join-requests/{req['id']}/approve", headers=owner).status_code
+            == 200
+        )
+    assert req["status"] in ("pending", "approved"), req
     return owner, owner_id, guest, guest_id, group
 
 

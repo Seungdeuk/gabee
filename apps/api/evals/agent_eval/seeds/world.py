@@ -12,6 +12,7 @@
 
 from dataclasses import dataclass, field
 from datetime import timedelta, timezone
+from types import ModuleType
 
 from fastapi.testclient import TestClient
 from sqlalchemy import select
@@ -23,7 +24,7 @@ from evals.agent_eval.clock import reference_now
 from evals.tab_agents import seed as legacy
 from tests.helpers import join_family, signup
 
-from . import data
+from . import billing_w2, data, worlds
 
 
 @dataclass
@@ -36,6 +37,8 @@ class Member:
 
 @dataclass
 class World:
+    # 이 월드를 만든 데이터 선언 모듈(w1 = `data`, w2 = `data_w2`). 월드를 읽는 코드(`inspect_world`)가 같은 선언 기준으로 본다
+    data: ModuleType = data
     members: dict[str, Member] = field(default_factory=dict)
     rooms: dict[str, str] = field(default_factory=dict)  # data.ROOM_MEMBERS 의 방 키 -> 방 id
     # 만든 항목의 id: 수정·삭제 대상을 제목으로 다시 찾지 않게 한다. 키는 (소유자·보낸 사람, 제목)
@@ -77,26 +80,30 @@ def _require_frozen_clock() -> None:
         )
 
 
-def build_legacy(client: TestClient) -> World:
-    """기존 정산 시드: 지민·수진·민수(같은 가족)와 남(다른 가족). 기존 실행기와 같은 순서다."""
+def build_legacy(client: TestClient, world: str = "w1") -> World:
+    """기존 정산 시드: 지민·수진·민수(같은 가족)와 남(다른 가족). 기존 실행기와 같은 순서다.
+
+    `world` 가 w1(기본값)이면 기존 정산 시드(`evals/tab_agents/seed.py`) 그대로다. w2 는 같은 순서로 w2 값(`billing_w2`)을 만든다."""
     _require_frozen_clock()
+    d = worlds.data_of(world)
+    seeder = legacy if d is data else billing_w2  # 두 모듈은 함수 이름·인자가 같다
     a = signup(client, "지민")
-    group = client.post("/family-group/groups", json={"name": data.FAMILY_NAME}, headers=a).json()
+    group = client.post("/family-group/groups", json={"name": d.FAMILY_NAME}, headers=a).json()
     b = signup(client, "수진")
     join_family(client, a, group["invite_code"], b)
-    legacy.seed(client, a, b)
+    seeder.seed(client, a, b)
     child = signup(client, "민수", "child")
     join_family(client, a, group["invite_code"], child)
     with SessionLocal() as db:
         child_id = db.scalars(select(User).where(User.name == "민수")).first().id
-    legacy.seed_child(client, a, child_id)
-    legacy.seed_write_targets(client, a, b, child)
-    outsider = signup(client, data.OUTSIDER)
-    legacy.seed_other_family(client, outsider)
-    world = World()
+    seeder.seed_child(client, a, child_id)
+    seeder.seed_write_targets(client, a, b, child)
+    outsider = signup(client, d.OUTSIDER)
+    seeder.seed_other_family(client, outsider)
+    built = World(data=d)
     for name, headers in (("지민", a), ("수진", b), ("민수", child), (data.OUTSIDER, outsider)):
-        world.members[name] = _member(client, name, headers)
-    return world
+        built.members[name] = _member(client, name, headers)
+    return built
 
 
 def _post(client: TestClient, path: str, headers: dict, body: dict, status: int = 201) -> dict:
@@ -121,7 +128,7 @@ def _open_rooms(client: TestClient, world: World) -> None:
 
 
 def _chat(client: TestClient, world: World) -> None:
-    for m in data.MESSAGES:
+    for m in world.data.MESSAGES:
         _post(
             client,
             "/family-chat/messages",
@@ -131,7 +138,7 @@ def _chat(client: TestClient, world: World) -> None:
 
 
 def _schedule(client: TestClient, world: World) -> None:
-    for e in data.EVENTS:
+    for e in world.data.EVENTS:
         body = {
             "title": e.title,
             "start_date": e.day,
@@ -146,7 +153,7 @@ def _schedule(client: TestClient, world: World) -> None:
         }
         created = _post(client, "/schedule/events", world.headers(e.owner), body)
         world.events[(e.owner, e.title)] = created["id"]
-    for r in data.REQUESTS:
+    for r in world.data.REQUESTS:
         created = _post(
             client,
             "/schedule/requests",
@@ -160,7 +167,7 @@ def _schedule(client: TestClient, world: World) -> None:
             },
         )
         world.requests[(r.sender, r.title)] = created["id"]
-    for h in data.HABITS:
+    for h in world.data.HABITS:
         headers = world.headers(h.owner)
         item = _post(
             client,
@@ -182,7 +189,7 @@ def _schedule(client: TestClient, world: World) -> None:
 
 
 def _todos(client: TestClient, world: World) -> None:
-    for t in data.TODOS:
+    for t in world.data.TODOS:
         created = _post(
             client,
             "/family-chat/todos",
@@ -199,7 +206,7 @@ def _todos(client: TestClient, world: World) -> None:
 
 def _docs(client: TestClient, world: World) -> None:
     """가족 문서함 기록: 올린 사람의 헤더로 올린다(그래서 uploaded_by 가 선언과 같다). 임베딩 모델이 없으면 해시 임베딩으로 조각을 만든다."""
-    for d in data.DOCS:
+    for d in world.data.DOCS:
         created = _post(
             client,
             "/ai-assistant/knowledge/items",
@@ -216,7 +223,7 @@ def _docs(client: TestClient, world: World) -> None:
 
 
 def _expenses(client: TestClient, world: World) -> None:
-    for x in data.EXPENSES:
+    for x in world.data.EXPENSES:
         created = _post(
             client,
             "/billing/expenses",
@@ -234,14 +241,14 @@ def enable_ai(world: World) -> None:
             ai_guard.set_enabled(db, m.group_id, m.user_id, True)
 
 
-def build_world(client: TestClient) -> World:
-    """기존 정산 시드 위에 가족방·1:1·일정·할 일·부탁·습관을 더한 합성 가족 월드."""
-    world = build_legacy(client)
-    _open_rooms(client, world)
-    _chat(client, world)
-    _schedule(client, world)
-    _todos(client, world)
-    _docs(client, world)
-    _expenses(client, world)
-    enable_ai(world)
-    return world
+def build_world(client: TestClient, world: str = "w1") -> World:
+    """기존 정산 시드 위에 가족방·1:1·일정·할 일·부탁·습관을 더한 합성 가족 월드. `world` 는 w1(개발, 기본값)·w2(검증)다."""
+    built = build_legacy(client, world)
+    _open_rooms(client, built)
+    _chat(client, built)
+    _schedule(client, built)
+    _todos(client, built)
+    _docs(client, built)
+    _expenses(client, built)
+    enable_ai(built)
+    return built

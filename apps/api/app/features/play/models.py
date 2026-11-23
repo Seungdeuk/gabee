@@ -17,6 +17,7 @@ from sqlalchemy import (
     ForeignKeyConstraint,
     Index,
     Integer,
+    LargeBinary,
     SmallInteger,
     String,
     UniqueConstraint,
@@ -108,7 +109,7 @@ class PlayPhoto(Base):
 
     play_id: Mapped[str] = mapped_column(ForeignKey("play_items.id"), primary_key=True)
     image_path: Mapped[str] = mapped_column(String(255))  # play/photos/<가족id>/<놀이id>.jpg
-    source: Mapped[int] = mapped_column(SmallInteger)  # 1 가족 앨범, 2 내 폰
+    source: Mapped[int] = mapped_column(SmallInteger)  # 1 가족 앨범, 2 내 폰, 3 흔한 사진
     zoom: Mapped[int] = mapped_column(SmallInteger)  # 4·6·8·16·32
     box_x: Mapped[float] = mapped_column(Float)  # 확대 상자 위치 0~1
     box_y: Mapped[float] = mapped_column(Float)
@@ -116,6 +117,47 @@ class PlayPhoto(Base):
     options: Mapped[list] = mapped_column(JSON)  # 보기 2~4개
     answer: Mapped[str] = mapped_column(String(4))
     comment: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    # 가비 추천 카드(play_photo_rec.id)로 낸 문제면 그 id. 같은 추천을 14일 안에 다시 안 보이려고 쓴다(외래 키는 없다: 추천 행이 지워져도 문제는 남는다)
+    rec_id: Mapped[str | None] = mapped_column(String(32), nullable=True, index=True)
+
+
+class PlayPhotoRec(Base):
+    """찰칵! 탐정단 가비 추천이 보여 주는 사진 문제 한 건(가족 앨범 사진 또는 흔한 사진).
+
+    가족 앨범 행은 `group_id`·`attachment_id`(채팅 사진, 유일 → 한 사진 한 문제)가 있고 이미지는 첨부 파일을 쓴다.
+    흔한 사진 행은 `group_id` 가 비고 `image`(JPEG 바이트)를 DB 에 둔다. 모든 가족이 같은 행을 읽는다.
+    `answer` 는 `play_photos.answer` 와 같은 보기 순서의 비트 글자(예: "0100").
+    """
+
+    __tablename__ = "play_photo_rec"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uid)
+    group_id: Mapped[str | None] = mapped_column(
+        ForeignKey("groups.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+    source: Mapped[int] = mapped_column(
+        SmallInteger
+    )  # 1 가족 앨범, 3 흔한 사진(시드), 4 흔한 사진(자동)
+    attachment_id: Mapped[str | None] = mapped_column(
+        ForeignKey("message_attachments.id", ondelete="CASCADE"), nullable=True, unique=True
+    )
+    image: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
+    kind: Mapped[int] = mapped_column(SmallInteger)  # 1 촬영 월, 2 일정 맞추기, 3 사진 내용(AI)
+    usable: Mapped[bool] = mapped_column(Boolean, default=True, server_default=text("true"))
+    question: Mapped[str] = mapped_column(String(20))
+    options: Mapped[list] = mapped_column(JSON)  # 보기 2~4개
+    answer: Mapped[str] = mapped_column(String(4))
+    box_x: Mapped[float] = mapped_column(Float)  # 확대 상자 위치 0~1
+    box_y: Mapped[float] = mapped_column(Float)
+    zoom: Mapped[int] = mapped_column(SmallInteger)  # 4·6·8·16·32
+    prompt_version: Mapped[str] = mapped_column(String(8))
+    # 흔한 사진(자동)의 출처. 시드·가족 행은 비어 있다
+    credit_user: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    credit_url: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    license: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    search_query: Mapped[str | None] = mapped_column(String(60), nullable=True)
+    external_id: Mapped[str | None] = mapped_column(String(32), nullable=True, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
 
 
 class PlayAnswer(Base):
@@ -207,4 +249,17 @@ class PlayBombTurn(Base):
     word: Mapped[str | None] = mapped_column(String(10), nullable=True)  # 말한 글, 시간 초과면 비움
     is_end: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("false"))
     life: Mapped[int] = mapped_column(SmallInteger)  # 이 차례 뒤 남은 생명
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+
+class PlayDrawStock(Base):
+    """이게 뭐게 가비 추천이 AI 로 만든 단어별 선 그림. 가족과 무관하게 모든 가족이 계속 다시 쓴다(단어당 최대 3종, 기간 제한 없음).
+    strokes 는 선 목록(`[[[x, y], ...], ...]`, 좌표 0~255)이고 가족 정보는 들어 있지 않다."""
+
+    __tablename__ = "play_draw_stock"
+    __table_args__ = (Index("ix_play_draw_stock_word_created_at", "word", "created_at"),)
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uid)
+    word: Mapped[str] = mapped_column(String(8))
+    strokes: Mapped[list] = mapped_column(JSON)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)

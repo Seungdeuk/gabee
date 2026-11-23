@@ -180,6 +180,7 @@ def search_chunks(
     created_from: datetime | None = None,
     created_to: datetime | None = None,
     created_by: list[str] | None = None,
+    item_id: str | None = None,
 ) -> list[tuple[KnowledgeChunk, KnowledgeItem, float]]:
     """질문 벡터와 가까운 조각을 점수(코사인 유사도, 클수록 가까움) 순으로 돌려준다.
 
@@ -194,6 +195,9 @@ def search_chunks(
             KnowledgeChunk.embedding_model == embedding_model,
         )
     )
+    # 한 기록(문서) 안의 조각만. group_id 조건은 위에서 이미 걸려 있어 다른 그룹 id 는 빈 결과다
+    if item_id:
+        q = q.where(KnowledgeChunk.item_id == item_id)
     if kind_label:
         q = q.where(KnowledgeItem.kind_label == kind_label)
     if date_from:

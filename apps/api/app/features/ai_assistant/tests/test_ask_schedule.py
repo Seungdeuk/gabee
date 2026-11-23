@@ -100,32 +100,38 @@ def test_birthday_sentence_registers_own_event(client, family, schedule_llm, mon
     assert [e["title"] for e in saved] == ["엄마 생신"]
 
 
-def test_missing_title_asks_back_then_full_sentence_registers(
+def test_missing_date_asks_back_then_answer_registers_with_default_title(
     client, family, schedule_llm, monkeypatch
 ):
     a, _, group = family
     enable_ai(group["id"])
-    schedule_llm.data = _register_data(date=_tomorrow(), start_time="14:00:00")
+    schedule_llm.data = _register_data(start_time="14:00:00")
     results = []
-    _main_llm(monkeypatch, "내일 2시 일정 잡아줘", results)
-    first = _chat(client, a, "내일 2시 일정 잡아줘")
-    assert "제목" in first["reply"] and "정보가 더 필요해요" not in first["reply"]
+    _main_llm(monkeypatch, "2시 일정 잡아줘", results)
+    first = _chat(client, a, "2시 일정 잡아줘")
+    assert "날짜" in first["reply"] and "제목" not in first["reply"]  # 날짜만 되묻는다
+    assert (
+        "날짜가 더 필요해요" not in first["reply"]
+    )  # 메인에게 주는 안내는 사용자 글에 섞이지 않는다
     assert _events(client, a) == []  # 되묻는 동안에는 만들지 않는다
 
-    schedule_llm.data = _register_data(title="치과", date=_tomorrow(), start_time="14:00:00")
+    schedule_llm.data = _register_data(date=_tomorrow(), start_time="14:00:00")
     results.clear()
-    _main_llm(monkeypatch, "내일 2시 치과 일정 잡아줘", results)
+    _main_llm(monkeypatch, "내일 2시 일정 잡아줘", results)
     second = _chat(
-        client, a, "치과야"
+        client, a, "내일"
     )  # 서버가 되묻던 초안을 기억해 두므로 메인이 앞 말을 합치지 않아도 이어진다
     assert "일정을 등록했어요" in second["reply"]
+    assert "제목을 말씀하지 않으셔서" in second["reply"]  # 제목은 정해서 등록하고 밝힌다
     assert (
         "시작: 14:00" in schedule_llm.calls[-1]
     )  # 이어 받은 초안이 일정 에이전트에 실제로 전달됐다
-    assert [e["title"] for e in _events(client, a)] == ["치과"]
+    assert [e["title"] for e in _events(client, a)] == ["할 일"]
 
 
-def test_share_register_is_not_executed_in_chat(client, family, schedule_llm, monkeypatch):
+def test_share_register_is_executed_in_chat_without_a_card(
+    client, family, schedule_llm, monkeypatch
+):
     a, b, group = family
     enable_ai(group["id"])
     other = client.get("/family-group/me", headers=b).json()["id"]
@@ -135,8 +141,11 @@ def test_share_register_is_not_executed_in_chat(client, family, schedule_llm, mo
     results = []
     _main_llm(monkeypatch, "내일 가족 모임 수진에게도 공유해서 등록해줘", results)
     reply = _chat(client, a, "내일 가족 모임 수진에게도 공유해서 등록해줘")
-    assert "공유해서 등록할까요" in reply["reply"] and len(reply["confirm_cards"]) == 1
-    assert _events(client, a) == [] and _events(client, b) == []
+    # 정책 #32: 공유 등록도 확인 카드 없이 바로 등록하고 공유 인원을 밝힌다
+    assert "일정을 등록했어요" in reply["reply"] and "1명에게 공유했어요" in reply["reply"]
+    assert len(reply["confirm_cards"]) == 0
+    assert [e["title"] for e in _events(client, a)] == ["가족 모임"]
+    assert [e["title"] for e in _events(client, b)] == ["가족 모임"]
 
 
 def test_delete_is_not_executed_in_chat(client, family, schedule_llm, monkeypatch):
@@ -265,7 +274,7 @@ def test_same_request_twice_registers_only_once(client, family, schedule_llm, mo
     first = _chat(client, a, "내일 3시 치과 일정 잡아줘")
     second = _chat(client, a, "내일 3시 치과 일정 잡아줘")
     assert "일정을 등록했어요" in first["reply"]
-    assert "이미 같은 일정이 있어요" in second["reply"]
+    assert "이미 등록되어 있어요. 또 등록해 드릴까요?" in second["reply"]
     assert [e["title"] for e in _events(client, a)] == ["치과"]
 
 
@@ -275,13 +284,13 @@ def test_new_complete_request_does_not_inherit_the_old_draft(
     """되묻다 만 초안(시간 14:00)이 있어도, 제목과 날짜를 모두 말한 새 요청에는 그 시간이 섞이지 않는다."""
     a, _, group = family
     enable_ai(group["id"])
-    schedule_llm.data = _register_data(date=_tomorrow(), start_time="14:00:00")
-    _main_llm(monkeypatch, "내일 2시 일정 잡아줘", [])
-    asked = _chat(client, a, "내일 2시 일정 잡아줘")
-    assert "제목" in asked["reply"]
+    schedule_llm.data = _register_data(title="치과", start_time="14:00:00")
+    _main_llm(monkeypatch, "2시 치과 일정 잡아줘", [])
+    asked = _chat(client, a, "2시 치과 일정 잡아줘")
+    assert "날짜" in asked["reply"]
     schedule_llm.data = _register_data(title="엄마 생신", date=_tomorrow())  # 시간 말 안 함
     _main_llm(monkeypatch, "내일 엄마 생신 일정 잡아줘", [])
     _chat(client, a, "내일 엄마 생신 일정 잡아줘")
     saved = _events(client, a)
-    assert [e["title"] for e in saved] == ["엄마 생신"]
+    assert [e["title"] for e in saved] == ["엄마 생신"]  # 옛 초안(치과)의 제목도 섞이지 않는다
     assert not saved[0].get("start_time")

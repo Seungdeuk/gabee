@@ -29,6 +29,7 @@ from app.shared.llm import client as llm
 
 from .constants import GAME_QUIZ
 from .models import PlayItem, PlayQuiz
+from .rec_pick import pick_for_user
 from .timeutil import local_day_start, local_tz
 
 FEATURE = "play_quiz_rec"
@@ -408,4 +409,7 @@ def recommend(db: Session, user: User, group_id: str) -> dict:
         if digest is not None:
             digest.close()
     items = [q for q in outcome.result.get("questions", []) if _norm(q["question"]) not in used]
+    items = pick_for_user(
+        items, group_id, user.id, today
+    )  # 가족이 같은 목록을 갖되 사람마다 일부만 보여 준다
     return _reply(OK, items) if items else _reply(USED_UP)

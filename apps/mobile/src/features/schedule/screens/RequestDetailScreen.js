@@ -8,11 +8,13 @@ import { colors, font, radius, spacing } from "@/theme";
 
 import ConfirmDialog from "@/shared/components/ConfirmDialog";
 import RecipientsSheet from "../components/RecipientsSheet";
+import RequestMemoSheet from "../components/RequestMemoSheet";
 import StatusBadge from "../components/StatusBadge";
 import { ME_ID } from "../mock";
+import { memoErrorMessage } from "../memo_edit";
 import { sentStatus, whoLabels } from "../model";
 import { cancelMessage } from "../recipients_edit";
-import { cancelRequest, changeRecipients, useRequest } from "../requests";
+import { cancelRequest, changeMemo, changeRecipients, useRequest } from "../requests";
 import { useMembers } from "../store";
 import { formatDateWithYear, formatTimeConfirmed } from "../utils/date";
 
@@ -31,6 +33,8 @@ export default function RequestDetailScreen() {
   const [confirming, setConfirming] = useState(false);
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [editingMemo, setEditingMemo] = useState(false);
+  const [savingMemo, setSavingMemo] = useState(false);
   const [toast, setToast] = useState("");
   const toastTimer = useRef(null);
   useEffect(() => () => clearTimeout(toastTimer.current), []);
@@ -50,6 +54,8 @@ export default function RequestDetailScreen() {
 
   const status = sentStatus(request);
   const cancelled = status === "cancelled";
+  // 메모는 보낸 사람이, 취소되지 않은 부탁에만 고칠 수 있다(받은 부탁은 이 화면에 오지 않지만 한 번 더 막는다).
+  const editable = !cancelled && request.fromId === ME_ID;
   const time = formatTimeConfirmed(request);
   const labels = whoLabels(request.whoIds, family);
   const together = request.toIds.filter((toId) => request.replies[toId] === "accepted").map(nameOf);
@@ -59,7 +65,6 @@ export default function RequestDetailScreen() {
     time ? ["시간", time] : null,
     request.place ? ["장소", request.place] : null,
     labels.length > 0 ? ["누구", labels.join(", ")] : null,
-    request.memo ? ["메모", request.memo] : null,
   ].filter(Boolean);
 
   const showToast = (text) => {
@@ -73,6 +78,18 @@ export default function RequestDetailScreen() {
     setSaving(false);
     if (ok) setEditing(false);
     showToast(ok ? "받는 사람을 바꿨어요" : "받는 사람을 바꾸지 못했어요. 잠시 뒤 다시 해 주세요");
+  };
+  // 성공하면 스토어(changeMemo)가 목록의 메모를 바꿔 이 화면도 새 메모를 보인다. 실패하면 시트를 연 채 이유를 알린다.
+  const saveMemo = async (memo) => {
+    setSavingMemo(true);
+    const result = await changeMemo(request.id, memo);
+    setSavingMemo(false);
+    if (result.ok) {
+      setEditingMemo(false);
+      showToast(together.length > 0 ? "메모를 바꿨어요. 수락한 분의 일정에는 반영되지 않아요" : "메모를 바꿨어요");
+    } else {
+      showToast(memoErrorMessage(result.error));
+    }
   };
 
   return (
@@ -100,6 +117,19 @@ export default function RequestDetailScreen() {
                 <Text style={styles.value}>{value}</Text>
               </View>
             ))}
+            {request.memo || editable ? (
+              <View style={[styles.row, styles.rowBorder]}>
+                <Text style={styles.label}>메모</Text>
+                <View style={styles.valueRow}>
+                  <Text style={[styles.valueFlex, !request.memo && styles.placeholder]}>{request.memo || "없어요"}</Text>
+                  {editable ? (
+                    <Pressable onPress={() => setEditingMemo(true)} style={styles.change} accessibilityRole="button">
+                      <Text style={styles.changeText}>{request.memo ? "바꾸기" : "쓰기"}</Text>
+                    </Pressable>
+                  ) : null}
+                </View>
+              </View>
+            ) : null}
             <View style={[styles.row, styles.rowBorder]}>
               <Text style={styles.label}>받는 분</Text>
               <View style={styles.valueRow}>
@@ -143,6 +173,9 @@ export default function RequestDetailScreen() {
           onClose={() => setEditing(false)}
           onSave={save}
         />
+      ) : null}
+      {editingMemo ? (
+        <RequestMemoSheet current={request.memo} saving={savingMemo} onClose={() => setEditingMemo(false)} onSave={saveMemo} />
       ) : null}
       {toast ? (
         <View style={styles.toast} pointerEvents="none" accessibilityRole="alert">
@@ -189,6 +222,7 @@ const styles = StyleSheet.create({
   value: { flex: 1, fontSize: 16, color: colors.text },
   valueRow: { flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8 },
   valueFlex: { flexShrink: 1, fontSize: 16, color: colors.text },
+  placeholder: { color: colors.textMuted },
   change: {
     paddingHorizontal: 12,
     paddingVertical: 4,
