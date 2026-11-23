@@ -57,7 +57,7 @@ class RunResult:
 def _credit(hit: dict, query: str) -> dict:
     return dict(
         credit_user=str(hit.get("user", ""))[:80] or None,
-        credit_url=str(hit.get("pageURL", ""))[:300] or None,
+        credit_url=(pix.clean_credit_url(hit.get("pageURL")) or "")[:300] or None,
         license=pix.LICENSE,
         search_query=query[:60],
         external_id=str(hit["id"])[:32],

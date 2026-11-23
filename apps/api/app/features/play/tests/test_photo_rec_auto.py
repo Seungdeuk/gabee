@@ -382,6 +382,8 @@ def test_logs_never_contain_key(client, caplog):
 
 # ---- Pixabay 클라이언트 ----
 
+_PUBLIC = lambda _host: None  # noqa: E731  시험은 이름 풀이를 하지 않는다(공개 주소로 본다)
+
 
 def test_pixabay_search_params_and_cache():
     seen = []
@@ -390,7 +392,9 @@ def test_pixabay_search_params_and_cache():
         seen.append(dict(request.url.params))
         return httpx.Response(200, json={"hits": [_hit(1)]})
 
-    c = pix.PixabayClient("k", httpx.Client(transport=httpx.MockTransport(handler)), gap=0)
+    c = pix.PixabayClient(
+        "k", httpx.Client(transport=httpx.MockTransport(handler)), gap=0, resolver=_PUBLIC
+    )
     assert c.search("pizza")[0]["id"] == 1
     c.search("pizza")  # 24시간 캐시
     assert len(seen) == 1
@@ -404,7 +408,9 @@ def test_pixabay_download_resizes_to_jpeg():
     def handler(request):
         return httpx.Response(200, content=big.getvalue())
 
-    c = pix.PixabayClient("k", httpx.Client(transport=httpx.MockTransport(handler)), gap=0)
+    c = pix.PixabayClient(
+        "k", httpx.Client(transport=httpx.MockTransport(handler)), gap=0, resolver=_PUBLIC
+    )
     im = Image.open(io.BytesIO(c.download(_hit(1))))
     assert im.format == "JPEG" and max(im.size) == 1280
 
@@ -413,7 +419,9 @@ def test_pixabay_error_has_no_key():
     def handler(request):
         return httpx.Response(500)
 
-    c = pix.PixabayClient("secret-key", httpx.Client(transport=httpx.MockTransport(handler)), gap=0)
+    c = pix.PixabayClient(
+        "secret-key", httpx.Client(transport=httpx.MockTransport(handler)), gap=0, resolver=_PUBLIC
+    )
     with pytest.raises(pix.PixabayError) as e:
         c.search("pizza")
     assert "secret-key" not in str(e.value)
