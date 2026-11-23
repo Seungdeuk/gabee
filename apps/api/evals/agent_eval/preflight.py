@@ -159,6 +159,9 @@ class PreflightInput:
     ledger: Ledger
     scripts: Mapping[str, Any] = field(default_factory=dict)  # 가짜 점검 실행용 사례별 대본(dev)
     stage: str = "other"
+    source_file: Any = (
+        None  # dev 사례 파일 경로(--dev-file). 일반화 사례는 허용된 파일에서만 인정한다(7번)
+    )
     require_env: bool = False  # --real 은 허가용 환경변수가 필수. --preflight 는 없어도 점검을 돌린다(그 항목만 '실호출 시 필요')
 
 
@@ -611,6 +614,8 @@ def _check_cases(inp: PreflightInput) -> Check:
         problems.append("요청한 id 와 로더가 고른 사례가 다르다")
     try:  # 사례가 커밋된(HEAD) 개발 사례와 같은지: 위장·수정·미커밋은 실호출 대상이 아니다
         runner.verify_committed(inp.items, inp.split)
+        if inp.split == "dev":
+            runner.verify_dev_source(inp.source_file, inp.items)
     except runner.RunnerRefused as e:
         problems.append(str(e))
     for item in inp.items:

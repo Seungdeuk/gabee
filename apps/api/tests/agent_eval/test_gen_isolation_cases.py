@@ -359,6 +359,16 @@ def test_the_other_family_only_request_policy_is_not_part_of_these_five_cases(ge
         assert any(own in case.question for own in ("우리", "내 방", "이 방", "까지 포함"))
 
 
+def test_no_question_contains_a_synthetic_family_or_member_name(gen):
+    """질문의 일반 표현이 합성 가족·구성원 이름(예: 다른 가족의 그룹 이름)과 글자가 같으면 사전 점검이 합성 PERSON 원문으로 센다(2026-11-23 mixed-02 의 '남의 가족').
+    일반화 질문은 모든 월드의 합성 이름 집합과 겹치지 않아야 한다."""
+    from evals.agent_eval import preflight
+
+    names = preflight._person_names()
+    for case in gen:
+        assert not [n for n in names if n in case.question], case.id
+
+
 def test_gen_scripts_cover_exactly_the_gen_cases_and_leave_official_dev_scripts_alone(gen):
     from evals.agent_eval import dev_scripts, gen_scripts
 

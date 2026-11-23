@@ -404,6 +404,7 @@ def _run_preflight(
         default_results=DEFAULT_RESULTS,
         ledger=_estimate_ledger(args, plan, results),
         scripts=dev_scripts.scripts_for(split, getattr(args, "dev_file", None)),
+        source_file=getattr(args, "dev_file", None) if split == "dev" else None,
         stage=args.stage,
         require_env=plan.mode == "real",
     )
@@ -434,6 +435,12 @@ def _execute(
             out("거부: 실제 호출은 한 분할만 쓴다(val·test·all 의 실제 호출은 이번 단계에서 금지)")
             return REFUSED
         try:
+            if (
+                plan.splits[0] == "dev"
+            ):  # 사전 점검 7번과 같은 경로·사례 짝 검사(일반화 사례는 허용된 파일에서만)
+                runner.verify_dev_source(
+                    getattr(args, "dev_file", None), _load(args, plan, "dev", plan.run_id)
+                )
             grant = real_gate.issue_grant(
                 approve_usd=plan.approve,
                 split=plan.splits[0],
@@ -447,7 +454,7 @@ def _execute(
                 repeat=plan.repeat,
                 results_root=results,
             )
-        except real_gate.RealGateRefused as e:
+        except (real_gate.RealGateRefused, runner.RunnerRefused) as e:
             out(f"거부: {e}")
             return REFUSED
         except Refusal as e:
