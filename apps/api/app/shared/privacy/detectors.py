@@ -186,27 +186,72 @@ def _rrn_checksum_ok(digits: str) -> bool:
     return check == int(digits[12])
 
 
-def _detect_rrn(text: str) -> list[Span]:
-    """형식(생년월일이 실제 달력에 있고 구분 숫자가 1~8)이 맞으면 체크섬이 틀려도 잡는다.
+# 주민번호 단서: 숫자 앞 16자 또는 뒤 6자 안에 있으면 주민번호라는 근거로 쓴다('본인확인'·'신분증'만으로는 단서로 보지 않는다).
+_RRN_CUE = re.compile(
+    r"주민\s?(?:등록)?\s?번호|주민\s?등록증|외국인\s?등록\s?번호|RRN", re.IGNORECASE
+)
+# 끝자리를 가려 쓴 번호('900101-123456*'): 앞 6자리 + 구분 숫자 + 뒤 5자리 + 가림 문자 1~3개
+_RRN_PARTIAL_RE = re.compile(
+    r"(?<!\d)(?<!\d-)(\d{2})(\d{2})(\d{2})(?: ?- ?| )?([1-8])\d{5}[*xX●○◯]{1,3}(?![\d*xX●○◯])"
+)
+# 앞자리·뒷자리를 말로 나눠 쓴 번호('주민등록번호 앞자리 900101 뒷자리 1234567')
+_RRN_SPLIT_RE = re.compile(
+    r"주민\s?(?:등록)?\s?번호[^\d\n]{0,8}앞\s?자리[^\d\n]{0,4}(?P<a>\d{6})(?!\d)"
+    r"[^\d\n]{0,10}뒷\s?자리[^\d\n]{0,4}(?P<b>\d{7})(?!\d)"
+)
 
-    근거: 2020년 10월 이후 발급 번호는 뒷자리가 임의 숫자라 체크섬이 맞지 않을 수 있고, 한 글자 오타가 난 번호도
-    여전히 민감하다. 놓치는 쪽(유출)이 더 위험하므로 안전 쪽으로 기울여 HIGH 로 잡되 score 만 낮춘다.
-    하이픈이 있으면 오탐 가능성이 더 낮으므로 체크섬 불일치여도 0.6, 하이픈이 없으면 0.45 를 준다.
+
+def _rrn_cue_near(text: str, start: int, end: int) -> bool:
+    return bool(
+        _RRN_CUE.search(text[max(0, start - 16) : start]) or _RRN_CUE.search(text[end : end + 6])
+    )
+
+
+def _detect_rrn(text: str) -> list[Span]:
+    """주민등록번호 후보를 근거 단계별 점수로 잡는다. 0.7 이상이면 정책이 메시지를 차단하고 미만이면 값만 가린다.
+
+    - 날짜가 달력에 있음 + 체크섬 통과: 0.97(차단). 체크섬 불일치여도 하이픈이 있으면 0.6, 없으면 0.45(가리기만).
+      근거: 2020년 10월 이후 발급 번호는 뒷자리가 임의 숫자라 체크섬이 맞지 않을 수 있고 한 글자 오타 번호도 민감하다.
+    - 날짜가 달력에 없음(13월·32일 …)이어도 체크섬이 통과하면 우연히 맞을 확률이 약 10% 라 형태 근거가 된다:
+      주민번호 단서가 있으면 0.75(차단), 단서 없이 하이픈이 있으면 0.6(가리기만). 단서도 하이픈도 없는 13자리 숫자는
+      바코드·일련번호와 구분되지 않아 잡지 않는다. 체크섬도 틀리면 주민번호 단서가 있을 때만 0.5(가리기만), 없으면 잡지 않는다.
+    - 가려 쓴 번호와 앞·뒷자리를 말로 나눈 번호는 아래 별도 규칙(단서가 있으면 0.75).
     """
     spans = []
     for m in RRN_RE.finditer(text):
         yy, mm, dd, gender = int(m.group(1)), int(m.group(2)), int(m.group(3)), int(m.group(4))
-        if not _rrn_date_ok(yy, mm, dd, gender):
-            continue
         digits = re.sub(r"\D", "", m.group(0))
         has_sep = bool(re.search(r"[- ]", m.group(0)))
-        if not has_sep and _near_not_pii(text, m.start(), m.end()):
-            continue  # '운송장 9001011234567' 같은 번호
-        if _rrn_checksum_ok(digits):
-            score = 0.97
+        cue = _rrn_cue_near(text, m.start(), m.end())
+        checksum = _rrn_checksum_ok(digits)
+        if _rrn_date_ok(yy, mm, dd, gender):
+            if not has_sep and _near_not_pii(text, m.start(), m.end()):
+                continue  # '운송장 9001011234567' 같은 번호
+            score = 0.97 if checksum else (0.6 if has_sep else 0.45)
         else:
-            score = 0.6 if has_sep else 0.45
+            if not has_sep and not cue:
+                continue  # 구분자도 단서도 없는 날짜 무효 13자리: 바코드·일련번호와 구분 불가
+            if not has_sep and _near_not_pii(text, m.start(), m.end()):
+                continue
+            if checksum and cue:
+                score = 0.75
+            elif checksum:
+                score = 0.6
+            elif cue:
+                score = 0.5
+            else:
+                continue
         spans.append(Span(Kind.RRN, m.start(), m.end(), score, "rrn"))
+    for m in _RRN_PARTIAL_RE.finditer(text):
+        yy, mm, dd, gender = int(m.group(1)), int(m.group(2)), int(m.group(3)), int(m.group(4))
+        if not _rrn_date_ok(yy, mm, dd, gender):
+            continue
+        score = 0.75 if _rrn_cue_near(text, m.start(), m.end()) else 0.6
+        spans.append(Span(Kind.RRN, m.start(), m.end(), score, "rrn_partial"))
+    for m in _RRN_SPLIT_RE.finditer(
+        text
+    ):  # 앞자리부터 뒷자리 숫자 끝까지(사이의 '뒷자리' 같은 말 포함) 한 구간
+        spans.append(Span(Kind.RRN, m.start("a"), m.end("b"), 0.75, "rrn_split"))
     return spans
 
 
@@ -271,6 +316,35 @@ def _detect_card(text: str) -> list[Span]:
             else:
                 continue  # 문맥도 구분자도 없는 Luhn 실패 숫자는 주문번호·운송장일 가능성이 크다
         spans.append(Span(Kind.CARD, m.start(), m.end(), score, "card"))
+    spans += _detect_card_loose(text, [(m.start(), m.end()) for m in CARD_RE.finditer(text)])
+    return spans
+
+
+# 4-4-4-4 가 아닌 묶음(8-8, 4-8-4)이나 ' - ' 처럼 앞뒤에 공백이 낀 하이픈으로 쓴 번호. 모양이 느슨해서 15·16자리이고
+# 발급 대역이며 Luhn 을 통과하거나 '카드·결제' 문맥이 있을 때만 잡는다.
+_CARD_LOOSE_RE = re.compile(
+    r"(?<!\d)(?<!\d[- ])\d{4,8}(?:(?: - |[ -])\d{3,8}){1,3}(?!\d)(?! ?- ?\d)"
+)
+
+
+def _detect_card_loose(text: str, taken: list[tuple[int, int]]) -> list[Span]:
+    spans = []
+    for m in _CARD_LOOSE_RE.finditer(text):
+        if any(m.start() < e and s < m.end() for s, e in taken):
+            continue  # 기존 규칙이 이미 본 구간
+        digits = re.sub(r"\D", "", m.group(0))
+        if len(digits) not in (15, 16) or not _card_prefix_ok(digits):
+            continue
+        if _near_not_pii(text, m.start(), m.end()):
+            continue
+        cue = bool(_CARD_CONTEXT.search(text[max(0, m.start() - 20) : m.end() + 20]))
+        if _luhn_ok(digits):
+            score = 0.95 if cue else 0.65  # 문맥이 없으면 가리기만(차단 임계값 0.7 미만)
+        elif cue:
+            score = 0.5
+        else:
+            continue
+        spans.append(Span(Kind.CARD, m.start(), m.end(), score, "card_loose"))
     return spans
 
 
@@ -288,19 +362,25 @@ _BANK_PLAIN = (
 )
 _BANK_AMBIGUOUS = "우리|하나|부산|대구|광주|전북|경남|제주|산업"
 _BANK_ALL = f"{_BANK_PLAIN}|{_BANK_AMBIGUOUS}"
-_ACCT_WORD = re.compile(r"계좌|예금주")
+_ACCT_WORD = re.compile(r"계좌|예금주|통장")
 _ACCT_BANK_WINDOW = re.compile(
     rf"(?:{_BANK_ALL})\s?(?:은행|뱅크|금고|계좌|입금|송금|이체|예금)|\(\s?(?:{_BANK_ALL})\s?\)"
 )
 _ACCT_BANK_BEFORE = re.compile(rf"(?:(?:{_BANK_PLAIN})(?:은행)?|(?:{_BANK_AMBIGUOUS})은행)\s?$")
 _ACCT_BANK_AFTER = re.compile(rf"^\s?(?:(?:{_BANK_PLAIN})(?:은행)?|(?:{_BANK_AMBIGUOUS})은행)")
 _ACCT_WEAK = re.compile(r"입금|송금|이체")
-_ACCOUNT_RE = re.compile(r"(?<!\d)(?<!\d-)(?:\d{2,6}(?:-\d{2,8}){1,3}|\d{10,14})(?!\d)(?!-\d)")
+# '보내줘'처럼 돈을 옮기는 행동 말. 하이픈으로 묶은 계좌 모양과 함께 있을 때만 제한적으로(가리기만) 계좌 후보로 본다.
+_ACCT_ACTION = re.compile(r"보내|보낼|쏴|부쳐|넣어")
+_ACCOUNT_RE = re.compile(
+    r"(?<!\d)(?<!\d-)(?:\d{2,6}(?:-\d{2,8}){1,3}|\d{10,14}|\d{2,6}(?: \d{2,8}){2,3})(?!\d)(?!-\d)"
+)
 _ACCOUNT_WINDOW = 20
+_AMOUNT_AFTER = re.compile(r"^ ?(?:원|만원|천원|개|명|%)")
 
 
-def _account_context(before: str, after: str) -> float | None:
-    """계좌 문맥이면 기본 점수, 아니면 None."""
+def _account_context(before: str, after: str, hyphen_shape: bool = False) -> float | None:
+    """계좌 문맥이면 기본 점수, 아니면 None. 점수 사다리(+하이픈이면 0.1 가산, 최대 0.95):
+    은행 이름 0.8 / '계좌·통장·예금주' 0.7 / '입금·송금·이체' 0.6 / 하이픈 계좌 모양 + 이체 행동 말 0.5(가산 후 0.6, 가리기만)."""
     if _ACCT_BANK_BEFORE.search(before) or _ACCT_BANK_AFTER.search(after):
         return 0.8
     window = f"{before} {after}"
@@ -310,30 +390,50 @@ def _account_context(before: str, after: str) -> float | None:
         return 0.7
     if _ACCT_WEAK.search(window):
         return 0.6
+    if hyphen_shape and _ACCT_ACTION.search(window):
+        return 0.5
     return None
+
+
+def _trim_spaced_groups(raw: str) -> str:
+    """공백으로 묶은 후보가 14자리를 넘으면 뒤 묶음부터 덜어낸다('계좌 110 123 456789 1000' 처럼 옆 숫자가 붙은 경우)."""
+    groups = raw.split(" ")
+    while len(groups) > 2 and len(re.sub(r"\D", "", " ".join(groups))) > 14:
+        groups.pop()
+    return " ".join(groups)
 
 
 def _detect_account(text: str) -> list[Span]:
     spans = []
     for m in _ACCOUNT_RE.finditer(text):
-        digits = re.sub(r"\D", "", m.group(0))
+        raw, start, end = m.group(0), m.start(), m.end()
+        if (
+            " " in raw
+        ):  # 공백으로 묶은 계좌 모양은 단서가 있을 때만, 그리고 숫자 목록의 중간·금액은 제외한다
+            if start >= 2 and text[start - 1] == " " and text[start - 2].isdigit():
+                continue
+            raw = _trim_spaced_groups(raw)
+            end = start + len(raw)
+            if _AMOUNT_AFTER.match(text[end : end + 3]):
+                continue
+        digits = re.sub(r"\D", "", raw)
         if not 10 <= len(digits) <= 14:
             continue
-        if _PHONE_FULL.fullmatch(m.group(0)):  # 전화번호 모양은 전화로 본다
+        if _PHONE_FULL.fullmatch(raw):  # 전화번호 모양은 전화로 본다
             continue
-        before = text[max(0, m.start() - _ACCOUNT_WINDOW) : m.start()]
-        after = text[m.end() : m.end() + _ACCOUNT_WINDOW]
-        base = _account_context(before, after)
+        before = text[max(0, start - _ACCOUNT_WINDOW) : start]
+        after = text[end : end + _ACCOUNT_WINDOW]
+        base = _account_context(before, after, hyphen_shape=raw.count("-") >= 2)
         if base is None:  # 문맥 없는 긴 숫자는 계좌로 단정하지 않는다
             continue
-        if _near_not_pii(text, m.start(), m.end()):  # '주문번호', '운송장' 이 붙은 숫자
+        if _near_not_pii(text, start, end):  # '주문번호', '운송장' 이 붙은 숫자
             continue
         spans.append(
             Span(
                 Kind.ACCOUNT,
-                m.start(),
-                m.end(),
-                min(0.95, base + (0.1 if "-" in m.group(0) else 0)),
+                start,
+                end,
+                min(0.95, base + (0.1 if "-" in raw else 0)),
                 "account",
             )
         )
@@ -374,7 +474,42 @@ def _detect_secret(text: str) -> list[Span]:
             continue
         has_digit_or_symbol = any(not c.isalpha() for c in value)
         spans.append(Span(Kind.SECRET, start, end, 0.9 if has_digit_or_symbol else 0.6, "secret"))
+    spans += _detect_secret_window(text, spans)
     return spans
+
+
+# 단서 말 바로 뒤가 아니라 몇 마디 건너 숫자가 나오는 꼴('인증번호 왔어? 482913', '비번은 생일 뒤집은 거 1010').
+# 단서 말 뒤 16자 안(숫자·줄바꿈 없는 구간)에서 처음 나오는 숫자열이 4~8자리일 때만 값으로 본다. 단서 없는 숫자는 잡지 않는다.
+_SECRET_CUE = re.compile(
+    r"(?<![A-Za-z0-9])(?:비밀\s?번호|비번|패스워드|핀\s?번호|인증\s?번호|인증\s?코드|보안\s?코드|(?i:otp|pin))(?![A-Za-z])"
+)
+_SECRET_GAP = re.compile(r"[^\d\n]{0,16}(?P<num>\d+)")
+_SECRET_UNIT_AFTER = "년월일시분초원개명%자호세동층번주달회"
+_YEAR_LIKE = re.compile(r"(?:19|20)\d\d")
+
+
+def _detect_secret_window(text: str, taken: list[Span]) -> list[Span]:
+    out = []
+    for cue in _SECRET_CUE.finditer(text):
+        m = _SECRET_GAP.match(text, cue.end())
+        if m is None:
+            continue
+        start, end = m.span("num")
+        num = m.group("num")
+        if not 4 <= len(num) <= 8:
+            continue
+        before = text[start - 1] if start > 0 else ""
+        after = text[end] if end < len(text) else ""
+        if (before and before in "-./:") or (after and after in _SECRET_UNIT_AFTER):
+            continue  # 전화·날짜·시간·금액·수량의 일부
+        if after and after in "-./:," and end + 1 < len(text) and text[end + 1].isdigit():
+            continue
+        if _phone_at(text, start) or any(start < s.end and s.start < end for s in taken):
+            continue
+        # 연도 모양(19xx·20xx)은 날짜일 수도 있어 가리기만 한다(차단 임계값 0.7 미만)
+        score = 0.6 if len(num) == 4 and _YEAR_LIKE.fullmatch(num) else 0.9
+        out.append(Span(Kind.SECRET, start, end, score, "secret_window"))
+    return out
 
 
 # ---------------------------------------------------------------------------
@@ -663,12 +798,108 @@ def _detect_without_invisible(text: str, known_names: tuple[str, ...] | list[str
     return out
 
 
+# ---------------------------------------------------------------------------
+# 숫자 보조 뷰: 한글 숫자·OCR 혼동 문자·한 자리씩 띄운 숫자로 쓴 번호를 숫자로 바꾼 글자에서 한 번 더 찾는다
+# ---------------------------------------------------------------------------
+_KO_DIGIT = {
+    "공": "0",
+    "영": "0",
+    "일": "1",
+    "이": "2",
+    "삼": "3",
+    "사": "4",
+    "오": "5",
+    "육": "6",
+    "칠": "7",
+    "팔": "8",
+    "구": "9",
+}
+# OCR 이 숫자를 영문자로 읽는 흔한 혼동(대문자 O·S·B·Z·I 와 소문자 o·l). 단어 속 글자를 바꾸지 않도록 숫자열 안에서만 쓴다.
+_OCR_DIGIT = {"O": "0", "o": "0", "l": "1", "I": "1", "S": "5", "B": "8", "Z": "2"}
+_VIEW_CHARS = "0-9OolISBZ" + "".join(_KO_DIGIT)
+_VIEW_RUN = re.compile(
+    rf"(?<![A-Za-z0-9가-힣])[{_VIEW_CHARS}]+(?:[ \-]{{1,3}}[{_VIEW_CHARS}]+)*(?![A-Za-z0-9가-힣])"
+)
+_VIEW_MIN_CHARS = 10  # 숫자로 볼 글자(숫자·한글 숫자·혼동 문자)가 이만큼 이상인 덩어리만 본다
+
+
+def _view_run_chars(run: str) -> list[str] | None:
+    """덩어리를 숫자로 바꾼 글자 목록(원문과 같은 길이, 지울 글자는 ''). 바꿀 이유가 없거나 숫자열 같지 않으면 None."""
+    sym = [c for c in run if c not in " -"]
+    ko = sum(c in _KO_DIGIT for c in sym)
+    ocr = sum(c in _OCR_DIGIT for c in sym)
+    digits = sum(c.isdigit() for c in sym)
+    tokens = run.split(" ")
+    spaced = len(tokens) >= 12 and all(
+        len(t) == 1 for t in tokens
+    )  # 3 5 6 6 0 0 … 처럼 한 자리씩 띄움
+    if len(sym) < _VIEW_MIN_CHARS or not (ko or ocr or spaced):
+        return None
+    if ko and ko < 6 and ko / len(sym) < 0.6:
+        return None  # '일이삼' 같은 낱말이 숫자 사이에 낀 정도는 번호로 보지 않는다
+    if ocr and not ko and (digits < 6 or digits / len(sym) < 0.6):
+        return None  # 영문자가 더 많은 덩어리(ISO·SOS …)는 번호가 아니다
+    out = []
+    for c in run:
+        if c in _KO_DIGIT:
+            out.append(_KO_DIGIT[c])
+        elif c in _OCR_DIGIT:
+            out.append(_OCR_DIGIT[c])
+        elif c == " " and spaced:
+            out.append("")
+        else:
+            out.append(c)
+    return out
+
+
+def _digit_view(text: str) -> tuple[str, list[int]] | None:
+    """(바꾼 글자, 바꾼 글자의 각 위치가 원문 어디인지)를 돌려준다. 바꿀 덩어리가 없으면 None(일반 문장은 이 경로를 타지 않는다)."""
+    pieces: list[str] = []
+    idx: list[int] = []
+    pos = 0
+    changed = False
+    for m in _VIEW_RUN.finditer(text):
+        chars = _view_run_chars(m.group(0))
+        if chars is None:
+            continue
+        for i in range(pos, m.start()):
+            pieces.append(text[i])
+            idx.append(i)
+        for off, c in enumerate(chars):
+            if c:
+                pieces.append(c)
+                idx.append(m.start() + off)
+        pos = m.end()
+        changed = True
+    if not changed:
+        return None
+    for i in range(pos, len(text)):
+        pieces.append(text[i])
+        idx.append(i)
+    return "".join(pieces), idx
+
+
+def _detect_digit_view(text: str) -> list[Span]:
+    """한글 숫자·OCR 문자·띄운 숫자로 쓴 주민번호·카드·계좌 후보. 원문 구간으로 되돌려 돌려준다."""
+    view = _digit_view(text)
+    if view is None:
+        return []
+    vtext, idx = view
+    out = []
+    for s in _detect_rrn(vtext) + _detect_card(vtext) + _detect_account(vtext):
+        out.append(
+            Span(s.kind, idx[s.start], idx[s.end - 1] + 1, s.score, s.source + "_view", s.canonical)
+        )
+    return out
+
+
 def _detect_folded(text: str, known_names: tuple[str, ...] | list[str]) -> list[Span]:
     cands: list[Span] = []
     cands += _detect_secret(text)
     cands += _detect_rrn(text)
     cands += _detect_card(text)
     cands += _detect_account(text)
+    cands += _detect_digit_view(text)
     cands += _detect_phone(text)
     cands += _detect_email(text)
     cands += _detect_address(text)
