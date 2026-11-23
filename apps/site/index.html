@@ -1,0 +1,464 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>가비(Gabee) — 가족의 일정·가계·돌봄을 한곳에서 챙기는 AI 가족 비서 앱</title>
+<meta name="description" content="가비(Gabee)는 가족이 함께 쓰는 무료 가족 생활 비서 앱입니다. 가족 일정, 가계 장부, 돌봄 기록, 가족 채팅을 한곳에 모으고, AI 비서 가비에게 물어보면 가족이 남긴 기록에서 찾아 알려 줍니다. 안드로이드(구글 플레이)에서 받을 수 있습니다.">
+<link rel="canonical" href="https://gabee.cloud/">
+<link rel="icon" href="assets/favicon.png">
+<meta name="theme-color" content="#FFC533">
+<meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large">
+<meta property="og:type" content="website">
+<meta property="og:locale" content="ko_KR">
+<meta property="og:site_name" content="가비 Gabee">
+<meta property="og:title" content="가비(Gabee) — AI 가족 비서 앱">
+<meta property="og:description" content="가족의 일정·가계·돌봄을 한곳에서, AI 비서 가비와 함께 챙겨요.">
+<meta property="og:url" content="https://gabee.cloud/">
+<meta property="og:image" content="https://gabee.cloud/assets/gabee-mascot.png">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fredoka:wght@600&family=Gothic+A1:wght@400;500;600;700;800;900&display=swap">
+<link rel="stylesheet" href="assets/site.css">
+<script>document.documentElement.classList.add("js");</script>
+
+<!-- 검색 엔진과 AI(ChatGPT 등)가 읽는 구조화 정보. 본문과 같은 내용만 적는다 -->
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "MobileApplication",
+      "@id": "https://gabee.cloud/#app",
+      "name": "가비",
+      "alternateName": ["Gabee", "가비 가족 비서"],
+      "description": "가족의 일정·가계·돌봄·대화를 한곳에 모으고, AI 비서 가비에게 물어보면 가족이 남긴 기록에서 찾아 알려 주는 가족 생활 비서 앱.",
+      "applicationCategory": "LifestyleApplication",
+      "operatingSystem": "Android",
+      "inLanguage": "ko",
+      "url": "https://gabee.cloud/",
+      "downloadUrl": "https://gabee.cloud/download/",
+      "installUrl": "https://play.google.com/store/apps/details?id=com.kangminhun.gabee",
+      "image": "https://gabee.cloud/assets/gabee-mascot.png",
+      "offers": { "@type": "Offer", "price": "0", "priceCurrency": "KRW" },
+      "featureList": [
+        "AI 채팅: 가족 일정·기록·올려 둔 사진과 문서에서 찾아 답하기",
+        "가족 채팅방과 1:1 대화",
+        "가족 일정 공유",
+        "가계 장부(지출·용돈·정산 기록)",
+        "돌봄 기록(식사·약 복용·컨디션·걷기)과 동의 기반 위치 공유",
+        "초대 코드로 만드는 가족 그룹"
+      ]
+    },
+    {
+      "@type": "WebSite",
+      "@id": "https://gabee.cloud/#site",
+      "name": "가비 Gabee",
+      "url": "https://gabee.cloud/",
+      "inLanguage": "ko"
+    },
+    {
+      "@type": "FAQPage",
+      "@id": "https://gabee.cloud/#faq",
+      "mainEntity": [
+        { "@type": "Question", "name": "가비는 어떤 앱인가요?",
+          "acceptedAnswer": { "@type": "Answer", "text": "가비(Gabee)는 가족이 함께 쓰는 가족 생활 비서 앱입니다. 흩어져 있던 가족 일정, 가계, 돌봄, 대화를 한곳에 모으고, AI 비서 가비에게 물어보면 가족이 남긴 기록에서 찾아 알려 줍니다." } },
+        { "@type": "Question", "name": "가비는 무료인가요?",
+          "acceptedAnswer": { "@type": "Answer", "text": "네. 구글 플레이에서 무료로 받을 수 있습니다." } },
+        { "@type": "Question", "name": "아이폰에서도 쓸 수 있나요?",
+          "acceptedAnswer": { "@type": "Answer", "text": "지금은 안드로이드용만 구글 플레이에서 받을 수 있습니다. 아이폰용은 아직 앱스토어에 없습니다." } },
+        { "@type": "Question", "name": "가족이 아닌 사람이 우리 기록을 볼 수 있나요?",
+          "acceptedAnswer": { "@type": "Answer", "text": "아니요. 가족 그룹에 초대된 사람만 그 가족의 기록을 볼 수 있습니다. 가족 그룹은 초대 코드로 만듭니다." } },
+        { "@type": "Question", "name": "가비 AI는 무엇을 해 주나요?",
+          "acceptedAnswer": { "@type": "Answer", "text": "\"다음 주 병원 예약이 언제였지?\"처럼 말하듯 물어보면 가족이 남긴 일정과 기록, 올려 둔 사진·문서에서 찾아 답합니다. 일정을 넣거나 바꾸는 일은 가비가 먼저 제안하고, 사용자가 확인해야 반영됩니다." } },
+        { "@type": "Question", "name": "가계 기능은 은행 계좌와 연결되나요?",
+          "acceptedAnswer": { "@type": "Answer", "text": "아니요. 지출·용돈·정산 내역을 앱 안 장부에 기록할 뿐, 은행 계좌와 연결하지 않고 실제 돈이 오가지도 않습니다." } },
+        { "@type": "Question", "name": "위치는 항상 공유되나요?",
+          "acceptedAnswer": { "@type": "Answer", "text": "아니요. 가족이 동의한 경우에만 위치를 공유하고, 돌봄 화면에서 언제든 끌 수 있습니다." } },
+        { "@type": "Question", "name": "어떻게 로그인하나요?",
+          "acceptedAnswer": { "@type": "Answer", "text": "아이디·비밀번호로 가입하거나 Google·카카오 계정으로 로그인할 수 있습니다." } },
+        { "@type": "Question", "name": "AI에게 물어본 내용은 어떻게 처리되나요?",
+          "acceptedAnswer": { "@type": "Answer", "text": "가비의 답을 만들 때 요청 내용이 AI 제공자에게 전달됩니다. 자세한 내용은 개인정보처리방침에서 확인할 수 있습니다." } }
+      ]
+    }
+  ]
+}
+</script>
+</head>
+<body>
+
+<header class="top">
+  <div class="wrap">
+    <a class="brand" href="./" aria-label="가비 Gabee 홈"><img src="assets/gabee-mascot.png" alt="" width="705" height="427"><span>Ga<b>bee</b></span></a>
+    <nav aria-label="페이지 안 이동">
+      <a href="#features">기능</a>
+      <a href="#what">가비 소개</a>
+      <a href="#faq">자주 묻는 질문</a>
+      <a href="#privacy">개인정보</a>
+    </nav>
+    <a class="btn dark sm" href="download/">가비 받기</a>
+  </div>
+</header>
+
+<main>
+  <div class="hero">
+    <div class="wrap">
+      <div>
+        <span class="kicker"><i></i>AI 가족 비서 앱 · 무료</span>
+        <h1>가족의 하루를 챙기는<br><em>AI 가족 비서</em> 가비</h1>
+        <p class="lead">가족의 일정·가계·돌봄·대화를 한 앱에 모아요. AI 비서 "가비"에게 물어보면 가족이 남긴 기록에서 찾아 알려 줘요.</p>
+        <div class="cta">
+          <a class="btn dark lg" href="download/"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M5 3.6v16.8a1 1 0 0 0 1.5.86l14.2-8.4a1 1 0 0 0 0-1.72L6.5 2.74A1 1 0 0 0 5 3.6z"/></svg>구글 플레이에서 받기</a>
+          <a class="btn ghost lg" href="#features">기능 보기</a>
+        </div>
+        <ul class="mini" aria-label="한눈에 보기">
+          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>무료</li><li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>안드로이드</li><li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>초대한 가족끼리만</li>
+        </ul>
+      </div>
+      <div class="scene" aria-hidden="true">
+        <div class="sun"></div>
+        <img class="bee" src="assets/gabee-mascot.png" alt="" width="705" height="427">
+        <div class="pop a"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 6h14a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1zM4 10.5h16M8 3.5v4M16 3.5v4"/></svg></span><span>화요일 오후 3:00<small>내과 진료 · 일정</small></span></div>
+        <div class="pop b"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></span><span>혈압약 복용<small>오전 8:30 기록됨</small></span></div>
+        <div class="pop c"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7.5h14a2 2 0 0 1 2 2V18a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2zM4 7.5V6a2 2 0 0 1 2-2h10M15.5 14h2"/></svg></span><span>가족 외식 정산 완료<small>1명당 10,000원</small></span></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 기능 무대: 탭을 누르면 한 가지씩 보이고, 시연이 끝나면 다음 기능으로 넘어간다. 스크립트가 없으면 다섯 가지가 모두 펼쳐진다 -->
+  <section id="features" class="sec" style="padding-top:40px">
+    <div class="wrap">
+      <div class="sec-head rv">
+        <p class="tag">기능</p>
+        <h2>가족 생활에 필요한 것,<br>가비 하나에</h2>
+      </div>
+
+      <div class="tabs" role="tablist" aria-label="기능 고르기">
+        <button type="button" class="tab" role="tab" id="t-ai" aria-controls="f-ai" aria-selected="true"><i class="fill"></i><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9zM19 16l.8 2.2L22 19l-2.2.8L19 22l-.8-2.2L16 19l2.2-.8z"/></svg><span>AI 채팅</span></button>
+        <button type="button" class="tab" role="tab" id="t-chat" aria-controls="f-chat" aria-selected="false"><i class="fill"></i><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 5h14a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-7l-5 4v-4H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2z"/></svg><span>가족 채팅</span></button>
+        <button type="button" class="tab" role="tab" id="t-cal" aria-controls="f-cal" aria-selected="false"><i class="fill"></i><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 6h14a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1zM4 10.5h16M8 3.5v4M16 3.5v4"/></svg><span>가족 일정</span></button>
+        <button type="button" class="tab" role="tab" id="t-wallet" aria-controls="f-wallet" aria-selected="false"><i class="fill"></i><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7.5h14a2 2 0 0 1 2 2V18a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2zM4 7.5V6a2 2 0 0 1 2-2h10M15.5 14h2"/></svg><span>가계 장부</span></button>
+        <button type="button" class="tab" role="tab" id="t-care" aria-controls="f-care" aria-selected="false"><i class="fill"></i><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20s-7.5-4.6-7.5-10A4.3 4.3 0 0 1 12 7.6 4.3 4.3 0 0 1 19.5 10c0 5.4-7.5 10-7.5 10z"/></svg><span>돌봄 기록</span></button>
+      </div>
+
+      <div class="stage" data-on="0">
+
+        <article class="panel" id="f-ai" role="tabpanel" aria-labelledby="t-ai">
+          <div class="txt">
+            <p class="no"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9zM19 16l.8 2.2L22 19l-2.2.8L19 22l-.8-2.2L16 19l2.2-.8z"/></svg>AI 채팅</p>
+            <h3>물어보면 가족 기록에서 찾아 줘요</h3>
+            <p class="desc">"다음 주 병원 예약이 언제였지?"처럼 말하듯 물어보세요. 가비가 가족이 남긴 일정과 기록, 올려 둔 사진·문서를 찾아 답해 줘요.</p>
+            <ol>
+              <li>아래쪽 탭에서 AI 채팅을 열어요.</li>
+              <li>궁금한 것을 평소 말투로 적어요.</li>
+              <li>가비가 찾은 기록과 함께 답을 보여 줘요.</li>
+            </ol>
+            <p class="tip"><b>확인하고 반영해요.</b> 일정을 넣거나 바꾸는 일은 가비가 먼저 제안하고, 사용자가 확인해야 반영돼요.</p>
+            <div class="go"><a class="btn dark" href="download/">가비 받기</a><button type="button" class="btn white next">다음 기능<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg></button></div>
+          </div>
+          <div class="viewer">
+            <div class="phone demo" data-length="12" role="img" aria-label="AI 채팅 예시 화면: 병원 예약을 물으면 가비가 일정에서 찾아 답하고, 알림을 넣기 전에 확인을 받는다">
+              <div class="screen" aria-hidden="true">
+                <div class="sbar"><span>9:41</span><i><b></b></i></div>
+                <div class="abar"><span class="av"><img src="assets/gabee-mascot.png" alt=""></span><span>가비<small>가족 기록을 아는 AI 비서</small></span></div>
+                <div class="view chat">
+                  <div class="msg me st" data-at="2.6">다음 주 병원 예약이 언제였지?</div>
+                  <div class="dots st" data-at="3.1" data-off="4.6"><span></span><span></span><span></span></div>
+                  <div class="msg st" data-at="4.6"><small>가비</small>다음 주 화요일 오후 3시예요.
+                    <div class="src"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 6h14a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1zM4 10.5h16M8 3.5v4M16 3.5v4"/></svg><span><b>내과 진료</b>11월 24일 (화) 오후 3:00</span></div></div>
+                  <div class="msg me st" data-at="7.6">30분 전에 알려 줘</div>
+                  <div class="dots st" data-at="8.0" data-off="9.0"><span></span><span></span><span></span></div>
+                  <div class="msg st" data-at="9.0"><small>가비</small>오후 2시 30분 알림을 넣을까요?<br>
+                    <span class="act st" data-at="9.0" data-off="10.4">확인하고 넣기<i class="tap" data-at="10.0" data-off="10.4"></i></span><span class="act done st" data-at="10.4">알림을 넣었어요</span></div>
+                </div>
+                <div class="inbar"><span class="ph" data-type="다음 주 병원 예약이 언제였지?|30분 전에 알려 줘" data-at="0.6,6.2" data-dur="1.6,1.0" data-off="2.6,7.6" data-ph="가비에게 물어보기"></span><span class="send"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 19V5M6 11l6-6 6 6"/></svg><i class="tap" data-at="2.3" data-off="2.7"></i><i class="tap" data-at="7.3" data-off="7.7"></i></span></div>
+                <div class="dock"><span class="on"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9zM19 16l.8 2.2L22 19l-2.2.8L19 22l-.8-2.2L16 19l2.2-.8z"/></svg>AI 채팅</span><span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 5h14a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-7l-5 4v-4H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2z"/></svg>소통</span><span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 6h14a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1zM4 10.5h16M8 3.5v4M16 3.5v4"/></svg>일정</span><span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7.5h14a2 2 0 0 1 2 2V18a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2zM4 7.5V6a2 2 0 0 1 2-2h10M15.5 14h2"/></svg>지갑</span><span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM4.5 20a7.5 7.5 0 0 1 15 0"/></svg>마이</span></div>
+              </div>
+            </div>
+            <div class="player"><button type="button" aria-label="시연 일시정지"></button><div class="track"><i></i></div><span class="time">0:00</span></div>
+            <p class="cap">기능을 설명하는 예시 화면이에요</p>
+          </div>
+        </article>
+
+        <article class="panel" id="f-chat" role="tabpanel" aria-labelledby="t-chat">
+          <div class="txt">
+            <p class="no"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 5h14a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-7l-5 4v-4H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2z"/></svg>가족 채팅</p>
+            <h3>대화 속 약속을 놓치지 않아요</h3>
+            <p class="desc">가족 단체방과 1:1 대화방에서 메시지·사진·문서를 주고받아요. 가비를 불러 대화 속 약속이나 할 일을 정리해 볼 수 있어요.</p>
+            <ol>
+              <li>소통 탭에서 가족 채팅방을 열어요.</li>
+              <li>평소처럼 이야기를 나눠요.</li>
+              <li>가비를 불러 약속과 할 일을 정리해요.</li>
+            </ol>
+            <p class="tip"><b>내가 붙인 별명으로.</b> 가족 구성원은 내가 붙인 별명으로 보여요.</p>
+            <div class="go"><a class="btn dark" href="download/">가비 받기</a><button type="button" class="btn white next">다음 기능<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg></button></div>
+          </div>
+          <div class="viewer">
+            <div class="phone demo" data-length="11" role="img" aria-label="가족 채팅 예시 화면: 대화에서 저녁 약속을 가비가 찾아 일정에 넣는다">
+              <div class="screen" aria-hidden="true">
+                <div class="sbar"><span>9:41</span><i><b></b></i></div>
+                <div class="abar"><span class="av"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 11.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7zM2.5 20a6.5 6.5 0 0 1 13 0M16.5 4.8a3.5 3.5 0 0 1 0 6.4M18.5 14.2a6.5 6.5 0 0 1 3 5.8"/></svg></span><span>우리 가족<small>4명</small></span></div>
+                <div class="view chat">
+                  <div class="msg fam st" data-at="0.5"><small>엄마</small>토요일에 다 같이 저녁 먹자</div>
+                  <div class="msg fam st" data-at="1.7"><small>아빠</small>좋아, 6시 어때?</div>
+                  <div class="msg me st" data-at="4.6">좋아요! 가비야, 정리해 줘</div>
+                  <div class="dots st" data-at="5.0" data-off="6.3"><span></span><span></span><span></span></div>
+                  <div class="msg st" data-at="6.3"><small>가비</small>약속 1건을 찾았어요.
+                    <div class="src"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 6h14a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1zM4 10.5h16M8 3.5v4M16 3.5v4"/></svg><span><b>가족 저녁</b>토요일 오후 6:00 · 가족 모두</span></div>
+                    <span class="act st" data-at="6.3" data-off="8.8">일정에 넣기<i class="tap" data-at="8.4" data-off="8.8"></i></span><span class="act done st" data-at="8.8">일정에 넣었어요</span></div>
+                </div>
+                <div class="inbar"><span class="ph" data-type="좋아요! 가비야, 정리해 줘" data-at="2.8" data-dur="1.4" data-off="4.6" data-ph="메시지 보내기"></span><span class="send"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 19V5M6 11l6-6 6 6"/></svg><i class="tap" data-at="4.3" data-off="4.7"></i></span></div>
+                <div class="dock"><span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9zM19 16l.8 2.2L22 19l-2.2.8L19 22l-.8-2.2L16 19l2.2-.8z"/></svg>AI 채팅</span><span class="on"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 5h14a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-7l-5 4v-4H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2z"/></svg>소통</span><span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 6h14a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1zM4 10.5h16M8 3.5v4M16 3.5v4"/></svg>일정</span><span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7.5h14a2 2 0 0 1 2 2V18a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2zM4 7.5V6a2 2 0 0 1 2-2h10M15.5 14h2"/></svg>지갑</span><span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM4.5 20a7.5 7.5 0 0 1 15 0"/></svg>마이</span></div>
+              </div>
+            </div>
+            <div class="player"><button type="button" aria-label="시연 일시정지"></button><div class="track"><i></i></div><span class="time">0:00</span></div>
+            <p class="cap">기능을 설명하는 예시 화면이에요</p>
+          </div>
+        </article>
+
+        <article class="panel" id="f-cal" role="tabpanel" aria-labelledby="t-cal">
+          <div class="txt">
+            <p class="no"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 6h14a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1zM4 10.5h16M8 3.5v4M16 3.5v4"/></svg>가족 일정</p>
+            <h3>가족 일정을 한 달력에서 같이 봐요</h3>
+            <p class="desc">가족 일정을 한눈에 보고, 필요한 가족에게만 공유해요. 달력에 넣을 일정은 직접 만들거나 가비에게 부탁할 수 있어요.</p>
+            <ol>
+              <li>일정 탭에서 날짜를 골라요.</li>
+              <li>일정을 만들고 함께 볼 가족을 정해요.</li>
+              <li>가족의 달력에 같이 보여요.</li>
+            </ol>
+            <p class="tip"><b>필요한 가족에게만.</b> 일정마다 함께 볼 가족을 정할 수 있어요.</p>
+            <div class="go"><a class="btn dark" href="download/">가비 받기</a><button type="button" class="btn white next">다음 기능<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg></button></div>
+          </div>
+          <div class="viewer">
+            <div class="phone demo" data-length="10" role="img" aria-label="일정 예시 화면: 이번 주 달력에 가족 일정 세 개가 차례로 나타난다">
+              <div class="screen" aria-hidden="true">
+                <div class="sbar"><span>9:41</span><i><b></b></i></div>
+                <div class="abar"><span class="av"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 6h14a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1zM4 10.5h16M8 3.5v4M16 3.5v4"/></svg></span><span>11월<small>이번 주 가족 일정</small></span></div>
+                <div class="view">
+                  <div class="cal"><span class="d">월</span><span class="d">화</span><span class="d">수</span><span class="d">목</span><span class="d">금</span><span class="d">토</span><span class="d">일</span>
+                    <span>23</span><span class="today mark" data-at="1.0">24</span><span>25</span><span class="mark" data-at="2.6">26</span><span>27</span><span class="mark" data-at="4.2">28</span><span>29</span></div>
+                  <div class="row st" data-at="1.0"><span class="bar"></span><span class="grow"><b>내과 진료</b><small>화 오후 3:00</small></span><span class="who2"><i>엄</i><i>나</i></span></div>
+                  <div class="row st" data-at="2.6"><span class="bar g"></span><span class="grow"><b>학원 상담</b><small>목 오후 5:30</small></span><span class="who2"><i>아</i></span></div>
+                  <div class="row st" data-at="4.2"><span class="bar p"></span><span class="grow"><b>가족 저녁</b><small>토 오후 6:00</small></span><span class="who2"><i>엄</i><i>아</i><i>나</i></span></div>
+                  <div class="msg st" data-at="6.2" style="max-width:100%"><small>가비</small>이번 주 가족 일정은 3건이에요. 화요일 진료 30분 전에 알려 드릴게요.</div>
+                </div>
+                <div class="dock"><span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9zM19 16l.8 2.2L22 19l-2.2.8L19 22l-.8-2.2L16 19l2.2-.8z"/></svg>AI 채팅</span><span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 5h14a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-7l-5 4v-4H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2z"/></svg>소통</span><span class="on"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 6h14a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1zM4 10.5h16M8 3.5v4M16 3.5v4"/></svg>일정</span><span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7.5h14a2 2 0 0 1 2 2V18a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2zM4 7.5V6a2 2 0 0 1 2-2h10M15.5 14h2"/></svg>지갑</span><span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM4.5 20a7.5 7.5 0 0 1 15 0"/></svg>마이</span></div>
+              </div>
+            </div>
+            <div class="player"><button type="button" aria-label="시연 일시정지"></button><div class="track"><i></i></div><span class="time">0:00</span></div>
+            <p class="cap">기능을 설명하는 예시 화면이에요</p>
+          </div>
+        </article>
+
+        <article class="panel" id="f-wallet" role="tabpanel" aria-labelledby="t-wallet">
+          <div class="txt">
+            <p class="no"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7.5h14a2 2 0 0 1 2 2V18a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2zM4 7.5V6a2 2 0 0 1 2-2h10M15.5 14h2"/></svg>가계 장부</p>
+            <h3>가족 지출과 정산을 장부로 남겨요</h3>
+            <p class="desc">지출과 용돈, 정산 내역을 앱 안 장부에 기록해요. 누가 얼마를 썼는지, 정산이 끝났는지 가족이 같이 볼 수 있어요.</p>
+            <ol>
+              <li>지갑 탭에서 지출을 적어요.</li>
+              <li>함께 낸 돈은 정산으로 나눠요.</li>
+              <li>이번 달 합계를 가족이 같이 봐요.</li>
+            </ol>
+            <p class="tip"><b>기록만 해요.</b> 은행 계좌와 연결하지 않고, 실제 돈이 오가지도 않아요.</p>
+            <div class="go"><a class="btn dark" href="download/">가비 받기</a><button type="button" class="btn white next">다음 기능<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg></button></div>
+          </div>
+          <div class="viewer">
+            <div class="phone demo" data-length="10" role="img" aria-label="지갑 예시 화면: 지출이 하나씩 기록되고 외식비 정산이 끝난다">
+              <div class="screen" aria-hidden="true">
+                <div class="sbar"><span>9:41</span><i><b></b></i></div>
+                <div class="abar"><span class="av"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7.5h14a2 2 0 0 1 2 2V18a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2zM4 7.5V6a2 2 0 0 1 2-2h10M15.5 14h2"/></svg></span><span>지갑<small>11월 가족 장부</small></span></div>
+                <div class="view">
+                  <div class="total"><small>이번 달 지출</small><b>124,000원</b><div class="split" data-at="0.6"><i></i><i></i><i></i></div></div>
+                  <div class="row st" data-at="1.6"><span class="bar"></span><span class="grow"><b>장보기</b><small>엄마 · 11월 21일</small></span><span class="amt">58,000원</span></div>
+                  <div class="row st" data-at="2.9"><span class="bar p"></span><span class="grow"><b>학원 교재</b><small>아빠 · 11월 22일</small></span><span class="amt">36,000원</span></div>
+                  <div class="row st" data-at="4.2"><span class="bar g"></span><span class="grow"><b>가족 외식</b><small>3명이 함께 · 30,000원</small></span>
+                    <span class="badge y st" data-at="4.2" data-off="7.0">정산 중</span><span class="badge st" data-at="7.0">정산 완료</span></div>
+                  <div class="msg st" data-at="7.6" style="max-width:100%"><small>가비</small>외식비는 1명당 10,000원으로 정산이 끝났어요.</div>
+                </div>
+                <div class="dock"><span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9zM19 16l.8 2.2L22 19l-2.2.8L19 22l-.8-2.2L16 19l2.2-.8z"/></svg>AI 채팅</span><span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 5h14a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-7l-5 4v-4H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2z"/></svg>소통</span><span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 6h14a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1zM4 10.5h16M8 3.5v4M16 3.5v4"/></svg>일정</span><span class="on"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7.5h14a2 2 0 0 1 2 2V18a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2zM4 7.5V6a2 2 0 0 1 2-2h10M15.5 14h2"/></svg>지갑</span><span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM4.5 20a7.5 7.5 0 0 1 15 0"/></svg>마이</span></div>
+              </div>
+            </div>
+            <div class="player"><button type="button" aria-label="시연 일시정지"></button><div class="track"><i></i></div><span class="time">0:00</span></div>
+            <p class="cap">기능을 설명하는 예시 화면이에요</p>
+          </div>
+        </article>
+
+        <article class="panel" id="f-care" role="tabpanel" aria-labelledby="t-care">
+          <div class="txt">
+            <p class="no"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20s-7.5-4.6-7.5-10A4.3 4.3 0 0 1 12 7.6 4.3 4.3 0 0 1 19.5 10c0 5.4-7.5 10-7.5 10z"/></svg>돌봄 기록</p>
+            <h3>떨어져 있어도 서로의 하루를 챙겨요</h3>
+            <p class="desc">식사, 약 복용, 컨디션, 걷기 같은 돌봄 기록을 남겨요. 가족이 동의한 경우에만 위치를 공유해 서로의 안전을 확인할 수 있어요.</p>
+            <ol>
+              <li>돌봄 화면에서 오늘 기록을 남겨요.</li>
+              <li>가족이 기록을 함께 확인해요.</li>
+              <li>위치 공유는 동의한 가족끼리만 켜요.</li>
+            </ol>
+            <p class="tip"><b>언제든 끌 수 있어요.</b> 위치 공유는 돌봄 화면에서 언제든 끌 수 있어요.</p>
+            <div class="go"><a class="btn dark" href="download/">가비 받기</a><button type="button" class="btn white next">처음으로<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg></button></div>
+          </div>
+          <div class="viewer">
+            <div class="phone demo" data-length="10" role="img" aria-label="돌봄 예시 화면: 식사와 약 복용이 체크되고 걷기 기록이 채워지며 위치 공유가 켜진다">
+              <div class="screen" aria-hidden="true">
+                <div class="sbar"><span>9:41</span><i><b></b></i></div>
+                <div class="abar"><span class="av"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20s-7.5-4.6-7.5-10A4.3 4.3 0 0 1 12 7.6 4.3 4.3 0 0 1 19.5 10c0 5.4-7.5 10-7.5 10z"/></svg></span><span>오늘의 돌봄<small>11월 24일 화요일</small></span></div>
+                <div class="view">
+                  <div class="row" data-at="1.0"><span class="grow"><b>아침 식사</b><small>오전 8:10</small></span><span class="ck"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg><i class="tap" data-at="0.7" data-off="1.1"></i></span></div>
+                  <div class="row" data-at="2.4"><span class="grow"><b>혈압약 복용</b><small>오전 8:30</small></span><span class="ck"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg><i class="tap" data-at="2.1" data-off="2.5"></i></span></div>
+                  <div class="row"><span class="grow"><b>컨디션</b><small>오늘 기분과 몸 상태</small></span><span class="badge st" data-at="3.6">좋음</span></div>
+                  <div class="row" data-at="4.6"><svg class="ring" viewBox="0 0 46 46"><circle class="t" cx="23" cy="23" r="18"/><circle class="v" cx="23" cy="23" r="18"/></svg><span class="grow"><b>걷기 3,200보</b><small>목표 5,000보</small></span></div>
+                  <div class="row" data-at="6.4"><span class="grow"><b>위치 공유</b><small>동의한 가족에게만</small></span><span class="sw"><i class="tap" data-at="6.1" data-off="6.5"></i></span></div>
+                  <div class="msg st" data-at="7.4" style="max-width:100%"><small>가비</small>오늘 기록이 가족에게 공유됐어요.</div>
+                </div>
+                <div class="dock"><span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9zM19 16l.8 2.2L22 19l-2.2.8L19 22l-.8-2.2L16 19l2.2-.8z"/></svg>AI 채팅</span><span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 5h14a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-7l-5 4v-4H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2z"/></svg>소통</span><span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 6h14a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1zM4 10.5h16M8 3.5v4M16 3.5v4"/></svg>일정</span><span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7.5h14a2 2 0 0 1 2 2V18a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2zM4 7.5V6a2 2 0 0 1 2-2h10M15.5 14h2"/></svg>지갑</span><span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM4.5 20a7.5 7.5 0 0 1 15 0"/></svg>마이</span></div>
+              </div>
+            </div>
+            <div class="player"><button type="button" aria-label="시연 일시정지"></button><div class="track"><i></i></div><span class="time">0:00</span></div>
+            <p class="cap">기능을 설명하는 예시 화면이에요</p>
+          </div>
+        </article>
+
+      </div>
+    </div>
+  </section>
+
+  <section id="what" class="sec" style="padding-top:0">
+    <div class="wrap">
+      <div class="sec-head rv">
+        <p class="tag">가비 소개</p>
+        <h2>가비는 어떤 앱인가요?</h2>
+        <p><strong>가비는 가족의 하루를 함께 챙기는 가족 생활 비서 앱입니다.</strong> 가족 채팅, 공유 일정, 가계 장부, 돌봄 기록이 한 앱에 들어 있고, 그 기록을 아는 AI 비서가 함께 있습니다.</p>
+      </div>
+      <div class="bento">
+        <article class="card big rv">
+          <p class="slogan">기억은 기록에, 마음은 가족에게</p>
+          <div>
+            <h3>가족 단톡방, 달력, 가계부, 메모를 따로 오가던 일을 한곳에서.</h3>
+            <p style="margin-top:14px">흩어져 있던 일정, 가계, 돌봄, 대화를 한 앱에 모으고, 필요할 때는 가비에게 물어보면 돼요.</p>
+          </div>
+        </article>
+        <article class="card facts rv">
+          <dl>
+            <div><dt>이름</dt><dd>가비 (Gabee)</dd></div>
+            <div><dt>종류</dt><dd>가족 생활 비서 앱</dd></div>
+            <div><dt>쓰는 사람</dt><dd>부모·자녀·조부모가 함께</dd></div>
+            <div><dt>기기</dt><dd>안드로이드 (구글 플레이)</dd></div>
+            <div><dt>아이폰</dt><dd>아직 앱스토어에 없음</dd></div>
+            <div><dt>가격</dt><dd>무료</dd></div>
+            <div><dt>언어</dt><dd>한국어</dd></div>
+          </dl>
+        </article>
+        <article class="card s rv">
+          <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 11.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7zM2.5 20a6.5 6.5 0 0 1 13 0M16.5 4.8a3.5 3.5 0 0 1 0 6.4M18.5 14.2a6.5 6.5 0 0 1 3 5.8"/></svg></span>
+          <h3>초대한 가족끼리만</h3>
+          <p>초대 코드로 가족 그룹을 만들어요. 그룹에 초대된 사람만 기록을 볼 수 있어요.</p>
+        </article>
+        <article class="card s rv">
+          <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 4h4a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-4M10 16l4-4-4-4M14 12H4"/></svg></span>
+          <h3>익숙한 계정으로 시작</h3>
+          <p>아이디·비밀번호로 가입하거나 Google·카카오 계정으로 로그인해요.</p>
+        </article>
+        <article class="card s rv">
+          <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 11V5.5a1.5 1.5 0 0 1 3 0V10m0 0V4.5a1.5 1.5 0 0 1 3 0V10m0 0V6.5a1.5 1.5 0 0 1 3 0V14a7 7 0 0 1-7 7h-.5a6 6 0 0 1-5-2.7L3.6 14a1.5 1.5 0 0 1 2.5-1.6L9 15"/></svg></span>
+          <h3>확인해야 반영</h3>
+          <p>일정을 넣거나 바꾸는 일은 가비가 먼저 제안하고, 사용자가 확인해야 반영돼요.</p>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <section id="who" class="sec" style="padding-top:0">
+    <div class="wrap">
+      <div class="sec-head rv">
+        <p class="tag">이런 가족에게</p>
+        <h2>이런 가족에게 맞아요</h2>
+      </div>
+      <div class="fits">
+        <div class="fit rv"><span class="n">01</span><div><h3>가족 일정이 단톡방에 묻히는 가족</h3><p>병원 예약, 학원 시간, 가족 행사를 한 달력에서 같이 봐요.</p></div></div>
+        <div class="fit rv"><span class="n">02</span><div><h3>떨어져 사는 부모님을 챙기는 가족</h3><p>식사·약 복용·컨디션 기록을 남기고 함께 확인해요.</p></div></div>
+        <div class="fit rv"><span class="n">03</span><div><h3>용돈과 공동 지출을 같이 관리하는 가족</h3><p>누가 얼마를 썼는지, 정산이 끝났는지 장부로 남겨요.</p></div></div>
+        <div class="fit rv"><span class="n">04</span><div><h3>"그거 언제였지?"를 자주 묻는 가족</h3><p>기록을 뒤지지 않고 가비에게 물어봐요.</p></div></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="faq" class="sec" style="padding-top:0">
+    <div class="wrap faq">
+      <div class="sec-head rv">
+        <p class="tag">자주 묻는 질문</p>
+        <h2>궁금한 점을<br>모았어요</h2>
+      </div>
+      <div class="rv">
+        <details class="q" open><summary>가비는 어떤 앱인가요?<i></i></summary><p>가족이 함께 쓰는 가족 생활 비서 앱입니다. 가족 일정, 가계, 돌봄, 대화를 한곳에 모으고, AI 비서 가비에게 물어보면 가족이 남긴 기록에서 찾아 알려 줍니다.</p></details>
+        <details class="q"><summary>가비는 무료인가요?<i></i></summary><p>네. 구글 플레이에서 무료로 받을 수 있습니다.</p></details>
+        <details class="q"><summary>아이폰에서도 쓸 수 있나요?<i></i></summary><p>지금은 안드로이드용만 구글 플레이에서 받을 수 있습니다. 아이폰용은 아직 앱스토어에 없습니다.</p></details>
+        <details class="q"><summary>가족이 아닌 사람이 우리 기록을 볼 수 있나요?<i></i></summary><p>아니요. 가족 그룹에 초대된 사람만 그 가족의 기록을 볼 수 있습니다. 가족 그룹은 초대 코드로 만듭니다.</p></details>
+        <details class="q"><summary>가비 AI는 무엇을 해 주나요?<i></i></summary><p>"다음 주 병원 예약이 언제였지?"처럼 말하듯 물어보면 가족이 남긴 일정과 기록, 올려 둔 사진·문서에서 찾아 답합니다. 일정을 넣거나 바꾸는 일은 가비가 먼저 제안하고, 사용자가 확인해야 반영됩니다.</p></details>
+        <details class="q"><summary>가계 기능은 은행 계좌와 연결되나요?<i></i></summary><p>아니요. 지출·용돈·정산 내역을 앱 안 장부에 기록할 뿐, 은행 계좌와 연결하지 않고 실제 돈이 오가지도 않습니다.</p></details>
+        <details class="q"><summary>위치는 항상 공유되나요?<i></i></summary><p>아니요. 가족이 동의한 경우에만 위치를 공유하고, 돌봄 화면에서 언제든 끌 수 있습니다.</p></details>
+        <details class="q"><summary>어떻게 로그인하나요?<i></i></summary><p>아이디·비밀번호로 가입하거나 Google·카카오 계정으로 로그인할 수 있습니다.</p></details>
+        <details class="q"><summary>AI에게 물어본 내용은 어떻게 처리되나요?<i></i></summary><p>가비의 답을 만들 때 요청 내용이 AI 제공자에게 전달됩니다. 자세한 내용은 <a href="https://kangminhun.github.io/gabee-privacy/">개인정보처리방침</a>에서 확인할 수 있습니다.</p></details>
+      </div>
+    </div>
+  </section>
+
+  <section id="privacy" class="sec" style="padding-top:0">
+    <div class="wrap">
+      <div class="trust rv">
+        <div>
+          <h2>가족의 기록은<br>가족 안에서만</h2>
+          <p class="sub">가비가 기록을 어떻게 다루는지 숨기지 않고 적어요.</p>
+          <div class="links">
+            <a class="btn dark sm" href="https://kangminhun.github.io/gabee-privacy/">개인정보처리방침</a>
+            <a class="btn ghost sm" href="https://kangminhun.github.io/gabee-privacy/delete-account.html">계정·데이터 삭제 요청</a>
+          </div>
+        </div>
+        <div>
+          <ul>
+            <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l7.5 3v5.5c0 4.4-3.1 8.2-7.5 9.5-4.4-1.3-7.5-5.1-7.5-9.5V6zM8.8 12.2l2.4 2.4 4.2-4.6"/></svg><span>가족 그룹에 초대된 사람만 그 가족의 기록을 볼 수 있어요.</span></li>
+            <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 3.5h7l4 4V19a1.5 1.5 0 0 1-1.5 1.5h-9A1.5 1.5 0 0 1 6 19V5a1.5 1.5 0 0 1 1-1.5zM14 3.5V8h4M9 12.5h6M9 16h4"/></svg><span>가비의 답을 만들 때 요청 내용이 AI 제공자에게 전달돼요.</span></li>
+            <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21s-6.5-5.6-6.5-10.5a6.5 6.5 0 0 1 13 0C18.5 15.4 12 21 12 21zM12 12.5a2.2 2.2 0 1 0 0-4.4 2.2 2.2 0 0 0 0 4.4z"/></svg><span>위치 공유는 가족이 동의한 경우에만 켜지고 언제든 끌 수 있어요.</span></li>
+            <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6.5 11h11a1 1 0 0 1 1 1v7a1 1 0 0 1-1 1h-11a1 1 0 0 1-1-1v-7a1 1 0 0 1 1-1zM8.5 11V8a3.5 3.5 0 0 1 7 0v3"/></svg><span>가계 장부는 기록용이에요. 은행 계좌와 연결되지 않아요.</span></li>
+          </ul>
+          <p class="warn">가비는 의료·금융 전문가가 아니에요. 건강이나 돈과 관련한 중요한 결정은 전문가와 상의해 주세요.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="en" class="en" lang="en">
+    <div class="wrap"><div class="box rv">
+      <h2>About Gabee (English summary)</h2>
+      <p><strong>Gabee (가비) is a free Korean family assistant app for Android.</strong> It brings a family's shared calendar, household ledger, care records, and family chat into one app, with a built-in AI assistant that answers questions from the records the family has saved — for example, "When was the hospital appointment next week?"</p>
+      <p>Only people invited to a family group can see that family's records. The ledger is for record-keeping only and is not connected to bank accounts. Location is shared only with consent and can be turned off at any time. Gabee is available on Google Play; an iPhone version is not on the App Store yet.</p>
+    </div></div>
+  </section>
+
+  <div class="wrap">
+    <div class="get rv">
+      <div>
+        <h2>오늘부터 가족과<br>가비를 써 보세요</h2>
+        <p>안드로이드 휴대폰에서 구글 플레이로 무료로 받을 수 있어요.</p>
+        <div class="cta"><a class="btn dark lg" href="download/"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M5 3.6v16.8a1 1 0 0 0 1.5.86l14.2-8.4a1 1 0 0 0 0-1.72L6.5 2.74A1 1 0 0 0 5 3.6z"/></svg>가비 받기</a></div>
+      </div>
+      <div class="disc"><img src="assets/gabee-mascot.png" alt="하트를 안고 웃는 꿀벌 캐릭터 가비" width="705" height="427"></div>
+    </div>
+  </div>
+</main>
+
+<footer class="site">
+  <div class="wrap">
+    <div class="cols">
+      <div><a class="brand" href="./"><span>Ga<b>bee</b></span></a><p class="about">가족의 일정·가계·돌봄을 한곳에서 챙기는 AI 가족 비서 앱.</p></div>
+      <div><h3>가비</h3><ul><li><a href="#features">기능</a></li><li><a href="#what">가비 소개</a></li><li><a href="#faq">자주 묻는 질문</a></li></ul></div>
+      <div><h3>받기</h3><ul><li><a href="download/">다운로드</a></li><li><a href="https://play.google.com/store/apps/details?id=com.kangminhun.gabee&amp;referrer=utm_source%3Dwebsite%26utm_medium%3Dfooter%26utm_campaign%3Dlaunch">구글 플레이</a></li></ul></div>
+      <div><h3>안내</h3><ul><li><a href="https://kangminhun.github.io/gabee-privacy/">개인정보처리방침</a></li><li><a href="https://kangminhun.github.io/gabee-privacy/delete-account.html">계정·데이터 삭제 요청</a></li></ul></div>
+    </div>
+    <p class="fine">© 가비 Gabee · 운영자 강민훈 · 휴대폰 화면은 기능을 설명하려고 만든 예시입니다 · 내용 기준일 2026년 11월 18일</p>
+  </div>
+</footer>
+
+<script src="assets/site.js"></script>
+</body>
+</html>
