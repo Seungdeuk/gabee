@@ -52,7 +52,7 @@ MESSAGES = {
 
 @dataclass
 class Processors:
-    """전처리에 끼우는 구성 요소. 비워 두면 기본 구현(RapidOCR)을 쓰고, 테스트는 가짜를 끼운다."""
+    """전처리에 끼우는 구성 요소(시험·개발용). 서비스에서는 비워 둔다: 로컬 OCR 은 없고(`ocr` 가 None), 사진 속 글자는 Claude 가 읽는다(`INGEST_LLM_OCR`)."""
 
     ocr: object | None = None
     jev: object | None = None
