@@ -40,10 +40,20 @@ MEMORY_RESETS = (
     ),  # 같은 이름이 여럿일 때 어느 쪽인지 되물은 상태(10분 유지)
     ("app.features.ai_assistant.library", "_photo_pending"),
     ("app.features.ai_assistant.library", "_photo_inflight"),
+    (
+        "app.features.schedule.agent.choice",
+        "_last_event",
+    ),  # 방금 다룬 일정 기억('그거 지워줘'의 대상, 10분 유지, #516). 같은 모듈의 _lock 으로 지킨다
     ("app.features.family_group.social_providers", "_overrides"),
     ("app.features.play.bomb", "_cheer_books"),
     ("app.features.play.bomb_vote", "_books"),
 )
+# 저장소를 지키는 락의 이름이 `<저장소 이름>_lock` 이 아닌 곳(모듈이 락 하나로 여러 저장소를 지킨다). 초기화는 앱이 쓰는 바로 그 락을 잡고 비운다.
+# 여기 적은 락이 모듈에 없으면(이름이 바뀌면) 조용히 락 없이 비우지 않고 AttributeError 로 멈춘다.
+MEMORY_LOCKS = {
+    ("app.features.schedule.agent.choice", "_pending"): "_lock",
+    ("app.features.schedule.agent.choice", "_last_event"): "_lock",
+}
 
 
 class UnsafeEnvironment(RuntimeError):
@@ -122,7 +132,12 @@ def reset_memory_state() -> None:
     for module_name, attr in MEMORY_RESETS:
         module = importlib.import_module(module_name)
         container = getattr(module, attr)
-        lock = getattr(module, f"{attr}_lock", None)
+        explicit = MEMORY_LOCKS.get((module_name, attr))
+        lock = (
+            getattr(module, explicit)  # 이름을 적어 둔 락은 반드시 있어야 한다
+            if explicit is not None
+            else getattr(module, f"{attr}_lock", None)
+        )
         if lock is not None:
             with lock:
                 container.clear()

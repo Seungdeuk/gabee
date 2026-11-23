@@ -185,6 +185,92 @@ def test_all_rate_limiters_and_memory_stores_are_emptied_by_reset(root):
     assert not choice._pending
 
 
+# ---------- choice._last_event(#516): 평가 초기화 목록 등록과 락 ----------
+def test_reset_empties_the_choice_last_event_memory_and_the_other_choice_store():
+    """'그거 지워줘'의 대상으로 기억해 둔 일정(`_last_event`, 10분 유지)이 다음 사례로 새지 않는다(합성 값만 쓴다)."""
+    from app.features.schedule.agent import choice
+
+    choice.remember_event("g-synthetic-1", "u-synthetic-1", "e-synthetic-1")
+    choice.remember_event("g-synthetic-2", "u-synthetic-2", "e-synthetic-2")
+    choice._pending[("g-synthetic-1", "u-synthetic-1")] = (9e18, None)
+    assert choice.recall_event("g-synthetic-1", "u-synthetic-1") == "e-synthetic-1"
+    env.reset_memory_state()
+    assert not choice._last_event and not choice._pending
+    assert choice.recall_event("g-synthetic-1", "u-synthetic-1") is None
+
+
+def test_choice_last_event_is_registered_for_reset_with_the_lock_the_app_uses():
+    key = ("app.features.schedule.agent.choice", "_last_event")
+    assert key in env.MEMORY_RESETS
+    assert env.MEMORY_LOCKS[key] == "_lock"
+    assert env.MEMORY_LOCKS[("app.features.schedule.agent.choice", "_pending")] == "_lock"
+
+
+def _reset_waits_for(lock, store, fill):
+    """`lock` 을 쥔 동안 초기화가 기다리고(저장소가 그대로 남고), 락을 놓으면 끝나서 비우는지 본다."""
+    import threading
+
+    fill()
+    done = threading.Event()
+
+    def run():
+        env.reset_memory_state()
+        done.set()
+
+    with lock:
+        worker = threading.Thread(target=run, daemon=True)
+        worker.start()
+        assert not done.wait(0.3), "락을 쥐고 있는데 초기화가 먼저 끝났다(락 없이 비웠다)"
+        assert store, "락을 쥐고 있는 동안 저장소가 비워졌다"
+    assert done.wait(10), "락을 놓았는데 초기화가 끝나지 않았다(교착)"
+    worker.join(10)
+    assert not store
+
+
+def test_reset_takes_the_choice_lock_so_it_cannot_race_a_request_touching_the_stores():
+    from app.features.schedule.agent import choice
+
+    _reset_waits_for(
+        choice._lock,
+        choice._last_event,
+        lambda: choice.remember_event("g-synthetic", "u-synthetic", "e-synthetic"),
+    )
+    _reset_waits_for(
+        choice._lock,
+        choice._pending,
+        lambda: choice._pending.__setitem__(("g-synthetic", "u-synthetic"), (9e18, None)),
+    )
+
+
+def test_a_store_with_the_default_lock_name_is_still_cleared_under_that_lock():
+    """바꾸지 않은 동작: `<저장소 이름>_lock` 규칙(예: 일정 되묻기 초안 `ask._pending_lock`)도 그대로 락을 잡고 비운다."""
+    from app.features.schedule.agent import ask
+
+    _reset_waits_for(
+        ask._pending_lock,
+        ask._pending,
+        lambda: ask._pending.__setitem__(("g-synthetic", "u-synthetic"), (9e18, None)),
+    )
+
+
+def test_every_explicit_lock_names_a_real_lock_for_a_registered_store():
+    import importlib
+
+    registered = set(env.MEMORY_RESETS)
+    for (module_name, attr), lock_name in env.MEMORY_LOCKS.items():
+        assert (module_name, attr) in registered
+        lock = getattr(importlib.import_module(module_name), lock_name)
+        assert hasattr(lock, "acquire") and hasattr(lock, "release")
+
+
+def test_a_renamed_explicit_lock_stops_the_reset_instead_of_clearing_without_it(monkeypatch):
+    monkeypatch.setitem(
+        env.MEMORY_LOCKS, ("app.features.schedule.agent.choice", "_last_event"), "_no_such_lock"
+    )
+    with pytest.raises(AttributeError):
+        env.reset_memory_state()
+
+
 def test_reset_removes_uploads_but_keeps_model_files_and_stays_inside_the_root(root):
     from app.shared.config import settings
 
