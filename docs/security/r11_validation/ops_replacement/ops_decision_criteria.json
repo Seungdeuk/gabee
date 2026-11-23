@@ -1,0 +1,37 @@
+{
+  "version": "ops-1.0",
+  "status": "PROPOSED — 사용자 승인·커밋·태그 전에는 효력 없음. 독립 평가 개봉 전에 확정하고 이후 변경 금지(해시는 ops_model_lock.json 에 기록).",
+  "label": "자동 검증 기반 연구용 · 사람 검수 미완료 — 운영 교체 평가는 연구 게이트(R11-G1~G12, R11-S)와 별개",
+  "comparison": {"A": "S0 koelectra-small-v2b (현재 서비스)", "B": "R11 B-new seed 21 (에폭 5)", "paired": true},
+  "statistics": {
+    "method": "문장 단위 쌍체 군집 부트스트랩(군집 = pair_id 가 있으면 쌍, 없으면 문장), 모델 A·B 는 같은 재표본을 쓴다",
+    "resamples": 5000, "seed": 20261123, "interval": "95% percentile", "difference": "B - A (%p), 상대 변화율은 (B-A)/A"
+  },
+  "primary_checks": {
+    "P1_recall": {"metric": "exact_recall", "delta_pp_min": 10.0, "ci_lower_pp_gt": 5.0},
+    "P2_total_exposure": {"metric": "total_exposure_rate", "delta_pp_max": -8.0, "ci_upper_pp_lt": -4.0},
+    "P3_f1_official": {"metric": "f1_official", "delta_pp_min": 8.0, "ci_lower_pp_gt": 0.0},
+    "P4_precision_all_noninferior": {"metric": "precision_all", "delta_pp_min": -3.0, "ci_lower_pp_ge": -6.0},
+    "P5_negative_fpr": {"metric": "neg_fpr_macro(사람 이름이 없는 유형 전체의 유형별 오탐률 평균)", "absolute_max": 0.06, "delta_pp_max": 2.0, "ci_upper_pp_le": 4.0},
+    "P6_target_types_exposure": {"types": ["D1P", "B1", "C2", "NEWNAME", "LONGNAME", "ORGLOC_MIX"], "delta_pp_max": 1.0, "ci_upper_pp_le": 3.0, "min_gold_spans_for_ci": 50},
+    "P7_regression_types_exposure": {"types": "위 6개와 D1·D2·A3N·GENERIC·OTHER 를 제외한 나머지 사람 포함 유형", "delta_pp_max": 2.0, "ci_upper_pp_le": 5.0, "min_gold_spans_for_ci": 50, "small_type_point_delta_pp_max": 5.0},
+    "P8_D1_noun_fpr": {"metric": "D1 명사 문장의 PERSON 오탐률", "absolute_max": 0.5015, "delta_pp_max": 10.0, "ci_upper_pp_le": 15.0},
+    "P9_pair_context_accuracy": {"metric": "pair_context_accuracy", "delta_pp_min": 0.0, "absolute_min": 0.235}
+  },
+  "secondary_checks_outside_independent_set": {
+    "S1_klue_val_f1": {"metric": "KLUE val F1(기존 평가 코드)", "delta_pp_min": -1.0, "absolute_min": 0.6854},
+    "S2_g12_onnx_cpu": "ONNX-PyTorch 토큰 일치 ≥99.9%, CPU 지연 p50·모델 크기·RSS 모두 S0 대비 +30% 이내(배포 환경에서 재측정)",
+    "S3_pipeline": "실제 가명화 경로 검증 전 항목 통과(프로토콜 §6)"
+  },
+  "verdict": {
+    "REPLACEMENT_CANDIDATE": "P1~P9, S1~S3 모두 충족. 운영 반영은 사용자의 별도 최종 승인이 있어야 하며 R11-S 미충족 위험은 계속 표기한다",
+    "KEEP_S0": "하나라도 미충족. 임계값을 바꾸거나 다른 시드·다른 후보로 재평가하지 않는다",
+    "INCONCLUSIVE": "어느 검사의 신뢰구간이 판정 기준을 가로지르면(점추정은 통과, 구간 조건 미충족) KEEP_S0 로 처리하고 사유를 기록한다"
+  },
+  "rules": [
+    "결과를 본 뒤 임계값·통계 방법을 바꾸지 않는다",
+    "독립 평가는 모델당 1회, EVALUATED.lock 으로 재실행을 막는다",
+    "S0 와 B 는 같은 입력·정답·평가 코드·후처리·병합 규칙을 쓴다",
+    "R9 독립 테스트는 회귀 참고용이며 이 평가 결과와 섞지 않는다"
+  ]
+}
