@@ -17,6 +17,7 @@ import { GestureHandlerRootView } from "react-native-gesture-handler";
 import PushBootstrap from "@/features/notifications/PushBootstrap";
 import { AuthProvider } from "@/shared/auth/AuthProvider";
 import { registerSignOutImageCacheClear } from "@/shared/imageCache";
+import { startMeta } from "@/shared/meta/metaEvents";
 import { colors } from "@/theme";
 
 export default function RootLayout() {
@@ -24,6 +25,8 @@ export default function RootLayout() {
   useKeepAwake();
   // 로그아웃 직전에 이미지 캐시(메모리·디스크)를 비운다: 같은 기기에서 다른 사람이 로그인해도 이전 사용자의 인증 사진이 남지 않게 한다
   useEffect(() => registerSignOutImageCacheClear(), []);
+  // 메타 광고 측정(설치·실행 기록). Expo Go·웹에서는 아무것도 하지 않는다
+  useEffect(() => startMeta(), []);
   // 로고 글꼴(Fredoka)과 본문 글꼴(Noto Sans KR). 불러오지 못해도 앱은 기본 글꼴로 계속 쓸 수 있다.
   const [loaded, error] = useFonts({
     Fredoka_600SemiBold,
