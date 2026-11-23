@@ -1,6 +1,6 @@
 {
  "mode": "research",
- "git_head": "68563568",
+ "git_head": "f2eaeb5a",
  "prereg_tag": "r11-prereg-2.0",
  "prereg_tag_commit": "68563568",
  "files": {
@@ -13,8 +13,8 @@
   "apps/api/scripts/g12_latency.py": "51de5bd33258186576da1156f789b38454d6eeb98c6ead7b53600a41a7754296",
   "apps/api/scripts/r11_flagged_sensitivity.py": "07c4f013d1b777fb59ced9dfde83e2ed814c3b12ea474a1a7925812563fc0cff",
   "ml/ner/train/g12_parity.py": "2b1625dc178dcbab1334cbcf1c718153a3f392a453a3db8d1c85e22d3c6867d9",
-  "ml/ner/train/run_r11_B.py": "0ab1b6c29df13db3e004c5b773be005321af8956f2883682f686feef57cf86db",
-  "ml/ner/train/r11_derive.py": "512625494f24c0b31a779fc3e8528639eaba30a0f248d4f91dfa36f565a1f155",
+  "ml/ner/train/run_r11_B.py": "1b2f9266919127388cb5e40f0b2bc7c347b0fe982745d9e822e99d024d19c041",
+  "ml/ner/train/r11_derive.py": "8db82a444919eac577a395becef881c6a8fc885ad6ffcb74599c3bf4e82e1d04",
   "ml/ner/train/train_ner.py": "9ceee024402171d3251871eb52857c3d78486b8b892cd76cbfa5081694aae93a",
   "ml/ner/train/build_r11_B.py": "76da0fdaa6825085e766ebc30fa64c28cacb1a9b37f7a19ab2c2c87091b7d58a",
   "ml/ner/train/r11_pretrain_check.py": "32d31c011fc2183b939abeb435419b22aebe71783018b3d3d0d7aee7928ec602",
