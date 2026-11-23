@@ -61,7 +61,13 @@ def register_chat_document(
             photo = service.receive_file(db, group_id, user_id, filename, content_type, data)
             photo_id = photo.id
         files.process_file(
-            photo_id, group_id, user_id, data, filename, source_attachment_id=attachment_id
+            photo_id,
+            group_id,
+            user_id,
+            data,
+            filename,
+            source_attachment_id=attachment_id,
+            purpose=files.Purpose.FAMILY_CHAT_DOCUMENT,
         )
     except Exception as exc:  # noqa: BLE001  내용이 로그에 남지 않게 종류만 적는다
         logger.warning("chat library register failed error=%s", type(exc).__name__)
@@ -156,6 +162,7 @@ def register_chat_photo(
         files.process_file(
             photo_id, group_id, user_id, data, f"{attachment_id}.jpg",
             source_attachment_id=attachment_id, keep_photo=forced or settings.photo_classify_siglip,
+            purpose=files.Purpose.FAMILY_CHAT_DOCUMENT,
         )  # fmt: skip
         # 단계형(E)이 켜져 있으면 문서로 판정된 사진은 글자가 적어도 문서함에 남긴다: 글자가 적은 문서를 SigLIP2 가 구한 경우(rescue)를 읽기 단계가
         # 다시 "사진"으로 버리면, 판별 상태는 document 인데 문서함에는 없는 채로 업로더가 일반 사진 확인도 못 하게 된다.

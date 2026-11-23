@@ -40,7 +40,8 @@ class Settings(BaseSettings):
     # 업로드 파일의 글자 읽기(OCR)·개인정보 가리기를 Claude 로 한다(docs/adr/0014). 호출이 실패하면 가리지 않은 글을 저장하지 않고 파일을 failed 로 둔다.
     # 글자 읽기와 가리기는 항상 Claude 로 한다(사용자 결정 2026-11-09). 로컬 OCR(RapidOCR)은 서비스에서 제거했다(2026-11-23): 사진 속 글자는 Claude 만 읽으므로
     # **서비스에서는 INGEST_LLM_OCR=true 가 필수**다(false 면 사진은 읽을 수단이 없어 실패한다). false 는 읽기 구성 요소를 끼우는 시험에서만 쓴다(conftest.py).
-    # 외부로 보내는 모든 갈래(사진·PDF 스캔 쪽 읽기, 글 가리기, PPT 그림 설명, 분류, 챙길 일 뽑기)는 가족 AI 동의가 있을 때만 쓴다.
+    # 메인 AI 직접 업로드(`/ai-assistant/files`)는 기존대로 이 모든 갈래를 쓴다(사용자 결정 2026-11-23). **가족 소통 채팅방**의 자동 처리(사진·PDF 스캔 쪽 읽기, 글 가리기, PPT 그림 설명, 분류, 챙길 일)는
+    # 가족 AI 동의가 있을 때만 쓴다(`files.Purpose`, ADR 0023).
     ingest_llm_ocr: bool = True  # 사진·PDF 쪽을 Claude 로 읽는다
     ingest_llm_mask: bool = True  # 글을 Claude 로 가리고 가족 이름 후보를 문맥으로 판단한다
     ingest_ocr_model: str = "claude-sonnet-5-5"  # 표·머리말 구분이 좋은 모델

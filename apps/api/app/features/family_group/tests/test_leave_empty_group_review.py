@@ -200,7 +200,9 @@ def test_a_document_still_being_read_when_the_family_is_deleted_leaves_nothing(
     assert (
         client.post(LEAVE, headers=owner).status_code == 204
     )  # 읽기가 끝나기 전에 가족이 지워진다
-    files.process_file(photo_id, gid, owner_id, data, "notice.txt")
+    files.process_file(
+        photo_id, gid, owner_id, data, "notice.txt", purpose=files.Purpose.MAIN_AI_DIRECT_UPLOAD
+    )
     with SessionLocal() as db:
         assert db.scalar(select(KnowledgeItem.id).where(KnowledgeItem.group_id == gid)) is None
         assert db.scalar(select(Photo.id).where(Photo.group_id == gid)) is None

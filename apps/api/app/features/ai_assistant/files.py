@@ -10,8 +10,10 @@ import logging
 import mimetypes
 import threading
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+from enum import StrEnum
 
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -50,6 +52,16 @@ MESSAGES = {
 }
 
 
+class Purpose(StrEnum):
+    """파일을 무슨 목적으로 처리하는가. **서버 코드(신뢰 가능한 호출 경계)만 정한다** — 요청 본문·쿼리·헤더 어디에서도 오지 않으며 클라이언트가 바꿀 수 없다.
+    목적마다 외부 AI(Claude·Jev) 전송 정책이 다르다(사용자 결정 2026-11-23, ADR 0023):
+    - `MAIN_AI_DIRECT_UPLOAD`: 메인 AI 에서 사용자가 직접 올린 파일(`/ai-assistant/files` 라우터만 쓴다). **기존 정책 유지**: Claude 가 읽고·가리고·분류한다.
+    - `FAMILY_CHAT_DOCUMENT`: 가족 소통 채팅방의 문서·사진 자동 등록·"문서로 저장"(`library.py` 만 쓴다). **가족 AI 동의가 있을 때만** 외부로 보낸다."""
+
+    MAIN_AI_DIRECT_UPLOAD = "main_ai_direct_upload"
+    FAMILY_CHAT_DOCUMENT = "family_chat_document"
+
+
 @dataclass
 class Processors:
     """전처리에 끼우는 구성 요소(시험·개발용). 서비스에서는 비워 둔다: 로컬 OCR 은 없고(`ocr` 가 None), 사진 속 글자는 Claude 가 읽는다(`INGEST_LLM_OCR`)."""
@@ -69,19 +81,33 @@ def process_file(
     filename: str,
     source_attachment_id: str | None = None,
     keep_photo: bool = False,
+    *,
+    purpose: Purpose,
 ) -> None:
     """전처리해서 knowledge 에 넣고 `photos.status` 를 바꾼다. 어떤 실패도 서버를 멈추지 않는다.
+    `purpose` 는 **필수 키워드 인자(기본값 없음)** 다: 빠뜨리면 TypeError, 모르는 값이면 ValueError 라서 처리 목적(=외부 전송 정책)을 조용히 정할 수 없다.
+    메인 AI 직접 업로드는 채팅 첨부(`source_attachment_id`)가 없고 채팅 문서는 항상 채팅 첨부가 있다: 짝이 맞지 않으면 ValueError(서버 코드의 실수를 막는다).
     `keep_photo` 는 채팅 사진을 사용자가 직접 "문서로 저장"한 경우다: 글자가 거의 없어 "사진" 기록이 돼도 문서함에 남긴다.
 
     Claude 연결이 잠깐 안 돼서 실패(`llm_unavailable`)했으면 기다렸다가 같은 파일을 다시 처리한다(원본 바이트는 이미 메모리에 있다).
     깨진 파일·지원 안 하는 형식은 다시 해도 같으므로 다시 하지 않는다. 기다리는 동안은 처리 칸을 비워 다른 파일이 지나가게 한다."""
+    purpose = Purpose(purpose)
+    if (purpose is Purpose.FAMILY_CHAT_DOCUMENT) != (source_attachment_id is not None):
+        raise ValueError("처리 목적과 채팅 첨부 여부가 맞지 않아요")
     status = "failed"
     for attempt in range(settings.ingest_retry_max + 1):
         if attempt:
             time.sleep(settings.ingest_retry_wait_seconds * attempt)
         with _SLOTS:
             status, retry = _process_once(
-                photo_id, group_id, user_id, data, filename, source_attachment_id, keep_photo
+                photo_id,
+                group_id,
+                user_id,
+                data,
+                filename,
+                source_attachment_id,
+                keep_photo,
+                purpose,
             )
         if not retry:
             break
@@ -128,6 +154,23 @@ def _consent_now(group_id: str) -> bool:
         return ai_guard.is_enabled(db, group_id)
 
 
+def _external_allowed(purpose: Purpose, group_id: str) -> bool:
+    """이 처리를 시작할 때 외부 AI 로 보내도 되는가. 메인 AI 직접 업로드는 기존 정책대로 보낸다(사용자 결정). 가족 채팅 문서는 가족 AI 동의가 있을 때만이다.
+    모르는 목적은 막는다(fail-closed)."""
+    if purpose is Purpose.MAIN_AI_DIRECT_UPLOAD:
+        return True
+    if purpose is Purpose.FAMILY_CHAT_DOCUMENT:
+        return _consent_now(group_id)
+    return False
+
+
+def _recheck_for(purpose: Purpose, group_id: str) -> Callable[[], bool] | None:
+    """외부로 나가기 직전마다 동의를 다시 읽는 함수. 가족 채팅 문서만 쓴다(메인 AI 직접 업로드는 가족 동의와 무관한 기존 정책이다)."""
+    if purpose is Purpose.FAMILY_CHAT_DOCUMENT:
+        return lambda: _consent_now(group_id)
+    return None
+
+
 def _plan_reminders(photo_id: str, group_id: str, user_id: str) -> None:
     """저장된 기록에서 챙길 일을 뽑는다(설정이 켜진 경우). 실패해도 파일은 그대로 저장된 상태로 둔다."""
     if not settings.ingest_reminders:
@@ -147,15 +190,16 @@ def _process_once(
     filename: str,
     source_attachment_id: str | None = None,
     keep_photo: bool = False,
+    purpose: Purpose = Purpose.FAMILY_CHAT_DOCUMENT,
 ) -> tuple[str, bool]:
-    """한 번 처리한다. (상태, 다시 해 볼 만한 실패인지)"""
+    """한 번 처리한다. (상태, 다시 해 볼 만한 실패인지). `purpose` 기본값은 가장 엄격한 쪽(가족 채팅: 동의가 있어야 외부로 보낸다)이다."""
     try:
         # 가족 이름은 가리기 전에 자리표시로 바꾼다(분류를 외부 서비스에 맡겨도 실명이 나가지 않는다)
         with SessionLocal() as db:
             family = family_names.FamilyTagger(family_names.load_members(db, group_id))
-            # 가족 AI 동의가 없으면 이 파일의 어떤 부분도 외부로 보내지 않는다(읽기·가리기·그림 설명·분류·챙길 일). 시도마다 다시 읽고,
-            # 외부로 나가기 직전에도 `recheck` 로 다시 읽는다(처리 도중 철회하면 남은 단계를 막는다)
-            external = ai_guard.is_enabled(db, group_id)
+        # 처리 목적(`Purpose`)이 외부 전송 여부를 정한다. 가족 채팅 문서는 동의가 없으면 이 파일의 어떤 부분도 외부로 보내지 않는다(읽기·가리기·그림 설명·분류·챙길 일).
+        # 시도마다 다시 읽고, 외부로 나가기 직전에도 `recheck` 로 다시 읽는다(처리 도중 철회하면 남은 단계를 막는다)
+        external = _external_allowed(purpose, group_id)
         result = ingest_service.ingest_file(
             group_id,
             data,
@@ -164,7 +208,7 @@ def _process_once(
             jev=processors.jev,
             family=family,
             external=external,
-            recheck=lambda: _consent_now(group_id),
+            recheck=_recheck_for(purpose, group_id),
         )
         if result.quality.status == "failed":
             retry = result.quality.error == "llm_unavailable"
@@ -219,8 +263,10 @@ def _process_once(
                 delete_record(db, group_id, photo_id)
                 return "skipped", False
         if (
-            not chat_sensitive and external and _consent_now(group_id)
-        ):  # 챙길 일 뽑기는 본문을 외부 Claude 로 보내므로, 가족방에서 온 민감 문서와 AI 동의가 없는(처리 도중 철회한 것 포함) 가족은 건너뛴다
+            not chat_sensitive
+            and external
+            and (purpose is Purpose.MAIN_AI_DIRECT_UPLOAD or _consent_now(group_id))
+        ):  # 챙길 일 뽑기는 본문을 외부 Claude 로 보내므로, 가족방에서 온 민감 문서와 가족 채팅에서 AI 동의가 없는(처리 도중 철회한 것 포함) 경우는 건너뛴다
             _plan_reminders(photo_id, group_id, user_id)
         return ("needs_review" if from_ingest.needs_review(result) else "analyzed"), False
     except Exception as e:  # noqa: BLE001  내용이 로그에 남지 않게 종류만 적는다
