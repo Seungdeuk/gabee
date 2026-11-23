@@ -62,10 +62,32 @@ def test_account_trailing_amount_is_not_swallowed():
         "전화 010 1234 5678 로 줘",  # 전화번호는 계좌가 아니다
         "택배 운송장 110-123-456789 로 보내줘",  # 운송장 문맥
         "금액은 계좌 110 123 4567 원",  # 금액
+        # 입금·송금·이체 같은 약한 단서가 있어도 주문번호·운송장·날짜·전화·금액은 계좌가 아니다
+        "입금 확인 주문번호 1234567890123",
+        "입금 완료 운송장 123-456-7890123 확인",
+        "송금 영수증 번호 2026-1103-0001234",
+        "입금은 2026-11-03 까지 부탁",
+        "송금 후 010-1234-5678 로 연락",
+        "이체 한도 1,234,567원",
+        "입금 123456789 원",  # 9자리
+        "송금 수수료 1000원",
     ],
 )
 def test_account_negatives(text):
     assert not hits(text, Kind.ACCOUNT)
+
+
+def test_account_weak_cue_alone_does_not_block_plain_digits_and_hyphen_shape_blocks():
+    plain, plain_score = one("입금 1234567890 확인", Kind.ACCOUNT)  # 하이픈 없음: 가림만
+    assert plain == "1234567890" and plain_score < 0.7
+    with Pseudonymizer() as pz:
+        assert not pz.apply("입금 1234567890 확인", ANALYSIS).blocked
+        assert pz.apply(
+            "입금 110-123-456789 확인", ANALYSIS
+        ).blocked  # 하이픈 계좌 모양 + 이체 맥락: 차단(유지)
+        assert not pz.apply(
+            "입금 확인 주문번호 1234-5678-9012", ANALYSIS
+        ).blocked  # 주문번호 문맥은 버린다
 
 
 # ---------- RRN ----------
@@ -165,9 +187,12 @@ def test_secret_cue_window_detected_and_blocked(text, value):
     assert got == value and score >= 0.7
 
 
-def test_secret_year_like_value_is_mask_only():
-    got, score = one("비밀번호 바꿨어, 2026", Kind.SECRET)
-    assert got == "2026" and score < 0.7
+def test_secret_year_like_value_away_from_cue_is_not_detected():
+    # 연도 모양은 단서와 떨어져 있으면 날짜일 가능성이 커서 잡지 않는다(가드 임계값 0.45 에서도 불필요하게 막히지 않게)
+    assert not hits("비밀번호 바꿨어, 2026", Kind.SECRET)
+    assert not hits("인증번호 보낸 게 2025", Kind.SECRET)
+    # 단서 바로 뒤의 값은 기존 규칙이 그대로 본다(연도 모양이어도)
+    assert one("비밀번호 2026", Kind.SECRET)[1] >= 0.7
 
 
 @pytest.mark.parametrize(
@@ -227,3 +252,54 @@ def test_ordinary_text_untouched():
         assert not [
             s for s in detect(text) if s.kind in (Kind.ACCOUNT, Kind.RRN, Kind.CARD, Kind.SECRET)
         ], text
+
+
+# 가드(high_risk_guard, 점수 0.45 이상이면 거절)가 일반 숫자를 불필요하게 막지 않는지: 지식 문서 등록·가계 에이전트 채팅·탭 에이전트 인자·
+# 메모리 저장·공유가 같은 판정을 쓴다. (품번/주문 꼴의 4-4-4-4 카드 모양과 '이체 한도 5000000000원' 은 이번 변경 전부터 막히던 기존 동작이라 뺐다.)
+@pytest.mark.parametrize(
+    "text",
+    [
+        "주문번호 2026110312345 배송 조회해줘",
+        "운송장 번호 123456789012 어디쯤이야",
+        "택배 6891234567890 도착했어?",
+        "송장 1234-5678-9012 확인해줘",
+        "예약번호 20261103123456 확인해줘",
+        "승인번호 12345678 으로 결제됨",
+        "영수증 번호 2026-1103-0001234",
+        "회원번호 110-123-456789 로 로그인",
+        "관리번호 123-4567-8901-2345 재고 확인",
+        "사업자등록번호 123-45-67890 적어줘",
+        "접수번호 35660020 20360505 확인",
+        "총 금액 1,234,567원 입금해줘",
+        "월급 3500000원 중 2500000원 저금",
+        "후원금 123 456 789 원 입금",
+        "참가비 30000원씩 5명 150000원",
+        "2026-11-03 14:30 회의",
+        "20261103 배포 예정",
+        "입금은 2026-11-03 까지 부탁",
+        "전화 010-1234-5678 로 줘",
+        "송금 후 010-1234-5678 로 연락",
+        "+82 10-1234-5678 로 문자",
+        "ISBN 978-89-123-4567-8 책",
+        "바코드 8801234567890 찍어봐",
+        "SOS 신호 1004 로 응답",
+        "ZOO 2026 BOSS 1234567890 티켓",
+        "일이삼사오육칠팔구 외우자",
+        "구구단 이이는사 이삼은육",
+        "엄마 생일 1010",
+        "인증번호가 안 와",
+        "비밀번호 규칙은 8자 이상",
+        "인증번호 3분 안에 입력해",
+        "비번 2024년 거 그대로야",
+        "비밀번호 바꿨어, 2026",
+        "점수 9 8 7 6 5 4 3 2 1 0 1 2 순서야",
+        "추첨번호 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6",
+        "주민번호는 알려주면 안 돼",
+        "카드번호 앞 4자리만 알려줘",
+        "통장 사본 보내줄게",
+    ],
+)
+def test_guard_does_not_flag_ordinary_numbers(text):
+    from app.shared.high_risk_guard import has_high_risk
+
+    assert not has_high_risk(text), text
