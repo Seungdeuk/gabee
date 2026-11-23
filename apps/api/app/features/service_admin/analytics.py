@@ -1,4 +1,4 @@
-"""서비스 관리자 '데이터 분석' 탭의 계산. 표에서 id·시각·개수만 읽어 파이썬으로 센다(채팅·일정·가계 내용은 읽지 않는다).
+"""서비스 관리자 이용 분석(및 가족·기능·AI 보조 카드)의 계산. 표에서 id·시각·개수만 읽어 파이썬으로 센다(채팅·일정·가계 내용은 읽지 않는다).
 
 - 활동 기준: 로그인·자동 갱신으로 토큰을 받은 시각(refresh_tokens.issued_at). 지워진 토큰은 기록이 없다.
 - 날짜·요일·시간 경계: 한국 시간(settings.ai_day_utc_offset_hours, 기본 +9).
@@ -38,6 +38,8 @@ WINDOW = 30 * DAY  # 가족·기능·AI·시간대 분석 기간
 SIZE_LABELS = ("1명", "2명", "3명", "4명", "5명 이상")
 FEATURE_NAMES = (("schedule", "일정"), ("chat", "채팅"), ("billing", "정산"), ("ai", "AI"))
 UNKNOWN_SOURCE = "unknown"  # 유입 경로 기록이 없는 가입자(아이폰·웹·APK 직접 설치·기능 이전 가입)
+# 홍보 링크를 만든 채널(docs/requirements/acquisition.md). 가입이 0명이어도 표에 한 줄씩 보인다.
+KNOWN_SOURCES = ("youtube", "instagram", "blog", "cafe", "news", "qr", "kakao", "google-play")
 
 
 def _aware(at: datetime | None) -> datetime | None:
@@ -138,12 +140,22 @@ def funnel(users: dict[str, datetime], firsts: dict[str, dict[str, datetime]]):
 def acquisition(
     users: dict[str, datetime], sources: list[tuple[str, str]], first_family: dict[str, datetime]
 ) -> list[AnalyticsSource]:
-    """유입 경로별 가입 수·비율·가족 연결 비율. 기록이 없는 가입자는 unknown 한 줄로 모아 맨 끝에 둔다."""
+    """유입 경로별 가입 수·비율·가족 연결 비율. 기록이 없는 가입자는 unknown 한 줄로 모아 맨 끝에 둔다.
+    KNOWN_SOURCES 채널과 unknown 은 0명이어도 늘 나온다. 많은 순, 같으면 채널 순서(목록 밖 값은 그 뒤 이름순)."""
     source_of = {uid: src for uid, src in sources if uid in users}
-    by_source: dict[str, list[str]] = defaultdict(list)
+    by_source: dict[str, list[str]] = {src: [] for src in (*KNOWN_SOURCES, UNKNOWN_SOURCE)}
     for uid in users:
-        by_source[source_of.get(uid, UNKNOWN_SOURCE)].append(uid)
-    order = sorted(by_source, key=lambda src: (src == UNKNOWN_SOURCE, -len(by_source[src]), src))
+        by_source.setdefault(source_of.get(uid, UNKNOWN_SOURCE), []).append(uid)
+    rank = {src: i for i, src in enumerate(KNOWN_SOURCES)}
+    order = sorted(
+        by_source,
+        key=lambda src: (
+            src == UNKNOWN_SOURCE,
+            -len(by_source[src]),
+            rank.get(src, len(rank)),
+            src,
+        ),
+    )
     return [
         AnalyticsSource(
             source=src,
@@ -198,7 +210,11 @@ def usage(rows: list[tuple], today: date) -> AnalyticsUsage:
         if person_days
         else None,
         by_tab=[
-            AnalyticsUsageTab(tab=tab, minutes=round(sec / 60, 1), share=_pct(sec, tab_total))
+            AnalyticsUsageTab(
+                tab=tab,
+                minutes=round(sec / person_days / 60, 1),  # 1명당 하루 평균(왼쪽 평균과 같은 기준)
+                share=_pct(sec, tab_total),
+            )
             for tab, sec in sorted(tab_secs.items(), key=lambda kv: (-kv[1], kv[0]))
         ],
         daily=daily,

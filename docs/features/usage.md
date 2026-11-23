@@ -14,7 +14,7 @@
 - 서버 `app/features/usage/`: 모델 `UsageDaily`(테이블 `usage_daily`, 기본키 `(user_id, day, tab)`, 날짜 인덱스), Alembic `3ba836194fcf`(down `eab90289ee51`, 표·인덱스 추가만).
   - `POST /usage/report` → 204. 탭은 정해진 6개, 초는 0~86400(한 번에 4시간 상한), 실행 0~20, 날짜는 한국 시간 오늘 기준 7일 전~내일(아니면 422 `usage_day_out_of_range`). 탭 줄과 `app` 줄(합계·실행)에 더하고 하루 86400초를 넘지 않게 자른다.
   - `main.py` 에 `schema_ready("usage")`, `shared/db.py` 의 `import_all_models()`, 보안 매트릭스 "가족 없이 되는 주소", `/health/db` 기능 목록 시험.
-- 관리자 데이터 분석 탭 "체류시간 (최근 30일)": `service_admin/analytics.py` 의 `usage()`(기록이 있는 사람·날 기준 평균), `repository.usage_rows()`, `app.js` 의 `usageCard()`. 표가 없는 DB 에서는 읽지 않고 "준비 중".
+- 관리자 이용 분석 › 재방문·사용 시간 탭 "사용 시간 (최근 30일)": `service_admin/analytics.py` 의 `usage()`(기록이 있는 사람·날 기준 평균, 탭별 시간도 같은 기준의 1명당 하루 평균), `repository.usage_rows()`, `app.js` 의 `usageCard()`. 표가 없는 DB 에서는 읽지 않고 "준비 중".
 - 시험: `app/features/usage/tests/test_usage_api.py`(16개), `service_admin/tests/test_admin_api.py` 의 `test_analytics_usage_time`·`test_analytics_without_usage_table`·`test_usage_calculation`. 앱 측정기는 PC 에서 시나리오로 직접 실행해 확인.
 
 ## 남은 것

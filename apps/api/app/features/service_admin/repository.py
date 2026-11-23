@@ -340,7 +340,7 @@ def delete_notice(db: Session, notice_id: str) -> bool:
 
 
 def analytics_rows(db: Session, token_since: datetime, since: datetime) -> dict[str, list]:
-    """데이터 분석 탭에 쓰는 id·시각·개수만 읽는다(글 내용·이메일은 읽지 않는다).
+    """이용 분석 탭에 쓰는 id·시각·개수만 읽는다(글 내용·이메일은 읽지 않는다).
     가족 이름은 AI 많이 쓴 가족 표에만 쓴다(다른 탭도 가족 이름은 보여 준다)."""
     users, groups, members = _t("users"), _t("groups"), _t("group_members")
     tokens, events, messages = _t("refresh_tokens"), _t("events"), _t("messages")

@@ -166,7 +166,7 @@ class AdminNoticesOut(BaseModel):
     rows: list[AdminNoticeRow]  # 최근순, 최대 200
 
 
-# ---------- 데이터 분석 탭 ----------
+# ---------- 이용 분석 탭 ----------
 class AnalyticsCohort(BaseModel):
     week_start: date  # 가입 주의 월요일(한국 시간)
     size: int  # 그 주 가입자 수
@@ -238,7 +238,7 @@ class AnalyticsSource(BaseModel):
 
 class AnalyticsUsageTab(BaseModel):
     tab: str  # chat, family-chat, schedule, care, my, other
-    minutes: float  # 30일 동안 그 탭에 머문 분 합계
+    minutes: float  # 1명당 하루 평균 그 탭에 머문 분(기록이 있는 사람·날 기준, 탭을 다 더하면 하루 평균과 같다)
     share: float | None  # 전체 탭 시간 대비 %
 
 
