@@ -166,10 +166,18 @@ def test_card_loose_grouping_without_context_is_mask_only():
         "주문번호 35660020 20360505",  # 주문번호 문맥(느슨한 묶음은 버린다)
         "3566 0020 2036",  # 12자리
         "ISO 27001 SOS 도움 요청",  # 알파벳 단어
+        "LOT 62583 BIO 60614203",  # 숫자 묶음 사이의 영어 낱말(B·I·O 를 숫자로 바꿔 합치면 안 된다)
+        "ZOO 2026 BOSS 1234567890 티켓",
     ],
 )
 def test_card_negatives(text):
     assert not hits(text, Kind.CARD)
+
+
+def test_ocr_noise_inside_digit_tokens_still_converted():
+    # 영문자가 숫자 토큰 '안'에 섞인 OCR 잡음은 계속 변환한다(영문자만으로 된 토큰이 낀 덩어리만 제외)
+    assert one("카드 사진에서 읽은 번호 3566-002O-2O36-0SO5", Kind.CARD)[1] >= 0.7
+    assert one("신분증 스캔: 주민번호 S5O216-438O327", Kind.RRN)[1] == pytest.approx(0.97)
 
 
 # ---------- SECRET ----------

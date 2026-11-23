@@ -842,6 +842,12 @@ def _view_run_chars(run: str) -> list[str] | None:
         return None  # '일이삼' 같은 낱말이 숫자 사이에 낀 정도는 번호로 보지 않는다
     if ocr and not ko and (digits < 6 or digits / len(sym) < 0.6):
         return None  # 영문자가 더 많은 덩어리(ISO·SOS …)는 번호가 아니다
+    if (
+        ocr
+        and not ko
+        and any(t and not any(c.isdigit() for c in t) for t in re.split(r"[ \-]", run))
+    ):
+        return None  # 숫자가 하나도 없는 영문자 토큰('LOT 62583 BIO 60614203' 의 BIO)이 낀 덩어리는 낱말이지 OCR 잡음이 아니다
     out = []
     for c in run:
         if c in _KO_DIGIT:
