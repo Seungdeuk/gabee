@@ -46,6 +46,16 @@
 3. **적용 지점**: 외부 AI 로 나가는 길인 `@가비`·메인 채팅 도구 4개(`knowledge/tools.py` 의 `search_knowledge`(기록 안 검색 포함)·`get_item`·`list_items`)에만 건다. 앱의 문서함 화면(사용자가 직접 보는 것)은 바꾸지 않았다. 검색은 SQL 조건(`chat_origin_verified`)이라 결과 수가 줄어도 상위 k 가 채워진다.
 4. **감수하는 것(보수적 제외)**: 동의를 껐다 다시 켠 가족은 첫 동의 때 올라온 채팅 문서도 "보호 여부 불명"으로 빠진다(안전 쪽 오차). 다시 보이게 하려면 사용자가 파일을 다시 올려 처리해야 한다. 정확히 구분하려면 `knowledge_items` 에 가린 방식을 남기는 칸이 필요하다 — **DB 변경이라 이 PR 에서 하지 않았고 설계·영향을 보고했다**([구현 현황](../features/ai_assistant-ingest.md) "후속 설계").
 
+## 가리기 필수: MASK OFF 재노출 결함 (사용자 승인 2026-11-23)
+결함: `INGEST_LLM_MASK=false` 이면 `_mask` 가 동의 검사 전체를 건너뛰고 로컬 규칙(일반 문서는 주민등록번호 등만 가림)으로 대신했다. 그래서 가족 AI 동의가 **켜져 있어도** 채팅 문서가 이름·주소·전화번호를 담은 채 등록됐고, 등록 시각이 동의 시각 뒤라 재노출 차단 필터도 통과해 `@가비` 검색으로 Claude 에 전송됐다(재현: TXT·PDF × OCR ON/OFF 4조합 모두).
+수정: 채팅 처리 목적(`require_external=True`)에서 실제 Claude 가리기가 꺼져 있으면 등록하지 않는다(fail-closed, 실패 코드 `masking_unavailable`, 재시도하지 않음).
+- `ingest/service.py`: `preprocess` 시작(읽기·OCR 같은 외부 호출 전)과 `_mask`(공통 단계) 두 곳에서 막는다. 로컬 규칙으로 대신하지 않는다.
+- `library.py`: `register_chat_document`·`register_chat_photo` 진입에서 파일 받기·판별·외부 호출 전에 멈춘다(채팅 첨부·판별 상태는 그대로).
+- `photo_service.save_to_library`(수동 "문서로 저장"): 503 `masking_unavailable`, 판별 상태도 바꾸지 않는다.
+- **메인 AI 직접 업로드는 바뀌지 않는다**(`require_external=False`): 기존 Claude 읽기·가리기·분류 정책을 유지하고, 운영자가 가리기를 껐을 때의 동작도 기존과 같다.
+- 시험: `tests/test_chat_masking_required.py`(조합 매트릭스·등록 0건·조각 0건·@가비 전송 내용·동의 OFF·메인 AI·사진 자동/수동·처리 도중 철회). 수정을 되돌리면 실패함을 확인했다.
+- **남는 위험(수정으로 보호되지 않음)**: 과거에 MASK OFF 로 이미 등록된 채팅 문서. 기록에 "Claude 로 가렸는지"가 남지 않고 시각 필터는 동의 시각만 보므로 구분하지 못한다. 운영 설정 이력을 확인하지 못했으므로 기존 기록이 안전하다고 단정하지 않는다. 확인 절차는 [구현 현황](../features/ai_assistant-ingest.md) "MASK OFF 로 이미 저장된 기록 확인 절차". 정확한 해결(`masked_by` 칸)은 DB 변경이라 이 PR 에서 하지 않았다.
+
 ## 이유
 - 로컬 OCR 은 사진 한 장에 6~200초가 걸리고 큰 이미지 메모리를 쥐어서, 2GiB·1 vCPU 에서 SigLIP2 와 함께 돌릴 때 동시 업로드로 OOM 이 났다(2026-11-23 로컬 Docker 시험: OCR+SigLIP2 동시 12장에서 OOMKilled 2회, OCR 을 뺀 뒤 같은 조건에서 0회. 합성 이미지·n=1·Cloud Run 아님).
 - OCR 한국어 인식 모델은 패키지에 들어 있지 않고 첫 호출 때 외부(modelscope.cn)에서 내려받는다 — 외부망이 없으면 모든 사진이 실패한다.

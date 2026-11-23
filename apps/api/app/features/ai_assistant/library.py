@@ -19,6 +19,7 @@ from app.shared.db import SessionLocal
 from . import files, service
 from .ingest import siglip_margin
 from .ingest.detect import Unsupported, detect
+from .ingest.service import chat_masking_blocked
 from .knowledge import repository as knowledge_repo
 
 logger = logging.getLogger(__name__)
@@ -52,6 +53,10 @@ def register_chat_document(
     """채팅 문서 첨부 하나를 문서함에 등록한다(읽기 → 저장, 민감 문서는 민감 표시를 붙여 저장). 어떤 실패도 던지지 않는다."""
     try:
         if not supported(data, filename):
+            return
+        if chat_masking_blocked(True):
+            # Claude 가리기가 꺼져 있으면 로컬 규칙으로만 가린 문서가 되므로 등록하지 않는다(채팅 첨부는 그대로). 외부 호출도 시작하지 않는다
+            logger.info("chat library document held: masking unavailable")
             return
         if not _family_allows_ai(group_id):
             # 가족 AI 동의가 없으면 AI 문서함 자동 등록을 **보류**한다(사용자 결정 2026-11-23, ADR 0023): 채팅 원본 첨부는 그대로 두고, 외부 AI(Claude·Jev)도
@@ -137,6 +142,10 @@ def register_chat_photo(
     """채팅 사진 하나를 판별해서 문서 사진이면 문서함에 등록한다(읽기 → 저장, 민감 문서는 민감 표시를 붙여 저장). 어떤 실패도 던지지 않는다.
     forced 는 사용자가 직접 저장을 눌러 판별을 건너뛰는 경우다."""
     try:
+        if chat_masking_blocked(True):
+            # 판별 상태도 바꾸지 않고(사진은 채팅에 남는다) 로컬 규칙으로만 가린 문서를 만들지 않는다
+            logger.info("chat library photo held: masking unavailable")
+            return
         with SessionLocal() as db:
             if knowledge_repo.get_by_attachment(db, group_id, attachment_id) is not None:
                 return

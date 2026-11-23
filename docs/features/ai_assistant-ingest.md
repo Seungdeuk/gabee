@@ -158,8 +158,8 @@ Excel ─▶ converters.xlsx_to_markdown (금액 쉼표·날짜·병합 칸 반�
 |---|---|---|
 | 사진 자동 등록 (`library.register_chat_photo`) | 문서로 판정된 사진 전체(글자 읽기) | 판별은 로컬로 하되 `document` 를 `unsure` 로 낮춘다. **사진은 채팅에 남고 문서함 자동 등록은 보류**(숨기지 않는다, 업로더가 확인) |
 | 재검사 (`photo_service.recheck_photo`) | 위와 같음 | 판별만 로컬로 다시 하고 보류(외부 전송 없음) |
-| 사진 "문서로 저장" (`photo_service.save_to_library`) | 사진 전체 | **403 `ai_consent_required`**. 판별 상태도 바꾸지 않는다. 이미 등록된 사진은 `already`. 요청을 받은 뒤 철회하면 처리 단계에서 조용히 중단 |
-| 채팅 문서 — PDF·PPT·문서·글 (`library.register_chat_document`) | PDF 쪽 읽기, PPT 그림 설명, 글 가리기(`llm_ingest.mask`) | **등록 보류**(2026-11-23 결정 (a)). 채팅 원본 첨부는 그대로 두고, 외부로도 보내지 않고, 로컬 규칙으로만 가린 문서를 지식베이스에 넣지도 않는다. 처리 도중 철회하면 로컬로 대신하지 않고 `consent_required` 로 멈춘다(`require_external`) |
+| 사진 "문서로 저장" (`photo_service.save_to_library`) | 사진 전체 | **가리기가 꺼져 있으면 503 `masking_unavailable`**, 동의가 없으면 **403 `ai_consent_required`**. 판별 상태도 바꾸지 않는다. 이미 등록된 사진은 `already`. 요청을 받은 뒤 철회하면 처리 단계에서 조용히 중단 |
+| 채팅 문서 — PDF·PPT·문서·글 (`library.register_chat_document`) | PDF 쪽 읽기, PPT 그림 설명, 글 가리기(`llm_ingest.mask`) | **등록 보류**(2026-11-23 결정 (a)). 실제 Claude 가리기(`INGEST_LLM_MASK`)가 꺼져 있으면 동의가 있어도 등록하지 않는다(`masking_unavailable`, 이중 방어: `preprocess`·`_mask` + `library` 진입). 채팅 원본 첨부는 그대로 두고, 외부로도 보내지 않고, 로컬 규칙으로만 가린 문서를 지식베이스에 넣지도 않는다. 처리 도중 철회하면 로컬로 대신하지 않고 `consent_required` 로 멈춘다(`require_external`) |
 | 위 처리의 나머지 | 분류(Jev, **끼워 넣은 Jev 포함**), 챙길 일 뽑기(`reminders.plan`) | 처리 자체를 하지 않는다(보류). 동의가 있어야만 처리하고, 그때 외부로 나가기 직전마다 재확인한다 |
 
 - **메인 AI 직접 업로드(참고, 변경 없음)**: 가족 동의와 무관하게 Claude 읽기(사진·PDF 스캔 쪽·PPT 그림)·가리기·분류(Jev)·챙길 일이 기존대로 동작한다. 이 경로는 보안 보고서의 "동의 없는 Jev 전송" 항목에 해당하며 "정책으로 유지"로 표시했다.
@@ -170,6 +170,7 @@ Excel ─▶ converters.xlsx_to_markdown (금액 쉼표·날짜·병합 칸 반�
   1. **보류된 채팅 사진은 자동으로 다시 판별되지 않는다.** 동의 때문에(또는 스위치 OFF 로) `unsure` 가 된 사진은 재검사 대상이 아니다(재검사는 실패·지연만, 409 `recheck_not_needed`). 동의를 켠 뒤에는 수동 "문서로 저장"을 쓴다.
   2. **(고침) 동의 없이 로컬 가리기로 저장된 채팅 문서의 재노출.** 선택지 (a) 채택: 동의 없는 채팅 문서는 보류(등록 안 함), 이미 저장된 기록은 위 재노출 차단으로 외부 AI 에서 제외. 시험: `test_a_chat_document_uploaded_without_consent_is_still_not_searchable_after_consent_is_turned_on`, `test_an_old_locally_masked_chat_document_is_not_sent_to_the_assistant_after_consent_but_other_records_are`(이전 xfail 을 정상 통과 시험으로 전환). **남은 한계**: 시각 기준이라 동의를 껐다 켠 가족의 첫 동의 때 올라온 정상 채팅 문서도 빠질 수 있다(보수적). 정확한 구분은 DB 칸이 필요해 보류했다(아래 "후속 설계").
   2-1. **보류된 채팅 문서는 동의를 켜도 자동 등록되지 않고, 명시적 재처리 경로가 없다.** 같은 파일을 다시 올려야 한다. 최소 변경안: 채팅 문서용 "문서함에 저장" 요청(동의 확인, 첨부 권한 확인, `library.register_chat_document` 재사용)을 하나 추가.
+  2-2. **MASK OFF 로 이미 저장된 채팅 문서는 이번 수정으로 보호되지 않는다.** 동의가 켜진 채 `INGEST_LLM_MASK=false` 로 등록된 기록은 로컬 규칙으로만 가려져 있고 시각 필터를 통과한다. 운영 설정 이력을 확인하지 못했으므로 기존 기록이 안전하다고 단정하지 않는다(아래 확인 절차). 시험: `tests/test_chat_masking_required.py`.
   3. 채팅 문서에서 동의가 없으면 로컬 가리기는 Claude 가리기보다 덜 가린다. 스캔 PDF 쪽·PPT 그림은 읽지 못한다.
   4. 동의 철회 시 **이미 등록된 문서**를 어떻게 할지는 이전부터 규칙이 없다(철회 때 지우는 것은 AI 결과 캐시·놀이 추천 내용뿐).
   5. 메인 AI 직접 업로드에 동의 검사를 넣을지는 별도 정책 결정이다(이번 결정은 유지).
@@ -181,6 +182,13 @@ Excel ─▶ converters.xlsx_to_markdown (금액 쉼표·날짜·병합 칸 반�
   4. 429(`too_many_uploads`·`too_many_saves`)·503 `photo_busy` 안내와 재시도(코드별 문구는 프로필 사진 화면에만 있다).
   5. 동의 문구·개인정보처리방침: 채팅방 사진·문서가 동의가 있을 때 Claude 로 전송되어 읽힌다는 고지, 메인 AI 업로드 전송 고지(별도 확인).
 - **남은 정책 결정**: 한계 2-1·5번, 동의 철회 시 기존 등록 문서의 처리, 동의 문구·처리방침의 기재 범위(별도 확인).
+
+### MASK OFF 로 이미 저장된 기록 확인 절차 (운영 담당자용, 비밀값·개인정보 원문을 보지 않는다)
+`INGEST_LLM_MASK=false` 인 채로 동의가 켜진 가족의 채팅 문서가 등록됐다면 이름·주소·전화번호가 남은 채 저장돼 있고, 동의 시각 필터로는 구분되지 않는다(이번 수정은 앞으로의 등록만 막는다). 코드 기본값은 `true` 라 값을 설정하지 않았다면 해당 없다. 채팅 문서 자동 등록 코드는 `main`(운영)에 없고 `release/1.3` 부터 있어(2026-11-23 확인), 그 코드를 돌린 환경만 대상이다.
+1. **설정 이력 확인**(해당 환경별): 그 코드가 배포된 모든 리비전·배포 설정의 `INGEST_LLM_MASK` 값 **한 개 변수만** 확인한다. 예: `gcloud run revisions describe <리비전> --format=json` 결과에서 `INGEST_LLM_MASK` 항목만 골라 본다(전체 환경변수·비밀값을 화면에 내지 않는다). 리비전별 적용 기간(시작·종료 시각)을 표로 적는다. 이력을 확인할 수 없으면 "알 수 없음"으로 두고 안전하다고 보지 않는다.
+2. **영향 범위 집계**(읽기 전용, 본문·제목을 조회하지 않고 건수만): 가리기가 꺼져 있던 기간별로 `SELECT date_trunc('day', created_at) AS 일, count(*) FROM knowledge_items WHERE source_attachment_id IS NOT NULL AND created_at >= :시작 AND created_at < :끝 GROUP BY 1 ORDER BY 1`. 가족별 건수가 필요하면 `group_id` 를 해시한 값으로 묶는다. 결과(건수만)를 보고서에 적는다.
+3. **판단**: 기간 안 건수가 0 이면 영향 없음으로 기록한다. 0 이 아니면 DB 담당자와 처리 방법(해당 기록 삭제 후 가리기 켠 상태에서 재업로드 안내 등)을 정하되, 삭제·`masked_by` 칸 추가 같은 DB 변경은 별도 승인 후에만 한다. 공용 DB 에는 직접 쓰지 않는다.
+4. 이번 수정이 배포된 뒤에는 `INGEST_LLM_MASK=false` 인 환경에서 채팅 문서·사진 자동 등록이 멈춘다(로그에 `masking unavailable` 보류 기록). 등록이 줄었다면 설정부터 확인한다.
 
 ### 후속 설계: 가린 방식을 기록에 남기기 (DB 변경 — 미적용, 승인 필요)
 - **왜**: 지금 재노출 차단은 "동의가 켜진 시각"으로 추정한다. 정확히 구분하려면 기록마다 어떻게 가렸는지 남겨야 한다.

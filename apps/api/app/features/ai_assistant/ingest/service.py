@@ -42,6 +42,16 @@ class ConsentRequired(Exception):
     """동의가 막은 외부 단계가 있는데 `require_external` 이라 로컬 규칙으로 대신하지 않고 처리를 멈춘다(처리 도중 철회 포함)."""
 
 
+class MaskingUnavailable(Exception):
+    """가족 채팅방 자동 처리(`require_external`)인데 Claude 가리기(`INGEST_LLM_MASK`)가 꺼져 있다. 로컬 규칙으로 대신하지 않고 처리를 멈춘다."""
+
+
+def chat_masking_blocked(require_external: bool) -> bool:
+    """가족 채팅 문서가 실제 Claude 가리기를 거칠 수 없는 설정인가. 로컬 규칙은 주민등록번호 등만 가리고 이름·주소·전화번호를 남기므로
+    그렇게 가린 글은 AI 검색 지식베이스에 들어가면 안 된다(ADR 0023). 메인 AI 직접 업로드(`require_external=False`)에는 적용하지 않는다."""
+    return require_external and not settings.ingest_llm_mask
+
+
 def _gate_or_stop(external: bool, recheck: Recheck | None, require_external: bool) -> bool:
     """`_gate` 와 같되, 막혔고 `require_external` 이면 로컬로 대신하지 않고 `ConsentRequired` 로 멈춘다.
     로컬 규칙으로만 가린 글은 이름·주소가 남으므로 AI 검색 지식베이스에 들어가면 안 된다(가족 채팅방 자동 처리, ADR 0023)."""
@@ -51,6 +61,10 @@ def _gate_or_stop(external: bool, recheck: Recheck | None, require_external: boo
     return allowed
 
 
+_MASKING_UNAVAILABLE = (
+    "masking_unavailable",
+    "글을 가리는 기능이 꺼져 있어서 가족 채팅 문서를 처리하지 않았어요",
+)
 MIN_PDF_CHARS = 20  # 이보다 글자가 적은 PDF 는 스캔본으로 본다
 RAW_EXT = {
     "image/jpeg": ".jpg",
@@ -143,12 +157,17 @@ def preprocess(
         source.kind, source.mime = detect(data, name)
     except Unsupported as e:
         return _failed(source, "unsupported_type", str(e))
+    if chat_masking_blocked(require_external):
+        # 읽기(Claude OCR) 같은 외부 호출을 시작하기 전에 막는다. 아래 `_mask` 에도 같은 검사가 있다(이중 방어)
+        return _failed(source, *_MASKING_UNAVAILABLE)
     try:
         if source.kind == "image":
             return _from_image(source, data, ocr, family, external, recheck, require_external)
         return _from_document(source, data, ocr, family, external, recheck, require_external)
     except BrokenFile as e:
         return _failed(source, "broken_file", str(e))
+    except MaskingUnavailable:
+        return _failed(source, *_MASKING_UNAVAILABLE)
     except ConsentRequired:
         return _failed(
             source,
@@ -171,6 +190,8 @@ def _mask(
     recheck: Recheck | None = None,
     require_external: bool = False,
 ) -> tuple[str, Privacy]:
+    if chat_masking_blocked(require_external):
+        raise MaskingUnavailable  # 로컬 규칙으로 대신 가리지 않는다(이름·주소가 남는다)
     if settings.ingest_llm_mask and _gate_or_stop(external, recheck, require_external):
         # Claude 가 위치를 찾고(가족 이름 후보는 문맥으로 판단) 코드가 바꾼다. 호출이 실패하면 LLMUnavailable 이 올라가 파일이 failed 가 된다
         masked, counts, sensitive = llm_ingest.mask(text, family)

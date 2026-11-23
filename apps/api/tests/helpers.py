@@ -27,3 +27,26 @@ def join_family(client, owner: dict, code: str, joiner: dict):
     )
     assert approved.status_code == 200, approved.text
     return approved
+
+
+def chat_masking_like_service(monkeypatch) -> None:
+    """운영 설정(`INGEST_LLM_MASK=true`)을 흉내 낸다: 가족 채팅 문서·사진은 실제 Claude 가리기를 거쳐야 등록된다(ADR 0023, MASK OFF 차단).
+    루트 conftest 는 시험이 실제 Claude 를 부르지 않게 가리기를 꺼 두므로, 채팅 문서 등록을 확인하는 시험은 가리기 단계를 **로컬 규칙과 같은 결과를 내는 대역**으로 바꿔
+    켠다(실제 API 호출 없음). 대역은 서비스의 로컬 가리기와 같은 코드를 쓰므로 이 시험들이 보던 가리기 결과는 달라지지 않는다."""
+    from collections import Counter
+
+    from app.features.ai_assistant.ingest import llm_ingest, masking
+    from app.shared.config import settings
+
+    def mask(text, family=None):
+        if family is not None:
+            text = family.protect(text)
+        kind = masking.sensitive_kind(text)
+        counts: Counter = Counter()
+        masked = masking.mask_text(text, kind, counts=counts)
+        if family is not None:
+            masked = family.expand(masked)
+        return masked, {k: v for k, v in counts.items() if v}, kind
+
+    monkeypatch.setattr(settings, "ingest_llm_mask", True)
+    monkeypatch.setattr(llm_ingest, "mask", mask)

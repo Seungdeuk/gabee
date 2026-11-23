@@ -341,6 +341,13 @@ def save_to_library(db: Session, user: User, group_id: str, attachment_id: str) 
             409, "not_family_room", "가족 전체방에 올린 사진만 가족 문서함에 저장할 수 있어요"
         )
     registered = chat_library.is_registered(db, group_id, attachment_id)
+    if not registered and not settings.ingest_llm_mask:
+        # Claude 가리기가 꺼져 있으면 로컬 규칙으로만 가린 문서가 되므로 저장하지 않는다. 판별 상태도 바꾸지 않고 사진은 채팅에 그대로 남는다.
+        raise ApiError(
+            503,
+            "masking_unavailable",
+            "글을 가리는 기능이 꺼져 있어서 지금은 사진을 문서함에 저장할 수 없어요",
+        )
     if not registered and not ai_guard.is_enabled(db, group_id):
         # 사진 속 글자는 Claude 로만 읽으므로(로컬 OCR 없음) 가족 AI 동의가 없으면 사진을 보내지 않는다. 판별 상태도 바꾸지 않고 사진은 채팅에 그대로 남는다.
         raise ApiError(

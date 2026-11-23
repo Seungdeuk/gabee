@@ -269,7 +269,8 @@ def test_the_switch_is_off_by_default_so_every_photo_is_unsure(client, family):
 def claude_reads(monkeypatch):
     """서비스 기본 설정(Claude 로 읽는다)과 Claude 읽기 대역. 몇 번 불렸는지 센다."""
     monkeypatch.setattr(settings, "ingest_llm_ocr", True)
-    monkeypatch.setattr(settings, "ingest_llm_mask", False)
+    # 서비스 기본 설정: 채팅 사진은 Claude 가리기가 켜져 있어야 등록된다(가리기는 conftest 의 대역)
+    monkeypatch.setattr(settings, "ingest_llm_mask", True)
 
     class Reader:
         calls = 0
