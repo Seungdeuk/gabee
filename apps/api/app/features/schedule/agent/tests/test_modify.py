@@ -899,7 +899,8 @@ def test_followup_after_registering_shares_the_new_event(client, setup, fake):
             "date_ambiguous": False,
         },
     }
-    body = _say(client, a, "가족 나들이 등록해줘").json()
+    # 날짜 표현이 있어야 모델이 적은 날짜를 믿는다(근거 없는 날짜는 되묻는다)
+    body = _say(client, a, "3일 뒤에 가족 나들이 등록해줘").json()
     assert body["intent"] == "register" and "등록했어요" in body["text"]
     _unnamed_share(fake, other)
     done = _say(client, a, "엄마한테도 공유해줘").json()

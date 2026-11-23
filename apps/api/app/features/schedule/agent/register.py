@@ -20,6 +20,7 @@ from app.shared.errors import bad_request
 
 from . import choice, reader
 from . import members as members_mod
+from . import period as period_mod
 from .members import Member
 from .schemas import AgentResponse, Card, Choice, Draft, PendingAction
 
@@ -45,6 +46,10 @@ AMBIGUOUS_TEXT = "날짜를 정확히 알려 주세요. 예: 10월 30일"
 MEMBER_UNCLEAR_TEXT = "같은 호칭의 가족이 여러 명이에요. 누구인지 이름으로 알려 주세요"
 
 _TIME = re.compile(r"^([01]\d|2[0-3]):[0-5]\d$")
+# 기간 모듈이 못 읽는 날짜 표현(N일·11/13·이틀 뒤 등). 근거 판단에만 쓴다
+_DATE_HINT = re.compile(
+    r"\d+\s*일|\d{1,2}\s*/\s*\d{1,2}|\d+\s*월|이틀|사흘|나흘|닷새|엿새|주\s*뒤|달\s*뒤"
+)
 
 
 def _text(value, limit: int) -> str:
@@ -78,6 +83,16 @@ def clean_rel(raw) -> dict:
     if weeks is None or days is None or weekday is None:
         return dict(NO_REL)
     return {"weeks": weeks, "days": days, "weekday": weekday}
+
+
+def ungrounded(fields: dict, sentence: str, now: date) -> dict:
+    """모델이 날짜를 적었는데 문장에 날짜·상대 표현이 전혀 없으면 그 날짜는 근거가 없다('저녁 8시에 가족 회의 잡아줘'에서 오늘로 정한 것 등).
+    날짜는 임의로 정하지 않으므로 비워서 되묻게 한다. 상대 표현(date_rel)이 있으면 코드가 계산하므로 건드리지 않는다."""
+    if not sentence or not fields.get("date") or has_rel(fields.get("date_rel")):
+        return fields
+    if period_mod.extract(sentence, now) is not None or _DATE_HINT.search(sentence):
+        return fields
+    return {**fields, "date": ""}
 
 
 def has_rel(rel) -> bool:
@@ -389,6 +404,9 @@ def respond(
 ) -> AgentResponse:
     """private: '나만 보게' — 공유 대상을 비운다. room: 가족방 요청 — 겹침 안내를 끄고, private 이면 방에는 '개인 일정으로 등록했어요'만 쓴다."""
     member_ids = {m.id for m in members}
+    fields = ungrounded(
+        fields, sentence, today()
+    )  # 문장에 근거 없는 날짜는 임의로 정하지 않고 되묻는다
     if not fields.get("date") and has_rel(
         fields.get("date_rel")
     ):  # 상대 표현은 코드가 오늘 기준으로 계산한다

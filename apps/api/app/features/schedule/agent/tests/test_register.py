@@ -121,6 +121,44 @@ def test_missing_date_asks_and_next_answer_completes(client, setup, fake):
     assert len(_events(client, a)) == 1
 
 
+def test_date_the_model_invented_is_asked_not_registered(client, setup, fake):
+    a, _, _, _ = setup
+    fake.data = _register_data(
+        title="가족 회의", date=register.today().isoformat(), start_time="20:00", kind=1
+    )
+    body = _say(client, a, "저녁 8시에 가족 회의 잡아줘").json()
+    assert body["cards"] == [] and body["draft"]["title"] == "가족 회의"
+    assert "날짜" in body["text"]
+    assert _events(client, a) == []  # 문장에 날짜가 없으면 모델이 적은 오늘을 믿지 않고 되묻는다
+
+
+def test_today_with_a_date_word_still_registers(client, setup, fake):
+    a, _, _, _ = setup
+    fake.data = _register_data(
+        title="가족 회의", date=register.today().isoformat(), start_time="20:00", kind=1
+    )
+    body = _say(client, a, "오늘 저녁 8시에 가족 회의 잡아줘").json()
+    assert body["cards"][0]["data"]["date"] == register.today().isoformat()
+    assert len(_events(client, a)) == 1
+
+
+def test_weekday_without_this_or_next_week_asks_then_next_week_answer_registers(
+    client, setup, fake
+):
+    a, _, _, _ = setup
+    fake.data = _register_data(title="동창 모임", date_ambiguous=True, start_time="19:00", kind=1)
+    first = _say(client, a, "금요일 저녁 7시에 동창 모임 잡아줘").json()
+    assert first["cards"] == [] and first["draft"]["title"] == "동창 모임"
+    assert _events(client, a) == []  # 이번 주인지 다음 주인지 정하기 전에는 저장하지 않는다
+    fake.data = _register_data(date_rel={"weeks": 1, "days": 0, "weekday": 4})
+    second = _say(client, a, "다음 주 금요일이요", draft=first["draft"]).json()
+    today = register.today()
+    next_friday = today - timedelta(days=today.weekday()) + timedelta(days=11)
+    data = second["cards"][0]["data"]
+    assert data["date"] == next_friday.isoformat() and data["start_time"] == "19:00"
+    assert data["title"] == "동창 모임"
+
+
 def test_missing_title_registers_with_default_title_and_says_so(client, setup, fake):
     a, _, _, _ = setup
     fake.data = _register_data(date=_tomorrow(), kind=1)
@@ -160,7 +198,8 @@ def test_title_rules_are_in_the_prompt_and_schema():
         assert "time_assumed" in schema["properties"] and "time_assumed" in schema["required"]
         assert schema["additionalProperties"] is False
     assert "more_registers" in prompts.CHAT_SCHEMA["required"]
-    assert prompts.CHAT_SCHEMA["properties"]["more_registers"]["items"] is prompts.REGISTER_SCHEMA
+    assert prompts.CHAT_SCHEMA["properties"]["more_registers"]["items"] is prompts.REGISTER_REF
+    assert prompts.CHAT_SCHEMA["$defs"]["register"] is prompts.REGISTER_SCHEMA
 
 
 def test_cleaned_title_is_saved_as_the_model_gave_it(client, setup, fake):
