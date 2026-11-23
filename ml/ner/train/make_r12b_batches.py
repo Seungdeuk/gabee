@@ -107,6 +107,7 @@ def mk(bid, group, count, mix, names=None, words=None, per_word=None, desc=""):
 batches = []
 for group in ("train", "val", "dev"):
     W, F, B = POOLS["words"][group], POOLS["full_names"][group], POOLS["bare_names"][group]
+    BND = POOLS["bnd_names"][group]
     longs = [COMPOUND[i % len(COMPOUND)] + B[(len(B) - 1 - i) % len(B)] for i in range(100)]
     fp = bp = lp = 0
 
@@ -142,7 +143,7 @@ for group in ("train", "val", "dev"):
             batches.append(bid)
         for i in range(2):
             bid = f"T-P5-{i + 1:02d}"
-            mk(bid, group, 80, {"B1": 50, "BND": 30}, names={"full_names": take("full", 60), "long_names": take("long", 25)}, desc=CAT["p5"]["desc"])
+            mk(bid, group, 80, {"B1": 50, "BND": 30}, names={"full_names": take("full", 60) + BND[i * 20:(i + 1) * 20], "long_names": take("long", 25)}, desc=CAT["p5"]["desc"])
             batches.append(bid)
         for i in range(2):
             bid = f"T-P6-{i + 1:02d}"
@@ -156,7 +157,7 @@ for group in ("train", "val", "dev"):
         for i in range(2):
             bid = f"{g0}-MIX-{i + 1:02d}"
             mix = {"A1": 8, "B2": 8, "ALIAS": 5, "C2": 8, "D3": 7, "B1": 7, "BND": 5, "FAM_POS": 20, "FAM_NEG": 32}
-            mk(bid, group, sum(mix.values()), mix, names={"full_names": take("full", 50), "bare_names": take("bare", 40), "long_names": take("long", 12)}, desc="이름 형태 혼합(유형별 수량은 아래)")
+            mk(bid, group, sum(mix.values()), mix, names={"full_names": take("full", 50) + BND[i * 6:(i + 1) * 6], "bare_names": take("bare", 40), "long_names": take("long", 12)}, desc="이름 형태 혼합(유형별 수량은 아래)")
             batches.append(bid)
 json.dump(batches, open(OUT / "index.json", "w", encoding="utf-8"), ensure_ascii=False)
 json.dump(models, open(ROOT / "models.json", "w", encoding="utf-8"), ensure_ascii=False, indent=1)

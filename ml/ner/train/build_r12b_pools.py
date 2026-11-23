@@ -98,8 +98,13 @@ def main():
         return out
 
     fp, bp = split(fulls, NF), split(bares, NB)
+    # BND(끝글자가 조사·어미처럼 보이는 이름)용: 위 배정에 쓰이지 않은 후보 중 끝 글자가 아·야·이·가·도·랑·은·는 인 전체 이름
+    endings = set("아야이가도랑은는")
+    left = [n for n in fulls[sum(NF.values()):] if n[-1] in endings]
+    NBND = {"train": 40, "val": 12, "dev": 12}
+    bnd = split(left, NBND)
     OUT.mkdir(exist_ok=True)
-    (OUT / "pools.json").write_text(json.dumps({"words": wp, "full_names": fp, "bare_names": bp}, ensure_ascii=False, indent=1), encoding="utf-8")
+    (OUT / "pools.json").write_text(json.dumps({"words": wp, "full_names": fp, "bare_names": bp, "bnd_names": bnd}, ensure_ascii=False, indent=1), encoding="utf-8")
     print(f"단어 후보 {len(cand)} → 새 단어 {len(fresh)} (재사용 가능 학습 단어 {len(reusable)}) | train {len(train_w)} val {len(val_w)} dev {len(dev_w)}")
     print(f"전체 이름 후보 {len(fulls)} → 배정 {sum(len(v) for v in fp.values())}, 성 없는 이름 후보 {len(bares)} → 배정 {sum(len(v) for v in bp.values())}")
 
