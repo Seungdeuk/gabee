@@ -216,6 +216,15 @@ def _share_line(current: list[str], new: list[str], labels: dict[str, str]) -> d
     return {"label": "공유", "before": text(current), "after": text(new)}
 
 
+def _remembered_event(db: Session, user_id: str, group_id: str) -> Event | None:
+    """직전에 다룬 일정(10분 안): 아직 있고 내가 고칠 수 있는 일정일 때만."""
+    event_id = choice_mod.recall_event(group_id, user_id)
+    if event_id is None:
+        return None
+    event = schedule_repo.get(db, group_id, event_id, user_id)
+    return event if event is not None and service.owns(event, user_id) else None
+
+
 def respond_edit(
     user_id: str,
     target_id: str,
@@ -231,10 +240,57 @@ def respond_edit(
     reply: str = "",
     unnamed: bool = False,
 ) -> AgentResponse:
+    """`_respond_edit` 에 '방금 다룬 일정' 기억을 더한다(개인 채팅 전용). 대상이 정해져 처리한 응답이면 그 일정을
+    10분 기억하고, 일정을 말하지 않은 이어진 말('엄마한테도 공유해줘')이면 기억한 일정을 대상으로 처리한다."""
+    ctx: dict = {"event": None, "memory": False}
+    response = _respond_edit(
+        user_id,
+        target_id,
+        changes,
+        events,
+        now,
+        members,
+        channel,
+        db,
+        group_id,
+        text,
+        related,
+        reply,
+        unnamed,
+        ctx,
+    )
+    event = ctx["event"]
+    if event is None or db is None or not group_id or channel != "personal":
+        return response
+    if ctx["memory"] and reader.event_text(event) not in response.text:
+        # 기억한 일정으로 처리했으면 어떤 일정인지 밝힌다
+        response.text = f"{reader.event_text(event)} 일정으로 이해했어요. {response.text}"
+    if response.choice is None:
+        choice_mod.remember_event(group_id, user_id, event.id)
+    return response
+
+
+def _respond_edit(
+    user_id: str,
+    target_id: str,
+    changes: dict,
+    events: dict[str, Event],
+    now: date,
+    members: list[Member] | None = None,
+    channel: str = "personal",
+    db: Session | None = None,
+    group_id: str | None = None,
+    text: str = "",
+    related=(),
+    reply: str = "",
+    unnamed: bool = False,
+    ctx: dict | None = None,
+) -> AgentResponse:
     """수정(제목·날짜·시간·장소·메모와 원본자의 공유 대상 변경)은 확인 카드 없이 바로 처리한다(정책 #32·#40).
     받은 사람의 일정은 독립이라 원본을 고쳐도 영향이 없고, 삭제만 확인 카드를 거친다.
     같은 제목의 일정이 여럿이면 시점 규칙으로 좁히거나 후보를 보여 주며 되묻는다(`choice.narrow`, 정책 #33).
     db 를 주지 않으면(순수 계산 호출) 바뀔 내용을 카드로만 만든다."""
+    ctx = ctx if ctx is not None else {"event": None, "memory": False}
     event = events.get(target_id)
     if event is None:
         wants = register.has_rel(changes.get("date_rel")) or any(
@@ -250,6 +306,12 @@ def respond_edit(
                 "share_change",
             )
         )
+        if wants and unnamed and db is not None and group_id and channel == "personal":
+            event = _remembered_event(db, user_id, group_id)  # 직전에 다룬 일정을 이어서 처리한다
+            if event is not None:
+                ctx["memory"] = True
+                events = {**events, event.id: event}
+    if event is None:
         found = choice_mod.which_candidates(events, now) if wants and unnamed else []
         if found:  # 일정을 이름 없이 가리켰으면 후보를 보여 주며 어느 일정인지 되묻는다(정책 #35)
             return choice_mod.ask_which("edit", found, changes, choice_mod.which_more(events, now))
@@ -278,7 +340,7 @@ def respond_edit(
             ask,
             members_mod.option_lines(members_mod.same_call(members or [], text, user_id)),
         )
-    if not changes.get("share_change"):
+    if not changes.get("share_change") and not ctx["memory"]:
         decision, found = choice_mod.narrow(event, events, now, "edit", text, related)
         if decision == "ask" and build_update(changes, event, now):
             return choice_mod.ask_response("edit", found, changes)
@@ -286,6 +348,7 @@ def respond_edit(
             event = found
             if not service.owns(event, user_id):
                 return AgentResponse(intent="edit", text=NOT_OWNER_EDIT)
+    ctx["event"] = event  # 대상이 정해졌다(응답이 나가면 방금 다룬 일정으로 기억한다)
     share_new: list[str] | None = None
     current: list[str] = []
     if changes.get("share_change"):
@@ -456,6 +519,7 @@ def delete_many(
         for attempt in range(2):
             try:
                 service.remove(db, group_id, user_id, event_id)
+                choice_mod.forget_event(group_id, event_id)
                 done.append(named)
                 break
             except ApiError:
@@ -508,6 +572,7 @@ def confirm_delete(
     before = schedule_repo.get(db, group_id, action.event_id, user_id)
     named = reader.event_text(before) if before else ""  # 지우기 전에 어떤 일정인지 읽어 둔다
     service.remove(db, group_id, user_id, action.event_id)
+    choice_mod.forget_event(group_id, action.event_id)
     text = f"{named} 일정을 지웠어요." if named else "지웠어요."
     return AgentResponse(intent="delete", text=text)
 

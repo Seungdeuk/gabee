@@ -4,10 +4,10 @@
 전할 글로 바꾼다. 일정 에이전트는 모델 호출을 메인 질문의 관문 한 번에 묶어 센다: 일정 에이전트는 이 입구에서 자기 관문(`ai_guard`, 일정 한도)을
 다시 지나지 않고, 부른 횟수만 메인 질문의 사용 기록·한도에 더한다(정산·돌봄과 같다). 일정 탭 화면이 직접 부르는 입구는 예전처럼 일정 한도를 쓴다.
 
-이 대화에서 하는 일: 조회와 등록(제목·날짜가 있으면 내 일정으로 바로 만들고, 없으면 되묻는다).
+이 대화에서 하는 일: 조회와 등록(날짜가 있으면 내 일정으로 바로 만들고, 날짜가 없으면 되묻는다. 제목·시간은 정해 등록하고 안내한다).
 이 대화에서 하지 않는 일: 삭제와 부탁 취소는 확인 카드가 필요하다(수정·등록·부탁 보내기는 카드 없이 바로 처리).
 데일리 체크(습관)는 조회하고, 체크를 대신 눌러 달라는 말은 확인 카드를 거쳐 실행한다(내 습관만. 가족방에서는 가족에게 보이는 습관만 읽는다).
-되묻는 초안은 서버가 사용자별로 10분 기억하고(`_take_draft`), 메인도 앞 대화를 합쳐 완전한 문장으로 다시 넘긴다. 제목과 날짜를 모두 말한 문장은 새 요청으로 보고 옛 초안을 쓰지 않는다."""
+되묻는 초안은 서버가 사용자별로 10분 기억하고(`_take_draft`), 메인도 앞 대화를 합쳐 완전한 문장으로 다시 넘긴다. 제목과 날짜를 모두 말한 문장은 새 요청으로 보고 옛 초안을 쓰지 않는다. 날짜만 되묻는다."""
 
 import re
 import threading
@@ -18,13 +18,14 @@ from sqlalchemy.orm import Session
 from app.features.family_group.models import User
 from app.shared.llm.agent import AgentReply, Post
 
-from . import handler
+from . import handler, register
 from . import members as members_mod
+from .register import PRIVATE_ROOM_TEXT
 from .schemas import AgentRequest, AgentResponse, Choice, Draft, PendingAction
 
 DESCRIPTION = (
     "일정 탭 담당. 일정 탭에 이미 입력된 내 일정을 조회하고, 사용자가 일정에 넣어 달라고 분명히 말한 새 일정을 등록한다. "
-    "제목과 날짜가 있으면 바로 등록하고, 빠졌으면 되묻는 질문을 돌려준다. "
+    "날짜가 있으면 바로 등록하고(제목이나 오전/오후는 정해서 등록하고 안내한다), 날짜가 빠졌으면 날짜만 되묻는 질문을 돌려준다. "
     "올려 둔 문서(학교 안내문·항공권·예약 확인서 등)에 적힌 날짜는 알지 못하니 그런 질문에는 쓰지 않는다. "
     "일정 삭제는 사용자 화면에 확인 카드가 나타나고 버튼을 눌러야 반영되고, 등록·수정(공유 대상 바꾸기 포함)은 카드 없이 바로 처리한다. "
     "가족에게 일을 같이 해 달라고 보내는 부탁(함께하기)도 맡는다: 부탁 취소는 확인 카드가 나타나고 버튼을 눌러야 반영되고, "
@@ -39,7 +40,7 @@ DESCRIPTION = (
 
 SELECT_SHOWN = "아직 실행되지 않았어요. 사용자 화면에 선택 카드가 나타났고, 사용자가 항목을 체크하고 버튼을 눌러야 처리돼요."
 CARD_SHOWN = "아직 실행되지 않았어요. 사용자 화면에 확인 카드가 나타났고, 사용자가 카드의 버튼을 눌러야 반영돼요."
-ASK_BACK = "일정을 등록하려면 정보가 더 필요해요. 사용자에게 이 질문을 그대로 전하세요. 답을 받으면 날짜·시간·제목을 합친 완전한 문장으로 다시 넘기세요: "
+ASK_BACK = "일정을 등록하려면 날짜가 더 필요해요. 사용자에게 이 질문을 그대로 전하세요. 답을 받으면 날짜·시간·제목을 합친 완전한 문장으로 다시 넘기세요: "
 NOT_SCHEDULE = "일정과 관련된 요청이 아니에요."
 MAX_EVENTS_SHOWN = 10
 PENDING_MARK = "(확정 전)"  # 일정 조회 줄에서 status 가 pending 인 일정에 붙인다(채팅에서 뽑힌 후보 등, 아직 확정되지 않은 일정)
@@ -76,14 +77,24 @@ WHOLE_FAMILY = re.compile(
 )
 
 
+PRIVATE_ONLY = re.compile(
+    r"나만\s*(보게|보이게|볼래|보는|쓸|쓰게)|개인\s*(일정|으로)|공유\s*(하지\s*)?말고"
+)
+
+
 def wants_whole_family(text: str) -> bool:
     return "공유" in text and bool(WHOLE_FAMILY.search(text))
+
+
+def wants_private(text: str) -> bool:
+    """'나만 보게'처럼 내 일정으로만 두라는 말. 가족 전체 공유와 같이 나오면 개인이 우선이다."""
+    return bool(PRIVATE_ONLY.search(text))
 
 
 def with_whole_family(text: str, db: Session, group_id: str, user_id: str) -> str:
     """'가족 모두에게 공유해서'처럼 가족 전체를 말하면 공유 대상 이름을 질문 뒤에 밝혀 넘긴다. 모델이 일부만 고르는 일을 막는다.
     말한 사람(나)은 뺀다(코드가 어차피 자기 자신에게는 공유하지 않는다)."""
-    if not wants_whole_family(text):
+    if not wants_whole_family(text) or wants_private(text):
         return text
     others = [m.label for m in members_mod.load(db, group_id) if m.id != user_id]
     return f"{text} (공유 대상: {', '.join(others)})" if others else text
@@ -221,7 +232,19 @@ def _choice_card(choice: Choice, text: str) -> dict:
     }
 
 
-def _reply(response: AgentResponse, room: bool = False) -> AgentReply:
+def _registered_text(data: dict) -> str:
+    """등록 카드 하나의 안내: 머리말, 일정 줄, 추정한 제목·시간·겹침 안내."""
+    head = "이미 같은 일정이 있어요." if data.get("already") else "일정을 등록했어요."
+    shared = int(data.get("shared") or 0)
+    if shared and not data.get(
+        "already"
+    ):  # 공유 등록도 카드 없이 바로 하므로 누구에게 갔는지 밝힌다
+        head = f"{head} {shared}명에게 공유했어요."
+    notes = [] if data.get("already") else register.notice_lines(data)
+    return "\n".join([f"{head}", _event_line(data), *notes])
+
+
+def _reply(response: AgentResponse, room: bool = False, private: bool = False) -> AgentReply:
     """일정 에이전트의 응답을 메인이 사용자에게 전할 글로 바꾼다. 실행되지 않은 일을 실행됐다고 말하게 하지 않는다."""
     if response.intent == "not_schedule":
         return AgentReply(NOT_SCHEDULE, can_answer=False)
@@ -246,18 +269,16 @@ def _reply(response: AgentResponse, room: bool = False) -> AgentReply:
         )
     if response.draft is not None:  # 제목이나 날짜가 빠져 되묻는 중
         return AgentReply(f"{ASK_BACK}{response.text}", user_text=response.text)
-    registered = next((c for c in response.cards if c.type == "registered"), None)
-    if registered is not None:
-        line = _event_line(registered.data)
-        head = (
-            "이미 같은 일정이 있어요." if registered.data.get("already") else "일정을 등록했어요."
-        )
-        shared = int(registered.data.get("shared") or 0)
-        if shared and not registered.data.get(
-            "already"
-        ):  # 공유 등록도 카드 없이 바로 하므로 누구에게 갔는지 밝힌다
-            head = f"{head} {shared}명에게 공유했어요."
-        text = f"{head}\n{line}"
+    registered_cards = [c for c in response.cards if c.type == "registered"]
+    if registered_cards:
+        if room and private:  # 개인 일정은 방 대화에 제목·날짜를 올리지 않는다
+            return AgentReply(PRIVATE_ROOM_TEXT, user_text=PRIVATE_ROOM_TEXT)
+        blocks = [_registered_text(c.data) for c in registered_cards]
+        text = "\n".join(blocks)
+        if (
+            response.text and response.draft is not None
+        ):  # 한 문장의 다른 건이 날짜가 빠져 되묻는 중
+            text = f"{text}\n{ASK_BACK}{response.text}"
         return AgentReply(text, user_text=text)
     asked = next((c for c in response.cards if c.type == "request_list"), None)
     listed = next((c for c in response.cards if c.type == "event_list"), None)
@@ -290,6 +311,7 @@ def ask(
     room = (
         audience == "room"
     )  # 가족방 @가비: 공동 일정만 다루고, 등록은 방의 다른 구성원에게 공유한다
+    private = wants_private(question)
     text = with_whole_family(question.strip(), db, group_id, user.id)
     request = AgentRequest(
         text=text[:2000],
@@ -301,8 +323,10 @@ def ask(
         user.id,
         group_id,
         request,
-        share_all=room or wants_whole_family(question),
+        # '나만 보게'가 있으면 방에서도 전원 공유로 하지 않는다(가족 전체 말과 같이 나와도 개인 우선)
+        share_all=(room and not private) or (wants_whole_family(question) and not private),
         guarded=guarded,
+        private=private,
     )
     _keep_draft(group_id, user.id, response)
-    return _reply(response, room)
+    return _reply(response, room, private)

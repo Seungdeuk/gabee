@@ -30,6 +30,7 @@ FEATURE = "schedule_chat"
 MAX_REPLY_CHARS = 600
 MAX_EVENT_IDS = 20
 MAX_KEYWORD_CHARS = 30
+MAX_MORE_REGISTERS = 4  # 한 문장에서 첫 건 말고 더 등록할 수 있는 건수
 
 # 사용자 문장·초안·구성원에 든 개인정보를 가려 보내고(PERSON·ADDRESS·PHONE·EMAIL), 주민번호·카드·계좌 같은 것이 있으면 보내지 않는다.
 # 일정을 등록하면 사용자가 말한 값이 그대로 저장돼야 하므로 가린 값 네 종류는 응답에서 원래 값으로 복원한다.
@@ -59,6 +60,7 @@ class ChatResult:
     period_end: str = ""
     keyword: str = ""
     register: dict = field(default_factory=dict)  # intent 가 register 일 때 모델이 읽은 값(검증 끝)
+    more_registers: list = field(default_factory=list)  # 한 문장의 두 번째 건부터(각각 검증 끝)
     target_id: str = ""  # intent 가 edit·delete 일 때 모델이 고른 일정 id(보여 준 목록에 있는 것만)
     all_targets: bool = False  # delete 일 때 여러 건을 한꺼번에 지우라는 말(대상은 event_ids)
     also_delete_title: str = (
@@ -106,6 +108,7 @@ def clean_result(
         "period_end": _short(data.get("period_end"), 10),
         "keyword": _short(data.get("keyword"), MAX_KEYWORD_CHARS),
         "register": register.clean_fields(data.get("register"), member_ids or set()),
+        "more_registers": clean_more(data.get("more_registers"), member_ids or set()),
         "target_id": target if isinstance(target, str) and target in allowed_ids else "",
         "changes": modify.clean_changes(data.get("changes"), member_ids or set()),
         "check_action": action if action in ("mark", "unmark", "list") else "",
@@ -114,6 +117,15 @@ def clean_result(
         ),
         "habit": habits.clean_fields(data.get("habit"), habit_ids or set()),
     }
+
+
+def clean_more(raw, member_ids: set[str]) -> list[dict]:
+    """한 문장의 추가 등록 건: 객체가 아닌 항목은 버리고 각각 register 와 같은 검증을 거친다(최대 MAX_MORE_REGISTERS 건)."""
+    if not isinstance(raw, list):
+        return []
+    return [register.clean_fields(x, member_ids) for x in raw if isinstance(x, dict)][
+        :MAX_MORE_REGISTERS
+    ]
 
 
 def _short(value, limit: int) -> str:
@@ -296,6 +308,7 @@ def converse(
             {
                 "reply": cleaned["reply"],
                 "register": cleaned["register"],
+                "more_registers": cleaned["more_registers"],
                 "changes": cleaned["changes"],
                 "request": cleaned["request"],
             },
@@ -304,6 +317,7 @@ def converse(
         ).value
     cleaned["reply"] = restored["reply"]
     cleaned["register"] = register.clean_fields(restored["register"], member_ids)
+    cleaned["more_registers"] = clean_more(restored["more_registers"], member_ids)
     cleaned["changes"] = modify.clean_changes(restored["changes"], member_ids)
     cleaned["request"] = request_flow.clean_fields(
         restored["request"], member_ids, request_ids or set()

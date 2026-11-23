@@ -232,3 +232,31 @@ def keep(group_id: str, user_id: str, response: AgentResponse) -> None:
                 time.monotonic() + CHOICE_TTL_SECONDS,
                 response.choice,
             )
+
+
+_last_event: dict[tuple[str, str], tuple[float, str]] = {}
+
+
+def remember_event(group_id: str, user_id: str, event_id: str) -> None:
+    """이 사용자가 방금 다룬 일정을 10분 기억한다('엄마한테도 공유해줘'처럼 일정을 말하지 않는 이어진 말에 쓴다). 개인 채팅 전용."""
+    with _lock:
+        _last_event[(group_id, user_id)] = (time.monotonic() + CHOICE_TTL_SECONDS, event_id)
+
+
+def recall_event(group_id: str, user_id: str) -> str | None:
+    """직전에 다룬 일정 id(10분 안). 없거나 만료됐으면 None. 꺼내도 기억은 남는다(이어서 또 쓸 수 있다)."""
+    now = time.monotonic()
+    with _lock:
+        for key in [k for k, (until, _) in _last_event.items() if until <= now]:
+            del _last_event[key]
+        item = _last_event.get((group_id, user_id))
+    return item[1] if item else None
+
+
+def forget_event(group_id: str, event_id: str) -> None:
+    """지운 일정은 기억에서 뺀다(어느 사용자의 기억이든)."""
+    with _lock:
+        for key in [
+            k for k, (_, eid) in _last_event.items() if k[0] == group_id and eid == event_id
+        ]:
+            del _last_event[key]
