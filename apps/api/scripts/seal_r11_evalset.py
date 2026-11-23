@@ -18,7 +18,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
-DATASET = "r11_stress_independent.jsonl"
+DATASET = "r11_stress_v1.jsonl"
 
 
 def sha(p):

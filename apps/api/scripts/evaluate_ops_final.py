@@ -21,11 +21,18 @@ sys.path.insert(0, str(HERE))
 OPS = Path(r"C:\Users\403\Documents\gabee-ner\docs\security\r11_validation\ops_replacement")
 COLS = ("n_gold", "ex", "bo", "pa", "fu", "tp", "fpg", "fpn", "neg_n", "neg_flag")
 TARGET_TYPES = ("D1P", "B1", "C2", "NEWNAME", "LONGNAME", "ORGLOC_MIX")
-NEG_ONLY_EXCLUDED = ("D1",)  # D1 은 따로 보고(P8), 매크로 오탐률에는 D1 포함하지 않는다(나머지 사람 없는 유형의 평균)
+NEG_ONLY_EXCLUDED = ("D1",)  # 리허설에서만 쓰는 규칙: D1 은 따로 보고(P8)하고 매크로에서 뺀다
+P5_NEG_TYPES = ("A3N", "D2", "GENERIC", "OTHER")  # 독립 평가셋 P5 음성 유형(사양 §3): 유형별 오탐률의 단순 평균
+MIN_GOLD_P6, MIN_D1_SENT = 100, 250  # 이보다 작으면 평가셋 불충분(INVALID_DATASET), 판정하지 않는다
 
 
 def sha(p):
     return hashlib.sha256(Path(p).read_bytes()).hexdigest()
+
+
+def sha_lf(p):
+    """텍스트 파일 해시(CRLF/LF 차이로 해시가 달라지지 않도록 줄바꿈을 LF 로 정규화한 뒤 계산)."""
+    return hashlib.sha256(Path(p).read_bytes().replace(b"\r\n", b"\n")).hexdigest()
 
 
 def per_row_counts(rows, pred_fn):
@@ -72,7 +79,7 @@ def _div(a, b):
     return float(a) / float(b) if b else float("nan")
 
 
-def metrics_from(arr, pairs, types):
+def metrics_from(arr, pairs, types, neg_types=None):
     """arr: (types, cols) 합계, pairs: [n_pairs, ok]. 지표 사전."""
     t = {ty: dict(zip(COLS, arr[i].tolist())) for i, ty in enumerate(types)}
     tot = {c: sum(v[c] for v in t.values()) for c in COLS}
@@ -83,7 +90,7 @@ def metrics_from(arr, pairs, types):
     m = {"exact_recall": rec, "precision_official": p_off, "precision_all": p_all, "f1_official": f1,
          "total_exposure_rate": _div(tot["pa"] + tot["fu"], tot["n_gold"]), "partial_rate": _div(tot["pa"], tot["n_gold"]), "full_rate": _div(tot["fu"], tot["n_gold"]),
          "mask_rate": _div(tot["ex"] + tot["bo"], tot["n_gold"]), "pair_context_accuracy": _div(pairs[1], pairs[0]), "n_gold": tot["n_gold"]}
-    negs = [ty for ty, v in t.items() if v["n_gold"] == 0 and v["neg_n"] > 0 and ty not in NEG_ONLY_EXCLUDED]
+    negs = [ty for ty in neg_types if ty in t and t[ty]["neg_n"] > 0] if neg_types else [ty for ty, v in t.items() if v["n_gold"] == 0 and v["neg_n"] > 0 and ty not in NEG_ONLY_EXCLUDED]
     for ty, v in t.items():
         if v["n_gold"]:
             m[f"type.{ty}.exposure"] = _div(v["pa"] + v["fu"], v["n_gold"])
@@ -96,7 +103,7 @@ def metrics_from(arr, pairs, types):
     return m
 
 
-def bootstrap(units, types, resamples, seed):
+def bootstrap(units, types, resamples, seed, neg_types=None):
     """B-A 차이의 percentile 구간(두 모델이 같은 재표본). 반환: {지표: [lo, hi]}."""
     (arrA, prA), (arrB, prB) = units["A"], units["B"]
     n = arrA.shape[0]
@@ -104,8 +111,8 @@ def bootstrap(units, types, resamples, seed):
     diffs = defaultdict(list)
     for _ in range(resamples):
         idx = rng.integers(0, n, n)
-        mA = metrics_from(arrA[idx].sum(0), prA[idx].sum(0), types)
-        mB = metrics_from(arrB[idx].sum(0), prB[idx].sum(0), types)
+        mA = metrics_from(arrA[idx].sum(0), prA[idx].sum(0), types, neg_types)
+        mB = metrics_from(arrB[idx].sum(0), prB[idx].sum(0), types, neg_types)
         for k in mA:
             if k.endswith("n_gold") or k == "n_gold":
                 continue
@@ -187,7 +194,51 @@ def load_rows(path):
     return [json.loads(x) for x in Path(path).read_text(encoding="utf-8").splitlines() if x.strip()]
 
 
-def run(rows, lock, crit, args, rehearsal):
+def normalize_rows(rows):
+    """봉인 평가셋 행(primary_stress_type, role, exclude)을 평가 필드(type, pair_role)로 맞춘다.
+    exclude 표시 행과, 쌍의 한쪽이 제외되면 그 쌍 전체를 두 모델 모두에서 같이 뺀다. 반환: (행 목록, 제외 건수)."""
+    bad_pairs = {r["pair_id"] for r in rows if r.get("exclude") and r.get("pair_id")}
+    out, dropped = [], 0
+    for r in rows:
+        if r.get("exclude") or (r.get("pair_id") in bad_pairs):
+            dropped += 1
+            continue
+        r = dict(r)
+        r["type"] = r.get("type") or r.get("primary_stress_type")
+        if not r["type"]:
+            raise SystemExit("행에 type/primary_stress_type 이 없다")
+        r["pair_role"] = r.get("pair_role") or r.get("role")
+        out.append(r)
+    return out, dropped
+
+
+def dataset_valid(arr_by_type_total, types, d1_sentences):
+    """평가셋 충분성(사전 등록): P6 유형의 정답 span 100 이상, D1 문장 250 이상. 부족하면 판정하지 않는다."""
+    miss = [ty for ty in TARGET_TYPES if arr_by_type_total.get(ty, 0) < MIN_GOLD_P6]
+    if d1_sentences < MIN_D1_SENT:
+        miss.append("D1_sentences")
+    return miss
+
+
+def precheck(rows, rehearsal):
+    """모델을 돌리기 전 평가셋 충분성 확인(부족하면 잠금 파일도 만들지 않고 중단). 반환: 분모 요약."""
+    import r8_eval_lib as lib
+
+    gold, nrows = defaultdict(int), defaultdict(int)
+    for r in rows:
+        gold[r["type"]] += len(lib.gold_person(r))
+        nrows[r["type"]] += 1
+    d1 = nrows.get("D1", 0)
+    pairs = len({r["pair_id"] for r in rows if r.get("pair_id")})
+    den = {"gold_spans_by_type": dict(sorted(gold.items())), "rows_by_type": dict(sorted(nrows.items())), "D1_sentences": d1, "pairs": pairs, "gold_spans_total": sum(gold.values())}
+    if not rehearsal:
+        miss = dataset_valid(gold, None, d1)
+        if miss:
+            raise SystemExit(f"INVALID_DATASET: 사전 등록 최소 분모 미달 {miss} (평가하지 않음, 잠금 파일 미생성)")
+    return den
+
+
+def run(rows, lock, crit, args, rehearsal, dropped=0, den=None):
     import r8_eval_lib as lib
 
     recs = {}
@@ -195,14 +246,16 @@ def run(rows, lock, crit, args, rehearsal):
         lib.set_model(lock["models"][who]["onnx_dir"], None)
         recs[who] = per_row_counts(rows, None)
     types, units = build_units(recs, rows)
-    mA = metrics_from(units["A"][0].sum(0), units["A"][1].sum(0), types)
-    mB = metrics_from(units["B"][0].sum(0), units["B"][1].sum(0), types)
-    ci = bootstrap(units, types, crit["statistics"]["resamples"], crit["statistics"]["seed"])
+    neg = None if rehearsal else P5_NEG_TYPES
+    mA = metrics_from(units["A"][0].sum(0), units["A"][1].sum(0), types, neg)
+    mB = metrics_from(units["B"][0].sum(0), units["B"][1].sum(0), types, neg)
+    ci = bootstrap(units, types, crit["statistics"]["resamples"], crit["statistics"]["seed"], neg)
     verdict, checks, p7 = decide(crit, mA, mB, ci, types)
     table = {k: {"A_S0": mA[k], "B_B-new-s21": mB[k], "delta_pp": 100 * (mB[k] - mA[k]), "relative_change_pct": (100 * (mB[k] - mA[k]) / mA[k]) if mA[k] else None, "ci95_delta_pp": [100 * ci[k][0], 100 * ci[k][1]]}
              for k in mA if k in ci}
     return {"mode": "REHEARSAL(교체 판정 아님)" if rehearsal else "FINAL_INDEPENDENT", "label": "자동 검증 기반 연구용 · 사람 검수 미완료",
-            "n_sentences": len(rows), "n_clusters": int(units["A"][0].shape[0]), "metrics": table, "checks": checks, "p7_by_type": p7,
+            "n_sentences": len(rows), "rows_excluded_identically_for_both_models": dropped, "denominators": den, "n_clusters": int(units["A"][0].shape[0]),
+            "p5_negative_types": list(neg) if neg else "리허설: 사람 없는 유형 전체(D1 제외)", "metrics": table, "checks": checks, "p7_by_type": p7,
             "verdict": ("교체 판정 아님(리허설)" if rehearsal else verdict), "primary_verdict_if_final": verdict,
             "criteria_sha256": lock.get("criteria_sha256"), "models": {w: lock["models"][w]["sha256"]["model.onnx"] for w in ("A", "B")},
             "note": "R11-S 미충족(B-new 1/5시드 적격)·사람 검수 519건 미완료 위험은 판정과 별개로 계속 표기. 공식 연구 게이트 통과가 아님."}
@@ -212,30 +265,32 @@ def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--rehearsal-data", type=Path)
     ap.add_argument("--sealed-dir", type=Path)
-    ap.add_argument("--dataset-name", default="r11_stress_independent.jsonl")
+    ap.add_argument("--dataset-name", default="r11_stress_v1.jsonl")
     ap.add_argument("--lock", type=Path, default=OPS / "ops_model_lock.json")
     ap.add_argument("--criteria", type=Path, default=OPS / "ops_decision_criteria.json")
     ap.add_argument("--out", type=Path, required=True)
     a = ap.parse_args(argv)
     lock = json.loads(a.lock.read_text(encoding="utf-8"))
     crit = json.loads(a.criteria.read_text(encoding="utf-8"))
-    if lock.get("criteria_sha256") != sha(a.criteria):
+    if lock.get("criteria_sha256") != sha_lf(a.criteria):
         raise SystemExit("판정 기준 파일 해시가 모델 고정 파일의 기록과 다름(기준 변경 금지)")
     verify_models(lock)
     if a.rehearsal_data:
-        rows = load_rows(a.rehearsal_data)
-        res = run(rows, lock, crit, a, rehearsal=True)
+        rows, dropped = normalize_rows(load_rows(a.rehearsal_data))
+        res = run(rows, lock, crit, a, rehearsal=True, dropped=dropped, den=precheck(rows, True))
     else:
         if not a.sealed_dir:
             raise SystemExit("--sealed-dir 또는 --rehearsal-data 가 필요하다")
         verify_seal(a.sealed_dir)
+        rows, dropped = normalize_rows(load_rows(a.sealed_dir / a.dataset_name))
+        den = precheck(rows, False)  # 평가셋이 불충분하면 여기서 중단(잠금 파일 생성 전)
         lk = a.sealed_dir.parent / "EVALUATED.lock"
         try:
             with open(lk, "x", encoding="utf-8") as f:  # 없을 때만 생성(재실행 방지)
-                f.write(json.dumps({"criteria_sha256": sha(a.criteria), "models": lock["models"]["A"]["sha256"]["model.onnx"] + "|" + lock["models"]["B"]["sha256"]["model.onnx"]}))
+                f.write(json.dumps({"criteria_sha256": sha_lf(a.criteria), "models": lock["models"]["A"]["sha256"]["model.onnx"] + "|" + lock["models"]["B"]["sha256"]["model.onnx"]}))
         except FileExistsError:
             raise SystemExit("EVALUATED.lock 이 이미 있다: 독립 평가는 한 번만 실행한다")
-        res = run(load_rows(a.sealed_dir / a.dataset_name), lock, crit, a, rehearsal=False)
+        res = run(rows, lock, crit, a, rehearsal=False, dropped=dropped, den=den)
     a.out.write_text(json.dumps(res, ensure_ascii=False, indent=1), encoding="utf-8")
     print(json.dumps({"mode": res["mode"], "verdict": res["verdict"], "checks": res["checks"]}, ensure_ascii=False, indent=1))
 

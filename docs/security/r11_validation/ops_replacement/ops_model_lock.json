@@ -1,7 +1,8 @@
 {
  "version": "ops-1.0",
  "locked_on": "2026-11-23",
- "criteria_sha256": "f7ec86fc1dc60a41cdd72194bf544564c00f29ab2ceb9a19c78d11f071f72167",
+ "criteria_sha256": "b2e8e22b2e6bd4d81dc6dcb6565e04a50fbe9d2cbf65dac69d794656eab99454",
+ "criteria_hash_note": "줄바꿈을 LF 로 정규화한 SHA256(CRLF 체크아웃에서도 재현)",
  "models": {
   "A": {
    "name": "S0 koelectra-small-v2b (현재 서비스)",

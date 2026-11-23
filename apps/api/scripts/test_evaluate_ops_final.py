@@ -88,11 +88,12 @@ def test_sealed_mode_refuses_second_run(tmp_path, monkeypatch):
     root = tmp_path / "ops"
     sealed = root / "sealed"
     sealed.mkdir(parents=True)
-    f = sealed / "r11_stress_independent.jsonl"
+    f = sealed / "r11_stress_v1.jsonl"
     f.write_text("", encoding="utf-8")
     (sealed / "MANIFEST.sha256").write_text(f"{e.sha(f)} *{f.name}\n", encoding="utf-8")
     (root / "EVALUATED.lock").write_text("{}", encoding="utf-8")  # 이미 한 번 평가한 상황
     monkeypatch.setattr(e, "verify_models", lambda lock: None)
+    monkeypatch.setattr(e, "precheck", lambda rows, rehearsal: {})
     with pytest.raises(SystemExit) as ex:
         e.main(["--sealed-dir", str(sealed), "--out", str(tmp_path / "o.json")])
     assert "EVALUATED.lock" in str(ex.value)
@@ -107,3 +108,41 @@ def test_seal_tampering_is_detected(tmp_path):
     (d / "a.jsonl").write_text("y", encoding="utf-8")
     with pytest.raises(SystemExit):
         e.verify_seal(d)
+
+
+def test_normalize_rows_maps_spec_fields_and_drops_whole_pair_when_one_side_excluded():
+    rows = [{"id": "1", "primary_stress_type": "D1P", "pair_id": "p1", "role": "person"},
+            {"id": "2", "primary_stress_type": "D1", "pair_id": "p1", "role": "noun", "exclude": True},
+            {"id": "3", "primary_stress_type": "B1"}]
+    out, dropped = e.normalize_rows(rows)
+    assert [r["id"] for r in out] == ["3"] and dropped == 2
+    out2, _ = e.normalize_rows([rows[0]])
+    assert out2[0]["type"] == "D1P" and out2[0]["pair_role"] == "person"
+
+
+def test_criteria_hash_is_line_ending_independent(tmp_path):
+    a, b = tmp_path / "a.json", tmp_path / "b.json"
+    a.write_bytes(b'{"x": 1}\n{"y": 2}\n')
+    b.write_bytes(b'{"x": 1}\r\n{"y": 2}\r\n')
+    assert e.sha_lf(a) == e.sha_lf(b) and e.sha(a) != e.sha(b)
+    lock = json.loads((e.OPS / "ops_model_lock.json").read_text(encoding="utf-8"))
+    assert lock["criteria_sha256"] == e.sha_lf(e.OPS / "ops_decision_criteria.json")
+
+
+def test_p5_uses_fixed_negative_types_and_ignores_others():
+    types = ["A3N", "D2", "GENERIC", "OTHER", "D1", "NEG_Z"]
+    arr = np.zeros((6, len(e.COLS)), dtype=np.int64)
+    for i, flag in enumerate([10, 20, 30, 40, 99, 99]):
+        arr[i] = [0, 0, 0, 0, 0, 0, 0, flag, 100, flag]
+    m = e.metrics_from(arr, np.array([0, 0]), types, e.P5_NEG_TYPES)
+    assert abs(m["neg_fpr_macro"] - 0.25) < 1e-9 and abs(m["D1_fpr"] - 0.99) < 1e-9
+
+
+def test_invalid_dataset_stops_before_lock_is_created():
+    assert e.dataset_valid({"D1P": 300, "B1": 99, "C2": 300, "NEWNAME": 300, "LONGNAME": 120, "ORGLOC_MIX": 100}, None, 300) == ["B1"]
+    assert e.dataset_valid({t: 100 for t in e.TARGET_TYPES}, None, 249) == ["D1_sentences"]
+    assert e.dataset_valid({t: 100 for t in e.TARGET_TYPES}, None, 250) == []
+    rows = [{"id": str(i), "type": "B1", "spans": [{"kind": "PERSON", "start": 0, "end": 2}]} for i in range(5)]
+    with pytest.raises(SystemExit) as ex:
+        e.precheck(rows, rehearsal=False)
+    assert "INVALID_DATASET" in str(ex.value)
