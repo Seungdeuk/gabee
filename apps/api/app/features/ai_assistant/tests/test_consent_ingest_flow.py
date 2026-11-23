@@ -1,10 +1,15 @@
-"""가족 AI 동의(A안) 흐름 시험: 동의가 없으면 문서·사진을 외부(Claude·Jev)로 보내지 않는다. 업로드·재검사·직접 저장·PDF·PPT·처리 도중 철회·주입된 Jev 를
-실제 업로드 경로(`/ai-assistant/files`, `/family-chat/photos`)로 돌리고, Claude 로 가는 모든 함수를 호출 횟수를 세는 대역으로 바꿔 확인한다.
-각 시험은 짝이 되는 "동의 있음" 대조군을 둬서, 호출이 0 인 것이 우연히 그 단계에 닿지 않아서가 아님을 보인다. 합성 데이터만 쓴다.
+"""처리 목적별 외부 AI 전송 정책 시험(ADR 0023, 사용자 결정 2026-11-23).
 
-마지막의 `test_*_is_not_reprotected_*` 는 **아직 고쳐지지 않은 한계**를 기록하는 xfail(strict)이다(문서 맨 아래 설명)."""
+- **메인 AI 직접 업로드**(`/ai-assistant/files`): 기존 정책 유지 — 가족 AI 동의와 무관하게 Claude 가 읽고·가리고·분류한다(`Purpose.MAIN_AI_DIRECT_UPLOAD`).
+- **가족 소통 채팅방**(문서·사진 자동 등록, "문서로 저장", 재검사): **가족 AI 동의가 있을 때만** 외부(Claude·Jev)로 보낸다(`Purpose.FAMILY_CHAT_DOCUMENT`).
+처리 목적은 서버 코드가 정하며 요청 값으로 바꿀 수 없다. Claude·Jev 로 가는 모든 함수를 호출 횟수를 세는 대역으로 바꿔 실제 업로드 경로로 확인한다(실제 API 호출 없음).
+각 시험은 짝이 되는 대조군을 둬서 호출이 0 인 것이 그 단계에 닿지 않아서가 아님을 보인다. 합성 데이터만 쓴다.
 
+마지막의 `test_*_is_not_reprotected_*` 는 **아직 고치지 않은 한계**를 기록하는 xfail(strict)이다."""
+
+import ast
 import io
+from pathlib import Path
 
 import pytest
 from PIL import Image
@@ -131,6 +136,10 @@ class Claude:
     def total(self) -> int:
         return sum(self.calls.values())
 
+    def reset(self):
+        for k in self.calls:
+            self.calls[k] = 0
+
     def _read_done(self):
         if self.after_read is not None:
             self.after_read()
@@ -183,14 +192,31 @@ def claude(monkeypatch):
     return c
 
 
+@pytest.fixture
+def purposes(monkeypatch):
+    """`files.process_file` 에 실제로 넘어간 처리 목적을 기록한다(원래 함수도 그대로 부른다)."""
+    seen = []
+    real = files.process_file
+
+    def spy(*args, **kwargs):
+        seen.append(kwargs.get("purpose"))
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(files, "process_file", spy)
+    return seen
+
+
 def _consent(client, headers, enabled: bool):
     r = client.put("/family-chat/ai/settings", json={"enabled": enabled}, headers=headers)
     assert r.status_code == 200, r.text
 
 
-def _upload(client, headers, name, data, ctype):
-    r = client.post("/ai-assistant/files", files={"file": (name, data, ctype)}, headers=headers)
-    assert r.status_code == 201, r.text  # 사진이 아니면 동의 없이도 받는다
+def _main_upload(client, headers, name, content, ctype, **extra):
+    """메인 AI 직접 업로드."""
+    r = client.post(
+        "/ai-assistant/files", files={"file": (name, content, ctype)}, headers=headers, **extra
+    )
+    assert r.status_code == 201, r.text
     return r.json()["id"]
 
 
@@ -198,21 +224,31 @@ def _status(client, headers, file_id) -> str:
     return client.get(f"/ai-assistant/files/{file_id}", headers=headers).json()["status"]
 
 
-def _items(group_id):
-    with SessionLocal() as db:
-        return list(db.scalars(select(KnowledgeItem).where(KnowledgeItem.group_id == group_id)))
+def _chat_file(client, headers, name, content, ctype, **extra):
+    """가족 채팅방 문서 첨부(전체방): 서버가 뒤에서 문서함에 자동 등록을 시도한다."""
+    r = client.post(
+        "/family-chat/files", files={"file": (name, content, ctype)}, headers=headers, **extra
+    )
+    assert r.status_code == 201, r.text
+    return r.json()
 
 
-def _send_photo(client, headers) -> str:
+def _send_photo(client, headers, color=(235, 235, 235), **extra) -> str:
     out = io.BytesIO()
-    Image.new("RGB", (320, 240), (235, 235, 235)).save(out, format="JPEG")
+    Image.new("RGB", (320, 240), color).save(out, format="JPEG")
     r = client.post(
         "/family-chat/photos",
         files={"file": ("a.jpg", out.getvalue(), "image/jpeg")},
         headers=headers,
+        **extra,
     )
     assert r.status_code == 201, r.text
     return r.json()["attachment"]["id"]
+
+
+def _items(group_id):
+    with SessionLocal() as db:
+        return list(db.scalars(select(KnowledgeItem).where(KnowledgeItem.group_id == group_id)))
 
 
 def _check(attachment_id: str) -> ChatPhotoCheck:
@@ -220,45 +256,97 @@ def _check(attachment_id: str) -> ChatPhotoCheck:
         return db.get(ChatPhotoCheck, attachment_id)
 
 
-# ---------- PDF·PPT ----------
+# ======================= 메인 AI 직접 업로드: 기존 정책 유지 =======================
 
 
-def test_without_consent_pdf_and_pptx_uploads_send_nothing(client, family, claude):
-    a, _, _ = family
-    _consent(client, a, False)
-    ids = [
-        _upload(
-            client,
-            a,
-            "n.pdf",
-            pdf(["Hello family notice about the school trip next week", ""]),
-            "application/pdf",
-        ),
-        _upload(client, a, "t.pptx", pptx_with_picture(), PPTX),
+@pytest.mark.parametrize("family_consents", [True, False])
+def test_main_ai_photo_upload_is_read_masked_and_classified_by_claude_regardless_of_family_consent(
+    client, family, claude, purposes, family_consents
+):
+    a, _, group = family
+    _consent(client, a, family_consents)
+    fid = _main_upload(client, a, "p.png", png(), "image/png")  # 새로 403 으로 막히지 않는다
+    assert _status(client, a, fid) in ("analyzed", "needs_review")
+    assert claude.calls["ocr_image"] == 1  # Claude 읽기
+    assert claude.calls["mask"] >= 1 and claude.calls["jev"] >= 1  # 가리기·분류(Jev)도 기존대로
+    assert claude.calls["reminders"] >= 1  # 챙길 일 뽑기도 기존대로
+    assert len(_items(group["id"])) == 1
+    assert purposes == [files.Purpose.MAIN_AI_DIRECT_UPLOAD]
+
+
+@pytest.mark.parametrize("family_consents", [True, False])
+def test_main_ai_pdf_upload_is_read_by_claude_regardless_of_family_consent(
+    client, family, claude, family_consents
+):
+    a, _, group = family
+    _consent(client, a, family_consents)
+    fid = _main_upload(
+        client,
+        a,
+        "n.pdf",
+        pdf(["Hello family notice about the school trip next week", ""]),
+        "application/pdf",
+    )
+    assert _status(client, a, fid) in ("analyzed", "needs_review")
+    assert claude.calls["ocr_pdf"] == 1 and claude.calls["mask"] >= 1
+    assert len(_items(group["id"])) == 1
+
+
+@pytest.mark.parametrize("family_consents", [True, False])
+def test_main_ai_ordinary_documents_keep_their_existing_processing(
+    client, family, claude, family_consents
+):
+    a, _, group = family
+    _consent(client, a, family_consents)
+    txt = _main_upload(client, a, "a.txt", PLAIN_TEXT.encode(), "text/plain")
+    slides = _main_upload(client, a, "t.pptx", pptx_with_picture(), PPTX)
+    assert [_status(client, a, i) in ("analyzed", "needs_review") for i in (txt, slides)] == [
+        True,
+        True,
     ]
-    assert [_status(client, a, i) in ("analyzed", "needs_review") for i in ids] == [
-        True,
-        True,
-    ]  # 받아서 로컬로 처리한다
+    assert claude.calls["mask"] >= 2  # 글 가리기(Claude)
+    assert claude.calls["jev"] >= 1  # 분류(Jev)
+    assert claude.calls["figure"] >= 1  # PPT 그림 설명
+    assert len(_items(group["id"])) == 2
+
+
+# ======================= 가족 소통 채팅방: 동의가 있을 때만 외부로 =======================
+
+
+def test_family_chat_documents_without_consent_send_nothing(client, family, claude, purposes):
+    a, _, group = family
+    _consent(client, a, False)
+    _chat_file(
+        client,
+        a,
+        "n.pdf",
+        pdf(["Hello family notice about the school trip next week", ""]),
+        "application/pdf",
+    )
+    _chat_file(client, a, "t.pptx", pptx_with_picture(), PPTX)
+    _chat_file(client, a, "a.txt", PLAIN_TEXT.encode(), "text/plain")
+    assert len(_items(group["id"])) == 3  # 받아서 로컬로 처리·등록한다
     assert claude.total() == 0, (
         claude.calls
     )  # 읽기·가리기·그림 설명·분류·챙길 일 어느 것도 나가지 않는다
+    assert purposes == [files.Purpose.FAMILY_CHAT_DOCUMENT] * 3
 
 
-def test_with_consent_the_same_pdf_and_pptx_do_reach_claude(client, family, claude):
+def test_family_chat_documents_with_consent_do_reach_claude(client, family, claude):
     """대조군: 위 시험이 0 인 이유가 그 단계에 닿지 않아서가 아님을 보인다."""
-    a, _, _ = family
-    _upload(
+    a, _, group = family
+    _chat_file(
         client,
         a,
         "n.pdf",
         pdf(["Hello family notice about the school trip next week"]),
         "application/pdf",
     )
-    _upload(client, a, "t.pptx", pptx_with_picture(), PPTX)
+    _chat_file(client, a, "t.pptx", pptx_with_picture(), PPTX)
     assert (
         claude.calls["ocr_pdf"] >= 1 and claude.calls["figure"] >= 1 and claude.calls["mask"] >= 2
     )
+    assert len(_items(group["id"])) == 2
 
 
 # ---------- 재검사 ----------
@@ -288,6 +376,9 @@ def test_a_photo_held_for_consent_is_not_rechecked_automatically_but_can_be_save
     siglip_margin.set_scorer(FakeScorer(margin=8.0))
     att = _send_photo(client, a)
     assert _check(att).status == "unsure" and claude.total() == 0
+    r = client.post(f"/family-chat/photos/{att}/library", headers=a)  # 동의 없는 직접 저장은 막힌다
+    assert r.status_code == 403 and r.json()["code"] == "ai_consent_required"
+    assert claude.total() == 0 and _items(group["id"]) == []
     _consent(client, a, True)
     r = client.post(f"/family-chat/photos/{att}/recheck", headers=a)
     assert (
@@ -295,9 +386,8 @@ def test_a_photo_held_for_consent_is_not_rechecked_automatically_but_can_be_save
     )  # 자동으로 다시 판별되지 않는다
     r = client.post(f"/family-chat/photos/{att}/library", headers=a)
     assert r.status_code == 200 and r.json() == {"status": "queued"}
-    assert claude.calls["ocr_image"] == 1 and [
-        i.source_attachment_id for i in _items(group["id"])
-    ] == [att]
+    assert claude.calls["ocr_image"] == 1
+    assert [i.source_attachment_id for i in _items(group["id"])] == [att]
 
 
 # ---------- 직접 저장 경합 ----------
@@ -328,22 +418,20 @@ def _revoker(client, headers, group_id):
     return revoke
 
 
-def test_consent_revoked_while_a_photo_is_being_read_blocks_the_remaining_external_steps(
+def test_consent_revoked_while_a_chat_photo_is_being_read_blocks_the_remaining_external_steps(
     client, family, claude
 ):
     a, _, group = family
-    _upload(
-        client, a, "p1.png", png((200, 200, 200)), "image/png"
-    )  # 대조군: 철회 없으면 가리기·Jev·챙길 일까지 간다
+    siglip_margin.set_scorer(FakeScorer(margin=8.0))
+    _send_photo(client, a, (200, 200, 200))  # 대조군: 철회 없으면 가리기·Jev·챙길 일까지 간다
     assert (
         claude.calls["mask"] >= 1 and claude.calls["jev"] >= 1 and claude.calls["reminders"] >= 1
     ), claude.calls
-    for k in claude.calls:
-        claude.calls[k] = 0
+    claude.reset()
     claude.after_read = _revoker(
         client, a, group["id"]
     )  # 읽기(이미 나간 호출)가 끝나는 순간 철회한다
-    fid = _upload(client, a, "p2.png", png((100, 100, 100)), "image/png")
+    att = _send_photo(client, a, (100, 100, 100))
     assert claude.calls == {
         "ocr_image": 1,
         "ocr_pdf": 0,
@@ -352,18 +440,17 @@ def test_consent_revoked_while_a_photo_is_being_read_blocks_the_remaining_extern
         "jev": 0,
         "reminders": 0,
     }, claude.calls
-    assert _status(client, a, fid) in (
-        "analyzed",
-        "needs_review",
-    )  # 로컬 규칙으로 가려 저장한다(실패시키지 않는다)
+    assert att in [
+        i.source_attachment_id for i in _items(group["id"])
+    ]  # 로컬 규칙으로 가려 저장한다(실패시키지 않는다)
 
 
-def test_consent_revoked_while_a_pdf_is_being_read_blocks_the_remaining_external_steps(
+def test_consent_revoked_while_a_chat_pdf_is_being_read_blocks_the_remaining_external_steps(
     client, family, claude
 ):
     a, _, group = family
     claude.after_read = _revoker(client, a, group["id"])
-    fid = _upload(
+    _chat_file(
         client,
         a,
         "r.pdf",
@@ -378,13 +465,15 @@ def test_consent_revoked_while_a_pdf_is_being_read_blocks_the_remaining_external
         "jev": 0,
         "reminders": 0,
     }, claude.calls
-    assert _status(client, a, fid) in ("analyzed", "needs_review")
+    assert len(_items(group["id"])) == 1
 
 
 # ---------- 주입된 Jev ----------
 
 
-def test_an_injected_jev_is_not_called_without_consent_but_is_with_consent(client, family, claude):
+def test_an_injected_jev_is_not_called_for_family_chat_without_consent_but_is_with_consent(
+    client, family, claude
+):
     a, _, _ = family
     calls = []
 
@@ -394,32 +483,167 @@ def test_an_injected_jev_is_not_called_without_consent_but_is_with_consent(clien
 
     files.processors = files.Processors(jev=injected)
     _consent(client, a, False)
-    _upload(client, a, "a.txt", PLAIN_TEXT.encode(), "text/plain")
+    _chat_file(client, a, "a.txt", PLAIN_TEXT.encode(), "text/plain")
     assert calls == [] and claude.total() == 0  # 끼워 준 Jev 도 동의 없이는 부르지 않는다
     _consent(client, a, True)
-    _upload(client, a, "b.txt", (PLAIN_TEXT + " again").encode(), "text/plain")
+    _chat_file(client, a, "b.txt", (PLAIN_TEXT + " again").encode(), "text/plain")
     assert calls  # 대조군: 동의가 있으면 부른다
 
 
-# ---------- 조회 때 재보호 ----------
+# ======================= 처리 목적 변조·오용 =======================
+
+
+def test_each_entry_point_passes_its_own_server_decided_purpose(client, family, claude, purposes):
+    a, _, _ = family
+    siglip_margin.set_scorer(FakeScorer(margin=8.0))
+    _main_upload(client, a, "a.txt", PLAIN_TEXT.encode(), "text/plain")
+    _chat_file(client, a, "b.txt", (PLAIN_TEXT + " chat").encode(), "text/plain")
+    att = _send_photo(client, a, (50, 60, 70))  # 자동 등록
+    siglip_margin.set_scorer(FakeScorer(margin=-4.0))
+    plain = _send_photo(client, a, (70, 60, 50))  # 일반 사진 → 직접 저장
+    assert client.post(f"/family-chat/photos/{plain}/library", headers=a).status_code == 200
+    assert purposes == [
+        files.Purpose.MAIN_AI_DIRECT_UPLOAD,
+        files.Purpose.FAMILY_CHAT_DOCUMENT,
+        files.Purpose.FAMILY_CHAT_DOCUMENT,
+        files.Purpose.FAMILY_CHAT_DOCUMENT,
+    ], purposes
+    assert att
+
+
+def test_client_supplied_fields_cannot_change_the_purpose_or_skip_the_consent_check(
+    client, family, claude, purposes
+):
+    """요청 본문·쿼리·헤더로 `purpose`·`external` 을 보내도 서버는 쓰지 않는다: 가족 채팅 경로는 동의가 없으면 외부로 보내지 않는다."""
+    a, _, group = family
+    _consent(client, a, False)
+    forged = {"purpose": "main_ai_direct_upload", "external": "true", "recheck": "false"}
+    headers = {**a, "X-Process-Purpose": "main_ai_direct_upload", "X-External": "true"}
+    r = client.post(
+        "/family-chat/files",
+        files={"file": ("a.txt", PLAIN_TEXT.encode(), "text/plain")},
+        data=forged,
+        params=forged,
+        headers=headers,
+    )
+    assert r.status_code == 201, r.text
+    siglip_margin.set_scorer(FakeScorer(margin=8.0))
+    out = io.BytesIO()
+    Image.new("RGB", (320, 240), (90, 90, 90)).save(out, format="JPEG")
+    r = client.post(
+        "/family-chat/photos",
+        files={"file": ("a.jpg", out.getvalue(), "image/jpeg")},
+        data=forged,
+        params=forged,
+        headers=headers,
+    )
+    assert r.status_code == 201, r.text
+    assert claude.total() == 0, claude.calls  # 외부 전송 0회
+    assert purposes == [
+        files.Purpose.FAMILY_CHAT_DOCUMENT
+    ]  # 문서는 가족 채팅 목적으로 처리됐다(사진은 보류라 처리 안 함)
+    assert len(_items(group["id"])) == 1  # 글 파일만 로컬로 등록, 동의 없는 사진은 보류
+
+
+def test_a_forged_purpose_on_the_main_ai_route_is_ignored_too(client, family, claude, purposes):
+    a, _, _ = family
+    _consent(client, a, False)
+    _main_upload(
+        client,
+        a,
+        "a.txt",
+        PLAIN_TEXT.encode(),
+        "text/plain",
+        data={"purpose": "family_chat_document"},
+        params={"purpose": "family_chat_document"},
+    )
+    assert purposes == [files.Purpose.MAIN_AI_DIRECT_UPLOAD]  # 서버가 정한 목적 그대로
+    assert claude.calls["mask"] >= 1  # 메인 AI 정책(기존 유지)대로 처리된다
+
+
+def test_process_file_refuses_a_missing_unknown_or_mismatched_purpose(client, family):
+    a, _, group = family
+    gid = group["id"]
+    uid = client.get("/family-group/me", headers=a).json()["id"]
+    with pytest.raises(TypeError):  # 목적을 빠뜨리면 조용히 정해지지 않는다
+        files.process_file("p", gid, uid, b"x", "a.txt")
+    with pytest.raises(ValueError):  # 모르는 목적
+        files.process_file("p", gid, uid, b"x", "a.txt", purpose="bogus")
+    with pytest.raises(
+        ValueError
+    ):  # 채팅 첨부가 있는데 메인 AI 목적(채팅 문서를 메인 정책으로 처리하는 오용)
+        files.process_file(
+            "p",
+            gid,
+            uid,
+            b"x",
+            "a.txt",
+            source_attachment_id="att",
+            purpose=files.Purpose.MAIN_AI_DIRECT_UPLOAD,
+        )
+    with pytest.raises(ValueError):  # 채팅 목적인데 채팅 첨부가 없다
+        files.process_file("p", gid, uid, b"x", "a.txt", purpose=files.Purpose.FAMILY_CHAT_DOCUMENT)
+
+
+def test_the_main_ai_purpose_is_only_used_by_the_main_ai_upload_route():
+    """가족 채팅 쪽 코드가 메인 AI 목적(동의 검사 없음)을 쓰면 안 된다: 운영 코드에서 `MAIN_AI_DIRECT_UPLOAD` 를 쓰는 파일은 정의(`files.py`)와 메인 AI 라우터뿐이다.
+    또한 모든 `process_file` 호출은 `purpose=` 를 넘긴다."""
+    app = Path(__file__).resolve().parents[3]
+    users, missing, inspected = set(), [], 0
+    for path in app.rglob("*.py"):
+        if "tests" in path.parts:
+            continue
+        text = path.read_text(encoding="utf-8")
+        if "MAIN_AI_DIRECT_UPLOAD" in text:
+            users.add(path.relative_to(app).as_posix())
+        if "process_file" not in text:
+            continue
+        for node in ast.walk(ast.parse(text)):
+            if not isinstance(node, ast.Call):
+                continue
+            name = (
+                node.func.attr
+                if isinstance(node.func, ast.Attribute)
+                else getattr(node.func, "id", "")
+            )
+            direct = name == "process_file"
+            via_task = name == "add_task" and any(
+                isinstance(arg, ast.Attribute) and arg.attr == "process_file" for arg in node.args
+            )
+            if direct or via_task:
+                inspected += 1
+                if not any(k.arg == "purpose" for k in node.keywords):
+                    missing.append(f"{path.name}:{node.lineno}")
+    assert users == {
+        "features/ai_assistant/files.py",
+        "features/ai_assistant/router.py",
+    }, users
+    assert inspected >= 3, inspected  # 라우터 1 + 라이브러리 2 (공허한 통과 방지)
+    assert missing == [], missing
+
+
+# ======================= 조회 때 재보호 (알려진 한계) =======================
 
 LOCAL_DOC = "가족 모임 안내\n일시 12월 3일 오후 6시\n장소 서울특별시 강남구 테헤란로 152\n연락처 이영희 010-9999-8888\n참석 여부를 알려 주세요"
 
 
-def _stored_without_consent(client, a, group, claude) -> str:
+def _stored_without_consent(client, a, group, claude) -> KnowledgeItem:
+    """동의 없는 가족이 채팅방에 올린 문서: 로컬 규칙으로만 가려 저장된다."""
     _consent(client, a, False)
-    fid = _upload(client, a, "모임.txt", LOCAL_DOC.encode(), "text/plain")
-    assert claude.total() == 0  # 동의가 없어 로컬 규칙으로만 가려 저장했다
-    return fid
+    _chat_file(client, a, "모임.txt", LOCAL_DOC.encode(), "text/plain")
+    assert claude.total() == 0  # 동의가 없어 외부로 나가지 않았다
+    items = _items(group["id"])
+    assert len(items) == 1
+    return items[0]
 
 
-def test_a_document_stored_without_consent_keeps_names_and_addresses_after_local_masking(
+def test_a_chat_document_stored_without_consent_keeps_names_and_addresses_after_local_masking(
     client, family, claude
 ):
     """현황 기록: 로컬 규칙은 번호(전화·주민 등)만 가리고 일반 문서의 이름·주소는 남긴다(Claude 가리기는 개인 집 주소·이름도 가렸다, ADR 0014)."""
     a, _, group = family
-    fid = _stored_without_consent(client, a, group, claude)
-    body = client.get(f"/ai-assistant/knowledge/items/{fid}", headers=a).json()["body_md"]
+    item = _stored_without_consent(client, a, group, claude)
+    body = client.get(f"/ai-assistant/knowledge/items/{item.id}", headers=a).json()["body_md"]
     assert "010-9999-8888" not in body  # 번호는 가려진다
     assert "테헤란로 152" in body and "이영희" in body  # 이름·주소는 남는다
 
@@ -427,10 +651,10 @@ def test_a_document_stored_without_consent_keeps_names_and_addresses_after_local
 @pytest.mark.xfail(
     strict=True,
     raises=AssertionError,
-    reason="[미해결·정책 결정 필요] 동의 없이 로컬 가리기만 거친 문서는, 나중에 동의를 켜고 AI 비서가 조회하면 이름·주소가 그대로 Claude 로 간다. "
+    reason="[미해결·정책 결정 필요] 동의 없이 로컬 가리기만 거친 채팅 문서는, 나중에 동의를 켜고 AI 비서가 조회하면 이름·주소가 그대로 Claude 로 간다. "
     "메인 채팅은 조회한 문서를 다시 가리지 않는다(ADR 0014: 보호를 저장 때 Claude 가리기에 맡김). 고쳐지면 이 표시를 지울 것.",
 )
-def test_a_document_stored_without_consent_is_not_reprotected_before_the_assistant_sends_it(
+def test_a_chat_document_stored_without_consent_is_not_reprotected_before_the_assistant_sends_it(
     client, family, claude, monkeypatch
 ):
     from app.features.ai_assistant.knowledge import rag_chat

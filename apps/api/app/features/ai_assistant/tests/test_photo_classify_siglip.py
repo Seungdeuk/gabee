@@ -344,9 +344,11 @@ def test_a_registered_photo_still_answers_already_after_consent_is_turned_off(
     assert r.status_code == 200 and r.json() == {"status": "already"}
 
 
-def test_a_direct_image_upload_without_consent_is_refused_and_stores_nothing(
-    client, family, claude_reads, tmp_path
+def test_main_ai_direct_image_upload_keeps_claude_reading_even_without_family_consent(
+    client, family, claude_reads
 ):
+    """메인 AI 직접 업로드는 기존 정책 유지(사용자 결정 2026-11-23, ADR 0023): 가족 AI 동의와 무관하게 새로 403 으로 막히지 않고 Claude 가 읽는다.
+    가족 채팅방 경로(자동 등록·"문서로 저장")의 동의 검사와 다르다 — 그쪽은 위 시험들이 본다."""
     a, _, group = family
     _consent_off(client, a)
     out = io.BytesIO()
@@ -354,17 +356,9 @@ def test_a_direct_image_upload_without_consent_is_refused_and_stores_nothing(
     r = client.post(
         "/ai-assistant/files", files={"file": ("a.png", out.getvalue(), "image/png")}, headers=a
     )
-    assert r.status_code == 403 and r.json()["code"] == "ai_consent_required", r.text
-    assert claude_reads.calls == 0 and _items(group["id"]) == []
-    r = client.post(
-        "/ai-assistant/files",
-        files={"file": ("n.txt", "안내문 일시 12월 3일".encode(), "text/plain")},
-        headers=a,
-    )
-    assert r.status_code == 201, (
-        r.text
-    )  # 글 파일은 동의 없이도 받는다(외부 AI 없이 로컬 규칙으로 처리)
-    assert claude_reads.calls == 0
+    assert r.status_code == 201, r.text
+    assert claude_reads.calls == 1  # 기존대로 Claude 가 읽는다
+    assert len(_items(group["id"])) == 1
 
 
 # ---------- 로컬 OCR 은 서비스에 없다 ----------
