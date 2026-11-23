@@ -16,3 +16,18 @@
 - 교체와 무관(가명화가 NER 를 쓰지 않음): 일정 제안·call_talk·관리자 챗봇(규칙 `mask_text` 만), 가계 에이전트 도구 결과(가명화 없음), 메인 AI 채팅·문서 업로드 OCR/PII 탐지·사진 판별(가명화 없이 전송, ADR 0014). 이 경로들은 모델 교체로 개선되지 않는다.
 - 모델 로드 시 `model_card.json` 의 sha256 에 `model.onnx`·`tokenizer.json`·`labels.json` 해시가 모두 있어야 무결성 검사가 완전하다(신규 모델은 충족). 모델은 시작 시 1회 로드되며 hot reload 가 없다.
 - 롤백 트리거(교체 후): 로딩 실패·해시 불일치, 503 증가, p50 지연 > S0×1.3 지속, RSS > S0+30%, 노출 사고 보고, 검출 비율의 급변.
+
+## S4-6 / S2b — 운영 환경 정보 (S2b 성능 재측정에 필요, 현재 UNVERIFIED)
+S0 와 R11 을 **운영과 같은 조건**에서 교대로 측정하기 위해 아래 값이 필요하다. 개발 PC 결과(S2a)는 S2b 로 인정하지 않는다.
+
+| 항목 | 담당자 기입 |
+|---|---|
+| CPU(모델·코어 수)와 컨테이너 CPU 제한 | |
+| 메모리 한도(컨테이너 limit)와 평시 사용량 | |
+| ONNX Runtime 버전(`pip show onnxruntime`) | |
+| 추론 스레드 `PRIVACY_NER_THREADS`(기본 2) | |
+| 요청 동시성 `PRIVACY_NER_MAX_CONCURRENCY`(기본 2) | |
+| Docker 이미지·베이스 OS·실제 배포 환경(Cloud Run 등) | |
+| 모델 폴더 위치(이미지 내 `/srv/data/models/ner-koelectra-small-v2b`) 확인 | |
+
+기준: 토큰 일치 ≥99.9%, p50 지연·모델 크기·RSS 모두 S0 대비 +30% 이내(S0 와 R11 동일 조건 교대 측정). 운영 환경 확인 전에는 S2b 를 UNVERIFIED 로 기록하고 운영 교체를 승인하지 않는다.

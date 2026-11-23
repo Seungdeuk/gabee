@@ -11,7 +11,7 @@
 사람 이름 포함 1,800 / 기타 개인정보만 50 / 개인정보 없음 500. 유형(문장당 `primary_stress_type` 1개): A1 150, A3 100, B1 240, B2 80, C1 100, C2 200, D3 100, **D1P 300 + D1 300(300쌍)**, D2 100, A3N 60, GENERIC 40, OTHER 50, NEWNAME 310, LONGNAME 120, ORGLOC_MIX 100.
 
 ## 3. 판정에 직접 쓰이는 규칙(제작자가 알아야 하는 것)
-1. **분모 최소**: 유형 D1P·B1·C2·NEWNAME·LONGNAME·ORGLOC_MIX 는 각각 **정답 PERSON 구간이 100개 이상**, D1 명사 문장은 **250개 이상**이어야 한다. 제외 처리 후에도 이 수를 지키도록 **유형마다 5~10% 예비분**을 더 만든다(쌍·LONGNAME·ORGLOC_MIX 는 10%). 최종 수량은 봉인 전에 정확히 맞춘다.
+1. **분모 최소**: 유형 D1P·B1·C2·NEWNAME·LONGNAME·ORGLOC_MIX 는 각각 **정답 PERSON 구간이 100개 이상**, D1 명사 문장은 **250개 이상**이어야 한다. 회귀 유형 A1·A3·B2·C1·D3 도 정답 PERSON 구간이 0개이면 평가가 시작되지 않는다(사양 수량이면 문제없음). **허용된 16개 유형 코드(A1·A3·B1·B2·C1·C2·D1·D1P·D2·D3·A3N·GENERIC·OTHER·NEWNAME·LONGNAME·ORGLOC_MIX) 밖의 `primary_stress_type` 은 쓰지 않으며, 16개 유형 모두에 문장이 있어야 한다.** 제외 처리 후에도 이 수를 지키도록 **유형마다 5~10% 예비분**을 더 만든다(쌍·LONGNAME·ORGLOC_MIX 는 10%). 최종 수량은 봉인 전에 정확히 맞춘다.
 2. **쌍(D1P/D1)**: `pair_id` 하나에 `role=person` 정확히 1, `role=noun` 정확히 1. 같은 `pair_word`, 서로 다른 틀(4-gram 유사도 0.7 미만), 명사 문장에는 PERSON 계열 구간이 없다(다른 사람 이름도 금지). 서로 다른 단어 75개 이상, 단어당 최대 4쌍. 한 문장이 제외되면 쌍 전체가 제외되므로 예비분을 쌍 단위로 만든다.
 3. **음성 유형**(정답 PERSON 이 없는 문장): D1(명사 문장), D2, A3N, GENERIC, OTHER. 오탐 판정이 이 유형들에서 이뤄지므로 **숨은 PERSON(라벨 누락)이 없어야** 한다. 사람 이름처럼 보이지만 사람이 아닌 문장은 라벨하지 말고, 작성자도 사람 여부를 확정하지 못하는 문장은 쓰지 않는다.
 4. **ORGLOC_MIX**: 한 문장에 LOCATION/ORGANIZATION 과 PERSON 이 함께 있고 `mix_kind`(`name_looks_place`·`place_looks_name`·`plain`) 필수, 각 30문장 이상.

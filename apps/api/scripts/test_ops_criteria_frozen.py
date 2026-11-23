@@ -38,3 +38,13 @@ def test_p7_types_documented_equal_code_exclusions():
     text = CRIT["primary_checks"]["P7_regression_types_exposure"]["types"]
     for t in ("A1", "A3", "B2", "C1", "D3"):
         assert t in text
+
+
+def test_p7_types_subset_quota_and_allowed_types_are_consistent():
+    p7 = CRIT["primary_checks"]["P7_regression_types_exposure"]
+    assert tuple(p7["types"]) == e.P7_TYPES
+    assert tuple(CRIT["dataset_validity_minimums"]["allowed_types"]) == e.ALLOWED_TYPES
+    sub = CRIT["supplementary_analysis"]["S1600_regression_weighted"]
+    assert sum(sub["quota_rows"].values()) == sub["total_rows"] == 1600
+    assert CRIT["secondary_checks"]["S2_g12_onnx_cpu"]["S2b"]["status"].startswith("UNVERIFIED")
+    assert "S2b" in CRIT["verdict"]["OPS_NOT_READY"]

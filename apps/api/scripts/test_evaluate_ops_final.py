@@ -11,7 +11,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import evaluate_ops_final as e  # noqa: E402
 
 CRIT = json.loads((e.OPS / "ops_decision_criteria.json").read_text(encoding="utf-8"))
-TYPES = ["A1", "B1", "C2", "D1", "D1P", "LONGNAME", "NEWNAME", "ORGLOC_MIX", "NEG_X", "NEG_Y"]
+TYPES = ["A1", "A3", "B2", "C1", "D3", "B1", "C2", "D1", "D1P", "LONGNAME", "NEWNAME", "ORGLOC_MIX", "NEG_X", "NEG_Y"]
 ROW = {"A1": (100, 70, 0, 10, 20, 70, 10, 0, 0, 0)}  # n_gold, ex, bo, pa, fu, tp, fpg, fpn, neg_n, neg_flag
 
 
@@ -146,3 +146,76 @@ def test_invalid_dataset_stops_before_lock_is_created():
     with pytest.raises(SystemExit) as ex:
         e.precheck(rows, rehearsal=False)
     assert "INVALID_DATASET" in str(ex.value)
+
+
+def _types_arr(n_gold_p7):
+    arr = table(exposure=30, recall_ex=50, extra_fp=40)
+    return arr
+
+
+def test_p7_small_type_uses_point_estimate_and_missing_type_fails():
+    a, b = table(30, 50, extra_fp=40), table(8, 84, extra_fp=10)
+    i = TYPES.index("A3")
+    # A3 의 정답 구간을 30개(<50)로 줄이고 노출이 +4pp 악화(점추정 ≤ +5pp → 통과, 구간은 쓰지 않는다)
+    a[i] = [30, 15, 0, 3, 12, 15, 0, 0, 0, 0]
+    b[i] = [30, 14, 0, 4, 12, 14, 0, 0, 0, 0]
+    verdict, checks, detail = run_decide(a, b, half=20.0)  # 구간이 매우 넓어도 소형 유형은 점추정만
+    assert detail["A3"] is True
+    b[i] = [30, 10, 0, 5, 15, 10, 0, 0, 0, 0]  # +16.7pp 악화 → 점추정 한도 초과
+    verdict, checks, detail = run_decide(a, b, half=0.5)
+    assert detail["A3"] is False and not checks["P7_regression_types_exposure"]
+    # 유형이 비어 있으면(정답 구간 0) 침묵 통과하지 않는다
+    b2, a2 = table(8, 84, extra_fp=10), table(30, 50, extra_fp=40)
+    j = TYPES.index("D3")
+    a2[j] = 0
+    b2[j] = 0
+    _, checks2, detail2 = run_decide(a2, b2)
+    assert detail2["D3"] is False and not checks2["P7_regression_types_exposure"]
+
+
+def _rows(counts):
+    out = []
+    for ty, n in counts.items():
+        for i in range(n):
+            out.append({"id": f"{ty}-{i}", "type": ty, "spans": [{"kind": "PERSON", "start": 0, "end": 2}] if ty not in ("D1", "D2", "A3N", "GENERIC", "OTHER") else []})
+    return out
+
+
+FULL = {"A1": 150, "A3": 100, "B1": 240, "B2": 80, "C1": 100, "C2": 200, "D1": 300, "D1P": 300, "D2": 100, "D3": 100, "A3N": 60, "GENERIC": 40, "OTHER": 50, "NEWNAME": 310, "LONGNAME": 120, "ORGLOC_MIX": 100}
+
+
+def test_precheck_invalid_conditions_do_not_conflict_with_small_p7_rule():
+    e.precheck(_rows(FULL), rehearsal=False)  # 정상 구성은 통과
+    small = dict(FULL, A3=30)  # P7 유형이 1~49 → 평가 가능(점추정 규칙), INVALID 아님
+    e.precheck(_rows(small), rehearsal=False)
+    for bad in (dict(FULL, A3=0), dict(FULL, D1=200), dict(FULL, B1=90), dict(FULL, XYZ=10)):
+        with pytest.raises(SystemExit) as ex:
+            e.precheck(_rows({k: v for k, v in bad.items() if v}), rehearsal=False)
+        assert "INVALID_DATASET" in str(ex.value)
+
+
+def _full_rows_with_pairs():
+    rows = _rows({k: v for k, v in FULL.items() if k not in ("D1", "D1P")})
+    for i in range(300):
+        rows.append({"id": f"P{i}-p", "type": "D1P", "pair_id": f"pr{i}", "pair_role": "person", "spans": []})
+        rows.append({"id": f"P{i}-n", "type": "D1", "pair_id": f"pr{i}", "pair_role": "noun", "spans": []})
+    return rows
+
+
+def test_subset_selection_is_deterministic_has_1600_rows_and_keeps_pairs_together():
+    spec = CRIT["supplementary_analysis"]["S1600_regression_weighted"]
+    rows = _full_rows_with_pairs()
+    ids, why = e.select_subset(rows, spec)
+    assert why == [] and len(ids) == 1600
+    ids2, _ = e.select_subset(list(reversed(rows)), spec)  # 입력 순서와 무관
+    assert ids == ids2
+    for i in range(300):
+        assert (f"P{i}-p" in ids) == (f"P{i}-n" in ids)  # 쌍은 함께 선택
+    assert sum(1 for r in rows if r["id"] in ids and r["type"] == "D1P") == 180
+
+
+def test_subset_unavailable_when_quota_not_met():
+    spec = CRIT["supplementary_analysis"]["S1600_regression_weighted"]
+    rows = [r for r in _full_rows_with_pairs() if not (r["type"] == "OTHER" and int(r["id"].split("-")[1]) >= 49)]
+    ids, why = e.select_subset(rows, spec)
+    assert ids is None and any(w.startswith("OTHER") for w in why)

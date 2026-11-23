@@ -1,7 +1,7 @@
 {
  "version": "ops-1.0",
  "locked_on": "2026-11-23",
- "criteria_sha256": "b2e8e22b2e6bd4d81dc6dcb6565e04a50fbe9d2cbf65dac69d794656eab99454",
+ "criteria_sha256": "ffc48cf2f74d92e36525bffc0fbe262453398569623d46127b9d4a0c78be30c7",
  "criteria_hash_note": "줄바꿈을 LF 로 정규화한 SHA256(CRLF 체크아웃에서도 재현)",
  "models": {
   "A": {
