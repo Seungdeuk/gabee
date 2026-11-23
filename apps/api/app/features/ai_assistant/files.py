@@ -122,6 +122,12 @@ def _only_a_bank_account(result) -> bool:
     return result.privacy.sensitive == "bankbook" and result.privacy.account_notice
 
 
+def _consent_now(group_id: str) -> bool:
+    """이 가족이 지금 AI 사용에 동의한 상태인가(외부로 보내기 직전마다 새로 읽는다: 처리 도중 철회를 반영한다)."""
+    with SessionLocal() as db:
+        return ai_guard.is_enabled(db, group_id)
+
+
 def _plan_reminders(photo_id: str, group_id: str, user_id: str) -> None:
     """저장된 기록에서 챙길 일을 뽑는다(설정이 켜진 경우). 실패해도 파일은 그대로 저장된 상태로 둔다."""
     if not settings.ingest_reminders:
@@ -147,7 +153,8 @@ def _process_once(
         # 가족 이름은 가리기 전에 자리표시로 바꾼다(분류를 외부 서비스에 맡겨도 실명이 나가지 않는다)
         with SessionLocal() as db:
             family = family_names.FamilyTagger(family_names.load_members(db, group_id))
-            # 가족 AI 동의가 없으면 이 파일의 어떤 부분도 Claude 로 보내지 않는다(읽기·가리기·그림 설명·분류·챙길 일). 시도마다 다시 본다(도중에 꺼질 수 있다)
+            # 가족 AI 동의가 없으면 이 파일의 어떤 부분도 외부로 보내지 않는다(읽기·가리기·그림 설명·분류·챙길 일). 시도마다 다시 읽고,
+            # 외부로 나가기 직전에도 `recheck` 로 다시 읽는다(처리 도중 철회하면 남은 단계를 막는다)
             external = ai_guard.is_enabled(db, group_id)
         result = ingest_service.ingest_file(
             group_id,
@@ -157,6 +164,7 @@ def _process_once(
             jev=processors.jev,
             family=family,
             external=external,
+            recheck=lambda: _consent_now(group_id),
         )
         if result.quality.status == "failed":
             retry = result.quality.error == "llm_unavailable"
@@ -211,8 +219,8 @@ def _process_once(
                 delete_record(db, group_id, photo_id)
                 return "skipped", False
         if (
-            not chat_sensitive and external
-        ):  # 챙길 일 뽑기는 본문을 외부 Claude 로 보내므로, 가족방에서 온 민감 문서와 AI 동의가 없는 가족은 건너뛴다
+            not chat_sensitive and external and _consent_now(group_id)
+        ):  # 챙길 일 뽑기는 본문을 외부 Claude 로 보내므로, 가족방에서 온 민감 문서와 AI 동의가 없는(처리 도중 철회한 것 포함) 가족은 건너뛴다
             _plan_reminders(photo_id, group_id, user_id)
         return ("needs_review" if from_ingest.needs_review(result) else "analyzed"), False
     except Exception as e:  # noqa: BLE001  내용이 로그에 남지 않게 종류만 적는다

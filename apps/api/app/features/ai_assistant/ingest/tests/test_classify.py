@@ -1,19 +1,25 @@
 """자동 분류 테스트. 진짜 분류기·Jev 는 쓰지 않는다 — 가짜를 끼워 받은 글자와 답을 확인한다."""
 
 import io
+from functools import partial
 
 import pytest
 from PIL import Image
 
 from app.features.ai_assistant.ingest import classify as classify_module
 from app.features.ai_assistant.ingest import doc_classifier
-from app.features.ai_assistant.ingest.classify import classify
+from app.features.ai_assistant.ingest import service as _service
+from app.features.ai_assistant.ingest.classify import classify as _classify
 from app.features.ai_assistant.ingest.converters import OcrLine
 from app.features.ai_assistant.ingest.doc_classifier import Prediction
 from app.features.ai_assistant.ingest.raw_store import LocalRawStore
-from app.features.ai_assistant.ingest.service import ingest_file, preprocess
 from app.shared.config import settings
 from app.shared.llm.client import LLMUnavailable
+
+# 이 시험은 외부 전송이 허용된 가족(동의 있음) 기준이다. `external` 은 필수 인자라 여기서 한 번만 넘긴다. 동의 없는 경우는 test_external_consent.py·test_consent_ingest_flow.py 가 본다.
+classify = partial(_classify, external=True)
+ingest_file = partial(_service.ingest_file, external=True)
+preprocess = partial(_service.preprocess, external=True)
 
 
 @pytest.fixture(autouse=True)

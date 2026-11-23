@@ -2,14 +2,19 @@
 
 import io
 import zipfile
+from functools import partial
 
 import pytest
 from PIL import Image
 
 from app.features.ai_assistant.ingest import converters
+from app.features.ai_assistant.ingest import service as _service
 from app.features.ai_assistant.ingest.converters import OcrLine, markdown_blocks
 from app.features.ai_assistant.ingest.detect import Unsupported, detect
-from app.features.ai_assistant.ingest.service import MAX_BYTES, preprocess
+from app.features.ai_assistant.ingest.service import MAX_BYTES
+
+# 이 시험은 외부 전송이 허용된 가족(동의 있음) 기준이다. `external` 은 필수 인자라 여기서 한 번만 넘긴다. 동의 없는 경우는 test_external_consent.py·test_consent_ingest_flow.py 가 본다.
+preprocess = partial(_service.preprocess, external=True)
 
 
 class FakeOcr:
@@ -432,7 +437,7 @@ def test_id_card_is_fully_masked_then_sent_to_classify():
             "domain": {"choice": "행정·공공", "confidence": 0.9},
         }
 
-    c = classify(r, jev)
+    c = classify(r, jev, external=True)
     assert sent == [text]  # 가린 글자만 간다
     assert c.doc_type == "주민등록증" and c.by == "jev"
 
@@ -486,7 +491,9 @@ def test_family_certificate_masks_every_member():
 
 def test_ingest_file_keeps_raw_original_and_masks_result(tmp_path):
     from app.features.ai_assistant.ingest.raw_store import LocalRawStore
-    from app.features.ai_assistant.ingest.service import ingest_file
+    from app.features.ai_assistant.ingest.service import ingest_file as _ingest_file
+
+    ingest_file = partial(_ingest_file, external=True)
 
     store = LocalRawStore(tmp_path)
     data = png()
@@ -530,7 +537,9 @@ def test_display_copy_does_not_upscale_and_flattens_transparency():
 
 def test_ingest_file_keeps_original_and_adds_display_copy(tmp_path):
     from app.features.ai_assistant.ingest.raw_store import LocalRawStore
-    from app.features.ai_assistant.ingest.service import ingest_file
+    from app.features.ai_assistant.ingest.service import ingest_file as _ingest_file
+
+    ingest_file = partial(_ingest_file, external=True)
 
     store = LocalRawStore(tmp_path)
     data = png((2000, 1500))
@@ -546,7 +555,9 @@ def test_ingest_file_keeps_original_and_adds_display_copy(tmp_path):
 
 def test_ingest_file_keeps_unsupported_original_but_not_empty(tmp_path):
     from app.features.ai_assistant.ingest.raw_store import LocalRawStore
-    from app.features.ai_assistant.ingest.service import ingest_file
+    from app.features.ai_assistant.ingest.service import ingest_file as _ingest_file
+
+    ingest_file = partial(_ingest_file, external=True)
 
     store = LocalRawStore(tmp_path)
     old = b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1" + b"\x00" * 32

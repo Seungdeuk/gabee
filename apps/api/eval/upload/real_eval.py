@@ -345,7 +345,9 @@ def main() -> None:
                 row["usd_ocr"] = common.cost_of(ocr_model, out.input_tokens, out.output_tokens)
                 budget.add(row["usd_ocr"])  # 읽기 비용은 가리기가 실패해도 센다
             family = None if args.no_family else FamilyTagger(members)
-            masked, privacy = service._mask(ocr_text, family)
+            masked, privacy = service._mask(
+                ocr_text, family, external=True
+            )  # 개발용 평가: Claude 가리기를 재는 도구라 외부 전송을 명시한다(기본값은 False)
             row.update(masked=masked, counts=dict(privacy.masked), sensitive=privacy.sensitive)
         except Exception as exc:  # 종류만 적는다(문서 내용은 로그에 남기지 않는다)
             row["error"] = type(exc).__name__

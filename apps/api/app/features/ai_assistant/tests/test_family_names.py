@@ -3,18 +3,23 @@
 시험 데이터는 모두 가짜(가상의 이름·번호)다. 외부 서비스는 부르지 않는다.
 """
 
+from functools import partial
+
 import pytest
 from sqlalchemy import select
 
 from app.features.ai_assistant import family_names as fn
 from app.features.ai_assistant import files
 from app.features.ai_assistant.family_names import FamilyTagger, Member
-from app.features.ai_assistant.ingest.service import preprocess
+from app.features.ai_assistant.ingest import service as _service
 from app.features.ai_assistant.knowledge import tools
 from app.features.ai_assistant.knowledge.models import KnowledgeItem
 from app.features.family_group.models import GroupMember
 from app.shared.db import SessionLocal
 from tests.helpers import join_family, signup
+
+# 이 시험은 외부 전송이 허용된 가족(동의 있음) 기준이다. `external` 은 필수 인자라 여기서 한 번만 넘긴다. 동의 없는 경우는 test_external_consent.py·test_consent_ingest_flow.py 가 본다.
+preprocess = partial(_service.preprocess, external=True)
 
 # ---------- 이름 찾기(DB 없이) ----------
 

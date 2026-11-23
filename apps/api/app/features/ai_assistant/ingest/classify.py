@@ -92,10 +92,11 @@ POLICY = (
 
 
 def classify(
-    result: PreprocessResult, jev: Jev | None = None, external: bool = True
+    result: PreprocessResult, jev: Jev | None = None, external: bool = False
 ) -> Classification | None:
     """규칙 → 문서 분류기(확률 0.7 이상) → Jev(키가 있을 때만) → 사람 확인. jev 를 주지 않으면 TYPESAFE_API_KEY 로 정한다.
-    `external=False`(가족 AI 동의 없음)면 기본 Jev(외부 AI)를 쓰지 않는다: 규칙·분류기로 못 정하면 사람 확인이다(끼워 준 jev 는 그대로 쓴다)."""
+    `external` 의 기본값은 False 다(fail-closed). False(가족 AI 동의 없음)면 **끼워 준 jev 도 부르지 않고** 기본 Jev(외부 AI)도 쓰지 않는다:
+    규칙·분류기로 못 정하면 사람 확인이다. Jev 는 외부 서비스이므로 동의가 있을 때만 쓴다."""
     if result.quality.status == "failed":
         return None
     text = result.content.text.strip()
@@ -118,7 +119,9 @@ def classify(
     guess = doc_classifier.predict(text)
     if guess is not None and guess.confidence >= CLASSIFIER_CONFIDENT:
         return _by_classifier(guess, text)
-    if jev is None and external and jev_api.available():
+    if not external:
+        return _review("기타 문서", text)
+    if jev is None and jev_api.available():
         jev = jev_api.ask
     if jev is not None:
         return _by_jev(text, jev)

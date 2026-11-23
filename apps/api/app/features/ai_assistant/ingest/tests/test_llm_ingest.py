@@ -1,6 +1,7 @@
 """Claude 로 읽고 가리는 업로드 경로(docs/adr/0010): 가짜 Claude 응답으로 시험한다. 외부 서비스는 부르지 않고, 값은 모두 가상이다."""
 
 import io
+from functools import partial
 
 import httpx
 import pytest
@@ -8,9 +9,12 @@ from PIL import Image
 
 from app.features.ai_assistant.family_names import FamilyTagger, Member
 from app.features.ai_assistant.ingest import converters, llm_ingest
-from app.features.ai_assistant.ingest.service import preprocess
+from app.features.ai_assistant.ingest import service as _service
 from app.shared.config import settings
 from app.shared.llm import doc_ai, transport
+
+# 이 시험은 외부 전송이 허용된 가족(동의 있음) 기준이다. `external` 은 필수 인자라 여기서 한 번만 넘긴다. 동의 없는 경우는 test_external_consent.py·test_consent_ingest_flow.py 가 본다.
+preprocess = partial(_service.preprocess, external=True)
 
 
 class FakeClaude:
