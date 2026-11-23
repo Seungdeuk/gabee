@@ -144,6 +144,9 @@ class RunOptions:
     seed: int = 0
     git_commit: str = "0000000"
     prompt_hash: str = "0000000"
+    # 하위 Agent 까지 포함한 프롬프트 해시(`agent_hashes.agent_hashes()` 와 그 통합 값). None 이면 manifest 에 적지 않는다(이 필드가 생기기 전과 같다)
+    agent_prompt_hashes: dict[str, str] | None = None
+    integrated_prompt_hash: str | None = None
     # 호출 추적(`call_trace`): 켜면 결과 폴더에 `call_diagnostics.json`(상태값만)을 더 쓴다. 채점·비용·기존 결과 파일은 그대로다
     diagnostics: bool = False
 
@@ -1368,6 +1371,11 @@ def _save(report: RunReport, options: RunOptions, ids: list[str], started: str) 
         "repeats": options.repeats,
         "started_at": started,
     }
+    if (
+        options.agent_prompt_hashes is not None
+    ):  # `prompt_hash` 는 메인만 본다. 하위 Agent 프롬프트가 바뀐 것은 이 값으로 드러난다
+        manifest["agent_prompt_hashes"] = dict(options.agent_prompt_hashes)
+        manifest["integrated_prompt_hash"] = options.integrated_prompt_hash
     usages = [u.as_dict() for u in (report.ledger.usages if report.ledger else [])]
     if (
         report.stored or usages

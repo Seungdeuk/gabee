@@ -22,6 +22,7 @@ from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Any, Protocol
 
+from .agent_hashes import AGENTS, integrated_hash
 from .schema import Case, Observation
 from .scoring import CaseResult
 from .scrub import scrub_text, scrub_value
@@ -29,6 +30,7 @@ from .scrub import scrub_text, scrub_value
 RUN_ID = re.compile(r"[a-z0-9](?:[a-z0-9_.-]{0,62}[a-z0-9])?")  # 소문자만, 끝은 영숫자
 _NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.:-]{0,63}")
 _HEX = re.compile(r"[0-9a-f]{7,64}")
+_SHA256 = re.compile(r"[0-9a-f]{64}")
 _STARTED_AT = re.compile(r"\d{4}-\d{2}-\d{2}T[0-9:.+Z-]{1,40}")
 _RESERVED = {
     "con",
@@ -58,10 +60,15 @@ RESCORE_KEYS = (
     "cases_hash",
     "rescore_label",
 )  # 소급 재채점 결과(`rescore.py`)에만 쓴다. 다섯 개가 모두 있거나 모두 없어야 한다
+AGENT_HASH_KEYS = (
+    "agent_prompt_hashes",
+    "integrated_prompt_hash",
+)  # 하위 Agent(가족 대화·정산·일정)까지 포함한 프롬프트 해시(`agent_hashes.py`). 두 키는 함께 있거나 함께 없어야 한다. 이 키가 생기기 전의 기록에는 없다
 MANIFEST_OPTIONAL = (
     "loop_id",
     "started_at",
     *RESCORE_KEYS,
+    *AGENT_HASH_KEYS,
 )  # loop_id 는 stage 가 loop 일 때만(그리고 반드시) 둔다
 USAGE_KEYS = frozenset(
     {
@@ -132,6 +139,27 @@ def _csv(header: Sequence[str], rows: Sequence[Sequence[Any]]) -> str:
     return out.getvalue()
 
 
+def _check_agent_hashes(manifest: Mapping[str, Any]) -> None:
+    """Agent 별 해시는 메인·가족 대화·정산·일정 네 개가 모두 있고(64자리), `main` 은 기존 `prompt_hash` 와 같으며,
+    통합 해시는 Agent 별 해시에서 다시 계산한 값과 같아야 한다(앞뒤가 맞지 않는 기록을 남기지 않는다)."""
+    hashes = manifest["agent_prompt_hashes"]
+    integrated = manifest["integrated_prompt_hash"]
+    if not (
+        isinstance(hashes, dict)
+        and set(hashes) == set(AGENTS)
+        and all(isinstance(v, str) and _SHA256.fullmatch(v) for v in hashes.values())
+        and isinstance(integrated, str)
+        and _SHA256.fullmatch(integrated)
+    ):
+        raise ValueError(
+            "Agent 프롬프트 해시의 형식이 맞지 않는다(네 Agent 모두, 64자리 소문자 16진수)"
+        )
+    if hashes["main"] != manifest["prompt_hash"]:
+        raise ValueError("agent_prompt_hashes.main 이 prompt_hash 와 다르다")
+    if integrated != integrated_hash(hashes):
+        raise ValueError("integrated_prompt_hash 가 Agent 별 해시에서 다시 계산한 값과 다르다")
+
+
 def _check_manifest(manifest: Mapping[str, Any]) -> None:
     extra = set(manifest) - set(MANIFEST_KEYS) - set(MANIFEST_OPTIONAL)
     missing = [k for k in MANIFEST_KEYS if k not in manifest]
@@ -165,6 +193,13 @@ def _check_manifest(manifest: Mapping[str, Any]) -> None:
         and _NAME.fullmatch(manifest["rescore_label"])
     ):
         raise ValueError("재채점 키의 값 형식이 맞지 않는다")
+    hash_keys = [k for k in AGENT_HASH_KEYS if k in manifest]
+    if hash_keys and len(hash_keys) != len(AGENT_HASH_KEYS):
+        raise ValueError(
+            f"Agent 프롬프트 해시 키는 모두 있거나 모두 없어야 한다(있는 것: {hash_keys})"
+        )
+    if hash_keys:
+        _check_agent_hashes(manifest)
     loop_id = manifest.get("loop_id")
     if (manifest["stage"] == "loop") != (loop_id is not None):
         raise ValueError("loop_id 는 stage 가 loop 일 때만, 그리고 반드시 있어야 한다")

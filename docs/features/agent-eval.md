@@ -651,3 +651,12 @@ S2-B1 실모델 실행(`real-dev-s2b1`)에서 드러난 **평가 쪽 문제**를
 - E5: 1단계 사례 72건과 사례 검증 시험(E5a 목록 확정 → E5b 개발 36건 본문 → E5c 검증·테스트 36건 본문).
 - E6: L1 고정 응답 모드. E7: 1단계 베이스라인. E8: 루프 실행기.
 - E9 이후: 2·3단계 사례 확장(단계마다 사용자 승인).
+
+## 실행 기록(manifest)의 통합 프롬프트 해시 (2026-11-23)
+
+- 실행기가 `manifest.json` 에 적는 `prompt_hash` 는 메인 어시스턴트(`ai_assistant.agents`)의 `PROMPT_NOTE` 와 도구 명세만 해시한다. 메인이 부르는 하위 Agent(가족 대화·정산·일정)의 프롬프트·도구 명세가 바뀌어도 이 값은 그대로라(예: #489·#490 은 가족 대화 Agent 프롬프트만 바꿨다), 실모델 재평가 결과를 프롬프트 버전과 묶을 수 없었다.
+- 그래서 실행 기록에 `agent_prompt_hashes`(`main`·`family_chat`·`billing`·`schedule` 네 개)와 `integrated_prompt_hash`(네 해시를 합친 값)를 **함께** 적는다. 값은 `evals/agent_eval/agent_hashes.py` 를 그대로 쓰고, 날짜가 들어 있는 프롬프트를 평가용 고정 시계로 계산해 날짜와 무관하다.
+- **기존 값은 바꾸지 않는다**: `prompt_hash` 의 계산과 값(dev 108 결과의 `d658d8e1…`)은 그대로이고, `agent_prompt_hashes.main` 은 항상 `prompt_hash` 와 같다. 이 키가 생기기 전의 결과 폴더(dev 108 포함)는 고치지 않는다. 새 키는 선택 키라 없는 기록도 그대로 읽히고, 저절로 채워지지 않는다.
+- 저장할 때의 검사(`store._check_manifest`): 두 키는 함께 있거나 함께 없어야 하고, 네 Agent 가 모두 있어야 하며(64자리 소문자 16진수), `main` 은 `prompt_hash` 와 같아야 하고, 통합 해시는 Agent 별 해시에서 다시 계산한 값과 같아야 한다. 소급 재채점(`rescore.write`)은 원본에 이 키가 있을 때만 그대로 옮긴다.
+- 시험: `tests/agent_eval/test_manifest_agent_hashes.py`(저장 검증·하위 호환·가짜 실행 기록·소통 Agent 프롬프트만 바꾸면 통합 해시만 바뀜·재채점 전달), `test_agent_hashes.py`(날짜 독립), `test_store.py`.
+- 이 변경은 실험 재현성을 위한 기록 추가이며 평가 기준·정답지·공식 점수·보안 게이트·비용 제한은 바꾸지 않는다. 실제 모델 성능 개선 여부는 이 변경으로 알 수 없다.

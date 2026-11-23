@@ -38,7 +38,7 @@ from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Any
 
-from . import adapter, estimate, exposure, preflight, real_gate, runs_guard, store
+from . import adapter, agent_hashes, estimate, exposure, preflight, real_gate, runs_guard, store
 from .cost import BASELINE_RUN_SCOPES, OTHER_RUN_SCOPES, PRICES, BudgetExceeded, Ledger, Scope
 from .schema import Case
 
@@ -455,6 +455,8 @@ def _execute(
             return e.code
     exit_code = OK
     commit, phash = _git_commit(), _prompt_hash()
+    # 하위 Agent(가족 대화·정산·일정)까지 포함한 해시. `phash`(메인만) 계산은 그대로 두고 manifest 에 함께 적는다
+    agent_prompt_hashes = agent_hashes.agent_hashes()
     command_spent = Decimal(0)  # 이 명령에서 앞선 분할이 쓴 금액(승인 금액은 명령 전체에서 하나다)
     for split in plan.splits:
         approve = plan.approve
@@ -494,6 +496,8 @@ def _execute(
             results_root=results,
             git_commit=commit,
             prompt_hash=phash,
+            agent_prompt_hashes=agent_prompt_hashes,
+            integrated_prompt_hash=agent_hashes.integrated_hash(agent_prompt_hashes),
             diagnostics=bool(getattr(args, "call_diagnostics", False)),
         )
         try:
