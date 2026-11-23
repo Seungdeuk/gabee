@@ -20,8 +20,9 @@ ROOT = Path(r"C:\Users\403\venvs\ner-runs")
 DATA12 = ROOT / "data_r12"
 OUT = ROOT / "data_r12b"
 SEED = 20261124
+EXCLUDE = set("수줍 흐뭇 얄리 동실 소복 송알 아련 어슴 졸졸 포슬 호젓 훈풍 사뿐 파릇 몽글 도란 보송 앙증 옹글 여린 푸릇 아롱 은결 지니 노닥 시나브로 소담이 쾌청 곱단 그리메 가온 꿈결 오롱이 하얀 해맑이 오월 몽글몽글 풍경 무늬 세잎 새알 단비".split())
 NW = {"train": 300, "val": 60, "dev": 60}
-NF = {"train": 500, "val": 100, "dev": 100}
+NF = {"train": 560, "val": 100, "dev": 100}
 NB = {"train": 450, "val": 100, "dev": 100}
 
 
@@ -48,7 +49,7 @@ def main():
     rng = random.Random(SEED)
     cand = []
     for w in r12b_words.CANDIDATES.split():
-        if 2 <= len(w) <= 3 and w not in cand:
+        if 2 <= len(w) <= 3 and w not in cand and w not in EXCLUDE:
             cand.append(w)
     old = json.loads((DATA12 / "pools.json").read_text(encoding="utf-8"))
     r11_tr = B.pair_words_in(["r11_B_extra.jsonl", "r11_Dprime_train.jsonl"])
@@ -60,7 +61,7 @@ def main():
     rng.shuffle(fresh)
     reusable = sorted((r11_tr | r12_tr) - banned_for_train)
     rng.shuffle(reusable)
-    if len(fresh) < NW["val"] + NW["dev"] + 100:
+    if len(fresh) < NW["val"] + NW["dev"] + 50:
         raise SystemExit(f"새 단어 부족: {len(fresh)}")
     val_w, dev_w = fresh[:NW["val"]], fresh[NW["val"]:NW["val"] + NW["dev"]]
     rest = fresh[NW["val"] + NW["dev"]:]
