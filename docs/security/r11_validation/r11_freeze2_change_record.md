@@ -22,3 +22,9 @@ B군 시드 7 학습 뒤 후보 ONNX 내보내기(`export_ep1`)가 `FileNotFound
 ## 영향 범위와 시험
 - 시드 7: 재학습 없음(체크포인트·train_log·eval_full·parity·cand_info 재사용). 시드 13·21·42·99: 새 단계 `evalfull_<name>` 이 추가된 같은 파이프라인.
 - `ml/ner/tests/test_r11_runner_resume.py` 13건, `test_r11_derive.py` 기존 포함 통과. 전체 `ml/ner/tests`: 3건 실패는 `known_test_failures.md` 의 기존 실패와 동일.
+
+## 코드 버전 이력(실험 이력 명시)
+- 시드 7의 학습·evalfull·export_best·parity·cands 산출물: 코드 `r11-freeze-1`(`c8ab3ad1`)로 생성.
+- 시드 7의 후보 평가·내보내기·Validation 평가·B-new 선정·개발 평가와 시드 13·21·42·99 전체: 코드 `r11-freeze-2`로 생성.
+- 두 버전에서 `train_ner.py`, 평가·선정·게이트 코드, 데이터, 기준선 해시는 같고 실행기(`run_r11_B.py`)와 `r11_derive.py` 만 다르다.
+- freeze-2 추가 변경: 시드마다 디스크(6GB)·GPU 게이트 재확인(기존에는 시작 전 한 번과 RAM 만 시드별 확인).

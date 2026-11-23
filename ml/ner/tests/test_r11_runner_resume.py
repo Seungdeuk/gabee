@@ -200,6 +200,14 @@ def test_existing_run_dir_without_resume_is_never_overwritten(env, monkeypatch):
     assert e.value.code == 4 and env.calls == []
 
 
+def test_per_seed_disk_gate_stops_without_running_any_stage(env, monkeypatch):
+    monkeypatch.setattr(r, "step", fake_step(env))
+    monkeypatch.setattr(r.shutil, "disk_usage", lambda p: SimpleNamespace(free=int(2 * 2**30)))
+    with pytest.raises(SystemExit) as e:
+        r.one(SEED, resume=True)
+    assert e.value.code == 3 and env.calls == []
+
+
 def test_verify_cands_detects_tampered_swa(env):
     assert d.verify_cands(env.run) == []
     st.save_file({"w": torch.full((2, 2), 5.0)}, str(env.run / "cand" / "swa" / "best" / "model.safetensors"))

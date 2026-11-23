@@ -213,7 +213,12 @@ def one(seed, resume=False):
     if avail < MIN_AVAIL_MB:
         print(json.dumps({"stopped_before": run_id, "reason": "available RAM below gate", "avail_mb": avail}), flush=True)
         sys.exit(3)
-    timing, t_all = {"avail_ram_mb_before": avail}, time.time()
+    free_gb = shutil.disk_usage("C:/").free / 2**30
+    g = gpu_info()
+    if free_gb < MIN_FREE_DISK_GB or (g and g["used_mb"] >= 0.6 * g["total_mb"]):  # 시드마다 디스크·GPU 게이트 재확인(재시도 없음)
+        print(json.dumps({"stopped_before": run_id, "reason": "disk or GPU gate", "free_disk_gb": round(free_gb, 1), "gpu": g}), flush=True)
+        sys.exit(3)
+    timing, t_all = {"avail_ram_mb_before": avail, "free_disk_gb_before": round(free_gb, 1)}, time.time()
     reused = []
     if run.exists() and not resume:
         fail("런 폴더가 이미 있음: --resume 없이 덮어쓰지 않는다(재학습 방지)", code=4, run=run_id)
