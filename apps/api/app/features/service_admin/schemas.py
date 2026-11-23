@@ -229,6 +229,13 @@ class AnalyticsSupport(BaseModel):
     week_start: date  # weekly 첫 주의 월요일
 
 
+class AnalyticsSource(BaseModel):
+    source: str  # utm_source 값(youtube, google-play …). 기록이 없는 가입자는 unknown
+    signups: int  # 이 경로로 가입한 사람
+    share: float | None  # 전체 가입자 대비 %
+    family_rate: float | None  # 그중 가족에 들어간 사람 %
+
+
 class AnalyticsOut(BaseModel):
     users: int
     retention: list[AnalyticsCohort]  # 가입 주별(8주)
@@ -239,3 +246,5 @@ class AnalyticsOut(BaseModel):
     ai: AnalyticsAi
     heatmap: list[list[int]]  # 7(월~일) × 24(시) 활동 수, 최근 30일
     support: AnalyticsSupport
+    acquisition: list[AnalyticsSource]  # 유입 경로별 가입(많은 순, unknown 은 맨 끝)
+    acquisition_ready: bool  # 유입 경로 표가 DB 에 있나(없으면 acquisition 은 빈 목록)

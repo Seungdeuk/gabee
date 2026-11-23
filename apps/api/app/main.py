@@ -5,6 +5,7 @@ from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
+from app.features.acquisition.router import router as acquisition_router
 from app.features.admin_alerts.router import admin_router as admin_alerts_router
 from app.features.admin_alerts.router import internal_router as admin_alerts_internal_router
 from app.features.admin_knowledge.router import router as admin_knowledge_router
@@ -97,6 +98,7 @@ for feature, router in (
     ("ops_admin", ops_admin_router),
     ("weekly_news", weekly_news_router),
     ("family_memory", family_memory_router),
+    ("acquisition", acquisition_router),
 ):
     deps = []
     deps.append(Depends(schema_ready(feature)))

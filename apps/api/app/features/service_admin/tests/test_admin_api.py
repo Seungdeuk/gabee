@@ -557,6 +557,78 @@ def test_analytics_shape_and_counts(client, make_admin):
     assert "email" not in r.text and "광고" not in r.text  # 내용·이메일은 담지 않는다
 
 
+def _clear_install_sources() -> None:
+    from app.features.acquisition.models import InstallSource
+
+    with SessionLocal() as db:
+        db.query(InstallSource).delete()
+        db.commit()
+
+
+def test_analytics_acquisition_by_source(client, make_admin):
+    """유입 경로: 경로별 가입 수·비율·가족 연결 비율. 기록이 없는 가입자는 unknown 으로 맨 끝에 모인다."""
+    _clear_install_sources()
+    headers, user_id = _login(client)
+    make_admin(user_id)
+    url = "/acquisition/install-source"
+    yt1, _ = _login(client, "yt_one")
+    yt2, _ = _login(client, "yt_two")
+    insta, _ = _login(client, "insta_one")
+    client.post("/family-group/groups", json={"name": "유튜브 가족"}, headers=yt1)
+    for h, body in (
+        (yt1, {"source": "youtube", "medium": "video"}),
+        (yt2, {"source": "youtube"}),
+        (insta, {"source": "instagram", "medium": "sns"}),
+    ):
+        assert client.post(url, json=body, headers=h).status_code == 204
+
+    d = client.get("/admin/service/analytics", headers=headers).json()
+    assert d["acquisition_ready"] is True
+    rows = {r["source"]: r for r in d["acquisition"]}
+    assert [r["source"] for r in d["acquisition"]][:2] == ["youtube", "instagram"]  # 많은 순
+    assert d["acquisition"][-1]["source"] == "unknown"  # 기록 없는 사람은 맨 끝
+    assert (rows["youtube"]["signups"], rows["youtube"]["family_rate"]) == (2, 50.0)
+    assert (rows["instagram"]["signups"], rows["instagram"]["family_rate"]) == (1, 0.0)
+    assert rows["unknown"]["signups"] == d["users"] - 3
+    assert sum(r["signups"] for r in d["acquisition"]) == d["users"]
+    assert rows["youtube"]["share"] == round(2 * 100 / d["users"], 1)
+    assert "yt_one" not in str(d["acquisition"]) and user_id not in str(d["acquisition"])  # 숫자만
+
+
+def test_analytics_without_acquisition_table(client, make_admin, monkeypatch):
+    """유입 경로 표가 아직 없는 DB: 이 구역만 비고(acquisition_ready=false) 나머지 분석은 200 이다."""
+    from app.features.service_admin import analytics
+
+    headers, user_id = _login(client)
+    make_admin(user_id)
+    real = analytics.monitor.status()
+
+    class _NotReady:
+        def feature_ready(self, feature: str) -> bool:
+            return feature != "acquisition" and real.feature_ready(feature)
+
+    monkeypatch.setattr(analytics.monitor, "status", lambda: _NotReady())
+    called = []
+    monkeypatch.setattr(analytics.repository, "install_sources", lambda db: called.append(1))
+    r = client.get("/admin/service/analytics", headers=headers)
+    assert r.status_code == 200, r.text
+    assert (r.json()["acquisition_ready"], r.json()["acquisition"]) == (False, [])
+    assert called == []  # 없는 표는 읽지 않는다
+
+
+def test_acquisition_order_and_rates():
+    """계산만: 많은 순, 같으면 이름순, unknown 은 개수와 상관없이 맨 끝. 가입자 목록에 없는 기록은 무시한다."""
+    from app.features.service_admin.analytics import acquisition
+
+    now = datetime.now(UTC)
+    users = {u: now for u in ("a", "b", "c", "d", "e", "f")}
+    sources = [("a", "news"), ("b", "blog"), ("c", "blog"), ("gone", "youtube")]
+    rows = acquisition(users, sources, first_family={"b": now})
+    assert [(r.source, r.signups) for r in rows] == [("blog", 2), ("news", 1), ("unknown", 3)]
+    assert rows[0].family_rate == 50.0 and rows[0].share == 33.3
+    assert acquisition({}, [], {}) == []
+
+
 def test_analytics_is_admin_only(client, make_admin):
     headers, _ = _login(client)
     assert client.get("/admin/service/analytics").status_code == 401

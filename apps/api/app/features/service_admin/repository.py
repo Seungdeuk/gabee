@@ -388,6 +388,12 @@ def analytics_rows(db: Session, token_since: datetime, since: datetime) -> dict[
     }
 
 
+def install_sources(db: Session) -> list[tuple[str, str]]:
+    """(user_id, source) 목록. 유입 경로 표가 있는 DB 에서만 부른다(analytics.py 가 확인한다)."""
+    t = _t("install_sources")
+    return [tuple(r) for r in db.execute(select(t.c.user_id, t.c.source))]
+
+
 def stale_support_tickets(db: Session, before: datetime) -> tuple[int, datetime | None]:
     """(답이 아직 없는 문의 수, 가장 오래된 등록 시각). before 이전에 등록된 new·working 상태만 센다(done 은 뺀다)."""
     tickets = _t("support_tickets")
