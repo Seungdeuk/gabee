@@ -1,6 +1,6 @@
 """골든벨 가비 추천: 재료(공동 일정·가족 전체방 대화), 정답 검증, 하루 캐시, 상태. 실제 AI 는 부르지 않고 llm.complete_json 을 가짜로 바꾼다."""
 
-from datetime import UTC, date, datetime, timedelta
+from datetime import UTC, date, datetime, time, timedelta
 
 import pytest
 from sqlalchemy import select
@@ -422,12 +422,30 @@ def four_questions():
     return {"questions": [q(question=f"여행지는 어디였을까 {k}?") for k in range(4)]}
 
 
-def expected_ids(group, user_id):
+def expected_ids(group, user_id, today=TODAY):
     everything = [{"id": quiz_rec._item_id(x["question"])} for x in four_questions()["questions"]]
-    return [i["id"] for i in pick_for_user(everything, group["id"], user_id, TODAY)]
+    return [i["id"] for i in pick_for_user(everything, group["id"], user_id, today)]
 
 
-def test_items_are_half_for_each_user(client, ready, fake):
+@pytest.fixture
+def app_day(monkeypatch):
+    """서버가 보는 '오늘'을 정한 날짜(한국 시간 정오)로 고정한다. TODAY 는 시험 모듈을 불러온 날짜라, 전체 시험이 자정을 넘기면 서버의 오늘과 달라진다."""
+
+    def set_day(day):
+        noon = datetime.combine(day, time(12, 0), tzinfo=quiz_rec.local_tz())
+
+        def now(cls, tz=None):
+            return noon.astimezone(tz) if tz else noon.replace(tzinfo=None)
+
+        monkeypatch.setattr(
+            quiz_rec, "datetime", type("FrozenDatetime", (datetime,), {"now": classmethod(now)})
+        )
+
+    return set_day
+
+
+def test_items_are_half_for_each_user(client, ready, fake, app_day):
+    app_day(TODAY)  # 서버의 오늘을 고정해 자정을 넘겨 실행해도 같은 결과가 나온다(기대값은 그대로)
     a, b, group = ready
     fake.data = four_questions()
     for headers in (a, b):
@@ -435,6 +453,28 @@ def test_items_are_half_for_each_user(client, ready, fake):
         assert body["state"] == "ok"
         assert [i["id"] for i in body["items"]] == expected_ids(group, me(client, headers))
         assert len(body["items"]) == 2
+
+
+@pytest.mark.parametrize("days_later", [1, 2, 5])
+def test_the_picked_half_follows_the_day_the_server_sees(client, ready, fake, app_day, days_later):
+    """시험 모듈을 불러온 날과 서버의 오늘이 다를 때(자정을 넘긴 전체 실행)도 서버가 그날 기준으로 고른 절반을 돌려준다.
+    예전 시험은 불러온 날짜로 기대값을 만들어 이때 가끔 실패했다."""
+    day = TODAY + timedelta(days=days_later)
+    app_day(day)
+    a, b, group = ready
+    fake.data = four_questions()
+    for headers in (a, b):
+        body = get(client, headers)
+        assert body["state"] == "ok"
+        assert [i["id"] for i in body["items"]] == expected_ids(group, me(client, headers), day)
+
+
+def test_the_stale_import_day_really_gives_a_different_pick():
+    """회귀 근거: 날짜가 바뀌면 고르는 절반이 실제로 달라질 수 있다(그래서 기대값의 날짜가 서버의 오늘과 같아야 한다)."""
+    group = {"id": "g1"}
+    fixed = date(2026, 11, 10)  # 실제 날짜와 무관하게 고정한 날짜로 본다
+    picks = {tuple(expected_ids(group, "u1", fixed + timedelta(days=n))) for n in range(0, 8)}
+    assert len(picks) > 1
 
 
 def test_same_user_gets_same_items_on_reopen_and_ai_is_called_once(client, ready, fake):

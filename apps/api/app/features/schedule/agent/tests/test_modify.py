@@ -2,11 +2,11 @@
 우리 코드가 모델 출력을 어떻게 검증하고 확인 카드·실행으로 처리하는지를 확인한다)."""
 
 import re
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 
 import pytest
 
-from app.features.schedule.agent import modify, register
+from app.features.schedule.agent import handler, modify, register
 from app.features.schedule.models import Event
 from app.shared import ai_guard
 from app.shared.db import SessionLocal
@@ -578,7 +578,25 @@ def _many(fake, ids):
     fake.data = data
 
 
-def test_delete_many_asks_once_then_deletes_each(client, setup, fake):
+def _pin_today(monkeypatch, weekday):
+    """에이전트가 보는 '오늘'을 2026-11-09(월)~15(일) 중 `weekday`(0=월) 날짜로 고정한다. 실제 요일에 따라 '이번 주' 범위가 달라지기 때문이다."""
+    day = date(2026, 11, 9) + timedelta(days=weekday)
+    noon = datetime(day.year, day.month, day.day, 12, 0, tzinfo=register.local_tz())
+
+    def now(cls, tz=None):
+        return noon.astimezone(tz) if tz else noon.replace(tzinfo=None)
+
+    frozen = type("FrozenDatetime", (datetime,), {"now": classmethod(now)})
+    # 일정을 고르는 쪽(handler: '이번 주' 범위·후보 거르기)과 날짜를 읽는 쪽(register.today)이 같은 시계를 보게 한다
+    monkeypatch.setattr(handler, "datetime", frozen)
+    monkeypatch.setattr(register, "datetime", frozen)
+    return day
+
+
+def test_delete_many_asks_once_then_deletes_each(client, setup, fake, monkeypatch):
+    _pin_today(
+        monkeypatch, 2
+    )  # 수요일: 오늘+1~+3일(목·금·토)이 모두 이번 주다. 실제 요일에 기대지 않는다
     a, _, _, _, _ = setup
     ids = [_new(client, a, title=f"일정{n}", start_date=_day(n + 1))["id"] for n in range(3)]
     _many(fake, ids)
@@ -588,6 +606,25 @@ def test_delete_many_asks_once_then_deletes_each(client, setup, fake):
 
     done = _confirm(client, a, body["pending_action"]).json()
     assert "3개 일정을 지웠어요" in done["text"] and _events(client, a) == []
+
+
+@pytest.mark.parametrize("weekday", range(7))
+def test_delete_many_this_week_gives_the_same_result_on_every_weekday(
+    client, setup, fake, monkeypatch, weekday
+):
+    """'이번 주'는 월~일 전체다. 오늘이 무슨 요일이든(주말 포함) 그 주의 일정(수·목·금) 3건이 모두 대상이 된다.
+    예전 시험은 실제 오늘+1~+3일에 일정을 만들어 목요일 이후에는 일부가 다음 주로 넘어가 실패했다."""
+    monday = _pin_today(monkeypatch, weekday) - timedelta(days=weekday)
+    a, _, _, _, _ = setup
+    ids = [
+        _new(client, a, title=f"일정{n}", start_date=(monday + timedelta(days=2 + n)).isoformat())[
+            "id"
+        ]
+        for n in range(3)
+    ]
+    _many(fake, ids)
+    body = _say(client, a, "이번 주 일정 다 삭제해줘").json()
+    assert body["pending_action"]["event_ids"] == ids and "3개 일정을 지울까요" in body["text"]
 
 
 def test_delete_many_reports_partial_failure_and_caps_at_ten(client, setup, fake, monkeypatch):

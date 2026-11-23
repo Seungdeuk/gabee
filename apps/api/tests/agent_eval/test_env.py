@@ -131,6 +131,7 @@ def test_every_module_level_memory_store_in_the_app_is_either_reset_or_known_con
         "app.main.origins",
         "app.main.deps",
         "app.shared.chat_share._providers",
+        "app.shared.ai_guard._on_disabled",  # AI 끄기 때 정리 콜백(시작할 때 등록하는 목록)
         "app.shared.member_exit._handlers",  # 가족 나갈 때 정리 콜백(시작할 때 등록하는 목록)
         "app.shared.memory_hooks._attachment_removed",  # AI 추억 동의·삭제 콜백(시작할 때 등록하는 목록)
         "app.shared.memory_hooks._member_withdrawn",
@@ -171,10 +172,17 @@ def test_all_rate_limiters_and_memory_stores_are_emptied_by_reset(root):
         assert limiter.retry_after("k", 1, 60) > 0
     library._photo_pending["x"] = 1
     library._photo_inflight.add("y")
+    from app.features.schedule.agent import choice
+
+    choice._pending[("g", "u")] = (
+        0.0,
+        None,
+    )  # 같은 이름 일정을 되물은 상태가 다음 사례로 새지 않아야 한다
     env.reset_memory_state()
     for limiter in (login_limiter, pin_service.limiter, chat_share.limiter):
         assert limiter.retry_after("k", 1, 60) == 0
     assert not library._photo_pending and not library._photo_inflight
+    assert not choice._pending
 
 
 def test_reset_removes_uploads_but_keeps_model_files_and_stays_inside_the_root(root):
