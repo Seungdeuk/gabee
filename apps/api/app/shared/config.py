@@ -46,6 +46,11 @@ class Settings(BaseSettings):
     # 가족방 사진이 문서 사진인지 Claude 로 가린다(기본 false: 로컬 OCR 판별만). 켜면 글자가 있는 사진이 Anthropic API 로 전송된다(docs/adr/0015)
     photo_judge_llm: bool = False
     photo_judge_model: str = ""  # 비우면 llm_model(Haiku)
+    # 가족방 사진 판별을 OCR + SigLIP2 단계형(E)으로 한다(기본 꺼짐: 켜지 않으면 기존 OCR 판별 그대로). 켜면 외부 AI 호출 없이 로컬 모델만 쓰고
+    # `PHOTO_JUDGE_LLM` 은 이 경로에서 쓰지 않는다. 모델은 ONNX 이미지 인코더(CPU, torch 없음)이고 폴더에 `siglip2_vision.onnx`·`head.json` 이 있어야 한다
+    photo_classify_siglip: bool = False
+    photo_classify_model_dir: str = ""  # 변환한 SigLIP2 ONNX 모델 폴더(저장소에 없다). 비었거나 파일이 없으면 판별은 failed 가 된다
+    photo_classify_threads: int = 2  # onnxruntime CPU 스레드 수
     # AI 추억 분석의 서버 기능 스위치(ADR 0020 3중 조건의 ①). 기본 꺼짐: 꺼져 있으면 가족 설정·업로더 동의가 켜져 있어도 분석 자격이 없고 동의를 새로 받지 않는다
     family_memory_enabled: bool = False
     # AI 추억 분석 작업 워커(PR3, 단일 경량 스레드). 기본 꺼짐: `FAMILY_MEMORY_ENABLED` 와 이 값이 모두 켜져 있을 때만 서버가 시작하며 돌린다

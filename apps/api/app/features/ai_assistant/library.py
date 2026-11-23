@@ -18,7 +18,7 @@ from app.shared.db import SessionLocal
 from app.shared.llm import doc_ai
 
 from . import files, service
-from .ingest import converters, photo_judge
+from .ingest import converters, photo_judge, siglip_margin
 from .ingest.detect import Unsupported, detect
 from .knowledge import repository as knowledge_repo
 
@@ -107,6 +107,8 @@ def _judge_photo(group_id: str, data: bytes) -> tuple[str, str | None]:
     verdict = photo_judge.judge(data, files.processors.ocr or converters.default_ocr())
     if verdict.failed:
         return "failed", "OcrFailed"
+    if settings.photo_classify_siglip:
+        return _judge_staged(verdict.kind, data)
     if verdict.kind == photo_judge.PHOTO:
         return "unsure", None
     use_claude = settings.photo_judge_llm and _family_allows_ai(group_id)
@@ -120,6 +122,21 @@ def _judge_photo(group_id: str, data: bytes) -> tuple[str, str | None]:
     if answer.kind == "document" and answer.confidence >= PHOTO_JUDGE_MIN_CONFIDENCE:
         return "document", None
     return "unsure", None
+
+
+def _judge_staged(ocr_kind: str, data: bytes) -> tuple[str, str | None]:
+    """`PHOTO_CLASSIFY_SIGLIP` 가 켜졌을 때의 OCR + SigLIP2 단계형(E) 판별. 상태는 document | unsure | failed(photo 는 없다, D-13).
+    점수를 못 구하면(모델 파일·로드·메모리·추론 오류) 문서·일반 사진으로 확정하지 않고 failed 다(기존 재검사 규칙을 따른다).
+    외부로 사진을 보내지 않는다(Claude 판별 `PHOTO_JUDGE_LLM` 은 이 경로에서 쓰지 않는다)."""
+    try:
+        margin = siglip_margin.get_scorer().score(data)
+    except siglip_margin.MarginError as exc:
+        logger.warning("chat library photo siglip failed error=%s", exc)
+        return "failed", f"Siglip{exc}"[:40]
+    except Exception as exc:  # noqa: BLE001  내용이 로그에 남지 않게 종류만 적는다
+        logger.warning("chat library photo siglip failed error=%s", type(exc).__name__)
+        return "failed", f"Siglip{type(exc).__name__}"[:40]
+    return siglip_margin.staged_status(ocr_kind, margin), None
 
 
 def _is_document_photo(group_id: str, data: bytes) -> bool:
@@ -156,8 +173,10 @@ def register_chat_photo(
             photo_id = photo.id
         files.process_file(
             photo_id, group_id, user_id, data, f"{attachment_id}.jpg",
-            source_attachment_id=attachment_id, keep_photo=forced,
+            source_attachment_id=attachment_id, keep_photo=forced or settings.photo_classify_siglip,
         )  # fmt: skip
+        # 단계형(E)이 켜져 있으면 문서로 판정된 사진은 글자가 적어도 문서함에 남긴다: 글자가 적은 문서를 SigLIP2 가 구한 경우(rescue)를 읽기 단계가
+        # 다시 "사진"으로 버리면, 판별 상태는 document 인데 문서함에는 없는 채로 업로더가 일반 사진 확인도 못 하게 된다.
     except Exception as exc:  # noqa: BLE001  내용이 로그에 남지 않게 종류만 적는다
         logger.warning("chat library photo register failed error=%s", type(exc).__name__)
 
