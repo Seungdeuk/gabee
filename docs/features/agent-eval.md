@@ -160,6 +160,9 @@
 `python -m evals.agent_eval.run ... --call-diagnostics` 를 주면 결과 폴더에 `call_diagnostics.json` 을 **더** 쓴다(기본은 꺼짐. 켜지 않으면 결과 폴더·채점·비용이 이전과 같다). 측정기(`usage.meter_llm_calls`)가 이미 보는 요청·응답에서 **상태값만** 뽑는다(`evals/agent_eval/call_trace.py`).
 
 - 호출마다: `call_index`(사례·반복별 호출 순서, `usage.jsonl` 과 같은 순서), `role`(`main`·`family_chat`·`billing`·`analysis`·`structured_other`: 시스템 프롬프트 글로 가른 값), `max_tokens`(요청), `stop_reason`(응답), `tokens_in`·`tokens_out`, `output_blocks`(블록 종류별 개수)·`text_chars`(글이 비었는지), `requested_tools`, 전송이 실패하면 `ok=false`·`error_type`(예외 종류만).
+  - **HTTP 오류 응답(`httpx.HTTPStatusError`)이면** `http_status`(상태 코드, 정수)와 `api_error_type`(응답 JSON 의 `error.type` 중 허용 목록 `call_trace.API_ERROR_TYPES` 에 있는 값, 없거나 목록 밖이거나 JSON 이 아니면 `unknown`)를 더한다. 요약에는 상태 코드별 횟수 `http_status_counts` 가 HTTP 오류가 있을 때만 붙는다. 연결 오류·시간 초과 등 다른 예외는 예전처럼 `error_type` 만 남기고 이 키들이 없다. 이 키가 생기기 전에 만든 진단 파일도 그대로 읽히고 요약이 같다(기존 11개 파일로 확인).
+  - 탭 Agent 가 못 답한 사유(`fallback_reason`): 앱이 사유 글에 넣는 API 오류 `message` 원문은 저장하지 않는다. `AI 호출에 실패했어요 (HTTP <코드> <허용 목록의 종류 또는 unknown>)` 로 정리해 남기고, 모양이 맞지 않는 HTTP 사유는 글을 남기지 않는다(`None`).
+  - 저장하지 않는 것: API 키·Authorization 헤더, 요청·응답 본문, 질문·대화, 도구 인자·결과 본문, 예외 메시지 원문, 요청 주소, 응답 헤더.
 - 그 호출의 요청에 **처음 실려 온** 도구 결과마다: `tool`·`is_error`·`chars`(길이). `ask_*` 결과는 `can_answer`·`answer_chars`·`truncated_note`(잘림 안내가 붙었는가)·못 답한 사유(`fallback_reason`: 앱의 고정 머리말 "담당 에이전트가 답하지 못했어요: " 뒤의 예외 종류·HTTP 상태만, 120자·스크러버. 다른 글이면 `null`).
 - 집계(`summary`): 역할별 호출 수, `stop_reason` 별 수, `max_tokens_hits`, `calls_without_text`(글도 도구 요청도 없는 응답), `calls_failed`(전송 실패), `tool_result_errors`, `ask_results_cannot_answer`.
 - 저장하지 않는 것: 질문·답·도구 인자·도구 결과 본문·대화·문서·이름·키. 도구 결과 본문 저장 기능은 만들지 않았다. 값을 알 수 없으면 항목을 빼거나 `null` 로 두고(예: 호출을 못 본 도구 id 의 `tool`) 추측하지 않는다. 호출 쪽에는 어떤 오류도 올리지 않는다(`trace_error`).
