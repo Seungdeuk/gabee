@@ -1707,6 +1707,9 @@ OUTBOUND_FILES = {
     "shared/mailer.py": "인증·비밀번호 재설정 메일 SMTP 발송(AI 아님)",
     "features/ops_admin/infra_service.py": "Cloud Run 메타데이터·Cloud Run Admin·Cloud Monitoring 읽기 전용 조회(AI 아님, 개인 데이터 전송 없음, 운영자 조회 시에만)",
     "shared/push.py": "Expo 푸시 발송(AI 아님). 알림함 사건은 고정 제목만 보내고 본문은 비운다(docs/adr/0012-push-via-expo.md)",
+    # 찰칵 흔한 사진 자동 보충: Pixabay 에서 공개 사진을 검색·내려받는다(AI 아님). 보내는 값은 API 키와 고정 검색어 목록뿐이고 가족 데이터는 없다.
+    # 호출하는 쪽은 photo_rec_auto 하나이며 기본 꺼짐·하루 목표·시도 상한이 있다(tests/test_photo_rec_external_calls.py 가 구조를 고정한다)
+    "features/play/photo_rec_pixabay.py": "Pixabay 공개 사진 검색·내려받기(AI 아님, 가족 데이터 전송 없음, 고정 검색어, 호출자는 photo_rec_auto 뿐)",
 }
 LLM_CALLER_FILES = {
     "features/family_chat/ai_service.py": "ai_guard.run",
@@ -1728,6 +1731,16 @@ LLM_CALLER_FILES = {
 # 개인정보를 가린 질문만) 하루 한도는 두지 않기로 했다(2026-11-09 결정, admin_knowledge/service.py). 값은 그 권한을 거는 라우터 파일이다
 OPERATOR_LLM_CALLER_FILES = {
     "features/admin_knowledge/service.py": "features/admin_knowledge/router.py",
+}
+# 관문을 부르는 쪽 파일 안에서만 LLM 을 부르는 파일: 값은 그 호출을 `ai_guard.run(call=...)` 로 감싸는 파일이다.
+# 찰칵 가비 추천(가족 사진): photo_rec_ai.content_question 은 photo_rec._ask_content 의 call 안에서만 불린다(tests/test_photo_rec_external_calls.py 가 AST 로 확인)
+LLM_GUARDED_BY_CALLER_FILES = {
+    "features/play/photo_rec_ai.py": "features/play/photo_rec.py",
+}
+# 공개 데이터만 보내는 LLM 호출: 가족 AI 관문(ai_guard) 대신 호출자의 기본 꺼짐 설정·하루 목표·시도 상한이 호출 수를 묶는다(찰칵 흔한 사진 자동 보충).
+# Pixabay 공개 사진 한 장과 고정 프롬프트만 보내고 가족·사용자 정보를 불러오지 않는다. 값은 그 상한을 거는 호출자 파일이다
+PUBLIC_DATA_LLM_CALLER_FILES = {
+    "features/play/photo_rec_auto_ai.py": "features/play/photo_rec_auto.py",
 }
 _OUTBOUND = re.compile(
     r"\bhttpx\.(post|get|put|patch|delete|request|stream|Client|AsyncClient)\b|from httpx import"
@@ -1774,10 +1787,26 @@ def test_every_llm_caller_goes_through_a_guard():
         and rel not in wrapper
         and not rel.startswith("features/ai_assistant/ingest/")
     }
-    known = set(LLM_CALLER_FILES) | set(OPERATOR_LLM_CALLER_FILES)
+    known = (
+        set(LLM_CALLER_FILES)
+        | set(OPERATOR_LLM_CALLER_FILES)
+        | set(LLM_GUARDED_BY_CALLER_FILES)
+        | set(PUBLIC_DATA_LLM_CALLER_FILES)
+    )
     assert callers == known, callers ^ known
     for rel, gate in LLM_CALLER_FILES.items():
         assert gate in sources[rel], f"{rel} 에 {gate} 가 없다"
+    for rel, caller in LLM_GUARDED_BY_CALLER_FILES.items():
+        assert "ai_guard.run(" in sources[caller], (
+            f"{caller} 가 {rel} 의 호출을 관문으로 감싸지 않는다"
+        )
+    for rel, caller in PUBLIC_DATA_LLM_CALLER_FILES.items():
+        # 가족 관문을 쓰는 파일이면 LLM_CALLER_FILES 로 옮긴다. 호출자는 기본 꺼짐 설정과 하루 목표로 호출 수를 묶는다
+        assert "ai_guard" not in sources[rel].replace("ai_guard` 를 쓰지 않는다", ""), (
+            f"{rel} 가 가족 관문을 쓰면 LLM_CALLER_FILES 로 옮긴다"
+        )
+        assert "photo_rec_auto_enabled" in sources[caller], f"{caller} 에 켜짐 설정 확인이 없다"
+        assert "photo_rec_auto_per_day" in sources[caller], f"{caller} 에 하루 목표 상한이 없다"
     for rel, router in OPERATOR_LLM_CALLER_FILES.items():
         assert 'require_operator("admin")' in sources[router], f"{router} 에 운영자 권한이 없다"
         assert "ai_guard" not in sources[rel], (
