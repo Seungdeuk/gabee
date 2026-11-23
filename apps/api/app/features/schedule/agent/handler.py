@@ -4,6 +4,7 @@
 추천은 `suggest.supply` 로 연결한다. 수정·삭제는 확인 카드를 거친 뒤 `confirm` 에서 실행한다. 일정 요청이 아니면 `not_schedule` 로 돌려줘 메인이 직접 답하게 한다.
 """
 
+import re
 from contextvars import ContextVar
 from dataclasses import replace
 from datetime import UTC, datetime
@@ -137,6 +138,47 @@ def _merge_also_delete(response: AgentResponse, extra: AgentResponse) -> AgentRe
     )
 
 
+# 삭제 요청형 문장('헬스 다 지워줘'): 모델이 query 로 잘못 분류했을 때 코드가 바로잡는 방어선
+DELETE_ASK = re.compile(
+    r"(지워|지우|삭제|없애)\s*(줘|주세요|줄래)|(삭제|없애)\s*해\s*(줘|주세요|줄래)"
+)
+NOT_A_REQUEST = re.compile(r"\?|알려|궁금|있어")
+
+
+def looks_like_delete(text: str) -> bool:
+    """삭제를 부탁하는 말인가(물음표·'알려'가 있으면 묻는 말이다)."""
+    return bool(DELETE_ASK.search(text)) and not NOT_A_REQUEST.search(text)
+
+
+def _has_content(fields: dict) -> bool:
+    """추가 등록 건이 비어 있지 않은가(모델이 빈 객체를 채워 보내는 일을 걸러낸다)."""
+    return bool(
+        fields.get("title") or fields.get("date") or register.has_rel(fields.get("date_rel"))
+    )
+
+
+def _merge_registers(main: AgentResponse, extras: list[tuple[str, AgentResponse]]) -> AgentResponse:
+    """한 문장의 등록 여러 건: 카드는 모두 모으고 글은 이어 붙인다. 되묻는 초안은 하나뿐이라 첫 번째 빠진 건만 되묻고,
+    그 뒤의 빠진 건은 등록하지 못했다고 안내한다."""
+    response = main
+    for title, extra in extras:
+        if extra.draft is not None:
+            if response.draft is not None:  # 되묻기는 한 번에 하나
+                name = f"'{title}' " if title else ""
+                note = f"{name}일정은 날짜를 알 수 없어 등록하지 못했어요."
+                response = response.model_copy(update={"text": f"{response.text}\n{note}".strip()})
+                continue
+            response = response.model_copy(update={"draft": extra.draft})
+        response = response.model_copy(
+            update={
+                "text": f"{response.text}\n{extra.text}".strip(),
+                "cards": [*response.cards, *extra.cards],
+                "choice": response.choice or extra.choice,
+            }
+        )
+    return response
+
+
 def handle(
     db: Session,
     user_id: str,
@@ -144,6 +186,7 @@ def handle(
     request: AgentRequest,
     share_all: bool = False,
     guarded: bool = True,
+    private: bool = False,
 ) -> AgentResponse:
     """직전에 수정·삭제 대상을 되물었다면(서버 기억이나 앱이 돌려준 값) 사용자의 답을 먼저 읽고, 답으로 읽을 수 없으면 새 요청으로 처리한다."""
     ensure_group_member(db, user_id, group_id)  # 라우터 밖에서 service 를 부르므로 직접 확인한다
@@ -170,7 +213,7 @@ def handle(
         if answer is not None:
             return answer
     _also_delete.set(None)
-    response = _handle(db, user_id, group_id, request, share_all, guarded)
+    response = _handle(db, user_id, group_id, request, share_all, guarded, private)
     extra = _also_delete.get()
     if extra is not None:
         response = _merge_also_delete(response, extra)
@@ -185,6 +228,7 @@ def _handle(
     request: AgentRequest,
     share_all: bool = False,
     guarded: bool = True,
+    private: bool = False,
 ) -> AgentResponse:
     now = datetime.now(UTC)
     local_now = now.astimezone(reader.local_tz())
@@ -239,6 +283,11 @@ def _handle(
         )
     if result.intent == "not_schedule":
         return AgentResponse(intent=result.intent)
+    forced_delete = result.intent == "query" and looks_like_delete(request.text)
+    if (
+        forced_delete
+    ):  # '헬스 다 지워줘'를 모델이 조회로 분류해도 삭제로 처리한다(삭제는 항상 확인 카드를 거친다)
+        result = replace(result, intent="delete", target_id="", all_targets=False, event_ids=[])
     if result.also_delete_title and result.intent != "delete":
         # 목록(기간으로 거른 것)에 없어도 전체 일정에서 제목으로 찾는다
         matches = _by_title(data.events, result.also_delete_title)
@@ -262,18 +311,36 @@ def _handle(
         if matches:
             found_by_title = {e.id: e for e in matches}
             result = replace(result, target_id=matches[0].id)
+            if forced_delete and choice_mod.ALL_WORDS.search(request.text):
+                ids = [e.id for e in matches][: modify.MANY_LIMIT]
+                result = replace(result, all_targets=True, event_ids=ids)
     if result.intent == "register":
-        return register.respond(
-            db,
-            user_id,
-            group_id,
-            request.draft,
-            result.register,
-            result.reply,
-            members,
-            share_all,
-            request.text,
-        )
+        room = request.channel == "family"
+
+        def run(fields: dict, draft, reply: str) -> AgentResponse:
+            return register.respond(
+                db,
+                user_id,
+                group_id,
+                draft,
+                fields,
+                reply,
+                members,
+                share_all,
+                request.text,
+                private,
+                room,
+            )
+
+        response = run(result.register, request.draft, result.reply)
+        extras = [
+            (f.get("title", ""), run(f, None, "")) for f in result.more_registers if _has_content(f)
+        ]
+        if extras:
+            response = _merge_registers(response, extras)
+        if room and private and response.cards and response.draft is None:
+            response = response.model_copy(update={"text": register.PRIVATE_ROOM_TEXT})
+        return response
     if result.intent == "request":
         return request_flow.respond(
             db,

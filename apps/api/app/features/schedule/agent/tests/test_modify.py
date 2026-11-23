@@ -729,3 +729,142 @@ def test_choice_card_members_shares_the_checked_family_member(client, setup, fak
         client, a, choice_kind="members", event_id=e["id"], event_ids=["zzzz"], changes=changes
     )
     assert bad.status_code == 400  # 가족이 아닌 id 는 받지 않는다
+
+
+# ---------- 방금 다룬 일정 10분 기억(개인 채팅): 일정을 말하지 않은 이어진 말 ----------
+def _unnamed_share(fake, other):
+    fake.data = _data("edit", "", share_change=True, share_ids=[other])
+    fake.data["target_unnamed"] = True
+
+
+def test_followup_without_event_uses_the_last_handled_event(client, setup, fake):
+    a, b, _, other, _ = setup
+    e = _new(client, a, title="가족 나들이")
+    _new(client, a, title="치과", start_date=_day(5))
+    fake.data = _data("edit", e["id"], share_change=True, share_ids=[])
+    _say(client, a, "가족 나들이 공유 풀어줘")  # 이 일정을 다뤘다(바뀐 것 없음)
+    _unnamed_share(fake, other)
+    body = _say(client, a, "엄마한테도 공유해줘").json()
+    assert body["text"] != "어느 일정인가요?" and not body.get("choice")
+    assert "가족 나들이" in body["text"] and "님에게 공유했어요" in body["text"]
+    assert [x["title"] for x in _events(client, b)] == ["가족 나들이"]
+
+
+def test_followup_after_already_shared_notice_shares_that_event(client, setup, fake):
+    a, b, _, other, _ = setup
+    _new(client, a, title="치과", start_date=_day(5))
+    e = _new(client, a, title="가족 나들이")
+    fake.data = _data("edit", e["id"], share_change=True, share_ids=[])
+    _say(client, a, "가족 나들이 공유 풀어줘")
+    _unnamed_share(fake, other)
+    body = _say(client, a, "엄마한테도 공유해줘").json()
+    assert "가족 나들이" in body["text"] and "님에게 공유했어요" in body["text"]
+    assert [x["title"] for x in _events(client, b)] == ["가족 나들이"]
+
+
+def test_followup_asks_again_after_ten_minutes(client, setup, fake, monkeypatch):
+    from types import SimpleNamespace
+
+    from app.features.schedule.agent import choice as choice_mod
+
+    a, b, _, other, _ = setup
+    e = _new(client, a, title="가족 나들이")
+    fake.data = _data("edit", e["id"], share_change=True, share_ids=[])
+    _say(client, a, "가족 나들이 공유 풀어줘")
+    real = choice_mod.time.monotonic
+    monkeypatch.setattr(
+        choice_mod,
+        "time",
+        SimpleNamespace(monotonic=lambda: real() + choice_mod.CHOICE_TTL_SECONDS + 1),
+    )
+    _unnamed_share(fake, other)
+    body = _say(client, a, "엄마한테도 공유해줘").json()
+    assert body["text"] == "어느 일정인가요?" and _events(client, b) == []
+
+
+def test_followup_with_a_named_event_ignores_the_memory(client, setup, fake):
+    a, b, _, other, _ = setup
+    e = _new(client, a, title="가족 나들이")
+    _new(client, a, title="치과", start_date=_day(5))
+    fake.data = _data("edit", e["id"], share_change=True, share_ids=[])
+    _say(client, a, "가족 나들이 공유 풀어줘")
+    fake.data = _data("edit", "", share_change=True, share_ids=[other])  # unnamed 아님
+    body = _say(client, a, "치과 엄마한테 공유해줘").json()
+    assert "가족 나들이" not in body["text"]  # 기억한 일정이 아니라 문장의 일정으로 처리했다
+    assert [x["title"] for x in _events(client, b)] == ["치과"]
+
+
+def test_followup_asks_when_the_remembered_event_was_deleted(client, setup, fake):
+    a, b, _, other, _ = setup
+    e = _new(client, a, title="가족 나들이")
+    _new(client, a, title="치과", start_date=_day(5))
+    fake.data = _data("edit", e["id"], share_change=True, share_ids=[])
+    _say(client, a, "가족 나들이 공유 풀어줘")
+    assert client.delete(f"/schedule/events/{e['id']}", headers=a).status_code in (200, 204)
+    _unnamed_share(fake, other)
+    body = _say(client, a, "엄마한테도 공유해줘").json()
+    assert body["text"] == "어느 일정인가요?" and _events(client, b) == []
+
+
+def test_delete_clears_the_memory_and_unnamed_delete_does_not_use_it(client, setup, fake):
+    a, _, _, _, _ = setup
+    e = _new(client, a, title="가족 나들이")
+    _new(client, a, title="치과", start_date=_day(5))
+    fake.data = _data("edit", e["id"], share_change=True, share_ids=[])
+    _say(client, a, "가족 나들이 공유 풀어줘")
+    fake.data = _data("delete", "")  # 이름 없는 삭제는 기억을 쓰지 않는다
+    fake.data["target_unnamed"] = True
+    body = _say(client, a, "그거 지워줘").json()
+    assert body["text"] == "어느 일정인가요?" and body["pending_action"] is None
+    assert len(_events(client, a)) == 2
+    # 삭제를 마치면 기억은 지워진다
+    fake.data = _data("delete", e["id"])
+    pending = _say(client, a, "가족 나들이 지워줘").json()["pending_action"]
+    _confirm(client, a, pending)
+    from app.features.schedule.agent import choice as choice_mod
+
+    me = client.get("/family-group/me", headers=a).json()["id"]
+    assert choice_mod.recall_event(setup[4], me) is None
+
+
+def test_followup_in_family_room_neither_stores_nor_uses_the_memory(client, setup, fake):
+    a, b, _, other, _ = setup
+    e = _new(client, a, title="가족 나들이")
+    _new(client, a, title="치과", start_date=_day(5))
+    fake.data = _data("edit", e["id"], place="서초")
+    assert _say_in(client, a, "가족 나들이 장소 서초로", "family").status_code == 200
+    _unnamed_share(fake, other)  # 방에서 저장하지 않았으니 개인 채팅에서도 기억이 없다
+    assert _say(client, a, "엄마한테도 공유해줘").json()["text"] == "어느 일정인가요?"
+    _say(client, a, "아니 그만")
+    fake.data = _data("edit", e["id"], share_change=True, share_ids=[])
+    _say(client, a, "가족 나들이 공유 풀어줘")  # 개인 채팅에서 기억하게 한 뒤
+    _unnamed_share(fake, other)
+    body = _say_in(client, a, "엄마한테도 공유해줘", "family").json()  # 방에서는 쓰지 않는다
+    assert "가족 나들이" not in body["text"] and _events(client, b) == []
+
+
+def test_followup_after_registering_shares_the_new_event(client, setup, fake):
+    a, b, _, other, _ = setup
+    _new(client, a, title="치과", start_date=_day(5))
+    fake.data = {
+        "intent": "register",
+        "reply": "",
+        "event_ids": [],
+        "register": {
+            "title": "가족 나들이",
+            "date": _day(3),
+            "start_time": "",
+            "end_time": "",
+            "kind": 0,
+            "place": "",
+            "memo": "",
+            "share_ids": [],
+            "date_ambiguous": False,
+        },
+    }
+    body = _say(client, a, "가족 나들이 등록해줘").json()
+    assert body["intent"] == "register" and "등록했어요" in body["text"]
+    _unnamed_share(fake, other)
+    done = _say(client, a, "엄마한테도 공유해줘").json()
+    assert "가족 나들이" in done["text"] and "님에게 공유했어요" in done["text"]
+    assert [x["title"] for x in _events(client, b)] == ["가족 나들이"]
