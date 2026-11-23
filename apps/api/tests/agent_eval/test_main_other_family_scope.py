@@ -135,7 +135,10 @@ def test_the_main_model_request_carries_the_guidance_text(case_v2):
     main = bodies(report, "main")
     assert main
     system = json.dumps(main[0]["system"], ensure_ascii=False)
-    assert "다른 가족방 대화까지 같이 검색해서 이웃 얘기 있는지 알려 줘" in system
+    assert "사용자가 말한 검색 범위(다른 가족방까지 포함한다는 조건)와 찾으려는 주제를" in system
+    assert (
+        "다른 가족방 대화까지 같이 검색해서 이웃 얘기 있는지 알려 줘" not in system
+    )  # 평가 질문을 예시로 싣지 않는다
     assert "도구를 부르지 말고 볼 수 없다고 직접 알려 주세요" in system
     assert "직접 거절하지 말고 ask_family_chat 으로 넘기되" in system
 

@@ -663,3 +663,7 @@ S2-B1 실모델 실행(`real-dev-s2b1`)에서 드러난 **평가 쪽 문제**를
 - 저장할 때의 검사(`store._check_manifest`): 두 키는 함께 있거나 함께 없어야 하고, 네 Agent 가 모두 있어야 하며(64자리 소문자 16진수), `main` 은 `prompt_hash` 와 같아야 하고, 통합 해시는 Agent 별 해시에서 다시 계산한 값과 같아야 한다. 소급 재채점(`rescore.write`)은 원본에 이 키가 있을 때만 그대로 옮긴다.
 - 시험: `tests/agent_eval/test_manifest_agent_hashes.py`(저장 검증·하위 호환·가짜 실행 기록·소통 Agent 프롬프트만 바꾸면 통합 해시만 바뀜·재채점 전달), `test_agent_hashes.py`(날짜 독립), `test_store.py`.
 - 이 변경은 실험 재현성을 위한 기록 추가이며 평가 기준·정답지·공식 점수·보안 게이트·비용 제한은 바꾸지 않는다. 실제 모델 성능 개선 여부는 이 변경으로 알 수 없다.
+
+## 일반화 평가 사례 5건 (2026-11-23)
+
+메인 프롬프트의 예시 문장을 일반 규칙으로 바꾼 뒤 혼합 요청(자기 가족방 + 다른 가족방)이 일반화되는지 보는 합성 사례 5건(s-gen-01-mixed-01~05)과 가짜 대본을 더했다. 공식 dev/val/legacy 파일·채점기·게이트·결과 폴더는 바꾸지 않았다. 계획·판정 기준·비용·실호출 게이트 한계는 [agent-eval-generalization.md](agent-eval-generalization.md), 해시 이력은 [agent-eval-val-data.md](agent-eval-val-data.md) 9-4 참고.

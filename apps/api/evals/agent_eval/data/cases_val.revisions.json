@@ -3,7 +3,7 @@
  "frozen_before_any_model_output": true,
  "created_in_commit": "e6bc806922a7ed42cd12d61c0ed64d87247bd4d2",
  "final_key_commit": "b4536ce8f85dfcea8fce293b4b09db968c91997f",
- "pinned_on_top_of_commit": "e216803e94a46fb21eb04b2dc49292756a4a3e8b",
+ "pinned_on_top_of_commit": "9b5282f38c69485e01457f5e201354d3e6dc0968",
  "split": "val",
  "world": "w2",
  "case_count": 18,
@@ -92,18 +92,18 @@
   "matchers_py_sha256": "625608abec5740f2fb185e37b074c22c63a6c1deed165f8768f301fb778b5cd3",
   "scorer_version": 2
  },
- "prompt_hash": "6f7211e66b11111c1c4958587ad92225e3e469cf6cc3f9948122e750ae028bb9",
+ "prompt_hash": "adb89f60e67dd926261c1aa27f72b671a0536cb91d19c9669a9fca86cc1c23c6",
  "dev_manifest_prompt_hash_prefix": "d658d8e1",
  "dev_manifest_prompt_hash": "d658d8e16968b5fd099ca3e9e340039ccd960118a0cd487ae02db26ff878b36d",
  "prompt_changed_since_dev108": true,
- "prompt_change_note": "운영 일정 에이전트 프롬프트·도구 설명이 dev 108 case-run 이후 release/1.3 에서 바뀌고(#496 앱에이전트 수정·삭제 개선, #505 앱에이전트 정책 개선, #506 앱 에이전트 날짜 계산 방식 개선, #516 앱 에이전트 등록 묶음 개선), 메인 어시스턴트 PROMPT_NOTE 에 '다른 가족방이 섞인 요청의 범위를 지우지 않고 소통 Agent 로 넘긴다'는 지침이 더해져(isolation-02 원인 분석) 프롬프트 해시가 dev 값(DEV_MANIFEST_PROMPT_HASH)과 다르다. dev 108 공식 결과·v2 재채점은 옛 해시에 묶인 그대로이고, val 은 이 새 해시의 프롬프트로만 돈다(dev 점수와 직접 비교하지 않는다).",
+ "prompt_change_note": "운영 일정 에이전트 프롬프트·도구 설명이 dev 108 case-run 이후 release/1.3 에서 바뀌고(#496 앱에이전트 수정·삭제 개선, #505 앱에이전트 정책 개선, #506 앱 에이전트 날짜 계산 방식 개선, #516 앱 에이전트 등록 묶음 개선), 메인 어시스턴트 PROMPT_NOTE 에 '다른 가족방이 섞인 요청의 범위와 주제를 지우지 않고 소통 Agent 로 넘긴다'는 지침이 더해지고(isolation-02 원인 분석, 평가 질문과 같은 예시 문장은 일반 규칙으로 바꿔 뺐다) 프롬프트 해시가 dev 값(DEV_MANIFEST_PROMPT_HASH)과 다르다. dev 108 공식 결과·v2 재채점은 옛 해시에 묶인 그대로이고, val 은 이 새 해시의 프롬프트로만 돈다(dev 점수와 직접 비교하지 않는다).",
  "agent_prompt_hashes": {
-  "main": "6f7211e66b11111c1c4958587ad92225e3e469cf6cc3f9948122e750ae028bb9",
+  "main": "adb89f60e67dd926261c1aa27f72b671a0536cb91d19c9669a9fca86cc1c23c6",
   "family_chat": "ba3391bde81fb8b11041a017098e874d76d36ab2d7982f5d8d9cc853762af949",
   "billing": "a0b737cebf4408c64acc26a930c6c98d2066a9acc62e392f5f27399b938afc0a",
   "schedule": "328f6c447c68f71c734c5b1cb93866e23a260a0daa2acc0fb1a7a4d6d407949f"
  },
- "integrated_prompt_hash": "262d329dc16bebf406836046eefbef03c8bbd09c793b16b3d204c84f11e02996",
+ "integrated_prompt_hash": "0d57e465cefee5848ec9a490b2aff93445655ef0c5f745286ed2345252640100",
  "scenarios": {
   "scenarios_val_file_sha256": "525e15243185bae56e95f75b67314da247f46ac1eeacec2ec633b5bb93b7cefd",
   "scenario_list_sha256": "621fbbd672dc43a8f86b3537648348c4338d377c599f03f631e8d5c1259d542a",

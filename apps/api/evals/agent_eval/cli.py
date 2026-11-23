@@ -403,7 +403,7 @@ def _run_preflight(
         results_root=results,
         default_results=DEFAULT_RESULTS,
         ledger=_estimate_ledger(args, plan, results),
-        scripts=dev_scripts.scripts_for(split),
+        scripts=dev_scripts.scripts_for(split, getattr(args, "dev_file", None)),
         stage=args.stage,
         require_env=plan.mode == "real",
     )
@@ -503,7 +503,11 @@ def _execute(
         try:
             source = _load(args, plan, split, run_id)
             # 가짜 모드의 개발셋은 사례별 정상 대본을 쓴다(없는 사례는 기존처럼 지원 안 함). legacy 는 기존 대본 그대로
-            scripts = dev_scripts.scripts_for(split) if mode == "fake" else {}
+            scripts = (
+                dev_scripts.scripts_for(split, getattr(args, "dev_file", None))
+                if mode == "fake"
+                else {}
+            )
             extra = {"scripts": scripts} if scripts else {}  # 대본이 없으면 호출 모양이 이전과 같다
             with real_gate.real_grant_scope(grant) if grant is not None else nullcontext():
                 report = runner.run_cases(source, options, ledger=ledger, **extra)
