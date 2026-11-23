@@ -156,6 +156,12 @@ def list_items(
     )
 
 
+def chat_origin_verified(since: datetime):
+    """외부 AI 에 보여도 되는 기록 조건: 가족 채팅 첨부에서 만든 기록(source_attachment_id 있음)은 `since`(가족 AI 동의가 켜진 시각) 이후에 만든 것만 통과한다.
+    그 이전 기록은 동의 없이 로컬 규칙으로만 가려졌을 수 있어(이름·주소가 남는다) 어떻게 가려졌는지 알 수 없으므로 뺀다. 채팅 첨부가 아닌 기록(메인 AI 직접 업로드 등)은 항상 통과한다."""
+    return or_(KnowledgeItem.source_attachment_id.is_(None), KnowledgeItem.created_at >= since)
+
+
 def family_filter(user_ids: list[str]):
     """family_user_ids(JSON 배열) 에 user_ids 중 하나라도 들어 있는 기록 조건. 비면 어느 기록도 맞지 않는다.
 
@@ -181,6 +187,7 @@ def search_chunks(
     created_to: datetime | None = None,
     created_by: list[str] | None = None,
     item_id: str | None = None,
+    chat_verified_since: datetime | None = None,
 ) -> list[tuple[KnowledgeChunk, KnowledgeItem, float]]:
     """질문 벡터와 가까운 조각을 점수(코사인 유사도, 클수록 가까움) 순으로 돌려준다.
 
@@ -206,6 +213,8 @@ def search_chunks(
         q = q.where(KnowledgeItem.occurred_on <= date_to)
     if not include_sensitive:
         q = q.where(KnowledgeItem.sensitivity != "sensitive")
+    if chat_verified_since is not None:
+        q = q.where(chat_origin_verified(chat_verified_since))
     if family_user_ids is not None:
         q = q.where(family_filter(family_user_ids))
     if created_from is not None:

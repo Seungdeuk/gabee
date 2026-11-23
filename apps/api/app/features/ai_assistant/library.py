@@ -53,6 +53,11 @@ def register_chat_document(
     try:
         if not supported(data, filename):
             return
+        if not _family_allows_ai(group_id):
+            # 가족 AI 동의가 없으면 AI 문서함 자동 등록을 **보류**한다(사용자 결정 2026-11-23, ADR 0023): 채팅 원본 첨부는 그대로 두고, 외부 AI(Claude·Jev)도
+            # 부르지 않으며, 로컬 규칙으로만 가린 문서를 AI 검색 지식베이스에 넣지도 않는다. 동의한 뒤에는 사용자가 파일을 다시 올려 명시적으로 처리한다.
+            logger.info("chat library document held: no family AI consent")
+            return
         with SessionLocal() as db:
             if knowledge_repo.get_by_attachment(db, group_id, attachment_id) is not None:
                 return  # 이미 등록했다(재시도·중복 요청)

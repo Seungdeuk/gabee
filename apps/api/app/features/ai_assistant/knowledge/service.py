@@ -183,6 +183,7 @@ def search(
     created_from: datetime | None = None,
     created_to: datetime | None = None,
     created_by: list[str] | None = None,
+    chat_verified_since: datetime | None = None,
 ) -> list[Hit]:
     """질문과 가장 가까운 기록을 돌려준다(기록마다 가장 가까운 조각 하나, per_item 을 키우면 `more` 에 조각을 더 담는다).
     family_user_ids 를 주면 그 가족 중 한 명이라도 등장한 기록만 본다(빈 목록이면 결과 없음).
@@ -207,6 +208,7 @@ def search(
         created_from=created_from,
         created_to=created_to,
         created_by=created_by,
+        chat_verified_since=chat_verified_since,
     )
     if mix and len(rows) > 1:
         order = hybrid_search.fuse_order(
@@ -239,6 +241,7 @@ def search_in_item(
     top_k: int = 5,
     include_sensitive: bool = True,
     hybrid: bool | None = None,
+    chat_verified_since: datetime | None = None,
 ) -> list[Hit]:
     """한 기록(문서) 안에서만 질문과 가까운 조각을 찾는다. 조각마다 Hit 하나이고 쪽 순서가 아니라 순위(하이브리드면
     섞은 순서, 아니면 임베딩 점수 순) 로 top_k 개. 다른 그룹·없는 item_id·볼 수 없는 민감 기록은 빈 목록이다."""
@@ -255,6 +258,7 @@ def search_in_item(
         include_sensitive,
         limit=IN_ITEM_CANDIDATES,
         item_id=item_id,
+        chat_verified_since=chat_verified_since,
     )
     if mix and len(rows) > 1:
         order = hybrid_search.fuse_order(

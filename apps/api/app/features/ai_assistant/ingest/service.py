@@ -38,6 +38,19 @@ def _gate(external: bool, recheck: Recheck | None) -> bool:
     return external and (recheck is None or recheck())
 
 
+class ConsentRequired(Exception):
+    """동의가 막은 외부 단계가 있는데 `require_external` 이라 로컬 규칙으로 대신하지 않고 처리를 멈춘다(처리 도중 철회 포함)."""
+
+
+def _gate_or_stop(external: bool, recheck: Recheck | None, require_external: bool) -> bool:
+    """`_gate` 와 같되, 막혔고 `require_external` 이면 로컬로 대신하지 않고 `ConsentRequired` 로 멈춘다.
+    로컬 규칙으로만 가린 글은 이름·주소가 남으므로 AI 검색 지식베이스에 들어가면 안 된다(가족 채팅방 자동 처리, ADR 0023)."""
+    allowed = _gate(external, recheck)
+    if not allowed and require_external:
+        raise ConsentRequired
+    return allowed
+
+
 MIN_PDF_CHARS = 20  # 이보다 글자가 적은 PDF 는 스캔본으로 본다
 RAW_EXT = {
     "image/jpeg": ".jpg",
@@ -65,6 +78,7 @@ def ingest_file(
     family=None,
     external: bool,
     recheck: Recheck | None = None,
+    require_external: bool = False,
 ) -> PreprocessResult:
     """원본을 원본 데이터 센터에 그대로 보관하고, 가린 결과와 (가린 글자로 한) 분류를 돌려준다.
     지원하지 않는 형식도 원본은 보관한다(나중에 지원되면 다시 처리할 수 있게).
@@ -72,9 +86,18 @@ def ingest_file(
     `external` 은 이 가족이 외부 AI(Claude·Jev)로 내보내도 되는지(가족 AI 동의)이며 **필수 인자(기본값 없음)** 다: 빠뜨리면 TypeError 라서 동의를
     조용히 우회하지 못한다. False 면 사진 읽기·PDF 스캔 쪽 읽기·글 가리기·PPT 그림 설명·분류(끼운 Jev 포함)에 외부를 쓰지 않는다(로컬 규칙·문서
     분류기만): 사진은 읽을 수단이 없어 실패(`consent_required`)하고 PDF 의 스캔 쪽은 읽지 못한 채 남는다. `recheck` 를 주면 외부로 나가기 직전마다
-    동의를 다시 읽어, 처리 도중 철회하면 남은 단계를 막는다.
+    동의를 다시 읽어, 처리 도중 철회하면 남은 단계를 막는다. `require_external=True`(가족 채팅방 자동 처리)면 막힌 단계를 로컬 규칙으로 대신하지 않고
+    `consent_required` 로 실패시킨다: 로컬 규칙으로만 가린 문서가 AI 검색 지식베이스에 들어가지 않게 한다(메인 AI 직접 업로드·시험은 False).
     글자를 외부로 보낸 뒤 가리는 것으로는 동의 문제가 풀리지 않으므로 보내기 전에 막는다."""
-    result = preprocess(data, filename, ocr=ocr, family=family, external=external, recheck=recheck)
+    result = preprocess(
+        data,
+        filename,
+        ocr=ocr,
+        family=family,
+        external=external,
+        recheck=recheck,
+        require_external=require_external,
+    )
     if result.quality.error in ("empty_file", "too_large"):
         return result
     src = result.source
@@ -101,6 +124,7 @@ def preprocess(
     family=None,
     external: bool,
     recheck: Recheck | None = None,
+    require_external: bool = False,
 ) -> PreprocessResult:
     """실패해도 예외를 내지 않고 quality.status = failed 로 돌려준다. content 는 가린 글자다. `external`·`recheck` 는 `ingest_file` 과 같다(필수)."""
     name = PurePath(filename or "file").name[:200]
@@ -121,10 +145,16 @@ def preprocess(
         return _failed(source, "unsupported_type", str(e))
     try:
         if source.kind == "image":
-            return _from_image(source, data, ocr, family, external, recheck)
-        return _from_document(source, data, ocr, family, external, recheck)
+            return _from_image(source, data, ocr, family, external, recheck, require_external)
+        return _from_document(source, data, ocr, family, external, recheck, require_external)
     except BrokenFile as e:
         return _failed(source, "broken_file", str(e))
+    except ConsentRequired:
+        return _failed(
+            source,
+            "consent_required",
+            "가족 AI 사용 동의가 없어서(또는 처리 도중 철회돼서) 문서를 처리하지 않았어요",
+        )
     except LLMUnavailable:
         # Claude 로 읽거나 가리는 중이었다면 가리지 않은 글을 저장하지 않는다. 원본은 보관했으니 나중에 다시 처리할 수 있다
         return _failed(
@@ -135,9 +165,13 @@ def preprocess(
 
 
 def _mask(
-    text: str, family=None, external: bool = False, recheck: Recheck | None = None
+    text: str,
+    family=None,
+    external: bool = False,
+    recheck: Recheck | None = None,
+    require_external: bool = False,
 ) -> tuple[str, Privacy]:
-    if settings.ingest_llm_mask and _gate(external, recheck):
+    if settings.ingest_llm_mask and _gate_or_stop(external, recheck, require_external):
         # Claude 가 위치를 찾고(가족 이름 후보는 문맥으로 판단) 코드가 바꾼다. 호출이 실패하면 LLMUnavailable 이 올라가 파일이 failed 가 된다
         masked, counts, sensitive = llm_ingest.mask(text, family)
         notice = sensitive == "bankbook" and masking.is_account_notice(
@@ -165,6 +199,7 @@ def _from_image_llm(
     family=None,
     external: bool = False,
     recheck: Recheck | None = None,
+    require_external: bool = False,
 ) -> PreprocessResult:
     """사진을 Claude 로 읽는다. 자신 없는 줄([?])은 확신도를 낮춰 기존 [불확실] 표시와 이어지게 한다."""
     image = converters.prepare_image(data)
@@ -174,7 +209,7 @@ def _from_image_llm(
             source=source, quality=Quality(status="ok", warnings=["사진에 글자가 없어요"])
         )
     masked, privacy = _mask(
-        out.text, family, external, recheck
+        out.text, family, external, recheck, require_external
     )  # 가리기가 줄 수를 바꿀 수 있어 가린 글에서 줄을 나눈다
     lines, confs = llm_ingest.line_confidence(masked)
     kept = [(t, c) for t, c in zip(lines, confs, strict=True) if t.strip()]
@@ -201,6 +236,7 @@ def _from_image(
     family=None,
     external: bool = False,
     recheck: Recheck | None = None,
+    require_external: bool = False,
 ) -> PreprocessResult:
     """사진 속 글자는 Claude(`INGEST_LLM_OCR`)가 읽는다. 로컬 OCR 은 서비스에 없다(`ocr` 는 시험·개발이 끼우는 읽기 구성 요소일 뿐이다).
     동의가 없으면(external=False) 사진을 보내지 않고 실패로 끝낸다. 읽을 수단이 하나도 없어도 실패다."""
@@ -211,7 +247,7 @@ def _from_image(
                 "consent_required",
                 "가족 AI 사용에 동의해야 사진 속 글자를 읽을 수 있어요",
             )
-        return _from_image_llm(source, data, family, external, recheck)
+        return _from_image_llm(source, data, family, external, recheck, require_external)
     if ocr is None:
         return _failed(
             source,
@@ -225,10 +261,14 @@ def _from_image(
             source=source, quality=Quality(status="ok", warnings=["사진에 글자가 없어요"])
         )
     # 줄을 이어 붙여 한 번에 가린 뒤 다시 줄로 나눈다(가리기는 줄 수를 바꾸지 않는다)
-    text, privacy = _mask("\n".join(ln.text for ln in lines), family, external, recheck)
+    text, privacy = _mask(
+        "\n".join(ln.text for ln in lines), family, external, recheck, require_external
+    )
     masked_lines = text.split("\n")
     if len(masked_lines) != len(lines):  # 만일을 대비: 줄마다 따로 가린다
-        masked_lines = [_mask(ln.text, family, external, recheck)[0] for ln in lines]
+        masked_lines = [
+            _mask(ln.text, family, external, recheck, require_external)[0] for ln in lines
+        ]
     blocks = [
         Block(index=i, type="ocr_line", text=t, confidence=round(ln.confidence, 3))
         for i, (t, ln) in enumerate(zip(masked_lines, lines, strict=True))
@@ -252,6 +292,7 @@ def _from_document(
     family=None,
     external: bool = False,
     recheck: Recheck | None = None,
+    require_external: bool = False,
 ) -> PreprocessResult:
     ocr_note = None
     if source.kind == "text":
@@ -260,16 +301,19 @@ def _from_document(
         markdown = converters.to_markdown((decode_text(data) or "").encode("utf-8"), source.kind)
     elif source.kind == "pdf":
         # 쪽별 글자 층을 pdfium 으로 읽는다(한글 표 PDF 에서 MarkItDown 보다 읽는 순서가 정확하다)
-        markdown, ocr_note = _read_pdf(data, ocr, external, recheck)
+        markdown, ocr_note = _read_pdf(data, ocr, external, recheck, require_external)
     else:
         markdown = converters.to_markdown(data, source.kind)
         if (
             source.kind == "pptx"
         ):  # 변환기가 버린 그림 속 글자·내용을 Claude 로 설명해 넣는다(동의가 없으면 건너뛴다)
             markdown, ocr_note = figures.describe_pptx(
-                data, markdown, external=_gate(external, recheck)
+                data,
+                markdown,
+                external=settings.ingest_llm_ocr
+                and _gate_or_stop(external, recheck, require_external),
             )
-    markdown, privacy = _mask(markdown, family, external, recheck)
+    markdown, privacy = _mask(markdown, family, external, recheck, require_external)
     blocks, pages = converters.markdown_blocks(markdown, source.kind)
     if source.kind in ("pptx", "xlsx"):  # 슬라이드·시트 번호와 블록 번호를 붙여 넘긴다
         text = converters.numbered_markdown(blocks, source.kind)
@@ -292,14 +336,18 @@ def _from_document(
 
 
 def _read_pdf(
-    data: bytes, ocr: Ocr | None, external: bool = False, recheck: Recheck | None = None
+    data: bytes,
+    ocr: Ocr | None,
+    external: bool = False,
+    recheck: Recheck | None = None,
+    require_external: bool = False,
 ) -> tuple[str, str | None]:
     """글자 층이 있는 쪽은 그대로 두고, 글자가 없는 쪽(스캔·사진)만 그림으로 바꿔 읽는다.
     (쪽을 \\f 로 이은 글, 확인이 필요한 이유). 스캔 쪽이 없으면 입력 글을 그대로 돌려준다.
     INGEST_LLM_OCR 가 켜져 있고 가족이 AI 사용에 동의했으면(external) 글자 층이 있어도 표·머리말 구분이 더 정확한 Claude 로 쪽마다 읽는다
     (평가: 글자 층 꺼내기는 표를 한 줄로 이어 붙인다). 동의가 없으면 Claude 로 보내지 않고 글자 층만 쓴다: 스캔 쪽은 읽지 못한 채 남는다.
     로컬 OCR 은 서비스에 없다(`ocr` 는 시험·개발이 끼우는 구성 요소일 뿐이다)."""
-    if settings.ingest_llm_ocr and _gate(external, recheck):
+    if settings.ingest_llm_ocr and _gate_or_stop(external, recheck, require_external):
         return llm_ingest.ocr_pdf(data)
     texts = converters.pdf_page_texts(data)
     scan = [

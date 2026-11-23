@@ -209,6 +209,8 @@ def _process_once(
             family=family,
             external=external,
             recheck=_recheck_for(purpose, group_id),
+            # 가족 채팅방은 동의가 막은 단계를 로컬 규칙으로 대신하지 않는다: 로컬 규칙으로만 가린 문서는 AI 검색 지식베이스에 등록하지 않는다(ADR 0023)
+            require_external=purpose is Purpose.FAMILY_CHAT_DOCUMENT,
         )
         if result.quality.status == "failed":
             retry = result.quality.error == "llm_unavailable"
