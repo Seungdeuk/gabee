@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
 # 비운영 검증용 Docker 빌드 컨텍스트 조립(저장소 밖). 빌드·푸시·배포는 하지 않는다. 기존 build-context 폴더는 건드리지 않는다.
 #
-# 사용: bash stage_build_context_nonprod.sh r11|s0 [git-ref]      기본 ref = origin/release/1.3
+# 사용: bash stage_build_context_nonprod.sh r11|s0 [git-ref]      ref 는 필수(기본값 없음): release/1.4 가 생기면 origin/release/1.4
 #   r11: 코드(ref) + 모델 3개 폴더(doc-classifier, e5-small-ft, ner-koelectra-small-r11b-s21) + Dockerfile 패치(폴더 이름, PRIVACY_NER_MODE=required)
 #   s0 : 코드(ref) + 모델 3개 폴더(doc-classifier, e5-small-ft, ner-koelectra-small-v2b) + 현재 Dockerfile 그대로(롤백 시험용)
 # 출력: C:\Users\403\Documents\gabee-deploy-prep\build-context-nonprod-<r11|s0>
 set -euo pipefail
 
 KIND="${1:?r11 또는 s0}"
-REF="${2:-origin/release/1.3}"
+REF="${2:?git ref 가 필요하다 (release/1.4 가 생기면 origin/release/1.4; 1.3 기준으로 R11 이미지를 만들지 않는다)}"
 REPO="/c/Users/403/Documents/gabee-ner"
 OTHER_SRC="/c/Users/403/Documents/gabee/apps/api/data/models"
 R11_SRC="/c/Users/403/venvs/ner-runs/r11/export/r11-B-s21-ep5"

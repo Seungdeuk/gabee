@@ -23,7 +23,7 @@ gcloud run services update-traffic $S --project $P --region $R --to-revisions $P
 ```
 
 ## 2. 이미지 빌드·사전 검증(Cloud Run 변경 없음)
-1. 병합된 `release/1.3` 커밋으로 컨텍스트 조립: `gabee-deploy-prep/stage_build_context_nonprod.sh r11 origin/release/1.3`(모델 3개 폴더, R11 `model.onnx` SHA256 `3831601b7ffb6093a8d1b8c832e46ad140712c6e402f17b3054c3ec0f9ae4c94` 확인 포함). 운영 반영 이미지는 `…-nonprod` 폴더를 쓰지 말고 같은 스크립트로 새 폴더를 만든다.
+1. 병합된 `release/1.4` 커밋으로 컨텍스트 조립: `gabee-deploy-prep/stage_build_context_nonprod.sh r11 origin/release/1.4`(모델 3개 폴더, R11 `model.onnx` SHA256 `3831601b7ffb6093a8d1b8c832e46ad140712c6e402f17b3054c3ec0f9ae4c94` 확인 포함). 운영 반영 이미지는 `…-nonprod` 폴더를 쓰지 말고 같은 스크립트로 새 폴더를 만든다.
 2. 빌드·푸시: 레지스트리 경로·인증은 기존 방식대로, **고유 태그**(날짜+커밋 7자)로 푸시하고 **digest** 를 기록(`NEW_IMG=<저장소>/gabee@sha256:<digest>`). `latest` 만 쓰지 않는다.
 3. 이미지 안 확인(네트워크 없음): R11 `sha256sum`, `PRIVACY_NER_MODE=required`, `ner_status()` = required·active·지문 `3831601b7ffb`, 모델 폴더 정확히 3개, `doc-classifier`·`e5-small-ft` 가 이전 이미지와 해시 목록 동일(체크리스트 B-4).
 4. 실패 차단 시험(비운영, 네트워크 없음): `container_failclosed.py` 로 폴더 비움·1바이트 변조 → `PrivacyUnavailable`, 연결 시도 0.
