@@ -76,7 +76,7 @@ def test_share_register_is_done_at_once_without_a_confirm_card(
     client, setup, schedule_llm, monkeypatch
 ):
     a, b, other = setup
-    _main(monkeypatch)
+    _main(monkeypatch, question="내일 저녁 6시에 가족 모임 공유해서 등록해줘")
     schedule_llm.data = _register_data(
         title="가족 모임", date=_tomorrow(), start_time="18:00:00", kind=1, share_ids=[other]
     )
@@ -163,7 +163,7 @@ def test_edit_is_done_at_once_without_a_card_and_says_what_changed(
 def test_forged_card_payload_is_revalidated_by_the_server(client, setup, schedule_llm, monkeypatch):
     """앱이 돌려준 내용은 믿지 않는다: 다른 가족의 일정 id 로 바꿔 보내도 삭제되지 않는다."""
     a, _, _ = setup
-    _main(monkeypatch)
+    _main(monkeypatch, question="내일 가족 모임 등록해줘")
     schedule_llm.data = _register_data(title="가족 모임", date=_tomorrow(), share_ids=[])
     out = _ask(client, a)  # 공유가 없어 바로 등록된다(카드 없음)
     assert out["confirm_cards"] == []
