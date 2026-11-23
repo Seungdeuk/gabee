@@ -17,7 +17,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.features.family_group.models import Group
-from app.shared import chat_library
+from app.shared import ai_guard, chat_library
 from app.shared.config import settings
 from app.shared.db import SessionLocal
 from app.shared.errors import ApiError
@@ -147,6 +147,8 @@ def _process_once(
         # 가족 이름은 가리기 전에 자리표시로 바꾼다(분류를 외부 서비스에 맡겨도 실명이 나가지 않는다)
         with SessionLocal() as db:
             family = family_names.FamilyTagger(family_names.load_members(db, group_id))
+            # 가족 AI 동의가 없으면 이 파일의 어떤 부분도 Claude 로 보내지 않는다(읽기·가리기·그림 설명·분류·챙길 일). 시도마다 다시 본다(도중에 꺼질 수 있다)
+            external = ai_guard.is_enabled(db, group_id)
         result = ingest_service.ingest_file(
             group_id,
             data,
@@ -154,6 +156,7 @@ def _process_once(
             ocr=processors.ocr,
             jev=processors.jev,
             family=family,
+            external=external,
         )
         if result.quality.status == "failed":
             retry = result.quality.error == "llm_unavailable"
@@ -208,8 +211,8 @@ def _process_once(
                 delete_record(db, group_id, photo_id)
                 return "skipped", False
         if (
-            not chat_sensitive
-        ):  # 챙길 일 뽑기는 본문을 외부 Claude 로 보내므로, 가족방에서 온 민감 문서는 건너뛴다
+            not chat_sensitive and external
+        ):  # 챙길 일 뽑기는 본문을 외부 Claude 로 보내므로, 가족방에서 온 민감 문서와 AI 동의가 없는 가족은 건너뛴다
             _plan_reminders(photo_id, group_id, user_id)
         return ("needs_review" if from_ingest.needs_review(result) else "analyzed"), False
     except Exception as e:  # noqa: BLE001  내용이 로그에 남지 않게 종류만 적는다

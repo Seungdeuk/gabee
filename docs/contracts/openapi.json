@@ -13814,7 +13814,7 @@
           "ai-assistant"
         ],
         "summary": "Upload File",
-        "description": "사진·PDF·PPT·엑셀·워드 등 어떤 파일이든 받는다. 바로 `received` 로 응답하고 읽기·분류·저장은 뒤에서 한다.",
+        "description": "사진·PDF·PPT·엑셀·워드 등 어떤 파일이든 받는다. 바로 `received` 로 응답하고 읽기·분류·저장은 뒤에서 한다.\n사진 속 글자는 Claude 로만 읽으므로(로컬 OCR 없음) 가족 AI 동의가 없으면 사진은 받지 않고 403 `ai_consent_required` 를 돌려준다(저장도 전송도 하지 않는다).\nPDF·문서는 동의가 없어도 받는다: 외부 AI 없이 글자 층만 읽고(스캔 쪽은 읽지 못한 채 남는다) 로컬 규칙으로 가린다.",
         "operationId": "upload_file_ai_assistant_files_post",
         "parameters": [
           {

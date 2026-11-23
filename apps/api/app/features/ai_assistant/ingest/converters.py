@@ -1,9 +1,8 @@
-"""형식별 변환기. 사진은 OCR, 오피스·PDF·텍스트는 MarkItDown 으로 마크다운을 만든 뒤 블록으로 나눈다."""
+"""형식별 변환기. 오피스·PDF·텍스트는 MarkItDown 으로 마크다운을 만든 뒤 블록으로 나눈다. 사진 속 글자는 Claude 가 읽는다(로컬 OCR 은 없다)."""
 
 import datetime as dt
 import io
 import re
-import threading
 from dataclasses import dataclass
 from typing import Protocol
 
@@ -88,112 +87,9 @@ class Ocr(Protocol):
     def read(self, image: Image.Image) -> list[OcrLine]: ...
 
 
-class KoreanOcr:
-    """RapidOCR(PP-OCRv5 한국어). 첫 호출 때 모델을 내려받고 만든다(약 13 MB)."""
-
-    def __init__(self) -> None:
-        self._engine = None
-        self._lock = threading.Lock()
-
-    def _get(self):
-        if self._engine is None:
-            with self._lock:
-                if self._engine is None:
-                    from rapidocr import LangRec, ModelType, OCRVersion, RapidOCR
-
-                    self._engine = RapidOCR(
-                        params={
-                            "Rec.lang_type": LangRec.KOREAN,
-                            "Rec.ocr_version": OCRVersion.PPOCRV5,
-                            "Rec.model_type": ModelType.MOBILE,
-                            "Global.log_level": "warning",
-                        }
-                    )
-        return self._engine
-
-    def read(self, image: Image.Image) -> list[OcrLine]:
-        import numpy as np
-
-        engine = (
-            self._get()
-        )  # 잠금 밖에서: _get 도 같은 잠금을 잡으므로 안에서 부르면 첫 호출이 멈춘다
-        arr = np.asarray(image.convert("RGB"))
-        with self._lock:
-            # 줄 방향 확인(cls)을 켜 두면 짧은 줄을 거꾸로 뒤집어 읽어 줄이 통째로 빠진다(측정: 줄 회수 68% → 끄면 95%).
-            # 그래서 끄고 먼저 읽고, 평균 확신도가 낮으면(사진이 뒤집혔을 수 있다) 방향 확인을 켠 결과와
-            # 180° 돌려 읽은 결과 중 읽은 줄의 확신도 합이 더 큰 쪽을 쓴다.
-            res = engine(arr, use_cls=False)
-            if _mean_score(res) < READ_OK_SCORE:
-                tries = [
-                    res,
-                    engine(arr, use_cls=True),
-                    engine(np.rot90(arr, 2).copy(), use_cls=False),
-                ]
-                res = max(tries, key=_score_mass)
-        if res is None or not getattr(res, "txts", None):
-            return []
-        return group_lines(res.boxes, res.txts, res.scores)
-
-
-READ_OK_SCORE = 0.85  # 평균 확신도가 이 이상이면 한 번 읽은 것으로 끝낸다
-
-
-def _scores(res) -> list[float]:
-    if res is None or not getattr(res, "scores", None):
-        return []
-    return [float(s) for s in res.scores]
-
-
-def _mean_score(res) -> float:
-    s = _scores(res)
-    return sum(s) / len(s) if s else 0.0
-
-
-def _score_mass(res) -> float:
-    """읽은 줄들의 확신도 합: 더 많이, 더 확실하게 읽을수록 크다."""
-    return sum(_scores(res))
-
-
-def group_lines(boxes, txts, scores) -> list[OcrLine]:
-    """상자 중심 높이가 비슷한 것끼리 한 줄로 묶고, 줄 안에서는 왼쪽부터 잇는다."""
-    items = []
-    for box, txt, sc in zip(boxes, txts, scores, strict=False):
-        ys = [float(p[1]) for p in box]
-        xs = [float(p[0]) for p in box]
-        items.append((sum(ys) / len(ys), min(xs), max(ys) - min(ys), str(txt).strip(), float(sc)))
-    items.sort(key=lambda t: (t[0], t[1]))
-    rows: list[list[tuple]] = []
-    for it in items:
-        if rows:
-            last = rows[-1]
-            ly = sum(r[0] for r in last) / len(last)
-            lh = sum(r[2] for r in last) / len(last)
-            if abs(it[0] - ly) < 0.6 * max(lh, it[2], 1.0):
-                last.append(it)
-                continue
-        rows.append([it])
-    lines = []
-    for r in rows:
-        r.sort(key=lambda t: t[1])
-        text = " ".join(t[3] for t in r if t[3])
-        if text:
-            lines.append(OcrLine(text=text, confidence=sum(t[4] for t in r) / len(r)))
-    return lines
-
-
-_default_ocr: KoreanOcr | None = None
-
-
-def default_ocr() -> KoreanOcr:
-    global _default_ocr
-    if _default_ocr is None:
-        _default_ocr = KoreanOcr()
-    return _default_ocr
-
-
 # ---------- 오피스 · PDF · 텍스트 ----------
 
-PDF_OCR_MAX_PAGES = 20  # 스캔 PDF 는 글자 없는 쪽을 앞에서부터 이만큼만 OCR 한다(처리 시간 상한)
+PDF_OCR_MAX_PAGES = 20  # 읽는 구성 요소를 끼웠을 때 스캔 PDF 는 글자 없는 쪽을 앞에서부터 이만큼만 읽는다(처리 시간 상한)
 PDF_MIN_PAGE_CHARS = (
     8  # 쪽에 글자가 이보다 적으면 스캔 쪽으로 본다(쪽 번호·워터마크 정도는 글자로 치지 않는다)
 )

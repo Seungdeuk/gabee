@@ -36,6 +36,13 @@ def pipeline():
     files.processors = old
 
 
+@pytest.fixture
+def family(client, family, monkeypatch):
+    """사진 속 글자는 Claude 로만 읽으므로(로컬 OCR 없음) 사진을 문서함에 저장·등록하려면 가족 AI 동의가 있어야 한다: 이 모듈의 가족은 동의한 상태로 둔다."""
+    allow_ai(client, family[0], monkeypatch)
+    return family
+
+
 def upload(client, headers, data, name="a.png", ctype="image/png"):
     r = client.post("/ai-assistant/files", files={"file": (name, data, ctype)}, headers=headers)
     assert r.status_code == 201, r.text
@@ -620,7 +627,9 @@ def test_raw_store_refuses_paths_that_leave_the_group_folder(tmp_path):
     assert not ok.exists() and victim.exists()
 
 
-def test_forged_source_path_cannot_delete_another_familys_original(client, family, pipeline):
+def test_forged_source_path_cannot_delete_another_familys_original(
+    client, family, pipeline, monkeypatch
+):
     from tests.helpers import signup
 
     a, _, group = family
@@ -628,6 +637,7 @@ def test_forged_source_path_cannot_delete_another_familys_original(client, famil
     other_group = client.post(
         "/family-group/groups", json={"name": "남의 가족"}, headers=stranger
     ).json()
+    allow_ai(client, stranger, monkeypatch)  # 사진 업로드는 그 가족의 AI 동의가 있어야 한다
     theirs = upload(client, stranger, png((200, 1, 1)), "theirs.png")
     their_files = _raw_files(other_group["id"])
     assert their_files

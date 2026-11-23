@@ -23,6 +23,7 @@ from app.shared import chat_library
 from app.shared.config import settings
 from app.shared.db import SessionLocal
 from app.shared.llm import client as llm
+from tests.helpers import allow_ai
 
 PHOTOS = "/family-chat/photos"
 MSG = "/family-chat/messages"
@@ -43,6 +44,13 @@ def _isolated(monkeypatch, tmp_path):
     monkeypatch.setattr(httpx, "post", boom)
     monkeypatch.setattr(chat_library, "_on_photo", None)
     monkeypatch.setattr(chat_library, "_is_registered", lambda db, g, a: False)
+
+
+@pytest.fixture
+def family(client, family, monkeypatch):
+    """사진 속 글자는 Claude 로만 읽으므로(로컬 OCR 없음) 사진을 문서함에 저장·등록하려면 가족 AI 동의가 있어야 한다: 이 모듈의 가족은 동의한 상태로 둔다."""
+    allow_ai(client, family[0], monkeypatch)
+    return family
 
 
 def _jpeg() -> bytes:

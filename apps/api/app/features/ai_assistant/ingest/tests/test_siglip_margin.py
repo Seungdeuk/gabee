@@ -1,4 +1,4 @@
-"""단계형(E) 판정 규칙과 SigLIP2 ONNX margin 점수기. 모델 파일 없이 도는 시험이 기본이고, 실제 ONNX 모델이 있으면(환경변수
+"""SigLIP2 단독 판정 규칙(margin > 5)과 SigLIP2 ONNX margin 점수기. 모델 파일 없이 도는 시험이 기본이고, 실제 ONNX 모델이 있으면(환경변수
 `GABEE_TEST_SIGLIP_ONNX_DIR`) 합성 사진으로 한 번 실제 추론도 해 본다(없으면 건너뜀). 평가 수치와 섞지 않는다."""
 
 import io
@@ -10,13 +10,13 @@ from pathlib import Path
 import pytest
 from PIL import Image
 
-from app.features.ai_assistant.ingest import photo_judge, siglip_margin
+from app.features.ai_assistant.ingest import siglip_margin
 from app.features.ai_assistant.ingest.siglip_margin import MarginError, OnnxMarginScorer
 
 
 def test_the_frozen_thresholds_and_prompts_are_unchanged():
-    """평가 동결 설정(exp-1)과 같은 값이어야 한다: t_veto=1, t_rescue=5, 문장 14개(문서 6 + 일반 8)."""
-    assert (siglip_margin.T_VETO, siglip_margin.T_RESCUE) == (1.0, 5.0)
+    """평가 동결 설정(exp-1)의 값 그대로: 문서 기준은 평가의 t_rescue=5 를 재사용하고(새로 맞춘 값이 아니다), 문장 14개(문서 6 + 일반 8)."""
+    assert siglip_margin.T_DOCUMENT == 5.0
     assert siglip_margin.DOC_PROMPTS == (
         "a photo of a paper document",
         "a photo of a printed form with a table",
@@ -38,28 +38,23 @@ def test_the_frozen_thresholds_and_prompts_are_unchanged():
 
 
 @pytest.mark.parametrize(
-    ("ocr_kind", "margin", "expected"),
+    ("margin", "expected"),
     [
-        (photo_judge.DOCUMENT, 8.0, "document"),  # 글자 많은 문서
-        (photo_judge.DOCUMENT, 1.01, "document"),
-        (photo_judge.DOCUMENT, 1.0, "unsure"),  # 경계: 초과일 때만
-        (photo_judge.DOCUMENT, -3.0, "unsure"),  # OCR 은 문서라지만 간판·메뉴판처럼 보임: 취소
-        (photo_judge.PHOTO, 5.01, "document"),  # 글자 적은 문서를 구한다
-        (photo_judge.PHOTO, 5.0, "unsure"),
-        (photo_judge.PHOTO, 2.0, "unsure"),
-        (photo_judge.UNSURE, 5.5, "document"),
-        (photo_judge.UNSURE, 4.9, "unsure"),
-        (photo_judge.PHOTO, -9.0, "unsure"),  # 일반 사진도 photo 가 아니라 unsure(D-13)
+        (8.0, "document"),  # 글자 많은 문서
+        (5.01, "document"),
+        (5.0, "unsure"),  # 경계: 초과일 때만
+        (3.21, "unsure"),  # 평가에서 놓친 글자 적은·평범한 문서(unsure 로 남아 업로더가 확인한다)
+        (1.0, "unsure"),
+        (-9.0, "unsure"),  # 일반 사진도 photo 가 아니라 unsure(D-13)
     ],
 )
-def test_the_staged_rule(ocr_kind, margin, expected):
-    assert siglip_margin.staged_status(ocr_kind, margin) == expected
+def test_the_siglip_only_rule(margin, expected):
+    assert siglip_margin.photo_status(margin) == expected
 
 
-def test_the_staged_rule_never_returns_photo():
-    for kind in (photo_judge.DOCUMENT, photo_judge.PHOTO, photo_judge.UNSURE):
-        for margin in (-50.0, -1.0, 0.0, 1.0, 3.0, 5.0, 50.0):
-            assert siglip_margin.staged_status(kind, margin) in ("document", "unsure")
+def test_the_siglip_only_rule_never_returns_photo():
+    for margin in (-50.0, -1.0, 0.0, 1.0, 3.0, 5.0, 50.0):
+        assert siglip_margin.photo_status(margin) in ("document", "unsure")
 
 
 def _jpeg(size=(320, 240), color=(235, 235, 235)) -> bytes:

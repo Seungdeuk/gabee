@@ -16,7 +16,7 @@ from app.features.family_chat import file_service, photo_service
 from app.shared.config import settings
 from app.shared.db import SessionLocal
 from app.shared.notifications import Notification
-from tests.helpers import join_family, signup
+from tests.helpers import allow_ai, join_family, signup
 
 NOTICE = (
     "해솔초등학교 가정통신문\n2026년 11월 현장체험학습 안내\n11월 7일 오전 8시 40분 국립중앙박물관\n준비물: 도시락, 물\n"
@@ -339,7 +339,14 @@ def test_reminders_are_not_planned_for_sensitive_chat_documents(client, family, 
     monkeypatch.setattr(settings, "ingest_reminders", True)
     planned: list[str] = []
     monkeypatch.setattr(files.reminders, "plan", lambda db, gid, uid, pid: planned.append(pid))
+    _send_file(client, a)  # 일반 문서지만 가족 AI 동의가 없다
+    assert (
+        len(_items(group["id"])) == 1 and planned == []
+    )  # 동의 없이는 본문을 Claude 로 보내지 않는다
+    allow_ai(client, a, monkeypatch)
     _send_file(client, a, data=PRESCRIPTION, name="처방전.txt")
-    assert len(_items(group["id"])) == 1 and planned == []  # 민감 문서는 외부로 보내지 않는다
+    assert (
+        len(_items(group["id"])) == 2 and planned == []
+    )  # 민감 문서는 동의해도 외부로 보내지 않는다
     _send_file(client, a)  # 일반 문서
     assert len(planned) == 1

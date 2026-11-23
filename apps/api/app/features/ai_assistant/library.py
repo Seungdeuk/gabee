@@ -15,10 +15,9 @@ from sqlalchemy.orm import Session
 from app.shared import ai_guard, chat_library
 from app.shared.config import settings
 from app.shared.db import SessionLocal
-from app.shared.llm import doc_ai
 
 from . import files, service
-from .ingest import converters, photo_judge, siglip_margin
+from .ingest import siglip_margin
 from .ingest.detect import Unsupported, detect
 from .knowledge import repository as knowledge_repo
 
@@ -82,10 +81,14 @@ def _on_removed(db: Session, group_id: str, attachment_id: str) -> None:
 
 # ---------- 사진 ----------
 
-PHOTO_JUDGE_MIN_CONFIDENCE = 0.7  # Claude 가 "문서"라고 해도 확신이 이보다 낮으면 자동 등록하지 않는다(실측: 0.7 이면 애매함 0%, 0.9 면 오인 0 에 애매함 11%)
 PHOTO_QUEUE_LIMIT = 20  # 가족마다 처리를 기다리는 사진 수(사진 바이트가 메모리에 있으므로 상한을 둔다). 한 가족이 다른 가족을 막지 않는다
+PHOTO_QUEUE_INSTANCE_LIMIT = 40  # 서버 인스턴스 전체에서 처리를 기다리는 사진 수(가족마다 20장씩 여러 가족이 쌓여도 메모리가 늘지 않게)
+PHOTO_QUEUE_INSTANCE_BYTES = (
+    96 * 1024 * 1024
+)  # 서버 인스턴스 전체에서 기다리는 사진 바이트 합(사진 한 장 최대 8MB)
 _photo_lock = threading.Lock()
 _photo_pending: dict[str, int] = {}  # 가족 → 처리를 기다리는 사진 수
+_photo_bytes = 0  # 인스턴스 전체에서 기다리는 사진 바이트 합(직접 저장 포함)
 _photo_inflight: set[tuple[str, str, bool]] = (
     set()
 )  # (가족, 첨부, 직접 저장 여부) 진행 중인 것: 같은 요청을 겹쳐 처리하지 않는다
@@ -98,36 +101,14 @@ def _family_allows_ai(group_id: str) -> bool:
 
 
 def _judge_photo(group_id: str, data: bytes) -> tuple[str, str | None]:
-    """사진 판별 결과 (상태, 실패 종류). 상태는 document | unsure | failed 셋 중 하나다(**photo 는 없다**: 글자가 거의 안 읽혀도
-    OCR·모델 판정만으로 일반 사진을 확정하지 않는다. 일반 사진 확인은 업로더가 직접 한다, D-13).
-    글자가 거의 안 읽히는 사진(OCR PHOTO)은 외부로 보내지 않고 unsure 다. `PHOTO_JUDGE_LLM` 이 켜져 있고 이 가족이 AI 사용에
-    동의했으면 글자가 읽힌 사진(문서·애매)만 Claude 에게 묻고, 꺼져 있거나 동의하지 않았으면 OCR 판별이 문서일 때만 document 다.
-    판별 자체가 실패한 사진(열 수 없음·OCR 오류)은 외부로 보내지 않고 failed 다. Claude 가 실패하면 failed, 문서가 아니라고 하거나
-    확신이 낮으면 unsure 다. 하루 상한은 없다(2026-11-09 사용자 결정)."""
-    verdict = photo_judge.judge(data, files.processors.ocr or converters.default_ocr())
-    if verdict.failed:
-        return "failed", "OcrFailed"
-    if settings.photo_classify_siglip:
-        return _judge_staged(verdict.kind, data)
-    if verdict.kind == photo_judge.PHOTO:
-        return "unsure", None
-    use_claude = settings.photo_judge_llm and _family_allows_ai(group_id)
-    if not use_claude:
-        return ("document", None) if verdict.kind == photo_judge.DOCUMENT else ("unsure", None)
-    try:
-        answer = doc_ai.classify_photo(photo_judge.to_judge_jpeg(data))
-    except Exception as exc:  # noqa: BLE001  사진·응답 내용은 남기지 않고 종류만 적는다
-        logger.warning("chat library photo judge failed error=%s", type(exc).__name__)
-        return "failed", type(exc).__name__
-    if answer.kind == "document" and answer.confidence >= PHOTO_JUDGE_MIN_CONFIDENCE:
-        return "document", None
-    return "unsure", None
-
-
-def _judge_staged(ocr_kind: str, data: bytes) -> tuple[str, str | None]:
-    """`PHOTO_CLASSIFY_SIGLIP` 가 켜졌을 때의 OCR + SigLIP2 단계형(E) 판별. 상태는 document | unsure | failed(photo 는 없다, D-13).
+    """사진 판별 결과 (상태, 실패 종류). 상태는 document | unsure | failed 셋 중 하나다(**photo 는 없다**: 모델 판정만으로 일반 사진을
+    확정하지 않는다. 일반 사진 확인은 업로더가 직접 한다, D-13). 판별은 **로컬 SigLIP2 ONNX 단독**이고(margin > 5 이면 document,
+    아니면 unsure) 사진을 외부(Claude)로 보내지 않는다. 로컬 OCR(RapidOCR)은 쓰지 않는다.
+    `PHOTO_CLASSIFY_SIGLIP` 가 꺼져 있으면 판별 수단이 없어서 모든 사진이 unsure 다(문서 자동 등록이 멈춘다: 켜야 동작한다).
     점수를 못 구하면(모델 파일·로드·메모리·추론 오류) 문서·일반 사진으로 확정하지 않고 failed 다(기존 재검사 규칙을 따른다).
-    외부로 사진을 보내지 않는다(Claude 판별 `PHOTO_JUDGE_LLM` 은 이 경로에서 쓰지 않는다)."""
+    하루 상한은 없다(2026-11-09 사용자 결정)."""
+    if not settings.photo_classify_siglip:
+        return "unsure", None
     try:
         margin = siglip_margin.get_scorer().score(data)
     except siglip_margin.MarginError as exc:
@@ -136,12 +117,7 @@ def _judge_staged(ocr_kind: str, data: bytes) -> tuple[str, str | None]:
     except Exception as exc:  # noqa: BLE001  내용이 로그에 남지 않게 종류만 적는다
         logger.warning("chat library photo siglip failed error=%s", type(exc).__name__)
         return "failed", f"Siglip{type(exc).__name__}"[:40]
-    return siglip_margin.staged_status(ocr_kind, margin), None
-
-
-def _is_document_photo(group_id: str, data: bytes) -> bool:
-    """자동 등록할 문서 사진인지(판별 결과가 document 일 때만 True)."""
-    return _judge_photo(group_id, data)[0] == "document"
+    return siglip_margin.photo_status(margin), None
 
 
 def register_chat_photo(
@@ -157,6 +133,10 @@ def register_chat_photo(
                 return
         if not forced:
             status, error = _judge_photo(group_id, data)
+            if status == "document" and not _family_allows_ai(group_id):
+                # 문서 글자는 Claude 로만 읽으므로(로컬 OCR 없음), 가족 AI 동의가 없으면 사진을 외부로 보내지 않는다: 문서 자동 등록은
+                # 보류하고 사진은 채팅에 남긴다. 숨기지 않게 document 가 아니라 unsure 로 적어 업로더가 직접 확인한다.
+                status = "unsure"
             # 결과를 판별 상태 표에 적는다(문서함 등록보다 먼저: 문서면 바로 숨김 상태가 된다). 못 적어도 pending 으로 남아 안전하다
             may_register = chat_library.photo_judged(group_id, attachment_id, status, error)
             if status != "document":
@@ -166,6 +146,8 @@ def register_chat_photo(
             with SessionLocal() as db:
                 if not chat_library.attachment_exists(db, group_id, attachment_id):
                     return  # 판별하는 사이 메시지가 지워졌다: 지운 사진이 문서함에 남지 않게(재검사처럼 오래 걸리는 판별 뒤의 경합)
+        elif not _family_allows_ai(group_id):
+            return  # 직접 저장도 같다: 동의 없이는 사진을 Claude 로 읽지 않는다(라우터가 먼저 403 으로 막는다. 이 줄은 동의가 도중에 꺼진 경우의 방어)
         with SessionLocal() as db:
             photo = service.receive_file(
                 db, group_id, user_id, f"{attachment_id}.jpg", "image/jpeg", data
@@ -184,20 +166,29 @@ def register_chat_photo(
 def _on_photo(
     group_id: str, user_id: str, attachment_id: str, data: bytes, forced: bool = False
 ) -> None:
+    global _photo_bytes
     key = (group_id, attachment_id, forced)
     with _photo_lock:
         if key in _photo_inflight:
             return  # 같은 요청이 이미 처리 중이다(연타·재요청)
-        if _photo_pending.get(group_id, 0) >= PHOTO_QUEUE_LIMIT and not forced:
+        if not forced and (
+            _photo_pending.get(group_id, 0) >= PHOTO_QUEUE_LIMIT
+            or sum(_photo_pending.values()) >= PHOTO_QUEUE_INSTANCE_LIMIT
+            or _photo_bytes + len(data) > PHOTO_QUEUE_INSTANCE_BYTES
+        ):
+            # 가족·인스턴스 건수나 바이트 상한을 넘었다: 이번 사진은 건너뛴다(pending 으로 남아 15분 뒤 확인 필요 목록·재검사로 복구된다).
             logger.info(
                 "chat library photo queue full"
             )  # 직접 누른 저장은 버리지 않는다(요청 횟수는 라우터가 제한한다)
             return
         _photo_pending[group_id] = _photo_pending.get(group_id, 0) + 1
+        _photo_bytes += len(data)
         _photo_inflight.add(key)
 
     def release() -> None:
+        global _photo_bytes
         with _photo_lock:
+            _photo_bytes = max(0, _photo_bytes - len(data))
             _photo_inflight.discard(key)
             left = _photo_pending.get(group_id, 1) - 1
             if left > 0:

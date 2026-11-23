@@ -126,9 +126,10 @@ def _describe(jpeg: bytes) -> str | None:
     return "" if not text or text.strip("`. ") == NONE_WORD else text
 
 
-def describe_pptx(data: bytes, markdown: str) -> tuple[str, str | None]:
-    """변환된 PPT 글의 그림 자리표시를 그림 설명으로 바꾼다. (글, 확인이 필요한 이유)."""
-    if not settings.ingest_llm_ocr:
+def describe_pptx(data: bytes, markdown: str, external: bool = True) -> tuple[str, str | None]:
+    """변환된 PPT 글의 그림 자리표시를 그림 설명으로 바꾼다. (글, 확인이 필요한 이유). 그림을 Claude 로 보내므로
+    `external=False`(가족 AI 동의 없음)면 건너뛴다(그림 설명 없이 글만 남는다)."""
+    if not settings.ingest_llm_ocr or not external:
         return markdown, None
     slides = pptx_pictures(data)
     if not any(p for s in slides for p in s):

@@ -50,11 +50,15 @@ def ingest_file(
     ocr: Ocr | None = None,
     jev: Jev | None = None,
     family=None,
+    external: bool = True,
 ) -> PreprocessResult:
     """원본을 원본 데이터 센터에 그대로 보관하고, 가린 결과와 (가린 글자로 한) 분류를 돌려준다.
     지원하지 않는 형식도 원본은 보관한다(나중에 지원되면 다시 처리할 수 있게).
-    family(FamilyTagger)를 주면 가리기 전에 가족 이름을 `[가족:<user_id>]` 로 바꾼다(분류에도 실명이 나가지 않는다)."""
-    result = preprocess(data, filename, ocr=ocr, family=family)
+    family(FamilyTagger)를 주면 가리기 전에 가족 이름을 `[가족:<user_id>]` 로 바꾼다(분류에도 실명이 나가지 않는다).
+    `external` 은 이 가족이 외부 AI(Claude)로 내보내도 되는지(가족 AI 동의)다. False 면 사진 읽기·PDF 스캔 쪽 읽기·글 가리기·PPT 그림 설명·분류에
+    Claude 를 쓰지 않는다(로컬 규칙·문서 분류기만): 사진은 읽을 수단이 없어 실패(`consent_required`)하고 PDF 의 스캔 쪽은 읽지 못한 채 남는다.
+    글자를 외부로 보낸 뒤 가리는 것으로는 동의 문제가 풀리지 않으므로 보내기 전에 막는다."""
+    result = preprocess(data, filename, ocr=ocr, family=family, external=external)
     if result.quality.error in ("empty_file", "too_large"):
         return result
     src = result.source
@@ -62,7 +66,7 @@ def ingest_file(
     store = store or LocalRawStore()
     ref = store.put(group_id, src.sha256, ext, data)
     # 분류는 반드시 가린 뒤에: classify 는 result.content(가린 글자)만 본다
-    c = classify(result, jev=jev)
+    c = classify(result, jev=jev, external=external)
     update = {"raw_path": ref.path, "classification": c}
     # 사진: 원본은 그대로 두고 앱 화면용 사본(1080px WebP, 위치 정보 없음)을 원본 옆에 만든다
     if src.kind == "image" and result.quality.status != "failed":
@@ -74,7 +78,7 @@ def ingest_file(
 
 
 def preprocess(
-    data: bytes, filename: str = "", *, ocr: Ocr | None = None, family=None
+    data: bytes, filename: str = "", *, ocr: Ocr | None = None, family=None, external: bool = True
 ) -> PreprocessResult:
     """실패해도 예외를 내지 않고 quality.status = failed 로 돌려준다. content 는 가린 글자다."""
     name = PurePath(filename or "file").name[:200]
@@ -95,8 +99,8 @@ def preprocess(
         return _failed(source, "unsupported_type", str(e))
     try:
         if source.kind == "image":
-            return _from_image(source, data, ocr or converters.default_ocr(), family)
-        return _from_document(source, data, ocr, family)
+            return _from_image(source, data, ocr, family, external)
+        return _from_document(source, data, ocr, family, external)
     except BrokenFile as e:
         return _failed(source, "broken_file", str(e))
     except LLMUnavailable:
@@ -108,8 +112,8 @@ def preprocess(
         )
 
 
-def _mask(text: str, family=None) -> tuple[str, Privacy]:
-    if settings.ingest_llm_mask:
+def _mask(text: str, family=None, external: bool = True) -> tuple[str, Privacy]:
+    if settings.ingest_llm_mask and external:
         # Claude 가 위치를 찾고(가족 이름 후보는 문맥으로 판단) 코드가 바꾼다. 호출이 실패하면 LLMUnavailable 이 올라가 파일이 failed 가 된다
         masked, counts, sensitive = llm_ingest.mask(text, family)
         notice = sensitive == "bankbook" and masking.is_account_notice(
@@ -131,7 +135,9 @@ def _mask(text: str, family=None) -> tuple[str, Privacy]:
     )
 
 
-def _from_image_llm(source: SourceInfo, data: bytes, family=None) -> PreprocessResult:
+def _from_image_llm(
+    source: SourceInfo, data: bytes, family=None, external: bool = True
+) -> PreprocessResult:
     """사진을 Claude 로 읽는다. 자신 없는 줄([?])은 확신도를 낮춰 기존 [불확실] 표시와 이어지게 한다."""
     image = converters.prepare_image(data)
     out = llm_ingest.ocr_image(image)
@@ -140,7 +146,7 @@ def _from_image_llm(source: SourceInfo, data: bytes, family=None) -> PreprocessR
             source=source, quality=Quality(status="ok", warnings=["사진에 글자가 없어요"])
         )
     masked, privacy = _mask(
-        out.text, family
+        out.text, family, external
     )  # 가리기가 줄 수를 바꿀 수 있어 가린 글에서 줄을 나눈다
     lines, confs = llm_ingest.line_confidence(masked)
     kept = [(t, c) for t, c in zip(lines, confs, strict=True) if t.strip()]
@@ -160,9 +166,25 @@ def _from_image_llm(source: SourceInfo, data: bytes, family=None) -> PreprocessR
     )
 
 
-def _from_image(source: SourceInfo, data: bytes, ocr: Ocr, family=None) -> PreprocessResult:
+def _from_image(
+    source: SourceInfo, data: bytes, ocr: Ocr | None, family=None, external: bool = True
+) -> PreprocessResult:
+    """사진 속 글자는 Claude(`INGEST_LLM_OCR`)가 읽는다. 로컬 OCR 은 서비스에 없다(`ocr` 는 시험·개발이 끼우는 읽기 구성 요소일 뿐이다).
+    동의가 없으면(external=False) 사진을 보내지 않고 실패로 끝낸다. 읽을 수단이 하나도 없어도 실패다."""
     if settings.ingest_llm_ocr:
-        return _from_image_llm(source, data, family)
+        if not external:
+            return _failed(
+                source,
+                "consent_required",
+                "가족 AI 사용에 동의해야 사진 속 글자를 읽을 수 있어요",
+            )
+        return _from_image_llm(source, data, family, external)
+    if ocr is None:
+        return _failed(
+            source,
+            "ocr_unavailable",
+            "사진 속 글자를 읽을 수단이 없어요(서버에서 INGEST_LLM_OCR 를 켜야 해요)",
+        )
     image = converters.prepare_image(data)
     lines = ocr.read(image)
     if not lines:
@@ -170,10 +192,10 @@ def _from_image(source: SourceInfo, data: bytes, ocr: Ocr, family=None) -> Prepr
             source=source, quality=Quality(status="ok", warnings=["사진에 글자가 없어요"])
         )
     # 줄을 이어 붙여 한 번에 가린 뒤 다시 줄로 나눈다(가리기는 줄 수를 바꾸지 않는다)
-    text, privacy = _mask("\n".join(ln.text for ln in lines), family)
+    text, privacy = _mask("\n".join(ln.text for ln in lines), family, external)
     masked_lines = text.split("\n")
     if len(masked_lines) != len(lines):  # 만일을 대비: 줄마다 따로 가린다
-        masked_lines = [_mask(ln.text, family)[0] for ln in lines]
+        masked_lines = [_mask(ln.text, family, external)[0] for ln in lines]
     blocks = [
         Block(index=i, type="ocr_line", text=t, confidence=round(ln.confidence, 3))
         for i, (t, ln) in enumerate(zip(masked_lines, lines, strict=True))
@@ -191,7 +213,7 @@ def _from_image(source: SourceInfo, data: bytes, ocr: Ocr, family=None) -> Prepr
 
 
 def _from_document(
-    source: SourceInfo, data: bytes, ocr: Ocr | None = None, family=None
+    source: SourceInfo, data: bytes, ocr: Ocr | None = None, family=None, external: bool = True
 ) -> PreprocessResult:
     ocr_note = None
     if source.kind == "text":
@@ -200,12 +222,14 @@ def _from_document(
         markdown = converters.to_markdown((decode_text(data) or "").encode("utf-8"), source.kind)
     elif source.kind == "pdf":
         # 쪽별 글자 층을 pdfium 으로 읽는다(한글 표 PDF 에서 MarkItDown 보다 읽는 순서가 정확하다)
-        markdown, ocr_note = _read_pdf(data, ocr)
+        markdown, ocr_note = _read_pdf(data, ocr, external)
     else:
         markdown = converters.to_markdown(data, source.kind)
-        if source.kind == "pptx":  # 변환기가 버린 그림 속 글자·내용을 Claude 로 설명해 넣는다
-            markdown, ocr_note = figures.describe_pptx(data, markdown)
-    markdown, privacy = _mask(markdown, family)
+        if (
+            source.kind == "pptx"
+        ):  # 변환기가 버린 그림 속 글자·내용을 Claude 로 설명해 넣는다(동의가 없으면 건너뛴다)
+            markdown, ocr_note = figures.describe_pptx(data, markdown, external=external)
+    markdown, privacy = _mask(markdown, family, external)
     blocks, pages = converters.markdown_blocks(markdown, source.kind)
     if source.kind in ("pptx", "xlsx"):  # 슬라이드·시트 번호와 블록 번호를 붙여 넘긴다
         text = converters.numbered_markdown(blocks, source.kind)
@@ -227,11 +251,13 @@ def _from_document(
     )
 
 
-def _read_pdf(data: bytes, ocr: Ocr | None) -> tuple[str, str | None]:
-    """글자 층이 있는 쪽은 그대로 두고, 글자가 없는 쪽(스캔·사진)만 그림으로 바꿔 OCR 한다.
+def _read_pdf(data: bytes, ocr: Ocr | None, external: bool = True) -> tuple[str, str | None]:
+    """글자 층이 있는 쪽은 그대로 두고, 글자가 없는 쪽(스캔·사진)만 그림으로 바꿔 읽는다.
     (쪽을 \\f 로 이은 글, 확인이 필요한 이유). 스캔 쪽이 없으면 입력 글을 그대로 돌려준다.
-    INGEST_LLM_OCR 가 켜져 있으면 글자 층이 있어도 표·머리말 구분이 더 정확한 Claude 로 쪽마다 읽는다(평가: 글자 층 꺼내기는 표를 한 줄로 이어 붙인다)."""
-    if settings.ingest_llm_ocr:
+    INGEST_LLM_OCR 가 켜져 있고 가족이 AI 사용에 동의했으면(external) 글자 층이 있어도 표·머리말 구분이 더 정확한 Claude 로 쪽마다 읽는다
+    (평가: 글자 층 꺼내기는 표를 한 줄로 이어 붙인다). 동의가 없으면 Claude 로 보내지 않고 글자 층만 쓴다: 스캔 쪽은 읽지 못한 채 남는다.
+    로컬 OCR 은 서비스에 없다(`ocr` 는 시험·개발이 끼우는 구성 요소일 뿐이다)."""
+    if settings.ingest_llm_ocr and external:
         return llm_ingest.ocr_pdf(data)
     texts = converters.pdf_page_texts(data)
     scan = [
@@ -240,8 +266,11 @@ def _read_pdf(data: bytes, ocr: Ocr | None) -> tuple[str, str | None]:
     pages = list(texts)
     if not scan:
         return "\f".join(pages), None
+    if ocr is None:
+        why = "가족 AI 사용 동의가 없어서" if settings.ingest_llm_ocr else "읽는 수단이 없어서"
+        return "\f".join(pages), f"글자 없는 스캔 {len(scan)}쪽은 {why} 읽지 못했어요"
     todo = scan[: converters.PDF_OCR_MAX_PAGES]
-    reader = ocr or converters.default_ocr()
+    reader = ocr
     for i, image in zip(todo, converters.pdf_page_images(data, todo), strict=True):
         pages[i] = "\n".join(ln.text for ln in reader.read(image))
     note = "스캔된 쪽은 OCR 로 읽었어요(틀린 글자가 있을 수 있어요)"

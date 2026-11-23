@@ -1,5 +1,5 @@
-"""가족 전체방에 올린 사진 중 문서를 찍은 사진은 가족 공유 문서함에 자동 등록된다(일반 사진·애매한 사진·1:1 방·민감 문서는 등록하지 않는다).
-판별은 로컬 OCR 의 글자 수·줄 수로 하고, 하루 상한은 없다(2026-11-09 사용자 결정). 모델이나 인터넷 없이 돈다."""
+"""가족 전체방에 올린 사진 중 문서를 찍은 사진은 가족 공유 문서함에 자동 등록된다(일반 사진·애매한 사진·1:1 방은 등록하지 않는다).
+판별은 로컬 SigLIP2 단독이고(이 시험은 점수기를 대역으로 끼운다), 하루 상한은 없다(2026-11-09 사용자 결정). 글자 읽기는 읽기 구성 요소를 끼워서 한다."""
 
 import io
 
@@ -8,7 +8,7 @@ from PIL import Image
 from sqlalchemy import select
 
 from app.features.ai_assistant import files, library
-from app.features.ai_assistant.ingest import converters
+from app.features.ai_assistant.ingest import siglip_margin
 from app.features.ai_assistant.ingest.converters import OcrLine
 from app.features.ai_assistant.knowledge.models import KnowledgeItem
 from app.features.ai_assistant.models import Photo
@@ -16,7 +16,6 @@ from app.features.family_chat import file_service, photo_service
 from app.shared.config import settings
 from app.shared.db import SessionLocal
 from app.shared.llm import doc_ai
-from app.shared.llm.transport import LLMUnavailable
 from tests.helpers import allow_ai, join_family, signup  # noqa: F401  (family 픽스처가 쓴다)
 
 NOTICE_LINES = [
@@ -62,13 +61,52 @@ def _isolated(monkeypatch, tmp_path):
     monkeypatch.setattr(library, "_submit", lambda fn, *args: fn(*args))
     library._photo_pending.clear()
     library._photo_inflight.clear()
+    monkeypatch.setattr(library, "_photo_bytes", 0)
+    monkeypatch.setattr(
+        settings, "photo_classify_siglip", True
+    )  # 판별은 SigLIP2 단독이다(로컬 OCR 없음)
+
+    def no_claude(jpeg):
+        raise AssertionError("사진 판별에 외부 AI 로 사진을 보내면 안 된다")
+
+    monkeypatch.setattr(doc_ai, "classify_photo", no_claude)
     old = files.processors
     yield
     files.processors = old
+    siglip_margin.set_scorer(None)
 
 
-def _use_ocr(ocr):
+class _FixedMargin:
+    """판별을 맡은 SigLIP2 점수기 대역: 늘 같은 margin 을 돌려준다."""
+
+    def __init__(self, margin):
+        self.margin = margin
+
+    def score(self, data):
+        return self.margin
+
+
+def _margin_for(ocr) -> float:
+    """OCR 대역의 첫 줄 묶음으로 이 시험이 뜻한 판별을 정한다: 6줄 이상이면 문서(8.0), 글자가 있어도 적으면 애매(2.0), 없으면 일반 사진(-4.0).
+    판별은 이제 OCR 이 아니라 SigLIP2 라서, 이 묶음은 margin 을 정하는 데만 쓰이고 읽기 단계는 둘째 묶음(없으면 같은 묶음)부터 읽는다."""
+    first = ocr.texts[0] if getattr(ocr, "texts", None) else []
+    if len(first) >= 6:
+        return 8.0
+    return 2.0 if first else -4.0
+
+
+def _use_ocr(ocr, margin=None):
+    siglip_margin.set_scorer(_FixedMargin(_margin_for(ocr) if margin is None else margin))
+    if getattr(ocr, "texts", None) and len(ocr.texts) > 1:
+        ocr.calls = 1
     files.processors = files.Processors(ocr=ocr)
+
+
+@pytest.fixture
+def family(client, family, monkeypatch):
+    """문서 사진은 Claude 로만 읽으므로(로컬 OCR 없음) 자동 등록·직접 저장에는 가족 AI 동의가 필요하다: 이 모듈의 가족은 동의한 상태로 둔다."""
+    allow_ai(client, family[0], monkeypatch)
+    return family
 
 
 def _send_photo(client, headers, room_id=None, data=None):
@@ -135,12 +173,13 @@ def test_a_sensitive_document_photo_is_registered_and_flagged_sensitive(client, 
     assert len(items) == 1 and items[0].sensitivity == "sensitive"
 
 
-def test_a_photo_that_reads_as_a_picture_after_the_full_read_is_dropped(client, family):
-    """판별은 문서였는데 전체 읽기에서 글자가 거의 없으면(사진 기록) 문서함에 넣지 않는다."""
+def test_a_photo_that_reads_as_a_picture_after_the_full_read_is_still_kept(client, family):
+    """SigLIP2 가 문서라고 판정했으면 읽기에서 글자가 거의 없어도(사진 기록) 문서함에 남긴다(`keep_photo`): 판별 상태는 document 인데
+    문서함에는 없는 불일치를 만들지 않는다."""
     a, _, group = family
     _use_ocr(ScriptedOcr(NOTICE_LINES, ["간판"]))
     _send_photo(client, a)
-    assert _items(group["id"]) == []
+    assert len(_items(group["id"])) == 1
 
 
 def test_there_is_no_daily_limit_on_automatic_registration(client, family):
@@ -163,96 +202,6 @@ def test_deleting_the_message_removes_the_registered_photo(client, family):
     assert _items(group["id"]) == []
 
 
-# ---------- Claude 판별(혼합): OCR 이 글자를 읽은 사진만 Claude 에게 문서 여부를 묻는다 ----------
-
-
-@pytest.fixture
-def judge(client, family, monkeypatch):
-    """Claude 판별을 켜고(가족 AI 동의도 켠다) 답을 정해 둔다. 몇 번 불렸는지 센다."""
-    monkeypatch.setattr(settings, "photo_judge_llm", True)
-    allow_ai(client, family[0], monkeypatch)
-
-    class Judge:
-        calls = 0
-        answer = doc_ai.PhotoVerdict("document", 0.93, "가정통신문을 정면으로 찍음", 1700, 120)
-
-    def fake(jpeg):
-        Judge.calls += 1
-        if isinstance(Judge.answer, Exception):
-            raise Judge.answer
-        return Judge.answer
-
-    monkeypatch.setattr(doc_ai, "classify_photo", fake)
-    return Judge
-
-
-def test_claude_confirms_a_document_photo_and_it_is_registered(client, family, judge):
-    a, _, group = family
-    _use_ocr(ScriptedOcr(NOTICE_LINES))
-    _send_photo(client, a)
-    assert judge.calls == 1 and len(_items(group["id"])) == 1
-
-
-def test_claude_rejects_a_street_photo_that_ocr_reads_as_a_document(client, family, judge):
-    a, _, group = family
-    judge.answer = doc_ai.PhotoVerdict("photo", 0.95, "상가 거리 풍경", 1700, 120)
-    _use_ocr(ScriptedOcr(NOTICE_LINES))  # 간판 글자가 많아 OCR 만으로는 문서로 읽힌다
-    _send_photo(client, a)
-    assert judge.calls == 1 and _items(group["id"]) == []
-
-
-def test_a_low_confidence_document_answer_is_left_for_the_user(client, family, judge):
-    a, _, group = family
-    judge.answer = doc_ai.PhotoVerdict("document", 0.5, "정류장 시간표", 1700, 120)
-    _use_ocr(ScriptedOcr(NOTICE_LINES))
-    _send_photo(client, a)
-    assert _items(group["id"]) == []
-
-
-def test_a_photo_ocr_cannot_read_is_never_sent_to_claude(client, family, judge):
-    a, _, group = family
-    _use_ocr(ScriptedOcr([]))
-    _send_photo(client, a)
-    assert judge.calls == 0 and _items(group["id"]) == []  # 글자가 없는 사진은 외부로 나가지 않는다
-
-
-def test_an_unsure_ocr_photo_goes_to_claude_and_can_still_be_a_document(client, family, judge):
-    """글자는 있는데 줄이 적은 큰 글씨 안내 포스터는 OCR 만으로는 애매하다: Claude 가 문서라고 하면 등록한다."""
-    a, _, group = family
-    _use_ocr(ScriptedOcr(["큐드럼 뮤직동호회 회원을 모집합니다 문의 전화 010 3454 3193"] * 3))
-    _send_photo(client, a)
-    assert judge.calls == 1 and len(_items(group["id"])) == 1
-
-
-def test_a_claude_failure_leaves_the_photo_unregistered(client, family, judge):
-    a, _, group = family
-    judge.answer = LLMUnavailable("down")
-    _use_ocr(ScriptedOcr(NOTICE_LINES))
-    msg = _send_photo(client, a)  # 채팅 전송은 그대로 성공한다
-    assert msg["attachment"]["id"] and _items(group["id"]) == []
-
-
-def test_the_claude_judge_is_off_by_default(client, family, monkeypatch):
-    a, _, group = family
-    assert settings.photo_judge_llm is False
-
-    def boom(jpeg):
-        raise AssertionError("기본 설정에서는 외부 AI 를 부르면 안 된다")
-
-    monkeypatch.setattr(doc_ai, "classify_photo", boom)
-    _use_ocr(ScriptedOcr(NOTICE_LINES))
-    _send_photo(client, a)
-    assert len(_items(group["id"])) == 1  # 로컬 OCR 판별만으로 등록
-
-
-def test_claude_judges_every_readable_photo_without_a_daily_limit(client, family, judge):
-    a, _, group = family
-    _use_ocr(ScriptedOcr(NOTICE_LINES))
-    for _ in range(3):
-        _send_photo(client, a)
-    assert judge.calls == 3 and len(_items(group["id"])) == 3
-
-
 # ---------- "문서로 저장": 사용자가 직접 문서함에 넣는다(판별을 건너뛴다) ----------
 
 
@@ -260,7 +209,7 @@ def _save(client, headers, attachment_id):
     return client.post(f"/family-chat/photos/{attachment_id}/library", headers=headers)
 
 
-def test_saving_a_plain_photo_by_hand_registers_it_without_any_judge(client, family, judge):
+def test_saving_a_plain_photo_by_hand_registers_it_without_any_judge(client, family):
     a, b, group = family
     _use_ocr(ScriptedOcr([]))
     msg = _send_photo(client, a)
@@ -269,7 +218,6 @@ def test_saving_a_plain_photo_by_hand_registers_it_without_any_judge(client, fam
     assert r.status_code == 200 and r.json() == {"status": "queued"}, r.text
     items = _items(group["id"])
     assert [i.source_attachment_id for i in items] == [msg["attachment"]["id"]]
-    assert judge.calls == 0  # 직접 저장은 판별을 건너뛴다
     assert items[0].kind_label == "사진"  # 글자가 거의 없으면 그대로 사진 기록으로 남는다
 
 
@@ -315,27 +263,6 @@ def _jpeg_with_metadata() -> bytes:
     return out.getvalue()
 
 
-def test_the_default_ocr_is_used_when_the_server_has_no_ocr_configured(client, family, monkeypatch):
-    """운영 서버는 files.processors.ocr 가 None 이다: 판별도 기본 OCR 을 써야 하고, 안 쓰면 늘 애매함이라 자동 등록이 영영 안 된다."""
-    a, _, group = family
-    files.processors = files.Processors()  # ocr=None
-    monkeypatch.setattr(converters, "default_ocr", lambda: ScriptedOcr(NOTICE_LINES))
-    _send_photo(client, a)
-    assert len(_items(group["id"])) == 1
-
-
-def test_a_failed_judge_never_sends_the_photo_to_claude(client, family, judge):
-    a, _, group = family
-
-    class BrokenOcr:
-        def read(self, image):
-            raise RuntimeError("model missing")
-
-    _use_ocr(BrokenOcr())
-    _send_photo(client, a)
-    assert judge.calls == 0 and _items(group["id"]) == []  # 읽지 못한 사진은 외부로 나가지 않는다
-
-
 def test_the_library_original_has_no_location_or_comment_metadata(client, family):
     a, b, group = family
     _use_ocr(ScriptedOcr(NOTICE_LINES))
@@ -353,31 +280,6 @@ def test_the_library_original_has_no_location_or_comment_metadata(client, family
         )  # 촬영 위치·기기 정보가 문서함에 남지 않는다
         assert not stored.info.get("comment")
     assert msg["attachment"]["id"] == items[0].source_attachment_id
-
-
-def test_without_the_family_ai_consent_claude_never_sees_the_photo(client, family, monkeypatch):
-    a, _, group = family
-    monkeypatch.setattr(settings, "photo_judge_llm", True)  # 가족 AI 동의는 켜지 않았다
-
-    def boom(jpeg):
-        raise AssertionError("AI 동의를 켜지 않은 가족의 사진을 외부 AI 로 보내면 안 된다")
-
-    monkeypatch.setattr(doc_ai, "classify_photo", boom)
-    _use_ocr(ScriptedOcr(NOTICE_LINES))
-    _send_photo(client, a)
-    assert len(_items(group["id"])) == 1  # OCR 이 문서라고 한 사진은 로컬 판별만으로 등록
-    _use_ocr(ScriptedOcr(["큐드럼 뮤직동호회 회원을 모집합니다 문의 전화 010 3454 3193"] * 3))
-    _send_photo(client, a)
-    assert len(_items(group["id"])) == 1  # 애매한 사진은 Claude 없이는 등록하지 않는다
-
-
-def test_claude_says_document_but_the_full_read_finds_a_picture_so_it_is_dropped(
-    client, family, judge
-):
-    a, _, group = family
-    _use_ocr(ScriptedOcr(NOTICE_LINES, ["간판"]))
-    _send_photo(client, a)
-    assert judge.calls == 1 and _items(group["id"]) == []
 
 
 def test_saving_a_sensitive_photo_by_hand_registers_it_flagged_sensitive(client, family):

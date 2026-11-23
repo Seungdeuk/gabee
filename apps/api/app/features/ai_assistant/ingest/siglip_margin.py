@@ -1,10 +1,13 @@
-"""사진·문서 단계형(E) 판별의 SigLIP2 쪽: ONNX 이미지 인코더로 margin 을 구하는 점수기와 판정 규칙. 외부로 사진을 보내지 않고 torch 도 쓰지 않는다
+"""사진·문서 판별의 SigLIP2 쪽: ONNX 이미지 인코더로 margin 을 구하는 점수기와 판정 규칙. 외부로 사진을 보내지 않고 torch 도 쓰지 않는다
 (이미 의존성에 있는 `onnxruntime` CPU 로만 돈다).
 
-규칙(공개 데이터 독립 평가 `gabee-classifier-eval/public` 의 동결 설정 exp-1, 선정 방식 E. 값·문장·모델은 바꾸지 않는다):
-- OCR 이 문서(`photo_judge.DOCUMENT`)라고 해도 margin 이 `T_VETO`(1) 이하이면 unsure.
-- OCR 이 문서가 아니어도(글자 적음·애매함) margin 이 `T_RESCUE`(5) 보다 크면 document.
-- 나머지는 모두 unsure. **photo 는 만들지 않는다**(D-13). 비교는 `>`(초과)다.
+규칙(**SigLIP2 단독**, 로컬 OCR 은 쓰지 않는다. 문장·모델은 공개 데이터 독립 평가 `gabee-classifier-eval/public` 의 동결 설정 exp-1 그대로이고,
+임계값은 그 평가의 `T_RESCUE`(5) 를 재사용한다 — 새로 맞춘 값이 아니다):
+- margin 이 `T_DOCUMENT`(5) 보다 크면 document, 아니면 unsure. **photo 는 만들지 않는다**(D-13: 일반 사진 확인은 업로더가 한다). 비교는 `>`(초과)다.
+
+근거와 한계(공개 데이터 독립 Test 123장, 문서 42·일반 81, ONNX margin): margin > 5 에서 문서 39/42(재현율 93%)·일반→문서 0/81.
+놓친 3장은 글자가 적거나 평범한 문서(margin 2.14·2.89·3.21)로 unsure 가 되어 업로더가 직접 확인한다. 이전 단계형(OCR+SigLIP2)의 42/42·0 보다
+재현율이 낮다. 이 숫자는 소표본이고 **실제 한국어 문서와 실제 가족 사진으로는 평가하지 않았다**(공개 영어·일반 이미지 중심) — 초기 기준이며 운영에서 확인 필요 비율로 다시 본다.
 
 margin = max(문서 문장 6개 logit) - max(일반 문장 8개 logit), logit = exp(logit_scale)*cos + logit_bias (`google/siglip2-base-patch16-224`, sigmoid 없음).
 모델 폴더(`PHOTO_CLASSIFY_MODEL_DIR`)에는 변환 산출물 두 개가 있다(저장소에는 올리지 않는다, 변환·검증 방법은 docs/features/ai_assistant-ingest.md):
@@ -22,12 +25,9 @@ import time
 from pathlib import Path
 from typing import Protocol
 
-from .photo_judge import DOCUMENT
-
 logger = logging.getLogger(__name__)
 
-T_VETO = 1.0
-T_RESCUE = 5.0
+T_DOCUMENT = 5.0  # 평가의 T_RESCUE 값을 재사용한다(SigLIP2 단독 판정의 초기 기준)
 
 # 평가에서 쓴 14개 문장(문서 6 + 일반 8). `head.json` 의 문장과 일치해야 로드된다.
 DOC_PROMPTS = (
@@ -64,10 +64,9 @@ class MarginScorer(Protocol):
     def score(self, data: bytes) -> float: ...
 
 
-def staged_status(ocr_kind: str, margin: float) -> str:
-    """E 단계형 판정: `document` | `unsure`(photo 는 없다)."""
-    threshold = T_VETO if ocr_kind == DOCUMENT else T_RESCUE
-    return "document" if margin > threshold else "unsure"
+def photo_status(margin: float) -> str:
+    """SigLIP2 단독 판정: `document` | `unsure`(photo 는 없다)."""
+    return "document" if margin > T_DOCUMENT else "unsure"
 
 
 def margin_from_embedding(embedding, text_embeds, logit_scale: float, logit_bias: float) -> float:

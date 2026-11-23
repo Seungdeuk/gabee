@@ -6,8 +6,9 @@
   파일을 먼저 쓰고 → 메시지와 첨부를 한 번에 DB 에 저장하고 → 실패하면 파일을 지운다.
 - 보기: 그 방에 들어갈 수 있는 사람만(가족 전체방은 가족 구성원, 1:1 방은 두 사람). 아니면 사진이 있는지도 알려주지 않는다(404).
 - 사진 내용·파일 경로는 로그에 남기지 않는다. 사진 전송 자체는 AI 를 부르지 않는다. 가족 전체방 사진은 보낸 뒤 뒤에서(`shared/chat_library.py`)
-  로컬 OCR 로 문서 사진인지 판별해 문서면 가족 문서함에 읽어 넣는다. 이때 `PHOTO_JUDGE_LLM`·`INGEST_LLM_OCR` 설정이 켜져 있으면 글자가 읽히는 사진만
-  Anthropic API 로 전송된다(기본은 꺼짐, docs/adr/0015). 1:1 방 사진은 어디에도 넘기지 않는다.
+  로컬 SigLIP2(`PHOTO_CLASSIFY_SIGLIP`, 외부 전송 없음)로 문서 사진인지 판별한다. 문서로 판정돼도 **가족 AI 동의가 있을 때만** 문서함에 등록한다:
+  글자는 Claude(`INGEST_LLM_OCR`)로만 읽기 때문이다. 동의가 없으면 사진은 채팅에 남고 자동 등록은 보류된다(직접 저장은 403 `ai_consent_required`).
+  1:1 방 사진은 어디에도 넘기지 않는다.
 """
 
 import io
@@ -23,7 +24,7 @@ from PIL import Image, ImageOps
 from sqlalchemy.orm import Session
 
 from app.features.family_group.models import User
-from app.shared import chat_library
+from app.shared import ai_guard, chat_library
 from app.shared.config import settings
 from app.shared.errors import ApiError, bad_request, not_found
 from app.shared.rate_limit import FailureLimiter
@@ -339,10 +340,18 @@ def save_to_library(db: Session, user: User, group_id: str, attachment_id: str) 
         raise ApiError(
             409, "not_family_room", "가족 전체방에 올린 사진만 가족 문서함에 저장할 수 있어요"
         )
+    registered = chat_library.is_registered(db, group_id, attachment_id)
+    if not registered and not ai_guard.is_enabled(db, group_id):
+        # 사진 속 글자는 Claude 로만 읽으므로(로컬 OCR 없음) 가족 AI 동의가 없으면 사진을 보내지 않는다. 판별 상태도 바꾸지 않고 사진은 채팅에 그대로 남는다.
+        raise ApiError(
+            403,
+            "ai_consent_required",
+            "가족 AI 사용에 동의해야 사진을 문서함에 저장할 수 있어요. 마이 탭에서 동의를 켜 주세요",
+        )
     photo_check_service.mark_document(
         db, group_id, attachment_id, user.id
     )  # D-15: 가족 누구나 문서로 저장 가능. 상태를 문서(수동)로 맞춘다(자동 판별이 못 바꾼다)
-    if chat_library.is_registered(db, group_id, attachment_id):
+    if registered:
         return "already"
     chat_library.photo_requested(group_id, user.id, attachment_id, data)
     return "queued"

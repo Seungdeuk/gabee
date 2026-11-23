@@ -3,13 +3,15 @@ from urllib.parse import quote
 from fastapi import APIRouter, BackgroundTasks, Depends, File, Response, UploadFile
 from sqlalchemy.orm import Session
 
+from app.shared import ai_guard
 from app.shared.auth import current_group_id, current_user, ensure_group_member
 from app.shared.db import get_db
-from app.shared.errors import bad_request, not_found
+from app.shared.errors import ApiError, bad_request, not_found
 from app.shared.llm import agent_chat
 from app.shared.llm.schemas import AgentConfirmOut
 
 from . import files, library, memories, reminders, repository, service, sharing
+from .ingest.detect import Unsupported, detect
 from .knowledge import news_source  # noqa: F401  (import 하면 주간 뉴스의 문서함 재료 읽기가 등록된다)
 from .knowledge.router import router as knowledge_router
 from .models import Photo
@@ -161,6 +163,14 @@ def set_reminder_settings(
     return ReminderSettingsOut(enabled=reminders.set_enabled(db, user.id, body.enabled))
 
 
+def _is_image(data: bytes, filename: str) -> bool:
+    """사진이면 True(형식은 매직 바이트로 본다). 지원하지 않는 형식은 False: 받은 뒤 뒤처리가 실패로 정리한다."""
+    try:
+        return detect(data, filename)[0] == "image"
+    except Unsupported:
+        return False
+
+
 @router.post("/files", response_model=FileOut, status_code=201)
 async def upload_file(
     background: BackgroundTasks,
@@ -169,10 +179,18 @@ async def upload_file(
     group_id: str = Depends(current_group_id),
     db: Session = Depends(get_db),
 ) -> Photo:
-    """사진·PDF·PPT·엑셀·워드 등 어떤 파일이든 받는다. 바로 `received` 로 응답하고 읽기·분류·저장은 뒤에서 한다."""
+    """사진·PDF·PPT·엑셀·워드 등 어떤 파일이든 받는다. 바로 `received` 로 응답하고 읽기·분류·저장은 뒤에서 한다.
+    사진 속 글자는 Claude 로만 읽으므로(로컬 OCR 없음) 가족 AI 동의가 없으면 사진은 받지 않고 403 `ai_consent_required` 를 돌려준다(저장도 전송도 하지 않는다).
+    PDF·문서는 동의가 없어도 받는다: 외부 AI 없이 글자 층만 읽고(스캔 쪽은 읽지 못한 채 남는다) 로컬 규칙으로 가린다."""
     data = await file.read(
         service.MAX_BYTES + 1
     )  # 25MB 를 넘는 파일을 통째로 메모리에 올리지 않는다
+    if _is_image(data, file.filename or "") and not ai_guard.is_enabled(db, group_id):
+        raise ApiError(
+            403,
+            "ai_consent_required",
+            "가족 AI 사용에 동의해야 사진 속 글자를 읽을 수 있어요. 마이 탭에서 동의를 켜 주세요",
+        )
     photo = service.receive_file(
         db, group_id, user.id, file.filename or "file", file.content_type or "", data
     )

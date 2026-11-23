@@ -4,6 +4,10 @@
 - 담당: ai_assistant-ingest
 - 요구사항: docs/requirements/ai_assistant-ingest.md
 
+> **2026-11-23 변경(사용자 결정)**: 로컬 OCR(RapidOCR)을 서비스에서 제거했다. 사진 분류는 SigLIP2 ONNX 단독, 문서 속 글자는 Claude 만 읽는다.
+> 아래 "구현된 것"·"사진 전처리" 등에 적힌 OCR 서술은 **이력**이다(코드에서 `KoreanOcr`·`default_ocr` 는 사라졌고 `rapidocr` 를 import 하지 않는다).
+> 현재 구조는 "가족방 문서 사진 판별 — SigLIP2 단독" 절과 "Claude 로 외부 전송하는 갈래와 가족 AI 동의" 절을 본다.
+
 ## 구현된 것
 
 `apps/api/app/features/ai_assistant/ingest/` — `preprocess(파일 바이트, 파일 이름) → PreprocessResult`
@@ -105,34 +109,70 @@ Excel ─▶ converters.xlsx_to_markdown (금액 쉼표·날짜·병합 칸 반�
 - 이름 오타 확인: Claude 가 이름으로 본 값이 가족 이름과 **한 글자 차이**(정확히 같지는 않음)면 `[이름]` 대신 `[확인필요:<후보 user_id>]` 를 남긴다(OCR 이 틀리게 읽었을 수 있음. 글자는 저장하지 않는다). 새 DB 칸은 없고 기록 본문의 표시로 대기 상태를 나타낸다. 메인 채팅은 대기가 있으면 시스템 안내(`NAME_CHECK_NOTE`)로 사용자에게 한 번 물어보고(`list_name_checks`), 답을 `resolve_name_check` 로 반영한다: 같은 사람이면 `[가족:<id>]`(사람 필터 검색·현재 이름 표시), 아니면 `[이름]` 이며 검색 조각을 다시 만든다. 후보 id 는 그 기록에 남은 표시의 것만 받고, 답이 true/false 로 분명하지 않으면 거부한다. 표시 중에는 읽는 쪽에 `[이름 확인 필요]` 로 보인다. 앱 화면 변경 없음.
 - 시험: `ingest/tests/test_llm_ingest.py`(가짜 Claude 응답), 이름 확인 흐름은 `tests/test_family_names.py`.
 
-## 가족방 문서 사진 판별 (2026-11-09)
-- `ingest/photo_judge.py`: 사진을 긴 변 1024px 로 줄여 로컬 OCR(RapidOCR)로 읽고, 확신도 0.6 이상 줄의 글자 수·줄 수로 문서(100자·6줄 이상)/일반 사진(50자 미만)/애매함으로 가른다. 기준은 실사진 15장(문서 8, 거리·음식 7)과 무료 라이선스 사진 227장으로 정했다.
-- `shared/llm/doc_ai.classify_photo`: 글자가 읽힌 사진만 Claude(haiku, `PHOTO_JUDGE_MODEL`)에게 "문서 사진인가"를 묻는다(도구 호출 형식, 문서·사진 + 확신도). `ai_assistant/library.py` 는 `PHOTO_JUDGE_LLM=true` 일 때만 쓰고, 문서이고 확신 0.7 이상일 때만 등록한다. 결정·평가: `docs/adr/0015-family-room-photo-to-library.md`.
-- 시험: `ingest/tests/test_photo_judge.py`, `shared/llm/tests/test_photo_classify.py`, `ai_assistant/tests/test_chat_library_photos.py`.
+## 가족방 문서 사진 판별 — SigLIP2 단독 (2026-11-23, 로컬 OCR 제거)
+- **결정**: RapidOCR 로컬 OCR 모델은 서비스에서 제외한다. 사진 분류는 SigLIP2 ONNX, 문서 내용 추출은 Claude(`INGEST_LLM_OCR=true`)가 맡는다.
+- **판정 규칙**(`ingest/siglip_margin.py::photo_status`): margin(= 문서 문장 6개 logit 최댓값 − 일반 문장 8개 logit 최댓값, `google/siglip2-base-patch16-224`)이 **5 보다 크면 `document`, 아니면 `unsure`**. 모델이 점수를 못 내면 `failed`(`Siglip…`). 일반 사진을 자동으로 `photo` 로 확정하지 않는다(D-13). 임계값 5 는 공개 데이터 평가의 `T_RESCUE` 를 재사용한 **초기 기준**이며 새로 맞춘 값이 아니다. 문장·모델은 평가 동결 설정(exp-1) 그대로다.
+- **스위치**: `PHOTO_CLASSIFY_SIGLIP`(기본 꺼짐). **꺼져 있으면 판별 수단이 없어 모든 사진이 `unsure`** 이고 문서 자동 등록이 멈춘다(켜야 동작). 켜도 판별은 외부 전송이 없다. 이전의 Claude 판별 스위치 `PHOTO_JUDGE_LLM` 은 무시된다(`doc_ai.classify_photo` 와 `photo_judge.judge`(OCR 판별)는 서비스에서 부르지 않는다: 후속 정리 대상, `photo_judge.to_judge_jpeg` 는 놀이 기능이 쓰므로 남긴다).
+- **모델**: ONNX 이미지 인코더(fp32 약 372MB)를 이미 의존성에 있는 `onnxruntime` CPU 로 서버 프로세스 안에서 돌린다(torch 없음, `PHOTO_CLASSIFY_THREADS`). 모델 폴더 `PHOTO_CLASSIFY_MODEL_DIR` 에 `siglip2_vision.onnx` 와 `head.json` 이 있어야 한다(`scripts/export_siglip2_onnx.py`, 저장소에 올리지 않고 `data/models` 와 같이 이미지 빌드 때 넣는다). 없거나 깨졌거나 메모리가 모자라면 `failed` 로 두고 문서·일반으로 확정하지 않는다(로드 실패는 30초 동안 다시 읽지 않는다). 문서로 판정되면 글자가 적어도 문서함에 남긴다(`keep_photo`).
+- **정확도(공개 데이터 독립 Test 123장: 문서 42·일반 81, ONNX margin)**:
 
-## 단계형(E) 판별: OCR + SigLIP2 (스위치 `PHOTO_CLASSIFY_SIGLIP`, 기본 꺼짐)
-- 켜면 `library._judge_photo` 가 OCR 판별 뒤 `ingest/siglip_margin.py` 로 margin(= 문서 문장 6개 logit 최댓값 − 일반 문장 8개 logit 최댓값, `google/siglip2-base-patch16-224`)을 구해 단계형 규칙으로 정한다: OCR 이 문서여도 margin ≤ 1 이면 unsure, OCR 이 문서가 아니어도 margin > 5 이면 document, 나머지는 unsure. photo 는 만들지 않는다(D-13). 값·문장은 공개 데이터 평가(`gabee-classifier-eval/public`, 동결 설정 exp-1)와 같고 바꾸지 않는다.
-- 모델은 **ONNX 이미지 인코더**(비전 타워 + 풀링 헤드, fp32 약 372MB)를 이미 의존성에 있는 `onnxruntime` CPU 로 서버 프로세스 안에서 돌린다(torch 없음, 스레드 `PHOTO_CLASSIFY_THREADS`, 기본 2). 모델 폴더 `PHOTO_CLASSIFY_MODEL_DIR` 에는 `siglip2_vision.onnx` 와 문장 14개의 텍스트 임베딩·`logit_scale`·`logit_bias` 를 담은 `head.json` 이 있어야 한다. 둘 다 `scripts/export_siglip2_onnx.py` 로 같은 체크포인트(`google/siglip2-base-patch16-224`)에서 만들고, 파일은 저장소에 올리지 않는다(`data/models` 와 같이 이미지 빌드 때 넣는다, `SHA256SUMS.json` 으로 무결성 확인). 모델은 처음 사진이 올 때 한 번만 올린다.
-- 모델 폴더가 없거나 파일이 깨졌거나 메모리가 모자라거나 추론이 실패하면 failed(`Siglip…`)로 두고 문서·일반 사진으로 확정하지 않는다(로드 실패는 30초 동안 다시 읽지 않는다). 이 경로는 외부 AI 로 사진을 보내지 않는다. 문서로 판정되면 글자가 적어도 문서함에 남긴다(`keep_photo`).
-- 시험: `ingest/tests/test_siglip_margin.py`, `ai_assistant/tests/test_photo_classify_siglip.py`. 실제 모델이 있으면(`GABEE_TEST_SIGLIP_ONNX_DIR`) 합성 사진 추론 한 건도 돈다.
+| 판정 | 문서 재현 | 일반→문서 오분류 |
+|---|---|---|
+| 이전 단계형(OCR + SigLIP2) | 42/42 | 0/81 |
+| **SigLIP2 단독 margin > 5 (현재)** | **39/42 (93%)** | **0/81** |
+| (참고) margin > 2 | 42/42 | 1/81 (이 세트를 보고 고른 값이라 독립 평가가 아니다) |
 
-### 운영 전 확인 ① Cloud Run 백그라운드 판별 위험과 MVP 운영 판단
-- **구조**: 사진 판별(OCR → SigLIP2)은 업로드 응답이 나간 뒤 서버 프로세스 안 스레드(`library._executor`, 2개)에서 돈다. SigLIP2 를 붙이기 전의 OCR 판별도 같은 구조라 이 PR 이 새로 만든 위험이 아니다.
-- **위험**: Cloud Run 이 "요청 중에만 CPU 할당"(기본)이면 응답 뒤에는 CPU 가 거의 멈춰 판별이 지연되거나 끝나지 못하고, 인스턴스가 내려가면(스케일 인·배포) 진행 중이던 작업과 대기열(`_photo_pending`, 메모리)이 사라진다. 사진 바이트도 메모리에만 있다. 실제 설정은 **미확인**이다(운영에 접근하지 않았다).
-- **유실이 사진 손실로 이어지지는 않는다**: 판별 상태 표에 `pending` 으로 남고, 15분 뒤 "확인 필요"로 보이며, 업로더가 재검사(최대 3회, 2분 간격)하거나 일반 사진으로 직접 확인할 수 있다. 문서함에는 판별 결과가 `document` 일 때만 올라가므로 잘못 등록되지는 않는다(지연·미처리만 생긴다).
-- **판단(MVP)**: 스위치를 켠 채로 **수동 재검사에 의존한 운영은 가능하나, 처리 누락이 보일 수 있는 조건부 운영**이다. 사진이 오래 `pending` 이면 재검사 버튼으로 복구한다. CPU 를 계속 할당(요금·운영 변경)하거나 업로드 요청 안에서 동기 판별(응답 지연 수십 초)하는 것은 이 PR 범위 밖이며 운영 설정 확인 뒤 별도 결정한다.
-- **켜기 전 점검**: ① Cloud Run CPU 할당 방식, ② 인스턴스 메모리(2GiB 이상, 측정 최대 RSS 약 1.44GB)·vCPU(OCR 가 코어 수에 비례해 느려진다), ③ 최소 인스턴스 수, ④ 사진 판별 지연의 실측.
+  놓친 3장은 글자가 적거나 평범한 문서(margin 2.14·2.89·3.21)로 `unsure` 가 되어 업로더가 직접 확인한다. Wilson 95% 하한은 재현율 약 81%, 일반 사진 구분 약 95%다(소표본, 내 계산).
+- **검증되지 않은 한계(반드시 알아야 한다)**: ① **실제 한국어 문서**로는 평가하지 못했다(공개 영어·일반 이미지 중심). ② **실제 가족 사진**으로도 평가하지 못했다. ③ 소표본이라 임계값 5 는 초기 기준일 뿐이다 — 운영에서 "확인 필요" 비율과 업로더 수정 기록으로 다시 본다. ④ 글자가 적은 문서·영수증·메뉴판·간판 구분이 약하다.
+- 시험: `ingest/tests/test_siglip_margin.py`(규칙·점수기), `ai_assistant/tests/test_photo_classify_siglip.py`(업로드 → 판별 → 상태 → 문서함, 동의, 대기열 상한), `ingest/tests/test_external_consent.py`(동의 없는 갈래 막기). 실제 모델이 있으면(`GABEE_TEST_SIGLIP_ONNX_DIR`) 합성 사진 추론 한 건도 돈다.
 
-### 운영 전 확인 ② 모델 파일 배포 위치와 SHA-256 검증 절차 (운영 배포는 하지 않는다)
-- **산출물**: `siglip2_vision.onnx`(371,816,797 B, sha256 `52e01513b5b98b80056f10bcce72e9568e050070e296ea6d557afb5b06d61949`), `head.json`(241,529 B, sha256 `2a177cbe0fdd815447bcf2e089dbc96dbf906242e0d07d4c7831f90bd7bd8e87`). 같은 체크포인트에서 `scripts/export_siglip2_onnx.py` 로 만들면 `SHA256SUMS.json` 이 함께 나온다. 저장소(Git)에는 올리지 않는다.
-- **배포 위치(제안, 둘 중 하나는 운영 담당 결정)**: (A) 이미지 빌드 때 `data/models/siglip2-onnx/` 로 `COPY`(기존 `data/models/<폴더>` 방식, 가장 단순, 이미지 +372MB) 후 `PHOTO_CLASSIFY_MODEL_DIR=/app/data/models/siglip2-onnx`. (B) Cloud Storage 에 두고 시작 때 내려받기(이미지는 작지만 시작 시간·권한 설정이 늘고 컨테이너 로컬 디스크는 메모리로 센다).
-- **검증 절차**: 배포 파이프라인에서 `sha256sum -c`(또는 `python -c "import hashlib…"`)로 두 파일을 위 값과 비교한다 → 일치하지 않으면 배포를 중단한다. 앱은 로드할 때 `head.json` 의 문장 14개·형태(14×768)·유한성만 확인하고(불일치면 failed `SiglipHeadMismatch`), **파일 해시는 앱이 매번 확인하지 않는다**(372MB 읽기 비용). 해시 확인은 배포 단계의 책임이다. 모델 폴더는 운영자만 쓸 수 있는 경로에 두고 사용자 업로드 경로와 섞지 않는다.
-- **기본 상태**: `PHOTO_CLASSIFY_SIGLIP=false`, `PHOTO_CLASSIFY_MODEL_DIR` 빈 값. 켜기 전에 모델 폴더가 없어도 서버는 정상 시작하고, 켠 뒤 파일이 없으면 판별만 failed 가 된다.
+### 로컬 OCR 이 쓰이던 곳 조사와 `INGEST_LLM_OCR` 필수 여부
+| 쓰이던 곳 | 이전 | 지금 |
+|---|---|---|
+| 사진 판별 `library._judge_photo` | OCR 글자 수·줄 수 + SigLIP2 | **SigLIP2 단독**(OCR 호출 제거) |
+| 사진 읽기 `service._from_image` | `INGEST_LLM_OCR=false` 면 로컬 OCR | Claude 만. `INGEST_LLM_OCR=false` 이고 읽기 구성 요소(`files.processors.ocr`, 시험·개발용)도 없으면 `failed`(`ocr_unavailable`) |
+| 스캔 PDF 쪽 `service._read_pdf` | Claude 를 끄면 로컬 OCR | 동의 + `INGEST_LLM_OCR` 면 Claude, 아니면 글자 층만 쓰고 스캔 쪽은 읽지 못한 채 노트로 알린다 |
+| `converters.KoreanOcr`·`default_ocr` | RapidOCR 첫 호출 때 모델 내려받기(약 13MB) | **삭제**. 코드는 `rapidocr` 를 import 하지 않는다(import 를 막아도 시험이 돈다) |
 
-### 운영 전 확인 ③ 개인정보 검토가 필요한 항목 (정책 결정은 하지 않았다)
-1. **Claude 로 나가는 범위**: 문서로 판정된 사진은 문서함 등록 단계(`files.process_file` → `ingest_file`)에서 `INGEST_LLM_OCR`(기본 True)이면 사진 전체가 Claude 로 전송되어 읽히고, `INGEST_LLM_MASK`(기본 True)이면 읽은 글이 다시 Claude 로 전송되어 가려진다. 이 등록 경로에는 `_family_allows_ai`(가족 AI 동의) 확인이 **없다**(판별 단계의 `PHOTO_JUDGE_LLM` 경로에만 있다). 기존에도 OCR 이 문서로 본 사진은 같은 경로를 탔다(이 PR 이 만든 경로가 아니다).
-2. **이 PR 이 바꾸는 것**: 스위치를 켜면 ① 글자가 적은 문서(OCR 은 사진/애매)도 margin > 5 면 `document` 가 되어 Claude 전송 대상이 **늘어난다**, ② OCR 이 문서여도 margin ≤ 1(간판·메뉴판 등)이면 `unsure` 가 되어 전송 대상이 **줄어든다**. 순증감은 평가 데이터에서만 추정(재현율 상승, 일반→문서 오인 감소)이며 실제 가족 사진·한국어 문서에서는 측정하지 못했다. 켜진 동안 SigLIP2 판별 자체는 외부 전송이 없다.
-3. **검토 요청 항목**: (a) 문서함 자동 등록의 외부 전송에 가족 AI 동의 확인이 필요한가, (b) 글자 적은 문서 구제로 늘어나는 전송을 허용할 것인가(원하지 않으면 rescue 만 끄는 별도 PR 필요), (c) 가족 동의 문구·개인정보처리방침의 기재 범위, (d) `keep_photo` 로 글자 적은 문서도 문서함에 남는 점. 결정 전에는 운영에서 스위치를 켜지 않는다.
+**`INGEST_LLM_OCR=true` 는 서비스에서 필수**다(사진 속 글자를 읽을 수단이 Claude 뿐). 검증: 켠 채 동의 있는 가족은 Claude 읽기, 동의 없는 가족은 보내지 않고 `consent_required`, 끈 채 읽기 구성 요소가 없으면 `ocr_unavailable`(`test_external_consent.py`). `rapidocr` 의존성은 `pyproject.toml` 에서 제거했다(전체 회귀 확인 뒤 별도 커밋).
+
+### Claude 로 외부 전송하는 갈래와 가족 AI 동의 (2026-11-23 전수 점검)
+원칙: **외부로 보낸 뒤 마스킹하는 것으로는 동의 문제가 풀리지 않는다.** 그래서 동의(`ai_guard.is_enabled`)가 없으면 보내기 **전에** 막는다. `files._process_once` 가 시도마다 동의를 읽어 `ingest_file(external=…)` 로 내려보내고, False 면 아래 갈래를 쓰지 않는다.
+
+| 경로 | Claude 로 가는 것 | 동의 없을 때 |
+|---|---|---|
+| 가족방 사진 자동 등록 (`library.register_chat_photo`) | 문서로 판정된 사진 전체(글자 읽기) | 판별은 로컬로 하되 `document` 를 `unsure` 로 낮춘다. **사진은 채팅에 남고 문서함 자동 등록은 보류**(숨기지 않는다, 업로더가 확인). |
+| 사진 "문서로 저장" (`photo_service.save_to_library`) | 사진 전체 | **403 `ai_consent_required`**. 판별 상태도 바꾸지 않고 보내지 않는다. 이미 등록된 사진은 `already`. |
+| 직접 올리기 `/ai-assistant/files` — 사진 | 사진 전체 | **403 `ai_consent_required`**(저장도 전송도 하지 않는다). |
+| 직접 올리기 — PDF·문서·글 파일, 채팅 문서 자동 등록 | PDF 쪽 읽기, 글 가리기(`llm_ingest.mask`) | 받는다. 글자 층·텍스트만 읽고 로컬 규칙으로 가린다. 스캔 쪽은 읽지 못한 채 노트로 알린다. |
+| `process_file` 안의 나머지 갈래 | PPT 그림 설명, 분류(Jev), 챙길 일 뽑기(`reminders.plan`) | 모두 건너뛴다(분류는 규칙·분류기로 못 정하면 사람 확인). |
+| 메인 채팅·knowledge ask, 주간 뉴스, 놀이 사진 추천 | (기존) | 기존 동의 검사 유지, 이번에 바뀐 것 없음 |
+
+- **행동 변화**: 동의 없는 가족도 지금까지는 문서·글 가리기가 Claude 로 갔다. 이제는 로컬 규칙으로 가려 저장한다(더 보수적). 사진은 동의가 있어야 문서함에 들어간다.
+- **앱 영향**: 서버가 403 `ai_consent_required` 를 돌려주는 경로가 둘 늘었다. 앱에서 이 코드를 안내 문구("가족 AI 사용에 동의해 주세요")로 보여 주는 변경은 이번 범위가 아니다(서버 메시지가 그대로 노출된다).
+- **남은 정책 결정**: 가족 동의 문구·개인정보처리방침의 기재 범위(사진이 Claude 로 전송되어 읽힌다는 점), 동의 없는 가족에게 문서 사진을 어떻게 안내할지.
+
+### 운영 전 확인 ① Cloud Run 백그라운드 작업과 MVP 운영 판단
+- **구조**: 판별(SigLIP2)은 업로드 응답 뒤 서버 프로세스 안 스레드(`library._executor`, 2개)에서 돈다. OCR 이 빠져 사진 한 장 판별이 약 0.3~0.5초로 짧아졌지만, **문서 등록(Claude 읽기, 수 초~수 분)은 여전히 응답 뒤 작업**이다.
+- **위험**: Cloud Run 이 "요청 중에만 CPU 할당"이면 응답 뒤에는 CPU 가 거의 멈춘다. 로컬 Docker 시험은 이 문제를 재현하지 못하므로 **해결됐다고 볼 수 없다**. 인스턴스가 내려가면(스케일 인·배포) 진행 중 작업과 대기열(`_photo_pending`)이 사라진다. 판별 상태 표의 `pending` 이 15분 뒤 "확인 필요"로 보이고 재검사(최대 3회)로 복구된다.
+- **선택지**:
+
+| 선택지 | 비용 | 구현량 | 작업 유실 위험 |
+|---|---|---|---|
+| A. CPU 항상 할당(최소 인스턴스 1과 함께) | 상시 CPU 과금으로 증가(콘솔 계산기로 확인) | 0줄(운영 설정) | 스케일인·배포·충돌 때만 |
+| B. 응답 전에 동기 처리 | 증가 없음 | 중간 | 없음. 단 문서 등록이 수 초~수 분이라 응답 지연·타임아웃으로 부적합 |
+| C. Cloud Tasks·Jobs + 원본 저장소 | 소액 + 저장소 | 큼(큐·GCS·상태 관리, 새 서비스 금지 조건과 충돌) | 가장 낮음 |
+| D. 현행 + 수동 재검사 | 0 | 0 | 높음(요청이 올 때만 진행, 멈춘 사진은 15분 뒤 복구) |
+
+  **권고**: MVP 는 A. A 를 못 쓰면 D 로 운영하되 "사진 분류는 앱을 열어 둔 동안 진행된다"고 안내한다. C 는 사용량이 늘 때 별도 설계. 운영 설정 변경은 이 작업에서 하지 않았다.
+
+### 운영 전 확인 ② 모델 파일 배포와 SHA-256, NER 모델 확인 (운영 배포는 하지 않는다)
+- **SigLIP2 산출물**: `siglip2_vision.onnx`(371,816,797 B, sha256 `52e01513b5b98b80056f10bcce72e9568e050070e296ea6d557afb5b06d61949`), `head.json`(241,529 B, sha256 `2a177cbe0fdd815447bcf2e089dbc96dbf906242e0d07d4c7831f90bd7bd8e87`). 이미지 빌드 때 `data/models/siglip2-onnx/` 로 `COPY` 하고 컨테이너 경로는 `/srv/data/models/siglip2-onnx`(작업 폴더가 `/srv`)다. 배포 파이프라인에서 `sha256sum -c`(모델 폴더의 `SHA256SUMS.txt`)로 확인하고 다르면 배포를 중단한다. 앱은 파일 해시를 매번 확인하지 않는다(372MB 읽기 비용).
+- **운영 NER 모델 확인(비밀값을 출력하지 않는다)**: ① 배포 리비전의 이미지 주소만 조회한다(`gcloud run revisions describe <리비전> --format="value(spec.containers[0].image)"` — yaml 전체 출력은 환경변수가 섞이므로 쓰지 않는다). ② 그 이미지로 `docker run --rm --entrypoint sh <이미지> -c "sha256sum /srv/data/models/ner-koelectra-small-v2b/model.onnx; head -c 600 /srv/data/models/ner-koelectra-small-v2b/model_card.json"`. ③ 해시를 후보와 대조한다: `46210943c45f01b6…`(KLUE 10% 학습, 2026-10-27), `901642391c50f129…`(AI Hub 10% 학습, 2026-11-03). 이미지를 받을 권한이 없으면 이미지를 만든 PC 의 `data/models/ner…` 해시를 확인한다. 이 작업에서는 운영에 접근하지 못해 일치 여부를 **확인하지 못했다**(로컬 이미지는 `46210943…`).
+- **기본 상태**: `PHOTO_CLASSIFY_SIGLIP=false`, `PHOTO_CLASSIFY_MODEL_DIR` 빈 값. 켜기 전에 모델 폴더가 없어도 서버는 정상 시작한다.
+
+### 대기열 상한 (사진 바이트가 메모리에 있다)
+- 가족당 20장(`PHOTO_QUEUE_LIMIT`)에 더해 **인스턴스 전체 40장·96MB**(`PHOTO_QUEUE_INSTANCE_LIMIT`·`_BYTES`, 사진 한 장 최대 8MB)를 넘으면 이번 사진은 건너뛴다(`pending` 으로 남아 15분 뒤 확인 필요·재검사로 복구). 직접 누른 "문서로 저장"은 버리지 않는다. 숫자는 시험으로 정했고 운영 실측으로 조정한다.
 
 ## 문서 속 그림 설명 (2026-11-19)
 - PDF: `doc_ai.read_pdf` 가 쪽마다 글을 옮기면서 그림·도표·사진이 있으면 `[그림: …]` 블록(1~3문장, 보이는 글자·값만, 추정 금지)을 붙인다(`FIGURE_RULE`). 사진 OCR(`OCR_SYSTEM`)은 그대로다. `INGEST_LLM_OCR` 이 꺼지면 둘 다 동작하지 않는다.

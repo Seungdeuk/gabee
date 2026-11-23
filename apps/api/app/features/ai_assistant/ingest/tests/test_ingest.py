@@ -1,16 +1,13 @@
 """원본 전처리 테스트. 진짜 OCR 모델은 쓰지 않는다(CI 에 모델·GPU 없음) — 가짜 OCR 을 넣는다."""
 
 import io
-import sys
-import threading
-import types
 import zipfile
 
 import pytest
 from PIL import Image
 
 from app.features.ai_assistant.ingest import converters
-from app.features.ai_assistant.ingest.converters import KoreanOcr, OcrLine, markdown_blocks
+from app.features.ai_assistant.ingest.converters import OcrLine, markdown_blocks
 from app.features.ai_assistant.ingest.detect import Unsupported, detect
 from app.features.ai_assistant.ingest.service import MAX_BYTES, preprocess
 
@@ -211,38 +208,6 @@ def test_image_low_confidence_is_partial_and_no_text_is_ok():
     empty = preprocess(png(), "sea.png", ocr=FakeOcr())
     assert empty.quality.status == "ok" and empty.content.text == ""
     assert "글자가 없어요" in empty.quality.warnings[0]
-
-
-def test_group_lines_joins_boxes_on_same_row():
-    boxes = [
-        [[100, 10], [150, 10], [150, 30], [100, 30]],
-        [[10, 12], [60, 12], [60, 32], [10, 32]],
-        [[10, 60], [60, 60], [60, 80], [10, 80]],
-    ]
-    lines = converters.group_lines(boxes, ["12,500", "카드결제", "합계"], [0.9, 0.8, 0.7])
-    assert [ln.text for ln in lines] == ["카드결제 12,500", "합계"]
-
-
-def test_ocr_first_read_without_warmup_does_not_deadlock(monkeypatch):
-    class Engine:
-        def __init__(self, params=None):
-            pass
-
-        def __call__(self, arr, use_cls=True):
-            return types.SimpleNamespace(boxes=[], txts=[], scores=[])
-
-    fake = types.SimpleNamespace(
-        RapidOCR=Engine,
-        LangRec=types.SimpleNamespace(KOREAN="ko"),
-        OCRVersion=types.SimpleNamespace(PPOCRV5="v5"),
-        ModelType=types.SimpleNamespace(MOBILE="m"),
-    )
-    monkeypatch.setitem(sys.modules, "rapidocr", fake)
-    done = []
-    t = threading.Thread(target=lambda: done.append(KoreanOcr().read(Image.new("L", (8, 8)))))
-    t.start()
-    t.join(5)
-    assert done == [[]]
 
 
 # ---------- 문서 ----------
@@ -687,56 +652,3 @@ def test_a_name_label_at_the_end_of_a_line_does_not_mask_the_next_line():
     text = "가게 이름\n합계 1,000원\n성명 홍길동\n"
     out = mask_text(text, "none")
     assert "합계 1,000원" in out and "홍**" in out  # 같은 줄의 이름만 가린다
-
-
-class _Res:
-    def __init__(self, texts, scores):
-        self.txts = texts
-        self.scores = scores
-        self.boxes = [
-            [[0, 10 * i], [50, 10 * i], [50, 10 * i + 8], [0, 10 * i + 8]]
-            for i in range(len(texts))
-        ]
-
-
-class _FakeEngine:
-    """방향 확인 없이 읽은 결과가 낮을 때 어떤 재시도를 하는지 보려는 가짜 엔진."""
-
-    def __init__(self, plain, with_cls, rotated):
-        self.plain, self.with_cls, self.rotated = plain, with_cls, rotated
-        self.calls = []
-
-    def __call__(self, arr, use_cls=True):
-        flipped = bool(
-            arr[0, 0, 0] == 7
-        )  # 180° 돌린 이미지는 왼쪽 위 칸 값이 7(아래 이미지 구성 참고)
-        self.calls.append(("rot" if flipped else "plain", use_cls))
-        if flipped:
-            return self.rotated
-        return self.with_cls if use_cls else self.plain
-
-
-def _read_with(engine):
-    ocr = KoreanOcr()
-    ocr._engine = engine
-    img = Image.new("RGB", (20, 20), (0, 0, 0))
-    img.putpixel((19, 19), (7, 0, 0))  # 180° 돌리면 왼쪽 위로 온다
-    return ocr.read(img)
-
-
-def test_ocr_reads_once_without_direction_check_when_confident():
-    good = _Res(["합계 34,950원", "카드결제"], [0.96, 0.93])
-    engine = _FakeEngine(good, _Res(["x"], [0.5]), _Res(["y"], [0.5]))
-    assert [ln.text for ln in _read_with(engine)] == ["합계 34,950원", "카드결제"]
-    assert engine.calls == [("plain", False)]  # 방향 확인을 끈 채 한 번만 읽는다
-
-
-def test_ocr_retries_with_direction_check_or_a_half_turn_when_unsure():
-    weak = _Res(["ㅎ"], [0.4])
-    flipped_ok = _Res(["영수증", "합계 9,900원"], [0.95, 0.9])
-    engine = _FakeEngine(weak, _Res(["ㅎ"], [0.45]), flipped_ok)
-    assert [ln.text for ln in _read_with(engine)] == [
-        "영수증",
-        "합계 9,900원",
-    ]  # 뒤집힌 사진은 돌려서 읽은 쪽
-    assert ("plain", True) in engine.calls and ("rot", False) in engine.calls

@@ -1,4 +1,4 @@
-"""자동 판별 결과가 사진 판별 상태 표에 어떻게 적히는가(T05-b0-1, D-13): 문서 → document, 글자가 안 읽히는 사진·애매·Claude 의 "일반 사진" 답 → unsure
+"""자동 판별 결과가 사진 판별 상태 표에 어떻게 적히는가(T05-b0-1, D-13): SigLIP2 margin > 5 → document, 그 밖(일반·애매) → unsure
 (**어떤 자동 판정도 photo 가 되지 않는다**), 실패 → failed, 못 적거나 대기열이 가득 차면 pending 그대로(타임라인에 안 나온다)."""
 
 import io
@@ -8,6 +8,7 @@ from PIL import Image
 from sqlalchemy import select
 
 from app.features.ai_assistant import files, library
+from app.features.ai_assistant.ingest import siglip_margin
 from app.features.ai_assistant.ingest.converters import OcrLine
 from app.features.ai_assistant.knowledge.models import KnowledgeItem
 from app.features.family_chat import file_service, photo_service
@@ -17,7 +18,6 @@ from app.shared import chat_library
 from app.shared.config import settings
 from app.shared.db import SessionLocal
 from app.shared.llm import doc_ai
-from app.shared.llm.transport import LLMUnavailable
 from tests.helpers import allow_ai, join_family, signup  # noqa: F401  (family 픽스처가 쓴다)
 
 NOTICE_LINES = [
@@ -50,13 +50,52 @@ def _isolated(monkeypatch, tmp_path):
     monkeypatch.setattr(library, "_submit", lambda fn, *args: fn(*args))
     library._photo_pending.clear()
     library._photo_inflight.clear()
+    monkeypatch.setattr(library, "_photo_bytes", 0)
+    monkeypatch.setattr(
+        settings, "photo_classify_siglip", True
+    )  # 판별은 SigLIP2 단독이다(로컬 OCR 없음)
+
+    def no_claude(jpeg):
+        raise AssertionError("사진 판별에 외부 AI 로 사진을 보내면 안 된다")
+
+    monkeypatch.setattr(doc_ai, "classify_photo", no_claude)
     old = files.processors
     yield
     files.processors = old
+    siglip_margin.set_scorer(None)
 
 
-def _use_ocr(ocr):
+class _FixedMargin:
+    """판별을 맡은 SigLIP2 점수기 대역: 늘 같은 margin 을 돌려준다."""
+
+    def __init__(self, margin):
+        self.margin = margin
+
+    def score(self, data):
+        return self.margin
+
+
+def _margin_for(ocr) -> float:
+    """OCR 대역의 첫 줄 묶음으로 이 시험이 뜻한 판별을 정한다: 6줄 이상이면 문서(8.0), 글자가 있어도 적으면 애매(2.0), 없으면 일반 사진(-4.0).
+    판별은 이제 OCR 이 아니라 SigLIP2 라서, 이 묶음은 margin 을 정하는 데만 쓰이고 읽기 단계는 둘째 묶음(없으면 같은 묶음)부터 읽는다."""
+    first = ocr.texts[0] if getattr(ocr, "texts", None) else []
+    if len(first) >= 6:
+        return 8.0
+    return 2.0 if first else -4.0
+
+
+def _use_ocr(ocr, margin=None):
+    siglip_margin.set_scorer(_FixedMargin(_margin_for(ocr) if margin is None else margin))
+    if getattr(ocr, "texts", None) and len(ocr.texts) > 1:
+        ocr.calls = 1
     files.processors = files.Processors(ocr=ocr)
+
+
+@pytest.fixture
+def family(client, family, monkeypatch):
+    """문서 사진은 Claude 로만 읽으므로(로컬 OCR 없음) 자동 등록·직접 저장에는 가족 AI 동의가 필요하다: 이 모듈의 가족은 동의한 상태로 둔다."""
+    allow_ai(client, family[0], monkeypatch)
+    return family
 
 
 def _send_photo(client, headers) -> str:
@@ -79,25 +118,6 @@ def _check(attachment_id: str) -> ChatPhotoCheck:
 def _items(group_id):
     with SessionLocal() as db:
         return list(db.scalars(select(KnowledgeItem).where(KnowledgeItem.group_id == group_id)))
-
-
-@pytest.fixture
-def judge(client, family, monkeypatch):
-    monkeypatch.setattr(settings, "photo_judge_llm", True)
-    allow_ai(client, family[0], monkeypatch)
-
-    class Judge:
-        calls = 0
-        answer = doc_ai.PhotoVerdict("document", 0.93, "x", 1700, 120)
-
-    def fake(jpeg):
-        Judge.calls += 1
-        if isinstance(Judge.answer, Exception):
-            raise Judge.answer
-        return Judge.answer
-
-    monkeypatch.setattr(doc_ai, "classify_photo", fake)
-    return Judge
 
 
 def test_a_document_photo_is_recorded_as_document_by_auto(client, family):
@@ -125,50 +145,18 @@ def test_an_unsure_ocr_photo_is_unsure(client, family):
     assert _check(_send_photo(client, a)).status == "unsure"
 
 
-def test_claude_saying_general_photo_is_still_only_unsure(client, family, judge):
+def test_a_scorer_failure_is_failed_with_the_error_kind_only(client, family):
     a, _, group = family
-    judge.answer = doc_ai.PhotoVerdict("photo", 1.0, "풍경", 1700, 120)
     _use_ocr(ScriptedOcr(NOTICE_LINES))
-    att = _send_photo(client, a)
-    assert _check(att).status == "unsure" and _items(group["id"]) == []
-    with SessionLocal() as db:
-        assert checks.confirmed_photo_ids(db, group["id"], [att]) == set()
 
+    class Broken:
+        def score(self, data):
+            raise siglip_margin.MarginError("LoadFail")
 
-def test_a_low_confidence_document_answer_is_unsure(client, family, judge):
-    a, _, _ = family
-    judge.answer = doc_ai.PhotoVerdict("document", 0.5, "x", 1700, 120)
-    _use_ocr(ScriptedOcr(NOTICE_LINES))
-    assert _check(_send_photo(client, a)).status == "unsure"
-
-
-def test_a_claude_confirmed_document_is_document(client, family, judge):
-    a, _, _ = family
-    _use_ocr(ScriptedOcr(NOTICE_LINES))
-    assert _check(_send_photo(client, a)).status == "document"
-
-
-def test_a_claude_failure_is_failed_with_the_error_kind_only(client, family, judge):
-    a, _, _ = family
-    judge.answer = LLMUnavailable("down: 비밀 내용이 섞인 메시지")
-    _use_ocr(ScriptedOcr(NOTICE_LINES))
+    siglip_margin.set_scorer(Broken())  # 모델을 못 올렸다: 문서·일반으로 확정하지 않는다
     row = _check(_send_photo(client, a))
-    assert (row.status, row.last_error) == (
-        "failed",
-        "LLMUnavailable",
-    )  # 종류 이름만, 메시지·내용은 저장하지 않는다
-
-
-def test_an_ocr_failure_is_failed(client, family):
-    a, _, _ = family
-
-    class BrokenOcr:
-        def read(self, image):
-            raise RuntimeError("model missing")
-
-    _use_ocr(BrokenOcr())
-    row = _check(_send_photo(client, a))
-    assert (row.status, row.last_error) == ("failed", "OcrFailed")
+    assert (row.status, row.last_error) == ("failed", "SiglipLoadFail")  # 종류 이름만 저장한다
+    assert _items(group["id"]) == []
 
 
 def test_if_recording_fails_the_row_stays_pending_and_the_photo_stays_hidden(
