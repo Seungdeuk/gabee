@@ -5,7 +5,8 @@
 처리 목적은 서버 코드가 정하며 요청 값으로 바꿀 수 없다. Claude·Jev 로 가는 모든 함수를 호출 횟수를 세는 대역으로 바꿔 실제 업로드 경로로 확인한다(실제 API 호출 없음).
 각 시험은 짝이 되는 대조군을 둬서 호출이 0 인 것이 그 단계에 닿지 않아서가 아님을 보인다. 합성 데이터만 쓴다.
 
-마지막의 `test_*_is_not_reprotected_*` 는 **아직 고치지 않은 한계**를 기록하는 xfail(strict)이다."""
+동의 없는 채팅 문서·사진은 **자동 등록을 보류**한다(2026-11-23 결정 (a)): 채팅 원본 첨부는 그대로 두고 외부 AI 도, 로컬 가리기만 거친 등록도 하지 않는다.
+이미 저장돼 있던(동의 없이 로컬로만 가려진) 채팅 문서는 동의가 켜진 시각 이전 기록이라 외부 AI 검색·조회에서 빼고, 그 외 기록은 그대로 검색한다(맨 아래 시험)."""
 
 import ast
 import io
@@ -313,23 +314,27 @@ def test_main_ai_ordinary_documents_keep_their_existing_processing(
 # ======================= 가족 소통 채팅방: 동의가 있을 때만 외부로 =======================
 
 
-def test_family_chat_documents_without_consent_send_nothing(client, family, claude, purposes):
+def test_family_chat_documents_without_consent_are_held_and_send_nothing(
+    client, family, claude, purposes
+):
+    """동의가 없으면 채팅 원본 첨부(메시지)는 남지만 AI 문서함 등록은 보류한다: 외부 호출도, 로컬 가리기만 거친 등록도 없다."""
     a, _, group = family
     _consent(client, a, False)
-    _chat_file(
-        client,
-        a,
-        "n.pdf",
-        pdf(["Hello family notice about the school trip next week", ""]),
-        "application/pdf",
-    )
-    _chat_file(client, a, "t.pptx", pptx_with_picture(), PPTX)
-    _chat_file(client, a, "a.txt", PLAIN_TEXT.encode(), "text/plain")
-    assert len(_items(group["id"])) == 3  # 받아서 로컬로 처리·등록한다
-    assert claude.total() == 0, (
-        claude.calls
-    )  # 읽기·가리기·그림 설명·분류·챙길 일 어느 것도 나가지 않는다
-    assert purposes == [files.Purpose.FAMILY_CHAT_DOCUMENT] * 3
+    sent = [
+        _chat_file(
+            client,
+            a,
+            "n.pdf",
+            pdf(["Hello family notice about the school trip next week", ""]),
+            "application/pdf",
+        ),
+        _chat_file(client, a, "t.pptx", pptx_with_picture(), PPTX),
+        _chat_file(client, a, "a.txt", PLAIN_TEXT.encode(), "text/plain"),
+    ]
+    assert all(m["id"] for m in sent)  # 채팅 메시지·원본 첨부는 그대로 보낸다
+    assert _items(group["id"]) == []  # AI 문서함·지식베이스에 등록하지 않는다
+    assert purposes == []  # 처리(process_file)에 들어가지도 않는다
+    assert claude.total() == 0, claude.calls
 
 
 def test_family_chat_documents_with_consent_do_reach_claude(client, family, claude):
@@ -440,9 +445,9 @@ def test_consent_revoked_while_a_chat_photo_is_being_read_blocks_the_remaining_e
         "jev": 0,
         "reminders": 0,
     }, claude.calls
-    assert att in [
+    assert att not in [
         i.source_attachment_id for i in _items(group["id"])
-    ]  # 로컬 규칙으로 가려 저장한다(실패시키지 않는다)
+    ]  # 로컬 규칙으로만 가린 글은 등록하지 않는다(처리를 멈춘다)
 
 
 def test_consent_revoked_while_a_chat_pdf_is_being_read_blocks_the_remaining_external_steps(
@@ -465,7 +470,7 @@ def test_consent_revoked_while_a_chat_pdf_is_being_read_blocks_the_remaining_ext
         "jev": 0,
         "reminders": 0,
     }, claude.calls
-    assert len(_items(group["id"])) == 1
+    assert _items(group["id"]) == []  # 로컬로만 가린 글은 등록하지 않는다(처리를 멈춘다)
 
 
 # ---------- 주입된 Jev ----------
@@ -490,6 +495,20 @@ def test_an_injected_jev_is_not_called_for_family_chat_without_consent_but_is_wi
     assert calls  # 대조군: 동의가 있으면 부른다
 
 
+def test_jev_policy_main_ai_direct_upload_allows_it_and_family_chat_without_consent_never_calls_it(
+    client, family, claude
+):
+    """Jev 정책을 명시적으로 나눈다(알려진 결함 표시가 아니라 정상 시험): 메인 AI 직접 업로드는 기존 정책대로 동의 없이도 Jev 를 부르고,
+    가족 채팅방 자동 처리는 동의가 없으면 0회다."""
+    a, _, _ = family
+    _consent(client, a, False)
+    _main_upload(client, a, "m.txt", PLAIN_TEXT.encode(), "text/plain")
+    assert claude.calls["jev"] >= 1  # 메인 AI: 허용(기존 정책)
+    claude.reset()
+    _chat_file(client, a, "c.txt", (PLAIN_TEXT + " chat").encode(), "text/plain")
+    assert claude.calls["jev"] == 0 and claude.total() == 0  # 채팅방: 동의 없으면 0회
+
+
 # ======================= 처리 목적 변조·오용 =======================
 
 
@@ -511,12 +530,14 @@ def test_each_entry_point_passes_its_own_server_decided_purpose(client, family, 
     assert att
 
 
+@pytest.mark.parametrize("family_consents", [False, True])
 def test_client_supplied_fields_cannot_change_the_purpose_or_skip_the_consent_check(
-    client, family, claude, purposes
+    client, family, claude, purposes, family_consents
 ):
-    """요청 본문·쿼리·헤더로 `purpose`·`external` 을 보내도 서버는 쓰지 않는다: 가족 채팅 경로는 동의가 없으면 외부로 보내지 않는다."""
+    """요청 본문·쿼리·헤더로 `purpose`·`external` 을 보내도 서버는 쓰지 않는다: 가족 채팅 경로는 동의가 없으면 외부로 보내지 않고 등록도 보류하며,
+    동의가 있으면 항상 채팅 목적으로 처리된다(메인 AI 목적으로 바뀌지 않는다)."""
     a, _, group = family
-    _consent(client, a, False)
+    _consent(client, a, family_consents)
     forged = {"purpose": "main_ai_direct_upload", "external": "true", "recheck": "false"}
     headers = {**a, "X-Process-Purpose": "main_ai_direct_upload", "X-External": "true"}
     r = client.post(
@@ -538,11 +559,14 @@ def test_client_supplied_fields_cannot_change_the_purpose_or_skip_the_consent_ch
         headers=headers,
     )
     assert r.status_code == 201, r.text
-    assert claude.total() == 0, claude.calls  # 외부 전송 0회
-    assert purposes == [
-        files.Purpose.FAMILY_CHAT_DOCUMENT
-    ]  # 문서는 가족 채팅 목적으로 처리됐다(사진은 보류라 처리 안 함)
-    assert len(_items(group["id"])) == 1  # 글 파일만 로컬로 등록, 동의 없는 사진은 보류
+    if family_consents:
+        assert purposes == [files.Purpose.FAMILY_CHAT_DOCUMENT] * 2  # 위조 값과 무관하게 채팅 목적
+        assert (
+            len(_items(group["id"])) == 2 and claude.total() > 0
+        )  # 대조군: 동의가 있으면 처리된다
+    else:
+        assert claude.total() == 0, claude.calls  # 외부 전송 0회
+        assert purposes == [] and _items(group["id"]) == []  # 문서·사진 모두 보류
 
 
 def test_a_forged_purpose_on_the_main_ai_route_is_ignored_too(client, family, claude, purposes):
@@ -622,68 +646,160 @@ def test_the_main_ai_purpose_is_only_used_by_the_main_ai_upload_route():
     assert missing == [], missing
 
 
-# ======================= 조회 때 재보호 (알려진 한계) =======================
+# ======================= 동의 없이 저장된 기록의 외부 AI 재노출 차단 =======================
 
 LOCAL_DOC = "가족 모임 안내\n일시 12월 3일 오후 6시\n장소 서울특별시 강남구 테헤란로 152\n연락처 이영희 010-9999-8888\n참석 여부를 알려 주세요"
+SAFE_DOC = "학교 알림장\n준비물 초록 공책과 파란 필통\n내일 아침까지 가져오세요"
 
 
-def _stored_without_consent(client, a, group, claude) -> KnowledgeItem:
-    """동의 없는 가족이 채팅방에 올린 문서: 로컬 규칙으로만 가려 저장된다."""
-    _consent(client, a, False)
-    _chat_file(client, a, "모임.txt", LOCAL_DOC.encode(), "text/plain")
-    assert claude.total() == 0  # 동의가 없어 외부로 나가지 않았다
-    items = _items(group["id"])
-    assert len(items) == 1
-    return items[0]
+def _ingest_item(group_id, user_id, *, title, body, attachment_id=None):
+    """지식베이스에 기록을 직접 넣는다(과거에 동의 없이 로컬 규칙으로만 가려 저장된 기록·메인 AI 업로드 기록을 흉내 낸다)."""
+    from app.features.ai_assistant.knowledge import service as knowledge_service
+
+    with SessionLocal() as db:
+        return knowledge_service.ingest(
+            db,
+            group_id,
+            user_id,
+            kind_label="문서",
+            title=title,
+            body_md=f"# {title}\n분류: 문서\n{body}",
+            source_attachment_id=attachment_id,
+        ).id
 
 
-def test_a_chat_document_stored_without_consent_keeps_names_and_addresses_after_local_masking(
-    client, family, claude
-):
-    """현황 기록: 로컬 규칙은 번호(전화·주민 등)만 가리고 일반 문서의 이름·주소는 남긴다(Claude 가리기는 개인 집 주소·이름도 가렸다, ADR 0014)."""
-    a, _, group = family
-    item = _stored_without_consent(client, a, group, claude)
-    body = client.get(f"/ai-assistant/knowledge/items/{item.id}", headers=a).json()["body_md"]
-    assert "010-9999-8888" not in body  # 번호는 가려진다
-    assert "테헤란로 152" in body and "이영희" in body  # 이름·주소는 남는다
+def _set_created_at(item_id, when):
+    with SessionLocal() as db:
+        db.get(KnowledgeItem, item_id).created_at = when
+        db.commit()
 
 
-@pytest.mark.xfail(
-    strict=True,
-    raises=AssertionError,
-    reason="[미해결·정책 결정 필요] 동의 없이 로컬 가리기만 거친 채팅 문서는, 나중에 동의를 켜고 AI 비서가 조회하면 이름·주소가 그대로 Claude 로 간다. "
-    "메인 채팅은 조회한 문서를 다시 가리지 않는다(ADR 0014: 보호를 저장 때 Claude 가리기에 맡김). 고쳐지면 이 표시를 지울 것.",
-)
-def test_a_chat_document_stored_without_consent_is_not_reprotected_before_the_assistant_sends_it(
-    client, family, claude, monkeypatch
-):
+def _assistant_sees(client, headers, monkeypatch, question):
+    """메인 AI(@가비) 가 도구 결과로 Claude 에 보낸 글(외부로 나가는 내용)을 모은다. Claude 는 대역이다(실제 호출 없음)."""
     from app.features.ai_assistant.knowledge import rag_chat
 
-    a, _, group = family
-    _stored_without_consent(client, a, group, claude)
-    _consent(client, a, True)
-    seen = []
+    sent = []
 
     def fake_post(body):
-        if not seen:
-            seen.append(1)
-            return {
-                "content": [
-                    {
-                        "type": "tool_use",
-                        "id": "t",
-                        "name": "search_knowledge",
-                        "input": {"query": "가족 모임 장소"},
-                    }
-                ]
-            }
-        seen.append(str(body["messages"][-1]["content"][0]["content"]))
-        return {"content": [{"type": "text", "text": "확인했어요."}]}
+        last = body["messages"][-1]["content"]
+        if isinstance(last, list) and last and last[0].get("type") == "tool_result":
+            sent.append(str(last[0]["content"]))
+            return {"content": [{"type": "text", "text": "확인했어요."}]}
+        return {
+            "content": [
+                {
+                    "type": "tool_use",
+                    "id": "t",
+                    "name": "search_knowledge",
+                    "input": {"query": question},
+                }
+            ]
+        }
 
     monkeypatch.setattr(settings, "anthropic_api_key", "test-key")
     monkeypatch.setattr(rag_chat, "_post", fake_post)
-    r = client.post("/ai-assistant/chat", json={"message": "가족 모임 장소가 어디야?"}, headers=a)
-    assert r.status_code == 200 and len(seen) >= 2, r.text
-    assert (
-        "테헤란로 152" not in seen[1] and "이영희" not in seen[1]
-    )  # 바라는 보호: 외부로 나가기 전에 다시 가려져야 한다
+    r = client.post("/ai-assistant/chat", json={"message": question}, headers=headers)
+    assert r.status_code == 200, r.text
+    return "\n".join(sent)
+
+
+def test_a_chat_document_uploaded_without_consent_is_still_not_searchable_after_consent_is_turned_on(
+    client, family, claude, monkeypatch
+):
+    """보류된 채팅 문서는 동의를 켠 뒤에도 자동으로 등록되지 않고(사용자가 명시적으로 다시 올려야 한다) AI 검색에도 나오지 않는다."""
+    a, _, group = family
+    _consent(client, a, False)
+    _chat_file(client, a, "모임.txt", LOCAL_DOC.encode(), "text/plain")
+    assert _items(group["id"]) == [] and claude.total() == 0
+    _consent(client, a, True)
+    assert _items(group["id"]) == []  # 동의를 켜도 자동 재처리하지 않는다
+    seen = _assistant_sees(client, a, monkeypatch, "가족 모임 장소가 어디야?")
+    assert "테헤란로" not in seen and "이영희" not in seen
+
+
+def test_an_old_locally_masked_chat_document_is_not_sent_to_the_assistant_after_consent_but_other_records_are(
+    client, family, claude, monkeypatch
+):
+    """과거에 동의 없이 로컬 규칙으로만 가려 저장된 채팅 문서(이름·주소가 남는다)는 동의를 켠 뒤에도 외부 AI 검색·조회에서 뺀다. 같은 가족의 정상 기록
+    (동의 뒤에 올라온 채팅 문서, 메인 AI 직접 업로드 기록)은 그대로 검색된다."""
+    from datetime import UTC, timedelta
+
+    a, _, group = family
+    gid = group["id"]
+    uid = client.get("/family-group/me", headers=a).json()["id"]
+    from app.shared.ai_usage import AiGroupSetting
+
+    with SessionLocal() as db:
+        row = db.get(AiGroupSetting, gid)
+        enabled_at = row.updated_at
+        enabled_at = enabled_at if enabled_at.tzinfo else enabled_at.replace(tzinfo=UTC)
+    old_local = _ingest_item(
+        gid, uid, title="가족 모임 안내", body=LOCAL_DOC, attachment_id="att-old"
+    )
+    _set_created_at(
+        old_local, enabled_at - timedelta(days=3)
+    )  # 동의를 켜기 전에 로컬로만 가려 저장됨
+    new_chat = _ingest_item(
+        gid, uid, title="학교 알림장 채팅", body=SAFE_DOC, attachment_id="att-new"
+    )
+    _set_created_at(
+        new_chat, enabled_at + timedelta(minutes=5)
+    )  # 동의가 켜진 뒤에 올라와 Claude 가 가림
+    main_ai = _ingest_item(gid, uid, title="학교 알림장 직접", body=SAFE_DOC + " 업로드")
+    _set_created_at(
+        main_ai, enabled_at - timedelta(days=30)
+    )  # 메인 AI 직접 업로드 기록: 오래돼도 항상 Claude 가 가렸다
+
+    seen = _assistant_sees(client, a, monkeypatch, "가족 모임 장소와 연락처가 어디야?")
+    assert "테헤란로" not in seen and "이영희" not in seen  # 재노출 차단
+    seen = _assistant_sees(client, a, monkeypatch, "학교 알림장 준비물이 뭐야?")
+    assert new_chat in seen and main_ai in seen  # 정상 기록은 막지 않는다
+
+    from app.features.ai_assistant.knowledge import tools
+
+    with SessionLocal() as db:
+        assert "error" in tools.get_item(db, gid, old_local)  # 조회(get_item)도 막는다
+        assert "error" not in tools.get_item(db, gid, new_chat)
+        assert "error" not in tools.get_item(db, gid, main_ai)
+        listed = {i["item_id"] for i in tools.list_items(db, gid)["items"]}
+        assert old_local not in listed and {new_chat, main_ai} <= listed
+        in_item = tools.search_knowledge(db, gid, "모임 장소", item_id=old_local)
+        assert in_item["results"] == []  # 한 기록 안 검색도 막는다
+
+
+def test_old_chat_documents_stay_visible_in_the_app_but_not_to_the_assistant(
+    client, family, claude
+):
+    """앱 화면(사용자가 직접 보는 문서함)은 그대로다: 외부 AI 로 나가는 길만 막는다."""
+    from datetime import UTC, datetime
+
+    a, _, group = family
+    gid = group["id"]
+    uid = client.get("/family-group/me", headers=a).json()["id"]
+    old_local = _ingest_item(
+        gid, uid, title="가족 모임 안내", body=LOCAL_DOC, attachment_id="att-old"
+    )
+    _set_created_at(old_local, datetime(2020, 1, 1, tzinfo=UTC))
+    r = client.get(f"/ai-assistant/knowledge/items/{old_local}", headers=a)
+    assert r.status_code == 200 and "테헤란로" in r.json()["body_md"]
+
+
+def test_assistant_search_is_closed_to_chat_documents_while_consent_is_off(
+    client, family, claude, monkeypatch
+):
+    """동의가 꺼져 있으면(기록이 아무리 새것이어도) 채팅 문서는 외부 AI 검색에서 빠진다. 메인 AI 직접 업로드 기록은 보인다."""
+    a, _, group = family
+    gid = group["id"]
+    uid = client.get("/family-group/me", headers=a).json()["id"]
+    from app.features.ai_assistant.knowledge import tools
+
+    _consent(
+        client, a, False
+    )  # 끈 뒤에 만든 기록이라 시각 기준으로는 "최신"이지만, 동의가 꺼져 있으면 채팅 문서는 모두 뺀다
+    chat = _ingest_item(gid, uid, title="학교 알림장 채팅", body=SAFE_DOC, attachment_id="att-x")
+    main_ai = _ingest_item(gid, uid, title="학교 알림장 직접", body=SAFE_DOC + " 업로드")
+    with SessionLocal() as db:
+        found = {
+            r["item_id"] for r in tools.search_knowledge(db, gid, "학교 알림장 준비물")["results"]
+        }
+    assert main_ai in found and chat not in found

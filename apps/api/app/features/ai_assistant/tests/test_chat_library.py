@@ -32,6 +32,13 @@ class FakeOcr:
         return [OcrLine("문서", 0.9)]
 
 
+@pytest.fixture
+def family(client, family, monkeypatch):
+    """이 모듈의 가족은 기본으로 가족 AI 동의가 켜진 상태다(동의가 없으면 채팅 문서 등록을 보류한다, ADR 0023). 동의 없는 시험은 직접 끈다."""
+    allow_ai(client, family[0], monkeypatch)
+    return family
+
+
 @pytest.fixture(autouse=True)
 def _isolated(monkeypatch, tmp_path):
     """파일은 임시 폴더에, 등록은 스레드 대신 그 자리에서, OCR 은 가짜로."""
@@ -92,6 +99,14 @@ def test_a_document_sent_to_the_family_room_is_registered_in_the_library(client,
             "needs_review",
         )  # 처리 상태도 같은 방식으로 남는다
     assert len(_raw_files(tmp_path)) == 1  # 원본은 한 번 보관된다
+
+
+def test_a_document_sent_without_family_ai_consent_is_held_and_not_registered(client, family):
+    """동의가 없으면 채팅 메시지·원본 첨부는 남지만 문서함 등록은 보류한다(로컬로만 가린 문서를 지식베이스에 넣지 않는다)."""
+    a, _, group = family
+    client.put("/family-chat/ai/settings", json={"enabled": False}, headers=a)
+    msg = _send_file(client, a)
+    assert msg["id"] and _items(group["id"]) == []
 
 
 def test_the_chat_upload_creates_no_notification_for_the_new_document(client, family):
@@ -339,14 +354,13 @@ def test_reminders_are_not_planned_for_sensitive_chat_documents(client, family, 
     monkeypatch.setattr(settings, "ingest_reminders", True)
     planned: list[str] = []
     monkeypatch.setattr(files.reminders, "plan", lambda db, gid, uid, pid: planned.append(pid))
-    _send_file(client, a)  # 일반 문서지만 가족 AI 동의가 없다
-    assert (
-        len(_items(group["id"])) == 1 and planned == []
-    )  # 동의 없이는 본문을 Claude 로 보내지 않는다
+    client.put("/family-chat/ai/settings", json={"enabled": False}, headers=a)
+    _send_file(client, a)  # 일반 문서지만 가족 AI 동의가 없다: 등록 자체를 보류한다
+    assert _items(group["id"]) == [] and planned == []  # 동의 없이는 본문을 Claude 로 보내지 않는다
     allow_ai(client, a, monkeypatch)
     _send_file(client, a, data=PRESCRIPTION, name="처방전.txt")
     assert (
-        len(_items(group["id"])) == 2 and planned == []
+        len(_items(group["id"])) == 1 and planned == []
     )  # 민감 문서는 동의해도 외부로 보내지 않는다
     _send_file(client, a)  # 일반 문서
-    assert len(planned) == 1
+    assert len(planned) == 1 and len(_items(group["id"])) == 2

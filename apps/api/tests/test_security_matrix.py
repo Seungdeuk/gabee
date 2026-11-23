@@ -1826,10 +1826,9 @@ def test_ingest_uses_only_local_model_or_jev_never_anthropic():
             assert "shared.llm import client" not in text and "api.anthropic.com" not in text, rel
 
 
-_DEFECT_test_file_upload_does_not_call_external_jev_when_family_ai_is_off = "[중간·정책으로 유지] Jev(api.typesafe.ai, 외부 서비스)는 TYPESAFE_API_KEY 가 있으면 메인 AI 직접 업로드(`/ai-assistant/files`)의 분류에 쓰이지만 가족 AI 동의(ai_guard)·한도를 거치지 않는다. 사용자 결정(2026-11-23, ADR 0023)으로 메인 AI 직접 업로드는 기존 정책(Claude 읽기·가리기와 Jev 분류)을 유지한다. 가족 소통 채팅방의 자동 처리 경로는 동의가 없으면 Jev 를 부르지 않는다(`ai_assistant/tests/test_consent_ingest_flow.py`). 메인 AI 쪽에 동의 검사를 넣으면 이 표시가 XPASS 로 실패하니 그때 지울 것."
-
-
-def test_file_upload_does_not_call_external_jev_when_family_ai_is_off(api, fake, monkeypatch):
+def test_main_ai_direct_upload_may_call_jev_by_existing_policy(api, fake, monkeypatch):
+    """정책(사용자 결정 2026-11-23, ADR 0023): 메인 AI 직접 업로드는 기존 정책대로 가족 AI 동의와 무관하게 Jev 분류를 쓴다(알려진 결함이 아니라 의도된 동작).
+    짝이 되는 시험(가족 채팅방은 동의가 없으면 Jev 0회)은 `ai_assistant/tests/test_consent_ingest_flow.py` 에 있다."""
     monkeypatch.setattr(settings, "typesafe_api_key", "test-typesafe-key")
     fam = new_family(api, "제브", "JEV")
     fake.reset()
@@ -1839,10 +1838,7 @@ def test_file_upload_does_not_call_external_jev_when_family_ai_is_off(api, fake,
         headers=fam.owner.headers,
     )
     assert r.status_code == 201
-    known_defect(
-        not [c for c in fake.calls if "typesafe" in c.url],
-        _DEFECT_test_file_upload_does_not_call_external_jev_when_family_ai_is_off,
-    )
+    assert [c for c in fake.calls if "typesafe" in c.url]  # 호출된다(정책으로 허용)
 
 
 def test_file_upload_never_calls_anthropic(api, fake):

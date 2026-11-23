@@ -277,3 +277,49 @@ def test_every_production_call_passes_external_explicitly():
         if path.parts[-2] == "ingest" and path.name == "service.py":
             continue
         assert "ingest_file(" not in path.read_text(encoding="utf-8"), path
+
+
+# ---------- require_external: 로컬 규칙으로 대신하지 않고 멈춘다(가족 채팅방 자동 처리) ----------
+
+
+@pytest.mark.parametrize(
+    "name, data",
+    [
+        ("a.txt", b"Please bring the green notebook tomorrow morning thank you very much"),
+        ("n.pdf", pdf(["Hello family notice about the school trip next week"])),
+        ("p.png", png()),
+    ],
+)
+def test_require_external_without_consent_fails_instead_of_masking_locally(
+    claude_on_but_trapped, name, data
+):
+    out = preprocess(data, name, external=False, require_external=True)
+    assert out.quality.status == "failed" and out.quality.error == "consent_required"
+    assert out.content.text == ""  # 로컬로만 가린 글을 만들지 않는다
+
+
+def test_require_external_with_consent_revoked_before_the_send_stops_without_sending(monkeypatch):
+    monkeypatch.setattr(settings, "ingest_llm_ocr", True)
+    monkeypatch.setattr(settings, "ingest_llm_mask", True)
+    sent = []
+    monkeypatch.setattr(
+        llm_ingest, "mask", lambda text, family=None: sent.append(text) or (text, {}, False)
+    )
+    out = preprocess(
+        b"Please bring the green notebook tomorrow morning thank you very much",
+        "a.txt",
+        external=True,  # 처리 시작 때는 동의가 있었지만
+        recheck=lambda: False,  # 보내기 직전 재확인에서 철회가 확인됐다
+        require_external=True,
+    )
+    assert out.quality.error == "consent_required" and sent == []
+
+
+def test_without_require_external_the_local_fallback_is_unchanged(claude_on_but_trapped):
+    """메인 AI·기존 시험이 쓰는 기본값(False): 동의가 막은 단계는 로컬 규칙으로 대신한다(기존 동작 유지)."""
+    out = preprocess(
+        b"Please bring the green notebook tomorrow morning thank you very much",
+        "a.txt",
+        external=False,
+    )
+    assert out.quality.status != "failed"
