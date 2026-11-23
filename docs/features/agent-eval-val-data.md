@@ -137,3 +137,21 @@ w1(dev)과 같은 구조이되 값(금액·날짜·제목·문서 문장·대화
 
 - 변경 전 고정 파일·정답지 사본: `gabee-int-logs/cases_val.revisions.before_rename.json`, `cases_val.before_rename.json`.
 - 프롬프트 해시: 운영 일정 에이전트 프롬프트가 dev 108 이후 release/1.3 에서 바뀌어(#496) 값이 다르다. dev 108 공식 결과·v2 재채점은 옛 해시 `d658d8e1…` 에 묶인 그대로이고 바꾸지 않았다. val 은 새 해시의 프롬프트로만 돌며 dev 점수와 직접 비교하지 않는다. 이 사실과 이유는 고정 파일의 `prompt_changed_since_dev108`·`prompt_change_note` 에 남겼다.
+
+### 9-3. 메인 프롬프트의 '다른 가족방이 섞인 요청' 지침 추가와 고정값 갱신(2026-11-23)
+
+- 사유: isolation-02 실모델 재평가 분석에서, 메인이 소통 Agent 에 질문을 넘기며 "다른 가족방" 조건을 지워 소통 Agent 의 격리 안내 규칙(#489)이 켜질 계기가 없음을 확인했다(라우팅된 7회 모두 "이 가족 채팅방 대화에서 ~"로 넘김). `ai_assistant/agents.py` 의 `PROMPT_NOTE` 에 한 문장을 더했다: 자기 가족방과 다른 가족방을 함께 찾아 달라는 혼합 요청은 직접 거절하지 말고 '다른 가족방 대화까지'라는 조건과 찾는 내용을 지우지 않고 `ask_family_chat` 으로 넘기고, 다른 가족 정보만 묻는 요청은 도구를 부르지 말고 직접 알려 준다. 소통 Agent 의 `system_prompt()`·서버 권한 규칙·평가 기준·정답지는 바꾸지 않았다.
+- **val 실모델 평가가 시작되지 않았음을 확인**: 이 PC 의 결과 폴더 두 곳의 manifest 37개에 `val`·`test`·`all` 분할이 없고(실제 호출은 legacy·dev 만), `real_gate.ALLOWED_SPLITS == ("legacy", "dev")` 이며 고정 파일의 `frozen_before_any_model_output` 는 `true` 다. 그래서 고정값 변경은 소급 변경이 아니라 val 결과를 열기 전의 변경 이력이다.
+- **release 의 고정값이 이미 낡아 있었다**: 이 변경을 만들던 중 release/1.3 이 #516(앱 에이전트 등록 묶음 개선)을 병합했는데, #516 이 일정 에이전트 프롬프트와 메인 도구 명세(`ask_schedule` 설명)를 바꾸고도 고정 파일은 갱신하지 않아 **release `7fd9f708` 자체에서 `test_val_pins` 2건이 이미 실패한다**(고정 파일 메인 `88cab708…`·일정 `29ee4298…`·통합 `66c5882f…` 대 코드 실제 값). 이 변경이 고정값을 한 번에 현재 코드와 맞춘다(val 결과를 열기 전이라 가능).
+- 전후 값(바뀐 것만):
+
+| 항목 | 고정 파일의 전 값 | #516 병합 뒤 release 코드의 실제 값(이 변경 이전) | 이 변경 후 고정값 |
+|---|---|---|---|
+| 메인 `prompt_hash`(= `agent_prompt_hashes.main`) | `88cab708afea44a0fed6098ad54c5552ffaebe1d47f290d3098fe6e5bbd08f89` | `5a5eefdb209e4798110f3c00197adf92a153c0e8cc85fab500dfd38f40b93d6f` | `6f7211e66b11111c1c4958587ad92225e3e469cf6cc3f9948122e750ae028bb9` |
+| 일정 에이전트 해시(`schedule`) | `29ee4298c6ee20345db58820ef1e856bd5f651ff1ff9ea0ff7cecb7605acd8b3` | `328f6c447c68f71c734c5b1cb93866e23a260a0daa2acc0fb1a7a4d6d407949f` | `328f6c447c68f71c734c5b1cb93866e23a260a0daa2acc0fb1a7a4d6d407949f`(#516 반영) |
+| 통합 프롬프트 해시 | `66c5882fe3ccd3d651d2bf81f3b085bcd65f7f222832cdaa938bd1439ec6b98e` | `d7c488af068fc894a9cbf7cef7de3dd5d779e3081c7007e99d781439e069061d` | `262d329dc16bebf406836046eefbef03c8bbd09c793b16b3d204c84f11e02996` |
+| `prompt_change_note` | #496·#505·#506 | - | 위에 #516 과 이 지침 추가 |
+
+- 이 변경만의 효과: 메인 `5a5eefdb…` → `6f7211e6…`(`PROMPT_NOTE` 지침 추가). 일정 해시 변화(`29ee4298…` → `328f6c44…`)와 메인 해시에 든 `ask_schedule` 설명 변화는 #516 때문이다.
+- **바뀌지 않은 값**: `family_chat` `ba3391bd…`·`billing` `a0b737ce…`, `cases_val.json` 해시 `3c12480b…`, w2 월드 해시 `4e015c20…`, 평가 기준 v2·채점기·시나리오 목록 해시, dev 108 해시 `d658d8e1…`(dev 108 공식 결과·v2 재채점은 그대로).
+- 메인 해시 이력: dev 108 `d658d8e1…` → #496 `ac83bb63…` → #505 `88cab708…` → #516 `5a5eefdb…`(고정 안 됨) → 이번 `6f7211e6…`.
