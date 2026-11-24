@@ -39,7 +39,17 @@ SIZE_LABELS = ("1명", "2명", "3명", "4명", "5명 이상")
 FEATURE_NAMES = (("schedule", "일정"), ("chat", "채팅"), ("billing", "정산"), ("ai", "AI"))
 UNKNOWN_SOURCE = "unknown"  # 유입 경로 기록이 없는 가입자(아이폰·웹·APK 직접 설치·기능 이전 가입)
 # 홍보 링크를 만든 채널(docs/requirements/acquisition.md). 가입이 0명이어도 표에 한 줄씩 보인다.
-KNOWN_SOURCES = ("youtube", "instagram", "facebook", "blog", "cafe", "news", "qr", "kakao", "google-play")
+KNOWN_SOURCES = (
+    "youtube",
+    "instagram",
+    "facebook",
+    "blog",
+    "cafe",
+    "news",
+    "qr",
+    "kakao",
+    "google-play",
+)
 
 
 def _aware(at: datetime | None) -> datetime | None:
