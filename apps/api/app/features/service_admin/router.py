@@ -13,6 +13,7 @@ from . import (
     admin_facts,  # noqa: F401  관리자 챗봇 숫자 명단에 올린다
     alert_rules,  # noqa: F401  관리자 알림 규칙(문의·AI 사용·참가 요청)을 명단에 올린다
     analytics,
+    meta_ads,
     service,
 )
 from .schemas import (
@@ -27,6 +28,8 @@ from .schemas import (
     FeaturesOut,
     GroupsOut,
     MembersOut,
+    MetaAdsDays,
+    MetaAdsOut,
 )
 
 router = APIRouter(prefix="/admin/service", tags=["service-admin"])
@@ -117,3 +120,10 @@ def admin_analytics(db: Session = Depends(get_db)) -> AnalyticsOut:
     """데이터 분석: 재방문 코호트, 가입 퍼널, 가족 인원별 활동, 기능 사용, AI 품질·비용, 요일·시간 활동, 고객 응대.
     id·시각·개수만 읽는다(문의 표도 읽으므로 support 표가 없으면 503)."""
     return analytics.analytics(db)
+
+
+@router.get("/meta-ads", response_model=MetaAdsOut, dependencies=[Depends(service_admin)])
+def admin_meta_ads(days: MetaAdsDays = MetaAdsDays.week) -> MetaAdsOut:
+    """메타(페이스북·인스타그램) 광고 성과: 최근 7일·30일 캠페인별 광고비·노출·클릭·설치·가입.
+    메타 마케팅 API 를 읽기만 한다. 토큰이 없으면 configured=false, 메타 오류면 ok=false 와 이유(그래도 200)."""
+    return meta_ads.meta_ads(int(days))
