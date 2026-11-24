@@ -28,6 +28,7 @@ from app.features.schedule import push_schedule
 from app.features.schedule.router import router as schedule_router
 from app.features.service_admin.router import router as admin_router
 from app.features.support.router import router as support_router
+from app.features.usage.router import router as usage_router
 from app.features.weekly_news.router import router as weekly_news_router
 from app.shared.config import settings
 from app.shared.db import init_db
@@ -99,6 +100,7 @@ for feature, router in (
     ("weekly_news", weekly_news_router),
     ("family_memory", family_memory_router),
     ("acquisition", acquisition_router),
+    ("usage", usage_router),
 ):
     deps = []
     deps.append(Depends(schema_ready(feature)))
