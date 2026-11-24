@@ -243,6 +243,7 @@ NO_GROUP_OK = {
     ("PATCH", "/admin/service/support/{ticket_id}"),
     ("GET", "/admin/service/notices"),
     ("GET", "/admin/service/analytics"),
+    ("GET", "/admin/service/meta-ads"),  # 메타 광고 성과(광고 계정 숫자만, 가족 데이터 아님)
     ("POST", "/admin/service/notices"),
     ("PUT", "/admin/service/notices/{notice_id}"),
     ("DELETE", "/admin/service/notices/{notice_id}"),
@@ -1710,6 +1711,8 @@ OUTBOUND_FILES = {
     "features/family_group/social_providers.py": "소셜 로그인 공급자 서버 호출(AI 아님, 로그인 전용)",
     "shared/mailer.py": "인증·비밀번호 재설정 메일 SMTP 발송(AI 아님)",
     "features/ops_admin/infra_service.py": "Cloud Run 메타데이터·Cloud Run Admin·Cloud Monitoring 읽기 전용 조회(AI 아님, 개인 데이터 전송 없음, 운영자 조회 시에만)",
+    # 관리자 데이터 분석의 메타 광고 성과: 광고 계정 번호·기간만 보내고 회원·가족 데이터는 보내지 않는다. 관리자가 볼 때만 부르고 10분 캐시
+    "features/service_admin/meta_ads.py": "메타 마케팅 API 광고 성과 읽기 전용 조회(AI 아님, 개인 데이터 전송 없음, 관리자 조회 시에만)",
     "shared/push.py": "Expo 푸시 발송(AI 아님). 알림함 사건은 고정 제목만 보내고 본문은 비운다(docs/adr/0012-push-via-expo.md)",
     # 찰칵 흔한 사진 자동 보충: Pixabay 에서 공개 사진을 검색·내려받는다(AI 아님). 보내는 값은 API 키와 고정 검색어 목록뿐이고 가족 데이터는 없다.
     # 호출하는 쪽은 photo_rec_auto 하나이며 기본 꺼짐·하루 목표·시도 상한이 있다(tests/test_photo_rec_external_calls.py 가 구조를 고정한다)

@@ -87,18 +87,43 @@ def test_old_member_is_not_saved(client):
     [
         {},  # source 없음
         {"source": ""},
-        {"source": "YouTube"},  # 대문자
-        {"source": "you tube"},  # 공백
-        {"source": "유튜브"},  # 한글
-        {"source": "a" * 41},  # 너무 김
-        {"source": "youtube", "medium": "video&x=1"},  # 꼬리표 원문 조각
-        {"source": "youtube", "campaign": "<script>"},
+        {"source": "   "},  # 공백만
+        {"source": "유튜브"},  # 한글만 → 다듬으면 빈 값
+        {"source": "..."},  # 점만 → 다듬으면 빈 값
+        {"source": "youtube", "medium": "!!"},  # medium 이 다듬으면 빈 값
+        {"source": 123},  # 문자열 아님
     ],
 )
 def test_invalid_values_are_rejected(client, body):
     h = signup(client, "민수")
     assert client.post(URL, json=body, headers=h).status_code == 422, body
     assert _row(_me(client, h)) is None
+
+
+@pytest.mark.parametrize(
+    ("body", "saved"),
+    [
+        # 메타 광고가 보내는 주소·별칭은 채널 이름 하나로 묶는다
+        ({"source": "apps.facebook.com", "medium": "paid"}, ("facebook", "paid", None)),
+        ({"source": "m.facebook.com"}, ("facebook", None, None)),
+        ({"source": "Facebook"}, ("facebook", None, None)),
+        ({"source": "fb"}, ("facebook", None, None)),
+        ({"source": "l.instagram.com"}, ("instagram", None, None)),
+        ({"source": "IG"}, ("instagram", None, None)),
+        # 그 밖의 값: 소문자로, 허용되지 않는 글자는 '-' 로(겹치면 하나), 앞뒤 '-' 빼고 40자까지
+        ({"source": "News.Daum.net"}, ("news-daum-net", None, None)),
+        ({"source": " YouTube "}, ("youtube", None, None)),
+        ({"source": "you tube"}, ("you-tube", None, None)),
+        ({"source": "a" * 41}, ("a" * 40, None, None)),
+        ({"source": "youtube", "medium": "video&x=1"}, ("youtube", "video-x-1", None)),
+        ({"source": "youtube", "campaign": "<script>"}, ("youtube", None, "script")),
+    ],
+)
+def test_values_are_normalized(client, body, saved):
+    h = signup(client, "민수")
+    r = client.post(URL, json=body, headers=h)
+    assert r.status_code == 204, r.text
+    assert _row(_me(client, h)) == saved
 
 
 def test_saves_only_for_caller(client, family):

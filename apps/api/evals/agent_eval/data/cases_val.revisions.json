@@ -3,7 +3,7 @@
  "frozen_before_any_model_output": true,
  "created_in_commit": "e6bc806922a7ed42cd12d61c0ed64d87247bd4d2",
  "final_key_commit": "b4536ce8f85dfcea8fce293b4b09db968c91997f",
- "pinned_on_top_of_commit": "4c09cafc334ddc8c9bd4821900dbeed3482118af",
+ "pinned_on_top_of_commit": "543ffb65d7d27cd97c794ebec8ecfedb140a5d8a",
  "split": "val",
  "world": "w2",
  "case_count": 18,
@@ -92,18 +92,18 @@
   "matchers_py_sha256": "625608abec5740f2fb185e37b074c22c63a6c1deed165f8768f301fb778b5cd3",
   "scorer_version": 2
  },
- "prompt_hash": "adb89f60e67dd926261c1aa27f72b671a0536cb91d19c9669a9fca86cc1c23c6",
+ "prompt_hash": "e5bc016d56e7292ce3ce440ed936981b5b3efa8abee9e3a83ad4d4a01afe2f38",
  "dev_manifest_prompt_hash_prefix": "d658d8e1",
  "dev_manifest_prompt_hash": "d658d8e16968b5fd099ca3e9e340039ccd960118a0cd487ae02db26ff878b36d",
  "prompt_changed_since_dev108": true,
- "prompt_change_note": "운영 일정 에이전트 프롬프트·도구 설명이 dev 108 case-run 이후 release/1.3 에서 바뀌고(#496 앱에이전트 수정·삭제 개선, #505 앱에이전트 정책 개선, #506 앱 에이전트 날짜 계산 방식 개선, #516 앱 에이전트 등록 묶음 개선, #522 앱 에이전트 응답 스키마 크기 축소·등록 인식 보완), 메인 어시스턴트 PROMPT_NOTE 에 '다른 가족방이 섞인 요청의 범위와 주제를 지우지 않고 소통 Agent 로 넘긴다'는 지침이 더해지고(isolation-02 원인 분석, 평가 질문과 같은 예시 문장은 일반 규칙으로 바꿔 뺐다) 프롬프트 해시가 dev 값(DEV_MANIFEST_PROMPT_HASH)과 다르다. dev 108 공식 결과·v2 재채점은 옛 해시에 묶인 그대로이고, val 은 이 새 해시의 프롬프트로만 돈다(dev 점수와 직접 비교하지 않는다).",
+ "prompt_change_note": "운영 일정 에이전트 프롬프트·도구 설명이 dev 108 case-run 이후 release/1.3 에서 바뀌고(#496 앱에이전트 수정·삭제 개선, #505 앱에이전트 정책 개선, #506 앱 에이전트 날짜 계산 방식 개선, #516 앱 에이전트 등록 묶음 개선, #522 앱 에이전트 응답 스키마 크기 축소·등록 인식 보완), 정산 Agent 프롬프트에 일시적인 읽기 오류의 같은 도구 1회 재시도와 대체 계산 금지 안내가 더해지고(E8 toolfail-03), 메인 어시스턴트 PROMPT_NOTE 에 대상이 정해지지 않은 지출 삭제·수정 요청은 ask_billing 을 부르기 전에 어느 지출인지 먼저 묻는다는 지침이 더해지고(E8 ambig-02), 메인 어시스턴트 PROMPT_NOTE 에 '다른 가족방이 섞인 요청의 범위와 주제를 지우지 않고 소통 Agent 로 넘긴다'는 지침이 더해지고(isolation-02 원인 분석, 평가 질문과 같은 예시 문장은 일반 규칙으로 바꿔 뺐다) 프롬프트 해시가 dev 값(DEV_MANIFEST_PROMPT_HASH)과 다르다. dev 108 공식 결과·v2 재채점은 옛 해시에 묶인 그대로이고, val 은 이 새 해시의 프롬프트로만 돈다(dev 점수와 직접 비교하지 않는다).",
  "agent_prompt_hashes": {
-  "main": "adb89f60e67dd926261c1aa27f72b671a0536cb91d19c9669a9fca86cc1c23c6",
+  "main": "e5bc016d56e7292ce3ce440ed936981b5b3efa8abee9e3a83ad4d4a01afe2f38",
   "family_chat": "ba3391bde81fb8b11041a017098e874d76d36ab2d7982f5d8d9cc853762af949",
-  "billing": "a0b737cebf4408c64acc26a930c6c98d2066a9acc62e392f5f27399b938afc0a",
+  "billing": "32ae98fbee63f37b653d249cc1e1d1a86f17321cea286a4cc590f8990e25455c",
   "schedule": "5c1b0f4a3fe0c8ecbdd4500356bb778a2eb3ab8871a0783f75286fb483b52176"
  },
- "integrated_prompt_hash": "38067e487c5c0a24a938d618193bb4e5d016299ec8b8db04b4e16f9097f63a2d",
+ "integrated_prompt_hash": "8511613cf3baa9925afeee5db46555782717869dbb4f72e0a1675f4ebc129c9b",
  "scenarios": {
   "scenarios_val_file_sha256": "525e15243185bae56e95f75b67314da247f46ac1eeacec2ec633b5bb93b7cefd",
   "scenario_list_sha256": "621fbbd672dc43a8f86b3537648348c4338d377c599f03f631e8d5c1259d542a",

@@ -14,6 +14,7 @@
   ];
   const TABS = TAB_GROUPS.flatMap(([, tabs]) => tabs);
   const TOKEN_KEY = "gabee_admin_token";
+  const REFRESH_KEY = "gabee_admin_refresh"; // 연장용 토큰(30일). 같은 탭의 sessionStorage 에만 두어 탭을 닫으면 로그아웃된다
   const THEME_KEY = "gabee_admin_theme"; // light 나 dark. 없으면 컴퓨터 설정을 따른다
 
   /** 지금 보이는 화면 모드. 고른 값이 없으면 컴퓨터 설정이다. */
@@ -84,6 +85,72 @@
     }
   }
 
+  function refreshToken() {
+    try {
+      return sessionStorage.getItem(REFRESH_KEY);
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * 로그인·연장 응답의 두 토큰을 저장한다. null 이면 둘 다 지운다(로그아웃).
+   * @param {{access_token: string, refresh_token: string} | null} tokens
+   */
+  function saveTokens(tokens) {
+    setToken(tokens ? tokens.access_token : null);
+    try {
+      if (tokens) sessionStorage.setItem(REFRESH_KEY, tokens.refresh_token);
+      else sessionStorage.removeItem(REFRESH_KEY);
+    } catch {
+      // 저장이 막히면 15분 뒤 다시 로그인한다
+    }
+  }
+
+  let refreshing = null; // 동시에 여러 요청이 401 을 받아도 연장은 한 번만 한다
+
+  /**
+   * 15분짜리 로그인 토큰이 끝났을 때 연장용 토큰으로 새 토큰을 받는다(탭을 열어 두는 동안 로그인 유지).
+   * @returns {Promise<boolean>} 연장했으면 true, 연장용 토큰이 없거나 끝났으면 false
+   */
+  function renewSession() {
+    if (!refreshing) {
+      refreshing = (async () => {
+        const rt = refreshToken();
+        if (!rt) return false;
+        const res = await fetch("/family-group/auth/refresh", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ refresh_token: rt }),
+        }).catch(() => null);
+        if (!res || !res.ok) return false;
+        saveTokens(await res.json());
+        return true;
+      })().finally(() => {
+        refreshing = null;
+      });
+    }
+    return refreshing;
+  }
+
+  /**
+   * 토큰을 붙여 부르고, 401 이면 한 번 연장한 뒤 다시 부른다. 연장도 안 되면 로그인 화면으로 돌아간다.
+   * @param {string} path
+   * @param {RequestInit} init headers 는 객체로 준다
+   * @returns {Promise<Response>}
+   */
+  async function authFetch(path, init) {
+    const send = () => fetch(path, { ...init, headers: { ...init.headers, Authorization: `Bearer ${token()}` } });
+    let res = await send();
+    if (res.status === 401 && (await renewSession())) res = await send();
+    if (res.status === 401) {
+      saveTokens(null);
+      showLogin("로그인이 만료됐어요. 다시 로그인해 주세요.");
+      throw new Error("unauthorized");
+    }
+    return res;
+  }
+
   /**
    * 관리자 API 를 부른다. 로그인이 풀렸으면(401) 로그인 화면으로 돌아간다.
    * @param {string} path
@@ -92,17 +159,12 @@
    * @returns {Promise<any>}
    */
   async function api(path, body, method = body ? "PATCH" : "GET") {
-    const init = { method, headers: { Authorization: `Bearer ${token()}` } };
+    const init = { method, headers: {} };
     if (body) {
       init.headers["Content-Type"] = "application/json";
       init.body = JSON.stringify(body);
     }
-    const res = await fetch(path, init);
-    if (res.status === 401) {
-      setToken(null);
-      showLogin("로그인이 만료됐어요. 다시 로그인해 주세요.");
-      throw new Error("unauthorized");
-    }
+    const res = await authFetch(path, init);
     if (res.status === 403 && path === "/admin/service/me") throw new Error("not_staff"); // 허용 목록에 없는 회원
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     return res.status === 204 ? null : res.json();
@@ -483,6 +545,7 @@
   const SOURCE_LABEL = {
     youtube: "유튜브",
     instagram: "인스타그램",
+    facebook: "페이스북",
     blog: "블로그",
     cafe: "카페",
     news: "뉴스 기사",
@@ -516,6 +579,69 @@
   // 체류시간 탭 이름(앱 아래쪽 탭과 같은 말)
   const USAGE_TAB_LABEL = { chat: "AI 채팅", "family-chat": "소통", schedule: "일정", care: "지갑", my: "마이", other: "그 밖의 화면" };
   const minutes = (m) => (m === null || m === undefined ? "-" : m < 60 ? `${m}분` : `${Math.floor(m / 60)}시간 ${Math.round(m % 60)}분`);
+
+  // 메타 광고 성과는 메타 서버를 부르므로 데이터 분석 탭을 열 때만 따로 받는다(다른 화면 열기를 늦추지 않게)
+  const metaAds = { days: 7, data: null, loading: false, error: "" };
+  const money = (v, currency) => `${Number(v).toLocaleString("ko-KR", { maximumFractionDigits: 2 })}${currency === "KRW" ? "원" : currency ? ` ${esc(currency)}` : ""}`;
+  const rate = (part, whole) => (whole ? `${Math.round((part / whole) * 1000) / 10}%` : "-");
+
+  /**
+   * 메타 광고 성과를 받아 와서 데이터 분석 화면을 다시 그린다.
+   * @param {number} days 7 또는 30
+   * @returns {Promise<void>}
+   */
+  async function loadMetaAds(days) {
+    metaAds.days = days;
+    metaAds.loading = true;
+    metaAds.error = "";
+    if (current() === "analytics") render();
+    try {
+      metaAds.data = await api(`/admin/service/meta-ads?days=${days}`);
+    } catch (err) {
+      if (err.message === "unauthorized") return;
+      metaAds.data = null;
+      metaAds.error = "광고 성과를 불러오지 못했어요. 잠시 뒤 다시 해 주세요.";
+    } finally {
+      metaAds.loading = false;
+    }
+    if (current() === "analytics") render();
+  }
+
+  /** 데이터 분석의 메타 광고 성과 구역(캠페인별 광고비·노출·클릭·설치·가입). */
+  function metaAdsCard() {
+    const m = metaAds.data;
+    const pick = [7, 30]
+      .map((n) => `<button type="button" class="btn sm ${metaAds.days === n ? "primary" : ""}" data-meta-days="${n}" aria-pressed="${metaAds.days === n}">최근 ${n}일</button>`)
+      .join(" ");
+    let body;
+    if (metaAds.loading || (!m && !metaAds.error)) body = '<p class="small">메타에서 불러오는 중…</p>';
+    else if (metaAds.error) body = `<p class="small">${esc(metaAds.error)}</p>`;
+    else if (!m.configured) body = `<p class="small">${esc(m.reason)} (서버 환경변수 META_ADS_ACCESS_TOKEN · META_ADS_ACCOUNT_ID)</p>`;
+    else if (!m.ok) body = `<p class="note warn">${esc(m.reason)}</p>`;
+    else {
+      const t = m.total;
+      const c = m.currency;
+      body = `<section class="grid compact">
+          ${stat("광고비", money(t.spend, c))}
+          ${stat("노출", `${num(t.impressions)}회`)}
+          ${stat("클릭", `${num(t.clicks)}회`, `클릭률 ${rate(t.clicks, t.impressions)}`)}
+          ${stat("설치", `${num(t.installs)}건`, t.installs ? `설치당 ${money(Math.round(t.spend / t.installs), c)}` : "")}
+          ${stat("가입", `${num(t.signups)}명`, t.signups ? `가입당 ${money(Math.round(t.spend / t.signups), c)}` : "")}
+        </section>
+        ${table(
+          [{ label: "캠페인" }, { label: "광고비", num: true }, { label: "노출", num: true }, { label: "클릭", num: true }, { label: "설치", num: true }, { label: "가입", num: true }],
+          m.campaigns.map(
+            (r) => `<tr><td><strong>${esc(r.name)}</strong></td><td class="num">${money(r.spend, c)}</td><td class="num">${num(r.impressions)}</td><td class="num">${num(r.clicks)}</td><td class="num">${num(r.installs)}</td><td class="num">${num(r.signups)}</td></tr>`,
+          ),
+        )}
+        <p class="small">메타 광고 관리자 숫자(10분마다 새로 받음) · 마지막 확인 ${esc(new Date(m.fetched_at).toLocaleString("ko-KR"))}</p>`;
+    }
+    return `<section class="card">
+        <div class="card-head"><h2>메타 광고 성과 (페이스북·인스타그램)</h2><span class="small">${pick}</span></div>
+        ${body}
+      </section>`;
+  }
+
 
   /** 재방문·사용 시간 탭의 사용 시간 구역(최근 30일). 표가 아직 없는 서버면 "준비 중"만 보인다. */
   function usageCard(d) {
@@ -564,6 +690,7 @@
       .join("");
     return `${head("유입·가입", "어떤 링크로 설치했고, 가입한 뒤 어디까지 갔나 (개수와 시각만 사용)")}${smallSample(d)}
       ${acquisitionCard(d)}
+      ${metaAdsCard()}
       <section class="card">
         <div class="card-head"><h2>가입 퍼널</h2><span class="small">각 단계는 앞 단계를 모두 지난 사람만 세요</span></div>
         ${funnel}
@@ -735,10 +862,12 @@
     document.getElementById("page-title").textContent = pageHead.title;
     document.getElementById("page-sub").textContent = pageHead.sub;
     document.title = `가비 서비스 관리자 · ${TABS.find(([k]) => k === key)[1]}`;
+    if (key === "analytics" && !metaAds.data && !metaAds.loading && !metaAds.error) loadMetaAds(metaAds.days);
   }
 
   function showLogin(message = "") {
     data = null;
+    Object.assign(metaAds, { data: null, loading: false, error: "" }); // 다른 계정으로 다시 들어오면 새로 받는다
     document.getElementById("app").hidden = true;
     document.getElementById("login").hidden = false;
     document.getElementById("login-error").textContent = message;
@@ -783,7 +912,7 @@
       data = await loadData();
     } catch (err) {
       if (err.message === "not_staff") {
-        setToken(null);
+        saveTokens(null);
         showLogin("관리자 계정이 아니에요.");
       } else if (err.message !== "unauthorized") {
         document.getElementById("view").innerHTML = '<p class="note warn">데이터를 불러오지 못했어요. 잠시 뒤 새로고침해 주세요.</p>';
@@ -811,7 +940,7 @@
       error.textContent = res && res.status < 500 ? "아이디 또는 비밀번호가 맞지 않아요." : "로그인하지 못했어요. 잠시 뒤 다시 해 주세요.";
       return;
     }
-    setToken((await res.json()).access_token);
+    saveTokens(await res.json());
     form.password.value = "";
     document.getElementById("app").hidden = false;
     start();
@@ -823,7 +952,7 @@
       return;
     }
     if (e.target.closest("[data-action='logout']")) {
-      setToken(null);
+      saveTokens(null);
       showLogin();
       return;
     }
@@ -846,6 +975,11 @@
       return;
     }
     // '답변하기': 그 문의를 펼치고 답변 칸으로 바로 간다
+    const metaDays = e.target.closest("[data-meta-days]");
+    if (metaDays) {
+      loadMetaAds(Number(metaDays.dataset.metaDays));
+      return;
+    }
     const alertAck = e.target.closest("[data-alert-ack]");
     if (alertAck) {
       ackAlert(alertAck.dataset.alertAck);
@@ -1085,16 +1219,11 @@
    * @returns {Promise<void>} 스트림이 끝나면 끝난다. 401 이면 로그인 화면으로 돌아가고 "unauthorized" 로 실패한다
    */
   async function chatStream(question, onEvent) {
-    const res = await fetch("/admin/knowledge/ask/stream", {
+    const res = await authFetch("/admin/knowledge/ask/stream", {
       method: "POST",
-      headers: { Authorization: `Bearer ${token()}`, "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ q: question }),
     });
-    if (res.status === 401) {
-      setToken(null);
-      showLogin("로그인이 만료됐어요. 다시 로그인해 주세요.");
-      throw new Error("unauthorized");
-    }
     if (!res.ok || !res.body) throw new Error(`HTTP ${res.status}`);
     const reader = res.body.getReader();
     const decoder = new TextDecoder();
@@ -1400,8 +1529,14 @@
     }
   });
 
-  window.addEventListener("gabee-admin-expired", () => {
-    setToken(null);
+  // 서버 상태 탭(iframe)의 토큰이 끝나면: 연장해서 그 화면만 다시 열고, 연장이 안 되면 로그인으로 돌아간다
+  window.addEventListener("gabee-admin-expired", async () => {
+    if (await renewSession()) {
+      const frame = document.querySelector(".ops-frame");
+      if (frame) frame.src = frame.src;
+      return;
+    }
+    saveTokens(null);
     showLogin("로그인이 만료됐어요. 다시 로그인해 주세요.");
   });
 
