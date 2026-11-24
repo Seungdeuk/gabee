@@ -451,6 +451,7 @@
   const SOURCE_LABEL = {
     youtube: "유튜브",
     instagram: "인스타그램",
+    facebook: "페이스북",
     blog: "블로그",
     cafe: "카페",
     news: "뉴스 기사",
