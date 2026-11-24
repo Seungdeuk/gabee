@@ -1,0 +1,127 @@
+[
+ {
+  "case": "ok",
+  "mode": "required",
+  "status": {
+   "mode": "required",
+   "active": true,
+   "fingerprint": "3831601b7ffb"
+  },
+  "blocked": false,
+  "leaked_raw": false,
+  "socket_connect_attempts": 0
+ },
+ {
+  "case": "missing_onnx",
+  "mode": "required",
+  "status": {
+   "mode": "required",
+   "active": false,
+   "fingerprint": ""
+  },
+  "blocked": true,
+  "exception": "PrivacyUnavailable",
+  "status_code": null,
+  "code": "privacy_unavailable",
+  "socket_connect_attempts": 0
+ },
+ {
+  "case": "hash_mismatch",
+  "mode": "required",
+  "status": {
+   "mode": "required",
+   "active": false,
+   "fingerprint": ""
+  },
+  "blocked": true,
+  "exception": "PrivacyUnavailable",
+  "status_code": null,
+  "code": "privacy_unavailable",
+  "socket_connect_attempts": 0
+ },
+ {
+  "case": "tokenizer_corrupt",
+  "mode": "required",
+  "status": {
+   "mode": "required",
+   "active": false,
+   "fingerprint": ""
+  },
+  "blocked": true,
+  "exception": "PrivacyUnavailable",
+  "status_code": null,
+  "code": "privacy_unavailable",
+  "socket_connect_attempts": 0
+ },
+ {
+  "case": "labels_mismatch",
+  "mode": "required",
+  "status": {
+   "mode": "required",
+   "active": false,
+   "fingerprint": ""
+  },
+  "blocked": true,
+  "exception": "PrivacyUnavailable",
+  "status_code": null,
+  "code": "privacy_unavailable",
+  "socket_connect_attempts": 0
+ },
+ {
+  "case": "ort_load_fail",
+  "mode": "required",
+  "status": {
+   "mode": "required",
+   "active": false,
+   "fingerprint": ""
+  },
+  "blocked": true,
+  "exception": "PrivacyUnavailable",
+  "status_code": null,
+  "code": "privacy_unavailable",
+  "socket_connect_attempts": 0
+ },
+ {
+  "case": "infer_exception",
+  "mode": "required",
+  "status": {
+   "mode": "required",
+   "active": true,
+   "fingerprint": "3831601b7ffb"
+  },
+  "blocked": true,
+  "exception": "PrivacyUnavailable",
+  "status_code": null,
+  "code": "privacy_unavailable",
+  "socket_connect_attempts": 0,
+  "note": "engine loaded OK first, then InferenceSession.run patched to raise (rerun after harness fix)"
+ },
+ {
+  "case": "timeout",
+  "mode": "required",
+  "status": {
+   "mode": "required",
+   "active": true,
+   "fingerprint": "3831601b7ffb"
+  },
+  "blocked": true,
+  "exception": "PrivacyUnavailable",
+  "status_code": null,
+  "code": "privacy_unavailable",
+  "socket_connect_attempts": 0
+ },
+ {
+  "case": "concurrency_limit",
+  "mode": "required",
+  "status": {
+   "mode": "required",
+   "active": true,
+   "fingerprint": "3831601b7ffb"
+  },
+  "blocked": true,
+  "exception": "PrivacyUnavailable",
+  "status_code": null,
+  "code": "privacy_unavailable",
+  "socket_connect_attempts": 0
+ }
+]
