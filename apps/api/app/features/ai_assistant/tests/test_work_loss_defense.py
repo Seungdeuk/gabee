@@ -2,7 +2,7 @@
 """응답 뒤 작업(프로세스 안 스레드·메모리 대기열) 유실에 대한 **관측·오류 상태** 방어 시험.
 
 이 시험이 확인하는 것(영속 큐·원본 영속 저장소 없이 가능한 범위만):
-- 큐가 가득 차면 사진이 15분 동안 조용히 pending 으로 남지 않고 failed(`QueueFull`)로 적힌다(직접 누른 저장은 버리지 않는다).
+- 큐가 가득 차면 사진은 기존 계약대로 pending 으로 남고(로그로 알림), 직접 누른 저장은 버리지 않는다. (failed 로 바로 적는 안은 상태·API 동작이 바뀌어 승인 전에는 하지 않는다.)
 - 서버를 끄기 전에 아직 시작하지 않은 작업을 취소하면 사진 판별은 failed(`Shutdown`)로 적혀 업로더가 바로 다시 검사할 수 있고, 자리 표시(대기 수·바이트·진행 집합)가 되돌려진다.
 - 기동 때 오래된 `received`·`pending` 이 남아 있으면 건수만 로그로 알리고 아무것도 바꾸지 않는다. DB 가 안 돼도 기동을 막지 않는다.
 - 같은 문서 등록이 다시 불려도 한 번만 등록되고 외부 AI 도 다시 부르지 않는다.
@@ -99,17 +99,20 @@ def test_cancel_does_not_touch_a_job_that_already_started(client, family, monkey
     assert seen == [att]
 
 
-def test_a_full_queue_marks_the_photo_failed_instead_of_leaving_it_pending(
-    client, family, monkeypatch
+def test_a_full_queue_skips_the_photo_and_keeps_the_existing_pending_contract(
+    client, family, monkeypatch, caplog
 ):
     a, _, _ = family
     submitted = []
     monkeypatch.setattr(library, "PHOTO_QUEUE_LIMIT", 0)
     monkeypatch.setattr(library, "_submit", lambda fn, *args: submitted.append(fn))
-    att = _send_photo(client, a)
+    with caplog.at_level(logging.INFO, logger=library.logger.name):
+        att = _send_photo(client, a)
     row = _check(att)
-    assert (row.status, row.last_error) == ("failed", "QueueFull")
-    assert submitted == []  # 큐에 넣지 않았다
+    assert (
+        row.status == "pending" and row.last_error is None
+    )  # 기존 계약: 15분 뒤 확인 필요·재검사로 복구(상태를 바꾸지 않는다)
+    assert submitted == [] and "photo queue full" in caplog.text  # 큐에 넣지 않았고 로그로 알렸다
 
 
 def test_a_forced_save_is_never_dropped_by_a_full_queue(client, family, monkeypatch):
@@ -122,8 +125,8 @@ def test_a_forced_save_is_never_dropped_by_a_full_queue(client, family, monkeypa
     library._on_photo(group["id"], uid, att, b"x", True)  # 사용자가 직접 누른 저장
     assert len(submitted) == 1  # 큐가 가득 차도 버리지 않는다
     assert (
-        _check(att).last_error == "QueueFull"
-    )  # 위의 자동 판별 한 건만 failed 로 적혔다(직접 저장은 상태를 바꾸지 않는다)
+        _check(att).status == "pending"
+    )  # 자동 판별은 건너뛰어 pending 그대로, 직접 저장은 상태를 바꾸지 않는다
 
 
 def test_startup_report_counts_stale_work_and_changes_nothing(client, family, monkeypatch, caplog):

@@ -303,10 +303,9 @@ def _on_photo(
             _photo_bytes += len(data)
             _photo_inflight.add(key)
     if full:
-        # 가족·인스턴스 건수나 바이트 상한을 넘었다: 이번 사진은 건너뛰되, 15분 동안 조용히 pending 으로 두지 않고 failed(`QueueFull`)로 적어
-        # 업로더가 "확인 필요" 목록에서 바로 다시 검사할 수 있게 한다(이미 정해진 줄은 바뀌지 않는다). 원본 파일이 남아 있어야 다시 검사가 된다.
+        # 가족·인스턴스 건수나 바이트 상한을 넘었다: 이번 사진은 건너뛴다(기존 계약: pending 으로 남아 15분 뒤 확인 필요 목록·재검사로 복구된다.
+        # 판별 상태를 failed 로 바로 적는 안은 상태·API 동작이 바뀌므로 승인 전에는 하지 않는다). 건수만 로그로 남긴다.
         logger.info("chat library photo queue full")
-        chat_library.photo_judged(group_id, attachment_id, "failed", "QueueFull")
         return
 
     def release() -> None:
