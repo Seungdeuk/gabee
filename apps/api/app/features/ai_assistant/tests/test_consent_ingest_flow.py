@@ -1,4 +1,4 @@
-"""처리 목적별 외부 AI 전송 정책 시험(ADR 0023, 사용자 결정 2026-11-23).
+"""처리 목적별 외부 AI 전송 정책 시험(ADR 0024, 사용자 결정 2026-11-23).
 
 - **메인 AI 직접 업로드**(`/ai-assistant/files`): 기존 정책 유지 — 가족 AI 동의와 무관하게 Claude 가 읽고·가리고·분류한다(`Purpose.MAIN_AI_DIRECT_UPLOAD`).
 - **가족 소통 채팅방**(문서·사진 자동 등록, "문서로 저장", 재검사): **가족 AI 동의가 있을 때만** 외부(Claude·Jev)로 보낸다(`Purpose.FAMILY_CHAT_DOCUMENT`).

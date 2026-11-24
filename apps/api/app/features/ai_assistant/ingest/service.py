@@ -48,13 +48,13 @@ class MaskingUnavailable(Exception):
 
 def chat_masking_blocked(require_external: bool) -> bool:
     """가족 채팅 문서가 실제 Claude 가리기를 거칠 수 없는 설정인가. 로컬 규칙은 주민등록번호 등만 가리고 이름·주소·전화번호를 남기므로
-    그렇게 가린 글은 AI 검색 지식베이스에 들어가면 안 된다(ADR 0023). 메인 AI 직접 업로드(`require_external=False`)에는 적용하지 않는다."""
+    그렇게 가린 글은 AI 검색 지식베이스에 들어가면 안 된다(ADR 0024). 메인 AI 직접 업로드(`require_external=False`)에는 적용하지 않는다."""
     return require_external and not settings.ingest_llm_mask
 
 
 def _gate_or_stop(external: bool, recheck: Recheck | None, require_external: bool) -> bool:
     """`_gate` 와 같되, 막혔고 `require_external` 이면 로컬로 대신하지 않고 `ConsentRequired` 로 멈춘다.
-    로컬 규칙으로만 가린 글은 이름·주소가 남으므로 AI 검색 지식베이스에 들어가면 안 된다(가족 채팅방 자동 처리, ADR 0023)."""
+    로컬 규칙으로만 가린 글은 이름·주소가 남으므로 AI 검색 지식베이스에 들어가면 안 된다(가족 채팅방 자동 처리, ADR 0024)."""
     allowed = _gate(external, recheck)
     if not allowed and require_external:
         raise ConsentRequired

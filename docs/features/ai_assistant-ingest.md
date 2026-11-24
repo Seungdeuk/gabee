@@ -110,7 +110,7 @@ Excel ─▶ converters.xlsx_to_markdown (금액 쉼표·날짜·병합 칸 반�
 - 시험: `ingest/tests/test_llm_ingest.py`(가짜 Claude 응답), 이름 확인 흐름은 `tests/test_family_names.py`.
 
 ## 가족방 문서 사진 판별 — SigLIP2 단독 (2026-11-23, 로컬 OCR 제거)
-- **상태**: 로컬 OCR 제거와 외부 전송 정책 분리(메인 AI 직접 업로드는 기존 유지, 가족 채팅방은 동의가 있을 때만)는 **결정됨**(사용자, ADR 0023). **운영 활성화는 승인되지 않았다.** `margin > 5` 의 **실제 한국어 문서 검증은 미완료**다.
+- **상태**: 로컬 OCR 제거와 외부 전송 정책 분리(메인 AI 직접 업로드는 기존 유지, 가족 채팅방은 동의가 있을 때만)는 **결정됨**(사용자, ADR 0024). **운영 활성화는 승인되지 않았다.** `margin > 5` 의 **실제 한국어 문서 검증은 미완료**다.
 - **결정**: RapidOCR 로컬 OCR 모델은 서비스에서 제외한다. 사진 분류는 SigLIP2 ONNX, 문서 내용 추출은 Claude(`INGEST_LLM_OCR=true`)가 맡는다.
 - **판정 규칙**(`ingest/siglip_margin.py::photo_status`): margin(= 문서 문장 6개 logit 최댓값 − 일반 문장 8개 logit 최댓값, `google/siglip2-base-patch16-224`)이 **5 보다 크면 `document`, 아니면 `unsure`**. 모델이 점수를 못 내면 `failed`(`Siglip…`). 일반 사진을 자동으로 `photo` 로 확정하지 않는다(D-13). 임계값 5 는 공개 데이터 평가의 `T_RESCUE` 를 재사용한 **초기 기준**이며 새로 맞춘 값이 아니다. 문장·모델은 평가 동결 설정(exp-1) 그대로다.
 - **스위치**: `PHOTO_CLASSIFY_SIGLIP`(기본 꺼짐). **꺼져 있으면 판별 수단이 없어 모든 사진이 `unsure`** 이고 문서 자동 등록이 멈춘다(켜야 동작). 켜도 판별은 외부 전송이 없다. 이전의 Claude 판별 스위치 `PHOTO_JUDGE_LLM` 은 무시된다(`doc_ai.classify_photo` 와 `photo_judge.judge`(OCR 판별)는 서비스에서 부르지 않는다: 후속 정리 대상, `photo_judge.to_judge_jpeg` 는 놀이 기능이 쓰므로 남긴다).
@@ -138,7 +138,7 @@ Excel ─▶ converters.xlsx_to_markdown (금액 쉼표·날짜·병합 칸 반�
 **`INGEST_LLM_OCR=true` 는 서비스에서 필수**다(사진 속 글자를 읽을 수단이 Claude 뿐). 검증: 켠 채 동의 있는 가족은 Claude 읽기, 동의 없는 가족은 보내지 않고 `consent_required`, 끈 채 읽기 구성 요소가 없으면 `ocr_unavailable`(`test_external_consent.py`). `rapidocr` 의존성은 `pyproject.toml` 에서 제거했다(전체 회귀 확인 뒤 별도 커밋).
 
 ### 외부 AI(Claude·Jev) 전송 정책: 메인 AI 직접 업로드와 가족 채팅방의 분리 (2026-11-23 결정)
-- **결정(사용자)**: 두 처리 목적의 정책을 분리한다. 근거와 대체 관계는 [ADR 0023](../adr/0023-local-ocr-removed-siglip-only-photo-judge.md). 실제 서비스의 동의 문구와 개인정보처리방침은 **별도 확인이 필요하다**(이 작업에서 바꾸지 않았다).
+- **결정(사용자)**: 두 처리 목적의 정책을 분리한다. 근거와 대체 관계는 [ADR 0024](../adr/0024-local-ocr-removed-siglip-only-photo-judge.md). 실제 서비스의 동의 문구와 개인정보처리방침은 **별도 확인이 필요하다**(이 작업에서 바꾸지 않았다).
   - **메인 AI 직접 업로드(`/ai-assistant/files`) — 기존 기능 유지(명시적 사용자 결정).** 사진·PDF·문서를 지금처럼 Claude 가 읽고·가리고·분류(Jev)하며 챙길 일도 뽑는다. 가족 AI 동의 검사가 없고 이 PR 로 새로 403 이 되지 않는다. 메인 AI 의 인증·AI 이용 조건·개인정보 정책은 바꾸지 않았다.
   - **가족 소통 채팅방 자동 처리 — 동의가 있을 때만 외부로 보낸다(이번 PR 의 강화 범위).** 일반 가족 채팅 메시지·소통 에이전트·메인 채팅의 기존 개인정보 정책은 바꾸지 않았다.
 - **2026-11-10 결정과 달라지는 범위**(ADR 0015 "결정 (2026-11-10)"·ADR 0014 "갱신 (2026-11-10)"): 채팅방 문서·사진의 "동의 확인 없음"만 대체되고, **메인 AI 직접 업로드는 그대로**다.
@@ -165,7 +165,7 @@ Excel ─▶ converters.xlsx_to_markdown (금액 쉼표·날짜·병합 칸 반�
 - **메인 AI 직접 업로드(참고, 변경 없음)**: 가족 동의와 무관하게 Claude 읽기(사진·PDF 스캔 쪽·PPT 그림)·가리기·분류(Jev)·챙길 일이 기존대로 동작한다. 이 경로는 보안 보고서의 "동의 없는 Jev 전송" 항목에 해당하며 "정책으로 유지"로 표시했다.
 - **처리 도중 철회(가족 채팅방)**: 동의를 시도 시작 때 읽고 **읽기·가리기·그림 설명·분류·챙길 일 직전마다** 다시 읽는다(`recheck`). 철회하면 그 뒤 단계는 로컬로 처리한다. 이미 나간 호출(한 번에 보낸 PDF 쪽 묶음, 읽는 중이던 사진)은 되돌릴 수 없다.
 - **보호되는 범위(시험으로 확인)**: 채팅방의 동의 없는 사진 자동 등록·직접 저장·재검사, PDF·PPT·글 문서, 처리 도중 철회(사진·PDF), 끼워 넣은 Jev, `external`·`purpose` 누락·변조. 메인 AI 직접 업로드의 사진·PDF·문서는 동의와 무관하게 기존대로 동작함을 같은 파일에서 확인한다(동의 켬·끔 모두).
-- **재노출 차단(2026-11-23)**: 이미 저장된 채팅 문서는 `ai_group_settings.updated_at`(동의가 마지막으로 켜진 시각) 이전 것을 외부 AI(메인 채팅 도구 `search_knowledge`·`get_item`·`list_items`, 한 기록 안 검색 포함)에서 제외한다. 채팅 첨부가 아닌 기록(메인 AI 직접 업로드)과 앱 문서함 화면은 그대로다. 동의가 꺼져 있으면 채팅 문서는 모두 제외한다. 근거·한계는 ADR 0023 "재노출 차단".
+- **재노출 차단(2026-11-23)**: 이미 저장된 채팅 문서는 `ai_group_settings.updated_at`(동의가 마지막으로 켜진 시각) 이전 것을 외부 AI(메인 채팅 도구 `search_knowledge`·`get_item`·`list_items`, 한 기록 안 검색 포함)에서 제외한다. 채팅 첨부가 아닌 기록(메인 AI 직접 업로드)과 앱 문서함 화면은 그대로다. 동의가 꺼져 있으면 채팅 문서는 모두 제외한다. 근거·한계는 ADR 0024 "재노출 차단".
 - **알려진 한계**:
   1. **보류된 채팅 사진은 자동으로 다시 판별되지 않는다.** 동의 때문에(또는 스위치 OFF 로) `unsure` 가 된 사진은 재검사 대상이 아니다(재검사는 실패·지연만, 409 `recheck_not_needed`). 동의를 켠 뒤에는 수동 "문서로 저장"을 쓴다.
   2. **(고침) 동의 없이 로컬 가리기로 저장된 채팅 문서의 재노출.** 선택지 (a) 채택: 동의 없는 채팅 문서는 보류(등록 안 함), 이미 저장된 기록은 위 재노출 차단으로 외부 AI 에서 제외. 시험: `test_a_chat_document_uploaded_without_consent_is_still_not_searchable_after_consent_is_turned_on`, `test_an_old_locally_masked_chat_document_is_not_sent_to_the_assistant_after_consent_but_other_records_are`(이전 xfail 을 정상 통과 시험으로 전환). **남은 한계**: 시각 기준이라 동의를 껐다 켠 가족의 첫 동의 때 올라온 정상 채팅 문서도 빠질 수 있다(보수적). 정확한 구분은 DB 칸이 필요해 보류했다(아래 "후속 설계").

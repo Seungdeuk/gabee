@@ -129,7 +129,8 @@ def test_lists_count_members_and_groups(client, make_admin):
 
     groups = client.get("/admin/service/groups", headers=headers).json()
     assert groups["total"] == 1
-    assert groups["rows"][0]["name"] == "우리 가족" and groups["rows"][0]["members"] == 1
+    # 가족 이름은 첫 글자만 보이고 나머지는 가린다("우리 가족" → "우****")
+    assert groups["rows"][0]["name"] == "우****" and groups["rows"][0]["members"] == 1
     assert groups["sizes"] == [{"members": 1, "groups": 1}]
 
     features = client.get("/admin/service/features", headers=headers).json()
@@ -288,13 +289,14 @@ def test_ai_usage_excludes_markers_and_lists(client, make_admin):
     assert d["families"] == [{"group_id": g, "name": None, "requests": 3, "errors": 1}]
     by_user = {r["user_id"]: r for r in d["users"]}
     assert by_user[user_id]["requests"] == 2 and by_user[user_id]["errors"] == 1
-    assert by_user[user_id]["name"] == "김지민" and by_user[user_id]["login_id"] == "jimin_kim"
+    # 이름·아이디는 첫 글자만 보인다(김지민 → 김**, jimin_kim → j********)
+    assert by_user[user_id]["name"] == "김**" and by_user[user_id]["login_id"] == "j********"
     assert by_user[u2]["requests"] == 1 and by_user[u2]["errors"] == 0
     assert d["users"][0]["user_id"] == user_id  # 요청 많은 순
 
     assert len(d["limited"]) == 1  # ai_cooldown 거절은 한도 기록이 아니다
     lim = d["limited"][0]
-    assert lim["user_id"] == u2 and lim["name"] == "김지민"
+    assert lim["user_id"] == u2 and lim["name"] == "김**"
     assert lim["days"] == 2
     assert lim["group_name"] is None
     assert lim["last_at"][:16] == (now - timedelta(hours=1)).isoformat()[:16]
@@ -361,9 +363,9 @@ def test_support_list_and_answer(client, make_admin):
     assert [r["id"] for r in d["rows"]] == [second, first]  # 최근순
     row = d["rows"][1]
     assert (row["user_name"], row["login_id"], row["group_name"]) == (
-        "김지민",
-        "jimin_kim",
-        "우리 가족",
+        "김**",
+        "j********",
+        "우****",
     )
     assert d["rows"][0]["group_name"] is None  # 가족 없는 회원
 
@@ -590,6 +592,7 @@ def test_analytics_acquisition_by_source(client, make_admin):
     assert (rows["youtube"]["signups"], rows["youtube"]["family_rate"]) == (2, 50.0)
     assert (rows["instagram"]["signups"], rows["instagram"]["family_rate"]) == (1, 0.0)
     assert rows["unknown"]["signups"] == d["users"] - 3
+    assert rows["blog"]["signups"] == 0 and rows["kakao"]["share"] == 0.0  # 가입 0명 채널도 나온다
     assert sum(r["signups"] for r in d["acquisition"]) == d["users"]
     assert rows["youtube"]["share"] == round(2 * 100 / d["users"], 1)
     assert "yt_one" not in str(d["acquisition"]) and user_id not in str(d["acquisition"])  # 숫자만
@@ -617,16 +620,130 @@ def test_analytics_without_acquisition_table(client, make_admin, monkeypatch):
 
 
 def test_acquisition_order_and_rates():
-    """계산만: 많은 순, 같으면 이름순, unknown 은 개수와 상관없이 맨 끝. 가입자 목록에 없는 기록은 무시한다."""
-    from app.features.service_admin.analytics import acquisition
+    """계산만: 많은 순, 같으면 채널 순서, unknown 은 개수와 상관없이 맨 끝. 가입자 목록에 없는 기록은 무시한다.
+    홍보 채널은 0명이어도 한 줄씩 나오고, 목록 밖 값은 받은 그대로 나온다."""
+    from app.features.service_admin.analytics import KNOWN_SOURCES, acquisition
 
     now = datetime.now(UTC)
     users = {u: now for u in ("a", "b", "c", "d", "e", "f")}
-    sources = [("a", "news"), ("b", "blog"), ("c", "blog"), ("gone", "youtube")]
+    sources = [("a", "news"), ("b", "blog"), ("c", "blog"), ("d", "tiktok"), ("gone", "youtube")]
     rows = acquisition(users, sources, first_family={"b": now})
-    assert [(r.source, r.signups) for r in rows] == [("blog", 2), ("news", 1), ("unknown", 3)]
+    assert [(r.source, r.signups) for r in rows] == [
+        ("blog", 2),
+        ("news", 1),
+        ("tiktok", 1),  # 목록 밖 값: 같은 1명이면 채널 뒤
+        ("youtube", 0),  # 가입자 목록에 없는 기록은 세지 않는다
+        ("instagram", 0),
+        ("facebook", 0),  # 메타 광고 채널도 0명이어도 늘 나온다
+        ("cafe", 0),
+        ("qr", 0),
+        ("kakao", 0),
+        ("google-play", 0),
+        ("unknown", 2),
+    ]
     assert rows[0].family_rate == 50.0 and rows[0].share == 33.3
-    assert acquisition({}, [], {}) == []
+    assert (
+        rows[3].share == 0.0 and rows[3].family_rate is None
+    )  # 0명 채널: 비율 0%, 가족 연결은 셀 사람이 없어 비움
+    empty = acquisition({}, [], {})
+    assert [r.source for r in empty] == [*KNOWN_SOURCES, "unknown"]
+    assert all(r.signups == 0 and r.share is None for r in empty)  # 가입자 0명이면 비율도 비움
+
+
+def _clear_usage() -> None:
+    from app.features.usage.models import UsageDaily
+
+    with SessionLocal() as db:
+        db.query(UsageDaily).delete()
+        db.commit()
+
+
+def test_analytics_usage_time(client, make_admin):
+    """체류시간: 1명당 하루 평균 분·실행 횟수, 탭 비율, 날짜별 값. 숫자만 나온다."""
+    from app.features.usage.service import today
+
+    _clear_usage()
+    headers, user_id = _login(client)
+    make_admin(user_id)
+    a, _ = _login(client, "usage_a")
+    b, _ = _login(client, "usage_b")
+    day = today(datetime.now(UTC)).isoformat()
+    url = "/usage/report"
+    assert (
+        client.post(
+            url, json={"day": day, "opens": 2, "tabs": {"chat": 600, "schedule": 300}}, headers=a
+        ).status_code
+        == 204
+    )
+    assert (
+        client.post(
+            url, json={"day": day, "opens": 1, "tabs": {"chat": 300}}, headers=b
+        ).status_code
+        == 204
+    )
+
+    d = client.get("/admin/service/analytics", headers=headers).json()
+    assert d["usage_ready"] is True
+    u = d["usage"]
+    assert u["users"] == 2
+    assert u["avg_minutes_per_day"] == 10.0  # (900 + 300) 초 / 2명 / 60
+    assert u["avg_opens_per_day"] == 1.5
+    assert [(t["tab"], t["minutes"], t["share"]) for t in u["by_tab"]] == [
+        ("chat", 7.5, 75.0),  # 900 초 / 2명·날 / 60
+        ("schedule", 2.5, 25.0),
+    ]
+    assert len(u["daily"]) == 30 and u["daily"][-1]["day"] == day
+    assert (u["daily"][-1]["users"], u["daily"][-1]["avg_minutes"]) == (2, 10.0)
+    assert u["daily"][0]["avg_minutes"] is None  # 기록 없는 날
+    assert "usage_a" not in str(u) and user_id not in str(u)
+
+
+def test_analytics_without_usage_table(client, make_admin, monkeypatch):
+    """체류시간 표가 아직 없는 DB: 이 구역만 비고(usage_ready=false) 나머지 분석은 200 이다."""
+    from app.features.service_admin import analytics
+
+    headers, user_id = _login(client)
+    make_admin(user_id)
+    real = analytics.monitor.status()
+
+    class _NotReady:
+        def feature_ready(self, feature: str) -> bool:
+            return feature != "usage" and real.feature_ready(feature)
+
+    monkeypatch.setattr(analytics.monitor, "status", lambda: _NotReady())
+    called = []
+    monkeypatch.setattr(analytics.repository, "usage_rows", lambda db, since: called.append(1))
+    r = client.get("/admin/service/analytics", headers=headers)
+    assert r.status_code == 200, r.text
+    assert (r.json()["usage_ready"], r.json()["usage"]) == (False, None)
+    assert called == []
+
+
+def test_usage_calculation():
+    """계산만: 기록 있는 사람·날 기준 평균, 30일 밖 기록은 뺌, 탭은 많은 순."""
+    from datetime import date as _date
+
+    from app.features.service_admin.analytics import usage
+
+    today = _date(2026, 11, 19)
+    rows = [
+        ("u1", today, "app", 1200, 3),
+        ("u1", today, "chat", 900, 0),
+        ("u1", today, "my", 300, 0),
+        ("u1", _date(2026, 11, 18), "app", 600, 1),
+        ("u1", _date(2026, 11, 18), "care", 600, 0),
+        ("u2", today, "app", 0, 1),
+        ("u3", _date(2026, 10, 1), "app", 9999, 9),  # 30일 밖
+    ]
+    u = usage(rows, today)
+    assert u.users == 2
+    assert u.avg_minutes_per_day == round((1200 + 600 + 0) / 3 / 60, 1)
+    assert u.avg_opens_per_day == round((3 + 1 + 1) / 3, 1)
+    assert [t.tab for t in u.by_tab] == ["chat", "care", "my"]
+    assert [t.minutes for t in u.by_tab] == [5.0, 3.3, 1.7]  # 900·600·300 초 / 3명·날 / 60
+    assert u.daily[-1].users == 2 and u.daily[-2].avg_minutes == 10.0
+    empty = usage([], today)
+    assert (empty.users, empty.avg_minutes_per_day, empty.by_tab) == (0, None, [])
 
 
 def test_analytics_is_admin_only(client, make_admin):
@@ -645,3 +762,29 @@ def test_ops_tab_page_is_served(client):
     for path in ("ops/js/embed.js", "ops/js/app.js", "ops/js/api.js", "ops/css/style.css"):
         assert client.get(f"/admin/service/ui/{path}").status_code == 200, path
     assert 'class="ops-frame"' in client.get("/admin/service/ui/app.js").text
+
+
+def test_names_are_masked_to_first_letter(client, make_admin):
+    """회원·가족 목록의 이름·아이디는 서버에서 첫 글자만 남기고 가려 보낸다(응답 원문에 원래 값이 없다)."""
+    headers, user_id = _login(client)
+    make_admin(user_id)
+    client.post("/family-group/groups", json={"name": "우리 가족"}, headers=headers)
+    members = client.get("/admin/service/members", headers=headers)
+    me = next(r for r in members.json()["rows"] if r["id"] == user_id)
+    assert (me["name"], me["login_id"]) == ("김**", "j********")
+    groups = client.get("/admin/service/groups", headers=headers)
+    assert groups.json()["rows"][0]["owner_name"] == "김**"
+    for r in (members, groups):
+        assert "김지민" not in r.text and "jimin_kim" not in r.text and "우리 가족" not in r.text
+    # 로그인한 관리자 본인 정보(/me)는 가리지 않는다
+    assert client.get("/admin/service/me", headers=headers).json()["name"] == "김지민"
+
+
+def test_mask_first_rules():
+    from app.shared.name_mask import mask_first
+
+    assert mask_first("김준하") == "김**"
+    assert mask_first("보경") == "보*"
+    assert mask_first("a") == "a"
+    assert mask_first("") == "" and mask_first(None) is None
+    assert mask_first("(가족 없음)") == "(가족 없음)"  # 안내 문구는 그대로

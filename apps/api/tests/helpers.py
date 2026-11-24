@@ -30,7 +30,7 @@ def join_family(client, owner: dict, code: str, joiner: dict):
 
 
 def chat_masking_like_service(monkeypatch) -> None:
-    """운영 설정(`INGEST_LLM_MASK=true`)을 흉내 낸다: 가족 채팅 문서·사진은 실제 Claude 가리기를 거쳐야 등록된다(ADR 0023, MASK OFF 차단).
+    """운영 설정(`INGEST_LLM_MASK=true`)을 흉내 낸다: 가족 채팅 문서·사진은 실제 Claude 가리기를 거쳐야 등록된다(ADR 0024, MASK OFF 차단).
     루트 conftest 는 시험이 실제 Claude 를 부르지 않게 가리기를 꺼 두므로, 채팅 문서 등록을 확인하는 시험은 가리기 단계를 **로컬 규칙과 같은 결과를 내는 대역**으로 바꿔
     켠다(실제 API 호출 없음). 대역은 서비스의 로컬 가리기와 같은 코드를 쓰므로 이 시험들이 보던 가리기 결과는 달라지지 않는다."""
     from collections import Counter

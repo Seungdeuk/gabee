@@ -1,7 +1,10 @@
 from datetime import date, datetime
+from enum import IntEnum
 from typing import Literal
 
 from pydantic import BaseModel, Field
+
+from app.shared.name_mask import MaskedOptStr, MaskedStr
 
 
 class AdminMeOut(BaseModel):
@@ -12,8 +15,8 @@ class AdminMeOut(BaseModel):
 
 class MemberRow(BaseModel):
     id: str
-    name: str
-    login_id: str | None
+    name: MaskedStr
+    login_id: MaskedOptStr
     joined_at: datetime
     has_family: bool
     email_verified: bool  # 이메일 주소는 돌려주지 않고 인증 여부만
@@ -37,8 +40,8 @@ class MembersOut(BaseModel):
 
 class GroupRow(BaseModel):
     id: str
-    name: str
-    owner_name: str | None
+    name: MaskedStr
+    owner_name: MaskedOptStr
     members: int
     pending: int  # 승인 대기 중인 가입 요청 수
     ai_enabled: bool
@@ -85,23 +88,23 @@ class AdminAiFeatureRow(BaseModel):
 
 class AdminAiFamilyRow(BaseModel):
     group_id: str
-    name: str | None
+    name: MaskedOptStr
     requests: int  # 최근 30일 요청 수
     errors: int
 
 
 class AdminAiUserRow(BaseModel):
     user_id: str
-    name: str | None
-    login_id: str | None
+    name: MaskedOptStr
+    login_id: MaskedOptStr
     requests: int  # 최근 30일 요청 수
     errors: int
 
 
 class AdminAiLimitedRow(BaseModel):
     user_id: str
-    name: str | None
-    group_name: str | None  # 가장 최근에 막힌 기록의 가족
+    name: MaskedOptStr
+    group_name: MaskedOptStr  # 가장 최근에 막힌 기록의 가족
     days: int  # 최근 30일 중 한도에 막힌 날 수(한국 시간 기준)
     last_at: datetime
 
@@ -127,9 +130,9 @@ class AdminTicketRow(BaseModel):
     answer: str | None
     answered_at: datetime | None
     created_at: datetime
-    user_name: str | None
-    login_id: str | None
-    group_name: str | None
+    user_name: MaskedOptStr
+    login_id: MaskedOptStr
+    group_name: MaskedOptStr
 
 
 class AdminTicketsOut(BaseModel):
@@ -166,7 +169,7 @@ class AdminNoticesOut(BaseModel):
     rows: list[AdminNoticeRow]  # 최근순, 최대 200
 
 
-# ---------- 데이터 분석 탭 ----------
+# ---------- 이용 분석 탭 ----------
 class AnalyticsCohort(BaseModel):
     week_start: date  # 가입 주의 월요일(한국 시간)
     size: int  # 그 주 가입자 수
@@ -204,7 +207,7 @@ class AnalyticsFeature(BaseModel):
 
 
 class AnalyticsAiFamily(BaseModel):
-    name: str
+    name: MaskedStr
     requests: int
     tokens: int  # 입력 + 출력 토큰(비용의 기준)
 
@@ -236,6 +239,26 @@ class AnalyticsSource(BaseModel):
     family_rate: float | None  # 그중 가족에 들어간 사람 %
 
 
+class AnalyticsUsageTab(BaseModel):
+    tab: str  # chat, family-chat, schedule, care, my, other
+    minutes: float  # 1명당 하루 평균 그 탭에 머문 분(기록이 있는 사람·날 기준, 탭을 다 더하면 하루 평균과 같다)
+    share: float | None  # 전체 탭 시간 대비 %
+
+
+class AnalyticsUsageDay(BaseModel):
+    day: date
+    users: int  # 그날 기록이 있는 사람
+    avg_minutes: float | None  # 그날 1명당 평균 사용 분
+
+
+class AnalyticsUsage(BaseModel):
+    users: int  # 30일 동안 기록이 있는 사람
+    avg_minutes_per_day: float | None  # 1명당 하루 평균 사용 분(기록이 있는 날 기준)
+    avg_opens_per_day: float | None  # 1명당 하루 평균 실행 횟수
+    by_tab: list[AnalyticsUsageTab]  # 많은 순
+    daily: list[AnalyticsUsageDay]  # 30일, 오래된 날 → 오늘
+
+
 class AnalyticsOut(BaseModel):
     users: int
     retention: list[AnalyticsCohort]  # 가입 주별(8주)
@@ -248,3 +271,36 @@ class AnalyticsOut(BaseModel):
     support: AnalyticsSupport
     acquisition: list[AnalyticsSource]  # 유입 경로별 가입(많은 순, unknown 은 맨 끝)
     acquisition_ready: bool  # 유입 경로 표가 DB 에 있나(없으면 acquisition 은 빈 목록)
+    usage: AnalyticsUsage | None  # 체류시간(최근 30일). 표가 없으면 None
+    usage_ready: bool  # 체류시간 표가 DB 에 있나
+
+
+class MetaAdsDays(IntEnum):
+    """메타 광고 성과 기간(최근 7일·30일). 주소 글자("30")도 받으려고 Literal 대신 IntEnum 을 쓴다."""
+
+    week = 7
+    month = 30
+
+
+class MetaAdsTotals(BaseModel):
+    spend: float = 0.0  # 쓴 광고비(광고 계정 통화)
+    impressions: int = 0  # 광고가 보인 횟수
+    clicks: int = 0  # 광고를 누른 횟수
+    installs: int = 0  # 앱 설치(메타 action_type mobile_app_install)
+    signups: int = 0  # 앱 가입(앱 SDK 의 가입 완료 이벤트)
+
+
+class MetaAdsCampaign(MetaAdsTotals):
+    campaign_id: str
+    name: str  # 캠페인 이름(광고 관리자에서 붙인 이름)
+
+
+class MetaAdsOut(BaseModel):
+    configured: bool  # 서버에 메타 광고 토큰·광고 계정이 들어 있나
+    ok: bool  # 메타에서 숫자를 받아 왔나(false 면 reason 에 이유)
+    reason: str | None  # 받아 오지 못한 이유(관리자에게 보여 줄 짧은 문장)
+    days: Literal[7, 30]
+    currency: str | None  # 광고 계정 통화(예: KRW). 캠페인이 없으면 null
+    total: MetaAdsTotals
+    campaigns: list[MetaAdsCampaign]  # 광고비 많은 순
+    fetched_at: datetime

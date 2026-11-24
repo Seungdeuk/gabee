@@ -34,7 +34,7 @@ class FakeOcr:
 
 @pytest.fixture
 def family(client, family, monkeypatch):
-    """이 모듈의 가족은 기본으로 가족 AI 동의가 켜진 상태다(동의가 없으면 채팅 문서 등록을 보류한다, ADR 0023). 동의 없는 시험은 직접 끈다."""
+    """이 모듈의 가족은 기본으로 가족 AI 동의가 켜진 상태다(동의가 없으면 채팅 문서 등록을 보류한다, ADR 0024). 동의 없는 시험은 직접 끈다."""
     allow_ai(client, family[0], monkeypatch)
     return family
 

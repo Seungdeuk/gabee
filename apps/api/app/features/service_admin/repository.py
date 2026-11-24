@@ -340,7 +340,7 @@ def delete_notice(db: Session, notice_id: str) -> bool:
 
 
 def analytics_rows(db: Session, token_since: datetime, since: datetime) -> dict[str, list]:
-    """데이터 분석 탭에 쓰는 id·시각·개수만 읽는다(글 내용·이메일은 읽지 않는다).
+    """이용 분석 탭에 쓰는 id·시각·개수만 읽는다(글 내용·이메일은 읽지 않는다).
     가족 이름은 AI 많이 쓴 가족 표에만 쓴다(다른 탭도 가족 이름은 보여 준다)."""
     users, groups, members = _t("users"), _t("groups"), _t("group_members")
     tokens, events, messages = _t("refresh_tokens"), _t("events"), _t("messages")
@@ -392,6 +392,13 @@ def install_sources(db: Session) -> list[tuple[str, str]]:
     """(user_id, source) 목록. 유입 경로 표가 있는 DB 에서만 부른다(analytics.py 가 확인한다)."""
     t = _t("install_sources")
     return [tuple(r) for r in db.execute(select(t.c.user_id, t.c.source))]
+
+
+def usage_rows(db: Session, since_day) -> list[tuple]:
+    """(user_id, day, tab, seconds, opens) 목록, since_day 이후. 체류시간 표가 있는 DB 에서만 부른다."""
+    t = _t("usage_daily")
+    q = select(t.c.user_id, t.c.day, t.c.tab, t.c.seconds, t.c.opens).where(t.c.day >= since_day)
+    return [tuple(r) for r in db.execute(q)]
 
 
 def stale_support_tickets(db: Session, before: datetime) -> tuple[int, datetime | None]:

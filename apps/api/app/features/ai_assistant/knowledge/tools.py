@@ -300,7 +300,7 @@ def _chat_verified_since(db: Session, group_id: str) -> datetime:
     """외부 AI(@가비·메인 AI)에 채팅 첨부 기록을 보여도 되는 기준 시각. 가족 AI 동의가 지금 켜져 있으면 그 동의가 마지막으로 바뀐 시각이다:
     이 시각 이후에 만든 채팅 문서는 동의가 켜진 채로 처리돼 Claude 가 가렸고(동의가 없으면 등록 자체를 하지 않는다), 그 이전 채팅 문서는 동의 없이
     로컬 규칙으로만 가려졌을 수 있어 이름·주소가 남아 있다(보호 여부를 기록에 따로 남기지 않아 알 수 없으므로 뺀다). 동의가 꺼져 있으면 모든 채팅 문서를 뺀다.
-    채팅 첨부가 아닌 기록(메인 AI 직접 업로드)은 이 기준과 무관하게 항상 보인다(ADR 0023)."""
+    채팅 첨부가 아닌 기록(메인 AI 직접 업로드)은 이 기준과 무관하게 항상 보인다(ADR 0024)."""
     row = db.get(AiGroupSetting, group_id)
     if row is None or not row.enabled:
         return datetime.max.replace(tzinfo=UTC)

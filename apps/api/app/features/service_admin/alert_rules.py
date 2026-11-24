@@ -28,11 +28,11 @@ AI_SPIKE_RULE = "ai_usage_spike"
 AI_SPIKE_RATIO = 3
 AI_SPIKE_MIN_REQUESTS = 50
 AI_BASELINE_DAYS = 7
-AI_MENU = "AI 이용 현황"
+AI_MENU = "기능·AI › AI"
 
 STALE_JOIN_RULE = "stale_join"
 STALE_JOIN_HOURS = 24
-JOIN_MENU = "가족 그룹 관리"
+JOIN_MENU = "사용자 › 가족"
 
 
 def _aware(value: datetime) -> datetime:

@@ -3,17 +3,18 @@
 (function () {
   "use strict";
 
-  // 왼쪽 메뉴: 묶음 제목과 그 안의 탭. 요약(데이터 분석)을 먼저, 할 일(문의·공지)은 아래에 모은다. 첫 화면은 맨 위 탭.
+  // 왼쪽 메뉴: 관리자가 "무엇을 하러 왔나"로 묶는다. 같은 숫자는 한 탭에만 둔다. 첫 화면은 맨 위 탭(알림).
   const TAB_GROUPS = [
-    ["한눈에", [["analytics", "데이터 분석"]]],
-    ["사람", [["members", "회원 관리"], ["groups", "가족 그룹 관리"]]],
-    ["사용", [["features", "기능 관리"], ["ai", "AI 이용 현황"]]],
     ["운영 업무", [["alerts", "알림"], ["support", "문의 및 신고"], ["notices", "공지사항"]]],
+    ["사용자", [["members", "회원"], ["groups", "가족"]]],
+    ["이용 분석", [["analytics", "유입·가입"], ["retention", "재방문·사용 시간"], ["service", "고객 응대"]]],
+    ["기능·AI", [["features", "기능 사용"], ["ai", "AI"]]],
     // 운영 관리자 화면(서버 상태). 권한은 통합관리자 하나라 로그인한 관리자에게 모두 보인다.
-    ["운영", [["ops", "서버 상태"]]],
+    ["서버", [["ops", "서버 상태"]]],
   ];
   const TABS = TAB_GROUPS.flatMap(([, tabs]) => tabs);
   const TOKEN_KEY = "gabee_admin_token";
+  const REFRESH_KEY = "gabee_admin_refresh"; // 연장용 토큰(30일). 같은 탭의 sessionStorage 에만 두어 탭을 닫으면 로그아웃된다
   const THEME_KEY = "gabee_admin_theme"; // light 나 dark. 없으면 컴퓨터 설정을 따른다
 
   /** 지금 보이는 화면 모드. 고른 값이 없으면 컴퓨터 설정이다. */
@@ -84,6 +85,72 @@
     }
   }
 
+  function refreshToken() {
+    try {
+      return sessionStorage.getItem(REFRESH_KEY);
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * 로그인·연장 응답의 두 토큰을 저장한다. null 이면 둘 다 지운다(로그아웃).
+   * @param {{access_token: string, refresh_token: string} | null} tokens
+   */
+  function saveTokens(tokens) {
+    setToken(tokens ? tokens.access_token : null);
+    try {
+      if (tokens) sessionStorage.setItem(REFRESH_KEY, tokens.refresh_token);
+      else sessionStorage.removeItem(REFRESH_KEY);
+    } catch {
+      // 저장이 막히면 15분 뒤 다시 로그인한다
+    }
+  }
+
+  let refreshing = null; // 동시에 여러 요청이 401 을 받아도 연장은 한 번만 한다
+
+  /**
+   * 15분짜리 로그인 토큰이 끝났을 때 연장용 토큰으로 새 토큰을 받는다(탭을 열어 두는 동안 로그인 유지).
+   * @returns {Promise<boolean>} 연장했으면 true, 연장용 토큰이 없거나 끝났으면 false
+   */
+  function renewSession() {
+    if (!refreshing) {
+      refreshing = (async () => {
+        const rt = refreshToken();
+        if (!rt) return false;
+        const res = await fetch("/family-group/auth/refresh", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ refresh_token: rt }),
+        }).catch(() => null);
+        if (!res || !res.ok) return false;
+        saveTokens(await res.json());
+        return true;
+      })().finally(() => {
+        refreshing = null;
+      });
+    }
+    return refreshing;
+  }
+
+  /**
+   * 토큰을 붙여 부르고, 401 이면 한 번 연장한 뒤 다시 부른다. 연장도 안 되면 로그인 화면으로 돌아간다.
+   * @param {string} path
+   * @param {RequestInit} init headers 는 객체로 준다
+   * @returns {Promise<Response>}
+   */
+  async function authFetch(path, init) {
+    const send = () => fetch(path, { ...init, headers: { ...init.headers, Authorization: `Bearer ${token()}` } });
+    let res = await send();
+    if (res.status === 401 && (await renewSession())) res = await send();
+    if (res.status === 401) {
+      saveTokens(null);
+      showLogin("로그인이 만료됐어요. 다시 로그인해 주세요.");
+      throw new Error("unauthorized");
+    }
+    return res;
+  }
+
   /**
    * 관리자 API 를 부른다. 로그인이 풀렸으면(401) 로그인 화면으로 돌아간다.
    * @param {string} path
@@ -92,17 +159,12 @@
    * @returns {Promise<any>}
    */
   async function api(path, body, method = body ? "PATCH" : "GET") {
-    const init = { method, headers: { Authorization: `Bearer ${token()}` } };
+    const init = { method, headers: {} };
     if (body) {
       init.headers["Content-Type"] = "application/json";
       init.body = JSON.stringify(body);
     }
-    const res = await fetch(path, init);
-    if (res.status === 401) {
-      setToken(null);
-      showLogin("로그인이 만료됐어요. 다시 로그인해 주세요.");
-      throw new Error("unauthorized");
-    }
+    const res = await authFetch(path, init);
     if (res.status === 403 && path === "/admin/service/me") throw new Error("not_staff"); // 허용 목록에 없는 회원
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     return res.status === 204 ? null : res.json();
@@ -156,6 +218,8 @@
     support: "M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z",
     notices: "M3 11v2a1 1 0 0 0 1 1h2l5 4V6L6 10H4a1 1 0 0 0-1 1zM15 9a4 4 0 0 1 0 6M18 6a8 8 0 0 1 0 12",
     analytics: "M3 3v18h18M7 15l4-4 3 3 5-6",
+    retention: "M21 12a9 9 0 1 1-3-6.7M21 4v5h-5M12 7v5l3 2",
+    service: "M4 14v-2a8 8 0 0 1 16 0v2M4 14a2 2 0 0 0 2 2h1v-5H6a2 2 0 0 0-2 2zM20 14a2 2 0 0 1-2 2h-1v-5h1a2 2 0 0 1 2 2zM17 16v1a3 3 0 0 1-3 3h-2",
     ops: "M3 4h18v6H3zM3 14h18v6H3zM7 7h.01M7 17h.01",
     alerts: "M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9M13.7 21a2 2 0 0 1-3.4 0",
   };
@@ -183,7 +247,7 @@
 
   const filters = { memberQ: "" };
 
-  // 회원 관리 카드를 누르면 보이는 하루 그래프: 카드 key → (서버 칸, 그래프 제목, 아래 합계 문구)
+  // 회원 카드를 누르면 보이는 하루 그래프: 카드 key → (서버 칸, 그래프 제목, 아래 합계 문구)
   const MEMBER_METRICS = {
     total: { field: "daily_total", title: "날짜별 전체 가입자", foot: (s) => `오늘 ${num(s.at(-1))}명` },
     joined: { field: "daily_joined", title: "날짜별 가입", foot: (s) => `30일 동안 ${num(s.reduce((a, c) => a + c, 0))}명` },
@@ -217,7 +281,7 @@
     const series = d[metric.field] || [];
     const share = (n) => (d.total ? Math.round((n / d.total) * 100) : 0);
     const meter = (label, n) => `<div class="meter"><strong>${esc(label)}</strong><div class="bar"><span style="width:${pct(share(n))}"></span></div><span class="num">${num(n)}명 · ${share(n)}%</span></div>`;
-    return `${head("회원 관리", "가입자 수 · 가입일 · 계정 상태 · 카드를 누르면 날짜별 그래프")}
+    return `${head("회원", "사람 단위: 가입자 수 · 가입일 · 계정 상태 · 카드를 누르면 날짜별 그래프")}
       <section class="grid">
         ${statButton("total", "전체 가입자", `${num(d.total)}명`)}
         ${statButton("joined", "이번 주 가입", `${num(d.joined_this_week)}명`, "최근 7일", "up")}
@@ -248,14 +312,24 @@
       </section>`;
   }
 
-  function viewGroups(d) {
+  /** 가족 인원별 최근 7일 활동(이용 분석 계산값). 가족 탭 아래에 붙인다. */
+  function familyActivityCard(a) {
+    const f = a.families;
+    const rows = f.by_size.map((s) => `<tr><td>${esc(s.label)}</td><td class="num">${num(s.families)}곳</td><td class="num">${percent(s.active_share)}</td><td class="num">${s.avg_actions ?? "-"}</td></tr>`);
+    return `<section class="card">
+        <div class="card-head"><h2>가족 인원별 활동 (최근 7일)</h2><span class="small">두 번째 가족이 들어오기까지 ${f.days_to_second_member ?? "-"}일(중앙값) · 활동은 일정·채팅·정산·AI 를 한 번이라도 쓴 것</span></div>
+        ${table([{ label: "가족 인원" }, { label: "가족 수", num: true }, { label: "활동한 가족", num: true }, { label: "가족당 사용 수", num: true }], rows)}
+      </section>`;
+  }
+
+  function viewGroups(d, a) {
     const memberSum = d.rows.reduce((a, g) => a + g.members, 0);
     const maxSize = Math.max(1, ...d.sizes.map((s) => s.groups));
     const sizes = d.sizes.length
       ? d.sizes.map((s) => `<div><div class="line-item" style="border:0;padding:0 0 6px"><span>${esc(s.members)}명</span><strong>${esc(s.groups)}개</strong></div>${bar((s.groups / maxSize) * 100)}</div>`).join("")
       : '<p class="small">아직 가족 그룹이 없어요</p>';
     const rows = d.rows.map((g) => `<tr><td><strong>${esc(g.name)}</strong></td><td>${esc(g.owner_name || "-")}</td><td class="num">${esc(g.members)}명</td><td class="num">${num(g.pending || 0)}건</td><td><span class="pill ${g.ai_enabled ? "ok" : ""}">${g.ai_enabled ? "켬" : "꺼짐"}</span></td><td>${day(g.created_at)}</td></tr>`);
-    return `${head("가족 그룹 관리", "가족 그룹 수 · 구성원 수")}
+    return `${head("가족", "가족 단위: 가족 수 · 구성원 수 · 승인 대기 · 인원별 활동")}
       <section class="grid">
         ${stat("가족 그룹", `${num(d.total)}개`)}
         ${stat("평균 구성원", d.rows.length ? `${(memberSum / d.rows.length).toFixed(1)}명` : "-")}
@@ -267,6 +341,7 @@
         <div class="card wide"><h2>가족 그룹 목록</h2>${table([{ label: "그룹 이름" }, { label: "대표" }, { label: "구성원", num: true }, { label: "승인 대기", num: true }, { label: "AI" }, { label: "만든 날" }], rows)}</div>
         <div class="card side"><h2>구성원 수별 그룹</h2>${sizes}</div>
       </section>
+      ${a ? familyActivityCard(a) : ""}
       <p class="note">가족 안의 채팅·문서·정산 내용은 이 화면에 나오지 않아요.</p>`;
   }
 
@@ -276,20 +351,38 @@
     return `<span class="${p >= 0 ? "up" : "warn"}">${p >= 0 ? "+" : ""}${p}%</span>`;
   }
 
-  function viewFeatures(d) {
+  function viewFeatures(d, a) {
+    const month = Object.fromEntries(((a && a.features) || []).map((x) => [x.key, x])); // 최근 30일 쓴 가족(이용 분석 계산값)
     const rows = d.rows.map((f) => {
       const share = d.families_total ? (f.families / d.families_total) * 100 : 0;
-      return `<tr><td><strong>${esc(f.name)}</strong></td><td class="num">${esc(f.families)}가족</td><td style="width:160px">${bar(share)}</td><td class="num">${num(f.uses)}회</td><td class="num">${change(f)}</td></tr>`;
+      const m = month[f.key];
+      return `<tr><td><strong>${esc(f.name)}</strong></td><td class="num">${esc(f.families)}가족</td><td style="width:160px">${bar(share)}</td><td class="num">${num(f.uses)}회</td><td class="num">${change(f)}</td><td class="num">${m ? `${num(m.families)}곳 · ${percent(m.share)}` : "-"}</td></tr>`;
     });
-    return `${head("기능 관리", "기능별 사용 현황 · 최근 7일")}
+    return `${head("기능 사용", "기능별 사용 현황 · 최근 7일과 최근 30일")}
       <section class="card">
         <h2>기능별 사용</h2>
-        ${table([{ label: "기능" }, { label: "쓴 가족", num: true }, { label: `전체 ${d.families_total}가족 중` }, { label: "사용 횟수", num: true }, { label: "그 전 7일 대비", num: true }], rows)}
-        <span class="small">일정은 만든 일정, 소통은 보낸 메시지, 정산은 등록한 지출 개수예요. AI 채팅은 'AI 이용 현황'에서 봐요.</span>
+        ${table([{ label: "기능" }, { label: "쓴 가족 (7일)", num: true }, { label: `전체 ${d.families_total}가족 중` }, { label: "사용 횟수 (7일)", num: true }, { label: "그 전 7일 대비", num: true }, { label: "쓴 가족 (30일)", num: true }], rows)}
+        <span class="small">일정은 만든 일정, 소통은 보낸 메시지, 정산은 등록한 지출 개수예요. 30일은 그 기능을 한 번이라도 쓴 가족과 전체 가족 대비 비율이에요. AI 는 'AI' 탭에서 봐요.</span>
       </section>`;
   }
 
-  function viewAi(d) {
+  /** AI 품질·비용(최근 30일, 이용 분석 계산값). AI 탭 위에 붙인다. */
+  function aiQualityCard(a) {
+    const ai = a.ai;
+    const rows = ai.top_families.map((x) => `<tr><td><strong>${esc(x.name)}</strong></td><td class="num">${num(x.requests)}회</td><td class="num">${num(x.tokens)}</td></tr>`);
+    return `<section class="card">
+        <div class="card-head"><h2>품질·비용 (최근 30일)</h2><span class="small">오류율은 실패한 요청 비율, 캐시 적중률은 저장해 둔 답을 다시 쓴 비율이에요</span></div>
+        <section class="grid compact">
+          ${stat("활동한 사람 1명당", ai.per_active_user === null ? "-" : `${ai.per_active_user}회`, `활동 ${num(ai.active_users)}명`)}
+          ${stat("오류율", percent(ai.error_rate), "", ai.error_rate > 5 ? "warn" : "")}
+          ${stat("캐시 적중률", percent(ai.cache_hit_rate), "저장된 답 재사용")}
+          ${stat("한도 거절", percent(ai.limit_rate))}
+        </section>
+        ${table([{ label: "토큰을 많이 쓴 가족" }, { label: "요청", num: true }, { label: "토큰(입력+출력)", num: true }], rows)}
+      </section>`;
+  }
+
+  function viewAi(d, a) {
     const max = Math.max(1, ...d.daily);
     const days = d.daily.map((c) => `<div title="${c}회"><i style="height:${pct((c / max) * 100)}"></i></div>`).join("");
     const top = Math.max(1, ...d.rows.map((r) => r.calls));
@@ -306,12 +399,13 @@
     const limitedBody = limited.length
       ? table([{ label: "이름" }, { label: "가족" }, { label: "걸린 날", num: true }, { label: "마지막으로 걸린 때" }], limitedRows)
       : '<p class="note">최근 30일에 하루 한도에 걸린 사람이 없어요.</p>';
-    return `${head("AI 이용 현황", "AI 기능 사용 횟수 · 기능별 사용량")}
+    return `${head("AI", "AI 사용 횟수 · 품질·비용 · 누가 얼마나 쓰나")}
       <section class="grid compact">
         ${stat("오늘", `${num(d.today)}회`)}
         ${stat("최근 7일", `${num(d.week)}회`)}
         ${stat("최근 30일", `${num(d.month)}회`)}
       </section>
+      ${a ? aiQualityCard(a) : ""}
       <div class="dash">
         <section class="card span2">
           <h2>하루별 AI 사용 (최근 14일)</h2>
@@ -440,7 +534,7 @@
     render();
   }
 
-  // ── 데이터 분석 ──────────────────────────────────────
+  // ── 이용 분석 ──────────────────────────────────────
 
   const percent = (v) => (v === null || v === undefined ? "-" : `${v}%`);
   const hours = (h) => (h === null || h === undefined ? "-" : h < 24 ? `${h}시간` : `${Math.round((h / 24) * 10) / 10}일`);
@@ -451,6 +545,7 @@
   const SOURCE_LABEL = {
     youtube: "유튜브",
     instagram: "인스타그램",
+    facebook: "페이스북",
     blog: "블로그",
     cafe: "카페",
     news: "뉴스 기사",
@@ -460,7 +555,7 @@
     unknown: "알 수 없음",
   };
 
-  /** 데이터 분석의 유입 경로 구역. 표가 아직 없는 서버면 "준비 중"만 보인다. */
+  /** 유입·가입 탭의 유입 경로 구역. 표가 아직 없는 서버면 "준비 중"만 보인다. */
   function acquisitionCard(d) {
     const body = !d.acquisition_ready
       ? `<p class="small">유입 경로 기록표가 아직 서버 DB 에 없어요(준비 중).</p>`
@@ -473,18 +568,119 @@
     return `<section class="card">
         <div class="card-head"><h2>유입 경로 (어떤 링크로 설치했나)</h2><span class="small">안드로이드 플레이 스토어 설치 꼬리표 기준. 아이폰·APK 설치·기능 이전 가입자는 "알 수 없음"</span></div>
         ${body}
+        <div class="note" style="margin-top:12px">
+          <p class="small" style="margin:0 0 4px"><strong>각 채널</strong>: 우리가 만든 채널 링크(예: 유튜브 링크)를 눌러 플레이 스토어에서 설치한 사람.</p>
+          <p class="small" style="margin:0 0 4px"><strong>직접 검색(플레이 스토어)</strong>: 링크 없이 플레이 스토어에서 "가비"를 검색해 설치한 사람. 플레이 스토어로 설치하면 링크가 없어도 여기로 잡혀요.</p>
+          <p class="small" style="margin:0"><strong>알 수 없음</strong>: 앱이 설치 경로를 서버에 보내지 못한 사람이에요. 아이폰 사용자(애플은 이 정보를 주지 않아요), APK 파일·Expo Go 로 실행한 사람, 유입 경로 기능이 들어간 앱 버전 이전에 가입한 사람, 서버에 바로 만든 시험 계정.</p>
+        </div>
       </section>`;
   }
 
-  function viewAnalytics(d) {
-    const small = d.users < 30 ? `<p class="note warn">지금은 가입자가 ${num(d.users)}명뿐이라 비율이 크게 흔들려요. 숫자는 흐름만 보고, 사람이 늘면 해석해요.</p>` : "";
+  // 체류시간 탭 이름(앱 아래쪽 탭과 같은 말)
+  const USAGE_TAB_LABEL = { chat: "AI 채팅", "family-chat": "소통", schedule: "일정", care: "지갑", my: "마이", other: "그 밖의 화면" };
+  const minutes = (m) => (m === null || m === undefined ? "-" : m < 60 ? `${m}분` : `${Math.floor(m / 60)}시간 ${Math.round(m % 60)}분`);
 
-    // ① 재방문 코호트
-    const cohortRows = d.retention.map(
-      (c) => `<tr><td>${esc(c.week_start)} 주</td><td class="num">${num(c.size)}명</td>${[c.w1, c.w2, c.w4].map((v) => `<td class="num" style="${shade(v)}">${c.size ? percent(v) : "-"}</td>`).join("")}</tr>`,
-    );
+  // 메타 광고 성과는 메타 서버를 부르므로 데이터 분석 탭을 열 때만 따로 받는다(다른 화면 열기를 늦추지 않게)
+  const metaAds = { days: 7, data: null, loading: false, error: "" };
+  const money = (v, currency) => `${Number(v).toLocaleString("ko-KR", { maximumFractionDigits: 2 })}${currency === "KRW" ? "원" : currency ? ` ${esc(currency)}` : ""}`;
+  const rate = (part, whole) => (whole ? `${Math.round((part / whole) * 1000) / 10}%` : "-");
 
-    // ② 가입 퍼널
+  /**
+   * 메타 광고 성과를 받아 와서 데이터 분석 화면을 다시 그린다.
+   * @param {number} days 7 또는 30
+   * @returns {Promise<void>}
+   */
+  async function loadMetaAds(days) {
+    metaAds.days = days;
+    metaAds.loading = true;
+    metaAds.error = "";
+    if (current() === "analytics") render();
+    try {
+      metaAds.data = await api(`/admin/service/meta-ads?days=${days}`);
+    } catch (err) {
+      if (err.message === "unauthorized") return;
+      metaAds.data = null;
+      metaAds.error = "광고 성과를 불러오지 못했어요. 잠시 뒤 다시 해 주세요.";
+    } finally {
+      metaAds.loading = false;
+    }
+    if (current() === "analytics") render();
+  }
+
+  /** 데이터 분석의 메타 광고 성과 구역(캠페인별 광고비·노출·클릭·설치·가입). */
+  function metaAdsCard() {
+    const m = metaAds.data;
+    const pick = [7, 30]
+      .map((n) => `<button type="button" class="btn sm ${metaAds.days === n ? "primary" : ""}" data-meta-days="${n}" aria-pressed="${metaAds.days === n}">최근 ${n}일</button>`)
+      .join(" ");
+    let body;
+    if (metaAds.loading || (!m && !metaAds.error)) body = '<p class="small">메타에서 불러오는 중…</p>';
+    else if (metaAds.error) body = `<p class="small">${esc(metaAds.error)}</p>`;
+    else if (!m.configured) body = `<p class="small">${esc(m.reason)} (서버 환경변수 META_ADS_ACCESS_TOKEN · META_ADS_ACCOUNT_ID)</p>`;
+    else if (!m.ok) body = `<p class="note warn">${esc(m.reason)}</p>`;
+    else {
+      const t = m.total;
+      const c = m.currency;
+      body = `<section class="grid compact">
+          ${stat("광고비", money(t.spend, c))}
+          ${stat("노출", `${num(t.impressions)}회`)}
+          ${stat("클릭", `${num(t.clicks)}회`, `클릭률 ${rate(t.clicks, t.impressions)}`)}
+          ${stat("설치", `${num(t.installs)}건`, t.installs ? `설치당 ${money(Math.round(t.spend / t.installs), c)}` : "")}
+          ${stat("가입", `${num(t.signups)}명`, t.signups ? `가입당 ${money(Math.round(t.spend / t.signups), c)}` : "")}
+        </section>
+        ${table(
+          [{ label: "캠페인" }, { label: "광고비", num: true }, { label: "노출", num: true }, { label: "클릭", num: true }, { label: "설치", num: true }, { label: "가입", num: true }],
+          m.campaigns.map(
+            (r) => `<tr><td><strong>${esc(r.name)}</strong></td><td class="num">${money(r.spend, c)}</td><td class="num">${num(r.impressions)}</td><td class="num">${num(r.clicks)}</td><td class="num">${num(r.installs)}</td><td class="num">${num(r.signups)}</td></tr>`,
+          ),
+        )}
+        <p class="small">메타 광고 관리자 숫자(10분마다 새로 받음) · 마지막 확인 ${esc(new Date(m.fetched_at).toLocaleString("ko-KR"))}</p>`;
+    }
+    return `<section class="card">
+        <div class="card-head"><h2>메타 광고 성과 (페이스북·인스타그램)</h2><span class="small">${pick}</span></div>
+        ${body}
+      </section>`;
+  }
+
+
+  /** 재방문·사용 시간 탭의 사용 시간 구역(최근 30일). 표가 아직 없는 서버면 "준비 중"만 보인다. */
+  function usageCard(d) {
+    const u = d.usage;
+    if (!d.usage_ready || !u) {
+      return `<section class="card"><div class="card-head"><h2>사용 시간 (최근 30일)</h2></div><p class="small">체류시간 기록표가 아직 서버 DB 에 없어요(준비 중).</p></section>`;
+    }
+    const top = Math.max(1, ...u.daily.map((x) => x.avg_minutes || 0));
+    const bars = u.daily
+      .map((x) => `<div title="${esc(x.day)} · ${x.avg_minutes === null ? "기록 없음" : `${minutes(x.avg_minutes)} · ${num(x.users)}명`}"><i style="height:${pct(((x.avg_minutes || 0) / top) * 100)}"></i></div>`)
+      .join("");
+    const tabs = u.by_tab
+      .map((t) => `<div class="meter"><strong>${esc(USAGE_TAB_LABEL[t.tab] ?? t.tab)}</strong>${bar(t.share)}<span class="num">${minutes(t.minutes)} · ${percent(t.share)}</span></div>`)
+      .join("");
+    return `<div class="row">
+        <section class="card wide">
+          <div class="card-head"><h2>사용 시간 (최근 30일)</h2><span class="small">앱이 화면에 떠 있던 시간. 앱이 갑자기 꺼지면 그 사용분은 빠져서 실제보다 조금 적을 수 있어요</span></div>
+          <section class="grid compact">
+            ${stat("1명당 하루 평균", minutes(u.avg_minutes_per_day), "쓴 날 기준")}
+            ${stat("1명당 하루 실행", u.avg_opens_per_day === null ? "-" : `${u.avg_opens_per_day}번`)}
+            ${stat("기록된 사람", `${num(u.users)}명`)}
+          </section>
+          <div class="chart" style="height:90px" role="img" aria-label="날짜별 1명당 평균 사용 시간">${bars}</div>
+          <div class="axis"><span>${esc(u.daily[0]?.day ?? "")}</span><span>오늘</span></div>
+        </section>
+        <section class="card side">
+          <h2>탭별 1명당 하루 평균 (최근 30일)</h2>
+          ${tabs || '<p class="small">아직 기록이 없어요</p>'}
+        </section>
+      </div>`;
+  }
+
+  /** 가입자가 적을 때 붙이는 안내(이용 분석 탭 공통). */
+  function smallSample(d) {
+    return d.users < 30 ? `<p class="note warn">지금은 가입자가 ${num(d.users)}명뿐이라 비율이 크게 흔들려요. 숫자는 흐름만 보고, 사람이 늘면 해석해요.</p>` : "";
+  }
+
+  /** 유입·가입: 어떤 링크로 들어와서, 가입한 뒤 어디까지 갔나. */
+  function viewInflow(d) {
     const funnel = d.funnel
       .map((s, i) => {
         const drop = i ? d.funnel[i - 1].users - s.users : 0;
@@ -492,81 +688,53 @@
         return `<div><div class="meter"><strong>${esc(s.label)}</strong><div class="bar"><span style="width:${pct(s.share)}"></span></div><span class="num">${num(s.users)}명 · ${percent(s.share)}</span></div><p class="small" style="margin:2px 0 0">${i ? `앞 단계에서 ${num(drop)}명 멈춤` : "전체 가입자"}${wait}</p></div>`;
       })
       .join("");
+    return `${head("유입·가입", "어떤 링크로 설치했고, 가입한 뒤 어디까지 갔나 (개수와 시각만 사용)")}${smallSample(d)}
+      ${acquisitionCard(d)}
+      ${metaAdsCard()}
+      <section class="card">
+        <div class="card-head"><h2>가입 퍼널</h2><span class="small">각 단계는 앞 단계를 모두 지난 사람만 세요</span></div>
+        ${funnel}
+      </section>`;
+  }
 
-    // ③ 가족 인원별
-    const f = d.families;
-    const sizeRows = f.by_size.map((s) => `<tr><td>${esc(s.label)}</td><td class="num">${num(s.families)}곳</td><td class="num">${percent(s.active_share)}</td><td class="num">${s.avg_actions ?? "-"}</td></tr>`);
-
-    // ④ 기능 사용 지도
-    const features = d.features.map((x) => `<div class="meter"><strong>${esc(x.label)}</strong><div class="bar"><span style="width:${pct(x.share)}"></span></div><span class="num">${num(x.families)}곳 · ${percent(x.share)}</span></div>`).join("");
-
-    // ⑤ AI 품질·비용
-    const ai = d.ai;
-    const aiRows = ai.top_families.map((x) => `<tr><td><strong>${esc(x.name)}</strong></td><td class="num">${num(x.requests)}회</td><td class="num">${num(x.tokens)}</td></tr>`);
-
-    // ⑥ 요일 × 시간
+  /** 재방문·사용 시간: 다시 오나, 얼마나 쓰나, 언제 쓰나. */
+  function viewRetention(d) {
+    const cohortRows = d.retention.map(
+      (c) => `<tr><td>${esc(c.week_start)} 주</td><td class="num">${num(c.size)}명</td>${[c.w1, c.w2, c.w4].map((v) => `<td class="num" style="${shade(v)}">${c.size ? percent(v) : "-"}</td>`).join("")}</tr>`,
+    );
     const top = Math.max(1, ...d.heatmap.flat());
     const daysKo = ["월", "화", "수", "목", "금", "토", "일"];
     const heat = d.heatmap
       .map((row, i) => `<div class="heat-row"><span class="heat-day">${daysKo[i]}</span>${row.map((c, h) => `<i title="${daysKo[i]} ${h}시 · ${c}회" style="${c ? shade(Math.max(c, top / 6), top) : ""}"></i>`).join("")}</div>`)
       .join("");
+    return `${head("재방문·사용 시간", "다시 오나 · 얼마나 쓰나 · 언제 쓰나 (개수와 시각만 사용)")}${smallSample(d)}
+      <section class="card">
+        <div class="card-head"><h2>재방문(리텐션) 코호트</h2><span class="small">가입 주별로, 가입 1·2·4주 뒤에 다시 로그인한 비율</span></div>
+        ${table([{ label: "가입 주" }, { label: "가입자", num: true }, { label: "1주 뒤", num: true }, { label: "2주 뒤", num: true }, { label: "4주 뒤", num: true }], cohortRows)}
+      </section>
+      ${usageCard(d)}
+      <section class="card">
+        <div class="card-head"><h2>요일 · 시간대 활동 (최근 30일)</h2><span class="small">로그인 + AI 요청 횟수, 한국 시간. 진할수록 많아요</span></div>
+        <div class="heat" role="img" aria-label="요일과 시간대별 활동">${heat}<div class="heat-row heat-axis"><span class="heat-day"></span><span>0시</span><span>6시</span><span>12시</span><span>18시</span><span>23시</span></div></div>
+      </section>`;
+  }
 
-    // ⑦ 고객 응대
+  /** 고객 응대: 문의·신고에 얼마나 빨리 답하나, 주별로 얼마나 오나. */
+  function viewService(d) {
     const s = d.support;
     const wTop = Math.max(1, ...s.weekly);
     const weekly = s.weekly.map((c) => `<div title="${c}건"><i style="height:${pct((c / wTop) * 100)}"></i></div>`).join("");
-
-    return `${head("데이터 분석", "재방문 · 가입 퍼널 · 유입 경로 · 가족 · 기능 · AI · 시간대 · 고객 응대 (개수와 시각만 사용)")}${small}
-      <div class="row">
-        <section class="card wide">
-          <div class="card-head"><h2>① 재방문(리텐션) 코호트</h2><span class="small">가입 주별로, 가입 1·2·4주 뒤에 다시 로그인한 비율</span></div>
-          ${table([{ label: "가입 주" }, { label: "가입자", num: true }, { label: "1주 뒤", num: true }, { label: "2주 뒤", num: true }, { label: "4주 뒤", num: true }], cohortRows)}
-        </section>
-        <section class="card side">
-          <h2>② 가입 퍼널</h2>
-          ${funnel}
-          <span class="small">각 단계는 앞 단계를 모두 지난 사람만 세요</span>
-        </section>
-      </div>
-      ${acquisitionCard(d)}
-      <div class="row">
-        <section class="card wide">
-          <div class="card-head"><h2>③ 가족 인원별 활동 (최근 7일)</h2><span class="small">혼자인 가족 ${num(f.solo_families)}곳 · 두 번째 가족이 들어오기까지 ${f.days_to_second_member ?? "-"}일(중앙값)</span></div>
-          ${table([{ label: "가족 인원" }, { label: "가족 수", num: true }, { label: "활동한 가족", num: true }, { label: "가족당 사용 수", num: true }], sizeRows)}
-        </section>
-        <section class="card side">
-          <h2>④ 기능 사용 지도 (최근 30일)</h2>
-          ${features}
-          <span class="small">전체 가족 ${num(d.total_families)}곳 중 그 기능을 한 번이라도 쓴 가족</span>
-        </section>
-      </div>
-      <section class="card">
-        <div class="card-head"><h2>⑤ AI 품질·비용 (최근 30일)</h2><span class="small">요청 수는 메인 비서가 부른 표식·한도 거절 줄을 뺀 값</span></div>
-        <section class="grid compact">
-          ${stat("요청", `${num(ai.requests)}회`)}
-          ${stat("활동한 사람 1명당", ai.per_active_user === null ? "-" : `${ai.per_active_user}회`, `활동 ${num(ai.active_users)}명`)}
-          ${stat("오류율", percent(ai.error_rate), "", ai.error_rate > 5 ? "warn" : "")}
-          ${stat("캐시 적중률", percent(ai.cache_hit_rate), "저장된 답 재사용")}
-          ${stat("한도 거절", percent(ai.limit_rate))}
-        </section>
-        ${table([{ label: "토큰을 많이 쓴 가족" }, { label: "요청", num: true }, { label: "토큰(입력+출력)", num: true }], aiRows)}
+    return `${head("고객 응대", "문의·신고 답변 시간 · 주별 건수 (목록과 답변은 '문의 및 신고' 탭)")}
+      <section class="grid compact">
+        ${stat("평균 답변 시간", hours(s.avg_hours), `답변 ${num(s.answered)}건`)}
+        ${stat("가장 오래 걸린", hours(s.max_hours))}
+        ${stat("문의 / 신고", `${num(s.inquiries)} / ${num(s.reports)}`)}
       </section>
-      <div class="row">
-        <section class="card wide">
-          <div class="card-head"><h2>⑥ 요일 · 시간대 활동 (최근 30일)</h2><span class="small">로그인 + AI 요청, 한국 시간. 진할수록 많아요</span></div>
-          <div class="heat" role="img" aria-label="요일과 시간대별 활동">${heat}<div class="heat-row heat-axis"><span class="heat-day"></span><span>0시</span><span>6시</span><span>12시</span><span>18시</span><span>23시</span></div></div>
-        </section>
-        <section class="card side">
-          <h2>⑦ 고객 응대</h2>
-          <section class="grid compact">
-            ${stat("평균 답변 시간", hours(s.avg_hours), `답변 ${num(s.answered)}건`)}
-            ${stat("가장 오래 걸린", hours(s.max_hours))}
-            ${stat("문의 / 신고", `${num(s.inquiries)} / ${num(s.reports)}`)}
-          </section>
-          <div class="chart" style="height:90px" role="img" aria-label="주별 문의·신고 수">${weekly}</div>
-          <div class="axis"><span>${esc(s.week_start)} 주</span><span>이번 주</span></div>
-        </section>
-      </div>`;
+      <section class="card">
+        <h2>주별 문의·신고 (최근 8주)</h2>
+        <div class="chart" style="height:120px" role="img" aria-label="주별 문의·신고 수">${weekly}</div>
+        <div class="axis"><span>${esc(s.week_start)} 주</span><span>이번 주</span></div>
+      </section>`;
   }
 
   // ── 알림 ─────────────────────────────────────────────
@@ -622,12 +790,14 @@
   const VIEWS = {
     alerts: (data) => viewAlerts(data.alerts),
     members: (data) => viewMembers(data.members),
-    groups: (data) => viewGroups(data.groups),
-    features: (data) => viewFeatures(data.features),
-    ai: (data) => viewAi(data.ai),
+    groups: (data) => viewGroups(data.groups, data.analytics),
+    features: (data) => viewFeatures(data.features, data.analytics),
+    ai: (data) => viewAi(data.ai, data.analytics),
     support: (data) => viewSupport(data.support),
     notices: (data) => viewNotices(data.notices),
-    analytics: (data) => viewAnalytics(data.analytics),
+    analytics: (data) => viewInflow(data.analytics),
+    retention: (data) => viewRetention(data.analytics),
+    service: (data) => viewService(data.analytics),
     ops: () => viewOps(),
   };
 
@@ -692,13 +862,48 @@
     document.getElementById("page-title").textContent = pageHead.title;
     document.getElementById("page-sub").textContent = pageHead.sub;
     document.title = `가비 서비스 관리자 · ${TABS.find(([k]) => k === key)[1]}`;
+    if (key === "analytics" && !metaAds.data && !metaAds.loading && !metaAds.error) loadMetaAds(metaAds.days);
   }
 
   function showLogin(message = "") {
     data = null;
+    Object.assign(metaAds, { data: null, loading: false, error: "" }); // 다른 계정으로 다시 들어오면 새로 받는다
     document.getElementById("app").hidden = true;
     document.getElementById("login").hidden = false;
     document.getElementById("login-error").textContent = message;
+  }
+
+  const NAV_KEY = "gabee_admin_nav_hidden"; // "1" 이면 넓은 화면에서 왼쪽 메뉴를 숨긴다
+
+  /**
+   * 넓은 화면의 왼쪽 메뉴를 숨기거나 보인다. 고른 상태는 브라우저에 저장한다(저장이 막혀도 화면은 바뀐다).
+   * @param {boolean} hidden 숨길지
+   */
+  function setNavHidden(hidden) {
+    const app = document.getElementById("app");
+    app.classList.toggle("nav-hidden", hidden);
+    const btn = document.querySelector("[data-action='open-menu']");
+    if (btn) {
+      btn.setAttribute("aria-label", hidden ? "메뉴 보이기" : "메뉴 숨기기");
+      btn.setAttribute("aria-expanded", String(!hidden));
+    }
+    try {
+      if (hidden) localStorage.setItem(NAV_KEY, "1");
+      else localStorage.removeItem(NAV_KEY);
+    } catch {
+      // 저장이 막힌 브라우저면 새로고침할 때 메뉴가 다시 보인다
+    }
+  }
+
+  /** 저장해 둔 메뉴 숨김 상태를 처음 한 번 적용한다. */
+  function restoreNav() {
+    let hidden = false;
+    try {
+      hidden = localStorage.getItem(NAV_KEY) === "1";
+    } catch {
+      hidden = false;
+    }
+    setNavHidden(hidden);
   }
 
   async function start() {
@@ -707,7 +912,7 @@
       data = await loadData();
     } catch (err) {
       if (err.message === "not_staff") {
-        setToken(null);
+        saveTokens(null);
         showLogin("관리자 계정이 아니에요.");
       } else if (err.message !== "unauthorized") {
         document.getElementById("view").innerHTML = '<p class="note warn">데이터를 불러오지 못했어요. 잠시 뒤 새로고침해 주세요.</p>';
@@ -735,7 +940,7 @@
       error.textContent = res && res.status < 500 ? "아이디 또는 비밀번호가 맞지 않아요." : "로그인하지 못했어요. 잠시 뒤 다시 해 주세요.";
       return;
     }
-    setToken((await res.json()).access_token);
+    saveTokens(await res.json());
     form.password.value = "";
     document.getElementById("app").hidden = false;
     start();
@@ -747,13 +952,18 @@
       return;
     }
     if (e.target.closest("[data-action='logout']")) {
-      setToken(null);
+      saveTokens(null);
       showLogin();
       return;
     }
-    // 좁은 화면: 햄버거로 메뉴를 열고, 바깥이나 메뉴 항목을 누르면 닫는다
+    // 햄버거: 좁은 화면은 메뉴를 서랍처럼 열고(바깥이나 메뉴 항목을 누르면 닫힘),
+    // 넓은 화면은 왼쪽 메뉴를 숨기거나 다시 보인다(고른 상태는 브라우저에 기억)
     if (e.target.closest("[data-action='open-menu']")) {
-      document.getElementById("app").classList.add("open");
+      if (window.matchMedia("(max-width: 900px)").matches) {
+        document.getElementById("app").classList.add("open");
+      } else {
+        setNavHidden(!document.getElementById("app").classList.contains("nav-hidden"));
+      }
       return;
     }
     if (e.target.closest("[data-action='close-menu']") || e.target.closest("#tabs a")) {
@@ -765,6 +975,11 @@
       return;
     }
     // '답변하기': 그 문의를 펼치고 답변 칸으로 바로 간다
+    const metaDays = e.target.closest("[data-meta-days]");
+    if (metaDays) {
+      loadMetaAds(Number(metaDays.dataset.metaDays));
+      return;
+    }
     const alertAck = e.target.closest("[data-alert-ack]");
     if (alertAck) {
       ackAlert(alertAck.dataset.alertAck);
@@ -868,6 +1083,8 @@
   // 탭마다 추천하는 질문. 팀 문서에서 답을 찾을 수 있는 것만 둔다
   const CHAT_TAB_QUESTION = {
     analytics: "활성 사용자는 어떤 기준으로 세?",
+    retention: "활성 사용자는 어떤 기준으로 세?",
+    service: "답변을 고치면 사용자에게 알림이 또 가?",
     members: "이메일 인증 안 해도 가족에 들어갈 수 있어?",
     groups: "참가 요청은 누가 승인해?",
     features: "503 오류는 언제 나와?",
@@ -904,7 +1121,7 @@
     ["문의·공지", ["답변 없이 완료로 바꿀 수 있어?", "답변을 고치면 사용자에게 알림이 또 가?", "공지 올리면 사용자에게 알림이 가?", "지운 공지를 되살릴 수 있어?", "공지 종류는 어떻게 골라?"]],
     ["서버·오류", ["오류가 갑자기 늘면 뭐부터 봐?", "상태 바가 주의면 무슨 뜻이야?", "오류율이 몇 퍼센트면 오류 상태야?", "503 오류는 언제 나와?", "인스턴스 카드가 미수집이면 고장이야?"]],
     ["AI·비용", ["AI 하루 한도는 몇 번이야?", "AI 한도를 늘리려면 어디를 바꿔?"]],
-    ["데이터 분석", ["재방문 코호트 표는 어떻게 읽어?", "가입자가 30명 안 되면 왜 경고가 떠?", "지난 날짜 숫자가 왜 나중에 바뀌어?"]],
+    ["이용 분석", ["재방문 코호트 표는 어떻게 읽어?", "가입자가 30명 안 되면 왜 경고가 떠?", "지난 날짜 숫자가 왜 나중에 바뀌어?"]],
     ["배포·DB", ["배포 후 이상하면 어떻게 되돌려?", "공용 DB에 직접 마이그레이션해도 돼?", "Pull Agent 는 뭐야?"]],
     ["권한·보안", ["관리자 계정은 어떻게 추가해?", "관리자 목록이 비면 어떻게 돼?", "권한은 몇 종류야?", "로그인은 얼마나 유지돼?", "관리자도 사용자 채팅 내용을 볼 수 있어?"]],
   ];
@@ -1002,16 +1219,11 @@
    * @returns {Promise<void>} 스트림이 끝나면 끝난다. 401 이면 로그인 화면으로 돌아가고 "unauthorized" 로 실패한다
    */
   async function chatStream(question, onEvent) {
-    const res = await fetch("/admin/knowledge/ask/stream", {
+    const res = await authFetch("/admin/knowledge/ask/stream", {
       method: "POST",
-      headers: { Authorization: `Bearer ${token()}`, "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ q: question }),
     });
-    if (res.status === 401) {
-      setToken(null);
-      showLogin("로그인이 만료됐어요. 다시 로그인해 주세요.");
-      throw new Error("unauthorized");
-    }
     if (!res.ok || !res.body) throw new Error(`HTTP ${res.status}`);
     const reader = res.body.getReader();
     const decoder = new TextDecoder();
@@ -1317,8 +1529,14 @@
     }
   });
 
-  window.addEventListener("gabee-admin-expired", () => {
-    setToken(null);
+  // 서버 상태 탭(iframe)의 토큰이 끝나면: 연장해서 그 화면만 다시 열고, 연장이 안 되면 로그인으로 돌아간다
+  window.addEventListener("gabee-admin-expired", async () => {
+    if (await renewSession()) {
+      const frame = document.querySelector(".ops-frame");
+      if (frame) frame.src = frame.src;
+      return;
+    }
+    saveTokens(null);
     showLogin("로그인이 만료됐어요. 다시 로그인해 주세요.");
   });
 
@@ -1334,6 +1552,7 @@
     if (document.visibilityState === "visible") refreshSupport();
   }, 15000);
 
+  restoreNav();
   if (token()) start();
   else showLogin();
 })();

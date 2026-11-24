@@ -348,7 +348,7 @@ def test_a_registered_photo_still_answers_already_after_consent_is_turned_off(
 def test_main_ai_direct_image_upload_keeps_claude_reading_even_without_family_consent(
     client, family, claude_reads
 ):
-    """메인 AI 직접 업로드는 기존 정책 유지(사용자 결정 2026-11-23, ADR 0023): 가족 AI 동의와 무관하게 새로 403 으로 막히지 않고 Claude 가 읽는다.
+    """메인 AI 직접 업로드는 기존 정책 유지(사용자 결정 2026-11-23, ADR 0024): 가족 AI 동의와 무관하게 새로 403 으로 막히지 않고 Claude 가 읽는다.
     가족 채팅방 경로(자동 등록·"문서로 저장")의 동의 검사와 다르다 — 그쪽은 위 시험들이 본다."""
     a, _, group = family
     _consent_off(client, a)

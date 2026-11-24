@@ -134,7 +134,7 @@ def test_sensitive_documents_still_follow_include_sensitive(client, family):
 def test_original_chat_photo_id_is_included_only_when_present(client, family, monkeypatch):
     allow_ai(
         client, family[0], monkeypatch
-    )  # 채팅 첨부 기록은 가족 AI 동의가 켜진 뒤 것만 외부 AI 도구에 보인다(ADR 0023)
+    )  # 채팅 첨부 기록은 가족 AI 동의가 켜진 뒤 것만 외부 AI 도구에 보인다(ADR 0024)
     gid, ids = _seed(client, family)
     with SessionLocal() as db:
         row = next(

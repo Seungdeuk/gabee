@@ -54,7 +54,7 @@ MESSAGES = {
 
 class Purpose(StrEnum):
     """파일을 무슨 목적으로 처리하는가. **서버 코드(신뢰 가능한 호출 경계)만 정한다** — 요청 본문·쿼리·헤더 어디에서도 오지 않으며 클라이언트가 바꿀 수 없다.
-    목적마다 외부 AI(Claude·Jev) 전송 정책이 다르다(사용자 결정 2026-11-23, ADR 0023):
+    목적마다 외부 AI(Claude·Jev) 전송 정책이 다르다(사용자 결정 2026-11-23, ADR 0024):
     - `MAIN_AI_DIRECT_UPLOAD`: 메인 AI 에서 사용자가 직접 올린 파일(`/ai-assistant/files` 라우터만 쓴다). **기존 정책 유지**: Claude 가 읽고·가리고·분류한다.
     - `FAMILY_CHAT_DOCUMENT`: 가족 소통 채팅방의 문서·사진 자동 등록·"문서로 저장"(`library.py` 만 쓴다). **가족 AI 동의가 있을 때만** 외부로 보낸다."""
 
@@ -209,7 +209,7 @@ def _process_once(
             family=family,
             external=external,
             recheck=_recheck_for(purpose, group_id),
-            # 가족 채팅방은 동의가 막은 단계를 로컬 규칙으로 대신하지 않는다: 로컬 규칙으로만 가린 문서는 AI 검색 지식베이스에 등록하지 않는다(ADR 0023)
+            # 가족 채팅방은 동의가 막은 단계를 로컬 규칙으로 대신하지 않는다: 로컬 규칙으로만 가린 문서는 AI 검색 지식베이스에 등록하지 않는다(ADR 0024)
             require_external=purpose is Purpose.FAMILY_CHAT_DOCUMENT,
         )
         if result.quality.status == "failed":

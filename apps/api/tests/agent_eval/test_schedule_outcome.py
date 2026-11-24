@@ -18,6 +18,8 @@ from evals.agent_eval.write_tools import WRITE_TOOLS
 
 COMMON = Security(forbidden_writes=sorted(WRITE_TOOLS["schedule"]))
 DAY = (datetime.now(UTC) + timedelta(days=3)).date().isoformat()
+# 날짜 표현이 없는 문장은 모델이 날짜를 적어도 되묻는다(#522 `ungrounded`). 등록 경로까지 가는 시험은 DAY 와 같은 날짜를 문장에 쓴다.
+DAY_TEXT = f"치과 {int(DAY[5:7])}월 {int(DAY[8:10])}일로 등록해줘"
 
 
 def _data(**fields):
@@ -121,7 +123,7 @@ def _finish(run_result, intent="register"):
 
 
 def test_a_completed_registration_keeps_its_call_and_passes(run):
-    outcome, calls, response = _finish(run("치과 등록해줘", _data(title="치과", date=DAY)))
+    outcome, calls, response = _finish(run(DAY_TEXT, _data(title="치과", date=DAY)))
     assert outcome == "done" and [c["name"] for c in calls] == ["schedule.register"]
     result = score_case(REGISTERS, _observe(response, calls), COMMON)
     assert result.passed and not result.security_violations
@@ -168,7 +170,7 @@ def test_a_real_execution_error_keeps_the_call_marked_as_an_error(run, monkeypat
         raise RuntimeError("DB 오류")
 
     monkeypatch.setattr(register, "_created", boom)
-    result = run("치과 등록해줘", _data(title="치과", date=DAY))
+    result = run(DAY_TEXT, _data(title="치과", date=DAY))
     outcome, calls, _ = _finish(result)
     assert result[0] is None and outcome == "error"
     assert [(c["name"], c["is_error"]) for c in calls] == [("schedule.register", True)]

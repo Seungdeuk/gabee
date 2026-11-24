@@ -18437,6 +18437,75 @@
         }
       }
     },
+    "/usage/report": {
+      "post": {
+        "tags": [
+          "usage"
+        ],
+        "summary": "Report Usage",
+        "description": "앱이 백그라운드로 갈 때 보낸 사용 기록(그날 탭별 초, 실행 횟수)을 하루 합계에 더한다.",
+        "operationId": "report_usage_usage_report_post",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-gyeot-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Gyeot-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UsageReportIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/admin/service/me": {
       "get": {
         "tags": [
@@ -19025,7 +19094,7 @@
           "service-admin"
         ],
         "summary": "Admin Analytics",
-        "description": "데이터 분석: 재방문 코호트, 가입 퍼널, 가족 인원별 활동, 기능 사용, AI 품질·비용, 요일·시간 활동, 고객 응대.\nid·시각·개수만 읽는다(문의 표도 읽으므로 support 표가 없으면 503).",
+        "description": "이용 분석(유입·가입 / 재방문·사용 시간 / 고객 응대)과 가족·기능·AI 탭 보조 숫자: 재방문 코호트, 가입 퍼널, 가족 인원별 활동, 기능 사용, AI 품질·비용, 요일·시간 활동, 고객 응대.\nid·시각·개수만 읽는다(문의 표도 읽으므로 support 표가 없으면 503).",
         "operationId": "admin_analytics_admin_service_analytics_get",
         "parameters": [
           {
@@ -19052,6 +19121,65 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/AnalyticsOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/admin/service/meta-ads": {
+      "get": {
+        "tags": [
+          "service-admin"
+        ],
+        "summary": "Admin Meta Ads",
+        "description": "메타(페이스북·인스타그램) 광고 성과: 최근 7일·30일 캠페인별 광고비·노출·클릭·설치·가입.\n메타 마케팅 API 를 읽기만 한다. 토큰이 없으면 configured=false, 메타 오류면 ok=false 와 이유(그래도 200).",
+        "operationId": "admin_meta_ads_admin_service_meta_ads_get",
+        "parameters": [
+          {
+            "name": "days",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/MetaAdsDays",
+              "default": 7
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MetaAdsOut"
                 }
               }
             }
@@ -21447,6 +21575,20 @@
           "acquisition_ready": {
             "type": "boolean",
             "title": "Acquisition Ready"
+          },
+          "usage": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AnalyticsUsage"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "usage_ready": {
+            "type": "boolean",
+            "title": "Usage Ready"
           }
         },
         "type": "object",
@@ -21461,7 +21603,9 @@
           "heatmap",
           "support",
           "acquisition",
-          "acquisition_ready"
+          "acquisition_ready",
+          "usage",
+          "usage_ready"
         ],
         "title": "AnalyticsOut"
       },
@@ -21567,6 +21711,120 @@
           "week_start"
         ],
         "title": "AnalyticsSupport"
+      },
+      "AnalyticsUsage": {
+        "properties": {
+          "users": {
+            "type": "integer",
+            "title": "Users"
+          },
+          "avg_minutes_per_day": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Avg Minutes Per Day"
+          },
+          "avg_opens_per_day": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Avg Opens Per Day"
+          },
+          "by_tab": {
+            "items": {
+              "$ref": "#/components/schemas/AnalyticsUsageTab"
+            },
+            "type": "array",
+            "title": "By Tab"
+          },
+          "daily": {
+            "items": {
+              "$ref": "#/components/schemas/AnalyticsUsageDay"
+            },
+            "type": "array",
+            "title": "Daily"
+          }
+        },
+        "type": "object",
+        "required": [
+          "users",
+          "avg_minutes_per_day",
+          "avg_opens_per_day",
+          "by_tab",
+          "daily"
+        ],
+        "title": "AnalyticsUsage"
+      },
+      "AnalyticsUsageDay": {
+        "properties": {
+          "day": {
+            "type": "string",
+            "format": "date",
+            "title": "Day"
+          },
+          "users": {
+            "type": "integer",
+            "title": "Users"
+          },
+          "avg_minutes": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Avg Minutes"
+          }
+        },
+        "type": "object",
+        "required": [
+          "day",
+          "users",
+          "avg_minutes"
+        ],
+        "title": "AnalyticsUsageDay"
+      },
+      "AnalyticsUsageTab": {
+        "properties": {
+          "tab": {
+            "type": "string",
+            "title": "Tab"
+          },
+          "minutes": {
+            "type": "number",
+            "title": "Minutes"
+          },
+          "share": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Share"
+          }
+        },
+        "type": "object",
+        "required": [
+          "tab",
+          "minutes",
+          "share"
+        ],
+        "title": "AnalyticsUsageTab"
       },
       "ApiRouteOut": {
         "properties": {
@@ -26868,6 +27126,158 @@
           "created_at"
         ],
         "title": "MessageOut"
+      },
+      "MetaAdsCampaign": {
+        "properties": {
+          "spend": {
+            "type": "number",
+            "title": "Spend",
+            "default": 0.0
+          },
+          "impressions": {
+            "type": "integer",
+            "title": "Impressions",
+            "default": 0
+          },
+          "clicks": {
+            "type": "integer",
+            "title": "Clicks",
+            "default": 0
+          },
+          "installs": {
+            "type": "integer",
+            "title": "Installs",
+            "default": 0
+          },
+          "signups": {
+            "type": "integer",
+            "title": "Signups",
+            "default": 0
+          },
+          "campaign_id": {
+            "type": "string",
+            "title": "Campaign Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          }
+        },
+        "type": "object",
+        "required": [
+          "campaign_id",
+          "name"
+        ],
+        "title": "MetaAdsCampaign"
+      },
+      "MetaAdsDays": {
+        "type": "integer",
+        "enum": [
+          7,
+          30
+        ],
+        "title": "MetaAdsDays",
+        "description": "메타 광고 성과 기간(최근 7일·30일). 주소 글자(\"30\")도 받으려고 Literal 대신 IntEnum 을 쓴다."
+      },
+      "MetaAdsOut": {
+        "properties": {
+          "configured": {
+            "type": "boolean",
+            "title": "Configured"
+          },
+          "ok": {
+            "type": "boolean",
+            "title": "Ok"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "days": {
+            "type": "integer",
+            "enum": [
+              7,
+              30
+            ],
+            "title": "Days"
+          },
+          "currency": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Currency"
+          },
+          "total": {
+            "$ref": "#/components/schemas/MetaAdsTotals"
+          },
+          "campaigns": {
+            "items": {
+              "$ref": "#/components/schemas/MetaAdsCampaign"
+            },
+            "type": "array",
+            "title": "Campaigns"
+          },
+          "fetched_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Fetched At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "configured",
+          "ok",
+          "reason",
+          "days",
+          "currency",
+          "total",
+          "campaigns",
+          "fetched_at"
+        ],
+        "title": "MetaAdsOut"
+      },
+      "MetaAdsTotals": {
+        "properties": {
+          "spend": {
+            "type": "number",
+            "title": "Spend",
+            "default": 0.0
+          },
+          "impressions": {
+            "type": "integer",
+            "title": "Impressions",
+            "default": 0
+          },
+          "clicks": {
+            "type": "integer",
+            "title": "Clicks",
+            "default": 0
+          },
+          "installs": {
+            "type": "integer",
+            "title": "Installs",
+            "default": 0
+          },
+          "signups": {
+            "type": "integer",
+            "title": "Signups",
+            "default": 0
+          }
+        },
+        "type": "object",
+        "title": "MetaAdsTotals"
       },
       "MinorsSet": {
         "properties": {
@@ -33221,6 +33631,49 @@
         ],
         "title": "UpcomingPayments",
         "description": "결제일이 가까운 구독. 그 항목의 결제한 사람에게만 내려간다(`items` 가 비면 알림이 없다)."
+      },
+      "UsageReportIn": {
+        "properties": {
+          "day": {
+            "type": "string",
+            "format": "date",
+            "title": "Day"
+          },
+          "opens": {
+            "type": "integer",
+            "maximum": 20.0,
+            "minimum": 0.0,
+            "title": "Opens",
+            "default": 0
+          },
+          "tabs": {
+            "additionalProperties": {
+              "type": "integer",
+              "maximum": 86400.0,
+              "minimum": 0.0
+            },
+            "propertyNames": {
+              "enum": [
+                "chat",
+                "family-chat",
+                "schedule",
+                "care",
+                "my",
+                "other"
+              ]
+            },
+            "type": "object",
+            "maxProperties": 6,
+            "title": "Tabs"
+          }
+        },
+        "type": "object",
+        "required": [
+          "day",
+          "tabs"
+        ],
+        "title": "UsageReportIn",
+        "description": "앱이 백그라운드로 갈 때 한 번 보내는 사용 기록. 탭별 초와 그동안의 실행 횟수만 담는다."
       },
       "UserCreate": {
         "properties": {

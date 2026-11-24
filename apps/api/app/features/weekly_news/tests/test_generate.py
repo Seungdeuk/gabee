@@ -594,6 +594,26 @@ def test_privacy_unavailable_after_claim_leaves_no_pending_row(client, ready, fa
     assert post(client, a).json()["status"] == "ready"  # 바로 다시 눌러도 된다
 
 
+def test_required_ner_down_is_real_http_503_and_never_calls_the_llm(
+    client, ready, fake, monkeypatch, tmp_path
+):
+    """실제 ner 모듈을 required + 모델 없음으로 두면(가짜 예외가 아니라) HTTP 503 privacy_unavailable 이고 외부 LLM 은 호출되지 않는다."""
+    from app.shared.privacy import ner
+
+    a, _ = ready
+    monkeypatch.setattr(settings, "privacy_ner_mode", "required")
+    monkeypatch.setattr(settings, "privacy_ner_model_dir", str(tmp_path / "no-model"))
+    ner.reset()
+    try:
+        r = post(client, a)
+        assert r.status_code == 503 and r.json()["code"] == "privacy_unavailable"
+        assert fake.calls == []
+        assert rows() == []
+    finally:
+        monkeypatch.undo()
+        ner.reset()
+
+
 def test_unexpected_error_after_the_llm_call_releases_the_claim(client, ready, fake, monkeypatch):
     from app.features.weekly_news import repository
 

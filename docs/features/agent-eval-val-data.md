@@ -168,3 +168,58 @@ w1(dev)과 같은 구조이되 값(금액·날짜·제목·문서 문장·대화
 
 - **비교 한계**: 2026-11-23 isolation-02 재평가(recheck3, 6/6 통과)는 **예시 문장이 든 프롬프트(메인 `6f7211e6…`)** 로 돌았다. 그 통과는 예시가 질문과 같았던 조건의 결과라서, 이 변경 뒤의 일반 규칙 프롬프트와 직접 비교하지 않는다(별도 일반화 평가가 필요하다: `docs/features/agent-eval-generalization.md`). 기존 결과 폴더·dev 108 결과는 바꾸지 않았다.
 - 바뀌지 않은 값: `family_chat` `ba3391bd…`·`billing` `a0b737ce…`·`schedule` `328f6c44…`, `cases_val.json` 해시, w2 월드 해시, 평가 기준 v2·채점기·시나리오 목록 해시, dev 108 해시.
+
+### 9-5. #522(일정 에이전트 응답 스키마·등록 인식 변경) 반영 재고정(2026-11-23)
+
+- 사유: release/1.4 의 #522(앱 에이전트 응답 스키마 크기 축소·등록 인식 보완)가 일정 에이전트 프롬프트·스키마를 바꾸고 val 고정 파일은 갱신하지 않아, release 에서 `test_val_pins` 1건(에이전트 해시)이 실패했다(#516 때와 같은 유형, #523 과는 무관). 현재 코드에서 해시를 다시 계산해 일정·통합 해시만 갱신했다.
+- val 실모델 평가가 시작되지 않았음: 이 PC 의 결과 폴더 두 곳의 manifest 38개는 모두 split 해시가 `dev` 뿐이고, `cases.jsonl` 에 val·test 분할 행이 0건이며, `real_gate.ALLOWED_SPLITS == ("legacy", "dev")`, 고정 파일의 `frozen_before_any_model_output` 는 `true` 다. 그래서 이 재고정은 val 결과를 열기 전의 변경 이력이다.
+
+| 항목 | 갱신 전 | 갱신 후 |
+|---|---|---|
+| 일정 에이전트 해시(`schedule`) | `328f6c447c68f71c734c5b1cb93866e23a260a0daa2acc0fb1a7a4d6d407949f` | `5c1b0f4a3fe0c8ecbdd4500356bb778a2eb3ab8871a0783f75286fb483b52176` |
+| 통합 프롬프트 해시 | `0d57e465cefee5848ec9a490b2aff93445655ef0c5f745286ed2345252640100` | `38067e487c5c0a24a938d618193bb4e5d016299ec8b8db04b4e16f9097f63a2d` |
+| `pinned_on_top_of_commit` | `9b5282f3…` | `4c09cafc…`(#523 병합 커밋) |
+| `prompt_change_note` | … #516 | … #516, #522 |
+
+- **바뀌지 않은 값**: 메인 `adb89f60…`(= manifest `prompt_hash`)·소통 `ba3391bd…`·정산 `a0b737ce…`, `cases_val.json` 해시, w2 월드 해시, 평가 기준 v2·채점기·시나리오 목록 해시, dev 108 해시 `d658d8e1…`. 공식 dev·val·test 사례·정답지·채점기·평가 게이트·이전 결과 폴더는 건드리지 않았다.
+- 비교 한계: 일정 해시가 바뀌었으므로 이후 val 은 이 새 해시의 프롬프트로만 돌며, #522 이전 일정 프롬프트로 만든 결과(dev 108 등)와 직접 비교하지 않는다.
+
+### 9-6. E8 첫 수정(정산 Agent 일시 오류 재시도 안내) 반영 재고정(2026-11-24)
+
+- 사유: 정산 Agent 시스템 프롬프트(`billing/agent.py::system_prompt`)에 일시적인 읽기 오류의 같은 도구 1회 재시도와 대체 계산 금지 안내를 더해(E8 toolfail-03) 정산 해시와 통합 해시가 바뀌었다. 같은 PR 에서 고정값만 맞췄다. 평가 사례·기대값·채점기는 바꾸지 않았다.
+- val 실모델 평가는 시작되지 않았다(`ALLOWED_SPLITS == ("legacy", "dev")`, 고정 파일 `frozen_before_any_model_output` 는 `true`). 이 재고정은 val 결과를 열기 전의 변경 이력이다.
+
+| 항목 | 갱신 전 | 갱신 후 |
+|---|---|---|
+| 정산 Agent 해시(`billing`) | `a0b737cebf4408c64acc26a930c6c98d2066a9acc62e392f5f27399b938afc0a` | `32ae98fbee63f37b653d249cc1e1d1a86f17321cea286a4cc590f8990e25455c` |
+| 통합 프롬프트 해시 | `38067e487c5c0a24a938d618193bb4e5d016299ec8b8db04b4e16f9097f63a2d` | `4718968c0c9af2f616154ea48efd69846f4f944c659fb0a13c93026774fa9a97` |
+| `pinned_on_top_of_commit` | `4c09cafc…` | `96cd565f…`(#525 병합 커밋) |
+| `prompt_change_note` | … #522 | … #522, 정산 일시 오류 재시도 안내 |
+
+- **바뀌지 않은 값**: 메인 `adb89f60…`·소통 `ba3391bd…`·일정 `5c1b0f4a…`, `cases_val.json` 해시, w2 월드 해시, 평가 기준 v2·채점기·시나리오 목록 해시, dev 108 해시 `d658d8e1…`, 공식 dev 사례 파일 해시 `c2d0bc8b…`.
+- 비교 한계: 정산 해시가 바뀌었으므로 이후 실모델 결과는 새 해시의 프롬프트로만 돌며, dev 108 기준선(`bf3fb424`)과 직접 비교하지 않는다(사례별 귀속표로 구분해 읽는다).
+
+### 9-7. E8 ambig-02(메인 지출 삭제·수정 되묻기 지침) 반영 재고정(2026-11-24, #530 위에서)
+
+- 사유: 메인 어시스턴트 `PROMPT_NOTE` 에 "대상이 제목·금액·날짜로 정해지지 않은 지출 삭제·수정 요청은 `ask_billing` 을 부르기 전에 어느 지출인지 먼저 묻고, 가장 최근 지출을 임의로 골라 넘기지 않는다"는 지침을 더해(E8 ambig-02) 메인 해시와 통합 해시가 바뀌었다. 정산 Agent 변경(9-6)과 **합친** 값으로 고정했다. 평가 사례·기대값·채점기는 바꾸지 않았다.
+- val 실모델 평가는 시작되지 않았다(`ALLOWED_SPLITS == ("legacy", "dev")`, 고정 파일 `frozen_before_any_model_output` 는 `true`).
+
+| 항목 | 갱신 전(9-6) | 갱신 후 |
+|---|---|---|
+| 메인 해시(`main`, manifest `prompt_hash`) | `adb89f60e67dd926261c1aa27f72b671a0536cb91d19c9669a9fca86cc1c23c6` | `e5bc016d56e7292ce3ce440ed936981b5b3efa8abee9e3a83ad4d4a01afe2f38` |
+| 통합 프롬프트 해시 | `4718968c0c9af2f616154ea48efd69846f4f944c659fb0a13c93026774fa9a97` | `8511613cf3baa9925afeee5db46555782717869dbb4f72e0a1675f4ebc129c9b` |
+
+- 바뀌지 않은 값: 소통 `ba3391bd…`·정산 `32ae98fb…`·일정 `5c1b0f4a…`, `cases_val.json` 해시, w2 월드 해시, 평가 기준 v2·채점기·시나리오 목록 해시, dev 108 해시 `d658d8e1…`, 공식 dev 사례 파일 해시 `c2d0bc8b…`.
+
+### 9-8. E8 compound-03(메인 할 일 조회 라우팅 지침) 반영 재고정(2026-11-24)
+
+- 사유: 메인 어시스턴트 `PROMPT_NOTE` 에 "어느 목록인지 말하지 않은 할 일 조회는 `ask_family_chat`(가족 공동 할 일)과 `ask_schedule`(일정 탭의 할 일)을 둘 다 부르고, 가족 공동 할 일·가족 채팅에서 정한 할 일을 가리키면 `ask_family_chat` 만, 내 일정 탭을 가리키면 `ask_schedule` 만 부른다. '오늘' 같은 말은 날짜 조건일 뿐이고, 다른 영역(지출)이 함께 오면 그 담당도 부르며, 조회를 쓰기로 바꾸지 않는다"는 지침을 더해(E8 compound-03, 정책 확정 2026-11-24) 메인 해시와 통합 해시가 바뀌었다. 담당 에이전트 설명·정산·소통·일정 프롬프트·평가 사례·기대값·채점기는 바꾸지 않았다.
+- val 실모델 평가는 시작되지 않았다(`ALLOWED_SPLITS == ("legacy", "dev")`, 고정 파일 `frozen_before_any_model_output` 는 `true`).
+
+| 항목 | 갱신 전(9-7) | 갱신 후 |
+|---|---|---|
+| 메인 해시(`main`, manifest `prompt_hash`) | `e5bc016d56e7292ce3ce440ed936981b5b3efa8abee9e3a83ad4d4a01afe2f38` | `90d6fcb1a9d6e205597da069738ac129f23e230302ecc1462e0ea40916e6f3e7` |
+| 통합 프롬프트 해시 | `8511613cf3baa9925afeee5db46555782717869dbb4f72e0a1675f4ebc129c9b` | `8fb7ca2c13c9aa837d0b0fc76c1139670e1205e42d8e734a6bef11ed62dfaf2a` |
+| `pinned_on_top_of_commit` | `543ffb65…` | `41439f53…`(#531 병합 커밋) |
+
+- 이 값은 병합된 `release/1.4`(`41439f53`) 위에서 새로 계산했다. 바뀌지 않은 값: 소통 `ba3391bd…`·정산 `32ae98fb…`·일정 `5c1b0f4a…`, `cases_val.json` 해시, w2 월드 해시, 평가 기준 v2·채점기·시나리오 목록 해시, dev 108 해시 `d658d8e1…`, 공식 dev 사례 파일 해시 `c2d0bc8b…`.
