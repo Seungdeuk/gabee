@@ -66,6 +66,14 @@ _MASKING_UNAVAILABLE = (
     "글을 가리는 기능이 꺼져 있어서 가족 채팅 문서를 처리하지 않았어요",
 )
 MIN_PDF_CHARS = 20  # 이보다 글자가 적은 PDF 는 스캔본으로 본다
+SCAN_UNREAD_PREFIX = "글자 없는 스캔 "  # 스캔 쪽을 읽을 수단이 없어 읽지 못했다는 노트의 시작(`_read_pdf`가 만들고 `_from_document`가 알아본다)
+
+
+def _has_text(markdown: str) -> bool:
+    """쪽 구분(\\f)과 공백을 빼고 실제 글자가 하나라도 있는가."""
+    return bool(re.sub(r"\s+", "", markdown))
+
+
 RAW_EXT = {
     "image/jpeg": ".jpg",
     "image/png": ".png",
@@ -323,6 +331,20 @@ def _from_document(
     elif source.kind == "pdf":
         # 쪽별 글자 층을 pdfium 으로 읽는다(한글 표 PDF 에서 MarkItDown 보다 읽는 순서가 정확하다)
         markdown, ocr_note = _read_pdf(data, ocr, external, recheck, require_external)
+        if ocr_note and ocr_note.startswith(SCAN_UNREAD_PREFIX) and not _has_text(markdown):
+            # 글자 층이 있는 쪽이 하나도 없고 스캔 쪽을 읽을 수단(Claude 읽기·동의)도 없다: 읽은 내용이 없는데 "읽지 못한 부분" 자리표시만 정상 기록으로 만들지 않는다.
+            # 내용 없는 자리표시를 가리기·분류·챙길 일(외부 AI)로 보내지도 않는다. 사진(`_from_image`)과 같은 실패 코드를 쓴다.
+            if settings.ingest_llm_ocr:
+                return _failed(
+                    source,
+                    "consent_required",
+                    "가족 AI 사용에 동의해야 스캔 PDF 의 글자를 읽을 수 있어요",
+                )
+            return _failed(
+                source,
+                "ocr_unavailable",
+                "스캔 PDF 의 글자를 읽을 수단이 없어요(서버에서 INGEST_LLM_OCR 를 켜야 해요)",
+            )
     else:
         markdown = converters.to_markdown(data, source.kind)
         if (
@@ -379,7 +401,7 @@ def _read_pdf(
         return "\f".join(pages), None
     if ocr is None:
         why = "가족 AI 사용 동의가 없어서" if settings.ingest_llm_ocr else "읽는 수단이 없어서"
-        return "\f".join(pages), f"글자 없는 스캔 {len(scan)}쪽은 {why} 읽지 못했어요"
+        return "\f".join(pages), f"{SCAN_UNREAD_PREFIX}{len(scan)}쪽은 {why} 읽지 못했어요"
     todo = scan[: converters.PDF_OCR_MAX_PAGES]
     reader = ocr
     for i, image in zip(todo, converters.pdf_page_images(data, todo), strict=True):
