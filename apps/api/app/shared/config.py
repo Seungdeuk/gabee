@@ -293,6 +293,11 @@ class Settings(BaseSettings):
     # PUSH_EXPO_ACCESS_TOKEN 을 넣는다(안드로이드 FCM 키는 EAS 에 올리며 서버에는 두지 않는다).
     push_enabled: bool = False
     push_expo_access_token: str = ""
+    # 메타 광고 성과(관리자 데이터 분석, 읽기 전용). 비우면 관리자 화면에 "설정 전"만 보인다.
+    # 토큰은 메타 비즈니스 설정 › 시스템 사용자에서 ads_read 권한으로 만든 것. 코드·로그에 남기지 않는다.
+    meta_ads_access_token: str = ""
+    meta_ads_account_id: str = ""  # 광고 계정 번호(숫자 또는 act_숫자)
+    meta_ads_api_version: str = "v25.0"  # 메타 마케팅 API 버전. 만료되면 새 버전으로 바꾼다
 
     model_config = SettingsConfigDict(env_file=_ENV_FILE, extra="ignore", populate_by_name=True)
 

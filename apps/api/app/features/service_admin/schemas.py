@@ -1,4 +1,5 @@
 from datetime import date, datetime
+from enum import IntEnum
 from typing import Literal
 
 from pydantic import BaseModel, Field
@@ -248,3 +249,34 @@ class AnalyticsOut(BaseModel):
     support: AnalyticsSupport
     acquisition: list[AnalyticsSource]  # 유입 경로별 가입(많은 순, unknown 은 맨 끝)
     acquisition_ready: bool  # 유입 경로 표가 DB 에 있나(없으면 acquisition 은 빈 목록)
+
+
+class MetaAdsDays(IntEnum):
+    """메타 광고 성과 기간(최근 7일·30일). 주소 글자("30")도 받으려고 Literal 대신 IntEnum 을 쓴다."""
+
+    week = 7
+    month = 30
+
+
+class MetaAdsTotals(BaseModel):
+    spend: float = 0.0  # 쓴 광고비(광고 계정 통화)
+    impressions: int = 0  # 광고가 보인 횟수
+    clicks: int = 0  # 광고를 누른 횟수
+    installs: int = 0  # 앱 설치(메타 action_type mobile_app_install)
+    signups: int = 0  # 앱 가입(앱 SDK 의 가입 완료 이벤트)
+
+
+class MetaAdsCampaign(MetaAdsTotals):
+    campaign_id: str
+    name: str  # 캠페인 이름(광고 관리자에서 붙인 이름)
+
+
+class MetaAdsOut(BaseModel):
+    configured: bool  # 서버에 메타 광고 토큰·광고 계정이 들어 있나
+    ok: bool  # 메타에서 숫자를 받아 왔나(false 면 reason 에 이유)
+    reason: str | None  # 받아 오지 못한 이유(관리자에게 보여 줄 짧은 문장)
+    days: Literal[7, 30]
+    currency: str | None  # 광고 계정 통화(예: KRW). 캠페인이 없으면 null
+    total: MetaAdsTotals
+    campaigns: list[MetaAdsCampaign]  # 광고비 많은 순
+    fetched_at: datetime

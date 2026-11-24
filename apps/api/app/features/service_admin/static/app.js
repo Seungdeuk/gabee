@@ -476,6 +476,68 @@
       </section>`;
   }
 
+  // 메타 광고 성과는 메타 서버를 부르므로 데이터 분석 탭을 열 때만 따로 받는다(다른 화면 열기를 늦추지 않게)
+  const metaAds = { days: 7, data: null, loading: false, error: "" };
+  const money = (v, currency) => `${Number(v).toLocaleString("ko-KR", { maximumFractionDigits: 2 })}${currency === "KRW" ? "원" : currency ? ` ${esc(currency)}` : ""}`;
+  const rate = (part, whole) => (whole ? `${Math.round((part / whole) * 1000) / 10}%` : "-");
+
+  /**
+   * 메타 광고 성과를 받아 와서 데이터 분석 화면을 다시 그린다.
+   * @param {number} days 7 또는 30
+   * @returns {Promise<void>}
+   */
+  async function loadMetaAds(days) {
+    metaAds.days = days;
+    metaAds.loading = true;
+    metaAds.error = "";
+    if (current() === "analytics") render();
+    try {
+      metaAds.data = await api(`/admin/service/meta-ads?days=${days}`);
+    } catch (err) {
+      if (err.message === "unauthorized") return;
+      metaAds.data = null;
+      metaAds.error = "광고 성과를 불러오지 못했어요. 잠시 뒤 다시 해 주세요.";
+    } finally {
+      metaAds.loading = false;
+    }
+    if (current() === "analytics") render();
+  }
+
+  /** 데이터 분석의 메타 광고 성과 구역(캠페인별 광고비·노출·클릭·설치·가입). */
+  function metaAdsCard() {
+    const m = metaAds.data;
+    const pick = [7, 30]
+      .map((n) => `<button type="button" class="btn sm ${metaAds.days === n ? "primary" : ""}" data-meta-days="${n}" aria-pressed="${metaAds.days === n}">최근 ${n}일</button>`)
+      .join(" ");
+    let body;
+    if (metaAds.loading || (!m && !metaAds.error)) body = '<p class="small">메타에서 불러오는 중…</p>';
+    else if (metaAds.error) body = `<p class="small">${esc(metaAds.error)}</p>`;
+    else if (!m.configured) body = `<p class="small">${esc(m.reason)} (서버 환경변수 META_ADS_ACCESS_TOKEN · META_ADS_ACCOUNT_ID)</p>`;
+    else if (!m.ok) body = `<p class="note warn">${esc(m.reason)}</p>`;
+    else {
+      const t = m.total;
+      const c = m.currency;
+      body = `<section class="grid compact">
+          ${stat("광고비", money(t.spend, c))}
+          ${stat("노출", `${num(t.impressions)}회`)}
+          ${stat("클릭", `${num(t.clicks)}회`, `클릭률 ${rate(t.clicks, t.impressions)}`)}
+          ${stat("설치", `${num(t.installs)}건`, t.installs ? `설치당 ${money(Math.round(t.spend / t.installs), c)}` : "")}
+          ${stat("가입", `${num(t.signups)}명`, t.signups ? `가입당 ${money(Math.round(t.spend / t.signups), c)}` : "")}
+        </section>
+        ${table(
+          [{ label: "캠페인" }, { label: "광고비", num: true }, { label: "노출", num: true }, { label: "클릭", num: true }, { label: "설치", num: true }, { label: "가입", num: true }],
+          m.campaigns.map(
+            (r) => `<tr><td><strong>${esc(r.name)}</strong></td><td class="num">${money(r.spend, c)}</td><td class="num">${num(r.impressions)}</td><td class="num">${num(r.clicks)}</td><td class="num">${num(r.installs)}</td><td class="num">${num(r.signups)}</td></tr>`,
+          ),
+        )}
+        <p class="small">메타 광고 관리자 숫자(10분마다 새로 받음) · 마지막 확인 ${esc(new Date(m.fetched_at).toLocaleString("ko-KR"))}</p>`;
+    }
+    return `<section class="card">
+        <div class="card-head"><h2>메타 광고 성과 (페이스북·인스타그램)</h2><span class="small">${pick}</span></div>
+        ${body}
+      </section>`;
+  }
+
   function viewAnalytics(d) {
     const small = d.users < 30 ? `<p class="note warn">지금은 가입자가 ${num(d.users)}명뿐이라 비율이 크게 흔들려요. 숫자는 흐름만 보고, 사람이 늘면 해석해요.</p>` : "";
 
@@ -529,6 +591,7 @@
         </section>
       </div>
       ${acquisitionCard(d)}
+      ${metaAdsCard()}
       <div class="row">
         <section class="card wide">
           <div class="card-head"><h2>③ 가족 인원별 활동 (최근 7일)</h2><span class="small">혼자인 가족 ${num(f.solo_families)}곳 · 두 번째 가족이 들어오기까지 ${f.days_to_second_member ?? "-"}일(중앙값)</span></div>
@@ -692,10 +755,12 @@
     document.getElementById("page-title").textContent = pageHead.title;
     document.getElementById("page-sub").textContent = pageHead.sub;
     document.title = `가비 서비스 관리자 · ${TABS.find(([k]) => k === key)[1]}`;
+    if (key === "analytics" && !metaAds.data && !metaAds.loading && !metaAds.error) loadMetaAds(metaAds.days);
   }
 
   function showLogin(message = "") {
     data = null;
+    Object.assign(metaAds, { data: null, loading: false, error: "" }); // 다른 계정으로 다시 들어오면 새로 받는다
     document.getElementById("app").hidden = true;
     document.getElementById("login").hidden = false;
     document.getElementById("login-error").textContent = message;
@@ -765,6 +830,11 @@
       return;
     }
     // '답변하기': 그 문의를 펼치고 답변 칸으로 바로 간다
+    const metaDays = e.target.closest("[data-meta-days]");
+    if (metaDays) {
+      loadMetaAds(Number(metaDays.dataset.metaDays));
+      return;
+    }
     const alertAck = e.target.closest("[data-alert-ack]");
     if (alertAck) {
       ackAlert(alertAck.dataset.alertAck);
