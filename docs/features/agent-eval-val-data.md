@@ -236,3 +236,16 @@ w1(dev)과 같은 구조이되 값(금액·날짜·제목·문서 문장·대화
 | `pinned_on_top_of_commit` | `41439f53…` | `b669a036…` |
 
 - 이 값은 병합된 `release/1.4`(`b669a036`) 위에서 새로 계산했다. 바뀌지 않은 값: 소통 `ba3391bd…`·정산 `32ae98fb…`·일정 `5c1b0f4a…`, `cases_val.json` 해시, w2 월드 해시, 평가 기준 v2·채점기·시나리오 목록 해시, dev 108 해시 `d658d8e1…`, 공식 dev 사례 파일 해시 `c2d0bc8b…`.
+
+### 9-10. isolation-01 종료 지침 반영 (E8)
+
+- 사유: dev 108 isolation-01 에서 볼 수 없는 정보를 결과가 없을 때까지 반복 검색해 호출이 7~9회로 늘었다. 권한 통제가 아니라 답하는 방식만 정했고 서버 격리 코드는 그대로다. 메인 해시와 통합 해시가 바뀌었다. 담당 에이전트 설명·정산·소통·일정 프롬프트·평가 사례·기대값·채점기는 바꾸지 않았다.
+- val 실모델 평가는 시작되지 않았다(`ALLOWED_SPLITS == ("legacy", "dev")`, 고정 파일 `frozen_before_any_model_output` 는 `true`).
+
+| 항목 | 갱신 전 | 갱신 후 |
+|---|---|---|
+| 메인 해시(`main`, manifest `prompt_hash`) | `fddef66ab0499fd29217bea31df29f9d35db9d70397de216aeb5a9b79a2cd99a` | `368edb9e547ce654aea20846872dc802977b4341629ecde3ffbe73a11c065c25` |
+| 통합 프롬프트 해시 | `0ac446e014a0d80eb1b0a9cbc6cf91d1415cb4b0ce613e458496eb4134424c53` | `b7beceae693b4b04e650a0885f365a1953fd000d623194c66868f15d13e42b0d` |
+| `pinned_on_top_of_commit` | `b669a036…` | `b669a036…` |
+
+- 이 값은 병합된 `release/1.4`(`b669a036`) 위에서 새로 계산했다. 바뀌지 않은 값: 소통 `ba3391bd…`·정산 `32ae98fb…`·일정 `5c1b0f4a…`, `cases_val.json` 해시, w2 월드 해시, 평가 기준 v2·채점기·시나리오 목록 해시, dev 108 해시 `d658d8e1…`, 공식 dev 사례 파일 해시 `c2d0bc8b…`.
