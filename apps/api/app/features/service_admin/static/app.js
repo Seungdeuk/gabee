@@ -14,6 +14,7 @@
   ];
   const TABS = TAB_GROUPS.flatMap(([, tabs]) => tabs);
   const TOKEN_KEY = "gabee_admin_token";
+  const REFRESH_KEY = "gabee_admin_refresh"; // 연장용 토큰(30일). 같은 탭의 sessionStorage 에만 두어 탭을 닫으면 로그아웃된다
   const THEME_KEY = "gabee_admin_theme"; // light 나 dark. 없으면 컴퓨터 설정을 따른다
 
   /** 지금 보이는 화면 모드. 고른 값이 없으면 컴퓨터 설정이다. */
@@ -84,6 +85,72 @@
     }
   }
 
+  function refreshToken() {
+    try {
+      return sessionStorage.getItem(REFRESH_KEY);
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * 로그인·연장 응답의 두 토큰을 저장한다. null 이면 둘 다 지운다(로그아웃).
+   * @param {{access_token: string, refresh_token: string} | null} tokens
+   */
+  function saveTokens(tokens) {
+    setToken(tokens ? tokens.access_token : null);
+    try {
+      if (tokens) sessionStorage.setItem(REFRESH_KEY, tokens.refresh_token);
+      else sessionStorage.removeItem(REFRESH_KEY);
+    } catch {
+      // 저장이 막히면 15분 뒤 다시 로그인한다
+    }
+  }
+
+  let refreshing = null; // 동시에 여러 요청이 401 을 받아도 연장은 한 번만 한다
+
+  /**
+   * 15분짜리 로그인 토큰이 끝났을 때 연장용 토큰으로 새 토큰을 받는다(탭을 열어 두는 동안 로그인 유지).
+   * @returns {Promise<boolean>} 연장했으면 true, 연장용 토큰이 없거나 끝났으면 false
+   */
+  function renewSession() {
+    if (!refreshing) {
+      refreshing = (async () => {
+        const rt = refreshToken();
+        if (!rt) return false;
+        const res = await fetch("/family-group/auth/refresh", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ refresh_token: rt }),
+        }).catch(() => null);
+        if (!res || !res.ok) return false;
+        saveTokens(await res.json());
+        return true;
+      })().finally(() => {
+        refreshing = null;
+      });
+    }
+    return refreshing;
+  }
+
+  /**
+   * 토큰을 붙여 부르고, 401 이면 한 번 연장한 뒤 다시 부른다. 연장도 안 되면 로그인 화면으로 돌아간다.
+   * @param {string} path
+   * @param {RequestInit} init headers 는 객체로 준다
+   * @returns {Promise<Response>}
+   */
+  async function authFetch(path, init) {
+    const send = () => fetch(path, { ...init, headers: { ...init.headers, Authorization: `Bearer ${token()}` } });
+    let res = await send();
+    if (res.status === 401 && (await renewSession())) res = await send();
+    if (res.status === 401) {
+      saveTokens(null);
+      showLogin("로그인이 만료됐어요. 다시 로그인해 주세요.");
+      throw new Error("unauthorized");
+    }
+    return res;
+  }
+
   /**
    * 관리자 API 를 부른다. 로그인이 풀렸으면(401) 로그인 화면으로 돌아간다.
    * @param {string} path
@@ -92,17 +159,12 @@
    * @returns {Promise<any>}
    */
   async function api(path, body, method = body ? "PATCH" : "GET") {
-    const init = { method, headers: { Authorization: `Bearer ${token()}` } };
+    const init = { method, headers: {} };
     if (body) {
       init.headers["Content-Type"] = "application/json";
       init.body = JSON.stringify(body);
     }
-    const res = await fetch(path, init);
-    if (res.status === 401) {
-      setToken(null);
-      showLogin("로그인이 만료됐어요. 다시 로그인해 주세요.");
-      throw new Error("unauthorized");
-    }
+    const res = await authFetch(path, init);
     if (res.status === 403 && path === "/admin/service/me") throw new Error("not_staff"); // 허용 목록에 없는 회원
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     return res.status === 204 ? null : res.json();
@@ -707,7 +769,7 @@
       data = await loadData();
     } catch (err) {
       if (err.message === "not_staff") {
-        setToken(null);
+        saveTokens(null);
         showLogin("관리자 계정이 아니에요.");
       } else if (err.message !== "unauthorized") {
         document.getElementById("view").innerHTML = '<p class="note warn">데이터를 불러오지 못했어요. 잠시 뒤 새로고침해 주세요.</p>';
@@ -735,7 +797,7 @@
       error.textContent = res && res.status < 500 ? "아이디 또는 비밀번호가 맞지 않아요." : "로그인하지 못했어요. 잠시 뒤 다시 해 주세요.";
       return;
     }
-    setToken((await res.json()).access_token);
+    saveTokens(await res.json());
     form.password.value = "";
     document.getElementById("app").hidden = false;
     start();
@@ -747,7 +809,7 @@
       return;
     }
     if (e.target.closest("[data-action='logout']")) {
-      setToken(null);
+      saveTokens(null);
       showLogin();
       return;
     }
@@ -1002,16 +1064,11 @@
    * @returns {Promise<void>} 스트림이 끝나면 끝난다. 401 이면 로그인 화면으로 돌아가고 "unauthorized" 로 실패한다
    */
   async function chatStream(question, onEvent) {
-    const res = await fetch("/admin/knowledge/ask/stream", {
+    const res = await authFetch("/admin/knowledge/ask/stream", {
       method: "POST",
-      headers: { Authorization: `Bearer ${token()}`, "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ q: question }),
     });
-    if (res.status === 401) {
-      setToken(null);
-      showLogin("로그인이 만료됐어요. 다시 로그인해 주세요.");
-      throw new Error("unauthorized");
-    }
     if (!res.ok || !res.body) throw new Error(`HTTP ${res.status}`);
     const reader = res.body.getReader();
     const decoder = new TextDecoder();
@@ -1317,8 +1374,14 @@
     }
   });
 
-  window.addEventListener("gabee-admin-expired", () => {
-    setToken(null);
+  // 서버 상태 탭(iframe)의 토큰이 끝나면: 연장해서 그 화면만 다시 열고, 연장이 안 되면 로그인으로 돌아간다
+  window.addEventListener("gabee-admin-expired", async () => {
+    if (await renewSession()) {
+      const frame = document.querySelector(".ops-frame");
+      if (frame) frame.src = frame.src;
+      return;
+    }
+    saveTokens(null);
     showLogin("로그인이 만료됐어요. 다시 로그인해 주세요.");
   });
 
