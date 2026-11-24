@@ -632,6 +632,7 @@ def test_acquisition_order_and_rates():
         ("tiktok", 1),  # 목록 밖 값: 같은 1명이면 채널 뒤
         ("youtube", 0),  # 가입자 목록에 없는 기록은 세지 않는다
         ("instagram", 0),
+        ("facebook", 0),  # 메타 광고 채널도 0명이어도 늘 나온다
         ("cafe", 0),
         ("qr", 0),
         ("kakao", 0),

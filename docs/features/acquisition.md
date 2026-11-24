@@ -11,7 +11,7 @@
   - 본문 `{source, medium?, campaign?}`. 각 값을 `schemas.normalize_tag` 로 다듬은 뒤(소문자, 메타 광고 주소·별칭 → `facebook`/`instagram`, 점 등은 `-`, 40자) `^[a-z0-9_-]{1,40}$` 검사. 다듬은 뒤 빈 값이면 422. 앱 `referrer.js` 의 `normalizeTag` 도 같은 규칙.
   - 처음 값만 남긴다(이미 있으면 그대로 204). 가입 30일이 지난 회원은 저장하지 않는다(`service.NEW_MEMBER_WINDOW`).
   - `main.py` 에 `schema_ready("acquisition")` 와 함께 등록. 보안 매트릭스에는 "가족 없이 써도 되는 경로".
-- 관리자 이용 분석 › 유입·가입 탭(`GET /admin/service/analytics`): `acquisition`(경로별 가입·비율·가족 연결 비율, 기록 없는 가입자는 `unknown` 으로 맨 끝. 홍보 채널 8개(`analytics.KNOWN_SOURCES`)와 unknown 은 0명이어도 늘 나온다)과 `acquisition_ready`. 표가 없는 DB 에서는 표를 읽지 않고 빈 목록 + "준비 중".
+- 관리자 이용 분석 › 유입·가입 탭(`GET /admin/service/analytics`): `acquisition`(경로별 가입·비율·가족 연결 비율, 기록 없는 가입자는 `unknown` 으로 맨 끝. 홍보 채널 9개(`analytics.KNOWN_SOURCES`, 페이스북 포함)와 unknown 은 0명이어도 늘 나온다)과 `acquisition_ready`. 표가 없는 DB 에서는 표를 읽지 않고 빈 목록 + "준비 중".
   - 계산: `service_admin/analytics.py` 의 `acquisition()`, 조회: `service_admin/repository.py` 의 `install_sources()`.
   - 화면: `service_admin/static/app.js` 의 `acquisitionCard()`. 한글 이름표 `SOURCE_LABEL`(facebook 페이스북 포함), 목록에 없는 값은 `esc()` 로 그대로.
 - 테스트: `app/features/acquisition/tests/test_acquisition_api.py`(다듬기 시험 포함), `service_admin/tests/test_admin_api.py` 의 `test_analytics_acquisition_by_source`, `test_analytics_without_acquisition_table`, `test_acquisition_order_and_rates`.
