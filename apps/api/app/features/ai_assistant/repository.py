@@ -1,7 +1,21 @@
-from sqlalchemy import select
+from datetime import datetime
+
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from .models import Photo
+
+
+def count_stale_received(db: Session, before: datetime) -> int:
+    """`before` 이전에 만들어졌는데 아직 `received`(읽는 중) 인 업로드 수. 읽기만 한다(상태를 바꾸지 않는다)."""
+    return int(
+        db.scalar(
+            select(func.count())
+            .select_from(Photo)
+            .where(Photo.status == "received", Photo.created_at <= before)
+        )
+        or 0
+    )
 
 
 def add(db: Session, photo: Photo) -> Photo:

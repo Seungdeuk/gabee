@@ -9,6 +9,7 @@
 import logging
 import threading
 from concurrent.futures import ThreadPoolExecutor
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy.orm import Session
 
@@ -17,6 +18,7 @@ from app.shared.config import settings
 from app.shared.db import SessionLocal
 
 from . import files, service
+from . import repository as repo
 from .ingest import siglip_margin
 from .ingest.detect import Unsupported, detect
 from .ingest.service import chat_masking_blocked
@@ -28,9 +30,106 @@ logger = logging.getLogger(__name__)
 _executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="chat-library")
 
 
+_jobs_lock = threading.Lock()
+_jobs: dict[
+    int, dict
+] = {}  # 아직 끝나지 않은 응답 뒤 작업(관측·종료 처리용. 영속 큐가 아니다: 프로세스가 죽으면 사라진다)
+
+
 def _submit(fn, *args) -> None:
-    """등록을 백그라운드에서 실행한다(시험은 이 함수를 그 자리 실행으로 바꾼다)."""
-    _executor.submit(fn, *args)
+    """등록을 백그라운드에서 실행한다(시험은 이 함수를 그 자리 실행으로 바꾼다).
+    끝나지 않은 작업을 추적해서 대기·진행 건수를 볼 수 있고(`queue_stats`), 서버를 끄기 전에 아직 시작하지 않은 작업을 취소할 수 있다(`cancel_queued_jobs`).
+    이 추적은 **완료를 보장하지 않는다**: 진행 중이거나 대기 중인 작업은 프로세스가 강제 종료되면 그대로 사라진다."""
+    job: dict = {"fn": fn, "started": False}
+
+    def run_tracked() -> None:
+        with _jobs_lock:
+            job["started"] = True
+        try:
+            fn(*args)
+        finally:
+            with _jobs_lock:
+                _jobs.pop(id(job), None)
+
+    with _jobs_lock:
+        _jobs[id(job)] = job
+    try:
+        job["future"] = _executor.submit(run_tracked)
+    except Exception:
+        with _jobs_lock:
+            _jobs.pop(id(job), None)
+        raise
+
+
+def queue_stats() -> dict[str, int]:
+    """응답 뒤 작업의 대기(아직 시작하지 않음)·진행 건수. 개인정보 없이 숫자만."""
+    with _jobs_lock:
+        started = sum(1 for j in _jobs.values() if j["started"])
+        return {"queued": len(_jobs) - started, "running": started}
+
+
+def cancel_queued_jobs() -> dict[str, int]:
+    """서버를 끄기 전에 아직 시작하지 않은 작업을 취소한다(진행 중인 작업은 건드리지 않는다). 취소한 사진 판별 작업은 사진이 `pending` 으로
+    남아 15분을 기다리지 않도록 `failed`(종류 `Shutdown`)로 적어 업로더가 바로 다시 검사할 수 있게 한다. 원본이 영속 저장소에 없으면 다시 검사해도 복구는 보장되지 않는다.
+    executor 자체는 닫지 않는다(시험·재시작 경로에서 계속 쓸 수 있게). 돌려주는 값은 건수만이다."""
+    with _jobs_lock:
+        waiting = [j for j in _jobs.values() if not j["started"]]
+        running = len(_jobs) - len(waiting)
+    cancelled = 0
+    for job in waiting:
+        future = job.get("future")
+        if future is None or not future.cancel():  # 그 사이 시작했으면 취소되지 않는다
+            continue
+        cancelled += 1
+        with _jobs_lock:
+            _jobs.pop(id(job), None)
+        on_cancel = getattr(job["fn"], "on_cancel", None)
+        if on_cancel is not None:
+            try:
+                on_cancel()
+            except Exception as exc:  # noqa: BLE001  종료를 막지 않는다(종류만 기록)
+                logger.warning("chat library cancel cleanup failed error=%s", type(exc).__name__)
+    return {"cancelled": cancelled, "running": running}
+
+
+def startup_report() -> None:
+    """기동 때 이전 프로세스가 끝내지 못한 것으로 보이는 작업 수를 로그로 남긴다(숫자만, 읽기 전용: 상태를 바꾸지 않아 여러 인스턴스가 있어도 안전하다).
+    이것은 **관측**일 뿐 복구가 아니다: 메모리 대기열과 읽던 내용은 사라졌고, 원본이 영속 저장소에 없으면 다시 처리할 수 없다.
+    DB 가 아직 준비되지 않았어도 기동을 막지 않는다."""
+    try:
+        received = stale_received_count()
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("chat library startup report failed error=%s", type(exc).__name__)
+        received = None
+    pending = chat_library.stale_pending_photo_count()
+    if received or pending:
+        logger.warning(
+            "chat library unfinished work found at startup stale_received=%s stale_pending_photos=%s",
+            received,
+            pending,
+        )
+    else:
+        logger.info(
+            "chat library startup: no stale work (received=%s pending=%s)", received, pending
+        )
+
+
+def shutdown_report() -> dict[str, int]:
+    """서버를 끌 때 아직 시작하지 않은 작업을 취소하고(사진 판별은 failed `Shutdown` 으로 적는다) 건수를 로그로 남긴다. 진행 중인 작업의 완료는 보장하지 않는다."""
+    result = cancel_queued_jobs()
+    if result["cancelled"] or result["running"]:
+        logger.warning(
+            "chat library shutdown: cancelled_queued=%d running_may_be_lost=%d",
+            result["cancelled"],
+            result["running"],
+        )
+    return result
+
+
+def stale_received_count(older_than: timedelta = files.STUCK_AFTER) -> int:
+    """오래도록 `received` 로 남은 업로드(읽던 중 서버가 죽었을 가능성) 수. 읽기만 하고 바꾸지 않는다(여러 인스턴스가 있어도 안전)."""
+    with SessionLocal() as db:
+        return repo.count_stale_received(db, datetime.now(UTC) - older_than)
 
 
 def supported(data: bytes, filename: str) -> bool:
@@ -189,6 +288,7 @@ def _on_photo(
 ) -> None:
     global _photo_bytes
     key = (group_id, attachment_id, forced)
+    full = False
     with _photo_lock:
         if key in _photo_inflight:
             return  # 같은 요청이 이미 처리 중이다(연타·재요청)
@@ -197,14 +297,17 @@ def _on_photo(
             or sum(_photo_pending.values()) >= PHOTO_QUEUE_INSTANCE_LIMIT
             or _photo_bytes + len(data) > PHOTO_QUEUE_INSTANCE_BYTES
         ):
-            # 가족·인스턴스 건수나 바이트 상한을 넘었다: 이번 사진은 건너뛴다(pending 으로 남아 15분 뒤 확인 필요 목록·재검사로 복구된다).
-            logger.info(
-                "chat library photo queue full"
-            )  # 직접 누른 저장은 버리지 않는다(요청 횟수는 라우터가 제한한다)
-            return
-        _photo_pending[group_id] = _photo_pending.get(group_id, 0) + 1
-        _photo_bytes += len(data)
-        _photo_inflight.add(key)
+            full = True  # 직접 누른 저장은 버리지 않는다(요청 횟수는 라우터가 제한한다)
+        else:
+            _photo_pending[group_id] = _photo_pending.get(group_id, 0) + 1
+            _photo_bytes += len(data)
+            _photo_inflight.add(key)
+    if full:
+        # 가족·인스턴스 건수나 바이트 상한을 넘었다: 이번 사진은 건너뛰되, 15분 동안 조용히 pending 으로 두지 않고 failed(`QueueFull`)로 적어
+        # 업로더가 "확인 필요" 목록에서 바로 다시 검사할 수 있게 한다(이미 정해진 줄은 바뀌지 않는다). 원본 파일이 남아 있어야 다시 검사가 된다.
+        logger.info("chat library photo queue full")
+        chat_library.photo_judged(group_id, attachment_id, "failed", "QueueFull")
+        return
 
     def release() -> None:
         global _photo_bytes
@@ -223,10 +326,21 @@ def _on_photo(
         finally:
             release()
 
+    if not forced:
+
+        def on_cancel() -> None:
+            """서버를 끄기 전에 시작하지 못하고 취소된 판별: 자리를 되돌리고 사진을 failed(`Shutdown`)로 적어 바로 다시 검사할 수 있게 한다."""
+            release()
+            chat_library.photo_judged(group_id, attachment_id, "failed", "Shutdown")
+
+        run.on_cancel = on_cancel  # type: ignore[attr-defined]  # `_submit` 이 취소할 때 부른다
+
     try:
         _submit(run)
     except Exception as exc:  # noqa: BLE001  서버를 끄는 중이면 작업이 들어가지 않는다: 자리를 되돌린다
         release()
+        if not forced:
+            chat_library.photo_judged(group_id, attachment_id, "failed", "SubmitFailed")
         logger.warning("chat library photo submit failed error=%s", type(exc).__name__)
 
 

@@ -161,6 +161,26 @@ def photo_judged(group_id: str, attachment_id: str, status: str, error: str | No
         return True
 
 
+_stale_counter: Callable[[], int] | None = None
+
+
+def register_stale_counter(fn: Callable[[], int]) -> None:
+    """오래도록 `pending` 으로 남은 사진 판별 수를 세는 함수를 등록한다(family_chat 이 시작할 때 부른다. 읽기 전용)."""
+    global _stale_counter
+    _stale_counter = fn
+
+
+def stale_pending_photo_count() -> int | None:
+    """15분 넘게 판별되지 않은 채팅 사진 수(서버가 판별 도중 죽었을 가능성의 신호). 세는 함수가 없거나 실패하면 None. 상태를 바꾸지 않는다."""
+    if _stale_counter is None:
+        return None
+    try:
+        return int(_stale_counter())
+    except Exception as exc:  # noqa: BLE001  기동을 막으면 안 된다(종류만 기록)
+        logger.warning("chat library stale count failed error=%s", type(exc).__name__)
+        return None
+
+
 def attachment_removed(db: Session, group_id: str, attachment_id: str) -> None:
     """채팅 첨부(메시지)를 지우면 부른다. 그 첨부에서 만든 기록이 있으면 함께 지운다. 실패해도 던지지 않는다."""
     if _on_removed is None:

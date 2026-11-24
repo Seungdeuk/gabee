@@ -46,6 +46,19 @@ def new_pending(attachment_id: str, group_id: str) -> ChatPhotoCheck:
     )
 
 
+def count_stale_pending(db: Session, now: datetime | None = None) -> int:
+    """`STALE_PENDING` 넘게 `pending` 인 자동 판별 줄 수. 읽기만 한다(서버가 판별 도중 죽었을 가능성의 신호, 여러 인스턴스가 있어도 안전)."""
+    cutoff = (now or datetime.now(UTC)) - STALE_PENDING
+    return int(
+        db.scalar(
+            select(func.count())
+            .select_from(ChatPhotoCheck)
+            .where(ChatPhotoCheck.status == PENDING, ChatPhotoCheck.created_at <= cutoff)
+        )
+        or 0
+    )
+
+
 def get(db: Session, group_id: str, attachment_id: str) -> ChatPhotoCheck | None:
     return db.scalars(
         select(ChatPhotoCheck).where(

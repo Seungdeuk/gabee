@@ -301,4 +301,11 @@ def mark_document(
     checks.mark_document_manual(db, group_id, attachment_id, actor_user_id)
 
 
+def count_stale_pending() -> int:
+    """오래도록 판별되지 않은 채로 남은 사진 수(읽기 전용, 자기 세션)."""
+    with SessionLocal() as db:
+        return checks.count_stale_pending(db)
+
+
 chat_library.register_check_recorder(record_auto_result)
+chat_library.register_stale_counter(count_stale_pending)

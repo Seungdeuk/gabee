@@ -9,6 +9,7 @@ from app.features.acquisition.router import router as acquisition_router
 from app.features.admin_alerts.router import admin_router as admin_alerts_router
 from app.features.admin_alerts.router import internal_router as admin_alerts_internal_router
 from app.features.admin_knowledge.router import router as admin_knowledge_router
+from app.features.ai_assistant import library as chat_library_work
 from app.features.ai_assistant.knowledge import index_health as knowledge_index
 from app.features.ai_assistant.router import router as ai_assistant_router
 from app.features.billing.router import router as billing_router
@@ -47,7 +48,9 @@ async def lifespan(_: FastAPI):
     privacy_ner.start_preload()  # NER 모델을 백그라운드로 미리 불러온다(off 면 아무 일도 안 함, 실패해도 기동은 계속)
     knowledge_index.start_startup_check()  # 임베딩 모델 이름이 DB 조각과 어긋나 검색에서 문서가 빠지는지 백그라운드로 점검해 로그로 알린다(기다리지 않고, 실패해도 기동은 계속)
     family_memory_worker.start()  # AI 추억 분석 작업 워커(FAMILY_MEMORY_ENABLED·FAMILY_MEMORY_WORKER_ENABLED 가 둘 다 켜져 있을 때만, 기본 꺼짐)
+    chat_library_work.startup_report()  # 이전 프로세스가 끝내지 못한 문서·사진 등록 작업 수를 로그로만 알린다(읽기 전용, 복구 아님, 실패해도 기동은 계속)
     yield
+    chat_library_work.shutdown_report()  # 아직 시작하지 않은 응답 뒤 작업을 취소하고 건수를 로그로 남긴다(진행 중 작업의 완료는 보장하지 않는다)
     family_memory_worker.stop()
     ops_metrics.flush(
         final=True
