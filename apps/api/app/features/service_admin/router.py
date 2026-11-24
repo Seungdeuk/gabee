@@ -117,7 +117,7 @@ def admin_delete_notice(notice_id: str, db: Session = Depends(get_db)) -> None:
 
 @router.get("/analytics", response_model=AnalyticsOut, dependencies=SUPPORT)
 def admin_analytics(db: Session = Depends(get_db)) -> AnalyticsOut:
-    """데이터 분석: 재방문 코호트, 가입 퍼널, 가족 인원별 활동, 기능 사용, AI 품질·비용, 요일·시간 활동, 고객 응대.
+    """이용 분석(유입·가입 / 재방문·사용 시간 / 고객 응대)과 가족·기능·AI 탭 보조 숫자: 재방문 코호트, 가입 퍼널, 가족 인원별 활동, 기능 사용, AI 품질·비용, 요일·시간 활동, 고객 응대.
     id·시각·개수만 읽는다(문의 표도 읽으므로 support 표가 없으면 503)."""
     return analytics.analytics(db)
 

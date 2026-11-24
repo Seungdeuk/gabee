@@ -110,7 +110,7 @@ def daily_members(db: Session, start: str | None = None, end: str | None = None)
 
 
 def data_analysis(db: Session) -> list[str]:
-    """데이터 분석 탭과 같은 계산."""
+    """이용 분석 탭과 같은 계산."""
     a = analytics(db)
     lines = [
         f"재방문 코호트 {c.week_start} 주: 가입 {c.size}명, 1주 뒤 {_num(c.w1, '%')}, "
@@ -190,9 +190,9 @@ register(
 )
 register(
     "data_analysis",
-    "데이터 분석 탭의 값: 가입 주별 재방문 코호트(최근 8주), 가입 퍼널, 가족 인원별 활동, "
+    "이용 분석 탭의 값: 가입 주별 재방문 코호트(최근 8주), 가입 퍼널, 가족 인원별 활동, "
     "기능 사용 지도, AI 품질(오류율·캐시·한도 거절), 고객 응대.",
     data_analysis,
     order=90,
-    label="데이터 분석 확인",
+    label="이용 분석 확인",
 )

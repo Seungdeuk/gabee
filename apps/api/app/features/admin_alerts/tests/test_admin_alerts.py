@@ -375,7 +375,7 @@ def test_stale_join_requests_alert_after_24_hours(client, on, operator):
     assert _run(client)["created"] == 1
     assert _run(client)["created"] == 0
     item = client.get(LIST, headers=operator).json()["items"][0]
-    assert item["rule"] == "stale_join" and item["menu"] == "가족 그룹 관리"
+    assert item["rule"] == "stale_join" and item["menu"] == "사용자 › 가족"
     assert (
         item["message"] == "24시간 넘게 승인 대기 중인 가족 참가 요청 2건 (가장 오래된 것 30시간째)"
     )
@@ -391,7 +391,7 @@ def test_ai_spike_alerts_at_three_times_the_average(client, on, operator):
     assert _run(client)["created"] == 1
     assert _run(client)["created"] == 0
     item = client.get(LIST, headers=operator).json()["items"][0]
-    assert item["rule"] == "ai_usage_spike" and item["menu"] == "AI 이용 현황"
+    assert item["rule"] == "ai_usage_spike" and item["menu"] == "기능·AI › AI"
     assert item["message"] == "오늘 AI 요청 60건, 최근 7일 하루 평균 10건의 6.0배"
 
 
