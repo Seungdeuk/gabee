@@ -47,6 +47,10 @@ MEMORY_RESETS = (
     ("app.features.family_group.social_providers", "_overrides"),
     ("app.features.play.bomb", "_cheer_books"),
     ("app.features.play.bomb_vote", "_books"),
+    (
+        "app.features.service_admin.meta_ads",
+        "_cache",
+    ),  # 관리자 메타 광고 성과 캐시(10분, _cache_lock 으로 지킨다)
 )
 # 저장소를 지키는 락의 이름이 `<저장소 이름>_lock` 이 아닌 곳(모듈이 락 하나로 여러 저장소를 지킨다). 초기화는 앱이 쓰는 바로 그 락을 잡고 비운다.
 # 여기 적은 락이 모듈에 없으면(이름이 바뀌면) 조용히 락 없이 비우지 않고 AttributeError 로 멈춘다.
