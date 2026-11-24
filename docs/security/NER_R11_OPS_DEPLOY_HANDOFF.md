@@ -63,7 +63,8 @@ tokenizer·labels 는 S0 와 바이트 동일하다. `model_card.json` 의 `name
 | fail-closed 8가지(`--network none`, 연결 시도 계수) | 아래 표. 전부 차단, 연결 시도 0 |
 | 개인정보·NER 단위 시험(R11 실모델 사용) | 586 통과 / 3 건너뜀(실모델 없는 환경용), 실모델 51건 통과 |
 | 서비스 회귀(소통·AI 도우미·일정·가계·주간 뉴스·개인정보·보안·멤버십, `required` + R11) | **3,677 통과, 9 xfail(기존 예상 실패), 실패 0** |
-| `check_ner_deploy_mode` 시험 | 13 통과 |
+| `check_ner_deploy_mode` 시험 | 20 통과. 이미지 지문 증명(`--image-status-json`)이 **없으면 설정이 required 여도 실패**(처음 버전은 설정만으로 통과하던 허점이라 고쳤다). 지문·active·mode 중 하나라도 틀리면 실패. `--config-only` 는 참고 점검이며 통과해도 종료 코드 3 |
+| 실제 HTTP 응답 | `weekly_news` 생성 라우트에서 실제 `ner` 모듈을 required + 모델 없음으로 두고 호출: **HTTP 503 `privacy_unavailable`, LLM 호출 0건, DB 행 없음**(`test_required_ner_down_is_real_http_503_and_never_calls_the_llm`). 모드를 `auto` 로 바꾸면 이 시험이 실패하는 것도 확인했다. 컨테이너 시험의 `status_code: null` 은 가명화 입구 예외만 본 값이다 |
 | `ruff check` / `ruff format --check` (apps/api) | 통과 |
 
 fail-closed 케이스(`ops_final/failclosed_results.json`): ONNX 없음, 해시 불일치, tokenizer 손상, labels 불일치(카드 해시 갱신 후), ONNX 로딩 실패(손상 파일), 로드 이후 추론 예외, 시간 상한 초과, 동시 추론 상한. 모두 가명화 입구가 `PrivacyUnavailable`(503 `privacy_unavailable`)이고 소켓 connect 시도는 0건이다. 정상 케이스는 통과하고 원문 이름·전화번호가 가명화 결과에 남지 않았다.
@@ -92,7 +93,8 @@ R11 6번째 측정이 다른 측정보다 느린 이상값이라(p50 17.2ms) 중
 | 이전 리비전·이미지(digest) 보존 확인 | 운영 확인 필요. 개발 PC 롤백 시험만 통과 |
 | 위험 수용 결정서 서명(`NER_R11_OPS_RISK_ACCEPTANCE.md`) | **서명 전**. 서명란 비어 있음. 작업 지시서는 교체 결정을 알렸지만 서명·승인은 따로 필요하다 |
 | 배포 담당자 승인 | **미확보** |
-| 후보 리비전(0% 트래픽)에서 실제 서비스 경로 스모크 | 운영 접근·승인 후 |
+| 후보 리비전(0% 트래픽)에서 실제 서비스 경로 스모크 | 운영 접근·승인 후. 게이트는 **후보 리비전 JSON + 같은 digest 이미지의 `ner_status()` JSON** 두 개를 모두 넣어 종료 코드 0 이어야 하고, 현재 S0 서비스 설정은 `--config-only` 로만 본다(S0 를 잘못 차단하지 않기 위함) |
+| 라우트별 HTTP 503 | `weekly_news` 만 실제 모듈로 확인. 소통·일정 등 다른 NER 연결 입구는 후보 리비전 스모크에서 확인 |
 
 사전 등록 판정은 `KEEP_S0`(P1~P3 FAIL)이고 바꾸지 않았다.
 

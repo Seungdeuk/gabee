@@ -38,7 +38,7 @@ gcloud run deploy $S --project $P --region $R --image $NEW_IMG --no-traffic --ta
 이외 옵션(환경변수·시크릿·서비스 계정·자원·스케일)은 넘기지 않아 기존 리비전 설정이 이어진다. 이미지 안 `PRIVACY_NER_MODEL_DIR` 가 새 폴더를 가리키므로 서비스에 `PRIVACY_NER_MODEL_DIR` 환경변수가 덮어쓰여 있으면(1절 확인) 같은 명령에서 `--update-env-vars` 에 올바른 값 `PRIVACY_NER_MODEL_DIR=/srv/data/models/ner-koelectra-small-r11b-s21` 도 함께 지정하거나 환경변수를 지워야 한다(`gate` 가 차단). 사용자 트래픽은 계속 이전 리비전으로 간다.
 
 ## 4. 0% 리비전에서 검증
-1. **실제 설정 확인:** 새 리비전 JSON 에서 `PRIVACY_NER_MODE=required`(및 모델 경로 환경변수)만 추출해 게이트 재실행(종료 코드 0).
+1. **실제 설정 확인:** 새 리비전 JSON 에서 `PRIVACY_NER_MODE=required`(및 모델 경로 환경변수)만 추출해 게이트 재실행(종료 코드 0). **이미지 지문 증명 필수:** 같은 digest 이미지의 `ner_status()` 출력(아래 2번 Job 결과)을 `--image-status-json` 으로 함께 넣어야 통과한다(없으면 실패). 현재 S0 서비스 설정을 참고로 볼 때는 `--config-only`(통과해도 종료 코드 3, 승인 근거 아님).
 2. **실제 실행 모드·모델 지문(일회성 Job, 서비스·트래픽 무변경):** `/health` 는 NER 상태를 노출하지 않고 성공 시 NER 로그도 기본 레벨에서 보이지 않으므로, **같은 digest·같은 환경변수로 일회성 Cloud Run Job 을 실행**한다.
 ```bash
 gcloud run jobs create gabee-ner-check --project $P --region $R --image $NEW_IMG --set-env-vars PRIVACY_NER_MODE=required \

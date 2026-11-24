@@ -8,9 +8,11 @@
   1) 설정에 `PRIVACY_NER_MODE` 가 있으면 정확히 `required` 여야 한다(`auto`·`off`·오타·빈 값 모두 실패. 앱은 오타를 required 로 처리하지만 게이트는 의도하지 않은 값을 막는다).
   2) 설정에 `PRIVACY_NER_MODE` 가 없으면 이미지 기본값에 맡기는 것이므로 입력 2 가 반드시 필요하고 mode=required 여야 한다.
   3) 설정이 `PRIVACY_NER_MODEL_DIR`·`PRIVACY_NER_MODEL_FILE` 을 덮어쓰면 기대값과 같아야 한다(다르면 옛 모델 폴더를 가리킬 수 있다).
-  4) 입력 2 가 있으면 mode=required, active=true, fingerprint=기대 지문이어야 한다.
+  4) 입력 2(이미지 실제 동작)는 **필수**다. 없으면 실패한다(설정만 required 여서 통과하는 것을 막는다). mode=required, active=true, fingerprint=기대 지문이어야 한다.
+  입력 1 은 배포할 **후보 리비전**의 JSON 이어야 한다. 현재 S0 서비스 설정을 참고로 볼 때는 `--config-only`(통과해도 종료 코드 3, 배포 승인 근거 아님)를 쓴다.
   5) 값이 비밀 참조(valueFrom)면 내용을 확인할 수 없으므로 실패.
-사용: python check_ner_deploy_mode.py --service-json svc.json [--image-status-json status.json] [--expected-fingerprint 3831601b7ffb]
+사용: python check_ner_deploy_mode.py --service-json 후보리비전.json --image-status-json status.json [--expected-fingerprint 3831601b7ffb]
+참고용(설정만): python check_ner_deploy_mode.py --service-json 현재서비스.json --config-only
 """
 
 import argparse
@@ -39,9 +41,16 @@ def ner_env(doc):
     return out
 
 
-def check(env, image_status=None, expect_fp=EXPECT_FP):
-    """반환: (통과 여부, 이유 목록)."""
+def check(env, image_status=None, expect_fp=EXPECT_FP, require_image_status=True):
+    """반환: (통과 여부, 이유 목록).
+
+    기본은 이미지 실제 동작(``ner_status()`` 출력)이 반드시 있어야 통과한다. 설정(env)이 required 여도 이미지가 실제로 R11 지문으로
+    active 인지 보지 않으면 배포 승인 근거가 되지 않기 때문이다. ``require_image_status=False`` 는 설정만 보는 참고 점검용이다."""
     problems = []
+    if image_status is None and require_image_status:
+        problems.append(
+            "이미지 실제 동작(--image-status-json: ner_status() 출력)이 없어 모델 지문을 확인할 수 없다"
+        )
     if "PRIVACY_NER_MODE" in env:
         v = env["PRIVACY_NER_MODE"]
         if v == "<secret-ref>":
@@ -82,20 +91,32 @@ def main(argv=None):
         "--service-json",
         help="gcloud run services/revisions describe --format=json 결과(없으면 이미지 검사만)",
     )
-    ap.add_argument("--image-status-json")
+    ap.add_argument(
+        "--image-status-json",
+        help="새 이미지(같은 digest)에서 ner_status() 를 찍은 JSON. 배포 게이트에는 필수",
+    )
     ap.add_argument("--expected-fingerprint", default=EXPECT_FP)
+    ap.add_argument(
+        "--config-only",
+        action="store_true",
+        help="설정만 보는 참고 점검(예: 현재 S0 서비스 설정 확인). 통과해도 배포 승인 근거가 아니며 종료 코드 3 을 돌려준다",
+    )
     a = ap.parse_args(argv)
     env = ner_env(load_json(a.service_json)) if a.service_json else {}
     status = load_json(a.image_status_json) if a.image_status_json else None
-    ok, problems = check(env, status, a.expected_fingerprint)
-    print(
-        json.dumps(
-            {"ok": ok, "ner_env_names_seen": sorted(env), "problems": problems},
-            ensure_ascii=False,
-            indent=1,
-        )
+    ok, problems = check(
+        env, status, a.expected_fingerprint, require_image_status=not a.config_only
     )
-    return 0 if ok else 1
+    result = {"ok": ok, "ner_env_names_seen": sorted(env), "problems": problems}
+    if a.config_only:
+        result["config_only"] = True
+        result["note"] = (
+            "설정만 점검했다. 이미지 지문을 확인하지 않았으므로 배포 승인 근거가 아니다"
+        )
+    print(json.dumps(result, ensure_ascii=False, indent=1))
+    if not ok:
+        return 1
+    return 3 if a.config_only else 0
 
 
 if __name__ == "__main__":

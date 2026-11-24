@@ -101,3 +101,48 @@ def test_cli_exit_codes_and_no_foreign_values_in_output(tmp_path, capsys):
     st = tmp_path / "st.json"
     st.write_text(json.dumps(OK_STATUS), encoding="utf-8")
     assert g.main(["--service-json", str(p), "--image-status-json", str(st)]) == 0
+
+
+def test_required_env_alone_does_not_pass_without_image_status(tmp_path, capsys):
+    """설정이 required 여도 이미지 지문 증명이 없으면 배포 게이트는 실패한다(설정만으로 통과하던 허점)."""
+    env = {"PRIVACY_NER_MODE": "required"}
+    ok, why = g.check(env, None)
+    assert not ok and any("image-status-json" in w for w in why)
+    p = tmp_path / "s.json"
+    p.write_text(
+        json.dumps(svc([{"name": "PRIVACY_NER_MODE", "value": "required"}])), encoding="utf-8"
+    )
+    assert g.main(["--service-json", str(p)]) == 1
+    assert '"ok": false' in capsys.readouterr().out
+
+
+@pytest.mark.parametrize(
+    "status",
+    [
+        {"mode": "required", "active": True, "fingerprint": "46210943c45f"},  # S0 지문
+        {"mode": "required", "active": False, "fingerprint": g.EXPECT_FP},
+        {"mode": "auto", "active": True, "fingerprint": g.EXPECT_FP},
+        {"mode": "required", "active": True},  # 지문 없음
+        {},
+    ],
+)
+def test_cli_rejects_bad_image_status_even_when_env_is_required(tmp_path, status):
+    p = tmp_path / "s.json"
+    p.write_text(
+        json.dumps(svc([{"name": "PRIVACY_NER_MODE", "value": "required"}])), encoding="utf-8"
+    )
+    st = tmp_path / "st.json"
+    st.write_text(json.dumps(status), encoding="utf-8")
+    assert g.main(["--service-json", str(p), "--image-status-json", str(st)]) == 1
+
+
+def test_config_only_never_returns_deploy_pass(tmp_path, capsys):
+    """--config-only 는 참고 점검이다: 설정이 맞아도 0(배포 통과)이 아니라 3, 틀리면 1. 현재 S0 설정을 보는 데 쓴다."""
+    p = tmp_path / "s.json"
+    p.write_text(
+        json.dumps(svc([{"name": "PRIVACY_NER_MODE", "value": "required"}])), encoding="utf-8"
+    )
+    assert g.main(["--service-json", str(p), "--config-only"]) == 3
+    assert "배포 승인 근거가 아니다" in capsys.readouterr().out
+    p.write_text(json.dumps(svc([{"name": "PRIVACY_NER_MODE", "value": "auto"}])), encoding="utf-8")
+    assert g.main(["--service-json", str(p), "--config-only"]) == 1
