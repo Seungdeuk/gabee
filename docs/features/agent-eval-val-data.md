@@ -184,16 +184,29 @@ w1(dev)과 같은 구조이되 값(금액·날짜·제목·문서 문장·대화
 - **바뀌지 않은 값**: 메인 `adb89f60…`(= manifest `prompt_hash`)·소통 `ba3391bd…`·정산 `a0b737ce…`, `cases_val.json` 해시, w2 월드 해시, 평가 기준 v2·채점기·시나리오 목록 해시, dev 108 해시 `d658d8e1…`. 공식 dev·val·test 사례·정답지·채점기·평가 게이트·이전 결과 폴더는 건드리지 않았다.
 - 비교 한계: 일정 해시가 바뀌었으므로 이후 val 은 이 새 해시의 프롬프트로만 돌며, #522 이전 일정 프롬프트로 만든 결과(dev 108 등)와 직접 비교하지 않는다.
 
-### 9-7. E8 ambig-02(메인 지출 삭제·수정 되묻기 지침) 반영 재고정(2026-11-24)
+### 9-6. E8 첫 수정(정산 Agent 일시 오류 재시도 안내) 반영 재고정(2026-11-24)
 
-- 사유: 메인 어시스턴트 `PROMPT_NOTE` 에 "대상이 제목·금액·날짜로 정해지지 않은 지출 삭제·수정 요청은 `ask_billing` 을 부르기 전에 어느 지출인지 먼저 묻고, 가장 최근 지출을 임의로 골라 넘기지 않는다"는 지침을 더해(E8 ambig-02, 정책 확정 2026-11-24) 메인 해시와 통합 해시가 바뀌었다. 같은 PR 에서 고정값만 맞췄다. 평가 사례·기대값·채점기는 바꾸지 않았다.
-- val 실모델 평가는 시작되지 않았다(`ALLOWED_SPLITS == ("legacy", "dev")`, 고정 파일 `frozen_before_any_model_output` 는 `true`).
+- 사유: 정산 Agent 시스템 프롬프트(`billing/agent.py::system_prompt`)에 일시적인 읽기 오류의 같은 도구 1회 재시도와 대체 계산 금지 안내를 더해(E8 toolfail-03) 정산 해시와 통합 해시가 바뀌었다. 같은 PR 에서 고정값만 맞췄다. 평가 사례·기대값·채점기는 바꾸지 않았다.
+- val 실모델 평가는 시작되지 않았다(`ALLOWED_SPLITS == ("legacy", "dev")`, 고정 파일 `frozen_before_any_model_output` 는 `true`). 이 재고정은 val 결과를 열기 전의 변경 이력이다.
 
 | 항목 | 갱신 전 | 갱신 후 |
 |---|---|---|
-| 메인 해시(`main`, manifest `prompt_hash`) | `adb89f60e67dd926261c1aa27f72b671a0536cb91d19c9669a9fca86cc1c23c6` | `e5bc016d56e7292ce3ce440ed936981b5b3efa8abee9e3a83ad4d4a01afe2f38` |
-| 통합 프롬프트 해시 | `38067e487c5c0a24a938d618193bb4e5d016299ec8b8db04b4e16f9097f63a2d` | `acffdececc38a19c55cdcd571ef67deb09a230f0cbe3c32440426810e53138a0` |
-| `pinned_on_top_of_commit` | `4c09cafc…` | `96cd565f…` |
+| 정산 Agent 해시(`billing`) | `a0b737cebf4408c64acc26a930c6c98d2066a9acc62e392f5f27399b938afc0a` | `32ae98fbee63f37b653d249cc1e1d1a86f17321cea286a4cc590f8990e25455c` |
+| 통합 프롬프트 해시 | `38067e487c5c0a24a938d618193bb4e5d016299ec8b8db04b4e16f9097f63a2d` | `4718968c0c9af2f616154ea48efd69846f4f944c659fb0a13c93026774fa9a97` |
+| `pinned_on_top_of_commit` | `4c09cafc…` | `96cd565f…`(#525 병합 커밋) |
+| `prompt_change_note` | … #522 | … #522, 정산 일시 오류 재시도 안내 |
 
-- 이 값은 release/1.4 `96cd565f` 위에 이 변경만 얹은 값이다. 정산 Agent 변경(toolfail-03, 별도 PR)과 함께 병합되면 통합 해시는 둘을 합친 값으로 다시 계산해 한 번 더 고정한다.
-- 바뀌지 않은 값: 소통·정산(이 PR 기준)·일정 해시, `cases_val.json` 해시, w2 월드 해시, 평가 기준 v2·채점기·시나리오 목록 해시, dev 108 해시 `d658d8e1…`, 공식 dev 사례 파일 해시 `c2d0bc8b…`.
+- **바뀌지 않은 값**: 메인 `adb89f60…`·소통 `ba3391bd…`·일정 `5c1b0f4a…`, `cases_val.json` 해시, w2 월드 해시, 평가 기준 v2·채점기·시나리오 목록 해시, dev 108 해시 `d658d8e1…`, 공식 dev 사례 파일 해시 `c2d0bc8b…`.
+- 비교 한계: 정산 해시가 바뀌었으므로 이후 실모델 결과는 새 해시의 프롬프트로만 돌며, dev 108 기준선(`bf3fb424`)과 직접 비교하지 않는다(사례별 귀속표로 구분해 읽는다).
+
+### 9-7. E8 ambig-02(메인 지출 삭제·수정 되묻기 지침) 반영 재고정(2026-11-24, #530 위에서)
+
+- 사유: 메인 어시스턴트 `PROMPT_NOTE` 에 "대상이 제목·금액·날짜로 정해지지 않은 지출 삭제·수정 요청은 `ask_billing` 을 부르기 전에 어느 지출인지 먼저 묻고, 가장 최근 지출을 임의로 골라 넘기지 않는다"는 지침을 더해(E8 ambig-02) 메인 해시와 통합 해시가 바뀌었다. 정산 Agent 변경(9-6)과 **합친** 값으로 고정했다. 평가 사례·기대값·채점기는 바꾸지 않았다.
+- val 실모델 평가는 시작되지 않았다(`ALLOWED_SPLITS == ("legacy", "dev")`, 고정 파일 `frozen_before_any_model_output` 는 `true`).
+
+| 항목 | 갱신 전(9-6) | 갱신 후 |
+|---|---|---|
+| 메인 해시(`main`, manifest `prompt_hash`) | `adb89f60e67dd926261c1aa27f72b671a0536cb91d19c9669a9fca86cc1c23c6` | `e5bc016d56e7292ce3ce440ed936981b5b3efa8abee9e3a83ad4d4a01afe2f38` |
+| 통합 프롬프트 해시 | `4718968c0c9af2f616154ea48efd69846f4f944c659fb0a13c93026774fa9a97` | `8511613cf3baa9925afeee5db46555782717869dbb4f72e0a1675f4ebc129c9b` |
+
+- 바뀌지 않은 값: 소통 `ba3391bd…`·정산 `32ae98fb…`·일정 `5c1b0f4a…`, `cases_val.json` 해시, w2 월드 해시, 평가 기준 v2·채점기·시나리오 목록 해시, dev 108 해시 `d658d8e1…`, 공식 dev 사례 파일 해시 `c2d0bc8b…`.
