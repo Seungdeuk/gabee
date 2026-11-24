@@ -129,7 +129,8 @@ def test_lists_count_members_and_groups(client, make_admin):
 
     groups = client.get("/admin/service/groups", headers=headers).json()
     assert groups["total"] == 1
-    assert groups["rows"][0]["name"] == "우리 가족" and groups["rows"][0]["members"] == 1
+    # 가족 이름은 첫 글자만 보이고 나머지는 가린다("우리 가족" → "우****")
+    assert groups["rows"][0]["name"] == "우****" and groups["rows"][0]["members"] == 1
     assert groups["sizes"] == [{"members": 1, "groups": 1}]
 
     features = client.get("/admin/service/features", headers=headers).json()
@@ -288,13 +289,14 @@ def test_ai_usage_excludes_markers_and_lists(client, make_admin):
     assert d["families"] == [{"group_id": g, "name": None, "requests": 3, "errors": 1}]
     by_user = {r["user_id"]: r for r in d["users"]}
     assert by_user[user_id]["requests"] == 2 and by_user[user_id]["errors"] == 1
-    assert by_user[user_id]["name"] == "김지민" and by_user[user_id]["login_id"] == "jimin_kim"
+    # 이름·아이디는 첫 글자만 보인다(김지민 → 김**, jimin_kim → j********)
+    assert by_user[user_id]["name"] == "김**" and by_user[user_id]["login_id"] == "j********"
     assert by_user[u2]["requests"] == 1 and by_user[u2]["errors"] == 0
     assert d["users"][0]["user_id"] == user_id  # 요청 많은 순
 
     assert len(d["limited"]) == 1  # ai_cooldown 거절은 한도 기록이 아니다
     lim = d["limited"][0]
-    assert lim["user_id"] == u2 and lim["name"] == "김지민"
+    assert lim["user_id"] == u2 and lim["name"] == "김**"
     assert lim["days"] == 2
     assert lim["group_name"] is None
     assert lim["last_at"][:16] == (now - timedelta(hours=1)).isoformat()[:16]
@@ -361,9 +363,9 @@ def test_support_list_and_answer(client, make_admin):
     assert [r["id"] for r in d["rows"]] == [second, first]  # 최근순
     row = d["rows"][1]
     assert (row["user_name"], row["login_id"], row["group_name"]) == (
-        "김지민",
-        "jimin_kim",
-        "우리 가족",
+        "김**",
+        "j********",
+        "우****",
     )
     assert d["rows"][0]["group_name"] is None  # 가족 없는 회원
 
@@ -760,3 +762,29 @@ def test_ops_tab_page_is_served(client):
     for path in ("ops/js/embed.js", "ops/js/app.js", "ops/js/api.js", "ops/css/style.css"):
         assert client.get(f"/admin/service/ui/{path}").status_code == 200, path
     assert 'class="ops-frame"' in client.get("/admin/service/ui/app.js").text
+
+
+def test_names_are_masked_to_first_letter(client, make_admin):
+    """회원·가족 목록의 이름·아이디는 서버에서 첫 글자만 남기고 가려 보낸다(응답 원문에 원래 값이 없다)."""
+    headers, user_id = _login(client)
+    make_admin(user_id)
+    client.post("/family-group/groups", json={"name": "우리 가족"}, headers=headers)
+    members = client.get("/admin/service/members", headers=headers)
+    me = next(r for r in members.json()["rows"] if r["id"] == user_id)
+    assert (me["name"], me["login_id"]) == ("김**", "j********")
+    groups = client.get("/admin/service/groups", headers=headers)
+    assert groups.json()["rows"][0]["owner_name"] == "김**"
+    for r in (members, groups):
+        assert "김지민" not in r.text and "jimin_kim" not in r.text and "우리 가족" not in r.text
+    # 로그인한 관리자 본인 정보(/me)는 가리지 않는다
+    assert client.get("/admin/service/me", headers=headers).json()["name"] == "김지민"
+
+
+def test_mask_first_rules():
+    from app.shared.name_mask import mask_first
+
+    assert mask_first("김준하") == "김**"
+    assert mask_first("보경") == "보*"
+    assert mask_first("a") == "a"
+    assert mask_first("") == "" and mask_first(None) is None
+    assert mask_first("(가족 없음)") == "(가족 없음)"  # 안내 문구는 그대로

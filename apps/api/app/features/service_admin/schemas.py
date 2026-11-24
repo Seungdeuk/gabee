@@ -4,6 +4,8 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
+from app.shared.name_mask import MaskedOptStr, MaskedStr
+
 
 class AdminMeOut(BaseModel):
     id: str
@@ -13,8 +15,8 @@ class AdminMeOut(BaseModel):
 
 class MemberRow(BaseModel):
     id: str
-    name: str
-    login_id: str | None
+    name: MaskedStr
+    login_id: MaskedOptStr
     joined_at: datetime
     has_family: bool
     email_verified: bool  # 이메일 주소는 돌려주지 않고 인증 여부만
@@ -38,8 +40,8 @@ class MembersOut(BaseModel):
 
 class GroupRow(BaseModel):
     id: str
-    name: str
-    owner_name: str | None
+    name: MaskedStr
+    owner_name: MaskedOptStr
     members: int
     pending: int  # 승인 대기 중인 가입 요청 수
     ai_enabled: bool
@@ -86,23 +88,23 @@ class AdminAiFeatureRow(BaseModel):
 
 class AdminAiFamilyRow(BaseModel):
     group_id: str
-    name: str | None
+    name: MaskedOptStr
     requests: int  # 최근 30일 요청 수
     errors: int
 
 
 class AdminAiUserRow(BaseModel):
     user_id: str
-    name: str | None
-    login_id: str | None
+    name: MaskedOptStr
+    login_id: MaskedOptStr
     requests: int  # 최근 30일 요청 수
     errors: int
 
 
 class AdminAiLimitedRow(BaseModel):
     user_id: str
-    name: str | None
-    group_name: str | None  # 가장 최근에 막힌 기록의 가족
+    name: MaskedOptStr
+    group_name: MaskedOptStr  # 가장 최근에 막힌 기록의 가족
     days: int  # 최근 30일 중 한도에 막힌 날 수(한국 시간 기준)
     last_at: datetime
 
@@ -128,9 +130,9 @@ class AdminTicketRow(BaseModel):
     answer: str | None
     answered_at: datetime | None
     created_at: datetime
-    user_name: str | None
-    login_id: str | None
-    group_name: str | None
+    user_name: MaskedOptStr
+    login_id: MaskedOptStr
+    group_name: MaskedOptStr
 
 
 class AdminTicketsOut(BaseModel):
@@ -205,7 +207,7 @@ class AnalyticsFeature(BaseModel):
 
 
 class AnalyticsAiFamily(BaseModel):
-    name: str
+    name: MaskedStr
     requests: int
     tokens: int  # 입력 + 출력 토큰(비용의 기준)
 

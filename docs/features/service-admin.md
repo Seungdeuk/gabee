@@ -7,6 +7,7 @@
 ## 구현된 것
 
 - 경로: API 는 `/admin/service/*`, 화면은 `/admin/service/ui`, 폴더는 `app/features/service_admin/`(2026-11-05, 운영 관리자 `/admin/ops/*`·`app/features/ops_admin/` 와 짝을 맞춤).
+- 이름 가리기(2026-11-24, 사용자 결정): 회원·가족 그룹·AI 이용·문의 목록·데이터 분석의 사람 이름·아이디·가족 이름은 **첫 글자만 보이고 나머지는 `*`** 로 보낸다(`app/shared/name_mask.py`, 응답 모델의 `MaskedStr`). 서버에서 가려 보내므로 개발자 도구로도 원래 값이 보이지 않는다. 로그인한 관리자 본인(`/me`)은 가리지 않는다. 회원 검색은 가린 값 기준이라 첫 글자로만 찾을 수 있다.
 - 로그인 유지(2026-11-24): 로그인할 때 15분짜리 로그인 토큰과 30일짜리 연장용 토큰을 같은 탭의 sessionStorage 에 둔다. API 가 401 을 주면 `/family-group/auth/refresh` 로 한 번 연장하고 다시 부른다(동시에 여러 요청이 401 이어도 연장은 한 번). 탭을 열어 두는 동안은 로그인이 유지되고, 탭·브라우저를 닫거나 "로그아웃"을 누르거나 연장용 토큰이 끝나면 다시 로그인한다. 서버 상태 탭(iframe)이 만료를 알리면 연장한 뒤 그 화면만 다시 연다.
 - 권한: 모든 `/admin/service/*` API 는 `require_operator("admin")`(`app/shared/auth.py`)를 거친다. Bearer(JWT) 정식 회원이면서 환경변수 `ADMIN_USER_IDS`(통합관리자) 허용 목록에 있어야 한다. 운영 관리(`/admin/ops/*`)도 같은 목록이다(2026-11-06 결정: 권한은 통합관리자 하나). 없으면 403 `operator_required`, 로그인 안 함·레거시 토큰은 401. 별도 DB 칸(`users.is_staff`)은 만들지 않았다.
 - `app/features/service_admin/`
