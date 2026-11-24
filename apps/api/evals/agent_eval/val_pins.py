@@ -32,6 +32,7 @@ PROMPT_CHANGE_NOTE = (
     "정산 Agent 프롬프트에 일시적인 읽기 오류의 같은 도구 1회 재시도와 대체 계산 금지 안내가 더해지고(E8 toolfail-03), "
     "메인 어시스턴트 PROMPT_NOTE 에 대상이 정해지지 않은 지출 삭제·수정 요청은 ask_billing 을 부르기 전에 어느 지출인지 먼저 묻는다는 지침이 더해지고(E8 ambig-02), "
     "메인 어시스턴트 PROMPT_NOTE 에 어느 목록인지 말하지 않은 할 일 조회는 가족 공동 할 일(ask_family_chat)과 일정 탭의 할 일(ask_schedule)을 모두 확인하고 목록을 가리킨 질문은 그 담당만 부른다는 지침이 더해지고(E8 compound-03), "
+    "메인 어시스턴트 PROMPT_NOTE 에 건강 질문을 의도와 정보 출처로 나눠 처리하는 지침(구조화된 건강 기록은 미지원 안내, 가족의 과거 발언은 ask_family_chat, 업로드 문서는 search_knowledge, 출처 불분명은 도구 없이 안내와 대화 검색 제안)이 더해지고(E8 care-02 C1), "
     "메인 어시스턴트 PROMPT_NOTE 에 '다른 가족방이 섞인 요청의 범위와 주제를 지우지 않고 소통 Agent 로 넘긴다'는 지침이 더해지고(isolation-02 원인 분석, 평가 질문과 같은 예시 문장은 "
     "일반 규칙으로 바꿔 뺐다) "
     "프롬프트 해시가 dev 값(DEV_MANIFEST_PROMPT_HASH)과 다르다. dev 108 공식 결과·v2 재채점은 옛 해시에 묶인 그대로이고, "
