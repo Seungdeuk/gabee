@@ -27,6 +27,9 @@ BILLING_COLUMNS = ("settled_at", "settled_by")
 @pytest.fixture(autouse=True)
 def instant_recheck(monkeypatch):
     """테스트에서는 캐시 없이 바로 재점검한다."""
+    # 앞선 동시성 시험(예: test_simultaneous_role_changes_never_leave_two_owners)이 SQLite 풀에 남긴 여분 연결은
+    # 컬럼을 지우고 되살리는 이 파일의 시험에서 옛 스키마를 볼 수 있다(duplicate column name) — 풀을 비우고 시작한다
+    engine.dispose()
     monkeypatch.setattr(settings, "schema_recheck_ready_seconds", 0)
     monkeypatch.setattr(settings, "schema_recheck_not_ready_seconds", 0)
     monkeypatch.setattr(settings, "schema_force_min_interval_seconds", 0)
