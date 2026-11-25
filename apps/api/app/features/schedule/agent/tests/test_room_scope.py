@@ -245,3 +245,103 @@ def test_a_two_member_family_still_sees_shared_events_and_requests_in_the_family
     _say(client, a, "일정이랑 부탁 알려줘", "family")
     prompt = _prompt(fake)
     assert ALL_EVENT in prompt and ALL_TITLE in prompt and req["id"] in prompt
+
+
+# ---------- 선택(되묻기) 상태·초안이 채널을 넘지 않는다 ----------
+def _req_cancel(target):
+    data = _req_query([])
+    data["request"].update(action="cancel", target_id=target)
+    return data
+
+
+def test_a_personal_request_choice_is_not_resolved_by_a_later_family_room_message(
+    client, three, fake
+):
+    """개인 채팅에서 같은 제목 부탁 둘을 두고 되물은 상태가 같은 사람의 가족방 말('첫 번째')로 이어지지 않는다(제목·카드·쓰기 없음)."""
+    a, b, c, ids = three
+    first = _send(client, a, [ids["b"]], PRIVATE_TITLE)
+    second = client.post(
+        "/schedule/requests",
+        json={"title": PRIVATE_TITLE, "start_date": _day(10), "to_ids": [ids["b"]]},
+        headers=a,
+    ).json()
+    fake.data = _req_cancel(first["id"])
+    asked = _say(client, a, "그 부탁 취소해줘", "personal").json()
+    assert asked["pending_action"] is None and asked["cards"]  # 개인 채팅에서는 되묻는다(정상)
+    fake.data = {"intent": "not_schedule", "reply": "", "event_ids": []}
+    body = _say(client, a, "첫 번째", "family").json()
+    dumped = str(body)
+    assert PRIVATE_TITLE not in dumped and first["id"] not in dumped and second["id"] not in dumped
+    assert body.get("pending_action") is None
+    assert not any(r["canceled"] for r in client.get("/schedule/requests", headers=a).json())
+
+
+def test_a_personal_event_choice_cannot_delete_or_reveal_an_event_from_the_family_room(
+    client, three, fake
+):
+    a, b, c, ids = three
+    keep = _event(client, a, "나만 아는 병원 일정")
+    _event(client, a, "나만 아는 상담 일정")
+    fake.data = {
+        "intent": "delete",
+        "reply": "",
+        "event_ids": [],
+        "target_id": "",
+        "target_unnamed": True,
+    }
+    assert _say(client, a, "그거 지워줘", "personal").json()["text"] == "어느 일정인가요?"
+    fake.data = {"intent": "not_schedule", "reply": "", "event_ids": []}
+    body = _say(client, a, "첫 번째", "family").json()
+    assert "나만 아는" not in str(body) and "지웠어요" not in str(body)
+    titles = {e["title"] for e in client.get("/schedule/events", headers=a).json()}
+    assert {"나만 아는 병원 일정", "나만 아는 상담 일정"} <= titles and keep["id"]
+
+
+def test_the_same_personal_choice_still_works_in_the_personal_chat(client, three, fake):
+    """정상 기능 유지: 개인 채팅의 되묻기는 개인 채팅의 답으로 이어진다."""
+    a, b, c, ids = three
+    _event(client, a, "나만 아는 병원 일정")
+    keep = _event(client, a, "나만 아는 상담 일정")
+    fake.data = {
+        "intent": "delete",
+        "reply": "",
+        "event_ids": [],
+        "target_id": "",
+        "target_unnamed": True,
+    }
+    assert _say(client, a, "그거 지워줘", "personal").json()["text"] == "어느 일정인가요?"
+    done = _say(client, a, "첫 번째", "personal").json()
+    assert "지웠어요" in done["text"]
+    assert keep["id"] in {e["id"] for e in client.get("/schedule/events", headers=a).json()}
+
+
+def test_an_app_sent_choice_is_ignored_in_the_family_room(client, three, fake):
+    """앱이 돌려보낸 선택(request.choice)에 비공개 부탁 id 가 들어 있어도 가족방에서는 쓰지 않는다(가족방은 선택 카드를 보여 주지 않는다)."""
+    a, b, c, ids = three
+    private = _send(client, a, [ids["b"]], PRIVATE_TITLE)
+    fake.data = {"intent": "not_schedule", "reply": "", "event_ids": []}
+    body = client.post(
+        "/schedule/agent",
+        json={
+            "text": "첫 번째",
+            "channel": "family",
+            "choice": {"kind": "request_cancel", "event_ids": [private["id"]]},
+        },
+        headers=a,
+    ).json()
+    assert PRIVATE_TITLE not in str(body) and private["id"] not in str(body)
+    assert body.get("pending_action") is None
+
+
+def test_a_personal_draft_is_not_continued_in_the_family_room():
+    """개인 채팅에서 되묻던 초안(제목 등)은 같은 사람의 가족방 요청에 이어지지 않고, 개인 채팅에서는 그대로 이어진다."""
+    from app.features.schedule.agent import ask as schedule_ask
+    from app.features.schedule.agent.schemas import AgentResponse, Draft
+
+    draft = Draft.model_validate({"mode": "event", "title": "나만 아는 비밀 약속"})
+    schedule_ask._keep_draft(
+        "g-1", "u-1", AgentResponse(intent="register", draft=draft), "personal"
+    )
+    assert schedule_ask._take_draft("g-1", "u-1", "family") is None
+    kept = schedule_ask._take_draft("g-1", "u-1", "personal")
+    assert kept is not None and kept.title == "나만 아는 비밀 약속"

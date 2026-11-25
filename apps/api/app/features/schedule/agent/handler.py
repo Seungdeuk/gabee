@@ -190,7 +190,11 @@ def handle(
 ) -> AgentResponse:
     """직전에 수정·삭제 대상을 되물었다면(서버 기억이나 앱이 돌려준 값) 사용자의 답을 먼저 읽고, 답으로 읽을 수 없으면 새 요청으로 처리한다."""
     ensure_group_member(db, user_id, group_id)  # 라우터 밖에서 service 를 부르므로 직접 확인한다
-    asked = choice_mod.take(group_id, user_id) or request.choice
+    # 되묻기는 만든 채널 안에서만 잇는다. 앱이 돌려보낸 선택(request.choice)은 개인 채팅에서만 받는다(가족방은 선택 카드를 보여 주지 않고,
+    # 앱이 보낸 id 는 가족방 권한으로 거른 목록에서 나온 것인지 알 수 없다)
+    asked = choice_mod.take(group_id, user_id, request.channel) or (
+        request.choice if request.channel == "personal" else None
+    )
     if asked is not None:
         if asked.kind == "register":  # 이미 있는 일정을 또 등록할지 되물은 답
             answer = register.resolve_again(
@@ -217,7 +221,7 @@ def handle(
     extra = _also_delete.get()
     if extra is not None:
         response = _merge_also_delete(response, extra)
-    choice_mod.keep(group_id, user_id, response)
+    choice_mod.keep(group_id, user_id, response, request.channel)
     return response
 
 

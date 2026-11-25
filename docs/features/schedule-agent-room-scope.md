@@ -33,3 +33,10 @@
 - 새 시험 12건(`test_room_scope.py`): 수정 전 7 실패 → 수정 후 12 통과. 기존 `test_shared.py` 의 가족방 읽기 시험은 새 인자(방 구성원)를 넘기도록 갱신하고 fail-closed 확인을 더했다(약화 아님).
 - 회귀: `tests/`·schedule·ai_assistant·family_chat·billing·family_group·shared **6927 통과 / 2 실패**(기존 #526 `test_migration_risk`, 갱신 전 `test_shared` 1건 → 갱신 후 schedule 전체 437 통과). ruff 통과.
 - 실제 추론 평가는 하지 않았다.
+
+## 추가 수정: 되묻기(선택) 상태·초안이 채널을 넘던 경로 (2026-11-25, 실모델 평가 전 점검에서 발견)
+- 결함: `handler.handle()` 이 `_handle()` 보다 먼저 `choice_mod.take(group_id, user_id) or request.choice` 로 되묻기 상태를 꺼냈는데, 저장 키에 **채널이 없었다**. 개인 채팅에서 비공개 부탁·일정 후보로 되물은 상태가 같은 사람의 **가족방 말**("첫 번째")로 이어져 ① 부탁 취소 확인 카드에 비공개 제목·id 가 실리고 ② 비공개 일정이 바로 **지워지며** 그 제목이 방 답에 실렸다. 앱이 보낸 `request.choice` 도 가족방에서 그대로 받았다. 일정 Agent 초안(`ask._take_draft`)도 같은 키라 개인 채팅의 초안이 가족방으로 이어질 수 있었다.
+- 재현(합성 DB·가짜 모델): 개인 채팅 부탁 선택→가족방 "첫 번째", 개인 채팅 일정 삭제 선택→가족방 "첫 번째", 가족방에 앱이 보낸 비공개 부탁 선택 → **수정 전 3건 실패**.
+- 수정: 되묻기 상태·초안의 키에 채널을 넣었다(`choice.take/keep(..., channel)`, `ask._take_draft/_keep_draft(..., channel)`). 앱이 보낸 선택은 개인 채팅에서만 받는다(가족방은 선택 카드를 보여 주지 않는다). 가족방에서 만든 되묻기는 이미 권한으로 거른 목록에서 나오므로 가족방 안에서는 그대로 이어진다.
+- 정상 기능: 개인 채팅의 되묻기·선택·초안은 그대로 이어진다(시험).
+- 검증: `test_room_scope.py` 17건 통과(새 선택·초안 시험 5건 포함), schedule·ai_assistant·family_chat·평가 환경 초기화 시험 1949 통과, ruff 통과.

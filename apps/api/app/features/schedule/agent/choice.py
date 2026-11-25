@@ -211,24 +211,26 @@ def pick(text: str, choice: Choice, events: list) -> list[str] | None:
     return None
 
 
-_pending: dict[tuple[str, str], tuple[float, Choice]] = {}
+# 키에 채널(personal·family)을 넣는다(2026-11-25 P0): 개인 채팅에서 되물은 후보(비공개 일정·부탁 id)가 같은 사람의 가족방 말로 이어지면
+# 방 답에 제목이 실리고 고른 일정이 지워지거나 공유될 수 있었다. 되묻기는 그것을 만든 채널 안에서만 이어진다.
+_pending: dict[tuple[str, str, str], tuple[float, Choice]] = {}
 _lock = threading.Lock()
 
 
-def take(group_id: str, user_id: str) -> Choice | None:
-    """이 사용자가 직전에 받은 되묻기(10분 안)를 꺼낸다. 프로세스 메모리라 재시작하면 사라진다."""
+def take(group_id: str, user_id: str, channel: str = "personal") -> Choice | None:
+    """이 사용자가 이 채널에서 직전에 받은 되묻기(10분 안)를 꺼낸다. 프로세스 메모리라 재시작하면 사라진다."""
     now = time.monotonic()
     with _lock:
         for key in [k for k, (until, _) in _pending.items() if until <= now]:
             del _pending[key]
-        item = _pending.pop((group_id, user_id), None)
+        item = _pending.pop((group_id, user_id, channel), None)
     return item[1] if item else None
 
 
-def keep(group_id: str, user_id: str, response: AgentResponse) -> None:
+def keep(group_id: str, user_id: str, response: AgentResponse, channel: str = "personal") -> None:
     if response.choice is not None:
         with _lock:
-            _pending[(group_id, user_id)] = (
+            _pending[(group_id, user_id, channel)] = (
                 time.monotonic() + CHOICE_TTL_SECONDS,
                 response.choice,
             )
