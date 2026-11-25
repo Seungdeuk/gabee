@@ -64,11 +64,24 @@ AGENT_HASH_KEYS = (
     "agent_prompt_hashes",
     "integrated_prompt_hash",
 )  # 하위 Agent(가족 대화·정산·일정)까지 포함한 프롬프트 해시(`agent_hashes.py`). 두 키는 함께 있거나 함께 없어야 한다. 이 키가 생기기 전의 기록에는 없다
+HALT_KEYS = (
+    "halt_kind",
+    "halt_reason",
+    "halt_case_id",
+    "halt_repeat",
+    "runs_planned",
+    "runs_completed",
+    "runs_not_started",
+    "security_violations",
+)  # 보안 위반으로 중단한 실행에만 쓴다(`runner.RunOptions.stop_on_security`). 모두 있거나 모두 없어야 한다. 정상 완료·예산 중단 실행의 manifest 는 그대로다
+HALT_KINDS = ("security",)
+PARTIAL_FILE = "halted_partial.jsonl"  # 중단 때 모든 반복이 끝나지 못한 사례의 끝난 반복(행과 궤적). 지표 입력(cases.jsonl)에는 넣지 않는다
 MANIFEST_OPTIONAL = (
     "loop_id",
     "started_at",
     *RESCORE_KEYS,
     *AGENT_HASH_KEYS,
+    *HALT_KEYS,
 )  # loop_id 는 stage 가 loop 일 때만(그리고 반드시) 둔다
 USAGE_KEYS = frozenset(
     {
@@ -160,6 +173,27 @@ def _check_agent_hashes(manifest: Mapping[str, Any]) -> None:
         raise ValueError("integrated_prompt_hash 가 Agent 별 해시에서 다시 계산한 값과 다르다")
 
 
+def _check_halt(manifest: Mapping[str, Any]) -> None:
+    violations = manifest["security_violations"]
+    ok = (
+        manifest["halt_kind"] in HALT_KINDS
+        and isinstance(manifest["halt_reason"], str)
+        and 0 < len(manifest["halt_reason"]) <= 200
+        and isinstance(manifest["halt_case_id"], str)
+        and _NAME.fullmatch(manifest["halt_case_id"])
+        and _is_int(manifest["halt_repeat"])
+        and _is_int(manifest["runs_planned"], 1)
+        and _is_int(manifest["runs_completed"], 1)
+        and _is_int(manifest["runs_not_started"])
+        and manifest["runs_completed"] + manifest["runs_not_started"] == manifest["runs_planned"]
+        and isinstance(violations, list)
+        and 0 < len(violations) <= 50
+        and all(isinstance(v, str) and 0 < len(v) <= 120 for v in violations)
+    )
+    if not ok:
+        raise ValueError("중단 키의 값 형식이 맞지 않는다")
+
+
 def _check_manifest(manifest: Mapping[str, Any]) -> None:
     extra = set(manifest) - set(MANIFEST_KEYS) - set(MANIFEST_OPTIONAL)
     missing = [k for k in MANIFEST_KEYS if k not in manifest]
@@ -200,6 +234,11 @@ def _check_manifest(manifest: Mapping[str, Any]) -> None:
         )
     if hash_keys:
         _check_agent_hashes(manifest)
+    halt_keys = [k for k in HALT_KEYS if k in manifest]
+    if halt_keys:
+        if len(halt_keys) != len(HALT_KEYS):
+            raise ValueError(f"중단 키는 모두 있거나 모두 없어야 한다(있는 것: {halt_keys})")
+        _check_halt(manifest)
     loop_id = manifest.get("loop_id")
     if (manifest["stage"] == "loop") != (loop_id is not None):
         raise ValueError("loop_id 는 stage 가 loop 일 때만, 그리고 반드시 있어야 한다")
@@ -417,6 +456,20 @@ def write_run(
         shutil.rmtree(tmp, ignore_errors=True)
         raise
     return run_dir
+
+
+def write_partial(
+    run_dir: Path, runs: Sequence[RunLike], row_extras: RowExtras | None = None
+) -> None:
+    """중단 때 모든 반복이 끝나지 못한 사례의 **끝난 반복**(위반이 난 반복 포함)을 `halted_partial.jsonl` 에 보존한다.
+
+    줄마다 `{"row": cases.jsonl 행, "trajectory": trajectories.jsonl 행}` 이다. 지표(`metrics`)·재채점의 입력인 `cases.jsonl` 에는 넣지 않는다(반복 수가 어긋난다).
+    `write_run` 과 같은 검증·스크러버를 거친다."""
+    if row_extras:
+        _check_row_extras(row_extras)
+    cases, trajectories, _ = _build(runs, row_extras)
+    lines = [{"row": c, "trajectory": t} for c, t in zip(cases, trajectories, strict=True)]
+    (run_dir / PARTIAL_FILE).write_text(_jsonl(lines), encoding="utf-8", newline="")
 
 
 EXTRA_ROOTS_ENV = "GABEE_EVAL_EXTRA_RESULTS_ROOTS"  # 다른 작업 폴더(worktree)의 results 경로들(os.pathsep 로 구분)
