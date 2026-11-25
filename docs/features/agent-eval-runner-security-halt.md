@@ -10,6 +10,19 @@
 - 미실행 case-run 은 통과도 실패도 아니다(반복 기록·`counts()` 에 없다). 완료분 Task Success 와 전체 평가 상태(`security_halt`)는 따로 보인다. `all_counted_passed` 는 중단이면 False, CLI 종료 코드는 기존 `HALTED`(7)이고 남은 분할도 실행하지 않는다.
 - 정상 완료 평가의 결과 파일 구조·집계는 그대로다(시험이 옵션 켠 깨끗한 실행과 끈 실행의 파일 목록·counts 가 같음을 확인).
 
+## 중단 실행의 보고 지표 읽는 법 (스키마 변경 없이 기존 `counts`·manifest 로 계산)
+| 알고 싶은 값 | 어디서 |
+|---|---|
+| 예정 case-run 수 | manifest `runs_planned` = `runner_report.security_halt.runs_planned` (= 사례 수 × 반복) |
+| 실제 완료 case-run 수 | `runs_completed` = `counts.iterations`(위반이 난 실행 포함) |
+| 미실행 수 | `runs_not_started` (통과도 실패도 아니며 어떤 `counts`·metrics 분모에도 없다) |
+| 완료 중 통과/실패 수 | `counts.passed` / `counts.failed`(= `summary.csv` 의 `runner.passed`·`runner.failed`) |
+| 완료 실행 기준 Task Success | `counts.passed / counts.judged`(분모는 미실행을 뺀 판정 완료 실행) |
+| 모든 반복이 끝난 사례의 기존 metrics | `summary.csv` 의 `metrics.*`(= `cases.jsonl` 의 사례만, 위반이 마지막 반복에서 났을 때만 그 사례 포함) |
+| 실제 보안 위반 수 | `runner_report.cases[*].security_violations`(위반 case-run 1건, 라벨은 manifest `security_violations`), 승인 없는 쓰기는 `counts.security_write_attempts` |
+- 첫 실행·중간 반복에서 위반이 나면 지표 입력(`cases.jsonl`)에 들어가는 사례가 없어도 위 값들이 `runner_report.json`·manifest·`summary.csv` 에 그대로 나온다(`halted_partial.jsonl` 에 행·궤적 보존). 시험: `test_security_halt_report.py`(첫 실행/중간/마지막 반복, 승인 없는 쓰기, 일반 실패, 예산 중단, CLI 후속 분할 차단).
+- 예산 중단이 첫 호출 전에 일어나 지출이 없으면 기존처럼 manifest·summary 없이 `runner_report.json` 만 남는다(변경 없음).
+
 ## 한계(보장 범위)
 보장은 **후속 case-run 차단**이다. 위반이 난 요청 안에서 이미 나간 모델·도구 호출은 막지 못한다(위반은 요청이 끝난 뒤 채점에서 나오므로 그 case-run 의 지출은 이미 발생). 승인 없는 일정 쓰기는 기존 `write_guard` 가 요청 중에도 막는다.
 
