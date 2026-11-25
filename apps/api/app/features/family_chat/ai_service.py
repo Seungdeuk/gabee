@@ -62,7 +62,8 @@ MIN_MESSAGES = 3
 PROMPT_VERSION = "v5"  # 프롬프트·스키마를 바꾸면 올려서 오래된 캐시를 쓰지 않게 한다 (v3: 가명화 토큰, v4: 분석에 답장·주제 합침, v5: 요청한 사람 입장·친근한 요약)
 # 분석이 답장·주제까지 6개 항목을 한 번에 만들고 thinking 도 같은 출력 예산을 쓴다. 3000 에서 잘리는 일이 있었다(T35 chat-03: 3000/3000 `max_tokens`).
 # 잘린 JSON 은 쓸 수 없어 `complete_json` 이 LLMUnavailable 을 내고 503 이 된다 — 그래서 기본 상한(2048)보다 넉넉하게 둔다.
-ANALYSIS_MAX_TOKENS = 4096
+# 2026-11-25: 대화 분석 호출의 출력 상한은 `settings.agent_max_output_tokens`(기본 10000)로 Agent 와 함께 관리한다(호출 시점에 읽는다).
+# 답장 추천(400)·주제(500) 호출은 Agent 경로가 아니라 그대로다.
 MAX_REPLIES = 3
 MAX_TOPICS = 5
 _WEEKDAYS = "월화수목금토일"
@@ -613,7 +614,10 @@ def analysis(db: Session, user: User, group_id: str, body: RangeIn) -> AnalysisO
             prompt = f"오늘 날짜: {today_text}\n다음은 가족 단체 대화입니다(오래된 순, 한 줄이 JSON 하나이고 id 가 메시지 번호입니다).\n\n{ctx.transcript}\n\n위 대화를 분석해 주세요."
             prompt += _viewer_note(ctx)
             response = llm.complete_json(
-                prompt, ANALYSIS_SCHEMA, system=ANALYSIS_SYSTEM, max_tokens=ANALYSIS_MAX_TOKENS
+                prompt,
+                ANALYSIS_SCHEMA,
+                system=ANALYSIS_SYSTEM,
+                max_tokens=settings.agent_max_output_tokens,
             )
             cleaned = clean_analysis(response.data, ctx.allowed_ids, ctx.names, unknown)
             return _stored(cleaned, response), response  # 토큰 상태로 캐시에 저장된다

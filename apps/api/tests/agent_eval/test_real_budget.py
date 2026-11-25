@@ -76,12 +76,14 @@ def test_the_run_stops_before_the_call_that_could_pass_the_remaining_budget(monk
 def test_only_calls_whose_worst_case_fits_are_made_and_the_total_never_passes_the_approval(
     monkeypatch,
 ):
-    approve = D("0.0015")
+    # 2026-11-25: Agent 요청의 max_tokens 가 10000 이라 한 호출의 최악 비용이 약 $0.0053 이다. 승인액은 그보다 조금 큰 값으로 두어,
+    # 몇 번은 호출하고(실측은 아주 작다) 잔여 예산이 한 호출의 최악 비용보다 줄면 멈추는 같은 동작을 본다(예전 값 $0.0015 로는 첫 호출부터 막힌다).
+    approve = D("0.006")
     fake = use(monkeypatch, new_fake())
     ledger = default_ledger("real", approve)
     items = legacy("b-total", "m-billing", "b-nov-total", "b-list")
-    with real_grant_scope(grant(items, approve="0.0015")):
-        report = run_cases(items, options(approve="0.0015"), ledger=ledger)
+    with real_grant_scope(grant(items, approve="0.006")):
+        report = run_cases(items, options(approve="0.006"), ledger=ledger)
     assert report.halted and "호출 전에 멈춘다" in report.halted
     assert 0 < fake.calls == len(ledger.usages)  # 몇 번은 호출했고 기록과 호출 수가 같다
     assert ledger.total <= approve  # 다음 호출을 막아 승인 금액을 넘기 전에 멈췄다
@@ -95,6 +97,53 @@ def test_the_worst_case_of_one_call_is_the_input_estimate_plus_max_tokens():
     with pytest.raises(Exception, match="예산 초과"):
         ledger.check_call(MODEL, 2000, 4000)  # 0.0002 + 0.002 > 0.002
     assert call_cost(MODEL, 2000, 4000) > D("0.002")
+
+
+def test_a_10000_token_agent_call_is_blocked_by_the_remaining_budget_but_a_2048_call_is_not():
+    """Agent 경로 상한 10000 의 요청은 호출 직전 검사가 요청 본문의 max_tokens 로 최악 비용(입력 13000 + 출력 10000 = 약 $0.0063)을 계산해,
+    잔여 예산이 모자라면 시작하지 않는다. 같은 입력의 2048 호출(약 $0.0023)은 통과한다."""
+    ledger = Ledger((Scope.RUN,), caps={Scope.RUN: D("0.004")})
+    ledger.check_call(MODEL, 13000, 2048)
+    with pytest.raises(Exception, match="예산 초과"):
+        ledger.check_call(MODEL, 13000, 10000)
+    assert call_cost(MODEL, 13000, 10000) > D("0.004") > call_cost(MODEL, 13000, 2048)
+
+
+def test_the_cost_caps_are_unchanged_by_the_agent_output_cap():
+    from evals.agent_eval.cost import CAPS
+
+    assert CAPS[Scope.PROJECT] == D("40") and CAPS[Scope.RUN] == D("2")
+    assert CAPS[Scope.BASELINE] == D("5") and CAPS[Scope.LOOP] == D("15")
+
+
+def test_the_project_cap_also_blocks_a_10000_token_call_near_the_limit():
+    """PROJECT 누적 상한($40)도 같은 호출 직전 검사로 지킨다: 남은 금액이 한 호출의 최악 비용보다 적으면 막는다."""
+    ledger = Ledger((Scope.PROJECT,), opening={Scope.PROJECT: D("39.995")})
+    with pytest.raises(Exception, match="예산 초과"):
+        ledger.check_call(MODEL, 13000, 10000)  # 최악 0.0063 > 남은 0.005
+    ledger.check_call(MODEL, 13000, 1000)  # 0.0013 + 0.0005 = 0.0018 <= 0.005
+
+
+def test_a_real_request_body_with_max_tokens_10000_is_checked_with_that_value(monkeypatch):
+    """미터 장치가 실제 요청 본문의 max_tokens 를 그대로 호출 직전 검사에 넘긴다(설정값이 아니라 본문 값을 쓴다)."""
+    seen = []
+    ledger = Ledger((Scope.RUN,), caps={Scope.RUN: D("2")})
+    real_check = ledger.check_call
+    ledger.check_call = lambda model, tin, tout: (seen.append(tout), real_check(model, tin, tout))[
+        1
+    ]
+    from evals.agent_eval import usage
+
+    def fake_post(body, **kw):
+        return {
+            "content": [{"type": "text", "text": "ok"}],
+            "usage": {"input_tokens": 5, "output_tokens": 2},
+        }
+
+    monkeypatch.setattr(transport, "post_messages", fake_post)
+    with usage.meter_llm_calls(ledger, "c", 0):
+        transport.post_messages({"model": MODEL, "max_tokens": 10000, "messages": []})
+    assert seen == [10000]
 
 
 def test_measured_tokens_and_cost_are_recorded_per_call(monkeypatch):

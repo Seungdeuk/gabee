@@ -9,7 +9,7 @@ import pytest
 
 from app.features.ai_assistant.knowledge import rag_chat
 from app.features.family_chat import agent as family_agent
-from app.shared.config import settings
+from app.shared.config import Settings, settings
 from app.shared.llm import agent as llm_agent
 from app.shared.llm.agent import Tool, ask_agent
 from app.shared.llm.tool_graph import TRUNCATED_NOTE
@@ -33,8 +33,10 @@ def _echo_tool():
     return Tool("echo", "에코", {"type": "object", "properties": {}}, lambda args: {"ok": True})
 
 
-def test_the_family_chat_agent_constant_is_2048_and_the_default_is_unchanged():
-    assert family_agent.AGENT_MAX_TOKENS == 2048
+def test_the_family_chat_agent_limit_is_the_shared_setting_and_the_run_agent_default_is_unchanged():
+    """2026-11-25: 소통 Agent 상한은 공통 설정(`agent_max_output_tokens`, 기본 10000)이다. `run_agent` 기본값 1024·`ask_agent` 기본 None 은 그대로다."""
+    assert Settings().agent_max_output_tokens == 10000
+    assert not hasattr(family_agent, "AGENT_MAX_TOKENS")  # 값이 한 곳(설정)에만 있다
     import inspect
 
     assert inspect.signature(llm_agent.run_agent).parameters["max_tokens"].default == 1024
@@ -53,9 +55,7 @@ def test_ask_agent_passes_a_given_max_tokens_and_keeps_the_default_otherwise():
     assert [b["max_tokens"] for b in bodies] == [1024, 2048]  # 정산·돌봄처럼 안 주면 기존 1024
 
 
-def test_the_family_chat_agent_requests_2048_and_the_other_roles_keep_their_limits(
-    client, family, monkeypatch
-):
+def test_the_family_chat_agent_and_main_request_the_shared_limit(client, family, monkeypatch):
     a, _, group = family
     enable_ai(group["id"])
     bodies = []
@@ -76,8 +76,8 @@ def test_the_family_chat_agent_requests_2048_and_the_other_roles_keep_their_limi
     assert r.status_code == 200, r.text
     sub = [b["max_tokens"] for b in bodies if SUB_MARK in b["system"]]
     main = [b["max_tokens"] for b in bodies if SUB_MARK not in b["system"]]
-    assert sub and set(sub) == {2048}
-    assert main and set(main) == {rag_chat.CHAT_MAX_TOKENS}  # 메인은 그대로
+    assert sub and set(sub) == {settings.agent_max_output_tokens} == {10000}
+    assert main and set(main) == {settings.agent_max_output_tokens}  # 메인도 같은 설정이다
 
 
 def test_an_empty_reply_at_the_new_limit_is_still_a_clean_cannot_answer():
