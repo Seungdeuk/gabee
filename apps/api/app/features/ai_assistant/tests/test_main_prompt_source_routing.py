@@ -16,9 +16,7 @@ from app.features.schedule.agent import ask as schedule_ask
 from evals.agent_eval import case_files as cf
 from evals.agent_eval import dev_cases
 
-SOURCE_ONE = (
-    "질문이 가리키는 출처가 하나로 정해지면 그 출처의 담당만 부르고 다른 담당은 함께 부르지 마세요."
-)
+SOURCE_ONE = "질문이 가리키는 출처가 하나로 정해지면 그 출처의 담당만 부르고 다른 담당은 함께 부르거나 보충하려고 더 부르지 마세요."
 TAB_ONLY = "일정 탭 자체를 묻는 질문은 ask_schedule 만"
 CHAT_ONLY = "가족 공동 할 일을 묻는 질문은 ask_family_chat 만 부르세요"
 CANDIDATES = "채팅에서 뽑힌 약속·할 일 후보는 일정 탭에 등록된 것이 아니니 일정 탭 조회와 섞지 말고"
@@ -40,6 +38,12 @@ COMPOUND = "질문이 두 영역을 직접 묻는 복합 요청일 때만 필요
 OLD_BOTH = "두 탭에 걸친 질문이면 둘 다 물어보세요."
 TODO_START = "할 일 조회는 어느 목록인지에 따라 나눠 부르세요."
 TODO_BOTH = "어느 목록인지 말하지 않은 할 일 질문은 ask_family_chat 과 ask_schedule 을 둘 다 불러"
+# addac7c9 국소 평가 chat-02 r0·r1: 가족방 보조 단서(소통만)와 '둘 다' 규칙이 부딪혀 첫 턴에 두 담당을 함께 불렀고, 넘김 질문에 말하지 않은 출처를 덧붙였다
+NO_ADDED_SOURCE = "사용자가 말하지 않은 출처(다른 목록·다른 탭)를 덧붙이지도 마세요."
+BOTH_SCOPE = (
+    "이렇게 둘 다 부르는 것은 등록된 할 일을 조회할 때뿐이고, "
+    "가족 채팅방에서 한 할 일 질문이나 대화에서 이야기한 목록·내용을 묻는 질문에는 쓰지 않습니다."
+)
 RELATED = (
     "s-dev-01-routing-02",
     "s-dev-02-schedq-01",
@@ -89,6 +93,29 @@ def test_the_compound03_todo_rule_is_kept_as_the_exception_for_an_unclear_source
     assert (
         "ask_family_chat 으로 물어보세요." in note[: note.index(SOURCE_ONE)]
     )  # 소통 라우팅 문장 바로 뒤
+
+
+def test_the_both_rule_is_limited_to_registered_todos_and_yields_to_the_room_cue():
+    """'둘 다'는 등록된 할 일 조회에만 쓰고, 가족방의 할 일 질문·대화 속 목록 질문에는 쓰지 않는다(바로 뒤에 범위 문장).
+    단일 출처에서 보충 호출 금지·말하지 않은 출처 덧붙임 금지가 함께 있다. 특정 낱말·평가 질문 하드코딩 없음."""
+    note = _note()
+    for part in (BOTH_SCOPE, NO_ADDED_SOURCE, PRESERVE):
+        assert part in note, part
+    both = note.index(TODO_BOTH)
+    assert both < note.index(BOTH_SCOPE) < both + 160  # 예외 문장 바로 뒤에서 범위를 좁힌다
+    assert note.index(PRESERVE) < note.index(NO_ADDED_SOURCE) < note.index(TODO_START)
+    assert note.index(ROOM_TODO) < note.index(
+        BOTH_SCOPE
+    )  # 방 단서가 먼저 나오고 '둘 다'가 그것을 덮지 않는다
+    assert "보충하려고 더 부르지" in SOURCE_ONE
+    tail = note[both : note.index("자기 가족방과 다른 가족방")]
+    assert "장보기" not in tail and "장보기" not in note[note.index(PRESERVE) : both]
+    cases = {c.id: c for c in cf.load_cases(dev_cases.CASES_DEV_PATH, "dev")}
+    for cid in RELATED:
+        question = cases[cid].question
+        windows = {question[i : i + 10] for i in range(max(1, len(question) - 9))}
+        for added in (BOTH_SCOPE, NO_ADDED_SOURCE):
+            assert not any(w in added for w in windows), cid
 
 
 def test_the_room_cue_exists_in_the_room_context_that_follows_the_note():

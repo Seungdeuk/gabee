@@ -30,6 +30,9 @@ SPEC = {
     "n-src-room-todo": ("@가비 남은 할 일 목록이 뭐였지?", True, ["ask_family_chat"], ["ask_schedule"]),
     "n-src-room-tab": ("@가비 일정 탭에 잡힌 공동 일정이 뭐야?", True, ["ask_schedule"], ["ask_family_chat"]),
     "n-src-room-chat-search": ("@가비 가족 채팅에서 지난 주말에 나눈 이야기를 찾아 줘", True, ["ask_family_chat"], ["ask_schedule"]),
+    # addac7c9 chat-02 r0·r1 의 모양(대화 속 목록을 방에서 물음 → 첫 턴에 두 담당). '둘 다' 규칙은 등록된 할 일 조회에만 쓴다
+    "n-src-room-said-list": ("@가비 지난번에 말한 준비물 목록이 뭐였지?", True, ["ask_family_chat"], ["ask_schedule"]),
+    "n-src-room-unclear-todo": ("@가비 이번 주에 해야 할 일 알려 줘", True, ["ask_family_chat"], ["ask_schedule"]),
     "n-src-unclear-todo": ("이번 주에 해야 할 일 알려 줘", False, ["ask_family_chat", "ask_schedule"], ["ask_billing"]),
     "n-src-compound": ("가족 채팅에서 일요일 이야기를 찾아서 그날 일정 탭에 잡혀 있는지도 알려 줘", False, ["ask_family_chat", "ask_schedule"], ["ask_billing"]),
     "n-src-money": ("이번 달 문구류 지출을 알려 줘", False, ["ask_billing"], ["ask_family_chat", "ask_schedule"]),
@@ -106,6 +109,18 @@ def test_an_unclear_todo_lookup_still_needs_both_lists(only):
     """#535 compound-03 의 효과 보존: 출처가 불분명한 일반 할 일 조회를 한쪽만 확인하면 필수 도구 누락이다."""
     rec, _ = _judged("n-src-unclear-todo", [only])
     assert rec.passed is not True and "missing_tool" in rec.failure_types
+
+
+def test_the_both_rule_does_not_reach_into_the_family_room():
+    """같은 '어느 목록인지 말하지 않은 할 일' 질문이라도 개인 채팅은 둘 다(#535), 가족방은 소통 담당만(방 보조 단서).
+    가족방에서 첫 턴에 두 담당을 함께 부르면(addac7c9 chat-02 r0·r1 모양) 금지 호출로 실패한다."""
+    rec, _ = _judged("n-src-unclear-todo", ["ask_family_chat", "ask_schedule"])
+    assert rec.passed is True
+    for cid in ("n-src-room-unclear-todo", "n-src-room-said-list"):
+        rec, obs = _judged(cid, ["ask_family_chat", "ask_schedule"])
+        assert rec.passed is not True and "wrong_tool" in rec.failure_types, cid
+        rec, _ = _judged(cid, ["ask_family_chat"])
+        assert rec.passed is True, cid
 
 
 def test_an_explicit_compound_request_needs_exactly_the_two_requested_agents():
