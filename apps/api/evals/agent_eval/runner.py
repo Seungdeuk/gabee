@@ -1202,21 +1202,43 @@ def committed_rows(split: str) -> dict[str, dict[str, Any]]:
     return {_case_of(i).id: case_row(i) for i in items}
 
 
-def committed_gen_rows() -> dict[str, dict[str, Any]]:
-    """일반화 평가 사례 5건(`gen_cases.GEN_PATH`)의 {id: 정규 값}. 사례 파일·고정값 파일이 모두 HEAD 커밋과 같고(미커밋·수정 거부),
-    파일이 고정값·코드 정의와 일치해야만 돌려준다(어긋나면 거부). 공식 dev(`committed_rows`)와는 id 로 구분하며, 두 집합이 겹치면 거부한다."""
-    from . import case_files, gen_cases
+def committed_set_rows(spec: Any) -> dict[str, dict[str, Any]]:
+    """허용된 합성 사례 파일(`approved_sets.ApprovedSet`) 하나의 {id: 정규 값}. 사례 파일·고정값 파일이 모두 HEAD 커밋과 같고(미커밋·수정 거부),
+    파일이 고정값·코드 정의와 일치해야만 돌려준다(어긋나면 거부). 공식 dev(`committed_rows`)와 다른 허용 파일과는 id 로 구분하며 겹치면 거부한다."""
+    from . import approved_sets, case_files
 
-    _require_head_clean([gen_cases.GEN_PATH, gen_cases.PINS_PATH])
-    problems = gen_cases.check_pins()
+    _require_head_clean([spec.path, spec.pins_path])
+    problems = spec.check_pins()
     if problems:
-        raise RunnerRefused("일반화 사례가 고정값과 다르다: " + "; ".join(problems))
-    items = case_files.load_cases(gen_cases.GEN_PATH, "dev")
+        raise RunnerRefused(f"{spec.label}가 고정값과 다르다: " + "; ".join(problems))
+    items = case_files.load_cases(spec.path, "dev")
     rows = {_case_of(i).id: case_row(i) for i in items}
+    if set(rows) != set(spec.ids):
+        raise RunnerRefused(f"{spec.label} 파일의 id 가 허용 목록과 다르다")
     official = {str(r["id"]) for r in _official_dev_ids()}
     if official & set(rows):
-        raise RunnerRefused("일반화 사례 id 가 공식 dev 사례 id 와 겹친다")
+        raise RunnerRefused(f"{spec.label} id 가 공식 dev 사례 id 와 겹친다")
+    for other in approved_sets.all_sets():
+        if other.key != spec.key and other.ids & set(rows):
+            raise RunnerRefused(f"{spec.label} id 가 다른 허용 사례 파일의 id 와 겹친다")
     return rows
+
+
+def committed_gen_rows() -> dict[str, dict[str, Any]]:
+    """일반화 평가 사례 5건(`gen_cases.GEN_PATH`)의 {id: 정규 값}(`committed_set_rows` 의 일반화 항목)."""
+    from . import approved_sets
+
+    return committed_set_rows(next(s for s in approved_sets.all_sets() if s.key == "gen"))
+
+
+def committed_todo_rows() -> dict[str, dict[str, Any]]:
+    """할 일 라우팅 회귀 사례 2건(`todo_routing_cases.PATH`)의 {id: 정규 값}(`committed_set_rows` 의 라우팅 회귀 항목)."""
+    from . import approved_sets
+
+    return committed_set_rows(next(s for s in approved_sets.all_sets() if s.key == "todo_routing"))
+
+
+_SET_ROWS = {"gen": "committed_gen_rows", "todo_routing": "committed_todo_rows"}
 
 
 def _official_dev_ids() -> list[dict[str, Any]]:
@@ -1226,39 +1248,39 @@ def _official_dev_ids() -> list[dict[str, Any]]:
 
 
 def verify_dev_source(path: Any, items: Iterable[Item]) -> None:
-    """`--dev-file` 경로와 사례의 짝을 확인한다: 일반화 사례(`s-gen-…`)는 그 파일(`gen_cases.GEN_PATH`)에서만, 그 파일은 일반화 사례만 담아야 한다.
-    공식 dev 파일의 허용 규칙은 바꾸지 않는다(경로 대조는 일반화 사례가 관련될 때만 더해진다)."""
-    from . import gen_cases
+    """`--dev-file` 경로와 사례의 짝을 확인한다: 허용된 합성 사례(`s-gen-…`·`s-todo-…`)는 각자의 정확한 파일에서만, 그 파일은 자기 사례만 담아야 한다.
+    공식 dev 파일의 허용 규칙은 바꾸지 않는다(경로 대조는 허용된 합성 사례가 관련될 때만 더해진다)."""
+    from . import approved_sets
 
-    gen_ids = {spec[0] for spec in gen_cases.SPECS}
     ids = {_case_of(i).id for i in items}
-    try:
-        is_gen_file = path is not None and Path(str(path)).resolve() == gen_cases.GEN_PATH.resolve()
-    except OSError:
-        is_gen_file = False
-    if ids & gen_ids and not is_gen_file:
-        raise RunnerRefused("일반화 사례는 허용된 사례 파일(cases_gen_isolation.json)에서만 쓴다")
-    if is_gen_file and ids - gen_ids:
-        raise RunnerRefused("일반화 사례 파일에는 일반화 사례(s-gen-…)만 있어야 한다")
+    for spec in approved_sets.all_sets():
+        is_file = approved_sets.is_path_of(spec, path)
+        if ids & spec.ids and not is_file:
+            raise RunnerRefused(f"{spec.label}는 허용된 사례 파일({spec.file_name})에서만 쓴다")
+        if is_file and ids - spec.ids:
+            raise RunnerRefused(
+                f"{spec.label} 파일에는 {spec.label}({spec.id_prefix}…)만 있어야 한다"
+            )
 
 
 def verify_committed(items: Iterable[Item], split: str) -> None:
     """사례 id 가 커밋된 목록에 있고 내용이 커밋된 사례와 같은지 확인한다(`--dev-file` 로 val·test 를 위장하거나 내용을 바꾼 파일은 거부).
 
-    공식 dev 사례는 예전과 똑같이 대조한다. 공식 목록에 없는 id 가 일반화 사례 id 이고 분할이 dev 이면, 한정해서 커밋된 일반화 사례 5건(`committed_gen_rows`)과 대조한다.
-    그 밖의 id(위장 파일·허용 목록 밖 사례)는 거부한다."""
+    공식 dev 사례는 예전과 똑같이 대조한다. 공식 목록에 없는 id 가 허용된 합성 사례 id(일반화 5건·할 일 라우팅 회귀 2건)이고 분할이 dev 이면,
+    그 파일의 커밋된 사례(`committed_set_rows`)와 대조한다. 그 밖의 id(위장 파일·허용 목록 밖 사례)는 거부한다."""
+    from . import approved_sets
+
     committed = committed_rows(split)
-    gen: dict[str, dict[str, Any]] | None = None
+    synthetic: dict[str, dict[str, dict[str, Any]]] = {}
     for item in items:
         case_id = _case_of(item).id
         row = committed.get(case_id)
         if row is None and split == "dev":
-            from . import gen_cases
-
-            if case_id in {spec[0] for spec in gen_cases.SPECS}:
-                if gen is None:
-                    gen = committed_gen_rows()
-                row = gen.get(case_id)
+            spec = approved_sets.set_of_id(case_id)
+            if spec is not None:
+                if spec.key not in synthetic:
+                    synthetic[spec.key] = globals()[_SET_ROWS[spec.key]]()
+                row = synthetic[spec.key].get(case_id)
         if row is None:
             raise RunnerRefused(
                 f"커밋된 {split} 목록에 없는 사례다(위장한 파일일 수 있다): {case_id}"

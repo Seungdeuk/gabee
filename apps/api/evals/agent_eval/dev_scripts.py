@@ -770,17 +770,30 @@ def _is_gen_file(path: object) -> bool:
         return False
 
 
+def _is_todo_routing_file(path: object) -> bool:
+    from . import todo_routing_cases
+
+    try:
+        return Path(str(path)).resolve() == todo_routing_cases.PATH.resolve()
+    except OSError:
+        return False
+
+
 def scripts_for(split: str, dev_file: object = None) -> dict[str, Script]:
     """CLI 가 가짜 모드·사전 점검에서 실행기에 넘기는 정상 대본. 개발셋(`SCRIPTS`)과 검증셋(`val_scripts.SCRIPTS`)만 있다(`VIOLATING` 은 넘기지 않는다).
     대본이 있다는 것이 val 의 실제 호출을 연다는 뜻은 아니다: 실호출 허용 분할은 `real_gate.ALLOWED_SPLITS` 가 따로 정한다.
 
-    `dev_file`(선택): `--dev-file` 로 받은 경로. 일반화 평가 파일(`gen_cases.GEN_PATH`)이면 그 사례 5건의 대본(`gen_scripts.SCRIPTS`)을 돌려준다.
+    `dev_file`(선택): `--dev-file` 로 받은 경로. 일반화 평가 파일(`gen_cases.GEN_PATH`)이면 그 사례 5건의 대본(`gen_scripts.SCRIPTS`)을, 할 일 라우팅 회귀 파일(`todo_routing_cases.PATH`)이면 그 사례 2건의 대본(`todo_routing_scripts.SCRIPTS`)을 돌려준다.
     주지 않거나 다른 파일이면 예전과 똑같이 공식 개발셋 대본이다(공식 dev 36건의 대본 집합은 바뀌지 않는다)."""
     if split == "dev":
         if dev_file is not None and _is_gen_file(dev_file):
             from . import gen_scripts
 
             return dict(gen_scripts.SCRIPTS)
+        if dev_file is not None and _is_todo_routing_file(dev_file):
+            from . import todo_routing_scripts
+
+            return dict(todo_routing_scripts.SCRIPTS)
         return dict(SCRIPTS)
     if split == "val":
         from . import val_scripts  # val_scripts 가 이 모듈의 도우미를 쓰므로 호출할 때 불러온다
