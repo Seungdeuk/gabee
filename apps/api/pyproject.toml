@@ -15,17 +15,16 @@ dependencies = [
     "numpy>=1.26",
     "tokenizers>=0.19",
     "pgvector>=0.3",
-    # ai_assistant/ingest: 원본 전처리 (사진 회전·축소, HEIC, 한국어 OCR, 오피스·PDF → 마크다운)
+    # ai_assistant/ingest: 원본 전처리 (사진 회전·축소, HEIC, 오피스·PDF → 마크다운). 글자 읽기는 Claude(로컬 OCR 없음)
     "pillow>=10.4",
     "pillow-heif>=0.18",
     # 가족 놀이터 문장 폭탄: 문장이 끝났는지 판정하는 한국어 형태소 분석기
     # 판정 결과가 버전마다 달라질 수 있어 분석기와 모델 파일을 함께 고정한다
     "kiwipiepy==0.24.1",
     "kiwipiepy_model==0.24.0",
-    "rapidocr>=3.4",
-    "onnxruntime>=1.20",
+    "onnxruntime>=1.20",  # 로컬 SigLIP2(사진 판별)·NER. 로컬 OCR(rapidocr)은 서비스에서 제거했다(docs/adr/0025)
     "markitdown[docx,xlsx,pptx,pdf]>=0.1",
-    "pypdfium2>=4",  # 스캔본 PDF 의 쪽을 그림으로 바꿔 OCR 한다
+    "pypdfium2>=4",  # PDF 쪽 글자 층 읽기·쪽 나누기(스캔 쪽은 Claude 로 읽는다)
     # 회원가입 비밀번호 해시(Argon2id)
     "argon2-cffi>=23.1",
     # 로그인 Access Token(JWT)

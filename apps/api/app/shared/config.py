@@ -38,16 +38,16 @@ class Settings(BaseSettings):
     )
 
     # 업로드 파일의 글자 읽기(OCR)·개인정보 가리기를 Claude 로 한다(docs/adr/0014). 호출이 실패하면 가리지 않은 글을 저장하지 않고 파일을 failed 로 둔다.
-    # 글자 읽기와 가리기는 항상 Claude 로 한다(사용자 결정 2026-11-09). false 는 외부 호출 없이 도는 시험에서만 쓴다(conftest.py).
+    # 글자 읽기와 가리기는 항상 Claude 로 한다(사용자 결정 2026-11-09). 로컬 OCR(RapidOCR)은 서비스에서 제거했다(ADR 0025): 사진 속 글자는 Claude 만 읽으므로
+    # **서비스에서는 INGEST_LLM_OCR=true 가 필수**다(false 면 사진·스캔 쪽은 읽을 수단이 없어 ocr_unavailable 로 실패한다). false 는 읽기 구성 요소를 끼우는 시험에서만 쓴다.
+    # 가족 채팅 목적의 외부 호출(읽기·가리기·그림 설명·분류·챙길 일)은 가족 AI 동의가 있을 때만 나간다(`shared/llm/consent_gate`).
     ingest_llm_ocr: bool = True  # 사진·PDF 쪽을 Claude 로 읽는다
     ingest_llm_mask: bool = True  # 글을 Claude 로 가리고 가족 이름 후보를 문맥으로 판단한다
     ingest_ocr_model: str = "claude-sonnet-5-5"  # 표·머리말 구분이 좋은 모델
     ingest_mask_model: str = ""  # 비우면 llm_model(Haiku)
-    # 가족방 사진이 문서 사진인지 Claude 로 가린다(기본 false: 로컬 OCR 판별만). 켜면 글자가 있는 사진이 Anthropic API 로 전송된다(docs/adr/0015)
-    photo_judge_llm: bool = False
-    photo_judge_model: str = ""  # 비우면 llm_model(Haiku)
-    # 가족방 사진 판별을 OCR + SigLIP2 단계형(E)으로 한다(기본 꺼짐: 켜지 않으면 기존 OCR 판별 그대로). 켜면 외부 AI 호출 없이 로컬 모델만 쓰고
-    # `PHOTO_JUDGE_LLM` 은 이 경로에서 쓰지 않는다. 모델은 ONNX 이미지 인코더(CPU, torch 없음)이고 폴더에 `siglip2_vision.onnx`·`head.json` 이 있어야 한다
+    # 가족방 사진 판별을 로컬 SigLIP2 단독으로 한다(ADR 0025: margin > 5 이면 document, 아니면 unsure; photo 는 만들지 않는다). **기본 꺼짐: 꺼져 있으면
+    # 판별 수단이 없어서 모든 사진이 unsure 가 되고 문서 자동 등록이 멈춘다.** 켜도 외부 AI 호출 없이 로컬 모델만 쓴다. 모델은 ONNX 이미지 인코더(CPU, torch 없음)이고
+    # 폴더에 `siglip2_vision.onnx`·`head.json` 이 있어야 한다. (예전 Claude 사진 판별 스위치 PHOTO_JUDGE_LLM·PHOTO_JUDGE_MODEL 은 지웠다.)
     photo_classify_siglip: bool = False
     photo_classify_model_dir: str = ""  # 변환한 SigLIP2 ONNX 모델 폴더(저장소에 없다). 비었거나 파일이 없으면 판별은 failed 가 된다
     photo_classify_threads: int = 2  # onnxruntime CPU 스레드 수

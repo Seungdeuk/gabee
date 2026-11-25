@@ -1,5 +1,7 @@
 # 구현 현황: family-chat (가족 채팅)
 
+> **2026-11-26 갱신:** 로컬 OCR(RapidOCR)은 서비스에서 제거했고 가족방 사진 판별은 로컬 SigLIP2 단독이다([ADR 0025](../adr/0025-local-ocr-removed-siglip-only-photo-judge.md)). 가족 채팅방 자동 처리의 외부 AI 전송은 가족 AI 동의가 있을 때만이다([ADR 0024](../adr/0024-family-chat-external-ai-consent.md)). 이 문서에서 로컬 OCR·Claude 사진 판별(PHOTO_JUDGE_LLM)을 현재 동작처럼 적은 부분은 그 이전 기록이다.
+
 - 요구사항: docs/requirements/family-chat.md
 - 결정 기록: docs/adr/0011-ai-call-minimization.md
 

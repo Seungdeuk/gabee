@@ -310,7 +310,6 @@ def prepare_environment(real: bool) -> tuple[Path | None, Callable[[], None]]:
     for name in (
         "INGEST_LLM_OCR",
         "INGEST_LLM_MASK",
-        "PHOTO_JUDGE_LLM",
         "INGEST_REMINDERS",
         "PUSH_ENABLED",
     ):

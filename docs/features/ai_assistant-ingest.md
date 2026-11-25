@@ -1,5 +1,7 @@
 # 구현 현황: AI 비서 정제화 (ai_assistant-ingest)
 
+> **2026-11-26 갱신:** 로컬 OCR(RapidOCR)은 서비스에서 제거했고 가족방 사진 판별은 로컬 SigLIP2 단독이다([ADR 0025](../adr/0025-local-ocr-removed-siglip-only-photo-judge.md)). 가족 채팅방 자동 처리의 외부 AI 전송은 가족 AI 동의가 있을 때만이다([ADR 0024](../adr/0024-family-chat-external-ai-consent.md)). 이 문서에서 로컬 OCR·Claude 사진 판별(PHOTO_JUDGE_LLM)을 현재 동작처럼 적은 부분은 그 이전 기록이다.
+
 - 상태: 진행 중 (원본 전처리 · 사진 OCR · 오피스·PDF 변환 · 원본 데이터 센터 · 개인정보 가리기 · 쪽/슬라이드/시트 번호 · 가린 글자 자동 분류)
 - 담당: ai_assistant-ingest
 - 요구사항: docs/requirements/ai_assistant-ingest.md
@@ -157,3 +159,12 @@ Excel ─▶ converters.xlsx_to_markdown (금액 쉼표·날짜·병합 칸 반�
 - 메인 AI 직접 업로드·@가비·메인 채팅은 범위 밖이라 기존 정책 그대로.
 - 시험: `ai_assistant/tests/test_chat_external_consent_minimal.py`, `test_chat_masking_required_minimal.py`, `knowledge/tests/test_chat_origin_exposure.py`. 기존 등록 시험은 폴더 conftest 에서 "가리기 켜짐·동의 켜진 가족"을 기본 전제로 둔다.
 - 보장하지 않는 것: 과거에 저장된 기록(특히 MASK OFF 기간)의 안전성. 확인 절차는 ADR 0024.
+
+## 로컬 OCR 제거와 SigLIP2 단독 사진 판별 (2026-11-26, ADR 0025)
+- 로컬 OCR(RapidOCR)·`converters.KoreanOcr`·`default_ocr`·의존성 `rapidocr` 를 지웠다. 사진·스캔 쪽 글자는 Claude(`INGEST_LLM_OCR=true`)로만 읽는다.
+  꺼져 있고 시험용 읽기 구성 요소(`files.processors.ocr`)도 없으면 사진은 `ocr_unavailable`, 글자 층이 전혀 없는 스캔 PDF 도 자리표시 기록 없이 `ocr_unavailable` 로 실패한다.
+- 가족방 사진 판별(`library._judge_photo`)은 로컬 SigLIP2 단독: margin > 5 → `document`, 아니면 `unsure`, 점수 오류 → `failed`, `photo` 는 만들지 않는다. `PHOTO_CLASSIFY_SIGLIP` 꺼짐 → 모두 `unsure`.
+  OCR 판별 `photo_judge.judge`·Claude 사진 판별 `doc_ai.classify_photo`·설정 `PHOTO_JUDGE_LLM`·`PHOTO_JUDGE_MODEL` 은 지웠다(`photo_judge.to_judge_jpeg` 는 놀이 기능이 써서 남김).
+- 사진 판별 대기열: 가족별 20장 + 인스턴스 전체 40장·96MB 상한.
+- 배포: Dockerfile 이 `data/models/siglip2-onnx/`(있으면) 의 전체 SHA-256 을 검증하고 `PHOTO_CLASSIFY_MODEL_DIR` 을 정한다. 서버 시작 로그 `photo model status=present|missing|not_configured` 로 포함 여부를 확인한다.
+- 시험: `ingest/tests/test_siglip_margin.py`, `ai_assistant/tests/test_photo_classify_siglip.py`(로컬 OCR 을 import 하지 않는지 포함), `test_chat_library_photos.py`, `test_photo_checks_flow.py`.

@@ -26,6 +26,14 @@ from .schemas import Block, Content, PreprocessResult, Privacy, Quality, SourceI
 
 MAX_BYTES = 25 * 1024 * 1024
 MIN_PDF_CHARS = 20  # 이보다 글자가 적은 PDF 는 스캔본으로 본다
+SCAN_UNREAD_PREFIX = "글자 없는 스캔 "  # 스캔 쪽을 읽을 수단이 없어 읽지 못했다는 노트의 시작(`_read_pdf`가 만들고 `_from_document`가 알아본다)
+
+
+def _has_text(markdown: str) -> bool:
+    """쪽 구분(\\f)과 공백을 빼고 실제 글자가 하나라도 있는가."""
+    return bool(re.sub(r"\s+", "", markdown))
+
+
 RAW_EXT = {
     "image/jpeg": ".jpg",
     "image/png": ".png",
@@ -95,7 +103,7 @@ def preprocess(
         return _failed(source, "unsupported_type", str(e))
     try:
         if source.kind == "image":
-            return _from_image(source, data, ocr or converters.default_ocr(), family)
+            return _from_image(source, data, ocr, family)
         return _from_document(source, data, ocr, family)
     except BrokenFile as e:
         return _failed(source, "broken_file", str(e))
@@ -160,9 +168,17 @@ def _from_image_llm(source: SourceInfo, data: bytes, family=None) -> PreprocessR
     )
 
 
-def _from_image(source: SourceInfo, data: bytes, ocr: Ocr, family=None) -> PreprocessResult:
+def _from_image(source: SourceInfo, data: bytes, ocr: Ocr | None, family=None) -> PreprocessResult:
+    """사진 속 글자는 Claude(`INGEST_LLM_OCR`)가 읽는다. 로컬 OCR 은 서비스에 없다(ADR 0025, `ocr` 는 시험이 끼우는 읽기 구성 요소일 뿐이다).
+    읽을 수단이 하나도 없으면 실패다(가족 채팅 목적이면 외부 호출 전 동의 확인은 `consent_gate` 가 한다)."""
     if settings.ingest_llm_ocr:
         return _from_image_llm(source, data, family)
+    if ocr is None:
+        return _failed(
+            source,
+            "ocr_unavailable",
+            "사진 속 글자를 읽을 수단이 없어요(서버에서 INGEST_LLM_OCR 를 켜야 해요)",
+        )
     image = converters.prepare_image(data)
     lines = ocr.read(image)
     if not lines:
@@ -201,6 +217,14 @@ def _from_document(
     elif source.kind == "pdf":
         # 쪽별 글자 층을 pdfium 으로 읽는다(한글 표 PDF 에서 MarkItDown 보다 읽는 순서가 정확하다)
         markdown, ocr_note = _read_pdf(data, ocr)
+        if ocr_note and ocr_note.startswith(SCAN_UNREAD_PREFIX) and not _has_text(markdown):
+            # 글자 층이 있는 쪽이 하나도 없고 스캔 쪽을 읽을 수단도 없다: 읽은 내용이 없는 "읽지 못한 부분" 자리표시를 정상 기록으로 만들지 않고,
+            # 내용 없는 자리표시를 가리기·분류·챙길 일(외부 AI)로 보내지도 않는다. 사진(`_from_image`)과 같은 실패 코드를 쓴다.
+            return _failed(
+                source,
+                "ocr_unavailable",
+                "스캔 PDF 의 글자를 읽을 수단이 없어요(서버에서 INGEST_LLM_OCR 를 켜야 해요)",
+            )
     else:
         markdown = converters.to_markdown(data, source.kind)
         if source.kind == "pptx":  # 변환기가 버린 그림 속 글자·내용을 Claude 로 설명해 넣는다
@@ -228,9 +252,10 @@ def _from_document(
 
 
 def _read_pdf(data: bytes, ocr: Ocr | None) -> tuple[str, str | None]:
-    """글자 층이 있는 쪽은 그대로 두고, 글자가 없는 쪽(스캔·사진)만 그림으로 바꿔 OCR 한다.
+    """글자 층이 있는 쪽은 그대로 두고, 글자가 없는 쪽(스캔·사진)만 그림으로 바꿔 읽는다.
     (쪽을 \\f 로 이은 글, 확인이 필요한 이유). 스캔 쪽이 없으면 입력 글을 그대로 돌려준다.
-    INGEST_LLM_OCR 가 켜져 있으면 글자 층이 있어도 표·머리말 구분이 더 정확한 Claude 로 쪽마다 읽는다(평가: 글자 층 꺼내기는 표를 한 줄로 이어 붙인다)."""
+    INGEST_LLM_OCR 가 켜져 있으면 글자 층이 있어도 표·머리말 구분이 더 정확한 Claude 로 쪽마다 읽는다(평가: 글자 층 꺼내기는 표를 한 줄로 이어 붙인다).
+    로컬 OCR 은 서비스에 없다(ADR 0025): 꺼져 있고 시험이 끼운 읽기 구성 요소도 없으면 스캔 쪽은 읽지 못한 채 남는다."""
     if settings.ingest_llm_ocr:
         return llm_ingest.ocr_pdf(data)
     texts = converters.pdf_page_texts(data)
@@ -240,8 +265,12 @@ def _read_pdf(data: bytes, ocr: Ocr | None) -> tuple[str, str | None]:
     pages = list(texts)
     if not scan:
         return "\f".join(pages), None
+    if ocr is None:
+        return "\f".join(
+            pages
+        ), f"{SCAN_UNREAD_PREFIX}{len(scan)}쪽은 읽는 수단이 없어서 읽지 못했어요"
     todo = scan[: converters.PDF_OCR_MAX_PAGES]
-    reader = ocr or converters.default_ocr()
+    reader = ocr
     for i, image in zip(todo, converters.pdf_page_images(data, todo), strict=True):
         pages[i] = "\n".join(ln.text for ln in reader.read(image))
     note = "스캔된 쪽은 OCR 로 읽었어요(틀린 글자가 있을 수 있어요)"

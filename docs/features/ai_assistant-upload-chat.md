@@ -1,5 +1,7 @@
 # 구현 현황: AI 비서 파일 올리기 → 읽기 → 기록 → 채팅 (통합)
 
+> **2026-11-26 갱신:** 로컬 OCR(RapidOCR)은 서비스에서 제거했고 가족방 사진 판별은 로컬 SigLIP2 단독이다([ADR 0025](../adr/0025-local-ocr-removed-siglip-only-photo-judge.md)). 가족 채팅방 자동 처리의 외부 AI 전송은 가족 AI 동의가 있을 때만이다([ADR 0024](../adr/0024-family-chat-external-ai-consent.md)). 이 문서에서 로컬 OCR·Claude 사진 판별(PHOTO_JUDGE_LLM)을 현재 동작처럼 적은 부분은 그 이전 기록이다.
+
 - 상태: 진행 중 (통합 완료, 공용 PostgreSQL 에서의 실제 시험은 아직)
 - 담당: knowledge(임베딩·벡터 저장·채팅) + 앱 통합. 전처리(ingest)는 별도 담당자 작업을 합쳤다.
 - 요구사항: docs/requirements/ai_assistant-ingest.md

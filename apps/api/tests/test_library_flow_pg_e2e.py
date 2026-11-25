@@ -15,11 +15,13 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from app.features.ai_assistant import files, library
+from app.features.ai_assistant.ingest import siglip_margin
 from app.features.ai_assistant.knowledge import embedding
 from app.features.ai_assistant.knowledge.models import EMBED_DIM
 from app.features.ai_assistant.tests.test_chat_library_photos import (
     NOTICE_LINES,
     ScriptedOcr,
+    _FixedMargin,
     _send_photo,
 )
 from app.features.family_chat import file_service, photo_service
@@ -68,8 +70,12 @@ def pg_flow(pg16, monkeypatch, tmp_path):  # noqa: F811
     # 운영에서 채팅 문서가 등록되는 전제(보안 A): 가리기 켜짐(INGEST_LLM_MASK=true, 로컬 규칙과 같은 대역)·가족 AI 동의 켜짐
     chat_masking_like_service(monkeypatch)
     family_ai_consent_like_service(monkeypatch)
+    # 사진 판별은 SigLIP2 단독(ADR 0025): 스위치를 켜고 점수기는 문서 margin(8.0 > 5)을 내는 대역으로 둔다(모델 파일 없음)
+    monkeypatch.setattr(settings, "photo_classify_siglip", True)
+    siglip_margin.set_scorer(_FixedMargin(8.0))
     library._photo_pending.clear()
     library._photo_inflight.clear()
+    monkeypatch.setattr(library, "_photo_bytes", 0)
     file_service.upload_limiter._failures.clear()
     photo_service.upload_limiter._failures.clear()
     photo_service.library_limiter._failures.clear()
@@ -84,6 +90,7 @@ def pg_flow(pg16, monkeypatch, tmp_path):  # noqa: F811
     finally:
         app.dependency_overrides.pop(shared_db.get_db, None)
         files.processors = old_processors
+        siglip_margin.set_scorer(None)
         embedding.set_embedder(old_embedder)
         engine.dispose()
 
