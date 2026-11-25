@@ -498,10 +498,11 @@ def test_a_real_run_exhausting_the_approved_amount_stops_before_the_next_call(
     items = legacy("b-total", "m-billing", "b-nov-total", "b-list")
     ids = tuple(i.case.id for i in items)
     fake = fake_model.FakeModel(fake_model.script_for(items[0]))
-    plan = cli.Plan("real", ("legacy",), D("0.0015"), "halt-1", 1, ids)
+    # 2026-11-25: Agent 요청 max_tokens 10000 으로 호출 한 번의 최악 비용이 약 $0.0053 이라 승인액을 $0.0065 로 올렸다(이전 $0.0015)
+    plan = cli.Plan("real", ("legacy",), D("0.0065"), "halt-1", 1, ids)
     record = real_gate._mint_preflight(
         "halt-1",
-        D("0.0015"),
+        D("0.0065"),
         "legacy",
         frozenset(ids),
         D("0.01"),
@@ -520,5 +521,5 @@ def test_a_real_run_exhausting_the_approved_amount_stops_before_the_next_call(
         .read_text("utf-8")
         .splitlines()
     )
-    assert 0 < spent <= D("0.0015")  # 승인액을 넘기 전에 멈췄다
+    assert 0 < spent <= D("0.0065")  # 승인액을 넘기 전에 멈췄다
     assert real_gate.real_grant() is None

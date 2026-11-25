@@ -24,6 +24,7 @@ services:
       DATA_DIR: /data
       CORS_ORIGINS: ${CORS_ORIGINS:-*}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      AGENT_MAX_OUTPUT_TOKENS: ${AGENT_MAX_OUTPUT_TOKENS:-10000}
     ports:
       - "8000:8000"
     volumes:

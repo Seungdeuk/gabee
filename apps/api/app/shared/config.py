@@ -172,6 +172,11 @@ class Settings(BaseSettings):
     anthropic_max_tokens: int = (
         2048  # ANTHROPIC_MAX_TOKENS: 한 번의 응답에서 쓸 수 있는 출력 토큰 상한
     )
+    # AGENT_MAX_OUTPUT_TOKENS: Agent(메인·소통·일정·정산)와 그 하위 분석 호출의 모델 호출 1회당 출력 토큰 상한. thinking 도 같은 예산을 써서
+    # 낮으면 답이 잘리고(stop_reason=max_tokens → 503 llm_failed) 같은 Agent 를 다시 부르게 된다. 상한일 뿐 실제 사용량이 아니다.
+    # 양의 정수이고 모델의 최대 출력(Haiku 5.5: 128000, Models API 확인)을 넘을 수 없다. 범위 밖이면 서버가 시작할 때 설정 오류로 멈춘다.
+    # 일반 호출(`anthropic_max_tokens`)·돌봄·OCR·뉴스·일정 제안 등 이 Agent 경로 밖의 상한은 이 값과 무관하다.
+    agent_max_output_tokens: int = Field(default=10000, ge=1, le=128000)
     ai_effort: str = "low"  # 추론 비용을 줄이려고 낮게 둔다(low|medium|high)
     ai_auto_analysis_enabled: bool = (
         False  # 설계만 있고 기본 꺼짐(켜도 메시지마다 부르지 않고 시간·새 메시지 수로 모아서)

@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from app.features.ai_assistant.ingest.masking import mask_text
 from app.features.family_group.models import User
 from app.shared.auth import ensure_group_member
+from app.shared.config import settings
 from app.shared.errors import bad_request
 from app.shared.llm import agent_guard, proposals
 from app.shared.llm.agent import AgentReply, Post, Tool, ask_agent, privacy_tools
@@ -520,6 +521,8 @@ def ask(
                 history=pseudo_history,
                 proposals=proposed,
                 stage="billing",
+                # 정산 Agent 는 호출에서 상한을 명시한다(`run_agent` 기본값 1024 는 그대로라 돌봄 등 다른 호출은 영향이 없다). 2026-11-25
+                max_tokens=settings.agent_max_output_tokens,
             )
             if reply.can_answer:
                 # 이 세션이 만든 토큰만 복원한다(질문·도구 결과에서 맞춘 이름 토큰 포함).

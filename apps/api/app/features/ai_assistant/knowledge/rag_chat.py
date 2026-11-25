@@ -140,8 +140,9 @@ WEB_NOTE = (
 # 2048 로 낮췄다. 웹 검색 경로는 검색 결과를 읽고 쓰므로 4096 을 그대로 둔다 (2026-11-09)
 # 2048 로도 모델의 숨은 생각이 상한을 다 써 답이 끊기거나 글 없이 끝나는 일이 측정마다 1~4건 있었다(stop_reason=max_tokens, 생각 블록만 옴).
 # 3072 로 올렸다가 사용자 결정으로 되돌리고(2026-11-18) 대신 답을 핵심 위주로 짧게 쓰게 했다. 빈 답은 한 번 더 묻는다.
-CHAT_MAX_TOKENS = 2048
-WEB_MAX_TOKENS = 4096
+# 2026-11-25 사용자 결정: 메인(웹 검색 경로 포함)·소통·일정·정산 Agent 와 대화 분석의 출력 상한은 `settings.agent_max_output_tokens`(AGENT_MAX_OUTPUT_TOKENS,
+# 기본 10000) 하나로 관리한다. 일정 Agent 가 1600 에서 잘려 503 llm_failed·반복 호출·단계 상한에 닿은 일이 있었다(상한이지 실제 사용량이 아니다).
+# 짧게 쓰게 하는 프롬프트 지침은 그대로라, 상한을 올려도 답 길이를 늘리라는 지시는 없다. 호출 시점에 설정을 읽는다(환경변수 override 가 시험에서도 반영된다).
 WEB_SOURCE_LIMIT = 5
 WEB_TITLE_LIMIT = 200
 
@@ -567,7 +568,7 @@ def ask(
         model = PostChatModel(
             post=main_post if with_web else post,
             llm_model=settings.llm_model,
-            max_tokens=WEB_MAX_TOKENS if with_web else CHAT_MAX_TOKENS,
+            max_tokens=settings.agent_max_output_tokens,
             system=system_prompt(
                 with_agents,
                 room_context=room_context,
