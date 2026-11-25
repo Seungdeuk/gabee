@@ -102,13 +102,30 @@ def _line(row: dict, me: str, detail: bool = True) -> str:
     return f"{head} | 받음 | 보낸이:{row['from_id']} | 내답:{answer} | 수락:{others or '-'}"
 
 
-def load(db: Session, group_id: str, user_id: str, today: date, detail: bool = True) -> RequestView:
-    """내가 보냈거나 받은 부탁 중 취소되지 않았고 너무 오래되지 않은 것. 지금과 가까운 순으로 상한까지, 날짜순으로 돌려준다."""
+def load(
+    db: Session,
+    group_id: str,
+    user_id: str,
+    today: date,
+    detail: bool = True,
+    room_member_ids: set[str] | None = None,
+) -> RequestView:
+    """내가 보냈거나 받은 부탁 중 취소되지 않았고 너무 오래되지 않은 것. 지금과 가까운 순으로 상한까지, 날짜순으로 돌려준다.
+
+    `room_member_ids` 를 주면(가족방) 방 구성원 모두가 원래 볼 수 있는 부탁만 남긴다(`together.visible_to_all`). 빠진 부탁은 id·날짜·제목·관계
+    어느 것도 모델·카드·답에 가지 않는다(이 목록이 허용 id 의 유일한 출처다). 개인 채팅(None)은 그대로 내 부탁 전체다."""
     oldest = today - timedelta(days=PAST_DAYS)
+    allowed = (
+        together.visible_to_all(db, group_id, user_id, room_member_ids)
+        if room_member_ids is not None
+        else None
+    )
     rows = [
         r
         for r in together.list_mine(db, group_id, user_id)
-        if not r["canceled"] and r["start_date"] >= oldest
+        if not r["canceled"]
+        and r["start_date"] >= oldest
+        and (allowed is None or r["id"] in allowed)
     ]
     rows = sorted(rows, key=lambda r: abs((r["start_date"] - today).days))[:LIST_LIMIT]
     rows.sort(

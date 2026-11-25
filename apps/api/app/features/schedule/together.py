@@ -133,6 +133,23 @@ def list_mine(db: Session, group_id: str, user_id: str) -> list[dict]:
     return _outs(db, repo.requests_for(db, group_id, user_id), user_id)
 
 
+def visible_to_all(db: Session, group_id: str, user_id: str, member_ids: set[str]) -> set[str]:
+    """내가 보냈거나 받은 부탁 중 **보낸 사람과 받는 사람 전원이 `member_ids` 를 모두 덮는** 부탁의 id.
+
+    부탁은 보낸 사람과 받는 사람만 본다(`list_mine`). 가족방 @가비 의 답은 방 구성원 모두가 보므로, 방에서 다룰 수 있는 부탁은
+    방 구성원 모두가 원래 볼 수 있는 것뿐이다. 받는 사람 목록은 화면 규칙(받는 사람은 내 줄과 수락한 사람만 본다)과 달리 서버 안에서 전부 읽어 판단하고,
+    결과로는 id 만 돌려준다(누가 받았는지는 밖으로 나가지 않는다). 구성원 목록이 비면 아무것도 돌려주지 않는다(fail-closed)."""
+    if not member_ids:
+        return set()
+    reqs = repo.requests_for(db, group_id, user_id)
+    if not reqs:
+        return set()
+    people: dict[str, set[str]] = {r.id: {r.user_id} for r in reqs}
+    for row in repo.recipients_of(db, list(people)):
+        people[row.request_id].add(row.user_id)
+    return {rid for rid, seen in people.items() if member_ids <= seen}
+
+
 def answer(db: Session, group_id: str, user_id: str, request_id: str, body: RequestAnswer) -> dict:
     """받는 사람 본인이 수락·어렵겠어요로 답한다. 이미 답했다면 날짜가 지나기 전까지만 바꿀 수 있다.
     수락하면 내 일정을 만들고, 답을 바꾸면 이전에 만든 내 일정은 지운다(소프트 삭제)."""

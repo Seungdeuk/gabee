@@ -232,16 +232,25 @@ def _handle(
 ) -> AgentResponse:
     now = datetime.now(UTC)
     local_now = now.astimezone(reader.local_tz())
-    data = reader.read(db, group_id, request.channel, now, user_id)  # 내 일정만, 과거·미래 1년
+    members = members_mod.load(db, group_id)
+    # 가족방(channel=family)의 답은 방에 저장되어 구성원 모두가 본다: 일정·부탁은 구성원 모두가 원래 볼 수 있는 것만 모델에 준다(서버에서 거른다)
+    room_ids = {m.id for m in members} if request.channel == "family" else None
+    data = reader.read(
+        db, group_id, request.channel, now, user_id, room_member_ids=room_ids
+    )  # 내 일정만, 과거·미래 1년
     period = period_mod.extract_for_prompt(
         request.text, local_now.date()
     )  # 목록을 거를 기간(없으면 None)
     shown, omitted = reader.select_for_prompt(data.events, now, period)
     scope = f"문장에서 읽은 기간 {period.widened().label()}" if period else None
-    members = members_mod.load(db, group_id)
-    # 가족방(channel=family)의 답은 방에 저장되므로 부탁의 받는 분·수락 현황은 모델에게 주지 않는다
+    # 가족방에서는 부탁의 받는 분·수락 현황도 모델에게 주지 않는다(detail=False)
     request_view = request_flow.load(
-        db, group_id, user_id, local_now.date(), detail=request.channel != "family"
+        db,
+        group_id,
+        user_id,
+        local_now.date(),
+        detail=request.channel != "family",
+        room_member_ids=room_ids,
     )
     habit_view = habits.load(db, user_id, group_id, request.channel)
     result = _ask(
