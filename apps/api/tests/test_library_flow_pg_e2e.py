@@ -26,6 +26,7 @@ from app.features.family_chat import file_service, photo_service
 from app.main import app
 from app.shared import db as shared_db
 from app.shared.config import settings
+from tests.helpers import chat_masking_like_service, family_ai_consent_like_service
 from tests.test_join_pg_e2e import account
 from tests.test_schema_gate_pg_e2e import admin, create_db, migrate, pg16, url  # noqa: F401
 from tests.test_signup_pg_e2e import rows
@@ -64,6 +65,9 @@ def pg_flow(pg16, monkeypatch, tmp_path):  # noqa: F811
         monkeypatch.setattr(module, "SessionLocal", factory)
     monkeypatch.setattr(settings, "data_dir", str(tmp_path))
     monkeypatch.setattr(library, "_submit", lambda fn, *args: fn(*args))
+    # 운영에서 채팅 문서가 등록되는 전제(보안 A): 가리기 켜짐(INGEST_LLM_MASK=true, 로컬 규칙과 같은 대역)·가족 AI 동의 켜짐
+    chat_masking_like_service(monkeypatch)
+    family_ai_consent_like_service(monkeypatch)
     library._photo_pending.clear()
     library._photo_inflight.clear()
     file_service.upload_limiter._failures.clear()

@@ -121,7 +121,11 @@ def set_enabled(db: Session, group_id: str, user_id: str, enabled: bool) -> None
         if row is None:
             row = AiGroupSetting(group_id=group_id)
             db.add(row)
-        row.enabled, row.enabled_by, row.updated_at = enabled, user_id, datetime.now(UTC)
+        if row.updated_at is None or bool(row.enabled) != enabled:
+            # 값이 실제로 바뀔 때만 시각을 옮긴다: 이 시각은 채팅 문서를 외부 AI 에 다시 보이는 기준(동의가 켜진 때)이라
+            # 같은 값을 다시 저장할 때마다 옮기면 동의 아래 등록한 채팅 문서가 모두 숨겨진다
+            row.updated_at = datetime.now(UTC)
+        row.enabled, row.enabled_by = enabled, user_id
         if not enabled:  # 동의를 끄면 이 가족의 분석 결과(대화에서 나온 요약·후보)도 바로 지운다
             db.execute(delete(AiResultCache).where(AiResultCache.group_id == group_id))
             for callback in list(

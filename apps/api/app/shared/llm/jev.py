@@ -8,6 +8,7 @@ import httpx
 
 from app.shared.config import settings
 
+from . import consent_gate
 from .client import LLMUnavailable
 
 API_URL = "https://api.typesafe.ai/v1/systemone"
@@ -22,6 +23,7 @@ def ask(state, questions: dict, timeout: float | None = None) -> dict:
     돌려주는 값: {이름: 답} — choice 는 choice·confidence·probabilities, noul 은 noul(0~1)."""
     if not available():
         raise LLMUnavailable("TYPESAFE_API_KEY 가 설정되지 않았어요")
+    consent_gate.check()  # 가족 채팅 목적의 처리면 보내기 직전에 가족 AI 동의를 확인한다
     body = {"model": settings.jev_model, "state": state, "questions": questions}
     headers = {"Authorization": f"Bearer {settings.typesafe_api_key}"}
     try:

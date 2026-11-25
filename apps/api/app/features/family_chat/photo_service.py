@@ -26,6 +26,7 @@ from app.features.family_group.models import User
 from app.shared import chat_library
 from app.shared.config import settings
 from app.shared.errors import ApiError, bad_request, not_found
+from app.shared.llm import consent_gate
 from app.shared.rate_limit import FailureLimiter
 
 from . import chat_push, photo_check_service, service
@@ -338,6 +339,22 @@ def save_to_library(db: Session, user: User, group_id: str, attachment_id: str) 
     if room.kind != FAMILY:
         raise ApiError(
             409, "not_family_room", "가족 전체방에 올린 사진만 가족 문서함에 저장할 수 있어요"
+        )
+    if not chat_library.is_registered(db, group_id, attachment_id) and not settings.ingest_llm_mask:
+        # Claude 가리기가 꺼져 있으면 로컬 규칙으로만 가린 문서가 되므로 저장하지 않는다. 판별 상태도 바꾸지 않고 사진은 채팅에 그대로 남는다.
+        raise ApiError(
+            503,
+            "masking_unavailable",
+            "글을 가리는 기능이 꺼져 있어서 지금은 사진을 문서함에 저장할 수 없어요",
+        )
+    if not chat_library.is_registered(
+        db, group_id, attachment_id
+    ) and not consent_gate.family_ai_allowed(group_id):
+        # 문서함 저장은 사진을 외부 AI(Claude)로 읽고 가린다: 가족 AI 동의가 없으면 저장하지 않는다(판별 상태도 바꾸지 않는다)
+        raise ApiError(
+            403,
+            "ai_not_enabled",
+            "가족 AI 사용에 동의해야 사진을 문서함에 저장할 수 있어요",
         )
     photo_check_service.mark_document(
         db, group_id, attachment_id, user.id

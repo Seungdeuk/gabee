@@ -15,7 +15,7 @@ from sqlalchemy.orm import Session
 from app.shared import ai_guard, chat_library
 from app.shared.config import settings
 from app.shared.db import SessionLocal
-from app.shared.llm import doc_ai
+from app.shared.llm import consent_gate, doc_ai
 
 from . import files, service
 from .ingest import converters, photo_judge, siglip_margin
@@ -50,20 +50,31 @@ def register_chat_document(
     content_type: str,
     data: bytes,
 ) -> None:
-    """채팅 문서 첨부 하나를 문서함에 등록한다(읽기 → 저장, 민감 문서는 민감 표시를 붙여 저장). 어떤 실패도 던지지 않는다."""
+    """채팅 문서 첨부 하나를 문서함에 등록한다(읽기 → 저장, 민감 문서는 민감 표시를 붙여 저장). 어떤 실패도 던지지 않는다.
+    가족 채팅 목적의 처리라 가족 AI 동의가 있을 때만 외부(Claude·Jev)로 보낸다: 동의가 없으면 등록을 보류하고(채팅 첨부는 그대로) 외부 호출을
+    하지 않는다. 처리 도중 동의를 끄면 그 뒤의 외부 호출은 나가지 않고 등록하지 않는다(`consent_gate`)."""
     try:
-        if not supported(data, filename):
+        if not settings.ingest_llm_mask:
+            # Claude 가리기가 꺼져 있으면 로컬 규칙(주민번호 등만 가림, 이름·주소·전화번호는 남음)으로만 가린 문서가 AI 검색 지식베이스에 들어간다.
+            # 그런 문서는 등록하지 않는다(채팅 첨부는 그대로, 외부 호출도 시작하지 않는다). 메인 AI 직접 업로드는 이 경로가 아니라 영향이 없다.
+            logger.info("chat library document held: masking unavailable")
             return
-        with SessionLocal() as db:
-            if knowledge_repo.get_by_attachment(db, group_id, attachment_id) is not None:
-                return  # 이미 등록했다(재시도·중복 요청)
-            if not chat_library.attachment_exists(db, group_id, attachment_id):
-                return  # 대기하는 사이 메시지가 지워졌다
-            photo = service.receive_file(db, group_id, user_id, filename, content_type, data)
-            photo_id = photo.id
-        files.process_file(
-            photo_id, group_id, user_id, data, filename, source_attachment_id=attachment_id
-        )
+        with consent_gate.family_chat(group_id):
+            if not consent_gate.allowed_now():
+                logger.info("chat library document held: family ai consent required")
+                return
+            if not supported(data, filename):
+                return
+            with SessionLocal() as db:
+                if knowledge_repo.get_by_attachment(db, group_id, attachment_id) is not None:
+                    return  # 이미 등록했다(재시도·중복 요청)
+                if not chat_library.attachment_exists(db, group_id, attachment_id):
+                    return  # 대기하는 사이 메시지가 지워졌다
+                photo = service.receive_file(db, group_id, user_id, filename, content_type, data)
+                photo_id = photo.id
+            files.process_file(
+                photo_id, group_id, user_id, data, filename, source_attachment_id=attachment_id
+            )
     except Exception as exc:  # noqa: BLE001  내용이 로그에 남지 않게 종류만 적는다
         logger.warning("chat library register failed error=%s", type(exc).__name__)
 
@@ -150,35 +161,58 @@ def register_chat_photo(
     """채팅 사진 하나를 판별해서 문서 사진이면 문서함에 등록한다(읽기 → 저장, 민감 문서는 민감 표시를 붙여 저장). 어떤 실패도 던지지 않는다.
     forced 는 사용자가 직접 저장을 눌러 판별을 건너뛰는 경우다."""
     try:
-        with SessionLocal() as db:
-            if knowledge_repo.get_by_attachment(db, group_id, attachment_id) is not None:
-                return
-            if not chat_library.attachment_exists(db, group_id, attachment_id):
-                return
-        if not forced:
-            status, error = _judge_photo(group_id, data)
-            # 결과를 판별 상태 표에 적는다(문서함 등록보다 먼저: 문서면 바로 숨김 상태가 된다). 못 적어도 pending 으로 남아 안전하다
-            may_register = chat_library.photo_judged(group_id, attachment_id, status, error)
-            if status != "document":
-                return
-            if not may_register:
-                return  # 업로더가 이미 일반 사진으로 확인한 사진: 문서함에 올리면 타임라인과 문서함에 둘 다 있게 된다(b0-2a 리뷰)
-            with SessionLocal() as db:
-                if not chat_library.attachment_exists(db, group_id, attachment_id):
-                    return  # 판별하는 사이 메시지가 지워졌다: 지운 사진이 문서함에 남지 않게(재검사처럼 오래 걸리는 판별 뒤의 경합)
-        with SessionLocal() as db:
-            photo = service.receive_file(
-                db, group_id, user_id, f"{attachment_id}.jpg", "image/jpeg", data
-            )
-            photo_id = photo.id
-        files.process_file(
-            photo_id, group_id, user_id, data, f"{attachment_id}.jpg",
-            source_attachment_id=attachment_id, keep_photo=forced or settings.photo_classify_siglip,
-        )  # fmt: skip
-        # 단계형(E)이 켜져 있으면 문서로 판정된 사진은 글자가 적어도 문서함에 남긴다: 글자가 적은 문서를 SigLIP2 가 구한 경우(rescue)를 읽기 단계가
-        # 다시 "사진"으로 버리면, 판별 상태는 document 인데 문서함에는 없는 채로 업로더가 일반 사진 확인도 못 하게 된다.
+        if not settings.ingest_llm_mask:
+            # 판별 상태도 바꾸지 않고(사진은 채팅에 남는다) 로컬 규칙으로만 가린 문서를 만들지 않는다. 외부 호출도 시작하지 않는다
+            logger.info("chat library photo held: masking unavailable")
+            return
+        with consent_gate.family_chat(group_id):
+            _register_chat_photo_in_scope(group_id, user_id, attachment_id, data, forced)
     except Exception as exc:  # noqa: BLE001  내용이 로그에 남지 않게 종류만 적는다
         logger.warning("chat library photo register failed error=%s", type(exc).__name__)
+
+
+def _register_chat_photo_in_scope(
+    group_id: str, user_id: str, attachment_id: str, data: bytes, forced: bool
+) -> None:
+    """가족 채팅 목적의 동의 관문 범위 안에서 판별·등록한다. 판별(로컬 OCR, 동의한 가족만 Claude)은 그대로 하고 상태를 적되,
+    문서함 등록(외부 읽기·가리기)은 가족 AI 동의가 있을 때만 한다(없으면 보류: 문서로 판별된 사진은 unsure 로 적고 사진은 채팅에 그대로)."""
+    with SessionLocal() as db:
+        if knowledge_repo.get_by_attachment(db, group_id, attachment_id) is not None:
+            return
+        if not chat_library.attachment_exists(db, group_id, attachment_id):
+            return
+    if not forced:
+        status, error = _judge_photo(group_id, data)
+        if status == "document" and not consent_gate.allowed_now():
+            # 문서로 보이지만 가족 AI 동의가 없어 문서함 등록을 보류한다: document 로 적으면 확인 목록·재검사·일반 사진 확인이 모두 막혀
+            # 업로더가 손댈 수 없는 사진이 된다. unsure 로 적어 두면 업로더가 확인하거나, 동의를 켠 뒤 재검사로 다시 판별·등록할 수 있다
+            logger.info("chat library photo held: family ai consent required")
+            chat_library.photo_judged(group_id, attachment_id, "unsure", None)
+            return
+        # 결과를 판별 상태 표에 적는다(문서함 등록보다 먼저: 문서면 바로 숨김 상태가 된다). 못 적어도 pending 으로 남아 안전하다
+        may_register = chat_library.photo_judged(group_id, attachment_id, status, error)
+        if status != "document":
+            return
+        if not may_register:
+            return  # 업로더가 이미 일반 사진으로 확인한 사진: 문서함에 올리면 타임라인과 문서함에 둘 다 있게 된다(b0-2a 리뷰)
+        with SessionLocal() as db:
+            if not chat_library.attachment_exists(db, group_id, attachment_id):
+                return  # 판별하는 사이 메시지가 지워졌다: 지운 사진이 문서함에 남지 않게(재검사처럼 오래 걸리는 판별 뒤의 경합)
+    if not consent_gate.allowed_now():
+        # 가족 AI 동의가 없다: 외부 읽기·가리기를 하지 않고 등록을 보류한다(판별 상태는 남고 사진은 채팅에 그대로)
+        logger.info("chat library photo held: family ai consent required")
+        return
+    with SessionLocal() as db:
+        photo = service.receive_file(
+            db, group_id, user_id, f"{attachment_id}.jpg", "image/jpeg", data
+        )
+        photo_id = photo.id
+    files.process_file(
+        photo_id, group_id, user_id, data, f"{attachment_id}.jpg",
+        source_attachment_id=attachment_id, keep_photo=forced or settings.photo_classify_siglip,
+    )  # fmt: skip
+    # 단계형(E)이 켜져 있으면 문서로 판정된 사진은 글자가 적어도 문서함에 남긴다: 글자가 적은 문서를 SigLIP2 가 구한 경우(rescue)를 읽기 단계가
+    # 다시 "사진"으로 버리면, 판별 상태는 document 인데 문서함에는 없는 채로 업로더가 일반 사진 확인도 못 하게 된다.
 
 
 def _on_photo(

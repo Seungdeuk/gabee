@@ -12,6 +12,7 @@ from sqlalchemy import update
 from app.features.ai_assistant.knowledge import tools
 from app.features.ai_assistant.knowledge.models import KnowledgeItem
 from app.shared.db import SessionLocal
+from tests.helpers import allow_ai
 
 pytestmark = pytest.mark.usefixtures("client")
 
@@ -130,7 +131,10 @@ def test_sensitive_documents_still_follow_include_sensitive(client, family):
         assert sens in {i["item_id"] for i in shown["items"]}
 
 
-def test_original_chat_photo_id_is_included_only_when_present(client, family):
+def test_original_chat_photo_id_is_included_only_when_present(client, family, monkeypatch):
+    allow_ai(
+        client, family[0], monkeypatch
+    )  # 채팅 첨부 기록은 가족 AI 동의가 켜진 뒤 것만 외부 AI 도구에 보인다
     gid, ids = _seed(client, family)
     with SessionLocal() as db:
         row = next(
@@ -142,7 +146,7 @@ def test_original_chat_photo_id_is_included_only_when_present(client, family):
         db.execute(
             update(KnowledgeItem)
             .where(KnowledgeItem.id == ids["new_a"])
-            .values(source_attachment_id="att0123456789")
+            .values(source_attachment_id="att0123456789", created_at=datetime.now(UTC))
         )
         db.commit()
         linked = next(

@@ -7,6 +7,7 @@ from datetime import UTC, date, datetime, timedelta, timezone
 
 from sqlalchemy.orm import Session
 
+from app.shared.ai_usage import AiGroupSetting
 from app.shared.config import settings
 
 from .. import family_names, reminders
@@ -194,7 +195,8 @@ SHARE_TOOL_SPEC = {
 
 
 def list_name_checks(db: Session, group_id: str) -> dict:
-    checks = service.name_checks(db, group_id)
+    # 제목·앞뒤 글이 외부 AI 에 보이므로 동의 전 채팅 문서는 뺀다(재노출 기준과 같다)
+    checks = service.name_checks(db, group_id, withhold=lambda item: _withheld(db, group_id, item))
     return {
         "checks": checks,
         "note": "각 건을 '<제목>에 읽은 이름이 <candidate> 님과 같은 사람인가요?' 처럼 사용자에게 물어보세요. 글자를 모르니 이름을 지어내지 마세요."
@@ -295,6 +297,28 @@ def _upload_info(item, names: dict[str, str]) -> dict:
     }
 
 
+def _chat_verified_since(db: Session, group_id: str) -> datetime:
+    """외부 AI(@가비·메인 AI)에 채팅 첨부 기록을 보여도 되는 기준 시각. 가족 AI 동의가 지금 켜져 있으면 그 동의가 마지막으로 바뀐 시각이다:
+    이 시각 이후에 만든 채팅 문서는 동의가 켜진 채로 처리돼 Claude 가 가렸고(동의가 없으면 등록 자체를 하지 않는다), 그 이전 채팅 문서는 동의 없이
+    로컬 규칙으로만 가려졌을 수 있어 이름·주소가 남아 있다(보호 여부를 기록에 따로 남기지 않아 알 수 없으므로 뺀다). 동의가 꺼져 있으면 모든 채팅 문서를 뺀다.
+    채팅 첨부가 아닌 기록(메인 AI 직접 업로드)은 이 기준과 무관하게 항상 보인다(ADR 0023)."""
+    row = db.get(AiGroupSetting, group_id)
+    if row is None or not row.enabled:
+        return datetime.max.replace(tzinfo=UTC)
+    return _utc(row.updated_at)
+
+
+def _utc(value: datetime) -> datetime:
+    return value if value.tzinfo else value.replace(tzinfo=UTC)
+
+
+def _withheld(db: Session, group_id: str, item) -> bool:
+    """이 기록이 외부 AI 에 보이면 안 되는 채팅 문서인가(`_chat_verified_since` 참고)."""
+    return item.source_attachment_id is not None and _utc(item.created_at) < _chat_verified_since(
+        db, group_id
+    )
+
+
 def search_knowledge(
     db: Session,
     group_id: str,
@@ -316,6 +340,7 @@ def search_knowledge(
     글 속 `[가족:<id>]` 는 이 그룹의 현재 이름으로 되돌려서 준다."""
     if item_id and str(item_id).strip():
         return _search_in_item(db, group_id, str(item_id).strip(), query, top_k, include_sensitive)
+    verified_since = _chat_verified_since(db, group_id)
     members = family_names.load_members(db, group_id)
     names = family_names.shown_names(members)
     wanted: list[str] | None = None
@@ -362,6 +387,7 @@ def search_knowledge(
         created_from=up_start,
         created_to=up_end,
         created_by=uploaders,
+        chat_verified_since=verified_since,
     )
     hits = _one_per_file(hits)
     left = EXTRA_CHARS
@@ -405,6 +431,7 @@ def _search_in_item(
         query,
         top_k=min(max(top_k, 1), IN_ITEM_MAX_TOP_K),
         include_sensitive=include_sensitive,
+        chat_verified_since=_chat_verified_since(db, group_id),
     )
     if not hits:
         return {
@@ -451,6 +478,10 @@ def _one_per_file(hits: list) -> list:
 
 def get_item(db: Session, group_id: str, item_id: str, include_sensitive: bool = True) -> dict:
     item = service.get_item(db, group_id, item_id)
+    if _withheld(db, group_id, item):
+        return {
+            "error": "이 기록은 가족 AI 사용에 동의하기 전에 올라와 AI 가 읽을 수 없어요. 앱의 기록 화면에서 직접 확인해 주세요."
+        }
     if item.sensitivity == "sensitive" and not include_sensitive:
         # 존재는 알리되 내용은 주지 않는다(LLM 이 "없다"고 오해하지 않게)
         return {
@@ -501,6 +532,10 @@ def list_items(
     )
     if not include_sensitive:
         items = [i for i in items if i.sensitivity != "sensitive"]
+    verified_since = _chat_verified_since(db, group_id)
+    items = [
+        i for i in items if i.source_attachment_id is None or _utc(i.created_at) >= verified_since
+    ]
     out: dict = {
         "items": [
             {

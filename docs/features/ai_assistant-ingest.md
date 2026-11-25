@@ -148,3 +148,12 @@ Excel ─▶ converters.xlsx_to_markdown (금액 쉼표·날짜·병합 칸 반�
 - 쪽·슬라이드별 점검으로 빠진 쪽 찾기 → 빠진 쪽만 OCR
 - OCR 후처리(숫자 오타 교정 "6O,OOO" → "60,000")는 자동 분류의 폼 채우기 단계에서
 - 실제 한국 문서(가정통신문 PDF, 관리비 엑셀 등)로 형식별 3~5개 품질 측정
+
+## 가족 채팅방 자동 처리의 외부 AI 동의 통제 (2026-11-26, ADR 0024)
+- 채팅 문서·사진의 문서함 등록은 가족 채팅 처리 범위(`app/shared/llm/consent_gate.family_chat`)에서 돈다. 범위 안의 Claude·Jev 호출은 보내기 직전마다 가족 AI 동의를 다시 읽고, 없으면 보내지 않는다(`ConsentRequired`).
+- 동의 OFF: 등록 보류·외부 호출 0회(문서로 판별된 사진은 `unsure` 로 남아 업로더 확인·동의 뒤 재검사가 가능). 처리 중 철회: 이후 호출 차단, 로컬 대신 처리 결과는 등록하지 않음(등록 직전에도 다시 확인). 같은 값으로 동의를 다시 저장해도 재노출 기준 시각은 그대로이고, 이름 확인 도구도 같은 기준으로 거른다. 동의 조회 실패: 차단. 스레드 풀 작업은 `consent_gate.carry` 로 범위를 넘긴다.
+- 수동 "문서로 저장": 동의 없으면 403 `ai_not_enabled`, `INGEST_LLM_MASK=false` 면 503 `masking_unavailable`(둘 다 판별 상태 불변).
+- 재노출 차단: 동의 시각 이전 채팅 기록은 @가비·메인 AI 도구에서 제외(앱 문서함 화면은 그대로).
+- 메인 AI 직접 업로드·@가비·메인 채팅은 범위 밖이라 기존 정책 그대로.
+- 시험: `ai_assistant/tests/test_chat_external_consent_minimal.py`, `test_chat_masking_required_minimal.py`, `knowledge/tests/test_chat_origin_exposure.py`. 기존 등록 시험은 폴더 conftest 에서 "가리기 켜짐·동의 켜진 가족"을 기본 전제로 둔다.
+- 보장하지 않는 것: 과거에 저장된 기록(특히 MASK OFF 기간)의 안전성. 확인 절차는 ADR 0024.

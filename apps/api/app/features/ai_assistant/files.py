@@ -21,6 +21,7 @@ from app.shared import chat_library
 from app.shared.config import settings
 from app.shared.db import SessionLocal
 from app.shared.errors import ApiError
+from app.shared.llm import consent_gate
 
 from . import family_names, reminders
 from . import repository as repo
@@ -155,6 +156,12 @@ def _process_once(
             jev=processors.jev,
             family=family,
         )
+        if source_attachment_id and (consent_gate.blocked() or not consent_gate.allowed_now()):
+            # 가족 채팅 목적인데 처리 도중 가족 AI 동의가 없어 외부 호출이 막혔거나, 마지막 호출이 나간 뒤 철회됐다(등록 직전에 다시 확인):
+            # 그 단계를 로컬 규칙으로 대신한 결과(이름·주소가 남을 수 있다)나 철회 뒤의 결과는 등록하지 않고 다시 시도하지도 않는다(채팅 첨부는 그대로).
+            logger.info("chat document held: family ai consent required id=%s", photo_id)
+            _drop_chat_upload(group_id, photo_id, data)
+            return "failed", False
         if result.quality.status == "failed":
             retry = result.quality.error == "llm_unavailable"
             if source_attachment_id and not retry:
