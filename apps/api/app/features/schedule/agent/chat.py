@@ -17,6 +17,7 @@ from sqlalchemy.orm import Session
 # 이 함수의 위치나 이름을 바꾸면 여기도 고쳐야 한다.
 from app.features.ai_assistant.ingest.masking import mask_text
 from app.shared import ai_guard
+from app.shared.config import settings
 from app.shared.errors import ApiError, bad_request
 from app.shared.llm import client as llm
 from app.shared.llm import eval_hook
@@ -277,7 +278,7 @@ def converse(
                 prompt,
                 prompts.CHAT_SCHEMA,
                 system=prompts.CHAT_SYSTEM,
-                max_tokens=1600,
+                max_tokens=settings.agent_max_output_tokens,  # 1600 에서 잘려 503 llm_failed·반복 호출이 났다(2026-11-25 최종 평가)
                 model=prompts.CHAT_MODEL,
             )
             return clean_result(
