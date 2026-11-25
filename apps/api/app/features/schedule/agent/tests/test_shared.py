@@ -32,13 +32,21 @@ def _make(client, family):
 
 def test_family_channel_reads_only_shared_events(client, family):
     group_id, a_id, b_id = _make(client, family)
+    room = {
+        a_id,
+        b_id,
+    }  # 가족방 구성원(2026-11-25: 가족방은 구성원 모두가 볼 수 있는 일정만 읽는다)
     with SessionLocal() as db:
         personal = reader.read(db, group_id, "personal", user_id=a_id).events
-        in_family = reader.read(db, group_id, "family", user_id=a_id).events
-        receiver = reader.read(db, group_id, "family", user_id=b_id).events
+        in_family = reader.read(db, group_id, "family", user_id=a_id, room_member_ids=room).events
+        receiver = reader.read(db, group_id, "family", user_id=b_id, room_member_ids=room).events
+        unknown_room = reader.read(db, group_id, "family", user_id=a_id).events
     assert sorted(e.title for e in personal) == ["같이 일정", "혼자 일정"]
     assert [e.title for e in in_family] == ["같이 일정"]  # 나 혼자 일정은 가족 앞에 나오지 않는다
     assert [e.title for e in receiver] == ["같이 일정"]  # 공유받은 복사본도 공동
+    assert (
+        unknown_room == []
+    )  # 방 구성원을 모르면 가족방에서는 아무 일정도 읽지 않는다(fail-closed)
 
 
 def test_prompt_line_and_card_brief_mark_shared(client, family):

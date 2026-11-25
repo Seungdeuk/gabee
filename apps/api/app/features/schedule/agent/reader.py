@@ -48,8 +48,13 @@ def read(
     channel: Channel,
     now: datetime | None = None,
     user_id: str | None = None,
+    room_member_ids: set[str] | None = None,
 ) -> AgentData:
-    """user_id 를 주면 그 사람의 일정(과 주인이 없던 옛 일정)만 읽는다. 에이전트는 항상 호출한 사람 몫만 본다."""
+    """user_id 를 주면 그 사람의 일정(과 주인이 없던 옛 일정)만 읽는다. 에이전트는 항상 호출한 사람 몫만 본다.
+
+    가족방(channel=family)에서는 방 구성원 모두가 원래 볼 수 있는 공동 일정만 남긴다: 나와 이 일정으로 얽힌 사람(`shared_ids`)을 합쳐
+    `room_member_ids` 를 모두 덮어야 한다. 일부 구성원에게만 공유한 일정은 방 답에 실리면 나머지 구성원에게 노출되므로 뺀다.
+    `room_member_ids` 를 주지 않으면(구성원을 모르면) 가족방에서는 아무 일정도 남기지 않는다(fail-closed)."""
     now = now or datetime.now(UTC)
     sources = allowed_sources(channel)
     data = AgentData(sources=sources)
@@ -62,8 +67,14 @@ def read(
             if aware(e.starts_at) <= until
         ]
         events = schedule_service.with_sharing(db, user_id or "", events)
-        # 가족 채팅에서는 가족과 공유된(공동) 일정만 읽는다. 나 혼자 일정이 가족 앞에 나오지 않게.
-        data.events = [e for e in events if e.shared] if channel == "family" else events
+        # 가족 채팅에서는 방 구성원 모두와 공유된 공동 일정만 읽는다. 나 혼자 일정·일부에게만 공유한 일정이 가족 앞에 나오지 않게.
+        if channel == "family":
+            room = room_member_ids or set()
+            data.events = [
+                e for e in events if e.shared and room and room <= {user_id, *e.shared_ids}
+            ]
+        else:
+            data.events = events
     return data
 
 
