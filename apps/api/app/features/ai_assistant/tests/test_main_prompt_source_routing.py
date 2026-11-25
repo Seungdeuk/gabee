@@ -29,6 +29,13 @@ ROOM_DEFAULT = (
 ROOM_TAB = (
     "가족 채팅방에서도 사용자가 일정 탭의 일정(공동 일정 포함)을 말하면 ask_schedule 로 확인하세요."
 )
+ROOM_TODO = "가족 채팅방에서 한 할 일 질문은 일정 탭이 아니라 ask_family_chat 으로 물어봅니다."
+KEEP_CHAT_SEARCH = "대화에서 이야기했거나 정한 내용(목록 포함)을 찾는 질문은 등록된 공동 할 일 조회로 바꾸지 말고 대화를 찾는 질문 그대로 넘기세요."
+PRESERVE = "담당 에이전트에게 넘기는 질문에는 사용자가 찾는 대상·찾는 범위·기간·정보 출처를 바꾸거나 빼지 말고 그대로 담으세요."
+# 2026-11-25 통합 평가 chat-02 r0 에서 대화 속 목록 질문을 공동 할 일로 좁힌 것으로 보인 옛 문장(다시 들어오면 안 된다)
+OLD_ROOM_LIST = (
+    "목록을 말하지 않은 할 일·목록 질문은 가족 공동 목록(ask_family_chat)을 가리킨 것으로 봅니다"
+)
 COMPOUND = "질문이 두 영역을 직접 묻는 복합 요청일 때만 필요한 담당을 각각 물어보세요."
 OLD_BOTH = "두 탭에 걸친 질문이면 둘 다 물어보세요."
 TODO_START = "할 일 조회는 어느 목록인지에 따라 나눠 부르세요."
@@ -62,6 +69,17 @@ def test_the_source_rule_is_in_the_note_and_the_old_double_lookup_sentence_is_na
     for part in (SOURCE_ONE, TAB_ONLY, CHAT_ONLY, CANDIDATES, ROOM_DEFAULT, COMPOUND):
         assert part in note, part
     assert OLD_BOTH not in note
+
+
+def test_the_room_cue_no_longer_turns_a_conversation_list_into_registered_todos():
+    """방 단서는 '할 일 질문은 일정 탭이 아니라 소통 Agent' 까지만 정하고, 대화에서 정한 내용(목록 포함)을 찾는 질문은 대화 검색 그대로 넘긴다.
+    일반 목록이라는 이유로 등록된 공동 할 일 목록으로 재해석하던 옛 문장은 없다. 질문 의미 보존 규칙이 함께 있다."""
+    note = _note()
+    assert OLD_ROOM_LIST not in note
+    for part in (ROOM_TODO, KEEP_CHAT_SEARCH, PRESERVE):
+        assert part in note, part
+    assert note.index(ROOM_DEFAULT) < note.index(ROOM_TODO) < note.index(KEEP_CHAT_SEARCH)
+    assert "장보기" not in _added()  # 특정 낱말로 하드코딩하지 않는다
 
 
 def test_the_compound03_todo_rule_is_kept_as_the_exception_for_an_unclear_source():

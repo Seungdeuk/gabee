@@ -186,3 +186,65 @@ def test_an_extra_call_is_measured_separately_from_official_task_success(dev):
         tools_a
     )  # 정밀도는 내려간다
     assert b.records[0].llm_calls > a.records[0].llm_calls  # 호출 수(비용)는 늘어난다
+
+
+# ---------- 질문 의미 보존: 담당을 맞게 골라도 질문을 바꿔 넘기면 하위 Agent 가 엉뚱한 도구를 쓴다 ----------
+CHAT_LIST = "n-src-room-chat-list"
+CHAT_LIST_Q = "@가비 대화에서 정한 목록이 뭐였지?"
+
+
+def _chat_list_case():
+    return new_case(
+        CHAT_LIST,
+        agent_path="family_chat",
+        question=CHAT_LIST_Q,
+        setup=ROOM,
+        expect={
+            # 소통 Agent 경로 사례는 하위 Agent 의 도구로 판정한다(공식 chat-02 와 같은 방식: 대화 검색이 필수)
+            "tools": {"required": ["search_messages"], "forbidden": []},
+            "outcome": {"can_answer": True},
+            "security": {"forbidden_tools": [], "forbidden_strings": [], "forbidden_writes": []},
+        },
+    )
+
+
+def _chat_list_script(handoff, sub_tool, sub_args):
+    return {
+        CHAT_LIST: {
+            "main": [_ask("ask_family_chat", handoff), say("확인했어요.")],
+            "family_chat": [call(sub_tool, sub_args), say("대화에서 정한 목록을 찾았어요.")],
+        }
+    }
+
+
+def test_a_preserved_question_lets_the_chat_agent_search_the_conversation():
+    """메인이 '대화에서 정한 목록' 이라는 대상·출처를 그대로 넘기면 소통 Agent 가 대화를 검색하고 통과한다."""
+    report = run(
+        [_chat_list_case()],
+        scripts=_chat_list_script(
+            "대화에서 정한 목록을 찾아 줘", "search_messages", {"query": "목록"}
+        ),
+    )
+    (rec,) = report.records
+    assert rec.passed is True, rec
+
+
+def test_rewriting_the_question_into_registered_todos_makes_the_sub_agent_miss_the_search():
+    """정책대로 소통 Agent 를 골랐어도 질문을 '공동 할 일 목록' 으로 바꿔 넘기면 하위 Agent 가 list_todos 만 써 필수 대화 검색이 빠진다(통합 평가 chat-02 r0 의 모양).
+    가짜 모델이라 실제 모델이 질문을 바꾸는지는 알 수 없고, 하네스가 이 실패를 잡는지만 본다."""
+    report = run(
+        [_chat_list_case()],
+        scripts=_chat_list_script("가족 공동 할 일 목록을 알려 줘", "list_todos", {}),
+    )
+    (rec,) = report.records
+    assert rec.passed is not True and "missing_tool" in rec.failure_types
+
+
+def test_the_official_chat02_script_hands_off_the_question_without_changing_its_target(dev):
+    """공식 chat-02 정상 대본: 메인이 넘기는 질문이 사용자 질문의 대상(목록)을 유지하고 공동 할 일로 바꾸지 않으며, 소통 Agent 는 대화를 검색한다."""
+    script = dev_scripts.scripts_for("dev")["s-dev-05-chat-02"]
+    handoff = script["main"][0].tools[0].args["question"]
+    assert "목록" in handoff and "공동 할 일" not in handoff
+    assert script["family_chat"][0].tools[0].name == "search_messages"
+    report = run([dev["s-dev-05-chat-02"]], scripts={"s-dev-05-chat-02": script})
+    assert report.records[0].passed is True
