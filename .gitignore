@@ -52,3 +52,6 @@ apps/api/env.yaml
 apps/api/evals/agent_eval/results/
 apps/api/evals/agent_eval/test_runs.json.lock
 apps/api/evals/agent_eval/.test_runs-*.tmp
+
+# 검색 품질 평가의 개별 실행 결과(기준선 요약은 docs/features/agent-eval-search-quality.md 에 기록)
+apps/api/evals/search_quality/results/
