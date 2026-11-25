@@ -155,24 +155,28 @@ def _confirmation(response: AgentResponse) -> dict:
 
 
 PENDING_TTL_SECONDS = 600  # 되묻는 초안을 기억하는 시간
-_pending: dict[tuple[str, str], tuple[float, Draft]] = {}
+# 키에 채널(personal·family)을 넣는다(2026-11-25 P0): 개인 채팅에서 되묻던 초안(제목·받는 사람)이 같은 사람의 가족방 요청으로 이어져
+# 방에서 등록·게시되지 않게 한다. 초안은 그것을 만든 채널 안에서만 이어진다.
+_pending: dict[tuple[str, str, str], tuple[float, Draft]] = {}
 _pending_lock = threading.Lock()
 
 
-def _take_draft(group_id: str, user_id: str) -> Draft | None:
-    """이 사용자가 직전에 되물음을 받은 초안이 있으면(10분 안) 꺼낸다. 프로세스 메모리라 재시작하면 사라진다(그러면 메인이 합쳐 준 문장으로 처리한다)."""
+def _take_draft(group_id: str, user_id: str, channel: str = "personal") -> Draft | None:
+    """이 사용자가 이 채널에서 직전에 되물음을 받은 초안이 있으면(10분 안) 꺼낸다. 프로세스 메모리라 재시작하면 사라진다(그러면 메인이 합쳐 준 문장으로 처리한다)."""
     now = time.monotonic()
     with _pending_lock:
         for key in [k for k, (until, _) in _pending.items() if until <= now]:
             del _pending[key]
-        item = _pending.pop((group_id, user_id), None)
+        item = _pending.pop((group_id, user_id, channel), None)
     return item[1] if item else None
 
 
-def _keep_draft(group_id: str, user_id: str, response: AgentResponse) -> None:
+def _keep_draft(
+    group_id: str, user_id: str, response: AgentResponse, channel: str = "personal"
+) -> None:
     if response.draft is not None:
         with _pending_lock:
-            _pending[(group_id, user_id)] = (
+            _pending[(group_id, user_id, channel)] = (
                 time.monotonic() + PENDING_TTL_SECONDS,
                 response.draft,
             )
@@ -313,10 +317,11 @@ def ask(
     )  # 가족방 @가비: 공동 일정만 다루고, 등록은 방의 다른 구성원에게 공유한다
     private = wants_private(question)
     text = with_whole_family(question.strip(), db, group_id, user.id)
+    channel = "family" if room else "personal"
     request = AgentRequest(
         text=text[:2000],
-        channel="family" if room else "personal",
-        draft=_take_draft(group_id, user.id),
+        channel=channel,
+        draft=_take_draft(group_id, user.id, channel),
     )
     response = handler.handle(
         db,
@@ -328,5 +333,5 @@ def ask(
         guarded=guarded,
         private=private,
     )
-    _keep_draft(group_id, user.id, response)
+    _keep_draft(group_id, user.id, response, channel)
     return _reply(response, room, private)

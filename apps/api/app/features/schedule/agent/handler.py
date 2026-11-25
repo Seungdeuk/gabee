@@ -190,8 +190,16 @@ def handle(
 ) -> AgentResponse:
     """직전에 수정·삭제 대상을 되물었다면(서버 기억이나 앱이 돌려준 값) 사용자의 답을 먼저 읽고, 답으로 읽을 수 없으면 새 요청으로 처리한다."""
     ensure_group_member(db, user_id, group_id)  # 라우터 밖에서 service 를 부르므로 직접 확인한다
-    asked = choice_mod.take(group_id, user_id) or request.choice
+    # 되묻기는 만든 채널 안에서만 잇는다. 앱이 돌려보낸 선택(request.choice)은 개인 채팅에서만 받는다(가족방은 선택 카드를 보여 주지 않고,
+    # 앱이 보낸 id 는 가족방 권한으로 거른 목록에서 나온 것인지 알 수 없다)
+    asked = choice_mod.take(group_id, user_id, request.channel) or (
+        request.choice if request.channel == "personal" else None
+    )
     if asked is not None:
+        # 되물은 뒤 답하기 전에 공유·구성원·받는 사람이 바뀌었을 수 있다: 가족방은 지금 구성원으로 권한을 다시 본다
+        room_ids = (
+            {m.id for m in members_mod.load(db, group_id)} if request.channel == "family" else None
+        )
         if asked.kind == "register":  # 이미 있는 일정을 또 등록할지 되물은 답
             answer = register.resolve_again(
                 db, user_id, group_id, asked, request.text, members_mod.load(db, group_id)
@@ -205,10 +213,11 @@ def handle(
                 request.text,
                 register.today(),
                 members_mod.load(db, group_id),
+                room_ids,
             )
         else:
             answer = modify.resolve_choice(
-                db, user_id, group_id, asked, request.text, register.today()
+                db, user_id, group_id, asked, request.text, register.today(), room_ids
             )
         if answer is not None:
             return answer
@@ -217,7 +226,7 @@ def handle(
     extra = _also_delete.get()
     if extra is not None:
         response = _merge_also_delete(response, extra)
-    choice_mod.keep(group_id, user_id, response)
+    choice_mod.keep(group_id, user_id, response, request.channel)
     return response
 
 
@@ -232,16 +241,25 @@ def _handle(
 ) -> AgentResponse:
     now = datetime.now(UTC)
     local_now = now.astimezone(reader.local_tz())
-    data = reader.read(db, group_id, request.channel, now, user_id)  # 내 일정만, 과거·미래 1년
+    members = members_mod.load(db, group_id)
+    # 가족방(channel=family)의 답은 방에 저장되어 구성원 모두가 본다: 일정·부탁은 구성원 모두가 원래 볼 수 있는 것만 모델에 준다(서버에서 거른다)
+    room_ids = {m.id for m in members} if request.channel == "family" else None
+    data = reader.read(
+        db, group_id, request.channel, now, user_id, room_member_ids=room_ids
+    )  # 내 일정만, 과거·미래 1년
     period = period_mod.extract_for_prompt(
         request.text, local_now.date()
     )  # 목록을 거를 기간(없으면 None)
     shown, omitted = reader.select_for_prompt(data.events, now, period)
     scope = f"문장에서 읽은 기간 {period.widened().label()}" if period else None
-    members = members_mod.load(db, group_id)
-    # 가족방(channel=family)의 답은 방에 저장되므로 부탁의 받는 분·수락 현황은 모델에게 주지 않는다
+    # 가족방에서는 부탁의 받는 분·수락 현황도 모델에게 주지 않는다(detail=False)
     request_view = request_flow.load(
-        db, group_id, user_id, local_now.date(), detail=request.channel != "family"
+        db,
+        group_id,
+        user_id,
+        local_now.date(),
+        detail=request.channel != "family",
+        room_member_ids=room_ids,
     )
     habit_view = habits.load(db, user_id, group_id, request.channel)
     result = _ask(
