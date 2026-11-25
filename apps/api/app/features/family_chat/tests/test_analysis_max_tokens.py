@@ -1,4 +1,4 @@
-"""대화 분석 호출의 출력 상한 4096(T35 chat-03). 상한만 바뀌고 `complete_json` 의 응답 처리·검증, 타임아웃, 다른 Agent 의 상한은 그대로인지 본다.
+"""대화 분석 호출의 출력 상한(T35 chat-03: 4096 → 2026-11-25 공통 설정 `agent_max_output_tokens` 10000). 상한만 바뀌고 `complete_json` 의 응답 처리·검증, 타임아웃, 다른 Agent 의 상한은 그대로인지 본다.
 
 배경: 분석은 thinking 과 6개 항목 JSON 이 같은 출력 예산을 써서 3000 에 닿으면 잘린 JSON 을 쓸 수 없어 503 이 났다. 실제 Anthropic 은 부르지 않는다.
 """
@@ -59,11 +59,13 @@ def sent(monkeypatch):
     return s
 
 
-def test_the_analysis_cap_is_4096_and_every_other_limit_is_unchanged():
-    assert ai_service.ANALYSIS_MAX_TOKENS == 4096
+def test_the_analysis_cap_is_the_shared_setting_and_the_out_of_scope_limits_are_unchanged():
+    """2026-11-25: 대화 분석·소통·메인 Agent 상한은 공통 설정(기본 10000)이고, 일반 상한·`run_agent` 기본값·타임아웃은 그대로다."""
+    assert Settings().agent_max_output_tokens == 10000
+    assert not hasattr(ai_service, "ANALYSIS_MAX_TOKENS")  # 값이 한 곳(설정)에만 있다
+    assert not hasattr(family_agent, "AGENT_MAX_TOKENS")
+    assert not hasattr(rag_chat, "CHAT_MAX_TOKENS") and not hasattr(rag_chat, "WEB_MAX_TOKENS")
     assert Settings().anthropic_max_tokens == 2048  # 일반 호출 기본 상한
-    assert family_agent.AGENT_MAX_TOKENS == 2048  # 소통 Agent
-    assert rag_chat.CHAT_MAX_TOKENS == 2048  # 메인
     assert (
         inspect.signature(llm_agent.run_agent).parameters["max_tokens"].default == 1024
     )  # 정산 등
@@ -73,12 +75,14 @@ def test_the_analysis_cap_is_4096_and_every_other_limit_is_unchanged():
 def test_the_cap_constant_is_used_only_by_the_analysis_call():
     """공용 분석 호출자(UI 분석 엔드포인트·소통 Agent 도구·일정 제안)는 모두 `ai_service.analysis` 하나를 거친다."""
     source = Path(ai_service.__file__).read_text("utf-8")
-    assert source.count("ANALYSIS_MAX_TOKENS") == 2  # 정의 한 곳, 분석 호출 한 곳
-    assert "max_tokens=ANALYSIS_MAX_TOKENS" in source
+    assert source.count("max_tokens=settings.agent_max_output_tokens") == 1  # 분석 호출 한 곳만
+    assert "ANALYSIS_MAX_TOKENS =" not in source
     assert "max_tokens=400" in source and "max_tokens=500" in source  # 답장·주제는 그대로
 
 
-def test_the_analysis_endpoint_sends_4096_with_the_default_timeout(client, family, sent):
+def test_the_analysis_endpoint_sends_the_shared_limit_with_the_default_timeout(
+    client, family, sent
+):
     a, b, _ = family
     assert client.put(f"{AI}/settings", json={"enabled": True}, headers=a).status_code == 200
     for i in range(3):
@@ -93,7 +97,7 @@ def test_the_analysis_endpoint_sends_4096_with_the_default_timeout(client, famil
     r = client.post(f"{AI}/analysis", json={}, headers=a)
     assert r.status_code == 200, r.text
     assert len(sent) == 1
-    assert sent[0]["body"]["max_tokens"] == 4096
+    assert sent[0]["body"]["max_tokens"] == settings.agent_max_output_tokens == 10000
     assert sent[0]["body"]["output_config"]["effort"] == settings.ai_effort  # effort 는 그대로
     assert sent[0]["timeout"] == 40.0  # 타임아웃은 그대로(`complete_json` 기본값)
 
@@ -102,27 +106,27 @@ def test_the_analysis_endpoint_sends_4096_with_the_default_timeout(client, famil
     ("reply", "message"),
     [
         (
-            _payload('{"summary": "잘림', "max_tokens", 4096),
+            _payload('{"summary": "잘림', "max_tokens", 10000),
             "max_tokens",
-        ),  # 4096 에서도 잘린 JSON 은 쓰지 않는다
+        ),  # 10000 에서도 잘린 JSON 은 쓰지 않는다
         (_payload('{"a": 1}', "refusal"), "refusal"),
         (_payload("JSON 아님"), "JSON 이 아니에요"),
         (_payload("[1, 2]"), "형식이 올바르지 않아요"),
     ],
 )
-def test_complete_json_still_rejects_cut_off_refused_and_invalid_replies_at_4096(
+def test_complete_json_still_rejects_cut_off_refused_and_invalid_replies_at_the_shared_limit(
     sent, reply, message
 ):
     sent.reply = reply
     with pytest.raises(llm.LLMUnavailable) as e:
-        llm.complete_json("p", {"type": "object"}, max_tokens=ai_service.ANALYSIS_MAX_TOKENS)
+        llm.complete_json("p", {"type": "object"}, max_tokens=settings.agent_max_output_tokens)
     assert message in str(e.value)
-    assert sent[0]["body"]["max_tokens"] == 4096 and len(sent) == 1  # 재시도 없이 한 번만 부른다
+    assert sent[0]["body"]["max_tokens"] == 10000 and len(sent) == 1  # 재시도 없이 한 번만 부른다
 
 
-def test_a_complete_reply_at_4096_is_parsed_as_before(sent):
+def test_a_complete_reply_at_the_shared_limit_is_parsed_as_before(sent):
     sent.reply = _payload('{"summary": "x"}', "end_turn", 3500)
-    res = llm.complete_json("p", {"type": "object"}, max_tokens=ai_service.ANALYSIS_MAX_TOKENS)
+    res = llm.complete_json("p", {"type": "object"}, max_tokens=settings.agent_max_output_tokens)
     assert res.data == {"summary": "x"} and res.output_tokens == 3500
 
 
@@ -134,7 +138,7 @@ def test_a_cut_off_analysis_still_ends_as_a_503_llm_failed_and_counts_as_a_call(
     enable_ai(group["id"])
     for i in range(3):
         client.post("/family-chat/messages", json={"text": f"메시지 {i}"}, headers=a)
-    sent.reply = _payload('{"summary": "잘림', "max_tokens", 4096)
+    sent.reply = _payload('{"summary": "잘림', "max_tokens", 10000)
     r = client.post(f"{AI}/analysis", json={}, headers=a)
     assert r.status_code == 503 and r.json()["code"] == "llm_failed"
-    assert len(sent) == 1 and sent[0]["body"]["max_tokens"] == 4096
+    assert len(sent) == 1 and sent[0]["body"]["max_tokens"] == 10000

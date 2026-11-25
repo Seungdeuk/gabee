@@ -447,8 +447,9 @@ def test_plain_chat_leaves_room_for_thinking_and_answer(client, seeded):
     with SessionLocal() as db:
         r = rag_chat.ask(db, group["id"], "안녕", post=fake_post)
     assert r.answer == "안녕하세요."
-    assert bodies[0]["max_tokens"] == rag_chat.CHAT_MAX_TOKENS == 2048
-    assert rag_chat.WEB_MAX_TOKENS == 4096
+    assert (
+        bodies[0]["max_tokens"] == settings.agent_max_output_tokens == 10000
+    )  # 2026-11-25: 공통 설정(기존 2048)
 
 
 def test_failed_ai_call_still_says_the_connection_is_off(client, seeded):
@@ -534,11 +535,13 @@ def test_search_failure_does_not_block_the_question(client, seeded, monkeypatch)
         assert rag_chat._documents_likely(db, group["id"], "수도요금") is False
 
 
-def test_web_search_keeps_the_free_choice_and_its_own_token_limit(client, seeded, monkeypatch):
+def test_web_search_keeps_the_free_choice_and_uses_the_shared_token_limit(
+    client, seeded, monkeypatch
+):
     _, _, group = seeded
     bodies = _bodies_for(group["id"], "수도요금", monkeypatch, score=0.99, web=True)
     assert "tool_choice" not in bodies[0]
-    assert bodies[0]["max_tokens"] == rag_chat.WEB_MAX_TOKENS == 4096
+    assert bodies[0]["max_tokens"] == settings.agent_max_output_tokens == 10000  # 기존 웹 4096
     assert any(t.get("name") == "web_search" for t in bodies[0]["tools"])
 
 
