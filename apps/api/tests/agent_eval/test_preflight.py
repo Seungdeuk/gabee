@@ -342,6 +342,26 @@ def verify_body(**over):
     return base
 
 
+def agent_body(path, **over):
+    """확인된 Agent 호출 경로의 본문 모양(실제 시스템 프롬프트 머리말·고정 문구). path: main|family_chat|billing|schedule|analysis."""
+    from app.features.ai_assistant.knowledge import rag_chat
+    from app.features.schedule.agent import prompts as schedule_prompts
+
+    if path == "analysis":
+        return analysis_body(**over)
+    systems = {
+        "main": rag_chat.SYSTEM_PROMPT + "\n오늘은 …",
+        "family_chat": preflight.FAMILY_CHAT_SYSTEM_PREFIX + " …",
+        "billing": preflight.BILLING_SYSTEM_PREFIX + " 사용자 이름은 …",
+        "schedule": schedule_prompts.CHAT_SYSTEM,
+    }
+    base = body("질문", system=systems[path], max_tokens=10000)
+    if path == "schedule":
+        base["output_config"] = {"format": {"type": "json_schema", "schema": {}}}
+    base.update(over)
+    return base
+
+
 def test_the_pinned_agent_ceiling_equals_the_apps_default_setting():
     """앱의 Agent 상한 기본값이 바뀌면 이 시험이 실패해 사전 점검 천장을 사람이 다시 정하게 한다(조용히 커지지 않는다)."""
     from app.shared.config import Settings
@@ -350,63 +370,116 @@ def test_the_pinned_agent_ceiling_equals_the_apps_default_setting():
     assert settings.anthropic_max_tokens == 2048  # 나머지 호출의 기본 상한은 그대로다
 
 
-def test_check_4_allows_agent_path_calls_up_to_the_ceiling_but_no_other_call_above_the_default(
+def test_the_classifier_prefixes_match_the_real_system_prompts():
+    """분류에 쓰는 고정 머리말이 실제 정산·소통·메인·일정 시스템 프롬프트와 어긋나면 이 시험이 실패한다."""
+    from app.features.billing import agent as billing_agent
+    from app.features.family_chat import agent as family_agent
+
+    assert billing_agent.system_prompt("지민").startswith(preflight.BILLING_SYSTEM_PREFIX)
+    assert family_agent.system_prompt().startswith(preflight.FAMILY_CHAT_SYSTEM_PREFIX)
+    assert [preflight.agent_path_of(agent_body(p)) for p in preflight.AGENT_PATHS] == list(
+        preflight.AGENT_PATHS
+    )
+
+
+def test_main_system_prompts_built_by_the_app_are_classified_as_main():
+    from app.features.ai_assistant.knowledge import rag_chat
+
+    for kwargs in ({}, {"with_agents": True}, {"with_agents": True, "with_web": True}):
+        system = rag_chat.system_prompt(**kwargs)
+        assert preflight.agent_path_of(body(system=system)) == "main"
+
+
+def test_check_4_allows_the_six_agent_paths_up_to_the_ceiling_and_keeps_verify_at_the_default(
     tmp_path, monkeypatch
 ):
-    stub_run(monkeypatch, [body(), analysis_body()])
-    assert pass_check(tmp_path).status == PASS
+    for path in preflight.AGENT_PATHS:
+        stub_run(monkeypatch, [body(), agent_body(path)])
+        assert pass_check(tmp_path).status == PASS, path
     stub_run(monkeypatch, [body(), analysis_body(max_tokens=3000)])  # 예전 상한도 그대로 통과한다
     assert pass_check(tmp_path).status == PASS
-    stub_run(monkeypatch, [body(max_tokens=10000), verify_body()])  # 정산 Agent 10000, 검증 2048
+    stub_run(monkeypatch, [agent_body("billing"), verify_body()])  # 정산 10000, 검증 2048
     assert pass_check(tmp_path).status == PASS
+
+
+@pytest.mark.parametrize("path", ["main", "family_chat", "billing", "schedule", "analysis"])
+def test_check_4_blocks_each_agent_path_above_the_ceiling(tmp_path, monkeypatch, path):
+    stub_run(monkeypatch, [body(), agent_body(path, max_tokens=10001)])
+    check = pass_check(tmp_path)
+    assert check.status == FAIL and "상한(10000)" in check.detail
+    stub_run(monkeypatch, [body(), agent_body(path, max_tokens=None)])
+    assert pass_check(tmp_path).status == FAIL
 
 
 @pytest.mark.parametrize(
-    ("bad", "cap"),
+    "bad",
     [
-        (analysis_body(max_tokens=10001), "10000"),  # 분석 호출이라도 천장을 넘으면 막는다
-        (analysis_body(max_tokens=None), "10000"),
-        (body(max_tokens=10001), "10000"),  # 정산 Agent
-        (body(system="가족 채팅 담당 에이전트", max_tokens=10001), "10000"),  # 소통 Agent
-        (body(system="일정 담당", max_tokens=10001, output_config={"format": {}}), "10000"),
-        (body(system="메인", max_tokens=10001), "10000"),  # 메인
-        (verify_body(max_tokens=2049), "2048"),  # Agent 경로가 아닌 호출: 천장을 못 쓴다
-        (verify_body(max_tokens=4096), "2048"),
-        (verify_body(max_tokens=10000), "2048"),
+        verify_body(max_tokens=2049),  # 답 검증: 천장을 못 쓴다
+        verify_body(max_tokens=4096),
+        verify_body(max_tokens=10000),
+        body(system="알 수 없는 일반 호출", max_tokens=4096),  # 미분류 일반 호출
+        body(system="알 수 없는 일반 호출", max_tokens=10000),
+        body(system="가계(정산) 담당", max_tokens=10000),  # 머리말이 다른 정산 비슷한 본문
+        body(system="가족 채팅 담당 에이전트", max_tokens=3000),
+        body(
+            system="일정 담당", max_tokens=5000, output_config={"format": {}}
+        ),  # 일정 프롬프트 아님
+        {k: v for k, v in agent_body("main").items() if k != "system"},  # system 없음
+        {
+            k: v for k, v in agent_body("schedule").items() if k != "output_config"
+        },  # 구조화 출력 아님
+        {k: v for k, v in agent_body("analysis").items() if k != "output_config"},
     ],
 )
-def test_check_4_still_blocks_calls_above_the_ceiling_and_non_agent_calls_above_the_default(
-    tmp_path, monkeypatch, bad, cap
-):
+def test_check_4_rejects_unclassified_calls_above_the_general_cap(tmp_path, monkeypatch, bad):
+    """확인된 여섯 경로가 아닌 호출(미분류)은 Agent 천장을 받지 못하고 일반 상한(2048)을 넘으면 사전 점검이 실패한다."""
+    bad = {**bad, "max_tokens": bad.get("max_tokens") or 10000}
     stub_run(monkeypatch, [body(), bad])
     check = pass_check(tmp_path)
-    assert check.status == FAIL and f"상한({cap})" in check.detail
+    assert check.status == FAIL and "상한(2048)" in check.detail
 
 
 def test_max_tokens_cap_is_per_call_path():
     ceiling = preflight.AGENT_OUTPUT_CEILING
-    assert preflight.max_tokens_cap(analysis_body(), 2048) == ceiling
-    assert preflight.max_tokens_cap(body(), 2048) == ceiling  # 정산 Agent
-    chat = body(system="가족 채팅 담당 에이전트")
-    assert preflight.max_tokens_cap(chat, 2048) == ceiling  # 소통 Agent
-    structured_other = body(
-        system="일정 담당", output_config={"format": {}}
-    )  # 일정 Agent 구조화 출력
-    assert preflight.max_tokens_cap(structured_other, 2048) == ceiling
+    for path in preflight.AGENT_PATHS:
+        assert preflight.max_tokens_cap(agent_body(path), 2048) == ceiling
     assert (
         preflight.max_tokens_cap(verify_body(), 2048) == 2048
     )  # Agent 경로가 아닌 호출은 일반 상한
+    assert preflight.max_tokens_cap(body(system="알 수 없음"), 2048) == 2048  # 미분류
+
+
+def test_the_general_cap_setting_never_raises_the_agent_ceiling(tmp_path, monkeypatch):
+    """ANTHROPIC_MAX_TOKENS 를 크게 해도 Agent 천장은 그대로 10000 이다(예전 max(default, 천장)이면 올라갔다)."""
+    monkeypatch.setattr(settings, "anthropic_max_tokens", 20000)
+    assert preflight.max_tokens_cap(agent_body("billing"), 20000) == 10000
+    assert preflight.AGENT_OUTPUT_CEILING == 10000
+    stub_run(monkeypatch, [body(), agent_body("billing", max_tokens=12000)])
+    check = pass_check(tmp_path)
+    assert check.status == FAIL and "상한(10000)" in check.detail
+    # 미분류·검증 호출은 일반 상한 설정을 그대로 따른다(일반 설정의 의미)
+    assert preflight.max_tokens_cap(verify_body(), 20000) == 20000
 
 
 def test_check_4_blocks_an_env_override_above_the_ceiling_and_accepts_a_lower_one(
     tmp_path, monkeypatch
 ):
     """환경변수로 Agent 상한을 천장보다 크게 올리면 사전 점검이 실패하고(조용히 커지지 않는다), 낮추면 통과한다."""
-    stub_run(monkeypatch, [body(max_tokens=12000)])
+    stub_run(monkeypatch, [agent_body("billing", max_tokens=12000)])
     check = pass_check(tmp_path)
     assert check.status == FAIL and "상한(10000)" in check.detail
-    stub_run(monkeypatch, [body(max_tokens=5000)])
+    stub_run(monkeypatch, [agent_body("billing", max_tokens=5000)])
     assert pass_check(tmp_path).status == PASS
+
+
+def test_the_runtime_cost_gate_still_uses_the_request_body_max_tokens():
+    """호출 직전 비용 검사(`usage`)는 이 분류와 무관하게 요청 본문의 max_tokens 를 그대로 쓴다(변경 없음)."""
+    import inspect
+
+    from evals.agent_eval import usage as usage_mod
+
+    source = inspect.getsource(usage_mod)
+    assert 'int(body["max_tokens"])' in source and "agent_path_of" not in source
 
 
 def chat_03_input(tmp_path, **kw):

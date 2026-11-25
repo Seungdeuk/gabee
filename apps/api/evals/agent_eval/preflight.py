@@ -46,7 +46,8 @@ HIGH_KINDS = (
 )  # 본문에서 탐지되면 실패인 개인정보 종류
 # Agent 경로(메인·소통·일정·정산 Agent 와 대화 분석)가 쓸 수 있는 출력 상한의 허용 천장. 앱의 `settings.agent_max_output_tokens` 기본값과 같은 값을
 # 여기에 고정해 두고(시험이 둘이 같은지 본다), 환경변수로 이보다 크게 올리면 본문 점검이 실패하도록 한다(앱 값을 읽어 오면 상한이 몰래 커진다).
-# 천장보다 낮춘 설정은 통과한다. Agent 경로 밖의 호출(답 검증 등)은 이 천장이 아니라 일반 상한(`anthropic_max_tokens`)으로 본다.
+# 천장보다 낮춘 설정은 통과한다. 확인된 Agent 호출(`agent_path_of`) 밖의 호출(답 검증, 미분류 일반 호출)은 이 천장이 아니라 일반 상한(`anthropic_max_tokens`)으로 본다.
+# 천장은 상수라 일반 상한 설정(ANTHROPIC_MAX_TOKENS)을 바꿔도 올라가지 않는다.
 AGENT_OUTPUT_CEILING = 10000
 ANALYSIS_TOOL = "analyze_recent_chat"
 DETECT_CHUNK_CHARS = 3000  # 본문 탐지는 이 크기로 잘라 넣는다(NER 입력 상한 8000자보다 훨씬 작게). 경계에 걸친 값은 놓칠 수 있다(문서에 적는다)
@@ -90,16 +91,44 @@ def _is_analysis_body(body: Mapping[str, Any]) -> bool:
     return "output_config" in body and body.get("system") == ANALYSIS_SYSTEM
 
 
-def _is_agent_body(body: Mapping[str, Any]) -> bool:
-    """Agent 경로 호출의 본문인가: 메인·소통·정산(시스템 프롬프트)·일정과 대화 분석(구조화 출력). 답 검증 호출(`VERIFY_SYSTEM`)은 Agent 경로가 아니다."""
-    from app.features.ai_assistant.knowledge.verify import VERIFY_SYSTEM
+# 정산·소통 Agent 시스템 프롬프트의 고정 머리말(정산은 뒤에 사용자 이름이 붙는다). 시험이 실제 프롬프트가 이 머리말로 시작하는지 본다.
+BILLING_SYSTEM_PREFIX = "당신은 가족 비서 '가비'의 가계(정산) 담당 에이전트입니다."
+FAMILY_CHAT_SYSTEM_PREFIX = "당신은 가족 비서 '가비'의 가족 채팅 담당 에이전트입니다."
+AGENT_PATHS = ("main", "family_chat", "billing", "schedule", "analysis")
 
-    return body.get("system") != VERIFY_SYSTEM
+
+def agent_path_of(body: Mapping[str, Any]) -> str | None:
+    """확인된 여섯 호출(메인·메인 웹 검색 = main, 소통 = family_chat, 정산 = billing, 일정 = schedule, 대화 분석 = analysis) 중 어느 것인지 **명시적으로** 가린다.
+
+    구조화 출력(`output_config`)은 시스템 프롬프트가 분석용·일정용과 정확히 같을 때만, 나머지는 시스템 프롬프트의 고정 머리말로 가린다.
+    그 밖의 모든 본문(답 검증, 앞으로 평가 경로에 생길 일반 호출, 알 수 없는 본문)은 None: Agent 천장을 받지 못하고 일반 상한으로 본다."""
+    from app.features.ai_assistant.knowledge import rag_chat
+    from app.features.family_chat.ai_service import ANALYSIS_SYSTEM
+    from app.features.schedule.agent import prompts as schedule_prompts
+
+    system = body.get("system")
+    if not isinstance(system, str):
+        return None
+    if "output_config" in body:
+        if system == ANALYSIS_SYSTEM:
+            return "analysis"
+        return "schedule" if system == schedule_prompts.CHAT_SYSTEM else None
+    if system.startswith(BILLING_SYSTEM_PREFIX):
+        return "billing"
+    if system.startswith(FAMILY_CHAT_SYSTEM_PREFIX):
+        return "family_chat"
+    return "main" if system.startswith(rag_chat.SYSTEM_PROMPT) else None
+
+
+def _is_agent_body(body: Mapping[str, Any]) -> bool:
+    """확인된 Agent 호출 경로의 본문인가(`agent_path_of`). 답 검증 등 나머지는 아니다."""
+    return agent_path_of(body) is not None
 
 
 def max_tokens_cap(body: Mapping[str, Any], default: int) -> int:
-    """이 본문이 넘으면 안 되는 `max_tokens`. Agent 경로 호출만 `AGENT_OUTPUT_CEILING`, 나머지는 `default`(설정의 `anthropic_max_tokens`)."""
-    return max(default, AGENT_OUTPUT_CEILING) if _is_agent_body(body) else default
+    """이 본문이 넘으면 안 되는 `max_tokens`. 확인된 Agent 호출만 고정 천장 `AGENT_OUTPUT_CEILING`(일반 상한 설정과 무관하게 그대로),
+    나머지는 `default`(설정의 `anthropic_max_tokens`)."""
+    return AGENT_OUTPUT_CEILING if _is_agent_body(body) else default
 
 
 def agent_output_cap() -> int:
