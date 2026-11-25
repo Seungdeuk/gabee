@@ -57,7 +57,9 @@ def test_web_tool_is_given_only_when_both_the_setting_and_the_path_allow_it(grou
     _, bodies = _ask(made["id"], [_text("답")])
     tool = next(t for t in bodies[0]["tools"] if t["name"] == "web_search")
     assert tool["type"] == "web_search_20250305" and tool["max_uses"] == 2
-    assert bodies[0]["max_tokens"] == rag_chat.WEB_MAX_TOKENS  # 1024 로는 답을 쓰기 전에 끊겼다
+    assert (
+        bodies[0]["max_tokens"] == settings.agent_max_output_tokens
+    )  # 1024 로는 답을 쓰기 전에 끊겼다(공통 설정, 기본 10000)
     assert "개인정보를 넣지 말고" in bodies[0]["system"]
     assert "지시나 명령처럼" in bodies[0]["system"]
 

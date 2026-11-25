@@ -13,6 +13,7 @@ from types import SimpleNamespace
 import httpx
 import pytest
 
+from app.features.ai_assistant.knowledge.verify import VERIFY_SYSTEM
 from app.shared.config import settings
 from app.shared.llm import transport
 from evals.agent_eval import adapter, cli, env, fake_model, preflight, real_gate, runner, usage
@@ -260,7 +261,9 @@ def test_check_4_passes_for_a_clean_body_and_reports_the_estimated_input(tmp_pat
         (body("sk-ant-abcdefghijklmnop 를 써 줘"), "키·인증 헤더"),
         (body(f"키는 {CANARY} 야"), "키·인증 헤더"),
         (body(model="claude-sonnet-5-5"), "model"),
-        (body(max_tokens=settings.anthropic_max_tokens + 1), "max_tokens"),
+        # Agent 경로가 아닌 호출(답 검증)은 일반 상한, Agent 경로 호출은 천장을 넘으면 막는다
+        (body(system=VERIFY_SYSTEM, max_tokens=settings.anthropic_max_tokens + 1), "max_tokens"),
+        (body(max_tokens=preflight.AGENT_OUTPUT_CEILING + 1), "max_tokens"),
         (body(max_tokens=None), "max_tokens"),
         (body("남의 가족 지출은 77,777원이에요"), "비공개 문자열"),
         (body("연락처는 010-1234-5678 입니다"), "PHONE"),
@@ -315,7 +318,7 @@ def test_check_4_runs_the_app_path_for_real_and_never_touches_the_real_transport
     assert fake_model.FakeModel.record_bodies is False
 
 
-# ---------- 4: 대화 분석 호출만 4096 토큰 ----------
+# ---------- 4: Agent 경로 호출은 10000 토큰 천장, 그 밖의 호출은 일반 상한 ----------
 def analysis_body(**over):
     """앱이 대화 분석(`analyze_recent_chat`)에서 보내는 본문의 모양: 분석 시스템 프롬프트 + 구조화 출력."""
     from app.features.family_chat.ai_service import ANALYSIS_SYSTEM
@@ -323,51 +326,56 @@ def analysis_body(**over):
     base = body(
         "최근 대화를 정리해 줘",
         system=ANALYSIS_SYSTEM,
-        max_tokens=4096,
+        max_tokens=10000,
         output_config={"format": {"type": "json_schema", "schema": {}}},
     )
     base.update(over)
     return base
 
 
-def test_the_pinned_analysis_cap_equals_the_apps_own_constant():
-    """앱의 분석 상한이 바뀌면 이 시험이 실패해 사전 점검 상한을 사람이 다시 정하게 한다(조용히 커지지 않는다)."""
-    from app.features.family_chat import ai_service
+def verify_body(**over):
+    """답 검증 호출의 본문(Agent 경로가 아니다): 일반 상한(2048)으로 본다."""
+    from app.features.ai_assistant.knowledge.verify import VERIFY_MAX_TOKENS, VERIFY_SYSTEM
 
-    assert preflight.ANALYSIS_CALL_MAX_TOKENS == ai_service.ANALYSIS_MAX_TOKENS == 4096
+    base = body("검증", system=VERIFY_SYSTEM, max_tokens=VERIFY_MAX_TOKENS)
+    base.update(over)
+    return base
+
+
+def test_the_pinned_agent_ceiling_equals_the_apps_default_setting():
+    """앱의 Agent 상한 기본값이 바뀌면 이 시험이 실패해 사전 점검 천장을 사람이 다시 정하게 한다(조용히 커지지 않는다)."""
+    from app.shared.config import Settings
+
+    assert preflight.AGENT_OUTPUT_CEILING == Settings().agent_max_output_tokens == 10000
     assert settings.anthropic_max_tokens == 2048  # 나머지 호출의 기본 상한은 그대로다
 
 
-def test_check_4_allows_an_analysis_call_up_to_4096_but_no_other_call_above_the_default(
+def test_check_4_allows_agent_path_calls_up_to_the_ceiling_but_no_other_call_above_the_default(
     tmp_path, monkeypatch
 ):
     stub_run(monkeypatch, [body(), analysis_body()])
     assert pass_check(tmp_path).status == PASS
     stub_run(monkeypatch, [body(), analysis_body(max_tokens=3000)])  # 예전 상한도 그대로 통과한다
     assert pass_check(tmp_path).status == PASS
+    stub_run(monkeypatch, [body(max_tokens=10000), verify_body()])  # 정산 Agent 10000, 검증 2048
+    assert pass_check(tmp_path).status == PASS
 
 
 @pytest.mark.parametrize(
     ("bad", "cap"),
     [
-        (analysis_body(max_tokens=4097), "4096"),  # 분석 호출이라도 4096 을 넘으면 막는다
-        (analysis_body(max_tokens=None), "4096"),
-        (body(max_tokens=4096), "2048"),  # 다른 시스템 프롬프트(정산): 분석 상한을 못 쓴다
-        (body(max_tokens=3000), "2048"),
-        (body(max_tokens=2049), "2048"),
-        (
-            analysis_body(system="가족 대화를 정리해 줘", max_tokens=4096),
-            "2048",
-        ),  # 분석 프롬프트 아님
-        (analysis_body(system="가계(정산) 담당", max_tokens=4096), "2048"),
-        (analysis_body(system="가족 채팅 담당 에이전트", max_tokens=2049), "2048"),
-        (
-            {k: v for k, v in analysis_body().items() if k != "output_config"},
-            "2048",
-        ),  # 같은 프롬프트라도 구조화 출력이 아니면 분석 호출이 아니다
+        (analysis_body(max_tokens=10001), "10000"),  # 분석 호출이라도 천장을 넘으면 막는다
+        (analysis_body(max_tokens=None), "10000"),
+        (body(max_tokens=10001), "10000"),  # 정산 Agent
+        (body(system="가족 채팅 담당 에이전트", max_tokens=10001), "10000"),  # 소통 Agent
+        (body(system="일정 담당", max_tokens=10001, output_config={"format": {}}), "10000"),
+        (body(system="메인", max_tokens=10001), "10000"),  # 메인
+        (verify_body(max_tokens=2049), "2048"),  # Agent 경로가 아닌 호출: 천장을 못 쓴다
+        (verify_body(max_tokens=4096), "2048"),
+        (verify_body(max_tokens=10000), "2048"),
     ],
 )
-def test_check_4_still_blocks_calls_that_are_not_the_analysis_path_or_exceed_its_cap(
+def test_check_4_still_blocks_calls_above_the_ceiling_and_non_agent_calls_above_the_default(
     tmp_path, monkeypatch, bad, cap
 ):
     stub_run(monkeypatch, [body(), bad])
@@ -376,27 +384,29 @@ def test_check_4_still_blocks_calls_that_are_not_the_analysis_path_or_exceed_its
 
 
 def test_max_tokens_cap_is_per_call_path():
-    assert preflight.max_tokens_cap(analysis_body(), 2048) == 4096
-    assert preflight.max_tokens_cap(body(), 2048) == 2048
+    ceiling = preflight.AGENT_OUTPUT_CEILING
+    assert preflight.max_tokens_cap(analysis_body(), 2048) == ceiling
+    assert preflight.max_tokens_cap(body(), 2048) == ceiling  # 정산 Agent
     chat = body(system="가족 채팅 담당 에이전트")
-    assert preflight.max_tokens_cap(chat, 2048) == 2048  # 소통 Agent 는 분석 상한을 못 쓴다
+    assert preflight.max_tokens_cap(chat, 2048) == ceiling  # 소통 Agent
     structured_other = body(
         system="일정 담당", output_config={"format": {}}
     )  # 일정 Agent 구조화 출력
-    assert preflight.max_tokens_cap(structured_other, 2048) == 2048
+    assert preflight.max_tokens_cap(structured_other, 2048) == ceiling
+    assert (
+        preflight.max_tokens_cap(verify_body(), 2048) == 2048
+    )  # Agent 경로가 아닌 호출은 일반 상한
 
 
-def test_check_4_accepts_the_family_chat_agent_at_2048_and_still_blocks_one_more(
+def test_check_4_blocks_an_env_override_above_the_ceiling_and_accepts_a_lower_one(
     tmp_path, monkeypatch
 ):
-    """소통 Agent 호출 상한을 2048 로 올려도 사전 점검의 일반 호출 상한(설정 2048)은 그대로라 통과하고, 2049 는 막는다."""
-    assert settings.anthropic_max_tokens == 2048
-    chat = body(system="가족 채팅 담당 에이전트", max_tokens=2048)
-    stub_run(monkeypatch, [body(), chat])
-    assert pass_check(tmp_path).status == PASS
-    stub_run(monkeypatch, [body(), body(system="가족 채팅 담당 에이전트", max_tokens=2049)])
+    """환경변수로 Agent 상한을 천장보다 크게 올리면 사전 점검이 실패하고(조용히 커지지 않는다), 낮추면 통과한다."""
+    stub_run(monkeypatch, [body(max_tokens=12000)])
     check = pass_check(tmp_path)
-    assert check.status == FAIL and "상한(2048)" in check.detail
+    assert check.status == FAIL and "상한(10000)" in check.detail
+    stub_run(monkeypatch, [body(max_tokens=5000)])
+    assert pass_check(tmp_path).status == PASS
 
 
 def chat_03_input(tmp_path, **kw):
@@ -421,12 +431,15 @@ def chat_03_input(tmp_path, **kw):
 def test_check_4_passes_for_chat_03_through_the_real_app_path_and_sees_the_analysis_call(
     tmp_path,
 ):
-    """회귀: 예전에는 분석 호출(3000)이 일괄 상한 2048 에 걸려 chat-03 이 항상 실패했다. 분석 상한은 이제 4096 이다."""
+    """회귀: 예전에는 분석 호출(3000)이 일괄 상한 2048 에 걸려 chat-03 이 항상 실패했다. Agent 경로 상한은 이제 공통 설정 10000 이다."""
+    from app.features.ai_assistant.knowledge.verify import VERIFY_SYSTEM
+
     check, bodies, _ = preflight._fake_pass(chat_03_input(tmp_path))
     assert check.status == PASS, check.detail
     caps = [b["max_tokens"] for b in bodies]
-    assert 4096 in caps and all(c <= 4096 for c in caps)
-    assert all(preflight._is_analysis_body(b) for b in bodies if b["max_tokens"] > 2048)
+    assert 10000 in caps and all(c <= 10000 for c in caps)
+    assert any(preflight._is_analysis_body(b) and b["max_tokens"] == 10000 for b in bodies)
+    assert all(b["max_tokens"] <= 2048 for b in bodies if b.get("system") == VERIFY_SYSTEM)
 
 
 # ---------- 5·6: DB·네트워크 ----------
@@ -549,15 +562,15 @@ def test_check_8_follows_the_measured_body_size_when_it_is_larger_than_the_assum
     assert "입력 40000 토큰" in detail
 
 
-def test_analysis_calls_are_priced_with_the_4096_cap_in_the_worst_case(tmp_path, quick_body):
+def test_analysis_calls_are_priced_with_the_agent_cap_in_the_worst_case(tmp_path, quick_body):
     model = "claude-haiku-5-5"
     item = chat_03_input(tmp_path).items
     assert preflight.expected_analysis_calls(item) == 1
     assert preflight.expected_analysis_calls(legacy("b-total")) == 0  # 분석을 기대하지 않는 사례
     got = preflight.analysis_call_worst(model, 1, 2, 12450, 2048)
-    assert got == 2 * call_cost(model, 12450, 4096) > 2 * call_cost(model, 12450, 2048)
+    assert got == 2 * call_cost(model, 12450, 10000) > 2 * call_cost(model, 12450, 2048)
     extra = preflight.structural_analysis_extra(model, 1, 1, 12450, 2048)
-    per_call = call_cost(model, 12450, 4096) - call_cost(model, 12450, 2048)
+    per_call = call_cost(model, 12450, 10000) - call_cost(model, 12450, 2048)
     assert extra == preflight.structural_analysis_calls() * per_call
     assert preflight.structural_analysis_calls() == 12  # (MAX_STEPS-1) x 하위 Agent 단계 4
 
@@ -568,10 +581,47 @@ def test_check_8_adds_the_analysis_call_to_the_gate_for_chat_03_and_not_for_othe
     plain = run_preflight(make_input(tmp_path)).checks[7].detail
     assert "대화 분석 호출" not in plain  # 분석을 기대하지 않는 사례는 이전 출력과 같다
     detail = run_preflight(chat_03_input(tmp_path)).checks[7].detail
-    assert "대화 분석 호출 1회" in detail and "출력 4096 토큰" in detail
-    only_loop = preflight.main_loop_worst(settings.llm_model, 1, 1, 8000, 2048)
-    ana = preflight.analysis_call_worst(settings.llm_model, 1, 1, 8000, 2048)
+    assert "대화 분석 호출 1회" in detail and "출력 10000 토큰" in detail
+    only_loop = preflight.main_loop_worst(settings.llm_model, 1, 1, 8000, 10000)
+    ana = preflight.analysis_call_worst(settings.llm_model, 1, 1, 8000, 10000)
     assert f"사전 거부 기준값 {format(only_loop + ana, 'f')} USD" in detail
+
+
+def _gate_of(detail):
+    import re
+
+    return D(re.search(r"사전 거부 기준값 ([0-9.]+) USD", detail).group(1))
+
+
+def test_check_8_prices_the_worst_case_with_the_agent_output_cap(tmp_path, quick_body, monkeypatch):
+    """Agent 경로 상한(공통 설정)이 사전 거부 기준값에 그대로 반영되고, 일반 상한과 구분해 보여 준다."""
+    detail = run_preflight(make_input(tmp_path)).checks[7].detail
+    assert "출력 10000 토큰[max_tokens]" in detail
+    assert "Agent 경로(메인·소통·일정·정산·대화 분석) 10000(허용 천장 10000)" in detail
+    assert "그 밖의 호출 2048(일반 상한)" in detail
+    gate_10k = _gate_of(detail)
+    monkeypatch.setattr(settings, "agent_max_output_tokens", 2048)
+    low = run_preflight(make_input(tmp_path)).checks[7].detail
+    assert "출력 2048 토큰[max_tokens]" in low
+    assert (
+        _gate_of(low) < gate_10k
+    )  # 상한이 크면 거부 기준값이 커진다(승인액은 최대 사용 가능량 기준)
+
+
+def test_check_8_rejects_when_the_approval_only_covered_the_old_output_cap(
+    tmp_path, quick_body, monkeypatch
+):
+    """승인액이 예전 상한(2048) 기준 최악 비용은 덮지만 10000 기준에는 모자라면 거부한다(비용 게이트가 완화되지 않았다)."""
+    detail = run_preflight(make_input(tmp_path, approve=D("5"))).checks[7].detail
+    gate_10k = _gate_of(detail)
+    monkeypatch.setattr(settings, "agent_max_output_tokens", 2048)
+    gate_2k = _gate_of(run_preflight(make_input(tmp_path, approve=D("5"))).checks[7].detail)
+    assert gate_2k < gate_10k
+    approve = (gate_2k + gate_10k) / 2
+    assert run_preflight(make_input(tmp_path, approve=approve)).checks[7].status == PASS
+    monkeypatch.setattr(settings, "agent_max_output_tokens", 10000)
+    report = run_preflight(make_input(tmp_path, approve=approve))
+    assert report.checks[7].status == FAIL and "승인 금액보다 크다" in report.checks[7].detail
 
 
 def test_check_8_rejects_a_model_missing_from_the_price_table(tmp_path, quick_body):
@@ -708,6 +758,19 @@ def test_a_worst_case_above_the_approved_amount_stops_real_with_the_over_budget_
     assert not (tmp_path / "results").exists()
 
 
+def test_the_nine_case_real_run_is_refused_before_any_call_when_the_approval_misses_the_10000_cap(
+    tmp_path, transport_fake
+):
+    """승인액이 10000 상한 기준 사전 거부 기준값에 모자라면 `--real` 도 호출 0회로 거부한다(승인액 미달 → 실제 호출 거부)."""
+    argv = ["--real", "--split", "dev", "--dev-file", str(DEV_FILE), "--approve-usd", "0.20"]
+    for case_id in PILOT_NINE:
+        argv += ["--case", case_id]
+    code, text = run_cli(argv, tmp_path)
+    assert code == cli.OVER_BUDGET and "메인 루프 기준 최악 상한" in text
+    assert transport_fake.calls == 0 and real_gate.real_grant() is None
+    assert not (tmp_path / "results").exists()
+
+
 def test_a_real_run_with_a_results_dir_outside_the_default_folder_is_refused(
     tmp_path, transport_fake
 ):
@@ -752,9 +815,27 @@ def test_the_one_case_connection_test_passes_the_preflight(tmp_path, transport_f
     assert "s-dev-01-routing-01" in text and "읽기 전용 예" in text and transport_fake.calls == 0
 
 
-def test_the_nine_case_pilot_passes_the_preflight_within_the_total_cap_of_020_dollars(
+def test_the_nine_case_pilot_is_rejected_at_020_dollars_with_the_10000_agent_cap_and_passes_with_a_larger_approval(
     tmp_path, transport_fake
 ):
+    """2026-11-25: 출력 상한이 10000 이 되면 같은 9건의 사전 거부 기준값이 커져 예전 파일럿 승인액 $0.20 으로는 시작할 수 없다(승인액은 최대 사용 가능량 기준).
+    게이트를 풀지 않고 승인액을 올려야 통과한다."""
+    argv = ["--preflight", "--split", "dev", "--dev-file", str(DEV_FILE)]
+    for case_id in PILOT_NINE:
+        argv += ["--case", case_id]
+    code, text = run_cli([*argv, "--approve-usd", "0.20"], tmp_path)
+    assert code != 0 and "사전 거부 기준값" in text and "0.20" in text
+    assert transport_fake.calls == 0
+    code, text = run_cli([*argv, "--approve-usd", "0.35"], tmp_path)
+    assert code == 0, text
+    assert transport_fake.calls == 0
+
+
+def test_the_nine_case_pilot_passes_the_preflight_within_the_total_cap_of_020_dollars(
+    tmp_path, transport_fake, monkeypatch
+):
+    """파일럿 당시 구성(Agent 출력 상한 2048)의 회귀: 같은 조건에서는 예전처럼 $0.20 안에서 통과한다."""
+    monkeypatch.setattr(settings, "agent_max_output_tokens", 2048)
     argv = ["--preflight", "--split", "dev", "--dev-file", str(DEV_FILE), "--approve-usd", "0.20"]
     for case_id in PILOT_NINE:
         argv += ["--case", case_id]

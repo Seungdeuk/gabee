@@ -70,11 +70,11 @@ def test_the_run_stops_before_the_call_that_could_pass_the_cap_and_nothing_is_ca
 
 
 def test_finished_cases_are_saved_and_the_halted_one_is_not_counted_as_a_pass(tmp_path):
-    # 호출 한 번의 최악 비용은 몇 분의 1 센트다. 상한을 그 몇 배로 잡아 몇 사례만 끝나게 한다
+    # 호출 한 번의 최악 비용은 약 $0.0053(Agent 요청 max_tokens 10000, 2026-11-25 이전 상한 $0.0025). 상한을 그보다 조금 크게 잡아 몇 사례만 끝나게 한다
     report = run(
         legacy("b-total", "b-nov-total", "m-billing", "b-poisoned", "b-list"),
         tmp_path,
-        ledger=_ledger("0.0025"),
+        ledger=_ledger("0.0065"),
     )
     statuses = [r.status for r in report.records]
     assert statuses[0] == "judged" and statuses[-1] == "halted" and len(statuses) < 5
@@ -84,7 +84,7 @@ def test_finished_cases_are_saved_and_the_halted_one_is_not_counted_as_a_pass(tm
     assert [r["case_id"] for r in rows] == done
     halted_id = report.records[-1].case_id
     assert halted_id not in {r["case_id"] for r in rows}
-    cap = D("0.0025")
+    cap = D("0.0065")
     assert report.ledger.total <= cap  # 상한 안에서 멈췄다(넘기는 호출은 하지 않았다)
     assert report.halted and not report.all_counted_passed
 
@@ -117,7 +117,9 @@ def test_a_halted_run_with_no_finished_case_still_records_its_spend_for_the_cumu
 
     found = None
     # 첫 호출은 하고 두 번째 호출 전에 멈추는 상한의 구간은 프롬프트 길이(호출 직전 최악 비용 추정)에 따라 움직인다. 촘촘히 훑어 구간을 찾는다
-    for i, cap in enumerate(f"{n / 10_000:.4f}" for n in range(4, 40)):
+    for i, cap in enumerate(
+        f"{n / 10_000:.4f}" for n in range(4, 150)
+    ):  # 2026-11-25: 10000 상한의 최악 비용이 커져 훑는 범위를 넓혔다(이전 4~40)
         root = tmp_path / f"r{i}"
         report = run(legacy("b-total"), root, run_id="halt-1", ledger=_ledger(cap))
         if report.halted and report.ledger.usages and not report.stored:
