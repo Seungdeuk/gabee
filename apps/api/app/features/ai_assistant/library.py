@@ -12,7 +12,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 from sqlalchemy.orm import Session
 
-from app.shared import chat_library
+from app.shared import chat_library, image_features
 from app.shared.config import settings
 from app.shared.db import SessionLocal
 from app.shared.llm import consent_gate
@@ -247,3 +247,15 @@ def register() -> None:
     """ai_assistant 가 시작할 때 처리 함수를 채팅 쪽 통로에 등록한다."""
     chat_library.register_handlers(_on_document, _on_removed)
     chat_library.register_photo_handler(_on_photo, _photo_registered, _photos_registered)
+    image_features.register_analyzer(
+        _analyze_for_timeline
+    )  # 가족 타임라인이 (문서 margin, 임베딩)을 구하는 통로(문서함 등록 정책과 별개, 외부 전송 없음)
+
+
+def _analyze_for_timeline(data: bytes) -> tuple[float, list[float]]:
+    """로컬 SigLIP2 한 번의 추론으로 (문서 margin, 정규화 임베딩). `PHOTO_CLASSIFY_SIGLIP`(문서함 자동 등록 스위치)와 무관하다:
+    모델 폴더(`PHOTO_CLASSIFY_MODEL_DIR`)가 없으면 MarginError(`ModelDirMissing`)라서 타임라인은 그 사진을 자동 후보에서 뺀다."""
+    analyze = getattr(siglip_margin.get_scorer(), "analyze", None)
+    if analyze is None:
+        raise image_features.FeaturesUnavailable("NoAnalyzer")
+    return analyze(data)

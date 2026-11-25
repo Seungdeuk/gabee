@@ -1,5 +1,5 @@
-import { useRouter } from "expo-router";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useFocusEffect, useRouter } from "expo-router";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ActivityIndicator, FlatList, StyleSheet, Text, View, useWindowDimensions } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
@@ -10,15 +10,20 @@ import { colors, font, spacing } from "@/theme";
 import { excludePhotoFromTimeline } from "../api";
 import AlbumViewer from "../components/AlbumViewer";
 import BundleCard from "../components/BundleCard";
+import { EXCLUDED_ENTRY_LABEL } from "../photoChecks";
 import { focusRoute } from "../searchUtils";
 import {
   BUNDLE_HOLD_MS,
   EXCLUDE_LABEL,
   EXCLUDING_LABEL,
   ORIGINAL_LABEL,
+  REFRESH_LABEL,
+  SIMILAR_LABEL,
+  TIMELINE_ANALYZING,
   TIMELINE_EMPTY,
   TIMELINE_EMPTY_HINT,
   TIMELINE_TITLE,
+  analysisNotice,
   buildTimelineRows,
   canExclude,
   photoCaption,
@@ -45,6 +50,15 @@ export default function FamilyTimelineScreen() {
   const width = Math.min(windowWidth, MAX_WIDTH);
   const cardWidth = width - spacing.lg * 2;
   const list = useFamilyTimeline();
+  const { retry } = list;
+  const focusedBefore = useRef(false);
+  useFocusEffect(
+    useCallback(() => {
+      // "뺀 사진"에서 다시 넣고 돌아오면 목록을 새로 받는다(처음 열 때는 훅이 이미 불러온다)
+      if (focusedBefore.current) retry();
+      focusedBefore.current = true;
+    }, [retry]),
+  );
   const [viewer, setViewer] = useState(null); // { photos, index }: 카드를 누른 순간의 사진들(보는 동안 카드가 자라도 번호가 밀리지 않는다)
   const [busyId, setBusyId] = useState(null); // 빼는 중인 사진 id(한 번에 한 장만)
   const [msgs, setMsgs] = useState({}); // 사진 id 별 뷰어 안 오류 문구(다른 사진의 결과가 지금 보는 사진의 문구를 지우지 않는다)
@@ -148,6 +162,14 @@ export default function FamilyTimelineScreen() {
         <Button label="다시 시도" onPress={list.loadMore} />
       </View>
     );
+  } else if (kind === "analyzing") {
+    body = (
+      <View style={styles.center}>
+        <Text style={styles.emptyText}>{TIMELINE_ANALYZING}</Text>
+        <Text style={styles.hintText}>{analysisNotice(list)}</Text>
+        <Button label={REFRESH_LABEL} onPress={list.retry} />
+      </View>
+    );
   } else if (kind === "empty") {
     body = (
       <View style={styles.center}>
@@ -160,6 +182,14 @@ export default function FamilyTimelineScreen() {
       <FlatList
         data={rows}
         keyExtractor={(row) => row.key}
+        ListHeaderComponent={
+          analysisNotice(list) ? (
+            <View style={styles.analysis} accessibilityLiveRegion="polite">
+              <Text style={styles.analysisText}>{analysisNotice(list)}</Text>
+              <Button label={REFRESH_LABEL} onPress={list.retry} />
+            </View>
+          ) : null
+        }
         renderItem={({ item: row }) => {
           if (row.type === "month") {
             return (
@@ -172,6 +202,11 @@ export default function FamilyTimelineScreen() {
           return (
             <View style={styles.bundleRow}>
               <BundleCard photos={row.photos} width={cardWidth} onOpen={(i) => openBundle(row, i)} />
+              {row.similar ? (
+                <Text style={styles.similar}>
+                  {SIMILAR_LABEL} {row.photos.length}장
+                </Text>
+              ) : null}
             </View>
           );
         }}
@@ -200,6 +235,7 @@ export default function FamilyTimelineScreen() {
         <Text style={styles.title} numberOfLines={1} accessibilityRole="header">
           {TIMELINE_TITLE}
         </Text>
+        <IconButton name="eye-off-outline" label={EXCLUDED_ENTRY_LABEL} onPress={() => router.push("/chat-photo-review?kind=excluded")} />
       </View>
       <View style={[styles.body, { width }]}>{body}</View>
       {notice ? (
@@ -231,6 +267,9 @@ const styles = StyleSheet.create({
   month: { ...font.section, color: colors.text, paddingHorizontal: spacing.lg, paddingTop: spacing.xl, paddingBottom: spacing.xs },
   day: { ...font.bodyStrong, color: colors.textSub, paddingHorizontal: spacing.lg, paddingTop: spacing.sm, paddingBottom: spacing.xs },
   bundleRow: { paddingHorizontal: spacing.lg, paddingBottom: spacing.sm },
+  similar: { ...font.caption, color: colors.textMuted, paddingTop: spacing.xs },
+  analysis: { alignItems: "center", gap: spacing.sm, padding: spacing.md, backgroundColor: colors.honeySoft },
+  analysisText: { ...font.caption, color: colors.textSub, textAlign: "center" },
   footer: { alignItems: "center", gap: spacing.sm, padding: spacing.lg },
   notice: { alignSelf: "stretch", alignItems: "center", paddingVertical: spacing.sm, backgroundColor: colors.honeySoft },
   noticeText: { ...font.caption, color: colors.textSub },

@@ -312,6 +312,9 @@ def send_photo(
     ):  # 가족 전체방 사진만: 문서를 찍은 사진이면 가족 문서함에 자동 등록한다(판별·읽기는 뒤에서, 실패해도 전송은 그대로)
         # 업로드 원본(EXIF·촬영 위치가 남아 있다)이 아니라 서버가 다시 만든 사본(메타데이터 없음, 긴 변 1600px)을 넘긴다: 문서함 원본으로 가족에게 내려가기 때문
         chat_library.photo_posted(group_id, user.id, attachment.id, full)
+        # 타임라인 후보 분석(문서 margin·임베딩)을 뒤에서 한 장씩(외부 호출 없음, 문서함 등록과 별개). 서버 스위치(기본 꺼짐)와
+        # ADR 0020 조건(가족 활성화·업로더 동의)을 만족할 때만 맡긴다. 못 맡겨도 다음 타임라인 조회가 다시 맡긴다
+        photo_check_service.schedule_after_upload(db, group_id, user.id, attachment.id)
     return service.message_out(message, user.name, attachment)
 
 

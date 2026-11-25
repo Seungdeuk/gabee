@@ -41,6 +41,15 @@ MEMORY_RESETS = (
     ("app.features.ai_assistant.library", "_photo_pending"),
     ("app.features.ai_assistant.library", "_photo_inflight"),
     (
+        "app.features.family_chat.timeline_features",
+        "_cache",
+    ),  # 타임라인 사진 분석 결과(임베딩) 메모리 캐시. 디스크 파일은 건드리지 않는다. 모듈의 _lock 으로 지킨다
+    ("app.features.family_chat.timeline_features", "_inflight"),  # 분석 대기 중인 첨부 id
+    (
+        "app.features.family_chat.timeline_features",
+        "_revoked",
+    ),  # 분석 결과를 지운 시각(되살림 방지)
+    (
         "app.features.schedule.agent.choice",
         "_last_event",
     ),  # 방금 다룬 일정 기억('그거 지워줘'의 대상, 10분 유지, #516). 같은 모듈의 _lock 으로 지킨다
@@ -55,6 +64,9 @@ MEMORY_RESETS = (
 # 저장소를 지키는 락의 이름이 `<저장소 이름>_lock` 이 아닌 곳(모듈이 락 하나로 여러 저장소를 지킨다). 초기화는 앱이 쓰는 바로 그 락을 잡고 비운다.
 # 여기 적은 락이 모듈에 없으면(이름이 바뀌면) 조용히 락 없이 비우지 않고 AttributeError 로 멈춘다.
 MEMORY_LOCKS = {
+    ("app.features.family_chat.timeline_features", "_cache"): "_lock",
+    ("app.features.family_chat.timeline_features", "_inflight"): "_lock",
+    ("app.features.family_chat.timeline_features", "_revoked"): "_lock",
     ("app.features.schedule.agent.choice", "_pending"): "_lock",
     ("app.features.schedule.agent.choice", "_last_event"): "_lock",
 }

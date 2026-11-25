@@ -168,18 +168,24 @@ def test_timeline_item_shape_and_mine_flag(client, family):
     a, b, _ = family
     att = _shown(client, a)
     item = _timeline(client, a).json()["items"][0]
-    assert set(item) == {
-        "attachment_id",
-        "message_id",
-        "thumb_url",
-        "display_at",
-        "taken_at",
-        "created_at",
-        "batch_id",
-        "mine",
-    }
+    assert (
+        set(item)
+        == {
+            "attachment_id",
+            "message_id",
+            "thumb_url",
+            "display_at",
+            "taken_at",
+            "created_at",
+            "batch_id",
+            "mine",
+            "group_kind",  # 2026-11-25: 묶음 종류(single|batch|similar)와 직접 확인 여부(confirmed)가 추가됐다
+            "confirmed",
+        }
+    )
     assert item["thumb_url"] == f"/family-chat/photos/{att}?size=thumb"
     assert item["mine"] is True and item["taken_at"] is None and item["batch_id"] is None
+    assert item["group_kind"] == "single" and item["confirmed"] is True
     assert _timeline(client, b).json()["items"][0]["mine"] is False
 
 

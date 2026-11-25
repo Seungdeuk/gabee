@@ -69,6 +69,20 @@ def exclude_photo_from_timeline(
     return photo_check_service.exclude_from_timeline(db, user, group_id, attachment_id)
 
 
+@router.post("/photos/{attachment_id}/timeline-include", response_model=PhotoCheckOut)
+def include_photo_in_timeline(
+    attachment_id: str,
+    body: PhotoCheckIn,
+    user: User = Depends(current_user),
+    group_id: str = Depends(current_group_id),
+    db: Session = Depends(get_db),
+) -> PhotoCheckOut:
+    """업로더가 자기 사진을 가족 타임라인에 (다시) 넣는다. **타임라인 표시에만** 영향을 주고 문서함 판정·문서함 내용은 바꾸지 않는다
+    (그래서 문서로 적힌 사진·문서함에 등록된 사진도 넣을 수 있다. `/check` 의 document→photo 차단은 그대로). 본문은 `/check` 와 같다(안내 확인
+    `acknowledge` 는 반드시 true). 업로더 본인·가족 전체방·살아 있는 사진만(그 밖은 404). 같은 요청을 다시 보내도 200."""
+    return photo_check_service.include_in_timeline(db, user, group_id, attachment_id)
+
+
 @router.post("/photos/{attachment_id}/check", response_model=PhotoCheckOut)
 def confirm_general_photo(
     attachment_id: str,

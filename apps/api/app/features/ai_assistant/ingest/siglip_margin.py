@@ -205,6 +205,10 @@ class OnnxMarginScorer:
         return np.ascontiguousarray(array.transpose(2, 0, 1)[None, ...])
 
     def score(self, data: bytes) -> float:
+        return self.analyze(data)[0]
+
+    def analyze(self, data: bytes) -> tuple[float, list[float]]:
+        """한 번의 추론으로 (문서 margin, 정규화된 768차원 이미지 임베딩)을 돌려준다(타임라인이 같은 추론을 다시 하지 않게 한다)."""
         pixels = self.preprocess(data)
         with self._lock:
             self._load()
@@ -220,7 +224,10 @@ class OnnxMarginScorer:
             raise MarginError(f"Infer{type(exc).__name__}"[:40]) from None
         if not math.isfinite(margin):
             raise MarginError("InferNonFinite")
-        return float(margin)
+        norm = math.sqrt(sum(float(v) * float(v) for v in embedding))
+        if not math.isfinite(norm) or norm <= 0:
+            raise MarginError("InferNonFinite")
+        return float(margin), [float(v) / norm for v in embedding]
 
     def close(self) -> None:
         with self._lock:

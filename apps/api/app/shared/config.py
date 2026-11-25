@@ -51,6 +51,11 @@ class Settings(BaseSettings):
     photo_classify_siglip: bool = False
     photo_classify_model_dir: str = ""  # 변환한 SigLIP2 ONNX 모델 폴더(저장소에 없다). 비었거나 파일이 없으면 판별은 failed 가 된다
     photo_classify_threads: int = 2  # onnxruntime CPU 스레드 수
+    # 날짜별 가족 타임라인의 자동 후보(업로더 확인 없이 margin ≤ 5 사진을 보이기)와 같은 날 유사 사진 묶기(이미지 임베딩)를 켠다(ADR 0026). **기본 꺼짐**:
+    # 꺼져 있으면 타임라인 이미지 분석·임베딩 저장·자동 노출을 하지 않고, 업로더가 확인했거나 직접 넣은 사진만 보인다(D-8 유지).
+    # 켜져 있어도 ADR 0020 의 3중 조건(FAMILY_MEMORY_ENABLED·가족 활성화·업로더 동의)과 사진별 AI 분석 제외를 만족한 사진만 분석한다.
+    # 운영에서 켜는 것은 별도 승인 대상이다(unsure 자동 노출은 문서 미탐 잔여 위험이 있다).
+    timeline_auto_candidates: bool = False
     # AI 추억 분석의 서버 기능 스위치(ADR 0020 3중 조건의 ①). 기본 꺼짐: 꺼져 있으면 가족 설정·업로더 동의가 켜져 있어도 분석 자격이 없고 동의를 새로 받지 않는다
     family_memory_enabled: bool = False
     # AI 추억 분석 작업 워커(PR3, 단일 경량 스레드). 기본 꺼짐: `FAMILY_MEMORY_ENABLED` 와 이 값이 모두 켜져 있을 때만 서버가 시작하며 돌린다

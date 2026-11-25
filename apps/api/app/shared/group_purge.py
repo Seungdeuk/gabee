@@ -131,6 +131,13 @@ def _attachment_paths(db: Session, where: Callable[[Table], object]) -> list[Pat
             paths += [
                 base / "chat_photos" / f"{attachment_id}.jpg",
                 base / "chat_photos" / f"{attachment_id}_t.jpg",
+                # 타임라인 분석 결과(임베딩)·실패 기록: 사진에서 파생된 데이터라 사진과 함께 지운다
+                base / "chat_photos" / f"{attachment_id}_sig.json",
+                base / "chat_photos" / f"{attachment_id}_sigfail.json",
+                base
+                / "chat_photos"
+                / f"{attachment_id}_sig.json.tmp",  # 쓰다 멈춘 임시 파일(임베딩이 들어 있을 수 있다)
+                base / "chat_photos" / f"{attachment_id}_sigfail.json.tmp",
             ]
         elif (
             isinstance(path, str)

@@ -129,3 +129,11 @@ def _no_background_library_registration(monkeypatch):
     library._photo_pending.clear()
     library._photo_inflight.clear()
     monkeypatch.setattr(library, "_photo_bytes", 0)
+
+
+@pytest.fixture(autouse=True)
+def _no_background_timeline_analysis(monkeypatch):
+    """타임라인 사진 분석(문서 margin·임베딩)은 실제 스레드에서 돌지 않게 한다(다른 시험의 데이터 폴더에 파일을 쓰지 않게). 그 동작을 보는 시험은 각자 `schedule` 을 바꾼다."""
+    from app.features.family_chat import timeline_features
+
+    monkeypatch.setattr(timeline_features, "schedule", lambda attachment_ids: 0)

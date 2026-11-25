@@ -9,7 +9,7 @@ from app.features.family_group.models import User
 from app.shared import chat_library, memory_hooks
 from app.shared.errors import ApiError, not_found
 
-from . import file_service, service
+from . import file_service, service, timeline_features
 from . import repository as repo
 from .schemas import DeletedOut, MessageOut
 
@@ -47,6 +47,10 @@ def delete_message(
     ):  # 공유 카드면 제목·금액 같은 내용도 서버에서 비운다(표가 실제로 있을 때)
         repo.delete_share(db, message.id)
     repo.soft_delete(db, message, attachment)
+    if attachment is not None:
+        timeline_features.forget(
+            attachment.id
+        )  # 타임라인 분석 결과(문서 margin·임베딩)도 함께 지운다(없으면 아무 일도 없다)
     if (
         attachment is not None
     ):  # 이 첨부에서 만든 문서함 기록이 있으면 함께 지운다(없으면 아무 일도 없다)
