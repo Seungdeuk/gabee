@@ -7,15 +7,18 @@
 """
 
 from dataclasses import dataclass
+from datetime import date, datetime
 
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
-from app.shared.errors import ApiError
+from app.shared.config import settings
+from app.shared.errors import ApiError, bad_request
 
-from . import service
+from .. import family_names
+from . import service, tools
 from .models import KnowledgeChunk, KnowledgeItem
-from .schemas import FindOut, HitOut
+from .schemas import FindHitOut, FindOut
 
 
 @dataclass(frozen=True)
@@ -39,6 +42,9 @@ def keyword_chunks(
     kind_label: str | None = None,
     item_ids: list[str] | None = None,
     include_sensitive: bool = True,
+    created_from: datetime | None = None,
+    created_to: datetime | None = None,
+    created_by: list[str] | None = None,
 ) -> list[Found]:
     """낱말이 제목·조각 글에 들어 있는 조각을 기록마다 하나씩, 많이 맞은 순으로 돌려준다(PostgreSQL·SQLite 공통)."""
     terms = [t for t in terms if t]
@@ -64,6 +70,12 @@ def keyword_chunks(
         q = q.where(KnowledgeItem.id.in_(item_ids))
     if not include_sensitive:
         q = q.where(KnowledgeItem.sensitivity != "sensitive")
+    if created_from is not None:
+        q = q.where(KnowledgeItem.created_at >= created_from)  # 올린 날(UTC 경계, 시작 이상)
+    if created_to is not None:
+        q = q.where(KnowledgeItem.created_at < created_to)  # (끝 미만)
+    if created_by is not None:
+        q = q.where(KnowledgeItem.created_by.in_(created_by))  # 올린 사람
     q = q.order_by(KnowledgeItem.occurred_on.desc(), KnowledgeItem.created_at.desc()).limit(500)
     lowered = [t.lower() for t in terms]
     best: dict[str, Found] = {}
@@ -76,8 +88,10 @@ def keyword_chunks(
     return sorted(best.values(), key=lambda f: f.score, reverse=True)
 
 
-def _hit(item: KnowledgeItem, chunk: KnowledgeChunk, score: float) -> HitOut:
-    return HitOut(
+def _hit(
+    item: KnowledgeItem, chunk: KnowledgeChunk, score: float, names: dict[str, str]
+) -> FindHitOut:
+    return FindHitOut(
         item_id=item.id,
         kind_label=item.kind_label,
         title=item.title,
@@ -88,7 +102,39 @@ def _hit(item: KnowledgeItem, chunk: KnowledgeChunk, score: float) -> HitOut:
         occurred_on=item.occurred_on,
         has_unread_parts=item.has_unread_parts,
         sensitivity=item.sensitivity,
+        # 올린 날(한국 날짜)·올린 사람·원본 채팅 사진 id: AI 도구 결과(#393)와 같은 계산
+        **tools._upload_info(item, names),
     )
+
+
+def _uploaded_filter(
+    members: list,
+    uploaded_from: date | None,
+    uploaded_to: date | None,
+    uploaded_by: str | None,
+) -> tuple[datetime | None, datetime | None, list[str] | None]:
+    """올린 날(한국 날짜, 양끝 포함)·올린 사람 조건을 (시작 이상 UTC, 끝 미만 UTC, 올린 사람 user_id 들)로 바꾼다.
+
+    AI 도구(#393)처럼 조건을 조용히 무시하지 않는다: 범위가 틀리면 400, 이 가족에서 이름을 찾지 못하면 422 다.
+    같은 이름이 여럿이면 모두 합쳐 찾는다(결과의 uploaded_by 로 구분된다). 빈 글자는 조건 없음으로 본다."""
+    try:
+        start, end = service.created_bounds(
+            uploaded_from, uploaded_to, settings.ai_day_utc_offset_hours
+        )
+    except ValueError as exc:
+        raise bad_request("invalid_range", str(exc)) from exc
+    if not (uploaded_by and uploaded_by.strip()):
+        return start, end, None
+    ids = family_names.match_member(members, uploaded_by)
+    if not ids:
+        near = family_names.suggest_members(members, uploaded_by)
+        hint = f" 비슷한 이름의 가족: {', '.join(near)}." if near else ""
+        raise ApiError(
+            422,
+            "unknown_uploader",
+            f"'{uploaded_by.strip()}' 이름의 올린 사람(가족 구성원)을 찾지 못했어요." + hint,
+        )
+    return start, end, ids
 
 
 def find(
@@ -99,15 +145,41 @@ def find(
     limit: int = 10,
     kind_label: str | None = None,
     semantic: bool = False,
+    uploaded_from: date | None = None,
+    uploaded_to: date | None = None,
+    uploaded_by: str | None = None,
 ) -> FindOut:
-    """글자 일치로 먼저 찾고, 없고 semantic 일 때만 의미 검색. LLM 은 부르지 않는다."""
+    """글자 일치로 먼저 찾고, 없고 semantic 일 때만 의미 검색. LLM 은 부르지 않는다.
+    올린 날·올린 사람 조건은 글자 일치와 의미 검색 모두에 똑같이 건다."""
     query = query.strip()
     if not query:
         raise ApiError(422, "empty_query", "검색어를 입력해 주세요")
-    found = keyword_chunks(db, group_id, [query], kind_label=kind_label)
+    members = family_names.load_members(db, group_id)
+    names = family_names.shown_names(members)
+    start, end, uploaders = _uploaded_filter(members, uploaded_from, uploaded_to, uploaded_by)
+    found = keyword_chunks(
+        db,
+        group_id,
+        [query],
+        kind_label=kind_label,
+        created_from=start,
+        created_to=end,
+        created_by=uploaders,
+    )
     if found:
-        return FindOut(method="keyword", hits=[_hit(f.item, f.chunk, 1.0) for f in found[:limit]])
+        return FindOut(
+            method="keyword", hits=[_hit(f.item, f.chunk, 1.0, names) for f in found[:limit]]
+        )
     if not semantic:
         return FindOut(method="keyword", hits=[])
-    hits = service.search(db, group_id, query, top_k=limit, kind_label=kind_label)
-    return FindOut(method="semantic", hits=[_hit(h.item, h.chunk, h.score) for h in hits])
+    hits = service.search(
+        db,
+        group_id,
+        query,
+        top_k=limit,
+        kind_label=kind_label,
+        created_from=start,
+        created_to=end,
+        created_by=uploaders,
+    )
+    return FindOut(method="semantic", hits=[_hit(h.item, h.chunk, h.score, names) for h in hits])

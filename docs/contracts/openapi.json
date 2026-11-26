@@ -13105,7 +13105,7 @@
           "ai-assistant-knowledge"
         ],
         "summary": "Find",
-        "description": "글자 일치 찾기(LLM 호출 없음). 없고 semantic=true 일 때만 의미 검색.",
+        "description": "글자 일치 찾기(LLM 호출 없음). 없고 semantic=true 일 때만 의미 검색.\nuploaded_from·uploaded_to(올린 날, 한국 날짜 양끝 포함)·uploaded_by(올린 사람 이름)로 좁힐 수 있다.\n올린 사람을 이 가족에서 찾지 못하면 422 unknown_uploader, 시작이 끝보다 늦으면 400 invalid_range 다.",
         "operationId": "find_ai_assistant_knowledge_find_post",
         "parameters": [
           {
@@ -25135,6 +25135,121 @@
         ],
         "title": "FileStatusOut"
       },
+      "FindHitOut": {
+        "properties": {
+          "item_id": {
+            "type": "string",
+            "title": "Item Id"
+          },
+          "kind_label": {
+            "type": "string",
+            "title": "Kind Label"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "snippet": {
+            "type": "string",
+            "title": "Snippet"
+          },
+          "page_label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Page Label"
+          },
+          "score": {
+            "type": "number",
+            "title": "Score"
+          },
+          "source_path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Path"
+          },
+          "occurred_on": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Occurred On"
+          },
+          "has_unread_parts": {
+            "type": "boolean",
+            "title": "Has Unread Parts"
+          },
+          "sensitivity": {
+            "type": "string",
+            "title": "Sensitivity"
+          },
+          "uploaded_on": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Uploaded On"
+          },
+          "uploaded_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Uploaded By"
+          },
+          "source_attachment_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Attachment Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "item_id",
+          "kind_label",
+          "title",
+          "snippet",
+          "page_label",
+          "score",
+          "source_path",
+          "occurred_on",
+          "has_unread_parts",
+          "sensitivity"
+        ],
+        "title": "FindHitOut",
+        "description": "찾기 결과 한 건. 올린 날(한국 날짜)·올린 사람(현재 표시 이름, 나간 사람이면 null)·원본 채팅 사진 id(없으면 null)를 더 싣는다."
+      },
       "FindIn": {
         "properties": {
           "query": {
@@ -25166,6 +25281,42 @@
             "type": "boolean",
             "title": "Semantic",
             "default": false
+          },
+          "uploaded_from": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Uploaded From"
+          },
+          "uploaded_to": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Uploaded To"
+          },
+          "uploaded_by": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 50
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Uploaded By"
           }
         },
         "type": "object",
@@ -25187,7 +25338,7 @@
           },
           "hits": {
             "items": {
-              "$ref": "#/components/schemas/HitOut"
+              "$ref": "#/components/schemas/FindHitOut"
             },
             "type": "array",
             "title": "Hits"
