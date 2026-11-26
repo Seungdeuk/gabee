@@ -27,7 +27,7 @@ import { HEART, canOpenMenu, messageActionError, reactionAction, replyPreview } 
 import { aiHelperButton } from "../readOnlyRoom";
 import { COPIED_NOTICE, COPY_FAILED_NOTICE, pinTapAction } from "../pinUtils";
 import { parseFocusParam, roomSearchOptions, shouldLoadNewer } from "../searchUtils";
-import { canSaveToLibrary, saveToLibrary } from "../saveToLibrary";
+import { canSaveToLibrary, removeFromLibrary, saveToLibrary } from "../saveToLibrary";
 import useChatLinks from "../useChatLinks";
 import useChatMessages, { useRoomInfo } from "../useChatMessages";
 import useChatPins from "../useChatPins";
@@ -657,6 +657,7 @@ export default function ChatRoomScreen() {
                 onReplyPress={pickPin}
                 linkBadges={item.album ? albumBadges(item.album, links.badgesOf) : links.badgesOf(item.message.id)}
                 onSaveToLibrary={canSaveToLibrary({ direct, attachment: item.message.attachment }) ? savePhotoToLibraryDoc : undefined}
+                onRemoveFromLibrary={canSaveToLibrary({ direct, attachment: item.message.attachment }) ? removeFromLibrary : undefined}
               />
             )
           }

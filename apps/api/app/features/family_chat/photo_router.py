@@ -125,6 +125,20 @@ def photo_library_state(
     return photo_check_service.library_state(db, user, group_id, attachment_id)
 
 
+@router.delete("/photos/{attachment_id}/library", status_code=204)
+def remove_photo_from_library(
+    attachment_id: str,
+    user: User = Depends(current_user),
+    group_id: str = Depends(current_group_id),
+    db: Session = Depends(get_db),
+) -> Response:
+    """채팅 사진에서 만든 가족 문서함 기록을 뺀다(T09, 되돌릴 수 없음: 다시 넣으려면 "문서로 저장"). 채팅 사진·메시지는 그대로다.
+    방에 들어갈 수 있는 가족 누구나(문서함 기록 삭제와 같은 범위). 없는 사진·다른 가족 404, 1:1 방 409, 문서함에 없으면 409 `not_in_library`,
+    확인·삭제 실패는 503 `library_unavailable`."""
+    photo_check_service.remove_from_library(db, user, group_id, attachment_id)
+    return Response(status_code=204)
+
+
 @router.post("/photos", response_model=MessageOut, status_code=201)
 def send_photo(
     file: UploadFile = File(...),

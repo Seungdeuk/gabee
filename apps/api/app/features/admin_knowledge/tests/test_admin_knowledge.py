@@ -482,3 +482,11 @@ def test_stream_without_key_is_503_before_any_event(client, admin, monkeypatch):
     monkeypatch.setattr(settings, "anthropic_api_key", "")
     r = client.post(STREAM, json={"q": "회원 몇 명이야?"}, headers=admin)
     assert r.status_code == 503 and r.json()["code"] == "ai_key_missing"
+
+
+def test_faq_tells_where_the_support_tab_is(client, admin, monkeypatch):
+    """ "문의는 어느 탭이야?" 에 답할 자료(메뉴 묶음·탭 이름)가 지시에 들어간다."""
+    seen = _fake_llm(monkeypatch)
+    assert client.post(ASK, json={"q": "문의는 무슨 탭이야?"}, headers=admin).status_code == 200
+    assert "## 문의는 어느 탭이야?" in seen["system"]
+    assert '"운영 업무" 묶음의 "문의 및 신고" 탭' in seen["system"]

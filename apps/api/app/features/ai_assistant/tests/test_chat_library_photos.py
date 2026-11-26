@@ -237,6 +237,89 @@ def test_saving_twice_does_not_register_twice(client, family):
     assert len(_items(group["id"])) == 1
 
 
+# ---------- "문서함에서 빼기"(T09): 채팅 사진은 두고 문서함 기록만 지운다 ----------
+
+
+def _remove(client, headers, attachment_id):
+    return client.delete(f"/family-chat/photos/{attachment_id}/library", headers=headers)
+
+
+def test_removing_from_library_deletes_the_record_but_keeps_the_chat_photo(client, family):
+    a, b, group = family
+    _use_ocr(ScriptedOcr(NOTICE_LINES))
+    msg = _send_photo(client, a)  # 자동으로 문서함에 등록됨
+    att = msg["attachment"]["id"]
+    assert len(_items(group["id"])) == 1
+    r = _remove(
+        client, b, att
+    )  # 올린 사람이 아니어도 가족이면 뺄 수 있다(문서함 기록 삭제와 같은 범위)
+    assert r.status_code == 204, r.text
+    assert _items(group["id"]) == []
+    state = client.get(f"/family-chat/photos/{att}/library", headers=a)
+    assert state.status_code == 200 and state.json() == {
+        "state": "not_registered"
+    }  # 채팅 사진은 그대로
+    assert client.get(msg["attachment"]["url"], headers=a).status_code == 200
+
+
+def test_removing_twice_or_a_photo_not_in_the_library_is_409(client, family):
+    a, _, group = family
+    _use_ocr(ScriptedOcr([]))
+    msg = _send_photo(client, a)  # 일반 사진이라 문서함에 없음
+    r = _remove(client, a, msg["attachment"]["id"])
+    assert r.status_code == 409 and r.json()["code"] == "not_in_library", r.text
+    _use_ocr(ScriptedOcr(NOTICE_LINES))
+    doc = _send_photo(client, a)
+    assert _remove(client, a, doc["attachment"]["id"]).status_code == 204
+    assert _remove(client, a, doc["attachment"]["id"]).status_code == 409
+
+
+def test_removing_is_refused_for_outsiders_unknown_and_one_to_one_photos(
+    client, family, other_family
+):
+    a, b, group = family
+    _use_ocr(ScriptedOcr(NOTICE_LINES))
+    msg = _send_photo(client, a)
+    att = msg["attachment"]["id"]
+    assert _remove(client, other_family, att).status_code == 404  # 다른 가족은 존재도 모른다
+    assert _remove(client, a, "nosuchphoto1").status_code == 404
+    assert len(_items(group["id"])) == 1  # 아무것도 지워지지 않았다
+    me_b = client.get("/family-group/me", headers=b).json()["id"]
+    room = client.post("/family-chat/rooms/direct", json={"user_id": me_b}, headers=a).json()
+    direct = _send_photo(client, a, room_id=room["id"])
+    assert _remove(client, a, direct["attachment"]["id"]).status_code == 409
+
+
+def test_removing_fails_closed_when_the_library_cannot_be_checked_or_deleted(
+    client, family, monkeypatch
+):
+    from app.shared import chat_library
+
+    a, _, group = family
+    _use_ocr(ScriptedOcr(NOTICE_LINES))
+    att = _send_photo(client, a)["attachment"]["id"]
+
+    def boom(*args):
+        raise RuntimeError("down")
+
+    with monkeypatch.context() as m:
+        m.setattr(chat_library, "_is_registered", boom)  # 등록 여부를 모르면 지운 척하지 않는다
+        r = _remove(client, a, att)
+        assert r.status_code == 503 and r.json()["code"] == "library_unavailable"
+    with monkeypatch.context() as m:
+        m.setattr(chat_library, "_on_removed", boom)  # 지우다 실패해도 성공으로 답하지 않는다
+        r = _remove(client, a, att)
+        assert r.status_code == 503 and r.json()["code"] == "library_unavailable"
+    assert len(_items(group["id"])) == 1
+
+
+def test_removing_requires_login(client, family):
+    a, _, _ = family
+    _use_ocr(ScriptedOcr(NOTICE_LINES))
+    att = _send_photo(client, a)["attachment"]["id"]
+    assert client.delete(f"/family-chat/photos/{att}/library").status_code == 401
+
+
 def test_a_photo_in_a_one_to_one_room_cannot_be_saved(client, family):
     a, b, group = family
     me_b = client.get("/family-group/me", headers=b).json()["id"]

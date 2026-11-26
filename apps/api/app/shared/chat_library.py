@@ -161,6 +161,14 @@ def photo_judged(group_id: str, attachment_id: str, status: str, error: str | No
         return True
 
 
+def remove_from_library(db: Session, group_id: str, attachment_id: str) -> None:
+    """사용자가 채팅 사진 보기에서 "문서함에서 빼기"를 눌렀을 때 부른다(T09). 그 첨부에서 만든 문서함 기록을 지운다(채팅 사진은 그대로).
+    `attachment_removed` 와 달리 실패를 삼키지 않는다: 지우지 못했는데 뺀 것처럼 보이면 안 된다. 처리 함수가 없으면 RuntimeError."""
+    if _on_removed is None:
+        raise RuntimeError("chat library handler not registered")
+    _on_removed(db, group_id, attachment_id)
+
+
 def attachment_removed(db: Session, group_id: str, attachment_id: str) -> None:
     """채팅 첨부(메시지)를 지우면 부른다. 그 첨부에서 만든 기록이 있으면 함께 지운다. 실패해도 던지지 않는다."""
     if _on_removed is None:

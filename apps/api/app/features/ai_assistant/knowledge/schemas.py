@@ -115,8 +115,20 @@ class FindIn(BaseModel):
     limit: int = Field(default=10, ge=1, le=30)
     kind_label: str | None = Field(default=None, max_length=100)
     semantic: bool = False  # True 이고 글자 일치가 없을 때만 의미 검색(pgvector)을 쓴다
+    # 올린 날(created_at 의 한국 달력 날짜, 양끝 포함)과 올린 사람(가족 구성원 이름·별칭). 안 주면 거르지 않는다.
+    uploaded_from: date | None = None
+    uploaded_to: date | None = None
+    uploaded_by: str | None = Field(default=None, max_length=50)
+
+
+class FindHitOut(HitOut):
+    """찾기 결과 한 건. 올린 날(한국 날짜)·올린 사람(현재 표시 이름, 나간 사람이면 null)·원본 채팅 사진 id(없으면 null)를 더 싣는다."""
+
+    uploaded_on: date | None = None
+    uploaded_by: str | None = None
+    source_attachment_id: str | None = None
 
 
 class FindOut(BaseModel):
     method: Literal["keyword", "semantic"]
-    hits: list[HitOut]
+    hits: list[FindHitOut]
