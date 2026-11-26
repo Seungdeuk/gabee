@@ -7,7 +7,25 @@ import { photoCheckErrorMessage } from "./photoChecks";
 export const TIMELINE_ENTRY_KEY = "timeline"; // 서랍의 진입 행 key
 export const TIMELINE_TITLE = "가족 타임라인";
 export const TIMELINE_EMPTY = "아직 타임라인에 사진이 없어요";
-export const TIMELINE_EMPTY_HINT = "가족방에 올린 사진을 일반 사진으로 확인하면 여기에 모여요";
+// 서버 기본 설정(자동 후보 꺼짐)에서는 올린 사람이 일반 사진으로 확인했거나 타임라인에 넣은 사진만 보인다(ADR 0026)
+export const TIMELINE_EMPTY_HINT = "가족방에 올린 사진 중 일반 사진으로 확인한 사진이 날짜별로 모여요. 문서처럼 보이는 사진은 빠져요";
+export const TIMELINE_ANALYZING = "사진을 정리하는 중이에요";
+export const REFRESH_LABEL = "새로고침";
+export const SIMILAR_LABEL = "비슷한 사진";
+
+/**
+ * 목록 위에 보일 안내: 아직 정리하지 못한 사진(분석 중·분석 실패)이 있으면 알린다. 정리하지 못한 사진은 타임라인에 나오지 않는다(문서로 판단한 사진은 세지 않는다).
+ * @param {{ analyzing?: number, analysisFailed?: number } | null | undefined} state
+ * @returns {string} 알릴 것이 없으면 ""
+ */
+export function analysisNotice(state) {
+  const analyzing = Number(state?.analyzing) || 0;
+  const failed = Number(state?.analysisFailed) || 0;
+  const parts = [];
+  if (analyzing > 0) parts.push(`${analyzing}장을 정리하는 중이에요`);
+  if (failed > 0) parts.push(`${failed}장은 정리하지 못해 잠시 뒤 다시 시도해요`);
+  return parts.join(" · ");
+}
 export const TIMELINE_LOAD_FAILED = "타임라인을 불러오지 못했어요. 잠시 후 다시 해 주세요";
 
 export const ORIGINAL_LABEL = "원본 메시지로 가기";
@@ -88,6 +106,7 @@ export function buildTimelineRows(items) {
     if (!bundles) return;
     for (const bundle of bundles.values()) {
       bundle.photos.sort(byUploadOrder);
+      bundle.similar = bundle.photos.some((p) => p.group_kind === "similar"); // 같은 날 비슷한 사진으로 서버가 묶은 카드(같이 올린 묶음과 구분해 표시)
       rows.push(bundle);
     }
     bundles = null;
@@ -207,7 +226,7 @@ export const isGoneFromTimeline = (error) => error?.status === 404 || error?.cod
 // 목록 상태(번호(seq)가 다른 옛 응답은 버린다 — 화면을 떠났다 돌아오거나 다시 시도할 때 섞이지 않게)
 
 /** @returns {{ seq: number, status: "loading" | "ready" | "error", items: object[], next: string | null, error: string, loadingMore: boolean }} */
-export const initialTimelineState = () => ({ seq: 0, status: "loading", items: [], next: null, error: "", loadingMore: false });
+export const initialTimelineState = () => ({ seq: 0, status: "loading", items: [], next: null, error: "", loadingMore: false, analyzing: 0, analysisFailed: 0 });
 
 /**
  * @param {ReturnType<typeof initialTimelineState>} state
@@ -220,7 +239,24 @@ export function timelineReducer(state, action) {
       return { ...initialTimelineState(), seq: action.seq };
     case "firstOk":
       if (action.seq !== state.seq) return state;
-      return { ...state, status: "ready", items: action.page?.items ?? [], next: action.page?.next_before ?? null, error: "" };
+      return {
+        ...state,
+        status: "ready",
+        items: action.page?.items ?? [],
+        next: action.page?.next_before ?? null,
+        error: "",
+        analyzing: Number(action.page?.analyzing) || 0, // 아직 정리하지 못한 사진 수(서버가 알려 준다, 없으면 0)
+        analysisFailed: Number(action.page?.analysis_failed) || 0,
+      };
+    case "refreshOk": // 정리 중에 조용히 다시 받은 첫 쪽: 로딩 화면으로 돌아가지 않고 목록과 정리 수만 바꾼다
+      if (action.seq !== state.seq || state.status !== "ready") return state;
+      return {
+        ...state,
+        items: action.page?.items ?? [],
+        next: action.page?.next_before ?? null,
+        analyzing: Number(action.page?.analyzing) || 0,
+        analysisFailed: Number(action.page?.analysis_failed) || 0,
+      };
     case "firstFail":
       if (action.seq !== state.seq) return state;
       return { ...state, status: "error", error: timelineErrorMessage(action.error) || TIMELINE_LOAD_FAILED };
@@ -250,15 +286,28 @@ export function timelineReducer(state, action) {
  * 화면이 무엇을 보여 줄지. 보이는 사진을 모두 빼서 목록이 비어도 서버에 더 남은 쪽(next)이 있으면 "없어요"가 아니라 이어서 불러오거나(more) 오류와 다시 시도(more_error)를 보인다
  * — 다음 쪽 조회 실패를 빈 타임라인으로 보이지 않는다.
  * @param {ReturnType<typeof initialTimelineState>} state
- * @returns {"loading" | "error" | "list" | "more" | "more_error" | "empty"}
+ * @returns {"loading" | "error" | "list" | "more" | "more_error" | "analyzing" | "empty"} analyzing 은 보일 사진이 아직 없지만 서버가 정리 중인 사진이 있다는 뜻이다("없어요"가 아니다)
  */
 export function timelineBodyKind(state) {
   if (state.status === "loading") return "loading";
   if (state.status === "error") return "error";
   if (state.items.length > 0) return "list";
   if (state.next != null) return state.error ? "more_error" : "more";
+  if ((state.analyzing ?? 0) > 0 || (state.analysisFailed ?? 0) > 0) return "analyzing";
   return "empty";
 }
+
+export const ANALYSIS_POLL_MS = 8000; // 서버가 사진을 정리하는 동안 이 간격으로 첫 쪽을 다시 받는다
+export const ANALYSIS_POLL_MAX = 30; // 한 번 연 화면에서 자동으로 다시 받는 횟수 상한(약 4분). 넘으면 "새로고침" 버튼으로
+
+/**
+ * 서버가 아직 정리 중인 사진이 있으면 자동으로 다시 조회할지. 실패(analysisFailed)만 남았으면 하지 않는다(서버가 10분 뒤 다시 맡기고, 사용자는 새로고침으로 부른다).
+ * @param {ReturnType<typeof initialTimelineState>} state
+ * @param {number} tries 지금까지 자동으로 다시 받은 횟수
+ * @returns {boolean}
+ */
+export const shouldPollAnalysis = (state, tries) =>
+  state.status === "ready" && (state.analyzing ?? 0) > 0 && tries < ANALYSIS_POLL_MAX;
 
 /** @param {ReturnType<typeof initialTimelineState>} state 다음 쪽을 부를 수 있는가 */
 export const canLoadMoreTimeline = (state) => state.status === "ready" && state.next != null && !state.loadingMore;

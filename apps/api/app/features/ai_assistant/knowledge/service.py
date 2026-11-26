@@ -183,6 +183,7 @@ def search(
     created_from: datetime | None = None,
     created_to: datetime | None = None,
     created_by: list[str] | None = None,
+    chat_verified_since: datetime | None = None,
 ) -> list[Hit]:
     """질문과 가장 가까운 기록을 돌려준다(기록마다 가장 가까운 조각 하나, per_item 을 키우면 `more` 에 조각을 더 담는다).
     family_user_ids 를 주면 그 가족 중 한 명이라도 등장한 기록만 본다(빈 목록이면 결과 없음).
@@ -207,6 +208,7 @@ def search(
         created_from=created_from,
         created_to=created_to,
         created_by=created_by,
+        chat_verified_since=chat_verified_since,
     )
     if mix and len(rows) > 1:
         order = hybrid_search.fuse_order(
@@ -239,6 +241,7 @@ def search_in_item(
     top_k: int = 5,
     include_sensitive: bool = True,
     hybrid: bool | None = None,
+    chat_verified_since: datetime | None = None,
 ) -> list[Hit]:
     """한 기록(문서) 안에서만 질문과 가까운 조각을 찾는다. 조각마다 Hit 하나이고 쪽 순서가 아니라 순위(하이브리드면
     섞은 순서, 아니면 임베딩 점수 순) 로 top_k 개. 다른 그룹·없는 item_id·볼 수 없는 민감 기록은 빈 목록이다."""
@@ -255,6 +258,7 @@ def search_in_item(
         include_sensitive,
         limit=IN_ITEM_CANDIDATES,
         item_id=item_id,
+        chat_verified_since=chat_verified_since,
     )
     if mix and len(rows) > 1:
         order = hybrid_search.fuse_order(
@@ -264,13 +268,21 @@ def search_in_item(
     return [Hit(item=item, chunk=chunk, score=score) for chunk, item, score in rows[:top_k]]
 
 
-def name_checks(db: Session, group_id: str, limit: int = 5) -> list[dict]:
+def name_checks(
+    db: Session,
+    group_id: str,
+    limit: int = 5,
+    withhold: Callable[[KnowledgeItem], bool] | None = None,
+) -> list[dict]:
     """가족 이름과 한 글자 차이인 이름이 있어 사용자 확인을 기다리는 곳(기록, 후보 가족) 목록. 오래된 것부터 limit 개.
 
-    글자는 저장하지 않았으므로 앞뒤 글(가린 글)만 보여 준다. 같은 기록에 후보가 둘이면 각각 한 건이다."""
+    글자는 저장하지 않았으므로 앞뒤 글(가린 글)만 보여 준다. 같은 기록에 후보가 둘이면 각각 한 건이다.
+    `withhold` 가 참인 기록(외부 AI 에 보이면 안 되는 기록)은 뺀다."""
     names = family_names.shown_names(family_names.load_members(db, group_id))
     out: list[dict] = []
     for item in reversed(repo.items_containing(db, group_id, "[확인필요:", limit=20)):
+        if withhold is not None and withhold(item):
+            continue
         for uid in family_names.check_ids(item.body_md):
             out.append(
                 {

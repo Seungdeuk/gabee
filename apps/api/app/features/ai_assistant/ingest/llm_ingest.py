@@ -17,7 +17,7 @@ from concurrent.futures import ThreadPoolExecutor
 from PIL import Image
 
 from app.shared.config import settings
-from app.shared.llm import doc_ai
+from app.shared.llm import consent_gate, doc_ai
 from app.shared.privacy.detectors import detect
 from app.shared.privacy.types import Kind
 
@@ -115,7 +115,9 @@ def ocr_pdf(data: bytes) -> tuple[str, str | None]:
     limit = settings.ingest_pdf_max_pages
     pages, total = split_pdf_pages(data, limit)
     with ThreadPoolExecutor(max_workers=4) as ex:
-        outs = list(ex.map(doc_ai.read_pdf, pages))
+        outs = list(
+            ex.map(consent_gate.carry(doc_ai.read_pdf), pages)
+        )  # 동의 관문 범위를 작업 스레드로 넘긴다
     notes = []
     if total > len(pages):
         notes.append(f"앞 {len(pages)}쪽만 읽었어요(전체 {total}쪽)")

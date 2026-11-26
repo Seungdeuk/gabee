@@ -19,9 +19,6 @@ for _name in ("MAIL_BACKEND", "SMTP_HOST", "SMTP_USER", "SMTP_PASSWORD", "SMTP_F
 # 개발자의 .env 에 업로드 Claude 읽기·가리기를 켜 두어도 시험은 가짜 OCR·규칙 가리기만 쓴다(켠 경로의 시험은 각자 settings 를 바꾼다).
 os.environ["INGEST_LLM_OCR"] = "false"
 os.environ["INGEST_LLM_MASK"] = "false"
-os.environ["PHOTO_JUDGE_LLM"] = (
-    "false"  # 가족방 사진 판별도 시험에서는 외부 AI 를 쓰지 않는다(켠 경로의 시험은 각자 settings 를 바꾼다)
-)
 # 개발자의 .env 에 분류 보조(Jev) 키가 있어도 시험 문서가 외부로 나가지 않게 비운다.
 os.environ["TYPESAFE_API_KEY"] = ""
 os.environ["INGEST_REMINDERS"] = (
@@ -127,3 +124,16 @@ def _no_background_library_registration(monkeypatch):
     from app.features.ai_assistant import library
 
     monkeypatch.setattr(library, "_submit", lambda fn, *args: None)
+    # 작업을 실제로 돌리지 않으므로 대기 자리(가족별 수·인스턴스 전체 수·바이트)가 되돌려지지 않는다: 시험마다 비워서
+    # 앞선 시험의 업로드가 인스턴스 전체 상한(40장·96MB)을 채워 뒤 시험의 판별을 건너뛰게 하지 않는다
+    library._photo_pending.clear()
+    library._photo_inflight.clear()
+    monkeypatch.setattr(library, "_photo_bytes", 0)
+
+
+@pytest.fixture(autouse=True)
+def _no_background_timeline_analysis(monkeypatch):
+    """타임라인 사진 분석(문서 margin·임베딩)은 실제 스레드에서 돌지 않게 한다(다른 시험의 데이터 폴더에 파일을 쓰지 않게). 그 동작을 보는 시험은 각자 `schedule` 을 바꾼다."""
+    from app.features.family_chat import timeline_features
+
+    monkeypatch.setattr(timeline_features, "schedule", lambda attachment_ids: 0)

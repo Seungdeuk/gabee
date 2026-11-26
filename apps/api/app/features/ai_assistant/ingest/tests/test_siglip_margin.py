@@ -10,13 +10,13 @@ from pathlib import Path
 import pytest
 from PIL import Image
 
-from app.features.ai_assistant.ingest import photo_judge, siglip_margin
+from app.features.ai_assistant.ingest import siglip_margin
 from app.features.ai_assistant.ingest.siglip_margin import MarginError, OnnxMarginScorer
 
 
 def test_the_frozen_thresholds_and_prompts_are_unchanged():
-    """평가 동결 설정(exp-1)과 같은 값이어야 한다: t_veto=1, t_rescue=5, 문장 14개(문서 6 + 일반 8)."""
-    assert (siglip_margin.T_VETO, siglip_margin.T_RESCUE) == (1.0, 5.0)
+    """평가 동결 설정(exp-1)의 값 그대로: 문서 기준은 평가의 t_rescue=5 를 재사용하고(새로 맞춘 값이 아니다), 문장 14개(문서 6 + 일반 8)."""
+    assert siglip_margin.T_DOCUMENT == 5.0
     assert siglip_margin.DOC_PROMPTS == (
         "a photo of a paper document",
         "a photo of a printed form with a table",
@@ -38,28 +38,34 @@ def test_the_frozen_thresholds_and_prompts_are_unchanged():
 
 
 @pytest.mark.parametrize(
-    ("ocr_kind", "margin", "expected"),
+    ("margin", "expected"),
     [
-        (photo_judge.DOCUMENT, 8.0, "document"),  # 글자 많은 문서
-        (photo_judge.DOCUMENT, 1.01, "document"),
-        (photo_judge.DOCUMENT, 1.0, "unsure"),  # 경계: 초과일 때만
-        (photo_judge.DOCUMENT, -3.0, "unsure"),  # OCR 은 문서라지만 간판·메뉴판처럼 보임: 취소
-        (photo_judge.PHOTO, 5.01, "document"),  # 글자 적은 문서를 구한다
-        (photo_judge.PHOTO, 5.0, "unsure"),
-        (photo_judge.PHOTO, 2.0, "unsure"),
-        (photo_judge.UNSURE, 5.5, "document"),
-        (photo_judge.UNSURE, 4.9, "unsure"),
-        (photo_judge.PHOTO, -9.0, "unsure"),  # 일반 사진도 photo 가 아니라 unsure(D-13)
+        (8.0, "document"),  # 글자 많은 문서
+        (5.01, "document"),
+        (5.0, "unsure"),  # 경계: 초과일 때만
+        (3.21, "unsure"),  # 평가에서 놓친 글자 적은·평범한 문서(unsure 로 남는다)
+        (1.0, "unsure"),
+        (-9.0, "unsure"),  # 일반 사진도 photo 가 아니라 unsure(D-13)
     ],
 )
-def test_the_staged_rule(ocr_kind, margin, expected):
-    assert siglip_margin.staged_status(ocr_kind, margin) == expected
+def test_the_siglip_only_rule(margin, expected):
+    assert siglip_margin.photo_status(margin) == expected
 
 
-def test_the_staged_rule_never_returns_photo():
-    for kind in (photo_judge.DOCUMENT, photo_judge.PHOTO, photo_judge.UNSURE):
-        for margin in (-50.0, -1.0, 0.0, 1.0, 3.0, 5.0, 50.0):
-            assert siglip_margin.staged_status(kind, margin) in ("document", "unsure")
+def test_the_siglip_only_rule_never_returns_photo():
+    for margin in (-50.0, -1.0, 0.0, 1.0, 3.0, 5.0, 50.0):
+        assert siglip_margin.photo_status(margin) in ("document", "unsure")
+
+
+def test_model_files_status_reports_presence_without_reading(tmp_path):
+    assert siglip_margin.model_files_status("") == "not_configured"
+    assert siglip_margin.model_files_status(str(tmp_path)) == "missing"
+    (tmp_path / siglip_margin.MODEL_FILE).write_bytes(b"x")
+    assert (
+        siglip_margin.model_files_status(str(tmp_path)) == "missing"
+    )  # 두 파일이 모두 있어야 한다
+    (tmp_path / siglip_margin.HEAD_FILE).write_text("{}")
+    assert siglip_margin.model_files_status(str(tmp_path)) == "present"
 
 
 def _jpeg(size=(320, 240), color=(235, 235, 235)) -> bytes:
@@ -222,3 +228,50 @@ def test_a_real_model_scores_a_synthetic_page_above_a_plain_sky():
     sky_out = io.BytesIO()
     sky.save(sky_out, format="JPEG")
     assert scorer.score(out.getvalue()) > scorer.score(sky_out.getvalue())
+
+
+def _model_dir(tmp_path):
+    (tmp_path / siglip_margin.MODEL_FILE).write_bytes(b"x")
+    (tmp_path / siglip_margin.HEAD_FILE).write_text("{}", encoding="utf-8")
+    return str(tmp_path)
+
+
+def test_startup_warns_when_the_switch_is_off_because_document_registration_stops(
+    tmp_path, monkeypatch, caplog
+):
+    """서버는 로그 설정이 없어 WARNING 이상만 남는다. 판별 스위치가 꺼져 있으면(모델이 있어도) 모든 사진이 unsure 가 되어
+    문서 사진 자동 등록이 멈추므로 WARNING 으로 알려야 운영에서 잘못된 환경변수를 알아챌 수 있다."""
+    from app.shared.config import settings
+
+    monkeypatch.setattr(settings, "photo_classify_model_dir", _model_dir(tmp_path))
+    monkeypatch.setattr(settings, "photo_classify_siglip", False)
+    with caplog.at_level("WARNING", logger=siglip_margin.logger.name):
+        assert siglip_margin.log_model_status() == "present"
+    assert any(
+        r.levelname == "WARNING" and "PHOTO_CLASSIFY_SIGLIP" in r.getMessage()
+        for r in caplog.records
+    )
+
+
+def test_startup_warns_when_the_model_is_missing_even_with_the_switch_off(
+    tmp_path, monkeypatch, caplog
+):
+    from app.shared.config import settings
+
+    monkeypatch.setattr(settings, "photo_classify_model_dir", str(tmp_path))
+    monkeypatch.setattr(settings, "photo_classify_siglip", False)
+    with caplog.at_level("WARNING", logger=siglip_margin.logger.name):
+        assert siglip_margin.log_model_status() == "missing"
+    assert any(r.levelname == "WARNING" for r in caplog.records)
+
+
+def test_startup_is_quiet_when_the_model_is_present_and_the_switch_is_on(
+    tmp_path, monkeypatch, caplog
+):
+    from app.shared.config import settings
+
+    monkeypatch.setattr(settings, "photo_classify_model_dir", _model_dir(tmp_path))
+    monkeypatch.setattr(settings, "photo_classify_siglip", True)
+    with caplog.at_level("WARNING", logger=siglip_margin.logger.name):
+        assert siglip_margin.log_model_status() == "present"
+    assert not [r for r in caplog.records if r.levelno >= 30]

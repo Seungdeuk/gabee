@@ -10,6 +10,7 @@ from app.features.admin_alerts.router import admin_router as admin_alerts_router
 from app.features.admin_alerts.router import internal_router as admin_alerts_internal_router
 from app.features.admin_drafts.router import router as admin_drafts_router
 from app.features.admin_knowledge.router import router as admin_knowledge_router
+from app.features.ai_assistant.ingest import siglip_margin
 from app.features.ai_assistant.knowledge import index_health as knowledge_index
 from app.features.ai_assistant.router import router as ai_assistant_router
 from app.features.billing.router import router as billing_router
@@ -48,6 +49,7 @@ async def lifespan(_: FastAPI):
     privacy_ner.start_preload()  # NER 모델을 백그라운드로 미리 불러온다(off 면 아무 일도 안 함, 실패해도 기동은 계속)
     knowledge_index.start_startup_check()  # 임베딩 모델 이름이 DB 조각과 어긋나 검색에서 문서가 빠지는지 백그라운드로 점검해 로그로 알린다(기다리지 않고, 실패해도 기동은 계속)
     family_memory_worker.start()  # AI 추억 분석 작업 워커(FAMILY_MEMORY_ENABLED·FAMILY_MEMORY_WORKER_ENABLED 가 둘 다 켜져 있을 때만, 기본 꺼짐)
+    siglip_margin.log_model_status()  # 사진 판별 모델(SigLIP2)이 이미지에 있는지 로그로 알린다(모델 없는 이미지를 오인하지 않게, 파일을 읽지 않는다)
     yield
     family_memory_worker.stop()
     ops_metrics.flush(

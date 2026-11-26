@@ -126,13 +126,21 @@ class TimelinePhotoOut(BaseModel):
     created_at: datetime
     batch_id: str | None = None
     mine: bool
+    # 묶음의 종류: single(단독) | batch(한 번에 올린 묶음) | similar(같은 날 비슷한 사진, 이때 batch_id 는 서버가 만든 `s_…` 묶음 번호)
+    group_kind: Literal["single", "batch", "similar"] = "single"
+    # 직접 확인한 사진(photo)이면 true, 로컬 분석을 통과한 자동 후보(문서 후보 아님)이면 false
+    confirmed: bool = True
 
 
 class TimelineOut(BaseModel):
-    """가족 타임라인(최신순). next_before 는 다음 쪽을 받을 때 `before` 에 그대로 넣는 값(없으면 끝)."""
+    """가족 타임라인(최신순). next_before 는 다음 쪽을 받을 때 `before` 에 그대로 넣는 값(없으면 끝).
+    analyzing: 사진 분석 전이거나 진행 중이라 아직 타임라인에 없는 사진 수, analysis_failed: 분석에 실패해 재시도를 기다리는 사진 수
+    (둘 다 자동 후보에서 빠져 있다. 문서로 판단한 사진은 세지 않는다)."""
 
     items: list[TimelinePhotoOut]
     next_before: str | None = None
+    analyzing: int = 0
+    analysis_failed: int = 0
 
 
 class LibraryStateOut(BaseModel):

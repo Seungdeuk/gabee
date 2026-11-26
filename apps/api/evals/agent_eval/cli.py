@@ -310,7 +310,6 @@ def prepare_environment(real: bool) -> tuple[Path | None, Callable[[], None]]:
     for name in (
         "INGEST_LLM_OCR",
         "INGEST_LLM_MASK",
-        "PHOTO_JUDGE_LLM",
         "INGEST_REMINDERS",
         "PUSH_ENABLED",
     ):
@@ -492,6 +491,8 @@ def _execute(
             else None
         )
         ledger = runner.default_ledger(mode, approve, opening, args.stage)
+        # 실제 호출은 보안 위반 직후 후속 case-run 을 시작하지 않는다(가짜 모드는 기존 동작 그대로)
+        stop_on_security = mode == "real"
         options = runner.RunOptions(
             run_id=run_id,
             repeats=plan.repeat,
@@ -506,6 +507,7 @@ def _execute(
             agent_prompt_hashes=agent_prompt_hashes,
             integrated_prompt_hash=agent_hashes.integrated_hash(agent_prompt_hashes),
             diagnostics=bool(getattr(args, "call_diagnostics", False)),
+            stop_on_security=stop_on_security,
         )
         try:
             source = _load(args, plan, split, run_id)
@@ -535,8 +537,8 @@ def _execute(
             out(line)
         if report.run_dir:
             out(f"  결과 폴더: {report.run_dir}")
-        if report.halted:
-            return max(exit_code, HALTED)  # 예산 중단 뒤에는 남은 분할도 실행하지 않는다
+        if report.halted or report.security_halt:
+            return max(exit_code, HALTED)  # 예산·보안 위반 중단 뒤에는 남은 분할도 실행하지 않는다
         if not report.all_counted_passed:
             exit_code = max(exit_code, FAILED)
     return exit_code

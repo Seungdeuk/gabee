@@ -1,7 +1,13 @@
 import { useCallback, useEffect, useReducer, useRef } from "react";
 
 import { listTimelinePhotos } from "./api";
-import { canLoadMoreTimeline, initialTimelineState, timelineReducer } from "./timeline";
+import {
+  ANALYSIS_POLL_MS,
+  canLoadMoreTimeline,
+  initialTimelineState,
+  shouldPollAnalysis,
+  timelineReducer,
+} from "./timeline";
 
 const PAGE = 30;
 
@@ -15,11 +21,15 @@ export default function useFamilyTimeline() {
   const moreBusy = useRef(false); // 상태가 반영되기 전의 중복 호출 방지
   const latest = useRef(state);
   latest.current = state;
+  const polls = useRef(0); // 정리 중이라 자동으로 다시 받은 횟수
+  const pagedMore = useRef(false); // 다음 쪽을 이미 불렀으면 자동 갱신이 목록을 덮어쓰지 않는다
 
   const loadFirst = useCallback(() => {
     seq.current += 1;
     const mine = seq.current;
     moreBusy.current = false;
+    polls.current = 0;
+    pagedMore.current = false;
     dispatch({ type: "start", seq: mine });
     listTimelinePhotos({ limit: PAGE }).then(
       (page) => dispatch({ type: "firstOk", seq: mine, page }),
@@ -34,10 +44,27 @@ export default function useFamilyTimeline() {
     };
   }, [loadFirst]);
 
+  useEffect(() => {
+    // 서버가 사진을 정리하는 동안(분석 중) 조용히 다시 받는다: 새로고침을 여러 번 누르지 않아도 되게. 횟수 상한이 있다.
+    if (pagedMore.current || !shouldPollAnalysis(state, polls.current)) return undefined;
+    const mine = state.seq;
+    const timer = setTimeout(() => {
+      polls.current += 1;
+      listTimelinePhotos({ limit: PAGE }).then(
+        (page) => {
+          if (!pagedMore.current) dispatch({ type: "refreshOk", seq: mine, page });
+        },
+        () => {}, // 조용한 갱신의 실패는 화면을 바꾸지 않는다(새로고침 버튼은 그대로 있다)
+      );
+    }, ANALYSIS_POLL_MS);
+    return () => clearTimeout(timer);
+  }, [state]);
+
   const loadMore = useCallback(() => {
     const cur = latest.current;
     if (moreBusy.current || !canLoadMoreTimeline(cur)) return;
     moreBusy.current = true;
+    pagedMore.current = true;
     const mine = cur.seq;
     dispatch({ type: "moreStart", seq: mine });
     const done = () => {
@@ -64,6 +91,8 @@ export default function useFamilyTimeline() {
     next: state.next,
     hasMore: state.next != null,
     loadingMore: state.loadingMore,
+    analyzing: state.analyzing,
+    analysisFailed: state.analysisFailed,
     loadMore,
     retry: loadFirst,
     remove,

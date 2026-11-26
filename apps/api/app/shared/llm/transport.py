@@ -33,8 +33,11 @@ def post_messages(body: dict, *, timeout: float = 60.0, retry: bool = False) -> 
 
     retry=True 면 429·5xx 응답이나 연결·시간 초과일 때 잠깐 기다렸다가 한 번만 더 부른다. 그 밖의 오류(4xx 등)는 다시 하지 않는다.
     retry=False(기본)는 한 번만 부른다: 호출 수를 한도에 세는 쪽(`ai_guard`)이 비용을 관리하므로 몰래 다시 부르지 않는다."""
+    from . import consent_gate  # 순환 import 를 피해 여기서 부른다
+
     attempts = 2 if retry else 1
     for attempt in range(1, attempts + 1):
+        consent_gate.check()  # 가족 채팅 목적의 처리면 보내기 직전마다 가족 AI 동의를 확인한다(다시 시도하기 전에도)
         try:
             res = httpx.post(API_URL, json=body, headers=headers(), timeout=timeout)
             if attempt < attempts and res.status_code in RETRY_STATUS:

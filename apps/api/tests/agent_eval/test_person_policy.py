@@ -178,9 +178,8 @@ def test_the_metered_transport_functions_are_the_only_model_paths_of_the_app():
 # ---------- 2. 예산 중단은 Task Success 실패와 별도다 ----------
 def test_a_budget_halt_is_counted_apart_from_failures_and_the_task_success_denominator(tmp_path):
     items = legacy("b-total", "b-nov-total", "m-billing", "b-list")
-    cap = Ledger(
-        (Scope.RUN,), caps={Scope.RUN: D("0.0025")}
-    )  # 첫 사례들은 끝나고 그 뒤에 예산 중단
+    # 첫 사례들은 끝나고 그 뒤에 예산 중단. 2026-11-25: Agent 요청 max_tokens 10000 으로 호출 한 번의 최악 비용이 약 $0.0053 이라 상한을 그에 맞춰 올렸다(이전 $0.0025)
+    cap = Ledger((Scope.RUN,), caps={Scope.RUN: D("0.0065")})
     report = runner.run_cases(items, RunOptions("h", results_root=tmp_path), ledger=cap)
     c = report.counts()
     assert c["halted"] == 1 and c["failed"] == 0 and c["passed"] == c["judged"] >= 1

@@ -38,19 +38,24 @@ class Settings(BaseSettings):
     )
 
     # 업로드 파일의 글자 읽기(OCR)·개인정보 가리기를 Claude 로 한다(docs/adr/0014). 호출이 실패하면 가리지 않은 글을 저장하지 않고 파일을 failed 로 둔다.
-    # 글자 읽기와 가리기는 항상 Claude 로 한다(사용자 결정 2026-11-09). false 는 외부 호출 없이 도는 시험에서만 쓴다(conftest.py).
+    # 글자 읽기와 가리기는 항상 Claude 로 한다(사용자 결정 2026-11-09). 로컬 OCR(RapidOCR)은 서비스에서 제거했다(ADR 0025): 사진 속 글자는 Claude 만 읽으므로
+    # **서비스에서는 INGEST_LLM_OCR=true 가 필수**다(false 면 사진·스캔 쪽은 읽을 수단이 없어 ocr_unavailable 로 실패한다). false 는 읽기 구성 요소를 끼우는 시험에서만 쓴다.
+    # 가족 채팅 목적의 외부 호출(읽기·가리기·그림 설명·분류·챙길 일)은 가족 AI 동의가 있을 때만 나간다(`shared/llm/consent_gate`).
     ingest_llm_ocr: bool = True  # 사진·PDF 쪽을 Claude 로 읽는다
     ingest_llm_mask: bool = True  # 글을 Claude 로 가리고 가족 이름 후보를 문맥으로 판단한다
     ingest_ocr_model: str = "claude-sonnet-5-5"  # 표·머리말 구분이 좋은 모델
     ingest_mask_model: str = ""  # 비우면 llm_model(Haiku)
-    # 가족방 사진이 문서 사진인지 Claude 로 가린다(기본 false: 로컬 OCR 판별만). 켜면 글자가 있는 사진이 Anthropic API 로 전송된다(docs/adr/0015)
-    photo_judge_llm: bool = False
-    photo_judge_model: str = ""  # 비우면 llm_model(Haiku)
-    # 가족방 사진 판별을 OCR + SigLIP2 단계형(E)으로 한다(기본 꺼짐: 켜지 않으면 기존 OCR 판별 그대로). 켜면 외부 AI 호출 없이 로컬 모델만 쓰고
-    # `PHOTO_JUDGE_LLM` 은 이 경로에서 쓰지 않는다. 모델은 ONNX 이미지 인코더(CPU, torch 없음)이고 폴더에 `siglip2_vision.onnx`·`head.json` 이 있어야 한다
+    # 가족방 사진 판별을 로컬 SigLIP2 단독으로 한다(ADR 0025: margin > 5 이면 document, 아니면 unsure; photo 는 만들지 않는다). **기본 꺼짐: 꺼져 있으면
+    # 판별 수단이 없어서 모든 사진이 unsure 가 되고 문서 자동 등록이 멈춘다.** 켜도 외부 AI 호출 없이 로컬 모델만 쓴다. 모델은 ONNX 이미지 인코더(CPU, torch 없음)이고
+    # 폴더에 `siglip2_vision.onnx`·`head.json` 이 있어야 한다. (예전 Claude 사진 판별 스위치 PHOTO_JUDGE_LLM·PHOTO_JUDGE_MODEL 은 지웠다.)
     photo_classify_siglip: bool = False
     photo_classify_model_dir: str = ""  # 변환한 SigLIP2 ONNX 모델 폴더(저장소에 없다). 비었거나 파일이 없으면 판별은 failed 가 된다
     photo_classify_threads: int = 2  # onnxruntime CPU 스레드 수
+    # 날짜별 가족 타임라인의 자동 후보(업로더 확인 없이 margin ≤ 5 사진을 보이기)와 같은 날 유사 사진 묶기(이미지 임베딩)를 켠다(ADR 0026). **기본 꺼짐**:
+    # 꺼져 있으면 타임라인 이미지 분석·임베딩 저장·자동 노출을 하지 않고, 업로더가 확인했거나 직접 넣은 사진만 보인다(D-8 유지).
+    # 켜져 있어도 ADR 0020 의 3중 조건(FAMILY_MEMORY_ENABLED·가족 활성화·업로더 동의)과 사진별 AI 분석 제외를 만족한 사진만 분석한다.
+    # 운영에서 켜는 것은 별도 승인 대상이다(unsure 자동 노출은 문서 미탐 잔여 위험이 있다).
+    timeline_auto_candidates: bool = False
     # AI 추억 분석의 서버 기능 스위치(ADR 0020 3중 조건의 ①). 기본 꺼짐: 꺼져 있으면 가족 설정·업로더 동의가 켜져 있어도 분석 자격이 없고 동의를 새로 받지 않는다
     family_memory_enabled: bool = False
     # AI 추억 분석 작업 워커(PR3, 단일 경량 스레드). 기본 꺼짐: `FAMILY_MEMORY_ENABLED` 와 이 값이 모두 켜져 있을 때만 서버가 시작하며 돌린다
@@ -167,6 +172,11 @@ class Settings(BaseSettings):
     anthropic_max_tokens: int = (
         2048  # ANTHROPIC_MAX_TOKENS: 한 번의 응답에서 쓸 수 있는 출력 토큰 상한
     )
+    # AGENT_MAX_OUTPUT_TOKENS: Agent(메인·소통·일정·정산)와 그 하위 분석 호출의 모델 호출 1회당 출력 토큰 상한. thinking 도 같은 예산을 써서
+    # 낮으면 답이 잘리고(stop_reason=max_tokens → 503 llm_failed) 같은 Agent 를 다시 부르게 된다. 상한일 뿐 실제 사용량이 아니다.
+    # 양의 정수이고 모델의 최대 출력(Haiku 5.5: 128000, Models API 확인)을 넘을 수 없다. 범위 밖이면 서버가 시작할 때 설정 오류로 멈춘다.
+    # 일반 호출(`anthropic_max_tokens`)·돌봄·OCR·뉴스·일정 제안 등 이 Agent 경로 밖의 상한은 이 값과 무관하다.
+    agent_max_output_tokens: int = Field(default=10000, ge=1, le=128000)
     ai_effort: str = "low"  # 추론 비용을 줄이려고 낮게 둔다(low|medium|high)
     ai_auto_analysis_enabled: bool = (
         False  # 설계만 있고 기본 꺼짐(켜도 메시지마다 부르지 않고 시간·새 메시지 수로 모아서)

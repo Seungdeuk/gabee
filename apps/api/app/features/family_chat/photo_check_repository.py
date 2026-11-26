@@ -19,6 +19,20 @@ from .models import (
 REASON_UPLOADER_CONFIRMED = "uploader_confirmed_general"
 REASON_FAMILY_DOCUMENT = "family_saved_as_document"
 REASON_UPLOADER_REMOVED = "uploader_removed"
+# 타임라인 표시 선택(업로더의 명시적 포함·제외). **판별 상태(`chat_photo_checks.status`, 문서함 판정)를 바꾸지 않고** 이력 줄로만 남긴다 —
+# 문서로 적힌 줄을 `photo`/`excluded` 로 덮으면 문서함 판정이 바뀌기 때문이다. 같은 첨부의 가장 최근 줄이 현재 선택이다(새 열·표 없음).
+REASON_TIMELINE_INCLUDE = "timeline_include"
+REASON_TIMELINE_EXCLUDE = "timeline_exclude"
+TIMELINE_INCLUDE = "include"
+TIMELINE_EXCLUDE = "exclude"
+_TIMELINE_TO_STATUS = {
+    TIMELINE_INCLUDE: "tl_include",
+    TIMELINE_EXCLUDE: "tl_exclude",
+}  # 이력의 to_status 자리(12자 이하). 판별 상태가 아니다
+_TIMELINE_REASON = {
+    TIMELINE_INCLUDE: REASON_TIMELINE_INCLUDE,
+    TIMELINE_EXCLUDE: REASON_TIMELINE_EXCLUDE,
+}
 REASON_RECHECK = "recheck_requested"  # 업로더가 판별 실패·처리 지연 사진의 재검사를 요청했다(횟수는 이 이력 줄 수로 센다: 새 열 없음)
 # 재검사: 사진 한 장당 최대 횟수와, 같은 사진을 다시 맡기기 전 기다리는 시간(겹친 요청·연타가 판별을 중복으로 돌리지 않게)
 RECHECK_MAX = 3
@@ -245,6 +259,96 @@ def confirm_general(
     raise RuntimeError("photo check changed concurrently")
 
 
+def timeline_choices(db: Session, group_id: str) -> dict[str, str]:
+    """가족의 타임라인 수동 선택 {첨부 id: "include" | "exclude"}(첨부마다 가장 최근 이력 줄). 선택한 사진만 들어 있어 작다.
+    조회 오류는 삼키지 않는다(호출한 쪽이 503 으로 답한다)."""
+    rows = db.execute(
+        select(ChatPhotoCheckEvent.attachment_id, ChatPhotoCheckEvent.reason)
+        .where(
+            ChatPhotoCheckEvent.group_id == group_id,
+            ChatPhotoCheckEvent.reason.in_((REASON_TIMELINE_INCLUDE, REASON_TIMELINE_EXCLUDE)),
+        )
+        .order_by(ChatPhotoCheckEvent.id)
+    ).all()
+    return {
+        att: (TIMELINE_INCLUDE if reason == REASON_TIMELINE_INCLUDE else TIMELINE_EXCLUDE)
+        for att, reason in rows
+    }
+
+
+def set_timeline_choice(
+    db: Session,
+    group_id: str,
+    attachment_id: str,
+    actor_user_id: str,
+    choice: str,
+    now: datetime | None = None,
+) -> str:
+    """타임라인 수동 선택을 적는다(`include`|`exclude`). 이미 같은 선택이면 `already`(이력 없음), 아니면 이력 한 줄을 더하고 `set`.
+    판별 상태 줄(`chat_photo_checks`)은 건드리지 않는다. 업로더·방 종류 검사는 부르는 쪽."""
+    current = timeline_choices(db, group_id).get(attachment_id)
+    if current == choice:
+        db.commit()
+        return "already"
+    status = db.scalar(
+        select(ChatPhotoCheck.status).where(
+            ChatPhotoCheck.attachment_id == attachment_id, ChatPhotoCheck.group_id == group_id
+        )
+    )
+    _add_event(
+        db,
+        group_id,
+        attachment_id,
+        actor_user_id,
+        status,
+        _TIMELINE_TO_STATUS[choice],
+        _TIMELINE_REASON[choice],
+        now or datetime.now(UTC),
+    )
+    db.commit()
+    return "set"
+
+
+def uploaders_for(
+    db: Session, group_id: str, attachment_ids: list[str]
+) -> dict[str, tuple[str, datetime]]:
+    """첨부 id → (올린 사람 id, 올린 시각). 이 가족의 살아 있는 가족 전체방 이미지만. 이미지 분석 동의(ADR 0020: 업로더 동의·소급 동의)를 확인할 때 쓴다."""
+    if not attachment_ids:
+        return {}
+    rows = db.execute(
+        _review_base(
+            select(ChatPhotoCheck.attachment_id, Message.user_id, MessageAttachment.created_at)
+        ).where(
+            ChatPhotoCheck.group_id == group_id,
+            MessageAttachment.group_id == group_id,
+            Message.deleted_at.is_(None),
+            ChatRoom.kind == FAMILY,
+            MessageAttachment.kind == "image",
+            ChatPhotoCheck.attachment_id.in_(attachment_ids),
+        )
+    ).all()
+    return {att: (uploader, created) for att, uploader, created in rows}
+
+
+def attachment_group(db: Session, attachment_id: str) -> str | None:
+    """첨부가 속한 가족 id(없으면 None). 분석 작업이 결과를 쓰기 직전에 자격을 다시 확인할 때 쓴다."""
+    return db.scalar(
+        select(MessageAttachment.group_id).where(MessageAttachment.id == attachment_id)
+    )
+
+
+def image_attachment_ids(db: Session, group_id: str, uploader_id: str | None = None) -> list[str]:
+    """이 가족의 이미지 첨부 id(올린 사람을 주면 그 사람 것만). 동의 철회·가족 비활성화 때 타임라인 분석 파일을 지우려고 쓴다."""
+    stmt = (
+        select(MessageAttachment.id)
+        .join(Message, Message.id == MessageAttachment.message_id)
+        .where(MessageAttachment.group_id == group_id, MessageAttachment.kind == "image")
+    )
+    if uploader_id is not None:
+        stmt = stmt.where(Message.user_id == uploader_id)
+    return list(db.scalars(stmt))
+
+
 def exclude_photo(
     db: Session, group_id: str, attachment_id: str, actor_user_id: str, now: datetime | None = None
 ) -> str:
@@ -267,7 +371,11 @@ def exclude_photo(
         if row.status == EXCLUDED:
             db.commit()
             return "already"
-        if row.status != PHOTO:
+        excludable = (
+            PHOTO,
+            *AUTO_CANDIDATE_STATUSES,
+        )  # 확인된 사진과, 분석을 통과해 자동 후보로 보이는 사진(문서·뺀 사진은 아니다)
+        if row.status not in excludable:
             db.commit()
             return "not_in_timeline"
         result = db.execute(
@@ -275,7 +383,7 @@ def exclude_photo(
             .where(
                 ChatPhotoCheck.attachment_id == attachment_id,
                 ChatPhotoCheck.group_id == group_id,
-                ChatPhotoCheck.status == PHOTO,
+                ChatPhotoCheck.status == row.status,
             )
             .values(status=EXCLUDED, source=MANUAL, last_error=None, checked_at=now)
             .execution_options(synchronize_session=False)
@@ -286,7 +394,7 @@ def exclude_photo(
                 group_id,
                 attachment_id,
                 actor_user_id,
-                PHOTO,
+                row.status,
                 EXCLUDED,
                 REASON_UPLOADER_REMOVED,
                 now,
@@ -413,9 +521,22 @@ def uploader_context(
     return row.user_id, row.kind, row.deleted_at is None
 
 
-def _review_filter(group_id: str, user_id: str, cutoff: datetime, excluded: bool = False) -> list:
+def _review_filter(
+    group_id: str,
+    user_id: str,
+    cutoff: datetime,
+    excluded: bool = False,
+    choices: dict[str, str] | None = None,
+) -> list:
+    chosen = choices or {}
+    out_ids = {a for a, c in chosen.items() if c == TIMELINE_EXCLUDE}
+    in_ids = {a for a, c in chosen.items() if c == TIMELINE_INCLUDE}
     status_filter = (
-        ChatPhotoCheck.status == EXCLUDED
+        or_(
+            # 예전 방식으로 뺀 줄(다시 넣기로 선택한 것은 제외) 또는 문서 줄 등에서 수동으로 뺀 사진
+            and_(ChatPhotoCheck.status == EXCLUDED, ChatPhotoCheck.attachment_id.not_in(in_ids)),
+            ChatPhotoCheck.attachment_id.in_(out_ids),
+        )
         if excluded
         else or_(
             ChatPhotoCheck.status.in_((UNSURE, FAILED)),
@@ -455,7 +576,9 @@ def list_review(
     unsure·failed 와 15분 넘은 pending 만(`excluded=True` 면 내가 타임라인에서 뺀 사진만), 가족 전체방·살아 있는 메시지·이미지만.
     다른 사람의 사진은 절대 섞이지 않는다. 조회 오류는 삼키지 않는다(호출한 쪽이 503 으로 답한다)."""
     cutoff = (now or datetime.now(UTC)) - STALE_PENDING
-    where = _review_filter(group_id, user_id, cutoff, excluded)
+    where = _review_filter(
+        group_id, user_id, cutoff, excluded, timeline_choices(db, group_id) if excluded else None
+    )
     total = db.scalar(_review_base(select(func.count())).where(*where)) or 0
     stmt = _review_base(
         select(
@@ -472,24 +595,73 @@ def list_review(
     return [(r[0], r[1], r[2], r[3], r[4]) for r in rows], int(total)
 
 
+AUTO_CANDIDATE_STATUSES = (
+    UNSURE,
+)  # 타임라인 자동 분석 대상(ADR 0026 분석 범위): 판별이 끝난 애매(unsure)만. pending 은 판별이 끝날 때까지 보류, failed·document·excluded 는 자동 분석하지 않는다.
+# 분석을 허용한다고 자동 공개가 안전하다는 뜻은 아니다: 자동 노출은 서버 스위치(기본 꺼짐)의 운영 승인 사항이다.
+
+
+def list_auto_candidate_ids(db: Session, group_id: str, limit: int) -> list[str]:
+    """타임라인 자동 후보가 될 수 있는 사진 id(최신 `limit` 장): 가족 전체방의 살아 있는 이미지 첨부이고 판별 줄이 자동(`auto`)의
+    unsure 인 것. 대기(`pending`)·실패(`failed`)·문서(`document`)·직접 확인(`photo`)·뺀(`excluded`) 줄과 수동 줄은 포함하지 않는다."""
+    stmt = (
+        _review_base(select(ChatPhotoCheck.attachment_id))
+        .where(
+            ChatPhotoCheck.group_id == group_id,
+            MessageAttachment.group_id == group_id,
+            Message.deleted_at.is_(None),
+            ChatRoom.kind == FAMILY,
+            MessageAttachment.kind == "image",
+            ChatPhotoCheck.status.in_(AUTO_CANDIDATE_STATUSES),
+            ChatPhotoCheck.source == AUTO,
+        )
+        .order_by(MessageAttachment.created_at.desc(), Message.id.desc())
+        .limit(limit)
+    )
+    return list(db.scalars(stmt))
+
+
 def list_timeline(
     db: Session,
     group_id: str,
     limit: int,
     before: tuple[datetime, int] | None = None,
+    extra_ids: set[str] | None = None,
+    include_ids: set[str] | None = None,
+    exclude_ids: set[str] | None = None,
 ) -> list[tuple[str, int, datetime, datetime | None, datetime, str | None, str]]:
-    """가족 타임라인: 일반 사진(`photo`)으로 확인된 가족 전체방 사진만. 줄이 없거나 pending·unsure·failed·document·excluded 면 나오지
-    않는다(fail-closed). (attachment_id, message_id, display_at, taken_at, created_at, batch_id, uploader_id) 를 최신순으로.
+    """가족 타임라인: 일반 사진(`photo`)으로 확인된 가족 전체방 사진, 업로더가 직접 넣은 사진(`include_ids`), `extra_ids`(분석을 통과한 자동 unsure 후보)만.
+    그 밖의 pending·unsure·failed·document·excluded 줄은 나오지 않는다(fail-closed, 문서 줄은 업로더가 넣어야만 보인다).
+    (attachment_id, message_id, display_at, taken_at, created_at, batch_id, uploader_id) 를 최신순으로.
     `display_at` 은 촬영일(없으면 보낸 시각)이고, 같은 `batch_id` 묶음은 보이는 사진 중 가장 이른 값으로 맞춘다(Q4).
     `before` 는 이전 쪽 마지막 (display_at, message_id). 조회 오류는 삼키지 않는다(호출한 쪽이 503 으로 답한다)."""
     own_at = func.coalesce(MessageAttachment.taken_at, MessageAttachment.created_at)
+    visible = ChatPhotoCheck.status == PHOTO
+    if exclude_ids:
+        visible = and_(
+            visible, ChatPhotoCheck.attachment_id.not_in(exclude_ids)
+        )  # 업로더가 뺀 사진은 직접 확인한 사진도 숨긴다
+    if include_ids:
+        visible = or_(
+            visible, ChatPhotoCheck.attachment_id.in_(include_ids)
+        )  # 업로더의 명시적 포함은 어떤 판별 상태보다 우선한다
+    if extra_ids:
+        # 자동 후보는 자동(auto)의 미확정 줄일 때만(그 사이 업로더가 뺐거나 문서로 바뀌었으면 즉시 빠진다)
+        visible = or_(
+            visible,
+            and_(
+                ChatPhotoCheck.attachment_id.in_(extra_ids),
+                ChatPhotoCheck.status.in_(AUTO_CANDIDATE_STATUSES),
+                ChatPhotoCheck.source == AUTO,
+            ),
+        )
     where = [
         ChatPhotoCheck.group_id == group_id,
         MessageAttachment.group_id == group_id,
         Message.deleted_at.is_(None),
         ChatRoom.kind == FAMILY,
         MessageAttachment.kind == "image",
-        ChatPhotoCheck.status == PHOTO,
+        visible,
     ]
     batch_min = (
         _review_base(

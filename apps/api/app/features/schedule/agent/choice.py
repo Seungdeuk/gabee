@@ -11,6 +11,7 @@ import re
 import threading
 import time
 from datetime import date
+from types import SimpleNamespace
 
 from . import reader
 from .schemas import AgentResponse, Card, Choice
@@ -53,8 +54,16 @@ def event_day(event) -> date:
 
 
 def mentions(text: str, event) -> bool:
-    """사용자의 말에 이 일정의 날짜(11/21, 11월 21일, 21일)가 들어 있는가."""
+    """사용자의 말에 이 일정의 날짜(11/21, 11월 21일, 21일)가 들어 있는가. 자리만 남긴 후보(`gone`)는 날짜가 없다."""
+    if event.starts_at is None:
+        return False
     return mentions_day(text, event_day(event))
+
+
+def gone(item_id: str):
+    """되물은 뒤 사라졌거나 지금 권한으로는 다룰 수 없게 된 후보의 빈자리. 되물은 순서("첫 번째")를 지키려고 자리만 남긴다
+    (제목·날짜가 없어 이름·날짜로는 골라지지 않고, 골라져도 실행 전에 빠진다)."""
+    return SimpleNamespace(id=item_id, title="", starts_at=None)
 
 
 def mentions_day(text: str, day: date) -> bool:
@@ -211,24 +220,26 @@ def pick(text: str, choice: Choice, events: list) -> list[str] | None:
     return None
 
 
-_pending: dict[tuple[str, str], tuple[float, Choice]] = {}
+# 키에 채널(personal·family)을 넣는다(2026-11-25 P0): 개인 채팅에서 되물은 후보(비공개 일정·부탁 id)가 같은 사람의 가족방 말로 이어지면
+# 방 답에 제목이 실리고 고른 일정이 지워지거나 공유될 수 있었다. 되묻기는 그것을 만든 채널 안에서만 이어진다.
+_pending: dict[tuple[str, str, str], tuple[float, Choice]] = {}
 _lock = threading.Lock()
 
 
-def take(group_id: str, user_id: str) -> Choice | None:
-    """이 사용자가 직전에 받은 되묻기(10분 안)를 꺼낸다. 프로세스 메모리라 재시작하면 사라진다."""
+def take(group_id: str, user_id: str, channel: str = "personal") -> Choice | None:
+    """이 사용자가 이 채널에서 직전에 받은 되묻기(10분 안)를 꺼낸다. 프로세스 메모리라 재시작하면 사라진다."""
     now = time.monotonic()
     with _lock:
         for key in [k for k, (until, _) in _pending.items() if until <= now]:
             del _pending[key]
-        item = _pending.pop((group_id, user_id), None)
+        item = _pending.pop((group_id, user_id, channel), None)
     return item[1] if item else None
 
 
-def keep(group_id: str, user_id: str, response: AgentResponse) -> None:
+def keep(group_id: str, user_id: str, response: AgentResponse, channel: str = "personal") -> None:
     if response.choice is not None:
         with _lock:
-            _pending[(group_id, user_id)] = (
+            _pending[(group_id, user_id, channel)] = (
                 time.monotonic() + CHOICE_TTL_SECONDS,
                 response.choice,
             )

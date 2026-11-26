@@ -383,9 +383,10 @@ export const savePhotoToLibrary = (attachmentId) => apiFetch(`/family-chat/photo
  * @param {{ limit?: number, before?: number | null }} [options] limit 1~50(기본 20), before 는 이전 응답의 next_before
  * @returns {Promise<{ items: { attachment_id: string, thumb_url: string, created_at: string, taken_at: string | null, status: "unsure" | "failed" | "pending" }[], needs_review_count: number, next_before: number | null }>}
  */
-export function listMyPhotoChecks({ limit = 20, before } = {}) {
+export function listMyPhotoChecks({ limit = 20, before, kind } = {}) {
   const params = [`limit=${Math.min(50, Math.max(1, Math.floor(Number(limit)) || 20))}`];
   if (before != null && Number(before) >= 1) params.push(`before=${Math.floor(Number(before))}`);
+  if (kind === "excluded") params.push("kind=excluded"); // 내가 타임라인에서 뺀 사진(다시 넣으려고 볼 때). 상태는 모두 excluded
   return apiFetch(`/family-chat/photos/checks/mine?${params.join("&")}`);
 }
 
@@ -397,6 +398,19 @@ export function listMyPhotoChecks({ limit = 20, before } = {}) {
  */
 export const confirmGeneralPhoto = (attachmentId) =>
   apiFetch(`/family-chat/photos/${encodeURIComponent(attachmentId)}/check`, {
+    method: "POST",
+    body: { to: "photo", reason: "uploader_confirmed_general", acknowledge: true },
+  });
+
+/**
+ * 업로더 본인이 자기 사진을 가족 타임라인에 (다시) 넣는다. **타임라인 표시에만** 영향을 주고 문서함 판정·문서함 내용은 바뀌지 않는다
+ * (문서로 판단된 사진·문서함에 있는 사진도 넣을 수 있다. 일반 사진 확인(`/check`)의 문서 차단은 그대로). 같은 요청을 다시 보내도 성공이다.
+ * 오류: 404(내 사진이 아님·지운 사진·1:1 방), 409(check_in_progress), 422, 429, 503(photo_checks_unavailable), 401.
+ * @param {string} attachmentId 사진 첨부 id
+ * @returns {Promise<{ status: "photo", source: "manual" }>} status 는 "타임라인에서 보이는 사진"이라는 뜻이다
+ */
+export const includePhotoInTimeline = (attachmentId) =>
+  apiFetch(`/family-chat/photos/${encodeURIComponent(attachmentId)}/timeline-include`, {
     method: "POST",
     body: { to: "photo", reason: "uploader_confirmed_general", acknowledge: true },
   });

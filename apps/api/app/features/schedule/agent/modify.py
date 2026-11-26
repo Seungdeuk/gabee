@@ -622,15 +622,39 @@ def apply_choice(
 
 
 def resolve_choice(
-    db: Session, user_id: str, group_id: str, chosen, text: str, today: date
+    db: Session,
+    user_id: str,
+    group_id: str,
+    chosen,
+    text: str,
+    today: date,
+    room_member_ids: set[str] | None = None,
 ) -> AgentResponse | None:
     """되묻기(`choice.ask_response`)에 대한 사용자의 답을 처리한다. 답으로 읽을 수 없으면 None(새 요청으로 본다).
-    사용자가 후보 중에서 골랐으므로 삭제도 확인 카드 없이 바로 처리한다(정책 #29). 일정은 다시 찾고 소유자를 확인한다."""
-    events = []
+    사용자가 후보 중에서 골랐으므로 삭제도 확인 카드 없이 바로 처리한다(정책 #29). 일정은 다시 찾고 소유자를 확인한다.
+
+    권한은 답하는 지금의 상태로 다시 본다: 가족방(`room_member_ids`)이면 지금 방 구성원 모두가 볼 수 있는 일정(`reader.read`)만 남긴다.
+    되물은 뒤 지워졌거나 권한이 사라진 후보는 자리만 남겨(`choice_mod.gone`) "첫 번째"가 다른 일정으로 밀리지 않게 하고, 골라져도 실행하지 않는다."""
+    allowed = (
+        {
+            e.id
+            for e in reader.read(
+                db, group_id, "family", user_id=user_id, room_member_ids=room_member_ids
+            ).events
+        }
+        if room_member_ids is not None
+        else None
+    )
+    slots = []
     for event_id in chosen.event_ids:
         found = schedule_repo.get(db, group_id, event_id, user_id)
-        if found is not None and service.owns(found, user_id):
-            events.append(found)
+        usable = (
+            found is not None
+            and service.owns(found, user_id)
+            and (allowed is None or found.id in allowed)
+        )
+        slots.append(found if usable else choice_mod.gone(event_id))
+    events = [e for e in slots if e.starts_at is not None]
     if not events:
         return AgentResponse(intent=chosen.kind, text=NOT_FOUND_TEXT)
     if chosen.members:  # 공유할 사람을 이름으로 답하면 그 사람을 더해 수정을 마저 처리한다
@@ -651,9 +675,13 @@ def resolve_choice(
             db,
             group_id,
         )
-    ids = choice_mod.pick(text, chosen, events)
+    ids = choice_mod.pick(text, chosen, slots)
     if ids is None:
         return None
+    usable_ids = {e.id for e in events}
+    if ids and not any(i in usable_ids for i in ids):  # 고른 것이 모두 사라졌거나 지금 권한 밖이다
+        return AgentResponse(intent=chosen.kind, text=NOT_FOUND_TEXT)
+    ids = [i for i in ids if i in usable_ids]
     if chosen.kind == "edit" and chosen.changes.get("share_change") and ids:
         family = members_mod.load(
             db, group_id

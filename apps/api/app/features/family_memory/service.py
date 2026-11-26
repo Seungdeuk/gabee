@@ -14,7 +14,7 @@ from pathlib import Path
 from sqlalchemy.orm import Session
 
 from app.features.family_group.models import User
-from app.shared import member_exit, memory_hooks
+from app.shared import member_exit, memory_hooks, photo_analysis_consent
 from app.shared.config import settings
 from app.shared.errors import ApiError, not_found
 from app.shared.schema import monitor
@@ -317,5 +317,27 @@ def _on_attachment_removed(db: Session, group_id: str, attachment_id: str) -> No
         raise
 
 
+def _photos_allowed_for_analysis(
+    db: Session, group_id: str, uploaders: dict[str, tuple[str, datetime]]
+) -> set[str]:
+    """다른 기능(날짜별 타임라인의 이미지 분석)이 쓰는 ADR 0020 3중 조건 + 소급 동의 + 사진별 분석 제외. 판별 상태(E0/E1)는 부르는 쪽 정책이 정한다.
+    서버 스위치·기능 준비·가족 활성화 중 하나라도 없으면 빈 집합(fail-closed). 동의하기 전에 올린 사진은 소급 동의가 있어야 한다(ADR 0020 '과거 사진').
+    동의·제외는 가족 단위로 한 번에 읽는다."""
+    if not server_enabled() or not _feature_ready() or not repo.family_enabled(db, group_id):
+        return set()
+    consents = repo.consents_for_group(db, group_id)
+    excluded = repo.excluded_ids(db, group_id)
+    allowed = set()
+    for att, (uploader, uploaded_at) in uploaders.items():
+        row = consents.get(uploader)
+        if not _consent_active(row) or att in excluded:
+            continue
+        if _is_past_photo(row, uploaded_at) and not _retro_active(row):
+            continue  # 동의 전에 올린 사진: 소급 동의가 없으면 분석하지 않는다
+        allowed.add(att)
+    return allowed
+
+
 member_exit.register(_on_member_left)
 memory_hooks.register_attachment_removed(_on_attachment_removed)
+photo_analysis_consent.register(_photos_allowed_for_analysis)

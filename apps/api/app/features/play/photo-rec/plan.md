@@ -71,7 +71,7 @@
 - Test: `apps/api/app/features/play/tests/test_photo_rec_ai.py`
 
 **Interfaces:**
-- Consumes: `ingest.photo_judge.to_judge_jpeg(data: bytes) -> bytes`; `llm.complete_json`(이미지 블록을 받는 호출은 `doc_ai.classify_photo` 가 `_call` 로 보내는 방식을 읽고, `complete_json` 에 이미지 입력이 없으면 같은 방식으로 `client.py` 에 `images: list[bytes] | None = None` 선택 인자를 더한다).
+- Consumes: `ingest.photo_judge.to_judge_jpeg(data: bytes) -> bytes`; `llm.complete_json`(이미지 블록을 받는 호출은 `doc_ai` 의 이미지 블록 호출 방식(`_call`)을 읽고(예전 `classify_photo` 는 ADR 0025 로 지웠다), `complete_json` 에 이미지 입력이 없으면 같은 방식으로 `client.py` 에 `images: list[bytes] | None = None` 선택 인자를 더한다).
 - Produces: 상수 `FEATURE="play_photo_rec"`, `PROMPT_VERSION="v1"`, `MAX_TOKENS=4000`, `TIMEOUT=60.0`, `EFFORT="low"`; `@dataclass ContentResult(usable: bool, question: str, options: list[str], answer_index: int, box_x: float, box_y: float, input_tokens: int, output_tokens: int, model: str)`; `validate_content(raw: object) -> dict | None`(스키마·20자·보기 2~4·중복 없음·정답 위치·0~1); `content_question(jpeg: bytes) -> ContentResult`(검증에 실패하면 한 번 더, 그래도 안 되면 `ContentFailed(ValueError)` 에 토큰 수를 담아 던짐); `register_limits() -> None`(`ai_guard.register_bucket(FEATURE, Limits(...), (FEATURE,))`, 모듈 끝에서 호출).
 
 - [ ] **Step 1: 실패하는 시험** — `test_validate_content_rules`: 질문 21자·보기 1개·보기 5개·같은 보기·`answer_index` 범위 밖·`box_x` 1.2 는 `None`, 정상은 그대로, `usable=false` 는 질문 없이도 통과. `test_content_question_retries_once`: 가짜 `complete_json` 이 첫 호출에 나쁜 값, 둘째에 정상을 주면 정상 결과·호출 2번, 둘 다 나쁘면 `ContentFailed`. `test_prompt_rules`: 프롬프트에 "사람 얼굴이 크게"·"글자·서류"는 `usable=false`, 질문 20자, 보기 2~4개, 가족 이름·일정이 없음, 요청에 이미지 한 장만 있음. `test_limits_registered`: `ai_guard` 에 `play_photo_rec` 버킷이 이 설정 값으로 등록됨.

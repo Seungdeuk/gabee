@@ -16,7 +16,7 @@ from lxml import etree
 from PIL import Image, ImageOps
 
 from app.shared.config import settings
-from app.shared.llm import doc_ai
+from app.shared.llm import consent_gate, doc_ai
 
 logger = logging.getLogger(__name__)
 
@@ -145,7 +145,8 @@ def describe_pptx(data: bytes, markdown: str) -> tuple[str, str | None]:
                 continue
             todo.append((si, pi, jpeg))
     with ThreadPoolExecutor(max_workers=4) as ex:
-        results = list(ex.map(lambda t: _describe(t[2]), todo))
+        # 가족 채팅 목적이면 동의 관문 범위를 작업 스레드로 넘긴다(넘기지 않으면 그 스레드의 호출은 관문 밖이 된다)
+        results = list(ex.map(consent_gate.carry(lambda t: _describe(t[2])), todo))
     desc = {(si, pi): d for (si, pi, _), d in zip(todo, results, strict=True)}
     failed = sum(1 for d in results if d is None)
 

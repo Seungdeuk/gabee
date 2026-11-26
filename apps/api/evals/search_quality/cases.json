@@ -1,0 +1,861 @@
+[
+  {
+    "id": "q01",
+    "category": "exact",
+    "question": "치과 예약 언제였지?",
+    "history": null,
+    "queries": {
+      "ideal": [
+        "치과"
+      ],
+      "naive": [
+        "치과",
+        "예약",
+        "언제"
+      ],
+      "agent": []
+    },
+    "gold": [
+      "m01"
+    ],
+    "acceptable": [
+      "m02"
+    ],
+    "forbidden": [],
+    "key_facts": [
+      "목요일",
+      "오후 3시"
+    ],
+    "state": "confirmed",
+    "expected_cause": {
+      "ideal": "",
+      "naive": "query_selection",
+      "agent": ""
+    },
+    "lexical_gap": false,
+    "card": false,
+    "known_limitation": false
+  },
+  {
+    "id": "q02",
+    "category": "exact",
+    "question": "이삿짐센터 견적 얘기 어떻게 됐어?",
+    "history": null,
+    "queries": {
+      "ideal": [
+        "이삿짐센터"
+      ],
+      "naive": [
+        "이삿짐센터",
+        "견적",
+        "얘기"
+      ],
+      "agent": []
+    },
+    "gold": [
+      "m03"
+    ],
+    "acceptable": [
+      "m04"
+    ],
+    "forbidden": [],
+    "key_facts": [
+      "푸른이사",
+      "180만 원"
+    ],
+    "state": "confirmed",
+    "expected_cause": {
+      "ideal": "",
+      "naive": "query_selection",
+      "agent": ""
+    },
+    "lexical_gap": false,
+    "card": false,
+    "known_limitation": false
+  },
+  {
+    "id": "q03",
+    "category": "exact",
+    "question": "제주 항공권 어떻게 됐어?",
+    "history": null,
+    "queries": {
+      "ideal": [
+        "제주",
+        "항공권"
+      ],
+      "naive": [
+        "제주",
+        "항공권",
+        "어떻게",
+        "됐어"
+      ],
+      "agent": []
+    },
+    "gold": [
+      "m05"
+    ],
+    "acceptable": [],
+    "forbidden": [],
+    "key_facts": [
+      "12월 20일",
+      "23일"
+    ],
+    "state": "confirmed",
+    "expected_cause": {
+      "ideal": "",
+      "naive": "query_selection",
+      "agent": ""
+    },
+    "lexical_gap": false,
+    "card": false,
+    "known_limitation": false
+  },
+  {
+    "id": "q04",
+    "category": "multi_keyword",
+    "question": "할머니 생신 식당 어디로 했지?",
+    "history": null,
+    "queries": {
+      "ideal": [
+        "할머니",
+        "생신",
+        "식당"
+      ],
+      "naive": [
+        "할머니",
+        "생신",
+        "장소"
+      ],
+      "agent": []
+    },
+    "gold": [
+      "m06"
+    ],
+    "acceptable": [
+      "m07"
+    ],
+    "forbidden": [],
+    "key_facts": [
+      "한강 한정식",
+      "토요일 12시"
+    ],
+    "state": "confirmed",
+    "expected_cause": {
+      "ideal": "",
+      "naive": "query_selection",
+      "agent": ""
+    },
+    "lexical_gap": false,
+    "card": false,
+    "known_limitation": false
+  },
+  {
+    "id": "q05",
+    "category": "multi_keyword",
+    "question": "하준 학원 시간 바뀐 거 뭐였지?",
+    "history": null,
+    "queries": {
+      "ideal": [
+        "학원",
+        "시간"
+      ],
+      "naive": [
+        "학원",
+        "시간",
+        "바뀐"
+      ],
+      "agent": []
+    },
+    "gold": [
+      "m08"
+    ],
+    "acceptable": [
+      "m09"
+    ],
+    "forbidden": [],
+    "key_facts": [
+      "수요일 6시"
+    ],
+    "state": "changed",
+    "expected_cause": {
+      "ideal": "",
+      "naive": "query_selection",
+      "agent": ""
+    },
+    "lexical_gap": false,
+    "card": false,
+    "known_limitation": false
+  },
+  {
+    "id": "q06",
+    "category": "multi_keyword",
+    "question": "캠핑 준비물 뭐였지?",
+    "history": null,
+    "queries": {
+      "ideal": [
+        "캠핑",
+        "준비물"
+      ],
+      "naive": [
+        "캠핑",
+        "준비물",
+        "뭐"
+      ],
+      "agent": []
+    },
+    "gold": [
+      "m10"
+    ],
+    "acceptable": [
+      "m11"
+    ],
+    "forbidden": [],
+    "key_facts": [
+      "텐트",
+      "침낭"
+    ],
+    "state": "confirmed",
+    "expected_cause": {
+      "ideal": "",
+      "naive": "query_selection",
+      "agent": ""
+    },
+    "lexical_gap": false,
+    "card": false,
+    "known_limitation": false
+  },
+  {
+    "id": "q07",
+    "category": "synonym",
+    "question": "병원 얘기 한 적 있어?",
+    "history": null,
+    "queries": {
+      "ideal": [
+        "병원"
+      ],
+      "naive": [
+        "병원",
+        "얘기"
+      ],
+      "agent": []
+    },
+    "gold": [
+      "m12",
+      "m01"
+    ],
+    "acceptable": [],
+    "forbidden": [],
+    "key_facts": [
+      "내과"
+    ],
+    "state": "confirmed",
+    "expected_cause": {
+      "ideal": "keyword_limitation",
+      "naive": "keyword_limitation",
+      "agent": ""
+    },
+    "lexical_gap": true,
+    "card": false,
+    "known_limitation": true
+  },
+  {
+    "id": "q08",
+    "category": "synonym",
+    "question": "차 정비 언제 하기로 했지?",
+    "history": null,
+    "queries": {
+      "ideal": [
+        "차",
+        "정비"
+      ],
+      "naive": [
+        "차",
+        "정비",
+        "언제"
+      ],
+      "agent": []
+    },
+    "gold": [
+      "m13"
+    ],
+    "acceptable": [],
+    "forbidden": [],
+    "key_facts": [
+      "월요일 오전"
+    ],
+    "state": "confirmed",
+    "expected_cause": {
+      "ideal": "keyword_limitation",
+      "naive": "keyword_limitation",
+      "agent": ""
+    },
+    "lexical_gap": true,
+    "card": false,
+    "known_limitation": true
+  },
+  {
+    "id": "q09",
+    "category": "synonym",
+    "question": "저녁 같이 먹자는 얘기 나왔어?",
+    "history": null,
+    "queries": {
+      "ideal": [
+        "저녁",
+        "먹자"
+      ],
+      "naive": [
+        "저녁",
+        "같이",
+        "먹자"
+      ],
+      "agent": []
+    },
+    "gold": [
+      "m14"
+    ],
+    "acceptable": [],
+    "forbidden": [],
+    "key_facts": [
+      "토요일",
+      "6시"
+    ],
+    "state": "undecided",
+    "expected_cause": {
+      "ideal": "keyword_limitation",
+      "naive": "keyword_limitation",
+      "agent": ""
+    },
+    "lexical_gap": true,
+    "card": false,
+    "known_limitation": true
+  },
+  {
+    "id": "q10",
+    "category": "recency",
+    "question": "제일 최근에 정한 대청소 날짜가 언제야?",
+    "history": null,
+    "queries": {
+      "ideal": [
+        "대청소"
+      ],
+      "naive": [
+        "대청소",
+        "날짜"
+      ],
+      "agent": []
+    },
+    "gold": [
+      "m17"
+    ],
+    "acceptable": [
+      "m15",
+      "m16"
+    ],
+    "forbidden": [],
+    "key_facts": [
+      "11월 15일",
+      "9시"
+    ],
+    "state": "changed",
+    "expected_cause": {
+      "ideal": "",
+      "naive": "query_selection",
+      "agent": ""
+    },
+    "lexical_gap": false,
+    "card": false,
+    "known_limitation": false
+  },
+  {
+    "id": "q11",
+    "category": "recency",
+    "question": "처음에 정했던 가족 모임 날짜가 언제였지?",
+    "history": null,
+    "queries": {
+      "ideal": [
+        "가족",
+        "모임"
+      ],
+      "naive": [
+        "처음",
+        "정한",
+        "모임",
+        "날짜"
+      ],
+      "agent": []
+    },
+    "gold": [
+      "m18"
+    ],
+    "acceptable": [
+      "m19",
+      "m20"
+    ],
+    "forbidden": [],
+    "key_facts": [
+      "10월 3일"
+    ],
+    "state": "changed",
+    "expected_cause": {
+      "ideal": "result_limit",
+      "naive": "query_selection",
+      "agent": ""
+    },
+    "lexical_gap": false,
+    "card": false,
+    "known_limitation": false
+  },
+  {
+    "id": "q12",
+    "category": "change",
+    "question": "토요일 집들이 시간 최종으로 몇 시야?",
+    "history": null,
+    "queries": {
+      "ideal": [
+        "집들이"
+      ],
+      "naive": [
+        "토요일",
+        "약속",
+        "확정"
+      ],
+      "agent": []
+    },
+    "gold": [
+      "m22",
+      "m23"
+    ],
+    "acceptable": [
+      "m21",
+      "m25"
+    ],
+    "forbidden": [],
+    "key_facts": [
+      "6시",
+      "확인"
+    ],
+    "state": "changed",
+    "expected_cause": {
+      "ideal": "",
+      "naive": "query_selection",
+      "agent": ""
+    },
+    "lexical_gap": false,
+    "card": false,
+    "known_limitation": false
+  },
+  {
+    "id": "q13",
+    "category": "cancel",
+    "question": "외식 취소됐어?",
+    "history": null,
+    "queries": {
+      "ideal": [
+        "외식"
+      ],
+      "naive": [
+        "외식",
+        "취소됐어"
+      ],
+      "agent": []
+    },
+    "gold": [
+      "m25"
+    ],
+    "acceptable": [
+      "m14",
+      "m24"
+    ],
+    "forbidden": [],
+    "key_facts": [
+      "취소"
+    ],
+    "state": "cancelled",
+    "expected_cause": {
+      "ideal": "",
+      "naive": "query_selection",
+      "agent": ""
+    },
+    "lexical_gap": false,
+    "card": false,
+    "known_limitation": false
+  },
+  {
+    "id": "q14",
+    "category": "change",
+    "question": "영화 시간 최종은?",
+    "history": null,
+    "queries": {
+      "ideal": [
+        "영화"
+      ],
+      "naive": [
+        "영화",
+        "시간",
+        "최종"
+      ],
+      "agent": []
+    },
+    "gold": [
+      "m28"
+    ],
+    "acceptable": [
+      "m26",
+      "m27"
+    ],
+    "forbidden": [],
+    "key_facts": [
+      "4시 30분",
+      "확정"
+    ],
+    "state": "changed",
+    "expected_cause": {
+      "ideal": "",
+      "naive": "query_selection",
+      "agent": ""
+    },
+    "lexical_gap": false,
+    "card": false,
+    "known_limitation": false
+  },
+  {
+    "id": "q15",
+    "category": "undecided",
+    "question": "겨울 여행지 정해졌어?",
+    "history": null,
+    "queries": {
+      "ideal": [
+        "여행"
+      ],
+      "naive": [
+        "여행지",
+        "정해졌어"
+      ],
+      "agent": []
+    },
+    "gold": [
+      "m29",
+      "m31"
+    ],
+    "acceptable": [
+      "m30"
+    ],
+    "forbidden": [],
+    "key_facts": [
+      "부산",
+      "강릉",
+      "더 생각"
+    ],
+    "state": "undecided",
+    "expected_cause": {
+      "ideal": "",
+      "naive": "query_selection",
+      "agent": ""
+    },
+    "lexical_gap": false,
+    "card": false,
+    "known_limitation": false
+  },
+  {
+    "id": "q16",
+    "category": "undecided",
+    "question": "부모님 선물 뭐로 하기로 했어?",
+    "history": null,
+    "queries": {
+      "ideal": [
+        "부모님",
+        "선물"
+      ],
+      "naive": [
+        "부모님",
+        "선물",
+        "뭐로"
+      ],
+      "agent": []
+    },
+    "gold": [
+      "m32"
+    ],
+    "acceptable": [
+      "m33"
+    ],
+    "forbidden": [],
+    "key_facts": [
+      "안마기",
+      "건강검진권"
+    ],
+    "state": "undecided",
+    "expected_cause": {
+      "ideal": "",
+      "naive": "query_selection",
+      "agent": ""
+    },
+    "lexical_gap": false,
+    "card": false,
+    "known_limitation": false
+  },
+  {
+    "id": "q17",
+    "category": "no_result",
+    "question": "수영장 얘기 한 적 있어?",
+    "history": null,
+    "queries": {
+      "ideal": [
+        "수영장"
+      ],
+      "naive": [
+        "수영장",
+        "얘기"
+      ],
+      "agent": []
+    },
+    "gold": [],
+    "acceptable": [],
+    "forbidden": [],
+    "key_facts": [],
+    "state": "none",
+    "expected_cause": {
+      "ideal": "",
+      "naive": "",
+      "agent": ""
+    },
+    "lexical_gap": false,
+    "card": false,
+    "known_limitation": false
+  },
+  {
+    "id": "q18",
+    "category": "no_result",
+    "question": "계약금 얼마 냈는지 얘기했어?",
+    "history": null,
+    "queries": {
+      "ideal": [
+        "계약금"
+      ],
+      "naive": [
+        "계약금",
+        "얼마"
+      ],
+      "agent": []
+    },
+    "gold": [],
+    "acceptable": [],
+    "forbidden": [],
+    "key_facts": [],
+    "state": "none",
+    "expected_cause": {
+      "ideal": "",
+      "naive": "",
+      "agent": ""
+    },
+    "lexical_gap": false,
+    "card": false,
+    "known_limitation": false
+  },
+  {
+    "id": "q19",
+    "category": "deleted",
+    "question": "가족 사진 촬영 장소 어디로 했지?",
+    "history": null,
+    "queries": {
+      "ideal": [
+        "광교"
+      ],
+      "naive": [
+        "광교",
+        "호수공원"
+      ],
+      "agent": []
+    },
+    "gold": [],
+    "acceptable": [],
+    "forbidden": [
+      "m34",
+      "m35"
+    ],
+    "key_facts": [],
+    "state": "none",
+    "expected_cause": {
+      "ideal": "",
+      "naive": "",
+      "agent": ""
+    },
+    "lexical_gap": false,
+    "card": false,
+    "known_limitation": false
+  },
+  {
+    "id": "q20",
+    "category": "other_family",
+    "question": "이웃집은 이번 주말 어디 캠핑 간대?",
+    "history": null,
+    "queries": {
+      "ideal": [
+        "가평"
+      ],
+      "naive": [
+        "가평",
+        "캠핑장"
+      ],
+      "agent": []
+    },
+    "gold": [],
+    "acceptable": [],
+    "forbidden": [
+      "o01"
+    ],
+    "key_facts": [],
+    "state": "none",
+    "expected_cause": {
+      "ideal": "",
+      "naive": "",
+      "agent": ""
+    },
+    "lexical_gap": false,
+    "card": false,
+    "known_limitation": false
+  },
+  {
+    "id": "q21",
+    "category": "direct_room",
+    "question": "수진이랑 지민이 1:1로 하준 생일 준비 얘기했어?",
+    "history": null,
+    "queries": {
+      "ideal": [
+        "깜짝파티"
+      ],
+      "naive": [
+        "깜짝파티",
+        "준비"
+      ],
+      "agent": []
+    },
+    "gold": [],
+    "acceptable": [],
+    "forbidden": [
+      "d01"
+    ],
+    "key_facts": [],
+    "state": "none",
+    "expected_cause": {
+      "ideal": "",
+      "naive": "",
+      "agent": ""
+    },
+    "lexical_gap": false,
+    "card": false,
+    "known_limitation": false
+  },
+  {
+    "id": "q22",
+    "category": "direct_room",
+    "question": "하준이랑 수진이가 성적표 얘기했어?",
+    "history": null,
+    "queries": {
+      "ideal": [
+        "성적표"
+      ],
+      "naive": [
+        "성적표",
+        "얘기"
+      ],
+      "agent": []
+    },
+    "gold": [],
+    "acceptable": [],
+    "forbidden": [
+      "d03"
+    ],
+    "key_facts": [],
+    "state": "none",
+    "expected_cause": {
+      "ideal": "",
+      "naive": "",
+      "agent": ""
+    },
+    "lexical_gap": false,
+    "card": false,
+    "known_limitation": false
+  },
+  {
+    "id": "q23",
+    "category": "context",
+    "question": "그거 언제 얘기했지?",
+    "history": [
+      {
+        "role": "user",
+        "text": "우리 이삿짐센터 견적 알아봤었지?"
+      },
+      {
+        "role": "assistant",
+        "text": "네, 이삿짐센터 견적 얘기가 있었어요."
+      }
+    ],
+    "queries": {
+      "ideal": [
+        "이삿짐센터"
+      ],
+      "naive": [
+        "이삿짐센터",
+        "견적"
+      ],
+      "agent": [],
+      "no_history": [
+        "그거"
+      ]
+    },
+    "gold": [
+      "m03"
+    ],
+    "acceptable": [],
+    "forbidden": [],
+    "key_facts": [
+      "푸른이사"
+    ],
+    "state": "confirmed",
+    "expected_cause": {
+      "ideal": "",
+      "naive": "",
+      "agent": "",
+      "no_history": "context_needed"
+    },
+    "lexical_gap": false,
+    "card": false,
+    "known_limitation": false
+  },
+  {
+    "id": "q24",
+    "category": "card",
+    "question": "수진이 공유한 일정 내용이 뭐였지?",
+    "history": null,
+    "queries": {
+      "ideal": [
+        "치과",
+        "검진"
+      ],
+      "naive": [
+        "공유한",
+        "일정"
+      ],
+      "agent": []
+    },
+    "gold": [
+      "m36"
+    ],
+    "acceptable": [],
+    "forbidden": [],
+    "key_facts": [
+      "11월 12일",
+      "오후 4시"
+    ],
+    "state": "confirmed",
+    "expected_cause": {
+      "ideal": "content_not_indexed",
+      "naive": "content_not_indexed",
+      "agent": ""
+    },
+    "lexical_gap": false,
+    "card": true,
+    "known_limitation": true
+  }
+]

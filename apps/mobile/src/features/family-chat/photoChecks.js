@@ -20,8 +20,26 @@ export const DOC_NOT_REGISTERED = "아직 문서함에서 확인되지 않았어
 export const DOC_REGISTERED = "가족 문서함에 저장됐어요";
 export const DOC_CHECKING = "문서함에 저장됐는지 확인하는 중…";
 
-/** 상태 라벨: 서버는 이 목록의 상태만 돌려준다(unsure·failed, 올린 지 15분 넘은 pending). */
-const STATUS_LABEL = { unsure: "확인 필요", failed: "판별 실패", pending: "처리 지연" };
+// 타임라인에서 뺀 사진 목록(`kind=excluded`)과 다시 넣기: 타임라인 표시에만 영향을 주고 문서함·채팅 원본은 바뀌지 않는다.
+export const EXCLUDED_TITLE = "타임라인에서 뺀 사진";
+export const EXCLUDED_EMPTY = "타임라인에서 뺀 사진이 없어요";
+export const EXCLUDED_ENTRY_LABEL = "뺀 사진";
+export const EXCLUDED_SHEET_TITLE = "다시 타임라인에 넣을까요?";
+export const EXCLUDED_SHEET_BODY =
+  "다시 넣으면 우리 가족 타임라인에 보여요. 채팅방의 사진과 문서함은 그대로예요. 문서·카드·서류·화면 캡처가 찍혀 있다면 넣지 마세요. 언제든 다시 뺄 수 있어요.";
+export const INCLUDE_LABEL = "다시 넣기";
+export const INCLUDING_LABEL = "넣는 중…";
+export const INCLUDED_NOTICE = "타임라인에 다시 넣었어요";
+
+/**
+ * 화면 종류: 라우트 값 `excluded` 면 "뺀 사진" 목록, 그 밖(없음·모르는 값)은 기존 "확인이 필요한 사진".
+ * @param {unknown} param 라우트 쿼리 값
+ * @returns {"review" | "excluded"}
+ */
+export const reviewKindOf = (param) => (param === "excluded" ? "excluded" : "review");
+
+/** 상태 라벨: 서버는 이 목록의 상태만 돌려준다(unsure·failed, 올린 지 15분 넘은 pending, 뺀 사진 목록의 excluded). */
+const STATUS_LABEL = { unsure: "확인 필요", failed: "판별 실패", pending: "처리 지연", excluded: "뺀 사진" };
 
 /**
  * @param {string} status 서버의 판별 상태

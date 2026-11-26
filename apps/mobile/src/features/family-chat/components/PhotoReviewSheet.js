@@ -12,6 +12,10 @@ import {
   CONFIRM_LABEL,
   DOC_CHECKING,
   DOC_SAVE_HINT,
+  EXCLUDED_SHEET_BODY,
+  EXCLUDED_SHEET_TITLE,
+  INCLUDE_LABEL,
+  INCLUDING_LABEL,
   LATER_LABEL,
   SHEET_NOTICE_BODY,
   SHEET_NOTICE_TITLE,
@@ -26,9 +30,10 @@ import { LIBRARY_BUTTON_LABEL, LIBRARY_SAVING_LABEL } from "../saveToLibrary";
  * docState: 이 사진의 문서함 저장 진행("checking" 등록 확인 중, "not_registered" 확인했는데 아직 없음 → 다시 저장만 보인다, 그 밖에는 없음).
  * @param {{ item: { attachment_id: string, thumb_url: string, status: string } | null, acknowledged: boolean, busy: null | "confirm" | "doc", docState?: "checking" | "not_registered" | null, message: string, onToggleAck: () => void, onConfirm: () => void, onSaveDocument: () => void, onClose: () => void }} props
  */
-export default function PhotoReviewSheet({ item, acknowledged, busy, docState = null, message, onToggleAck, onConfirm, onSaveDocument, onClose }) {
+export default function PhotoReviewSheet({ item, mode = "review", acknowledged, busy, docState = null, message, onToggleAck, onConfirm, onSaveDocument, onClose }) {
   const locked = busy != null || docState === "checking";
   const retryOnly = docState === "not_registered"; // 이미 문서로 저장을 요청한 사진: 일반 사진 확인은 막혀 있으니 다시 저장만 보인다
+  const excluded = mode === "excluded"; // 타임라인에서 뺀 사진을 다시 넣는 시트: 문서함 저장 버튼·안내는 없다(타임라인 표시에만 영향)
   return (
     <Modal visible={item != null} transparent animationType="slide" onRequestClose={() => !locked && onClose()} statusBarTranslucent>
       <View style={styles.root}>
@@ -45,9 +50,9 @@ export default function PhotoReviewSheet({ item, acknowledged, busy, docState = 
               {retryOnly ? null : (
                 <>
                   <Text style={styles.title} accessibilityRole="header">
-                    {SHEET_NOTICE_TITLE}
+                    {excluded ? EXCLUDED_SHEET_TITLE : SHEET_NOTICE_TITLE}
                   </Text>
-                  <Text style={styles.body}>{SHEET_NOTICE_BODY}</Text>
+                  <Text style={styles.body}>{excluded ? EXCLUDED_SHEET_BODY : SHEET_NOTICE_BODY}</Text>
                   <Pressable
                     onPress={onToggleAck}
                     disabled={locked}
@@ -75,20 +80,22 @@ export default function PhotoReviewSheet({ item, acknowledged, busy, docState = 
               <View style={styles.actions}>
                 {retryOnly ? null : (
                   <Button
-                    label={busy === "confirm" ? CONFIRMING_LABEL : CONFIRM_LABEL}
+                    label={busy === "confirm" ? (excluded ? INCLUDING_LABEL : CONFIRMING_LABEL) : excluded ? INCLUDE_LABEL : CONFIRM_LABEL}
                     onPress={onConfirm}
                     disabled={!canConfirm({ acknowledged, busy: locked })}
                     testID="photo-review-confirm"
                   />
                 )}
-                {retryOnly ? null : <Text style={styles.hint}>{DOC_SAVE_HINT}</Text>}
-                <Button
-                  label={busy === "doc" ? LIBRARY_SAVING_LABEL : retryOnly ? "다시 저장" : LIBRARY_BUTTON_LABEL}
-                  variant="secondary"
-                  onPress={onSaveDocument}
-                  disabled={locked}
-                  testID="photo-review-document"
-                />
+                {retryOnly || excluded ? null : <Text style={styles.hint}>{DOC_SAVE_HINT}</Text>}
+                {excluded ? null : (
+                  <Button
+                    label={busy === "doc" ? LIBRARY_SAVING_LABEL : retryOnly ? "다시 저장" : LIBRARY_BUTTON_LABEL}
+                    variant="secondary"
+                    onPress={onSaveDocument}
+                    disabled={locked}
+                    testID="photo-review-document"
+                  />
+                )}
                 <Button label={LATER_LABEL} variant="ghost" onPress={onClose} disabled={locked} testID="photo-review-later" />
               </View>
             </ScrollView>

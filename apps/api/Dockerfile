@@ -27,5 +27,21 @@ RUN printf '%s  %s\n' \
       0157e8bf854e3b492adead91332526ff09c4f2381208d711f9d7c3429ac2cc74 data/models/ner-koelectra-small-r11b-s21/model_card.json \
     | sha256sum -c -
 
+# 가족방 사진 판별용 SigLIP2(ONNX, docs/adr/0025). 로컬 OCR(RapidOCR)은 이미지에 없다. 모델은 저장소에 없다: 빌드하는 PC 의 apps/api/data/models/siglip2-onnx/ 에
+# siglip2_vision.onnx(371,816,797 B)와 head.json(241,529 B)을 둔다(위 COPY 가 함께 가져간다). 출처: google/siglip2-base-patch16-224 를 ONNX 로 바꾼 산출물(가중치·문장·임계값 고정).
+# 폴더가 있으면 전체 SHA-256 을 검증하고(다르면 빌드 실패) 검증 기록을 남긴다. 없으면 경고만 남기고 모델 없이 빌드한다: 서버가 시작할 때
+# `photo model status=missing` 을 로그로 남기고, 사진 판별은 unsure(스위치 꺼짐)·failed(스위치 켜짐)가 되어 문서·일반으로 확정하지 않는다.
+# 이 ENV 는 모델 위치만 정한다. 판별 스위치(PHOTO_CLASSIFY_SIGLIP)와 Claude 읽기(INGEST_LLM_OCR)는 배포 설정에서 정한다.
+ENV PHOTO_CLASSIFY_MODEL_DIR=/srv/data/models/siglip2-onnx
+RUN if [ -d data/models/siglip2-onnx ]; then \
+      printf '%s  %s\n' \
+        52e01513b5b98b80056f10bcce72e9568e050070e296ea6d557afb5b06d61949 data/models/siglip2-onnx/siglip2_vision.onnx \
+        2a177cbe0fdd815447bcf2e089dbc96dbf906242e0d07d4c7831f90bd7bd8e87 data/models/siglip2-onnx/head.json \
+      | sha256sum -c - \
+      && sha256sum data/models/siglip2-onnx/siglip2_vision.onnx data/models/siglip2-onnx/head.json > data/models/siglip2-onnx.VERIFIED ; \
+    else \
+      echo "WARNING: data/models/siglip2-onnx 가 없어 SigLIP2 없이 빌드한다(사진 판별 불가, 서버 로그 photo model status=missing)"; \
+    fi
+
 EXPOSE 8000
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]

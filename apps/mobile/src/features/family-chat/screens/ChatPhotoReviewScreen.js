@@ -1,4 +1,4 @@
-import { useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect, useRef, useState } from "react";
 import { ActivityIndicator, FlatList, Pressable, StyleSheet, Text, View, useWindowDimensions } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -8,9 +8,20 @@ import Button from "@/shared/components/Button";
 import IconButton from "@/shared/components/IconButton";
 import { colors, font, radius, spacing } from "@/theme";
 
-import { confirmGeneralPhoto, getPhotoLibraryState } from "../api";
+import { confirmGeneralPhoto, getPhotoLibraryState, includePhotoInTimeline } from "../api";
 import PhotoReviewSheet from "../components/PhotoReviewSheet";
-import { REVIEW_EMPTY, REVIEW_TITLE, cellLabel, reviewBodyKind, runConfirm, runDocumentSave } from "../photoChecks";
+import {
+  EXCLUDED_EMPTY,
+  EXCLUDED_TITLE,
+  INCLUDED_NOTICE,
+  REVIEW_EMPTY,
+  REVIEW_TITLE,
+  cellLabel,
+  reviewBodyKind,
+  reviewKindOf,
+  runConfirm,
+  runDocumentSave,
+} from "../photoChecks";
 import { saveToLibrary } from "../saveToLibrary";
 import useChatPhotoChecks from "../useChatPhotoChecks";
 
@@ -28,7 +39,10 @@ export default function ChatPhotoReviewScreen() {
   const router = useRouter();
   const { width: windowWidth } = useWindowDimensions();
   const width = Math.min(windowWidth, MAX_WIDTH);
-  const list = useChatPhotoChecks();
+  const params = useLocalSearchParams();
+  const mode = reviewKindOf(Array.isArray(params.kind) ? params.kind[0] : params.kind); // "excluded": 타임라인에서 뺀 사진을 다시 넣는 목록
+  const excludedMode = mode === "excluded";
+  const list = useChatPhotoChecks(mode);
   const [selected, setSelected] = useState(null);
   const [acknowledged, setAcknowledged] = useState(false);
   const [busyById, setBusyById] = useState({}); // 사진 id 별 처리 중: "confirm" | "doc" (한 사진의 처리 끝이 다른 사진의 표시를 풀지 않게 사진별로 둔다)
@@ -84,13 +98,13 @@ export default function ChatPhotoReviewScreen() {
     if (!id || !acknowledged || busy != null || working.current.has(id)) return;
     setBusyFor(id, "confirm");
     setMsgFor(id, "");
-    const out = await runConfirm({ id, acknowledged, busy: null, working: working.current, confirm: confirmGeneralPhoto });
+    const out = await runConfirm({ id, acknowledged, busy: null, working: working.current, confirm: excludedMode ? includePhotoInTimeline : confirmGeneralPhoto });
     if (!mounted.current) return;
     setBusyFor(id, null);
     if (out.kind === "confirmed") {
       list.remove(id);
       setSelected((cur) => (cur?.attachment_id === id ? null : cur));
-      setNotice(out.message);
+      setNotice(excludedMode ? INCLUDED_NOTICE : out.message);
     } else if (out.kind === "gone") {
       list.remove(id); // 더 이상 확인할 수 없는 사진(지워짐·문서·내 사진 아님)은 목록에서 뺀다
       setSelected((cur) => (cur?.attachment_id === id ? null : cur));
@@ -160,7 +174,7 @@ export default function ChatPhotoReviewScreen() {
   } else if (kind === "empty") {
     body = (
       <View style={styles.center}>
-        <Text style={styles.emptyText}>{REVIEW_EMPTY}</Text>
+        <Text style={styles.emptyText}>{excludedMode ? EXCLUDED_EMPTY : REVIEW_EMPTY}</Text>
       </View>
     );
   } else {
@@ -207,7 +221,7 @@ export default function ChatPhotoReviewScreen() {
         <IconButton name="chevron-back" label="뒤로" onPress={back} />
         <View style={styles.titleBox}>
           <Text style={styles.title} numberOfLines={1} accessibilityRole="header">
-            {REVIEW_TITLE}
+            {excludedMode ? EXCLUDED_TITLE : REVIEW_TITLE}
           </Text>
           {list.status === "ready" && list.total > 0 ? <Text style={styles.subtitle}>{`${list.total}장`}</Text> : null}
         </View>
@@ -220,6 +234,7 @@ export default function ChatPhotoReviewScreen() {
       ) : null}
       <PhotoReviewSheet
         item={selected}
+        mode={mode}
         acknowledged={acknowledged}
         busy={busy}
         docState={selected ? (docStates[selected.attachment_id] ?? null) : null}

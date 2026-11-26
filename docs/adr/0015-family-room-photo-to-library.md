@@ -43,3 +43,5 @@
 - 유지: 사진 판별 2단계(`PHOTO_JUDGE_LLM`)의 동의 확인(`ai_assistant/library.py` `_family_allows_ai` → `ai_guard.is_enabled`)은 그대로 둔다. 1:1 방의 사진·파일은 여전히 어디에도 넘기지 않는다.
 - 이 결정으로 위 "외부 전송 범위"의 예전 서술 중 "채팅 파일은 외부로 나가지 않는다(family-chat 2026-10-30 결정)"와 "처방전은 어떤 모델에도 보내지 않는다(2026-10-22 담당자 결정)"는 **가족 전체방 문서·사진에 한해 대체됨**이다(#333 과 이 결정으로). 앞 서술은 지우지 않고 기록으로 남긴다.
 - 남은 일: 개인정보처리방침·스토어(Play 데이터 안전 양식) 고지에 "가족방에 올린 문서·사진이 서비스 처리를 위해 Anthropic API 로 전송된다"를 반영해야 한다(로드맵 T31, 사용자 작업).
+
+- **갱신 (2026-11-26):** 사진 판별은 로컬 OCR(+Claude haiku) 대신 로컬 SigLIP2 단독이다([0025](0025-local-ocr-removed-siglip-only-photo-judge.md)). Claude 사진 판별(PHOTO_JUDGE_LLM)은 지웠다. 문서 등록의 외부 전송은 가족 AI 동의가 있을 때만이다([0024](0024-family-chat-external-ai-consent.md)). 위 기록은 당시 결정 그대로 둔다.

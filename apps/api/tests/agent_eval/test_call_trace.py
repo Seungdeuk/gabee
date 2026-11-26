@@ -344,8 +344,8 @@ def test_chat_03_records_each_call_with_role_stop_reason_max_tokens_and_tool_res
     assert [r["role"] for r in rows] == ["main", "family_chat", "analysis", "family_chat"]
     assert [r["call_index"] for r in rows] == [0, 1, 2, 3]
     assert all(r["ok"] and r["stop_reason"] for r in rows)
-    # 소통 Agent 호출은 2048(`family_chat.agent.AGENT_MAX_TOKENS`), 대화 분석은 4096, 메인은 2048
-    assert [r["max_tokens"] for r in rows] == [2048, 2048, 4096, 2048]
+    # 2026-11-25: 메인·소통 Agent·대화 분석은 모두 공통 설정 `agent_max_output_tokens`(10000)다(이전: 메인 2048, 소통 2048, 분석 4096)
+    assert [r["max_tokens"] for r in rows] == [10000, 10000, 10000, 10000]
     assert rows[1]["requested_tools"] == ["analyze_recent_chat", "list_todos"]
     names = [t["tool"] for r in rows for t in r.get("tool_results", [])]
     assert names == ["analyze_recent_chat", "list_todos"]

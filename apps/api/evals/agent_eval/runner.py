@@ -149,6 +149,10 @@ class RunOptions:
     integrated_prompt_hash: str | None = None
     # 호출 추적(`call_trace`): 켜면 결과 폴더에 `call_diagnostics.json`(상태값만)을 더 쓴다. 채점·비용·기존 결과 파일은 그대로다
     diagnostics: bool = False
+    # 켜면 case-run(반복 하나)이 끝나고 기존 보안 판정(`security_violations`: 금지 문자열·승인 없는 쓰기 시도 등)에 위반이 있으면 **후속 case-run 을 시작하지 않는다**.
+    # 위반이 난 case-run 까지의 결과는 보존한다. 판정은 새로 하지 않고 이미 계산된 값만 쓴다. 실제 호출(`--real`)은 CLI 가 켠다. 보장은 "후속 case-run 차단"이고,
+    # 위반이 난 요청 안에서 이미 나간 호출은 막지 못한다(한계). 일반 Task Success 실패는 중단하지 않는다.
+    stop_on_security: bool = False
 
 
 @dataclass(frozen=True)
@@ -228,6 +232,11 @@ class RunReport:
     fakes: dict[tuple[str, int], fake_model.FakeModel] = field(default_factory=dict)
     ledger: Ledger | None = None
     halted: str | None = None
+    # 보안 위반으로 중단했을 때만 채운다(`RunOptions.stop_on_security`): case_id·repeat·violations·planned
+    security_halt: dict[str, Any] | None = None
+    partial: list[StoredCase] = field(
+        default_factory=list
+    )  # 중단 때 반복이 모두 끝나지 못한 사례의 끝난 반복(보존용)
     run_dir: Path | None = None
     interrupted: list[str] = field(default_factory=list)
     call_traces: list[dict[str, Any]] = field(default_factory=list)  # `options.diagnostics` 일 때만
@@ -279,7 +288,16 @@ class RunReport:
             and c["error"] == 0
             and c["halted"] == 0
             and not self.halted
+            and not self.security_halt
         )
+
+    def halt_counts(self) -> dict[str, int]:
+        """보안 위반 중단의 실행 수: 예정·완료(위반 난 실행 포함)·미실행. 미실행은 통과도 실패도 아니다. 중단이 아니면 빈 값."""
+        if not self.security_halt:
+            return {}
+        planned = int(self.security_halt["planned"])
+        done = len(self.records)
+        return {"planned": planned, "completed": done, "not_started": planned - done}
 
     def per_case_usage(self) -> dict[str, dict[str, int | str]]:
         """사례별 사용량(기록장의 호출 기록을 사례 id 로 묶는다). 기록장이 없으면 비어 있다."""
@@ -320,6 +338,12 @@ class RunReport:
             )
         if self.halted:
             lines.append(f"  중단: {self.halted}")
+        if self.security_halt:
+            h, n = self.security_halt, self.halt_counts()
+            lines.append(
+                f"  보안 위반으로 중단: {h['case_id']}#{h['repeat']} 위반 {list(h['violations'])}. 예정 {n['planned']}회 중 완료 {n['completed']}회, "
+                f"미실행 {n['not_started']}회(미실행은 통과도 실패도 아니다). 완료분 결과는 보존했고 후속 case-run 은 시작하지 않았다"
+            )
         for r in self.records:
             if r.status in ("unsupported", "error", "missing_observation"):
                 lines.append(f"  [{r.status}] {r.case_id}#{r.repeat}: {r.detail}")
@@ -1178,21 +1202,43 @@ def committed_rows(split: str) -> dict[str, dict[str, Any]]:
     return {_case_of(i).id: case_row(i) for i in items}
 
 
-def committed_gen_rows() -> dict[str, dict[str, Any]]:
-    """일반화 평가 사례 5건(`gen_cases.GEN_PATH`)의 {id: 정규 값}. 사례 파일·고정값 파일이 모두 HEAD 커밋과 같고(미커밋·수정 거부),
-    파일이 고정값·코드 정의와 일치해야만 돌려준다(어긋나면 거부). 공식 dev(`committed_rows`)와는 id 로 구분하며, 두 집합이 겹치면 거부한다."""
-    from . import case_files, gen_cases
+def committed_set_rows(spec: Any) -> dict[str, dict[str, Any]]:
+    """허용된 합성 사례 파일(`approved_sets.ApprovedSet`) 하나의 {id: 정규 값}. 사례 파일·고정값 파일이 모두 HEAD 커밋과 같고(미커밋·수정 거부),
+    파일이 고정값·코드 정의와 일치해야만 돌려준다(어긋나면 거부). 공식 dev(`committed_rows`)와 다른 허용 파일과는 id 로 구분하며 겹치면 거부한다."""
+    from . import approved_sets, case_files
 
-    _require_head_clean([gen_cases.GEN_PATH, gen_cases.PINS_PATH])
-    problems = gen_cases.check_pins()
+    _require_head_clean([spec.path, spec.pins_path])
+    problems = spec.check_pins()
     if problems:
-        raise RunnerRefused("일반화 사례가 고정값과 다르다: " + "; ".join(problems))
-    items = case_files.load_cases(gen_cases.GEN_PATH, "dev")
+        raise RunnerRefused(f"{spec.label}가 고정값과 다르다: " + "; ".join(problems))
+    items = case_files.load_cases(spec.path, "dev")
     rows = {_case_of(i).id: case_row(i) for i in items}
+    if set(rows) != set(spec.ids):
+        raise RunnerRefused(f"{spec.label} 파일의 id 가 허용 목록과 다르다")
     official = {str(r["id"]) for r in _official_dev_ids()}
     if official & set(rows):
-        raise RunnerRefused("일반화 사례 id 가 공식 dev 사례 id 와 겹친다")
+        raise RunnerRefused(f"{spec.label} id 가 공식 dev 사례 id 와 겹친다")
+    for other in approved_sets.all_sets():
+        if other.key != spec.key and other.ids & set(rows):
+            raise RunnerRefused(f"{spec.label} id 가 다른 허용 사례 파일의 id 와 겹친다")
     return rows
+
+
+def committed_gen_rows() -> dict[str, dict[str, Any]]:
+    """일반화 평가 사례 5건(`gen_cases.GEN_PATH`)의 {id: 정규 값}(`committed_set_rows` 의 일반화 항목)."""
+    from . import approved_sets
+
+    return committed_set_rows(next(s for s in approved_sets.all_sets() if s.key == "gen"))
+
+
+def committed_todo_rows() -> dict[str, dict[str, Any]]:
+    """할 일 라우팅 회귀 사례 2건(`todo_routing_cases.PATH`)의 {id: 정규 값}(`committed_set_rows` 의 라우팅 회귀 항목)."""
+    from . import approved_sets
+
+    return committed_set_rows(next(s for s in approved_sets.all_sets() if s.key == "todo_routing"))
+
+
+_SET_ROWS = {"gen": "committed_gen_rows", "todo_routing": "committed_todo_rows"}
 
 
 def _official_dev_ids() -> list[dict[str, Any]]:
@@ -1202,39 +1248,39 @@ def _official_dev_ids() -> list[dict[str, Any]]:
 
 
 def verify_dev_source(path: Any, items: Iterable[Item]) -> None:
-    """`--dev-file` 경로와 사례의 짝을 확인한다: 일반화 사례(`s-gen-…`)는 그 파일(`gen_cases.GEN_PATH`)에서만, 그 파일은 일반화 사례만 담아야 한다.
-    공식 dev 파일의 허용 규칙은 바꾸지 않는다(경로 대조는 일반화 사례가 관련될 때만 더해진다)."""
-    from . import gen_cases
+    """`--dev-file` 경로와 사례의 짝을 확인한다: 허용된 합성 사례(`s-gen-…`·`s-todo-…`)는 각자의 정확한 파일에서만, 그 파일은 자기 사례만 담아야 한다.
+    공식 dev 파일의 허용 규칙은 바꾸지 않는다(경로 대조는 허용된 합성 사례가 관련될 때만 더해진다)."""
+    from . import approved_sets
 
-    gen_ids = {spec[0] for spec in gen_cases.SPECS}
     ids = {_case_of(i).id for i in items}
-    try:
-        is_gen_file = path is not None and Path(str(path)).resolve() == gen_cases.GEN_PATH.resolve()
-    except OSError:
-        is_gen_file = False
-    if ids & gen_ids and not is_gen_file:
-        raise RunnerRefused("일반화 사례는 허용된 사례 파일(cases_gen_isolation.json)에서만 쓴다")
-    if is_gen_file and ids - gen_ids:
-        raise RunnerRefused("일반화 사례 파일에는 일반화 사례(s-gen-…)만 있어야 한다")
+    for spec in approved_sets.all_sets():
+        is_file = approved_sets.is_path_of(spec, path)
+        if ids & spec.ids and not is_file:
+            raise RunnerRefused(f"{spec.label}는 허용된 사례 파일({spec.file_name})에서만 쓴다")
+        if is_file and ids - spec.ids:
+            raise RunnerRefused(
+                f"{spec.label} 파일에는 {spec.label}({spec.id_prefix}…)만 있어야 한다"
+            )
 
 
 def verify_committed(items: Iterable[Item], split: str) -> None:
     """사례 id 가 커밋된 목록에 있고 내용이 커밋된 사례와 같은지 확인한다(`--dev-file` 로 val·test 를 위장하거나 내용을 바꾼 파일은 거부).
 
-    공식 dev 사례는 예전과 똑같이 대조한다. 공식 목록에 없는 id 가 일반화 사례 id 이고 분할이 dev 이면, 한정해서 커밋된 일반화 사례 5건(`committed_gen_rows`)과 대조한다.
-    그 밖의 id(위장 파일·허용 목록 밖 사례)는 거부한다."""
+    공식 dev 사례는 예전과 똑같이 대조한다. 공식 목록에 없는 id 가 허용된 합성 사례 id(일반화 5건·할 일 라우팅 회귀 2건)이고 분할이 dev 이면,
+    그 파일의 커밋된 사례(`committed_set_rows`)와 대조한다. 그 밖의 id(위장 파일·허용 목록 밖 사례)는 거부한다."""
+    from . import approved_sets
+
     committed = committed_rows(split)
-    gen: dict[str, dict[str, Any]] | None = None
+    synthetic: dict[str, dict[str, dict[str, Any]]] = {}
     for item in items:
         case_id = _case_of(item).id
         row = committed.get(case_id)
         if row is None and split == "dev":
-            from . import gen_cases
-
-            if case_id in {spec[0] for spec in gen_cases.SPECS}:
-                if gen is None:
-                    gen = committed_gen_rows()
-                row = gen.get(case_id)
+            spec = approved_sets.set_of_id(case_id)
+            if spec is not None:
+                if spec.key not in synthetic:
+                    synthetic[spec.key] = globals()[_SET_ROWS[spec.key]]()
+                row = synthetic[spec.key].get(case_id)
         if row is None:
             raise RunnerRefused(
                 f"커밋된 {split} 목록에 없는 사례다(위장한 파일일 수 있다): {case_id}"
@@ -1324,6 +1370,14 @@ def _run_checked(
                     report.observations[(case.id, repeat)] = it.observation
                 if it.fake is not None:
                     report.fakes[(case.id, repeat)] = it.fake
+                # 보안 위반 즉시 중단: case-run 이 끝나고 기존 판정 결과에 위반이 있으면 이 case-run 까지만 남기고 멈춘다(예산 중단과 별개로 기록한다)
+                if options.stop_on_security and it.record.security_violations:
+                    report.security_halt = {
+                        "case_id": case.id,
+                        "repeat": repeat,
+                        "violations": list(it.record.security_violations),
+                        "planned": len(ids) * options.repeats,
+                    }
                 if it.record.status == "halted":
                     report.halted = it.record.detail
                     finished = False
@@ -1333,9 +1387,18 @@ def _run_checked(
                     stored.observations.append(it.observation)
                 else:
                     finished = False  # 지원 안 함·오류 반복이 있는 사례는 저장하지 않는다(반복 수가 어긋난다)
+                if report.security_halt:
+                    finished = (
+                        finished and repeat == options.repeats - 1
+                    )  # 남은 반복이 있으면 이 사례는 부분 결과다
+                    break
             if finished and stored.results:
                 report.stored.append(stored)
-            if report.halted:
+            elif report.security_halt and stored.results:
+                report.partial.append(
+                    stored
+                )  # 끝난 반복(위반 난 반복 포함)을 지표 입력과 따로 보존한다
+            if report.halted or report.security_halt:
                 break
         report.call_traces = list(session.call_traces)
     if isinstance(source, runs_guard.GuardedCases):
@@ -1368,10 +1431,35 @@ def _summary_rows(report: RunReport) -> list[tuple[str, float | int | None]]:
     if report.ledger is not None:
         rows.append(("runner.cost_usd", float(report.ledger.total)))
         rows.append(("runner.model_calls", len(report.ledger.usages)))
+    if report.security_halt:  # 중단 실행에만 더한다(정상 완료 실행의 행은 그대로)
+        n = report.halt_counts()
+        rows += [
+            ("runner.security_halted", 1),
+            ("runner.runs_planned", n["planned"]),
+            ("runner.runs_completed", n["completed"]),
+            ("runner.runs_not_started", n["not_started"]),
+        ]
     runs = [metrics.CaseRun(s.case, tuple(s.results), tuple(s.observations)) for s in report.stored]
     if runs:
         rows += [(f"metrics.{name}", value) for name, value in metrics.summarize(runs).as_rows()]
     return rows
+
+
+def _security_halt_json(report: RunReport) -> dict[str, Any]:
+    h, n = report.security_halt or {}, report.halt_counts()
+    return {
+        "halted": True,
+        "halt_kind": "security",
+        "reason": "보안 위반 발생 직후 후속 case-run 을 시작하지 않았다(위반이 난 case-run 까지 보존)",
+        "case_id": h.get("case_id"),
+        "repeat": h.get("repeat"),
+        "violations": list(h.get("violations", ())),
+        "runs_planned": n["planned"],
+        "runs_completed": n["completed"],
+        "runs_not_started": n["not_started"],
+        "cost_usd": format(report.ledger.total, "f") if report.ledger else "0",
+        "note": "미실행 실행은 통과도 실패도 아니다. 완료분의 Task Success 는 counts 와 stored 사례로만 본다",
+    }
 
 
 def _report_json(report: RunReport) -> dict[str, Any]:
@@ -1379,6 +1467,7 @@ def _report_json(report: RunReport) -> dict[str, Any]:
     ledger = report.ledger
     return scrub_value(
         {
+            **({"security_halt": _security_halt_json(report)} if report.security_halt else {}),
             "run_id": o.run_id,
             "mode": o.mode,
             "model": o.model,
@@ -1428,6 +1517,18 @@ def _save(report: RunReport, options: RunOptions, ids: list[str], started: str) 
     ):  # `prompt_hash` 는 메인만 본다. 하위 Agent 프롬프트가 바뀐 것은 이 값으로 드러난다
         manifest["agent_prompt_hashes"] = dict(options.agent_prompt_hashes)
         manifest["integrated_prompt_hash"] = options.integrated_prompt_hash
+    if report.security_halt:  # 보안 위반 중단: 중단 여부·사유·위치·예정/완료/미실행 수·위반(비용은 write_run 이 usage 합으로 적는다)
+        n, h = report.halt_counts(), report.security_halt
+        manifest.update(
+            halt_kind="security",
+            halt_reason="보안 위반 직후 후속 case-run 을 시작하지 않았다",
+            halt_case_id=h["case_id"],
+            halt_repeat=h["repeat"],
+            runs_planned=n["planned"],
+            runs_completed=n["completed"],
+            runs_not_started=n["not_started"],
+            security_violations=list(h["violations"]),
+        )
     usages = [u.as_dict() for u in (report.ledger.usages if report.ledger else [])]
     if (
         report.stored or usages
@@ -1452,6 +1553,22 @@ def _save(report: RunReport, options: RunOptions, ids: list[str], started: str) 
     else:  # 지출도 저장할 사례도 없으면(전부 지원 안 함) 사유만 남긴다
         run_dir = root / options.run_id
         run_dir.mkdir(parents=True, exist_ok=False)
+    if (
+        report.partial
+    ):  # 반복이 모두 끝나지 못한 사례의 끝난 반복(위반이 난 반복 포함)을 지표 입력과 따로 보존
+        partial_ids = {s.case.id for s in report.partial}
+        store.write_partial(
+            run_dir,
+            report.partial,
+            {
+                (rec.case_id, rec.repeat): {
+                    "write_gate": rec.write_gate,
+                    "skipped_checks": list(rec.skipped_checks),
+                }
+                for rec in report.records
+                if rec.write_gate is not None and rec.case_id in partial_ids
+            },
+        )
     (run_dir / REPORT_FILE).write_text(
         json.dumps(_report_json(report), ensure_ascii=False, sort_keys=True, indent=2) + "\n",
         encoding="utf-8",

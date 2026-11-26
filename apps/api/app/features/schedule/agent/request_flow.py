@@ -102,13 +102,30 @@ def _line(row: dict, me: str, detail: bool = True) -> str:
     return f"{head} | 받음 | 보낸이:{row['from_id']} | 내답:{answer} | 수락:{others or '-'}"
 
 
-def load(db: Session, group_id: str, user_id: str, today: date, detail: bool = True) -> RequestView:
-    """내가 보냈거나 받은 부탁 중 취소되지 않았고 너무 오래되지 않은 것. 지금과 가까운 순으로 상한까지, 날짜순으로 돌려준다."""
+def load(
+    db: Session,
+    group_id: str,
+    user_id: str,
+    today: date,
+    detail: bool = True,
+    room_member_ids: set[str] | None = None,
+) -> RequestView:
+    """내가 보냈거나 받은 부탁 중 취소되지 않았고 너무 오래되지 않은 것. 지금과 가까운 순으로 상한까지, 날짜순으로 돌려준다.
+
+    `room_member_ids` 를 주면(가족방) 방 구성원 모두가 원래 볼 수 있는 부탁만 남긴다(`together.visible_to_all`). 빠진 부탁은 id·날짜·제목·관계
+    어느 것도 모델·카드·답에 가지 않는다(이 목록이 허용 id 의 유일한 출처다). 개인 채팅(None)은 그대로 내 부탁 전체다."""
     oldest = today - timedelta(days=PAST_DAYS)
+    allowed = (
+        together.visible_to_all(db, group_id, user_id, room_member_ids)
+        if room_member_ids is not None
+        else None
+    )
     rows = [
         r
         for r in together.list_mine(db, group_id, user_id)
-        if not r["canceled"] and r["start_date"] >= oldest
+        if not r["canceled"]
+        and r["start_date"] >= oldest
+        and (allowed is None or r["id"] in allowed)
     ]
     rows = sorted(rows, key=lambda r: abs((r["start_date"] - today).days))[:LIST_LIMIT]
     rows.sort(
@@ -429,9 +446,13 @@ def resolve_choice(
     text: str,
     today: date,
     members: list[Member],
+    room_member_ids: set[str] | None = None,
 ):
-    """부탁 되묻기에 대한 답을 처리한다. 답으로 읽을 수 없으면 None(새 요청으로 본다)."""
-    view = load(db, group_id, user_id, today, detail=True)
+    """부탁 되묻기에 대한 답을 처리한다. 답으로 읽을 수 없으면 None(새 요청으로 본다).
+
+    권한은 답하는 지금의 상태로 다시 본다: 가족방(`room_member_ids`)이면 지금 방 구성원 모두가 볼 수 있는 부탁만 남긴다(`load`).
+    되물은 뒤 취소됐거나 받는 사람이 바뀌어 권한이 사라진 후보는 자리만 남겨(`choice_mod.gone`) "첫 번째"가 다른 부탁으로 밀리지 않게 한다."""
+    view = load(db, group_id, user_id, today, detail=True, room_member_ids=room_member_ids)
     labels = {m.id: m.label for m in members}
     rows = [
         view.rows[i]
@@ -440,17 +461,23 @@ def resolve_choice(
     ]
     if not rows:
         return AgentResponse(intent="request", text=NOT_FOUND_TEXT)
+    usable = {r["id"]: r for r in rows}
     stand_ins = [
         SimpleNamespace(
-            id=r["id"],
-            title=r["title"],
-            starts_at=datetime.combine(r["start_date"], dtime(), tzinfo=reader.local_tz()),
+            id=i,
+            title=usable[i]["title"],
+            starts_at=datetime.combine(usable[i]["start_date"], dtime(), tzinfo=reader.local_tz()),
         )
-        for r in rows
+        if i in usable
+        else choice_mod.gone(i)
+        for i in chosen.event_ids
     ]
     ids = choice_mod.pick(text, chosen, stand_ins)
     if ids is None:
         return None
+    if ids and not any(i in usable for i in ids):  # 고른 것이 모두 사라졌거나 지금 권한 밖이다
+        return AgentResponse(intent="request", text=NOT_FOUND_TEXT)
+    ids = [i for i in ids if i in usable]
     if not ids:
         return AgentResponse(intent="request", text="알겠어요. 그대로 두었어요.")
     picked = [r for r in rows if r["id"] in ids]
