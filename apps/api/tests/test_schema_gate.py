@@ -269,6 +269,7 @@ def test_health_db_reports_ready_state_and_exposes_no_internal_names(client):
         "notices",
         "ops_admin",
         "admin_alerts",
+        "admin_drafts",
         "play",
         "weekly_news",
         "family_memory",

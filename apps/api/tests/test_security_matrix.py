@@ -264,6 +264,13 @@ NO_GROUP_OK = {
     # 관리자 알림 목록·확인: 가족 데이터가 아니다(알림 기록표는 숫자와 고정 문구만 담는다). 권한은 require_operator("admin")
     ("GET", "/admin/alerts"),
     ("POST", "/admin/alerts/{key}/ack"),
+    # 관리자 AI 초안 대기함: 가족 데이터가 아니다(공지 초안·가린 문의로 만든 답변 초안). 권한은 require_operator("admin")
+    # (admin_drafts/tests 에서 401·403 확인)
+    ("GET", "/admin/service/drafts"),
+    ("POST", "/admin/service/drafts/run"),
+    ("POST", "/admin/service/drafts/notice"),
+    ("POST", "/admin/service/drafts/reply/{ticket_id}"),
+    ("POST", "/admin/service/drafts/{draft_id}/status"),
     # 문의·신고는 로그인한 본인이 보내고 본인 것만 본다. 가족이 없어도 보낼 수 있어야 한다(가족 만들기 문의 등)
     ("POST", "/support/tickets"),
     ("GET", "/support/tickets/mine"),
@@ -1738,6 +1745,9 @@ LLM_CALLER_FILES = {
 # 개인정보를 가린 질문만) 하루 한도는 두지 않기로 했다(2026-11-09 결정, admin_knowledge/service.py). 값은 그 권한을 거는 라우터 파일이다
 OPERATOR_LLM_CALLER_FILES = {
     "features/admin_knowledge/service.py": "features/admin_knowledge/router.py",
+    # 관리자 AI 초안: 알림·문의(가린 글)로 공지·답변 초안을 만든다. 통합관리자 버튼(router) 또는 비밀 토큰 점검의 후속 작업에서만 돈다
+    # (기본 꺼짐 ADMIN_DRAFTS_ENABLED, 한 번에 공지 1개·답변 5개)
+    "features/admin_drafts/service.py": "features/admin_drafts/router.py",
 }
 # 관문을 부르는 쪽 파일 안에서만 LLM 을 부르는 파일: 값은 그 호출을 `ai_guard.run(call=...)` 로 감싸는 파일이다.
 # 찰칵 가비 추천(가족 사진): photo_rec_ai.content_question 은 photo_rec._ask_content 의 call 안에서만 불린다(tests/test_photo_rec_external_calls.py 가 AST 로 확인)

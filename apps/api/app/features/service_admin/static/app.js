@@ -240,7 +240,16 @@
     const s = STATUS[row.status];
     const btn = s.next ? `<button type="button" class="btn sm" data-ticket="${esc(row.id)}" data-next="${s.next}">${esc(s.action)}</button>` : "";
     const reply = `<button type="button" class="btn sm ${row.answer ? "" : "primary"}" data-reply="${esc(row.id)}">${row.answer ? "답변 수정" : "답변하기"}</button>`;
-    return `<td><span class="pill ${s.cls}">${esc(s.label)}</span></td><td class="num"><div class="row-actions">${reply}${btn}</div></td>`;
+    // AI 답변 초안: 줄 오른쪽 버튼에서 바로 만든다. 이미 있으면 펼쳐서 보여 준다(초안 기능이 꺼져 있으면 숨긴다)
+    let ai = "";
+    if (drafts.data && drafts.data.enabled) {
+      const has = pendingDrafts("reply").some((x) => x.ticket_id === row.id);
+      const busy = makingReply === row.id;
+      ai = has
+        ? `<button type="button" class="btn sm ai" data-draft-open="${esc(row.id)}">AI 초안 보기</button>`
+        : `<button type="button" class="btn sm ai" data-draft-make="${esc(row.id)}" ${busy ? "disabled" : ""}>${busy ? "쓰는 중…" : "AI 초안"}</button>`;
+    }
+    return `<td><span class="pill ${s.cls}">${esc(s.label)}</span></td><td class="num"><div class="row-actions">${reply}${ai}${btn}</div></td>`;
   }
 
   // ── 탭별 화면 ─────────────────────────────────────────
@@ -441,8 +450,9 @@
   /** 제목을 누르면 내용과 답변 칸이 펼쳐진다. 내용은 사용자가 직접 쓴 글뿐이다. 답변을 저장하면 답변 완료가 되고, 다시 저장하면 고쳐진다. */
   function ticketTitle(t) {
     const answered = t.answered_at ? `<span class="small">답변 ${day(t.answered_at)}</span>` : '<span class="small">저장하면 답변 완료가 돼요</span>';
-    return `<details data-open="${esc(t.id)}" ${t.id === openTicket ? "open" : ""}><summary>${esc(t.title)}</summary>
-      <p class="ticket-body">${esc(t.body)}</p>
+    const mark = pendingDrafts("reply").some((x) => x.ticket_id === t.id) ? ' <span class="pill">AI 초안</span>' : "";
+    return `<details data-open="${esc(t.id)}" ${t.id === openTicket ? "open" : ""}><summary>${esc(t.title)}${mark}</summary>
+      <p class="ticket-body">${esc(t.body)}</p>${replyDraftBox(t)}
       <form class="answer" data-answer="${esc(t.id)}">
         <label class="small" for="answer-${esc(t.id)}">답변</label>
         <textarea id="answer-${esc(t.id)}" name="answer" rows="3" maxlength="2000" required>${esc(t.answer || "")}</textarea>
@@ -461,7 +471,7 @@
       (t) => `<tr><td>#${esc(t.id.slice(0, 6))}</td><td><span class="pill ${t.kind === "report" ? "bad" : ""}">${KIND[t.kind]}</span></td><td>${ticketTitle(t)}</td><td>${esc(t.user_name || "-")}<br><span class="small">${esc(t.login_id || "")}</span></td><td>${esc(t.group_name || "-")}</td><td>${day(t.created_at)}</td>${statusCells(t)}</tr>`,
     );
     const error = supportError ? `<p class="note warn">${esc(supportError)}</p>` : "";
-    return `${head("문의 및 신고", "문의 현황 · 처리 상태 · 답변")}${refreshRow()}${error}
+    return `${head("문의 및 신고", "문의 현황 · 처리 상태 · 답변")}${refreshRow()}${error}${draftsCard("reply")}
       <section class="grid">
         ${stat("새 문의·신고", `${num(d.new)}건`, "", d.new ? "warn" : "")}
         ${stat("처리 중", `${num(d.working)}건`)}
@@ -484,6 +494,205 @@
     render();
   }
 
+  // ── AI 초안 대기함(프로액티브) ─────────────────────
+  // 알림 점검 뒤(또는 '지금 분석') Claude 가 먼저 만든 공지 초안·문의 답변 초안. 앱에는 관리자가 고쳐서 저장해야 올라간다
+  const drafts = { data: null, loading: false, running: false, error: "", note: "" };
+  let noticePrefill = null; // '공지 칸에 넣기'로 가져온 초안(쓰기 칸에 채워 둔다)
+  let makingReply = null; // 답변 초안을 만드는 중인 문의 번호
+  const aiNotice = { open: false, busy: false, error: "" }; // [AI 공지 초안] 입력칸
+
+  /**
+   * 적은 주제(비우면 최근 서버 알림)로 공지 초안을 만들고 바로 공지 쓰기 칸에 채운다. 올리기는 관리자가 한다.
+   * @param {string} topic
+   * @returns {Promise<void>}
+   */
+  async function makeNoticeDraft(topic) {
+    aiNotice.busy = true;
+    aiNotice.error = "";
+    render();
+    try {
+      const x = await api("/admin/service/drafts/notice", { topic }, "POST");
+      noticePrefill = { category: x.category || "info", title: x.title || "", body: x.body };
+      editingNotice = null;
+      writingNotice = true;
+      aiNotice.open = false;
+      await api(`/admin/service/drafts/${encodeURIComponent(x.id)}/status`, { status: "used" }, "POST");
+    } catch (err) {
+      if (err.message === "unauthorized") return;
+      aiNotice.error = err.message === "HTTP 422" ? "최근 서버 알림이 없어요. 어떤 공지를 쓸지 적어 주세요." : "초안을 만들지 못했어요. 잠시 뒤 다시 해 주세요.";
+    }
+    aiNotice.busy = false;
+    await loadDrafts();
+    const title = document.querySelector("[data-notice-form] input[name=title]");
+    if (title) title.focus();
+  }
+
+  /**
+   * 공지 화면의 [AI 공지 초안] 입력칸. 버튼을 눌렀을 때만 보인다.
+   * @returns {string}
+   */
+  function aiNoticeForm() {
+    if (!aiNotice.open) return "";
+    const err = aiNotice.error ? `<p class="note warn">${esc(aiNotice.error)}</p>` : "";
+    return `<section class="card ai-card"><h2>✦ AI 공지 초안</h2>${err}
+      <form class="ai-notice" data-ai-notice>
+        <label class="small" for="ai-topic">어떤 공지를 쓸까요? 비워 두면 최근 서버 알림을 보고 써요.</label>
+        <input id="ai-topic" name="topic" maxlength="300" placeholder="예: 내일 새벽 2시 서버 점검, 일정 공유 기능 업데이트" ${aiNotice.busy ? "disabled" : ""}>
+        <div class="answer-row"><span class="small">AI 가 쓴 글은 아래 공지 쓰기 칸에 채워져요. 고친 뒤 [공지 올리기]를 눌러야 앱에 올라가요.</span>
+          <div class="row-actions"><button type="button" class="btn sm" data-action="ai-notice-cancel">취소</button><button type="submit" class="btn sm primary" ${aiNotice.busy ? "disabled" : ""}>${aiNotice.busy ? "쓰는 중…" : "만들기"}</button></div></div>
+      </form></section>`;
+  }
+  const replyError = {}; // 문의 번호 → 초안 만들기 실패 안내
+
+  /**
+   * 문의 하나의 답변 초안을 지금 만든다. 만든 뒤에도 그 문의를 펼친 채로 둔다.
+   * @param {string} ticketId
+   * @returns {Promise<void>}
+   */
+  async function makeReplyDraft(ticketId) {
+    makingReply = ticketId;
+    openTicket = ticketId;
+    delete replyError[ticketId];
+    render();
+    try {
+      await api(`/admin/service/drafts/reply/${encodeURIComponent(ticketId)}`, undefined, "POST");
+    } catch (err) {
+      if (err.message === "unauthorized") return;
+      replyError[ticketId] = "초안을 만들지 못했어요. 잠시 뒤 다시 해 주세요.";
+    }
+    makingReply = null;
+    await loadDrafts();
+  }
+
+  /**
+   * @param {"notice"|"reply"} kind
+   * @returns {Array<object>} 대기 중인 그 종류 초안
+   */
+  function pendingDrafts(kind) {
+    return ((drafts.data && drafts.data.pending) || []).filter((x) => x.kind === kind);
+  }
+
+  /**
+   * 초안 목록을 받아 다시 그린다.
+   * @returns {Promise<void>}
+   */
+  async function loadDrafts() {
+    drafts.loading = true;
+    try {
+      drafts.data = await api("/admin/service/drafts");
+      drafts.error = "";
+    } catch (err) {
+      if (err.message === "unauthorized") return;
+      drafts.data = null;
+      drafts.error = "AI 초안을 불러오지 못했어요. 잠시 뒤 다시 해 주세요.";
+    } finally {
+      drafts.loading = false;
+    }
+    render();
+  }
+
+  /**
+   * '지금 분석': 알림 점검을 기다리지 않고 한 번 분석한다.
+   * @returns {Promise<void>}
+   */
+  async function runDrafts() {
+    drafts.running = true;
+    render();
+    try {
+      const r = await api("/admin/service/drafts/run", undefined, "POST");
+      let note = "새로 만들 초안이 없어요. 새 알림이나 답변 없는 새 문의가 없어요.";
+      if (!r.enabled) note = "AI 초안이 꺼져 있어요.";
+      else if (r.notices || r.replies || r.published) {
+        note = `공지 초안 ${r.notices}개, 답변 초안 ${r.replies}개를 만들었어요.`;
+        if (r.published) note += ` 자동 공지 ${r.published}개를 올렸어요.`;
+      }
+      drafts.note = note;
+      if (r.published) data.notices = await api("/admin/service/notices");
+    } catch (err) {
+      if (err.message === "unauthorized") return;
+      drafts.note = "분석하지 못했어요. 잠시 뒤 다시 해 주세요.";
+    }
+    drafts.running = false;
+    await loadDrafts();
+  }
+
+  /**
+   * 초안을 썼음·버림으로 바꾼다.
+   * @param {string} id
+   * @param {"used"|"dismissed"} status
+   * @returns {Promise<void>}
+   */
+  async function setDraft(id, status) {
+    try {
+      await api(`/admin/service/drafts/${encodeURIComponent(id)}/status`, { status }, "POST");
+    } catch (err) {
+      if (err.message === "unauthorized") return;
+      drafts.note = "초안 상태를 바꾸지 못했어요.";
+    }
+    await loadDrafts();
+  }
+
+  /**
+   * 알림 첫 화면의 한 줄 안내. 대기 중인 초안이 있을 때만 보인다.
+   * @returns {string}
+   */
+  function draftsBanner() {
+    const n = pendingDrafts("notice").length;
+    const r = pendingDrafts("reply").length;
+    if (!n && !r) return "";
+    const links = [n ? `<a href="#notices">공지 초안 ${n}개</a>` : "", r ? `<a href="#support">답변 초안 ${r}개</a>` : ""].filter(Boolean).join(" · ");
+    return `<p class="note draft-banner">AI 가 먼저 살펴보고 초안을 만들어 뒀어요: ${links}</p>`;
+  }
+
+  /**
+   * 공지·문의 화면 위의 AI 초안 카드.
+   * @param {"notice"|"reply"} kind
+   * @returns {string}
+   */
+  function draftsCard(kind) {
+    const d = drafts.data;
+    const runBtn = `<button type="button" class="btn sm ai" data-action="run-drafts" ${drafts.running ? "disabled" : ""}>${drafts.running ? "분석 중…" : "지금 분석"}</button>`;
+    const note = drafts.note ? `<p class="small">${esc(drafts.note)}</p>` : "";
+    let body;
+    if (drafts.error) body = `<p class="small">${esc(drafts.error)}</p>`;
+    else if (!d) body = '<p class="small">불러오는 중…</p>';
+    else if (!d.enabled && !d.auto_notice_enabled) body = '<p class="small">AI 초안이 꺼져 있어요. 서버 설정 ADMIN_DRAFTS_ENABLED 를 켜면 알림 점검 뒤에 AI 가 먼저 초안을 만들어요.</p>';
+    else if (kind === "reply") {
+      const n = pendingDrafts("reply").length;
+      const lead = n ? `답변 없는 새 문의 ${n}건에 AI 답변 초안이 있어요. 문의 제목을 눌러 초안을 확인하고 답변 칸에 넣어 고친 뒤 저장하세요.` : "대기 중인 답변 초안이 없어요.";
+      body = `<p class="small">${lead} 회원 이름·연락처는 가린 뒤 AI 에 보내요.</p>`;
+    } else {
+      const items = pendingDrafts("notice").map(
+        (x) => `<li class="alert-item"><div class="alert-head"><span class="pill">${esc(CATEGORY[x.category] || "안내")}</span><span class="small">${esc(new Date(x.created_at).toLocaleString("ko-KR"))}</span></div>
+          <p class="alert-msg"><b>${esc(x.title || "")}</b></p><p class="ticket-body">${esc(x.body)}</p><p class="small">근거: ${esc(x.reason)}</p>
+          <div class="row-actions"><button type="button" class="btn sm" data-draft-dismiss="${esc(x.id)}">버리기</button><button type="button" class="btn sm primary" data-draft-use="${esc(x.id)}">공지 칸에 넣기</button></div></li>`,
+      );
+      const auto = (d.auto_notices || []).map((x) => `<li class="small">${esc(new Date(x.created_at).toLocaleString("ko-KR"))} 자동 공지 “${esc(x.title || "")}”</li>`).join("");
+      const autoState = d.auto_notice_enabled ? "긴급 서버 장애가 생기면 정해 둔 문구로 공지를 바로 올려요(6시간에 한 번)." : "긴급 장애 자동 공지는 꺼져 있어요(AUTO_NOTICE_ENABLED).";
+      const list = items.length ? `<ul class="alert-list">${items.join("")}</ul>` : '<p class="small">대기 중인 공지 초안이 없어요. 알림 점검에서 긴급·주의 알림이 생기면 AI 가 공지가 필요한지 보고 초안을 만들어요.</p>';
+      body = `${list}<p class="small">${autoState}</p>${auto ? `<ul class="draft-auto">${auto}</ul>` : ""}`;
+    }
+    return `<section class="card"><div class="card-head"><h2>AI 초안</h2>${runBtn}</div>${note}${body}</section>`;
+  }
+
+  /**
+   * 문의를 펼쳤을 때 보이는 AI 답변 초안 상자.
+   * @param {{id: string}} t 문의
+   * @returns {string}
+   */
+  function replyDraftBox(t) {
+    const x = pendingDrafts("reply").find((r) => r.ticket_id === t.id);
+    if (!x) {
+      if (!drafts.data || !drafts.data.enabled) return "";
+      const busy = makingReply === t.id;
+      const err = replyError[t.id] ? `<span class="small">${esc(replyError[t.id])}</span>` : "";
+      return `<div class="draft-box"><div class="answer-row"><span class="small">AI 가 이 문의를 읽고 답변 초안을 써요. 이름·연락처는 가린 뒤 보내요.</span>
+        <button type="button" class="btn sm ai" data-draft-make="${esc(t.id)}" ${busy ? "disabled" : ""}>${busy ? "초안 쓰는 중…" : "AI 답변 초안 만들기"}</button></div>${err}</div>`;
+    }
+    return `<div class="draft-box"><p class="small"><b>AI 답변 초안</b> · ${esc(x.title || "")} · ${esc(x.reason)}</p><p class="ticket-body">${esc(x.body)}</p>
+      <div class="row-actions"><button type="button" class="btn sm" data-draft-dismiss="${esc(x.id)}">버리기</button><button type="button" class="btn sm primary" data-draft-fill="${esc(t.id)}" data-draft-id="${esc(x.id)}">답변 칸에 넣기</button></div></div>`;
+  }
+
   let editingNotice = null; // 고치는 중인 공지 번호(없으면 새 공지 쓰기)
   let writingNotice = false; // '글쓰기'를 눌러 쓰기 칸을 연 상태. 평소에는 칸을 숨기고 버튼만 둔다
   let noticeError = "";
@@ -491,7 +700,7 @@
   /** 공지 쓰기·고치기 칸. 고치는 중이면 그 공지 내용을 채워 둔다. 글쓰기·고치기를 눌렀을 때만 보인다. */
   function noticeForm(rows) {
     if (!writingNotice && !editingNotice) return "";
-    const n = rows.find((r) => r.id === editingNotice) || { category: "info", title: "", body: "" };
+    const n = rows.find((r) => r.id === editingNotice) || noticePrefill || { category: "info", title: "", body: "" };
     const options = Object.entries(CATEGORY)
       .map(([k, label]) => `<option value="${k}" ${k === n.category ? "selected" : ""}>${label}</option>`)
       .join("");
@@ -513,9 +722,10 @@
       (n) => `<tr><td><span class="pill">${esc(CATEGORY[n.category])}</span></td><td><details><summary>${esc(n.title)}</summary><p class="ticket-body">${esc(n.body)}</p></details></td><td>${day(n.created_at)}</td><td>${n.updated_at !== n.created_at ? day(n.updated_at) : "-"}</td><td class="num"><div class="row-actions"><button type="button" class="btn sm" data-notice-edit="${esc(n.id)}">고치기</button><button type="button" class="btn sm" data-notice-delete="${esc(n.id)}">지우기</button></div></td></tr>`,
     );
     const error = noticeError ? `<p class="note warn">${esc(noticeError)}</p>` : "";
-    const write = writingNotice || editingNotice ? "" : '<button type="button" class="btn sm primary" data-action="write-notice">글쓰기</button>';
+    const aiBtn = drafts.data && drafts.data.enabled ? '<button type="button" class="btn sm ai" data-action="ai-notice">AI 공지 초안</button>' : "";
+    const write = writingNotice || editingNotice ? aiBtn : `<div class="row-actions">${aiBtn}<button type="button" class="btn sm primary" data-action="write-notice">글쓰기</button></div>`;
     return `${head("공지사항", "앱 사용자 모두에게 보이는 서비스 공지")}${error}
-      ${noticeForm(d.rows)}
+      ${aiNoticeForm()}${noticeForm(d.rows)}${draftsCard("notice")}
       <section class="card"><div class="card-head"><h2>올린 공지 (${num(d.rows.length)}건)</h2>${write}</div>${table([{ label: "종류" }, { label: "제목 (누르면 내용)" }, { label: "올린 날" }, { label: "고친 날" }, { label: "" }], rows)}</section>`;
   }
 
@@ -526,6 +736,7 @@
       data.notices = await api("/admin/service/notices");
       editingNotice = null;
       writingNotice = false;
+      noticePrefill = null;
       noticeError = "";
     } catch (err) {
       if (err.message === "unauthorized") return;
@@ -766,7 +977,7 @@
           })
           .join("")
       : '<li class="alert-empty">지금 알림이 없어요. 기준을 넘는 일이 생기면 여기에 나타나요.</li>';
-    return `${head("알림", "기준을 넘은 서버 신호. 확인하면 목록과 배지에서 빠져요")}${error}
+    return `${head("알림", "기준을 넘은 서버 신호. 확인하면 목록과 배지에서 빠져요")}${error}${draftsBanner()}
       <section class="card"><div class="card-head"><h2>알림 (확인 안 된 ${num(d.unacked || 0)}건)</h2></div><ul class="alert-list">${rows}</ul></section>`;
   }
 
@@ -863,11 +1074,14 @@
     document.getElementById("page-sub").textContent = pageHead.sub;
     document.title = `가비 서비스 관리자 · ${TABS.find(([k]) => k === key)[1]}`;
     if (key === "analytics" && !metaAds.data && !metaAds.loading && !metaAds.error) loadMetaAds(metaAds.days);
+    if (["alerts", "support", "notices"].includes(key) && !drafts.data && !drafts.loading && !drafts.error) loadDrafts();
   }
 
   function showLogin(message = "") {
     data = null;
     Object.assign(metaAds, { data: null, loading: false, error: "" }); // 다른 계정으로 다시 들어오면 새로 받는다
+    Object.assign(drafts, { data: null, loading: false, running: false, error: "", note: "" });
+    noticePrefill = null;
     document.getElementById("app").hidden = true;
     document.getElementById("login").hidden = false;
     document.getElementById("login-error").textContent = message;
@@ -980,6 +1194,67 @@
       loadMetaAds(Number(metaDays.dataset.metaDays));
       return;
     }
+    if (e.target.closest("[data-action='ai-notice']")) {
+      aiNotice.open = true;
+      aiNotice.error = "";
+      render();
+      const input = document.getElementById("ai-topic");
+      if (input) input.focus();
+      return;
+    }
+    if (e.target.closest("[data-action='ai-notice-cancel']")) {
+      aiNotice.open = false;
+      render();
+      return;
+    }
+    if (e.target.closest("[data-action='run-drafts']")) {
+      runDrafts();
+      return;
+    }
+    const draftUse = e.target.closest("[data-draft-use]");
+    if (draftUse) {
+      const x = pendingDrafts("notice").find((r) => r.id === draftUse.dataset.draftUse);
+      if (x) {
+        noticePrefill = { category: x.category || "info", title: x.title || "", body: x.body };
+        editingNotice = null;
+        writingNotice = true;
+        setDraft(x.id, "used"); // 다시 그린 뒤에도 쓰기 칸에 초안이 남는다(저장은 관리자가 '공지 올리기'로)
+      }
+      return;
+    }
+    const draftFill = e.target.closest("[data-draft-fill]");
+    if (draftFill) {
+      const x = pendingDrafts("reply").find((r) => r.id === draftFill.dataset.draftId);
+      const box = document.getElementById(`answer-${draftFill.dataset.draftFill}`);
+      if (x && box) {
+        box.value = x.body;
+        box.focus();
+        openTicket = draftFill.dataset.draftFill;
+        draftFill.disabled = true;
+        // 답변 칸의 글은 다시 그리면 사라지므로 상태만 바꾸고 다시 그리지 않는다. 저장은 관리자가 '답변 저장'으로
+        api(`/admin/service/drafts/${encodeURIComponent(x.id)}/status`, { status: "used" }, "POST").catch(() => {});
+      }
+      return;
+    }
+    const draftOpen = e.target.closest("[data-draft-open]");
+    if (draftOpen) {
+      openTicket = draftOpen.dataset.draftOpen;
+      render();
+      const box = document.querySelector(`[data-open="${CSS.escape(openTicket)}"] .draft-box`);
+      if (box) box.scrollIntoView({ block: "center", behavior: "smooth" });
+      return;
+    }
+    const draftMake = e.target.closest("[data-draft-make]");
+    if (draftMake) {
+      makeReplyDraft(draftMake.dataset.draftMake);
+      return;
+    }
+    const draftDismiss = e.target.closest("[data-draft-dismiss]");
+    if (draftDismiss) {
+      draftDismiss.disabled = true;
+      setDraft(draftDismiss.dataset.draftDismiss, "dismissed");
+      return;
+    }
     const alertAck = e.target.closest("[data-alert-ack]");
     if (alertAck) {
       ackAlert(alertAck.dataset.alertAck);
@@ -1024,6 +1299,7 @@
     if (e.target.closest("[data-action='cancel-notice']")) {
       editingNotice = null;
       writingNotice = false;
+      noticePrefill = null;
       render();
       return;
     }
@@ -1047,6 +1323,12 @@
   );
 
   document.addEventListener("submit", (e) => {
+    const an = e.target.closest("[data-ai-notice]");
+    if (an) {
+      e.preventDefault();
+      makeNoticeDraft(an.elements.topic.value.trim());
+      return;
+    }
     const nf = e.target.closest("[data-notice-form]");
     if (nf) {
       e.preventDefault();

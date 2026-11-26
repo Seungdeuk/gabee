@@ -19474,6 +19474,287 @@
         }
       }
     },
+    "/admin/service/drafts": {
+      "get": {
+        "tags": [
+          "admin-drafts"
+        ],
+        "summary": "List Drafts",
+        "description": "대기 중인 초안과 최근 자동 공지 기록.",
+        "operationId": "list_drafts_admin_service_drafts_get",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DraftListOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/admin/service/drafts/run": {
+      "post": {
+        "tags": [
+          "admin-drafts"
+        ],
+        "summary": "Run Now",
+        "description": "지금 한 번 분석한다(알림 점검을 기다리지 않고). 같은 근거로는 초안을 다시 만들지 않는다.",
+        "operationId": "run_now_admin_service_drafts_run_post",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DraftRunOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/admin/service/drafts/notice": {
+      "post": {
+        "tags": [
+          "admin-drafts"
+        ],
+        "summary": "Make Notice",
+        "description": "적은 주제(비우면 최근 서버 알림)로 공지 초안을 지금 만든다. 꺼져 있으면 409, 주제·알림 둘 다 없으면 422, AI 실패 503.",
+        "operationId": "make_notice_admin_service_drafts_notice_post",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NoticeTopicIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DraftOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/admin/service/drafts/reply/{ticket_id}": {
+      "post": {
+        "tags": [
+          "admin-drafts"
+        ],
+        "summary": "Make Reply",
+        "description": "문의 하나의 답변 초안을 지금 만든다(가린 제목·내용만 보낸다). 꺼져 있으면 409, 없는 문의 404, AI 실패 503.",
+        "operationId": "make_reply_admin_service_drafts_reply__ticket_id__post",
+        "parameters": [
+          {
+            "name": "ticket_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Ticket Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DraftOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/admin/service/drafts/{draft_id}/status": {
+      "post": {
+        "tags": [
+          "admin-drafts"
+        ],
+        "summary": "Set Status",
+        "description": "초안을 썼음(공지·답변 칸으로 옮김) 또는 버림으로 바꾼다. 없는 번호면 404.",
+        "operationId": "set_status_admin_service_drafts__draft_id__status_post",
+        "parameters": [
+          {
+            "name": "draft_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Draft Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DraftStatusIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/health/db": {
       "get": {
         "tags": [
@@ -23974,6 +24255,191 @@
         "title": "Draft",
         "description": "등록하려는 일정의 초안. 필수(제목·날짜)가 빠져 되물을 때 응답에 실어 주고, 사용자가 답하면 앱이 그대로 돌려보낸다.\n서버는 저장하지 않는다(stateless). 사용자가 보낸 값이므로 받을 때마다 다시 검증한다."
       },
+      "DraftListOut": {
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "title": "Enabled"
+          },
+          "auto_notice_enabled": {
+            "type": "boolean",
+            "title": "Auto Notice Enabled"
+          },
+          "pending": {
+            "items": {
+              "$ref": "#/components/schemas/DraftOut"
+            },
+            "type": "array",
+            "title": "Pending"
+          },
+          "auto_notices": {
+            "items": {
+              "$ref": "#/components/schemas/DraftOut"
+            },
+            "type": "array",
+            "title": "Auto Notices"
+          }
+        },
+        "type": "object",
+        "required": [
+          "enabled",
+          "auto_notice_enabled",
+          "pending",
+          "auto_notices"
+        ],
+        "title": "DraftListOut"
+      },
+      "DraftOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "notice",
+              "reply"
+            ],
+            "title": "Kind"
+          },
+          "ticket_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ticket Id"
+          },
+          "category": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "update",
+                  "info",
+                  "maintenance"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          },
+          "body": {
+            "type": "string",
+            "title": "Body"
+          },
+          "reason": {
+            "type": "string",
+            "title": "Reason"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "used",
+              "dismissed"
+            ],
+            "title": "Status"
+          },
+          "auto": {
+            "type": "boolean",
+            "title": "Auto"
+          },
+          "notice_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notice Id"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "kind",
+          "ticket_id",
+          "category",
+          "title",
+          "body",
+          "reason",
+          "status",
+          "auto",
+          "notice_id",
+          "created_at"
+        ],
+        "title": "DraftOut"
+      },
+      "DraftRunOut": {
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "title": "Enabled"
+          },
+          "notices": {
+            "type": "integer",
+            "title": "Notices"
+          },
+          "replies": {
+            "type": "integer",
+            "title": "Replies"
+          },
+          "published": {
+            "type": "integer",
+            "title": "Published"
+          }
+        },
+        "type": "object",
+        "required": [
+          "enabled",
+          "notices",
+          "replies",
+          "published"
+        ],
+        "title": "DraftRunOut"
+      },
+      "DraftStatusIn": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "used",
+              "dismissed"
+            ],
+            "title": "Status"
+          }
+        },
+        "type": "object",
+        "required": [
+          "status"
+        ],
+        "title": "DraftStatusIn"
+      },
       "EmailRequestIn": {
         "properties": {
           "email": {
@@ -27816,6 +28282,18 @@
         ],
         "title": "NoticeOut",
         "description": "앱 사용자에게 보여 주는 모양. 쓴 관리자는 담지 않는다."
+      },
+      "NoticeTopicIn": {
+        "properties": {
+          "topic": {
+            "type": "string",
+            "maxLength": 300,
+            "title": "Topic",
+            "default": ""
+          }
+        },
+        "type": "object",
+        "title": "NoticeTopicIn"
       },
       "NotificationList": {
         "properties": {

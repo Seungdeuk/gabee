@@ -9,7 +9,7 @@ from datetime import datetime
 
 from sqlalchemy.orm import Session
 
-from app.shared.alert_rules import all_rules
+from app.shared.alert_rules import all_followups, all_rules
 from app.shared.errors import not_found
 
 from . import repository
@@ -43,6 +43,15 @@ def run_checks(db: Session, now: datetime) -> tuple[int, int]:
             if repository.insert_if_absent(db, row):
                 created += 1
     db.commit()
+    for (
+        name,
+        follow,
+    ) in all_followups():  # 점검 결과를 저장한 뒤 이어서 할 일(관리자 초안 만들기 등)
+        try:
+            follow(db, now)
+        except Exception as exc:  # noqa: BLE001  후속 작업의 실패가 점검 결과를 막지 않게 한다
+            db.rollback()
+            log.warning("admin alert followup failed name=%s error=%s", name, type(exc).__name__)
     return checked, created
 
 

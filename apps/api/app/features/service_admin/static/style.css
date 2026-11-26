@@ -1,6 +1,6 @@
 /* 가비 서비스 관리자 화면. 운영 관리자 웹(apps/ops-admin/css/style.css)과 같은 틀·색을 쓴다(남색 메뉴, 흰 패널, 시스템 글꼴). */
 :root {
-  --bg: #f3f5f7; --surface: #ffffff; --surface2: #edf0f3; --line: #dce1e7; --fg: #13202c; --muted: #566574;
+  --bg: #f3f5f7; --surface: #ffffff; --surface2: #edf0f3; --line: #dce1e7; --fg: #13202c; --muted: #45525f;
   --accent: #1e4fa3; --accent-bg: #e3ecfa; --on-accent: #ffffff;
   --side: #0f2342; --side-fg: #b6c3d9; --side-strong: #ffffff; --side-line: #223a60; --side-active: #1a3560;
   --ok: #18813f; --ok-bg: #e0f3e7; --warn: #8f5f00; --warn-bg: #fbf0cc; --err: #c33030; --err-bg: #fbe3e3;
@@ -10,7 +10,7 @@
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --bg: #0b131b; --surface: #121c26; --surface2: #192531; --line: #263441; --fg: #e5ecf2; --muted: #92a2b1;
+    --bg: #0b131b; --surface: #121c26; --surface2: #192531; --line: #263441; --fg: #e5ecf2; --muted: #b3c0cc;
     --accent: #6ea8ff; --accent-bg: #15284a; --on-accent: #07162e;
     --side: #081427; --side-fg: #9db0cc; --side-strong: #ffffff; --side-line: #1a2d4a; --side-active: #122543;
     --ok: #4cc37c; --ok-bg: #12301f; --warn: #e5b43c; --warn-bg: #35290b; --err: #ff7070; --err-bg: #3a1717;
@@ -18,7 +18,7 @@
   }
 }
 :root[data-theme="dark"] {
-  --bg: #0b131b; --surface: #121c26; --surface2: #192531; --line: #263441; --fg: #e5ecf2; --muted: #92a2b1;
+  --bg: #0b131b; --surface: #121c26; --surface2: #192531; --line: #263441; --fg: #e5ecf2; --muted: #b3c0cc;
   --accent: #6ea8ff; --accent-bg: #15284a; --on-accent: #07162e;
   --side: #081427; --side-fg: #9db0cc; --side-strong: #ffffff; --side-line: #1a2d4a; --side-active: #122543;
   --ok: #4cc37c; --ok-bg: #12301f; --warn: #e5b43c; --warn-bg: #35290b; --err: #ff7070; --err-bg: #3a1717;
@@ -136,7 +136,7 @@ tbody tr:hover td { background: var(--surface2); }
 .line-item { display: flex; justify-content: space-between; align-items: center; gap: 8px; font-size: 13px; padding: 10px 0; border-top: 1px solid var(--line); }
 
 /* 입력 */
-.btn { height: 34px; border-radius: 6px; border: 1px solid var(--line); background: var(--surface); padding: 0 12px; font-size: 13px; }
+.btn { height: 34px; border-radius: 6px; border: 1px solid var(--line); background: var(--surface); color: var(--fg); padding: 0 12px; font-size: 13px; }
 .btn:hover { background: var(--surface2); }
 .btn.sm { height: 32px; padding: 0 10px; font-size: 12.5px; }
 .btn.primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); font-weight: 500; }
@@ -221,18 +221,18 @@ details summary { cursor: pointer; }
 /* 관리자 챗봇: 페이지의 파랑을 쓰고 대화 배경만 연한 파랑으로 구분한다. 크기는 화면에 맞춰 늘고 준다 */
 :root {
   --chat-accent: #1e4fa3; --chat-on: #ffffff; --chat-bg: #eef3fb; --chat-soft: #e3ecfa;
-  --chat-line: #dce1e7; --chat-fg: #13202c; --chat-muted: #566574;
+  --chat-line: #dce1e7; --chat-fg: #13202c; --chat-muted: #45525f;
   --chat-head: #ffffff; --chat-head-on: #13202c;
   --chat-ok: #18813f; --chat-bad: #c33030; --chat-bad-bg: #fbe3e3; --chat-bad-fg: #8a1f1f; --chat-todo: #c7d0da;
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --chat-accent: #6ea8ff; --chat-on: #07162e; --chat-bg: #0f1a26; --chat-soft: #1c2f4d; --chat-line: #263441; --chat-fg: #e5ecf2; --chat-muted: #92a2b1; --chat-head: #121c26; --chat-head-on: #e5ecf2;
+    --chat-accent: #6ea8ff; --chat-on: #07162e; --chat-bg: #0f1a26; --chat-soft: #1c2f4d; --chat-line: #263441; --chat-fg: #e5ecf2; --chat-muted: #b3c0cc; --chat-head: #121c26; --chat-head-on: #e5ecf2;
     --chat-ok: #4cc38a; --chat-bad: #ff7b7b; --chat-bad-bg: #3a1d1d; --chat-bad-fg: #ffc4c4; --chat-todo: #3a4a5a;
   }
 }
 :root[data-theme="dark"] {
-  --chat-accent: #6ea8ff; --chat-on: #07162e; --chat-bg: #0f1a26; --chat-soft: #1c2f4d; --chat-line: #263441; --chat-fg: #e5ecf2; --chat-muted: #92a2b1; --chat-head: #121c26; --chat-head-on: #e5ecf2;
+  --chat-accent: #6ea8ff; --chat-on: #07162e; --chat-bg: #0f1a26; --chat-soft: #1c2f4d; --chat-line: #263441; --chat-fg: #e5ecf2; --chat-muted: #b3c0cc; --chat-head: #121c26; --chat-head-on: #e5ecf2;
   --chat-ok: #4cc38a; --chat-bad: #ff7b7b; --chat-bad-bg: #3a1d1d; --chat-bad-fg: #ffc4c4; --chat-todo: #3a4a5a;
 }
 .chat-fab { position: fixed; right: 20px; bottom: 20px; z-index: 60; width: 48px; height: 48px; padding: 12px; border: 0; border-radius: 50%; background: var(--chat-accent); color: var(--chat-on); cursor: pointer; box-shadow: 0 6px 16px rgba(0, 0, 0, .28); }
@@ -334,3 +334,16 @@ details summary { cursor: pointer; }
 .alert-head, .alert-foot { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; }
 .alert-msg { margin: 0; font-size: 14px; overflow-wrap: anywhere; }
 .alert-empty { color: var(--muted); padding: 12px 0; }
+
+/* AI 초안 대기함 */
+.draft-box { display: flex; flex-direction: column; gap: 6px; margin: 8px 0; padding: 10px 12px; border: 1px dashed var(--line); border-radius: 8px; background: var(--surface2); }
+.draft-banner { padding: 8px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface2); }
+.draft-auto { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 2px; }
+.btn.ai { border-color: var(--accent); background: var(--accent-bg); color: var(--fg); font-weight: 600; }
+.btn.ai::before { color: var(--accent); }
+.btn.ai::before { content: "✦ "; }
+.ai-card { border-color: var(--accent); }
+.ai-notice { display: flex; flex-direction: column; gap: 8px; }
+.ai-notice input { border: 1px solid var(--line); background: var(--surface); border-radius: 6px; padding: 8px 10px; color: var(--fg); }
+.draft-box .small, .draft-banner, .ai-card .small { color: var(--fg); opacity: .85; }
+.draft-box .ticket-body { color: var(--fg); }
