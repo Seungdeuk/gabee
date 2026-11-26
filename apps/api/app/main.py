@@ -8,6 +8,7 @@ from fastapi.staticfiles import StaticFiles
 from app.features.acquisition.router import router as acquisition_router
 from app.features.admin_alerts.router import admin_router as admin_alerts_router
 from app.features.admin_alerts.router import internal_router as admin_alerts_internal_router
+from app.features.admin_drafts.router import router as admin_drafts_router
 from app.features.admin_knowledge.router import router as admin_knowledge_router
 from app.features.ai_assistant.ingest import siglip_margin
 from app.features.ai_assistant.knowledge import index_health as knowledge_index
@@ -117,6 +118,8 @@ app.include_router(admin_alerts_router, dependencies=[Depends(schema_ready("admi
 app.include_router(
     admin_alerts_internal_router, dependencies=[Depends(schema_ready("admin_alerts"))]
 )
+# 관리자 AI 초안 대기함(공지·문의 답변 초안). 대기함 표가 없는 DB 에서는 이 API 만 503 schema_not_ready
+app.include_router(admin_drafts_router, dependencies=[Depends(schema_ready("admin_drafts"))])
 # 서비스 관리자 화면(정적 파일). 데이터는 화면이 로그인한 뒤 /admin/service/* API 로 받는다
 _ADMIN_STATIC = Path(__file__).parent / "features" / "service_admin" / "static"
 app.mount(

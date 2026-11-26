@@ -32,3 +32,19 @@ def register(name: str, check: RuleCheck) -> None:
 
 def all_rules() -> list[tuple[str, RuleCheck]]:
     return sorted(_RULES.items(), key=lambda item: item[0])
+
+
+# 점검 뒤에 이어서 할 일(후속 작업). 규칙과 달리 기록을 남기는 다른 일을 한다(예: 관리자 초안 만들기).
+# 알림 점검(admin_alerts)이 규칙을 모두 돌리고 저장한 뒤에 부른다. 하나가 실패해도 다른 후속 작업과 점검 결과에는 영향이 없다.
+FollowUp = Callable[[Session, datetime], None]
+
+_FOLLOWUPS: dict[str, FollowUp] = {}
+
+
+def register_followup(name: str, run: FollowUp) -> None:
+    """같은 이름으로 다시 올리면 바꾼다."""
+    _FOLLOWUPS[name] = run
+
+
+def all_followups() -> list[tuple[str, FollowUp]]:
+    return sorted(_FOLLOWUPS.items(), key=lambda item: item[0])
