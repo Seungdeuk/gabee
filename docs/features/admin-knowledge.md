@@ -10,7 +10,7 @@
 - 답 형식: 첫 줄에 결론, 필요할 때만 `- ` 줄 최대 3개, 볼 곳이 있으면 마지막 줄에 `보는 곳: 메뉴`. 꾸밈 없음. 지시문은 `answer_format.md` 에 있고 고친 뒤 서버를 다시 켠다.
 - 일상 질문은 Claude 가 공손하게 거절한다. 이때도 호출 비용이 든다.
 - 질문은 `mask_text` 로 가린 뒤 보낸다.
-- 숫자: 각 기능이 자기 폴더의 `admin_facts.py` 에서 `shared/admin_facts.register()` 로 숫자 함수를 도구 명단에 올린다(`service_admin`: 회원·가족·문의·AI·이용 분석 등, `ops_admin`: 서버 요청·오류). 관리자 화면과 같은 조회 함수를 써서 숫자가 화면과 같다. 개수와 오류 종류·경로·횟수만 담고 이름, 이메일, 사용자 id, 오류 message, trace id 는 보내지 않는다(시험으로 확인). 수집이 꺼진 값은 0 이라고 하지 않는다.
+- 숫자: 각 기능이 자기 폴더의 `admin_facts.py` 에서 `shared/admin_facts.register()` 로 숫자 함수를 도구 명단에 올린다(`service_admin`: 회원·가족·문의·AI·이용 분석 등, `ops_admin`: 서버 요청·오류, Cloud Run 트래픽·최근 버전·오류 로그 건수(`cloud_status.py`, `OPS_INFRA_ENABLED` 를 따르고 로그 본문은 보내지 않는다)). 관리자 화면과 같은 조회 함수를 써서 숫자가 화면과 같다. 개수와 오류 종류·경로·횟수만 담고 이름, 이메일, 사용자 id, 오류 message, trace id 는 보내지 않는다(시험으로 확인). 수집이 꺼진 값은 0 이라고 하지 않는다.
 - 구조: `live.py` 가 명단을 랭체인 도구(`StructuredTool`)로 바꾸고, `graph.py`(랭그래프)가 Claude ⇄ 도구 반복을 돈다(Claude 호출 최대 4번). 회원·AI 사용량은 날짜 기간을 골라 물을 수 있다(최대 90일, 입력은 서버가 다시 검사). 도구 하나가 실패하면 그 도구만 "확인할 수 없음"을 돌려준다.
 - 담당 나누기(서브 에이전트): `ADMIN_CHATBOT_SUBAGENTS`(기본 false)를 켜면 메인 챗봇이 숫자 도구와 FAQ 를 직접 갖지 않고 `ask_service`(서비스 숫자, 도구 `area="service"`)·`ask_ops`(서버 요청·오류, `area="ops"`)·`ask_rules`(도구 없이 `faq.md`) 담당에게 나눠 묻고 보고를 합쳐 답한다(`subagents.py`, 지시문 `prompts/`). 담당은 같은 그래프를 다른 지시·도구로 한 번 더 돈다. 메인과 담당이 호출 한도 하나를 나눠 써서 질문 하나에 Claude 최대 8번이다. 담당 호출이 실패하면 그 담당만 "확인할 수 없음"을 돌려준다. 단계 소식은 "서비스 담당 · 회원 수 확인"처럼 보인다. 시험: `tests/test_admin_subagents.py`. 평가로 기존 방식과 비교한 뒤 켠다.
 - 랭스미스: `ADMIN_LANGSMITH_ENABLED`(기본 false) 와 `ADMIN_LANGSMITH_API_KEY` 가 있을 때만 이 그래프의 실행을 기록한다. 서버 전체 추적은 쓰지 않는다. 켜면 가린 질문·답 규칙·도구 숫자·답이 LangSmith 에 저장된다.
