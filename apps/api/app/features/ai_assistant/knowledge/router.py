@@ -162,7 +162,9 @@ def search(
 def find(
     body: FindIn, group_id: str = Depends(current_group_id), db: Session = Depends(get_db)
 ) -> FindOut:
-    """글자 일치 찾기(LLM 호출 없음). 없고 semantic=true 일 때만 의미 검색."""
+    """글자 일치 찾기(LLM 호출 없음). 없고 semantic=true 일 때만 의미 검색.
+    uploaded_from·uploaded_to(올린 날, 한국 날짜 양끝 포함)·uploaded_by(올린 사람 이름)로 좁힐 수 있다.
+    올린 사람을 이 가족에서 찾지 못하면 422 unknown_uploader, 시작이 끝보다 늦으면 400 invalid_range 다."""
     found = lookup.find(
         db,
         group_id,
@@ -170,6 +172,9 @@ def find(
         limit=body.limit,
         kind_label=body.kind_label,
         semantic=body.semantic,
+        uploaded_from=body.uploaded_from,
+        uploaded_to=body.uploaded_to,
+        uploaded_by=body.uploaded_by,
     )
     return FindOut(method=found.method, hits=_show_hits(db, group_id, found.hits))
 

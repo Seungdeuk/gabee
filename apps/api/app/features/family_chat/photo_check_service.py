@@ -518,6 +518,35 @@ def library_state(db: Session, user: User, group_id: str, attachment_id: str) ->
     return LibraryStateOut(state="registered" if registered else "not_registered")
 
 
+def remove_from_library(db: Session, user: User, group_id: str, attachment_id: str) -> None:
+    """가족 전체방 사진에서 만든 문서함 기록을 뺀다(T09). 권한은 등록 여부 조회와 같다(방에 들어갈 수 있는 가족 누구나, 문서함 기록 삭제
+    `DELETE /ai-assistant/knowledge/items/{id}` 와 같은 범위). 채팅 사진·메시지는 그대로 두고 문서함 기록·검색 조각·문서함 원본 사본만 지운다.
+    없는 사진·다른 가족은 404, 1:1 방은 409, 문서함에 없으면 409 `not_in_library`, 등록 여부를 확인하지 못하거나 지우지 못하면 503."""
+    attachment = repo.get_attachment(db, attachment_id)
+    if attachment is None or attachment.group_id != group_id:
+        raise not_found("사진")
+    room = service.resolve_room(db, user, group_id, attachment.room_id)
+    if room.kind != FAMILY:
+        raise ApiError(409, "not_family_room", "가족 전체방에 올린 사진만 문서함에서 뺄 수 있어요")
+    registered = chat_library.registered_state(db, group_id, attachment_id)
+    if registered is None:
+        raise ApiError(
+            503,
+            "library_unavailable",
+            "지금은 문서함을 확인할 수 없어요. 잠시 뒤 다시 시도해 주세요",
+        )
+    if not registered:
+        raise ApiError(409, "not_in_library", "문서함에 없는 사진이에요")
+    try:
+        chat_library.remove_from_library(db, group_id, attachment_id)
+    except Exception as exc:  # noqa: BLE001  뺀 것처럼 보이지 않게 503 으로 알린다(종류만 기록)
+        db.rollback()
+        logger.warning("library remove failed error=%s", type(exc).__name__)
+        raise ApiError(
+            503, "library_unavailable", "문서함에서 빼지 못했어요. 잠시 뒤 다시 시도해 주세요"
+        ) from exc
+
+
 def record_auto_result(group_id: str, attachment_id: str, status: str, error: str | None) -> bool:
     """자동 판별 결과를 적는다(판별 스레드에서 부르므로 자기 세션을 연다). 이미 정해진 줄은 바꾸지 않는다.
     돌려주는 값: 문서함에 등록해도 되는가. 업로더가 이미 `photo` 로 확인한 줄이면 False(자동 결과는 그 확인을 바꾸지 못하므로

@@ -18,6 +18,7 @@ import { DELETED_TEXT, DOUBLE_TAP_MS, isDoubleTap } from "../messageActions";
 import { openChatFile, saveChatFile } from "../openFile";
 import { saveFileName } from "../mediaUtils";
 import { savePhoto } from "../savePhoto";
+import { nextRemoveStep, removeLabel } from "../saveToLibrary";
 import { isShareMessage, shareA11yLabel } from "../shareUtils";
 import AlbumViewer from "./AlbumViewer";
 import AssistantAvatar from "./AssistantAvatar";
@@ -61,9 +62,10 @@ function playLinkNodes(text) {
  * 공유 카드 메시지(message.share, 일정·정산)는 고정 문구 text 대신 ShareCard 를 보인다(읽기 전용, 길게 누르기 메뉴·두 번 눌러 하트는 일반 말풍선과 같다).
  * 파일 메시지(attachment.kind === "file")는 사진 대신 파일 카드를 보인다: 본문을 누르면 열기/공유, 다운로드 아이콘은 내 파일/드라이브에 저장. 사진 보기에는 "사진첩에 저장" 버튼이 붙는다.
  * onSaveToLibrary 가 있으면(가족 전체방의 사진) 사진 보기에 "문서로 저장" 버튼이 붙고, 누르면 그 사진을 가족 공유 문서함에 직접 넣는다(결과 문구는 사진 보기에 보인다).
- * @param {{ message: object, mine: boolean, showName: boolean, showTime?: boolean, unread?: number, photoUrl?: string | null, highlighted?: boolean, searchTerms?: string[], searchCurrent?: boolean, onRetry?: (clientId: string) => void, onDiscard?: (clientId: string) => void, onActions?: (message: object, anchor: { x: number, y: number } | null) => void, onHeart?: (message: object) => void, onReactionPress?: (message: object, emoji: string) => void, onReplyPress?: (messageId: number) => void, linkBadges?: { kind: "event" | "todo", label: string }[], onSaveToLibrary?: (attachment: object) => Promise<{ ok: boolean, message: string }>, nameOf?: (userId: string) => string | undefined }} props
+ * onRemoveFromLibrary 가 있으면 이미 문서함에 있는 사진(attachment.in_library)의 사진 보기에 "문서함에서 빼기" 버튼이 붙는다(두 번 눌러야 빠지고, 채팅 사진은 그대로다).
+ * @param {{ message: object, mine: boolean, showName: boolean, showTime?: boolean, unread?: number, photoUrl?: string | null, highlighted?: boolean, searchTerms?: string[], searchCurrent?: boolean, onRetry?: (clientId: string) => void, onDiscard?: (clientId: string) => void, onActions?: (message: object, anchor: { x: number, y: number } | null) => void, onHeart?: (message: object) => void, onReactionPress?: (message: object, emoji: string) => void, onReplyPress?: (messageId: number) => void, linkBadges?: { kind: "event" | "todo", label: string }[], onSaveToLibrary?: (attachment: object) => Promise<{ ok: boolean, message: string }>, onRemoveFromLibrary?: (attachment: object) => Promise<{ ok: boolean, message: string }>, nameOf?: (userId: string) => string | undefined }} props
  */
-export default function MessageBubble({ message, mine, showName, showTime = true, unread = 0, photoUrl, highlighted = false, searchTerms, searchCurrent = false, onRetry, onDiscard, onActions, onHeart, onReactionPress, onReplyPress, linkBadges, onSaveToLibrary, nameOf, album }) {
+export default function MessageBubble({ message, mine, showName, showTime = true, unread = 0, photoUrl, highlighted = false, searchTerms, searchCurrent = false, onRetry, onDiscard, onActions, onHeart, onReactionPress, onReplyPress, linkBadges, onSaveToLibrary, onRemoveFromLibrary, nameOf, album }) {
   const senderName = nameOf?.(message.user_id) || message.user_name; // 내가 붙인 별명이 있으면 별명
   const failed = message.status === "failed";
   const sending = message.status === "sending";
@@ -73,6 +75,8 @@ export default function MessageBubble({ message, mine, showName, showTime = true
   const [albumStart, setAlbumStart] = useState(null); // 앨범 뷰어를 연 사진 순서(닫혀 있으면 null)
   const [albumLibraries, setAlbumLibraries] = useState({}); // 앨범 사진별(첨부 id) 문서함 저장 상태
   const [library, setLibrary] = useState({ saving: false, done: false, notice: "" }); // 문서함에 저장한 상태(이 사진 하나의 것)
+  const [removal, setRemoval] = useState({ confirming: false, removing: false, removed: false }); // 문서함에서 빼기 상태(이 사진 하나의 것)
+  const [albumRemovals, setAlbumRemovals] = useState({}); // 앨범 사진별(첨부 id) 문서함에서 빼기 상태와 결과 문구
   const isFile = isFileMessage(message);
   const isShare = isShareMessage(message); // 공유 카드(일정·정산): 고정 문구 text 대신 카드를 그린다
   const [fileState, setFileState] = useState({ busy: null, notice: "" }); // 파일 열기·저장 진행/결과
@@ -138,6 +142,33 @@ export default function MessageBubble({ message, mine, showName, showTime = true
     setLibrary({ saving: true, done: false, notice: "" });
     const result = await onSaveToLibrary(attachment);
     setLibrary({ saving: false, done: result.ok, notice: result.message });
+  };
+
+  /** "문서함에서 빼기"를 눌렀을 때: 처음에는 확인 단계로만 바꾸고, 다시 누르면 뺀다. 실패하면 문구를 보이고 처음 상태로 돌아간다. */
+  const removeLibrary = async () => {
+    const step = nextRemoveStep(removal);
+    if (step === "ignore" || !onRemoveFromLibrary) return;
+    if (step === "confirm") {
+      setRemoval({ confirming: true, removing: false, removed: false });
+      return;
+    }
+    setRemoval({ confirming: false, removing: true, removed: false });
+    const result = await onRemoveFromLibrary(attachment);
+    setRemoval({ confirming: false, removing: false, removed: result.ok });
+    setLibrary((prev) => ({ ...prev, notice: result.message }));
+  };
+  /** 앨범 뷰어에서 지금 보는 사진의 "문서함에서 빼기"(두 번 눌러야 빠진다). */
+  const removeAlbumLibrary = async (photo, index) => {
+    const state = albumRemovals[photo.id] ?? {};
+    const step = nextRemoveStep(state);
+    if (step === "ignore" || !onRemoveFromLibrary) return;
+    if (step === "confirm") {
+      setAlbumRemovals((prev) => ({ ...prev, [photo.id]: { confirming: true, notice: "" } }));
+      return;
+    }
+    setAlbumRemovals((prev) => ({ ...prev, [photo.id]: { removing: true, notice: "" } }));
+    const result = await onRemoveFromLibrary(album[index].attachment);
+    setAlbumRemovals((prev) => ({ ...prev, [photo.id]: { removed: result.ok, notice: result.message } }));
   };
 
   /** 파일 카드: 열기/공유(open) 또는 내 파일/드라이브에 저장(save). 진행 중에는 다시 누를 수 없다. */
@@ -239,6 +270,16 @@ export default function MessageBubble({ message, mine, showName, showTime = true
             onSaveToLibrary={onSaveToLibrary ? saveAlbumLibrary : undefined}
             libraryOf={(id) => albumLibraries[id] ?? { saving: false, done: false, notice: "" }}
             onMenu={onActions ? openAlbumViewerMenu : undefined}
+            actionsFor={
+              onRemoveFromLibrary
+                ? (photo, index) => {
+                    if (!photo.inLibrary) return [];
+                    const state = albumRemovals[photo.id] ?? {};
+                    return [{ key: "remove-library", label: removeLabel(state), icon: state.removed ? "checkmark-circle-outline" : "remove-circle-outline", onPress: () => removeAlbumLibrary(photo, index), disabled: Boolean(state.removing || state.removed) }];
+                  }
+                : undefined
+            }
+            actionNoticeFor={onRemoveFromLibrary ? (photo) => albumRemovals[photo.id]?.notice ?? "" : undefined}
           />
         </>
       ) : null}
@@ -252,6 +293,8 @@ export default function MessageBubble({ message, mine, showName, showTime = true
             visible={viewing}
             onClose={() => setViewing(false)}
             onSaveToLibrary={onSaveToLibrary && !attachment.in_library ? saveLibrary : undefined}
+            onRemoveFromLibrary={onRemoveFromLibrary && attachment.in_library ? removeLibrary : undefined}
+            removeState={removal}
             librarySaving={library.saving}
             libraryDone={library.done}
             libraryNotice={library.notice}

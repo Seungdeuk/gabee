@@ -1745,6 +1745,8 @@ LLM_CALLER_FILES = {
 # 개인정보를 가린 질문만) 하루 한도는 두지 않기로 했다(2026-11-09 결정, admin_knowledge/service.py). 값은 그 권한을 거는 라우터 파일이다
 OPERATOR_LLM_CALLER_FILES = {
     "features/admin_knowledge/service.py": "features/admin_knowledge/router.py",
+    # 관리자 챗봇 담당(서브 에이전트): service.py 가 ADMIN_CHATBOT_SUBAGENTS 가 켜졌을 때만 부른다. 같은 라우터 권한·같은 가린 질문을 쓴다
+    "features/admin_knowledge/subagents.py": "features/admin_knowledge/router.py",
     # 관리자 AI 초안: 알림·문의(가린 글)로 공지·답변 초안을 만든다. 통합관리자 버튼(router) 또는 비밀 토큰 점검의 후속 작업에서만 돈다
     # (기본 꺼짐 ADMIN_DRAFTS_ENABLED, 한 번에 공지 1개·답변 5개)
     "features/admin_drafts/service.py": "features/admin_drafts/router.py",
