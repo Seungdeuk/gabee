@@ -142,6 +142,9 @@ class Settings(BaseSettings):
     admin_langsmith_enabled: bool = False
     admin_langsmith_api_key: str = ""
     admin_langsmith_project: str = "gabee-admin-chatbot"
+    # 관리자 챗봇을 메인 + 담당(서비스·운영·규칙 서브 에이전트) 구조로 돌릴지(기본 꺼짐: 에이전트 하나가 도구와 FAQ 를 모두 갖는 기존 방식).
+    # 켜면 질문 하나에 Claude 호출이 최대 8번까지 늘 수 있다(기존 4번). 평가로 비교한 뒤 켠다.
+    admin_chatbot_subagents: bool = False
     # 구독·통신비 서버 API(/billing/subscriptions*) 사용 여부(기본 꺼짐). 지갑 탭에서 구독 기능을 빼면서 닫았다. 꺼져 있으면 403 subscription_disabled 로 막고,
     # 일정 추천도 구독 결제일을 읽지 않는다. 테이블과 데이터는 그대로 둔다.
     subscription_api_enabled: bool = False

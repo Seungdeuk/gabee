@@ -20,7 +20,8 @@ from app.shared.llm import client as llm
 from app.shared.llm import transport
 from app.shared.llm.chat_model import PostChatModel
 
-from .graph import Run, run_chat, spec, stream_chat
+from . import subagents
+from .graph import Budget, Run, run_chat, spec, stream_chat
 from .live import tools
 from .schemas import AdminAskEvent, AdminAskOut
 
@@ -30,7 +31,10 @@ ASK_MAX_STEPS = 4  # Claude 를 부르는 최대 횟수(마지막 답 포함). �
 FOLDER = Path(__file__).parent
 FAQ = (FOLDER / "faq.md").read_text(encoding="utf-8")
 # 말투와 답 모양은 answer_format.md, 가비 규칙은 faq.md 에서 고친다. 서버가 켜질 때 읽는다
-ASK_SYSTEM = (FOLDER / "answer_format.md").read_text(encoding="utf-8") + f"\n자료:\n{FAQ}"
+ANSWER_FORMAT = (FOLDER / "answer_format.md").read_text(encoding="utf-8")
+ASK_SYSTEM = ANSWER_FORMAT + f"\n자료:\n{FAQ}"
+# 서브 에이전트 모드의 메인 지시: 답 형식은 같고, FAQ 대신 담당에게 나눠 묻는 방법을 준다(FAQ 는 규칙 담당만 받는다)
+MAIN_SYSTEM = ANSWER_FORMAT + (FOLDER / "prompts" / "main.md").read_text(encoding="utf-8")
 
 
 def _post(body: dict) -> dict:
@@ -44,6 +48,8 @@ CALL_ERRORS = (llm.LLMUnavailable, httpx.HTTPError, ValueError, KeyError)
 
 
 def _new_run(db: Session) -> Run:
+    if settings.admin_chatbot_subagents:
+        return _new_multi_run(db)
     tool_list = tools(db)
     model = PostChatModel(
         post=_post,
@@ -53,6 +59,25 @@ def _new_run(db: Session) -> Run:
         tools=[spec(t) for t in tool_list],
     )
     return Run(model=model, tools={t.name: t for t in tool_list}, max_steps=ASK_MAX_STEPS)
+
+
+def _new_multi_run(db: Session) -> Run:
+    """메인 + 담당(서비스·운영·규칙) 구조. 메인의 도구는 담당 3개이고, 모두 호출 상한 하나를 나눠 쓴다."""
+    budget = Budget(limit=subagents.TOTAL_MAX_CALLS)
+    subs = subagents.build(db, _post, ASK_MAX_TOKENS, budget, FAQ)
+    model = PostChatModel(
+        post=_post,
+        llm_model=settings.llm_model,
+        max_tokens=ASK_MAX_TOKENS,
+        system=MAIN_SYSTEM,
+        tools=[spec(t) for t in subs],
+    )
+    return Run(
+        model=model,
+        tools={t.name: t for t in subs},
+        max_steps=subagents.MAIN_MAX_STEPS,
+        budget=budget,
+    )
 
 
 def _check_answer(run: Run) -> str:

@@ -43,6 +43,7 @@ register(
     requests,
     order=50,
     label="서버 요청 확인",
+    area="ops",
 )
 register(
     "server_errors",
@@ -50,4 +51,5 @@ register(
     errors,
     order=60,
     label="서버 오류 확인",
+    area="ops",
 )
