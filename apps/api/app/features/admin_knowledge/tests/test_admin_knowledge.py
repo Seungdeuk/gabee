@@ -168,6 +168,9 @@ def test_tools_are_the_registered_list():
         "ai_usage",
         "server_requests",
         "server_errors",
+        "cloud_traffic",
+        "cloud_revisions",
+        "cloud_error_logs",
         "data_analysis",
     ]
     for fact in admin_facts.all_facts():

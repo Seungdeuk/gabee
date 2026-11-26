@@ -127,6 +127,9 @@ def test_ops_agent_gets_only_server_tools(client, admin, monkeypatch):
     assert {t["name"] for t in ops["tools"]} == {
         "server_requests",
         "server_errors",
+        "cloud_traffic",
+        "cloud_revisions",
+        "cloud_error_logs",
     }
 
 
