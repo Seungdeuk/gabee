@@ -42,3 +42,8 @@ def _tool(db: Session, fact: Fact) -> StructuredTool:
 
 def tools(db: Session) -> list[StructuredTool]:
     return [_tool(db, fact) for fact in all_facts()]
+
+
+def area_tools(db: Session, area: str) -> list[StructuredTool]:
+    """한 담당(서브 에이전트)의 도구만: service 는 서비스 숫자, ops 는 서버 상태."""
+    return [_tool(db, fact) for fact in all_facts() if fact.area == area]

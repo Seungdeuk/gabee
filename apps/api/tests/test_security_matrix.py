@@ -1738,6 +1738,8 @@ LLM_CALLER_FILES = {
 # 개인정보를 가린 질문만) 하루 한도는 두지 않기로 했다(2026-11-09 결정, admin_knowledge/service.py). 값은 그 권한을 거는 라우터 파일이다
 OPERATOR_LLM_CALLER_FILES = {
     "features/admin_knowledge/service.py": "features/admin_knowledge/router.py",
+    # 관리자 챗봇 담당(서브 에이전트): service.py 가 ADMIN_CHATBOT_SUBAGENTS 가 켜졌을 때만 부른다. 같은 라우터 권한·같은 가린 질문을 쓴다
+    "features/admin_knowledge/subagents.py": "features/admin_knowledge/router.py",
 }
 # 관문을 부르는 쪽 파일 안에서만 LLM 을 부르는 파일: 값은 그 호출을 `ai_guard.run(call=...)` 로 감싸는 파일이다.
 # 찰칵 가비 추천(가족 사진): photo_rec_ai.content_question 은 photo_rec._ask_content 의 call 안에서만 불린다(tests/test_photo_rec_external_calls.py 가 AST 로 확인)

@@ -50,6 +50,18 @@ class Run:
     max_steps: int
     steps: int = 0  # 모델을 부른 횟수
     answer: str = ""
+    budget: "Budget | None" = None  # 메인과 담당이 함께 쓰는 호출 상한(서브 에이전트 모드에서만)
+
+
+@dataclass
+class Budget:
+    """한 질문 안에서 메인과 담당(서브 에이전트)을 합친 Claude 호출 상한. 그 질문의 모든 Run 이 같은 Budget 을 나눠 쓴다."""
+
+    limit: int
+    used: int = 0
+
+    def left(self) -> int:
+        return self.limit - self.used
 
 
 class State(TypedDict):
@@ -72,6 +84,8 @@ def _run(config: RunnableConfig) -> Run:
 def _model(state: State, config: RunnableConfig) -> dict:
     run = _run(config)
     run.steps += 1
+    if run.budget is not None:
+        run.budget.used += 1
     # 첫 호출은 질문을 읽고 도구를 고르는 단계, 그 뒤는 도구 결과로 답을 쓰는 단계다
     get_stream_writer()({"step": "understand" if run.steps == 1 else "write"})
     reply = run.model.invoke(
@@ -109,6 +123,8 @@ def _tools(state: State, config: RunnableConfig) -> dict:
 
 def _after_tools(state: State, config: RunnableConfig) -> str:
     run = _run(config)
+    if run.budget is not None and run.budget.left() <= 0:
+        return END  # 메인과 담당을 합친 호출 상한을 다 썼다
     return END if run.steps >= run.max_steps else "model"
 
 
@@ -141,12 +157,12 @@ def _callbacks() -> list[BaseCallbackHandler]:
     return [_tracer(settings.admin_langsmith_api_key, settings.admin_langsmith_project)]
 
 
-def _config(run: Run) -> RunnableConfig:
+def _config(run: Run, run_name: str = RUN_NAME) -> RunnableConfig:
     return {
         "configurable": {"run": run},
         "recursion_limit": 50,
         "callbacks": _callbacks(),
-        "run_name": RUN_NAME,
+        "run_name": run_name,
     }
 
 
