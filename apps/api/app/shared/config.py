@@ -296,6 +296,7 @@ class Settings(BaseSettings):
     ops_errors_enabled: bool = False
     ops_errors_retention_days: int = 90
     # 운영 관리자 인프라 상태(Cloud Run 설정·Cloud Monitoring 조회, 읽기 전용): 기본 꺼짐. 실행 서비스 계정에 roles/run.viewer·monitoring.viewer 가 필요하다.
+    # 관리자 챗봇 운영 담당의 Cloud Run 도구(트래픽·최근 버전·오류 로그 건수)도 이 값을 따른다. 오류 로그 건수는 roles/logging.viewer 도 필요하다.
     ops_infra_enabled: bool = False
     # 관리자 알림(admin_alerts): 기본 꺼짐. 켜면 점검 주소(/internal/alerts/run)가 규칙을 돌려 알림 기록표에 넣는다.
     # 점검 주소는 X-Alert-Token 이 이 값과 같을 때만 통과한다. 토큰이 비어 있으면 아무도 통과하지 못한다.
