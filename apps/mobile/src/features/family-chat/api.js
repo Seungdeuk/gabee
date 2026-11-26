@@ -378,6 +378,14 @@ export function listMedia({ roomId, kind = "image", limit = 40, beforeId } = {})
 export const savePhotoToLibrary = (attachmentId) => apiFetch(`/family-chat/photos/${encodeURIComponent(attachmentId)}/library`, { method: "POST" });
 
 /**
+ * 채팅 사진에서 만든 가족 문서함 기록을 뺀다("문서함에서 빼기", T09). 채팅 사진은 그대로다. 가족 전체방 사진만 된다.
+ * 오류: 409(not_in_library: 문서함에 없음, not_family_room: 1:1 방), 404(없는 사진), 503(library_unavailable: 확인·삭제 실패).
+ * @param {string} attachmentId 사진 첨부 id(attachment.id)
+ * @returns {Promise<null>} 성공하면 204(본문 없음)
+ */
+export const removePhotoFromLibrary = (attachmentId) => apiFetch(`/family-chat/photos/${encodeURIComponent(attachmentId)}/library`, { method: "DELETE" });
+
+/**
  * 내가 올린 가족 전체방 사진 중 확인이 필요한 것(판별 불확실·실패·올린 지 15분 넘게 판별이 끝나지 않은 것)만. 다른 사람이 올린 사진은 오지 않는다. 조회가 실패하면 빈 목록이 아니라 503 이다.
  * 오류: 503(photo_checks_unavailable), 429(too_many_checks), 401.
  * @param {{ limit?: number, before?: number | null }} [options] limit 1~50(기본 20), before 는 이전 응답의 next_before

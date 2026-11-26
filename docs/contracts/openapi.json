@@ -3122,6 +3122,72 @@
           }
         }
       },
+      "delete": {
+        "tags": [
+          "family-chat"
+        ],
+        "summary": "Remove Photo From Library",
+        "description": "채팅 사진에서 만든 가족 문서함 기록을 뺀다(T09, 되돌릴 수 없음: 다시 넣으려면 \"문서로 저장\"). 채팅 사진·메시지는 그대로다.\n방에 들어갈 수 있는 가족 누구나(문서함 기록 삭제와 같은 범위). 없는 사진·다른 가족 404, 1:1 방 409, 문서함에 없으면 409 `not_in_library`,\n확인·삭제 실패는 503 `library_unavailable`.",
+        "operationId": "remove_photo_from_library_family_chat_photos__attachment_id__library_delete",
+        "parameters": [
+          {
+            "name": "attachment_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Attachment Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-gyeot-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Gyeot-Token"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
       "post": {
         "tags": [
           "family-chat"
