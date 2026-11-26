@@ -129,7 +129,8 @@ def test_the_official_generalization_and_routing_id_sets_are_pairwise_disjoint(
     assert [s.key for s in approved_sets.all_sets()] == [
         "gen",
         "todo_routing",
-    ]  # 허용 목록은 코드의 두 항목뿐
+        "chat_direct",
+    ]  # 허용 목록은 코드의 세 항목뿐(소통 단독 평가 사례는 test_chat_direct_gate.py 가 본다)
 
 
 # ---------- 거부 ----------

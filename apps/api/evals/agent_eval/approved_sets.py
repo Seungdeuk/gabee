@@ -1,8 +1,9 @@
 """실호출을 허용하는 합성 사례 파일의 **고정 목록**(코드에 정의된 항목만).
 
-공식 dev 36건 외에 실호출 게이트가 받는 합성 사례 파일은 아래 두 곳뿐이다. 새 파일을 더하려면 이 목록을 코드로 고쳐 리뷰를 받아야 한다(설정·인자·환경변수로는 더할 수 없다).
+공식 dev 36건 외에 실호출 게이트가 받는 합성 사례 파일은 아래 세 곳뿐이다. 새 파일을 더하려면 이 목록을 코드로 고쳐 리뷰를 받아야 한다(설정·인자·환경변수로는 더할 수 없다).
 - `gen`: 일반화 사례 5건(`cases_gen_isolation.json`, #523)
 - `todo_routing`: 할 일 라우팅 회귀 사례 2건(`cases_todo_routing.json`): `s-todo-01-family-only-01`, `s-todo-02-tab-only-01`
+- `chat_direct`: 소통 Agent 단독 평가 사례 20건(`cases_chat_direct.json`, `s-fcd-…`, 메인 미경유 직접 호출). 사례 수·반복 상한(`real_gate`)은 그대로라 실호출은 한 번에 10건까지다
 
 항목마다 정확한 파일 경로, 고정값 파일 경로, 사례 id 허용 목록, 고정값 검사 함수를 가진다. 검증은 `runner` 가 한곳에서 하고(사전 점검 7번·`cli._execute`·러너의 허가 확인이 같은 함수를 쓴다),
 HEAD 커밋과의 일치·고정값·코드 정의와의 정합·id 중복·경로↔id 짝을 모두 본다. val·test·all 분할은 여기서 열리지 않는다(`real_gate.ALLOWED_SPLITS` 가 그대로 막는다).
@@ -15,7 +16,7 @@ from pathlib import Path
 
 @dataclass(frozen=True)
 class ApprovedSet:
-    key: str  # "gen" | "todo_routing"
+    key: str  # "gen" | "todo_routing" | "chat_direct"
     label: str  # 거부 메시지에 쓰는 이름(받침 없는 낱말로 끝나야 '가/는' 조사가 맞다)
     id_prefix: str  # 사례 id 의 앞부분(메시지용)
     path: Path
@@ -30,7 +31,7 @@ class ApprovedSet:
 
 def all_sets() -> tuple[ApprovedSet, ...]:
     """허용된 합성 사례 파일 목록. 호출할 때마다 각 모듈의 현재 값을 읽는다(고정값 검사 함수는 호출 시점에 찾는다)."""
-    from . import gen_cases, todo_routing_cases
+    from . import chat_direct_cases, gen_cases, todo_routing_cases
 
     return (
         ApprovedSet(
@@ -50,6 +51,15 @@ def all_sets() -> tuple[ApprovedSet, ...]:
             pins_path=todo_routing_cases.PINS_PATH,
             ids=frozenset(spec[0] for spec in todo_routing_cases.SPECS),
             check_pins=lambda: todo_routing_cases.check_pins(),
+        ),
+        ApprovedSet(
+            key="chat_direct",
+            label="소통 단독 평가 사례",
+            id_prefix=chat_direct_cases.ID_PREFIX,
+            path=chat_direct_cases.PATH,
+            pins_path=chat_direct_cases.PINS_PATH,
+            ids=chat_direct_cases.IDS,
+            check_pins=lambda: chat_direct_cases.check_pins(),
         ),
     )
 

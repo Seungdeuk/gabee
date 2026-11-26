@@ -13,6 +13,8 @@
 - 신규: 실제 입구 `POST /ai-assistant/chat`(`audience`·`room_id`)를 `TestClient` 로 부른다. 기록기는 `contextvars` 인데 요청이 같은 컨텍스트 복사본에서
   돌아 호출 쪽의 `recording()` 에 관찰이 남는다(`tests/agent_eval/test_asgi_contextvars.py` 가 고정). 컨텍스트를 복사하지 않고 직접 띄운 스레드의
   호출은 기록되지 않는다.
+- 소통 단독(평가 전용): 고정 id 집합(`chat_direct_cases.IDS`)의 사례만 메인 없이 `family_chat.agent.ask(..., guarded=False)` 를 직접 부른다
+  (`_ask_family_chat_direct`). 측정기·가짜 모델·예산 다리·기록기·쓰기 차단은 같은 반복 컨텍스트를 그대로 쓴다. 그 밖의 신규 사례는 위 실제 입구다.
 - 지원 안 함(`unsupported`): 통과·실패로 세지 않고 사유와 함께 보고한다. 신규 사례가 일정 쓰기(`schedule.*` 쓰기 도구)를 기대·금지 목록에 적었으면(실행하지
   않는다) 메인 경로에서는 일정 Agent 응답(`AgentResponse`)이 보이지 않아 완료·되묻기·거절을 가릴 수 없어 쓰기 성공을 판정할 수 없다(`schedule_outcome` 머리말,
   "일정 쓰기 성공은 미검증"). `setup.seed` 는 뜻이 정해지지 않았고, 가짜 모드에서 신규 사례는 사례별 대본(`scripts`)이 있어야 한다.
@@ -792,6 +794,42 @@ def _ask_chat(case: Case, world: Any, session: _Session) -> _Entrance:
     )
 
 
+def is_chat_direct(item: Item) -> bool:
+    """소통 Agent 단독 평가 사례인가: 코드에 정의한 고정 id 집합(`chat_direct_cases.IDS`)에 있는 dev·`family_chat` 경로 사례만이다.
+    `Setup` 스키마는 바꾸지 않는다(바꾸면 기존 모든 사례의 해시·고정값이 바뀐다). 그 밖의 사례는 모두 예전처럼 실제 입구로 간다."""
+    from . import chat_direct_cases
+
+    return (
+        not isinstance(item, LegacyCase)
+        and item.split == "dev"
+        and item.agent_path == "family_chat"
+        and item.id in chat_direct_cases.IDS
+    )
+
+
+def _ask_family_chat_direct(case: Case, world: Any) -> _Entrance:
+    """메인 Agent 없이 소통 Agent 를 직접 부른다(평가 전용). 메인이 탭 Agent 를 부르는 방식(`ai_assistant/agents.py::call`)과 같이
+    `guarded=False` 로 부르고, 같은 세션 안의 측정기·가짜 모델·예산 다리(`transport.post_messages`)·기록기·쓰기 차단을 그대로 거친다.
+    가명화(개인정보)는 소통 Agent 가 스스로 한다. 방 게시가 없으므로 `posted_to_room` 은 None 이다."""
+    from app.features.family_chat import agent as family_chat_agent
+    from app.features.family_group.models import User
+    from app.shared.db import SessionLocal
+    from app.shared.errors import ApiError
+
+    member = world.members[case.setup.as_user or LEGACY_OWNER]
+    history = [t.model_dump() for t in case.setup.history] or None
+    with SessionLocal() as db:
+        user = db.get(User, member.user_id)
+        try:
+            reply = family_chat_agent.ask(
+                db, member.group_id, user, case.question, history=history, guarded=False
+            )
+        except ApiError as e:  # 개인정보 엔진을 쓸 수 없으면 HTTP 입구와 같이 중단한다
+            _privacy_abort(e)
+            return _Entrance(f"[{e.status} {e.code}] {e.message}", False, [])
+    return _Entrance(reply.answer, reply.can_answer, [p.summary for p in reply.proposals])
+
+
 FAULT_NOT_INJECTED = "fault_not_injected"
 
 
@@ -913,6 +951,8 @@ def _run_one(
                 got = (
                     _ask_legacy(item)
                     if isinstance(item, LegacyCase)
+                    else _ask_family_chat_direct(item, world)
+                    if is_chat_direct(item)
                     else _ask_chat(item, world, session)
                 )
             if halts:  # HTTP 입구에서 멈춘 경우: 요청이 끝난 뒤 멈춤으로 올린다
@@ -1238,7 +1278,18 @@ def committed_todo_rows() -> dict[str, dict[str, Any]]:
     return committed_set_rows(next(s for s in approved_sets.all_sets() if s.key == "todo_routing"))
 
 
-_SET_ROWS = {"gen": "committed_gen_rows", "todo_routing": "committed_todo_rows"}
+def committed_chat_direct_rows() -> dict[str, dict[str, Any]]:
+    """소통 Agent 단독 평가 사례 20건(`chat_direct_cases.PATH`)의 {id: 정규 값}(`committed_set_rows` 의 소통 단독 항목)."""
+    from . import approved_sets
+
+    return committed_set_rows(next(s for s in approved_sets.all_sets() if s.key == "chat_direct"))
+
+
+_SET_ROWS = {
+    "gen": "committed_gen_rows",
+    "todo_routing": "committed_todo_rows",
+    "chat_direct": "committed_chat_direct_rows",
+}
 
 
 def _official_dev_ids() -> list[dict[str, Any]]:
