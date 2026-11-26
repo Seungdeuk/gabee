@@ -4,13 +4,18 @@
 
 ## 브랜치와 맡는 기능
 
+작업 기준 브랜치는 `release/1.3` 이다(여기서 `feature/<이름>-…` 브랜치를 따서 PR 한다). 아래 표의 이름은 기능 영역 구분이다.
+
 | 브랜치 | 맡는 기능 |
 |---|---|
 | `ai_assistant-ingest` | AI 비서 정제화: 원본 전처리, 자동 분류 |
 | `ai_assistant-knowledge` | AI 비서 최적화: 데이터화, 벡터 DB |
 | `schedule` | 일정 |
 | `family_chat` | 소통(가족 채팅) |
-| `billing-care` | 가계, 돌봄 |
+| `billing-care` | 정산(지갑 탭의 가계·결제·정산, 용돈 장부, 정산 AI 에이전트) |
+| `location` | 위치(이동 기록·장소·구성원 상태). **release/1.3 에는 포함되지 않는다** — 개인 브랜치에서만 개발하고 release 에 병합하지 않는다 |
+
+돌봄 기능은 현재 개발을 멈췄다(이번 릴리스 범위가 아니다. 앱 쪽 `apps/mobile/src/features/care` 폴더만 남아 있고 서버에는 돌봄 기능 폴더가 없다).
 
 ## 서버 (apps/api)
 
