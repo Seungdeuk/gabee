@@ -570,10 +570,6 @@ def ask(
     with_share = with_memory and with_agents
     route_mode = settings.main_routing_mode
     route = routing.decide(question, audience) if with_agents else routing.UNCLEAR
-    agent_specs = agents.tool_specs() if with_agents else []
-    # enforce: 허용 밖 담당은 모델에 아예 보여 주지 않는다(그래도 부르면 _handle_calls 가 막는다)
-    if route_mode == "enforce":
-        agent_specs = [s for s in agent_specs if route.permits(s["name"])]
 
     def main_post(body: dict) -> dict:
         reply = post(body)
@@ -598,7 +594,8 @@ def ask(
                 else "",
             ),
             tools=tools.TOOL_SPECS
-            + agent_specs
+            # enforce 면 허용 밖 담당은 모델에 보여 주지 않는다(그래도 부르면 _handle_calls 가 막는다)
+            + (routing.offered(agents.tool_specs(), route, route_mode) if with_agents else [])
             + (tools.MEMORY_TOOL_SPECS if with_memory else [])
             + ([tools.SHARE_TOOL_SPEC] if with_share else [])
             + ([_web_tool()] if with_web else []),

@@ -79,6 +79,13 @@ class Decision:
 UNCLEAR = Decision(frozenset(), "unclear")
 
 
+def offered(specs: list[dict], decision: Decision, mode: str) -> list[dict]:
+    """모델에 보여 줄 담당 도구. enforce 일 때만 허용 밖 담당을 뺀다(off·shadow 는 그대로)."""
+    if mode != "enforce":
+        return specs
+    return [s for s in specs if decision.permits(s["name"])]
+
+
 def decide(question: str, audience: str = "me") -> Decision:
     """질문 문장과 채널로 허용 담당 집합을 정한다. 질문 문장은 기록하지 않는다(호출한 쪽도 `rule` 만 남긴다)."""
     text = (question or "").strip()
