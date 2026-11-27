@@ -216,12 +216,56 @@ def test_the_upload_batch_stays_one_card_and_never_joins_similar_photos(client, 
     b1 = _candidate(client, a, BASE_DAY, emb=unit(OTHER), batch_id="batchaaaa1")
     b2 = _candidate(client, a, BASE_DAY, emb=unit(RNG.normal(size=768)), batch_id="batchaaaa1")
     twin = _candidate(
-        client, a, BASE_DAY, emb=unit(OTHER)
-    )  # 업로드 묶음 b1 과 거의 같은 사진을 따로 올렸다
+        client, a, BASE_DAY, emb=similar_to(OTHER, 0.25)
+    )  # 업로드 묶음 b1 과 비슷하지만 같지는 않은 사진(코사인 약 0.97)을 따로 올렸다
     items = {i["attachment_id"]: i for i in _timeline(client, a)["items"]}
     assert items[b1]["batch_id"] == items[b2]["batch_id"] == "batchaaaa1"
     assert items[b1]["group_kind"] == items[b2]["group_kind"] == "batch"
     assert items[twin]["group_kind"] == "single"  # 업로드 묶음과 이어 붙이지 않는다
+
+
+# ---------- 같은 사진은 하나만 보인다 ----------
+def test_the_same_photo_uploaded_twice_is_shown_once_and_comes_back_when_the_kept_one_is_excluded(
+    client, family
+):
+    a, _, _ = family
+    same = unit(BASE)
+    first = _candidate(client, a, BASE_DAY, emb=same)
+    second = _candidate(client, a, BASE_DAY + timedelta(minutes=1), emb=same)  # 완전히 같은 사진
+    other = _candidate(client, a, BASE_DAY + timedelta(minutes=2), emb=unit(OTHER))
+    shown = {i["attachment_id"] for i in _timeline(client, a)["items"]}
+    assert shown == {first, other}  # 먼저 올린 사진만 남는다
+    # 숨긴 사진은 응답에서만 빠진다: 채팅의 사진과 판별 기록은 그대로다
+    assert _status(second) is not None
+    assert client.post(f"{PHOTOS}/{first}/exclude", headers=a).status_code == 200
+    again = {i["attachment_id"] for i in _timeline(client, a)["items"]}
+    assert again == {second, other}  # 남긴 사진을 빼면 숨겨졌던 사진이 나타난다
+
+
+def test_a_confirmed_photo_is_kept_over_an_earlier_unconfirmed_duplicate(client, family):
+    a, _, _ = family
+    same = unit(BASE)
+    auto_first = _candidate(client, a, BASE_DAY, emb=same)
+    confirmed_later = _candidate(client, a, BASE_DAY + timedelta(minutes=5), emb=same)
+    body = {"to": "photo", "reason": "uploader_confirmed_general", "acknowledge": True}
+    r = client.post(
+        f"{PHOTOS}/{confirmed_later}/check", json=body, headers=a
+    )  # 업로더가 일반 사진으로 직접 확인
+    assert r.status_code == 200, r.text
+    shown = {i["attachment_id"] for i in _timeline(client, a)["items"]}
+    assert auto_first not in shown  # 먼저 올렸어도 직접 확인하지 않은 같은 사진은 숨긴다
+    assert shown == {confirmed_later}  # 직접 확인한 사진을 남긴다
+
+
+def test_near_duplicates_below_the_threshold_are_both_shown(client, family):
+    a, _, _ = family
+    one = _candidate(client, a, BASE_DAY, emb=unit(BASE))
+    two = _candidate(client, a, BASE_DAY + timedelta(minutes=1), emb=similar_to(BASE, 0.25))
+    shown = {i["attachment_id"] for i in _timeline(client, a)["items"]}
+    assert shown == {
+        one,
+        two,
+    }  # 코사인 약 0.97 은 같은 사진으로 보지 않는다(유사 묶음으로만 묶인다)
 
 
 # ---------- 6·7 제외 ----------
@@ -531,6 +575,41 @@ def test_a_single_photo_upload_with_a_batch_id_can_still_join_similar_photos():
     same = unit(BASE)
     result = tg.group_items([_gi("a1", 0, same, batch="lonely0001"), _gi("a2", 1, same)])
     assert result["a1"].kind == result["a2"].kind == "similar"
+
+
+def test_duplicate_ids_keeps_the_earliest_and_hides_the_rest():
+    same = unit(BASE)
+    hidden = tg.duplicate_ids([_gi("c", 5, same), _gi("a", 0, same), _gi("b", 2, same)], set())
+    assert hidden == {"b", "c"}  # 가장 먼저 올린 a 만 남는다
+
+
+def test_duplicate_ids_prefers_confirmed_photos_over_earlier_ones():
+    same = unit(BASE)
+    hidden = tg.duplicate_ids([_gi("early", 0, same), _gi("confirmed", 9, same)], {"confirmed"})
+    assert hidden == {"early"}
+
+
+def test_duplicate_ids_ignores_other_days_missing_embeddings_and_lookalikes():
+    same = unit(BASE)
+    items = [
+        _gi("d1", 0, same),
+        _gi("d2", 0, same, day_offset=1),  # 다른 날짜의 같은 사진
+        _gi("none", 1),  # 임베딩 없음
+        _gi("look", 2, similar_to(BASE, 0.25)),  # 코사인 약 0.97
+    ]
+    assert tg.duplicate_ids(items, set()) == set()
+
+
+def test_duplicate_ids_does_not_chain_through_a_middle_photo():
+    # A–B 5°(0.996), B–C 5°(0.996), A–C 10°(0.985 < 0.99): C 는 남긴 A 와 같은 사진이 아니므로 남는다
+    items = [_gi("p1", 0, _angled(0)), _gi("p2", 1, _angled(5)), _gi("p3", 2, _angled(10))]
+    assert tg.duplicate_ids(items, set()) == {"p2"}
+
+
+def test_duplicate_ids_is_independent_of_input_order():
+    same = unit(BASE)
+    items = [_gi(f"q{i}", i, same) for i in range(5)]
+    assert tg.duplicate_ids(items, set()) == tg.duplicate_ids(list(reversed(items)), set())
 
 
 def test_grouping_is_deterministic_for_the_same_input():

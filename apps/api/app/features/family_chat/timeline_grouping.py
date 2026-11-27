@@ -8,6 +8,9 @@
    코사인 유사도가 `SIM_THRESHOLD` 이상. 쌍 하나만 비슷해서 이어 붙이는 사슬(A~B, B~C 이면 A·C 까지 합쳐지는 것)은 만들지 않는다.
 4. 가장 비슷한 쌍부터 합치되, 묶음 크기가 `MAX_GROUP` 을 넘으면 더 합치지 않는다.
 5. 임베딩이 없는 사진(분석 전·실패·직접 확인한 사진)과 합칠 상대가 없는 사진은 단독 카드다(**유사 사진이 없어도 보인다**).
+6. **같은 사진은 하나만 보인다**(`duplicate_ids`): 같은 날 안에서 임베딩 코사인 유사도가 `DUP_THRESHOLD` 이상인 사진은 같은 사진으로 보고, 묶기 전에
+   하나만 남기고 나머지는 타임라인 응답에서 뺀다(채팅·문서함·DB 의 사진은 그대로). 직접 확인·포함한 사진을 먼저 남기고, 그다음 먼저 올린 사진, 첨부 id 순이다.
+   남긴 사진과 직접 비교해 기준을 넘는 사진만 뺀다(A~B, B~C 가 0.99 이상이어도 A~C 가 아니면 C 는 남는다).
 임베딩은 가족별로 따로 다룬다: 이 함수는 호출한 쪽이 넘긴 한 가족의 사진만 받는다."""
 
 import hashlib
@@ -22,6 +25,7 @@ MAX_GAP = timedelta(
     hours=4
 )  # 같은 날이어도 이보다 멀리 떨어진 사진은 잇지 않는다(아침·저녁의 같은 장소)
 MAX_GROUP = 40  # 한 묶음의 최대 사진 수(유사 묶음 기준)
+DUP_THRESHOLD = 0.99  # 같은 사진으로 보는 기준(밝기만 바꾼 변형 0.998, 자르기·크기 줄이기 변형 0.95~0.98: 개발용 목업 확인이고 정확도 평가가 아니다)
 
 
 @dataclass(frozen=True)
@@ -78,6 +82,35 @@ def _similar_clusters(items: Sequence[GroupItem], indexes: list[int]) -> list[li
             owner[x] = ra
         members[ra].extend(members.pop(rb))
     return [[indexes[k] for k in group] for group in members.values() if len(group) > 1]
+
+
+def duplicate_ids(items: Sequence[GroupItem], preferred: set[str]) -> set[str]:
+    """같은 사진(같은 날, 임베딩 코사인 >= DUP_THRESHOLD)이면 하나만 남기고 나머지의 attachment_id 를 돌려준다(타임라인에서 뺄 사진).
+    남기는 순서: preferred(직접 확인·포함한 사진) → 먼저 올린 사진 → 첨부 id. 이미 남기기로 한 사진과 직접 비교해서 기준을 넘는 사진만 뺀다.
+    임베딩이 없는 사진은 비교할 수 없으므로 빼지 않는다. 입력 순서가 달라도 결과는 같다."""
+    import numpy as np
+
+    by_day: dict[object, list[GroupItem]] = defaultdict(list)
+    for item in items:
+        if item.embedding is not None:
+            by_day[_day(item.display_at)].append(item)
+    hidden: set[str] = set()
+    for day_items in by_day.values():
+        if len(day_items) < 2:
+            continue
+        ordered = sorted(
+            day_items,
+            key=lambda it: (it.attachment_id not in preferred, it.display_at, it.attachment_id),
+        )
+        matrix = np.asarray([it.embedding for it in ordered], dtype=np.float32)
+        sims = matrix @ matrix.T
+        kept: list[int] = []
+        for index, item in enumerate(ordered):
+            if any(float(sims[index, k]) >= DUP_THRESHOLD for k in kept):
+                hidden.add(item.attachment_id)
+            else:
+                kept.append(index)
+    return hidden
 
 
 def group_items(items: Sequence[GroupItem]) -> dict[str, GroupAssign]:

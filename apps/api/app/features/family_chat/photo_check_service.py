@@ -456,19 +456,27 @@ def timeline(db: Session, user: User, group_id: str, limit: int, before: str | N
     ]
     if missing:  # 자동 후보 분석과 대기열을 나눠 쓰도록 조회당 절반만
         timeline_features.schedule(missing[: timeline_features.BACKFILL_PER_REQUEST // 2])
-    assigns = timeline_grouping.group_items(
-        [
-            timeline_grouping.GroupItem(
-                attachment_id=row[0],
-                display_at=_utc(row[2]),
-                batch_id=row[5],
-                embedding=(
-                    confirmed_embeddings[row[0]].embedding if confirmed_embeddings[row[0]] else None
-                ),
-            )
-            for row in rows
-        ]
+    group_inputs = [
+        timeline_grouping.GroupItem(
+            attachment_id=row[0],
+            display_at=_utc(row[2]),
+            batch_id=row[5],
+            embedding=(
+                confirmed_embeddings[row[0]].embedding if confirmed_embeddings[row[0]] else None
+            ),
+        )
+        for row in rows
+    ]
+    # 같은 사진(같은 날, 임베딩 유사도 0.99 이상)은 하나만 보인다: 직접 확인·포함한 사진을 먼저 남긴다. 뺀 사진은 응답에서만 빠지고 채팅·문서함·DB 는 그대로다.
+    # 이미 타임라인에서 뺀 사진은 위에서 걸러졌으므로, 남긴 사진을 업로더가 빼면 다음 조회부터 숨겨졌던 중복 사진이 나타난다.
+    hidden = timeline_grouping.duplicate_ids(
+        group_inputs,
+        preferred={row[0] for row in rows if row[0] in include_ids or row[0] not in state.eligible},
     )
+    if hidden:
+        rows = [row for row in rows if row[0] not in hidden]
+        group_inputs = [item for item in group_inputs if item.attachment_id not in hidden]
+    assigns = timeline_grouping.group_items(group_inputs)
     ordered = sorted(
         rows,
         key=lambda row: (assigns[row[0]].display_at, row[1]),
