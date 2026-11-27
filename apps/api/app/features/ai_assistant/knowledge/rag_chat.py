@@ -489,7 +489,8 @@ def _handle_calls(
                 # 하이브리드 라우팅: 질문에 명시된 출처와 충돌하는 담당. 질문 문장은 남기지 않고 규칙 이름만 기록한다
                 eval_hook.observe_routing_block("main", route_mode, call["name"], route.rule)
                 if route_mode == "enforce":
-                    data, err = {"answer": routing.BLOCKED_TEXT, "can_answer": False}, False
+                    # 실행하지 않은 호출이라 오류로 돌려준다(평가 관찰에서도 is_error 로 남아 '요청'과 '실행'을 나눠 셀 수 있다)
+                    data, err = {"error": routing.BLOCKED_TEXT}, True
                     outputs.append((call["id"], json.dumps(data, ensure_ascii=False), err))
                     continue
             if to_agent:
@@ -592,7 +593,10 @@ def ask(
                 memory_lines=memories.note_lines(memories.list_for(db, group_id, user.id))
                 if with_memory
                 else "",
-            ),
+            )
+            + routing.prompt_note(
+                route, route_mode
+            ),  # enforce 에서만 붙는다(off·shadow 는 프롬프트 그대로)
             tools=tools.TOOL_SPECS
             # enforce 면 허용 밖 담당은 모델에 보여 주지 않는다(그래도 부르면 _handle_calls 가 막는다)
             + (routing.offered(agents.tool_specs(), route, route_mode) if with_agents else [])

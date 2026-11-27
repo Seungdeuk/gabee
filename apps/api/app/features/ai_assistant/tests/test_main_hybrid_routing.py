@@ -57,6 +57,8 @@ def test_explicit_sources_limit_the_agents(question, audience, allowed):
         ("다음 주 일정이랑 할 일 알려줘", "me"),  # '일정'이 있어도 할 일 목록은 정해지지 않았다
         ("그거 일정에 넣어줘", "me"),  # 앞선 대화를 가리키는 말
         ("영수증 금액 지출로 등록해줘", "me"),  # 어느 탭에 쓸지는 앞뒤 말에 달린 쓰기 표현
+        ("아까 그 얘기 다시 정리해 줘", "room"),  # 가족방이어도 앞 대화를 가리키면 막지 않는다
+        ("내일 병원 예약 넣어줘", "room"),  # 가족방이어도 쓰기 표현이면 막지 않는다
         ("", "me"),
     ],
 )
@@ -64,6 +66,30 @@ def test_unclear_questions_are_not_limited(question, audience):
     decision = routing.decide(question, audience)
     assert decision.unclear and decision.allowed is None
     assert all(decision.permits(name) for name in ALL_AGENTS)
+
+
+@pytest.mark.parametrize(
+    "question, allowed",
+    [
+        ("주말에 누가 차 가져오기로 했지?", {"ask_family_chat"}),  # 출처 표현 없음 → 그 방 대화
+        ("요즘 엄마가 좋아하는 간식이 뭐야?", {"ask_family_chat"}),
+        ("이번 주 일정 알려줘", {"ask_schedule"}),  # 일정 표현이 있으면 일정
+        ("이번 달 지출 얼마야?", {"ask_billing"}),  # 장부 표현이 있으면 장부
+    ],
+)
+def test_room_questions_without_a_source_go_to_the_room_chat(question, allowed):
+    assert routing.decide(question, "room").allowed == allowed
+    assert routing.decide("주말에 누가 차 가져오기로 했지?", "me").unclear  # 개인 채팅은 그대로
+
+
+def test_prompt_note_only_in_enforce_for_decided_questions():
+    chat = routing.decide("단톡에서 엄마가 말한 식당 이름 뭐였지?", "me")
+    docs = routing.decide("관리비 고지서에 납부 기한이 언제야?", "me")
+    assert routing.prompt_note(chat, "off") == "" and routing.prompt_note(chat, "shadow") == ""
+    assert "ask_family_chat 뿐" in routing.prompt_note(chat, "enforce")
+    assert "ask_schedule" not in routing.prompt_note(chat, "enforce")
+    assert "부르지 마세요" in routing.prompt_note(docs, "enforce")
+    assert routing.prompt_note(routing.UNCLEAR, "enforce") == ""
 
 
 def test_decision_rule_never_contains_the_question():
@@ -125,8 +151,9 @@ def test_enforce_mode_does_not_call_the_agent_and_answers_the_model(monkeypatch)
     received, done, rec = _handle(monkeypatch, "enforce", "ask_schedule", CHAT_ONLY)
     assert received == []
     call_id, text, is_error = done.outputs[0]
-    assert call_id == "t1" and is_error is False
-    assert json.loads(text) == {"answer": routing.BLOCKED_TEXT, "can_answer": False}
+    # 실행하지 않은 호출은 오류로 돌려준다(평가 관찰에서 요청과 실행을 나눠 센다)
+    assert call_id == "t1" and is_error is True
+    assert json.loads(text) == {"error": routing.BLOCKED_TEXT}
     assert done.direct_answer is None  # 막은 호출의 글을 사용자에게 바로 보내지 않는다
     assert [b["mode"] for b in rec.routing_blocks] == ["enforce"]
 
@@ -169,20 +196,31 @@ def sent_tools(client, family, monkeypatch):
     enable_ai(group["id"])
     monkeypatch.setattr(settings, "anthropic_api_key", "test-key")
 
-    def go(mode: str, message: str) -> set[str]:
+    def go(mode: str, message: str, with_system: bool = False):
         monkeypatch.setattr(settings, "main_routing_mode", mode)
-        seen: list[set[str]] = []
+        seen: list[tuple[set[str], str]] = []
 
         def fake_post(req):
-            seen.append({t["name"] for t in req.get("tools", [])} & ALL_AGENTS)
+            system = req.get("system")
+            text = system if isinstance(system, str) else json.dumps(system, ensure_ascii=False)
+            seen.append(({t["name"] for t in req.get("tools", [])} & ALL_AGENTS, text))
             return {"content": [{"type": "text", "text": "답"}]}
 
         monkeypatch.setattr(rag_chat, "_post", fake_post)
         r = client.post("/ai-assistant/chat", json={"message": message}, headers=a)
         assert r.status_code == 200, r.text
-        return seen[0]
+        return seen[0] if with_system else seen[0][0]
 
     return go
+
+
+def test_system_prompt_note_only_in_enforce(sent_tools):
+    _, off_system = sent_tools("off", CHAT_ONLY, with_system=True)
+    _, enforce_system = sent_tools("enforce", CHAT_ONLY, with_system=True)
+    assert "이번 질문에서 쓸 수 있는 담당 에이전트" not in off_system
+    assert "이번 질문에서 쓸 수 있는 담당 에이전트는 ask_family_chat 뿐" in enforce_system
+    _, unclear_system = sent_tools("enforce", "주말에 뭐 하기로 했지?", with_system=True)
+    assert "이번 질문에서 쓸 수 있는" not in unclear_system
 
 
 def test_tool_list_is_unchanged_in_off_and_shadow(sent_tools):

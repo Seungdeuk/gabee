@@ -102,6 +102,10 @@ def decide(question: str, audience: str = "me") -> Decision:
             return Decision(frozenset(), "unclear:todo")
         sources.add(FAMILY_TODO)  # 가족방의 할 일은 가족 공동 목록이다(기존 프롬프트 규칙과 같다)
     if not sources:
+        if audience == "room":
+            # 가족방 @가비 질문이 어느 기록인지 말하지 않았고 일정·장부 표현도 없으면 그 방의 대화가 출처다(설계 메모 6절).
+            # 쓰기·앞 대화 가리킴은 위에서 이미 unclear 로 빠졌다
+            return Decision(frozenset({CHAT_HISTORY}), "room:default_chat")
         return UNCLEAR
     return Decision(frozenset(sources), "explicit:" + "+".join(sorted(sources)))
 
@@ -109,3 +113,19 @@ def decide(question: str, audience: str = "me") -> Decision:
 BLOCKED_TEXT = (
     "이 질문에는 이 담당을 쓰지 않습니다. 질문에 나온 기록의 담당이나 다른 도구로 답하세요."
 )
+
+
+def prompt_note(decision: Decision, mode: str) -> str:
+    """enforce 에서 출처가 정해진 질문이면 시스템 프롬프트 끝에 붙일 한 줄(없으면 빈 글).
+
+    시스템 프롬프트의 라우팅 문장에는 모든 담당 이름이 그대로 있어서, 도구 목록에서 뺀 담당도 모델이 부르려 한다(국소 평가 관찰)."""
+    allowed = decision.allowed
+    if mode != "enforce" or allowed is None:
+        return ""
+    if not allowed:
+        return "\n\n이번 질문에는 담당 에이전트(ask_ 로 시작하는 도구)를 부르지 마세요."
+    names = ", ".join(sorted(allowed))
+    return (
+        f"\n\n이번 질문에서 쓸 수 있는 담당 에이전트는 {names} 뿐입니다. "
+        "위 안내에 다른 담당 이름이 나와도 이번에는 부르지 마세요."
+    )
