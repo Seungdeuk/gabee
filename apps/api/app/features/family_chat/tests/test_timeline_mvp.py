@@ -211,13 +211,17 @@ def test_a_photo_without_similar_ones_is_shown_alone_next_to_a_group(client, fam
     assert all(items[g]["group_kind"] == "similar" for g in group)
 
 
-def test_the_upload_batch_stays_one_card_and_can_join_similar_photos(client, family):
+def test_the_upload_batch_stays_one_card_and_never_joins_similar_photos(client, family):
     a, _, _ = family
     b1 = _candidate(client, a, BASE_DAY, emb=unit(OTHER), batch_id="batchaaaa1")
     b2 = _candidate(client, a, BASE_DAY, emb=unit(RNG.normal(size=768)), batch_id="batchaaaa1")
+    twin = _candidate(
+        client, a, BASE_DAY, emb=unit(OTHER)
+    )  # 업로드 묶음 b1 과 거의 같은 사진을 따로 올렸다
     items = {i["attachment_id"]: i for i in _timeline(client, a)["items"]}
     assert items[b1]["batch_id"] == items[b2]["batch_id"] == "batchaaaa1"
     assert items[b1]["group_kind"] == items[b2]["group_kind"] == "batch"
+    assert items[twin]["group_kind"] == "single"  # 업로드 묶음과 이어 붙이지 않는다
 
 
 # ---------- 6·7 제외 ----------
@@ -482,6 +486,51 @@ def test_grouping_without_embeddings_leaves_singles_and_upload_batches_only():
     )
     assert result["a1"].kind == result["a2"].kind == "single"
     assert result["a3"].kind == result["a4"].kind == "batch" and result["a3"].key == "bbbb1111"
+
+
+def _angled(degrees: float) -> list[float]:
+    """평면의 각도로 만든 단위 벡터(768차원에 0 을 채움). 두 벡터의 코사인 유사도는 각도 차의 cos 값이다."""
+    v = np.zeros(768)
+    v[0], v[1] = np.cos(np.radians(degrees)), np.sin(np.radians(degrees))
+    return list(v)
+
+
+def test_grouping_never_chains_a_to_c_through_b_when_a_and_c_are_not_similar():
+    # A–B 15°(0.966), B–C 28°(0.883), A–C 43°(0.731 < 0.88): 쌍 하나만 비슷해서 사슬로 합치면 안 된다
+    a, b, c = _angled(0), _angled(15), _angled(43)
+    result = tg.group_items([_gi("p1", 0, a), _gi("p2", 1, b), _gi("p3", 2, c)])
+    assert (
+        result["p1"].kind == result["p2"].kind == "similar" and result["p1"].key == result["p2"].key
+    )
+    assert result["p3"].kind == "single"  # C 는 A 와 비슷하지 않으므로 {A, B} 에 들어가지 못한다
+
+
+def test_grouping_merges_when_every_pair_is_similar():
+    a, b, c = _angled(0), _angled(8), _angled(16)  # 모든 쌍이 0.88 이상(최대 각도 차 16° = 0.961)
+    result = tg.group_items([_gi("p1", 0, a), _gi("p2", 1, b), _gi("p3", 2, c)])
+    assert {x.kind for x in result.values()} == {"similar"} and len(
+        {x.key for x in result.values()}
+    ) == 1
+
+
+def test_upload_batch_photos_are_never_used_for_similar_grouping():
+    same = unit(BASE)
+    result = tg.group_items(
+        [
+            _gi("b1", 0, same, batch="batch0001"),
+            _gi("b2", 1, same, batch="batch0001"),
+            _gi("s1", 2, same),  # 업로드 묶음 사진과 똑같아도 이어 붙이지 않는다
+            _gi("s2", 3, same),
+        ]
+    )
+    assert result["b1"].kind == result["b2"].kind == "batch" and result["b1"].key == "batch0001"
+    assert result["s1"].kind == result["s2"].kind == "similar" and result["s1"].key != "batch0001"
+
+
+def test_a_single_photo_upload_with_a_batch_id_can_still_join_similar_photos():
+    same = unit(BASE)
+    result = tg.group_items([_gi("a1", 0, same, batch="lonely0001"), _gi("a2", 1, same)])
+    assert result["a1"].kind == result["a2"].kind == "similar"
 
 
 def test_grouping_is_deterministic_for_the_same_input():

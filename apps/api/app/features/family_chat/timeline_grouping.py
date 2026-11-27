@@ -1,11 +1,13 @@
 """가족 타임라인의 사진 묶기(순수 함수, DB·파일·모델을 부르지 않는다).
 
 묶는 기준(이 파일의 상수는 개발용 소규모 점검으로 정했다: 정확도 평가가 아니다 — docs/features/family-chat.md 의 "타임라인 사진 분류·묶기"):
-1. 같은 `batch_id`(앱이 한 번에 올린 묶음)는 항상 한 묶음이다(기존 동작).
+1. 같은 `batch_id`(앱이 한 번에 올린 묶음, 2장 이상)는 항상 한 묶음이다(기존 동작). **업로드 묶음의 사진은 유사 묶기에 쓰지 않는다**:
+   업로드 묶음은 묶음끼리만, 유사 묶음은 업로드 묶음에 속하지 않은(단독으로 올린) 사진끼리만 만든다. 둘을 이어 붙이면 내용이 다른 사진이 사슬로 합쳐진다.
 2. 같은 날(한국 시간 기준 날짜)에 찍은(없으면 보낸) 사진끼리만 비교한다. 다른 날짜의 비슷한 장소는 절대 합치지 않는다.
-3. 같은 날이어도 두 사진의 촬영 시각 차이가 `MAX_GAP` 이내이고 SigLIP2 이미지 임베딩의 코사인 유사도가 `SIM_THRESHOLD` 이상일 때만 이어 붙인다.
-4. 가장 비슷한 쌍부터 이어 붙이되, 묶음 크기가 `MAX_GROUP` 을 넘으면 더 잇지 않는다(비슷한 사진이 사슬로 끝없이 이어지는 것을 막는다).
-5. 임베딩이 없는 사진(분석 전·실패·직접 확인한 사진)과 이어 붙일 상대가 없는 사진은 단독 카드다(**유사 사진이 없어도 보인다**).
+3. 유사 묶음은 **묶음 안 모든 쌍**이 조건을 만족할 때만 만든다: 두 사진의 촬영 시각 차이가 `MAX_GAP` 이내이고 SigLIP2 이미지 임베딩의
+   코사인 유사도가 `SIM_THRESHOLD` 이상. 쌍 하나만 비슷해서 이어 붙이는 사슬(A~B, B~C 이면 A·C 까지 합쳐지는 것)은 만들지 않는다.
+4. 가장 비슷한 쌍부터 합치되, 묶음 크기가 `MAX_GROUP` 을 넘으면 더 합치지 않는다.
+5. 임베딩이 없는 사진(분석 전·실패·직접 확인한 사진)과 합칠 상대가 없는 사진은 단독 카드다(**유사 사진이 없어도 보인다**).
 임베딩은 가족별로 따로 다룬다: 이 함수는 호출한 쪽이 넘긴 한 가족의 사진만 받는다."""
 
 import hashlib
@@ -19,7 +21,7 @@ SIM_THRESHOLD = 0.88  # 서로 다른 장면 사진 쌍의 최댓값(0.876)보�
 MAX_GAP = timedelta(
     hours=4
 )  # 같은 날이어도 이보다 멀리 떨어진 사진은 잇지 않는다(아침·저녁의 같은 장소)
-MAX_GROUP = 40  # 한 묶음의 최대 사진 수(유사 이음 기준)
+MAX_GROUP = 40  # 한 묶음의 최대 사진 수(유사 묶음 기준)
 
 
 @dataclass(frozen=True)
@@ -37,87 +39,78 @@ class GroupAssign:
     display_at: datetime  # 묶음에서 가장 이른 시각(묶음은 한 자리에 모여 정렬된다)
 
 
-class _Sets:
-    def __init__(self, n: int) -> None:
-        self.parent = list(range(n))
-        self.size = [1] * n
-
-    def find(self, x: int) -> int:
-        while self.parent[x] != x:
-            self.parent[x] = self.parent[self.parent[x]]
-            x = self.parent[x]
-        return x
-
-    def union(self, a: int, b: int, limit: int | None = None) -> bool:
-        ra, rb = self.find(a), self.find(b)
-        if ra == rb:
-            return False
-        if limit is not None and self.size[ra] + self.size[rb] > limit:
-            return False
-        if self.size[ra] < self.size[rb]:
-            ra, rb = rb, ra
-        self.parent[rb] = ra
-        self.size[ra] += self.size[rb]
-        return True
-
-
 def _day(value: datetime):
     return value.astimezone(KST).date()
 
 
+def _similar_clusters(items: Sequence[GroupItem], indexes: list[int]) -> list[list[int]]:
+    """같은 날 사진들(indexes, items 의 위치)을 완전 연결 방식으로 묶는다: 두 묶음은 서로의 모든 쌍이 조건을 만족할 때만 합쳐진다.
+    결과는 크기 2 이상인 묶음들(각 묶음은 items 위치 목록). 입력 순서가 달라도 같은 결과가 나오게 동점은 첨부 id 로 정한다."""
+    import numpy as np
+
+    matrix = np.asarray([items[i].embedding for i in indexes], dtype=np.float32)
+    sims = matrix @ matrix.T
+    ids = [items[i].attachment_id for i in indexes]
+    times = [items[i].display_at for i in indexes]
+    count = len(indexes)
+    ok = np.zeros((count, count), dtype=bool)  # 한 쌍이 조건을 만족하는가
+    edges = []
+    for a in range(count):
+        for b in range(a + 1, count):
+            if float(sims[a, b]) >= SIM_THRESHOLD and abs(times[a] - times[b]) <= MAX_GAP:
+                ok[a, b] = ok[b, a] = True
+                first, second = (a, b) if ids[a] <= ids[b] else (b, a)
+                edges.append((float(sims[a, b]), first, second))
+    edges.sort(
+        key=lambda e: (-e[0], ids[e[1]], ids[e[2]])
+    )  # 가장 비슷한 쌍부터, 같으면 id 순서로 고정
+    owner = list(range(count))  # 각 사진이 속한 묶음 번호
+    members: dict[int, list[int]] = {k: [k] for k in range(count)}
+    for _, a, b in edges:
+        ra, rb = owner[a], owner[b]
+        if ra == rb:
+            continue
+        if len(members[ra]) + len(members[rb]) > MAX_GROUP:
+            continue
+        if not all(ok[x, y] for x in members[ra] for y in members[rb]):
+            continue  # 쌍 하나만 비슷해서는 합치지 않는다(사슬 방지)
+        for x in members[rb]:
+            owner[x] = ra
+        members[ra].extend(members.pop(rb))
+    return [[indexes[k] for k in group] for group in members.values() if len(group) > 1]
+
+
 def group_items(items: Sequence[GroupItem]) -> dict[str, GroupAssign]:
     """사진들을 묶는다. 결과는 attachment_id → GroupAssign."""
-    n = len(items)
-    sets = _Sets(n)
-    first_of_batch: dict[str, int] = {}
+    by_batch: dict[str, list[int]] = defaultdict(list)
     for i, item in enumerate(items):
         if item.batch_id:
-            if item.batch_id in first_of_batch:
-                sets.union(first_of_batch[item.batch_id], i)
-            else:
-                first_of_batch[item.batch_id] = i
-    similar_nodes: set[int] = set()
+            by_batch[item.batch_id].append(i)
+    out: dict[str, GroupAssign] = {}
+    in_upload_batch: set[int] = set()
+    for batch_id, indexes in by_batch.items():
+        if len(indexes) < 2:
+            continue  # 한 장짜리 업로드는 단독 사진으로 본다(유사 묶기에 쓸 수 있다)
+        in_upload_batch.update(indexes)
+        earliest = min(items[i].display_at for i in indexes)
+        for i in indexes:
+            out[items[i].attachment_id] = GroupAssign(batch_id, "batch", earliest)
     by_day: dict[object, list[int]] = defaultdict(list)
     for i, item in enumerate(items):
-        if item.embedding is not None:
+        if i not in in_upload_batch and item.embedding is not None:
             by_day[_day(item.display_at)].append(i)
+    in_similar: set[int] = set()
     for indexes in by_day.values():
         if len(indexes) < 2:
             continue
-        import numpy as np
-
-        matrix = np.asarray([items[i].embedding for i in indexes], dtype=np.float32)
-        sims = matrix @ matrix.T
-        edges = []
-        for a in range(len(indexes)):
-            for b in range(a + 1, len(indexes)):
-                score = float(sims[a, b])
-                if (
-                    score >= SIM_THRESHOLD
-                    and abs(items[indexes[a]].display_at - items[indexes[b]].display_at) <= MAX_GAP
-                ):
-                    edges.append((score, indexes[a], indexes[b]))
-        edges.sort(key=lambda e: (-e[0], e[1], e[2]))  # 가장 비슷한 쌍부터(같으면 입력 순서로 고정)
-        for _, i, j in edges:
-            if sets.union(i, j, MAX_GROUP):
-                similar_nodes.update((i, j))
-    members: dict[int, list[int]] = defaultdict(list)
-    for i in range(n):
-        members[sets.find(i)].append(i)
-    out: dict[str, GroupAssign] = {}
-    for indexes in members.values():
-        earliest = min(items[i].display_at for i in indexes)
-        if len(indexes) == 1:
-            only = items[indexes[0]]
-            out[only.attachment_id] = GroupAssign(only.batch_id, "single", earliest)
-            continue
-        if any(i in similar_nodes for i in indexes):
-            smallest = min(items[i].attachment_id for i in indexes)
+        for group in _similar_clusters(items, indexes):
+            earliest = min(items[i].display_at for i in group)
+            smallest = min(items[i].attachment_id for i in group)
             key = "s_" + hashlib.sha1(smallest.encode()).hexdigest()[:12]
-            kind = "similar"
-        else:
-            key = items[indexes[0]].batch_id
-            kind = "batch"
-        for i in indexes:
-            out[items[i].attachment_id] = GroupAssign(key, kind, earliest)
+            for i in group:
+                out[items[i].attachment_id] = GroupAssign(key, "similar", earliest)
+            in_similar.update(group)
+    for i, item in enumerate(items):
+        if i not in in_upload_batch and i not in in_similar:
+            out[item.attachment_id] = GroupAssign(item.batch_id, "single", item.display_at)
     return out
