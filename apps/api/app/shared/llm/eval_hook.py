@@ -25,6 +25,9 @@ class Recording:
     tokens_out: int = 0
     # 단계(stage)별로 도달·강제 최종 답 여부를 따로 둔다(중첩 Agent 가 서로 섞이지 않게). 같은 단계가 여러 번 돌면 하나라도 있으면 True
     stage_limits: dict[str, dict[str, bool]] = field(default_factory=dict)
+    # 하이브리드 라우팅이 막았거나(enforce) 막았을(shadow) 담당 호출: mode, name, rule. 질문 문장은 담지 않는다.
+    # `Observation` 형식을 바꾸지 않으려고 observation_fields 에는 넣지 않는다(측정 스크립트가 직접 읽는다)
+    routing_blocks: list[dict] = field(default_factory=list)
     started: float = field(default_factory=time.monotonic)
 
     @property
@@ -133,6 +136,14 @@ def observe_step_limit(stage: str, reached: bool, forced_final: bool = False) ->
     entry = rec.stage_limits.setdefault(stage, {"reached": False, "forced_final": False})
     entry["reached"] = entry["reached"] or bool(reached or forced_final)
     entry["forced_final"] = entry["forced_final"] or bool(forced_final)
+
+
+def observe_routing_block(stage: str, mode: str, name: str, rule: str) -> None:
+    """하이브리드 라우팅이 담당 호출 하나를 막았거나(enforce) 막았을(shadow) 때."""
+    rec = _CURRENT.get()
+    if rec is None or not stage:
+        return
+    rec.routing_blocks.append({"stage": stage, "mode": mode, "name": name, "rule": rule})
 
 
 def observe_call(stage: str, name: str, args: Mapping[str, Any]) -> None:

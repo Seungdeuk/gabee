@@ -180,6 +180,9 @@ class Settings(BaseSettings):
     # 양의 정수이고 모델의 최대 출력(Haiku 5.5: 128000, Models API 확인)을 넘을 수 없다. 범위 밖이면 서버가 시작할 때 설정 오류로 멈춘다.
     # 일반 호출(`anthropic_max_tokens`)·돌봄·OCR·뉴스·일정 제안 등 이 Agent 경로 밖의 상한은 이 값과 무관하다.
     agent_max_output_tokens: int = Field(default=10000, ge=1, le=128000)
+    # MAIN_ROUTING_MODE: 메인 Agent 하이브리드 라우팅(docs/requirements/main-hybrid-routing.md). 질문에 명시된 출처와 충돌하는 담당 Agent 를
+    # off: 막지 않음(기본) | shadow: 막지 않고 "막았을 호출"만 평가 관찰에 기록 | enforce: 도구 목록에서 빼고 요청되면 실행하지 않음.
+    main_routing_mode: str = Field(default="off", pattern=r"^(off|shadow|enforce)$")
     ai_effort: str = "low"  # 추론 비용을 줄이려고 낮게 둔다(low|medium|high)
     ai_auto_analysis_enabled: bool = (
         False  # 설계만 있고 기본 꺼짐(켜도 메시지마다 부르지 않고 시간·새 메시지 수로 모아서)
